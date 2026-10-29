@@ -76,7 +76,6 @@ describe("encodeTar and decodeTar", () => {
   })
 })
 
-/** A pax extended header block for the entry after it, the way Go's archive/tar writes one. */
 const paxHeader = (records: Record<string, string>) => {
   const body = Object.entries(records)
     .map(([key, value]) => {

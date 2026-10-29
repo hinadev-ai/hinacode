@@ -15,19 +15,26 @@ import {
   type SizeBounds,
 } from "../lib/panelSize.ts"
 
-export type SidePanelViewId = "details" | "files" | "changes" | "git" | "pullRequests" | "agents" | "browser" | "tinyVm"
+export type SidePanelViewId =
+  | "details"
+  | "files"
+  | "changes"
+  | "git"
+  | "pullRequests"
+  | "agents"
+  | "browser"
+  | "tinyVm"
+  | "devices"
 export type SidePanelSize = "normal" | "wide"
 const sidebarTabs = ["inbox", "threads", "archived"] as const
 export type SidebarTab = (typeof sidebarTabs)[number]
 
 export const pullRequestCodeViews = ["files", "guide"] as const
 export type PullRequestCodeView = (typeof pullRequestCodeViews)[number]
-/** Where a thread's tiny VM screen shows: its side panel view, or floating over the conversation. */
 export type VmPlacement = "panel" | "floating"
-/** Composer pickers a shortcut can open. */
 export type ComposerPicker = "model" | "effort"
 
-const pullRequestSections = ["links", "checks", "description"] as const
+const pullRequestSections = ["links", "checks", "description", "comments"] as const
 export type PullRequestSection = (typeof pullRequestSections)[number]
 
 let findRevealRequests = 0
@@ -75,71 +82,45 @@ interface UiState {
   readonly sidePanelOverlayOpen: boolean
   readonly sidebarTab: SidebarTab
   readonly pullRequestCodeView: PullRequestCodeView
-  /** Narrows the sidebar to threads whose title, or whose project's name, contains it. */
   readonly sidebarQuery: string
-  /** The projects the sidebar shows. Empty shows every project. */
   readonly sidebarProjectIds: ReadonlyArray<string>
-  /** PR tab sections the user collapsed. They stay collapsed for every pull request. */
   readonly collapsedPullRequestSections: ReadonlyArray<PullRequestSection>
-  /** The side panel view each thread last showed. Threads not in here show `lastSidePanelView`. */
   readonly sidePanelViews: Readonly<Record<string, SidePanelViewId>>
   readonly lastSidePanelView: SidePanelViewId
-  /** A view asked for room, such as Files with a file open. */
   readonly sidePanelWide: boolean
-  /** Docked side panel width per size, remembered separately. Null keeps the size's CSS default. */
   readonly sidePanelWidths: Readonly<Record<SidePanelSize, number | null>>
-  /** Set by a view shortcut until the view takes focus. */
   readonly viewFocusRequest: SidePanelViewId | null
-  /** The file whose diff the Changes view shows open. */
   readonly changesPath: string | null
-  /** Threads whose tiny VM screen floats over the conversation. The rest show it in the side panel. */
   readonly vmPlacements: Readonly<Record<string, VmPlacement>>
-  /** The floating screen's width; its height follows the VM's aspect ratio. */
   readonly vmFloatingWidth: number
   readonly setVmPlacement: (threadId: string, placement: VmPlacement) => void
-  /** Clamps, applies and persists the floating screen's width. Null restores the default. */
   readonly setVmFloatingWidth: (width: number | null) => void
-  /** The Files view's tree height above an open file. */
   readonly fileTreeHeight: number
   readonly setFileTreeHeight: (height: number) => void
-  /** The Git view's commit list height, in percent, above a commit's diff. */
   readonly gitGraphSplit: number
   readonly setGitGraphSplit: (split: number) => void
-  /** Bumped to ask the composer to take focus. Subscribers react to changes, the value is meaningless. */
   readonly composerFocusRequest: number
-  /** Bumped to ask the open thread to interrupt its running turn. */
   readonly interruptRequest: number
-  /** Replaced to ask the composer to open one of its pickers. */
   readonly pickerRequest: { readonly picker: ComposerPicker } | null
   readonly addProjectOpen: boolean
   readonly resourcesOpen: boolean
-  /** The thread the snooze picker is open for, or null. */
   readonly snoozeThreadId: string | null
-  /** Where the Add project dialog starts, for opening it on a cloud that was just paired. */
   readonly addProjectEnvironment: EnvironmentId
-  /** The thread whose find bar is open, or null. */
   readonly findThreadId: string | null
   readonly findQuery: string
-  /** The message to start at, set when global search opens the bar on one of its results. */
   readonly findMessageId: string | null
-  /** Bumped to ask the find bar to focus and select its field. */
   readonly findFocusRequest: number
   readonly findReveal: FindRevealRequest | null
   readonly toggleSidebar: () => void
   readonly toggleSidePanel: () => void
   readonly setSidebarOverlayOpen: (open: boolean) => void
   readonly setSidePanelOverlayOpen: (open: boolean) => void
-  /** Persists the tab, so the sidebar reopens on it. */
   readonly setSidebarTab: (tab: SidebarTab) => void
   readonly setPullRequestCodeView: (view: PullRequestCodeView) => void
   readonly setSidebarQuery: (query: string) => void
-  /** Persists the sidebar's project filter. */
   readonly setSidebarProjectIds: (ids: ReadonlyArray<string>) => void
-  /** Persists whether a PR tab section is open. */
   readonly setPullRequestSectionOpen: (section: PullRequestSection, open: boolean) => void
-  /** Shows `view` for the thread, opening the panel. `focus` also moves focus into the view. */
   readonly showView: (threadId: string, view: SidePanelViewId, options?: { readonly focus?: boolean }) => void
-  /** Like `showView`, but hides the panel when it already shows `view`, as clicking an active activity bar icon does. */
   readonly toggleView: (threadId: string, view: SidePanelViewId, options?: { readonly focus?: boolean }) => void
   readonly clearViewFocusRequest: () => void
   readonly setSidePanelWide: (wide: boolean) => void
@@ -150,26 +131,19 @@ interface UiState {
   readonly setAddProjectOpen: (open: boolean, environment?: EnvironmentId) => void
   readonly setResourcesOpen: (open: boolean) => void
   readonly setSnoozeThreadId: (threadId: string | null) => void
-  /** Opens and focuses the thread's find bar, replacing its query when one is given. */
   readonly openFind: (threadId: string, query?: string, messageId?: string) => void
   readonly closeFind: () => void
   readonly setFindQuery: (query: string) => void
   readonly revealFindMatch: (match: FindMatch | null) => void
-  /** Clamps, applies and persists the desktop sidebar width. */
   readonly setSidebarWidth: (width: number) => void
-  /** Clamps, applies and persists the docked side panel width for one size. Null restores its default. */
   readonly setSidePanelWidth: (size: SidePanelSize, width: number | null) => void
-  /** Threads the user opened, most recent first, kept across restarts. */
   readonly recentThreadIds: ReadonlyArray<string>
   readonly visitThread: (threadId: string) => void
-  /** The Ctrl+Tab switcher while it is open. */
   readonly threadSwitcher: ThreadSwitcher | null
-  /** Opens the switcher, or moves its highlight. `existing` drops threads deleted since the user opened them. */
   readonly cycleThreadSwitcher: (openThreadId: string | null, step: 1 | -1, existing: (id: string) => boolean) => void
   readonly closeThreadSwitcher: () => void
 }
 
-/** Whether the side panel shows its content in the current layout, docked or as an overlay. */
 export const selectSidePanelShown = (state: Pick<UiState, "sidePanelOpen" | "sidePanelOverlayOpen">) =>
   getPanelLayout() === "wide" ? state.sidePanelOpen : state.sidePanelOverlayOpen
 
@@ -182,7 +156,19 @@ const showPanel = () =>
 
 const hidePanel = () => (getPanelLayout() === "wide" ? { sidePanelOpen: false } : { sidePanelOverlayOpen: false })
 
-/** App-wide UI state driven by keybindings and shared across components without prop drilling. */
+let opener: Element | null = null
+
+export const rememberOpener = () => {
+  opener = document.activeElement
+}
+
+// FIXME: Base UI's own fallback, when the page itself had focus, is whatever an earlier popup was opened from
+export const returnFocus = () => {
+  if (opener instanceof HTMLElement && opener !== document.body && opener.isConnected) return opener
+  useUi.getState().requestComposerFocus()
+  return false
+}
+
 export const useUi = create<UiState>()((set, get) => ({
   sidebarOpen: true,
   sidebarWidth: loadSize(SIDEBAR_WIDTH_KEY, SIDEBAR_BOUNDS) ?? SIDEBAR_DEFAULT_WIDTH,
@@ -286,11 +272,19 @@ export const useUi = create<UiState>()((set, get) => ({
   setChangesPath: (changesPath) => set({ changesPath }),
   requestComposerFocus: () => set((state) => ({ composerFocusRequest: state.composerFocusRequest + 1 })),
   requestInterrupt: () => set((state) => ({ interruptRequest: state.interruptRequest + 1 })),
-  requestPicker: (picker) => set({ pickerRequest: { picker } }),
-  setAddProjectOpen: (addProjectOpen, environment = null) =>
-    set({ addProjectOpen, addProjectEnvironment: environment }),
+  requestPicker: (picker) => {
+    rememberOpener()
+    set({ pickerRequest: { picker } })
+  },
+  setAddProjectOpen: (addProjectOpen, environment = null) => {
+    if (addProjectOpen) rememberOpener()
+    set({ addProjectOpen, addProjectEnvironment: environment })
+  },
   setResourcesOpen: (resourcesOpen) => set({ resourcesOpen }),
-  setSnoozeThreadId: (snoozeThreadId) => set({ snoozeThreadId }),
+  setSnoozeThreadId: (snoozeThreadId) => {
+    if (snoozeThreadId !== null) rememberOpener()
+    set({ snoozeThreadId })
+  },
   openFind: (threadId, query, messageId) =>
     set((state) => ({
       findThreadId: threadId,

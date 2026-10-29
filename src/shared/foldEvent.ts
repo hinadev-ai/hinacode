@@ -1,11 +1,6 @@
 import type { AgentEvent } from "./agent.ts"
 import type { Message, MessagePart } from "./domain.ts"
 
-/**
- * Applies one agent event to the assistant message of the running turn. Main persists the result
- * and the renderer folds the same events into its live copy, so both always agree.
- * Events that do not touch the transcript (session_bound, approvals) return the message unchanged.
- */
 export function foldEvent(message: Message, event: AgentEvent, now: string): Message {
   switch (event.type) {
     case "text_delta":
@@ -82,12 +77,6 @@ export function foldEvent(message: Message, event: AgentEvent, now: string): Mes
   }
 }
 
-/**
- * Applies one agent event to a transcript whose running turn may span several assistant messages
- * (a steer closes the current one and opens another). Tool results go to the message holding the
- * call; everything else goes to the latest assistant message. When the turn ends, tool calls left
- * running in earlier messages fail too.
- */
 export function foldTranscript(
   messages: ReadonlyArray<Message>,
   event: AgentEvent,
@@ -120,7 +109,6 @@ const isRunningCompaction = (part: MessagePart) => part.type === "compaction" &&
 const isRunning = (part: MessagePart) =>
   (part.type === "tool_call" && part.status === "running") || isRunningCompaction(part)
 
-/** A turn that ended (interrupted, failed) while tools or a compaction ran will never report their results. */
 export function failRunningParts(parts: ReadonlyArray<MessagePart>): ReadonlyArray<MessagePart> {
   if (!parts.some(isRunning)) return parts
   return parts.map((part): MessagePart => {
@@ -130,7 +118,6 @@ export function failRunningParts(parts: ReadonlyArray<MessagePart>): ReadonlyArr
   })
 }
 
-/** Deltas extend the trailing part of the same kind, so one streamed paragraph stays one part. */
 function appendText(
   parts: ReadonlyArray<MessagePart>,
   type: "text" | "reasoning",

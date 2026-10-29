@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http"
 import { Cause, Clock, Duration, Effect, Fiber, FiberHandle, Layer, Option, Schedule, Schema, Stream } from "effect"
 import { WebSocket, WebSocketServer } from "ws"
+import { compactPush } from "../../shared/compactTranscript.ts"
 import {
   desktopOnlyMethods,
   desktopOnlyPushes,
@@ -14,6 +15,7 @@ import {
   ClientFrame,
   REMOTE_PATH,
   REMOTE_PROTOCOL_VERSION,
+  reachesPhone,
   type RemoteFeature,
   type ServerFrame,
   SLOW_CONSUMER_BYTES,
@@ -33,14 +35,13 @@ import {
 } from "./access.ts"
 import { type Hub, Peers } from "./peers.ts"
 
-/** A socket that has not sent a valid `auth` frame by then is closed. */
 const AUTH_TIMEOUT = Duration.seconds(5)
 const HEARTBEAT_INTERVAL = Duration.seconds(20)
 const MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
 const CALL_KEY_TTL_MS = Duration.toMillis(Duration.minutes(5))
 export const MAX_CALL_KEYS = 2000
 
-const FEATURES: ReadonlyArray<RemoteFeature> = ["heartbeat", "call-keys", "terminal-attach", "asks"]
+const FEATURES: ReadonlyArray<RemoteFeature> = ["heartbeat", "call-keys", "terminal-attach", "asks", "watch"]
 
 const decodeClientFrame = Schema.decodeUnknownOption(ClientFrame)
 
@@ -75,10 +76,11 @@ interface KeyedCall {
   readonly settledAt: number | null
 }
 
-/**
- * The remote mode listener: a WebSocket on `settings.remote` that speaks `ClientFrame` and `ServerFrame`,
- * dispatching calls through the same path as the Electron `rpc` channel and forwarding every push.
- */
+interface PhonePeer {
+  awaitingPong: boolean
+  watching: ReadonlySet<string> | null
+}
+
 const make = Effect.gen(function* () {
   const access = yield* RemoteAccess
   const broadcast = yield* PushBroadcast
@@ -89,12 +91,14 @@ const make = Effect.gen(function* () {
   const runPromise = Effect.runPromiseWith(services)
   const now = () => Effect.runSyncWith(services)(Clock.currentTimeMillis)
 
-  const sockets = new Map<WebSocket, { awaitingPong: boolean }>()
+  const sockets = new Map<WebSocket, PhonePeer>()
   const countConnected = () => runFork(access.report({ connected: sockets.size }))
 
-  /** `proof` answers a client that proved its token; one that sent the token itself gets none. */
-  const attach = (socket: WebSocket, proof: string | undefined) => {
-    const peer = { awaitingPong: false }
+  const attach = (
+    socket: WebSocket,
+    { proof, compactEvents }: { readonly proof: string | undefined; readonly compactEvents: boolean },
+  ) => {
+    const peer: PhonePeer = { awaitingPong: false, watching: null }
     sockets.set(socket, peer)
     socket.on("pong", () => {
       peer.awaitingPong = false
@@ -104,7 +108,8 @@ const make = Effect.gen(function* () {
       Effect.scoped(
         broadcast
           .subscribe((event) => {
-            if (!desktopOnlyPushes.has(event.type)) send(socket, { type: "event", event })
+            if (desktopOnlyPushes.has(event.type) || !reachesPhone(event, peer.watching)) return
+            send(socket, { type: "event", event: compactEvents ? compactPush(event) : event })
           })
           .pipe(Effect.andThen(Effect.never)),
       ),
@@ -171,7 +176,6 @@ const make = Effect.gen(function* () {
 
   const accept = (socket: WebSocket) => {
     const challenge = newNonce()
-    // The token's generation once the socket authenticated, so a rotation closes it without keeping what it sent.
     let generation: number | null = null
     let hub: Hub | null = null
     const deadline = runFork(
@@ -185,13 +189,12 @@ const make = Effect.gen(function* () {
     })
     socket.on("error", () => {})
     socket.on("message", (raw, isBinary) => {
-      // Frames can still arrive while the close handshake runs; a closing socket must not authenticate or dispatch.
+      // FIXME: ws still emits frames that arrive during the close handshake
       if (socket.readyState !== WebSocket.OPEN) return
       const frame = isBinary ? undefined : parseFrame(raw)
       if (frame === undefined) return socket.close(CLOSE_MALFORMED_FRAME, "malformed frame")
       if (generation === null) {
         if (frame.type !== "auth") return socket.close(CLOSE_MALFORMED_FRAME, "expected auth")
-        // Undefined for a client that sent the token itself, which predates the challenge and expects no proof.
         const proof =
           "proof" in frame
             ? access.answerChallenge(challenge, frame.nonce, frame.proof)
@@ -201,12 +204,14 @@ const make = Effect.gen(function* () {
         if (proof === null) return socket.close(CLOSE_UNAUTHORIZED, "unauthorized")
         generation = access.generation()
         runFork(Fiber.interrupt(deadline))
-        return attach(socket, proof)
+        return attach(socket, { proof, compactEvents: frame.compactEvents ?? false })
       }
       if (access.generation() !== generation) return socket.close(CLOSE_TOKEN_ROTATED, "token rotated")
       if (frame.type === "ping") return send(socket, { type: "pong", at: frame.at })
       if (frame.type === "call") return handleCall(socket, frame)
       if (frame.type === "hub") hub ??= peers.join((ask) => send(socket, ask))
+      const peer = sockets.get(socket)
+      if (peer !== undefined && frame.type === "watch") peer.watching = new Set(frame.threadIds)
       if (frame.type === "answer") {
         const { envelope } = frame
         hub?.answer(frame.id, "error" in envelope ? envelope : { result: envelope.result })
@@ -230,7 +235,7 @@ const make = Effect.gen(function* () {
     }
   })
 
-  const listen = (address: SettingsValue["remote"]) =>
+  const listen = (address: Extract<SettingsValue["remote"], { enabled: true }>) =>
     Effect.acquireRelease(
       Effect.callback<{ server: Server; wss: WebSocketServer }, Error>((resume) => {
         const server = createServer((_, response) => response.writeHead(404).end())
@@ -241,12 +246,12 @@ const make = Effect.gen(function* () {
           perMessageDeflate: true,
         })
         wss.on("connection", accept)
-        // ws re-emits the http server's errors on wss, and an unhandled emit throws before any server listener runs.
+        // FIXME: ws re-emits the http server's errors on wss, and an unhandled emit throws
         wss.on("error", (error) => resume(Effect.fail(error)))
         server.listen(address.port, address.bindHost, () => resume(Effect.succeed({ server, wss })))
       }),
-      // ws leaves an external http server running, so the port is released here, not by wss.close().
-      // wss.clients includes sockets that have not authenticated yet; closeAllConnections() skips upgraded ones.
+      // FIXME: wss.close() leaves an external http server listening
+      // FIXME: closeAllConnections() skips upgraded sockets
       ({ server, wss }) =>
         Effect.sync(() => {
           for (const socket of wss.clients) socket.close(CLOSE_LISTENER_STOPPED, "listener stopped")

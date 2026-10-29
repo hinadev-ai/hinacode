@@ -25,7 +25,6 @@ interface DeleteProjectDialogProps {
   readonly project: Project
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
-  /** Takes focus once the project is gone, since the header that opened the dialog is gone too. */
   readonly focusAfterDelete: RefObject<HTMLElement | null>
 }
 
@@ -71,7 +70,6 @@ export function DeleteProjectDialog({ project, open, onOpenChange, focusAfterDel
     { error: null, deleted: false },
   )
 
-  // Runs once the dialog has closed and moved focus, since dropping the project unmounts the dialog.
   const dropProject = async () => {
     if (threads.some((thread) => thread.id === openThreadId)) await navigate({ to: "/" })
     const { remove: removeThread } = useThreads.getState()

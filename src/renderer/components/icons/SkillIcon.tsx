@@ -1,4 +1,3 @@
-/** Marks an agent skill: a box with its lid tilted open. Drawn in `currentColor` on Remix's 24-unit grid. */
 export function SkillIcon({ className }: { className?: string }) {
   return (
     <svg

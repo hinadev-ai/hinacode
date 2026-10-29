@@ -9,7 +9,7 @@ A developer leaves the desk with agents still running. From the sofa or the trai
 
 ## User flow
 
-1. Settings > Remote. Turn **Allow remote control** on. hinacode generates an access token, starts listening on the chosen host and port, and shows a QR code plus the pairing URL. Tailscale users keep the default `0.0.0.0` bind and see the machine's Tailscale name; LAN users see the hostname.
+1. Settings > Remote. Pick the interface phones reach this machine on, its Tailscale address listed first, then turn **Allow remote control** on. hinacode generates an access token, starts listening on that address and port, and shows a QR code plus the pairing URL. It never listens on every interface, so joining a café's Wi-Fi does not expose it.
 2. On the phone, open the hinacode app. Scan the QR code, or paste the pairing URL. The app connects, stores the connection in the secure store, and lands on the thread list.
 3. The thread list is the desktop sidebar on a phone: threads grouped by project, with the status pill (running, waiting, failed, done) and the threads that need a human sorted to the top. Pull to refresh is never needed; pushes keep it live.
 4. Tap a thread. The transcript streams as on the desktop. An approval shows Allow, Allow for session and Deny. A question shows its options. The composer sends a prompt, steers a running turn, or stops it.
@@ -32,8 +32,8 @@ Settings gains a section:
 
 ```ts
 remote: {
-  enabled: boolean // default false
-  bindHost: string // default "0.0.0.0"
+  enabled: boolean // default false; true only with a bindHost
+  bindHost: string | null // default null until the user picks one; never 0.0.0.0 or ::
   port: number // default 48081
 }
 ```

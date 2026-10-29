@@ -35,17 +35,18 @@ import * as Settings from "../services/Settings.ts"
 import * as Terminals from "../services/Terminals.ts"
 import { decodeTar, encodeTar } from "../services/tinyVm/tar.ts"
 import { FAKE_PNG, FakeSbxServer, fakeSbxLayer } from "../services/tinyVm/testing.ts"
+import { unavailableDevicesLayer } from "../services/devices/unavailable.ts"
 import { HAND_BACK_GRACE, TinyVm, layer as tinyVmLayer } from "../services/tinyVm/TinyVm.ts"
 import { Threads, layer as threadsLayer } from "../services/Threads.ts"
 import * as Worktrees from "../services/Worktrees.ts"
 import { McpCredentials, layer as credentialsLayer } from "./credentials.ts"
 import { layer as serverLayer } from "./server.ts"
 import { SETTLE_MS } from "./tools/tinyVm.ts"
+import * as Scratch from "../services/Scratch.ts"
 
 const pushes: Array<PushEvent> = []
 const turnInputs: Array<RunTurnInput> = []
 
-/** Two threads that exist in the database the server checks credentials against. */
 class Seeded extends Context.Service<Seeded, { readonly a: string; readonly b: string }>()("test/Seeded") {}
 
 const seeded = Layer.effect(
@@ -57,7 +58,6 @@ const seeded = Layer.effect(
   }),
 )
 
-/** A provider whose turn stays open until it is interrupted, so tools can be called during it. */
 const fakeProvider = (id: ProviderId): AgentProvider => {
   const turns = new Map<string, Deferred.Deferred<void>>()
   return {
@@ -103,11 +103,12 @@ const stubs = Layer.mergeAll(
 
 const core = Layer.mergeAll(
   threadsLayer.pipe(
+    Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
     Layer.provide(Terminals.layer),
     Layer.provideMerge(Worktrees.layer),
     Layer.provideMerge(Projects.layer),
     Layer.provideMerge(AgentAccounts.layer),
-    Layer.provideMerge(Settings.layer),
+    Layer.provideMerge(Settings.layer(mkdtempSync(join(tmpdir(), "kk-mcp-settings-")))),
   ),
   Messages.layer,
   Attachments.layer(join(mkdtempSync(join(tmpdir(), "kk-mcp-")), "attachments")),
@@ -125,6 +126,7 @@ const domain = Layer.mergeAll(
   core,
   PullRequests.layer.pipe(Layer.provide(core)),
   tinyVm.pipe(Layer.provide(core)),
+  unavailableDevicesLayer.pipe(Layer.provide(core)),
   linearLayer.pipe(Layer.provide(core)),
 )
 const agents = runnerLayer.pipe(Layer.provideMerge(domain))
@@ -138,7 +140,6 @@ const testLayer = Layer.mergeAll(serverLayer.pipe(Layer.provide(Layer.mergeAll(a
 interface ToolResult {
   readonly text: string
   readonly isError: boolean
-  /** Base64 data of each image block. */
   readonly images: ReadonlyArray<string>
 }
 
@@ -153,7 +154,6 @@ const withClient = <A>({ url, headers }: McpConnection, use: (client: Client) =>
     }
   })
 
-/** Calls one tool the way an agent does and returns its text. */
 const callAs = (connection: McpConnection, name: string, args: Record<string, unknown> = {}) =>
   withClient(connection, async (client): Promise<ToolResult> => {
     const result = await client.callTool({ name, arguments: args })
@@ -168,7 +168,6 @@ const callAs = (connection: McpConnection, name: string, args: Record<string, un
 const toolNames = (connection: McpConnection) =>
   withClient(connection, async (client) => (await client.listTools()).tools.map((listed) => listed.name))
 
-/** Passes only when the server turns the connection away. */
 const rejects = (connection: McpConnection) => Effect.flip(callAs(connection, "list_thread_pull_requests"))
 
 const withAuthorization = (connection: McpConnection, authorization: string) => ({
@@ -176,7 +175,6 @@ const withAuthorization = (connection: McpConnection, authorization: string) => 
   headers: { authorization },
 })
 
-/** Polls on the live clock until `check` returns a value. */
 const until = <A>(check: Effect.Effect<Option.Option<A>>): Effect.Effect<A> =>
   Effect.flatMap(check, (found) =>
     Option.isSome(found)
@@ -184,7 +182,6 @@ const until = <A>(check: Effect.Effect<Option.Option<A>>): Effect.Effect<A> =>
       : Effect.andThen(TestClock.withLive(Effect.sleep("20 millis")), until(check)),
   )
 
-/** Moves the test clock on by `step` until `check` passes, since the fiber that sleeps may not have started yet. */
 const advanceUntil = <A>(step: Duration.Input, check: Effect.Effect<Option.Option<A>>) =>
   until(Effect.andThen(TestClock.adjust(step), check))
 

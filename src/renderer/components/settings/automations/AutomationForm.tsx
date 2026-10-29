@@ -30,7 +30,6 @@ const triggerTypes: ReadonlyArray<AutomationTriggerType> = ["webhook", "github.i
 const isProviderId = (value: unknown): value is ProviderId => ProviderId.literals.some((id) => id === value)
 const isTriggerType = (value: unknown): value is AutomationTriggerType => triggerTypes.some((type) => type === value)
 
-/** Placeholders each trigger's payload offers, shown under the prompt template. */
 const placeholderHints = {
   webhook: ["{{body.*}}", "{{headers.*}}"],
   "github.issue": ["{{issue.title}}", "{{issue.body}}", "{{issue.url}}", "{{issue.number}}", "{{issue.author}}"],
@@ -38,7 +37,6 @@ const placeholderHints = {
   "slack.mention": ["{{message.text}}", "{{message.permalink}}", "{{message.channel}}", "{{message.user}}"],
 } satisfies Record<AutomationTriggerType, ReadonlyArray<string>>
 
-/** Every field of every trigger, flat, so switching trigger type keeps what was typed. */
 interface Draft {
   readonly name: string
   readonly projectId: string
@@ -133,7 +131,6 @@ interface AutomationDialogProps {
   readonly state: AutomationDialogState
   readonly projects: ReadonlyArray<Project>
   readonly onClose: () => void
-  /** Called after a create; `secret` is the webhook secret, shown only once. */
   readonly onCreated: (automation: Automation, secret: string | null) => void
 }
 
@@ -467,13 +464,11 @@ interface ModelFieldProps {
   readonly onChange: (model: string) => void
 }
 
-/** A select of the provider's models, or a free-text model id when it cannot list them. */
 function ModelField({ provider, value, onChange }: ModelFieldProps) {
   const environment = useSettingsEnvironment()
   const models = useAtomValue(modelsAtom(environment, provider))
   const listed = AsyncResult.getOrElse(models, () => [])
   const items = listed.map((model) => ({ value: model.id, label: model.label }))
-  // A stored id the provider no longer lists stays selectable instead of vanishing.
   if (value !== "" && !items.some((item) => item.value === value)) items.push({ value, label: value })
 
   return (

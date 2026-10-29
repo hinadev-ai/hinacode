@@ -1,4 +1,3 @@
-/** UTF-8 size of a code point. A lone surrogate counts as the 3-byte replacement character. */
 const utf8Size = (code: number) => (code < 0x80 ? 1 : code < 0x800 ? 2 : code > 0xffff ? 4 : 3)
 
 const utf16LengthForUtf8Bytes = (text: string, bytes: number) => {
@@ -11,16 +10,11 @@ const utf16LengthForUtf8Bytes = (text: string, bytes: number) => {
   return chars
 }
 
-/**
- * The newest output of one terminal session, bounded in UTF-8 bytes like the scrollback it feeds. Positions are
- * UTF-16 offsets from the session's first character, so a client can slice JavaScript strings with them.
- */
 export class TerminalScrollback {
   readonly #budget: number
   readonly #chunks: Array<string> = []
   #bytes = 0
   #startOffset = 0
-  /** Characters received so far, which is also the offset of the next one. */
   end = 0
 
   constructor(budget: number) {
@@ -41,7 +35,6 @@ export class TerminalScrollback {
     }
   }
 
-  /** Output from `since`, or from the oldest kept character when `since` is older. `offset` is where `data` starts. */
   from(since: number): { readonly offset: number; readonly data: string } {
     const offset = Math.min(Math.max(since, this.#startOffset), this.end)
     let skip = offset - this.#startOffset

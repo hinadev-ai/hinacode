@@ -1,15 +1,11 @@
 import { create } from "zustand"
 import type { Attachment } from "../../shared/domain.ts"
 
-/** A comment on lines of a file, sent as context with the next message. */
 export interface LineComment {
   readonly id: string
-  /** Relative to the thread's working directory. */
   readonly path: string
-  /** 1-based and inclusive. */
   readonly startLine: number
   readonly endLine: number
-  /** The commented lines as the user saw them, so the agent finds them even after the file moved on. */
   readonly code: string
   readonly body: string
 }
@@ -17,10 +13,6 @@ export interface LineComment {
 export interface Draft {
   readonly text: string
   readonly attachments: ReadonlyArray<Attachment>
-  /**
-   * Before the first message only. `ref` is what the user typed: a branch, or a pull request number or URL.
-   * `local` switches the project root to it, `worktree` makes a new worktree from it. Null keeps the root as it is.
-   */
   readonly workspace: { readonly mode: "local" | "worktree"; readonly ref: string } | null
   readonly comments: ReadonlyArray<LineComment>
 }
@@ -30,7 +22,6 @@ export const emptyDraft: Draft = { text: "", attachments: [], workspace: null, c
 interface DraftsState {
   readonly byThreadId: Readonly<Record<string, Draft>>
   readonly setText: (threadId: string, text: string) => void
-  /** Adds `@path ` at the end of the text, as if typed there. */
   readonly appendMention: (threadId: string, path: string) => void
   readonly addAttachments: (threadId: string, attachments: ReadonlyArray<Attachment>) => void
   readonly removeAttachment: (threadId: string, attachmentId: string) => void
@@ -38,9 +29,7 @@ interface DraftsState {
   readonly addComment: (threadId: string, comment: LineComment) => void
   readonly updateComment: (threadId: string, commentId: string, body: string) => void
   readonly removeComment: (threadId: string, commentId: string) => void
-  /** Empties the draft for sending and returns what it held, so anything typed while the send is pending is kept. */
   readonly take: (threadId: string) => Draft
-  /** Puts a draft whose send failed back in front of whatever was typed since. */
   readonly restore: (threadId: string, draft: Draft) => void
   readonly discard: (threadId: string) => void
 }
@@ -52,10 +41,6 @@ const withDraft = (byThreadId: Readonly<Record<string, Draft>>, threadId: string
     : { ...rest, [threadId]: draft }
 }
 
-/**
- * Unsent composer text, staged attachments and line comments per thread. Lives outside the composer so it survives
- * thread switches, Settings and locale remounts. Kept in memory only, so drafts end with the app.
- */
 export const useDrafts = create<DraftsState>()((set, get) => {
   const update = (threadId: string, change: (draft: Draft) => Draft) =>
     set((state) => ({

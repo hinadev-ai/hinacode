@@ -1,6 +1,6 @@
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cn } from "cn"
-import { createElement, type RefObject, useEffect, useRef } from "react"
+import { createElement, type RefObject, Suspense, useEffect, useRef } from "react"
 import { RiSideBarFill } from "react-icons/ri"
 import type { Thread } from "../../shared/domain.ts"
 import { usePanelLayout, useSidePanelMaxWidth } from "../lib/panelLayout.ts"
@@ -13,15 +13,10 @@ import { ActivityBar } from "./sidePanel/ActivityBar.tsx"
 import { type SidePanelView, useSidePanelViews, viewById } from "./sidePanel/views.ts"
 import { Button } from "./ui/button.tsx"
 
-/** Hiding the panel (mod+.) takes the focused element with it; hand focus to the composer instead of <body>. */
 const returnFocusToComposer = (panel: HTMLElement | null) => () => {
   if (panel?.contains(document.activeElement)) useUi.getState().requestComposerFocus()
 }
 
-/**
- * Right-hand side of the thread route: the selected view and, on the right edge, the activity bar that
- * picks it. Docked, the bar stays while the view hides. `compact` is the overlay, where both show.
- */
 export function ThreadSidePanel({ thread, compact = false }: { thread: Thread; compact?: boolean }) {
   const docked = usePanelLayout() === "wide"
   const open = useUi((state) => (docked ? state.sidePanelOpen : state.sidePanelOverlayOpen))
@@ -63,7 +58,6 @@ function ViewContent({ thread, view, panelId, compact }: ViewContentProps) {
     return returnFocusToComposer(node)
   }
 
-  // A view shortcut moves focus into the view. Files focuses its own tree once it has listed the root.
   const focusRequest = useUi((state) => state.viewFocusRequest)
   useEffect(() => {
     if (focusRequest === null || focusRequest !== viewId || viewId === "files") return
@@ -95,16 +89,11 @@ function ViewContent({ thread, view, panelId, compact }: ViewContentProps) {
           onReset={() => setWidth(size, null)}
         />
       )}
-      <header
-        className={cn(
-          "flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border pr-2",
-          header ? "pl-2" : "pl-4",
-        )}
-      >
+      <header className={cn("flex h-12 shrink-0 items-center justify-between gap-2 pr-2", header ? "pl-2" : "pl-4")}>
         {header ?? <h2 className="truncate text-sm font-medium">{view.title()}</h2>}
         <PanelToggle expanded onToggle={toggleSidePanel} closeDialog={compact} />
       </header>
-      {content}
+      <Suspense>{content}</Suspense>
     </section>
   )
 }

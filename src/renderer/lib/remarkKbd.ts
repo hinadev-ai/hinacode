@@ -1,4 +1,3 @@
-/** The part of an mdast node this plugin reads; mdast's types are not a direct dependency. */
 interface MdastNode {
   type: string
   value?: string
@@ -26,8 +25,4 @@ const wrapKeys = (node: MdastNode) => {
   node.children = children
 }
 
-/**
- * A remark plugin that renders `<kbd>…</kbd>` as a key. Raw HTML is otherwise not rendered, so agents can
- * write tags like `<Suspense>` in prose; only this one tag pair is singled out.
- */
 export const remarkKbd = () => (tree: MdastNode) => wrapKeys(tree)

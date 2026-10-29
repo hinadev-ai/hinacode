@@ -6,6 +6,7 @@
     "moduleDetection": "force"
   },
   "include": [
+    ".size-limit.ts",
     "scripts/**/*.ts",
     "packages/*/src/**/*.ts",
     ".agents/skills/*/scripts/*.ts",

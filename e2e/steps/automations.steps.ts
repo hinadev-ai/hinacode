@@ -34,13 +34,11 @@ When(
     await dialog.getByLabel("Project", { exact: true }).click()
     await page.getByRole("option", { name: names.of(project), exact: true }).click()
     await dialog.getByLabel("Prompt template", { exact: true }).fill(prompt)
-    // Unlike the thread dialog, the form has no default model and stays enabled while the list loads.
     await expect(dialog.getByText("Loading models…")).toBeHidden({ timeout: 30_000 })
     await dialog.getByLabel("Model", { exact: true }).click()
     await page.getByRole("option").first().click()
     await dialog.getByRole("button", { name: "Create automation", exact: true }).click()
 
-    // The signing secret is shown once, right after creation.
     const ready = page.getByRole("dialog", { name: `${names.of(name)} is ready` })
     const secret = (await ready.getByLabel("Signing secret", { exact: true }).textContent())?.trim() ?? ""
     const automation = (await rpc(page, "automations.list", undefined)).find((item) => item.name === names.of(name))
@@ -49,7 +47,6 @@ When(
     webhook.automations.set(name, { id: automation.id, secret, url })
     await ready.getByRole("button", { name: "Done", exact: true }).click()
     await expect(ready).toBeHidden()
-    // The list also re-polls every 15 s, so a longer wait would hide a create that skips the refresh.
     await expect(page.getByRole("heading", { name: names.of(name), exact: true })).toBeVisible({ timeout: 2_000 })
   },
 )

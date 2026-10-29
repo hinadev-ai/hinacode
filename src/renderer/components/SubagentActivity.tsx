@@ -15,10 +15,6 @@ const segmentColor = {
   stopped: "bg-muted-foreground/30",
 } satisfies Record<SubagentStatus, string>
 
-/**
- * The batch still in flight, oldest first: every running sub-agent, plus those that ended after the
- * oldest of them started, so a parallel batch keeps its finished members until the last one is done.
- */
 function inFlight(subagents: ReadonlyArray<Subagent>) {
   const running = subagents.filter((subagent) => subagent.status === "running")
   if (running.length === 0) return []
@@ -26,10 +22,6 @@ function inFlight(subagents: ReadonlyArray<Subagent>) {
   return subagents.filter((subagent) => subagent.endedAt === null || Date.parse(subagent.endedAt) >= since).toReversed()
 }
 
-/**
- * One line while sub-agents run, however many: a segment per sub-agent, the counts, and what the newest one is
- * doing. It opens the Agents tab, which lists them all.
- */
 export function SubagentActivity({ thread }: { thread: Thread }) {
   const subagents = inFlight(useThreadSubagents(thread.id).subagents ?? NO_SUBAGENTS)
   const showView = useUi((state) => state.showView)
@@ -59,7 +51,6 @@ export function SubagentActivity({ thread }: { thread: Thread }) {
             {newest.label}
           </span>
           {detail && (
-            // Gives way before the label does.
             <span className="shrink-[4] truncate" title={newest.summary ?? undefined}>
               {detail}
             </span>

@@ -9,10 +9,6 @@ import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Input } from "./ui/input.tsx"
 
-/**
- * One pending `request_secret` call. The value goes to main over `secrets.respond` and nowhere else;
- * the card disappears when the turn reports `secret_resolved`.
- */
 export function SecretRequestCard({ request, providerLabel }: { request: SecretRequest; providerLabel: string }) {
   const inputId = useId()
   const [value, setValue] = useState("")

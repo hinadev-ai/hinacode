@@ -25,7 +25,6 @@ const message = (...parts: Array<MessagePart>): Message => ({
 
 describe("latestTodos", () => {
   it("reads a Muse write_todos call, whose result is only an acknowledgement", () => {
-    // Real part stored by hinacode for a Muse thread: the list is in the input, the output just acks it.
     const messages = [
       message(
         tool(
@@ -85,7 +84,6 @@ describe("latestTodos", () => {
   })
 
   it("folds Claude TaskCreate and TaskUpdate calls by task id", () => {
-    // Inputs and outputs as they appear in a real Claude Code transcript.
     const messages = [
       message(
         tool(
@@ -120,7 +118,6 @@ describe("latestTodos", () => {
   })
 
   it("reads a Codex update_plan call", () => {
-    // The Codex provider stores `turn/plan/updated` notifications as update_plan tool calls.
     const messages = [
       message(
         tool("update_plan", {

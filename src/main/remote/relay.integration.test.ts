@@ -37,7 +37,6 @@ const FAILED = 'echo "2026-10-24T00:00:00Z ERR Unauthorized: Invalid tunnel secr
 const standIns = mkdtempSync(join(tmpdir(), "hinacode-cloudflared-"))
 afterAll(() => rmSync(standIns, { recursive: true, force: true }))
 
-/** A stand-in `cloudflared` that records how it was started, then runs `body`. Returns its path and directory. */
 const standIn = (body: string) => {
   const dir = mkdtempSync(join(standIns, "run-"))
   const path = join(dir, "cloudflared")
@@ -62,14 +61,12 @@ const ASSET_URL = "https://downloads.test/cloudflared-darwin-arm64.tgz"
 
 const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
 
-/** A gzipped tarball holding a stand-in `cloudflared` that runs `body`, the way Cloudflare ships it for macOS. */
 const tarball = (body: string) => {
   const dir = standIn(body).path.replace(/\/cloudflared$/, "")
   execFileSync("tar", ["-czf", join(dir, "release.tgz"), "-C", dir, "cloudflared"])
   return readFileSync(join(dir, "release.tgz"))
 }
 
-/** Serves `archive` at `ASSET_URL`, standing in for the GitHub release. */
 const serves =
   (archive: Uint8Array): Fetch =>
   async (url) =>
@@ -85,10 +82,6 @@ interface ServiceCall {
   readonly credential: string | null
 }
 
-/**
- * The relay service as the host sees it. The owner approves after `pendingClaims` pending claims; `claimStatus`
- * and `deleteStatus` replace the answers to a claim and to DELETE /v1/host.
- */
 const fakeService = (
   options: {
     pendingClaims?: number
@@ -138,7 +131,6 @@ const fakeService = (
   }
 }
 
-/** Moves the test clock until `done` holds, letting real I/O such as the fake service's promises run in between. */
 const advanceUntil = (done: () => boolean) =>
   Effect.gen(function* () {
     for (let step = 0; step < 200 && !done(); step++) {
@@ -159,7 +151,7 @@ const isAlive = (pid: number) => {
 
 const base = RemoteAccessModule.layer.pipe(
   Layer.provideMerge(SecretsModule.layer),
-  Layer.provideMerge(SettingsModule.layer),
+  Layer.provideMerge(Layer.suspend(() => SettingsModule.layer(mkdtempSync(join(tmpdir(), "kk-relay-settings-"))))),
   Layer.provideMerge(Db.layer(":memory:")),
   Layer.provide(Layer.mergeAll(NodeServices.layer, SecretsModule.noKeyring)),
 )
@@ -170,14 +162,12 @@ const remoteOn = Settings.use((settings) =>
 
 const linkedBefore = Secrets.use((secrets) => secrets.set(CREDENTIAL_SECRET, "credential-1"))
 
-/** What the relay service gets in `PUT /v1/host/pairing` right now, and the fingerprint the tunnel row keeps of it. */
 const currentPairing = Effect.gen(function* () {
   const { hosts, port, token } = yield* RemoteAccess.use((access) => access.pairing)
   const body = { hosts, port, token }
   return { body, fingerprint: sha256(Buffer.from(JSON.stringify(body))) }
 })
 
-/** A machine that set up its relay and published its current pairing before, with remote control on. */
 const seed = (stored: Partial<RelayTunnel> = {}) =>
   Effect.gen(function* () {
     yield* remoteOn
@@ -188,7 +178,6 @@ const seed = (stored: Partial<RelayTunnel> = {}) =>
     yield* linkedBefore
   })
 
-/** Waits until the tunnel row keeps `fingerprint` as its published pairing. */
 const published = (fingerprint: string) =>
   Effect.gen(function* () {
     const services = yield* Effect.context<SqlClient.SqlClient>()

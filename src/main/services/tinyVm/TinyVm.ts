@@ -19,7 +19,6 @@ import { decodeTar, encodeTar, readTree, type WrittenTree, writeTree } from "./t
 
 export class VmError extends Schema.TaggedError<VmError>()("VmError", { message: Schema.String }) {}
 
-/** Whoever opened a screen stream, usually a window's WebContents. Its streams close when it is destroyed. */
 export interface ScreenOwner {
   readonly once: (event: "destroyed", listener: () => void) => unknown
 }
@@ -27,74 +26,34 @@ export interface ScreenOwner {
 export interface VmExec {
   readonly command: string
   readonly timeoutSeconds: number
-  /** Returns at once with the pid and log path instead of waiting for the command. */
   readonly background: boolean
 }
 
 export class TinyVm extends Context.Service<
   TinyVm,
   {
-    /** Whether `Settings.experimental.tinyVm` is on, kept current without a database read. */
     readonly enabled: () => boolean
     readonly get: (threadId: string) => Effect.Effect<ThreadVm>
-    /**
-     * Creates the thread's VM unless it has one; concurrent calls share one creation. A failure is the `failed`
-     * state. `template` overrides the configured template for this one VM and is ignored when no creation happens.
-     */
     readonly start: (threadId: string, template?: string) => Effect.Effect<ThreadVm>
     readonly stop: (threadId: string) => Effect.Effect<void>
-    /** Has no effect unless the VM is running. */
     readonly setControl: (threadId: string, control: VmControl) => Effect.Effect<ThreadVm>
     readonly host: Effect.Effect<VmHostStatus>
-    /** Starts the VM if needed and returns its screen as PNG bytes. */
     readonly screenshot: (threadId: string) => Effect.Effect<Uint8Array, VmError>
-    /**
-     * Starts the VM if needed and performs the actions over VNC. While the user has control it waits until
-     * they hand it back and returns `handedBack` without acting, because the screen may have changed.
-     */
     readonly act: (threadId: string, actions: ReadonlyArray<VmAction>) => Effect.Effect<"done" | "handedBack", VmError>
     readonly exec: (threadId: string, input: VmExec) => Effect.Effect<ExecResult, VmError>
-    /**
-     * Copies host files and folders into the running VM's `~/Downloads`, starting the VM if needed. Resolves
-     * with the guest path each dropped item landed at. A drop is the user's own action, so it never waits for
-     * control to change hands.
-     */
     readonly dropFiles: (
       threadId: string,
       hostPaths: ReadonlyArray<string>,
     ) => Effect.Effect<ReadonlyArray<string>, VmError>
-    /** Guest paths the user dropped since the last call, drained so the agent hears about each drop once. */
     readonly takeDropped: (threadId: string) => Effect.Effect<ReadonlyArray<string>>
-    /**
-     * Extracts a tar archive holding one top-level entry into the running VM at `guestPath`, starting the VM
-     * if needed. A relative path resolves against the desktop user's home.
-     */
     readonly stageArchive: (threadId: string, guestPath: string, tar: Uint8Array) => Effect.Effect<void, VmError>
-    /**
-     * Copies a file or folder out of the running VM into a new folder of its own on this machine, starting the
-     * VM if needed. A relative `guestPath`, or one starting with `~/`, resolves against the desktop user's home.
-     * The guest names the entries but never where they land; see `writeTree` for what it is allowed to write.
-     */
     readonly pullFiles: (threadId: string, guestPath: string) => Effect.Effect<WrittenTree, VmError>
-    /**
-     * Opens a raw TCP stream to `port` in the running VM, starting it if needed. The caller owns the socket
-     * and destroys it. `head` holds guest bytes that arrived with the upgrade response.
-     */
     readonly openTunnel: (
       threadId: string,
       port: number,
     ) => Effect.Effect<{ readonly socket: Socket; readonly head: Uint8Array }, VmError>
-    /**
-     * Saves the VM's Chromium profile to this machine now. Only the VM that owns the shared profile can save;
-     * a copy's save fails rather than clobbering the owner's newer state.
-     */
     readonly saveProfile: (threadId: string) => Effect.Effect<void, VmError>
-    /**
-     * Connects a side panel view to the running VM's VNC server. Its bytes arrive as `vm.screen.data` pushes,
-     * then `vm.screen.closed`.
-     */
     readonly openScreen: (threadId: string, streamId: string, owner: ScreenOwner) => Effect.Effect<void, VmError>
-    /** Writes bytes to the VNC server in call order. Ignored once the stream has closed. */
     readonly sendScreen: (streamId: string, data: Uint8Array) => Effect.Effect<void>
     readonly closeScreen: (streamId: string) => Effect.Effect<void>
   }
@@ -105,9 +64,7 @@ const PROFILE_GUEST_ARCHIVE = "hinacode-chromium-profile.tgz"
 const PROFILE_STORE = "chromium-profile.tgz"
 const PROFILE_META = "chromium-profile.json"
 const PROFILE_SCRIPT_TIMEOUT_SECONDS = 120
-/** Installing packages can take minutes; a start that waits longer than this is stuck. */
 const SETUP_SCRIPT_TIMEOUT_SECONDS = 600
-/** The end of a failed setup script's output is where its error usually is. */
 const SETUP_OUTPUT_TAIL = 2000
 const PROFILE_EXCLUDES = [
   "chromium/*/Cache",
@@ -123,10 +80,8 @@ const PROFILE_EXCLUDES = [
   .map((pattern) => `--exclude='${pattern}'`)
   .join(" ")
 
-/** Exit code the save script uses when Chromium never ran and there is nothing to save. */
 const PROFILE_ABSENT_EXIT = 42
 
-/** Archives the guest's Chromium profile to /tmp; `quiesce` stops Chromium first, for a VM that is going away. */
 const profileSaveScript = (quiesce: boolean) =>
   [
     `[ -d ~/.config/chromium ] || exit ${PROFILE_ABSENT_EXIT}`,
@@ -135,10 +90,6 @@ const profileSaveScript = (quiesce: boolean) =>
     `tar -czf /tmp/${PROFILE_GUEST_ARCHIVE} -C ~/.config ${PROFILE_EXCLUDES} chromium`,
   ].join("\n")
 
-/**
- * Puts back the profile archive `profileSaveScript` built, replacing whatever profile the guest has. A guest
- * whose Chromium served DevTools before the swap (the browser template) gets it relaunched the same way.
- */
 const PROFILE_RESTORE_SCRIPT = [
   "set -e",
   "was_cdp=0; curl -fsS http://127.0.0.1:9222/json/version >/dev/null 2>&1 && was_cdp=1",
@@ -153,15 +104,12 @@ const PROFILE_RESTORE_SCRIPT = [
 ].join("\n")
 
 const DROP_DIR = "Downloads"
-/** One drop or pull is held in memory as tar archives, so it has a size the user's machine can always spare. */
 export const MAX_TRANSFER_BYTES = 200 * 1024 * 1024
 const PULLED_DIR = "pulled"
 const SCREENSHOT_SCRIPT = "import -window root png:-"
 const SCREENSHOT_TIMEOUT_SECONDS = 30
-/** About one frame, like terminal output. */
 const FLUSH_INTERVAL_MS = 16
 const FLUSH_SIZE = 256 * 1024
-/** How long control stays with the user after their last view closes, so a view that reconnects keeps it. */
 export const HAND_BACK_GRACE = "2 seconds"
 
 const NONE: ThreadVm = { status: "none" }
@@ -176,7 +124,6 @@ interface Screen {
 
 const toVmError = (error: { readonly message: string }) => new VmError({ message: error.message })
 
-/** Ends a socket and waits for the peer to close it, so a server reads everything before the connection drops. */
 const endGracefully = (socket: Socket) =>
   Effect.callback<void>((resume) => {
     socket.once("close", () => resume(Effect.void))
@@ -204,7 +151,6 @@ const writeStoredProfile = (dataDir: string, bytes: Uint8Array, template: string
     ),
   )
 
-/** `dataDir` holds the stored browser profile and the files pulled out of VMs. */
 const make = (source: LoginSource, dataDir: string) =>
   Effect.gen(function* () {
     const scope = yield* Effect.scope
@@ -213,9 +159,7 @@ const make = (source: LoginSource, dataDir: string) =>
 
     const vms = new Map<string, ThreadVm>()
     const creations = new Map<string, Deferred.Deferred<ThreadVm>>()
-    /** Agent tools waiting for the user to hand control back, per thread. */
     const waiting = new Map<string, number>()
-    /** Guest paths of dropped files the agent has not been told about yet, per thread. */
     const dropped = new Map<string, Array<string>>()
     const handBacks = new Map<string, Deferred.Deferred<void>>()
     const screens = new Map<string, Screen>()
@@ -230,13 +174,11 @@ const make = (source: LoginSource, dataDir: string) =>
     let configuredEnv = experimental.tinyVmEnv
     let setupScript = experimental.tinyVmSetupScript
     let profileEnabled = experimental.tinyVmProfile
-    /** The thread whose running VM saves the shared Chromium profile back; everyone else holds a copy. */
     let profileOwner: string | undefined
     const profileSaves = yield* Semaphore.make(1)
 
     const current = (threadId: string) => vms.get(threadId) ?? NONE
 
-    // Socket callbacks run outside any fiber. Forking with the layer's context keeps its clock.
     const runFork = Effect.runForkWith(yield* Effect.context<never>())
     const publishUnsafe = (event: PushEvent) => runFork(events.publish(event))
 
@@ -270,7 +212,6 @@ const make = (source: LoginSource, dataDir: string) =>
       ),
     )
 
-    /** Restores the stored profile into a fresh sandbox. Nothing stored yet is also a success. */
     const restoreProfile = (sbx: SbxClient, sandboxId: string): Effect.Effect<boolean> =>
       Effect.gen(function* () {
         const stored = yield* readStoredProfile
@@ -303,10 +244,6 @@ const make = (source: LoginSource, dataDir: string) =>
         ),
       )
 
-    /**
-     * Claims the profile owner synchronously, restores the profile, and reports how this VM stands to it. A
-     * failed restore starts the VM fresh rather than failing the start.
-     */
     const prepareProfile = (threadId: string, sbx: SbxClient, sandboxId: string): Effect.Effect<VmProfile> =>
       Effect.suspend(() => {
         if (!profileEnabled) return Effect.succeed<VmProfile>("off")
@@ -363,7 +300,6 @@ const make = (source: LoginSource, dataDir: string) =>
     const closeScreensOf = (threadId: string) =>
       screens.forEach((screen) => screen.threadId === threadId && screen.socket.destroy())
 
-    /** sbx destroyed the sandbox: the thread has no VM any more. */
     const forget = (threadId: string, sandboxId: string) =>
       Effect.suspend(() => {
         const vm = current(threadId)
@@ -376,7 +312,6 @@ const make = (source: LoginSource, dataDir: string) =>
 
     const settle = (threadId: string, done: Deferred.Deferred<ThreadVm>, vm: ThreadVm) =>
       Effect.gen(function* () {
-        // A stop while starting replaced or removed the creation, and the sandbox has no thread to go to.
         const live = creations.get(threadId) === done
         if (live) {
           creations.delete(threadId)
@@ -473,7 +408,6 @@ const make = (source: LoginSource, dataDir: string) =>
         closeScreensOf(threadId)
         if (vm.status === "none") return
         if (vm.status === "running" && vm.profile === "owner" && profileEnabled) {
-          // Best effort: a profile that cannot be saved must not keep the VM, or the app quit, alive.
           yield* client.pipe(
             Effect.flatMap((sbx) => saveFromSandbox(sbx, vm.sandboxId, vm.template, true)),
             Effect.timeoutOrElse({ duration: "60 seconds", orElse: () => Effect.void }),
@@ -643,7 +577,7 @@ const make = (source: LoginSource, dataDir: string) =>
       withSandbox(threadId, (sbx, sandboxId) =>
         Effect.gen(function* () {
           const tar = yield* sbx.getFiles(sandboxId, guestPath.replace(/^~(\/|$)/, ""), MAX_TRANSFER_BYTES).pipe(
-            // A missing path and a destroyed sandbox are both 404; asking for the sandbox tells them apart.
+            // FIXME: sbxd answers 404 for both a missing path and a destroyed sandbox
             Effect.catchTag("SandboxGoneError", () =>
               Effect.andThen(sbx.get(sandboxId), new VmError({ message: `Nothing exists at ${guestPath} in the VM.` })),
             ),
@@ -715,8 +649,6 @@ const make = (source: LoginSource, dataDir: string) =>
       screens.delete(streamId)
       ownedScreens.get(owner)?.delete(streamId)
       publishUnsafe({ type: "vm.screen.closed", streamId })
-      // Nobody can hand control back once no view is open, so it goes back to the agent. Moving the screen
-      // between the side panel and floating closes one view before the next opens, hence the grace.
       if (!unwatchedByUser(screen.threadId)) return
       runFork(
         Effect.sleep(HAND_BACK_GRACE).pipe(
@@ -786,7 +718,7 @@ const make = (source: LoginSource, dataDir: string) =>
       Effect.forkIn(scope),
     )
 
-    // The host's idle timeout can destroy a VM without asking, so the owner's profile is saved on a timer too.
+    // FIXME: sbx's idle timeout can destroy a VM without asking
     yield* Effect.forever(
       Effect.sleep("10 minutes").pipe(
         Effect.andThen(
@@ -803,7 +735,6 @@ const make = (source: LoginSource, dataDir: string) =>
       ),
     ).pipe(Effect.forkIn(scope))
 
-    // Sandboxes do not outlive the app; sbx's idle timeout catches whatever this misses.
     yield* Effect.addFinalizer(() =>
       Effect.gen(function* () {
         screens.forEach((screen) => screen.socket.destroy())

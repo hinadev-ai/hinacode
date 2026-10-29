@@ -25,13 +25,11 @@ import {
 } from "../ui/alert-dialog.tsx"
 import { SettingsSection, settingsGroupClass } from "./SettingsSection.tsx"
 
-/** Why a worktree cannot be removed right now. Main refuses both, so the button is disabled instead. */
 type Blocker = "setup" | "turn"
 
 interface WorktreeRow {
   readonly worktree: Worktree
   readonly threads: ReadonlyArray<Thread>
-  /** Undefined until `worktrees.checkouts` answers, or when git could not read the checkout. */
   readonly checkout: CheckoutState | undefined
   readonly blocker: Blocker | undefined
 }

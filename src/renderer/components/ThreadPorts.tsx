@@ -12,7 +12,6 @@ import { Button } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 import { SkeletonList } from "./ui/skeleton.tsx"
 
-/** Listening TCP ports, as the body of a panel section: opened from the thread's workspace or by its agent, refreshed every 2s. */
 export function ThreadPorts({ threadId }: { threadId: string }) {
   const environment = useThreadEnvironment(threadId)
   const ports = useAtomValue(threadPortsAtom(threadId))
@@ -65,7 +64,6 @@ export function ThreadPorts({ threadId }: { threadId: string }) {
 }
 
 interface PortRowProps {
-  /** `ports.kill` names its environment, since a pid alone says nothing about which machine it runs on. */
   readonly environment: EnvironmentId
   readonly port: OpenPort
   readonly onKilled: () => void
@@ -73,7 +71,6 @@ interface PortRowProps {
 }
 
 function PortRow({ environment, port, onKilled, onKillFailed }: PortRowProps) {
-  // Killing takes two clicks: the first arms the button and the tooltip asks for confirmation.
   const [armed, setArmed] = useState(false)
   const [hovered, setHovered] = useState(false)
   const [pending, startTransition] = useTransition()

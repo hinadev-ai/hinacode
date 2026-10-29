@@ -1,12 +1,6 @@
 import { Effect, Predicate, Schema } from "effect"
 import type { AutomationTrigger } from "../../../shared/domain.ts"
 
-/**
- * Event sources for polling triggers. Each poll takes the stored cursor and returns the events
- * newer than it plus the cursor to store next. They take their transport (`gh`, Linear query,
- * `fetch`) as an argument so the cursor logic is testable without credentials.
- */
-
 export class PollError extends Schema.TaggedError<PollError>()("PollError", { reason: Schema.String }) {
   override get message(): string {
     return this.reason
@@ -14,21 +8,17 @@ export class PollError extends Schema.TaggedError<PollError>()("PollError", { re
 }
 
 export interface PolledEvent {
-  /** Dedup key, unique per automation. */
   readonly key: string
-  /** The template context: `{ issue }` or `{ message }`. */
   readonly payload: unknown
 }
 
 export interface PollResult {
-  /** Oldest first, so threads are created in the order the events happened. */
   readonly events: ReadonlyArray<PolledEvent>
   readonly cursor: string
 }
 
 type Trigger<T extends AutomationTrigger["type"]> = Extract<AutomationTrigger, { type: T }>
 
-/** Where a new polling automation starts, so enabling it does not replay old events. */
 export const initialCursor = (trigger: AutomationTrigger, now: Date) =>
   trigger.type === "slack.mention" ? (now.getTime() / 1000).toFixed(6) : now.toISOString()
 
@@ -41,11 +31,9 @@ const failWith = (cause: unknown) =>
 const latestIso = (cursor: string, timestamps: ReadonlyArray<string>) =>
   timestamps.reduce((latest, next) => (Date.parse(next) > Date.parse(latest) ? next : latest), cursor)
 
-/** The template payload for an issue, the same shape for GitHub and Linear. */
 export interface IssuePayload {
   readonly id: string
   readonly number: number
-  /** `#123` on GitHub, `ENG-123` on Linear. */
   readonly identifier: string
   readonly title: string
   readonly body: string
@@ -54,8 +42,6 @@ export interface IssuePayload {
   readonly labels: ReadonlyArray<string>
   readonly createdAt: string
 }
-
-// github.issue
 
 const GithubIssues = Schema.fromJsonString(
   Schema.Array(
@@ -76,13 +62,9 @@ const decodeGithubIssues = Schema.decodeUnknownEffect(GithubIssues)
 
 const REPO = /^[\w.-]+\/[\w.-]+$/
 
-/** Runs `gh` with these arguments and returns stdout. */
 export type RunGh = (args: ReadonlyArray<string>) => Effect.Effect<string, { readonly message: string }>
 
-/**
- * Open issues created after `cursor`. `since` filters on updated time, so the created-time filter
- * is applied here; pull requests, which the issues endpoint also returns, are dropped.
- */
+// FIXME: GitHub's `since` filters on updated time, and the issues endpoint also returns pull requests
 export const pollGithubIssues = (gh: RunGh, trigger: Trigger<"github.issue">, cursor: string) =>
   Effect.gen(function* () {
     if (!REPO.test(trigger.repo)) return yield* new PollError({ reason: `"${trigger.repo}" is not owner/name` })
@@ -117,8 +99,6 @@ export const pollGithubIssues = (gh: RunGh, trigger: Trigger<"github.issue">, cu
     } satisfies PollResult
   })
 
-// linear.issue
-
 export interface LinearIssueNode {
   readonly id: string
   readonly identifier: string
@@ -129,7 +109,6 @@ export interface LinearIssueNode {
   readonly createdAt: Date
 }
 
-/** The subset of Linear's `IssueFilter` the poller sends. */
 export interface LinearIssueFilter {
   readonly team: { readonly key: { readonly eq: string } }
   readonly createdAt: { readonly gt: Date }
@@ -176,8 +155,6 @@ export const pollLinearIssues = (list: ListLinearIssues, trigger: Trigger<"linea
     } satisfies PollResult
   })
 
-// slack.mention
-
 const SlackSearch = Schema.Union([
   Schema.Struct({ ok: Schema.Literal(false), error: Schema.String }),
   Schema.Struct({
@@ -200,11 +177,7 @@ const decodeSlackSearch = Schema.decodeUnknownEffect(SlackSearch)
 
 export type Fetch = (input: URL, init: RequestInit) => Promise<Response>
 
-/**
- * Messages mentioning the bot, through `search.messages`. Slack only allows that method with a
- * user token (xoxp-), which is why this is search rather than `conversations.history`: history
- * needs a channel id per poll, search covers every channel the token can read.
- */
+// FIXME: Slack allows `search.messages` only with a user token (xoxp-)
 export const pollSlackMentions = (fetch: Fetch, token: string, trigger: Trigger<"slack.mention">, cursor: string) =>
   Effect.gen(function* () {
     const url = new URL("https://slack.com/api/search.messages")

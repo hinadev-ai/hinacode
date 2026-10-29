@@ -11,7 +11,6 @@ import { MachineResourcesButton } from "./MachineResources.tsx"
 import { Button } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
-// The main process hides the native title bar on macOS only, and the traffic lights sit in this bar's left inset.
 const besideTrafficLights = detectPlatform() === "mac"
 
 export function TitleBar({
@@ -29,7 +28,7 @@ export function TitleBar({
   return (
     <header
       className={cn(
-        "window-drag flex h-titlebar shrink-0 items-center gap-0.5 border-b border-sidebar-border bg-sidebar glass:bg-sidebar/80 pr-2 text-sidebar-foreground select-none",
+        "window-drag flex h-titlebar shrink-0 items-center gap-0.5 bg-sidebar glass:bg-sidebar/80 pr-2 text-sidebar-foreground select-none",
         besideTrafficLights ? "pl-22" : "pl-3",
       )}
     >

@@ -1,6 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto"
 import type { LinearDocument } from "@linear/sdk"
-import { hostname } from "node:os"
 import { Cause, Context, Effect, FiberHandle, FiberMap, Layer, Option, Random, Schema, Stream } from "effect"
 import { SqlClient, SqlError, SqlSchema } from "effect/sql"
 import { ProviderId } from "../../../shared/agent.ts"
@@ -35,7 +34,7 @@ import {
 import { renderTemplate, slugifyBranch, titleFromPrompt } from "./template.ts"
 import { hookPath, webhookServer } from "./webhook.ts"
 
-// `PaginationOrderBy.CreatedAt`, without importing the SDK before a Linear automation polls.
+// FIXME: the Linear SDK's enum is a runtime value, so it is spelled out to keep the SDK lazy
 const CREATED_AT = "createdAt" as LinearDocument.PaginationOrderBy
 
 export const SLACK_TOKEN_SECRET = "slack.token"
@@ -63,20 +62,17 @@ export class Automations extends Context.Service<
   {
     readonly list: Effect.Effect<ReadonlyArray<Automation>, PersistenceError>
     readonly get: (id: string) => Effect.Effect<Automation, PersistenceError | NotFoundError>
-    /** `secret` is the webhook HMAC secret; this is the only time it leaves the main process. */
     readonly create: (
       input: AutomationInput,
     ) => Effect.Effect<{ automation: Automation; secret: string | null }, Failure>
     readonly update: (input: UpdateAutomation) => Effect.Effect<Automation, Failure>
     readonly remove: (id: string) => Effect.Effect<void, PersistenceError>
-    /** Runs the automation with `payload` as the template context, outside dedup. */
     readonly runNow: (id: string, payload: unknown) => Effect.Effect<AutomationRun, PersistenceError | NotFoundError>
     readonly runs: (id: string, limit: number) => Effect.Effect<ReadonlyArray<AutomationRun>, PersistenceError>
     readonly webhookUrl: (id: string) => Effect.Effect<{ url: string; listenError: string | null }, Failure>
   }
 >()("hinacode/Automations") {}
 
-/** The automation table row; `lastRun` is joined in separately. */
 const AutomationRow = Schema.Struct({
   id: Schema.String,
   projectId: Schema.String,
@@ -99,7 +95,7 @@ const RUN_COLUMNS = "id, automation_id, thread_id, event_key, status, error, cre
 
 const isUniqueViolation = (cause: unknown) => SqlError.isSqlError(cause) && cause.reason._tag === "UniqueViolation"
 
-/** The innermost useful message: wrappers such as ServeError carry an empty one and the real error as `cause`. */
+// FIXME: Effect's ServeError has an empty message and keeps the real error in `cause`
 const describeError = (error: unknown): string => {
   if (!(error instanceof Error)) return String(error)
   if (error.message === "" && error.cause !== undefined) return describeError(error.cause)
@@ -144,7 +140,6 @@ const make = Effect.gen(function* () {
   const encodeRow = Schema.encodeEffect(AutomationRow)
   const encodePayload = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))
 
-  // Like the thread list, a newer build's automations of unknown providers are skipped, not fatal.
   const findRows = SqlSchema.findAll({
     Request: Schema.Void,
     Result: AutomationRow,
@@ -266,10 +261,6 @@ const make = Effect.gen(function* () {
       yield* runner.send(thread.id, prompt, [])
     })
 
-  /**
-   * Starts a thread for one event. Never fails: a duplicate `eventKey` records a skipped run and
-   * any error records a failed run, both pushed to the renderer like a started one.
-   */
   const startRun = (automation: AutomationRow, eventKey: string, payload: unknown) =>
     Effect.gen(function* () {
       const claimed = yield* insertRun({ automationId: automation.id, eventKey, payload, status: "started" }).pipe(
@@ -327,7 +318,6 @@ const make = Effect.gen(function* () {
       (now) => sql`UPDATE automation SET cursor = ${cursor}, polled_at = ${now} WHERE id = ${id}`,
     ).pipe(Effect.mapError(persistence("automations.savePollState")))
 
-  /** Records a poll failure as a failed run, unless the latest run already reports the same error. */
   const recordPollFailure = (id: string, error: string) =>
     Effect.gen(function* () {
       yield* Effect.flatMap(nowIso, (now) => sql`UPDATE automation SET polled_at = ${now} WHERE id = ${id}`)
@@ -363,7 +353,6 @@ const make = Effect.gen(function* () {
 
   const pollers = yield* FiberMap.make<string>()
 
-  /** Starts, restarts or stops the automation's poll fiber to match its current config. */
   const supervise = (automation: AutomationRow) =>
     automation.enabled && automation.trigger.type !== "webhook"
       ? Effect.asVoid(FiberMap.run(pollers, automation.id, pollLoop(automation.id)))
@@ -499,8 +488,7 @@ const make = Effect.gen(function* () {
       if (automation.trigger.type !== "webhook") {
         return yield* new AutomationError({ reason: `${automation.name} is not a webhook automation` })
       }
-      const wildcard = address.bindHost === "0.0.0.0" || address.bindHost === "::"
-      const host = wildcard ? hostname() : address.bindHost
+      const host = address.bindHost
       const url = new URL(hookPath(id), `http://${host.includes(":") ? `[${host}]` : host}:${address.port}`)
       return { url: url.toString(), listenError }
     })

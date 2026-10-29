@@ -2,7 +2,6 @@ import type { Thread } from "../../../shared/domain.ts"
 import { ThreadDiff } from "../ThreadDiff.tsx"
 import { ScrollArea } from "../ui/scroll-area.tsx"
 
-/** Worktree and latest-turn diffs within the activity bar. */
 export function ChangesView({ thread }: { thread: Thread }) {
   return (
     <ScrollArea className="min-h-0 flex-1">

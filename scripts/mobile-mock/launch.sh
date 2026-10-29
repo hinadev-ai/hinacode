@@ -10,12 +10,12 @@ here=$(cd "$(dirname "$0")" && pwd)
 repo=$(git -C "$here" rev-parse --show-toplevel)
 
 [[ -e "$data" ]] && { echo "$data already exists; seed a fresh profile" >&2; exit 1; }
-[[ "${3:-}" == "--no-build" ]] || (cd "$repo" && pnpm build >/dev/null)
+[[ "${3:-}" == "--no-build" ]] || (cd "$repo" && pnpm build:server >/dev/null)
 
 serve() {
   HINACODE_USER_DATA="$data" HINACODE_SERVE_AUTO_UPDATE=0 HINACODE_MOCK_LINEAR=1 \
     HINACODE_MOCK_CLAUDE="${HINACODE_MOCK_CLAUDE:-approvals}" \
-    exec node "$repo/out/main/daemon.js" serve --host 127.0.0.1 --port "$port"
+    exec node "$repo/out/server/daemon.js" serve --host 127.0.0.1 --port "$port"
 }
 
 mkdir -p "$data"

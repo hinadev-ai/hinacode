@@ -34,7 +34,6 @@ const proxy = tcpServer((client) => {
   pairs.add(pair)
   const forward = (from: Socket, to: Socket) => {
     const held: Buffer[] = []
-    // Chunks still inside a delay timer must reach `to` before anything read after them.
     let delayed = 0
     const resume = () => {
       if (delayed > 0 || mode === "blackhole" || mode === "reset" || to.destroyed) return

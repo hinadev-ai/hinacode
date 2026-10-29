@@ -2,22 +2,13 @@ import { Context, Effect, Layer, Option, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { type PersistenceError, persistence } from "./errors.ts"
 
-/**
- * `encrypted` records how `value` was written, so a secret stays readable when keyring
- * availability changes between runs.
- */
 const StoredSecret = Schema.fromJsonString(Schema.Struct({ encrypted: Schema.Boolean, value: Schema.String }))
 
 const rowKey = (name: string) => `secret.${name}`
 
-/**
- * Seals secrets at rest. The desktop app passes Electron safeStorage. A cloud passes `noKeyring`, since a
- * headless machine has no OS keyring to unlock, and its data directory's permissions protect its secrets.
- */
 export class Keyring extends Context.Service<
   Keyring,
   {
-    /** Undefined when no keyring is available right now. */
     readonly seal: (value: string) => Buffer | undefined
     readonly open: (sealed: Buffer) => string
   }
@@ -33,7 +24,6 @@ export const noKeyring = Layer.succeed(
   }),
 )
 
-/** Named secrets (API keys) kept in the `setting` table, sealed with the `Keyring` when it has one. */
 export class Secrets extends Context.Service<
   Secrets,
   {
@@ -56,8 +46,6 @@ const make = Effect.gen(function* () {
   })
   const encode = Schema.encodeEffect(StoredSecret)
 
-  // A profile sealed under another key, such as the real Keychain's before a run switched to the mock one,
-  // would otherwise fail every boot, because `RemoteAccess` reads its token while the layer is built.
   const open = (name: string, stored: typeof StoredSecret.Type) =>
     stored.encrypted
       ? Effect.try(() => keyring.open(Buffer.from(stored.value, "base64"))).pipe(

@@ -12,25 +12,18 @@ export interface PeerError {
 
 export type AskFrame = Extract<ServerFrame, { type: "ask" }>
 
-/** A desktop that sent `hub` to this machine's remote listener. */
 export interface Hub {
   readonly answer: (id: number, envelope: RpcEnvelope<unknown>) => void
   readonly leave: () => void
 }
 
-/** The user's other machines, for the MCP tools that read threads. See `docs/features/2026-10-26-cross-machine-threads.md`. */
 export class Peers extends Context.Service<
   Peers,
   {
-    /**
-     * Runs a read through a desktop connected to this machine, which answers for itself and every cloud it reaches,
-     * or else on this desktop's own clouds. An answer can include this machine's own rows.
-     */
     readonly ask: <M extends AskableMethod>(
       method: M,
       payload: RpcRequest<M>,
     ) => Effect.Effect<RpcResponse<M>, PeerError>
-    /** For the remote listener: `send` writes an `ask` frame to the desktop's socket. */
     readonly join: (send: (frame: AskFrame) => void) => Hub
   }
 >()("hinacode/Peers") {}

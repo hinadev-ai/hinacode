@@ -33,7 +33,8 @@ fi
 mkdir -p "$data"
 # A new session holds the app and every agent it spawns, so cleanup.sh can stop exactly those.
 # pnpm moves its children into new process groups, so the session id is the handle, not the pgid.
-setsid bash -c 'echo $$ >"$1/kk-verify.sid"; cd "$2"; exec env HINACODE_USER_DATA="$1" DISPLAY=:99 pnpm exec electron \
+setsid bash -c 'echo $$ >"$1/kk-verify.sid"; cd "$2"; exec env -u WAYLAND_DISPLAY \
+  GDK_SCALE=1 ELECTRON_OZONE_PLATFORM_HINT=x11 XDG_SESSION_TYPE=x11 HINACODE_USER_DATA="$1" DISPLAY=:99 pnpm exec electron \
   --no-sandbox --disable-gpu --remote-debugging-port="$3" out/main/index.js' _ "$data" "$repo" "$port" \
   >"$data/electron.log" 2>&1 </dev/null &
 

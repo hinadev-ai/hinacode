@@ -26,10 +26,10 @@ const makeRuntime = (fake: FakeSbx, profileDir: string, experimental: Partial<Ex
       }),
     ).pipe(
       Layer.provide(
-        Layer.mergeAll(Settings.layer, Layer.succeed(Events, { publish: () => Effect.void })).pipe(
-          Layer.provide(Db.layer(":memory:")),
-          Layer.provide(NodeServices.layer),
-        ),
+        Layer.mergeAll(
+          Settings.layer(mkdtempSync(join(tmpdir(), "hinacode-vm-settings-"))),
+          Layer.succeed(Events, { publish: () => Effect.void }),
+        ).pipe(Layer.provide(Db.layer(":memory:")), Layer.provide(NodeServices.layer)),
       ),
     ),
   )

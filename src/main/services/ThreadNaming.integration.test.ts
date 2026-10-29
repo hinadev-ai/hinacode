@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process"
 import { mkdtempSync, realpathSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Deferred, Effect, Layer, PubSub, Stream } from "effect"
@@ -26,6 +26,7 @@ import * as PullRequests from "./PullRequests.ts"
 import * as Secrets from "./Secrets.ts"
 import * as Settings from "./Settings.ts"
 import * as Terminals from "./Terminals.ts"
+import * as Scratch from "./Scratch.ts"
 import * as ThreadNaming from "./ThreadNaming.ts"
 import * as Threads from "./Threads.ts"
 import * as Worktrees from "./Worktrees.ts"
@@ -37,7 +38,6 @@ vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => ({
   },
 }))
 
-// The SDK is faked, so the test must not depend on a `claude` install on the machine running it.
 vi.mock("../agents/binary.ts", async () => {
   const { succeed } = await import("effect/Effect")
   return { installedBinary: (_provider: string, name: string) => succeed(name) }
@@ -108,11 +108,12 @@ const observedNaming = (named: Deferred.Deferred<void>) =>
 const makeLayer = (dbPath: string, pushes: PubSub.PubSub<PushEvent>, named: Deferred.Deferred<void>) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
+      Layer.provideMerge(Scratch.layer(join(dirname(dbPath), "scratch"))),
       Layer.provideMerge(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
       Layer.provideMerge(AgentAccounts.layer),
-      Layer.provideMerge(Settings.layer),
+      Layer.provideMerge(Settings.layer(dirname(dbPath))),
     ),
     Messages.layer,
     Secrets.layer.pipe(Layer.provide(Secrets.noKeyring)),
@@ -183,7 +184,7 @@ const nameAfter = <E>(
 ) =>
   Effect.gen(function* () {
     const dir = yield* Effect.acquireRelease(
-      // macOS links the temp dir through /private, and git reports worktree paths fully resolved.
+      // FIXME: macOS links the temp dir through /private, and git reports resolved worktree paths
       Effect.sync(() => realpathSync(mkdtempSync(join(tmpdir(), "kk-naming-test-")))),
       (path) => Effect.sync(() => rmSync(path, { recursive: true, force: true })),
     )

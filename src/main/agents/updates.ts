@@ -7,7 +7,6 @@ import { AgentError } from "./provider.ts"
 
 const execFileAsync = promisify(execFile)
 
-/** Each CLI's own `update` installs the release this npm package tags `latest`, however the CLI was installed. */
 const packages: Record<UpdatableProviderId, string> = {
   claude: "@anthropic-ai/claude-code",
   codex: "@openai/codex",
@@ -58,22 +57,14 @@ const availableUpdate = (provider: UpdatableProviderId) =>
       concurrency: "unbounded",
     })
     return isNewer(latest, current) ? Option.some<AgentUpdate>({ provider, current, latest }) : Option.none()
-  }).pipe(
-    // A CLI that is not installed, or no network, is nothing to tell the user about.
-    Effect.catch(() => Effect.succeedNone),
-  )
+  }).pipe(Effect.catch(() => Effect.succeedNone))
 
-/** Agent CLIs on PATH with a newer release on npm. */
 export const availableUpdates = Effect.map(
   Effect.forEach(UpdatableProviderId.literals, availableUpdate, { concurrency: "unbounded" }),
   (updates) => updates.flatMap((update) => Option.toArray(update)),
 )
 
-/**
- * Runs the CLI's own `update` and returns the version installed afterwards. Fails when that is still older than
- * the latest release, since the CLI's installer may exit cleanly without updating, such as a Homebrew cask that
- * has not caught up with npm yet.
- */
+// FIXME: a CLI's installer may exit cleanly without updating, such as a lagging Homebrew cask
 export const installUpdate = (provider: UpdatableProviderId) =>
   Effect.gen(function* () {
     const path = yield* installedBinary(provider, provider)

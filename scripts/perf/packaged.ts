@@ -8,7 +8,7 @@ import type { Writable } from "node:stream"
 type Target = { webSocketDebuggerUrl: string }
 type Reply = { id?: number; error?: string; result?: { exceptionDetails?: unknown; result: { value: unknown } } }
 
-// Keep the packaged launch free of Playwright's implicit --remote-debugging-port=0.
+// FIXME: Playwright's Electron launch always adds --remote-debugging-port=0
 export async function launchPackaged({
   executablePath,
   port,

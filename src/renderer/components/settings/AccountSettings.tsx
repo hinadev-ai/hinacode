@@ -2,18 +2,18 @@ import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { Schema } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, type ReactNode, useId, useState, useTransition } from "react"
-import { RiAddLine, RiDeleteBinLine, RiMoreFill, RiPencilLine } from "react-icons/ri"
+import { RiAddLine, RiDeleteBinLine, RiMoreFill, RiPencilLine, RiRefreshLine } from "react-icons/ri"
 import { AccountProviderId, type AgentAccount, type AgentProfile, type ProviderId } from "../../../shared/agent.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import {
   accountAtom,
-  accountsAtom,
   createAccountAtom,
   deleteAccountAtom,
+  refreshAccountAtom,
   renameAccountAtom,
-  type EnvironmentId,
   updateSettingsAtom,
 } from "../../lib/rpc.ts"
+import { useDefaultAccountName, useProviderAccounts } from "../../lib/accounts.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { useSettingsEnvironment } from "../../lib/environments.ts"
 import { m } from "../../paraglide/messages.js"
@@ -58,7 +58,6 @@ const configDirVariable = { claude: "CLAUDE_CONFIG_DIR", codex: "CODEX_HOME" } s
 
 const shellQuote = (value: string) => (/^[\w./~-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`)
 
-/** What the user runs in a terminal to sign the account in. */
 const loginCommand = (account: AgentProfile) =>
   [
     `${configDirVariable[account.provider]}=${shellQuote(account.configDir)}`,
@@ -66,18 +65,6 @@ const loginCommand = (account: AgentProfile) =>
     ...(account.provider === "claude" ? ["auth", "login"] : ["login"]),
   ].join(" ")
 
-/** The provider's added accounts, in the order they were added. */
-export function useProviderAccounts(environment: EnvironmentId, provider: ProviderId): ReadonlyArray<AgentProfile> {
-  const all = AsyncResult.getOrElse(useAtomValue(accountsAtom(environment)), (): ReadonlyArray<AgentProfile> => [])
-  return all.filter((account) => account.provider === provider)
-}
-
-/** What the agent's own login is called: the user's name for it, or "Default". */
-export function useDefaultAccountName(environment: EnvironmentId, provider: ProviderId): string {
-  return useSettings(environment).defaultAccountName[provider] ?? m.account_default()
-}
-
-/** The CLI's own login, then every account added for `provider`, each with who it is signed in as. */
 export function AccountList({ provider }: { provider: ProviderId }) {
   const environment = useSettingsEnvironment()
   const accounts = useProviderAccounts(environment, provider)
@@ -107,7 +94,6 @@ export function AccountList({ provider }: { provider: ProviderId }) {
 
 type RowDialog = "rename" | "remove"
 
-/** Menu items queue their dialog and open it once the menu has closed and handed focus back. */
 function useRowDialog() {
   const [dialog, setDialog] = useState<RowDialog | null>(null)
   const [queued, setQueued] = useState<RowDialog | null>(null)
@@ -137,14 +123,7 @@ function AccountActions({
   return (
     <DropdownMenu onOpenChangeComplete={onMenuOpenChangeComplete}>
       <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="ml-auto"
-            aria-label={m.settings_account_actions({ name })}
-          />
-        }
+        render={<Button variant="ghost" size="icon-sm" aria-label={m.settings_account_actions({ name })} />}
       >
         <RiMoreFill aria-hidden />
       </DropdownMenuTrigger>
@@ -172,7 +151,6 @@ function DefaultAccountRow({ provider }: { provider: ProviderId }) {
   const { dialog, queue, onMenuOpenChangeComplete, onDialogOpenChange } = useRowDialog()
 
   const rename = async (next: string) => {
-    // Naming it back to the translated default stores null, so it follows the UI language again.
     const stored = next === m.account_default() ? null : next
     await updateSettings({ defaultAccountName: { ...defaultAccountName, [provider]: stored } })
   }
@@ -241,25 +219,53 @@ function AccountRow({ account }: { account: AgentProfile }) {
   )
 }
 
-/** `account` null is the CLI's own login. */
-export function AccountStatus({ provider, account }: { provider: ProviderId; account: AgentProfile | null }) {
+function AccountStatus({ provider, account }: { provider: ProviderId; account: AgentProfile | null }) {
   const environment = useSettingsEnvironment()
-  const status = useAtomValue(accountAtom(environment, provider, account?.id ?? null))
+  const accountId = account?.id ?? null
+  const status = useAtomValue(accountAtom(environment, provider, accountId))
+  const refreshAccount = useAtomSet(refreshAccountAtom, { mode: "promise" })
+  const [refreshFailure, setRefreshFailure] = useState<string | null>(null)
+  const defaultName = useDefaultAccountName(environment, provider)
+  const name = account?.name ?? defaultName
+
+  const refresh = async () => {
+    setRefreshFailure(null)
+    try {
+      await refreshAccount({ environment, provider, accountId })
+    } catch (cause) {
+      setRefreshFailure(errorMessage(cause))
+    }
+  }
+
   return (
-    <output
-      aria-label={
-        account === null
-          ? m.settings_account_label({ provider: providerLabel[provider]() })
-          : m.settings_account_named_label({ name: account.name })
-      }
-      className="flex min-w-0 flex-wrap gap-x-1.5 text-sm text-muted-foreground"
-    >
-      {AsyncResult.builder(status)
-        .onInitial(() => m.settings_account_loading())
-        .onSuccess((current) => describeAccount(provider, current, account === null))
-        .onError((cause) => m.settings_account_failed({ message: errorMessage(cause) }))
-        .orElse(() => null)}
-    </output>
+    <>
+      <output
+        aria-label={
+          account === null
+            ? m.settings_account_label({ provider: providerLabel[provider]() })
+            : m.settings_account_named_label({ name: account.name })
+        }
+        className="flex min-w-0 flex-wrap gap-x-1.5 text-sm text-muted-foreground"
+      >
+        {refreshFailure !== null
+          ? m.settings_account_failed({ message: refreshFailure })
+          : AsyncResult.builder(status)
+              .onInitial(() => m.settings_account_loading())
+              .onSuccess((current) => describeAccount(provider, current, account === null))
+              .onError((cause) => m.settings_account_failed({ message: errorMessage(cause) }))
+              .orElse(() => null)}
+      </output>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className="ml-auto"
+        aria-label={m.settings_account_refresh({ name })}
+        title={m.settings_account_refresh({ name })}
+        action={refresh}
+      >
+        <RiRefreshLine aria-hidden className="group-aria-busy/button:animate-spin" />
+      </Button>
+    </>
   )
 }
 
@@ -354,7 +360,6 @@ function AddAccountDialog({ provider, open, onOpenChange }: AddAccountDialogProp
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
-        {/* Inside the popup so every opening starts from an empty form. */}
         <AddAccountForm provider={provider} onCreated={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
@@ -562,7 +567,6 @@ function RemoveAccountDialog({ account, open, onOpenChange }: AccountDialogBaseP
 
 const CLI_LOGIN = "cli"
 
-/** Which account new threads of `provider` start on. Hidden until the provider has an added account. */
 export function DefaultAccountField({ provider }: { provider: ProviderId }) {
   const environment = useSettingsEnvironment()
   const accounts = useProviderAccounts(environment, provider)

@@ -71,7 +71,6 @@ const providers = Layer.mergeAll(
   Layer.succeed(MuseProvider, provider("muse")),
 )
 
-/** A headless cloud has no windows: its pushes reach only the remote listener's sinks. */
 const makeCloudEvents = () => {
   const sinks = new Set<(event: typeof PushEvent.Encoded) => void>()
   const encode = Schema.encodeSync(PushEvent)
@@ -136,7 +135,6 @@ const gitRepo = (path: string, origin: string) => {
   execFileSync("git", ["-C", path, "remote", "add", "origin", origin])
 }
 
-/** Calls one tool as `threadId`, through the MCP server of the machine the thread lives on. */
 const callAs = async (runtime: Runtime, threadId: string, name: string, args: Record<string, unknown> = {}) => {
   const { url, headers } = await runtime.runPromise(
     McpCredentials.use((credentials) => credentials.connectionFor(threadId)),
@@ -219,7 +217,6 @@ beforeAll(async () => {
   await seedMessage(desktop, desktopThread, "hello from the desktop")
   await seedMessage(cloud, cloudThread, "hello from the cloud")
 
-  // The desktop registers as the cloud's hub after the socket opens, so wait until an ask reaches it.
   await vi.waitFor(
     async () => {
       const threads = await cloud.runPromise(Peers.use((peers) => peers.ask("threads.list", undefined)))

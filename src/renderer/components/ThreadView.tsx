@@ -6,7 +6,7 @@ import type { Thread, ThreadStatus } from "../../shared/domain.ts"
 import { findPattern } from "../lib/find.ts"
 import { useDebouncedValue } from "../lib/useDebouncedValue.ts"
 import { useIsChat } from "../lib/useIsChat.ts"
-import { repositoryAtom } from "../lib/rpc.ts"
+import { projectsAtom, repositoryAtom } from "../lib/rpc.ts"
 import { ThreadRepository } from "../lib/threadRepository.ts"
 import { ThreadFolder, useThreadRoot } from "../lib/threadRoot.ts"
 import { m } from "../paraglide/messages.js"
@@ -21,7 +21,7 @@ import { FindPatternContext } from "./FindHighlight.tsx"
 import { EmptyThread, MessageList } from "./MessageList.tsx"
 import { QuestionRequestCard } from "./QuestionCard.tsx"
 import { SecretRequestCard } from "./SecretRequestCard.tsx"
-import { SubagentTranscript } from "./SubagentView.tsx"
+import { SubagentTranscript, useSubagentLabel } from "./SubagentView.tsx"
 import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { UsageLimitCallout } from "./UsageLimitCallout.tsx"
 import { AccountLimitNotice } from "./AccountSwitch.tsx"
@@ -38,12 +38,10 @@ const statusLabel = {
   archived: m.thread_status_archived,
 } satisfies Record<ThreadStatus, () => string>
 
-/** `agent` is the `callId` of the sub-agent to show instead of the thread's own transcript. */
 interface ThreadViewProps {
   readonly thread: Thread
   readonly agent?: string
   readonly actions?: ReactNode
-  /** Floats over the top of the transcript, below the header. */
   readonly overlay?: ReactNode
 }
 
@@ -55,13 +53,14 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
   useDockHeight(regionRef, dockRef)
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-        <h1 dir="auto" className="min-w-0 flex-1 truncate text-left text-sm font-semibold" title={thread.title}>
-          {thread.title}
-        </h1>
-        <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+      <header className="@container flex min-h-12 shrink-0 flex-wrap items-center gap-2 px-3 py-2">
+        <ThreadBreadcrumb thread={thread} agent={agent} />
+        <span
+          title={providerLabel[thread.provider]()}
+          className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
+        >
           <ProviderIcon provider={thread.provider} />
-          {providerLabel[thread.provider]()}
+          <span className="sr-only @md:not-sr-only">{providerLabel[thread.provider]()}</span>
         </span>
         <span
           data-status={thread.status}
@@ -96,6 +95,48 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
   )
 }
 
+function ThreadBreadcrumb({ thread, agent }: { thread: Thread; agent: string | undefined }) {
+  const project = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => []).find(
+    (candidate) => candidate.id === thread.projectId,
+  )
+  return (
+    <nav aria-label={m.thread_breadcrumb()} className="min-w-0 flex-1">
+      <ol className="flex min-w-0 items-center gap-1.5 text-sm">
+        {project && (
+          <li dir="auto" className="max-w-48 shrink-0 truncate text-muted-foreground" title={project.name}>
+            {project.name}
+          </li>
+        )}
+        <li className="flex min-w-0 items-center gap-1.5">
+          {project && <Separator />}
+          <h1 dir="auto" className="truncate font-semibold" title={thread.title}>
+            {thread.title}
+          </h1>
+        </li>
+        {agent !== undefined && <SubagentCrumb threadId={thread.id} callId={agent} />}
+      </ol>
+    </nav>
+  )
+}
+
+function SubagentCrumb({ threadId, callId }: { threadId: string; callId: string }) {
+  const label = useSubagentLabel(threadId, callId)
+  return (
+    <li dir="auto" className="flex min-w-0 items-center gap-1.5">
+      <Separator />
+      <span className="truncate" title={label}>
+        {label}
+      </span>
+    </li>
+  )
+}
+
+const Separator = () => (
+  <span aria-hidden className="text-muted-foreground/60">
+    /
+  </span>
+)
+
 function Transcript({ thread, agent }: { thread: Thread; agent: string | undefined }) {
   const history = useMessages((state) => state.byThread[thread.id])
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
@@ -116,7 +157,6 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
     return () => unload(thread.id)
   }, [load, unload, thread.id])
 
-  // The Retry button disappears into the loading state, so focus moves on before it does.
   const retry = () => {
     useUi.getState().requestComposerFocus()
     void load(thread.id)
@@ -164,10 +204,6 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
   )
 }
 
-/**
- * The composer dock floats over the transcript so messages scroll behind its blur. Its height goes
- * into `--dock-height`, which the transcript pads its end with so the last message can clear it.
- */
 function useDockHeight(regionRef: RefObject<HTMLDivElement | null>, dockRef: RefObject<HTMLDivElement | null>) {
   useEffect(() => {
     const region = regionRef.current

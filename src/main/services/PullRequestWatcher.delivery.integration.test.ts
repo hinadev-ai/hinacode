@@ -27,6 +27,7 @@ import * as Terminals from "./Terminals.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
 import { Threads, layer as threadsLayer } from "./Threads.ts"
 import * as Worktrees from "./Worktrees.ts"
+import * as Scratch from "./Scratch.ts"
 
 const base = realpathSync(mkdtempSync(join(tmpdir(), "kk-watch-delivery-")))
 afterAll(() => rmSync(base, { recursive: true, force: true }))
@@ -128,11 +129,12 @@ const observedWorktrees = Layer.effect(
 ).pipe(Layer.provide(Worktrees.layer))
 
 const domain = threadsLayer.pipe(
+  Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
   Layer.provideMerge(observedTerminals),
   Layer.provideMerge(observedWorktrees),
   Layer.provideMerge(Projects.layer),
   Layer.provideMerge(AgentAccounts.layer),
-  Layer.provideMerge(settingsLayer),
+  Layer.provideMerge(settingsLayer(mkdtempSync(join(tmpdir(), "kk-delivery-settings-")))),
 )
 const core = Layer.mergeAll(observedMessages, pullRequestsLayer.pipe(Layer.provideMerge(domain)), McpCredentials.layer)
 const agents = runnerLayer.pipe(
@@ -172,6 +174,7 @@ const testLayer = watcherLayer.pipe(
             head: "abc1234",
             mergeable: "mergeable",
             changedFiles: 1,
+            comments: [],
             checkRuns: [{ name: "CI / test", status: "failing", url: "https://ci.example/test" }],
           }),
       }),

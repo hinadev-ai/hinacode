@@ -10,11 +10,9 @@ import { useUi } from "../stores/ui.ts"
 import { CopyButton } from "./CopyButton.tsx"
 import { Button } from "./ui/button.tsx"
 
-/** What the message said, without the tool activity around it. */
 const messageText = (message: Message) =>
   message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n\n")
 
-/** Shows while the pointer is on the message, or focus is in this row. */
 export function MessageActions({ message, className }: { message: Message; className?: string }) {
   const navigate = useNavigate()
   const text = messageText(message)

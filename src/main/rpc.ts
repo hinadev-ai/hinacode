@@ -30,7 +30,8 @@ import { Automations } from "./services/automations/Automations.ts"
 import { Linear } from "./services/Linear.ts"
 import { McpCredentials } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
-import { networkAddresses, RemoteAccess } from "./remote/access.ts"
+import { networkAddresses } from "./network.ts"
+import { RemoteAccess } from "./remote/access.ts"
 import { Relay } from "./remote/relay.ts"
 import { Projects } from "./services/Projects.ts"
 import { PullRequestGuides } from "./services/PullRequestGuides.ts"
@@ -45,6 +46,7 @@ import { Updates } from "./services/Updates.ts"
 import { randomName, Threads } from "./services/Threads.ts"
 import { VmPasskeyRelay } from "./services/tinyVm/passkey/PasskeyRelay.ts"
 import { type ScreenOwner, TinyVm, VmError } from "./services/tinyVm/TinyVm.ts"
+import { Devices } from "./services/devices/Devices.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 
 export type AppServices =
@@ -80,16 +82,13 @@ export type AppServices =
   | Events
   | TinyVm
   | VmPasskeyRelay
+  | Devices
 
 export interface HandlerError {
   readonly _tag: string
   readonly message: string
 }
 
-/**
- * What only the desktop window can do, bound to the window that called. `ipc.ts` builds it; remote callers
- * pass null, and the remote listener refuses these methods before they reach a handler.
- */
 export interface DesktopCalls {
   readonly show: Effect.Effect<void>
   readonly focus: Effect.Effect<void>
@@ -98,7 +97,6 @@ export interface DesktopCalls {
   readonly reveal: (path: string) => Effect.Effect<void>
   readonly openers: Effect.Effect<ReadonlyArray<Opener>>
   readonly openWith: (path: string, opener: OpenerId) => Effect.Effect<void, HandlerError>
-  /** Opens an http(s) URL in the default browser. Anything else is ignored. */
   readonly openExternal: (url: string) => Effect.Effect<void>
   readonly pickFolder: Effect.Effect<string | null>
   readonly pickFiles: Effect.Effect<ReadonlyArray<string>>
@@ -114,7 +112,6 @@ type Handlers = {
   ) => Effect.Effect<RpcResponse<M>, HandlerError, AppServices>
 }
 
-/** What a new thread of `provider` starts with: the options last picked for one, else the agent's first model. */
 const newThreadOptions = (provider: ProviderId) =>
   Effect.gen(function* () {
     const settings = yield* Settings.use((service) => service.get)
@@ -123,7 +120,6 @@ const newThreadOptions = (provider: ProviderId) =>
     return { model, effort: settings.defaultEffort[provider], fastMode: settings.defaultFastMode[provider] }
   })
 
-/** A thread's options become the next new thread's defaults while it is still being set up, before its first message. */
 const rememberNewThreadOptions = (thread: Thread) =>
   Effect.gen(function* () {
     if (yield* Threads.use((threads) => threads.started(thread.id))) return
@@ -141,7 +137,6 @@ const rememberNewThreadOptions = (thread: Thread) =>
     )
   })
 
-/** Where a repository thread's first turn runs becomes where the next new one starts. Returns the save to run once it sent. */
 const rememberWorkspaceMode = (threadId: string, mode: WorkspaceChoice["mode"]) =>
   Effect.gen(function* () {
     const thread = yield* Threads.use((threads) => threads.get(threadId))
@@ -152,7 +147,6 @@ const rememberWorkspaceMode = (threadId: string, mode: WorkspaceChoice["mode"]) 
       : Effect.void
   })
 
-/** Git history is only read from a checkout hinacode recorded, never from a path the renderer made up. */
 const knownRoot = (root: string) =>
   Effect.gen(function* () {
     const projects = yield* Projects.use((service) => service.list)
@@ -164,7 +158,6 @@ const knownRoot = (root: string) =>
     return root
   })
 
-/** Shells sitting in a worktree would outlive it, so they end before the thread or its project goes away. */
 const closeTerminals = (threadId: string) => Terminals.use((terminals) => terminals.closeThread(threadId))
 
 const startGuideForHead = (detail: PullRequestDetail) => PullRequestGuides.use((guides) => guides.ensure(detail))
@@ -193,7 +186,6 @@ const handlers: Handlers = {
     }),
 
   "threads.list": () => Threads.use((threads) => threads.list),
-  // Thread changes are pushed as well as returned, so a phone and the desktop window stay in step.
   "threads.create": ({ projectId }) =>
     Effect.gen(function* () {
       const { defaultProvider: provider } = yield* Settings.use((service) => service.get)
@@ -204,7 +196,6 @@ const handlers: Handlers = {
       yield* Events.use((events) => events.publish({ type: "thread.updated", thread }))
       return thread
     }),
-  // Another agent starts from its own defaults, not the model, effort and tier picked for the last one.
   "threads.update": (input) =>
     Effect.gen(function* () {
       const { provider: switchTo } = input
@@ -307,15 +298,21 @@ const handlers: Handlers = {
     desktop?.askNotificationPermission(title, body) ?? Effect.succeed("noAnswer" as const),
 
   "models.list": ({ provider }) => AgentRunner.use((runner) => runner.listModels(provider)),
-  "agents.account": ({ provider, accountId }) => AgentLogins.use((logins) => logins.account(provider, accountId)),
-  // e2e runs on machines with real, possibly outdated CLIs, whose update toast would cover the UI under test.
+  "agents.account": ({ provider, accountId, refresh }) =>
+    AgentLogins.use((logins) => logins.account(provider, accountId, { refresh })),
   "agents.updates": () => (process.env["HINACODE_SKIP_AGENT_UPDATES"] ? Effect.succeed([]) : availableUpdates),
   "agents.update": ({ provider }) => installUpdate(provider),
   "limits.list": () => AgentRunner.use((runner) => runner.limits),
   "accounts.list": () => AgentAccounts.use((accounts) => accounts.list),
   "accounts.create": (input) => AgentAccounts.use((accounts) => accounts.create(input)),
-  "accounts.rename": ({ id, name }) => AgentAccounts.use((accounts) => accounts.rename(id, name)),
-  "accounts.delete": ({ id }) => AgentAccounts.use((accounts) => accounts.remove(id)),
+  "accounts.rename": ({ id, name }) =>
+    AgentAccounts.use((accounts) => accounts.rename(id, name)).pipe(
+      Effect.tap(() => AgentLogins.use((logins) => logins.forget(id))),
+    ),
+  "accounts.delete": ({ id }) =>
+    AgentAccounts.use((accounts) => accounts.remove(id)).pipe(
+      Effect.tap(() => AgentLogins.use((logins) => logins.forget(id))),
+    ),
   "commands.list": ({ threadId }) => AgentRunner.use((runner) => runner.listCommands(threadId)),
   "files.list": ({ threadId }) => Threads.use((threads) => threads.listFiles(threadId)),
   "search.threads": ({ query, limit }) => Search.use((search) => search.threads(query, limit)),
@@ -386,6 +383,7 @@ const handlers: Handlers = {
   "pullRequestGuides.retry": ({ url }) => PullRequestGuides.use((guides) => guides.retry(url)),
   "github.merge": ({ url, method }) => GitHub.use((github) => github.merge(url, method)),
   "github.close": ({ url }) => GitHub.use((github) => github.close(url)),
+  "github.comment": ({ url, body }) => GitHub.use((github) => github.comment(url, body)),
   "linear.issues": () => Linear.use((linear) => linear.assignedIssues),
   "github.repository": ({ projectId }) =>
     Projects.use((projects) => projects.get(projectId)).pipe(
@@ -402,6 +400,17 @@ const handlers: Handlers = {
   "terminal.list": ({ threadId }) => Terminals.use((terminals) => terminals.list(threadId)),
   "terminal.attach": ({ id, since }) => Terminals.use((terminals) => terminals.attach(id, since)),
 
+  "devices.list": () => Devices.use((devices) => devices.list()),
+  "device.get": ({ threadId }) => Devices.use((devices) => devices.get(threadId)),
+  "device.attach": ({ threadId, deviceId }) => Devices.use((devices) => devices.attach(threadId, deviceId)),
+  "device.create": ({ threadId, model }) => Devices.use((devices) => devices.create(threadId, model)),
+  "device.detach": ({ threadId, deviceId }) => Devices.use((devices) => devices.detach(threadId, deviceId)),
+  "device.delete": ({ threadId, deviceId }) => Devices.use((devices) => devices.delete(threadId, deviceId)),
+  "device.frame": (input) => Devices.use((devices) => devices.frame(input)),
+  "device.command": (input) => Devices.use((devices) => devices.command(input)),
+  "device.control": ({ threadId, deviceId, control }) =>
+    Devices.use((devices) => devices.control(threadId, deviceId, control)),
+  "device.pick": (input) => Devices.use((devices) => devices.pick(input)),
   "vm.get": ({ threadId }) => TinyVm.use((vm) => vm.get(threadId)),
   "vm.start": ({ threadId, template }) => TinyVm.use((vm) => vm.start(threadId, template)),
   "vm.stop": ({ threadId }) => TinyVm.use((vm) => vm.stop(threadId)),
@@ -491,10 +500,6 @@ const call = <M extends RpcMethod>(method: M, payload: unknown, desktop: Desktop
   )
 }
 
-/**
- * Decodes one `{ method, payload }` call, runs its handler and encodes the answer. Shared by the Electron
- * `rpc` channel and the remote listener, which passes null for `desktop`.
- */
 export const dispatch = (
   raw: unknown,
   desktop: DesktopCalls | null,

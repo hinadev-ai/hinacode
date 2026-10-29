@@ -3,14 +3,8 @@
 
 import type { PickedElement } from "./domain.ts"
 
-/**
- * Runs inside the browsed page through `executeJavaScript`, so it must not reference anything outside its own
- * body. Highlights the element under the pointer and resolves with a `PagePick` on click or Enter, or null on
- * Escape or `window.__hinacodePicker.cancel()`. Arrow keys walk to the parent, first child and siblings.
- */
 /* oxlint-disable unicorn/consistent-function-scoping -- the page gets this function's source alone, so helpers stay inside */
 function pickElement(): Promise<unknown> {
-  // The limits of `PickedElement`, which rejects the whole pick when one field is longer.
   const MAX_URL = 2048
   const MAX_SELECTOR = 1000
   const MAX_HTML = 4000
@@ -78,7 +72,6 @@ function pickElement(): Promise<unknown> {
       return `${base}:nth-of-type(${sameTag.indexOf(element) + 1})`
     }
 
-    /** The shortest ancestor path that matches only this element. */
     const selector = (element: Element) => {
       const parts: Array<string> = []
       for (let node: Element | null = element; node && node !== document.documentElement; node = node.parentElement) {
@@ -88,10 +81,7 @@ function pickElement(): Promise<unknown> {
       return parts.join(" > ")
     }
 
-    /**
-     * React hangs its fiber on each DOM node; walking up names the components the element sits in. Production
-     * builds have the fiber too but minified names, so only development builds, which carry `_debugOwner`, count.
-     */
+    // FIXME: production React builds have minified names, so only development builds, which carry `_debugOwner`, count
     const components = (element: Element) => {
       const key = Object.keys(element).find((property) => property.startsWith("__reactFiber$"))
       type Fiber = { type: unknown; return: Fiber | null }
@@ -177,7 +167,6 @@ function pickElement(): Promise<unknown> {
       host.remove()
       cursor.remove()
       if (pick === null) return resolve(null)
-      // Wait for a frame without the overlay, so the screenshot taken next does not include it.
       requestAnimationFrame(() => requestAnimationFrame(() => resolve(pick)))
     }
 
@@ -196,7 +185,6 @@ function pickElement(): Promise<unknown> {
 export const PICK_ELEMENT_SCRIPT = `(${pickElement.toString()})()`
 export const CANCEL_PICK_SCRIPT = "window.__hinacodePicker?.cancel()"
 
-/** A short name like the picker's label, `button.btn.primary`, which the composer chip shows. */
 export const elementLabel = (element: PickedElement) => {
   const tag = /^<([a-z][\w-]*)/i.exec(element.html)?.[1]?.toLowerCase() ?? "element"
   const classes = /^<[^>]*\sclass="([^"]*)"/i.exec(element.html)?.[1]?.split(/\s+/).filter(Boolean) ?? []

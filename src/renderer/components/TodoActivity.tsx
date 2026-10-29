@@ -45,10 +45,6 @@ function TodoRow({ todo }: { todo: Todo }) {
   )
 }
 
-/**
- * The agent's own task list (Claude tasks, Codex plan, Muse todos) while any of it is unfinished. Collapsed it
- * shows progress and what is running now; expanding lists every task.
- */
 export function TodoActivity({ thread }: { thread: Thread }) {
   const messages = useMessages((state) => {
     const history = state.byThread[thread.id]
@@ -85,7 +81,6 @@ export function TodoActivity({ thread }: { thread: Thread }) {
         />
       </ActivityRow>
       {expanded && (
-        // Its own bound, so a long plan scrolls instead of pushing the other sections out of view.
         <ul
           aria-label={m.composer_todos_label()}
           className="flex max-h-[20cqh] flex-col gap-1 overflow-y-auto px-1 pt-1 pb-1.5 text-xs"

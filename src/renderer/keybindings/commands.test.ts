@@ -2,7 +2,6 @@ import { describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
 import { conflictsOf, resolveKeymap, whenHolds } from "./commands.ts"
 
-// Commands import the ui store, which reads the saved sidebar width from localStorage when it is created.
 vi.hoisted(() => {
   const values = new Map<string, string>()
   vi.stubGlobal("localStorage", {

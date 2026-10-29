@@ -5,15 +5,9 @@ import { join } from "node:path"
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js"
 
-/**
- * A loopback stand-in for Meta's model endpoint, ported from the SDK quickstart's fake provider, so `muse serve`
- * runs turns with no login and no network. It serves `GET <base>/muse-code/models` and an SSE `POST <base>/responses`.
- */
-
 export const FAKE_MODEL_ID = "fake-model"
 const FAKE_USAGE = { input_tokens: 7, output_tokens: 3, total_tokens: 10 }
 
-/** One tool call, served once to the first request that carries `when` and offers the tool. */
 export interface ScriptedCall {
   readonly when: string
   readonly name: string
@@ -21,20 +15,12 @@ export interface ScriptedCall {
 }
 
 export interface FakeEndpoint {
-  /** A HOME whose Muse settings point at this endpoint with a stored dummy key. */
   readonly home: string
   readonly baseUrl: string
   script: (call: ScriptedCall) => void
-  /** Leaves every completion whose request carries `when` open after its first delta, until the client goes away. */
   hold: (when: string) => void
-  /**
-   * Answers every completion whose request carries `when` with a 429. Muse reads one with `resetsAt`, in epoch
-   * seconds, as a plan limit, and one without as a rate limit, which it retries until it gives up.
-   */
   rateLimit: (when: string, resetsAt?: number) => void
-  /** Leaves every compaction summary unanswered until the returned release is called. */
   holdSummaries: () => () => void
-  /** Resolves once a completion request carrying `when` has arrived. */
   requested: (when: string) => Promise<void>
   close: () => Promise<void>
 }
@@ -70,7 +56,6 @@ type Tool = {
   readonly parameters?: { readonly required?: ReadonlyArray<string> }
 }
 
-/** Muse nests its tools in namespaces, `{"type":"namespace","name":"muse","tools":[...]}`. */
 const offeredTools = (body: string): Array<Tool> => {
   let tools: ReadonlyArray<Tool> = []
   try {
@@ -103,7 +88,6 @@ const replyWithTool = (response: ServerResponse, call: ScriptedCall, n: number) 
   response.end(completed(id))
 }
 
-/** Muse's compaction summarizer does not stream, and takes its summary only as a `generate_summary` call. */
 const replyWithSummary = (response: ServerResponse, summarizer: Tool) => {
   const summary = Object.fromEntries((summarizer.parameters?.required ?? []).map((field) => [field, "None known."]))
   const call = {
@@ -160,7 +144,7 @@ export const startFakeEndpoint = async (root: string, replyText: string): Promis
       }
       const limit = rateLimits.find(({ when }) => body.includes(when))
       if (limit !== undefined) {
-        // Retry-After keeps Muse's backoff, which reaches a minute a retry, out of the test.
+        // FIXME: Retry-After keeps Muse's backoff, up to a minute a retry, out of the test
         response.writeHead(429, { "content-type": "application/json", "retry-after": "0" })
         const error = { message: "Rate limit exceeded", code: "rate_limit_exceeded", resets_at: limit.resetsAt }
         response.end(JSON.stringify({ error }))
@@ -174,7 +158,7 @@ export const startFakeEndpoint = async (root: string, replyText: string): Promis
         return
       }
       response.writeHead(200, { "content-type": "text/event-stream" })
-      // Muse's reminder agents call the endpoint too, and one may land first, so a call is routed by content.
+      // FIXME: Muse's reminder agents call the endpoint too and may land first
       const call = scripts.findIndex((script) => body.includes(script.when) && offers(body, script.name))
       if (call !== -1) {
         scripted += 1
@@ -187,7 +171,6 @@ export const startFakeEndpoint = async (root: string, replyText: string): Promis
         holds.some((when) => body.includes(when)),
       )
     })
-    // A stopped turn aborts its request.
     request.on("error", () => undefined)
     response.on("error", () => undefined)
   })
@@ -232,10 +215,7 @@ export const startFakeEndpoint = async (root: string, replyText: string): Promis
   }
 }
 
-/**
- * A Streamable HTTP MCP server with no tools. Muse requires the hinacode MCP server to start, and fails the turn
- * before any model call when it cannot reach it.
- */
+// FIXME: Muse fails the turn before any model call when the hinacode MCP server is unreachable
 export const startFakeMcpServer = async () => {
   const server = createServer((request, response) => {
     const mcp = new McpServer({ name: "hinacode", version: "0.0.0" })

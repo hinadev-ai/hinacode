@@ -81,14 +81,12 @@ function barHeight(bar: number, tick: number): number {
   return 5 + Math.abs(Math.sin(bar * 1.35 + tick * 0.55)) * 13
 }
 
-/** Commands whose name starts with the slash query, or none when not typing one. */
 export function useSlashMatches(value: string, commands: readonly ComposerCommand[] | undefined): ComposerCommand[] {
   if (!commands || !value.startsWith("/")) return []
   const query = value.slice(1).toLowerCase()
   return commands.filter((command) => command.name.startsWith(query))
 }
 
-/** People matching a trailing @mention, or none when the caret is not in one. */
 export function useMentionMatches(value: string, people: readonly ComposerPerson[] | undefined): ComposerPerson[] {
   if (!people) return []
   const match = /@([\w]*)$/.exec(value)
@@ -97,7 +95,6 @@ export function useMentionMatches(value: string, people: readonly ComposerPerson
   return people.filter((person) => person.name.toLowerCase().startsWith(query))
 }
 
-/** Replaces the trailing @mention with the chosen name. */
 export function applyMention(value: string, name: string): string {
   return value.replace(/@[\w]*$/, `@${name} `)
 }
@@ -149,7 +146,6 @@ function useFitInComposer(menuRef: RefObject<HTMLDivElement | null>, align: "sta
     observer.observe(bounds)
     observer.observe(menu)
     return () => observer.disconnect()
-    // `align` moves the menu without resizing it, so the observer alone would miss the change.
     // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [menuRef, align])
 

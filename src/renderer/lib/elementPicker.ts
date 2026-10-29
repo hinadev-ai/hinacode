@@ -1,4 +1,5 @@
 import type { PagePick } from "../../shared/browser.ts"
+import type { DeviceElement } from "../../shared/device.ts"
 import { elementLabel } from "../../shared/browserPicker.ts"
 import { useDrafts } from "../stores/drafts.ts"
 import { callPromise } from "./rpc.ts"
@@ -6,7 +7,8 @@ import { callPromise } from "./rpc.ts"
 export { PagePick } from "../../shared/browser.ts"
 export { CANCEL_PICK_SCRIPT, elementLabel, PICK_ELEMENT_SCRIPT } from "../../shared/browserPicker.ts"
 
-/** The part of a `<webview>` the browser view uses. */
+export const deviceElementLabel = (element: DeviceElement) => element.label || element.identifier || element.role
+
 export interface WebviewElement extends HTMLElement {
   loadURL(url: string): Promise<void>
   getURL(): string
@@ -21,12 +23,8 @@ export interface WebviewElement extends HTMLElement {
   getZoomFactor(): number
 }
 
-/**
- * Screenshots the picked element and adds it to the thread's draft as an image that carries the element. Aborting
- * `signal`, as a navigation does, stops it before it captures the next page or touches the draft.
- */
 export const attachPick = async (threadId: string, view: WebviewElement, pick: PagePick, signal: AbortSignal) => {
-  // The rect is in CSS pixels and capturePage takes device-independent ones, which differ once the page is zoomed.
+  // FIXME: capturePage takes device-independent pixels, but the rect is in zoomed CSS pixels
   const zoom = view.getZoomFactor()
   const { x, y, width, height } = pick.rect
   const rect =
@@ -50,3 +48,6 @@ export const attachPick = async (threadId: string, view: WebviewElement, pick: P
   useDrafts.getState().addAttachments(threadId, [attachment])
   return attachment
 }
+
+export const isInDeviceKeyboard = (target: EventTarget | null) =>
+  target instanceof Element && target.closest("[data-device-keyboard]") !== null

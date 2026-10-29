@@ -1,8 +1,6 @@
 import { Effect } from "effect"
 import { SqlClient } from "effect/sql"
 
-// Chats used to share the chats project's folder. Each now has a folder of its own that exists while it is not
-// archived, so the chats that never had one are archived, and unarchiving one makes its folder.
 export default Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
   yield* sql`

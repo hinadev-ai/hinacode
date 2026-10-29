@@ -1,7 +1,5 @@
-/** At most 1 MiB of UTF-16 text before a terminal screen has initialized. */
 export const MAX_BACKLOG_CHARS = 512 * 1024
 
-/** Output received before the terminal has a parser to accept it. */
 export class TerminalBacklog {
   readonly #chunks: Array<string> = []
   #length = 0

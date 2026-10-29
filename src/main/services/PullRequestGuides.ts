@@ -39,13 +39,8 @@ export class PullRequestGuides extends Context.Service<
   PullRequestGuides,
   {
     readonly get: (url: string) => Effect.Effect<PullRequestGuideState, PersistenceError | PullRequestUrlInvalidError>
-    /**
-     * Makes sure a guide for the pull request's head exists or is being written, and returns at once. Closed and
-     * merged pull requests get none, and neither do ones too large for GitHub to diff. A head whose last attempt failed is tried again only with `retry`.
-     */
     readonly ensure: (detail: PullRequestDetail, options?: { readonly retry?: boolean }) => Effect.Effect<void>
     readonly retry: (url: string) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError | Schema.SchemaError>
-    /** Ensures a guide for every open pull request linked to a thread that is not archived. */
     readonly sweep: Effect.Effect<void>
   }
 >()("hinacode/PullRequestGuides") {}

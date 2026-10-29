@@ -123,7 +123,6 @@ Then("the composer toolbar stays on one line", async ({ app }) => {
     .toEqual({ oneRow: true, inside: true, apart: true })
 })
 
-// A narrow composer folds the options into a menu, so reach Access whichever way it is shown.
 When("I choose {string} access in the composer", async ({ app }, mode: string) => {
   const page = app.page
   const access = page.getByRole("combobox", { name: "Access", exact: true })

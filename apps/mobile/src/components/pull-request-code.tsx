@@ -15,7 +15,7 @@ import {
   resolveGuide,
 } from "@shared/pullRequestGuide.ts"
 import { useEffect, useState } from "react"
-import { Platform, StyleSheet, Text, View } from "react-native"
+import { StyleSheet, Text, View } from "react-native"
 import { Icon, type IconName } from "@/components/icon"
 import { Markdown } from "@/components/markdown"
 import { PressableScale, Reveal, Rotate, Spinner } from "@/components/motion"
@@ -54,8 +54,9 @@ const fileMark = (theme: Palette): Record<PullRequestFileStatus, { letter: strin
   added: { letter: "A", color: theme.running },
   removed: { letter: "D", color: theme.danger },
   modified: { letter: "M", color: theme.attention },
-  renamed: { letter: "R", color: theme.link },
-  copied: { letter: "C", color: theme.link },
+  // As on the desktop: violet is kept for focus and the primary action.
+  renamed: { letter: "R", color: theme.attention },
+  copied: { letter: "C", color: theme.running },
 })
 
 const shortCommit = (head: string) => head.slice(0, 7)
@@ -259,18 +260,26 @@ function Patch({ patch, notes }: { patch: string; notes: readonly GuideLineNote[
     note: undefined,
     context: undefined,
   }
+  const sign: Record<PatchLine["kind"], { text: string; color: string }> = {
+    addition: { text: "+", color: theme.running },
+    deletion: { text: "−", color: theme.danger },
+    hunk: { text: "", color: theme.textMuted },
+    note: { text: "", color: theme.textMuted },
+    context: { text: "", color: theme.textMuted },
+  }
   return (
     <View style={[styles.patch, { borderColor: theme.border }]}>
       {shown.map((line, index) => {
         const code = line.kind !== "hunk" && line.kind !== "note"
-        const sign = line.kind === "addition" ? "+" : line.kind === "deletion" ? "−" : " "
         const onLine = notesOn(notes, line)
         return (
           <View key={index}>
             <View style={[styles.line, { backgroundColor: tint[line.kind] }]}>
               <Text style={[styles.gutter, { color: theme.textMuted }]}>{line.newLine ?? line.oldLine ?? ""}</Text>
+              {/* Its own column, so a wrapped line hangs under its code instead of under the sign. */}
+              <Text style={[styles.sign, { color: sign[line.kind].color }]}>{sign[line.kind].text}</Text>
               <Text selectable style={[styles.lineText, { color: code ? theme.text : theme.textMuted }]}>
-                {code ? `${sign} ${line.text.replace(/\t/g, "  ")}` : line.text}
+                {code ? line.text.replace(/\t/g, "  ") : line.text}
               </Text>
             </View>
             {onLine.length > 0 && (
@@ -541,14 +550,9 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     textAlign: "right",
   },
-  lineText: {
-    flex: 1,
-    fontFamily: mono,
-    fontSize: 12,
-    lineHeight: 18,
-    // Native text breaks a long token where it must; a browser lets it overflow unless told to.
-    ...(Platform.OS === "web" ? ({ wordBreak: "break-all" } as object) : {}),
-  },
+  sign: { width: 14, flexShrink: 0, fontFamily: mono, fontSize: 12, lineHeight: 18, textAlign: "center" },
+  // A browser keeps a flex item as wide as its longest token unless it may shrink, so a long one ran off screen.
+  lineText: { flex: 1, minWidth: 0, fontFamily: mono, fontSize: 12, lineHeight: 18 },
   lineNotes: { gap: 6, padding: 8 },
   noteCard: {
     flexDirection: "row",

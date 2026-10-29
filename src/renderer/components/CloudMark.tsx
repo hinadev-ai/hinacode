@@ -2,10 +2,6 @@ import { RiCloudLine, RiCloudOffLine } from "react-icons/ri"
 import { type Cloud, useCloudStateText } from "../lib/environments.ts"
 import { m } from "../paraglide/messages.js"
 
-/**
- * Marks a project or thread that lives on a cloud. The cloud is crossed out while it is not connected, and the label
- * names the machine and its state.
- */
 export function CloudMark({ cloud, id, className }: { cloud: Cloud; id?: string; className: string }) {
   const state = useCloudStateText(cloud)
   const label =

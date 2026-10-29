@@ -8,7 +8,7 @@ import type {
   PullRequestGuide,
 } from "./domain.ts"
 
-/** GitHub refuses to serve a pull request's diff past these sizes. */
+// FIXME: GitHub refuses to serve a pull request diff past these sizes
 export const DIFF_LIMITS = { lines: 20_000, files: 300 }
 
 export const diffTooLarge = ({ additions, deletions, changedFiles }: PullRequestDetail) =>
@@ -40,11 +40,6 @@ const hunkShowsLine = (patch: string, { side, line }: GuideLineNote) =>
     return line >= first && line < first + Number(count ?? 1)
   })
 
-/**
- * Matches a guide to the pull request's files as they are now. The guide may describe an older head, so a path
- * that left the diff is dropped, a path named twice stays in its first group, and a file no group names ends up
- * in `others`.
- */
 export const resolveGuide = (guide: PullRequestGuide, files: ReadonlyArray<PullRequestFile>) => {
   const byPath = new Map<string, PullRequestFile>()
   for (const file of files) {

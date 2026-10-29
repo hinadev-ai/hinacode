@@ -35,6 +35,7 @@ import * as Projects from "./services/Projects.ts"
 import * as PullRequestGuides from "./services/PullRequestGuides.ts"
 import * as PullRequestWatcher from "./services/PullRequestWatcher.ts"
 import * as RelayAccount from "./services/RelayAccount.ts"
+import * as Scratch from "./services/Scratch.ts"
 import * as Search from "./services/Search.ts"
 import * as Secrets from "./services/Secrets.ts"
 import * as Settings from "./services/Settings.ts"
@@ -46,21 +47,20 @@ import * as PasskeyRelay from "./services/tinyVm/passkey/PasskeyRelay.ts"
 import * as TinyVm from "./services/tinyVm/TinyVm.ts"
 import type { Updates } from "./services/Updates.ts"
 import * as Worktrees from "./services/Worktrees.ts"
+import { makeAndroidDriver } from "./services/devices/android.ts"
+import { devicesLayer } from "./services/devices/Devices.ts"
+import { makeIosDriver, simslimAvailable } from "./services/devices/ios.ts"
+import { simhelperSources } from "./services/devices/simhelperSources.ts"
 
-/** Where the app keeps its database, attachments and VM state, and what differs between the desktop and a cloud. */
 export interface AppOptions {
   readonly userData: string
-  /** Where `sbx login` keeps its login. */
   readonly sbxConfigPath: string
   readonly keyring: Layer.Layer<Secrets.Keyring>
   readonly updates: Layer.Layer<Updates, never, Events | Threads.Threads | Worktrees.Worktrees | Terminals.Terminals>
-  /** Sends a push to the desktop windows. A cloud has none. */
   readonly toWindows: (event: typeof PushEvent.Encoded) => void
-  /** Set for `hinacode serve`: forces the remote listener on at this address. */
   readonly serve?: ServeConfig
 }
 
-/** Scripted Claude turns for e2e and manual testing, chosen by `HINACODE_MOCK_CLAUDE`. */
 const simulatedClaude = (env: NodeJS.ProcessEnv) => {
   const mode = env["HINACODE_MOCK_CLAUDE"]
   if (mode === undefined) return undefined
@@ -73,27 +73,26 @@ const simulatedClaude = (env: NodeJS.ProcessEnv) => {
   return usageLimitLayer(scenario, resetMs)
 }
 
-/** Demo Linear tickets for screenshots and manual testing, chosen by `HINACODE_MOCK_LINEAR=1`. */
 const linearLayer = (env: NodeJS.ProcessEnv) => {
   if (env["HINACODE_MOCK_LINEAR"] === undefined) return Linear.layer.pipe(Layer.provide(Secrets.layer))
   if (!env["HINACODE_USER_DATA"]) throw new Error("Linear simulation requires HINACODE_USER_DATA")
   return Linear.mockLayer
 }
 
-/** Every main-process service, for the desktop app (`index.ts`) and for `hinacode serve` (`daemon.ts`). */
 export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWindows, serve }: AppOptions) => {
   const mockClaude = simulatedClaude(process.env)
   const chats = Layer.effectDiscard(Projects.Projects.use((projects) => projects.ensureChats(join(userData, "chats"))))
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
       Layer.provideMerge(chats),
+      Layer.provideMerge(Scratch.layer(join(userData, "scratch"))),
       Layer.provideMerge(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
       Layer.provideMerge(AgentAccounts.layer),
-      Layer.provideMerge(Settings.layer),
+      Layer.provideMerge(Settings.layer(userData)),
     ),
-    ClientSettings.layer,
+    ClientSettings.layer(userData),
     Messages.layer,
     Attachments.layer(join(userData, "attachments")),
     Search.layer,
@@ -115,6 +114,13 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     Layer.provideMerge(Environments.layer),
     Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)),
   )
+  const devices = devicesLayer({
+    drivers: {
+      ios: makeIosDriver({ cacheDir: join(userData, "devices"), sources: simhelperSources }),
+      android: makeAndroidDriver(),
+    },
+    simslimAvailable: () => simslimAvailable(),
+  })
   const features = Layer.mergeAll(
     Mcp.credentialsLayer,
     Ports.layer,
@@ -126,10 +132,10 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     tinyVm,
     passkeys,
     peers,
+    devices,
     linearLayer(process.env),
   ).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
-  // The MCP server's tools start turns and ask for secrets, so it sits above the runner.
   const services = Layer.mergeAll(
     Automations.layer,
     AutoArchive.layer,
@@ -137,11 +143,9 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     mockClaude === undefined ? PullRequestGuides.layer : PullRequestGuides.idleLayer,
     updates,
     Mcp.serverLayer,
-    AgentLogins.layer,
+    AgentLogins.layer(join(userData, "cache")),
     RelayAccount.layer({ serviceUrl: relayServiceUrl }).pipe(Layer.provide(Secrets.layer)),
   ).pipe(Layer.provideMerge(agents))
-  // The remote listener dispatches every rpc method, so it sits above everything the handlers use.
-  // A cloud's address is written below it, so the listener's first read of its settings already has it.
   return Layer.mergeAll(RemoteServer.layer, answerAsksLayer).pipe(
     Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),
     Layer.provideMerge(services),

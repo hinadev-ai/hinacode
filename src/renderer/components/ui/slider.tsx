@@ -9,7 +9,6 @@ function Slider<Value extends number | readonly number[]>({
   max = 100,
   ...props
 }: SliderPrimitive.Root.Props<Value>) {
-  // A single number is one thumb; the registry version assumed a range and drew two.
   const current = value ?? defaultValue
   const thumbs = Array.isArray(current) ? current.length : 1
 

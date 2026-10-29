@@ -9,7 +9,6 @@ export interface SeedThread {
   readonly worktree?: { readonly path: string; readonly baseRef: string; readonly status: WorktreeStatus }
 }
 
-/** Inserts a project, optionally a worktree, and a thread in it. Returns the ids. */
 export const seedThread = ({ rootPath, kind, worktree }: SeedThread) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient

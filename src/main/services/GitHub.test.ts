@@ -122,6 +122,7 @@ describe("toPullRequestDetail", () => {
     headRefName: "feat/pr-tab",
     headRefOid: "abc1234",
     changedFiles: 4,
+    comments: [],
     mergeable: "CONFLICTING",
     statusCheckRollup: [
       {
@@ -159,6 +160,7 @@ describe("toPullRequestDetail", () => {
       headRef: "feat/pr-tab",
       head: "abc1234",
       changedFiles: 4,
+      comments: [],
       checkRuns: [
         { name: "CI / test", status: "failing", url: "https://github.com/hinadev-ai/hinacode/actions/runs/1/job/2" },
         { name: "vercel", status: "pending", url: "https://vercel.com/hinadev-ai/hinacode/abc" },
@@ -200,7 +202,6 @@ interface GhReply {
   readonly exitCode?: number
 }
 
-/** A `gh` that answers each command with `reply`, and records the arguments of every run and every push. */
 const fakeGh = (reply: (args: ReadonlyArray<string>) => GhReply) => {
   const runs: Array<ReadonlyArray<string>> = []
   const pushed: Array<PushEvent> = []
@@ -385,7 +386,6 @@ describe("pullRequestFiles", () => {
 
 const PR_URL = "https://github.com/o/r/pull/7"
 
-/** A pull request as GitHub's GraphQL API answers it, trimmed from a real answer for hinadev-ai/hinacode#379. */
 const graphqlPullRequest = (title: string, state = "OPEN") => ({
   data: {
     repository: {
@@ -405,6 +405,76 @@ const graphqlPullRequest = (title: string, state = "OPEN") => ({
         deletions: 0,
         changedFiles: 1,
         body: "",
+        comments: {
+          nodes: [
+            {
+              id: "IC_2",
+              body: "Ready for another look.",
+              createdAt: "2026-10-02T00:00:00Z",
+              url: "https://github.com/o/r/pull/7#issuecomment-2",
+              viewerDidAuthor: true,
+              author: { __typename: "User", login: "octocat" },
+            },
+          ],
+        },
+        reviews: {
+          nodes: [
+            {
+              id: "PRR_1",
+              body: "Two things before this lands.",
+              createdAt: "2026-10-01T00:00:00Z",
+              url: "https://github.com/o/r/pull/7#pullrequestreview-1",
+              viewerDidAuthor: false,
+              author: { __typename: "Bot", login: "copilot-pull-request-reviewer" },
+            },
+            {
+              id: "PRR_3",
+              body: "",
+              createdAt: "2026-10-03T00:00:00Z",
+              url: "https://github.com/o/r/pull/7#pullrequestreview-3",
+              viewerDidAuthor: false,
+              author: { __typename: "User", login: "reviewer" },
+            },
+          ],
+        },
+        reviewThreads: {
+          nodes: [
+            {
+              isResolved: false,
+              comments: {
+                nodes: [
+                  {
+                    id: "PRRC_1",
+                    body: "This leaks the handle.",
+                    createdAt: "2026-10-01T00:00:01Z",
+                    url: "https://github.com/o/r/pull/7#discussion_r1",
+                    viewerDidAuthor: false,
+                    author: null,
+                    path: "src/a.ts",
+                    line: 12,
+                  },
+                ],
+              },
+            },
+            {
+              isResolved: true,
+              comments: {
+                nodes: [
+                  {
+                    id: "PRRC_2",
+                    body: "Typo.",
+                    createdAt: "2026-10-01T00:00:02Z",
+                    url: "https://github.com/o/r/pull/7#discussion_r2",
+                    viewerDidAuthor: false,
+                    author: { __typename: "User", login: "reviewer" },
+                    path: "src/b.ts",
+                    line: 3,
+                  },
+                ],
+              },
+            },
+          ],
+        },
         commits: {
           nodes: [
             {
@@ -449,13 +519,11 @@ const graphqlPullRequest = (title: string, state = "OPEN") => ({
 interface Budget {
   readonly remaining?: number
   readonly limit?: number
-  /** Epoch seconds. */
   readonly reset?: number
   readonly status?: string
   readonly retryAfter?: number
 }
 
-/** What `gh api --include` prints: the status line and headers, a blank line, then the body. */
 const apiReply = (
   body: unknown,
   { remaining = 4000, limit = 5000, reset = 3600, status = "200 OK", retryAfter }: Budget = {},
@@ -485,7 +553,6 @@ const secondaryLimitHit = (retryAfter?: number) =>
     { remaining: 3000, status: "403 Forbidden", retryAfter },
   )
 
-/** `gh api rate_limit` with the GraphQL budget used up until `reset`, in epoch seconds. */
 const graphqlUsedUp = (reset: number) =>
   JSON.stringify({ resources: { core: { remaining: 4000, reset }, graphql: { remaining: 0, reset } } })
 
@@ -509,6 +576,32 @@ describe("pull request reads", () => {
         { name: "Workers Builds: site", status: "pending", url: "https://dash.cloudflare.com/builds/3" },
         { name: "React Doctor", status: "passing", url: "https://github.com/o/r/actions/runs/4" },
       ])
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("reads conversation, review and unresolved inline comments, oldest first, with who wrote them", () => {
+    const gh = fakeGh(() => apiReply(graphqlPullRequest("Comments")))
+    return Effect.gen(function* () {
+      const { comments } = yield* (yield* GitHub).pullRequestDetail(PR_URL)
+      expect(
+        comments.map(({ id, author, authorKind, location }) => ({ id, author, authorKind, location })),
+      ).toStrictEqual([
+        { id: "PRR_1", author: "copilot-pull-request-reviewer", authorKind: "bot", location: null },
+        { id: "PRRC_1", author: "ghost", authorKind: "human", location: { path: "src/a.ts", line: 12 } },
+        { id: "IC_2", author: "octocat", authorKind: "you", location: null },
+      ])
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("a comment posted through HinaCode shows on the next read", () => {
+    const gh = fakeGh(() => apiReply(graphqlPullRequest("Commenting")))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* github.pullRequestDetail(PR_URL)
+      yield* github.comment(PR_URL, "--looks good")
+      expect(gh.runs.at(-1)).toStrictEqual(["pr", "comment", PR_URL, "--body", "--looks good"])
+      yield* github.pullRequestDetail(PR_URL)
+      expect(gh.runs.filter(isRead)).toHaveLength(2)
     }).pipe(Effect.provide(gh.layer))
   })
 

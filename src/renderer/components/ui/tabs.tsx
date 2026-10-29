@@ -4,7 +4,6 @@ import { cn } from "cn"
 import { startTransition, useOptimistic } from "react"
 
 type TabsProps = TabsPrimitive.Root.Props & {
-  /** Runs inside a transition. The selected tab moves at once while the new panel renders. */
   changeAction?: (value: TabsPrimitive.Tab.Value) => void | Promise<void>
 }
 
@@ -44,7 +43,6 @@ const tabsListVariants = cva(
   },
 )
 
-/** Slides between tabs, so switching shows where the selection went instead of blinking. */
 const tabsIndicatorVariants = cva(
   "absolute top-0 left-0 transition-[translate,width,height] duration-200 ease-out motion-reduce:transition-none",
   {
@@ -52,7 +50,6 @@ const tabsIndicatorVariants = cva(
       variant: {
         default:
           "-z-10 h-(--active-tab-height) w-(--active-tab-width) translate-x-(--active-tab-left) translate-y-(--active-tab-top) rounded-md bg-background shadow-sm dark:border dark:border-input dark:bg-input/30",
-        // The tab's 1px transparent border is part of the measured box; the underline spans only its inside.
         line: [
           "bg-foreground",
           "group-data-horizontal/tabs:h-0.5 group-data-horizontal/tabs:w-[calc(var(--active-tab-width)-2px)] group-data-horizontal/tabs:translate-x-[calc(var(--active-tab-left)+1px)] group-data-horizontal/tabs:translate-y-[calc(var(--active-tab-top)+var(--active-tab-height)+2px)]",

@@ -6,9 +6,7 @@ import type { AgentEvent, ApprovalDecision, ApprovalKind, SessionScope } from ".
 export interface ApprovalSession {
   readonly threadId: string
   readonly sessionGrants: Set<string>
-  /** Attachments live outside the cwd; reading them is what the user asked for, so it needs no approval. */
   readonly attachmentPaths: Set<string>
-  /** The running turn; tool calls outside a turn have nobody to ask and are denied. */
   readonly turn: object | null
 }
 
@@ -41,7 +39,6 @@ function sessionScope(tool: string, input: Record<string, unknown>): SessionScop
 
 const grantKey = (scope: SessionScope) => JSON.stringify([scope.tool, scope.kind, scope.value])
 
-/** Turns the SDK's `canUseTool` calls into approval events and waits for the user's answer. */
 export function makeApprovals<S extends ApprovalSession>(emit: (session: S, event: AgentEvent) => void) {
   const pending = new Map<string, PendingApproval>()
 

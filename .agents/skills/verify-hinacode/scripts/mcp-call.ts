@@ -1,8 +1,4 @@
 #!/usr/bin/env node
-// Usage: mcp-call.ts '<connection json>' [tool] ['<json args>']
-// Talks to hinacode's built-in MCP server as an agent would (streamable HTTP, JSON-RPC).
-// Without a tool it lists tools. The connection is `{"url","headers"}` from
-// `rpc.ts <port> mcp.connection '{"threadId":"..."}'`; its bearer credential decides the thread.
 const [connection, tool, args = "{}"] = process.argv.slice(2)
 if (!connection) {
   console.error("usage: mcp-call.ts '<connection json>' [tool] ['<json args>']")

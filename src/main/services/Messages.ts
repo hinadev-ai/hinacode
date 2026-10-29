@@ -6,7 +6,6 @@ import { failRunningParts } from "../../shared/foldEvent.ts"
 import { nowIso } from "./clock.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
 
-/** `parts`, `usage` and `forkPoint` are JSON text columns. */
 const MessageRow = Schema.Struct({
   ...Message.fields,
   parts: Schema.fromJsonString(Schema.Array(MessagePart)),
@@ -19,12 +18,7 @@ export class Messages extends Context.Service<
   {
     readonly list: (threadId: string) => Effect.Effect<ReadonlyArray<Message>, PersistenceError>
     readonly insert: (message: Message) => Effect.Effect<void, PersistenceError>
-    /** Writes the fields that change while a turn streams: parts, completedAt, usage and forkPoint. */
     readonly update: (message: Message) => Effect.Effect<void, PersistenceError>
-    /**
-     * Completes assistant messages a killed app left streaming and fails their running tool calls.
-     * Only safe at boot, before any turn runs.
-     */
     readonly closeInterrupted: Effect.Effect<void, PersistenceError>
   }
 >()("hinacode/Messages") {}
@@ -36,7 +30,6 @@ const make = Effect.gen(function* () {
   const findByThread = SqlSchema.findAll({
     Request: Schema.String,
     Result: MessageRow,
-    // A turn inserts its user and assistant messages in the same millisecond; rowid keeps them in order.
     execute: (threadId) => sql`SELECT * FROM message WHERE thread_id = ${threadId} ORDER BY created_at, rowid`,
   })
 

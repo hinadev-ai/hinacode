@@ -19,7 +19,6 @@ import { SkeletonList } from "./ui/skeleton.tsx"
 
 const NO_SUBAGENTS: ReadonlyArray<Subagent> = []
 
-/** The thread's sub-agents, newest first, loading them on first use. Updates live. */
 export function useThreadSubagents(threadId: string) {
   const loadAtom = loadSubagentsAtom(threadId)
   const load = useAtomValue(loadAtom)
@@ -38,7 +37,6 @@ export const subagentStatusLabel = {
   stopped: m.agents_status_stopped,
 } satisfies Record<SubagentStatus, () => string>
 
-// Running is a still dot: a batch of ten sub-agents would otherwise be ten spinners.
 const statusIcons = {
   running: <span aria-hidden className="size-1/2 rounded-full bg-working" />,
   completed: <RiCheckLine aria-hidden className="size-full text-muted-foreground" />,
@@ -46,7 +44,6 @@ const statusIcons = {
   stopped: <RiStopCircleLine aria-hidden className="size-full text-muted-foreground" />,
 } satisfies Record<SubagentStatus, ReactNode>
 
-/** `className` sizes the icon, `size-4` by default. */
 export function SubagentStatusIcon({ status, className }: { status: SubagentStatus; className?: string }) {
   return (
     <span
@@ -59,7 +56,6 @@ export function SubagentStatusIcon({ status, className }: { status: SubagentStat
   )
 }
 
-/** Re-renders every second while `ticking`, so running timers count up. */
 export function useNow(ticking: boolean) {
   const [now, setNow] = useState(Date.now)
   useEffect(() => {
@@ -73,7 +69,6 @@ export function useNow(ticking: boolean) {
 const formatUnit = (value: number, unit: "minute" | "second") =>
   new Intl.NumberFormat(getLocale(), { style: "unit", unit, unitDisplay: "narrow" }).format(value)
 
-/** "1m 20s", or "45s" under a minute. */
 export const formatElapsed = (ms: number) => {
   const seconds = Math.max(0, Math.floor(ms / 1000))
   const minutes = Math.floor(seconds / 60)
@@ -85,14 +80,12 @@ export const formatElapsed = (ms: number) => {
 export const formatTokens = (tokens: number) =>
   new Intl.NumberFormat(getLocale(), { notation: "compact" }).format(tokens)
 
-/** Summaries can be multi-line markdown; the row shows the first line and keeps the rest in the tooltip. */
 const firstLine = (text: string) =>
   text
     .split("\n")
     .find((line) => line.trim() !== "")
     ?.trim() ?? ""
 
-/** Sub-agents the thread's agent spawned, as the body of the Agents tab. */
 export function ThreadAgents({ thread }: { thread: Thread }) {
   const { load, reload, subagents } = useThreadSubagents(thread.id)
   const open = useOpenSubagent(thread.id)
@@ -144,7 +137,6 @@ export const subagentStats = (subagent: Subagent, now: number) =>
     .filter((stat) => stat !== null)
     .join(" · ")
 
-/** What a sub-agent is doing now, or what it reported when it ended. */
 export const subagentDetail = (subagent: Subagent) =>
   subagent.summary
     ? firstLine(subagent.summary)
@@ -152,7 +144,6 @@ export const subagentDetail = (subagent: Subagent) =>
       ? m.agents_last_tool({ tool: subagent.lastTool })
       : null
 
-/** Stops one running sub-agent. Its turn keeps going. */
 export function StopSubagentButton({
   threadId,
   subagent,
@@ -239,7 +230,6 @@ function SubagentRow({
         <div className="flex min-w-0 flex-1 gap-2.5 py-1.5">{body}</div>
       )}
       {subagent.status === "running" && (
-        // Shows on hover or focus, so a long list does not grow a column of stop buttons.
         <StopSubagentButton
           threadId={threadId}
           subagent={subagent}

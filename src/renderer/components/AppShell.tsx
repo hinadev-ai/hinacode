@@ -10,7 +10,6 @@ import { Sidebar } from "./Sidebar.tsx"
 import { ThreadSwitcher } from "./ThreadSwitcher.tsx"
 import { TitleBar } from "./TitleBar.tsx"
 
-/** The mouse's back and forward side buttons walk the router history, as they do in a browser. */
 function useMouseHistoryButtons() {
   const { history } = useRouter()
   useEffect(() => {

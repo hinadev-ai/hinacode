@@ -5,12 +5,10 @@ export const EXPIRED = "The sign-in link expired. Turn on the relay again."
 
 const CALL_TIMEOUT = Duration.seconds(30)
 
-/** A relay call that failed, worded so the developer knows what to do next. */
 export class RelayError extends Schema.TaggedError<RelayError>()("RelayError", { message: Schema.String }) {}
 
 export type Fetch = (input: URL, init: RequestInit) => Promise<Response>
 
-/** A sign-in the developer approves in a browser. */
 export interface RelayLink {
   readonly url: string
   readonly userCode: string
@@ -65,7 +63,6 @@ const succeeded = (action: string) => (answer: { status: number; body: unknown }
 
 const linkPath = (userCode: string) => `/v1/links/${encodeURIComponent(userCode)}`
 
-/** The relay service's HTTP API. `action` finishes the sentence "The relay service could not ...". */
 export const relayService = (fetch: Fetch, serviceUrl: string) => {
   const call = (action: string, method: string, path: string, options: { body?: unknown; credential?: string }) =>
     Effect.gen(function* () {
@@ -86,7 +83,6 @@ export const relayService = (fetch: Fetch, serviceUrl: string) => {
       const body: unknown = yield* Effect.promise(() => response.json().catch(() => null))
       return { status: response.status, body }
     }).pipe(
-      // Setup holds the relay's lock across a call, so a service that never answers must not hold it forever.
       Effect.timeoutOrElse({
         duration: CALL_TIMEOUT,
         orElse: () =>
@@ -98,7 +94,6 @@ export const relayService = (fetch: Fetch, serviceUrl: string) => {
       }),
     )
 
-  /** A call with the owner token, which answers 401 once the owner rotated it. */
   const asOwner = (action: string, method: string, path: string, ownerToken: string, body?: unknown) =>
     call(action, method, path, { credential: ownerToken, body }).pipe(
       Effect.flatMap((answer) => (answer.status === 401 ? Effect.fail(refusedOwnerToken()) : Effect.succeed(answer))),
@@ -109,7 +104,6 @@ export const relayService = (fetch: Fetch, serviceUrl: string) => {
       call("start linking", "POST", "/v1/links", { body: { environmentId, name } }).pipe(
         Effect.flatMap((answer) => decode("start linking", Link, answer)),
       ),
-    /** The credential once the owner approved, none while pending. */
     claim: (deviceCode: string) =>
       call("finish linking", "POST", "/v1/links/claim", { body: { deviceCode } }).pipe(
         Effect.flatMap((answer) => {
@@ -124,7 +118,6 @@ export const relayService = (fetch: Fetch, serviceUrl: string) => {
           answer.status === 401 ? Effect.fail(forgotten()) : decode("route the tunnel", Tunnel, answer),
         ),
       ),
-    /** Hands the owner's devices what they need to connect to this machine. */
     publishPairing: (credential: string, pairing: { hosts: ReadonlyArray<string>; port: number; token: string }) =>
       call("publish this machine's pairing", "PUT", "/v1/host/pairing", { body: pairing, credential }).pipe(
         Effect.flatMap((answer) => {
@@ -133,12 +126,10 @@ export const relayService = (fetch: Fetch, serviceUrl: string) => {
           return Effect.void
         }),
       ),
-    /** The machines the owner shows on their devices, with the pairing each one published. */
     machines: (ownerToken: string) =>
       asOwner("list your machines", "GET", "/v1/machines", ownerToken).pipe(
         Effect.flatMap((answer) => decode("list your machines", RelayMachineList, answer)),
       ),
-    /** Every machine linked to the relay, shown on the owner's devices or not. */
     hosts: (ownerToken: string) =>
       asOwner("list your machines", "GET", "/v1/hosts", ownerToken).pipe(
         Effect.flatMap((answer) => decode("list your machines", RelayHostList, answer)),
@@ -148,12 +139,10 @@ export const relayService = (fetch: Fetch, serviceUrl: string) => {
       asOwner("change the machine", "PATCH", `/v1/hosts/${encodeURIComponent(id)}`, ownerToken, { enabled }).pipe(
         Effect.flatMap(succeeded("change the machine")),
       ),
-    /** Deletes the machine's tunnel and hostname too. */
     removeHost: (ownerToken: string, id: string) =>
       asOwner("remove the machine", "DELETE", `/v1/hosts/${encodeURIComponent(id)}`, ownerToken).pipe(
         Effect.flatMap(succeeded("remove the machine")),
       ),
-    /** The machine waiting on `userCode`, so the owner sees what they approve. */
     pendingLink: (ownerToken: string, userCode: string) =>
       asOwner("find that link code", "GET", linkPath(userCode), ownerToken).pipe(
         Effect.flatMap((answer) => decode("find that link code", PendingLink, answer)),
@@ -162,7 +151,6 @@ export const relayService = (fetch: Fetch, serviceUrl: string) => {
       asOwner("approve the link", "POST", linkPath(userCode), ownerToken).pipe(
         Effect.flatMap(succeeded("approve the link")),
       ),
-    /** A 401 or 404 means the service already forgot this machine. */
     deleteHost: (credential: string) =>
       call("unlink this machine", "DELETE", "/v1/host", { credential }).pipe(
         Effect.flatMap((answer) =>

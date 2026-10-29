@@ -41,7 +41,7 @@ import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { type Draft, useDrafts } from "../stores/drafts.ts"
 import { useThreads } from "../stores/threads.ts"
-import { type ComposerPicker, useUi } from "../stores/ui.ts"
+import { type ComposerPicker, returnFocus, useUi } from "../stores/ui.ts"
 import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { switchAccount, useAccountHint, useAccountOptions } from "./AccountSwitch.tsx"
 import { Button } from "./ui/button.tsx"
@@ -85,7 +85,6 @@ const update = async (patch: RpcRequest<"threads.update">, onError: (message: st
   }
 }
 
-/** The agent's listed models, plus `keep`, such as a thread's saved model, when the agent no longer lists it. */
 function useAgentModels(environment: EnvironmentId, provider: ProviderId, keep: string | null) {
   const listed = AsyncResult.getOrElse(
     useAtomValue(modelsAtom(environment, provider)),
@@ -96,18 +95,12 @@ function useAgentModels(environment: EnvironmentId, provider: ProviderId, keep: 
     : [unlistedModel(keep, provider), ...listed]
 }
 
-/** The thread's model as its agent lists it, or undefined when the agent no longer lists it. */
 function useThreadModel(thread: Thread) {
   return useAgentModels(useThreadEnvironment(thread.id), thread.provider, null).find(
     (model) => model.id === thread.model,
   )
 }
 
-/**
- * Composer pickers sit at the bottom of the window, so their popups open upward and hang off the
- * trigger's left edge. Aligning the selected row with the trigger (the Select default) leaves only
- * the rows that fit between the trigger and the window edge, about three, floating over the composer.
- */
 const composerPopup = {
   side: "top",
   align: "start",
@@ -116,47 +109,36 @@ const composerPopup = {
   className: "max-h-[min(24rem,var(--available-height))] w-auto min-w-(--anchor-width)",
 } as const
 
-/**
- * Open state for a picker, which `picker`'s shortcut also opens. Opened by the shortcut, it hands focus back
- * to where it was, usually the message box, instead of to its trigger. Spread `root` on the Select and
- * `popup` on its content.
- */
 function usePickerOpen(picker: ComposerPicker | undefined) {
   const [open, setOpen] = useState(false)
-  const returnFocus = useRef<HTMLElement | null>(null)
+  const openedByShortcut = useRef(false)
   useEffect(
     () =>
       useUi.subscribe((state, previous) => {
         if (state.pickerRequest === previous.pickerRequest || state.pickerRequest?.picker !== picker) return
-        returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+        openedByShortcut.current = true
         setOpen(true)
       }),
     [picker],
   )
   const onOpenChange = (next: boolean) => {
-    if (next) returnFocus.current = null
+    if (next) openedByShortcut.current = false
     setOpen(next)
   }
   return {
     root: { open, onOpenChange },
-    popup: { finalFocus: () => returnFocus.current ?? true },
+    popup: { finalFocus: () => (openedByShortcut.current ? returnFocus() : true) },
   }
 }
 
 const sameModel = (a: ModelInfo, b: ModelInfo) => a.provider === b.provider && a.id === b.id
 
-/**
- * The thread's model, listed under its agent. Every agent is listed unless a turn runs, and picking another agent's
- * model switches the agent; a started thread continues on it with the conversation handed over.
- */
 export function ModelPicker({ thread, canSwitchAgent, onError }: ControlProps & { canSwitchAgent: boolean }) {
   const environment = useThreadEnvironment(thread.id)
   const selected = useThreadModel(thread) ?? unlistedModel(thread.model, thread.provider)
   const providers = canSwitchAgent ? ProviderId.literals : [thread.provider]
   const pickerOpen = usePickerOpen("model")
 
-  // Another agent starts from its own defaults. On the same agent, effort and fast mode the next model
-  // cannot honor go back to its defaults.
   const change = (next: ModelInfo | null) => {
     if (next === null || sameModel(next, selected)) return
     void update(
@@ -245,7 +227,6 @@ const effortLabels: Record<string, () => string> = {
 }
 export const effortLabel = (effort: string) => effortLabels[effort]?.() ?? effort
 
-/** Claude Code's ultrathink and ultracode are modes rather than levels, so they say what they do. */
 const effortHints: Record<string, () => string> = {
   ultrathink: m.effort_ultrathink_hint,
   ultracode: m.effort_ultracode_hint,
@@ -259,7 +240,6 @@ export const accessModes: Record<AccessMode, { readonly icon: IconType; readonly
   full: { icon: RiLockUnlockLine, label: m.access_full },
 }
 
-/** Muse Code's threads use the names its own permission picker shows, since each mode is one of its profiles. */
 const museAccessLabels: Record<AccessMode, () => string> = {
   supervised: m.access_supervised_muse,
   auto: m.access_auto_muse,
@@ -282,7 +262,6 @@ const autoHint = {
   muse: m.access_auto_hint_muse,
 } satisfies Record<ProviderId, (model: ModelInfo | undefined) => string>
 
-/** What each mode lets through, which differs by agent and, for Claude's auto mode, by model. */
 const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | undefined) => {
   switch (accessMode) {
     case "supervised":
@@ -301,20 +280,16 @@ interface ChoiceItem<V extends string> {
   readonly hint?: string
 }
 
-/** A thread setting picked from a list: a select on the toolbar, or a submenu of More options. */
 interface Choice<V extends string = string> {
   readonly name: string
-  /** Stands for the current value when its label does not fit. */
   readonly icon: IconType
   readonly value: V
   readonly items: ReadonlyArray<ChoiceItem<V>>
   readonly disabled: boolean
-  /** Full access runs every command unchecked, so it keeps the destructive color wherever it shows. */
   readonly destructive: boolean
   readonly onChange: (value: V) => void
 }
 
-/** A thread setting that is on or off: a pressed button on the toolbar, or a checkbox in More options. */
 interface Toggle {
   readonly label: string
   readonly hint: string
@@ -323,10 +298,8 @@ interface Toggle {
   readonly toggle: () => void
 }
 
-/** Muse Code has no way to leave out the user's own skills. */
 const hidesUserSkills = { claude: true, codex: true, muse: false } satisfies Record<ProviderId, boolean>
 
-/** The settings beside the model, each shown only when the agent, account or model supports it. */
 function useThreadOptions(thread: Thread, onError: (message: string) => void) {
   const current = useThreadModel(thread)
   const accounts = useAccountOptions(thread).options
@@ -345,7 +318,6 @@ function useThreadOptions(thread: Thread, onError: (message: string) => void) {
             label: option.name,
             hint: accountHint(option),
           })),
-          // The running turn is still writing the transcript the switch copies.
           disabled: thread.status === "running" || thread.status === "awaiting_approval",
           destructive: false,
           onChange: (value) =>
@@ -395,7 +367,6 @@ function useThreadOptions(thread: Thread, onError: (message: string) => void) {
       }
     : null
 
-  // Takes effect from the next turn, or at once on a live Claude turn.
   const access: Choice<AccessMode> = {
     name: m.access_picker(),
     icon: accessModes[thread.accessMode].icon,
@@ -414,10 +385,6 @@ function useThreadOptions(thread: Thread, onError: (message: string) => void) {
   return { account, effort, toggles: [fast, conversation].filter((toggle) => toggle !== null), access }
 }
 
-/**
- * Tries labels, then icons, and settles on the first whose row fits the slot, else on the More options menu.
- * Children restyle from the slot's `data-fit`, so each try costs a layout, not a render.
- */
 const fitOptions = (slot: HTMLElement, row: HTMLElement) => {
   for (const fit of ["labels", "icons"]) {
     slot.dataset.fit = fit
@@ -426,17 +393,11 @@ const fitOptions = (slot: HTMLElement, row: HTMLElement) => {
   slot.dataset.fit = "menu"
 }
 
-/**
- * Account, effort, fast mode, conversation mode and access, shown with labels, else as icons, else in a More
- * options menu, whichever fits beside the model picker. It is measured, not set at breakpoints, because the
- * width the labels need changes with the model, the chosen values and the language.
- */
 export function ThreadOptions({ thread, onError }: ControlProps) {
   const { account, effort, toggles, access } = useThreadOptions(thread, onError)
   const slotRef = useRef<HTMLDivElement>(null)
   const rowRef = useRef<HTMLDivElement>(null)
 
-  // After every render, because another value or model changes how wide the labels are.
   useLayoutEffect(() => {
     if (slotRef.current && rowRef.current) fitOptions(slotRef.current, rowRef.current)
   })
@@ -448,7 +409,7 @@ export function ThreadOptions({ thread, onError }: ControlProps) {
     const fit = () => fitOptions(slot, row)
     const observer = new ResizeObserver(fit)
     observer.observe(slot)
-    // A label also changes width when its font finishes loading, which resizes nothing else.
+    // FIXME: a web font that finishes loading widens the labels without resizing the observed slot
     document.fonts.addEventListener("loadingdone", fit)
     return () => {
       observer.disconnect()
@@ -456,8 +417,7 @@ export function ThreadOptions({ thread, onError }: ControlProps) {
     }
   }, [])
 
-  // A trigger whose popup is open stays shown when the fit changes: a hidden one would leave its modal popup
-  // open over nothing, blocking every click.
+  // FIXME: Base UI keeps a modal popup open when its trigger hides, blocking every click
   return (
     <div ref={slotRef} className="flex min-w-7 flex-1">
       <div
@@ -512,7 +472,6 @@ export function ThreadOptions({ thread, onError }: ControlProps) {
   )
 }
 
-/** In the icons fit the label and chevron go; screen readers still read the value. */
 const iconOnly =
   "in-data-[fit=icons]:w-7 in-data-[fit=icons]:justify-center in-data-[fit=icons]:px-0 in-data-[fit=icons]:*:data-[slot=select-icon]:hidden in-data-[fit=icons]:*:data-[slot=select-value]:sr-only"
 
@@ -629,10 +588,6 @@ type RefSuggestion =
 
 const SUGGESTIONS_PER_GROUP = 20
 
-/**
- * Open pull requests, then branches, filtered by the field's text. When the text is exactly one of the
- * suggestions, such as the default branch prefilled by ticking Worktree, every suggestion shows instead.
- */
 function useRefSuggestions(projectId: string, query: string) {
   const branches = AsyncResult.getOrElse(useAtomValue(branchesAtom(projectId)), (): ReadonlyArray<string> => [])
   const pullRequests = AsyncResult.getOrElse(
@@ -694,7 +649,6 @@ function RefSuggestionItem({ suggestion }: { suggestion: RefSuggestion }) {
   )
 }
 
-/** Free text for the workspace's ref, suggesting the repository's open pull requests and branches. */
 function RefInput({
   projectId,
   value,
@@ -713,7 +667,7 @@ function RefInput({
       filter={null}
       value={value}
       onValueChange={(next, details) => {
-        // Escape on a closed list would clear the field; it should only dismiss.
+        // FIXME: Base UI clears the field on Escape while the list is closed
         if (details.reason !== "escape-key") onChange(next)
       }}
       open={open && groups.length > 0}
@@ -728,7 +682,6 @@ function RefInput({
         autoComplete="off"
         onFocus={() => setOpen(true)}
         onKeyDown={(event) => {
-          // The field sits inside the composer's form, where Enter would send the message.
           if (event.key === "Enter") event.preventDefault()
         }}
         render={
@@ -760,10 +713,6 @@ function RefInput({
 const environmentIcon = (project: Project | undefined) =>
   environmentOf(project) === null ? RiMacbookLine : RiCloudLine
 
-/**
- * The machine the thread runs on, among those its project's group spans. Picking another moves the unstarted thread
- * there. Hidden when the repository is on one machine only.
- */
 export function EnvironmentPicker({ thread, onError }: ControlProps) {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => [])
   const clouds = useClouds()
@@ -797,10 +746,6 @@ export function EnvironmentPicker({ thread, onError }: ControlProps) {
   return <ChoiceSelect choice={choice} />
 }
 
-/**
- * Where the first turn runs: the project root, switched to a branch or pull request on send, or a new worktree
- * forked from a branch or checked out from a pull request.
- */
 export function WorkspacePicker({ thread, workspace, onError }: ControlProps & { workspace: Draft["workspace"] }) {
   const currentBranch = AsyncResult.getOrElse(useAtomValue(currentBranchAtom(thread.projectId)), () => "")
   const defaultBranch = AsyncResult.getOrElse(useAtomValue(defaultBranchAtom(thread.projectId)), () => "main")
