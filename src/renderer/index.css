@@ -549,13 +549,12 @@
    */
   &.prose {
     /*
-     * Body text one step under headings and bold, so the structure of a long reply reads at a glance. Any contrast
-     * setting closes the step: higher contrast reaches full ink, and lower contrast already moved --foreground toward
-     * muted text, which sits at 4.5:1, so fading it further would drop below that.
+     * Body text a shade under bold. Any contrast setting closes the gap: higher contrast reaches full ink, and lower
+     * contrast already moved --foreground toward muted text, so fading it further would drop below 4.5:1.
      */
     --tw-prose-body: color-mix(
       in oklab,
-      var(--foreground) calc(80% + (var(--contrast-higher) + var(--contrast-lower)) * 20%),
+      var(--foreground) calc(90% + (var(--contrast-higher) + var(--contrast-lower)) * 10%),
       transparent
     );
     --tw-prose-headings: var(--foreground);
