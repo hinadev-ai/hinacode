@@ -3,11 +3,13 @@ import { cn } from "cn"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { Suspense, useDeferredValue, useEffect, useRef, useState } from "react"
-import { RiRefreshLine } from "react-icons/ri"
+import { RiFileTextLine, RiRefreshLine } from "react-icons/ri"
 import type { ChangesScope, Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { threadChangesAtom } from "../lib/rpc.ts"
+import { useThreadRoot } from "../lib/threadRoot.ts"
 import { m } from "../paraglide/messages.js"
+import { useExplorer } from "../stores/explorer.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { FileDiffRow, fileStatusMark } from "./FilePatch.tsx"
 import { useUi } from "../stores/ui.ts"
@@ -107,14 +109,15 @@ function ChangesList({ thread, scope, stale, baseLabel }: ChangesListProps) {
         </Button>
       </div>
       <Suspense fallback={<p className="animate-reveal text-xs text-muted-foreground">{m.diff_loading()}</p>}>
-        <ChangedFiles key={scope} threadId={thread.id} scope={scope} />
+        <ChangedFiles key={scope} thread={thread} scope={scope} />
       </Suspense>
     </section>
   )
 }
 
-function ChangedFiles({ threadId, scope }: { threadId: string; scope: ChangesScope }) {
-  const changes = useAtomSuspense(threadChangesAtom(`${threadId}\n${scope}`), { includeFailure: true })
+function ChangedFiles({ thread, scope }: { thread: Thread; scope: ChangesScope }) {
+  const changes = useAtomSuspense(threadChangesAtom(`${thread.id}\n${scope}`), { includeFailure: true })
+  const root = useThreadRoot(thread)
   const openPath = useUi((state) => state.changesPath)
   const setOpenPath = useUi((state) => state.setChangesPath)
 
@@ -140,20 +143,59 @@ function ChangedFiles({ threadId, scope }: { threadId: string; scope: ChangesSco
     )
   }
   if (result.files.length === 0) return <p className="text-xs text-muted-foreground">{m.diff_empty()}</p>
+
+  let added = 0
+  let removed = 0
+  for (const diff of diffs.values()) {
+    added += diff.added
+    removed += diff.removed
+  }
+  const reveal = (path: string) => {
+    if (root === undefined) return
+    useExplorer.getState().reveal(root.path, path)
+    useUi.getState().showView(thread.id, "files")
+  }
+
   return (
-    <ul className="flex flex-col gap-0.5">
-      {result.files.map((file) => (
-        <FileDiffRow
-          key={file.path}
-          path={file.path}
-          mark={fileStatusMark[file.status]}
-          added={diffs.get(file.path)?.added ?? 0}
-          removed={diffs.get(file.path)?.removed ?? 0}
-          patch={diffs.get(file.path)?.patch}
-          open={openPath === file.path}
-          onToggle={() => setOpenPath(openPath === file.path ? null : file.path)}
-        />
-      ))}
-    </ul>
+    <>
+      <p className="text-xs text-muted-foreground">
+        {m.diff_summary({ count: result.files.length })}{" "}
+        <span className="font-mono tabular-nums" aria-label={m.diff_line_counts({ added, removed })}>
+          <span aria-hidden>
+            +{added} −{removed}
+          </span>
+        </span>
+      </p>
+      <ul className="flex flex-col gap-0.5">
+        {result.files.map((file) => (
+          <FileDiffRow
+            key={file.path}
+            path={file.path}
+            mark={fileStatusMark[file.status]}
+            added={diffs.get(file.path)?.added ?? 0}
+            removed={diffs.get(file.path)?.removed ?? 0}
+            patch={diffs.get(file.path)?.patch}
+            open={openPath === file.path}
+            onToggle={() => setOpenPath(openPath === file.path ? null : file.path)}
+            actions={
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={m.diff_open_file({ path: file.path })}
+                title={m.diff_open_file({ path: file.path })}
+                disabled={file.status === "deleted" || root === undefined}
+                onClick={() => reveal(file.path)}
+                className={cn(
+                  "group-hover/row:opacity-100 focus-visible:opacity-100 disabled:invisible",
+                  openPath !== file.path && "opacity-0",
+                )}
+              >
+                <RiFileTextLine aria-hidden />
+              </Button>
+            }
+          />
+        ))}
+      </ul>
+    </>
   )
 }

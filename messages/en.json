@@ -731,6 +731,17 @@
   "diff_file_missing": "No diff",
   "diff_large": "Large diff, {lines} changed lines. Hidden to keep the app responsive.",
   "diff_large_show": "Show diff",
+  "diff_summary": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} file changed",
+        "countPlural=other": "{count} files changed"
+      }
+    }
+  ],
+  "diff_open_file": "Open {path} in Files",
   "pr_check_skipped": "Skipped",
   "pr_merge_squash": "Squash and merge",
   "pr_merge_commit": "Create a merge commit",

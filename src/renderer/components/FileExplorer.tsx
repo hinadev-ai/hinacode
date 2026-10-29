@@ -15,9 +15,10 @@ import type { IconType } from "react-icons"
 import {
   RiArrowRightSLine,
   RiAtLine,
-  RiContractUpDownLine,
+  RiCollapseVerticalLine,
   RiFileCodeLine,
   RiFileCopyLine,
+  RiFileEditLine,
   RiFileLine,
   RiFileMusicLine,
   RiFileTextLine,
@@ -165,6 +166,8 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
   }, [selectedIndex])
 
   const selectedEntry = rows[selectedIndex]?.entry
+  const openedEntry =
+    tree.opened === null ? undefined : tree.children[parentOf(tree.opened)]?.find((entry) => entry.path === tree.opened)
   const hasDiff = (entry: FsEntry) => worktreeId !== null && entry.kind === "file" && entry.gitStatus !== null
 
   const mention = (entry: FsEntry) => {
@@ -286,7 +289,11 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground" title={root}>
           {rootName}
         </span>
-        <HeaderButton label={m.explorer_collapse_all()} onClick={() => collapseAll(root)} icon={RiContractUpDownLine} />
+        <HeaderButton
+          label={m.explorer_collapse_all()}
+          onClick={() => collapseAll(root)}
+          icon={RiCollapseVerticalLine}
+        />
         {canReveal && (
           <HeaderButton
             label={m.panel_reveal()}
@@ -343,7 +350,7 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
                 </DropdownMenuItem>
                 {hasDiff(selectedEntry) && (
                   <DropdownMenuItem onClick={() => showChanges(selectedEntry)}>
-                    <RiFileTextLine aria-hidden />
+                    <RiFileEditLine aria-hidden />
                     {m.explorer_show_changes()}
                   </DropdownMenuItem>
                 )}
@@ -365,7 +372,13 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
       {tree.opened !== null && (
         <>
           <SplitHandle height={treeHeight} onResize={setTreeHeight} container={containerRef} />
-          <FileViewer threadId={thread.id} root={root} path={tree.opened} onClose={closeFile} />
+          <FileViewer
+            threadId={thread.id}
+            root={root}
+            path={tree.opened}
+            onClose={closeFile}
+            onShowChanges={openedEntry && hasDiff(openedEntry) ? () => showChanges(openedEntry) : undefined}
+          />
         </>
       )}
       <p aria-live="polite" className="sr-only">

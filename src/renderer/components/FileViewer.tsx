@@ -14,7 +14,7 @@ import {
   useState,
   useTransition,
 } from "react"
-import { RiCloseLine, RiFileCopyLine } from "react-icons/ri"
+import { RiCloseLine, RiFileCopyLine, RiFileEditLine } from "react-icons/ri"
 import { toast } from "sonner"
 import { useTheme } from "../lib/appearance.ts"
 import { projectFileUrl } from "../../shared/channels.ts"
@@ -25,6 +25,7 @@ import { useClientSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { emptyDraft, type LineComment, useDrafts } from "../stores/drafts.ts"
 import { emptyTree, parentOf, useExplorer } from "../stores/explorer.ts"
+import { FilePath } from "./FilePatch.tsx"
 import { LineCommentCard, LineCommentForm } from "./LineComment.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { Button } from "./ui/button.tsx"
@@ -35,6 +36,8 @@ interface FileViewerProps {
   /** Relative to `root`. */
   readonly path: string
   readonly onClose: () => void
+  /** Set when the file has a diff to show. */
+  readonly onShowChanges?: () => void
 }
 
 const createEditor = <EType extends "file" | "file-diff", LAnnotation, Caret>(
@@ -47,7 +50,7 @@ const createEditor = <EType extends "file" | "file-diff", LAnnotation, Caret>(
  * One file: an editable, highlighted view whose lines take comments for the thread's next message, or a
  * preview for media and HTML.
  */
-export function FileViewer({ threadId, root, path, onClose }: FileViewerProps) {
+export function FileViewer({ threadId, root, path, onClose, onShowChanges }: FileViewerProps) {
   // Switching files keeps the last file on screen until the next one loads.
   const shownPath = useDeferredValue(path)
 
@@ -64,20 +67,27 @@ export function FileViewer({ threadId, root, path, onClose }: FileViewerProps) {
       <div
         className={cn("flex min-h-0 flex-1 flex-col transition-opacity", shownPath !== path && "opacity-60 delay-150")}
       >
-        <FileBody key={shownPath} threadId={threadId} root={root} path={shownPath} onClose={onClose} />
+        <FileBody
+          key={shownPath}
+          threadId={threadId}
+          root={root}
+          path={shownPath}
+          onClose={onClose}
+          onShowChanges={shownPath === path ? onShowChanges : undefined}
+        />
       </div>
     </section>
   )
 }
 
-function FileBody({ threadId, root, path, onClose }: FileViewerProps) {
+function FileBody({ threadId, root, path, onClose, onShowChanges }: FileViewerProps) {
   const preview = previewOf(path)
   const [showSource, setShowSource] = useState(false)
 
   if (preview !== null && !showSource) {
     return (
       <>
-        <ViewerHeader path={path} onClose={onClose}>
+        <ViewerHeader path={path} onClose={onClose} onShowChanges={onShowChanges}>
           {hasSource(preview) && (
             <Button variant="ghost" size="xs" onClick={() => setShowSource(true)}>
               {m.viewer_source()}
@@ -105,12 +115,19 @@ function FileBody({ threadId, root, path, onClose }: FileViewerProps) {
       <Suspense
         fallback={
           <>
-            <ViewerHeader path={path} onClose={onClose} />
+            <ViewerHeader path={path} onClose={onClose} onShowChanges={onShowChanges} />
             <Note text={m.viewer_loading()} className="animate-reveal" />
           </>
         }
       >
-        <FileContent threadId={threadId} root={root} path={path} onClose={onClose} headerActions={backToPreview} />
+        <FileContent
+          threadId={threadId}
+          root={root}
+          path={path}
+          onClose={onClose}
+          onShowChanges={onShowChanges}
+          headerActions={backToPreview}
+        />
       </Suspense>
     </EditProvider>
   )
@@ -198,13 +215,24 @@ function MarkdownPreview({ root, path }: { root: string; path: string }) {
   )
 }
 
-function ViewerHeader({ path, onClose, children }: { path: string; onClose: () => void; children?: ReactNode }) {
+interface ViewerHeaderProps {
+  readonly path: string
+  readonly onClose: () => void
+  readonly onShowChanges: (() => void) | undefined
+  readonly children?: ReactNode
+}
+
+function ViewerHeader({ path, onClose, onShowChanges, children }: ViewerHeaderProps) {
   return (
     <header className="flex h-8 shrink-0 items-center gap-1 border-b border-border pr-2 pl-3">
-      <span className="min-w-0 flex-1 truncate font-mono text-xs" title={path}>
-        {path}
-      </span>
+      <FilePath path={path} className="flex-1 text-xs" />
       {children}
+      {onShowChanges && (
+        <Button variant="ghost" size="xs" onClick={onShowChanges}>
+          <RiFileEditLine aria-hidden />
+          {m.explorer_show_changes()}
+        </Button>
+      )}
       <Button
         variant="ghost"
         size="icon-xs"
@@ -241,7 +269,14 @@ const linesOf = (text: string, startLine: number, endLine: number) =>
     .join("\n")
 
 /** Suspends until the file is read, then reloads it in place when its folder changes on disk. */
-function FileContent({ threadId, root, path, onClose, headerActions }: FileViewerProps & { headerActions: ReactNode }) {
+function FileContent({
+  threadId,
+  root,
+  path,
+  onClose,
+  onShowChanges,
+  headerActions,
+}: FileViewerProps & { headerActions: ReactNode }) {
   const contentAtom = fileContentAtom(JSON.stringify([root, path]))
   const content = useAtomSuspense(contentAtom, { includeFailure: true })
   const reload = useAtomRefresh(contentAtom)
@@ -266,7 +301,7 @@ function FileContent({ threadId, root, path, onClose, headerActions }: FileViewe
   if (AsyncResult.isFailure(content)) {
     return (
       <>
-        <ViewerHeader path={path} onClose={onClose}>
+        <ViewerHeader path={path} onClose={onClose} onShowChanges={onShowChanges}>
           {headerActions}
         </ViewerHeader>
         <p role="alert" className="p-3 text-xs text-destructive">
@@ -279,7 +314,7 @@ function FileContent({ threadId, root, path, onClose, headerActions }: FileViewe
   if (binary) {
     return (
       <>
-        <ViewerHeader path={path} onClose={onClose}>
+        <ViewerHeader path={path} onClose={onClose} onShowChanges={onShowChanges}>
           {headerActions}
         </ViewerHeader>
         <Note text={m.viewer_binary()} />
@@ -387,7 +422,7 @@ function FileContent({ threadId, root, path, onClose, headerActions }: FileViewe
   return (
     // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- mod+s bubbles up from the editor.
     <div onKeyDown={onKeyDown} className="flex min-h-0 flex-1 flex-col">
-      <ViewerHeader path={path} onClose={onClose}>
+      <ViewerHeader path={path} onClose={onClose} onShowChanges={onShowChanges}>
         {headerActions}
         {base !== undefined && (
           <>
