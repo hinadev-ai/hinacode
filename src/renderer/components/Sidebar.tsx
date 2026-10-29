@@ -98,10 +98,11 @@ export function Sidebar({
       aria-label={m.sidebar_label()}
       hidden={!compact && !sidebarOpen}
       style={compact ? undefined : { width: sidebarWidth }}
+      // The title bar spans the window, so `before:` carries the right border on up through it.
       className={
         compact
           ? "flex min-h-0 w-full flex-1 flex-col bg-sidebar text-sidebar-foreground"
-          : "relative flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar glass:bg-sidebar/80 text-sidebar-foreground"
+          : "relative flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar glass:bg-sidebar/80 text-sidebar-foreground before:absolute before:-right-px before:bottom-full before:h-titlebar before:w-px before:bg-sidebar-border"
       }
     >
       <div className="flex items-center gap-0.5 px-2 pt-2 pb-1">

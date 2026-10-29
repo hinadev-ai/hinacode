@@ -3,6 +3,7 @@ import { RiArrowLeftLine } from "react-icons/ri"
 import type { Message, Thread } from "../../shared/domain.ts"
 import { findSubagentWork, inputField, statusOfCall, subagentReport, useOpenSubagent } from "../lib/subagents.ts"
 import { m } from "../paraglide/messages.js"
+import { useMessages } from "../stores/messages.ts"
 import { useSubagentByCallId } from "../stores/subagents.ts"
 import { useUi } from "../stores/ui.ts"
 import { Markdown } from "./Markdown.tsx"
@@ -11,6 +12,18 @@ import { formatOutput } from "./MessagePart.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { StopSubagentButton, SubagentStatusIcon, subagentStats, useNow } from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
+
+/** The provider's name for a sub-agent, else the description Claude spawned it with. */
+export function useSubagentLabel(threadId: string, callId: string) {
+  const reported = useSubagentByCallId(threadId, callId)?.label
+  const described = useMessages((state) => {
+    const history = state.byThread[threadId]
+    return history?.status === "ready"
+      ? inputField(findSubagentWork(history.messages, callId).spawn, "description")
+      : undefined
+  })
+  return reported ?? described ?? m.agents_untitled()
+}
 
 /**
  * One sub-agent's prompt, tool calls and result, opened in place of the thread's transcript.
@@ -34,7 +47,7 @@ export function SubagentTranscript({
   const headingRef = useRef<HTMLHeadingElement>(null)
 
   const status = subagent?.status ?? (spawn && statusOfCall[spawn.status])
-  const label = subagent?.label ?? inputField(spawn, "description") ?? m.agents_untitled()
+  const label = useSubagentLabel(thread.id, callId)
   const prompt = inputField(spawn, "prompt")
   const result =
     spawn?.output !== undefined
