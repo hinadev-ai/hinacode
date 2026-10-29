@@ -44,6 +44,8 @@
     "@linear/sdk": "97.1.0",
     "@modelcontextprotocol/sdk": "1.32.1",
     "@muse-code/sdk": "1.4.13",
+    "@noble/ciphers": "2.4.0",
+    "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
     "anser": "2.3.5",
     "effect": "4.0.3",

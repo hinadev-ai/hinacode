@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { TRANSCRIPT_PAGE_BYTES } from "@shared/compactTranscript.ts"
-import { clientProof, serverProof } from "@shared/proof.ts"
+import { type Channel, clientProof, newKeyPair, openChannel, serverProof } from "@shared/handshake.ts"
 import {
   CHALLENGE_WAIT_MS,
   DIRECT_CHECK_INTERVAL_MS,
   DIRECT_CHECK_TIMEOUT_MS,
   type Dial,
   RELAY_DELAY_MS,
+  REMOTE_PROTOCOL_VERSION,
 } from "@shared/remote.ts"
 import {
   CLOSE_TOKEN_ROTATED,
@@ -23,19 +24,35 @@ import {
 
 const TOKEN = "secret"
 
-/** A socket and the server behind it, which holds `TOKEN`. */
+/** React Native hands a binary message over as an ArrayBuffer of its own. */
+const arrayBuffer = (bytes: Uint8Array) => {
+  const buffer = new ArrayBuffer(bytes.length)
+  new Uint8Array(buffer).set(bytes)
+  return buffer
+}
+
+/** A socket and the server behind it, which holds `TOKEN` and seals every frame after `auth` like `server.ts`. */
 class FakeSocket implements SocketLike {
   onopen: (() => void) | null = null
   onmessage: ((message: { data: unknown }) => void) | null = null
   onclose: ((event: { code: number }) => void) | null = null
+  /** Every frame the client sent, opened when it was sealed. */
   readonly sent: Record<string, unknown>[] = []
+  /** What the client put on the wire, before opening. */
+  readonly wire: (string | Uint8Array)[] = []
   closed = false
-  serverNonce: string | undefined
+  readonly keys = newKeyPair()
+  private channel: Channel | null = null
 
   constructor(readonly url: string) {}
 
-  send(data: string) {
-    this.sent.push(JSON.parse(data))
+  send(data: string | Uint8Array) {
+    this.wire.push(data)
+    if (typeof data !== "string") return void this.sent.push(JSON.parse(this.channel!.open(data)!))
+    const frame = JSON.parse(data)
+    if (frame.type === "auth" && frame.proof === clientProof(TOKEN, this.keys.publicKey, frame.nonce))
+      this.channel = openChannel("server", TOKEN, this.keys, frame.nonce)
+    this.sent.push(frame)
   }
   close() {
     this.closed = true
@@ -44,21 +61,29 @@ class FakeSocket implements SocketLike {
   open() {
     this.onopen?.()
   }
-  challenge(nonce = "server-nonce") {
-    this.serverNonce = nonce
-    this.receive({ type: "challenge", nonce })
+  challenge() {
+    this.plain({ type: "challenge", nonce: this.keys.publicKey })
   }
-  /** Proves `TOKEN` back when the client proved it, as a current server does; an older one omits the proof. */
-  ready(features: readonly string[] = ["heartbeat", "call-keys", "terminal-attach"], version = 1) {
-    const auth = this.sent.find((frame) => frame.type === "auth")
-    const proof =
-      typeof auth?.nonce === "string" && this.serverNonce !== undefined
-        ? { proof: serverProof(TOKEN, auth.nonce, this.serverNonce) }
-        : {}
-    this.receive({ type: "ready", version, features, ...proof })
+  /** The proof of `TOKEN` a server answers the client's `auth` with. */
+  proof() {
+    const auth = this.sent.find((frame) => frame.type === "auth")!
+    return serverProof(TOKEN, auth.nonce as string, this.keys.publicKey)
+  }
+  ready(
+    features: readonly string[] = ["heartbeat", "call-keys", "terminal-attach"],
+    version = REMOTE_PROTOCOL_VERSION,
+  ) {
+    this.receive({ type: "ready", version, features, proof: this.proof() })
   }
   receive(frame: unknown) {
+    this.onmessage?.({ data: arrayBuffer(this.channel!.seal(JSON.stringify(frame))) })
+  }
+  plain(frame: unknown) {
     this.onmessage?.({ data: JSON.stringify(frame) })
+  }
+  /** Seals a frame the client never gets, so the next one arrives out of order. */
+  skipFrame() {
+    this.channel!.seal("{}")
   }
   result(id: unknown, result: unknown = null) {
     this.receive({ type: "result", id, envelope: { result } })
@@ -78,9 +103,9 @@ const MUTATIONS = new Set(["threads.send", "approvals.respond"])
 
 let sockets: FakeSocket[]
 let statuses: TransportStatus[]
+let lastError: string | null
 let ready: number
 let keys: number
-let plan: readonly Dial[] = []
 
 const direct = (url: string): Dial => ({ url, route: "direct", delayMs: 0 })
 const relay = (url: string): Dial => ({ url, route: "relay", delayMs: RELAY_DELAY_MS })
@@ -88,14 +113,17 @@ const relay = (url: string): Dial => ({ url, route: "relay", delayMs: RELAY_DELA
 function setup(dials: readonly [Dial, ...Dial[]] = [direct("ws://desktop/remote")]) {
   sockets = []
   statuses = []
+  lastError = null
   ready = 0
   keys = 0
-  plan = dials
   const transport = new Transport({
     dials,
     token: TOKEN,
     isMutation: (method) => MUTATIONS.has(method),
-    onStatus: (status) => statuses.push(status),
+    onStatus: (status, error) => {
+      statuses.push(status)
+      lastError = error
+    },
     onReady: () => ready++,
     onEvent: () => {},
     createSocket: (url) => {
@@ -111,6 +139,8 @@ function setup(dials: readonly [Dial, ...Dial[]] = [direct("ws://desktop/remote"
 }
 
 const latest = () => sockets.at(-1)!
+
+const AUTH = { type: "auth", nonce: expect.any(String), proof: expect.any(String), sealed: true }
 
 function handshake(features?: readonly string[]) {
   latest().open()
@@ -130,16 +160,10 @@ function track<T>(promise: Promise<T>) {
 beforeEach(() => {
   vi.useFakeTimers()
   sockets = []
-  plan = []
 })
 afterEach(() => {
   vi.useRealTimers()
-  // Away from home a direct address may be a stranger's HinaCode, so only a pairing without a relay ever sends it
-  // the token.
-  if (!plan.some((dial) => dial.route === "relay")) return
-  const directUrls = new Set(plan.filter((dial) => dial.route === "direct").map((dial) => dial.url))
-  for (const socket of sockets.filter((socket) => directUrls.has(socket.url)))
-    expect(JSON.stringify(socket.sent)).not.toContain(TOKEN)
+  for (const socket of sockets) expect(JSON.stringify(socket.sent)).not.toContain(TOKEN)
 })
 
 describe("Transport", () => {
@@ -148,11 +172,10 @@ describe("Transport", () => {
     expect(statuses).toEqual(["connecting"])
     latest().open()
     expect(latest().sent).toEqual([])
-    latest().challenge("server-nonce")
+    latest().challenge()
     const [auth] = latest().sent
-    expect(auth).toEqual({ type: "auth", nonce: expect.any(String), proof: expect.any(String) })
-    expect(auth!.proof).toBe(clientProof(TOKEN, "server-nonce", auth!.nonce as string))
-    expect(JSON.stringify(latest().sent)).not.toContain(TOKEN)
+    expect(auth).toEqual(AUTH)
+    expect(auth!.proof).toBe(clientProof(TOKEN, latest().keys.publicKey, auth!.nonce as string))
     expect(statuses.at(-1)).toBe("connecting")
     latest().ready()
     expect(statuses.at(-1)).toBe("connected")
@@ -293,6 +316,7 @@ describe("Transport", () => {
     it("closes a socket that has not said ready within 10 s and retries", async () => {
       setup()
       latest().open()
+      latest().challenge()
       await vi.advanceTimersByTimeAsync(9_999)
       expect(latest().closed).toBe(false)
       await vi.advanceTimersByTimeAsync(1)
@@ -518,7 +542,7 @@ describe("Transport", () => {
       const read = track(transport.call("threads.list", undefined))
       latest().open()
       latest().challenge()
-      latest().ready([], 2)
+      latest().ready([], REMOTE_PROTOCOL_VERSION + 1)
       await vi.advanceTimersByTimeAsync(60_000)
       expect(statuses.at(-1)).toBe("unauthorized")
       expect(sockets).toHaveLength(1)
@@ -558,7 +582,7 @@ describe("Transport", () => {
       socketAt(RELAY).open()
       socketAt(TAILSCALE).open()
       socketAt(LAN).challenge()
-      expect(socketAt(LAN).sent).toEqual([{ type: "auth", nonce: expect.any(String), proof: expect.any(String) }])
+      expect(socketAt(LAN).sent).toEqual([AUTH])
       for (const url of [TAILSCALE, RELAY]) {
         expect(socketAt(url).closed).toBe(true)
         expect(socketAt(url).sent).toEqual([])
@@ -574,7 +598,7 @@ describe("Transport", () => {
       socketAt(RELAY).challenge()
       expect(socketAt(LAN).closed).toBe(true)
       expect(socketAt(LAN).sent).toEqual([])
-      expect(socketAt(RELAY).sent).toEqual([{ type: "auth", nonce: expect.any(String), proof: expect.any(String) }])
+      expect(socketAt(RELAY).sent).toEqual([AUTH])
     })
 
     it("waits for the relay when a direct address closes first", async () => {
@@ -680,7 +704,7 @@ describe("Transport", () => {
       expect(latest().url).toBe(LAN)
       latest().open()
       latest().challenge()
-      expect(latest().sent).toEqual([{ type: "auth", nonce: expect.any(String), proof: expect.any(String) }])
+      expect(latest().sent).toEqual([AUTH])
     })
 
     it("races the relay alone when a direct address refuses the token, until the network changes", async () => {
@@ -753,8 +777,11 @@ describe("Transport", () => {
     const urls = () => sockets.map((socket) => socket.url)
 
     it.each([
-      ["a wrong proof", (socket: FakeSocket) => socket.receive({ type: "ready", version: 1, proof: "00" })],
-      ["no proof", (socket: FakeSocket) => socket.receive({ type: "ready", version: 1 })],
+      [
+        "a wrong proof",
+        (socket: FakeSocket) => socket.receive({ type: "ready", version: REMOTE_PROTOCOL_VERSION, proof: "00" }),
+      ],
+      ["no proof", (socket: FakeSocket) => socket.receive({ type: "ready", version: REMOTE_PROTOCOL_VERSION })],
     ])("races the relay alone when a direct ready carries %s", (_, answer) => {
       const transport = setup([direct(LAN), relay(RELAY)])
       const read = track(transport.call("threads.list", undefined))
@@ -775,7 +802,7 @@ describe("Transport", () => {
     it("races the relay alone when a direct address says ready without a challenge", () => {
       setup([direct(LAN), relay(RELAY)])
       socketAt(LAN).open()
-      socketAt(LAN).ready()
+      socketAt(LAN).plain({ type: "ready", version: REMOTE_PROTOCOL_VERSION })
       expect(socketAt(LAN).closed).toBe(true)
       expect(urls()).toEqual([LAN, RELAY])
       expect(statuses).not.toContain("connected")
@@ -786,7 +813,7 @@ describe("Transport", () => {
       vi.advanceTimersByTime(RELAY_DELAY_MS)
       socketAt(RELAY).open()
       socketAt(RELAY).challenge()
-      socketAt(RELAY).receive({ type: "ready", version: 1, proof: "00" })
+      socketAt(RELAY).receive({ type: "ready", version: REMOTE_PROTOCOL_VERSION, proof: "00" })
       expect(socketAt(RELAY).closed).toBe(true)
       expect(statuses.at(-1)).toBe("unauthorized")
     })
@@ -807,27 +834,78 @@ describe("Transport", () => {
       expect(statuses.at(-1)).toBe("connected")
     })
 
-    it("sends the token to a relay that does not challenge", async () => {
+    it("refuses a relay that does not challenge, without sending the token", async () => {
       setup([direct(LAN), relay(RELAY)])
       await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
       socketAt(RELAY).open()
-      await vi.advanceTimersByTimeAsync(CHALLENGE_WAIT_MS - 1)
+      await vi.advanceTimersByTimeAsync(CHALLENGE_WAIT_MS)
       expect(socketAt(RELAY).sent).toEqual([])
-      await vi.advanceTimersByTimeAsync(1)
-      expect(socketAt(RELAY).sent).toEqual([{ type: "auth", token: TOKEN }])
-      socketAt(RELAY).ready()
-      expect(statuses.at(-1)).toBe("connected")
+      expect(socketAt(RELAY).closed).toBe(true)
+      expect(statuses.at(-1)).toBe("unauthorized")
     })
 
-    it("sends the token to a direct address that does not challenge when the pairing has no relay", async () => {
+    it("refuses a direct address that does not challenge when the pairing has no relay", async () => {
       setup([direct(LAN)])
       latest().open()
-      await vi.advanceTimersByTimeAsync(CHALLENGE_WAIT_MS - 1)
+      await vi.advanceTimersByTimeAsync(CHALLENGE_WAIT_MS)
       expect(latest().sent).toEqual([])
-      await vi.advanceTimersByTimeAsync(1)
-      expect(latest().sent).toEqual([{ type: "auth", token: TOKEN }])
-      latest().ready()
-      expect(statuses.at(-1)).toBe("connected")
+      expect(latest().closed).toBe(true)
+      expect(statuses.at(-1)).toBe("unauthorized")
+    })
+  })
+
+  describe("sealing", () => {
+    it("tells the user to update when an older desktop proves the token in plain text", async () => {
+      setup()
+      latest().open()
+      latest().challenge()
+      latest().plain({ type: "ready", version: 1, proof: latest().proof() })
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(statuses.at(-1)).toBe("unauthorized")
+      expect(lastError).toContain("speaks remote protocol 1")
+      expect(sockets).toHaveLength(1)
+    })
+
+    it("refuses a plain-text ready on this protocol, which means someone stripped the encryption", async () => {
+      const transport = setup()
+      const read = track(transport.call("threads.list", undefined))
+      latest().open()
+      latest().challenge()
+      latest().plain({ type: "ready", version: REMOTE_PROTOCOL_VERSION, features: [], proof: latest().proof() })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(statuses).not.toContain("connected")
+      expect(statuses.at(-1)).toBe("unauthorized")
+      expect(latest().calls()).toEqual([])
+      expect(read.error).toMatchObject({ tag: "Unauthorized" })
+    })
+
+    it("redials when a frame after ready does not open, instead of refusing the token", async () => {
+      const transport = setup()
+      handshake()
+      const read = track(transport.call("threads.list", undefined))
+      latest().skipFrame()
+      latest().result(1, [])
+      expect(latest().closed).toBe(true)
+      expect(statuses.at(-1)).toBe("offline")
+      await vi.advanceTimersByTimeAsync(500)
+      expect(sockets).toHaveLength(2)
+
+      handshake()
+      latest().result(1, [])
+      await vi.advanceTimersByTimeAsync(0)
+      expect(read.value).toEqual({ result: [] })
+      expect(statuses).not.toContain("unauthorized")
+    })
+
+    it("sends only the auth in plain text and seals every frame after it", async () => {
+      const transport = setup()
+      handshake()
+      void transport.call("threads.list", undefined)
+      await vi.advanceTimersByTimeAsync(10_000)
+      const [auth, ...rest] = latest().wire
+      expect(typeof auth).toBe("string")
+      expect(rest.length).toBeGreaterThanOrEqual(2)
+      for (const data of rest) expect(data).toBeInstanceOf(Uint8Array)
     })
   })
 

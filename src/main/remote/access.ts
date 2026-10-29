@@ -4,7 +4,7 @@ import { Array as Arr, Context, Effect, Layer, Option, PubSub, Stream } from "ef
 import type { NonEmptyReadonlyArray } from "effect/Array"
 import { SqlClient } from "effect/sql"
 import type { NetworkAddress, RelayStatus, RemotePairing, RemoteStatus } from "../../shared/domain.ts"
-import { clientProof, serverProof } from "../../shared/proof.ts"
+import { type Channel, clientProof, type KeyPair, openChannel, serverProof } from "../../shared/handshake.ts"
 import { type PersistenceError, persistence } from "../services/errors.ts"
 import { Secrets } from "../services/Secrets.ts"
 import { Settings } from "../services/Settings.ts"
@@ -25,6 +25,8 @@ export const CLOSE_LISTENER_STOPPED = 4003
 export const CLOSE_AUTH_TIMEOUT = 4004
 export const CLOSE_MALFORMED_FRAME = 4005
 export const CLOSE_SLOW_CONSUMER = 4006
+/** The client predates sealed frames. It got this server's version first, so it can say which side to update. */
+export const CLOSE_OUTDATED_CLIENT = 4007
 
 const isTailscale = (address: string) => address.startsWith("100.")
 
@@ -71,13 +73,13 @@ export class RemoteAccess extends Context.Service<
     readonly status: Effect.Effect<RemoteStatus>
     readonly pairing: Effect.Effect<RemotePairing, PersistenceError>
     readonly rotateToken: Effect.Effect<RemotePairing, PersistenceError>
-    /** Constant-time comparison against the current token, for clients that predate the challenge. */
-    readonly authenticate: (token: string) => boolean
     /**
      * Checks a client's `clientProof` for this socket's nonces against the current token in constant time, and
      * answers the `serverProof` its `ready` carries, or null when the proof is wrong.
      */
     readonly answerChallenge: (serverNonce: string, clientNonce: string, proof: string) => string | null
+    /** This socket's encryption under the current token, or null when `clientNonce` is not a usable key. */
+    readonly openChannel: (server: KeyPair, clientNonce: string) => Channel | null
     /** Counts rotations, so a socket can tell whether the token it authenticated with is still current. */
     readonly generation: () => number
     /** Fires after each rotation, so the listener can drop every socket. */
@@ -131,11 +133,11 @@ const make = Effect.gen(function* () {
     status: Effect.sync(() => report),
     pairing: Effect.suspend(() => (token === null ? rotateToken : pairingFor(token))),
     rotateToken,
-    authenticate: (candidate) => token !== null && sameSecret(token, candidate),
     answerChallenge: (serverNonce, clientNonce, proof) =>
       token !== null && sameSecret(clientProof(token, serverNonce, clientNonce), proof)
         ? serverProof(token, clientNonce, serverNonce)
         : null,
+    openChannel: (server, clientNonce) => (token === null ? null : openChannel("server", token, server, clientNonce)),
     generation: () => generation,
     rotations: Stream.fromPubSub(rotated),
     report: (patch) => Effect.sync(() => void (report = { ...report, ...patch })),

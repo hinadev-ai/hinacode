@@ -8,7 +8,7 @@ import {
   type RpcEnvelope,
   type RpcMethod,
 } from "../../shared/contract.ts"
-import { newNonce } from "../../shared/proof.ts"
+import { type Channel, newKeyPair } from "../../shared/handshake.ts"
 import type { Settings as SettingsValue } from "../../shared/domain.ts"
 import {
   ClientFrame,
@@ -25,6 +25,7 @@ import {
   CLOSE_AUTH_TIMEOUT,
   CLOSE_LISTENER_STOPPED,
   CLOSE_MALFORMED_FRAME,
+  CLOSE_OUTDATED_CLIENT,
   CLOSE_SLOW_CONSUMER,
   CLOSE_TOKEN_ROTATED,
   CLOSE_UNAUTHORIZED,
@@ -44,9 +45,9 @@ const FEATURES: ReadonlyArray<RemoteFeature> = ["heartbeat", "call-keys", "termi
 
 const decodeClientFrame = Schema.decodeUnknownOption(ClientFrame)
 
-const parseFrame = (raw: unknown): ClientFrame | undefined => {
+const parseFrame = (text: string): ClientFrame | undefined => {
   try {
-    return Option.getOrUndefined(decodeClientFrame(JSON.parse(String(raw))))
+    return Option.getOrUndefined(decodeClientFrame(JSON.parse(text)))
   } catch {
     return undefined
   }
@@ -56,10 +57,10 @@ const desktopOnly = (method: string): RpcEnvelope<never> => ({
   error: { tag: "DesktopOnly", message: `${method} is only available in the desktop window` },
 })
 
-const send = (socket: WebSocket, frame: typeof ServerFrame.Encoded) => {
+const send = (socket: WebSocket, channel: Channel, frame: typeof ServerFrame.Encoded) => {
   if (socket.readyState !== WebSocket.OPEN) return
   if (socket.bufferedAmount > SLOW_CONSUMER_BYTES) return socket.close(CLOSE_SLOW_CONSUMER, "slow consumer")
-  socket.send(JSON.stringify(frame))
+  socket.send(channel.seal(JSON.stringify(frame)))
 }
 
 const busy: RpcEnvelope<never> = {
@@ -92,8 +93,7 @@ const make = Effect.gen(function* () {
   const sockets = new Map<WebSocket, { awaitingPong: boolean }>()
   const countConnected = () => runFork(access.report({ connected: sockets.size }))
 
-  /** `proof` answers a client that proved its token; one that sent the token itself gets none. */
-  const attach = (socket: WebSocket, proof: string | undefined) => {
+  const attach = (socket: WebSocket, channel: Channel, proof: string) => {
     const peer = { awaitingPong: false }
     sockets.set(socket, peer)
     socket.on("pong", () => {
@@ -104,7 +104,7 @@ const make = Effect.gen(function* () {
       Effect.scoped(
         broadcast
           .subscribe((event) => {
-            if (!desktopOnlyPushes.has(event.type)) send(socket, { type: "event", event })
+            if (!desktopOnlyPushes.has(event.type)) send(socket, channel, { type: "event", event })
           })
           .pipe(Effect.andThen(Effect.never)),
       ),
@@ -115,13 +115,13 @@ const make = Effect.gen(function* () {
       runFork(Fiber.interrupt(subscription))
     })
     const relay = relayHostname(Effect.runSyncWith(services)(access.status).relay)
-    send(socket, {
+    send(socket, channel, {
       type: "ready",
       version: REMOTE_PROTOCOL_VERSION,
       environment: access.identity,
       features: FEATURES,
       ...(relay !== null && { relay }),
-      ...(proof !== undefined && { proof }),
+      proof,
     })
   }
 
@@ -164,15 +164,19 @@ const make = Effect.gen(function* () {
     return result
   }
 
-  const handleCall = (socket: WebSocket, { id, method, payload, key }: Extract<ClientFrame, { type: "call" }>) => {
+  const handleCall = (
+    socket: WebSocket,
+    channel: Channel,
+    { id, method, payload, key }: Extract<ClientFrame, { type: "call" }>,
+  ) => {
     const result = key !== undefined && mutations.has(method) ? runOnce(key, method, payload) : run(method, payload)
-    void result.then((envelope) => send(socket, { type: "result", id, envelope }))
+    void result.then((envelope) => send(socket, channel, { type: "result", id, envelope }))
   }
 
   const accept = (socket: WebSocket) => {
-    const challenge = newNonce()
-    // The token's generation once the socket authenticated, so a rotation closes it without keeping what it sent.
-    let generation: number | null = null
+    const keys = newKeyPair()
+    // Set once the socket authenticated: the token's generation, so a rotation closes it, and the socket's encryption.
+    let session: { readonly generation: number; readonly channel: Channel } | null = null
     let hub: Hub | null = null
     const deadline = runFork(
       Effect.sleep(AUTH_TIMEOUT).pipe(
@@ -184,35 +188,48 @@ const make = Effect.gen(function* () {
       hub?.leave()
     })
     socket.on("error", () => {})
+
+    const authenticate = (frame: ClientFrame | undefined) => {
+      if (frame === undefined) return socket.close(CLOSE_MALFORMED_FRAME, "malformed frame")
+      if (frame.type !== "auth") return socket.close(CLOSE_MALFORMED_FRAME, "expected auth")
+      const proof = access.answerChallenge(keys.publicKey, frame.nonce, frame.proof)
+      if (proof === null) return socket.close(CLOSE_UNAUTHORIZED, "unauthorized")
+      runFork(Fiber.interrupt(deadline))
+      // A client that predates sealing hears this server's version, so it asks to be updated, and nothing else.
+      if (frame.sealed !== true) {
+        socket.send(
+          JSON.stringify({
+            type: "ready",
+            version: REMOTE_PROTOCOL_VERSION,
+            proof,
+          } satisfies typeof ServerFrame.Encoded),
+        )
+        return socket.close(CLOSE_OUTDATED_CLIENT, "outdated client")
+      }
+      const channel = access.openChannel(keys, frame.nonce)
+      if (channel === null) return socket.close(CLOSE_MALFORMED_FRAME, "malformed nonce")
+      session = { generation: access.generation(), channel }
+      attach(socket, channel, proof)
+    }
+
     socket.on("message", (raw, isBinary) => {
       // Frames can still arrive while the close handshake runs; a closing socket must not authenticate or dispatch.
       if (socket.readyState !== WebSocket.OPEN) return
-      const frame = isBinary ? undefined : parseFrame(raw)
+      if (session === null) return authenticate(isBinary ? undefined : parseFrame(String(raw)))
+      const { channel, generation } = session
+      const text = isBinary ? channel.open(raw as Buffer) : null
+      const frame = text === null ? undefined : parseFrame(text)
       if (frame === undefined) return socket.close(CLOSE_MALFORMED_FRAME, "malformed frame")
-      if (generation === null) {
-        if (frame.type !== "auth") return socket.close(CLOSE_MALFORMED_FRAME, "expected auth")
-        // Undefined for a client that sent the token itself, which predates the challenge and expects no proof.
-        const proof =
-          "proof" in frame
-            ? access.answerChallenge(challenge, frame.nonce, frame.proof)
-            : access.authenticate(frame.token)
-              ? undefined
-              : null
-        if (proof === null) return socket.close(CLOSE_UNAUTHORIZED, "unauthorized")
-        generation = access.generation()
-        runFork(Fiber.interrupt(deadline))
-        return attach(socket, proof)
-      }
       if (access.generation() !== generation) return socket.close(CLOSE_TOKEN_ROTATED, "token rotated")
-      if (frame.type === "ping") return send(socket, { type: "pong", at: frame.at })
-      if (frame.type === "call") return handleCall(socket, frame)
-      if (frame.type === "hub") hub ??= peers.join((ask) => send(socket, ask))
+      if (frame.type === "ping") return send(socket, channel, { type: "pong", at: frame.at })
+      if (frame.type === "call") return handleCall(socket, channel, frame)
+      if (frame.type === "hub") hub ??= peers.join((ask) => send(socket, channel, ask))
       if (frame.type === "answer") {
         const { envelope } = frame
         hub?.answer(frame.id, "error" in envelope ? envelope : { result: envelope.result })
       }
     })
-    send(socket, { type: "challenge", nonce: challenge })
+    socket.send(JSON.stringify({ type: "challenge", nonce: keys.publicKey } satisfies typeof ServerFrame.Encoded))
   }
 
   const closeAll = (code: number, reason: string) => {
@@ -238,7 +255,6 @@ const make = Effect.gen(function* () {
           server,
           path: REMOTE_PATH,
           maxPayload: MAX_PAYLOAD_BYTES,
-          perMessageDeflate: true,
         })
         wss.on("connection", accept)
         // ws re-emits the http server's errors on wss, and an unhandled emit throws before any server listener runs.
