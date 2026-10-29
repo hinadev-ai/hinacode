@@ -44,8 +44,9 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
   const regionRef = useRef<HTMLDivElement>(null)
   const dockRef = useRef<HTMLDivElement>(null)
   useDockHeight(regionRef, dockRef)
-  // A new thread's composer waits in the middle of the view, and slides to the bottom with the first message. It
-  // only animates on the way down: opening an empty thread puts it in the middle at once.
+  // A new thread's composer waits in the middle of the view, and slides to the bottom with the first message.
+  // Until the messages load its place is unknown, so it stays hidden and still, and appears where it belongs.
+  const loaded = useMessages((state) => state.byThread[thread.id]?.status === "ready")
   const centered = useMessages((state) => {
     const history = state.byThread[thread.id]
     return agent === undefined && history?.status === "ready" && history.messages.length === 0
@@ -68,7 +69,8 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
         <div
           ref={dockRef}
           data-centered={centered}
-          className="absolute inset-x-0 bottom-0 flex max-h-full flex-col data-[centered=false]:transition-transform data-[centered=false]:duration-500 data-[centered=false]:ease-(--ease-drawer) data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] motion-reduce:transition-none"
+          data-loaded={loaded}
+          className="absolute inset-x-0 bottom-0 flex max-h-full flex-col data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] data-[loaded=false]:opacity-0 data-[loaded=true]:data-[centered=false]:transition-transform data-[loaded=true]:data-[centered=false]:duration-500 data-[loaded=true]:data-[centered=false]:ease-(--ease-drawer) motion-reduce:transition-none"
         >
           <Composer thread={thread}>
             <PendingRequests thread={thread} />
