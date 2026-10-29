@@ -8,196 +8,79 @@
         "role": "primary",
         "displayName": "Canary Order Pad",
         "canonical": "#ffd43b",
-        "tonalRamp": [
-          "#40350c",
-          "#7b630e",
-          "#bd960a",
-          "#fec806",
-          "#f4cf4d",
-          "#f1db8e",
-          "#f3e9c3",
-          "#faf7eb"
-        ]
+        "tonalRamp": ["#40350c", "#7b630e", "#bd960a", "#fec806", "#f4cf4d", "#f1db8e", "#f3e9c3", "#faf7eb"]
       },
       "ink": {
         "role": "neutral",
         "displayName": "Carbon Ink",
         "canonical": "#1b1d26",
-        "tonalRamp": [
-          "#22232b",
-          "#3c3f4e",
-          "#545a73",
-          "#6d7597",
-          "#9398af",
-          "#b7bac8",
-          "#d7d9df",
-          "#f1f1f4"
-        ]
+        "tonalRamp": ["#22232b", "#3c3f4e", "#545a73", "#6d7597", "#9398af", "#b7bac8", "#d7d9df", "#f1f1f4"]
       },
       "ink-2": {
         "role": "neutral",
         "displayName": "Faded Ink",
         "canonical": "#474a54",
-        "tonalRamp": [
-          "#242528",
-          "#404249",
-          "#5c5f6b",
-          "#787c8c",
-          "#9a9da8",
-          "#bbbdc3",
-          "#d9dadd",
-          "#f2f2f3"
-        ]
+        "tonalRamp": ["#242528", "#404249", "#5c5f6b", "#787c8c", "#9a9da8", "#bbbdc3", "#d9dadd", "#f2f2f3"]
       },
       "ink-3": {
         "role": "neutral",
         "displayName": "Pale Ink",
         "canonical": "#5f626c",
-        "tonalRamp": [
-          "#252528",
-          "#414348",
-          "#5e6069",
-          "#7a7e8a",
-          "#9b9ea6",
-          "#bcbec2",
-          "#dadadd",
-          "#f2f2f3"
-        ]
+        "tonalRamp": ["#252528", "#414348", "#5e6069", "#7a7e8a", "#9b9ea6", "#bcbec2", "#dadadd", "#f2f2f3"]
       },
       "ink-hover": {
         "role": "neutral",
         "displayName": "Ink Hover",
         "canonical": "#343744",
-        "tonalRamp": [
-          "#23242a",
-          "#3e404c",
-          "#585c6f",
-          "#727893",
-          "#969aac",
-          "#b9bbc6",
-          "#d8d9df",
-          "#f1f2f3"
-        ]
+        "tonalRamp": ["#23242a", "#3e404c", "#585c6f", "#727893", "#969aac", "#b9bbc6", "#d8d9df", "#f1f2f3"]
       },
       "paper": {
         "role": "neutral",
         "displayName": "Thermal Paper",
         "canonical": "#fdfdfb",
-        "tonalRamp": [
-          "#2f2f1e",
-          "#575733",
-          "#818146",
-          "#abab59",
-          "#bcbc85",
-          "#d0d0af",
-          "#e3e3d3",
-          "#f5f5f0"
-        ]
+        "tonalRamp": ["#2f2f1e", "#575733", "#818146", "#abab59", "#bcbc85", "#d0d0af", "#e3e3d3", "#f5f5f0"]
       },
       "ground": {
         "role": "neutral",
         "displayName": "Counter Grey",
         "canonical": "#ecedea",
-        "tonalRamp": [
-          "#272824",
-          "#464941",
-          "#666a5d",
-          "#858c79",
-          "#a3a79a",
-          "#c1c3bb",
-          "#dcddd9",
-          "#f2f3f2"
-        ]
+        "tonalRamp": ["#272824", "#464941", "#666a5d", "#858c79", "#a3a79a", "#c1c3bb", "#dcddd9", "#f2f3f2"]
       },
       "line": {
         "role": "neutral",
         "displayName": "Hairline",
         "canonical": "#d3d5d0",
-        "tonalRamp": [
-          "#272825",
-          "#454842",
-          "#64685e",
-          "#83897b",
-          "#a2a59c",
-          "#c0c2bc",
-          "#dcddda",
-          "#f2f3f2"
-        ]
+        "tonalRamp": ["#272825", "#454842", "#64685e", "#83897b", "#a2a59c", "#c0c2bc", "#dcddda", "#f2f3f2"]
       },
       "steel": {
         "role": "neutral",
         "displayName": "Steel",
         "canonical": "#b4b7b2",
-        "tonalRamp": [
-          "#262725",
-          "#444743",
-          "#636660",
-          "#81867e",
-          "#a0a39e",
-          "#bfc1be",
-          "#dbdcda",
-          "#f2f3f2"
-        ]
+        "tonalRamp": ["#262725", "#444743", "#636660", "#81867e", "#a0a39e", "#bfc1be", "#dbdcda", "#f2f3f2"]
       },
       "steel-highlight": {
         "role": "neutral",
         "displayName": "Steel Highlight",
         "canonical": "#e4e6e2",
-        "tonalRamp": [
-          "#262824",
-          "#454941",
-          "#636a5d",
-          "#828b79",
-          "#a1a79a",
-          "#bfc3bc",
-          "#dbddda",
-          "#f2f3f2"
-        ]
+        "tonalRamp": ["#262824", "#454941", "#636a5d", "#828b79", "#a1a79a", "#bfc3bc", "#dbddda", "#f2f3f2"]
       },
       "steel-shadow": {
         "role": "neutral",
         "displayName": "Steel Shadow",
         "canonical": "#7d817d",
-        "tonalRamp": [
-          "#262726",
-          "#444644",
-          "#626562",
-          "#808480",
-          "#9fa29f",
-          "#bec0be",
-          "#dbdcdb",
-          "#f2f2f2"
-        ]
+        "tonalRamp": ["#262726", "#444644", "#626562", "#808480", "#9fa29f", "#bec0be", "#dbdcdb", "#f2f2f2"]
       },
       "red": {
         "role": "tertiary",
         "displayName": "Order-Number Red",
         "canonical": "#c0352b",
-        "tonalRamp": [
-          "#371816",
-          "#672722",
-          "#9c322b",
-          "#d13e34",
-          "#d5736c",
-          "#dfa4a0",
-          "#ebcecc",
-          "#f7eeed"
-        ]
+        "tonalRamp": ["#371816", "#672722", "#9c322b", "#d13e34", "#d5736c", "#dfa4a0", "#ebcecc", "#f7eeed"]
       },
       "green": {
         "role": "tertiary",
         "displayName": "Diff Green",
         "canonical": "#22714a",
-        "tonalRamp": [
-          "#183426",
-          "#286245",
-          "#339464",
-          "#40c583",
-          "#74cda1",
-          "#a5dac0",
-          "#cee8db",
-          "#eef6f2"
-        ]
+        "tonalRamp": ["#183426", "#286245", "#339464", "#40c583", "#74cda1", "#a5dac0", "#cee8db", "#eef6f2"]
       }
     },
     "typographyMeta": {

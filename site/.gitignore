@@ -2,3 +2,4 @@
 .wrangler/
 .impeccable/review/
 .impeccable/hook.cache.json
+.impeccable/mocks/
