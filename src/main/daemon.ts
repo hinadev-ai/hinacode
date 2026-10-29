@@ -21,7 +21,7 @@ import { hydratePath } from "./shellPath.ts"
 const QUIT_TIMEOUT_MS = 5000
 const LISTEN_TIMEOUT_MS = 5000
 
-// Bundled to out/main/daemon.js, and run from source in tests; package.json is two levels up from both.
+// Bundled to out/server/daemon.js, and run from source in tests; package.json is two levels up from both.
 const { version } = createRequire(import.meta.url)("../../package.json") as { version: string }
 const packageRoot = fileURLToPath(new URL("../..", import.meta.url))
 

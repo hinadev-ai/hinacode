@@ -19,7 +19,7 @@ const NpmRelease = Schema.Struct({ version: Schema.String })
 
 export interface CloudUpdaterOptions {
   readonly current: string
-  /** The installed `hinacode` package, two levels above `out/main/daemon.js`. */
+  /** The installed `hinacode` package, two levels above `out/server/daemon.js`. */
   readonly packageRoot: string
   readonly registry: string
   /** Stops the cloud and starts the installed release in its place. */

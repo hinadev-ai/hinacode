@@ -37,8 +37,8 @@ From `apps/mobile`, build and install the native app with `pnpm exec expo run:io
 To connect to an isolated local server, run this in another terminal from the repository root:
 
 ```sh
-pnpm build
-HINACODE_USER_DATA=/tmp/kk-ios-local node out/main/daemon.js serve --host 127.0.0.1 --port 48082
+pnpm build:server
+HINACODE_USER_DATA=/tmp/kk-ios-local node out/server/daemon.js serve --host 127.0.0.1 --port 48082
 ```
 
 Paste the server's pairing URL into the app. The simulator can reach the Mac at `127.0.0.1`. Keep both the server and Metro running while you check the app.
