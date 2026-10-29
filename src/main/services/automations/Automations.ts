@@ -1,6 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto"
 import type { LinearDocument } from "@linear/sdk"
-import { hostname } from "node:os"
 import { Cause, Context, Effect, FiberHandle, FiberMap, Layer, Option, Random, Schema, Stream } from "effect"
 import { SqlClient, SqlError, SqlSchema } from "effect/sql"
 import { ProviderId } from "../../../shared/agent.ts"
@@ -499,8 +498,7 @@ const make = Effect.gen(function* () {
       if (automation.trigger.type !== "webhook") {
         return yield* new AutomationError({ reason: `${automation.name} is not a webhook automation` })
       }
-      const wildcard = address.bindHost === "0.0.0.0" || address.bindHost === "::"
-      const host = wildcard ? hostname() : address.bindHost
+      const host = address.bindHost
       const url = new URL(hookPath(id), `http://${host.includes(":") ? `[${host}]` : host}:${address.port}`)
       return { url: url.toString(), listenError }
     })

@@ -5,7 +5,6 @@ import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, startTransition, useActionState, useId, useState } from "react"
 import type { Automation, AutomationRun, AutomationTriggerType } from "../../../../shared/domain.ts"
 import { automationRunsAtom, callPromise, webhookUrlAtom } from "../../../lib/rpc.ts"
-import { useSettings } from "../../../lib/settings.ts"
 import { useSettingsEnvironment } from "../../../lib/environments.ts"
 import { m } from "../../../paraglide/messages.js"
 import { Button } from "../../ui/button.tsx"
@@ -29,7 +28,6 @@ export function WebhookUrlField({ automationId }: { automationId: string }) {
   const environment = useSettingsEnvironment()
   const id = useId()
   const result = useAtomValue(webhookUrlAtom(environment, automationId))
-  const { automations: listener } = useSettings(environment)
 
   return (
     <Field>
@@ -44,9 +42,7 @@ export function WebhookUrlField({ automationId }: { automationId: string }) {
         ))
         .onError((cause) => <FieldError>{errorMessage(cause)}</FieldError>)
         .orElse(() => null)}
-      <FieldDescription>
-        {listener.bindHost === "0.0.0.0" ? m.automations_webhook_url_lan_hint() : m.automations_webhook_url_hint()}
-      </FieldDescription>
+      <FieldDescription>{m.automations_webhook_url_hint()}</FieldDescription>
     </Field>
   )
 }

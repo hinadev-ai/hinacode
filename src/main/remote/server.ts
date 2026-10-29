@@ -230,7 +230,7 @@ const make = Effect.gen(function* () {
     }
   })
 
-  const listen = (address: SettingsValue["remote"]) =>
+  const listen = (address: Extract<SettingsValue["remote"], { enabled: true }>) =>
     Effect.acquireRelease(
       Effect.callback<{ server: Server; wss: WebSocketServer }, Error>((resume) => {
         const server = createServer((_, response) => response.writeHead(404).end())
