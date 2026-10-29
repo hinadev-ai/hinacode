@@ -55,7 +55,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
   useDockHeight(regionRef, dockRef)
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
+      <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 px-3 py-2">
         <h1 dir="auto" className="min-w-0 flex-1 truncate text-left text-sm font-semibold" title={thread.title}>
           {thread.title}
         </h1>
