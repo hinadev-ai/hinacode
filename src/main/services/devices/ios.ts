@@ -10,6 +10,7 @@ import type {
   DeviceCommand,
   DeviceElement,
   DeviceId,
+  DevicePosture,
   DeviceScreen,
   SimulatorModel,
 } from "../../../shared/device.ts"
@@ -238,8 +239,12 @@ const flattenAxe = (nodes: ReadonlyArray<unknown>, into: Array<DeviceElement> = 
 const sourceHash = (sources: SimhelperSources) =>
   createHash("sha256").update(JSON.stringify(sources)).digest("hex").slice(0, 16)
 
+const POSTURES: ReadonlyArray<DevicePosture | undefined> = [undefined, "closed", "halfOpen", "flat"]
+const HINGE_DEGREES: Record<DevicePosture, number> = { closed: 0, halfOpen: 90, flat: 180 }
+
 /**
- * Splits the helper's stdout into frames: a u32 length, then width u16, height u16, orientation u8 and the JPEG.
+ * Splits the helper's stdout into frames: a u32 length, then width u16, height u16, orientation u8, posture u8,
+ * the screen's width and height in points u16, and the JPEG.
  * Calls `onCorrupt` once and stops reading when a length cannot be a frame.
  */
 const frameReader = (onFrame: (frame: Frame) => void, onCorrupt: () => void) => {
@@ -250,19 +255,22 @@ const frameReader = (onFrame: (frame: Frame) => void, onCorrupt: () => void) => 
     pending = pending.length === 0 ? chunk : Buffer.concat([pending, chunk])
     while (pending.length >= 4) {
       const length = pending.readUInt32BE(0)
-      if (length < 5 || length > MAX_FRAME_BYTES) {
+      if (length < 10 || length > MAX_FRAME_BYTES) {
         corrupt = true
         pending = Buffer.alloc(0)
         return onCorrupt()
       }
       if (pending.length < 4 + length) return
       const orientation = pending.readUInt8(8)
+      const posture = POSTURES[pending.readUInt8(9)]
       onFrame({
         mime: "image/jpeg",
         width: pending.readUInt16BE(4),
         height: pending.readUInt16BE(6),
         orientation: orientation >= 3 ? "landscape" : "portrait",
-        data: pending.subarray(9, 4 + length),
+        ...(posture && { posture }),
+        screen: { width: pending.readUInt16BE(10), height: pending.readUInt16BE(12) },
+        data: pending.subarray(14, 4 + length),
       })
       pending = pending.subarray(4 + length)
     }
@@ -315,9 +323,20 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
       stdio: ["pipe", "pipe", "pipe"],
     })
     child.stdin.on("error", () => {})
+    // A foldable's lit screen changes with its posture, so scrolls are sized by the latest frame.
+    let shown: { width: number; height: number } | null = null
     child.stdout.on(
       "data",
-      frameReader(onFrame, () => child.kill()),
+      frameReader(
+        (frame) => {
+          if (frame.screen) {
+            const { width, height } = frame.screen
+            shown = frame.orientation === "portrait" ? { width, height } : { width: height, height: width }
+          }
+          onFrame(frame)
+        },
+        () => child.kill(),
+      ),
     )
     let stderr = ""
     child.stderr.on("data", (chunk: Buffer) => (stderr = (stderr + chunk.toString()).slice(-4000)))
@@ -367,9 +386,10 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
     }
     let orientation = PORTRAIT
     const shownPoints = () =>
-      orientation === PORTRAIT
+      shown ??
+      (orientation === PORTRAIT
         ? { width: screen.width, height: screen.height }
-        : { width: screen.height, height: screen.width }
+        : { width: screen.height, height: screen.width })
 
     // Wheel ticks from one gesture become one drag, so a scroll view sees a finger rather than taps.
     let scroll: { x: number; y: number; timer?: NodeJS.Timeout } | null = null
@@ -425,6 +445,8 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
         case "rotate":
           orientation = orientation === PORTRAIT ? LANDSCAPE_LEFT : PORTRAIT
           return input(`rotate ${orientation}`)
+        case "posture":
+          return input(`hinge ${HINGE_DEGREES[command.posture]}`)
         case "appearance":
           await simctl(["ui", udid, "appearance", command.mode])
           return

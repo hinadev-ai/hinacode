@@ -1,8 +1,10 @@
 import { cn } from "cn"
 import { Schema } from "effect"
 import { type FormEvent, useEffect, useId, useRef, useState } from "react"
+import type { IconType } from "react-icons"
 import {
   RiArrowGoBackLine,
+  RiBookOpenLine,
   RiCursorLine,
   RiErrorWarningLine,
   RiHome5Line,
@@ -11,8 +13,10 @@ import {
   RiLockLine,
   RiMoonLine,
   RiMore2Line,
+  RiSmartphoneLine,
   RiStackLine,
   RiSunLine,
+  RiTabletLine,
   RiVolumeDownLine,
   RiVolumeUpLine,
   RiAnticlockwise2Line,
@@ -20,6 +24,7 @@ import {
 import {
   DeviceCommand,
   type DeviceButton,
+  type DevicePosture,
   type DeviceElement,
   type DeviceScreen as Screen,
   type ThreadDevice,
@@ -170,7 +175,10 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
         const label = picked ? deviceElementLabel(picked.element) : m.devices_pick_screen({ device: device.name })
         const staged = await callPromise("attachments.stage", {
           threadId,
-          source: { dataUrl: cropScreen(canvas, screen, shape, picked?.element ?? null), name: `${label}.png` },
+          source: {
+            dataUrl: cropScreen(canvas, { ...screen, ...shape.screen }, shape, picked?.element ?? null),
+            name: `${label}.png`,
+          },
         })
         useDrafts.getState().addAttachments(threadId, [picked ? { ...staged, deviceElement: picked } : staged])
         setAnnouncement(m.devices_pick_added({ element: label }))
@@ -211,6 +219,9 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
         <IconAction icon={RiVolumeDownLine} label={m.devices_volume_down()} onClick={() => press("volumeDown")} />
         <IconAction icon={RiVolumeUpLine} label={m.devices_volume_up()} onClick={() => press("volumeUp")} />
         <IconAction icon={RiAnticlockwise2Line} label={m.devices_rotate()} onClick={() => send({ kind: "rotate" })} />
+        {shape?.posture && (
+          <PostureButtons current={shape.posture} onPick={(posture) => send({ kind: "posture", posture })} />
+        )}
         {device.platform === "android" && (
           <>
             <IconAction icon={RiArrowGoBackLine} label={m.devices_back()} onClick={() => press("back")} />
@@ -407,4 +418,33 @@ function OpenLink({ onOpen }: { onOpen: (url: string) => void }) {
       </PopoverContent>
     </Popover>
   )
+}
+
+const postures: ReadonlyArray<{ posture: DevicePosture; icon: IconType; label: () => string }> = [
+  { posture: "closed", icon: RiSmartphoneLine, label: m.devices_posture_closed },
+  { posture: "halfOpen", icon: RiBookOpenLine, label: m.devices_posture_half_open },
+  { posture: "flat", icon: RiTabletLine, label: m.devices_posture_flat },
+]
+
+/** Folds or opens a foldable. The pressed one is the posture its frames report. */
+function PostureButtons({ current, onPick }: { current: DevicePosture; onPick: (posture: DevicePosture) => void }) {
+  return postures.map(({ posture, icon: Icon, label }) => (
+    <Tooltip key={posture}>
+      <TooltipTrigger
+        render={
+          <Button
+            variant={current === posture ? "secondary" : "ghost"}
+            size="icon-xs"
+            aria-label={label()}
+            aria-pressed={current === posture}
+            action={() => onPick(posture)}
+            className={cn(current === posture && "text-primary")}
+          />
+        }
+      >
+        <Icon aria-hidden />
+      </TooltipTrigger>
+      <TooltipContent>{label()}</TooltipContent>
+    </Tooltip>
+  ))
 }

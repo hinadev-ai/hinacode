@@ -154,7 +154,7 @@ export function DeviceScreen({
     >
       <DeviceFrame
         model={platform === "ios" ? "iphone" : "pixel"}
-        screen={{ width: screen.width, height: screen.height }}
+        screen={shape?.screen ?? { width: screen.width, height: screen.height }}
         orientation={orientation}
       >
         <canvas

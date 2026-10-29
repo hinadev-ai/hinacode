@@ -116,6 +116,10 @@ export type ThreadDevices = typeof ThreadDevices.Type
 const Fraction = Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 }))
 const Delta = Schema.Number.check(Schema.isBetween({ minimum: -10000, maximum: 10000 }))
 
+/** How far a foldable is open: its cover screen shows when closed, its inner screen otherwise. */
+export const DevicePosture = Schema.Literals(["closed", "halfOpen", "flat"])
+export type DevicePosture = typeof DevicePosture.Type
+
 export const DeviceButton = Schema.Literals(["home", "lock", "volumeUp", "volumeDown", "back", "recents"])
 export type DeviceButton = typeof DeviceButton.Type
 
@@ -143,6 +147,7 @@ export const DeviceCommand = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("text"), text: Schema.String.check(Schema.isMaxLength(10000)) }),
   Schema.Struct({ kind: Schema.Literal("button"), button: DeviceButton }),
   Schema.Struct({ kind: Schema.Literal("rotate") }),
+  Schema.Struct({ kind: Schema.Literal("posture"), posture: DevicePosture }),
   Schema.Struct({ kind: Schema.Literal("appearance"), mode: Schema.Literals(["light", "dark"]) }),
   Schema.Struct({ kind: Schema.Literal("openUrl"), url: DeviceUrl }),
 ])
@@ -160,6 +165,10 @@ export const DeviceFrame = Schema.Struct({
   height: Schema.Int,
   /** Frames arrive rotated to what the screen shows, so the canvas follows the device. */
   orientation: Schema.Literals(["portrait", "landscape"]),
+  /** Only on a foldable. */
+  posture: Schema.optionalKey(DevicePosture),
+  /** The screen this frame shows, in points and before rotation, when it is not the device's main screen size. */
+  screen: Schema.optionalKey(Schema.Struct({ width: Schema.Number, height: Schema.Number })),
 })
 export type DeviceFrame = typeof DeviceFrame.Type
 

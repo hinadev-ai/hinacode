@@ -239,6 +239,8 @@ const make = (options: DevicesOptions) =>
           width: frame.width,
           height: frame.height,
           orientation: frame.orientation,
+          ...(frame.posture && { posture: frame.posture }),
+          ...(frame.screen && { screen: frame.screen }),
         }
         const waiters = [...screen.waiters]
         screen.waiters.clear()

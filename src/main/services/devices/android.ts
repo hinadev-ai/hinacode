@@ -572,6 +572,8 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
           if (output.includes("Error:")) throw new DeviceError(output.trim())
           return
         }
+        case "posture":
+          throw new DeviceError("Postures are only for foldable iOS simulators.")
       }
     }
 
