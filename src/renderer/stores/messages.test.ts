@@ -26,12 +26,18 @@ const approval: ApprovalRequest = {
 const secretRequest: SecretRequest = { id: "s1", threadId, name: "demo.token", description: "Demo token" }
 
 let transcriptResponse = Promise.withResolvers<unknown>()
-Object.assign(globalThis, { window: { hinacode: { rpc: () => transcriptResponse.promise } } })
+let transcriptRequests: string[] = []
+const rpc = (_method: string, payload: { threadId: string }) => {
+  transcriptRequests.push(payload.threadId)
+  return transcriptResponse.promise
+}
+Object.assign(globalThis, { window: { hinacode: { rpc } } })
 const { useMessages } = await import("./messages.ts")
 const store = () => useMessages.getState()
 
 beforeEach(() => {
   transcriptResponse = Promise.withResolvers()
+  transcriptRequests = []
   useMessages.setState({ byThread: {} })
 })
 
@@ -549,4 +555,77 @@ test("a failed request from before unload cannot fail the reload", async () => {
   await secondLoad
 
   expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "while unloaded and after reload" }])
+})
+
+const view = async (...ids: string[]) => {
+  for (const id of ids) await loadReady(id)
+}
+const cached = () => Object.keys(store().byThread).toSorted()
+const threadIds = (count: number) => Array.from({ length: count }, (_, index) => `t${index}`)
+
+test("revisiting a cached thread renders from memory without another transcript request", async () => {
+  await view("a", "b")
+  await store().load("a")
+
+  expect(transcriptRequests).toStrictEqual(["a", "b"])
+  expect(ready("a").messages).toHaveLength(1)
+})
+
+test("viewing a ninth thread evicts the least recently viewed one", async () => {
+  await view(...threadIds(8))
+  await store().load("t0")
+  await view("t8")
+
+  expect(cached()).toStrictEqual(["t0", "t2", "t3", "t4", "t5", "t6", "t7", "t8"])
+})
+
+test("reconnect reloads keep view order so the open thread is never evicted", async () => {
+  await view(...threadIds(8))
+  const open = "t0"
+  await store().load(open)
+  for (const id of cached()) {
+    transcriptResponse = Promise.withResolvers()
+    const reloading = store().reload(id)
+    transcriptResponse.resolve(transcript("reloaded", 0))
+    await reloading
+  }
+  await store().reload("never viewed")
+
+  expect(cached()).toStrictEqual(threadIds(8))
+  await view("t8")
+  expect(cached()).toContain(open)
+  expect(cached()).not.toContain("t1")
+})
+
+test("a cached thread keeps applying pushes while another thread is open", async () => {
+  await view("a", "b")
+  store().receive(event(1, { type: "text_delta", text: "streamed " }, "a"))
+  store().receive(event(2, { type: "text_delta", text: "in background" }, "a"))
+  store().receive(event(3, { type: "turn_completed" }, "a"))
+  await store().load("a")
+
+  expect(transcriptRequests).toStrictEqual(["a", "b"])
+  expect(ready("a").messages[0]?.parts).toStrictEqual([{ type: "text", text: "streamed in background" }])
+  expect(ready("a").messages[0]?.completedAt).toEqual(expect.any(String))
+})
+
+test("deleting a thread evicts its history and pending deltas", async () => {
+  await view("a")
+  store().receive(event(1, { type: "text_delta", text: "pending" }, "a"))
+  expect(vi.getTimerCount()).toBe(1)
+  store().unload("a")
+
+  expect(store().byThread["a"]).toBeUndefined()
+  expect(vi.getTimerCount()).toBe(0)
+})
+
+test("a failed history retries on the next view", async () => {
+  const failing = store().load(threadId)
+  transcriptResponse.resolve({ error: { tag: "ThreadNotFound", message: "offline" } })
+  await failing
+  expect(store().byThread[threadId]?.status).toBe("error")
+
+  await loadReady()
+  expect(transcriptRequests).toStrictEqual([threadId, threadId])
+  expect(ready().messages).toHaveLength(1)
 })

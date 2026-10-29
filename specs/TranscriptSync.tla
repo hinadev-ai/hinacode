@@ -59,7 +59,7 @@ Transcript(l) ==
 
 -----------------------------------------------------------------------------
 
-\* ThreadView.tsx:97 -> messages.ts:61-71 up to the await. Errors are not modeled, so `load` only runs on "missing".
+\* messages.ts `load` -> `fetchHistory` up to the await. Errors are not modeled, so `load` only runs on "missing".
 Load ==
   /\ loads < MaxLoads
   /\ byThread.status = "missing"
@@ -68,13 +68,14 @@ Load ==
   /\ requests' = requests \cup {loads + 1}
   /\ UNCHANGED <<seq, toRenderer>>
 
-\* ThreadView.tsx:98 -> messages.ts:82. The effect cleanup runs whenever the view leaves the thread.
+\* messages.ts `forget`: the history fell out of the recently viewed limit or its thread was removed.
+\* `reload` after a cloud reconnect is Unload followed by Load.
 Unload ==
   /\ byThread.status /= "missing"
   /\ byThread' = Missing
   /\ UNCHANGED <<seq, requests, toRenderer, loads>>
 
-\* messages.ts:72-76 after the await, through `settle` at 66-69
+\* messages.ts `fetchHistory` after the await, through `settle`
 Settle(r) ==
   IF byThread.status = "loading" /\ byThread.load = r.load
   THEN byThread' = [byThread EXCEPT
@@ -84,7 +85,7 @@ Settle(r) ==
                       !.snapshotSeq = r.seq]
   ELSE UNCHANGED byThread
 
-\* messages.ts:90-125. Folding is not idempotent (foldEvent.ts:11 text_delta appends).
+\* messages.ts `receive`. Folding is not idempotent (foldEvent.ts:11 text_delta appends).
 Receive(p) ==
   CASE byThread.status = "loading" ->
          byThread' = [byThread EXCEPT !.pending = Append(@, p.seq)]

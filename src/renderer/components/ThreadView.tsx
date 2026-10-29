@@ -135,7 +135,6 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
   const history = useMessages((state) => state.byThread[thread.id])
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   const load = useMessages((state) => state.load)
-  const unload = useMessages((state) => state.unload)
   const label = providerLabel[thread.provider]()
   const isChat = useIsChat(thread.projectId)
   const findOpen = useUi((state) => state.findThreadId === thread.id)
@@ -148,8 +147,7 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
 
   useEffect(() => {
     void load(thread.id)
-    return () => unload(thread.id)
-  }, [load, unload, thread.id])
+  }, [load, thread.id])
 
   const retry = () => {
     useUi.getState().requestComposerFocus()
