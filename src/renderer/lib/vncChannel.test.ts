@@ -31,7 +31,6 @@ function fakeBridge() {
       },
     },
   })
-  /** The next call of `method` after the ones already made. */
   const nextCall = (method: string) => {
     const seen = calls.filter((call) => call.method === method).length
     return new Promise<Call>((resolve) => waiters.push({ method, seen, resolve }))

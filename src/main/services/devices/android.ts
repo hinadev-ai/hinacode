@@ -46,7 +46,6 @@ type Unary<Request, Response> = (
   callback: (error: grpc.ServiceError | null, response: Response) => void,
 ) => grpc.ClientUnaryCall
 
-/** The slice of `EmulatorController` in `<sdk>/emulator/lib/emulator_controller.proto` this driver calls. */
 interface EmulatorController extends grpc.Client {
   readonly getDisplayConfigurations: Unary<object, DisplayConfigurations>
   readonly getScreenshot: Unary<ImageFormat, Image>
@@ -71,9 +70,7 @@ const FRAME_SHORT_SIDE = 540
 const MAX_STREAM_RESTARTS = 3
 const FIRST_GRPC_PORT = 8600
 const STOP_TIMEOUT_MS = 15_000
-/** A stalled emulator never answers, and input runs in order, so one stuck call would hold every later one. */
 const CALL_TIMEOUT_MS = 10_000
-/** About one wheel notch on Android, which scrolls by 64 dp. Wheel deltas are CSS pixels of a screen drawn near 1 dp per pixel. */
 const PIXELS_PER_SCROLL_UNIT = 64
 const NO_GRPC = "This emulator was started without its gRPC endpoint. Close it and attach it again from HinaCode."
 const CREATE_UNSUPPORTED = "HinaCode creates simulators only for iOS. Attach an existing emulator."
@@ -105,7 +102,6 @@ const sdkRootOf = (override: string | undefined) =>
   process.env["ANDROID_SDK_ROOT"] ||
   (process.platform === "darwin" ? join(homedir(), "Library", "Android", "sdk") : join(homedir(), "Android", "Sdk"))
 
-/** Where the emulator writes `pid_<pid>.ini` for each running instance, per its `ConfigDirs::getDiscoveryDirectory`. */
 const discoveryDirs = () => {
   if (process.platform === "darwin") return [join(homedir(), "Library", "Caches", "TemporaryItems", "avd", "running")]
   const xdg = process.env["XDG_RUNTIME_DIR"]
@@ -140,7 +136,6 @@ const freePort = async (from: number): Promise<number> => {
   throw new DeviceError("No free port for the emulator's gRPC endpoint.")
 }
 
-/** DOM `KeyboardEvent.code` to Android `KeyEvent` keycodes, for `input keyevent`. */
 const KEYCODES: ReadonlyMap<string, number> = new Map(
   Object.entries({
     ...Object.fromEntries(
@@ -237,7 +232,6 @@ const memoryOf = (pid: number) =>
     () => null,
   )
 
-/** The AVD's folder, as its `<name>.ini` pointer names it. */
 const avdDir = async (name: string) => {
   const pointer = parseIni(await readFile(join(avdHome(), `${name}.ini`), "utf8").catch(() => ""))
   return pointer.get("path") ?? join(avdHome(), `${name}.avd`)
@@ -305,15 +299,10 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
     return { width: display.width, height: display.height, scale: display.dpi / 160 }
   }
 
-  /**
-   * Starts the AVD headless. Devices HinaCode boots keep running after it quits, like ones booted from Android
-   * Studio: a cold boot costs a minute, and the next session or the user's own tools pick the emulator back up.
-   */
   const startEmulator = async (name: string) => {
-    // The port is only bound once the emulator starts, so boots running together each start past the last one handed out.
+    // FIXME: the emulator binds its gRPC port late, so concurrent boots start past the last port handed out
     const grpcPort = await freePort(nextGrpcPort)
     nextGrpcPort = grpcPort + 1 < FIRST_GRPC_PORT + 100 ? grpcPort + 1 : FIRST_GRPC_PORT
-    // A headless Linux daemon usually has no GPU, so it renders in software there.
     const gpu = process.platform === "darwin" ? "host" : "swiftshader_indirect"
     const child = spawn(
       emulatorBinary,
@@ -367,7 +356,6 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
     )
   }
 
-  /** One boot per AVD, since a second emulator on the same AVD refuses to start. */
   const booting = new Map<string, Promise<void>>()
   const boot: DevicePlatformDriver["boot"] = (id, onStep) => {
     const name = avdNameOf(id)
@@ -416,7 +404,7 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
       let failures = 0
       const start = () => {
         if (closed) return
-        // A square box keeps the short side at FRAME_SHORT_SIDE in either orientation; the emulator fits the aspect.
+        // FIXME: the emulator fits its aspect into the box, so a square one keeps the short side in either orientation
         const current = client.streamScreenshot({ format: "PNG", width: box, height: box }, metadata)
         stream = current
         let done = false
@@ -454,8 +442,7 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
       return { x: Math.round(x * width), y: Math.round(y * height) }
     }
 
-    // The emulator's gRPC keyboard reaches the guest only when the AVD has `hw.keyboard=yes`, which `avdmanager`
-    // does not set, so keys, text and buttons go through `adb shell input`. Touch stays on gRPC for latency.
+    // FIXME: the emulator's gRPC keyboard needs `hw.keyboard=yes`, which `avdmanager` does not set
     const heldModifiers = new Set<number>()
     let pressedKeys: Array<number> = []
     const flushKeys = async () => {
@@ -465,7 +452,6 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
       await shell(emulator, "input", "keyevent", ...keys.map(String))
     }
 
-    // Wheel ticks that arrive while one scroll runs merge into the next, so the wheel never queues up behind adb.
     let pendingScroll: { x: number; y: number; deltaX: number; deltaY: number } | null = null
     let scrollRun: Promise<void> | null = null
     const flushScroll = async () => {
@@ -494,17 +480,16 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
     }
 
     const typeText = async (text: string) => {
-      // `input text` reads `%s` as a space, so text with a literal `%` goes through the clipboard too.
+      // FIXME: `adb shell input text` reads `%s` as a space and drops non-ASCII, so such text is pasted
       if (/^[\x20-\x24\x26-\x7e\n]*$/.test(text)) {
         const lines = text.split("\n")
         for (const [index, line] of lines.entries()) {
           if (index > 0) await shell(emulator, "input", "keyevent", String(KEYCODE_ENTER))
-          // `input text` reads `%s` as a space and splits on real ones.
+          // FIXME: `adb shell input text` splits on spaces, so they are sent as `%s`
           if (line) await shell(emulator, "input", "text", quoteForRemoteShell(line.replaceAll(" ", "%s")))
         }
         return
       }
-      // `input text` drops anything outside ASCII, so the rest goes through the clipboard.
       await unary(client.setClipboard, { text })
       await shell(emulator, "input", "keyevent", String(KEYCODE_PASTE))
     }
@@ -552,7 +537,6 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
         case "rotate": {
           const { value } = await unary(client.getPhysicalModel, { target: "ROTATION" })
           const landscape = Math.abs(value?.data[2] ?? 0) > 45
-          // Landscape is Android's ROTATION_90, the device's top turned to the left, which DeviceFrame draws.
           await unary(client.setPhysicalModel, { target: "ROTATION", value: { data: [0, 0, landscape ? 0 : 90] } })
           return
         }
@@ -583,7 +567,6 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
       send: (commands) => {
         const next = queue.then(async () => {
           for (const command of commands) {
-            // Queued input stops once the link closes, so a detached device never gets the rest of it.
             if (closed) throw new DeviceError("The emulator screen was closed.")
             await apply(command)
           }
@@ -623,7 +606,7 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
   const launch: DevicePlatformDriver["launch"] = async (id, app) => {
     if (!PACKAGE_NAME.test(app)) throw new DeviceError(`"${app}" is not an Android package name.`)
     const emulator = await runningEmulator(id)
-    // `monkey -c LAUNCHER` aborts on images without hardware keys, so resolve the launcher activity instead.
+    // FIXME: `monkey -c LAUNCHER` aborts on images without hardware keys
     const resolved = await adb(emulator, [
       "shell",
       "cmd",
@@ -640,7 +623,6 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
     await shell(emulator, "am", "start", "-n", quoteForRemoteShell(component))
   }
 
-  /** Stops the emulator, then deletes the AVD the way `avdmanager delete avd` does: its folder and its pointer. */
   const remove: DevicePlatformDriver["remove"] = async (id) => {
     const name = avdNameOf(id)
     const emulator = (await running()).get(name)
@@ -651,7 +633,6 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
       if ((await running()).has(name)) process.kill(emulator.pid, "SIGKILL")
     }
     const dir = await avdDir(name)
-    // The pointer is a file anyone can edit, so only a folder named for this AVD is ever removed.
     if (basename(dir) !== `${name}.avd`) throw new DeviceError(`The AVD ${name} points at ${dir}, so HinaCode left it.`)
     await rm(dir, { recursive: true, force: true })
     await rm(join(avdHome(), `${name}.ini`), { force: true })

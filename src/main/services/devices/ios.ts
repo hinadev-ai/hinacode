@@ -24,7 +24,6 @@ export interface SimhelperSources {
 }
 
 export interface IosDriverOptions {
-  /** Where the compiled helper is cached, one directory per source hash. */
   readonly cacheDir: string
   readonly sources: SimhelperSources
   readonly simslimPath?: string
@@ -34,19 +33,15 @@ const FRAME_QUALITY = 0.7
 const FRAME_MAX_WIDTH = 600
 const SCROLL_IDLE_MS = 120
 const INPUT_SPACING_MS = 16
-/** Shorter presses are sometimes taken for nothing by table cells. */
+// FIXME: UIKit table cells sometimes ignore shorter presses
 const MIN_PRESS_MS = 60
-/** Above the helper's worst case: four HID attempts of a 4 s reply wait and a 4 s pause each. */
 const HELPER_READY_TIMEOUT_MS = 40_000
-/** Matches the rpc's frame limit; anything larger means the stream lost its framing. */
 const MAX_FRAME_BYTES = 4 * 1024 * 1024
 const BUNDLE_ID = /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/
 
-/** UIDeviceOrientation. Landscape is landscapeLeft, the device's top turned to the left, as the device frame draws it. */
 const PORTRAIT = 1
 const LANDSCAPE_LEFT = 3
 
-/** HID Consumer page usages, which is how the simulator's HID daemon names hardware buttons. */
 const buttonUsages: Partial<Record<DeviceButton, number>> = {
   home: 0x40,
   lock: 0x30,
@@ -168,7 +163,6 @@ const decode = <A>(schema: Schema.Decoder<A>, text: Buffer, what: string): A => 
 const deviceState = (state: string): Device["state"] =>
   state === "Booted" ? "booted" : state === "Booting" ? "booting" : "shutdown"
 
-/** `com.apple.CoreSimulator.SimRuntime.iOS-27-0` -> `27.0`, or null for another platform. */
 const iosVersionOf = (runtime: string) => /\.iOS-([\d-]+)$/.exec(runtime)?.[1]?.replaceAll("-", ".") ?? null
 
 const compareVersions = (a: string, b: string) => {
@@ -181,7 +175,6 @@ const compareVersions = (a: string, b: string) => {
   return 0
 }
 
-/** The newest plain "iPhone NN", which boots lighter than a Pro, else the first iPhone listed. */
 const pickIphone = (models: ReadonlyArray<SimulatorModel>) => {
   const iphones = models.filter((model) => model.name.startsWith("iPhone"))
   const numbered = iphones
@@ -191,7 +184,6 @@ const pickIphone = (models: ReadonlyArray<SimulatorModel>) => {
   return numbered[0]?.model ?? iphones[0]
 }
 
-/** Every device type an installed iOS runtime runs, each on the newest runtime that runs it, newest first. */
 const models = async (): Promise<ReadonlyArray<SimulatorModel>> => {
   const { runtimes } = decode(SimctlRuntimes, await simctl(["list", "runtimes", "--json"]), "simctl list runtimes")
   const byDeviceType = new Map<string, SimulatorModel>()
@@ -242,11 +234,6 @@ const sourceHash = (sources: SimhelperSources) =>
 const POSTURES: ReadonlyArray<DevicePosture | undefined> = [undefined, "closed", "halfOpen", "flat"]
 const HINGE_DEGREES: Record<DevicePosture, number> = { closed: 0, halfOpen: 90, flat: 180 }
 
-/**
- * Splits the helper's stdout into frames: a u32 length, then width u16, height u16, orientation u8, posture u8,
- * the screen's width and height in points u16, a foldable's inner screen the same way, and the JPEG.
- * Calls `onCorrupt` once and stops reading when a length cannot be a frame.
- */
 const frameReader = (onFrame: (frame: Frame) => void, onCorrupt: () => void) => {
   let pending: Buffer = Buffer.alloc(0)
   let corrupt = false
@@ -284,7 +271,6 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
   let developerDir: Promise<string> | undefined
   let helper: Promise<string> | undefined
 
-  /** Asked once; a failure is asked again, in case Xcode was installed meanwhile. */
   const xcodeDeveloperDir = () =>
     (developerDir ??= run("xcode-select", ["-p"]).then(
       (stdout) => stdout.toString().trim(),
@@ -310,7 +296,6 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
     return binary
   }
 
-  /** One compile at a time; a failed one is retried on the next connect. */
   const helperBinary = () => {
     helper ??= compileHelper().catch((error: unknown) => {
       helper = undefined
@@ -326,7 +311,6 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
       stdio: ["pipe", "pipe", "pipe"],
     })
     child.stdin.on("error", () => {})
-    // A foldable's lit screen changes with its posture, so scrolls are sized by the latest frame.
     let shown: { width: number; height: number } | null = null
     child.stdout.on(
       "data",
@@ -371,8 +355,7 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
       throw error
     })
 
-    // dtuhidd stamps events as they arrive, so a down and up written together read as a press of no length,
-    // which UIKit ignores. Spacing them like a finger keeps taps, key presses and drags real.
+    // FIXME: dtuhidd stamps events on arrival, and UIKit ignores a down and up with no time between
     let lastInput = 0
     let lastTouchDown = 0
     let closed = false
@@ -394,7 +377,6 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
         ? { width: screen.width, height: screen.height }
         : { width: screen.height, height: screen.width })
 
-    // Wheel ticks from one gesture become one drag, so a scroll view sees a finger rather than taps.
     let scroll: { x: number; y: number; timer?: NodeJS.Timeout } | null = null
     const endScroll = async () => {
       if (!scroll) return
@@ -415,7 +397,6 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
       scroll.x = clamped.x
       scroll.y = clamped.y
       await input(`touch move ${clamped.x} ${clamped.y}`)
-      // At an edge the finger can go no further, so the next tick starts a fresh drag from the pointer.
       if (clamped.x !== target.x || clamped.y !== target.y) await endScroll()
       else scroll.timer = setTimeout(() => void enqueue(endScroll).catch(() => {}), SCROLL_IDLE_MS)
     }
@@ -432,7 +413,7 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
           return usage === undefined ? undefined : input(`key ${usage} ${command.phase}`)
         }
         case "text": {
-          // `simctl pbcopy` leaves the pasteboard empty on the iOS 27 runtime, so text is typed key by key.
+          // FIXME: `simctl pbcopy` leaves the pasteboard empty on the iOS 27 runtime
           const strokes = keystrokesFor(command.text)
           if (!strokes) throw new DeviceError("The simulator keyboard can only type text on a US layout.")
           for (const { usage, shift } of strokes) {
@@ -473,7 +454,6 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
           for (const command of commands) await apply(command)
         }),
       close: async () => {
-        // Queued input stops at its next line, so a long text does not hold the close.
         closed = true
         clearTimeout(scroll?.timer)
         child.stdin.end()
@@ -531,7 +511,6 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
 
     boot: async (id, onStep) => {
       onStep("booting")
-      // `-b` boots a shut-down device and returns at once for a booted one.
       await simctl(["bootstatus", udidOf(id), "-b"], 600_000)
     },
 

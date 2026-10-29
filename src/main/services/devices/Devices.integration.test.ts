@@ -94,7 +94,6 @@ const testLayer = devicesLayer({
 const archive = (threadId: string) =>
   SqlClient.SqlClient.use((sql) => sql`UPDATE thread SET status = 'archived' WHERE id = ${threadId}`)
 
-/** Yields until `check` holds, so the service's promise work can settle without a wall-clock wait. */
 const eventually = (check: () => boolean) =>
   Effect.gen(function* () {
     for (let turn = 0; turn < 1000 && !check(); turn++) yield* Effect.yieldNow
@@ -210,7 +209,6 @@ describe("Devices", () => {
         expect(sent).toEqual([])
         const [state] = yield* service.get(second.threadId)
         expect(state?.phase === "ready" && state.control === "user" && state.agentWaiting).toBe(true)
-        // Another view's cleanup must not hand back the device the first view is still using.
         const refused = yield* Effect.flip(service.control(second.threadId, USERS_DEVICE, "agent"))
         expect(refused.message).toContain("another thread")
         expect(sent).toEqual([])

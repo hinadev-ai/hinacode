@@ -58,7 +58,6 @@ const configDirVariable = { claude: "CLAUDE_CONFIG_DIR", codex: "CODEX_HOME" } s
 
 const shellQuote = (value: string) => (/^[\w./~-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`)
 
-/** What the user runs in a terminal to sign the account in. */
 const loginCommand = (account: AgentProfile) =>
   [
     `${configDirVariable[account.provider]}=${shellQuote(account.configDir)}`,
@@ -66,7 +65,6 @@ const loginCommand = (account: AgentProfile) =>
     ...(account.provider === "claude" ? ["auth", "login"] : ["login"]),
   ].join(" ")
 
-/** The CLI's own login, then every account added for `provider`, each with who it is signed in as. */
 export function AccountList({ provider }: { provider: ProviderId }) {
   const environment = useSettingsEnvironment()
   const accounts = useProviderAccounts(environment, provider)
@@ -96,7 +94,6 @@ export function AccountList({ provider }: { provider: ProviderId }) {
 
 type RowDialog = "rename" | "remove"
 
-/** Menu items queue their dialog and open it once the menu has closed and handed focus back. */
 function useRowDialog() {
   const [dialog, setDialog] = useState<RowDialog | null>(null)
   const [queued, setQueued] = useState<RowDialog | null>(null)
@@ -154,7 +151,6 @@ function DefaultAccountRow({ provider }: { provider: ProviderId }) {
   const { dialog, queue, onMenuOpenChangeComplete, onDialogOpenChange } = useRowDialog()
 
   const rename = async (next: string) => {
-    // Naming it back to the translated default stores null, so it follows the UI language again.
     const stored = next === m.account_default() ? null : next
     await updateSettings({ defaultAccountName: { ...defaultAccountName, [provider]: stored } })
   }
@@ -223,7 +219,6 @@ function AccountRow({ account }: { account: AgentProfile }) {
   )
 }
 
-/** Who the account is signed in as, and a button that asks its CLI again. `account` null is the CLI's own login. */
 function AccountStatus({ provider, account }: { provider: ProviderId; account: AgentProfile | null }) {
   const environment = useSettingsEnvironment()
   const accountId = account?.id ?? null
@@ -365,7 +360,6 @@ function AddAccountDialog({ provider, open, onOpenChange }: AddAccountDialogProp
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
-        {/* Inside the popup so every opening starts from an empty form. */}
         <AddAccountForm provider={provider} onCreated={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
@@ -573,7 +567,6 @@ function RemoveAccountDialog({ account, open, onOpenChange }: AccountDialogBaseP
 
 const CLI_LOGIN = "cli"
 
-/** Which account new threads of `provider` start on. Hidden until the provider has an added account. */
 export function DefaultAccountField({ provider }: { provider: ProviderId }) {
   const environment = useSettingsEnvironment()
   const accounts = useProviderAccounts(environment, provider)

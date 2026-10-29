@@ -17,7 +17,6 @@ import * as Settings from "./Settings.ts"
 const SERVICE_URL = "https://relay.test"
 const OWNER_TOKEN = "owner-token"
 
-/** 192.0.2.1 never answers, so the machines stay offline for the whole test. */
 const homeServer: RelayMachine = {
   environmentId: "home-server",
   name: "home-server",
@@ -38,22 +37,14 @@ interface StandInRelay {
   ownerToken: string
   machines: ReadonlyArray<RelayMachine>
   hosts: Array<RelayHost>
-  /** Link codes waiting for approval, by user code. */
   readonly links: Map<string, PendingLink>
   readonly approved: Array<string>
-  /** Runs when a link code is approved, standing in for the machine that waits on it. */
   onApprove: () => void
-  /** Runs before each answer to `GET /v1/hosts`. */
   onHostsListed: () => void
-  /** Every call as "METHOD /path". */
   readonly calls: Array<string>
   readonly fetch: Fetch
 }
 
-/**
- * A stand-in relay service for whoever holds `ownerToken`. `/v1/machines` lists the `machines` whose host is
- * shown, and `/v1/hosts` manages `hosts`.
- */
 const standInRelay = () => {
   const hostById = (id: string) => relay.hosts.find((host) => host.id === id)
   const route = async (method: string, path: string, init: RequestInit): Promise<Response> => {
@@ -300,7 +291,6 @@ describe("RelayAccount", () => {
     const relay = standInRelay()
     relay.links.set("ABCD-EFGH", { name: "agent-vm", environmentId: "agent-vm" })
     const agentVm: RelayMachine = { ...homeServer, environmentId: "agent-vm", name: "agent-vm" }
-    // The machine claims its credential and publishes its pairing a little after the owner approves it.
     relay.onApprove = () => {
       let polls = 0
       relay.onHostsListed = () => {

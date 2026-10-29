@@ -3,17 +3,12 @@ import type { FsEntry } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
 
-/** The file tree of one root: a worktree or a project root. Folder paths are relative, "" is the root. */
 export interface ExplorerTree {
   readonly expanded: ReadonlySet<string>
-  /** Listings by folder path, filled as folders are expanded. */
   readonly children: Readonly<Record<string, ReadonlyArray<FsEntry>>>
   readonly selected: string | null
-  /** The file the viewer shows. */
   readonly opened: string | null
-  /** Why the root itself could not be listed. */
   readonly error: string | null
-  /** Files with unsaved edits, each mapped to the text the edits started from. */
   readonly unsaved: Readonly<Record<string, string>>
 }
 
@@ -28,14 +23,11 @@ export const emptyTree: ExplorerTree = {
 
 export interface TreeRow {
   readonly entry: FsEntry
-  /** 0 for entries of the root. */
   readonly depth: number
-  /** Siblings in the same folder and this entry's 1-based place among them, for `aria-setsize` and `aria-posinset`. */
   readonly setSize: number
   readonly posInSet: number
 }
 
-/** The rows a tree shows, top to bottom: every entry whose ancestors are all expanded and listed. */
 export function flattenTree(tree: Pick<ExplorerTree, "expanded" | "children">): Array<TreeRow> {
   const rows: Array<TreeRow> = []
   const walk = (folder: string, depth: number) => {
@@ -51,7 +43,6 @@ export function flattenTree(tree: Pick<ExplorerTree, "expanded" | "children">): 
 
 export const parentOf = (path: string) => path.slice(0, Math.max(path.lastIndexOf("/"), 0))
 
-/** Drops a folder that can no longer be listed. */
 const forget = (tree: ExplorerTree, path: string) => {
   const expanded = new Set(tree.expanded)
   expanded.delete(path)
@@ -61,23 +52,17 @@ const forget = (tree: ExplorerTree, path: string) => {
 
 interface ExplorerState {
   readonly byRoot: Readonly<Record<string, ExplorerTree>>
-  /** Lists `path` again. A folder that can no longer be listed is collapsed and forgotten. */
   readonly load: (root: string, path: string) => Promise<void>
-  /** Lists the root and every expanded folder again. */
   readonly refresh: (root: string) => Promise<void>
   readonly expand: (root: string, path: string) => void
   readonly collapse: (root: string, path: string) => void
   readonly collapseAll: (root: string) => void
   readonly select: (root: string, path: string | null) => void
-  /** Shows `path` in the file viewer, or closes the viewer. */
   readonly open: (root: string, path: string | null) => void
-  /** Expands the folders down to the file at `path`, then selects and opens it. */
   readonly reveal: (root: string, path: string) => void
-  /** Marks `path` as edited since `base`, or as saved when `base` is null. */
   readonly setUnsaved: (root: string, path: string, base: string | null) => void
 }
 
-/** Kept per root for the whole session, so switching threads or tabs keeps what was open. */
 export const useExplorer = create<ExplorerState>()((set, get) => {
   const update = (root: string, change: (tree: ExplorerTree) => Partial<ExplorerTree>) =>
     set((state) => {

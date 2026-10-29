@@ -1,9 +1,4 @@
 #!/usr/bin/env node
-// Usage: mobile.ts run <label>
-//        mobile.ts compare <before-label> <after-label>
-// Drives the phone app's perf harness (apps/mobile/src/lib/perf.ts) on an iOS simulator against an isolated desktop.
-// The app must be bundled with EXPO_PUBLIC_PERF_URL=http://127.0.0.1:$PERF_PORT. See "Profile the phone app" in
-// scripts/perf/README.md for the environment it reads and what each number means.
 import assert from "node:assert/strict"
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
@@ -31,7 +26,6 @@ const median = (values: number[]) => quantile(values, 0.5)
 const spread = (values: number[]) => `${Math.min(...values)} to ${Math.max(...values)}`
 const sum = (values: number[]) => round1(values.reduce((total, value) => total + value, 0))
 
-/** What a recording cost: JS frame gaps, commits, component renders and React render time, long tasks. */
 function summarize({ commits = [], frames = [], longTasks = [] }: Partial<Recording>) {
   const gaps = frames.slice(1).map((at, index) => at - frames[index]!)
   const byComponent: Record<string, number> = {}
@@ -56,7 +50,6 @@ function summarize({ commits = [], frames = [], longTasks = [] }: Partial<Record
   }
 }
 
-/** When the last component mounted. Later commits that only re-render, such as a press animation, do not count. */
 const lastMount = (commits: Commit[]) =>
   commits.findLast((commit) => Object.keys(commit.rendered).some((name) => name.endsWith("(mount)")))?.at ?? 0
 
@@ -99,7 +92,6 @@ async function run(runLabel: string) {
   }).trim()
   simctl("install", udid, app)
 
-  // The app long-polls /next; each command's result comes back on /result.
   let nextId = 1
   const queue: Record<string, unknown>[] = []
   let waiting: ServerResponse | null = null
@@ -151,9 +143,7 @@ async function run(runLabel: string) {
     const hello = new Promise<Record<string, unknown>>((resolve) => (onHello = resolve))
     try {
       simctl("terminate", udid, bundleId)
-    } catch {
-      // Not running.
-    }
+    } catch {}
     const launchedAt = Date.now()
     simctl("launch", udid, bundleId)
     await hello
@@ -304,7 +294,6 @@ function headline(entry: Entry) {
   }
 }
 
-/** Medians over every run whose label is `<label>` or `<label>-<n>`, so alternated runs pool by build. */
 function metrics(prefix: string) {
   const pattern = new RegExp(`^${prefix}(-\\d+)?-mobile\\.json$`)
   const files = readdirSync(resultsDir).filter((name) => pattern.test(name))

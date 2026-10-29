@@ -16,7 +16,6 @@ import { Settings, layer as settingsLayer } from "./Settings.ts"
 
 const work: AgentAccount = { type: "subscription", email: "work@example.com", plan: "Claude Max", organization: null }
 
-/** A Claude whose answer the test sets, counting every time it is asked. */
 const fakeClaude = () => {
   const state = { answer: work as AgentAccount, calls: [] as Array<AccountHome | null> }
   const provider = (id: AgentProvider["id"]): AgentProvider => ({

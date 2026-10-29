@@ -1,6 +1,5 @@
 import type { PullRequestComment, PullRequestDetail } from "./domain.ts"
 
-/** What the PR tab sends into the thread so its agent fixes the failing checks. */
 export const fixChecksPrompt = (pullRequest: PullRequestDetail) => {
   const failing = pullRequest.checkRuns
     .filter((run) => run.status === "failing")
@@ -13,7 +12,6 @@ export const fixChecksPrompt = (pullRequest: PullRequestDetail) => {
   ].join("\n")
 }
 
-/** What the PR tab sends into the thread so its agent resolves the merge conflicts. */
 export const resolveConflictsPrompt = (pullRequest: PullRequestDetail) =>
   [
     `${pullRequest.url} has merge conflicts with ${pullRequest.baseRef}.`,
@@ -21,7 +19,6 @@ export const resolveConflictsPrompt = (pullRequest: PullRequestDetail) =>
     "Run the project's checks, then push.",
   ].join(" ")
 
-/** What the PR tab sends into the thread so its agent addresses one comment. */
 export const addressCommentPrompt = (
   pullRequest: PullRequestDetail,
   { author, body, url, location }: PullRequestComment,

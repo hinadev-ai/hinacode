@@ -7,7 +7,6 @@ export type Incoming =
   | { readonly kind: "request"; readonly method: string; readonly params: unknown }
   | { readonly kind: "exit"; readonly error: AgentError }
 
-/** A failed MSP call. `kind` is MSP's error kind, such as `sessionNotFound`, or `exited` or `timeout`. */
 export class MuseCallError extends Schema.TaggedError<MuseCallError>()("MuseCallError", {
   method: Schema.String,
   kind: Schema.String,
@@ -19,11 +18,8 @@ export const toAgentError = (error: MuseCallError) =>
 
 export interface MuseHost {
   readonly isAlive: () => boolean
-  /** Fails if the host does not answer in time. */
   readonly request: <A>(method: string, params: object) => Effect.Effect<A, MuseCallError>
-  /** A state-changing call. The SDK mints its `commandId`, so a retry joins the first attempt instead of repeating it. */
   readonly command: <A>(method: string, params: object) => Effect.Effect<A, MuseCallError>
-  /** Receives every notification, server request and the host's exit until the scope closes. */
   readonly subscribe: (listener: (message: Incoming) => void) => Effect.Effect<void, never, Scope.Scope>
 }
 
@@ -31,11 +27,7 @@ export const REQUEST_TIMEOUT = Duration.seconds(60)
 
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))
 
-/**
- * Spawns `muse serve` and runs the MSP handshake. Server requests get an empty answer at once: MSP only asks the
- * client to confirm it showed them, and the user's decision travels as its own command. The host shuts down when
- * the scope closes.
- */
+// FIXME: MSP server requests only ask the client to confirm it showed them, so they get an empty answer
 export const makeMuseHost = (options: {
   readonly binaryPath: string
   readonly args: ReadonlyArray<string>
@@ -74,7 +66,7 @@ export const makeMuseHost = (options: {
         try: () =>
           handshake.initialize({
             clientInfo: { name: "hinacode", version: options.clientVersion },
-            // `account/read` is experimental; `sessionMcp` lets each session carry its thread's MCP credential.
+            // FIXME: MSP gates `account/read` behind experimentalApi
             capabilities: { experimentalApi: true, requestedCapabilities: ["sessionMcp"] },
           }),
         catch: (cause) =>

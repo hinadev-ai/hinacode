@@ -1,7 +1,3 @@
-// Usage: node specs/probes/claude-background.mjs <wait|interrupt>
-// Claude launches a background sub-agent and ends its reply. `wait` lets the sub-agent finish; `interrupt`
-// interrupts while it runs. Prints what the CLI streams after the reply's result. Each run makes a few Haiku
-// requests.
 import { query } from "@anthropic-ai/claude-agent-sdk"
 import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"

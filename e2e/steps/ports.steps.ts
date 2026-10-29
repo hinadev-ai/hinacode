@@ -18,7 +18,6 @@ When("a server starts listening outside my repository", async ({ listeners }) =>
 const portRow = async (page: import("@playwright/test").Page, port: number) =>
   (await portsRegion(page)).getByRole("listitem").filter({ hasText: `:${port}` })
 
-// The button arms on the first click and only stops the process on the second.
 When("I stop the server from my repository in the ports panel", async ({ app, listeners }) => {
   const { port } = listeners.get("repository")!
   const row = await portRow(app.page, port)
@@ -26,7 +25,6 @@ When("I stop the server from my repository in the ports panel", async ({ app, li
   await row.getByRole("button", { name: /^Click again to stop / }).click()
 })
 
-// The process shows under its kernel name, which depends on the Node build (`node` or `node-MainThread`).
 Then("the ports panel lists the server from my repository", async ({ app, listeners }) => {
   const { port, pid } = listeners.get("repository")!
   await expect(await portRow(app.page, port)).toContainText(`(pid ${pid})`)

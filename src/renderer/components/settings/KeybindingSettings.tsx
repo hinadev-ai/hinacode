@@ -39,7 +39,6 @@ export function KeybindingSettings() {
 
   const bind = (command: Command, chord: string) => {
     const { [command.id]: _previous, ...rest } = overrides
-    // Only overrides are stored, so picking the default again drops the override.
     void saveOverrides(chord === command.defaultKeys ? rest : { ...rest, [command.id]: chord })
   }
 
@@ -49,7 +48,6 @@ export function KeybindingSettings() {
   }
 
   const recordingCommand = commands.find((command) => command.id === recordingId)
-  // Records the physical key, so a binding stays on the same key across keyboard layouts.
   const recorder = useHotkeyRecorder({
     onRecord: (hotkey) => {
       setRecordingId(null)
@@ -88,7 +86,6 @@ export function KeybindingSettings() {
       }
     >
       {error && <FieldError>{error}</FieldError>}
-      {/* Rows keep the table's hairlines, recolored to read on the surface. */}
       <div className={cn(settingsSurfaceClass, "px-2 [&_tr]:border-foreground/8")}>
         <Table className="table-fixed">
           <TableHeader>

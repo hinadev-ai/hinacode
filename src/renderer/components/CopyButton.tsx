@@ -15,7 +15,6 @@ interface CopyButtonProps {
   readonly className?: string
 }
 
-/** Copies `value`. The icon cross-fades to a check for a moment and the change is announced. */
 export function CopyButton({ value, label, variant = "ghost", className }: CopyButtonProps) {
   const [copied, setCopied] = useState(false)
 

@@ -7,10 +7,6 @@ const testDir = defineBddConfig({
   outputDir: ".features-gen",
 })
 
-/**
- * Every worker runs its own hinacode instance on its own user-data directory, so scenarios in
- * different workers never see each other's projects, threads or settings.
- */
 export default defineConfig({
   testDir,
   fullyParallel: true,

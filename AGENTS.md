@@ -42,7 +42,7 @@ messages/     Paraglide catalogs: en.json, zh-TW.json and ja.json
 
 - Renderer and main talk over one `rpc` IPC channel. Add a method to `src/shared/contract.ts` with request and response schemas, then handle it in `src/main/rpc.ts`. Main pushes live updates on the `event` channel.
 - Main-process code is Effect services: `class X extends Context.Service<...>` plus an exported `layer`. Follow `services/Threads.ts`.
-- Each schema change gets a new migration in `src/main/db/migrations/`. Never edit a migration that has shipped.
+- Each schema change gets a new migration in `src/main/db/migrations/`. Never edit a migration that has shipped. Id 3 belonged to a removed migration that some databases already recorded, so never reuse it.
 - A new agent backend is one `AgentProvider` in `src/main/agents/` plus the registrations and capability checklist in `docs/agent-providers.md`.
 - Every UI string lives in `messages/en.json`, `messages/zh-TW.json` and `messages/ja.json`. Add all three; `src/renderer/messages.test.ts` fails when a catalog misses a key or a placeholder. Don't hardcode copy in components.
 

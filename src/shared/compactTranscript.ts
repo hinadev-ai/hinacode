@@ -3,7 +3,6 @@ import type { PushEvent } from "./contract.ts"
 
 const SUMMARY_KEYS = ["command", "file_path", "path", "pattern", "url", "description"]
 
-/** The input field that says what a tool call touched, and that field's first line. Null when the input has none. */
 export function toolSummary(input: unknown): { readonly key: string; readonly line: string } | null {
   if (typeof input !== "object" || input === null) return null
   const record = input as Record<string, unknown>
@@ -32,11 +31,6 @@ function compactPart(part: MessagePart): MessagePart {
   }
 }
 
-/**
- * Keeps what the phone's transcript shows: each tool call's summary line instead of its input and output, file
- * changes without their diffs, and none of the calls sub-agents made, which the phone hides. Those are most of a
- * transcript's bytes.
- */
 export const compactMessage = (message: Message): Message => ({
   ...message,
   parts: compactParts(message.parts),
@@ -45,7 +39,6 @@ export const compactMessage = (message: Message): Message => ({
 const compactParts = (parts: ReadonlyArray<MessagePart>) =>
   parts.filter((part) => part.type !== "tool_call" || part.parentCallId === undefined).map(compactPart)
 
-/** The live counterpart of `compactMessage`, preserving event order, call ids, and statuses. */
 export function compactPush(push: typeof PushEvent.Encoded): typeof PushEvent.Encoded {
   if (push.type === "message.created" || push.type === "message.updated")
     return { ...push, message: { ...push.message, parts: compactParts(push.message.parts) } }
@@ -68,11 +61,6 @@ export const TRANSCRIPT_PAGE_BYTES = 64 * 1024
 const encoder = new TextEncoder()
 const utf8Bytes = (message: Message) => encoder.encode(JSON.stringify(message)).length
 
-/**
- * The newest of `messages` older than the message `before` (or the newest overall) whose JSON array fits in
- * `budget` UTF-8 bytes, always at least one. `hasEarlier` says whether older messages remain. An unknown `before`
- * gives an empty page.
- */
 export function transcriptPage(
   messages: ReadonlyArray<Message>,
   before: string | undefined,

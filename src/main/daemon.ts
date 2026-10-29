@@ -22,11 +22,9 @@ import { hydratePath } from "./shellPath.ts"
 const QUIT_TIMEOUT_MS = 5000
 const LISTEN_TIMEOUT_MS = 5000
 
-// Bundled to out/server/daemon.js, and run from source in tests; package.json is two levels up from both.
 const { version } = createRequire(import.meta.url)("../../package.json") as { version: string }
 const packageRoot = fileURLToPath(new URL("../..", import.meta.url))
 
-/** Electron's `appData`, where `sbx login` keeps its config. */
 const appData = () =>
   process.platform === "darwin"
     ? join(homedir(), "Library", "Application Support")
@@ -34,10 +32,6 @@ const appData = () =>
       ? (process.env["APPDATA"] ?? join(homedir(), "AppData", "Roaming"))
       : (process.env["XDG_CONFIG_HOME"] ?? join(homedir(), ".config"))
 
-/**
- * One process per data directory: a second would run the same pollers and agents on one database. The desktop
- * app holds the `SingletonLock` of its Chromium profile; a daemon holds `daemon.pid`.
- */
 const lockDataDir = (dir: string) => {
   const desktop = desktopPid(chromiumDir(dir))
   if (desktop !== undefined) throw new Error(`the HinaCode app (pid ${desktop}) uses ${dir}`)
@@ -50,7 +44,7 @@ const lockDataDir = (dir: string) => {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
       const pid = Number(readFileSync(path, "utf8"))
-      // After an update, `process.execve` boots the new release under the same pid, holding the lock already.
+      // FIXME: `process.execve` keeps the pid, so an updated release already holds the lock
       if (pid === process.pid) break
       if (isAlive(pid)) throw new Error(`another hinacode serve (pid ${pid}) uses ${dir}`, { cause: error })
       rmSync(path, { force: true })
@@ -59,7 +53,6 @@ const lockDataDir = (dir: string) => {
   process.on("exit", () => rmSync(path, { force: true }))
 }
 
-/** The pairing block `hinacode serve` and `hinacode pair` print. Stdout is how systemd or launchd keeps it. */
 const pairingText = async (userData: string, pairing: RemotePairing) => {
   const phoneUrl = pairingUrl(pairing)
   const qr = await QRCode.toString(phoneUrl, { type: "terminal", small: true })
@@ -78,13 +71,11 @@ const pairingText = async (userData: string, pairing: RemotePairing) => {
   ].join("\n")
 }
 
-/** How `hinacode serve` shows the sign-in of a first relay link: on stdout, where its pairing block goes. */
 const printLink = ({ url, userCode }: RelayLink) =>
   Effect.sync(() =>
     process.stdout.write(`Open ${url} to link this cloud to your HinaCode account. The code is ${userCode}.\n`),
   )
 
-/** Waits until the listener is bound. */
 const listening = async (runtime: ManagedRuntime.ManagedRuntime<RemoteAccess | Settings, unknown>) => {
   const deadline = Date.now() + LISTEN_TIMEOUT_MS
   for (;;) {
@@ -132,7 +123,6 @@ const serve = async (argv: ReadonlyArray<string>, userData: string) => {
   const stop = (then: () => void) => {
     if (stopping) return
     stopping = true
-    // Running turns persist their messages and status, but a stuck one must not hold the service manager forever.
     const disposal = runtime.dispose().catch((cause: unknown) => console.error("runtime dispose failed", cause))
     const timeout = new Promise((resolve) => setTimeout(resolve, QUIT_TIMEOUT_MS))
     void Promise.race([disposal, timeout]).then(then)
@@ -140,13 +130,11 @@ const serve = async (argv: ReadonlyArray<string>, userData: string) => {
   const quit = () => stop(() => process.exit(0))
   process.on("SIGINT", quit)
   process.on("SIGTERM", quit)
-  // Build the layer (open the database, run migrations, bind the listener) before printing anything.
   await runtime.runPromise(Effect.void)
   await listening(runtime)
   try {
     await runtime.runPromise(applyServeRelay(config.relay, printLink))
   } catch (error) {
-    // A cloudflared child must not outlive a cloud that refused to start.
     await runtime.dispose()
     throw error
   }
@@ -154,10 +142,6 @@ const serve = async (argv: ReadonlyArray<string>, userData: string) => {
   process.stdout.write(await pairingText(userData, pairing))
 }
 
-/**
- * Prints the pairing block of the cloud in `userData` without starting it. It takes no lock, since a running
- * daemon holds one and SQLite lets this read beside it, and builds only the services that hold the token.
- */
 const pair = async (userData: string) => {
   const database = join(userData, "hinacode.sqlite")
   const noCloud = () => {
@@ -176,7 +160,6 @@ const pair = async (userData: string) => {
     const { remote } = await runtime.runPromise(Settings.use((settings) => settings.get))
     if (!remote.enabled) return noCloud()
     const pairing = await runtime.runPromise(RemoteAccess.use((access) => access.pairing))
-    // The relay itself is not started here, so its hostname comes from the stored tunnel.
     const tunnel = await runtime.runPromise(storedTunnel)
     process.stdout.write(await pairingText(userData, { ...pairing, relay: tunnel?.hostname ?? null }))
   } finally {

@@ -202,7 +202,6 @@ interface GhReply {
   readonly exitCode?: number
 }
 
-/** A `gh` that answers each command with `reply`, and records the arguments of every run and every push. */
 const fakeGh = (reply: (args: ReadonlyArray<string>) => GhReply) => {
   const runs: Array<ReadonlyArray<string>> = []
   const pushed: Array<PushEvent> = []
@@ -387,7 +386,6 @@ describe("pullRequestFiles", () => {
 
 const PR_URL = "https://github.com/o/r/pull/7"
 
-/** A pull request as GitHub's GraphQL API answers it, trimmed from a real answer for hinadev-ai/hinacode#379. */
 const graphqlPullRequest = (title: string, state = "OPEN") => ({
   data: {
     repository: {
@@ -521,13 +519,11 @@ const graphqlPullRequest = (title: string, state = "OPEN") => ({
 interface Budget {
   readonly remaining?: number
   readonly limit?: number
-  /** Epoch seconds. */
   readonly reset?: number
   readonly status?: string
   readonly retryAfter?: number
 }
 
-/** What `gh api --include` prints: the status line and headers, a blank line, then the body. */
 const apiReply = (
   body: unknown,
   { remaining = 4000, limit = 5000, reset = 3600, status = "200 OK", retryAfter }: Budget = {},
@@ -557,7 +553,6 @@ const secondaryLimitHit = (retryAfter?: number) =>
     { remaining: 3000, status: "403 Forbidden", retryAfter },
   )
 
-/** `gh api rate_limit` with the GraphQL budget used up until `reset`, in epoch seconds. */
 const graphqlUsedUp = (reset: number) =>
   JSON.stringify({ resources: { core: { remaining: 4000, reset }, graphql: { remaining: 0, reset } } })
 

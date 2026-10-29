@@ -11,25 +11,20 @@ import { rpc } from "./rpc.ts"
 import { Seed } from "./seed.ts"
 
 export interface Names {
-  /** Suffixes a human-readable name so scenarios sharing a worker's app never collide. */
   readonly of: (name: string) => string
 }
 
 export interface AgentState {
-  /** The MCP connection of the thread the scenario's agent acts as. */
   connection: { url: string; headers: { authorization: string } } | null
-  /** The last tool result the agent received. */
   result: { isError: boolean; text: string } | null
 }
 
 export interface WebhookState {
   readonly automations: Map<string, { id: string; secret: string; url: string }>
-  /** The last webhook response. */
   response: { status: number; body: string } | null
 }
 
 export interface ChosenModel {
-  /** The label of the model the scenario picked from the agent's live list. */
   label: string | null
 }
 
@@ -40,13 +35,9 @@ interface TestFixtures {
   readonly todoApp: HinacodeApp
   readonly activityApp: HinacodeApp
   readonly names: Names
-  /** A throwaway git repository on `main` with a README and a gitignored `.env`, inside the app's user-data directory. */
   readonly repo: string
-  /** Project ids by display name, for the projects seeded during the scenario. */
   readonly projectIds: Map<string, string>
-  /** Thread ids by display title, for the threads seeded during the scenario. */
   readonly threadIds: Map<string, string>
-  /** TCP listeners the scenario started, by where they run; all are killed afterwards. */
   readonly listeners: Map<string, Listener>
   readonly agent: AgentState
   readonly webhook: WebhookState
@@ -58,7 +49,7 @@ interface WorkerFixtures {
   readonly seed: Seed
 }
 
-// Playwright's `use` callback is not React's hook of the same name.
+// FIXME: react/rules-of-hooks mistakes Playwright's use callback for React's hook
 /* oxlint-disable react/rules-of-hooks, no-empty-pattern */
 export const test = base.extend<TestFixtures, WorkerFixtures>({
   usageLimitApp: async ({}, provide, testInfo) => {
@@ -73,7 +64,6 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     }
   },
   automaticResumeApp: async ({}, provide, testInfo) => {
-    // Automatic resume waits a minute past the reset, so a reset 55 seconds ago resumes in about 5 seconds.
     const app = await spawnApp({ mockClaude: "usage-limit", mockResetMs: -55_000 })
     try {
       await provide(app)
@@ -169,9 +159,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     for (const { pid } of started.values()) {
       try {
         process.kill(pid)
-      } catch {
-        // already gone, which some scenarios assert
-      }
+      } catch {}
     }
   },
   agent: async ({}, provide) => provide({ connection: null, result: null }),
@@ -182,7 +170,6 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 
 export const { Given, When, Then, AfterScenario } = createBdd(test)
 
-/** Scenarios share a worker's app, so each one hands it back in English, unbound, on the Threads tab and on the home route. */
 AfterScenario(async ({ app, $testInfo }) => {
   if ($testInfo.status !== $testInfo.expectedStatus) {
     await $testInfo.attach("screenshot", { body: await app.page.screenshot(), contentType: "image/png" })

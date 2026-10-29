@@ -50,15 +50,9 @@ const updatesStub = Layer.succeed(Updates, unsupported("0.0.0"))
 
 export interface TestAppOptions {
   readonly providers: Layer.Layer<ClaudeProvider | CodexProvider | MuseProvider>
-  /** Defaults to the Electron-backed layer, which sends to the mocked `BrowserWindow`s. */
   readonly events?: Layer.Layer<Events | PushBroadcast | WindowPush>
 }
 
-/**
- * The app layer of `index.ts` with scripted agents, no automations, no updater and no pull request guides, over a
- * SQLite file at `dbPath`.
- * Tests that keep the default `events` must mock `electron` first.
- */
 export const makeTestAppLayer = (
   dbPath: string,
   { providers, events = makeEventsLayer(sendToWindows) }: TestAppOptions,

@@ -148,7 +148,6 @@ describe("pollLinearIssues", () => {
       const filters: Array<LinearIssueFilter> = []
       const list = async (filter: LinearIssueFilter) => {
         filters.push(filter)
-        // The server already filters, but a stale replica must not replay old issues.
         return [node("9", "2026-10-12T03:09:00Z"), node("7", "2026-10-12T03:07:00Z"), node("1", cursor)]
       }
       const result = yield* pollLinearIssues(

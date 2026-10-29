@@ -190,17 +190,12 @@ function ExternalLink({ href, children }: { href: string; children: string }) {
   )
 }
 
-/**
- * Shown with remote control off too, since setup works then and the status reads paused. Owns the setup call because
- * it stays pending through `linking` until the machine is approved, which can take minutes.
- */
 function Relay() {
   const status = useAtomValue(remoteStatusAtom)
   const refreshStatus = useAtomRefresh(remoteStatusAtom)
   const refreshPairing = useAtomRefresh(remotePairingAtom)
   const [setupError, setSetupError] = useState<string | null>(null)
   const [settingUp, startSetup] = useTransition()
-  // Cancelling makes the pending setup call fail, and that failure is the user's own doing, not an error to show.
   const cancelled = useRef(false)
   const headingId = useId()
   if (!AsyncResult.isSuccess(status)) return null
@@ -369,7 +364,6 @@ function RemoveRelayButton({ onRemoved }: { onRemoved: () => void }) {
   )
 }
 
-/** Only while the listener is up, so a failed or starting one never shows a pairing that cannot connect. */
 function PairPhone() {
   const status = useAtomValue(remoteStatusAtom)
   return AsyncResult.isSuccess(status) && status.value.listening ? <PairingSection /> : null
@@ -466,7 +460,6 @@ function PairingQrCode({ url }: { url: string }) {
     }
   }, [url])
 
-  // Scanners need dark modules on a light ground, so the code stays black on white in every theme.
   return (
     <div className="size-48 rounded-md bg-white p-2">
       {src && <img src={src} alt={m.remote_pair_qr_label()} className="size-full" />}

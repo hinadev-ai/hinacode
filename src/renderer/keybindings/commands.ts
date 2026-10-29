@@ -17,17 +17,14 @@ import { type SidePanelViewId, useUi } from "../stores/ui.ts"
 export interface CommandContext {
   readonly navigate: ReturnType<typeof useNavigate>
   readonly history: RouterHistory
-  /** The open thread, or null outside a thread route. */
   readonly threadId: string | null
   readonly projects: ReadonlyArray<Project>
   readonly updateClientSettings: (patch: RpcRequest<"clientSettings.set">) => Promise<ClientSettings>
   readonly experimental: ExperimentalSettings
 }
 
-/** Facts about where a keydown happened, which a command's `when` clause can test. */
 export type KeyContext = Readonly<{ terminalFocus: boolean }>
 
-/** A VS Code style `when` clause: a context key that must be true, or with `!` false. */
 export type When = keyof KeyContext | `!${keyof KeyContext}`
 
 export const whenHolds = (when: When | undefined, context: KeyContext) => {
@@ -38,16 +35,10 @@ export const whenHolds = (when: When | undefined, context: KeyContext) => {
 
 export interface Command {
   readonly id: string
-  /** A chord such as "mod+shift+n", or "" for unbound by default. `resolveKeymap` normalizes it. */
   readonly defaultKeys: string
   readonly title: () => string
   readonly run: (ctx: CommandContext) => void
-  /**
-   * Where the chord runs the command. The palette runs it anywhere. A default chord the shell or terminal
-   * already uses outside macOS, such as Ctrl+L (clear) or Ctrl+Shift+C (copy), takes `!terminalFocus`.
-   */
   readonly when?: When
-  /** The experiment the command belongs to. While it is off, the palette hides the command and its chord does nothing. */
   readonly experiment?: keyof ExperimentalSettings
 }
 
@@ -63,7 +54,6 @@ const goToSiblingThread = (ctx: CommandContext, step: 1 | -1) => {
   const threads = threadsInSidebarOrder(ctx.projects)
   if (threads.length === 0) return
   const index = threads.findIndex((thread) => thread.id === ctx.threadId)
-  // From outside a thread, "next" starts at the top and "previous" at the bottom.
   const target = index === -1 ? threads.at(step === 1 ? 0 : -1) : threads.at((index + step) % threads.length)
   if (target) void ctx.navigate({ to: "/thread/$threadId", params: { threadId: target.id } })
 }
@@ -73,7 +63,6 @@ const cycleRecentThreads = (ctx: CommandContext, step: 1 | -1) => {
   useUi.getState().cycleThreadSwitcher(ctx.threadId, step, (id) => id in byId)
 }
 
-/** Switches the side panel to `view` and focuses it, or hides the panel when it already shows `view`. */
 const showView = (ctx: CommandContext, view: SidePanelViewId) => {
   if (ctx.threadId) useUi.getState().toggleView(ctx.threadId, view, { focus: true })
 }
@@ -107,7 +96,6 @@ export const commands = [
     id: "thread.new",
     defaultKeys: "mod+n",
     title: m.command_thread_new,
-    // Waits for the projects rather than reading ctx, which is still empty while they load right after launch.
     run: () =>
       void Effect.runPromise(AtomRegistry.getResult(registry, projectsAtom).pipe(Effect.orElseSucceed(() => []))).then(
         (projects) =>
@@ -155,8 +143,7 @@ export const commands = [
     title: m.command_composer_effort,
     run: () => useUi.getState().requestPicker("effort"),
   },
-  // mod+shift+r and mod+shift+i belong to Electron's default menu (Force Reload, and Toggle Developer
-  // Tools outside macOS), which takes the key before the page sees it.
+  // FIXME: Electron's default menu takes mod+shift+r and mod+shift+i before the page sees them
   {
     id: "view.details",
     defaultKeys: "mod+shift+o",
@@ -251,7 +238,6 @@ export const commands = [
       if (ctx.threadId) useUi.getState().setSnoozeThreadId(ctx.threadId)
     },
   },
-  // Control on every platform, because macOS keeps Cmd+Tab for switching apps.
   {
     id: "thread.switchRecent",
     defaultKeys: "Control+Tab",
@@ -264,7 +250,6 @@ export const commands = [
     title: m.command_thread_switch_recent_back,
     run: (ctx) => cycleRecentThreads(ctx, -1),
   },
-  // Ctrl+[ is Escape to a terminal, so these keep out of it.
   {
     id: "navigation.back",
     defaultKeys: "mod+[",
@@ -330,25 +315,13 @@ export type CommandId = (typeof commands)[number]["id"]
 
 export type Keymap = Readonly<Record<string, Hotkey | "">>
 
-/**
- * Stored chords come in several forms: defaults and older overrides written as "mod+shift+n", and
- * recordings such as "Mod+Shift+[KeyN]" that name a physical key. All of them normalize here, and
- * anything unparseable counts as unbound.
- */
 const toHotkey = (chord: string): Hotkey | "" => (validateHotkey(chord).valid ? normalizeHotkey(chord) : "")
 
-/** Command id -> effective chord ("" when unbound): defaults overlaid by the user's overrides. */
 export const resolveKeymap = (overrides: Readonly<Record<string, string>>): Keymap =>
   Object.fromEntries(commands.map((command) => [command.id, toHotkey(overrides[command.id] ?? command.defaultKeys)]))
 
-/**
- * Whether two chords read as the same shortcut. A recorded physical key such as "Mod+[KeyB]" and a
- * default such as "Mod+B" are different bindings to TanStack Hotkeys, but on common layouts the same
- * keypress fires both.
- */
 export const sameChord = (a: string, b: string) => formatForDisplay(a) === formatForDisplay(b)
 
-/** The other commands bound to the same chord as `id`. */
 export const conflictsOf = (keymap: Keymap, id: string): Array<Command> => {
   const chord = keymap[id]
   if (!chord) return []

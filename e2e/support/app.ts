@@ -11,7 +11,7 @@ import { rpc } from "./rpc.ts"
 
 export const projectRoot = resolve(import.meta.dirname, "..", "..")
 
-// The package's types describe the Electron API, but its main export at runtime is the binary path.
+// FIXME: electron's types describe the Electron API, but its runtime main export is the binary path
 const executablePath = electronBinary as unknown as string
 
 const AppearanceSnapshot = Schema.Struct({
@@ -30,21 +30,16 @@ declare global {
 export interface HinacodeApp {
   readonly userData: string
   readonly dbPath: string
-  /** The current window. Replaced by `restart`, so read it when needed rather than caching it. */
   readonly page: Page
   readonly firstVisible: AppearanceSnapshot
   readonly firstPaint: AppearanceSnapshot
-  /** Quits and starts the app again on the same user data, as a user relaunching it would. */
   readonly restart: () => Promise<void>
-  /** Reloads the renderer, which re-reads projects, threads and settings from main. */
   readonly reload: () => Promise<void>
   readonly minimize: () => Promise<void>
   readonly windowState: () => Promise<{ readonly minimized: boolean; readonly focused: boolean }>
   readonly setWindow: (size: { width: number; height: number; zoom: number }) => Promise<void>
-  /** The system clipboard is shared by every instance, so only `@desktop` scenarios may read it. */
   readonly clipboardText: () => Promise<string>
   readonly pushEvents: (events: ReadonlyArray<PushEvent>, intervalMs?: number) => Promise<void>
-  /** Starts a second process on the same user data and resolves with its exit code, or null if it keeps running. */
   readonly launchAgain: (timeoutMs: number) => Promise<number | null>
   readonly close: () => Promise<void>
 }
@@ -59,7 +54,6 @@ const freePort = () =>
     server.on("error", fail)
   })
 
-/** `main.tsx` mounts only after its first rpc calls answer, so a rendered root means main is ready. */
 const waitForRenderer = (page: Page) =>
   page.waitForFunction(() => (document.getElementById("root")?.childElementCount ?? 0) > 0)
 
@@ -79,7 +73,7 @@ const appArgs = [
 
 const appEnv = (userData: string, options: SpawnAppOptions) => {
   const env = { ...process.env }
-  // Electron-based agent hosts may export this; the test instance must launch its GUI.
+  // FIXME: Electron-based agent hosts export ELECTRON_RUN_AS_NODE, which stops the GUI from launching
   delete env.ELECTRON_RUN_AS_NODE
   return {
     ...env,
@@ -118,7 +112,6 @@ const launch = async (
 export const spawnApp = async (options: SpawnAppOptions = {}): Promise<HinacodeApp> => {
   const userData = mkdtempSync(join(tmpdir(), "kk-e2e-"))
   let current = await launch(userData, options)
-  // A fresh profile listens for automation webhooks on a fixed port that other instances may hold.
   await rpc(current.page, "settings.set", { automations: { bindHost: "127.0.0.1", port: await freePort() } })
   return {
     userData,

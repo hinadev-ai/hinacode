@@ -9,12 +9,10 @@ export const LOOPBACK = "127.0.0.1"
 interface BindHostSelectProps {
   readonly id: string
   readonly environment: EnvironmentId
-  /** Null until the user picks an interface. */
   readonly value: string | null
   readonly onChange: (bindHost: string) => void
 }
 
-/** Loopback or one address of the environment's own network interfaces, never all of them. */
 export function BindHostSelect({ id, environment, value, onChange }: BindHostSelectProps) {
   const addresses = AsyncResult.getOrElse(useAtomValue(networkAddressesAtom(environment)), () => [])
   const items = [

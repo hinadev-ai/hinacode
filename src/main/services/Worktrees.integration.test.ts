@@ -28,7 +28,6 @@ const git = (cwd: string, ...args: Array<string>) => execFileSync("git", ["-C", 
 
 type Services = Threads | Worktrees | Projects | Settings | SqlClient.SqlClient | Pushes
 
-/** What the service would push to the renderer; tests wait on these instead of polling the database. */
 class Pushes extends Context.Service<Pushes, PubSub.PubSub<PushEvent>>()("test/Pushes") {}
 
 const makeLayer = (
@@ -52,16 +51,11 @@ const makeLayer = (
 interface Repo {
   readonly root: string
   readonly projectId: string
-  /** Opens the same database in a fresh service layer, as a relaunch of the app would, and lists worktrees. */
   readonly restart: Effect.Effect<ReadonlyArray<Worktree>>
 }
 
 const worktreeOf = (worktreeId: string | null) => Worktrees.use((worktrees) => worktrees.get(worktreeId!))
 
-/**
- * Setup runs in the background and ends with a `worktree.updated` push. Subscribing before reading the
- * row means a push between the two cannot be missed.
- */
 const waitUntilSetUp = (worktreeId: string | null) =>
   Effect.gen(function* () {
     const updates = yield* PubSub.subscribe(yield* Pushes)
@@ -77,7 +71,6 @@ const waitUntilSetUp = (worktreeId: string | null) =>
     }
   }).pipe(Effect.scoped)
 
-/** Removal deletes the checkout in the background after marking the row removed; the parent directory reports it. */
 const waitUntilDeleted = (path: string) =>
   Effect.callback<void>((resume) => {
     let done = false
@@ -97,11 +90,6 @@ const waitForAllSetups = Worktrees.use((worktrees) => worktrees.list).pipe(
   Effect.orDie,
 )
 
-/**
- * A throwaway git repo registered as a project, with the service layer built on a database next to
- * it. The layer is torn down only after background setups finish, so none of them writes to a closed
- * database.
- */
 const withRepo = <A, E>(
   f: (repo: Repo) => Effect.Effect<A, E, Services>,
   events?: (pushes: PubSub.PubSub<PushEvent>) => Events["Service"],
@@ -111,13 +99,13 @@ const withRepo = <A, E>(
       Effect.sync(() => mkdtempSync(join(tmpdir(), "kk-worktrees-test-"))),
       (path) => Effect.sync(() => rmSync(path, { recursive: true, force: true })),
     )
-    // Unresolved on purpose. macOS's temp dir goes through the /var symlink, and git reports resolved paths.
+    // FIXME: kept unresolved, since macOS's temp dir is behind the /var symlink and git reports resolved paths
     const root = join(dir, "repo")
     execFileSync("git", ["init", "-q", "-b", "main", root])
     git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
     const dbPath = join(dir, "hinacode.sqlite")
     const pushes = yield* PubSub.unbounded<PushEvent>()
-    // A separate runtime, as the app has after a relaunch; `Effect.provide` would reuse the open layers.
+    // FIXME: `Effect.provide` would reuse the open layers instead of relaunching
     const restart = Effect.acquireUseRelease(
       Effect.sync(() => ManagedRuntime.make(makeLayer(dbPath, pushes))),
       (runtime) => Effect.promise(() => runtime.runPromise(Worktrees.use((worktrees) => worktrees.list))),
@@ -147,7 +135,6 @@ const archiveRemovingWorktree = (threadId: string) =>
     Effect.andThen(Threads.use((threads) => threads.archive(threadId))),
   )
 
-/** Rows written before ownership was enforced can point two threads at one checkout. */
 const shareWorktree = (threadId: string, worktreeId: string | null) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient
@@ -288,14 +275,12 @@ describe("background setup", () => {
           settled = true
           return worktree
         })
-      // The setup script is running and blocked on the release file, so the wait cannot have settled.
       await started.promise
       expect(settled).toBe(false)
 
       writeFileSync(releasePath, "")
       expect(await prepared).toMatchObject({ id: preparing.id, status: "ready" })
       expect(settled).toBe(true)
-      // A worktree that is already prepared answers at once.
       expect(
         await runtime.runPromise(Worktrees.use((worktrees) => worktrees.whenPrepared(preparing.id))),
       ).toMatchObject({ id: preparing.id, status: "ready" })
@@ -346,7 +331,6 @@ describe("background setup", () => {
   )
 })
 
-/** Ignores SIGTERM, as a script stuck in a child that traps it would. Gives up on its own so a failing test cannot leak it. */
 const startHangingSetup = (projectId: string, pidPath: string) =>
   Projects.use((projects) =>
     projects.update({
@@ -626,11 +610,9 @@ describe("removal", () => {
         const thread = yield* createThread(projectId, "locked", "kk/locked")
         yield* waitUntilSetUp(thread.worktreeId)
         const worktree = yield* worktreeOf(thread.worktreeId)
-        // git refuses to delete a branch whose ref is locked, after `git worktree remove` already succeeded.
         writeFileSync(join(root, ".git", "refs", "heads", "kk", "locked.lock"), "")
 
         yield* Worktrees.use((worktrees) => worktrees.remove(worktree.id, "force"))
-        // A create of the same branch waits for the deletion to finish.
         yield* Effect.exit(
           Worktrees.use((worktrees) => worktrees.create({ projectId, branch: "kk/locked", baseRef: "main" })),
         )
@@ -665,7 +647,6 @@ describe("force removal", () => {
           arrange(root, worktree.path)
 
           yield* Worktrees.use((worktrees) => worktrees.remove(worktree.id, "keep"))
-          // A create of the same branch waits for the deletion to finish.
           yield* Worktrees.use((worktrees) => worktrees.create({ projectId, branch: "kk/old", baseRef: "main" }))
 
           expect((yield* worktreeOf(worktree.id)).status).toBe("removed")
@@ -791,10 +772,6 @@ const commit = (cwd: string, message: string) => {
   return git(cwd, "rev-parse", "HEAD").trim()
 }
 
-/**
- * Gives the repo an `origin` holding a pull request branch and a fork's pull request, which GitHub only
- * serves as `refs/pull/<n>/head`. Neither exists locally, as for a pull request someone else opened.
- */
 const withOrigin = (root: string) => {
   const origin = join(dirname(root), "origin.git")
   execFileSync("git", ["init", "-q", "--bare", origin])

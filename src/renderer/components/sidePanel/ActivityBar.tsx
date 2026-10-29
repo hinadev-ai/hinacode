@@ -10,16 +10,10 @@ import { type SidePanelView, viewById } from "./views.ts"
 interface ActivityBarProps {
   readonly threadId: string
   readonly views: ReadonlyArray<SidePanelView>
-  /** The view the content area shows, or null while the panel is hidden. */
   readonly selected: SidePanelView["id"] | null
-  /** The content area the tabs control. */
   readonly panelId: string
 }
 
-/**
- * A vertical WAI-ARIA tablist on the right edge, one icon per view. Clicking the selected view hides the
- * panel. Arrow keys move between the icons and Enter or Space shows one.
- */
 export function ActivityBar({ threadId, views, selected, panelId }: ActivityBarProps) {
   const keymap = useKeymap()
   const listRef = useRef<HTMLDivElement>(null)
@@ -72,7 +66,6 @@ interface ActivityTabProps {
   readonly threadId: string
   readonly chord: string
   readonly selected: boolean
-  /** The one tab Tab lands on: the thread's current view. */
   readonly focusable: boolean
   readonly panelId: string
 }

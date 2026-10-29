@@ -1,26 +1,19 @@
 import type { ProviderId } from "../../shared/agent.ts"
 import type { Message, MessagePart } from "../../shared/domain.ts"
 
-/** Small against every agent's context window, so the new session has room to work before it compacts. */
 const HANDOFF_TOKENS = 16_000
 const TOOL_INPUT_LIMIT = 200
 
 const agentName: Record<ProviderId, string> = { claude: "Claude Code", codex: "Codex", muse: "Muse Code" }
 
-/**
- * A token is about 4 bytes of English and 3 bytes, one character, of Chinese or Japanese. Counting every 3 bytes
- * as a token overestimates English, so the estimate never runs past the budget.
- */
 const estimateTokens = (text: string) => Math.ceil(Buffer.byteLength(text) / 3)
 
-/** The end of `text` that fits in `tokens`, without a character cut in half at its start. */
 const tail = (text: string, tokens: number) =>
   Buffer.from(text)
     .subarray(-Math.floor(tokens * 3))
     .toString()
     .replace(/^\uFFFD+/, "")
 
-/** The start of `text` that fits in `tokens`, without a character cut in half at its end. */
 const head = (text: string, tokens: number) =>
   Buffer.from(text)
     .subarray(0, Math.floor(tokens * 3))
@@ -29,7 +22,6 @@ const head = (text: string, tokens: number) =>
 
 const clip = (text: string, limit: number) => (text.length <= limit ? text : `${text.slice(0, limit)}…`)
 
-/** The input field that says what a call did, as the transcript search indexes it. */
 const toolSubject = (input: unknown) => {
   if (typeof input === "object" && input !== null) {
     for (const key of ["command", "file_path", "notebook_path", "pattern", "path", "url", "query", "description"]) {
@@ -40,7 +32,6 @@ const toolSubject = (input: unknown) => {
   return JSON.stringify(input) ?? ""
 }
 
-/** What the user or the agent said. Null for a part that is activity, or that the handoff leaves out. */
 const renderSaid = (part: MessagePart): string | null => {
   switch (part.type) {
     case "text":
@@ -70,7 +61,6 @@ const renderActivity = (part: MessagePart): string | null => {
   }
 }
 
-/** Keeps the message's newest activity that fits in `room` tokens, and counts the rest. */
 const renderMessage = (message: Message, room: number) => {
   const lines: Array<string> = []
   let activityTokens = 0
@@ -93,15 +83,6 @@ const renderMessage = (message: Message, room: number) => {
   return lines.length === 0 ? null : { text: [`## ${message.role}`, ...lines].join("\n"), activityTokens }
 }
 
-/**
- * The prompt that starts a new session of `to` on a conversation that ran in another session, of `from` or of
- * `to` itself. `messages` is the transcript before `prompt`, oldest first.
- *
- * It keeps the first user message, which usually sets the task, in up to an eighth of `budget` tokens, and the
- * newest messages in the rest. Tool calls and edits, newest first, take up to a quarter of it;
- * older ones are counted instead, so the rest goes to what was said, which the new agent needs most.
- * A newest message larger than what is left keeps its end.
- */
 export function handoffPrompt(input: {
   readonly messages: ReadonlyArray<Message>
   readonly from: ProviderId

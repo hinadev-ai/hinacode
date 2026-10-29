@@ -7,22 +7,14 @@ import { type PersistenceError, persistence } from "./errors.ts"
 export interface SettingStore<A> {
   readonly get: Effect.Effect<A, PersistenceError>
   readonly set: (patch: Partial<A>) => Effect.Effect<A, PersistenceError>
-  /**
-   * Every value `set` writes after this effect ran. The subscription exists once it returns, so a `set`
-   * between it and running the stream is not lost, as it would be with a stream subscribed on first pull.
-   */
   readonly changes: Effect.Effect<Stream.Stream<A>, never, Scope.Scope>
 }
 
 export interface SettingFiles<A> {
-  /** A JSON object holding the keys that were set, except the `own` ones. */
   readonly path: string
-  /** Keys kept in a file of their own, whose whole content is the key's value. */
   readonly own?: { readonly [K in keyof A]?: string }
 }
 
-// Sync like the SQLite client the settings used to live in: a turn reads them on its way to the agent, and a read that
-// yields would let callers see the turn start later than before.
 const readJson = (path: string) =>
   Effect.try({
     try: () => {
@@ -52,11 +44,6 @@ const readObject = (path: string) =>
 
 const broken = (error: PersistenceError) => Effect.logWarning(`${error.message}, using defaults`, error.cause)
 
-/**
- * Settings kept as JSON files that hold only the keys that were set, so a later change to a default still applies.
- * Every `get` reads the files, so a hand edit shows up on the next read. A file or value a hand edit broke reads as
- * its default, and `set` refuses to write over a broken file so the edit is not lost.
- */
 export const makeSettingStore = <A extends Record<string, unknown>>(
   schema: Schema.Codec<A, unknown> & { readonly fields: { readonly [key: string]: Schema.Codec<unknown, unknown> } },
   defaults: A,
@@ -64,7 +51,6 @@ export const makeSettingStore = <A extends Record<string, unknown>>(
 ) =>
   Effect.gen(function* () {
     const written = yield* PubSub.unbounded<A>()
-    // Two overlapping sets would each read the file and the later rename would drop the other's keys.
     const writes = yield* Semaphore.make(1)
     const ownFiles = Object.entries(own).filter((entry): entry is [string, string] => entry[1] !== undefined)
     const ownKeys = new Set(ownFiles.map(([key]) => key))
@@ -82,7 +68,6 @@ export const makeSettingStore = <A extends Record<string, unknown>>(
         const value = yield* readJson(file).pipe(Effect.catch((error) => Effect.as(broken(error), undefined)))
         if (value !== undefined) stored[key] = value
       }
-      // A file written before a key existed lacks it, so a stored object is laid over its default instead of replacing it.
       const merged = yield* Effect.forEach(Object.entries(defaults), ([key, fallback]) =>
         Effect.gen(function* () {
           const value = stored[key]

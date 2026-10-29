@@ -32,7 +32,6 @@ const lineCounts = (filePatch: string) => {
   return { added, removed }
 }
 
-/** Each file's section of a combined `git diff`, found by its `diff --git a/… b/<path>` header, with its line counts. */
 const splitPatch = (patch: string, paths: ReadonlyArray<string>) => {
   const chunks = patch.split(/^(?=diff --git )/m)
   const byPath = new Map<string, FileDiff>()
@@ -43,12 +42,10 @@ const splitPatch = (patch: string, paths: ReadonlyArray<string>) => {
   return byPath
 }
 
-/** The Diff tab: what the thread changed in its worktree, or in its latest turn. */
 export function ThreadDiff({ thread }: { thread: Thread }) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   const hasWorktree = worktree !== undefined && worktree.status !== "removed"
   const [scope, setScope] = useState<ChangesScope>(hasWorktree ? "worktree" : "turn")
-  // Switching scope keeps the last list on screen until the other one loads.
   const shownScope = useDeferredValue(scope)
 
   return (
@@ -76,7 +73,6 @@ export function ThreadDiff({ thread }: { thread: Thread }) {
 interface ChangesListProps {
   readonly thread: Thread
   readonly scope: ChangesScope
-  /** The other scope is still loading behind this one. */
   readonly stale: boolean
   readonly baseLabel: string
 }
@@ -86,7 +82,6 @@ function ChangesList({ thread, scope, stale, baseLabel }: ChangesListProps) {
   const changes = useAtomValue(changesAtom)
   const refresh = useAtomRefresh(changesAtom)
 
-  // A turn starting or ending is when the diff moves; ask again then instead of polling.
   const lastStatus = useRef(thread.status)
   useEffect(() => {
     if (lastStatus.current === thread.status) return

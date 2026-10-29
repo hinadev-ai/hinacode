@@ -11,7 +11,6 @@ import { MachineResourcesButton } from "./MachineResources.tsx"
 import { Button } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
-// The main process hides the native title bar on macOS only, and the traffic lights sit in this bar's left inset.
 const besideTrafficLights = detectPlatform() === "mac"
 
 export function TitleBar({

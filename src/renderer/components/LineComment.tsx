@@ -18,7 +18,6 @@ interface LineCommentFormProps {
   readonly onCancel: () => void
 }
 
-/** Writes or edits a comment under the lines it is about. `mod+Enter` submits, Escape cancels. */
 export function LineCommentForm({
   path,
   startLine,
@@ -31,7 +30,7 @@ export function LineCommentForm({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const canSubmit = body.trim() !== ""
 
-  // The file viewer lays out its annotations after React mounts them, and focus only sticks once the box has a size.
+  // FIXME: @pierre/diffs lays out annotations after React mounts them, and focus only sticks once the box has a size
   useEffect(() => {
     const textarea = textareaRef.current
     if (!textarea) return
@@ -50,7 +49,6 @@ export function LineCommentForm({
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Keys typed here belong to the comment. Escape must not close the file, and mod+s must not save it.
     event.stopPropagation()
     if (event.key === "Escape") onCancel()
     else if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) submit(event)
@@ -83,7 +81,6 @@ export function LineCommentForm({
   )
 }
 
-/** A comment under its lines in the file viewer, waiting to be sent with the next message. */
 export function LineCommentCard({
   comment,
   onEdit,
@@ -116,7 +113,6 @@ export function LineCommentCard({
   )
 }
 
-/** A comment in the composer, sent with the message, with a remove button. */
 export function PendingLineComment({ comment, onRemove }: { comment: LineComment; onRemove: () => void }) {
   return (
     <div className="relative">

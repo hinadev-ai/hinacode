@@ -1,6 +1,3 @@
-// Worst-case data for the break-ui skill: long names, unbreakable URLs, non-Latin and RTL text, missing files,
-// empty and huge lists. Writes straight into a stopped instance's SQLite, the same boundary real data crosses.
-// Usage: node scripts/break-ui/seed.ts <user-data-dir>   (launch.sh next to this file runs the whole flow)
 import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { mkdirSync, writeFileSync } from "node:fs"
@@ -95,7 +92,6 @@ project("x")
 const jp = project("ヒナコード社内ツール-デスクトップ版")
 const demo = project("demo")
 
-// Thread 1: everything long, in a worktree with a long branch.
 const branch = "feat/investigate-onboarding-webhook-retries-stripe-409-conflict-duplicate-customers-eu-region"
 const t1 = thread(
   long,
@@ -230,7 +226,6 @@ db.prepare("UPDATE thread SET queue = ? WHERE id = ?").run(
   t1,
 )
 
-// Short, odd and non-Latin titles, one per status.
 const jo = thread(long, "Jo", { provider: "codex", model: "gpt-5.5-codex", status: "awaiting_approval" })
 message(jo, "user", [{ type: "text", text: "a" }])
 message(jo, "assistant", [
@@ -282,8 +277,6 @@ thread(
 )
 thread(long, "مرحبا بالعالم: إصلاح خطأ في واجهة المستخدم")
 
-// An ordinary conversation, so the worst cases have a typical transcript to compare against: a few turns of
-// markdown, reasoning, tool calls, a diff and a sub-agent.
 const hina = project("hinacode")
 const relay = thread(hina, "Relay server e2e encryption", { pinned_at: at() })
 message(relay, "user", [{ type: "text", text: "Is our relay server end-to-end encrypted?" }])
@@ -389,11 +382,9 @@ message(relay, "assistant", [
   },
 ])
 
-// One thread in the Japanese project, none in `x`, hundreds in `demo`.
 thread(jp, "a")
 for (let i = 1; i <= 300; i++) thread(demo, `Thread ${i}: refactor module ${i}`)
 
-// Automations with long names, prompts, labels and errors.
 const automation = randomUUID()
 insert("automation", {
   id: automation,
@@ -438,7 +429,6 @@ insert("automation", {
   updated_at: at(),
 })
 
-// Accounts and remote environments.
 insert("agent_account", {
   id: randomUUID(),
   provider: "claude",

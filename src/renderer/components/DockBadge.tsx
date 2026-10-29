@@ -11,7 +11,6 @@ import { usePullRequests } from "../stores/pullRequests.ts"
 import { selectAwakeThreads, useThreads } from "../stores/threads.ts"
 import { useUnseen } from "../stores/unseen.ts"
 
-/** Counts on the Dock icon the threads whose sidebar row asks for the user. A snoozed thread waits until it wakes. */
 export function DockBadge() {
   const threads = useThreads(useShallow(selectAwakeThreads(useNow())))
   const unseen = useUnseen((state) => state.byThreadId)

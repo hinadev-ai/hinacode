@@ -13,7 +13,6 @@ const bin = mkdtempSync(join(tmpdir(), "kk-fake-codex-"))
 writeFileSync(join(bin, "codex"), `#!/bin/sh\nexec node ${join(import.meta.dirname, "fakeAppServer.mjs")} "$@"\n`)
 chmodSync(join(bin, "codex"), 0o755)
 process.env.PATH = `${bin}:${process.env.PATH}`
-// The CLI's own home must not leak in from the machine running the tests.
 delete process.env.CODEX_HOME
 
 type Control = {
@@ -66,10 +65,6 @@ const received = (): Array<Received> =>
     .filter(Boolean)
     .map((line) => JSON.parse(line))
 
-/**
- * Resolves once the fake app-server's log satisfies `predicate`. The log file changing is the signal,
- * so no clock is involved and the wait works under TestClock too.
- */
 const waitFor = (predicate: () => boolean) =>
   Effect.callback<void>((resume) => {
     let done = false
@@ -120,7 +115,6 @@ const startTurn = (threadId: string, home: AccountHome | null = null) =>
 
 type Turn = Effect.Success<ReturnType<typeof startTurn>>
 
-/** Resolves once the turn has received an event matching `predicate`; subscribing first means none is missed. */
 const untilEvent = (turn: Turn, predicate: (event: AgentEvent) => boolean) =>
   Effect.gen(function* () {
     const updates = yield* PubSub.subscribe(turn.arrived)
@@ -128,10 +122,8 @@ const untilEvent = (turn: Turn, predicate: (event: AgentEvent) => boolean) =>
     while (!predicate(yield* PubSub.take(updates))) continue
   }).pipe(Effect.scoped)
 
-/** A run that never ends fails the test by its timeout; nothing here consults a clock. */
 const finishesSoon = <A, E>(fiber: Fiber.Fiber<A, E>) => Fiber.join(fiber)
 
-/** A fresh app-server per test, torn down with the test scope. */
 const withProvider = <A, E>(effect: Effect.Effect<A, E, CodexProvider>) =>
   effect.pipe(Effect.provide(CodexProvider.layer))
 
@@ -353,7 +345,6 @@ describe("Codex Stop during startup", () => {
     ),
   )
 
-  // `it.effect` runs under TestClock, so the provider's startup timeout only fires when the test advances it.
   it.effect("fails with an actionable error when initialize never answers", () =>
     withProvider(
       Effect.gen(function* () {
@@ -749,7 +740,6 @@ describe("Codex account boundary", () => {
   )
 })
 
-// Trimmed from codex-cli 0.162 on a ChatGPT plan.
 const snapshot = (limitId: string, primary: unknown, secondary: unknown) => ({
   limitId,
   limitName: null,

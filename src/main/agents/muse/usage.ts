@@ -5,7 +5,6 @@ import type { AgentError } from "../provider.ts"
 import type { MuseCallError } from "./host.ts"
 import { CompletionUsage, type ViewPage } from "./protocol.ts"
 
-/** One completion in hinacode's four parts. `promptTokens` includes cached input, so the cache comes off the full rate. */
 export const completionTokens = ({ promptTokens, usage }: CompletionUsage): Tokens => {
   const cacheReadTokens = usage.cacheReadTokens ?? usage.cachedTokens
   const cacheWriteTokens = usage.cacheWriteTokens ?? 0
@@ -18,10 +17,8 @@ export const completionTokens = ({ promptTokens, usage }: CompletionUsage): Toke
 }
 
 interface SessionTotal {
-  /** The view cursor of the last event read. The next read starts after it. */
   readonly cursor: string | undefined
   readonly byModel: ReadonlyMap<string, Tokens>
-  /** Sub-agents and reminder agents run in child sessions of their own. */
   readonly children: ReadonlySet<string>
 }
 
@@ -35,10 +32,6 @@ const decodeCursor = Schema.decodeUnknownOption(Schema.Struct({ viewCursor: Sche
 
 const PAGE_SIZE = 1000
 
-/**
- * Sums what a session and every agent it started spent, from their durable view events, which `view/page` reads
- * without loading the session. Each session's sum is kept with its cursor, so a refresh pages only new events.
- */
 export const makeSessionUsage = (
   page: (params: {
     sessionId: string
@@ -75,7 +68,6 @@ export const makeSessionUsage = (
       return total
     })
 
-  /** Null when the session has no durable log. A child without one, such as a reminder that wrote none, is skipped. */
   const read = (sessionId: string): Effect.Effect<ThreadUsage | null, MuseCallError | AgentError> =>
     Effect.gen(function* () {
       const pending = [sessionId]

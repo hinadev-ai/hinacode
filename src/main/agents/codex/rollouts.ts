@@ -42,7 +42,7 @@ const SessionMetaLine = Schema.fromJsonString(
 )
 const decodeSessionMetaLine = Schema.decodeUnknownOption(SessionMetaLine)
 
-/** OpenAI counts cached input inside `input_tokens`, and reasoning inside `output_tokens`. */
+// FIXME: OpenAI counts cached input inside input_tokens, and reasoning inside output_tokens
 const toTokens = (usage: OpenAiUsage): Tokens => {
   const cacheReadTokens = usage.cached_input_tokens ?? 0
   const cacheWriteTokens = usage.cache_write_input_tokens ?? 0
@@ -70,13 +70,7 @@ interface Spent {
 
 const RELEVANT = ['"turn_context"', '"token_usage_record"', '"token_count"']
 
-/**
- * Tokens one rollout spent, each attributed to the model of the latest `turn_context`.
- *
- * Newer Codex writes a `token_usage_record` per model response, which is used when present. Older rollouts
- * only have `token_count`, whose cumulative total repeats and at times restarts from zero, so those count the
- * growth between totals. Totals leave out compaction requests, so they undercount slightly.
- */
+// FIXME: older rollouts only have token_count, a cumulative total that repeats and can restart from zero
 export const parseRollout = async (lines: AsyncIterable<string> | Iterable<string>): Promise<ReadonlyArray<Spent>> => {
   let model = "unknown"
   const records = new Map<string, Spent>()
@@ -99,7 +93,6 @@ export const parseRollout = async (lines: AsyncIterable<string> | Iterable<strin
   return records.size > 0 ? [...records.values()] : counted
 }
 
-/** Only the first line, since a rollout's session_meta carries the full base instructions after it. */
 const readFirstLine = async (path: string) => {
   let line = ""
   for await (const chunk of createReadStream(path, "utf8")) {
@@ -111,7 +104,6 @@ const readFirstLine = async (path: string) => {
   return line
 }
 
-/** `rollout-2026-09-22T11-35-55-<id>.jsonl` sorts by when the rollout started. */
 const startedAt = (path: string) => basename(path).slice("rollout-".length, "rollout-".length + 19)
 
 const readSessionId = (path: string) =>
@@ -120,11 +112,6 @@ const readSessionId = (path: string) =>
     () => null,
   )
 
-/**
- * A Codex thread's rollouts under `home`, its own first. Sub-agents get rollouts of their own whose
- * session_meta names the root thread as `session_id`, and they always start after it. Empty when the thread
- * has no rollout.
- */
 export const findRollouts = async (
   home: string,
   threadId: string,
@@ -142,10 +129,8 @@ export const findRollouts = async (
   return [root, ...later.filter((_, index) => owners[index] === threadId)]
 }
 
-/** Reads a Codex thread's tokens from its rollouts under `home`, sub-agents' included. */
 export const makeRolloutUsage = (home: string) => {
   const parse = memoizeByFile((path) => parseRollout(readLines(path)))
-  // A rollout's first line never changes.
   const sessionIds = new Map<string, Promise<string | null>>()
   const sessionIdOf = (path: string) => {
     const cached = sessionIds.get(path)
@@ -166,10 +151,6 @@ export const makeRolloutUsage = (home: string) => {
   }
 }
 
-/**
- * Copies a Codex thread's rollouts and its sub-agents' from one Codex home to another, at the same paths,
- * overwriting older copies. False when `from` has no rollout for the thread.
- */
 export const copyRollouts = async (threadId: string, from: string, to: string): Promise<boolean> => {
   if (resolve(from) === resolve(to)) return true
   const rollouts = await findRollouts(from, threadId)

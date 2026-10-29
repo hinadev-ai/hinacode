@@ -21,7 +21,6 @@ const Target = Schema.optionalKey(
   }),
 )
 const SWIPE_STEPS = 12
-/** Mobile UI waits about 150 ms to recognize a tap, then animates for about 350 ms. */
 const SETTLE_MS = 1000
 
 export const DeviceTools = Toolkit.make(
@@ -117,10 +116,6 @@ export const deviceToolsLayer = DeviceTools.toLayer(
         return blocks
       })
 
-    /**
-     * Points to fractions of the screen, which is what device input takes, and the id of the device meant. A gesture
-     * sends every step to that id, so a device attached or detached meanwhile never takes over halfway.
-     */
     const at = (threadId: string, device: string | undefined, x: number, y: number) =>
       Effect.map(devices.screenshot(threadId, device), ({ state }) => ({
         x: Math.min(1, Math.max(0, x / state.screen.width)),
@@ -128,7 +123,6 @@ export const deviceToolsLayer = DeviceTools.toLayer(
         deviceId: state.device.id,
       }))
 
-    /** `release` runs when the user takes control after the first step, so a gesture never leaves a finger down. */
     const actAndLook = (
       threadId: string,
       device: string | undefined,

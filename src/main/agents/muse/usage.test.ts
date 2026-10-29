@@ -4,7 +4,6 @@ import { MuseCallError } from "./host.ts"
 import type { ViewPage } from "./protocol.ts"
 import { completionTokens, makeSessionUsage } from "./usage.ts"
 
-// The `usage` of a `session/tokenUsage` event from muse 1.4.7.
 const usage = (prompt: number, output: number, cache: { read?: number; write?: number; cached?: number } = {}) => ({
   modelId: "muse-wonder-full-1.0",
   promptTokens: prompt,
@@ -47,10 +46,6 @@ describe("completionTokens", () => {
 
 type Event = { readonly method: string; readonly params: { readonly viewCursor: string } & Record<string, unknown> }
 
-/**
- * An in-memory `view/page` that serves two events a page, like a host whose page limit was hit. A page's
- * `nextCursor` is the cursor of its last event, and a cursor reads the events after it.
- */
 const fakeHost = (sessions: Record<string, Array<Event>>, missing: ReadonlySet<string>) => {
   const calls: Array<{ sessionId: string; cursor: string | undefined }> = []
   const page = ({ sessionId, cursor }: { sessionId: string; cursor?: string; limit: number }) =>

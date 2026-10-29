@@ -69,7 +69,6 @@ const testLayer = autoArchiveLayer.pipe(
 
 const pullRequestUrl = (name: string, index = 0) => `https://github.com/o/${name}/pull/${index + 1}`
 
-/** A thread in its own project, linked to one pull request per given status. */
 const threadWithPullRequests = (name: string, prStatuses: ReadonlyArray<PullRequestStatus>, status?: ThreadStatus) =>
   Effect.gen(function* () {
     const rootPath = join(base, name)
@@ -157,7 +156,6 @@ const git = (cwd: string, ...args: Array<string>) =>
 const localBranches = (root: string) =>
   git(root, "for-each-ref", "--format=%(refname:short)", "refs/heads").split("\n").filter(Boolean).toSorted()
 
-/** Worktree removal deletes the checkout and branch in the background; the parent directory reports each. */
 const waitUntilGone = (path: string) =>
   Effect.callback<void>((resume) => {
     let done = false
@@ -174,7 +172,6 @@ const waitUntilGone = (path: string) =>
 
 const waitUntilBranchGone = (root: string, branch: string) => waitUntilGone(join(root, ".git", "refs", "heads", branch))
 
-/** A git repo registered as a project. */
 const project = (name: string) =>
   Effect.gen(function* () {
     const root = join(base, name)
@@ -186,7 +183,6 @@ const project = (name: string) =>
     return { root, projectId: id }
   })
 
-/** A thread in its own worktree with one commit on its branch, so the branch is unmerged until GitHub says so. */
 const worktreeThread = (projectId: string, branch: string, baseRef = "main") =>
   Effect.gen(function* () {
     const thread = yield* Threads.use((threads) =>
@@ -199,7 +195,6 @@ const worktreeThread = (projectId: string, branch: string, baseRef = "main") =>
 
 const nextNumber = () => heads.size + 1
 
-/** Links the pull request of `branch` to the thread, opened in the given status from `head`, the worktree's tip by default. */
 const linkPullRequest = (
   thread: { readonly threadId: string; readonly path: string },
   branch: string,
@@ -219,7 +214,6 @@ const setStatus = (url: string, status: PullRequestStatus) => Effect.sync(() => 
 
 const sweep = AutoArchive.use((autoArchive) => autoArchive.sweep)
 
-/** Checks `branch` out again, which waits for the removal before it, and expects it still at `tip`. */
 const expectBranchAt = (projectId: string, branch: string, tip: string) =>
   Effect.gen(function* () {
     const worktree = yield* Worktrees.Worktrees.use((worktrees) =>

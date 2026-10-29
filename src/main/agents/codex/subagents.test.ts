@@ -2,7 +2,6 @@ import { describe, expect, test } from "@effect/vitest"
 import type { ThreadItem } from "./protocol.ts"
 import { applyChildNotification, applyParentItem, type Subagents } from "./subagents.ts"
 
-// Shapes recorded from codex-cli 0.162.1 app-server, a turn that spawned one sub-agent and waited for it.
 const child = "01a12dd6-d3d4-7740-a1cd-738854717f60"
 const spawned = {
   type: "subAgentActivity",
@@ -56,7 +55,6 @@ describe("Codex sub-agents", () => {
         endedAt: null,
       },
     ])
-    // item/completed repeats the same activity.
     expect(applyParentItem(subagents, spawned, "2026-10-12T10:00:01.000Z")).toEqual([])
 
     expect(notify(subagents, "item/started", { item: command })).toMatchObject({ lastTool: "Bash", toolUses: 1 })

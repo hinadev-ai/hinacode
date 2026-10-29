@@ -11,7 +11,6 @@ const window = (utilization: number | null, resets_at: string | null) => ({
   locked_reason: null,
 })
 
-// Trimmed from a Team account on Claude Code 2.x. Unknown buckets come and go with the server.
 const teamAnswer = {
   session: { total_cost_usd: 0 },
   subscription_type: "team",

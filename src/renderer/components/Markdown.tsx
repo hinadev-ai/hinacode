@@ -17,7 +17,6 @@ import { FindPartContext, rehypeFindMarks, useFindPattern } from "./FindHighligh
 import { HighlightedCode } from "./HighlightedCode.tsx"
 import { isWebUrl, WebLink } from "./WebLink.tsx"
 
-/** The proxied URL when the paragraph is nothing but a bare GitHub attachment link, which GitHub embeds. */
 const bareGitHubAsset = (paragraph: ExtraProps["node"]) => {
   const [link, ...rest] = paragraph?.children ?? []
   if (rest.length > 0 || link?.type !== "element" || link.tagName !== "a") return null
@@ -52,7 +51,6 @@ const components: Components = {
     isWebUrl(href) ? (
       <WebLink href={href}>{children}</WebLink>
     ) : (
-      // target=_blank routes the click through the main process, which opens it in the system browser.
       <a href={href} target="_blank" rel="noreferrer">
         {children}
       </a>
@@ -72,7 +70,6 @@ const components: Components = {
     const code = String(children.props.children ?? "").replace(/\n$/, "")
     return language === "mermaid" ? <MermaidDiagram code={code} /> : <CodeBlock language={language} code={code} />
   },
-  // The scroller takes the table's margin; inside it the margin would no longer collapse with the text around it.
   table: ({ children }) => (
     <div className="my-[2em] overflow-x-auto [&>table]:my-0">
       <table>{children}</table>
@@ -80,7 +77,6 @@ const components: Components = {
   ),
 }
 
-/** Agent markdown with GFM. `baseUrl` resolves relative image paths, for a file shown from disk. */
 export function Markdown({
   text,
   baseUrl = null,
@@ -106,7 +102,6 @@ export function Markdown({
   )
 }
 
-/** GitHub embeds bare attachment links as video, which is what they usually are; an image falls back to <img>. */
 function GitHubAttachment({ src }: { src: string }) {
   const [isImage, setIsImage] = useState(false)
   const className = "my-2 block max-h-96 max-w-full rounded-md border border-border"
@@ -149,7 +144,7 @@ function CodeBlock({ language, code }: { language: string | undefined; code: str
   )
 }
 
-/** Pele measures labels in this font to size nodes, so the UI font has to be known before rendering. */
+// FIXME: Pele measures labels in this font to size nodes
 const diagramFont = (uiFont: Appearance["uiFont"]) =>
   uiFont === null
     ? getComputedStyle(document.documentElement).getPropertyValue("--app-font-sans")
@@ -160,7 +155,6 @@ type Diagram =
   | { readonly status: "done"; readonly svg: string }
   | { readonly status: "failed" }
 
-/** Debounce for diagram renders, because streaming grows the source on every delta. */
 const RENDER_DELAY_MS = 250
 
 function MermaidDiagram({ code }: { code: string }) {
@@ -170,7 +164,6 @@ function MermaidDiagram({ code }: { code: string }) {
   useEffect(() => {
     let cancelled = false
     const timer = setTimeout(() => {
-      // Links and images are off so a diagram an agent wrote cannot make network requests.
       void import("pele/lazy")
         .then(({ renderAsync }) =>
           renderAsync(code, { fontFamily: diagramFont(uiFont), fontSize: 12, links: false, images: false }),
@@ -194,7 +187,8 @@ function MermaidDiagram({ code }: { code: string }) {
         />
       )}
       {diagram.status === "done" && (
-        // Pele escapes diagram text and emits no scripts or event handlers, so its SVG is safe to inject.
+        // oxlint-disable-next-line hinacode/no-comments
+        // Pele escapes diagram text and filters links and styles: https://pele.run/security
         <div
           className="overflow-x-auto p-3 transition-opacity duration-200 ease-out starting:opacity-0 [&_svg]:mx-auto"
           dangerouslySetInnerHTML={{ __html: diagram.svg }}

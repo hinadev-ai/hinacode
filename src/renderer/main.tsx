@@ -40,20 +40,17 @@ function App() {
   useLayoutEffect(() => {
     void callPromise("app.ready", undefined)
   }, [])
-  // Remount on locale change so every message function runs again; router and atoms live outside.
+  // FIXME: Paraglide messages read the locale when called, so the tree remounts on locale change
   return (
     <TooltipProvider key={locale}>
       <RouterProvider router={router} />
       <DockBadge />
-      {/* Below the 3rem header and clear of the side panel's activity bar, so no control is covered. */}
       <Toaster position="top-right" offset={{ top: "3.5rem", right: "3.5rem" }} theme={theme.scheme} />
     </TooltipProvider>
   )
 }
 
-/** Threads and worktrees of every environment, which main merges into one list each. */
 async function loadLists() {
-  // Each list replaces its store as soon as it answers, so a push that arrives after it is not undone by a later answer.
   await Promise.all([
     callPromise("threads.list", undefined).then(useThreads.getState().replaceAll),
     callPromise("worktrees.list", undefined).then(useWorktrees.getState().replaceAll),
@@ -94,7 +91,6 @@ onPushEvent((event) => {
       terminalExited(event.id, event.exitCode)
       return useTerminals.getState().markExited(event.id, event.exitCode)
     case "environment.status":
-      // A cloud that connects fills its sidebar section from fresh lists.
       if (event.status !== "connected") return
       registry.refresh(projectsAtom)
       registry.refresh(loadAllPullRequestsAtom)
@@ -102,7 +98,6 @@ onPushEvent((event) => {
       reattachTerminals(event.id)
       return void loadLists()
     case "environments.changed":
-      // A cloud the relay dropped takes its projects and threads out of the sidebar.
       registry.refresh(projectsAtom)
       return void loadLists()
   }
@@ -117,10 +112,6 @@ const isOnCloud = (environmentId: string) => {
   return (threadId: string) => onCloud.has(threads[threadId]?.projectId ?? "")
 }
 
-/**
- * Pushes a cloud sent while its socket was down are gone, and a restarted cloud counts `seq` from zero again, so
- * every open transcript of that cloud is read again from a fresh snapshot.
- */
 const reloadTranscripts = (environmentId: string) => {
   const onCloud = isOnCloud(environmentId)
   const { byThread, unload, load } = useMessages.getState()
@@ -139,8 +130,6 @@ const reattachTerminals = (environmentId: string) => {
   }
 }
 
-// Subscribed above before anything loads: a push sent while a list is on its way, such as a setup script ending
-// during a reload, would otherwise be lost and leave the store stale.
 const [settings] = await Promise.all([
   Effect.runPromise(AtomRegistry.getResult(registry, clientSettingsAtom)),
   loadLists(),

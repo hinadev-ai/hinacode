@@ -108,7 +108,6 @@ export function ExperimentalSettings() {
   )
 }
 
-/** The template new tiny VMs restore from, offered once the host lists its templates. */
 function VmTemplateField({ value, onChange }: { value: string; onChange: (name: string) => void }) {
   const environment = useSettingsEnvironment()
   const host = useAtomValue(vmHostAtom(environment))
@@ -187,7 +186,6 @@ function VmEnvField({
   )
 }
 
-/** Whether hinacode reaches the sbx host, through the login `sbx login` wrote. */
 function VmHost() {
   const environment = useSettingsEnvironment()
   const host = useAtomValue(vmHostAtom(environment))
@@ -212,7 +210,6 @@ function VmHost() {
   )
 }
 
-/** Renders the `backticked` spans of a translated sentence as code, so translators keep one sentence. */
 const withCode = (text: string) =>
   text.split("`").map((part, index) =>
     index % 2 === 1 ? (
@@ -249,7 +246,6 @@ function HostStatus({ status }: { status: VmHostStatus }) {
   }
 }
 
-/** "http://192.168.1.10:7070/" reads as "192.168.1.10:7070". */
 const hostOf = (url: string) => {
   try {
     return new URL(url).host

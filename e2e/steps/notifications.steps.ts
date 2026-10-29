@@ -143,8 +143,7 @@ When("I minimize the notification window", async ({ app }) => {
 })
 
 Then("the notification window is restored and focused", async ({ app }) => {
-  // macOS activates the app for a real notification click, but not for this synthetic one, and it can refuse
-  // app.focus({ steal: true }) while another app on the shared runner is in front. Linux checks focus under openbox.
+  // FIXME: macOS neither activates the app for a synthetic notification click nor reliably grants focus on shared runners
   const expected = process.platform === "darwin" ? { minimized: false } : { minimized: false, focused: true }
   await expect.poll(() => app.windowState()).toMatchObject(expected)
 })

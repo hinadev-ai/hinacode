@@ -105,7 +105,6 @@ button:disabled { opacity: 0.5; cursor: default; }
 a { color: inherit; font-size: 0.875rem; }
 `
 
-/** The link page. Everything it shows comes from the API and goes into the DOM through `textContent`. */
 export const linkPage = `<!doctype html>
 <html lang="en">
 <head>

@@ -24,7 +24,6 @@ function subscribe(listener: () => void) {
 
 const getSnapshot = () => now
 
-/** The current time in ms, shared by every caller and refreshed every 30 seconds while anything is subscribed. */
 export function useNow(): number {
   return useSyncExternalStore(subscribe, getSnapshot)
 }

@@ -141,7 +141,6 @@ const withPreparingThread = async (
           type: "turn_completed",
           ...(options.forkable && { forkPoint: { sessionId: `${id}-session`, checkpoint: "turn-1" } }),
         }
-        // A turn on a switched thread gets the handoff ahead of the prompt.
         if (input.prompt.endsWith("accepted input")) {
           return Stream.make({ type: "session_bound", providerSessionId: `${id}-session-${turns.length}` }, completed)
         }

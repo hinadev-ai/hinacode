@@ -1,10 +1,9 @@
 import type { SlashCommand } from "@anthropic-ai/claude-agent-sdk"
 import type { AgentCommand } from "../../../shared/agent.ts"
 
-/** Claude Code reports where it found a skill only as the end of its description, such as `(user)`. */
+// FIXME: Claude Code reports a skill's scope only as a "(user)" or "(project)" suffix of its description
 const SCOPE = /\s*\((user|project)\)$/
 
-/** A `supportedCommands` row as a composer completion, with the scope moved out of the description. */
 export const toCommand = (command: SlashCommand): AgentCommand => {
   const scope = SCOPE.exec(command.description)?.[1]
   return {
@@ -17,7 +16,6 @@ export const toCommand = (command: SlashCommand): AgentCommand => {
   }
 }
 
-/** The `skillOverrides` flag setting that hides every user-level skill and command from the model and from `/`. */
 export const hideUserCommands = (commands: ReadonlyArray<SlashCommand>): Record<string, "off"> =>
   Object.fromEntries(
     commands

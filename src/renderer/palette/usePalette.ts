@@ -2,13 +2,10 @@ import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import { rememberOpener } from "../stores/ui.ts"
 
-/** Typed first, it limits the palette to commands, as in VS Code. */
 export const COMMAND_PREFIX = ">"
 
-/** Typed first, it searches message text and the open thread's files, as `%` does in VS Code. */
 export const SEARCH_PREFIX = "%"
 
-/** Typed first, it picks the project for a new thread. */
 export const NEW_THREAD_PREFIX = "+"
 
 const MAX_RECENT = 20
@@ -16,9 +13,7 @@ const MAX_RECENT = 20
 interface PaletteState {
   readonly open: boolean
   readonly query: string
-  /** Bumped on each opening so a closing dialog that is still mounted refreshes its sources. */
   readonly openRequest: number
-  /** Ids of items run from the palette, most recent first. */
   readonly recent: ReadonlyArray<string>
   readonly show: (query: string) => void
   readonly hide: () => void
@@ -26,10 +21,6 @@ interface PaletteState {
   readonly remember: (id: string) => void
 }
 
-/**
- * Open state and query, so commands can open the palette in a mode. Recent ids persist in
- * localStorage: no settings field fits them, and losing them costs nothing.
- */
 export const usePalette = create<PaletteState>()(
   persist(
     (set) => ({

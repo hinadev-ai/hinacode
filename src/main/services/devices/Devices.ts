@@ -32,17 +32,13 @@ export class Devices extends Context.Service<
   Devices,
   {
     readonly enabled: () => boolean
-    /** The devices on this machine. Calls route by thread, so this is the thread's machine. */
     readonly list: () => Effect.Effect<DeviceHost, DevicesError>
-    /** The thread's devices, reconnecting the ones it had before a restart. */
     readonly get: (threadId: string) => Effect.Effect<ThreadDevices, DevicesError>
     readonly attach: (threadId: string, deviceId: DeviceId) => Effect.Effect<ThreadDevice, DevicesError>
     readonly create: (threadId: string, model?: SimulatorModelId) => Effect.Effect<ThreadDevice, DevicesError>
     readonly detach: (threadId: string, deviceId: DeviceId | null) => Effect.Effect<void, DevicesError>
-    /** Deletes any device on the machine, the user's own included, unless another thread has it attached. */
     readonly delete: (threadId: string, deviceId: DeviceId) => Effect.Effect<void, DevicesError>
     readonly frame: (input: RpcRequest<"device.frame">) => Effect.Effect<{ frame: DeviceFrame | null }, DevicesError>
-    /** The user's input. It takes control of that device from the agent. */
     readonly command: (input: RpcRequest<"device.command">) => Effect.Effect<void, DevicesError>
     readonly control: (
       threadId: string,
@@ -50,17 +46,11 @@ export class Devices extends Context.Service<
       control: DeviceControl,
     ) => Effect.Effect<ThreadDevice, DevicesError>
     readonly pick: (input: RpcRequest<"device.pick">) => Effect.Effect<PickedDeviceElement | null, DevicesError>
-    /**
-     * The agent's input. It waits while the user has control and skips acting once they hand back.
-     * This and the methods after it take `device`, a device's id or name. It may be left out while the thread has at
-     * most one device, and a thread with none gets a new simulator.
-     */
     readonly act: (
       threadId: string,
       device: string | undefined,
       commands: ReadonlyArray<DeviceCommand>,
     ) => Effect.Effect<AgentInput, DevicesError>
-    /** The device's newest frame. */
     readonly screenshot: (
       threadId: string,
       device: string | undefined,
@@ -96,7 +86,6 @@ interface Row {
   readonly owned: boolean
 }
 
-/** Where a thread keeps the simulator it is still creating, which has no id yet. */
 const NEW = "new"
 type Slot = DeviceId | typeof NEW
 const slotOf = (entry: ThreadDevice): Slot => threadDeviceId(entry) ?? NEW
@@ -119,17 +108,13 @@ const make = (options: DevicesOptions) =>
       Effect.map((value) => value.experimental.devices),
       Effect.orElseSucceed(() => false),
     )
-    /** Per thread, its devices by slot, in the order they were attached. */
     const states = new Map<string, Map<Slot, ThreadDevice>>()
     const links = new Map<DeviceId, Live>()
-    // One count for every stream, so a stream rebuilt after its lease ran out still numbers past what viewers saw.
     let frameSequence = 0
-    /** The maps below are keyed by `keyOf(thread, slot)`. */
     const preparing = new Map<string, Promise<ThreadDevice>>()
     const handBacks = new Map<string, Set<() => void>>()
     const waiting = new Map<string, number>()
     const userControl = new Map<DeviceId, string>()
-    // Reserve before the first await: SQL checks alone leave a gap between checking and deleting.
     const deleting = new Set<DeviceId>()
     const attaching = new Map<DeviceId, number>()
 
@@ -170,7 +155,6 @@ const make = (options: DevicesOptions) =>
     const publish = (threadId: string) =>
       runFork(events.publish({ type: "device.updated", threadId, devices: listOf(threadId) }))
 
-    /** Puts `state` in its slot, taking the place of `from` when a new simulator gets its id. */
     const setState = (threadId: string, state: ThreadDevice, from: Slot = slotOf(state)) => {
       const slot = slotOf(state)
       const previous = states.get(threadId) ?? new Map<Slot, ThreadDevice>()
@@ -228,7 +212,6 @@ const make = (options: DevicesOptions) =>
         existing.lease = Date.now()
         return existing
       }
-      // The frame callback holds `screen`, not `live`, because a driver may call it before connect returns.
       const screen: Screen = { latest: null, waiters: new Set(), closed: false }
       const onFrame = (frame: Frame) => {
         if (screen.closed) return
@@ -265,10 +248,6 @@ const make = (options: DevicesOptions) =>
       return live
     }
 
-    /**
-     * Boots when needed and connects, moving the device through `preparing` to `ready`. Concurrent calls share one run.
-     * A run owns its slot while `preparing` maps the slot to it. Detaching drops that entry, and the run stops placing.
-     */
     const prepare = (
       threadId: string,
       initial: DeviceId | null,
@@ -295,7 +274,6 @@ const make = (options: DevicesOptions) =>
         return state
       }
       const onStep = (step: PrepareStep) => place({ phase: "preparing", deviceId, name, owned, step })
-      // Started on the next tick, so `preparing` holds the run before its first step places anything.
       const pending: Promise<ThreadDevice> = Promise.resolve().then(async () => {
         try {
           deviceId = await start(onStep)
@@ -313,7 +291,6 @@ const make = (options: DevicesOptions) =>
           })
         } catch (cause) {
           const failed: ThreadDevice = { phase: "failed", deviceId, name, owned, message: messageOf(cause) }
-          // Nobody sees a simulator created for a run that was detached, so it goes too.
           if (cause === DETACHED && initial === null && deviceId !== null) {
             await detachNow(threadId, deviceId).catch(() => undefined)
           }
@@ -323,12 +300,10 @@ const make = (options: DevicesOptions) =>
         }
       })
       preparing.set(key, pending)
-      // Placed now, so a caller that lists the thread's devices right after sees this one, as restore needs.
       onStep(initial === null ? "creating" : "booting")
       return pending
     }
 
-    /** The device and its row, read last so a detach during the lookup is seen. */
     const lookUp = async (threadId: string, deviceId: DeviceId) => {
       const device = await findDevice(deviceId).catch(() => null)
       const row = await readRow(threadId, deviceId)
@@ -336,7 +311,6 @@ const make = (options: DevicesOptions) =>
       return { device, owned: row.owned }
     }
 
-    /** `known` is what the caller looked up already: the device, or null when it is gone, and whether it is owned. */
     const attachExisting = async (
       threadId: string,
       deviceId: DeviceId,
@@ -353,7 +327,6 @@ const make = (options: DevicesOptions) =>
       })
     }
 
-    /** `hinacode-<thread>`, then `-2`, `-3` and on, so the agent can tell a thread's simulators apart by name. */
     const nameFor = async (threadId: string) => {
       const base = `hinacode-${threadId.slice(0, 8)}`
       const taken = new Set((await options.drivers.ios.list()).map((device) => device.name))
@@ -371,7 +344,6 @@ const make = (options: DevicesOptions) =>
         let created: DeviceId | null = null
         try {
           return await options.drivers.ios.create(name, model, onStep, async (deviceId) => {
-            // Recorded before it slims and boots, so a failure or a quit midway still leaves it to clean up.
             created = deviceId
             await writeRow(threadId, { deviceId, owned: true })
           })
@@ -382,13 +354,10 @@ const make = (options: DevicesOptions) =>
       })
     }
 
-    /** Starts reconnecting the devices the thread had before a restart. */
     const restore = async (threadId: string) => {
       const missing = (await readRows(threadId)).filter((row) => !current(threadId, row.deviceId))
       if (missing.length === 0) return listOf(threadId)
-      // Looked up before any is placed, so the tabs come back in the order they were attached.
       const found = await Promise.all(missing.map((row) => findDevice(row.deviceId).catch(() => null)))
-      // Read again, so a device detached during the lookup stays detached.
       const kept = new Set((await readRows(threadId)).map((row) => row.deviceId))
       missing.forEach((row, index) => {
         if (!kept.has(row.deviceId) || current(threadId, row.deviceId) || deleting.has(row.deviceId)) return
@@ -397,7 +366,6 @@ const make = (options: DevicesOptions) =>
       return listOf(threadId)
     }
 
-    /** Waits out a device's preparation, and fails unless it ends ready. */
     const settle = async (threadId: string, state: ThreadDevice): Promise<ReadyDevice> => {
       const settled =
         state.phase === "preparing" ? await (preparing.get(keyOf(threadId, slotOf(state))) ?? state) : state
@@ -413,7 +381,6 @@ const make = (options: DevicesOptions) =>
       return { state: settled, live: connect(deviceId) }
     }
 
-    /** The device the agent means: the one named, the only one, or a new simulator when the thread has none. */
     const chosen = async (threadId: string, device: string | undefined) => {
       const entries = await restore(threadId)
       if (entries.length === 0) {
@@ -494,7 +461,6 @@ const make = (options: DevicesOptions) =>
       }
     }
 
-    /** Resolves on hand back, and stops waiting when the agent's call is interrupted. */
     const waitForHandBack = async (threadId: string, deviceId: DeviceId, signal: AbortSignal) => {
       const key = keyOf(threadId, deviceId)
       waiting.set(key, (waiting.get(key) ?? 0) + 1)
@@ -561,7 +527,6 @@ const make = (options: DevicesOptions) =>
         }
       })
 
-    /** Deletes the device too when HinaCode created it for the thread, or when `remove` asks to. */
     const detachNow = async (threadId: string, deviceId: DeviceId | null, remove = false) => {
       preparing.delete(keyOf(threadId, deviceId ?? NEW))
       if (deviceId === null) return removeState(threadId, NEW)
@@ -570,7 +535,6 @@ const make = (options: DevicesOptions) =>
       const stillUsed = [...states.values()].some((entries) => entries.get(deviceId)?.phase === "ready")
       const live = links.get(deviceId)
       if (live && !stillUsed) closeLive(live)
-      // The row goes only after the device, so a failed removal is retried instead of leaving it to look like the user's.
       if (row?.owned || remove) await driverOf(deviceId).remove(deviceId)
       await deleteRow(threadId, deviceId)
     }
@@ -628,14 +592,12 @@ const make = (options: DevicesOptions) =>
       for (const live of links.values()) {
         if (Date.now() - live.lease <= expiry) continue
         closeLive(live)
-        // Nobody is watching, so a viewer that vanished without handing back cannot leave the agent waiting.
         const holder = userControl.get(live.deviceId)
         if (holder === undefined) continue
         if (current(holder, live.deviceId)) setControl(holder, live.deviceId, "agent")
         else userControl.delete(live.deviceId)
       }
     })
-    // A sweep rather than a call from archive or delete, so threads ended from any path, and before a crash, converge.
     const releaseArchived = sql<{ threadId: string }>`
       SELECT DISTINCT thread_device.thread_id FROM thread_device LEFT JOIN thread ON thread.id = thread_device.thread_id
       WHERE thread.id IS NULL OR thread.status = 'archived'

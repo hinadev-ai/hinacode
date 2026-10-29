@@ -1,7 +1,6 @@
 import type { Subagent, SubagentStatus } from "../../../shared/agent.ts"
 import type { CollabAgentStatus, ServerNotificationParams, ThreadItem } from "./protocol.ts"
 
-/** Sub-agents of one hinacode thread, keyed by their Codex thread id. */
 export type Subagents = Map<string, Subagent>
 
 const statusOf: Record<CollabAgentStatus, SubagentStatus> = {
@@ -16,7 +15,6 @@ const statusOf: Record<CollabAgentStatus, SubagentStatus> = {
 
 const firstLine = (text: string) => text.trim().split("\n", 1)[0] ?? ""
 
-/** `/root/count_files` names the agent `count_files`. */
 const nameFromPath = (agentPath: string) => agentPath.split("/").findLast((segment) => segment !== "") ?? agentPath
 
 const update = (subagents: Subagents, id: string, patch: Partial<Subagent>) => {
@@ -27,9 +25,8 @@ const update = (subagents: Subagents, id: string, patch: Partial<Subagent>) => {
   return next
 }
 
-/** Applies an item of the parent thread; returns the sub-agents it changed. */
 export function applyParentItem(subagents: Subagents, item: ThreadItem, now: string): Array<Subagent> {
-  // Codex reports each activity twice, as item/started and item/completed, so both branches are idempotent.
+  // FIXME: Codex reports each activity on both item/started and item/completed
   if (item.type === "subAgentActivity") {
     const id = item.agentThreadId
     const current = subagents.get(id)
@@ -77,10 +74,6 @@ export function applyParentItem(subagents: Subagents, item: ThreadItem, now: str
   return changed
 }
 
-/**
- * Applies a notification from a sub-agent's own Codex thread: its tool calls, token usage and
- * final answer. Returns the changed sub-agent, or undefined when nothing it shows changed.
- */
 export function applyChildNotification(
   subagents: Subagents,
   childThreadId: string,

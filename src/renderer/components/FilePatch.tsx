@@ -14,7 +14,6 @@ export interface FileMark {
   readonly label: () => string
 }
 
-/** A letter beside the color, so the status never rests on color alone. */
 export const fileStatusMark = {
   added: { letter: "A", className: "text-vcs-added", label: m.file_status_added },
   modified: { letter: "M", className: "text-vcs-modified", label: m.file_status_modified },
@@ -31,7 +30,6 @@ export const pullRequestFileMark = {
   copied: { letter: "C", className: "text-vcs-added", label: m.file_status_copied },
 } satisfies Record<PullRequestFileStatus, FileMark>
 
-/** A relative path in mono whose folder, muted, gives way before the file name does. */
 export function FilePath({ path, title = path, className }: { path: string; title?: string; className?: string }) {
   const nameStart = path.lastIndexOf("/") + 1
   return (
@@ -42,8 +40,7 @@ export function FilePath({ path, title = path, className }: { path: string; titl
   )
 }
 
-// PatchDiff renders a whole file in one frame, about 0.07 ms per line: a 12k-line lockfile blocked for 860 ms.
-// Past this many changed lines the file is almost always generated, so it waits until the user asks for it.
+// FIXME: PatchDiff renders a whole file in one frame, about 0.07 ms per line
 const LARGE_DIFF_LINES = 1000
 
 interface FileDiffRowProps<A> {
@@ -56,9 +53,7 @@ interface FileDiffRowProps<A> {
   readonly open: boolean
   readonly onToggle: () => void
   readonly badge?: ReactNode
-  /** Buttons beside the row, outside the toggle. */
   readonly actions?: ReactNode
-  /** Shown below the row, open or not. */
   readonly notes?: ReactNode
   readonly lineAnnotations?: Array<DiffLineAnnotation<A>>
   readonly renderAnnotation?: (annotation: DiffLineAnnotation<A>) => ReactNode
@@ -85,7 +80,6 @@ export function FileDiffRow<A>({
 
   return (
     <li className="flex flex-col gap-1">
-      {/* While open, the row stays in view above its diff, so a long diff can still be told apart and closed. */}
       <div
         className={cn("group/row flex min-w-0 items-center gap-0.5 rounded-md", open && "sticky top-0 z-10 bg-muted")}
       >

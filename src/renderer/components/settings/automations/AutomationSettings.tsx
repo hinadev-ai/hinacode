@@ -37,7 +37,6 @@ const errorText = (cause: unknown) => (cause instanceof Error ? cause.message : 
 
 export function AutomationSettings() {
   const environment = useSettingsEnvironment()
-  // An automation runs where its project lives, so the picked environment offers only its own projects.
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => []).filter(
     (project) => environmentOf(project) === environment,
   )
@@ -319,7 +318,6 @@ interface SecretDialogProps {
   readonly onClose: () => void
 }
 
-/** Shown once after creating a webhook automation; the secret cannot be read back later. */
 function SecretDialog({ automation, secret, onClose }: SecretDialogProps) {
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -328,7 +326,6 @@ function SecretDialog({ automation, secret, onClose }: SecretDialogProps) {
           <DialogTitle>{m.automations_secret_title({ name: automation.name })}</DialogTitle>
           <DialogDescription>{m.automations_secret_description()}</DialogDescription>
         </DialogHeader>
-        {/* min-w-0 lets the long URL and secret truncate instead of widening the dialog grid. */}
         <div className="flex min-w-0 flex-col gap-5">
           <WebhookUrlField automationId={automation.id} />
           <Field>

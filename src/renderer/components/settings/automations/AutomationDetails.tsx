@@ -13,7 +13,6 @@ import { Textarea } from "../../ui/textarea.tsx"
 import { CopyField, formatTime, RunStatusBadge } from "./shared.tsx"
 import { SkeletonList } from "../../ui/skeleton.tsx"
 
-/** Webhook URL, Run now and recent runs for one automation. */
 export function AutomationDetails({ automation }: { automation: Automation }) {
   return (
     <div className="flex flex-col gap-5 border-t border-foreground/8 pt-4">

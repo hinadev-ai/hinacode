@@ -7,7 +7,6 @@ import type { WrittenTree } from "../../services/tinyVm/tar.ts"
 import { MAX_TRANSFER_BYTES, TinyVm } from "../../services/tinyVm/TinyVm.ts"
 import * as McpTool from "./tool.ts"
 
-/** Waits this long after acting before the screenshot, so the screen has reacted. */
 export const SETTLE_MS = 500
 const MAX_OUTPUT_CHARS = 20_000
 
@@ -166,7 +165,7 @@ export const vmToolsLayer = VmTools.toLayer(
         return [...shown(data, caption), ...(notice === undefined ? [] : [{ type: "text", text: notice } as const])]
       })
 
-    /** The angle brackets keep a path with spaces, like `Application Support`, one Markdown link. */
+    // FIXME: Markdown needs angle brackets to keep a link path with spaces whole
     const saveScreen = (threadId: string) =>
       Effect.gen(function* () {
         const data = yield* tinyVm.screenshot(threadId)
@@ -177,7 +176,6 @@ export const vmToolsLayer = VmTools.toLayer(
         return shown(data, `Screen 1280×800, saved to ${path}. Embed it with: ![VM screenshot](<${path}>)`)
       })
 
-    /** Performs one pointer or keyboard action, then shows the agent the screen it left. */
     const actAndLook = (action: VmAction, done: string) =>
       Effect.gen(function* () {
         const threadId = yield* McpTool.CallingThread

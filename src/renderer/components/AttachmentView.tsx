@@ -21,7 +21,6 @@ const formatBytes = (bytes: number) => {
   return format(bytes, "byte")
 }
 
-/** A sent attachment: an image opens full size, a file reveals in the file manager. */
 export function AttachmentView({ attachment }: { attachment: Attachment }) {
   if (attachment.kind === "image") return <ImageAttachment attachment={attachment} />
   return (
@@ -36,7 +35,6 @@ export function AttachmentView({ attachment }: { attachment: Attachment }) {
   )
 }
 
-/** The label of the element a picked screenshot carries, or null for a plain attachment. */
 const pickedLabel = ({ element, deviceElement }: Attachment) =>
   element ? elementLabel(element) : deviceElement ? deviceElementLabel(deviceElement.element) : null
 
@@ -45,7 +43,6 @@ const useAttachmentSrc = (attachment: Attachment) => attachmentUrl(attachment.pa
 function ImageAttachment({ attachment }: { attachment: Attachment }) {
   const { element, deviceElement } = attachment
   const src = useAttachmentSrc(attachment)
-  // The staged copy can be gone, for example when the thread came from another machine.
   const [missing, setMissing] = useState(false)
   const picked = pickedLabel(attachment)
   const title = picked ?? attachment.name
@@ -104,7 +101,6 @@ function Preview({ attachment, onError }: { attachment: Attachment; onError?: ()
   )
 }
 
-/** An attachment waiting in the composer, with a remove button. */
 export function PendingAttachment({ attachment, onRemove }: { attachment: Attachment; onRemove: () => void }) {
   const picked = pickedLabel(attachment)
   return (
@@ -152,7 +148,6 @@ function FileChip({ attachment }: { attachment: Attachment }) {
   )
 }
 
-/** A screenshot of an element picked in the browser, named by its tag and where it lives. */
 function ElementChip({
   attachment,
   element,
@@ -185,7 +180,6 @@ function ElementChip({
   )
 }
 
-/** A crop of a device screen, named by the element's label and the device it came from. */
 function DeviceElementChip({
   attachment,
   picked,

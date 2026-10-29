@@ -54,10 +54,6 @@ const isCommand = Schema.is(DeviceCommand)
 
 const PICK_PADDING = 4
 
-/**
- * Crops `element` from the canvas, or returns the whole screen. Element frames are in points of the screen as it
- * shows, so a landscape frame maps its x onto the long side.
- */
 function cropScreen(canvas: HTMLCanvasElement, screen: Screen, shape: FrameShape, element: DeviceElement | null) {
   const long = Math.max(screen.width, screen.height)
   const short = Math.min(screen.width, screen.height)
@@ -80,11 +76,9 @@ function cropScreen(canvas: HTMLCanvasElement, screen: Screen, shape: FrameShape
   return crop.toDataURL("image/png")
 }
 
-/** The live device: its toolbar, its screen, and who has control. */
 interface DeviceReadyProps {
   readonly threadId: string
   readonly device: ReadyDevice
-  /** Called once the user detached or deleted the device, to show another tab. */
   readonly onDetach: () => void
 }
 
@@ -132,7 +126,6 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
     controlRef.current = control
   }, [control])
 
-  // Closing the view hands the device back, so the agent never waits on a screen nobody watches.
   useEffect(
     () => () => {
       if (controlRef.current === "user") {
@@ -193,7 +186,6 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
       await callPromise("device.detach", { threadId, deviceId })
       onDetach()
     })
-  // Detaching deletes a simulator HinaCode created, so only the user's own devices need the delete call.
   const remove = () =>
     run(async () => {
       await callPromise(owned ? "device.detach" : "device.delete", { threadId, deviceId })
@@ -360,7 +352,6 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
   )
 }
 
-/** A deep link or web URL to open on the device, sent on Enter. */
 function OpenLink({ onOpen }: { onOpen: (url: string) => void }) {
   const [open, setOpen] = useState(false)
   const [url, setUrl] = useState("")
@@ -423,11 +414,9 @@ function OpenLink({ onOpen }: { onOpen: (url: string) => void }) {
 const postures: ReadonlyArray<{ posture: DevicePosture; icon: IconType; label: () => string; turned?: boolean }> = [
   { posture: "closed", icon: RiSmartphoneLine, label: m.devices_posture_closed },
   { posture: "halfOpen", icon: RiBookOpenLine, label: m.devices_posture_half_open },
-  // A foldable opens sideways, as a book does, so open it is a landscape tablet.
   { posture: "flat", icon: RiTabletLine, label: m.devices_posture_flat, turned: true },
 ]
 
-/** Folds or opens a foldable. The pressed one is the posture its frames report. */
 function PostureButtons({ current, onPick }: { current: DevicePosture; onPick: (posture: DevicePosture) => void }) {
   return postures.map(({ posture, icon: Icon, label, turned }) => (
     <Tooltip key={posture}>

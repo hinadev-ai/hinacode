@@ -3,10 +3,6 @@ export type Orientation = "portrait" | "landscape"
 export type ColorScheme = "light" | "dark"
 export type Posture = "closed" | "halfOpen" | "flat"
 
-/**
- * A foldable's posture and its inner screen in points. Its cover screen opens sideways into the inner one, as a book
- * does, so the open device is turned a quarter from the folded one.
- */
 export interface Fold {
   readonly posture: Posture
   readonly unfolded: Size
@@ -22,19 +18,17 @@ export interface Rect extends Size {
   readonly y: number
 }
 
-/** A camera cut into the display, drawn over the stream because simulator framebuffers leave it out. */
+// FIXME: simulator framebuffers leave out the camera cutout, so it is drawn over the stream
 export type Cutout =
   | { readonly kind: "island"; readonly width: number; readonly height: number; readonly top: number }
   | { readonly kind: "hole"; readonly diameter: number; readonly top: number }
 
-/** A side button. `offset` runs from the body's top edge along `side`, top runs from the left. */
 export interface SideButton {
   readonly side: "left" | "right" | "top"
   readonly offset: number
   readonly length: number
 }
 
-/** Every dimension of one device in screen points, in portrait. */
 export interface DeviceSpec {
   readonly model: DeviceModel
   readonly screen: Size
@@ -42,20 +36,15 @@ export interface DeviceSpec {
   readonly bezel: number
   readonly screenRadius: number
   readonly bodyRadius: number
-  /** Radius of the rounded edge where the frame meets the glass. */
   readonly edge: number
   readonly cutout: Cutout | null
-  /** A front camera in the bezel, for tablets whose display has no cutout. */
   readonly bezelCamera: number | null
   readonly buttons: ReadonlyArray<SideButton>
-  /** The frame's metal, as a CSS color. */
   readonly finish: Record<ColorScheme, string>
 }
 
-// Phones are taller than 2:1, iPads and foldables are 1.1:1 to 1.5:1.
 const TABLET_ASPECT = 1.75
 
-/** Proportions measured on an iPhone 17 Pro (402 pt wide) and a Pixel 10 (412 dp wide), scaled by the short side. */
 export function deviceSpec(model: DeviceModel, screen: Size): DeviceSpec {
   const portrait = { width: Math.min(screen.width, screen.height), height: Math.max(screen.width, screen.height) }
   const tablet = portrait.height / portrait.width < TABLET_ASPECT
@@ -124,20 +113,15 @@ const finishes: Record<DeviceModel, Record<ColorScheme, string>> = {
   pixel: { light: "#e4e0d8", dark: "#555a61" },
 }
 
-/** Room around the body for the side buttons and the shadow, in CSS pixels. */
 const PADDING = 16
 
 export interface FrameLayout {
-  /** CSS pixels per screen point. */
   readonly scale: number
-  /** In-plane rotation of the device in radians. Landscape turns the top to the left. */
   readonly angle: number
-  /** The oriented screen opening in CSS pixels, relative to the container. */
   readonly screen: Rect
   readonly screenRadius: number
 }
 
-/** CSS pixels per point that fit the body into `container` when turned by `angle`, so a turn never clips. */
 export function fitScale({ body }: DeviceSpec, container: Size, angle: number) {
   const cos = Math.abs(Math.cos(angle))
   const sin = Math.abs(Math.sin(angle))
@@ -146,10 +130,6 @@ export function fitScale({ body }: DeviceSpec, container: Size, angle: number) {
   return Math.max(Math.min((container.width - PADDING * 2) / width, (container.height - PADDING * 2) / height), 0)
 }
 
-/**
- * Fits the oriented device into `container` and snaps the screen opening to device pixels. A foldable fits as it is
- * open in every posture, so folding it halves its width rather than filling the box again.
- */
 export function frameLayout(
   spec: DeviceSpec,
   orientation: Orientation,
@@ -165,7 +145,6 @@ export function frameLayout(
   const snap = (value: number) => Math.round(value * dpr) / dpr
   const width = snap((landscape ? spec.screen.height : spec.screen.width) * fit)
   const height = snap((landscape ? spec.screen.width : spec.screen.height) * fit)
-  // A snapped size can differ from the unsnapped one, so the scale follows the snapped screen.
   const scale = landscape ? width / spec.screen.height : width / spec.screen.width
   return {
     scale: Math.max(scale, 0),

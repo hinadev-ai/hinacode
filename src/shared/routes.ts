@@ -1,15 +1,7 @@
 import type { RpcMethod } from "./contract.ts"
 
-/** What an id in a payload names, for finding which environment owns it. */
 export type Entity = "thread" | "project" | "worktree" | "terminal" | "automation" | "request" | "root" | "stream"
 
-/**
- * Where a call from the desktop window runs.
- * - `client`: this desktop, always.
- * - `all`: this desktop and every cloud, the arrays concatenated.
- * - `owner`: the environment that owns the id at `payload[key]`; this desktop when no cloud claimed it.
- * - `named`: the environment the call names; this desktop when it names none.
- */
 export type Route =
   | { readonly to: "client" }
   | { readonly to: "all" }

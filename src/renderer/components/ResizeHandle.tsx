@@ -13,23 +13,19 @@ const KEYBOARD_STEP = 16
 
 interface ResizeHandleProps {
   readonly label: string
-  /** The edge of `targetRef` the handle sits on. Moving away from the target makes it wider. */
   readonly edge: "left" | "right"
   readonly targetRef: RefObject<HTMLElement | null>
   readonly bounds: SizeBounds
-  /** Receives the final width of a drag or key press. */
   readonly onResize: (width: number) => void
   readonly onReset: () => void
 }
 
-/** A focusable splitter on one edge of `targetRef`. Drag it, use the arrow keys, or double-click to reset. */
 export function ResizeHandle({ label, edge, targetRef, bounds, onResize, onReset }: ResizeHandleProps) {
   const [width, setWidth] = useState<number | null>(null)
   const [dragging, setDragging] = useState(false)
   const drag = useRef<{ startX: number; startWidth: number; width: number } | null>(null)
   const grow = edge === "right" ? 1 : -1
 
-  // Measured rather than passed in, so the value stays true while a CSS default or max-width decides the width.
   useEffect(() => {
     const element = targetRef.current
     if (!element) return
@@ -38,7 +34,6 @@ export function ResizeHandle({ label, edge, targetRef, bounds, onResize, onReset
     return () => observer.disconnect()
   }, [targetRef])
 
-  // A captured pointer can outlive the handle when a panel hides or becomes an overlay.
   useEffect(
     () => () => {
       if (!drag.current) return
@@ -76,7 +71,6 @@ export function ResizeHandle({ label, edge, targetRef, bounds, onResize, onReset
     element.style.transition = "none"
   }
 
-  // Writes straight to the DOM so a drag doesn't re-render the panel on every move.
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     const current = drag.current
     const element = targetRef.current
@@ -103,7 +97,6 @@ export function ResizeHandle({ label, edge, targetRef, bounds, onResize, onReset
     if (next === undefined) return
     event.preventDefault()
     const resized = clampSize(bounds, next)
-    // Keyboard input is direct manipulation too. Finish this step before measuring the next one.
     const transition = element.style.transition
     element.style.transition = "none"
     element.style.width = `${resized}px`

@@ -13,7 +13,6 @@ const envelope = (result: unknown, status = 200) =>
 const notFound = () =>
   Response.json({ success: false, errors: [{ code: 1003, message: "Not found" }], result: null }, { status: 404 })
 
-/** The parts of the Cloudflare API the relay calls, kept in memory. */
 export class FakeCloudflare {
   readonly tunnels = new Map<string, { id: string; name: string }>()
   readonly configurations = new Map<string, unknown>()
@@ -22,7 +21,6 @@ export class FakeCloudflare {
   private failure: { method: string; path: RegExp } | null = null
   private nextId = 1
 
-  /** Makes the next call matching `method` and `path` answer with a Cloudflare error. */
   failNext(method: string, path: RegExp) {
     this.failure = { method, path }
   }

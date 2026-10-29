@@ -28,17 +28,14 @@ const alertFor = (event: AgentEvent): { readonly alert: ThreadAlert; readonly bo
 
 const isOpen = (threadId: string) => router.matchRoute({ to: "/thread/$threadId", params: { threadId } }) !== false
 
-/** Where the user's attention is decides the surface. The thread they are looking at needs no notice. */
 const surfaceFor = (threadId: string): Surface | null => {
   if (!document.hasFocus()) return "desktop"
   return isOpen(threadId) ? null : "toast"
 }
 
-/** A completed turn with messages queued behind it is not the end of the thread's work. */
 const continuesFromQueue = (threadId: string, event: AgentEvent) =>
   event.type === "turn_completed" && (useThreads.getState().byId[threadId]?.queue.length ?? 0) > 0
 
-/** Marks a thread whose turn ended while the user was not looking at it. Opening the thread clears the mark. */
 export const recordUnseenOutcome = (threadId: string, event: AgentEvent) => {
   const outcome = outcomeOf(event)
   if (outcome === undefined || continuesFromQueue(threadId, event) || (document.hasFocus() && isOpen(threadId))) return
@@ -47,7 +44,6 @@ export const recordUnseenOutcome = (threadId: string, event: AgentEvent) => {
 
 const openThread = (threadId: string) => void router.navigate({ to: "/thread/$threadId", params: { threadId } })
 
-/** Notifies about a thread the user is not looking at, when the event is one they turned on. */
 export const notifyThreadEvent = (threadId: string, event: AgentEvent, settings: NotificationSettings) => {
   const raised = alertFor(event)
   const thread = useThreads.getState().byId[threadId]

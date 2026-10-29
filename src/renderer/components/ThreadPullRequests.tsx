@@ -69,12 +69,10 @@ import { SkeletonList } from "./ui/skeleton.tsx"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
 import { Textarea } from "./ui/textarea.tsx"
 
-// The code tab renders with @pierre/diffs, which stays out of the startup bundle until it opens.
 const PullRequestCode = lazy(() =>
   import("./PullRequestCode.tsx").then((module) => ({ default: module.PullRequestCode })),
 )
 
-/** "owner/repo#123" for a canonical GitHub pull request URL. */
 const shortName = (url: string) => {
   const match = /github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)/.exec(url)
   return match ? `${match[1]}#${match[2]}` : url
@@ -117,7 +115,6 @@ export const mergeLabel = {
   rebase: m.pr_merge_rebase,
 } satisfies Record<MergeMethod, () => string>
 
-/** The pull request's state as GitHub draws it. Before the state loads, a plain muted pull request icon. */
 export function StatusIcon({
   status,
   colored = false,
@@ -139,10 +136,6 @@ export function StatusIcon({
 
 type PullRequestTab = "info" | "code"
 
-/**
- * The PR tab. Every pull request the thread has: the ones agents linked plus the one GitHub has for the
- * worktree branch. Several show as a list to pick from; the picked one shows below, as its info or its code.
- */
 export function ThreadPullRequests({ thread }: { thread: Thread }) {
   const threadId = thread.id
   const loadAtom = loadPullRequestsAtom(threadId)
@@ -310,7 +303,6 @@ function PullRequestRow({
   )
 }
 
-// Status leads so a long title truncates instead of hiding it.
 const pullRequestSummary = ({ title, status, review }: PullRequest) =>
   [pullRequestStatusLabel[status](), review && reviewLabel[review](), title].filter(Boolean).join(" · ")
 
@@ -369,7 +361,6 @@ function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }:
           <PullRequestLink threadId={threadId} url={url} className="min-w-0 flex-1" />
           {linked && <UnlinkButton threadId={threadId} url={url} onUnlinkFailed={onUnlinkFailed} />}
         </div>
-        {/* Without a gh login every lookup fails the same way; the auth hint below explains it once. */}
         {signedIn && (
           <div role="alert" className="flex items-center gap-2">
             <p className="min-w-0 flex-1 text-xs wrap-anywhere text-destructive">
@@ -449,7 +440,6 @@ function UnlinkButton({ threadId, url, onUnlinkFailed }: UnlinkButtonProps) {
   const [pending, startTransition] = useTransition()
   const label = m.pr_links_unlink({ name: shortName(url) })
 
-  // The pull request disappears when main pushes the updated list, so success needs no handling here.
   const unlink = () =>
     startTransition(async () => {
       try {
@@ -467,7 +457,6 @@ function UnlinkButton({ threadId, url, onUnlinkFailed }: UnlinkButtonProps) {
   )
 }
 
-/** Only what needs a human gets a callout, each with the one action that hands it to the agent. */
 function Attention({ pullRequest, threadId }: { pullRequest: PullRequestDetail; threadId: string }) {
   if (!isOpen(pullRequest.status)) return null
   const failing = pullRequest.checkRuns.filter((run) => run.status === "failing")
@@ -516,7 +505,6 @@ function Callout({
   )
 }
 
-/** Sends the prompt into the thread: steers the running turn, or starts one. The reply shows in the thread. */
 function AskAgentButton({ threadId, prompt, label }: { threadId: string; prompt: string; label: string }) {
   const [pending, startTransition] = useTransition()
   const [state, setState] = useState<{ type: "idle" } | { type: "sent" } | { type: "failed"; message: string }>({
@@ -682,7 +670,6 @@ function ConfirmDialog({
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const number = pullRequest.number
-  // The dialog keeps showing its last action while it animates closed, after `action` is already null.
   const [shown, setShown] = useState(action)
   if (action !== null && action !== shown) setShown(action)
 
@@ -819,7 +806,6 @@ function CommentsSection({
   )
 }
 
-// Bot reports run to hundreds of lines; past this many characters a comment starts folded.
 const LONG_COMMENT = 600
 
 function Comment({
@@ -938,7 +924,6 @@ function CommentComposer({ url, onPosted }: { url: string; onPosted: () => void 
 interface SectionProps {
   readonly id: PullRequestSection
   readonly title: string
-  /** Shown next to the title while the section is collapsed. */
   readonly collapsedSummary?: ReactNode
   readonly children: ReactNode
 }

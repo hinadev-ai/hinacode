@@ -14,13 +14,11 @@ import { Threads } from "./services/Threads.ts"
 import { Updates } from "./services/Updates.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 
-/** Every state change of the updater, so a test can wait for one instead of sleeping. */
 type Changes = Queue.Queue<void>
 
 const events = (changes?: Changes) =>
   Layer.succeed(Events, { publish: () => (changes === undefined ? Effect.void : Queue.offer(changes, undefined)) })
 
-/** The cloud's work in progress as the updater sees it. Mutable, so a test can let a busy cloud go idle. */
 const cloud = (
   busy: { running: boolean },
   terminals: ReadonlyArray<{ status: "running" | "exited" }> = [],
@@ -36,7 +34,6 @@ const cloud = (
   )
 const idleCloud = cloud({ running: false })
 
-/** A registry that serves one `hinacode` release, or fails every request when `release` is null. */
 const startRegistry = (release: { version: string; tarball?: string } | null) =>
   Effect.acquireRelease(
     Effect.callback<{ server: Server; url: string }>((resume) => {
@@ -68,14 +65,12 @@ const startRegistry = (release: { version: string; tarball?: string } | null) =>
     ({ server }) => Effect.callback<void>((resume) => void server.close(() => resume(Effect.void))),
   ).pipe(Effect.map(({ url }) => url))
 
-/** A temp directory removed when the test's scope closes, even when the test fails. */
 const tempDir = (prefix: string) =>
   Effect.acquireRelease(
     Effect.sync(() => mkdtempSync(join(tmpdir(), prefix))),
     (dir) => Effect.sync(() => rmSync(dir, { recursive: true, force: true })),
   )
 
-/** Gives npm a throwaway cache for the scope, then puts back whatever the worker had before. */
 const npmCache = Effect.gen(function* () {
   const dir = yield* tempDir("hinacode-npm-cache-")
   yield* Effect.acquireRelease(
@@ -92,7 +87,6 @@ const npmCache = Effect.gen(function* () {
   )
 })
 
-/** A global npm prefix with `hinacode` installed at `version`. */
 const globalInstall = (version: string) =>
   Effect.map(tempDir("hinacode-prefix-"), (prefix) => {
     const packageRoot = join(prefix, "lib", "node_modules", "hinacode")
@@ -111,7 +105,6 @@ const packRelease = (version: string) =>
     )
   })
 
-/** Waits for the check the cloud runs at boot to settle, one published state change at a time. */
 const bootChecked = (changes: Changes) =>
   Effect.gen(function* () {
     const updates = yield* Updates

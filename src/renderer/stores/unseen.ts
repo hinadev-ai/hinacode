@@ -3,13 +3,11 @@ import { persist } from "zustand/middleware"
 import type { Outcome } from "../../shared/threadStatus.ts"
 
 interface UnseenState {
-  /** Threads whose latest turn ended while the user was not looking, until they open the thread. */
   readonly byThreadId: Readonly<Record<string, Outcome>>
   readonly record: (threadId: string, outcome: Outcome) => void
   readonly clear: (threadId: string) => void
 }
 
-/** Persists in localStorage, so a restart keeps the marks. Losing them costs a look at each thread. */
 export const useUnseen = create<UnseenState>()(
   persist(
     (set) => ({

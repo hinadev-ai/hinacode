@@ -40,13 +40,10 @@ import { Terminals } from "./Terminals.ts"
 import { makeActiveWorkspace } from "./workspace.ts"
 import { Worktrees } from "./Worktrees.ts"
 
-/** Enough for `@` completion in a large monorepo without sending the renderer a huge payload. */
 const MAX_LISTED_FILES = 50_000
 
-/** A placeholder title for a thread nobody has described yet. It doubles as its branch name. */
 export const randomName = () => `thread-${randomUUID().slice(0, 5)}`
 
-/** The thread table row. SQLite has no boolean, so `fast_mode` and `user_skills` are bits. */
 const ThreadRow = Schema.Struct({
   ...Thread.fields,
   fastMode: Schema.BooleanFromBit,
@@ -61,27 +58,18 @@ export interface CreateThread {
   readonly title: string
   readonly provider: ProviderId
   readonly model: string
-  /** Null, the default, is the model's own effort. */
   readonly effort?: string | null | undefined
   readonly fastMode?: boolean | undefined
-  /** Creates a worktree for the thread first; the thread points at it while its setup script runs. */
   readonly worktree?: { readonly branch: string; readonly baseRef: string } | undefined
-  /** Defaults to `user`. */
   readonly createdBy?: string | undefined
 }
 
 export interface UpdateThread {
   readonly id: string
   readonly title?: string | undefined
-  /**
-   * Moves the thread to the new agent's default account unless `accountId` is given, and drops the session.
-   * A started thread must go through `AgentRunner.switchAgent`, which marks the switch in the transcript.
-   */
   readonly provider?: ProviderId | undefined
-  /** Sets the account only. A started session must be copied to the new home first, as `AgentRunner.switchAccount` does. */
   readonly accountId?: string | null | undefined
   readonly model?: string | undefined
-  /** Null goes back to the model's default effort. */
   readonly effort?: string | null | undefined
   readonly fastMode?: boolean | undefined
   readonly userSkills?: boolean | undefined
@@ -90,7 +78,6 @@ export interface UpdateThread {
   readonly usageLimit?: UsageLimit | null | undefined
   readonly sortIndex?: number | undefined
   readonly pinned?: boolean | undefined
-  /** Null wakes the thread. */
   readonly snoozedUntil?: string | null | undefined
   readonly providerSessionId?: string | undefined
   readonly queue?: ReadonlyArray<QueuedMessage> | undefined
@@ -98,7 +85,6 @@ export interface UpdateThread {
 
 const arranging = new Set(["id", "sortIndex", "pinned", "snoozedUntil"])
 
-// Arranging the sidebar is not activity, so it must not make a thread look fresh. Activity wakes a snoozed thread.
 const onlyArranges = (input: UpdateThread) =>
   Object.entries(input).every(([key, value]) => arranging.has(key) || value === undefined)
 
@@ -111,23 +97,11 @@ export class Threads extends Context.Service<
       input: CreateThread,
     ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeTakenError>
     readonly update: (input: UpdateThread) => Effect.Effect<Thread, PersistenceError | NotFoundError>
-    /**
-     * A new thread in the same workspace that goes on from the turn `messageId` ended. It copies the transcript
-     * up to that message, and its first turn forks the agent session there.
-     */
     readonly fork: (threadId: string, messageId: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
-    /** Files in the thread's working directory that git tracks or would track, for `@` mentions. */
     readonly listFiles: (
       id: string,
     ) => Effect.Effect<ReadonlyArray<string>, PersistenceError | NotFoundError | CommandError>
-    /** Whether the thread has any message yet. */
     readonly started: (id: string) => Effect.Effect<boolean, PersistenceError>
-    /**
-     * Sets up where a thread that has not started runs. `local` switches the project root to the target.
-     * `worktree` moves the thread into a new worktree: a `branch` target forks a branch named after the
-     * thread's title from `ref`, or from the project's current branch when it is empty. A `pullRequest`
-     * target checks out that pull request, and `pullRequestUrl` names it so it can be linked.
-     */
     readonly prepareWorkspace: (
       id: string,
       choice: WorkspaceChoice,
@@ -143,25 +117,14 @@ export class Threads extends Context.Service<
       | PullRequestElsewhereError
       | RootBusyError
     >
-    /**
-     * Marks the thread archived and ends its terminals. With `Settings.archive.removeWorktree` on, it first
-     * removes the thread's worktree, deleting the branch only if it is merged. A chat's folder and the thread's
-     * scratch folder are deleted. Refuses while a turn runs.
-     */
     readonly archive: (
       id: string,
     ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeBusyError | ThreadBusyError>
-    /** Makes a chat's folder again, empty. */
     readonly unarchive: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
-    /** `removeWorktree` first removes the thread's worktree the way archiving does. */
     readonly remove: (
       id: string,
       options?: { readonly removeWorktree?: boolean | undefined },
     ) => Effect.Effect<void, PersistenceError | NotFoundError | CommandError | WorktreeBusyError>
-    /**
-     * What changed in the thread's working tree: since its worktree forked (`worktree`), or since its
-     * latest turn started (`turn`). Null when the scope has no base: no live worktree, or no turn snapshot.
-     */
     readonly changes: (
       id: string,
       scope: ChangesScope,
@@ -171,7 +134,6 @@ export class Threads extends Context.Service<
       readonly threadId: string
       readonly tree: string | null
     }) => Effect.Effect<void, PersistenceError>
-    /** Turns do not survive a restart, so threads left mid-turn by a crash go back to idle. */
     readonly resetInterrupted: Effect.Effect<void, PersistenceError>
   }
 >()("hinacode/Threads") {}
@@ -192,8 +154,6 @@ const make = Effect.gen(function* () {
 
   const encodeRow = Schema.encodeEffect(ThreadRow)
 
-  // A database written by a newer build can hold threads of providers this build has no agent
-  // for. Listing skips them instead of failing every caller (the sidebar, the limit checker).
   const findAll = SqlSchema.findAll({
     Request: Schema.Void,
     Result: ThreadRow,
@@ -236,7 +196,6 @@ const make = Effect.gen(function* () {
       Effect.mapError(persistence("threads.started")),
     )
 
-  /** Makes or removes a chat's own folder, and does nothing for a thread in a folder project. */
   const syncChatFolder = (thread: Thread, exists: boolean) =>
     Effect.gen(function* () {
       const project = yield* projects.get(thread.projectId)
@@ -359,7 +318,6 @@ const make = Effect.gen(function* () {
           : switchesAgent
             ? (yield* settings.get).defaultAccount[provider]
             : current.accountId
-      // An account of another agent is as unknown to this thread as a missing one.
       if (
         accountId !== current.accountId &&
         accountId !== null &&
@@ -370,7 +328,6 @@ const make = Effect.gen(function* () {
       return yield* write(current, {
         ...input,
         accountId: accountId === current.accountId ? undefined : accountId,
-        // The usage limit belonged to the agent the thread leaves.
         ...(switchesAgent && current.status === "limited" && { status: "idle" }),
       })
     })
@@ -399,7 +356,6 @@ const make = Effect.gen(function* () {
         sortIndex: input.sortIndex ?? current.sortIndex,
         pinnedAt: input.pinned === undefined ? current.pinnedAt : input.pinned ? (current.pinnedAt ?? now) : null,
         snoozedUntil: input.snoozedUntil !== undefined ? input.snoozedUntil : arranges ? current.snoozedUntil : null,
-        // A session id belongs to one agent.
         providerSessionId:
           input.provider !== undefined && input.provider !== current.provider
             ? null
@@ -430,7 +386,6 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const { rootPath } = yield* projects.get(projectId)
       const head = yield* github.pullRequestHead(rootPath, selector)
-      // gh resolves a URL wherever it points, but the head is fetched from this project's origin.
       const origin = yield* github.repository(rootPath)
       const target = parseGitHubRepository(head.url)
       if (

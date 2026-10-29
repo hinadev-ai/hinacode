@@ -8,11 +8,10 @@ import type { AppServices, DesktopCalls } from "./rpc.ts"
 import { listOpeners, openWith } from "./openers.ts"
 import { externalUrl, isTrustedSender } from "./security.ts"
 
-/** Only for when the user asked for the window, such as a notification click or opening hinacode again. */
 export const bringToFront = (window: BrowserWindow) => {
   if (window.isMinimized()) window.restore()
   window.show()
-  // macOS won't activate an app behind another one on window.focus() alone.
+  // FIXME: macOS won't activate an app behind another one on window.focus() alone
   app.focus({ steal: true })
   window.focus()
 }
@@ -56,7 +55,6 @@ const untrustedSender: RpcEnvelope<never> = {
   error: { tag: "UntrustedSender", message: "RPC is only available to the HinaCode window" },
 }
 
-/** `appUrl` is the renderer document; RPC from any other document or from a subframe is refused. */
 export const registerIpc = (runtime: ManagedRuntime.ManagedRuntime<AppServices, unknown>, appUrl: string) => {
   ipcMain.handle(RPC_CHANNEL, (event, raw: unknown) =>
     isTrustedSender(event.senderFrame, appUrl)
@@ -65,7 +63,6 @@ export const registerIpc = (runtime: ManagedRuntime.ManagedRuntime<AppServices, 
   )
 }
 
-/** The desktop's window sink for `makeEventsLayer`. */
 export const sendToWindows = (encoded: typeof PushEvent.Encoded) => {
   for (const window of BrowserWindow.getAllWindows()) window.webContents.send(EVENT_CHANNEL, encoded)
 }

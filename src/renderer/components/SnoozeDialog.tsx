@@ -13,7 +13,6 @@ import { Dialog, DialogOverlay, DialogPortal } from "./ui/dialog.tsx"
 
 const SnoozePicker = lazy(() => import("./SnoozePicker.tsx"))
 
-/** Sets or clears a thread's snooze, and offers to put the old one back. */
 export async function snoozeThread(thread: Thread, until: Date | null) {
   const { upsert } = useThreads.getState()
   const update = (snoozedUntil: string | null) => callPromise("threads.update", { id: thread.id, snoozedUntil })
@@ -37,12 +36,10 @@ export async function snoozeThread(thread: Thread, until: Date | null) {
 
 const close = () => useUi.getState().setSnoozeThreadId(null)
 
-// The snoozed row moves to another list, which can take the element focus went back to.
 const keepFocus = () => {
   if (document.activeElement === document.body) useUi.getState().requestComposerFocus()
 }
 
-/** The snooze picker for the thread `useUi.snoozeThreadId` names. Mount once, in the app shell. */
 export function SnoozeDialog() {
   const threadId = useUi((state) => state.snoozeThreadId)
   const thread = useThreads((state) => (threadId === null ? undefined : state.byId[threadId]))

@@ -6,7 +6,6 @@ import type {
   WatchEventKind,
 } from "../../shared/domain.ts"
 
-/** The part of a pull request detail a watch remembers between polls. */
 export const snapshotFromDetail = (detail: PullRequestDetail): PullRequestWatchSnapshot => ({
   status: detail.status,
   checks: detail.checks,
@@ -14,7 +13,6 @@ export const snapshotFromDetail = (detail: PullRequestDetail): PullRequestWatchS
   mergeable: detail.mergeable,
   head: detail.head,
   failingChecks: detail.checkRuns.filter((run) => run.status === "failing").map((run) => run.name),
-  // The agent comments as the gh account too, so its own replies must not wake it.
   comments: detail.comments.filter((comment) => comment.authorKind !== "you").map((comment) => comment.id),
 })
 
@@ -31,7 +29,6 @@ const neutral = (next: PullRequestWatchSnapshot): PullRequestWatchSnapshot => ({
 const toldFailing = (previous: PullRequestWatchSnapshot, next: PullRequestWatchSnapshot) =>
   previous.head === next.head ? previous.failingChecks : []
 
-/** Failing check names in `next` that the thread has not been told about for this head. */
 export const newFailingChecks = (
   previous: PullRequestWatchSnapshot | null,
   next: PullRequestWatchSnapshot,
@@ -40,11 +37,6 @@ export const newFailingChecks = (
   return next.failingChecks.filter((name) => !told.has(name))
 }
 
-/**
- * Comment ids in `next` that the thread has not been told about. A fresh watch, or one from before comments
- * were watched, takes the comments already there as told: the watch reports what happens from now on.
- * Bots edit one comment in place on every push, and an edit keeps its id, so edits are never news.
- */
 export const newComments = (
   previous: PullRequestWatchSnapshot | null,
   next: PullRequestWatchSnapshot,
@@ -55,11 +47,6 @@ export const newComments = (
 
 const isOpen = (snapshot: PullRequestWatchSnapshot) => snapshot.status === "open" || snapshot.status === "draft"
 
-/**
- * The events a fresh snapshot carries over the one the thread was last told about, filtered to the watch's
- * interest set. A null previous snapshot reads as a neutral pull request, so a fresh watch reports checks
- * that already failed and stays quiet about checks that are merely running.
- */
 export const watchEvents = (
   previous: PullRequestWatchSnapshot | null,
   next: PullRequestWatchSnapshot,
@@ -149,10 +136,6 @@ const eventLines = (
   }
 }
 
-/**
- * The wake a thread receives for `events`. Check names, branch names and the review state come from GitHub
- * and are reported as data. The message asks for the work the event calls for and never for a merge.
- */
 export const watchMessage = (
   detail: PullRequestDetail,
   previous: PullRequestWatchSnapshot | null,
@@ -167,7 +150,6 @@ export const watchMessage = (
     .join("\n")
     .trimEnd()
 
-/** The final wake when a watch gives up on its own, so the thread learns why instead of going silent. */
 export const watchStoppedMessage = (url: string, reason: string): string =>
   [
     `Pull request watch: watching ${url} has ended. ${reason}`,

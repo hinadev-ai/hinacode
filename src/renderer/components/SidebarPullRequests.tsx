@@ -45,7 +45,6 @@ export function SidebarPullRequests({
 }) {
   const urls = links.map((link) => link.url)
   const pullRequests = useAtomValue(pullRequestStatusesAtom(environment, urls))
-  // Held here rather than in the card, which unmounts as soon as the pointer moves to the dialog.
   const [merging, setMerging] = useState<ReadonlyArray<PullRequest>>([])
   const [mergeOpen, setMergeOpen] = useState(false)
   const merge = (oldestFirst: ReadonlyArray<PullRequest>) => {

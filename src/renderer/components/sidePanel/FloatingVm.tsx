@@ -24,7 +24,6 @@ import {
   useVmDrop,
 } from "./TinyVmView.tsx"
 
-/** The running VM's screen, floating over the transcript. */
 export default function FloatingVm({ threadId }: { threadId: string }) {
   const vm = useAtomValue(threadVmAtom(threadId))
   if (!AsyncResult.isSuccess(vm) || vm.value.status !== "running") return null
@@ -38,7 +37,6 @@ function FloatingScreen({ threadId, vm }: { threadId: string; vm: RunningVm }) {
   const width = useUi((state) => state.vmFloatingWidth)
   const setWidth = useUi((state) => state.setVmFloatingWidth)
   const setPlacement = useUi((state) => state.setVmPlacement)
-  // The find bar runs along the top of the transcript, so the screen moves below it.
   const findOpen = useUi((state) => state.findThreadId === threadId)
   const ref = useRef<HTMLDivElement>(null)
   const [attempt, setAttempt] = useState(0)

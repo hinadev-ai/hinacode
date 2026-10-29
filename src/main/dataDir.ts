@@ -3,7 +3,6 @@ import { hostname } from "node:os"
 import { join, sep } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 
-/** Electron's `userData`, Chromium's profile, inside HinaCode's data dir. */
 export const chromiumDir = (dataDir: string) => join(dataDir, "chromium")
 
 export const isAlive = (pid: number) => {
@@ -15,7 +14,6 @@ export const isAlive = (pid: number) => {
   }
 }
 
-/** The pid of the live desktop app using Chromium profile `profile`. Its `SingletonLock` links to `<host>-<pid>`. */
 export const desktopPid = (profile: string) => {
   let lock: string
   try {
@@ -46,7 +44,6 @@ const move = (from: string, to: string) => {
 }
 
 const asIs = (path: string) => path
-// JSON escapes the backslashes of a Windows path.
 const inJson = (path: string) => JSON.stringify(path).slice(1, -1)
 
 const PATH_COLUMNS = [
@@ -62,7 +59,6 @@ const rewritePaths = (dataDir: string, legacy: string) => {
   try {
     db.exec("BEGIN")
     for (const [table, column, encode] of PATH_COLUMNS) {
-      // A database older than the column's migration has no paths in it to rewrite.
       if (db.prepare("SELECT 1 FROM pragma_table_info(?) WHERE name = ?").get(table, column) === undefined) continue
       const from = encode(legacy + sep)
       db.prepare(`UPDATE ${table} SET ${column} = replace(${column}, ?, ?) WHERE instr(${column}, ?) > 0`).run(
@@ -77,12 +73,6 @@ const rewritePaths = (dataDir: string, legacy: string) => {
   }
 }
 
-/**
- * Moves the profile that lived in Electron's default `userData` (`legacy`) into a new `dataDir`: Chromium's files
- * to `<dataDir>/chromium`, HinaCode's own entries to `dataDir`, and the absolute paths the database stored under
- * `legacy` rewritten. Does nothing once `dataDir` exists, so a process that loses the race to another just
- * continues. Throws while a desktop app still runs on `legacy`, since moving its open database corrupts it.
- */
 export const moveLegacyProfile = (legacy: string, dataDir: string) => {
   if (existsSync(dataDir) || !existsSync(legacy)) return
   const running = desktopPid(legacy)
