@@ -30,9 +30,9 @@ Tried on 2026-10-30 in a browser and against the live API. The dashboard asks fo
 
 Settings gain two fields. There is no migration, because the settings store merges over defaults.
 
-| Field | Shape | Default |
-|---|---|---|
-| `experimental.tinyVmProvider` | `"sbx" \| "boat"` | `"sbx"` |
+| Field                         | Shape                                         | Default     |
+| ----------------------------- | --------------------------------------------- | ----------- |
+| `experimental.tinyVmProvider` | `"sbx" \| "boat"`                             | `"sbx"`     |
 | `experimental.tinyVmBoatSize` | `"small" \| "default" \| "large" \| "xlarge"` | `"default"` |
 
 The API key is a secret named `boat.apiKey` in `Secrets`, never a setting. The `BOAT_API_KEY` environment variable wins over the stored secret, mirroring `SBX_URL`/`SBX_TOKEN`. `BOAT_API_BASE` overrides the API base URL for tests and local fakes.
@@ -51,15 +51,15 @@ Both consumers take the service optionally. `TinyVm` and `Devices` read it with 
 
 The sbx-shaped methods map onto boat like this.
 
-| Client call | Boat mapping |
-|---|---|
-| `create(template, env)` | `POST /sandboxes` with `type` from the size setting, `ttlSeconds` 7200, `env`, labels `hinacode=1`, an `Idempotency-Key` per attempt, then poll `GET /sandboxes/{id}` until `ready`, `idle`, or `running` |
-| `exec` | `POST /sandboxes/{id}/commands`. The script runs wrapped so stdout and stderr land in guest files, which the client downloads as bytes. Boat exec stdout is JSON text, so this is what lets a screenshot PNG survive the trip |
-| `putFiles` | Upload the tar through `POST /sandboxes/{id}/files/upload-url`, then extract it in the guest with `tar` |
-| `getFiles` | Tar the guest path in the guest, then download it through `POST /sandboxes/{id}/files/download-url`, refusing over the byte cap from the guest `stat` first |
-| `status` | `GET /limits` for the at-once cap plus `GET /sandboxes` for the running count |
-| `templates` | The four sizes with their vCPU and memory, so the existing template select lists them |
-| `remove` | `DELETE /sandboxes/{id}`. Tiny VM stop does not call it. See below |
+| Client call             | Boat mapping                                                                                                                                                                                                                  |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `create(template, env)` | `POST /sandboxes` with `type` from the size setting, `ttlSeconds` 7200, `env`, labels `hinacode=1`, an `Idempotency-Key` per attempt, then poll `GET /sandboxes/{id}` until `ready`, `idle`, or `running`                     |
+| `exec`                  | `POST /sandboxes/{id}/commands`. The script runs wrapped so stdout and stderr land in guest files, which the client downloads as bytes. Boat exec stdout is JSON text, so this is what lets a screenshot PNG survive the trip |
+| `putFiles`              | Upload the tar through `POST /sandboxes/{id}/files/upload-url`, then extract it in the guest with `tar`                                                                                                                       |
+| `getFiles`              | Tar the guest path in the guest, then download it through `POST /sandboxes/{id}/files/download-url`, refusing over the byte cap from the guest `stat` first                                                                   |
+| `status`                | `GET /limits` for the at-once cap plus `GET /sandboxes` for the running count                                                                                                                                                 |
+| `templates`             | The four sizes with their vCPU and memory, so the existing template select lists them                                                                                                                                         |
+| `remove`                | `DELETE /sandboxes/{id}`. Tiny VM stop does not call it. See below                                                                                                                                                            |
 
 Errors keep the existing tags where the meaning matches. A 404 or a `cancelled` sandbox becomes `SandboxGoneError`, so Tiny VM forgets the VM and the next tool call starts fresh. A missing key becomes `BoatNotConfiguredError`. A 401 names the fix (replace the key), a 402 names billing, and a 409 `machine_not_running` after an auto-stop becomes `SandboxGoneError`, so the resume path converges instead of erroring forever. A 409 `snapshot_data_expired` (stopped disks expire after 14 days) becomes `BoatSnapshotExpiredError`, and both start paths discard the mapping and create a fresh sandbox. No upstream error text is ever interpolated into a `BoatError`. Messages are chosen from an allowlist by status and code, and a request id is included only when it matches the documented `req_` shape, so a server message that echoes a key or a signed URL cannot reach the renderer or the logs.
 
