@@ -40,7 +40,7 @@ What it does:
 
 Ready means it printed `hinacode ready: cdp=... data=... session=... webhook-port=...`. Teardown is [Cleanup](#cleanup). To restart the same profile, for example to prove history restore or resume, run `$S/stop.sh $DATA` and then `$S/launch.sh $PORT $DATA --no-build`.
 
-Isolation: each instance needs its own `HINACODE_USER_DATA` (SQLite, settings, secrets) and its own CDP port. The MCP server picks a free port by itself. Never drive an instance you did not launch, such as the user's own hinacode or another agent's port 9222 to 9234.
+Isolation: each instance needs its own `HINACODE_USER_DATA` (SQLite, settings, secrets) and its own CDP port. `$DATA` holds `hinacode.sqlite`, `chats/` and `attachments/`; Chromium's profile, with `localStorage`, is `$DATA/chromium`. The MCP server picks a free port by itself. Never drive an instance you did not launch, such as the user's own hinacode or another agent's port 9222 to 9234.
 
 Verification must never access the user's `kkcode Safe Storage` Keychain item. An unpackaged run (`out/main/index.js`) switches itself to Chromium's mock keychain, so no flag is needed. A packaged build does not, so pass `--use-mock-keychain` when you launch one by hand. The mock key is public, so save only dummy secrets in these profiles. Never ask the user to approve a Keychain prompt for verification. Stop the test instance if one appears.
 

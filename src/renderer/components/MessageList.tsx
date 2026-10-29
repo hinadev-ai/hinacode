@@ -77,7 +77,7 @@ export function MessageList({
           maintainVisibleContentPosition
           ListHeaderComponent={header ?? edgeSpacer}
           ListFooterComponent={endSpacer}
-          className="min-h-0 flex-1"
+          className="min-h-0 flex-1 scroll-fade"
         />
       </LastMessageContext>
     </TranscriptContext>

@@ -3,9 +3,9 @@
 // Usage: node scripts/mobile-mock/seed.ts <user-data-dir> [source.sqlite]   (launch.sh next to this file runs it)
 import { execFileSync, spawnSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
-import { copyFileSync, mkdirSync, writeFileSync } from "node:fs"
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { homedir, userInfo } from "node:os"
-import { basename, extname, join, resolve } from "node:path"
+import { basename, dirname, extname, join, resolve } from "node:path"
 import { DatabaseSync, type SQLInputValue } from "node:sqlite"
 
 type Row = Record<string, SQLInputValue | undefined>
@@ -15,11 +15,9 @@ const data = process.argv[2] ? resolve(process.argv[2]) : undefined
 if (!data) throw new Error("Usage: node scripts/mobile-mock/seed.ts <user-data-dir> [source.sqlite]")
 if (data.startsWith(homedir()))
   throw new Error("Keep the profile outside your home directory; its paths would read as leaks")
-const profile = join(
-  process.platform === "darwin" ? join(homedir(), "Library", "Application Support") : join(homedir(), ".config"),
-  "kkcode",
-)
-const source = new DatabaseSync(process.argv[3] ?? join(profile, "hinacode.sqlite"), { readOnly: true })
+const sourcePath = process.argv[3] ?? join(homedir(), ".hinacode", "hinacode.sqlite")
+const sourceDir = dirname(sourcePath)
+const source = new DatabaseSync(sourcePath, { readOnly: true })
 const target = new DatabaseSync(join(data, "hinacode.sqlite"))
 const repo = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
   cwd: import.meta.dirname,
@@ -29,10 +27,19 @@ const PUBLIC_PROJECT = "hinacode"
 const PUBLIC_PULL_REQUESTS = "https://github.com/hinadev-ai/hinacode/pull/"
 
 const rows = (sql: string, ...params: Array<SQLInputValue>) => source.prepare(sql).all(...params) as Array<Row>
-const setting = (key: string) => {
+const settingRow = (key: string) => {
   const row = source.prepare("SELECT value FROM setting WHERE key = ?").get(key) as { value: string } | undefined
   return row === undefined ? undefined : (JSON.parse(row.value) as unknown)
 }
+const readJson = (path: string): Record<string, unknown> =>
+  existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>) : {}
+const writeJson = (path: string, value: unknown) => writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`)
+const sourceSettings: Record<string, unknown> = {
+  ...readJson(join(sourceDir, "settings.json")),
+  ...readJson(join(sourceDir, "client-settings.json")),
+  keybindings: readJson(join(sourceDir, "keybindings.json")),
+}
+const setting = (key: string) => sourceSettings[key]
 
 const projects = rows("SELECT * FROM project")
 const publicProject = projects.find((project) => project.name === PUBLIC_PROJECT && project.kind === "folder")
@@ -243,7 +250,6 @@ const seedPullRequests = () => {
 }
 
 const KEPT_SETTINGS = [
-  "appearance",
   "archive",
   "defaultAccessMode",
   "defaultAccount",
@@ -252,21 +258,22 @@ const KEPT_SETTINGS = [
   "defaultModel",
   "defaultProvider",
   "defaultWorkspaceMode",
-  "keybindings",
-  "locale",
   "modelPresets",
   "pullRequestGuide",
 ]
+const KEPT_CLIENT_SETTINGS = ["appearance", "locale"]
+const kept = (keys: ReadonlyArray<string>) =>
+  Object.fromEntries(keys.flatMap((key) => (setting(key) === undefined ? [] : [[key, setting(key)]])))
+const targetSettingsPath = join(data, "settings.json")
 const seedSettings = (remotePort: number) => {
-  const upsert = target.prepare(
-    "INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-  )
-  for (const key of KEPT_SETTINGS) {
-    const value = setting(key)
-    if (value !== undefined) upsert.run(key, JSON.stringify(value))
-  }
-  upsert.run("worktreeRoot", JSON.stringify(join(data, "worktrees")))
-  upsert.run("automations", JSON.stringify({ bindHost: "127.0.0.1", port: remotePort + 1 }))
+  writeJson(targetSettingsPath, {
+    ...readJson(targetSettingsPath),
+    ...kept(KEPT_SETTINGS),
+    worktreeRoot: join(data, "worktrees"),
+    automations: { bindHost: "127.0.0.1", port: remotePort + 1 },
+  })
+  writeJson(join(data, "client-settings.json"), kept(KEPT_CLIENT_SETTINGS))
+  writeJson(join(data, "keybindings.json"), setting("keybindings"))
 }
 
 const hours = (offset: number) => new Date(Date.now() + offset * 3_600_000).toISOString()
@@ -295,7 +302,7 @@ const assertNoLeaks = () => {
     user,
     ...projects.map((project) => String(project.root_path)),
     ...rows("SELECT host FROM environment").map((environment) => String(environment.host)),
-    (setting("relay.tunnel") as { hostname?: string } | undefined)?.hostname,
+    (settingRow("relay.tunnel") as { hostname?: string } | undefined)?.hostname,
     spawnSync("git", ["config", "user.email"], { encoding: "utf8" }).stdout.trim(),
   ].filter((value): value is string => typeof value === "string" && value.length > 2)
   const tables = [
@@ -315,7 +322,7 @@ const assertNoLeaks = () => {
   }
 }
 
-const remote = target.prepare("SELECT value FROM setting WHERE key = 'remote'").get() as { value: string } | undefined
+const remote = readJson(targetSettingsPath).remote as { port: number } | undefined
 mkdirSync(join(data, "attachments"), { recursive: true })
 prepareRepos()
 target.exec("BEGIN")
@@ -325,7 +332,7 @@ seedAccounts()
 seedThreads()
 seedMessages()
 seedPullRequests()
-seedSettings(remote === undefined ? 48091 : (JSON.parse(remote.value) as { port: number }).port)
+seedSettings(remote?.port ?? 48091)
 seedMissingStates()
 target.exec("COMMIT")
 assertNoLeaks()

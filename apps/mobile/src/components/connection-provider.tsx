@@ -10,6 +10,7 @@ import {
   restoreAnswers,
   setForeground,
   setServers,
+  setWatching,
   storedServers,
   useConnection,
 } from "@/lib/connection"
@@ -36,11 +37,6 @@ export function forgetServer(id: string) {
   void usePullRequests.getState().load()
 }
 
-/**
- * Restores the paired servers and preferences, syncs with the relay account at launch and on every return to the
- * foreground, saves the server list whenever it changes, accepts `hinacode://connect` links, and keeps the thread,
- * message and pull request stores in step with every server's socket. Renders nothing until storage has been read.
- */
 export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [restored, setRestored] = useState(false)
   const generation = useConnection((state) => state.generation)
@@ -84,6 +80,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [url, restored])
 
   useEffect(() => {
+    setForeground(AppState.currentState !== "background")
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active" || state === "background") setForeground(state === "active")
       if (state === "active") void useRelayAccount.getState().sync()
@@ -100,6 +97,14 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       network = next
     })
   }, [])
+
+  useEffect(
+    () =>
+      useMessages.subscribe((state, previous) => {
+        if (state.watched !== previous.watched) setWatching([...state.watched])
+      }),
+    [],
+  )
 
   useEffect(
     () =>

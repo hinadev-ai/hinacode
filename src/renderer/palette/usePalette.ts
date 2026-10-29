@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
+import { rememberOpener } from "../stores/ui.ts"
 
 /** Typed first, it limits the palette to commands, as in VS Code. */
 export const COMMAND_PREFIX = ">"
@@ -36,7 +37,10 @@ export const usePalette = create<PaletteState>()(
       query: "",
       openRequest: 0,
       recent: [],
-      show: (query) => set((state) => ({ open: true, query, openRequest: state.openRequest + 1 })),
+      show: (query) => {
+        rememberOpener()
+        set((state) => ({ open: true, query, openRequest: state.openRequest + 1 }))
+      },
       hide: () => set({ open: false }),
       setQuery: (query) => set({ query }),
       remember: (id) =>

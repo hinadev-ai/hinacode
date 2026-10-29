@@ -69,7 +69,7 @@ export function SidebarPullRequests({
           <HoverCardTrigger
             render={<button type="button" aria-label={m.sidebar_pull_request_stack({ count: String(links.length) })} />}
             delay={300}
-            className={cn(aboveRowLinkTrigger, "hover:text-foreground")}
+            className={cn(aboveRowLinkTrigger, "text-muted-foreground hover:text-foreground")}
           >
             <RiStackLine aria-hidden className="size-3" />+{links.length}
           </HoverCardTrigger>
@@ -121,7 +121,10 @@ function SinglePullRequest({
         rel="noreferrer"
         delay={300}
         aria-label={m.sidebar_pull_request({ number })}
-        className={cn(aboveRowLinkTrigger, status ? statusIndicator[status].className : "hover:text-foreground")}
+        className={cn(
+          aboveRowLinkTrigger,
+          status ? statusIndicator[status].className : "text-muted-foreground hover:text-foreground",
+        )}
       >
         <StatusIcon status={status} className="size-3" />#{number}
       </HoverCardTrigger>

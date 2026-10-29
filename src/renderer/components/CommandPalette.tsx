@@ -11,6 +11,7 @@ import { usePalette } from "../palette/usePalette.ts"
 import { m } from "../paraglide/messages.js"
 import { useClouds } from "../lib/environments.ts"
 import { useThreads } from "../stores/threads.ts"
+import { returnFocus } from "../stores/ui.ts"
 import { ChordKeys } from "./ChordKeys.tsx"
 import { CloudMark } from "./CloudMark.tsx"
 import { Dialog, DialogOverlay, DialogPortal } from "./ui/dialog.tsx"
@@ -201,6 +202,7 @@ export function CommandPalette() {
           {/* No exit transition: the palette gets out of the way at once, so the chosen action runs without a wait. */}
           <DialogPrimitive.Popup
             aria-label={m.palette_label()}
+            finalFocus={returnFocus}
             className="flex max-h-[min(30rem,76dvh)] w-full max-w-xl flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/10 outline-none transition-[opacity,scale] duration-150 ease-(--ease-out) data-starting-style:scale-98 data-starting-style:opacity-0"
           >
             <PaletteBody key={openRequest} onChoose={choose} />

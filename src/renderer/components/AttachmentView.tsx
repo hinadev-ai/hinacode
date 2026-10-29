@@ -2,8 +2,9 @@ import { cn } from "cn"
 import { useState } from "react"
 import { RiCloseLine, RiFileLine } from "react-icons/ri"
 import { attachmentUrl } from "../../shared/channels.ts"
+import type { PickedDeviceElement } from "../../shared/device.ts"
 import type { Attachment, PickedElement } from "../../shared/domain.ts"
-import { elementLabel } from "../lib/elementPicker.ts"
+import { deviceElementLabel, elementLabel } from "../lib/elementPicker.ts"
 import { useOpenThreadEnvironment } from "../lib/environments.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
@@ -35,14 +36,19 @@ export function AttachmentView({ attachment }: { attachment: Attachment }) {
   )
 }
 
+/** The label of the element a picked screenshot carries, or null for a plain attachment. */
+const pickedLabel = ({ element, deviceElement }: Attachment) =>
+  element ? elementLabel(element) : deviceElement ? deviceElementLabel(deviceElement.element) : null
+
 const useAttachmentSrc = (attachment: Attachment) => attachmentUrl(attachment.path, useOpenThreadEnvironment())
 
 function ImageAttachment({ attachment }: { attachment: Attachment }) {
-  const { element } = attachment
+  const { element, deviceElement } = attachment
   const src = useAttachmentSrc(attachment)
   // The staged copy can be gone, for example when the thread came from another machine.
   const [missing, setMissing] = useState(false)
-  const title = element ? elementLabel(element) : attachment.name
+  const picked = pickedLabel(attachment)
+  const title = picked ?? attachment.name
   if (missing) return <FileChip attachment={attachment} />
   return (
     <Dialog>
@@ -53,11 +59,11 @@ function ImageAttachment({ attachment }: { attachment: Attachment }) {
         <Preview attachment={attachment} onError={() => setMissing(true)} />
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] sm:max-w-4xl">
-        <DialogTitle className={cn("truncate pr-8", element && "font-mono text-sm")}>{title}</DialogTitle>
+        <DialogTitle className={cn("truncate pr-8", picked !== null && "font-mono text-sm")}>{title}</DialogTitle>
         <img
           src={src}
           alt={attachment.name}
-          className={cn("max-h-[70vh] rounded-md object-contain", element ? "mx-auto max-w-full" : "w-full")}
+          className={cn("max-h-[70vh] rounded-md object-contain", picked !== null ? "mx-auto max-w-full" : "w-full")}
         />
         {element && (
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
@@ -67,6 +73,20 @@ function ImageAttachment({ attachment }: { attachment: Attachment }) {
             <dd className="truncate font-mono">{element.selector}</dd>
           </dl>
         )}
+        {deviceElement && (
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+            <dt className="text-muted-foreground">{m.attachment_device()}</dt>
+            <dd className="truncate">{deviceElement.device}</dd>
+            <dt className="text-muted-foreground">{m.attachment_device_role()}</dt>
+            <dd className="truncate font-mono">{deviceElement.element.role}</dd>
+            {deviceElement.element.identifier && (
+              <>
+                <dt className="text-muted-foreground">{m.attachment_device_identifier()}</dt>
+                <dd className="truncate font-mono">{deviceElement.element.identifier}</dd>
+              </>
+            )}
+          </dl>
+        )}
       </DialogContent>
     </Dialog>
   )
@@ -74,6 +94,9 @@ function ImageAttachment({ attachment }: { attachment: Attachment }) {
 
 function Preview({ attachment, onError }: { attachment: Attachment; onError?: () => void }) {
   if (attachment.element) return <ElementChip attachment={attachment} element={attachment.element} onError={onError} />
+  if (attachment.deviceElement) {
+    return <DeviceElementChip attachment={attachment} picked={attachment.deviceElement} onError={onError} />
+  }
   return attachment.kind === "image" ? (
     <Thumbnail attachment={attachment} onError={onError} />
   ) : (
@@ -83,6 +106,7 @@ function Preview({ attachment, onError }: { attachment: Attachment; onError?: ()
 
 /** An attachment waiting in the composer, with a remove button. */
 export function PendingAttachment({ attachment, onRemove }: { attachment: Attachment; onRemove: () => void }) {
+  const picked = pickedLabel(attachment)
   return (
     <div className="relative">
       <Preview attachment={attachment} />
@@ -92,9 +116,7 @@ export function PendingAttachment({ attachment, onRemove }: { attachment: Attach
         variant="secondary"
         onClick={onRemove}
         aria-label={m.attachment_remove({
-          name: attachment.element
-            ? m.attachment_element({ element: elementLabel(attachment.element) })
-            : attachment.name,
+          name: picked === null ? attachment.name : m.attachment_element({ element: picked }),
         })}
         className="absolute -top-1.5 -right-1.5 rounded-full border border-border"
       >
@@ -157,6 +179,38 @@ function ElementChip({
         </span>
         <span className="truncate text-muted-foreground" title={element.url}>
           {url ? `${url.host}${url.pathname}` : element.url}
+        </span>
+      </span>
+    </span>
+  )
+}
+
+/** A crop of a device screen, named by the element's label and the device it came from. */
+function DeviceElementChip({
+  attachment,
+  picked,
+  onError,
+}: {
+  attachment: Attachment
+  picked: PickedDeviceElement
+  onError?: () => void
+}) {
+  const label = deviceElementLabel(picked.element)
+  const src = useAttachmentSrc(attachment)
+  return (
+    <span className="flex h-16 w-64 items-center gap-2 overflow-hidden rounded-lg border border-border bg-background/50 pr-3 text-left text-xs">
+      <img
+        src={src}
+        alt={m.attachment_element({ element: label })}
+        onError={onError}
+        className="h-full w-20 shrink-0 border-r border-border bg-muted object-contain p-1"
+      />
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="truncate font-mono font-medium" title={label}>
+          {label}
+        </span>
+        <span className="truncate text-muted-foreground" title={picked.device}>
+          {picked.device} · {picked.element.role}
         </span>
       </span>
     </span>

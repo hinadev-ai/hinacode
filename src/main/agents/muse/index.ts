@@ -28,7 +28,7 @@ import type {
 } from "../../../shared/agent.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { installedBinary } from "../binary.ts"
-import { elementContext } from "../elementContext.ts"
+import { attachmentContext } from "../elementContext.ts"
 import { COMPACT_COMMAND, isCompactCommand } from "../compact.ts"
 import { AgentError, type AgentProvider, type BackgroundTasksChange, type Wake } from "../provider.ts"
 import { choiceFor, sessionScope, toApprovalRequest } from "./approvals.ts"
@@ -167,10 +167,13 @@ const userInput = (text: string, attachments: ReadonlyArray<Attachment>) =>
       try: () => readFile(attachment.path),
       catch: (cause) => museError(`Failed to read ${attachment.name}: ${String(cause)}`),
     }).pipe(
-      Effect.map((data): Array<TurnInputPart> => [
-        { type: "image", base64Data: data.toString("base64"), mediaType: attachment.mime },
-        ...(attachment.element ? [textPart(elementContext(attachment.element))] : []),
-      ]),
+      Effect.map((data): Array<TurnInputPart> => {
+        const context = attachmentContext(attachment)
+        return [
+          { type: "image", base64Data: data.toString("base64"), mediaType: attachment.mime },
+          ...(context === null ? [] : [textPart(context)]),
+        ]
+      }),
     )
   }).pipe(Effect.map((parts) => [...(text === "" ? [] : [textPart(text)]), ...parts.flat()]))
 

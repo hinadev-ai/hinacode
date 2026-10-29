@@ -1,10 +1,12 @@
-import { existsSync, renameSync } from "node:fs"
+import { existsSync, mkdirSync, renameSync } from "node:fs"
+import { homedir } from "node:os"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
-import { app, BrowserWindow, Menu, net, powerMonitor, protocol, safeStorage, session, shell } from "electron"
+import { app, BrowserWindow, dialog, Menu, net, powerMonitor, protocol, safeStorage, session, shell } from "electron"
 import { Effect, Layer, ManagedRuntime, Option, Schema } from "effect"
 import { makeAppLayer } from "./app.ts"
 import { handleContextMenu } from "./contextMenu.ts"
+import { chromiumDir, moveLegacyProfile } from "./dataDir.ts"
 import { bringToFront, registerIpc, sendToWindows } from "./ipc.ts"
 import {
   attachmentRequest,
@@ -35,28 +37,37 @@ import * as Updater from "./updater.ts"
 import devIcon from "../../assets/icon-dev.png?asset"
 import releaseIcon from "../../assets/icon.png?asset"
 
-// Without this, launching `electron out/main/index.js` names the app "Electron" and userData moves. The name
-// stays "kkcode", the product's name before HinaCode, so installs keep their profile directory and the
-// Keychain item their secrets are sealed with.
+// The Keychain item secrets are sealed with, `kkcode Safe Storage`, is named after the app, so the name stays
+// "kkcode", the product's name before HinaCode. Without this, `electron out/main/index.js` names it "Electron".
 app.setName("kkcode")
 // Windows shows notifications only for the AUMID on the Start Menu shortcut, which the installer sets to the appId.
 if (process.platform === "win32") app.setAppUserModelId("app.hinacode")
 // Lets several instances run side by side during development and testing.
-const userDataOverride = process.env["HINACODE_USER_DATA"]
-if (userDataOverride) app.setPath("userData", userDataOverride)
+const dataDirOverride = process.env["HINACODE_USER_DATA"]
 // Only the signed release app is on the access list of the login Keychain item `kkcode Safe Storage`. Any other
 // binary (each worktree's dev build, e2e) would ask for the login password on every boot,
 // so it seals secrets with Chromium's public test key. That key cannot open the release app's secrets, so an
-// unpackaged run also defaults to a profile of its own.
+// unpackaged run also defaults to a data dir of its own.
 if (!app.isPackaged) app.commandLine.appendSwitch("use-mock-keychain")
-if (!app.isPackaged && !userDataOverride) app.setPath("userData", join(app.getPath("appData"), "kkcode-dev"))
+const dataDir = dataDirOverride || join(homedir(), app.isPackaged ? ".hinacode" : ".hinacode-dev")
+if (!dataDirOverride) {
+  try {
+    moveLegacyProfile(join(app.getPath("appData"), app.isPackaged ? "kkcode" : "kkcode-dev"), dataDir)
+  } catch (error) {
+    dialog.showErrorBox("HinaCode cannot start", error instanceof Error ? error.message : String(error))
+    // Stops here, before anything creates the data dir, so the next launch tries the move again.
+    process.exit(1)
+  }
+}
+mkdirSync(dataDir, { recursive: true, mode: 0o700 })
+app.setPath("userData", chromiumDir(dataDir))
 // Electron keys the lock on userData. A second process on the same database would run its own pollers and
 // agents, and the threads it starts never reach the first process's window.
 if (!app.requestSingleInstanceLock()) {
-  console.error(`HinaCode is already running on ${app.getPath("userData")}. Set HINACODE_USER_DATA to run another.`)
+  console.error(`HinaCode is already running on ${dataDir}. Set HINACODE_USER_DATA to run another.`)
   app.exit(0)
 }
-if (!app.isPackaged) startResourceMonitor(app.getPath("userData"))
+if (!app.isPackaged) startResourceMonitor(dataDir)
 const icon = app.isPackaged ? releaseIcon : devIcon
 // The login shell takes most of a second to start, so it runs while Electron gets ready.
 const pathHydrated = hydratePath(process.env)
@@ -226,7 +237,7 @@ const createWindow = (runtime: AppRuntime) => {
   void window.loadURL(appUrl)
 }
 
-// The default menu labels its app items with `app.name`, which stays "hinacode" to keep userData and the Keychain item.
+// The default menu labels its app items with `app.name`, which stays "kkcode" to keep the Keychain item.
 const setMacMenu = () =>
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
@@ -253,20 +264,19 @@ const setMacMenu = () =>
 
 app.whenReady().then(async () => {
   await pathHydrated
-  const userData = app.getPath("userData")
   // Where `sbx login` keeps its login on macOS and Linux.
   const sbxConfigPath = join(app.getPath("appData"), "sbx", "config.json")
-  const dbPath = join(userData, "hinacode.sqlite")
+  const dbPath = join(dataDir, "hinacode.sqlite")
   // The database was kkcode.sqlite until the rename to HinaCode, so an existing profile keeps its threads.
   if (!existsSync(dbPath)) {
     for (const suffix of ["", "-wal", "-shm"]) {
-      const previous = join(userData, `kkcode.sqlite${suffix}`)
+      const previous = join(dataDir, `kkcode.sqlite${suffix}`)
       if (existsSync(previous)) renameSync(previous, `${dbPath}${suffix}`)
     }
   }
   const runtime = ManagedRuntime.make(
     makeAppLayer({
-      userData,
+      userData: dataDir,
       sbxConfigPath,
       keyring: safeStorageKeyring,
       updates: Updater.layer,
@@ -292,7 +302,7 @@ app.whenReady().then(async () => {
   )
   app.dock?.setIcon(icon)
   if (process.platform === "darwin") setMacMenu()
-  serveAttachments(runtime, join(userData, "attachments"))
+  serveAttachments(runtime, join(dataDir, "attachments"))
   serveGitHubAssets(runtime)
   serveProjectFiles(runtime)
   limitBrowserPermissions()

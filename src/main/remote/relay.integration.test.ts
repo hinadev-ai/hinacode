@@ -159,7 +159,7 @@ const isAlive = (pid: number) => {
 
 const base = RemoteAccessModule.layer.pipe(
   Layer.provideMerge(SecretsModule.layer),
-  Layer.provideMerge(SettingsModule.layer),
+  Layer.provideMerge(Layer.suspend(() => SettingsModule.layer(mkdtempSync(join(tmpdir(), "kk-relay-settings-"))))),
   Layer.provideMerge(Db.layer(":memory:")),
   Layer.provide(Layer.mergeAll(NodeServices.layer, SecretsModule.noKeyring)),
 )

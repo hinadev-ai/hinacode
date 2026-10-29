@@ -14,6 +14,7 @@ import {
   ClientFrame,
   REMOTE_PATH,
   REMOTE_PROTOCOL_VERSION,
+  reachesPhone,
   type RemoteFeature,
   type ServerFrame,
   SLOW_CONSUMER_BYTES,
@@ -40,7 +41,7 @@ const MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
 const CALL_KEY_TTL_MS = Duration.toMillis(Duration.minutes(5))
 export const MAX_CALL_KEYS = 2000
 
-const FEATURES: ReadonlyArray<RemoteFeature> = ["heartbeat", "call-keys", "terminal-attach", "asks"]
+const FEATURES: ReadonlyArray<RemoteFeature> = ["heartbeat", "call-keys", "terminal-attach", "asks", "watch"]
 
 const decodeClientFrame = Schema.decodeUnknownOption(ClientFrame)
 
@@ -75,6 +76,11 @@ interface KeyedCall {
   readonly settledAt: number | null
 }
 
+interface PhonePeer {
+  awaitingPong: boolean
+  watching: ReadonlySet<string> | null
+}
+
 /**
  * The remote mode listener: a WebSocket on `settings.remote` that speaks `ClientFrame` and `ServerFrame`,
  * dispatching calls through the same path as the Electron `rpc` channel and forwarding every push.
@@ -89,12 +95,12 @@ const make = Effect.gen(function* () {
   const runPromise = Effect.runPromiseWith(services)
   const now = () => Effect.runSyncWith(services)(Clock.currentTimeMillis)
 
-  const sockets = new Map<WebSocket, { awaitingPong: boolean }>()
+  const sockets = new Map<WebSocket, PhonePeer>()
   const countConnected = () => runFork(access.report({ connected: sockets.size }))
 
   /** `proof` answers a client that proved its token; one that sent the token itself gets none. */
   const attach = (socket: WebSocket, proof: string | undefined) => {
-    const peer = { awaitingPong: false }
+    const peer: PhonePeer = { awaitingPong: false, watching: null }
     sockets.set(socket, peer)
     socket.on("pong", () => {
       peer.awaitingPong = false
@@ -104,7 +110,8 @@ const make = Effect.gen(function* () {
       Effect.scoped(
         broadcast
           .subscribe((event) => {
-            if (!desktopOnlyPushes.has(event.type)) send(socket, { type: "event", event })
+            if (desktopOnlyPushes.has(event.type) || !reachesPhone(event, peer.watching)) return
+            send(socket, { type: "event", event })
           })
           .pipe(Effect.andThen(Effect.never)),
       ),
@@ -207,6 +214,8 @@ const make = Effect.gen(function* () {
       if (frame.type === "ping") return send(socket, { type: "pong", at: frame.at })
       if (frame.type === "call") return handleCall(socket, frame)
       if (frame.type === "hub") hub ??= peers.join((ask) => send(socket, ask))
+      const peer = sockets.get(socket)
+      if (peer !== undefined && frame.type === "watch") peer.watching = new Set(frame.threadIds)
       if (frame.type === "answer") {
         const { envelope } = frame
         hub?.answer(frame.id, "error" in envelope ? envelope : { result: envelope.result })

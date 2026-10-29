@@ -6,6 +6,7 @@ import { useEffect, useEffectEvent } from "react"
 import { projectsAtom, updateClientSettingsAtom } from "../lib/rpc.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
 import { useClientSettings, useSettings } from "../lib/settings.ts"
+import { isInDeviceKeyboard } from "../lib/elementPicker.ts"
 import { isInTerminal } from "../lib/terminalScreens.ts"
 import type { ExperimentalSettings } from "../../shared/domain.ts"
 import {
@@ -73,10 +74,10 @@ export function useKeybindings() {
     { preventDefault: false, stopPropagation: false },
   )
 
-  // The terminal sends Control chords to the shell and stops them, so they never bubble to the bindings above.
-  // Like VS Code's commandsToSkipShell, a chord whose command runs in the terminal is taken before the shell sees it.
+  // The terminal and a device screen send chords on and stop them, so they never bubble to the bindings above.
+  // Like VS Code's commandsToSkipShell, a chord whose command runs there is taken before they see it.
   const takeFromTerminal = useEffectEvent((event: KeyboardEvent) => {
-    if (!(event.ctrlKey || event.metaKey) || !isInTerminal(event.target)) return
+    if (!(event.ctrlKey || event.metaKey) || !(isInTerminal(event.target) || isInDeviceKeyboard(event.target))) return
     const binding = bound.find(({ hotkey }) => matchesKeyboardEvent(event, hotkey))
     if (binding && runFromKeydown(binding.command, event, ctx)) event.stopPropagation()
   })
