@@ -38,7 +38,7 @@ Both lists dedupe by id or URL on the phone, so they stay correct once the phone
 
 ## Out of scope
 
-- A desktop UI for the same overview. The rpc is ready for it.
+- Pull requests on the desktop. Its Linear issues page (`routes/linear.tsx`) reads the same rpc and shares `sortIssues` from `src/shared/linear.ts`.
 - Conflicts on pull requests nobody watches. Showing them would mean one `gh pr view` with `mergeable` per pull request.
 - Pull requests that no thread linked, such as review requests from teammates.
 - Changing a ticket's state from the phone.

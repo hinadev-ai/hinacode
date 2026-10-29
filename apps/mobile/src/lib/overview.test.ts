@@ -1,7 +1,7 @@
-import type { LinearIssue, PullRequest, PullRequestLink, Thread } from "@shared/domain.ts"
+import type { PullRequest, PullRequestLink, Thread } from "@shared/domain.ts"
 import { expect, it } from "vitest"
 import type { Remote } from "@/stores/pull-requests"
-import { pullRequestOverview, sortIssues } from "./overview"
+import { pullRequestOverview } from "./overview"
 
 const pr = (n: number) => `https://github.com/acme/app/pull/${n}`
 
@@ -47,18 +47,4 @@ it("groups active threads' pull requests by what they need, once each under the 
   ])
   expect(overview.merged.map((row) => row.url)).toStrictEqual([pr(4)])
   expect(overview.urls).not.toContain(pr(6))
-})
-
-const issue = (id: string, type: string, priority: number, updatedAt: string) =>
-  ({ id, identifier: id, title: id, url: "", state: { name: type, type }, priority, updatedAt }) as LinearIssue
-
-it("lists each issue once, work in progress first, then by priority with no priority last", () => {
-  const sorted = sortIssues([
-    issue("backlog", "backlog", 1, "2026-10-24"),
-    issue("todo-none", "unstarted", 0, "2026-10-24"),
-    issue("todo-low", "unstarted", 4, "2026-10-20"),
-    issue("doing", "started", 3, "2026-10-01"),
-    issue("todo-low", "unstarted", 4, "2026-10-20"),
-  ])
-  expect(sorted.map((entry) => entry.id)).toStrictEqual(["doing", "todo-low", "todo-none", "backlog"])
 })

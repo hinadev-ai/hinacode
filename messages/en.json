@@ -1893,5 +1893,16 @@
   "resources_sampling": "Sampling…",
   "resources_loading": "Reading resources…",
   "resources_update_cloud": "Update HinaCode on {name} to see its resources.",
-  "resources_failed": "Could not read resources: {message}"
+  "resources_failed": "Could not read resources: {message}",
+  "linear_title": "Linear issues",
+  "linear_refresh": "Refresh",
+  "linear_empty": "No open issues assigned to you",
+  "linear_not_connected": "Add a Linear API key to see your issues.",
+  "linear_connect": "Open Integrations",
+  "linear_failed": "Could not load Linear issues: {message}",
+  "linear_start_thread": "Start thread",
+  "linear_priority_1": "Urgent",
+  "linear_priority_2": "High",
+  "linear_priority_3": "Medium",
+  "linear_priority_4": "Low"
 }

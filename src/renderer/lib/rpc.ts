@@ -3,6 +3,7 @@ import { AsyncResult, Atom } from "effect/reactivity"
 import type { ProviderId } from "../../shared/agent.ts"
 import { PushEvent, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../../shared/contract.ts"
 import type { Thread } from "../../shared/domain.ts"
+import { sortIssues } from "../../shared/linear.ts"
 import { pullRequestAttention } from "../../shared/threadStatus.ts"
 import { m } from "../paraglide/messages.js"
 
@@ -389,6 +390,11 @@ export const faviconAtom = Atom.family((origin: string) =>
 /** The GitHub repository a project's origin points at, or null. Asked once per project per session. */
 export const repositoryAtom = Atom.family((projectId: string) =>
   Atom.make(call("github.repository", { projectId })).pipe(Atom.keepAlive),
+)
+
+/** The open Linear issues assigned to the owner of each machine's key, from every environment. */
+export const linearIssuesAtom = Atom.make(call("linear.issues", undefined).pipe(Effect.map(sortIssues))).pipe(
+  Atom.keepAlive,
 )
 
 export const secretStoredAtom = familyOf((environment: EnvironmentId, name: string) =>

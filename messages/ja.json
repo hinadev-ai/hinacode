@@ -1851,5 +1851,16 @@
   "resources_sampling": "計測中…",
   "resources_loading": "リソースを読み取り中…",
   "resources_update_cloud": "{name} の HinaCode を更新するとリソースを表示できます。",
-  "resources_failed": "リソースを読み取れませんでした: {message}"
+  "resources_failed": "リソースを読み取れませんでした: {message}",
+  "linear_title": "Linear の課題",
+  "linear_refresh": "再読み込み",
+  "linear_empty": "あなたに割り当てられた未完了の課題はありません",
+  "linear_not_connected": "課題を表示するには Linear の API キーを追加してください。",
+  "linear_connect": "連携を開く",
+  "linear_failed": "Linear の課題を読み込めませんでした：{message}",
+  "linear_start_thread": "スレッドを開始",
+  "linear_priority_1": "緊急",
+  "linear_priority_2": "高",
+  "linear_priority_3": "中",
+  "linear_priority_4": "低"
 }
