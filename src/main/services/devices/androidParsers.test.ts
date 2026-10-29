@@ -22,6 +22,11 @@ test("reads an emulator's serial, gRPC port and token from its discovery file", 
   })
 })
 
+test("names the emulator by its AVD id, not the display name Android Studio gives it", () => {
+  const renamed = DISCOVERY.replace("avd.name=hinacode-verify-android-1", "avd.name=Pixel 10 Pro (2)")
+  expect(parseDiscoveryFile("pid_7.ini", renamed)?.avdName).toBe("hinacode-verify-android-1")
+})
+
 test("reads an emulator started without gRPC as one with no endpoint", () => {
   const withoutGrpc = DISCOVERY.replace(/^grpc\..*$/gm, "")
   expect(parseDiscoveryFile("pid_7.ini", withoutGrpc)).toMatchObject({ grpcPort: null, grpcToken: null })
