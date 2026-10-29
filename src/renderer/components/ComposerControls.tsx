@@ -297,6 +297,10 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
     // The focused model row unmounts with the old tab's list, which would take focus, and these keys, out of the popup.
     popupRef.current?.focus()
     setTabValue(next.value)
+    // The row scrolls sideways when the tabs overflow, and the next one may be out of view.
+    popupRef.current
+      ?.querySelectorAll("[data-slot=tabs-trigger]")
+      [tabs.indexOf(next)]?.scrollIntoView({ block: "nearest", inline: "nearest" })
   }
   const efforts = current === undefined || current.efforts.length === 0 ? [] : [DEFAULT_EFFORT, ...current.efforts]
   /** The value `step` places from `value` in `values`, wrapping at both ends. */
@@ -399,7 +403,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
           className="-mx-2 gap-1 border-b border-border px-2 pb-2"
         >
           <div className="flex items-center gap-2">
-            <TabsList className="min-w-0 justify-start overflow-x-auto bg-transparent p-0 [scrollbar-width:none]">
+            <TabsList className="min-w-0 justify-start overflow-x-auto bg-transparent p-0 [scrollbar-width:none] motion-safe:scroll-smooth">
               {tabs.map((candidate) => (
                 <Tooltip key={candidate.value}>
                   <TooltipTrigger
