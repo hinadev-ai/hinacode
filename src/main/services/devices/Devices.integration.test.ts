@@ -1,3 +1,6 @@
+import { mkdtempSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { describe, expect, layer } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Fiber, Layer } from "effect"
@@ -82,7 +85,7 @@ const testLayer = devicesLayer({
   drivers: { ios, android: unavailableDriver({ kind: "missing", tool: "androidSdk" }) },
   simslimAvailable: () => Promise.resolve(true),
 }).pipe(
-  Layer.provideMerge(settingsLayer),
+  Layer.provideMerge(settingsLayer(mkdtempSync(join(tmpdir(), "kk-devices-settings-")))),
   Layer.provide(Layer.succeed(Events, { publish: () => Effect.void })),
   Layer.provideMerge(Db.layer(":memory:")),
   Layer.provide(NodeServices.layer),

@@ -26,7 +26,7 @@ HinaCode spreads its data over `~/Library/Application Support/kkcode` (or `kkcod
   attachments/<threadId>/
   cache/<label>_<provider>.json    { accountId, account, fetchedAt }
   scratch/<YYYYMMDD-HHmmss>-<slug>-<threadId>/
-  tiny-vm/  cloudflared/  accounts/  resource-monitor/
+  tiny-vm/  cloudflared/  accounts/  resource-monitor/  devices/
   chromium/                        Electron's userData: localStorage, cookies, caches, SingletonLock
 ```
 
