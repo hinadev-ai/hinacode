@@ -195,7 +195,11 @@ export const threadToolsLayer = ThreadTools.toLayer(
           [peers.ask("projects.list", undefined), peers.ask("machines.list", undefined)],
           { concurrency: "unbounded" },
         )
-        const same = new Set(known.filter((project) => project.repository === repository).map((project) => project.id))
+        const same = new Set(
+          known
+            .filter((project) => repository !== undefined && project.repository === repository)
+            .map((project) => project.id),
+        )
         return machines
           .filter((machine) => machine.id !== identity.id)
           .map(({ id, name, projectIds }) => ({
