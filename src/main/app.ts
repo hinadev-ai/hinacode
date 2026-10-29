@@ -10,6 +10,7 @@ import { answerAsksLayer } from "./environments/route.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as RemoteAccess from "./remote/access.ts"
 import * as Peers from "./remote/peers.ts"
+import * as PhonePush from "./remote/phonePush.ts"
 import * as Relay from "./remote/relay.ts"
 import * as RemoteServer from "./remote/server.ts"
 import { applyServeConfig, type ServeConfig } from "./serve.ts"
@@ -141,6 +142,7 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     Mcp.serverLayer,
     AgentLogins.layer(join(userData, "cache")),
     RelayAccount.layer({ serviceUrl: relayServiceUrl }).pipe(Layer.provide(Secrets.layer)),
+    PhonePush.layer({ serviceUrl: relayServiceUrl }).pipe(Layer.provide(Secrets.layer)),
   ).pipe(Layer.provideMerge(agents))
   // The remote listener dispatches every rpc method, so it sits above everything the handlers use.
   // A cloud's address is written below it, so the listener's first read of its settings already has it.

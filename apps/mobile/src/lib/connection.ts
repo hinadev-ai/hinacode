@@ -79,11 +79,13 @@ const updateServer = (id: string, patch: Partial<Server> | ((server: Server) => 
 const transports = new Map<string, Transport>()
 const owners = makeOwners()
 /** A server's last answer to each `all` method, by method, with the payload it answered. */
-export type RememberedAnswers = Readonly<Partial<Record<RpcMethod, { readonly payload: string; readonly result: unknown }>>>
+export type RememberedAnswers = Readonly<
+  Partial<Record<RpcMethod, { readonly payload: string; readonly result: unknown }>>
+>
 
 const remembered = new Map<string, RememberedAnswers>()
 const rememberListeners = new Set<(serverId: string, answers: RememberedAnswers) => void>()
-const listeners = new Set<(event: PushEvent) => void>()
+const listeners = new Set<(event: PushEvent, serverId: string) => void>()
 
 /**
  * Lists `answers` for a paired server until it answers itself, such as the ones saved before the app last closed,
@@ -144,7 +146,7 @@ function open(server: StoredServer) {
     },
     onEvent: (event) => {
       learnFromPush(owners, server.id, event)
-      for (const listener of listeners) listener(event)
+      for (const listener of listeners) listener(event, server.id)
     },
   })
   transports.set(server.id, transport)
@@ -206,7 +208,8 @@ export const networkChanged = () => transports.forEach((transport) => transport.
 export const setForeground = (foreground: boolean) =>
   transports.forEach((transport) => transport.setForeground(foreground))
 
-export function onEvent(listener: (event: PushEvent) => void) {
+/** Calls `listener` with each event and the id of the server that pushed it. */
+export function onEvent(listener: (event: PushEvent, serverId: string) => void) {
   listeners.add(listener)
   return () => {
     listeners.delete(listener)

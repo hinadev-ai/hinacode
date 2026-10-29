@@ -3,9 +3,12 @@ import { AppState } from "react-native"
 import { create } from "zustand"
 import { setServers, storedServers, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
+import { getPushToken } from "@/lib/notifications"
+import { alertsOf, registerDevice, unregisterDevice } from "@/lib/push"
 import { applyRelayMachines, fetchRelayMachines, type RelayAccount } from "@/lib/relay-account"
 import { clearRelayAccount, loadRelayAccount, saveRelayAccount } from "@/lib/storage"
 import { newServerId } from "@/lib/stored-target"
+import { usePreferences } from "@/stores/preferences"
 import { usePullRequests } from "@/stores/pull-requests"
 import { useThreads } from "@/stores/threads"
 
@@ -27,6 +30,8 @@ interface RelayAccountState {
   readonly sync: () => Promise<void>
   /** Forgets the account and the servers it added. */
   readonly signOut: () => Promise<void>
+  /** Asks the relay to push to this phone, when it is signed in and allowed to notify. */
+  readonly registerPush: () => Promise<void>
 }
 
 const REFUSED_SYNC_INTERVAL_MS = 15_000
@@ -37,6 +42,10 @@ const signedOut = { serviceUrl: null, syncedAt: null, machines: null, error: nul
 let account: RelayAccount | null = null
 let inFlight: Promise<void> | null = null
 let refusedSyncTimer: ReturnType<typeof setInterval> | undefined
+let push: { readonly token: string; readonly registered: boolean } | null = null
+
+/** Whether the relay agreed to push to this phone, so the notifier can leave background notices to it. */
+export const pushRegistered = () => push?.registered ?? false
 
 function applyMachines(machines: readonly RelayMachine[]) {
   const before = storedServers()
@@ -66,6 +75,7 @@ export const useRelayAccount = create<RelayAccountState>()((set, get) => {
             error: null,
             unauthorized: false,
           })
+          void get().registerPush()
           return
         case "unauthorized":
           set({ error: copy("mobile_relay_token_rotated"), unauthorized: true })
@@ -101,6 +111,7 @@ export const useRelayAccount = create<RelayAccountState>()((set, get) => {
         error: null,
         unauthorized: false,
       })
+      void get().registerPush()
       return null
     },
     sync: () => {
@@ -111,10 +122,23 @@ export const useRelayAccount = create<RelayAccountState>()((set, get) => {
       return inFlight
     },
     signOut: async () => {
+      // Not awaited: a relay that never answers must not hold up signing out. The 90-day sweep catches a lost DELETE.
+      if (account !== null && push !== null) void unregisterDevice(account, push.token, fetch)
+      push = null
       account = null
       set(signedOut)
       applyMachines([])
       await clearRelayAccount()
+    },
+    registerPush: async () => {
+      const current = account
+      if (current === null) return
+      const token = await getPushToken()
+      if (token === null || account !== current) return
+      const registered = await registerDevice(current, token, alertsOf(usePreferences.getState().notifications), fetch)
+      if (account === current) push = { token, registered }
+      // Signed out while the relay was answering, so the sign-out could not remove this phone yet.
+      else if (registered) await unregisterDevice(current, token, fetch)
     },
   }
 })
@@ -142,4 +166,7 @@ function syncWhileRefused() {
 }
 
 useConnection.subscribe(syncWhileRefused)
+usePreferences.subscribe((state, previous) => {
+  if (state.notifications !== previous.notifications) void useRelayAccount.getState().registerPush()
+})
 useRelayAccount.subscribe(syncWhileRefused)

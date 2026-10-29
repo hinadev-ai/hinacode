@@ -1,6 +1,6 @@
 # HinaCode mobile
 
-The phone app for HinaCode's remote mode: see which thread needs you, approve commands, answer questions, send or steer prompts, and run a shell in a thread's worktree. It also adds projects, searches threads and messages, renders replies as native Markdown text with highlighted code and workspace images, browses and searches a thread's files, shows pull request checks and reviews, gathers the pull requests that need you and your open Linear tickets in an overview, raises a banner or a local notification when a thread needs you, and keeps its own settings next to the desktop's defaults. It talks to the desktop over one WebSocket using the same `RpcMethods` and `PushEvent` schemas as the desktop renderer (`src/shared`). Design: `docs/features/2026-10-12-remote-mode.md`.
+The phone app for HinaCode's remote mode: see which thread needs you, approve commands, answer questions, send or steer prompts, and run a shell in a thread's worktree. It also adds projects, searches threads and messages, renders replies as native Markdown text with highlighted code and workspace images, browses and searches a thread's files, shows pull request checks and reviews, gathers the pull requests that need you and your open Linear tickets in an overview, raises a banner, a local notification or a push when a thread needs you, and keeps its own settings next to the desktop's defaults. It talks to the desktop over one WebSocket using the same `RpcMethods` and `PushEvent` schemas as the desktop renderer (`src/shared`). Design: `docs/features/2026-10-12-remote-mode.md`.
 
 This is an Expo app with its own `node_modules` and lockfile. It is not part of the root pnpm workspace, so Metro and electron-vite never see each other's dependencies. Metro watches `../../src/shared` and resolves `effect` from this app, so the bundle carries one copy. The root still needs `pnpm install` for `tsc`, since it resolves `effect` types for `src/shared` from the root.
 
@@ -101,6 +101,16 @@ Pair with every machine you use, desktop or `hinacode serve`: Settings, Servers,
 
 The servers are stored in the secure store (`localStorage` on web) under `hinacode.servers`; a pairing saved by an older app under `hinacode.connection` becomes the first server. Pasting a new URL for a server already listed, after its token was rotated, updates that server. Forgetting the last server goes back to the pairing screen.
 
+## Push notifications
+
+A phone signed in to the relay registers for push, so a thread that finishes or needs you reaches it while the app is suspended or killed. Design: `docs/features/2026-10-28-push-notifications.md`. Until these one-time steps are done the phone gets no push token, registers nothing and keeps its local notifications:
+
+1. `npx eas-cli@latest init` links the app to an EAS project and writes `expo.extra.eas.projectId` into `app.json`.
+2. Android: create a Firebase project, add an Android app with the `expo.android.package` name, download its `google-services.json` next to `app.json`, and point `expo.android.googleServicesFile` at it. Then upload an FCM V1 service account key to the EAS project (`npx eas-cli@latest credentials`, Android, Google Service Account, FCM V1).
+3. iOS: `npx eas-cli@latest credentials`, iOS, Push Notifications, to create or upload an APNs key.
+
+Rebuild the development build after each step. Expo Go cannot receive these pushes.
+
 ## Scripts
 
 - `pnpm build:terminal` regenerates `src/terminal/terminal-page.ts`, the page the native terminal WebView loads, from the installed `@xterm/xterm`. Run it after upgrading xterm and commit the result.
@@ -110,7 +120,6 @@ The servers are stored in the secure store (`localStorage` on web) under `hinaco
 ## Out of scope
 
 - A relay or tunnel; the phone connects to the desktop directly.
-- Push notifications while the app is closed. Notifications come from the live socket, so they arrive while the app runs or recently went to the background. Remote push needs a development build, since Expo Go on Android dropped it in SDK 53.
 - `gpu-lexer` in the native app. Hermes has no WebGPU, so the native file viewer uses the small lexer in `src/lib/lexer.ts`; the web build's file viewer uses `gpu-lexer` when the browser offers WebGPU in a secure context. Code blocks in replies are highlighted by the Markdown library's tree-sitter grammars on iOS and Android, and not at all on the web.
 - Attachments, editing files, the git graph, automations and secret requests from the phone.
 - TLS. Use Tailscale for an encrypted path.

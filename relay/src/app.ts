@@ -1,8 +1,9 @@
 import { Option, Schema } from "effect"
 import { Hono, type Context } from "hono"
 import { CloudflareError, makeCloudflare, type Fetch } from "./cloudflare"
+import { ExpoError, sendPushes } from "./expo"
 import { linkPage } from "./page"
-import { type Host, runStore } from "./store"
+import { Alert, type Host, runStore } from "./store"
 
 export type { Fetch } from "./cloudflare"
 
@@ -11,6 +12,8 @@ export interface Deps {
   verifyUser(request: Request, env: Env): Promise<string | null>
   /** Reaches the Cloudflare API. */
   cloudflare: Fetch
+  /** Reaches the Expo push service. */
+  expo: Fetch
   now(): number
   random(bytes: number): Uint8Array
 }
@@ -21,6 +24,17 @@ const LINK_TTL_MS = 10 * 60 * 1000
 const POLL_INTERVAL_S = 5
 const MAX_HOSTS = 5
 const USER_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+const DEVICE_TTL_MS = 90 * 24 * 60 * 60 * 1000
+
+/** A closed set, so a machine cannot put its own text on the owner's lock screen. */
+const PUSHES = {
+  completed: { kind: "completed", body: "A thread finished" },
+  approval: { kind: "needsInput", body: "A thread is waiting for your approval" },
+  question: { kind: "needsInput", body: "A thread is waiting for your answer" },
+  secret: { kind: "needsInput", body: "A thread is waiting for a secret" },
+  failed: { kind: "failed", body: "A thread failed" },
+  limited: { kind: "failed", body: "A thread stopped at the usage limit" },
+} as const satisfies Record<string, { kind: Alert; body: string }>
 
 const Label = Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(64))
 const NewLink = Schema.Struct({
@@ -38,6 +52,16 @@ const Pairing = Schema.Struct({
 })
 const StoredPairing = Schema.fromJsonString(Pairing)
 const HostChange = Schema.Struct({ enabled: Schema.Boolean })
+const PushToken = Schema.String.check(Schema.isPattern(/^Expo(nent)?PushToken\[[^\]\s]{1,200}\]$/))
+const DeviceRegistration = Schema.Struct({
+  token: PushToken,
+  alerts: Schema.Array(Alert).check(Schema.isMaxLength(3)),
+})
+const DeviceRemoval = Schema.Struct({ token: Schema.String })
+const ThreadPush = Schema.Struct({
+  threadId: Label,
+  reason: Schema.Literals(["completed", "approval", "question", "secret", "failed", "limited"]),
+})
 
 export const bearer = (request: Request) => /^Bearer (\S+)$/.exec(request.headers.get("Authorization") ?? "")?.[1]
 
@@ -97,6 +121,10 @@ export const makeApp = (deps: Deps) => {
 
   app.onError((error, c) => {
     if (error instanceof CloudflareError) return c.json({ error: error.message }, 502)
+    if (error instanceof ExpoError) {
+      console.error("push failed", error.message)
+      return c.json({ error: error.message }, 502)
+    }
     console.error("relay request failed", error)
     return c.json({ error: "The relay failed. Try again." }, 500)
   })
@@ -281,6 +309,61 @@ export const makeApp = (deps: Deps) => {
     const host = await runStore(c.env.DB, (store) => store.hostOfUser({ id: c.req.param("id"), userId }))
     if (Option.isNone(host)) return fail(c, 404, "No machine with this id is linked to your account.")
     await removeHost(c.env, host.value)
+    return c.body(null, 204)
+  })
+
+  app.put("/v1/devices", async (c) => {
+    const userId = await deps.verifyUser(c.req.raw, c.env)
+    if (!userId) return fail(c, 401, "Enter the owner token first.")
+    const input = await body(c, DeviceRegistration)
+    if (Option.isNone(input)) {
+      return fail(
+        c,
+        400,
+        'Send token as ExponentPushToken[...] and alerts as up to 3 of "completed", "needsInput" and "failed".',
+      )
+    }
+    await runStore(c.env.DB, (store) => store.putDevice({ ...input.value, userId, seenAt: deps.now() }))
+    return c.body(null, 204)
+  })
+
+  app.delete("/v1/devices", async (c) => {
+    const userId = await deps.verifyUser(c.req.raw, c.env)
+    if (!userId) return fail(c, 401, "Enter the owner token first.")
+    const input = await body(c, DeviceRemoval)
+    if (Option.isNone(input)) return fail(c, 400, "Send the token the device registered with.")
+    await runStore(c.env.DB, (store) => store.deleteDevice(input.value.token, userId))
+    return c.body(null, 204)
+  })
+
+  app.post("/v1/host/push", async (c) => {
+    const found = await machine(c)
+    if (Option.isNone(found)) return fail(c, 401, "This machine is not linked. Link it again.")
+    const host = found.value
+    const input = await body(c, ThreadPush)
+    if (Option.isNone(input)) {
+      return fail(
+        c,
+        400,
+        "Send threadId (1 to 64 characters) and reason: completed, approval, question, secret, failed or limited.",
+      )
+    }
+    const { kind, body: text } = PUSHES[input.value.reason]
+    const devices = await runStore(c.env.DB, (store) => store.devicesOfUser(host.userId, deps.now() - DEVICE_TTL_MS))
+    const messages = devices
+      .filter((device) => device.alerts.includes(kind))
+      .map((device) => ({
+        to: device.token,
+        title: host.name,
+        body: text,
+        data: { threadId: input.value.threadId, environmentId: host.environmentId },
+        sound: "default" as const,
+        priority: "high" as const,
+        channelId: "threads" as const,
+      }))
+    if (messages.length === 0) return c.body(null, 204)
+    const unregistered = await sendPushes(deps.expo, messages)
+    if (unregistered.length > 0) await runStore(c.env.DB, (store) => store.deleteDevices(unregistered))
     return c.body(null, 204)
   })
 
