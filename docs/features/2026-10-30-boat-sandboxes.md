@@ -61,7 +61,7 @@ The sbx-shaped methods map onto boat like this.
 | `templates` | The four sizes with their vCPU and memory, so the existing template select lists them |
 | `remove` | `DELETE /sandboxes/{id}`. Tiny VM stop does not call it. See below |
 
-Errors keep the existing tags where the meaning matches. A 404 or a `cancelled` sandbox becomes `SandboxGoneError`, so Tiny VM forgets the VM and the next tool call starts fresh. A missing key becomes `BoatNotConfiguredError`. A 401 names the fix (replace the key), a 402 names billing, and a 409 `machine_not_running` after an auto-stop becomes `SandboxGoneError`, so the resume path converges instead of erroring forever.
+Errors keep the existing tags where the meaning matches. A 404 or a `cancelled` sandbox becomes `SandboxGoneError`, so Tiny VM forgets the VM and the next tool call starts fresh. A missing key becomes `BoatNotConfiguredError`. A 401 names the fix (replace the key), a 402 names billing, and a 409 `machine_not_running` after an auto-stop becomes `SandboxGoneError`, so the resume path converges instead of erroring forever. A 409 `snapshot_data_expired` (stopped disks expire after 14 days) becomes `BoatSnapshotExpiredError`, and both start paths discard the mapping and create a fresh sandbox. No upstream error text is ever interpolated into a `BoatError`. Messages are chosen from an allowlist by status and code, and a request id is included only when it matches the documented `req_` shape, so a server message that echoes a key or a signed URL cannot reach the renderer or the logs.
 
 ### Tiny VM on boat
 
@@ -71,7 +71,7 @@ Start converges. If the mapping file names a sandbox for the thread, `GET` it. A
 
 Stop means boat stop, not delete. It snapshots and ends billing, and the mapping stays. This is the one behavior that differs from sbx, where stop destroys. The view copy for boat says the disk is kept. Deleting a thread's sandbox for good is future work (see Out of scope).
 
-The screen cannot be the sbx RFB tunnel. Boat has no raw TCP tunnel. A new rpc `vm.desktop.url` asks main for a fresh desktop URL (`POST /sandboxes/{id}/desktop`, `overlay=0` added). The URL carries a token in its fragment and must open within 10 minutes, so it is fetched per view mount, never stored in `ThreadVm`, never logged. The renderer shows it in an Electron `<webview>`, the `BrowserView` precedent, because the CSP only allows `hinacode-file:` frames. While the agent has control the webview sits under a `pointer-events: none` shield, so the developer watches without typing into the agent's screen. Take control lifts the shield. Closing the view hands control back through the existing `vm.control` rpc.
+The screen cannot be the sbx RFB tunnel. Boat has no raw TCP tunnel. A new rpc `vm.desktop.url` asks main for a desktop link. The boat desktop URL carries a token in its fragment, so it never reaches the renderer. In the desktop app, `TinyVm` runs a loopback-only redirect server (started lazily, closed with the service) and returns `http://127.0.0.1:<port>/desktop/<nonce>` instead. The nonce is single-use and expires in 60 seconds. On the GET, main fetches a fresh desktop URL (`POST /sandboxes/{id}/desktop`, `overlay=0` added) and answers 302 to it, so the token exists only in main and in the guest web contents. In `hinacode serve`, whose loopback is not the renderer's machine, the rpc returns the boat URL directly. The renderer shows the link in an Electron `<webview>`, the `BrowserView` precedent, because the CSP only allows `hinacode-file:` frames. While the agent has control the webview sits under a `pointer-events: none` shield, so the developer watches without typing into the agent's screen. Take control lifts the shield. Closing the view hands control back through the existing `vm.control` rpc.
 
 Agent input (`act`) translates each `VmAction` to an `xdotool` command on `DISPLAY=:0` in one exec. The guest desktop is 1920x1080, so `vm_screenshot` returns that geometry and clicks use it. The screenshot itself is the existing exec path (`import -window root png:-`), which works because boat exec returns real bytes through the file wrap above.
 
@@ -93,11 +93,11 @@ One composite driver in `app.ts` merges local Android and boat Android into the 
 
 ### Security
 
-The key stays in main as a `Secrets` value and is sent only to `boat.dev` (or `BOAT_API_BASE`). Desktop and download URLs carry tokens. They move through one rpc answer or one main-process fetch, are never logged, and are redacted in error messages by never being included. The webview inherits the existing `lockDownWebview` rules. A boat guest is as untrusted as an sbx guest. Pulled files keep the existing `writeTree` treatment.
+The key stays in main as a `Secrets` value and is sent only to `boat.dev` (or `BOAT_API_BASE`). Desktop and download URLs carry tokens. Download URLs are fetched only by main. The desktop URL is reached through the single-use loopback redirect above, so the token never enters renderer state or the DOM. Nothing token-bearing is logged, and error messages are allowlisted so upstream text cannot smuggle one in. The webview inherits the existing `lockDownWebview` rules. A boat guest is as untrusted as an sbx guest. Pulled files keep the existing `writeTree` treatment.
 
 ### Cost guardrails
 
-Sandboxes bill per second while running. Creates send `ttlSeconds` 7200, so a forgotten VM archives itself within two hours and inside the free-trial auto-stop cap. Stop and quit both archive. The device sandbox uses the same TTL, and its frame loop only runs while a viewer lease is alive.
+Sandboxes bill per second while running. Creates and resumes send `ttlSeconds` 7200, so a forgotten VM archives itself within two hours and inside the free-trial auto-stop cap. Stop and quit both archive, and a boat stop that fails keeps the VM in the running state so the next stop retries it instead of reporting success. The device sandbox uses the same TTL, and its frame loop only runs while a viewer lease is alive. Closing the device viewer does not stop its sandbox, matching a local emulator that keeps booting in the background. The two-hour TTL is the bound. Deleting the device deletes the sandbox at once.
 
 ## Out of scope
 
@@ -107,6 +107,8 @@ Sandboxes bill per second while running. Creates send `ttlSeconds` 7200, so a fo
 - Passkey relay, Chromium profile tars, and CDP into the guest on boat.
 - More than one cloud Android device, and iOS in the cloud (boat guests are Linux).
 - Touch fidelity beyond `input motionevent`, and any frame-rate promise.
+- The Mod+Escape hand-back chord while the boat desktop webview has focus. The stream is a separate web contents, so the chord goes to the guest. The Hand back button is the path.
+- File drops onto the boat screen while the developer has control, for the same web-contents reason. Drops land while the agent has control and the shield is up.
 
 ## Verification
 
