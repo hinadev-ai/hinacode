@@ -1,7 +1,6 @@
-import { Option, Schema } from "effect"
 import type { NonEmptyReadonlyArray } from "effect/Array"
 import type { PushEvent, RpcEnvelope } from "@shared/contract.ts"
-import { clientProof, newNonce, serverProof } from "@shared/proof.ts"
+import { type ClientHandshake, clientHandshake } from "@shared/handshake.ts"
 import {
   CHALLENGE_WAIT_MS,
   type ClientFrame,
@@ -9,7 +8,6 @@ import {
   DIRECT_CHECK_INTERVAL_MS,
   DIRECT_CHECK_TIMEOUT_MS,
   REMOTE_PROTOCOL_VERSION,
-  ServerFrame,
 } from "@shared/remote.ts"
 
 export type TransportStatus = "connecting" | "connected" | "offline" | "unauthorized"
@@ -47,7 +45,7 @@ export interface SocketLike {
   onopen: (() => void) | null
   onmessage: ((message: { data: unknown }) => void) | null
   onclose: ((event: { code: number }) => void) | null
-  send(data: string): void
+  send(data: string | Uint8Array): void
   close(): void
 }
 
@@ -86,22 +84,24 @@ interface PendingCall {
   readonly reject: (error: Error) => void
 }
 
-const decodeFrame = Schema.decodeUnknownOption(ServerFrame)
-
 /**
  * What a round dials: the whole plan, or one route alone. A relay round follows a direct address that refused the
  * token, and its link checks no direct address. A direct round follows a direct check that answered.
  */
 type Round = "both" | Dial["route"]
 
-/** What the current socket was sent: nothing yet, the token itself, or a proof the server's `ready` must answer. */
-type SentAuth = null | "token" | { readonly expectedProof: string }
+/** Sealed frames arrive as binary, which React Native delivers as a Blob unless asked for an ArrayBuffer. */
+const openWebSocket = (url: string): SocketLike => {
+  const ws = new WebSocket(url)
+  ws.binaryType = "arraybuffer"
+  return ws as unknown as SocketLike
+}
 
 const randomKey = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
 
 /**
  * Opens a socket for each of `dials` after its delay and hands the first one to open to `onOpen`. Every other socket
- * closes without a frame sent, so only the winner ever sees the token. `onFail` runs when every socket closed
+ * closes without a frame sent, so only the winner runs the handshake. `onFail` runs when every socket closed
  * before one opened. Returns a function that cancels the race and closes what it opened.
  */
 function race(
@@ -153,7 +153,8 @@ export class Transport {
   private foreground = true
   private stopped = false
   private route: Dial["route"] | null = null
-  private sentAuth: SentAuth = null
+  /** The current socket's handshake, which seals every frame once its `ready` arrived. */
+  private handshake: ClientHandshake | null = null
   private round: Round = "both"
   private cancelRace: (() => void) | undefined
   private cancelCheck: (() => void) | undefined
@@ -281,21 +282,14 @@ export class Transport {
     this.open("both")
   }
 
-  private readonly createSocket = (url: string) =>
-    (this.options.createSocket ?? ((url) => new WebSocket(url) as unknown as SocketLike))(url)
+  private readonly createSocket = (url: string) => (this.options.createSocket ?? openWebSocket)(url)
 
   private adopt(ws: SocketLike, route: Dial["route"]) {
     this.cancelRace = undefined
     this.socket = ws
     this.route = route
-    // A server that predates the challenge only gets the token where a stranger cannot be listening: over the relay,
-    // or on a pairing without one. A direct address of a pairing with a relay always runs a server that challenges.
-    this.challengeTimer = setTimeout(() => {
-      if (route === "relay" || !this.hasRelay()) {
-        this.sentAuth = "token"
-        this.sendFrame({ type: "auth", token: this.options.token })
-      } else this.closed(CLOSE_UNAUTHORIZED, route)
-    }, CHALLENGE_WAIT_MS)
+    this.handshake = clientHandshake(this.options.token)
+    this.challengeTimer = setTimeout(() => this.closed(CLOSE_UNAUTHORIZED, route), CHALLENGE_WAIT_MS)
     ws.onmessage = (message) => {
       if (this.socket === ws) this.receive(message.data, route)
     }
@@ -328,36 +322,26 @@ export class Transport {
     return this.dials.some((dial) => dial.route === "relay")
   }
 
-  private answerChallenge(serverNonce: string) {
-    if (this.sentAuth !== null) return
-    clearTimeout(this.challengeTimer)
-    const { token } = this.options
-    const clientNonce = newNonce()
-    this.sentAuth = { expectedProof: serverProof(token, clientNonce, serverNonce) }
-    this.sendFrame({ type: "auth", nonce: clientNonce, proof: clientProof(token, serverNonce, clientNonce) })
-  }
-
-  /** Whether a `ready` came from a server that holds the token. One that only received the token itself cannot say. */
-  private provesToken(proof: string | undefined) {
-    return this.sentAuth === "token" || (this.sentAuth !== null && proof === this.sentAuth.expectedProof)
-  }
-
   private receive(data: unknown, route: Dial["route"]) {
-    if (typeof data !== "string") return
-    let json: unknown
-    try {
-      json = JSON.parse(data)
-    } catch {
-      return
-    }
+    if (this.handshake === null) return
+    const message = typeof data === "string" ? data : data instanceof ArrayBuffer ? new Uint8Array(data) : null
+    if (message === null) return
     if (this.status === "connected") this.closeIfSilentFor(IDLE_TIMEOUT_MS)
-    const frame = Option.getOrNull(decodeFrame(json))
-    if (frame === null) return
+    const step = this.handshake.receive(message)
+    switch (step.type) {
+      case "reply":
+        clearTimeout(this.challengeTimer)
+        return this.socket?.send(step.text)
+      case "refuse":
+        return this.closed(CLOSE_UNAUTHORIZED, route)
+      case "broken":
+        return this.onLinkLost()
+      case "ignore":
+        return
+    }
+    const { frame } = step
     switch (frame.type) {
-      case "challenge":
-        return this.answerChallenge(frame.nonce)
       case "ready":
-        if (!this.provesToken(frame.proof)) return this.closed(CLOSE_UNAUTHORIZED, route)
         return this.ready(frame.version, frame.features ?? [], frame.environment, frame.relay ?? null)
       case "result": {
         const call = this.pending.get(frame.id)
@@ -421,7 +405,7 @@ export class Transport {
   }
 
   private sendFrame(frame: ClientFrame) {
-    this.socket?.send(JSON.stringify(frame))
+    if (this.socket !== null && this.handshake !== null) this.socket.send(this.handshake.seal(frame))
   }
 
   private ping() {
@@ -514,7 +498,7 @@ export class Transport {
   private dropSocket() {
     clearTimeout(this.connectTimer)
     clearTimeout(this.challengeTimer)
-    this.sentAuth = null
+    this.handshake = null
     this.stopHeartbeat()
     this.stopDirectChecks()
     this.cancelRace?.()

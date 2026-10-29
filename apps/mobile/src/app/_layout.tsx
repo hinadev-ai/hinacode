@@ -1,3 +1,4 @@
+import "@/lib/random"
 import { DarkTheme, DefaultTheme, enableLegacyHeaderAppearance, Stack, ThemeProvider } from "expo-router"
 import { StatusBar } from "expo-status-bar"
 import { type ReactNode, useEffect } from "react"

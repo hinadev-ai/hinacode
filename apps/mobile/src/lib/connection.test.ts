@@ -1,32 +1,40 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { serverProof } from "@shared/proof.ts"
-import { RELAY_DELAY_MS } from "@shared/remote.ts"
+import { type Channel, newKeyPair, openChannel, serverProof } from "@shared/handshake.ts"
+import { RELAY_DELAY_MS, REMOTE_PROTOCOL_VERSION } from "@shared/remote.ts"
 import type { StoredServer } from "./stored-target"
 
-/** A server's socket, answered by hand. */
+type SentFrame = { type: string; id?: number; method?: string; payload?: unknown; nonce?: string }
+
+/** A server's socket that holds the token `server()` pairs with, answered by hand and sealed like `server.ts`. */
 class FakeSocket {
   static all: FakeSocket[] = []
   onopen: (() => void) | null = null
   onmessage: ((message: { data: unknown }) => void) | null = null
   onclose: ((event: { code: number }) => void) | null = null
-  readonly sent: { type: string; id?: number; method?: string; payload?: unknown; nonce?: string }[] = []
+  /** Every frame the client sent, opened when it was sealed. */
+  readonly sent: SentFrame[] = []
+  private readonly keys = newKeyPair()
+  private channel: Channel | null = null
 
   constructor(readonly url: string) {
     FakeSocket.all.push(this)
   }
-  send(data: string) {
-    this.sent.push(JSON.parse(data))
+  send(data: string | Uint8Array) {
+    if (typeof data !== "string") return void this.sent.push(JSON.parse(this.channel!.open(data)!))
+    const frame: SentFrame = JSON.parse(data)
+    this.channel = openChannel("server", "t", this.keys, frame.nonce!)
+    this.sent.push(frame)
   }
   close() {}
 
-  /** Opens, challenges, and proves the token `server()` pairs with back to the client's answer. */
+  /** Opens, challenges, and proves the token back to the client's answer. */
   ready(environment?: { id: string; name: string }, relay?: string) {
     this.onopen?.()
-    this.receive({ type: "challenge", nonce: "server-nonce" })
-    const proof = serverProof("t", this.sent.find((frame) => frame.type === "auth")!.nonce!, "server-nonce")
+    this.onmessage?.({ data: JSON.stringify({ type: "challenge", nonce: this.keys.publicKey }) })
+    const proof = serverProof("t", this.sent.find((frame) => frame.type === "auth")!.nonce!, this.keys.publicKey)
     this.receive({
       type: "ready",
-      version: 1,
+      version: REMOTE_PROTOCOL_VERSION,
       features: ["call-keys"],
       ...(environment && { environment }),
       relay,
@@ -34,7 +42,10 @@ class FakeSocket {
     })
   }
   receive(frame: unknown) {
-    this.onmessage?.({ data: JSON.stringify(frame) })
+    const sealed = this.channel!.seal(JSON.stringify(frame))
+    const data = new ArrayBuffer(sealed.length)
+    new Uint8Array(data).set(sealed)
+    this.onmessage?.({ data })
   }
   calls(method: string) {
     return this.sent.filter((frame) => frame.type === "call" && frame.method === method)

@@ -11,10 +11,10 @@ import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
 import { Clock, type Duration, Effect, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 import { TestClock } from "effect/testing"
-import { WebSocket, WebSocketServer } from "ws"
+import { type RawData, WebSocket, WebSocketServer } from "ws"
 import { SqlClient } from "effect/sql"
 import { unlistedModel } from "../../shared/agent.ts"
-import { clientProof, newNonce, serverProof } from "../../shared/proof.ts"
+import { type Channel, clientProof, newKeyPair, openChannel, serverProof } from "../../shared/handshake.ts"
 import type { RelayMachine } from "../../shared/relayMachines.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../../shared/channels.ts"
 import {
@@ -420,6 +420,7 @@ describe("desktop environments", () => {
 interface ScriptedOptions {
   readonly features?: ReadonlyArray<string>
   readonly autoPong?: boolean
+  /** Below `REMOTE_PROTOCOL_VERSION`, `ready` goes out in plain text, as a server that predates sealing sends it. */
   readonly version?: number
   readonly host?: string
   readonly port?: number
@@ -434,10 +435,19 @@ interface ScriptedOptions {
   readonly refuse?: boolean
   /** Sends no `challenge`, like a server that predates it. */
   readonly noChallenge?: boolean
+  /** Derives the channel from this token instead of the pairing's, like a stranger who forged only the proofs. */
+  readonly channelToken?: string
 }
 
 /** The token every scripted cloud's pairing URL carries. */
 const SCRIPTED_TOKEN = "token"
+
+/** One authenticated socket on a scripted cloud. `seal` advances the channel's counter, so seal only what you send. */
+interface ScriptedSession {
+  readonly socket: WebSocket
+  readonly seal: (frame: ServerFrame) => Uint8Array
+  readonly send: (frame: ServerFrame) => void
+}
 
 const scriptedCloud = async (id: string, options: ScriptedOptions) => {
   let version = options.version ?? REMOTE_PROTOCOL_VERSION
@@ -463,43 +473,60 @@ const scriptedCloud = async (id: string, options: ScriptedOptions) => {
     socket.on("end", () => socket.destroy())
   })
   const calls: Array<Extract<ClientFrame, { type: "call" }>> = []
-  /** The token each `auth` carried or proved, or `"wrong proof"`. */
+  /** The token each `auth` proved, or `"wrong proof"`. */
   const auths: Array<string> = []
   const received: Array<unknown> = []
   let connections = 0
-  let current: WebSocket | undefined
+  let current: ScriptedSession | undefined
   let holdReady = false
   let heldReady: ServerFrame | undefined
   let forgeProof = false
   server.on("connection", (socket) => {
     connections++
-    const challenge = newNonce()
-    if (!options.noChallenge) socket.send(JSON.stringify({ type: "challenge", nonce: challenge } satisfies ServerFrame))
-    socket.on("message", (raw) => {
-      const frame = JSON.parse(String(raw)) as ClientFrame
-      received.push(frame)
-      if (frame.type === "call") calls.push(frame)
-      if (frame.type !== "auth") return
-      if ("token" in frame) auths.push(frame.token)
-      else
-        auths.push(frame.proof === clientProof(SCRIPTED_TOKEN, challenge, frame.nonce) ? SCRIPTED_TOKEN : "wrong proof")
-      if (options.refuse || auths.at(-1) === "wrong proof") return socket.close(CLOSE_UNAUTHORIZED)
-      current = socket
+    const keys = newKeyPair()
+    let channel: Channel | null = null
+    if (!options.noChallenge) {
+      socket.send(JSON.stringify({ type: "challenge", nonce: keys.publicKey } satisfies ServerFrame))
+    }
+    const authenticate = (auth: ClientFrame) => {
+      if (auth.type !== "auth") return socket.close(CLOSE_UNAUTHORIZED)
+      const proved = auth.proof === clientProof(SCRIPTED_TOKEN, keys.publicKey, auth.nonce)
+      auths.push(proved ? SCRIPTED_TOKEN : "wrong proof")
+      if (options.refuse || !proved) return socket.close(CLOSE_UNAUTHORIZED)
+      channel = openChannel("server", options.channelToken ?? SCRIPTED_TOKEN, keys, auth.nonce)
+      if (channel === null) return socket.close(CLOSE_UNAUTHORIZED)
+      const sealing = channel
+      const seal = (frame: ServerFrame) => sealing.seal(JSON.stringify(frame))
+      const sealed = version >= REMOTE_PROTOCOL_VERSION
+      current = {
+        socket,
+        seal,
+        send: (frame) => socket.send(sealed ? seal(frame) : JSON.stringify(frame)),
+      }
       const relay = options.relay ?? (options.tls === undefined ? undefined : `127.0.0.1:${port}`)
-      const proof =
-        "nonce" in frame
-          ? serverProof(forgeProof ? "not-the-token" : SCRIPTED_TOKEN, frame.nonce, challenge)
-          : undefined
       const ready: ServerFrame = {
         type: "ready",
         version,
         environment: { id, name: id },
         features: options.features ?? ["heartbeat", "call-keys", "some-future-feature"],
         ...(relay === undefined ? {} : { relay }),
-        ...(proof === undefined ? {} : { proof }),
+        proof: serverProof(forgeProof ? "not-the-token" : SCRIPTED_TOKEN, auth.nonce, keys.publicKey),
       }
       if (holdReady) heldReady = ready
-      else socket.send(JSON.stringify(ready))
+      else current.send(ready)
+    }
+    // Only `auth` is plain text. Every frame after it must open with the channel.
+    const opened = (raw: RawData, isBinary: boolean) => {
+      if (channel === null) return isBinary ? null : String(raw)
+      return isBinary ? channel.open(raw as Buffer) : null
+    }
+    socket.on("message", (raw, isBinary) => {
+      const text = opened(raw, isBinary)
+      if (text === null) return socket.terminate()
+      const frame = JSON.parse(text) as ClientFrame
+      received.push(frame)
+      if (channel === null) return authenticate(frame)
+      if (frame.type === "call") calls.push(frame)
     })
   })
   await new Promise<void>((resolve) =>
@@ -513,7 +540,7 @@ const scriptedCloud = async (id: string, options: ScriptedOptions) => {
     pairingUrl: pairingUrl({ hosts: ["127.0.0.1"], port, token: SCRIPTED_TOKEN, relay: null }),
     calls,
     auths,
-    /** Every frame a client sent, as it arrived. */
+    /** Every frame a client sent, opened, as it arrived. */
     received,
     connections: () => connections,
     upgrades: () => upgrades,
@@ -533,14 +560,16 @@ const scriptedCloud = async (id: string, options: ScriptedOptions) => {
       forgeProof = true
     },
     releaseReady: () => {
-      current!.send(JSON.stringify(heldReady))
+      current!.send(heldReady!)
       heldReady = undefined
     },
     update: () => {
       version = REMOTE_PROTOCOL_VERSION
     },
-    socket: () => current!,
-    send: (frame: ServerFrame) => current!.send(JSON.stringify(frame)),
+    socket: () => current!.socket,
+    send: (frame: ServerFrame) => current!.send(frame),
+    /** Seals `frame` as the latest session's next frame without sending it. */
+    seal: (frame: ServerFrame) => current!.seal(frame),
     stop: () => {
       http.close()
       for (const socket of server.clients) socket.terminate()
@@ -977,7 +1006,6 @@ describe("desktop environments over a flaky link", () => {
       await connectedTimes("stranger", 2)
       expect(relay.auths).toStrictEqual(["token"])
       expect(stranger.received).toHaveLength(1)
-      expect(stranger.received).not.toContainEqual(expect.objectContaining({ token: expect.anything() }))
       expect(JSON.stringify(stranger.received)).not.toContain(SCRIPTED_TOKEN)
       // The race and the refused session each opened one.
       expect(stranger.connections()).toBe(2)
@@ -997,7 +1025,7 @@ describe("desktop environments over a flaky link", () => {
     }
   })
 
-  test("a direct address that sends no challenge gets no token when the pairing has a relay", async () => {
+  test("a direct address that sends no challenge gets nothing, and the link stays on the relay", async () => {
     const relay = await scriptedCloud("silent-direct", { tls })
     const port = await pairThenLoseDirect("silent-direct", relay.relay)
     const old = await scriptedCloud("someone-old", { port, noChallenge: true })
@@ -1031,22 +1059,76 @@ describe("desktop environments over a flaky link", () => {
     }
   })
 
-  test("a pairing without a relay still reaches a server that predates the challenge, with the token", async () => {
-    const scripted = await scriptedCloud("predates", { noChallenge: true })
+  test("a cloud that sends no challenge never receives the token and is refused", async () => {
+    const scripted = await pair("predates")
+    scripted.stop()
+    await pushedEventually(statusOf("predates", "offline"))
+    const old = await scriptedCloud("predates", { port: scripted.port, noChallenge: true })
     try {
-      let added: Awaited<ReturnType<typeof add>> | undefined
-      void add(scripted.pairingUrl).then((environment) => (added = environment))
       await vi.waitFor(async () => {
         await adjust("500 millis")
-        expect(added).toMatchObject({ id: "predates" })
+        expect(electron.pushes.some(statusOf("predates", "unauthorized"))).toBe(true)
       })
-      await connectedTimes("predates", 1)
-      expect(scripted.received).toStrictEqual([
-        { type: "auth", token: SCRIPTED_TOKEN },
-        { type: "auth", token: SCRIPTED_TOKEN },
-      ])
+      let refused: unknown
+      void add(old.pairingUrl).catch((error: unknown) => (refused = error))
+      await vi.waitFor(async () => {
+        await adjust("500 millis")
+        expect(String(refused)).toContain("refused the token")
+      })
+      expect(old.connections()).toBeGreaterThan(0)
+      expect(old.received).toStrictEqual([])
     } finally {
       await remove("predates")
+      old.stop()
+    }
+  })
+
+  test("a cloud on the protocol before sealing is incompatible and never gets a call", async () => {
+    const scripted = await scriptedCloud("unsealed", { version: 1 })
+    try {
+      await add(scripted.pairingUrl)
+      await pushedEventually(statusOf("unsealed", "incompatible"))
+      expect(await listed("unsealed")).toMatchObject({ status: "incompatible", protocol: 1 })
+      expect(await forward("unsealed", { method: "settings.get", payload: undefined })).toMatchObject({
+        error: { tag: "EnvironmentIncompatible" },
+      })
+      expect(scripted.received.length).toBeGreaterThan(0)
+      expect(scripted.received.every((frame) => (frame as ClientFrame).type === "auth")).toBe(true)
+      expect(scripted.calls).toStrictEqual([])
+    } finally {
+      await remove("unsealed")
+      scripted.stop()
+    }
+  })
+
+  test("a frame after ready that does not open drops the link instead of refusing it", async () => {
+    const scripted = await pair("tampered")
+    try {
+      const tampered = scripted.seal({ type: "pong", at: 0 })
+      tampered[0] = tampered[0]! ^ 1
+      scripted.socket().send(tampered)
+      await pushedEventually(statusOf("tampered", "offline"))
+      await reconnectUntil(() => expect(electron.pushes.filter(statusOf("tampered", "connected"))).toHaveLength(2))
+
+      // Sealed and never sent, so the next frame carries a counter the desktop does not expect.
+      scripted.seal({ type: "pong", at: 0 })
+      scripted.send({ type: "pong", at: 1 })
+      await vi.waitFor(() => expect(electron.pushes.filter(statusOf("tampered", "offline"))).toHaveLength(2))
+      await reconnectUntil(() => expect(electron.pushes.filter(statusOf("tampered", "connected"))).toHaveLength(3))
+      expect(electron.pushes.some(statusOf("tampered", "unauthorized"))).toBe(false)
+    } finally {
+      await remove("tampered")
+      scripted.stop()
+    }
+  })
+
+  test("a cloud whose channel comes from another token is refused like a wrong proof", async () => {
+    const scripted = await scriptedCloud("other-channel", { channelToken: "not-the-token" })
+    try {
+      await expect(add(scripted.pairingUrl)).rejects.toThrow("refused the token")
+      expect(scripted.auths).toStrictEqual([SCRIPTED_TOKEN])
+      expect(scripted.calls).toStrictEqual([])
+    } finally {
       scripted.stop()
     }
   })

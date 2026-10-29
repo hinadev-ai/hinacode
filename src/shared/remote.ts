@@ -5,8 +5,11 @@ import { PushEvent, type RpcMethod } from "./contract.ts"
 /** Path the phone upgrades to a WebSocket on. */
 export const REMOTE_PATH = "/remote"
 
-/** Bumped when a frame changes shape, so an old phone app says "update" instead of failing oddly. */
-export const REMOTE_PROTOCOL_VERSION = 1
+/**
+ * Bumped when a frame changes shape, so an old phone app says "update" instead of failing oddly. 2 seals every frame
+ * after `auth` (see `handshake.ts`).
+ */
+export const REMOTE_PROTOCOL_VERSION = 2
 
 /** The listener closes a socket whose unsent output grows past this, so no single answer may be larger. */
 export const SLOW_CONSUMER_BYTES = 8 * 1024 * 1024
@@ -36,12 +39,17 @@ const Envelope = Schema.Union([
 ])
 
 /**
- * Phone -> desktop. The first frame on a socket must be `auth`: proof of the token for the server's `challenge`
- * (see `proof.ts`), or the token itself from clients that predate the challenge.
+ * Phone -> desktop. The first frame on a socket must be `auth`, in plain text: the client's nonce and its proof of the
+ * token for the server's `challenge` (see `handshake.ts`). Every frame after it is sealed. A client that predates
+ * sealing omits `sealed`, and only learns the server's protocol version before the socket closes.
  */
 export const ClientFrame = Schema.Union([
-  Schema.Struct({ type: Schema.Literal("auth"), nonce: Schema.String, proof: Schema.String }),
-  Schema.Struct({ type: Schema.Literal("auth"), token: Schema.String }),
+  Schema.Struct({
+    type: Schema.Literal("auth"),
+    nonce: Schema.String,
+    proof: Schema.String,
+    sealed: Schema.optionalKey(Schema.Literal(true)),
+  }),
   /** `payload` is absent for methods that take nothing, since JSON has no undefined. */
   Schema.Struct({
     type: Schema.Literal("call"),
@@ -60,9 +68,9 @@ export type ClientFrame = typeof ClientFrame.Type
 /**
  * Desktop -> phone. `result` answers one `call`; `event` is the same push the desktop renderer gets.
  * A method that returns nothing answers with `envelope: {}`, since JSON drops an undefined `result`.
+ * Only `challenge` is plain text. Everything from `ready` on is sealed.
  */
 export const ServerFrame = Schema.Union([
-  /** The first frame a server sends. Clients that predate it ignore it and send the token. */
   Schema.Struct({ type: Schema.Literal("challenge"), nonce: Schema.String }),
   /**
    * `environment` names the hinacode that answered, so a desktop pairing it twice keeps one entry. Older ones omit it.
@@ -133,16 +141,12 @@ export const DIRECT_CHECK_INTERVAL_MS = 60_000
 /** How long that check waits for a direct address to open. */
 export const DIRECT_CHECK_TIMEOUT_MS = 2_000
 
-/**
- * How long a client waits for the server's `challenge` after its socket opens. Without one, it sends the token itself
- * only over the relay, which reaches the machine's own hostname over TLS, or to a pairing without a relay, whose
- * server may predate the challenge. On the direct address of a pairing with a relay, no challenge counts as a refusal.
- */
+/** How long a client waits for the server's `challenge` after its socket opens. Silence counts as a refusal. */
 export const CHALLENGE_WAIT_MS = 1_000
 
 /**
  * What a client dials to reach a pairing: every direct address at once, then the relay after `RELAY_DELAY_MS`. The
- * first socket to open wins and the others close, so the pairing token goes to that socket only.
+ * first socket to open wins and the others close, so only that socket runs the handshake.
  */
 export const dialPlan = (target: Omit<PairingTarget, "token">): NonEmptyReadonlyArray<Dial> => {
   const direct = Arr.map(target.hosts, (host): Dial => ({
