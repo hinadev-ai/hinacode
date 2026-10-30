@@ -525,11 +525,24 @@ const make = Effect.gen(function* () {
     return { provider, steer, run, follow, handle, interrupt, messages: () => turnMessages }
   }
 
+  const liveMessages = (threadId: string) =>
+    messages.list(threadId).pipe(
+      Effect.map((persisted) => {
+        const live = new Map(
+          activeTurns
+            .get(threadId)
+            ?.messages()
+            .map((message) => [message.id, message]),
+        )
+        return persisted.map((message) => live.get(message.id) ?? message)
+      }),
+    )
+
   const promptForSession = (thread: Thread, prompt: string) =>
     Effect.gen(function* () {
       if (thread.providerSessionId !== null) return prompt
       if (thread.sideOf !== null) {
-        const unseen = unseenSince(yield* messages.list(thread.sideOf), thread.forkedFrom)
+        const unseen = unseenSince(yield* liveMessages(thread.sideOf), thread.forkedFrom)
         return sidechatPrompt({ unseen, prompt })
       }
       if (thread.forkedFrom !== null) return prompt
@@ -566,7 +579,7 @@ const make = Effect.gen(function* () {
         const first = !(yield* threads.started(threadId))
         if (first && thread.sideOf !== null) {
           const parent = yield* threads.get(thread.sideOf)
-          const forkPoint = latestForkPoint(parent.provider, yield* messages.list(parent.id))
+          const forkPoint = latestForkPoint(parent.provider, yield* liveMessages(parent.id))
           thread = yield* threads.rebaseSidechat(threadId, parent, forkPoint)
           yield* push.publish({ type: "thread.updated", thread })
         }
@@ -969,15 +982,8 @@ const make = Effect.gen(function* () {
     respondSecret,
     transcript: (threadId) =>
       Effect.gen(function* () {
-        const persisted = yield* messages.list(threadId)
-        const live = new Map(
-          activeTurns
-            .get(threadId)
-            ?.messages()
-            .map((message) => [message.id, message]),
-        )
         return {
-          messages: persisted.map((message) => live.get(message.id) ?? message),
+          messages: yield* liveMessages(threadId),
           approvals: [...approvals.values()].filter((request) => request.threadId === threadId),
           questions: [...questions.values()].filter((request) => request.threadId === threadId),
           secretRequests: [...secretRequests.values()]

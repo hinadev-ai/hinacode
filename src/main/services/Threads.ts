@@ -99,6 +99,7 @@ export class Threads extends Context.Service<
     readonly update: (input: UpdateThread) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly fork: (threadId: string, messageId: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly sidechat: (threadId: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
+    readonly sidechatOf: (threadId: string) => Effect.Effect<Option.Option<Thread>, PersistenceError>
     readonly rebaseSidechat: (
       id: string,
       parent: Thread,
@@ -595,6 +596,7 @@ const make = Effect.gen(function* () {
     update,
     fork,
     sidechat,
+    sidechatOf: (parentId: string) => findSidechat(parentId).pipe(Effect.mapError(persistence("threads.sidechatOf"))),
     rebaseSidechat,
     started,
     prepareWorkspace,

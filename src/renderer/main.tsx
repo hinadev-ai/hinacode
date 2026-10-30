@@ -22,7 +22,9 @@ import { usePullRequestGuides } from "./stores/pullRequestGuides.ts"
 import { loadAllPullRequestsAtom, usePullRequests } from "./stores/pullRequests.ts"
 import { useSubagents } from "./stores/subagents.ts"
 import { useTerminals } from "./stores/terminals.ts"
-import { useThreads } from "./stores/threads.ts"
+import { errorMessage } from "./lib/errorMessage.ts"
+import { openSidechat } from "./lib/sidechat.ts"
+import { selectThread, useThreads } from "./stores/threads.ts"
 import { useUnseen } from "./stores/unseen.ts"
 import { useWorktrees } from "./stores/worktrees.ts"
 
@@ -95,6 +97,7 @@ onPushEvent((event) => {
       registry.refresh(projectsAtom)
       registry.refresh(loadAllPullRequestsAtom)
       reloadTranscripts(event.id)
+      refreshSidechats(event.id)
       reattachTerminals(event.id)
       return void loadLists()
     case "environments.changed":
@@ -108,8 +111,8 @@ const isOnCloud = (environmentId: string) => {
   const onCloud = new Set(
     projects.filter((project) => project.environmentId === environmentId).map((project) => project.id),
   )
-  const threads = useThreads.getState().byId
-  return (threadId: string) => onCloud.has(threads[threadId]?.projectId ?? "")
+  const threads = useThreads.getState()
+  return (threadId: string) => onCloud.has(selectThread(threadId)(threads)?.projectId ?? "")
 }
 
 const reloadTranscripts = (environmentId: string) => {
@@ -119,6 +122,16 @@ const reloadTranscripts = (environmentId: string) => {
     if (!onCloud(threadId)) continue
     unload(threadId)
     void load(threadId)
+  }
+}
+
+const refreshSidechats = (environmentId: string) => {
+  const onCloud = isOnCloud(environmentId)
+  for (const parentId of Object.keys(useThreads.getState().sidechats)) {
+    if (onCloud(parentId))
+      openSidechat(parentId).catch((cause: unknown) =>
+        console.error(`Could not refresh a side chat: ${errorMessage(cause)}`),
+      )
   }
 }
 

@@ -1,5 +1,5 @@
 import { useParams } from "@tanstack/react-router"
-import { type ReactNode, useState } from "react"
+import { createContext, type ReactNode, use, useState } from "react"
 import type { IconType } from "react-icons"
 import {
   RiArrowRightSLine,
@@ -26,7 +26,7 @@ import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useSubagentByCallId } from "../stores/subagents.ts"
-import { selectThread, useThreads } from "../stores/threads.ts"
+import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { AttachmentView } from "./AttachmentView.tsx"
 import { FindPartContext, FindPatternContext, Highlighted } from "./FindHighlight.tsx"
@@ -127,8 +127,11 @@ const statusLabel = {
   error: m.tool_status_error,
 } satisfies Record<ToolCallStatus, () => string>
 
+export const SubagentLinks = createContext(true)
+
 function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call" }> }) {
-  if (spawnsSubagent(part)) return <SubagentCallPart part={part} />
+  const linksSubagents = use(SubagentLinks)
+  if (linksSubagents && spawnsSubagent(part)) return <SubagentCallPart part={part} />
   const Icon = toolIcons[part.name] ?? RiToolsLine
   const { name, summary } = describeToolCall(part)
 
@@ -174,7 +177,7 @@ function ToolCallDetails({ call, summary, inGroup = false }: { call: ToolCall; s
 
 function SubagentCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call" }> }) {
   const { threadId } = useParams({ from: "/thread/$threadId" })
-  const provider = useThreads((state) => selectThread(threadId)(state)?.provider)
+  const provider = useThreads((state) => state.byId[threadId]?.provider)
   const subagent = useSubagentByCallId(threadId, part.callId)
   const open = useOpenSubagent(threadId)
   const { name, summary } = describeToolCall(part)

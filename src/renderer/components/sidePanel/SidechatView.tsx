@@ -13,6 +13,7 @@ import { useMessages } from "../../stores/messages.ts"
 import { useThreads } from "../../stores/threads.ts"
 import { Composer } from "../Composer.tsx"
 import { MessageList } from "../MessageList.tsx"
+import { SubagentLinks } from "../MessagePart.tsx"
 import { providerLabel } from "../ProviderIcon.tsx"
 import { PendingRequests } from "../ThreadView.tsx"
 import { Button } from "../ui/button.tsx"
@@ -57,7 +58,9 @@ function SidechatTranscript({ sidechat }: { sidechat: Thread }) {
       <ThreadRepository value={repository}>
         <ThreadFolder value={folder}>
           {history?.status === "ready" && history.messages.length > 0 ? (
-            <MessageList messages={history.messages} providerLabel={providerLabel[sidechat.provider]()} />
+            <SubagentLinks value={false}>
+              <MessageList messages={history.messages} providerLabel={providerLabel[sidechat.provider]()} />
+            </SubagentLinks>
           ) : (
             <div className="flex-1" />
           )}
