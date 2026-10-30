@@ -8,12 +8,14 @@ import {
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
+  startTransition,
   useEffect,
   useEffectEvent,
   useRef,
   useState,
   useTransition,
 } from "react"
+import { cn } from "../lib/utils.ts"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import { isThreadBusy, type Thread, toCheckoutTarget } from "../../shared/domain.ts"
@@ -36,7 +38,8 @@ import {
 } from "./assistant-ui/elements/composer.tsx"
 import { PendingAttachment } from "./AttachmentView.tsx"
 import { ChordKeys } from "./ChordKeys.tsx"
-import { EnvironmentPicker, ModelPicker, ThreadOptions, WorkspacePicker } from "./ComposerControls.tsx"
+import { ThreadPicker, WorkspacePicker } from "./ComposerControls.tsx"
+import { ComposerStatusLine } from "./ComposerStatusLine.tsx"
 import { ComposerInput } from "./ComposerInput.tsx"
 import { ContextRing } from "./ContextRing.tsx"
 import { PendingLineComment } from "./LineComment.tsx"
@@ -273,8 +276,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
             <ComposerToolbar className="shrink-0 gap-2">
               <ComposerActions className="min-w-0 flex-1">
                 <AttachButton onClick={pickFiles} disabled={isStaging} />
-                <ModelPicker thread={thread} canSwitchAgent={!busy} onError={setError} />
-                <ThreadOptions thread={thread} onError={setError} />
+                <ThreadPicker thread={thread} canSwitchAgent={!busy} onError={setError} />
               </ComposerActions>
               <ContextRing threadId={thread.id} provider={thread.provider} />
               <SteerButton busy={busy} hasDraft={hasDraft} canSend={canSend} onSteer={() => send("steer")} />
@@ -282,16 +284,15 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
             </ComposerToolbar>
           </ComposerBar>
         </ComposerRoot>
-        {unstarted &&
-          (isChat ? (
-            <div className="mx-auto mt-1 flex w-full max-w-3xl items-center px-1 empty:hidden">
-              <EnvironmentPicker thread={thread} onError={setError} />
-            </div>
-          ) : (
-            <WorkspacePicker thread={thread} workspace={workspace} onError={setError} />
-          ))}
-        {(error ?? commandsError) && (
-          <FieldError className="mx-auto mt-1 max-w-3xl">{error ?? commandsError}</FieldError>
+        {error !== null ? (
+          <FieldError className="mx-auto mt-1 w-full max-w-3xl px-3">{error}</FieldError>
+        ) : (
+          commandsError !== null && <CommandsError message={commandsError} />
+        )}
+        {unstarted ? (
+          !isChat && <WorkspacePicker thread={thread} workspace={workspace} />
+        ) : (
+          <ComposerStatusLine thread={thread} />
         )}
       </form>
     </div>
@@ -370,5 +371,22 @@ function SendButton({
       />
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
+  )
+}
+
+function CommandsError({ message }: { message: string }) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <FieldError className="mx-auto mt-1 flex w-full max-w-3xl items-start gap-2 px-3 text-xs">
+      <span className={cn("min-w-0 flex-1 select-text", expanded ? "whitespace-pre-wrap" : "truncate")}>{message}</span>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => startTransition(() => setExpanded(!expanded))}
+        className="shrink-0 rounded-sm underline underline-offset-2 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {expanded ? m.composer_commands_failed_hide() : m.composer_commands_failed_details()}
+      </button>
+    </FieldError>
   )
 }

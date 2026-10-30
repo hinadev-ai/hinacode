@@ -13,7 +13,7 @@ import { errorMessage } from "../../lib/errorMessage.ts"
 
 export function IntegrationSettings() {
   return (
-    <SettingsSection title={m.settings_integrations()}>
+    <SettingsSection>
       <SettingsGroup>
         <GitHubStatus />
         <SecretField

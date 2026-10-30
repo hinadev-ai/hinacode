@@ -790,6 +790,16 @@ export const TranscriptPush = Schema.Union([
 ])
 export type TranscriptPush = typeof TranscriptPush.Type
 
+export const MenuCommand = Schema.Literals([
+  "thread.new",
+  "project.add",
+  "settings.open",
+  "sidebar.toggle",
+  "sidePanel.toggle",
+  "terminal.toggle",
+])
+export type MenuCommand = typeof MenuCommand.Type
+
 export const PushEvent = Schema.Union([
   ...TranscriptPush.members,
   Schema.Struct({ type: Schema.Literal("thread.updated"), thread: Thread }),
@@ -834,6 +844,7 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("vm.passkey.updated"), threadId: Schema.String, passkey: VmPasskey }),
   Schema.Struct({ type: Schema.Literal("vm.screen.data"), streamId: Schema.String, data: Schema.Uint8Array }),
   Schema.Struct({ type: Schema.Literal("vm.screen.closed"), streamId: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("menu.command"), command: MenuCommand }),
 ])
 export type PushEvent = typeof PushEvent.Type
 

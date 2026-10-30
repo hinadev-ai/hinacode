@@ -222,7 +222,7 @@ function SubagentRow({
         <button
           type="button"
           onClick={onOpen}
-          className="-ml-2 flex min-w-0 flex-1 gap-2.5 rounded-md px-2 py-1.5 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
+          className="-ml-2 flex min-w-0 flex-1 gap-2.5 rounded-md px-2 py-1.5 text-left pressable outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
         >
           {body}
         </button>

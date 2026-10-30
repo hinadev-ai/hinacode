@@ -10,7 +10,7 @@ import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Switch } from "../ui/switch.tsx"
-import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
+import { SettingsGroup, SettingsPageAction, SettingsSection } from "./SettingsSection.tsx"
 
 type Notifications = ClientSettings["notifications"]
 
@@ -55,17 +55,14 @@ export function NotificationSettings() {
     })
 
   return (
-    <SettingsSection
-      title={m.settings_notifications()}
-      description={m.settings_notifications_hint()}
-      action={
-        import.meta.env.DEV && (
+    <SettingsSection>
+      {import.meta.env.DEV && (
+        <SettingsPageAction>
           <Button variant="outline" size="sm" onClick={sendTest}>
             {m.settings_notifications_test()}
           </Button>
-        )
-      }
-    >
+        </SettingsPageAction>
+      )}
       <PermissionNotice />
       <SettingsGroup>
         {toggles.map(({ key, label, hint }) => (

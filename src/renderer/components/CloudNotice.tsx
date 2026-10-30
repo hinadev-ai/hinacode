@@ -51,7 +51,7 @@ function CloudNoticeBody({ cloud }: { cloud: Cloud }) {
         <Button
           variant="outline"
           size="sm"
-          render={<Link to="/settings" search={{ page: "environments" }} />}
+          render={<Link to="/settings" search={{ page: "connections" }} />}
           nativeButton={false}
         >
           {m.environment_pair_again()}

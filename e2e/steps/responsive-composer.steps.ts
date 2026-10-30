@@ -125,15 +125,12 @@ Then("the composer toolbar stays on one line", async ({ app }) => {
 
 When("I choose {string} access in the composer", async ({ app }, mode: string) => {
   const page = app.page
-  const access = page.getByRole("combobox", { name: "Access", exact: true })
-  if (await access.isVisible()) {
-    await access.click()
-    await page.getByRole("option", { name: new RegExp(`^${mode}`) }).click()
-    return
-  }
-  await page.getByRole("button", { name: "More options", exact: true }).click()
-  await page.getByRole("menuitem", { name: /^Access/ }).click()
-  await page.getByRole("menuitemradio", { name: new RegExp(`^${mode}`) }).click()
+  await page.getByRole("button", { name: /^Model: / }).click()
+  await page
+    .getByRole("group", { name: "Access", exact: true })
+    .getByRole("button", { name: mode, exact: true })
+    .click()
+  await page.keyboard.press("Enter")
 })
 
 Then("the thread {string} runs with {string} access", async ({ app, names }, title: string, accessMode: string) => {

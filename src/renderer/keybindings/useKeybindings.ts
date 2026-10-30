@@ -3,7 +3,7 @@ import { type Hotkey, matchesKeyboardEvent, useHotkeys } from "@tanstack/react-h
 import { useNavigate, useParams, useRouter } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { useEffect, useEffectEvent } from "react"
-import { projectsAtom, updateClientSettingsAtom } from "../lib/rpc.ts"
+import { onPushEvent, projectsAtom, updateClientSettingsAtom } from "../lib/rpc.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
 import { useClientSettings, useSettings } from "../lib/settings.ts"
 import { isInDeviceKeyboard } from "../lib/elementPicker.ts"
@@ -66,6 +66,15 @@ export function useKeybindings() {
     const binding = bound.find(({ hotkey }) => matchesKeyboardEvent(event, hotkey))
     if (binding && runFromKeydown(binding.command, event, ctx)) event.stopPropagation()
   })
+  const runFromMenu = useEffectEvent((id: string) => commands.find((command) => command.id === id)?.run(ctx))
+  useEffect(
+    () =>
+      onPushEvent((event) => {
+        if (event.type === "menu.command") runFromMenu(event.command)
+      }),
+    [],
+  )
+
   useEffect(() => {
     const listener = (event: KeyboardEvent) => takeFromTerminal(event)
     document.addEventListener("keydown", listener, { capture: true })
