@@ -372,8 +372,8 @@ const handlers: Handlers = {
     AgentRunner.use((runner) => runner.queue(threadId, text, attachments)),
   "threads.unqueue": ({ threadId, id }) => AgentRunner.use((runner) => runner.unqueue(threadId, id)),
   "threads.interrupt": ({ threadId }) => AgentRunner.use((runner) => runner.interrupt(threadId)),
-  "approvals.respond": ({ requestId, decision }) =>
-    AgentRunner.use((runner) => runner.respondApproval(requestId, decision)),
+  "approvals.respond": ({ requestId, decision, note }) =>
+    AgentRunner.use((runner) => runner.respondApproval(requestId, decision, note)),
   "questions.respond": ({ requestId, answers }) =>
     AgentRunner.use((runner) => runner.respondQuestion(requestId, answers)),
   "secrets.respond": ({ requestId, value }) => AgentRunner.use((runner) => runner.respondSecret(requestId, value)),

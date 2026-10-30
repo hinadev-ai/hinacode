@@ -32,7 +32,7 @@ const fakeClaude = () => {
     runTurn: () => Stream.empty,
     steer: () => Effect.void,
     interrupt: () => Effect.void,
-    respondApproval: () => Effect.void,
+    respondApproval: () => Effect.succeed(false),
     respondQuestion: () => Effect.void,
     setAccessMode: () => Effect.void,
   })

@@ -915,7 +915,7 @@ const make = Effect.gen(function* () {
     Effect.suspend(() => {
       const deferred = approvals.get(requestId)
       return deferred ? Deferred.succeed(deferred, decision) : Effect.void
-    }).pipe(Effect.asVoid)
+    }).pipe(Effect.as(false))
 
   const respondQuestion = (requestId: string, answers: QuestionAnswers) =>
     Effect.suspend(() => {

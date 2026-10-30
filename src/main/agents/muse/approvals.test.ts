@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@effect/vitest"
-import { choiceFor, sessionScope, toApprovalRequest } from "./approvals.ts"
+import { choiceFor, sessionScope, takesNote, toApprovalRequest } from "./approvals.ts"
 import type { ApprovalChoice, ApprovalRequestParams } from "./protocol.ts"
 
 const shellChoices: Array<ApprovalChoice> = [
@@ -37,6 +37,17 @@ const request = (fields: Partial<ApprovalRequestParams>) =>
     viewCursor: "c1",
     ...fields,
   }) as ApprovalRequestParams
+
+describe("takesNote", () => {
+  test("a denial that goes out as Reject carries the note as feedback", () => {
+    expect(takesNote("deny", shellChoices)).toBe(true)
+  })
+
+  test("a choice without acceptsFeedback leaves the note to steer", () => {
+    expect(takesNote("allow", shellChoices)).toBe(false)
+    expect(takesNote("deny", networkChoices)).toBe(false)
+  })
+})
 
 describe("choiceFor", () => {
   test("allows once and never widens into a workspace rule", () => {

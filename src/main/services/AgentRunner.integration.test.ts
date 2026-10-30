@@ -49,7 +49,8 @@ interface Probe {
   readonly idle: Promise<void>
   readonly streamed: Promise<void>
   readonly turns: Array<{ readonly provider: ProviderId; readonly input: RunTurnInput }>
-  readonly decisions: Array<{ readonly requestId: string; readonly decision: ApprovalDecision }>
+  readonly decisions: Array<{ readonly requestId: string; readonly decision: ApprovalDecision; readonly note?: string }>
+  readonly steers: Array<string>
   readonly calls: Array<{ readonly provider: ProviderId; readonly call: "closeSession" | "interrupt" }>
   readonly transcript: Array<TranscriptPush>
   readonly wake: (agent: ProviderId, sessionId: string) => Promise<void>
@@ -102,6 +103,8 @@ const withPreparingThread = async (
   let holdSnapshot = options.pauseSnapshot ?? false
   const turns: Probe["turns"] = []
   const decisions: Probe["decisions"] = []
+  const steers: Probe["steers"] = []
+  const resolutions = Effect.runSync(Queue.unbounded<AgentEvent>())
   const calls: Probe["calls"] = []
   const transcript: Probe["transcript"] = []
   let closeFails = false
@@ -188,7 +191,7 @@ const withPreparingThread = async (
           },
         }
         return input.prompt === "needs approval"
-          ? Stream.concat(Stream.make(requested), Stream.never)
+          ? Stream.concat(Stream.make(requested), Stream.fromQueue(resolutions))
           : Stream.make(requested)
       }),
     wakes: Stream.fromQueue(wakes[id]),
@@ -196,10 +199,14 @@ const withPreparingThread = async (
       closeFails
         ? Effect.fail(new AgentError({ provider: id, message: "The session did not leave" }))
         : Effect.sync(() => calls.push({ provider: id, call: "closeSession" })),
-    steer: () => Effect.void,
+    steer: (_threadId, text) => Effect.sync(() => steers.push(text)),
     interrupt: () => Effect.sync(() => calls.push({ provider: id, call: "interrupt" })),
     setAccessMode: () => Effect.void,
-    respondApproval: (requestId, decision) => Effect.sync(() => decisions.push({ requestId, decision })),
+    respondApproval: (requestId, decision, note) =>
+      Effect.sync(() => decisions.push({ requestId, decision, ...(note !== undefined && { note }) })).pipe(
+        Effect.andThen(Queue.offer(resolutions, { type: "approval_resolved", requestId })),
+        Effect.as(decision === "deny" && note !== undefined),
+      ),
     respondQuestion: () => Effect.void,
   })
   try {
@@ -334,6 +341,7 @@ const withPreparingThread = async (
         streamed: streamed.promise,
         turns,
         decisions,
+        steers,
         calls,
         transcript,
         wake: (agent, sessionId) => {
@@ -686,6 +694,56 @@ it("allows the approval a turn is waiting on when the thread switches to full ac
     )
     await Effect.runPromise(runner.setAccessMode(thread.id, "full"))
     expect(decisions).toStrictEqual([{ requestId: "approval-1", decision: "allow" }])
+  })
+})
+
+it("holds a steer sent during an approval until the user decides", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, steers }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "needs approval", []))
+    await vi.waitFor(async () =>
+      expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toHaveLength(1),
+    )
+    await Effect.runPromise(runner.steer(thread.id, "use pnpm", []))
+    expect(steers).toStrictEqual([])
+    expect((await Effect.runPromise(threads.get(thread.id))).queue).toMatchObject([{ text: "use pnpm", steer: true }])
+
+    await Effect.runPromise(runner.respondApproval("approval-1", "allow"))
+    await vi.waitFor(() => expect(steers).toStrictEqual(["use pnpm"]))
+    expect((await Effect.runPromise(threads.get(thread.id))).queue).toStrictEqual([])
+    const { messages } = await Effect.runPromise(runner.transcript(thread.id))
+    expect(
+      messages.some((message) => message.role === "user" && JSON.stringify(message.parts).includes("use pnpm")),
+    ).toBe(true)
+  })
+})
+
+it("steers a note the provider could not deliver ahead of the messages held during the approval", async () => {
+  await withPreparingThread(async ({ runner, thread, release, steers, decisions }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "needs approval", []))
+    await vi.waitFor(async () =>
+      expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toHaveLength(1),
+    )
+    await Effect.runPromise(runner.steer(thread.id, "held", []))
+    await Effect.runPromise(runner.respondApproval("approval-1", "allow", "  then run lint  "))
+    expect(decisions).toStrictEqual([{ requestId: "approval-1", decision: "allow", note: "then run lint" }])
+    await vi.waitFor(() => expect(steers).toStrictEqual(["then run lint", "held"]))
+  })
+})
+
+it("does not steer a note the provider delivered with the denial", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, steers, decisions }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "needs approval", []))
+    await vi.waitFor(async () =>
+      expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toHaveLength(1),
+    )
+    await Effect.runPromise(runner.respondApproval("approval-1", "deny", "edit b.ts instead"))
+    expect(decisions).toStrictEqual([{ requestId: "approval-1", decision: "deny", note: "edit b.ts instead" }])
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running"))
+    expect(steers).toStrictEqual([])
+    expect((await Effect.runPromise(threads.get(thread.id))).queue).toStrictEqual([])
   })
 })
 

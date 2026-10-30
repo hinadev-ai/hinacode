@@ -22,7 +22,12 @@ function setup() {
   const ask = (toolName: string, input: Record<string, unknown>) =>
     approvals.ask(session, toolName, input, callOptions())
 
-  const call = async (toolName: string, input: Record<string, unknown>, decision: ApprovalDecision = "deny") => {
+  const call = async (
+    toolName: string,
+    input: Record<string, unknown>,
+    decision: ApprovalDecision = "deny",
+    note?: string,
+  ) => {
     const prompted = new Promise<ApprovalRequest | null>((resolve) => {
       raised = resolve
     })
@@ -33,12 +38,31 @@ function setup() {
     )
     const request = await prompted
     raised = null
-    if (request !== null) await Effect.runPromise(approvals.respond(request.id, decision))
-    return { prompted: request !== null, request: request ?? undefined, result: await result }
+    const delivered = request === null ? false : await Effect.runPromise(approvals.respond(request.id, decision, note))
+    return { prompted: request !== null, request: request ?? undefined, delivered, result: await result }
   }
 
   return { session, approvals, call }
 }
+
+describe("Claude approval notes", () => {
+  test("a denial carries the note to Claude as its reason", async () => {
+    const { call } = setup()
+    const denied = await call("Edit", { file_path: "/repo/a.ts" }, "deny", "Edit b.ts instead")
+    expect(denied.delivered).toBe(true)
+    expect(denied.result).toStrictEqual({
+      behavior: "deny",
+      message: "The user denied this tool call and said: Edit b.ts instead",
+    })
+  })
+
+  test("an allow has no message for the note, so it is left to steer", async () => {
+    const { call } = setup()
+    const allowed = await call("Bash", { command: "pnpm test" }, "allow", "Then run lint")
+    expect(allowed.delivered).toBe(false)
+    expect(allowed.result.behavior).toBe("allow")
+  })
+})
 
 describe("Claude session approvals", () => {
   test("allowing a Bash command for the session does not allow other commands", async () => {

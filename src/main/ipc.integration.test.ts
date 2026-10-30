@@ -9,7 +9,7 @@ import { vi } from "vitest"
 import { type Duration, Effect, Layer, ManagedRuntime, Queue, Stream } from "effect"
 import { WebSocket } from "ws"
 import { TestClock } from "effect/testing"
-import type { AccountHome, AgentEvent, Subagent, ThreadUsage } from "../shared/agent.ts"
+import type { AccountHome, AgentEvent, ApprovalDecision, Subagent, ThreadUsage } from "../shared/agent.ts"
 import { unlistedModel } from "../shared/agent.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import type { PushEvent, RpcEnvelope, RpcMethod, RpcRequestEncoded, RpcResponseEncoded } from "../shared/contract.ts"
@@ -130,6 +130,7 @@ const claudeLimits: PlanLimits = {
 }
 
 let heldTurn = Promise.withResolvers<void>()
+const approvalAnswers: Array<{ requestId: string; decision: ApprovalDecision; note?: string }> = []
 
 const stoppedSubagents: Array<{ readonly threadId: string; readonly subagentId: string }> = []
 
@@ -168,6 +169,23 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
       turnPrompts.push(input.prompt)
       if (input.prompt === "simulate a held sub-agent") {
         return Stream.make<Array<AgentEvent>>({ type: "subagent_updated", subagent }).pipe(
+          Stream.concat(Stream.fromEffect(Effect.promise(() => heldTurn.promise)).pipe(Stream.drain)),
+          Stream.concat(Stream.make<Array<AgentEvent>>({ type: "turn_completed" })),
+        )
+      }
+      if (input.prompt === "simulate a held approval") {
+        const requested: AgentEvent = {
+          type: "approval_requested",
+          request: {
+            id: `approval-${input.threadId}`,
+            threadId: input.threadId,
+            provider: id,
+            kind: "command",
+            title: "Run command",
+            detail: "npm test",
+          },
+        }
+        return Stream.make<Array<AgentEvent>>(requested).pipe(
           Stream.concat(Stream.fromEffect(Effect.promise(() => heldTurn.promise)).pipe(Stream.drain)),
           Stream.concat(Stream.make<Array<AgentEvent>>({ type: "turn_completed" })),
         )
@@ -241,7 +259,10 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
   steer: () => Effect.void,
   interrupt: () => Effect.void,
   stopSubagent: (threadId, subagentId) => Effect.sync(() => void stoppedSubagents.push({ threadId, subagentId })),
-  respondApproval: () => Effect.void,
+  respondApproval: (requestId, decision, note) =>
+    Effect.sync(() => approvalAnswers.push({ requestId, decision, ...(note !== undefined && { note }) })).pipe(
+      Effect.as(true),
+    ),
   respondQuestion: () => Effect.void,
   setAccessMode: () => Effect.void,
 })
@@ -1407,6 +1428,33 @@ describe("agent questions over rpc", () => {
         .tag,
     ).toBe("UntrustedSender")
     result(await invoke("questions.respond", { requestId: "unknown", answers: { choice: ["blue"] } }))
+  })
+})
+
+describe("agent approvals over rpc", () => {
+  test("decodes the note and hands it to the provider with the decision", async () => {
+    heldTurn = Promise.withResolvers()
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a held approval" }))
+    await expect
+      .poll(async () => result(await invoke("threads.transcript", { threadId: thread.id })).approvals)
+      .toHaveLength(1)
+    const requestId = `approval-${thread.id}`
+
+    const handler = electron.handlers.get(RPC_CHANNEL)!
+    const invalid = await handler(
+      { sender: {}, senderFrame: mainFrame },
+      { method: "approvals.respond", payload: { requestId, decision: "deny", note: 42 } },
+    )
+    expect(failure(invalid as RpcEnvelope<unknown>).tag).toBe("SchemaError")
+    result(await invoke("approvals.respond", { requestId, decision: "deny", note: "use pnpm" }))
+    expect(approvalAnswers).toStrictEqual([{ requestId, decision: "deny", note: "use pnpm" }])
+
+    heldTurn.resolve()
+    await expect
+      .poll(async () => result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)?.status)
+      .toBe("idle")
   })
 })
 

@@ -64,7 +64,7 @@ export interface AgentProvider {
   }
   readonly contextBreakdown?: (threadId: string) => Effect.Effect<ContextBreakdown | null, AgentError>
   readonly stopSubagent?: (threadId: string, subagentId: string) => Effect.Effect<void, AgentError>
-  readonly respondApproval: (requestId: string, decision: ApprovalDecision) => Effect.Effect<void>
+  readonly respondApproval: (requestId: string, decision: ApprovalDecision, note?: string) => Effect.Effect<boolean>
   readonly respondQuestion: (requestId: string, answers: QuestionAnswers) => Effect.Effect<void>
   readonly setAccessMode: (threadId: string, accessMode: AccessMode) => Effect.Effect<void, AgentError>
 }

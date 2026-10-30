@@ -17,6 +17,9 @@ export const choiceFor = (
     .map((wanted) => choices.find((choice) => choice.decision === wanted))
     .find((choice) => choice !== undefined)
 
+export const takesNote = (decision: ApprovalDecision, choices: ReadonlyArray<ApprovalChoice>) =>
+  choiceFor(decision, choices)?.acceptsFeedback === true
+
 export const sessionScope = ({ subject, toolName: tool }: ApprovalRequestParams): SessionScope => {
   const name = toolName(subject.toolName ?? tool)
   if (subject.kind === "shell" && subject.command !== undefined) {

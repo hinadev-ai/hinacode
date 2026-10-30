@@ -356,7 +356,7 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
           const held = heldTurns.get(threadId)
           return held === undefined ? Effect.void : Deferred.succeed(held, undefined).pipe(Effect.asVoid)
         },
-        respondApproval: answer,
+        respondApproval: (id) => answer(id).pipe(Effect.as(false)),
         respondQuestion: answer,
         setAccessMode: () => Effect.void,
       })

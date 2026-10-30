@@ -63,7 +63,7 @@ const provider = (id: AgentProvider["id"]): AgentProvider => ({
       inputs.push({ threadId, text })
     }),
   interrupt: () => Effect.void,
-  respondApproval: () => Effect.void,
+  respondApproval: () => Effect.succeed(false),
   respondQuestion: () => Effect.void,
   setAccessMode: () => Effect.void,
 })
