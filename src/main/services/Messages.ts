@@ -38,7 +38,9 @@ const make = Effect.gen(function* () {
     Result: MessageRow,
     execute: () => sql`
       SELECT * FROM message
-      WHERE role = 'assistant' AND (
+      WHERE role = 'assistant'
+      AND thread_id IN (SELECT id FROM thread WHERE status IN ('running', 'awaiting_approval', 'limited'))
+      AND (
         completed_at IS NULL OR EXISTS (
           SELECT 1 FROM json_each(message.parts)
           WHERE json_extract(value, '$.type') = 'tool_call' AND json_extract(value, '$.status') = 'running'
