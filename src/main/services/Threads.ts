@@ -97,7 +97,13 @@ export class Threads extends Context.Service<
       input: CreateThread,
     ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeTakenError>
     readonly update: (input: UpdateThread) => Effect.Effect<Thread, PersistenceError | NotFoundError>
-    readonly fork: (threadId: string, messageId: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
+    readonly fork: (
+      threadId: string,
+      messageId: string,
+    ) => Effect.Effect<
+      Thread,
+      PersistenceError | NotFoundError | CommandError | WorktreeTakenError | PlatformError.PlatformError
+    >
     readonly sidechat: (threadId: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly sidechatOf: (threadId: string) => Effect.Effect<Option.Option<Thread>, PersistenceError>
     readonly rebaseSidechat: (
@@ -272,6 +278,22 @@ const make = Effect.gen(function* () {
       return thread
     })
 
+  const forkWorktree = (source: Thread) =>
+    Effect.gen(function* () {
+      if (source.worktreeId === null) return null
+      const worktree = yield* worktrees.get(source.worktreeId)
+      if (worktree.status === "removed") return worktree.id
+      const workingTree = yield* snapshotWorkingTree(worktree.path).pipe(Effect.provideContext(gitContext))
+      const forked = yield* worktrees.create({
+        projectId: source.projectId,
+        branch: `${worktree.branch}-fork-${randomUUID().slice(0, 5)}`,
+        baseRef: worktree.baseRef,
+        startPoint: worktree.branch,
+        workingTree,
+      })
+      return forked.id
+    })
+
   const fork = (threadId: string, messageId: string) =>
     Effect.gen(function* () {
       const source = yield* get(threadId)
@@ -282,11 +304,13 @@ const make = Effect.gen(function* () {
       if (provider !== source.provider) return yield* new NotFoundError({ entity: "fork point", id: messageId })
       if (accountId !== null) yield* accounts.get(accountId)
       const { next } = yield* nextSortIndex(source.projectId).pipe(Effect.mapError(persistence("threads.fork")))
+      const worktreeId = yield* forkWorktree(source)
       const now = yield* nowIso
       const thread: Thread = {
         ...source,
         id: randomUUID(),
         title: `${source.title} (fork)`,
+        worktreeId,
         accountId,
         providerSessionId: null,
         forkedFrom,

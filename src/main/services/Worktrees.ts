@@ -48,6 +48,7 @@ export interface CreateWorktree {
   readonly branch: string
   readonly baseRef: string
   readonly startPoint?: string
+  readonly workingTree?: string
 }
 
 export type DeleteBranch = "keep" | "ifMerged" | "force"
@@ -339,6 +340,10 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
               ["worktree", "add", "--no-track", "-b", input.branch, path, input.baseRef]
             : ["worktree", "add", "-b", input.branch, path, input.startPoint]
         yield* git.run(rootPath, args)
+        if (input.workingTree !== undefined) {
+          yield* git.run(path, ["read-tree", "-m", "-u", "HEAD", input.workingTree])
+          yield* git.run(path, ["reset", "--quiet"])
+        }
       }
 
       const worktree: Worktree = {
