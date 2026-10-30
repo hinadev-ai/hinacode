@@ -442,12 +442,22 @@ const make = Effect.gen(function* () {
       }).pipe(exclusive(thread.id))
 
     let next: QueuedMessage | undefined
+    const withdraw = (event: AgentEvent) => publishTranscript({ type: "thread.event", threadId: thread.id, event })
     const finish = Effect.gen(function* () {
-      for (const [id, request] of approvals) if (request.threadId === thread.id) approvals.delete(id)
-      for (const [id, request] of questions) if (request.threadId === thread.id) questions.delete(id)
+      for (const [id, request] of approvals) {
+        if (request.threadId !== thread.id) continue
+        approvals.delete(id)
+        yield* withdraw({ type: "approval_resolved", requestId: id })
+      }
+      for (const [id, request] of questions) {
+        if (request.threadId !== thread.id) continue
+        questions.delete(id)
+        yield* withdraw({ type: "question_resolved", requestId: id })
+      }
       for (const [id, { request, answer }] of secretRequests) {
         if (request.threadId !== thread.id) continue
         secretRequests.delete(id)
+        yield* withdraw({ type: "secret_resolved", requestId: id })
         yield* Deferred.fail(
           answer,
           new AgentError({ provider: "hinacode", message: "The turn ended before the user answered." }),
@@ -455,8 +465,10 @@ const make = Effect.gen(function* () {
       }
       yield* stopSubagents(thread.id, yield* nowIso)
       const last = turnMessages.at(-1)!
-      if (last.completedAt === null) setTurnMessages(replaceLast(turnMessages, { ...last, completedAt: yield* nowIso }))
+      const closed: Message = last.completedAt === null ? { ...last, completedAt: yield* nowIso } : last
+      setTurnMessages(replaceLast(turnMessages, closed))
       yield* persist
+      if (closed !== last) yield* publishTranscript({ type: "message.updated", message: closed })
       if (isThreadBusy(status)) yield* updateThread({ id: thread.id, status: "idle" })
       if (!completed || (yield* Deferred.isDone(stop))) return
       const [first, ...rest] = (yield* threads.get(thread.id)).queue

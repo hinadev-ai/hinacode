@@ -8,6 +8,7 @@ import { Context, Deferred, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, 
 import { SqlClient } from "effect/sql"
 import { vi } from "vitest"
 import type { AgentEvent, ApprovalDecision, ProviderId, RunTurnInput } from "../../shared/agent.ts"
+import type { TranscriptPush } from "../../shared/contract.ts"
 import type { Message, Thread } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
@@ -49,6 +50,7 @@ interface Probe {
   readonly turns: Array<{ readonly provider: ProviderId; readonly input: RunTurnInput }>
   readonly decisions: Array<{ readonly requestId: string; readonly decision: ApprovalDecision }>
   readonly calls: Array<{ readonly provider: ProviderId; readonly call: "closeSession" | "interrupt" }>
+  readonly transcript: Array<TranscriptPush>
   readonly wake: (agent: ProviderId, sessionId: string) => Promise<void>
   readonly failClose: () => void
   readonly release: () => void
@@ -97,6 +99,7 @@ const withPreparingThread = async (
   const turns: Probe["turns"] = []
   const decisions: Probe["decisions"] = []
   const calls: Probe["calls"] = []
+  const transcript: Probe["transcript"] = []
   let closeFails = false
   const wakes = { claude: wakeQueue(), codex: wakeQueue(), muse: wakeQueue() }
   const domain = Layer.mergeAll(
@@ -118,6 +121,7 @@ const withPreparingThread = async (
               Effect.sync(() => {
                 if (event.type === "worktree.setupLog" && event.chunk.includes("setup started")) started.resolve()
                 if (event.type === "thread.updated" && event.thread.status === "idle") idle.resolve()
+                if ("seq" in event) transcript.push(event)
               }),
           }),
         ),
@@ -144,7 +148,11 @@ const withPreparingThread = async (
         if (input.prompt.endsWith("accepted input")) {
           return Stream.make({ type: "session_bound", providerSessionId: `${id}-session-${turns.length}` }, completed)
         }
-        if (input.prompt !== "needs approval") return Stream.never
+        if (input.prompt === "ends silently") {
+          return Stream.make({ type: "session_bound", providerSessionId: `${id}-session-${turns.length}` })
+        }
+        if (input.prompt !== "needs approval" && input.prompt !== "needs approval, then ends silently")
+          return Stream.never
         const requested: AgentEvent = {
           type: "approval_requested",
           request: {
@@ -158,7 +166,9 @@ const withPreparingThread = async (
             sessionScope: { tool: "Bash", kind: "command", value: "echo hi" },
           },
         }
-        return Stream.concat(Stream.make(requested), Stream.never)
+        return input.prompt === "needs approval"
+          ? Stream.concat(Stream.make(requested), Stream.never)
+          : Stream.make(requested)
       }),
     wakes: Stream.fromQueue(wakes[id]),
     closeSession: () =>
@@ -303,6 +313,7 @@ const withPreparingThread = async (
         turns,
         decisions,
         calls,
+        transcript,
         wake: (agent, sessionId) => {
           const discarded = Promise.withResolvers<void>()
           Queue.offerUnsafe(wakes[agent], {
@@ -780,5 +791,35 @@ it("keeps a thread on its agent when that agent's session does not close", async
     })
     const { messages } = await Effect.runPromise(runner.transcript(thread.id))
     expect(messages.flatMap((message) => message.parts).some((part) => part.type === "agent_switch")).toBe(false)
+  })
+})
+
+it("publishes the assistant message a turn closes when its stream ends without a terminal event", async () => {
+  await withPreparingThread(async ({ runner, thread, release, idle, transcript, storedMessages }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "ends silently", []))
+    await idle
+
+    const stored = (await storedMessages(thread.id)).at(-1)!
+    expect(stored).toMatchObject({ role: "assistant", completedAt: expect.any(String) })
+    const updated = transcript.findLast((push) => push.type === "message.updated")
+    expect(updated).toMatchObject({ type: "message.updated", message: stored })
+  })
+})
+
+it("withdraws the requests a turn leaves unanswered when its stream ends without a terminal event", async () => {
+  await withPreparingThread(async ({ runner, thread, release, idle, transcript }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "needs approval, then ends silently", []))
+    await idle
+
+    expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toEqual([])
+    expect(transcript).toContainEqual(
+      expect.objectContaining({
+        type: "thread.event",
+        threadId: thread.id,
+        event: { type: "approval_resolved", requestId: "approval-1" },
+      }),
+    )
   })
 })
