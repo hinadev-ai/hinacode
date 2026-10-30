@@ -1,9 +1,11 @@
+import { Effect } from "effect"
+import { Atom } from "effect/reactivity"
 import type { AgentCommand } from "../../shared/agent.ts"
 import { type Attachment, isThreadBusy } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
-import { callPromise } from "./rpc.ts"
+import { call, callPromise } from "./rpc.ts"
 
 export const sidechatCommand = (): AgentCommand => ({
   trigger: "/",
@@ -25,6 +27,14 @@ export const openSidechat = async (threadId: string) => {
   useThreads.getState().upsert(sidechat)
   return sidechat
 }
+
+export const sidechatAtom = Atom.family((threadId: string) =>
+  Atom.make(
+    call("threads.sidechat", { threadId }).pipe(
+      Effect.tap((sidechat) => Effect.sync(() => useThreads.getState().upsert(sidechat))),
+    ),
+  ),
+)
 
 export async function askSidechat(threadId: string, question: string, attachments: ReadonlyArray<Attachment>) {
   useUi.getState().showView(threadId, "sidechat", { focus: true })
