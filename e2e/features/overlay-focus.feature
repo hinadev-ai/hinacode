@@ -31,4 +31,4 @@ Feature: Focus after a shortcut overlay closes
       | ControlOrMeta+p        |
       | ControlOrMeta+Shift+s  |
       | ControlOrMeta+Shift+n  |
-      | ControlOrMeta+Alt+.    |
+      | ControlOrMeta+Alt+,    |

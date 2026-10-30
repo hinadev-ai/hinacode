@@ -151,7 +151,7 @@ Then("the clipboard holds the ID of the thread {string}", async ({ app, threadId
 })
 
 const ownTitles = async (region: Locator, names: Names) =>
-  (await region.getByRole("link").allTextContents()).filter((text) => text.includes(names.of("")))
+  (await region.getByRole("link").locator("[dir=auto]").allTextContents()).filter((text) => text.includes(names.of("")))
 
 const pinned = (page: Page) => sidebar(page).getByRole("region", { name: "Pinned", exact: true })
 

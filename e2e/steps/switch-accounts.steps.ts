@@ -26,7 +26,7 @@ const accountNotice = (app: HinacodeApp) => app.page.getByRole("status").filter(
 const limitCallout = (app: HinacodeApp) => app.page.getByRole("status").filter({ hasText: "You've hit your limit" })
 const openAccountTabs = async (app: HinacodeApp) => {
   await app.page.getByRole("button", { name: /^Model: / }).click()
-  return app.page.getByRole("tablist")
+  return app.page.getByRole("dialog").getByRole("tablist")
 }
 
 Given(
