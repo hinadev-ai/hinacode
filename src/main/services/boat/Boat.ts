@@ -40,6 +40,8 @@ const WAIT_READY_MAX_ATTEMPTS = 120
 const DESKTOP_MAX_ATTEMPTS = 5
 const DEFAULT_TTL_SECONDS = 7200
 const SIGNED_URL_TTL_SECONDS = 900
+const DIRECT_FILE_MAX_BYTES = 5 * 1024 * 1024
+const SIGNED_FETCH_RETRY_SECONDS = [1, 2, 4, 8] as const
 const BOAT_SIZES = ["small", "default", "large", "xlarge"] as const
 
 const SandboxObject = Schema.Struct({
@@ -92,6 +94,17 @@ const FileUrlResponse = Schema.Struct({
   method: Schema.optional(Schema.String),
 })
 
+const FileReadResponse = Schema.Struct({
+  content: Schema.String,
+  size: Schema.optional(Schema.Number),
+  encoding: Schema.optional(Schema.String),
+})
+
+const FileWriteResponse = Schema.Struct({
+  success: Schema.optional(Schema.Boolean),
+  size: Schema.optional(Schema.Number),
+})
+
 const DesktopResponse = Schema.Struct({
   ok: Schema.optional(Schema.Boolean),
   type: Schema.optional(Schema.String),
@@ -130,6 +143,22 @@ const describeCause = (cause: unknown) => {
   if (!(cause instanceof Error)) return String(cause)
   const inner = cause.cause instanceof Error ? `: ${cause.cause.message}` : ""
   return `${cause.message}${inner}`
+}
+
+const fetchCauseCode = (cause: unknown): string | undefined => {
+  let current: unknown = cause
+  for (let level = 0; level < 3; level += 1) {
+    if (typeof current !== "object" || current === null) return undefined
+    const record = current as { readonly code?: unknown; readonly cause?: unknown }
+    if (typeof record.code === "string" && /^[A-Z][A-Z0-9_]{1,48}$/.test(record.code)) return record.code
+    current = record.cause
+  }
+  return undefined
+}
+
+const signedFailure = (kind: "download" | "upload", cause: unknown) => {
+  const code = fetchCauseCode(cause)
+  return new BoatError({ message: `boat file ${kind} failed${code === undefined ? "" : ` (${code})`}` })
 }
 
 const shellQuote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`
@@ -325,7 +354,75 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
       })),
     )
 
-  const readFileBytes = (id: string, guestPath: string) =>
+  interface SignedAttemptFailure {
+    readonly retryable: boolean
+    readonly error: BoatError
+  }
+
+  const retrySigned = <A>(once: Effect.Effect<A, SignedAttemptFailure>): Effect.Effect<A, BoatError> => {
+    const attempt = (index: number): Effect.Effect<A, BoatError> =>
+      Effect.catch(once, ({ retryable, error }: SignedAttemptFailure) => {
+        const delay = SIGNED_FETCH_RETRY_SECONDS[index]
+        return retryable && delay !== undefined
+          ? Effect.sleep(`${delay} seconds`).pipe(Effect.andThen(attempt(index + 1)))
+          : Effect.fail(error)
+      })
+    return attempt(0)
+  }
+
+  const downloadSigned = (url: string) =>
+    retrySigned(
+      Effect.tryPromise({
+        try: (signal) => fetch(url, { method: "GET", signal }),
+        catch: (cause: unknown): SignedAttemptFailure => ({ retryable: true, error: signedFailure("download", cause) }),
+      }).pipe(
+        Effect.flatMap((response) =>
+          response.ok
+            ? Effect.tryPromise({
+                try: () => response.arrayBuffer(),
+                catch: (cause: unknown): SignedAttemptFailure => ({
+                  retryable: true,
+                  error: signedFailure("download", cause),
+                }),
+              }).pipe(Effect.map((buffer) => Buffer.from(buffer)))
+            : Effect.fail<SignedAttemptFailure>({
+                retryable: response.status === 502 || response.status === 503 || response.status === 504,
+                error: new BoatError({ message: `boat file download failed with HTTP ${response.status}` }),
+              }),
+        ),
+      ),
+    ).pipe(within(FILES_TIMEOUT_SECONDS))
+
+  const uploadSigned = (url: string, method: string, bytes: Uint8Array) =>
+    retrySigned(
+      Effect.tryPromise({
+        try: (signal) => fetch(url, { method, signal, body: Buffer.from(bytes) }),
+        catch: (cause: unknown): SignedAttemptFailure => ({ retryable: true, error: signedFailure("upload", cause) }),
+      }).pipe(
+        Effect.flatMap((response) =>
+          response.ok
+            ? Effect.void
+            : Effect.fail<SignedAttemptFailure>({
+                retryable: response.status === 502 || response.status === 503 || response.status === 504,
+                error: new BoatError({ message: `boat file upload failed with HTTP ${response.status}` }),
+              }),
+        ),
+      ),
+    ).pipe(within(FILES_TIMEOUT_SECONDS))
+
+  const readFileDirect = (id: string, guestPath: string) =>
+    jsonRequest(
+      FileReadResponse,
+      "GET /sandboxes/{id}/files",
+      "GET",
+      sandboxPath(id, `/files?path=${encodeURIComponent(guestPath)}&encoding=base64`),
+      { sandboxId: id },
+    ).pipe(
+      within(FILES_TIMEOUT_SECONDS),
+      Effect.map(({ content }) => Buffer.from(content, "base64")),
+    )
+
+  const readFileSigned = (id: string, guestPath: string) =>
     jsonRequest(
       FileUrlResponse,
       "POST /sandboxes/{id}/files/download-url",
@@ -334,25 +431,38 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
       { sandboxId: id, body: { path: guestPath, ttlSeconds: SIGNED_URL_TTL_SECONDS } },
     ).pipe(
       within(REQUEST_TIMEOUT_SECONDS),
-      Effect.flatMap(({ url }) =>
-        Effect.tryPromise({
-          try: (signal) => fetch(url, { method: "GET", signal }),
-          catch: () => new BoatError({ message: "boat file download failed" }),
-        }).pipe(
-          Effect.flatMap((response) =>
-            response.ok
-              ? Effect.tryPromise({
-                  try: () => response.arrayBuffer(),
-                  catch: () => new BoatError({ message: "boat file download failed" }),
-                }).pipe(Effect.map((buffer) => Buffer.from(buffer)))
-              : Effect.fail(new BoatError({ message: `boat file download failed with HTTP ${response.status}` })),
-          ),
-          within(FILES_TIMEOUT_SECONDS),
-        ),
-      ),
+      Effect.flatMap(({ url }) => downloadSigned(url)),
     )
 
-  const writeFileBytes = (id: string, guestPath: string, bytes: Uint8Array) =>
+  const guestFileSize = (id: string, guestPath: string) =>
+    rawCommand(id, `stat -c %s ${shellQuote(guestPath)}`, REQUEST_TIMEOUT_SECONDS).pipe(
+      Effect.map((result) => {
+        const size = Number(result.stdout.trim().split(/\s+/).filter(Boolean).pop() ?? "")
+        return result.exitCode === 0 && Number.isFinite(size) ? size : undefined
+      }),
+      Effect.catch(() => Effect.succeed(undefined)),
+    )
+
+  const readFileBytes = (id: string, guestPath: string) =>
+    Effect.flatMap(guestFileSize(id, guestPath), (size) =>
+      size !== undefined && size > DIRECT_FILE_MAX_BYTES
+        ? readFileSigned(id, guestPath)
+        : size === undefined
+          ? Effect.catch(
+              readFileDirect(id, guestPath),
+              (error: BoatError | SandboxGoneError | BoatSnapshotExpiredError) =>
+                error._tag === "BoatError" ? readFileSigned(id, guestPath) : Effect.fail(error),
+            )
+          : readFileDirect(id, guestPath),
+    )
+
+  const writeFileDirect = (id: string, guestPath: string, bytes: Uint8Array) =>
+    jsonRequest(FileWriteResponse, "PUT /sandboxes/{id}/files", "PUT", sandboxPath(id, "/files"), {
+      sandboxId: id,
+      body: { path: guestPath, content: Buffer.from(bytes).toString("base64"), encoding: "base64" },
+    }).pipe(within(FILES_TIMEOUT_SECONDS), Effect.asVoid)
+
+  const writeFileSigned = (id: string, guestPath: string, bytes: Uint8Array) =>
     jsonRequest(
       FileUrlResponse,
       "POST /sandboxes/{id}/files/upload-url",
@@ -361,20 +471,13 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
       { sandboxId: id, body: { path: guestPath, ttlSeconds: SIGNED_URL_TTL_SECONDS } },
     ).pipe(
       within(REQUEST_TIMEOUT_SECONDS),
-      Effect.flatMap(({ url, method }) =>
-        Effect.tryPromise({
-          try: (signal) => fetch(url, { method: method ?? "PUT", signal, body: Buffer.from(bytes) }),
-          catch: () => new BoatError({ message: "boat file upload failed" }),
-        }).pipe(
-          Effect.flatMap((response) =>
-            response.ok
-              ? Effect.void
-              : Effect.fail(new BoatError({ message: `boat file upload failed with HTTP ${response.status}` })),
-          ),
-          within(FILES_TIMEOUT_SECONDS),
-        ),
-      ),
+      Effect.flatMap(({ url, method }) => uploadSigned(url, method ?? "PUT", bytes)),
     )
+
+  const writeFileBytes = (id: string, guestPath: string, bytes: Uint8Array) =>
+    bytes.length <= DIRECT_FILE_MAX_BYTES
+      ? writeFileDirect(id, guestPath, bytes)
+      : writeFileSigned(id, guestPath, bytes)
 
   const cleanupGuestFiles = (id: string, paths: ReadonlyArray<string>) =>
     rawCommand(id, `rm -f ${paths.map(shellQuote).join(" ")}`, REQUEST_TIMEOUT_SECONDS).pipe(

@@ -63,6 +63,19 @@ const startFakeBoat: Effect.Effect<FakeBoat, never, Scope.Scope> = Effect.gen(fu
       const exitCode = command.includes("exit 7") ? 7 : 0
       return sendJson(response, 200, { ok: true, type: "command.finished", success: true, exitCode, timedOut: false })
     }
+    const statPath = /^stat -c %s '([^']+)'$/.exec(command)?.[1]
+    if (statPath !== undefined) {
+      const bytes = files.get(statPath)
+      return sendJson(response, 200, {
+        ok: true,
+        type: "command.finished",
+        success: bytes !== undefined,
+        exitCode: bytes === undefined ? 1 : 0,
+        stdout: bytes === undefined ? "" : `${bytes.length}\n`,
+        stderr: "",
+        timedOut: false,
+      })
+    }
     if (command.includes("tar -cf")) {
       const tarPath = /tar -cf '([^']+)'/.exec(command)?.[1] ?? ""
       const tar = files.get("__seeded_tar__") ?? Buffer.alloc(0)
@@ -205,6 +218,52 @@ const startFakeBoat: Effect.Effect<FakeBoat, never, Scope.Scope> = Effect.gen(fu
       }
       if (request.method === "POST" && suffix === "/commands")
         return handleCommand(response, String(body["command"] ?? ""))
+      if (request.method === "GET" && suffix === "/files") {
+        const path = url.searchParams.get("path") ?? ""
+        const bytes = files.get(path)
+        if (bytes === undefined)
+          return sendJson(response, 404, {
+            ok: false,
+            type: "sandbox.error",
+            status: 404,
+            code: "not_found",
+            message: "file not found",
+            error: { code: "not_found", message: "file not found", status: 404 },
+            requestId: "req_test4041",
+          })
+        if (bytes.length > 5 * 1024 * 1024)
+          return sendJson(response, 400, {
+            ok: false,
+            type: "sandbox.error",
+            status: 400,
+            code: "file_too_large",
+            message: "file too large",
+            error: { code: "file_too_large", message: "file too large", status: 400 },
+            requestId: "req_test4001",
+          })
+        return sendJson(response, 200, {
+          ok: true,
+          type: "file.read",
+          success: true,
+          path,
+          encoding: "base64",
+          size: bytes.length,
+          content: bytes.toString("base64"),
+        })
+      }
+      if (request.method === "PUT" && suffix === "/files") {
+        const path = String(body["path"] ?? "")
+        const bytes = Buffer.from(String(body["content"] ?? ""), body["encoding"] === "base64" ? "base64" : "utf8")
+        files.set(path, bytes)
+        return sendJson(response, 200, {
+          ok: true,
+          type: "file.written",
+          success: true,
+          path,
+          encoding: body["encoding"] === "base64" ? "base64" : "utf8",
+          size: bytes.length,
+        })
+      }
       if (request.method === "POST" && suffix === "/files/download-url") {
         return sendJson(response, 200, {
           ok: true,
