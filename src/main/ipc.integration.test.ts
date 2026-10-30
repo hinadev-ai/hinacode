@@ -223,7 +223,18 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
                           },
                         },
                       ]
-                    : scriptedTurn,
+                    : input.prompt === "simulate a passed usage limit"
+                      ? [
+                          {
+                            type: "turn_limited",
+                            limit: {
+                              kind: "usage",
+                              message: "Usage limit reached",
+                              reset: { at: "2000-01-01T00:00:00.000Z", autoResume: false },
+                            },
+                          },
+                        ]
+                      : scriptedTurn,
       )
     }),
   ...(id === "claude" ? { wakes: Stream.fromQueue(claudeWakes) } : {}),
@@ -1045,6 +1056,23 @@ describe("limited threads over rpc", () => {
       .toBe("idle")
     expect(result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)?.usageLimit).toBeNull()
     expect(failure(await invoke("threads.resumeAtReset", { id: thread.id, enabled: true })).tag).toBe("AgentError")
+  })
+
+  test("resends the last prompt once its limit has reset", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    const current = async () => result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)
+    const prompts = async () =>
+      result(await invoke("threads.transcript", { threadId: thread.id })).messages.filter(
+        (message) => message.role === "user",
+      ).length
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a passed usage limit" }))
+    await expect.poll(async () => (await current())?.status).toBe("limited")
+
+    result(await invoke("threads.resumeAtReset", { id: thread.id, enabled: true }))
+    await expect.poll(prompts, { timeout: 5_000 }).toBe(2)
+    await expect.poll(async () => (await current())?.status).toBe("idle")
+    result(await invoke("threads.delete", { id: thread.id }))
   })
 
   test("continues a limited thread on another account with its session and last prompt", async () => {

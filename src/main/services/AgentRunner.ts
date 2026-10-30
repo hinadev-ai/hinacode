@@ -759,18 +759,20 @@ const make = Effect.gen(function* () {
       })
     }).pipe(exclusive(threadId))
 
+  const resumeIsDue = (thread: Thread, now: string) => {
+    const reset = thread.usageLimit?.reset
+    return (
+      thread.status === "limited" &&
+      reset?.autoResume === true &&
+      Date.parse(reset.at) + resumeGraceMs <= Date.parse(now)
+    )
+  }
+
   const consumeDueResume = (threadId: string, now: string) =>
     Effect.gen(function* () {
       const thread = yield* threads.get(threadId)
       const limit = thread.usageLimit
-      if (
-        busyThreads.has(thread.id) ||
-        thread.status !== "limited" ||
-        limit === null ||
-        !limit.reset?.autoResume ||
-        Date.parse(limit.reset.at) + resumeGraceMs > Date.parse(now)
-      )
-        return
+      if (busyThreads.has(thread.id) || limit?.reset == null || !resumeIsDue(thread, now)) return
       yield* updateThread({ id: thread.id, usageLimit: { ...limit, reset: { ...limit.reset, autoResume: false } } })
       return yield* lastPrompt(thread.id)
     }).pipe(exclusive(threadId))
@@ -787,7 +789,8 @@ const make = Effect.gen(function* () {
 
   const resumeDue = Effect.gen(function* () {
     const now = yield* nowIso
-    for (const candidate of yield* threads.list) {
+    const due = (yield* threads.list).filter((thread) => resumeIsDue(thread, now))
+    for (const candidate of due) {
       yield* Effect.gen(function* () {
         const prompt = yield* consumeDueResume(candidate.id, now)
         if (prompt !== undefined) yield* resend(candidate.id, prompt)
