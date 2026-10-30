@@ -1186,6 +1186,21 @@ describe("turns the agent starts over rpc", () => {
     expect(await userTexts(thread.id)).toStrictEqual(["simulate a session"])
   })
 
+  test("unarchives a thread when the user sends to it", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.archive", { threadId: thread.id }))
+    electron.pushes.length = 0
+
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a session" }))
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
+    expect(await userTexts(thread.id)).toStrictEqual(["simulate a session"])
+    const statuses = pushed().flatMap((event) =>
+      event.type === "thread.updated" && event.thread.id === thread.id ? [event.thread.status] : [],
+    )
+    expect(statuses[0]).toBe("idle")
+  })
+
   test("discards a wake for an archived thread before reading its events", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))
