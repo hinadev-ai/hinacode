@@ -3,6 +3,7 @@ import { AsyncResult, Atom } from "effect/reactivity"
 import type { ProviderId } from "../../shared/agent.ts"
 import { PushEvent, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../../shared/contract.ts"
 import type { Thread } from "../../shared/domain.ts"
+import { msUntilNextReset } from "../../shared/planLimits.ts"
 import { pullRequestAttention } from "../../shared/threadStatus.ts"
 import { m } from "../paraglide/messages.js"
 
@@ -437,14 +438,25 @@ export const contextBreakdownAtom = Atom.family((threadId: string) =>
   }),
 )
 
+const longestTimeoutMs = 2 ** 31 - 1
+
 export const accountLimitsAtom = Atom.make((get) => {
   get.addFinalizer(
     onPushEvent((event) => {
       if (event.type === "thread.event" && turnEnds.has(event.event.type)) get.refreshSelf()
     }),
   )
-  return Stream.fromEffectSchedule(call("limits.list", undefined), Schedule.spaced("2 minutes"))
-})
+  return call("limits.list", undefined).pipe(
+    Effect.tap((limits) =>
+      Effect.sync(() => {
+        const resetIn = msUntilNextReset(limits, Date.now())
+        if (resetIn === undefined) return
+        const timer = setTimeout(() => get.refreshSelf(), Math.min(resetIn, longestTimeoutMs))
+        get.addFinalizer(() => clearTimeout(timer))
+      }),
+    ),
+  )
+}).pipe(Atom.swr({ staleTime: "5 minutes", revalidateOnFocus: true, focusSignal: windowReturnSignal }))
 
 export const remoteStatusAtom = Atom.make(
   Stream.fromEffectSchedule(call("remote.status", undefined), Schedule.spaced("2 seconds")),
