@@ -34,7 +34,7 @@ export function ComposerStatusLine({ thread }: { thread: Thread }) {
   const EnvironmentIcon = environment === null ? RiMacbookLine : RiCloudLine
 
   return (
-    <div className="-mx-3 -mb-3 bg-background px-3 pt-1 pb-3">
+    <div className="-mb-3 -ml-3 bg-background pt-1 pb-3 pl-3">
       <div className="mx-auto flex w-full max-w-3xl min-w-0 items-center gap-3 px-3 text-xs text-muted-foreground">
         <span className="flex shrink-0 items-center gap-1">
           <EnvironmentIcon aria-hidden className="size-3 shrink-0" />

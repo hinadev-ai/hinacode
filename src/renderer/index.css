@@ -496,8 +496,20 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    scrollbar-width: thin;
-    scrollbar-color: var(--input) transparent;
+  }
+  /* Styled through the webkit pseudo-elements because the standard scrollbar-color makes Chromium draw arrow buttons that cut the track short. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    background: var(--input) padding-box;
   }
   body {
     @apply bg-background text-foreground glass:bg-transparent;
