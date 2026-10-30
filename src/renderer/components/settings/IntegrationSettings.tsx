@@ -13,7 +13,7 @@ import { errorMessage } from "../../lib/errorMessage.ts"
 
 export function IntegrationSettings() {
   return (
-    <SettingsSection title={m.settings_integrations()}>
+    <SettingsSection>
       <SettingsGroup>
         <GitHubStatus />
         <SecretField
@@ -85,7 +85,7 @@ interface SecretFieldProps {
   readonly hint: string
 }
 
-function SecretField({ name, label, placeholder, hint }: SecretFieldProps) {
+export function SecretField({ name, label, placeholder, hint }: SecretFieldProps) {
   const environment = useSettingsEnvironment()
   const inputId = `secret-${name.replace(/\W/g, "-")}`
   const stored = useAtomValue(secretStoredAtom(environment, name))

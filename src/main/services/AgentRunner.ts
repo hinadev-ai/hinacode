@@ -7,6 +7,7 @@ import {
   Effect,
   FiberMap,
   Layer,
+  Option,
   Predicate,
   type Schema,
   Schedule,
@@ -64,7 +65,6 @@ import type { GitHubError, PullRequestUrlInvalidError } from "./GitHub.ts"
 import { Messages } from "./Messages.ts"
 import { PullRequests } from "./PullRequests.ts"
 import { Scratch } from "./Scratch.ts"
-import { Secrets } from "./Secrets.ts"
 import { Settings } from "./Settings.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
 import { Threads, type UpdateThread } from "./Threads.ts"
@@ -140,7 +140,7 @@ export class AgentRunner extends Context.Service<
       threadId: string,
       name: string,
       description: string,
-    ) => Effect.Effect<"stored" | "declined", AgentError | PersistenceError | NotFoundError | ThreadStartedError>
+    ) => Effect.Effect<Option.Option<string>, AgentError | PersistenceError | NotFoundError | ThreadStartedError>
     readonly respondSecret: (
       requestId: string,
       value: string | null,
@@ -242,7 +242,6 @@ const make = Effect.gen(function* () {
   const messages = yield* Messages
   const push = yield* Events
   const mcp = yield* McpCredentials
-  const secrets = yield* Secrets
   const settings = yield* Settings
   const naming = yield* ThreadNaming
   const accounts = yield* AgentAccounts
@@ -276,7 +275,7 @@ const make = Effect.gen(function* () {
   const questions = new Map<string, QuestionRequest>()
   const secretRequests = new Map<
     string,
-    { readonly request: SecretRequest; readonly answer: Deferred.Deferred<"stored" | "declined", AgentError> }
+    { readonly request: SecretRequest; readonly answer: Deferred.Deferred<Option.Option<string>, AgentError> }
   >()
   const threadLocks = new Map<string, Semaphore.Semaphore>()
   const subagents = new Map<string, Map<string, Subagent>>()
@@ -887,7 +886,7 @@ const make = Effect.gen(function* () {
         return yield* new AgentError({ provider: "hinacode", message: "No turn is running on this thread." })
       }
       const request: SecretRequest = { id: randomUUID(), threadId, name, description }
-      const answer = yield* Deferred.make<"stored" | "declined", AgentError>()
+      const answer = yield* Deferred.make<Option.Option<string>, AgentError>()
       secretRequests.set(request.id, { request, answer })
       yield* turn.handle({ type: "secret_requested", request })
       return yield* Deferred.await(answer).pipe(Effect.onInterrupt(() => resolveSecret(request.id)))
@@ -906,9 +905,13 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const pending = secretRequests.get(requestId)
       if (pending === undefined) return
-      if (value !== null) yield* secrets.set(pending.request.name, value)
+      const { threadId, name } = pending.request
+      const path =
+        value === null
+          ? Option.none()
+          : Option.some(yield* scratch.writeSecret(yield* threads.get(threadId), name, value))
       yield* resolveSecret(requestId)
-      yield* Deferred.succeed(pending.answer, value === null ? "declined" : "stored")
+      yield* Deferred.succeed(pending.answer, path)
     })
 
   return AgentRunner.of({

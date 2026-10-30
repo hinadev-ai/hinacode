@@ -12,7 +12,7 @@ import { ChordKeys } from "../ChordKeys.tsx"
 import { Button } from "../ui/button.tsx"
 import { FieldError } from "../ui/field.tsx"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table.tsx"
-import { SettingsSection, settingsSurfaceClass } from "./SettingsSection.tsx"
+import { SettingsPageAction, SettingsSection, settingsSurfaceClass } from "./SettingsSection.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
 
 const whenLabels: Record<When, () => string> = {
@@ -71,10 +71,8 @@ export function KeybindingSettings() {
   }
 
   return (
-    <SettingsSection
-      title={m.settings_keybindings()}
-      description={m.settings_keybindings_hint()}
-      action={
+    <SettingsSection>
+      <SettingsPageAction>
         <Button
           variant="outline"
           size="sm"
@@ -83,8 +81,7 @@ export function KeybindingSettings() {
         >
           {m.settings_keybindings_reset_all()}
         </Button>
-      }
-    >
+      </SettingsPageAction>
       {error && <FieldError>{error}</FieldError>}
       <div className={cn(settingsSurfaceClass, "px-2 [&_tr]:border-foreground/8")}>
         <Table className="table-fixed">

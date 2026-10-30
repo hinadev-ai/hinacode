@@ -33,7 +33,7 @@ export function AppearanceSettings() {
   }
 
   return (
-    <SettingsSection title={m.settings_appearance()}>
+    <SettingsSection>
       <SettingsGroup>
         {/* FIXME: a legend sits on the fieldset's top edge and ignores its padding, so the row is a wrapper */}
         <div>

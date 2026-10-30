@@ -28,6 +28,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip.tsx"
 
 export const TinyVmScreen = lazy(() => import("./TinyVmScreen.tsx"))
+const BoatVmScreen = lazy(() => import("./BoatVmScreen.tsx"))
+
+interface VmScreenProps {
+  readonly threadId: string
+  readonly vm: RunningVm
+  readonly bare?: boolean
+  readonly fullscreenControls?: ReactNode
+  readonly onHandBack: () => void
+  readonly onReconnect: () => void
+  readonly onDropFiles: (paths: ReadonlyArray<string>) => void
+  readonly dropping: boolean
+}
+
+export function VmScreen({ vm, ...rest }: VmScreenProps) {
+  return vm.provider === "boat" ? (
+    <BoatVmScreen control={vm.control} {...rest} />
+  ) : (
+    <TinyVmScreen control={vm.control} {...rest} />
+  )
+}
 
 export const HAND_BACK_CHORD = "Mod+Escape"
 
@@ -148,8 +168,14 @@ function NoVm({ threadId }: { threadId: string }) {
   const { experimental } = useSettings(environment)
   const host = useAtomValue(vmHostAtom(environment))
   const [picked, setPicked] = useState<string | null>(null)
-  const templates = AsyncResult.isSuccess(host) && host.value.status === "connected" ? host.value.templates : []
-  const template = picked ?? experimental.tinyVmTemplate
+  const templates =
+    AsyncResult.isSuccess(host) &&
+    host.value.status === "connected" &&
+    host.value.provider === experimental.tinyVmProvider
+      ? host.value.templates
+      : []
+  const template =
+    picked ?? (experimental.tinyVmProvider === "boat" ? experimental.tinyVmBoatSize : experimental.tinyVmTemplate)
   const start = () => run(() => callPromise("vm.start", { threadId, template }))
 
   return (
@@ -201,7 +227,7 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
           />
         )}
         <ScreenshotButton threadId={threadId} run={run} />
-        {experimental.tinyVmPasskeys && <PasskeyButton threadId={threadId} run={run} />}
+        {experimental.tinyVmPasskeys && vm.provider === "sbx" && <PasskeyButton threadId={threadId} run={run} />}
         {control}
         {!floating && (
           <>
@@ -225,7 +251,10 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
       {vm.profile === "copy" && (
         <p className="border-b border-border px-3 py-1.5 text-xs text-muted-foreground">{m.vm_profile_copy_note()}</p>
       )}
-      {experimental.tinyVmPasskeys && <PasskeyNotice threadId={threadId} run={run} />}
+      {vm.provider === "boat" && (
+        <p className="border-b border-border px-3 py-1.5 text-xs text-muted-foreground">{m.vm_boat_keeps_disk()}</p>
+      )}
+      {experimental.tinyVmPasskeys && vm.provider === "sbx" && <PasskeyNotice threadId={threadId} run={run} />}
       {floating ? (
         <Centered>
           <RiPictureInPicture2Line aria-hidden className="size-6 text-muted-foreground" />
@@ -238,10 +267,10 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
       ) : (
         <div className="min-h-0 flex-1 overflow-auto p-3">
           <Suspense fallback={<ScreenFallback />}>
-            <TinyVmScreen
+            <VmScreen
               key={`${vm.sandboxId}:${attempt}`}
               threadId={threadId}
-              control={vm.control}
+              vm={vm}
               fullscreenControls={control}
               onHandBack={() => run(() => callPromise("vm.control", { threadId, control: "agent" }))}
               onReconnect={() => setAttempt((count) => count + 1)}

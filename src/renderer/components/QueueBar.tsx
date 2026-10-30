@@ -79,7 +79,9 @@ export function QueueBar({
             }
           >
             <RiTimeLine aria-hidden className="size-3.5 shrink-0" />
-            <span className="truncate text-foreground">{summaryOf(message)}</span>
+            <span className="truncate text-foreground" title={summaryOf(message)}>
+              {summaryOf(message)}
+            </span>
           </ActivityRow>
         </li>
       ))}

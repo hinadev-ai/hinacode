@@ -24,7 +24,10 @@ const onlyThread = async (app: HinacodeApp) => {
 
 const accountNotice = (app: HinacodeApp) => app.page.getByRole("status").filter({ hasText: /limit reached on/ })
 const limitCallout = (app: HinacodeApp) => app.page.getByRole("status").filter({ hasText: "You've hit your limit" })
-const accountPicker = (app: HinacodeApp) => app.page.getByRole("combobox", { name: "Account", exact: true })
+const openAccountTabs = async (app: HinacodeApp) => {
+  await app.page.getByRole("button", { name: /^Model: / }).click()
+  return app.page.getByRole("dialog").getByRole("tablist")
+}
 
 Given(
   "a Claude thread on {string} with a spent 5-hour window and an added {string} account in the {string} theme",
@@ -96,7 +99,8 @@ Then(
     const thread = await onlyThread(app)
     expect(thread.accountId).toBe(work.id)
     expect(thread.usageLimit).toBeNull()
-    await expect(accountPicker(app)).toContainText(added)
+    await expect((await openAccountTabs(app)).getByRole("tab", { selected: true })).toContainText(added)
+    await app.page.keyboard.press("Escape")
     const { messages } = await rpc(app.page, "threads.transcript", { threadId: thread.id })
     expect(
       messages
@@ -111,10 +115,12 @@ Then(
 Then(
   "the account picker shows {string} spent and {string} with room",
   async ({ usageLimitApp: app, $testInfo }, cliLogin: string, added: string) => {
-    await accountPicker(app).click()
-    const options = app.page.getByRole("listbox")
-    await expect(options.getByRole("option").filter({ hasText: cliLogin })).toContainText(/Limit reached, resets in \S/)
-    await expect(options.getByRole("option").filter({ hasText: added })).toContainText("12% used")
+    const tabs = await openAccountTabs(app)
+    const popup = app.page.locator("[data-slot=popover-content]")
+    await tabs.getByRole("tab").filter({ hasText: cliLogin }).click()
+    await expect(popup).toContainText(/Limit reached, resets in \S/)
+    await tabs.getByRole("tab").filter({ hasText: added }).click()
+    await expect(popup).toContainText("12% used")
     await $testInfo.attach("account-picker", { body: await screenshot(app, "picker"), contentType: "image/png" })
     await app.page.keyboard.press("Escape")
   },

@@ -34,6 +34,16 @@ test("keeps a token in an https remote out of the prompt", () => {
   expect(instructions).toContain("remote: `https://github.com/o/r.git`")
 })
 
+test("describes the boat desktop when boat is the tiny VM provider", () => {
+  const instructions = agentInstructions(
+    { ...experimental, tinyVm: true, tinyVmProvider: "boat", tinyVmBoatSize: "large" },
+    environment,
+  )
+  expect(instructions).toContain("cloud Ubuntu desktop (1920×1080) on boat.dev, size `large`")
+  expect(instructions).not.toContain("sbx host")
+  expect(instructions).not.toContain("sbx-windows")
+})
+
 test("says none for a detached HEAD and a repository without an origin", () => {
   const instructions = agentInstructions(experimental, { ...environment, branch: null, remote: null })
   expect(instructions).toContain("git branch: `(none)`")
