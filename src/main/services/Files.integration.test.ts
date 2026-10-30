@@ -59,6 +59,8 @@ beforeAll(() => {
   write(join(repo, "untracked/deep/u.txt"), "u\n")
   write(join(repo, "node_modules/pkg/index.js"), "x\n")
   write(join(repo, "debug.log"), "log\n")
+  write(join(repo, "src/trace.log"), "log\n")
+  write(join(repo, "src/gen/node_modules/x/y/z.js"), "z\n")
   symlinkSync(outside, join(repo, "escape"))
   symlinkSync(join(repo, "src"), join(repo, "inner"))
 
@@ -128,6 +130,27 @@ describe("fs.list", () => {
       expect(named["src"]?.ignored).toBe(false)
       const inside = yield* run(list(repo, "node_modules/pkg"))
       expect(inside).toMatchObject([{ path: "node_modules/pkg/index.js", ignored: true }])
+    }),
+  )
+
+  it.effect("marks ignored files among tracked ones, and files several folders below an ignored folder", () =>
+    Effect.gen(function* () {
+      const src = byName(yield* run(list(repo, "src")))
+      expect(src["trace.log"]).toMatchObject({ ignored: true, gitStatus: null })
+      expect(src["a.ts"]?.ignored).toBe(false)
+      const deep = yield* run(list(repo, "src/gen/node_modules/x/y"))
+      expect(deep).toMatchObject([{ path: "src/gen/node_modules/x/y/z.js", ignored: true }])
+    }),
+  )
+
+  it.effect("lists a project that is a folder inside its repo, relative to that folder", () =>
+    Effect.gen(function* () {
+      const root = join(repo, "src")
+      const named = byName(yield* run(list(root, ""), { rootPath: root }))
+      expect(named["a.ts"]).toMatchObject({ path: "a.ts", gitStatus: "modified", ignored: false })
+      expect(named["new.ts"]?.gitStatus).toBe("untracked")
+      expect(named["trace.log"]).toMatchObject({ ignored: true, gitStatus: null })
+      expect(named["b.ts"]?.gitStatus).toBe(null)
     }),
   )
 

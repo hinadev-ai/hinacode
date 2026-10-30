@@ -131,6 +131,11 @@ const statusOf = (path: string, changed: ReadonlyMap<string, ChangedFileStatus>)
   return summarize(statuses)
 }
 
+const isIgnored = (path: string, ignored: ReadonlyArray<string>) =>
+  ignored.some(
+    (ignoredPath) => ignoredPath === path || (ignoredPath.endsWith("/") && `${path}/`.startsWith(ignoredPath)),
+  )
+
 const resolveInside = (root: string, path: string) =>
   Effect.gen(function* () {
     const segments = path === "" ? [] : path.split("/")
@@ -192,92 +197,82 @@ const make = Effect.gen(function* () {
       return rows.find((row) => row.baseRef !== null)?.baseRef ?? null
     })
 
-  const ignoredIn = (root: string, path: string) =>
-    Effect.all(
-      [
-        path === ""
-          ? Effect.succeed(false)
-          : git.run(root, ["check-ignore", "--", path], { okExitCodes: [1] }).pipe(
-              Effect.map((output) => output.trim() !== ""),
-              Effect.orElseSucceed(() => false),
-            ),
-        git
-          .run(root, [
-            "ls-files",
-            "--others",
-            "--ignored",
-            "--exclude-standard",
-            "--directory",
-            "-z",
-            "--",
-            path || ".",
-          ])
-          .pipe(
-            Effect.map((output) => new Set(output.split("\0").map((ignored) => ignored.replace(/\/$/, "")))),
-            Effect.orElseSucceed(() => new Set<string>()),
-          ),
-      ],
-      { concurrency: "unbounded" },
-    ).pipe(
-      Effect.map(
-        ([folderIgnored, ignored]) =>
-          (entryPath: string) =>
-            folderIgnored || ignored.has(entryPath),
-      ),
-    )
+  const prefixes = new Map<string, string>()
+
+  const prefixOf = (root: string) =>
+    Effect.gen(function* () {
+      const cached = prefixes.get(root)
+      if (cached !== undefined) return cached
+      const prefix = (yield* git.run(root, ["rev-parse", "--show-prefix"])).trim()
+      prefixes.set(root, prefix)
+      return prefix
+    })
 
   const committed = (root: string, pathspec: string, baseRef: string | null) =>
     baseRef === null
       ? Effect.succeed([])
-      : git.run(root, ["merge-base", baseRef, "HEAD"]).pipe(
-          Effect.flatMap((mergeBase) =>
-            git.run(root, [
-              "diff",
-              "--name-status",
-              "-z",
-              "--no-renames",
-              "--relative",
-              mergeBase.trim(),
-              "--",
-              pathspec,
-            ]),
-          ),
-          Effect.map(parseNameStatus),
-          Effect.orElseSucceed(() => []),
-        )
+      : git
+          .run(root, [
+            "diff",
+            "--name-status",
+            "-z",
+            "--no-renames",
+            "--relative",
+            "--merge-base",
+            baseRef,
+            "--",
+            pathspec,
+          ])
+          .pipe(
+            Effect.map(parseNameStatus),
+            Effect.orElseSucceed(() => []),
+          )
 
-  const changedPaths = (root: string, path: string, baseRef: string | null) =>
+  const gitState = (root: string, path: string, baseRef: string | null) =>
     Effect.gen(function* () {
       const pathspec = path === "" ? "." : path
       const [prefix, porcelain, fromBase] = yield* Effect.all(
         [
-          git.run(root, ["rev-parse", "--show-prefix"]),
-          git.run(root, ["status", "--porcelain", "-z", "--no-renames", "--untracked-files=normal", "--", pathspec]),
+          prefixOf(root),
+          git.run(root, [
+            "status",
+            "--porcelain",
+            "-z",
+            "--no-renames",
+            "--untracked-files=normal",
+            "--ignored=matching",
+            "--",
+            pathspec,
+          ]),
           committed(root, pathspec, baseRef),
         ],
         { concurrency: "unbounded" },
       )
       const changed = new Map(fromBase.map((file) => [file.path, file.status]))
-      const repoPrefix = prefix.trim()
+      const ignored: Array<string> = []
       for (const record of porcelain.split("\0")) {
         const repoPath = record.slice(3)
-        if (record.length < 4 || !repoPath.startsWith(repoPrefix)) continue
-        const status = porcelainStatus(record.slice(0, 2))
-        const relativePath = repoPath.slice(repoPrefix.length)
-        if (status === "conflict" || !changed.has(relativePath)) changed.set(relativePath, status)
+        if (record.length < 4 || !repoPath.startsWith(prefix)) continue
+        const code = record.slice(0, 2)
+        const relativePath = repoPath.slice(prefix.length)
+        const status = porcelainStatus(code)
+        if (code === "!!") ignored.push(relativePath)
+        else if (status === "conflict" || !changed.has(relativePath)) changed.set(relativePath, status)
       }
-      return changed
-    }).pipe(Effect.orElseSucceed(() => new Map<string, ChangedFileStatus>()))
+      return { changed, ignored }
+    }).pipe(Effect.orElseSucceed(() => ({ changed: new Map<string, ChangedFileStatus>(), ignored: [] })))
 
   const list = (root: string, path: string) =>
     Effect.gen(function* () {
       const baseRef = yield* knownRoot(root)
       const entries = yield* readEntries(root, path, yield* resolveInside(root, path))
-      const [isIgnored, changed] = yield* Effect.all([ignoredIn(root, path), changedPaths(root, path, baseRef)], {
-        concurrency: "unbounded",
-      })
+      const { changed, ignored } = yield* gitState(root, path, baseRef)
       return entries
-        .map((entry) => ({ ...entry, ignored: isIgnored(entry.path), gitStatus: statusOf(entry.path, changed) }))
+        .map((entry) => ({
+          ...entry,
+          ignored: isIgnored(entry.path, ignored),
+          gitStatus: statusOf(entry.path, changed),
+        }))
         .toSorted(byKindThenName)
     })
 
