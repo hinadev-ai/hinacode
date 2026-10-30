@@ -281,14 +281,23 @@ export const commitKey = (root: string, hash: string) => `${root}\n${hash}`
 
 const windowReturnSignal = Atom.readable((get) => {
   let count = 0
-  const bump = () => {
-    if (document.visibilityState === "visible") get.setSelf(++count)
+  let away = false
+  const leave = () => {
+    away = true
   }
-  window.addEventListener("focus", bump)
-  document.addEventListener("visibilitychange", bump)
+  const comeBack = () => {
+    if (!away || document.visibilityState !== "visible") return
+    away = false
+    get.setSelf(++count)
+  }
+  const onVisibilityChange = () => (document.visibilityState === "visible" ? comeBack() : leave())
+  window.addEventListener("blur", leave)
+  window.addEventListener("focus", comeBack)
+  document.addEventListener("visibilitychange", onVisibilityChange)
   get.addFinalizer(() => {
-    window.removeEventListener("focus", bump)
-    document.removeEventListener("visibilitychange", bump)
+    window.removeEventListener("blur", leave)
+    window.removeEventListener("focus", comeBack)
+    document.removeEventListener("visibilitychange", onVisibilityChange)
   })
   return count
 })
