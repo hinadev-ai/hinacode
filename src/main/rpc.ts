@@ -359,6 +359,10 @@ const handlers: Handlers = {
   "threads.send": ({ threadId, prompt, attachments = [], workspace }) =>
     Effect.gen(function* () {
       const remember = yield* rememberWorkspaceMode(threadId, workspace?.mode ?? "local")
+      if ((yield* Threads.use((threads) => threads.get(threadId))).status === "archived") {
+        const thread = yield* Threads.use((threads) => threads.unarchive(threadId))
+        yield* Events.use((events) => events.publish({ type: "thread.updated", thread }))
+      }
       yield* AgentRunner.use((runner) => runner.send(threadId, prompt, attachments, { workspace }))
       yield* remember
     }),
