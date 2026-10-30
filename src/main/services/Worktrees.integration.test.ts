@@ -698,7 +698,7 @@ describe("checkout states", () => {
         expect(yield* stateOf).toBe("dirty")
 
         git(path, "add", "draft.txt")
-        git(path, "commit", "-q", "-m", "work")
+        git(path, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "work")
         expect(yield* stateOf).toBe("clean")
       }),
     ),
