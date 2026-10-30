@@ -28,6 +28,7 @@ interface FakeBoat {
   readonly stopped: Array<string>
   readonly resumed: Array<Record<string, unknown>>
   readonly desktopCalls: () => number
+  readonly dropSignedFetches: (count: number) => void
   readonly seedSandbox: (id: string, state: string) => void
   readonly close: () => Promise<void>
 }
@@ -77,6 +78,7 @@ const startFakeBoat = (): Promise<FakeBoat> =>
     const resumed: Array<Record<string, unknown>> = []
     const sockets = new Set<Socket>()
     let desktopCallCount = 0
+    let signedDrops = 0
     let createdCount = 0
     let origin = ""
 
@@ -106,6 +108,19 @@ const startFakeBoat = (): Promise<FakeBoat> =>
           stderr: "",
         })
       }
+      const statMatch = /^stat -c %s '([^']+)'$/.exec(command)
+      if (statMatch?.[1]) {
+        const bytes = files.get(statMatch[1])
+        return bytes === undefined
+          ? sendJson(response, 200, { success: false, exitCode: 1, timedOut: false, stdout: "", stderr: "no file" })
+          : sendJson(response, 200, {
+              success: true,
+              exitCode: 0,
+              timedOut: false,
+              stdout: `${bytes.length}\n`,
+              stderr: "",
+            })
+      }
       if (command.includes("tar -xf")) {
         return sendJson(response, 200, { success: true, exitCode: 0, timedOut: false, stdout: "", stderr: "" })
       }
@@ -124,6 +139,11 @@ const startFakeBoat = (): Promise<FakeBoat> =>
       const body = await readRequestBody(request)
 
       if (pathname.startsWith("/signed/")) {
+        if (signedDrops > 0) {
+          signedDrops -= 1
+          request.socket.destroy()
+          return
+        }
         const guestPath = decodeURIComponent(pathname.slice("/signed/".length))
         if (request.method === "PUT") {
           files.set(guestPath, body)
@@ -249,6 +269,39 @@ const startFakeBoat = (): Promise<FakeBoat> =>
 
       if (suffix === "/commands" && request.method === "POST") return handleCommand(sandboxId, jsonBody, response)
 
+      if (suffix === "/files" && request.method === "GET") {
+        const guestPath = requestUrl.searchParams.get("path") ?? ""
+        const bytes = files.get(guestPath)
+        if (bytes === undefined)
+          return sendJson(response, 404, errorEnvelope(404, "not_found", "file not found", "req-file-404"))
+        if (bytes.length > 5 * 1024 * 1024)
+          return sendJson(response, 400, errorEnvelope(400, "file_too_large", "file too large", "req-file-big"))
+        return sendJson(response, 200, {
+          ok: true,
+          type: "file.read",
+          success: true,
+          path: guestPath,
+          encoding: "base64",
+          size: bytes.length,
+          content: bytes.toString("base64"),
+        })
+      }
+
+      if (suffix === "/files" && request.method === "PUT") {
+        const guestPath = typeof jsonBody["path"] === "string" ? jsonBody["path"] : ""
+        const content = typeof jsonBody["content"] === "string" ? jsonBody["content"] : ""
+        const bytes = jsonBody["encoding"] === "base64" ? Buffer.from(content, "base64") : Buffer.from(content, "utf8")
+        files.set(guestPath, bytes)
+        return sendJson(response, 200, {
+          ok: true,
+          type: "file.written",
+          success: true,
+          path: guestPath,
+          encoding: jsonBody["encoding"] === "base64" ? "base64" : "utf8",
+          size: bytes.length,
+        })
+      }
+
       if (suffix === "/files/download-url" && request.method === "POST") {
         const guestPath = typeof jsonBody["path"] === "string" ? jsonBody["path"] : ""
         return sendJson(response, 200, { ok: true, url: `${origin}/signed/${encodeURIComponent(guestPath)}` })
@@ -303,6 +356,9 @@ const startFakeBoat = (): Promise<FakeBoat> =>
         stopped,
         resumed,
         desktopCalls: () => desktopCallCount,
+        dropSignedFetches: (count) => {
+          signedDrops = count
+        },
         seedSandbox: (id, state) => void sandboxes.set(id, { id, name: "seeded", state, getCount: 99 }),
         close: () =>
           new Promise<void>((done) => {
@@ -423,6 +479,41 @@ describe("boatClient", () => {
       expect(fake.commands.some((command) => command.startsWith("rm -f "))).toBe(true)
     })
   })
+
+  it("exec works while the guest-served signed URLs never answer", async () => {
+    await withFake(async (fake) => {
+      fake.seedSandbox("sb-1", "ready")
+      fake.dropSignedFetches(100)
+      const client = makeClient(fake)
+      const result = await runEffect(client.exec("sb-1", { script: "cat /tmp/pic.png", timeoutSeconds: 30 }))
+      expect(Buffer.from(result.stdout)).toEqual(BINARY_STDOUT)
+      expect(Buffer.from(result.stderr).toString()).toBe("warn\n")
+    })
+  })
+
+  it("putFiles works while the guest-served signed URLs never answer", async () => {
+    await withFake(async (fake) => {
+      fake.seedSandbox("sb-1", "ready")
+      fake.dropSignedFetches(100)
+      const client = makeClient(fake)
+      const tar = Buffer.from("tar-contents")
+      await runEffect(client.putFiles("sb-1", "Downloads", tar))
+      const uploaded = [...fake.files.values()].find((bytes) => bytes.equals(tar))
+      expect(uploaded).toBeDefined()
+    })
+  })
+
+  it("retries a dropped signed download for a file over the direct limit", async () => {
+    await withFake(async (fake) => {
+      fake.seedSandbox("sb-1", "ready")
+      const big = Buffer.alloc(5 * 1024 * 1024 + 7, 7)
+      fake.files.set("/tmp/big.bin", big)
+      fake.dropSignedFetches(2)
+      const client = makeClient(fake)
+      const bytes = await runEffect(client.readFileBytes("sb-1", "/tmp/big.bin"))
+      expect(Buffer.from(bytes)).toEqual(big)
+    })
+  }, 20000)
 
   it("detached exec returns pid and log", async () => {
     await withFake(async (fake) => {
