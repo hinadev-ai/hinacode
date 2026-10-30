@@ -15,7 +15,7 @@ export function useThreadRoot(thread: Thread): ThreadRoot | undefined {
   const projects = useAtomValue(projectsAtom)
   const project = AsyncResult.getOrElse(projects, () => []).find((candidate) => candidate.id === thread.projectId)
   const live = worktree?.status === "removed" ? undefined : worktree
-  const path = live?.path ?? (project && threadFolder(project, thread.id))
+  const path = live?.path ?? (project && threadFolder(project, thread.sideOf ?? thread.id))
   if (path === undefined || (thread.worktreeId !== null && worktree === undefined)) return undefined
   return { path, worktreeId: live?.id ?? null }
 }

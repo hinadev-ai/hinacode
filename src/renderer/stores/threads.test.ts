@@ -6,6 +6,7 @@ import {
   selectPinnedThreads,
   selectSnoozedThreads,
   selectUnpinnedProjectThreads,
+  useThreads,
 } from "./threads.ts"
 
 const thread = (id: string, patch: Partial<Thread>): Thread => ({
@@ -22,6 +23,7 @@ const thread = (id: string, patch: Partial<Thread>): Thread => ({
   accountId: null,
   providerSessionId: null,
   forkedFrom: null,
+  sideOf: null,
   status: "idle",
   usageLimit: null,
   sortIndex: 0,
@@ -83,4 +85,19 @@ test("awake threads are the active ones not snoozed, pinned or not, which the Do
     "pinnedLater",
     "woke",
   ])
+})
+
+test("keeps side chats apart from the thread list and drops them with their parent", () => {
+  const parent = thread("parent", {})
+  const side = thread("side", { sideOf: "parent" })
+  useThreads.getState().replaceAll([parent])
+  useThreads.getState().upsert(side)
+  expect(Object.keys(useThreads.getState().byId)).toStrictEqual(["parent"])
+  expect(useThreads.getState().sidechats).toStrictEqual({ parent: side })
+
+  useThreads.getState().remove("side")
+  expect(useThreads.getState().sidechats).toStrictEqual({})
+  useThreads.getState().upsert(side)
+  useThreads.getState().remove("parent")
+  expect(useThreads.getState()).toMatchObject({ byId: {}, sidechats: {} })
 })

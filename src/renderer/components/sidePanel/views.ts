@@ -10,6 +10,7 @@ import {
   RiGlobalLine,
   RiComputerLine,
   RiSmartphoneLine,
+  RiQuestionAnswerLine,
 } from "react-icons/ri"
 import type { ExperimentalSettings, Thread } from "../../../shared/domain.ts"
 import type { CommandId } from "../../keybindings/commands.ts"
@@ -21,6 +22,7 @@ import { useRunningSubagentCount } from "../ThreadAgents.tsx"
 import { BrowserTabStrip } from "./BrowserTabStrip.tsx"
 import { DeviceTabStrip } from "./devices/DeviceTabStrip.tsx"
 import { DetailsView } from "./DetailsView.tsx"
+import { SidechatHeader, SidechatView } from "./SidechatView.tsx"
 import { AgentsView, PullRequestsView } from "./SimpleViews.tsx"
 
 const FilesView = lazy(() => import("./FilesView.tsx").then((module) => ({ default: module.FilesView })))
@@ -66,6 +68,14 @@ export const sidePanelViews: ReadonlyArray<SidePanelView> = [
     commandId: "view.agents",
     component: AgentsView,
     badge: useRunningSubagentCount,
+  },
+  {
+    id: "sidechat",
+    icon: RiQuestionAnswerLine,
+    title: m.panel_tab_sidechat,
+    commandId: "view.sidechat",
+    component: SidechatView,
+    header: SidechatHeader,
   },
   {
     id: "browser",

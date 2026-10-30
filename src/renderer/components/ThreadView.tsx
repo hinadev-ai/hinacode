@@ -212,7 +212,7 @@ function useDockHeight(regionRef: RefObject<HTMLDivElement | null>, dockRef: Ref
   }, [regionRef, dockRef])
 }
 
-function PendingRequests({ thread }: { thread: Thread }) {
+export function PendingRequests({ thread }: { thread: Thread }) {
   const history = useMessages((state) => state.byThread[thread.id])
   const label = providerLabel[thread.provider]()
   if (history?.status !== "ready") return null

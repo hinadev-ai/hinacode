@@ -25,6 +25,7 @@ export type SidePanelViewId =
   | "browser"
   | "tinyVm"
   | "devices"
+  | "sidechat"
 export type SidePanelSize = "normal" | "wide"
 const sidebarTabs = ["inbox", "threads", "archived"] as const
 export type SidebarTab = (typeof sidebarTabs)[number]

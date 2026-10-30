@@ -83,15 +83,8 @@ const renderMessage = (message: Message, room: number) => {
   return lines.length === 0 ? null : { text: [`## ${message.role}`, ...lines].join("\n"), activityTokens }
 }
 
-export function handoffPrompt(input: {
-  readonly messages: ReadonlyArray<Message>
-  readonly from: ProviderId
-  readonly to: ProviderId
-  readonly prompt: string
-  readonly budget?: number
-}): string {
-  const budget = input.budget ?? HANDOFF_TOKENS
-  const opening = input.messages.find((message) => message.role === "user")
+export function renderTranscript(messages: ReadonlyArray<Message>, budget = HANDOFF_TOKENS): string {
+  const opening = messages.find((message) => message.role === "user")
   const openingText = opening === undefined ? null : (renderMessage(opening, 0)?.text ?? null)
   const openingKept =
     openingText === null || estimateTokens(openingText) <= budget / 8
@@ -101,7 +94,7 @@ export function handoffPrompt(input: {
   let used = openingKept === null ? 0 : estimateTokens(openingKept)
   let activityUsed = 0
   let omitted = 0
-  for (const message of input.messages.toReversed()) {
+  for (const message of messages.toReversed()) {
     if (message === opening) continue
     const rendered = renderMessage(message, budget / 4 - activityUsed)
     if (rendered === null) continue
@@ -117,15 +110,24 @@ export function handoffPrompt(input: {
     used += tokens
     activityUsed += rendered.activityTokens
   }
+  return [
+    ...(openingKept === null ? [] : [openingKept]),
+    ...(omitted > 0 ? [`[${omitted} messages left out here to fit]`] : []),
+    ...kept,
+  ].join("\n\n")
+}
+
+export function handoffPrompt(input: {
+  readonly messages: ReadonlyArray<Message>
+  readonly from: ProviderId
+  readonly to: ProviderId
+  readonly prompt: string
+  readonly budget?: number
+}): string {
   const origin =
     input.from === input.to
       ? `This conversation ran in an earlier ${agentName[input.to]} session that you cannot resume.`
       : `This conversation started with ${agentName[input.from]} and continues with you. Tool names below are ${agentName[input.from]}'s and may differ from yours.`
-  const transcript = [
-    ...(openingKept === null ? [] : [openingKept]),
-    ...(omitted > 0 ? [`[${omitted} messages left out here to fit]`] : []),
-    ...kept,
-  ]
   return [
     "<conversation_handoff>",
     [
@@ -133,7 +135,7 @@ export function handoffPrompt(input: {
       "Here is the transcript so far, oldest first. It is context, not a new request. Tool output is left out, so read files again before you rely on them.",
     ].join(" "),
     "",
-    transcript.join("\n\n"),
+    renderTranscript(input.messages, input.budget),
     "</conversation_handoff>",
     "",
     input.prompt,

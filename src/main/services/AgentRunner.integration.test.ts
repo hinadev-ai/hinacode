@@ -725,6 +725,35 @@ it("keeps a native fork's first prompt explicit while preserving its session che
   )
 })
 
+it("forks a side chat from the last finished turn and hands it the running one", async () => {
+  await withPreparingThread(
+    async ({ runner, threads, thread, release, idle, turns }) => {
+      release()
+      await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+      await idle
+      await Effect.runPromise(runner.send(thread.id, "needs approval", []))
+      await vi.waitFor(async () =>
+        expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toHaveLength(1),
+      )
+
+      const side = await Effect.runPromise(threads.sidechat(thread.id))
+      await Effect.runPromise(runner.send(side.id, "why?", []))
+      await vi.waitFor(() => expect(turns).toHaveLength(3))
+
+      expect(turns[2]).toMatchObject({
+        provider: "claude",
+        input: { threadId: side.id, resumeSessionId: "claude-session", forkAt: "turn-1", accessMode: "supervised" },
+      })
+      expect(turns[2]!.input.prompt).toMatch(/^<side_chat>\n/)
+      expect(turns[2]!.input.prompt).toContain("## user\nneeds approval")
+      expect(turns[2]!.input.prompt).toMatch(/<\/side_chat>\n\nwhy\?$/)
+      expect((await Effect.runPromise(threads.get(thread.id))).status).not.toBe("idle")
+      expect((await Effect.runPromise(threads.get(side.id))).title).toBe(thread.title)
+    },
+    { forkable: true },
+  )
+})
+
 it("refuses to switch agents while a turn runs", async () => {
   await withPreparingThread(async ({ runner, threads, thread, release }) => {
     release()

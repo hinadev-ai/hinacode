@@ -3,6 +3,7 @@ import type { Thread } from "../../shared/domain.ts"
 
 export interface ThreadsState {
   readonly byId: Readonly<Record<string, Thread>>
+  readonly sidechats: Readonly<Record<string, Thread>>
   readonly replaceAll: (threads: ReadonlyArray<Thread>) => void
   readonly upsert: (thread: Thread) => void
   readonly remove: (id: string) => void
@@ -10,14 +11,26 @@ export interface ThreadsState {
 
 export const useThreads = create<ThreadsState>()((set) => ({
   byId: {},
+  sidechats: {},
   replaceAll: (threads) => set({ byId: Object.fromEntries(threads.map((thread) => [thread.id, thread])) }),
-  upsert: (thread) => set((state) => ({ byId: { ...state.byId, [thread.id]: thread } })),
+  upsert: (thread) =>
+    set((state) =>
+      thread.sideOf === null
+        ? { byId: { ...state.byId, [thread.id]: thread } }
+        : { sidechats: { ...state.sidechats, [thread.sideOf]: thread } },
+    ),
   remove: (id) =>
     set((state) => {
-      const { [id]: _removed, ...rest } = state.byId
-      return { byId: rest }
+      const { [id]: _removed, ...byId } = state.byId
+      const sidechats = Object.fromEntries(
+        Object.entries(state.sidechats).filter(([parentId, sidechat]) => parentId !== id && sidechat.id !== id),
+      )
+      return { byId, sidechats }
     }),
 }))
+
+export const selectThread = (id: string) => (state: Pick<ThreadsState, "byId" | "sidechats">) =>
+  state.byId[id] ?? Object.values(state.sidechats).find((sidechat) => sidechat.id === id)
 
 const inProjects = (state: Pick<ThreadsState, "byId">, projectIds: ReadonlyArray<string>) => {
   const ids = new Set(projectIds)

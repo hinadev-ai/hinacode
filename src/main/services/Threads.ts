@@ -98,6 +98,12 @@ export class Threads extends Context.Service<
     ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeTakenError>
     readonly update: (input: UpdateThread) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly fork: (threadId: string, messageId: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
+    readonly sidechat: (threadId: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
+    readonly rebaseSidechat: (
+      id: string,
+      parent: Thread,
+      forkPoint: ForkPoint | null,
+    ) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly listFiles: (
       id: string,
     ) => Effect.Effect<ReadonlyArray<string>, PersistenceError | NotFoundError | CommandError>
@@ -158,12 +164,17 @@ const make = Effect.gen(function* () {
     Request: Schema.Void,
     Result: ThreadRow,
     execute: () =>
-      sql`SELECT * FROM thread WHERE ${sql.in("provider", [...ProviderId.literals])} ORDER BY project_id, sort_index`,
+      sql`SELECT * FROM thread WHERE side_of IS NULL AND ${sql.in("provider", [...ProviderId.literals])} ORDER BY project_id, sort_index`,
   })
   const findById = SqlSchema.findOneOption({
     Request: Schema.String,
     Result: ThreadRow,
     execute: (id) => sql`SELECT * FROM thread WHERE id = ${id}`,
+  })
+  const findSidechat = SqlSchema.findOneOption({
+    Request: Schema.String,
+    Result: ThreadRow,
+    execute: (parentId) => sql`SELECT * FROM thread WHERE side_of = ${parentId}`,
   })
   const nextSortIndex = SqlSchema.findOne({
     Request: Schema.String,
@@ -243,6 +254,7 @@ const make = Effect.gen(function* () {
         accountId: defaultAccount[input.provider],
         providerSessionId: null,
         forkedFrom: null,
+        sideOf: null,
         status: "idle",
         usageLimit: null,
         sortIndex: next,
@@ -277,6 +289,7 @@ const make = Effect.gen(function* () {
         accountId,
         providerSessionId: null,
         forkedFrom,
+        sideOf: null,
         status: "idle",
         usageLimit: null,
         sortIndex: next,
@@ -305,6 +318,63 @@ const make = Effect.gen(function* () {
         .pipe(Effect.mapError(persistence("threads.fork")))
       yield* syncChatFolder(thread, true)
       return thread
+    })
+
+  const sidechat = (parentId: string) =>
+    Effect.gen(function* () {
+      const existing = yield* findSidechat(parentId).pipe(Effect.mapError(persistence("threads.sidechat")))
+      if (Option.isSome(existing)) return existing.value
+      const parent = yield* get(parentId)
+      const now = yield* nowIso
+      const thread: Thread = {
+        ...parent,
+        id: randomUUID(),
+        accessMode: "supervised",
+        providerSessionId: null,
+        forkedFrom: null,
+        sideOf: parent.id,
+        status: "idle",
+        usageLimit: null,
+        pinnedAt: null,
+        snoozedUntil: null,
+        queue: [],
+        createdBy: "user",
+        createdAt: now,
+        updatedAt: now,
+      }
+      const row = yield* encodeRow(thread).pipe(Effect.mapError(persistence("threads.sidechat")))
+      yield* sql`INSERT INTO thread ${sql.insert(row)} ON CONFLICT (side_of) DO NOTHING`.pipe(
+        Effect.mapError(persistence("threads.sidechat")),
+      )
+      const created = yield* findSidechat(parentId).pipe(Effect.mapError(persistence("threads.sidechat")))
+      return Option.getOrElse(created, () => thread)
+    })
+
+  const rebaseSidechat = (id: string, parent: Thread, forkPoint: ForkPoint | null) =>
+    Effect.gen(function* () {
+      const current = yield* get(id)
+      const next: Thread = {
+        ...current,
+        ...(current.provider !== parent.provider && {
+          provider: parent.provider,
+          model: parent.model,
+          effort: parent.effort,
+          fastMode: parent.fastMode,
+        }),
+        worktreeId: parent.worktreeId,
+        userSkills: parent.userSkills,
+        accountId: forkPoint?.owner?.accountId ?? parent.accountId,
+        forkedFrom: forkPoint === null ? null : { sessionId: forkPoint.sessionId, checkpoint: forkPoint.checkpoint },
+        updatedAt: yield* nowIso,
+      }
+      yield* sql`
+        UPDATE thread
+        SET worktree_id = ${next.worktreeId}, provider = ${next.provider}, model = ${next.model}, effort = ${next.effort},
+            fast_mode = ${next.fastMode ? 1 : 0}, user_skills = ${next.userSkills ? 1 : 0}, account_id = ${next.accountId},
+            forked_from = ${next.forkedFrom === null ? null : JSON.stringify(next.forkedFrom)}, updated_at = ${next.updatedAt}
+        WHERE id = ${id}
+      `.pipe(Effect.mapError(persistence("threads.rebaseSidechat")))
+      return next
     })
 
   const update = (input: UpdateThread) =>
@@ -524,6 +594,8 @@ const make = Effect.gen(function* () {
     create,
     update,
     fork,
+    sidechat,
+    rebaseSidechat,
     started,
     prepareWorkspace,
     listFiles,

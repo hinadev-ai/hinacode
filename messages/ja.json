@@ -1991,5 +1991,12 @@
   ],
   "devices_show_shutdown": "停止中の {count} 台を表示",
   "devices_hide_shutdown": "停止中を隠す",
-  "devices_compiling_hint": "マシンで初めて接続するときは画面ヘルパーをビルドするため、10 秒ほどかかります。"
+  "devices_compiling_hint": "マシンで初めて接続するときは画面ヘルパーをビルドするため、10 秒ほどかかります。",
+  "panel_tab_sidechat": "サイドチャット",
+  "command_view_sidechat": "サイドチャットを表示",
+  "sidechat_command_description": "作業を止めずに、サイドチャットでこのスレッドについて質問します",
+  "sidechat_command_hint": "[質問]",
+  "sidechat_placeholder": "スレッドを止めずに質問",
+  "sidechat_new": "新しいサイドチャット",
+  "sidechat_open_failed": "サイドチャットを開けませんでした：{message}"
 }

@@ -117,6 +117,81 @@ describe("Threads", () => {
     }).pipe(Effect.provide(messagesLayer.pipe(Layer.provideMerge(threadsLayer)))),
   )
 
+  it.effect("keeps one side chat per thread in its workspace, out of the list", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const activeWorkspace = yield* makeActiveWorkspace
+      const { threadId, worktreeId } = yield* seedThread({
+        rootPath: "/repo",
+        worktree: { path: "/repo-feature", baseRef: "main", status: "ready" },
+      })
+
+      const [side, again] = yield* Effect.all([threads.sidechat(threadId), threads.sidechat(threadId)], {
+        concurrency: "unbounded",
+      })
+
+      expect(again.id).toBe(side.id)
+      expect(side).toMatchObject({ sideOf: threadId, worktreeId, accessMode: "supervised", forkedFrom: null })
+      expect((yield* activeWorkspace(side.id)).cwd).toBe("/repo-feature")
+      expect((yield* threads.list).map((thread) => thread.id)).toStrictEqual([threadId])
+
+      yield* threads.remove(threadId)
+      expect((yield* threads.get(side.id).pipe(Effect.flip))._tag).toBe("NotFoundError")
+    }).pipe(Effect.provide(threadsLayer)),
+  )
+
+  it.effect("rebases an unstarted side chat on its parent's agent and latest fork point", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const { threadId } = yield* seedThread({ rootPath: "/repo" })
+      const side = yield* threads.update({ id: (yield* threads.sidechat(threadId)).id, model: "faster" })
+      const forkPoint = {
+        sessionId: "session-1",
+        checkpoint: "turn-1",
+        owner: { provider: "claude", accountId: null },
+      } as const
+
+      const rebased = yield* threads.rebaseSidechat(side.id, yield* threads.get(threadId), forkPoint)
+      expect(rebased.model).toBe("faster")
+      expect(rebased.forkedFrom).toStrictEqual({ sessionId: "session-1", checkpoint: "turn-1" })
+      expect(yield* threads.get(side.id)).toStrictEqual(rebased)
+
+      const parent = yield* threads.update({ id: threadId, provider: "codex", model: "codex-model" })
+      expect(yield* threads.rebaseSidechat(side.id, parent, null)).toMatchObject({
+        provider: "codex",
+        model: "codex-model",
+        forkedFrom: null,
+      })
+    }).pipe(Effect.provide(threadsLayer)),
+  )
+
+  it.effect("lets a thread give up its worktree while its side chat is open", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const worktrees = yield* Worktrees.Worktrees
+      const { threadId, worktreeId } = yield* seedThread({
+        rootPath: "/repo",
+        worktree: { path: "/repo-feature", baseRef: "main", status: "ready" },
+      })
+      yield* threads.sidechat(threadId)
+      const removed = yield* worktrees.remove(worktreeId!, "force", threadId)
+      expect(removed.status).toBe("removed")
+    }).pipe(Effect.provide(threadsLayer)),
+  )
+
+  it.effect("runs a chat's side chat in the chat's own folder", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const activeWorkspace = yield* makeActiveWorkspace
+      const chats = yield* Projects.Projects.use((projects) =>
+        projects.ensureChats(mkdtempSync(join(tmpdir(), "kk-chats-"))),
+      )
+      const chat = yield* threads.create({ projectId: chats.id, title: "t", provider: "claude", model: "m" })
+      const side = yield* threads.sidechat(chat.id)
+      expect((yield* activeWorkspace(side.id)).cwd).toBe((yield* activeWorkspace(chat.id)).cwd)
+    }).pipe(Effect.provide(threadsLayer)),
+  )
+
   it.effect("list skips threads whose provider this build does not know", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient

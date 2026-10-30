@@ -153,8 +153,8 @@ const make = Effect.gen(function* () {
   })
   const findUsers = SqlSchema.findAll({
     Request: Schema.String,
-    Result: Schema.Struct({ id: Schema.String, status: ThreadStatus }),
-    execute: (worktreeId) => sql`SELECT id, status FROM thread WHERE worktree_id = ${worktreeId}`,
+    Result: Schema.Struct({ id: Schema.String, status: ThreadStatus, sideOf: Schema.NullOr(Schema.String) }),
+    execute: (worktreeId) => sql`SELECT id, status, side_of FROM thread WHERE worktree_id = ${worktreeId}`,
   })
 
   yield* sql`
@@ -388,7 +388,9 @@ const make = Effect.gen(function* () {
       if (users.some((thread) => isThreadBusy(thread.status))) {
         return yield* new WorktreeBusyError({ path: worktree.path, reason: "turn" })
       }
-      const othersOpen = users.some((thread) => thread.id !== owner && thread.status !== "archived")
+      const othersOpen = users.some(
+        (thread) => thread.id !== owner && thread.sideOf !== owner && thread.status !== "archived",
+      )
       if (owner !== undefined && othersOpen) {
         return yield* new WorktreeBusyError({ path: worktree.path, reason: "shared" })
       }

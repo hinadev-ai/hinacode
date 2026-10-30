@@ -20,6 +20,7 @@ const legacyThread: Omit<Thread, "userSkills"> = {
   accountId: null,
   providerSessionId: null,
   forkedFrom: null,
+  sideOf: null,
   status: "idle",
   usageLimit: null,
   sortIndex: 0,

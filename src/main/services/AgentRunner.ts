@@ -46,6 +46,7 @@ import { foldTranscript } from "../../shared/foldEvent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { handoffPrompt } from "../agents/handoff.ts"
+import { latestForkPoint, sidechatPrompt, unseenSince } from "../agents/sidechat.ts"
 import { agentInstructions, type AgentEnvironment } from "../agents/instructions.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
@@ -526,7 +527,12 @@ const make = Effect.gen(function* () {
 
   const promptForSession = (thread: Thread, prompt: string) =>
     Effect.gen(function* () {
-      if (thread.providerSessionId !== null || thread.forkedFrom !== null) return prompt
+      if (thread.providerSessionId !== null) return prompt
+      if (thread.sideOf !== null) {
+        const unseen = unseenSince(yield* messages.list(thread.sideOf), thread.forkedFrom)
+        return sidechatPrompt({ unseen, prompt })
+      }
+      if (thread.forkedFrom !== null) return prompt
       const history = yield* messages.list(thread.id)
       if (history.length === 0) return prompt
       const lastSwitch = history.flatMap((message) => message.parts).findLast((part) => part.type === "agent_switch")
@@ -558,6 +564,12 @@ const make = Effect.gen(function* () {
         if (!(yield* when)) return null
         let thread = yield* threads.get(threadId)
         const first = !(yield* threads.started(threadId))
+        if (first && thread.sideOf !== null) {
+          const parent = yield* threads.get(thread.sideOf)
+          const forkPoint = latestForkPoint(parent.provider, yield* messages.list(parent.id))
+          thread = yield* threads.rebaseSidechat(threadId, parent, forkPoint)
+          yield* push.publish({ type: "thread.updated", thread })
+        }
         if (options.workspace) {
           const prepared = yield* threads.prepareWorkspace(threadId, options.workspace)
           thread = prepared.thread
@@ -617,7 +629,12 @@ const make = Effect.gen(function* () {
         activeTurns.set(threadId, turn)
         pendingSends.delete(threadId)
         yield* FiberMap.run(turns, threadId, turn.run(agentPrompt, attachments, environment))
-        if (pending.first && currentThread.createdBy === "user" && prompt.trim() !== "")
+        if (
+          pending.first &&
+          currentThread.createdBy === "user" &&
+          currentThread.sideOf === null &&
+          prompt.trim() !== ""
+        )
           yield* Effect.forkDetach(nameThreadWithPullRequestScope(currentThread, prompt))
         return true
       }).pipe(exclusive(threadId))
