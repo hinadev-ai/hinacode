@@ -176,6 +176,8 @@
   "panel_setup_none": "No output.",
   "panel_setup_failed": "The setup script failed or was stopped. See the end of the log.",
   "panel_setup_stop": "Stop setup",
+  "panel_setup_background_output": "Setup on {branch} finished, but a background process it started kept the output open. HinaCode stopped that process.",
+  "panel_setup_timed_out": "Setup on {branch} timed out and was stopped. See the setup log.",
   "file_status_added": "Added",
   "file_status_modified": "Modified",
   "file_status_deleted": "Deleted",

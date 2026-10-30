@@ -5,6 +5,7 @@ import { Effect } from "effect"
 import { AsyncResult, AtomRegistry } from "effect/reactivity"
 import { StrictMode, useEffect, useLayoutEffect } from "react"
 import { createRoot } from "react-dom/client"
+import { toast } from "sonner"
 import { DockBadge } from "./components/DockBadge.tsx"
 import { Toaster } from "./components/ui/sonner.tsx"
 import { TooltipProvider } from "./components/ui/tooltip.tsx"
@@ -14,6 +15,7 @@ import { callPromise, clientSettingsAtom, onPushEvent, projectsAtom, settingsAto
 import { terminalExited, writeTerminal } from "./lib/terminalScreens.ts"
 import { useClientSettings } from "./lib/settings.ts"
 import { notifyThreadEvent, recordUnseenOutcome } from "./lib/threadNotifications.ts"
+import { m } from "./paraglide/messages.js"
 import { router } from "./router.tsx"
 import { useBackgroundTasks } from "./stores/backgroundTasks.ts"
 import { useLocale } from "./stores/locale.ts"
@@ -80,6 +82,12 @@ onPushEvent((event) => {
       return useWorktrees.getState().upsert(event.worktree)
     case "worktree.setupLog":
       return useWorktrees.getState().appendSetupLog(event.id, event.chunk)
+    case "worktree.setupNotice":
+      return toast.warning(
+        event.notice === "timedOut"
+          ? m.panel_setup_timed_out({ branch: event.branch })
+          : m.panel_setup_background_output({ branch: event.branch }),
+      )
     case "thread.pullRequests":
       return usePullRequests.getState().replace(event.threadId, event.links)
     case "pullRequest.guide":

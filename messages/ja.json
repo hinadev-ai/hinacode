@@ -176,6 +176,8 @@
   "panel_setup_none": "出力はありません。",
   "panel_setup_failed": "セットアップスクリプトが失敗したか、停止されました。ログの末尾を確認してください。",
   "panel_setup_stop": "セットアップを停止",
+  "panel_setup_background_output": "{branch} のセットアップは完了しましたが、起動したバックグラウンドプロセスが出力を開いたままでした。HinaCode がそのプロセスを停止しました。",
+  "panel_setup_timed_out": "{branch} のセットアップがタイムアウトしたため停止しました。セットアップログを確認してください。",
   "file_status_added": "追加",
   "file_status_modified": "変更",
   "file_status_deleted": "削除",
