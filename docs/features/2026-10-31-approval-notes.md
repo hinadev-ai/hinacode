@@ -12,9 +12,9 @@ Typing the redirect into the composer does not help either. A steer sent while t
 ## User flow
 
 1. The agent asks to run a command. The approval card shows the command and a note field.
-2. The user types "use pnpm, not npm" in the note and presses Deny (or Mod+Enter in the note to deny). The agent receives the denial with that reason and acts on it.
+2. The user types "use pnpm, not npm" in the note and presses Deny (or Enter in the note). The agent receives the denial with that reason and acts on it.
 3. The user may also type a note and press Allow. The agent runs the tool, then reads the note as the user's next message.
-4. While the card is open, the composer still takes input. Enter queues the message for the next turn, as it always has. Mod+Enter (steer) no longer reaches the agent mid-approval. The message waits in the queue tray, marked as waiting for the approval, and steers the turn as soon as nothing waits on the user. If the turn ends first, it starts the next turn like any queued message.
+4. While the card is open, the composer still takes input, and its placeholder says how a message will be delivered. Enter queues the message for the next turn, as it always has. Mod+Enter (steer) no longer reaches the agent mid-approval. The message waits in the queue tray, marked as waiting for the approval, and steers the turn as soon as nothing waits on the user. If the turn ends first, it starts the next turn like any queued message.
 
 ## Design
 
@@ -26,11 +26,11 @@ The data shape is one optional field on the existing answer.
 
 Each provider takes the note as far as its protocol allows.
 
-| Provider | Deny with a note | Allow with a note |
-|---|---|---|
-| Claude | `canUseTool` returns `{ behavior: "deny", message }` with the note in the message. | `PermissionResult` has no message for allow, so the note steers. |
-| Codex | `decline` and the MCP elicitation `decline` carry no text, so the note steers. | Steers. |
-| Muse | `approval/decide` sends the note as `feedback` when the chosen choice has `acceptsFeedback`. Otherwise it steers. | Same rule. |
+| Provider | Deny with a note                                                                                                  | Allow with a note                                                |
+| -------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Claude   | `canUseTool` returns `{ behavior: "deny", message }` with the note in the message.                                | `PermissionResult` has no message for allow, so the note steers. |
+| Codex    | `decline` and the MCP elicitation `decline` carry no text, so the note steers.                                    | Steers.                                                          |
+| Muse     | `approval/decide` sends the note as `feedback` when the chosen choice has `acceptsFeedback`. Otherwise it steers. | Same rule.                                                       |
 
 A note that the provider did not take goes to the front of the thread's queue with `steer: true`. AgentRunner does this under the thread's lock, so the provider's `approval_resolved` cannot be handled before the note is queued. When `approval_resolved` (or `question_resolved`, `secret_resolved`) leaves the thread with nothing pending, the runner steers every `steer` message in queue order. The note and anything the user typed during the approval arrive in the order they were written, as user messages in the transcript.
 

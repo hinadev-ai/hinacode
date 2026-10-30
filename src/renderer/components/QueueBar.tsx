@@ -1,6 +1,6 @@
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import type { IconType } from "react-icons"
-import { RiCloseLine, RiCornerDownRightLine, RiPencilLine, RiTimeLine } from "react-icons/ri"
+import { RiCloseLine, RiCornerDownRightLine, RiPencilLine, RiShieldCheckLine, RiTimeLine } from "react-icons/ri"
 import type { QueuedMessage, Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
@@ -78,10 +78,15 @@ export function QueueBar({
               </>
             }
           >
-            <RiTimeLine aria-hidden className="size-3.5 shrink-0" />
+            {message.steer ? (
+              <RiShieldCheckLine aria-hidden className="size-3.5 shrink-0" />
+            ) : (
+              <RiTimeLine aria-hidden className="size-3.5 shrink-0" />
+            )}
             <span className="truncate text-foreground" title={summaryOf(message)}>
               {summaryOf(message)}
             </span>
+            {message.steer && <span className="shrink-0 text-muted-foreground">{m.queue_after_approval()}</span>}
           </ActivityRow>
         </li>
       ))}

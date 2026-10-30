@@ -265,11 +265,13 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
               ref={textareaRef}
               aria-label={isSidechat ? m.panel_tab_sidechat() : m.thread_composer_label()}
               placeholder={
-                busy
-                  ? m.thread_composer_queue_placeholder({ steer: formatForDisplay(STEER_CHORD) })
-                  : isSidechat
-                    ? m.sidechat_placeholder()
-                    : m.thread_composer_placeholder()
+                thread.status === "awaiting_approval"
+                  ? m.thread_composer_approval_placeholder({ steer: formatForDisplay(STEER_CHORD) })
+                  : busy
+                    ? m.thread_composer_queue_placeholder({ steer: formatForDisplay(STEER_CHORD) })
+                    : isSidechat
+                      ? m.sidechat_placeholder()
+                      : m.thread_composer_placeholder()
               }
               value={text}
               onValueChange={(next) => useDrafts.getState().setText(thread.id, next)}
