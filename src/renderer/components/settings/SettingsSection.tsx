@@ -1,8 +1,10 @@
 import { cn } from "cn"
-import { type ComponentProps, type ReactNode, useId } from "react"
+import { type ComponentProps, createContext, type ReactNode, use, useId } from "react"
+import { createPortal } from "react-dom"
 
 interface SettingsSectionProps {
-  readonly title: string
+  /** Left out on a page's first section, whose heading is the page title above it. */
+  readonly title?: string
   readonly description?: string
   readonly action?: ReactNode
   readonly children: ReactNode
@@ -11,16 +13,20 @@ interface SettingsSectionProps {
 export function SettingsSection({ title, description, action, children }: SettingsSectionProps) {
   const headingId = useId()
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-4">
-      <header className="flex items-start gap-4">
-        <div className="flex flex-1 flex-col gap-1">
-          <h2 id={headingId} className="text-base font-semibold">
-            {title}
-          </h2>
-          {description && <p className="text-xs text-pretty text-muted-foreground/80">{description}</p>}
-        </div>
-        {action}
-      </header>
+    <section aria-labelledby={title === undefined ? undefined : headingId} className="flex flex-col gap-4">
+      {(title !== undefined || description !== undefined || action !== undefined) && (
+        <header className="flex items-start gap-4">
+          <div className="flex flex-1 flex-col gap-1">
+            {title !== undefined && (
+              <h2 id={headingId} className="text-base font-semibold">
+                {title}
+              </h2>
+            )}
+            {description && <p className="text-xs text-pretty text-muted-foreground">{description}</p>}
+          </div>
+          {action}
+        </header>
+      )}
       {children}
     </section>
   )
@@ -43,4 +49,15 @@ export function SettingsGroupTitle({ className, children, ...props }: ComponentP
       {children}
     </h3>
   )
+}
+
+const PageActionSlot = createContext<HTMLElement | null>(null)
+
+/** Where the settings top bar takes page actions, beside the machine picker. */
+export const PageActionSlotProvider = PageActionSlot.Provider
+
+/** A page's own action, such as Reset all, shown in the top bar instead of in the page body. */
+export function SettingsPageAction({ children }: { children: ReactNode }) {
+  const slot = use(PageActionSlot)
+  return slot && createPortal(children, slot)
 }

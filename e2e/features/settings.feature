@@ -10,7 +10,7 @@ Feature: Settings
 
     Examples:
       | language | locale | settings |
-      | 繁體中文 | zh-TW  | 設定     |
+      | 繁體中文 | zh-TW  | 一般     |
 
   Scenario Outline: The saved language is applied at startup
     Given the saved language is "<locale>"

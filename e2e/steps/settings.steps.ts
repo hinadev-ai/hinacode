@@ -43,7 +43,7 @@ Given("the shortcut for {string} is saved as {string}", ({ seed }, command: stri
 
 When("I open settings", async ({ app }) => {
   await app.page.getByRole("link", { name: "Settings", exact: true }).click()
-  await expect(app.page.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible()
+  await expect(app.page.getByRole("heading", { level: 1, name: "General" })).toBeVisible()
 })
 
 When("I go back to threads", async ({ app }) => {

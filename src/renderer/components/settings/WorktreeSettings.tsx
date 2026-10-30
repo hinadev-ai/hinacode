@@ -102,7 +102,7 @@ function Worktrees() {
   const groups = groupByProject(worktrees, threads, projects, checkouts)
 
   return (
-    <SettingsSection title={m.settings_worktrees()} description={m.settings_worktrees_description()}>
+    <SettingsSection>
       <WorktreeRootField />
       {groups.length === 0 ? (
         <p className="text-sm text-muted-foreground">{m.settings_worktrees_empty()}</p>

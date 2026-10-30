@@ -27,6 +27,8 @@ export interface SettingsPage {
   readonly id: string
   readonly scope: "app" | "environment"
   readonly label: () => string
+  /** One line under the page title. */
+  readonly description?: () => string
   readonly icon: IconType
   /** Labels of the page's settings, so a search for one finds its page. */
   readonly keywords: ReadonlyArray<() => string>
@@ -51,6 +53,7 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
     id: "notifications",
     scope: "app",
     label: m.settings_notifications,
+    description: m.settings_notifications_hint,
     icon: RiNotification3Line,
     keywords: [
       m.settings_notifications_completed,
@@ -63,6 +66,7 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
     id: "keybindings",
     scope: "app",
     label: m.settings_keybindings,
+    description: m.settings_keybindings_hint,
     icon: RiKeyboardLine,
     keywords: [],
   },
@@ -70,6 +74,7 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
     id: "providers",
     scope: "environment",
     label: m.settings_providers,
+    description: m.settings_models_hint,
     icon: RiCpuLine,
     keywords: [
       m.settings_default_model,
@@ -84,6 +89,7 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
     id: "worktrees",
     scope: "environment",
     label: m.settings_worktrees,
+    description: m.settings_worktrees_description,
     icon: RiGitBranchLine,
     keywords: [
       m.settings_worktree_root,
@@ -103,6 +109,7 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
     id: "automations",
     scope: "environment",
     label: m.settings_automations,
+    description: m.automations_description,
     icon: RiFlashlightLine,
     keywords: [m.automations_bind_label],
   },
@@ -110,6 +117,7 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
     id: "connections",
     scope: "app",
     label: m.settings_connections,
+    description: m.environments_description,
     icon: RiServerLine,
     keywords: [
       m.environment_relay_owner_token_label,
@@ -122,6 +130,7 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
     id: "experimental",
     scope: "environment",
     label: m.settings_experimental,
+    description: m.settings_experimental_hint,
     icon: RiFlaskLine,
     keywords: [m.settings_tiny_vm, m.settings_devices],
   },

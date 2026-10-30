@@ -54,17 +54,16 @@ import { Button } from "../ui/button.tsx"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
 import { Switch } from "../ui/switch.tsx"
-import { SettingsSection, settingsGroupClass, settingsSurfaceClass } from "./SettingsSection.tsx"
+import { SettingsPageAction, SettingsSection, settingsGroupClass, settingsSurfaceClass } from "./SettingsSection.tsx"
 
 export function EnvironmentSettings() {
   const clouds = useClouds()
 
   return (
-    <SettingsSection
-      title={m.settings_connections()}
-      description={m.environments_description()}
-      action={<UpdateAllButton />}
-    >
+    <SettingsSection>
+      <SettingsPageAction>
+        <UpdateAllButton />
+      </SettingsPageAction>
       <RelayAccountSection />
       {clouds.length === 0 ? (
         <p className="text-sm text-muted-foreground">{m.environments_empty()}</p>

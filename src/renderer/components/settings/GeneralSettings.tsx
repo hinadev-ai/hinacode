@@ -8,7 +8,8 @@ import { useLocale } from "../../stores/locale.ts"
 import { Button } from "../ui/button.tsx"
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel, FieldTitle } from "../ui/field.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
-import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
+import { MachineSetup } from "./MachineSetup.tsx"
+import { SettingsGroup } from "./SettingsSection.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
 
 const localeLabel = { en: m.locale_en, "zh-TW": m.locale_zh_tw, ja: m.locale_ja } satisfies Record<Locale, () => string>
@@ -32,7 +33,8 @@ export function GeneralSettings() {
   }
 
   return (
-    <SettingsSection title={m.settings_general()}>
+    <div className="flex flex-col gap-10">
+      <MachineSetup />
       <SettingsGroup>
         <Field orientation="horizontal">
           <FieldContent>
@@ -54,7 +56,7 @@ export function GeneralSettings() {
         </Field>
         <VersionField />
       </SettingsGroup>
-    </SettingsSection>
+    </div>
   )
 }
 

@@ -36,7 +36,7 @@ export function ExperimentalSettings() {
   }
 
   return (
-    <SettingsSection title={m.settings_experimental()} description={m.settings_experimental_hint()}>
+    <SettingsSection>
       <SettingsGroup>
         <Field orientation="horizontal">
           <FieldContent>

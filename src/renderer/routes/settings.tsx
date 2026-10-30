@@ -2,7 +2,8 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { useHotkey } from "@tanstack/react-hotkeys"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
-import type { ComponentType, ReactNode } from "react"
+import { type ComponentType, type ReactNode, useState } from "react"
+import { RiCloudLine, RiMacbookLine } from "react-icons/ri"
 import { AppearanceSettings } from "../components/settings/AppearanceSettings.tsx"
 import { AutomationSettings } from "../components/settings/automations/AutomationSettings.tsx"
 import { EnvironmentSettings } from "../components/settings/EnvironmentSettings.tsx"
@@ -14,6 +15,7 @@ import { ModelSettings } from "../components/settings/ModelSettings.tsx"
 import { NotificationSettings } from "../components/settings/NotificationSettings.tsx"
 import { RemoteSettings } from "../components/settings/RemoteSettings.tsx"
 import { SettingsNav, settingsPageOf, useLeaveSettings } from "../components/settings/SettingsNav.tsx"
+import { PageActionSlotProvider } from "../components/settings/SettingsSection.tsx"
 import { WorktreeSettings } from "../components/settings/WorktreeSettings.tsx"
 import { Button } from "../components/ui/button.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select.tsx"
@@ -58,6 +60,7 @@ export function SettingsRoute() {
   const Page = components[page.id]!
   // A docked nav lives in the app's sidebar column; a compact window has none, so the page brings its own.
   const compact = usePanelLayout() === "compact"
+  const [actionSlot, setActionSlot] = useState<HTMLElement | null>(null)
 
   useHotkey(
     "Escape",
@@ -73,32 +76,41 @@ export function SettingsRoute() {
     <div className="flex min-h-0 flex-1">
       {compact && <SettingsNav />}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="window-drag flex h-12 shrink-0 items-center gap-3 border-b border-border px-6">
-          <h1 className="text-sm font-semibold">{m.settings_title()}</h1>
-          {page.scope === "environment" && clouds.length > 0 && (
-            <EnvironmentPicker
-              labelId="settings-environment"
-              value={environment}
-              clouds={clouds}
-              onChange={(next) =>
-                void navigate({
-                  search: (previous) => ({ ...previous, environment: next ?? undefined }),
-                  replace: true,
-                })
-              }
-            />
-          )}
-        </header>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-2xl px-8 py-8">
-            {page.scope === "environment" ? (
-              // Keyed by environment so drafts in the page's fields never carry over to another machine.
-              <LoadedSettings key={environment ?? ""} environment={environment}>
-                <Page />
-              </LoadedSettings>
-            ) : (
-              <Page />
+        {/* The scroller keeps a gutter on both sides, so its centred column lines up with this one. */}
+        <header className="window-drag shrink-0 [scrollbar-gutter:stable_both-edges] overflow-hidden">
+          <div className="mx-auto flex w-full max-w-3xl items-start gap-3 px-8 pt-5 pb-6">
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <h1 className="text-lg font-semibold">{page.label()}</h1>
+              {page.description && <p className="text-sm text-pretty text-muted-foreground">{page.description()}</p>}
+            </div>
+            <div ref={setActionSlot} className="flex shrink-0 items-center gap-2 empty:hidden" />
+            {page.scope === "environment" && clouds.length > 0 && (
+              <EnvironmentPicker
+                labelId="settings-environment"
+                value={environment}
+                clouds={clouds}
+                onChange={(next) =>
+                  void navigate({
+                    search: (previous) => ({ ...previous, environment: next ?? undefined }),
+                    replace: true,
+                  })
+                }
+              />
             )}
+          </div>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable_both-edges]">
+          <div className="mx-auto w-full max-w-3xl px-8 pb-12">
+            <PageActionSlotProvider value={actionSlot}>
+              {page.scope === "environment" ? (
+                // Keyed by environment so drafts in the page's fields never carry over to another machine.
+                <LoadedSettings key={environment ?? ""} environment={environment}>
+                  <Page />
+                </LoadedSettings>
+              ) : (
+                <Page />
+              )}
+            </PageActionSlotProvider>
           </div>
         </div>
       </div>
@@ -121,8 +133,8 @@ function EnvironmentPicker({ labelId, value, clouds, onChange }: EnvironmentPick
     ...clouds.map((cloud) => ({ value: cloud.id, label: cloud.name })),
   ]
   return (
-    <div className="ml-auto flex items-center gap-2">
-      <span id={labelId} className="text-xs text-muted-foreground">
+    <div className="flex shrink-0 items-center">
+      <span id={labelId} className="sr-only">
         {m.settings_editing_for()}
       </span>
       <Select
@@ -130,7 +142,12 @@ function EnvironmentPicker({ labelId, value, clouds, onChange }: EnvironmentPick
         value={value ?? THIS_MACHINE}
         onValueChange={(next) => typeof next === "string" && onChange(next === THIS_MACHINE ? null : next)}
       >
-        <SelectTrigger aria-labelledby={labelId} size="sm" className="w-44">
+        <SelectTrigger aria-labelledby={labelId} size="sm" className="w-auto max-w-56 gap-2">
+          {value === null ? (
+            <RiMacbookLine aria-hidden className="size-4 text-muted-foreground" />
+          ) : (
+            <RiCloudLine aria-hidden className="size-4 text-muted-foreground" />
+          )}
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

@@ -20,7 +20,7 @@ import { SkeletonList } from "../ui/skeleton.tsx"
 
 export function ModelSettings() {
   return (
-    <SettingsSection title={m.settings_providers()} description={m.settings_models_hint()}>
+    <SettingsSection>
       {ProviderId.literals.map((provider) => (
         <ProviderModels key={provider} provider={provider} />
       ))}
