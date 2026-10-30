@@ -137,7 +137,7 @@ export const make = (ripgrep: () => string | undefined) =>
           FROM message_fts f
           JOIN message m ON m.rowid = f.rowid
           JOIN thread t ON t.id = m.thread_id
-          WHERE f.body LIKE ${pattern} ${sql.literal(escaped ? "ESCAPE '\\'" : "")}
+          WHERE f.body LIKE ${pattern} ${sql.literal(escaped ? "ESCAPE '\\'" : "")} AND t.side_of IS NULL
           ORDER BY f.rowid DESC
           LIMIT ${limit}
         `

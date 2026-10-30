@@ -8,6 +8,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
+  type RefObject,
   startTransition,
   useEffect,
   useEffectEvent,
@@ -22,6 +23,7 @@ import { isThreadBusy, type Thread, toCheckoutTarget } from "../../shared/domain
 import { errorMessage } from "../lib/errorMessage.ts"
 import { promptWithComments } from "../lib/lineComments.ts"
 import { callPromise, commandsAtom, completionKey, currentBranchAtom, filesAtom } from "../lib/rpc.ts"
+import { askSidechat, sidechatCommand, sidechatQuestion } from "../lib/sidechat.ts"
 import { useIsChat } from "../lib/useIsChat.ts"
 import { m } from "../paraglide/messages.js"
 import { type Draft, emptyDraft, useDrafts } from "../stores/drafts.ts"
@@ -97,9 +99,10 @@ const sourceOf = async (file: File): Promise<StageSource> => {
 
 export function Composer({ thread, children }: { thread: Thread; children?: ReactNode }) {
   const { text, attachments, workspace, comments } = useDrafts((state) => state.byThreadId[thread.id] ?? emptyDraft)
+  const isSidechat = thread.sideOf !== null
   const unstarted = useMessages((state) => {
     const history = state.byThread[thread.id]
-    return history?.status === "ready" && history.messages.length === 0 && thread.worktreeId === null
+    return history?.status === "ready" && history.messages.length === 0 && thread.worktreeId === null && !isSidechat
   })
   const isChat = useIsChat(thread.projectId)
   const [error, setError] = useState<string | null>(null)
@@ -108,9 +111,10 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const key = completionKey(thread)
   const commandsResult = useAtomValue(commandsAtom(key))
-  const commands = AsyncResult.getOrElse(commandsResult, (): ReadonlyArray<AgentCommand> => []).filter(
+  const agentCommands = AsyncResult.getOrElse(commandsResult, (): ReadonlyArray<AgentCommand> => []).filter(
     (command) => thread.userSkills || command.scope !== "user",
   )
+  const commands = isSidechat ? agentCommands : [sidechatCommand(), ...agentCommands]
   const commandsError = AsyncResult.isFailure(commandsResult)
     ? m.composer_commands_failed({ message: errorMessage(Cause.squash(commandsResult.cause)) })
     : null
@@ -130,9 +134,14 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
     if (!canSend) return
     const sent = useDrafts.getState().take(thread.id)
     const prompt = promptWithComments(sent.text, sent.comments)
+    const question = isSidechat ? null : sidechatQuestion(prompt)
     setError(null)
     startSending(async () => {
-      await deliver(thread.id, prompt, sent, { busy, unstarted, delivery }).catch((cause: unknown) => {
+      const delivered =
+        question === null
+          ? deliver(thread.id, prompt, sent, { busy, unstarted, delivery })
+          : askSidechat(thread.id, question, sent.attachments)
+      await delivered.catch((cause: unknown) => {
         useDrafts.getState().restore(thread.id, sent)
         setError(errorMessage(cause))
       })
@@ -180,18 +189,9 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
     callPromise("threads.interrupt", { threadId: thread.id }).catch((cause: unknown) => setError(errorMessage(cause)))
   }
 
-  const interruptIfBusy = useEffectEvent(() => {
+  useComposerRequests(textareaRef, isSidechat, () => {
     if (busy || isSending) stop()
   })
-
-  useEffect(
-    () =>
-      useUi.subscribe((state, previous) => {
-        if (state.composerFocusRequest !== previous.composerFocusRequest) textareaRef.current?.focus()
-        if (state.interruptRequest !== previous.interruptRequest) interruptIfBusy()
-      }),
-    [],
-  )
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -254,11 +254,13 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
             )}
             <ComposerInput
               ref={textareaRef}
-              aria-label={m.thread_composer_label()}
+              aria-label={isSidechat ? m.panel_tab_sidechat() : m.thread_composer_label()}
               placeholder={
                 busy
                   ? m.thread_composer_queue_placeholder({ steer: formatForDisplay(STEER_CHORD) })
-                  : m.thread_composer_placeholder()
+                  : isSidechat
+                    ? m.sidechat_placeholder()
+                    : m.thread_composer_placeholder()
               }
               value={text}
               onValueChange={(next) => useDrafts.getState().setText(thread.id, next)}
@@ -276,7 +278,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
             <ComposerToolbar className="shrink-0 gap-2">
               <ComposerActions className="min-w-0 flex-1">
                 <AttachButton onClick={pickFiles} disabled={isStaging} />
-                <ThreadPicker thread={thread} canSwitchAgent={!busy} onError={setError} />
+                <ThreadPicker thread={thread} canSwitchAgent={!busy && !isSidechat} onError={setError} />
               </ComposerActions>
               <ContextRing threadId={thread.id} provider={thread.provider} />
               <SteerButton busy={busy} hasDraft={hasDraft} canSend={canSend} onSteer={() => send("steer")} />
@@ -297,6 +299,30 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
       </form>
     </div>
   )
+}
+
+function useComposerRequests(
+  textareaRef: RefObject<HTMLTextAreaElement | null>,
+  isSidechat: boolean,
+  onInterrupt: () => void,
+) {
+  const interrupt = useEffectEvent(onInterrupt)
+
+  useEffect(() => {
+    if (isSidechat) return
+    return useUi.subscribe((state, previous) => {
+      if (state.composerFocusRequest !== previous.composerFocusRequest) textareaRef.current?.focus()
+      if (state.interruptRequest !== previous.interruptRequest) interrupt()
+    })
+  }, [textareaRef, isSidechat])
+
+  const sidechatFocusRequested = useUi((state) => isSidechat && state.viewFocusRequest === "sidechat")
+  useEffect(() => {
+    if (!sidechatFocusRequested) return
+    useUi.getState().clearViewFocusRequest()
+    // FIXME: Base UI Dialog places its initial focus a frame late, which would take focus back
+    requestAnimationFrame(() => textareaRef.current?.focus())
+  }, [textareaRef, sidechatFocusRequested])
 }
 
 function AttachButton({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {

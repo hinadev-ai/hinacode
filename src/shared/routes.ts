@@ -127,6 +127,7 @@ export const routes: Record<RpcMethod, Route> = {
   "threads.switchAccount": owner("thread", "id"),
   "threads.changes": thread,
   "threads.fork": thread,
+  "threads.sidechat": thread,
   "threads.archive": thread,
   "threads.unarchive": thread,
   "threads.transcript": thread,

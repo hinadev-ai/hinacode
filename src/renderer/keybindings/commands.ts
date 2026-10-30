@@ -182,6 +182,12 @@ export const commands = [
     when: "!terminalFocus",
   },
   {
+    id: "view.sidechat",
+    defaultKeys: "",
+    title: m.command_view_sidechat,
+    run: (ctx) => showView(ctx, "sidechat"),
+  },
+  {
     id: "view.browser",
     defaultKeys: "mod+shift+b",
     title: m.command_view_browser,

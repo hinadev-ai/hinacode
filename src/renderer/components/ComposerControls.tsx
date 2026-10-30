@@ -233,19 +233,19 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
     setOpen(true)
   }
 
-  useEffect(
-    () =>
-      useUi.subscribe((state, previous) => {
-        const request = state.pickerRequest
-        if (request === previous.pickerRequest || request === null) return
-        openedByShortcut.current = true
-        closedWithEnter.current = false
-        setFocus(request.picker)
-        setTabValue(threadTab)
-        setOpen(true)
-      }),
-    [threadTab],
-  )
+  const isSidechat = thread.sideOf !== null
+  useEffect(() => {
+    if (isSidechat) return
+    return useUi.subscribe((state, previous) => {
+      const request = state.pickerRequest
+      if (request === previous.pickerRequest || request === null) return
+      openedByShortcut.current = true
+      closedWithEnter.current = false
+      setFocus(request.picker)
+      setTabValue(threadTab)
+      setOpen(true)
+    })
+  }, [threadTab, isSidechat])
 
   const pick = async (next: ModelInfo) => {
     if (tab.provider !== thread.provider) {

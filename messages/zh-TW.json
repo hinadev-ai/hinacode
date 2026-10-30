@@ -2010,5 +2010,12 @@
   ],
   "devices_show_shutdown": "顯示 {count} 台已關機的裝置",
   "devices_hide_shutdown": "隱藏已關機的裝置",
-  "devices_compiling_hint": "在一台電腦上第一次連線時會建置畫面輔助程式，大約需要 10 秒。"
+  "devices_compiling_hint": "在一台電腦上第一次連線時會建置畫面輔助程式，大約需要 10 秒。",
+  "panel_tab_sidechat": "側邊聊天",
+  "command_view_sidechat": "顯示側邊聊天",
+  "sidechat_command_description": "在側邊聊天詢問這個對話串，它會繼續工作",
+  "sidechat_command_hint": "[問題]",
+  "sidechat_placeholder": "詢問這個對話串，不會打斷它",
+  "sidechat_new": "新的側邊聊天",
+  "sidechat_open_failed": "無法開啟側邊聊天：{message}"
 }

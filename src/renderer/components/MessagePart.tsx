@@ -1,5 +1,5 @@
 import { useParams } from "@tanstack/react-router"
-import { type ReactNode, useState } from "react"
+import { createContext, type ReactNode, use, useState } from "react"
 import type { IconType } from "react-icons"
 import {
   RiArrowRightSLine,
@@ -127,8 +127,11 @@ const statusLabel = {
   error: m.tool_status_error,
 } satisfies Record<ToolCallStatus, () => string>
 
+export const SubagentLinks = createContext(true)
+
 function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call" }> }) {
-  if (spawnsSubagent(part)) return <SubagentCallPart part={part} />
+  const linksSubagents = use(SubagentLinks)
+  if (linksSubagents && spawnsSubagent(part)) return <SubagentCallPart part={part} />
   const Icon = toolIcons[part.name] ?? RiToolsLine
   const { name, summary } = describeToolCall(part)
 

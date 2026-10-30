@@ -110,7 +110,8 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     () =>
       onEvent((event) => {
         if (isTranscriptPush(event)) useMessages.getState().receive(event)
-        else if (event.type === "thread.updated") useThreads.getState().upsert(event.thread)
+        else if (event.type === "thread.updated" && event.thread.sideOf === null)
+          useThreads.getState().upsert(event.thread)
         else if (event.type === "thread.removed") useThreads.getState().remove(event.id)
         else if (event.type === "worktree.updated") useThreads.getState().upsertWorktree(event.worktree)
         else if (event.type === "thread.pullRequests") usePullRequests.getState().replace(event.threadId, event.links)

@@ -60,7 +60,7 @@ function ViewContent({ thread, view, panelId, compact }: ViewContentProps) {
 
   const focusRequest = useUi((state) => state.viewFocusRequest)
   useEffect(() => {
-    if (focusRequest === null || focusRequest !== viewId || viewId === "files") return
+    if (focusRequest === null || focusRequest !== viewId || viewId === "files" || viewId === "sidechat") return
     useUi.getState().clearViewFocusRequest()
     ref.current?.focus()
   }, [focusRequest, viewId])

@@ -411,6 +411,7 @@ erDiagram
     text snoozed_until "out of the Inbox until then, null or past = not snoozed"
     text queue "JSON QueuedMessage[], oldest first"
     text turn_base_tree "git tree at latest turn start"
+    text side_of FK "CASCADE, unique, set = side chat of that thread"
   }
   message {
     text id PK

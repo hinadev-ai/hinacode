@@ -1,5 +1,5 @@
 import { homedir } from "node:os"
-import { Cause, Effect, Schema } from "effect"
+import { Cause, Effect, Option, Schema } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
 import { availableUpdates, installUpdate } from "./agents/updates.ts"
 import { compactMessage, transcriptPage } from "../shared/compactTranscript.ts"
@@ -228,7 +228,14 @@ const handlers: Handlers = {
       return thread
     }),
   "threads.delete": ({ id, removeWorktree }) =>
-    closeTerminals(id).pipe(
+    Threads.use((threads) => threads.sidechatOf(id)).pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.void,
+          onSome: (sidechat) => AgentRunner.use((runner) => runner.interrupt(sidechat.id)),
+        }),
+      ),
+      Effect.andThen(closeTerminals(id)),
       Effect.andThen(Threads.use((threads) => threads.remove(id, { removeWorktree }))),
       Effect.andThen(Events.use((events) => events.publish({ type: "thread.removed", id }))),
     ),
@@ -254,6 +261,7 @@ const handlers: Handlers = {
     Threads.use((threads) => threads.fork(threadId, messageId)).pipe(
       Effect.tap((thread) => Events.use((events) => events.publish({ type: "thread.updated", thread }))),
     ),
+  "threads.sidechat": ({ threadId }) => Threads.use((threads) => threads.sidechat(threadId)),
   "projects.currentBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.currentBranch(id)),
   "projects.defaultBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.defaultBranch(id)),
   "projects.branches": ({ id }) => Worktrees.use((worktrees) => worktrees.branches(id)),
