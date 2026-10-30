@@ -22,7 +22,7 @@ import type { RpcRequest } from "../../shared/contract.ts"
 import { isThreadBusy, type Thread, toCheckoutTarget } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { promptWithComments } from "../lib/lineComments.ts"
-import { callPromise, commandsAtom, completionKey, currentBranchAtom, filesAtom } from "../lib/rpc.ts"
+import { callPromise, commandsAtom, completionKey, currentBranchAtom, filesAtom, noFilesAtom } from "../lib/rpc.ts"
 import { askSidechat, sidechatCommand, sidechatQuestion } from "../lib/sidechat.ts"
 import { useIsChat } from "../lib/useIsChat.ts"
 import { m } from "../paraglide/messages.js"
@@ -118,8 +118,9 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   const commandsError = AsyncResult.isFailure(commandsResult)
     ? m.composer_commands_failed({ message: errorMessage(Cause.squash(commandsResult.cause)) })
     : null
-  const files = AsyncResult.getOrElse(useAtomValue(filesAtom(key)), (): ReadonlyArray<string> => [])
-  const refreshFiles = useAtomRefresh(filesAtom(key))
+  const filesSource = text.includes("@") ? filesAtom(key) : noFilesAtom
+  const files = AsyncResult.getOrElse(useAtomValue(filesSource), (): ReadonlyArray<string> => [])
+  const refreshFiles = useAtomRefresh(filesSource)
   const threadsById = useThreads((state) => state.byId)
   const otherThreads = selectProjectThreads(thread.projectId)({ byId: threadsById }).filter(
     (other) => other.id !== thread.id,
