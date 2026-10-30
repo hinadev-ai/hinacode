@@ -385,10 +385,11 @@ describe("pullRequestFiles", () => {
 })
 
 const PR_URL = "https://github.com/o/r/pull/7"
+const urlOf = (number: number) => `https://github.com/o/r/pull/${number}`
 
 const graphqlPullRequest = (title: string, state = "OPEN") => ({
   data: {
-    repository: {
+    pr0: {
       pullRequest: {
         url: PR_URL,
         number: 7,
@@ -605,20 +606,49 @@ describe("pull request reads", () => {
     }).pipe(Effect.provide(gh.layer))
   })
 
-  it.effect("everyone asking about the same pull request shares one gh run while it is fresh", () => {
+  it.effect("everyone asking about the same pull request shares one gh run until the app refreshes again", () => {
     const gh = fakeGh(() => apiReply(graphqlPullRequest("Shared")))
     return Effect.gen(function* () {
       const github = yield* GitHub
       yield* Effect.all([github.pullRequest(PR_URL), github.pullRequest(PR_URL), github.pullRequestDetail(PR_URL)], {
         concurrency: "unbounded",
       })
-      yield* TestClock.adjust("29 seconds")
+      yield* TestClock.adjust("49 seconds")
       yield* github.pullRequest(PR_URL)
       expect(gh.runs.filter(isRead)).toHaveLength(1)
 
       yield* TestClock.adjust("1 second")
       yield* github.pullRequest(PR_URL)
       expect(gh.runs.filter(isRead)).toHaveLength(2)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("pull requests asked for together share one gh run, and one GitHub cannot find fails alone", () => {
+    const gh = fakeGh((args) => {
+      const numbers = args.flatMap((arg) => /^number\d+=(\d+)$/.exec(arg)?.slice(1) ?? [])
+      const reads = numbers.map((number, index) => [
+        `pr${index}`,
+        number === "404"
+          ? null
+          : { pullRequest: { ...graphqlPullRequest(`#${number}`).data.pr0.pullRequest, url: urlOf(Number(number)) } },
+      ])
+      const missing = numbers.indexOf("404")
+      return apiReply({
+        data: Object.fromEntries(reads),
+        ...(missing === -1
+          ? {}
+          : { errors: [{ type: "NOT_FOUND", path: [`pr${missing}`], message: "Could not resolve to a PullRequest" }] }),
+      })
+    })
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      const [first, missing, second] = yield* Effect.all(
+        [github.pullRequest(urlOf(1)), Effect.flip(github.pullRequest(urlOf(404))), github.pullRequest(urlOf(2))],
+        { concurrency: "unbounded" },
+      )
+      expect(gh.runs.filter(isRead)).toHaveLength(1)
+      expect([first.title, second.title]).toStrictEqual(["#1", "#2"])
+      expect(missing.message).toContain("Could not resolve to a PullRequest")
     }).pipe(Effect.provide(gh.layer))
   })
 

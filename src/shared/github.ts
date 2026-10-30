@@ -1,4 +1,6 @@
-import { Schema } from "effect"
+import { Duration, Schema } from "effect"
+
+export const PULL_REQUEST_REFRESH = Duration.minutes(1)
 
 const OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/
 const NAME = /^(?!\.{1,2}$)[A-Za-z0-9._-]+$/
