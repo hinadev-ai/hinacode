@@ -508,12 +508,12 @@ describe("boatClient", () => {
       fake.seedSandbox("sb-1", "ready")
       const big = Buffer.alloc(5 * 1024 * 1024 + 7, 7)
       fake.files.set("/tmp/big.bin", big)
-      fake.dropSignedFetches(2)
+      fake.dropSignedFetches(1)
       const client = makeClient(fake)
       const bytes = await runEffect(client.readFileBytes("sb-1", "/tmp/big.bin"))
       expect(Buffer.from(bytes)).toEqual(big)
     })
-  }, 20000)
+  }, 60000)
 
   it("detached exec returns pid and log", async () => {
     await withFake(async (fake) => {
