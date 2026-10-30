@@ -17,6 +17,7 @@ import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
+import { layer as RemoteAccessLayer } from "../remote/access.ts"
 import { Peers } from "../remote/peers.ts"
 import { seedThread } from "../db/testing.ts"
 import * as Attachments from "../services/Attachments.ts"
@@ -128,6 +129,7 @@ const domain = Layer.mergeAll(
   tinyVm.pipe(Layer.provide(core)),
   unavailableDevicesLayer.pipe(Layer.provide(core)),
   linearLayer.pipe(Layer.provide(core)),
+  RemoteAccessLayer.pipe(Layer.provide(core)),
 )
 const agents = runnerLayer.pipe(Layer.provideMerge(domain))
 const testLayer = Layer.mergeAll(serverLayer.pipe(Layer.provide(Layer.mergeAll(agents, stubs))), agents, seeded).pipe(
