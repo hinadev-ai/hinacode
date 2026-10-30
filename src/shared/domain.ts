@@ -396,6 +396,7 @@ export const MessagePart = Schema.Union([
     name: Schema.String,
     input: Schema.Unknown,
     output: Schema.optional(Schema.Unknown),
+    fullOutputBytes: Schema.optional(Schema.Number),
     status: ToolCallStatus,
     parentCallId: Schema.optional(Schema.String),
   }),

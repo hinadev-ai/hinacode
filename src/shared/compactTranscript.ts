@@ -1,5 +1,5 @@
 import type { Message, MessagePart } from "./domain.ts"
-import type { PushEvent } from "./contract.ts"
+import type { PushEvent, TranscriptPush } from "./contract.ts"
 
 const SUMMARY_KEYS = ["command", "file_path", "path", "pattern", "url", "description"]
 
@@ -21,7 +21,7 @@ function compactInput(input: unknown) {
 function compactPart(part: MessagePart): MessagePart {
   switch (part.type) {
     case "tool_call": {
-      const { output: _output, input, ...rest } = part
+      const { output: _output, fullOutputBytes: _fullOutputBytes, input, ...rest } = part
       return { ...rest, input: compactInput(input) }
     }
     case "file_change":
@@ -47,8 +47,10 @@ export function compactPush(push: typeof PushEvent.Encoded): typeof PushEvent.En
   switch (event.type) {
     case "tool_call_started":
       return { ...push, event: { ...event, input: compactInput(event.input) } }
-    case "tool_call_finished":
-      return { ...push, event: { ...event, output: "" } }
+    case "tool_call_finished": {
+      const { fullOutputBytes: _fullOutputBytes, ...rest } = event
+      return { ...push, event: { ...rest, output: "" } }
+    }
     case "file_changed":
       return { ...push, event: { ...event, diff: "" } }
     default:
@@ -59,6 +61,34 @@ export function compactPush(push: typeof PushEvent.Encoded): typeof PushEvent.En
 export const TRANSCRIPT_PAGE_BYTES = 64 * 1024
 
 const encoder = new TextEncoder()
+
+export const TOOL_OUTPUT_PREVIEW_CHARS = 4096
+
+function outputPreview(output: unknown) {
+  if (typeof output !== "string" || output.length <= TOOL_OUTPUT_PREVIEW_CHARS) return undefined
+  const tail = output.slice(-TOOL_OUTPUT_PREVIEW_CHARS)
+  const firstLineEnd = tail.indexOf("\n")
+  const fromWholeLine = firstLineEnd !== -1 && firstLineEnd < TOOL_OUTPUT_PREVIEW_CHARS / 2
+  return {
+    output: fromWholeLine ? tail.slice(firstLineEnd + 1) : tail,
+    fullOutputBytes: encoder.encode(output).length,
+  }
+}
+
+const previewPart = (part: MessagePart): MessagePart => {
+  if (part.type !== "tool_call") return part
+  const preview = outputPreview(part.output)
+  return preview === undefined ? part : { ...part, ...preview }
+}
+
+export const previewMessage = (message: Message): Message => ({ ...message, parts: message.parts.map(previewPart) })
+
+export function previewPush(push: TranscriptPush): TranscriptPush {
+  if (push.type !== "thread.event") return { ...push, message: previewMessage(push.message) }
+  if (push.event.type !== "tool_call_finished") return push
+  const preview = outputPreview(push.event.output)
+  return preview === undefined ? push : { ...push, event: { ...push.event, ...preview } }
+}
 const utf8Bytes = (message: Message) => encoder.encode(JSON.stringify(message)).length
 
 export function transcriptPage(

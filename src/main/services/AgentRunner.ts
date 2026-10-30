@@ -42,6 +42,7 @@ import type {
   WorkspaceChoice,
 } from "../../shared/domain.ts"
 import { isThreadBusy } from "../../shared/domain.ts"
+import { previewPush } from "../../shared/compactTranscript.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
@@ -147,6 +148,7 @@ export class AgentRunner extends Context.Service<
       value: string | null,
     ) => Effect.Effect<void, PersistenceError | NotFoundError | ThreadStartedError>
     readonly transcript: (threadId: string) => Effect.Effect<RpcResponse<"threads.transcript">, PersistenceError>
+    readonly toolOutput: (threadId: string, callId: string) => Effect.Effect<unknown, PersistenceError | NotFoundError>
     readonly listModels: (provider: ProviderId) => Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
     readonly limits: Effect.Effect<ReadonlyArray<AccountLimits>, PersistenceError>
     readonly usage: (
@@ -323,7 +325,8 @@ const make = Effect.gen(function* () {
     return push.publish({ type: "thread.subagents", threadId, subagents: listSubagents(threadId) })
   }
 
-  const publishTranscript = (event: DistributiveOmit<TranscriptPush, "seq">) => push.publish({ ...event, seq: ++seq })
+  const publishTranscript = (event: DistributiveOmit<TranscriptPush, "seq">) =>
+    push.publish(previewPush({ ...event, seq: ++seq }))
 
   const gitOutput = (cwd: string, args: ReadonlyArray<string>) =>
     git.run(cwd, args).pipe(
@@ -1004,6 +1007,22 @@ const make = Effect.gen(function* () {
           seq,
         }
       }).pipe(exclusive(threadId)),
+    toolOutput: (threadId, callId) => {
+      const live = activeTurns
+        .get(threadId)
+        ?.messages()
+        .flatMap((message) => message.parts)
+        .find((part) => part.type === "tool_call" && part.callId === callId)
+      const persisted = messages.toolOutput(threadId, callId).pipe(
+        Effect.flatMap(
+          Option.match({
+            onNone: () => Effect.fail(new NotFoundError({ entity: "tool call", id: callId })),
+            onSome: Effect.succeed,
+          }),
+        ),
+      )
+      return live?.type === "tool_call" && live.output !== undefined ? Effect.succeed(live.output) : persisted
+    },
     listModels: (id) => providers[id]?.listModels ?? Effect.succeed([]),
     limits: Effect.gen(function* () {
       const added = yield* accounts.list

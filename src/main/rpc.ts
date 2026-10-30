@@ -2,7 +2,7 @@ import { homedir } from "node:os"
 import { Cause, Effect, Option, Schema } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
 import { availableUpdates, installUpdate } from "./agents/updates.ts"
-import { compactMessage, transcriptPage } from "../shared/compactTranscript.ts"
+import { compactMessage, previewMessage, transcriptPage } from "../shared/compactTranscript.ts"
 import type {
   NotificationPermission,
   Opener,
@@ -350,12 +350,13 @@ const handlers: Handlers = {
   "threads.transcript": ({ threadId, compact = false, page }) =>
     AgentRunner.use((runner) => runner.transcript(threadId)).pipe(
       Effect.map((transcript) => {
-        const messages = compact ? transcript.messages.map(compactMessage) : transcript.messages
+        const messages = transcript.messages.map(compact ? compactMessage : previewMessage)
         return page === undefined
           ? { ...transcript, messages }
           : { ...transcript, ...transcriptPage(messages, page.before) }
       }),
     ),
+  "threads.toolOutput": ({ threadId, callId }) => AgentRunner.use((runner) => runner.toolOutput(threadId, callId)),
   "threads.send": ({ threadId, prompt, attachments = [], workspace }) =>
     Effect.gen(function* () {
       const remember = yield* rememberWorkspaceMode(threadId, workspace?.mode ?? "local")

@@ -117,6 +117,8 @@
   "tool_input": "Input",
   "tool_output": "Output",
   "tool_no_output": "No output yet",
+  "tool_output_show_full": "Show full output ({size})",
+  "tool_output_load_failed": "Could not load the full output: {message}",
   "file_change_label": "Changed",
   "compaction_running": "Compacting the conversation…",
   "compaction_done": "Conversation compacted",
