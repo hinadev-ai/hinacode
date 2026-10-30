@@ -98,6 +98,33 @@ Deferring transcript updates with `useDeferredValue` was measured and left out. 
 because what still blocks a key then is commit work: LegendList measuring rows, the Markdown mount when the reply
 finishes, and mermaid layout.
 
+## Measure startup, thread loads and background work in main
+
+`main.ts` launches the built app itself, so it can time a cold start, and reads a span trace the main process
+writes when `HINACODE_TRACE=<file>` is set: one line per rpc call, SQL query and spawned `git` or `gh` process,
+with its parent span. Queries and processes are attributed to the rpc call that caused them, so background loops
+don't blur the numbers for a thread open.
+
+```sh
+pnpm build
+mkdir -p /tmp/kk-perf-real && sqlite3 ~/path/to/hinacode.sqlite ".backup /tmp/kk-perf-real/hinacode.sqlite"
+sqlite3 /tmp/kk-perf-real/hinacode.sqlite "UPDATE pull_request_link SET watch = NULL"
+node scripts/perf/main.ts base /tmp/kk-perf-real            # on the base build
+node scripts/perf/main.ts after /tmp/kk-perf-real           # on the change, same profile
+node scripts/perf/main.ts compare base after
+```
+
+It launches `RUNS` times (default 5) and reports the median time until the renderer page is up, rpc answers and
+the sidebar shows a thread, with the SQL queries, SQL time and `git` and `gh` processes until then. On the last
+launch it opens the two largest non-archived threads and the smallest one from the sidebar three times each
+(cold, then switching back) and idles for `IDLE_SECONDS` (default 120) to count background queries and processes
+per hour. Pass thread ids after the data dir to pick other threads. Results land in `.context/perf/<label>-main.json`.
+
+The profile must live under `/tmp/kk-`, and the instance runs with `HINACODE_MOCK_CLAUDE=stream`, which also turns
+off pull request guides, so a copied profile never starts a real agent turn. Clearing `watch` keeps the PR watcher
+from delivering to a thread. Each launch reopens the last route, so after the first run startup includes opening a
+thread. `PORT` picks the CDP port (default 9290) and `DISPLAY_FOR_PERF` the X display (default `:99`).
+
 ## Measure remote payload and transcript costs
 
 ```sh
