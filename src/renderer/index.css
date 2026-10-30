@@ -5,8 +5,6 @@
 @import "@fontsource-variable/dm-sans/opsz-italic.css";
 @import "@fontsource-variable/geist-mono";
 @import "@fontsource-variable/geist-mono/wght-italic.css";
-@import "@fontsource-variable/noto-sans-tc";
-@import "@fontsource-variable/noto-sans-jp";
 @import "@wterm/dom/css";
 @import "tw-shimmer";
 @plugin "@tailwindcss/typography";
@@ -106,14 +104,15 @@
   --font-sans: var(--app-font-sans);
   --font-mono: var(--app-font-mono);
   --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
+  /* The palettes' border colors read too sharp, so lines draw at 70% and blend into the surface under them. */
+  --color-border: color-mix(in oklab, var(--border) 70%, transparent);
+  --color-sidebar-border: color-mix(in oklab, var(--sidebar-border) 70%, transparent);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
   --color-ring: var(--ring);
   --color-input: var(--input);
-  --color-border: var(--border);
   --color-destructive: var(--destructive);
   --color-attention: var(--attention);
   --color-success: var(--success);
@@ -550,13 +549,12 @@
    */
   &.prose {
     /*
-     * Body text one step under headings and bold, so the structure of a long reply reads at a glance. Any contrast
-     * setting closes the step: higher contrast reaches full ink, and lower contrast already moved --foreground toward
-     * muted text, which sits at 4.5:1, so fading it further would drop below that.
+     * Body text a shade under bold. Any contrast setting closes the gap: higher contrast reaches full ink, and lower
+     * contrast already moved --foreground toward muted text, so fading it further would drop below 4.5:1.
      */
     --tw-prose-body: color-mix(
       in oklab,
-      var(--foreground) calc(80% + (var(--contrast-higher) + var(--contrast-lower)) * 20%),
+      var(--foreground) calc(90% + (var(--contrast-higher) + var(--contrast-lower)) * 10%),
       transparent
     );
     --tw-prose-headings: var(--foreground);
@@ -565,7 +563,7 @@
     --tw-prose-bold: var(--foreground);
     --tw-prose-counters: var(--muted-foreground);
     --tw-prose-bullets: var(--primary);
-    --tw-prose-hr: var(--border);
+    --tw-prose-hr: var(--color-border);
     --tw-prose-quotes: var(--foreground);
     --tw-prose-quote-borders: var(--primary);
     --tw-prose-captions: var(--muted-foreground);
@@ -574,8 +572,8 @@
     --tw-prose-code: var(--foreground);
     --tw-prose-pre-code: var(--foreground);
     --tw-prose-pre-bg: var(--muted);
-    --tw-prose-th-borders: var(--border);
-    --tw-prose-td-borders: var(--border);
+    --tw-prose-th-borders: var(--color-border);
+    --tw-prose-td-borders: var(--color-border);
 
     & :where(code):not(:where(pre code)) {
       @apply rounded-[0.25em] bg-foreground/10 px-[0.35em] py-[0.1em] text-[0.85em] font-normal text-foreground box-decoration-clone;
@@ -738,6 +736,51 @@
   }
 }
 
+/*
+ * Fades a vertical scroller's top or bottom edge only while there is more to scroll that way. The scroll timeline
+ * drives the fade sizes, and a list too short to scroll has no timeline, so it keeps both edges sharp.
+ */
+@property --scroll-fade-top {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --scroll-fade-bottom {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@keyframes scroll-fade-y {
+  0% {
+    --scroll-fade-top: 0px;
+    --scroll-fade-bottom: 1.5rem;
+  }
+  10% {
+    --scroll-fade-top: 1.5rem;
+  }
+  90% {
+    --scroll-fade-bottom: 1.5rem;
+  }
+  100% {
+    --scroll-fade-top: 1.5rem;
+    --scroll-fade-bottom: 0px;
+  }
+}
+
+@utility scroll-fade-y {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    #000 var(--scroll-fade-top),
+    #000 calc(100% - var(--scroll-fade-bottom)),
+    transparent
+  );
+  animation: scroll-fade-y linear both;
+  animation-timeline: scroll(self);
+}
+
 /* Cuts the bottom 12px of the activity tray's side borders, where its flares take over the outline. */
 @utility tray-flare-cut {
   mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0), linear-gradient(#000 0 0);
@@ -793,14 +836,17 @@
   }
 }
 
-/* Press feedback for buttons and clickable rows. Menu triggers are left still so their popup anchors to a stable rect. */
+/*
+ * Press feedback for buttons and clickable rows. Menu triggers are left still so their popup anchors to a stable rect.
+ * A wide target sets a gentler `--press-scale`, since the same scale moves its edges further.
+ */
 @utility pressable {
   transition-property: color, background-color, border-color, box-shadow, opacity, scale;
   transition-duration: 160ms;
   transition-timing-function: var(--ease-out);
   @media (prefers-reduced-motion: no-preference) {
     &:active:not([aria-haspopup], :disabled) {
-      scale: 0.97;
+      scale: var(--press-scale, 0.97);
     }
   }
 }

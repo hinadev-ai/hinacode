@@ -4,19 +4,11 @@ import type { McpConnection } from "../../shared/agent.ts"
 
 const BEARER = "Bearer "
 
-/**
- * The per-thread bearer credentials of the built-in MCP server, `<threadId>.<secret>`. The credential
- * alone decides which thread a call acts as. This is its own service so the agent runner can hand a
- * credential to a turn while the server's tools call back into the runner.
- */
 export class McpCredentials extends Context.Service<
   McpCredentials,
   {
-    /** Issues the thread's credential on first use; it stays valid while the thread exists. Waits for the server to listen. */
     readonly connectionFor: (threadId: string) => Effect.Effect<McpConnection>
-    /** The thread an `Authorization` header was issued for; the comparison is constant-time per thread. */
     readonly authenticate: (authorization: string | undefined) => Option.Option<string>
-    /** Called once by the server when it knows its URL. */
     readonly listening: (url: string) => Effect.Effect<void>
   }
 >()("hinacode/McpCredentials") {}

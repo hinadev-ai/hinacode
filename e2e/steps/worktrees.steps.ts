@@ -8,7 +8,6 @@ import { threadMenu, threadView } from "../support/ui.ts"
 
 const branchOf = (title: string) => `kk/${title.replace(/\s+/g, "-")}`
 
-/** The worktree of the open thread, read back from main. */
 const openWorktree = async (page: import("@playwright/test").Page) => {
   const title = await page.getByRole("heading", { level: 1 }).textContent()
   const thread = (await rpc(page, "threads.list", undefined)).find((candidate) => candidate.title === title)
@@ -22,7 +21,6 @@ const openWorktree = async (page: import("@playwright/test").Page) => {
 const gitWorktrees = (repo: string) =>
   execFileSync("git", ["-C", repo, "worktree", "list", "--porcelain"], { encoding: "utf8" })
 
-// Create the real worktree and setup through rpc, then seed its owning thread without a paid first turn.
 When(
   "I create a thread titled {string} in {string} in a new worktree",
   async ({ app, seed, names, projectIds, threadIds }, title: string, project: string) => {
@@ -125,7 +123,6 @@ Then("the worktree is removed from disk but its branch is kept", async ({ app, r
   const panel = await threadView(app.page, "Details")
   await expect(panel.getByText("The worktree was removed. New runs use the project root.")).toBeVisible()
   const { path, branch } = await openWorktree(app.page)
-  // Deletion of the checkout finishes in the background after the row is marked removed.
   await expect.poll(() => existsSync(path)).toBe(false)
   expect(gitWorktrees(repo)).not.toContain(`worktree ${path}`)
   expect(execFileSync("git", ["-C", repo, "branch", "--list", branch], { encoding: "utf8" })).toContain(branch)

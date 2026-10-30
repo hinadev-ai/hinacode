@@ -9,12 +9,6 @@ import { forkPullRequestBranch, Worktrees } from "./Worktrees.ts"
 
 const SWEEP_INTERVAL = "3 minutes"
 
-/**
- * Archives threads that are done with their pull requests, while `Settings.archive.whenMerged` is on.
- * A thread in a worktree is done once the pull request of its own branch has merged or closed. Pull requests
- * of other branches it linked, such as a conductor's children, hold it only while it watches them.
- * A thread without a worktree is done once every linked pull request has merged or closed.
- */
 export class AutoArchive extends Context.Service<AutoArchive, { readonly sweep: Effect.Effect<void> }>()(
   "hinacode/AutoArchive",
 ) {}

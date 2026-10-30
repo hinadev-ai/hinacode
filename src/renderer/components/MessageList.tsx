@@ -1,7 +1,7 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react"
 import { Link } from "@tanstack/react-router"
 import { cn } from "cn"
-import { createContext, type ReactElement, use, type Ref, useState } from "react"
+import { createContext, Fragment, type ReactElement, type ReactNode, use, type Ref, useState } from "react"
 import type { Message, MessagePart } from "../../shared/domain.ts"
 import { fenceCode, highlight, type KnownTokens } from "../../shared/composerSyntax.ts"
 import { THREAD_MENTION } from "../../shared/threadMention.ts"
@@ -26,9 +26,8 @@ const keyExtractor = (message: Message) => message.id
 const ESTIMATED_MESSAGE_SIZE = 500
 const getItemType = (message: Message) => message.role
 const renderItem = ({ item }: { item: Message }) => <MessageItem message={item} />
-// Spacers instead of container padding: the list measures header and footer, but not padding.
+// FIXME: LegendList measures its header and footer, but not its padding
 const edgeSpacer = <div className="h-4" />
-// The thread's composer floats over the list's end, see `useDockHeight`.
 const endSpacer = <div className="h-[calc(var(--dock-height,0px)+1rem)]" />
 
 const TranscriptContext = createContext<{ readonly providerLabel: string; readonly showElapsedTime: boolean }>({
@@ -36,13 +35,8 @@ const TranscriptContext = createContext<{ readonly providerLabel: string; readon
   showElapsedTime: true,
 })
 
-/** Posted questions stay answerable only while nothing has been said after them. */
 const LastMessageContext = createContext<string | undefined>(undefined)
 
-/**
- * Bottom-anchored virtual list. `maintainScrollAtEnd` follows streaming output only while the
- * viewport is already near the end, so scrolling up to read stops the auto-scroll.
- */
 export function MessageList({
   messages,
   providerLabel,
@@ -54,9 +48,7 @@ export function MessageList({
   messages: ReadonlyArray<Message>
   providerLabel: string
   listRef?: Ref<LegendListRef>
-  /** Scrolls with the messages and stays right above them. */
   header?: ReactElement
-  /** Chat sits at the bottom, by the composer. A log reads from the top. */
   alignItemsAtEnd?: boolean
   showElapsedTime?: boolean
 }) {
@@ -77,7 +69,7 @@ export function MessageList({
           maintainVisibleContentPosition
           ListHeaderComponent={header ?? edgeSpacer}
           ListFooterComponent={endSpacer}
-          className="min-h-0 flex-1"
+          className="min-h-0 flex-1 scroll-fade"
         />
       </LastMessageContext>
     </TranscriptContext>
@@ -93,7 +85,6 @@ function MessageItem({ message }: { message: Message }) {
   )
 }
 
-/** Plain text with each `@thread:<id>` of a known thread shown as a link titled `@<title>`. */
 function WithThreadMentions({ text }: { text: string }) {
   const threadsById = useThreads((state) => state.byId)
   const nodes: Array<ReactElement> = []
@@ -118,13 +109,10 @@ function WithThreadMentions({ text }: { text: string }) {
   return nodes
 }
 
-/** A sent message only shows code apart; links and thread mentions are found by `linkify` and `WithThreadMentions`. */
 const NO_KNOWN_TOKENS: KnownTokens = { commands: new Set(), files: new Set(), threads: new Set() }
 
-/** Sits on the bubble's fill, which is the same color as `bg-muted`. */
 const insetCode = "bg-background font-mono text-[0.91em]"
 
-/** What the developer sent: fenced blocks as code cards without their fence lines, and inline code as pills. */
 function SentText({ text }: { text: string }) {
   const repository = useThreadRepository()
   const segments = highlight(text, NO_KNOWN_TOKENS)
@@ -143,7 +131,6 @@ function SentText({ text }: { text: string }) {
           <Highlighted text={segment.text.slice(1, -1)} />
         </code>
       )
-    // The line breaks around a code card would add blank lines beside it.
     let prose = segment.text
     if (segments[index - 1]?.kind === "fence") prose = prose.replace(/^\n/, "")
     if (segments[index + 1]?.kind === "fence") prose = prose.replace(/\n$/, "")
@@ -203,7 +190,6 @@ function AssistantBody({ message, showElapsedTime }: { message: Message; showEla
     !collapsed.some(({ index }) => index === reveal.match.partIndex)
   const [activityShown, setActivityShown] = useFindDisclosure(revealsHidden ? reveal : null)
   const streaming = message.completedAt === null
-  // A steer sent before the agent said anything closes an empty assistant message.
   if (!streaming && parts.length === 0) return null
   const last = parts.at(-1)
   const writingIndex = streaming && last?.part.type === "text" ? last.index : undefined
@@ -272,21 +258,27 @@ function QuestionsPart({ message, part }: { message: Message; part: Extract<Mess
   )
 }
 
-/**
- * Reply text appears whole once the agent has finished it, instead of word by word. Only text that
- * finishes while on screen fades in, so opening a thread or scrolling the list back does not replay it.
- */
 function ReplyText({ text, done }: { text: string; done: boolean }) {
   const [finishedOnScreen] = useState(!done)
   if (!done) return null
   return <Markdown text={text} className={finishedOnScreen ? "animate-fade-in" : undefined} />
 }
 
-export function EmptyThread({ hint }: { hint: string }) {
+const PROJECT = "\uE000"
+const ENVIRONMENT = "\uE001"
+
+export function EmptyThread({ project, environment }: { project: ReactNode | null; environment: ReactNode }) {
+  const sentence =
+    project === null
+      ? m.thread_empty_chat_title({ environment: ENVIRONMENT })
+      : m.thread_empty_title({ project: PROJECT, environment: ENVIRONMENT })
   return (
-    <div className="m-auto flex max-w-sm flex-col items-center gap-1 px-4 text-center">
-      <h2 className="text-sm font-semibold">{m.thread_empty_title()}</h2>
-      <p className="text-sm text-muted-foreground">{hint}</p>
+    <div className="m-auto flex max-w-xl flex-col items-center px-4 text-center">
+      <h2 className="text-2xl font-semibold text-balance">
+        {sentence.split(/([\uE000\uE001])/).map((part, index) => (
+          <Fragment key={index}>{part === PROJECT ? project : part === ENVIRONMENT ? environment : part}</Fragment>
+        ))}
+      </h2>
     </div>
   )
 }

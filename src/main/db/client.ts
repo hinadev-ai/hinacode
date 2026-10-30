@@ -11,10 +11,6 @@ const setup = Layer.effectDiscard(
   }),
 )
 
-/**
- * SQLite at `filename`, WAL on (the client's default), foreign keys on, migrations applied.
- * Columns are snake_case in SQL and camelCase in TypeScript.
- */
 export const layer = (filename: string) =>
   setup.pipe(
     Layer.provideMerge(

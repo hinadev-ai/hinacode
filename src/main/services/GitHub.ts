@@ -19,6 +19,7 @@ import type {
   OpenPullRequest,
   PullRequestMatch,
 } from "../../shared/domain.ts"
+import { PullRequestComment } from "../../shared/domain.ts"
 import { type GitHubRepository, parseGitHubPullRequestUrl, parseGitHubRepository } from "../../shared/github.ts"
 import { Events } from "./Events.ts"
 import { CommandError, makeExec, REMOTE_GIT_ARGS, REMOTE_GIT_ENV, type RunOptions } from "./Git.ts"
@@ -43,14 +44,12 @@ export class GitHubRateLimitedError extends Schema.TaggedError<GitHubRateLimited
   }
 }
 
-/** GitHub answered `gh api` with an error of its own, such as a pull request that does not exist. */
 export class GitHubApiError extends Schema.TaggedError<GitHubApiError>()("GitHubApiError", { detail: Schema.String }) {
   override get message(): string {
     return this.detail
   }
 }
 
-/** What any `gh` command can fail with. */
 type GhError = GitHubCliMissingError | GitHubSignedOutError | GitHubRateLimitedError | CommandError
 
 export type GitHubError = GhError | GitHubApiError
@@ -64,7 +63,7 @@ export class PullRequestUrlInvalidError extends Schema.TaggedError<PullRequestUr
   }
 }
 
-/** GitHub's lines limit counts context lines too, so a diff can pass `diffTooLarge` and still get this. */
+// FIXME: GitHub's diff line limit counts context lines, so a diff can pass `diffTooLarge` and still hit it
 export class PullRequestDiffTooLargeError extends Schema.TaggedError<PullRequestDiffTooLargeError>()(
   "PullRequestDiffTooLargeError",
   {},
@@ -74,7 +73,6 @@ export class PullRequestDiffTooLargeError extends Schema.TaggedError<PullRequest
   }
 }
 
-/** The canonical pull request URL, safe to pass to `gh` as an argument: it can never be read as a flag. */
 export const requirePullRequestUrl = (raw: string): Effect.Effect<string, PullRequestUrlInvalidError> => {
   const url = parseGitHubPullRequestUrl(raw.trim())
   return url === undefined ? Effect.fail(new PullRequestUrlInvalidError({ url: raw })) : Effect.succeed(url)
@@ -91,7 +89,6 @@ const AuthStatusJson = Schema.fromJsonString(
   }),
 )
 
-/** Parses `gh auth status --json hosts`, preferring the active account of a host. */
 export const parseAuthStatus = (json: typeof AuthStatusJson.Type): GitHubAuth => {
   const accounts = Object.values(json.hosts)
     .flat()
@@ -100,7 +97,6 @@ export const parseAuthStatus = (json: typeof AuthStatusJson.Type): GitHubAuth =>
   return account ? { type: "signedIn", host: account.host, login: account.login } : { type: "signedOut" }
 }
 
-/** A `statusCheckRollup` entry: a check run carries `status` and `conclusion`, a commit status carries `state`. */
 const RollupEntry = Schema.Struct({
   status: Schema.optionalKey(Schema.String),
   conclusion: Schema.optionalKey(Schema.String),
@@ -138,10 +134,11 @@ const PullRequestDetailFields = Schema.Struct({
   body: Schema.String,
   headRefOid: Schema.String,
   changedFiles: Schema.Number,
+  comments: Schema.Array(PullRequestComment),
 })
 type PullRequestDetailFields = typeof PullRequestDetailFields.Type
 
-/** The fields `gh pr view --json` reads, asked through `gh api graphql` so the answer carries GitHub's rate limit headers. */
+// FIXME: `gh pr view` hides GitHub's rate limit headers, so this asks `gh api graphql` instead
 const PULL_REQUEST_QUERY = `query PullRequest($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
@@ -152,8 +149,15 @@ const PULL_REQUEST_QUERY = `query PullRequest($owner: String!, $name: String!, $
         ... on CheckRun { __typename name status conclusion detailsUrl checkSuite { workflowRun { workflow { name } } } }
         ... on StatusContext { __typename context state targetUrl }
       } } } } } }
+      comments(last: 50) { nodes { ...Comment url } }
+      reviews(last: 50) { nodes { ...Comment url } }
+      reviewThreads(last: 50) { nodes { isResolved comments(first: 20) { nodes { ...Comment url path line } } } }
     }
   }
+}
+
+fragment Comment on Comment {
+  id body createdAt viewerDidAuthor author { __typename login }
 }`
 
 const GraphQLCheck = Schema.Union([
@@ -177,11 +181,38 @@ const GraphQLCheck = Schema.Union([
   }),
 ])
 
+const GraphQLAuthor = Schema.NullOr(Schema.Struct({ login: Schema.String }))
+
+const GraphQLComment = Schema.Struct({
+  id: Schema.String,
+  body: Schema.String,
+  createdAt: Schema.String,
+  url: Schema.String,
+  viewerDidAuthor: Schema.Boolean,
+  author: Schema.NullOr(Schema.Struct({ __typename: Schema.String, login: Schema.String })),
+})
+
+const GraphQLReviewComment = Schema.Struct({
+  ...GraphQLComment.fields,
+  path: Schema.String,
+  line: Schema.NullOr(Schema.Number),
+})
+
 const GraphQLPullRequest = Schema.Struct({
-  ...PullRequestDetailFields.mapFields(Struct.omit(["reviewDecision", "author", "statusCheckRollup"])).fields,
+  ...PullRequestDetailFields.mapFields(Struct.omit(["reviewDecision", "author", "statusCheckRollup", "comments"]))
+    .fields,
   reviewDecision: Schema.NullOr(Schema.String),
-  // Null for a deleted account, which GitHub shows as ghost.
-  author: Schema.NullOr(Schema.Struct({ login: Schema.String })),
+  author: GraphQLAuthor,
+  comments: Schema.Struct({ nodes: Schema.Array(GraphQLComment) }),
+  reviews: Schema.Struct({ nodes: Schema.Array(GraphQLComment) }),
+  reviewThreads: Schema.Struct({
+    nodes: Schema.Array(
+      Schema.Struct({
+        isResolved: Schema.Boolean,
+        comments: Schema.Struct({ nodes: Schema.Array(GraphQLReviewComment) }),
+      }),
+    ),
+  }),
   commits: Schema.Struct({
     nodes: Schema.Array(
       Schema.Struct({
@@ -215,22 +246,52 @@ const toRollupEntry = (check: typeof GraphQLCheck.Type): RollupEntry => {
   }
 }
 
-/** The GraphQL answer in the shape `gh pr view --json` gives, so both feed the same mapping. */
+const toComment = (
+  { id, body, createdAt, url, author, viewerDidAuthor }: typeof GraphQLComment.Type,
+  location: PullRequestComment["location"] = null,
+): PullRequestComment => ({
+  id,
+  author: author?.login ?? "ghost",
+  authorKind: viewerDidAuthor ? "you" : author?.__typename === "Bot" ? "bot" : "human",
+  body,
+  createdAt,
+  url,
+  location,
+})
+
+const toComments = ({
+  comments,
+  reviews,
+  reviewThreads,
+}: Pick<typeof GraphQLPullRequest.Type, "comments" | "reviews" | "reviewThreads">) =>
+  [
+    ...comments.nodes.map((comment) => toComment(comment)),
+    ...reviews.nodes.filter((review) => review.body.trim() !== "").map((review) => toComment(review)),
+    ...reviewThreads.nodes
+      .filter((thread) => !thread.isResolved)
+      .flatMap((thread) =>
+        thread.comments.nodes.map((comment) => toComment(comment, { path: comment.path, line: comment.line })),
+      ),
+  ].toSorted((a, b) => a.createdAt.localeCompare(b.createdAt))
+
 const fromGraphQL = ({
   commits,
   reviewDecision,
   author,
+  comments,
+  reviews,
+  reviewThreads,
   ...fields
 }: typeof GraphQLPullRequest.Type): PullRequestDetailFields => ({
   ...fields,
   reviewDecision: reviewDecision ?? "",
   author: author ?? { login: "ghost" },
   statusCheckRollup: (commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes ?? []).map(toRollupEntry),
+  comments: toComments({ comments, reviews, reviewThreads }),
 })
 
 const FAILED = new Set(["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"])
 
-/** Neutral, skipped and stale checks say nothing about the change, so they count as no check. */
 const checkOutcome = (entry: RollupEntry): ChecksStatus | null => {
   if (entry.status !== undefined && entry.status !== "COMPLETED") return "pending"
   const result = entry.conclusion || entry.state || ""
@@ -300,6 +361,7 @@ export const toPullRequestDetail = (json: PullRequestDetailFields): PullRequestD
   headRef: json.headRefName,
   head: json.headRefOid,
   changedFiles: json.changedFiles,
+  comments: json.comments,
   checkRuns: json.statusCheckRollup
     .map(toCheckRun)
     .toSorted((a, b) => CHECK_RUN_ORDER[a.status] - CHECK_RUN_ORDER[b.status]),
@@ -334,7 +396,6 @@ const RateLimitBucket = Schema.Struct({
   used: Schema.Number,
   reset: Schema.Number,
 })
-/** `gh api rate_limit`, which GitHub does not count against the primary limit. */
 const decodeRateLimit = Schema.decodeUnknownEffect(
   Schema.fromJsonString(
     Schema.Struct({ resources: Schema.Struct({ core: RateLimitBucket, graphql: RateLimitBucket }) }),
@@ -351,12 +412,10 @@ const fromBucket = (resource: string, { limit, remaining, used, reset }: typeof 
 
 interface ApiResponse {
   readonly status: number
-  /** Lowercased names. */
   readonly headers: ReadonlyMap<string, string>
   readonly body: string
 }
 
-/** What `gh api --include` prints: the status line and headers, a blank line, then the body. */
 export const parseApiResponse = (stdout: string): ApiResponse => {
   const blank = /\r?\n\r?\n/.exec(stdout)
   const head = blank ? stdout.slice(0, blank.index) : stdout
@@ -374,7 +433,6 @@ export const parseApiResponse = (stdout: string): ApiResponse => {
   }
 }
 
-/** The `x-ratelimit-*` headers of a response, or null when it has none. */
 export const rateLimitOf = (headers: ReadonlyMap<string, string>): GitHubRateLimit | null => {
   const header = (name: string) => Number(headers.get(`x-ratelimit-${name}`) ?? Number.NaN)
   const [limit, remaining, used, reset] = [header("limit"), header("remaining"), header("used"), header("reset")]
@@ -382,7 +440,6 @@ export const rateLimitOf = (headers: ReadonlyMap<string, string>): GitHubRateLim
   return { resource: headers.get("x-ratelimit-resource") ?? "", limit, remaining, used, resetsAt: reset * 1000 }
 }
 
-// A fifth is the reserve: below it, polling slows down so the agents' own gh calls still have room.
 const LOW_BUDGET_SHARE = 0.2
 
 type BudgetLevel = "ok" | "low" | "exhausted"
@@ -390,7 +447,6 @@ type BudgetLevel = "ok" | "low" | "exhausted"
 const budgetLevel = ({ limit, remaining }: GitHubRateLimit): BudgetLevel =>
   remaining === 0 ? "exhausted" : remaining < limit * LOW_BUDGET_SHARE ? "low" : "ok"
 
-/** A GraphQL `errors` entry or a REST error body. */
 const ApiErrorBody = Schema.Struct({
   message: Schema.optionalKey(Schema.String),
   errors: Schema.optionalKey(
@@ -409,7 +465,6 @@ const PullRequestHead = Schema.Struct({
   baseRefName: Schema.String,
   isCrossRepository: Schema.Boolean,
 })
-/** What checking out a pull request needs: where its head branch lives and what it merges into. */
 export type PullRequestHead = typeof PullRequestHead.Type
 const decodePullRequestHead = Schema.decodeUnknownEffect(Schema.fromJsonString(PullRequestHead))
 
@@ -441,14 +496,11 @@ const decodePullRequestMatches = Schema.decodeUnknownEffect(
   ),
 )
 
-/** GitHub as the user's `gh` login sees it. Every call runs `gh` without prompts. */
 export class GitHub extends Context.Service<
   GitHub,
   {
     readonly auth: Effect.Effect<GitHubAuth, CommandError | GitHubRateLimitedError | Schema.SchemaError>
-    /** The signed-in account's token for github.com. Stays in main: never log it or send it to the renderer. */
     readonly token: Effect.Effect<string, GitHubError>
-    /** Runs `gh ...args` in `cwd` and returns stdout. */
     readonly run: (cwd: string, args: ReadonlyArray<string>) => Effect.Effect<string, GitHubError>
     readonly pullRequest: (
       url: string,
@@ -459,49 +511,36 @@ export class GitHub extends Context.Service<
     readonly pullRequestDiff: (
       url: string,
     ) => Effect.Effect<string, GitHubError | PullRequestUrlInvalidError | PullRequestDiffTooLargeError>
-    /** Never deletes the branch: it is usually checked out in a local worktree. */
     readonly merge: (url: string, method: MergeMethod) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
     readonly close: (url: string) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
-    /** The newest pull request whose head is `branch` in the repository at `cwd`, or null when there is none. */
+    readonly comment: (url: string, body: string) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
     readonly branchPullRequest: (
       cwd: string,
       branch: string,
     ) => Effect.Effect<PullRequest | null, GitHubError | Schema.SchemaError>
-    /** The pull request `selector` (a number or URL, see `parsePullRequestSelector`) names in the repository at `cwd`. */
     readonly pullRequestHead: (
       cwd: string,
       selector: string,
     ) => Effect.Effect<PullRequestHead, GitHubError | Schema.SchemaError>
-    /** Open pull requests of the repository at `cwd`, newest first. */
     readonly openPullRequests: (
       cwd: string,
     ) => Effect.Effect<ReadonlyArray<OpenPullRequest>, GitHubError | Schema.SchemaError>
-    /** Pull requests of `repository` in any state that match `query`, best match first; the newest for "". */
     readonly searchPullRequests: (
       repository: GitHubRepository,
       query: string,
     ) => Effect.Effect<ReadonlyArray<PullRequestMatch>, GitHubError | Schema.SchemaError>
-    /** Opens a pull request from the pushed `head` branch, titled and described from its commits. Returns its URL. */
     readonly createPullRequest: (
       cwd: string,
       branches: { readonly head: string; readonly base: string },
     ) => Effect.Effect<string, GitHubError>
-    /**
-     * Clones `repository` into `dest`, whose parent must exist. Uses `gh`, so private repositories and the
-     * user's preferred protocol work; without a signed-in `gh` it falls back to `git` over https.
-     */
     readonly clone: (repository: GitHubRepository, dest: string) => Effect.Effect<void, CommandError>
-    /** The GitHub repository `origin` points at in the checkout at `cwd`, or null when it has none. Never fails. */
     readonly repository: (cwd: string) => Effect.Effect<GitHubRepository | null>
   }
 >()("hinacode/GitHub") {}
 
-// gh exits with 4 when a command needs authentication.
 const SIGNED_OUT_EXIT_CODE = 4
 
-// gh passes GitHub's own wording through: "API rate limit exceeded", "secondary rate limit".
 const RATE_LIMITED = /rate limit/i
-// GitHub asks for at least a minute after a secondary limit, then exponentially longer while it keeps refusing.
 const SECONDARY_PAUSE_MS = 60_000
 const MAX_SECONDARY_PAUSE_MS = 15 * 60_000
 
@@ -522,10 +561,8 @@ const make = Effect.gen(function* () {
       }),
     )
 
-  // Every gh call shares one GitHub budget, so a rate limit pauses all of them, not only the command that hit it.
   let pausedUntil = 0
   let secondaryHits = 0
-  // The GraphQL budget as the latest response reported it; pull request reads slow down while it is low.
   let graphqlBudget: BudgetLevel = "ok"
   let warned: { readonly level: Exclude<BudgetLevel, "ok">; readonly until: number } | null = null
   const pausing = Semaphore.makeUnsafe(1)
@@ -543,14 +580,13 @@ const make = Effect.gen(function* () {
     return pausedUntil
   }
 
-  /** Records a resource's budget: pauses once it is used up, and warns the windows once per level per window. */
   const observe = (rateLimit: GitHubRateLimit) =>
     Effect.gen(function* () {
       const level = budgetLevel(rateLimit)
       if (rateLimit.resource === "graphql") graphqlBudget = level
       if (level === "exhausted") pausedUntil = Math.max(pausedUntil, rateLimit.resetsAt)
       if (level === "ok") return
-      // GitHub's regions disagree a little on `remaining`, so a budget hovering at the line would warn on every read.
+      // FIXME: GitHub's regions disagree a little on `remaining`, so a budget at the line would warn on every read
       const now = yield* Clock.currentTimeMillis
       const repeat = warned !== null && now < warned.until && (warned.level === level || level === "low")
       if (repeat) return
@@ -592,14 +628,10 @@ const make = Effect.gen(function* () {
       return stdout
     })
 
-  /**
-   * Runs `gh api ...args` and returns the response body. Unlike other gh commands it shows GitHub's
-   * `x-ratelimit-*` and `retry-after` headers, so it slows down and pauses before GitHub has to refuse.
-   */
   const ghApi = (args: ReadonlyArray<string>): Effect.Effect<string, GitHubError> =>
     Effect.gen(function* () {
       yield* failIfPaused
-      // gh exits 1 for any error response; the status line and body say which.
+      // FIXME: gh exits 1 for any error response; the status line and body say which
       const response = parseApiResponse(
         yield* ghUnpaused(homedir(), ["api", ...args, "--include"], { okExitCodes: [1] }),
       )
@@ -657,8 +689,7 @@ const make = Effect.gen(function* () {
     )
 
   const clone = ({ owner, name }: GitHubRepository, dest: string) => {
-    // A full https URL keeps gh from switching to its configured git_protocol, which may be ssh on a
-    // machine that has no ssh key for GitHub.
+    // FIXME: a full https URL keeps gh from switching to a configured ssh git_protocol
     const url = `https://github.com/${owner}/${name}.git`
     const gitClone = () => exec("git", [...REMOTE_GIT_ARGS, "clone", url, dest], dirname(dest), { env: REMOTE_GIT_ENV })
     return gh(dirname(dest), ["repo", "clone", url, dest]).pipe(
@@ -671,11 +702,10 @@ const make = Effect.gen(function* () {
     )
   }
 
-  // Run from the home directory so gh acts on the URL alone, never on a local checkout of the repository.
+  // FIXME: gh acts on a local checkout of the repository when run inside one
   const ghByUrl = (raw: string, args: (url: string) => ReadonlyArray<string>) =>
     Effect.flatMap(requirePullRequestUrl(raw), (url) => gh(homedir(), args(url)))
 
-  // The last answer per pull request, served while GitHub is rate limited instead of an error.
   const lastRead = new Map<string, PullRequestDetailFields>()
 
   const fetchPullRequest = (url: string) => {
@@ -696,7 +726,6 @@ const make = Effect.gen(function* () {
     )
   }
 
-  // Shared by every window, device and background sweep asking about the same pull request.
   const reads = yield* Cache.makeWith(
     (url: string) =>
       fetchPullRequest(url).pipe(
@@ -746,6 +775,7 @@ const make = Effect.gen(function* () {
       ),
     merge: (raw, method) => ghWrite(raw, (url) => ["pr", "merge", url, `--${method}`]),
     close: (raw) => ghWrite(raw, (url) => ["pr", "close", url]),
+    comment: (raw, body) => ghWrite(raw, (url) => ["pr", "comment", url, "--body", body]),
     branchPullRequest,
     pullRequestHead: (cwd, selector) =>
       gh(cwd, ["pr", "view", selector, "--json", "url,number,headRefName,baseRefName,isCrossRepository"]).pipe(

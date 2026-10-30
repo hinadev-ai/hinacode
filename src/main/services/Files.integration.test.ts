@@ -37,10 +37,6 @@ let repo = ""
 let worktree = ""
 let outside = ""
 
-/**
- * A repo with every kind of entry the tree shows: tracked, modified, untracked (alone and as a whole
- * folder), ignored files and folders, symlinks in and out of the root, and a worktree with a commit.
- */
 beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), "kk-files-test-"))
   repo = join(dir, "repo")
@@ -87,7 +83,6 @@ const run = <A, E>(
     return yield* Files.use(() => effect)
   }).pipe(
     Effect.provide(
-      // Each run supplies its own event sink, so it must not reuse an earlier Files service.
       Layer.fresh(FilesLayer.layer).pipe(
         Layer.provide(Layer.mergeAll(Git.layer, Layer.succeed(Events, events))),
         Layer.provideMerge(Db.layer(":memory:")),
@@ -260,7 +255,6 @@ describe("fs.read", () => {
 const save = (root: string, path: string, content: string, expected: string | null) =>
   run(Files.use((files) => files.write(root, path, content, expected)))
 
-/** A fresh file per test, so no test sees what another one saved. */
 const editable = (name: string, text = "before\n") => {
   const path = `untracked/edits/${name}`
   write(join(repo, path), text)
@@ -334,7 +328,7 @@ describe("fs.watch", () => {
       const changed = yield* run(
         Effect.gen(function* () {
           yield* Files.use((files) => files.watch(repo, ["", "src"]))
-          // macOS can start the FSEvents stream after watch() returns and miss writes made before it.
+          // FIXME: macOS can start the FSEvents stream after watch() returns and miss earlier writes
           for (let attempt = 0; ; attempt++) {
             write(join(repo, `src/warmup-${attempt}.ts`), "")
             if (Option.isSome(yield* Effect.timeoutOption(Queue.take(pushes), "250 millis"))) break

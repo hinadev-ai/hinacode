@@ -1,7 +1,6 @@
 import type { AgentAccount, ModelInfo } from "../../../shared/agent.ts"
 import type { AccountState, CatalogModel } from "./protocol.ts"
 
-/** The live catalog labels a model with its id, `muse-wonder-full-1.0`; spell it as Meta does, "Muse Wonder Full 1.0". */
 const modelLabel = ({ modelId, displayLabel }: CatalogModel) =>
   displayLabel !== modelId
     ? displayLabel
@@ -17,11 +16,10 @@ export const toModelInfo = (model: CatalogModel): ModelInfo => ({
   efforts: model.variants ?? [],
   defaultEffort: model.defaultReasoningEffort ?? null,
   fastMode: false,
-  // Auto-review has an AI reviewer decide the actions that would otherwise ask.
   autoMode: true,
 })
 
-/** Muse does not say which plan a Meta login is on, so `plan` stays empty. */
+// FIXME: Muse does not report which plan a Meta login is on
 export const toAccount = ({ state, label, credentialRequired }: AccountState): AgentAccount => {
   switch (state) {
     case "accountLogin":

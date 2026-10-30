@@ -20,6 +20,7 @@
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",
     "typescript/no-explicit-any": "error",
+    "hinacode/no-comments": "error",
     "no-underscore-dangle": "off",
     "import/no-unassigned-import": [
       "warn",

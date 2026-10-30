@@ -10,11 +10,6 @@ import type { AgentEvent, BackgroundTask, BackgroundTaskKind, Subagent, TokenUsa
 
 const FILE_EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"])
 
-/**
- * Per-session state the mapper needs across messages: edit tool calls whose result has not arrived
- * yet, so `file_changed` is only emitted once the edit actually succeeded, and the sub-agents seen
- * so far, since task progress messages only carry what changed.
- */
 export interface MapState {
   readonly pendingEdits: Map<string, string>
   readonly subagents: Map<string, Subagent>
@@ -69,7 +64,6 @@ export function mapMessage(message: SDKMessage, state: MapState, now: string): R
       }
 
     case "stream_event": {
-      // Subagent text is not streamed into the transcript; only its tool calls are, tagged with parentCallId.
       if (message.parent_tool_use_id !== null) return []
       const event = message.event
       if (event.type !== "content_block_delta") return []
@@ -164,7 +158,6 @@ export function mapMessage(message: SDKMessage, state: MapState, now: string): R
   }
 }
 
-/** Only spawned agents count; background shells, monitors and housekeeping tasks are not sub-agents. */
 const isSubagent = (message: SDKTaskStartedMessage) =>
   message.task_type === "local_agent" && message.ambient !== true && message.skip_transcript !== true
 
@@ -187,7 +180,7 @@ function subagentStarted(message: SDKTaskStartedMessage, state: MapState, now: s
 function subagentProgress(message: SDKTaskProgressMessage, state: MapState): Array<AgentEvent> {
   const current = state.subagents.get(message.task_id)
   if (current === undefined) return []
-  // Without agentProgressSummaries' `summary`, the CLI still rewrites `description` into what the agent is doing now.
+  // FIXME: without agentProgressSummaries, the CLI rewrites description into what the agent is doing now
   const activity = message.description !== current.label ? message.description : null
   return updateSubagent(state, {
     ...current,
@@ -204,7 +197,7 @@ function subagentEnded(message: SDKTaskNotificationMessage, state: MapState, now
   return updateSubagent(state, {
     ...current,
     status: message.status,
-    // A stopped task reports its own description as the summary, which says nothing new.
+    // FIXME: a stopped task reports its own description as its summary
     summary: message.summary === "" || message.summary === current.label ? current.summary : message.summary,
     toolUses: message.usage?.tool_uses ?? current.toolUses,
     tokens: message.usage?.total_tokens ?? current.tokens,
@@ -219,11 +212,6 @@ function updateSubagent(state: MapState, subagent: Subagent): Array<AgentEvent> 
 
 const backgroundKinds: Partial<Record<string, BackgroundTaskKind>> = { local_bash: "shell", local_workflow: "workflow" }
 
-/**
- * The CLI's live background tasks as HinaCode shows them. Sub-agents (`local_agent`) are left out because they
- * are `Subagent`s, and ambient tasks because the CLI says they are not activity. A task keeps the `startedAt` it
- * had in `previous`.
- */
 export function backgroundTasksOf(
   message: SDKBackgroundTasksChangedMessage,
   previous: ReadonlyArray<BackgroundTask>,
@@ -247,7 +235,6 @@ export interface WakeupCall {
   readonly reason: string
 }
 
-/** A main-thread `ScheduleWakeup` call in `message`. Its result says when the wakeup fires. */
 export function wakeupCallOf(message: SDKMessage): WakeupCall | null {
   if (message.type !== "assistant" || message.parent_tool_use_id !== null) return null
   for (const block of message.message.content) {
@@ -258,10 +245,6 @@ export function wakeupCallOf(message: SDKMessage): WakeupCall | null {
   return null
 }
 
-/**
- * The wakeup `call` left pending, read from its result: the turn the agent starts by itself at `scheduledFor`,
- * or null when the call ended the loop. Undefined when `message` is not that result.
- */
 export function wakeupOf(message: SDKMessage, call: WakeupCall, now: string): BackgroundTask | null | undefined {
   if (message.type !== "user" || !Array.isArray(message.message.content)) return undefined
   const answers = message.message.content.some((block) => block.type === "tool_result" && block.tool_use_id === call.id)

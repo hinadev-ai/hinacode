@@ -33,9 +33,9 @@ export function AppearanceSettings() {
   }
 
   return (
-    <SettingsSection title={m.settings_appearance()}>
+    <SettingsSection>
       <SettingsGroup>
-        {/* A legend sits on the fieldset's top edge and ignores its padding, so the row is a wrapper. */}
+        {/* FIXME: a legend sits on the fieldset's top edge and ignores its padding, so the row is a wrapper */}
         <div>
           <ThemePicker current={appearance.theme} onPick={(theme) => void save({ theme })} />
         </div>
@@ -143,10 +143,6 @@ const contrastLabel = (contrast: number) =>
       ? m.settings_contrast_higher({ percent: contrast })
       : m.settings_contrast_lower({ percent: -contrast })
 
-/**
- * Previews on the root while the thumb moves and saves once it settles, so a drag never waits on the rpc.
- * A failed save keeps the draft, so the slider still matches what the app renders next to the error.
- */
 function ContrastField({ saved, onCommit }: { saved: number; onCommit: (contrast: number) => Promise<boolean> }) {
   const labelId = useId()
   const [draft, setDraft] = useState<number | null>(null)
@@ -185,7 +181,6 @@ interface FontFieldProps {
   readonly id: string
   readonly label: string
   readonly description?: string
-  /** The bundled font used when nothing is picked. */
   readonly bundled: string
   readonly kind: "all" | "monospace"
   readonly current: string | null

@@ -6,7 +6,6 @@ import { AgentError } from "./provider.ts"
 
 const execFileAsync = promisify(execFile)
 
-/** The CLI on PATH, which `hydratePath` fills from the login shell at startup. */
 export const findBinary = async (name: string): Promise<string | undefined> => {
   try {
     const { stdout } = await execFileAsync("which", [name], { encoding: "utf8", timeout: 5000 })
@@ -24,10 +23,6 @@ const install: Record<ProviderId, string> = {
 
 const found = new Map<string, string>()
 
-/**
- * The user's own agent CLI. hinacode ships none, because each one releases faster than hinacode does.
- * Only a hit is cached, so installing the CLI takes effect without restarting hinacode.
- */
 export const installedBinary = (provider: ProviderId, name: string) =>
   Effect.gen(function* () {
     const path = found.get(name) ?? (yield* Effect.promise(() => findBinary(name)))

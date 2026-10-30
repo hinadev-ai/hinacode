@@ -1,6 +1,3 @@
-// Worst-case data for the break-ui skill: long names, unbreakable URLs, non-Latin and RTL text, missing files,
-// empty and huge lists. Writes straight into a stopped instance's SQLite, the same boundary real data crosses.
-// Usage: node scripts/break-ui/seed.ts <user-data-dir>   (launch.sh next to this file runs the whole flow)
 import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { mkdirSync, writeFileSync } from "node:fs"
@@ -95,7 +92,6 @@ project("x")
 const jp = project("ヒナコード社内ツール-デスクトップ版")
 const demo = project("demo")
 
-// Thread 1: everything long, in a worktree with a long branch.
 const branch = "feat/investigate-onboarding-webhook-retries-stripe-409-conflict-duplicate-customers-eu-region"
 const t1 = thread(
   long,
@@ -230,7 +226,6 @@ db.prepare("UPDATE thread SET queue = ? WHERE id = ?").run(
   t1,
 )
 
-// Short, odd and non-Latin titles, one per status.
 const jo = thread(long, "Jo", { provider: "codex", model: "gpt-5.5-codex", status: "awaiting_approval" })
 message(jo, "user", [{ type: "text", text: "a" }])
 message(jo, "assistant", [
@@ -282,11 +277,114 @@ thread(
 )
 thread(long, "مرحبا بالعالم: إصلاح خطأ في واجهة المستخدم")
 
-// One thread in the Japanese project, none in `x`, hundreds in `demo`.
+const hina = project("hinacode")
+const relay = thread(hina, "Relay server e2e encryption", { pinned_at: at() })
+message(relay, "user", [{ type: "text", text: "Is our relay server end-to-end encrypted?" }])
+message(relay, "assistant", [
+  { type: "reasoning", text: "I should check the relay worker, the handshake, and the ADRs about Cloudflare." },
+  call("Grep", { pattern: "x25519|chacha|aes-gcm", path: "src" }, "No matches found"),
+  call(
+    "Read",
+    { file_path: "docs/adr/0020-cloudflare-tunnel-as-the-relay.md" },
+    "1\t# 20. Cloudflare Tunnel as the relay\n2\t\n3\tCloudflare terminates TLS and can read frames in transit.",
+  ),
+  {
+    type: "text",
+    text: [
+      "No. Today it is TLS to the Cloudflare edge, and Cloudflare decrypts TLS there, so it can read frames in transit.",
+      "",
+      "### Where things stand",
+      "",
+      "- **Through the relay:** the client connects to `wss://<hostname>/remote`, and Cloudflare Tunnel forwards to `cloudflared` on the machine. ADR `0020-cloudflare-tunnel-as-the-relay.md` says so outright.",
+      "- **The relay service itself** (Worker + D1) never touches frames. It only hands out hostnames and connector tokens.",
+      "- **The pairing token is never in a frame.** The server sends a nonce and the client proves it holds the token with HMAC-SHA256 (ADR 0022).",
+      "- **Direct connections** (LAN, Tailscale) use plain `ws://`. Tailscale adds WireGuard; an ordinary LAN does not.",
+      "",
+      "| Path | Encrypted to | Who can read frames |",
+      "| --- | --- | --- |",
+      "| Relay | Cloudflare edge | Cloudflare |",
+      "| Tailscale | Peer | Nobody else |",
+      "| LAN | Nothing | Anyone on the network |",
+    ].join("\n"),
+  },
+])
+message(relay, "user", [{ type: "text", text: "Implement e2e encryption for both paths." }])
+const explore = randomUUID()
+message(relay, "assistant", [
+  {
+    type: "tool_call",
+    callId: explore,
+    name: "Agent",
+    input: {
+      description: "Map the remote handshake",
+      prompt: "Find every place the remote protocol sends or reads a frame, and where the pairing token is checked.",
+    },
+    output: "Frames go through `src/main/remote/socket.ts`; the token check is `verifyProof` in `handshake.ts`.",
+    status: "done",
+  },
+  {
+    ...call("Grep", { pattern: "send\\(|onmessage", path: "src/main/remote" }, "socket.ts:42\nsocket.ts:88"),
+    parentCallId: explore,
+  },
+  {
+    ...call("Read", { file_path: "src/main/remote/handshake.ts" }, "1\texport function verifyProof("),
+    parentCallId: explore,
+  },
+  call("Read", { file_path: "src/shared/handshake.ts" }, "1\texport const PROTOCOL_VERSION = 1"),
+  call(
+    "Edit",
+    { file_path: "src/shared/handshake.ts", old_string: "PROTOCOL_VERSION = 1", new_string: "PROTOCOL_VERSION = 2" },
+    "The file src/shared/handshake.ts has been updated.",
+  ),
+  {
+    type: "file_change",
+    path: "src/shared/handshake.ts",
+    diff: [
+      "--- a/src/shared/handshake.ts",
+      "+++ b/src/shared/handshake.ts",
+      "@@ -1,3 +1,8 @@",
+      "-export const PROTOCOL_VERSION = 1",
+      '+import { x25519 } from "@noble/curves/ed25519"',
+      '+import { chacha20poly1305 } from "@noble/ciphers/chacha"',
+      "+",
+      "+export const PROTOCOL_VERSION = 2",
+      "+",
+      "+export const keyPair = () => x25519.keygen()",
+      "",
+    ].join("\n"),
+  },
+  call(
+    "Bash",
+    { command: "pnpm test src/shared/handshake.test.ts", description: "Run the handshake tests" },
+    "\x1b[32m✓\x1b[39m src/shared/handshake.test.ts (6 tests) 41ms\n\n Test Files  1 passed (1)\n      Tests  6 passed (6)",
+  ),
+  {
+    type: "text",
+    text: [
+      "Relay and direct connections are both end-to-end encrypted now.",
+      "",
+      "### What changed",
+      "",
+      "1. Each socket makes a one-time **X25519** key pair, and the public key goes into the existing HMAC proof.",
+      "2. Both directions derive a key with HKDF, salted with the pairing token.",
+      "3. Every frame after `ready` is binary **ChaCha20-Poly1305**, with the frame counter as the nonce.",
+      "",
+      "```ts",
+      "const shared = x25519.getSharedSecret(ours.secretKey, theirs)",
+      'const key = hkdf(sha256, shared, pairingToken, "hinacode/remote/v2", 32)',
+      "const sealed = chacha20poly1305(key, nonce(counter++)).encrypt(frame)",
+      "```",
+      "",
+      "> Pairing URLs, QR codes and relay sign-in are unchanged, so paired devices do not need to pair again.",
+      "",
+      "The protocol version is now 2. A v1 client gets a clear *update required* error instead of a silent failure.",
+    ].join("\n"),
+  },
+])
+
 thread(jp, "a")
 for (let i = 1; i <= 300; i++) thread(demo, `Thread ${i}: refactor module ${i}`)
 
-// Automations with long names, prompts, labels and errors.
 const automation = randomUUID()
 insert("automation", {
   id: automation,
@@ -331,7 +429,6 @@ insert("automation", {
   updated_at: at(),
 })
 
-// Accounts and remote environments.
 insert("agent_account", {
   id: randomUUID(),
   provider: "claude",

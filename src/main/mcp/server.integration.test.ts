@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events"
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
-import { readFile } from "node:fs/promises"
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
+import { readFile, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, layer } from "@effect/vitest"
@@ -17,6 +17,7 @@ import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
+import { layer as RemoteAccessLayer } from "../remote/access.ts"
 import { Peers } from "../remote/peers.ts"
 import { seedThread } from "../db/testing.ts"
 import * as Attachments from "../services/Attachments.ts"
@@ -30,22 +31,23 @@ import * as Messages from "../services/Messages.ts"
 import * as Projects from "../services/Projects.ts"
 import * as PullRequests from "../services/PullRequests.ts"
 import { layer as linearLayer } from "../services/Linear.ts"
-import { noKeyring, Secrets, layer as secretsLayer } from "../services/Secrets.ts"
+import { noKeyring, layer as secretsLayer } from "../services/Secrets.ts"
 import * as Settings from "../services/Settings.ts"
 import * as Terminals from "../services/Terminals.ts"
 import { decodeTar, encodeTar } from "../services/tinyVm/tar.ts"
 import { FAKE_PNG, FakeSbxServer, fakeSbxLayer } from "../services/tinyVm/testing.ts"
+import { unavailableDevicesLayer } from "../services/devices/unavailable.ts"
 import { HAND_BACK_GRACE, TinyVm, layer as tinyVmLayer } from "../services/tinyVm/TinyVm.ts"
 import { Threads, layer as threadsLayer } from "../services/Threads.ts"
 import * as Worktrees from "../services/Worktrees.ts"
 import { McpCredentials, layer as credentialsLayer } from "./credentials.ts"
 import { layer as serverLayer } from "./server.ts"
 import { SETTLE_MS } from "./tools/tinyVm.ts"
+import * as Scratch from "../services/Scratch.ts"
 
 const pushes: Array<PushEvent> = []
 const turnInputs: Array<RunTurnInput> = []
 
-/** Two threads that exist in the database the server checks credentials against. */
 class Seeded extends Context.Service<Seeded, { readonly a: string; readonly b: string }>()("test/Seeded") {}
 
 const seeded = Layer.effect(
@@ -57,7 +59,6 @@ const seeded = Layer.effect(
   }),
 )
 
-/** A provider whose turn stays open until it is interrupted, so tools can be called during it. */
 const fakeProvider = (id: ProviderId): AgentProvider => {
   const turns = new Map<string, Deferred.Deferred<void>>()
   return {
@@ -103,11 +104,12 @@ const stubs = Layer.mergeAll(
 
 const core = Layer.mergeAll(
   threadsLayer.pipe(
+    Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
     Layer.provide(Terminals.layer),
     Layer.provideMerge(Worktrees.layer),
     Layer.provideMerge(Projects.layer),
     Layer.provideMerge(AgentAccounts.layer),
-    Layer.provideMerge(Settings.layer),
+    Layer.provideMerge(Settings.layer(mkdtempSync(join(tmpdir(), "kk-mcp-settings-")))),
   ),
   Messages.layer,
   Attachments.layer(join(mkdtempSync(join(tmpdir(), "kk-mcp-")), "attachments")),
@@ -125,7 +127,9 @@ const domain = Layer.mergeAll(
   core,
   PullRequests.layer.pipe(Layer.provide(core)),
   tinyVm.pipe(Layer.provide(core)),
+  unavailableDevicesLayer.pipe(Layer.provide(core)),
   linearLayer.pipe(Layer.provide(core)),
+  RemoteAccessLayer.pipe(Layer.provide(core)),
 )
 const agents = runnerLayer.pipe(Layer.provideMerge(domain))
 const testLayer = Layer.mergeAll(serverLayer.pipe(Layer.provide(Layer.mergeAll(agents, stubs))), agents, seeded).pipe(
@@ -138,7 +142,6 @@ const testLayer = Layer.mergeAll(serverLayer.pipe(Layer.provide(Layer.mergeAll(a
 interface ToolResult {
   readonly text: string
   readonly isError: boolean
-  /** Base64 data of each image block. */
   readonly images: ReadonlyArray<string>
 }
 
@@ -153,7 +156,6 @@ const withClient = <A>({ url, headers }: McpConnection, use: (client: Client) =>
     }
   })
 
-/** Calls one tool the way an agent does and returns its text. */
 const callAs = (connection: McpConnection, name: string, args: Record<string, unknown> = {}) =>
   withClient(connection, async (client): Promise<ToolResult> => {
     const result = await client.callTool({ name, arguments: args })
@@ -168,7 +170,6 @@ const callAs = (connection: McpConnection, name: string, args: Record<string, un
 const toolNames = (connection: McpConnection) =>
   withClient(connection, async (client) => (await client.listTools()).tools.map((listed) => listed.name))
 
-/** Passes only when the server turns the connection away. */
 const rejects = (connection: McpConnection) => Effect.flip(callAs(connection, "list_thread_pull_requests"))
 
 const withAuthorization = (connection: McpConnection, authorization: string) => ({
@@ -176,7 +177,6 @@ const withAuthorization = (connection: McpConnection, authorization: string) => 
   headers: { authorization },
 })
 
-/** Polls on the live clock until `check` returns a value. */
 const until = <A>(check: Effect.Effect<Option.Option<A>>): Effect.Effect<A> =>
   Effect.flatMap(check, (found) =>
     Option.isSome(found)
@@ -184,9 +184,14 @@ const until = <A>(check: Effect.Effect<Option.Option<A>>): Effect.Effect<A> =>
       : Effect.andThen(TestClock.withLive(Effect.sleep("20 millis")), until(check)),
   )
 
-/** Moves the test clock on by `step` until `check` passes, since the fiber that sleeps may not have started yet. */
 const advanceUntil = <A>(step: Duration.Input, check: Effect.Effect<Option.Option<A>>) =>
   until(Effect.andThen(TestClock.adjust(step), check))
+
+const secretPath = (threadId: string, name: string) =>
+  Effect.gen(function* () {
+    const thread = yield* (yield* Threads).get(threadId)
+    return join(yield* (yield* Scratch.Scratch).ensure(thread), "secrets", name)
+  })
 
 const pendingSecretRequest = (threadId: string) =>
   Effect.gen(function* () {
@@ -286,10 +291,9 @@ layer(testLayer)("mcp server credentials", (it) => {
 layer(testLayer)("request_secret", (it) => {
   const VALUE = "sk-live-never-in-the-transcript"
 
-  it.effect("stores what the user enters and returns only the name", () =>
+  it.effect("writes what the user enters to a private file in the scratch directory and returns its path", () =>
     Effect.gen(function* () {
       const runner = yield* AgentRunner
-      const secrets = yield* Secrets
       const mcp = yield* McpCredentials
       const { a } = yield* Seeded
       pushes.length = 0
@@ -303,10 +307,12 @@ layer(testLayer)("request_secret", (it) => {
 
       yield* runner.respondSecret(request.id, VALUE)
       const result = yield* Fiber.join(call)
+      const path = yield* secretPath(a, "demo.token")
       expect(result.isError).toBe(false)
-      expect(result.text).toContain('Stored secret "demo.token"')
+      expect(result.text).toContain(path)
       expect(result.text).not.toContain(VALUE)
-      expect(yield* secrets.get("demo.token")).toStrictEqual(Option.some(VALUE))
+      expect(yield* Effect.promise(() => readFile(path, "utf8"))).toBe(VALUE)
+      expect((yield* Effect.promise(() => stat(path))).mode & 0o777).toBe(0o600)
 
       expect(yield* runner.transcript(a).pipe(Effect.map((t) => t.secretRequests))).toHaveLength(0)
       const transcript = yield* runner.transcript(a)
@@ -318,10 +324,9 @@ layer(testLayer)("request_secret", (it) => {
     }),
   )
 
-  it.effect("a declined request is an error result and stores nothing", () =>
+  it.effect("a declined request is an error result and writes nothing", () =>
     Effect.gen(function* () {
       const runner = yield* AgentRunner
-      const secrets = yield* Secrets
       const mcp = yield* McpCredentials
       const { a } = yield* Seeded
       yield* runner.send(a, "hi", [])
@@ -333,7 +338,7 @@ layer(testLayer)("request_secret", (it) => {
       const result = yield* Fiber.join(call)
       expect(result.isError).toBe(true)
       expect(result.text).toContain("declined")
-      expect(yield* secrets.has("declined.token")).toBe(false)
+      expect(existsSync(yield* secretPath(a, "declined.token"))).toBe(false)
       yield* runner.interrupt(a)
     }),
   )
@@ -581,7 +586,13 @@ const setTinyVm = (on: boolean, tinyVmTemplate = "default", tinyVmProfile = fals
     const settings = yield* Settings.Settings
     const vm = yield* TinyVm
     yield* settings.set({
-      experimental: { ...defaultSettings.experimental, tinyVm: on, tinyVmTemplate, tinyVmProfile },
+      experimental: {
+        ...defaultSettings.experimental,
+        tinyVm: on,
+        tinyVmProvider: "sbx",
+        tinyVmTemplate,
+        tinyVmProfile,
+      },
     })
     yield* until(Effect.sync(() => (vm.enabled() === on ? Option.some(true) : Option.none())))
   })
@@ -595,6 +606,7 @@ const VM_TOOLS = [
   "vm_type",
   "vm_key",
   "vm_exec",
+  "vm_stop",
   "vm_pull_file",
 ]
 
@@ -645,7 +657,7 @@ layer(testLayer)("tiny vm tools", (it) => {
         },
       )
       expect(first.isError).toBe(false)
-      expect(first.text).toContain("1280×800")
+      expect(first.text).toContain("Screen.")
       expect(first.images).toStrictEqual([FAKE_PNG.toString("base64")])
       expect(second.images).toStrictEqual([FAKE_PNG.toString("base64")])
       expect(fake.created() - before).toBe(1)
@@ -878,6 +890,32 @@ layer(testLayer)("tiny vm tools", (it) => {
       expect(result.isError).toBe(true)
       expect(result.text).toContain("Nothing exists at ~/nope.txt in the VM.")
       expect(yield* vm.get(a)).toStrictEqual(started)
+    }),
+  )
+
+  it.effect("vm_stop deletes the sandbox, says so when nothing runs, and never starts the VM", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const vm = yield* TinyVm
+      const fake = yield* FakeSbxServer
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      yield* vm.stop(a)
+      const before = fake.created()
+      const connection = yield* mcp.connectionFor(a)
+
+      const idle = yield* callAs(connection, "vm_stop")
+      expect(idle.isError).toBe(false)
+      expect(idle.text).toContain("not running")
+      expect(fake.created()).toBe(before)
+
+      const started = yield* vm.start(a)
+      if (started.status !== "running") throw new Error(`VM is ${started.status}`)
+      const stopped = yield* callAs(connection, "vm_stop")
+      expect(stopped.isError).toBe(false)
+      expect(stopped.text).toContain("sandbox is deleted")
+      expect(yield* vm.get(a)).toStrictEqual({ status: "none" })
+      expect(fake.sandboxes.has(started.sandboxId)).toBe(false)
     }),
   )
 

@@ -22,7 +22,7 @@ const AskUserQuestionInput = Schema.Struct({
 })
 const decodeInput = Schema.decodeUnknownOption(AskUserQuestionInput)
 
-/** The CLI keys answers by question text, and so do we. */
+// FIXME: the CLI keys answers by question text
 const toQuestion = (question: (typeof AskUserQuestionInput.Type)["questions"][number]): Question => ({
   id: question.question,
   header: question.header,
@@ -33,7 +33,6 @@ const toQuestion = (question: (typeof AskUserQuestionInput.Type)["questions"][nu
   secret: false,
 })
 
-/** Answers `AskUserQuestion` through `canUseTool`: the CLI reads the user's choices from `updatedInput.answers`. */
 export function makeQuestions<S extends QuestionSession>(emit: (session: S, event: AgentEvent) => void) {
   const pending = new Map<string, Deferred.Deferred<QuestionAnswers>>()
 

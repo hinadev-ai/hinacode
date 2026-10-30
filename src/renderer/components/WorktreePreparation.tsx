@@ -24,10 +24,6 @@ function Step({ state, label, children }: { state: StepState; label: string; chi
   )
 }
 
-/**
- * The steps a first message waits on while its worktree is prepared, in place of the empty thread.
- * The send itself is held in the main process until the setup script finishes.
- */
 export function WorktreePreparation({ worktree }: { worktree: Worktree }) {
   return (
     <output className="m-auto flex w-full max-w-lg flex-col gap-4 px-4">

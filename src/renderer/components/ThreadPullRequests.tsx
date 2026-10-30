@@ -17,16 +17,19 @@ import type {
   ChecksStatus,
   MergeMethod,
   PullRequest,
+  PullRequestComment,
   PullRequestDetail,
   PullRequestStatus,
   PullRequestWatch,
   ReviewStatus,
   Thread,
 } from "../../shared/domain.ts"
-import { fixChecksPrompt, resolveConflictsPrompt } from "../../shared/pullRequestPrompts.ts"
+import { addressCommentPrompt, fixChecksPrompt, resolveConflictsPrompt } from "../../shared/pullRequestPrompts.ts"
 import { checksIndicator as sharedChecksIndicator, isOpen, pullRequestIndicator } from "../../shared/threadStatus.ts"
 import { toIcon } from "../lib/indicators.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
+import { formatRelativeTime } from "../lib/relativeTime.ts"
+import { useNow } from "../lib/useNow.ts"
 import {
   branchPullRequestAtom,
   callPromise,
@@ -37,6 +40,7 @@ import {
 import { cn } from "../lib/utils.ts"
 import { useOpenThreadEnvironment, usePullRequestHref } from "../lib/environments.ts"
 import { m } from "../paraglide/messages.js"
+import { getLocale } from "../paraglide/runtime.js"
 import { loadPullRequestsAtom, usePullRequests } from "../stores/pullRequests.ts"
 import { type PullRequestSection, useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
@@ -51,6 +55,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "./ui/alert-dialog.tsx"
+import { Badge } from "./ui/badge.tsx"
 import { Button } from "./ui/button.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
 import {
@@ -62,13 +67,12 @@ import {
 } from "./ui/dropdown-menu.tsx"
 import { SkeletonList } from "./ui/skeleton.tsx"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
+import { Textarea } from "./ui/textarea.tsx"
 
-// The code tab renders with @pierre/diffs, which stays out of the startup bundle until it opens.
 const PullRequestCode = lazy(() =>
   import("./PullRequestCode.tsx").then((module) => ({ default: module.PullRequestCode })),
 )
 
-/** "owner/repo#123" for a canonical GitHub pull request URL. */
 const shortName = (url: string) => {
   const match = /github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)/.exec(url)
   return match ? `${match[1]}#${match[2]}` : url
@@ -111,7 +115,6 @@ export const mergeLabel = {
   rebase: m.pr_merge_rebase,
 } satisfies Record<MergeMethod, () => string>
 
-/** The pull request's state as GitHub draws it. Before the state loads, a plain muted pull request icon. */
 export function StatusIcon({
   status,
   colored = false,
@@ -133,10 +136,6 @@ export function StatusIcon({
 
 type PullRequestTab = "info" | "code"
 
-/**
- * The PR tab. Every pull request the thread has: the ones agents linked plus the one GitHub has for the
- * worktree branch. Several show as a list to pick from; the picked one shows below, as its info or its code.
- */
 export function ThreadPullRequests({ thread }: { thread: Thread }) {
   const threadId = thread.id
   const loadAtom = loadPullRequestsAtom(threadId)
@@ -304,7 +303,6 @@ function PullRequestRow({
   )
 }
 
-// Status leads so a long title truncates instead of hiding it.
 const pullRequestSummary = ({ title, status, review }: PullRequest) =>
   [pullRequestStatusLabel[status](), review && reviewLabel[review](), title].filter(Boolean).join(" · ")
 
@@ -351,9 +349,10 @@ function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }:
           {pullRequest.body.trim() === "" ? (
             <p className="text-xs text-muted-foreground">{m.pr_description_empty()}</p>
           ) : (
-            <Markdown text={pullRequest.body} />
+            <Markdown text={pullRequest.body} className="prose-sm" />
           )}
         </Section>
+        <CommentsSection pullRequest={pullRequest} threadId={threadId} onPosted={refresh} />
       </article>
     ))
     .onError((error) => (
@@ -362,7 +361,6 @@ function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }:
           <PullRequestLink threadId={threadId} url={url} className="min-w-0 flex-1" />
           {linked && <UnlinkButton threadId={threadId} url={url} onUnlinkFailed={onUnlinkFailed} />}
         </div>
-        {/* Without a gh login every lookup fails the same way; the auth hint below explains it once. */}
         {signedIn && (
           <div role="alert" className="flex items-center gap-2">
             <p className="min-w-0 flex-1 text-xs wrap-anywhere text-destructive">
@@ -442,7 +440,6 @@ function UnlinkButton({ threadId, url, onUnlinkFailed }: UnlinkButtonProps) {
   const [pending, startTransition] = useTransition()
   const label = m.pr_links_unlink({ name: shortName(url) })
 
-  // The pull request disappears when main pushes the updated list, so success needs no handling here.
   const unlink = () =>
     startTransition(async () => {
       try {
@@ -460,7 +457,6 @@ function UnlinkButton({ threadId, url, onUnlinkFailed }: UnlinkButtonProps) {
   )
 }
 
-/** Only what needs a human gets a callout, each with the one action that hands it to the agent. */
 function Attention({ pullRequest, threadId }: { pullRequest: PullRequestDetail; threadId: string }) {
   if (!isOpen(pullRequest.status)) return null
   const failing = pullRequest.checkRuns.filter((run) => run.status === "failing")
@@ -509,7 +505,6 @@ function Callout({
   )
 }
 
-/** Sends the prompt into the thread: steers the running turn, or starts one. The reply shows in the thread. */
 function AskAgentButton({ threadId, prompt, label }: { threadId: string; prompt: string; label: string }) {
   const [pending, startTransition] = useTransition()
   const [state, setState] = useState<{ type: "idle" } | { type: "sent" } | { type: "failed"; message: string }>({
@@ -675,7 +670,6 @@ function ConfirmDialog({
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const number = pullRequest.number
-  // The dialog keeps showing its last action while it animates closed, after `action` is already null.
   const [shown, setShown] = useState(action)
   if (action !== null && action !== shown) setShown(action)
 
@@ -782,10 +776,157 @@ function ChecksSection({ pullRequest }: { pullRequest: PullRequestDetail }) {
   )
 }
 
+function CommentsSection({
+  pullRequest,
+  threadId,
+  onPosted,
+}: {
+  pullRequest: PullRequestDetail
+  threadId: string
+  onPosted: () => void
+}) {
+  const { comments } = pullRequest
+  return (
+    <Section
+      id="comments"
+      title={m.pr_comments()}
+      collapsedSummary={<span className="font-normal tabular-nums">{comments.length}</span>}
+    >
+      {comments.length === 0 ? (
+        <p className="text-xs text-muted-foreground">{m.pr_comments_empty()}</p>
+      ) : (
+        <ol className="flex flex-col gap-5">
+          {comments.map((comment) => (
+            <Comment key={comment.id} comment={comment} pullRequest={pullRequest} threadId={threadId} />
+          ))}
+        </ol>
+      )}
+      <CommentComposer url={pullRequest.url} onPosted={onPosted} />
+    </Section>
+  )
+}
+
+const LONG_COMMENT = 600
+
+function Comment({
+  comment,
+  pullRequest,
+  threadId,
+}: {
+  comment: PullRequestComment
+  pullRequest: PullRequestDetail
+  threadId: string
+}) {
+  const now = useNow()
+  const locale = getLocale()
+  const [expanded, setExpanded] = useState(false)
+  const [, startTransition] = useTransition()
+  const folded = comment.body.length > LONG_COMMENT && !expanded
+  const { location } = comment
+  const where = location && `${location.path}${location.line === null ? "" : `:${location.line}`}`
+
+  return (
+    <li className="flex flex-col gap-1.5">
+      <header className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+        <span className="min-w-0 truncate font-medium text-foreground">{comment.author}</span>
+        {comment.authorKind === "bot" && (
+          <Badge variant="secondary" className="h-4 px-1.5 text-[0.625rem]">
+            {m.pr_comment_bot()}
+          </Badge>
+        )}
+        <a
+          href={comment.url}
+          target="_blank"
+          rel="noreferrer"
+          className="shrink-0 rounded-sm underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <time
+            dateTime={comment.createdAt}
+            title={new Date(comment.createdAt).toLocaleString(locale, { dateStyle: "long", timeStyle: "short" })}
+          >
+            {formatRelativeTime(comment.createdAt, now, locale)}
+          </time>
+        </a>
+      </header>
+      {where && (
+        <p className="truncate font-mono text-xs text-muted-foreground" title={where}>
+          {where}
+        </p>
+      )}
+      <Markdown
+        text={comment.body}
+        className={cn("prose-sm text-xs", folded && "max-h-32 overflow-hidden mask-b-from-50%")}
+      />
+      {comment.body.length > LONG_COMMENT && (
+        <Button
+          variant="link"
+          size="xs"
+          className="self-start px-0"
+          aria-expanded={expanded}
+          onClick={() => startTransition(() => setExpanded(!expanded))}
+        >
+          {expanded ? m.pr_comment_less() : m.pr_comment_more()}
+        </Button>
+      )}
+      <AskAgentButton
+        threadId={threadId}
+        prompt={addressCommentPrompt(pullRequest, comment)}
+        label={m.pr_comment_send()}
+      />
+    </li>
+  )
+}
+
+function CommentComposer({ url, onPosted }: { url: string; onPosted: () => void }) {
+  const environment = useOpenThreadEnvironment()
+  const signedIn = AsyncResult.getOrElse(useAtomValue(gitHubAuthAtom(environment)), () => null)?.type === "signedIn"
+  const [body, setBody] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [pending, startTransition] = useTransition()
+  const empty = body.trim() === ""
+
+  const post = () =>
+    startTransition(async () => {
+      setError(null)
+      try {
+        await callPromise("github.comment", { url, body }, { environment })
+        setBody("")
+        onPosted()
+      } catch (cause) {
+        setError(m.pr_comment_failed({ message: errorMessage(cause) }))
+      }
+    })
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Textarea
+        value={body}
+        onChange={(event) => setBody(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !empty && !pending) post()
+        }}
+        placeholder={m.pr_comment_placeholder()}
+        aria-label={m.pr_comment_placeholder()}
+        disabled={!signedIn}
+        className="max-h-48 text-xs md:text-xs"
+      />
+      <div className="flex items-center gap-2">
+        {error && (
+          <p role="alert" className="min-w-0 flex-1 text-xs wrap-anywhere text-destructive">
+            {error}
+          </p>
+        )}
+        <Button size="xs" className="ml-auto" disabled={!signedIn || empty || pending} onClick={post}>
+          {m.pr_comment_submit()}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 interface SectionProps {
   readonly id: PullRequestSection
   readonly title: string
-  /** Shown next to the title while the section is collapsed. */
   readonly collapsedSummary?: ReactNode
   readonly children: ReactNode
 }

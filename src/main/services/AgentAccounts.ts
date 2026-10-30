@@ -8,25 +8,14 @@ import { nowIso } from "./clock.ts"
 import { AccountInUseError, NotFoundError, type PersistenceError, persistence } from "./errors.ts"
 import { Settings } from "./Settings.ts"
 
-/**
- * Accounts added in hinacode. Each one is an agent home the user picked (`CLAUDE_CONFIG_DIR` or `CODEX_HOME`),
- * which holds its login and its transcripts, and the CLI binary run against it. The user signs it in from a
- * terminal. A null account id is the CLI's own login and default home.
- */
 export class AgentAccounts extends Context.Service<
   AgentAccounts,
   {
     readonly list: Effect.Effect<ReadonlyArray<AgentProfile>, PersistenceError>
     readonly get: (id: string) => Effect.Effect<AgentProfile, PersistenceError | NotFoundError>
-    /** `configDir` may start with `~`; it is stored expanded and absolute. */
     readonly create: (input: CreateAccount) => Effect.Effect<AgentProfile, PersistenceError>
     readonly rename: (id: string, name: string) => Effect.Effect<AgentProfile, PersistenceError | NotFoundError>
-    /**
-     * Refused while any thread points at the account. The row and the account's place as a default go away;
-     * its config directory stays on disk.
-     */
     readonly remove: (id: string) => Effect.Effect<void, PersistenceError | NotFoundError | AccountInUseError>
-    /** The account's home and binary. Null for the CLI's own login. */
     readonly home: (id: string | null) => Effect.Effect<AccountHome | null, PersistenceError | NotFoundError>
   }
 >()("hinacode/AgentAccounts") {}
@@ -45,7 +34,6 @@ const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
   const settings = yield* Settings
 
-  // Like the thread list, a newer build's accounts of unknown providers are skipped, not fatal.
   const findAll = SqlSchema.findAll({
     Request: Schema.Void,
     Result: AgentProfile,

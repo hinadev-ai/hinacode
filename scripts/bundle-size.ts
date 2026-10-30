@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs"
 
-// A check named "<name> (gzip)" is the gzipped size of "<name>", shown next to it with no budget of its own.
 type Check = { name: string; size: number; sizeLimit?: number; passed?: boolean }
 
 const [basePath, headPath, baseSha, headSha] = process.argv.slice(2)

@@ -13,7 +13,7 @@ import { errorMessage } from "../../lib/errorMessage.ts"
 
 export function IntegrationSettings() {
   return (
-    <SettingsSection title={m.settings_integrations()}>
+    <SettingsSection>
       <SettingsGroup>
         <GitHubStatus />
         <SecretField
@@ -33,7 +33,6 @@ export function IntegrationSettings() {
   )
 }
 
-/** Whether `gh` is installed and signed in. hinacode borrows its login rather than storing a token. */
 function GitHubStatus() {
   const environment = useSettingsEnvironment()
   const auth = useAtomValue(gitHubAuthAtom(environment))
@@ -80,15 +79,13 @@ function GitHubStatus() {
 }
 
 interface SecretFieldProps {
-  /** The Secrets name the main process reads. */
   readonly name: string
   readonly label: string
   readonly placeholder: string
   readonly hint: string
 }
 
-/** A write-only secret: it can be set, replaced or cleared, never read back. */
-function SecretField({ name, label, placeholder, hint }: SecretFieldProps) {
+export function SecretField({ name, label, placeholder, hint }: SecretFieldProps) {
   const environment = useSettingsEnvironment()
   const inputId = `secret-${name.replace(/\W/g, "-")}`
   const stored = useAtomValue(secretStoredAtom(environment, name))

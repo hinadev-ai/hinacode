@@ -14,7 +14,7 @@ import {
   useState,
   useTransition,
 } from "react"
-import { RiCloseLine, RiFileCopyLine } from "react-icons/ri"
+import { RiCloseLine, RiFileCopyLine, RiFileEditLine } from "react-icons/ri"
 import { toast } from "sonner"
 import { useTheme } from "../lib/appearance.ts"
 import { projectFileUrl } from "../../shared/channels.ts"
@@ -25,6 +25,7 @@ import { useClientSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { emptyDraft, type LineComment, useDrafts } from "../stores/drafts.ts"
 import { emptyTree, parentOf, useExplorer } from "../stores/explorer.ts"
+import { FilePath } from "./FilePatch.tsx"
 import { LineCommentCard, LineCommentForm } from "./LineComment.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { Button } from "./ui/button.tsx"
@@ -32,9 +33,9 @@ import { Button } from "./ui/button.tsx"
 interface FileViewerProps {
   readonly threadId: string
   readonly root: string
-  /** Relative to `root`. */
   readonly path: string
   readonly onClose: () => void
+  readonly onShowChanges?: () => void
 }
 
 const createEditor = <EType extends "file" | "file-diff", LAnnotation, Caret>(
@@ -43,18 +44,12 @@ const createEditor = <EType extends "file" | "file-diff", LAnnotation, Caret>(
   editStateKey?: string,
 ) => new Editor<EType, LAnnotation, Caret>(type, options, editStateKey)
 
-/**
- * One file: an editable, highlighted view whose lines take comments for the thread's next message, or a
- * preview for media and HTML.
- */
-export function FileViewer({ threadId, root, path, onClose }: FileViewerProps) {
-  // Switching files keeps the last file on screen until the next one loads.
+export function FileViewer({ threadId, root, path, onClose, onShowChanges }: FileViewerProps) {
   const shownPath = useDeferredValue(path)
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key !== "Escape") return
     onClose()
-    // Closing the file must not also close the side panel dialog around it.
     event.stopPropagation()
   }
 
@@ -64,20 +59,27 @@ export function FileViewer({ threadId, root, path, onClose }: FileViewerProps) {
       <div
         className={cn("flex min-h-0 flex-1 flex-col transition-opacity", shownPath !== path && "opacity-60 delay-150")}
       >
-        <FileBody key={shownPath} threadId={threadId} root={root} path={shownPath} onClose={onClose} />
+        <FileBody
+          key={shownPath}
+          threadId={threadId}
+          root={root}
+          path={shownPath}
+          onClose={onClose}
+          onShowChanges={shownPath === path ? onShowChanges : undefined}
+        />
       </div>
     </section>
   )
 }
 
-function FileBody({ threadId, root, path, onClose }: FileViewerProps) {
+function FileBody({ threadId, root, path, onClose, onShowChanges }: FileViewerProps) {
   const preview = previewOf(path)
   const [showSource, setShowSource] = useState(false)
 
   if (preview !== null && !showSource) {
     return (
       <>
-        <ViewerHeader path={path} onClose={onClose}>
+        <ViewerHeader path={path} onClose={onClose} onShowChanges={onShowChanges}>
           {hasSource(preview) && (
             <Button variant="ghost" size="xs" onClick={() => setShowSource(true)}>
               {m.viewer_source()}
@@ -105,18 +107,24 @@ function FileBody({ threadId, root, path, onClose }: FileViewerProps) {
       <Suspense
         fallback={
           <>
-            <ViewerHeader path={path} onClose={onClose} />
+            <ViewerHeader path={path} onClose={onClose} onShowChanges={onShowChanges} />
             <Note text={m.viewer_loading()} className="animate-reveal" />
           </>
         }
       >
-        <FileContent threadId={threadId} root={root} path={path} onClose={onClose} headerActions={backToPreview} />
+        <FileContent
+          threadId={threadId}
+          root={root}
+          path={path}
+          onClose={onClose}
+          onShowChanges={onShowChanges}
+          headerActions={backToPreview}
+        />
       </Suspense>
     </EditProvider>
   )
 }
 
-/** The file served by main, reloaded when its folder changes on disk. HTML runs in main's CSP sandbox. */
 function FilePreviewPane({ preview, root, path }: { preview: FilePreview; root: string; path: string }) {
   const [version, setVersion] = useState(0)
   const [failed, setFailed] = useState(false)
@@ -148,7 +156,6 @@ function FilePreviewPane({ preview, root, path }: { preview: FilePreview; root: 
   }
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
-      {/* A file in the repository comes without a caption track. */}
       {preview === "video" ? (
         // oxlint-disable-next-line jsx-a11y/media-has-caption
         <video src={src} controls aria-label={path} onError={fail} className="max-h-full max-w-full" />
@@ -167,7 +174,6 @@ function FilePreviewPane({ preview, root, path }: { preview: FilePreview; root: 
   )
 }
 
-/** The file rendered as markdown, reloaded when its folder changes on disk. */
 function MarkdownPreview({ root, path }: { root: string; path: string }) {
   const contentAtom = fileContentAtom(JSON.stringify([root, path]))
   const content = useAtomSuspense(contentAtom, { includeFailure: true })
@@ -192,19 +198,30 @@ function MarkdownPreview({ root, path }: { root: string; path: string }) {
     <div className="min-h-0 flex-1 overflow-auto">
       {content.value.truncated && <Note text={m.viewer_truncated()} />}
       <article className="mx-auto max-w-3xl px-6 py-4">
-        <Markdown text={content.value.content} baseUrl={projectFileUrl(root, path)} />
+        <Markdown text={content.value.content} baseUrl={projectFileUrl(root, path)} className="prose-sm" />
       </article>
     </div>
   )
 }
 
-function ViewerHeader({ path, onClose, children }: { path: string; onClose: () => void; children?: ReactNode }) {
+interface ViewerHeaderProps {
+  readonly path: string
+  readonly onClose: () => void
+  readonly onShowChanges: (() => void) | undefined
+  readonly children?: ReactNode
+}
+
+function ViewerHeader({ path, onClose, onShowChanges, children }: ViewerHeaderProps) {
   return (
     <header className="flex h-8 shrink-0 items-center gap-1 border-b border-border pr-2 pl-3">
-      <span className="min-w-0 flex-1 truncate font-mono text-xs" title={path}>
-        {path}
-      </span>
+      <FilePath path={path} className="flex-1 text-xs" />
       {children}
+      {onShowChanges && (
+        <Button variant="ghost" size="xs" onClick={onShowChanges}>
+          <RiFileEditLine aria-hidden />
+          {m.explorer_show_changes()}
+        </Button>
+      )}
       <Button
         variant="ghost"
         size="icon-xs"
@@ -221,17 +238,13 @@ function ViewerHeader({ path, onClose, children }: { path: string; onClose: () =
   )
 }
 
-/** The one open comment box: a new comment on a line range, or an edit of an existing comment. */
 type CommentForm =
   | { readonly kind: "new"; readonly startLine: number; readonly endLine: number }
   | { readonly kind: "edit"; readonly commentId: string }
 
 type Annotation = { readonly kind: "comment"; readonly comment: LineComment } | Extract<CommentForm, { kind: "new" }>
 
-/**
- * A log captured from a terminal keeps its color codes, which Shiki's `ansi` language renders as colors. The editor
- * hides the codes but still counts them, so the caret lands off by their length and such a log stays read-only.
- */
+// FIXME: the editor hides ANSI codes but still counts them, so the caret lands off and such a log stays read-only
 const isAnsiLog = (path: string, text: string) => path.endsWith(".log") && text.includes("\x1b[")
 
 const linesOf = (text: string, startLine: number, endLine: number) =>
@@ -240,8 +253,14 @@ const linesOf = (text: string, startLine: number, endLine: number) =>
     .slice(startLine - 1, endLine)
     .join("\n")
 
-/** Suspends until the file is read, then reloads it in place when its folder changes on disk. */
-function FileContent({ threadId, root, path, onClose, headerActions }: FileViewerProps & { headerActions: ReactNode }) {
+function FileContent({
+  threadId,
+  root,
+  path,
+  onClose,
+  onShowChanges,
+  headerActions,
+}: FileViewerProps & { headerActions: ReactNode }) {
   const contentAtom = fileContentAtom(JSON.stringify([root, path]))
   const content = useAtomSuspense(contentAtom, { includeFailure: true })
   const reload = useAtomRefresh(contentAtom)
@@ -250,7 +269,6 @@ function FileContent({ threadId, root, path, onClose, headerActions }: FileViewe
   const setUnsaved = useExplorer((state) => state.setUnsaved)
   const allComments = useDrafts((state) => (state.byThreadId[threadId] ?? emptyDraft).comments)
   const [form, setForm] = useState<CommentForm | null>(null)
-  /** What was written by the last save, shown until the read after it arrives. */
   const [saved, setSaved] = useState<{ over: string; text: string } | null>(null)
   const [isSaving, startSaving] = useTransition()
   const editorRef = useRef<Editor<"file", Annotation> | null>(null)
@@ -266,7 +284,7 @@ function FileContent({ threadId, root, path, onClose, headerActions }: FileViewe
   if (AsyncResult.isFailure(content)) {
     return (
       <>
-        <ViewerHeader path={path} onClose={onClose}>
+        <ViewerHeader path={path} onClose={onClose} onShowChanges={onShowChanges}>
           {headerActions}
         </ViewerHeader>
         <p role="alert" className="p-3 text-xs text-destructive">
@@ -279,7 +297,7 @@ function FileContent({ threadId, root, path, onClose, headerActions }: FileViewe
   if (binary) {
     return (
       <>
-        <ViewerHeader path={path} onClose={onClose}>
+        <ViewerHeader path={path} onClose={onClose} onShowChanges={onShowChanges}>
           {headerActions}
         </ViewerHeader>
         <Note text={m.viewer_binary()} />
@@ -287,7 +305,6 @@ function FileContent({ threadId, root, path, onClose, headerActions }: FileViewe
     )
   }
 
-  // The editor replaces its document whenever this text changes, so unsaved edits pin it to where they started.
   const shown = base ?? (saved?.over === disk ? saved.text : disk)
   const ansi = isAnsiLog(path, shown)
   const editable = !truncated && !ansi
@@ -321,7 +338,7 @@ function FileContent({ threadId, root, path, onClose, headerActions }: FileViewe
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (!(event.metaKey || event.ctrlKey) || event.shiftKey) return
-    // With Alt held, macOS reports the composed character as `key`, so the comment shortcut matches on `code`.
+    // FIXME: with Alt held, macOS reports the composed character as `key`
     if (event.altKey && event.code === "KeyC") {
       event.preventDefault()
       commentOnSelection()
@@ -387,7 +404,7 @@ function FileContent({ threadId, root, path, onClose, headerActions }: FileViewe
   return (
     // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- mod+s bubbles up from the editor.
     <div onKeyDown={onKeyDown} className="flex min-h-0 flex-1 flex-col">
-      <ViewerHeader path={path} onClose={onClose}>
+      <ViewerHeader path={path} onClose={onClose} onShowChanges={onShowChanges}>
         {headerActions}
         {base !== undefined && (
           <>

@@ -26,8 +26,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, FieldDescription, FieldError, FieldLabel } from "../../ui/field.tsx"
 import { Input } from "../../ui/input.tsx"
 import { Switch } from "../../ui/switch.tsx"
-import { ALL_INTERFACES, BindHostSelect, LOOPBACK } from "../BindHostSelect.tsx"
-import { SettingsSection, settingsSurfaceClass } from "../SettingsSection.tsx"
+import { BindHostSelect, LOOPBACK } from "../BindHostSelect.tsx"
+import { SettingsPageAction, SettingsSection, settingsSurfaceClass } from "../SettingsSection.tsx"
 import { AutomationDetails, WebhookUrlField } from "./AutomationDetails.tsx"
 import { AutomationDialog, type AutomationDialogState } from "./AutomationForm.tsx"
 import { CopyField, formatTime, RunStatusBadge, triggerLabel } from "./shared.tsx"
@@ -37,7 +37,6 @@ const errorText = (cause: unknown) => (cause instanceof Error ? cause.message : 
 
 export function AutomationSettings() {
   const environment = useSettingsEnvironment()
-  // An automation runs where its project lives, so the picked environment offers only its own projects.
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => []).filter(
     (project) => environmentOf(project) === environment,
   )
@@ -45,16 +44,13 @@ export function AutomationSettings() {
   const [created, setCreated] = useState<{ automation: Automation; secret: string } | null>(null)
 
   return (
-    <SettingsSection
-      title={m.settings_automations()}
-      description={m.automations_description()}
-      action={
-        <Button onClick={() => setDialog({ mode: "create" })} disabled={projects.length === 0}>
+    <SettingsSection>
+      <SettingsPageAction>
+        <Button size="sm" onClick={() => setDialog({ mode: "create" })} disabled={projects.length === 0}>
           <RiAddLine aria-hidden />
           {m.automations_new()}
         </Button>
-      }
-    >
+      </SettingsPageAction>
       <ListenerSettings />
       <AutomationList projects={projects} onEdit={(automation) => setDialog({ mode: "edit", automation })} />
       {dialog && (
@@ -128,11 +124,9 @@ function ListenerSettings() {
         </form>
       </div>
       <FieldDescription>
-        {listener.bindHost === ALL_INTERFACES
-          ? m.automations_bind_all_hint()
-          : listener.bindHost === LOOPBACK
-            ? m.automations_bind_loopback_hint()
-            : m.automations_bind_address_hint({ address: listener.bindHost })}
+        {listener.bindHost === LOOPBACK
+          ? m.automations_bind_loopback_hint()
+          : m.automations_bind_address_hint({ address: listener.bindHost })}
       </FieldDescription>
       {error && <FieldError>{errorMessage(error)}</FieldError>}
     </div>
@@ -321,7 +315,6 @@ interface SecretDialogProps {
   readonly onClose: () => void
 }
 
-/** Shown once after creating a webhook automation; the secret cannot be read back later. */
 function SecretDialog({ automation, secret, onClose }: SecretDialogProps) {
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -330,7 +323,6 @@ function SecretDialog({ automation, secret, onClose }: SecretDialogProps) {
           <DialogTitle>{m.automations_secret_title({ name: automation.name })}</DialogTitle>
           <DialogDescription>{m.automations_secret_description()}</DialogDescription>
         </DialogHeader>
-        {/* min-w-0 lets the long URL and secret truncate instead of widening the dialog grid. */}
         <div className="flex min-w-0 flex-col gap-5">
           <WebhookUrlField automationId={automation.id} />
           <Field>

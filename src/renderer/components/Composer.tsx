@@ -8,12 +8,14 @@ import {
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
+  startTransition,
   useEffect,
   useEffectEvent,
   useRef,
   useState,
   useTransition,
 } from "react"
+import { cn } from "../lib/utils.ts"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import { isThreadBusy, type Thread, toCheckoutTarget } from "../../shared/domain.ts"
@@ -36,7 +38,8 @@ import {
 } from "./assistant-ui/elements/composer.tsx"
 import { PendingAttachment } from "./AttachmentView.tsx"
 import { ChordKeys } from "./ChordKeys.tsx"
-import { EnvironmentPicker, ModelPicker, ThreadOptions, WorkspacePicker } from "./ComposerControls.tsx"
+import { ThreadPicker, WorkspacePicker } from "./ComposerControls.tsx"
+import { ComposerStatusLine } from "./ComposerStatusLine.tsx"
 import { ComposerInput } from "./ComposerInput.tsx"
 import { ContextRing } from "./ContextRing.tsx"
 import { PendingLineComment } from "./LineComment.tsx"
@@ -60,15 +63,12 @@ const onDragOver = (event: DragEvent<HTMLTextAreaElement>) => {
 
 type StageSource = RpcRequest<"attachments.stage">["source"]
 
-/** While the agent works, a message either waits for the turn to complete or steers it now. */
 type Delivery = "queue" | "steer"
 
 const STEER_CHORD = "Mod+Enter"
 
-/** Mod+Enter steers; plain Enter and the send button queue. */
 const deliveryOf = (event: KeyboardEvent) => (event.metaKey || event.ctrlKey ? "steer" : "queue")
 
-/** A busy thread takes the message by `delivery`; an idle one starts a turn. Only the first message picks a workspace. */
 const deliver = (
   threadId: string,
   prompt: string,
@@ -89,17 +89,14 @@ const deliver = (
   return callPromise("threads.send", { threadId, prompt, attachments: sent.attachments, workspace })
 }
 
-/** Files from disk are copied by path; pasted images and other path-less files are sent as data URLs. */
 const sourceOf = async (file: File): Promise<StageSource> => {
   const path = window.hinacode.pathForFile(file)
   if (path !== "") return { path }
   return { dataUrl: await readAsDataUrl(file), name: file.name || "pasted.png" }
 }
 
-/** `children` are the notices and pending requests stacked above the input. */
 export function Composer({ thread, children }: { thread: Thread; children?: ReactNode }) {
   const { text, attachments, workspace, comments } = useDrafts((state) => state.byThreadId[thread.id] ?? emptyDraft)
-  // The workspace stays open to change until the first message.
   const unstarted = useMessages((state) => {
     const history = state.byThread[thread.id]
     return history?.status === "ready" && history.messages.length === 0 && thread.worktreeId === null
@@ -114,7 +111,6 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   const commands = AsyncResult.getOrElse(commandsResult, (): ReadonlyArray<AgentCommand> => []).filter(
     (command) => thread.userSkills || command.scope !== "user",
   )
-  // A failed load looks exactly like "the agent has no commands" when swallowed, so it is shown instead.
   const commandsError = AsyncResult.isFailure(commandsResult)
     ? m.composer_commands_failed({ message: errorMessage(Cause.squash(commandsResult.cause)) })
     : null
@@ -202,7 +198,6 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
     send("queue")
   }
 
-  // A finished turn may have added files worth mentioning, and gives a failed command load another chance.
   const wasBusy = useRef(busy)
   useEffect(() => {
     if (wasBusy.current && !busy) {
@@ -213,7 +208,6 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   }, [busy, refreshFiles, refreshCommands])
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    // isComposing: Enter confirms an IME candidate (zh-TW, ja) and must not send.
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return
     event.preventDefault()
     send(deliveryOf(event))
@@ -282,8 +276,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
             <ComposerToolbar className="shrink-0 gap-2">
               <ComposerActions className="min-w-0 flex-1">
                 <AttachButton onClick={pickFiles} disabled={isStaging} />
-                <ModelPicker thread={thread} canSwitchAgent={!busy} onError={setError} />
-                <ThreadOptions thread={thread} onError={setError} />
+                <ThreadPicker thread={thread} canSwitchAgent={!busy} onError={setError} />
               </ComposerActions>
               <ContextRing threadId={thread.id} provider={thread.provider} />
               <SteerButton busy={busy} hasDraft={hasDraft} canSend={canSend} onSteer={() => send("steer")} />
@@ -291,16 +284,15 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
             </ComposerToolbar>
           </ComposerBar>
         </ComposerRoot>
-        {unstarted &&
-          (isChat ? (
-            <div className="mx-auto mt-1 flex w-full max-w-3xl items-center px-1 empty:hidden">
-              <EnvironmentPicker thread={thread} onError={setError} />
-            </div>
-          ) : (
-            <WorkspacePicker thread={thread} workspace={workspace} onError={setError} />
-          ))}
-        {(error ?? commandsError) && (
-          <FieldError className="mx-auto mt-1 max-w-3xl">{error ?? commandsError}</FieldError>
+        {error !== null ? (
+          <FieldError className="mx-auto mt-1 w-full max-w-3xl px-3">{error}</FieldError>
+        ) : (
+          commandsError !== null && <CommandsError message={commandsError} />
+        )}
+        {unstarted ? (
+          !isChat && <WorkspacePicker thread={thread} workspace={workspace} />
+        ) : (
+          <ComposerStatusLine thread={thread} />
         )}
       </form>
     </div>
@@ -325,7 +317,6 @@ function AttachButton({ onClick, disabled }: { onClick: () => void; disabled: bo
   )
 }
 
-/** Shown only while the agent runs and there is a draft to steer with. */
 function SteerButton({
   busy,
   hasDraft,
@@ -351,7 +342,6 @@ function SteerButton({
   )
 }
 
-/** While the agent runs, an empty composer offers Stop and a draft offers Queue. */
 function SendButton({
   busy,
   hasDraft,
@@ -381,5 +371,22 @@ function SendButton({
       />
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
+  )
+}
+
+function CommandsError({ message }: { message: string }) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <FieldError className="mx-auto mt-1 flex w-full max-w-3xl items-start gap-2 px-3 text-xs">
+      <span className={cn("min-w-0 flex-1 select-text", expanded ? "whitespace-pre-wrap" : "truncate")}>{message}</span>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => startTransition(() => setExpanded(!expanded))}
+        className="shrink-0 rounded-sm underline underline-offset-2 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {expanded ? m.composer_commands_failed_hide() : m.composer_commands_failed_details()}
+      </button>
+    </FieldError>
   )
 }

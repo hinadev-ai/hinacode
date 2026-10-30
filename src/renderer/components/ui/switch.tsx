@@ -1,7 +1,6 @@
 import { Switch as SwitchPrimitive } from "@base-ui/react/switch"
 import { cn } from "cn"
 
-// Sized after macOS 26's small NSSwitch: a 44x20 track and a 26x16 pill knob that swells into a glass lens while pressed.
 function Switch({ className, ...props }: SwitchPrimitive.Root.Props) {
   return (
     <SwitchPrimitive.Root

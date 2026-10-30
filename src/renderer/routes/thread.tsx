@@ -15,7 +15,6 @@ import { useUnseen } from "../stores/unseen.ts"
 
 const route = getRouteApi("/thread/$threadId")
 
-/** Opening a thread shows its latest result. While the window is in the background, the result waits for focus. */
 function useMarkSeen(threadId: string) {
   useEffect(() => {
     const markSeen = () => useUnseen.getState().clear(threadId)

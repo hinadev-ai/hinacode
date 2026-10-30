@@ -2,10 +2,6 @@ import { extensionOf, previewMimeOf } from "../../shared/media.ts"
 
 export { extensionOf } from "../../shared/media.ts"
 
-/**
- * How the file viewer shows a file instead of its text. `svg`, `html` and `markdown` are text, so their source can
- * be shown too.
- */
 export type FilePreview = "image" | "svg" | "video" | "audio" | "html" | "markdown"
 
 const markdownExtensions = new Set(["md", "markdown"])

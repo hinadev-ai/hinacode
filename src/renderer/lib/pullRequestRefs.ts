@@ -7,7 +7,6 @@ export interface PullRequestRef extends GitHubRepository {
 
 const PULL_REQUEST_URL = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)(?:[/?#].*)?$/i
 
-/** The pull request a `https://github.com/<owner>/<repo>/pull/<n>` url points at, or null for any other url. */
 export const parsePullRequestUrl = (href: string): PullRequestRef | null => {
   const match = PULL_REQUEST_URL.exec(href)
   const repository = match && parseGitHubRepository(`${match[1]}/${match[2]}`)
@@ -17,7 +16,6 @@ export const parsePullRequestUrl = (href: string): PullRequestRef | null => {
 const sameRepository = (a: GitHubRepository, b: GitHubRepository) =>
   a.owner.toLowerCase() === b.owner.toLowerCase() && a.name.toLowerCase() === b.name.toLowerCase()
 
-/** `#n` for a pull request in the thread's own repository, `owner/repo#n` for any other. */
 export const pullRequestLabel = (ref: PullRequestRef, repository: GitHubRepository | null) =>
   repository && sameRepository(ref, repository) ? `#${ref.number}` : `${ref.owner}/${ref.name}#${ref.number}`
 
@@ -26,7 +24,6 @@ const pullRequestUrl = ({ owner, name }: GitHubRepository, number: string) =>
 
 const NUMBER_REFERENCE = /(?<=^|[\s(])#(\d+)(?!\w)/g
 
-/** Splits text into text and `#n` segments linked to `repository`'s pull request n. */
 export const linkPullRequestNumbers = (text: string, repository: GitHubRepository): Array<Segment> => {
   const segments: Array<Segment> = []
   let last = 0

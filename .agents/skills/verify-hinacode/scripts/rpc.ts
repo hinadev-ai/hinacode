@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-// Usage: rpc.ts <cdp-port> <method> ['<json payload>']
-// Calls window.hinacode.rpc(method, payload) in the hinacode renderer over CDP and prints the result as JSON.
-// Methods and payload shapes: src/shared/contract.ts (RpcMethods). Exits 1 on an rpc error envelope.
 const [port, method, payload = "undefined"] = process.argv.slice(2)
 if (!port || !method) {
   console.error("usage: rpc.ts <cdp-port> <method> ['<json payload>']")

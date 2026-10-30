@@ -1,10 +1,6 @@
 import { Effect } from "effect"
 import { SqlClient } from "effect/sql"
 
-/**
- * What a reader sees in a message without expanding anything, the same text find in thread searches:
- * text parts, a tool call's name and summary field, and a file change's path.
- */
 const body = (parts: string) => `(
   SELECT group_concat(CASE json_extract(value, '$.type')
     WHEN 'text' THEN json_extract(value, '$.text')
@@ -25,11 +21,7 @@ const body = (parts: string) => `(
   FROM json_each(${parts})
 )`
 
-/**
- * Trigram tokens give substring matches in any script, like find in thread. The body is stored, not
- * contentless, because FTS5 evaluates LIKE against stored values. Rows are keyed by the message
- * rowid, which `Messages.list` already relies on staying put.
- */
+// FIXME: FTS5 evaluates LIKE against stored values, so the body cannot be contentless
 export default Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
   yield* sql`CREATE VIRTUAL TABLE message_fts USING fts5(body, tokenize = 'trigram')`

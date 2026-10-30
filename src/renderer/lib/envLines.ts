@@ -1,9 +1,5 @@
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 
-/**
- * Reads `NAME=value` lines, skipping blank lines and `#` comments. The value is the rest of the line, taken
- * literally. Returns the 1-based number of the first line that is not a variable instead of guessing at it.
- */
 export const parseEnvLines = (
   text: string,
 ): { readonly env: Record<string, string> } | { readonly invalidLine: number } => {

@@ -9,7 +9,7 @@ describe("parseCommand", () => {
   })
 
   test("reads serve and pair with their options", () => {
-    expect(parseCommand(["serve", "--port", "49000", "--host=0.0.0.0", "--rotate-token"])).toBe("serve")
+    expect(parseCommand(["serve", "--port", "49000", "--host=100.64.0.2", "--rotate-token"])).toBe("serve")
     expect(parseCommand(["pair"])).toBe("pair")
     expect(parseCommand(["--version"])).toBe("version")
   })
@@ -44,11 +44,16 @@ describe("serveConfig", () => {
 
   test("flags override the environment", () => {
     expect(
-      serveConfig(["serve", "--port=49100", "--host", "0.0.0.0", "--rotate-token"], {
+      serveConfig(["serve", "--port=49100", "--host", "100.64.0.2", "--rotate-token"], {
         HINACODE_SERVE_PORT: "49000",
         HINACODE_SERVE_HOST: "127.0.0.1",
       }),
-    ).toStrictEqual({ bindHost: "0.0.0.0", port: 49100, rotateToken: true })
+    ).toStrictEqual({ bindHost: "100.64.0.2", port: 49100, rotateToken: true })
+  })
+
+  test("refuses a host that would listen on every network", () => {
+    expect(() => serveConfig(["serve", "--host", "0.0.0.0"], {})).toThrow(/every network/)
+    expect(() => serveConfig(["serve"], { HINACODE_SERVE_HOST: "::" })).toThrow(/every network/)
   })
 
   test("refuses a port it cannot listen on", () => {

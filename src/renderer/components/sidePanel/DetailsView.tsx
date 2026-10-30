@@ -22,7 +22,6 @@ import { Button } from "../ui/button.tsx"
 import { ScrollArea } from "../ui/scroll-area.tsx"
 import { Section } from "./Section.tsx"
 
-/** Where the thread runs, its setup log and the ports its processes listen on. */
 export function DetailsView({ thread }: { thread: Thread }) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   const [sectionsRef] = useAutoAnimate<HTMLDivElement>({ duration: 150 })
@@ -144,6 +143,5 @@ function PullRequestBadge({ pullRequest }: { pullRequest: PullRequest }) {
   )
 }
 
-/** The GitHub pull request for the worktree's branch, or null when there is none or `gh` cannot tell. */
 const useBranchPullRequest = (worktreeId: string | undefined) =>
   AsyncResult.getOrElse(useAtomValue(branchPullRequestAtom(worktreeId ?? null)), () => null)

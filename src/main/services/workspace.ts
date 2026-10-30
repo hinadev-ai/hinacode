@@ -6,9 +6,7 @@ import { NotFoundError, persistence } from "./errors.ts"
 export const ActiveWorkspace = Schema.Struct({
   cwd: Schema.String,
   rootPath: Schema.String,
-  /** The live worktree the thread works in, null when it works in the project root. */
   worktreeId: Schema.NullOr(Schema.String),
-  /** The ref the worktree branched from, null when the thread works in the project root. */
   baseRef: Schema.NullOr(Schema.String),
 })
 export type ActiveWorkspace = typeof ActiveWorkspace.Type
@@ -18,11 +16,6 @@ const WorkspaceRow = Schema.Struct({
   kind: ProjectKind,
 })
 
-/**
- * Resolves where a thread works now: its worktree, the project root once the worktree is removed, or a chat's folder.
- * Removing a worktree keeps `thread.worktree_id` pointing at the removed row so the history still shows
- * where the thread ran, so agent runs, MCP tools and the ports panel must all resolve through here.
- */
 export const makeActiveWorkspace = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
   const find = SqlSchema.findOneOption({

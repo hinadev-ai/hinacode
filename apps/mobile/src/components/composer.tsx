@@ -639,7 +639,7 @@ function SettingsSheet({
   const defaultEffort = current?.defaultEffort ? `Default (${effortLabel(current.defaultEffort)})` : "Default effort"
 
   return (
-    <Sheet title="Thread settings" open={open} onClose={onClose}>
+    <Sheet title="Thread settings" open={open} onClose={onClose} fit>
           {unstarted && (
             <Section title="Agent">
               {ProviderId.literals.map((provider) => (

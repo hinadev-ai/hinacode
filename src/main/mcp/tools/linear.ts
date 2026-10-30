@@ -46,7 +46,6 @@ const issueFilter = ({ assignee, state }: IssueSearch): LinearDocument.IssueFilt
 
 type IssueOperations = ReturnType<typeof makeTools>
 
-/** Linear operations behind the tools. Each returns markdown for the agent. */
 const makeTools = (client: LinearClient) => {
   const getIssue = (key: string) => request(() => client.issue(key))
 

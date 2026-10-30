@@ -1,4 +1,6 @@
-import { Effect } from "effect"
+import { Effect, Schema } from "effect"
+import { BindHost } from "../shared/domain.ts"
+import { tailscaleAddress } from "./network.ts"
 import { RemoteAccess } from "./remote/access.ts"
 import { Relay } from "./remote/relay.ts"
 import type { RelayError, RelayLink } from "./remote/relayService.ts"
@@ -13,7 +15,8 @@ Commands:
 
 serve options:
   --port <n>        Port to listen on, or HINACODE_SERVE_PORT.
-  --host <host>     Address to bind, or HINACODE_SERVE_HOST. 0.0.0.0 for every interface.
+  --host <host>     Address to bind, or HINACODE_SERVE_HOST. Defaults to this machine's Tailscale address.
+                    Use 127.0.0.1 to reach the cloud only through the relay.
   --rotate-token    Replace the token, which unpairs every client, or HINACODE_SERVE_ROTATE_TOKEN=1.
   --relay on|off    Reach the cloud from any network through the HinaCode relay, or HINACODE_SERVE_RELAY.
                     on links it to your HinaCode account once, and needs cloudflared on PATH. off unlinks it.
@@ -26,7 +29,6 @@ Set HINACODE_SERVE_AUTO_UPDATE=0 to update it by hand instead.
 
 Data lives in HINACODE_USER_DATA, default ~/.hinacode-cloud.`
 
-/** A command line that does not parse. The CLI prints it with the usage and exits 1. */
 export class UsageError extends Error {}
 
 export type Command = "help" | "version" | "serve" | "pair"
@@ -39,7 +41,6 @@ const OPTIONS: Record<
   pair: { values: [], switches: [] },
 }
 
-/** The command `argv` asks for. An unknown option throws, so a typo never starts a daemon on the wrong port. */
 export const parseCommand = (argv: ReadonlyArray<string>): Command => {
   if (argv.includes("--help") || argv.includes("-h")) return "help"
   const [command, ...rest] = argv
@@ -60,15 +61,10 @@ export const parseCommand = (argv: ReadonlyArray<string>): Command => {
   return command
 }
 
-/**
- * How one `hinacode serve` boot differs from the stored settings. A field left out keeps the stored
- * value, so a plain restart converges on the same listener and the same token.
- */
 export interface ServeConfig {
   readonly bindHost?: string
   readonly port?: number
   readonly rotateToken: boolean
-  /** Turns the relay on or off. Left out keeps whatever relay is stored. */
   readonly relay?: "on" | "off"
 }
 
@@ -87,10 +83,6 @@ const portOf = (raw: string, source: string): number => {
   return port
 }
 
-/**
- * What `process.execve` runs to boot an installed update in place of this process. It drops the token rotation the
- * cloud was started with, which already happened, so an update never unpairs every client.
- */
 export const restartCommand = (process: {
   readonly execPath: string
   readonly execArgv: ReadonlyArray<string>
@@ -105,11 +97,9 @@ export const restartCommand = (process: {
   }
 }
 
-/** Whether a cloud installs new releases on its own once idle. On unless `HINACODE_SERVE_AUTO_UPDATE` is 0 or false. */
 export const autoUpdate = (env: NodeJS.ProcessEnv): boolean =>
   env["HINACODE_SERVE_AUTO_UPDATE"] === undefined || envFlag(env, "HINACODE_SERVE_AUTO_UPDATE")
 
-/** The `--name value` and `--name=value` spellings, or undefined when the flag is absent. */
 const flagValue = (argv: ReadonlyArray<string>, name: string): string | undefined => {
   const inline = argv.find((arg) => arg.startsWith(`--${name}=`))
   if (inline !== undefined) return inline.slice(name.length + 3)
@@ -120,10 +110,6 @@ const flagValue = (argv: ReadonlyArray<string>, name: string): string | undefine
   return value
 }
 
-/**
- * The `hinacode serve` configuration from its flags and environment. Flags win over the environment, and an
- * invalid value throws, because a daemon that silently picked another port would strand every paired client.
- */
 export const serveConfig = (argv: ReadonlyArray<string>, env: NodeJS.ProcessEnv): ServeConfig => {
   const portFlag = flagValue(argv, "port")
   const envPort = env["HINACODE_SERVE_PORT"]
@@ -135,6 +121,9 @@ export const serveConfig = (argv: ReadonlyArray<string>, env: NodeJS.ProcessEnv)
         : undefined
   const bindHost = flagValue(argv, "host") ?? env["HINACODE_SERVE_HOST"]
   if (bindHost !== undefined && bindHost.trim() === "") throw new Error("serve host must not be empty")
+  if (bindHost !== undefined && !Schema.is(BindHost)(bindHost)) {
+    throw new UsageError(`--host ${bindHost} would listen on every network this machine joins. Pass one address.`)
+  }
   const relayFlag = flagValue(argv, "relay")
   const relay = relayFlag ?? env["HINACODE_SERVE_RELAY"]
   if (relay !== undefined && relay !== "on" && relay !== "off") {
@@ -149,30 +138,31 @@ export const serveConfig = (argv: ReadonlyArray<string>, env: NodeJS.ProcessEnv)
   }
 }
 
-/**
- * Writes this boot's listener address into `settings.remote` and rotates the token when asked. It
- * runs while the app layer is built, before the remote listener first reads its settings, so the
- * listener starts once on this address and no client can pair with a token about to be replaced.
- */
-export const applyServeConfig = (config: ServeConfig): Effect.Effect<void, PersistenceError, Settings | RemoteAccess> =>
+export class ServeHostRequired extends Schema.TaggedError<ServeHostRequired>()("ServeHostRequired", {
+  message: Schema.String,
+}) {}
+
+export const applyServeConfig = (
+  config: ServeConfig,
+  tailscale: () => string | null = tailscaleAddress,
+): Effect.Effect<void, PersistenceError | ServeHostRequired, Settings | RemoteAccess> =>
   Effect.gen(function* () {
     const settings = yield* Settings
     const current = (yield* settings.get).remote
-    const next = {
-      enabled: true,
-      bindHost: config.bindHost ?? current.bindHost,
-      port: config.port ?? current.port,
+    const bindHost = config.bindHost ?? current.bindHost ?? tailscale()
+    if (bindHost === null) {
+      return yield* new ServeHostRequired({
+        message:
+          "this machine has no Tailscale address to listen on. Pass --host <address>, or --host 127.0.0.1 --relay on to reach it only through the relay.",
+      })
     }
+    const next = { enabled: true as const, bindHost, port: config.port ?? current.port }
     if (next.enabled !== current.enabled || next.bindHost !== current.bindHost || next.port !== current.port) {
       yield* settings.set({ remote: next })
     }
     if (config.rotateToken) yield* RemoteAccess.use((remote) => remote.rotateToken)
   })
 
-/**
- * Turns the relay on or off as `--relay` asks, once the listener is bound. A relay that already has a hostname is
- * left as it is, so a boot needs no call to the relay service. `onLink` shows the sign-in of a first link.
- */
 export const applyServeRelay = (
   relay: ServeConfig["relay"],
   onLink: (link: RelayLink) => Effect.Effect<void>,

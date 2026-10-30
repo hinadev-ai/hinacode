@@ -112,7 +112,10 @@ export default function ThreadScreen() {
             <ProviderLabel provider={thread.provider} size={12} />
             <View style={styles.spacer} />
             <ThreadPullRequestChip thread={thread} onPress={() => select("prs")} />
-            <ThreadStatusPill status={thread.status} />
+            {/* A pill aligns itself to the start, which in this row is the top. */}
+            <View>
+              <ThreadStatusPill status={thread.status} />
+            </View>
           </View>
         )}
         <SegmentedControl
@@ -138,10 +141,10 @@ export default function ThreadScreen() {
         // Android draws edge to edge, so the window no longer shrinks for the keyboard and needs padding too.
         <KeyboardAvoidingView style={styles.flex} behavior="padding" keyboardVerticalOffset={headerHeight}>
           <View style={[styles.flex, styles.readable, tab !== "chat" && styles.hidden]}>
-            <Chat thread={thread} />
+            <Chat thread={thread} active={tab === "chat"} />
           </View>
           {opened.has("files") && (
-            <View style={[styles.flex, tab !== "files" && styles.hidden]}>
+            <View style={[styles.flex, styles.readable, tab !== "files" && styles.hidden]}>
               <FilesPanel thread={thread} />
             </View>
           )}

@@ -3,7 +3,6 @@ import { spawnsSubagent } from "./subagents.ts"
 
 const SUMMARY_KEYS = ["command", "file_path", "notebook_path", "pattern", "path", "url", "query", "description"]
 
-/** The one input field that best says what a tool call does, for the collapsed row. */
 function summarizeInput(input: unknown): string {
   if (typeof input !== "object" || input === null) return ""
   for (const key of SUMMARY_KEYS) {
@@ -13,10 +12,6 @@ function summarizeInput(input: unknown): string {
   return JSON.stringify(input)
 }
 
-/**
- * Codex MCP calls carry the whole `mcpToolCall` item as input and only the bare tool as name, so
- * name them `server/tool` and summarize their arguments rather than the item.
- */
 export function describeToolCall(part: Extract<MessagePart, { type: "tool_call" }>): {
   name: string
   summary: string
@@ -32,7 +27,7 @@ export function describeToolCall(part: Extract<MessagePart, { type: "tool_call" 
   return { name: part.name, summary: part.name === "Bash" ? unwrapShell(summary) : summary }
 }
 
-/** Codex runs every command as `/bin/zsh -lc '<command>'`; the wrapper says nothing about what ran. */
+// FIXME: Codex wraps every command in a login shell, such as /bin/zsh -lc '<command>'
 const SHELL_WRAPPER = /^(?:\/\S*\/)?(?:ba|z)?sh -l?c '((?:[^']|'\\'')*)'$/s
 
 const unwrapShell = (command: string) => {
@@ -46,13 +41,8 @@ export type TranscriptBlock =
   | { readonly type: "part"; readonly part: MessagePart; readonly index: number }
   | { readonly type: "tools"; readonly calls: ReadonlyArray<ToolCall>; readonly index: number }
 
-/** A sub-agent's row opens its own view, so it never folds into a run of tool calls. */
 const isFoldable = (part: MessagePart): part is ToolCall => part.type === "tool_call" && !spawnsSubagent(part)
 
-/**
- * Folds each run of two or more back-to-back tool calls into one block, so a burst of tool use reads
- * as one line. `index` is the block's first part, which stays put as parts are appended.
- */
 export function groupToolCalls(parts: ReadonlyArray<MessagePart>, startIndex = 0): Array<TranscriptBlock> {
   const blocks: Array<TranscriptBlock> = []
   for (const [position, part] of parts.entries()) {
@@ -82,7 +72,6 @@ const toolKinds: Record<string, ToolKind> = {
   Grep: "search",
 }
 
-/** How many calls of each kind a run holds, in the order its summary names them. */
 export function countToolKinds(calls: ReadonlyArray<ToolCall>): Array<{ kind: ToolKind; count: number }> {
   const counts = new Map<ToolKind, number>(
     (["command", "read", "edit", "search", "other"] as const).map((kind) => [kind, 0]),
@@ -94,7 +83,6 @@ export function countToolKinds(calls: ReadonlyArray<ToolCall>): Array<{ kind: To
   return [...counts].flatMap(([kind, count]) => (count > 0 ? [{ kind, count }] : []))
 }
 
-/** What a shell command's row says: the agent's description of it when it gave one, else the command. */
 export function describeCommand(call: ToolCall): string {
   const description: unknown =
     typeof call.input === "object" && call.input !== null ? Reflect.get(call.input, "description") : undefined

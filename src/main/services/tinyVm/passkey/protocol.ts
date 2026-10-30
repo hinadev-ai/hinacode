@@ -37,11 +37,7 @@ const decodeDetails = Schema.decodeUnknownOption(RequestDetails)
 const isLocalHttp = (url: URL) =>
   url.protocol === "http:" && (url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]")
 
-/**
- * Checks a guest request before a ceremony window opens. The `rpId` must be the origin host or a parent of
- * it, which is the scope rule a browser applies on one machine. A relay has to apply it by hand, because it
- * chooses the ceremony origin itself.
- */
+// FIXME: the relay picks the ceremony origin itself, so it applies WebAuthn's rpId scope rule by hand
 export const validateRequest = (request: GuestRequest): CeremonyRequest | { readonly error: string } => {
   const details = decodeDetails(request.requestDetailsJson)
   if (details._tag === "None") return { error: "The VM sent a passkey request HinaCode does not understand" }

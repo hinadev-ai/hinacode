@@ -7,8 +7,10 @@ import {
   RefreshControl,
   ScrollView,
   type ScrollViewInstance,
+  type StyleProp,
   StyleSheet,
   Text,
+  type TextStyle,
   View,
 } from "react-native"
 import { Icon } from "@/components/icon"
@@ -331,11 +333,11 @@ function MatchRow({ match, onPress }: { match: PathMatch; onPress: () => void })
       <Icon name={entryIcon(match.path, "file")} size={18} color={theme.textMuted} />
       <View style={styles.flex}>
         <Text numberOfLines={1} style={[styles.rowName, { color: theme.text }]}>
-          <Emphasized text={match.path.slice(nameStart)} offset={nameStart} hits={hits} color={theme.link} />
+          <Emphasized text={match.path.slice(nameStart)} offset={nameStart} hits={hits} style={styles.strong} />
         </Text>
         {folder !== "" && (
           <Text numberOfLines={1} ellipsizeMode="head" style={[styles.rowDetail, { color: theme.textMuted }]}>
-            <Emphasized text={folder} offset={0} hits={hits} color={theme.text} />
+            <Emphasized text={folder} offset={0} hits={hits} style={[styles.strong, { color: theme.text }]} />
           </Text>
         )}
       </View>
@@ -343,17 +345,17 @@ function MatchRow({ match, onPress }: { match: PathMatch; onPress: () => void })
   )
 }
 
-/** `text` with the characters at `hits` (offset by `offset`) in `color` and bold. */
+/** `text` with the characters at `hits` (offset by `offset`) in `style`. */
 function Emphasized({
   text,
   offset,
   hits,
-  color,
+  style,
 }: {
   text: string
   offset: number
   hits: ReadonlySet<number>
-  color: string
+  style: StyleProp<TextStyle>
 }) {
   const runs: { text: string; hit: boolean; start: number }[] = []
   for (let index = 0; index < text.length; index++) {
@@ -364,7 +366,7 @@ function Emphasized({
   }
   return runs.map((run) =>
     run.hit ? (
-      <Text key={run.start} style={[styles.strong, { color }]}>
+      <Text key={run.start} style={style}>
         {run.text}
       </Text>
     ) : (
@@ -449,8 +451,14 @@ function HitRow({ hit, query, onPress }: { hit: FileSearchHit; query: string; on
       <Text numberOfLines={1} ellipsizeMode="head" style={[styles.hitLocation, { color: theme.textMuted }]}>
         {location}
       </Text>
+      {/* The desktop's find highlight: a violet wash, since amber would read as needing attention. */}
       <Text numberOfLines={2} style={[styles.hitText, { color: theme.text }]}>
-        <Emphasized text={hit.text} offset={0} hits={hits} color={theme.attention} />
+        <Emphasized
+          text={hit.text}
+          offset={0}
+          hits={hits}
+          style={[styles.strong, { backgroundColor: theme.tokenBg }]}
+        />
       </Text>
     </Pressable>
   )

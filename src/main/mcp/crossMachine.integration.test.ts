@@ -27,6 +27,7 @@ import { Peers } from "../remote/peers.ts"
 import { Events, PushBroadcast, WindowPush } from "../services/Events.ts"
 import { Messages } from "../services/Messages.ts"
 import { Settings } from "../services/Settings.ts"
+import { Threads } from "../services/Threads.ts"
 import { makeTestAppLayer } from "../testing.ts"
 import { McpCredentials } from "./credentials.ts"
 
@@ -71,7 +72,6 @@ const providers = Layer.mergeAll(
   Layer.succeed(MuseProvider, provider("muse")),
 )
 
-/** A headless cloud has no windows: its pushes reach only the remote listener's sinks. */
 const makeCloudEvents = () => {
   const sinks = new Set<(event: typeof PushEvent.Encoded) => void>()
   const encode = Schema.encodeSync(PushEvent)
@@ -136,7 +136,6 @@ const gitRepo = (path: string, origin: string) => {
   execFileSync("git", ["-C", path, "remote", "add", "origin", origin])
 }
 
-/** Calls one tool as `threadId`, through the MCP server of the machine the thread lives on. */
 const callAs = async (runtime: Runtime, threadId: string, name: string, args: Record<string, unknown> = {}) => {
   const { url, headers } = await runtime.runPromise(
     McpCredentials.use((credentials) => credentials.connectionFor(threadId)),
@@ -176,6 +175,9 @@ let desktopMachine = { id: "", name: "" }
 let desktopThread = ""
 let cloudThread = ""
 let otherRepoThread = ""
+let noOriginThread = ""
+let desktopProject = ""
+let cloudProject = ""
 
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), "kk-cross-machine-test-"))
@@ -183,9 +185,12 @@ beforeAll(async () => {
   const desktopRepo = join(dir, "desktop-repo")
   const otherRepo = join(dir, "other-repo")
   const cloudRepo = join(dir, "cloud-repo")
+  const desktopScratch = join(dir, "desktop-scratch")
+  const cloudScratch = join(dir, "cloud-scratch")
   gitRepo(desktopRepo, "git@github.com:Acme/Web.git")
   gitRepo(otherRepo, "git@github.com:Acme/Other.git")
   gitRepo(cloudRepo, "git@github.com:Acme/Web.git")
+  for (const scratch of [desktopScratch, cloudScratch]) execFileSync("git", ["init", "-q", scratch])
   mkdirSync(join(dir, "cloud"))
   mkdirSync(join(dir, "desktop"))
 
@@ -213,13 +218,19 @@ beforeAll(async () => {
   const cloudWeb = result(
     await invoke("projects.create", { name: "web", rootPath: cloudRepo, setupScript: null }, cloudId),
   )
+  desktopProject = web.id
+  cloudProject = cloudWeb.id
   desktopThread = result(await invoke("threads.create", { projectId: web.id })).id
   otherRepoThread = result(await invoke("threads.create", { projectId: other.id })).id
+  const scratch = result(
+    await invoke("projects.create", { name: "scratch", rootPath: desktopScratch, setupScript: null }),
+  )
+  result(await invoke("projects.create", { name: "scratch", rootPath: cloudScratch, setupScript: null }, cloudId))
+  noOriginThread = result(await invoke("threads.create", { projectId: scratch.id })).id
   cloudThread = result(await invoke("threads.create", { projectId: cloudWeb.id })).id
   await seedMessage(desktop, desktopThread, "hello from the desktop")
   await seedMessage(cloud, cloudThread, "hello from the cloud")
 
-  // The desktop registers as the cloud's hub after the socket opens, so wait until an ask reaches it.
   await vi.waitFor(
     async () => {
       const threads = await cloud.runPromise(Peers.use((peers) => peers.ask("threads.list", undefined)))
@@ -303,6 +314,95 @@ describe("thread tools across machines", () => {
   test("a cloud thread cannot send to a desktop thread of another repository", async () => {
     const sent = await callAs(cloud, cloudThread, "send_to_thread", { threadId: otherRepoThread, prompt: "hi" })
     expect(sent).toStrictEqual({ isError: true, text: `Thread ${otherRepoThread} no longer exists.` })
+  })
+
+  test("a desktop thread lists both machines and which ones hold its repository", async () => {
+    const web = await callAs(desktop, desktopThread, "list_machines")
+    expect(JSON.parse(web.text)).toStrictEqual([
+      { ...desktopMachine, self: true, hasProject: true },
+      { id: cloudId, name: "cloud", hasProject: true },
+    ])
+    const other = await callAs(desktop, otherRepoThread, "list_machines")
+    expect(JSON.parse(other.text)).toStrictEqual([
+      { ...desktopMachine, self: true, hasProject: true },
+      { id: cloudId, name: "cloud", hasProject: false },
+    ])
+    const scratch = await callAs(desktop, noOriginThread, "list_machines")
+    expect(JSON.parse(scratch.text)).toStrictEqual([
+      { ...desktopMachine, self: true, hasProject: true },
+      { id: cloudId, name: "cloud", hasProject: false },
+    ])
+  })
+
+  test("a cloud thread lists the desktop through the hub, and itself once", async () => {
+    const listed = await callAs(cloud, cloudThread, "list_machines")
+    const machines = JSON.parse(listed.text) as Array<{ id: string }>
+    expect(machines).toMatchObject([
+      { id: cloudId, self: true, hasProject: true },
+      { ...desktopMachine, hasProject: true },
+    ])
+    expect(machines).toHaveLength(2)
+  })
+
+  test("a desktop thread creates a thread on the cloud and starts it", async () => {
+    const created = await callAs(desktop, desktopThread, "create_thread", {
+      title: "on the cloud",
+      prompt: "run this on the cloud",
+      model: "claude-cloud",
+      machine: cloudId,
+    })
+    expect(created.isError).toBe(false)
+    const id = created.text.match(/^Created thread (\S+) "on the cloud" on cloud and sent it the prompt\.$/)?.[1]
+    expect(id).toBeDefined()
+    const onCloud = await cloud.runPromise(Threads.use((threads) => threads.get(id!)))
+    expect(onCloud).toMatchObject({
+      projectId: cloudProject,
+      title: "on the cloud",
+      provider: "claude",
+      model: "claude-cloud",
+      createdBy: `thread:${desktopThread}`,
+    })
+    await vi.waitFor(async () => {
+      const transcript = result(await invoke("threads.transcript", { threadId: id! }))
+      expect(JSON.stringify(transcript.messages)).toContain("run this on the cloud")
+    })
+  })
+
+  test("a cloud thread creates a thread on the desktop through the hub", async () => {
+    const created = await callAs(cloud, cloudThread, "create_thread", {
+      title: "on the desktop",
+      prompt: "run this on the desktop",
+      machine: desktopMachine.id,
+    })
+    expect(created.isError).toBe(false)
+    const id = created.text.match(/^Created thread (\S+) "on the desktop" on /)?.[1]
+    const onDesktop = await desktop.runPromise(Threads.use((threads) => threads.get(id!)))
+    expect(onDesktop).toMatchObject({
+      projectId: desktopProject,
+      title: "on the desktop",
+      createdBy: `thread:${cloudThread}`,
+    })
+    await vi.waitFor(async () => {
+      const transcript = result(await invoke("threads.transcript", { threadId: id! }))
+      expect(JSON.stringify(transcript.messages)).toContain("run this on the desktop")
+    })
+  })
+
+  test("creating a thread on a machine without the repository asks the user to add it", async () => {
+    const created = await callAs(desktop, otherRepoThread, "create_thread", {
+      title: "nowhere",
+      prompt: "hi",
+      machine: cloudId,
+    })
+    expect(created).toStrictEqual({
+      isError: true,
+      text: "cloud has no project for acme/other. Ask the user to add acme/other as a project on cloud, then try again.",
+    })
+  })
+
+  test("creating a thread on an unknown machine points at list_machines", async () => {
+    const created = await callAs(desktop, desktopThread, "create_thread", { title: "x", prompt: "hi", machine: "nope" })
+    expect(created).toStrictEqual({ isError: true, text: "No machine has id nope. Call list_machines for the ids." })
   })
 
   test("a cloud with no desktop connected says so instead of calling the thread gone", async () => {

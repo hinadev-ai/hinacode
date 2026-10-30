@@ -40,16 +40,13 @@ interface ProjectMenuProps {
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
   readonly onNewThread: (project: Project) => void
-  /** Takes focus after a project is deleted. */
   readonly focusAfterDelete: RefObject<HTMLElement | null>
 }
 
-/** The "…" menu on a project header, with the dialogs its items open. A group lists each machine's items under its name. */
 export function ProjectMenu({ rowKey, projects, open, onOpenChange, onNewThread, focusAfterDelete }: ProjectMenuProps) {
   const clouds = useClouds()
   const [, updateGroups] = useSidebarGroups()
   const [dialog, setDialog] = useState<Queued | null>(null)
-  // Items queue their action and run it once the menu has closed and handed focus back to the trigger.
   const [queued, setQueued] = useState<Queued | null>(null)
 
   const runQueued = () => {

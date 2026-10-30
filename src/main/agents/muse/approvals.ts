@@ -3,7 +3,6 @@ import type { ApprovalDecision, ApprovalKind, ApprovalRequest, SessionScope } fr
 import { toolInput, toolName } from "./items.ts"
 import type { ApprovalChoice, ApprovalRequestParams } from "./protocol.ts"
 
-/** The choices a decision may go out as, first match wins. "Allow" never widens into a session-long rule. */
 const choiceOrder: Record<ApprovalDecision, ReadonlyArray<string>> = {
   allow: ["approved"],
   allow_for_session: ["approvedForSession", "approved"],
@@ -18,7 +17,6 @@ export const choiceFor = (
     .map((wanted) => choices.find((choice) => choice.decision === wanted))
     .find((choice) => choice !== undefined)
 
-/** What "Allow for session" covers: the exact command, file or host Muse asked about, else every call of the tool. */
 export const sessionScope = ({ subject, toolName: tool }: ApprovalRequestParams): SessionScope => {
   const name = toolName(subject.toolName ?? tool)
   if (subject.kind === "shell" && subject.command !== undefined) {
@@ -33,7 +31,6 @@ export const sessionScope = ({ subject, toolName: tool }: ApprovalRequestParams)
   return { tool: name, kind: "tool", value: name }
 }
 
-/** The card's title says what the agent wants; its detail holds the exact command, path or address. */
 const describe = ({ subject, rawArgs, toolName: tool }: ApprovalRequestParams) => {
   switch (subject.kind) {
     case "shell": {

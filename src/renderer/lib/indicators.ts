@@ -41,7 +41,6 @@ const toneClassName = {
   prMerged: "text-pr-merged",
 } satisfies Record<IndicatorTone, string>
 
-/** A thread or pull request indicator from `shared/threadStatus.ts`, as a react-icons component and a text color. */
 export const toIcon = ({ icon, tone }: { icon: keyof typeof icons; tone: IndicatorTone }) => ({
   Icon: icons[icon],
   className: toneClassName[tone],

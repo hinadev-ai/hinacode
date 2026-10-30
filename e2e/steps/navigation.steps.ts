@@ -12,7 +12,6 @@ When("I open the sidebar overlay", async ({ app }) => {
   await expect(app.page.getByRole("dialog", { name: "Projects and threads" })).toBeVisible()
 })
 
-// With focus outside the popup, Base UI closes it from a document listener instead of the popup's own handler.
 When("focus leaves the sidebar overlay", async ({ app }) => {
   await app.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
 })

@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process"
 import { EventEmitter } from "node:events"
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { type AddressInfo, createConnection, createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
@@ -15,7 +15,7 @@ import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import type { PushEvent, RpcEnvelope, RpcMethod, RpcRequestEncoded, RpcResponseEncoded } from "../shared/contract.ts"
 import { clientProof, newNonce, serverProof } from "../shared/proof.ts"
 import { type ClientFrame, remoteWebSocketUrl, type ServerFrame } from "../shared/remote.ts"
-import { defaultSettings, type Project, type Thread, type Worktree } from "../shared/domain.ts"
+import { defaultSettings, type Message, type Project, type Thread, type Worktree } from "../shared/domain.ts"
 import type { PlanLimits } from "../shared/limits.ts"
 import { ClaudeProvider } from "./agents/claude/index.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
@@ -39,11 +39,9 @@ interface Frame {
   readonly parent: Frame | null
 }
 
-/** The Electron surface `ipc.ts` and the services touch, recording what main would send to windows. */
 const electron = vi.hoisted(() => ({
   handlers: new Map<string, IpcHandler>(),
   pushes: [] as Array<{ channel: string; payload: unknown }>,
-  /** Called after every push, so a test can wait for the one it expects instead of polling. */
   watchers: new Set<() => void>(),
   shown: [] as Array<object>,
   restored: [] as Array<object>,
@@ -110,7 +108,6 @@ const subagent: Subagent = {
   endedAt: null,
 }
 
-/** What the scripted provider answers every turn with: a sub-agent that runs and completes. */
 const scriptedTurn: ReadonlyArray<AgentEvent> = [
   { type: "subagent_updated", subagent },
   { type: "text_delta", text: "Spawned one sub-agent." },
@@ -132,21 +129,16 @@ const claudeLimits: PlanLimits = {
   readAt: "2026-10-12T10:00:00.000Z",
 }
 
-/** A turn prompted with "simulate a held turn" waits for this before it completes. */
 let heldTurn = Promise.withResolvers<void>()
 
-/** Each sub-agent the scripted providers were asked to stop. */
 const stoppedSubagents: Array<{ readonly threadId: string; readonly subagentId: string }> = []
 
-/** Turns the scripted Claude starts by itself. */
 const claudeWakes = Effect.runSync(Queue.unbounded<Wake>())
 
-/** The account home of each turn the scripted providers ran. */
 const turnHomes: Array<AccountHome | null> = []
 const turnResumes: Array<{ readonly resumeSessionId: string | null; readonly forkAt: string | null }> = []
 const turnPrompts: Array<string> = []
 
-/** Each session the scripted providers copied to another account's home. */
 const copiedSessions: Array<{
   readonly sessionId: string
   readonly from: AccountHome | null
@@ -156,7 +148,6 @@ const copiedSessions: Array<{
 const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
   id,
   listModels: Effect.succeed([unlistedModel(`${id}-model`, id)]),
-  // An added account answers with its home's name, so a test can tell which home was read.
   account: (home) =>
     Effect.succeed(
       home === null
@@ -274,7 +265,6 @@ const failure = (envelope: RpcEnvelope<unknown>) => {
 const pushed = () =>
   electron.pushes.filter((push) => push.channel === EVENT_CHANNEL).map((push) => push.payload as PushEvent)
 
-/** Resolves as soon as a push matching `predicate` has been sent, including one sent already. */
 const pushedEventually = (predicate: (event: PushEvent) => boolean) =>
   new Promise<void>((resolve) => {
     const check = () => {
@@ -577,7 +567,6 @@ describe("projects, threads and settings over rpc", () => {
   test("reordering a thread keeps its updatedAt", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     const created = result(await invoke("threads.create", { projectId: project.id }))
-    // Last touched at the epoch, so a reorder that bumps updatedAt to the real clock cannot go unnoticed.
     const thread = await runtime.runPromise(
       Threads.Threads.use((threads) => threads.update({ id: created.id, title: "old" })).pipe(
         Effect.provide(TestClock.layer()),
@@ -736,7 +725,6 @@ describe("projects, threads and settings over rpc", () => {
       status: "preparing",
     } satisfies Partial<Worktree>)
 
-    // Setup runs in the background; without a setup script it settles on `ready` almost at once.
     await pushedEventually(
       (event) =>
         event.type === "worktree.updated" && event.worktree.id === worktree.id && event.worktree.status === "ready",
@@ -964,6 +952,8 @@ const newAccount = (provider: "claude" | "codex", name: string) => ({
   configDir: join(dir, "homes", name.toLowerCase()),
   binary: provider,
 })
+
+const cachedLogin = (label: string) => existsSync(join(dir, "cache", `${label}.json`))
 
 const history = () => join(dir, "history")
 const inHistory = (...args: Array<string>) =>
@@ -1433,9 +1423,22 @@ describe("agent accounts over rpc", () => {
       expect.objectContaining({ id: account.id }),
     )
   })
+
+  test("drops an account's cached sign-in when it is renamed or removed", async () => {
+    const account = result(await invoke("accounts.create", newAccount("codex", "Billing")))
+    result(await invoke("agents.account", { provider: "codex", accountId: account.id }))
+    expect(cachedLogin("billing_codex")).toBe(true)
+
+    result(await invoke("accounts.rename", { id: account.id, name: "Invoices" }))
+    expect(cachedLogin("billing_codex")).toBe(false)
+    result(await invoke("agents.account", { provider: "codex", accountId: account.id }))
+    expect(cachedLogin("invoices_codex")).toBe(true)
+
+    result(await invoke("accounts.delete", { id: account.id }))
+    expect(cachedLogin("invoices_codex")).toBe(false)
+  })
 })
 
-/** One phone-side socket: sends `ClientFrame`s, collects `ServerFrame`s, and resolves on the one you wait for. */
 const phone = (port: number, options?: { autoPong: boolean }) => {
   const socket = new WebSocket(remoteWebSocketUrl({ host: "127.0.0.1", port }), options)
   const frames: Array<ServerFrame> = []
@@ -1575,6 +1578,30 @@ describe("remote mode", () => {
     paired.socket.close()
   })
 
+  test("a phone that watches threads hears their replies stream, and only how the others end", async () => {
+    const paired = phone(port)
+    await paired.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    expect((await paired.ready()).features).toContain("watch")
+    const project = result(await paired.call("projects.list", undefined))[0] ?? (await createProject("remote-watch"))
+    const shown = result(await paired.call("threads.create", { projectId: project.id }))
+    const hidden = result(await paired.call("threads.create", { projectId: project.id }))
+    const heard = (threadId: string) =>
+      paired.frames.flatMap((frame) =>
+        frame.type === "event" && frame.event.type === "thread.event" && frame.event.threadId === threadId
+          ? [frame.event.event.type]
+          : [],
+      )
+
+    await paired.send({ type: "watch", threadIds: [shown.id] })
+    result(await paired.call("threads.send", { threadId: hidden.id, prompt: "simulate a tool call" }))
+    result(await paired.call("threads.send", { threadId: shown.id, prompt: "simulate a tool call" }))
+    await vi.waitFor(() => expect(heard(hidden.id)).toContain("turn_completed"))
+    await vi.waitFor(() => expect(heard(shown.id)).toContain("turn_completed"))
+    expect(heard(hidden.id)).toStrictEqual(["turn_completed"])
+    expect(heard(shown.id)).toEqual(expect.arrayContaining(["tool_call_started", "text_delta"]))
+    paired.socket.close()
+  })
+
   test("a paired phone reads Linear issues, empty on a machine without a Linear key", async () => {
     const paired = phone(port)
     await paired.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
@@ -1659,6 +1686,135 @@ describe("remote mode", () => {
     expect(types).not.toContain("vm.screen.closed")
     expect(types).not.toContain("fs.changed")
     paired.socket.close()
+  })
+
+  test.each(["token", "proof"])("compacts live events only for a client requesting it with %s auth", async (auth) => {
+    const { token } = result(await invoke("remote.pairing", undefined))
+    const compact = phone(port)
+    const full = phone(port)
+    const explicitlyFull = phone(port)
+    try {
+      if (auth === "proof") {
+        const challenge = await compact.challenge()
+        const nonce = newNonce()
+        await compact.send(
+          JSON.stringify({
+            type: "auth",
+            nonce,
+            proof: clientProof(token, challenge.nonce, nonce),
+            compactEvents: true,
+          }),
+        )
+      } else await compact.send(JSON.stringify({ type: "auth", token, compactEvents: true }))
+      await full.send({ type: "auth", token })
+      await explicitlyFull.send(JSON.stringify({ type: "auth", token, compactEvents: false }))
+      await Promise.all([compact.ready(), full.ready(), explicitlyFull.ready()])
+
+      const message: Message = {
+        id: "compact-live-message",
+        threadId: "compact-live-thread",
+        role: "assistant",
+        parts: [
+          { type: "text", text: "Edited the file." },
+          {
+            type: "tool_call",
+            callId: "write",
+            name: "Write",
+            input: { file_path: "a.ts", content: "large input" },
+            output: "large output",
+            status: "done",
+          },
+          {
+            type: "tool_call",
+            callId: "child",
+            parentCallId: "agent",
+            name: "Read",
+            input: { file_path: "b.ts" },
+            output: "child output",
+            status: "done",
+          },
+          { type: "file_change", path: "a.ts", diff: "large diff" },
+        ],
+        createdAt: "2026-10-29T00:00:00.000Z",
+        completedAt: null,
+        usage: null,
+        forkPoint: null,
+      }
+      const pushes: ReadonlyArray<PushEvent> = [
+        { type: "message.created", seq: 1, message },
+        { type: "message.updated", seq: 2, message: { ...message, completedAt: "2026-10-29T00:00:01.000Z" } },
+        {
+          type: "thread.event",
+          threadId: message.threadId,
+          seq: 3,
+          event: {
+            type: "tool_call_started",
+            callId: "write",
+            name: "Write",
+            input: { file_path: "a.ts", content: "large input" },
+          },
+        },
+        {
+          type: "thread.event",
+          threadId: message.threadId,
+          seq: 4,
+          event: { type: "tool_call_finished", callId: "write", output: "large output", isError: true },
+        },
+        {
+          type: "thread.event",
+          threadId: message.threadId,
+          seq: 5,
+          event: { type: "file_changed", path: "a.ts", diff: "large diff" },
+        },
+        { type: "thread.event", threadId: message.threadId, seq: 6, event: { type: "text_delta", text: "Done." } },
+        { type: "thread.subagents", threadId: message.threadId, subagents: [subagent] },
+        { type: "thread.removed", id: "compact-live-marker" },
+      ]
+      await runtime.runPromise(Events.use((events) => Effect.forEach(pushes, events.publish, { discard: true })))
+      await Promise.all(
+        [compact, full, explicitlyFull].map((client) =>
+          client.event((event) => event.type === "thread.removed" && event.id === "compact-live-marker"),
+        ),
+      )
+      const received = (client: ReturnType<typeof phone>) =>
+        client.frames.flatMap((frame) => (frame.type === "event" ? [frame.event] : []))
+      expect(received(full)).toEqual(pushes)
+      expect(received(explicitlyFull)).toEqual(pushes)
+      const compactMessage = {
+        ...message,
+        parts: [
+          { type: "text", text: "Edited the file." },
+          { type: "tool_call", callId: "write", name: "Write", input: { file_path: "a.ts" }, status: "done" },
+          { type: "file_change", path: "a.ts", diff: "" },
+        ],
+      }
+      expect(received(compact)).toEqual([
+        { type: "message.created", seq: 1, message: compactMessage },
+        { type: "message.updated", seq: 2, message: { ...compactMessage, completedAt: "2026-10-29T00:00:01.000Z" } },
+        {
+          type: "thread.event",
+          threadId: message.threadId,
+          seq: 3,
+          event: { type: "tool_call_started", callId: "write", name: "Write", input: { file_path: "a.ts" } },
+        },
+        {
+          type: "thread.event",
+          threadId: message.threadId,
+          seq: 4,
+          event: { type: "tool_call_finished", callId: "write", output: "", isError: true },
+        },
+        {
+          type: "thread.event",
+          threadId: message.threadId,
+          seq: 5,
+          event: { type: "file_changed", path: "a.ts", diff: "" },
+        },
+        ...pushes.slice(5),
+      ])
+      expect(electron.pushes.slice(-pushes.length).map((push) => push.payload)).toEqual(pushes)
+    } finally {
+      for (const client of [compact, full, explicitlyFull]) client.socket.close()
+    }
   })
 
   test("rotating the token disconnects every phone and the old token stops working", async () => {
@@ -1805,7 +1961,6 @@ describe("remote mode under a test clock", () => {
 
     await adjust("20 seconds")
     await Promise.all([live.pinged, dead.pinged])
-    // The pong to the protocol ping is queued before this frame, so the server has it once this answers.
     await live.send({ type: "ping", at: 1 })
     await live.pong(1)
 

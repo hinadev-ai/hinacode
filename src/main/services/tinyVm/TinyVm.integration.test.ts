@@ -20,16 +20,22 @@ const makeRuntime = (fake: FakeSbx, profileDir: string, experimental: Partial<Ex
       Effect.gen(function* () {
         const settings = yield* Settings.Settings
         yield* settings.set({
-          experimental: { ...defaultSettings.experimental, tinyVm: true, tinyVmProfile: true, ...experimental },
+          experimental: {
+            ...defaultSettings.experimental,
+            tinyVm: true,
+            tinyVmProvider: "sbx",
+            tinyVmProfile: true,
+            ...experimental,
+          },
         })
         return layer({ configPath: fake.configPath, env: {} }, profileDir)
       }),
     ).pipe(
       Layer.provide(
-        Layer.mergeAll(Settings.layer, Layer.succeed(Events, { publish: () => Effect.void })).pipe(
-          Layer.provide(Db.layer(":memory:")),
-          Layer.provide(NodeServices.layer),
-        ),
+        Layer.mergeAll(
+          Settings.layer(mkdtempSync(join(tmpdir(), "hinacode-vm-settings-"))),
+          Layer.succeed(Events, { publish: () => Effect.void }),
+        ).pipe(Layer.provide(Db.layer(":memory:")), Layer.provide(NodeServices.layer)),
       ),
     ),
   )

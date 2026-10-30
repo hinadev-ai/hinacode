@@ -7,14 +7,9 @@ import { projectsAtom } from "./rpc.ts"
 
 export interface ThreadRoot {
   readonly path: string
-  /** Set when `path` is a live worktree. */
   readonly worktreeId: string | null
 }
 
-/**
- * Where the thread works now: its worktree, a chat's own folder, or the project root once the worktree is removed. Undefined until
- * the projects and worktrees load, so a worktree thread never briefly points at the project root.
- */
 export function useThreadRoot(thread: Thread): ThreadRoot | undefined {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   const projects = useAtomValue(projectsAtom)
@@ -25,5 +20,4 @@ export function useThreadRoot(thread: Thread): ThreadRoot | undefined {
   return { path, worktreeId: live?.id ?? null }
 }
 
-/** The folder of the thread on screen, which paths in agent messages are relative to. Null outside a thread. */
 export const ThreadFolder = createContext<string | null>(null)

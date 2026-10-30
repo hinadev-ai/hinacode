@@ -54,22 +54,21 @@ import { Button } from "../ui/button.tsx"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
 import { Switch } from "../ui/switch.tsx"
-import { SettingsSection, settingsGroupClass, settingsSurfaceClass } from "./SettingsSection.tsx"
+import { SettingsPageAction, SettingsSection, settingsGroupClass, settingsSurfaceClass } from "./SettingsSection.tsx"
 
 export function EnvironmentSettings() {
   const clouds = useClouds()
 
   return (
-    <SettingsSection
-      title={m.settings_environments()}
-      description={m.environments_description()}
-      action={<UpdateAllButton />}
-    >
+    <SettingsSection>
+      <SettingsPageAction>
+        <UpdateAllButton />
+      </SettingsPageAction>
       <RelayAccountSection />
       {clouds.length === 0 ? (
         <p className="text-sm text-muted-foreground">{m.environments_empty()}</p>
       ) : (
-        <ul aria-label={m.settings_environments()} className={settingsGroupClass}>
+        <ul aria-label={m.settings_connections()} className={settingsGroupClass}>
           {clouds.map((cloud) => (
             <EnvironmentRow key={cloud.id} cloud={cloud} />
           ))}
@@ -303,7 +302,6 @@ function RemoveRelayMachineButton({ host }: { host: RelayHost }) {
   )
 }
 
-/** Approves a link code another machine printed: the code, then the machine's name to confirm, then Approve. */
 function ApproveRelayLinkForm() {
   const findLink = useAtomSet(pendingRelayLinkAtom, { mode: "promise" })
   const approveLink = useAtomSet(approveRelayLinkAtom, { mode: "promise" })
@@ -498,7 +496,6 @@ interface PairAgainFormProps {
   readonly onPaired: () => void
 }
 
-/** Pairing a URL for a cloud that is already listed updates that cloud, so this keeps its name and its projects. */
 function PairAgainForm({ id, cloud, onCancel, onPaired }: PairAgainFormProps) {
   const addEnvironment = useAtomSet(addEnvironmentAtom, { mode: "promise" })
   const [pairingUrl, setPairingUrl] = useState("")
@@ -524,7 +521,6 @@ function PairAgainForm({ id, cloud, onCancel, onPaired }: PairAgainFormProps) {
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== "Escape") return
-    // Keeps the settings page from treating this Escape as leaving the page.
     event.preventDefault()
     onCancel()
   }
@@ -579,7 +575,6 @@ function useCloudUpdate(cloud: Cloud) {
 
 function CloudVersion({ cloud }: { cloud: Cloud }) {
   const status = useCloudUpdate(cloud)
-  // A cloud checks npm every few hours on its own; opening this page asks for a release published since.
   useEffect(() => {
     void callPromise("updates.check", undefined, { environment: cloud.id })
   }, [cloud.id])

@@ -13,10 +13,6 @@ const listenerPids: Array<number> = []
 const LISTENER =
   "const s = require('net').createServer().listen(0, '127.0.0.1', () => console.log(process.pid, s.address().port))"
 
-/**
- * Starts a TCP listener whose cwd is `cwd` and resolves with its port and pid. The shell backgrounds it
- * and exits, so the listener is not a descendant of this process, which Ports treats as hinacode's own.
- */
 const listenIn = (cwd: string) =>
   Effect.promise(
     () =>
@@ -81,9 +77,7 @@ describe.skipIf(process.platform !== "linux" && process.platform !== "darwin")("
 interface FakeProcess {
   readonly parent: number
   readonly cwd?: string
-  /** fd number to link target; omitted when the process belongs to another user. */
   readonly fds?: Record<string, string>
-  /** Listed in /proc but exits before its stat is read. */
   readonly exited?: boolean
 }
 
@@ -95,7 +89,6 @@ const TCP = `  sl  local_address rem_address   st tx_queue rx_queue tr tm->when 
 
 const missing = (path: string) => Promise.reject(Object.assign(new Error(path), { code: "ENOENT" }))
 
-/** An in-memory /proc that records which descriptor directories were read. */
 const fakeProc = (processes: Record<number, FakeProcess>) => {
   const fdReads: Array<number> = []
   const fs: ProcFs = {

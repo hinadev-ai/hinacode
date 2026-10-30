@@ -1,4 +1,4 @@
-import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react"
+import { animate, motion, MotionConfig, useMotionValue, useReducedMotion, useTransform } from "motion/react"
 import type { ReactNode } from "react"
 import { Button } from "./ui/button.tsx"
 
@@ -12,10 +12,6 @@ interface HoldToConfirmButtonProps {
   readonly onConfirm: () => void
 }
 
-/**
- * Fires `onConfirm` once the pointer, Space or Enter has been held for two seconds. Letting go early rewinds the fill.
- * For actions that destroy something the user cannot get back.
- */
 export function HoldToConfirmButton({ children, disabled, onConfirm }: HoldToConfirmButtonProps) {
   const progress = useMotionValue(0)
   const reduceMotion = useReducedMotion()
@@ -47,7 +43,9 @@ export function HoldToConfirmButton({ children, disabled, onConfirm }: HoldToCon
       onKeyUp={(event) => isHoldKey(event.key) && release()}
       onBlur={release}
     >
-      <motion.span aria-hidden className="absolute inset-0 -z-10 bg-destructive/25" style={{ x, opacity }} />
+      <MotionConfig reducedMotion="user">
+        <motion.span aria-hidden className="absolute inset-0 -z-10 bg-destructive/25" style={{ x, opacity }} />
+      </MotionConfig>
       {children}
     </Button>
   )

@@ -37,7 +37,7 @@ import { perHome } from "../usage.ts"
 import { threadAccess, turnAccess } from "./access.ts"
 import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
 import { codexHome, copyRollouts, makeRolloutUsage } from "./rollouts.ts"
-import { elementContext } from "../elementContext.ts"
+import { attachmentContext } from "../elementContext.ts"
 import { applyChildNotification, applyParentItem, type Subagents } from "./subagents.ts"
 import {
   GetAccountRateLimitsResponse,
@@ -81,7 +81,6 @@ import type {
 
 const CLIENT_VERSION = "0.1.0"
 
-/** The service tier Codex labels "Fast". */
 const FAST_SERVICE_TIER = "priority"
 
 const decisionToWire: Record<ApprovalDecision, ApprovalDecisionWire> = {
@@ -116,20 +115,19 @@ const userInputResponse = (answers: QuestionAnswers): ToolRequestUserInputRespon
 
 const textInput = (text: string): UserInput => ({ type: "text", text, text_elements: [] })
 
-/** Images go in as local paths, a picked element with its context; other files are named by path for the agent to read. */
 const userInput = (text: string, attachments: ReadonlyArray<Attachment>): Array<UserInput> => [
   ...(text === "" ? [] : [textInput(text)]),
   ...attachments.flatMap((attachment): Array<UserInput> => {
     if (attachment.kind !== "image") return [textInput(`Attached file: ${attachment.path}`)]
     const image: UserInput = { type: "localImage", path: attachment.path }
-    return attachment.element ? [image, textInput(elementContext(attachment.element))] : [image]
+    const context = attachmentContext(attachment)
+    return context === null ? [image] : [image, textInput(context)]
   }),
 ]
 
-/** The scopes the composer names. Codex ships `system` skills itself, and an administrator installs `admin` ones. */
 const commandScopes: Partial<Record<SkillScope, AgentCommand["scope"]>> = { user: "user", repo: "project" }
 
-/** Codex expands a skill only when it arrives as its own input item next to the `$name` in the text. */
+// FIXME: Codex expands a skill only when it arrives as its own input item next to the $name in the text
 const skillInputs = (text: string, skills: ReadonlyArray<SkillMetadata>): Array<UserInput> =>
   skills
     .filter((skill) => skill.enabled && text.includes(`$${skill.name}`))
@@ -137,7 +135,6 @@ const skillInputs = (text: string, skills: ReadonlyArray<SkillMetadata>): Array<
 
 const toolName = (item: ThreadItem): string | undefined => {
   switch (item.type) {
-    // "Bash" matches Claude's tool name, so the row gets the terminal icon and summarizes `command`.
     case "commandExecution":
       return "Bash"
     case "mcpToolCall":
@@ -149,7 +146,6 @@ const toolName = (item: ThreadItem): string | undefined => {
   }
 }
 
-/** A `path` field lets the tool row summarize a file change by what it touched instead of raw JSON. */
 const toolInput = (item: ThreadItem): unknown =>
   item.type === "fileChange" ? { path: item.changes.map((change) => change.path).join(", "), ...item } : item
 
@@ -171,13 +167,9 @@ const toolResult = (item: ThreadItem, bufferedOutput: string | undefined): { out
 
 type RemoteTurn = { readonly threadId: string; readonly turnId: string }
 
-/** A turn on one hinacode thread, from the moment it is asked for until its stream ends. */
 type Run = {
-  /** Completed by Stop when there is no started remote turn to interrupt. */
   readonly stop: Deferred.Deferred<void>
-  /** The app-server of the thread's account, which alone knows the run's remote turn. */
   client?: CodexClient
-  /** Outlives a stopped run, so a turn Codex starts after Stop can still be interrupted. */
   turnStart?: Fiber.Fiber<RemoteTurn, AgentError>
   turn?: RemoteTurn
 }
@@ -203,10 +195,9 @@ const copySession = (threadId: string, from: AccountHome | null, to: AccountHome
 
 const interruptedEvent: AgentEvent = { type: "turn_failed", message: "Turn interrupted" }
 
-/** Codex has no notification for background terminals, so a thread that may have some is polled. */
+// FIXME: Codex has no notification for background terminals
 const TERMINAL_POLL_INTERVAL = Duration.seconds(2)
 
-/** The background terminals of one HinaCode thread, on the app-server and Codex thread that run them. */
 type Terminals = {
   readonly client: CodexClient
   readonly codexThreadId: string
@@ -220,13 +211,8 @@ const sameTasks = (a: ReadonlyArray<BackgroundTask>, b: ReadonlyArray<Background
 const make = Effect.gen(function* () {
   const providerScope = yield* Effect.scope
   const clientLock = yield* Semaphore.make(1)
-  /** Keyed by `JSON.stringify(home)`, so the CLI's own login is "null". */
   const clients = new Map<string, { readonly client: CodexClient; readonly scope: Scope.Closeable }>()
 
-  /**
-   * One app-server per agent home and binary, since `CODEX_HOME` holds the login and the transcripts. Spawned
-   * on first use and respawned after it dies.
-   */
   const getClient = (home: AccountHome | null) =>
     Semaphore.withPermit(
       clientLock,
@@ -254,19 +240,12 @@ const make = Effect.gen(function* () {
     Effect.forEach(clients.values(), ({ scope }) => Scope.close(scope, Exit.void), { discard: true }),
   )
 
-  /** Pending approvals keyed by the hinacode approval id handed to the UI. */
   const approvals = new Map<string, Deferred.Deferred<ApprovalDecision>>()
-  /** Pending `request_user_input` calls keyed by the hinacode question id handed to the UI. */
   const questions = new Map<string, Deferred.Deferred<QuestionAnswers>>()
-  /** In-flight runs keyed by hinacode threadId, for steer and interrupt. */
   const runs = new Map<string, Run>()
-  /** Keyed by hinacode threadId; a sub-agent can outlive the turn that spawned it. */
   const subagentsByThread = new Map<string, Subagents>()
-  /** The turn each sub-agent last ran, keyed by its Codex thread id, so it can be stopped on its own. */
   const subagentTurns = new Map<string, string>()
-  /** The auto-compact threshold each Codex thread was loaded with, keyed by its Codex thread id. */
   const loadedCompactLimits = new Map<string, number | null>()
-  /** Keyed by HinaCode threadId, only while its terminals are polled. */
   const terminalsByThread = new Map<string, Terminals>()
   const backgroundTaskChanges = yield* Queue.unbounded<BackgroundTasksChange>()
 
@@ -286,7 +265,6 @@ const make = Effect.gen(function* () {
       return found
     })
 
-  /** A failed list means the app-server or its thread is gone, and the terminals with it. */
   const refreshTerminals = (threadId: string, terminals: Terminals) =>
     Effect.gen(function* () {
       const listed = yield* listTerminals(terminals).pipe(Effect.orElseSucceed(() => []))
@@ -303,7 +281,6 @@ const make = Effect.gen(function* () {
       return tasks
     })
 
-  /** Polls until the thread has no turn running and no terminal left. */
   const watchTerminals = (threadId: string, client: CodexClient, codexThreadId: string) =>
     Effect.gen(function* () {
       const current = terminalsByThread.get(threadId)
@@ -385,7 +362,6 @@ const make = Effect.gen(function* () {
           efforts: model.supportedReasoningEfforts.map((option) => option.reasoningEffort),
           defaultEffort: model.defaultReasoningEffort,
           fastMode: model.serviceTiers.some((tier) => tier.id === FAST_SERVICE_TIER),
-          // `on-request` lets Codex run sandboxed work and decide itself when to ask.
           autoMode: true,
         })
       }
@@ -468,7 +444,6 @@ const make = Effect.gen(function* () {
           const client = yield* getClient(input.home)
           run.client = client
 
-          // Subscribe before starting so no notification is missed; they wait here until the turn id is known.
           const inbox = yield* Queue.unbounded<Incoming>()
           yield* client.subscribe((message) => Queue.offerUnsafe(inbox, message))
 
@@ -480,14 +455,12 @@ const make = Effect.gen(function* () {
             model: input.model,
             ...threadAccess(input.accessMode),
             config: {
-              // Off by default in current Codex; the composer's task list is built from its plan.
               tools: { update_plan: { enabled: true } },
               ...(input.autoCompactTokens !== null && { model_auto_compact_token_limit: input.autoCompactTokens }),
               ...(hiddenSkills !== null && {
                 skills: { config: hiddenSkills.map((skill) => ({ path: skill.path, enabled: false })) },
               }),
               mcp_servers: {
-                // `request_secret` waits for the user, so the default 60 s tool timeout is too short.
                 hinacode: { url: input.mcpServer.url, http_headers: input.mcpServer.headers, tool_timeout_sec: 600 },
               },
             },
@@ -496,7 +469,7 @@ const make = Effect.gen(function* () {
           const resumed = input.resumeSessionId
           const loadedLimit = resumed === null ? undefined : loadedCompactLimits.get(resumed)
           if (resumed !== null && loadedLimit !== undefined && loadedLimit !== input.autoCompactTokens) {
-            // Codex ignores thread/resume config for a thread it has loaded, so a new threshold needs it unloaded.
+            // FIXME: Codex ignores thread/resume config for a thread it has loaded
             yield* client.request("thread/unsubscribe", { threadId: resumed })
           }
           const { thread, sandbox } =
@@ -533,7 +506,6 @@ const make = Effect.gen(function* () {
             const { turn } = yield* client.request<TurnStartResponse>("turn/start", turnStart)
             return turn.id
           })
-          // thread/compact/start answers with nothing, and Codex runs the compaction as a turn it announces itself.
           const startCompaction = Effect.gen(function* () {
             yield* client.request("thread/compact/start", { threadId: thread.id } satisfies ThreadCompactStartParams)
             while (true) {
@@ -554,7 +526,6 @@ const make = Effect.gen(function* () {
           const commandOutput = new Map<string, string>()
           const startedTools = new Set<string>()
           const openTools = new Set<string>()
-          /** Commands whose process can keep running after the turn, in Codex's background terminals. */
           const backgroundable = new Set<string>()
           const approvalIdByRpcId = new Map<string | number, string>()
           const questionIdByRpcId = new Map<string | number, string>()
@@ -568,7 +539,6 @@ const make = Effect.gen(function* () {
 
           yield* Effect.addFinalizer(() =>
             Effect.gen(function* () {
-              // The consumer went away mid-approval: unblock Codex instead of leaving the request hanging.
               for (const [rpcId, approvalId] of approvalIdByRpcId) {
                 if (approvals.delete(approvalId)) yield* client.respond(rpcId, { decision: "cancel" })
               }
@@ -610,7 +580,6 @@ const make = Effect.gen(function* () {
               )
             })
 
-          /** `parentCallId` is the sub-agent's thread id when one of its tools runs. */
           const startTool = (item: ThreadItem, parentCallId?: string) => {
             const name = toolName(item)
             if (name === undefined || startedTools.has(item.id)) return Effect.void
@@ -726,7 +695,6 @@ const make = Effect.gen(function* () {
             return scope?.threadId === thread.id && (scope.turnId ?? scope.turn?.id ?? turn.turnId) === turn.turnId
           }
 
-          /** Returns true once the turn is over. */
           const handle = (message: Incoming): Effect.Effect<boolean, AgentError, Scope.Scope> =>
             Effect.gen(function* () {
               if (message.kind === "exit") return yield* Effect.fail(message.error)
@@ -809,7 +777,6 @@ const make = Effect.gen(function* () {
                   if (params.item.type === "contextCompaction") {
                     yield* emit({
                       type: "compaction_updated",
-                      // Codex's item carries no token counts.
                       compaction: {
                         status: "done",
                         trigger: compacting ? "manual" : "auto",
@@ -831,8 +798,6 @@ const make = Effect.gen(function* () {
                 }
                 case "turn/plan/updated": {
                   const params = message.params as ServerNotificationParams[typeof method]
-                  // Stored as an `update_plan` tool call, so the plan persists with the transcript and
-                  // renders like every other agent's todo list. Each notification is the whole plan.
                   const callId = `plan-${params.turnId}-${++planRevision}`
                   yield* emit({
                     type: "tool_call_started",
@@ -846,7 +811,6 @@ const make = Effect.gen(function* () {
                 case "thread/tokenUsage/updated": {
                   const params = message.params as ServerNotificationParams[typeof method]
                   const { last, modelContextWindow } = params.tokenUsage
-                  // `last` is one model request; a turn makes several, so their sum is the turn's usage.
                   usage = {
                     inputTokens: usage.inputTokens + last.inputTokens,
                     outputTokens: usage.outputTokens + last.outputTokens,
@@ -858,16 +822,14 @@ const make = Effect.gen(function* () {
                 }
                 case "error": {
                   const params = message.params as ServerNotificationParams[typeof method]
-                  // A fatal error is always followed by turn/completed with status "failed", which ends the stream.
                   if (!params.willRetry) lastError = params.error.message
                   return false
                 }
                 case "turn/completed": {
                   const params = message.params as ServerNotificationParams[typeof method]
                   const { status, error } = params.turn
-                  // An interrupted turn completes without item/completed for the tools it cut off.
+                  // FIXME: an interrupted turn completes without item/completed for the tools it cut off
                   for (const callId of openTools) {
-                    // A completed turn leaves a long-running command going in a background terminal, not failed.
                     const isError = status !== "completed" || !backgroundable.has(callId)
                     const output =
                       commandOutput.get(callId) ?? (isError ? `Turn ${status}` : "Running in the background")
@@ -916,7 +878,6 @@ const make = Effect.gen(function* () {
       }),
     )
 
-  /** Interrupts the remote turn once Codex has one; before that, or if Codex does not answer, ends the run locally. */
   const interrupt = (threadId: string) =>
     Effect.suspend(() => {
       const run = runs.get(threadId)
@@ -925,7 +886,6 @@ const make = Effect.gen(function* () {
       return run.turn && run.client ? interruptTurn(run.client, run.turn).pipe(Effect.catch(() => stop)) : stop
     }).pipe(Effect.asVoid)
 
-  /** Codex reports a sub-agent only while its parent's turn runs, through that run's app-server. */
   const stopSubagent = (threadId: string, subagentId: string) =>
     Effect.suspend(() => {
       const client = runs.get(threadId)?.client
@@ -979,7 +939,6 @@ const make = Effect.gen(function* () {
     stopSubagent,
     respondApproval,
     respondQuestion,
-    // Codex takes a new approval policy and sandbox with the next turn/start.
     setAccessMode: () => Effect.void,
   } satisfies AgentProvider
 })
@@ -995,7 +954,6 @@ const planNames: Partial<Record<PlanType, string>> = {
   edu: "Edu",
 }
 
-/** Codex reports plan ids, not names. Ids without a known public name are title-cased. */
 const planName = (plan: PlanType) =>
   plan === "unknown"
     ? null
@@ -1023,7 +981,6 @@ const toAccount = (account: GetAccountResponse["account"]): AgentAccount => {
 const SESSION_MINUTES = 5 * 60
 const WEEK_MINUTES = 7 * 24 * 60
 
-/** A window without a duration can't be named, so it is left out. */
 const toLimitWindow = (window: RateLimitWindow | null): ReadonlyArray<LimitWindow> => {
   const minutes = window?.windowDurationMins ?? null
   if (window === null || minutes === null) return []
@@ -1041,7 +998,6 @@ const toLimitWindow = (window: RateLimitWindow | null): ReadonlyArray<LimitWindo
   ]
 }
 
-/** The `codex` bucket is what Codex itself meters; the legacy single snapshot stands in when it is missing. */
 const toPlanLimits = (response: GetAccountRateLimitsResponse, readAt: string): PlanLimits => {
   const snapshot = response.rateLimitsByLimitId?.["codex"] ?? response.rateLimits
   return { windows: [...toLimitWindow(snapshot.primary), ...toLimitWindow(snapshot.secondary)], readAt }

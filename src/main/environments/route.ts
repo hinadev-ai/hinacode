@@ -5,7 +5,6 @@ import { type AppServices, type DesktopCalls, dispatch, type HandlerError, RpcCa
 import { inlineSource } from "../services/Attachments.ts"
 import { Environments } from "../services/Environments.ts"
 
-/** The renderer's envelope: `environment` names a cloud for the methods whose route is `named`. */
 const WindowCall = Schema.Struct({ ...RpcCall.fields, environment: Schema.optional(Schema.String) })
 const decodeWindowCall = Schema.decodeUnknownOption(WindowCall)
 
@@ -25,7 +24,6 @@ const inlineLocalAttachment = (method: RpcMethod, payload: unknown): Effect.Effe
         ),
       )
 
-/** Finds where a window call runs (see `shared/routes.ts`): this desktop, one cloud, or all of them. */
 export const route = (raw: unknown, desktop: DesktopCalls | null) =>
   Effect.gen(function* () {
     const decoded = Option.getOrUndefined(decodeWindowCall(raw))
@@ -54,7 +52,6 @@ export const route = (raw: unknown, desktop: DesktopCalls | null) =>
     return { result: [...local.result, ...clouds] }
   })
 
-/** A cloud's `ask` runs like a window call, so it reaches this machine and every cloud it is paired with. */
 export const answerAsksLayer = Layer.effectDiscard(
   Effect.gen(function* () {
     const services = yield* Effect.context<AppServices | Environments>()

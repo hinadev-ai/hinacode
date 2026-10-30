@@ -38,8 +38,6 @@ export default Effect.gen(function* () {
     )
   `
   yield* sql`CREATE INDEX automation_run_recent ON automation_run(automation_id, created_at)`
-  // Only a started run claims its event, so a failed run can be retried by a redelivery and a
-  // skipped run can record the duplicate it rejected.
   yield* sql`
     CREATE UNIQUE INDEX automation_run_event ON automation_run(automation_id, event_key)
     WHERE status = 'started'

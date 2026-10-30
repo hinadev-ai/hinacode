@@ -23,7 +23,7 @@ import { Button } from "../ui/button.tsx"
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
 import { Switch } from "../ui/switch.tsx"
-import { ALL_INTERFACES, BindHostSelect, LOOPBACK } from "./BindHostSelect.tsx"
+import { BindHostSelect, LOOPBACK } from "./BindHostSelect.tsx"
 import { CopyField } from "./automations/shared.tsx"
 import { SettingsGroup, SettingsSection, settingsSurfaceClass } from "./SettingsSection.tsx"
 
@@ -35,11 +35,11 @@ export function RemoteSettings() {
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
-  const save = (patch: Partial<RemoteSettingsValue>) =>
+  const save = (next: RemoteSettingsValue) =>
     startTransition(async () => {
       setError(null)
       try {
-        await updateSettings({ remote: { ...remote, ...patch } })
+        await updateSettings({ remote: next })
       } catch (cause) {
         setError(errorMessage(cause))
       }
@@ -57,8 +57,10 @@ export function RemoteSettings() {
             <Switch
               id="remote-enabled"
               checked={remote.enabled}
-              disabled={pending}
-              onCheckedChange={(enabled) => save({ enabled })}
+              disabled={pending || remote.bindHost === null}
+              onCheckedChange={(enabled) =>
+                remote.bindHost !== null && save({ ...remote, enabled, bindHost: remote.bindHost })
+              }
             />
           </Field>
           <RemoteStatusLine remote={remote} />
@@ -126,7 +128,7 @@ function ListenerStatus({ remote }: { remote: RemoteSettingsValue }) {
 interface ListenerSettingsProps {
   readonly remote: RemoteSettingsValue
   readonly pending: boolean
-  readonly onSave: (patch: Partial<RemoteSettingsValue>) => void
+  readonly onSave: (next: RemoteSettingsValue) => void
 }
 
 function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
@@ -134,7 +136,7 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    onSave({ port: Number(port) })
+    onSave({ ...remote, port: Number(port) })
   }
 
   return (
@@ -146,7 +148,7 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
             id="remote-bind-host"
             environment={null}
             value={remote.bindHost}
-            onChange={(bindHost) => onSave({ bindHost })}
+            onChange={(bindHost) => onSave({ ...remote, bindHost })}
           />
         </Field>
         <form onSubmit={onSubmit} className="flex items-end gap-2">
@@ -169,8 +171,8 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
         </form>
       </div>
       <FieldDescription>
-        {remote.bindHost === ALL_INTERFACES
-          ? m.remote_bind_all_hint()
+        {remote.bindHost === null
+          ? m.remote_bind_required_hint()
           : remote.bindHost === LOOPBACK
             ? m.remote_bind_loopback_hint()
             : m.remote_bind_address_hint({ address: remote.bindHost })}
@@ -188,17 +190,12 @@ function ExternalLink({ href, children }: { href: string; children: string }) {
   )
 }
 
-/**
- * Shown with remote control off too, since setup works then and the status reads paused. Owns the setup call because
- * it stays pending through `linking` until the machine is approved, which can take minutes.
- */
 function Relay() {
   const status = useAtomValue(remoteStatusAtom)
   const refreshStatus = useAtomRefresh(remoteStatusAtom)
   const refreshPairing = useAtomRefresh(remotePairingAtom)
   const [setupError, setSetupError] = useState<string | null>(null)
   const [settingUp, startSetup] = useTransition()
-  // Cancelling makes the pending setup call fail, and that failure is the user's own doing, not an error to show.
   const cancelled = useRef(false)
   const headingId = useId()
   if (!AsyncResult.isSuccess(status)) return null
@@ -367,7 +364,6 @@ function RemoveRelayButton({ onRemoved }: { onRemoved: () => void }) {
   )
 }
 
-/** Only while the listener is up, so a failed or starting one never shows a pairing that cannot connect. */
 function PairPhone() {
   const status = useAtomValue(remoteStatusAtom)
   return AsyncResult.isSuccess(status) && status.value.listening ? <PairingSection /> : null
@@ -464,7 +460,6 @@ function PairingQrCode({ url }: { url: string }) {
     }
   }, [url])
 
-  // Scanners need dark modules on a light ground, so the code stays black on white in every theme.
   return (
     <div className="size-48 rounded-md bg-white p-2">
       {src && <img src={src} alt={m.remote_pair_qr_label()} className="size-full" />}

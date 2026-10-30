@@ -1,24 +1,16 @@
 import { createContext, type ReactNode, useContext } from "react"
 
-/** What the open find bar searches for, or null when nothing in the transcript should be marked. */
 export const FindPatternContext = createContext<RegExp | null>(null)
 
 export const useFindPattern = () => useContext(FindPatternContext)
 
-/**
- * The transcript part a subtree renders, stamped on its marks as `data-find-part`. The find bar picks
- * its current match by position among its part's marks, so hidden or repeated text elsewhere in the
- * message cannot shift it. Marks outside any part, like a command group's running line, are never picked.
- */
 export const FindPartContext = createContext<number | null>(null)
 
-/** The marks of part `partIndex` within a message's row. */
 export const partMatchSelector = (partIndex: number) => `mark[data-find-match][data-find-part="${partIndex}"]`
 
 export const markClassName =
   "rounded-[2px] bg-find-match text-inherit transition-[background-color,outline-color] duration-150 ease-out outline-1 outline-transparent data-current:bg-find-match-current data-current:outline-find-match-ring motion-reduce:transition-none"
 
-/** Splits `text` into plain runs and `<mark>`s around every match. */
 export function highlight(text: string, pattern: RegExp | null, part: number | null = null): ReactNode {
   if (pattern === null) return text
   const nodes: Array<ReactNode> = []
@@ -37,16 +29,11 @@ export function highlight(text: string, pattern: RegExp | null, part: number | n
   return nodes
 }
 
-/** A run of text in one color, like a syntax token. */
 export interface Run {
   readonly text: string
   readonly color?: string
 }
 
-/**
- * Colored runs with the find bar's matches marked. A match across several runs gets one `<mark>`, because the find
- * bar picks its current match by position among the marks.
- */
 export function highlightRuns(runs: ReadonlyArray<Run>, pattern: RegExp | null, part: number | null): ReactNode {
   const text = runs.map((run) => run.text).join("")
   const matches = pattern === null ? [] : [...text.matchAll(pattern)].filter((match) => match[0] !== "")
@@ -86,7 +73,6 @@ export function highlightRuns(runs: ReadonlyArray<Run>, pattern: RegExp | null, 
   return nodes
 }
 
-/** Plain text with the find bar's matches marked. */
 export function Highlighted({ text }: { text: string }) {
   return highlight(text, useFindPattern(), useContext(FindPartContext))
 }
@@ -126,10 +112,6 @@ const splitText = (value: string, pattern: RegExp, part: number | null): Array<H
   return nodes
 }
 
-/**
- * A rehype plugin that marks matches in rendered markdown text. Fenced code is skipped here because
- * `Markdown` renders it from the raw source and marks it with `Highlighted`.
- */
 export const rehypeFindMarks = (pattern: RegExp, part: number | null) => () => (tree: HastNode) => {
   const visit = (node: HastNode) => {
     if (!("children" in node) || node.children === undefined) return

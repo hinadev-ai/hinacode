@@ -13,7 +13,6 @@ const transcript = (page: Page) => page.locator("article[aria-busy]")
 const findField = (page: Page) => page.getByRole("textbox", { name: "Find in thread", exact: true })
 const currentMarkSelector = "mark[data-find-match][data-current]"
 const currentMark = (page: Page) => transcript(page).locator(currentMarkSelector)
-/** A row in an open command group, found by its command or by the agent's description of it. */
 const commandRow = (page: Page, text: string) =>
   transcript(page)
     .getByRole("button")
@@ -32,7 +31,7 @@ const finishTurn = async (
   title: string,
   rows: ReadonlyArray<TurnRow>,
 ) => {
-  await expect(app.page.getByRole("heading", { name: "Do anything", exact: true })).toBeVisible()
+  await expect(app.page.getByRole("heading", { name: /^What do you want to (work on|ask)/ })).toBeVisible()
   const threadId = threadIds.get(title)
   if (!threadId) throw new Error(`no seeded thread named ${title}`)
   let { seq } = await rpc(app.page, "threads.transcript", { threadId })

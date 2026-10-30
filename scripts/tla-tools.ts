@@ -1,4 +1,3 @@
-// Downloads the pinned TLA+ tools once and checks that Java can run them.
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { existsSync, mkdirSync, writeFileSync } from "node:fs"

@@ -22,7 +22,6 @@ Then("the sidebar is labelled {string}", async ({ app }, label: string) => {
   await expect(app.page.getByRole("navigation", { name: label })).toBeVisible()
 })
 
-// The renderer handles the key before `press` resolves, so a wrong toggle is already in the DOM here.
 Then("pressing {string} leaves the sidebar hidden", async ({ app }, keys: string) => {
   await app.page.keyboard.press(keys)
   await expect(app.page.getByRole("navigation", { name: "Projects and threads" })).toBeHidden()

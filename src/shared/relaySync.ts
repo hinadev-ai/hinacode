@@ -6,11 +6,6 @@ export interface SyncedEntry {
   readonly source: EntrySource
 }
 
-/**
- * What a client does with the relay's list. Every listed machine but this one, with a pairing a socket can use,
- * is added or refreshed. An entry the relay added before is dropped once the list no longer has it, because the
- * owner hid or unlinked it. An entry paired by QR code is never dropped.
- */
 export const planRelaySync = <E extends SyncedEntry>(
   entries: ReadonlyArray<E>,
   machines: ReadonlyArray<RelayMachine>,
