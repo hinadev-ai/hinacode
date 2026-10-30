@@ -171,7 +171,9 @@ export type ThreadItem =
       text: string
       questions?: Array<AsyncUserInputQuestion> | null
     }
-  | { type: "reasoning" | "userMessage" | "plan" | "webSearch" | "contextCompaction"; id: string }
+  | { type: "userMessage"; id: string; content: Array<{ type: string; text?: string }> }
+  | { type: "reasoning"; id: string; summary: Array<string>; content: Array<string> }
+  | { type: "plan" | "webSearch" | "contextCompaction"; id: string }
 
 export type AsyncUserInputQuestion = { title: string; options: Array<string> | null }
 
@@ -315,3 +317,41 @@ export const ThreadBackgroundTerminalsListResponse = Schema.Struct({
   nextCursor: Schema.NullOr(Schema.String),
 })
 export type ThreadBackgroundTerminalsListResponse = typeof ThreadBackgroundTerminalsListResponse.Type
+
+const ListedThread = Schema.Struct({
+  id: Schema.String,
+  preview: Schema.String,
+  name: Schema.NullOr(Schema.String),
+  cwd: Schema.String,
+  updatedAt: Schema.Number,
+  gitInfo: Schema.NullOr(Schema.Struct({ branch: Schema.optional(Schema.NullOr(Schema.String)) })),
+})
+export const ThreadListResponse = Schema.Struct({
+  data: Schema.Array(ListedThread),
+  nextCursor: Schema.NullOr(Schema.String),
+})
+
+export const ThreadReadResponse = Schema.Struct({
+  thread: Schema.Struct({
+    id: Schema.String,
+    name: Schema.NullOr(Schema.String),
+    model: Schema.NullOr(Schema.String),
+    cwd: Schema.String,
+    createdAt: Schema.Number,
+  }),
+})
+export type ThreadReadResponse = typeof ThreadReadResponse.Type
+
+const HistoryTurn = Schema.Struct({
+  id: Schema.String,
+  status: Schema.String,
+  itemsView: Schema.String,
+  startedAt: Schema.NullOr(Schema.Number),
+  completedAt: Schema.NullOr(Schema.Number),
+  items: Schema.Array(Schema.Unknown),
+})
+export type HistoryTurn = typeof HistoryTurn.Type
+export const ThreadTurnsListResponse = Schema.Struct({
+  data: Schema.Array(HistoryTurn),
+  nextCursor: Schema.NullOr(Schema.String),
+})
