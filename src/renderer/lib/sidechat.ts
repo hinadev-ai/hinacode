@@ -28,8 +28,8 @@ export const openSidechat = async (threadId: string) => {
 
 export async function askSidechat(threadId: string, question: string, attachments: ReadonlyArray<Attachment>) {
   useUi.getState().showView(threadId, "sidechat", { focus: true })
-  const sidechat = await openSidechat(threadId)
   if (question === "" && attachments.length === 0) return
+  const sidechat = await openSidechat(threadId)
   await (isThreadBusy(sidechat.status)
     ? callPromise("threads.queue", { threadId: sidechat.id, text: question, attachments })
     : callPromise("threads.send", { threadId: sidechat.id, prompt: question, attachments }))

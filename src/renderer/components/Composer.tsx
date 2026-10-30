@@ -8,6 +8,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
+  type RefObject,
   startTransition,
   useEffect,
   useEffectEvent,
@@ -188,25 +189,9 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
     callPromise("threads.interrupt", { threadId: thread.id }).catch((cause: unknown) => setError(errorMessage(cause)))
   }
 
-  const interruptIfBusy = useEffectEvent(() => {
+  useComposerRequests(textareaRef, isSidechat, () => {
     if (busy || isSending) stop()
   })
-
-  useEffect(() => {
-    if (isSidechat) return
-    return useUi.subscribe((state, previous) => {
-      if (state.composerFocusRequest !== previous.composerFocusRequest) textareaRef.current?.focus()
-      if (state.interruptRequest !== previous.interruptRequest) interruptIfBusy()
-    })
-  }, [isSidechat])
-
-  const sidechatFocusRequested = useUi((state) => isSidechat && state.viewFocusRequest === "sidechat")
-  useEffect(() => {
-    if (!sidechatFocusRequested) return
-    useUi.getState().clearViewFocusRequest()
-    // FIXME: Base UI Dialog places its initial focus a frame late, which would take focus back
-    requestAnimationFrame(() => textareaRef.current?.focus())
-  }, [sidechatFocusRequested])
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -314,6 +299,30 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
       </form>
     </div>
   )
+}
+
+function useComposerRequests(
+  textareaRef: RefObject<HTMLTextAreaElement | null>,
+  isSidechat: boolean,
+  onInterrupt: () => void,
+) {
+  const interrupt = useEffectEvent(onInterrupt)
+
+  useEffect(() => {
+    if (isSidechat) return
+    return useUi.subscribe((state, previous) => {
+      if (state.composerFocusRequest !== previous.composerFocusRequest) textareaRef.current?.focus()
+      if (state.interruptRequest !== previous.interruptRequest) interrupt()
+    })
+  }, [textareaRef, isSidechat])
+
+  const sidechatFocusRequested = useUi((state) => isSidechat && state.viewFocusRequest === "sidechat")
+  useEffect(() => {
+    if (!sidechatFocusRequested) return
+    useUi.getState().clearViewFocusRequest()
+    // FIXME: Base UI Dialog places its initial focus a frame late, which would take focus back
+    requestAnimationFrame(() => textareaRef.current?.focus())
+  }, [textareaRef, sidechatFocusRequested])
 }
 
 function AttachButton({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
