@@ -43,6 +43,7 @@ import { Settings } from "./services/Settings.ts"
 import { SystemResources } from "./services/SystemResources.ts"
 import { Terminals } from "./services/Terminals.ts"
 import { Updates } from "./services/Updates.ts"
+import { SessionImports } from "./services/SessionImports.ts"
 import { randomName, Threads } from "./services/Threads.ts"
 import { VmPasskeyRelay } from "./services/tinyVm/passkey/PasskeyRelay.ts"
 import { type ScreenOwner, TinyVm, VmError } from "./services/tinyVm/TinyVm.ts"
@@ -52,6 +53,7 @@ import { Worktrees } from "./services/Worktrees.ts"
 export type AppServices =
   | AgentAccounts
   | AgentLogins
+  | SessionImports
   | Projects
   | Threads
   | Worktrees
@@ -259,6 +261,11 @@ const handlers: Handlers = {
   "threads.unarchive": ({ threadId }) => Threads.use((threads) => threads.unarchive(threadId)),
   "threads.fork": ({ threadId, messageId }) =>
     Threads.use((threads) => threads.fork(threadId, messageId)).pipe(
+      Effect.tap((thread) => Events.use((events) => events.publish({ type: "thread.updated", thread }))),
+    ),
+  "sessions.listExternal": ({ projectId }) => SessionImports.use((imports) => imports.list(projectId)),
+  "sessions.import": (input) =>
+    SessionImports.use((imports) => imports.import(input)).pipe(
       Effect.tap((thread) => Events.use((events) => events.publish({ type: "thread.updated", thread }))),
     ),
   "threads.sidechat": ({ threadId }) => Threads.use((threads) => threads.sidechat(threadId)),
