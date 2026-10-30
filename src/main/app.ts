@@ -52,6 +52,7 @@ import { makeAndroidDriver } from "./services/devices/android.ts"
 import { devicesLayer } from "./services/devices/Devices.ts"
 import { makeIosDriver, simslimAvailable } from "./services/devices/ios.ts"
 import { simhelperSources } from "./services/devices/simhelperSources.ts"
+import { traceLayer } from "./trace.ts"
 
 export interface AppOptions {
   readonly userData: string
@@ -158,5 +159,6 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     Layer.provideMerge(makeEventsLayer(toWindows)),
     Layer.provide(Layer.mergeAll(Db.layer(join(userData, "hinacode.sqlite")), keyring)),
     Layer.provide(NodeServices.layer),
+    Layer.provideMerge(traceLayer(process.env["HINACODE_TRACE"])),
   )
 }

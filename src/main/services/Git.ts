@@ -47,6 +47,7 @@ export const makeExec =
       Effect.catchTag("PlatformError", (cause) =>
         Effect.fail(new CommandError({ command, args, exitCode: -1, stderr: cause.message })),
       ),
+      Effect.withSpan(`exec ${command}`, { attributes: { command: [command, ...args].join(" ") } }),
     )
 
 const toChangedStatus = (letter: string): ChangedFileStatus => {

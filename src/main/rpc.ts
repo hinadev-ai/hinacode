@@ -521,6 +521,7 @@ const call = <M extends RpcMethod>(method: M, payload: unknown, desktop: Desktop
   return Schema.decodeUnknownEffect(spec.request)(payload).pipe(
     Effect.flatMap((request) => handler(request, desktop)),
     Effect.flatMap(Schema.encodeEffect(spec.response)),
+    Effect.withSpan(`rpc ${method}`),
   )
 }
 
