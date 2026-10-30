@@ -97,7 +97,7 @@ function SwitcherRow({ thread, highlighted, current, onChoose }: SwitcherRowProp
         aria-current={current ? "page" : undefined}
         onClick={onChoose}
         className={cn(
-          "flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-sm outline-none",
+          "flex h-9 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-sm outline-none",
           highlighted && "bg-accent text-accent-foreground inset-ring inset-ring-ring/50",
         )}
       >
