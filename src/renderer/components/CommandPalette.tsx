@@ -28,6 +28,7 @@ function useSourceItems(sources: ReadonlyArray<PaletteSource>, query: string, ct
       if (!(result instanceof Promise)) continue
       void result.then((items) => {
         if (!current) return
+        // oxlint-disable-next-line hinacode/no-promise-state-in-effect -- sync sources show at once and async ones join as they settle; Suspense would hold every keystroke for the slowest source.
         setSettled((previous) =>
           previous.has(result)
             ? previous
