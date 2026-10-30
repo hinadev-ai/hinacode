@@ -330,7 +330,10 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
             </span>
           </span>
           <StatusIndicator state={state} />
-          <span aria-hidden className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden">
+          <span
+            aria-hidden
+            className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden"
+          >
             <ActivityTime {...meta} />
             <ProviderIcon provider={meta.provider} className="size-3" />
           </span>
