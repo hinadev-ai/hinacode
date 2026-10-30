@@ -1,6 +1,6 @@
 import { cn } from "cn"
 import { Schema } from "effect"
-import { type FormEvent, useEffect, useId, useRef, useState } from "react"
+import { type FormEvent, useEffect, useEffectEvent, useId, useRef, useState } from "react"
 import type { IconType } from "react-icons"
 import {
   RiArrowGoBackLine,
@@ -98,7 +98,6 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
   const [hardwareKeyboard, setHardwareKeyboard] = useState(() => localStorage.getItem(hardwareKeyboardKey) === "on")
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const sessionRef = useRef<DeviceSession | null>(null)
-  const controlRef = useRef(control)
   const hintId = useId()
   const owned = device.ownerThreadId === threadId
   const deviceId = device.id
@@ -122,17 +121,14 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
     }
   }, [threadId, deviceId])
 
-  useEffect(() => {
-    controlRef.current = control
-  }, [control])
-
+  const handBack = useEffectEvent(() => {
+    if (control === "user") void callPromise("device.control", { threadId, deviceId, control: "agent" }).catch(() => {})
+  })
   useEffect(
     () => () => {
-      if (controlRef.current === "user") {
-        void callPromise("device.control", { threadId, deviceId, control: "agent" }).catch(() => {})
-      }
+      handBack()
     },
-    [threadId, deviceId],
+    [],
   )
 
   const onCanvas = (canvas: HTMLCanvasElement | null) => {

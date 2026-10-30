@@ -41,19 +41,14 @@ export default function BoatVmScreen({
   dropping,
 }: BoatVmScreenProps) {
   const id = vmScreenId(threadId)
-  const controlRef = useRef(control)
   const dragDepth = useRef(0)
   const [connection, setConnection] = useState<Connection>({ status: "connecting" })
   const [fullscreen, setFullscreen] = useState(false)
   const [fileDrag, setFileDrag] = useState(false)
 
   const handBack = useEffectEvent(() => {
-    if (controlRef.current === "user") onHandBack()
+    if (control === "user") onHandBack()
   })
-
-  useEffect(() => {
-    controlRef.current = control
-  }, [control])
 
   useEffect(() => {
     let cancelled = false
