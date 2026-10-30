@@ -74,6 +74,7 @@ import {
   ThreadStatus,
   ThreadVm,
   VmControl,
+  VmDesktopUrl,
   VmHostStatus,
   VmPasskey,
   Worktree,
@@ -209,7 +210,18 @@ export const RpcMethods = {
   "projects.delete": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
 
   "threads.list": rpc(Schema.Void, Schema.Array(Thread)),
-  "threads.create": rpc(Schema.Struct({ projectId: Schema.String }), Thread),
+  "threads.create": rpc(
+    Schema.Struct({
+      projectId: Schema.String,
+      title: Schema.optional(Schema.String),
+      provider: Schema.optional(ProviderId),
+      model: Schema.optional(Schema.String),
+      effort: Schema.optional(Schema.String),
+      worktree: Schema.optional(Schema.Struct({ branch: Schema.String, baseRef: Schema.String })),
+      createdBy: Schema.optional(Schema.String),
+    }),
+    Thread,
+  ),
   "threads.update": rpc(
     Schema.Struct({
       id: Schema.String,
@@ -448,6 +460,7 @@ export const RpcMethods = {
   "vm.stop": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "vm.control": rpc(Schema.Struct({ threadId: Schema.String, control: VmControl }), ThreadVm),
   "vm.host": rpc(Schema.Void, VmHostStatus),
+  "vm.desktop.url": rpc(Schema.Struct({ threadId: Schema.String }), VmDesktopUrl),
   "vm.screen.open": rpc(Schema.Struct({ threadId: Schema.String, streamId: Schema.String }), Schema.Void),
   "vm.screen.send": rpc(Schema.Struct({ streamId: Schema.String, data: Schema.Uint8Array }), Schema.Void),
   "vm.screen.close": rpc(Schema.Struct({ streamId: Schema.String }), Schema.Void),
@@ -677,6 +690,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "vm.stop": "mutation",
   "vm.control": "mutation",
   "vm.host": "read",
+  "vm.desktop.url": "read",
   "vm.screen.open": "mutation",
   "vm.screen.send": "mutation",
   "vm.screen.close": "mutation",
@@ -779,6 +793,16 @@ export const TranscriptPush = Schema.Union([
 ])
 export type TranscriptPush = typeof TranscriptPush.Type
 
+export const MenuCommand = Schema.Literals([
+  "thread.new",
+  "project.add",
+  "settings.open",
+  "sidebar.toggle",
+  "sidePanel.toggle",
+  "terminal.toggle",
+])
+export type MenuCommand = typeof MenuCommand.Type
+
 export const PushEvent = Schema.Union([
   ...TranscriptPush.members,
   Schema.Struct({ type: Schema.Literal("thread.updated"), thread: Thread }),
@@ -823,6 +847,7 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("vm.passkey.updated"), threadId: Schema.String, passkey: VmPasskey }),
   Schema.Struct({ type: Schema.Literal("vm.screen.data"), streamId: Schema.String, data: Schema.Uint8Array }),
   Schema.Struct({ type: Schema.Literal("vm.screen.closed"), streamId: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("menu.command"), command: MenuCommand }),
 ])
 export type PushEvent = typeof PushEvent.Type
 

@@ -89,7 +89,12 @@ function ViewContent({ thread, view, panelId, compact }: ViewContentProps) {
           onReset={() => setWidth(size, null)}
         />
       )}
-      <header className={cn("flex h-12 shrink-0 items-center justify-between gap-2 pr-2", header ? "pl-2" : "pl-4")}>
+      <header
+        className={cn(
+          "window-drag flex h-12 shrink-0 items-center justify-between gap-2 pr-2",
+          header ? "pl-2" : "pl-4",
+        )}
+      >
         {header ?? <h2 className="truncate text-sm font-medium">{view.title()}</h2>}
         <PanelToggle expanded onToggle={toggleSidePanel} closeDialog={compact} />
       </header>

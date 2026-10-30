@@ -20,7 +20,7 @@ The desktop is the hub. It is the one machine that has a connection to every clo
 
 `Peers` (`src/main/remote/peers.ts`) hides both paths behind one `ask`. It uses a connected desktop when there is one, and its own clouds otherwise.
 
-An `ask` frame names its method from a closed list: the reads `threads.list`, `projects.list`, `worktrees.list`, `threads.transcript`, `pullRequests.list` and `machines.list`, and the writes `threads.update`, `threads.steer` and `threads.interrupt` that `send_to_thread` and `stop_thread` need. The desktop decodes the frame against that list, so a cloud cannot reach any other method. The asking machine checks that the thread is in the same repository before it writes, the same check `read_thread` makes.
+An `ask` frame names its method from a closed list: the reads `threads.list`, `projects.list`, `worktrees.list`, `threads.transcript`, `pullRequests.list` and `machines.list`, and the writes `threads.create`, `threads.update`, `threads.steer` and `threads.interrupt` that `create_thread`, `send_to_thread` and `stop_thread` need. The desktop decodes the frame against that list, so a cloud cannot reach any other method. The asking machine checks that the thread is in the same repository before it writes, the same check `read_thread` makes.
 
 Each machine already has a stable id, `RemoteAccess.identity`, which is also the id the desktop pairs a cloud under. `machines.list` is gathered like `threads.list`: every machine answers with its id, its hostname and its project ids, and the desktop renames each cloud's answer to the name the user gave it. A thread's machine is the one that holds its project. A machine on an older version answers nothing, and its threads show as on another machine with no name.
 
@@ -28,7 +28,6 @@ Project ids are per machine, so "the same project" across machines means the sam
 
 ## Out of scope
 
-- `create_thread` on another machine. It needs a way to name the machine, and an agent can ask the user to start the thread there.
 - A cloud reaching other machines while no desktop is connected. Clouds do not pair with each other.
 
 ## Checkpoints and verification

@@ -186,12 +186,22 @@ const handlers: Handlers = {
     }),
 
   "threads.list": () => Threads.use((threads) => threads.list),
-  "threads.create": ({ projectId }) =>
+  "threads.create": ({ projectId, title, provider: chosenProvider, model, effort, worktree, createdBy }) =>
     Effect.gen(function* () {
-      const { defaultProvider: provider } = yield* Settings.use((service) => service.get)
-      const options = yield* newThreadOptions(provider)
+      const { defaultProvider } = yield* Settings.use((service) => service.get)
+      const provider = chosenProvider ?? defaultProvider
+      const defaults =
+        model === undefined ? yield* newThreadOptions(provider) : { model, effort: undefined, fastMode: undefined }
       const thread = yield* Threads.use((threads) =>
-        threads.create({ projectId, title: randomName(), provider, ...options }),
+        threads.create({
+          projectId,
+          title: title ?? randomName(),
+          provider,
+          ...defaults,
+          effort: effort ?? defaults.effort,
+          worktree,
+          createdBy,
+        }),
       )
       yield* Events.use((events) => events.publish({ type: "thread.updated", thread }))
       return thread
@@ -416,6 +426,7 @@ const handlers: Handlers = {
   "vm.stop": ({ threadId }) => TinyVm.use((vm) => vm.stop(threadId)),
   "vm.control": ({ threadId, control }) => TinyVm.use((vm) => vm.setControl(threadId, control)),
   "vm.host": () => TinyVm.use((vm) => vm.host),
+  "vm.desktop.url": ({ threadId }) => TinyVm.use((vm) => vm.desktopUrl(threadId)).pipe(Effect.map((url) => ({ url }))),
   "vm.screen.open": ({ threadId, streamId }, desktop) => {
     const owner = desktop?.screenOwner
     return owner

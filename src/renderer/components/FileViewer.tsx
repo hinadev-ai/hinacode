@@ -198,7 +198,7 @@ function MarkdownPreview({ root, path }: { root: string; path: string }) {
     <div className="min-h-0 flex-1 overflow-auto">
       {content.value.truncated && <Note text={m.viewer_truncated()} />}
       <article className="mx-auto max-w-3xl px-6 py-4">
-        <Markdown text={content.value.content} baseUrl={projectFileUrl(root, path)} />
+        <Markdown text={content.value.content} baseUrl={projectFileUrl(root, path)} className="prose-sm" />
       </article>
     </div>
   )

@@ -23,7 +23,6 @@ const labels = async (app: HinacodeApp) => {
     ? {
         navigation: "專案與對話串",
         limited: "已達用量上限",
-        idle: "閒置",
         message: "訊息",
         send: "傳送",
         stop: "停止",
@@ -33,7 +32,6 @@ const labels = async (app: HinacodeApp) => {
     : {
         navigation: "Projects and threads",
         limited: "Limited",
-        idle: "Idle",
         message: "Message",
         send: "Send",
         stop: "Stop",
@@ -102,9 +100,6 @@ Then("the usage-limit thread is visibly limited and ready to send again", async 
   await expect(
     app.page.getByRole("navigation", { name: copy.navigation }).getByRole("link").filter({ hasText: thread.title }),
   ).toContainText(copy.limited)
-  await expect(app.page.locator("header").filter({ has: app.page.getByRole("heading", { level: 1 }) })).toContainText(
-    copy.limited,
-  )
   await expect(callout(app).getByText(/^You've hit your limit · resets /)).toBeVisible()
   await expect(callout(app).getByRole("button", { name: copy.resume, exact: true })).toBeVisible()
   await expect(app.page.getByRole("button", { name: copy.stop, exact: true })).toBeHidden()
@@ -153,9 +148,6 @@ const expectCompleted = async (app: HinacodeApp) => {
   const copy = await labels(app)
   await expect(app.page.getByText("The retry completed successfully.", { exact: true })).toBeVisible()
   await expect.poll(async () => (await onlyThread(app)).status).toBe("idle")
-  await expect(app.page.locator("header").filter({ has: app.page.getByRole("heading", { level: 1 }) })).toContainText(
-    copy.idle,
-  )
   const thread = await onlyThread(app)
   await expect(
     app.page.getByRole("navigation", { name: copy.navigation }).getByRole("link").filter({ hasText: thread.title }),

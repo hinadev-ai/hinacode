@@ -36,7 +36,6 @@ import {
   RiEyeLine,
   RiEyeOffLine,
   RiFileCopyLine,
-  RiGitBranchLine,
   RiInboxUnarchiveLine,
   RiMoreFill,
   RiPencilLine,
@@ -51,13 +50,7 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { toIcon } from "../lib/indicators.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
 import { formatSnoozeTime } from "../lib/snooze.ts"
-import {
-  callPromise,
-  currentBranchAtom,
-  type EnvironmentId,
-  projectsAtom,
-  pullRequestAttentionAtom,
-} from "../lib/rpc.ts"
+import { callPromise, type EnvironmentId, projectsAtom, pullRequestAttentionAtom } from "../lib/rpc.ts"
 import { type Cloud, isStale, useCloud, useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
 import { useNow } from "../lib/useNow.ts"
@@ -69,7 +62,6 @@ import { usePullRequests } from "../stores/pullRequests.ts"
 import { lastActivity, useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { useUnseen } from "../stores/unseen.ts"
-import { useWorktrees } from "../stores/worktrees.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { SidebarPullRequests } from "./SidebarPullRequests.tsx"
 import { ArchiveDialog, useActiveWorktree } from "./ArchiveDialog.tsx"
@@ -243,6 +235,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
   const archived = thread.status === "archived"
   const archiveDeletes = archiveSettings.removeWorktree && worktree !== undefined
   const meta = useThreadMeta(thread, showProject)
+  const hasMeta = cloud !== undefined || meta.links.length > 0
   const state = useThreadRowState(thread)
 
   const moveOut = (updated: Thread) => {
@@ -299,15 +292,17 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
       data-archived={archived}
       data-stale={isStale(cloud)}
       data-show-project={meta.project !== null}
+      data-meta={hasMeta}
+      onPointerEnter={(event) => scrollTitle(event.currentTarget)}
+      onPointerLeave={(event) => stopTitle(event.currentTarget)}
       className="group/thread relative rounded-md [--row-actions:--spacing(20)] has-[[data-reorder-handle]:focus-visible]:[--row-actions:--spacing(26)] text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=working]:text-muted-foreground data-[emphasis=working]:not-hover:not-focus-within:not-has-[a[data-status=active]]:opacity-60 data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
     >
       {meta.project !== null && (
-        <div className="flex min-w-0 items-center gap-1 pt-1.5 pr-2 pl-1.5 text-xs text-muted-foreground/75">
+        <div className="flex min-w-0 items-center gap-1 pt-1.5 pr-2 pl-1.5 text-xs text-muted-foreground">
           <ProjectIcon projectId={thread.projectId} className="size-3 text-current" />
           <span className="truncate" title={meta.project}>
             {meta.project}
           </span>
-          <ActivityTime {...meta} />
         </div>
       )}
       {mode === "renaming" ? (
@@ -323,15 +318,28 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
             setMenuOpen(true)
           }}
           data-reorderable={reorderable}
-          className="flex items-center gap-2 rounded-md pt-1.5 pr-2 group-data-[show-project=true]/thread:pt-0.5 pb-0.5 pl-1.5 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions) focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
+          className="flex items-center gap-2 rounded-md pt-1.5 pr-2 group-data-[show-project=true]/thread:pt-0.5 pb-0.5 group-data-[meta=false]/thread:pb-1.5 pl-1.5 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions) focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
         >
-          <span dir="auto" className="min-w-0 flex-1 truncate text-left text-[0.9375rem]" title={thread.title}>
-            {thread.title}
+          <span
+            dir="auto"
+            className="min-w-0 flex-1 truncate text-left text-[0.9375rem] group-hover/thread:text-clip"
+            title={thread.title}
+          >
+            <span data-title-text className="group-hover/thread:inline-block">
+              {thread.title}
+            </span>
           </span>
           <StatusIndicator state={state} />
+          <span
+            aria-hidden
+            className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden"
+          >
+            <ActivityTime {...meta} />
+            <ProviderIcon provider={meta.provider} className="size-3" />
+          </span>
         </Link>
       )}
-      <ThreadMeta {...meta} cloud={cloud} environment={environment} />
+      {hasMeta && <ThreadMeta links={meta.links} threadId={thread.id} cloud={cloud} environment={environment} />}
 
       {mode !== "renaming" && (
         <div className="absolute inset-y-0 right-1 flex items-center gap-0.5 opacity-0 group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 focus-within:opacity-100 group-data-[menu-open=true]/thread:opacity-100 has-[[data-popup-open]]:opacity-100">
@@ -670,14 +678,10 @@ export function StatusIndicator({ state }: { state: RowState }): ReactNode {
 }
 
 function useThreadMeta(thread: Thread, showProject: boolean) {
-  const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
-  const rootBranch = AsyncResult.getOrElse(useAtomValue(currentBranchAtom(thread.projectId)), () => null)
   const links = usePullRequests((state) => state.byThreadId[thread.id]) ?? noLinks
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
   return {
     project: showProject ? (projects.find((project) => project.id === thread.projectId)?.name ?? null) : null,
-    branch: worktree?.branch ?? rootBranch,
-    removed: worktree?.status === "removed",
     links,
     threadId: thread.id,
     provider: thread.provider,
@@ -695,31 +699,20 @@ const noLinks: ReadonlyArray<PullRequestLink> = []
 const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? ""
 
 function ThreadMeta({
-  project,
-  branch,
-  removed,
   links,
   threadId,
-  provider,
-  updatedAt,
-  snoozedUntil,
   cloud,
   environment,
-}: ReturnType<typeof useThreadMeta> & { cloud: Cloud | undefined; environment: EnvironmentId }) {
+}: {
+  links: ReadonlyArray<PullRequestLink>
+  threadId: string
+  cloud: Cloud | undefined
+  environment: EnvironmentId
+}) {
   const watching = links.some((link) => link.watch !== null)
   return (
-    <div className="flex min-h-5.5 min-w-0 items-center gap-2 pr-2 pb-1.5 pl-1.5 text-xs text-muted-foreground/75 group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions)">
+    <div className="flex min-w-0 items-center gap-2 pr-2 pb-1.5 pl-1.5 text-xs text-muted-foreground group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions)">
       {cloud && <CloudMark cloud={cloud} className="size-3" />}
-      {branch !== null && (
-        <span
-          className="flex min-w-0 items-center gap-1 data-[removed=true]:line-through"
-          data-removed={removed}
-          title={m.sidebar_worktree_branch({ branch })}
-        >
-          <RiGitBranchLine aria-hidden className="size-3 shrink-0" />
-          <span className="truncate font-mono">{branch}</span>
-        </span>
-      )}
       {links.length > 0 && <SidebarPullRequests threadId={threadId} links={links} environment={environment} />}
       {watching && (
         <span title={m.sidebar_watching()} className="flex shrink-0">
@@ -727,12 +720,35 @@ function ThreadMeta({
           <span className="sr-only">{m.sidebar_watching()}</span>
         </span>
       )}
-      <span className="ml-auto flex shrink-0 items-center gap-2 group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden">
-        {project === null && <ActivityTime updatedAt={updatedAt} snoozedUntil={snoozedUntil} />}
-        <ProviderIcon provider={provider} className="size-3" />
-      </span>
     </div>
   )
+}
+
+const TITLE_SCROLL_DELAY_MS = 400
+const TITLE_SCROLL_PX_PER_S = 60
+
+const titleText = (row: HTMLElement) => row.querySelector<HTMLElement>("[data-title-text]")
+
+function scrollTitle(row: HTMLElement) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return
+  requestAnimationFrame(() => {
+    const text = titleText(row)
+    const box = text?.parentElement
+    if (!text || !box || !row.matches(":hover")) return
+    const overflow = text.offsetWidth - box.clientWidth
+    if (overflow <= 0) return
+    const distance = getComputedStyle(box).direction === "rtl" ? overflow : -overflow
+    text.animate([{ transform: "translateX(0)" }, { transform: `translateX(${distance}px)` }], {
+      duration: (overflow / TITLE_SCROLL_PX_PER_S) * 1000,
+      delay: TITLE_SCROLL_DELAY_MS,
+      easing: "linear",
+      fill: "forwards",
+    })
+  })
+}
+
+function stopTitle(row: HTMLElement) {
+  for (const animation of titleText(row)?.getAnimations() ?? []) animation.cancel()
 }
 
 function ActivityTime({ updatedAt, snoozedUntil }: { updatedAt: string; snoozedUntil: string | null }) {
@@ -746,7 +762,7 @@ function LastActive({ updatedAt }: { updatedAt: string }) {
     <time
       dateTime={updatedAt}
       title={new Date(updatedAt).toLocaleString(locale, { dateStyle: "long", timeStyle: "short" })}
-      className="ml-auto shrink-0 tabular-nums group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden"
+      className="tabular-nums"
     >
       {formatRelativeTime(updatedAt, now, locale)}
     </time>
@@ -761,7 +777,7 @@ function WakeTime({ snoozedUntil }: { snoozedUntil: string }) {
     <time
       dateTime={snoozedUntil}
       title={m.sidebar_snoozed_until({ time })}
-      className="ml-auto flex shrink-0 items-center gap-1 tabular-nums group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden"
+      className="flex items-center gap-1 tabular-nums"
     >
       <RiAlarmSnoozeLine aria-hidden className="size-3" />
       <span className="sr-only">{m.sidebar_snoozed_until({ time })}</span>

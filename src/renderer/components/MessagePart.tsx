@@ -470,7 +470,7 @@ function CompactionLabel({ compaction }: { compaction: Compaction }) {
         <span className="flex min-w-0 items-center gap-1.5">
           <RiErrorWarningLine aria-hidden className="size-3.5 shrink-0 text-destructive" />
           {m.compaction_failed()}
-          {compaction.message !== null && <span className="min-w-0 truncate">{compaction.message}</span>}
+          {compaction.message !== null && <span className="min-w-0">{compaction.message}</span>}
         </span>
       )
   }
