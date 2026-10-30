@@ -7,6 +7,7 @@ import {
   readFileSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
@@ -166,6 +167,16 @@ describe("fs.list", () => {
       expect(src["b.ts"]?.gitStatus).toBe(null)
       const deep = yield* run(list(repo, "untracked/deep"))
       expect(deep).toMatchObject([{ name: "u.txt", gitStatus: "untracked" }])
+    }),
+  )
+
+  it.effect("leaves the index alone, so it never holds index.lock while an agent runs git", () =>
+    Effect.gen(function* () {
+      const index = join(repo, ".git", "index")
+      utimesSync(join(repo, "README.md"), 1_000_000_000, 1_000_000_000)
+      const before = readFileSync(index)
+      yield* run(list(repo, ""))
+      expect(readFileSync(index).equals(before)).toBe(true)
     }),
   )
 
