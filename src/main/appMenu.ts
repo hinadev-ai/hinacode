@@ -21,7 +21,7 @@ const appMenu = (locale: Locale) => {
     ...(mac
       ? [
           {
-            // The default labels use `app.name`, which stays "kkcode" to keep the Keychain item.
+            // FIXME: Electron's default menu labels app items with `app.name`, which stays kkcode
             label: "HinaCode",
             submenu: [
               { role: "about", label: "About HinaCode" },
@@ -73,7 +73,6 @@ const appMenu = (locale: Locale) => {
   ])
 }
 
-/** Sets the application menu in the app's language, and sets it again whenever the language changes. */
 export const keepAppMenu = Effect.gen(function* () {
   const settings = yield* ClientSettings
   const changes = yield* settings.changes

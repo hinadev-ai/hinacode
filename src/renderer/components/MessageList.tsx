@@ -264,11 +264,9 @@ function ReplyText({ text, done }: { text: string; done: boolean }) {
   return <Markdown text={text} className={finishedOnScreen ? "animate-fade-in" : undefined} />
 }
 
-// Placeholders filled with private-use characters, then split on, so each language keeps its own word order.
 const PROJECT = "\uE000"
 const ENVIRONMENT = "\uE001"
 
-/** Asks what to work on, with the project and machine in place, which the caller renders as switches. */
 export function EmptyThread({ project, environment }: { project: ReactNode | null; environment: ReactNode }) {
   const sentence =
     project === null
@@ -278,7 +276,6 @@ export function EmptyThread({ project, environment }: { project: ReactNode | nul
     <div className="m-auto flex max-w-xl flex-col items-center px-4 text-center">
       <h2 className="text-2xl font-semibold text-balance">
         {sentence.split(/([\uE000\uE001])/).map((part, index) => (
-          // The text between placeholders is fixed for the language, so its position is a stable key.
           <Fragment key={index}>{part === PROJECT ? project : part === ENVIRONMENT ? environment : part}</Fragment>
         ))}
       </h2>

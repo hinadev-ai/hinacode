@@ -22,7 +22,6 @@ const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? ""
 
 const noLinks: ReadonlyArray<never> = []
 
-/** Where a started thread runs, on which branch, and the pull requests it opened, under its composer. */
 export function ComposerStatusLine({ thread }: { thread: Thread }) {
   const environment = useThreadEnvironment(thread.id)
   const clouds = useClouds()
@@ -35,7 +34,6 @@ export function ComposerStatusLine({ thread }: { thread: Thread }) {
   const EnvironmentIcon = environment === null ? RiMacbookLine : RiCloudLine
 
   return (
-    // The dock floats over the transcript, so this strip and the dock's bottom padding cover what scrolls behind.
     <div className="-mx-3 -mb-3 bg-background px-3 pt-1 pb-3">
       <div className="mx-auto flex w-full max-w-3xl min-w-0 items-center gap-3 px-3 text-xs text-muted-foreground">
         <span className="flex shrink-0 items-center gap-1">
@@ -52,7 +50,6 @@ export function ComposerStatusLine({ thread }: { thread: Thread }) {
           <PullRequestSummary threadId={thread.id} url={urls[0]!} pullRequest={pullRequests[0]} />
         ) : (
           urls.length > 1 && (
-            // Several summaries would crowd the line, so the stack points to the side panel that lists them.
             <button
               type="button"
               onClick={() => useUi.getState().showView(thread.id, "pullRequests", { focus: true })}

@@ -133,7 +133,6 @@ export const commands = [
   },
   {
     id: "composer.model",
-    // ⌃⌘M on macOS. Elsewhere mod+ctrl folds into Ctrl+M, which Electron's default Window menu takes for Minimize.
     defaultKeys: detectPlatform() === "mac" ? "mod+ctrl+m" : "mod+alt+m",
     title: m.command_composer_model,
     run: () => useUi.getState().requestPicker("model"),

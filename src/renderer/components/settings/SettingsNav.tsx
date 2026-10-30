@@ -27,10 +27,8 @@ export interface SettingsPage {
   readonly id: string
   readonly scope: "app" | "environment"
   readonly label: () => string
-  /** One line under the page title. */
   readonly description?: () => string
   readonly icon: IconType
-  /** Labels of the page's settings, so a search for one finds its page. */
   readonly keywords: ReadonlyArray<() => string>
 }
 
@@ -136,11 +134,9 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
   },
 ]
 
-/** The page `id` names, or the first one for a missing or unknown id. */
 export const settingsPageOf = (id: string | undefined) =>
   settingsPages.find((page) => page.id === id) ?? settingsPages[0]!
 
-/** Back to where settings were opened from, or home when they were the first page. */
 export function useLeaveSettings() {
   const navigate = useNavigate()
   const { history } = useRouter()
@@ -152,7 +148,6 @@ export function useLeaveSettings() {
 
 interface SearchResult {
   readonly page: SettingsPage
-  /** The matched setting's label, when the match was a setting rather than the page's name. */
   readonly setting?: string
 }
 
@@ -168,7 +163,6 @@ const search = (query: string): ReadonlyArray<SearchResult> => {
   )
 }
 
-/** Takes the thread sidebar's place, at its width, so opening settings swaps the list instead of adding a column. */
 export function SettingsNav() {
   const { page: pageId } = useSearch({ strict: false })
   const current = settingsPageOf(pageId)
@@ -193,7 +187,6 @@ export function SettingsNav() {
       hidden={!compact && !sidebarOpen}
       data-compact={compact}
       style={compact ? undefined : { width: sidebarWidth }}
-      // The title bar spans the window, so `before:` carries the right border on up through it.
       className="relative flex min-h-0 shrink-0 flex-col border-r border-sidebar-border bg-sidebar glass:bg-sidebar/80 text-sidebar-foreground before:absolute before:-right-px before:bottom-full before:h-titlebar before:w-px before:bg-sidebar-border data-[compact=false]:flex-1 data-[compact=true]:w-52"
     >
       <div className="flex flex-col gap-1 px-2 pt-2 pb-1">

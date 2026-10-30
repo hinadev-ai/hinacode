@@ -76,7 +76,6 @@ const update = async (patch: RpcRequest<"threads.update">, onError: (message: st
   }
 }
 
-/** The agent's listed models, plus `keep`, such as a thread's saved model, when the agent no longer lists it. */
 function useAgentModels(environment: EnvironmentId, provider: ProviderId, keep: string | null) {
   const listed = AsyncResult.getOrElse(
     useAtomValue(modelsAtom(environment, provider)),
@@ -87,7 +86,6 @@ function useAgentModels(environment: EnvironmentId, provider: ProviderId, keep: 
     : [unlistedModel(keep, provider), ...listed]
 }
 
-/** The thread's model as its agent lists it, or undefined when the agent no longer lists it. */
 function useThreadModel(thread: Thread) {
   return useAgentModels(useThreadEnvironment(thread.id), thread.provider, null).find(
     (model) => model.id === thread.model,
@@ -119,7 +117,6 @@ const effortLabels: Record<string, () => string> = {
 }
 export const effortLabel = (effort: string) => effortLabels[effort]?.() ?? effort
 
-/** Claude Code's ultrathink and ultracode are modes rather than levels, so they say what they do. */
 const effortHints: Record<string, () => string> = {
   ultrathink: m.effort_ultrathink_hint,
   ultracode: m.effort_ultracode_hint,
@@ -127,7 +124,6 @@ const effortHints: Record<string, () => string> = {
 
 const DEFAULT_EFFORT = "default"
 
-/** Where `effort` sits on the model's scale, from 0 to 1, for the effort icon. */
 const effortShare = (model: ModelInfo | undefined, effort: string | null) => {
   if (model === undefined || effort === null) return 0
   return (model.efforts.indexOf(effort) + 1) / model.efforts.length
@@ -139,7 +135,6 @@ export const accessModes: Record<AccessMode, { readonly icon: IconType; readonly
   full: { icon: RiLockUnlockLine, label: m.access_full },
 }
 
-/** Muse Code's threads use the names its own permission picker shows, since each mode is one of its profiles. */
 const museAccessLabels: Record<AccessMode, () => string> = {
   supervised: m.access_supervised_muse,
   auto: m.access_auto_muse,
@@ -162,7 +157,6 @@ const autoHint = {
   muse: m.access_auto_hint_muse,
 } satisfies Record<ProviderId, (model: ModelInfo | undefined) => string>
 
-/** What each mode lets through, which differs by agent and, for Claude's auto mode, by model. */
 const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | undefined) => {
   switch (accessMode) {
     case "supervised":
@@ -174,25 +168,20 @@ const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | u
   }
 }
 
-/** Muse Code has no way to leave out the user's own skills. */
 const hidesUserSkills = { claude: true, codex: true, muse: false } satisfies Record<ProviderId, boolean>
 
-/** A tab of the picker: one account of the thread's agent, or another agent on its default account. */
 interface AgentTab {
   readonly value: string
   readonly provider: ProviderId
-  /** The account the tab picks, null for the CLI's own login. Undefined leaves the account as it is. */
   readonly accountId?: string | null
   readonly label: string
   readonly hint?: string
   readonly disabled: boolean
 }
 
-/** One tab per account of the thread's agent when it has several, then one per other agent. */
 function useAgentTabs(thread: Thread, canSwitchAgent: boolean): ReadonlyArray<AgentTab> {
   const accounts = useAccountOptions(thread).options
   const accountHint = useAccountHint()
-  // The running turn is still writing the transcript an account switch copies.
   const turnRunning = thread.status === "running" || thread.status === "awaiting_approval"
   const own: ReadonlyArray<AgentTab> =
     accounts.length < 2
@@ -221,10 +210,6 @@ function useAgentTabs(thread: Thread, canSwitchAgent: boolean): ReadonlyArray<Ag
 const isThreadTab = (tab: AgentTab, thread: Thread) =>
   tab.provider === thread.provider && (tab.accountId === undefined || tab.accountId === thread.accountId)
 
-/**
- * The thread's agent, account, model, effort, modes and access in one popover. Picking another agent's model
- * switches the agent; a started thread continues on it with the conversation handed over.
- */
 export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps & { canSwitchAgent: boolean }) {
   const environment = useThreadEnvironment(thread.id)
   const current = useThreadModel(thread)
@@ -248,7 +233,6 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
     setOpen(true)
   }
 
-  // The model and effort shortcuts open the same popover, focused on what they name.
   useEffect(
     () =>
       useUi.subscribe((state, previous) => {
@@ -263,8 +247,6 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
     [threadTab],
   )
 
-  // Another agent starts from its own defaults. On the same agent, effort and fast mode the next model
-  // cannot honor go back to its defaults.
   const pick = async (next: ModelInfo) => {
     if (tab.provider !== thread.provider) {
       await update({ id: thread.id, provider: next.provider, model: next.id }, onError)
@@ -294,16 +276,13 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
     const enabled = tabs.filter((candidate) => !candidate.disabled)
     const next = enabled[(enabled.indexOf(tab) + step + enabled.length) % enabled.length]
     if (next === undefined) return
-    // The focused model row unmounts with the old tab's list, which would take focus, and these keys, out of the popup.
     popupRef.current?.focus()
     setTabValue(next.value)
-    // The row scrolls sideways when the tabs overflow, and the next one may be out of view.
     popupRef.current
       ?.querySelectorAll("[data-slot=tabs-trigger]")
       [tabs.indexOf(next)]?.scrollIntoView({ block: "nearest", inline: "nearest" })
   }
   const efforts = current === undefined || current.efforts.length === 0 ? [] : [DEFAULT_EFFORT, ...current.efforts]
-  /** The value `step` places from `value` in `values`, wrapping at both ends. */
   const stepThrough = <V,>(values: ReadonlyArray<V>, value: V, step: number) =>
     values[(values.indexOf(value) + step + values.length) % values.length]!
   const stepEffort =
@@ -316,10 +295,6 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
   const toggleFast = current?.fastMode ? () => set({ fastMode: !thread.fastMode }) : null
   const toggleConversation = hidesUserSkills[thread.provider] ? () => set({ userSkills: !thread.userSkills }) : null
   const stepAccess = (step: number) => set({ accessMode: stepThrough(AccessMode.literals, thread.accessMode, step) })
-  /**
-   * Single keys drive the whole popover: H and L move between agents, digits pick a model, E and M step effort and
-   * access forward, and with Shift back.
-   */
   const keys: Record<string, ((step: number) => void) | null> = {
     h: () => moveTab(-1),
     l: () => moveTab(1),
@@ -368,7 +343,6 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
             variant="ghost"
             size="sm"
             aria-label={m.thread_option_value({ name: m.thread_model_picker(), value: summary.join(", ") })}
-            // Icons centre on the line box, which sits a pixel below the label's capitals.
             className={cn("min-w-0 [&_svg]:-translate-y-px", triggerClass)}
           />
         }
@@ -390,7 +364,6 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
             ? popupRef.current?.querySelector<HTMLElement>("[data-slot=slider-thumb] input")
             : popupRef.current) ?? true
         }
-        // Enter means the settings are done, so the message is next.
         finalFocus={() => {
           if (!closedWithEnter.current) return openedByShortcut.current ? returnFocus() : true
           useUi.getState().requestComposerFocus()
@@ -413,7 +386,6 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
                     }
                   >
                     <ProviderIcon provider={candidate.provider} />
-                    {/* An agent's icon names it; accounts of one agent share the icon, so they keep their names. */}
                     <span className={candidate.accountId === undefined ? "sr-only" : "max-w-28 truncate"}>
                       {candidate.label}
                     </span>
@@ -497,7 +469,6 @@ interface EffortSliderProps {
   readonly onCommit: (value: string) => void
 }
 
-/** Steps from the agent's default up to the model's strongest effort. Saves once the thumb is let go. */
 function EffortSlider({ model, value, onCommit }: EffortSliderProps) {
   const labelId = useId()
   const steps = [
@@ -581,7 +552,6 @@ function ModeToggle({ icon: Icon, label, hint, shortcut, on, toggle }: ModeToggl
   )
 }
 
-/** Takes effect from the next turn, or at once on a live Claude turn. */
 function AccessSwitch({
   thread,
   model,
@@ -633,10 +603,6 @@ type RefSuggestion =
 
 const SUGGESTIONS_PER_GROUP = 20
 
-/**
- * Open pull requests, then branches, filtered by the field's text. When the text is exactly one of the
- * suggestions, such as the default branch prefilled by ticking Worktree, every suggestion shows instead.
- */
 function useRefSuggestions(projectId: string, query: string) {
   const branches = AsyncResult.getOrElse(useAtomValue(branchesAtom(projectId)), (): ReadonlyArray<string> => [])
   const pullRequests = AsyncResult.getOrElse(
@@ -698,7 +664,6 @@ function RefSuggestionItem({ suggestion }: { suggestion: RefSuggestion }) {
   )
 }
 
-/** Free text for the workspace's ref, suggesting the repository's open pull requests and branches. */
 function RefInput({
   projectId,
   value,
@@ -717,7 +682,7 @@ function RefInput({
       filter={null}
       value={value}
       onValueChange={(next, details) => {
-        // Escape on a closed list would clear the field; it should only dismiss.
+        // FIXME: Base UI clears the field on Escape while the list is closed
         if (details.reason !== "escape-key") onChange(next)
       }}
       open={open && groups.length > 0}
@@ -732,7 +697,6 @@ function RefInput({
         autoComplete="off"
         onFocus={() => setOpen(true)}
         onKeyDown={(event) => {
-          // The field sits inside the composer's form, where Enter would send the message.
           if (event.key === "Enter") event.preventDefault()
         }}
         render={
@@ -769,10 +733,6 @@ interface ContextOption {
   readonly label: string
 }
 
-/**
- * A dotted word in a new thread's question. With alternatives it opens a menu, and picking one moves the unstarted
- * thread to that project; without any it stays plain text.
- */
 function ContextSwitch({
   thread,
   label,
@@ -820,7 +780,6 @@ function ContextSwitch({
   )
 }
 
-/** A new thread's project, switchable to another project on the same machine. */
 export function ThreadProjectSwitch({ thread }: { thread: Thread }) {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => [])
   const current = projects.find((project) => project.id === thread.projectId)
@@ -830,7 +789,6 @@ export function ThreadProjectSwitch({ thread }: { thread: Thread }) {
   return <ContextSwitch thread={thread} label={current?.name ?? ""} options={options} />
 }
 
-/** The machine a new thread runs on, switchable to another machine that has the same repository, or its chats. */
 export function ThreadEnvironmentSwitch({ thread }: { thread: Thread }) {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => [])
   const clouds = useClouds()
@@ -842,15 +800,10 @@ export function ThreadEnvironmentSwitch({ thread }: { thread: Thread }) {
     projectId: project.id,
     label: environmentName(environmentOf(project), clouds),
   }))
-  // Mid-sentence, this machine reads in lower case; a remote keeps its own name.
   const label = environment === null ? m.environment_this_machine_inline() : environmentName(environment, clouds)
   return <ContextSwitch thread={thread} label={label} options={options} />
 }
 
-/**
- * Where the first turn runs: the project root, switched to a branch or pull request on send, or a new worktree
- * forked from a branch or checked out from a pull request.
- */
 export function WorkspacePicker({ thread, workspace }: { thread: Thread; workspace: Draft["workspace"] }) {
   const currentBranch = AsyncResult.getOrElse(useAtomValue(currentBranchAtom(thread.projectId)), () => "")
   const defaultBranch = AsyncResult.getOrElse(useAtomValue(defaultBranchAtom(thread.projectId)), () => "main")

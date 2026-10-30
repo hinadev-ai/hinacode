@@ -23,7 +23,6 @@ import { Button } from "../ui/button.tsx"
 import { Skeleton } from "../ui/skeleton.tsx"
 import { SettingsSection, settingsSurfaceClass } from "./SettingsSection.tsx"
 
-/** `attention` is a broken or missing piece the machine needs; `off` is an optional one nobody set up. */
 type Tone = "ready" | "attention" | "off" | "loading"
 
 interface Check {
@@ -34,13 +33,11 @@ interface Check {
 interface Machine {
   readonly id: EnvironmentId
   readonly name: string
-  /** Null for this machine, which is always reachable. */
   readonly cloud: Cloud | null
 }
 
 const reachable = (machine: Machine) => machine.cloud === null || machine.cloud.status === "connected"
 
-/** Where a cell sits and what opening it does. */
 interface CellProps {
   readonly item: string
   readonly machine: Machine
@@ -51,7 +48,6 @@ interface Row {
   readonly id: string
   readonly label: () => string
   readonly icon: ReactNode
-  /** The settings page that changes this row. */
   readonly page: string
   readonly cell: (props: CellProps) => ReactNode
 }
@@ -68,7 +64,6 @@ const agentCheck = (account: AgentAccount): Check => {
     case "external":
       return { tone: "ready", text: account.service }
     case "signedOut":
-      // A machine may run only some agents, so a signed-out one is a choice, not a fault.
       return { tone: "off", text: m.settings_account_signed_out() }
   }
 }
@@ -164,7 +159,6 @@ const toneIcon: Record<Tone, ReactNode> = {
   loading: null,
 }
 
-/** A lost link stops every check, so it is the one thing that machine needs, in the colour its state carries. */
 const linkTone: Record<EnvironmentStatus, string> = {
   connecting: "text-muted-foreground",
   connected: "text-muted-foreground",
@@ -197,7 +191,6 @@ function SetupButton({ item, machine, onOpen, check }: CellProps & { check: Chec
   )
 }
 
-/** One cell down an unreachable machine's column: why it cannot answer, and the way to Connections to fix it. */
 function UnreachableCell({ cloud, span, onOpen }: { cloud: Cloud; span: number; onOpen: () => void }) {
   const state = useCloudStateText(cloud)
   const reason = cloud.status === "unauthorized" ? m.environment_unauthorized_hint() : state
@@ -213,10 +206,6 @@ function UnreachableCell({ cloud, span, onOpen }: { cloud: Cloud; span: number; 
   )
 }
 
-/**
- * What each machine needs to run agents and ship their work, one column per machine. A cell opens the page that
- * changes it, already scoped to that machine.
- */
 export function MachineSetup() {
   const clouds = useClouds()
   const machines: ReadonlyArray<Machine> = [
@@ -230,7 +219,6 @@ export function MachineSetup() {
   return (
     <SettingsSection title={m.settings_setup_title()}>
       <div className={cn(settingsSurfaceClass, "overflow-x-auto p-1.5")}>
-        {/* Columns share the width and truncate their values; past four machines the table scrolls instead. */}
         <table
           className="w-full table-fixed border-collapse text-sm"
           style={{ minWidth: `${8 + machines.length * 9}rem` }}
@@ -281,7 +269,6 @@ export function MachineSetup() {
                       {row.cell({ item: row.label(), machine, onOpen: () => open(row.page, machine.id) })}
                     </td>
                   ) : (
-                    // An unreachable machine cannot answer any row, so one cell says so for the whole column.
                     row === rows[0] &&
                     machine.cloud !== null && (
                       <UnreachableCell

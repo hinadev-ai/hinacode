@@ -24,7 +24,6 @@ const onlyThread = async (app: HinacodeApp) => {
 
 const accountNotice = (app: HinacodeApp) => app.page.getByRole("status").filter({ hasText: /limit reached on/ })
 const limitCallout = (app: HinacodeApp) => app.page.getByRole("status").filter({ hasText: "You've hit your limit" })
-/** Opens the composer picker, whose tabs are the thread agent's accounts. */
 const openAccountTabs = async (app: HinacodeApp) => {
   await app.page.getByRole("button", { name: /^Model: / }).click()
   return app.page.getByRole("tablist")

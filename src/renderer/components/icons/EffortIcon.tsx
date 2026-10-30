@@ -7,11 +7,6 @@ const bars = [
   { x: 19.75, width: 3.75, height: 21 },
 ]
 
-/**
- * Rising bars for reasoning effort, the last one wider for the strongest. `value` is the effort's share of the
- * model's scale, from 0 to 1; it fills that share of the bars, at least one when above 0, and dims the rest.
- * Drawn in `currentColor` on Remix's 24-unit grid.
- */
 export function EffortIcon({ value, className }: { value: number; className?: string }) {
   const filled = value <= 0 ? 0 : Math.max(1, Math.round(value * bars.length))
   return (

@@ -70,7 +70,6 @@ export function Sidebar({
   finalFocus,
 }: {
   compact: boolean
-  /** Another nav docks in the sidebar's place, so the docked sidebar hides. The compact overlay still opens. */
   replaced: boolean
   finalFocus: RefObject<HTMLButtonElement | null>
 }) {
@@ -593,7 +592,6 @@ function ProjectGroup({ group, query, nested, focusAfterDelete }: ProjectGroupPr
             reorderable={isFullList(query)}
             showEmptyHint={isFullList(query) && !hasActiveThreads}
             newThreadButtonRef={newThreadButtonRef}
-            // Starts the titles under the project's folder icon, so the rows read as its children.
             className="pl-5.5"
           />
         </CollapsibleContent>

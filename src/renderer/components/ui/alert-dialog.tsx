@@ -29,7 +29,6 @@ function AlertDialogOverlay({ className, ...props }: AlertDialogPrimitive.Backdr
   )
 }
 
-/** The last pointer press, so a confirmation it opened can appear beside it instead of across the window. */
 let lastPress: { readonly x: number; readonly y: number; readonly at: number } | null = null
 window.addEventListener(
   "pointerdown",
@@ -39,16 +38,11 @@ window.addEventListener(
   { capture: true },
 )
 
-/** A press older than this did not open the dialog, which then came from the keyboard and stays centered. */
 const PRESS_OPENS_WITHIN_MS = 1000
 const EDGE = 8
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), Math.max(min, max))
 
-/**
- * Moves a confirmation opened by a click to just below the pointer, or above it when there is no room, so its buttons
- * are a short move away. It grows from the pointer too. Runs as the popup attaches, before it paints.
- */
 const anchorToPress = (popup: HTMLElement | null) => {
   if (popup === null || lastPress === null || performance.now() - lastPress.at > PRESS_OPENS_WITHIN_MS) return
   const { x, y } = lastPress

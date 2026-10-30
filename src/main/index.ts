@@ -38,17 +38,12 @@ import * as Updater from "./updater.ts"
 import devIcon from "../../assets/icon-dev.png?asset"
 import releaseIcon from "../../assets/icon.png?asset"
 
-// The Keychain item secrets are sealed with, `kkcode Safe Storage`, is named after the app, so the name stays
-// "kkcode", the product's name before HinaCode. Without this, `electron out/main/index.js` names it "Electron".
+// FIXME: Electron names the Keychain item `kkcode Safe Storage` after the app
 app.setName("kkcode")
-// Windows shows notifications only for the AUMID on the Start Menu shortcut, which the installer sets to the appId.
+// FIXME: Windows shows notifications only for the AUMID the installer sets on the Start Menu shortcut
 if (process.platform === "win32") app.setAppUserModelId("app.hinacode")
-// Lets several instances run side by side during development and testing.
 const dataDirOverride = process.env["HINACODE_USER_DATA"]
-// Only the signed release app is on the access list of the login Keychain item `kkcode Safe Storage`. Any other
-// binary (each worktree's dev build, e2e) would ask for the login password on every boot,
-// so it seals secrets with Chromium's public test key. That key cannot open the release app's secrets, so an
-// unpackaged run also defaults to a data dir of its own.
+// FIXME: only the signed release app opens the login Keychain item without a password prompt
 if (!app.isPackaged) app.commandLine.appendSwitch("use-mock-keychain")
 const dataDir = dataDirOverride || join(homedir(), app.isPackaged ? ".hinacode" : ".hinacode-dev")
 if (!dataDirOverride) {
@@ -56,25 +51,21 @@ if (!dataDirOverride) {
     moveLegacyProfile(join(app.getPath("appData"), app.isPackaged ? "kkcode" : "kkcode-dev"), dataDir)
   } catch (error) {
     dialog.showErrorBox("HinaCode cannot start", error instanceof Error ? error.message : String(error))
-    // Stops here, before anything creates the data dir, so the next launch tries the move again.
     process.exit(1)
   }
 }
 mkdirSync(dataDir, { recursive: true, mode: 0o700 })
 app.setPath("userData", chromiumDir(dataDir))
-// Electron keys the lock on userData. A second process on the same database would run its own pollers and
-// agents, and the threads it starts never reach the first process's window.
 if (!app.requestSingleInstanceLock()) {
   console.error(`HinaCode is already running on ${dataDir}. Set HINACODE_USER_DATA to run another.`)
   app.exit(0)
 }
 if (!app.isPackaged) startResourceMonitor(dataDir)
 const icon = app.isPackaged ? releaseIcon : devIcon
-// The login shell takes most of a second to start, so it runs while Electron gets ready.
 const pathHydrated = hydratePath(process.env)
 protocol.registerSchemesAsPrivileged([
   { scheme: ATTACHMENT_PROTOCOL, privileges: { standard: true, secure: true } },
-  // `stream` lets <video> and <audio> seek with Range requests.
+  // FIXME: Electron needs `stream` for <video> and <audio> to seek with Range requests
   { scheme: GITHUB_ASSET_PROTOCOL, privileges: { standard: true, secure: true, stream: true } },
   { scheme: PROJECT_FILE_PROTOCOL, privileges: { standard: true, secure: true, stream: true } },
 ])
@@ -100,7 +91,6 @@ const sandboxed = (response: Response) => {
   return new Response(response.body, { status: response.status, headers })
 }
 
-/** Serves `hinacode-attachment://file/<encoded absolute path>`, only for files inside the attachments dir. */
 const serveAttachments = (runtime: AppRuntime, attachmentsRoot: string) =>
   protocol.handle(ATTACHMENT_PROTOCOL, async (request) => {
     const target = attachmentRequest(request.url)
@@ -117,18 +107,13 @@ const rangeOf = (request: Request): RequestInit => {
   return range === null ? {} : { headers: { range } }
 }
 
-/**
- * Serves `hinacode-github-asset://asset/<id>` from `github.com/user-attachments/assets/<id>`, which private
- * repositories only answer for a signed-in account. GitHub redirects to a short-lived signed URL, fetched
- * without the token.
- */
 const serveGitHubAssets = (runtime: AppRuntime) =>
   protocol.handle(GITHUB_ASSET_PROTOCOL, async (request) => {
     const id = githubAssetId(request.url)
     if (id === null) return new Response(null, { status: 404 })
     const token = await runtime.runPromise(Effect.flatMap(GitHub.GitHub, (github) => github.token)).catch(() => null)
     if (token === null) return new Response(null, { status: 401 })
-    // Node's fetch, because Electron's net.fetch throws on a manual redirect instead of returning it.
+    // FIXME: Electron's net.fetch throws on a manual redirect instead of returning it
     const redirect = await fetch(`https://github.com/user-attachments/assets/${id}`, {
       headers: { authorization: `Bearer ${token}` },
       redirect: "manual",
@@ -138,11 +123,6 @@ const serveGitHubAssets = (runtime: AppRuntime) =>
     return net.fetch(signed, rangeOf(request))
   })
 
-/**
- * Serves `hinacode-file://root/<encoded root>/<path>` for files inside a project root or worktree. The CSP
- * sandbox runs every served document in an opaque origin without popups or top navigation, however it is
- * embedded, so an HTML file can run its scripts but never reach the app.
- */
 const serveProjectFiles = (runtime: AppRuntime) =>
   protocol.handle(PROJECT_FILE_PROTOCOL, async (request) => {
     const target = projectFileRequest(request.url)
@@ -169,7 +149,6 @@ const safeStorageKeyring = Layer.succeed(
 
 const QUIT_TIMEOUT_MS = 5000
 
-// A packaged app started from an agent's terminal inside `pnpm dev` inherits this variable.
 const devRendererUrl = app.isPackaged ? undefined : process.env["ELECTRON_RENDERER_URL"]
 const appUrl = devRendererUrl ?? pathToFileURL(join(import.meta.dirname, "../renderer/index.html")).href
 
@@ -177,7 +156,6 @@ const httpOnly = (event: Electron.Event<{ url: string }>) => {
   if (!externalUrl(event.url)) event.preventDefault()
 }
 
-/** A page in the in-app browser stays on http(s) and opens new windows in place. */
 const keepOnTheWeb = (page: Electron.WebContents) => {
   page.setWindowOpenHandler(({ url }) => {
     const web = externalUrl(url)
@@ -190,7 +168,6 @@ const keepOnTheWeb = (page: Electron.WebContents) => {
 
 const limitBrowserPermissions = () => {
   const browser = session.fromPartition(BROWSER_PARTITION)
-  // Copy buttons in dev pages write sanitized text to the clipboard; every other permission is refused.
   browser.setPermissionRequestHandler((_page, permission, respond) =>
     respond(permission === "clipboard-sanitized-write"),
   )
@@ -204,11 +181,9 @@ const createWindow = (runtime: AppRuntime) => {
     minWidth: 720,
     minHeight: 480,
     show: false,
-    // The glass draws behind the web contents, so the window itself must be clear.
     ...(liquidGlass ? { transparent: true, backgroundColor: "#00000000" } : { backgroundColor: "#0a0a0a" }),
     title: "HinaCode",
     icon,
-    // The renderer draws its own title bar around the traffic lights (see TitleBar.tsx).
     ...(process.platform === "darwin" && { titleBarStyle: "hidden", trafficLightPosition: { x: 14, y: 13 } }),
     webPreferences: {
       preload: join(import.meta.dirname, "../preload/index.cjs"),
@@ -240,10 +215,8 @@ const createWindow = (runtime: AppRuntime) => {
 
 app.whenReady().then(async () => {
   await pathHydrated
-  // Where `sbx login` keeps its login on macOS and Linux.
   const sbxConfigPath = join(app.getPath("appData"), "sbx", "config.json")
   const dbPath = join(dataDir, "hinacode.sqlite")
-  // The database was kkcode.sqlite until the rename to HinaCode, so an existing profile keeps its threads.
   if (!existsSync(dbPath)) {
     for (const suffix of ["", "-wal", "-shm"]) {
       const previous = join(dataDir, `kkcode.sqlite${suffix}`)
@@ -259,12 +232,10 @@ app.whenReady().then(async () => {
       toWindows: sendToWindows,
     }),
   )
-  // Build the layer (open the database, run migrations) before anything can call in.
   await runtime.runPromise(Effect.void)
   let disposed = false
   app.on("before-quit", (event) => {
     if (disposed) return
-    // Holds the quit until running turns persist their messages and status, but not forever.
     event.preventDefault()
     disposed = true
     const disposal = runtime.dispose().catch((cause: unknown) => console.error("runtime dispose failed", cause))
@@ -272,7 +243,6 @@ app.whenReady().then(async () => {
     void Promise.race([disposal, timeout]).then(() => app.quit())
   })
   registerIpc(runtime, appUrl)
-  // Clouds dropped while asleep would otherwise wait out a backoff of up to a minute after waking.
   powerMonitor.on("resume", () =>
     runtime.runFork(Effect.flatMap(Environments.Environments, (environments) => environments.reconnectAll)),
   )

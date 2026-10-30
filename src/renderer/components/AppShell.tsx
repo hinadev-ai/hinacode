@@ -32,11 +32,8 @@ export function AppShell() {
   const compact = usePanelLayout() === "compact"
   const sidebarOpen = useUi((state) => state.sidebarOpen)
   const sidebarButtonRef = useRef<HTMLButtonElement>(null)
-  // Settings brings its own nav in the sidebar's place.
   const onSettings = useMatchRoute()({ to: "/settings" }) !== false
 
-  // A docked sidebar carries the title bar, so the main column runs to the top of the window. Without one the title
-  // bar spans the window, since its sidebar toggle is the way back.
   const docked = !compact && sidebarOpen
   const titleBar = <TitleBar compact={compact} sidebarButtonRef={sidebarButtonRef} />
 
@@ -45,7 +42,6 @@ export function AppShell() {
       {!docked && titleBar}
       <div className="flex min-h-0 flex-1">
         <div className="flex min-h-0 shrink-0 flex-col">
-          {/* Fills the column without widening it, so the column stays the sidebar's width. */}
           {docked && <div className="w-0 min-w-full overflow-hidden">{titleBar}</div>}
           {docked && onSettings && <SettingsNav />}
           <Sidebar compact={compact} replaced={onSettings} finalFocus={sidebarButtonRef} />

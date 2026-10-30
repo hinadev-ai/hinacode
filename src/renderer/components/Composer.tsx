@@ -374,7 +374,6 @@ function SendButton({
   )
 }
 
-/** Commands are a side feature, so their failure takes one line until asked for the rest, which says how to fix it. */
 function CommandsError({ message }: { message: string }) {
   const [expanded, setExpanded] = useState(false)
   return (

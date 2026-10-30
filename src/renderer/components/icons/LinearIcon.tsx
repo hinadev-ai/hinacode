@@ -1,4 +1,3 @@
-/** Linear's mark, which Remix lacks. The Simple Icons path (CC0), in `currentColor` on a 24-unit grid. */
 export function LinearIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className={className}>

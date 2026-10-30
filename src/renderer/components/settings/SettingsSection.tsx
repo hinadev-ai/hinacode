@@ -3,7 +3,6 @@ import { type ComponentProps, createContext, type ReactNode, use, useId } from "
 import { createPortal } from "react-dom"
 
 interface SettingsSectionProps {
-  /** Left out on a page's first section, whose heading is the page title above it. */
   readonly title?: string
   readonly description?: string
   readonly action?: ReactNode
@@ -53,10 +52,8 @@ export function SettingsGroupTitle({ className, children, ...props }: ComponentP
 
 const PageActionSlot = createContext<HTMLElement | null>(null)
 
-/** Where the settings top bar takes page actions, beside the machine picker. */
 export const PageActionSlotProvider = PageActionSlot.Provider
 
-/** A page's own action, such as Reset all, shown in the top bar instead of in the page body. */
 export function SettingsPageAction({ children }: { children: ReactNode }) {
   const slot = use(PageActionSlot)
   return slot && createPortal(children, slot)

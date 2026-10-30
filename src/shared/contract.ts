@@ -779,8 +779,6 @@ export const TranscriptPush = Schema.Union([
 ])
 export type TranscriptPush = typeof TranscriptPush.Type
 
-/** Main -> renderer pushes on the `event` channel. */
-/** The app commands a native menu item runs in the focused window. */
 export const MenuCommand = Schema.Literals([
   "thread.new",
   "project.add",

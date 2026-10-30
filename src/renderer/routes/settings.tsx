@@ -25,7 +25,6 @@ import { usePanelLayout } from "../lib/panelLayout.ts"
 import { type EnvironmentId, settingsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 
-/** Paired machines, and this machine's own remote control, which always edits local settings. */
 function ConnectionSettings() {
   return (
     <div className="flex flex-col gap-12">
@@ -58,7 +57,6 @@ export function SettingsRoute() {
   const clouds = useClouds()
   const page = settingsPageOf(pageId)
   const Page = components[page.id]!
-  // A docked nav lives in the app's sidebar column; a compact window has none, so the page brings its own.
   const compact = usePanelLayout() === "compact"
   const [actionSlot, setActionSlot] = useState<HTMLElement | null>(null)
 
@@ -67,8 +65,7 @@ export function SettingsRoute() {
     (event) => {
       if (!event.defaultPrevented) leave()
     },
-    // A field keeps Escape, so a draft is never thrown away by leaving the page. Popups close on a document
-    // listener, and window hears the key after it, so an Escape that closed a popup arrives defaultPrevented.
+    // FIXME: Base UI popups close on a document Escape listener, so an Escape that closed one arrives defaultPrevented
     { target: window, ignoreInputs: true, preventDefault: false, stopPropagation: false },
   )
 
@@ -76,7 +73,6 @@ export function SettingsRoute() {
     <div className="flex min-h-0 flex-1">
       {compact && <SettingsNav />}
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* The scroller keeps a gutter on both sides, so its centred column lines up with this one. */}
         <header className="window-drag shrink-0 [scrollbar-gutter:stable_both-edges] overflow-hidden">
           <div className="mx-auto flex w-full max-w-3xl items-start gap-3 px-8 pt-5 pb-6">
             <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -103,7 +99,6 @@ export function SettingsRoute() {
           <div className="mx-auto w-full max-w-3xl px-8 pb-12">
             <PageActionSlotProvider value={actionSlot}>
               {page.scope === "environment" ? (
-                // Keyed by environment so drafts in the page's fields never carry over to another machine.
                 <LoadedSettings key={environment ?? ""} environment={environment}>
                   <Page />
                 </LoadedSettings>
@@ -162,7 +157,6 @@ function EnvironmentPicker({ labelId, value, clouds, onChange }: EnvironmentPick
   )
 }
 
-/** Renders once the environment's settings answered, so its fields never start from defaults. */
 function LoadedSettings({ environment, children }: { environment: EnvironmentId; children: ReactNode }) {
   const settings = useAtomValue(settingsAtom(environment))
   const refresh = useAtomRefresh(settingsAtom(environment))

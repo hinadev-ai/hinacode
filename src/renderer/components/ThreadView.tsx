@@ -44,8 +44,6 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
   const regionRef = useRef<HTMLDivElement>(null)
   const dockRef = useRef<HTMLDivElement>(null)
   useDockHeight(regionRef, dockRef)
-  // A new thread's composer waits in the middle of the view, and slides to the bottom with the first message.
-  // Until the messages load its place is unknown, so it stays hidden and still, and appears where it belongs.
   const loaded = useMessages((state) => state.byThread[thread.id]?.status === "ready")
   const centered = useMessages((state) => {
     const history = state.byThread[thread.id]
@@ -194,7 +192,6 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
               />
             </div>
           )}
-          {/* Ends the hint just above the composer, which sits centered in the view until the first message. */}
           <div className="h-[calc(50cqh+var(--dock-height)/2+1.5rem)] shrink-0" />
         </>
       ) : (
