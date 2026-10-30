@@ -11,7 +11,7 @@ pnpm install
 pnpm --dir site dev
 ```
 
-Astro serves the landing page at `/` and pricing at `/pricing/`. Edit pages in `src/pages`, shared markup in `src/components`, and styles in `src/styles/global.css`. The visual system (ticket rail, canary yellow, the chick mark) is described in `DESIGN.md`. Fonts are self-hosted through `@fontsource-variable`.
+Astro serves the landing page at `/` and pricing at `/pricing/`. Edit pages in `src/pages`, shared markup in `src/components`, and styles in `src/styles/global.css`. The visual system (a dial-up bulletin board in the sixteen ANSI colours) is described in `DESIGN.md`. The IBM VGA and Cubic 11 fonts live in `public/fonts` with their licenses, and DotGothic16 comes from `@fontsource/dotgothic16`.
 
 To check and build the site, run:
 
@@ -26,7 +26,7 @@ The language menu switches between English, Traditional Chinese, and Japanese wh
 
 Edit `site_` keys in the root `messages/en.json`, `messages/zh-TW.json`, and `messages/ja.json` catalogs. Add each key to all three catalogs and keep placeholders identical. `Home.astro` and `Pricing.astro` render all languages from the same markup. `Text.astro` replaces placeholders with named slots so translators can change word order without adding HTML.
 
-The ticket rail on the home page is driven by `src/scripts/rail.ts`. Its localized hints, replies, and pull request lines live in `<template data-rail-template>` elements at the end of `Home.astro`. All language routes are static, so deploying to Workers uses the same command.
+The live approval on the home page is driven by `src/scripts/board.ts`. Its localized hints, replies, and pull request lines live in `<template data-board-template>` elements at the end of `Home.astro`. The number keys in the status bar menu are wired in `src/scripts/platform.ts`. All language routes are static, so deploying to Workers uses the same command.
 
 ## Preview on Workers
 

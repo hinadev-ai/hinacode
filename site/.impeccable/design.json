@@ -4,286 +4,201 @@
   "title": "Design System: HinaCode site",
   "extensions": {
     "colorMeta": {
-      "canary": {
-        "role": "primary",
-        "displayName": "Canary Order Pad",
-        "canonical": "#ffd43b",
-        "tonalRamp": ["#40350c", "#7b630e", "#bd960a", "#fec806", "#f4cf4d", "#f1db8e", "#f3e9c3", "#faf7eb"]
-      },
-      "ink": {
-        "role": "neutral",
-        "displayName": "Carbon Ink",
-        "canonical": "#1b1d26",
-        "tonalRamp": ["#22232b", "#3c3f4e", "#545a73", "#6d7597", "#9398af", "#b7bac8", "#d7d9df", "#f1f1f4"]
-      },
-      "ink-2": {
-        "role": "neutral",
-        "displayName": "Faded Ink",
-        "canonical": "#474a54",
-        "tonalRamp": ["#242528", "#404249", "#5c5f6b", "#787c8c", "#9a9da8", "#bbbdc3", "#d9dadd", "#f2f2f3"]
-      },
-      "ink-3": {
-        "role": "neutral",
-        "displayName": "Pale Ink",
-        "canonical": "#5f626c",
-        "tonalRamp": ["#252528", "#414348", "#5e6069", "#7a7e8a", "#9b9ea6", "#bcbec2", "#dadadd", "#f2f2f3"]
-      },
-      "ink-hover": {
-        "role": "neutral",
-        "displayName": "Ink Hover",
-        "canonical": "#343744",
-        "tonalRamp": ["#23242a", "#3e404c", "#585c6f", "#727893", "#969aac", "#b9bbc6", "#d8d9df", "#f1f2f3"]
-      },
-      "paper": {
-        "role": "neutral",
-        "displayName": "Thermal Paper",
-        "canonical": "#fdfdfb",
-        "tonalRamp": ["#2f2f1e", "#575733", "#818146", "#abab59", "#bcbc85", "#d0d0af", "#e3e3d3", "#f5f5f0"]
-      },
-      "ground": {
-        "role": "neutral",
-        "displayName": "Counter Grey",
-        "canonical": "#ecedea",
-        "tonalRamp": ["#272824", "#464941", "#666a5d", "#858c79", "#a3a79a", "#c1c3bb", "#dcddd9", "#f2f3f2"]
-      },
-      "line": {
-        "role": "neutral",
-        "displayName": "Hairline",
-        "canonical": "#d3d5d0",
-        "tonalRamp": ["#272825", "#454842", "#64685e", "#83897b", "#a2a59c", "#c0c2bc", "#dcddda", "#f2f3f2"]
-      },
-      "steel": {
-        "role": "neutral",
-        "displayName": "Steel",
-        "canonical": "#b4b7b2",
-        "tonalRamp": ["#262725", "#444743", "#636660", "#81867e", "#a0a39e", "#bfc1be", "#dbdcda", "#f2f3f2"]
-      },
-      "steel-highlight": {
-        "role": "neutral",
-        "displayName": "Steel Highlight",
-        "canonical": "#e4e6e2",
-        "tonalRamp": ["#262824", "#454941", "#636a5d", "#828b79", "#a1a79a", "#bfc3bc", "#dbddda", "#f2f3f2"]
-      },
-      "steel-shadow": {
-        "role": "neutral",
-        "displayName": "Steel Shadow",
-        "canonical": "#7d817d",
-        "tonalRamp": ["#262726", "#444644", "#626562", "#808480", "#9fa29f", "#bec0be", "#dbdcdb", "#f2f2f2"]
-      },
-      "red": {
-        "role": "tertiary",
-        "displayName": "Order-Number Red",
-        "canonical": "#c0352b",
-        "tonalRamp": ["#371816", "#672722", "#9c322b", "#d13e34", "#d5736c", "#dfa4a0", "#ebcecc", "#f7eeed"]
-      },
-      "green": {
-        "role": "tertiary",
-        "displayName": "Diff Green",
-        "canonical": "#22714a",
-        "tonalRamp": ["#183426", "#286245", "#339464", "#40c583", "#74cda1", "#a5dac0", "#cee8db", "#eef6f2"]
-      }
+      "black": { "role": "neutral", "displayName": "Ground Black", "canonical": "#000000" },
+      "blue": { "role": "primary", "displayName": "ANSI Blue", "canonical": "#0000aa" },
+      "cyan": { "role": "secondary", "displayName": "Terminal Cyan", "canonical": "#00aaaa" },
+      "magenta": { "role": "secondary", "displayName": "Magenta", "canonical": "#aa00aa" },
+      "brown": { "role": "secondary", "displayName": "Brown Field", "canonical": "#aa5500" },
+      "gray": { "role": "neutral", "displayName": "Light Gray", "canonical": "#aaaaaa" },
+      "dark-gray": { "role": "neutral", "displayName": "Dark Gray", "canonical": "#555555" },
+      "bright-blue": { "role": "neutral", "displayName": "Bright Blue", "canonical": "#5555ff" },
+      "bright-green": { "role": "tertiary", "displayName": "State Green", "canonical": "#55ff55" },
+      "bright-cyan": { "role": "primary", "displayName": "Phosphor Bright Cyan", "canonical": "#55ffff" },
+      "bright-red": { "role": "tertiary", "displayName": "State Red", "canonical": "#ff5555" },
+      "bright-magenta": { "role": "secondary", "displayName": "Bright Magenta", "canonical": "#ff55ff" },
+      "yellow": { "role": "tertiary", "displayName": "Lit Window Yellow", "canonical": "#ffff55" },
+      "white": { "role": "neutral", "displayName": "White", "canonical": "#ffffff" }
     },
     "typographyMeta": {
+      "closing": { "displayName": "Closing", "purpose": "Closing and pricing headlines at 64px; 32px below 1024px." },
+      "hero": { "displayName": "Hero", "purpose": "Home headline at 48px; 32px below 1024px; 44px in zh-TW." },
       "display": {
         "displayName": "Display",
-        "purpose": "Hero headline, condensed, left-aligned."
-      },
-      "closing": {
-        "displayName": "Closing",
-        "purpose": "Closing-field headline on canary."
-      },
-      "headline": {
-        "displayName": "Headline",
-        "purpose": "Section heads."
-      },
-      "title": {
-        "displayName": "Title",
-        "purpose": "Ticket titles, menu items, FAQ questions."
+        "purpose": "Section headings, receipt total and wordmark cells at 32px; 33px in zh-TW."
       },
       "body": {
         "displayName": "Body",
-        "purpose": "Running copy."
+        "purpose": "Ledes, menu descriptions and message bodies at 16px; 22px in zh-TW."
       },
-      "lede": {
-        "displayName": "Lede",
-        "purpose": "Hero and section ledes in Faded Ink."
-      },
-      "ticket": {
-        "displayName": "Ticket",
-        "purpose": "Order numbers, branches, command lines, code and prices."
-      },
-      "stamp": {
-        "displayName": "Stamp",
-        "purpose": "Uppercase state labels on stamps."
+      "chrome": {
+        "displayName": "Chrome",
+        "purpose": "Status bar, tables, kbd, chips, badges and CP437 art rows at 16px, line-height 1."
       }
     },
     "shadows": [
       {
-        "name": "ticket-hang",
-        "value": "drop-shadow(0 1px 1px rgb(27 29 38 / 0.14)) drop-shadow(0 10px 12px rgb(27 29 38 / 0.08))",
-        "purpose": "Filter on tickets and the receipt so the shadow follows the torn edge."
+        "name": "crt-scanlines",
+        "value": "repeating-linear-gradient(to bottom, transparent 0 2px, rgb(0 0 0 / 0.22) 2px 3px)",
+        "purpose": "Overlay inside the title screen only."
       },
       {
-        "name": "rail-lip",
-        "value": "0 3px 5px -2px rgb(27 29 38 / 0.24)",
-        "purpose": "Under the steel band."
-      },
-      {
-        "name": "menu-float",
-        "value": "0 1px 2px rgb(27 29 38 / 0.12), 0 12px 28px -8px rgb(27 29 38 / 0.22)",
-        "purpose": "Language menu only."
+        "name": "crt-vignette",
+        "value": "radial-gradient(130% 110% at 50% 45%, transparent 62%, rgb(0 0 0 / 0.55) 100%)",
+        "purpose": "Fixed global overlay over the viewport."
       }
     ],
     "motion": [
+      { "name": "pour", "value": "1300ms steps(5) 150ms", "purpose": "Wordmark reveals band by band, top to bottom." },
+      { "name": "twinkle", "value": "2600ms steps(1) infinite", "purpose": "Bright-cyan stars blink to black." },
       {
-        "name": "ease-out",
-        "value": "cubic-bezier(0.23, 1, 0.32, 1)",
-        "purpose": "All transitions and entrances."
+        "name": "page-blink",
+        "value": "1200ms steps(1) 4",
+        "purpose": "PAGE flag and needs-you state blink four times, then stop."
+      },
+      { "name": "type-in", "value": "360ms steps(24)", "purpose": "Printed page lines reveal left to right." },
+      {
+        "name": "cursor-blink",
+        "value": "1060ms steps(1) 4",
+        "purpose": "Brand cursor in the status bar, four blinks."
       },
       {
-        "name": "drop",
-        "value": "900ms, staggered 70ms",
-        "purpose": "Tickets drop onto the rail on wide screens."
-      },
-      {
-        "name": "print",
-        "value": "420ms top-down clip reveal",
-        "purpose": "New ticket lines print in."
-      },
-      {
-        "name": "slip-state",
-        "value": "700ms background-color",
-        "purpose": "A slip turning canary or back."
+        "name": "reduced-motion",
+        "value": "animation: none",
+        "purpose": "All motion off under prefers-reduced-motion: reduce."
       }
     ],
     "breakpoints": [
-      {
-        "name": "narrow",
-        "value": "760px"
-      },
-      {
-        "name": "rail",
-        "value": "1200px"
-      }
+      { "name": "wordmark-stacked", "value": "700px" },
+      { "name": "table-collapse", "value": "600px" },
+      { "name": "compact", "value": "1023px" },
+      { "name": "wordmark-small", "value": "1099px" }
     ]
   },
   "components": [
     {
-      "name": "Primary Button",
+      "name": "Download Key",
       "kind": "button",
-      "refersTo": "button-primary",
-      "description": "Ink download and Allow button.",
-      "html": "<button class=\"ds-btn\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\"><path d=\"M8 2.5v8m0 0L4.75 7.25M8 10.5l3.25-3.25M3 13.5h10\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>Download for macOS</button>",
-      "css": ".ds-btn { display: inline-flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 20px; border: 1.5px solid var(--ink, #1b1d26); border-radius: 6px; background: var(--ink, #1b1d26); color: var(--paper, #fdfdfb); font-family: var(--sans, 'Archivo Variable', sans-serif); font-weight: 600; font-size: 1rem; cursor: pointer; transition: background-color 150ms cubic-bezier(0.23, 1, 0.32, 1), transform 120ms cubic-bezier(0.23, 1, 0.32, 1); } .ds-btn:hover { background: #343744; } .ds-btn:active { transform: translateY(1px); } .ds-btn:focus-visible { outline: 2px solid #1b1d26; outline-offset: 3px; }"
+      "refersTo": "download-key",
+      "description": "The one primary action: bright cyan key in brackets with a blue arrow.",
+      "html": "<a class=\"ds-download\" href=\"#\">[ <span class=\"ds-download-arrow\">↓</span> Download for macOS ]</a>",
+      "css": ".ds-download { display: inline-flex; gap: 12px; align-items: center; padding: 16px 20px; background: #55ffff; color: #000000; font: 400 16px/1 \"IBM VGA\", ui-monospace, monospace; text-decoration: none; white-space: nowrap; } .ds-download:hover { background: #ffffff; } .ds-download:focus-visible { outline: 2px solid #ffff55; outline-offset: 2px; } .ds-download-arrow { color: #0000aa; }"
     },
     {
-      "name": "Quiet Button with key",
+      "name": "Link",
       "kind": "button",
-      "refersTo": "button-quiet",
-      "description": "Deny on the approval, with its keycap.",
-      "html": "<button class=\"ds-btn ds-btn-quiet ds-btn-sm\">Deny <kbd>D</kbd></button>",
-      "css": ".ds-btn { display: inline-flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 20px; border: 1.5px solid var(--ink, #1b1d26); border-radius: 6px; background: var(--ink, #1b1d26); color: var(--paper, #fdfdfb); font-family: var(--sans, 'Archivo Variable', sans-serif); font-weight: 600; font-size: 1rem; cursor: pointer; transition: background-color 150ms cubic-bezier(0.23, 1, 0.32, 1), transform 120ms cubic-bezier(0.23, 1, 0.32, 1); } .ds-btn:hover { background: #343744; } .ds-btn:active { transform: translateY(1px); } .ds-btn:focus-visible { outline: 2px solid #1b1d26; outline-offset: 3px; } .ds-btn kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border: 1px solid color-mix(in oklab, currentColor 45%, transparent); border-radius: 3px; font-family: var(--mono, 'Martian Mono Variable', monospace); font-size: 10px; line-height: 1; } .ds-btn-sm { min-height: 34px; gap: 8px; padding: 0 12px; font-size: 0.875rem; } .ds-btn-quiet { background: transparent; color: #1b1d26; } .ds-btn-quiet:hover { background: color-mix(in oklab, #1b1d26 8%, transparent); }"
-    },
-    {
-      "name": "Text Link",
-      "kind": "custom",
       "refersTo": "link",
-      "description": "Secondary action with a steel underline that inks on hover.",
-      "html": "<a class=\"ds-link\" href=\"#\">View on GitHub</a>",
-      "css": ".ds-link { color: #1b1d26; font-family: var(--sans, 'Archivo Variable', sans-serif); font-weight: 600; text-decoration: underline; text-decoration-thickness: 2px; text-decoration-color: #b4b7b2; text-underline-offset: 5px; transition: text-decoration-color 150ms cubic-bezier(0.23, 1, 0.32, 1); } .ds-link:hover { text-decoration-color: #1b1d26; } .ds-link:focus-visible { outline: 2px solid #1b1d26; outline-offset: 3px; border-radius: 4px; }"
+      "description": "Secondary action: bright cyan with a » prefix, inverts on hover.",
+      "html": "<div class=\"ds-ground\"><a class=\"ds-link\" href=\"#\">View on GitHub</a></div>",
+      "css": ".ds-ground { padding: 16px; background: #000000; } .ds-link { color: #55ffff; font: 400 16px/1 \"IBM VGA\", ui-monospace, monospace; text-decoration: none; } .ds-link::before { content: \"» \"; } .ds-link:hover { background: #55ffff; color: #000000; } .ds-link:focus-visible { outline: 2px solid #ffff55; outline-offset: 2px; }"
     },
     {
-      "name": "Ticket",
-      "kind": "card",
-      "refersTo": "ticket",
-      "description": "An agent as a thermal-paper order ticket with a torn edge and a state stamp.",
-      "html": "<div class=\"ds-ticket\"><article class=\"ds-slip\"><header><span>No. 0126</span><span>Claude Code</span></header><h3>Tighten address validation</h3><p class=\"ds-branch\">feat/address-validation</p><p class=\"ds-stamp\"><span class=\"ds-ring\"></span>Working</p></article></div>",
-      "css": ".ds-ticket { width: 236px; filter: drop-shadow(0 1px 1px rgb(27 29 38 / 0.14)) drop-shadow(0 10px 12px rgb(27 29 38 / 0.08)); } .ds-slip { padding: 18px 14px 23px; background: #fdfdfb; color: #1b1d26; font-family: var(--mono, 'Martian Mono Variable', monospace); font-size: 11.5px; font-stretch: 87.5%; line-height: 1.5; mask: linear-gradient(#000 0 0) top / 100% calc(100% - 7px) no-repeat, conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) bottom / 14px 7px repeat-x; } .ds-slip header { display: flex; justify-content: space-between; padding-bottom: 8px; border-bottom: 1px dashed #b4b7b2; color: #5f626c; font-size: 10.5px; text-transform: uppercase; } .ds-slip h3 { margin: 10px 0 0; font-family: var(--sans, 'Archivo Variable', sans-serif); font-size: 1.0625rem; font-weight: 650; font-stretch: 85%; } .ds-branch { margin: 4px 0 0; color: #5f626c; } .ds-stamp { display: inline-flex; align-items: center; gap: 7px; margin-top: 14px; padding: 4px 9px 3px; border: 1.5px solid currentColor; border-radius: 3px; color: #474a54; font-family: var(--sans, 'Archivo Variable', sans-serif); font-size: 11px; font-weight: 700; font-stretch: 90%; letter-spacing: 0.08em; text-transform: uppercase; transform: rotate(-2deg); } .ds-dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; } .ds-ring { width: 10px; height: 10px; border: 1.5px solid color-mix(in oklab, currentColor 30%, transparent); border-top-color: currentColor; border-radius: 50%; animation: ds-spin 900ms linear infinite; } @keyframes ds-spin { to { transform: rotate(1turn); } }"
-    },
-    {
-      "name": "Needs-You Ticket",
-      "kind": "card",
-      "refersTo": "ticket-needs",
-      "description": "The one canary ticket awaiting a human.",
-      "html": "<div class=\"ds-ticket\"><article class=\"ds-slip ds-needs\"><header><span>No. 0126</span><span>Claude Code</span></header><h3>Tighten address validation</h3><p class=\"ds-branch\">feat/address-validation</p><p class=\"ds-stamp ds-stamp-ink\"><span class=\"ds-dot\"></span>Needs you</p></article></div>",
-      "css": ".ds-ticket { width: 236px; filter: drop-shadow(0 1px 1px rgb(27 29 38 / 0.14)) drop-shadow(0 10px 12px rgb(27 29 38 / 0.08)); } .ds-slip { padding: 18px 14px 23px; background: #fdfdfb; color: #1b1d26; font-family: var(--mono, 'Martian Mono Variable', monospace); font-size: 11.5px; font-stretch: 87.5%; line-height: 1.5; mask: linear-gradient(#000 0 0) top / 100% calc(100% - 7px) no-repeat, conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) bottom / 14px 7px repeat-x; } .ds-slip header { display: flex; justify-content: space-between; padding-bottom: 8px; border-bottom: 1px dashed #b4b7b2; color: #5f626c; font-size: 10.5px; text-transform: uppercase; } .ds-slip h3 { margin: 10px 0 0; font-family: var(--sans, 'Archivo Variable', sans-serif); font-size: 1.0625rem; font-weight: 650; font-stretch: 85%; } .ds-branch { margin: 4px 0 0; color: #5f626c; } .ds-stamp { display: inline-flex; align-items: center; gap: 7px; margin-top: 14px; padding: 4px 9px 3px; border: 1.5px solid currentColor; border-radius: 3px; color: #474a54; font-family: var(--sans, 'Archivo Variable', sans-serif); font-size: 11px; font-weight: 700; font-stretch: 90%; letter-spacing: 0.08em; text-transform: uppercase; transform: rotate(-2deg); } .ds-dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; } .ds-needs { background: #ffd43b; } .ds-needs header, .ds-needs .ds-branch { color: color-mix(in oklab, #1b1d26 78%, #ffd43b); border-color: color-mix(in oklab, #1b1d26 35%, transparent); } .ds-stamp-ink { color: #1b1d26; }"
-    },
-    {
-      "name": "Failed Stamp",
-      "kind": "chip",
-      "refersTo": "stamp-failed",
-      "description": "Red stamp, the only non-diff use of red.",
-      "html": "<p class=\"ds-stamp ds-failed\"><span class=\"ds-cross\"></span>Failed</p>",
-      "css": ".ds-ticket { width: 236px; filter: drop-shadow(0 1px 1px rgb(27 29 38 / 0.14)) drop-shadow(0 10px 12px rgb(27 29 38 / 0.08)); } .ds-slip { padding: 18px 14px 23px; background: #fdfdfb; color: #1b1d26; font-family: var(--mono, 'Martian Mono Variable', monospace); font-size: 11.5px; font-stretch: 87.5%; line-height: 1.5; mask: linear-gradient(#000 0 0) top / 100% calc(100% - 7px) no-repeat, conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) bottom / 14px 7px repeat-x; } .ds-slip header { display: flex; justify-content: space-between; padding-bottom: 8px; border-bottom: 1px dashed #b4b7b2; color: #5f626c; font-size: 10.5px; text-transform: uppercase; } .ds-slip h3 { margin: 10px 0 0; font-family: var(--sans, 'Archivo Variable', sans-serif); font-size: 1.0625rem; font-weight: 650; font-stretch: 85%; } .ds-branch { margin: 4px 0 0; color: #5f626c; } .ds-stamp { display: inline-flex; align-items: center; gap: 7px; margin-top: 14px; padding: 4px 9px 3px; border: 1.5px solid currentColor; border-radius: 3px; color: #474a54; font-family: var(--sans, 'Archivo Variable', sans-serif); font-size: 11px; font-weight: 700; font-stretch: 90%; letter-spacing: 0.08em; text-transform: uppercase; transform: rotate(-2deg); } .ds-dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; } .ds-failed { color: #c0352b; } .ds-cross { width: 10px; height: 10px; background: linear-gradient(45deg, transparent 43%, currentColor 43% 57%, transparent 57%), linear-gradient(-45deg, transparent 43%, currentColor 43% 57%, transparent 57%); }"
-    },
-    {
-      "name": "Steel Rail",
-      "kind": "custom",
-      "refersTo": "steel",
-      "description": "Flat steel band with light and dark 1px rules.",
-      "html": "<div class=\"ds-rail\"></div>",
-      "css": ".ds-rail { height: 16px; border-top: 1px solid #e4e6e2; border-bottom: 1px solid #7d817d; background: #b4b7b2; box-shadow: 0 3px 5px -2px rgb(27 29 38 / 0.24); }"
-    },
-    {
-      "name": "Navigation",
+      "name": "Status Bar",
       "kind": "nav",
-      "refersTo": "nav",
-      "description": "Sticky counter-grey bar with the chick mark.",
-      "html": "<nav class=\"ds-nav\"><a class=\"ds-brand\" href=\"#\"><svg viewBox=\"6 4 52 54\" height=\"28\"><path d=\"M28 55c-11 0-19.5-7.8-19.5-19C8.5 23.5 17.3 13 28 13s19.5 10.5 19.5 23c0 11.2-8.5 19-19.5 19Z\" fill=\"#ffd43b\"/><circle cx=\"34.5\" cy=\"29.5\" r=\"3\" fill=\"#1b1d26\"/><path d=\"M47 30l6.5 4.2L47 38.4\" fill=\"none\" stroke=\"#1b1d26\" stroke-width=\"3.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M25.5 13.4c-.4-3.8 1.9-6.6 5.7-6.6\" fill=\"none\" stroke=\"#1b1d26\" stroke-width=\"3\" stroke-linecap=\"round\"/></svg>HinaCode</a><a href=\"#\">Features</a><a href=\"#\">FAQ</a><a href=\"#\">Pricing</a></nav>",
-      "css": ".ds-nav { display: flex; align-items: center; gap: 28px; height: 64px; padding: 0 32px; background: #ecedea; box-shadow: 0 1px 0 #d3d5d0; font-family: var(--sans, 'Archivo Variable', sans-serif); font-size: 0.9375rem; } .ds-nav a { color: #474a54; text-decoration: none; transition: color 150ms cubic-bezier(0.23, 1, 0.32, 1); } .ds-nav a:hover { color: #1b1d26; } .ds-nav .ds-brand { display: flex; align-items: center; gap: 10px; margin-right: 8px; color: #1b1d26; font-weight: 750; font-size: 1.1875rem; font-stretch: 112%; }"
+      "refersTo": "status-bar",
+      "description": "Sticky blue bar with brand, live counts and the bracketed hotkey menu.",
+      "html": "<header class=\"ds-status\"><a class=\"ds-brand\" href=\"#\">HINACODE<span class=\"ds-cursor\"></span></a><span class=\"ds-presence\">online <b>5</b> <span class=\"ds-needs\">needs you <b>1</b></span></span><nav class=\"ds-keys\"><a href=\"#\"><kbd>1</kbd>Download</a><a href=\"#\"><kbd>2</kbd>Features</a><a href=\"#\"><kbd>3</kbd>Pricing</a><a href=\"#\"><kbd>4</kbd>FAQ</a><a href=\"#\"><kbd>G</kbd>GitHub</a></nav></header>",
+      "css": ".ds-status { display: flex; align-items: center; gap: 32px; min-height: 48px; padding: 0 24px; background: #0000aa; color: #ffffff; font: 400 16px/1 \"IBM VGA\", ui-monospace, monospace; } .ds-brand { display: inline-flex; color: #ffff55; text-decoration: none; } .ds-cursor { display: inline-block; width: 0.5em; height: 0.125em; align-self: flex-end; margin: 0 0 0.2em 2px; background: currentColor; } .ds-presence { color: #55ffff; } .ds-presence b { color: #ffffff; font-weight: 400; } .ds-needs { margin-left: 24px; } .ds-needs b { padding: 0 4px; background: #ffffff; color: #0000aa; } .ds-keys { display: flex; gap: 24px; margin-left: auto; } .ds-keys a { display: inline-flex; gap: 8px; color: inherit; text-decoration: none; } .ds-keys a:hover { color: #ffff55; } .ds-keys kbd { font: inherit; color: #ffff55; } .ds-keys kbd::before { content: \"[\"; color: #55ffff; } .ds-keys kbd::after { content: \"]\"; color: #55ffff; }"
+    },
+    {
+      "name": "Page Box",
+      "kind": "card",
+      "refersTo": "page-box",
+      "description": "The live page: white double frame on blue, a PAGE flag, and A / D keys.",
+      "html": "<div class=\"ds-page\"><p class=\"ds-page-title\"><span class=\"ds-flag\">Page</span><span>Node 03 · Claude Code</span></p><code class=\"ds-request\">git push -u origin feat/address-validation</code><div class=\"ds-actions\"><button class=\"ds-key\"><kbd>D</kbd>Deny</button><button class=\"ds-key ds-key-strong\"><kbd>A</kbd>Allow</button></div></div>",
+      "css": ".ds-page { padding: 12px 16px; border: 6px double #ffffff; background: #0000aa; color: #ffffff; font: 400 16px/1.5 \"IBM VGA\", ui-monospace, monospace; } .ds-page-title { display: flex; justify-content: space-between; gap: 16px; margin: 0; color: #55ffff; } .ds-flag { padding: 0 6px; background: #ffffff; color: #0000aa; text-transform: uppercase; } .ds-request { display: block; margin-top: 12px; color: #ffff55; font: inherit; } .ds-actions { display: flex; justify-content: flex-end; gap: 16px; margin-top: 12px; } .ds-key { display: inline-flex; gap: 8px; align-items: center; padding: 8px 12px; border: 0; background: transparent; color: #ffffff; font: inherit; cursor: pointer; } .ds-key kbd { padding: 0 4px; background: #ffffff; color: #0000aa; font: inherit; } .ds-key:hover { background: #5555ff; } .ds-key-strong { background: #ffffff; color: #0000aa; } .ds-key-strong kbd { background: #0000aa; color: #ffffff; } .ds-key-strong:hover { background: #ffff55; } .ds-key:focus-visible { outline: 2px solid #ffff55; outline-offset: 2px; }"
+    },
+    {
+      "name": "Feature Menu Row",
+      "kind": "custom",
+      "refersTo": "code-chip",
+      "description": "n) title …… [code chip] » on the brown field, yellow dot leaders.",
+      "html": "<div class=\"ds-field\"><h3 class=\"ds-row\"><span>3)</span><span>Steer a running turn</span><span class=\"ds-leader\"></span><code class=\"ds-chip\">threads.steer</code><span>»</span></h3><p class=\"ds-desc\">Send a correction while the agent works.</p></div>",
+      "css": ".ds-field { padding: 24px; background: #aa5500; color: #ffffff; font: 400 16px/1.25 \"IBM VGA\", ui-monospace, monospace; } .ds-row { display: flex; align-items: baseline; gap: 12px; margin: 0; font: inherit; } .ds-leader { flex: 1; min-width: 2ch; overflow: hidden; color: #ffff55; white-space: nowrap; } .ds-leader::before { content: \"................................................................................\"; } .ds-chip { padding: 0 8px; background: #000000; color: #55ffff; font: inherit; white-space: nowrap; } .ds-desc { margin: 12px 0 0; padding-left: 3ch; line-height: 1.5; }"
+    },
+    {
+      "name": "Message Base Entry",
+      "kind": "card",
+      "refersTo": "message-card",
+      "description": "FAQ as a BBS message: inverse-cyan open row, then a cyan double-bordered card.",
+      "html": "<details class=\"ds-msg\" open><summary><span class=\"ds-num\">#01</span><span class=\"ds-subj\">What is HinaCode?</span><span>SysOp</span></summary><div class=\"ds-card\"><p class=\"ds-head\"><span>From: SysOp</span><span>To: You</span><span>Subj: What is HinaCode?</span></p><p>A desktop harness for coding agents.</p></div></details>",
+      "css": ".ds-msg { background: #000000; color: #ffffff; font: 400 16px/1.25 \"IBM VGA\", ui-monospace, monospace; } .ds-msg summary { display: flex; gap: 24px; padding: 12px 16px; cursor: pointer; list-style: none; } .ds-msg summary::-webkit-details-marker { display: none; } .ds-num { color: #ffff55; } .ds-subj { flex: 1; } .ds-msg summary:hover, .ds-msg[open] summary { background: #00aaaa; color: #000000; } .ds-msg summary:hover > span, .ds-msg[open] summary > span { color: #000000; } .ds-msg summary:focus-visible { outline: 2px solid #ffff55; outline-offset: 2px; } .ds-card { margin: 8px 0 24px; padding: 16px 20px; border: 4px double #00aaaa; color: #aaaaaa; line-height: 1.5; } .ds-card p { margin: 0; } .ds-card p + p { margin-top: 12px; } .ds-head { display: flex; flex-wrap: wrap; gap: 4px 24px; color: #55ffff; }"
+    },
+    {
+      "name": "DEMO Badge",
+      "kind": "chip",
+      "refersTo": "demo-badge",
+      "description": "Marks synthetic board data.",
+      "html": "<span class=\"ds-demo\">Demo</span>",
+      "css": ".ds-demo { padding: 0 6px; background: #555555; color: #ffffff; font: 400 16px/1 \"IBM VGA\", ui-monospace, monospace; text-transform: uppercase; }"
     }
   ],
   "narrative": {
-    "northStar": "The Pass",
-    "overview": "**Creative North Star: \"The Pass\"**\n\nThe site is the pass of a kitchen. Every agent is an order ticket of white thermal paper hanging from one flat steel rail over a pale steel-grey counter. Carbon blue-black ink does almost all of the work. Canary yellow, the kitchen copy of a duplicate order pad, is the only colour, and it means one thing: this needs you.\n\nDensity is that of a working ticket: small condensed mono for the data, large condensed Archivo for the headers, dotted leaders and dashed tear rules instead of boxes. Torn bottom edges, rotated ink stamps and the rail are the materials; there are no cards, no visible gradients and no glow. The world is light only. The desktop app keeps its own violet system and none of it crosses over.",
+    "northStar": "The 2 A.M. Nightboard",
+    "overview": "The site is a dial-up bulletin board after midnight. The visitor dials in, the title art pours in, five agents are online and one is paging. Everything is drawn in the material of a DOS text-mode screen: a black ground, the sixteen CGA/ANSI colours, one 8x16 bitmap face, CP437 block and shade glyphs. Warmth comes from full colour fields (brown, magenta) and lit yellow windows, not from gradients or tints. Depth comes from a CRT layer and half-block cast shadows, not from drop shadows.\n\nDensity is terminal density: every glyph sits on a 16px cell, controls are hotkeys in brackets, lists use dot leaders, and the FAQ is a message base. The light ticket-rail world (canary yellow, Archivo, Martian Mono, chick mark) was rejected and removed; nothing from it carries over. Dark only.",
     "keyCharacteristics": [
-      "One steel rail, tickets of ragged lengths hanging from it.",
-      "Canary on exactly one ticket at a time, plus the mark and the closing field.",
-      "State named by a stamp in words and shape, never colour alone.",
-      "Condensed Archivo headers, Martian Mono for numbers, branches, code and receipt lines.",
-      "Flat paper with a single soft drop shadow; dotted and dashed rules for structure."
+      "Sixteen ANSI colours, flat, no tints and no opacity on colour.",
+      "IBM VGA 8x16 at whole multiples only (16, 32, 48, 64).",
+      "Sections change on full colour fields joined by ░▒▓ shade bands, never on ruled lines.",
+      "White on blue means a live event or a page.",
+      "Hand-drawn half-block wordmark, CP437 starfield and skyline.",
+      "Every control is a key: [1]..[4], [G], A and D."
     ],
     "rules": [
       {
-        "name": "The Needs-You Rule",
-        "body": "Canary appears only on the ticket that needs a human, in the mark, and as the page-scale closing field. No highlights, link underlines, badges or decorative canary.",
+        "name": "The Sixteen Rule",
+        "body": "Only the sixteen ANSI colours appear. No tints, no mixes, no opacity on a colour. The only alpha in the system is black in the CRT layer.",
         "section": "colors"
       },
       {
-        "name": "The Ink-Means-Fine Rule",
-        "body": "DONE, passing, merged and allowed are ink. Red is failure and diff deletions; green is diff additions and nothing else.",
+        "name": "The Page Rule",
+        "body": "White on blue is reserved for live events and paging: the status bar, the agent that needs you, the page box and kbd caps. Ordinary sections never use it.",
         "section": "colors"
       },
       {
-        "name": "The Width-Not-Weight Rule",
-        "body": "Headers are condensed; data is mono. Do not use a system display face or set headings at normal width.",
+        "name": "The Field Rule",
+        "body": "A section is a full colour field (black, brown, black, magenta, black). Fields meet through three-row ░▒▓ shade bands in the field's colour, never through a ruled line.",
+        "section": "colors"
+      },
+      {
+        "name": "The Whole Multiple Rule",
+        "body": "Latin type is set only at 16, 32, 48 or 64px. Any other size breaks the bitmap.",
         "section": "typography"
       },
       {
-        "name": "The No-Fake-Italic Rule",
-        "body": "In ja and zh-TW the italic emphasis turns upright, headlines drop to smaller sizes with line-height 1.15 to 1.2 and zero tracking, and ja uses `word-break: auto-phrase`.",
+        "name": "The Upright CJK Rule",
+        "body": "CJK is never italic, and never set outside its own grid (16px for Japanese, 22/33/44px for Traditional Chinese).",
         "section": "typography"
       },
+      { "name": "The Credit Rule", "body": "The font credit sits in the footer.", "section": "typography" },
       {
-        "name": "The Flat Steel Rule",
-        "body": "The rail is a flat steel band (16px) with a 1px light top rule and a 1px dark bottom rule. Never a gradient, sheen or bevel.",
+        "name": "The CRT Rule",
+        "body": "Scanlines live only inside the title screen; the vignette covers the viewport. Neither adds colour.",
         "section": "elevation"
+      },
+      {
+        "name": "The Three Lines Rule",
+        "body": "Content carries lines in three places: the double-line frame around the title screen (6px), the message card's double border (4px), and the receipt total's double rule (4px). Popup windows (the page box and the language menu) wear the same double frame.",
+        "section": "shapes"
       }
     ],
     "dos": [
-      "**Do** keep canary to the one ticket that needs a human, the mark and the closing field.",
-      "**Do** name every state with a stamp label and mark shape, and keep DONE and passing in ink.",
-      "**Do** draw the rail flat: `#b4b7b2` band, 1px `#e4e6e2` above, 1px `#7d817d` below.",
-      "**Do** set headers in condensed Archivo and all ticket data, code and numbers in Martian Mono.",
-      "**Do** self-host fonts via @fontsource-variable and keep CJK upright.",
-      "**Do** build structure from dashed and dotted rules and torn edges on paper."
+      "Do use only the sixteen ANSI colours at full strength on a black ground.",
+      "Do set Latin type in IBM VGA at 16, 32, 48 or 64px only.",
+      "Do change sections with a full colour field and a three-row ░▒▓ shade band.",
+      "Do reserve white on blue for live events, paging and kbd caps.",
+      "Do make every control a key: brackets, hotkeys, inverse on hover.",
+      "Do mark synthetic data with the dark-gray DEMO badge.",
+      "Do step every animation and turn all of it off under reduced motion."
     ],
     "donts": [
-      "**Don't** use canary for highlights, link underlines, badges or decoration.",
-      "**Don't** use green for success or red for anything but failure and deletions.",
-      "**Don't** add cards, visible gradients or glow, or a dark hero over a glowing screenshot. Gradients used as masks for torn edges and as flat rule fills are the world's own material.",
-      "**Don't** add a dark theme; the site is light only.",
-      "**Don't** borrow the desktop app's violet accent or the retired two-ring mark."
+      "Don't tint, mix or apply opacity to a colour.",
+      "Don't separate sections with a ruled line or add lines beyond the three.",
+      "Don't use white on blue for an ordinary section.",
+      "Don't add a second Latin face, a bold weight, or an off-grid size.",
+      "Don't italicise CJK.",
+      "Don't round corners or cast box shadows.",
+      "Don't loop a page blink; it blinks four times and stops.",
+      "Don't add a light theme."
     ]
   }
 }

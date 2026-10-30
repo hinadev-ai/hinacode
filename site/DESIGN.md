@@ -1,257 +1,271 @@
 ---
 name: HinaCode site
-description: The marketing site as a kitchen pass, where every agent is an order ticket on one steel rail
+description: The marketing site as a 2 a.m. dial-up bulletin board, where your agents are the callers online and the one that needs you pages you
 colors:
-  canary: "#ffd43b"
-  ink: "#1b1d26"
-  ink-2: "#474a54"
-  ink-3: "#5f626c"
-  ink-hover: "#343744"
-  paper: "#fdfdfb"
-  ground: "#ecedea"
-  line: "#d3d5d0"
-  steel: "#b4b7b2"
-  steel-highlight: "#e4e6e2"
-  steel-shadow: "#7d817d"
-  red: "#c0352b"
-  green: "#22714a"
+  black: "#000000"
+  blue: "#0000aa"
+  cyan: "#00aaaa"
+  magenta: "#aa00aa"
+  brown: "#aa5500"
+  gray: "#aaaaaa"
+  dark-gray: "#555555"
+  bright-blue: "#5555ff"
+  bright-green: "#55ff55"
+  bright-cyan: "#55ffff"
+  bright-red: "#ff5555"
+  bright-magenta: "#ff55ff"
+  yellow: "#ffff55"
+  white: "#ffffff"
 typography:
-  display:
-    fontFamily: "Archivo Variable, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "clamp(2.875rem, 1.1rem + 5.4vw, 5.75rem)"
-    fontWeight: 760
-    lineHeight: 0.94
-    letterSpacing: "-0.012em"
-    fontVariation: "'wdth' 72"
   closing:
-    fontFamily: "Archivo Variable, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "clamp(3rem, 0.8rem + 7.4vw, 7.5rem)"
-    fontWeight: 800
-    lineHeight: 0.9
-    fontVariation: "'wdth' 68"
-  headline:
-    fontFamily: "Archivo Variable, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "clamp(2.25rem, 1.3rem + 2.8vw, 3.75rem)"
-    fontWeight: 760
-    lineHeight: 0.98
-    letterSpacing: "-0.01em"
-    fontVariation: "'wdth' 74"
-  title:
-    fontFamily: "Archivo Variable, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "1.1875rem"
-    fontWeight: 650
-    lineHeight: 1.3
-    fontVariation: "'wdth' 88"
+    fontFamily: "IBM VGA, Cubic 11, DotGothic16, ui-monospace, monospace"
+    fontSize: "64px"
+    fontWeight: 400
+    lineHeight: 1.1
+  hero:
+    fontFamily: "IBM VGA, Cubic 11, DotGothic16, ui-monospace, monospace"
+    fontSize: "48px"
+    fontWeight: 400
+    lineHeight: 1.17
+  display:
+    fontFamily: "IBM VGA, Cubic 11, DotGothic16, ui-monospace, monospace"
+    fontSize: "32px"
+    fontWeight: 400
+    lineHeight: 1.25
   body:
-    fontFamily: "Archivo Variable, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "1rem"
-    fontWeight: 400
-    lineHeight: 1.6
-  lede:
-    fontFamily: "Archivo Variable, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "clamp(1.0625rem, 1rem + 0.25vw, 1.1875rem)"
-    fontWeight: 400
-    lineHeight: 1.55
-  ticket:
-    fontFamily: "Martian Mono Variable, ui-monospace, SF Mono, Menlo, monospace"
-    fontSize: "11.5px"
+    fontFamily: "IBM VGA, Cubic 11, DotGothic16, ui-monospace, monospace"
+    fontSize: "16px"
     fontWeight: 400
     lineHeight: 1.5
-    fontVariation: "'wdth' 87.5"
-  stamp:
-    fontFamily: "Archivo Variable, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "11px"
-    fontWeight: 700
-    lineHeight: 1.3
-    letterSpacing: "0.08em"
-    fontVariation: "'wdth' 90"
+  chrome:
+    fontFamily: "IBM VGA, Cubic 11, DotGothic16, ui-monospace, monospace"
+    fontSize: "16px"
+    fontWeight: 400
+    lineHeight: 1
 rounded:
-  stamp: "3px"
-  key: "4px"
-  button: "6px"
+  none: "0px"
 spacing:
-  gutter: "clamp(20px, 3vw, 32px)"
-  frame: "1280px"
-  rail-gap: "16px"
-  section: "clamp(88px, 10vw, 144px)"
+  gutter: "24px"
+  gutter-compact: "16px"
+  field: "96px"
+  field-compact: "64px"
+  frame: "1200px"
 components:
-  button-primary:
-    backgroundColor: "{colors.ink}"
-    textColor: "{colors.paper}"
-    rounded: "{rounded.button}"
-    padding: "0 20px"
+  download-key:
+    backgroundColor: "{colors.bright-cyan}"
+    textColor: "{colors.black}"
+    typography: "{typography.chrome}"
+    rounded: "{rounded.none}"
+    padding: "16px 20px"
+  download-key-hover:
+    backgroundColor: "{colors.white}"
+    textColor: "{colors.black}"
+  link:
+    textColor: "{colors.bright-cyan}"
+  link-hover:
+    backgroundColor: "{colors.bright-cyan}"
+    textColor: "{colors.black}"
+  status-bar:
+    backgroundColor: "{colors.blue}"
+    textColor: "{colors.white}"
     height: "48px"
-  button-primary-hover:
-    backgroundColor: "{colors.ink-hover}"
-  button-quiet:
-    backgroundColor: "transparent"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.button}"
-    padding: "0 12px"
-    height: "34px"
-  ticket:
-    backgroundColor: "{colors.paper}"
-    textColor: "{colors.ink}"
-    typography: "{typography.ticket}"
-    padding: "18px 14px 23px"
-    width: "236px"
-  ticket-needs:
-    backgroundColor: "{colors.canary}"
-    textColor: "{colors.ink}"
-  stamp:
-    textColor: "{colors.ink-2}"
-    typography: "{typography.stamp}"
-    rounded: "{rounded.stamp}"
-    padding: "4px 9px 3px"
-  stamp-failed:
-    textColor: "{colors.red}"
-  nav:
-    backgroundColor: "{colors.ground}"
-    textColor: "{colors.ink-2}"
-    height: "64px"
-  closing-field:
-    backgroundColor: "{colors.canary}"
-    textColor: "{colors.ink}"
+  page-box:
+    backgroundColor: "{colors.blue}"
+    textColor: "{colors.white}"
+    padding: "12px 16px"
+  key-button:
+    textColor: "{colors.white}"
+    padding: "8px 12px"
+  key-button-hover:
+    backgroundColor: "{colors.bright-blue}"
+  key-button-strong:
+    backgroundColor: "{colors.white}"
+    textColor: "{colors.blue}"
+    padding: "8px 12px"
+  key-button-strong-hover:
+    backgroundColor: "{colors.yellow}"
+    textColor: "{colors.blue}"
+  code-chip:
+    backgroundColor: "{colors.black}"
+    textColor: "{colors.bright-cyan}"
+    padding: "0 8px"
+  demo-badge:
+    backgroundColor: "{colors.dark-gray}"
+    textColor: "{colors.white}"
+    padding: "0 6px"
+  message-row-open:
+    backgroundColor: "{colors.cyan}"
+    textColor: "{colors.black}"
+    padding: "12px 16px"
+  message-card:
+    textColor: "{colors.gray}"
+    padding: "16px 20px"
 ---
 
 # Design System: HinaCode site
 
 ## Overview
 
-**Creative North Star: "The Pass"**
+**Creative North Star: "The 2 A.M. Nightboard"**
 
-The site is the pass of a kitchen. Every agent is an order ticket of white thermal paper hanging from one flat steel rail over a pale steel-grey counter. Carbon blue-black ink does almost all of the work. Canary yellow, the kitchen copy of a duplicate order pad, is the only colour, and it means one thing: this needs you.
+The site is a dial-up bulletin board after midnight. The visitor dials in, the title art pours in, five agents are online and one is paging. Everything is drawn in the material of a DOS text-mode screen: a black ground, the sixteen CGA/ANSI colours, one 8x16 bitmap face, CP437 block and shade glyphs. Warmth comes from full colour fields (brown, magenta) and lit yellow windows, not from gradients or tints. Depth comes from a CRT layer and half-block cast shadows, not from drop shadows.
 
-Density is that of a working ticket: small condensed mono for the data, large condensed Archivo for the headers, dotted leaders and dashed tear rules instead of boxes. Torn bottom edges, rotated ink stamps and the rail are the materials; there are no cards, no visible gradients and no glow. The world is light only. The desktop app keeps its own violet system and none of it crosses over.
+Density is terminal density: every glyph sits on a 16px cell, controls are hotkeys in brackets, lists use dot leaders, and the FAQ is a message base. The light ticket-rail world (canary yellow, Archivo, Martian Mono, chick mark) was rejected and removed; nothing from it carries over. Dark only.
 
 **Key Characteristics:**
 
-- One steel rail, tickets of ragged lengths hanging from it.
-- Canary on exactly one ticket at a time, plus the mark and the closing field.
-- State named by a stamp in words and shape, never colour alone.
-- Condensed Archivo headers, Martian Mono for numbers, branches, code and receipt lines.
-- Flat paper with a single soft drop shadow; dotted and dashed rules for structure.
+- Sixteen ANSI colours, flat, no tints and no opacity on colour.
+- IBM VGA 8x16 at whole multiples only (16, 32, 48, 64).
+- Sections change on full colour fields joined by ░▒▓ shade bands, never on ruled lines.
+- White on blue means a live event or a page.
+- Hand-drawn half-block wordmark, CP437 starfield and skyline.
+- Every control is a key: [1]..[4], [G], A and D.
 
 ## Colors
 
-A near-monochrome ink-on-paper palette with one signal colour and two diff colours.
+The CGA/ANSI sixteen, used flat at full strength on a black ground.
 
 ### Primary
 
-- **Canary Order Pad** (canary): "Needs you." The background of the one ticket awaiting a human, the body of the chick mark on light grounds and in the favicon, and the full-bleed closing field. Ink always sits on it.
+- **Phosphor Bright Cyan** (bright-cyan): the action colour. Download key ground, links, menu bracket glyphs, code chip text, top wordmark band.
+- **ANSI Blue** (blue): the paging colour. Status bar, the needs-you agent row, the page box, kbd caps and the wordmark's cast shadow.
+
+### Secondary
+
+- **Terminal Cyan** (cyan): structure. Title frame, message card border, receipt rule, open FAQ row, table headers, language summary, second wordmark band.
+- **Bright Magenta / Magenta** (bright-magenta, magenta): lower wordmark bands, the "taste" highlight in the headline, and the closing field.
+- **Brown** (brown): the warm section field behind features and costs.
 
 ### Tertiary
 
-- **Order-Number Red** (red): failure only. The FAILED stamp and diff deletions. On canary it darkens to `#a32b22` to hold contrast.
-- **Diff Green** (green): diff additions only, darkened to `#1d5e3d` on canary. Never a success or DONE colour.
+- **Lit Window Yellow** (yellow): emphasis and hotkeys. Highlighted headline words, kbd letters, dot leaders, receipt total, brand name, lit skyline windows, focus ring.
+- **State Greens and Reds** (bright-green, bright-red): working / passed / added lines, and failed / deleted lines.
 
 ### Neutral
 
-- **Carbon Ink** (ink): text, primary buttons, focus ring, the chick's eye, beak and tuft, and the favicon tile.
-- **Faded Ink** (ink-2): ledes, nav links, menu descriptions, footer.
-- **Pale Ink** (ink-3): ticket headers, branch names, verbs, fine print.
-- **Thermal Paper** (paper): tickets, receipt, language menu, the chick body on canary.
-- **Counter Grey** (ground): the page.
-- **Hairline** (line): section and FAQ rules, nav underline.
-- **Steel** (steel): the rail band, and the dotted and dashed rules inside tickets and leaders.
-- **Steel Highlight / Steel Shadow** (steel-highlight, steel-shadow): the 1px light top rule and 1px dark bottom rule of the rail.
+- **Ground Black** (black): page ground, frame interior, code chip ground, scanline and vignette tint.
+- **White** (white): headings and copy on colour fields.
+- **Light Gray** (gray): default body text and footer credit.
+- **Dark Gray** (dark-gray): only the DEMO badge that marks synthetic board data.
+- **Bright Blue** (bright-blue): hover ground for the secondary key button on the page box.
 
 ### Named Rules
 
-**The Needs-You Rule.** Canary appears only on the ticket that needs a human, in the mark, and as the page-scale closing field. No highlights, link underlines, badges or decorative canary.
+**The Sixteen Rule.** Only the sixteen ANSI colours appear. No tints, no mixes, no opacity on a colour. The only alpha in the system is black in the CRT layer.
 
-**The Ink-Means-Fine Rule.** DONE, passing, merged and allowed are ink. Red is failure and diff deletions; green is diff additions and nothing else.
+**The Page Rule.** White on blue is reserved for live events and paging: the status bar, the agent that needs you, the page box and kbd caps. Ordinary sections never use it.
+
+**The Field Rule.** A section is a full colour field (black, brown, black, magenta, black). Fields meet through three-row ░▒▓ shade bands in the field's colour, never through a ruled line.
 
 ## Typography
 
-**Display Font:** Archivo Variable (width axis, real italic), self-hosted via @fontsource-variable, falling back to ui-sans-serif
-**Body Font:** Archivo Variable at normal width
-**Label/Mono Font:** Martian Mono Variable at 87.5% width, self-hosted via @fontsource-variable
-**CJK:** Noto Sans JP Variable (ja) and Noto Sans TC Variable (zh-TW), chained after Archivo
+**Display Font:** IBM VGA 8x16 (int10h Ultimate Oldschool PC Font Pack, CC BY-SA 4.0, self-hosted woff), weight 400 only
+**Japanese:** DotGothic16, on the same 16px grid
+**Traditional Chinese:** Cubic 11 (OFL), at 22 / 33 / 44px
 
-**Character:** Archivo squeezed to 68 to 74% width reads like a printed pad header; Martian Mono reads like a till roll. The width axis, not weight alone, carries hierarchy.
+**Character:** One bitmap face for everything, rendered without smoothing. Hierarchy comes from size multiples and colour, never from weight or a second Latin face.
 
 ### Hierarchy
 
-- **Display** (760, wdth 72): the hero headline, left-aligned, balanced. Its emphasis words use Archivo's real italic at 460 or an ink underline.
-- **Closing** (800, wdth 68): the closing-field headline, with a 420 italic second line.
-- **Headline** (760, wdth 74): section heads.
-- **Title** (650, wdth 85 to 92): ticket titles, menu items, FAQ questions.
-- **Body / Lede** (400, normal width): body copy capped near 34 to 40em; ledes in Faded Ink.
-- **Ticket** (Martian Mono 400, 10.5 to 11.5px): order numbers, agent names (uppercase), branches, command lines, code, prices.
-- **Stamp** (Archivo 700, wdth 90, 11px, 0.08em, uppercase): state labels.
+- **Closing** (400, 64px, 1.1): closing and pricing headlines; 32px below 1024px.
+- **Hero** (400, 48px, 1.17): home headline; 32px below 1024px; 44px in zh-TW.
+- **Display** (400, 32px, 1.25): section headings, receipt total, wordmark cell size; 33px in zh-TW.
+- **Body** (400, 16px, 1.34 to 1.5): ledes, menu descriptions, message bodies; 22px in zh-TW. Measures cap at 34em to 52em.
+- **Chrome** (400, 16px, 1): status bar, tables, kbd, code chips, badges, CP437 art rows.
 
 ### Named Rules
 
-**The Width-Not-Weight Rule.** Headers are condensed; data is mono. Do not use a system display face or set headings at normal width.
+**The Whole Multiple Rule.** Latin type is set only at 16, 32, 48 or 64px. Any other size breaks the bitmap.
 
-**The No-Fake-Italic Rule.** In ja and zh-TW the italic emphasis turns upright, headlines drop to smaller sizes with line-height 1.15 to 1.2 and zero tracking, and ja uses `word-break: auto-phrase`.
+**The Upright CJK Rule.** CJK is never italic, and never set outside its own grid (16px for Japanese, 22/33/44px for Traditional Chinese).
+
+**The Credit Rule.** The font credit sits in the footer.
 
 ## Layout
 
-A 1280px frame with a fluid gutter. At 1200px and wider, the first viewport is a 12-column grid: the steel rail spans the full window under the nav, five tickets hang from it on subgrid columns (2, 2, 2, 3, 2 spans with a one-column gap before the canary ticket), and the headline sits left beneath the short tickets in columns 1 to 7. The canary ticket is wider and hangs lowest. Below 1200px the rail becomes a horizontal scroll-snap strip above the headline, with the canary ticket ordered first, and the steel band is drawn into the strip's own background. Sections start 88 to 144px apart; the closing field follows after 104 to 168px. Features are a two-column menu of items joined by dotted leaders to their mono tool names; leaders drop under 760px.
+Content centres in a 1200px frame with 24px gutters (16px below 1024px). The title screen is one double-line frame holding the wordmark over a starfield, then two columns (offer left, board up to 520px right, 48px gap), closed by the skyline. Below it, fields pad 96px vertically (64px below 1024px). Feature menus run in auto-fit columns of at least 520px.
+
+Responsive steps: below 1100px the wordmark drops from 32px to 16px cells; below 1024px the title columns stack, the hotkey menu wraps to its own row and scrolls; below 700px the wordmark stacks HINA over CODE; below 600px the agent table collapses to state plus branch.
 
 ## Elevation & Depth
 
-Flat paper on a flat counter. Depth comes from one soft drop shadow under each ticket and a short shadow under the rail, so tickets read as hanging rather than lifted.
+No shadows on boxes. Depth is a CRT effect plus pixel art: scanlines inside the title screen only, a global radial vignette, and the wordmark's dark-blue half-block cast shadow offset one pixel down and right.
 
-### Shadow Vocabulary
-
-- **Ticket hang** (`filter: drop-shadow(0 1px 1px rgb(27 29 38 / 0.14)) drop-shadow(0 10px 12px rgb(27 29 38 / 0.08))`): every ticket and the receipt; a filter so it follows the torn edge.
-- **Rail lip** (`box-shadow: 0 3px 5px -2px rgb(27 29 38 / 0.24)`): under the steel band.
-- **Menu float** (`box-shadow: 0 1px 2px rgb(27 29 38 / 0.12), 0 12px 28px -8px rgb(27 29 38 / 0.22)`): the language menu only.
-
-### Named Rules
-
-**The Flat Steel Rule.** The rail is a flat steel band (16px) with a 1px light top rule and a 1px dark bottom rule. Never a gradient, sheen or bevel.
+**The CRT Rule.** Scanlines live only inside the title screen; the vignette covers the viewport. Neither adds colour.
 
 ## Shapes
 
-Paper is square-cornered and tears. Ticket bottoms are a 7px zigzag cut with a conic-gradient mask; the closing field's top edge is the same tear at 9px, as if torn off the pad. Corners elsewhere are small: 3px stamps and code wells, 4px keycaps and focus ring, 6px buttons and menu. Stamps are outlined in currentColor at 1.5px and rotated -2deg. Inside paper, structure is dashed rules under headers and dotted rules above line lists; leaders are dotted.
+Square everything (0px radius). Borders are double lines in cyan or white, never single rules.
 
-The mark is a chick (hina) whose beak is a prompt chevron. On light grounds: canary body, ink eye, beak and tuft. In the closing field the body turns paper white. The favicon is an ink rounded tile with a canary chick.
+**The Three Lines Rule.** Content carries lines in three places: the double-line frame around the title screen (6px), the message card's double border (4px), and the receipt total's double rule (4px). Popup windows (the page box and the language menu) wear the same double frame.
 
 ## Components
 
 ### Buttons
 
-- **Shape:** gently rounded (6px), 1.5px ink border.
-- **Primary:** ink fill, paper text, Archivo 600 at normal width, 48px tall; hover lifts to `#343744`, active nudges down 1px.
-- **Quiet:** transparent with ink border and text; hover tints with 8% ink.
-- **Small:** 34px tall; carries a mono keycap (`A`, `D`) bordered in 45% currentColor.
-- **Link:** Archivo 600 with a 2px steel underline offset 5px that turns ink on hover; on canary it starts ink and clears on hover.
+- **Download key:** bright cyan ground, black text, `[ ↓ … ]` brackets with a blue arrow, 16px by 20px padding, square. Hover turns the ground white.
+- **Key buttons (A / D):** on the page box. Deny is transparent white text, bright-blue on hover; Allow is white with blue text, yellow on hover. Each carries an inverse kbd cap.
+- **Focus:** 2px yellow outline, 2px offset, everywhere.
 
-### Ticket (signature)
+### Links
 
-Thermal-paper slip in Martian Mono: header row of order number and agent in uppercase Pale Ink over a dashed rule, a condensed Archivo title, an ellipsised branch, a dotted-rule line list, and a stamp. States are one ladder: WORKING (spinner ring), NEEDS YOU (filled dot, canary slip, ink stamp), DONE (check), FAILED (cross, red stamp). The live canary ticket carries an inline approval with a command well, Deny (quiet) and Allow (primary) with A and D keys; new lines print in with a 420ms top-down reveal.
+- Bright cyan with a `» ` prefix; hover inverts to black on bright cyan. On the magenta closing field they turn white and invert to magenta on white.
 
-### Receipt
+### Chips
 
-The pricing ticket: mark and number header, dotted-leader rows of item and price, a dashed rule, a condensed total, and a stamp.
+- **Code chip:** black ground, bright-cyan text, 8px side padding, used at the right of feature menu rows and inline in descriptions.
+- **DEMO badge:** dark gray ground, white uppercase text. It marks every surface showing synthetic data.
 
 ### Navigation
 
-Sticky on Counter Grey with a 1px hairline beneath, 64px tall. Brand is the chick plus "HinaCode" at 750 weight and 112% width. Links in Faded Ink turn ink on hover or current page; links hide under 760px. Language is a details menu on paper.
+- **Status bar:** sticky, blue, 48px tall. Yellow HINACODE brand with a blinking underscore cursor, live online / needs-you counts, the hotkey menu `[1] Download [2] Features [3] Pricing [4] FAQ [G] GitHub` (yellow keys in bright-cyan brackets, wired to the keyboard), and a cyan language summary opening a blue double-framed menu.
 
-### Closing Field
+### Agent board (signature)
 
-Full-bleed canary with a torn top edge, the largest condensed headline, Download and GitHub link, and a large paper-bodied chick bleeding off the bottom right.
+- One label grid per row: node, agent, branch, state. States colour the label (working bright green, done bright cyan, failed bright red); the needs-you row is white on blue and its state blinks four times.
+- **Page box:** white double frame on blue, a white PAGE flag that blinks four times, typed-in lines, then A / D keys. Resolved, it turns black with a cyan frame and cyan flag.
+
+### Feature menu (signature)
+
+- `n) title …… [code chip] »` rows: white number and title, yellow dot leaders, code chip, `»`. Below 1024px the leader and `»` drop and the chip wraps under the title.
+
+### Message base (signature)
+
+- FAQ rows `#01 subject SysOp`; hover and open rows invert to black on cyan. The open card is a cyan double-bordered box with a bright-cyan From / To / Subj header.
+
+### Receipt
+
+- Pricing rates as a dl with bright-cyan amounts, closed by a cyan double rule and a yellow 32px total.
+
+### Title art
+
+- **Wordmark:** HINACODE drawn on an 8-pixel bitmap, rendered in ▀▄█ half-blocks with foreground and background pairs. Bands: bright cyan, cyan, bright magenta, magenta, with a blue cast shadow.
+- **Starfield:** CP437 `· . + *` in white, gray, yellow and bright cyan behind the wordmark.
+- **Skyline:** authored CP437 blocks with yellow lit windows; blue walls closing the title frame, black walls closing the magenta field.
+
+### Motion
+
+- Wordmark pours in band by band (`steps(5)`, 1300ms). Bright-cyan stars twinkle. Page flags blink four times. Printed lines type in (`steps(24)`, 360ms). The brand cursor blinks four times. All motion is off under reduced motion.
 
 ## Do's and Don'ts
 
 ### Do:
 
-- **Do** keep canary to the one ticket that needs a human, the mark and the closing field.
-- **Do** name every state with a stamp label and mark shape, and keep DONE and passing in ink.
-- **Do** draw the rail flat: `#b4b7b2` band, 1px `#e4e6e2` above, 1px `#7d817d` below.
-- **Do** set headers in condensed Archivo and all ticket data, code and numbers in Martian Mono.
-- **Do** self-host fonts via @fontsource-variable and keep CJK upright.
-- **Do** build structure from dashed and dotted rules and torn edges on paper.
+- **Do** use only the sixteen ANSI colours at full strength on a black ground.
+- **Do** set Latin type in IBM VGA at 16, 32, 48 or 64px only.
+- **Do** change sections with a full colour field and a three-row ░▒▓ shade band.
+- **Do** reserve white on blue for live events, paging and kbd caps.
+- **Do** make every control a key: brackets, hotkeys, inverse on hover.
+- **Do** mark synthetic data with the dark-gray DEMO badge.
+- **Do** step every animation and turn all of it off under reduced motion.
 
 ### Don't:
 
-- **Don't** use canary for highlights, link underlines, badges or decoration.
-- **Don't** use green for success or red for anything but failure and deletions.
-- **Don't** add cards, visible gradients or glow, or a dark hero over a glowing screenshot. Gradients used as masks for torn edges and as flat rule fills are the world's own material.
-- **Don't** add a dark theme; the site is light only.
-- **Don't** borrow the desktop app's violet accent or the retired two-ring mark.
+- **Don't** tint, mix or apply opacity to a colour.
+- **Don't** separate sections with a ruled line or add lines beyond the three.
+- **Don't** use white on blue for an ordinary section.
+- **Don't** add a second Latin face, a bold weight, or an off-grid size.
+- **Don't** italicise CJK.
+- **Don't** round corners or cast box shadows.
+- **Don't** loop a page blink; it blinks four times and stops.
+- **Don't** add a light theme.

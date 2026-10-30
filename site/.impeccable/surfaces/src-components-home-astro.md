@@ -7,21 +7,21 @@ related_targets: ["src/components/Pricing.astro"]
 
 ## Scope
 
-Home page (`/`, `/zh-tw/`, `/ja/`) and pricing, Persuade mode. Visitor: a developer who already runs Claude Code or Codex in a terminal. Action: download. Proof: the agent loop shown in action, with an approval only the visitor can give.
+Home page (`/`, `/zh-tw/`, `/ja/`) and pricing, Persuade mode. Visitor: a developer who already runs Claude Code or Codex in a terminal. Action: download. Proof: the agent loop shown live, with an approval only the visitor can give. The user rejected the light ticket-rail version as flat, lined and cold, asked for warmth and depth, and chose this direction from a bolder hand.
 
 ## Direction contract
 
-THESIS: The page is the pass of a kitchen: every agent is an order ticket hanging from one steel rail, and colour goes only to the ticket that needs you. It refuses the dark dev-tool hero, a centred headline over a glowing app screenshot.
+THESIS: HinaCode's site is a 2 a.m. dial-up bulletin board. Your agents are the callers online, and the one that needs you pages you. It refuses both the polite light landing page and the glossy dark dev-tool hero with a screenshot.
 
-OWN-WORLD: White thermal paper on a pale steel-grey counter. Carbon blue-black ink. Canary yellow, the kitchen copy of a duplicate order pad, is the one colour; it means "needs you" and owns the mark and the closing field. Red is reserved for failure, the order-number ink. Archivo at condensed widths sets headings like printed pad headers. Martian Mono sets order numbers, branches and receipt lines. Tickets have torn bottom edges, dotted leaders and ink stamps. No cards, no gradients, no glow.
+OWN-WORLD: Terminal black ground and the sixteen ANSI colours only, with no tints or opacity on colour. Cyan and magenta carry the block-art chrome. White on blue is reserved for a live page or new event. IBM VGA 8x16 is the only Latin face, at whole multiples of its grid only: 16px for chrome, data and copy, 32px for display, 48px and 64px for headlines. DotGothic16 sets Japanese on the same 16px grid. Cubic 11 sets Traditional Chinese at 22, 33 and 44px. The wordmark is drawn for this site in half-block pixels, with a cast shadow. A CRT layer (scanlines and vignette) gives depth. One box-drawn frame holds the title screen.
 
-STORY: Several agents run at once. HinaCode stays quiet and pulls forward the one ticket that needs you. You approve it with one key, and it ships a PR. The download is free, and the app is experimental.
+STORY: You dial in, and the title art pours in. Five agents are online and one is paging you. You press A, it pushes and opens PR #128. You see what the board offers, read the messages and download it for free.
 
-FIRST VIEWPORT: The nav sits on paper. A steel rail spans the full width under it, with five tickets of ragged lengths hanging from it. The canary ticket hangs lowest and carries a live Allow / Deny with the A and D keys. The headline is set large and left-aligned beneath the short tickets, with the lede, an ink Download button and the platform line beside it.
+FIRST VIEWPORT: A blue status bar shows the board name, a live "agents online / needs you" count and the numbered menu ([1] Download …). Below it, a double-line frame holds full-width ANSI block art of HINACODE under a starfield. Under the art, the tagline, lede and a bright cyan [ DOWNLOAD ] key sit on the left. On the right are the agents-online list and an inverse-blue "1 new page" box with live [A]llow / [D]eny.
 
-FORM: Kitchen ticket rail and duplicate order pad, position 6 of 7 on my ordered list. seed:45ddeab304de402a
-Raised by the movida cover: canary commits at page scale in the closing field, not as scattered accents.
-Raised by the cracktro queue: state is one ladder (ink, canary, stamp), the same on every ticket.
-Raised by the silk canopy: every state is named in words and shape, never by colour alone.
+FORM: ANSI BBS nightboard (medium-native-ansi-bbs-nightboard), a dealt challenger in a user-requested bolder re-roll, chosen by the user. seed:45ddeab304de402a
+Raised by the cloud quarry: sections break on a full change of field colour, never on a ruled line.
+Raised by the toyism plate: sixteen ANSI colours, no tints or opacity anywhere.
+Raised by the sneaker boxes: every agent row uses one label grid (node, agent, branch, state).
 
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
