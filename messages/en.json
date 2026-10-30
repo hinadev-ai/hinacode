@@ -681,6 +681,8 @@
   "composer_commands_label": "Commands",
   "composer_mentions_label": "Mentions",
   "composer_pull_requests_label": "Pull requests",
+  "composer_commands_failed_details": "Details",
+  "composer_commands_failed_hide": "Hide",
   "composer_commands_failed": "Could not load commands and skills: {message}",
   "composer_skill": "Skill: {name}",
   "composer_kind_command": "Command",
