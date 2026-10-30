@@ -132,6 +132,10 @@ export const VmTools = Toolkit.make(
       ),
     }),
   }),
+  McpTool.make("vm_stop", {
+    description:
+      "Stop the thread's tiny VM. On boat.dev its disk is snapshotted and billing stops, and the next VM tool call resumes it. On an sbx host the sandbox is deleted and the next call starts a fresh one. Call it when you are done with the desktop, and do not start the VM just to stop it.",
+  }),
   McpTool.make("vm_pull_file", {
     description: `Copy a file or folder from the tiny VM to this machine, to hand back something made or downloaded there. It lands in a new folder HinaCode picks, and the result names the path; copy or move it from there yourself. At most ${MAX_TRANSFER_BYTES / 1024 / 1024} MB, so compress or split anything bigger first. Symlinks are skipped and files lose their execute bit. ${STARTS}`,
     parameters: Schema.Struct({
@@ -209,6 +213,19 @@ export const vmToolsLayer = VmTools.toLayer(
             const notice = yield* droppedNotice(threadId)
             const report = execReport(output, timeoutSeconds, background)
             return notice === undefined ? report : `${report}\n\n${notice}`
+          }),
+        ),
+      vm_stop: () =>
+        McpTool.CallingThread.use((threadId) =>
+          Effect.gen(function* () {
+            const before = yield* tinyVm.get(threadId)
+            if (before.status === "none") return "The tiny VM is not running."
+            yield* tinyVm.stop(threadId)
+            const after = yield* tinyVm.get(threadId)
+            if (after.status === "running") return "Could not stop the tiny VM. It is still running; try again."
+            return before.status === "running" && before.provider === "boat"
+              ? "Stopped the tiny VM. Its disk is snapshotted on boat.dev and billing for it has stopped. The next VM tool call resumes it."
+              : "Stopped the tiny VM. Its sandbox is deleted, so the next VM tool call starts a fresh one."
           }),
         ),
       vm_pull_file: ({ path }) =>

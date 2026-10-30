@@ -598,6 +598,7 @@ const VM_TOOLS = [
   "vm_type",
   "vm_key",
   "vm_exec",
+  "vm_stop",
   "vm_pull_file",
 ]
 
@@ -881,6 +882,32 @@ layer(testLayer)("tiny vm tools", (it) => {
       expect(result.isError).toBe(true)
       expect(result.text).toContain("Nothing exists at ~/nope.txt in the VM.")
       expect(yield* vm.get(a)).toStrictEqual(started)
+    }),
+  )
+
+  it.effect("vm_stop deletes the sandbox, says so when nothing runs, and never starts the VM", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const vm = yield* TinyVm
+      const fake = yield* FakeSbxServer
+      const { a } = yield* Seeded
+      yield* setTinyVm(true)
+      yield* vm.stop(a)
+      const before = fake.created()
+      const connection = yield* mcp.connectionFor(a)
+
+      const idle = yield* callAs(connection, "vm_stop")
+      expect(idle.isError).toBe(false)
+      expect(idle.text).toContain("not running")
+      expect(fake.created()).toBe(before)
+
+      const started = yield* vm.start(a)
+      if (started.status !== "running") throw new Error(`VM is ${started.status}`)
+      const stopped = yield* callAs(connection, "vm_stop")
+      expect(stopped.isError).toBe(false)
+      expect(stopped.text).toContain("sandbox is deleted")
+      expect(yield* vm.get(a)).toStrictEqual({ status: "none" })
+      expect(fake.sandboxes.has(started.sandboxId)).toBe(false)
     }),
   )
 
