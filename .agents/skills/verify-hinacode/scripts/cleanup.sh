@@ -18,5 +18,7 @@ case "$data" in
   *) echo "not deleting $data: cleanup only removes /tmp/kk-* directories" >&2 ;;
 esac
 
+# Muse Code runs in a session of its own and holds a copy of the CDP socket until it notices Electron is gone.
+for _ in $(seq 1 50); do ss -ltnH "sport = :$port" | grep -q . || break; sleep 0.1; done
 if ss -ltnH "sport = :$port" | grep -q .; then echo "warning: port $port is still in use" >&2; exit 1; fi
 echo "cleaned: cdp=$port data=$data"
