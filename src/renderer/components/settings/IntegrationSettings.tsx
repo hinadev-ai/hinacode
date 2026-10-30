@@ -85,7 +85,7 @@ interface SecretFieldProps {
   readonly hint: string
 }
 
-function SecretField({ name, label, placeholder, hint }: SecretFieldProps) {
+export function SecretField({ name, label, placeholder, hint }: SecretFieldProps) {
   const environment = useSettingsEnvironment()
   const inputId = `secret-${name.replace(/\W/g, "-")}`
   const stored = useAtomValue(secretStoredAtom(environment, name))

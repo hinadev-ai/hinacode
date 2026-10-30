@@ -87,6 +87,49 @@ describe("setting files", () => {
     ),
   )
 
+  it.effect("defaults the VM provider to boat on a fresh install", () =>
+    withDataDir(() =>
+      Effect.gen(function* () {
+        expect((yield* Settings.Settings.use((settings) => settings.get)).experimental.tinyVmProvider).toBe("boat")
+      }),
+    ),
+  )
+
+  it.effect("defaults the VM provider to boat when experimental was never stored", () =>
+    withDataDir((dir) => {
+      writeFileSync(join(dir, "settings.json"), JSON.stringify({ textGenerationModel: "claude-opus-5-5" }))
+      return Effect.gen(function* () {
+        expect((yield* Settings.Settings.use((settings) => settings.get)).experimental.tinyVmProvider).toBe("boat")
+      })
+    }),
+  )
+
+  it.effect("keeps a pre-boat install on sbx and stamps the choice into the file", () =>
+    withDataDir((dir) => {
+      const path = join(dir, "settings.json")
+      writeFileSync(path, JSON.stringify({ experimental: { tinyVm: true, tinyVmTemplate: "mine" } }))
+      return Effect.gen(function* () {
+        const { experimental } = yield* Settings.Settings.use((settings) => settings.get)
+        expect(experimental.tinyVmProvider).toBe("sbx")
+        expect(experimental.tinyVmTemplate).toBe("mine")
+        expect(readJson(path)).toEqual({
+          experimental: { tinyVm: true, tinyVmTemplate: "mine", tinyVmProvider: "sbx" },
+        })
+      })
+    }),
+  )
+
+  it.effect("leaves a stored VM provider choice alone", () =>
+    withDataDir((dir) => {
+      const path = join(dir, "settings.json")
+      writeFileSync(path, JSON.stringify({ experimental: { tinyVmProvider: "boat" } }))
+      return Effect.gen(function* () {
+        expect((yield* Settings.Settings.use((settings) => settings.get)).experimental.tinyVmProvider).toBe("boat")
+        expect(readFileSync(path, "utf8")).toBe(JSON.stringify({ experimental: { tinyVmProvider: "boat" } }))
+      })
+    }),
+  )
+
   it.effect("keeps keybindings in keybindings.json as a bare record", () =>
     withDataDir((dir) =>
       Effect.gen(function* () {
