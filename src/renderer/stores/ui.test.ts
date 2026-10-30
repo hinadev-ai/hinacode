@@ -2,7 +2,6 @@ import { describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
 import { selectSidePanelView, useUi } from "./ui.ts"
 
-// The store reads saved widths from localStorage when it is created, and `showView` measures the window.
 vi.hoisted(() => {
   const values = new Map<string, string>()
   vi.stubGlobal("localStorage", {

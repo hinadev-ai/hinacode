@@ -258,7 +258,6 @@ export const useUi = create<UiState>()((set, get) => ({
   showView: (threadId, view, options) =>
     set((state) => ({
       sidePanelViews: { ...state.sidePanelViews, [threadId]: view },
-      // A browser holds one thread's pages, so a new thread would open on an empty tab it never asked for.
       lastSidePanelView: view === "browser" ? state.lastSidePanelView : view,
       viewFocusRequest: options?.focus ? view : null,
       ...showPanel(),
