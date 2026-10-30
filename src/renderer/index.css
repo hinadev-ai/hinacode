@@ -575,6 +575,10 @@
     --tw-prose-th-borders: var(--color-border);
     --tw-prose-td-borders: var(--color-border);
 
+    &:not(.prose-sm) {
+      font-size: 0.9375rem;
+    }
+
     & :where(code):not(:where(pre code)) {
       @apply rounded-[0.25em] bg-foreground/10 px-[0.35em] py-[0.1em] text-[0.85em] font-normal text-foreground box-decoration-clone;
     }
