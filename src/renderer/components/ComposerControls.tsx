@@ -645,7 +645,7 @@ function RefSuggestionItem({ suggestion }: { suggestion: RefSuggestion }) {
   return (
     <Autocomplete.Item
       value={suggestion}
-      className="flex h-7 cursor-default items-center gap-2 rounded-md px-2 text-xs outline-none select-none [scroll-margin-block:0.25rem] data-highlighted:bg-accent data-highlighted:text-accent-foreground"
+      className="flex h-7 cursor-default items-center gap-2 rounded-sm px-2 text-xs outline-none select-none [scroll-margin-block:0.25rem] data-highlighted:bg-accent data-highlighted:text-accent-foreground"
     >
       {suggestion.kind === "pullRequest" ? (
         <>

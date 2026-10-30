@@ -249,7 +249,7 @@ export function ComposerInput({
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => pick(suggestion)}
               onMouseMove={() => index !== activeIndex && setSelected({ start: completion.start, index })}
-              className="flex cursor-default items-baseline gap-2 rounded-lg px-2 py-1.5 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+              className="flex cursor-default items-baseline gap-2 rounded-[9px] px-2 py-1.5 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
             >
               <SuggestionRow suggestion={suggestion} />
             </div>

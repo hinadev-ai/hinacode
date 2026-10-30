@@ -57,7 +57,7 @@ export function LineCommentForm({
   return (
     <form
       onSubmit={submit}
-      className="m-2 flex max-w-xl flex-col gap-2 rounded-lg border border-border bg-background p-2 font-sans"
+      className="m-2 flex max-w-xl flex-col gap-2 rounded-[17px] border border-border bg-background p-2 font-sans"
     >
       <Textarea
         ref={textareaRef}
@@ -67,7 +67,7 @@ export function LineCommentForm({
         onChange={(event) => setBody(event.target.value)}
         onKeyDown={onKeyDown}
         rows={2}
-        className="min-h-14 text-xs md:text-xs"
+        className="min-h-14 rounded-md text-xs md:text-xs"
       />
       <div className="flex justify-end gap-1">
         <Button type="button" variant="ghost" size="xs" onClick={onCancel}>

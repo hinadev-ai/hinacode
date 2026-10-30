@@ -134,7 +134,7 @@ export default function TinyVmScreen({
     >
       <div ref={targetRef} className="absolute inset-0" />
       {fullscreen && (
-        <div className="absolute top-3 right-3 flex items-center gap-2 rounded-lg bg-background/90 p-1 shadow-md">
+        <div className="absolute top-3 right-3 flex items-center gap-2 rounded-[12px] bg-background/90 p-1 shadow-md">
           {fullscreenControls}
           <Button variant="ghost" size="xs" onClick={() => void document.exitFullscreen()}>
             <RiFullscreenExitLine aria-hidden />
