@@ -27,7 +27,7 @@ import { Field, FieldDescription, FieldError, FieldLabel } from "../../ui/field.
 import { Input } from "../../ui/input.tsx"
 import { Switch } from "../../ui/switch.tsx"
 import { BindHostSelect, LOOPBACK } from "../BindHostSelect.tsx"
-import { SettingsSection, settingsSurfaceClass } from "../SettingsSection.tsx"
+import { SettingsPageAction, SettingsSection, settingsSurfaceClass } from "../SettingsSection.tsx"
 import { AutomationDetails, WebhookUrlField } from "./AutomationDetails.tsx"
 import { AutomationDialog, type AutomationDialogState } from "./AutomationForm.tsx"
 import { CopyField, formatTime, RunStatusBadge, triggerLabel } from "./shared.tsx"
@@ -44,16 +44,13 @@ export function AutomationSettings() {
   const [created, setCreated] = useState<{ automation: Automation; secret: string } | null>(null)
 
   return (
-    <SettingsSection
-      title={m.settings_automations()}
-      description={m.automations_description()}
-      action={
-        <Button onClick={() => setDialog({ mode: "create" })} disabled={projects.length === 0}>
+    <SettingsSection>
+      <SettingsPageAction>
+        <Button size="sm" onClick={() => setDialog({ mode: "create" })} disabled={projects.length === 0}>
           <RiAddLine aria-hidden />
           {m.automations_new()}
         </Button>
-      }
-    >
+      </SettingsPageAction>
       <ListenerSettings />
       <AutomationList projects={projects} onEdit={(automation) => setDialog({ mode: "edit", automation })} />
       {dialog && (

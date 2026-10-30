@@ -2,7 +2,7 @@ import type { LegendListRef } from "@legendapp/list/react"
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, type RefObject, useEffect, useRef } from "react"
-import type { Thread, ThreadStatus } from "../../shared/domain.ts"
+import type { Thread } from "../../shared/domain.ts"
 import { findPattern } from "../lib/find.ts"
 import { useDebouncedValue } from "../lib/useDebouncedValue.ts"
 import { useIsChat } from "../lib/useIsChat.ts"
@@ -16,6 +16,7 @@ import { useUi } from "../stores/ui.ts"
 import { ApprovalCard } from "./ApprovalCard.tsx"
 import { CloudNotice } from "./CloudNotice.tsx"
 import { Composer } from "./Composer.tsx"
+import { ThreadEnvironmentSwitch, ThreadProjectSwitch } from "./ComposerControls.tsx"
 import { FindBar } from "./FindBar.tsx"
 import { FindPatternContext } from "./FindHighlight.tsx"
 import { EmptyThread, MessageList } from "./MessageList.tsx"
@@ -30,14 +31,6 @@ import { Button } from "./ui/button.tsx"
 
 const FIND_DEBOUNCE_MS = 100
 
-const statusLabel = {
-  idle: m.thread_status_idle,
-  running: m.thread_status_running,
-  awaiting_approval: m.thread_status_awaiting_approval,
-  limited: m.thread_status_limited,
-  archived: m.thread_status_archived,
-} satisfies Record<ThreadStatus, () => string>
-
 interface ThreadViewProps {
   readonly thread: Thread
   readonly agent?: string
@@ -51,23 +44,15 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
   const regionRef = useRef<HTMLDivElement>(null)
   const dockRef = useRef<HTMLDivElement>(null)
   useDockHeight(regionRef, dockRef)
+  const loaded = useMessages((state) => state.byThread[thread.id]?.status === "ready")
+  const centered = useMessages((state) => {
+    const history = state.byThread[thread.id]
+    return agent === undefined && history?.status === "ready" && history.messages.length === 0
+  })
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="@container flex min-h-12 shrink-0 flex-wrap items-center gap-2 px-3 py-2">
+      <header className="@container window-drag flex min-h-12 shrink-0 flex-wrap items-center gap-2 px-3 py-2">
         <ThreadBreadcrumb thread={thread} agent={agent} />
-        <span
-          title={providerLabel[thread.provider]()}
-          className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
-        >
-          <ProviderIcon provider={thread.provider} />
-          <span className="sr-only @md:not-sr-only">{providerLabel[thread.provider]()}</span>
-        </span>
-        <span
-          data-status={thread.status}
-          className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground data-[status=limited]:border-attention/30 data-[status=limited]:bg-attention/10 data-[status=limited]:text-attention"
-        >
-          {statusLabel[thread.status]()}
-        </span>
         {actions}
       </header>
       <div ref={regionRef} className="relative flex min-h-0 flex-1 flex-col [container-type:size]">
@@ -79,7 +64,12 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
           </ThreadRepository>
         </div>
         {overlay}
-        <div ref={dockRef} className="absolute inset-x-0 bottom-0 flex max-h-full flex-col">
+        <div
+          ref={dockRef}
+          data-centered={centered}
+          data-loaded={loaded}
+          className="absolute inset-x-0 bottom-0 flex max-h-full flex-col data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] data-[loaded=false]:opacity-0 data-[loaded=true]:data-[centered=false]:transition-transform data-[loaded=true]:data-[centered=false]:duration-500 data-[loaded=true]:data-[centered=false]:ease-(--ease-drawer) motion-reduce:transition-none"
+        >
           <Composer thread={thread}>
             <PendingRequests thread={thread} />
             {thread.status === "limited" && thread.usageLimit !== null ? (
@@ -102,6 +92,10 @@ function ThreadBreadcrumb({ thread, agent }: { thread: Thread; agent: string | u
   return (
     <nav aria-label={m.thread_breadcrumb()} className="min-w-0 flex-1">
       <ol className="flex min-w-0 items-center gap-1.5 text-sm">
+        <li title={providerLabel[thread.provider]()} className="flex shrink-0">
+          <ProviderIcon provider={thread.provider} />
+          <span className="sr-only">{providerLabel[thread.provider]()}</span>
+        </li>
         {project && (
           <li dir="auto" className="max-w-48 shrink-0 truncate text-muted-foreground" title={project.name}>
             {project.name}
@@ -191,11 +185,14 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
           {worktree?.status === "preparing" ? (
             <WorktreePreparation worktree={worktree} />
           ) : (
-            <EmptyThread
-              hint={isChat ? m.thread_empty_chat_hint({ provider: label }) : m.thread_empty_hint({ provider: label })}
-            />
+            <div className="mt-auto">
+              <EmptyThread
+                project={isChat ? null : <ThreadProjectSwitch thread={thread} />}
+                environment={<ThreadEnvironmentSwitch thread={thread} />}
+              />
+            </div>
           )}
-          <div className="h-(--dock-height) shrink-0" />
+          <div className="h-[calc(50cqh+var(--dock-height)/2+1.5rem)] shrink-0" />
         </>
       ) : (
         <MessageList messages={history.messages} providerLabel={label} listRef={listRef} />
@@ -220,7 +217,7 @@ function PendingRequests({ thread }: { thread: Thread }) {
   const label = providerLabel[thread.provider]()
   if (history?.status !== "ready") return null
   return (
-    <div className="min-h-0 shrink overflow-auto empty:hidden">
+    <div aria-live="polite" className="min-h-0 shrink overflow-auto empty:hidden">
       {history.approvals.map((request) => (
         <ApprovalCard key={request.id} request={request} providerLabel={label} />
       ))}

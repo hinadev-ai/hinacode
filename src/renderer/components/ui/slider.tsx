@@ -7,8 +7,9 @@ function Slider<Value extends number | readonly number[]>({
   value,
   min = 0,
   max = 100,
+  getAriaValueText,
   ...props
-}: SliderPrimitive.Root.Props<Value>) {
+}: SliderPrimitive.Root.Props<Value> & Pick<SliderPrimitive.Thumb.Props, "getAriaValueText">) {
   const current = value ?? defaultValue
   const thumbs = Array.isArray(current) ? current.length : 1
 
@@ -37,6 +38,7 @@ function Slider<Value extends number | readonly number[]>({
           <SliderPrimitive.Thumb
             data-slot="slider-thumb"
             key={index}
+            getAriaValueText={getAriaValueText}
             className="relative block size-3 shrink-0 rounded-full border border-ring bg-white ring-ring/50 transition-[color,box-shadow] select-none after:absolute after:-inset-2 hover:ring-3 focus-visible:ring-3 focus-visible:outline-hidden active:ring-3 disabled:pointer-events-none disabled:opacity-50"
           />
         ))}

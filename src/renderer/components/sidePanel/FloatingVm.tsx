@@ -19,8 +19,8 @@ import {
   ScreenFallback,
   ScreenshotButton,
   showVmFullscreen,
-  TinyVmScreen,
   useVmAction,
+  VmScreen,
   useVmDrop,
 } from "./TinyVmView.tsx"
 
@@ -69,7 +69,7 @@ function FloatingScreen({ threadId, vm }: { threadId: string; vm: RunningVm }) {
           <ControlStatus vm={vm} />
           {control}
           <ScreenshotButton threadId={threadId} run={run} />
-          {experimental.tinyVmPasskeys && <PasskeyButton threadId={threadId} run={run} />}
+          {experimental.tinyVmPasskeys && vm.provider === "sbx" && <PasskeyButton threadId={threadId} run={run} />}
           <IconAction icon={RiFullscreenLine} label={m.vm_fullscreen()} onClick={() => showVmFullscreen(threadId)} />
           <IconAction
             icon={RiPictureInPictureExitLine}
@@ -82,12 +82,12 @@ function FloatingScreen({ threadId, vm }: { threadId: string; vm: RunningVm }) {
             {error}
           </p>
         )}
-        {experimental.tinyVmPasskeys && <PasskeyNotice threadId={threadId} run={run} />}
+        {experimental.tinyVmPasskeys && vm.provider === "sbx" && <PasskeyNotice threadId={threadId} run={run} />}
         <Suspense fallback={<ScreenFallback />}>
-          <TinyVmScreen
+          <VmScreen
             key={`${vm.sandboxId}:${attempt}`}
             threadId={threadId}
-            control={vm.control}
+            vm={vm}
             bare
             fullscreenControls={control}
             onHandBack={() => run(() => callPromise("vm.control", { threadId, control: "agent" }))}

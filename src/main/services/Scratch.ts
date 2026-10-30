@@ -18,6 +18,7 @@ export class Scratch extends Context.Service<
   Scratch,
   {
     readonly ensure: (thread: Thread) => Effect.Effect<string, PersistenceError>
+    readonly writeSecret: (thread: Thread, name: string, value: string) => Effect.Effect<string, PersistenceError>
     readonly remove: (threadId: string) => Effect.Effect<void, PersistenceError>
   }
 >()("hinacode/Scratch") {}
@@ -43,6 +44,15 @@ export const layer = (root: string) =>
           return folder
         }).pipe(Effect.mapError(persistence("scratch.ensure")))
 
+      const writeSecret = (thread: Thread, name: string, value: string) =>
+        Effect.gen(function* () {
+          const folder = join(yield* ensure(thread), "secrets")
+          yield* fs.makeDirectory(folder, { recursive: true, mode: 0o700 })
+          const path = join(folder, name)
+          yield* fs.writeFileString(path, value, { mode: 0o600 })
+          return path
+        }).pipe(Effect.mapError(persistence("scratch.writeSecret")))
+
       const remove = (threadId: string) =>
         find(threadId).pipe(
           Effect.flatMap((name) =>
@@ -51,6 +61,6 @@ export const layer = (root: string) =>
           Effect.mapError(persistence("scratch.remove")),
         )
 
-      return Scratch.of({ ensure, remove })
+      return Scratch.of({ ensure, writeSecret, remove })
     }),
   )

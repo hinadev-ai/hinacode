@@ -1,4 +1,4 @@
-import { formatForDisplay, type Hotkey, normalizeHotkey, validateHotkey } from "@tanstack/react-hotkeys"
+import { detectPlatform, formatForDisplay, type Hotkey, normalizeHotkey, validateHotkey } from "@tanstack/react-hotkeys"
 import type { RouterHistory, useNavigate } from "@tanstack/react-router"
 import { Effect } from "effect"
 import { AtomRegistry } from "effect/reactivity"
@@ -133,7 +133,7 @@ export const commands = [
   },
   {
     id: "composer.model",
-    defaultKeys: "mod+alt+.",
+    defaultKeys: detectPlatform() === "mac" ? "mod+ctrl+m" : "mod+alt+m",
     title: m.command_composer_model,
     run: () => useUi.getState().requestPicker("model"),
   },

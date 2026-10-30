@@ -2,11 +2,12 @@ import { existsSync, mkdirSync, renameSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
-import { app, BrowserWindow, dialog, Menu, net, powerMonitor, protocol, safeStorage, session, shell } from "electron"
+import { app, BrowserWindow, dialog, net, powerMonitor, protocol, safeStorage, session, shell } from "electron"
 import { Effect, Layer, ManagedRuntime, Option, Schema } from "effect"
 import { makeAppLayer } from "./app.ts"
 import { handleContextMenu } from "./contextMenu.ts"
 import { chromiumDir, moveLegacyProfile } from "./dataDir.ts"
+import { keepAppMenu } from "./appMenu.ts"
 import { bringToFront, registerIpc, sendToWindows } from "./ipc.ts"
 import {
   attachmentRequest,
@@ -212,31 +213,6 @@ const createWindow = (runtime: AppRuntime) => {
   void window.loadURL(appUrl)
 }
 
-// FIXME: Electron's default menu labels app items with `app.name`, which stays kkcode
-const setMacMenu = () =>
-  Menu.setApplicationMenu(
-    Menu.buildFromTemplate([
-      {
-        label: "HinaCode",
-        submenu: [
-          { role: "about", label: "About HinaCode" },
-          { type: "separator" },
-          { role: "services" },
-          { type: "separator" },
-          { role: "hide", label: "Hide HinaCode" },
-          { role: "hideOthers" },
-          { role: "unhide" },
-          { type: "separator" },
-          { role: "quit", label: "Quit HinaCode" },
-        ],
-      },
-      { role: "fileMenu" },
-      { role: "editMenu" },
-      { role: "viewMenu" },
-      { role: "windowMenu" },
-    ]),
-  )
-
 app.whenReady().then(async () => {
   await pathHydrated
   const sbxConfigPath = join(app.getPath("appData"), "sbx", "config.json")
@@ -271,7 +247,7 @@ app.whenReady().then(async () => {
     runtime.runFork(Effect.flatMap(Environments.Environments, (environments) => environments.reconnectAll)),
   )
   app.dock?.setIcon(icon)
-  if (process.platform === "darwin") setMacMenu()
+  runtime.runFork(keepAppMenu)
   serveAttachments(runtime, join(dataDir, "attachments"))
   serveGitHubAssets(runtime)
   serveProjectFiles(runtime)

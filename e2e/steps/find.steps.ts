@@ -31,7 +31,7 @@ const finishTurn = async (
   title: string,
   rows: ReadonlyArray<TurnRow>,
 ) => {
-  await expect(app.page.getByRole("heading", { name: "Do anything", exact: true })).toBeVisible()
+  await expect(app.page.getByRole("heading", { name: /^What do you want to (work on|ask)/ })).toBeVisible()
   const threadId = threadIds.get(title)
   if (!threadId) throw new Error(`no seeded thread named ${title}`)
   let { seq } = await rpc(app.page, "threads.transcript", { threadId })

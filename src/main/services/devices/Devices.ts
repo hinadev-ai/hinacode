@@ -101,6 +101,7 @@ const make = (options: DevicesOptions) =>
     const sql = yield* SqlClient.SqlClient
     const events = yield* Events
     const settings = yield* Settings
+    const drivers: Record<DevicePlatform, DevicePlatformDriver> = options.drivers
     const scope = yield* Effect.scope
     const runFork = Effect.runForkWith(yield* Effect.context<never>())
 
@@ -141,7 +142,7 @@ const make = (options: DevicesOptions) =>
     const ownedRows = () =>
       run(sql<{ threadId: string; deviceId: string }>`SELECT thread_id, device_id FROM thread_device WHERE owned = 1`)
 
-    const driverOf = (deviceId: DeviceId) => options.drivers[devicePlatformOf(deviceId)]
+    const driverOf = (deviceId: DeviceId) => drivers[devicePlatformOf(deviceId)]
 
     const listOf = (threadId: string): ThreadDevices => [...(states.get(threadId)?.values() ?? [])]
     const current = (threadId: string, slot: Slot) => states.get(threadId)?.get(slot) ?? null
@@ -504,16 +505,16 @@ const make = (options: DevicesOptions) =>
     const list = () =>
       attempt(async (): Promise<DeviceHost> => {
         const [ios, android, simslim, rows] = await Promise.all([
-          options.drivers.ios.support(),
-          options.drivers.android.support(),
+          drivers.ios.support(),
+          drivers.android.support(),
           options.simslimAvailable(),
           ownedRows(),
         ])
         const owners = new Map(rows.map((row) => [row.deviceId, row.threadId]))
         const [iosDevices, androidDevices, models] = await Promise.all([
-          ios.kind === "ready" ? options.drivers.ios.list() : [],
-          android.kind === "ready" ? options.drivers.android.list() : [],
-          ios.kind === "ready" ? options.drivers.ios.models() : [],
+          ios.kind === "ready" ? drivers.ios.list() : [],
+          android.kind === "ready" ? drivers.android.list() : [],
+          ios.kind === "ready" ? drivers.ios.models() : [],
         ])
         return {
           ios,
