@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto"
 import { basename, dirname, join } from "node:path"
 import {
   Context,
-  type Duration,
+  Duration,
   Effect,
   Fiber,
   FileSystem,
@@ -21,6 +21,7 @@ import {
   isThreadBusy,
   type Project,
   type PullRequest,
+  type SetupNotice,
   ThreadStatus,
   Worktree,
   type WorktreeCheckout,
@@ -52,6 +53,7 @@ export interface CreateWorktree {
 export type DeleteBranch = "keep" | "ifMerged" | "force"
 
 export const SETUP_TIMEOUT: Duration.Input = "60 seconds"
+const SETUP_OUTPUT_DRAIN_TIMEOUT: Duration.Input = "1 second"
 
 type Failure = PersistenceError | NotFoundError | CommandError
 
@@ -118,7 +120,7 @@ const parseCheckouts = (output: string) =>
     })
     .filter((checkout) => checkout.path !== "")
 
-const make = Effect.fnUntraced(function* (_setupTimeout: Duration.Input) {
+const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
   const sql = yield* SqlClient.SqlClient
   const projects = yield* Projects
   const git = yield* Git
@@ -196,6 +198,13 @@ const make = Effect.fnUntraced(function* (_setupTimeout: Duration.Input) {
       Effect.andThen(events.publish({ type: "worktree.setupLog", id, chunk })),
     )
 
+  const reportSetup = (worktree: Worktree, notice: SetupNotice, log: string) =>
+    appendLog(worktree.id, log).pipe(
+      Effect.andThen(
+        events.publish({ type: "worktree.setupNotice", id: worktree.id, branch: worktree.branch, notice }),
+      ),
+    )
+
   const registeredCheckouts = (rootPath: string) =>
     git.run(rootPath, ["worktree", "list", "--porcelain", "-z"]).pipe(Effect.map(parseCheckouts))
 
@@ -225,11 +234,21 @@ const make = Effect.fnUntraced(function* (_setupTimeout: Duration.Input) {
           forceKillAfter: "3 seconds",
         }),
       )
-      yield* handle.all.pipe(
+      const logging = yield* handle.all.pipe(
         Stream.decodeText(),
         Stream.runForEach((chunk) => appendLog(worktree.id, chunk)),
+        Effect.forkScoped,
       )
-      return yield* handle.exitCode
+      const exitCode = yield* handle.exitCode
+      const drained = yield* Fiber.join(logging).pipe(Effect.timeoutOption(SETUP_OUTPUT_DRAIN_TIMEOUT))
+      if (Option.isNone(drained)) {
+        yield* reportSetup(
+          worktree,
+          "backgroundOutput",
+          "\nSetup script exited, but a background process it started still held the output open. HinaCode stopped that process.\n",
+        )
+      }
+      return exitCode
     }).pipe(
       Effect.scoped,
       Effect.catchTag("PlatformError", (error) => appendLog(worktree.id, `${error.message}\n`).pipe(Effect.as(-1))),
@@ -239,7 +258,13 @@ const make = Effect.fnUntraced(function* (_setupTimeout: Duration.Input) {
     Effect.gen(function* () {
       const script = project.setupScript?.trim()
       if (!script) return yield* setStatus(worktree.id, "ready")
-      const exitCode = yield* runSetupScript(worktree, project, script)
+      const finished = yield* runSetupScript(worktree, project, script).pipe(Effect.timeoutOption(setupTimeout))
+      if (Option.isNone(finished)) {
+        const after = Duration.format(Duration.fromInputUnsafe(setupTimeout))
+        yield* reportSetup(worktree, "timedOut", `\nSetup script timed out after ${after} and was stopped.\n`)
+        return yield* setStatus(worktree.id, "failed")
+      }
+      const exitCode = finished.value
       if (exitCode === 0) return yield* setStatus(worktree.id, "ready")
       yield* appendLog(worktree.id, `\nSetup script exited with code ${exitCode}\n`)
       return yield* setStatus(worktree.id, "failed")

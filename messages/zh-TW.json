@@ -176,6 +176,8 @@
   "panel_setup_none": "沒有輸出。",
   "panel_setup_failed": "設定腳本執行失敗或已停止，詳見記錄最後一行。",
   "panel_setup_stop": "停止設定",
+  "panel_setup_background_output": "{branch} 的設定已完成，但它啟動的背景程序一直佔用輸出。HinaCode 已停止該程序。",
+  "panel_setup_timed_out": "{branch} 的設定逾時，已停止。詳見設定記錄。",
   "file_status_added": "新增",
   "file_status_modified": "修改",
   "file_status_deleted": "刪除",
