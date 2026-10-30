@@ -26,6 +26,7 @@ import {
 import {
   AccessMode,
   CheckoutState,
+  SetupNotice,
   ClientSettings,
   Environment,
   Environments,
@@ -814,6 +815,12 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("thread.removed"), id: Schema.String }),
   Schema.Struct({ type: Schema.Literal("worktree.updated"), worktree: Worktree }),
   Schema.Struct({ type: Schema.Literal("worktree.setupLog"), id: Schema.String, chunk: Schema.String }),
+  Schema.Struct({
+    type: Schema.Literal("worktree.setupNotice"),
+    id: Schema.String,
+    branch: Schema.String,
+    notice: SetupNotice,
+  }),
   Schema.Struct({
     type: Schema.Literal("thread.pullRequests"),
     threadId: Schema.String,

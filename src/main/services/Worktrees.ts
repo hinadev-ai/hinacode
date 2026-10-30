@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import { basename, dirname, join } from "node:path"
 import {
   Context,
+  type Duration,
   Effect,
   Fiber,
   FileSystem,
@@ -49,6 +50,8 @@ export interface CreateWorktree {
 }
 
 export type DeleteBranch = "keep" | "ifMerged" | "force"
+
+export const SETUP_TIMEOUT: Duration.Input = "60 seconds"
 
 type Failure = PersistenceError | NotFoundError | CommandError
 
@@ -115,7 +118,7 @@ const parseCheckouts = (output: string) =>
     })
     .filter((checkout) => checkout.path !== "")
 
-const make = Effect.gen(function* () {
+const make = Effect.fnUntraced(function* (_setupTimeout: Duration.Input) {
   const sql = yield* SqlClient.SqlClient
   const projects = yield* Projects
   const git = yield* Git
@@ -582,4 +585,6 @@ const make = Effect.gen(function* () {
   })
 })
 
-export const layer = Layer.effect(Worktrees, make)
+export const layerWithSetupTimeout = (setupTimeout: Duration.Input) => Layer.effect(Worktrees, make(setupTimeout))
+
+export const layer = layerWithSetupTimeout(SETUP_TIMEOUT)

@@ -34,6 +34,9 @@ export const threadFolder = (project: Pick<Project, "kind" | "rootPath">, thread
 export const WorktreeStatus = Schema.Literals(["preparing", "ready", "failed", "removed"])
 export type WorktreeStatus = typeof WorktreeStatus.Type
 
+export const SetupNotice = Schema.Literals(["backgroundOutput", "timedOut"])
+export type SetupNotice = typeof SetupNotice.Type
+
 export const Worktree = Schema.Struct({
   id: Schema.String,
   projectId: Schema.String,
