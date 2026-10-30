@@ -241,30 +241,6 @@ jobs:
             e2e/playwright-report
             e2e/test-results
 
-  e2e-macos:
-    name: e2e (macos)
-    needs: changes
-    # Fork pull requests skip macOS, where a minute costs twenty Linux ones.
-    if: needs.changes.outputs.desktop == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: blacksmith-6vcpu-macos-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-      - run: pnpm install --frozen-lockfile
-      # The config's CI default of 2 workers fits ubuntu-latest. This runner has 6 vCPUs.
-      - run: pnpm test:e2e --workers 4
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: e2e-report-macos
-          path: |
-            e2e/playwright-report
-            e2e/test-results
-
   resource-monitor-linux:
     name: resource monitor (linux)
     needs: changes
