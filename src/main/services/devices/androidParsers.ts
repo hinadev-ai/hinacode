@@ -21,7 +21,6 @@ export const parseIni = (text: string): ReadonlyMap<string, string> =>
 export const parseDiscoveryFile = (fileName: string, text: string): RunningEmulator | null => {
   const pid = Number(/^pid_(\d+)\.ini$/.exec(fileName)?.[1])
   const ini = parseIni(text)
-  // `avd.name` is the display name when the AVD has one, such as "Pixel 10 Pro (2)" for `Pixel_10_Pro_2`.
   const avdName = ini.get("avd.id") || ini.get("avd.name")
   const serialPort = Number(ini.get("port.serial"))
   if (!Number.isInteger(pid) || !avdName || !Number.isInteger(serialPort)) return null
