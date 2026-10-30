@@ -25,6 +25,7 @@ import {
 } from "./agent.ts"
 import {
   AccessMode,
+  CheckoutState,
   ClientSettings,
   Environment,
   Environments,
@@ -263,6 +264,7 @@ export const RpcMethods = {
     Worktree,
   ),
   "worktrees.checkouts": rpc(Schema.Void, Schema.Array(WorktreeCheckout)),
+  "worktrees.checkoutState": rpc(Schema.Struct({ id: Schema.String }), CheckoutState),
   "worktrees.setupLog": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
   "worktrees.stopSetup": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   "worktrees.pullRequest": rpc(Schema.Struct({ id: Schema.String }), Schema.NullOr(PullRequest)),
@@ -580,6 +582,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "worktrees.create": "mutation",
   "worktrees.remove": "mutation",
   "worktrees.checkouts": "read",
+  "worktrees.checkoutState": "read",
   "worktrees.setupLog": "read",
   "worktrees.stopSetup": "mutation",
   "worktrees.pullRequest": "read",

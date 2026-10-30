@@ -685,6 +685,24 @@ describe("checkout states", () => {
       }),
     ),
   )
+
+  it.live("reports one worktree as clean once its changes are committed", () =>
+    withRepo(({ projectId }) =>
+      Effect.gen(function* () {
+        const thread = yield* createThread(projectId, "commit", "kk/commit")
+        yield* waitUntilSetUp(thread.worktreeId)
+        const { id, path } = yield* worktreeOf(thread.worktreeId)
+        const stateOf = Worktrees.use((worktrees) => worktrees.checkoutState(id))
+
+        writeFileSync(join(path, "draft.txt"), "work")
+        expect(yield* stateOf).toBe("dirty")
+
+        git(path, "add", "draft.txt")
+        git(path, "commit", "-q", "-m", "work")
+        expect(yield* stateOf).toBe("clean")
+      }),
+    ),
+  )
 })
 
 describe("startup", () => {
