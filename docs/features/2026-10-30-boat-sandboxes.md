@@ -1,28 +1,26 @@
-# Boat sandboxes for Tiny VM and devices
+# Boat sandboxes for Tiny VM
 
 Status: Building (experiment)
 Date: 2026-10-30
 
 ## Problem
 
-Tiny VM needs the developer's own sbx host on Proxmox. Devices need a local Xcode or Android SDK, and iOS needs a Mac. A developer without that infrastructure gets neither a desktop nor a phone for their agents.
+Tiny VM needs the developer's own sbx host on Proxmox. A developer without that infrastructure gets no desktop for their agents.
 
-[boat.dev](https://boat.dev/) sells cloud sandboxes. One sandbox is a full Ubuntu VM with SSH, Docker, a public IPv4, a 1920x1080 desktop streamed over WebRTC, and `/dev/kvm`, so the Android emulator runs inside it at full speed. It has a REST API at `https://boat.dev/api/v1` with a `boat_` API key. If boat can sit behind the existing Tiny VM and device seams, one API key replaces the Proxmox host and the local Android SDK.
+[boat.dev](https://boat.dev/) sells cloud sandboxes. One sandbox is a full Ubuntu VM with SSH, Docker, and a 1920x1080 desktop streamed from the guest. It has a REST API at `https://boat.dev/api/v1` with a `boat_` API key. If boat can sit behind the existing Tiny VM seam, one API key replaces the Proxmox host.
 
-This is an experiment. It answers one question. Can boat serve as the cloud backend for both surfaces without changing what agents or developers see?
+This is an experiment. It answers one question. Can boat serve as the cloud backend for Tiny VM without changing what agents or developers see?
 
 ## Trial notes
 
-Tried on 2026-10-30 in a browser and against the live API. The dashboard asks for email, GitHub, Google, or AgentID sign-in. The free trial needs a card. No boat account or API key exists on this machine, so no live sandbox was created. The live API answers `401 sandbox.error unauthorized`, which pins the base URL and the error envelope the client decodes. Everything else below comes from the public docs (`docs.boat.dev/llms.txt`) and is verified against a local fake that speaks the documented shapes. The first run with a real key is the remaining verification step, and the settings page says so.
+Tried on 2026-10-30 in a browser and against the live API. The dashboard asks for email, GitHub, Google, or AgentID sign-in. The free trial needs a card. At first no boat account or API key existed on this machine, so the build was verified against a local fake that speaks the documented shapes, plus the live API's `401 sandbox.error unauthorized`, which pins the base URL and the error envelope the client decodes. Later the same day a trial key ran the real thing end to end: sandbox create, start convergence, exec, screenshot, and the account limits on a `default` sandbox (Ubuntu 24.04, kernel 6.8, 4 vCPU, 7.8 GiB, Docker, Chrome, Node, and both agent CLIs preinstalled). That run found the guest-served file URL race described under Design, which the fake now reproduces.
 
 ## User flow
 
-1. Open Settings > Experimental. Turn on Tiny VM, or turn on Devices. Either one shows the Boat API key field. Boat is the default VM provider on a fresh install. An install that already stored experimental settings before boat existed keeps sbx: the first run stamps `tinyVmProvider: "sbx"` into its `settings.json`, so nobody's working host moves under them. Switching is one select either way.
+1. Open Settings > Experimental and turn on Tiny VM with the boat provider. The Boat API key field appears. Boat is the default VM provider on a fresh install. An install that already stored experimental settings before boat existed keeps sbx: the first run stamps `tinyVmProvider: "sbx"` into its `settings.json`, so nobody's working host moves under them. Switching is one select either way.
 2. Paste a `boat_` key. The status line reports the account state from `GET /limits`: connected with the sandbox counts, or the exact refusal (no key, key rejected, billing required).
 3. In a thread, Start VM creates a boat sandbox for the thread, or resumes the one it stopped earlier. The view shows the boat desktop stream. Agent `vm_*` tools act on the same machine. Take control and hand back work as they do on sbx.
 4. Stop VM snapshots the sandbox and stops billing. The disk survives. The next start on that thread resumes it, logins included. Quitting HinaCode stops every boat VM the same way.
-5. The device list gains one Android device, "Boat Android (cloud)", while a key is stored. Attach it like a local emulator. First boot creates its sandbox, installs the Android SDK once, and boots the emulator. The agent's `device_*` tools drive it unchanged.
-6. Deleting the cloud device deletes its sandbox. The list entry stays as a shutdown device that a later attach recreates.
 
 ## Design
 
@@ -41,13 +39,11 @@ The API key is a secret named `boat.apiKey` in `Secrets`, never a setting. The `
 
 The thread to sandbox mapping for resume lives in `<userData>/tiny-vm/boat-sandboxes.json`, `{ [threadId]: sandboxId }`. It is a cache, not a record. Losing it costs one fresh sandbox.
 
-The boat Android device reuses `platform: "android"` with the stable logical id `android:boat.cloud`, which fits the existing `DeviceId` pattern. No device schema or migration changes. The backing sandbox can be deleted and recreated under the same device id, so `thread_device` rows survive.
-
 ### One Boat service
 
 `src/main/services/boat/Boat.ts` is an Effect service next to `Linear`. It reads the key from `Secrets`, decodes every response with a schema, and exposes a client with the same structural shape as `SbxClient` (`create`, `get`, `remove`, `exec`, `putFiles`, `getFiles`, `status`, `templates`) plus boat-only calls (`stop`, `resume`, `desktopUrl`, `hostPort`, `limits`, `list`, `readFileBytes`). HinaCode uses `fetch` plus Effect Schema instead of `@boatdev/sdk`, to keep one decoding rule for every network boundary.
 
-Both consumers take the service optionally. `TinyVm` and `Devices` read it with `Effect.serviceOption`, so tests and headless runs without the layer keep working, and `app.ts` provides it in the real graph.
+`TinyVm` takes the service optionally with `Effect.serviceOption`, so tests and headless runs without the layer keep working, and `app.ts` provides it in the real graph.
 
 The sbx-shaped methods map onto boat like this.
 
@@ -79,36 +75,21 @@ Agent input (`act`) translates each `VmAction` to an `xdotool` command on `DISPL
 
 What boat refuses, by construction. `openScreen` and `openTunnel` fail with a message naming the boat provider. That turns off passkey relay and CDP browser access into the guest while boat is selected. The settings page hides the passkey and profile toggles for boat, and the agent instructions drop the sbx-only helper names.
 
-### Android device on boat
-
-`src/main/services/devices/boatAndroid.ts` implements `DevicePlatformDriver` over one injected runner that comes from the `Boat` service, so tests fake adb by faking the runner.
-
-- `support` is `ready` when a key resolves. With no key the driver is absent from the composite, so nothing renders.
-- `list` returns the one logical device. Its state is `booted` when its sandbox runs and the emulator answers `getprop sys.boot_completed`, else `shutdown`. It returns the device while stopped too, which `Devices.restore` requires.
-- `boot` finds the device sandbox by the `hinacode-device` label, creates it (`large`, because the emulator needs about 3 GB) or resumes it, runs the documented Android install once behind a guest marker file, starts the emulator detached, and polls boot completion through in-guest `adb`.
-- `connect` polls frames. Each tick writes `adb exec-out screencap` to a guest file, downscales it in the guest to a 540-wide PNG, downloads the bytes, and skips the frame when the bytes match the last one. That keeps ADR 0024's newest-frame model. The rate is whatever one round trip costs. There is no queue to fall behind.
-- `send` maps commands to in-guest `adb shell input`: touch phases to `input motionevent`, scroll to `input swipe`, keys and buttons to `input keyevent`, text to `input text`, appearance to `cmd uimode night`, open URL to `am start`. Posture refuses, as local Android does. Rotate toggles `user_rotation`.
-- `describe` is `uiautomator dump` plus the existing `parseUiHierarchy`. `launch` mirrors the local driver's resolve-activity flow. `create` refuses, as local Android does. `remove` deletes the sandbox.
-- `models` is empty and `screenshot` takes one screencap, satisfying the driver type.
-
-One composite driver in `app.ts` merges local Android and boat Android into the single `android` slot. `list` concatenates. `support` is ready when either side is. Per-device calls dispatch on the `android:boat.` id prefix. `Devices.ts`, the contract, the renderer device UI, and the MCP `device_*` tools do not change.
-
 ### Security
 
 The key stays in main as a `Secrets` value and is sent only to `boat.dev` (or `BOAT_API_BASE`). Desktop and download URLs carry tokens. Download URLs are fetched only by main. The desktop URL is reached through the single-use loopback redirect above, so the token never enters renderer state or the DOM. Nothing token-bearing is logged, and error messages are allowlisted so upstream text cannot smuggle one in. The webview inherits the existing `lockDownWebview` rules. A boat guest is as untrusted as an sbx guest. Pulled files keep the existing `writeTree` treatment.
 
 ### Cost guardrails
 
-Sandboxes bill per second while running. Creates and resumes send `ttlSeconds` 7200, so a forgotten VM archives itself within two hours and inside the free-trial auto-stop cap. Stop and quit both archive, and a boat stop that fails keeps the VM in the running state so the next stop retries it instead of reporting success. The device sandbox uses the same TTL, and its frame loop only runs while a viewer lease is alive. Closing the device viewer does not stop its sandbox, matching a local emulator that keeps booting in the background. The two-hour TTL is the bound. Deleting the device deletes the sandbox at once.
+Sandboxes bill per second while running. Creates and resumes send `ttlSeconds` 7200, so a forgotten VM archives itself within two hours and inside the free-trial auto-stop cap. Stop and quit both archive, and a boat stop that fails keeps the VM in the running state so the next stop retries it instead of reporting success.
 
 ## Out of scope
 
-- A live run against a paid boat account. It needs the developer's signup and card. The design is verified against a local fake and the live 401 path instead.
+- Judging a long interactive desktop session on a paid plan. The trial run covered start, exec, and screenshots, not hours of streaming from an EU guest.
 - Deleting a thread's boat VM sandbox from the UI, and forking sandboxes.
 - `boat prompt` (agents inside the sandbox), hosted port URLs in the ports panel, and boat environments.
 - Passkey relay, Chromium profile tars, and CDP into the guest on boat.
-- More than one cloud Android device, and iOS in the cloud. Boat has no macOS machines. Its docs and homepage (checked 2026-10-30) list one guest kind, an x86_64 Ubuntu VM, in four sizes, and the `machineTypes` in `GET /limits` is a size list, not an OS list. The iOS simulator needs macOS and Xcode, so it cannot run in a boat sandbox. Cloud iOS needs a Mac backend behind the same device seam: the developer's own Mac running HinaCode, or a rented Mac (MacStadium, EC2 Mac, Scaleway) driven over SSH with `simctl`. That backend is a follow-up. Running macOS in QEMU inside a boat Linux sandbox was rejected: it breaks Apple's EULA on non-Apple hardware, and the simulator inside it is too slow and flaky to debug in.
-- Touch fidelity beyond `input motionevent`, and any frame-rate promise.
+- Cloud devices on boat. A boat Android device was built during this experiment and removed before merge: every frame was an exec round trip, so it felt worse than a local emulator, and its first boot needs the `large` size the trial locks. iOS in the cloud is a separate problem. Boat has no macOS machines. Its docs and homepage (checked 2026-10-30) list one guest kind, an x86_64 Ubuntu VM, in four sizes, and the `machineTypes` in `GET /limits` is a size list, not an OS list. The iOS simulator needs macOS and Xcode, so it cannot run in a boat sandbox. Cloud iOS needs a Mac backend behind the same device seam: the developer's own Mac running HinaCode, or a rented Mac (MacStadium, EC2 Mac, Scaleway) driven over SSH with `simctl`. That backend is a follow-up. Running macOS in QEMU inside a boat Linux sandbox was rejected: it breaks Apple's EULA on non-Apple hardware, and the simulator inside it is too slow and flaky to debug in.
 - The Mod+Escape hand-back chord while the boat desktop webview has focus. The stream is a separate web contents, so the chord goes to the guest. The Hand back button is the path.
 - File drops onto the boat screen while the developer has control, for the same web-contents reason. Drops land while the agent has control and the shield is up.
 
@@ -118,13 +99,13 @@ Checkpoints, each ending in a runnable check.
 
 1. Boat client against a fake boat HTTP server in tests. Envelope and error decoding, idempotent create, wait-ready, exec byte fidelity, file round trip, desktop URL, gone mapping.
 2. Tiny VM integration against the fake. Start, resume after stop, exec, screenshot bytes, one click becoming one xdotool exec, provider switch stopping VMs, tools hidden while off.
-3. Boat Android driver unit tests with a scripted runner. List states, boot script order, frame change suppression, command mapping, describe parsing.
-4. `pnpm typecheck`, `pnpm lint`, `pnpm test`, including the messages catalog test.
-5. Real app through `verify-hinacode` with `BOAT_API_BASE` pointed at a local fake boat server that also serves a stand-in desktop page. Screenshot settings with the boat status, the VM view on the fake desktop, and the device list with the cloud device. Then screenshot the real `boat.dev` answer with a bad key, proving the refusal copy.
+3. `pnpm typecheck`, `pnpm lint`, `pnpm test`, including the messages catalog test.
+4. Real app through `verify-hinacode` with `BOAT_API_BASE` pointed at a local fake boat server that also serves a stand-in desktop page. Screenshot settings with the boat status and the VM view on the fake desktop. Then screenshot the real `boat.dev` answer with a bad key, proving the refusal copy.
+5. One live trial run in `pnpm dev`. Create, start, exec, and screenshot against the real API, then stop. This is the run that found the signed-URL race.
 
 ## Principles that changed a decision
 
-- Model the domain. One `provider` field on a running VM, and one logical cloud device id, instead of parallel boat state beside sbx and local Android state.
+- Model the domain. One `provider` field on a running VM instead of parallel boat state beside sbx state.
 - Make operations idempotent. Start converges from any prior state (none, running, archived, expired) to one running sandbox per thread, and create sends an idempotency key.
 - Boundary discipline. Every boat response is schema-decoded in the client. Nothing downstream sees raw JSON.
-- Laziness protocol. No new platform literal, no device contract change, no SDK dependency, no second screen transport. The composite driver and the sbx-shaped client are the whole trick.
+- Laziness protocol. No SDK dependency and no second screen transport in the renderer. The sbx-shaped client is the whole trick.

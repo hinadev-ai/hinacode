@@ -1067,7 +1067,7 @@
   "settings_tiny_vm_boat_not_configured": "boat API キーが保存されていません。下で追加するか、`BOAT_API_KEY` を設定してください。",
   "settings_tiny_vm_boat_connected": "boat.dev に接続中。{sandboxes} / {max} 個のサンドボックスが実行中。",
   "settings_boat_key_label": "Boat API キー",
-  "settings_boat_key_hint": "boat ダッシュボードで boat_ キーを作成してください。boat VM とクラウド Android デバイスが使えます。無料トライアルにはカードが必要です。",
+  "settings_boat_key_hint": "boat ダッシュボードで boat_ キーを作成してください。boat VM が使えます。無料トライアルにはカードが必要です。",
   "settings_boat_key_placeholder": "boat_…",
   "settings_tiny_vm_hint": "sbx ホスト上または boat.dev のクラウド上で、スレッドごとに使い捨ての Linux デスクトップを用意します。",
   "settings_tiny_vm_checking": "VM ホストの状態を確認中…",

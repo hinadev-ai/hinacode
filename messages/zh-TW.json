@@ -1085,7 +1085,7 @@
   "settings_tiny_vm_boat_not_configured": "尚未儲存 boat API 金鑰。在下方新增，或設定 `BOAT_API_KEY`。",
   "settings_tiny_vm_boat_connected": "已連線到 boat.dev。目前 {sandboxes} / {max} 個沙盒正在執行。",
   "settings_boat_key_label": "Boat API 金鑰",
-  "settings_boat_key_hint": "在 boat 儀表板建立 boat_ 金鑰。可啟用 boat VM 和雲端 Android 裝置。免費試用需要信用卡。",
+  "settings_boat_key_hint": "在 boat 儀表板建立 boat_ 金鑰。可啟用 boat VM。免費試用需要信用卡。",
   "settings_boat_key_placeholder": "boat_…",
   "settings_tiny_vm_hint": "在你的 sbx 主機或 boat.dev 雲端上，為每個對話串提供用完即丟的 Linux 桌面。",
   "settings_tiny_vm_checking": "正在確認 VM 主機…",

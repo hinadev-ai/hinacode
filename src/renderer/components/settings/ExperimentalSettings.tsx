@@ -159,18 +159,14 @@ function DevicesSettings({
   experimental: ExperimentalSettingsValue
   setExperimental: SetExperimental
 }) {
-  const boatKeyShown = experimental.tinyVm && experimental.tinyVmProvider === "boat"
   return (
-    <>
-      <VmSwitchField
-        id="settings-experimental-devices"
-        label={m.settings_devices()}
-        hint={m.settings_devices_hint()}
-        checked={experimental.devices}
-        onCheckedChange={(checked) => void setExperimental({ devices: checked })}
-      />
-      {experimental.devices && !boatKeyShown && <BoatKeyField />}
-    </>
+    <VmSwitchField
+      id="settings-experimental-devices"
+      label={m.settings_devices()}
+      hint={m.settings_devices_hint()}
+      checked={experimental.devices}
+      onCheckedChange={(checked) => void setExperimental({ devices: checked })}
+    />
   )
 }
 

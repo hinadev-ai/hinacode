@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Option, Schedule, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Schedule, Schema, Stream } from "effect"
 import { SqlClient } from "effect/sql"
 import type { RpcRequest } from "../../../shared/contract.ts"
 import {
@@ -18,10 +18,8 @@ import {
   type ThreadDevice,
   type ThreadDevices,
 } from "../../../shared/device.ts"
-import { Boat } from "../boat/Boat.ts"
 import { Events } from "../Events.ts"
 import { Settings } from "../Settings.ts"
-import { boatDeviceRunner, makeBoatAndroidDriver, withBoatAndroid } from "./boatAndroid.ts"
 import type { DeviceLink, DevicePlatformDriver, Frame } from "./platform.ts"
 
 export class DevicesError extends Schema.TaggedError<DevicesError>()("DevicesError", { message: Schema.String }) {}
@@ -103,14 +101,7 @@ const make = (options: DevicesOptions) =>
     const sql = yield* SqlClient.SqlClient
     const events = yield* Events
     const settings = yield* Settings
-    const boat = yield* Effect.serviceOption(Boat)
-    const drivers: Record<DevicePlatform, DevicePlatformDriver> = Option.match(boat, {
-      onNone: () => options.drivers,
-      onSome: (service) => ({
-        ...options.drivers,
-        android: withBoatAndroid(options.drivers.android, makeBoatAndroidDriver(boatDeviceRunner(service))),
-      }),
-    })
+    const drivers: Record<DevicePlatform, DevicePlatformDriver> = options.drivers
     const scope = yield* Effect.scope
     const runFork = Effect.runForkWith(yield* Effect.context<never>())
 

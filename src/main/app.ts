@@ -124,7 +124,7 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
       android: makeAndroidDriver(),
     },
     simslimAvailable: () => simslimAvailable(),
-  }).pipe(Layer.provide(boat))
+  })
   const features = Layer.mergeAll(
     Mcp.credentialsLayer,
     Ports.layer,

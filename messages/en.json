@@ -1112,7 +1112,7 @@
   "settings_tiny_vm_boat_not_configured": "No boat API key stored. Add one below, or set `BOAT_API_KEY`.",
   "settings_tiny_vm_boat_connected": "Connected to boat.dev. {sandboxes} of {max} sandboxes running.",
   "settings_boat_key_label": "Boat API key",
-  "settings_boat_key_hint": "Create a boat_ key in the boat dashboard. Enables boat VMs and the cloud Android device. The free trial needs a card.",
+  "settings_boat_key_hint": "Create a boat_ key in the boat dashboard. Enables boat VMs. The free trial needs a card.",
   "settings_boat_key_placeholder": "boat_…",
   "settings_tiny_vm_hint": "A disposable Linux desktop per thread, on your sbx host or in the cloud on boat.dev.",
   "settings_tiny_vm_checking": "Checking the VM host…",
