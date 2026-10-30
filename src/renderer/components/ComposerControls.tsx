@@ -362,7 +362,9 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
         initialFocus={() =>
           (focus === "effort"
             ? popupRef.current?.querySelector<HTMLElement>("[data-slot=slider-thumb] input")
-            : popupRef.current) ?? true
+            : null) ??
+          popupRef.current ??
+          true
         }
         finalFocus={() => {
           if (!closedWithEnter.current) return openedByShortcut.current ? returnFocus() : true
