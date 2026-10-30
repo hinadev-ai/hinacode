@@ -321,7 +321,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
       className="group/thread relative rounded-md [--row-actions:--spacing(20)] has-[[data-reorder-handle]:focus-visible]:[--row-actions:--spacing(26)] text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=working]:text-muted-foreground data-[emphasis=working]:not-hover:not-focus-within:not-has-[a[data-status=active]]:opacity-60 data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
     >
       {meta.project !== null && (
-        <div className="flex min-w-0 items-center gap-1 pt-1.5 pr-2 pl-1.5 text-xs text-muted-foreground/75">
+        <div className="flex min-w-0 items-center gap-1 pt-1.5 pr-2 pl-1.5 text-xs text-muted-foreground">
           <ProjectIcon projectId={thread.projectId} className="size-3 text-current" />
           <span className="truncate" title={meta.project}>
             {meta.project}
@@ -355,7 +355,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
           </span>
           <StatusIndicator state={state} />
           {/* Hidden while the row's actions are showing, so it does not sit under them. */}
-          <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground/75 group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden">
+          <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden">
             <ActivityTime {...meta} />
             <ProviderIcon provider={meta.provider} className="size-3" />
           </span>
@@ -744,7 +744,7 @@ function ThreadMeta({
 }) {
   const watching = links.some((link) => link.watch !== null)
   return (
-    <div className="flex min-w-0 items-center gap-2 pr-2 pb-1.5 pl-1.5 text-xs text-muted-foreground/75 group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions)">
+    <div className="flex min-w-0 items-center gap-2 pr-2 pb-1.5 pl-1.5 text-xs text-muted-foreground group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions)">
       {cloud && <CloudMark cloud={cloud} className="size-3" />}
       {links.length > 0 && <SidebarPullRequests threadId={threadId} links={links} environment={environment} />}
       {watching && (
