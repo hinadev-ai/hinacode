@@ -641,6 +641,7 @@
   "message_worked_for": "{duration} 処理しました",
   "message_show_activity": "ツールの実行内容を表示",
   "message_hide_activity": "ツールの実行内容を折りたたむ",
+  "message_earlier_activity": "それ以前の {count} ステップ",
   "message_copy": "メッセージをコピー",
   "message_fork": "ここから新しいスレッドに分岐",
   "sidebar_pull_request": "プルリクエスト #{number} を開く",
