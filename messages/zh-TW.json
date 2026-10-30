@@ -1025,7 +1025,7 @@
   "thread_worktree_ref_branches": "分支",
   "thread_worktree_ref_draft": "草稿",
   "archive_dialog_title": "要歸檔這個對話串嗎？",
-  "archive_dialog_worktree": "歸檔會刪除工作樹資料夾 {path}，包含尚未提交的變更。",
+  "archive_dialog_worktree": "歸檔會刪除工作樹資料夾 {path}。",
   "archive_dialog_branch": "分支 {branch} 只有在已合併到 {baseRef} 時才會刪除。",
   "archive_dialog_confirm": "歸檔並刪除工作樹",
   "sidebar_thread_archive": "歸檔",

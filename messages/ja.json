@@ -1007,7 +1007,7 @@
   "thread_worktree_ref_branches": "ブランチ",
   "thread_worktree_ref_draft": "ドラフト",
   "archive_dialog_title": "このスレッドをアーカイブしますか？",
-  "archive_dialog_worktree": "アーカイブするとワークツリーディレクトリ（{path}）が削除されます。未コミットの変更も破棄されます。",
+  "archive_dialog_worktree": "アーカイブするとワークツリーディレクトリ（{path}）が削除されます。",
   "archive_dialog_branch": "ブランチ「{branch}」は、{baseRef} にマージ済みの場合のみ削除されます。",
   "archive_dialog_confirm": "アーカイブしてワークツリーを削除",
   "sidebar_thread_archive": "アーカイブ",
