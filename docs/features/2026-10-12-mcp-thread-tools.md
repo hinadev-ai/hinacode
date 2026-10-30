@@ -35,6 +35,7 @@ Both tools run on the built-in MCP server, so the calling thread comes from the 
 - The renderer answers over a new rpc, `secrets.respond({ requestId, value })`, with `value: null` for Decline. The main process writes the value to `secrets/<name>` in the thread's scratch directory, with mode 0600 in a 0700 folder, and only then resolves the request with that path. The value is never put in an event, a tool result, a message or a log. The file goes away with the scratch directory when the thread is archived or deleted.
 - The value does not go into `Secrets`. Nothing reads an agent's secret from there, and a name like `remote.token` would overwrite one HinaCode uses itself.
 - When the turn finishes, the runner fails every open request of the thread, so the tool returns an error and the MCP call does not hang.
+- Agents used to explain where to put a key instead of calling the tool. Claude Code shows MCP tools by name only until it loads one, so the tool description cannot fix that alone. `AGENT_INSTRUCTIONS` has a Secrets section that tells every agent to call `request_secret` when it needs a secret or the user asks how to give one.
 
 `create_thread` is `Threads.create` plus `AgentRunner.send`, the same two calls an automation makes:
 

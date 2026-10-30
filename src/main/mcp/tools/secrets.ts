@@ -11,7 +11,7 @@ const SecretName = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9.
 export const SecretTools = Toolkit.make(
   McpTool.make("request_secret", {
     description:
-      "Ask the user for a secret (API key, token, password) instead of asking them to paste it into the chat. HinaCode shows them a masked input in this thread, writes what they enter to a file in your scratch directory and returns its path. Read the file inside the command that needs the value, for example `STRIPE_API_KEY=\"$(cat '<path>')\" ./script`, and never print it. Blocks until they answer or the turn ends.",
+      "Ask the user for a secret (API key, token, password) instead of asking them to paste it into the chat. Call it as soon as you need one, or when the user asks how to give you one, instead of explaining. HinaCode shows them a masked input in this thread, writes what they enter to a file in your scratch directory and returns its path. Read the file inside the command that needs the value, for example `STRIPE_API_KEY=\"$(cat '<path>')\" ./script`, and never print it. Blocks until they answer or the turn ends.",
     parameters: Schema.Struct({
       name: SecretName,
       description: Schema.String.annotate({ description: "What the secret is for, shown to the user." }),
