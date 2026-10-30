@@ -7,7 +7,6 @@ const platform =
     ? navigator.userAgentData.platform
     : navigator.platform
 
-export const isMac = /mac/i.test(platform)
 export const isTouch = matchMedia("(pointer: coarse)").matches
 export const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches
 
@@ -25,7 +24,10 @@ document.addEventListener("click", (event) => {
   destination.hash = location.hash
   link.href = destination.href
 })
-if (!isMac) {
-  for (const key of document.querySelectorAll('[data-key="mod"]')) key.textContent = "Ctrl"
-  for (const key of document.querySelectorAll('[data-key="shift"]')) key.textContent = "Shift"
-}
+
+addEventListener("keydown", (event) => {
+  if (event.metaKey || event.ctrlKey || event.altKey || event.repeat) return
+  if (event.target instanceof Element && event.target.closest("input, textarea")) return
+  const link = document.querySelector(`.menu-keys a[data-key="${CSS.escape(event.key.toLowerCase())}"]`)
+  if (link instanceof HTMLAnchorElement) link.click()
+})

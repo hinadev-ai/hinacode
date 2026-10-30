@@ -1,38 +1,39 @@
 import { isTouch, reduceMotion } from "./platform"
 
-type State = "working" | "needs" | "done"
-
 function element(selector: string, root: ParentNode = document): HTMLElement {
   const node = root.querySelector(selector)
-  if (!(node instanceof HTMLElement)) throw new Error(`Missing rail element: ${selector}`)
+  if (!(node instanceof HTMLElement)) throw new Error(`Missing board element: ${selector}`)
   return node
 }
 function label(node: HTMLElement, name: string): string {
   const value = node.getAttribute(`data-label-${name}`)
-  if (value === null) throw new Error(`Missing rail label: ${name}`)
+  if (value === null) throw new Error(`Missing board label: ${name}`)
   return value
 }
 function template(name: string): DocumentFragment {
-  const node = element(`[data-rail-template="${name}"]`)
-  if (!(node instanceof HTMLTemplateElement)) throw new Error(`Invalid rail template: ${name}`)
+  const node = element(`[data-board-template="${name}"]`)
+  if (!(node instanceof HTMLTemplateElement)) throw new Error(`Invalid board template: ${name}`)
   const copy = node.content.cloneNode(true)
-  if (!(copy instanceof DocumentFragment)) throw new Error(`Invalid rail content: ${name}`)
+  if (!(copy instanceof DocumentFragment)) throw new Error(`Invalid board content: ${name}`)
   return copy
 }
 
-const rail = element(".rail")
-const ticket = element("[data-live]", rail)
-const lines = element("[data-lines]", ticket)
-const hint = element("[data-hint]", ticket)
-const initial = { lines: lines.innerHTML, hint: hint.innerHTML }
-let phase: "approval" | "resolving" | "done" = "approval"
+const page = element("[data-page]")
+const lines = element("[data-lines]", page)
+const hint = element("[data-hint]")
+const row = element('tr[data-node="03"]')
+const needsCount = element("[data-needs-count] b")
+const initial = { lines: lines.innerHTML, hint: hint.innerHTML, row: element("[data-state-label]", row).textContent }
+let phase: "needs" | "resolving" | "done" = "needs"
 let run = 0
 
 const wait = (ms: number) => new Promise<void>((complete) => setTimeout(complete, reduceMotion ? 0 : ms))
 
-function setState(state: State) {
-  ticket.dataset.state = state
-  element("[data-stamp-label]", ticket).textContent = label(rail, state)
+function setState(state: "needs" | "working" | "done") {
+  page.dataset.state = state
+  row.dataset.state = state
+  needsCount.textContent = state === "needs" ? "1" : "0"
+  element("[data-state-label]", row).textContent = state === "needs" ? initial.row : label(page, state)
 }
 
 function print(fragment: DocumentFragment) {
@@ -41,14 +42,12 @@ function print(fragment: DocumentFragment) {
 }
 
 async function resolve(allowed: boolean) {
-  if (phase !== "approval") return
+  if (phase !== "needs") return
   const id = run
   phase = "resolving"
-  const approval = element("[data-approval]", lines)
-  const title = element("[data-approval-title]", approval)
+  const title = element("[data-request-title]", lines)
   title.textContent = label(title, allowed ? "allowed" : "denied")
-  approval.dataset.resolved = allowed ? "allowed" : "denied"
-  element(".approval-actions", approval).remove()
+  element("[data-actions]", lines).remove()
   setState("working")
   hint.replaceChildren(template("hint-resolving"))
   await wait(700)
@@ -67,7 +66,7 @@ function replay() {
   hint.innerHTML = initial.hint
   if (isTouch) hint.replaceChildren(template("hint-touch"))
   setState("needs")
-  phase = "approval"
+  phase = "needs"
   element("[data-allow]", lines).focus({ preventScroll: true })
 }
 

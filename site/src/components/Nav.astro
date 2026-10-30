@@ -1,5 +1,4 @@
 ---
-import Mark from "./Mark.astro"
 import { locales, languageNames, localizedPath, messages, type Locale, type Page } from "../i18n"
 interface Props {
   page: Page
@@ -8,51 +7,60 @@ interface Props {
 const { page, locale } = Astro.props
 const t = messages(locale)
 const home = page === "pricing" ? localizedPath(locale, "home") : ""
+const menu = [
+  { key: "1", label: t.site_download, href: "https://github.com/hinadev-ai/hinacode/releases/latest" },
+  { key: "2", label: t.site_nav_features, href: `${home}#features` },
+  { key: "3", label: t.site_pricing, href: localizedPath(locale, "pricing"), current: page === "pricing" },
+  { key: "4", label: t.site_nav_faq, href: `${home}#faq` },
+  { key: "G", label: "GitHub", href: "https://github.com/hinadev-ai/hinacode" },
+]
 ---
 
-<header class="nav">
-  <div class="nav-inner">
+<header class="status-bar">
+  <div class="status-inner">
     <a class="brand" href={localizedPath(locale, "home")} aria-label={t.site_home_name}>
-      <Mark class="mark" />
-      HinaCode
+      HINACODE<span class="cursor" aria-hidden="true"></span>
     </a>
-    <nav class="nav-links" aria-label={t.site_sections}>
-      <a href={`${home}#features`}>{t.site_nav_features}</a>
-      <a href={`${home}#faq`}>{t.site_nav_faq}</a>
-      <a href={localizedPath(locale, "pricing")} aria-current={page === "pricing" ? "page" : undefined}>
-        {t.site_pricing}
-      </a>
-      <a href="https://github.com/hinadev-ai/hinacode">GitHub</a>
+    {
+      page === "home" && (
+        <p class="presence" aria-live="polite">
+          <span class="demo-badge">{t.site_bbs_demo}</span>
+          <span>
+            {t.site_bbs_online} <b>5</b>
+          </span>
+          <span class="presence-needs" data-needs-count>
+            {t.site_state_needs} <b>1</b>
+          </span>
+        </p>
+      )
+    }
+    <nav class="menu-keys" aria-label={t.site_sections}>
+      {
+        menu.map((item) => (
+          <a href={item.href} data-key={item.key.toLowerCase()} aria-current={item.current ? "page" : undefined}>
+            <kbd>{item.key}</kbd>
+            {item.label}
+          </a>
+        ))
+      }
     </nav>
     <details class="language-menu">
-      <summary aria-label={`${t.site_language} ${languageNames[locale]}`}>
-        {languageNames[locale]}
-        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path
-            d="m4.5 6.5 3.5 3 3.5-3"
-            stroke="currentColor"
-            stroke-width="1.2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </summary>
+      <summary aria-label={`${t.site_language} ${languageNames[locale]}`}>{languageNames[locale]}</summary>
       <nav aria-label={t.site_language}>
-        {locales.map((language) => (
-          <a
-            href={localizedPath(language, page)}
-            lang={language}
-            hreflang={language}
-            aria-current={language === locale ? "page" : undefined}
-            data-language-link
-          >
-            {languageNames[language]}
-          </a>
-        ))}
+        {
+          locales.map((language) => (
+            <a
+              href={localizedPath(language, page)}
+              lang={language}
+              hreflang={language}
+              aria-current={language === locale ? "page" : undefined}
+              data-language-link
+            >
+              {languageNames[language]}
+            </a>
+          ))
+        }
       </nav>
     </details>
-    <a class="btn btn-sm" href="https://github.com/hinadev-ai/hinacode/releases/latest">
-      {t.site_download}
-    </a>
   </div>
 </header>

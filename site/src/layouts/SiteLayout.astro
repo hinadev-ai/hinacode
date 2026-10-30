@@ -1,9 +1,5 @@
 ---
-import "@fontsource-variable/archivo/wdth.css"
-import "@fontsource-variable/archivo/wdth-italic.css"
-import "@fontsource-variable/martian-mono/wdth.css"
-import "@fontsource-variable/noto-sans-jp"
-import "@fontsource-variable/noto-sans-tc"
+import "@fontsource/dotgothic16/japanese-400.css"
 import "../styles/global.css"
 import Nav from "../components/Nav.astro"
 import Footer from "../components/Footer.astro"
@@ -25,9 +21,9 @@ const t = messages(locale)
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
-    <meta name="theme-color" content="#ecedea" />
+    <meta name="theme-color" content="#0000aa" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preload" href="/fonts/ibm-vga-8x16.woff" as="font" type="font/woff" crossorigin />
     {Astro.site && <link rel="canonical" href={new URL(localizedPath(locale, page), Astro.site)} />}
     {Astro.site &&
       locales.map((language) => (
@@ -38,7 +34,7 @@ const t = messages(locale)
       document.documentElement.classList.replace("no-js", "js")
     </script>
   </head>
-  <body>
+  <body id="top">
     <a class="skip" href="#content">
       {t.site_skip}
     </a>

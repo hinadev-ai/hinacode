@@ -1,0 +1,35 @@
+---
+interface Props {
+  class?: string
+}
+const { class: className } = Astro.props
+const width = 240
+const height = 6
+
+let state = 2026
+const next = () => {
+  state = (state * 1103515245 + 12345) % 2147483648
+  return state
+}
+
+const heights: number[] = []
+while (heights.length < width) {
+  const building = 3 + (next() % 6)
+  const tall = 2 + (next() % (height - 1))
+  for (let column = 0; column < building && heights.length < width; column++) heights.push(column === building - 1 ? 0 : tall)
+}
+
+const rows = Array.from({ length: height }, (_, row) => {
+  const depth = height - row
+  return heights
+    .map((tall, column) => {
+      if (tall < depth) return " "
+      const window = column % 2 === 1 && row % 2 === 1 && depth < tall
+      if (!window) return '<span class="wall">█</span>'
+      return next() % 4 === 0 ? '<span class="lit">■</span>' : '<span class="wall">█</span>'
+    })
+    .join("")
+}).join("\n")
+---
+
+<pre class:list={["skyline", className]} aria-hidden="true" set:html={rows} />

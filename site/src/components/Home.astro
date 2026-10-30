@@ -3,7 +3,8 @@ import SiteLayout from "../layouts/SiteLayout.astro"
 import Text from "./Text.astro"
 import Download from "./Download.astro"
 import Closing from "./Closing.astro"
-import Ticket from "./Ticket.astro"
+import BlockArt from "./BlockArt.astro"
+import Skyline from "./Skyline.astro"
 import { messages, localizedPath, type Locale } from "../i18n"
 interface Props {
   locale: Locale
@@ -11,18 +12,22 @@ interface Props {
 const { locale } = Astro.props
 const t = messages(locale)
 
+const agents = [
+  { node: "01", agent: "Codex", branch: "fix/checkout-e2e", state: "working", label: t.site_state_working },
+  { node: "02", agent: "Claude", branch: "fix/webhook-retry", state: "done", label: t.site_demo_merged },
+  { node: "03", agent: "Claude", branch: "feat/address-validation", state: "needs", label: t.site_state_needs },
+  { node: "04", agent: "Claude", branch: "feat/resizable-side-panel", state: "working", label: t.site_state_working },
+  { node: "05", agent: "Codex", branch: "fix/loading-flash", state: "failed", label: t.site_state_failed },
+]
+
 const features = [
-  { title: t.site_feature_worktree_title, code: "$HINACODE_WORKTREE_PATH", slot: true },
+  { title: t.site_feature_worktree_title, code: "$HINACODE_WORKTREE_PATH" },
   { title: t.site_feature_approvals_title, description: t.site_feature_approvals_description, code: t.site_allow_session },
   { title: t.site_feature_steer_title, description: t.site_feature_steer_description, code: "threads.steer" },
   { title: t.site_feature_mcp_title, description: t.site_feature_mcp_description, code: "review_changes" },
-  { title: t.site_feature_pr_title, description: t.site_feature_pr_description, code: "gh pr create --fill" },
-  { title: t.site_feature_ports_title, description: t.site_feature_ports_description, code: ":3000 next dev" },
-  {
-    title: t.site_feature_automations_title,
-    description: t.site_feature_automations_description,
-    code: "{{issue.title}}",
-  },
+  { title: t.site_feature_pr_title, description: t.site_feature_pr_description, code: "gh pr create" },
+  { title: t.site_feature_ports_title, description: t.site_feature_ports_description, code: ":3000" },
+  { title: t.site_feature_automations_title, description: t.site_feature_automations_description, code: "{{issue.title}}" },
   { title: t.site_feature_setup_title, description: t.site_feature_setup_description, code: "AGENTS.md" },
 ]
 
@@ -33,177 +38,223 @@ const faqs = [
   [t.site_faq_editor_question, t.site_faq_editor_answer],
   [t.site_faq_platforms_question, t.site_faq_platforms_answer],
 ]
+const number = (index: number) => String(index + 1).padStart(2, "0")
 ---
 
 <SiteLayout title={t.site_home_title} description={t.site_home_description} page="home" locale={locale}>
-  <section class="pass" aria-labelledby="headline">
-    <div class="rail-bar" aria-hidden="true"></div>
-    <div class="pass-inner">
-      <div class="hero">
-        <h1 id="headline">
-          <Text text={t.site_home_headline}>
-            <span slot="taste" class="taste">{t.site_taste}</span>
-            <span slot="focus" class="focus">{t.site_focus}</span>
-          </Text>
-        </h1>
-        <p class="lede">{t.site_home_lede}</p>
-        <div class="ctas">
-          <Download locale={locale} />
-          <a class="link" href="https://github.com/hinadev-ai/hinacode">{t.site_view_github}</a>
+  <section class="title-screen" aria-labelledby="headline">
+    <div class="frame">
+      <BlockArt />
+      <div class="title-columns">
+        <div class="offer">
+          <h1 id="headline">
+            <Text text={t.site_home_headline}>
+              <span slot="taste" class="taste">{t.site_taste}</span>
+              <span slot="focus" class="focus">{t.site_focus}</span>
+            </Text>
+          </h1>
+          <p class="lede">{t.site_home_lede}</p>
+          <div class="ctas">
+            <Download locale={locale} />
+            <a class="link" href="https://github.com/hinadev-ai/hinacode">{t.site_view_github}</a>
+          </div>
+          <p class="fineprint">
+            <Text text={t.site_platforms}>
+              <code slot="claude">claude</code>
+              <code slot="codex">codex</code>
+            </Text>
+            <br />
+            {t.site_experimental}
+          </p>
         </div>
-        <p class="fineprint">
-          <Text text={t.site_platforms}>
-            <code slot="claude">claude</code>
-            <code slot="codex">codex</code>
-          </Text>
-          <br />
-          {t.site_experimental}
-        </p>
-      </div>
 
-      <ol
-        class="rail"
-        aria-label={t.site_demo_label}
-        data-label-working={t.site_state_working}
-        data-label-needs={t.site_state_needs}
-        data-label-done={t.site_state_done}
-      >
-        <Ticket number="0124" agent="Codex" title={t.site_demo_checkout_title} branch="fix/checkout-e2e" state="working" stateLabel={t.site_state_working}>
-          <li><span class="verb">$</span> pnpm e2e checkout<span class="caret" aria-hidden="true"></span></li>
-        </Ticket>
-        <Ticket number="0119" agent="Claude Code" title={t.site_demo_webhook_title} branch="fix/webhook-retry" state="done" stateLabel={t.site_state_done}>
-          <li><span class="verb">#127</span> {t.site_rail_merged}</li>
-        </Ticket>
-        <Ticket number="0125" agent="Claude Code" title={t.site_demo_panel_title} branch="feat/resizable-side-panel" state="working" stateLabel={t.site_state_working} />
-        <Ticket
-          number="0126"
-          agent="Claude Code"
-          title={t.site_demo_address_title}
-          branch="feat/address-validation"
-          state="needs"
-          stateLabel={t.site_state_needs}
-          live
-        >
-          <li><span class="verb">{t.site_read}</span> validators.ts</li>
-          <li>
-            <span class="verb">{t.site_edit}</span> validators.ts <span class="add">+8</span>
-            <span class="del">−3</span>
-          </li>
-          <li><span class="verb">$</span> pnpm test validators <span class="ok">{t.site_demo_tests}</span></li>
-          <li class="approval" data-approval>
-            <p data-approval-title data-label-allowed={t.site_demo_allowed} data-label-denied={t.site_demo_denied}>
-              {t.site_demo_command_request}
+        <div class="board" role="region" aria-label={t.site_demo_label}>
+          <h2 class="panel-title">
+            {t.site_bbs_online}
+            <span class="demo-badge">{t.site_bbs_demo}</span>
+          </h2>
+          <table class="agents">
+            <thead>
+              <tr>
+                <th scope="col">{t.site_bbs_node}</th>
+                <th scope="col">{t.site_bbs_agent}</th>
+                <th scope="col">{t.site_bbs_branch}</th>
+                <th scope="col">{t.site_bbs_state}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {
+                agents.map((row) => (
+                  <tr data-state={row.state} data-node={row.node}>
+                    <td>{row.node}</td>
+                    <td>{row.agent}</td>
+                    <td class="branch">{row.branch}</td>
+                    <td class="state" data-state-label>
+                      {row.label}
+                    </td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+
+          <div
+            class="page-box"
+            data-page
+            data-state="needs"
+            data-label-working={t.site_state_working}
+            data-label-done={t.site_state_done}
+          >
+            <p class="page-title">
+              <span class="page-flag" data-page-flag>{t.site_bbs_page}</span>
+              <span>{t.site_bbs_node} 03 · Claude Code</span>
             </p>
-            <code>git push -u origin feat/address-validation</code>
-            <div class="approval-actions">
-              <button class="btn btn-sm btn-quiet" type="button" data-deny>
-                {t.site_deny}
-                <kbd>D</kbd>
-              </button>
-              <button class="btn btn-sm" type="button" data-allow>
-                {t.site_allow}
-                <kbd>A</kbd>
-              </button>
-            </div>
-          </li>
-          <p class="rail-hint" slot="after" data-hint aria-live="polite">
+            <ul class="page-lines" data-lines>
+              <li>
+                <span class="dim">{t.site_edit}</span> validators.ts <span class="add">+8</span>
+                <span class="del">−3</span>
+              </li>
+              <li>
+                <span class="dim">$</span> pnpm test <span class="ok">{t.site_demo_tests}</span>
+              </li>
+              <li class="request" data-request>
+                <p data-request-title data-label-allowed={t.site_demo_allowed} data-label-denied={t.site_demo_denied}>
+                  {t.site_demo_command_request}
+                </p>
+                <code>git push -u origin feat/address-validation</code>
+                <div class="page-actions" data-actions>
+                  <button class="key-button" type="button" data-deny>
+                    <kbd>D</kbd>
+                    {t.site_deny}
+                  </button>
+                  <button class="key-button key-button-strong" type="button" data-allow>
+                    <kbd>A</kbd>
+                    {t.site_allow}
+                  </button>
+                </div>
+              </li>
+            </ul>
+          </div>
+          <p class="board-hint" data-hint aria-live="polite">
             <span>{t.site_demo_hint_needs}</span>
             <kbd>A</kbd>
             <span>{t.site_demo_key_allows}</span>
             <kbd>D</kbd>
             <span>{t.site_demo_key_denies}</span>
           </p>
-        </Ticket>
-        <Ticket number="0123" agent="Codex" title={t.site_demo_setup_title} branch="fix/loading-flash" state="failed" stateLabel={t.site_state_failed}>
-          <li><span class="verb">setup</span> {t.site_rail_setup_failed}</li>
-        </Ticket>
+        </div>
+      </div>
+      <Skyline class="skyline-hero" />
+    </div>
+  </section>
+
+  <section class="field field-brown" id="features" aria-labelledby="features-heading">
+    <div class="field-inner">
+      <h2 id="features-heading">{t.site_features_heading}</h2>
+      <p class="section-lede">{t.site_features_description}</p>
+      <ol class="menu">
+        {
+          features.map((feature, index) => (
+            <li>
+              <h3>
+                <span class="menu-number">{index + 1})</span>
+                <span class="menu-title">{feature.title}</span>
+                <span class="leader" aria-hidden="true"></span>
+                <code>{feature.code}</code>
+                <span class="menu-more" aria-hidden="true">»</span>
+              </h3>
+              {feature.description ? (
+                <p>{feature.description}</p>
+              ) : (
+                <p>
+                  <Text text={t.site_feature_worktree_description}>
+                    <code slot="env">.env</code>
+                  </Text>
+                </p>
+              )}
+            </li>
+          ))
+        }
       </ol>
     </div>
   </section>
 
-  <section class="section menu-section" id="features" aria-labelledby="features-heading">
-    <div class="section-head">
-      <h2 id="features-heading">{t.site_features_heading}</h2>
-      <p class="section-lede">{t.site_features_description}</p>
-    </div>
-    <ul class="menu">
-      {
-        features.map((feature) => (
-          <li>
-            <h3>
-              <span>{feature.title}</span>
-              <code>{feature.code}</code>
-            </h3>
-            {feature.slot ? (
-              <p>
-                <Text text={t.site_feature_worktree_description}>
-                  <code slot="env">.env</code>
-                </Text>
-              </p>
-            ) : (
-              <p>{feature.description}</p>
-            )}
-          </li>
-        ))
-      }
-    </ul>
-  </section>
-
-  <section class="section faq-section" id="faq" aria-labelledby="faq-heading">
-    <div class="section-head">
+  <section class="field" id="faq" aria-labelledby="faq-heading">
+    <div class="field-inner">
       <h2 id="faq-heading">{t.site_faq_heading}</h2>
-    </div>
-    <div class="faq">
-      {
-        faqs.map(([question, answer]) => (
-          <details>
-            <summary>{question}</summary>
-            <p>{answer}</p>
-          </details>
-        ))
-      }
-      <details>
-        <summary>{t.site_faq_keys_question}</summary>
-        <p>
-          <Text text={t.site_faq_keys_answer}>
-            <code slot="claude">claude</code>
-            <code slot="codex">codex</code>
-          </Text>
-        </p>
-      </details>
-      <details>
-        <summary>{t.site_faq_price_question}</summary>
-        <p>
-          <Text text={t.site_faq_price_answer}>
-            <a slot="pricing" class="link" href={localizedPath(locale, "pricing")}>{t.site_see_pricing}</a>
-          </Text>
-        </p>
-      </details>
+      <div class="messages">
+        {
+          faqs.map(([question, answer], index) => (
+            <details open={index === 0}>
+              <summary>
+                <span class="message-number">#{number(index)}</span>
+                <span class="message-subject">{question}</span>
+                <span class="message-from">SysOp</span>
+              </summary>
+              <div class="message-body">
+                <p class="message-header">
+                  <span>{t.site_bbs_from}: SysOp</span>
+                  <span>{t.site_bbs_to}: {t.site_bbs_you}</span>
+                  <span>
+                    {t.site_bbs_subject}: {question}
+                  </span>
+                </p>
+                <p>{answer}</p>
+              </div>
+            </details>
+          ))
+        }
+        <details>
+          <summary>
+            <span class="message-number">#{number(faqs.length)}</span>
+            <span class="message-subject">{t.site_faq_keys_question}</span>
+            <span class="message-from">SysOp</span>
+          </summary>
+          <p class="message-body">
+            <Text text={t.site_faq_keys_answer}>
+              <code slot="claude">claude</code>
+              <code slot="codex">codex</code>
+            </Text>
+          </p>
+        </details>
+        <details>
+          <summary>
+            <span class="message-number">#{number(faqs.length + 1)}</span>
+            <span class="message-subject">{t.site_faq_price_question}</span>
+            <span class="message-from">SysOp</span>
+          </summary>
+          <p class="message-body">
+            <Text text={t.site_faq_price_answer}>
+              <a slot="pricing" class="link" href={localizedPath(locale, "pricing")}>{t.site_see_pricing}</a>
+            </Text>
+          </p>
+        </details>
+      </div>
     </div>
   </section>
 
   <Closing locale={locale} />
 
-  <template data-rail-template="hint-touch">
+  <template data-board-template="hint-touch">
     <span>{t.site_demo_hint_touch}</span>
   </template>
-  <template data-rail-template="hint-resolving">
+  <template data-board-template="hint-resolving">
     <span>{t.site_demo_hint_resolving}</span>
   </template>
-  <template data-rail-template="hint-done">
+  <template data-board-template="hint-done">
     <span>{t.site_demo_hint_done}</span>
     <button class="link" type="button" data-replay>{t.site_replay}</button>
   </template>
-  <template data-rail-template="allowed">
-    <li><span class="verb">$</span> git push -u origin feat/address-validation <span class="ok">{t.site_command_done}</span></li>
-    <li><span class="verb">mcp</span> link_pull_request #128</li>
-    <li class="pr">
-      <b>#128</b>{" "}
-      {t.site_pr_open} · <span class="ok">{t.site_demo_checks}</span> · {t.site_ready_review}
+  <template data-board-template="allowed">
+    <li><span class="dim">$</span> git push <span class="ok">{t.site_command_done}</span></li>
+    <li><span class="dim">mcp</span> link_pull_request #128</li>
+    <li>
+      <b>PR #128</b>{" "}
+      {t.site_pr_open} · <span class="ok">{t.site_demo_checks}</span>
     </li>
   </template>
-  <template data-rail-template="denied">
-    <li class="reply">{t.site_demo_denied_response}</li>
+  <template data-board-template="denied">
+    <li>{t.site_demo_denied_response}</li>
   </template>
 </SiteLayout>
-<script src="../scripts/rail.ts"></script>
+<script src="../scripts/board.ts"></script>

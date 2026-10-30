@@ -2,7 +2,6 @@
 import SiteLayout from "../layouts/SiteLayout.astro"
 import Download from "./Download.astro"
 import Closing from "./Closing.astro"
-import Mark from "./Mark.astro"
 import Text from "./Text.astro"
 import { messages, type Locale } from "../i18n"
 interface Props {
@@ -23,32 +22,28 @@ const items = [
 ---
 
 <SiteLayout title={t.site_pricing_title} description={t.site_pricing_description} page="pricing" locale={locale}>
-  <section class="pass pass-pricing" aria-labelledby="headline">
-    <div class="rail-bar" aria-hidden="true"></div>
-    <div class="pass-inner">
-      <div class="hero">
-        <h1 id="headline">
-          <Text text={t.site_pricing_heading}>
-            <span slot="all" class="focus">{t.site_pricing_all}</span>
-          </Text>
-        </h1>
-        <p class="lede">{t.site_pricing_lede}</p>
-        <div class="ctas">
-          <Download locale={locale} />
+  <section class="title-screen" aria-labelledby="headline">
+    <div class="frame">
+      <div class="title-columns">
+        <div class="offer">
+          <h1 id="headline" class="pricing-headline">
+            <Text text={t.site_pricing_heading}>
+              <span slot="all" class="focus">{t.site_pricing_all}</span>
+            </Text>
+          </h1>
+          <p class="lede">{t.site_pricing_lede}</p>
+          <div class="ctas">
+            <Download locale={locale} />
+          </div>
+          <p class="fineprint">
+            {t.site_plan_note}
+            <br />
+            {t.site_experimental}
+          </p>
         </div>
-        <p class="fineprint">
-          {t.site_plan_note}
-          <br />
-          {t.site_experimental}
-        </p>
-      </div>
 
-      <figure class="ticket receipt" aria-label={t.site_receipt_label}>
-        <div class="slip">
-          <header>
-            <span class="number">{t.site_receipt_number}</span>
-            <Mark class="mark" />
-          </header>
+        <figure class="board rates" aria-label={t.site_receipt_label}>
+          <p class="panel-title">{t.site_receipt_number}</p>
           <dl>
             {
               items.map(([name, value]) => (
@@ -59,25 +54,22 @@ const items = [
               ))
             }
           </dl>
-          <p class="total">
+          <p class="rates-total">
             <span>{t.site_receipt_total}</span>
             <span>$0.00</span>
           </p>
-          <p class="stamp" data-state="done">
-            <span class="stamp-mark" aria-hidden="true"></span>
-            {t.site_receipt_paid}
-          </p>
-          <p class="receipt-thanks">{t.site_receipt_thanks}</p>
-        </div>
-      </figure>
+          <p class="rates-paid">{t.site_receipt_paid}</p>
+          <p class="fineprint">{t.site_receipt_thanks}</p>
+        </figure>
+      </div>
     </div>
   </section>
 
-  <section class="section costs-section" aria-labelledby="costs-heading">
-    <div class="section-head">
+  <section class="field field-brown" aria-labelledby="costs-heading">
+    <div class="field-inner">
       <h2 id="costs-heading">
         <Text text={t.site_costs_heading}>
-          <span slot="agents">{t.site_costs_agents}</span>
+          <span slot="agents" class="focus">{t.site_costs_agents}</span>
         </Text>
       </h2>
       <p class="section-lede">
@@ -86,23 +78,23 @@ const items = [
           <code slot="codex">codex</code>
         </Text>
       </p>
+      <dl class="menu">
+        <div>
+          <dt>
+            <span class="menu-title">HinaCode</span>
+            <code>$0.00</code>
+          </dt>
+          <dd>{t.site_costs_hinacode}</dd>
+        </div>
+        <div>
+          <dt>
+            <span class="menu-title">{t.site_agents}</span>
+            <code>{t.site_costs_your_plan}</code>
+          </dt>
+          <dd>{t.site_costs_plans}</dd>
+        </div>
+      </dl>
     </div>
-    <dl class="menu costs">
-      <div>
-        <dt>
-          <span>HinaCode</span>
-          <code>$0.00</code>
-        </dt>
-        <dd>{t.site_costs_hinacode}</dd>
-      </div>
-      <div>
-        <dt>
-          <span>{t.site_agents}</span>
-          <code>{t.site_costs_your_plan}</code>
-        </dt>
-        <dd>{t.site_costs_plans}</dd>
-      </div>
-    </dl>
   </section>
 
   <Closing locale={locale} />

@@ -1,5 +1,4 @@
 ---
-import Mark from "./Mark.astro"
 import { messages, localizedPath, type Locale } from "../i18n"
 interface Props {
   locale: Locale
@@ -9,14 +8,15 @@ const t = messages(locale)
 ---
 
 <footer class="footer">
-  <span class="footer-credit">
-    <Mark class="mark" />
-    {t.site_footer_credit}
-  </span>
-  <nav aria-label={t.site_footer_nav}>
-    <a href="https://github.com/hinadev-ai/hinacode">GitHub</a>
-    <a href={localizedPath(locale, "pricing")}>{t.site_pricing}</a>
-    <a href="https://github.com/hinadev-ai/hinacode/releases">{t.site_releases}</a>
-    <a href="#top">{t.site_back_top}</a>
-  </nav>
+  <div class="footer-inner">
+    <p class="no-carrier" aria-hidden="true">NO CARRIER</p>
+    <p>{t.site_footer_credit}</p>
+    <nav aria-label={t.site_footer_nav}>
+      <a href="https://github.com/hinadev-ai/hinacode">GitHub</a>
+      <a href={localizedPath(locale, "pricing")}>{t.site_pricing}</a>
+      <a href="https://github.com/hinadev-ai/hinacode/releases">{t.site_releases}</a>
+      <a href="#top">{t.site_back_top}</a>
+    </nav>
+    <p class="credit">{t.site_bbs_font_credit}</p>
+  </div>
 </footer>

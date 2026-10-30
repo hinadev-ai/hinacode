@@ -1,0 +1,68 @@
+---
+const glyphs: Record<string, string[]> = {
+  H: ["##..##", "##..##", "##..##", "######", "######", "##..##", "##..##", "##..##"],
+  I: ["##", "##", "##", "##", "##", "##", "##", "##"],
+  N: ["##...##", "###..##", "####.##", "#######", "##.####", "##..###", "##...##", "##...##"],
+  A: [".####.", "######", "##..##", "##..##", "######", "######", "##..##", "##..##"],
+  C: [".#####", "######", "##....", "##....", "##....", "##....", "######", ".#####"],
+  O: [".####.", "######", "##..##", "##..##", "##..##", "##..##", "######", ".####."],
+  D: ["#####.", "######", "##..##", "##..##", "##..##", "##..##", "######", "#####."],
+  E: ["######", "######", "##....", "#####.", "#####.", "##....", "######", "######"],
+}
+const bands = ["band-0", "band-0", "band-1", "band-1", "band-2", "band-2", "band-3", "band-3", "band-3", "band-3"]
+
+function bitmap(word: string) {
+  const rows = Array.from({ length: 8 }, () => "")
+  for (const [index, letter] of [...word].entries()) {
+    for (let row = 0; row < 8; row++) rows[row] += (index ? ".." : "") + glyphs[letter][row]
+  }
+  return rows
+}
+
+function render(word: string) {
+  const ink = bitmap(word)
+  const width = ink[0].length + 1
+  const isInk = (x: number, y: number) => ink[y]?.[x] === "#"
+  const isShadow = (x: number, y: number) => !isInk(x, y) && isInk(x - 1, y - 1)
+  const pixel = (x: number, y: number) => (isInk(x, y) ? bands[y] : isShadow(x, y) ? "shadow" : "")
+  const lines: string[] = []
+  for (let y = 0; y < 10; y += 2) {
+    let line = ""
+    for (let x = 0; x < width; x++) {
+      const top = pixel(x, y)
+      const bottom = pixel(x, y + 1)
+      if (!top && !bottom) line += " "
+      else if (top === bottom) line += `<span class="fg-${top}">█</span>`
+      else if (!bottom) line += `<span class="fg-${top}">▀</span>`
+      else if (!top) line += `<span class="fg-${bottom}">▄</span>`
+      else line += `<span class="fg-${top} bg-${bottom}">▀</span>`
+    }
+    lines.push(line)
+  }
+  return lines.join("\n")
+}
+
+function stars(width: number, height: number, seed: number) {
+  const marks = ["·", "·", ".", "+", "*"]
+  let state = seed
+  const lines: string[] = []
+  for (let row = 0; row < height; row++) {
+    let line = ""
+    for (let column = 0; column < width; column++) {
+      state = (state * 1103515245 + 12345) % 2147483648
+      line += state % 23 === 0 ? `<span class="star-${state % 4}">${marks[state % marks.length]}</span>` : " "
+    }
+    lines.push(line)
+  }
+  return lines.join("\n")
+}
+---
+
+<div class="art-band" aria-hidden="true">
+  <pre class="starfield" set:html={stars(160, 12, 7)} />
+  <pre class="block-art block-art-wide" set:html={render("HINACODE")} />
+  <div class="block-art-stacked">
+    <pre class="block-art" set:html={render("HINA")} />
+    <pre class="block-art" set:html={render("CODE")} />
+  </div>
+</div>

@@ -7,17 +7,11 @@ const { locale } = Astro.props
 const t = messages(locale)
 ---
 
-<a class="btn" href="https://github.com/hinadev-ai/hinacode/releases/latest" data-download>
-  <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <path
-      d="M8 2.5v8m0 0L4.75 7.25M8 10.5l3.25-3.25M3 13.5h10"
-      stroke="currentColor"
-      stroke-width="1.5"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    />
-  </svg>
+<a class="download" href="https://github.com/hinadev-ai/hinacode/releases/latest" data-download>
+  <span aria-hidden="true">[</span>
+  <span class="download-arrow" aria-hidden="true">↓</span>
   <span data-download-label data-linux-label={t.site_download_linux}>
     {t.site_download_macos}
   </span>
+  <span aria-hidden="true">]</span>
 </a>
