@@ -46,7 +46,7 @@ describe("diffWorkingTree", () => {
         writeFileSync(join(root, "debug.log"), "noise\n")
         const statusAfterEdits = git(root, "status", "--porcelain")
 
-        const changes = yield* diffWorkingTree(root, base)
+        const changes = yield* diffWorkingTree(root, Effect.succeed(base))
         expect(changes.files).toStrictEqual([
           { path: "gone.txt", status: "deleted" },
           { path: "kept.txt", status: "modified" },
@@ -67,7 +67,7 @@ describe("diffWorkingTree", () => {
       Effect.gen(function* () {
         const base = yield* snapshotWorkingTree(root)
         writeFileSync(join(root, "first.txt"), "hello\n")
-        const changes = yield* diffWorkingTree(root, base)
+        const changes = yield* diffWorkingTree(root, Effect.succeed(base))
         expect(changes.files).toStrictEqual([{ path: "first.txt", status: "added" }])
         expect(git(root, "status", "--porcelain")).toBe("?? first.txt\n")
       }),

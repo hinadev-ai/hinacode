@@ -536,7 +536,9 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
     Effect.gen(function* () {
       const worktree = yield* get(id)
       if (worktree.status === "removed") return null
-      const mergeBase = (yield* git.run(worktree.path, ["merge-base", worktree.baseRef, "HEAD"])).trim()
+      const mergeBase = git
+        .run(worktree.path, ["merge-base", worktree.baseRef, "HEAD"])
+        .pipe(Effect.map((output) => output.trim()))
       return yield* diffWorkingTree(worktree.path, mergeBase)
     }).pipe(Effect.provideContext(gitContext))
 

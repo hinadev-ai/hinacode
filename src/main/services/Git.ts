@@ -151,10 +151,13 @@ const make = Effect.gen(function* () {
         hash,
         "--",
       ])
-    return Effect.all({
-      patch: diff(["--patch"]),
-      files: diff(["--name-status", "-z"]).pipe(Effect.map(parseNameStatus)),
-    })
+    return Effect.all(
+      {
+        patch: diff(["--patch"]),
+        files: diff(["--name-status", "-z"]).pipe(Effect.map(parseNameStatus)),
+      },
+      { concurrency: "unbounded" },
+    )
   }
 
   return Git.of({ run, remote, log, show })
