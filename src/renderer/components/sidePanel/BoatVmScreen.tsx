@@ -1,17 +1,15 @@
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
+import { Cause } from "effect"
+import { AsyncResult } from "effect/reactivity"
 import { type DragEvent, type ReactNode, useEffect, useEffectEvent, useRef, useState } from "react"
 import { RiFullscreenExitLine, RiUpload2Line } from "react-icons/ri"
 import type { VmControl } from "../../../shared/domain.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
-import { callPromise } from "../../lib/rpc.ts"
+import { vmDesktopUrlAtom } from "../../lib/rpc.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
 import { Spinner, vmScreenId } from "./TinyVmView.tsx"
-
-type Connection =
-  | { status: "connecting" }
-  | { status: "connected"; url: string }
-  | { status: "failed"; message: string }
 
 const carriesFiles = (event: DragEvent<HTMLElement>) => event.dataTransfer.types.includes("Files")
 
@@ -21,6 +19,7 @@ const onFileDragOver = (event: DragEvent<HTMLElement>) => {
 
 interface BoatVmScreenProps {
   readonly threadId: string
+  readonly sandboxId: string
   readonly control: VmControl
   readonly bare?: boolean
   readonly fullscreenControls?: ReactNode
@@ -32,6 +31,7 @@ interface BoatVmScreenProps {
 
 export default function BoatVmScreen({
   threadId,
+  sandboxId,
   control,
   bare = false,
   fullscreenControls,
@@ -42,28 +42,16 @@ export default function BoatVmScreen({
 }: BoatVmScreenProps) {
   const id = vmScreenId(threadId)
   const dragDepth = useRef(0)
-  const [connection, setConnection] = useState<Connection>({ status: "connecting" })
+  const desktop = useAtomValue(vmDesktopUrlAtom(threadId, sandboxId))
+  const refreshDesktop = useAtomRefresh(vmDesktopUrlAtom(threadId, sandboxId))
+  const url = AsyncResult.isSuccess(desktop) ? desktop.value.url : null
+  const failure = AsyncResult.isFailure(desktop) && !desktop.waiting ? errorMessage(Cause.squash(desktop.cause)) : null
   const [fullscreen, setFullscreen] = useState(false)
   const [fileDrag, setFileDrag] = useState(false)
 
   const handBack = useEffectEvent(() => {
     if (control === "user") onHandBack()
   })
-
-  useEffect(() => {
-    let cancelled = false
-    callPromise("vm.desktop.url", { threadId }).then(
-      ({ url }) => {
-        if (!cancelled) setConnection({ status: "connected", url })
-      },
-      (cause: unknown) => {
-        if (!cancelled) setConnection({ status: "failed", message: errorMessage(cause) })
-      },
-    )
-    return () => {
-      cancelled = true
-    }
-  }, [threadId])
 
   useEffect(
     () => () => {
@@ -115,10 +103,8 @@ export default function BoatVmScreen({
         !bare && control === "user" && "outline-2 outline-offset-2 outline-working",
       )}
     >
-      {connection.status === "connected" && (
-        <webview src={connection.url} title={m.vm_screen()} className="absolute inset-0 flex h-full w-full" />
-      )}
-      {connection.status === "connected" && control !== "user" && <div aria-hidden className="absolute inset-0" />}
+      {url !== null && <webview src={url} title={m.vm_screen()} className="absolute inset-0 flex h-full w-full" />}
+      {url !== null && control !== "user" && <div aria-hidden className="absolute inset-0" />}
       {fullscreen && (
         <div className="absolute top-3 right-3 z-10 flex items-center gap-2 rounded-[12px] bg-background/90 p-1 shadow-md">
           {fullscreenControls}
@@ -139,19 +125,26 @@ export default function BoatVmScreen({
           <Spinner label={m.vm_drop_copying()} />
         </div>
       )}
-      {connection.status === "connecting" && (
+      {url === null && failure === null && (
         <div className="absolute inset-0 flex items-center justify-center bg-muted">
           <Spinner label={m.vm_connecting()} />
         </div>
       )}
-      {connection.status === "failed" && (
+      {failure !== null && (
         <div
           role="alert"
           className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-muted p-6 text-center"
         >
           <p className="text-sm">{m.vm_desktop_failed()}</p>
-          <p className="max-w-80 font-mono text-xs break-words text-muted-foreground">{connection.message}</p>
-          <Button variant="outline" size="sm" onClick={onReconnect}>
+          <p className="max-w-80 font-mono text-xs break-words text-muted-foreground">{failure}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              refreshDesktop()
+              onReconnect()
+            }}
+          >
             {m.vm_reconnect()}
           </Button>
         </div>
