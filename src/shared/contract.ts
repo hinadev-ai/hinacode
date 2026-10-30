@@ -209,7 +209,18 @@ export const RpcMethods = {
   "projects.delete": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
 
   "threads.list": rpc(Schema.Void, Schema.Array(Thread)),
-  "threads.create": rpc(Schema.Struct({ projectId: Schema.String }), Thread),
+  "threads.create": rpc(
+    Schema.Struct({
+      projectId: Schema.String,
+      title: Schema.optional(Schema.String),
+      provider: Schema.optional(ProviderId),
+      model: Schema.optional(Schema.String),
+      effort: Schema.optional(Schema.String),
+      worktree: Schema.optional(Schema.Struct({ branch: Schema.String, baseRef: Schema.String })),
+      createdBy: Schema.optional(Schema.String),
+    }),
+    Thread,
+  ),
   "threads.update": rpc(
     Schema.Struct({
       id: Schema.String,
