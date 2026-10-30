@@ -35,7 +35,13 @@ export function AppShell() {
   const onSettings = useMatchRoute()({ to: "/settings" }) !== false
 
   const docked = !compact && sidebarOpen
-  const titleBar = <TitleBar compact={compact} sidebarButtonRef={sidebarButtonRef} />
+  const titleBar = (
+    <TitleBar
+      compact={compact}
+      sidebarButtonRef={sidebarButtonRef}
+      className={docked ? "border-r border-sidebar-border" : undefined}
+    />
+  )
 
   return (
     <div className="flex h-dvh flex-col text-foreground">

@@ -16,9 +16,11 @@ const besideTrafficLights = detectPlatform() === "mac"
 export function TitleBar({
   compact,
   sidebarButtonRef,
+  className,
 }: {
   compact: boolean
   sidebarButtonRef: RefObject<HTMLButtonElement | null>
+  className?: string
 }) {
   const sidebarShown = useUi((state) => (compact ? state.sidebarOverlayOpen : state.sidebarOpen))
   const toggleSidebar = useUi((state) => state.toggleSidebar)
@@ -30,6 +32,7 @@ export function TitleBar({
       className={cn(
         "window-drag flex h-titlebar shrink-0 items-center gap-0.5 bg-sidebar glass:bg-sidebar/80 pr-2 text-sidebar-foreground select-none",
         besideTrafficLights ? "pl-22" : "pl-3",
+        className,
       )}
     >
       <span className="mr-3 font-heading text-sm font-semibold">{m.app_name()}</span>
