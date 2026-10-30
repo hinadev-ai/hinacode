@@ -136,7 +136,11 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
   const findAll = SqlSchema.findAll({
     Request: Schema.Void,
     Result: Worktree,
-    execute: () => sql`SELECT * FROM worktree ORDER BY created_at`,
+    execute: () => sql`
+      SELECT id, project_id, path, branch, base_ref, status, created_at,
+        CASE status WHEN 'removed' THEN '' ELSE setup_log END AS setup_log
+      FROM worktree ORDER BY created_at
+    `,
   })
   const findById = SqlSchema.findOneOption({
     Request: Schema.String,

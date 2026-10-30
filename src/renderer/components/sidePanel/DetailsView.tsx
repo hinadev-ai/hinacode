@@ -45,7 +45,7 @@ export function DetailsView({ thread }: { thread: Thread }) {
             <RootWorkspace thread={thread} canReveal={local} />
           )}
         </Section>
-        {worktree && (
+        {worktree && worktree.status !== "removed" && (
           <Section title={m.panel_setup_log()}>
             <WorktreeSetupLog worktree={worktree} />
           </Section>
