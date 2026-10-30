@@ -226,9 +226,13 @@ const remoteFetchAtom = Atom.family((projectId: string) =>
   Atom.make(call("projects.fetch", { id: projectId })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
 )
 
+const remoteFetchedAtAtom = Atom.family((projectId: string) =>
+  Atom.make((get) => AsyncResult.getOrElse(get(remoteFetchAtom(projectId)), () => null)),
+)
+
 export const branchesAtom = Atom.family((projectId: string) =>
   Atom.make((get) => {
-    get(remoteFetchAtom(projectId))
+    get(remoteFetchedAtAtom(projectId))
     return call("projects.branches", { id: projectId })
   }),
 )
@@ -245,7 +249,7 @@ export const pullRequestSearchAtom = familyOf((projectId: string, query: string 
 
 export const defaultBranchAtom = Atom.family((projectId: string) =>
   Atom.make((get) => {
-    get(remoteFetchAtom(projectId))
+    get(remoteFetchedAtAtom(projectId))
     return call("projects.defaultBranch", { id: projectId })
   }),
 )
