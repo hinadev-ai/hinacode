@@ -39,12 +39,12 @@ export function ComposerStatusLine({ thread }: { thread: Thread }) {
     <div className="-mx-3 -mb-3 bg-background px-3 pt-1 pb-3">
       <div className="mx-auto flex w-full max-w-3xl min-w-0 items-center gap-3 px-3 text-xs text-muted-foreground">
         <span className="flex shrink-0 items-center gap-1">
-          <EnvironmentIcon aria-hidden className="size-3.5" />
+          <EnvironmentIcon aria-hidden className="size-3 shrink-0" />
           {environmentName(environment, clouds)}
         </span>
         {branch !== "" && (
           <span className="flex min-w-0 items-center gap-1" title={worktree?.path}>
-            <RiGitBranchLine aria-hidden className="size-3.5 shrink-0" />
+            <RiGitBranchLine aria-hidden className="size-3 shrink-0" />
             <span className="truncate font-mono">{branch}</span>
           </span>
         )}
@@ -58,7 +58,7 @@ export function ComposerStatusLine({ thread }: { thread: Thread }) {
               onClick={() => useUi.getState().showView(thread.id, "pullRequests", { focus: true })}
               className="flex shrink-0 items-center gap-1 rounded-sm tabular-nums outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <RiStackLine aria-hidden className="size-3.5" />
+              <RiStackLine aria-hidden className="size-3" />
               <span aria-hidden>{urls.length}</span>
               <span className="sr-only">{m.sidebar_pull_request_stack({ count: String(urls.length) })}</span>
             </button>
@@ -88,7 +88,7 @@ function PullRequestSummary({
       className="flex shrink-0 items-center gap-1.5 rounded-sm tabular-nums underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span className={cn("flex items-center gap-1", status && statusIndicator[status].className)}>
-        <StatusIcon status={status} className="size-3.5" />#{pullRequestNumber(url)}
+        <StatusIcon status={status} className="size-3" />#{pullRequestNumber(url)}
         {status && <span className="sr-only">{statusLabel[status]()}</span>}
       </span>
       {pullRequest && (

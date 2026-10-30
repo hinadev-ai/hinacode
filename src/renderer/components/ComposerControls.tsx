@@ -368,7 +368,8 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
             variant="ghost"
             size="sm"
             aria-label={m.thread_option_value({ name: m.thread_model_picker(), value: summary.join(", ") })}
-            className={cn("min-w-0", triggerClass)}
+            // Icons centre on the line box, which sits a pixel below the label's capitals.
+            className={cn("min-w-0 [&_svg]:-translate-y-px", triggerClass)}
           />
         }
       >
