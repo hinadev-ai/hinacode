@@ -2,11 +2,8 @@ import { defineRule, type Context, type ESTree, type Variable } from "@oxlint/pl
 import { type Identifier, isCallee, reactReferences } from "./react.ts"
 
 const STATE_HOOKS = new Set(["useState", "useReducer", "useActionState", "useOptimistic"])
-// Direct manipulation must render on the next frame: typing, pointing, dragging, focus, and a control
-// showing its own new state, such as a menu opening or a checkbox ticking.
 const URGENT_HANDLER =
   /^on(Change|Input|BeforeInput|Select|Key|Pointer|Mouse|Touch|Drag|Drop|Scroll|Wheel|Focus|Blur|Composition|Resize|Error|Load|Animation|Transition|ContextMenu|LostPointerCapture|GotPointerCapture|OpenChange|CheckedChange)/
-// React's convention: a prop named `action` or ending in `Action` runs inside a transition.
 const ACTION_PROP = /^(action|.+Action)$/
 
 export const preferStartTransition = defineRule({
@@ -52,7 +49,6 @@ export const preferStartTransition = defineRule({
   },
 })
 
-/** The variable bound to `b` in `const [a, b] = hook()`. */
 function secondBinding(sourceCode: Context["sourceCode"], call: ESTree.Node): Variable | undefined {
   const declarator = call.parent
   if (declarator?.type !== "VariableDeclarator" || declarator.id.type !== "ArrayPattern") return undefined
@@ -61,7 +57,6 @@ function secondBinding(sourceCode: Context["sourceCode"], call: ESTree.Node): Va
   return sourceCode.getDeclaredVariables(declarator).find((variable) => variable.name === element.name)
 }
 
-/** The name of the event prop that ends up calling `setter`, unless a transition wraps the call on the way. */
 function enclosingHandler(
   sourceCode: Context["sourceCode"],
   setter: Identifier,

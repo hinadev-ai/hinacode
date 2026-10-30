@@ -16,7 +16,7 @@ import {
   RiTerminalBoxLine,
   RiToolsLine,
 } from "react-icons/ri"
-import type { Compaction } from "../../shared/agent.ts"
+import type { Compaction, ProviderId } from "../../shared/agent.ts"
 import type { MessagePart, ToolCallStatus } from "../../shared/domain.ts"
 import { ansiSegments } from "../lib/ansi.ts"
 import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
@@ -32,7 +32,7 @@ import { AttachmentView } from "./AttachmentView.tsx"
 import { FindPartContext, FindPatternContext, Highlighted } from "./FindHighlight.tsx"
 import { HighlightedCode } from "./HighlightedCode.tsx"
 import { Markdown } from "./Markdown.tsx"
-import { ProviderIcon } from "./ProviderIcon.tsx"
+import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { SubagentStatusIcon } from "./ThreadAgents.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
 
@@ -51,10 +51,11 @@ export function MessagePartView({ part }: { part: MessagePart }) {
       return <AttachmentView attachment={part.attachment} />
     case "compaction":
       return <CompactionPart compaction={part.compaction} />
+    case "agent_switch":
+      return <AgentSwitchPart from={part.from} to={part.to} />
   }
 }
 
-/** How the agent got to its reply recedes, and comes back to full contrast once the user reaches for it. */
 const disclosureTrigger =
   "group/trigger -mx-2 flex w-[calc(100%+1rem)] min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-panel-open:text-foreground"
 
@@ -76,7 +77,6 @@ function ReasoningPart({ text }: { text: string }) {
         {m.message_thinking()}
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-1 border-l-2 border-border pl-3 text-xs whitespace-pre-wrap text-muted-foreground">
-        {/* Thinking ends in newlines, which pre-wrap would show as a blank line under the last sentence. */}
         {text.trim()}
       </CollapsibleContent>
     </Collapsible>
@@ -99,10 +99,9 @@ const toolIcons: Record<string, IconType> = {
 const field = (value: unknown, key: string): unknown =>
   typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined
 
-/** Tool results are a string or a list of content blocks; only the text blocks are worth showing. */
 export function formatOutput(output: unknown): string {
   if (typeof output === "string") return output
-  // Codex wraps an MCP tool's result in `{ content: [...] }`.
+  // FIXME: Codex wraps an MCP tool's result in `{ content: [...] }`
   const content = Array.isArray(output) ? output : field(output, "content")
   if (Array.isArray(content)) {
     return content
@@ -156,7 +155,6 @@ function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call"
   )
 }
 
-/** Inside a tool group the group scrolls, so the details grow to full height instead of scrolling on their own. */
 function ToolCallDetails({ call, summary, inGroup = false }: { call: ToolCall; summary: string; inGroup?: boolean }) {
   if (call.name === "Bash") {
     return <CommandView call={call} command={summary} scroll={inGroup ? "" : "max-h-80 overflow-auto"} />
@@ -174,10 +172,6 @@ function ToolCallDetails({ call, summary, inGroup = false }: { call: ToolCall; s
   )
 }
 
-/**
- * A sub-agent's work lives in its own view, so its row opens that view instead of expanding. A
- * background sub-agent's call returns as soon as it launches, so the row shows the sub-agent's status.
- */
 function SubagentCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call" }> }) {
   const { threadId } = useParams({ from: "/thread/$threadId" })
   const provider = useThreads((state) => state.byId[threadId]?.provider)
@@ -226,7 +220,6 @@ const toolKindLabel = {
   other: m.tool_kind_other,
 } satisfies Record<ToolKind, (inputs: { count: number }) => string>
 
-/** "Ran 2 commands and read 1 file", in the reader's language. */
 function summarizeTools(calls: ReadonlyArray<ToolCall>): string {
   const locale = getLocale()
   const summary = new Intl.ListFormat(locale, { type: "conjunction" }).format(
@@ -235,10 +228,6 @@ function summarizeTools(calls: ReadonlyArray<ToolCall>): string {
   return summary.charAt(0).toLocaleUpperCase(locale) + summary.slice(1)
 }
 
-/**
- * Back-to-back tool calls as one line that opens into a list of them, each opening into its output.
- * `index` is the first call's part index in message `messageId`.
- */
 export function ToolGroup({
   messageId,
   index,
@@ -295,7 +284,6 @@ export function ToolGroup({
   )
 }
 
-/** A command reads as its command and description. Any other tool reads as its name and summary. */
 function ToolRow({ call, reveal }: { call: ToolCall; reveal: FindRevealRequest | null }) {
   const truncate = reveal === null ? "truncate" : "wrap-anywhere"
   const isCommand = call.name === "Bash"
@@ -354,7 +342,6 @@ function ToolLabel({ call, truncate }: { call: ToolCall; truncate: string }) {
   )
 }
 
-/** A shell command as it would read in a terminal: the command, highlighted, then what it printed. */
 function CommandView({ call, command, scroll }: { call: ToolCall; command: string; scroll: string }) {
   const output = call.output === undefined ? "" : formatOutput(call.output).replace(/\n$/, "")
   return (
@@ -385,7 +372,6 @@ function AnsiText({ text }: { text: string }) {
   ))
 }
 
-/** Unmarked by Find on purpose: the command's row already carries its marks. */
 function ShellCode({ code }: { code: string }) {
   return (
     <FindPatternContext value={null}>
@@ -432,12 +418,24 @@ function FileChangePart({ path, diff }: { path: string; diff: string }) {
 
 const formatTokens = (tokens: number) => new Intl.NumberFormat(getLocale(), { notation: "compact" }).format(tokens)
 
-/** A rule across the transcript: what sits above it reaches the agent only as a summary from here on. */
 function CompactionPart({ compaction }: { compaction: Compaction }) {
   return (
     <div className="my-3 flex items-center gap-3 text-xs text-muted-foreground">
       <span aria-hidden className="h-px flex-1 bg-border" />
       <CompactionLabel compaction={compaction} />
+      <span aria-hidden className="h-px flex-1 bg-border" />
+    </div>
+  )
+}
+
+function AgentSwitchPart({ from, to }: { from: ProviderId; to: ProviderId }) {
+  return (
+    <div className="my-3 flex items-center gap-3 text-xs text-muted-foreground">
+      <span aria-hidden className="h-px flex-1 bg-border" />
+      <span className="flex items-center gap-1.5">
+        <ProviderIcon provider={to} />
+        {m.agent_switched({ from: providerLabel[from](), to: providerLabel[to]() })}
+      </span>
       <span aria-hidden className="h-px flex-1 bg-border" />
     </div>
   )
@@ -472,7 +470,7 @@ function CompactionLabel({ compaction }: { compaction: Compaction }) {
         <span className="flex min-w-0 items-center gap-1.5">
           <RiErrorWarningLine aria-hidden className="size-3.5 shrink-0 text-destructive" />
           {m.compaction_failed()}
-          {compaction.message !== null && <span className="min-w-0 truncate">{compaction.message}</span>}
+          {compaction.message !== null && <span className="min-w-0">{compaction.message}</span>}
         </span>
       )
   }

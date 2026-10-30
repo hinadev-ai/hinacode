@@ -20,22 +20,14 @@ const onFileDragOver = (event: DragEvent<HTMLElement>) => {
 interface TinyVmScreenProps {
   readonly threadId: string
   readonly control: VmControl
-  /** Leaves the rounding and the control outline to its container, as the floating screen does. */
   readonly bare?: boolean
-  /** Shown over the screen while it is full screen, where the toolbar around it is gone. */
   readonly fullscreenControls?: ReactNode
   readonly onHandBack: () => void
   readonly onReconnect: () => void
-  /** Host paths of files or folders dropped on the screen; empty when the drop had files without host paths. */
   readonly onDropFiles: (paths: ReadonlyArray<string>) => void
-  /** A drop is being copied into the VM. */
   readonly dropping: boolean
 }
 
-/**
- * The VM's desktop through noVNC, view-only unless the user has control. Remounted per sandbox and reconnect.
- * Loaded lazily: noVNC probes for an H.264 decoder in a top-level await when its module is evaluated.
- */
 export default function TinyVmScreen({
   threadId,
   control,
@@ -106,7 +98,6 @@ export default function TinyVmScreen({
   useEffect(() => {
     const rfb = rfbRef.current
     if (rfb) applyControl(rfb)
-    // Only on the hand over itself, so opening the view never takes focus from the composer.
     if (control === "user" && controlRef.current !== "user") rfb?.focus()
     controlRef.current = control
   }, [control])
@@ -117,7 +108,7 @@ export default function TinyVmScreen({
     return () => document.removeEventListener("fullscreenchange", onChange)
   }, [id])
 
-  // noVNC takes every key while the user has control, Tab included, so this chord is the keyboard's way out.
+  // FIXME: noVNC takes every key while the user has control, Tab included
   const onKeyDownCapture = (event: KeyboardEvent<HTMLElement>) => {
     if (control !== "user" || !matchesKeyboardEvent(event.nativeEvent, HAND_BACK_CHORD)) return
     event.preventDefault()

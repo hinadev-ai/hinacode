@@ -12,10 +12,6 @@ export interface Forward {
   readonly close: Effect.Effect<void>
 }
 
-/**
- * Listens on a loopback port on this Mac and pipes each connection into one sbx tunnel to the guest port.
- * DevTools HTTP and its WebSocket are separate TCP connections, so each one gets its own tunnel.
- */
 export const startForward = (
   openTunnel: () => Effect.Effect<TunnelSocket, PasskeyError>,
 ): Effect.Effect<Forward, PasskeyError> =>

@@ -11,58 +11,40 @@ import { parseGitHubPullRequestUrl } from "../../shared/github.ts"
 import { Threads } from "./Threads.ts"
 import { Worktrees } from "./Worktrees.ts"
 
-/** Only a thread working in a ready worktree has a branch of its own to open a pull request from. */
 export class NoBranchError extends Schema.TaggedError<NoBranchError>()("NoBranchError", { threadId: Schema.String }) {
   override get message(): string {
     return "This thread has no worktree branch to open a pull request from"
   }
 }
 
-/** The link table row. `watch` is a JSON text column, null while nobody watches the link. */
 const LinkRow = Schema.Struct({
   ...PullRequestLink.fields,
   watch: Schema.NullOr(Schema.fromJsonString(PullRequestWatch)),
 })
 
-/** Pull requests an agent registered for a thread. Every change is pushed as `thread.pullRequests`. */
 export class PullRequests extends Context.Service<
   PullRequests,
   {
     readonly list: (threadId: string) => Effect.Effect<ReadonlyArray<PullRequestLink>, PersistenceError>
-    /** Every thread's links, oldest first, so the sidebar can show them without one call per thread. */
     readonly listAll: Effect.Effect<ReadonlyArray<PullRequestLink>, PersistenceError>
-    /** Links with a live watch, oldest first. */
     readonly watched: Effect.Effect<ReadonlyArray<PullRequestLink>, PersistenceError>
     readonly find: (linkId: string) => Effect.Effect<PullRequestLink | null, PersistenceError>
-    /** Returns the canonical URL. Linking the same pull request twice is a no-op. */
     readonly link: (
       threadId: string,
       url: string,
     ) => Effect.Effect<string, PersistenceError | PullRequestUrlInvalidError>
     readonly unlink: (threadId: string, url: string) => Effect.Effect<void, PersistenceError>
-    /**
-     * Starts watching the pull request for the thread, linking it first when it is not linked yet. Watching
-     * a link that is already watched restarts the watch under a new generation with no snapshot, so the
-     * next poll reports the pull request as it stands. An empty `events` watches for everything.
-     */
     readonly watch: (
       threadId: string,
       url: string,
       events?: ReadonlyArray<WatchEventKind>,
     ) => Effect.Effect<PullRequestLink, PersistenceError | PullRequestUrlInvalidError>
-    /** Stops watching. The link itself stays. Unknown links are a no-op. */
     readonly unwatch: (threadId: string, url: string) => Effect.Effect<void, PersistenceError>
-    /**
-     * Replaces a link's watch, or clears it with null, but only while the stored watch still carries
-     * `generation`. Returns false when the watch was stopped or restarted in the meantime, so a poll that
-     * started earlier drops its result instead of resurrecting a dead watch.
-     */
     readonly updateWatch: (
       linkId: string,
       generation: PullRequestWatch["generation"],
       watch: PullRequestWatch | null,
     ) => Effect.Effect<boolean, PersistenceError>
-    /** Pushes the thread's worktree branch, opens a pull request against its base ref, and links it. */
     readonly create: (
       threadId: string,
     ) => Effect.Effect<

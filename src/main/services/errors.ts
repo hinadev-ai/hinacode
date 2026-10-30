@@ -10,7 +10,7 @@ export class PersistenceError extends Schema.TaggedError<PersistenceError>()("Pe
 }
 
 export class NotFoundError extends Schema.TaggedError<NotFoundError>()("NotFoundError", {
-  entity: Schema.Literals(["project", "thread", "worktree", "automation", "terminal", "account"]),
+  entity: Schema.Literals(["project", "thread", "worktree", "automation", "terminal", "account", "fork point"]),
   id: Schema.String,
 }) {
   override get message(): string {
@@ -43,7 +43,6 @@ export class ProjectFolderNotEmptyError extends Schema.TaggedError<ProjectFolder
   }
 }
 
-/** The renderer asked to read a checkout that is neither a project root nor a live worktree. */
 export class UnknownRootError extends Schema.TaggedError<UnknownRootError>()("UnknownRootError", {
   root: Schema.String,
 }) {
@@ -52,7 +51,6 @@ export class UnknownRootError extends Schema.TaggedError<UnknownRootError>()("Un
   }
 }
 
-/** A thread asked for a branch whose checkout another thread already owns. */
 export class PullRequestElsewhereError extends Schema.TaggedError<PullRequestElsewhereError>()(
   "PullRequestElsewhereError",
   { url: Schema.String, repository: Schema.String },
@@ -71,7 +69,6 @@ export class WorktreeTakenError extends Schema.TaggedError<WorktreeTakenError>()
   }
 }
 
-/** The agent and workspace of a thread are fixed once it has a message, its account once it has a session. */
 export class ThreadStartedError extends Schema.TaggedError<ThreadStartedError>()("ThreadStartedError", {
   id: Schema.String,
 }) {
@@ -80,7 +77,6 @@ export class ThreadStartedError extends Schema.TaggedError<ThreadStartedError>()
   }
 }
 
-/** Switching the project root's branch would pull the files out from under another thread's turn. */
 export class RootBusyError extends Schema.TaggedError<RootBusyError>()("RootBusyError", {
   path: Schema.String,
 }) {
@@ -89,7 +85,6 @@ export class RootBusyError extends Schema.TaggedError<RootBusyError>()("RootBusy
   }
 }
 
-/** Removing the account would leave threads with transcripts nobody can resume. */
 export class AccountInUseError extends Schema.TaggedError<AccountInUseError>()("AccountInUseError", {
   id: Schema.String,
   threads: Schema.Number,
@@ -99,7 +94,6 @@ export class AccountInUseError extends Schema.TaggedError<AccountInUseError>()("
   }
 }
 
-/** A turn or approval is in flight, and archiving would hide it from the active sidebar. */
 export class ThreadBusyError extends Schema.TaggedError<ThreadBusyError>()("ThreadBusyError", {
   id: Schema.String,
 }) {
@@ -113,7 +107,6 @@ const busyReasons = {
   shared: "another thread still uses it",
 } as const
 
-/** Removing the worktree now would delete files something is still working on. */
 export class WorktreeBusyError extends Schema.TaggedError<WorktreeBusyError>()("WorktreeBusyError", {
   path: Schema.String,
   reason: Schema.Literals(["turn", "shared"]),
@@ -123,7 +116,6 @@ export class WorktreeBusyError extends Schema.TaggedError<WorktreeBusyError>()("
   }
 }
 
-/** Wraps SQL and row-decoding failures so they share one fixed, secret-free message. */
 export const persistence =
   (operation: string) =>
   (cause: unknown): PersistenceError =>

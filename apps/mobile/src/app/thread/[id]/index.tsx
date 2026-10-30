@@ -1,13 +1,16 @@
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router"
+import { useHeaderHeight } from "expo-router/react-navigation"
 import { useCallback, useState } from "react"
 import { AppState, KeyboardAvoidingView, StyleSheet, Text, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { Chat } from "@/components/chat"
 import { FilesPanel } from "@/components/files"
+import { isIOS } from "@/components/glass"
 import { ThreadPullRequestChip } from "@/components/pull-request-badge"
 import { PullRequests } from "@/components/pull-requests"
 import { TerminalPanel } from "@/components/terminal"
-import { SidebarButton } from "@/components/thread-sidebar"
+import { useThreadActions } from "@/components/thread-actions"
+import { SidebarButton, SidebarToolbarButton } from "@/components/thread-sidebar"
 import { IconButton, Notice, ProviderLabel, type Segment, SegmentedControl, ThreadStatusPill } from "@/components/ui"
 import { useThreadConnection } from "@/hooks/use-server"
 import { READABLE_WIDTH } from "@/constants/theme"
@@ -15,6 +18,8 @@ import { useSplitLayout } from "@/hooks/use-split-layout"
 import { useTheme } from "@/hooks/use-theme"
 import { useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
+import type { Thread } from "@shared/domain.ts"
+import type { ThreadActionName } from "@/lib/thread-actions"
 import { useThreads } from "@/stores/threads"
 import { useUnseen } from "@/stores/unseen"
 
@@ -34,6 +39,8 @@ export default function ThreadScreen() {
   const thread = useThreads((state) => state.byId[id])
   const loaded = useThreads((state) => state.status === "ready")
   const status = useThreadConnection(id)
+  // KeyboardAvoidingView measures itself against its parent, which starts below the stack header.
+  const headerHeight = useHeaderHeight()
   const terminalRemountKey = useConnection((state) => (state.features.has("terminal-attach") ? "attached" : state.generation))
   const [tab, setTab] = useState<Tab>("chat")
   // Files and the shell keep their state across tab switches once opened, and end with this screen.
@@ -55,36 +62,62 @@ export default function ThreadScreen() {
     if (!opened.has(next)) setOpened(new Set([...opened, next]))
   }
 
+  const title = thread?.title || copy("mobile_notify_untitled")
+
   return (
-    <SafeAreaView edges={["top", "bottom"]} style={[styles.screen, { backgroundColor: theme.background }]}>
-      <Stack.Screen options={{ headerShown: false }} />
-      <View style={[styles.header, { borderColor: theme.border }]}>
-        {/* In a split the list replaces the back stack, so this corner shows or hides it instead. */}
-        {split ? (
-          <SidebarButton />
-        ) : (
-          <IconButton
-            testID="back-button"
-            icon="RiArrowLeftSLine"
-            accessibilityLabel={copy("mobile_thread_back")}
-            onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
-          />
-        )}
-        <View style={styles.titleColumn}>
-          <Text accessibilityRole="header" numberOfLines={1} style={[styles.title, { color: theme.text }]}>
-            {thread?.title || copy("mobile_notify_untitled")}
-          </Text>
-          {thread !== undefined && <ProviderLabel provider={thread.provider} size={12} />}
-        </View>
-        {thread !== undefined && (
-          <View style={styles.status}>
-            <ThreadPullRequestChip thread={thread} onPress={() => select("prs")} />
-            <ThreadStatusPill status={thread.status} />
+    <SafeAreaView
+      edges={isIOS ? ["bottom"] : ["top", "bottom"]}
+      style={[styles.screen, { backgroundColor: theme.background }]}
+    >
+      {isIOS ? (
+        <>
+          <Stack.Screen options={{ headerShown: true, title, headerBackVisible: !split }} />
+          {split && <SidebarToolbarButton />}
+          {thread !== undefined && <ThreadMenu thread={thread} />}
+        </>
+      ) : (
+        <Stack.Screen options={{ headerShown: false }} />
+      )}
+      {!isIOS && (
+        <View style={[styles.header, { borderColor: theme.border }]}>
+          {/* In a split the list replaces the back stack, so this corner shows or hides it instead. */}
+          {split ? (
+            <SidebarButton />
+          ) : (
+            <IconButton
+              testID="back-button"
+              icon="RiArrowLeftSLine"
+              accessibilityLabel={copy("mobile_thread_back")}
+              onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
+            />
+          )}
+          <View style={styles.titleColumn}>
+            <Text accessibilityRole="header" numberOfLines={1} style={[styles.title, { color: theme.text }]}>
+              {title}
+            </Text>
+            {thread !== undefined && <ProviderLabel provider={thread.provider} size={12} />}
           </View>
-        )}
-      </View>
+          {thread !== undefined && (
+            <View style={styles.status}>
+              <ThreadPullRequestChip thread={thread} onPress={() => select("prs")} />
+              <ThreadStatusPill status={thread.status} />
+            </View>
+          )}
+        </View>
+      )}
       {/* Lined up with the chat column below it. */}
       <View style={styles.readable}>
+        {isIOS && thread !== undefined && (
+          <View style={styles.subheader}>
+            <ProviderLabel provider={thread.provider} size={12} />
+            <View style={styles.spacer} />
+            <ThreadPullRequestChip thread={thread} onPress={() => select("prs")} />
+            {/* A pill aligns itself to the start, which in this row is the top. */}
+            <View>
+              <ThreadStatusPill status={thread.status} />
+            </View>
+          </View>
+        )}
         <SegmentedControl
           accessibilityLabel={copy("mobile_thread_tabs")}
           segments={tabs}
@@ -106,12 +139,12 @@ export default function ThreadScreen() {
         </View>
       ) : (
         // Android draws edge to edge, so the window no longer shrinks for the keyboard and needs padding too.
-        <KeyboardAvoidingView style={styles.flex} behavior="padding">
+        <KeyboardAvoidingView style={styles.flex} behavior="padding" keyboardVerticalOffset={headerHeight}>
           <View style={[styles.flex, styles.readable, tab !== "chat" && styles.hidden]}>
-            <Chat thread={thread} />
+            <Chat thread={thread} active={tab === "chat"} />
           </View>
           {opened.has("files") && (
-            <View style={[styles.flex, tab !== "files" && styles.hidden]}>
+            <View style={[styles.flex, styles.readable, tab !== "files" && styles.hidden]}>
               <FilesPanel thread={thread} />
             </View>
           )}
@@ -124,6 +157,52 @@ export default function ThreadScreen() {
         </KeyboardAvoidingView>
       )}
     </SafeAreaView>
+  )
+}
+
+const actionSymbols = {
+  pin: "pin",
+  unpin: "pin.slash",
+  "copy-id": "doc.on.doc",
+  archive: "archivebox",
+  unarchive: "tray.and.arrow.up",
+} as const satisfies Record<ThreadActionName, string>
+
+/**
+ * The thread's actions in the native iOS header menu, with the same behavior as the list's long-press sheet.
+ * Archiving the open thread leaves it, as Mail leaves a message it archives.
+ */
+function ThreadMenu({ thread }: { thread: Thread }) {
+  const state = useThreadActions(thread)
+  const run = async (name: ThreadActionName) => {
+    if (!(await state.run(name))) return
+    if (name === "archive") {
+      if (router.canGoBack()) router.back()
+      else router.replace("/")
+    }
+  }
+  return (
+    <>
+      <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Menu icon="ellipsis.circle" accessibilityLabel={copy("mobile_thread_actions")}>
+          {state.actions.map((action) => (
+            <Stack.Toolbar.MenuAction
+              key={action.name}
+              icon={actionSymbols[action.name]}
+              disabled={state.running !== null}
+              onPress={() => void run(action.name)}
+            >
+              {action.label}
+            </Stack.Toolbar.MenuAction>
+          ))}
+        </Stack.Toolbar.Menu>
+      </Stack.Toolbar>
+      {state.error !== null && (
+        <View style={styles.banner}>
+          <Notice text={state.error} tone="danger" />
+        </View>
+      )}
+    </>
   )
 }
 
@@ -143,6 +222,14 @@ const styles = StyleSheet.create({
   titleColumn: { flex: 1, gap: 2 },
   title: { fontSize: 16, fontWeight: "600" },
   status: { flexDirection: "row", alignItems: "center", gap: 6, paddingRight: 8 },
+  subheader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+  },
+  spacer: { flex: 1 },
   tabs: { margin: 12 },
   banner: { paddingHorizontal: 12, paddingBottom: 8 },
   missing: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },

@@ -12,6 +12,17 @@ import {
 } from "./remote.ts"
 
 describe("remote frames", () => {
+  it.each([
+    { type: "auth", token: "token" },
+    { type: "auth", nonce: "nonce", proof: "proof" },
+  ])("keeps the compact-events choice for $type authentication", (auth) => {
+    for (const compactEvents of [true, false]) {
+      const frame = { ...auth, compactEvents }
+      expect(Schema.decodeUnknownSync(ClientFrame)(frame)).toEqual(frame)
+    }
+    expect(Schema.decodeUnknownOption(ClientFrame)({ ...auth, compactEvents: "true" })._tag).toBe("None")
+  })
+
   it("keeps known capabilities when ready advertises a future feature", () => {
     const ready = { type: "ready", version: 1, features: ["heartbeat", "some-future-feature"] }
     const frame = Schema.decodeUnknownSync(ServerFrame)(ready)
@@ -32,6 +43,21 @@ describe("remote frames", () => {
     const ready = { type: "ready", version: 1, features: ["heartbeat", "call-keys"] }
     expect(Schema.decodeUnknownSync(ServerFrame)(ready)).toEqual(ready)
     expect(Schema.decodeUnknownSync(ServerFrame)({ type: "ready", version: 1 })).toEqual({ type: "ready", version: 1 })
+  })
+
+  it("lets a cloud ask a desktop for the thread tools' calls and nothing else", () => {
+    const ask = { type: "ask", id: 1, method: "threads.transcript", payload: { threadId: "t" } }
+    expect(Schema.decodeUnknownSync(ServerFrame)(ask)).toEqual(ask)
+    expect(Schema.decodeUnknownOption(ServerFrame)({ ...ask, method: "threads.delete" })._tag).toBe("None")
+    expect(Schema.decodeUnknownOption(ServerFrame)({ ...ask, method: "fs.write" })._tag).toBe("None")
+  })
+
+  it("decodes the desktop's hub offer and its answers", () => {
+    expect(Schema.decodeUnknownSync(ClientFrame)({ type: "hub" })).toEqual({ type: "hub" })
+    const answered = { type: "answer", id: 1, envelope: { result: [] } }
+    expect(Schema.decodeUnknownSync(ClientFrame)(answered)).toEqual(answered)
+    const failed = { type: "answer", id: 2, envelope: { error: { tag: "NotFoundError", message: "gone" } } }
+    expect(Schema.decodeUnknownSync(ClientFrame)(failed)).toEqual(failed)
   })
 })
 

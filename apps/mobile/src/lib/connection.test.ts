@@ -46,7 +46,8 @@ class FakeSocket {
 
 vi.stubGlobal("WebSocket", FakeSocket)
 
-const { call, reconnectNow, setServers, useConnection } = await import("./connection")
+const { call, onRemembered, reconnectNow, restoreAnswers, setForeground, setServers, useConnection } =
+  await import("./connection")
 
 const server = (id: string, port: number): StoredServer => ({
   id,
@@ -86,6 +87,7 @@ const thread = (id: string, projectId: string) => ({
   usageLimit: null,
   sortIndex: 0,
   pinnedAt: null,
+  snoozedUntil: null,
   queue: [],
   createdBy: "user",
   createdAt: "2026-10-24T00:00:00.000Z",
@@ -157,6 +159,75 @@ describe("call", () => {
     expect((await second).map((entry) => entry.name)).toEqual(["web", "docs", "api"])
   })
 
+  it("lists the answers saved at the last launch while the server is still connecting", async () => {
+    setServers([])
+    setServers([server("a", 1001)])
+    restoreAnswers("a", { "threads.list": { payload: "null", result: [thread("t-saved", "web")] } })
+    expect((await call("threads.list", undefined)).map((entry) => entry.id)).toEqual(["t-saved"])
+  })
+
+  it("sends a call on a saved thread to its server once it reconnects, after an offline launch", async () => {
+    setServers([])
+    setServers([server("a", 1001), server("b", 1002)])
+    restoreAnswers("a", { "threads.list": { payload: "null", result: [thread("t-saved", "web")] } })
+    restoreAnswers("b", { "threads.list": { payload: "null", result: [] } })
+    socketOf(1001).onclose?.({ code: 1006 })
+    socketOf(1002).onclose?.({ code: 1006 })
+    expect((await call("threads.list", undefined)).map((entry) => entry.id)).toEqual(["t-saved"])
+    expect(useConnection.getState().servers.map((entry) => entry.listed)).toEqual([false, false])
+
+    const sending = call("threads.send", { threadId: "t-saved", prompt: "hi" })
+    let failure: unknown
+    sending.catch((cause) => (failure = cause))
+    await flush()
+    expect(failure).toBeUndefined()
+
+    reconnectNow("a")
+    socketOf(1001).ready({ id: "env-a", name: "studio" })
+    await flush()
+    expect(socketOf(1001).calls("threads.send")).toHaveLength(1)
+  })
+
+  it("does not route to a server unpaired before its saved answers were read", async () => {
+    setServers([server("b", 1002), server("c", 1003)])
+    socketOf(1003).ready({ id: "env-c", name: "laptop" })
+    restoreAnswers("a", { "threads.list": { payload: "null", result: [thread("t-saved", "web")] } })
+    const listing = call("threads.list", undefined)
+    socketOf(1002).answer("threads.list", [])
+    socketOf(1003).answer("threads.list", [])
+    expect(await listing).toEqual([])
+
+    await expect(call("threads.send", { threadId: "t-saved", prompt: "hi" })).rejects.toMatchObject({
+      tag: "NotFoundError",
+    })
+  })
+
+  it("routes by a live answer over another server's saved one", async () => {
+    socketOf(1001).onclose?.({ code: 1006 })
+    const listing = call("threads.list", undefined)
+    socketOf(1002).answer("threads.list", [thread("t-moved", "api")])
+    await listing
+    restoreAnswers("a", { "threads.list": { payload: "null", result: [thread("t-moved", "web")] } })
+
+    unanswered(call("threads.send", { threadId: "t-moved", prompt: "hi" }))
+    await flush()
+    expect(socketOf(1002).calls("threads.send")).toHaveLength(1)
+  })
+
+  it("reports each fresh answer, to be saved for the next launch", async () => {
+    const saved: unknown[] = []
+    const stop = onRemembered((serverId, answers) => saved.push([serverId, answers["threads.list"]?.result]))
+    const listing = call("threads.list", undefined)
+    socketOf(1001).answer("threads.list", [thread("t-web", "web")])
+    socketOf(1002).answer("threads.list", [])
+    await listing
+    stop()
+    expect(saved).toEqual([
+      ["a", [thread("t-web", "web")]],
+      ["b", []],
+    ])
+  })
+
   it("sends a named call to the server it names", async () => {
     unanswered(call("projects.create", { name: "api", rootPath: "/srv/api", setupScript: null }, { server: "b" }))
     await flush()
@@ -166,6 +237,23 @@ describe("call", () => {
 })
 
 describe("servers", () => {
+  it("keeps restored servers offline during a background launch until the app returns", () => {
+    setServers([])
+    FakeSocket.all = []
+    setForeground(false)
+    try {
+      setServers([server("a", 1001)])
+      expect(FakeSocket.all).toHaveLength(0)
+      expect(useConnection.getState().status).toBe("offline")
+      setForeground(true)
+      expect(FakeSocket.all).toHaveLength(1)
+      socketOf(1001).ready({ id: "env-a", name: "studio" })
+      expect(useConnection.getState().status).toBe("connected")
+    } finally {
+      setForeground(true)
+    }
+  })
+
   it("names each server after its first handshake", () => {
     expect(useConnection.getState().servers.map((entry) => [entry.name, entry.environmentId])).toEqual([
       ["studio", "env-a"],

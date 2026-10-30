@@ -15,9 +15,10 @@ import type { IconType } from "react-icons"
 import {
   RiArrowRightSLine,
   RiAtLine,
-  RiContractUpDownLine,
+  RiCollapseVerticalLine,
   RiFileCodeLine,
   RiFileCopyLine,
+  RiFileEditLine,
   RiFileLine,
   RiFileMusicLine,
   RiFileTextLine,
@@ -32,6 +33,7 @@ import {
 import { type FsEntry, isThreadBusy, type Thread } from "../../shared/domain.ts"
 import { extensionOf, type FilePreview, previewOf } from "../lib/filePreview.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
+import { FILE_TREE_HEIGHT_BOUNDS } from "../lib/panelSize.ts"
 import { callPromise, onPushEvent } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useDrafts } from "../stores/drafts.ts"
@@ -47,8 +49,7 @@ import { DropdownMenuItem } from "./ui/dropdown-menu.tsx"
 const ROW_HEIGHT = 24
 const INDENT = 12
 const TYPEAHEAD_RESET_MS = 600
-const DEFAULT_TREE_HEIGHT = 240
-const MIN_PANE_HEIGHT = 96
+const MIN_PANE_HEIGHT = FILE_TREE_HEIGHT_BOUNDS.min
 
 const iconsByPreview: Readonly<Record<FilePreview, IconType>> = {
   image: RiImageLine,
@@ -78,22 +79,15 @@ const fileIcon = (entry: FsEntry, expanded: boolean): IconType => {
   return iconsByExtension[extension] ?? (CODE.test(extension) ? RiFileCodeLine : RiFileLine)
 }
 
-/** Every folder from the root down to `path`, which all list something that may have changed with it. */
 const foldersDownTo = (path: string) =>
   path === "" ? [""] : ["", ...path.split("/").map((_, index, parts) => parts.slice(0, index + 1).join("/"))]
 
 interface FileExplorerProps {
   readonly thread: Thread
-  /** The thread's working directory: its worktree, or the project root. */
   readonly root: string
-  /** Set when `root` is a live worktree, whose changes can be shown as diffs. */
   readonly worktreeId: string | null
 }
 
-/**
- * The files of a thread's working directory as a lazily listed, virtualized WAI-ARIA tree. Focus stays on
- * the tree and `aria-activedescendant` points at the selected row, so rows can scroll out of the DOM.
- */
 export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
   const canReveal = useThreadEnvironment(thread.id) === null
   const tree = useExplorer((state) => state.byRoot[root] ?? emptyTree)
@@ -111,7 +105,8 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
   const listRef = useRef<LegendListRef>(null)
   const typeahead = useRef({ text: "", at: 0 })
   const containerRef = useRef<HTMLDivElement>(null)
-  const [treeHeight, setTreeHeight] = useState(DEFAULT_TREE_HEIGHT)
+  const treeHeight = useUi((state) => state.fileTreeHeight)
+  const setTreeHeight = useUi((state) => state.setFileTreeHeight)
   const rowId = `${useId()}-row-`
 
   useEffect(() => {
@@ -136,7 +131,6 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
     [load, root],
   )
 
-  // A turn can commit or stage without touching a watched folder, which changes the colors.
   const busy = isThreadBusy(thread.status)
   const wasBusy = useRef(busy)
   useEffect(() => {
@@ -144,21 +138,26 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
     wasBusy.current = busy
   }, [busy, refresh, root])
 
-  // The tree element only exists once the root is listed, so a request made on mount waits for that.
   const focusRequested = useUi((state) => state.viewFocusRequest === "files")
   const loaded = tree.children[""] !== undefined || tree.error !== null
   useEffect(() => {
     if (!focusRequested || !loaded) return
     useUi.getState().clearViewFocusRequest()
-    // After the side panel dialog, if any, has placed its own initial focus.
+    // FIXME: Base UI Dialog places its initial focus a frame late, which would take focus back
     requestAnimationFrame(() => treeRef.current?.focus())
   }, [focusRequested, loaded])
 
+  // FIXME: scrolling a freshly mounted LegendList before the scroller has its height clamps to 0 and blanks the tree
+  const scrolledIndex = useRef(selectedIndex)
   useEffect(() => {
+    if (selectedIndex === scrolledIndex.current) return
+    scrolledIndex.current = selectedIndex
     if (selectedIndex >= 0) void listRef.current?.scrollIndexIntoView({ index: selectedIndex, animated: false })
   }, [selectedIndex])
 
   const selectedEntry = rows[selectedIndex]?.entry
+  const openedEntry =
+    tree.opened === null ? undefined : tree.children[parentOf(tree.opened)]?.find((entry) => entry.path === tree.opened)
   const hasDiff = (entry: FsEntry) => worktreeId !== null && entry.kind === "file" && entry.gitStatus !== null
 
   const mention = (entry: FsEntry) => {
@@ -177,7 +176,6 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
     treeRef.current?.focus()
   }
 
-  // A file needs the room an editor gets.
   const fileOpen = tree.opened !== null
   useEffect(() => {
     useUi.getState().setSidePanelWide(fileOpen)
@@ -194,7 +192,6 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
     if (row) select(root, row.entry.path)
   }
 
-  /** Selects the next entry whose name starts with what was typed. Typing one letter again cycles. */
   const jump = (key: string) => {
     const now = performance.now()
     const state = typeahead.current
@@ -239,7 +236,6 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
       case "Escape":
         if (tree.opened === null) return
         openFile(root, null)
-        // Closing the file must not also close the side panel dialog around it.
         event.stopPropagation()
         break
       default:
@@ -280,7 +276,11 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground" title={root}>
           {rootName}
         </span>
-        <HeaderButton label={m.explorer_collapse_all()} onClick={() => collapseAll(root)} icon={RiContractUpDownLine} />
+        <HeaderButton
+          label={m.explorer_collapse_all()}
+          onClick={() => collapseAll(root)}
+          icon={RiCollapseVerticalLine}
+        />
         {canReveal && (
           <HeaderButton
             label={m.panel_reveal()}
@@ -337,7 +337,7 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
                 </DropdownMenuItem>
                 {hasDiff(selectedEntry) && (
                   <DropdownMenuItem onClick={() => showChanges(selectedEntry)}>
-                    <RiFileTextLine aria-hidden />
+                    <RiFileEditLine aria-hidden />
                     {m.explorer_show_changes()}
                   </DropdownMenuItem>
                 )}
@@ -359,7 +359,13 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
       {tree.opened !== null && (
         <>
           <SplitHandle height={treeHeight} onResize={setTreeHeight} container={containerRef} />
-          <FileViewer threadId={thread.id} root={root} path={tree.opened} onClose={closeFile} />
+          <FileViewer
+            threadId={thread.id}
+            root={root}
+            path={tree.opened}
+            onClose={closeFile}
+            onShowChanges={openedEntry && hasDiff(openedEntry) ? () => showChanges(openedEntry) : undefined}
+          />
         </>
       )}
       <p aria-live="polite" className="sr-only">
@@ -380,11 +386,9 @@ function HeaderButton({ label, icon: Icon, onClick }: { label: string; icon: Ico
 interface SplitHandleProps {
   readonly height: number
   readonly onResize: (height: number) => void
-  /** The explorer, whose height bounds the tree's. */
   readonly container: RefObject<HTMLDivElement | null>
 }
 
-/** The WAI-ARIA window splitter between the tree and the file viewer, dragged or moved with Up and Down. */
 function SplitHandle({ height, onResize, container }: SplitHandleProps) {
   const max = () => Math.max(MIN_PANE_HEIGHT, (container.current?.clientHeight ?? 0) - MIN_PANE_HEIGHT * 2)
   const resize = (next: number) => onResize(Math.round(Math.min(Math.max(next, MIN_PANE_HEIGHT), max())))
@@ -459,8 +463,8 @@ function TreeItem({ row, id, selected, expanded, unsaved, onClick, onContextMenu
       aria-describedby={description ? `${id}-status` : undefined}
       onClick={() => onClick(entry)}
       onContextMenu={() => onContextMenu(entry)}
-      style={{ paddingLeft: 8 + depth * INDENT }}
-      className="relative mx-1 flex h-6 cursor-default items-center gap-1 rounded-md pr-2 text-[0.8125rem] select-none hover:bg-muted/60 aria-selected:bg-muted group-focus/tree:aria-selected:ring-1 group-focus/tree:aria-selected:ring-ring group-focus/tree:aria-selected:ring-inset"
+      style={{ height: ROW_HEIGHT, paddingLeft: 8 + depth * INDENT }}
+      className="relative mx-1 flex cursor-default items-center gap-1 rounded-md pr-2 text-[0.8125rem] select-none hover:bg-muted/60 aria-selected:bg-muted group-focus/tree:aria-selected:ring-1 group-focus/tree:aria-selected:ring-ring group-focus/tree:aria-selected:ring-inset"
     >
       {Array.from({ length: depth }, (_, level) => (
         <span

@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// Usage: analyze-profile.ts <file.cpuprofile> [top]   Prints top functions by self time and by total (inclusive) time.
 import { readFileSync } from "node:fs"
 
 type ProfileNode = {

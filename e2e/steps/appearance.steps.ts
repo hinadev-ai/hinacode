@@ -2,7 +2,6 @@ import { expect } from "@playwright/test"
 import { Given, Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
 
-// Saved before contrast existed, so it reads back with the default contrast.
 const existingAppearance = { theme: "catppuccin-latte", fontSize: 18, uiFont: "sans-serif", monoFont: "monospace" }
 
 Given("an existing named theme and font preference", ({ seed }) => {
@@ -92,11 +91,6 @@ Then("text and keyboard focus meet contrast requirements", async ({ app }) => {
   })
 })
 
-/**
- * WCAG contrast of each [foreground, background] pair of root custom properties, flattened through a canvas so
- * translucent and color-mix tokens resolve the way they render. "focus-ring" reads the focused element's ring.
- * Runs in the page, so it cannot use anything from this module.
- */
 function contrastRatios(pairs: ReadonlyArray<ReadonlyArray<string>>): number[] {
   const context = new OffscreenCanvas(1, 1).getContext("2d", { willReadFrequently: true })
   if (!context) throw new Error("Canvas is unavailable")

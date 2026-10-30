@@ -7,8 +7,6 @@ export default Effect.gen(function* () {
   yield* sql`ALTER TABLE agent_account ADD COLUMN config_dir TEXT NOT NULL DEFAULT ''`
   yield* sql`ALTER TABLE agent_account ADD COLUMN binary TEXT NOT NULL DEFAULT ''`
   yield* sql`UPDATE agent_account SET binary = provider`
-  // Accounts added before this kept their home at `<userData>/accounts/<id>`, and the database file sits in
-  // `userData`, so its path is the only place a migration can learn that directory from.
   const [main] = yield* sql<{ readonly file: string }>`SELECT file FROM pragma_database_list WHERE name = 'main'`
   if (!main?.file) return
   const root = join(dirname(main.file), "accounts")

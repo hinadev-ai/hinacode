@@ -60,7 +60,7 @@ function propertyName(node: ESTree.Node): string | null {
     : null
 }
 
-// oxlint's default env omits Node and DOM globals such as setTimeout, so `isGlobalReference` misses them.
+// FIXME: oxlint's default env omits Node and DOM globals such as setTimeout, so isGlobalReference misses them
 function isLocal(scope: Scope | null, name: string): boolean {
   for (; scope && scope.type !== "global"; scope = scope.upper) if (scope.set.has(name)) return true
   return false

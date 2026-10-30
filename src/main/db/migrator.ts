@@ -22,13 +22,15 @@ import pullRequestGuide from "./migrations/0020_pull_request_guide.ts"
 import projectKind from "./migrations/0021_project_kind.ts"
 import environmentRelay from "./migrations/0022_environment_relay.ts"
 import environmentSource from "./migrations/0023_environment_source.ts"
+import threadSnooze from "./migrations/0025_thread_snooze.ts"
+import fork from "./migrations/0026_fork.ts"
+import settingsFiles from "./migrations/0027_settings_files.ts"
+import threadDevice from "./migrations/0028_thread_device.ts"
+import listenersPickInterface from "./migrations/0029_listeners_pick_interface.ts"
+import archiveSharedChats from "./migrations/0024_archive_shared_chats.ts"
 
 const run = Migrator.make({})
 
-/**
- * Keys are `<id>_<name>`; the id orders them. Append new migrations, never edit shipped ones.
- * Id 3 belonged to a removed migration that some databases already recorded, so the next one is 4.
- */
 export const runMigrations = run({
   loader: Migrator.fromRecord({
     "1_init": init,
@@ -53,6 +55,12 @@ export const runMigrations = run({
     "21_project_kind": projectKind,
     "22_environment_relay": environmentRelay,
     "23_environment_source": environmentSource,
+    "25_thread_snooze": threadSnooze,
+    "24_archive_shared_chats": archiveSharedChats,
+    "26_fork": fork,
+    "27_settings_files": settingsFiles,
+    "28_thread_device": threadDevice,
+    "29_listeners_pick_interface": listenersPickInterface,
   }),
 }).pipe(
   Effect.tap((ran) =>

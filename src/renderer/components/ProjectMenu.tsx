@@ -1,20 +1,27 @@
 import { Fragment, type RefObject, useState } from "react"
-import { RiAddLine, RiDeleteBinLine, RiMoreFill, RiPencilLine } from "react-icons/ri"
+import { RiAddLine, RiCloseLine, RiDeleteBinLine, RiFolderSharedLine, RiMoreFill, RiPencilLine } from "react-icons/ri"
 import type { Project } from "../../shared/domain.ts"
 import { environmentName, environmentOf, useClouds } from "../lib/environments.ts"
+import { assignGroup, createGroup } from "../lib/sidebarGroups.ts"
+import { useSidebarGroups } from "../lib/useSidebarGroups.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
 import { DeleteProjectDialog } from "./DeleteProjectDialog.tsx"
+import { GroupNameDialog } from "./GroupNameDialog.tsx"
 import { OpenWithSubmenu } from "./OpenWith.tsx"
 import { ProjectDialog } from "./ProjectDialog.tsx"
 import { Button } from "./ui/button.tsx"
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx"
 
@@ -25,21 +32,22 @@ interface Picked {
   readonly project: Project
 }
 
+type Queued = Picked | { readonly action: "newGroup" }
+
 interface ProjectMenuProps {
+  readonly rowKey: string
   readonly projects: readonly [Project, ...Array<Project>]
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
   readonly onNewThread: (project: Project) => void
-  /** Takes focus after a project is deleted. */
   readonly focusAfterDelete: RefObject<HTMLElement | null>
 }
 
-/** The "…" menu on a project header, with the dialogs its items open. A group lists each machine's items under its name. */
-export function ProjectMenu({ projects, open, onOpenChange, onNewThread, focusAfterDelete }: ProjectMenuProps) {
+export function ProjectMenu({ rowKey, projects, open, onOpenChange, onNewThread, focusAfterDelete }: ProjectMenuProps) {
   const clouds = useClouds()
-  const [dialog, setDialog] = useState<Picked | null>(null)
-  // Items queue their action and run it once the menu has closed and handed focus back to the trigger.
-  const [queued, setQueued] = useState<Picked | null>(null)
+  const [, updateGroups] = useSidebarGroups()
+  const [dialog, setDialog] = useState<Queued | null>(null)
+  const [queued, setQueued] = useState<Queued | null>(null)
 
   const runQueued = () => {
     if (queued?.action === "newThread") onNewThread(queued.project)
@@ -49,7 +57,10 @@ export function ProjectMenu({ projects, open, onOpenChange, onNewThread, focusAf
   const closeDialog = (dialogOpen: boolean) => {
     if (!dialogOpen) setDialog(null)
   }
-  const isOpen = (action: Action, project: Project) => dialog?.action === action && dialog.project.id === project.id
+  const picked = dialog?.action === "newGroup" ? null : dialog
+  const isOpen = (action: Action, project: Project) => picked?.action === action && picked.project.id === project.id
+  const newGroup = (name: string) =>
+    void updateGroups((state) => createGroup(state, { id: crypto.randomUUID(), name, collapsed: false }, rowKey))
 
   return (
     <>
@@ -73,6 +84,8 @@ export function ProjectMenu({ projects, open, onOpenChange, onNewThread, focusAf
           <RiMoreFill aria-hidden />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
+          <MoveToGroupSubmenu rowKey={rowKey} onNewGroup={() => setQueued({ action: "newGroup" })} />
+          <DropdownMenuSeparator />
           {projects.length === 1 ? (
             <ProjectMenuItems project={projects[0]} onPick={setQueued} />
           ) : (
@@ -100,7 +113,45 @@ export function ProjectMenu({ projects, open, onOpenChange, onNewThread, focusAf
           />
         </Fragment>
       ))}
+      <GroupNameDialog open={dialog?.action === "newGroup"} onOpenChange={closeDialog} onSubmit={newGroup} />
     </>
+  )
+}
+
+function MoveToGroupSubmenu({ rowKey, onNewGroup }: { rowKey: string; onNewGroup: () => void }) {
+  const [state, update] = useSidebarGroups()
+  const current = state.groups.find((group) => group.id === state.groupOf[rowKey])
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger>
+        <RiFolderSharedLine aria-hidden />
+        {m.sidebar_project_move_to_group()}
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="w-48">
+        {state.groups.map((group) => (
+          <DropdownMenuCheckboxItem
+            key={group.id}
+            checked={group.id === current?.id}
+            disabled={group.id === current?.id}
+            closeOnClick
+            onCheckedChange={() => void update((next) => assignGroup(next, rowKey, group.id))}
+          >
+            <span className="truncate">{group.name}</span>
+          </DropdownMenuCheckboxItem>
+        ))}
+        {state.groups.length > 0 && <DropdownMenuSeparator />}
+        <DropdownMenuItem onClick={onNewGroup}>
+          <RiAddLine aria-hidden />
+          {m.sidebar_project_new_group()}
+        </DropdownMenuItem>
+        {current && (
+          <DropdownMenuItem onClick={() => void update((next) => assignGroup(next, rowKey, null))}>
+            <RiCloseLine aria-hidden />
+            {m.sidebar_project_remove_from_group()}
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
   )
 }
 

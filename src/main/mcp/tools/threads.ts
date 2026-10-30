@@ -1,9 +1,12 @@
 import { Effect, Schema } from "effect"
 import { Toolkit } from "effect/ai"
 import { ProviderId } from "../../../shared/agent.ts"
-import { isThreadBusy, type Message, type Thread, type Worktree } from "../../../shared/domain.ts"
+import { isThreadBusy, type Machine, type Message, type Thread, type Worktree } from "../../../shared/domain.ts"
+import { RemoteAccess } from "../../remote/access.ts"
+import { Peers } from "../../remote/peers.ts"
 import { AgentRunner } from "../../services/AgentRunner.ts"
 import { Events } from "../../services/Events.ts"
+import { Projects } from "../../services/Projects.ts"
 import { PullRequests } from "../../services/PullRequests.ts"
 import { Threads } from "../../services/Threads.ts"
 import { Worktrees } from "../../services/Worktrees.ts"
@@ -27,13 +30,14 @@ const renderPart = (part: Message["parts"][number]): string | null => {
       return `[attachment ${part.attachment.name}]`
     case "compaction":
       return `[context compaction: ${part.compaction.status}]`
+    case "agent_switch":
+      return `[agent switched: ${part.from} → ${part.to}]`
   }
 }
 
 const renderMessage = (message: Message) =>
   [`## ${message.role} (${message.createdAt})`, ...message.parts.flatMap((part) => renderPart(part) ?? [])].join("\n")
 
-/** Facts about a thread, in a tagged block so the agent can tell them from the transcript. */
 const renderMetadata = (thread: Thread, pullRequestUrls: ReadonlyArray<string>) =>
   [
     "<metadata>",
@@ -42,6 +46,7 @@ const renderMetadata = (thread: Thread, pullRequestUrls: ReadonlyArray<string>) 
     `status: ${thread.status}`,
     `provider: ${thread.provider}`,
     `model: ${thread.model}`,
+    `effort: ${thread.effort ?? "default"}`,
     `created_by: ${thread.createdBy}`,
     `created_at: ${thread.createdAt}`,
     `updated_at: ${thread.updatedAt}`,
@@ -51,41 +56,66 @@ const renderMetadata = (thread: Thread, pullRequestUrls: ReadonlyArray<string>) 
     "</metadata>",
   ].join("\n")
 
-const renderEnvironment = (worktree: Worktree | null) =>
+type Place = { readonly here: true } | { readonly here: false; readonly machine: MachineRef | undefined }
+type MachineRef = Pick<Machine, "id" | "name">
+const HERE: Place = { here: true }
+
+const renderEnvironment = (worktree: Worktree | null, place: Place) =>
   [
     "<environment>",
+    ...(place.here
+      ? []
+      : [
+          place.machine === undefined
+            ? "machine: another one, so its paths are not on this machine"
+            : `machine: ${place.machine.name} (${place.machine.id}), not this one, so its paths are not here`,
+        ]),
     ...(worktree === null
       ? ["workspace: project root"]
       : ["workspace: worktree", `branch: ${worktree.branch}`, `path: ${worktree.path}`]),
     "</environment>",
   ].join("\n")
 
-const TargetThreadId = Schema.String.annotate({ description: "Id of a thread in this project." })
+const TargetThreadId = Schema.String.annotate({
+  description: "Id of a thread in this project, on this machine or on another of the user's machines.",
+})
+const Effort = Schema.String.annotate({ description: "Reasoning effort, such as low, medium or high." })
 
 export const ThreadTools = Toolkit.make(
   McpTool.make("create_thread", {
     description:
-      "Start another thread in this project and send it a first prompt. It appears in the user's sidebar at once and runs on its own; this call returns its id without waiting for it. Defaults to this thread's provider and model. Pass `worktree` to run it in a new git worktree. Follow up with read_thread to check on it, send_to_thread to steer it, and stop_thread to interrupt it.",
+      "Start another thread in this project and send it a first prompt. It appears in the user's sidebar at once and runs on its own; this call returns its id without waiting for it. Defaults to this thread's provider and model, and the model's default effort. Pass `worktree` to run it in a new git worktree, and `machine` to run it on another of the user's machines. Follow up with read_thread to check on it, send_to_thread to steer it, and stop_thread to interrupt it.",
     parameters: Schema.Struct({
       title: Schema.String.annotate({ description: "Shown in the sidebar." }),
       prompt: Schema.String.annotate({ description: "The new thread's first user message." }),
       provider: Schema.optionalKey(ProviderId),
       model: Schema.optionalKey(Schema.String.annotate({ description: "Model id for that provider." })),
+      effort: Schema.optionalKey(Effort),
       worktree: Schema.optionalKey(
         Schema.Struct({
           branch: Schema.String.annotate({ description: "Branch to create for the worktree." }),
           baseRef: Schema.String.annotate({ description: "Ref the branch forks from, for example main." }),
         }),
       ),
+      machine: Schema.optionalKey(
+        Schema.String.annotate({
+          description:
+            "Id of the machine to run it on, from list_machines. That machine needs a project for this GitHub repository. Defaults to this machine.",
+        }),
+      ),
     }),
+  }),
+  McpTool.make("list_machines", {
+    description:
+      "List the user's machines that HinaCode connects: id, name, and whether each has a project for this GitHub repository, which create_thread needs to run a thread there. `self` marks this machine. When a machine has no such project, ask the user to add it there.",
   }),
   McpTool.make("list_threads", {
     description:
-      "List the threads in this project that are not archived: id, title, status, provider, model, who created it, and its worktree branch. `self` marks this thread.",
+      "List the threads in this project that are not archived: id, title, status, provider, model, who created it, and its worktree branch. `self` marks this thread. Threads of the same GitHub repository on the user's other machines are included, with the `machine` they run on.",
   }),
   McpTool.make("read_thread", {
     description:
-      "Read another thread of this project: its status, agent and model, workspace, linked pull requests, whether it is waiting on the user, and its latest messages.",
+      "Read another thread of this project, on this machine or on another of the user's machines in the same GitHub repository: its status, agent and model, workspace, linked pull requests, whether it is waiting on the user, and its latest messages.",
     parameters: Schema.Struct({
       threadId: TargetThreadId,
       limit: Schema.optionalKey(
@@ -97,14 +127,17 @@ export const ThreadTools = Toolkit.make(
   }),
   McpTool.make("send_to_thread", {
     description:
-      "Send a message to another thread of this project. A running thread gets it as steering input in its current turn; an idle one starts a new turn with it.",
+      "Send a message to another thread of this project, on this machine or on another of the user's machines. A running thread gets it as steering input in its current turn; an idle one starts a new turn with it. `effort` applies from this message on. `model` can only change before the thread's first turn starts.",
     parameters: Schema.Struct({
       threadId: TargetThreadId,
       prompt: Schema.String.annotate({ description: "The user message to send." }),
+      model: Schema.optionalKey(Schema.String.annotate({ description: "Model id for the thread's provider." })),
+      effort: Schema.optionalKey(Effort),
     }),
   }),
   McpTool.make("stop_thread", {
-    description: "Interrupt the running turn of another thread in this project. Does nothing if it is idle.",
+    description:
+      "Interrupt the running turn of another thread in this project, on this machine or on another of the user's machines. Does nothing if it is idle.",
     parameters: Schema.Struct({ threadId: TargetThreadId }),
   }),
 )
@@ -116,8 +149,10 @@ export const threadToolsLayer = ThreadTools.toLayer(
     const events = yield* Events
     const worktrees = yield* Worktrees
     const pullRequests = yield* PullRequests
+    const projects = yield* Projects
+    const peers = yield* Peers
+    const { identity } = yield* RemoteAccess
 
-    /** A thread of the caller's project, so an agent cannot reach into another project's threads. */
     const projectThread = (targetId: string) =>
       Effect.gen(function* () {
         const caller = yield* threads.get(yield* McpTool.CallingThread)
@@ -132,15 +167,77 @@ export const threadToolsLayer = ThreadTools.toLayer(
         return target
       })
 
+    const repositoryOf = (projectId: string) =>
+      Effect.map(projects.listWithRepositories, (all) => all.find((project) => project.id === projectId)?.repository)
+
+    const elsewhere = (repository: string) =>
+      Effect.gen(function* () {
+        const [known, all, machines] = yield* Effect.all(
+          [
+            peers.ask("projects.list", undefined),
+            peers.ask("threads.list", undefined),
+            peers.ask("machines.list", undefined).pipe(Effect.orElseSucceed(() => [])),
+          ],
+          { concurrency: "unbounded" },
+        )
+        const same = new Set(known.filter((project) => project.repository === repository).map((project) => project.id))
+        const machineOf = new Map(
+          machines.flatMap(({ id, name, projectIds }) => projectIds.map((projectId) => [projectId, { id, name }])),
+        )
+        return all
+          .filter((thread) => same.has(thread.projectId))
+          .map((thread) => ({ thread, machine: machineOf.get(thread.projectId) }))
+      })
+
+    const otherMachines = (repository: string | undefined) =>
+      Effect.gen(function* () {
+        const [known, machines] = yield* Effect.all(
+          [peers.ask("projects.list", undefined), peers.ask("machines.list", undefined)],
+          { concurrency: "unbounded" },
+        )
+        const same = new Set(
+          known
+            .filter((project) => repository !== undefined && project.repository === repository)
+            .map((project) => project.id),
+        )
+        return machines
+          .filter((machine) => machine.id !== identity.id)
+          .map(({ id, name, projectIds }) => ({
+            id,
+            name,
+            projectIds: projectIds.filter((projectId) => same.has(projectId)),
+          }))
+      })
+
+    const locate = (targetId: string) =>
+      Effect.gen(function* () {
+        const here = yield* threads
+          .get(targetId)
+          .pipe(Effect.catchTag("NotFoundError", () => Effect.succeed(undefined)))
+        if (here !== undefined) return { thread: yield* projectThread(targetId), place: HERE }
+        const caller = yield* threads.get(yield* McpTool.CallingThread)
+        const repository = yield* repositoryOf(caller.projectId)
+        const gone = { message: `Thread ${targetId} no longer exists.` }
+        if (repository === undefined) return yield* Effect.fail(gone)
+        const found = (yield* elsewhere(repository).pipe(
+          Effect.mapError((error) => ({
+            message: `Thread ${targetId} is not on this machine, and the other machines are out of reach: ${error.message}`,
+          })),
+        )).find(({ thread }) => thread.id === targetId)
+        if (found === undefined) return yield* Effect.fail(gone)
+        const place: Place = { here: false, machine: found.machine }
+        return { thread: found.thread, place }
+      })
+
     const peerThread = (targetId: string) =>
       Effect.flatMap(McpTool.CallingThread, (callerId) =>
         targetId === callerId
           ? Effect.fail({ message: "That is this thread. Use your own turn instead." })
-          : projectThread(targetId),
+          : locate(targetId),
       )
 
     return ThreadTools.of({
-      create_thread: ({ title, prompt, provider, model, worktree }) =>
+      create_thread: ({ title, prompt, provider, model, effort, worktree, machine }) =>
         Effect.gen(function* () {
           const threadId = yield* McpTool.CallingThread
           const caller = yield* threads.get(threadId)
@@ -148,14 +245,47 @@ export const threadToolsLayer = ThreadTools.toLayer(
           if (model === undefined && !sameProvider) {
             return yield* Effect.fail({ message: "Pass `model` when `provider` differs from this thread's." })
           }
-          const thread = yield* threads.create({
-            projectId: caller.projectId,
+          const options = {
             title,
             provider: provider ?? caller.provider,
             model: model ?? caller.model,
+            effort,
             worktree,
             createdBy: `thread:${threadId}`,
-          })
+          }
+          if (machine !== undefined && machine !== identity.id) {
+            const repository = yield* repositoryOf(caller.projectId)
+            if (repository === undefined) {
+              return yield* Effect.fail({
+                message: "This project has no GitHub origin, so its threads can only run on this machine.",
+              })
+            }
+            const target = (yield* otherMachines(repository).pipe(
+              Effect.mapError((error) => ({ message: `The other machines are out of reach: ${error.message}` })),
+            )).find(({ id }) => id === machine)
+            if (target === undefined) {
+              return yield* Effect.fail({ message: `No machine has id ${machine}. Call list_machines for the ids.` })
+            }
+            const projectId = target.projectIds[0]
+            if (projectId === undefined) {
+              return yield* Effect.fail({
+                message: `${target.name} has no project for ${repository}. Ask the user to add ${repository} as a project on ${target.name}, then try again.`,
+              })
+            }
+            const thread = yield* peers.ask("threads.create", { projectId, ...options })
+            if (worktree !== undefined && thread.worktreeId === null) {
+              return yield* Effect.fail({
+                message: `${target.name} runs an older HinaCode that ignores \`worktree\`, so thread ${thread.id} was created there without one and not started. Ask the user to update HinaCode on ${target.name}.`,
+              })
+            }
+            yield* peers.ask("threads.steer", { threadId: thread.id, text: prompt }).pipe(
+              Effect.mapError((error) => ({
+                message: `Created thread ${thread.id} on ${target.name} but could not start its first turn: ${error.message}`,
+              })),
+            )
+            return `Created thread ${thread.id} "${thread.title}" on ${target.name} and sent it the prompt.`
+          }
+          const thread = yield* threads.create({ projectId: caller.projectId, ...options })
           yield* events.publish({ type: "thread.updated", thread })
           yield* runner.send(thread.id, prompt, []).pipe(
             Effect.mapError((error) => ({
@@ -163,6 +293,16 @@ export const threadToolsLayer = ThreadTools.toLayer(
             })),
           )
           return `Created thread ${thread.id} "${thread.title}" and sent it the prompt.`
+        }),
+      list_machines: () =>
+        Effect.gen(function* () {
+          const caller = yield* threads.get(yield* McpTool.CallingThread)
+          const repository = yield* repositoryOf(caller.projectId)
+          const others = yield* otherMachines(repository).pipe(Effect.catch(() => Effect.succeed([])))
+          return JSON.stringify([
+            { id: identity.id, name: identity.name, self: true, hasProject: true },
+            ...others.map(({ id, name, projectIds }) => ({ id, name, hasProject: projectIds.length > 0 })),
+          ])
         }),
       list_threads: () =>
         Effect.gen(function* () {
@@ -174,31 +314,66 @@ export const threadToolsLayer = ThreadTools.toLayer(
               .filter((worktree) => worktree.status !== "removed")
               .map((worktree) => [worktree.id, worktree.branch]),
           )
-          const listed = all
-            .filter((thread) => thread.projectId === caller.projectId && thread.status !== "archived")
-            .map((thread) => ({
+          const local = all.filter((thread) => thread.projectId === caller.projectId)
+          const repository = yield* repositoryOf(caller.projectId)
+          const others =
+            repository === undefined ? [] : yield* elsewhere(repository).pipe(Effect.catch(() => Effect.succeed([])))
+          const otherBranches = new Map(
+            others.length === 0
+              ? []
+              : (yield* peers.ask("worktrees.list", undefined).pipe(Effect.catch(() => Effect.succeed([])))).map(
+                  (worktree) => [worktree.id, worktree.branch],
+                ),
+          )
+          const localIds = new Set(all.map((thread) => thread.id))
+          const listed = [
+            ...local.map((thread) => ({ thread, place: HERE })),
+            ...others
+              .filter(({ thread }) => !localIds.has(thread.id))
+              .map(({ thread, machine }): { thread: Thread; place: Place } => ({
+                thread,
+                place: { here: false, machine },
+              })),
+          ]
+            .filter(({ thread }) => thread.status !== "archived")
+            .map(({ thread, place }) => ({
               id: thread.id,
               title: thread.title,
               status: thread.status,
               provider: thread.provider,
               model: thread.model,
               createdBy: thread.createdBy,
-              branch: (thread.worktreeId && branches.get(thread.worktreeId)) ?? null,
+              branch: (thread.worktreeId && (place.here ? branches : otherBranches).get(thread.worktreeId)) ?? null,
               ...(thread.id === threadId ? { self: true } : {}),
+              ...(place.here ? {} : { machine: place.machine ?? "another machine" }),
             }))
           return JSON.stringify(listed)
         }),
       read_thread: ({ threadId: targetId, limit }) =>
         Effect.gen(function* () {
-          const target = yield* projectThread(targetId)
-          const transcript = yield* runner.transcript(targetId)
-          const worktree =
-            target.worktreeId === null
-              ? null
-              : yield* worktrees
-                  .get(target.worktreeId)
-                  .pipe(Effect.catchTag("NotFoundError", () => Effect.succeed(null)))
-          const links = yield* pullRequests.list(targetId)
+          const { thread: target, place } = yield* locate(targetId)
+          const { worktreeId } = target
+          const [transcript, worktree, links] = place.here
+            ? yield* Effect.all([
+                runner.transcript(targetId),
+                worktreeId === null
+                  ? Effect.succeed(null)
+                  : worktrees.get(worktreeId).pipe(Effect.catchTag("NotFoundError", () => Effect.succeed(null))),
+                pullRequests.list(targetId),
+              ])
+            : yield* Effect.all(
+                [
+                  peers.ask("threads.transcript", { threadId: targetId, compact: true }),
+                  worktreeId === null
+                    ? Effect.succeed(null)
+                    : Effect.map(
+                        peers.ask("worktrees.list", undefined),
+                        (all) => all.find((worktree) => worktree.id === worktreeId) ?? null,
+                      ),
+                  peers.ask("pullRequests.list", { threadId: targetId }),
+                ],
+                { concurrency: "unbounded" },
+              )
           const waiting = [
             ...transcript.approvals.map((request) => `- approval: ${request.title}`),
             ...transcript.questions.flatMap((request) =>
@@ -212,27 +387,44 @@ export const threadToolsLayer = ThreadTools.toLayer(
               target,
               links.map((link) => link.url),
             ),
-            renderEnvironment(worktree),
+            renderEnvironment(worktree, place),
             ...(waiting.length > 0 ? ["Waiting on the user for:", ...waiting] : []),
             "",
             messages.length === 0 ? "No messages yet." : messages.map(renderMessage).join("\n\n"),
           ].join("\n")
         }),
-      send_to_thread: ({ threadId: targetId, prompt }) =>
+      send_to_thread: ({ threadId: targetId, prompt, model, effort }) =>
         Effect.gen(function* () {
-          const target = yield* peerThread(targetId)
-          if (isThreadBusy(target.status)) {
-            yield* runner.steer(targetId, prompt, [])
-            return `Steered the running turn of thread ${targetId}.`
+          const {
+            thread: target,
+            place: { here },
+          } = yield* peerThread(targetId)
+          if (model !== undefined && model !== target.model && target.providerSessionId !== null) {
+            return yield* Effect.fail({
+              message: `Thread ${targetId} has started, so its model stays ${target.model}. Pass only \`effort\`.`,
+            })
           }
-          yield* runner.send(targetId, prompt, [])
-          return `Started a new turn on thread ${targetId}.`
+          if (model !== undefined || effort !== undefined) {
+            const patch = { id: targetId, model, effort }
+            yield* here
+              ? threads.update(patch).pipe(Effect.tap((thread) => events.publish({ type: "thread.updated", thread })))
+              : peers.ask("threads.update", patch)
+          }
+          yield* here
+            ? runner.steer(targetId, prompt, [])
+            : peers.ask("threads.steer", { threadId: targetId, text: prompt })
+          return isThreadBusy(target.status)
+            ? `Steered the running turn of thread ${targetId}.`
+            : `Started a new turn on thread ${targetId}.`
         }),
       stop_thread: ({ threadId: targetId }) =>
-        peerThread(targetId).pipe(
-          Effect.andThen(runner.interrupt(targetId)),
-          Effect.as(`Interrupted thread ${targetId}.`),
-        ),
+        Effect.gen(function* () {
+          const {
+            place: { here },
+          } = yield* peerThread(targetId)
+          yield* here ? runner.interrupt(targetId) : peers.ask("threads.interrupt", { threadId: targetId })
+          return `Interrupted thread ${targetId}.`
+        }),
     })
   }),
 )

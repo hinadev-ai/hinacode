@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import type { Message } from "@shared/domain.ts"
 import { flush, message, type PendingCall } from "./testing"
 
 const calls = vi.hoisted((): PendingCall[] => [])
@@ -19,6 +20,27 @@ const ids = () => {
   return current?.status === "ready" ? current.messages.map((existing) => existing.id) : current?.status
 }
 
+const assistant = (id: string): Message => ({ ...message(id), role: "assistant" })
+const tool = (status: "running" | "done" | "error") =>
+  ({ type: "tool_call", callId: "tool", name: "Bash", input: {}, status }) as const
+const finished = (seq: number, output: string) => ({
+  type: "thread.event" as const,
+  threadId: "t1",
+  seq,
+  event: { type: "tool_call_finished" as const, callId: "tool", output, isError: false },
+})
+const toolStatus = (id: string) => {
+  const current = history()
+  const part = current?.status === "ready" ? current.messages.find((existing) => existing.id === id)?.parts[0] : undefined
+  return part?.type === "tool_call" ? part.status : undefined
+}
+
+async function loadReadyPage(seq: number, messages: readonly Message[], hasEarlier: boolean) {
+  const loading = useMessages.getState().load("t1")
+  calls.shift()!.resolve({ ...snapshot(seq, []), messages, hasEarlier })
+  await loading
+}
+
 async function loadReady(seq: number, messageIds: readonly string[]) {
   const loading = useMessages.getState().load("t1")
   calls.shift()!.resolve(snapshot(seq, messageIds))
@@ -29,6 +51,12 @@ beforeEach(() => {
   calls.length = 0
   useMessages.getState().reset()
 })
+
+const watchThreadInEachTest = () => {
+  let leave = () => {}
+  beforeEach(() => (leave = useMessages.getState().watch("t1")))
+  afterEach(() => leave())
+}
 
 describe("load", () => {
   it("applies pushes that arrive before the snapshot only when they are newer", async () => {
@@ -69,6 +97,25 @@ describe("load", () => {
 })
 
 describe("reload", () => {
+  watchThreadInEachTest()
+
+  it.each(["snapshot", "error"])("replaces an initial load after missed pushes and ignores its stale %s", async (outcome) => {
+    void useMessages.getState().load("t1")
+    const stale = calls.shift()!
+    useMessages.getState().reload()
+    expect(calls.map((pending) => pending.method)).toEqual(["threads.transcript"])
+    const fresh = calls.shift()!
+    useMessages.getState().receive(created(3, "included"))
+    useMessages.getState().receive(created(4, "live"))
+    fresh.resolve(snapshot(3, ["missed", "included"]))
+    await flush()
+    expect(ids()).toEqual(["missed", "included", "live"])
+    if (outcome === "snapshot") stale.resolve(snapshot(0, []))
+    else stale.reject(new Error("old request failed"))
+    await flush()
+    expect(ids()).toEqual(["missed", "included", "live"])
+  })
+
   it("keeps the last known history on screen until the new snapshot swaps in", async () => {
     await loadReady(1, ["a"])
     const before = history()
@@ -135,6 +182,207 @@ describe("reload", () => {
     calls.length = 0
 
     useMessages.getState().reload()
-    expect(calls.map((pending) => pending.payload)).toEqual([{ threadId: "t1", compact: true }])
+    expect(calls.map((pending) => pending.payload)).toEqual([{ threadId: "t1", compact: true, page: {} }])
+  })
+})
+
+describe("threads on screen", () => {
+  it.each(["snapshot", "error"])("replaces an initial load across a watch gap and ignores its stale %s", async (outcome) => {
+    const leave = useMessages.getState().watch("t1")
+    void useMessages.getState().load("t1")
+    const stale = calls.shift()!
+    leave()
+    const leaveAgain = useMessages.getState().watch("t1")
+    try {
+      expect(calls.map((pending) => pending.method)).toEqual(["threads.transcript"])
+      const fresh = calls.shift()!
+      useMessages.getState().receive(created(3, "included"))
+      useMessages.getState().receive(created(4, "live"))
+      if (outcome === "snapshot") stale.resolve(snapshot(0, []))
+      else stale.reject(new Error("old request failed"))
+      await flush()
+      expect(history()?.status).toBe("loading")
+      fresh.resolve(snapshot(3, ["hidden", "included"]))
+      await flush()
+      expect(ids()).toEqual(["hidden", "included", "live"])
+    } finally {
+      leaveAgain()
+    }
+  })
+
+  it("keeps an initial load current while another screen still watches it", async () => {
+    const leaveFirst = useMessages.getState().watch("t1")
+    const leaveSecond = useMessages.getState().watch("t1")
+    const loading = useMessages.getState().load("t1")
+    const initial = calls.shift()!
+    leaveFirst()
+    try {
+      useMessages.getState().receive(created(2, "live"))
+      initial.resolve(snapshot(1, ["initial"]))
+      await loading
+      expect(ids()).toEqual(["initial", "live"])
+      expect(calls).toHaveLength(0)
+    } finally {
+      leaveSecond()
+    }
+  })
+
+  it("reads a thread again when it is opened after being left, showing the old messages meanwhile", async () => {
+    const leave = useMessages.getState().watch("t1")
+    await loadReady(1, ["a"])
+    leave()
+    const leaveAgain = useMessages.getState().watch("t1")
+    expect(calls.map((pending) => pending.method)).toEqual(["threads.transcript"])
+    expect(ids()).toEqual(["a"])
+    calls.shift()!.resolve(snapshot(3, ["a", "b"]))
+    await flush()
+    expect(ids()).toEqual(["a", "b"])
+    leaveAgain()
+  })
+
+  it("reads only the threads on screen again after a reconnect", async () => {
+    const leave = useMessages.getState().watch("t1")
+    await loadReady(1, ["a"])
+    leave()
+    const leaveOther = useMessages.getState().watch("t2")
+    const loading = useMessages.getState().load("t2")
+    calls.shift()!.resolve(snapshot(1, []))
+    await loading
+    useMessages.getState().reload()
+    expect(calls.map((pending) => pending.payload)).toEqual([{ threadId: "t2", compact: true, page: {} }])
+    leaveOther()
+  })
+
+  it("lists a thread as watched until every screen showing it leaves", () => {
+    const leaveFirst = useMessages.getState().watch("t1")
+    const leaveSecond = useMessages.getState().watch("t1")
+    leaveFirst()
+    expect([...useMessages.getState().watched]).toEqual(["t1"])
+    leaveSecond()
+    expect([...useMessages.getState().watched]).toEqual([])
+  })
+})
+
+describe("earlier pages", () => {
+  watchThreadInEachTest()
+
+  const page = (ids: readonly string[], hasEarlier: boolean) => ({ ...snapshot(1, ids), hasEarlier })
+
+  it("asks for the newest page, then prepends the page before the oldest message", async () => {
+    const loading = useMessages.getState().load("t1")
+    const first = calls.shift()!
+    expect(first.payload).toEqual({ threadId: "t1", compact: true, page: {} })
+    first.resolve(page(["c", "d"], true))
+    await loading
+
+    const earlier = useMessages.getState().loadEarlier("t1")
+    const call = calls.shift()!
+    expect(call.payload).toEqual({ threadId: "t1", compact: true, page: { before: "c" } })
+    void useMessages.getState().loadEarlier("t1")
+    expect(calls).toHaveLength(0)
+    call.resolve(page(["a", "b"], false))
+    await earlier
+    expect(ids()).toEqual(["a", "b", "c", "d"])
+
+    void useMessages.getState().loadEarlier("t1")
+    expect(calls).toHaveLength(0)
+  })
+
+  it("treats a server that sends every message as having nothing earlier", async () => {
+    await loadReady(1, ["a", "b"])
+    void useMessages.getState().loadEarlier("t1")
+    expect(calls).toHaveLength(0)
+  })
+
+  it("drops the earlier pages when a reload reads the newest page again", async () => {
+    const loading = useMessages.getState().load("t1")
+    calls.shift()!.resolve(page(["c", "d"], true))
+    await loading
+    const earlier = useMessages.getState().loadEarlier("t1")
+    calls.shift()!.resolve(page(["a", "b"], false))
+    await earlier
+
+    useMessages.getState().reload()
+    calls.shift()!.resolve(page(["d", "e"], true))
+    await flush()
+    expect(ids()).toEqual(["d", "e"])
+    const current = history()
+    expect(current?.status === "ready" && current.hasEarlier).toBe(true)
+  })
+
+  it("recovers a tool that finished while offline in a message before the reloaded newest page", async () => {
+    await loadReadyPage(1, [{ ...assistant("a"), parts: [tool("running")] }, message("b")], false)
+    useMessages.getState().reload()
+    calls.shift()!.resolve({ ...snapshot(5, ["b", "c"]), hasEarlier: true })
+    await flush()
+    expect(ids()).toEqual(["b", "c"])
+
+    const earlier = useMessages.getState().loadEarlier("t1")
+    calls.shift()!.resolve({ ...snapshot(5, []), messages: [{ ...assistant("a"), parts: [tool("done")] }], hasEarlier: false })
+    await earlier
+    expect(toolStatus("a")).toBe("done")
+  })
+
+  it("replays a tool result that arrives while an earlier page is read", async () => {
+    await loadReadyPage(1, [message("b")], true)
+    const earlier = useMessages.getState().loadEarlier("t1")
+    const request = calls.shift()!
+    useMessages.getState().receive(finished(3, "done"))
+    request.resolve({ ...snapshot(2, []), messages: [{ ...assistant("a"), parts: [tool("running")] }], hasEarlier: false })
+    await earlier
+    expect(toolStatus("a")).toBe("done")
+  })
+
+  it("replays only the pushes newer than the earlier page, and none onto the newer messages", async () => {
+    await loadReadyPage(1, [message("b")], true)
+    const earlier = useMessages.getState().loadEarlier("t1")
+    const request = calls.shift()!
+    useMessages.getState().receive(finished(2, "failed"))
+    useMessages.getState().receive(created(4, "c"))
+    request.resolve({ ...snapshot(3, []), messages: [{ ...assistant("a"), parts: [tool("done")] }], hasEarlier: false })
+    await earlier
+    expect(ids()).toEqual(["a", "b", "c"])
+    expect(toolStatus("a")).toBe("done")
+  })
+
+  it("ignores an earlier page asked for before a reset", async () => {
+    await loadReadyPage(1, [message("b")], true)
+    void useMessages.getState().loadEarlier("t1")
+    const previousDesktop = calls.shift()!
+    useMessages.getState().reset()
+    await loadReadyPage(1, [message("b")], true)
+
+    previousDesktop.resolve({ ...snapshot(1, ["stale"]), hasEarlier: false })
+    await flush()
+    expect(ids()).toEqual(["b"])
+    void useMessages.getState().loadEarlier("t1")
+    expect(calls).toHaveLength(1)
+  })
+
+  it.each([
+    ["a newer message", "d"],
+    ["the same message", "c"],
+  ])("drops an earlier page that a reload starting at %s overtook, and can ask again", async (_name, first) => {
+    await loadReadyPage(1, [message("c")], true)
+    void useMessages.getState().loadEarlier("t1")
+    const overtaken = calls.shift()!
+    useMessages.getState().reload()
+    calls.shift()!.resolve({ ...snapshot(5, [first]), hasEarlier: true })
+    await flush()
+
+    overtaken.resolve({ ...snapshot(2, ["a", "b"]), hasEarlier: false })
+    await flush()
+    expect(ids()).toEqual([first])
+    void useMessages.getState().loadEarlier("t1")
+    expect(calls.map((pending) => pending.payload)).toEqual([{ threadId: "t1", compact: true, page: { before: first } }])
+  })
+
+  it("can ask again after an earlier page fails", async () => {
+    await loadReadyPage(1, [message("b")], true)
+    const failing = useMessages.getState().loadEarlier("t1")
+    calls.shift()!.reject(new Error("Timeout"))
+    await failing
+    void useMessages.getState().loadEarlier("t1")
+    expect(calls).toHaveLength(1)
   })
 })

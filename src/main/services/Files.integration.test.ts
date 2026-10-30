@@ -14,6 +14,7 @@ import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, Option, Queue } from "effect"
+import { SqlClient } from "effect/sql"
 import type { PushEvent } from "../../shared/contract.ts"
 import type { FsEntry } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
@@ -36,10 +37,6 @@ let repo = ""
 let worktree = ""
 let outside = ""
 
-/**
- * A repo with every kind of entry the tree shows: tracked, modified, untracked (alone and as a whole
- * folder), ignored files and folders, symlinks in and out of the root, and a worktree with a commit.
- */
 beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), "kk-files-test-"))
   repo = join(dir, "repo")
@@ -74,7 +71,7 @@ beforeAll(() => {
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
 
 const run = <A, E>(
-  effect: Effect.Effect<A, E, Files>,
+  effect: Effect.Effect<A, E, Files | SqlClient.SqlClient>,
   seed: SeedThread = { rootPath: repo, worktree: { path: worktree, baseRef: "main", status: "ready" } },
   pushes?: Queue.Queue<PushEvent>,
 ) => {
@@ -86,7 +83,6 @@ const run = <A, E>(
     return yield* Files.use(() => effect)
   }).pipe(
     Effect.provide(
-      // Each run supplies its own event sink, so it must not reuse an earlier Files service.
       Layer.fresh(FilesLayer.layer).pipe(
         Layer.provide(Layer.mergeAll(Git.layer, Layer.succeed(Events, events))),
         Layer.provideMerge(Db.layer(":memory:")),
@@ -191,6 +187,23 @@ describe("fs.list", () => {
       expect(error).toMatchObject({ _tag: "FsAccessError", reason: "unknownRoot" })
     }),
   )
+
+  it.effect("lists a chat's own folder, but no other folder in the chats root", () =>
+    Effect.gen(function* () {
+      const chats = join(dir, "chats")
+      const listChat = Effect.gen(function* () {
+        const { threadId } = yield* seedThread({ rootPath: chats, kind: "chats" })
+        write(join(chats, threadId, "notes.md"), "draft\n")
+        write(join(chats, "stray", "notes.md"), "draft\n")
+        const own = yield* list(join(chats, threadId), "")
+        const stray = yield* list(join(chats, "stray"), "").pipe(Effect.flip)
+        return { own, stray }
+      })
+      const { own, stray } = yield* run(listChat)
+      expect(own.map((entry) => entry.path)).toStrictEqual(["notes.md"])
+      expect(stray).toMatchObject({ _tag: "FsAccessError", reason: "unknownRoot" })
+    }),
+  )
 })
 
 const read = (root: string, path: string) => run(Files.use((files) => files.read(root, path)))
@@ -242,7 +255,6 @@ describe("fs.read", () => {
 const save = (root: string, path: string, content: string, expected: string | null) =>
   run(Files.use((files) => files.write(root, path, content, expected)))
 
-/** A fresh file per test, so no test sees what another one saved. */
 const editable = (name: string, text = "before\n") => {
   const path = `untracked/edits/${name}`
   write(join(repo, path), text)
@@ -316,7 +328,7 @@ describe("fs.watch", () => {
       const changed = yield* run(
         Effect.gen(function* () {
           yield* Files.use((files) => files.watch(repo, ["", "src"]))
-          // macOS can start the FSEvents stream after watch() returns and miss writes made before it.
+          // FIXME: macOS can start the FSEvents stream after watch() returns and miss earlier writes
           for (let attempt = 0; ; attempt++) {
             write(join(repo, `src/warmup-${attempt}.ts`), "")
             if (Option.isSome(yield* Effect.timeoutOption(Queue.take(pushes), "250 millis"))) break

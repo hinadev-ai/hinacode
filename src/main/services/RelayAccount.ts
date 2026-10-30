@@ -14,39 +14,23 @@ const SYNC_INTERVAL = "5 minutes"
 const PUBLISH_POLL = "1 second"
 const PUBLISH_WAIT = "1 minute"
 
-/**
- * This desktop's sign-in to the relay with the owner token. While signed in, every machine the owner shows on
- * their devices is an environment here, synced at start, every five minutes and on demand.
- */
 export class RelayAccount extends Context.Service<
   RelayAccount,
   {
     readonly status: Effect.Effect<RelayAccountStatus, PersistenceError>
-    /** Keeps the owner token only once the relay listed the machines with it. */
     readonly signIn: (ownerToken: string) => Effect.Effect<RelayAccountStatus, RelayError | PersistenceError>
-    /** Forgets the owner token and drops every environment the relay added. */
     readonly signOut: Effect.Effect<RelayAccountStatus, PersistenceError>
-    /** Never fails. A failed sync keeps every environment and says why in `error`. */
     readonly sync: Effect.Effect<RelayAccountStatus>
-    /** Every machine linked to the relay, shown on the owner's devices or not. */
     readonly machines: Effect.Effect<ReadonlyArray<RelayHost>, RelayError | PersistenceError>
-    /** Turns Show on my devices on or off, syncs, and answers the fresh list. */
     readonly setShown: (input: {
       readonly id: string
       readonly enabled: boolean
     }) => Effect.Effect<ReadonlyArray<RelayHost>, RelayError | PersistenceError>
-    /** Unlinks another machine from the relay, syncs, and answers the fresh list. */
     readonly removeMachine: (input: {
       readonly id: string
     }) => Effect.Effect<ReadonlyArray<RelayHost>, RelayError | PersistenceError>
-    /** The machine waiting on a link code. */
     readonly pendingLink: (userCode: string) => Effect.Effect<PendingLink, RelayError | PersistenceError>
-    /**
-     * Approves a link code, waits up to a minute for that machine to publish its pairing, syncs, and answers the
-     * fresh list. A machine that has not published by then still shows, as not published yet.
-     */
     readonly approveLink: (userCode: string) => Effect.Effect<ReadonlyArray<RelayHost>, RelayError | PersistenceError>
-    /** Approves this desktop's own link with the owner token. False when signed out or the approval failed. */
     readonly approveOwnLink: (userCode: string) => Effect.Effect<boolean>
   }
 >()("hinacode/RelayAccount") {}
@@ -124,7 +108,6 @@ const make = ({ serviceUrl, fetch = globalThis.fetch }: RelayAccountOptions) =>
 
     const machines = Effect.flatMap(ownerToken, service.hosts)
 
-    /** Changes the relay's list, then syncs so this desktop's environments match it at once. */
     const changeMachines = (change: (token: string) => Effect.Effect<void, RelayError | PersistenceError>) =>
       Effect.gen(function* () {
         const token = yield* ownerToken
@@ -140,7 +123,6 @@ const make = ({ serviceUrl, fetch = globalThis.fetch }: RelayAccountOptions) =>
       changeMachines((token) =>
         Effect.gen(function* () {
           const hosts = yield* service.hosts(token)
-          // Deleting this desktop's tunnel from under it would leave its relay setting pointing at nothing.
           if (hosts.some((host) => host.id === id && host.environmentId === self.id)) {
             return yield* new RelayError({
               message: "To unlink this machine, use Remove relay in Settings > Remote.",
@@ -158,7 +140,6 @@ const make = ({ serviceUrl, fetch = globalThis.fetch }: RelayAccountOptions) =>
         const token = yield* ownerToken
         const { environmentId } = yield* service.pendingLink(token, userCode)
         yield* service.approveLink(token, userCode)
-        // The machine claims its credential every five seconds, then routes its tunnel and publishes its pairing.
         yield* service.hosts(token).pipe(
           Effect.repeat({
             schedule: Schedule.spaced(PUBLISH_POLL),

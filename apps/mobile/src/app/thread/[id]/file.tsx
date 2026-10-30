@@ -204,7 +204,7 @@ function CodeView({ content, line, truncated }: { content: string; line: number 
   const target = line === null ? null : Math.min(line, lines.length) - 1
   const list = useRef<FlatList<CodeLine>>(null)
   const attempts = useRef(0)
-  const gutterWidth = String(lines.length).length * DIGIT_WIDTH + 12
+  const gutterWidth = Math.ceil(String(lines.length).length * DIGIT_WIDTH) + 12
 
   useEffect(() => {
     if (target === null) return
@@ -379,7 +379,8 @@ const styles = StyleSheet.create({
     paddingRight: 12,
     fontVariant: ["tabular-nums"],
   },
-  codeText: { flex: 1, fontFamily: mono, fontSize: 12, lineHeight: LINE_HEIGHT },
+  // A browser keeps a flex item as wide as its longest token unless it may shrink, so a long one ran off screen.
+  codeText: { flex: 1, minWidth: 0, fontFamily: mono, fontSize: 12, lineHeight: LINE_HEIGHT },
   comment: { fontStyle: "italic" },
   media: { flexGrow: 1, alignItems: "center", justifyContent: "center", padding: 16 },
   image: { width: "100%", aspectRatio: 1 },

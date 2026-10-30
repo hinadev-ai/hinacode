@@ -6,8 +6,10 @@ import type { CodexProvider } from "./agents/codex/index.ts"
 import type { MuseProvider } from "./agents/muse/index.ts"
 import * as Db from "./db/client.ts"
 import { sendToWindows } from "./ipc.ts"
+import { answerAsksLayer } from "./environments/route.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as RemoteAccess from "./remote/access.ts"
+import * as Peers from "./remote/peers.ts"
 import * as Relay from "./remote/relay.ts"
 import * as RemoteServer from "./remote/server.ts"
 import * as AgentAccounts from "./services/AgentAccounts.ts"
@@ -30,6 +32,7 @@ import * as SystemResources from "./services/SystemResources.ts"
 import * as Projects from "./services/Projects.ts"
 import * as PullRequestGuides from "./services/PullRequestGuides.ts"
 import * as RelayAccount from "./services/RelayAccount.ts"
+import * as Scratch from "./services/Scratch.ts"
 import * as Search from "./services/Search.ts"
 import * as Secrets from "./services/Secrets.ts"
 import * as Settings from "./services/Settings.ts"
@@ -38,6 +41,7 @@ import * as Threads from "./services/Threads.ts"
 import { ThreadNaming } from "./services/ThreadNaming.ts"
 import * as PasskeyRelay from "./services/tinyVm/passkey/PasskeyRelay.ts"
 import * as TinyVm from "./services/tinyVm/TinyVm.ts"
+import { unavailableDevicesLayer } from "./services/devices/unavailable.ts"
 import { unsupported, Updates } from "./services/Updates.ts"
 import * as Worktrees from "./services/Worktrees.ts"
 
@@ -46,28 +50,23 @@ const updatesStub = Layer.succeed(Updates, unsupported("0.0.0"))
 
 export interface TestAppOptions {
   readonly providers: Layer.Layer<ClaudeProvider | CodexProvider | MuseProvider>
-  /** Defaults to the Electron-backed layer, which sends to the mocked `BrowserWindow`s. */
   readonly events?: Layer.Layer<Events | PushBroadcast | WindowPush>
 }
 
-/**
- * The app layer of `index.ts` with scripted agents, no automations, no updater and no pull request guides, over a
- * SQLite file at `dbPath`.
- * Tests that keep the default `events` must mock `electron` first.
- */
 export const makeTestAppLayer = (
   dbPath: string,
   { providers, events = makeEventsLayer(sendToWindows) }: TestAppOptions,
 ) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
+      Layer.provideMerge(Scratch.layer(join(dirname(dbPath), "scratch"))),
       Layer.provideMerge(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
       Layer.provideMerge(AgentAccounts.layer),
-      Layer.provideMerge(Settings.layer),
+      Layer.provideMerge(Settings.layer(dirname(dbPath))),
     ),
-    ClientSettings.layer,
+    ClientSettings.layer(dirname(dbPath)),
     Messages.layer,
     Attachments.layer(join(dirname(dbPath), "attachments")),
     Search.layer,
@@ -81,6 +80,10 @@ export const makeTestAppLayer = (
   )
   const passkeys = PasskeyRelay.layer(join(dirname(dbPath), "tiny-vm")).pipe(Layer.provide(tinyVm))
   const linear = Linear.layer.pipe(Layer.provide(Secrets.layer))
+  const peers = Peers.layer.pipe(
+    Layer.provideMerge(Environments.layer),
+    Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)),
+  )
   const features = Layer.mergeAll(
     Mcp.credentialsLayer,
     Ports.layer,
@@ -91,22 +94,25 @@ export const makeTestAppLayer = (
     tinyVm,
     passkeys,
     linear,
+    peers,
+    unavailableDevicesLayer,
   ).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(
     Layer.provide(Layer.mergeAll(providers, Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }))),
     Layer.provideMerge(Layer.mergeAll(domain, features)),
   )
-  const logins = AgentLogins.layer.pipe(Layer.provide(Layer.mergeAll(providers, agents)))
+  const logins = AgentLogins.layer(join(dirname(dbPath), "cache")).pipe(
+    Layer.provide(Layer.mergeAll(providers, agents)),
+  )
   const environments = RelayAccount.layer({ serviceUrl: Relay.DEFAULT_RELAY_SERVICE_URL }).pipe(
-    Layer.provideMerge(Environments.layer),
     Layer.provide(Layer.mergeAll(Secrets.layer, agents)),
   )
   const base = Layer.mergeAll(agents, automationsStub, updatesStub, logins, environments, PullRequestGuides.idleLayer)
   const app = Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base)))
-  return RemoteServer.layer.pipe(
+  return Layer.mergeAll(RemoteServer.layer, answerAsksLayer).pipe(
     Layer.provideMerge(app),
-    Layer.provideMerge(events),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
+    Layer.provideMerge(events),
     Layer.provideMerge(Db.layer(dbPath)),
     Layer.provide(Layer.mergeAll(NodeServices.layer, Secrets.noKeyring)),
   )

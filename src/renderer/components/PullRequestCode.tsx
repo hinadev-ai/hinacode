@@ -33,6 +33,7 @@ import type {
 import { useOpenThreadEnvironment } from "../lib/environments.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import {
+  diffTooLarge,
   type GuideFile,
   groupFiles,
   noteAnnotations,
@@ -116,15 +117,19 @@ export function PullRequestCode({ url }: { url: string }) {
         </TabsList>
       </Tabs>
       {AsyncResult.builder(detail)
-        .onSuccess((pullRequest) => (
-          <ChangedFiles
-            environment={environment}
-            url={url}
-            head={pullRequest.head}
-            status={pullRequest.status}
-            view={view}
-          />
-        ))
+        .onSuccess((pullRequest) =>
+          diffTooLarge(pullRequest) ? (
+            <p className="text-xs text-muted-foreground">{m.pr_code_too_large()}</p>
+          ) : (
+            <ChangedFiles
+              environment={environment}
+              url={url}
+              head={pullRequest.head}
+              status={pullRequest.status}
+              view={view}
+            />
+          ),
+        )
         .onError((error) => (
           <p role="alert" className="text-xs wrap-anywhere text-destructive">
             {m.pr_detail_failed({ message: errorMessage(error) })}
@@ -269,7 +274,7 @@ function NoteCard({ note, showLine = false }: { note: GuideFileNote | GuideLineN
         {showLine && "line" in note && (
           <p className="font-mono text-muted-foreground">{m.guide_line({ line: note.line })}</p>
         )}
-        <Markdown text={note.text} />
+        <Markdown text={note.text} className="prose-sm" />
       </div>
     </div>
   )
@@ -318,9 +323,7 @@ function GuideView({ environment, url, currentHead, status, files }: GuideViewPr
       {guide.head !== currentHead && (
         <GuideJobNotice environment={environment} url={url} currentHead={currentHead} status={status} state={state} />
       )}
-      <div className="text-sm">
-        <Markdown text={guide.summary} />
-      </div>
+      <Markdown text={guide.summary} className="prose-sm" />
       <ol className="flex flex-col divide-y divide-border">
         {groups.map((group) => (
           <li key={group.key} className="py-4 first:pt-0">
@@ -367,11 +370,7 @@ function GuideGroupView({ group }: { group: ResolvedGroup }) {
           />
         </p>
       </header>
-      {group.summary && (
-        <div className="pl-6 text-xs text-muted-foreground">
-          <Markdown text={group.summary} />
-        </div>
-      )}
+      {group.summary && <Markdown text={group.summary} className="prose-sm pl-6 text-xs text-muted-foreground" />}
       {group.files.length > 0 && (
         <ul className="flex flex-col gap-0.5">
           {group.files.map((entry) => (

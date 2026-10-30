@@ -12,14 +12,6 @@ const progress = "Checking the repository."
 const responseArticle = (page: Page) => page.locator("article[aria-busy]")
 const workRow = (page: Page) => responseArticle(page).locator('[data-slot="worked-for"]')
 
-Given("worked-for uses the {string} appearance", async ({ app }, appearance: string) => {
-  if (appearance !== "light" && appearance !== "dark") throw new Error(`Unknown appearance ${appearance}`)
-  const settings = await rpc(app.page, "clientSettings.get", undefined)
-  await rpc(app.page, "clientSettings.set", {
-    appearance: { ...settings.appearance, theme: appearance === "light" ? "light" : "default" },
-  })
-})
-
 Given(
   "the thread {string} has a {word} response that took {int} seconds",
   async ({ app, threadIds }, title: string, state: string, seconds: number) => {
@@ -50,6 +42,7 @@ Given(
       createdAt,
       completedAt: state === "running" ? null : completedAt,
       usage: null,
+      forkPoint: null,
     }
     responses.set(app, response)
     const db = new DatabaseSync(app.dbPath)
@@ -83,15 +76,12 @@ Then("the worked-for row shows {string} with its activity hidden", async ({ app 
   const toggle = responseArticle(app.page).getByRole("button", { name: `Worked for ${duration}`, exact: true })
   await expect(toggle).toHaveAttribute("aria-expanded", "false")
   await expect(responseArticle(app.page).getByRole("button", { name: /pwd/ })).toHaveCount(0)
+  await expect(responseArticle(app.page).getByText(progress, { exact: true })).toHaveCount(0)
 })
 
 When("I toggle the worked-for row with {string}", async ({ app }, key: string) => {
   await workRow(app.page).focus()
   await app.page.keyboard.press(key)
-})
-
-Then("the response progress is visible", async ({ app }) => {
-  await expect(responseArticle(app.page).getByText(progress, { exact: true })).toBeVisible()
 })
 
 Then("the timed command contains the current find match", async ({ app }) => {

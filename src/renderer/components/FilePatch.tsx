@@ -1,4 +1,5 @@
 import type { DiffLineAnnotation } from "@pierre/diffs"
+import { cn } from "cn"
 import { PatchDiff } from "@pierre/diffs/react"
 import { type ReactNode, useId, useState } from "react"
 import type { ChangedFileStatus, PullRequestFileStatus } from "../../shared/domain.ts"
@@ -13,7 +14,6 @@ export interface FileMark {
   readonly label: () => string
 }
 
-/** A letter beside the color, so the status never rests on color alone. */
 export const fileStatusMark = {
   added: { letter: "A", className: "text-vcs-added", label: m.file_status_added },
   modified: { letter: "M", className: "text-vcs-modified", label: m.file_status_modified },
@@ -30,8 +30,17 @@ export const pullRequestFileMark = {
   copied: { letter: "C", className: "text-vcs-added", label: m.file_status_copied },
 } satisfies Record<PullRequestFileStatus, FileMark>
 
-// PatchDiff renders a whole file in one frame, about 0.07 ms per line: a 12k-line lockfile blocked for 860 ms.
-// Past this many changed lines the file is almost always generated, so it waits until the user asks for it.
+export function FilePath({ path, title = path, className }: { path: string; title?: string; className?: string }) {
+  const nameStart = path.lastIndexOf("/") + 1
+  return (
+    <span className={cn("flex min-w-0 font-mono", className)} title={title}>
+      <span className="min-w-0 truncate text-muted-foreground">{path.slice(0, nameStart)}</span>
+      <span className="max-w-full shrink-0 truncate">{path.slice(nameStart)}</span>
+    </span>
+  )
+}
+
+// FIXME: PatchDiff renders a whole file in one frame, about 0.07 ms per line
 const LARGE_DIFF_LINES = 1000
 
 interface FileDiffRowProps<A> {
@@ -44,7 +53,7 @@ interface FileDiffRowProps<A> {
   readonly open: boolean
   readonly onToggle: () => void
   readonly badge?: ReactNode
-  /** Shown below the row, open or not. */
+  readonly actions?: ReactNode
   readonly notes?: ReactNode
   readonly lineAnnotations?: Array<DiffLineAnnotation<A>>
   readonly renderAnnotation?: (annotation: DiffLineAnnotation<A>) => ReactNode
@@ -60,6 +69,7 @@ export function FileDiffRow<A>({
   open,
   onToggle,
   badge,
+  actions,
   notes,
   lineAnnotations,
   renderAnnotation,
@@ -70,29 +80,32 @@ export function FileDiffRow<A>({
 
   return (
     <li className="flex flex-col gap-1">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={diffId}
-        onClick={onToggle}
-        className="flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring aria-expanded:bg-muted"
+      <div
+        className={cn("group/row flex min-w-0 items-center gap-0.5 rounded-md", open && "sticky top-0 z-10 bg-muted")}
       >
-        <abbr title={mark.label()} className={`w-3 shrink-0 font-mono no-underline ${mark.className}`}>
-          {mark.letter}
-        </abbr>
-        <span className="min-w-0 flex-1 truncate font-mono" title={title}>
-          {path}
-        </span>
-        {badge}
-        <span className="shrink-0 font-mono tabular-nums" aria-label={m.diff_line_counts({ added, removed })}>
-          <span aria-hidden className="text-vcs-added">
-            +{added}
-          </span>{" "}
-          <span aria-hidden className="text-destructive">
-            −{removed}
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={diffId}
+          onClick={onToggle}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <abbr title={mark.label()} className={`w-3 shrink-0 font-mono no-underline ${mark.className}`}>
+            {mark.letter}
+          </abbr>
+          <FilePath path={path} title={title} className="flex-1" />
+          {badge}
+          <span className="shrink-0 font-mono tabular-nums" aria-label={m.diff_line_counts({ added, removed })}>
+            <span aria-hidden className={added === 0 ? "text-muted-foreground" : "text-vcs-added"}>
+              +{added}
+            </span>{" "}
+            <span aria-hidden className={removed === 0 ? "text-muted-foreground" : "text-destructive"}>
+              −{removed}
+            </span>
           </span>
-        </span>
-      </button>
+        </button>
+        {actions}
+      </div>
       {notes}
       {open && (
         <div id={diffId} className="overflow-hidden rounded-md border border-border text-xs">

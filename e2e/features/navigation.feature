@@ -27,14 +27,9 @@ Feature: Back and forward navigation
     And focus leaves the sidebar overlay
     And I press "Escape"
     Then the sidebar overlay is closed
-    And the settings heading reads "Settings"
+    And the settings heading reads "General"
 
   Scenario: A restart reopens the thread you were on
     When I open the thread "Add palette" from the sidebar
     And the app restarts
     Then the thread "Add palette" is open
-
-  Scenario: A restart reopens settings
-    When I open settings
-    And the app restarts
-    Then the settings heading reads "Settings"

@@ -6,11 +6,15 @@ import type {
   QuestionAnswers,
   QuestionRequest,
 } from "@shared/agent.ts"
+import { collapsedParts } from "@shared/activityFold.ts"
+import { toolSummary } from "@shared/compactTranscript.ts"
 import type { Message, MessagePart, Thread, ToolCallStatus } from "@shared/domain.ts"
-import { type ReactNode, useEffect, useMemo, useState } from "react"
+import { useFocusEffect } from "expo-router"
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react"
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
 import Animated, { useReducedMotion } from "react-native-reanimated"
 import { Composer } from "@/components/composer"
+import { liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
 import { Markdown } from "@/components/markdown"
 import { FadeIn, Rotate, Spinner } from "@/components/motion"
@@ -33,21 +37,29 @@ type CopyKey = Parameters<typeof copy>[0]
 // An inverted list flips each cell with `scaleY: -1`, so a message rises from a negative `y`.
 const risesInFlippedCell = { ...rise.initial, y: -rise.initial.y }
 
-export function Chat({ thread }: { thread: Thread }) {
+export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
   const theme = useTheme()
   const connected = useConnection((state) => state.status === "connected")
   const history = useMessages((state) => state.byThread[thread.id])
   const root = useThreadRoot(thread)
 
+  useFocusEffect(
+    useCallback(() => {
+      if (active) return useMessages.getState().watch(thread.id)
+    }, [active, thread.id]),
+  )
   useEffect(() => {
     if (connected && history === undefined) void useMessages.getState().load(thread.id)
   }, [connected, history, thread.id])
 
   const messages = history?.status === "ready" ? history.messages : undefined
-  // Messages that arrive after the transcript loads rise in; the ones it opened with stay put.
-  const [loadedIds, setLoadedIds] = useState<ReadonlySet<string>>()
-  if (messages !== undefined && loadedIds === undefined) setLoadedIds(new Set(messages.map((message) => message.id)))
+  const [openedNewest, setOpenedNewest] = useState<string | null>()
+  if (messages !== undefined && openedNewest === undefined) setOpenedNewest(messages.at(-1)?.id ?? null)
+  const openedAt = messages?.findIndex((message) => message.id === openedNewest) ?? -1
   const newestFirst = useMemo(() => (messages === undefined ? [] : [...messages].reverse()), [messages])
+  const arrivedAfterOpening = (newestFirstIndex: number) => newestFirst.length - 1 - newestFirstIndex > openedAt
+  // With Liquid Glass the composer floats over the transcript, which pads itself clear of the dock's height.
+  const [dockHeight, setDockHeight] = useState(0)
 
   return (
     <View style={styles.flex}>
@@ -67,8 +79,11 @@ export function Chat({ thread }: { thread: Thread }) {
           inverted
           data={newestFirst}
           keyExtractor={(message) => message.id}
-          renderItem={({ item }) => (
-            <motion.View initial={loadedIds?.has(item.id) === false && risesInFlippedCell} animate={rise.animate}>
+          renderItem={({ item, index }) => (
+            <motion.View
+              initial={arrivedAfterOpening(index) && risesInFlippedCell}
+              animate={rise.animate}
+            >
               <MessageView message={item} root={root} />
             </motion.View>
           )}
@@ -77,24 +92,35 @@ export function Chat({ thread }: { thread: Thread }) {
           initialNumToRender={4}
           maxToRenderPerBatch={2}
           windowSize={9}
-          contentContainerStyle={styles.transcript}
+          contentContainerStyle={[styles.transcript, liquidGlass && { paddingTop: dockHeight + 16 }]}
           keyboardShouldPersistTaps="handled"
+          // Inverted, so the end is the top: scrolling up to the oldest message reads the page before it.
+          onEndReached={() => void useMessages.getState().loadEarlier(thread.id)}
+          onEndReachedThreshold={1}
+          ListFooterComponent={
+            history.loadingEarlier ? (
+              <ActivityIndicator
+                style={styles.earlier}
+                color={theme.textMuted}
+                accessibilityLabel={copy("mobile_chat_loading")}
+              />
+            ) : undefined
+          }
           ListEmptyComponent={
             <Text style={[styles.empty, { color: theme.textMuted }]}>{copy("mobile_chat_empty")}</Text>
           }
         />
       )}
-      {history?.status === "ready" && (
-        <>
-          {history.approvals.map((request) => (
-            <ApprovalCard key={request.id} request={request} />
-          ))}
-          {history.questions.map((request) => (
-            <QuestionCard key={request.id} request={request} />
-          ))}
-        </>
-      )}
-      <Composer thread={thread} />
+      <View
+        style={liquidGlass ? styles.dockStack : undefined}
+        onLayout={liquidGlass ? (event) => setDockHeight(event.nativeEvent.layout.height) : undefined}
+      >
+        {history?.status === "ready" &&
+          history.approvals.map((request) => <ApprovalCard key={request.id} request={request} />)}
+        {history?.status === "ready" &&
+          history.questions.map((request) => <QuestionCard key={request.id} request={request} />)}
+        <Composer thread={thread} />
+      </View>
     </View>
   )
 }
@@ -114,10 +140,6 @@ function MessageView({ message, root }: { message: Message; root: string | null 
 
 /** A sub-agent's tool calls belong to its own transcript, which the phone does not show. */
 const isOwnPart = (part: MessagePart) => part.type !== "tool_call" || part.parentCallId === undefined
-
-/** Reasoning, tool calls and file changes. A finished response folds them behind its Worked for row. */
-const isActivity = (part: MessagePart) =>
-  part.type === "reasoning" || part.type === "tool_call" || part.type === "file_change"
 
 const twoDigits = (value: number) => String(value).padStart(2, "0")
 
@@ -143,6 +165,7 @@ function AssistantMessage({ message, root }: { message: Message; root: string | 
   // A steer sent before the agent said anything closes an empty assistant message.
   if (!streaming && parts.length === 0) return null
   const writingIndex = streaming && parts.at(-1)?.type === "text" ? parts.length - 1 : undefined
+  const collapsed = new Set(collapsedParts(parts.map((part, index) => ({ part, index }))).map(({ index }) => index))
   return (
     <View accessibilityState={{ busy: streaming }} style={styles.message}>
       <Text style={[styles.role, { color: theme.textMuted }]}>{copy("mobile_chat_agent")}</Text>
@@ -150,19 +173,12 @@ function AssistantMessage({ message, root }: { message: Message; root: string | 
         <WorkedFor
           durationMs={durationMs}
           expanded={activityShown}
-          onToggle={parts.some(isActivity) ? () => setActivityShown(!activityShown) : undefined}
+          onToggle={collapsed.size < parts.length ? () => setActivityShown(!activityShown) : undefined}
         />
       )}
       {parts.map((part, index) => {
-        if (folded && isActivity(part)) {
-          return activityShown ? (
-            <FadeIn key={index}>
-              <PartView part={part} />
-            </FadeIn>
-          ) : null
-        }
-        if (part.type === "text") {
-          return (
+        const view =
+          part.type === "text" ? (
             <ReplyText
               key={index}
               text={part.text}
@@ -170,9 +186,11 @@ function AssistantMessage({ message, root }: { message: Message; root: string | 
               root={root}
               threadId={message.threadId}
             />
+          ) : (
+            <PartView key={index} part={part} />
           )
-        }
-        return <PartView key={index} part={part} />
+        if (!folded || collapsed.has(index)) return view
+        return activityShown ? <FadeIn key={index}>{view}</FadeIn> : null
       })}
       {streaming && (parts.length === 0 || writingIndex !== undefined) && (
         <Pulse text={copy(writingIndex !== undefined ? "mobile_chat_writing" : "mobile_chat_thinking")} />
@@ -272,17 +290,19 @@ function PartView({ part }: { part: MessagePart }) {
       )
     case "reasoning":
       return <Reasoning text={part.text} />
-    case "tool_call":
+    case "tool_call": {
+      const summary = toolSummary(part.input)?.line
       return (
         <View style={[styles.tool, { borderColor: theme.border }]}>
           <Icon name="RiToolsLine" size={14} color={theme.textMuted} />
           <Text numberOfLines={1} style={[styles.toolName, { color: theme.text }]}>
             {part.name}
-            {summarize(part.input) && <Text style={{ color: theme.textMuted }}> {summarize(part.input)}</Text>}
+            {summary && <Text style={{ color: theme.textMuted }}> {summary}</Text>}
           </Text>
           <ToolStatus status={part.status} />
         </View>
       )
+    }
     case "file_change":
       return (
         <View style={styles.fileChange}>
@@ -302,6 +322,15 @@ function PartView({ part }: { part: MessagePart }) {
       return (
         <Text style={{ color: part.compaction.status === "failed" ? theme.danger : theme.textMuted }}>
           {copy(compactionCopy[part.compaction.status])}
+        </Text>
+      )
+    case "agent_switch":
+      return (
+        <Text style={{ color: theme.textMuted }}>
+          {copy("mobile_chat_agent_switched", {
+            from: copy(`mobile_provider_${part.from}`),
+            to: copy(`mobile_provider_${part.to}`),
+          })}
         </Text>
       )
   }
@@ -329,17 +358,6 @@ function ToolStatus({ status }: { status: ToolCallStatus }) {
       <Pill label={copy(label)} tone={tone} />
     </View>
   )
-}
-
-/** The one field that says what a tool call touched, when its input has one. */
-function summarize(input: unknown) {
-  if (typeof input !== "object" || input === null) return ""
-  const record = input as Record<string, unknown>
-  for (const key of ["command", "file_path", "path", "pattern", "url", "description"]) {
-    const value = record[key]
-    if (typeof value === "string") return value.split("\n")[0]
-  }
-  return ""
 }
 
 function Reasoning({ text }: { text: string }) {
@@ -552,6 +570,8 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   centered: { flex: 1, justifyContent: "center", alignItems: "center", padding: 20, gap: 12 },
   transcript: { padding: 16, gap: 12 },
+  dockStack: { position: "absolute", left: 0, right: 0, bottom: 0 },
+  earlier: { paddingVertical: 12 },
   empty: { textAlign: "center", padding: 24, fontSize: 15 },
   message: { gap: 6, borderRadius: radius.lg, padding: 12 },
   user: { borderWidth: StyleSheet.hairlineWidth },

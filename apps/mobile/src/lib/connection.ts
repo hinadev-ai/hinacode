@@ -9,7 +9,7 @@ import {
   type RpcRequest,
   type RpcResponse,
 } from "@shared/contract.ts"
-import { learnFromAnswer, learnFromPush, makeOwners, stampProjects } from "@shared/owners.ts"
+import { learnFromAnswer, learnFromPush, makeOwners, type Owners, stampProjects } from "@shared/owners.ts"
 import { dialPlan } from "@shared/remote.ts"
 import { type Entity, routes } from "@shared/routes.ts"
 import type { StoredServer } from "./stored-target"
@@ -77,10 +77,40 @@ const updateServer = (id: string, patch: Partial<Server> | ((server: Server) => 
   )
 
 const transports = new Map<string, Transport>()
+let foreground = true
+let watching: readonly string[] = []
 const owners = makeOwners()
-/** Each server's last answer to an `all` method, listed while it is offline. */
-const remembered = new Map<string, Map<RpcMethod, { readonly payload: string; readonly result: unknown }>>()
+/** A server's last answer to each `all` method, by method, with the payload it answered. */
+export type RememberedAnswers = Readonly<Partial<Record<RpcMethod, { readonly payload: string; readonly result: unknown }>>>
+
+const remembered = new Map<string, RememberedAnswers>()
+const rememberListeners = new Set<(serverId: string, answers: RememberedAnswers) => void>()
 const listeners = new Set<(event: PushEvent) => void>()
+
+/**
+ * Lists `answers` for a paired server until it answers itself, such as the ones saved before the app last closed,
+ * and routes calls on the ids in them to that server. An id another server has already answered with stays its.
+ */
+export function restoreAnswers(serverId: string, answers: RememberedAnswers) {
+  if (remembered.has(serverId) || !useConnection.getState().servers.some((server) => server.id === serverId)) return
+  remembered.set(serverId, answers)
+  const unclaimed: Owners = {
+    ...owners,
+    teach: (environmentId, entity, id) => {
+      if (owners.owner(entity, id) === undefined) owners.teach(environmentId, entity, id)
+    },
+  }
+  for (const method of ["projects.list", "threads.list", "worktrees.list"] as const)
+    learnFromAnswer(unclaimed, serverId, method, undefined, answers[method]?.result)
+}
+
+/** Called whenever a server's remembered answers change, so they can be saved for the next launch. */
+export function onRemembered(listener: (serverId: string, answers: RememberedAnswers) => void) {
+  rememberListeners.add(listener)
+  return () => {
+    rememberListeners.delete(listener)
+  }
+}
 
 const sameTarget = (a: StoredServer, b: StoredServer) =>
   a.port === b.port && a.token === b.token && a.hosts.join(" ") === b.hosts.join(" ")
@@ -120,6 +150,8 @@ function open(server: StoredServer) {
     },
   })
   transports.set(server.id, transport)
+  transport.setForeground(foreground)
+  transport.setWatching(watching)
   transport.start()
 }
 
@@ -161,7 +193,14 @@ export function setServers(servers: readonly StoredServer[]) {
       return { ...existing, ...stored }
     }
     if (existing !== undefined) close(server.id)
-    return { ...stored, status: "connecting", error: null, features: new Set(), generation: 0, listed: false }
+    return {
+      ...stored,
+      status: foreground ? "connecting" : "offline",
+      error: null,
+      features: new Set(),
+      generation: 0,
+      listed: false,
+    }
   })
   useConnection.setState(summarize(next))
   for (const server of next) if (!transports.has(server.id)) open(server)
@@ -175,8 +214,16 @@ export function reconnectNow(id?: string) {
 /** The device switched networks, so the current sockets are probably dead even if they look open. */
 export const networkChanged = () => transports.forEach((transport) => transport.networkChanged())
 
-export const setForeground = (foreground: boolean) =>
-  transports.forEach((transport) => transport.setForeground(foreground))
+export function setForeground(active: boolean) {
+  foreground = active
+  transports.forEach((transport) => transport.setForeground(active))
+}
+
+/** The threads on screen, whose transcripts every server should stream. */
+export function setWatching(threadIds: readonly string[]) {
+  watching = threadIds
+  transports.forEach((transport) => transport.setWatching(threadIds))
+}
 
 export function onEvent(listener: (event: PushEvent) => void) {
   listeners.add(listener)
@@ -236,7 +283,7 @@ async function gather(method: RpcMethod, payload: unknown): Promise<RpcEnvelope<
   const key = JSON.stringify(payload ?? null)
   const answers = await Promise.all(
     useConnection.getState().servers.map(async (server) => {
-      const last = remembered.get(server.id)?.get(method)
+      const last = remembered.get(server.id)?.[method]
       const fallback = last?.payload === key && Array.isArray(last.result) ? last.result : []
       if (server.status !== "connected") return fallback
       const envelope = await Promise.race([
@@ -244,10 +291,9 @@ async function gather(method: RpcMethod, payload: unknown): Promise<RpcEnvelope<
         new Promise<undefined>((resolve) => setTimeout(resolve, PROBE_TIMEOUT_MS)),
       ])
       if (envelope === undefined || "error" in envelope || !Array.isArray(envelope.result)) return fallback
-      remembered.set(
-        server.id,
-        (remembered.get(server.id) ?? new Map()).set(method, { payload: key, result: envelope.result }),
-      )
+      const answers = { ...remembered.get(server.id), [method]: { payload: key, result: envelope.result } }
+      remembered.set(server.id, answers)
+      for (const listener of rememberListeners) listener(server.id, answers)
       return envelope.result
     }),
   )

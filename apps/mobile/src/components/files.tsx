@@ -1,7 +1,18 @@
 import type { FileSearchHit, FsEntry, Thread } from "@shared/domain.ts"
 import { router } from "expo-router"
 import { useEffect, useRef, useState } from "react"
-import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
+import {
+  FlatList,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  type ScrollViewInstance,
+  type StyleProp,
+  StyleSheet,
+  Text,
+  type TextStyle,
+  View,
+} from "react-native"
 import { Icon } from "@/components/icon"
 import { FadeIn, Reveal, Spinner } from "@/components/motion"
 import { SearchField } from "@/components/search-field"
@@ -179,7 +190,7 @@ function Breadcrumbs({
   onSelect: (depth: number) => void
 }) {
   const theme = useTheme()
-  const scroller = useRef<ScrollView>(null)
+  const scroller = useRef<ScrollViewInstance>(null)
   const rootName = root.split(/[\\/]/).findLast((part) => part !== "") ?? root
   return (
     <ScrollView
@@ -280,7 +291,7 @@ function PathSearch({
           <Failure message={files.error} onRetry={onRetryFiles} />
         ) : matches.length === 0 ? (
           <Text style={[styles.quiet, { color: theme.textMuted }]}>{copy("mobile_files_no_matches", { query })}</Text>
-        ) : null
+        ) : undefined
       }
       ListFooterComponent={
         searchContents ? (
@@ -322,11 +333,11 @@ function MatchRow({ match, onPress }: { match: PathMatch; onPress: () => void })
       <Icon name={entryIcon(match.path, "file")} size={18} color={theme.textMuted} />
       <View style={styles.flex}>
         <Text numberOfLines={1} style={[styles.rowName, { color: theme.text }]}>
-          <Emphasized text={match.path.slice(nameStart)} offset={nameStart} hits={hits} color={theme.link} />
+          <Emphasized text={match.path.slice(nameStart)} offset={nameStart} hits={hits} style={styles.strong} />
         </Text>
         {folder !== "" && (
           <Text numberOfLines={1} ellipsizeMode="head" style={[styles.rowDetail, { color: theme.textMuted }]}>
-            <Emphasized text={folder} offset={0} hits={hits} color={theme.text} />
+            <Emphasized text={folder} offset={0} hits={hits} style={[styles.strong, { color: theme.text }]} />
           </Text>
         )}
       </View>
@@ -334,17 +345,17 @@ function MatchRow({ match, onPress }: { match: PathMatch; onPress: () => void })
   )
 }
 
-/** `text` with the characters at `hits` (offset by `offset`) in `color` and bold. */
+/** `text` with the characters at `hits` (offset by `offset`) in `style`. */
 function Emphasized({
   text,
   offset,
   hits,
-  color,
+  style,
 }: {
   text: string
   offset: number
   hits: ReadonlySet<number>
-  color: string
+  style: StyleProp<TextStyle>
 }) {
   const runs: { text: string; hit: boolean; start: number }[] = []
   for (let index = 0; index < text.length; index++) {
@@ -355,7 +366,7 @@ function Emphasized({
   }
   return runs.map((run) =>
     run.hit ? (
-      <Text key={run.start} style={[styles.strong, { color }]}>
+      <Text key={run.start} style={style}>
         {run.text}
       </Text>
     ) : (
@@ -440,8 +451,14 @@ function HitRow({ hit, query, onPress }: { hit: FileSearchHit; query: string; on
       <Text numberOfLines={1} ellipsizeMode="head" style={[styles.hitLocation, { color: theme.textMuted }]}>
         {location}
       </Text>
+      {/* The desktop's find highlight: a violet wash, since amber would read as needing attention. */}
       <Text numberOfLines={2} style={[styles.hitText, { color: theme.text }]}>
-        <Emphasized text={hit.text} offset={0} hits={hits} color={theme.attention} />
+        <Emphasized
+          text={hit.text}
+          offset={0}
+          hits={hits}
+          style={[styles.strong, { backgroundColor: theme.tokenBg }]}
+        />
       </Text>
     </Pressable>
   )

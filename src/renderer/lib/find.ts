@@ -6,13 +6,10 @@ type ToolCall = Extract<MessagePart, { type: "tool_call" }>
 
 export interface FindMatch {
   readonly messageId: string
-  /** Index in the original message parts, retained when subagent parts are filtered out. */
   readonly partIndex: number
-  /** UTF-16 offset of the match in the part's searchable text. */
   readonly offset: number
 }
 
-/** A move of the find bar to `match`. Every move has a new `id`, including a move back to the same match. */
 export interface FindRevealRequest {
   readonly id: number
   readonly match: FindMatch
@@ -20,14 +17,9 @@ export interface FindRevealRequest {
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
-/** Matches `query` literally and case-insensitively. Null for a blank query, which matches nothing. */
 export const findPattern = (query: string): RegExp | null =>
   query.trim() === "" ? null : new RegExp(escapeRegExp(query), "giu")
 
-/**
- * The text of a part a reader sees without expanding anything. Reasoning, tool input and output, and
- * diffs sit behind a disclosure, so they are not searched.
- */
 export function searchableText(part: MessagePart): string {
   switch (part.type) {
     case "text":
@@ -42,6 +34,7 @@ export function searchableText(part: MessagePart): string {
     case "reasoning":
     case "attachment":
     case "compaction":
+    case "agent_switch":
       return ""
   }
 }
@@ -57,15 +50,12 @@ export function commandFindText(call: ToolCall): CommandFindText {
   return { distinctLabel: label === command ? null : label, command }
 }
 
-/** In the order a command row shows them: the command, then the agent's description of it. */
 export const commandSearchText = ({ distinctLabel, command }: CommandFindText) =>
   distinctLabel === null ? command : `${command}\n${distinctLabel}`
 
-/** What a folded tool call's row shows: a command and its description, or the tool and its summary. */
 const toolRowSearchText = (call: ToolCall) =>
   call.name === "Bash" ? commandSearchText(commandFindText(call)) : searchableText(call)
 
-/** Every match of `query` in the transcript, in reading order. */
 export function findMatches(messages: ReadonlyArray<Message>, query: string): Array<FindMatch> {
   const pattern = findPattern(query)
   if (pattern === null) return []

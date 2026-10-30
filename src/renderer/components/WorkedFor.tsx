@@ -5,7 +5,6 @@ import { m } from "../paraglide/messages.js"
 const rowClassName =
   "mb-2 flex min-h-8 w-full items-center gap-1.5 border-b border-border text-xs text-muted-foreground tabular-nums"
 
-/** Elapsed time of a finished response. Given `onExpandedChange`, it also shows and hides the response's activity. */
 export function WorkedFor({
   durationMs,
   expanded = false,

@@ -13,7 +13,6 @@ const bin = mkdtempSync(join(tmpdir(), "kk-fake-codex-"))
 writeFileSync(join(bin, "codex"), `#!/bin/sh\nexec node ${join(import.meta.dirname, "fakeAppServer.mjs")} "$@"\n`)
 chmodSync(join(bin, "codex"), 0o755)
 process.env.PATH = `${bin}:${process.env.PATH}`
-// The CLI's own home must not leak in from the machine running the tests.
 delete process.env.CODEX_HOME
 
 type Control = {
@@ -66,10 +65,6 @@ const received = (): Array<Received> =>
     .filter(Boolean)
     .map((line) => JSON.parse(line))
 
-/**
- * Resolves once the fake app-server's log satisfies `predicate`. The log file changing is the signal,
- * so no clock is involved and the wait works under TestClock too.
- */
 const waitFor = (predicate: () => boolean) =>
   Effect.callback<void>((resume) => {
     let done = false
@@ -98,6 +93,7 @@ const input = (threadId: string, home: AccountHome | null = null): RunTurnInput 
   userSkills: true,
   accessMode: "auto",
   resumeSessionId: null,
+  forkAt: null,
   home,
   mcpServer: { url: "http://127.0.0.1:1/mcp", headers: { authorization: "Bearer test" } },
   instructions: AGENT_INSTRUCTIONS,
@@ -119,7 +115,6 @@ const startTurn = (threadId: string, home: AccountHome | null = null) =>
 
 type Turn = Effect.Success<ReturnType<typeof startTurn>>
 
-/** Resolves once the turn has received an event matching `predicate`; subscribing first means none is missed. */
 const untilEvent = (turn: Turn, predicate: (event: AgentEvent) => boolean) =>
   Effect.gen(function* () {
     const updates = yield* PubSub.subscribe(turn.arrived)
@@ -127,10 +122,8 @@ const untilEvent = (turn: Turn, predicate: (event: AgentEvent) => boolean) =>
     while (!predicate(yield* PubSub.take(updates))) continue
   }).pipe(Effect.scoped)
 
-/** A run that never ends fails the test by its timeout; nothing here consults a clock. */
 const finishesSoon = <A, E>(fiber: Fiber.Fiber<A, E>) => Fiber.join(fiber)
 
-/** A fresh app-server per test, torn down with the test scope. */
 const withProvider = <A, E>(effect: Effect.Effect<A, E, CodexProvider>) =>
   effect.pipe(Effect.provide(CodexProvider.layer))
 
@@ -157,6 +150,29 @@ describe("Codex app-server log", () => {
     writeFileSync(logPath, '{"method":"turn/start"\n')
     expect(received).toThrow(SyntaxError)
   })
+})
+
+describe("Codex fork", () => {
+  it.live("forks the thread through the given turn and offers each completed turn as a fork point", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({})
+        const events = yield* provider
+          .runTurn({ ...input("fork"), resumeSessionId: "codex-thread", forkAt: "turn-1" })
+          .pipe(Stream.runCollect)
+        const forked = received().find((message) => message.method === "thread/fork")
+        expect(forked?.params).toMatchObject({ threadId: "codex-thread", lastTurnId: "turn-1" })
+        expect(countOf("thread/resume")).toBe(0)
+        expect(events.find((event) => event.type === "session_bound")).toStrictEqual({
+          type: "session_bound",
+          providerSessionId: "codex-fork",
+        })
+        const completed = events.find((event) => event.type === "turn_completed")
+        expect(completed?.type === "turn_completed" && completed.forkPoint?.sessionId).toBe("codex-fork")
+      }),
+    ),
+  )
 })
 
 describe("Codex auto-compact", () => {
@@ -206,6 +222,31 @@ describe("Codex auto-compact", () => {
           "thread/unsubscribe",
           "thread/resume",
         ])
+      }),
+    ),
+  )
+
+  it.live("compacts the thread when the prompt is /compact", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({})
+        const commands = yield* provider.listCommands({ threadId: "manual-compact", cwd: tmpdir(), home: null })
+        expect(commands.map((command) => command.trigger + command.name)).toContain("/compact")
+
+        const events = yield* provider
+          .runTurn({ ...input("manual-compact"), prompt: "/compact" })
+          .pipe(Stream.runCollect)
+        expect(countOf("turn/start")).toBe(0)
+        expect(countOf("thread/compact/start")).toBe(1)
+        expect(events.filter((event) => event.type === "compaction_updated")).toStrictEqual([
+          { type: "compaction_updated", compaction: { status: "running" } },
+          {
+            type: "compaction_updated",
+            compaction: { status: "done", trigger: "manual", preTokens: null, postTokens: null },
+          },
+        ])
+        expect(events.at(-1)?.type).toBe("turn_completed")
       }),
     ),
   )
@@ -304,7 +345,6 @@ describe("Codex Stop during startup", () => {
     ),
   )
 
-  // `it.effect` runs under TestClock, so the provider's startup timeout only fires when the test advances it.
   it.effect("fails with an actionable error when initialize never answers", () =>
     withProvider(
       Effect.gen(function* () {
@@ -354,6 +394,7 @@ describe("Codex token usage", () => {
         expect(turn.events.at(-1)).toStrictEqual({
           type: "turn_completed",
           usage: { inputTokens: 3200, outputTokens: 80, context: { usedTokens: 2230, maxTokens: 258400 } },
+          forkPoint: { sessionId: "codex-thread", checkpoint: "turn-1" },
         })
       }),
     ),
@@ -527,6 +568,55 @@ describe("Codex background terminals", () => {
   )
 })
 
+describe("Codex closed sessions", () => {
+  it.live("terminates the background terminals of a session the thread leaves, and empties the set", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        const backgroundTasks = provider.backgroundTasks ?? (yield* Effect.die("backgroundTasks is missing"))
+        const changes = yield* Queue.unbounded<BackgroundTasksChange>()
+        yield* backgroundTasks.changes.pipe(
+          Stream.runForEach((change) => Queue.offer(changes, change)),
+          Effect.forkChild,
+        )
+        setControl({ backgroundTerminal: true })
+        const turn = yield* startTurn("leaving-thread")
+        yield* finishesSoon(turn.fiber)
+        expect(yield* Queue.take(changes)).toMatchObject({ threadId: "leaving-thread", tasks: [{ id: "1001" }] })
+
+        yield* (provider.closeSession ?? (() => Effect.die("closeSession is missing")))("leaving-thread", null)
+        expect(received().filter((message) => message.method === "thread/backgroundTerminals/terminate")).toMatchObject(
+          [{ params: { threadId: "codex-thread", processId: "1001" } }],
+        )
+        expect(yield* Queue.take(changes)).toStrictEqual({ threadId: "leaving-thread", tasks: [] })
+        yield* backgroundTasks.stop("leaving-thread", "1001")
+        expect(received().filter((message) => message.method === "thread/backgroundTerminals/terminate")).toHaveLength(
+          1,
+        )
+      }),
+    ),
+  )
+})
+
+describe("Codex closed sessions, sub-agents", () => {
+  it.live("interrupts a sub-agent turn that outlived its parent when the thread leaves the session", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({ subagent: true, subagentPending: true })
+        const turn = yield* startTurn("leaving-parent-thread")
+        yield* finishesSoon(turn.fiber)
+        expect(received().filter((message) => message.method === "turn/interrupt")).toStrictEqual([])
+
+        yield* (provider.closeSession ?? (() => Effect.die("closeSession is missing")))("leaving-parent-thread", null)
+        expect(received().filter((message) => message.method === "turn/interrupt")).toMatchObject([
+          { params: { threadId: "codex-child-thread", turnId: "child-turn" } },
+        ])
+      }),
+    ),
+  )
+})
+
 describe("Codex questions", () => {
   it.live("maps blocking questions and returns option and typed answers on the request id", () =>
     withProvider(
@@ -650,7 +740,6 @@ describe("Codex account boundary", () => {
   )
 })
 
-// Trimmed from codex-cli 0.162 on a ChatGPT plan.
 const snapshot = (limitId: string, primary: unknown, secondary: unknown) => ({
   limitId,
   limitName: null,

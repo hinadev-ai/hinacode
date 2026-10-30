@@ -1,0 +1,637 @@
+{
+  "workload": {
+    "streams": 3,
+    "gapMs": 4000,
+    "foregroundSeconds": 60,
+    "backgroundSeconds": 120,
+    "settleSeconds": 10,
+    "buildConfiguration": "Release"
+  },
+  "artifacts": {
+    "android": {
+      "base": {
+        "sourceRevision": "a107eae3e90232af66a0952ded349bad2d7d77d4",
+        "sha256": "78a02051322219388f2f73e865e82d824716c20b86795a13390581f903f22fb8",
+        "hashedArtifact": "base.apk"
+      },
+      "h2": {
+        "sourceRevision": "53f92fb71de70cab8bbbdf6389c09d33fbb3fe9c",
+        "sha256": "1fd90d0823bc88ecd12e1d429c2b142b0d8539bb1310cb4de28ce170bee9b23d",
+        "hashedArtifact": "h2.apk"
+      },
+      "h4": {
+        "sourceRevision": "c008ea0540dd02e42685f792afeabdd26c3cb67f",
+        "sha256": "c48b630df639c6c533edcf71ea2ee8df4185e00a54044804cd23dab2f9225227",
+        "hashedArtifact": "h4.apk"
+      }
+    },
+    "ios": {
+      "base": {
+        "sourceRevision": "a107eae3e90232af66a0952ded349bad2d7d77d4",
+        "sha256": "6f5edc235ca1a35fb162976ed8f0a57d674540da9a74693107547caad312964a",
+        "hashedArtifact": "base.app/main.jsbundle"
+      },
+      "h2": {
+        "sourceRevision": "53f92fb71de70cab8bbbdf6389c09d33fbb3fe9c",
+        "sha256": "161a9d8c71917e25c59cdd704e430bc79abc4650b66b725d8ce020a5038a3cd9",
+        "hashedArtifact": "h2.app/main.jsbundle"
+      },
+      "h4": {
+        "sourceRevision": "c008ea0540dd02e42685f792afeabdd26c3cb67f",
+        "sha256": "b41cdda6d9bc0e9896f33d8e197886502f44a3ffcdafc3a00b5250c942aac073",
+        "hashedArtifact": "h4.app/main.jsbundle"
+      }
+    }
+  },
+  "captures": [
+    {
+      "label": "android-final-base-1",
+      "platform": "android",
+      "streams": 3,
+      "loadavg": [11.68505859375, 14.771484375, 9.0341796875],
+      "phases": {
+        "foreground": {
+          "cpuMs": 6020,
+          "seconds": 60.03832670799999,
+          "bytesDown": 99624,
+          "bytesUp": 3130,
+          "framesDown": 4303,
+          "activeSeconds": 44
+        },
+        "background": {
+          "cpuMs": 3440,
+          "seconds": 120.05820395800001,
+          "bytesDown": 195139,
+          "bytesUp": 5391,
+          "framesDown": 8345,
+          "activeSeconds": 77
+        }
+      }
+    },
+    {
+      "label": "android-final-base-2",
+      "platform": "android",
+      "streams": 3,
+      "loadavg": [6.55712890625, 9.1611328125, 8.36572265625],
+      "phases": {
+        "foreground": {
+          "cpuMs": 4570,
+          "seconds": 60.07755375000001,
+          "bytesDown": 102180,
+          "bytesUp": 2757,
+          "framesDown": 4441,
+          "activeSeconds": 41
+        },
+        "background": {
+          "cpuMs": 2910,
+          "seconds": 120.062630875,
+          "bytesDown": 195928,
+          "bytesUp": 5034,
+          "framesDown": 8392,
+          "activeSeconds": 79
+        }
+      }
+    },
+    {
+      "label": "android-final-base-3",
+      "platform": "android",
+      "streams": 3,
+      "loadavg": [10.65966796875, 9.09326171875, 8.423828125],
+      "phases": {
+        "foreground": {
+          "cpuMs": 4760,
+          "seconds": 60.034226833,
+          "bytesDown": 101504,
+          "bytesUp": 2757,
+          "framesDown": 4383,
+          "activeSeconds": 42
+        },
+        "background": {
+          "cpuMs": 4410,
+          "seconds": 120.07821095800001,
+          "bytesDown": 194215,
+          "bytesUp": 5034,
+          "framesDown": 8322,
+          "activeSeconds": 79
+        }
+      }
+    },
+    {
+      "label": "android-final-h2-1",
+      "platform": "android",
+      "streams": 3,
+      "loadavg": [16.5703125, 12.7138671875, 9.162109375],
+      "phases": {
+        "foreground": {
+          "cpuMs": 3500,
+          "seconds": 60.059972292,
+          "bytesDown": 1442,
+          "bytesUp": 2757,
+          "framesDown": 93,
+          "activeSeconds": 22
+        },
+        "background": {
+          "cpuMs": 2620,
+          "seconds": 120.20991583399999,
+          "bytesDown": 2674,
+          "bytesUp": 5034,
+          "framesDown": 174,
+          "activeSeconds": 34
+        }
+      }
+    },
+    {
+      "label": "android-final-h2-2",
+      "platform": "android",
+      "streams": 3,
+      "loadavg": [7.7197265625, 8.17626953125, 8.07763671875],
+      "phases": {
+        "foreground": {
+          "cpuMs": 4520,
+          "seconds": 60.089883541,
+          "bytesDown": 1426,
+          "bytesUp": 2757,
+          "framesDown": 93,
+          "activeSeconds": 24
+        },
+        "background": {
+          "cpuMs": 1620,
+          "seconds": 120.05144620799999,
+          "bytesDown": 2692,
+          "bytesUp": 5034,
+          "framesDown": 174,
+          "activeSeconds": 33
+        }
+      }
+    },
+    {
+      "label": "android-final-h2-3",
+      "platform": "android",
+      "streams": 3,
+      "loadavg": [7.5966796875, 7.8369140625, 7.97265625],
+      "phases": {
+        "foreground": {
+          "cpuMs": 3220,
+          "seconds": 60.067682375000004,
+          "bytesDown": 1430,
+          "bytesUp": 2757,
+          "framesDown": 93,
+          "activeSeconds": 21
+        },
+        "background": {
+          "cpuMs": 1700,
+          "seconds": 120.05646754199998,
+          "bytesDown": 2749,
+          "bytesUp": 5034,
+          "framesDown": 177,
+          "activeSeconds": 34
+        }
+      }
+    },
+    {
+      "label": "android-final-cutoff-1",
+      "platform": "android",
+      "streams": 3,
+      "loadavg": [1.60205078125, 2.416015625, 3.728515625],
+      "phases": {
+        "foreground": {
+          "cpuMs": 3590,
+          "seconds": 60.071055208000004,
+          "completedTurns": 21,
+          "bytesDown": 1394,
+          "bytesUp": 2717,
+          "framesDown": 92,
+          "activeSeconds": 22
+        },
+        "background": {
+          "cpuMs": 70,
+          "seconds": 120.06359612500002,
+          "completedTurns": 42,
+          "bytesDown": 0,
+          "bytesUp": 0,
+          "framesDown": 0,
+          "activeSeconds": 0
+        }
+      }
+    },
+    {
+      "label": "android-final-cutoff-2",
+      "platform": "android",
+      "streams": 3,
+      "loadavg": [1.5732421875, 2.0380859375, 3.28955078125],
+      "phases": {
+        "foreground": {
+          "cpuMs": 3510,
+          "seconds": 60.078253083,
+          "completedTurns": 21,
+          "bytesDown": 1433,
+          "bytesUp": 2757,
+          "framesDown": 93,
+          "activeSeconds": 22
+        },
+        "background": {
+          "cpuMs": 70,
+          "seconds": 120.072368916,
+          "completedTurns": 42,
+          "bytesDown": 0,
+          "bytesUp": 0,
+          "framesDown": 0,
+          "activeSeconds": 0
+        }
+      }
+    },
+    {
+      "label": "android-final-cutoff-3",
+      "platform": "android",
+      "streams": 3,
+      "loadavg": [2.12353515625, 2.16650390625, 3.08154296875],
+      "phases": {
+        "foreground": {
+          "cpuMs": 3740,
+          "seconds": 60.075072666000004,
+          "completedTurns": 21,
+          "bytesDown": 1420,
+          "bytesUp": 2757,
+          "framesDown": 93,
+          "activeSeconds": 21
+        },
+        "background": {
+          "cpuMs": 30,
+          "seconds": 120.07489345899998,
+          "completedTurns": 42,
+          "bytesDown": 0,
+          "bytesUp": 0,
+          "framesDown": 0,
+          "activeSeconds": 0
+        }
+      }
+    },
+    {
+      "label": "ios-compare-base-1",
+      "platform": "ios",
+      "streams": 3,
+      "loadavg": [7.7197265625, 8.17626953125, 8.07763671875],
+      "phases": {
+        "foreground": {
+          "cpuMs": 3840,
+          "seconds": 60.399556667,
+          "bytesDown": 1467089,
+          "bytesUp": 2797,
+          "framesDown": 4518,
+          "activeSeconds": 43
+        },
+        "background": {
+          "cpuMs": 0,
+          "seconds": 120.31452991699999,
+          "bytesDown": 310648,
+          "bytesUp": 0,
+          "framesDown": 732,
+          "activeSeconds": 7
+        }
+      }
+    },
+    {
+      "label": "ios-compare-base-2",
+      "platform": "ios",
+      "streams": 3,
+      "loadavg": [7.068359375, 7.72314453125, 7.931640625],
+      "phases": {
+        "foreground": {
+          "cpuMs": 3610,
+          "seconds": 60.28854441599999,
+          "bytesDown": 1445923,
+          "bytesUp": 2717,
+          "framesDown": 4402,
+          "activeSeconds": 41
+        },
+        "background": {
+          "cpuMs": 0,
+          "seconds": 120.39699295799998,
+          "bytesDown": 420221,
+          "bytesUp": 0,
+          "framesDown": 1279,
+          "activeSeconds": 14
+        }
+      }
+    },
+    {
+      "label": "ios-compare-base-3",
+      "platform": "ios",
+      "streams": 3,
+      "loadavg": [4.5126953125, 6.1689453125, 6.92236328125],
+      "phases": {
+        "foreground": {
+          "cpuMs": 3040,
+          "seconds": 60.360668665999995,
+          "completedTurns": 21,
+          "bytesDown": 1439653,
+          "bytesUp": 2757,
+          "framesDown": 4369,
+          "activeSeconds": 42
+        },
+        "background": {
+          "cpuMs": 0,
+          "seconds": 120.31853941599998,
+          "completedTurns": 42,
+          "bytesDown": 652265,
+          "bytesUp": 0,
+          "framesDown": 1886,
+          "activeSeconds": 18
+        }
+      }
+    },
+    {
+      "label": "ios-compare-h2-1",
+      "platform": "ios",
+      "streams": 3,
+      "loadavg": [10.9267578125, 9.17431640625, 8.4560546875],
+      "phases": {
+        "foreground": {
+          "cpuMs": 2270,
+          "seconds": 60.386753041999995,
+          "bytesDown": 29133,
+          "bytesUp": 2797,
+          "framesDown": 94,
+          "activeSeconds": 23
+        },
+        "background": {
+          "cpuMs": 0,
+          "seconds": 120.527178125,
+          "bytesDown": 11639,
+          "bytesUp": 0,
+          "framesDown": 28,
+          "activeSeconds": 7
+        }
+      }
+    },
+    {
+      "label": "ios-compare-h2-2",
+      "platform": "ios",
+      "streams": 3,
+      "loadavg": [2.34521484375, 4.873046875, 6.64501953125],
+      "phases": {
+        "foreground": {
+          "cpuMs": 3160,
+          "seconds": 60.330168875000005,
+          "completedTurns": 21,
+          "bytesDown": 29139,
+          "bytesUp": 2757,
+          "framesDown": 93,
+          "activeSeconds": 23
+        },
+        "background": {
+          "cpuMs": 0,
+          "seconds": 120.32444550000001,
+          "completedTurns": 42,
+          "bytesDown": 7770,
+          "bytesUp": 0,
+          "framesDown": 18,
+          "activeSeconds": 4
+        }
+      }
+    },
+    {
+      "label": "ios-compare-h2-3",
+      "platform": "ios",
+      "streams": 3,
+      "loadavg": [7.291015625, 5.5302734375, 6.404296875],
+      "phases": {
+        "foreground": {
+          "cpuMs": 3160,
+          "seconds": 60.487329333,
+          "completedTurns": 21,
+          "bytesDown": 29139,
+          "bytesUp": 2757,
+          "framesDown": 93,
+          "activeSeconds": 22
+        },
+        "background": {
+          "cpuMs": 0,
+          "seconds": 120.533038958,
+          "completedTurns": 42,
+          "bytesDown": 11657,
+          "bytesUp": 0,
+          "framesDown": 28,
+          "activeSeconds": 7
+        }
+      }
+    },
+    {
+      "label": "ios-cutoff-1",
+      "platform": "ios",
+      "streams": 3,
+      "loadavg": [1.84130859375, 2.02001953125, 2.8837890625],
+      "phases": {
+        "foreground": {
+          "cpuMs": 3360,
+          "seconds": 60.341138917,
+          "completedTurns": 21,
+          "bytesDown": 29118,
+          "bytesUp": 2757,
+          "framesDown": 93,
+          "activeSeconds": 21
+        },
+        "background": {
+          "cpuMs": 0,
+          "seconds": 120.345198917,
+          "completedTurns": 42,
+          "bytesDown": 0,
+          "bytesUp": 0,
+          "framesDown": 0,
+          "activeSeconds": 0
+        }
+      }
+    },
+    {
+      "label": "ios-cutoff-2",
+      "platform": "ios",
+      "streams": 3,
+      "loadavg": [1.8056640625, 1.8857421875, 2.6376953125],
+      "phases": {
+        "foreground": {
+          "cpuMs": 3240,
+          "seconds": 60.325991208000005,
+          "completedTurns": 21,
+          "bytesDown": 29139,
+          "bytesUp": 2757,
+          "framesDown": 93,
+          "activeSeconds": 20
+        },
+        "background": {
+          "cpuMs": 0,
+          "seconds": 120.54091241600001,
+          "completedTurns": 42,
+          "bytesDown": 0,
+          "bytesUp": 0,
+          "framesDown": 0,
+          "activeSeconds": 0
+        }
+      }
+    },
+    {
+      "label": "ios-cutoff-3",
+      "platform": "ios",
+      "streams": 3,
+      "loadavg": [4.26025390625, 2.67626953125, 2.77294921875],
+      "phases": {
+        "foreground": {
+          "cpuMs": 3280,
+          "seconds": 60.567770667000005,
+          "completedTurns": 21,
+          "bytesDown": 29139,
+          "bytesUp": 2757,
+          "framesDown": 93,
+          "activeSeconds": 24
+        },
+        "background": {
+          "cpuMs": 0,
+          "seconds": 120.40684820799999,
+          "completedTurns": 42,
+          "bytesDown": 0,
+          "bytesUp": 0,
+          "framesDown": 0,
+          "activeSeconds": 0
+        }
+      }
+    },
+    {
+      "label": "android-idle2-1",
+      "platform": "android",
+      "streams": 0,
+      "loadavg": [1.89111328125, 2.658203125, 3.55712890625],
+      "phases": {
+        "foreground": {
+          "cpuMs": 580,
+          "seconds": 60.068801834000006,
+          "bytesDown": 96,
+          "bytesUp": 258,
+          "framesDown": 9,
+          "activeSeconds": 9
+        },
+        "background": {
+          "cpuMs": 50,
+          "seconds": 120.074736,
+          "bytesDown": 8,
+          "bytesUp": 18,
+          "framesDown": 4,
+          "activeSeconds": 4
+        }
+      }
+    },
+    {
+      "label": "android-idle2-2",
+      "platform": "android",
+      "streams": 0,
+      "loadavg": [1.76806640625, 2.2294921875, 3.18359375],
+      "phases": {
+        "foreground": {
+          "cpuMs": 550,
+          "seconds": 60.070138708,
+          "bytesDown": 94,
+          "bytesUp": 258,
+          "framesDown": 9,
+          "activeSeconds": 9
+        },
+        "background": {
+          "cpuMs": 50,
+          "seconds": 120.069897292,
+          "bytesDown": 8,
+          "bytesUp": 18,
+          "framesDown": 4,
+          "activeSeconds": 4
+        }
+      }
+    },
+    {
+      "label": "android-base-control-1",
+      "platform": "android",
+      "streams": 3,
+      "loadavg": [6.69921875, 3.9443359375, 3.2509765625],
+      "phases": {
+        "foreground": {
+          "cpuMs": 4980,
+          "seconds": 60.07349562500001,
+          "completedTurns": 21,
+          "bytesDown": 102005,
+          "bytesUp": 2757,
+          "framesDown": 4422,
+          "activeSeconds": 44
+        },
+        "background": {
+          "cpuMs": 3800,
+          "seconds": 120.05244391699998,
+          "completedTurns": 42,
+          "bytesDown": 194749,
+          "bytesUp": 5034,
+          "framesDown": 8322,
+          "activeSeconds": 77
+        }
+      }
+    }
+  ],
+  "runtimeChecks": {
+    "hiddenTabBefore": {
+      "hidden_files_events": {
+        "message.created": 2,
+        "reasoning_delta": 30,
+        "tool_call_started": 6,
+        "tool_call_finished": 6,
+        "text_delta": 150,
+        "turn_completed": 1
+      }
+    },
+    "hiddenTabAfter": {
+      "chat": {
+        "message.created": 2,
+        "reasoning_delta": 30,
+        "tool_call_started": 6,
+        "tool_call_finished": 6,
+        "text_delta": 150,
+        "turn_completed": 1
+      },
+      "files": {
+        "turn_completed": 1
+      },
+      "latest_watches": [
+        {
+          "type": "watch",
+          "threadIds": ["db1c2c21-81f4-4a04-b859-549801154209"]
+        },
+        {
+          "type": "watch",
+          "threadIds": []
+        },
+        {
+          "type": "watch",
+          "threadIds": ["db1c2c21-81f4-4a04-b859-549801154209"]
+        }
+      ]
+    },
+    "stackedThreadsAfter": {
+      "hidden": {
+        "turn_completed": 1
+      },
+      "focused": {
+        "message.created": 2,
+        "reasoning_delta": 30,
+        "tool_call_started": 6,
+        "tool_call_finished": 6,
+        "text_delta": 150,
+        "turn_completed": 1
+      }
+    },
+    "backgroundReconnectAttemptsPerMinute": {
+      "before": 5,
+      "after": 0
+    }
+  },
+  "limitations": [
+    "CPU is emulator/simulator process time, not physical battery energy. iOS background CPU is suspended.",
+    "Byte and frame counts come from the proxy; active seconds are not measured device/radio wakeups.",
+    "Baselines and H2 were interleaved. Candidate cutoff uses the same workload and artifacts, with three repeats.",
+    "Host CPU load varies; foreground CPU ranges overlap. Background CPU and traffic are the acceptance metrics.",
+    "Newer captures record completed turns per phase; earlier baseline captures predate that health counter.",
+    "One Android cutoff preflight on old port48199 saw a cached iOS authentication attempt; final captures use unused port48399.",
+    "Physical Android/iOS power acceptance remains pending connected devices."
+  ]
+}

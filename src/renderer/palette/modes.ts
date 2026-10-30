@@ -12,7 +12,6 @@ const goTo: PaletteMode = {
   sources: [threadsSource, projectsSource, filesSource],
 }
 
-/** Every mode the palette offers. The one with the longest matching prefix wins, so `goTo` catches the rest. */
 export const paletteModes: ReadonlyArray<PaletteMode> = [
   { id: "commands", prefix: COMMAND_PREFIX, placeholder: m.palette_commands_placeholder, sources: [commandsSource] },
   {
@@ -27,14 +26,12 @@ export const paletteModes: ReadonlyArray<PaletteMode> = [
     prefix: NEW_THREAD_PREFIX,
     placeholder: m.palette_new_thread_placeholder,
     sources: [newThreadSource],
-    // The source's order, without recent items first, so Enter picks the open thread's project.
     rank: (items, query) => rankPalette(items, query, []),
     runsChords: true,
   },
   goTo,
 ]
 
-/** The mode the field's text selects, and the text after its prefix. */
 export const modeOf = (text: string): { mode: PaletteMode; query: string } => {
   const mode =
     paletteModes

@@ -1,9 +1,18 @@
-import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  lstatSync,
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
-import { decodeTar, encodeTar, readTree, type TarEntry } from "./tar.ts"
+import { decodeTar, encodeTar, readTree, type TarEntry, writeTree } from "./tar.ts"
 
 const text = new TextEncoder()
 const file = (path: string, content: string): TarEntry => ({
@@ -48,6 +57,102 @@ describe("encodeTar and decodeTar", () => {
   it("rejects a single path segment longer than ustar allows", () => {
     expect(() => encodeTar([file("a".repeat(101), "")])).toThrow("too long")
   })
+
+  it("takes a pax header's path for the next entry, as Go writes non-ASCII names", () => {
+    const decoded = decodeTar(Buffer.concat([paxHeader({ path: "報告/請求書.pdf" }), encodeTar([file("x", "pdf")])]))
+    expect(decoded.map((entry) => entry.path)).toStrictEqual(["報告/請求書.pdf"])
+  })
+
+  it("refuses a pax header over 1 MiB, as Go does", () => {
+    const junk = Object.fromEntries(Array.from({ length: 100_000 }, (_, index) => [`k${index}`, "v"]))
+    const archive = Buffer.concat([paxHeader(junk), encodeTar([file("x", "ok")])])
+    expect(() => decodeTar(archive)).toThrow("too large")
+  })
+
+  it("refuses an archive cut off before its end marker", () => {
+    const whole = encodeTar([file("proj/a.txt", "a".repeat(600))])
+    expect(() => decodeTar(whole.subarray(0, 1024))).toThrow("truncated")
+    expect(() => decodeTar(whole.subarray(0, whole.length - 1024))).toThrow("truncated")
+  })
+})
+
+const paxHeader = (records: Record<string, string>) => {
+  const body = Object.entries(records)
+    .map(([key, value]) => {
+      const rest = ` ${key}=${value}\n`
+      const restBytes = text.encode(rest).length
+      let length = restBytes + 1
+      while (String(length).length + restBytes !== length) length = String(length).length + restBytes
+      return `${length}${rest}`
+    })
+    .join("")
+  const archive = Buffer.from(encodeTar([file("PaxHeaders/x", body)]))
+  archive[156] = "x".charCodeAt(0)
+  return archive.subarray(0, archive.length - 1024)
+}
+
+const target = () => join(mkdtempSync(join(tmpdir(), "kk-pull-")), "out")
+
+describe("writeTree", () => {
+  it.effect("writes files and folders without exec bits, and skips symlinks", () =>
+    Effect.gen(function* () {
+      const dir = target()
+      const written = yield* writeTree(dir, [
+        { type: "dir", path: "proj", mode: 0o777, mtime: 0 },
+        { ...file("proj/run.sh", "echo hi"), mode: 0o4755 },
+        file("proj/sub/b.txt", "bb"),
+        { type: "symlink", path: "proj/link", target: "/etc/passwd", mode: 0o777, mtime: 0 },
+      ])
+      expect(written).toStrictEqual({ path: join(dir, "proj"), files: 2, bytes: 9, skippedLinks: ["proj/link"] })
+      expect(readFileSync(join(dir, "proj/run.sh"), "utf8")).toBe("echo hi")
+      expect(lstatSync(join(dir, "proj/run.sh")).mode & 0o7111).toBe(0)
+      expect(readFileSync(join(dir, "proj/sub/b.txt"), "utf8")).toBe("bb")
+      expect(existsSync(join(dir, "proj/link"))).toBe(false)
+    }),
+  )
+
+  it.effect("refuses paths that could leave the folder and writes nothing", () =>
+    Effect.gen(function* () {
+      for (const path of ["../escape", "/etc/cron.d/x", "proj/../../escape", "proj//x", "proj/./x", "proj\\..\\x"]) {
+        const dir = target()
+        const error = yield* Effect.flip(
+          writeTree(dir, [{ type: "dir", path: "proj", mode: 0o755, mtime: 0 }, file(path, "x")]),
+        )
+        expect(error.message).toContain("unsafe path")
+        expect(existsSync(dir)).toBe(false)
+      }
+      const dir = target()
+      const error = yield* Effect.flip(writeTree(dir, [file("proj/a", "a"), file("other/b", "b")]))
+      expect(error.message).toContain('"other/b"')
+    }),
+  )
+
+  it.effect("never overwrites: a repeated file fails and removes the folder", () =>
+    Effect.gen(function* () {
+      const dir = target()
+      yield* Effect.flip(writeTree(dir, [file("proj/a", "first"), file("proj/a", "second")]))
+      expect(existsSync(dir)).toBe(false)
+    }),
+  )
+
+  it.effect("names the target of a symlink asked for directly", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(
+        writeTree(target(), [{ type: "symlink", path: "latest", target: "/tmp/build-42", mode: 0o777, mtime: 0 }]),
+      )
+      expect(error.message).toBe("latest is a symlink to /tmp/build-42. Copy its target instead.")
+    }),
+  )
+
+  it.effect("refuses a folder that already exists and leaves it alone", () =>
+    Effect.gen(function* () {
+      const dir = target()
+      mkdirSync(dir)
+      writeFileSync(join(dir, "mine.txt"), "keep")
+      yield* Effect.flip(writeTree(dir, [file("proj/a", "a")]))
+      expect(readdirSync(dir)).toStrictEqual(["mine.txt"])
+    }),
+  )
 })
 
 describe("readTree", () => {

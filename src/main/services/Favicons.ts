@@ -1,27 +1,18 @@
 import { Cache, Context, Duration, Effect, Equal, Exit, Hash, Layer, Semaphore } from "effect"
 
-/** Per GET, redirects included. */
 const REQUEST_TIMEOUT_MS = 5000
-/** For a host's whole lookup: page, icon and every redirect. */
 const LOOKUP_TIMEOUT_MS = 8000
 const MAX_REDIRECTS = 3
 const PAGE_LIMIT_BYTES = 512 * 1024
 const ICON_LIMIT_BYTES = 100 * 1024
-/** Lookups running at once across the app, however many messages ask. */
 const MAX_CONCURRENT_LOOKUPS = 4
-/** Hosts remembered; the oldest is forgotten first. */
 const CACHE_CAPACITY = 500
-/** A miss is retried after this, so a network blip does not hide a site's icon until restart. */
 const MISS_TTL = "5 minutes"
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
 
 const isWeb = (url: URL) => url.protocol === "http:" || url.protocol === "https:"
 
-/**
- * GETs `url` without credentials, following at most `MAX_REDIRECTS` redirects and only to http(s).
- * Null when it fails or is not a 2xx. The returned `url` is where the response came from.
- */
 const get = async (url: URL, deadline: AbortSignal) => {
   const signal = AbortSignal.any([deadline, AbortSignal.timeout(REQUEST_TIMEOUT_MS)])
   let current: URL | null = url
@@ -36,10 +27,6 @@ const get = async (url: URL, deadline: AbortSignal) => {
   return null
 }
 
-/**
- * The body's first `limit` bytes, and whether it was longer. Stops downloading as soon as it passes
- * `limit`, so an endless body costs no more than a full one.
- */
 const readUpTo = async (response: Response, limit: number) => {
   const chunks: Array<Uint8Array> = []
   let size = 0
@@ -63,7 +50,6 @@ const attribute = (tag: string, name: string) =>
 
 const ICON_RELS = new Set(["icon", "apple-touch-icon"])
 
-/** The first `<link rel="icon" | "shortcut icon" | "apple-touch-icon">` href in `html`, resolved against `base`. */
 const linkedIcon = (html: string, base: URL) => {
   for (const [tag] of html.matchAll(/<link\b[^>]*>/gi)) {
     const rels = (attribute(tag, "rel") ?? "").toLowerCase().split(/\s+/)
@@ -78,7 +64,6 @@ const startsWith = (bytes: Buffer, signature: string, offset = 0) =>
 
 const SVG_ROOT = /^(?:<\?xml[^>]*\?>\s*)?<svg[\s>]/i
 
-/** The image type `bytes` actually are, from their magic bytes. Null for anything but PNG, ICO, GIF, JPEG, WebP and SVG. */
 const sniffImage = (bytes: Buffer) => {
   if (startsWith(bytes, "\x89PNG\r\n\x1a\n")) return "image/png"
   if (startsWith(bytes, "\x00\x00\x01\x00")) return "image/x-icon"
@@ -110,19 +95,15 @@ const lookup = async (origin: string) => {
   return icon ?? (await fetchIcon(new URL("/favicon.ico", origin), deadline))
 }
 
-/** Site icons for links in messages, as data URLs because the renderer's CSP only loads images from the app. */
 export class Favicons extends Context.Service<
   Favicons,
   {
-    /** The icon of `url`'s host, or null when it is not http(s) or has no usable icon. Never fails. */
     readonly favicon: (url: string) => Effect.Effect<string | null>
   }
 >()("hinacode/Favicons") {}
 
-/** A cache key that equals any other for the same host, so every scheme, port and path shares one lookup. */
 class Host implements Equal.Equal {
   readonly hostname: string
-  /** The origin of the first url seen for the host, which is the one asked. */
   readonly origin: string
   constructor(hostname: string, origin: string) {
     this.hostname = hostname
@@ -138,7 +119,6 @@ class Host implements Equal.Equal {
 
 const make = Effect.gen(function* () {
   const lookups = yield* Semaphore.make(MAX_CONCURRENT_LOOKUPS)
-  // Concurrent gets for one host share a lookup.
   const icons = yield* Cache.makeWith(
     (host: Host) =>
       Semaphore.withPermit(

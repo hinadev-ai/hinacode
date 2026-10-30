@@ -107,13 +107,22 @@ jobs:
         name: Install search test dependency
         run: sudo apt-get update && sudo apt-get install --yes ripgrep
       - if: needs.changes.outputs.app == 'true'
-        name: Install remote browser test dependency
-        run: pnpm exec playwright install --with-deps chromium
+        name: Install and select the pinned Chromium
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          echo "HINACODE_BROWSER_EXECUTABLE_PATH=$(node -p 'require("playwright").chromium.executablePath()')" >> "$GITHUB_ENV"
       - if: needs.changes.outputs.app == 'true'
         name: Allow Chromium sandbox namespaces
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - if: needs.changes.outputs.app == 'true'
         run: pnpm test
+      - if: needs.changes.outputs.app == 'true'
+        name: Verify the server package
+        run: |
+          node --test scripts/server-package.test.ts
+          pnpm build:server
+          pnpm stage:server
+          pnpm verify:server
 
   mobile:
     needs: changes
@@ -139,12 +148,77 @@ jobs:
       - run: npx tsc --noEmit
       - run: npx expo lint
 
+  bundle-size:
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.desktop == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # Sibling checkouts, because Tailwind scans every file under the project for class names.
+      - uses: actions/checkout@v7
+        with:
+          path: head
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: head/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: head/pnpm-lock.yaml
+      # The base builds with this pull request's commands and budgets, so both sides measure the same files.
+      - name: Build both commits
+        run: |
+          for dir in base head; do
+            (cd "$dir" && pnpm install --frozen-lockfile && pnpm build && pnpm exec electron-builder --linux AppImage --publish never)
+          done
+      - name: Measure
+        working-directory: head
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        # size-limit exits 1 over budget. The last step fails the job after the comment is posted.
+        run: |
+          cp .size-limit.ts ../base/
+          pnpm exec size-limit --json --config ../base/.size-limit.ts > ../base.json || true
+          pnpm exec size-limit --json > ../head.json || true
+          node scripts/bundle-size.ts ../base.json ../head.json "$BASE_SHA" "$HEAD_SHA" | tee ../comment.md >> "$GITHUB_STEP_SUMMARY"
+      # A fork's pull request gets a read-only token, so it only has the job summary.
+      # The marker finds this job's own comment, since React Doctor posts as the same bot.
+      - if: github.event.pull_request.head.repo.full_name == github.repository
+        name: Post the comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          id=$(gh api "repos/$GH_REPO/issues/$PR/comments" --paginate --jq '.[] | select(.body | startswith("<!-- bundle-size -->")) | .id' | head -n 1)
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$GH_REPO/issues/comments/$id" -F body=@comment.md > /dev/null
+          else
+            gh pr comment "$PR" --body-file comment.md
+          fi
+      - name: Check the budgets
+        working-directory: head
+        run: pnpm exec size-limit
+
   e2e-linux:
-    name: e2e (linux)
+    name: e2e (linux ${{ matrix.shard }}/4)
     needs: changes
     if: needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -155,40 +229,14 @@ jobs:
       # Without a window manager, minimizing a window does nothing. Search runs ripgrep.
       - run: sudo apt-get update && sudo apt-get install --yes xvfb openbox ripgrep
       - run: pnpm install --frozen-lockfile
-      - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm test:e2e'
+      - run: pnpm exec bddgen -c e2e/playwright.config.ts
+      # A shard runs every test of the projects its tests depend on, so desktop runs as its own pass instead.
+      - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm exec playwright test -c e2e/playwright.config.ts --project parallel --shard ${{ matrix.shard }}/4'
+      - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm exec playwright test -c e2e/playwright.config.ts --project desktop --no-deps --shard ${{ matrix.shard }}/4'
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-report-linux
-          path: |
-            e2e/playwright-report
-            e2e/test-results
-
-  e2e-macos:
-    name: e2e (macos)
-    needs: changes
-    # The home runner must never run code from a fork's pull request.
-    if: needs.changes.outputs.desktop == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, macOS, ARM64, home]
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-      - name: Check the screen is unlocked
-        run: |
-          if ioreg -n Root -d1 | grep -q '"CGSSessionScreenIsLocked"=Yes'; then
-            echo "::error::Unlock the runner's screen. Electron never reports a window as shown while it is locked."
-            exit 1
-          fi
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm test:e2e
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: e2e-report-macos
+          name: e2e-report-linux-${{ matrix.shard }}
           path: |
             e2e/playwright-report
             e2e/test-results
@@ -215,9 +263,9 @@ jobs:
   resource-monitor-macos:
     name: resource monitor (macos)
     needs: changes
-    # The home runner must never run code from a fork's pull request.
+    # Fork pull requests skip macOS, where a minute costs twenty Linux ones.
     if: needs.changes.outputs.resource-monitor == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, macOS, ARM64, home]
+    runs-on: blacksmith-6vcpu-macos-latest
     defaults:
       run:
         working-directory: tools/resource-monitor

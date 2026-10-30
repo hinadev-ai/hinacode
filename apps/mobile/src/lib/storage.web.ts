@@ -1,3 +1,4 @@
+import type { RememberedAnswers } from "./connection"
 import { parseRelayAccount, RELAY_ACCOUNT_KEY, type RelayAccount } from "./relay-account"
 import { parsePreferences, PREFERENCES_KEY, type Preferences } from "./preferences"
 import { LEGACY_KEY, newServerId, parseStoredServers, SERVERS_KEY, type StoredServer } from "./stored-target"
@@ -26,3 +27,23 @@ export const saveRelayAccount = async (account: RelayAccount) =>
   localStorage.setItem(RELAY_ACCOUNT_KEY, JSON.stringify(account))
 
 export const clearRelayAccount = async () => localStorage.removeItem(RELAY_ACCOUNT_KEY)
+
+const answersKey = (serverId: string) => `hinacode.answers.${serverId}`
+
+export async function loadAnswers(serverId: string): Promise<RememberedAnswers | null> {
+  try {
+    return JSON.parse(localStorage.getItem(answersKey(serverId)) ?? "null") as RememberedAnswers | null
+  } catch {
+    return null
+  }
+}
+
+export async function saveAnswers(serverId: string, answers: RememberedAnswers) {
+  try {
+    localStorage.setItem(answersKey(serverId), JSON.stringify(answers))
+  } catch {
+    // Over the browser's quota: the next launch waits for the server, as it did before anything was saved.
+  }
+}
+
+export const clearAnswers = async (serverId: string) => localStorage.removeItem(answersKey(serverId))

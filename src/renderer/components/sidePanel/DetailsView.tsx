@@ -3,7 +3,13 @@ import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { useParams } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { RiCloudLine, RiFolderOpenLine, RiGitBranchLine, RiGitPullRequestLine } from "react-icons/ri"
-import type { PullRequest, Thread, Worktree, WorktreeStatus } from "../../../shared/domain.ts"
+import {
+  type PullRequest,
+  type Thread,
+  threadFolder,
+  type Worktree,
+  type WorktreeStatus,
+} from "../../../shared/domain.ts"
 import { environmentName, useClouds, usePullRequestHref, useThreadEnvironment } from "../../lib/environments.ts"
 import { branchPullRequestAtom, callPromise, projectsAtom } from "../../lib/rpc.ts"
 import { m } from "../../paraglide/messages.js"
@@ -16,7 +22,6 @@ import { Button } from "../ui/button.tsx"
 import { ScrollArea } from "../ui/scroll-area.tsx"
 import { Section } from "./Section.tsx"
 
-/** Where the thread runs, its setup log and the ports its processes listen on. */
 export function DetailsView({ thread }: { thread: Thread }) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   const [sectionsRef] = useAutoAnimate<HTMLDivElement>({ duration: 150 })
@@ -37,7 +42,7 @@ export function DetailsView({ thread }: { thread: Thread }) {
           {worktree ? (
             <WorktreeWorkspace worktree={worktree} canReveal={local} />
           ) : (
-            <RootWorkspace projectId={thread.projectId} canReveal={local} />
+            <RootWorkspace thread={thread} canReveal={local} />
           )}
         </Section>
         {worktree && (
@@ -68,17 +73,18 @@ function RevealButton({ path, disabled }: { path: string; disabled?: boolean }) 
   )
 }
 
-function RootWorkspace({ projectId, canReveal }: { projectId: string; canReveal: boolean }) {
+function RootWorkspace({ thread, canReveal }: { thread: Thread; canReveal: boolean }) {
   const projects = useAtomValue(projectsAtom)
-  const project = AsyncResult.getOrElse(projects, () => []).find((candidate) => candidate.id === projectId)
+  const project = AsyncResult.getOrElse(projects, () => []).find((candidate) => candidate.id === thread.projectId)
+  const folder = project && threadFolder(project, thread.id)
 
   return (
     <div className="flex flex-col gap-2">
       <p className="text-sm">{m.panel_workspace_root()}</p>
-      {project && (
+      {folder && (
         <>
-          <p className="font-mono text-xs break-all text-muted-foreground">{project.rootPath}</p>
-          {canReveal && <RevealButton path={project.rootPath} />}
+          <p className="font-mono text-xs break-all text-muted-foreground">{folder}</p>
+          {canReveal && <RevealButton path={folder} />}
         </>
       )}
     </div>
@@ -137,6 +143,5 @@ function PullRequestBadge({ pullRequest }: { pullRequest: PullRequest }) {
   )
 }
 
-/** The GitHub pull request for the worktree's branch, or null when there is none or `gh` cannot tell. */
 const useBranchPullRequest = (worktreeId: string | undefined) =>
   AsyncResult.getOrElse(useAtomValue(branchPullRequestAtom(worktreeId ?? null)), () => null)

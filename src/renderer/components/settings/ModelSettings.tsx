@@ -20,7 +20,7 @@ import { SkeletonList } from "../ui/skeleton.tsx"
 
 export function ModelSettings() {
   return (
-    <SettingsSection title={m.settings_models()} description={m.settings_models_hint()}>
+    <SettingsSection>
       {ProviderId.literals.map((provider) => (
         <ProviderModels key={provider} provider={provider} />
       ))}
@@ -105,7 +105,6 @@ function DefaultModelField({ provider }: { provider: ProviderId }) {
   )
 }
 
-/** Which of the agent's models the thread model picker lists. Picking none lists them all. */
 function ModelPresetField({ provider, models }: { provider: ProviderId; models: ReadonlyArray<ModelInfo> }) {
   const environment = useSettingsEnvironment()
   const { modelPresets } = useSettings(environment)
@@ -164,7 +163,6 @@ function ModelPresetField({ provider, models }: { provider: ProviderId; models: 
   )
 }
 
-/** The field is in thousands, like Claude Code's `/autocompact 500k`; the setting is in tokens. */
 function AutoCompactField({ provider }: { provider: ProviderId }) {
   const environment = useSettingsEnvironment()
   const { autoCompactTokens } = useSettings(environment)
@@ -193,16 +191,19 @@ function AutoCompactField({ provider }: { provider: ProviderId }) {
     save(next)
   }
 
-  // The clear button unmounts once the setting is null, which would leave keyboard focus on the page.
   const clear = () => {
     save(null)
     inputRef.current?.focus()
   }
 
   return (
-    <Field>
-      <FieldLabel htmlFor={inputId}>{m.settings_auto_compact()}</FieldLabel>
-      <form onSubmit={onSubmit} className="flex flex-wrap items-center gap-2">
+    <Field orientation="horizontal">
+      <FieldContent>
+        <FieldLabel htmlFor={inputId}>{m.settings_auto_compact()}</FieldLabel>
+        <FieldDescription>{m.settings_auto_compact_hint()}</FieldDescription>
+        {error && <FieldError>{error}</FieldError>}
+      </FieldContent>
+      <form onSubmit={onSubmit} className="flex flex-wrap items-center justify-end gap-2">
         <Input
           ref={inputRef}
           id={inputId}
@@ -214,7 +215,7 @@ function AutoCompactField({ provider }: { provider: ProviderId }) {
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           placeholder={m.settings_auto_compact_default()}
-          className="w-56 shrink-0 tabular-nums"
+          className="w-36 shrink-0 tabular-nums"
         />
         <span className="text-sm whitespace-nowrap text-muted-foreground">{m.settings_auto_compact_unit()}</span>
         <Button type="submit" variant="outline" disabled={next === current || pending}>
@@ -226,8 +227,6 @@ function AutoCompactField({ provider }: { provider: ProviderId }) {
           </Button>
         )}
       </form>
-      <FieldDescription>{m.settings_auto_compact_hint()}</FieldDescription>
-      {error && <FieldError>{error}</FieldError>}
     </Field>
   )
 }
@@ -281,7 +280,6 @@ function DefaultAccessField() {
   )
 }
 
-/** Thread naming runs through the Claude Agent SDK, so only Claude models are offered. */
 function TextGenerationModelField() {
   const environment = useSettingsEnvironment()
   const models = useAtomValue(modelsAtom(environment, "claude"))
@@ -432,7 +430,6 @@ function ModelSelect({
   )
 }
 
-/** Free-text model id, for providers that cannot list their models. */
 function ModelIdForm({ inputId, current, onSave }: ModelInputProps) {
   const [draft, setDraft] = useState(current ?? "")
   const [pending, startTransition] = useTransition()

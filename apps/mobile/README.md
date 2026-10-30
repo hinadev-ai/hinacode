@@ -17,7 +17,52 @@ Replies render through `react-native-enriched-markdown`, a native Fabric compone
 
 `pnpm install` lets that library's postinstall run (`allowBuilds` in `pnpm-workspace.yaml`), because it downloads the tree-sitter grammars the native build compiles for code highlighting.
 
-The phone must reach the desktop directly. Tailscale on both devices is the simplest way: open the dev server through the desktop's Tailscale name, and keep the remote listener on its default `0.0.0.0` bind.
+The phone must reach the desktop directly. Tailscale on both devices is the simplest way: open the dev server through the desktop's Tailscale name, and set Settings > Remote > Remote listener to the desktop's Tailscale address.
+
+### Run on an iOS simulator with Xcode 27
+
+Xcode 27 uses [Device Hub](https://developer.apple.com/documentation/xcode/pairing-your-devices-with-your-mac) to display simulators. Open it with `open -a DeviceHub`, or choose **Xcode > Open Developer Tool > Device Hub**. Select your simulator in the sidebar. Use **Start** if it is shut down.
+
+To choose a simulator from the terminal, list its UDID, then boot it if it is shut down:
+
+```sh
+xcrun simctl list devices available
+IOS_UDID=<simulator-udid>
+xcrun simctl boot "$IOS_UDID"
+open "devices://device/open?id=$IOS_UDID"
+```
+
+From `apps/mobile`, build and install the native app with `pnpm exec expo run:ios --device "$IOS_UDID"`. After the first build, `pnpm exec expo start --localhost` serves JavaScript to the installed app. [Expo also documents the Device Hub workflow](https://docs.expo.dev/workflow/ios-simulator/).
+
+To connect to an isolated local server, run this in another terminal from the repository root:
+
+```sh
+pnpm build:server
+HINACODE_USER_DATA=/tmp/kk-ios-local node out/server/daemon.js serve --host 127.0.0.1 --port 48082
+```
+
+Paste the server's pairing URL into the app. The simulator can reach the Mac at `127.0.0.1`. Keep both the server and Metro running while you check the app.
+
+To capture the simulator with Xcode 27, save to `/tmp` first, then copy into `.context/` from the repository root. This also works when the simulator cannot write directly to the checkout's volume:
+
+```sh
+xcrun devicectl device capture screenshot --device "$IOS_UDID" --destination "/tmp/hinacode-$IOS_UDID.png"
+mkdir -p .context/shots
+cp "/tmp/hinacode-$IOS_UDID.png" .context/shots/mobile.png
+```
+
+Check these native iOS cases after a cold launch:
+
+- On Home, the filter tabs and first row appear below the large title. Check populated, loading, empty, and failed connections.
+- Search results stay below the navigation bar, with the keyboard both open and dismissed.
+- Before pairing, the form starts below the large title and its Connect button remains reachable with the keyboard open.
+- Workspace, thread settings, and thread actions use readable theme surfaces in light and dark mode. Scroll a long option list, select an option, and close the popup.
+
+#### iPhone Duo
+
+The iPhone Duo simulator needs Xcode 27.1 and the iOS 27.1 runtime (`xcodebuild -downloadPlatform iOS -buildVersion 27.1`), then `xcrun simctl create "iPhone Duo" com.apple.CoreSimulator.SimDeviceType.iPhone-Duo com.apple.CoreSimulator.SimRuntime.iOS-27-1`. Open and close it with the controls in Device Hub; `simctl` cannot fold it.
+
+On the closed phone the status bar, and the header buttons with it, sit in a column on the right. Check that rows, the composer, sheets and banners stay to the left of it.
 
 ### Run on a phone over USB
 
@@ -30,6 +75,18 @@ npx expo run:android
 ```
 
 Pair with a URL whose host is `127.0.0.1`.
+
+### Install a standalone build on Android
+
+To run the latest code without Metro, plug in the phone with USB debugging on and run:
+
+```sh
+pnpm install:android        # or: pnpm install:android <adb serial>
+```
+
+`scripts/install-android.sh` regenerates `android/` with `expo prebuild`, builds a Release APK, installs it as `com.hinadev.hinacode` over the previous build, and opens it. You need the Android SDK in `~/Library/Android/sdk` (or set `ANDROID_HOME`) and a JDK 17+ (Android Studio's bundled one, Homebrew's `openjdk@21`, or set `JAVA_HOME`).
+
+The phone reaches the desktop over plain `ws://`, which Android blocks in Release builds unless the manifest opts in. `expo-build-properties` in `app.json` sets `usesCleartextTraffic`, and the script refuses to install an APK without it, since that app would install fine and then stay on Reconnecting. The APK is signed with the debug key. If `adb install` reports a signature mismatch, uninstall the old app first, which also removes its pairing.
 
 The bundle runs on Hermes, which has none of the ES2023 array methods such as `toSorted`. `tsconfig.json` pins `lib` to ES2022 so `npx tsc --noEmit` catches them; `src/hermes.d.ts` adds back the two Hermes does have.
 

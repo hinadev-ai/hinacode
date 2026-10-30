@@ -56,4 +56,12 @@ describe("groupProjects", () => {
       ["acme/ml", ["ml"]],
     ])
   })
+
+  test("every machine's chats project is one group", () => {
+    const projects = [
+      project("chats", { kind: "chats" }),
+      project("cloud-chats", { kind: "chats", environmentId: "home" }),
+    ]
+    expect(keysAndIds(projects)).toStrictEqual([["chats", ["chats", "cloud-chats"]]])
+  })
 })

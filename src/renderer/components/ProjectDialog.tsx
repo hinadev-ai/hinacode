@@ -1,6 +1,6 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { type FormEvent, startTransition, useActionState, useState } from "react"
+import { type ComponentProps, type FormEvent, startTransition, useActionState, useState } from "react"
 import { RiFolderOpenLine, RiGithubFill } from "react-icons/ri"
 import type { Project } from "../../shared/domain.ts"
 import { type GitHubRepository, parseGitHubRepository } from "../../shared/github.ts"
@@ -35,23 +35,21 @@ import { suggestProjectName } from "../lib/projectName.ts"
 interface ProjectDialogProps {
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
-  /** The project to edit. Without one the dialog adds a new project. */
   readonly project?: Project
-  /** Where a new project starts out. */
   readonly environment?: EnvironmentId
+  readonly finalFocus?: ComponentProps<typeof DialogContent>["finalFocus"]
 }
 
-export function ProjectDialog({ open, onOpenChange, project, environment = null }: ProjectDialogProps) {
+export function ProjectDialog({ open, onOpenChange, project, environment = null, finalFocus }: ProjectDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg" finalFocus={finalFocus}>
         <DialogHeader>
           <DialogTitle>{project ? m.project_edit_title() : m.project_dialog_title()}</DialogTitle>
           <DialogDescription>
             {project ? m.project_edit_description({ project: project.name }) : m.project_dialog_description()}
           </DialogDescription>
         </DialogHeader>
-        {/* Inside the popup so the form state resets every time the dialog opens. */}
         <ProjectForm project={project} initialEnvironment={environment} onSaved={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
@@ -60,10 +58,6 @@ export function ProjectDialog({ open, onOpenChange, project, environment = null 
 
 const parentOf = (path: string) => path.replace(/[\\/][^\\/]*[\\/]?$/, "")
 
-/**
- * Where a clone lands unless the user picks another folder: next to the newest project in the same environment,
- * else `~/code`.
- */
 function useDefaultCloneParent(environment: EnvironmentId) {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => []).filter(
     (candidate) => environmentOf(candidate) === environment,
@@ -83,11 +77,9 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
   const cloneProject = useAtomSet(cloneProjectAtom, { mode: "promise" })
   const updateProject = useAtomSet(updateProjectAtom, { mode: "promise" })
   const [rootPath, setRootPath] = useState(project?.rootPath ?? "")
-  // Null until the user types a name, so the name follows the folder or repository typed above it.
   const [typedName, setTypedName] = useState<string | null>(project?.name ?? null)
   const name = typedName ?? suggestProjectName(rootPath)
   const [linearReview, setLinearReview] = useState(project?.linearReview ?? false)
-  // An existing project's folder is always local; a new one may be typed as a GitHub repository.
   const repository = project ? null : parseGitHubRepository(rootPath)
   const [cloneTo, setCloneTo] = useState<string | null>(null)
   const [environment, setEnvironment] = useState<EnvironmentId>(() =>
@@ -242,7 +234,6 @@ interface CloneTargetProps {
   readonly onChange: (path: string) => void
 }
 
-/** The folder the repository is cloned into. Browse picks its parent, since the clone creates the folder. */
 function CloneTarget({ repository, value, canBrowse, onChange }: CloneTargetProps) {
   const browse = async () => {
     const parent = await callPromise("dialog.pickFolder", undefined)
@@ -275,7 +266,6 @@ function CloneTarget({ repository, value, canBrowse, onChange }: CloneTargetProp
 const THIS_MACHINE = ""
 
 interface WhereFieldProps {
-  /** A project stays where it was added, so editing one only shows where it lives. */
   readonly editable: boolean
   readonly value: EnvironmentId
   readonly onChange: (environment: EnvironmentId) => void

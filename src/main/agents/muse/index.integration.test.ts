@@ -13,10 +13,7 @@ import type { BackgroundTasksChange } from "../provider.ts"
 import { FAKE_MODEL_ID, type FakeEndpoint, startFakeEndpoint, startFakeMcpServer } from "./fakeEndpoint.ts"
 import { MuseProvider } from "./index.ts"
 
-/**
- * The muse launcher, found before HOME moves. A version manager's shim, such as mise's, reads its own config from
- * HOME and stops resolving once the test points HOME at the fake.
- */
+// FIXME: version manager shims such as mise's stop resolving once HOME points at the fake
 const findMuse = async (): Promise<string | undefined> => {
   const found = await findBinary("muse")
   if (found === undefined) return undefined
@@ -33,7 +30,6 @@ let mcp: Awaited<ReturnType<typeof startFakeMcpServer>> | undefined
 
 let turns = 0
 
-/** Each turn gets its own workspace and a prompt marker the fake endpoint routes by. */
 const input = (accessMode: AccessMode, marker: string): RunTurnInput => {
   const cwd = join(root, `ws-${marker}`)
   mkdirSync(cwd)
@@ -49,6 +45,7 @@ const input = (accessMode: AccessMode, marker: string): RunTurnInput => {
     userSkills: true,
     accessMode,
     resumeSessionId: null,
+    forkAt: null,
     home: null,
     mcpServer: { url: mcp!.url, headers: { authorization: "Bearer test" } },
     instructions: AGENT_INSTRUCTIONS,
@@ -98,7 +95,6 @@ const startTurn = (accessMode: AccessMode, setup: (marker: string, input: RunTur
 
 type Turn = Effect.Success<ReturnType<typeof startTurn>>
 
-/** Resolves with the first event matching `predicate`; subscribing first means none is missed. */
 const untilEvent = <E extends AgentEvent>(turn: Turn, predicate: (event: AgentEvent) => event is E) =>
   Effect.gen(function* () {
     const updates = yield* PubSub.subscribe(turn.arrived)
@@ -117,7 +113,6 @@ const ofType =
 
 const eventsOf = <T extends AgentEvent["type"]>(turn: Turn, type: T) => turn.events.filter(ofType(type))
 
-/** Starts the next turn in a turn's Muse session. */
 const followUp = (turn: Turn, autoCompactTokens: number | null) =>
   forkTurn({ ...turn.input, resumeSessionId: eventsOf(turn, "session_bound")[0]!.providerSessionId, autoCompactTokens })
 
@@ -138,13 +133,20 @@ const compactedAuto = {
   postTokens: expect.any(Number),
 }
 
-/** A fresh `muse serve` per test, shut down with the test scope. */
 const withProvider = <A, E>(effect: Effect.Effect<A, E, MuseProvider>) =>
   effect.pipe(Effect.provide(MuseProvider.layer))
 
 const TURN_TIMEOUT = 60_000
 
-/** Muse moves a shell to the background once it outlives `yield_time_ms`. */
+const processesRunning = (commandLine: string) => {
+  try {
+    execFileSync("pgrep", ["-f", commandLine])
+    return true
+  } catch {
+    return false
+  }
+}
+
 const backgroundShell = (command: string) => (marker: string) =>
   endpoint.script({
     when: marker,
@@ -152,7 +154,6 @@ const backgroundShell = (command: string) => (marker: string) =>
     arguments: { command, description: "Wait in the background", yield_time_ms: 200 },
   })
 
-/** Collects the provider's background task changes, subscribed before any turn starts. */
 const watchBackgroundTasks = Effect.gen(function* () {
   const provider = yield* MuseProvider
   const tasks = provider.backgroundTasks
@@ -165,7 +166,6 @@ const watchBackgroundTasks = Effect.gen(function* () {
     ),
     Effect.forkChild,
   )
-  /** Resolves with the first change for `threadId` that matches `predicate`. */
   const until = (threadId: string, predicate: (change: BackgroundTasksChange) => boolean) => {
     const matches = (change: BackgroundTasksChange) => change.threadId === threadId && predicate(change)
     return Effect.gen(function* () {
@@ -181,7 +181,7 @@ const watchBackgroundTasks = Effect.gen(function* () {
   return { stop: tasks.stop, changes, until }
 })
 
-/** Ask me runs a command in the sandbox without asking, so this one asks to leave it. */
+// FIXME: Muse's Ask me runs sandboxed commands without asking, so this one escalates
 const twoStagesCall = {
   name: "bash",
   arguments: {
@@ -206,7 +206,7 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
     process.env.XDG_CONFIG_HOME = join(endpoint.home, ".config")
     process.env.XDG_DATA_HOME = join(endpoint.home, ".local", "share")
     process.env.MUSE_NO_AUTO_UPDATE = "1"
-    // On macOS Muse moves a stored key into the login keychain, which the fake HOME lacks, so the OS prompts.
+    // FIXME: on macOS Muse moves a stored key into the login keychain, which the fake HOME lacks
     process.env.TBH_CREDENTIAL_BACKEND = "file"
   })
 
@@ -374,7 +374,6 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
             { id: expect.any(String), kind: "shell", label: "Wait in the background", startedAt: expect.any(String) },
           ])
           yield* Fiber.join(turn.fiber)
-          // The shell outlives its turn, so its row closes when it leaves instead of failing at the turn's end.
           expect(eventsOf(turn, "tool_call_finished")).toStrictEqual([
             { type: "tool_call_finished", callId: running[0]!.id, output: "Running in the background", isError: false },
           ])
@@ -411,7 +410,6 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
           const provider = yield* MuseProvider
           const wakes = yield* Stream.toQueue(provider.wakes!, { capacity: "unbounded" })
           const turn = yield* startTurn("supervised", (marker) => {
-            // The shell prints the marker without the command holding it, so only the wake's request carries it.
             backgroundShell(`sleep 2 && echo woken-$(echo ${marker})`)(marker)
             endpoint.script({ ...twoStagesCall, when: `woken-${marker}` })
           })
@@ -434,6 +432,32 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
           expect(events.filter(ofType("approval_requested"))).toHaveLength(1)
           expect(events.filter(ofType("tool_call_finished"))).toMatchObject([{ isError: false }])
           expect(events.at(-1)?.type).toBe("turn_completed")
+        }).pipe(Effect.scoped),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "leaves the session a thread moves off, and its background shell is gone once that returns",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const provider = yield* MuseProvider
+          const wakes = yield* Stream.toQueue(provider.wakes!, { capacity: "unbounded" })
+          const tasks = yield* watchBackgroundTasks
+          let shell = ""
+          const turn = yield* startTurn("full", (marker) => {
+            shell = `sleep 30 && echo left-${marker}`
+            backgroundShell(shell)(marker)
+          })
+          yield* tasks.until(turn.threadId, (change) => change.tasks.length > 0)
+          yield* Fiber.join(turn.fiber)
+          expect(processesRunning(shell)).toBe(true)
+
+          yield* (provider.closeSession ?? (() => Effect.die("closeSession is missing")))(turn.threadId, null)
+          expect(processesRunning(shell)).toBe(false)
+          expect(tasks.changes.filter((change) => change.threadId === turn.threadId).at(-1)?.tasks).toStrictEqual([])
+          expect(yield* Queue.size(wakes)).toBe(0)
         }).pipe(Effect.scoped),
       ),
     TURN_TIMEOUT,
@@ -600,7 +624,7 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
             marker = held
             endpoint.hold(held)
           })
-          // Muse shows none of a reply until its completion ends, so the held request is the signal.
+          // FIXME: Muse shows none of a reply until its completion ends
           yield* Effect.promise(() => endpoint.requested(marker))
           yield* provider.interrupt(turn.threadId)
           yield* Fiber.join(turn.fiber)
@@ -617,7 +641,6 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
         Effect.gen(function* () {
           const first = yield* startTurn("supervised")
           yield* Fiber.join(first.fiber)
-          // The fake endpoint reports 7 input tokens per call, past this threshold.
           const next = yield* followUp(first, 5)
           yield* Fiber.join(next.fiber)
 
@@ -626,6 +649,32 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
           expect(compacted).toBeLessThan(next.events.findIndex(ofType("text_delta")))
           expect(replyOf(next)).toBe(REPLY)
           expect(next.events.at(-1)?.type).toBe("turn_completed")
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "compacts the session when the prompt is /compact",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const provider = yield* MuseProvider
+          const first = yield* startTurn("supervised")
+          yield* Fiber.join(first.fiber)
+          const commands = yield* provider.listCommands({ threadId: first.threadId, cwd: first.input.cwd, home: null })
+          expect(commands.map((command) => command.trigger + command.name)).toContain("/compact")
+
+          const compact = yield* forkTurn({
+            ...first.input,
+            prompt: "/compact",
+            resumeSessionId: eventsOf(first, "session_bound")[0]!.providerSessionId,
+          })
+          yield* Fiber.join(compact.fiber)
+
+          expect(compactionsOf(compact)).toStrictEqual([{ status: "running" }, { ...compactedAuto, trigger: "manual" }])
+          expect(replyOf(compact)).toBe("")
+          expect(compact.events.at(-1)?.type).toBe("turn_completed")
         }),
       ),
     TURN_TIMEOUT,
@@ -660,7 +709,6 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
             return turn
           }),
         )
-        // A fresh host has to resume the session before it can run the turn.
         const next = yield* withProvider(
           Effect.gen(function* () {
             const turn = yield* followUp(first, 5)
@@ -691,7 +739,6 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
           yield* Fiber.join(stopped.fiber)
           expect(stopped.events.at(-1)).toStrictEqual({ type: "turn_failed", message: "Turn interrupted" })
 
-          // Muse cannot cancel a compaction, so the next turn waits for it instead of failing as busy.
           const next = yield* followUp(first, 5)
           yield* untilEvent(next, isCompacting)
           release()
@@ -764,11 +811,11 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
               userSkills: true,
               accessMode: "supervised",
               resumeSessionId: null,
+              forkAt: null,
               home: null,
               mcpServer: { url: mcp!.url, headers: { authorization: "Bearer [REDACTED]" } },
             })
             .pipe(Stream.runForEach((event) => Effect.sync(() => events.push(event))))
-          // The host expands the skill, so its body reaches the model endpoint.
           yield* Effect.promise(() => endpoint.requested("PROBE-SKILL-BODY"))
           expect(events.at(-1)?.type).toBe("turn_completed")
         }),

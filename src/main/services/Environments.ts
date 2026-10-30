@@ -21,7 +21,7 @@ import {
 } from "../../shared/remote.ts"
 import type { RelayMachine } from "../../shared/relayMachines.ts"
 import { planRelaySync } from "../../shared/relaySync.ts"
-import { learnFromAnswer, learnFromPush, makeOwners, stampProjects } from "../../shared/owners.ts"
+import { learnFromAnswer, learnFromPush, makeOwners, nameMachines, stampProjects } from "../../shared/owners.ts"
 import type { Entity } from "../../shared/routes.ts"
 import { type DialTarget, unreachableMessage } from "../environments/unreachable.ts"
 import { CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED, RemoteAccess } from "../remote/access.ts"
@@ -44,12 +44,10 @@ export interface ForwardedCall {
   readonly payload: unknown
 }
 
-/** The clouds this desktop paired with, one live connection each. */
 export class Environments extends Context.Service<
   Environments,
   {
     readonly list: Effect.Effect<EnvironmentList, PersistenceError>
-    /** Connects once with the pairing URL's token before saving it. A cloud already listed is updated in place. */
     readonly add: (input: {
       readonly name: string
       readonly pairingUrl: string
@@ -58,27 +56,13 @@ export class Environments extends Context.Service<
       InvalidPairingUrl | EnvironmentUnreachable | EnvironmentUnauthorized | PersistenceError
     >
     readonly remove: (id: string) => Effect.Effect<void, PersistenceError>
-    /**
-     * Makes the clouds match the relay's list without dialing them, since the relay already named each one. Answers
-     * how many listed machines this desktop now has. A cloud paired by URL is refreshed but never dropped or renamed.
-     */
     readonly syncRelay: (machines: ReadonlyArray<RelayMachine>) => Effect.Effect<number, PersistenceError>
-    /** Dials a cloud now instead of after its backoff. Does nothing while it is connected or refused its token. */
     readonly reconnect: (id: string) => Effect.Effect<void>
-    /** `reconnect` for every cloud, for when the network may have come back, such as waking from sleep. */
     readonly reconnectAll: Effect.Effect<void>
-    /**
-     * Runs one call on a cloud. A call made or cut off while the cloud is unreachable waits for it to reconnect, and
-     * answers `Timeout` once the cloud has been unreachable for a minute in total.
-     */
     readonly forward: (environmentId: string, call: ForwardedCall) => Effect.Effect<RpcEnvelope<unknown>>
-    /**
-     * Runs a call that answers an array on every cloud and concatenates the answers. A cloud that cannot answer
-     * contributes its last answer to the same call, or nothing.
-     */
     readonly gather: (call: ForwardedCall) => Effect.Effect<ReadonlyArray<unknown>>
-    /** The cloud that owns `id`, or undefined when it is this desktop's. */
     readonly owner: (entity: Entity, id: string) => string | undefined
+    readonly answerAsks: (answer: (call: ForwardedCall) => Effect.Effect<RpcEnvelope<unknown>>) => Effect.Effect<void>
   }
 >()("hinacode/Environments") {}
 
@@ -90,7 +74,6 @@ const PING_INTERVAL = "10 seconds"
 const SILENCE_LIMIT_MS = 25_000
 const OFFLINE_LIMIT_MS = 60_000
 const STABLE_MS = 60_000
-/** How long pairing waits for an earlier host in the URL once a later one answered. */
 const PREFER_EARLIER_HOST_MS = 1_000
 
 const reconnectDelay = (attempt: number) => Math.min(500 * 2 ** attempt, 60_000) * (0.7 + Math.random() * 0.6)
@@ -107,6 +90,9 @@ const incompatible = (name: string): RpcEnvelope<never> => ({
 const unknownEnvironment = (id: string): RpcEnvelope<never> => ({
   error: { tag: "NotFoundError", message: `No environment with id ${id}` },
 })
+const notAnswering: RpcEnvelope<never> = {
+  error: { tag: "NotReady", message: "The desktop is still starting." },
+}
 
 const decodeServerFrame = Schema.decodeUnknownOption(ServerFrame)
 
@@ -129,16 +115,9 @@ interface DialHandlers {
   readonly onClose: (code: number) => void
 }
 
-/**
- * Opens a socket to a cloud's remote listener and answers its `challenge` with a proof of `token`. Without a challenge
- * within `CHALLENGE_WAIT_MS`, it sends the token itself only when `plainToken` allows it, which is over the relay or
- * for a pairing without one. Frames reach `handlers` only from a `ready` that proved the token back, or that answered
- * the token itself. A socket this side refuses closes as `CLOSE_UNAUTHORIZED`, like a cloud that refused the token.
- */
 const dial = (url: string, token: string, plainToken: boolean, handlers: DialHandlers) =>
   Effect.map(Effect.context<never>(), (services) => {
     const socket = new WebSocket(url)
-    // The proof `ready` must carry: undefined until this side sent `auth`, null after it sent the token itself.
     let expected: string | null | undefined
     let authenticated = false
     let refused = false
@@ -187,7 +166,6 @@ const dial = (url: string, token: string, plainToken: boolean, handlers: DialHan
     return socket
   })
 
-/** Whether a socket to `url` opens. It closes again without a frame, so it never carries the token. */
 const opens = (url: string) =>
   Effect.callback<boolean>((resume) => {
     const socket = new WebSocket(url)
@@ -200,10 +178,6 @@ const opens = (url: string) =>
     return Effect.sync(() => socket.terminate())
   })
 
-/**
- * Opens a socket to each of `dials` after its `delayMs` and answers the first one that opened, or null once every
- * socket failed or none opened within `timeoutMs`. Every socket closes again, the winner's too.
- */
 const firstToOpen = (dials: ReadonlyArray<Dial>, timeoutMs: number) =>
   Effect.gen(function* () {
     const won = yield* Deferred.make<Dial | null>()
@@ -228,17 +202,12 @@ const firstToOpen = (dials: ReadonlyArray<Dial>, timeoutMs: number) =>
     )
   }).pipe(Effect.scoped)
 
-/** Completes once one of `direct` opens, checking every `DIRECT_CHECK_INTERVAL_MS`. */
 const directAnswers = (direct: ReadonlyArray<Dial>): Effect.Effect<void> =>
   Effect.sleep(DIRECT_CHECK_INTERVAL_MS).pipe(
     Effect.andThen(firstToOpen(direct, DIRECT_CHECK_TIMEOUT_MS)),
     Effect.flatMap((opened) => (opened === null ? directAnswers(direct) : Effect.void)),
   )
 
-/**
- * Succeeds with the cloud's `ready` frame once it accepts `token`. `plainToken` is `dial`'s: a host of a pairing with a
- * relay gets a proof of the token, never the token.
- */
 const probe = (target: DialTarget, token: string, plainToken: boolean) => {
   const where = "relay" in target ? target.relay : `${target.host}:${target.port}`
   const url = "relay" in target ? relayWebSocketUrl(target.relay) : remoteWebSocketUrl(target)
@@ -254,7 +223,7 @@ const probe = (target: DialTarget, token: string, plainToken: boolean) => {
           socket.close()
         },
         onError: (error) => {
-          // A host with several addresses fails with an AggregateError, whose message is empty.
+          // FIXME: Node fails a host with several addresses with an AggregateError whose message is empty
           reason = error.message || reason
           errorCode = "code" in error && typeof error.code === "string" ? error.code : undefined
         },
@@ -292,12 +261,6 @@ const probe = (target: DialTarget, token: string, plainToken: boolean) => {
   )
 }
 
-/**
- * Probes every host of a pairing and its relay at once and keeps the first host in URL order that answers, or the
- * first host when only the relay answered. Once anything answered, earlier hosts get `PREFER_EARLIER_HOST_MS` more,
- * so an address this desktop cannot reach, such as a Tailscale address off the tailnet, does not hold pairing for
- * the whole probe timeout. When nothing answers, a refused token outranks unreachable hosts.
- */
 const probeHosts = (pairing: PairingTarget) =>
   Effect.gen(function* () {
     const answers: Array<Ready | undefined> = []
@@ -372,24 +335,22 @@ interface Cloud {
   environment: Environment
   status: EnvironmentStatus
   lastSeenAt: string | null
-  /** The cloud's protocol version while it speaks another one than this desktop. */
   protocol: number | null
-  /** Set only while the socket is authenticated, so a call never goes to a socket that is still dialing. */
   live: Live | null
-  /** Set only while waiting out the backoff; completing it dials at once. */
   wake: Deferred.Deferred<void> | null
   readonly outbox: Map<number, Pending>
-  /** The last successful answer per method, for `gather` while the cloud cannot answer. */
   readonly remembered: Map<RpcMethod, { readonly payload: string; readonly result: unknown }>
 }
 
 interface SessionEnd {
   readonly code: number
-  /** Whether the cloud accepted the token before the socket closed. */
   readonly ready: boolean
-  /** The cloud's protocol version when it is not this desktop's. */
   readonly otherProtocol: number | null
   readonly connectedMs: number
+}
+
+const sendFrame = (socket: WebSocket, frame: ClientFrame) => {
+  if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame))
 }
 
 const send = (live: Live, call: Pending) => {
@@ -413,6 +374,7 @@ const make = Effect.gen(function* () {
   const owners = makeOwners()
   const clouds = new Map<string, Cloud>()
   let nextCallId = 1
+  let answer: (call: ForwardedCall) => Effect.Effect<RpcEnvelope<unknown>> = () => Effect.succeed(notAnswering)
   const now = () => clock.currentTimeMillisUnsafe()
 
   const findAll = SqlSchema.findAll({
@@ -487,7 +449,6 @@ const make = Effect.gen(function* () {
     }
   }
 
-  /** Keeps the relay the cloud reports, so the next dial reaches it from any network. */
   const learnRelay = (cloud: Cloud, relay: string | null) => {
     if (cloud.environment.relay === relay) return
     cloud.environment = { ...cloud.environment, relay }
@@ -499,7 +460,6 @@ const make = Effect.gen(function* () {
     )
   }
 
-  /** Resolves once the socket closes. Interrupting it drops the socket. `plainToken` is `dial`'s. */
   const session = (cloud: Cloud, token: string, url: string, plainToken: boolean) =>
     Effect.gen(function* () {
       const { id, name } = cloud.environment
@@ -526,6 +486,7 @@ const make = Effect.gen(function* () {
                 learnRelay(cloud, frame.relay ?? null)
                 const live: Live = { socket, dedupesCalls: frame.features?.includes("call-keys") ?? false }
                 cloud.live = live
+                if (frame.features?.includes("asks")) sendFrame(socket, { type: "hub" })
                 for (const call of cloud.outbox.values()) {
                   pauseOfflineTimer(call)
                   if (call.priorOfflineMs >= OFFLINE_LIMIT_MS) expire(cloud, call)
@@ -547,6 +508,12 @@ const make = Effect.gen(function* () {
                 return runFork(windows.send(frame.event))
               case "pong":
                 return
+              case "ask":
+                return runFork(
+                  answer({ method: frame.method, payload: frame.payload }).pipe(
+                    Effect.map((envelope) => sendFrame(socket, { type: "answer", id: frame.id, envelope })),
+                  ),
+                )
             }
           },
           onUndecodable: () => runFork(Effect.logWarning("dropped an undecodable frame", name)),
@@ -591,12 +558,6 @@ const make = Effect.gen(function* () {
       } satisfies SessionEnd
     }).pipe(Effect.scoped)
 
-  /**
-   * Keeps `cloud` connected until interrupted or refused. A cloud on another protocol version keeps being retried,
-   * so it reconnects on its own once updated. Each round races the cloud's dial plan and runs a session on the
-   * first URL that opens, and a round where none opens waits out the backoff. A session over the relay ends as soon
-   * as a direct address answers, and the next round dials the direct addresses alone to move there.
-   */
   const maintain = (cloud: Cloud) =>
     Effect.gen(function* () {
       const { name } = cloud.environment
@@ -607,7 +568,6 @@ const make = Effect.gen(function* () {
       }
       yield* setStatus(cloud, "connecting")
       let attempt = 0
-      // Which routes this round dials. Every round after a backoff dials both.
       let round: "both" | "direct" | "relay" = "both"
       for (;;) {
         const plan = environmentDialPlan(cloud.environment)
@@ -632,9 +592,6 @@ const make = Effect.gen(function* () {
             continue
           }
           if (end.code === CLOSE_UNAUTHORIZED || end.code === CLOSE_TOKEN_ROTATED) {
-            // Away from home, someone else's HinaCode can answer at the direct address, refuse the proof or fail to
-            // prove the token back. Only the relay surely reaches this cloud, so the rest of this link dials it alone
-            // and takes its verdict.
             if (!end.ready && won.route === "direct" && hasRelay) {
               round = "relay"
               continue
@@ -859,14 +816,17 @@ const make = Effect.gen(function* () {
         Effect.map((envelope) => {
           if ("error" in envelope) return envelope
           learnFromAnswer(owners, environmentId, method, payload, envelope.result)
-          const result = stampProjects(method, envelope.result, environmentId)
+          const result = nameMachines(
+            method,
+            stampProjects(method, envelope.result, environmentId),
+            cloud.environment.name,
+          )
           cloud.remembered.set(method, { payload: JSON.stringify(payload ?? null), result })
           return { result }
         }),
       )
     })
 
-  /** A cloud that answers slowly, or not at all over a half-open socket, must not hold up this desktop's list. */
   const gather = (call: ForwardedCall) =>
     Effect.forEach(
       [...clouds.values()],
@@ -899,6 +859,10 @@ const make = Effect.gen(function* () {
     forward,
     gather,
     owner: owners.owner,
+    answerAsks: (answerWith) =>
+      Effect.sync(() => {
+        answer = answerWith
+      }),
   })
 })
 

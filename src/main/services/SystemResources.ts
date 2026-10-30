@@ -20,7 +20,6 @@ const cpuTimes = () =>
     { busy: 0, total: 0 },
   )
 
-// A container's memory limit, when it sets one, is the total that `availableMemory` counts down from.
 const memoryTotal = () => {
   const constrained = process.constrainedMemory()
   return constrained > 0 && constrained < totalmem() ? constrained : totalmem()

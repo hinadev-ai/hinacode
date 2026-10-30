@@ -20,10 +20,6 @@ const RIPGREP_TIMEOUT_MS = 3000
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
-/**
- * About `width` characters of `text` around the first case-insensitive occurrence of `query`, with
- * whitespace collapsed and an ellipsis where it was cut.
- */
 export function snippetAround(text: string, query: string, width: number): string {
   const flat = text.replace(/\s+/g, " ").trim()
   const index = Math.max(0, flat.search(new RegExp(escapeRegExp(query), "iu")))
@@ -32,7 +28,7 @@ export function snippetAround(text: string, query: string, width: number): strin
   return `${start > 0 ? "…" : ""}${flat.slice(start, end)}${end < flat.length ? "…" : ""}`
 }
 
-/** `query` as a LIKE pattern. Escaping costs the trigram index, so it is only used when needed. */
+// FIXME: a LIKE with ESCAPE cannot use SQLite's trigram index
 const likePattern = (query: string) =>
   /[\\%_]/.test(query)
     ? { pattern: `%${query.replace(/[\\%_]/g, "\\$&")}%`, escaped: true }
@@ -59,14 +55,13 @@ const RipgrepMatch = Schema.Struct({
 })
 const decodeMatch = Schema.decodeUnknownOption(Schema.fromJsonString(RipgrepMatch))
 
-/** One hit per matching line. Lines that are not valid UTF-8 come as `bytes` and are skipped. */
 const toHit = (line: string, root: string): FileSearchHit | undefined => {
   const match = decodeMatch(line)
   if (match._tag === "None") return undefined
   const { path, lines, line_number, submatches } = match.value.data
   const text = lines.text.replace(/\r?\n$/, "")
   const [first] = submatches
-  // ripgrep reports byte offsets.
+  // FIXME: ripgrep reports byte offsets
   const column = Buffer.from(text).subarray(0, first.start).toString().length + 1
   return {
     path: relative(root, path.text),
@@ -82,7 +77,6 @@ const runRipgrep = (rg: string, root: string, query: string, limit: number) =>
     const child = spawn(rg, args, { stdio: ["ignore", "pipe", "ignore"] })
     const hits: Array<FileSearchHit> = []
     const lines = createInterface({ input: child.stdout })
-    // Stops early on the limit or the timeout and keeps what it found, so a huge tree stays responsive.
     const finish = () => {
       clearTimeout(timer)
       lines.close()
@@ -109,9 +103,7 @@ const runRipgrep = (rg: string, root: string, query: string, limit: number) =>
 export class Search extends Context.Service<
   Search,
   {
-    /** Messages containing `query` as a case-insensitive substring, newest first. */
     readonly threads: (query: string, limit?: number) => Effect.Effect<ReadonlyArray<ThreadSearchHit>, PersistenceError>
-    /** Lines containing `query` literally (smart case) in the thread's active workspace. */
     readonly files: (
       threadId: string,
       query: string,
@@ -129,10 +121,6 @@ const ThreadRow = Schema.Struct({
   at: Schema.String,
 })
 
-/**
- * @param ripgrep finds the `rg` binary, undefined when it is not installed. Called once, on first use,
- * so installing ripgrep takes a restart.
- */
 export const make = (ripgrep: () => string | undefined) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient

@@ -3,7 +3,6 @@ import { connect as connectTcp, type Socket } from "node:net"
 import { connect as connectTls } from "node:tls"
 import { Effect, Redacted, Schema } from "effect"
 
-/** Where the sbx CLI keeps its login. Read on every call, so a new `sbx login` applies at once. */
 export interface LoginSource {
   readonly configPath: string
   readonly env: Readonly<Record<string, string | undefined>>
@@ -22,7 +21,6 @@ export class SbxNotConfiguredError extends Schema.TaggedError<SbxNotConfiguredEr
 
 export class SbxError extends Schema.TaggedError<SbxError>()("SbxError", { message: Schema.String }) {}
 
-/** sbxd answered 404 for the sandbox: its idle timeout destroyed it, or someone deleted it. */
 export class SandboxGoneError extends Schema.TaggedError<SandboxGoneError>()("SandboxGoneError", {
   id: Schema.String,
 }) {
@@ -47,7 +45,7 @@ export const readLogin = (source: LoginSource): Effect.Effect<SbxLogin, SbxNotCo
   }).pipe(
     Effect.flatMap((contents) =>
       decodeConfig(contents).pipe(
-        // The schema error would quote the file, token included.
+        // FIXME: the schema error would quote the file, token included
         Effect.mapError(
           () =>
             new SbxError({ message: `${source.configPath} is not a valid sbx login. Run \`sbx login <url>\` again.` }),
@@ -75,9 +73,7 @@ const ExecExit = Schema.fromJsonString(
 
 export interface ExecInput {
   readonly script: string
-  /** Seconds before sbx kills the script and reports exit code 124. */
   readonly timeoutSeconds: number
-  /** Returns at once with the pid and log path instead of waiting for the script. */
   readonly detach?: boolean | undefined
 }
 
@@ -91,14 +87,12 @@ export interface ExecResult {
 }
 
 const REQUEST_TIMEOUT_SECONDS = 15
-/** File copies move whole archives over the LAN, so they get minutes where API calls get seconds. */
 const FILES_TIMEOUT_SECONDS = 300
 
 const STDOUT = 1
 const STDERR = 2
 const EXIT = 3
 
-/** Splits sbxd's exec stream: frames of a type byte, a big-endian u32 length and the payload. */
 const decodeFrames = (body: Buffer) =>
   Effect.gen(function* () {
     const stdout: Array<Buffer> = []
@@ -150,16 +144,32 @@ const json =
       ),
     )
 
-const readBody = (response: Response) =>
+class BodyTooLarge extends Error {}
+
+const readBody = (response: Response, maxBytes = Number.POSITIVE_INFINITY) =>
   Effect.tryPromise({
-    try: async () => Buffer.from(await response.arrayBuffer()),
-    catch: (cause) => new SbxError({ message: `The connection to sbx broke: ${describeCause(cause)}` }),
+    try: async () => {
+      const chunks: Array<Uint8Array> = []
+      let total = 0
+      for await (const chunk of response.body ?? []) {
+        total += chunk.length
+        if (total > maxBytes) throw new BodyTooLarge()
+        chunks.push(chunk)
+      }
+      return Buffer.concat(chunks)
+    },
+    catch: (cause) =>
+      new SbxError({
+        message:
+          cause instanceof BodyTooLarge
+            ? `the archive is larger than ${Math.round(maxBytes / 1024 / 1024)} MB`
+            : `The connection to sbx broke: ${describeCause(cause)}`,
+      }),
   })
 
 const filesPath = (id: string, guestPath: string) =>
   `/v1/sandboxes/${encodeURIComponent(id)}/files?path=${encodeURIComponent(guestPath)}`
 
-/** The sbxd HTTP API, as far as hinacode uses it. */
 export const sbxClient = (login: SbxLogin) => {
   const base = login.url.replace(/\/+$/, "")
   const authorization = () => `Bearer ${Redacted.value(login.token)}`
@@ -215,13 +225,12 @@ export const sbxClient = (login: SbxLogin) => {
     Effect.map((body) => ({ sandboxes: body.sandboxes, maxSandboxes: body.max_sandboxes })),
   )
 
-  const create = (template: string) =>
-    request("POST", "/v1/sandboxes", { body: { template } }).pipe(
+  const create = (template: string, env: Readonly<Record<string, string>> = {}) =>
+    request("POST", "/v1/sandboxes", { body: { template, env } }).pipe(
       Effect.flatMap(json(Sandbox)),
       within(REQUEST_TIMEOUT_SECONDS),
     )
 
-  /** The templates this host can restore sandboxes from, in the host's order. */
   const templates = request("GET", "/v1/templates").pipe(
     Effect.flatMap(json(TemplateList)),
     within(REQUEST_TIMEOUT_SECONDS),
@@ -240,11 +249,6 @@ export const sbxClient = (login: SbxLogin) => {
       within(REQUEST_TIMEOUT_SECONDS),
     )
 
-  /**
-   * Extracts a tar archive holding one top-level entry into the guest at `guestPath`, which the guest resolves
-   * against the desktop user's home when relative. An existing directory keeps the entry's name inside it; a
-   * missing path becomes the entry.
-   */
   const putFiles = (id: string, guestPath: string, tar: Uint8Array) =>
     request("PUT", filesPath(id, guestPath), { sandboxId: id, body: tar, contentType: "application/x-tar" }).pipe(
       Effect.flatMap(readBody),
@@ -252,10 +256,9 @@ export const sbxClient = (login: SbxLogin) => {
       within(FILES_TIMEOUT_SECONDS),
     )
 
-  /** Tars the file or directory at `guestPath` in the guest and returns the archive bytes. */
-  const getFiles = (id: string, guestPath: string) =>
+  const getFiles = (id: string, guestPath: string, maxBytes?: number) =>
     request("GET", filesPath(id, guestPath), { sandboxId: id }).pipe(
-      Effect.flatMap(readBody),
+      Effect.flatMap((response) => readBody(response, maxBytes)),
       within(FILES_TIMEOUT_SECONDS),
     )
 
@@ -269,16 +272,10 @@ export const sbxClient = (login: SbxLogin) => {
       },
     }).pipe(
       Effect.flatMap(readBody),
-      // sbx enforces the script's timeout; this one only catches a host that stopped answering.
       within(input.timeoutSeconds + REQUEST_TIMEOUT_SECONDS),
       Effect.flatMap(decodeFrames),
     )
 
-  /**
-   * Opens a raw TCP stream to `port` in the guest through sbxd's `Upgrade: tcp` endpoint. `head` holds
-   * guest bytes that arrived with the 101 response. `passive` connections do not count as activity for
-   * the idle timeout.
-   */
   const tunnel = (id: string, port: number, options: { readonly passive?: boolean } = {}) =>
     Effect.callback<{ readonly socket: Socket; readonly head: Uint8Array }, SbxError | SandboxGoneError>((resume) => {
       const url = new URL(base)

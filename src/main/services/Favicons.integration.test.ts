@@ -15,7 +15,6 @@ const redirect =
   (location: string): Route =>
   (_, response) =>
     response.writeHead(302, { location }).end()
-/** Accepts the request and never answers. */
 const hang: Route = () => undefined
 
 const servers: Array<Server> = []
@@ -28,7 +27,6 @@ afterEach(async () => {
   )
 })
 
-/** Serves `routes` on a fresh loopback port, so every test has its own origin. Unknown paths are 404. */
 const serve = async (routes: Record<string, Route>) => {
   const requests: Array<string> = []
   const server = createServer((request, response) => {

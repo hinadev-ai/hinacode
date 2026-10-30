@@ -16,9 +16,11 @@ mac:
   files:
     - out/**
     - package.json
+    - "!out/server/**"
     - "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
     - "!**/node_modules/**/*.{ts,map}"
     - "!**/node_modules/node-pty/prebuilds/{win32,linux,darwin-x64}*/**"
+    - "!**/node_modules/electron-liquid-glass/{js,src,prebuilds/darwin-x64}/**"
   target:
     - target: dmg
       arch: arm64
@@ -33,6 +35,7 @@ win:
   files:
     - out/**
     - package.json
+    - "!out/server/**"
     - "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
     - "!**/node_modules/**/*.{ts,map}"
     - "!**/node_modules/node-pty/prebuilds/{darwin,linux,win32-arm64}*/**"
@@ -48,6 +51,7 @@ linux:
   files:
     - out/**
     - package.json
+    - "!out/server/**"
     - "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
     - "!**/node_modules/**/*.{ts,map}"
     - "!**/node_modules/node-pty/prebuilds/{darwin,win32,linux-arm64}*/**"

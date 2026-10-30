@@ -10,7 +10,6 @@ const TRAILING_PUNCTUATION = /[.,;:!?*_~'"]$/
 
 const count = (text: string, char: string) => text.split(char).length - 1
 
-/** Drops trailing punctuation the way GFM autolinks do: a `)` stays only when it closes a `(` in the url. */
 const trimTrailing = (url: string) => {
   let end = url
   while (TRAILING_PUNCTUATION.test(end) || (end.endsWith(")") && count(end, ")") > count(end, "("))) {
@@ -19,10 +18,6 @@ const trimTrailing = (url: string) => {
   return end
 }
 
-/**
- * Splits plain text into text and link segments: http(s) urls, and `#n` pull request numbers when the
- * thread's `repository` is known. Joining every segment's text gives back `text`.
- */
 export const linkify = (text: string, repository: GitHubRepository | null = null): Array<Segment> => {
   const segments: Array<Segment> = []
   const pushText = (piece: string) => {
@@ -42,10 +37,8 @@ export const linkify = (text: string, repository: GitHubRepository | null = null
   return segments
 }
 
-/** How many sites one message may ask favicons for, so a message full of links cannot flood the network. */
 const FAVICONS_PER_MESSAGE = 20
 
-/** The origins of the first `limit` distinct sites linked across `texts`, in reading order. */
 export const faviconOrigins = (texts: ReadonlyArray<string>, limit = FAVICONS_PER_MESSAGE): ReadonlySet<string> => {
   const origins = new Set<string>()
   for (const segment of texts.flatMap((text) => linkify(text))) {

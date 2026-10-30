@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-// Usage: thread-chart.ts   Redraws the thread and worktree chart in docs/arch.md from WorktreeLifecycle.tla.
-// TLC dumps every reachable state of the one-thread model, and each state is reduced to the thread's
-// status and its worktree's status. Steps that change neither are left out.
 import { spawnSync } from "node:child_process"
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -38,7 +35,6 @@ const field = (label: string, name: string) => label.match(new RegExp(`${name} =
 const nodes = new Map<string, string>()
 for (const [, id = "", label = ""] of graph.matchAll(/^(-?\d+) \[label="(.*)"/gm)) {
   const thread = field(label, "threadStatus")
-  // Before the thread row exists, the model is still creating its worktree: the chart's start.
   nodes.set(id, thread === "none" ? "[*]" : `${thread}_${field(label, "worktreeStatus")}`)
 }
 

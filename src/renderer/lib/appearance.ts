@@ -8,7 +8,6 @@ import { m } from "../paraglide/messages.js"
 interface Theme {
   readonly label: () => string
   readonly scheme: "dark" | "light" | "system"
-  /** Shiki theme for syntax highlighting in diffs. Undefined keeps the diff viewer's own theme. */
   readonly codeTheme?: DiffsThemeNames
 }
 
@@ -26,6 +25,7 @@ export const themes: Record<ThemeId, Theme> = {
   "one-dark-pro": { label: () => "One Dark Pro", scheme: "dark", codeTheme: "one-dark-pro" },
   dracula: { label: () => "Dracula", scheme: "dark", codeTheme: "dracula" },
   "material-theme": { label: () => "Material Theme", scheme: "dark", codeTheme: "material-theme" },
+  pinky: { label: () => "Pinky", scheme: "light", codeTheme: "rose-pine-dawn" },
 }
 
 const systemAppearance = window.matchMedia("(prefers-color-scheme: dark)")
@@ -69,14 +69,12 @@ export function applyAppearance(
   applyContrast(contrast)
 }
 
-/** Sets text contrast on its own, so a slider can preview it before the setting is saved. */
 export function applyContrast(contrast: number) {
   document.documentElement.style.setProperty("--contrast", String(contrast / 100))
 }
 
 declare global {
   interface Window {
-    /** Local Font Access API. Electron grants its permission because hinacode installs no permission handler. */
     queryLocalFonts(): Promise<ReadonlyArray<{ readonly family: string }>>
   }
 }

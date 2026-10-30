@@ -16,6 +16,7 @@ import {
   type PullRequestGuideState,
 } from "../../shared/domain.ts"
 import { CLAUDE_EFFORT_LEVELS } from "../../shared/agent.ts"
+import { diffTooLarge } from "../../shared/pullRequestGuide.ts"
 import { installedBinary } from "../agents/binary.ts"
 import { ClientSettings } from "./ClientSettings.ts"
 import { nowIso } from "./clock.ts"
@@ -38,13 +39,8 @@ export class PullRequestGuides extends Context.Service<
   PullRequestGuides,
   {
     readonly get: (url: string) => Effect.Effect<PullRequestGuideState, PersistenceError | PullRequestUrlInvalidError>
-    /**
-     * Makes sure a guide for the pull request's head exists or is being written, and returns at once. Closed and
-     * merged pull requests get none. A head whose last attempt failed is tried again only with `retry`.
-     */
     readonly ensure: (detail: PullRequestDetail, options?: { readonly retry?: boolean }) => Effect.Effect<void>
     readonly retry: (url: string) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError | Schema.SchemaError>
-    /** Ensures a guide for every open pull request linked to a thread that is not archived. */
     readonly sweep: Effect.Effect<void>
   }
 >()("hinacode/PullRequestGuides") {}
@@ -195,6 +191,7 @@ const make = Effect.gen(function* () {
         mergedOrClosed.add(detail.url)
         return
       }
+      if (diffTooLarge(detail)) return
       const job = jobs.get(detail.url)
       if (job?.head === detail.head && (job.status === "running" || !retry)) return
       if ((yield* stored(detail.url))?.head === detail.head) return

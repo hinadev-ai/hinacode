@@ -1,5 +1,5 @@
-import { expect, type Page } from "@playwright/test"
-import { Then, When } from "../support/fixtures.ts"
+import { expect, type Locator, type Page } from "@playwright/test"
+import { type Names, Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
 import { sidebar, threadMenu } from "../support/ui.ts"
 
@@ -7,7 +7,6 @@ When("I start a new thread in {string}", async ({ app, names }, project: string)
   await app.page.getByRole("button", { name: `New thread in ${names.of(project)}`, exact: true }).click()
 })
 
-/** A thread starts with a placeholder title until its first message names it. */
 const placeholderTitle = /^thread-[0-9a-f]{5}$/
 
 Then("a new thread is open with the composer focused", async ({ app }) => {
@@ -40,7 +39,6 @@ When("I expand the threads of {string}", async ({ app, names }, project: string)
     .click()
 })
 
-// dnd-kit's keyboard sensor: Space picks the row up, the arrows move it, Space drops it.
 When("I move the thread {string} up with the keyboard", async ({ app, names }, title: string) => {
   await sidebar(app.page)
     .getByRole("button", { name: `Reorder ${names.of(title)}`, exact: true })
@@ -61,8 +59,25 @@ When("I archive the thread {string} from its menu", async ({ app, names }, title
   await threadMenu(app.page, names.of(title), "Archive")
 })
 
+When("I scroll the sidebar to the thread {string}", async ({ app, names }, title: string) => {
+  await sidebar(app.page)
+    .getByRole("link", { name: names.of(title) })
+    .scrollIntoViewIfNeeded()
+})
+
+When("I archive the thread {string} from its row", async ({ app, names }, title: string) => {
+  const archive = sidebar(app.page).getByRole("button", { name: `Archive ${names.of(title)}`, exact: true })
+  await archive.locator("xpath=ancestor::li[1]").hover()
+  await archive.click()
+})
+
+Then("the thread {string} is in view in the sidebar", async ({ app, names }, title: string) => {
+  await expect(sidebar(app.page).getByRole("link", { name: names.of(title) })).toBeInViewport()
+})
+
 When("I open the sidebar tab {string}", async ({ app }, tab: string) => {
   await sidebar(app.page).getByRole("tab", { name: tab, exact: true }).click()
+  await expect(openTab(app.page)).toHaveCount(1)
 })
 
 When("I unarchive the thread {string}", async ({ app, names }, title: string) => {
@@ -98,7 +113,6 @@ When("I delete the thread {string} from its row", async ({ app, names }, title: 
 })
 
 Then("the thread {string} is open", async ({ app, names }, title: string) => {
-  // Exactly one: a thread view left behind by an earlier navigation stays mounted below the open one.
   await expect(app.page.getByRole("heading", { level: 1 })).toHaveText([names.of(title)])
 })
 
@@ -112,7 +126,6 @@ Then("the sidebar does not list the thread {string}", async ({ app, names }, tit
 
 Then("the sidebar lists the threads {string} in that order", async ({ app, names }, titles: string) => {
   const expected = titles.split(",").map((title) => names.of(title.trim()))
-  // The drop animation moves rows for a moment after the keyboard drop; poll until the order settles.
   await expect
     .poll(async () => {
       const links = await sidebar(app.page).getByRole("link").allTextContents()
@@ -137,18 +150,31 @@ Then("the clipboard holds the ID of the thread {string}", async ({ app, threadId
   await expect.poll(() => app.clipboardText()).toBe(threadIds.get(title))
 })
 
+const ownTitles = async (region: Locator, names: Names) =>
+  (await region.getByRole("link").locator("[dir=auto]").allTextContents()).filter((text) => text.includes(names.of("")))
+
 const pinned = (page: Page) => sidebar(page).getByRole("region", { name: "Pinned", exact: true })
 
 Then("the pinned threads are {string}", async ({ app, names }, titles: string) => {
   const expected = titles.split(",").map((title) => names.of(title.trim()))
-  await expect(pinned(app.page).getByRole("link")).toHaveText(expected)
+  await expect.poll(() => ownTitles(pinned(app.page), names)).toStrictEqual(expected)
 })
 
-Then("no thread is pinned", async ({ app }) => {
-  await expect(pinned(app.page)).toBeHidden()
+Then("no thread is pinned", async ({ app, names }) => {
+  await expect.poll(() => ownTitles(pinned(app.page), names)).toStrictEqual([])
 })
 
-// Hidden tab panels stay mounted, so only the open one's rows count.
+const snoozed = (page: Page) => sidebar(page).getByRole("region", { name: "Snoozed", exact: true })
+
+Then("the snoozed threads are {string}", async ({ app, names }, titles: string) => {
+  const expected = titles.split(",").map((title) => names.of(title.trim()))
+  await expect.poll(() => ownTitles(snoozed(app.page), names)).toStrictEqual(expected)
+})
+
+Then("no thread is snoozed", async ({ app, names }) => {
+  await expect.poll(() => ownTitles(snoozed(app.page), names)).toStrictEqual([])
+})
+
 const openTab = (page: Page) => sidebar(page).getByRole("tabpanel")
 
 Then("the open tab lists the threads {string} in that order", async ({ app, names }, titles: string) => {
@@ -159,6 +185,52 @@ Then("the open tab lists the threads {string} in that order", async ({ app, name
       return links.map((text) => expected.find((title) => text.includes(title))).filter(Boolean)
     })
     .toStrictEqual(expected)
+})
+
+Then("the open tab lists the thread {string}", async ({ app, names }, title: string) => {
+  await expect(openTab(app.page).getByRole("link", { name: names.of(title) })).toBeVisible()
+})
+
+const openTabMenu = async (page: Page, title: string, item: string) => {
+  await openTab(page)
+    .getByRole("button", { name: `Actions for ${title}`, exact: true })
+    .click()
+  await page.getByRole("menuitem", { name: item, exact: true }).click()
+}
+
+When(
+  "I snooze the thread {string} until {string} from its menu",
+  async ({ app, names }, title: string, time: string) => {
+    await openTabMenu(app.page, names.of(title), "Snooze…")
+    await app.page.getByRole("combobox", { name: "Snooze until" }).fill(time)
+    await app.page.keyboard.press("Enter")
+  },
+)
+
+const snoozePicker = (page: Page) => page.getByRole("dialog", { name: /^Snooze / })
+
+When(
+  "I type {string} into the snooze picker of the thread {string} and press Enter",
+  async ({ app, names }, time: string, title: string) => {
+    await openTabMenu(app.page, names.of(title), "Snooze…")
+    await app.page.getByRole("combobox", { name: "Snooze until" }).fill(time)
+    await expect(snoozePicker(app.page).getByRole("status")).not.toBeEmpty()
+    await app.page.keyboard.press("Enter")
+  },
+)
+
+Then("the snooze picker is still open and says {string}", async ({ app }, problem: string) => {
+  await expect(snoozePicker(app.page)).toHaveAttribute("data-open")
+  await expect(snoozePicker(app.page).getByRole("status")).toHaveText(problem)
+})
+
+When("I pick the next snooze preset with the keyboard", async ({ app }) => {
+  await app.page.keyboard.press("ArrowDown")
+  await app.page.keyboard.press("Enter")
+})
+
+When("I unsnooze the thread {string} from its menu", async ({ app, names }, title: string) => {
+  await openTabMenu(app.page, names.of(title), "Unsnooze")
 })
 
 Then("the open tab does not list the thread {string}", async ({ app, names }, title: string) => {

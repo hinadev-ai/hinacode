@@ -11,7 +11,6 @@ import {
 } from "react"
 import {
   RiAddLine,
-  RiArrowDownSLine,
   RiArrowUpLine,
   RiCheckLine,
   RiCloseLine,
@@ -57,11 +56,6 @@ export interface ComposerPerson {
   role: "agent" | "human"
 }
 
-export interface ComposerModel {
-  name: string
-  meta: string
-}
-
 export interface ComposerUsage {
   system: number
   tools: number
@@ -81,14 +75,12 @@ function barHeight(bar: number, tick: number): number {
   return 5 + Math.abs(Math.sin(bar * 1.35 + tick * 0.55)) * 13
 }
 
-/** Commands whose name starts with the slash query, or none when not typing one. */
 export function useSlashMatches(value: string, commands: readonly ComposerCommand[] | undefined): ComposerCommand[] {
   if (!commands || !value.startsWith("/")) return []
   const query = value.slice(1).toLowerCase()
   return commands.filter((command) => command.name.startsWith(query))
 }
 
-/** People matching a trailing @mention, or none when the caret is not in one. */
 export function useMentionMatches(value: string, people: readonly ComposerPerson[] | undefined): ComposerPerson[] {
   if (!people) return []
   const match = /@([\w]*)$/.exec(value)
@@ -97,7 +89,6 @@ export function useMentionMatches(value: string, people: readonly ComposerPerson
   return people.filter((person) => person.name.toLowerCase().startsWith(query))
 }
 
-/** Replaces the trailing @mention with the chosen name. */
 export function applyMention(value: string, name: string): string {
   return value.replace(/@[\w]*$/, `@${name} `)
 }
@@ -149,7 +140,6 @@ function useFitInComposer(menuRef: RefObject<HTMLDivElement | null>, align: "sta
     observer.observe(bounds)
     observer.observe(menu)
     return () => observer.disconnect()
-    // `align` moves the menu without resizing it, so the observer alone would miss the change.
     // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [menuRef, align])
 
@@ -393,51 +383,6 @@ export function ComposerAttachButton({ className, ...props }: Omit<ComponentProp
     >
       <RiAddLine className="size-4" />
     </button>
-  )
-}
-
-export function ComposerModelTrigger({
-  model,
-  open,
-  className,
-  ...props
-}: Omit<ComponentProps<"button">, "children"> & {
-  model: string
-  open: boolean
-}) {
-  return (
-    <button
-      type="button"
-      aria-expanded={open}
-      data-slot="composer-model-trigger"
-      className={cn(
-        "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground/90 dark:hover:bg-foreground/[0.09] flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] transition-colors",
-        className,
-      )}
-      {...props}
-    >
-      {model}
-      <RiArrowDownSLine className="size-3 opacity-60" />
-    </button>
-  )
-}
-
-export function ComposerModelItem({
-  entry,
-  selected,
-  ...props
-}: Omit<ComponentProps<"button">, "children"> & {
-  entry: ComposerModel
-  selected: boolean
-}) {
-  return (
-    <ComposerMenuItem active={selected} {...props}>
-      <span className="flex-1 text-start">{entry.name}</span>
-      <span className={cn(mono, "text-muted-foreground tabular-nums")}>{entry.meta}</span>
-      <span className="flex w-4 justify-end">
-        {selected && <RiCheckLine className="fade-in zoom-in-90 animate-in size-3.5 duration-200" />}
-      </span>
-    </ComposerMenuItem>
   )
 }
 

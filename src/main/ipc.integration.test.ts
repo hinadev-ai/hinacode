@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process"
 import { EventEmitter } from "node:events"
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { type AddressInfo, createConnection, createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
-import { afterAll, beforeAll, describe, expect, test } from "@effect/vitest"
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "@effect/vitest"
 import { vi } from "vitest"
 import { type Duration, Effect, Layer, ManagedRuntime, Queue, Stream } from "effect"
 import { WebSocket } from "ws"
@@ -15,7 +15,7 @@ import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import type { PushEvent, RpcEnvelope, RpcMethod, RpcRequestEncoded, RpcResponseEncoded } from "../shared/contract.ts"
 import { clientProof, newNonce, serverProof } from "../shared/proof.ts"
 import { type ClientFrame, remoteWebSocketUrl, type ServerFrame } from "../shared/remote.ts"
-import type { Project, Thread, Worktree } from "../shared/domain.ts"
+import { defaultSettings, type Message, type Project, type Thread, type Worktree } from "../shared/domain.ts"
 import type { PlanLimits } from "../shared/limits.ts"
 import { ClaudeProvider } from "./agents/claude/index.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
@@ -27,6 +27,7 @@ import { Events } from "./services/Events.ts"
 import * as Messages from "./services/Messages.ts"
 import * as RemoteAccess from "./remote/access.ts"
 import { MAX_CALL_KEYS } from "./remote/server.ts"
+import { unusedLoopbackPort } from "./remote/testing.ts"
 import * as PullRequests from "./services/PullRequests.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Threads from "./services/Threads.ts"
@@ -38,11 +39,9 @@ interface Frame {
   readonly parent: Frame | null
 }
 
-/** The Electron surface `ipc.ts` and the services touch, recording what main would send to windows. */
 const electron = vi.hoisted(() => ({
   handlers: new Map<string, IpcHandler>(),
   pushes: [] as Array<{ channel: string; payload: unknown }>,
-  /** Called after every push, so a test can wait for the one it expects instead of polling. */
   watchers: new Set<() => void>(),
   shown: [] as Array<object>,
   restored: [] as Array<object>,
@@ -109,7 +108,6 @@ const subagent: Subagent = {
   endedAt: null,
 }
 
-/** What the scripted provider answers every turn with: a sub-agent that runs and completes. */
 const scriptedTurn: ReadonlyArray<AgentEvent> = [
   { type: "subagent_updated", subagent },
   { type: "text_delta", text: "Spawned one sub-agent." },
@@ -131,19 +129,16 @@ const claudeLimits: PlanLimits = {
   readAt: "2026-10-12T10:00:00.000Z",
 }
 
-/** A turn prompted with "simulate a held turn" waits for this before it completes. */
 let heldTurn = Promise.withResolvers<void>()
 
-/** Each sub-agent the scripted providers were asked to stop. */
 const stoppedSubagents: Array<{ readonly threadId: string; readonly subagentId: string }> = []
 
-/** Turns the scripted Claude starts by itself. */
 const claudeWakes = Effect.runSync(Queue.unbounded<Wake>())
 
-/** The account home of each turn the scripted providers ran. */
 const turnHomes: Array<AccountHome | null> = []
+const turnResumes: Array<{ readonly resumeSessionId: string | null; readonly forkAt: string | null }> = []
+const turnPrompts: Array<string> = []
 
-/** Each session the scripted providers copied to another account's home. */
 const copiedSessions: Array<{
   readonly sessionId: string
   readonly from: AccountHome | null
@@ -153,7 +148,6 @@ const copiedSessions: Array<{
 const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
   id,
   listModels: Effect.succeed([unlistedModel(`${id}-model`, id)]),
-  // An added account answers with its home's name, so a test can tell which home was read.
   account: (home) =>
     Effect.succeed(
       home === null
@@ -170,6 +164,8 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
   runTurn: (input) =>
     Stream.suspend(() => {
       turnHomes.push(input.home)
+      turnResumes.push({ resumeSessionId: input.resumeSessionId, forkAt: input.forkAt })
+      turnPrompts.push(input.prompt)
       if (input.prompt === "simulate a held sub-agent") {
         return Stream.make<Array<AgentEvent>>({ type: "subagent_updated", subagent }).pipe(
           Stream.concat(Stream.fromEffect(Effect.promise(() => heldTurn.promise)).pipe(Stream.drain)),
@@ -184,39 +180,50 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
       return Stream.fromIterable(
         input.prompt === "simulate a session"
           ? [{ type: "session_bound", providerSessionId: boundSession }, { type: "turn_completed" }]
-          : input.prompt === "simulate unanswered question"
+          : input.prompt === "simulate a forkable turn"
             ? [
-                {
-                  type: "question_requested",
-                  request: { id: `question-${input.threadId}`, threadId: input.threadId, provider: id, questions: [] },
-                },
-                { type: "turn_failed", message: "Provider disconnected before the answer" },
+                { type: "session_bound", providerSessionId: "source-session" },
+                { type: "text_delta", text: "Here is a plan." },
+                { type: "turn_completed", forkPoint: { sessionId: "source-session", checkpoint: "turn-1" } },
               ]
-            : input.prompt === "simulate a tool call"
+            : input.prompt === "simulate unanswered question"
               ? [
-                  { type: "tool_call_started", callId: "call-1", name: "Bash", input: { command: "ls" } },
-                  { type: "tool_call_finished", callId: "call-1", output: "a.txt\nb.txt", isError: false },
-                  { type: "file_changed", path: "a.txt", diff: "@@ -0,0 +1 @@\n+a" },
-                  { type: "text_delta", text: "Listed and edited." },
-                  { type: "turn_completed" },
+                  {
+                    type: "question_requested",
+                    request: {
+                      id: `question-${input.threadId}`,
+                      threadId: input.threadId,
+                      provider: id,
+                      questions: [],
+                    },
+                  },
+                  { type: "turn_failed", message: "Provider disconnected before the answer" },
                 ]
-              : input.prompt === "simulate a crash mid sub-agent"
+              : input.prompt === "simulate a tool call"
                 ? [
-                    { type: "subagent_updated", subagent },
-                    { type: "turn_failed", message: "Claude Code session ended unexpectedly" },
+                    { type: "tool_call_started", callId: "call-1", name: "Bash", input: { command: "ls" } },
+                    { type: "tool_call_finished", callId: "call-1", output: "a.txt\nb.txt", isError: false },
+                    { type: "file_changed", path: "a.txt", diff: "@@ -0,0 +1 @@\n+a" },
+                    { type: "text_delta", text: "Listed and edited." },
+                    { type: "turn_completed" },
                   ]
-                : input.prompt === "simulate usage limit" && input.home === null
+                : input.prompt === "simulate a crash mid sub-agent"
                   ? [
-                      {
-                        type: "turn_limited",
-                        limit: {
-                          kind: "usage",
-                          message: "Usage limit reached",
-                          reset: { at: "2099-01-01T00:00:00.000Z", autoResume: false },
-                        },
-                      },
+                      { type: "subagent_updated", subagent },
+                      { type: "turn_failed", message: "Claude Code session ended unexpectedly" },
                     ]
-                  : scriptedTurn,
+                  : input.prompt === "simulate usage limit" && input.home === null
+                    ? [
+                        {
+                          type: "turn_limited",
+                          limit: {
+                            kind: "usage",
+                            message: "Usage limit reached",
+                            reset: { at: "2099-01-01T00:00:00.000Z", autoResume: false },
+                          },
+                        },
+                      ]
+                    : scriptedTurn,
       )
     }),
   ...(id === "claude" ? { wakes: Stream.fromQueue(claudeWakes) } : {}),
@@ -258,7 +265,6 @@ const failure = (envelope: RpcEnvelope<unknown>) => {
 const pushed = () =>
   electron.pushes.filter((push) => push.channel === EVENT_CHANNEL).map((push) => push.payload as PushEvent)
 
-/** Resolves as soon as a push matching `predicate` has been sent, including one sent already. */
 const pushedEventually = (predicate: (event: PushEvent) => boolean) =>
   new Promise<void>((resolve) => {
     const check = () => {
@@ -413,6 +419,21 @@ describe("rpc contract", () => {
 })
 
 describe("projects, threads and settings over rpc", () => {
+  afterEach(async () => {
+    const { defaultProvider, defaultModel, defaultEffort, defaultFastMode, defaultAccessMode, defaultWorkspaceMode } =
+      defaultSettings
+    result(
+      await invoke("settings.set", {
+        defaultProvider,
+        defaultModel,
+        defaultEffort,
+        defaultFastMode,
+        defaultAccessMode,
+        defaultWorkspaceMode,
+      }),
+    )
+  })
+
   test("a created project is listed and can be read back", async () => {
     const project = await createProject("repo")
     expect(project).toMatchObject({ name: "repo", rootPath: repo, setupScript: null } satisfies Partial<Project>)
@@ -472,7 +493,7 @@ describe("projects, threads and settings over rpc", () => {
     expect(stored?.userSkills).toBe(false)
   })
 
-  test("a thread switches agent, back to that agent's defaults, only until its first message", async () => {
+  test("a thread switches agent, back to that agent's defaults, and marks a switch after its first message", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))
     result(await invoke("threads.update", { id: thread.id, effort: "max", fastMode: true }))
@@ -494,12 +515,16 @@ describe("projects, threads and settings over rpc", () => {
           createdAt: "2026-10-12T00:00:00.000Z",
           completedAt: "2026-10-12T00:00:00.000Z",
           usage: null,
+          forkPoint: null,
         }),
       ),
     )
-    expect(failure(await invoke("threads.update", { id: thread.id, provider: "claude" })).tag).toBe(
-      "ThreadStartedError",
-    )
+    expect(result(await invoke("threads.update", { id: thread.id, provider: "claude" }))).toMatchObject({
+      provider: "claude",
+      providerSessionId: null,
+    } satisfies Partial<Thread>)
+    const { messages } = result(await invoke("threads.transcript", { threadId: thread.id }))
+    expect(messages.at(-1)?.parts).toStrictEqual([{ type: "agent_switch", from: "codex", to: "claude" }])
   })
 
   test("a new thread starts in the default access mode and keeps the one it is switched to", async () => {
@@ -517,10 +542,31 @@ describe("projects, threads and settings over rpc", () => {
     expect(listed?.accessMode).toBe("supervised")
   })
 
+  test("a new thread starts as the last new thread was set up, ignoring changes after its first message", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const first = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.update", { id: first.id, provider: "codex" }))
+    result(await invoke("threads.update", { id: first.id, effort: "high", fastMode: true, accessMode: "auto" }))
+    result(await invoke("settings.set", { defaultWorkspaceMode: "worktree" }))
+    result(await invoke("threads.send", { threadId: first.id, prompt: "hi" }))
+
+    const second = result(await invoke("threads.create", { projectId: project.id }))
+    expect(second).toMatchObject({
+      provider: "codex",
+      model: "codex-model",
+      effort: "high",
+      fastMode: true,
+      accessMode: "auto",
+    } satisfies Partial<Thread>)
+    expect(result(await invoke("settings.get", undefined)).defaultWorkspaceMode).toBe("local")
+
+    result(await invoke("threads.update", { id: first.id, accessMode: "supervised" }))
+    expect(result(await invoke("threads.create", { projectId: project.id })).accessMode).toBe("auto")
+  })
+
   test("reordering a thread keeps its updatedAt", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     const created = result(await invoke("threads.create", { projectId: project.id }))
-    // Last touched at the epoch, so a reorder that bumps updatedAt to the real clock cannot go unnoticed.
     const thread = await runtime.runPromise(
       Threads.Threads.use((threads) => threads.update({ id: created.id, title: "old" })).pipe(
         Effect.provide(TestClock.layer()),
@@ -549,6 +595,28 @@ describe("projects, threads and settings over rpc", () => {
     expect(unpinned.pinnedAt).toBeNull()
     const listed = result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)
     expect(listed).toMatchObject({ pinnedAt: null, updatedAt: thread.updatedAt })
+  })
+
+  test("snoozing keeps a thread's updatedAt, and activity wakes it", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    expect(thread.snoozedUntil).toBeNull()
+
+    const until = "2026-11-02T08:00:00.000Z"
+    const snoozed = result(await invoke("threads.update", { id: thread.id, snoozedUntil: until }))
+    expect(snoozed).toMatchObject({ snoozedUntil: until, updatedAt: thread.updatedAt })
+    const listed = result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)
+    expect(listed?.snoozedUntil).toBe(until)
+
+    const pinned = result(await invoke("threads.update", { id: thread.id, pinned: true }))
+    expect(pinned.snoozedUntil).toBe(until)
+
+    const active = result(await invoke("threads.update", { id: thread.id, status: "idle" }))
+    expect(active.snoozedUntil).toBeNull()
+
+    result(await invoke("threads.update", { id: thread.id, snoozedUntil: until }))
+    const woken = result(await invoke("threads.update", { id: thread.id, snoozedUntil: null }))
+    expect(woken.snoozedUntil).toBeNull()
   })
 
   test("lists the files a thread can mention: tracked and untracked, but not ignored", async () => {
@@ -632,6 +700,18 @@ describe("projects, threads and settings over rpc", () => {
     expect(result(await invoke("clientSettings.get", undefined))).toStrictEqual(saved)
   })
 
+  test("sidebar groups persist through the client settings patch", async () => {
+    const before = result(await invoke("clientSettings.get", undefined))
+    expect(before.sidebarGroups).toStrictEqual({ groups: [], groupOf: {} })
+    const sidebarGroups = {
+      groups: [{ id: "work", name: "Work", collapsed: true }],
+      groupOf: { "acme/web": "work" },
+    }
+    const saved = result(await invoke("clientSettings.set", { sidebarGroups }))
+    expect(saved).toStrictEqual({ ...before, sidebarGroups })
+    expect(result(await invoke("clientSettings.get", undefined))).toStrictEqual(saved)
+  })
+
   test("creating a worktree pushes its state changes to every window", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     writeFileSync(join(repo, "README.md"), "hello")
@@ -645,7 +725,6 @@ describe("projects, threads and settings over rpc", () => {
       status: "preparing",
     } satisfies Partial<Worktree>)
 
-    // Setup runs in the background; without a setup script it settles on `ready` almost at once.
     await pushedEventually(
       (event) =>
         event.type === "worktree.updated" && event.worktree.id === worktree.id && event.worktree.status === "ready",
@@ -741,6 +820,104 @@ describe("stopping a sub-agent over rpc", () => {
   })
 })
 
+describe("forking over rpc", () => {
+  test("goes on from the chosen turn in a new thread whose first turn forks the session", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const source = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: source.id, prompt: "simulate a forkable turn" }))
+    const transcript = async (threadId: string) => result(await invoke("threads.transcript", { threadId })).messages
+    await expect
+      .poll(async () => (await transcript(source.id)).at(-1)?.forkPoint)
+      .toStrictEqual({
+        sessionId: "source-session",
+        checkpoint: "turn-1",
+        owner: { provider: "claude", accountId: null },
+      })
+    const reply = (await transcript(source.id)).at(-1)!
+
+    const fork = result(await invoke("threads.fork", { threadId: source.id, messageId: reply.id }))
+    expect(fork.worktreeId).toBe(source.worktreeId)
+    expect((await transcript(fork.id)).map((message) => message.parts)).toStrictEqual(
+      (await transcript(source.id)).map((message) => message.parts),
+    )
+
+    turnResumes.length = 0
+    turnPrompts.length = 0
+    result(await invoke("threads.send", { threadId: fork.id, prompt: "simulate a session" }))
+    await expect.poll(() => turnResumes).toStrictEqual([{ resumeSessionId: "source-session", forkAt: "turn-1" }])
+    expect(turnPrompts).toStrictEqual(["simulate a session"])
+    await expect.poll(async () => (await transcript(fork.id)).at(-1)?.completedAt).not.toBeNull()
+    result(await invoke("threads.send", { threadId: fork.id, prompt: "simulate a session" }))
+    await expect.poll(() => turnResumes.at(-1)).toStrictEqual({ resumeSessionId: boundSession, forkAt: null })
+  })
+
+  test("takes the session it forks from to the account an unsent fork switches to", async () => {
+    const spare = result(await invoke("accounts.create", newAccount("claude", "Fork spare")))
+    const spareHome = { dir: join(dir, "homes", "fork spare"), binary: "claude" }
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const source = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: source.id, prompt: "simulate a forkable turn" }))
+    const transcript = async (threadId: string) => result(await invoke("threads.transcript", { threadId })).messages
+    await expect.poll(async () => (await transcript(source.id)).at(-1)?.forkPoint ?? null).not.toBeNull()
+    const fork = result(
+      await invoke("threads.fork", { threadId: source.id, messageId: (await transcript(source.id)).at(-1)!.id }),
+    )
+
+    copiedSessions.length = 0
+    turnHomes.length = 0
+    turnResumes.length = 0
+    result(await invoke("threads.switchAccount", { id: fork.id, accountId: spare.id }))
+    expect(copiedSessions).toStrictEqual([{ sessionId: "source-session", from: null, to: spareHome }])
+    result(await invoke("threads.send", { threadId: fork.id, prompt: "simulate a session" }))
+    await expect.poll(() => turnHomes).toStrictEqual([spareHome])
+    expect(turnResumes).toStrictEqual([{ resumeSessionId: "source-session", forkAt: "turn-1" }])
+  })
+
+  test("drops an unsent fork's source session when the fork switches agents", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const source = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: source.id, prompt: "simulate a forkable turn" }))
+    const transcript = async (threadId: string) => result(await invoke("threads.transcript", { threadId })).messages
+    await expect.poll(async () => (await transcript(source.id)).at(-1)?.forkPoint ?? null).not.toBeNull()
+    const fork = result(
+      await invoke("threads.fork", { threadId: source.id, messageId: (await transcript(source.id)).at(-1)!.id }),
+    )
+
+    expect(result(await invoke("threads.update", { id: fork.id, provider: "codex" })).forkedFrom).toBeNull()
+    expect(result(await invoke("threads.update", { id: fork.id, provider: "claude" })).forkedFrom).toBeNull()
+    turnResumes.length = 0
+    turnPrompts.length = 0
+    result(await invoke("threads.send", { threadId: fork.id, prompt: "simulate a session" }))
+    await expect.poll(() => turnResumes).toStrictEqual([{ resumeSessionId: null, forkAt: null }])
+    expect(turnPrompts).toStrictEqual([
+      expect.stringMatching(/^<conversation_handoff>\n[\s\S]*\n\nsimulate a session$/),
+    ])
+  })
+
+  test("forks a copied turn in the account whose session ran it", async () => {
+    const spare = result(await invoke("accounts.create", newAccount("claude", "Later account")))
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const source = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: source.id, prompt: "simulate a forkable turn" }))
+    const transcript = async (threadId: string) => result(await invoke("threads.transcript", { threadId })).messages
+    await expect.poll(async () => (await transcript(source.id)).at(-1)?.forkPoint ?? null).not.toBeNull()
+    const sourceReply = (await transcript(source.id)).at(-1)!
+    const middle = result(await invoke("threads.fork", { threadId: source.id, messageId: sourceReply.id }))
+    result(await invoke("threads.send", { threadId: middle.id, prompt: "simulate a session" }))
+    await expect.poll(async () => (await transcript(middle.id)).at(-1)?.completedAt ?? null).not.toBeNull()
+    result(await invoke("threads.switchAccount", { id: middle.id, accountId: spare.id }))
+
+    const copiedReply = (await transcript(middle.id)).find((message) => message.forkPoint !== null)!
+    const fork = result(await invoke("threads.fork", { threadId: middle.id, messageId: copiedReply.id }))
+    expect(fork.accountId).toBeNull()
+    turnHomes.length = 0
+    turnResumes.length = 0
+    result(await invoke("threads.send", { threadId: fork.id, prompt: "simulate a session" }))
+    await expect.poll(() => turnHomes).toStrictEqual([null])
+    expect(turnResumes).toStrictEqual([{ resumeSessionId: "source-session", forkAt: "turn-1" }])
+  })
+})
+
 describe("token usage over rpc", () => {
   test("is null until a turn binds a session, then comes from that session's transcripts", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
@@ -775,6 +952,8 @@ const newAccount = (provider: "claude" | "codex", name: string) => ({
   configDir: join(dir, "homes", name.toLowerCase()),
   binary: provider,
 })
+
+const cachedLogin = (label: string) => existsSync(join(dir, "cache", `${label}.json`))
 
 const history = () => join(dir, "history")
 const inHistory = (...args: Array<string>) =>
@@ -945,6 +1124,15 @@ describe("compact transcripts over rpc", () => {
       { type: "text", text: "Listed and edited." },
     ])
     expect(compact?.[0]).not.toHaveProperty("output")
+
+    const all = result(await invoke("threads.transcript", { threadId: thread.id })).messages.map((m) => m.id)
+    const newest = result(await invoke("threads.transcript", { threadId: thread.id, compact: true, page: {} }))
+    expect(newest.messages.map((m) => m.id)).toStrictEqual(all)
+    expect(newest.hasEarlier).toBe(false)
+    const older = result(
+      await invoke("threads.transcript", { threadId: thread.id, compact: true, page: { before: all.at(-1)! } }),
+    )
+    expect(older.messages.map((m) => m.id)).toStrictEqual(all.slice(0, -1))
   })
 })
 
@@ -964,6 +1152,7 @@ const wake = (threadId: string, text: string) =>
   Effect.runSync(
     Queue.offer(claudeWakes, {
       threadId,
+      sessionId: boundSession,
       events: Stream.make({ type: "text_delta", text }, { type: "turn_completed" }),
       discard: Effect.void,
     }),
@@ -995,6 +1184,7 @@ describe("turns the agent starts over rpc", () => {
     Effect.runSync(
       Queue.offer(claudeWakes, {
         threadId: thread.id,
+        sessionId: boundSession,
         events: Stream.never,
         discard: Effect.sync(discard),
       }),
@@ -1027,6 +1217,7 @@ describe("turns the agent starts over rpc", () => {
       Effect.runSync(
         Queue.offer(claudeWakes, {
           threadId: thread.id,
+          sessionId: boundSession,
           events: Stream.empty,
           discard: Effect.sync(discard),
         }),
@@ -1048,9 +1239,12 @@ describe("turns the agent starts over rpc", () => {
     const held = Promise.withResolvers<void>()
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a session" }))
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
     Effect.runSync(
       Queue.offer(claudeWakes, {
         threadId: thread.id,
+        sessionId: boundSession,
         discard: Effect.void,
         events: Stream.fromEffect(Effect.promise(() => held.promise)).pipe(
           Stream.flatMap(() => Stream.make<Array<AgentEvent>>({ type: "turn_completed" })),
@@ -1062,7 +1256,7 @@ describe("turns the agent starts over rpc", () => {
     expect((await threadOf(thread.id)).queue.map((queued) => queued.text)).toStrictEqual(["then the docs"])
 
     held.resolve()
-    await expect.poll(() => userTexts(thread.id)).toStrictEqual(["then the docs"])
+    await expect.poll(() => userTexts(thread.id)).toStrictEqual(["simulate a session", "then the docs"])
     await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
   })
 
@@ -1070,15 +1264,17 @@ describe("turns the agent starts over rpc", () => {
     heldTurn = Promise.withResolvers()
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a session" }))
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
     result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a held turn" }))
     wake(thread.id, "The sub-agent finished.")
     await expect.poll(async () => (await threadOf(thread.id)).status).toBe("running")
-    expect(await assistantTexts(thread.id)).toStrictEqual([""])
+    expect(await assistantTexts(thread.id)).toStrictEqual(["", ""])
 
     heldTurn.resolve()
     await expect
       .poll(() => assistantTexts(thread.id))
-      .toStrictEqual(["Spawned one sub-agent.", "The sub-agent finished."])
+      .toStrictEqual(["", "Spawned one sub-agent.", "The sub-agent finished."])
     await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
   })
 })
@@ -1227,9 +1423,22 @@ describe("agent accounts over rpc", () => {
       expect.objectContaining({ id: account.id }),
     )
   })
+
+  test("drops an account's cached sign-in when it is renamed or removed", async () => {
+    const account = result(await invoke("accounts.create", newAccount("codex", "Billing")))
+    result(await invoke("agents.account", { provider: "codex", accountId: account.id }))
+    expect(cachedLogin("billing_codex")).toBe(true)
+
+    result(await invoke("accounts.rename", { id: account.id, name: "Invoices" }))
+    expect(cachedLogin("billing_codex")).toBe(false)
+    result(await invoke("agents.account", { provider: "codex", accountId: account.id }))
+    expect(cachedLogin("invoices_codex")).toBe(true)
+
+    result(await invoke("accounts.delete", { id: account.id }))
+    expect(cachedLogin("invoices_codex")).toBe(false)
+  })
 })
 
-/** One phone-side socket: sends `ClientFrame`s, collects `ServerFrame`s, and resolves on the one you wait for. */
 const phone = (port: number, options?: { autoPong: boolean }) => {
   const socket = new WebSocket(remoteWebSocketUrl({ host: "127.0.0.1", port }), options)
   const frames: Array<ServerFrame> = []
@@ -1285,9 +1494,10 @@ const phone = (port: number, options?: { autoPong: boolean }) => {
 }
 
 describe("remote mode", () => {
-  const port = 40000 + Math.floor(Math.random() * 20000)
+  let port = 0
 
   beforeAll(async () => {
+    port = await unusedLoopbackPort()
     result(await invoke("settings.set", { remote: { enabled: true, bindHost: "127.0.0.1", port } }))
     await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(true))
   })
@@ -1312,6 +1522,13 @@ describe("remote mode", () => {
     expect((await proved.ready()).proof).toBe(serverProof(token, nonce, challenge.nonce))
     expect(result(await proved.call("projects.list", undefined))).toBeInstanceOf(Array)
     proved.socket.close()
+  })
+
+  test("compresses frames for a client that offers permessage-deflate", async () => {
+    const client = phone(port)
+    await client.opened
+    expect(client.socket.extensions).toContain("permessage-deflate")
+    client.socket.close()
   })
 
   test("a wrong proof is refused like a wrong token", async () => {
@@ -1358,6 +1575,30 @@ describe("remote mode", () => {
 
     expect(failure(await paired.call("dialog.pickFolder", undefined)).tag).toBe("DesktopOnly")
     expect(await paired.call("threads.interrupt", { threadId: thread.id })).toStrictEqual({})
+    paired.socket.close()
+  })
+
+  test("a phone that watches threads hears their replies stream, and only how the others end", async () => {
+    const paired = phone(port)
+    await paired.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    expect((await paired.ready()).features).toContain("watch")
+    const project = result(await paired.call("projects.list", undefined))[0] ?? (await createProject("remote-watch"))
+    const shown = result(await paired.call("threads.create", { projectId: project.id }))
+    const hidden = result(await paired.call("threads.create", { projectId: project.id }))
+    const heard = (threadId: string) =>
+      paired.frames.flatMap((frame) =>
+        frame.type === "event" && frame.event.type === "thread.event" && frame.event.threadId === threadId
+          ? [frame.event.event.type]
+          : [],
+      )
+
+    await paired.send({ type: "watch", threadIds: [shown.id] })
+    result(await paired.call("threads.send", { threadId: hidden.id, prompt: "simulate a tool call" }))
+    result(await paired.call("threads.send", { threadId: shown.id, prompt: "simulate a tool call" }))
+    await vi.waitFor(() => expect(heard(hidden.id)).toContain("turn_completed"))
+    await vi.waitFor(() => expect(heard(shown.id)).toContain("turn_completed"))
+    expect(heard(hidden.id)).toStrictEqual(["turn_completed"])
+    expect(heard(shown.id)).toEqual(expect.arrayContaining(["tool_call_started", "text_delta"]))
     paired.socket.close()
   })
 
@@ -1447,6 +1688,135 @@ describe("remote mode", () => {
     paired.socket.close()
   })
 
+  test.each(["token", "proof"])("compacts live events only for a client requesting it with %s auth", async (auth) => {
+    const { token } = result(await invoke("remote.pairing", undefined))
+    const compact = phone(port)
+    const full = phone(port)
+    const explicitlyFull = phone(port)
+    try {
+      if (auth === "proof") {
+        const challenge = await compact.challenge()
+        const nonce = newNonce()
+        await compact.send(
+          JSON.stringify({
+            type: "auth",
+            nonce,
+            proof: clientProof(token, challenge.nonce, nonce),
+            compactEvents: true,
+          }),
+        )
+      } else await compact.send(JSON.stringify({ type: "auth", token, compactEvents: true }))
+      await full.send({ type: "auth", token })
+      await explicitlyFull.send(JSON.stringify({ type: "auth", token, compactEvents: false }))
+      await Promise.all([compact.ready(), full.ready(), explicitlyFull.ready()])
+
+      const message: Message = {
+        id: "compact-live-message",
+        threadId: "compact-live-thread",
+        role: "assistant",
+        parts: [
+          { type: "text", text: "Edited the file." },
+          {
+            type: "tool_call",
+            callId: "write",
+            name: "Write",
+            input: { file_path: "a.ts", content: "large input" },
+            output: "large output",
+            status: "done",
+          },
+          {
+            type: "tool_call",
+            callId: "child",
+            parentCallId: "agent",
+            name: "Read",
+            input: { file_path: "b.ts" },
+            output: "child output",
+            status: "done",
+          },
+          { type: "file_change", path: "a.ts", diff: "large diff" },
+        ],
+        createdAt: "2026-10-29T00:00:00.000Z",
+        completedAt: null,
+        usage: null,
+        forkPoint: null,
+      }
+      const pushes: ReadonlyArray<PushEvent> = [
+        { type: "message.created", seq: 1, message },
+        { type: "message.updated", seq: 2, message: { ...message, completedAt: "2026-10-29T00:00:01.000Z" } },
+        {
+          type: "thread.event",
+          threadId: message.threadId,
+          seq: 3,
+          event: {
+            type: "tool_call_started",
+            callId: "write",
+            name: "Write",
+            input: { file_path: "a.ts", content: "large input" },
+          },
+        },
+        {
+          type: "thread.event",
+          threadId: message.threadId,
+          seq: 4,
+          event: { type: "tool_call_finished", callId: "write", output: "large output", isError: true },
+        },
+        {
+          type: "thread.event",
+          threadId: message.threadId,
+          seq: 5,
+          event: { type: "file_changed", path: "a.ts", diff: "large diff" },
+        },
+        { type: "thread.event", threadId: message.threadId, seq: 6, event: { type: "text_delta", text: "Done." } },
+        { type: "thread.subagents", threadId: message.threadId, subagents: [subagent] },
+        { type: "thread.removed", id: "compact-live-marker" },
+      ]
+      await runtime.runPromise(Events.use((events) => Effect.forEach(pushes, events.publish, { discard: true })))
+      await Promise.all(
+        [compact, full, explicitlyFull].map((client) =>
+          client.event((event) => event.type === "thread.removed" && event.id === "compact-live-marker"),
+        ),
+      )
+      const received = (client: ReturnType<typeof phone>) =>
+        client.frames.flatMap((frame) => (frame.type === "event" ? [frame.event] : []))
+      expect(received(full)).toEqual(pushes)
+      expect(received(explicitlyFull)).toEqual(pushes)
+      const compactMessage = {
+        ...message,
+        parts: [
+          { type: "text", text: "Edited the file." },
+          { type: "tool_call", callId: "write", name: "Write", input: { file_path: "a.ts" }, status: "done" },
+          { type: "file_change", path: "a.ts", diff: "" },
+        ],
+      }
+      expect(received(compact)).toEqual([
+        { type: "message.created", seq: 1, message: compactMessage },
+        { type: "message.updated", seq: 2, message: { ...compactMessage, completedAt: "2026-10-29T00:00:01.000Z" } },
+        {
+          type: "thread.event",
+          threadId: message.threadId,
+          seq: 3,
+          event: { type: "tool_call_started", callId: "write", name: "Write", input: { file_path: "a.ts" } },
+        },
+        {
+          type: "thread.event",
+          threadId: message.threadId,
+          seq: 4,
+          event: { type: "tool_call_finished", callId: "write", output: "", isError: true },
+        },
+        {
+          type: "thread.event",
+          threadId: message.threadId,
+          seq: 5,
+          event: { type: "file_changed", path: "a.ts", diff: "" },
+        },
+        ...pushes.slice(5),
+      ])
+      expect(electron.pushes.slice(-pushes.length).map((push) => push.payload)).toEqual(pushes)
+    } finally {
+      for (const client of [compact, full, explicitlyFull]) client.socket.close()
+    }
+  })
+
   test("rotating the token disconnects every phone and the old token stops working", async () => {
     const before = result(await invoke("remote.pairing", undefined))
     const paired = phone(port)
@@ -1514,7 +1884,7 @@ describe("remote mode", () => {
 })
 
 describe("remote mode under a test clock", () => {
-  const port = 40000 + Math.floor(Math.random() * 20000)
+  let port = 0
   let clocked: ManagedRuntime.ManagedRuntime<Layer.Success<ReturnType<typeof makeLayer>> | TestClock.TestClock, unknown>
   const adjust = (duration: Duration.Input) => clocked.runPromise(TestClock.adjust(duration))
   const pairedPhone = async (options?: { autoPong: boolean }) => {
@@ -1528,6 +1898,7 @@ describe("remote mode under a test clock", () => {
   }
 
   beforeAll(async () => {
+    port = await unusedLoopbackPort()
     clocked = ManagedRuntime.make(
       makeLayer(join(dir, "clocked.sqlite")).pipe(Layer.provideMerge(TestClock.layer())),
     ) as typeof clocked
@@ -1590,7 +1961,6 @@ describe("remote mode under a test clock", () => {
 
     await adjust("20 seconds")
     await Promise.all([live.pinged, dead.pinged])
-    // The pong to the protocol ping is queued before this frame, so the server has it once this answers.
     await live.send({ type: "ping", at: 1 })
     await live.pong(1)
 

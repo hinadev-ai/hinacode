@@ -1,7 +1,6 @@
 import { useSyncExternalStore } from "react"
-import { SIDE_PANEL_BOUNDS } from "./panelWidth.ts"
+import { SIDE_PANEL_BOUNDS } from "./panelSize.ts"
 
-// Leave a 200px message field after the form and composer-bar padding and borders.
 const MIN_MESSAGE_WIDTH = 200
 const COMPOSER_PADDING_REM = 2.75
 const ACTIVITY_BAR_WIDTH_REM = 2.75
@@ -11,7 +10,7 @@ const panelSpace = (fontSize: number) =>
   (document.querySelector("main")?.getBoundingClientRect().width ?? window.innerWidth) -
   MIN_MESSAGE_WIDTH -
   (COMPOSER_PADDING_REM + ACTIVITY_BAR_WIDTH_REM) * fontSize -
-  3 // Two composer borders and the docked panel's outer border.
+  3
 
 export function getPanelLayout() {
   const fontSize = rootFontSize()
@@ -21,7 +20,6 @@ export function getPanelLayout() {
   return "compact"
 }
 
-/** Bounds the displayed panel without changing its saved normal or wide preference. */
 export const getSidePanelMaxWidth = () =>
   Math.max(
     SIDE_PANEL_BOUNDS.min,

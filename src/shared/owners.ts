@@ -1,10 +1,6 @@
 import type { PushEvent, RpcMethod } from "./contract.ts"
 import type { Entity } from "./routes.ts"
 
-/**
- * Which cloud owns an id. Only cloud ids are recorded: an id nobody claimed belongs to this desktop. Ids are UUIDs
- * except roots, which are paths, so two machines with the same checkout path both claim it and the last one wins.
- */
 const key = (entity: Entity, id: string) => `${entity}:${id}`
 
 export const makeOwners = () => {
@@ -40,7 +36,6 @@ const learnWorktree = (teach: Teach) => (worktree: unknown) => {
 }
 const learnId = (teach: Teach, entity: Entity) => (item: unknown) => teach(entity, field(item, "id"))
 
-/** Teaches `owners` the ids in a cloud's answer to `method`, which arrives JSON-encoded and is read loosely. */
 export const learnFromAnswer = (
   owners: Owners,
   environmentId: string,
@@ -82,7 +77,6 @@ export const learnFromAnswer = (
   }
 }
 
-/** Teaches `owners` the ids in a push a cloud sent. */
 export const learnFromPush = (owners: Owners, environmentId: string, event: PushEvent) => {
   const teach = (entity: Entity, id: string | null) => {
     if (id !== null) owners.teach(environmentId, entity, id)
@@ -111,7 +105,6 @@ export const learnFromPush = (owners: Owners, environmentId: string, event: Push
   }
 }
 
-/** Answers that carry projects, which a client stamps with the environment they came from. */
 const projectAnswers: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "projects.list",
   "projects.create",
@@ -126,6 +119,8 @@ const stamp = (result: unknown, environmentId: string): unknown =>
       ? { ...result, environmentId }
       : result
 
-/** `result` with each project in an answer to `method` marked as `environmentId`'s, for the client to show where it lives. */
+export const nameMachines = (method: RpcMethod, result: unknown, name: string) =>
+  method === "machines.list" && Array.isArray(result) ? result.map((machine) => ({ ...machine, name })) : result
+
 export const stampProjects = (method: RpcMethod, result: unknown, environmentId: string) =>
   projectAnswers.has(method) ? stamp(result, environmentId) : result

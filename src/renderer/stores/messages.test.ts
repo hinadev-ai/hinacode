@@ -12,6 +12,7 @@ const assistant = (text: string): Message => ({
   createdAt: "2026-10-12T00:00:00.000Z",
   completedAt: null,
   usage: null,
+  forkPoint: null,
 })
 const approval: ApprovalRequest = {
   id: "a1",
@@ -66,10 +67,8 @@ const loadReady = async (
 
 test("keeps pushes from before, during and after the snapshot exactly once", async () => {
   const loading = store().load(threadId)
-  // Captured in the snapshot, but delivered while the RPC resolves.
   store().receive(event(1, { type: "text_delta", text: "persisted prefix " }))
   store().receive(event(2, { type: "approval_requested", request: approval }))
-  // Published after the snapshot was captured.
   store().receive(event(3, { type: "text_delta", text: "while loading " }))
   transcriptResponse.resolve({
     result: {

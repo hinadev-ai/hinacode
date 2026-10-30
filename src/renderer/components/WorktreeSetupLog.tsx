@@ -4,10 +4,8 @@ import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { Button } from "./ui/button.tsx"
 
-/** Distance from the bottom, in pixels, within which new output keeps the log pinned to the end. */
 const STICK_THRESHOLD = 24
 
-/** The setup script's combined stdout and stderr, following new output while scrolled to the end. */
 export function WorktreeSetupLog({ worktree }: { worktree: Worktree }) {
   const logRef = useRef<HTMLPreElement>(null)
   const pinnedRef = useRef(true)

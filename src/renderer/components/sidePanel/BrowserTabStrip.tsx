@@ -12,10 +12,6 @@ export const browserPanelId = (threadId: string, tabId: string) => `browser-page
 const tabLabel = (tab: BrowserTab) =>
   tab.title || (tab.url && (URL.parse(tab.url)?.host || tab.url)) || m.browser_new_tab()
 
-/**
- * The Browser view's header: a horizontal WAI-ARIA tablist with automatic activation, since a hidden tab shows
- * without a reload. Arrow keys switch tabs and Delete closes the focused one.
- */
 export function BrowserTabStrip({ thread }: { thread: Thread }) {
   const threadId = thread.id
   const { tabs, activeId } = useBrowserTabs(selectBrowserTabs(threadId))

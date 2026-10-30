@@ -22,6 +22,7 @@ import { Settings, layer as settingsLayer } from "./Settings.ts"
 import * as Terminals from "./Terminals.ts"
 import { Threads, layer as threadsLayer } from "./Threads.ts"
 import * as Worktrees from "./Worktrees.ts"
+import * as Scratch from "./Scratch.ts"
 
 interface Query {
   readonly prompt: string
@@ -81,10 +82,22 @@ const statuses = new Map<string, PullRequestStatus>()
 const heads = new Map<string, string>()
 
 const detail = (url: string, head: string, status: PullRequestStatus = "open") =>
-  ({ url, number: 1, title: "Check the login token", body: "Fixes login.", status, head }) as PullRequestDetail
+  ({
+    url,
+    number: 1,
+    title: "Check the login token",
+    body: "Fixes login.",
+    status,
+    head,
+    additions: 2,
+    deletions: 1,
+    changedFiles: 2,
+  }) as PullRequestDetail
+
+const diffsFetched: Array<string> = []
 
 const gitHub = Layer.mock(GitHub, {
-  pullRequestDiff: () => Effect.succeed(DIFF),
+  pullRequestDiff: (url) => Effect.sync(() => void diffsFetched.push(url)).pipe(Effect.as(DIFF)),
   pullRequestDetail: (url) => Effect.succeed(detail(url, heads.get(url) ?? "h1", statuses.get(url) ?? "open")),
 })
 
@@ -92,15 +105,16 @@ const base = realpathSync(mkdtempSync(join(tmpdir(), "kk-guides-")))
 afterAll(() => rmSync(base, { recursive: true, force: true }))
 
 const domain = threadsLayer.pipe(
+  Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
   Layer.provideMerge(Terminals.layer),
   Layer.provideMerge(Worktrees.layer),
   Layer.provideMerge(Projects.layer),
   Layer.provide(AgentAccounts.layer),
-  Layer.provideMerge(settingsLayer),
+  Layer.provideMerge(settingsLayer(base)),
 )
 const testLayer = guidesLayer.pipe(
   Layer.provideMerge(pullRequestsLayer),
-  Layer.provideMerge(Layer.mergeAll(domain, ClientSettings.layer)),
+  Layer.provideMerge(Layer.mergeAll(domain, ClientSettings.layer(base))),
   Layer.provide(Layer.mergeAll(Git.layer, gitHub)),
   Layer.provide(Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) })),
   Layer.provideMerge(Db.layer(":memory:")),
@@ -214,6 +228,23 @@ describe("PullRequestGuides", () => {
         yield* PullRequestGuides.use((guides) => guides.ensure(detail(merged, "h1", "merged")))
         expect(yield* get(merged)).toStrictEqual({ guide: null, job: null })
         expect(queriesFor(merged)).toStrictEqual([])
+      }),
+    )
+
+    it.effect("a pull request GitHub cannot diff gets no guide and its diff is never asked for", () =>
+      Effect.gen(function* () {
+        const lines = "https://github.com/o/many-lines/pull/1"
+        const files = "https://github.com/o/many-files/pull/1"
+        yield* PullRequestGuides.use((guides) =>
+          Effect.all([
+            guides.ensure({ ...detail(lines, "h1"), additions: 15_000, deletions: 5_001 }),
+            guides.ensure({ ...detail(files, "h1"), changedFiles: 301 }),
+          ]),
+        )
+        expect(yield* get(lines)).toStrictEqual({ guide: null, job: null })
+        expect(yield* get(files)).toStrictEqual({ guide: null, job: null })
+        expect(diffsFetched).not.toContain(lines)
+        expect(diffsFetched).not.toContain(files)
       }),
     )
 

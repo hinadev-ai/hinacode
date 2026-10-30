@@ -44,11 +44,9 @@ export interface CreateWorktree {
   readonly projectId: string
   readonly branch: string
   readonly baseRef: string
-  /** Where a branch that does not exist yet starts. Defaults to `baseRef`. */
   readonly startPoint?: string
 }
 
-/** `ifMerged` deletes the branch only when it is fully merged into the worktree's base ref. */
 export type DeleteBranch = "keep" | "ifMerged" | "force"
 
 type Failure = PersistenceError | NotFoundError | CommandError
@@ -57,79 +55,40 @@ export class Worktrees extends Context.Service<
   Worktrees,
   {
     readonly list: Effect.Effect<ReadonlyArray<Worktree>, PersistenceError>
-    /** The checkout state of every worktree not removed. A checkout git cannot read is left out. */
     readonly checkouts: Effect.Effect<ReadonlyArray<WorktreeCheckout>, PersistenceError>
     readonly get: (id: string) => Effect.Effect<Worktree, PersistenceError | NotFoundError>
-    /**
-     * Adds the git worktree and returns it in `preparing`, then runs the project's setup script in the
-     * background, streaming `worktree.setupLog` and ending in `ready` or `failed`.
-     * A branch has at most one live worktree: asking for it again fails with `WorktreeTakenError`.
-     */
     readonly create: (input: CreateWorktree) => Effect.Effect<Worktree, Failure | WorktreeTakenError>
-    /**
-     * Like `create`, on the pull request's head fetched from `origin`. A branch of the same repository keeps
-     * its name and tracks `origin`, so pushing updates the pull request. A fork's head has no branch on
-     * `origin`, so it lands on a local `kk/pr-<number>` branch.
-     */
     readonly createFromPullRequest: (
       projectId: string,
       head: PullRequestHead,
     ) => Effect.Effect<Worktree, Failure | WorktreeTakenError>
-    /**
-     * Switches the project root to `ref`. An `origin/<name>` ref gets a local `<name>` branch that tracks it.
-     * `owner` is the thread asking; a turn of any other thread running in the root refuses the switch.
-     */
     readonly checkout: (projectId: string, ref: string, owner: string) => Effect.Effect<void, Failure | RootBusyError>
-    /** `checkout` of the pull request's head, fetched and named the way `createFromPullRequest` does. */
     readonly checkoutPullRequest: (
       projectId: string,
       head: PullRequestHead,
       owner: string,
     ) => Effect.Effect<void, Failure | RootBusyError>
-    /**
-     * Marks the worktree removed and returns at once; the checkout and (per `deleteBranch`) the
-     * branch are deleted in the background, so a large tree does not hold up the caller.
-     * Stops a setup script still running, and refuses while a turn of a thread using it runs.
-     * `owner` is the thread giving the worktree up, and any other open thread using it also blocks
-     * removal. Without `owner` the caller speaks for every thread, as when deleting the project.
-     */
     readonly remove: (
       id: string,
       deleteBranch: DeleteBranch,
       owner?: string,
     ) => Effect.Effect<Worktree, Failure | WorktreeBusyError>
-    /** `remove` for a caller already inside `exclusive`, which is not reentrant. */
     readonly removeWhileExclusive: (
       id: string,
       deleteBranch: DeleteBranch,
       owner?: string,
     ) => Effect.Effect<Worktree, Failure | WorktreeBusyError>
-    /**
-     * Runs `effect` while no worktree is being created or removed. A turn resolves its working
-     * directory and marks its thread running inside this, so a removal cannot slip in between.
-     */
     readonly exclusive: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>
-    /** Renames the worktree's branch in place; its checkout path keeps the old name. */
     readonly renameBranch: (id: string, branch: string) => Effect.Effect<Worktree, Failure>
-    /** Everything the worktree changed since it forked from its base ref, or null once it is removed. */
     readonly changes: (id: string) => Effect.Effect<Changes | null, Failure | PlatformError.PlatformError>
-    /** The branch's GitHub pull request, or null when there is none. */
     readonly pullRequest: (
       id: string,
     ) => Effect.Effect<PullRequest | null, PersistenceError | NotFoundError | GitHubError | Schema.SchemaError>
     readonly currentBranch: (projectId: string) => Effect.Effect<string, Failure>
-    /** Local branches, most recently committed first, then `origin/*` branches that have no local copy. */
     readonly branches: (projectId: string) => Effect.Effect<ReadonlyArray<string>, Failure>
-    /** `origin`'s default branch, or `main` when the checkout does not know it. */
     readonly defaultBranch: (projectId: string) => Effect.Effect<string, PersistenceError | NotFoundError>
-    /** Fetches `origin`. Without `--prune`, since a worktree's base ref may be a remote branch deleted since. */
     readonly fetch: (projectId: string) => Effect.Effect<void, Failure>
-    /**
-     * The worktree once its setup script has finished, ready or failed. A send waits on this so the
-     * turn never starts in a checkout the setup script is still preparing.
-     */
     readonly whenPrepared: (id: string) => Effect.Effect<Worktree, PersistenceError | NotFoundError>
-    /** Kills a setup script still running. The worktree ends `failed`, and a send waiting on it goes ahead. */
     readonly stopSetup: (id: string) => Effect.Effect<void>
   }
 >()("hinacode/Worktrees") {}
@@ -137,13 +96,13 @@ export class Worktrees extends Context.Service<
 const checkoutsDir = (rootPath: string, worktreeRoot: string | null) =>
   join(worktreeRoot ?? join(dirname(rootPath), ".hinacode-worktrees"), basename(rootPath))
 
-// The id suffix keeps branches like `kk/fix` and `kk-fix` apart, and gives every row its own path.
 const checkoutPath = (checkouts: string, branch: string, id: string) =>
   join(checkouts, `${branch.replaceAll("/", "-")}-${id.slice(0, 8)}`)
 
+export const forkPullRequestBranch = (number: number) => `kk/pr-${number}`
+
 const removalKey = (projectId: string, branch: string) => `${projectId}\0${branch}`
 
-/** Parses `git worktree list --porcelain -z`: NUL-separated attribute lines, an empty field between checkouts. */
 const parseCheckouts = (output: string) =>
   output
     .split("\0\0")
@@ -198,8 +157,6 @@ const make = Effect.gen(function* () {
     execute: (worktreeId) => sql`SELECT id, status FROM thread WHERE worktree_id = ${worktreeId}`,
   })
 
-  // Setup scripts run in this process, so a row still preparing at boot lost its script to a quit or
-  // crash. Rerunning an arbitrary script unasked is not safe, so it ends as failed like any other.
   yield* sql`
     UPDATE worktree SET status = 'failed', setup_log = setup_log || ${"\nSetup was interrupted when HinaCode quit.\n"}
     WHERE status = 'preparing'
@@ -245,7 +202,6 @@ const make = Effect.gen(function* () {
   const isMerged = (rootPath: string, branch: string, baseRef: string) =>
     git.run(rootPath, ["branch", "--merged", baseRef, "--format=%(refname:short)"]).pipe(
       Effect.map((output) => output.split("\n").includes(branch)),
-      // A base ref that no longer exists cannot prove the branch merged.
       Effect.orElseSucceed(() => false),
     )
 
@@ -261,7 +217,6 @@ const make = Effect.gen(function* () {
           },
           extendEnv: true,
           stdin: "ignore",
-          // Without it, a script that ignores SIGTERM would keep stopSetup waiting forever.
           forceKillAfter: "3 seconds",
         }),
       )
@@ -298,7 +253,6 @@ const make = Effect.gen(function* () {
       ),
     )
 
-  /** Setup scripts still running, by worktree id, so a send can wait for the one preparing its checkout. */
   const setups = new Map<string, Fiber.Fiber<unknown>>()
 
   const whenPrepared = (id: string) =>
@@ -316,16 +270,8 @@ const make = Effect.gen(function* () {
     return running === undefined ? Effect.void : Fiber.interrupt(running)
   }
 
-  /**
-   * Deletions still running, by project and branch, so a create of the same branch waits for the old
-   * checkout to let go of it.
-   */
   const removals = new Map<string, Fiber.Fiber<void>>()
 
-  /**
-   * A checkout of `branch` in this project's checkouts dir that no row records was left by a crash
-   * between `git worktree add` and the insert, so it is safe to adopt.
-   */
   const findOrphan = (rootPath: string, checkouts: string, branch: string) =>
     Effect.gen(function* () {
       const checkout = (yield* registeredCheckouts(rootPath)).find(
@@ -348,9 +294,7 @@ const make = Effect.gen(function* () {
         return yield* new WorktreeTakenError({ branch: input.branch, path: live.value.path })
       }
 
-      // git reports checkouts by their resolved path, so ours derive from resolved paths to compare equal.
-      // A project root that cannot be resolved does not exist, and the git calls below report that.
-      // A worktree root that cannot be resolved does not exist yet, and `git worktree add` creates it.
+      // FIXME: git reports checkouts by their resolved path
       const rootPath = yield* resolve(project.rootPath)
       const { worktreeRoot } = yield* settings.get
       const checkouts = checkoutsDir(rootPath, worktreeRoot === null ? null : yield* resolve(worktreeRoot))
@@ -361,7 +305,7 @@ const make = Effect.gen(function* () {
         const args = (yield* branchExists(rootPath, input.branch))
           ? ["worktree", "add", path, input.branch]
           : input.startPoint === undefined
-            ? // Forking from `origin/main` would otherwise make it the upstream, and a plain `git push` would fail.
+            ? // FIXME: forking from `origin/main` makes it the upstream, and a plain `git push` then fails
               ["worktree", "add", "--no-track", "-b", input.branch, path, input.baseRef]
             : ["worktree", "add", "-b", input.branch, path, input.startPoint]
         yield* git.run(rootPath, args)
@@ -383,11 +327,10 @@ const make = Effect.gen(function* () {
       return worktree
     }).pipe(exclusive)
 
-  /** Fetches the pull request's head and names the local branch it goes on. */
   const fetchPullRequest = (rootPath: string, head: PullRequestHead) =>
     Effect.gen(function* () {
       const [branch, source, fetched] = head.isCrossRepository
-        ? [`kk/pr-${head.number}`, `refs/pull/${head.number}/head`, `refs/hinacode/pull/${head.number}`]
+        ? [forkPullRequestBranch(head.number), `refs/pull/${head.number}/head`, `refs/hinacode/pull/${head.number}`]
         : [head.headRefName, `refs/heads/${head.headRefName}`, `refs/remotes/origin/${head.headRefName}`]
       yield* git.remote(rootPath, ["fetch", "--quiet", "origin", `+${source}:${fetched}`])
       return { branch, startPoint: fetched }
@@ -400,7 +343,6 @@ const make = Effect.gen(function* () {
       return yield* create({ projectId, branch, baseRef: head.baseRefName, startPoint })
     })
 
-  /** Runs `git switch` in the root while no turn can start, unless another thread's turn is already running there. */
   const switchRoot = (projectId: string, rootPath: string, owner: string, args: ReadonlyArray<string>) =>
     Effect.gen(function* () {
       const users = yield* findRootUsers(projectId).pipe(Effect.mapError(persistence("worktrees.checkout")))
@@ -452,22 +394,53 @@ const make = Effect.gen(function* () {
       }
     })
 
+  const mergedOnGitHub = (rootPath: string, branch: string) =>
+    Effect.gen(function* () {
+      const pullRequest = yield* github.branchPullRequest(rootPath, branch)
+      if (pullRequest?.status !== "merged") return false
+      const { head } = yield* github.pullRequestDetail(pullRequest.url)
+      yield* git.run(rootPath, ["merge-base", "--is-ancestor", `refs/heads/${branch}`, head])
+      return true
+    }).pipe(Effect.orElseSucceed(() => false))
+
+  const deleteIfMerged = (rootPath: string, worktree: Worktree) =>
+    Effect.gen(function* () {
+      if (!(yield* branchExists(rootPath, worktree.branch))) return
+      const merged =
+        (yield* isMerged(rootPath, worktree.branch, worktree.baseRef)) ||
+        (yield* mergedOnGitHub(rootPath, worktree.branch))
+      // FIXME: `git branch -d` checks against the root checkout's HEAD, which may not be the base ref
+      if (merged) yield* git.run(rootPath, ["branch", "-D", worktree.branch])
+    })
+
+  const pruneMergedBranches = (rootPath: string, projectId: string) =>
+    Effect.gen(function* () {
+      const all = (yield* findAll(undefined)).filter((worktree) => worktree.projectId === projectId)
+      const live = all.filter((worktree) => worktree.status !== "removed")
+      const inUse = new Set(live.flatMap((worktree) => [worktree.branch, worktree.baseRef]))
+      const removed = new Map(
+        all
+          .filter((worktree) => worktree.status === "removed" && !inUse.has(worktree.branch))
+          .map((worktree) => [worktree.branch, worktree]),
+      )
+      yield* Effect.forEach(removed.values(), (worktree) => Effect.ignore(deleteIfMerged(rootPath, worktree)), {
+        discard: true,
+      })
+    })
+
   const deleteFiles = (rootPath: string, worktree: Worktree, deleteBranch: DeleteBranch) =>
     Effect.gen(function* () {
       if ((yield* registeredCheckouts(rootPath)).some((registered) => registered.path === worktree.path)) {
-        // The second `--force` also removes a locked checkout, which `git worktree prune` would keep.
+        // FIXME: only a second `--force` removes a locked checkout
         yield* git.run(rootPath, ["worktree", "remove", "--force", "--force", worktree.path])
       }
       yield* git.run(rootPath, ["worktree", "prune"])
 
-      if (deleteBranch !== "keep" && (yield* branchExists(rootPath, worktree.branch))) {
-        // `-D` even when merged: `-d` checks against the root checkout's HEAD, which may not be the base ref.
-        const shouldDelete = deleteBranch === "force" || (yield* isMerged(rootPath, worktree.branch, worktree.baseRef))
-        if (shouldDelete) yield* git.run(rootPath, ["branch", "-D", worktree.branch])
+      if (deleteBranch === "force" && (yield* branchExists(rootPath, worktree.branch))) {
+        yield* git.run(rootPath, ["branch", "-D", worktree.branch])
       }
+      if (deleteBranch !== "keep") yield* pruneMergedBranches(rootPath, worktree.projectId)
     }).pipe(
-      // While the checkout survives, put the row back so the user can retry instead of losing it.
-      // Once the checkout is gone, a live row would point turns at a missing directory.
       Effect.catchCause((cause) =>
         Effect.logError("worktree removal failed", cause).pipe(
           Effect.andThen(fs.exists(worktree.path)),
@@ -484,7 +457,6 @@ const make = Effect.gen(function* () {
       if (worktree.status === "removed") return worktree
       yield* ensureRemovable(worktree, owner)
       yield* stopSetup(id)
-      // Read again: a stopped setup has moved the row to failed, the status a failed deletion restores.
       const stopped = yield* get(id)
       const { rootPath } = yield* projects.get(worktree.projectId)
       const removed = yield* setStatus(id, "removed")

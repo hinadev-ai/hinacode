@@ -20,23 +20,18 @@ export const linearRequest = <A>(run: () => Promise<A>) =>
     catch: (cause) => new LinearRequestError({ reason: cause instanceof Error ? cause.message : String(cause) }),
   })
 
-/** This machine's Linear account, through the API key in `Secrets`. */
 export class Linear extends Context.Service<
   Linear,
   {
-    /**
-     * A client for this machine's key, or none when it has no key. The SDK is loaded on the first call: it costs
-     * ~30 MB of main-process memory that most sessions never need.
-     */
+    // FIXME: the Linear SDK costs ~30 MB of main-process memory, so `client` loads it on first use
     readonly client: Effect.Effect<Option.Option<LinearClient>, LinearRequestError | PersistenceError>
-    /** Open issues assigned to the key's owner, most recently updated first. Empty when there is no key. */
     readonly assignedIssues: Effect.Effect<ReadonlyArray<LinearIssue>, LinearRequestError | PersistenceError>
   }
 >()("hinacode/Linear") {}
 
 const ASSIGNED_ISSUES_LIMIT = 50
 
-// One query instead of the SDK's models, which fetch each issue's state with a request of its own.
+// FIXME: the SDK's models fetch each issue's state with a request of its own
 const assignedIssuesQuery = `
   query AssignedIssues($first: Int!) {
     issues(
@@ -110,7 +105,6 @@ const demoIssues = () => [
   demoIssue("ENG-163", "Explain the empty ports panel", { name: "Triage", type: "triage" }, 0, 96),
 ]
 
-/** Demo tickets and no client, chosen by `HINACODE_MOCK_LINEAR`, so screenshots never show a real workspace. */
 export const mockLayer = Layer.succeed(
   Linear,
   Linear.of({ client: Effect.succeedNone, assignedIssues: Effect.sync(demoIssues) }),

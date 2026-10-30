@@ -2,12 +2,13 @@ import type { LegendListRef } from "@legendapp/list/react"
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, type RefObject, useEffect, useRef } from "react"
-import type { Thread, ThreadStatus } from "../../shared/domain.ts"
+import type { Thread } from "../../shared/domain.ts"
 import { findPattern } from "../lib/find.ts"
 import { useDebouncedValue } from "../lib/useDebouncedValue.ts"
 import { useIsChat } from "../lib/useIsChat.ts"
-import { repositoryAtom } from "../lib/rpc.ts"
+import { projectsAtom, repositoryAtom } from "../lib/rpc.ts"
 import { ThreadRepository } from "../lib/threadRepository.ts"
+import { ThreadFolder, useThreadRoot } from "../lib/threadRoot.ts"
 import { m } from "../paraglide/messages.js"
 import { useMessages } from "../stores/messages.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
@@ -15,12 +16,13 @@ import { useUi } from "../stores/ui.ts"
 import { ApprovalCard } from "./ApprovalCard.tsx"
 import { CloudNotice } from "./CloudNotice.tsx"
 import { Composer } from "./Composer.tsx"
+import { ThreadEnvironmentSwitch, ThreadProjectSwitch } from "./ComposerControls.tsx"
 import { FindBar } from "./FindBar.tsx"
 import { FindPatternContext } from "./FindHighlight.tsx"
 import { EmptyThread, MessageList } from "./MessageList.tsx"
 import { QuestionRequestCard } from "./QuestionCard.tsx"
 import { SecretRequestCard } from "./SecretRequestCard.tsx"
-import { SubagentTranscript } from "./SubagentView.tsx"
+import { SubagentTranscript, useSubagentLabel } from "./SubagentView.tsx"
 import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { UsageLimitCallout } from "./UsageLimitCallout.tsx"
 import { AccountLimitNotice } from "./AccountSwitch.tsx"
@@ -29,55 +31,46 @@ import { Button } from "./ui/button.tsx"
 
 const FIND_DEBOUNCE_MS = 100
 
-const statusLabel = {
-  idle: m.thread_status_idle,
-  running: m.thread_status_running,
-  awaiting_approval: m.thread_status_awaiting_approval,
-  limited: m.thread_status_limited,
-  archived: m.thread_status_archived,
-} satisfies Record<ThreadStatus, () => string>
-
-/** `agent` is the `callId` of the sub-agent to show instead of the thread's own transcript. */
 interface ThreadViewProps {
   readonly thread: Thread
   readonly agent?: string
   readonly actions?: ReactNode
-  /** Floats over the top of the transcript, below the header. */
   readonly overlay?: ReactNode
 }
 
 export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps) {
   const repository = AsyncResult.getOrElse(useAtomValue(repositoryAtom(thread.projectId)), () => null)
+  const folder = useThreadRoot(thread)?.path ?? null
   const regionRef = useRef<HTMLDivElement>(null)
   const dockRef = useRef<HTMLDivElement>(null)
   useDockHeight(regionRef, dockRef)
+  const loaded = useMessages((state) => state.byThread[thread.id]?.status === "ready")
+  const centered = useMessages((state) => {
+    const history = state.byThread[thread.id]
+    return agent === undefined && history?.status === "ready" && history.messages.length === 0
+  })
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-        <h1 dir="auto" className="min-w-0 flex-1 truncate text-left text-sm font-semibold" title={thread.title}>
-          {thread.title}
-        </h1>
-        <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-          <ProviderIcon provider={thread.provider} />
-          {providerLabel[thread.provider]()}
-        </span>
-        <span
-          data-status={thread.status}
-          className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground data-[status=limited]:border-attention/30 data-[status=limited]:bg-attention/10 data-[status=limited]:text-attention"
-        >
-          {statusLabel[thread.status]()}
-        </span>
+      <header className="@container window-drag flex min-h-12 shrink-0 flex-wrap items-center gap-2 px-3 py-2">
+        <ThreadBreadcrumb thread={thread} agent={agent} />
         {actions}
       </header>
       <div ref={regionRef} className="relative flex min-h-0 flex-1 flex-col [container-type:size]">
         <div className="flex min-h-0 flex-1 flex-col overflow-auto">
           <ThreadRepository value={repository}>
-            <Transcript thread={thread} agent={agent} />
+            <ThreadFolder value={folder}>
+              <Transcript thread={thread} agent={agent} />
+            </ThreadFolder>
           </ThreadRepository>
         </div>
         {overlay}
-        <div ref={dockRef} className="absolute inset-x-0 bottom-0 flex max-h-full flex-col">
-          <div className="flex min-h-0 flex-col bg-background">
+        <div
+          ref={dockRef}
+          data-centered={centered}
+          data-loaded={loaded}
+          className="absolute inset-x-0 bottom-0 flex max-h-full flex-col data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] data-[loaded=false]:opacity-0 data-[loaded=true]:data-[centered=false]:transition-transform data-[loaded=true]:data-[centered=false]:duration-500 data-[loaded=true]:data-[centered=false]:ease-(--ease-drawer) motion-reduce:transition-none"
+        >
+          <Composer thread={thread}>
             <PendingRequests thread={thread} />
             {thread.status === "limited" && thread.usageLimit !== null ? (
               <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />
@@ -85,13 +78,58 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
               <AccountLimitNotice key={thread.id} thread={thread} />
             )}
             <CloudNotice threadId={thread.id} />
-          </div>
-          <Composer thread={thread} />
+          </Composer>
         </div>
       </div>
     </div>
   )
 }
+
+function ThreadBreadcrumb({ thread, agent }: { thread: Thread; agent: string | undefined }) {
+  const project = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => []).find(
+    (candidate) => candidate.id === thread.projectId,
+  )
+  return (
+    <nav aria-label={m.thread_breadcrumb()} className="min-w-0 flex-1">
+      <ol className="flex min-w-0 items-center gap-1.5 text-sm">
+        <li title={providerLabel[thread.provider]()} className="flex shrink-0">
+          <ProviderIcon provider={thread.provider} />
+          <span className="sr-only">{providerLabel[thread.provider]()}</span>
+        </li>
+        {project && (
+          <li dir="auto" className="max-w-48 shrink-0 truncate text-muted-foreground" title={project.name}>
+            {project.name}
+          </li>
+        )}
+        <li className="flex min-w-0 items-center gap-1.5">
+          {project && <Separator />}
+          <h1 dir="auto" className="truncate font-semibold" title={thread.title}>
+            {thread.title}
+          </h1>
+        </li>
+        {agent !== undefined && <SubagentCrumb threadId={thread.id} callId={agent} />}
+      </ol>
+    </nav>
+  )
+}
+
+function SubagentCrumb({ threadId, callId }: { threadId: string; callId: string }) {
+  const label = useSubagentLabel(threadId, callId)
+  return (
+    <li dir="auto" className="flex min-w-0 items-center gap-1.5">
+      <Separator />
+      <span className="truncate" title={label}>
+        {label}
+      </span>
+    </li>
+  )
+}
+
+const Separator = () => (
+  <span aria-hidden className="text-muted-foreground/60">
+    /
+  </span>
+)
 
 function Transcript({ thread, agent }: { thread: Thread; agent: string | undefined }) {
   const history = useMessages((state) => state.byThread[thread.id])
@@ -113,7 +151,6 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
     return () => unload(thread.id)
   }, [load, unload, thread.id])
 
-  // The Retry button disappears into the loading state, so focus moves on before it does.
   const retry = () => {
     useUi.getState().requestComposerFocus()
     void load(thread.id)
@@ -148,11 +185,14 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
           {worktree?.status === "preparing" ? (
             <WorktreePreparation worktree={worktree} />
           ) : (
-            <EmptyThread
-              hint={isChat ? m.thread_empty_chat_hint({ provider: label }) : m.thread_empty_hint({ provider: label })}
-            />
+            <div className="mt-auto">
+              <EmptyThread
+                project={isChat ? null : <ThreadProjectSwitch thread={thread} />}
+                environment={<ThreadEnvironmentSwitch thread={thread} />}
+              />
+            </div>
           )}
-          <div className="h-(--dock-height) shrink-0" />
+          <div className="h-[calc(50cqh+var(--dock-height)/2+1.5rem)] shrink-0" />
         </>
       ) : (
         <MessageList messages={history.messages} providerLabel={label} listRef={listRef} />
@@ -161,10 +201,6 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
   )
 }
 
-/**
- * The composer dock floats over the transcript so messages scroll behind its blur. Its height goes
- * into `--dock-height`, which the transcript pads its end with so the last message can clear it.
- */
 function useDockHeight(regionRef: RefObject<HTMLDivElement | null>, dockRef: RefObject<HTMLDivElement | null>) {
   useEffect(() => {
     const region = regionRef.current
@@ -181,7 +217,7 @@ function PendingRequests({ thread }: { thread: Thread }) {
   const label = providerLabel[thread.provider]()
   if (history?.status !== "ready") return null
   return (
-    <div className="min-h-0 shrink overflow-auto px-4 empty:hidden">
+    <div aria-live="polite" className="min-h-0 shrink overflow-auto empty:hidden">
       {history.approvals.map((request) => (
         <ApprovalCard key={request.id} request={request} providerLabel={label} />
       ))}

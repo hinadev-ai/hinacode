@@ -3,7 +3,6 @@ import type { PaletteGroup, PaletteItem } from "./types.ts"
 
 export interface RankedItem {
   readonly item: PaletteItem
-  /** Indexes of the title characters the query matched. */
   readonly titleMatches: ReadonlyArray<number>
   readonly subtitleMatches: ReadonlyArray<number>
 }
@@ -13,7 +12,6 @@ export interface RankedGroup {
   readonly items: ReadonlyArray<RankedItem>
 }
 
-/** Rendering more than this per group buys nothing, and keeps a 50k-file repo cheap without virtualizing. */
 export const MAX_ITEMS_PER_GROUP = 50
 
 interface Match {
@@ -30,20 +28,13 @@ const byScore = (items: ReadonlyArray<PaletteItem>, query: string): ReadonlyArra
   }).map((result) => ({ item: result.obj, result }))
 }
 
-// fuzzysort computes `indexes` on every read, so only the items that are shown pay for it.
+// FIXME: fuzzysort computes `indexes` on every read, so only shown items read them
 const highlight = ({ item, result }: Match): RankedItem => ({
   item,
   titleMatches: result?.[0]?.indexes ?? [],
   subtitleMatches: result?.[1]?.indexes ?? [],
 })
 
-/**
- * Filters `items` by `query` and groups them. Recently run items come first, most recent first, then
- * the rest by fuzzy score. An empty query keeps the given order after the recent items. Groups are
- * ordered by their best item.
- *
- * @param recent item ids, most recent first
- */
 export function rankPalette(
   items: ReadonlyArray<PaletteItem>,
   query: string,

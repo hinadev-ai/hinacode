@@ -1,7 +1,4 @@
-// `pnpm dev` runs the stock Electron.app, and macOS reads the menu bar title, Cmd+Tab and notifications from its
-// Info.plist and the Dock label from its file name, not from `app.setName`. Rename both and give it our dev icon,
-// then re-sign it ad hoc, as it was signed before, so the edited Info.plist still matches the signature.
-// Electron downloads its binary on first use, so resolving `electron` here fetches it before we edit it.
+// FIXME: macOS names the dev app from Electron.app's Info.plist and file name, not from app.setName
 import { execFileSync } from "node:child_process"
 import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import { createRequire } from "node:module"
@@ -35,8 +32,7 @@ if (plist && existsSync(plist) && plistBuddy("Print :CFBundleName") !== NAME) {
   execFileSync("codesign", ["--force", "--deep", "--sign", "-", bundle], { stdio: "ignore" })
 }
 
-// `electron` and electron-vite find the binary through path.txt. A re-download extracts a new Electron.app
-// next to the old HinaCode.app and points path.txt back at it, so the old one goes.
+// FIXME: an Electron re-download extracts a new Electron.app and points path.txt back at it
 if (bundle && basename(bundle) !== `${NAME}.app`) {
   const renamed = join(dirname(bundle), `${NAME}.app`)
   rmSync(renamed, { recursive: true, force: true })

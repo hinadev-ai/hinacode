@@ -1,18 +1,18 @@
 import { execFileSync } from "node:child_process"
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { expect, it } from "@effect/vitest"
-import { Context, Deferred, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, Stream } from "effect"
+import { Context, Deferred, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, Queue, Stream } from "effect"
 import { SqlClient } from "effect/sql"
 import { vi } from "vitest"
 import type { AgentEvent, ApprovalDecision, ProviderId, RunTurnInput } from "../../shared/agent.ts"
-import type { Thread } from "../../shared/domain.ts"
+import type { Message, Thread } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
-import type { AgentProvider } from "../agents/provider.ts"
+import { AgentError, type AgentProvider, type Wake } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
 import * as AgentAccounts from "./AgentAccounts.ts"
@@ -27,6 +27,7 @@ import { PullRequestWatcher, layer as watcherLayer } from "./PullRequestWatcher.
 import { Secrets } from "./Secrets.ts"
 import * as Settings from "./Settings.ts"
 import * as Terminals from "./Terminals.ts"
+import * as Scratch from "./Scratch.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
 import * as Threads from "./Threads.ts"
 import * as Worktrees from "./Worktrees.ts"
@@ -47,16 +48,22 @@ interface Probe {
   readonly idle: Promise<void>
   readonly turns: Array<{ readonly provider: ProviderId; readonly input: RunTurnInput }>
   readonly decisions: Array<{ readonly requestId: string; readonly decision: ApprovalDecision }>
+  readonly calls: Array<{ readonly provider: ProviderId; readonly call: "closeSession" | "interrupt" }>
+  readonly wake: (agent: ProviderId, sessionId: string) => Promise<void>
+  readonly failClose: () => void
   readonly release: () => void
   readonly deliver: () => void
   readonly snapshot: () => void
   readonly pauseSnapshot: () => void
   readonly turnBase: () => Promise<string | null>
+  readonly storedMessages: (threadId: string) => Promise<ReadonlyArray<Message>>
 }
+
+const wakeQueue = () => Effect.runSync(Queue.unbounded<Wake>())
 
 const withPreparingThread = async (
   run: (probe: Probe) => Promise<void>,
-  options: { readonly pauseInsertion?: boolean; readonly pauseSnapshot?: boolean } = {},
+  options: { readonly pauseInsertion?: boolean; readonly pauseSnapshot?: boolean; readonly forkable?: boolean } = {},
 ) => {
   const dir = mkdtempSync(join(tmpdir(), "kk-runner-preparation-"))
   const root = join(dir, "repo")
@@ -89,27 +96,31 @@ const withPreparingThread = async (
   let holdSnapshot = options.pauseSnapshot ?? false
   const turns: Probe["turns"] = []
   const decisions: Probe["decisions"] = []
+  const calls: Probe["calls"] = []
+  let closeFails = false
+  const wakes = { claude: wakeQueue(), codex: wakeQueue(), muse: wakeQueue() }
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
+      Layer.provideMerge(Scratch.layer(join(dir, "scratch"))),
       Layer.provide(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
       Layer.provideMerge(AgentAccounts.layer),
-      Layer.provideMerge(Settings.layer),
+      Layer.provideMerge(Settings.layer(dir)),
     ),
     Messages.layer,
   ).pipe(
     Layer.provideMerge(
-      Layer.mergeAll(
-        Git.layer,
-        GitHub.layer,
-        Layer.succeed(Events, {
-          publish: (event) =>
-            Effect.sync(() => {
-              if (event.type === "worktree.setupLog" && event.chunk.includes("setup started")) started.resolve()
-              if (event.type === "thread.updated" && event.thread.status === "idle") idle.resolve()
-            }),
-        }),
+      Layer.mergeAll(Git.layer, GitHub.layer).pipe(
+        Layer.provideMerge(
+          Layer.succeed(Events, {
+            publish: (event) =>
+              Effect.sync(() => {
+                if (event.type === "worktree.setupLog" && event.chunk.includes("setup started")) started.resolve()
+                if (event.type === "thread.updated" && event.thread.status === "idle") idle.resolve()
+              }),
+          }),
+        ),
       ),
     ),
     Layer.provideMerge(Db.layer(join(dir, "hinacode.sqlite"))),
@@ -126,8 +137,13 @@ const withPreparingThread = async (
     runTurn: (input) =>
       Stream.suspend((): Stream.Stream<AgentEvent> => {
         turns.push({ provider: id, input })
-        const completed: AgentEvent = { type: "turn_completed" }
-        if (input.prompt === "accepted input") return Stream.make(completed)
+        const completed: AgentEvent = {
+          type: "turn_completed",
+          ...(options.forkable && { forkPoint: { sessionId: `${id}-session`, checkpoint: "turn-1" } }),
+        }
+        if (input.prompt.endsWith("accepted input")) {
+          return Stream.make({ type: "session_bound", providerSessionId: `${id}-session-${turns.length}` }, completed)
+        }
         if (input.prompt !== "needs approval") return Stream.never
         const requested: AgentEvent = {
           type: "approval_requested",
@@ -144,8 +160,13 @@ const withPreparingThread = async (
         }
         return Stream.concat(Stream.make(requested), Stream.never)
       }),
+    wakes: Stream.fromQueue(wakes[id]),
+    closeSession: () =>
+      closeFails
+        ? Effect.fail(new AgentError({ provider: id, message: "The session did not leave" }))
+        : Effect.sync(() => calls.push({ provider: id, call: "closeSession" })),
     steer: () => Effect.void,
-    interrupt: () => Effect.void,
+    interrupt: () => Effect.sync(() => calls.push({ provider: id, call: "interrupt" })),
     setAccessMode: () => Effect.void,
     respondApproval: (requestId, decision) => Effect.sync(() => decisions.push({ requestId, decision })),
     respondQuestion: () => Effect.void,
@@ -234,6 +255,8 @@ const withPreparingThread = async (
                   headRef: "fix/pending",
                   head: "abc1234",
                   mergeable: "mergeable",
+                  changedFiles: 1,
+                  comments: [],
                   checkRuns: [{ name: "CI / test", status: "failing", url: "https://ci.example/test" }],
                 }),
             }),
@@ -279,12 +302,27 @@ const withPreparingThread = async (
         idle: idle.promise,
         turns,
         decisions,
+        calls,
+        wake: (agent, sessionId) => {
+          const discarded = Promise.withResolvers<void>()
+          Queue.offerUnsafe(wakes[agent], {
+            threadId: thread.id,
+            sessionId,
+            events: Stream.never,
+            discard: Effect.sync(() => discarded.resolve()),
+          })
+          return discarded.promise
+        },
+        failClose: () => {
+          closeFails = true
+        },
         release,
         deliver,
         snapshot,
         pauseSnapshot: () => {
           holdSnapshot = true
         },
+        storedMessages: (threadId) => domainRuntime.runPromise(messages.list(threadId)),
         turnBase: () =>
           domainRuntime.runPromise(
             sql<{
@@ -547,7 +585,28 @@ it("tells the agent the branch and paths it works in", async () => {
   root project path: \`${probe.root}\`
   remote: \`(none)\`
   platform: ${process.platform}
-</environment>`)
+`)
+  })
+})
+
+const scratchDirectoryOf = (input: RunTurnInput | undefined) =>
+  /scratch directory: `([^`]+)`/.exec(input?.instructions ?? "")?.[1]
+
+it("names a scratch folder that exists and keeps its path after the title changes", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, turns, idle, release }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+    await idle
+    const first = scratchDirectoryOf(turns[0]?.input)
+    expect(first).toBeDefined()
+    expect(existsSync(first!)).toBe(true)
+
+    await Effect.runPromise(threads.update({ id: thread.id, title: "Renamed by auto titling" }))
+    await vi.waitFor(() => Effect.runPromise(runner.send(thread.id, "accepted input", [])))
+    await vi.waitFor(() => expect(turns).toHaveLength(2))
+
+    expect(scratchDirectoryOf(turns[1]?.input)).toBe(first)
+    expect(readdirSync(dirname(first!))).toHaveLength(1)
   })
 })
 
@@ -594,5 +653,132 @@ it("allows the approval a turn is waiting on when the thread switches to full ac
     )
     await Effect.runPromise(runner.setAccessMode(thread.id, "full"))
     expect(decisions).toStrictEqual([{ requestId: "approval-1", decision: "allow" }])
+  })
+})
+
+it("moves a started thread to another agent and persists its marker without a fork point", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, idle, turns, storedMessages }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+    await idle
+    expect((await Effect.runPromise(threads.get(thread.id))).providerSessionId).toBe("claude-session-1")
+
+    const switched = await Effect.runPromise(
+      runner.switchAgent({ id: thread.id, provider: "codex", model: "codex-model" }),
+    )
+    expect(switched).toMatchObject({ provider: "codex", model: "codex-model", providerSessionId: null })
+    const { messages } = await Effect.runPromise(runner.transcript(thread.id))
+    expect(messages.at(-1)?.parts).toStrictEqual([{ type: "agent_switch", from: "claude", to: "codex" }])
+    expect((await storedMessages(thread.id)).at(-1)).toMatchObject({
+      parts: [{ type: "agent_switch", from: "claude", to: "codex" }],
+      forkPoint: null,
+    })
+
+    await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+    await vi.waitFor(async () =>
+      expect((await Effect.runPromise(threads.get(thread.id))).providerSessionId).toBe("codex-session-2"),
+    )
+    const handoff = turns[1]!
+    expect(handoff.provider).toBe("codex")
+    expect(handoff.input.resumeSessionId).toBeNull()
+    expect(handoff.input.prompt).toMatch(
+      /^<conversation_handoff>\nThis conversation started with Claude Code and continues with you\./,
+    )
+    expect(handoff.input.prompt).toContain("## user\naccepted input\n\n## assistant\n[the conversation moved")
+    expect(handoff.input.prompt).toMatch(/<\/conversation_handoff>\n\naccepted input$/)
+  })
+})
+
+it("keeps a native fork's first prompt explicit while preserving its session checkpoint", async () => {
+  await withPreparingThread(
+    async ({ runner, threads, thread, release, idle, turns, storedMessages }) => {
+      release()
+      await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+      await idle
+      await vi.waitFor(async () =>
+        expect((await storedMessages(thread.id)).at(-1)?.forkPoint).toMatchObject({
+          sessionId: "claude-session",
+          checkpoint: "turn-1",
+          owner: { provider: "claude", accountId: null },
+        }),
+      )
+      const reply = (await storedMessages(thread.id)).at(-1)!
+      const fork = await Effect.runPromise(threads.fork(thread.id, reply.id))
+      expect(fork).toMatchObject({
+        providerSessionId: null,
+        forkedFrom: { sessionId: "claude-session", checkpoint: "turn-1" },
+      })
+
+      await Effect.runPromise(runner.send(fork.id, "accepted input", []))
+      await vi.waitFor(() => expect(turns).toHaveLength(2))
+      expect(turns[1]).toMatchObject({
+        provider: "claude",
+        input: {
+          threadId: fork.id,
+          prompt: "accepted input",
+          resumeSessionId: "claude-session",
+          forkAt: "turn-1",
+        },
+      })
+    },
+    { forkable: true },
+  )
+})
+
+it("refuses to switch agents while a turn runs", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "needs approval", []))
+    const exit = await Effect.runPromiseExit(runner.switchAgent({ id: thread.id, provider: "codex", model: "m" }))
+    expect(Exit.isFailure(exit)).toBe(true)
+    expect((await Effect.runPromise(threads.get(thread.id))).provider).toBe("claude")
+  })
+})
+
+it("retires the agent a thread leaves and turns away its wakes, even after switching back", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, idle, calls, wake }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+    await idle
+    await Effect.runPromise(runner.switchAgent({ id: thread.id, provider: "codex", model: "codex-model" }))
+    await Effect.runPromise(runner.switchAgent({ id: thread.id, provider: "claude", model: "claude-model" }))
+    expect(calls).toStrictEqual([
+      { provider: "claude", call: "closeSession" },
+      { provider: "codex", call: "closeSession" },
+    ])
+
+    await wake("claude", "claude-session-1")
+    expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("idle")
+    const { messages } = await Effect.runPromise(runner.transcript(thread.id))
+    expect(messages.at(-1)?.parts).toStrictEqual([{ type: "agent_switch", from: "codex", to: "claude" }])
+
+    await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+    await vi.waitFor(async () =>
+      expect(await Effect.runPromise(threads.get(thread.id))).toMatchObject({
+        status: "idle",
+        providerSessionId: "claude-session-2",
+      }),
+    )
+    void wake("claude", "claude-session-2")
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running"))
+    await Effect.runPromise(runner.interrupt(thread.id))
+    expect(calls.at(-1)).toStrictEqual({ provider: "claude", call: "interrupt" })
+  })
+})
+
+it("keeps a thread on its agent when that agent's session does not close", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, idle, failClose }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+    await idle
+    failClose()
+    const exit = await Effect.runPromiseExit(runner.switchAgent({ id: thread.id, provider: "codex", model: "m" }))
+    expect(Exit.isFailure(exit)).toBe(true)
+    expect(await Effect.runPromise(threads.get(thread.id))).toMatchObject({
+      provider: "claude",
+      providerSessionId: "claude-session-1",
+    })
+    const { messages } = await Effect.runPromise(runner.transcript(thread.id))
+    expect(messages.flatMap((message) => message.parts).some((part) => part.type === "agent_switch")).toBe(false)
   })
 })

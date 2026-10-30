@@ -1,15 +1,7 @@
 import type { RpcMethod } from "./contract.ts"
 
-/** What an id in a payload names, for finding which environment owns it. */
 export type Entity = "thread" | "project" | "worktree" | "terminal" | "automation" | "request" | "root" | "stream"
 
-/**
- * Where a call from the desktop window runs.
- * - `client`: this desktop, always.
- * - `all`: this desktop and every cloud, the arrays concatenated.
- * - `owner`: the environment that owns the id at `payload[key]`; this desktop when no cloud claimed it.
- * - `named`: the environment the call names; this desktop when it names none.
- */
 export type Route =
   | { readonly to: "client" }
   | { readonly to: "all" }
@@ -29,8 +21,20 @@ export const routes: Record<RpcMethod, Route> = {
   "browser.command": thread,
   "browser.frame": thread,
   "browser.close": thread,
+  "devices.list": thread,
+  "device.get": thread,
+  "device.attach": thread,
+  "device.create": thread,
+  "device.detach": thread,
+  "device.delete": thread,
+  "device.frame": thread,
+  "device.command": thread,
+  "device.control": thread,
+  "device.pick": thread,
   "app.ready": client,
   "app.focus": client,
+  "app.setBadgeCount": client,
+  "app.setColorScheme": client,
   "dialog.pickFolder": client,
   "dialog.pickFiles": client,
   "shell.reveal": client,
@@ -41,6 +45,7 @@ export const routes: Record<RpcMethod, Route> = {
   "clientSettings.get": client,
   "clientSettings.set": client,
   "environments.list": client,
+  "machines.list": all,
   "environments.add": client,
   "environments.remove": client,
   "environments.reconnect": client,
@@ -88,6 +93,7 @@ export const routes: Record<RpcMethod, Route> = {
   "pullRequestGuides.retry": named,
   "github.merge": named,
   "github.close": named,
+  "github.comment": named,
   "vm.host": named,
   "network.addresses": named,
   "system.resources": named,
@@ -120,6 +126,7 @@ export const routes: Record<RpcMethod, Route> = {
   "threads.resumeAtReset": owner("thread", "id"),
   "threads.switchAccount": owner("thread", "id"),
   "threads.changes": thread,
+  "threads.fork": thread,
   "threads.archive": thread,
   "threads.unarchive": thread,
   "threads.transcript": thread,
@@ -129,6 +136,7 @@ export const routes: Record<RpcMethod, Route> = {
   "threads.unqueue": thread,
   "threads.interrupt": thread,
   "threads.usage": thread,
+  "threads.contextBreakdown": thread,
   "commands.list": thread,
   "files.list": thread,
   "search.files": thread,
@@ -149,6 +157,7 @@ export const routes: Record<RpcMethod, Route> = {
   "vm.start": thread,
   "vm.stop": thread,
   "vm.control": thread,
+  "vm.desktop.url": thread,
   "vm.screen.open": thread,
   "vm.files.drop": thread,
   "vm.profile.save": thread,

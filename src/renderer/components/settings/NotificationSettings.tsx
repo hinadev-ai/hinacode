@@ -10,7 +10,7 @@ import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Switch } from "../ui/switch.tsx"
-import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
+import { SettingsGroup, SettingsPageAction, SettingsSection } from "./SettingsSection.tsx"
 
 type Notifications = ClientSettings["notifications"]
 
@@ -55,17 +55,14 @@ export function NotificationSettings() {
     })
 
   return (
-    <SettingsSection
-      title={m.settings_notifications()}
-      description={m.settings_notifications_hint()}
-      action={
-        import.meta.env.DEV && (
+    <SettingsSection>
+      {import.meta.env.DEV && (
+        <SettingsPageAction>
           <Button variant="outline" size="sm" onClick={sendTest}>
             {m.settings_notifications_test()}
           </Button>
-        )
-      }
-    >
+        </SettingsPageAction>
+      )}
       <PermissionNotice />
       <SettingsGroup>
         {toggles.map(({ key, label, hint }) => (
@@ -95,11 +92,10 @@ export function NotificationSettings() {
 
 const PERMISSION_POLL_MS = 2000
 
-/** Says when the OS keeps notifications from showing. Silent when they are allowed or the OS cannot tell. */
 function PermissionNotice() {
   const permission = AsyncResult.getOrElse(useAtomValue(notificationPermissionAtom), () => "unknown" as const)
   const refresh = useAtomRefresh(notificationPermissionAtom)
-  // macOS can refuse to even ask, as it does for an app on an external volume, and still report "not determined".
+  // FIXME: macOS can refuse to ask, as for an app on an external volume, and still report "not determined"
   const [askRefused, setAskRefused] = useState(false)
 
   const ask = async () => {
@@ -109,7 +105,7 @@ function PermissionNotice() {
   }
   const blocked = permission === "denied" || permission === "notDetermined"
 
-  // Neither answering the macOS prompt nor changing System Settings refocuses the window, so poll until it resolves.
+  // FIXME: neither the macOS prompt nor System Settings refocuses the window, so poll until it resolves
   useEffect(() => {
     if (!blocked) return
     const timer = setInterval(refresh, PERMISSION_POLL_MS)

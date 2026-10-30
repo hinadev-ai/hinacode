@@ -21,11 +21,6 @@ const body = (parts: string) => `(
   FROM json_each(${parts})
 )`
 
-/**
- * A streaming turn rewrites its assistant message's parts on every persist, and re-indexing the whole
- * body each time cost as much as the write itself. Index a message once it completes instead: a steer,
- * the end of a turn and `Messages.closeInterrupted` all write the row with `completed_at` set.
- */
 export default Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
   yield* sql`DROP TRIGGER message_fts_update`

@@ -23,26 +23,19 @@ import { BrowserStart, type Device, type Failure, LoadFailure, ViewportMenu } fr
 import { browserPanelId, browserTabId } from "./BrowserTabStrip.tsx"
 import { RemoteBrowserPage } from "./RemoteBrowserPage.tsx"
 
-/**
- * Without `allowpopups` the page's `window.open` and `target=_blank` links do nothing; with it, main loads them in
- * place. React drops `true` on an attribute it does not know, and Electron only checks that it is present.
- */
 const ALLOW_POPUPS: Record<string, string> = { allowpopups: "" }
 
-/** Chromium's code for a navigation that was replaced or stopped, which is not a failure to show. */
 const ERR_ABORTED = -3
 
 type NavigationEvent = Event & { url: string; isMainFrame?: boolean; isInPlace?: boolean }
 type TitleEvent = Event & { title: string }
 type FailLoadEvent = Event & { errorCode: number; errorDescription: string; validatedURL: string; isMainFrame: boolean }
 
-/** Browser tabs for the thread's dev servers, whose elements can be picked into the message. */
 export function BrowserView({ thread }: { thread: Thread }) {
   const { tabs, activeId } = useBrowserTabs(selectBrowserTabs(thread.id))
   const remote = useThreadEnvironment(thread.id) !== null
   const Page = remote ? RemoteBrowserPage : BrowserPage
 
-  // A page needs the room an editor gets.
   useEffect(() => {
     useUi.getState().setSidePanelWide(true)
     return () => useUi.getState().setSidePanelWide(false)
@@ -60,9 +53,7 @@ export function BrowserView({ thread }: { thread: Thread }) {
 interface BrowserPageProps {
   readonly threadId: string
   readonly tabId: string
-  /** Where the page starts. After that the page navigates on its own and reports back through the store. */
   readonly initialUrl: string | null
-  /** Hidden tabs stay mounted, so their pages keep running and come back without a reload. */
   readonly active: boolean
 }
 
@@ -94,7 +85,6 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
     setPicking(false)
   }
 
-  // The cancelled pick resolves null, and `startPick` ends it like an Escape.
   useEffect(() => {
     if (active || !pick.current) return
     viewRef.current?.executeJavaScript(CANCEL_PICK_SCRIPT).catch(() => {})
@@ -107,7 +97,6 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
     const arrived = (url: string) => {
       setFailure(null)
       setPickError(null)
-      // A client-side route change or hot reload must not wipe what the user is typing.
       if (document.activeElement !== addressRef.current) setAddress(url)
       useBrowserTabs.getState().updateTab(threadId, tabId, { url })
       syncHistory()

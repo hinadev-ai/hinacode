@@ -9,7 +9,6 @@ import { useLocale } from "../stores/locale.ts"
 import { ReconnectButton } from "./ReconnectButton.tsx"
 import { Button } from "./ui/button.tsx"
 
-/** Says above the composer that the thread's cloud cannot take messages right now, and what to do about it. */
 export function CloudNotice({ threadId }: { threadId: string }) {
   const cloud = useCloud(useThreadEnvironment(threadId))
   if (cloud === undefined || cloud.status === "connected") return null
@@ -44,7 +43,7 @@ function CloudNoticeBody({ cloud }: { cloud: Cloud }) {
     <div
       role="status"
       data-needs-you={needsYou}
-      className="mb-2 flex w-[calc(100%-1.5rem)] max-w-3xl shrink-0 self-center flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground data-[needs-you=true]:border-attention/30 data-[needs-you=true]:bg-attention/10 data-[needs-you=true]:text-attention"
+      className="mb-2 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground data-[needs-you=true]:border-attention/30 data-[needs-you=true]:bg-attention/10 data-[needs-you=true]:text-attention"
     >
       <Icon aria-hidden className="size-4 shrink-0" />
       <span className="min-w-0 flex-1 tabular-nums">{text}</span>
@@ -52,7 +51,7 @@ function CloudNoticeBody({ cloud }: { cloud: Cloud }) {
         <Button
           variant="outline"
           size="sm"
-          render={<Link to="/settings" search={{ page: "environments" }} />}
+          render={<Link to="/settings" search={{ page: "connections" }} />}
           nativeButton={false}
         >
           {m.environment_pair_again()}

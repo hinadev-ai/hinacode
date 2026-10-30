@@ -2,7 +2,6 @@ import { describe, expect, test } from "@effect/vitest"
 import { choiceFor, sessionScope, toApprovalRequest } from "./approvals.ts"
 import type { ApprovalChoice, ApprovalRequestParams } from "./protocol.ts"
 
-// Choices and subjects from muse 1.4.7 under `promptUnmatched`.
 const shellChoices: Array<ApprovalChoice> = [
   { choiceId: "allow_once", decision: "approved", scope: "once", label: "Allow once" },
   {

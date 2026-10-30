@@ -29,7 +29,7 @@ export const PullRequestTools = Toolkit.make(
       events: Schema.optionalKey(
         Schema.Array(WatchEventKind).annotate({
           description:
-            "What to be woken for. Defaults to all of checksFailed, checksPassed, reviewChanged, conflicting and mergedOrClosed.",
+            "What to be woken for. Defaults to all of checksFailed, checksPassed, reviewChanged, conflicting, mergedOrClosed and commented. commented fires on new comments from anyone but the gh account you post as.",
         }),
       ),
     }),

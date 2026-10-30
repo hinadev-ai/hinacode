@@ -15,7 +15,6 @@ import { useUnseen } from "../stores/unseen.ts"
 
 const route = getRouteApi("/thread/$threadId")
 
-/** Opening a thread shows its latest result. While the window is in the background, the result waits for focus. */
 function useMarkSeen(threadId: string) {
   useEffect(() => {
     const markSeen = () => useUnseen.getState().clear(threadId)
@@ -23,6 +22,10 @@ function useMarkSeen(threadId: string) {
     window.addEventListener("focus", markSeen)
     return () => window.removeEventListener("focus", markSeen)
   }, [threadId])
+}
+
+function useVisit(threadId: string) {
+  useEffect(() => useUi.getState().visitThread(threadId), [threadId])
 }
 
 export function ThreadRoute() {
@@ -35,6 +38,7 @@ export function ThreadRoute() {
   const docked = usePanelLayout() === "wide"
   const toggleRef = useRef<HTMLButtonElement>(null)
   useMarkSeen(threadId)
+  useVisit(threadId)
 
   if (!thread) {
     return <p className="m-auto text-sm text-muted-foreground">{m.thread_not_found()}</p>

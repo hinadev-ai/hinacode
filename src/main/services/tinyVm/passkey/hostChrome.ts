@@ -35,9 +35,7 @@ export const findChrome = (platform: string, home: string, exists: (path: string
 
 const CreatedTarget = Schema.Struct({ targetId: Schema.String })
 
-// Sites often start a conditional passkey request on load for autofill. Chrome runs one WebAuthn request
-// per page, so that request would block the ceremony with InvalidStateError. Park conditional calls from
-// page scripts and keep the bound originals for the banner's own call.
+// FIXME: Chrome runs one WebAuthn request per page, so a site's conditional autofill request blocks the ceremony
 const PARK_CONDITIONAL = [
   "if (navigator.credentials) {",
   "  window.__hinacodeOriginalCreate = navigator.credentials.create.bind(navigator.credentials)",

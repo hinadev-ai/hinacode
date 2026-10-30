@@ -1,8 +1,9 @@
 import type { Project, Thread } from "@shared/domain.ts"
-import { router } from "expo-router"
-import { useState } from "react"
-import { Pressable, StyleSheet, Text, View } from "react-native"
+import { router, Stack } from "expo-router"
+import { type ReactNode, useState } from "react"
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import Animated, { LayoutAnimationConfig, LinearTransition } from "react-native-reanimated"
+import { liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
 import { Reveal, Rotate, Spinner } from "@/components/motion"
 import { SearchField } from "@/components/search-field"
@@ -14,11 +15,11 @@ import { duration } from "@/constants/motion"
 import { radius } from "@/constants/theme"
 import { useProjectServer } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
-import { call } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { openThread } from "@/lib/navigation"
 import type { HomeTab } from "@/lib/preferences"
+import { createThread } from "@/lib/start-thread"
 import { usePreferences } from "@/stores/preferences"
 import { archivedThreads, inboxThreads, pinnedThreads, sortThreads, useThreads } from "@/stores/threads"
 
@@ -49,67 +50,159 @@ export function HomeActions({ onNewThread }: { onNewThread: () => void }) {
 }
 
 /**
- * The thread list with its search, loading and empty states: the whole home screen on a phone, the sidebar in a
- * wide window. `selectedId` marks the thread open next to it.
+ * The same three actions as native iOS toolbar items, so the system draws them and they take the Liquid Glass
+ * capsules on iOS 26. There the bottom toolbar also hosts the search field, with New thread beside it. Older
+ * iOS keeps every action in the header and the search under the title.
  */
-export function HomeContent({ selectedId }: { selectedId?: string }) {
+export function HomeToolbars({ onNewThread }: { onNewThread: () => void }) {
+  const overview = (
+    <Stack.Toolbar.Button
+      icon="square.grid.2x2"
+      accessibilityLabel={copy("mobile_home_overview")}
+      onPress={() => router.push("/overview")}
+    >
+      {copy("mobile_home_overview")}
+    </Stack.Toolbar.Button>
+  )
+  const settings = (
+    <Stack.Toolbar.Button
+      icon="gearshape"
+      accessibilityLabel={copy("mobile_home_settings")}
+      onPress={() => router.push("/settings")}
+    >
+      {copy("mobile_home_settings")}
+    </Stack.Toolbar.Button>
+  )
+  if (!liquidGlass)
+    return (
+      <Stack.Toolbar placement="right">
+        {overview}
+        <Stack.Toolbar.Button
+          icon="square.and.pencil"
+          accessibilityLabel={copy("mobile_home_new_thread")}
+          onPress={onNewThread}
+        >
+          {copy("mobile_home_new_thread")}
+        </Stack.Toolbar.Button>
+        {settings}
+      </Stack.Toolbar>
+    )
+  return (
+    <>
+      <Stack.Toolbar placement="right">
+        {overview}
+        {settings}
+      </Stack.Toolbar>
+      <Stack.Toolbar placement="bottom">
+        <Stack.Toolbar.SearchBarSlot separateBackground />
+        <Stack.Toolbar.Spacer />
+        <Stack.Toolbar.Button
+          icon="square.and.pencil"
+          variant="prominent"
+          accessibilityLabel={copy("mobile_home_new_thread")}
+          onPress={onNewThread}
+        >
+          {copy("mobile_home_new_thread")}
+        </Stack.Toolbar.Button>
+      </Stack.Toolbar>
+    </>
+  )
+}
+
+/**
+ * The thread list with its search, loading and empty states: the whole home screen on a phone, the sidebar in a
+ * wide window. `selectedId` marks the thread open next to it. With `search`, the platform's own search field owns
+ * the query and the built-in one is not shown.
+ */
+export function HomeContent({
+  selectedId,
+  search,
+  transparent = false,
+}: {
+  selectedId?: string
+  search?: { readonly query: string; readonly onChange: (query: string) => void }
+  /** Lets the surface behind show through, for the floating glass sidebar. */
+  transparent?: boolean
+}) {
   const theme = useTheme()
   const loadStatus = useThreads((state) => state.status)
   const loadError = useThreads((state) => state.error)
   const hasProjects = useThreads((state) => state.projects.length > 0)
-  const [query, setQuery] = useState("")
+  const [ownQuery, setOwnQuery] = useState("")
+  const query = search?.query ?? ownQuery
+  const setQuery = search?.onChange ?? setOwnQuery
 
   const loading = loadStatus === "loading" && !hasProjects
   const noProjects = loadStatus === "ready" && !hasProjects
+  const status = loading ? (
+    <Reveal style={styles.loading}>
+      <Spinner size={20} color={theme.textMuted} />
+      <Text style={{ color: theme.textMuted }}>{copy("mobile_home_loading")}</Text>
+    </Reveal>
+  ) : noProjects ? (
+    <EmptyState
+      icon="RiFolderAddLine"
+      title={copy("mobile_home_no_projects")}
+      hint={copy("mobile_home_no_projects_hint")}
+      action={
+        <Button
+          testID="add-project-button"
+          label={copy("mobile_home_add_project")}
+          icon="RiFolderAddLine"
+          variant="primary"
+          onPress={() => router.push("/project/new")}
+        />
+      }
+    />
+  ) : null
+  const notice = loadStatus === "error" && loadError !== null && (
+    <View style={styles.notice}>
+      <Notice text={loadError} tone="danger" />
+      <Button
+        label={copy("mobile_home_retry")}
+        icon="RiRefreshLine"
+        style={styles.retry}
+        onPress={() => void useThreads.getState().load()}
+      />
+    </View>
+  )
+
+  if (search !== undefined) {
+    if (!hasProjects)
+      return (
+        <ScrollView
+          style={[styles.screen, { backgroundColor: theme.background }]}
+          contentInsetAdjustmentBehavior="automatic"
+        >
+          {notice}
+          {status}
+        </ScrollView>
+      )
+
+    return query.trim() === "" ? (
+      <HomeList selectedId={selectedId} nativeHeader header={notice} />
+    ) : (
+      <SearchResults query={query} nativeHeader header={notice} />
+    )
+  }
 
   return (
-    <View style={[styles.screen, { backgroundColor: theme.background }]}>
-      {loadStatus === "error" && loadError !== null && (
-        <View style={styles.notice}>
-          <Notice text={loadError} tone="danger" />
-          <Button
-            label={copy("mobile_home_retry")}
-            icon="RiRefreshLine"
-            style={styles.retry}
-            onPress={() => void useThreads.getState().load()}
-          />
-        </View>
-      )}
-      {loading ? (
-        <Reveal style={styles.loading}>
-          <Spinner size={20} color={theme.textMuted} />
-          <Text style={{ color: theme.textMuted }}>{copy("mobile_home_loading")}</Text>
-        </Reveal>
-      ) : noProjects ? (
-        <EmptyState
-          icon="RiFolderAddLine"
-          title={copy("mobile_home_no_projects")}
-          hint={copy("mobile_home_no_projects_hint")}
-          action={
-            <Button
-              testID="add-project-button"
-              label={copy("mobile_home_add_project")}
-              icon="RiFolderAddLine"
-              variant="primary"
-              onPress={() => router.push("/project/new")}
+    <View style={[styles.screen, { backgroundColor: transparent ? "transparent" : theme.background }]}>
+      {notice}
+      {status}
+      {hasProjects && (
+        <>
+          <View style={styles.search}>
+            <SearchField
+              testID="thread-search"
+              value={query}
+              onChange={setQuery}
+              placeholder={copy("mobile_search_placeholder")}
+              clearLabel={copy("mobile_search_clear")}
             />
-          }
-        />
-      ) : (
-        hasProjects && (
-          <>
-            <View style={styles.search}>
-              <SearchField
-                testID="thread-search"
-                value={query}
-                onChange={setQuery}
-                placeholder={copy("mobile_search_placeholder")}
-                clearLabel={copy("mobile_search_clear")}
-              />
-            </View>
-            {query.trim() === "" ? <HomeList selectedId={selectedId} /> : <SearchResults query={query} />}
-          </>
-        )
+          </View>
+          {query.trim() === "" ? <HomeList selectedId={selectedId} /> : <SearchResults query={query} />}
+        </>
       )}
     </View>
   )
@@ -182,7 +275,16 @@ function homeItems(
   return items
 }
 
-function HomeList({ selectedId }: { selectedId?: string }) {
+function HomeList({
+  selectedId,
+  nativeHeader = false,
+  header,
+}: {
+  selectedId?: string
+  nativeHeader?: boolean
+  header?: ReactNode
+}) {
+  const theme = useTheme()
   const tab = usePreferences((state) => state.homeTab)
   const projects = useThreads((state) => state.projects)
   const byId = useThreads((state) => state.byId)
@@ -200,6 +302,8 @@ function HomeList({ selectedId }: { selectedId?: string }) {
     <LayoutAnimationConfig key={tab} skipEntering>
       <Animated.FlatList
         testID="home-list"
+        style={nativeHeader ? { backgroundColor: theme.background } : undefined}
+        contentInsetAdjustmentBehavior={nativeHeader ? "automatic" : "never"}
         data={items}
         extraData={selectedId}
         keyExtractor={(item) => item.key}
@@ -207,6 +311,7 @@ function HomeList({ selectedId }: { selectedId?: string }) {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         contentContainerStyle={styles.list}
+        ListHeaderComponent={<>{header}</>}
         renderItem={({ item }) => (
           <HomeRow item={item} tab={tab} selectedId={selectedId} onToggleProject={toggle} />
         )}
@@ -274,9 +379,7 @@ function ProjectHeader({ project, open, onToggle }: { project: Project; open: bo
     setCreating(true)
     setError(null)
     try {
-      const thread = await call("threads.create", { projectId: project.id })
-      useThreads.getState().upsert(thread)
-      openThread(thread.id)
+      openThread((await createThread(project)).id)
     } catch (cause) {
       setError(errorText(cause))
     } finally {

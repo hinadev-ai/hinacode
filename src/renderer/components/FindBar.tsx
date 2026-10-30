@@ -8,10 +8,8 @@ import { useUi } from "../stores/ui.ts"
 import { partMatchSelector } from "./FindHighlight.tsx"
 import { Button } from "./ui/button.tsx"
 
-/** Frames to wait for a row to mount after the list scrolls to it. */
 const MOUNT_WAIT_FRAMES = 10
 
-/** Survives remounts, so a find bar that reappears with its thread does not take focus again. */
 let handledFocusRequest = 0
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
@@ -37,17 +35,12 @@ const ordinalInPart = (matches: ReadonlyArray<FindMatch>, current: number) => {
     .filter((match) => match.messageId === target?.messageId && match.partIndex === target.partIndex).length
 }
 
-/**
- * Find in the open thread. Matches come from the transcript in the store, not the DOM, because the
- * list only mounts the rows on screen.
- */
 export function FindBar({
   messages,
   query,
   listRef,
 }: {
   messages: ReadonlyArray<Message>
-  /** The debounced query the transcript is highlighting. */
   query: string
   listRef: RefObject<LegendListRef | null>
 }) {
@@ -63,8 +56,6 @@ export function FindBar({
 
   const startMessageId = useUi((state) => state.findMessageId)
   const matches = findMatches(messages, query)
-  // New text starts at the last match, nearest the end of the transcript where the reader usually is,
-  // or at the message a global search result pointed to.
   const inMessage = matches.findLastIndex((match) => match.messageId === startMessageId)
   const start = inMessage === -1 ? matches.length - 1 : inMessage
   const [selected, setSelected] = useState<{ query: string; index: number } | null>(null)
@@ -86,10 +77,8 @@ export function FindBar({
     currentMark.current = mark
   }
 
-  // Only a new query or start message moves the view; transcript updates while a turn streams must not.
   const revealFor = useEffectEvent((_query: string, _startMessageId: string | null) => void reveal(current))
   useEffect(() => {
-    // A list that mounts together with the bar needs a frame to lay out before it can scroll.
     const frame = requestAnimationFrame(() => revealFor(query, startMessageId))
     return () => cancelAnimationFrame(frame)
   }, [query, startMessageId])

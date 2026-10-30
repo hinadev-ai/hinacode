@@ -5,8 +5,6 @@ import { connect, createServer, type AddressInfo, type Socket } from "node:net"
 import { mock, test } from "node:test"
 import { setImmediate as nextTurn } from "node:timers/promises"
 
-// Run with `node --test scripts/flaky-proxy.test.ts`. Vitest only collects tests under src/.
-
 const until = async (condition: () => boolean | Promise<boolean>, signal: AbortSignal) => {
   while (!signal.aborted) {
     if (await condition()) return
@@ -35,7 +33,6 @@ test("switching from delay to pass keeps bytes in order", { timeout: 10_000 }, a
     for (const signal of ["SIGINT", "SIGTERM"] as const) {
       for (const listener of process.listeners(signal)) {
         if (signalHandlers.has(listener)) continue
-        // The proxy's own shutdown handler resets its sockets and closes its servers.
         if (signal === "SIGTERM") listener(signal)
         process.off(signal, listener)
       }

@@ -1,18 +1,58 @@
+import { randomUUID } from "node:crypto"
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
+import { createServer, type Server } from "node:http"
 import type { Socket } from "node:net"
 import { join } from "node:path"
-import { Context, Deferred, Effect, Exit, Layer, Schema, Semaphore, Stream } from "effect"
+import { Context, Deferred, Effect, Exit, Layer, Option, Schema, Semaphore, Stream } from "effect"
 import type { PushEvent } from "../../../shared/contract.ts"
-import type { ThreadVm, VmControl, VmHostStatus, VmProfile } from "../../../shared/domain.ts"
+import {
+  type BoatVmSize,
+  defaultSettings,
+  type ThreadVm,
+  type VmControl,
+  type VmHostStatus,
+  type VmProfile,
+  type VmProvider,
+} from "../../../shared/domain.ts"
+import { Boat, type BoatClient, BoatError, BoatSnapshotExpiredError } from "../boat/Boat.ts"
 import { Events } from "../Events.ts"
 import { Settings } from "../Settings.ts"
 import { encodeAction, handshake, type VmAction, VmInputError, writeSteps } from "./rfb.ts"
-import { type ExecResult, type LoginSource, readLogin, type SbxClient, sbxClient } from "./sbx.ts"
-import { decodeTar, encodeTar, readTree } from "./tar.ts"
+import {
+  type ExecInput,
+  type ExecResult,
+  type LoginSource,
+  readLogin,
+  SandboxGoneError,
+  type SbxClient,
+  SbxError,
+  sbxClient,
+} from "./sbx.ts"
+import { decodeTar, encodeTar, readTree, type WrittenTree, writeTree } from "./tar.ts"
+import { xdotoolScript } from "./xdotool.ts"
+
+type SandboxClientError = SandboxGoneError | SbxError | BoatError | BoatSnapshotExpiredError
+
+interface SandboxClient {
+  readonly url: string
+  readonly status: Effect.Effect<{ readonly sandboxes: number; readonly maxSandboxes: number }, SandboxClientError>
+  readonly create: (
+    template: string,
+    env?: Readonly<Record<string, string>>,
+  ) => Effect.Effect<{ readonly id: string }, SandboxClientError>
+  readonly templates: Effect.Effect<
+    ReadonlyArray<{ readonly name: string; readonly cpus: number; readonly memoryMiB: number }>,
+    SandboxClientError
+  >
+  readonly get: (id: string) => Effect.Effect<{ readonly id: string }, SandboxClientError>
+  readonly remove: (id: string) => Effect.Effect<void, SandboxClientError>
+  readonly exec: (id: string, input: ExecInput) => Effect.Effect<ExecResult, SandboxClientError>
+  readonly putFiles: (id: string, guestPath: string, tar: Uint8Array) => Effect.Effect<void, SandboxClientError>
+  readonly getFiles: (id: string, guestPath: string, maxBytes?: number) => Effect.Effect<Uint8Array, SandboxClientError>
+}
 
 export class VmError extends Schema.TaggedError<VmError>()("VmError", { message: Schema.String }) {}
 
-/** Whoever opened a screen stream, usually a window's WebContents. Its streams close when it is destroyed. */
 export interface ScreenOwner {
   readonly once: (event: "destroyed", listener: () => void) => unknown
 }
@@ -20,68 +60,35 @@ export interface ScreenOwner {
 export interface VmExec {
   readonly command: string
   readonly timeoutSeconds: number
-  /** Returns at once with the pid and log path instead of waiting for the command. */
   readonly background: boolean
 }
 
 export class TinyVm extends Context.Service<
   TinyVm,
   {
-    /** Whether `Settings.experimental.tinyVm` is on, kept current without a database read. */
     readonly enabled: () => boolean
     readonly get: (threadId: string) => Effect.Effect<ThreadVm>
-    /**
-     * Creates the thread's VM unless it has one; concurrent calls share one creation. A failure is the `failed`
-     * state. `template` overrides the configured template for this one VM and is ignored when no creation happens.
-     */
     readonly start: (threadId: string, template?: string) => Effect.Effect<ThreadVm>
     readonly stop: (threadId: string) => Effect.Effect<void>
-    /** Has no effect unless the VM is running. */
     readonly setControl: (threadId: string, control: VmControl) => Effect.Effect<ThreadVm>
     readonly host: Effect.Effect<VmHostStatus>
-    /** Starts the VM if needed and returns its screen as PNG bytes. */
+    readonly desktopUrl: (threadId: string) => Effect.Effect<string, VmError>
     readonly screenshot: (threadId: string) => Effect.Effect<Uint8Array, VmError>
-    /**
-     * Starts the VM if needed and performs the actions over VNC. While the user has control it waits until
-     * they hand it back and returns `handedBack` without acting, because the screen may have changed.
-     */
     readonly act: (threadId: string, actions: ReadonlyArray<VmAction>) => Effect.Effect<"done" | "handedBack", VmError>
     readonly exec: (threadId: string, input: VmExec) => Effect.Effect<ExecResult, VmError>
-    /**
-     * Copies host files and folders into the running VM's `~/Downloads`, starting the VM if needed. Resolves
-     * with the guest path each dropped item landed at. A drop is the user's own action, so it never waits for
-     * control to change hands.
-     */
     readonly dropFiles: (
       threadId: string,
       hostPaths: ReadonlyArray<string>,
     ) => Effect.Effect<ReadonlyArray<string>, VmError>
-    /** Guest paths the user dropped since the last call, drained so the agent hears about each drop once. */
     readonly takeDropped: (threadId: string) => Effect.Effect<ReadonlyArray<string>>
-    /**
-     * Extracts a tar archive holding one top-level entry into the running VM at `guestPath`, starting the VM
-     * if needed. A relative path resolves against the desktop user's home.
-     */
     readonly stageArchive: (threadId: string, guestPath: string, tar: Uint8Array) => Effect.Effect<void, VmError>
-    /**
-     * Opens a raw TCP stream to `port` in the running VM, starting it if needed. The caller owns the socket
-     * and destroys it. `head` holds guest bytes that arrived with the upgrade response.
-     */
+    readonly pullFiles: (threadId: string, guestPath: string) => Effect.Effect<WrittenTree, VmError>
     readonly openTunnel: (
       threadId: string,
       port: number,
     ) => Effect.Effect<{ readonly socket: Socket; readonly head: Uint8Array }, VmError>
-    /**
-     * Saves the VM's Chromium profile to this machine now. Only the VM that owns the shared profile can save;
-     * a copy's save fails rather than clobbering the owner's newer state.
-     */
     readonly saveProfile: (threadId: string) => Effect.Effect<void, VmError>
-    /**
-     * Connects a side panel view to the running VM's VNC server. Its bytes arrive as `vm.screen.data` pushes,
-     * then `vm.screen.closed`.
-     */
     readonly openScreen: (threadId: string, streamId: string, owner: ScreenOwner) => Effect.Effect<void, VmError>
-    /** Writes bytes to the VNC server in call order. Ignored once the stream has closed. */
     readonly sendScreen: (streamId: string, data: Uint8Array) => Effect.Effect<void>
     readonly closeScreen: (streamId: string) => Effect.Effect<void>
   }
@@ -92,6 +99,8 @@ const PROFILE_GUEST_ARCHIVE = "hinacode-chromium-profile.tgz"
 const PROFILE_STORE = "chromium-profile.tgz"
 const PROFILE_META = "chromium-profile.json"
 const PROFILE_SCRIPT_TIMEOUT_SECONDS = 120
+const SETUP_SCRIPT_TIMEOUT_SECONDS = 600
+const SETUP_OUTPUT_TAIL = 2000
 const PROFILE_EXCLUDES = [
   "chromium/*/Cache",
   "chromium/*/Code Cache",
@@ -106,10 +115,8 @@ const PROFILE_EXCLUDES = [
   .map((pattern) => `--exclude='${pattern}'`)
   .join(" ")
 
-/** Exit code the save script uses when Chromium never ran and there is nothing to save. */
 const PROFILE_ABSENT_EXIT = 42
 
-/** Archives the guest's Chromium profile to /tmp; `quiesce` stops Chromium first, for a VM that is going away. */
 const profileSaveScript = (quiesce: boolean) =>
   [
     `[ -d ~/.config/chromium ] || exit ${PROFILE_ABSENT_EXIT}`,
@@ -118,10 +125,6 @@ const profileSaveScript = (quiesce: boolean) =>
     `tar -czf /tmp/${PROFILE_GUEST_ARCHIVE} -C ~/.config ${PROFILE_EXCLUDES} chromium`,
   ].join("\n")
 
-/**
- * Puts back the profile archive `profileSaveScript` built, replacing whatever profile the guest has. A guest
- * whose Chromium served DevTools before the swap (the browser template) gets it relaunched the same way.
- */
 const PROFILE_RESTORE_SCRIPT = [
   "set -e",
   "was_cdp=0; curl -fsS http://127.0.0.1:9222/json/version >/dev/null 2>&1 && was_cdp=1",
@@ -136,14 +139,21 @@ const PROFILE_RESTORE_SCRIPT = [
 ].join("\n")
 
 const DROP_DIR = "Downloads"
-/** One drop is held in memory as tar archives, so it has a size the user's machine can always spare. */
-const MAX_DROP_BYTES = 200 * 1024 * 1024
+export const MAX_TRANSFER_BYTES = 200 * 1024 * 1024
+const PULLED_DIR = "pulled"
 const SCREENSHOT_SCRIPT = "import -window root png:-"
 const SCREENSHOT_TIMEOUT_SECONDS = 30
-/** About one frame, like terminal output. */
+const BOAT_SANDBOXES_FILE = "boat-sandboxes.json"
+const BOAT_PREPARE_SCRIPT = [
+  "command -v xdotool >/dev/null && command -v import >/dev/null && exit 0",
+  "sudo apt-get update -qq && sudo apt-get install -y -qq xdotool imagemagick wmctrl xclip",
+].join("\n")
+const BOAT_PREPARE_TIMEOUT_SECONDS = 600
+const BoatSandboxMap = Schema.fromJsonString(Schema.Record(Schema.String, Schema.String))
+const BOAT_SIZES: ReadonlyArray<BoatVmSize> = ["small", "default", "large", "xlarge"]
+const isBoatSize = (value: string | undefined): value is BoatVmSize => BOAT_SIZES.some((size) => size === value)
 const FLUSH_INTERVAL_MS = 16
 const FLUSH_SIZE = 256 * 1024
-/** How long control stays with the user after their last view closes, so a view that reconnects keeps it. */
 export const HAND_BACK_GRACE = "2 seconds"
 
 const NONE: ThreadVm = { status: "none" }
@@ -158,24 +168,43 @@ interface Screen {
 
 const toVmError = (error: { readonly message: string }) => new VmError({ message: error.message })
 
-/** Ends a socket and waits for the peer to close it, so a server reads everything before the connection drops. */
 const endGracefully = (socket: Socket) =>
   Effect.callback<void>((resume) => {
     socket.once("close", () => resume(Effect.void))
     socket.end()
   }).pipe(Effect.timeoutOrElse({ duration: "2 seconds", orElse: () => Effect.void }))
 
-const make = (source: LoginSource, profileDir?: string) =>
+const writeStoredProfile = (dataDir: string, bytes: Uint8Array, template: string): Effect.Effect<void, VmError> =>
+  Effect.tryPromise({
+    try: async () => {
+      await mkdir(dataDir, { recursive: true })
+      const temp = join(dataDir, `${PROFILE_STORE}.${process.pid}.tmp`)
+      await writeFile(temp, bytes, { mode: 0o600 })
+      await rename(temp, join(dataDir, PROFILE_STORE))
+      await writeFile(join(dataDir, PROFILE_META), JSON.stringify({ savedAt: new Date().toISOString(), template }), {
+        mode: 0o600,
+      })
+    },
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new VmError({
+          message: `Could not store the browser profile on this machine: ${cause instanceof Error ? cause.message : String(cause)}`,
+        }),
+    ),
+  )
+
+const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
   Effect.gen(function* () {
     const scope = yield* Effect.scope
     const events = yield* Events
     const settings = yield* Settings
+    const boatService = yield* Effect.serviceOption(Boat)
 
     const vms = new Map<string, ThreadVm>()
     const creations = new Map<string, Deferred.Deferred<ThreadVm>>()
-    /** Agent tools waiting for the user to hand control back, per thread. */
     const waiting = new Map<string, number>()
-    /** Guest paths of dropped files the agent has not been told about yet, per thread. */
     const dropped = new Map<string, Array<string>>()
     const handBacks = new Map<string, Deferred.Deferred<void>>()
     const screens = new Map<string, Screen>()
@@ -183,23 +212,21 @@ const make = (source: LoginSource, profileDir?: string) =>
     const ownedScreens = new WeakMap<ScreenOwner, Set<string>>()
     const experimental = yield* settings.get.pipe(
       Effect.map((value) => value.experimental),
-      Effect.orElseSucceed(() => ({
-        tinyVm: false,
-        tinyVmTemplate: "default",
-        tinyVmProfile: false,
-        tinyVmPasskeys: false,
-      })),
+      Effect.orElseSucceed(() => defaultSettings.experimental),
     )
     let enabled = experimental.tinyVm
+    let provider: VmProvider = experimental.tinyVmProvider
+    let boatSize: BoatVmSize = experimental.tinyVmBoatSize
     let configuredTemplate = experimental.tinyVmTemplate.trim() || "default"
-    let profileEnabled = experimental.tinyVmProfile && profileDir !== undefined
-    /** The thread whose running VM saves the shared Chromium profile back; everyone else holds a copy. */
+    let configuredEnv = experimental.tinyVmEnv
+    let setupScript = experimental.tinyVmSetupScript
+    let profileEnabled = experimental.tinyVmProfile
     let profileOwner: string | undefined
     const profileSaves = yield* Semaphore.make(1)
+    const boatMapLock = yield* Semaphore.make(1)
 
     const current = (threadId: string) => vms.get(threadId) ?? NONE
 
-    // Socket callbacks run outside any fiber. Forking with the layer's context keeps its clock.
     const runFork = Effect.runForkWith(yield* Effect.context<never>())
     const publishUnsafe = (event: PushEvent) => runFork(events.publish(event))
 
@@ -215,54 +242,31 @@ const make = (source: LoginSource, profileDir?: string) =>
         return events.publish({ type: "vm.updated", threadId, vm })
       })
 
-    const client = readLogin(source).pipe(Effect.map(sbxClient), Effect.mapError(toVmError))
+    const sbxClientEffect = readLogin(source).pipe(Effect.map(sbxClient), Effect.mapError(toVmError))
+    const boatClientEffect: Effect.Effect<BoatClient, VmError> = Option.match(boatService, {
+      onNone: () => Effect.fail(new VmError({ message: "Boat is not available in this build." })),
+      onSome: (boat) => boat.client.pipe(Effect.mapError(toVmError)),
+    })
+    const clientFor = (vmProvider: VmProvider): Effect.Effect<SandboxClient, VmError> =>
+      vmProvider === "boat" ? boatClientEffect : sbxClientEffect
 
     const releaseProfileOwner = (threadId: string) => {
       if (profileOwner === threadId) profileOwner = undefined
     }
 
-    const readStoredProfile: Effect.Effect<Uint8Array | undefined> =
-      profileDir === undefined
-        ? Effect.succeed(undefined)
-        : Effect.tryPromise({ try: () => readFile(join(profileDir, PROFILE_STORE)), catch: (cause) => cause }).pipe(
-            Effect.map((bytes) => bytes as Uint8Array),
-            Effect.catch((cause) =>
-              (cause as NodeJS.ErrnoException).code === "ENOENT"
-                ? Effect.succeed(undefined)
-                : Effect.as(
-                    Effect.logWarning("tiny vm: cannot read the stored browser profile", String(cause)),
-                    undefined,
-                  ),
-            ),
-          )
+    const readStoredProfile: Effect.Effect<Uint8Array | undefined> = Effect.tryPromise({
+      try: () => readFile(join(dataDir, PROFILE_STORE)),
+      catch: (cause) => cause,
+    }).pipe(
+      Effect.map((bytes) => bytes as Uint8Array),
+      Effect.catch((cause) =>
+        (cause as NodeJS.ErrnoException).code === "ENOENT"
+          ? Effect.succeed(undefined)
+          : Effect.as(Effect.logWarning("tiny vm: cannot read the stored browser profile", String(cause)), undefined),
+      ),
+    )
 
-    const writeStoredProfile = (bytes: Uint8Array, template: string): Effect.Effect<void, VmError> =>
-      profileDir === undefined
-        ? Effect.void
-        : Effect.tryPromise({
-            try: async () => {
-              await mkdir(profileDir, { recursive: true })
-              const temp = join(profileDir, `${PROFILE_STORE}.${process.pid}.tmp`)
-              await writeFile(temp, bytes, { mode: 0o600 })
-              await rename(temp, join(profileDir, PROFILE_STORE))
-              await writeFile(
-                join(profileDir, PROFILE_META),
-                JSON.stringify({ savedAt: new Date().toISOString(), template }),
-                { mode: 0o600 },
-              )
-            },
-            catch: (cause) => cause,
-          }).pipe(
-            Effect.mapError(
-              (cause) =>
-                new VmError({
-                  message: `Could not store the browser profile on this machine: ${cause instanceof Error ? cause.message : String(cause)}`,
-                }),
-            ),
-          )
-
-    /** Restores the stored profile into a fresh sandbox. Nothing stored yet is also a success. */
-    const restoreProfile = (sbx: SbxClient, sandboxId: string): Effect.Effect<boolean> =>
+    const restoreProfile = (sbx: SandboxClient, sandboxId: string): Effect.Effect<boolean> =>
       Effect.gen(function* () {
         const stored = yield* readStoredProfile
         if (stored === undefined) return true
@@ -294,11 +298,7 @@ const make = (source: LoginSource, profileDir?: string) =>
         ),
       )
 
-    /**
-     * Claims the profile owner synchronously, restores the profile, and reports how this VM stands to it. A
-     * failed restore starts the VM fresh rather than failing the start.
-     */
-    const prepareProfile = (threadId: string, sbx: SbxClient, sandboxId: string): Effect.Effect<VmProfile> =>
+    const prepareProfile = (threadId: string, sbx: SandboxClient, sandboxId: string): Effect.Effect<VmProfile> =>
       Effect.suspend(() => {
         if (!profileEnabled) return Effect.succeed<VmProfile>("off")
         const role: VmProfile =
@@ -314,7 +314,7 @@ const make = (source: LoginSource, profileDir?: string) =>
         })
       })
 
-    const saveFromSandbox = (sbx: SbxClient, sandboxId: string, template: string, quiesce: boolean) =>
+    const saveFromSandbox = (sbx: SandboxClient, sandboxId: string, template: string, quiesce: boolean) =>
       profileSaves.withPermit(
         Effect.gen(function* () {
           const built = yield* sbx
@@ -335,7 +335,7 @@ const make = (source: LoginSource, profileDir?: string) =>
           const entry = entries.find((candidate) => candidate.type === "file")
           if (entry === undefined || entry.type !== "file")
             return yield* new VmError({ message: "The VM did not return a browser profile archive" })
-          yield* writeStoredProfile(entry.data, template)
+          yield* writeStoredProfile(dataDir, entry.data, template)
         }),
       )
 
@@ -347,14 +347,13 @@ const make = (source: LoginSource, profileDir?: string) =>
           return yield* new VmError({ message: "Another thread's VM saves the browser profile. This VM holds a copy." })
         if (vm.profile === "off")
           return yield* new VmError({ message: "The persistent browser profile is off for this VM" })
-        const sbx = yield* client
+        const sbx = yield* sbxClientEffect
         yield* saveFromSandbox(sbx, vm.sandboxId, vm.template, false)
       })
 
     const closeScreensOf = (threadId: string) =>
       screens.forEach((screen) => screen.threadId === threadId && screen.socket.destroy())
 
-    /** sbx destroyed the sandbox: the thread has no VM any more. */
     const forget = (threadId: string, sandboxId: string) =>
       Effect.suspend(() => {
         const vm = current(threadId)
@@ -367,7 +366,6 @@ const make = (source: LoginSource, profileDir?: string) =>
 
     const settle = (threadId: string, done: Deferred.Deferred<ThreadVm>, vm: ThreadVm) =>
       Effect.gen(function* () {
-        // A stop while starting replaced or removed the creation, and the sandbox has no thread to go to.
         const live = creations.get(threadId) === done
         if (live) {
           creations.delete(threadId)
@@ -377,31 +375,152 @@ const make = (source: LoginSource, profileDir?: string) =>
         return live
       })
 
-    const create = (threadId: string, done: Deferred.Deferred<ThreadVm>, template: string) =>
+    const runSetupScript = (sbx: SandboxClient, sandboxId: string) =>
       Effect.gen(function* () {
-        if (!enabled) return yield* new VmError({ message: "Tiny VM is off. Turn it on in Settings > Experimental." })
-        const sbx = yield* client
-        return { sbx, sandbox: yield* sbx.create(template).pipe(Effect.mapError(toVmError)) }
-      }).pipe(
-        Effect.matchEffect({
-          onFailure: (error) => settle(threadId, done, { status: "failed", message: error.message }),
-          onSuccess: ({ sbx, sandbox }) =>
-            Effect.gen(function* () {
-              const profile = yield* prepareProfile(threadId, sbx, sandbox.id)
-              const live = yield* settle(threadId, done, {
-                status: "running",
-                sandboxId: sandbox.id,
-                template,
-                profile,
-                control: "agent",
-              })
-              if (!live) {
-                releaseProfileOwner(threadId)
-                yield* Effect.ignore(sbx.remove(sandbox.id))
-              }
-            }),
+        if (setupScript.trim() === "") return
+        const result = yield* sbx
+          .exec(sandboxId, { script: setupScript, timeoutSeconds: SETUP_SCRIPT_TIMEOUT_SECONDS })
+          .pipe(Effect.mapError(toVmError))
+        if (result.exitCode === 0) return
+        const output = Buffer.concat([result.stdout, result.stderr]).toString().trim().slice(-SETUP_OUTPUT_TAIL)
+        return yield* new VmError({
+          message: `The setup script exited with code ${result.exitCode}.${output ? `\n${output}` : ""}`,
+        })
+      })
+
+    const readBoatMap: Effect.Effect<Record<string, string>> = Effect.tryPromise({
+      try: () => readFile(join(dataDir, BOAT_SANDBOXES_FILE), "utf8"),
+      catch: (cause) => cause,
+    }).pipe(
+      Effect.flatMap((contents) => Schema.decodeUnknownEffect(BoatSandboxMap)(contents)),
+      Effect.map((map) => ({ ...map })),
+      Effect.catch(() => Effect.succeed<Record<string, string>>({})),
+    )
+
+    const writeBoatMap = (map: Record<string, string>) =>
+      Effect.tryPromise({
+        try: async () => {
+          await mkdir(dataDir, { recursive: true })
+          const target = join(dataDir, BOAT_SANDBOXES_FILE)
+          const temporary = `${target}.${randomUUID()}.tmp`
+          await writeFile(temporary, JSON.stringify(map), { mode: 0o600 })
+          await rename(temporary, target)
+        },
+        catch: (cause) => cause,
+      }).pipe(Effect.catch((cause) => Effect.logWarning("tiny vm: cannot store the boat sandbox map", String(cause))))
+
+    const updateBoatMap = (threadId: string, sandboxId: string | undefined) =>
+      boatMapLock.withPermits(1)(
+        Effect.flatMap(readBoatMap, (map) => {
+          if (sandboxId === undefined) delete map[threadId]
+          else map[threadId] = sandboxId
+          return writeBoatMap(map)
         }),
       )
+
+    const runBoatPrepare = (boat: BoatClient, sandboxId: string) =>
+      Effect.gen(function* () {
+        const result = yield* boat
+          .exec(sandboxId, { script: BOAT_PREPARE_SCRIPT, timeoutSeconds: BOAT_PREPARE_TIMEOUT_SECONDS })
+          .pipe(Effect.mapError(toVmError))
+        if (result.exitCode === 0) return
+        const output = Buffer.concat([result.stdout, result.stderr]).toString().trim().slice(-SETUP_OUTPUT_TAIL)
+        return yield* new VmError({
+          message: `Preparing the boat VM failed with exit code ${result.exitCode}.${output ? `\n${output}` : ""}`,
+        })
+      })
+
+    const boatStart = (boat: BoatClient, threadId: string, size: string) =>
+      Effect.gen(function* () {
+        const map = yield* readBoatMap
+        const existing = map[threadId]
+        if (existing !== undefined) {
+          const adopted = yield* boat.getSandbox(existing).pipe(
+            Effect.flatMap((sandbox) => {
+              if (sandbox.state === "ready" || sandbox.state === "idle" || sandbox.state === "running")
+                return Effect.succeed({ id: existing, fresh: false })
+              if (sandbox.state === "archived" || sandbox.state === "archiving")
+                return Effect.as(boat.resume(existing), { id: existing, fresh: false })
+              if (sandbox.state === "error" || sandbox.state === "cancelled") return Effect.succeed(undefined)
+              return Effect.as(boat.waitReady(existing), { id: existing, fresh: false })
+            }),
+            Effect.catchTag("SandboxGoneError", () => Effect.succeed(undefined)),
+            Effect.catchTag("BoatSnapshotExpiredError", () => Effect.succeed(undefined)),
+            Effect.mapError(toVmError),
+          )
+          if (adopted !== undefined) return adopted
+        }
+        const created = yield* boat
+          .createSandbox({
+            type: size,
+            env: configuredEnv,
+            name: `hinacode-vm-${threadId}`.slice(0, 120),
+            labels: { "hinacode-kind": "tiny-vm" },
+          })
+          .pipe(Effect.mapError(toVmError))
+        yield* updateBoatMap(threadId, created.id)
+        return { id: created.id, fresh: true }
+      })
+
+    const prepareBoatSandbox = (threadId: string, size: string) =>
+      Effect.gen(function* () {
+        const boat = yield* boatClientEffect
+        const started = yield* boatStart(boat, threadId, size)
+        if (started.fresh) {
+          yield* runBoatPrepare(boat, started.id).pipe(
+            Effect.andThen(runSetupScript(boat, started.id)),
+            Effect.tapError(() =>
+              Effect.andThen(Effect.ignore(boat.remove(started.id)), updateBoatMap(threadId, undefined)),
+            ),
+          )
+        }
+        return {
+          sandboxId: started.id,
+          profile: "off" as VmProfile,
+          dispose: Effect.ignore(boat.stop(started.id)),
+        }
+      })
+
+    const prepareSbxSandbox = (threadId: string, template: string) =>
+      Effect.gen(function* () {
+        const sbx = yield* sbxClientEffect
+        const sandbox = yield* sbx.create(template, configuredEnv).pipe(Effect.mapError(toVmError))
+        yield* runSetupScript(sbx, sandbox.id).pipe(Effect.tapError(() => Effect.ignore(sbx.remove(sandbox.id))))
+        const profile = yield* prepareProfile(threadId, sbx, sandbox.id)
+        return { sandboxId: sandbox.id, profile, dispose: Effect.ignore(sbx.remove(sandbox.id)) }
+      })
+
+    const create = (threadId: string, done: Deferred.Deferred<ThreadVm>, template: string) =>
+      Effect.suspend(() => {
+        if (!enabled)
+          return settle(threadId, done, {
+            status: "failed",
+            message: "Tiny VM is off. Turn it on in Settings > Experimental.",
+          })
+        const startingProvider = provider
+        const prepared =
+          startingProvider === "boat" ? prepareBoatSandbox(threadId, template) : prepareSbxSandbox(threadId, template)
+        return prepared.pipe(
+          Effect.matchEffect({
+            onFailure: (error) => settle(threadId, done, { status: "failed", message: error.message }),
+            onSuccess: ({ sandboxId, profile, dispose }) =>
+              Effect.gen(function* () {
+                const live = yield* settle(threadId, done, {
+                  status: "running",
+                  provider: startingProvider,
+                  sandboxId,
+                  template,
+                  profile,
+                  control: "agent",
+                })
+                if (!live) {
+                  releaseProfileOwner(threadId)
+                  yield* dispose
+                }
+              }),
+          }),
+        )
+      })
 
     const start = (threadId: string, templateOverride?: string) =>
       Effect.suspend((): Effect.Effect<ThreadVm> => {
@@ -409,7 +528,8 @@ const make = (source: LoginSource, profileDir?: string) =>
         if (vm.status === "running") return Effect.succeed(vm)
         const pending = creations.get(threadId)
         if (pending) return Deferred.await(pending)
-        const template = templateOverride?.trim() || configuredTemplate
+        const picked = templateOverride?.trim()
+        const template = provider === "boat" ? (isBoatSize(picked) ? picked : boatSize) : picked || configuredTemplate
         const done = Deferred.makeUnsafe<ThreadVm>()
         creations.set(threadId, done)
         return setVm(threadId, { status: "starting" }).pipe(
@@ -427,11 +547,11 @@ const make = (source: LoginSource, profileDir?: string) =>
 
     const withSandbox = <A, E extends { readonly _tag: string; readonly message: string }>(
       threadId: string,
-      use: (sbx: SbxClient, sandboxId: string) => Effect.Effect<A, E>,
+      use: (sbx: SandboxClient, sandboxId: string) => Effect.Effect<A, E>,
     ): Effect.Effect<A, VmError> =>
       Effect.gen(function* () {
-        const { sandboxId } = yield* ensureRunning(threadId)
-        const sbx = yield* client
+        const { sandboxId, provider: vmProvider } = yield* ensureRunning(threadId)
+        const sbx = yield* clientFor(vmProvider)
         return yield* use(sbx, sandboxId).pipe(
           Effect.catchIf(
             (error) => error._tag === "SandboxGoneError",
@@ -448,18 +568,29 @@ const make = (source: LoginSource, profileDir?: string) =>
         dropped.delete(threadId)
         closeScreensOf(threadId)
         if (vm.status === "none") return
-        if (vm.status === "running" && vm.profile === "owner" && profileEnabled) {
-          // Best effort: a profile that cannot be saved must not keep the VM, or the app quit, alive.
-          yield* client.pipe(
+        if (vm.status === "running" && vm.provider === "sbx" && vm.profile === "owner" && profileEnabled) {
+          yield* sbxClientEffect.pipe(
             Effect.flatMap((sbx) => saveFromSandbox(sbx, vm.sandboxId, vm.template, true)),
             Effect.timeoutOrElse({ duration: "60 seconds", orElse: () => Effect.void }),
             Effect.catch((error) => Effect.logWarning("tiny vm: profile save on stop failed", error.message)),
           )
         }
+        if (vm.status === "running" && vm.provider === "boat") {
+          const stopped = yield* boatClientEffect.pipe(
+            Effect.flatMap((boat) => boat.stop(vm.sandboxId)),
+            Effect.as(true),
+            Effect.catchTag("SandboxGoneError", () => Effect.succeed(true)),
+            Effect.catch((error) =>
+              Effect.andThen(Effect.logWarning("tiny vm: boat stop failed", error.message), Effect.succeed(false)),
+            ),
+          )
+          if (!stopped) return
+        }
         releaseProfileOwner(threadId)
         yield* setVm(threadId, NONE)
         if (vm.status !== "running") return
-        yield* client.pipe(
+        if (vm.provider === "boat") return
+        yield* sbxClientEffect.pipe(
           Effect.flatMap((sbx) => sbx.remove(vm.sandboxId)),
           Effect.catch((error) =>
             error._tag === "SandboxGoneError"
@@ -507,6 +638,7 @@ const make = (source: LoginSource, profileDir?: string) =>
           control === "user"
             ? {
                 status: "running",
+                provider: vm.provider,
                 sandboxId: vm.sandboxId,
                 template: vm.template,
                 profile: vm.profile,
@@ -515,6 +647,7 @@ const make = (source: LoginSource, profileDir?: string) =>
               }
             : {
                 status: "running",
+                provider: vm.provider,
                 sandboxId: vm.sandboxId,
                 template: vm.template,
                 profile: vm.profile,
@@ -523,23 +656,59 @@ const make = (source: LoginSource, profileDir?: string) =>
         return Effect.as(setVm(threadId, next), next)
       })
 
-    const perform = (threadId: string, actions: ReadonlyArray<VmAction>) =>
-      withSandbox(threadId, (sbx, sandboxId) =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const { socket, head } = yield* Effect.acquireRelease(sbx.tunnel(sandboxId, VNC_PORT), (tunnel) =>
-              Effect.sync(() => tunnel.socket.destroy()),
-            )
-            const screen = yield* handshake(socket, head)
-            const steps = yield* Effect.try({
-              try: () => actions.flatMap((action) => encodeAction(action, screen)),
-              catch: (cause) => (cause instanceof VmInputError ? cause : new VmError({ message: String(cause) })),
-            })
-            yield* writeSteps(socket, steps)
-            yield* endGracefully(socket)
-          }),
+    const guardGone = <A, E extends { readonly _tag: string; readonly message: string }>(
+      threadId: string,
+      sandboxId: string,
+      effect: Effect.Effect<A, E>,
+    ): Effect.Effect<A, VmError> =>
+      effect.pipe(
+        Effect.catchIf(
+          (error) => error._tag === "SandboxGoneError",
+          (error) => Effect.andThen(forget(threadId, sandboxId), Effect.fail(error)),
         ),
+        Effect.mapError(toVmError),
       )
+
+    const performSbx = (sbx: SbxClient, sandboxId: string, actions: ReadonlyArray<VmAction>) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { socket, head } = yield* Effect.acquireRelease(sbx.tunnel(sandboxId, VNC_PORT), (tunnel) =>
+            Effect.sync(() => tunnel.socket.destroy()),
+          )
+          const screen = yield* handshake(socket, head)
+          const steps = yield* Effect.try({
+            try: () => actions.flatMap((action) => encodeAction(action, screen)),
+            catch: (cause) => (cause instanceof VmInputError ? cause : new VmError({ message: String(cause) })),
+          })
+          yield* writeSteps(socket, steps)
+          yield* endGracefully(socket)
+        }),
+      )
+
+    const performBoat = (boat: BoatClient, sandboxId: string, actions: ReadonlyArray<VmAction>) =>
+      Effect.gen(function* () {
+        const script = yield* Effect.try({
+          try: () => xdotoolScript(actions),
+          catch: (cause) => (cause instanceof VmInputError ? cause : new VmError({ message: String(cause) })),
+        })
+        if (script === "") return
+        const result = yield* boat.exec(sandboxId, { script, timeoutSeconds: 120 })
+        if (result.exitCode !== 0)
+          return yield* new VmError({
+            message: `Driving the boat desktop failed with exit code ${result.exitCode}: ${Buffer.from(result.stderr).toString().trim()}`,
+          })
+      })
+
+    const perform = (threadId: string, actions: ReadonlyArray<VmAction>) =>
+      Effect.gen(function* () {
+        const vm = yield* ensureRunning(threadId)
+        if (vm.provider === "boat") {
+          const boat = yield* boatClientEffect
+          return yield* guardGone(threadId, vm.sandboxId, performBoat(boat, vm.sandboxId, actions))
+        }
+        const sbx = yield* sbxClientEffect
+        return yield* guardGone(threadId, vm.sandboxId, performSbx(sbx, vm.sandboxId, actions))
+      })
 
     const act = (threadId: string, actions: ReadonlyArray<VmAction>) =>
       Effect.gen(function* () {
@@ -580,7 +749,7 @@ const make = (source: LoginSource, profileDir?: string) =>
         Effect.gen(function* () {
           if (hostPaths.length === 0) return [] as ReadonlyArray<string>
           const archives: Array<{ readonly base: string; readonly tar: Uint8Array }> = []
-          let remaining = MAX_DROP_BYTES
+          let remaining = MAX_TRANSFER_BYTES
           for (const hostPath of hostPaths) {
             const entries = yield* readTree(hostPath, remaining).pipe(Effect.mapError(toVmError))
             remaining -= entries.reduce((sum, entry) => sum + (entry.type === "file" ? entry.data.length : 0), 0)
@@ -615,30 +784,184 @@ const make = (source: LoginSource, profileDir?: string) =>
     const stageArchive = (threadId: string, guestPath: string, tar: Uint8Array) =>
       withSandbox(threadId, (sbx, sandboxId) => sbx.putFiles(sandboxId, guestPath, tar))
 
-    const openTunnel = (threadId: string, port: number) =>
-      withSandbox(threadId, (sbx, sandboxId) => sbx.tunnel(sandboxId, port))
+    const pullFiles = (threadId: string, guestPath: string) =>
+      withSandbox(threadId, (sbx, sandboxId) =>
+        Effect.gen(function* () {
+          const tar = yield* sbx.getFiles(sandboxId, guestPath.replace(/^~(\/|$)/, ""), MAX_TRANSFER_BYTES).pipe(
+            // FIXME: sbxd answers 404 for both a missing path and a destroyed sandbox
+            Effect.catchTag("SandboxGoneError", () =>
+              Effect.andThen(sbx.get(sandboxId), new VmError({ message: `Nothing exists at ${guestPath} in the VM.` })),
+            ),
+            Effect.mapError((error) =>
+              error._tag === "SbxError" || error._tag === "BoatError"
+                ? new VmError({ message: `Cannot copy ${guestPath}: ${error.message}` })
+                : error,
+            ),
+          )
+          const entries = yield* Effect.try({
+            try: () => decodeTar(tar),
+            catch: (cause) => new VmError({ message: cause instanceof Error ? cause.message : String(cause) }),
+          })
+          return yield* writeTree(join(dataDir, PULLED_DIR, threadId, randomUUID()), entries)
+        }),
+      )
 
-    const host: Effect.Effect<VmHostStatus> = readLogin(source).pipe(
+    const openTunnel = (threadId: string, port: number) =>
+      Effect.gen(function* () {
+        const vm = yield* ensureRunning(threadId)
+        if (vm.provider === "boat")
+          return yield* new VmError({
+            message: "Port tunnels are not available on a boat VM, so passkeys and guest CDP stay off.",
+          })
+        const sbx = yield* sbxClientEffect
+        return yield* guardGone(threadId, vm.sandboxId, sbx.tunnel(vm.sandboxId, port))
+      })
+
+    const fetchDesktopUrl = (threadId: string) =>
+      Effect.gen(function* () {
+        const vm = yield* ensureRunning(threadId)
+        if (vm.provider !== "boat") return yield* new VmError({ message: "Only a boat VM has a desktop stream url." })
+        const boat = yield* boatClientEffect
+        return yield* guardGone(threadId, vm.sandboxId, boat.desktopUrl(vm.sandboxId))
+      })
+
+    const desktopNonces = new Map<string, { readonly threadId: string; readonly expiresAt: number }>()
+    let desktopServer: Server | undefined
+    let desktopStarting: Promise<number> | undefined
+
+    const startDesktopServer = (): Promise<number> => {
+      desktopStarting ??= new Promise<number>((resolve, reject) => {
+        const server = createServer((request, response) => {
+          const nonce = /^\/desktop\/([0-9a-f-]{36})$/.exec(request.url ?? "")?.[1]
+          const entry = nonce === undefined ? undefined : desktopNonces.get(nonce)
+          if (nonce !== undefined) desktopNonces.delete(nonce)
+          if (entry === undefined || entry.expiresAt < Date.now()) {
+            response.writeHead(404)
+            response.end()
+            return
+          }
+          Effect.runPromise(fetchDesktopUrl(entry.threadId)).then(
+            (url) => {
+              response.writeHead(302, { location: url })
+              response.end()
+            },
+            () => {
+              response.writeHead(502)
+              response.end()
+            },
+          )
+        })
+        server.once("error", reject)
+        server.listen(0, "127.0.0.1", () => {
+          const address = server.address()
+          if (address === null || typeof address === "string") {
+            reject(new Error("desktop redirect server has no port"))
+            return
+          }
+          desktopServer = server
+          resolve(address.port)
+        })
+      })
+      return desktopStarting
+    }
+
+    const desktopUrl = (threadId: string) =>
+      Effect.gen(function* () {
+        const vm = yield* ensureRunning(threadId)
+        if (vm.provider !== "boat") return yield* new VmError({ message: "Only a boat VM has a desktop stream url." })
+        if (!desktopRedirect) return yield* fetchDesktopUrl(threadId)
+        const port = yield* Effect.tryPromise({
+          try: () => startDesktopServer(),
+          catch: (cause) => new VmError({ message: `Cannot open the desktop stream: ${String(cause)}` }),
+        })
+        const now = Date.now()
+        for (const [nonce, entry] of desktopNonces) if (entry.expiresAt < now) desktopNonces.delete(nonce)
+        const nonce = randomUUID()
+        desktopNonces.set(nonce, { threadId, expiresAt: now + 60_000 })
+        return `http://127.0.0.1:${port}/desktop/${nonce}`
+      })
+
+    const sbxHost: Effect.Effect<VmHostStatus> = readLogin(source).pipe(
       Effect.map(sbxClient),
       Effect.flatMap((sbx) =>
         sbx.status.pipe(
           Effect.flatMap((status) =>
             sbx.templates.pipe(
               Effect.orElseSucceed(() => []),
-              Effect.map((templates): VmHostStatus => ({ status: "connected", url: sbx.url, ...status, templates })),
+              Effect.map((templates): VmHostStatus => ({
+                status: "connected",
+                provider: "sbx",
+                url: sbx.url,
+                ...status,
+                templates,
+              })),
             ),
           ),
           Effect.catch((error) =>
-            Effect.succeed<VmHostStatus>({ status: "unreachable", url: sbx.url, message: error.message }),
+            Effect.succeed<VmHostStatus>({
+              status: "unreachable",
+              provider: "sbx",
+              url: sbx.url,
+              message: error.message,
+            }),
           ),
         ),
       ),
       Effect.catchTags({
-        SbxNotConfiguredError: () => Effect.succeed<VmHostStatus>({ status: "notConfigured" }),
+        SbxNotConfiguredError: () => Effect.succeed<VmHostStatus>({ status: "notConfigured", provider: "sbx" }),
         SbxError: (error) =>
-          Effect.succeed<VmHostStatus>({ status: "unreachable", url: source.configPath, message: error.message }),
+          Effect.succeed<VmHostStatus>({
+            status: "unreachable",
+            provider: "sbx",
+            url: source.configPath,
+            message: error.message,
+          }),
       }),
     )
+
+    const boatHost: Effect.Effect<VmHostStatus> = Option.match(boatService, {
+      onNone: () => Effect.succeed<VmHostStatus>({ status: "notConfigured", provider: "boat" }),
+      onSome: (boat) =>
+        boat.client.pipe(
+          Effect.flatMap((client) =>
+            client.status.pipe(
+              Effect.flatMap((status) =>
+                client.templates.pipe(
+                  Effect.orElseSucceed(() => []),
+                  Effect.map((templates): VmHostStatus => ({
+                    status: "connected",
+                    provider: "boat",
+                    url: client.url,
+                    ...status,
+                    templates,
+                  })),
+                ),
+              ),
+              Effect.catch((error) =>
+                Effect.succeed<VmHostStatus>({
+                  status: "unreachable",
+                  provider: "boat",
+                  url: client.url,
+                  message: error.message,
+                }),
+              ),
+            ),
+          ),
+          Effect.catchTag("BoatNotConfiguredError", () =>
+            Effect.succeed<VmHostStatus>({ status: "notConfigured", provider: "boat" }),
+          ),
+          Effect.catch((error) =>
+            Effect.succeed<VmHostStatus>({
+              status: "unreachable",
+              provider: "boat",
+              url: "boat.dev",
+              message: error.message,
+            }),
+          ),
+        ),
+    })
+
+    const host: Effect.Effect<VmHostStatus> = Effect.suspend(() => (provider === "boat" ? boatHost : sbxHost))
 
     const flush = (streamId: string, screen: Screen) => {
       clearTimeout(screen.timer)
@@ -669,8 +992,6 @@ const make = (source: LoginSource, profileDir?: string) =>
       screens.delete(streamId)
       ownedScreens.get(owner)?.delete(streamId)
       publishUnsafe({ type: "vm.screen.closed", streamId })
-      // Nobody can hand control back once no view is open, so it goes back to the agent. Moving the screen
-      // between the side panel and floating closes one view before the next opens, hence the grace.
       if (!unwatchedByUser(screen.threadId)) return
       runFork(
         Effect.sleep(HAND_BACK_GRACE).pipe(
@@ -700,8 +1021,10 @@ const make = (source: LoginSource, profileDir?: string) =>
         }
         const vm = current(threadId)
         if (vm.status !== "running") return yield* new VmError({ message: "The VM is not running." })
+        if (vm.provider === "boat")
+          return yield* new VmError({ message: "A boat VM shows its desktop stream instead of VNC." })
         openingScreens.add(streamId)
-        const sbx = yield* client
+        const sbx = yield* sbxClientEffect
         const { socket, head } = yield* sbx.tunnel(vm.sandboxId, VNC_PORT, { passive: true }).pipe(
           Effect.catchTag("SandboxGoneError", (error) =>
             Effect.andThen(forget(threadId, vm.sandboxId), Effect.fail(error)),
@@ -729,16 +1052,21 @@ const make = (source: LoginSource, profileDir?: string) =>
       Stream.runForEach((value) =>
         Effect.suspend(() => {
           const was = enabled
+          const wasProvider = provider
           enabled = value.experimental.tinyVm
+          provider = value.experimental.tinyVmProvider
+          boatSize = value.experimental.tinyVmBoatSize
           configuredTemplate = value.experimental.tinyVmTemplate.trim() || "default"
-          profileEnabled = value.experimental.tinyVmProfile && profileDir !== undefined
-          return was && !enabled ? stopAll : Effect.void
+          configuredEnv = value.experimental.tinyVmEnv
+          setupScript = value.experimental.tinyVmSetupScript
+          profileEnabled = value.experimental.tinyVmProfile
+          return (was && !enabled) || wasProvider !== provider ? stopAll : Effect.void
         }),
       ),
       Effect.forkIn(scope),
     )
 
-    // The host's idle timeout can destroy a VM without asking, so the owner's profile is saved on a timer too.
+    // FIXME: sbx's idle timeout can destroy a VM without asking
     yield* Effect.forever(
       Effect.sleep("10 minutes").pipe(
         Effect.andThen(
@@ -746,7 +1074,7 @@ const make = (source: LoginSource, profileDir?: string) =>
             if (profileOwner === undefined || !profileEnabled) return Effect.void
             const vm = current(profileOwner)
             if (vm.status !== "running" || vm.profile !== "owner") return Effect.void
-            return client.pipe(
+            return sbxClientEffect.pipe(
               Effect.flatMap((sbx) => saveFromSandbox(sbx, vm.sandboxId, vm.template, false)),
               Effect.catch((error) => Effect.logWarning("tiny vm: profile autosave failed", error.message)),
             )
@@ -755,10 +1083,10 @@ const make = (source: LoginSource, profileDir?: string) =>
       ),
     ).pipe(Effect.forkIn(scope))
 
-    // Sandboxes do not outlive the app; sbx's idle timeout catches whatever this misses.
     yield* Effect.addFinalizer(() =>
       Effect.gen(function* () {
         screens.forEach((screen) => screen.socket.destroy())
+        desktopServer?.close()
         yield* stopAll
       }).pipe(Effect.ignore, Effect.timeoutOrElse({ duration: "3 seconds", orElse: () => Effect.void })),
     )
@@ -770,12 +1098,14 @@ const make = (source: LoginSource, profileDir?: string) =>
       stop,
       setControl,
       host,
+      desktopUrl,
       screenshot,
       act,
       exec,
       dropFiles,
       takeDropped,
       stageArchive,
+      pullFiles,
       openTunnel,
       saveProfile,
       openScreen,
@@ -784,4 +1114,5 @@ const make = (source: LoginSource, profileDir?: string) =>
     })
   })
 
-export const layer = (source: LoginSource, profileDir?: string) => Layer.effect(TinyVm, make(source, profileDir))
+export const layer = (source: LoginSource, dataDir: string, options?: { readonly desktopRedirect?: boolean }) =>
+  Layer.effect(TinyVm, make(source, dataDir, options?.desktopRedirect ?? true))

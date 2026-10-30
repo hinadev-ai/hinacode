@@ -1,7 +1,6 @@
-import { type FormEvent, startTransition, useActionState, useEffect, useId, useState } from "react"
+import { type FormEvent, startTransition, useActionState, useId, useState } from "react"
 import { RiKey2Line } from "react-icons/ri"
 import type { SecretRequest } from "../../shared/agent.ts"
-import { useOpenThreadEnvironment } from "../lib/environments.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
@@ -9,15 +8,9 @@ import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Input } from "./ui/input.tsx"
 
-/**
- * One pending `request_secret` call. The value goes to main over `secrets.respond` and nowhere else;
- * the card disappears when the turn reports `secret_resolved`.
- */
 export function SecretRequestCard({ request, providerLabel }: { request: SecretRequest; providerLabel: string }) {
   const inputId = useId()
   const [value, setValue] = useState("")
-  const [exists, setExists] = useState(false)
-  const environment = useOpenThreadEnvironment()
   const [error, respond, isPending] = useActionState(async (_: string | null, answer: string | null) => {
     try {
       await callPromise("secrets.respond", { requestId: request.id, value: answer })
@@ -26,14 +19,6 @@ export function SecretRequestCard({ request, providerLabel }: { request: SecretR
       return errorMessage(cause)
     }
   }, null)
-
-  useEffect(() => {
-    let cancelled = false
-    void callPromise("secrets.has", { name: request.name }, { environment }).then((has) => !cancelled && setExists(has))
-    return () => {
-      cancelled = true
-    }
-  }, [request.name, environment])
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -55,7 +40,6 @@ export function SecretRequestCard({ request, providerLabel }: { request: SecretR
       <p className="text-xs text-muted-foreground">
         {m.secret_request_name()} <code className="font-mono text-foreground">{request.name}</code>
       </p>
-      {exists && <p className="text-xs text-attention">{m.secret_request_exists()}</p>}
       <form onSubmit={onSubmit} className="flex flex-wrap items-center gap-2">
         <label htmlFor={inputId} className="sr-only">
           {m.secret_request_value()}
@@ -70,7 +54,7 @@ export function SecretRequestCard({ request, providerLabel }: { request: SecretR
           className="w-72 font-mono"
         />
         <Button type="submit" size="sm" disabled={isPending || value.trim() === ""}>
-          {exists ? m.secret_request_replace() : m.secret_request_save()}
+          {m.secret_request_save()}
         </Button>
         <Button type="button" size="sm" variant="outline" disabled={isPending} action={() => respond(null)}>
           {m.secret_request_decline()}

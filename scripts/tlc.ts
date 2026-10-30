@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// Usage: tlc.ts [specs/Name.cfg ...]   Model-checks every config in specs/ (or the ones given) with TLC.
 import { spawnSync } from "node:child_process"
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"

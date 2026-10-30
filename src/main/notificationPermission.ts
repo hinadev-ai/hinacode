@@ -5,14 +5,10 @@ import type { NotificationPermission, PermissionRequestOutcome } from "../shared
 
 const require = createRequire(import.meta.url)
 
-/**
- * Electron has no API for this, and on macOS a denied notification fails silently.
- * `node-mac-permissions` is an optional dependency that only installs on macOS.
- */
+// FIXME: Electron cannot read notification permission, and macOS fails denied notifications silently
 export const notificationPermission: Effect.Effect<NotificationPermission> = Effect.sync(() => {
   if (process.platform !== "darwin") return "unknown"
-  // CommonJS without named exports Node can detect, so an ESM import would see none.
-  // Keep the optional, darwin-only package out of TypeScript resolution on Linux and Windows.
+  // FIXME: the darwin-only CommonJS package has no named exports ESM can detect, nor types off macOS
   const { getAuthStatus } = require("node-mac-permissions") as { getAuthStatus(type: "notifications"): string }
   const status = getAuthStatus("notifications")
   switch (status) {
@@ -29,10 +25,7 @@ export const notificationPermission: Effect.Effect<NotificationPermission> = Eff
   }
 }).pipe(Effect.catchDefect(() => Effect.succeed("unknown" as const)))
 
-/**
- * Shows one notification from main, which makes macOS ask the user if it has not yet. Main's `failed`
- * event is the only reliable sign that macOS refused, since renderer notifications fail without an event.
- */
+// FIXME: only main's `failed` event shows macOS refused; renderer notifications fail silently
 export const askNotificationPermission = (title: string, body: string) =>
   Effect.callback<PermissionRequestOutcome>((resume) => {
     const notification = new Notification({ title, body, silent: true })

@@ -30,7 +30,6 @@ export function RunStatusBadge({ status }: { status: AutomationRunStatus }) {
 export const formatTime = (iso: string) =>
   new Intl.DateTimeFormat(getLocale(), { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso))
 
-/** A read-only monospace value with a copy button. */
 export function CopyField({ id, value, copyLabel }: { id: string; value: string; copyLabel: string }) {
   return (
     <div className="flex items-center gap-2">

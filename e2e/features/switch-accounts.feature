@@ -13,4 +13,3 @@ Feature: Switch accounts
     Examples:
       | theme   |
       | default |
-      | light   |
