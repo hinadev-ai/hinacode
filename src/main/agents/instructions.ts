@@ -26,6 +26,10 @@ Other threads:
 Scratch directory:
 - Put temporary files, experiments, downloads and throwaway scripts in the scratch directory that \`<environment>\` names, not in \`/tmp\`.
 - HinaCode deletes it when this thread is archived or deleted, so keep anything that must outlive the thread somewhere else.
+
+Secrets:
+- When you need an API key, token or password, or the user asks how to give you one, call the hinacode \`request_secret\` tool right away. Do not ask them to paste it into the chat, and do not explain where to put it instead.
+- It returns the path of a file that holds the value. Read the file inside the command that needs it and never print it.
 </hinacode>`
 
 const tinyVmInstructions = (template: string, profile: boolean, passkeys: boolean) => `<tiny-vm>
