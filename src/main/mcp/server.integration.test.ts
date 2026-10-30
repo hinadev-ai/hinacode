@@ -59,6 +59,14 @@ const seeded = Layer.effect(
   }),
 )
 
+const scriptedAgentTurn = (reply: string): ReadonlyArray<AgentEvent> => [
+  { type: "text_delta", text: "Let me look." },
+  { type: "tool_call_started", callId: "agent-call-1", name: "Bash", input: { command: "git diff" } },
+  { type: "tool_call_finished", callId: "agent-call-1", output: "diff", isError: false },
+  { type: "text_delta", text: reply },
+  { type: "turn_completed", usage: { inputTokens: 100, outputTokens: 20 } },
+]
+
 const fakeProvider = (id: ProviderId): AgentProvider => {
   const turns = new Map<string, Deferred.Deferred<void>>()
   return {
@@ -72,6 +80,8 @@ const fakeProvider = (id: ProviderId): AgentProvider => {
       Stream.unwrap(
         Effect.map(Deferred.make<void>(), (done) => {
           turnInputs.push(input)
+          const reply = /^Reply (.+)$/.exec(input.prompt)?.[1]
+          if (reply !== undefined) return Stream.fromIterable(scriptedAgentTurn(reply))
           turns.set(input.threadId, done)
           return Stream.fromEffect(Deferred.await(done)).pipe(Stream.as({ type: "turn_completed" } as AgentEvent))
         }),
@@ -367,6 +377,86 @@ layer(testLayer)("request_secret", (it) => {
       const result = yield* callAs(yield* mcp.connectionFor(b), "request_secret", { name: "idle", description: "x" })
       expect(result.isError).toBe(true)
       expect(result.text).toContain("No turn is running")
+    }),
+  )
+})
+
+layer(testLayer)("run_agent", (it) => {
+  it.effect("runs another provider in the caller's Agents tab and returns its reply", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      turnInputs.length = 0
+      yield* runner.send(a, "hi", [])
+      const result = yield* callAs(yield* mcp.connectionFor(a), "run_agent", {
+        provider: "codex",
+        description: "Second opinion",
+        prompt: "Reply Looks good.",
+        model: "gpt-test",
+      })
+      expect(result).toMatchObject({ isError: false, text: "Looks good." })
+      expect(turnInputs.at(-1)).toMatchObject({ prompt: "Reply Looks good.", model: "gpt-test", resumeSessionId: null })
+
+      const [subagent] = yield* runner.subagents(a)
+      expect(subagent).toMatchObject({
+        provider: "codex",
+        label: "Second opinion",
+        status: "completed",
+        summary: "Looks good.",
+        lastTool: "Bash",
+        toolUses: 1,
+        tokens: 120,
+      })
+      const parts = (yield* runner.transcript(a)).messages.flatMap((message) => message.parts)
+      expect(parts).toContainEqual(
+        expect.objectContaining({ type: "tool_call", callId: "agent-call-1", parentCallId: subagent?.callId }),
+      )
+      yield* runner.interrupt(a)
+    }),
+  )
+
+  it.effect("stopping it from the Agents tab interrupts only the sub-agent", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      yield* runner.send(a, "hi", [])
+      const call = yield* Effect.forkChild(
+        callAs(yield* mcp.connectionFor(a), "run_agent", {
+          provider: "codex",
+          description: "Long review",
+          prompt: "Review everything",
+          model: "gpt-test",
+        }),
+      )
+      const running = yield* until(
+        runner
+          .subagents(a)
+          .pipe(
+            Effect.map((subagents) => Option.fromNullishOr(subagents.find(({ label }) => label === "Long review"))),
+          ),
+      )
+      yield* runner.stopSubagent(a, running.id)
+      const result = yield* Fiber.join(call)
+      expect(result).toMatchObject({ isError: true, text: "The user stopped this agent." })
+      expect((yield* runner.subagents(a)).find((subagent) => subagent.id === running.id)?.status).toBe("stopped")
+      expect((yield* runner.transcript(a)).messages.at(-1)?.completedAt).toBeNull()
+      yield* runner.interrupt(a)
+    }),
+  )
+
+  it.effect("refuses outside a turn", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const { b } = yield* Seeded
+      const result = yield* callAs(yield* mcp.connectionFor(b), "run_agent", {
+        provider: "codex",
+        description: "x",
+        prompt: "Reply x",
+        model: "gpt-test",
+      })
+      expect(result).toMatchObject({ isError: true, text: "Agents run only during this thread's turn." })
     }),
   )
 })

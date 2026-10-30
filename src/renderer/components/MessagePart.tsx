@@ -177,8 +177,9 @@ function ToolCallDetails({ call, summary, inGroup = false }: { call: ToolCall; s
 
 function SubagentCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call" }> }) {
   const { threadId } = useParams({ from: "/thread/$threadId" })
-  const provider = useThreads((state) => state.byId[threadId]?.provider)
+  const threadProvider = useThreads((state) => state.byId[threadId]?.provider)
   const subagent = useSubagentByCallId(threadId, part.callId)
+  const provider = subagent?.provider ?? threadProvider
   const open = useOpenSubagent(threadId)
   const { name, summary } = describeToolCall(part)
 

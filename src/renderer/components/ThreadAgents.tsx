@@ -118,7 +118,7 @@ export function ThreadAgents({ thread }: { thread: Thread }) {
             key={subagent.id}
             threadId={thread.id}
             subagent={subagent}
-            provider={thread.provider}
+            provider={subagent.provider ?? thread.provider}
             now={now}
             onOpen={callId === null ? undefined : () => open(callId)}
           />

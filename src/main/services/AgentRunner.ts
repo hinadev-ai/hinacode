@@ -48,6 +48,7 @@ import { CodexProvider } from "../agents/codex/index.ts"
 import { handoffPrompt } from "../agents/handoff.ts"
 import { latestForkPoint, sidechatPrompt, unseenSince } from "../agents/sidechat.ts"
 import { agentInstructions, type AgentEnvironment } from "../agents/instructions.ts"
+import { spawningCallId } from "../agents/runAgent.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
 import { AgentError, type AgentProvider, type Wake } from "../agents/provider.ts"
@@ -76,6 +77,14 @@ import { type ActiveWorkspace, makeActiveWorkspace } from "./workspace.ts"
 const PERSIST_INTERVAL_MS = 500
 const PERSIST_BACKOFF = 10
 const interruptedSend = () => new AgentError({ provider: "hinacode", message: "Message send interrupted" })
+
+export interface AgentRequest {
+  readonly provider: ProviderId
+  readonly description: string
+  readonly prompt: string
+  readonly model?: string | undefined
+  readonly effort?: string | undefined
+}
 
 export interface SendOptions {
   readonly workspace?: WorkspaceChoice | undefined
@@ -156,6 +165,10 @@ export class AgentRunner extends Context.Service<
       threadId: string,
     ) => Effect.Effect<ContextBreakdown | null, AgentError | PersistenceError | NotFoundError>
     readonly subagents: (threadId: string) => Effect.Effect<ReadonlyArray<Subagent>>
+    readonly runAgent: (
+      threadId: string,
+      request: AgentRequest,
+    ) => Effect.Effect<string, AgentError | PersistenceError | NotFoundError>
     readonly stopSubagent: (
       threadId: string,
       subagentId: string,
@@ -280,6 +293,7 @@ const make = Effect.gen(function* () {
   >()
   const threadLocks = new Map<string, Semaphore.Semaphore>()
   const subagents = new Map<string, Map<string, Subagent>>()
+  const agentRuns = new Map<string, { readonly threadId: string; readonly stop: Effect.Effect<void> }>()
   const backgroundTasks = new Map<string, ReadonlyArray<BackgroundTask>>()
   let seq = 0
 
@@ -322,6 +336,13 @@ const make = Effect.gen(function* () {
     for (const subagent of running) byId.set(subagent.id, { ...subagent, status: "stopped", endedAt })
     return push.publish({ type: "thread.subagents", threadId, subagents: listSubagents(threadId) })
   }
+
+  const stopAgentRuns = (threadId: string) =>
+    Effect.forEach(
+      [...agentRuns.values()].filter((run) => run.threadId === threadId),
+      (run) => run.stop,
+      { discard: true },
+    )
 
   const publishTranscript = (event: DistributiveOmit<TranscriptPush, "seq">) => push.publish({ ...event, seq: ++seq })
 
@@ -464,6 +485,7 @@ const make = Effect.gen(function* () {
           new AgentError({ provider: "hinacode", message: "The turn ended before the user answered." }),
         )
       }
+      yield* stopAgentRuns(thread.id)
       yield* stopSubagents(thread.id, yield* nowIso)
       const last = turnMessages.at(-1)!
       const closed: Message = last.completedAt === null ? { ...last, completedAt: yield* nowIso } : last
@@ -536,6 +558,132 @@ const make = Effect.gen(function* () {
 
     return { provider, steer, run, follow, handle, interrupt, messages: () => turnMessages }
   }
+
+  const runAgent = (threadId: string, request: AgentRequest) =>
+    Effect.gen(function* () {
+      const turn = activeTurns.get(threadId)
+      if (turn === undefined) {
+        return yield* new AgentError({ provider: "hinacode", message: "Agents run only during this thread's turn." })
+      }
+      const thread = yield* threads.get(threadId)
+      const provider = providers[request.provider]
+      const sameProvider = request.provider === thread.provider
+      const model = request.model ?? (sameProvider ? thread.model : (yield* provider.listModels)[0]?.id)
+      if (model === undefined) {
+        return yield* new AgentError({ provider: request.provider, message: "This agent lists no models." })
+      }
+      const workspace = yield* activeWorkspace(threadId)
+      const [home, environment, mcpServer, { experimental, autoCompactTokens }, startedAt] = yield* Effect.all([
+        accounts.home(sameProvider ? thread.accountId : null),
+        readEnvironment(thread, workspace),
+        mcp.connectionFor(threadId),
+        settings.get,
+        nowIso,
+      ])
+
+      const id = randomUUID()
+      const sessionId = `${threadId}:agent:${id}`
+      const callId = spawningCallId(turn.messages(), request.prompt) ?? sessionId
+      let subagent: Subagent = {
+        id,
+        provider: request.provider,
+        label: request.description,
+        callId,
+        status: "running",
+        summary: null,
+        lastTool: null,
+        toolUses: 0,
+        tokens: null,
+        startedAt,
+        endedAt: null,
+      }
+      const update = (patch: Partial<Subagent>) => updateSubagent(threadId, (subagent = { ...subagent, ...patch }))
+
+      let reply = ""
+      let failure: string | null = null
+      let stopped = false
+      agentRuns.set(id, {
+        threadId,
+        stop: Effect.suspend(() => {
+          stopped = true
+          return provider.interrupt(sessionId)
+        }),
+      })
+      yield* update({})
+
+      const forward = (event: AgentEvent) => {
+        switch (event.type) {
+          case "text_delta":
+            reply += event.text
+            return Effect.void
+          case "tool_call_started":
+            reply = ""
+            return Effect.andThen(
+              turn.handle({ ...event, parentCallId: event.parentCallId ?? callId }),
+              update({ toolUses: (subagent.toolUses ?? 0) + 1, lastTool: event.name }),
+            )
+          case "approval_requested":
+            return turn.handle({ ...event, request: { ...event.request, threadId } })
+          case "question_requested":
+            return turn.handle({ ...event, request: { ...event.request, threadId } })
+          case "tool_call_finished":
+          case "file_changed":
+          case "approval_resolved":
+          case "question_resolved":
+            return turn.handle(event)
+          case "turn_completed":
+            return event.usage === undefined
+              ? Effect.void
+              : update({ tokens: event.usage.inputTokens + event.usage.outputTokens })
+          case "turn_failed":
+            failure = event.message
+            return Effect.void
+          case "turn_limited":
+            failure = "This agent hit its usage limit."
+            return Effect.void
+          default:
+            return Effect.void
+        }
+      }
+
+      yield* provider
+        .runTurn({
+          threadId: sessionId,
+          prompt: request.prompt,
+          attachments: [],
+          cwd: workspace.cwd,
+          model,
+          effort: request.effort ?? null,
+          fastMode: false,
+          autoCompactTokens: autoCompactTokens[provider.id],
+          userSkills: thread.userSkills,
+          accessMode: thread.accessMode,
+          resumeSessionId: null,
+          forkAt: null,
+          home,
+          mcpServer,
+          instructions: agentInstructions(experimental, environment),
+        })
+        .pipe(
+          Stream.runForEach(forward),
+          Effect.catchTag("AgentError", (error) => Effect.sync(() => (failure = error.message))),
+          Effect.onInterrupt(() =>
+            Effect.sync(() => (stopped = true)).pipe(Effect.andThen(provider.interrupt(sessionId))),
+          ),
+          Effect.ensuring(
+            Effect.gen(function* () {
+              agentRuns.delete(id)
+              const status = stopped ? "stopped" : failure === null ? "completed" : "failed"
+              yield* update({ status, summary: failure ?? (reply.trim() || null), endedAt: yield* nowIso })
+              yield* provider.closeSession?.(sessionId, home).pipe(Effect.ignore) ?? Effect.void
+            }),
+          ),
+        )
+
+      if (stopped) return yield* new AgentError({ provider: request.provider, message: "The user stopped this agent." })
+      if (failure !== null) return yield* new AgentError({ provider: request.provider, message: failure })
+      return reply.trim()
+    })
 
   const liveMessages = (threadId: string) =>
     messages.list(threadId).pipe(
@@ -1031,9 +1179,12 @@ const make = Effect.gen(function* () {
         return read === undefined ? null : yield* read(threadId)
       }),
     subagents: (threadId) => Effect.sync(() => listSubagents(threadId)),
+    runAgent,
     stopSubagent: (threadId, subagentId) =>
       Effect.gen(function* () {
         if (subagents.get(threadId)?.get(subagentId)?.status !== "running") return
+        const run = agentRuns.get(subagentId)
+        if (run !== undefined) return yield* run.stop
         const { provider: id } = yield* threads.get(threadId)
         const stop = providers[id].stopSubagent
         if (stop === undefined) {

@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router"
-import type { SubagentStatus } from "../../shared/agent.ts"
+import { isRunAgentTool, type SubagentStatus, toolArgument } from "../../shared/agent.ts"
 import type { Message, MessagePart, ToolCallStatus } from "../../shared/domain.ts"
 
 type ToolCall = Extract<MessagePart, { type: "tool_call" }>
@@ -11,7 +11,8 @@ export const statusOfCall = {
 } satisfies Record<ToolCallStatus, SubagentStatus>
 
 // FIXME: Claude Code named its sub-agent tool Task before it became Agent
-export const spawnsSubagent = (part: ToolCall) => part.name === "Agent" || part.name === "Task"
+export const spawnsSubagent = (part: ToolCall) =>
+  part.name === "Agent" || part.name === "Task" || isRunAgentTool(part.name)
 
 export const isOwnPart = (part: MessagePart) => part.type !== "tool_call" || part.parentCallId === undefined
 
@@ -44,8 +45,7 @@ export function findSubagentWork(messages: ReadonlyArray<Message>, callId: strin
 }
 
 export const inputField = (part: ToolCall | undefined, key: string): string | undefined => {
-  const value: unknown =
-    typeof part?.input === "object" && part.input !== null ? Reflect.get(part.input, key) : undefined
+  const value = toolArgument(part?.input, key)
   return typeof value === "string" ? value : undefined
 }
 

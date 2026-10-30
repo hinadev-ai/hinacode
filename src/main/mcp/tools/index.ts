@@ -2,6 +2,7 @@ import { Context, Effect, Layer } from "effect"
 import { McpSchema, Toolkit } from "effect/ai"
 import { Devices } from "../../services/devices/Devices.ts"
 import { TinyVm } from "../../services/tinyVm/TinyVm.ts"
+import { AgentTools, agentToolsLayer } from "./agents.ts"
 import { DeviceTools, deviceToolsLayer } from "./devices.ts"
 import { LinearTools, linearToolsLayer } from "./linear.ts"
 import { PullRequestTools, pullRequestToolsLayer } from "./pullRequests.ts"
@@ -15,7 +16,9 @@ export const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const tinyVm = yield* TinyVm
     const devices = yield* Devices
-    yield* McpTool.register(Toolkit.merge(SecretTools, ThreadTools, ReviewTools, PullRequestTools, LinearTools))
+    yield* McpTool.register(
+      Toolkit.merge(SecretTools, ThreadTools, AgentTools, ReviewTools, PullRequestTools, LinearTools),
+    )
     yield* McpTool.register(
       VmTools,
       Context.make(McpSchema.EnabledWhen, () => tinyVm.enabled()),
@@ -30,6 +33,7 @@ export const layer = Layer.effectDiscard(
     Layer.mergeAll(
       secretToolsLayer,
       threadToolsLayer,
+      agentToolsLayer,
       reviewToolsLayer,
       pullRequestToolsLayer,
       linearToolsLayer,

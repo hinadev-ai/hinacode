@@ -84,7 +84,7 @@ export function SubagentTranscript({
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-1.5 px-4 pt-4">
       <div className="flex min-w-0 items-center gap-2">
         {status && <SubagentStatusIcon status={status} />}
-        <ProviderIcon provider={thread.provider} />
+        <ProviderIcon provider={subagent?.provider ?? thread.provider} />
         <h2
           ref={headingRef}
           tabIndex={-1}
