@@ -112,3 +112,58 @@ export const panelPoint = (
 }
 
 export const quoteForRemoteShell = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`
+
+export const PIXELS_PER_SCROLL_UNIT = 64
+
+export const CREATE_UNSUPPORTED = "HinaCode creates simulators only for iOS. Attach an existing emulator."
+
+export const KEYCODES: ReadonlyMap<string, number> = new Map(
+  Object.entries({
+    ...Object.fromEntries(
+      Array.from({ length: 26 }, (_, index) => [`Key${String.fromCharCode(65 + index)}`, 29 + index]),
+    ),
+    ...Object.fromEntries(Array.from({ length: 10 }, (_, digit) => [`Digit${digit}`, 7 + digit])),
+    Enter: 66,
+    NumpadEnter: 66,
+    Escape: 111,
+    Backspace: 67,
+    Tab: 61,
+    Space: 62,
+    Minus: 69,
+    Equal: 70,
+    BracketLeft: 71,
+    BracketRight: 72,
+    Backslash: 73,
+    Semicolon: 74,
+    Quote: 75,
+    Backquote: 68,
+    Comma: 55,
+    Period: 56,
+    Slash: 76,
+    CapsLock: 115,
+    Delete: 112,
+    Home: 122,
+    End: 123,
+    PageUp: 92,
+    PageDown: 93,
+    ArrowUp: 19,
+    ArrowDown: 20,
+    ArrowLeft: 21,
+    ArrowRight: 22,
+  }),
+)
+export const MODIFIER_KEYCODES: ReadonlyMap<string, number> = new Map(
+  Object.entries({
+    ShiftLeft: 59,
+    ShiftRight: 60,
+    AltLeft: 57,
+    AltRight: 58,
+    ControlLeft: 113,
+    ControlRight: 114,
+    MetaLeft: 117,
+    MetaRight: 118,
+  }),
+)
+export const BUTTON_KEYCODES = { home: 3, back: 4, recents: 187, lock: 26, volumeUp: 24, volumeDown: 25 } as const
+export const KEYCODE_ENTER = 66
+export const KEYCODE_PASTE = 279

@@ -471,8 +471,16 @@ export const ArchiveSettings = Schema.Struct({
 })
 export type ArchiveSettings = typeof ArchiveSettings.Type
 
+export const VmProvider = Schema.Literals(["sbx", "boat"])
+export type VmProvider = typeof VmProvider.Type
+
+export const BoatVmSize = Schema.Literals(["small", "default", "large", "xlarge"])
+export type BoatVmSize = typeof BoatVmSize.Type
+
 export const ExperimentalSettings = Schema.Struct({
   tinyVm: Schema.Boolean,
+  tinyVmProvider: VmProvider.pipe(Schema.withDecodingDefaultKey(Effect.succeed("sbx" as const))),
+  tinyVmBoatSize: BoatVmSize.pipe(Schema.withDecodingDefaultKey(Effect.succeed("default" as const))),
   tinyVmTemplate: Schema.String,
   tinyVmProfile: Schema.Boolean,
   tinyVmPasskeys: Schema.Boolean,
@@ -606,6 +614,8 @@ export const defaultSettings: Settings = {
   archive: { whenMerged: false, removeWorktree: false },
   experimental: {
     tinyVm: false,
+    tinyVmProvider: "boat",
+    tinyVmBoatSize: "default",
     tinyVmTemplate: "default",
     tinyVmProfile: false,
     tinyVmPasskeys: false,
@@ -673,6 +683,7 @@ export const ThreadVm = Schema.Union([
   Schema.Struct({ status: Schema.Literal("starting") }),
   Schema.Struct({
     status: Schema.Literal("running"),
+    provider: VmProvider,
     sandboxId: Schema.String,
     template: Schema.String,
     profile: VmProfile,
@@ -680,6 +691,7 @@ export const ThreadVm = Schema.Union([
   }),
   Schema.Struct({
     status: Schema.Literal("running"),
+    provider: VmProvider,
     sandboxId: Schema.String,
     template: Schema.String,
     profile: VmProfile,
@@ -700,15 +712,24 @@ export type VmTemplate = typeof VmTemplate.Type
 export const VmHostStatus = Schema.Union([
   Schema.Struct({
     status: Schema.Literal("connected"),
+    provider: VmProvider,
     url: Schema.String,
     sandboxes: Schema.Number,
     maxSandboxes: Schema.Number,
     templates: Schema.Array(VmTemplate),
   }),
-  Schema.Struct({ status: Schema.Literal("notConfigured") }),
-  Schema.Struct({ status: Schema.Literal("unreachable"), url: Schema.String, message: Schema.String }),
+  Schema.Struct({ status: Schema.Literal("notConfigured"), provider: VmProvider }),
+  Schema.Struct({
+    status: Schema.Literal("unreachable"),
+    provider: VmProvider,
+    url: Schema.String,
+    message: Schema.String,
+  }),
 ])
 export type VmHostStatus = typeof VmHostStatus.Type
+
+export const VmDesktopUrl = Schema.Struct({ url: Schema.String })
+export type VmDesktopUrl = typeof VmDesktopUrl.Type
 
 export const VmPasskeyKind = Schema.Literals(["get", "create"])
 export type VmPasskeyKind = typeof VmPasskeyKind.Type

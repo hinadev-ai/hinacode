@@ -52,7 +52,13 @@ export function TitleBar({
           {chord && <ChordKeys chord={chord} />}
         </TooltipContent>
       </Tooltip>
-      <Button variant="ghost" size="icon-sm" render={<Link to="/settings" />} aria-label={m.sidebar_settings()}>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        render={<Link to="/settings" />}
+        aria-label={m.sidebar_settings()}
+        className="data-[status=active]:bg-sidebar-accent data-[status=active]:text-sidebar-accent-foreground"
+      >
         <RiSettings3Line aria-hidden />
       </Button>
       <MachineResourcesButton />

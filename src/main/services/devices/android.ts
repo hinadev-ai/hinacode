@@ -10,10 +10,17 @@ import * as protoLoader from "@grpc/proto-loader"
 import type { Device, DeviceCommand, DeviceId, PlatformSupport, PrepareStep } from "../../../shared/device.ts"
 import {
   androidVersionOf,
+  BUTTON_KEYCODES,
+  CREATE_UNSUPPORTED,
+  KEYCODES,
+  KEYCODE_ENTER,
+  KEYCODE_PASTE,
+  MODIFIER_KEYCODES,
   panelPoint,
   parseDiscoveryFile,
   parseIni,
   parseUiHierarchy,
+  PIXELS_PER_SCROLL_UNIT,
   quoteForRemoteShell,
   type RunningEmulator,
   type SkinRotation,
@@ -71,9 +78,7 @@ const MAX_STREAM_RESTARTS = 3
 const FIRST_GRPC_PORT = 8600
 const STOP_TIMEOUT_MS = 15_000
 const CALL_TIMEOUT_MS = 10_000
-const PIXELS_PER_SCROLL_UNIT = 64
 const NO_GRPC = "This emulator was started without its gRPC endpoint. Close it and attach it again from HinaCode."
-const CREATE_UNSUPPORTED = "HinaCode creates simulators only for iOS. Attach an existing emulator."
 
 const execFileAsync = promisify(execFile)
 const run = async (file: string, args: ReadonlyArray<string>, timeout = 30_000) =>
@@ -135,57 +140,6 @@ const freePort = async (from: number): Promise<number> => {
   }
   throw new DeviceError("No free port for the emulator's gRPC endpoint.")
 }
-
-const KEYCODES: ReadonlyMap<string, number> = new Map(
-  Object.entries({
-    ...Object.fromEntries(
-      Array.from({ length: 26 }, (_, index) => [`Key${String.fromCharCode(65 + index)}`, 29 + index]),
-    ),
-    ...Object.fromEntries(Array.from({ length: 10 }, (_, digit) => [`Digit${digit}`, 7 + digit])),
-    Enter: 66,
-    NumpadEnter: 66,
-    Escape: 111,
-    Backspace: 67,
-    Tab: 61,
-    Space: 62,
-    Minus: 69,
-    Equal: 70,
-    BracketLeft: 71,
-    BracketRight: 72,
-    Backslash: 73,
-    Semicolon: 74,
-    Quote: 75,
-    Backquote: 68,
-    Comma: 55,
-    Period: 56,
-    Slash: 76,
-    CapsLock: 115,
-    Delete: 112,
-    Home: 122,
-    End: 123,
-    PageUp: 92,
-    PageDown: 93,
-    ArrowUp: 19,
-    ArrowDown: 20,
-    ArrowLeft: 21,
-    ArrowRight: 22,
-  }),
-)
-const MODIFIER_KEYCODES: ReadonlyMap<string, number> = new Map(
-  Object.entries({
-    ShiftLeft: 59,
-    ShiftRight: 60,
-    AltLeft: 57,
-    AltRight: 58,
-    ControlLeft: 113,
-    ControlRight: 114,
-    MetaLeft: 117,
-    MetaRight: 118,
-  }),
-)
-const BUTTON_KEYCODES = { home: 3, back: 4, recents: 187, lock: 26, volumeUp: 24, volumeDown: 25 } as const
-const KEYCODE_ENTER = 66
-const KEYCODE_PASTE = 279
 
 const loadController = (() => {
   const loaded = new Map<string, Promise<EmulatorControllerClass>>()

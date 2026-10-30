@@ -15,7 +15,7 @@ const CHECK_EVERY_MS = 4 * 60 * 60_000
 export function useAgentUpdateNotices() {
   const navigate = useNavigate()
   useEffect(() => {
-    const openSettings = () => void navigate({ to: "/settings", search: { page: "models" } })
+    const openSettings = () => void navigate({ to: "/settings", search: { page: "providers" } })
     const check = () =>
       callPromise("agents.updates", undefined)
         .then((updates) => {
