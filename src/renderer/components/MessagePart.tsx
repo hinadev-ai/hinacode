@@ -3,6 +3,7 @@ import { createContext, type ReactNode, use, useState } from "react"
 import type { IconType } from "react-icons"
 import {
   RiArrowRightSLine,
+  RiBrainLine,
   RiCheckLine,
   RiContractUpDownLine,
   RiEditLine,
@@ -12,7 +13,6 @@ import {
   RiGlobalLine,
   RiLoader4Line,
   RiSearchLine,
-  RiSparkling2Line,
   RiTerminalBoxLine,
   RiToolsLine,
 } from "react-icons/ri"
@@ -73,7 +73,7 @@ function ReasoningPart({ text }: { text: string }) {
     <Collapsible className="my-1">
       <CollapsibleTrigger className={disclosureTrigger}>
         <Chevron />
-        <RiSparkling2Line aria-hidden className="size-3.5 shrink-0" />
+        <RiBrainLine aria-hidden className="size-3.5 shrink-0" />
         {m.message_thinking()}
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-1 border-l-2 border-border pl-3 text-xs whitespace-pre-wrap text-muted-foreground">
