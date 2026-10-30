@@ -423,7 +423,6 @@
   "agents_tokens": "{tokens} tokens",
   "agents_untitled": "Sub-agent",
   "agents_back": "Back to {name}",
-  "agents_prompt": "Prompt",
   "agents_missing": "Nothing is recorded for this sub-agent.",
   "pr_links_unlink": "Unlink {name}",
   "sidebar_thread_actions": "Actions for {title}",

@@ -423,7 +423,6 @@
   "agents_tokens": "{tokens} トークン",
   "agents_untitled": "無題のサブエージェント",
   "agents_back": "{name} に戻る",
-  "agents_prompt": "プロンプト",
   "agents_missing": "このサブエージェントの履歴は見つかりませんでした。",
   "pr_links_unlink": "{name} のリンクを解除",
   "sidebar_thread_actions": "「{title}」の操作メニュー",
