@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process"
+import { randomUUID } from "node:crypto"
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, watch, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
@@ -141,6 +142,18 @@ const archiveRemovingWorktree = (threadId: string) =>
   Settings.use((settings) => settings.set({ archive: { whenMerged: false, removeWorktree: true } })).pipe(
     Effect.andThen(Threads.use((threads) => threads.archive(threadId))),
   )
+
+const forkThread = (threadId: string) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    const messageId = randomUUID()
+    yield* sql`
+      INSERT INTO message (id, thread_id, role, parts, created_at, completed_at, usage, fork_point)
+      VALUES (${messageId}, ${threadId}, 'assistant', '[]', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z',
+              NULL, ${JSON.stringify({ sessionId: "session-1", checkpoint: "turn-1" })})
+    `
+    return yield* Threads.use((threads) => threads.fork(threadId, messageId))
+  })
 
 const shareWorktree = (threadId: string, worktreeId: string | null) =>
   Effect.gen(function* () {
@@ -520,6 +533,28 @@ describe("worktree ownership", () => {
         const error = yield* Effect.flip(Threads.use((threads) => threads.remove(first.id, { removeWorktree: true })))
         expect(error._tag).toBe("WorktreeBusyError")
         expect(existsSync(worktree.path)).toBe(true)
+      }),
+    ),
+  )
+
+  it.live("a fork gets its own checkout with the source's uncommitted work, so either can be archived", () =>
+    withRepo(({ projectId }) =>
+      Effect.gen(function* () {
+        const source = yield* createThread(projectId, "source", "kk/forked-source")
+        yield* waitUntilSetUp(source.worktreeId)
+        const sourceCheckout = yield* worktreeOf(source.worktreeId)
+        writeFileSync(join(sourceCheckout.path, "draft.txt"), "uncommitted\n")
+
+        const fork = yield* forkThread(source.id)
+        expect(fork.worktreeId).not.toBe(source.worktreeId)
+        yield* waitUntilSetUp(fork.worktreeId)
+        const forkCheckout = yield* worktreeOf(fork.worktreeId)
+        expect(readFileSync(join(forkCheckout.path, "draft.txt"), "utf8")).toBe("uncommitted\n")
+
+        yield* archiveRemovingWorktree(fork.id)
+        yield* archiveRemovingWorktree(source.id)
+        expect((yield* worktreeOf(fork.worktreeId)).status).toBe("removed")
+        expect((yield* worktreeOf(source.worktreeId)).status).toBe("removed")
       }),
     ),
   )
