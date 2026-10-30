@@ -1062,7 +1062,7 @@
   "thread_worktree_ref_branches": "Branches",
   "thread_worktree_ref_draft": "Draft",
   "archive_dialog_title": "Archive this thread?",
-  "archive_dialog_worktree": "Archiving deletes the worktree folder {path}, including uncommitted changes.",
+  "archive_dialog_worktree": "Archiving deletes the worktree folder {path}.",
   "archive_dialog_branch": "Deletes branch {branch} only if it is merged into {baseRef}.",
   "archive_dialog_confirm": "Archive and delete worktree",
   "sidebar_thread_archive": "Archive",

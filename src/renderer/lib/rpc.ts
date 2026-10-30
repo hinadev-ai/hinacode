@@ -97,6 +97,8 @@ export const worktreeCheckoutsAtom = Atom.make(
   ),
 )
 
+export const worktreeCheckoutStateAtom = Atom.family((id: string) => Atom.make(call("worktrees.checkoutState", { id })))
+
 export const environmentsAtom = Atom.make((get) => {
   get.addFinalizer(
     onPushEvent(

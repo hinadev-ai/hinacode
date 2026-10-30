@@ -16,6 +16,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { SqlClient, SqlSchema } from "effect/sql"
 import {
   type Changes,
+  type CheckoutState,
   isThreadBusy,
   type Project,
   type PullRequest,
@@ -56,6 +57,7 @@ export class Worktrees extends Context.Service<
   {
     readonly list: Effect.Effect<ReadonlyArray<Worktree>, PersistenceError>
     readonly checkouts: Effect.Effect<ReadonlyArray<WorktreeCheckout>, PersistenceError>
+    readonly checkoutState: (id: string) => Effect.Effect<CheckoutState, Failure | PlatformError.PlatformError>
     readonly get: (id: string) => Effect.Effect<Worktree, PersistenceError | NotFoundError>
     readonly create: (input: CreateWorktree) => Effect.Effect<Worktree, Failure | WorktreeTakenError>
     readonly createFromPullRequest: (
@@ -468,13 +470,20 @@ const make = Effect.gen(function* () {
   const remove = (id: string, deleteBranch: DeleteBranch, owner?: string) =>
     exclusive(removeWhileExclusive(id, deleteBranch, owner))
 
-  const checkoutOf = (worktree: Worktree) =>
+  const stateOf = (worktree: Worktree) =>
     Effect.gen(function* () {
-      if (!(yield* fs.exists(worktree.path)))
-        return Option.some<WorktreeCheckout>({ id: worktree.id, state: "missing" })
+      if (!(yield* fs.exists(worktree.path))) return "missing"
       const status = yield* git.run(worktree.path, ["status", "--porcelain"])
-      return Option.some<WorktreeCheckout>({ id: worktree.id, state: status.trim() === "" ? "clean" : "dirty" })
-    }).pipe(Effect.orElseSucceed(Option.none<WorktreeCheckout>))
+      return status.trim() === "" ? "clean" : "dirty"
+    })
+
+  const checkoutOf = (worktree: Worktree) =>
+    stateOf(worktree).pipe(
+      Effect.map((state) => Option.some<WorktreeCheckout>({ id: worktree.id, state })),
+      Effect.orElseSucceed(Option.none<WorktreeCheckout>),
+    )
+
+  const checkoutState = (id: string) => Effect.flatMap(get(id), stateOf)
 
   const checkouts = findAll(undefined).pipe(
     Effect.mapError(persistence("worktrees.checkouts")),
@@ -550,6 +559,7 @@ const make = Effect.gen(function* () {
   return Worktrees.of({
     list: findAll(undefined).pipe(Effect.mapError(persistence("worktrees.list"))),
     checkouts,
+    checkoutState,
     get,
     create,
     createFromPullRequest,
