@@ -6,6 +6,7 @@ import { foldTranscript } from "../../shared/foldEvent.ts"
 import { callPromise } from "../lib/rpc.ts"
 
 const STREAM_PUBLICATION_INTERVAL_MS = 100
+const CACHED_HISTORY_LIMIT = 8
 
 type ReadyHistory = {
   readonly status: "ready"
@@ -24,6 +25,7 @@ export type ThreadHistory =
 interface MessagesState {
   readonly byThread: Readonly<Record<string, ThreadHistory>>
   readonly load: (threadId: string) => Promise<void>
+  readonly reload: (threadId: string) => Promise<void>
   readonly unload: (threadId: string) => void
   readonly receive: (push: TranscriptPush) => void
 }
@@ -47,37 +49,61 @@ export const useMessages = create<MessagesState>()((set, get) => {
       return next === undefined || next === history ? state : { byThread: { ...state.byThread, [threadId]: next } }
     })
 
+  const leastRecentlyViewedFirst: string[] = []
+  const forget = (threadIds: ReadonlyArray<string>) => {
+    if (threadIds.length === 0) return
+    for (const threadId of threadIds) {
+      takePending(threadId)
+      const index = leastRecentlyViewedFirst.indexOf(threadId)
+      if (index !== -1) leastRecentlyViewedFirst.splice(index, 1)
+    }
+    set((state) => ({
+      byThread: Object.fromEntries(
+        Object.entries(state.byThread).filter(([threadId]) => !threadIds.includes(threadId)),
+      ),
+    }))
+  }
+  const markViewed = (threadId: string) => {
+    const index = leastRecentlyViewedFirst.indexOf(threadId)
+    if (index !== -1) leastRecentlyViewedFirst.splice(index, 1)
+    leastRecentlyViewedFirst.push(threadId)
+    forget(leastRecentlyViewedFirst.slice(0, -CACHED_HISTORY_LIMIT))
+  }
+  const fetchHistory = async (threadId: string) => {
+    takePending(threadId)
+    const loadId = Symbol(threadId)
+    setHistory(threadId, () => ({ status: "loading", loadId, pending: [] }))
+    const settle = (update: (pending: ReadonlyArray<TranscriptPush>) => ThreadHistory) =>
+      setHistory(threadId, (history) =>
+        history?.status === "loading" && history.loadId === loadId ? update(history.pending) : history,
+      )
+    try {
+      const { seq, ...snapshot } = await callPromise("threads.transcript", { threadId })
+      settle((pending) =>
+        pending
+          .filter((push) => push.seq > seq)
+          .reduce<ReadyHistory>(applyPush, { status: "ready", snapshotSeq: seq, ...snapshot }),
+      )
+    } catch (cause) {
+      settle(() => ({ status: "error", message: cause instanceof Error ? cause.message : String(cause) }))
+    }
+  }
+
   return {
     byThread: {},
 
     load: async (threadId) => {
+      markViewed(threadId)
       const current = get().byThread[threadId]
       if (current !== undefined && current.status !== "error") return
-      const loadId = Symbol(threadId)
-      setHistory(threadId, () => ({ status: "loading", loadId, pending: [] }))
-      const settle = (update: (pending: ReadonlyArray<TranscriptPush>) => ThreadHistory) =>
-        setHistory(threadId, (history) =>
-          history?.status === "loading" && history.loadId === loadId ? update(history.pending) : history,
-        )
-      try {
-        const { seq, ...snapshot } = await callPromise("threads.transcript", { threadId })
-        settle((pending) =>
-          pending
-            .filter((push) => push.seq > seq)
-            .reduce<ReadyHistory>(applyPush, { status: "ready", snapshotSeq: seq, ...snapshot }),
-        )
-      } catch (cause) {
-        settle(() => ({ status: "error", message: cause instanceof Error ? cause.message : String(cause) }))
-      }
+      await fetchHistory(threadId)
     },
 
-    unload: (threadId) => {
-      takePending(threadId)
-      set((state) => {
-        const { [threadId]: _dropped, ...byThread } = state.byThread
-        return { byThread }
-      })
+    reload: async (threadId) => {
+      if (get().byThread[threadId] !== undefined) await fetchHistory(threadId)
     },
+
+    unload: (threadId) => forget([threadId]),
 
     receive: (push) => {
       const threadId = pushThreadId(push)

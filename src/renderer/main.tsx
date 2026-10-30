@@ -63,6 +63,7 @@ onPushEvent((event) => {
       return useThreads.getState().upsert(event.thread)
     case "thread.removed":
       useUnseen.getState().clear(event.id)
+      useMessages.getState().unload(event.id)
       return useThreads.getState().remove(event.id)
     case "message.created":
     case "message.updated":
@@ -114,11 +115,9 @@ const isOnCloud = (environmentId: string) => {
 
 const reloadTranscripts = (environmentId: string) => {
   const onCloud = isOnCloud(environmentId)
-  const { byThread, unload, load } = useMessages.getState()
+  const { byThread, reload } = useMessages.getState()
   for (const threadId of Object.keys(byThread)) {
-    if (!onCloud(threadId)) continue
-    unload(threadId)
-    void load(threadId)
+    if (onCloud(threadId)) void reload(threadId)
   }
 }
 
