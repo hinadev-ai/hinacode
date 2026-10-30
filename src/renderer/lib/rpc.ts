@@ -41,8 +41,30 @@ export const callPromise = <M extends RpcMethod>(method: M, payload: RpcRequest<
 
 const decodePushEvent = Schema.decodeUnknownSync(PushEvent)
 
-export const onPushEvent = (listener: (event: PushEvent) => void) =>
-  window.hinacode.onEvent((raw) => listener(decodePushEvent(raw)))
+let pushListeners: ReadonlyArray<(event: PushEvent) => void> = []
+let stopBridgeEvents: (() => void) | undefined
+
+const broadcastPushEvent = (raw: typeof PushEvent.Encoded) => {
+  const event = decodePushEvent(raw)
+  for (const listener of pushListeners) {
+    try {
+      listener(event)
+    } catch (error) {
+      reportError(error)
+    }
+  }
+}
+
+export const onPushEvent = (listener: (event: PushEvent) => void) => {
+  pushListeners = [...pushListeners, listener]
+  stopBridgeEvents ??= window.hinacode.onEvent(broadcastPushEvent)
+  return () => {
+    pushListeners = pushListeners.filter((other) => other !== listener)
+    if (pushListeners.length > 0) return
+    stopBridgeEvents?.()
+    stopBridgeEvents = undefined
+  }
+}
 
 export const familyOf = <Args extends ReadonlyArray<unknown>, A extends object>(make: (...args: Args) => A) => {
   const family = Atom.family((key: string) => make(...(JSON.parse(key) as Args)))
