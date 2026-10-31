@@ -5,6 +5,7 @@ const FOOTNOTE_REFERENCE = /\[\^([^\]\s]+)\]/g
 const KBD = /<kbd>(.*?)<\/kbd>/gi
 const CODE_SPAN = /(`+)[^`]+?\1(?!`)/g
 const LINK_OR_AUTOLINK = /!?\[[^\]]*\]\([^)]*\)|<[^>\s]+>/g
+const URL_BEFORE_PUNCTUATION = /(?<![\w/"'=(<[])(https?:\/\/[^\s<>()]*[^\s<>().,;:!?])([.,;:!?]+)(?=\s|$)/gi
 const PULL_REQUEST_URL = /(?<![\w/"'=])https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)(?![\w/?#=&-])/gi
 const SUPERSCRIPT_DIGITS = "⁰¹²³⁴⁵⁶⁷⁸⁹"
 
@@ -31,12 +32,14 @@ function outside(protect: RegExp, text: string, rewrite: (rest: string) => strin
 
 const outsideCode = (line: string, rewrite: (prose: string) => string) => outside(CODE_SPAN, line, rewrite)
 
-const shortenPullRequestUrls = (prose: string) =>
+const rewriteBareUrls = (prose: string) =>
   outside(LINK_OR_AUTOLINK, prose, (text) =>
-    text.replace(
-      PULL_REQUEST_URL,
-      (url, owner: string, name: string, number: string) => `[${owner}/${name}#${number}](${url})`,
-    ),
+    text
+      .replace(
+        PULL_REQUEST_URL,
+        (url, owner: string, name: string, number: string) => `[${owner}/${name}#${number}](${url})`,
+      )
+      .replace(URL_BEFORE_PUNCTUATION, "<$1>$2"),
   )
 
 /**
@@ -70,22 +73,19 @@ const labelBareFence = (line: string) => (BARE_FENCE.test(line) ? `${line.trimEn
 
 /**
  * Rewrites what the phone's Markdown renderer has no syntax for into what it has, as the desktop renders it:
- * a bare GitHub pull request URL becomes a link named `owner/repo#n`, `<kbd>` becomes a code span, which the
+ * a bare GitHub pull request URL becomes a link named `owner/repo#n`, a bare URL ending a sentence leaves its
+ * punctuation outside the link, `<kbd>` becomes a code span, which the
  * renderer draws as a key cap, a footnote reference `[^id]` becomes a superscript number, and the definitions
  * move to a numbered list at the end, in the order they are first cited. A fence with no language is labelled
  * `text`, so the code block header names it instead of standing empty. Code blocks, code spans and existing
  * links stay as written, and other HTML stays text.
  */
 export function rewriteMarkdownExtras(markdown: string) {
-  const linksPullRequests = /github\.com\/\S+\/pull\//i.test(markdown)
+  const hasBareUrls = /https?:\/\//i.test(markdown)
   const labelsFences = BARE_FENCE.test(markdown)
   const rewritten =
-    linksPullRequests || labelsFences
-      ? mapProseLines(
-          markdown,
-          (line) => (linksPullRequests ? outsideCode(line, shortenPullRequestUrls) : line),
-          labelBareFence,
-        )
+    hasBareUrls || labelsFences
+      ? mapProseLines(markdown, (line) => (hasBareUrls ? outsideCode(line, rewriteBareUrls) : line), labelBareFence)
       : markdown
   return rewriteKeysAndFootnotes(rewritten)
 }
