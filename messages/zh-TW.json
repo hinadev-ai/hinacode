@@ -117,6 +117,8 @@
   "tool_input": "輸入",
   "tool_output": "輸出",
   "tool_no_output": "尚無輸出",
+  "tool_output_show_full": "顯示完整輸出（{size}）",
+  "tool_output_load_failed": "無法載入完整輸出：{message}",
   "file_change_label": "已變更",
   "compaction_running": "正在壓縮對話…",
   "compaction_done": "已壓縮對話",

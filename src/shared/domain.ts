@@ -396,6 +396,7 @@ export const MessagePart = Schema.Union([
     name: Schema.String,
     input: Schema.Unknown,
     output: Schema.optional(Schema.Unknown),
+    fullOutputBytes: Schema.optional(Schema.Number),
     status: ToolCallStatus,
     parentCallId: Schema.optional(Schema.String),
   }),
@@ -406,6 +407,9 @@ export const MessagePart = Schema.Union([
   Schema.Struct({ type: Schema.Literal("agent_switch"), from: ProviderId, to: ProviderId }),
 ])
 export type MessagePart = typeof MessagePart.Type
+
+// FIXME: Claude Code named its sub-agent tool Task before it became Agent
+export const spawnsSubagent = (call: { readonly name: string }) => call.name === "Agent" || call.name === "Task"
 
 export const MessageRole = Schema.Literals(["user", "assistant"])
 export type MessageRole = typeof MessageRole.Type

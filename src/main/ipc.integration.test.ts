@@ -13,6 +13,7 @@ import type { AccountHome, AgentEvent, Subagent, ThreadUsage } from "../shared/a
 import { unlistedModel } from "../shared/agent.ts"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import type { PushEvent, RpcEnvelope, RpcMethod, RpcRequestEncoded, RpcResponseEncoded } from "../shared/contract.ts"
+import { TOOL_OUTPUT_PREVIEW_CHARS } from "../shared/compactTranscript.ts"
 import { clientProof, newNonce, serverProof } from "../shared/proof.ts"
 import { type ClientFrame, remoteWebSocketUrl, type ServerFrame } from "../shared/remote.ts"
 import { defaultSettings, type Message, type Project, type Thread, type Worktree } from "../shared/domain.ts"
@@ -118,6 +119,8 @@ const scriptedTurn: ReadonlyArray<AgentEvent> = [
   { type: "turn_completed" },
 ]
 
+const longOutput = Array.from({ length: 2000 }, (_, line) => `line ${line}`).join("\n")
+
 const boundSession = "31ee17f8-6200-4a50-80ff-96241b83319e"
 const sessionUsage: ThreadUsage = {
   models: [{ model: "claude-model", inputTokens: 6, cacheWriteTokens: 1050, cacheReadTokens: 3000, outputTokens: 220 }],
@@ -175,6 +178,13 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
       if (input.prompt === "simulate a held turn") {
         return Stream.fromEffect(Effect.promise(() => heldTurn.promise)).pipe(
           Stream.flatMap(() => Stream.fromIterable(scriptedTurn)),
+        )
+      }
+      if (input.prompt === "simulate a long tool output") {
+        return Stream.make<Array<AgentEvent>>(
+          { type: "tool_call_started", callId: "long-1", name: "Bash", input: { command: "seq" } },
+          { type: "tool_call_finished", callId: "long-1", output: longOutput, isError: false },
+          { type: "turn_completed" },
         )
       }
       return Stream.fromIterable(
@@ -1171,6 +1181,45 @@ describe("compact transcripts over rpc", () => {
       await invoke("threads.transcript", { threadId: thread.id, compact: true, page: { before: all.at(-1)! } }),
     )
     expect(older.messages.map((m) => m.id)).toStrictEqual(all.slice(0, -1))
+  })
+})
+
+describe("long tool outputs over rpc", () => {
+  test("ship a preview of the output's tail and load the full output on demand", async () => {
+    const root = join(dir, "long-output")
+    execFileSync("git", ["init", "-q", "-b", "main", root])
+    const project = result(await invoke("projects.create", { name: "long-output", rootPath: root, setupScript: null }))
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    electron.pushes.length = 0
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a long tool output" }))
+    await expect.poll(async () => (await threadOf(thread.id)).status).toBe("idle")
+
+    const call = result(await invoke("threads.transcript", { threadId: thread.id })).messages.at(-1)?.parts[0]
+    expect(call).toMatchObject({ type: "tool_call", callId: "long-1", fullOutputBytes: longOutput.length })
+    const preview = call?.type === "tool_call" ? String(call.output) : ""
+    expect(preview.length).toBeLessThanOrEqual(TOOL_OUTPUT_PREVIEW_CHARS)
+    expect(preview).toMatch(/^line \d+\n/)
+    expect(longOutput.endsWith(preview)).toBe(true)
+
+    const finished = pushed().flatMap((push) =>
+      push.type === "thread.event" && push.threadId === thread.id && push.event.type === "tool_call_finished"
+        ? [push.event]
+        : [],
+    )
+    expect(finished).toStrictEqual([
+      {
+        type: "tool_call_finished",
+        callId: "long-1",
+        output: preview,
+        fullOutputBytes: longOutput.length,
+        isError: false,
+      },
+    ])
+
+    expect(result(await invoke("threads.toolOutput", { threadId: thread.id, callId: "long-1" }))).toBe(longOutput)
+    expect(failure(await invoke("threads.toolOutput", { threadId: thread.id, callId: "missing" })).tag).toBe(
+      "NotFoundError",
+    )
   })
 })
 

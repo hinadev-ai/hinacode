@@ -1,5 +1,6 @@
 import { useParams } from "@tanstack/react-router"
 import { createContext, type ReactNode, use, useState } from "react"
+import { toast } from "sonner"
 import type { IconType } from "react-icons"
 import {
   RiArrowRightSLine,
@@ -17,10 +18,12 @@ import {
   RiToolsLine,
 } from "react-icons/ri"
 import type { Compaction, ProviderId } from "../../shared/agent.ts"
-import type { MessagePart, ToolCallStatus } from "../../shared/domain.ts"
+import { type MessagePart, spawnsSubagent, type ToolCallStatus } from "../../shared/domain.ts"
 import { ansiSegments } from "../lib/ansi.ts"
+import { errorMessage } from "../lib/errorMessage.ts"
 import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
-import { spawnsSubagent, statusOfCall, useOpenSubagent } from "../lib/subagents.ts"
+import { statusOfCall, useOpenSubagent } from "../lib/subagents.ts"
+import { callPromise } from "../lib/rpc.ts"
 import { countToolKinds, describeCommand, describeToolCall, type ToolKind } from "../lib/toolCall.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
@@ -28,12 +31,13 @@ import { getLocale } from "../paraglide/runtime.js"
 import { useSubagentByCallId } from "../stores/subagents.ts"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
-import { AttachmentView } from "./AttachmentView.tsx"
+import { AttachmentView, formatBytes } from "./AttachmentView.tsx"
 import { FindPartContext, FindPatternContext, Highlighted } from "./FindHighlight.tsx"
 import { HighlightedCode } from "./HighlightedCode.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { SubagentStatusIcon } from "./ThreadAgents.tsx"
+import { Button } from "./ui/button.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
 
 export function MessagePartView({ part }: { part: MessagePart }) {
@@ -129,6 +133,8 @@ const statusLabel = {
 
 export const SubagentLinks = createContext(true)
 
+export const PartThread = createContext("")
+
 function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call" }> }) {
   const linksSubagents = use(SubagentLinks)
   if (linksSubagents && spawnsSubagent(part)) return <SubagentCallPart part={part} />
@@ -158,9 +164,30 @@ function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call"
   )
 }
 
-function ToolCallDetails({ call, summary, inGroup = false }: { call: ToolCall; summary: string; inGroup?: boolean }) {
+function ToolCallDetails({
+  call: shipped,
+  summary,
+  inGroup = false,
+}: {
+  call: ToolCall
+  summary: string
+  inGroup?: boolean
+}) {
+  const [call, showFullOutput] = useFullOutput(shipped)
+  const fullOutputButton = call.fullOutputBytes !== undefined && (
+    <Button variant="link" size="xs" action={showFullOutput} className="-ml-2 font-sans text-muted-foreground">
+      {m.tool_output_show_full({ size: formatBytes(call.fullOutputBytes) })}
+    </Button>
+  )
   if (call.name === "Bash") {
-    return <CommandView call={call} command={summary} scroll={inGroup ? "" : "max-h-80 overflow-auto"} />
+    return (
+      <CommandView
+        call={call}
+        command={summary}
+        scroll={inGroup ? "" : "max-h-80 overflow-auto"}
+        fullOutputButton={fullOutputButton}
+      />
+    )
   }
   const scroll = inGroup ? "" : "max-h-64 overflow-auto"
   return (
@@ -170,9 +197,25 @@ function ToolCallDetails({ call, summary, inGroup = false }: { call: ToolCall; s
         label={m.tool_output()}
         text={call.output === undefined ? m.tool_no_output() : formatOutput(call.output)}
         scroll={scroll}
+        fullOutputButton={fullOutputButton}
       />
     </div>
   )
+}
+
+function useFullOutput(shipped: ToolCall) {
+  const threadId = use(PartThread)
+  const [full, setFull] = useState<ToolCall | null>(null)
+  const showFullOutput = async () => {
+    try {
+      const output = await callPromise("threads.toolOutput", { threadId, callId: shipped.callId })
+      const { fullOutputBytes: _fullOutputBytes, ...call } = shipped
+      setFull({ ...call, output })
+    } catch (cause) {
+      toast.error(m.tool_output_load_failed({ message: errorMessage(cause) }))
+    }
+  }
+  return [full ?? shipped, showFullOutput] as const
 }
 
 function SubagentCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call" }> }) {
@@ -345,7 +388,17 @@ function ToolLabel({ call, truncate }: { call: ToolCall; truncate: string }) {
   )
 }
 
-function CommandView({ call, command, scroll }: { call: ToolCall; command: string; scroll: string }) {
+function CommandView({
+  call,
+  command,
+  scroll,
+  fullOutputButton,
+}: {
+  call: ToolCall
+  command: string
+  scroll: string
+  fullOutputButton: ReactNode
+}) {
   const output = call.output === undefined ? "" : formatOutput(call.output).replace(/\n$/, "")
   return (
     <div className={cn("rounded-md bg-muted/50 p-2 font-mono", scroll)}>
@@ -358,6 +411,7 @@ function CommandView({ call, command, scroll }: { call: ToolCall; command: strin
       {(output !== "" || call.status !== "running") && (
         <section className="mt-2">
           <h4 className="sr-only">{m.tool_output()}</h4>
+          {fullOutputButton}
           <pre className="ansi-output whitespace-pre-wrap wrap-anywhere text-muted-foreground">
             {output === "" ? m.tool_no_output() : <AnsiText text={output} />}
           </pre>
@@ -383,10 +437,21 @@ function ShellCode({ code }: { code: string }) {
   )
 }
 
-function ToolSection({ label, text, scroll }: { label: string; text: string; scroll: string }) {
+function ToolSection({
+  label,
+  text,
+  scroll,
+  fullOutputButton,
+}: {
+  label: string
+  text: string
+  scroll: string
+  fullOutputButton?: ReactNode
+}) {
   return (
     <section>
       <h4 className="mb-1 font-medium text-muted-foreground">{label}</h4>
+      {fullOutputButton}
       <pre className={cn("rounded-md bg-muted/50 p-2 font-mono whitespace-pre-wrap wrap-anywhere", scroll)}>{text}</pre>
     </section>
   )

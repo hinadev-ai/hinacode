@@ -307,6 +307,8 @@ sequenceDiagram
 
 Electron IPC can deliver the reply before pushes sent earlier, so a push the snapshot already holds can still arrive after it. The store drops it by `seq`, and drops a reply whose load was superseded by its load token. `specs/TranscriptSync.tla` checks both.
 
+Neither the snapshot nor the pushes carry long tool outputs. `previewMessage` and `previewPush` (`shared/compactTranscript.ts`) replace a string output longer than 4,096 characters with its last whole lines and set `fullOutputBytes` on the part or `tool_call_finished` event. The runner applies them only where a transcript leaves for a client: the `threads.transcript` reply and `publishTranscript`. The database and the runner's in-memory turn keep the full output. The expanded tool view fetches it with `threads.toolOutput`, which reads the running turn first and then the one part from SQLite. See `features/2026-10-31-lazy-tool-output.md`.
+
 ## Thread side panel
 
 The right edge of the thread route is an activity bar: one icon per view, and the selected view to its left. `sidePanel/views.ts` holds the registry, one entry per view with its icon, title, command and component. The bar, the content area and the `view.*` commands all render from that array, so adding a view is one entry and no branch anywhere else. `useUi` remembers the view per thread and the last one picked; picking the shown view again hides the panel.
