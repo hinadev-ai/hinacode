@@ -3,6 +3,7 @@ import { FitAddon } from "@xterm/addon-fit"
 import { Terminal } from "@xterm/xterm"
 import { useEffect, useEffectEvent, useImperativeHandle, useRef } from "react"
 import { View, type ViewInstance } from "react-native"
+import { copy } from "@/lib/copy"
 import { type TerminalViewProps, xtermTheme } from "./terminal-types"
 
 export function TerminalView({ ref, theme, onInput, onSize, onCursorMode }: TerminalViewProps) {
@@ -65,7 +66,7 @@ export function TerminalView({ ref, theme, onInput, onSize, onCursorMode }: Term
     <View
       ref={container}
       testID="terminal"
-      accessibilityLabel="Terminal"
+      accessibilityLabel={copy("mobile_terminal_label")}
       style={{ flex: 1, padding: 6, backgroundColor: theme.background }}
     />
   )
