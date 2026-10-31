@@ -327,26 +327,25 @@ const make = Effect.gen(function* () {
 
   const gitOutput = (cwd: string, args: ReadonlyArray<string>) =>
     git.run(cwd, args).pipe(
-      Effect.map((out) => out.trim() || null),
-      Effect.orElseSucceed(() => null),
+      Effect.map((out) => out.trim()),
+      Effect.option,
     )
 
   const readEnvironment = (thread: Thread, { cwd, rootPath }: ActiveWorkspace) =>
     Effect.all(
       [
-        gitOutput(cwd, ["rev-parse", "--is-inside-work-tree"]),
         gitOutput(cwd, ["branch", "--show-current"]),
         gitOutput(cwd, ["remote", "get-url", "origin"]),
         scratch.ensure(thread),
       ],
       { concurrency: "unbounded" },
     ).pipe(
-      Effect.map(([insideWorkTree, branch, remote, scratchDirectory]): AgentEnvironment => ({
-        gitRepository: insideWorkTree === "true",
-        branch,
+      Effect.map(([branch, remote, scratchDirectory]): AgentEnvironment => ({
+        gitRepository: Option.isSome(branch),
+        branch: Option.getOrNull(branch) || null,
         cwd,
         rootPath,
-        remote,
+        remote: Option.getOrNull(remote) || null,
         platform: process.platform,
         scratchDirectory,
       })),
