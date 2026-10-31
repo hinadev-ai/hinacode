@@ -45,6 +45,14 @@
         }
       ],
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "HinaCode attaches the photos you pick to your message.",
+          "cameraPermission": "HinaCode uses the camera to scan the pairing QR code shown in desktop Settings.",
+          "microphonePermission": false
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "android": {
