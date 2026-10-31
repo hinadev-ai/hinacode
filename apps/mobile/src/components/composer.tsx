@@ -707,7 +707,7 @@ function SettingsSheet({
             </Section>
           )}
           {current?.fastMode && (
-            <Section title={copy("mobile_composer_speed")}>
+            <Section title={copy("mobile_composer_speed")} role="group">
               <ToggleRow
                 icon="RiFlashlightLine"
                 label={copy("mobile_composer_fast_mode")}
@@ -718,7 +718,7 @@ function SettingsSheet({
             </Section>
           )}
           {hidesUserSkills[thread.provider] && (
-            <Section title={copy("mobile_thread_conversation")}>
+            <Section title={copy("mobile_thread_conversation")} role="group">
               <ToggleRow
                 icon="RiChat1Line"
                 label={copy("mobile_thread_conversation_mode")}

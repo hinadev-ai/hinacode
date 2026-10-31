@@ -1562,6 +1562,7 @@
   "mobile_relay_service_url": "Service URL",
   "mobile_relay_owner_token": "Owner token",
   "mobile_relay_sign_in": "Sign in",
+  "mobile_relay_fields_required": "Enter the service URL and the owner token.",
   "mobile_relay_service": "Service",
   "mobile_relay_machines": "Machines",
   "mobile_relay_last_sync": "Last synced",

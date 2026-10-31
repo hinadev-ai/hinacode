@@ -1526,6 +1526,7 @@
   "mobile_relay_service_url": "服務網址",
   "mobile_relay_owner_token": "擁有者權杖",
   "mobile_relay_sign_in": "登入",
+  "mobile_relay_fields_required": "請輸入服務網址與擁有者權杖。",
   "mobile_relay_service": "服務",
   "mobile_relay_machines": "機器",
   "mobile_relay_last_sync": "上次同步",

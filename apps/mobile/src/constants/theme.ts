@@ -125,6 +125,9 @@ export const mono = Platform.select({ ios: "Menlo", android: "monospace", defaul
 /** Minimum touch target. */
 export const HIT = 44
 
+/** A status pill's height, for rows that keep its place while it is hidden. */
+export const PILL_HEIGHT = 20
+
 /** The widest a column of prose gets on a tablet, so lines stay readable. Every phone is narrower. */
 export const READABLE_WIDTH = 720
 

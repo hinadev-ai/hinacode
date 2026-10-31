@@ -104,10 +104,19 @@ export function Sheet({
   )
 }
 
-export function Section({ title, children }: { title: string; children: ReactNode }) {
+export function Section({
+  title,
+  role = "radiogroup",
+  children,
+}: {
+  title: string
+  /** `group` for a section of switches, which are not one choice among several. */
+  role?: "radiogroup" | "group"
+  children: ReactNode
+}) {
   const theme = useTheme()
   return (
-    <View accessibilityRole="radiogroup" accessibilityLabel={title} style={styles.section}>
+    <View role={role} accessibilityLabel={title} style={styles.section}>
       <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>{title}</Text>
       {children}
     </View>

@@ -14,14 +14,13 @@ import { SidebarButton, SidebarToolbarButton } from "@/components/thread-sidebar
 import {
   IconButton,
   Notice,
-  PILL_HEIGHT,
   ProviderLabel,
   type Segment,
   SegmentedControl,
   ThreadStatusPill,
 } from "@/components/ui"
 import { useThreadConnection } from "@/hooks/use-server"
-import { READABLE_WIDTH } from "@/constants/theme"
+import { PILL_HEIGHT, READABLE_WIDTH } from "@/constants/theme"
 import { useSplitLayout } from "@/hooks/use-split-layout"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"

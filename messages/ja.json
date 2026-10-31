@@ -1508,6 +1508,7 @@
   "mobile_relay_service_url": "サービス URL",
   "mobile_relay_owner_token": "オーナートークン",
   "mobile_relay_sign_in": "サインイン",
+  "mobile_relay_fields_required": "サービス URL とオーナートークンを入力してください。",
   "mobile_relay_service": "サービス",
   "mobile_relay_machines": "マシン",
   "mobile_relay_last_sync": "最終同期",

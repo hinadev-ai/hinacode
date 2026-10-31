@@ -17,7 +17,7 @@ import Animated, { useReducedMotion } from "react-native-reanimated"
 import { Icon, type IconName } from "@/components/icon"
 import { PressableScale, Spinner } from "@/components/motion"
 import { cssEase, duration } from "@/constants/motion"
-import { HIT, type Palette, ProviderColors, radius } from "@/constants/theme"
+import { HIT, type Palette, PILL_HEIGHT, ProviderColors, radius } from "@/constants/theme"
 import { threadStatus } from "@/constants/thread-status"
 import { useScheme, useTheme } from "@/hooks/use-theme"
 import type { ConnectionStatus } from "@/lib/connection"
@@ -123,9 +123,6 @@ const buttonColors = (theme: Palette) => ({
 })
 
 export type Tone = "neutral" | "attention" | "running" | "danger"
-
-/** A pill's height, for rows that keep its place while it is hidden. */
-export const PILL_HEIGHT = 20
 
 export const subheading = { "aria-level": 2 } as object
 
