@@ -80,25 +80,10 @@
         "no-restricted-imports": [
           "error",
           {
-            "paths": [
-              {
-                "name": "react-icons/ri",
-                "allowImportNames": [
-                  "RiAndroidLine",
-                  "RiAppleLine",
-                  "RiClaudeFill",
-                  "RiGithubFill",
-                  "RiMetaFill",
-                  "RiOpenaiFill",
-                  "RiSlackFill"
-                ],
-                "message": "Use the HinaCode icons in src/renderer/components/icons. Only brand marks come from react-icons."
-              }
-            ],
             "patterns": [
               {
-                "group": ["react-icons/*", "!react-icons/ri", "lucide-react", "@remixicon/*"],
-                "message": "Use the HinaCode icons in src/renderer/components/icons."
+                "group": ["lucide-react", "@remixicon/*"],
+                "message": "Use the HinaCode icons in src/renderer/components/icons, or react-icons/ri."
               }
             ]
           }
