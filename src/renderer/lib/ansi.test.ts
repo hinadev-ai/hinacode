@@ -16,6 +16,12 @@ describe("ansiSegments", () => {
     ])
   })
 
+  test("dims faint text with the muted color instead of opacity", () => {
+    expect(ansiSegments("\x1b[2mat retry.ts:128\x1b[22m")).toEqual([
+      { text: "at retry.ts:128", style: { color: "var(--muted-foreground)" } },
+    ])
+  })
+
   test("passes truecolor through", () => {
     expect(ansiSegments("\x1b[38;2;10;20;30mx")).toEqual([{ text: "x", style: { color: "rgb(10, 20, 30)" } }])
   })
