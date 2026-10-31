@@ -295,7 +295,7 @@ function PartView({ part }: { part: MessagePart }) {
       return (
         <View style={[styles.tool, { borderColor: theme.border }]}>
           <Icon name="RiToolsLine" size={14} color={theme.textMuted} />
-          <Text numberOfLines={1} style={[styles.toolName, { color: theme.text }]}>
+          <Text style={[styles.toolName, { color: theme.text }]}>
             {part.name}
             {summary && <Text style={{ color: theme.textMuted }}> {summary}</Text>}
           </Text>
@@ -307,7 +307,7 @@ function PartView({ part }: { part: MessagePart }) {
       return (
         <View style={styles.fileChange}>
           <Icon name="RiPencilLine" size={14} color={theme.textMuted} />
-          <Text numberOfLines={1} style={[styles.toolName, { color: theme.textMuted }]}>
+          <Text style={[styles.toolName, { color: theme.textMuted }]}>
             {copy("mobile_chat_edited", { path: part.path })}
           </Text>
         </View>
@@ -445,11 +445,7 @@ function ApprovalCard({ request }: { request: ApprovalRequest }) {
       >
         <Text style={[styles.cardTitle, { color: theme.text }]}>{request.title}</Text>
         {request.detail !== "" && (
-          <Text
-            numberOfLines={8}
-            selectable
-            style={[styles.detail, { color: theme.text, backgroundColor: theme.surface }]}
-          >
+          <Text selectable style={[styles.detail, { color: theme.text, backgroundColor: theme.surface }]}>
             {request.detail}
           </Text>
         )}
