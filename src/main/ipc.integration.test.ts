@@ -1688,6 +1688,36 @@ describe("remote mode", () => {
     paired.socket.close()
   })
 
+  test("sends a transcript larger than the socket buffer next to another call without closing", async () => {
+    const project = result(await invoke("projects.list", undefined))[0] ?? (await createProject("large-transcript"))
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    await runtime.runPromise(
+      Messages.Messages.use((messages) =>
+        messages.insert({
+          id: `${thread.id}-long`,
+          threadId: thread.id,
+          role: "assistant",
+          parts: [{ type: "text", text: "x".repeat(9 * 1024 * 1024) }],
+          createdAt: "2026-10-12T00:00:00.000Z",
+          completedAt: "2026-10-12T00:00:00.000Z",
+          usage: null,
+          forkPoint: null,
+        }),
+      ),
+    )
+    const paired = phone(port)
+    await paired.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    await paired.ready()
+
+    const [transcript, projects] = await Promise.all([
+      paired.call("threads.transcript", { threadId: thread.id }),
+      paired.call("projects.list", undefined),
+    ])
+    expect(result(transcript).messages).toHaveLength(1)
+    expect(result(projects)).toBeInstanceOf(Array)
+    paired.socket.close()
+  })
+
   test("a keyed mutation retried from a second socket runs once and answers the same result", async () => {
     const token = result(await invoke("remote.pairing", undefined)).token
     const project = result(await invoke("projects.list", undefined))[0] ?? (await createProject("remote-keyed"))
