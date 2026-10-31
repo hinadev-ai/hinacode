@@ -4,7 +4,7 @@ import { cn } from "cn"
 import { createContext, Fragment, type ReactElement, type ReactNode, use, type Ref, useState } from "react"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { Message, MessagePart } from "../../shared/domain.ts"
-import { fenceCode, highlight, type KnownTokens } from "../../shared/composerSyntax.ts"
+import { fenceCode, highlight, type KnownTokens, type Segment } from "../../shared/composerSyntax.ts"
 import { THREAD_MENTION } from "../../shared/threadMention.ts"
 import {
   assistantPresentation,
@@ -122,6 +122,8 @@ function WithThreadMentions({ text }: { text: string }) {
   return nodes
 }
 
+const isBlock = (segment: Segment | undefined) => segment?.kind === "fence" || segment?.kind === "rule"
+
 const insetCode = "bg-background font-mono text-[0.91em]"
 
 function SentText({ text, commands }: { text: string; commands: ReadonlyArray<AgentCommand> }) {
@@ -142,6 +144,13 @@ function SentText({ text, commands }: { text: string; commands: ReadonlyArray<Ag
           </code>
         </pre>
       )
+    if (segment.kind === "rule") return <hr key={index} className="my-2 border-border" />
+    if (segment.kind === "strong")
+      return (
+        <strong key={index} className="font-semibold">
+          <Highlighted text={segment.text.slice(2, -2)} />
+        </strong>
+      )
     if (segment.kind === "code")
       return (
         <code key={index} className={cn(insetCode, "rounded-[0.25em] px-[0.3em] py-[0.1em]")}>
@@ -156,8 +165,8 @@ function SentText({ text, commands }: { text: string; commands: ReadonlyArray<Ag
         </CommandChip>
       )
     let prose = segment.text
-    if (segments[index - 1]?.kind === "fence") prose = prose.replace(/^\n/, "")
-    if (segments[index + 1]?.kind === "fence") prose = prose.replace(/\n$/, "")
+    if (isBlock(segments[index - 1])) prose = prose.replace(/^\n/, "")
+    if (isBlock(segments[index + 1])) prose = prose.replace(/\n$/, "")
     return linkify(prose, repository).map((link, linkIndex) =>
       link.type === "link" ? (
         <WebLink key={`${index}:${linkIndex}`} href={link.href}>
