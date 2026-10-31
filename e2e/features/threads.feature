@@ -52,6 +52,14 @@ Feature: Threads
     Then the sidebar lists the thread "Done"
     And the thread "Done" is stored as "idle"
 
+  Scenario: An archived thread comes back with Undo on the toast
+    Given the project "demo" has a thread "Oops"
+    When I archive the thread "Oops" from its row
+    Then the sidebar does not list the thread "Oops"
+    When I undo from the toast
+    Then the sidebar lists the thread "Oops"
+    And the thread "Oops" is stored as "idle"
+
   Scenario: Archiving a thread far down the sidebar keeps the sidebar scrolled there
     Given the project "demo" has 40 threads named "Task"
     When I scroll the sidebar to the thread "Task 40"

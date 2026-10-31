@@ -78,6 +78,10 @@ When("I open the sidebar tab {string}", async ({ app }, tab: string) => {
   await expect(openTab(app.page)).toHaveCount(1)
 })
 
+When("I undo from the toast", async ({ app }) => {
+  await app.page.getByRole("button", { name: "Undo", exact: true }).click()
+})
+
 When("I unarchive the thread {string}", async ({ app, names }, title: string) => {
   await clickRowButton(sidebar(app.page), `Unarchive ${names.of(title)}`)
 })
