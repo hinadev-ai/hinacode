@@ -70,7 +70,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
           data-loaded={loaded}
           className="absolute inset-x-0 bottom-0 flex max-h-full flex-col data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] data-[loaded=false]:opacity-0 data-[loaded=true]:data-[centered=false]:transition-transform data-[loaded=true]:data-[centered=false]:duration-500 data-[loaded=true]:data-[centered=false]:ease-(--ease-drawer) motion-reduce:transition-none"
         >
-          <Composer thread={thread}>
+          <Composer thread={thread} subagentCallId={agent}>
             <PendingRequests thread={thread} />
             {thread.status === "limited" && thread.usageLimit !== null ? (
               <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />

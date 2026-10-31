@@ -37,6 +37,7 @@ import { useIsChat } from "../lib/useIsChat.ts"
 import { m } from "../paraglide/messages.js"
 import { type Draft, emptyDraft, useDrafts } from "../stores/drafts.ts"
 import { useMessages } from "../stores/messages.ts"
+import { useSubagentByCallId } from "../stores/subagents.ts"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import {
@@ -106,8 +107,18 @@ const sourceOf = async (file: File): Promise<StageSource> => {
   return { dataUrl: await readAsDataUrl(file), name: file.name || "pasted.png" }
 }
 
-export function Composer({ thread, children }: { thread: Thread; children?: ReactNode }) {
+export function Composer({
+  thread,
+  subagentCallId,
+  children,
+}: {
+  thread: Thread
+  subagentCallId?: string | undefined
+  children?: ReactNode
+}) {
   const { text, attachments, workspace, comments } = useDrafts((state) => state.byThreadId[thread.id] ?? emptyDraft)
+  const inSubagent = subagentCallId !== undefined
+  const subagent = useSubagentByCallId(thread.id, subagentCallId ?? "")
   const isSidechat = thread.sideOf !== null
   const unstarted = useMessages((state) => {
     const history = state.byThread[thread.id]
@@ -135,8 +146,8 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   const mentionable = mentionableThreads(thread, Object.values(threadsById), projects)
   const refreshCommands = useAtomRefresh(commandsAtom(key))
   const refreshRootBranch = useAtomRefresh(currentBranchAtom(thread.projectId))
-  const busy = isThreadBusy(thread.status)
-  const hasDraft = text.trim() !== "" || attachments.length > 0 || comments.length > 0
+  const busy = inSubagent ? subagent?.status === "running" : isThreadBusy(thread.status)
+  const hasDraft = !inSubagent && (text.trim() !== "" || attachments.length > 0 || comments.length > 0)
   const canSend = hasDraft && !isSending && !isStaging
   const modifierHeld = useModifierHeld()
   const clickDelivery: Delivery = modifierHeld ? "steer" : "queue"
@@ -198,7 +209,10 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   }
 
   const stop = () => {
-    callPromise("threads.interrupt", { threadId: thread.id }).catch((cause: unknown) => setError(errorMessage(cause)))
+    const stopped = inSubagent
+      ? subagent && callPromise("subagents.stop", { threadId: thread.id, subagentId: subagent.id })
+      : callPromise("threads.interrupt", { threadId: thread.id })
+    stopped?.catch((cause: unknown) => setError(errorMessage(cause)))
   }
 
   useComposerRequests(textareaRef, isSidechat, () => {
@@ -268,13 +282,16 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
               ref={textareaRef}
               aria-label={isSidechat ? m.panel_tab_sidechat() : m.thread_composer_label()}
               placeholder={
-                busy
-                  ? m.thread_composer_queue_placeholder({ steer: formatForDisplay(STEER_CHORD) })
-                  : isSidechat
-                    ? m.sidechat_placeholder()
-                    : m.thread_composer_placeholder()
+                inSubagent
+                  ? m.agents_composer_placeholder()
+                  : busy
+                    ? m.thread_composer_queue_placeholder({ steer: formatForDisplay(STEER_CHORD) })
+                    : isSidechat
+                      ? m.sidechat_placeholder()
+                      : m.thread_composer_placeholder()
               }
-              value={text}
+              value={inSubagent ? "" : text}
+              disabled={inSubagent}
               onValueChange={(next) => useDrafts.getState().setText(thread.id, next)}
               commands={commands}
               files={files}
@@ -289,8 +306,8 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
             />
             <ComposerToolbar className="shrink-0 gap-2">
               <ComposerActions className="min-w-0 flex-1">
-                <AttachButton onClick={pickFiles} disabled={isStaging} />
-                <ThreadPicker thread={thread} canSwitchAgent={!busy && !isSidechat} onError={setError} />
+                <AttachButton onClick={pickFiles} disabled={isStaging || inSubagent} />
+                <ThreadPicker thread={thread} canSwitchAgent={!busy && !isSidechat && !inSubagent} onError={setError} />
               </ComposerActions>
               <ContextRing threadId={thread.id} provider={thread.provider} />
               <SendButton mode={sendMode} canSend={canSend} onStop={stop} />

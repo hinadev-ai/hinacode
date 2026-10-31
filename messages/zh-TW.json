@@ -408,6 +408,7 @@
   "agents_batch_running": "執行中 {running}/{total}",
   "agents_batch_failed": "{count} 個失敗",
   "agents_stop": "停止 {label}",
+  "agents_composer_placeholder": "無法傳訊息給子代理",
   "agents_stop_failed": "無法停止子代理：{message}",
   "activity_label": "代理活動",
   "activity_background_label": "背景工作",

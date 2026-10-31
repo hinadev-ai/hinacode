@@ -408,6 +408,7 @@
   "agents_batch_running": "{total} 件中 {running} 件実行中",
   "agents_batch_failed": "{count} 件失敗",
   "agents_stop": "{label} を停止",
+  "agents_composer_placeholder": "サブエージェントにはメッセージを送れません",
   "agents_stop_failed": "サブエージェントを停止できませんでした：{message}",
   "activity_label": "エージェントのアクティビティ",
   "activity_background_label": "バックグラウンドタスク",

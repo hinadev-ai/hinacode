@@ -408,6 +408,7 @@
   "agents_batch_running": "{running} of {total} running",
   "agents_batch_failed": "{count} failed",
   "agents_stop": "Stop {label}",
+  "agents_composer_placeholder": "Sub-agents don't take messages",
   "agents_stop_failed": "Could not stop the sub-agent: {message}",
   "activity_label": "Agent activity",
   "activity_background_label": "Background tasks",
