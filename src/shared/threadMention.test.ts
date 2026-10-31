@@ -33,6 +33,7 @@ const thread = (id: string, patch: Partial<Thread>): Thread => ({
 const projects: ReadonlyArray<Pick<Project, "id" | "environmentId" | "repository">> = [
   { id: "desktop-hinacode", repository: "hinadev-ai/hinacode" },
   { id: "desktop-site", repository: "hinadev-ai/site" },
+  { id: "desktop-clone", repository: "hinadev-ai/hinacode" },
   { id: "cloud-hinacode", environmentId: "cloud", repository: "hinadev-ai/hinacode" },
   { id: "cloud-site", environmentId: "cloud", repository: "hinadev-ai/site" },
 ]
@@ -44,6 +45,7 @@ const threads = [
   thread("desktop-docs", { projectId: "desktop-hinacode", title: "Docs" }),
   thread("archived", { projectId: "cloud-hinacode", status: "archived" }),
   thread("other-repository", { projectId: "cloud-site" }),
+  thread("second-clone", { projectId: "desktop-clone" }),
 ]
 
 const ids = (list: ReadonlyArray<Thread>) => list.map((each) => each.id)
@@ -55,10 +57,15 @@ describe("mentionableThreads", () => {
     expect(ids(mentionable.otherMachines)).toStrictEqual(["cloud-login"])
   })
 
+  test("leaves out another clone of the repository on the same machine, which read_thread refuses", () => {
+    const mentionable = mentionableThreads(threads[0]!, threads, projects)
+    expect(ids([...mentionable.sameMachine, ...mentionable.otherMachines])).not.toContain("second-clone")
+  })
+
   test("treats the composing thread's machine as the same machine when it runs on a cloud", () => {
     const mentionable = mentionableThreads(threads[1]!, threads, projects)
     expect(ids(mentionable.sameMachine)).toStrictEqual([])
-    expect(ids(mentionable.otherMachines)).toStrictEqual(["composing", "desktop-docs", "desktop-login"])
+    expect(ids(mentionable.otherMachines)).toStrictEqual(["composing", "desktop-docs", "second-clone", "desktop-login"])
   })
 
   test("offers only its own project's threads before projects load", () => {
