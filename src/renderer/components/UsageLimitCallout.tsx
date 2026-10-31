@@ -30,14 +30,6 @@ export function UsageLimitCallout({
   const threadId = thread.id
   const titleId = useId()
   const { suggestion } = useAccountOptions(thread)
-  const [error, setAutoResume, isPending] = useActionState(async (_: string | null, enabled: boolean) => {
-    try {
-      useThreads.getState().upsert(await callPromise("threads.resumeAtReset", { id: threadId, enabled }))
-      return null
-    } catch (cause) {
-      return errorMessage(cause)
-    }
-  }, null)
   const now = useNow()
   const reset = limit.reset
   const resetText = reset === null ? null : resetCopy(reset.at, now)
@@ -74,24 +66,49 @@ export function UsageLimitCallout({
             />
           )}
           {canResume && !(hasReset && reset.autoResume) && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={isPending}
-              aria-busy={isPending}
-              action={() => setAutoResume(!reset.autoResume)}
-            >
-              {hasReset
-                ? m.thread_usage_limit_try_again()
-                : reset.autoResume
-                  ? m.thread_usage_limit_cancel_resume()
-                  : m.thread_usage_limit_resume_at_reset()}
-            </Button>
+            <ResumeButton threadId={threadId} autoResume={reset.autoResume} hasReset={hasReset} />
           )}
         </div>
       )}
-      {error && <FieldError>{error}</FieldError>}
     </section>
+  )
+}
+
+const resumeLabel = (autoResume: boolean, hasReset: boolean) => {
+  if (hasReset) return m.thread_usage_limit_try_again()
+  return autoResume ? m.thread_usage_limit_cancel_resume() : m.thread_usage_limit_resume_at_reset()
+}
+
+function ResumeButton({
+  threadId,
+  autoResume,
+  hasReset,
+}: {
+  threadId: string
+  autoResume: boolean
+  hasReset: boolean
+}) {
+  const [error, setAutoResume, isPending] = useActionState(async (_: string | null, enabled: boolean) => {
+    try {
+      useThreads.getState().upsert(await callPromise("threads.resumeAtReset", { id: threadId, enabled }))
+      return null
+    } catch (cause) {
+      return errorMessage(cause)
+    }
+  }, null)
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={isPending}
+        aria-busy={isPending}
+        action={() => setAutoResume(!autoResume)}
+      >
+        {resumeLabel(autoResume, hasReset)}
+      </Button>
+      {error && <FieldError className="basis-full">{error}</FieldError>}
+    </>
   )
 }
