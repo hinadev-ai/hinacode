@@ -2142,5 +2142,18 @@
   "mobile_composer_access_auto_claude": "Claude approves safe actions and asks about the rest",
   "mobile_composer_access_auto_claude_edits": "Edits run without asking; commands still ask",
   "mobile_composer_access_auto_codex": "Runs freely in the sandbox; asks to go beyond it",
-  "mobile_composer_access_auto_muse": "Runs freely in the sandbox, network included; asks to go beyond it"
+  "mobile_composer_access_auto_muse": "Runs freely in the sandbox, network included; asks to go beyond it",
+  "mobile_workspace_title": "Workspace",
+  "mobile_workspace_project_root": "Project root",
+  "mobile_workspace_project_root_hint": "Switches the project root to this branch",
+  "mobile_workspace_new_worktree": "New worktree",
+  "mobile_workspace_new_worktree_hint": "Its own checkout, on a new branch from this one",
+  "mobile_workspace_new_worktree_from": "New worktree from {ref}",
+  "mobile_workspace_worktree": "Worktree",
+  "mobile_workspace_ref_label": "Branch or pull request",
+  "mobile_workspace_ref_placeholder": "Branch, #123 or pull request URL",
+  "mobile_workspace_run_in": "Run in",
+  "mobile_workspace_pull_requests": "Pull requests",
+  "mobile_workspace_branches": "Branches",
+  "mobile_workspace_draft": "Draft, {branch}"
 }

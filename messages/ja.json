@@ -2087,5 +2087,18 @@
   "mobile_composer_access_auto_claude": "安全な操作は Claude が承認し、それ以外は確認します",
   "mobile_composer_access_auto_claude_edits": "編集は確認せずに実行し、コマンドは確認します",
   "mobile_composer_access_auto_codex": "サンドボックス内では自由に実行し、その外に出るときは確認します",
-  "mobile_composer_access_auto_muse": "ネットワークを含めサンドボックス内では自由に実行し、その外に出るときは確認します"
+  "mobile_composer_access_auto_muse": "ネットワークを含めサンドボックス内では自由に実行し、その外に出るときは確認します",
+  "mobile_workspace_title": "ワークスペース",
+  "mobile_workspace_project_root": "プロジェクトルート",
+  "mobile_workspace_project_root_hint": "プロジェクトルートをこのブランチに切り替えます",
+  "mobile_workspace_new_worktree": "新しいワークツリー",
+  "mobile_workspace_new_worktree_hint": "このブランチから新しいブランチを作り、別のチェックアウトで作業します",
+  "mobile_workspace_new_worktree_from": "{ref} から作る新しいワークツリー",
+  "mobile_workspace_worktree": "ワークツリー",
+  "mobile_workspace_ref_label": "ブランチまたはプルリクエスト",
+  "mobile_workspace_ref_placeholder": "ブランチ、#123、またはプルリクエストの URL",
+  "mobile_workspace_run_in": "実行場所",
+  "mobile_workspace_pull_requests": "プルリクエスト",
+  "mobile_workspace_branches": "ブランチ",
+  "mobile_workspace_draft": "ドラフト、{branch}"
 }

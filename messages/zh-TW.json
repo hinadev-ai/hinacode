@@ -2105,5 +2105,18 @@
   "mobile_composer_access_auto_claude": "Claude 自行核准安全的動作，其餘會先詢問",
   "mobile_composer_access_auto_claude_edits": "編輯直接執行，指令仍會先詢問",
   "mobile_composer_access_auto_codex": "在沙箱內自由執行，超出沙箱前會先詢問",
-  "mobile_composer_access_auto_muse": "在沙箱內自由執行（包含網路），超出沙箱前會先詢問"
+  "mobile_composer_access_auto_muse": "在沙箱內自由執行（包含網路），超出沙箱前會先詢問",
+  "mobile_workspace_title": "工作區",
+  "mobile_workspace_project_root": "專案根目錄",
+  "mobile_workspace_project_root_hint": "將專案根目錄切換到這個分支",
+  "mobile_workspace_new_worktree": "新的工作樹",
+  "mobile_workspace_new_worktree_hint": "獨立的 checkout，從這個分支建立新分支",
+  "mobile_workspace_new_worktree_from": "從 {ref} 建立的新工作樹",
+  "mobile_workspace_worktree": "工作樹",
+  "mobile_workspace_ref_label": "分支或合併請求",
+  "mobile_workspace_ref_placeholder": "分支、#123 或合併請求網址",
+  "mobile_workspace_run_in": "執行位置",
+  "mobile_workspace_pull_requests": "合併請求",
+  "mobile_workspace_branches": "分支",
+  "mobile_workspace_draft": "草稿，{branch}"
 }
