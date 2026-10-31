@@ -485,9 +485,8 @@ function ApprovalCard({ request }: { request: ApprovalRequest }) {
 
 const formatResetTime = (at: string) => {
   const date = new Date(at)
-  return Number.isFinite(date.getTime())
-    ? date.toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" })
-    : null
+  if (!Number.isFinite(date.getTime())) return null
+  return date.toLocaleString(locale, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
 }
 
 function UsageLimitCallout({ thread, limit }: { thread: Thread; limit: UsageLimit }) {
