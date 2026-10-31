@@ -54,6 +54,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
     const history = state.byThread[thread.id]
     return agent === undefined && history?.status === "ready" && history.messages.length === 0
   })
+  const overviewInset = agent === undefined && besideOverview
   const notices = (
     <>
       <PendingRequests thread={thread} />
@@ -72,7 +73,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
         {actions}
       </header>
       <div ref={regionRef} className="relative flex min-h-0 flex-1 flex-col [container-type:size]">
-        <div className={cn("flex min-h-0 flex-1 flex-col overflow-auto", besideOverview)}>
+        <div className={cn("flex min-h-0 flex-1 flex-col overflow-auto", overviewInset)}>
           <ThreadRepository value={repository}>
             <ThreadFolder value={folder}>
               <Transcript thread={thread} agent={agent} />
@@ -93,7 +94,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
           data-centered={centered}
           data-loaded={loaded}
           className={cn(
-            besideOverview,
+            overviewInset,
             "absolute inset-x-0 bottom-0 flex max-h-full flex-col data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] data-[loaded=false]:opacity-0 data-[loaded=true]:data-[centered=false]:transition-transform data-[loaded=true]:data-[centered=false]:duration-500 data-[loaded=true]:data-[centered=false]:ease-(--ease-drawer) motion-reduce:transition-none",
           )}
         >
