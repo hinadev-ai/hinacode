@@ -27,22 +27,6 @@ import {
   useState,
 } from "react"
 import { flushSync } from "react-dom"
-import {
-  RiAlarmLine,
-  RiAlarmSnoozeLine,
-  RiArchiveLine,
-  RiDeleteBinLine,
-  RiDraggable,
-  RiEyeLine,
-  RiEyeOffLine,
-  RiFileCopyLine,
-  RiInboxUnarchiveLine,
-  RiMoreFill,
-  RiPencilLine,
-  RiPushpinLine,
-  RiUnpinLine,
-} from "react-icons/ri"
-import type { IconType } from "react-icons"
 import { toast } from "sonner"
 import { isThreadBusy, type PullRequestLink, type Thread } from "../../shared/domain.ts"
 import { type RowState, rowEmphasis, rowState, rowStatusIndicator } from "../../shared/threadStatus.ts"
@@ -81,6 +65,20 @@ import {
 } from "./ui/popover.tsx"
 import { ProjectIcon } from "./ProjectIcon.tsx"
 import { snoozeThread } from "./SnoozeDialog.tsx"
+import { AlarmIcon } from "./icons/AlarmIcon.tsx"
+import { ArchiveIcon } from "./icons/ArchiveIcon.tsx"
+import { CopyIcon } from "./icons/CopyIcon.tsx"
+import { EyeIcon } from "./icons/EyeIcon.tsx"
+import { EyeOffIcon } from "./icons/EyeOffIcon.tsx"
+import { GripIcon } from "./icons/GripIcon.tsx"
+import type { IconComponent } from "./icons/Icon.tsx"
+import { MoreIcon } from "./icons/MoreIcon.tsx"
+import { PencilIcon } from "./icons/PencilIcon.tsx"
+import { PinIcon } from "./icons/PinIcon.tsx"
+import { SnoozeIcon } from "./icons/SnoozeIcon.tsx"
+import { TrashIcon } from "./icons/TrashIcon.tsx"
+import { UnarchiveIcon } from "./icons/UnarchiveIcon.tsx"
+import { UnpinIcon } from "./icons/UnpinIcon.tsx"
 
 type DragDropPlugins = NonNullable<ComponentProps<typeof DragDropProvider>["plugins"]>
 
@@ -351,7 +349,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
               title={m.sidebar_thread_unarchive()}
               onClick={() => void unarchive()}
             >
-              <RiInboxUnarchiveLine aria-hidden />
+              <UnarchiveIcon aria-hidden />
             </Button>
           ) : (
             <>
@@ -365,7 +363,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
                   data-reorder-handle
                   className="sr-only cursor-grab focus-visible:not-sr-only"
                 >
-                  <RiDraggable aria-hidden />
+                  <GripIcon aria-hidden />
                 </Button>
               )}
               <Button
@@ -376,7 +374,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
                 disabled={busy}
                 onClick={archiveDeletes ? () => setMode("archive") : () => void archive()}
               >
-                <RiArchiveLine aria-hidden />
+                <ArchiveIcon aria-hidden />
               </Button>
             </>
           )}
@@ -403,40 +401,40 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
                 <Button variant="ghost" size="icon-xs" aria-label={m.sidebar_thread_actions({ title: thread.title })} />
               }
             >
-              <RiMoreFill aria-hidden />
+              <MoreIcon aria-hidden />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
               <DropdownMenuItem onClick={queue("renaming")}>
-                <RiPencilLine aria-hidden />
+                <PencilIcon aria-hidden />
                 {m.sidebar_thread_rename()}
               </DropdownMenuItem>
               {!archived && (
                 <DropdownMenuItem onClick={() => void togglePin()}>
-                  {pinned ? <RiUnpinLine aria-hidden /> : <RiPushpinLine aria-hidden />}
+                  {pinned ? <UnpinIcon aria-hidden /> : <PinIcon aria-hidden />}
                   {pinned ? m.sidebar_thread_unpin() : m.sidebar_thread_pin()}
                 </DropdownMenuItem>
               )}
               {!archived && (
                 <DropdownMenuItem onClick={() => useUi.getState().setSnoozeThreadId(thread.id)}>
-                  <RiAlarmSnoozeLine aria-hidden />
+                  <SnoozeIcon aria-hidden />
                   {m.sidebar_thread_snooze()}
                 </DropdownMenuItem>
               )}
               {!archived && meta.snoozedUntil !== null && (
                 <DropdownMenuItem onClick={() => void snoozeThread(thread, null)}>
-                  <RiAlarmLine aria-hidden />
+                  <AlarmIcon aria-hidden />
                   {m.sidebar_thread_unsnooze()}
                 </DropdownMenuItem>
               )}
               {watched.length === 0 ? (
                 <DropdownMenuItem disabled>
-                  <RiEyeOffLine aria-hidden />
+                  <EyeOffIcon aria-hidden />
                   {m.sidebar_thread_unwatch()}
                 </DropdownMenuItem>
               ) : (
                 watched.map((link) => (
                   <DropdownMenuItem key={link.id} onClick={() => void unwatch(link.url)}>
-                    <RiEyeOffLine aria-hidden />
+                    <EyeOffIcon aria-hidden />
                     {watched.length > 1
                       ? m.pr_watch_stop({ name: `#${pullRequestNumber(link.url)}` })
                       : m.sidebar_thread_unwatch()}
@@ -444,22 +442,22 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
                 ))
               )}
               <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(thread.id)}>
-                <RiFileCopyLine aria-hidden />
+                <CopyIcon aria-hidden />
                 {m.sidebar_thread_copy_id()}
               </DropdownMenuItem>
               {archived ? (
                 <DropdownMenuItem onClick={() => void unarchive()}>
-                  <RiInboxUnarchiveLine aria-hidden />
+                  <UnarchiveIcon aria-hidden />
                   {m.sidebar_thread_unarchive()}
                 </DropdownMenuItem>
               ) : (
                 <DropdownMenuItem disabled={busy} onClick={archiveDeletes ? queue("archive") : () => void archive()}>
-                  <RiArchiveLine aria-hidden />
+                  <ArchiveIcon aria-hidden />
                   {archiveDeletes ? m.sidebar_thread_archive_confirm() : m.sidebar_thread_archive()}
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem variant="destructive" disabled={busy || isStale(cloud)} onClick={queue("delete")}>
-                <RiDeleteBinLine aria-hidden />
+                <TrashIcon aria-hidden />
                 {m.sidebar_thread_delete()}
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -586,7 +584,7 @@ function DeleteThreadPopover({
           />
         }
       >
-        <RiDeleteBinLine aria-hidden />
+        <TrashIcon aria-hidden />
       </PopoverTrigger>
       <PopoverContent
         side="right"
@@ -630,7 +628,7 @@ function DeleteThreadPopover({
 
 const awaiting = toIcon(rowStatusIndicator.awaiting_approval)
 
-const statusIcons: Partial<Record<RowState, { label: () => string; Icon: IconType; className: string }>> = {
+const statusIcons: Partial<Record<RowState, { label: () => string; Icon: IconComponent; className: string }>> = {
   running: { label: m.thread_status_running, ...toIcon(rowStatusIndicator.running) },
   background: { label: m.thread_status_background, ...toIcon(rowStatusIndicator.background) },
   awaiting_approval: {
@@ -716,7 +714,7 @@ function ThreadMeta({
       {links.length > 0 && <SidebarPullRequests threadId={threadId} links={links} environment={environment} />}
       {watching && (
         <span title={m.sidebar_watching()} className="flex shrink-0">
-          <RiEyeLine aria-hidden className="size-3" />
+          <EyeIcon aria-hidden className="size-3" />
           <span className="sr-only">{m.sidebar_watching()}</span>
         </span>
       )}
@@ -779,7 +777,7 @@ function WakeTime({ snoozedUntil }: { snoozedUntil: string }) {
       title={m.sidebar_snoozed_until({ time })}
       className="flex items-center gap-1 tabular-nums"
     >
-      <RiAlarmSnoozeLine aria-hidden className="size-3" />
+      <SnoozeIcon aria-hidden className="size-3" />
       <span className="sr-only">{m.sidebar_snoozed_until({ time })}</span>
       <span aria-hidden>{time}</span>
     </time>

@@ -1,7 +1,6 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import type { ReactNode } from "react"
-import { RiCloudLine, RiCloudOffLine, RiComputerLine, RiDashboard3Line } from "react-icons/ri"
 import {
   diskFullness,
   type DiskUsage,
@@ -29,6 +28,10 @@ import {
 } from "./ui/popover.tsx"
 import { Skeleton } from "./ui/skeleton.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
+import { CloudIcon } from "./icons/CloudIcon.tsx"
+import { CloudOffIcon } from "./icons/CloudOffIcon.tsx"
+import { ComputerIcon } from "./icons/ComputerIcon.tsx"
+import { GaugeIcon } from "./icons/GaugeIcon.tsx"
 
 const WINDOW_MS = 10 * 60 * 1000
 const HOT = 0.9
@@ -56,7 +59,7 @@ export function MachineResourcesButton() {
         <TooltipTrigger
           render={
             <PopoverTrigger render={<Button variant="ghost" size="icon-sm" aria-label={m.resources_title()} />}>
-              <RiDashboard3Line aria-hidden />
+              <GaugeIcon aria-hidden />
             </PopoverTrigger>
           }
         />
@@ -104,7 +107,7 @@ function MachineTable() {
           <MachineRow
             environment={null}
             name={m.environment_this_machine()}
-            icon={<RiComputerLine aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />}
+            icon={<ComputerIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />}
           >
             <Readings environment={null} cloudName={null} />
           </MachineRow>
@@ -119,7 +122,7 @@ function MachineTable() {
 
 function CloudRow({ cloud }: { cloud: Cloud }) {
   const state = useCloudStateText(cloud)
-  const Icon = state === null ? RiCloudLine : RiCloudOffLine
+  const Icon = state === null ? CloudIcon : CloudOffIcon
   const needsYou = cloud.status === "unauthorized" || cloud.status === "incompatible"
   return (
     <MachineRow

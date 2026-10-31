@@ -2,7 +2,7 @@ import { type Extension, type Range, StateEffect, StateField } from "@codemirror
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { KnownTokens } from "../../shared/composerSyntax.ts"
-import { chipIcon, commandChipClass } from "../components/CommandChip.tsx"
+import { chipIconClass, chipIconShape, commandChipClass } from "../components/CommandChip.tsx"
 import { codeRuns, highlighterFor, type Loaded } from "../components/HighlightedCode.tsx"
 import { composerMarks } from "./composerMarks.ts"
 import { iconDom } from "./iconDom.ts"
@@ -67,7 +67,7 @@ class ChipWidget extends WidgetType {
     const chip = document.createElement("span")
     chip.className = commandChipClass
     chip.dataset["kind"] = "command"
-    const icon = iconDom(chipIcon(this.command))
+    const icon = iconDom(chipIconShape(this.command), { "aria-hidden": "true", className: chipIconClass })
     const trigger = document.createElement("span")
     trigger.className = "sr-only"
     trigger.textContent = this.command.trigger

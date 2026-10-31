@@ -3,7 +3,6 @@ import { useHotkey } from "@tanstack/react-hotkeys"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { type ComponentType, type ReactNode, useState } from "react"
-import { RiCloudLine, RiMacbookLine } from "react-icons/ri"
 import { AppearanceSettings } from "../components/settings/AppearanceSettings.tsx"
 import { AutomationSettings } from "../components/settings/automations/AutomationSettings.tsx"
 import { EnvironmentSettings } from "../components/settings/EnvironmentSettings.tsx"
@@ -24,6 +23,8 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { usePanelLayout } from "../lib/panelLayout.ts"
 import { type EnvironmentId, settingsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
+import { CloudIcon } from "../components/icons/CloudIcon.tsx"
+import { LaptopIcon } from "../components/icons/LaptopIcon.tsx"
 
 function ConnectionSettings() {
   return (
@@ -139,9 +140,9 @@ function EnvironmentPicker({ labelId, value, clouds, onChange }: EnvironmentPick
       >
         <SelectTrigger aria-labelledby={labelId} size="sm" className="w-auto max-w-56 gap-2">
           {value === null ? (
-            <RiMacbookLine aria-hidden className="size-4 text-muted-foreground" />
+            <LaptopIcon aria-hidden className="size-4 text-muted-foreground" />
           ) : (
-            <RiCloudLine aria-hidden className="size-4 text-muted-foreground" />
+            <CloudIcon aria-hidden className="size-4 text-muted-foreground" />
           )}
           <SelectValue />
         </SelectTrigger>

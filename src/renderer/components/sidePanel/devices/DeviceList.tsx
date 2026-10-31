@@ -2,7 +2,6 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { useState } from "react"
-import { RiAddLine, RiArrowDownSLine, RiDeleteBinLine, RiRefreshLine } from "react-icons/ri"
 import {
   type Device,
   type DeviceHost,
@@ -31,6 +30,10 @@ import {
 import { SkeletonList } from "../../ui/skeleton.tsx"
 import { IconAction, useVmAction } from "../TinyVmView.tsx"
 import { DeleteDeviceDialog } from "./DeleteDeviceDialog.tsx"
+import { ChevronDownIcon } from "../../icons/ChevronDownIcon.tsx"
+import { PlusIcon } from "../../icons/PlusIcon.tsx"
+import { RefreshIcon } from "../../icons/RefreshIcon.tsx"
+import { TrashIcon } from "../../icons/TrashIcon.tsx"
 
 const SIMSLIM_INSTALL = "brew install mobai-app/tap/simslim"
 
@@ -83,7 +86,7 @@ export function DeviceList({ thread }: { thread: Thread }) {
           <NewSimulatorMenu models={loaded.models} disabled={pending} onCreate={create} />
         )}
         <div className="flex-1" />
-        <IconAction icon={RiRefreshLine} label={m.devices_refresh()} onClick={refresh} disabled={host.waiting} />
+        <IconAction icon={RefreshIcon} label={m.devices_refresh()} onClick={refresh} disabled={host.waiting} />
       </div>
       {error && (
         <p role="alert" className="border-b border-border px-3 py-1.5 text-xs text-destructive">
@@ -153,9 +156,9 @@ function NewSimulatorMenu({
       <DropdownMenuTrigger
         render={
           <Button size="sm" disabled={disabled}>
-            <RiAddLine aria-hidden />
+            <PlusIcon aria-hidden />
             {m.devices_new_simulator()}
-            <RiArrowDownSLine aria-hidden />
+            <ChevronDownIcon aria-hidden />
           </Button>
         }
       />
@@ -331,7 +334,7 @@ function DeviceRow({ device, threadId, attached, pending, onAttach, onDelete }: 
         {attached ? m.devices_show() : m.devices_attach()}
       </Button>
       <IconAction
-        icon={RiDeleteBinLine}
+        icon={TrashIcon}
         label={m.devices_delete_tab({ name: device.name })}
         onClick={onDelete}
         disabled={pending || anotherThreads}

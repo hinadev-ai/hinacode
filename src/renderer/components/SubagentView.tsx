@@ -1,5 +1,4 @@
 import { useEffect, useRef } from "react"
-import { RiArrowLeftLine } from "react-icons/ri"
 import type { Message, Thread } from "../../shared/domain.ts"
 import { findSubagentWork, inputField, statusOfCall, subagentReport, useOpenSubagent } from "../lib/subagents.ts"
 import { m } from "../paraglide/messages.js"
@@ -12,6 +11,7 @@ import { formatOutput } from "./MessagePart.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { StopSubagentButton, SubagentStatusIcon, subagentStats, useNow } from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
+import { ArrowLeftIcon } from "./icons/ArrowLeftIcon.tsx"
 
 export function useSubagentLabel(threadId: string, callId: string) {
   const reported = useSubagentByCallId(threadId, callId)?.label
@@ -114,7 +114,7 @@ export function SubagentTranscript({
           aria-label={m.agents_back({ name: parentLabel })}
           className="-ml-2 max-w-full text-muted-foreground"
         >
-          <RiArrowLeftLine aria-hidden />
+          <ArrowLeftIcon aria-hidden />
           <span className="truncate">{parentLabel}</span>
         </Button>
       </div>

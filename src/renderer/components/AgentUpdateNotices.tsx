@@ -1,6 +1,5 @@
 import { useNavigate } from "@tanstack/react-router"
 import { useEffect, useState, useTransition } from "react"
-import { RiArrowDownCircleFill, RiCloseLine } from "react-icons/ri"
 import { toast } from "sonner"
 import type { AgentUpdate } from "../../shared/agent.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -9,6 +8,8 @@ import { m } from "../paraglide/messages.js"
 import { useDismissedUpdates } from "../stores/dismissedUpdates.ts"
 import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { Button } from "./ui/button.tsx"
+import { ArrowDownCircleFillIcon } from "./icons/ArrowDownCircleFillIcon.tsx"
+import { CloseIcon } from "./icons/CloseIcon.tsx"
 
 const CHECK_EVERY_MS = 4 * 60 * 60_000
 
@@ -73,12 +74,12 @@ function AgentUpdateNotice({ update, toastId, onSettings }: AgentUpdateNoticePro
         onClick={dismiss}
         className="absolute top-2 right-2 text-muted-foreground"
       >
-        <RiCloseLine aria-hidden />
+        <CloseIcon aria-hidden />
       </Button>
       <p className="flex items-center gap-2 pr-6 font-medium">
         <span className="relative shrink-0">
           <ProviderIcon provider={update.provider} className="size-4" />
-          <RiArrowDownCircleFill
+          <ArrowDownCircleFillIcon
             aria-hidden
             className="absolute -right-1 -bottom-1 size-2.5 rounded-full bg-popover text-success"
           />

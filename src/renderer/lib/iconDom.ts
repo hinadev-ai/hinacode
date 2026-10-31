@@ -1,4 +1,5 @@
-import { isValidElement, type ReactElement, type ReactNode } from "react"
+import { isValidElement, type ReactNode } from "react"
+import { iconAttributes } from "../components/icons/Icon.tsx"
 
 const SVG = "http://www.w3.org/2000/svg"
 
@@ -9,16 +10,30 @@ const attributeName = (prop: string) =>
       ? prop
       : prop.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)
 
-// FIXME: only react-icons glyphs can be called outside a render; the React Compiler gives our own components a hook
-export function iconDom(element: ReactElement): Element {
-  const { children, attr, ...props } = element.props as Record<string, unknown>
-  if (typeof element.type === "function" && attr === undefined) {
-    const rendered: ReactNode = (element.type as (props: unknown) => ReactNode)(element.props)
-    if (isValidElement(rendered)) return iconDom(rendered)
+const setAttributes = (node: Element, attributes: Record<string, unknown>) => {
+  for (const [name, value] of Object.entries(attributes))
+    if (value !== undefined && value !== false && name !== "children")
+      node.setAttribute(attributeName(name), String(value))
+}
+
+const appendShape = (parent: Element, shape: ReactNode) => {
+  for (const child of [shape].flat()) {
+    if (!isValidElement<Record<string, unknown>>(child)) continue
+    if (typeof child.type !== "string") {
+      appendShape(parent, child.props["children"] as ReactNode)
+      continue
+    }
+    const node = document.createElementNS(SVG, child.type)
+    setAttributes(node, child.props)
+    appendShape(node, child.props["children"] as ReactNode)
+    parent.append(node)
   }
-  const node = document.createElementNS(SVG, typeof element.type === "string" ? element.type : "svg")
-  for (const [name, value] of Object.entries({ ...(attr as object | undefined), ...props }))
-    if (value !== undefined && value !== false) node.setAttribute(attributeName(name), String(value))
-  for (const child of [children].flat()) if (isValidElement(child)) node.append(iconDom(child))
-  return node
+}
+
+// FIXME: the React Compiler gives our icon components a cache hook, so code outside a render draws their shape instead of calling them
+export function iconDom(shape: ReactNode, attributes: Record<string, string>): Element {
+  const svg = document.createElementNS(SVG, "svg")
+  setAttributes(svg, { ...iconAttributes, ...attributes })
+  appendShape(svg, shape)
+  return svg
 }

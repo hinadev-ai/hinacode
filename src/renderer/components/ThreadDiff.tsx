@@ -3,7 +3,6 @@ import { cn } from "cn"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { Suspense, useDeferredValue, useEffect, useRef, useState } from "react"
-import { RiFileTextLine, RiRefreshLine } from "react-icons/ri"
 import type { ChangesScope, Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { threadChangesAtom } from "../lib/rpc.ts"
@@ -15,6 +14,8 @@ import { FileDiffRow, fileStatusMark } from "./FilePatch.tsx"
 import { useUi } from "../stores/ui.ts"
 import { Button } from "./ui/button.tsx"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
+import { FileTextIcon } from "./icons/FileTextIcon.tsx"
+import { RefreshIcon } from "./icons/RefreshIcon.tsx"
 
 interface FileDiff {
   readonly patch: string
@@ -97,7 +98,7 @@ function ChangesList({ thread, scope, stale, baseLabel }: ChangesListProps) {
       <div className="flex min-h-6 items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">{baseLabel}</p>
         <Button variant="ghost" size="icon-xs" aria-label={m.diff_refresh()} title={m.diff_refresh()} onClick={refresh}>
-          <RiRefreshLine
+          <RefreshIcon
             aria-hidden
             className={changes.waiting ? "animate-spin-late motion-reduce:animate-none" : undefined}
           />
@@ -185,7 +186,7 @@ function ChangedFiles({ thread, scope }: { thread: Thread; scope: ChangesScope }
                   openPath !== file.path && "opacity-0",
                 )}
               >
-                <RiFileTextLine aria-hidden />
+                <FileTextIcon aria-hidden />
               </Button>
             }
           />
