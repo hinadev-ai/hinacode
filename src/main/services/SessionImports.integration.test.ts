@@ -9,9 +9,10 @@ import type { MessagePart } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { listClaudeSessions, readClaudeSession } from "../agents/claude/sessions.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
-import { AgentError, type AgentProvider, type SessionHistory } from "../agents/provider.ts"
+import { AgentError, type AgentProvider, type ImportedMessage, type SessionHistory } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { AgentAccounts, layer as accountsLayer } from "./AgentAccounts.ts"
+import * as Attachments from "./Attachments.ts"
 import { Events } from "./Events.ts"
 import * as Git from "./Git.ts"
 import * as GitHub from "./GitHub.ts"
@@ -92,6 +93,7 @@ const setup = (options: { history?: SessionHistory } = {}) => {
       ),
     ),
     Layer.provideMerge(messagesLayer),
+    Layer.provide(Attachments.layer(mkdtempSync(join(tmpdir(), "kk-import-attachments-")))),
     Layer.provide(providers(cliHome, options)),
     Layer.provide(
       Layer.mergeAll(Git.layer, GitHub.layer).pipe(
@@ -121,7 +123,9 @@ describe("session import", () => {
       writeSession(cliHome, rootPath, new Date("2026-10-01T00:00:00Z"))
       const imports = yield* SessionImports
       const request = { projectId: id, provider: "claude" as const, sessionId: fixtureId, accountId: null }
-      const imported = yield* Effect.all([imports.import(request), imports.import(request)], { concurrency: "unbounded" })
+      const imported = yield* Effect.all([imports.import(request), imports.import(request)], {
+        concurrency: "unbounded",
+      })
       expect(imported[0].id).toBe(imported[1].id)
       expect(yield* Threads.use((threads) => threads.list)).toHaveLength(1)
     }).pipe(Effect.provide(layer))
@@ -202,6 +206,51 @@ describe("session import", () => {
         imports.import({ projectId: id, provider: "claude", sessionId: fixtureId, accountId: null }),
       )
       expect(thread).toMatchObject({ title: "Imported session", providerSessionId: fixtureId })
+      const messages = yield* Messages.use((service) => service.list(thread.id))
+      expect(messages.map((message) => message.parts)).toStrictEqual([
+        [{ type: "session_import", provider: "claude", history: "unavailable" }],
+      ])
+    }).pipe(Effect.provide(layer))
+  })
+
+  const imagePrompt = (images: NonNullable<ImportedMessage["images"]>): SessionHistory => ({
+    title: "Shapes",
+    model: "claude-opus-5-5",
+    messages: [
+      { role: "user", parts: [], images, createdAt: "2026-10-01T00:00:00.000Z", completedAt: null, forkPoint: null },
+      {
+        role: "assistant",
+        parts: [{ type: "text", text: "A red square." }],
+        createdAt: "2026-10-01T00:00:01.000Z",
+        completedAt: "2026-10-01T00:00:02.000Z",
+        forkPoint: null,
+      },
+    ],
+  })
+
+  it.effect("stores the images a replayed prompt carried", () => {
+    const { layer, project } = setup({
+      history: imagePrompt([{ dataUrl: "data:image/png;base64,aW1n", name: "image.png" }]),
+    })
+    return Effect.gen(function* () {
+      const { id } = yield* project
+      const thread = yield* SessionImports.use((imports) =>
+        imports.import({ projectId: id, provider: "claude", sessionId: fixtureId, accountId: null }),
+      )
+      const [prompt] = yield* Messages.use((service) => service.list(thread.id))
+      const [part] = prompt?.parts ?? []
+      expect(part).toMatchObject({ type: "attachment", attachment: { kind: "image", mime: "image/png", bytes: 3 } })
+      expect(part?.type === "attachment" && readFileSync(part.attachment.path, "utf8")).toBe("img")
+    }).pipe(Effect.provide(layer))
+  })
+
+  it.effect("says the history is unavailable when a replayed image is gone", () => {
+    const { layer, project } = setup({ history: imagePrompt([{ path: join(tmpdir(), "kk-import-gone.png") }]) })
+    return Effect.gen(function* () {
+      const { id } = yield* project
+      const thread = yield* SessionImports.use((imports) =>
+        imports.import({ projectId: id, provider: "claude", sessionId: fixtureId, accountId: null }),
+      )
       const messages = yield* Messages.use((service) => service.list(thread.id))
       expect(messages.map((message) => message.parts)).toStrictEqual([
         [{ type: "session_import", provider: "claude", history: "unavailable" }],

@@ -171,6 +171,33 @@ describe("readClaudeSession", () => {
     expect(messages.at(-1)).toStrictEqual(["assistant", "reply 599"])
   })
 
+  test("keeps the images a prompt carried", async () => {
+    const image = { type: "image", source: { type: "base64", media_type: "image/png", data: "aW1n" } }
+    write(
+      sessionId,
+      transcript(
+        prompt(1, null, [image]),
+        reply(2, 1, "A red square."),
+        prompt(3, 2, [{ type: "text", text: "And this one?" }, image]),
+        reply(4, 3, "Also red."),
+      ),
+    )
+    const messages = (await readClaudeSession(home, cwd, sessionId)).messages ?? []
+    const png = { dataUrl: "data:image/png;base64,aW1n", name: "image.png" }
+    expect(messages.map((message) => [message.role, message.parts.length, message.images])).toStrictEqual([
+      ["user", 0, [png]],
+      ["assistant", 1, undefined],
+      ["user", 1, [png]],
+      ["assistant", 1, undefined],
+    ])
+  })
+
+  test("reports no history when a prompt carries an image it can't keep", async () => {
+    const image = { type: "image", source: { type: "url", url: "https://example.com/a.png" } }
+    write(sessionId, transcript(prompt(1, null, [image]), reply(2, 1, "A red square.")))
+    expect((await readClaudeSession(home, cwd, sessionId)).messages).toBeNull()
+  })
+
   test("reports no history when the branch points at a record that is missing", async () => {
     write(
       sessionId,
