@@ -342,6 +342,7 @@
   "attachment_remove": "Remove {name}",
   "attachment_open_image": "Open {name}",
   "attachment_reveal": "Show {name} in folder",
+  "attachment_gone": "File is gone",
   "error_not_found": "This item no longer exists.",
   "error_persistence": "Could not read or write the local database. Try again, and restart HinaCode if it keeps failing.",
   "error_project_path_taken": "Another project already uses this folder.",

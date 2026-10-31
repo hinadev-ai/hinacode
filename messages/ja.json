@@ -342,6 +342,7 @@
   "attachment_remove": "{name} を削除",
   "attachment_open_image": "{name} を開く",
   "attachment_reveal": "{name} をフォルダで表示",
+  "attachment_gone": "ファイルがありません",
   "error_not_found": "該当する項目が見つかりません。",
   "error_persistence": "ローカルデータベースの読み書きに失敗しました。再試行してください。解消しない場合は HinaCode を再起動してください。",
   "error_project_path_taken": "このフォルダはすでに別のプロジェクトで使用されています。",

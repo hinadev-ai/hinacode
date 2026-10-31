@@ -48,7 +48,7 @@ function ImageAttachment({ attachment }: { attachment: Attachment }) {
   const [missing, setMissing] = useState(false)
   const picked = pickedLabel(attachment)
   const title = picked ?? attachment.name
-  if (missing) return <FileChip attachment={attachment} />
+  if (missing) return <FileChip attachment={attachment} gone />
   return (
     <Dialog>
       <DialogTrigger
@@ -136,15 +136,18 @@ function Thumbnail({ attachment, onError }: { attachment: Attachment; onError?: 
   )
 }
 
-function FileChip({ attachment }: { attachment: Attachment }) {
+export function FileChip({ attachment, gone = false }: { attachment: Attachment; gone?: boolean }) {
   return (
-    <span className="flex h-16 max-w-56 items-center gap-2 rounded-lg border border-border bg-background/50 px-3 text-left text-xs">
+    <span
+      data-gone={gone}
+      className="flex h-16 max-w-56 items-center gap-2 rounded-lg border border-border bg-background/50 px-3 text-left text-xs data-[gone=true]:border-dashed data-[gone=true]:bg-transparent data-[gone=true]:text-muted-foreground"
+    >
       <FileIcon aria-hidden className="size-5 shrink-0 text-muted-foreground" />
       <span className="flex min-w-0 flex-col">
         <span className="truncate font-medium" title={attachment.name}>
           {attachment.name}
         </span>
-        <span className="text-muted-foreground">{formatBytes(attachment.bytes)}</span>
+        <span className="text-muted-foreground">{gone ? m.attachment_gone() : formatBytes(attachment.bytes)}</span>
       </span>
     </span>
   )
