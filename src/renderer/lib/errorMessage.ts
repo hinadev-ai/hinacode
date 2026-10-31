@@ -29,3 +29,18 @@ export function errorMessage(cause: unknown): string {
   if (cause instanceof RpcError) return byTag[cause.tag]?.(cause.message) ?? cause.message
   return cause instanceof Error ? cause.message : String(cause)
 }
+
+const commandTags = new Set(["CommandError", "GitCommandError"])
+
+export interface ErrorSummary {
+  readonly message: string
+  readonly detail: string | null
+}
+
+export function errorSummary(cause: unknown): ErrorSummary {
+  if (cause instanceof RpcError && commandTags.has(cause.tag)) {
+    const [command = ""] = cause.message.split(" ", 1)
+    return { message: m.error_command_summary({ command }), detail: cause.message }
+  }
+  return { message: errorMessage(cause), detail: null }
+}
