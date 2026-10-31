@@ -2155,5 +2155,16 @@
   "mobile_workspace_run_in": "Run in",
   "mobile_workspace_pull_requests": "Pull requests",
   "mobile_workspace_branches": "Branches",
-  "mobile_workspace_draft": "Draft, {branch}"
+  "mobile_workspace_draft": "Draft, {branch}",
+  "mobile_terminal_label": "Terminal",
+  "mobile_terminal_keys": "Terminal keys",
+  "mobile_terminal_control": "Control",
+  "mobile_terminal_control_hint": "Applies Control to the next key you type",
+  "mobile_terminal_key_left": "Left arrow",
+  "mobile_terminal_key_up": "Up arrow",
+  "mobile_terminal_key_down": "Down arrow",
+  "mobile_terminal_key_right": "Right arrow",
+  "mobile_terminal_open_failed": "Could not open a shell: {message}",
+  "mobile_terminal_exited": "Shell exited.",
+  "mobile_terminal_exited_code": "Shell exited with code {code}."
 }

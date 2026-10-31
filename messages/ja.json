@@ -2100,5 +2100,16 @@
   "mobile_workspace_run_in": "実行場所",
   "mobile_workspace_pull_requests": "プルリクエスト",
   "mobile_workspace_branches": "ブランチ",
-  "mobile_workspace_draft": "ドラフト、{branch}"
+  "mobile_workspace_draft": "ドラフト、{branch}",
+  "mobile_terminal_label": "ターミナル",
+  "mobile_terminal_keys": "ターミナルのキー",
+  "mobile_terminal_control": "Control",
+  "mobile_terminal_control_hint": "次に入力するキーに Control を付けます",
+  "mobile_terminal_key_left": "左矢印キー",
+  "mobile_terminal_key_up": "上矢印キー",
+  "mobile_terminal_key_down": "下矢印キー",
+  "mobile_terminal_key_right": "右矢印キー",
+  "mobile_terminal_open_failed": "シェルを開けませんでした：{message}",
+  "mobile_terminal_exited": "シェルが終了しました。",
+  "mobile_terminal_exited_code": "シェルが終了コード {code} で終了しました。"
 }

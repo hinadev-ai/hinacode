@@ -2118,5 +2118,16 @@
   "mobile_workspace_run_in": "執行位置",
   "mobile_workspace_pull_requests": "合併請求",
   "mobile_workspace_branches": "分支",
-  "mobile_workspace_draft": "草稿，{branch}"
+  "mobile_workspace_draft": "草稿，{branch}",
+  "mobile_terminal_label": "終端機",
+  "mobile_terminal_keys": "終端機按鍵",
+  "mobile_terminal_control": "Control",
+  "mobile_terminal_control_hint": "對下一個輸入的按鍵套用 Control",
+  "mobile_terminal_key_left": "左方向鍵",
+  "mobile_terminal_key_up": "上方向鍵",
+  "mobile_terminal_key_down": "下方向鍵",
+  "mobile_terminal_key_right": "右方向鍵",
+  "mobile_terminal_open_failed": "無法開啟 shell：{message}",
+  "mobile_terminal_exited": "Shell 已結束。",
+  "mobile_terminal_exited_code": "Shell 已結束，結束代碼為 {code}。"
 }

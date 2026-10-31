@@ -1,6 +1,7 @@
 import { useImperativeHandle, useRef } from "react"
 import { WebView } from "react-native-webview"
 import { type TerminalViewProps, xtermTheme } from "./terminal-types"
+import { copy } from "@/lib/copy"
 import { TERMINAL_HTML } from "@/terminal/terminal-page"
 
 type PageMessage =
@@ -17,7 +18,7 @@ export function TerminalView({ ref, theme, onInput, onSize, onCursorMode }: Term
     <WebView
       ref={webview}
       testID="terminal"
-      accessibilityLabel="Terminal"
+      accessibilityLabel={copy("mobile_terminal_label")}
       originWhitelist={["*"]}
       source={{ html: TERMINAL_HTML }}
       injectedJavaScriptBeforeContentLoaded={`window.kkTheme=${JSON.stringify(xtermTheme(theme))};true;`}

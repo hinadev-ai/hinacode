@@ -129,7 +129,7 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
       },
       (cause) => {
         opening.current = false
-        setError(`Could not open a shell: ${errorText(cause)}`)
+        setError(copy("mobile_terminal_open_failed", { message: errorText(cause) }))
       },
     )
   }
@@ -154,7 +154,13 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
     <View style={styles.container}>
       {error !== null && <Notice text={error} tone="danger" />}
       {exitCode !== undefined && (
-        <Notice text={`Shell exited${exitCode === null ? "" : ` with code ${exitCode}`}.`} />
+        <Notice
+          text={
+            exitCode === null
+              ? copy("mobile_terminal_exited")
+              : copy("mobile_terminal_exited_code", { code: String(exitCode) })
+          }
+        />
       )}
       <View style={[styles.surface, { borderColor: theme.border }]}>
         <TerminalView
@@ -183,11 +189,11 @@ function KeyRow({ ctrl, onCtrl, onKey }: { ctrl: boolean; onCtrl: () => void; on
       pressed && styles.pressed,
     ]
   return (
-    <View accessibilityRole="toolbar" accessibilityLabel="Terminal keys" style={styles.row}>
+    <View accessibilityRole="toolbar" accessibilityLabel={copy("mobile_terminal_keys")} style={styles.row}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Control"
-        accessibilityHint="Applies Control to the next key you type"
+        accessibilityLabel={copy("mobile_terminal_control")}
+        accessibilityHint={copy("mobile_terminal_control_hint")}
         accessibilityState={{ selected: ctrl }}
         onPress={onCtrl}
         style={keyStyle(ctrl)}
