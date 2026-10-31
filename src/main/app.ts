@@ -75,6 +75,14 @@ const simulatedClaude = (env: NodeJS.ProcessEnv) => {
   return usageLimitLayer(scenario, resetMs)
 }
 
+export const agentProviders = (env: NodeJS.ProcessEnv) => {
+  const simulated = simulatedClaude(env)
+  return {
+    simulated: simulated !== undefined,
+    layer: Layer.mergeAll(simulated ?? ClaudeProvider.layer, CodexProvider.layer, MuseProvider.layer),
+  }
+}
+
 const linearLayer = (env: NodeJS.ProcessEnv) => {
   if (env["HINACODE_MOCK_LINEAR"] === undefined) return Linear.layer.pipe(Layer.provide(Secrets.layer))
   if (!env["HINACODE_USER_DATA"]) throw new Error("Linear simulation requires HINACODE_USER_DATA")
@@ -82,7 +90,7 @@ const linearLayer = (env: NodeJS.ProcessEnv) => {
 }
 
 export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWindows, serve }: AppOptions) => {
-  const mockClaude = simulatedClaude(process.env)
+  const providers = agentProviders(process.env)
   const chats = Layer.effectDiscard(Projects.Projects.use((projects) => projects.ensureChats(join(userData, "chats"))))
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
@@ -100,11 +108,9 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     Search.layer,
     Files.layer,
   )
-  const naming =
-    mockClaude === undefined
-      ? ThreadNaming.layer
-      : Layer.succeed(ThreadNaming.ThreadNaming, { nameFromPrompt: () => Effect.void })
-  const claude = mockClaude ?? ClaudeProvider.layer
+  const naming = providers.simulated
+    ? Layer.succeed(ThreadNaming.ThreadNaming, { nameFromPrompt: () => Effect.void })
+    : ThreadNaming.layer
   const remoteAccess = RemoteAccess.layer.pipe(Layer.provide(Secrets.layer))
   const relayServiceUrl = process.env["HINACODE_RELAY_URL"] ?? Relay.DEFAULT_RELAY_SERVICE_URL
   const relay = Relay.layer({ serviceUrl: relayServiceUrl, cloudflaredDir: join(userData, "cloudflared") }).pipe(
@@ -145,7 +151,7 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     Automations.layer,
     AutoArchive.layer,
     PullRequestWatcher.layer,
-    mockClaude === undefined ? PullRequestGuides.layer : PullRequestGuides.idleLayer,
+    providers.simulated ? PullRequestGuides.idleLayer : PullRequestGuides.layer,
     updates,
     Mcp.serverLayer,
     AgentLogins.layer(join(userData, "cache")),
@@ -154,7 +160,7 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
   return Layer.mergeAll(RemoteServer.layer, answerAsksLayer).pipe(
     Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),
     Layer.provideMerge(services),
-    Layer.provide(Layer.mergeAll(claude, CodexProvider.layer, MuseProvider.layer)),
+    Layer.provide(providers.layer),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
     Layer.provideMerge(makeEventsLayer(toWindows)),
     Layer.provide(Layer.mergeAll(Db.layer(join(userData, "hinacode.sqlite")), keyring)),
