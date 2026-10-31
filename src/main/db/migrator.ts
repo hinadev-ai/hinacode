@@ -28,6 +28,7 @@ import settingsFiles from "./migrations/0027_settings_files.ts"
 import threadDevice from "./migrations/0028_thread_device.ts"
 import listenersPickInterface from "./migrations/0029_listeners_pick_interface.ts"
 import sideChat from "./migrations/0030_side_chat.ts"
+import messageOpen from "./migrations/0031_message_open.ts"
 import archiveSharedChats from "./migrations/0024_archive_shared_chats.ts"
 
 const run = Migrator.make({})
@@ -63,6 +64,7 @@ export const runMigrations = run({
     "28_thread_device": threadDevice,
     "29_listeners_pick_interface": listenersPickInterface,
     "30_side_chat": sideChat,
+    "31_message_open": messageOpen,
   }),
 }).pipe(
   Effect.tap((ran) =>
