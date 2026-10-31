@@ -305,11 +305,12 @@ function ServerPreferences({ server }: { server: Server | undefined }) {
             label={accessModes[mode].label}
             hint={accessModes[mode].hint}
             icon={accessModes[mode].icon}
-            color={offline ? theme.textMuted : mode === "full" ? theme.danger : undefined}
+            color={mode === "full" ? theme.danger : undefined}
+            disabled={offline}
             selected={settings.defaultAccessMode === mode}
             style={styles.groupOption}
             onPress={() => {
-              if (!offline && settings.defaultAccessMode !== mode) write(settings, { defaultAccessMode: mode })
+              if (settings.defaultAccessMode !== mode) write(settings, { defaultAccessMode: mode })
             }}
           />
         ))}
