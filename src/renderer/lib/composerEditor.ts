@@ -188,7 +188,7 @@ export function chipBefore(view: EditorView, pos: number) {
 }
 
 const layout = EditorView.theme({
-  "&": { maxHeight: "15rem", minHeight: "0" },
+  "&": { maxHeight: "15rem", minHeight: "calc(1lh + 1rem)" },
   "&.cm-focused": { outline: "none" },
   ".cm-scroller": { fontFamily: "inherit", lineHeight: "inherit", scrollbarGutter: "stable" },
   ".cm-content": { padding: "0.5rem 0.625rem", minHeight: "calc(1lh + 1rem)", caretColor: "currentColor" },

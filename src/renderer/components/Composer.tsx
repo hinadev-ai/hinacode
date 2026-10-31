@@ -79,7 +79,8 @@ type Delivery = "queue" | "steer"
 
 const STEER_CHORD = "Mod+Enter"
 
-const ComposerInput = lazy(() => import("./ComposerInput.tsx").then((module) => ({ default: module.ComposerInput })))
+const composerInputModule = import("./ComposerInput.tsx")
+const ComposerInput = lazy(() => composerInputModule.then((module) => ({ default: module.ComposerInput })))
 
 const deliveryOf = (event: KeyboardEvent) => (event.metaKey || event.ctrlKey ? "steer" : "queue")
 
@@ -208,7 +209,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
     callPromise("threads.interrupt", { threadId: thread.id }).catch((cause: unknown) => setError(errorMessage(cause)))
   }
 
-  useComposerRequests(inputRef, isSidechat, () => {
+  const focusWhenReady = useComposerRequests(inputRef, isSidechat, () => {
     if (busy || isSending) stop()
   })
 
@@ -280,6 +281,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
                 onPaste={onPaste}
                 onDragOver={onDragOver}
                 onDrop={onDrop}
+                focusOnMount={focusWhenReady}
               />
             </Suspense>
             <ComposerToolbar className="relative shrink-0 gap-2">
@@ -314,22 +316,29 @@ function useComposerRequests(
   onInterrupt: () => void,
 ) {
   const interrupt = useEffectEvent(onInterrupt)
+  const [focusWhenReady, setFocusWhenReady] = useState(false)
+  const focus = useEffectEvent(() => {
+    if (inputRef.current) inputRef.current.focus()
+    else setFocusWhenReady(true)
+  })
 
   useEffect(() => {
     if (isSidechat) return
     return useUi.subscribe((state, previous) => {
-      if (state.composerFocusRequest !== previous.composerFocusRequest) inputRef.current?.focus()
+      if (state.composerFocusRequest !== previous.composerFocusRequest) focus()
       if (state.interruptRequest !== previous.interruptRequest) interrupt()
     })
-  }, [inputRef, isSidechat])
+  }, [isSidechat])
 
   const sidechatFocusRequested = useUi((state) => isSidechat && state.viewFocusRequest === "sidechat")
   useEffect(() => {
     if (!sidechatFocusRequested) return
     useUi.getState().clearViewFocusRequest()
     // FIXME: Base UI Dialog places its initial focus a frame late, which would take focus back
-    requestAnimationFrame(() => inputRef.current?.focus())
-  }, [inputRef, sidechatFocusRequested])
+    requestAnimationFrame(() => focus())
+  }, [sidechatFocusRequested])
+
+  return focusWhenReady
 }
 
 function DraftPreview({ text, placeholder }: { text: string; placeholder: string }) {

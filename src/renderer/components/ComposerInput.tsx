@@ -46,6 +46,7 @@ interface ComposerInputProps {
   readonly onEnter: (event: KeyboardEvent) => void
   readonly onPaste?: (event: ClipboardEvent) => void
   readonly onDrop?: (event: DragEvent) => void
+  readonly focusOnMount?: boolean
   readonly onDragOver?: (event: ReactDragEvent<HTMLDivElement>) => void
 }
 
@@ -62,6 +63,7 @@ export function ComposerInput({
   onEnter,
   onPaste,
   onDrop,
+  focusOnMount,
   onDragOver,
 }: ComposerInputProps) {
   const listId = useId()
@@ -137,6 +139,7 @@ export function ComposerInput({
   const pasted = useEffectEvent((event: ClipboardEvent) => onPaste?.(event))
   const dropped = useEffectEvent((event: DragEvent) => onDrop?.(event))
   const initialText = useEffectEvent(() => value)
+  const shouldFocusOnMount = useEffectEvent(() => focusOnMount === true)
 
   useEffect(() => {
     const view = new EditorView({
@@ -170,6 +173,7 @@ export function ComposerInput({
       }),
     })
     viewRef.current = view
+    if (shouldFocusOnMount()) view.focus()
     return () => {
       view.destroy()
       viewRef.current = null
@@ -215,11 +219,7 @@ export function ComposerInput({
 
   return (
     <>
-      <div
-        ref={parentRef}
-        onDragOver={onDragOver}
-        className="flex min-h-0 flex-col text-base md:text-sm [&_.cm-editor]:min-h-0"
-      />
+      <div ref={parentRef} onDragOver={onDragOver} className="flex min-h-0 flex-col text-base md:text-sm" />
       {open && (
         <div
           id={listId}
