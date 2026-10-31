@@ -337,12 +337,17 @@ const refreshInStepWhileVisible =
   <A>(self: Atom.Atom<A>) => {
     const millis = Duration.toMillis(interval)
     return Atom.transform(self, (get) => {
-      const timer = setTimeout(
-        () => {
-          if (!document.hidden) get.refresh(self)
-        },
-        millis - (Date.now() % millis),
-      )
+      let timer: ReturnType<typeof setTimeout>
+      const scheduleNextRefresh = () => {
+        timer = setTimeout(
+          () => {
+            scheduleNextRefresh()
+            if (!document.hidden) get.refresh(self)
+          },
+          millis - (Date.now() % millis),
+        )
+      }
+      scheduleNextRefresh()
       get.addFinalizer(() => clearTimeout(timer))
       return get(self)
     })

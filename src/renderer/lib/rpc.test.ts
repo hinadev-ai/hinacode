@@ -121,6 +121,8 @@ test("pull request polling resumes after the window hides across a refresh and r
 
   await vi.advanceTimersByTimeAsync(60_000)
   expect(lookups).toBe(2)
+  await vi.advanceTimersByTimeAsync(120_000)
+  expect(lookups).toBe(4)
 
   unmount()
   registry.dispose()
