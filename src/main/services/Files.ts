@@ -11,7 +11,6 @@ import {
   type FsFileContent,
 } from "../../shared/domain.ts"
 import { mimeOf } from "../../shared/media.ts"
-import { SLOW_CONSUMER_BYTES } from "../../shared/remote.ts"
 import { isInside } from "../security.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
 import { Events } from "./Events.ts"
@@ -25,7 +24,7 @@ const reasons = {
   tooLarge: "is too large to preview from",
 } as const
 
-const MAX_PREVIEW_BYTES = (SLOW_CONSUMER_BYTES / 4) * 3
+const MAX_PREVIEW_BYTES = 6 * 1024 * 1024
 
 export class FsAccessError extends Schema.TaggedError<FsAccessError>()("FsAccessError", {
   root: Schema.String,
