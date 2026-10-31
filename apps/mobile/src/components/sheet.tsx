@@ -1,11 +1,22 @@
 import type { ReactNode } from "react"
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native"
+import {
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  type StyleProp,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+  type ViewStyle,
+} from "react-native"
 import Animated, { SlideInDown } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon, type IconName } from "@/components/icon"
 import { IconButton } from "@/components/ui"
 import { duration, ease } from "@/constants/motion"
-import { Colors, HIT, mono, radius } from "@/constants/theme"
+import { Colors, HIT, mono, radius, subheading } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 
@@ -68,13 +79,13 @@ export function Sheet({
             fullScreen && { ...styles.fullScreen, paddingTop: insets.top },
             {
               paddingBottom: SHEET_PADDING + insets.bottom,
-              backgroundColor: theme.background,
+              backgroundColor: theme.sheet,
               borderColor: theme.border,
             },
           ]}
         >
           <View style={styles.sheetHeader}>
-            <Text accessibilityRole="header" style={[styles.sheetTitle, { color: theme.text }]}>
+            <Text accessibilityRole="header" {...subheading} style={[styles.sheetTitle, { color: theme.text }]}>
               {title}
             </Text>
             <IconButton icon="RiCloseLine" accessibilityLabel={copy("mobile_sheet_close")} onPress={onClose} />
@@ -93,10 +104,19 @@ export function Sheet({
   )
 }
 
-export function Section({ title, children }: { title: string; children: ReactNode }) {
+export function Section({
+  title,
+  role = "radiogroup",
+  children,
+}: {
+  title: string
+  /** `group` for a section of switches, which are not one choice among several. */
+  role?: "radiogroup" | "group"
+  children: ReactNode
+}) {
   const theme = useTheme()
   return (
-    <View accessibilityRole="radiogroup" accessibilityLabel={title} style={styles.section}>
+    <View role={role} accessibilityLabel={title} style={styles.section}>
       <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>{title}</Text>
       {children}
     </View>
@@ -111,6 +131,7 @@ export function OptionRow({
   monospace = false,
   selected,
   disabled = false,
+  style,
   onPress,
 }: {
   label: string
@@ -120,6 +141,7 @@ export function OptionRow({
   monospace?: boolean
   selected: boolean
   disabled?: boolean
+  style?: StyleProp<ViewStyle>
   onPress: () => void
 }) {
   const theme = useTheme()
@@ -129,10 +151,11 @@ export function OptionRow({
       accessibilityRole="radio"
       accessibilityLabel={label}
       accessibilityHint={hint}
-      accessibilityState={{ checked: selected, disabled }}
+      aria-checked={selected}
+      aria-disabled={disabled}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.option, (pressed || selected) && { backgroundColor: theme.surface }]}
+      style={({ pressed }) => [styles.option, style, (pressed || selected) && { backgroundColor: theme.sheetRaised }]}
     >
       {icon !== undefined && <Icon name={icon} size={18} color={foreground} />}
       <View style={styles.optionText}>
