@@ -336,7 +336,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
           </Link>
           <div
             data-row-actions
-            className="relative [grid-area:1/1] mr-1 flex items-center gap-0.5 self-center justify-self-end rounded-md bg-sidebar-accent before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-linear-to-l before:from-sidebar-accent opacity-0 group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 focus-within:opacity-100 group-data-[menu-open=true]/thread:opacity-100 has-[[data-popup-open]]:opacity-100"
+            className="relative [grid-area:1/1] mr-1 flex items-center gap-0.5 self-center justify-self-end rounded-md bg-sidebar-accent before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-linear-to-l before:from-sidebar-accent opacity-0 pointer-events-none group-hover/thread:pointer-events-auto group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 focus-within:opacity-100 group-data-[menu-open=true]/thread:opacity-100 has-[[data-popup-open]]:opacity-100"
           >
             {archived ? (
               <Button

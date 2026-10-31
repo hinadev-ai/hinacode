@@ -11,10 +11,14 @@ export const threadView = async (page: Page, name: "Details" | "Changes" | "Pull
   return panel.getByRole("tabpanel", { name, exact: true })
 }
 
+export const clickRowButton = async (scope: Locator, name: string) => {
+  const button = scope.getByRole("button", { name, exact: true })
+  await button.locator("xpath=ancestor::li[1]").hover()
+  await button.click()
+}
+
 export const threadMenu = async (page: Page, title: string, item: string) => {
-  await sidebar(page)
-    .getByRole("button", { name: `Actions for ${title}`, exact: true })
-    .click()
+  await clickRowButton(sidebar(page), `Actions for ${title}`)
   await page.getByRole("menuitem", { name: item, exact: true }).click()
 }
 
