@@ -249,7 +249,7 @@ function EntryRow({ entry, onPress }: { entry: FsEntry; onPress: () => void }) {
       style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.surface }]}
     >
       <Icon name={entryIcon(entry.path, entry.kind)} size={18} color={theme.textMuted} />
-      <Text numberOfLines={1} style={[styles.rowName, { color: nameColor }]}>
+      <Text numberOfLines={1} ellipsizeMode="middle" style={[styles.rowName, { color: nameColor }]}>
         {entry.name}
       </Text>
       {entry.gitStatus !== null && (
