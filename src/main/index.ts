@@ -62,7 +62,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 if (!app.isPackaged) startResourceMonitor(dataDir)
 const icon = app.isPackaged ? releaseIcon : devIcon
-const pathHydrated = hydratePath(process.env)
+const shellPath = hydratePath(process.env, join(dataDir, "shell-path"))
 protocol.registerSchemesAsPrivileged([
   { scheme: ATTACHMENT_PROTOCOL, privileges: { standard: true, secure: true } },
   // FIXME: Electron needs `stream` for <video> and <audio> to seek with Range requests
@@ -214,7 +214,6 @@ const createWindow = (runtime: AppRuntime) => {
 }
 
 app.whenReady().then(async () => {
-  await pathHydrated
   const sbxConfigPath = join(app.getPath("appData"), "sbx", "config.json")
   const dbPath = join(dataDir, "hinacode.sqlite")
   if (!existsSync(dbPath)) {
@@ -230,9 +229,8 @@ app.whenReady().then(async () => {
       keyring: safeStorageKeyring,
       updates: Updater.layer,
       toWindows: sendToWindows,
-    }),
+    }).pipe(Layer.provide(Layer.effectDiscard(Effect.promise(() => shellPath.ready)))),
   )
-  await runtime.runPromise(Effect.void)
   let disposed = false
   app.on("before-quit", (event) => {
     if (disposed) return
@@ -247,7 +245,6 @@ app.whenReady().then(async () => {
     runtime.runFork(Effect.flatMap(Environments.Environments, (environments) => environments.reconnectAll)),
   )
   app.dock?.setIcon(icon)
-  runtime.runFork(keepAppMenu)
   serveAttachments(runtime, join(dataDir, "attachments"))
   serveGitHubAssets(runtime)
   serveProjectFiles(runtime)
@@ -261,6 +258,8 @@ app.whenReady().then(async () => {
     else createWindow(runtime)
   })
   createWindow(runtime)
+  runtime.runFork(keepAppMenu)
+  await runtime.runPromise(Effect.void)
 })
 
 app.on("window-all-closed", () => {

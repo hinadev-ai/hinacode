@@ -115,7 +115,7 @@ The native window starts hidden. The renderer loads settings, applies appearance
 
 ## Main-process layers
 
-The main process is one Effect layer graph, built by `src/main/app.ts` before the window can call in. The desktop (`index.ts`) and the cloud daemon (`daemon.ts`) build the same graph.
+The main process is one Effect layer graph, built by `src/main/app.ts`. The desktop (`index.ts`) and the cloud daemon (`daemon.ts`) build the same graph. The desktop opens its window while the graph builds, and `rpc` calls wait for it. The build waits for the login shell's PATH (`shellPath.ts`); the desktop starts from the PATH it saved in `<dataDir>/shell-path` on the last launch and refreshes it from `$SHELL -ilc` in the background, so only the first launch waits for the shell.
 
 Both receive a data directory as `userData`: `HINACODE_USER_DATA`, else `~/.hinacode` (`~/.hinacode-dev` unpackaged) for the desktop and `~/.hinacode-cloud` for the daemon. The database, `chats/`, `attachments/`, `accounts/`, `tiny-vm/` and `cloudflared/` sit at its top. The desktop points Electron's `userData` at `<dataDir>/chromium`, so Chromium's profile and its `SingletonLock` stay in there. On the first launch without the override, `dataDir.ts` moves the old `<appData>/kkcode` (or `kkcode-dev`) profile into this layout and rewrites the paths the database stored under it.
 
