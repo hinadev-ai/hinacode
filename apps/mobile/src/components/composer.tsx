@@ -786,7 +786,7 @@ const styles = StyleSheet.create({
     maxHeight: LINE_HEIGHT * MAX_LINES + INPUT_PADDING * 2,
     paddingHorizontal: 6,
     paddingVertical: INPUT_PADDING,
-    fontSize: 15,
+    fontSize: 16,
     lineHeight: LINE_HEIGHT,
     textAlignVertical: "top",
     // react-native-web renders a fixed-height textarea; this lets the browser grow it with its text.

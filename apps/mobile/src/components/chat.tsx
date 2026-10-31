@@ -734,5 +734,5 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   optionText: { flex: 1, gap: 2 },
-  answer: { minHeight: HIT, borderWidth: 1, borderRadius: radius.sm, paddingHorizontal: 10 },
+  answer: { minHeight: HIT, borderWidth: 1, borderRadius: radius.sm, paddingHorizontal: 10, fontSize: 16 },
 })
