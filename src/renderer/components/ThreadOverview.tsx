@@ -8,6 +8,7 @@ import {
   RiComputerLine,
   RiFolder3Line,
   RiGitBranchLine,
+  RiGlobalLine,
   RiListView,
   RiPencilLine,
   RiPlayLine,
@@ -15,13 +16,14 @@ import {
 import type { Project, PullRequest, Thread, Worktree } from "../../shared/domain.ts"
 import { useOpenSubagent } from "../lib/subagents.ts"
 import { environmentName, useCloud, useClouds, useThreadEnvironment } from "../lib/environments.ts"
+import { useSettings } from "../lib/settings.ts"
 import { branchPullRequestAtom, projectsAtom, pullRequestStatusAtom } from "../lib/rpc.ts"
 import { loadPullRequestsAtom, usePullRequests } from "../stores/pullRequests.ts"
 import { m } from "../paraglide/messages.js"
 import { type TerminalCommand, useTerminals } from "../stores/terminals.ts"
 import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
-import { ActionDialog } from "./ActionDialog.tsx"
+import { ActionDialog, type ActionTarget } from "./ActionDialog.tsx"
 import { CloudMark } from "./CloudMark.tsx"
 import { ProjectDialog } from "./ProjectDialog.tsx"
 import { ChecksIndicator, pullRequestStatusLabel, reviewLabel, StatusIcon } from "./ThreadPullRequests.tsx"
@@ -73,15 +75,11 @@ export function ThreadOverview({ thread }: { thread: Thread }) {
         <EnvironmentRows thread={thread} project={project} worktree={worktree} />
       </Card>
       {project.kind === "folder" && (
-        <>
-          <Card title={m.project_setup_label()}>
-            <SetupScript thread={thread} project={project} worktree={worktree} onRun={run} />
-          </Card>
-          <Card title={m.overview_actions()}>
-            <Actions project={project} onRun={run} />
-          </Card>
-        </>
+        <Card title={m.project_setup_label()}>
+          <SetupScript thread={thread} project={project} worktree={worktree} onRun={run} />
+        </Card>
       )}
+      <Actions thread={thread} project={project} onRun={run} />
       <PullRequests thread={thread} worktree={worktree} />
       <Subagents thread={thread} />
     </aside>
@@ -227,20 +225,28 @@ function SetupScript({ thread, project, worktree, onRun }: SetupScriptProps) {
   )
 }
 
-function Actions({ project, onRun }: { project: Project; onRun: (command: TerminalCommand) => void }) {
-  const [editing, setEditing] = useState<number | null>(null)
+function Actions({ thread, project, onRun }: ActionsProps) {
+  const environment = useThreadEnvironment(thread.id)
+  const globalActions = useSettings(environment).actions
+  const [target, setTarget] = useState<ActionTarget>({ scope: "project", index: null })
   const [dialogOpen, setDialogOpen] = useState(false)
-  const edit = (index: number | null) =>
+  const projectScoped = project.kind === "folder"
+  const edit = (next: ActionTarget) =>
     startTransition(() => {
-      setEditing(index)
+      setTarget(next)
       setDialogOpen(true)
     })
+  const rows = [
+    ...(projectScoped ? project.actions.map((action, index) => ({ action, scope: "project" as const, index })) : []),
+    ...globalActions.map((action, index) => ({ action, scope: "global" as const, index })),
+  ]
+  if (!projectScoped && rows.length === 0) return null
 
   return (
-    <>
+    <Card title={m.overview_actions()}>
       <ul className="flex flex-col gap-0.5">
-        {project.actions.map((action, index) => (
-          <li key={index} className="group/action flex items-center rounded-md hover:bg-muted">
+        {rows.map(({ action, scope, index }) => (
+          <li key={`${scope}-${index}`} className="group/action flex items-center rounded-md hover:bg-muted">
             <button
               type="button"
               title={action.command}
@@ -249,23 +255,44 @@ function Actions({ project, onRun }: { project: Project; onRun: (command: Termin
             >
               <RiPlayLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
               <span className="truncate">{action.name}</span>
+              {scope === "global" && (
+                <span title={m.action_scope_global()} className="ml-auto flex shrink-0 text-muted-foreground">
+                  <RiGlobalLine aria-hidden className="size-3.5" />
+                  <span className="sr-only">{m.action_scope_global()}</span>
+                </span>
+              )}
             </button>
             <Button
               variant="ghost"
               size="icon-xs"
               aria-label={m.overview_action_edit({ name: action.name })}
               className="mr-1 opacity-0 group-hover/action:opacity-100 focus-visible:opacity-100"
-              onClick={() => edit(index)}
+              onClick={() => edit({ scope, index })}
             >
               <RiPencilLine aria-hidden />
             </Button>
           </li>
         ))}
       </ul>
-      <AddRow label={m.overview_action_add()} onClick={() => edit(null)} />
-      <ActionDialog project={project} index={editing} open={dialogOpen} onOpenChange={setDialogOpen} />
-    </>
+      <AddRow
+        label={m.overview_action_add()}
+        onClick={() => edit({ scope: projectScoped ? "project" : "global", index: null })}
+      />
+      <ActionDialog
+        project={project}
+        environment={environment}
+        target={target}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+      />
+    </Card>
   )
+}
+
+interface ActionsProps {
+  readonly thread: Thread
+  readonly project: Project
+  readonly onRun: (command: TerminalCommand) => void
 }
 
 function AddRow({ label, onClick }: { label: string; onClick: () => void }) {

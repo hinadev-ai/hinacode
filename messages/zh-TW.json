@@ -2041,5 +2041,7 @@
   "sidebar_projects": "專案",
   "sidebar_views": "檢視",
   "sidebar_search_placeholder": "搜尋",
-  "overview_agents_all": "查看全部 {count} 個"
+  "overview_agents_all": "查看全部 {count} 個",
+  "action_scope_label": "適用範圍",
+  "action_scope_global": "所有專案"
 }

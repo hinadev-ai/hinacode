@@ -605,6 +605,7 @@ export const Settings = Schema.Struct({
   archive: ArchiveSettings,
   experimental: ExperimentalSettings,
   worktreeRoot: Schema.NullOr(Schema.String.check(Schema.isPattern(/^\//))),
+  actions: Schema.Array(ProjectAction).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 })
 export type Settings = typeof Settings.Type
 
@@ -636,6 +637,7 @@ export const defaultSettings: Settings = {
     tinyVmSetupScript: "",
   },
   worktreeRoot: null,
+  actions: [],
 }
 
 export const Machine = Schema.Struct({
