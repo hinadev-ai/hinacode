@@ -65,7 +65,16 @@
   "queue_after_approval": "承認に答えた後に指示します",
   "queue_edit": "入力欄で編集",
   "queue_remove": "予約から削除",
-  "queue_attachments": "添付ファイル {count} 件",
+  "queue_attachments": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "添付ファイル {count} 件",
+        "countPlural=other": "添付ファイル {count} 件"
+      }
+    }
+  ],
   "settings_general": "一般",
   "settings_setup_title": "マシンのセットアップ",
   "settings_setup_cell": "{machine} の {item}：{state}",

@@ -65,7 +65,16 @@
   "queue_after_approval": "Steers once you answer the approval",
   "queue_edit": "Edit in the composer",
   "queue_remove": "Remove from the queue",
-  "queue_attachments": "{count} attachments",
+  "queue_attachments": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} attachment",
+        "countPlural=other": "{count} attachments"
+      }
+    }
+  ],
   "settings_general": "General",
   "settings_setup_title": "Machine setup",
   "settings_setup_cell": "{item} on {machine}: {state}",
