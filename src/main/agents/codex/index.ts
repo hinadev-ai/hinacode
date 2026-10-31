@@ -16,7 +16,6 @@ import {
 import type {
   AccountHome,
   AgentAccount,
-  AgentCommand,
   AgentEvent,
   ApprovalDecision,
   BackgroundTask,
@@ -39,6 +38,7 @@ import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
 import { codexHome, copyRollouts, makeRolloutUsage } from "./rollouts.ts"
 import { attachmentContext } from "../elementContext.ts"
 import { applyChildNotification, applyParentItem, type Subagents } from "./subagents.ts"
+import { skillInputs, toCommand } from "./skills.ts"
 import {
   GetAccountRateLimitsResponse,
   GetAccountResponse,
@@ -56,8 +56,6 @@ import type {
   PlanType,
   ServerNotificationParams,
   ServerRequestParams,
-  SkillMetadata,
-  SkillScope,
   SkillsListParams,
   SkillsListResponse,
   ThreadItem,
@@ -124,14 +122,6 @@ const userInput = (text: string, attachments: ReadonlyArray<Attachment>): Array<
     return context === null ? [image] : [image, textInput(context)]
   }),
 ]
-
-const commandScopes: Partial<Record<SkillScope, AgentCommand["scope"]>> = { user: "user", repo: "project" }
-
-// FIXME: Codex expands a skill only when it arrives as its own input item next to the $name in the text
-const skillInputs = (text: string, skills: ReadonlyArray<SkillMetadata>): Array<UserInput> =>
-  skills
-    .filter((skill) => skill.enabled && text.includes(`$${skill.name}`))
-    .map((skill) => ({ type: "skill", name: skill.name, path: skill.path }))
 
 const toolName = (item: ThreadItem): string | undefined => {
   switch (item.type) {
@@ -413,21 +403,7 @@ const make = Effect.gen(function* () {
 
   const listCommands = ({ cwd, home }: { readonly cwd: string; readonly home: AccountHome | null }) =>
     listSkills(cwd, home).pipe(
-      Effect.map((skills) => [
-        COMPACT_COMMAND,
-        ...skills
-          .filter((skill) => skill.enabled)
-          .map((skill): AgentCommand => {
-            const scope = commandScopes[skill.scope]
-            return {
-              trigger: "$",
-              name: skill.name,
-              description: skill.shortDescription ?? skill.description,
-              argumentHint: "",
-              ...(scope && { scope }),
-            }
-          }),
-      ]),
+      Effect.map((skills) => [COMPACT_COMMAND, ...skills.filter((skill) => skill.enabled).map(toCommand)]),
     )
 
   const runTurn = (input: RunTurnInput): Stream.Stream<AgentEvent, AgentError> =>
