@@ -193,7 +193,7 @@ function SheetRow({
       aria-disabled={disabled}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [sheetStyles.option, pressed && { backgroundColor: theme.surface }]}
+      style={({ pressed }) => [sheetStyles.option, pressed && { backgroundColor: theme.sheetRaised }]}
     >
       <Icon name={icon} size={18} color={theme.text} />
       <View style={sheetStyles.optionText}>

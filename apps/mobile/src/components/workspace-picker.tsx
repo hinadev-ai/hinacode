@@ -169,7 +169,7 @@ function WorkspaceSheet({
           autoCorrect={false}
           spellCheck={false}
           clearButtonMode="while-editing"
-          style={[styles.refInput, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
+          style={[styles.refInput, { color: theme.text, backgroundColor: theme.sheetRaised, borderColor: theme.border }]}
         />
       }
     >

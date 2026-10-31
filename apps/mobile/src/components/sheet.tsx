@@ -79,7 +79,7 @@ export function Sheet({
             fullScreen && { ...styles.fullScreen, paddingTop: insets.top },
             {
               paddingBottom: SHEET_PADDING + insets.bottom,
-              backgroundColor: theme.background,
+              backgroundColor: theme.sheet,
               borderColor: theme.border,
             },
           ]}
@@ -155,7 +155,7 @@ export function OptionRow({
       aria-disabled={disabled}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.option, style, (pressed || selected) && { backgroundColor: theme.surface }]}
+      style={({ pressed }) => [styles.option, style, (pressed || selected) && { backgroundColor: theme.sheetRaised }]}
     >
       {icon !== undefined && <Icon name={icon} size={18} color={foreground} />}
       <View style={styles.optionText}>
