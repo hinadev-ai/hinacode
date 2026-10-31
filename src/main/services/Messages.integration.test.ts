@@ -13,7 +13,7 @@ const runningCall: MessagePart = { type: "tool_call", callId: "c1", name: "Bash"
 const threadWithTurn = (status: ThreadStatus, completedAt: string | null) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient
-    const { threadId } = yield* seedThread({ rootPath: `/repo/${status}/${completedAt}` })
+    const { threadId } = yield* seedThread({ rootPath: `/repo/${crypto.randomUUID()}` })
     yield* sql`UPDATE thread SET status = ${status} WHERE id = ${threadId}`
     yield* sql`INSERT INTO message ${sql.insert({
       id: `${threadId}-turn`,
@@ -42,6 +42,34 @@ describe("Messages.closeInterrupted", () => {
         const [settled] = yield* messages.list(steered)
         expect(settled?.completedAt).toBe("2026-10-31T00:00:01.000Z")
         expect(settled?.parts).toStrictEqual([{ ...runningCall, status: "error" }])
+      }),
+    ),
+  )
+
+  it.effect("closes the open turn of a thread that crashed outside a running status", () =>
+    withMessages(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient
+        const unstarted = yield* threadWithTurn("idle", null)
+        const finishing = yield* threadWithTurn("idle", null)
+        yield* sql`INSERT INTO message ${sql.insert({
+          id: `${finishing}-steered`,
+          threadId: finishing,
+          role: "assistant",
+          parts: JSON.stringify([runningCall]),
+          createdAt: "2026-10-30T23:59:59.000Z",
+          completedAt: "2026-10-31T00:00:00.000Z",
+        })}`
+        const messages = yield* Messages.Messages
+
+        yield* messages.closeInterrupted
+
+        const [closed] = yield* messages.list(unstarted)
+        expect(closed?.completedAt).not.toBeNull()
+        expect(closed?.parts).toStrictEqual([{ ...runningCall, status: "error" }])
+        const [steered, open] = yield* messages.list(finishing)
+        expect(steered?.parts).toStrictEqual([{ ...runningCall, status: "error" }])
+        expect(open?.completedAt).not.toBeNull()
       }),
     ),
   )
