@@ -2,7 +2,6 @@ import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { Schema } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, type ReactNode, useId, useState, useTransition } from "react"
-import { RiAddLine, RiDeleteBinLine, RiMoreFill, RiPencilLine } from "react-icons/ri"
 import { AccountProviderId, type AgentAccount, type AgentProfile, type ProviderId } from "../../../shared/agent.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import {
@@ -42,6 +41,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
+import { MoreIcon } from "../icons/MoreIcon.tsx"
+import { PencilIcon } from "../icons/PencilIcon.tsx"
+import { PlusIcon } from "../icons/PlusIcon.tsx"
+import { TrashIcon } from "../icons/TrashIcon.tsx"
 
 const signedOutHint = {
   claude: m.settings_account_signed_out_claude,
@@ -94,7 +97,7 @@ export function AccountList({ provider }: { provider: ProviderId }) {
         <>
           <div>
             <Button variant="ghost" size="sm" className="-ml-2.5" onClick={() => setAdding(true)}>
-              <RiAddLine aria-hidden />
+              <PlusIcon aria-hidden />
               {m.settings_account_add()}
             </Button>
           </div>
@@ -146,7 +149,7 @@ function AccountActions({
           />
         }
       >
-        <RiMoreFill aria-hidden />
+        <MoreIcon aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
         {children}
@@ -158,7 +161,7 @@ function AccountActions({
 function RenameItem({ onClick }: { onClick: () => void }) {
   return (
     <DropdownMenuItem onClick={onClick}>
-      <RiPencilLine aria-hidden />
+      <PencilIcon aria-hidden />
       {m.settings_account_rename()}
     </DropdownMenuItem>
   )
@@ -209,7 +212,7 @@ function AccountRow({ account }: { account: AgentProfile }) {
         <AccountActions name={account.name} onMenuOpenChangeComplete={onMenuOpenChangeComplete}>
           <RenameItem onClick={() => queue("rename")} />
           <DropdownMenuItem variant="destructive" onClick={() => queue("remove")}>
-            <RiDeleteBinLine aria-hidden />
+            <TrashIcon aria-hidden />
             {m.settings_account_remove()}
           </DropdownMenuItem>
         </AccountActions>

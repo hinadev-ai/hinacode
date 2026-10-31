@@ -3,21 +3,6 @@ import { useHotkey } from "@tanstack/react-hotkeys"
 import { useNavigate, useRouter, useSearch } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import type { ComponentType } from "react"
-import type { IconType } from "react-icons"
-import {
-  RiArchiveLine,
-  RiCpuLine,
-  RiFlaskLine,
-  RiFlashlightLine,
-  RiFolderLine,
-  RiKeyboardLine,
-  RiNotification3Line,
-  RiPaletteLine,
-  RiPlugLine,
-  RiServerLine,
-  RiSettings3Line,
-  RiSmartphoneLine,
-} from "react-icons/ri"
 import { AppearanceSettings } from "../components/settings/AppearanceSettings.tsx"
 import { ArchiveSettings } from "../components/settings/ArchiveSettings.tsx"
 import { AutomationSettings } from "../components/settings/automations/AutomationSettings.tsx"
@@ -36,68 +21,81 @@ import { type Cloud, environmentName, useClouds, useSettingsEnvironment } from "
 import { errorMessage } from "../lib/errorMessage.ts"
 import { type EnvironmentId, settingsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
+import { ArchiveIcon } from "../components/icons/ArchiveIcon.tsx"
+import { BellIcon } from "../components/icons/BellIcon.tsx"
+import { BoltIcon } from "../components/icons/BoltIcon.tsx"
+import { CpuIcon } from "../components/icons/CpuIcon.tsx"
+import { FolderIcon } from "../components/icons/FolderIcon.tsx"
+import type { IconComponent } from "../components/icons/Icon.tsx"
+import { KeyboardIcon } from "../components/icons/KeyboardIcon.tsx"
+import { PaletteIcon } from "../components/icons/PaletteIcon.tsx"
+import { PhoneIcon } from "../components/icons/PhoneIcon.tsx"
+import { PlugIcon } from "../components/icons/PlugIcon.tsx"
+import { ServerIcon } from "../components/icons/ServerIcon.tsx"
+import { SettingsIcon } from "../components/icons/SettingsIcon.tsx"
+import { FlaskIcon } from "../components/icons/FlaskIcon.tsx"
 
 interface SettingsPage {
   readonly id: string
   readonly scope: "app" | "environment"
   readonly label: () => string
-  readonly icon: IconType
+  readonly icon: IconComponent
   readonly component: ComponentType
   readonly localOnly?: boolean
 }
 
 const pages: ReadonlyArray<SettingsPage> = [
-  { id: "general", scope: "app", label: m.settings_general, icon: RiSettings3Line, component: GeneralSettings },
-  { id: "appearance", scope: "app", label: m.settings_appearance, icon: RiPaletteLine, component: AppearanceSettings },
+  { id: "general", scope: "app", label: m.settings_general, icon: SettingsIcon, component: GeneralSettings },
+  { id: "appearance", scope: "app", label: m.settings_appearance, icon: PaletteIcon, component: AppearanceSettings },
   {
     id: "keybindings",
     scope: "app",
     label: m.settings_keybindings,
-    icon: RiKeyboardLine,
+    icon: KeyboardIcon,
     component: KeybindingSettings,
   },
   {
     id: "notifications",
     scope: "app",
     label: m.settings_notifications,
-    icon: RiNotification3Line,
+    icon: BellIcon,
     component: NotificationSettings,
   },
   {
     id: "environments",
     scope: "app",
     label: m.settings_environments,
-    icon: RiServerLine,
+    icon: ServerIcon,
     component: EnvironmentSettings,
   },
-  { id: "models", scope: "environment", label: m.settings_models, icon: RiCpuLine, component: ModelSettings },
-  { id: "archive", scope: "environment", label: m.settings_archive, icon: RiArchiveLine, component: ArchiveSettings },
+  { id: "models", scope: "environment", label: m.settings_models, icon: CpuIcon, component: ModelSettings },
+  { id: "archive", scope: "environment", label: m.settings_archive, icon: ArchiveIcon, component: ArchiveSettings },
   {
     id: "workspace",
     scope: "environment",
     label: m.settings_workspace,
-    icon: RiFolderLine,
+    icon: FolderIcon,
     component: WorkspaceSettings,
   },
   {
     id: "integrations",
     scope: "environment",
     label: m.settings_integrations,
-    icon: RiPlugLine,
+    icon: PlugIcon,
     component: IntegrationSettings,
   },
   {
     id: "automations",
     scope: "environment",
     label: m.settings_automations,
-    icon: RiFlashlightLine,
+    icon: BoltIcon,
     component: AutomationSettings,
   },
   {
     id: "remote",
     scope: "environment",
     label: m.settings_remote,
-    icon: RiSmartphoneLine,
+    icon: PhoneIcon,
     component: RemoteSettings,
     localOnly: true,
   },
@@ -105,7 +103,7 @@ const pages: ReadonlyArray<SettingsPage> = [
     id: "experimental",
     scope: "environment",
     label: m.settings_experimental,
-    icon: RiFlaskLine,
+    icon: FlaskIcon,
     component: ExperimentalSettings,
   },
 ]

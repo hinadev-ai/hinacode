@@ -2,7 +2,6 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, useEffect, useState } from "react"
-import { RiCheckLine, RiErrorWarningLine, RiStopCircleLine, RiStopFill } from "react-icons/ri"
 import { toast } from "sonner"
 import type { Subagent, SubagentStatus } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
@@ -16,6 +15,10 @@ import { ProviderIcon } from "./ProviderIcon.tsx"
 import { useOpenSubagent } from "../lib/subagents.ts"
 import { Button } from "./ui/button.tsx"
 import { SkeletonList } from "./ui/skeleton.tsx"
+import { CheckIcon } from "./icons/CheckIcon.tsx"
+import { StopCircleIcon } from "./icons/StopCircleIcon.tsx"
+import { StopIcon } from "./icons/StopIcon.tsx"
+import { WarningIcon } from "./icons/WarningIcon.tsx"
 
 const NO_SUBAGENTS: ReadonlyArray<Subagent> = []
 
@@ -41,9 +44,9 @@ export const subagentStatusLabel = {
 // Running is a still dot: a batch of ten sub-agents would otherwise be ten spinners.
 const statusIcons = {
   running: <span aria-hidden className="size-1/2 rounded-full bg-working" />,
-  completed: <RiCheckLine aria-hidden className="size-full text-muted-foreground" />,
-  failed: <RiErrorWarningLine aria-hidden className="size-full text-destructive" />,
-  stopped: <RiStopCircleLine aria-hidden className="size-full text-muted-foreground" />,
+  completed: <CheckIcon aria-hidden className="size-full text-muted-foreground" />,
+  failed: <WarningIcon aria-hidden className="size-full text-destructive" />,
+  stopped: <StopCircleIcon aria-hidden className="size-full text-muted-foreground" />,
 } satisfies Record<SubagentStatus, ReactNode>
 
 /** `className` sizes the icon, `size-4` by default. */
@@ -179,7 +182,7 @@ export function StopSubagentButton({
       title={label}
       className={cn("text-muted-foreground hover:text-foreground", className)}
     >
-      <RiStopFill aria-hidden className="size-3 fill-current" />
+      <StopIcon aria-hidden className="size-3 fill-current" />
     </Button>
   )
 }

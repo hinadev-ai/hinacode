@@ -4,21 +4,6 @@ import { useNavigate } from "@tanstack/react-router"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react"
-import type { IconType } from "react-icons"
-import {
-  RiBrainLine,
-  RiChat3Line,
-  RiCloudLine,
-  RiFlashlightLine,
-  RiGitBranchLine,
-  RiGitPullRequestLine,
-  RiLockUnlockLine,
-  RiMacbookLine,
-  RiMoreLine,
-  RiShieldCheckLine,
-  RiShieldUserLine,
-  RiUserLine,
-} from "react-icons/ri"
 import { type ModelInfo, presetModels, ProviderId, unlistedModel } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import { AccessMode, type OpenPullRequest, type Project, type Thread } from "../../shared/domain.ts"
@@ -68,6 +53,19 @@ import {
   SelectValue,
 } from "./ui/select.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
+import { BoltIcon } from "./icons/BoltIcon.tsx"
+import { BrainIcon } from "./icons/BrainIcon.tsx"
+import { BranchIcon } from "./icons/BranchIcon.tsx"
+import { ChatIcon } from "./icons/ChatIcon.tsx"
+import { CloudIcon } from "./icons/CloudIcon.tsx"
+import type { IconComponent } from "./icons/Icon.tsx"
+import { LaptopIcon } from "./icons/LaptopIcon.tsx"
+import { MoreIcon } from "./icons/MoreIcon.tsx"
+import { PullRequestIcon } from "./icons/PullRequestIcon.tsx"
+import { ShieldIcon } from "./icons/ShieldIcon.tsx"
+import { ShieldUserIcon } from "./icons/ShieldUserIcon.tsx"
+import { UnlockIcon } from "./icons/UnlockIcon.tsx"
+import { UserIcon } from "./icons/UserIcon.tsx"
 
 interface ControlProps {
   readonly thread: Thread
@@ -253,10 +251,10 @@ const effortHints: Record<string, () => string> = {
 
 const DEFAULT_EFFORT = "default"
 
-export const accessModes: Record<AccessMode, { readonly icon: IconType; readonly label: () => string }> = {
-  supervised: { icon: RiShieldUserLine, label: m.access_supervised },
-  auto: { icon: RiShieldCheckLine, label: m.access_auto },
-  full: { icon: RiLockUnlockLine, label: m.access_full },
+export const accessModes: Record<AccessMode, { readonly icon: IconComponent; readonly label: () => string }> = {
+  supervised: { icon: ShieldUserIcon, label: m.access_supervised },
+  auto: { icon: ShieldIcon, label: m.access_auto },
+  full: { icon: UnlockIcon, label: m.access_full },
 }
 
 /** Muse Code's threads use the names its own permission picker shows, since each mode is one of its profiles. */
@@ -297,7 +295,7 @@ const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | u
 interface ChoiceItem<V extends string> {
   readonly value: V
   readonly label: string
-  readonly icon?: IconType
+  readonly icon?: IconComponent
   readonly hint?: string
 }
 
@@ -305,7 +303,7 @@ interface ChoiceItem<V extends string> {
 interface Choice<V extends string = string> {
   readonly name: string
   /** Stands for the current value when its label does not fit. */
-  readonly icon: IconType
+  readonly icon: IconComponent
   readonly value: V
   readonly items: ReadonlyArray<ChoiceItem<V>>
   readonly disabled: boolean
@@ -318,7 +316,7 @@ interface Choice<V extends string = string> {
 interface Toggle {
   readonly label: string
   readonly hint: string
-  readonly icon: IconType
+  readonly icon: IconComponent
   readonly on: boolean
   readonly toggle: () => void
 }
@@ -338,7 +336,7 @@ function useThreadOptions(thread: Thread, onError: (message: string) => void) {
       ? null
       : {
           name: m.account_picker(),
-          icon: RiUserLine,
+          icon: UserIcon,
           value: thread.accountId ?? CLI_LOGIN,
           items: accounts.map((option) => ({
             value: option.id ?? CLI_LOGIN,
@@ -359,7 +357,7 @@ function useThreadOptions(thread: Thread, onError: (message: string) => void) {
       ? null
       : {
           name: m.thread_effort_picker(),
-          icon: RiBrainLine,
+          icon: BrainIcon,
           value: thread.effort ?? DEFAULT_EFFORT,
           items: [
             {
@@ -379,7 +377,7 @@ function useThreadOptions(thread: Thread, onError: (message: string) => void) {
     ? {
         label: m.thread_fast_mode(),
         hint: m.thread_fast_mode_hint(),
-        icon: RiFlashlightLine,
+        icon: BoltIcon,
         on: thread.fastMode,
         toggle: () => set({ fastMode: !thread.fastMode }),
       }
@@ -389,7 +387,7 @@ function useThreadOptions(thread: Thread, onError: (message: string) => void) {
     ? {
         label: m.thread_conversation_mode(),
         hint: m.thread_conversation_mode_hint(),
-        icon: RiChat3Line,
+        icon: ChatIcon,
         on: !thread.userSkills,
         toggle: () => set({ userSkills: !thread.userSkills }),
       }
@@ -490,7 +488,7 @@ export function ThreadOptions({ thread, onError }: ControlProps) {
                   />
                 }
               >
-                <RiMoreLine aria-hidden />
+                <MoreIcon aria-hidden />
               </DropdownMenuTrigger>
             }
           />
@@ -677,7 +675,7 @@ function RefSuggestionItem({ suggestion }: { suggestion: RefSuggestion }) {
     >
       {suggestion.kind === "pullRequest" ? (
         <>
-          <RiGitPullRequestLine aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+          <PullRequestIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="shrink-0 font-mono">{suggestion.ref}</span>
           <span className="min-w-0 truncate">{suggestion.pullRequest.title}</span>
           {suggestion.pullRequest.isDraft && (
@@ -686,7 +684,7 @@ function RefSuggestionItem({ suggestion }: { suggestion: RefSuggestion }) {
         </>
       ) : (
         <>
-          <RiGitBranchLine aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+          <BranchIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="min-w-0 truncate font-mono">{suggestion.ref}</span>
         </>
       )}
@@ -757,8 +755,7 @@ function RefInput({
   )
 }
 
-const environmentIcon = (project: Project | undefined) =>
-  environmentOf(project) === null ? RiMacbookLine : RiCloudLine
+const environmentIcon = (project: Project | undefined) => (environmentOf(project) === null ? LaptopIcon : CloudIcon)
 
 /**
  * The machine the thread runs on, among those its project's group spans. Picking another moves the unstarted thread
@@ -807,7 +804,7 @@ export function WorkspacePicker({ thread, workspace, onError }: ControlProps & {
   const setWorkspace = (next: Draft["workspace"]) => useDrafts.getState().setWorkspace(thread.id, next)
   const mode = workspace?.mode ?? "local"
   const ref = workspace?.ref ?? currentBranch
-  const RefIcon = parsePullRequestSelector(ref) ? RiGitPullRequestLine : RiGitBranchLine
+  const RefIcon = parsePullRequestSelector(ref) ? PullRequestIcon : BranchIcon
 
   return (
     <div className="mx-auto mt-1 flex w-full max-w-3xl items-center gap-1 px-1">

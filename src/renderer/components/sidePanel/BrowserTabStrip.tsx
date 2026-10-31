@@ -1,10 +1,12 @@
 import { cn } from "cn"
 import { type KeyboardEvent, useEffect, useRef } from "react"
-import { RiAddLine, RiCloseLine, RiGlobalLine } from "react-icons/ri"
 import type { Thread } from "../../../shared/domain.ts"
 import { m } from "../../paraglide/messages.js"
 import { type BrowserTab, selectBrowserTabs, useBrowserTabs } from "../../stores/browserTabs.ts"
 import { Button } from "../ui/button.tsx"
+import { CloseIcon } from "../icons/CloseIcon.tsx"
+import { GlobeIcon } from "../icons/GlobeIcon.tsx"
+import { PlusIcon } from "../icons/PlusIcon.tsx"
 
 export const browserTabId = (threadId: string, tabId: string) => `browser-tab-${threadId}-${tabId}`
 export const browserPanelId = (threadId: string, tabId: string) => `browser-page-${threadId}-${tabId}`
@@ -70,7 +72,7 @@ export function BrowserTabStrip({ thread }: { thread: Thread }) {
         title={m.browser_new_tab()}
         onClick={() => useBrowserTabs.getState().openTab(threadId)}
       >
-        <RiAddLine aria-hidden />
+        <PlusIcon aria-hidden />
       </Button>
     </div>
   )
@@ -110,7 +112,7 @@ function Tab({ threadId, tab, selected, closable }: TabProps) {
           closable ? "pr-7" : "pr-2.5",
         )}
       >
-        <RiGlobalLine aria-hidden className="size-4 shrink-0" />
+        <GlobeIcon aria-hidden className="size-4 shrink-0" />
         <span className="truncate">{label}</span>
       </button>
       {closable && (
@@ -125,7 +127,7 @@ function Tab({ threadId, tab, selected, closable }: TabProps) {
             !selected && "invisible group-hover:visible",
           )}
         >
-          <RiCloseLine aria-hidden className="size-3.5" />
+          <CloseIcon aria-hidden className="size-3.5" />
         </button>
       )}
     </div>

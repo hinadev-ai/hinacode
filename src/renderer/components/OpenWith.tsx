@@ -1,6 +1,5 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { RiArrowDownSLine, RiExternalLinkLine, RiFolderOpenLine } from "react-icons/ri"
 import { toast } from "sonner"
 import type { Opener, Thread } from "../../shared/domain.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
@@ -20,6 +19,9 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx"
+import { ChevronDownIcon } from "./icons/ChevronDownIcon.tsx"
+import { ExternalIcon } from "./icons/ExternalIcon.tsx"
+import { FolderOpenIcon } from "./icons/FolderOpenIcon.tsx"
 
 type Target = "folder" | "file"
 
@@ -41,7 +43,7 @@ function OpenerIcon({ opener }: { opener: Opener }) {
   return opener.icon ? (
     <img src={opener.icon} alt="" aria-hidden className="size-4 shrink-0" />
   ) : (
-    <RiExternalLinkLine aria-hidden />
+    <ExternalIcon aria-hidden />
   )
 }
 
@@ -58,7 +60,7 @@ function OpenerItems({ path, target }: { path: string; target: Target }) {
       ))}
       {openers.length > 0 && <DropdownMenuSeparator />}
       <DropdownMenuItem onClick={() => void callPromise("shell.reveal", { path })}>
-        <RiFolderOpenLine aria-hidden />
+        <FolderOpenIcon aria-hidden />
         {m.panel_reveal()}
       </DropdownMenuItem>
     </>
@@ -70,7 +72,7 @@ export function OpenWithSubmenu({ path, target }: { path: string; target: Target
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger>
-        <RiExternalLinkLine aria-hidden />
+        <ExternalIcon aria-hidden />
         {m.open_with()}
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent>
@@ -122,7 +124,7 @@ function OpenWithButton({ path }: { path: string }) {
             />
           }
         >
-          {preferred ? <RiArrowDownSLine aria-hidden /> : <RiExternalLinkLine aria-hidden />}
+          {preferred ? <ChevronDownIcon aria-hidden /> : <ExternalIcon aria-hidden />}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
           <OpenerItems path={path} target="folder" />

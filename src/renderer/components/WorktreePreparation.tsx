@@ -1,15 +1,17 @@
 import type { ReactNode } from "react"
-import { RiCheckLine, RiCircleLine, RiLoader4Line } from "react-icons/ri"
 import type { Worktree } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
 import { WorktreeSetupLog } from "./WorktreeSetupLog.tsx"
+import { CheckIcon } from "./icons/CheckIcon.tsx"
+import { CircleIcon } from "./icons/CircleIcon.tsx"
+import { SpinnerIcon } from "./icons/SpinnerIcon.tsx"
 
 type StepState = "done" | "running" | "pending"
 
 const stepIcon: Record<StepState, ReactNode> = {
-  done: <RiCheckLine aria-hidden className="size-4 shrink-0 text-success" />,
-  running: <RiLoader4Line aria-hidden className="size-4 shrink-0 animate-spin motion-reduce:animate-none" />,
-  pending: <RiCircleLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />,
+  done: <CheckIcon aria-hidden className="size-4 shrink-0 text-success" />,
+  running: <SpinnerIcon aria-hidden className="size-4 shrink-0 animate-spin motion-reduce:animate-none" />,
+  pending: <CircleIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />,
 }
 
 function Step({ state, label, children }: { state: StepState; label: string; children?: ReactNode }) {

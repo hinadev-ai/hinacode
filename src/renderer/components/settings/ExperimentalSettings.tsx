@@ -1,7 +1,6 @@
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { useState } from "react"
-import { RiCheckboxCircleFill } from "react-icons/ri"
 import type {
   ExperimentalSettings as ExperimentalSettingsValue,
   VmHostStatus,
@@ -19,6 +18,7 @@ import { Switch } from "../ui/switch.tsx"
 import { Textarea } from "../ui/textarea.tsx"
 import { VmTemplateSelect } from "../sidePanel/TinyVmView.tsx"
 import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
+import { CheckCircleFillIcon } from "../icons/CheckCircleFillIcon.tsx"
 
 export function ExperimentalSettings() {
   const environment = useSettingsEnvironment()
@@ -219,7 +219,7 @@ function HostStatus({ status }: { status: VmHostStatus }) {
     case "connected":
       return (
         <>
-          <RiCheckboxCircleFill aria-hidden className="size-4 text-success" />
+          <CheckCircleFillIcon aria-hidden className="size-4 text-success" />
           {m.settings_tiny_vm_connected({
             host: hostOf(status.url),
             sandboxes: String(status.sandboxes),

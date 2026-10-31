@@ -1,12 +1,15 @@
 import type { LegendListRef } from "@legendapp/list/react"
 import { type KeyboardEvent, type RefObject, useEffect, useEffectEvent, useRef, useState } from "react"
-import { RiArrowDownSLine, RiArrowUpSLine, RiCloseLine, RiSearchLine } from "react-icons/ri"
 import type { Message } from "../../shared/domain.ts"
 import { type FindMatch, findMatches } from "../lib/find.ts"
 import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
 import { partMatchSelector } from "./FindHighlight.tsx"
 import { Button } from "./ui/button.tsx"
+import { ChevronDownIcon } from "./icons/ChevronDownIcon.tsx"
+import { ChevronUpIcon } from "./icons/ChevronUpIcon.tsx"
+import { CloseIcon } from "./icons/CloseIcon.tsx"
+import { SearchIcon } from "./icons/SearchIcon.tsx"
 
 /** Frames to wait for a row to mount after the list scrolls to it. */
 const MOUNT_WAIT_FRAMES = 10
@@ -148,7 +151,7 @@ export function FindBar({
       aria-label={m.find_label()}
       className="flex h-10 shrink-0 animate-fade-in items-center gap-1 border-b border-border px-3"
     >
-      <RiSearchLine aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+      <SearchIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
       <input
         ref={inputRef}
         type="text"
@@ -175,7 +178,7 @@ export function FindBar({
         disabled={matches.length === 0}
         onClick={() => step(-1)}
       >
-        <RiArrowUpSLine aria-hidden />
+        <ChevronUpIcon aria-hidden />
       </Button>
       <Button
         variant="ghost"
@@ -185,10 +188,10 @@ export function FindBar({
         disabled={matches.length === 0}
         onClick={() => step(1)}
       >
-        <RiArrowDownSLine aria-hidden />
+        <ChevronDownIcon aria-hidden />
       </Button>
       <Button variant="ghost" size="icon-sm" aria-label={m.find_close()} title={m.find_close()} onClick={close}>
-        <RiCloseLine aria-hidden />
+        <CloseIcon aria-hidden />
       </Button>
     </search>
   )

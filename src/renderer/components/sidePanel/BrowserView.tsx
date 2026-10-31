@@ -1,7 +1,6 @@
 import { cn } from "cn"
 import { Schema } from "effect"
 import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react"
-import { RiArrowLeftLine, RiArrowRightLine, RiCloseLine, RiCursorLine, RiRefreshLine } from "react-icons/ri"
 import type { Thread } from "../../../shared/domain.ts"
 import { browserUrl } from "../../lib/browserUrl.ts"
 import { useThreadEnvironment } from "../../lib/environments.ts"
@@ -22,6 +21,11 @@ import { Input } from "../ui/input.tsx"
 import { BrowserStart, type Device, type Failure, LoadFailure, ViewportMenu } from "./BrowserChrome.tsx"
 import { browserPanelId, browserTabId } from "./BrowserTabStrip.tsx"
 import { RemoteBrowserPage } from "./RemoteBrowserPage.tsx"
+import { ArrowLeftIcon } from "../icons/ArrowLeftIcon.tsx"
+import { ArrowRightIcon } from "../icons/ArrowRightIcon.tsx"
+import { CloseIcon } from "../icons/CloseIcon.tsx"
+import { CursorIcon } from "../icons/CursorIcon.tsx"
+import { RefreshIcon } from "../icons/RefreshIcon.tsx"
 
 /**
  * Without `allowpopups` the page's `window.open` and `target=_blank` links do nothing; with it, main loads them in
@@ -210,7 +214,7 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
           disabled={!history.back}
           onClick={() => viewRef.current?.goBack()}
         >
-          <RiArrowLeftLine aria-hidden />
+          <ArrowLeftIcon aria-hidden />
         </Button>
         <Button
           variant="ghost"
@@ -220,7 +224,7 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
           disabled={!history.forward}
           onClick={() => viewRef.current?.goForward()}
         >
-          <RiArrowRightLine aria-hidden />
+          <ArrowRightIcon aria-hidden />
         </Button>
         <Button
           variant="ghost"
@@ -230,7 +234,7 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
           disabled={!ready}
           onClick={() => (loading ? viewRef.current?.stop() : viewRef.current?.reload())}
         >
-          {loading ? <RiCloseLine aria-hidden /> : <RiRefreshLine aria-hidden />}
+          {loading ? <CloseIcon aria-hidden /> : <RefreshIcon aria-hidden />}
         </Button>
         <form onSubmit={submit} className="mx-1 min-w-0 flex-1">
           <Input
@@ -262,7 +266,7 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
           onClick={() => (picking ? stopPick() : void startPick())}
           className={cn(picking && "text-primary")}
         >
-          <RiCursorLine aria-hidden />
+          <CursorIcon aria-hidden />
         </Button>
       </div>
       <div className="relative min-h-0 flex-1">

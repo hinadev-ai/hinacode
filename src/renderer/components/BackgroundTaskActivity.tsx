@@ -1,5 +1,3 @@
-import type { IconType } from "react-icons"
-import { RiAlarmLine, RiFlowChart, RiLoader4Line, RiStopFill, RiTerminalBoxLine } from "react-icons/ri"
 import type { BackgroundTask, BackgroundTaskKind } from "../../shared/agent.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
@@ -9,13 +7,19 @@ import { useThreadBackgroundTasks } from "../stores/backgroundTasks.ts"
 import { ActivityRow } from "./ActivityRow.tsx"
 import { Button } from "./ui/button.tsx"
 import { toast } from "sonner"
+import { AlarmIcon } from "./icons/AlarmIcon.tsx"
+import { FlowIcon } from "./icons/FlowIcon.tsx"
+import type { IconComponent } from "./icons/Icon.tsx"
+import { SpinnerIcon } from "./icons/SpinnerIcon.tsx"
+import { StopIcon } from "./icons/StopIcon.tsx"
+import { TerminalIcon } from "./icons/TerminalIcon.tsx"
 
 const kinds = {
-  shell: { icon: RiTerminalBoxLine, label: m.activity_background_shell },
-  workflow: { icon: RiFlowChart, label: m.activity_background_workflow },
-  wakeup: { icon: RiAlarmLine, label: m.activity_background_wakeup },
-  other: { icon: RiLoader4Line, label: m.activity_background_other },
-} satisfies Record<BackgroundTaskKind, { readonly icon: IconType; readonly label: () => string }>
+  shell: { icon: TerminalIcon, label: m.activity_background_shell },
+  workflow: { icon: FlowIcon, label: m.activity_background_workflow },
+  wakeup: { icon: AlarmIcon, label: m.activity_background_wakeup },
+  other: { icon: SpinnerIcon, label: m.activity_background_other },
+} satisfies Record<BackgroundTaskKind, { readonly icon: IconComponent; readonly label: () => string }>
 
 /**
  * A line per background task, such as a dev server Claude started with `run_in_background`, each with a stop
@@ -76,7 +80,7 @@ function StopBackgroundTaskButton({ threadId, task }: { threadId: string; task: 
       title={label}
       className="text-muted-foreground hover:text-foreground"
     >
-      <RiStopFill aria-hidden className="size-3 fill-current" />
+      <StopIcon aria-hidden className="size-3 fill-current" />
     </Button>
   )
 }

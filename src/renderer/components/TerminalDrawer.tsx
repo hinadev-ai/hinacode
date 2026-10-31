@@ -1,5 +1,4 @@
 import { type KeyboardEvent, type PointerEvent, useEffect, useLayoutEffect, useRef } from "react"
-import { RiAddLine, RiArrowDownSLine, RiCloseLine, RiTerminalBoxLine } from "react-icons/ri"
 import type { TerminalSession } from "../../shared/domain.ts"
 import { TERMINAL_HEIGHT_BOUNDS } from "../lib/panelSize.ts"
 import { attachTerminal, focusTerminal, showTerminal } from "../lib/terminalScreens.ts"
@@ -8,6 +7,10 @@ import { useTerminals } from "../stores/terminals.ts"
 import { useUi } from "../stores/ui.ts"
 import { Button } from "./ui/button.tsx"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.tsx"
+import { ChevronDownIcon } from "./icons/ChevronDownIcon.tsx"
+import { CloseIcon } from "./icons/CloseIcon.tsx"
+import { PlusIcon } from "./icons/PlusIcon.tsx"
+import { TerminalIcon } from "./icons/TerminalIcon.tsx"
 
 const MIN_HEIGHT = TERMINAL_HEIGHT_BOUNDS.min
 /** Room the transcript and composer keep above the drawer. */
@@ -28,7 +31,7 @@ export function TerminalToggle({ threadId }: { threadId: string }) {
       aria-expanded={open}
       onClick={() => void useTerminals.getState().toggle(threadId)}
     >
-      <RiTerminalBoxLine aria-hidden />
+      <TerminalIcon aria-hidden />
     </Button>
   )
 }
@@ -102,7 +105,7 @@ function OpenDrawer({ threadId, sessions, activeId }: OpenDrawerProps) {
             title={m.terminal_new()}
             onClick={() => void terminals().openSession(threadId)}
           >
-            <RiAddLine aria-hidden />
+            <PlusIcon aria-hidden />
           </Button>
           <div className="flex-1" />
           <Button
@@ -112,7 +115,7 @@ function OpenDrawer({ threadId, sessions, activeId }: OpenDrawerProps) {
             title={m.terminal_hide()}
             onClick={hide}
           >
-            <RiArrowDownSLine aria-hidden />
+            <ChevronDownIcon aria-hidden />
           </Button>
         </div>
         {error && (
@@ -145,7 +148,7 @@ function SessionTab({ session, name, onClose }: { session: TerminalSession; name
         title={m.terminal_close({ name })}
         onClick={onClose}
       >
-        <RiCloseLine aria-hidden />
+        <CloseIcon aria-hidden />
       </Button>
     </div>
   )

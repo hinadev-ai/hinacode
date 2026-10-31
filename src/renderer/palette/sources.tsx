@@ -1,4 +1,3 @@
-import { RiAddLine, RiFileTextLine } from "react-icons/ri"
 import { ProjectIcon } from "../components/ProjectIcon.tsx"
 import { ProviderIcon } from "../components/ProviderIcon.tsx"
 import { commands, isCommandAvailable } from "../keybindings/commands.ts"
@@ -12,6 +11,8 @@ import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { type Project, threadFolder, Thread } from "../../shared/domain.ts"
 import type { PaletteContext, PaletteItem, PaletteSource } from "./types.ts"
+import { FileTextIcon } from "../components/icons/FileTextIcon.tsx"
+import { PlusIcon } from "../components/icons/PlusIcon.tsx"
 
 const iconClass = "size-3.5 shrink-0 text-muted-foreground"
 
@@ -45,7 +46,7 @@ export const projectsSource: PaletteSource = {
       group: "projects",
       title: m.sidebar_new_thread_in({ project: project.name }),
       subtitle: project.rootPath,
-      icon: <RiAddLine aria-hidden className={iconClass} />,
+      icon: <PlusIcon aria-hidden className={iconClass} />,
       ...cloudOf(project, ctx),
       run: () => void startThread(project.id, ctx.navigate),
     })),
@@ -121,7 +122,7 @@ const fileItem = (ctx: PaletteContext, path: string): PaletteItem => {
     ...(slash > 0 ? { subtitle: path.slice(0, slash) } : {}),
     // The whole path, so a query such as "renderer/comp" can span the directory and the name.
     keywords: [path],
-    icon: <RiFileTextLine aria-hidden className={iconClass} />,
+    icon: <FileTextIcon aria-hidden className={iconClass} />,
     run: () => openFile(ctx, path),
   }
 }

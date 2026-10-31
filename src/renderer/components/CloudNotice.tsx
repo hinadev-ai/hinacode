@@ -1,6 +1,5 @@
 // oxlint-disable jsx-a11y/prefer-tag-over-role -- The live notice holds a button, which <output> cannot.
 import { Link } from "@tanstack/react-router"
-import { RiCloudOffLine, RiErrorWarningLine } from "react-icons/ri"
 import { type Cloud, incompatibleText, useCloud, useThreadEnvironment } from "../lib/environments.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
 import { useNow } from "../lib/useNow.ts"
@@ -8,6 +7,8 @@ import { m } from "../paraglide/messages.js"
 import { useLocale } from "../stores/locale.ts"
 import { ReconnectButton } from "./ReconnectButton.tsx"
 import { Button } from "./ui/button.tsx"
+import { CloudOffIcon } from "./icons/CloudOffIcon.tsx"
+import { WarningIcon } from "./icons/WarningIcon.tsx"
 
 /** Says above the composer that the thread's cloud cannot take messages right now, and what to do about it. */
 export function CloudNotice({ threadId }: { threadId: string }) {
@@ -38,7 +39,7 @@ function CloudNoticeBody({ cloud }: { cloud: Cloud }) {
   const locale = useLocale((state) => state.locale)
   const text = noticeText(cloud, now, locale)
   const needsYou = cloud.status === "unauthorized" || cloud.status === "incompatible"
-  const Icon = needsYou ? RiErrorWarningLine : RiCloudOffLine
+  const Icon = needsYou ? WarningIcon : CloudOffIcon
 
   return (
     <div

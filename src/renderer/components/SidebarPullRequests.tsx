@@ -1,6 +1,5 @@
 import { useAtomValue } from "@effect/atom-react"
 import { startTransition, useState, useTransition } from "react"
-import { RiStackLine } from "react-icons/ri"
 import type { MergeMethod, PullRequest, PullRequestLink } from "../../shared/domain.ts"
 import { openChecks } from "../../shared/threadStatus.ts"
 import { usePullRequestHref } from "../lib/environments.ts"
@@ -25,6 +24,7 @@ import {
 import { Button } from "./ui/button.tsx"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
+import { StackIcon } from "./icons/StackIcon.tsx"
 
 const mergeMethods = ["squash", "merge", "rebase"] as const
 const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? ""
@@ -71,7 +71,7 @@ export function SidebarPullRequests({
             delay={300}
             className={cn(aboveRowLinkTrigger, "hover:text-foreground")}
           >
-            <RiStackLine aria-hidden className="size-3" />+{links.length}
+            <StackIcon aria-hidden className="size-3" />+{links.length}
           </HoverCardTrigger>
           <HoverCardContent align="start" className="flex w-80 flex-col gap-2">
             <p className="text-xs text-muted-foreground">

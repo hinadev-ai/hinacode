@@ -1,7 +1,6 @@
 import { Autocomplete } from "@base-ui/react/autocomplete"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { useId, useRef, useState } from "react"
-import { RiAlarmLine, RiAlarmSnoozeLine, RiCalendarLine } from "react-icons/ri"
 import { toast } from "sonner"
 import type { Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -13,6 +12,9 @@ import { getLocale } from "../paraglide/runtime.js"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { Dialog, DialogOverlay, DialogPortal } from "./ui/dialog.tsx"
+import { AlarmIcon } from "./icons/AlarmIcon.tsx"
+import { CalendarIcon } from "./icons/CalendarIcon.tsx"
+import { SnoozeIcon } from "./icons/SnoozeIcon.tsx"
 
 interface Choice {
   readonly id: string
@@ -120,7 +122,7 @@ function SnoozePicker({ thread, onChoose }: { thread: Thread; onChoose: (until: 
         itemToStringValue={(choice: Choice) => choice.label}
       >
         <div className="flex items-center gap-2.5 border-b border-border px-3.5">
-          <RiAlarmSnoozeLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+          <SnoozeIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
           <Autocomplete.Input
             ref={focusOnMount}
             aria-label={m.snooze_input_label()}
@@ -148,9 +150,9 @@ function SnoozePicker({ thread, onChoose }: { thread: Thread; onChoose: (until: 
               className="flex min-h-9 cursor-default items-center gap-2.5 rounded-lg px-2.5 text-sm outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-highlighted:inset-ring data-highlighted:inset-ring-ring/50"
             >
               {choice.id === "typed" ? (
-                <RiCalendarLine aria-hidden className="size-4 shrink-0" />
+                <CalendarIcon aria-hidden className="size-4 shrink-0" />
               ) : choice.until === null ? (
-                <RiAlarmLine aria-hidden className="size-4 shrink-0" />
+                <AlarmIcon aria-hidden className="size-4 shrink-0" />
               ) : (
                 <span aria-hidden className="size-4 shrink-0" />
               )}

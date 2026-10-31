@@ -1,7 +1,6 @@
 import { detectPlatform } from "@tanstack/react-hotkeys"
 import { Link } from "@tanstack/react-router"
 import type { RefObject } from "react"
-import { RiSettings3Line, RiSideBarFill, RiSideBarLine } from "react-icons/ri"
 import { useKeymap } from "../keybindings/useKeybindings.ts"
 import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
@@ -10,6 +9,9 @@ import { ChordKeys } from "./ChordKeys.tsx"
 import { MachineResourcesButton } from "./MachineResources.tsx"
 import { Button } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
+import { SettingsIcon } from "./icons/SettingsIcon.tsx"
+import { SidebarFillIcon } from "./icons/SidebarFillIcon.tsx"
+import { SidebarIcon } from "./icons/SidebarIcon.tsx"
 
 // The main process hides the native title bar on macOS only, and the traffic lights sit in this bar's left inset.
 const besideTrafficLights = detectPlatform() === "mac"
@@ -46,7 +48,7 @@ export function TitleBar({
             />
           }
         >
-          {sidebarShown ? <RiSideBarFill aria-hidden /> : <RiSideBarLine aria-hidden />}
+          {sidebarShown ? <SidebarFillIcon aria-hidden /> : <SidebarIcon aria-hidden />}
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {sidebarLabel}
@@ -54,7 +56,7 @@ export function TitleBar({
         </TooltipContent>
       </Tooltip>
       <Button variant="ghost" size="icon-sm" render={<Link to="/settings" />} aria-label={m.sidebar_settings()}>
-        <RiSettings3Line aria-hidden />
+        <SettingsIcon aria-hidden />
       </Button>
       <MachineResourcesButton />
     </header>

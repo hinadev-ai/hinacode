@@ -1,6 +1,4 @@
 import { useAutoAnimate } from "@formkit/auto-animate/react"
-import type { IconType } from "react-icons"
-import { RiCloseLine, RiCornerDownRightLine, RiPencilLine, RiTimeLine } from "react-icons/ri"
 import type { QueuedMessage, Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
@@ -9,6 +7,11 @@ import { useDrafts } from "../stores/drafts.ts"
 import { ActivityRow } from "./ActivityRow.tsx"
 import { Button } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
+import { ClockIcon } from "./icons/ClockIcon.tsx"
+import { CloseIcon } from "./icons/CloseIcon.tsx"
+import { CornerDownRightIcon } from "./icons/CornerDownRightIcon.tsx"
+import type { IconComponent } from "./icons/Icon.tsx"
+import { PencilIcon } from "./icons/PencilIcon.tsx"
 
 const summaryOf = (message: QueuedMessage) =>
   message.text.trim() || m.queue_attachments({ count: String(message.attachments.length) })
@@ -71,16 +74,16 @@ export function QueueBar({
             actions={
               <>
                 <QueueAction
-                  icon={RiCornerDownRightLine}
+                  icon={CornerDownRightIcon}
                   label={m.queue_steer_now()}
                   onClick={() => steerNow(message.id)}
                 />
-                <QueueAction icon={RiPencilLine} label={m.queue_edit()} onClick={() => edit(message.id)} />
-                <QueueAction icon={RiCloseLine} label={m.queue_remove()} onClick={() => remove(message.id)} />
+                <QueueAction icon={PencilIcon} label={m.queue_edit()} onClick={() => edit(message.id)} />
+                <QueueAction icon={CloseIcon} label={m.queue_remove()} onClick={() => remove(message.id)} />
               </>
             }
           >
-            <RiTimeLine aria-hidden className="size-3.5 shrink-0" />
+            <ClockIcon aria-hidden className="size-3.5 shrink-0" />
             <span className="truncate text-foreground">{summaryOf(message)}</span>
           </ActivityRow>
         </li>
@@ -89,7 +92,7 @@ export function QueueBar({
   )
 }
 
-function QueueAction({ icon: Icon, label, onClick }: { icon: IconType; label: string; onClick: () => void }) {
+function QueueAction({ icon: Icon, label, onClick }: { icon: IconComponent; label: string; onClick: () => void }) {
   return (
     <Tooltip>
       <TooltipTrigger

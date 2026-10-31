@@ -4,21 +4,6 @@ import { useRouter, useNavigate } from "@tanstack/react-router"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { AsyncResult } from "effect/reactivity"
 import { type RefObject, useEffect, useId, useRef, useState } from "react"
-import {
-  RiAddLine,
-  RiArrowDownLine,
-  RiArrowRightSLine,
-  RiArrowUpLine,
-  RiChat3Line,
-  RiChatNewLine,
-  RiDeleteBinLine,
-  RiFilter3Fill,
-  RiFilter3Line,
-  RiFolder3Line,
-  RiFolderAddLine,
-  RiMoreFill,
-  RiPencilLine,
-} from "react-icons/ri"
 import { useShallow } from "zustand/react/shallow"
 import type { Project, SidebarGroup, Thread } from "../../shared/domain.ts"
 import { environmentOf, isStale, useCloud, useClouds } from "../lib/environments.ts"
@@ -63,6 +48,19 @@ import {
 import { Input } from "./ui/input.tsx"
 import { ScrollArea } from "./ui/scroll-area.tsx"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.tsx"
+import { ArrowDownIcon } from "./icons/ArrowDownIcon.tsx"
+import { ArrowUpIcon } from "./icons/ArrowUpIcon.tsx"
+import { ChatIcon } from "./icons/ChatIcon.tsx"
+import { ChatNewIcon } from "./icons/ChatNewIcon.tsx"
+import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
+import { FilterFillIcon } from "./icons/FilterFillIcon.tsx"
+import { FilterIcon } from "./icons/FilterIcon.tsx"
+import { FolderAddIcon } from "./icons/FolderAddIcon.tsx"
+import { FolderIcon } from "./icons/FolderIcon.tsx"
+import { MoreIcon } from "./icons/MoreIcon.tsx"
+import { PencilIcon } from "./icons/PencilIcon.tsx"
+import { PlusIcon } from "./icons/PlusIcon.tsx"
+import { TrashIcon } from "./icons/TrashIcon.tsx"
 
 /** Stays mounted while hidden so its dialogs, opened by keybindings, still render. */
 export function Sidebar({
@@ -122,7 +120,7 @@ export function Sidebar({
           aria-label={m.sidebar_add_project()}
           onClick={() => setAddProjectOpen(true)}
         >
-          <RiFolderAddLine aria-hidden />
+          <FolderAddIcon aria-hidden />
         </Button>
       </div>
 
@@ -301,7 +299,7 @@ function ProjectFilterMenu() {
   const setIds = useUi((state) => state.setSidebarProjectIds)
   const picked = new Set(ids)
   const active = projects.some((project) => picked.has(project.id))
-  const Icon = active ? RiFilter3Fill : RiFilter3Line
+  const Icon = active ? FilterFillIcon : FilterIcon
 
   return (
     <DropdownMenu>
@@ -401,7 +399,7 @@ function ProjectList({ query, onAddProject, focusAfterDelete }: ProjectListProps
             <p className="text-sm font-medium">{m.sidebar_empty_title()}</p>
             <p className="text-xs text-muted-foreground">{m.sidebar_empty_hint()}</p>
             <Button variant="outline" size="sm" onClick={onAddProject}>
-              <RiFolderAddLine aria-hidden />
+              <FolderAddIcon aria-hidden />
               {m.sidebar_add_project()}
             </Button>
           </div>
@@ -450,7 +448,7 @@ function GroupHeader({ group, open }: GroupHeaderProps) {
           onClick={() => void update((state) => setGroupCollapsed(state, group.id, open))}
           className="group/trigger flex min-w-0 flex-1 items-center gap-1 rounded-md px-1.5 py-1 text-left text-xs font-medium text-muted-foreground outline-none hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
         >
-          <RiArrowRightSLine
+          <ChevronRightIcon
             aria-hidden
             className="size-4 shrink-0 transition-transform group-aria-expanded/trigger:rotate-90 motion-reduce:transition-none"
           />
@@ -498,27 +496,27 @@ function GroupMenu({ group, open, onOpenChange }: GroupMenuProps) {
             />
           }
         >
-          <RiMoreFill aria-hidden />
+          <MoreIcon aria-hidden />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
           <DropdownMenuItem onClick={() => setRenameQueued(true)}>
-            <RiPencilLine aria-hidden />
+            <PencilIcon aria-hidden />
             {m.sidebar_group_rename()}
           </DropdownMenuItem>
           <DropdownMenuItem disabled={index <= 0} onClick={() => void update((next) => moveGroup(next, group.id, -1))}>
-            <RiArrowUpLine aria-hidden />
+            <ArrowUpIcon aria-hidden />
             {m.sidebar_group_move_up()}
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={index === state.groups.length - 1}
             onClick={() => void update((next) => moveGroup(next, group.id, 1))}
           >
-            <RiArrowDownLine aria-hidden />
+            <ArrowDownIcon aria-hidden />
             {m.sidebar_group_move_down()}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onClick={() => void update((next) => deleteGroup(next, group.id))}>
-            <RiDeleteBinLine aria-hidden />
+            <TrashIcon aria-hidden />
             {m.sidebar_group_delete()}
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -574,16 +572,16 @@ function ProjectGroup({ group, query, nested, focusAfterDelete }: ProjectGroupPr
             aria-label={m.sidebar_toggle_project({ project: first.name })}
             aria-describedby={cloud && cloudMarkId}
           >
-            <RiArrowRightSLine
+            <ChevronRightIcon
               aria-hidden
               className="size-4 shrink-0 text-muted-foreground transition-transform group-data-panel-open/trigger:rotate-90 motion-reduce:transition-none"
             />
             {cloud ? (
               <CloudMark cloud={cloud} id={cloudMarkId} className="size-4" />
             ) : first.kind === "chats" ? (
-              <RiChat3Line aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+              <ChatIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
             ) : (
-              <RiFolder3Line aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+              <FolderIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
             )}
             <span className="truncate font-medium" title={first.rootPath}>
               {first.name}
@@ -635,7 +633,7 @@ function NewThreadButton({ projects, buttonRef, onNewThread }: NewThreadButtonPr
       aria-label={m.sidebar_new_thread_in({ project: project.name })}
       onClick={() => onNewThread(project)}
     >
-      <RiAddLine aria-hidden />
+      <PlusIcon aria-hidden />
     </Button>
   )
 }
@@ -653,7 +651,7 @@ function NewChatButton() {
       aria-label={m.sidebar_new_chat()}
       onClick={() => void startThread(chats.id, navigate)}
     >
-      <RiChatNewLine aria-hidden />
+      <ChatNewIcon aria-hidden />
     </Button>
   )
 }

@@ -1,6 +1,6 @@
-import { RiArrowRightSLine } from "react-icons/ri"
 import { formatWorkDuration } from "../lib/assistantPresentation.ts"
 import { m } from "../paraglide/messages.js"
+import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
 
 const rowClassName =
   "mb-2 flex min-h-8 w-full items-center gap-1.5 border-b border-border text-xs text-muted-foreground tabular-nums"
@@ -33,7 +33,7 @@ export function WorkedFor({
       className={`${rowClassName} group/trigger text-left outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring`}
     >
       {label}
-      <RiArrowRightSLine
+      <ChevronRightIcon
         aria-hidden
         className="size-3.5 shrink-0 transition-transform group-aria-expanded/trigger:rotate-90 motion-reduce:transition-none"
       />

@@ -1,5 +1,4 @@
 import { type FormEvent, startTransition, useActionState, useEffect, useId, useState } from "react"
-import { RiKey2Line } from "react-icons/ri"
 import type { SecretRequest } from "../../shared/agent.ts"
 import { useOpenThreadEnvironment } from "../lib/environments.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -8,6 +7,7 @@ import { m } from "../paraglide/messages.js"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Input } from "./ui/input.tsx"
+import { KeyIcon } from "./icons/KeyIcon.tsx"
 
 /**
  * One pending `request_secret` call. The value goes to main over `secrets.respond` and nowhere else;
@@ -48,7 +48,7 @@ export function SecretRequestCard({ request, providerLabel }: { request: SecretR
       className="mx-auto mb-2 flex w-full max-w-3xl flex-col gap-2 rounded-xl border border-attention/40 bg-attention/5 p-3 transition-[opacity,translate] duration-200 ease-out starting:opacity-0 motion-safe:starting:translate-y-1"
     >
       <h2 id={`secret-${request.id}`} className="flex items-center gap-2 text-sm font-semibold">
-        <RiKey2Line aria-hidden className="size-4 text-attention" />
+        <KeyIcon aria-hidden className="size-4 text-attention" />
         {m.secret_request_title({ provider: providerLabel })}
       </h2>
       <p className="text-sm">{request.description}</p>

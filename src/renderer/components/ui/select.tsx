@@ -3,7 +3,9 @@
 import * as React from "react"
 import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { cn } from "cn"
-import { RiArrowDownSLine, RiArrowUpSLine, RiCheckLine } from "react-icons/ri"
+import { CheckIcon } from "../icons/CheckIcon.tsx"
+import { ChevronDownIcon } from "../icons/ChevronDownIcon.tsx"
+import { ChevronUpIcon } from "../icons/ChevronUpIcon.tsx"
 
 const Select = SelectPrimitive.Root
 
@@ -38,7 +40,7 @@ function SelectTrigger({
       {children}
       <SelectPrimitive.Icon
         data-slot="select-icon"
-        render={<RiArrowDownSLine className="pointer-events-none size-4 text-muted-foreground" />}
+        render={<ChevronDownIcon className="pointer-events-none size-4 text-muted-foreground" />}
       />
     </SelectPrimitive.Trigger>
   )
@@ -109,7 +111,7 @@ function SelectItem({ className, children, ...props }: SelectPrimitive.Item.Prop
       <SelectPrimitive.ItemIndicator
         render={<span className="pointer-events-none absolute right-2 flex size-4 items-center justify-center" />}
       >
-        <RiCheckLine className="pointer-events-none" />
+        <CheckIcon className="pointer-events-none" />
       </SelectPrimitive.ItemIndicator>
     </SelectPrimitive.Item>
   )
@@ -135,7 +137,7 @@ function SelectScrollUpButton({ className, ...props }: React.ComponentProps<type
       )}
       {...props}
     >
-      <RiArrowUpSLine />
+      <ChevronUpIcon />
     </SelectPrimitive.ScrollUpArrow>
   )
 }
@@ -150,7 +152,7 @@ function SelectScrollDownButton({ className, ...props }: React.ComponentProps<ty
       )}
       {...props}
     >
-      <RiArrowDownSLine />
+      <ChevronDownIcon />
     </SelectPrimitive.ScrollDownArrow>
   )
 }

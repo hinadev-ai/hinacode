@@ -1,21 +1,5 @@
 import { useParams } from "@tanstack/react-router"
 import { type ReactNode, useState } from "react"
-import type { IconType } from "react-icons"
-import {
-  RiArrowRightSLine,
-  RiCheckLine,
-  RiContractUpDownLine,
-  RiEditLine,
-  RiErrorWarningLine,
-  RiFileEditLine,
-  RiFileTextLine,
-  RiGlobalLine,
-  RiLoader4Line,
-  RiSearchLine,
-  RiSparkling2Line,
-  RiTerminalBoxLine,
-  RiToolsLine,
-} from "react-icons/ri"
 import type { Compaction } from "../../shared/agent.ts"
 import type { MessagePart, ToolCallStatus } from "../../shared/domain.ts"
 import { ansiSegments } from "../lib/ansi.ts"
@@ -35,6 +19,20 @@ import { Markdown } from "./Markdown.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { SubagentStatusIcon } from "./ThreadAgents.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
+import { BrainIcon } from "./icons/BrainIcon.tsx"
+import { CheckIcon } from "./icons/CheckIcon.tsx"
+import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
+import { CollapseIcon } from "./icons/CollapseIcon.tsx"
+import { FileDiffIcon } from "./icons/FileDiffIcon.tsx"
+import { FileTextIcon } from "./icons/FileTextIcon.tsx"
+import { GlobeIcon } from "./icons/GlobeIcon.tsx"
+import type { IconComponent } from "./icons/Icon.tsx"
+import { PencilIcon } from "./icons/PencilIcon.tsx"
+import { SearchIcon } from "./icons/SearchIcon.tsx"
+import { SpinnerIcon } from "./icons/SpinnerIcon.tsx"
+import { TerminalIcon } from "./icons/TerminalIcon.tsx"
+import { ToolsIcon } from "./icons/ToolsIcon.tsx"
+import { WarningIcon } from "./icons/WarningIcon.tsx"
 
 export function MessagePartView({ part }: { part: MessagePart }) {
   switch (part.type) {
@@ -60,7 +58,7 @@ const disclosureTrigger =
 
 function Chevron() {
   return (
-    <RiArrowRightSLine
+    <ChevronRightIcon
       aria-hidden
       className="size-3.5 shrink-0 transition-transform group-data-panel-open/trigger:rotate-90 motion-reduce:transition-none"
     />
@@ -72,7 +70,7 @@ function ReasoningPart({ text }: { text: string }) {
     <Collapsible className="my-1">
       <CollapsibleTrigger className={disclosureTrigger}>
         <Chevron />
-        <RiSparkling2Line aria-hidden className="size-3.5 shrink-0" />
+        <BrainIcon aria-hidden className="size-3.5 shrink-0" />
         {m.message_thinking()}
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-1 border-l-2 border-border pl-3 text-xs whitespace-pre-wrap text-muted-foreground">
@@ -83,17 +81,17 @@ function ReasoningPart({ text }: { text: string }) {
   )
 }
 
-const toolIcons: Record<string, IconType> = {
-  Bash: RiTerminalBoxLine,
-  Read: RiFileTextLine,
-  Edit: RiEditLine,
-  MultiEdit: RiEditLine,
-  Write: RiEditLine,
-  NotebookEdit: RiEditLine,
-  Glob: RiSearchLine,
-  Grep: RiSearchLine,
-  WebFetch: RiGlobalLine,
-  WebSearch: RiGlobalLine,
+const toolIcons: Record<string, IconComponent> = {
+  Bash: TerminalIcon,
+  Read: FileTextIcon,
+  Edit: PencilIcon,
+  MultiEdit: PencilIcon,
+  Write: PencilIcon,
+  NotebookEdit: PencilIcon,
+  Glob: SearchIcon,
+  Grep: SearchIcon,
+  WebFetch: GlobeIcon,
+  WebSearch: GlobeIcon,
 }
 
 const field = (value: unknown, key: string): unknown =>
@@ -117,9 +115,9 @@ export function formatOutput(output: unknown): string {
 }
 
 const statusIcon = {
-  running: <RiLoader4Line aria-hidden className="size-3.5 animate-spin motion-reduce:animate-none" />,
-  done: <RiCheckLine aria-hidden className="size-3.5" />,
-  error: <RiErrorWarningLine aria-hidden className="size-3.5 text-destructive" />,
+  running: <SpinnerIcon aria-hidden className="size-3.5 animate-spin motion-reduce:animate-none" />,
+  done: <CheckIcon aria-hidden className="size-3.5" />,
+  error: <WarningIcon aria-hidden className="size-3.5 text-destructive" />,
 } satisfies Record<ToolCallStatus, ReactNode>
 
 const statusLabel = {
@@ -130,7 +128,7 @@ const statusLabel = {
 
 function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call" }> }) {
   if (spawnsSubagent(part)) return <SubagentCallPart part={part} />
-  const Icon = toolIcons[part.name] ?? RiToolsLine
+  const Icon = toolIcons[part.name] ?? ToolsIcon
   const { name, summary } = describeToolCall(part)
 
   return (
@@ -188,11 +186,7 @@ function SubagentCallPart({ part }: { part: Extract<MessagePart, { type: "tool_c
   return (
     <button type="button" onClick={() => open(part.callId)} className={`my-1 ${disclosureTrigger}`}>
       <span className="size-3.5 shrink-0" />
-      {provider ? (
-        <ProviderIcon provider={provider} muted />
-      ) : (
-        <RiToolsLine aria-hidden className="size-3.5 shrink-0" />
-      )}
+      {provider ? <ProviderIcon provider={provider} muted /> : <ToolsIcon aria-hidden className="size-3.5 shrink-0" />}
       <span className="shrink-0 font-medium">
         <Highlighted text={name} />
       </span>
@@ -200,7 +194,7 @@ function SubagentCallPart({ part }: { part: Extract<MessagePart, { type: "tool_c
         <Highlighted text={summary} />
       </span>
       <SubagentStatusIcon status={subagent?.status ?? statusOfCall[part.status]} className="size-3.5" />
-      <RiArrowRightSLine aria-hidden className="size-3.5 shrink-0" />
+      <ChevronRightIcon aria-hidden className="size-3.5 shrink-0" />
     </button>
   )
 }
@@ -265,7 +259,7 @@ export function ToolGroup({
     <Collapsible open={open} onOpenChange={setOpen} className="my-1">
       <CollapsibleTrigger className={disclosureTrigger}>
         <Chevron />
-        <RiToolsLine aria-hidden className="size-3.5 shrink-0" />
+        <ToolsIcon aria-hidden className="size-3.5 shrink-0" />
         <span className="min-w-0 shrink truncate font-medium tabular-nums">{summarizeTools(calls)}</span>
         {running && (
           <span className="min-w-0 flex-1 truncate">
@@ -274,7 +268,7 @@ export function ToolGroup({
         )}
         {failed > 0 && (
           <span className="flex shrink-0 items-center gap-1 text-destructive tabular-nums">
-            <RiErrorWarningLine aria-hidden className="size-3.5" />
+            <WarningIcon aria-hidden className="size-3.5" />
             {m.tool_commands_failed({ count: failed })}
           </span>
         )}
@@ -300,13 +294,13 @@ function ToolRow({ call, reveal }: { call: ToolCall; reveal: FindRevealRequest |
   const truncate = reveal === null ? "truncate" : "wrap-anywhere"
   const isCommand = call.name === "Bash"
   const { summary } = describeToolCall(call)
-  const Icon = toolIcons[call.name] ?? RiToolsLine
+  const Icon = toolIcons[call.name] ?? ToolsIcon
   return (
     <Collapsible>
       <CollapsibleTrigger className="group/trigger flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset data-panel-open:text-foreground">
         <Icon aria-hidden className="size-3.5 shrink-0" />
         {isCommand ? <CommandLabel call={call} truncate={truncate} /> : <ToolLabel call={call} truncate={truncate} />}
-        <RiArrowRightSLine
+        <ChevronRightIcon
           aria-hidden
           className="size-3.5 shrink-0 transition-transform group-data-panel-open/trigger:rotate-90 motion-reduce:transition-none"
         />
@@ -406,7 +400,7 @@ function ToolSection({ label, text, scroll }: { label: string; text: string; scr
 function FileChangePart({ path, diff }: { path: string; diff: string }) {
   const row = (
     <>
-      <RiFileEditLine aria-hidden className="size-3.5 shrink-0" />
+      <FileDiffIcon aria-hidden className="size-3.5 shrink-0" />
       <span className="shrink-0">{m.file_change_label()}</span>
       <span className="min-w-0 truncate font-mono" title={path}>
         <Highlighted text={path} />
@@ -455,7 +449,7 @@ function CompactionLabel({ compaction }: { compaction: Compaction }) {
     case "done":
       return (
         <span className="flex items-center gap-1.5">
-          <RiContractUpDownLine aria-hidden className="size-3.5 shrink-0" />
+          <CollapseIcon aria-hidden className="size-3.5 shrink-0" />
           {compaction.trigger === "auto" ? m.compaction_done_auto() : m.compaction_done()}
           {compaction.preTokens !== null && compaction.postTokens !== null && (
             <span className="tabular-nums">
@@ -470,7 +464,7 @@ function CompactionLabel({ compaction }: { compaction: Compaction }) {
     case "failed":
       return (
         <span className="flex min-w-0 items-center gap-1.5">
-          <RiErrorWarningLine aria-hidden className="size-3.5 shrink-0 text-destructive" />
+          <WarningIcon aria-hidden className="size-3.5 shrink-0 text-destructive" />
           {m.compaction_failed()}
           {compaction.message !== null && <span className="min-w-0 truncate">{compaction.message}</span>}
         </span>

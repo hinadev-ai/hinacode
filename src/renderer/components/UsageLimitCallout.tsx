@@ -1,6 +1,5 @@
 // oxlint-disable jsx-a11y/prefer-tag-over-role -- The live region groups a heading, provider message, and controls.
 import { useActionState, useId } from "react"
-import { RiErrorWarningLine } from "react-icons/ri"
 import type { Thread } from "../../shared/domain.ts"
 import type { UsageLimit } from "../../shared/limits.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -11,6 +10,7 @@ import { useThreads } from "../stores/threads.ts"
 import { SwitchAccountButton, useAccountOptions } from "./AccountSwitch.tsx"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
+import { WarningIcon } from "./icons/WarningIcon.tsx"
 
 export function UsageLimitCallout({
   thread,
@@ -45,7 +45,7 @@ export function UsageLimitCallout({
       className="mb-2 flex shrink-0 flex-col gap-2 rounded-lg border border-attention/30 bg-attention/10 p-3"
     >
       <h2 id={titleId} className="flex items-center gap-2 text-sm font-semibold text-attention">
-        <RiErrorWarningLine aria-hidden className="size-4 shrink-0" />
+        <WarningIcon aria-hidden className="size-4 shrink-0" />
         {limit.kind === "org_spend" ? m.thread_org_spend_limit_title() : m.thread_usage_limit_title()}
       </h2>
       <p className="text-sm break-words whitespace-pre-wrap">{limit.message}</p>

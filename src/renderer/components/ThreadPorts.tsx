@@ -2,7 +2,6 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { useState, useTransition } from "react"
-import { RiCloseCircleLine } from "react-icons/ri"
 import type { OpenPort } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
@@ -11,6 +10,7 @@ import { m } from "../paraglide/messages.js"
 import { Button } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 import { SkeletonList } from "./ui/skeleton.tsx"
+import { XCircleIcon } from "./icons/XCircleIcon.tsx"
 
 /** Listening TCP ports, as the body of a panel section: opened from the thread's workspace or by its agent, refreshed every 2s. */
 export function ThreadPorts({ threadId }: { threadId: string }) {
@@ -118,7 +118,7 @@ function PortRow({ environment, port, onKilled, onKillFailed }: PortRowProps) {
             />
           }
         >
-          <RiCloseCircleLine aria-hidden />
+          <XCircleIcon aria-hidden />
         </TooltipTrigger>
         <TooltipContent side="top">{label}</TooltipContent>
       </Tooltip>

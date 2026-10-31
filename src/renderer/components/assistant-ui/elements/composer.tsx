@@ -9,20 +9,6 @@ import {
   useRef,
   useState,
 } from "react"
-import {
-  RiAddLine,
-  RiArrowDownSLine,
-  RiArrowUpLine,
-  RiCheckLine,
-  RiCloseLine,
-  RiFileImageLine,
-  RiFileTextLine,
-  RiFileZipLine,
-  RiLoader4Line,
-  RiMicLine,
-  RiStopFill,
-} from "react-icons/ri"
-import type { IconType } from "react-icons"
 import { cn } from "@/lib/utils"
 import {
   field,
@@ -37,6 +23,18 @@ import {
   ShimmerLabel,
 } from "./surfaces"
 import { clamp, pct } from "../utils/range"
+import { ArrowUpIcon } from "../../icons/ArrowUpIcon.tsx"
+import { CheckIcon } from "../../icons/CheckIcon.tsx"
+import { ChevronDownIcon } from "../../icons/ChevronDownIcon.tsx"
+import { CloseIcon } from "../../icons/CloseIcon.tsx"
+import { FileImageIcon } from "../../icons/FileImageIcon.tsx"
+import { FileTextIcon } from "../../icons/FileTextIcon.tsx"
+import { FileZipIcon } from "../../icons/FileZipIcon.tsx"
+import type { IconComponent } from "../../icons/Icon.tsx"
+import { MicIcon } from "../../icons/MicIcon.tsx"
+import { PlusIcon } from "../../icons/PlusIcon.tsx"
+import { SpinnerIcon } from "../../icons/SpinnerIcon.tsx"
+import { StopIcon } from "../../icons/StopIcon.tsx"
 
 export interface ComposerAttachment {
   name: string
@@ -49,7 +47,7 @@ export interface ComposerAttachment {
 export interface ComposerCommand {
   name: string
   description: string
-  icon: IconType
+  icon: IconComponent
 }
 
 export interface ComposerPerson {
@@ -69,10 +67,10 @@ export interface ComposerUsage {
   total: number
 }
 
-const ATTACHMENT_ICONS: Record<NonNullable<ComposerAttachment["kind"]>, IconType> = {
-  image: RiFileImageLine,
-  text: RiFileTextLine,
-  archive: RiFileZipLine,
+const ATTACHMENT_ICONS: Record<NonNullable<ComposerAttachment["kind"]>, IconComponent> = {
+  image: FileImageIcon,
+  text: FileTextIcon,
+  archive: FileZipIcon,
 }
 
 const BARS = Array.from({ length: 14 }, (_, i) => i)
@@ -286,7 +284,7 @@ export function ComposerAttachmentChip({
       </span>
       <span className="ms-1 flex w-5 items-center justify-end">
         {attachment.state === "uploading" ? (
-          <RiLoader4Line className="text-muted-foreground size-3.5 animate-spin motion-reduce:animate-none" />
+          <SpinnerIcon className="text-muted-foreground size-3.5 animate-spin motion-reduce:animate-none" />
         ) : attachment.state === "done" && onRemove ? (
           <button
             type="button"
@@ -294,10 +292,10 @@ export function ComposerAttachmentChip({
             onClick={() => onRemove(attachment.name)}
             className={cn(ghostButton, "size-5 [&_svg]:size-3")}
           >
-            <RiCloseLine />
+            <CloseIcon />
           </button>
         ) : attachment.state === "done" ? (
-          <RiCheckLine className="size-3.5 text-emerald-500" />
+          <CheckIcon className="size-3.5 text-emerald-500" />
         ) : null}
       </span>
       {attachment.state === "uploading" && (
@@ -391,7 +389,7 @@ export function ComposerAttachButton({ className, ...props }: Omit<ComponentProp
       className={cn(ghostButton, "size-8 disabled:pointer-events-none disabled:opacity-30", className)}
       {...props}
     >
-      <RiAddLine className="size-4" />
+      <PlusIcon className="size-4" />
     </button>
   )
 }
@@ -417,7 +415,7 @@ export function ComposerModelTrigger({
       {...props}
     >
       {model}
-      <RiArrowDownSLine className="size-3 opacity-60" />
+      <ChevronDownIcon className="size-3 opacity-60" />
     </button>
   )
 }
@@ -435,7 +433,7 @@ export function ComposerModelItem({
       <span className="flex-1 text-start">{entry.name}</span>
       <span className={cn(mono, "text-muted-foreground tabular-nums")}>{entry.meta}</span>
       <span className="flex w-4 justify-end">
-        {selected && <RiCheckLine className="fade-in zoom-in-90 animate-in size-3.5 duration-200" />}
+        {selected && <CheckIcon className="fade-in zoom-in-90 animate-in size-3.5 duration-200" />}
       </span>
     </ComposerMenuItem>
   )
@@ -543,7 +541,7 @@ export function ComposerVoiceButton({
       )}
       {...props}
     >
-      {active ? <RiStopFill className="size-3 fill-current" /> : <RiMicLine className="size-4" />}
+      {active ? <StopIcon className="size-3 fill-current" /> : <MicIcon className="size-4" />}
     </button>
   )
 }
@@ -571,8 +569,8 @@ export function ComposerSend({
       )}
       {...props}
     >
-      <RiArrowUpLine className={cn(iconSwap, "size-4", streaming ? iconSwapOut : iconSwapIn)} />
-      <RiStopFill className={cn(iconSwap, "size-3 fill-current", streaming ? iconSwapIn : iconSwapOut)} />
+      <ArrowUpIcon className={cn(iconSwap, "size-4", streaming ? iconSwapOut : iconSwapIn)} />
+      <StopIcon className={cn(iconSwap, "size-3 fill-current", streaming ? iconSwapIn : iconSwapOut)} />
     </button>
   )
 }

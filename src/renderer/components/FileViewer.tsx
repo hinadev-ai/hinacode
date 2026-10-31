@@ -14,7 +14,6 @@ import {
   useState,
   useTransition,
 } from "react"
-import { RiCloseLine, RiFileCopyLine } from "react-icons/ri"
 import { toast } from "sonner"
 import { useTheme } from "../lib/appearance.ts"
 import { projectFileUrl } from "../../shared/channels.ts"
@@ -28,6 +27,8 @@ import { emptyTree, parentOf, useExplorer } from "../stores/explorer.ts"
 import { LineCommentCard, LineCommentForm } from "./LineComment.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { Button } from "./ui/button.tsx"
+import { CloseIcon } from "./icons/CloseIcon.tsx"
+import { CopyIcon } from "./icons/CopyIcon.tsx"
 
 interface FileViewerProps {
   readonly threadId: string
@@ -212,10 +213,10 @@ function ViewerHeader({ path, onClose, children }: { path: string; onClose: () =
         title={m.explorer_copy_path()}
         onClick={() => void navigator.clipboard.writeText(path)}
       >
-        <RiFileCopyLine aria-hidden />
+        <CopyIcon aria-hidden />
       </Button>
       <Button variant="ghost" size="icon-xs" aria-label={m.viewer_close()} title={m.viewer_close()} onClick={onClose}>
-        <RiCloseLine aria-hidden />
+        <CloseIcon aria-hidden />
       </Button>
     </header>
   )

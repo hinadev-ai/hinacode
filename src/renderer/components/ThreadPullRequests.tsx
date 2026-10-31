@@ -1,17 +1,6 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, useId, useState, useTransition } from "react"
-import type { IconType } from "react-icons"
-import {
-  RiArrowDownSLine,
-  RiArrowRightSLine,
-  RiExternalLinkLine,
-  RiEyeFill,
-  RiEyeLine,
-  RiGitPullRequestLine,
-  RiIndeterminateCircleLine,
-  RiLinkUnlinkM,
-} from "react-icons/ri"
 import type {
   CheckRunStatus,
   ChecksStatus,
@@ -63,6 +52,15 @@ import {
 } from "./ui/dropdown-menu.tsx"
 import { SkeletonList } from "./ui/skeleton.tsx"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
+import { ChevronDownIcon } from "./icons/ChevronDownIcon.tsx"
+import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
+import { ExternalIcon } from "./icons/ExternalIcon.tsx"
+import { EyeFillIcon } from "./icons/EyeFillIcon.tsx"
+import { EyeIcon } from "./icons/EyeIcon.tsx"
+import type { IconComponent } from "./icons/Icon.tsx"
+import { MinusCircleIcon } from "./icons/MinusCircleIcon.tsx"
+import { PullRequestIcon } from "./icons/PullRequestIcon.tsx"
+import { UnlinkIcon } from "./icons/UnlinkIcon.tsx"
 
 /** "owner/repo#123" for a canonical GitHub pull request URL. */
 const shortName = (url: string) => {
@@ -82,7 +80,7 @@ export const statusIndicator = {
   open: toIcon(pullRequestIndicator.open),
   merged: toIcon(pullRequestIndicator.merged),
   closed: toIcon(pullRequestIndicator.closed),
-} satisfies Record<PullRequestStatus, { Icon: IconType; className: string }>
+} satisfies Record<PullRequestStatus, { Icon: IconComponent; className: string }>
 
 export const reviewLabel = {
   approved: m.pr_review_approved,
@@ -94,12 +92,12 @@ export const checksIndicator = {
   passing: { ...toIcon(sharedChecksIndicator.passing), label: m.pr_checks_passing },
   failing: { ...toIcon(sharedChecksIndicator.failing), label: m.pr_checks_failing },
   pending: { ...toIcon(sharedChecksIndicator.pending), label: m.pr_checks_pending },
-} satisfies Record<ChecksStatus, { Icon: IconType; className: string; label: () => string }>
+} satisfies Record<ChecksStatus, { Icon: IconComponent; className: string; label: () => string }>
 
 const checkRunIndicator = {
   ...checksIndicator,
-  skipped: { Icon: RiIndeterminateCircleLine, className: "text-muted-foreground", label: m.pr_check_skipped },
-} satisfies Record<CheckRunStatus, { Icon: IconType; className: string; label: () => string }>
+  skipped: { Icon: MinusCircleIcon, className: "text-muted-foreground", label: m.pr_check_skipped },
+} satisfies Record<CheckRunStatus, { Icon: IconComponent; className: string; label: () => string }>
 
 export const mergeLabel = {
   squash: m.pr_merge_squash,
@@ -118,7 +116,7 @@ export function StatusIcon({
   className?: string
 }) {
   const indicator = status && statusIndicator[status]
-  const Icon = indicator?.Icon ?? RiGitPullRequestLine
+  const Icon = indicator?.Icon ?? PullRequestIcon
   return (
     <Icon
       aria-hidden
@@ -284,7 +282,7 @@ function PullRequestRow({
         </span>
         {watching && (
           <span title={m.pr_watching()} className="flex shrink-0">
-            <RiEyeLine aria-hidden className="size-3.5 text-muted-foreground" />
+            <EyeIcon aria-hidden className="size-3.5 text-muted-foreground" />
             <span className="sr-only">{m.pr_watching()}</span>
           </span>
         )}
@@ -417,7 +415,7 @@ function PullRequestLink({ threadId, url, className }: { threadId: string; url: 
       )}
     >
       <span className="truncate">{shortName(url)}</span>
-      <RiExternalLinkLine aria-hidden className="size-3 shrink-0" />
+      <ExternalIcon aria-hidden className="size-3 shrink-0" />
     </a>
   )
 }
@@ -445,7 +443,7 @@ function UnlinkButton({ threadId, url, onUnlinkFailed }: UnlinkButtonProps) {
 
   return (
     <Button variant="ghost" size="icon-xs" aria-label={label} title={label} disabled={pending} onClick={unlink}>
-      <RiLinkUnlinkM aria-hidden />
+      <UnlinkIcon aria-hidden />
     </Button>
   )
 }
@@ -580,7 +578,7 @@ function PullRequestActions({
                 />
               }
             >
-              <RiArrowDownSLine aria-hidden />
+              <ChevronDownIcon aria-hidden />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-44">
               <DropdownMenuRadioGroup value={method} onValueChange={(value: MergeMethod) => setMethod(value)}>
@@ -638,7 +636,7 @@ function WatchButton({ threadId, url, watch }: { threadId: string; url: string; 
         disabled={pending}
         onClick={toggle}
       >
-        {watching ? <RiEyeFill aria-hidden /> : <RiEyeLine aria-hidden />}
+        {watching ? <EyeFillIcon aria-hidden /> : <EyeIcon aria-hidden />}
         {watching ? m.pr_watching() : m.pr_watch()}
       </Button>
       {error && (
@@ -793,7 +791,7 @@ function Section({ id, title, collapsedSummary, children }: SectionProps) {
     >
       <h4 className="text-xs font-medium text-muted-foreground">
         <CollapsibleTrigger className="group/trigger -mx-2 flex w-[calc(100%+1rem)] min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring">
-          <RiArrowRightSLine
+          <ChevronRightIcon
             aria-hidden
             className="size-3.5 shrink-0 transition-transform group-data-panel-open/trigger:rotate-90 motion-reduce:transition-none"
           />

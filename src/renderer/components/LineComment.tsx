@@ -1,10 +1,13 @@
 import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react"
-import { RiChat3Line, RiCloseLine, RiDeleteBinLine, RiPencilLine } from "react-icons/ri"
 import { lineRange } from "../lib/lineComments.ts"
 import { m } from "../paraglide/messages.js"
 import type { LineComment } from "../stores/drafts.ts"
 import { Button } from "./ui/button.tsx"
 import { Textarea } from "./ui/textarea.tsx"
+import { ChatIcon } from "./icons/ChatIcon.tsx"
+import { CloseIcon } from "./icons/CloseIcon.tsx"
+import { PencilIcon } from "./icons/PencilIcon.tsx"
+import { TrashIcon } from "./icons/TrashIcon.tsx"
 
 const location = (comment: Pick<LineComment, "path" | "startLine" | "endLine">) =>
   `${comment.path}:${lineRange(comment)}`
@@ -98,10 +101,10 @@ export function LineCommentCard({
       aria-label={m.comment_label({ location: location(comment) })}
       className="m-2 flex max-w-xl items-start gap-2 rounded-lg border border-border bg-background py-1.5 pr-1.5 pl-2.5 font-sans text-xs"
     >
-      <RiChat3Line aria-hidden className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+      <ChatIcon aria-hidden className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
       <p className="min-w-0 flex-1 py-0.5 break-words whitespace-pre-wrap">{comment.body}</p>
       <Button variant="ghost" size="icon-xs" aria-label={m.comment_edit()} title={m.comment_edit()} onClick={onEdit}>
-        <RiPencilLine aria-hidden />
+        <PencilIcon aria-hidden />
       </Button>
       <Button
         variant="ghost"
@@ -110,7 +113,7 @@ export function LineCommentCard({
         title={m.comment_delete()}
         onClick={onDelete}
       >
-        <RiDeleteBinLine aria-hidden />
+        <TrashIcon aria-hidden />
       </Button>
     </article>
   )
@@ -125,7 +128,7 @@ export function PendingLineComment({ comment, onRemove }: { comment: LineComment
         className="flex h-16 w-56 flex-col justify-center gap-0.5 rounded-lg border border-border bg-background/50 px-3 text-left text-xs"
       >
         <span className="flex min-w-0 items-center gap-1.5">
-          <RiChat3Line aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+          <ChatIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="truncate font-mono font-medium">{location(comment)}</span>
         </span>
         <span className="truncate text-muted-foreground">{comment.body}</span>
@@ -138,7 +141,7 @@ export function PendingLineComment({ comment, onRemove }: { comment: LineComment
         aria-label={m.comment_remove({ location: location(comment) })}
         className="absolute -top-1.5 -right-1.5 rounded-full border border-border"
       >
-        <RiCloseLine aria-hidden />
+        <CloseIcon aria-hidden />
       </Button>
     </div>
   )

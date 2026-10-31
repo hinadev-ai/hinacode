@@ -1,15 +1,4 @@
 import type { ComponentType } from "react"
-import type { IconType } from "react-icons"
-import {
-  RiFileCopy2Line,
-  RiGitBranchLine,
-  RiGitPullRequestLine,
-  RiInformationLine,
-  RiRobot2Line,
-  RiFileEditLine,
-  RiGlobalLine,
-  RiComputerLine,
-} from "react-icons/ri"
 import type { ExperimentalSettings, Thread } from "../../../shared/domain.ts"
 import type { CommandId } from "../../keybindings/commands.ts"
 import type { EnvironmentId } from "../../lib/rpc.ts"
@@ -25,10 +14,19 @@ import { DetailsView } from "./DetailsView.tsx"
 import { FilesView } from "./FilesView.tsx"
 import { AgentsView, PullRequestsView } from "./SimpleViews.tsx"
 import { TinyVmView } from "./TinyVmView.tsx"
+import { BranchIcon } from "../icons/BranchIcon.tsx"
+import { ComputerIcon } from "../icons/ComputerIcon.tsx"
+import { FileDiffIcon } from "../icons/FileDiffIcon.tsx"
+import { FilesIcon } from "../icons/FilesIcon.tsx"
+import { GlobeIcon } from "../icons/GlobeIcon.tsx"
+import type { IconComponent } from "../icons/Icon.tsx"
+import { InfoIcon } from "../icons/InfoIcon.tsx"
+import { PullRequestIcon } from "../icons/PullRequestIcon.tsx"
+import { RobotIcon } from "../icons/RobotIcon.tsx"
 
 export interface SidePanelView {
   readonly id: SidePanelViewId
-  readonly icon: IconType
+  readonly icon: IconComponent
   readonly title: () => string
   /** The command that shows the view, whose chord the activity bar tooltip shows. */
   readonly commandId: CommandId
@@ -45,24 +43,24 @@ export interface SidePanelView {
 export const sidePanelViews: ReadonlyArray<SidePanelView> = [
   {
     id: "details",
-    icon: RiInformationLine,
+    icon: InfoIcon,
     title: m.panel_tab_details,
     commandId: "view.details",
     component: DetailsView,
   },
-  { id: "files", icon: RiFileCopy2Line, title: m.panel_tab_files, commandId: "view.files", component: FilesView },
-  { id: "changes", icon: RiFileEditLine, title: m.panel_changes, commandId: "view.changes", component: ChangesView },
-  { id: "git", icon: RiGitBranchLine, title: m.panel_tab_git, commandId: "view.git", component: GitGraphView },
+  { id: "files", icon: FilesIcon, title: m.panel_tab_files, commandId: "view.files", component: FilesView },
+  { id: "changes", icon: FileDiffIcon, title: m.panel_changes, commandId: "view.changes", component: ChangesView },
+  { id: "git", icon: BranchIcon, title: m.panel_tab_git, commandId: "view.git", component: GitGraphView },
   {
     id: "pullRequests",
-    icon: RiGitPullRequestLine,
+    icon: PullRequestIcon,
     title: m.pr_links_title,
     commandId: "view.pullRequests",
     component: PullRequestsView,
   },
   {
     id: "agents",
-    icon: RiRobot2Line,
+    icon: RobotIcon,
     title: m.panel_tab_agents,
     commandId: "view.agents",
     component: AgentsView,
@@ -70,7 +68,7 @@ export const sidePanelViews: ReadonlyArray<SidePanelView> = [
   },
   {
     id: "browser",
-    icon: RiGlobalLine,
+    icon: GlobeIcon,
     title: m.panel_tab_browser,
     commandId: "view.browser",
     component: BrowserView,
@@ -78,7 +76,7 @@ export const sidePanelViews: ReadonlyArray<SidePanelView> = [
   },
   {
     id: "tinyVm",
-    icon: RiComputerLine,
+    icon: ComputerIcon,
     title: m.panel_tab_tiny_vm,
     commandId: "view.tinyVm",
     component: TinyVmView,

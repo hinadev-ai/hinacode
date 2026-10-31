@@ -1,5 +1,4 @@
 import { type FormEvent, startTransition, useActionState, useId, useState } from "react"
-import { RiQuestionLine } from "react-icons/ri"
 import type { Question, QuestionAnswers, QuestionRequest } from "../../shared/agent.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
@@ -19,6 +18,7 @@ import {
 } from "./ui/field.tsx"
 import { Input } from "./ui/input.tsx"
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group.tsx"
+import { QuestionIcon } from "./icons/QuestionIcon.tsx"
 
 type Draft = { readonly picked: ReadonlyArray<string>; readonly text: string }
 
@@ -111,7 +111,7 @@ function QuestionCard({
       className="mx-auto mb-2 flex w-full max-w-3xl flex-col gap-3 rounded-xl border border-attention/40 bg-attention/5 p-3 transition-[opacity,translate] duration-200 ease-out starting:opacity-0 motion-safe:starting:translate-y-1"
     >
       <h2 id={titleId} className="flex items-center gap-2 text-sm font-semibold">
-        <RiQuestionLine aria-hidden className="size-4 text-attention" />
+        <QuestionIcon aria-hidden className="size-4 text-attention" />
         {single
           ? m.question_title({ provider: providerLabel })
           : m.question_title_many({ provider: providerLabel, count: questions.length })}

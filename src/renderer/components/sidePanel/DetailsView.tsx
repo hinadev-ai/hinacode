@@ -2,7 +2,6 @@ import { useAtomValue } from "@effect/atom-react"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { useParams } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
-import { RiCloudLine, RiFolderOpenLine, RiGitBranchLine, RiGitPullRequestLine } from "react-icons/ri"
 import {
   type PullRequest,
   type Thread,
@@ -21,6 +20,10 @@ import { Badge } from "../ui/badge.tsx"
 import { Button } from "../ui/button.tsx"
 import { ScrollArea } from "../ui/scroll-area.tsx"
 import { Section } from "./Section.tsx"
+import { BranchIcon } from "../icons/BranchIcon.tsx"
+import { CloudIcon } from "../icons/CloudIcon.tsx"
+import { FolderOpenIcon } from "../icons/FolderOpenIcon.tsx"
+import { PullRequestIcon } from "../icons/PullRequestIcon.tsx"
 
 /** Where the thread runs, its setup log and the ports its processes listen on. */
 export function DetailsView({ thread }: { thread: Thread }) {
@@ -36,7 +39,7 @@ export function DetailsView({ thread }: { thread: Thread }) {
         <Section title={m.panel_workspace()}>
           {!local && (
             <p className="flex items-center gap-1.5 text-sm">
-              <RiCloudLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+              <CloudIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
               {m.environment_on({ environment: environmentName(environment, clouds) })}
             </p>
           )}
@@ -68,7 +71,7 @@ function RevealButton({ path, disabled }: { path: string; disabled?: boolean }) 
       disabled={disabled}
       onClick={() => void callPromise("shell.reveal", { path })}
     >
-      <RiFolderOpenLine aria-hidden />
+      <FolderOpenIcon aria-hidden />
       {m.panel_reveal()}
     </Button>
   )
@@ -112,7 +115,7 @@ function WorktreeWorkspace({ worktree, canReveal }: { worktree: Worktree; canRev
   return (
     <div className="flex flex-col gap-2">
       <div className="flex min-w-0 items-center gap-2">
-        <RiGitBranchLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+        <BranchIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
         <span className="truncate font-mono text-sm" title={worktree.branch}>
           {worktree.branch}
         </span>
@@ -138,7 +141,7 @@ function PullRequestBadge({ pullRequest }: { pullRequest: PullRequest }) {
       variant={pullRequest.status === "merged" ? "default" : "outline"}
       render={<a href={href} target="_blank" rel="noreferrer" title={href} aria-label={label} />}
     >
-      <RiGitPullRequestLine aria-hidden />
+      <PullRequestIcon aria-hidden />
       {label}
     </Badge>
   )
