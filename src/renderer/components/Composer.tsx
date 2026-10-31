@@ -143,11 +143,14 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   const busy = isThreadBusy(thread.status)
   const hasDraft = text.trim() !== "" || attachments.length > 0 || comments.length > 0
   const canSend = hasDraft && !isSending && !isStaging
-  const placeholder = busy
-    ? m.thread_composer_queue_placeholder({ steer: formatForDisplay(STEER_CHORD) })
-    : isSidechat
-      ? m.sidechat_placeholder()
-      : m.thread_composer_placeholder()
+  const placeholder =
+    thread.status === "awaiting_approval"
+      ? m.thread_composer_approval_placeholder({ steer: formatForDisplay(STEER_CHORD) })
+      : busy
+        ? m.thread_composer_queue_placeholder({ steer: formatForDisplay(STEER_CHORD) })
+        : isSidechat
+          ? m.sidechat_placeholder()
+          : m.thread_composer_placeholder()
   const modifierHeld = useModifierHeld()
   const clickDelivery: Delivery = modifierHeld ? "steer" : "queue"
   const sendMode: SendGlyphMode = !(busy || isSending) ? "send" : hasDraft ? clickDelivery : "stop"

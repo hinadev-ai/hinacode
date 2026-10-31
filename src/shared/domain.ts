@@ -369,6 +369,7 @@ export const QueuedMessage = Schema.Struct({
   id: Schema.String,
   text: Schema.String,
   attachments: Schema.Array(Attachment),
+  steer: Schema.optionalKey(Schema.Literal(true)),
 })
 export type QueuedMessage = typeof QueuedMessage.Type
 

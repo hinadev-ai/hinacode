@@ -81,7 +81,7 @@ const fakeProvider = (id: ProviderId): AgentProvider => {
       const done = turns.get(threadId)
       return done ? Effect.asVoid(Deferred.succeed(done, undefined)) : Effect.void
     },
-    respondApproval: () => Effect.void,
+    respondApproval: () => Effect.succeed(false),
     respondQuestion: () => Effect.void,
     setAccessMode: () => Effect.void,
   }

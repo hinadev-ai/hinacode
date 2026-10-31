@@ -8,6 +8,7 @@ import { ActivityRow } from "./ActivityRow.tsx"
 import { Button } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 import { ClockIcon } from "./icons/ClockIcon.tsx"
+import { ShieldIcon } from "./icons/ShieldIcon.tsx"
 import { CloseIcon } from "./icons/CloseIcon.tsx"
 import { SteerIcon } from "./icons/SteerIcon.tsx"
 import type { IconComponent } from "./icons/Icon.tsx"
@@ -77,10 +78,15 @@ export function QueueBar({
               </>
             }
           >
-            <ClockIcon aria-hidden className="size-3.5 shrink-0" />
+            {message.steer ? (
+              <ShieldIcon aria-hidden className="size-3.5 shrink-0" />
+            ) : (
+              <ClockIcon aria-hidden className="size-3.5 shrink-0" />
+            )}
             <span className="truncate text-foreground" title={summaryOf(message)}>
               {summaryOf(message)}
             </span>
+            {message.steer && <span className="shrink-0 text-muted-foreground">{m.queue_after_approval()}</span>}
           </ActivityRow>
         </li>
       ))}
