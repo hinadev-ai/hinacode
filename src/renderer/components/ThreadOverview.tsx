@@ -91,7 +91,7 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
     <Collapsible
       open={open}
       onOpenChange={setOpen}
-      className="rounded-xl border border-border bg-background/95 p-1.5 shadow-sm backdrop-blur"
+      className="rounded-xl border border-border bg-background p-1.5 shadow-sm"
     >
       <CollapsibleTrigger className="group/card flex items-center gap-0.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
         {title}
@@ -144,8 +144,8 @@ function EnvironmentRows({ thread, project, worktree }: WorkspaceProps) {
           icon={BranchIcon}
           trailing={
             <span
-              data-status={live.status}
-              className="shrink-0 text-xs text-muted-foreground empty:hidden data-[status=failed]:text-destructive"
+              data-failed={live.status === "failed"}
+              className="shrink-0 text-xs text-muted-foreground empty:hidden data-[failed=true]:text-destructive"
             >
               {worktreeStatus[live.status]?.()}
             </span>
@@ -186,7 +186,7 @@ function SetupScript({ thread, project, worktree, onRun }: SetupScriptProps) {
         <AddRow label={m.overview_setup_add()} onClick={() => startTransition(() => setEditing(true))} />
       ) : (
         <div>
-          <pre title={script} className="mx-1 rounded-md bg-muted/60 px-2 py-1.5 font-mono text-xs/relaxed">
+          <pre title={script} className="mx-1 rounded-md bg-muted/50 px-2 py-1.5 font-mono text-xs/relaxed">
             {script
               .split("\n")
               .slice(0, SCRIPT_PREVIEW_LINES)
