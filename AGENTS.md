@@ -1,6 +1,6 @@
 # HinaCode
 
-HinaCode is a desktop UI for coding agents. It runs Claude Code (Agent SDK), Codex (app-server protocol) and Muse Code (MSP) side by side, so a developer can run many agents in parallel and still know what each one is doing, where it is working, and what it shipped.
+HinaCode is a desktop UI for coding agents. It runs Claude Code (Agent SDK), Codex (app-server protocol), Muse Code (MSP), and Cursor and opencode (Agent Client Protocol) side by side, so a developer can run many agents in parallel and still know what each one is doing, where it is working, and what it shipped.
 
 We are building a harness, not a chat app. Our features help a developer manage the agent loop: a worktree per thread, inline approvals, steering a running turn, a built-in MCP server (`review_changes`, `link_pull_request`, Linear tools), PR links with merge state, a ports panel, and automations triggered by webhooks or by GitHub, Linear and Slack pollers. Read `README.md` for the full feature list.
 
@@ -29,7 +29,7 @@ Run `pnpm typecheck && pnpm lint && pnpm test` before you call work done. CI run
 
 ```
 src/main      Main process. One Effect layer graph (app.ts), run by Electron (index.ts) or as the Node cloud daemon (daemon.ts).
-  agents/     AgentProvider implementations: claude/, codex/. Registered in services/AgentRunner.ts.
+  agents/     AgentProvider implementations: claude/, codex/, muse/, and acp/ shared by cursor/ and opencode/. Registered in services/AgentRunner.ts.
   services/   Effect services (Threads, Worktrees, Projects, Git, PullRequests, Secrets, automations/, ...)
   mcp/        HTTP MCP server on 127.0.0.1, one bearer credential per thread
   db/         SQLite client, migrations/NNNN_name, testing.ts seed helpers

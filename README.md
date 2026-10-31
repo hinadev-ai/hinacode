@@ -2,14 +2,14 @@
 
 # HinaCode
 
-HinaCode is an Electron app built for coding agents. It currently supports Claude Code, Codex and Muse Code.
+HinaCode is an Electron app built for coding agents. It currently supports Claude Code, Codex, Muse Code, Cursor and opencode. The first launch asks which of them you use.
 
 > [!WARNING]
 > HinaCode is still in development. Expect bugs.
 
 ## Development
 
-Requires Node 24.22.1 or later (26.12.1 or later on Node 26), pnpm, and the `claude` and `codex` CLIs on your PATH and logged in. Muse Code threads need the `muse` CLI, signed in with `muse login`. Global file search and its integration tests require ripgrep (`rg`) on your PATH.
+Requires Node 24.22.1 or later (26.12.1 or later on Node 26), pnpm, and the `claude` and `codex` CLIs on your PATH and logged in. Muse Code threads need the `muse` CLI, signed in with `muse login`. Cursor threads need `cursor-agent`, signed in with `cursor-agent login`, and opencode threads need `opencode`. Global file search and its integration tests require ripgrep (`rg`) on your PATH.
 
 ```sh
 pnpm install
