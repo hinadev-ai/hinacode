@@ -93,6 +93,7 @@
         "react-doctor/prefer-use-sync-external-store": "error",
         "hinacode/no-manual-memo": "error",
         "hinacode/no-promise-state-in-effect": "error",
+        "hinacode/no-responsive-padding-on-scroller": "error",
         "hinacode/prefer-start-transition": "warn"
       }
     },
