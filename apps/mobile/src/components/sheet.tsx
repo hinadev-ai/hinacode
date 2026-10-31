@@ -1,5 +1,16 @@
 import type { ReactNode } from "react"
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native"
+import {
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  type StyleProp,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+  type ViewStyle,
+} from "react-native"
 import Animated, { SlideInDown } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon, type IconName } from "@/components/icon"
@@ -111,6 +122,7 @@ export function OptionRow({
   monospace = false,
   selected,
   disabled = false,
+  style,
   onPress,
 }: {
   label: string
@@ -120,6 +132,7 @@ export function OptionRow({
   monospace?: boolean
   selected: boolean
   disabled?: boolean
+  style?: StyleProp<ViewStyle>
   onPress: () => void
 }) {
   const theme = useTheme()
@@ -129,10 +142,11 @@ export function OptionRow({
       accessibilityRole="radio"
       accessibilityLabel={label}
       accessibilityHint={hint}
-      accessibilityState={{ checked: selected, disabled }}
+      aria-checked={selected}
+      aria-disabled={disabled}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.option, (pressed || selected) && { backgroundColor: theme.surface }]}
+      style={({ pressed }) => [styles.option, style, (pressed || selected) && { backgroundColor: theme.surface }]}
     >
       {icon !== undefined && <Icon name={icon} size={18} color={foreground} />}
       <View style={styles.optionText}>

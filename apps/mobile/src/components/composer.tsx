@@ -353,19 +353,20 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
         </View>
       )
     }
-    case "file":
+    case "file": {
+      const slash = suggestion.path.lastIndexOf("/")
       return (
         <View style={styles.suggestionLine}>
           <Icon name="RiFileLine" size={14} color={theme.textMuted} />
-          <Text
-            numberOfLines={1}
-            ellipsizeMode="head"
-            style={[styles.suggestionTitle, styles.suggestionName, { color: theme.text }]}
-          >
-            {suggestion.path}
+          <Text numberOfLines={1} style={[styles.suggestionFile, { color: theme.text }]}>
+            {suggestion.path.slice(slash + 1)}
+          </Text>
+          <Text numberOfLines={1} style={[styles.suggestionFolder, { color: theme.textMuted }]}>
+            {suggestion.path.slice(0, slash + 1)}
           </Text>
         </View>
       )
+    }
   }
 }
 
@@ -394,7 +395,7 @@ function SendButton({
       testID={`composer-${action}`}
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled }}
+      aria-disabled={disabled}
       disabled={disabled}
       onPress={stopping ? onStop : onSend}
       hitSlop={(HIT - SEND_SIZE) / 2}
@@ -798,6 +799,8 @@ const styles = StyleSheet.create({
   suggestionDescription: { fontSize: 13 },
   suggestionLine: { flexDirection: "row", alignItems: "center", gap: 8 },
   suggestionTitle: { flexShrink: 1, fontSize: 15 },
+  suggestionFile: { flexShrink: 0, maxWidth: "70%", fontFamily: mono, fontSize: 14 },
+  suggestionFolder: { flex: 1, fontSize: 13 },
   chip: {
     height: CHIP_HEIGHT,
     flexShrink: 1,

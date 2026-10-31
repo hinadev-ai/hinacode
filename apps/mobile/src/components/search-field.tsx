@@ -59,9 +59,9 @@ export function SearchField({
           testID={testID === undefined ? undefined : `${testID}-clear`}
           accessibilityRole="button"
           accessibilityLabel={clearLabel}
-          accessibilityElementsHidden={!filled}
-          importantForAccessibility={filled ? "auto" : "no-hide-descendants"}
-          hitSlop={8}
+          aria-hidden={!filled}
+          tabIndex={filled ? 0 : -1}
+          hitSlop={10}
           onPress={() => onChange("")}
           style={styles.clear}
         >
@@ -85,6 +85,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+    minWidth: 0,
     fontSize: 16,
     paddingVertical: 10,
     // The field's border shows focus, so the browser's own ring would draw a square inside the rounded field.

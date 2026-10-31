@@ -9,6 +9,7 @@ import {
   toolSummary,
   transcriptPage,
 } from "./compactTranscript.ts"
+import { latestTodos } from "./todos.ts"
 
 const message = (parts: Message["parts"]): Message => ({
   id: "m",
@@ -42,7 +43,7 @@ describe("compactMessage", () => {
           input: { file_path: "a.ts", content: "x" },
           status: "running",
         },
-        { type: "tool_call", callId: "t", name: "TodoWrite", input: { todos: [] }, status: "done" },
+        { type: "tool_call", callId: "t", name: "ExitPlanMode", input: { plan: "Ship it" }, status: "done" },
         { type: "file_change", path: "a.ts", diff: "@@ -1 +1 @@" },
       ]),
     )
@@ -50,7 +51,7 @@ describe("compactMessage", () => {
       { type: "text", text: "Done." },
       { type: "tool_call", callId: "c", name: "Bash", input: { command: "cat <<EOF" }, status: "done" },
       { type: "tool_call", callId: "w", name: "Write", input: { file_path: "a.ts" }, status: "running" },
-      { type: "tool_call", callId: "t", name: "TodoWrite", input: {}, status: "done" },
+      { type: "tool_call", callId: "t", name: "ExitPlanMode", input: {}, status: "done" },
       { type: "file_change", path: "a.ts", diff: "" },
     ])
   })
@@ -63,6 +64,29 @@ describe("compactMessage", () => {
       ]),
     )
     expect(compact.parts.map((part) => part.type === "tool_call" && part.callId)).toStrictEqual(["agent"])
+  })
+
+  test("keeps the input of the calls a task list is read from", () => {
+    const parts: Message["parts"] = [
+      {
+        type: "tool_call",
+        callId: "create",
+        name: "TaskCreate",
+        input: { subject: "Read README.md", description: "Read README.md in the working directory" },
+        output: "Task #1 created successfully: Read README.md",
+        status: "done",
+      },
+      {
+        type: "tool_call",
+        callId: "update",
+        name: "TaskUpdate",
+        input: { taskId: "1", status: "completed" },
+        status: "done",
+      },
+    ]
+    expect(latestTodos([compactMessage(message(parts))])).toStrictEqual([
+      { text: "Read README.md", status: "completed" },
+    ])
   })
 })
 
