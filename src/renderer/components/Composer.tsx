@@ -7,7 +7,9 @@ import {
   type FormEvent,
   type ReactNode,
   type RefObject,
+  lazy,
   startTransition,
+  Suspense,
   useEffect,
   useEffectEvent,
   useRef,
@@ -50,7 +52,7 @@ import { PendingAttachment } from "./AttachmentView.tsx"
 import { ChordKeys } from "./ChordKeys.tsx"
 import { ThreadPicker, WorkspacePicker } from "./ComposerControls.tsx"
 import { ComposerStatusLine } from "./ComposerStatusLine.tsx"
-import { ComposerInput, type ComposerInputHandle } from "./ComposerInput.tsx"
+import type { ComposerInputHandle } from "./ComposerInput.tsx"
 import { ContextRing } from "./ContextRing.tsx"
 import { PendingLineComment } from "./LineComment.tsx"
 import { ActivityIndicator } from "./ActivityIndicator.tsx"
@@ -76,6 +78,8 @@ type StageSource = RpcRequest<"attachments.stage">["source"]
 type Delivery = "queue" | "steer"
 
 const STEER_CHORD = "Mod+Enter"
+
+const ComposerInput = lazy(() => import("./ComposerInput.tsx").then((module) => ({ default: module.ComposerInput })))
 
 const deliveryOf = (event: KeyboardEvent) => (event.metaKey || event.ctrlKey ? "steer" : "queue")
 
@@ -138,6 +142,11 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   const busy = isThreadBusy(thread.status)
   const hasDraft = text.trim() !== "" || attachments.length > 0 || comments.length > 0
   const canSend = hasDraft && !isSending && !isStaging
+  const placeholder = busy
+    ? m.thread_composer_queue_placeholder({ steer: formatForDisplay(STEER_CHORD) })
+    : isSidechat
+      ? m.sidechat_placeholder()
+      : m.thread_composer_placeholder()
 
   const send = (delivery: Delivery) => {
     if (!canSend) return
@@ -256,27 +265,23 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
                 ))}
               </ul>
             )}
-            <ComposerInput
-              ref={inputRef}
-              aria-label={isSidechat ? m.panel_tab_sidechat() : m.thread_composer_label()}
-              placeholder={
-                busy
-                  ? m.thread_composer_queue_placeholder({ steer: formatForDisplay(STEER_CHORD) })
-                  : isSidechat
-                    ? m.sidechat_placeholder()
-                    : m.thread_composer_placeholder()
-              }
-              value={text}
-              onValueChange={(next) => useDrafts.getState().setText(thread.id, next)}
-              commands={commands}
-              files={files}
-              threads={mentionable}
-              projectId={thread.projectId}
-              onEnter={(event) => send(deliveryOf(event))}
-              onPaste={onPaste}
-              onDragOver={onDragOver}
-              onDrop={onDrop}
-            />
+            <Suspense fallback={<DraftPreview text={text} placeholder={placeholder} />}>
+              <ComposerInput
+                ref={inputRef}
+                aria-label={isSidechat ? m.panel_tab_sidechat() : m.thread_composer_label()}
+                placeholder={placeholder}
+                value={text}
+                onValueChange={(next) => useDrafts.getState().setText(thread.id, next)}
+                commands={commands}
+                files={files}
+                threads={mentionable}
+                projectId={thread.projectId}
+                onEnter={(event) => send(deliveryOf(event))}
+                onPaste={onPaste}
+                onDragOver={onDragOver}
+                onDrop={onDrop}
+              />
+            </Suspense>
             <ComposerToolbar className="relative shrink-0 gap-2">
               <ComposerActions className="min-w-0 flex-1">
                 <AttachButton onClick={pickFiles} disabled={isStaging} />
@@ -325,6 +330,19 @@ function useComposerRequests(
     // FIXME: Base UI Dialog places its initial focus a frame late, which would take focus back
     requestAnimationFrame(() => inputRef.current?.focus())
   }, [inputRef, sidechatFocusRequested])
+}
+
+function DraftPreview({ text, placeholder }: { text: string; placeholder: string }) {
+  return (
+    <p
+      className={cn(
+        "max-h-60 min-h-[calc(1lh+1rem)] overflow-hidden px-2.5 py-2 text-base whitespace-pre-wrap md:text-sm",
+        text === "" && "text-muted-foreground",
+      )}
+    >
+      {text === "" ? placeholder : text}
+    </p>
+  )
 }
 
 function AttachButton({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
