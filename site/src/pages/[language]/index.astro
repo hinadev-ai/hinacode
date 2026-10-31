@@ -1,20 +1,14 @@
 ---
+import "@fontsource-variable/noto-sans-tc/index.css"
+import "@fontsource-variable/noto-sans-jp/index.css"
 import Home from "../../components/Home.astro"
-import { locales, localePaths, type Locale } from "../../i18n"
+import { localeFromParam, localePaths } from "../../i18n.ts"
 
 export function getStaticPaths() {
-  return locales
-    .filter((locale) => locale !== "en")
-    .map((locale) => ({
-      params: { language: localePaths[locale] },
-      props: { locale },
-    }))
+  return [{ params: { language: localePaths["zh-TW"] } }, { params: { language: localePaths.ja } }]
 }
 
-interface Props {
-  locale: Locale
-}
-const { locale } = Astro.props
+const locale = localeFromParam(Astro.params.language)
 ---
 
 <Home locale={locale} />

@@ -1,12 +1,15 @@
 ---
+import logo from "../../../assets/logo.svg?raw"
+
 interface Props {
   class?: string
 }
+
 const { class: className } = Astro.props
 ---
 
-<svg class={className} aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="13 30 102 68" fill="currentColor">
-  <path fill-rule="evenodd" d="M13 64a34 34 0 1 0 68 0a34 34 0 1 0-68 0ZM19 64a28 28 0 1 0 56 0a28 28 0 1 0-56 0Z" />
-  <path fill-rule="evenodd" d="M47 64a34 34 0 1 0 68 0a34 34 0 1 0-68 0ZM53 64a28 28 0 1 0 56 0a28 28 0 1 0-56 0Z" />
-  <path d="M64 47.059A24 24 0 0 1 64 80.941A24 24 0 0 1 64 47.059Z" />
-</svg>
+<span
+  aria-hidden="true"
+  class:list={["inline-block shrink-0 text-ink [--sun:var(--color-coral)] [&>svg]:size-full", className]}
+  set:html={logo}
+/>

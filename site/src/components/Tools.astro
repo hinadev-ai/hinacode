@@ -1,0 +1,46 @@
+---
+import { BellIcon, ChatsIcon, ComputerIcon, ForkIcon, KeyIcon, LinearIcon, PhoneIcon } from "../icons.ts"
+import { translator, type Locale } from "../i18n.ts"
+
+interface Props {
+  locale: Locale
+}
+
+const t = translator(Astro.props.locale)
+
+const tools = [
+  { Icon: KeyIcon, names: ["request_secret"], body: t("site_tools_secret") },
+  { Icon: ForkIcon, names: ["create_thread", "run_agent"], body: t("site_tools_threads") },
+  { Icon: BellIcon, names: ["watch_pull_request"], body: t("site_tools_watch") },
+  { Icon: ChatsIcon, names: ["read_thread"], body: t("site_tools_read") },
+  { Icon: ComputerIcon, names: ["vm_screenshot", "vm_click"], body: t("site_tools_vm") },
+  { Icon: PhoneIcon, names: ["device_screenshot", "device_tap"], body: t("site_tools_devices") },
+  { Icon: LinearIcon, names: ["linear_create_comment"], body: t("site_tools_linear") },
+]
+---
+
+<section class="mx-auto max-w-[76rem] px-5 pt-28 sm:px-8 sm:pt-40">
+  <div class="grid gap-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,9fr)] lg:gap-16">
+    <div class="self-start lg:sticky lg:top-24">
+      <h2 class="display display-3 leading-[1.08] font-semibold">{t("site_tools_title")}</h2>
+      <p class="mt-4 text-[17px] leading-relaxed text-ink-soft">{t("site_tools_lede")}</p>
+    </div>
+    <dl class="divide-y divide-line border-y border-line">
+      {
+        tools.map(({ Icon, names, body }) => (
+          <div class="grid gap-2 py-5 sm:grid-cols-[15.5rem_minmax(0,1fr)] sm:gap-8">
+            <dt class="flex items-start gap-3 font-mono text-[13px] leading-6 text-ink">
+              <Icon aria-hidden="true" className="mt-[3px] size-[1.125rem] shrink-0 [--sun:var(--color-coral)]" />
+              <span class="min-w-0 break-words">
+                {names.map((name) => (
+                  <span class="block">{name}</span>
+                ))}
+              </span>
+            </dt>
+            <dd class="text-[15px] leading-relaxed text-ink-soft sm:pt-px">{body}</dd>
+          </div>
+        ))
+      }
+    </dl>
+  </div>
+</section>

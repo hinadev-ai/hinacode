@@ -1,162 +1,77 @@
 ---
-import SiteLayout from "../layouts/SiteLayout.astro"
+import { RiClaudeFill, RiMetaFill, RiOpenaiFill } from "react-icons/ri"
+import Layout from "../layouts/Layout.astro"
+import { CheckIcon } from "../icons.ts"
+import { translator, type Locale, type StringKey } from "../i18n.ts"
 import Download from "./Download.astro"
-import Closing from "./Closing.astro"
-import Mark from "./Mark.astro"
-import Text from "./Text.astro"
-import { messages, type Locale } from "../i18n"
+import Faq from "./Faq.astro"
+import GithubButton from "./GithubButton.astro"
+
 interface Props {
   locale: Locale
 }
+
 const { locale } = Astro.props
-const t = messages(locale)
+const t = translator(locale)
+const included = [1, 2, 3, 4, 5, 6, 7, 8].map((index) => t(`site_pricing_item_${index}` as StringKey))
+const agents = [
+  { Icon: RiClaudeFill, name: t("provider_claude"), color: "text-provider-claude" },
+  { Icon: RiOpenaiFill, name: t("provider_codex"), color: "text-ink" },
+  { Icon: RiMetaFill, name: t("provider_muse"), color: "text-provider-muse" },
+]
 ---
 
-<SiteLayout title={t.site_pricing_title} description={t.site_pricing_description} page="pricing" locale={locale}>
-  <div class="pricing-hero">
-    <p class="eyebrow rise" style="--i: 0">
-      {t.site_pricing}
-    </p>
-    <h1 class="rise" style="--i: 1">
-      <Text text={t.site_pricing_heading}>
-        <span slot="all" class="taste">
-          {t.site_pricing_all}
-        </span>
-      </Text>
-    </h1>
-    <p class="lede rise" style="--i: 2">
-      {t.site_pricing_lede}
-    </p>
-  </div>
+<Layout
+  locale={locale}
+  page="pricing"
+  title={t("site_pricing_meta_title")}
+  description={t("site_pricing_meta_description")}
+>
+  <section class="mx-auto max-w-[76rem] px-5 pt-14 sm:px-8 sm:pt-24">
+    <h1 class="display display-1 leading-[1.03] font-semibold">{t("site_pricing_title")}</h1>
+    <p class="mt-6 max-w-[38rem] text-lg leading-relaxed text-ink-soft">{t("site_pricing_lede")}</p>
+  </section>
 
-  <div class="pricing">
-    <div class="plan rise" style="--i: 3">
-      <div class="plan-head">
-        <span>{t.site_plan_everything}</span>
-        <span class="plan-badge">{t.site_plan_only}</span>
+  <section class="mx-auto mt-14 grid max-w-[76rem] gap-6 px-5 sm:px-8 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+    <div class="rounded-3xl bg-paper p-7 shadow-window sm:p-10">
+      <p class="text-sm font-semibold text-ink-soft">{t("site_pricing_plan")}</p>
+      <p class="mt-3 font-mono text-[4.25rem] leading-none font-semibold tracking-[-0.04em]">
+        {t("site_pricing_price")}
+      </p>
+      <p class="mt-3 text-ink-soft">{t("site_pricing_note")}</p>
+      <div class="mt-8 flex flex-wrap gap-3">
+        <Download locale={locale} />
+        <GithubButton locale={locale} />
       </div>
-      <div class="price">
-        <b>$0</b>
-        <span>{t.site_plan_forever}</span>
-      </div>
-      <p class="plan-note">{t.site_plan_note}</p>
-      <Download locale={locale} />
-      <ul class="included" aria-label={t.site_included}>
-        <li data-state="done">
-          <span class="status" aria-hidden="true"></span>
-          {t.site_included_unlimited}
-        </li>
-        <li data-state="done">
-          <span class="status" aria-hidden="true"></span>
-          {t.site_agents}
-        </li>
-        <li data-state="done">
-          <span class="status" aria-hidden="true"></span>
-          {t.site_feature_worktree_title}
-        </li>
-        <li data-state="done">
-          <span class="status" aria-hidden="true"></span>
-          {t.site_included_approvals}
-        </li>
-        <li data-state="done">
-          <span class="status" aria-hidden="true"></span>
-          {t.site_included_steer}
-        </li>
-        <li data-state="done">
-          <span class="status" aria-hidden="true"></span>
-          {t.site_included_mcp}
-        </li>
-        <li data-state="done">
-          <span class="status" aria-hidden="true"></span>
-          {t.site_included_pr}
-        </li>
-        <li data-state="done">
-          <span class="status" aria-hidden="true"></span>
-          {t.site_included_ports}
-        </li>
-        <li data-state="done">
-          <span class="status" aria-hidden="true"></span>
-          {t.site_included_automations}
-        </li>
-        <li data-state="done">
-          <span class="status" aria-hidden="true"></span>
-          {t.site_included_shortcuts}
-        </li>
+      <h2 class="mt-10 border-t border-line pt-8 text-sm font-semibold">{t("site_pricing_includes")}</h2>
+      <ul class="mt-5 grid gap-x-8 gap-y-3.5 sm:grid-cols-2">
+        {
+          included.map((item) => (
+            <li class="flex items-start gap-2.5 text-[15px] leading-snug">
+              <CheckIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-teal" />
+              {item}
+            </li>
+          ))
+        }
       </ul>
     </div>
 
-    <figure class="receipt" aria-label={t.site_receipt_label}>
-      <header>
-        <Mark />
-        <b>HINACODE</b>
-        {t.site_receipt_number}
-      </header>
-      <dl>
-        <div>
-          <dt>{t.site_threads}</dt>
-          <dd>{t.site_receipt_unlimited}</dd>
-        </div>
-        <div>
-          <dt>{t.site_receipt_worktrees}</dt>
-          <dd>{t.site_receipt_unlimited}</dd>
-        </div>
-        <div>
-          <dt>{t.site_receipt_agents}</dt>
-          <dd>2 · $0.00</dd>
-        </div>
-        <div>
-          <dt>{t.site_receipt_approvals}</dt>
-          <dd>{t.site_receipt_any}</dd>
-        </div>
-        <div>
-          <dt>{t.site_receipt_pr}</dt>
-          <dd>{t.site_receipt_all}</dd>
-        </div>
-        <div>
-          <dt>{t.site_receipt_taste}</dt>
-          <dd>{t.site_receipt_included}</dd>
-        </div>
-        <div>
-          <dt>{t.site_receipt_focus}</dt>
-          <dd>{t.site_receipt_included}</dd>
-        </div>
-      </dl>
-      <div class="total">
-        <span>{t.site_receipt_total}</span>
-        <span>$0.00</span>
-      </div>
-      <footer>
-        {t.site_receipt_paid}
-        <br />
-        {t.site_receipt_thanks}
-      </footer>
-    </figure>
-  </div>
-
-  <section class="rule">
-    <p class="eyebrow">{t.site_costs_eyebrow}</p>
-    <h2>
-      <Text text={t.site_costs_heading}>
-        <em slot="agents">{t.site_costs_agents}</em>
-      </Text>
-    </h2>
-    <p class="section-lede">
-      <Text text={t.site_costs_description}>
-        <code slot="claude">claude</code>
-        <code slot="codex">codex</code>
-      </Text>
-    </p>
-    <div class="costs">
-      <div>
-        <b>HinaCode</b>
-        <p>{t.site_costs_hinacode}</p>
-      </div>
-      <div>
-        <b>{t.site_agents}</b>
-        <p>{t.site_costs_plans}</p>
-      </div>
+    <div class="self-start rounded-3xl bg-surface p-7 sm:p-10">
+      <h2 class="display text-2xl font-semibold">{t("site_pricing_costs_title")}</h2>
+      <p class="mt-4 text-[15px] leading-relaxed text-ink-soft">{t("site_pricing_costs_body")}</p>
+      <ul class="mt-8 space-y-4">
+        {
+          agents.map(({ Icon, name, color }) => (
+            <li class="flex items-center gap-3 font-medium">
+              <Icon aria-hidden="true" className={`size-5 ${color}`} />
+              {name}
+            </li>
+          ))
+        }
+      </ul>
     </div>
   </section>
 
-  <Closing locale={locale} />
-</SiteLayout>
+  <Faq locale={locale} />
+  <div class="pb-28 sm:pb-40"></div>
+</Layout>

@@ -1,0 +1,38 @@
+---
+import { RiClaudeFill, RiMetaFill, RiOpenaiFill } from "react-icons/ri"
+import { translator, type Locale } from "../i18n.ts"
+
+interface Props {
+  locale: Locale
+}
+
+const t = translator(Astro.props.locale)
+
+const agents = [
+  { Icon: RiClaudeFill, name: t("provider_claude"), cli: "claude", color: "text-provider-claude" },
+  { Icon: RiOpenaiFill, name: t("provider_codex"), cli: "codex", color: "text-ink" },
+  { Icon: RiMetaFill, name: t("provider_muse"), cli: "muse", color: "text-provider-muse" },
+]
+---
+
+<section class="mx-auto max-w-[76rem] px-5 pt-28 sm:px-8 sm:pt-40">
+  <div class="grid gap-10 border-t border-line pt-14 lg:grid-cols-[minmax(0,5fr)_minmax(0,9fr)] lg:gap-16">
+    <h2 class="display display-3 leading-[1.08] font-semibold">{t("site_agents_title")}</h2>
+    <div>
+      <p class="max-w-[40rem] text-[17px] leading-relaxed text-ink-soft">{t("site_agents_lede")}</p>
+      <ul class="mt-9 grid gap-6 sm:grid-cols-3">
+        {
+          agents.map(({ Icon, name, cli, color }) => (
+            <li class="flex items-center gap-3">
+              <Icon aria-hidden="true" className={`size-6 shrink-0 ${color}`} />
+              <div>
+                <p class="font-semibold">{name}</p>
+                <p class="font-mono text-xs text-ink-soft">{cli}</p>
+              </div>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </div>
+</section>
