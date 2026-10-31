@@ -593,6 +593,26 @@ describe("worktree ownership", () => {
     ),
   )
 
+  it.live("lists a removed worktree without the setup log of its deleted checkout", () =>
+    withRepo(({ projectId }) =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient
+        const kept = yield* createThread(projectId, "kept", "kk/kept")
+        const done = yield* createThread(projectId, "done", "kk/done")
+        yield* waitUntilSetUp(kept.worktreeId)
+        yield* waitUntilSetUp(done.worktreeId)
+        yield* sql`UPDATE worktree SET setup_log = 'installed\n'`
+        yield* archiveRemovingWorktree(done.id)
+
+        const listed = yield* Worktrees.use((worktrees) => worktrees.list)
+        const logOf = (id: string | null) => listed.find((worktree) => worktree.id === id)?.setupLog
+        expect(logOf(kept.worktreeId)).toBe("installed\n")
+        expect(logOf(done.worktreeId)).toBe("")
+        expect((yield* worktreeOf(done.worktreeId)).setupLog).toMatch(/^installed\n/)
+      }),
+    ),
+  )
+
   it.live("archiving keeps the title, model and access mode saved while it removed the worktree", () =>
     Effect.gen(function* () {
       const removed = yield* Deferred.make<void>()
