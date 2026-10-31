@@ -38,7 +38,6 @@ import { useIsChat } from "../lib/useIsChat.ts"
 import { m } from "../paraglide/messages.js"
 import { type Draft, emptyDraft, useDrafts } from "../stores/drafts.ts"
 import { useMessages } from "../stores/messages.ts"
-import { useSubagentByCallId } from "../stores/subagents.ts"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import {
@@ -111,18 +110,8 @@ const sourceOf = async (file: File): Promise<StageSource> => {
   return { dataUrl: await readAsDataUrl(file), name: file.name || "pasted.png" }
 }
 
-export function Composer({
-  thread,
-  subagentCallId,
-  children,
-}: {
-  thread: Thread
-  subagentCallId?: string | undefined
-  children?: ReactNode
-}) {
+export function Composer({ thread, children }: { thread: Thread; children?: ReactNode }) {
   const { text, attachments, workspace, comments } = useDrafts((state) => state.byThreadId[thread.id] ?? emptyDraft)
-  const inSubagent = subagentCallId !== undefined
-  const subagent = useSubagentByCallId(thread.id, subagentCallId ?? "")
   const isSidechat = thread.sideOf !== null
   const unstarted = useMessages((state) => {
     const history = state.byThread[thread.id]
@@ -151,12 +140,11 @@ export function Composer({
   const mentionable = mentionableThreads(thread, Object.values(threadsById), projects)
   const refreshCommands = useAtomRefresh(commandsAtom(key))
   const refreshRootBranch = useAtomRefresh(currentBranchAtom(thread.projectId))
-  const busy = inSubagent ? subagent?.status === "running" : isThreadBusy(thread.status)
-  const hasDraft = !inSubagent && (text.trim() !== "" || attachments.length > 0 || comments.length > 0)
+  const busy = isThreadBusy(thread.status)
+  const hasDraft = text.trim() !== "" || attachments.length > 0 || comments.length > 0
   const canSend = hasDraft && !isSending && !isStaging
-  const placeholder = inSubagent
-    ? m.agents_composer_placeholder()
-    : thread.status === "awaiting_approval"
+  const placeholder =
+    thread.status === "awaiting_approval"
       ? m.thread_composer_approval_placeholder({ steer: formatForDisplay(STEER_CHORD) })
       : busy
         ? m.thread_composer_queue_placeholder({ steer: formatForDisplay(STEER_CHORD) })
@@ -224,10 +212,7 @@ export function Composer({
   }
 
   const stop = () => {
-    const stopped = inSubagent
-      ? subagent && callPromise("subagents.stop", { threadId: thread.id, subagentId: subagent.id })
-      : callPromise("threads.interrupt", { threadId: thread.id })
-    stopped?.catch((cause: unknown) => setError(errorMessage(cause)))
+    callPromise("threads.interrupt", { threadId: thread.id }).catch((cause: unknown) => setError(errorMessage(cause)))
   }
 
   const focusWhenReady = useComposerRequests(inputRef, isSidechat, () => {
@@ -250,7 +235,7 @@ export function Composer({
 
   return (
     <div className="flex min-h-0 flex-col px-3 pb-3">
-      <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-col bg-background empty:hidden">{children}</div>
+      <ComposerNotices>{children}</ComposerNotices>
       <form onSubmit={onSubmit} className="flex max-h-[60cqh] min-h-0 shrink-0 flex-col">
         <ComposerRoot className="mx-auto flex min-h-0 max-w-3xl flex-col [--composer-edge:color-mix(in_oklab,var(--border)_60%,transparent)] has-[[data-slot=composer-bar]:focus-within]:[--composer-edge:var(--ring)]">
           <ActivityIndicator thread={thread}>
@@ -287,32 +272,28 @@ export function Composer({
                 ))}
               </ul>
             )}
-            {inSubagent ? (
-              <DraftPreview text="" placeholder={placeholder} />
-            ) : (
-              <Suspense fallback={<DraftPreview text={text} placeholder={placeholder} />}>
-                <ComposerInput
-                  ref={inputRef}
-                  aria-label={isSidechat ? m.panel_tab_sidechat() : m.thread_composer_label()}
-                  placeholder={placeholder}
-                  value={text}
-                  onValueChange={(next) => useDrafts.getState().setText(thread.id, next)}
-                  commands={commands}
-                  files={files}
-                  threads={mentionable}
-                  projectId={thread.projectId}
-                  onEnter={(event) => send(deliveryOf(event))}
-                  onPaste={onPaste}
-                  onDragOver={onDragOver}
-                  onDrop={onDrop}
-                  focusOnMount={focusWhenReady}
-                />
-              </Suspense>
-            )}
+            <Suspense fallback={<DraftPreview text={text} placeholder={placeholder} />}>
+              <ComposerInput
+                ref={inputRef}
+                aria-label={isSidechat ? m.panel_tab_sidechat() : m.thread_composer_label()}
+                placeholder={placeholder}
+                value={text}
+                onValueChange={(next) => useDrafts.getState().setText(thread.id, next)}
+                commands={commands}
+                files={files}
+                threads={mentionable}
+                projectId={thread.projectId}
+                onEnter={(event) => send(deliveryOf(event))}
+                onPaste={onPaste}
+                onDragOver={onDragOver}
+                onDrop={onDrop}
+                focusOnMount={focusWhenReady}
+              />
+            </Suspense>
             <ComposerToolbar className="relative shrink-0 gap-2">
               <ComposerActions className="min-w-0 flex-1">
-                <AttachButton onClick={pickFiles} disabled={isStaging || inSubagent} />
-                <ThreadPicker thread={thread} canSwitchAgent={!busy && !isSidechat && !inSubagent} onError={setError} />
+                <AttachButton onClick={pickFiles} disabled={isStaging} />
+                <ThreadPicker thread={thread} canSwitchAgent={!busy && !isSidechat} onError={setError} />
               </ComposerActions>
               <ContextRing threadId={thread.id} provider={thread.provider} />
               <SendButton mode={sendMode} canSend={canSend} onStop={stop} />
@@ -332,6 +313,10 @@ export function Composer({
       </form>
     </div>
   )
+}
+
+export function ComposerNotices({ children }: { children?: ReactNode }) {
+  return <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-col bg-background empty:hidden">{children}</div>
 }
 
 function useComposerRequests(
