@@ -180,7 +180,7 @@ function MarkdownFile({
           {view === "preview" ? (
             <ScrollView contentContainerStyle={styles.markdown}>
               <TruncatedNotice truncated={file.truncated} />
-              <Markdown text={file.content} root={root} folder={dirname(path)} threadId={threadId} />
+              <Markdown text={file.content} root={root} folder={dirname(path)} threadId={threadId} gutter={PAGE_PADDING} />
             </ScrollView>
           ) : (
             <CodeView content={file.content} line={line} truncated={file.truncated} />
@@ -193,6 +193,7 @@ function MarkdownFile({
 
 /** Highlighting a whole megabyte would stall the phone, so only the start is colored. */
 const HIGHLIGHT_LIMIT = 300_000
+const PAGE_PADDING = 16
 const LINE_HEIGHT = 18
 const DIGIT_WIDTH = 7.4
 const TITLE_INSET = 120
@@ -375,7 +376,7 @@ const styles = StyleSheet.create({
   titleFolder: { fontSize: 12, fontFamily: mono },
   notice: { paddingHorizontal: 12, paddingVertical: 8 },
   segments: { margin: 12 },
-  markdown: { width: "100%", maxWidth: READABLE_WIDTH, alignSelf: "center", padding: 16, gap: 12 },
+  markdown: { width: "100%", maxWidth: READABLE_WIDTH, alignSelf: "center", padding: PAGE_PADDING, gap: 12 },
   code: { paddingVertical: 8 },
   codeRow: { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: 12 },
   flash: { ...StyleSheet.absoluteFill, pointerEvents: "none" },

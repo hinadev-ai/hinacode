@@ -14,7 +14,7 @@ import "./markdown.css"
 const HEADING_SIZES = [22, 20, 18, 16, 15, 15] as const
 const BLOCK_GAP = 10
 
-function markdownStyle(theme: Palette, syntax: (typeof SyntaxColors)[Scheme]): MarkdownStyle {
+function markdownStyle(theme: Palette, syntax: (typeof SyntaxColors)[Scheme], gutter: number): MarkdownStyle {
   const heading = (depth: number) => {
     const size = HEADING_SIZES[depth - 1]
     return {
@@ -88,6 +88,7 @@ function markdownStyle(theme: Palette, syntax: (typeof SyntaxColors)[Scheme]): M
       borderColor: theme.border,
       borderWidth: StyleSheet.hairlineWidth,
       borderRadius: radius.sm,
+      horizontalOverflow: gutter,
       marginBottom: BLOCK_GAP,
     },
     taskList: {
@@ -102,10 +103,16 @@ function markdownStyle(theme: Palette, syntax: (typeof SyntaxColors)[Scheme]): M
   }
 }
 
-// One object per scheme, so the native view does not receive a new style on every render.
-const STYLES: Record<Scheme, MarkdownStyle> = {
-  light: markdownStyle(Colors.light, SyntaxColors.light),
-  dark: markdownStyle(Colors.dark, SyntaxColors.dark),
+// One object per scheme and gutter, so the native view does not receive a new style on every render.
+const STYLES = new Map<string, MarkdownStyle>()
+
+function stylesFor(scheme: Scheme, gutter: number) {
+  const key = `${scheme}:${gutter}`
+  const cached = STYLES.get(key)
+  if (cached !== undefined) return cached
+  const style = markdownStyle(Colors[scheme], SyntaxColors[scheme], gutter)
+  STYLES.set(key, style)
+  return style
 }
 
 // The web renderer's root is a div that takes CSS as is. Native text views already break a word too long for a line.
@@ -124,12 +131,18 @@ export function Markdown({
   root,
   folder,
   threadId,
+  gutter = 0,
 }: {
   text: string
   root: string | null
   /** The folder a previewed file sits in, relative to `root`. Relative paths in a reply start at the root. */
   folder?: string
   threadId?: string
+  /**
+   * The parent's horizontal padding. A table too wide to fit scrolls out to the screen edge through it, so its cut
+   * column reads as scrollable. Leave it 0 inside a card.
+   */
+  gutter?: number
 }) {
   const scheme = useScheme()
   const markdown = useWorkspaceImages(text, root, folder)
@@ -147,7 +160,7 @@ export function Markdown({
       <EnrichedMarkdownText
         markdown={rewriteMarkdownExtras(markdown)}
         flavor="github"
-        markdownStyle={STYLES[scheme]}
+        markdownStyle={stylesFor(scheme, gutter)}
         md4cFlags={FLAGS}
         containerStyle={CONTAINER}
         enableTaskListItemToggle={false}

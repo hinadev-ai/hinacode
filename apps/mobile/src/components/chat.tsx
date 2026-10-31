@@ -34,6 +34,7 @@ import { useThreadRoot, useThreads } from "@/stores/threads"
 
 /** Cards hold insets with `radius.sm` corners, so the card's own corners stay concentric with them. */
 const CARD_PADDING = 12
+const TRANSCRIPT_PADDING = 16
 
 type CopyKey = Parameters<typeof copy>[0]
 
@@ -217,7 +218,7 @@ function ReplyText({
   if (!done) return null
   return (
     <FadeIn enabled={finishedOnScreen}>
-      <Markdown text={text} root={root} threadId={threadId} />
+      <Markdown text={text} root={root} threadId={threadId} gutter={TRANSCRIPT_PADDING} />
     </FadeIn>
   )
 }
@@ -667,7 +668,7 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   centered: { flex: 1, justifyContent: "center", alignItems: "center", padding: 20, gap: 12 },
-  transcript: { padding: 16, gap: 12 },
+  transcript: { padding: TRANSCRIPT_PADDING, gap: 12 },
   dock: { flexShrink: 1 },
   dockStack: { position: "absolute", left: 0, right: 0, bottom: 0, maxHeight: "100%" },
   requests: { flexGrow: 0, flexShrink: 1 },
