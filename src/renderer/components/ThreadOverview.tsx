@@ -69,7 +69,7 @@ function ActionsMenuButton({ thread, project }: { thread: Thread; project: Proje
             size="icon-sm"
             aria-label={m.overview_actions()}
             title={m.overview_actions()}
-            className="@min-[48rem]:hidden"
+            className="beside-overview:hidden"
           />
         }
       >
@@ -99,7 +99,7 @@ export function ThreadOverview({ thread }: { thread: Thread }) {
   return (
     <aside
       aria-label={m.overview_label()}
-      className="scroll-fade-y -m-1 hidden min-h-0 w-66 @min-[48rem]:flex flex-col gap-2 overflow-y-auto p-1 [scrollbar-width:none]"
+      className="scroll-fade-y -m-1 hidden min-h-0 w-66 beside-overview:flex flex-col gap-2 overflow-y-auto p-1 [scrollbar-width:none]"
     >
       <Card title={m.overview_environment()}>
         <EnvironmentRows thread={thread} project={project} worktree={worktree} />
@@ -128,7 +128,7 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
         {title}
         <ChevronDownIcon
           aria-hidden
-          className="size-4 transition-transform group-data-panel-open/card:rotate-0 -rotate-90 motion-reduce:transition-none"
+          className="size-4 transition-transform group-data-panel-open/card:rotate-0 -rotate-90 cjk:-translate-y-[0.04em] motion-reduce:transition-none"
         />
       </CollapsibleTrigger>
       <CollapsibleContent className="flex flex-col gap-0.5 pt-0.5">{children}</CollapsibleContent>

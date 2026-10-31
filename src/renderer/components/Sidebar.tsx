@@ -243,7 +243,7 @@ function PinnedThreads({ query }: { query: Query }) {
         <h2>{m.sidebar_pinned()}</h2>
         <ChevronDownIcon
           aria-hidden
-          className="size-4 -rotate-90 transition-transform group-data-panel-open/heading:rotate-0 motion-reduce:transition-none"
+          className="size-4 -rotate-90 transition-transform group-data-panel-open/heading:rotate-0 cjk:-translate-y-[0.04em] motion-reduce:transition-none"
         />
       </CollapsibleTrigger>
       <CollapsibleContent>
