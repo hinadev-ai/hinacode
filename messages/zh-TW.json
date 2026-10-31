@@ -58,7 +58,7 @@
   "thread_composer_send": "傳送",
   "thread_composer_steer": "引導",
   "thread_composer_queue_placeholder": "排入下一則訊息…Enter 排入佇列，{steer} 立即引導 agent。",
-  "thread_composer_approval_placeholder": "請先回覆上方的核准請求。Enter 排入後續訊息，{steer} 會在你回覆後引導代理。",
+  "thread_composer_approval_placeholder": "請先回覆上方代理的請求。Enter 排入後續訊息，{steer} 會在你回覆後引導代理。",
   "thread_composer_queue": "排入佇列",
   "queue_label": "佇列中的訊息",
   "queue_steer_now": "立即引導",

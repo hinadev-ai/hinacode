@@ -58,7 +58,7 @@
   "thread_composer_send": "Send",
   "thread_composer_steer": "Steer",
   "thread_composer_queue_placeholder": "Queue a follow-up… Enter queues it, {steer} steers the agent now.",
-  "thread_composer_approval_placeholder": "Answer the approval above. Enter queues a follow-up, {steer} steers once you answer.",
+  "thread_composer_approval_placeholder": "Answer the agent above. Enter queues a follow-up, {steer} steers once you answer.",
   "thread_composer_queue": "Queue",
   "queue_label": "Queued messages",
   "queue_steer_now": "Steer now",

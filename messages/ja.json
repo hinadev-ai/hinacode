@@ -58,7 +58,7 @@
   "thread_composer_send": "送信",
   "thread_composer_steer": "割り込み指示",
   "thread_composer_queue_placeholder": "次のメッセージを予約…Enter で予約、{steer} で今すぐ割り込み指示します。",
-  "thread_composer_approval_placeholder": "上の承認に答えてください。Enter で後続メッセージをキューに入れ、{steer} は回答後に指示します。",
+  "thread_composer_approval_placeholder": "上のエージェントの要求に答えてください。Enter で後続メッセージをキューに入れ、{steer} は回答後に指示します。",
   "thread_composer_queue": "予約",
   "queue_label": "予約中のメッセージ",
   "queue_steer_now": "今すぐ割り込み指示",
