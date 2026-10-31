@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto"
 import { basename, dirname, join } from "node:path"
 import {
+  Cache,
+  Clock,
   Context,
   Duration,
   Effect,
@@ -54,6 +56,7 @@ export interface CreateWorktree {
 export type DeleteBranch = "keep" | "ifMerged" | "force"
 
 export const SETUP_TIMEOUT: Duration.Input = "60 seconds"
+export const FETCH_INTERVAL: Duration.Input = "5 minutes"
 const SETUP_OUTPUT_DRAIN_TIMEOUT: Duration.Input = "1 second"
 
 type Failure = PersistenceError | NotFoundError | CommandError
@@ -95,7 +98,7 @@ export class Worktrees extends Context.Service<
     readonly currentBranch: (projectId: string) => Effect.Effect<string, Failure>
     readonly branches: (projectId: string) => Effect.Effect<ReadonlyArray<string>, Failure>
     readonly defaultBranch: (projectId: string) => Effect.Effect<string, PersistenceError | NotFoundError>
-    readonly fetch: (projectId: string) => Effect.Effect<void, Failure>
+    readonly fetch: (projectId: string) => Effect.Effect<number, Failure>
     readonly whenPrepared: (id: string) => Effect.Effect<Worktree, PersistenceError | NotFoundError>
     readonly stopSetup: (id: string) => Effect.Effect<void>
   }
@@ -585,11 +588,15 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
       ),
     )
 
+  const fetches = yield* Cache.make({
+    lookup: (rootPath: string) =>
+      git.remote(rootPath, ["fetch", "--quiet", "origin"]).pipe(Effect.andThen(Clock.currentTimeMillis)),
+    capacity: 64,
+    timeToLive: FETCH_INTERVAL,
+  })
+
   const fetch = (projectId: string) =>
-    projects.get(projectId).pipe(
-      Effect.flatMap(({ rootPath }) => git.remote(rootPath, ["fetch", "--quiet", "origin"])),
-      Effect.asVoid,
-    )
+    projects.get(projectId).pipe(Effect.flatMap(({ rootPath }) => Cache.get(fetches, rootPath)))
 
   return Worktrees.of({
     list: findAll(undefined).pipe(Effect.mapError(persistence("worktrees.list"))),

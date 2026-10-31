@@ -248,9 +248,13 @@ const remoteFetchAtom = Atom.family((projectId: string) =>
   Atom.make(call("projects.fetch", { id: projectId })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
 )
 
+const remoteFetchedAtAtom = Atom.family((projectId: string) =>
+  Atom.make((get) => AsyncResult.getOrElse(get(remoteFetchAtom(projectId)), () => null)),
+)
+
 export const branchesAtom = Atom.family((projectId: string) =>
   Atom.make((get) => {
-    get(remoteFetchAtom(projectId))
+    get(remoteFetchedAtAtom(projectId))
     return call("projects.branches", { id: projectId })
   }),
 )
@@ -267,7 +271,7 @@ export const pullRequestSearchAtom = familyOf((projectId: string, query: string 
 
 export const defaultBranchAtom = Atom.family((projectId: string) =>
   Atom.make((get) => {
-    get(remoteFetchAtom(projectId))
+    get(remoteFetchedAtAtom(projectId))
     return call("projects.defaultBranch", { id: projectId })
   }),
 )
@@ -303,14 +307,23 @@ export const commitKey = (root: string, hash: string) => `${root}\n${hash}`
 
 const windowReturnSignal = Atom.readable((get) => {
   let count = 0
-  const bump = () => {
-    if (document.visibilityState === "visible") get.setSelf(++count)
+  let away = false
+  const leave = () => {
+    away = true
   }
-  window.addEventListener("focus", bump)
-  document.addEventListener("visibilitychange", bump)
+  const comeBack = () => {
+    if (!away || document.visibilityState !== "visible") return
+    away = false
+    get.setSelf(++count)
+  }
+  const onVisibilityChange = () => (document.visibilityState === "visible" ? comeBack() : leave())
+  window.addEventListener("blur", leave)
+  window.addEventListener("focus", comeBack)
+  document.addEventListener("visibilitychange", onVisibilityChange)
   get.addFinalizer(() => {
-    window.removeEventListener("focus", bump)
-    document.removeEventListener("visibilitychange", bump)
+    window.removeEventListener("blur", leave)
+    window.removeEventListener("focus", comeBack)
+    document.removeEventListener("visibilitychange", onVisibilityChange)
   })
   return count
 })

@@ -7,6 +7,7 @@ import { describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Context, Deferred, Duration, Effect, Fiber, Layer, ManagedRuntime, PubSub } from "effect"
 import { SqlClient } from "effect/sql"
+import { TestClock } from "effect/testing"
 import type { PushEvent } from "../../shared/contract.ts"
 import type { Thread, Worktree } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
@@ -1010,6 +1011,29 @@ describe("project root checkout", () => {
         )
         expect(switched._tag).toBe("Failure")
         expect(git(root, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("main")
+      }),
+    ),
+  )
+})
+
+describe("fetching origin", () => {
+  it.effect("fetches a project's origin at most once per interval", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        withOrigin(root)
+        const fetch = Worktrees.use((worktrees) => worktrees.fetch(projectId))
+        const hasOriginBranch = () => git(root, "for-each-ref", "refs/remotes/origin/feature/login").trim() !== ""
+
+        yield* fetch
+        expect(hasOriginBranch()).toBe(true)
+
+        git(root, "update-ref", "-d", "refs/remotes/origin/feature/login")
+        yield* fetch
+        expect(hasOriginBranch()).toBe(false)
+
+        yield* TestClock.adjust(WorktreesLayer.FETCH_INTERVAL)
+        yield* fetch
+        expect(hasOriginBranch()).toBe(true)
       }),
     ),
   )
