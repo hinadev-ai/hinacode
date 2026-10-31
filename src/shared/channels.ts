@@ -17,6 +17,15 @@ export const githubAssetUrl = (url: string | undefined): string | null => {
   return id === undefined ? null : `${GITHUB_ASSET_PROTOCOL}://asset/${id}`
 }
 
+export const EXTERNAL_IMAGE_PROTOCOL = "hinacode-image"
+
+export const externalImageUrl = (url: string | undefined): string | null => {
+  const target = url?.startsWith("//") ? `https:${url}` : url
+  return target !== undefined && /^https?:\/\//i.test(target)
+    ? `${EXTERNAL_IMAGE_PROTOCOL}://image/${encodeURIComponent(target)}`
+    : null
+}
+
 export const PROJECT_FILE_PROTOCOL = "hinacode-file"
 
 export const projectFileUrl = (root: string, path: string) =>

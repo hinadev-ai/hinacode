@@ -792,7 +792,6 @@
   "pr_comment_placeholder": "Leave a comment on GitHub",
   "pr_comment_submit": "Comment",
   "pr_comment_failed": "Could not post the comment: {message}",
-  "pr_comment_send": "Send to agent",
   "pr_comment_bot": "Bot",
   "pr_comment_more": "Show more",
   "pr_comment_less": "Show less",
