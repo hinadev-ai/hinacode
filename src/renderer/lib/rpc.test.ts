@@ -1,6 +1,7 @@
+import { AtomRegistry } from "effect/reactivity"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import type { PushEvent } from "../../shared/contract.ts"
-import { onPushEvent } from "./rpc.ts"
+import { onPushEvent, pullRequestStatusAtom } from "./rpc.ts"
 
 let bridgeListeners: ReadonlyArray<(event: unknown) => void> = []
 const push = (event: unknown) => {
@@ -21,6 +22,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
   bridgeListeners = []
 })
@@ -70,4 +72,56 @@ test("a throwing listener does not stop the others", () => {
   expect(reportError).toHaveBeenCalledWith(failure)
   stopFailing()
   stopReceiving()
+})
+
+test("pull request polling resumes after the window hides across a refresh and returns before it is stale", async () => {
+  vi.useFakeTimers({ now: 40_000 })
+  const page = Object.assign(new EventTarget(), { hidden: false, visibilityState: "visible" })
+  const setVisible = (visible: boolean) => {
+    page.hidden = !visible
+    page.visibilityState = visible ? "visible" : "hidden"
+    page.dispatchEvent(new Event("visibilitychange"))
+  }
+  let lookups = 0
+  vi.stubGlobal("document", page)
+  vi.stubGlobal(
+    "window",
+    Object.assign(new EventTarget(), {
+      hinacode: {
+        rpc: async () => {
+          lookups++
+          return {
+            result: {
+              url: "https://github.com/o/r/pull/1",
+              number: 1,
+              title: "Poll",
+              status: "open",
+              checks: "passing",
+              review: null,
+              author: "octocat",
+              headRefName: "feature",
+              baseRefName: "main",
+              additions: 1,
+              deletions: 0,
+            },
+          }
+        },
+      },
+    }),
+  )
+  const registry = AtomRegistry.make()
+  const unmount = registry.mount(pullRequestStatusAtom(null, "https://github.com/o/r/pull/1"))
+  await vi.advanceTimersByTimeAsync(0)
+  expect(lookups).toBe(1)
+
+  setVisible(false)
+  await vi.advanceTimersByTimeAsync(21_000)
+  setVisible(true)
+  expect(lookups).toBe(1)
+
+  await vi.advanceTimersByTimeAsync(60_000)
+  expect(lookups).toBe(2)
+
+  unmount()
+  registry.dispose()
 })
