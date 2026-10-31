@@ -59,9 +59,9 @@ export function SearchField({
           testID={testID === undefined ? undefined : `${testID}-clear`}
           accessibilityRole="button"
           accessibilityLabel={clearLabel}
-          accessibilityElementsHidden={!filled}
-          importantForAccessibility={filled ? "auto" : "no-hide-descendants"}
-          hitSlop={8}
+          aria-hidden={!filled}
+          tabIndex={filled ? 0 : -1}
+          hitSlop={10}
           onPress={() => onChange("")}
           style={styles.clear}
         >
