@@ -9,7 +9,7 @@ import { ServerMark, serverLabel } from "@/components/server-mark"
 import { ProjectIcon } from "@/components/project-icon"
 import { PullRequestMark, usePullRequestAttention, usePullRequestSummary } from "@/components/pull-request-badge"
 import { ThreadActionsSheet, useThreadActions } from "@/components/thread-actions"
-import { ProviderMark } from "@/components/ui"
+import { ProviderMark, subheading } from "@/components/ui"
 import { listEntering, listExiting } from "@/constants/motion"
 import { indicatorGlyph, mono, type Palette, radius } from "@/constants/theme"
 import { useNow } from "@/hooks/use-now"
@@ -195,7 +195,7 @@ function StatusIndicator({ state }: { state: IndicatedState }) {
 export function SectionLabel({ label }: { label: string }) {
   const theme = useTheme()
   return (
-    <Text accessibilityRole="header" style={[styles.sectionLabel, { color: theme.textMuted }]}>
+    <Text accessibilityRole="header" {...subheading} style={[styles.sectionLabel, { color: theme.textMuted }]}>
       {label}
     </Text>
   )

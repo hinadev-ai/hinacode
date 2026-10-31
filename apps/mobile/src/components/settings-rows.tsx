@@ -1,7 +1,7 @@
 import { Children, Fragment, isValidElement, type ReactNode } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 import { Icon, type IconName } from "@/components/icon"
-import { Toggle } from "@/components/ui"
+import { subheading, Toggle } from "@/components/ui"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 
@@ -20,7 +20,7 @@ export function SettingsGroup({
   const rows = Children.toArray(children).filter(isValidElement)
   return (
     <View style={styles.group}>
-      <Text accessibilityRole="header" style={[styles.groupTitle, { color: theme.textMuted }]}>
+      <Text accessibilityRole="header" {...subheading} style={[styles.groupTitle, { color: theme.textMuted }]}>
         {title}
       </Text>
       <View style={[styles.rows, { backgroundColor: theme.surface }]}>

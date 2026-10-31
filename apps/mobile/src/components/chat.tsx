@@ -21,7 +21,7 @@ import { Icon, type IconName } from "@/components/icon"
 import { Markdown } from "@/components/markdown"
 import { FadeIn, Rotate, Spinner } from "@/components/motion"
 import { TodoTray } from "@/components/todo-tray"
-import { Button, Notice, Pill } from "@/components/ui"
+import { Button, Notice, Pill, subheading } from "@/components/ui"
 import { cssEase, duration, rise } from "@/constants/motion"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
@@ -512,7 +512,11 @@ function UsageLimitCallout({ thread, limit }: { thread: Thread; limit: UsageLimi
       >
         <View style={styles.cardHeading}>
           <Icon name="RiErrorWarningLine" size={16} color={theme.attention} />
-          <Text accessibilityRole="header" style={[styles.cardTitle, styles.shrink, { color: theme.attention }]}>
+          <Text
+            accessibilityRole="header"
+            {...subheading}
+            style={[styles.cardTitle, styles.shrink, { color: theme.attention }]}
+          >
             {copy(limit.kind === "org_spend" ? "mobile_chat_org_spend_limit_title" : "mobile_chat_usage_limit_title")}
           </Text>
         </View>
