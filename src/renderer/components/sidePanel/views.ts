@@ -1,3 +1,4 @@
+import { RiGitPullRequestLine } from "react-icons/ri"
 import { type ComponentType, lazy } from "react"
 import type { ExperimentalSettings, Thread } from "../../../shared/domain.ts"
 import type { CommandId } from "../../keybindings/commands.ts"
@@ -20,7 +21,6 @@ import { GlobeIcon } from "../icons/GlobeIcon.tsx"
 import type { IconComponent } from "../icons/Icon.tsx"
 import { InfoIcon } from "../icons/InfoIcon.tsx"
 import { PhoneIcon } from "../icons/PhoneIcon.tsx"
-import { PullRequestIcon } from "../icons/PullRequestIcon.tsx"
 import { RobotIcon } from "../icons/RobotIcon.tsx"
 
 const FilesView = lazy(() => import("./FilesView.tsx").then((module) => ({ default: module.FilesView })))
@@ -54,7 +54,7 @@ export const sidePanelViews: ReadonlyArray<SidePanelView> = [
   { id: "git", icon: BranchIcon, title: m.panel_tab_git, commandId: "view.git", component: GitGraphView },
   {
     id: "pullRequests",
-    icon: PullRequestIcon,
+    icon: RiGitPullRequestLine,
     title: m.pr_links_title,
     commandId: "view.pullRequests",
     component: PullRequestsView,

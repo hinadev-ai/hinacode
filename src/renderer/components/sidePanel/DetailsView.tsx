@@ -1,3 +1,4 @@
+import { RiGitPullRequestLine } from "react-icons/ri"
 import { useAtomValue } from "@effect/atom-react"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { useParams } from "@tanstack/react-router"
@@ -23,7 +24,6 @@ import { Section } from "./Section.tsx"
 import { BranchIcon } from "../icons/BranchIcon.tsx"
 import { CloudIcon } from "../icons/CloudIcon.tsx"
 import { FolderOpenIcon } from "../icons/FolderOpenIcon.tsx"
-import { PullRequestIcon } from "../icons/PullRequestIcon.tsx"
 
 export function DetailsView({ thread }: { thread: Thread }) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
@@ -140,7 +140,7 @@ function PullRequestBadge({ pullRequest }: { pullRequest: PullRequest }) {
       variant={pullRequest.status === "merged" ? "default" : "outline"}
       render={<a href={href} target="_blank" rel="noreferrer" title={href} aria-label={label} />}
     >
-      <PullRequestIcon aria-hidden />
+      <RiGitPullRequestLine aria-hidden />
       {label}
     </Badge>
   )

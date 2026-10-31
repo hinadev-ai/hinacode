@@ -1,3 +1,4 @@
+import { RiGitPullRequestLine } from "react-icons/ri"
 import { Autocomplete } from "@base-ui/react/autocomplete"
 import { Toggle } from "@base-ui/react/toggle"
 import { ToggleGroup } from "@base-ui/react/toggle-group"
@@ -53,7 +54,6 @@ import { BranchIcon } from "./icons/BranchIcon.tsx"
 import { ChatIcon } from "./icons/ChatIcon.tsx"
 import { CheckIcon } from "./icons/CheckIcon.tsx"
 import type { IconComponent } from "./icons/Icon.tsx"
-import { PullRequestIcon } from "./icons/PullRequestIcon.tsx"
 import { ShieldIcon } from "./icons/ShieldIcon.tsx"
 import { ShieldUserIcon } from "./icons/ShieldUserIcon.tsx"
 import { UnlockIcon } from "./icons/UnlockIcon.tsx"
@@ -647,7 +647,7 @@ function RefSuggestionItem({ suggestion }: { suggestion: RefSuggestion }) {
     >
       {suggestion.kind === "pullRequest" ? (
         <>
-          <PullRequestIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+          <RiGitPullRequestLine aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="shrink-0 font-mono">{suggestion.ref}</span>
           <span className="min-w-0 truncate">{suggestion.pullRequest.title}</span>
           {suggestion.pullRequest.isDraft && (
@@ -810,7 +810,7 @@ export function WorkspacePicker({ thread, workspace }: { thread: Thread; workspa
   const setWorkspace = (next: Draft["workspace"]) => useDrafts.getState().setWorkspace(thread.id, next)
   const mode = workspace?.mode ?? "local"
   const ref = workspace?.ref ?? currentBranch
-  const RefIcon = parsePullRequestSelector(ref) ? PullRequestIcon : BranchIcon
+  const RefIcon = parsePullRequestSelector(ref) ? RiGitPullRequestLine : BranchIcon
 
   return (
     <div className="mx-auto mt-1 flex w-full max-w-3xl items-center gap-1 px-1">

@@ -1,3 +1,4 @@
+import { RiGitPullRequestLine } from "react-icons/ri"
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { lazy, type ReactNode, Suspense, useId, useState, useTransition } from "react"
@@ -63,7 +64,6 @@ import { EyeFillIcon } from "./icons/EyeFillIcon.tsx"
 import { EyeIcon } from "./icons/EyeIcon.tsx"
 import type { IconComponent } from "./icons/Icon.tsx"
 import { MinusCircleIcon } from "./icons/MinusCircleIcon.tsx"
-import { PullRequestIcon } from "./icons/PullRequestIcon.tsx"
 import { UnlinkIcon } from "./icons/UnlinkIcon.tsx"
 import { Textarea } from "./ui/textarea.tsx"
 
@@ -123,7 +123,7 @@ export function StatusIcon({
   className?: string
 }) {
   const indicator = status && statusIndicator[status]
-  const Icon = indicator?.Icon ?? PullRequestIcon
+  const Icon = indicator?.Icon ?? RiGitPullRequestLine
   return (
     <Icon
       aria-hidden

@@ -1,13 +1,15 @@
+import {
+  RiGitClosePullRequestLine,
+  RiGitMergeFill,
+  RiGitMergeLine,
+  RiGitPrDraftLine,
+  RiGitPullRequestLine,
+} from "react-icons/ri"
 import type { IconComponent } from "../components/icons/Icon.tsx"
 import { CheckCircleFillIcon } from "../components/icons/CheckCircleFillIcon.tsx"
 import { ClockIcon } from "../components/icons/ClockIcon.tsx"
 import { FeedbackFillIcon } from "../components/icons/FeedbackFillIcon.tsx"
 import { HourglassFillIcon } from "../components/icons/HourglassFillIcon.tsx"
-import { MergeFillIcon } from "../components/icons/MergeFillIcon.tsx"
-import { MergeIcon } from "../components/icons/MergeIcon.tsx"
-import { PrClosedIcon } from "../components/icons/PrClosedIcon.tsx"
-import { PrDraftIcon } from "../components/icons/PrDraftIcon.tsx"
-import { PullRequestIcon } from "../components/icons/PullRequestIcon.tsx"
 import { PulseIcon } from "../components/icons/PulseIcon.tsx"
 import { QuestionFillIcon } from "../components/icons/QuestionFillIcon.tsx"
 import { WarningFillIcon } from "../components/icons/WarningFillIcon.tsx"
@@ -19,11 +21,11 @@ const icons = {
   RiCloseCircleFill: XCircleFillIcon,
   RiErrorWarningFill: WarningFillIcon,
   RiFeedbackFill: FeedbackFillIcon,
-  RiGitClosePullRequestLine: PrClosedIcon,
-  RiGitMergeFill: MergeFillIcon,
-  RiGitMergeLine: MergeIcon,
-  RiGitPrDraftLine: PrDraftIcon,
-  RiGitPullRequestLine: PullRequestIcon,
+  RiGitClosePullRequestLine,
+  RiGitMergeFill,
+  RiGitMergeLine,
+  RiGitPrDraftLine,
+  RiGitPullRequestLine,
   RiHourglassFill: HourglassFillIcon,
   RiPulseLine: PulseIcon,
   RiQuestionFill: QuestionFillIcon,
