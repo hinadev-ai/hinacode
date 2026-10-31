@@ -61,6 +61,8 @@ interface Probe {
   readonly storedMessages: (threadId: string) => Promise<ReadonlyArray<Message>>
 }
 
+const subagentReport = `REPORT_START\n${"finding\n".repeat(1000)}REPORT_END`
+
 const wakeQueue = () => Effect.runSync(Queue.unbounded<Wake>())
 
 const withPreparingThread = async (
@@ -147,6 +149,13 @@ const withPreparingThread = async (
         }
         if (input.prompt.endsWith("accepted input")) {
           return Stream.make({ type: "session_bound", providerSessionId: `${id}-session-${turns.length}` }, completed)
+        }
+        if (input.prompt === "delegates") {
+          return Stream.make(
+            { type: "tool_call_started", callId: "spawn", name: "Agent", input: { description: "Survey" } },
+            { type: "tool_call_finished", callId: "spawn", output: subagentReport, isError: false },
+            completed,
+          )
         }
         if (input.prompt === "ends silently") {
           return Stream.make({ type: "session_bound", providerSessionId: `${id}-session-${turns.length}` })
@@ -833,6 +842,17 @@ it("publishes the assistant message a turn closes when its stream ends without a
     expect(stored).toMatchObject({ role: "assistant", completedAt: expect.any(String) })
     const updated = transcript.findLast((push) => push.type === "message.updated")
     expect(updated).toMatchObject({ type: "message.updated", message: stored })
+  })
+})
+
+it("publishes a sub-agent's whole report", async () => {
+  await withPreparingThread(async ({ runner, thread, release, idle, transcript }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "delegates", []))
+    await idle
+
+    const finished = transcript.find((push) => push.type === "thread.event" && push.event.type === "tool_call_finished")
+    expect(finished).toMatchObject({ event: { output: subagentReport } })
   })
 })
 

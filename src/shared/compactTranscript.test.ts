@@ -149,6 +149,11 @@ describe("previewMessage", () => {
     ])
   })
 
+  test("leaves a sub-agent's report whole", () => {
+    const reports = ["Agent", "Task"].map((name) => ({ ...call(lines), name }))
+    expect(previewMessage(message(reports)).parts).toStrictEqual(reports)
+  })
+
   test("leaves short and structured outputs whole", () => {
     const parts = [call("x".repeat(TOOL_OUTPUT_PREVIEW_CHARS)), call([{ type: "text", text: lines }])]
     expect(previewMessage(message(parts)).parts).toStrictEqual(parts)
