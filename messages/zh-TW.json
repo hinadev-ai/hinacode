@@ -1669,6 +1669,8 @@
   "mobile_chat_allow": "允許",
   "mobile_chat_allow_session": "在此工作階段允許",
   "mobile_chat_deny": "拒絕",
+  "mobile_chat_todos_label": "Agent 任務",
+  "mobile_chat_todos_progress": "已完成 {done}/{total}",
   "mobile_chat_approval_note_label": "給代理的備註",
   "mobile_chat_approval_note_placeholder": "給代理的備註（選填）",
   "mobile_chat_usage_limit_title": "已達用量上限",

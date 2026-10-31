@@ -20,6 +20,7 @@ import { liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
 import { Markdown } from "@/components/markdown"
 import { FadeIn, Rotate, Spinner } from "@/components/motion"
+import { TodoTray } from "@/components/todo-tray"
 import { Button, Notice, Pill } from "@/components/ui"
 import { cssEase, duration, rise } from "@/constants/motion"
 import { HIT, mono, radius } from "@/constants/theme"
@@ -122,6 +123,7 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
           history.approvals.map((request) => <ApprovalCard key={request.id} request={request} />)}
         {history?.status === "ready" &&
           history.questions.map((request) => <QuestionCard key={request.id} request={request} />)}
+        {messages !== undefined && <TodoTray thread={thread} messages={messages} />}
         <Composer thread={thread} />
       </View>
     </View>

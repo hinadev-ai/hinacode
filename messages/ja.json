@@ -1651,6 +1651,8 @@
   "mobile_chat_allow": "許可",
   "mobile_chat_allow_session": "このセッションで許可",
   "mobile_chat_deny": "拒否",
+  "mobile_chat_todos_label": "エージェントのタスク一覧",
+  "mobile_chat_todos_progress": "{total} 件中 {done} 件完了",
   "mobile_chat_approval_note_label": "エージェントへのメモ",
   "mobile_chat_approval_note_placeholder": "エージェントへのメモ（任意）",
   "mobile_chat_usage_limit_title": "利用上限に達しました",
