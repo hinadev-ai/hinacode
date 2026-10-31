@@ -59,6 +59,7 @@ import { QueueBar } from "./QueueBar.tsx"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
+import { SteerIcon } from "./icons/SteerIcon.tsx"
 
 const readAsDataUrl = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -367,6 +368,7 @@ function SteerButton({
   return (
     <Tooltip>
       <TooltipTrigger render={<Button type="button" variant="ghost" size="sm" disabled={!canSend} onClick={onSteer} />}>
+        <SteerIcon aria-hidden />
         {m.thread_composer_steer()}
       </TooltipTrigger>
       <TooltipContent>

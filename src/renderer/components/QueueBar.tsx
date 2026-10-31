@@ -9,7 +9,7 @@ import { Button } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 import { ClockIcon } from "./icons/ClockIcon.tsx"
 import { CloseIcon } from "./icons/CloseIcon.tsx"
-import { CornerDownRightIcon } from "./icons/CornerDownRightIcon.tsx"
+import { SteerIcon } from "./icons/SteerIcon.tsx"
 import type { IconComponent } from "./icons/Icon.tsx"
 import { PencilIcon } from "./icons/PencilIcon.tsx"
 
@@ -71,11 +71,7 @@ export function QueueBar({
           <ActivityRow
             actions={
               <>
-                <QueueAction
-                  icon={CornerDownRightIcon}
-                  label={m.queue_steer_now()}
-                  onClick={() => steerNow(message.id)}
-                />
+                <QueueAction icon={SteerIcon} label={m.queue_steer_now()} onClick={() => steerNow(message.id)} />
                 <QueueAction icon={PencilIcon} label={m.queue_edit()} onClick={() => edit(message.id)} />
                 <QueueAction icon={CloseIcon} label={m.queue_remove()} onClick={() => remove(message.id)} />
               </>
