@@ -10,7 +10,7 @@ import { FadeIn, PressableScale, Reveal, Rotate, Spinner } from "@/components/mo
 import { PullRequestCode } from "@/components/pull-request-code"
 import { PullRequestState } from "@/components/pull-request-state"
 import { reviewLabel, reviewTone } from "@/lib/pull-request-labels"
-import { OptionRow, Section, Sheet } from "@/components/sheet"
+import { OptionRow, Sheet } from "@/components/sheet"
 import { Button, IconButton, Notice, Pill, Toggle, UnderlineTabs } from "@/components/ui"
 import { HIT, mono } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
@@ -465,7 +465,11 @@ function Merge({ detail, onChanged }: { detail: PullRequestDetail; onChanged: ()
         <Text style={[styles.hint, { color: theme.textMuted }]}>{copy("mobile_pr_merge_blocked_draft")}</Text>
       )}
       <Sheet title={copy("mobile_pr_merge_method")} open={picking} onClose={() => setPicking(false)} fit>
-        <Section title={copy("mobile_pr_merge_method")}>
+        <View
+          accessibilityRole="radiogroup"
+          accessibilityLabel={copy("mobile_pr_merge_method")}
+          style={styles.methods}
+        >
           {mergeMethods.map((option) => (
             <OptionRow
               key={option}
@@ -475,7 +479,7 @@ function Merge({ detail, onChanged }: { detail: PullRequestDetail; onChanged: ()
               onPress={() => pickMethod(option)}
             />
           ))}
-        </Section>
+        </View>
       </Sheet>
     </View>
   )
@@ -565,6 +569,7 @@ const styles = StyleSheet.create({
   runName: { flex: 1, fontSize: 14 },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   hint: { fontSize: 13, lineHeight: 18 },
+  methods: { gap: 2 },
   watch: { minHeight: HIT, flexDirection: "row", alignItems: "center", gap: 12 },
   watchText: { flex: 1, gap: 2 },
   watchLabel: { fontSize: 15, fontWeight: "500" },
