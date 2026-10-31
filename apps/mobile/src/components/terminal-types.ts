@@ -14,6 +14,8 @@ export interface TerminalViewProps {
   readonly onSize: (cols: number, rows: number) => void
   /** Called when the program switches arrow keys between normal and application mode. */
   readonly onCursorMode: (applicationCursor: boolean) => void
+  /** Called when the view lost its screen and starts over blank, before it reports its size again. */
+  readonly onBlank: () => void
 }
 
 /** The desktop terminal's 16 colors from `src/renderer/index.css`, each at least 4.5:1 on its background. */

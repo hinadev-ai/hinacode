@@ -54,6 +54,7 @@ function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart:
   const early = useRef<TerminalPush[]>([])
   const [output] = useState(() => new TerminalOutput())
   const latestSize = useRef({ cols: 80, rows: 24 })
+  const repaint = useRef(false)
   const [ended, setEnded] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const setExitCode = (code: number | null) =>
@@ -134,7 +135,11 @@ function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart:
 
   const onSize = (cols: number, rows: number) => {
     latestSize.current = { cols: clamp(cols), rows: clamp(rows) }
-    if (session.current !== null) return resize(session.current)
+    if (session.current !== null) {
+      if (repaint.current && useConnection.getState().features.has("terminal-attach")) attach(session.current)
+      repaint.current = false
+      return resize(session.current)
+    }
     if (opening.current) return
     opening.current = true
     call("terminal.open", { threadId, ...latestSize.current }).then(
@@ -192,6 +197,10 @@ function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart:
           onInput={onInput}
           onSize={onSize}
           onCursorMode={(mode) => (applicationCursor.current = mode)}
+          onBlank={() => {
+            output.lost()
+            repaint.current = true
+          }}
         />
       </View>
       {keyboardVisible && ended === null && (
