@@ -8,6 +8,7 @@ import type {
 } from "@shared/agent.ts"
 import { collapsedParts } from "@shared/activityFold.ts"
 import { toolSummary } from "@shared/compactTranscript.ts"
+import { formatWorkDuration } from "@shared/workDuration.ts"
 import type { Message, MessagePart, Thread, ToolCallStatus } from "@shared/domain.ts"
 import { useFocusEffect } from "expo-router"
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react"
@@ -140,19 +141,6 @@ function MessageView({ message, root }: { message: Message; root: string | null 
 /** A sub-agent's tool calls belong to its own transcript, which the phone does not show. */
 const isOwnPart = (part: MessagePart) => part.type !== "tool_call" || part.parentCallId === undefined
 
-const twoDigits = (value: number) => String(value).padStart(2, "0")
-
-/** `mm:ss`, or `h:mm:ss` past an hour, like the desktop. */
-function formatWorkDuration(ms: number) {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000))
-  const hours = Math.floor(totalSeconds / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const seconds = totalSeconds % 60
-  return hours > 0
-    ? `${hours}:${twoDigits(minutes)}:${twoDigits(seconds)}`
-    : `${twoDigits(minutes)}:${twoDigits(seconds)}`
-}
-
 function AssistantMessage({ message, root }: { message: Message; root: string | null }) {
   const [activityShown, setActivityShown] = useState(false)
   const parts = message.parts.filter(isOwnPart)
@@ -255,6 +243,7 @@ function WorkedFor({
   onToggle: (() => void) | undefined
 }) {
   const theme = useTheme()
+  if (onToggle === undefined && durationMs < 1000) return null
   const label = copy("mobile_chat_worked_for", { duration: formatWorkDuration(durationMs) })
   const row = [styles.workedFor, { borderColor: theme.border }]
   const text = <Text style={[styles.workedForText, { color: theme.textMuted }]}>{label}</Text>
