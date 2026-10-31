@@ -7,6 +7,12 @@ const legacySettings = Object.fromEntries(
   Object.entries(defaultSettings).filter(([key]) => key !== "defaultAccountName"),
 )
 
+const withoutAcpAgents = (value: unknown) => {
+  if (typeof value !== "object" || value === null || !("claude" in value)) return value
+  const { cursor: _cursor, opencode: _opencode, ...rest } = value as Record<string, unknown>
+  return rest
+}
+
 const legacyThread: Omit<Thread, "userSkills"> = {
   id: "older-cloud-thread",
   projectId: "project",
@@ -38,7 +44,19 @@ describe("older cloud responses", () => {
       claude: null,
       codex: null,
       muse: null,
+      cursor: null,
+      opencode: null,
     })
+  })
+
+  it("reads settings from before Cursor and opencode as not onboarded, with empty defaults for them", () => {
+    const { enabledProviders: _enabled, ...rest } = defaultSettings
+    const beforeAcp = Object.fromEntries(Object.entries(rest).map(([key, value]) => [key, withoutAcpAgents(value)]))
+    const settings = Schema.decodeUnknownSync(Settings)(beforeAcp)
+    expect(settings.enabledProviders).toBeNull()
+    expect(settings.defaultModel.cursor).toBeNull()
+    expect(settings.modelPresets.opencode).toStrictEqual([])
+    expect(settings.defaultFastMode.opencode).toBe(false)
   })
 
   it("keeps user skills enabled for threads from before conversation mode", () => {

@@ -75,7 +75,7 @@ export interface AgentProvider {
   }) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError>
   readonly runTurn: (input: RunTurnInput) => Stream.Stream<AgentEvent, AgentError>
   readonly wakes?: Stream.Stream<Wake>
-  readonly steer: (
+  readonly steer?: (
     threadId: string,
     text: string,
     attachments: ReadonlyArray<Attachment>,

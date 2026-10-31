@@ -571,40 +571,34 @@ export const BindHost = Schema.String.check(Schema.isPattern(/^(?!(?:0\.0\.0\.0|
 
 const ListenPort = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 }))
 
+const perProvider = <S extends Schema.Top>(value: S, fallback: S["Encoded"]) => {
+  const field = value.pipe(Schema.withDecodingDefaultKey(Effect.succeed(fallback)))
+  return Schema.Struct({ claude: field, codex: field, muse: field, cursor: field, opencode: field })
+}
+
+const eachProvider = <A>(value: A): Record<ProviderId, A> => ({
+  claude: value,
+  codex: value,
+  muse: value,
+  cursor: value,
+  opencode: value,
+})
+
 export const Settings = Schema.Struct({
   defaultProvider: ProviderId,
-  defaultModel: Schema.Struct({
-    claude: Schema.NullOr(Schema.String),
-    codex: Schema.NullOr(Schema.String),
-    muse: Schema.NullOr(Schema.String),
-  }),
-  defaultEffort: Schema.Struct({
-    claude: Schema.NullOr(Schema.String),
-    codex: Schema.NullOr(Schema.String),
-    muse: Schema.NullOr(Schema.String),
-  }),
-  defaultFastMode: Schema.Struct({ claude: Schema.Boolean, codex: Schema.Boolean, muse: Schema.Boolean }),
+  enabledProviders: Schema.NullOr(Schema.Array(ProviderId)).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  defaultModel: perProvider(Schema.NullOr(Schema.String), null),
+  defaultEffort: perProvider(Schema.NullOr(Schema.String), null),
+  defaultFastMode: perProvider(Schema.Boolean, false),
   defaultWorkspaceMode: WorkspaceChoice.fields.mode,
-  modelPresets: Schema.Struct({
-    claude: Schema.Array(Schema.String),
-    codex: Schema.Array(Schema.String),
-    muse: Schema.Array(Schema.String),
-  }),
-  defaultAccount: Schema.Struct({
-    claude: Schema.NullOr(Schema.String),
-    codex: Schema.NullOr(Schema.String),
-    muse: Schema.NullOr(Schema.String),
-  }),
-  defaultAccountName: Schema.Struct({
-    claude: Schema.NullOr(AgentProfileName),
-    codex: Schema.NullOr(AgentProfileName),
-    muse: Schema.NullOr(AgentProfileName),
-  }).pipe(Schema.withDecodingDefaultKey(Effect.succeed({ claude: null, codex: null, muse: null }))),
-  autoCompactTokens: Schema.Struct({
-    claude: Schema.NullOr(AutoCompactTokens),
-    codex: Schema.NullOr(AutoCompactTokens),
-    muse: Schema.NullOr(AutoCompactTokens),
-  }).pipe(Schema.withDecodingDefaultKey(Effect.succeed({ claude: null, codex: null, muse: null }))),
+  modelPresets: perProvider(Schema.Array(Schema.String), []),
+  defaultAccount: perProvider(Schema.NullOr(Schema.String), null),
+  defaultAccountName: perProvider(Schema.NullOr(AgentProfileName), null).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(eachProvider(null))),
+  ),
+  autoCompactTokens: perProvider(Schema.NullOr(AutoCompactTokens), null).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(eachProvider(null))),
+  ),
   automations: Schema.Struct({ bindHost: BindHost, port: ListenPort }),
   remote: Schema.Union([
     Schema.Struct({ enabled: Schema.Literal(false), bindHost: Schema.NullOr(BindHost), port: ListenPort }),
@@ -621,14 +615,15 @@ export type Settings = typeof Settings.Type
 
 export const defaultSettings: Settings = {
   defaultProvider: "claude",
-  defaultModel: { claude: null, codex: null, muse: null },
-  defaultEffort: { claude: null, codex: null, muse: null },
-  defaultFastMode: { claude: false, codex: false, muse: false },
+  enabledProviders: null,
+  defaultModel: eachProvider(null),
+  defaultEffort: eachProvider(null),
+  defaultFastMode: eachProvider(false),
   defaultWorkspaceMode: "local",
-  modelPresets: { claude: [], codex: [], muse: [] },
-  defaultAccount: { claude: null, codex: null, muse: null },
-  defaultAccountName: { claude: null, codex: null, muse: null },
-  autoCompactTokens: { claude: null, codex: null, muse: null },
+  modelPresets: eachProvider([]),
+  defaultAccount: eachProvider(null),
+  defaultAccountName: eachProvider(null),
+  autoCompactTokens: eachProvider(null),
   automations: { bindHost: "127.0.0.1", port: 48080 },
   remote: { enabled: false, bindHost: null, port: 48081 },
   textGenerationModel: "claude-sonnet-5-5",

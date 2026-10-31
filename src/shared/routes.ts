@@ -81,6 +81,7 @@ export const routes: Record<RpcMethod, Route> = {
   "accounts.rename": named,
   "accounts.delete": named,
   "agents.account": named,
+  "agents.detect": named,
   "models.list": named,
   "secrets.has": named,
   "secrets.set": named,

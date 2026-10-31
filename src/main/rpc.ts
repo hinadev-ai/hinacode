@@ -1,7 +1,9 @@
 import { homedir } from "node:os"
 import { Cause, Effect, Option, Schema } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
+import { enabledProviders, newThreadProvider } from "../shared/providers.ts"
 import { availableUpdates, installUpdate } from "./agents/updates.ts"
+import { detectAgents } from "./agents/binary.ts"
 import { compactMessage, previewMessage, transcriptPage } from "../shared/compactTranscript.ts"
 import type {
   NotificationPermission,
@@ -190,8 +192,7 @@ const handlers: Handlers = {
   "threads.list": () => Threads.use((threads) => threads.list),
   "threads.create": ({ projectId, title, provider: chosenProvider, model, effort, worktree, createdBy }) =>
     Effect.gen(function* () {
-      const { defaultProvider } = yield* Settings.use((service) => service.get)
-      const provider = chosenProvider ?? defaultProvider
+      const provider = chosenProvider ?? newThreadProvider(yield* Settings.use((service) => service.get))
       const defaults =
         model === undefined ? yield* newThreadOptions(provider) : { model, effort: undefined, fastMode: undefined }
       const thread = yield* Threads.use((threads) =>
@@ -326,7 +327,13 @@ const handlers: Handlers = {
   "models.list": ({ provider }) => AgentRunner.use((runner) => runner.listModels(provider)),
   "agents.account": ({ provider, accountId, refresh }) =>
     AgentLogins.use((logins) => logins.account(provider, accountId, { refresh })),
-  "agents.updates": () => (process.env["HINACODE_SKIP_AGENT_UPDATES"] ? Effect.succeed([]) : availableUpdates),
+  "agents.detect": () => detectAgents,
+  "agents.updates": () =>
+    process.env["HINACODE_SKIP_AGENT_UPDATES"]
+      ? Effect.succeed([])
+      : Settings.use((service) => service.get).pipe(
+          Effect.flatMap((settings) => availableUpdates(enabledProviders(settings))),
+        ),
   "agents.update": ({ provider }) => installUpdate(provider),
   "limits.list": () => AgentRunner.use((runner) => runner.limits),
   "accounts.list": () => AgentAccounts.use((accounts) => accounts.list),

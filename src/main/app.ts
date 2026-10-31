@@ -5,6 +5,8 @@ import * as ClaudeProvider from "./agents/claude/index.ts"
 import { mockScenarios, usageLimitLayer } from "./agents/claude/mock.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import { MuseProvider } from "./agents/muse/index.ts"
+import { CursorProvider } from "./agents/cursor/index.ts"
+import { OpencodeProvider } from "./agents/opencode/index.ts"
 import * as Db from "./db/client.ts"
 import { answerAsksLayer } from "./environments/route.ts"
 import * as Mcp from "./mcp/index.ts"
@@ -90,12 +92,26 @@ export const agentProviders = (env: NodeJS.ProcessEnv) => {
           MuseProvider,
           ClaudeProvider.ClaudeProvider.useSync((claude) => ({ ...claude, id: "muse" })),
         ),
+        Layer.effect(
+          CursorProvider,
+          ClaudeProvider.ClaudeProvider.useSync((claude) => ({ ...claude, id: "cursor" })),
+        ),
+        Layer.effect(
+          OpencodeProvider,
+          ClaudeProvider.ClaudeProvider.useSync((claude) => ({ ...claude, id: "opencode" })),
+        ),
       ).pipe(Layer.provideMerge(everyAgent)),
     }
   const claude = simulatedClaude("HINACODE_MOCK_CLAUDE", env)
   return {
     simulated: claude !== undefined,
-    layer: Layer.mergeAll(claude ?? ClaudeProvider.layer, CodexProvider.layer, MuseProvider.layer),
+    layer: Layer.mergeAll(
+      claude ?? ClaudeProvider.layer,
+      CodexProvider.layer,
+      MuseProvider.layer,
+      CursorProvider.layer,
+      OpencodeProvider.layer,
+    ),
   }
 }
 

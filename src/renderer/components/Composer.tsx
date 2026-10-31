@@ -20,6 +20,7 @@ import { cn } from "../lib/utils.ts"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import { isThreadBusy, type Project, type Thread, toCheckoutTarget } from "../../shared/domain.ts"
+import { steersRunningTurn } from "../../shared/providers.ts"
 import { mentionableThreads } from "../../shared/threadMention.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { promptWithComments } from "../lib/lineComments.ts"
@@ -139,7 +140,8 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   const hasDraft = text.trim() !== "" || attachments.length > 0 || comments.length > 0
   const canSend = hasDraft && !isSending && !isStaging
   const modifierHeld = useModifierHeld()
-  const clickDelivery: Delivery = modifierHeld ? "steer" : "queue"
+  const steers = steersRunningTurn[thread.provider]
+  const clickDelivery: Delivery = modifierHeld && steers ? "steer" : "queue"
   const sendMode: SendGlyphMode = !(busy || isSending) ? "send" : hasDraft ? clickDelivery : "stop"
 
   const send = (delivery: Delivery) => {
@@ -222,7 +224,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return
     event.preventDefault()
-    send(deliveryOf(event))
+    send(steers ? deliveryOf(event) : "queue")
   }
 
   return (
@@ -269,7 +271,9 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
               aria-label={isSidechat ? m.panel_tab_sidechat() : m.thread_composer_label()}
               placeholder={
                 busy
-                  ? m.thread_composer_queue_placeholder({ steer: formatForDisplay(STEER_CHORD) })
+                  ? steers
+                    ? m.thread_composer_queue_placeholder({ steer: formatForDisplay(STEER_CHORD) })
+                    : m.thread_composer_queue_only_placeholder()
                   : isSidechat
                     ? m.sidechat_placeholder()
                     : m.thread_composer_placeholder()

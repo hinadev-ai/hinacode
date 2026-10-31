@@ -174,12 +174,16 @@ const providerMark: Record<ProviderId, IconName> = {
   claude: "RiClaudeFill",
   codex: "RiOpenaiFill",
   muse: "RiMetaFill",
+  cursor: "CursorMark",
+  opencode: "OpencodeMark",
 }
 
 const providerName: Record<ProviderId, string> = {
   claude: copy("mobile_provider_claude"),
   codex: copy("mobile_provider_codex"),
   muse: copy("mobile_provider_muse"),
+  cursor: copy("mobile_provider_cursor"),
+  opencode: copy("mobile_provider_opencode"),
 }
 
 /** The provider's logo and name, muted, for meta rows. */

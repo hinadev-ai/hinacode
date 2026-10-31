@@ -11,6 +11,7 @@ import { completionAt, type Suggestion, suggestionsFor } from "@shared/composerS
 import type { RpcRequest } from "@shared/contract.ts"
 import { AccessMode, isThreadBusy, type Settings, type Thread, toCheckoutTarget } from "@shared/domain.ts"
 import { type AccountOption, accountOptions, formatResetIn } from "@shared/planLimits.ts"
+import { enabledProviders, steersRunningTurn } from "@shared/providers.ts"
 import { mentionableThreads } from "@shared/threadMention.ts"
 import { useEffect, useRef, useState } from "react"
 import {
@@ -139,6 +140,7 @@ export function Composer({ thread }: { thread: Thread }) {
   const unstarted = useUnstarted(thread)
   const server = useThreadServer(thread.id)?.id
   const busy = isThreadBusy(thread.status)
+  const steers = steersRunningTurn[thread.provider]
   const wantsFiles = completionAt(text, Math.min(caret, text.length))?.trigger === "@"
   const completions = useCompletions(thread, busy, wantsFiles, setError)
   const { commands, files, threads } = completions
@@ -163,7 +165,7 @@ export function Composer({ thread }: { thread: Thread }) {
     try {
       await useDrafts.getState().trackSending(thread.id, prompt, () =>
         busy
-          ? call("threads.steer", { threadId: thread.id, text: prompt })
+          ? call(steers ? "threads.steer" : "threads.queue", { threadId: thread.id, text: prompt })
           : call("threads.send", {
               threadId: thread.id,
               prompt,
@@ -241,7 +243,7 @@ export function Composer({ thread }: { thread: Thread }) {
           }}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          placeholder={busy ? "Steer the running turn" : "Ask the agent"}
+          placeholder={busy ? (steers ? "Steer the running turn" : "Queue a follow-up") : "Ask the agent"}
           placeholderTextColor={theme.textMuted}
           multiline
           style={[styles.input, { color: theme.text }]}
@@ -251,7 +253,7 @@ export function Composer({ thread }: { thread: Thread }) {
             <SettingsChip thread={thread} onError={setError} />
             {unstarted && <WorkspaceChip thread={thread} onError={setError} />}
           </View>
-          <SendButton busy={busy} hasDraft={hasDraft} onSend={() => void send()} onStop={stop} />
+          <SendButton busy={busy} steers={steers} hasDraft={hasDraft} onSend={() => void send()} onStop={stop} />
         </View>
       </View>
       {error !== null && (
@@ -369,22 +371,25 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
   }
 }
 
-/** While the agent runs, an empty composer offers Stop and a draft offers Steer. */
+/** While the agent runs, an empty composer offers Stop and a draft offers Steer, or Queue for agents that can't steer. */
 function SendButton({
   busy,
+  steers,
   hasDraft,
   onSend,
   onStop,
 }: {
   busy: boolean
+  steers: boolean
   hasDraft: boolean
   onSend: () => void
   onStop: () => void
 }) {
   const theme = useTheme()
   const stopping = busy && !hasDraft
-  const action = stopping ? "stop" : busy ? "steer" : "send"
-  const label = stopping ? "Stop" : busy ? "Steer" : "Send"
+  const busyAction = steers ? "steer" : "queue"
+  const action = stopping ? "stop" : busy ? busyAction : "send"
+  const label = stopping ? "Stop" : busy ? (steers ? "Steer" : "Queue") : "Send"
   const disabled = !stopping && !hasDraft
   const halo = action === "send" && hasDraft
   const background = stopping ? theme.dangerBg : disabled ? theme.surfaceStrong : theme.primary
@@ -463,6 +468,8 @@ const providers: Record<ProviderId, { label: string; icon: IconName }> = {
   claude: { label: "Claude Code", icon: "RiClaudeFill" },
   codex: { label: "Codex", icon: "RiOpenaiFill" },
   muse: { label: "Muse Code", icon: "RiMetaFill" },
+  cursor: { label: "Cursor", icon: "CursorMark" },
+  opencode: { label: "opencode", icon: "OpencodeMark" },
 }
 
 const effortLabels: Record<string, string> = {
@@ -489,6 +496,8 @@ const supervisedHints: Record<ProviderId, string> = {
   claude: "Asks before edits and commands",
   codex: "Asks before any command that isn't read-only",
   muse: "Asks before commands and edits",
+  cursor: "Asks before every tool call",
+  opencode: "Asks before every tool call",
 }
 
 const autoHints: Record<ProviderId, (model: ModelInfo | undefined) => string> = {
@@ -496,6 +505,8 @@ const autoHints: Record<ProviderId, (model: ModelInfo | undefined) => string> = 
     model?.autoMode ? "Claude approves safe actions and asks about the rest" : "Edits run without asking; commands still ask",
   codex: () => "Runs freely in the sandbox; asks to go beyond it",
   muse: () => "Runs freely in the sandbox, network included; asks to go beyond it",
+  cursor: () => "Reads and edits run without asking; commands still ask",
+  opencode: () => "Reads and edits run without asking; commands still ask",
 }
 
 const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | undefined) => {
@@ -509,13 +520,19 @@ const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | u
   }
 }
 
-/** Muse Code has no way to leave out the user's own skills. */
-const hidesUserSkills: Record<ProviderId, boolean> = { claude: true, codex: true, muse: false }
+/** Muse Code, Cursor and opencode have no way to leave out the user's own skills. */
+const hidesUserSkills: Record<ProviderId, boolean> = {
+  claude: true,
+  codex: true,
+  muse: false,
+  cursor: false,
+  opencode: false,
+}
 
 interface ServerOptions {
   readonly profiles: readonly AgentProfile[]
   readonly limits: readonly AccountLimits[]
-  readonly settings: Pick<Settings, "defaultAccountName" | "modelPresets">
+  readonly settings: Pick<Settings, "defaultAccountName" | "modelPresets" | "enabledProviders">
 }
 
 /**
@@ -642,7 +659,7 @@ function SettingsSheet({
     <Sheet title="Thread settings" open={open} onClose={onClose} fit>
           {unstarted && (
             <Section title="Agent">
-              {ProviderId.literals.map((provider) => (
+              {(options === null ? ProviderId.literals : enabledProviders(options.settings)).map((provider) => (
                 <OptionRow
                   key={provider}
                   label={providers[provider].label}

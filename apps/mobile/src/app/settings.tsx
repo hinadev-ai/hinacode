@@ -1,6 +1,7 @@
 import type { ModelInfo, ProviderId } from "@shared/agent.ts"
 import type { RpcRequest } from "@shared/contract.ts"
 import { AccessMode, type Settings } from "@shared/domain.ts"
+import { enabledProviders } from "@shared/providers.ts"
 import Constants from "expo-constants"
 import { useEffect, useState } from "react"
 import { router } from "expo-router"
@@ -187,6 +188,8 @@ const agents: readonly { provider: ProviderId; label: string; icon: IconName }[]
   { provider: "claude", label: copy("mobile_settings_agent_claude"), icon: "RiClaudeFill" },
   { provider: "codex", label: copy("mobile_settings_agent_codex"), icon: "RiOpenaiFill" },
   { provider: "muse", label: copy("mobile_settings_agent_muse"), icon: "RiMetaFill" },
+  { provider: "cursor", label: copy("mobile_settings_agent_cursor"), icon: "CursorMark" },
+  { provider: "opencode", label: copy("mobile_settings_agent_opencode"), icon: "OpencodeMark" },
 ]
 
 /**
@@ -279,6 +282,8 @@ function ServerPreferences({ server }: { server: Server | undefined }) {
     )
   }
 
+  const shownAgents = agents.filter(({ provider }) => enabledProviders(settings).includes(provider))
+
   const pickModel = (provider: ProviderId, id: string | null) => {
     setPicking(null)
     if (settings.defaultModel[provider] === id) return
@@ -314,7 +319,7 @@ function ServerPreferences({ server }: { server: Server | undefined }) {
         ))}
       </SettingsGroup>
       <SettingsGroup title={copy("mobile_settings_default_model")}>
-        {agents.map(({ provider, label, icon }) => (
+        {shownAgents.map(({ provider, label, icon }) => (
           <DefaultModelRow
             key={provider}
             provider={provider}

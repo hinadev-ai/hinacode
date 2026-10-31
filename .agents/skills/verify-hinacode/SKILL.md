@@ -36,7 +36,7 @@ What it does:
 1. Refuses if `$PORT` already answers CDP or `$DATA` belongs to a live instance.
 2. Starts the user-local Xvfb (`~/.local/xvfb/usr/bin/Xvfb :99 -screen 0 1600x1000x24`) if `/tmp/.X11-unix/X99` is missing. Xvfb is shared and is never stopped by cleanup.
 3. Runs `pnpm build`, then `HINACODE_USER_DATA=$DATA DISPLAY=:99 pnpm exec electron --no-sandbox --disable-gpu --remote-debugging-port=$PORT out/main/index.js` in a new session. The session id goes to `$DATA/kk-verify.sid`, the log to `$DATA/electron.log`.
-4. Waits until `window.hinacode.rpc("settings.get")` answers, then moves the automations webhook listener to port `40000 + $PORT` (a fresh profile binds 48080, which another instance usually holds).
+4. Waits until `window.hinacode.rpc("settings.get")` answers, then moves the automations webhook listener to port `40000 + $PORT` (a fresh profile binds 48080, which another instance usually holds) and turns every agent on, so the window opens on the app instead of the first-run agent picker. To see the picker, run `$S/rpc.ts $PORT settings.set '{"enabledProviders":null}'` and reload.
 
 Ready means it printed `hinacode ready: cdp=... data=... session=... webhook-port=...`. Teardown is [Cleanup](#cleanup). To restart the same profile, for example to prove history restore or resume, run `$S/stop.sh $DATA` and then `$S/launch.sh $PORT $DATA --no-build`.
 

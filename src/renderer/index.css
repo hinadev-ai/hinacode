@@ -83,6 +83,16 @@
   --animate-reveal: fade-in 200ms var(--ease-out) 150ms both;
   --animate-spin-late: spin 0.6s linear 150ms infinite;
   --animate-attention: attention 1s var(--ease-out) 3;
+  /* First-run screens stagger their sections in with an animation delay. */
+  --animate-enter: enter 400ms ease-out both;
+
+  @keyframes enter {
+    from {
+      opacity: 0;
+      translate: 0 12px;
+      filter: blur(4px);
+    }
+  }
 
   @keyframes fade-in {
     from {
@@ -121,6 +131,8 @@
   --color-provider-claude: var(--provider-claude);
   --color-provider-codex: var(--provider-codex);
   --color-provider-muse: var(--provider-muse);
+  --color-provider-cursor: var(--provider-cursor);
+  --color-provider-opencode: var(--provider-opencode);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -310,8 +322,10 @@
   --accent-foreground: var(--foreground);
   --sidebar-foreground: var(--foreground);
   --sidebar-accent-foreground: var(--foreground);
-  /* OpenAI's mark is monochrome. */
+  /* OpenAI's, Cursor's and opencode's marks are monochrome. */
   --provider-codex: var(--foreground);
+  --provider-cursor: var(--foreground);
+  --provider-opencode: var(--foreground);
 }
 
 /*

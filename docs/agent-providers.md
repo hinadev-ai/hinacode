@@ -2,37 +2,39 @@
 
 An `AgentProvider` owns one agent backend. It owns the child process or SDK session. It translates the native protocol into the shared `AgentEvent` union. Everything after the provider is agent-agnostic. This page lists each capability the harness relies on. It says how each capability reaches the UI. It says which providers have it. An engineer adding a backend works through the checklist at the end so nothing is silently missing.
 
-The contract lives in `src/main/agents/provider.ts`. The event union lives in `src/shared/agent.ts`. The three implementations are `src/main/agents/claude/index.ts`, `src/main/agents/codex/index.ts` and `src/main/agents/muse/index.ts`.
+The contract lives in `src/main/agents/provider.ts`. The event union lives in `src/shared/agent.ts`. The implementations are `src/main/agents/claude/index.ts`, `src/main/agents/codex/index.ts`, `src/main/agents/muse/index.ts`, and `src/main/agents/acp/index.ts`, which Cursor (`cursor/index.ts`) and opencode (`opencode/index.ts`) share because both speak the Agent Client Protocol.
 
 ## Capability matrix
 
 A cell says yes when the provider maps the capability today. A cell says no when it does not. The native name follows the answer where it helps.
 
-| Capability                       | Contract                                                    | Claude             | Codex                    | Muse               | What the UI shows                              |
-| -------------------------------- | ----------------------------------------------------------- | ------------------ | ------------------------ | ------------------ | ---------------------------------------------- |
-| Models                           | `listModels`                                                | yes                | yes                      | yes                | Model picker in the composer                   |
-| Account and plan limits          | `account`, `planLimits`                                     | yes                | yes                      | yes                | Account settings and the account picker        |
-| Token usage                      | `usage`, `turn_completed.usage`                             | yes                | yes                      | yes                | Thread usage and context meter                 |
-| Context breakdown                | `contextBreakdown`                                          | yes                | no                       | no                 | Categories in the context meter popover        |
-| Commands and skills              | `listCommands`                                              | yes                | yes                      | yes                | Slash and dollar completion in the composer    |
-| Streaming text and reasoning     | `text_delta`, `reasoning_delta`                             | yes                | yes                      | yes                | Streaming reply in the transcript              |
-| Tool calls and file changes      | `tool_call_started`, `tool_call_finished`, `file_changed`   | yes                | yes                      | yes                | Tool rows and the changes view                 |
-| Approvals                        | `approval_requested`, `respondApproval`                     | yes, `canUseTool`  | yes                      | yes                | Inline approval card                           |
-| Questions                        | `question_requested`, `respondQuestion`, `questions_posted` | yes, blocking only | yes, blocking and posted | yes, blocking only | Question card in the transcript                |
-| Steering a running turn          | `steer`                                                     | yes                | yes, `turn/steer`        | yes, `turn/steer`  | New user message inside the running turn       |
-| Interrupt                        | `interrupt`                                                 | yes                | yes, `turn/interrupt`    | yes                | Stop button ends the turn                      |
-| Auto-compaction                  | `compaction_updated`, `autoCompactTokens`                   | yes                | yes                      | yes                | Compaction row in the transcript               |
-| Todos and plan                   | Todo tool calls in the transcript                           | yes                | yes                      | yes                | Plan section of `ActivityIndicator`            |
-| Sub-agents                       | `subagent_updated`, `stopSubagent`                          | yes                | yes                      | yes                | Sub-agent section of `ActivityIndicator`       |
-| Background tasks                 | `backgroundTasks.changes`, `backgroundTasks.stop`           | yes                | yes, polled              | yes                | Background task section of `ActivityIndicator` |
-| Turns the agent starts by itself | `wakes`                                                     | yes                | no                       | yes                | A reply with no user message before it         |
-| Access mode                      | `accessMode`, `setAccessMode`                               | yes, live          | yes, next turn           | yes, live          | Access picker in the composer controls         |
-| Session copy between accounts    | `copySession`                                               | yes                | yes                      | no                 | Account switch on a started thread             |
-| Closing a session                | `closeSession`                                              | yes                | yes                      | yes                | Agent switch on a started thread               |
-| Fork from a turn                 | `turn_completed.forkPoint`, `RunTurnInput.forkAt`           | yes                | yes                      | no                 | Fork button under a reply                      |
-| Session import                   | `listSessions`, `readSession`                               | yes                | yes                      | no                 | Import session dialog                          |
+| Capability                       | Contract                                                    | Claude             | Codex                    | Muse               | Cursor, opencode                  | What the UI shows                              |
+| -------------------------------- | ----------------------------------------------------------- | ------------------ | ------------------------ | ------------------ | --------------------------------- | ---------------------------------------------- |
+| Models                           | `listModels`                                                | yes                | yes                      | yes                | yes, probe session                | Model picker in the composer                   |
+| Account and plan limits          | `account`, `planLimits`                                     | yes                | yes                      | yes                | account only                      | Account settings and the account picker        |
+| Token usage                      | `usage`, `turn_completed.usage`                             | yes                | yes                      | yes                | per turn only                     | Thread usage and context meter                 |
+| Context breakdown                | `contextBreakdown`                                          | yes                | no                       | no                 | no                                | Categories in the context meter popover        |
+| Commands and skills              | `listCommands`                                              | yes                | yes                      | yes                | yes                               | Slash and dollar completion in the composer    |
+| Streaming text and reasoning     | `text_delta`, `reasoning_delta`                             | yes                | yes                      | yes                | yes                               | Streaming reply in the transcript              |
+| Tool calls and file changes      | `tool_call_started`, `tool_call_finished`, `file_changed`   | yes                | yes                      | yes                | yes                               | Tool rows and the changes view                 |
+| Approvals                        | `approval_requested`, `respondApproval`                     | yes, `canUseTool`  | yes                      | yes                | yes, `session/request_permission` | Inline approval card                           |
+| Questions                        | `question_requested`, `respondQuestion`, `questions_posted` | yes, blocking only | yes, blocking and posted | yes, blocking only | no                                | Question card in the transcript                |
+| Steering a running turn          | `steer`                                                     | yes                | yes, `turn/steer`        | yes, `turn/steer`  | no                                | New user message inside the running turn       |
+| Interrupt                        | `interrupt`                                                 | yes                | yes, `turn/interrupt`    | yes                | yes, `session/cancel`             | Stop button ends the turn                      |
+| Auto-compaction                  | `compaction_updated`, `autoCompactTokens`                   | yes                | yes                      | yes                | no                                | Compaction row in the transcript               |
+| Todos and plan                   | Todo tool calls in the transcript                           | yes                | yes                      | yes                | yes, `plan`                       | Plan section of `ActivityIndicator`            |
+| Sub-agents                       | `subagent_updated`, `stopSubagent`                          | yes                | yes                      | yes                | no                                | Sub-agent section of `ActivityIndicator`       |
+| Background tasks                 | `backgroundTasks.changes`, `backgroundTasks.stop`           | yes                | yes, polled              | yes                | no                                | Background task section of `ActivityIndicator` |
+| Turns the agent starts by itself | `wakes`                                                     | yes                | no                       | yes                | no                                | A reply with no user message before it         |
+| Access mode                      | `accessMode`, `setAccessMode`                               | yes, live          | yes, next turn           | yes, live          | yes, live                         | Access picker in the composer controls         |
+| Session copy between accounts    | `copySession`                                               | yes                | yes                      | no                 | no                                | Account switch on a started thread             |
+| Closing a session                | `closeSession`                                              | yes                | yes                      | yes                | yes                               | Agent switch on a started thread               |
+| Fork from a turn                 | `turn_completed.forkPoint`, `RunTurnInput.forkAt`           | yes                | yes                      | no                 | no                                | Fork button under a reply                      |
+| Session import                   | `listSessions`, `readSession`                               | yes                | yes                      | no                 | no                                | Import session dialog                          |
 
 ### Notes on the rows that differ
+
+**Cursor and opencode.** One `cursor-agent acp` or `opencode acp` process serves every thread of that agent and restarts when it exits. Each thread gets one ACP session, created with the thread `cwd` and the HinaCode MCP server, and resumed with `session/load`, whose replayed history the provider drops (`src/main/agents/acp/index.ts`). Models come from the `configOptions` or `models` of a probe session opened in the home directory, and a turn picks its model with `session/set_config_option` or `session/set_model` (`src/main/agents/acp/models.ts`). HinaCode owns the access mode: opencode starts with `permission: "ask"`, and the provider answers `session/request_permission` itself for `full`, and for reads and edits in `auto` (`src/main/agents/acp/approvals.ts`). `session/update` maps to events in `src/main/agents/acp/updates.ts`. A `plan` update becomes a synthetic `update_plan` call, and `usage_update` fills the context window on `turn_completed`. Cursor asks for `authenticate` only after `session/new` reports that sign-in is required, because asking up front hangs a signed-out `cursor-agent`.
 
 **Models, account, limits, usage, commands.** All three implement `listModels`, `account`, `planLimits`, `usage` and `listCommands`. See the returns at `src/main/agents/claude/index.ts`, `src/main/agents/codex/index.ts` and `src/main/agents/muse/index.ts`. `planLimits` returns null when an account has no plan windows (`src/main/agents/provider.ts`). `usage` reads transcripts from the account home and returns null when there is no transcript (`src/main/agents/provider.ts`).
 
@@ -40,7 +42,7 @@ A cell says yes when the provider maps the capability today. A cell says no when
 
 **Approvals and questions.** All three map approvals to `approval_requested` and answer through `respondApproval`. Codex emits it at `src/main/agents/codex/index.ts`. Muse emits it at `src/main/agents/muse/index.ts`. A `question_requested` blocks the turn until `respondQuestion` answers it. Codex also emits `questions_posted` at `src/main/agents/codex/index.ts`. That variant never blocks the turn (`src/shared/agent.ts`). The user answers it with the next message.
 
-**Steering and interrupt.** All three implement `steer` and `interrupt`. `steer` fails when no turn is running (`src/main/agents/provider.ts`). Codex interrupts with `turn/interrupt` (`src/main/agents/codex/index.ts`). Claude interrupts the SDK query (`src/main/agents/claude/index.ts`).
+**Steering and interrupt.** Claude, Codex and Muse implement `steer`, and every provider implements `interrupt`. `steer` fails when no turn is running (`src/main/agents/provider.ts`). Codex interrupts with `turn/interrupt` (`src/main/agents/codex/index.ts`). Claude interrupts the SDK query (`src/main/agents/claude/index.ts`).
 
 **Auto-compaction.** All three emit `compaction_updated` with the full current state (`src/shared/agent.ts`). The state is `running`, `done` or `failed` (`src/shared/agent.ts`). The threshold arrives as `autoCompactTokens` on `RunTurnInput` (`src/shared/agent.ts`). Null keeps the agent threshold. Claude passes it to the SDK as `autoCompactWindow` (`src/main/agents/claude/index.ts`). Claude reports state from `status` and `compact_boundary` messages (`src/main/agents/claude/mapMessage.ts`). Codex passes it as `model_auto_compact_token_limit` (`src/main/agents/codex/index.ts`). Codex reports `contextCompaction` items (`src/main/agents/codex/index.ts`). Its `done` state is always `auto` with null token counts (`src/main/agents/codex/index.ts`). Muse reports `compaction` items (`src/main/agents/muse/index.ts`). MSP takes no threshold. HinaCode therefore compares the latest context size itself and calls `session/compact` before the turn (`src/main/agents/muse/index.ts`).
 
@@ -71,7 +73,7 @@ A cell says yes when the provider maps the capability today. A cell says no when
 - Register it in the `providers` record in `src/main/services/AgentRunner.ts` and in `src/main/services/AgentLogins.ts`.
 - Add its layer to the graph in `src/main/app.ts`. Fix the fake providers of integration tests that build those layers.
 - Add a migration that widens the `provider` CHECK on `thread` and `automation`. Never edit a shipped migration.
-- Add the per-agent keys in `Settings.defaultModel`, `modelPresets`, `defaultAccount` and `defaultAccountName` (`src/shared/domain.ts`).
+- Add the id to `perProvider` and `eachProvider` in `src/shared/domain.ts`, and its CLI to `providerCli` and `steersRunningTurn` in `src/shared/providers.ts`. An agent that speaks ACP needs only a config for `makeAcpProvider`, like `src/main/agents/opencode/index.ts`.
 - Add the icon and label in `ProviderIcon.tsx`, the access hints in `ComposerControls.tsx`, the signed-out hint in account settings, and every new string in `messages/en.json`, `messages/zh-TW.json` and `messages/ja.json`.
 - Add a mock for e2e. Claude has `src/main/agents/claude/mock.ts`. Codex tests run a fake server (`src/main/agents/codex/fakeAppServer.mjs`, used at `src/main/agents/codex/index.integration.test.ts`). Muse tests run a fake endpoint (`src/main/agents/muse/fakeEndpoint.ts`, used at `src/main/agents/muse/index.integration.test.ts`).
 
@@ -102,12 +104,13 @@ Map each row or leave it out on purpose. Prove each mapped row with a test again
 
 ### Optional fields
 
-Seven fields of `AgentProvider` are optional.
+Eight fields of `AgentProvider` are optional.
 
 - `copySession`. Leave it out without added accounts. The UI then refuses an account switch on a started thread (`src/main/services/AgentRunner.ts`).
 - `wakes`. Leave it out when the agent never starts a turn. The runner skips the provider (`src/main/services/AgentRunner.ts`). Nothing changes in the UI.
 - `backgroundTasks`. Leave it out when the agent cannot list and stop background work. The list stays empty and the stop call fails with an agent error (`src/main/services/AgentRunner.ts`). The activity section renders nothing.
 - `closeSession`. Leave it out when the agent keeps nothing running between turns and resumes only `RunTurnInput.resumeSessionId`. Switching agents then only changes the stored provider.
+- `steer`. Leave it out when the agent cannot add input to a running turn. The runner then queues the message for after the turn, so the composer, `send_to_thread` and pull request notices still reach the agent (`src/main/services/AgentRunner.ts`). Add the agent to `steersRunningTurn` too, so the composer offers Queue only.
 - `listSessions` and `readSession`. Leave them out without an agent home. The import dialog then lists none of the agent's sessions.
 - `stopSubagent`. Leave it out when the agent cannot stop one child. The stop call fails with an agent error (`src/main/services/AgentRunner.ts`). The sub-agent still shows in the activity tray.
 
@@ -118,4 +121,5 @@ Every other field is required. A provider that cannot do a required thing still 
 - Claude maps every capability in the matrix. It has no `questions_posted` path. Its questions always block the turn.
 - Codex and Muse report only used and window tokens, so their context popover shows totals without categories. Claude reports categories only while its session is open, up to 60 seconds after a turn.
 - Codex polls background terminals of the parent thread only, not of its sub-agent threads. Codex exposes no `wakes` stream. Codex compaction reports no token counts, so the UI cannot show before and after sizes. Codex applies access mode changes only on the next turn.
+- ACP has no steer, questions, sub-agents, background tasks, compaction or fork, so Cursor and opencode leave them out. They also leave out session import for now, although both agents offer `session/list`. The composer hides steering for them. Their `usage` returns null, so the usage panel stays empty, and `turn_completed` carries the turn's tokens and context window only. The model probe leaves one empty session per agent launch in the agent's history for the home directory.
 - Muse cannot stop one of two or more shells it backgrounded itself, and does not track registry-only tasks such as `monitor`. Muse does not map `session/todoListChanged`. Its todos reach the UI only through `write_todos` tool calls. Muse has no `copySession` and no added accounts.

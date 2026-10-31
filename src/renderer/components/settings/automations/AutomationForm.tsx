@@ -4,6 +4,7 @@ import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, startTransition, useActionState, useState } from "react"
 import { ProviderId } from "../../../../shared/agent.ts"
 import type { Automation, AutomationTrigger, AutomationTriggerType, Project } from "../../../../shared/domain.ts"
+import { enabledProviders, newThreadProvider } from "../../../../shared/providers.ts"
 import { automationsAtom, callPromise, modelsAtom } from "../../../lib/rpc.ts"
 import { useSettings } from "../../../lib/settings.ts"
 import { useSettingsEnvironment } from "../../../lib/environments.ts"
@@ -56,7 +57,7 @@ interface Draft {
   readonly branchTemplate: string
 }
 
-const emptyDraft = (projectId: string, model: string): Draft => ({
+const emptyDraft = (projectId: string, provider: ProviderId, model: string): Draft => ({
   name: "",
   projectId,
   enabled: true,
@@ -69,7 +70,7 @@ const emptyDraft = (projectId: string, model: string): Draft => ({
   channel: "",
   botUserId: "",
   promptTemplate: "",
-  provider: "claude",
+  provider,
   model,
   runInWorktree: false,
   branchTemplate: "",
@@ -78,7 +79,7 @@ const emptyDraft = (projectId: string, model: string): Draft => ({
 const draftFrom = (automation: Automation): Draft => {
   const { trigger } = automation
   return {
-    ...emptyDraft(automation.projectId, automation.model),
+    ...emptyDraft(automation.projectId, automation.provider, automation.model),
     name: automation.name,
     enabled: automation.enabled,
     triggerType: trigger.type,
@@ -159,12 +160,15 @@ interface AutomationFormProps {
 
 function AutomationForm({ state, projects, onDone, onCreated }: AutomationFormProps) {
   const environment = useSettingsEnvironment()
-  const { defaultModel } = useSettings(environment)
+  const settings = useSettings(environment)
+  const { defaultModel } = settings
   const refreshList = useAtomRefresh(automationsAtom(environment))
   const editing = state.mode === "edit"
-  const [draft, setDraft] = useState<Draft>(() =>
-    editing ? draftFrom(state.automation) : emptyDraft(projects[0]?.id ?? "", defaultModel.claude ?? ""),
-  )
+  const [draft, setDraft] = useState<Draft>(() => {
+    if (editing) return draftFrom(state.automation)
+    const provider = newThreadProvider(settings)
+    return emptyDraft(projects[0]?.id ?? "", provider, defaultModel[provider] ?? "")
+  })
   const patch = (next: Partial<Draft>) => setDraft((current) => ({ ...current, ...next }))
 
   const [error, submit, isPending] = useActionState(async (_: string | null, input: Draft) => {
@@ -204,7 +208,10 @@ function AutomationForm({ state, projects, onDone, onCreated }: AutomationFormPr
 
   const projectItems = projects.map((project) => ({ value: project.id, label: project.name }))
   const triggerItems = triggerTypes.map((type) => ({ value: type, label: triggerLabel[type]() }))
-  const providerItems = ProviderId.literals.map((id) => ({ value: id, label: providerLabel[id]() }))
+  const enabledAgents = enabledProviders(settings)
+  const providerItems = ProviderId.literals
+    .filter((id) => enabledAgents.includes(id) || id === draft.provider)
+    .map((id) => ({ value: id, label: providerLabel[id]() }))
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">

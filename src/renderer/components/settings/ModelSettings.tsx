@@ -3,10 +3,12 @@ import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, useRef, useState, useTransition } from "react"
 import { CLAUDE_EFFORT_LEVELS, type ModelInfo, ProviderId, unlistedModel } from "../../../shared/agent.ts"
 import { AccessMode, AUTO_COMPACT_RANGE } from "../../../shared/domain.ts"
-import { modelsAtom, updateSettingsAtom } from "../../lib/rpc.ts"
+import { enabledProviders, newThreadProvider } from "../../../shared/providers.ts"
+import { installedAgentsAtom, modelsAtom, updateSettingsAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { useSettingsEnvironment } from "../../lib/environments.ts"
 import { m } from "../../paraglide/messages.js"
+import { AgentChoices } from "../AgentChoices.tsx"
 import { accessModes, effortLabel } from "../ComposerControls.tsx"
 import { ProviderIcon, providerLabel } from "../ProviderIcon.tsx"
 import { Button } from "../ui/button.tsx"
@@ -18,10 +20,21 @@ import { SettingsGroup, SettingsGroupTitle, SettingsSection } from "./SettingsSe
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { SkeletonList } from "../ui/skeleton.tsx"
 
+const takesAutoCompact = {
+  claude: true,
+  codex: true,
+  muse: true,
+  cursor: false,
+  opencode: false,
+} satisfies Record<ProviderId, boolean>
+
 export function ModelSettings() {
+  const environment = useSettingsEnvironment()
+  const enabled = enabledProviders(useSettings(environment))
   return (
     <SettingsSection>
-      {ProviderId.literals.map((provider) => (
+      <EnabledAgentsField enabled={enabled} />
+      {enabled.map((provider) => (
         <ProviderModels key={provider} provider={provider} />
       ))}
       <SettingsGroup>
@@ -30,6 +43,50 @@ export function ModelSettings() {
         <PullRequestGuideField />
       </SettingsGroup>
     </SettingsSection>
+  )
+}
+
+function EnabledAgentsField({ enabled }: { enabled: ReadonlyArray<ProviderId> }) {
+  const environment = useSettingsEnvironment()
+  const settings = useSettings(environment)
+  const installed = useAtomValue(installedAgentsAtom(environment))
+  const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
+  const [error, setError] = useState<string | null>(null)
+  const [, startTransition] = useTransition()
+
+  const save = (provider: ProviderId, on: boolean) =>
+    startTransition(async () => {
+      const next = ProviderId.literals.filter((id) => (id === provider ? on : enabled.includes(id)))
+      setError(null)
+      try {
+        await updateSettings({
+          enabledProviders: next,
+          defaultProvider: newThreadProvider({ defaultProvider: settings.defaultProvider, enabledProviders: next }),
+        })
+      } catch (cause) {
+        setError(errorMessage(cause))
+      }
+    })
+
+  return (
+    <fieldset aria-labelledby="enabled-agents" className="flex min-w-0 flex-col gap-4">
+      <div className="-mb-2 flex flex-col gap-1 px-1">
+        <SettingsGroupTitle id="enabled-agents" className="mb-0 px-0">
+          {m.settings_agents()}
+        </SettingsGroupTitle>
+        <p className="text-xs text-pretty text-muted-foreground">{m.settings_agents_hint()}</p>
+      </div>
+      <SettingsGroup>
+        <AgentChoices
+          providers={ProviderId.literals}
+          installed={AsyncResult.isSuccess(installed) ? installed.value : null}
+          enabled={enabled}
+          locked={enabled.length === 1 ? enabled[0] : undefined}
+          onChange={save}
+        />
+      </SettingsGroup>
+      {error !== null && <FieldError>{error}</FieldError>}
+    </fieldset>
   )
 }
 
@@ -50,7 +107,7 @@ function ProviderModels({ provider }: { provider: ProviderId }) {
         {AsyncResult.isSuccess(models) && models.value.length > 0 && (
           <ModelPresetField provider={provider} models={models.value} />
         )}
-        <AutoCompactField provider={provider} />
+        {takesAutoCompact[provider] && <AutoCompactField provider={provider} />}
       </SettingsGroup>
     </fieldset>
   )

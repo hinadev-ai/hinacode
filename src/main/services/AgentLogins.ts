@@ -5,6 +5,8 @@ import { AgentAccount, type ProviderId } from "../../shared/agent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
+import { CursorProvider } from "../agents/cursor/index.ts"
+import { OpencodeProvider } from "../agents/opencode/index.ts"
 import type { AgentError, AgentProvider } from "../agents/provider.ts"
 import { AgentAccounts } from "./AgentAccounts.ts"
 import { nowIso } from "./clock.ts"
@@ -76,6 +78,8 @@ const make = (cacheDir: string) =>
       claude: yield* ClaudeProvider,
       codex: yield* CodexProvider,
       muse: yield* MuseProvider,
+      cursor: yield* CursorProvider,
+      opencode: yield* OpencodeProvider,
     }
 
     const fetch = (provider: ProviderId, accountId: string | null) =>

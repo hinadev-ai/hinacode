@@ -13,6 +13,8 @@ import type { Message, Thread } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
+import { CursorProvider } from "../agents/cursor/index.ts"
+import { OpencodeProvider } from "../agents/opencode/index.ts"
 import { AgentError, type AgentProvider, type Wake } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
@@ -107,7 +109,13 @@ const withPreparingThread = async (
   const calls: Probe["calls"] = []
   const transcript: Probe["transcript"] = []
   let closeFails = false
-  const wakes = { claude: wakeQueue(), codex: wakeQueue(), muse: wakeQueue() }
+  const wakes = {
+    claude: wakeQueue(),
+    codex: wakeQueue(),
+    muse: wakeQueue(),
+    cursor: wakeQueue(),
+    opencode: wakeQueue(),
+  }
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
       Layer.provideMerge(Scratch.layer(join(dir, "scratch"))),
@@ -205,7 +213,7 @@ const withPreparingThread = async (
       closeFails
         ? Effect.fail(new AgentError({ provider: id, message: "The session did not leave" }))
         : Effect.sync(() => calls.push({ provider: id, call: "closeSession" })),
-    steer: () => Effect.void,
+    ...(id !== "opencode" && { steer: () => Effect.void }),
     interrupt: () => Effect.sync(() => calls.push({ provider: id, call: "interrupt" })),
     setAccessMode: () => Effect.void,
     respondApproval: (requestId, decision) => Effect.sync(() => decisions.push({ requestId, decision })),
@@ -251,6 +259,8 @@ const withPreparingThread = async (
             Layer.succeed(ClaudeProvider, provider("claude")),
             Layer.succeed(CodexProvider, provider("codex")),
             Layer.succeed(MuseProvider, provider("muse")),
+            Layer.succeed(CursorProvider, provider("cursor")),
+            Layer.succeed(OpencodeProvider, provider("opencode")),
             Layer.succeed(Secrets, {
               get: () => Effect.succeed(Option.none()),
               has: () => Effect.succeed(false),
@@ -931,6 +941,20 @@ it("publishes streamed text in fewer pushes, in order, with the same transcript"
     ])
     const transcriptSeqs = transcript.map((push) => push.seq)
     expect(transcriptSeqs).toEqual(transcriptSeqs.toSorted((a, b) => a - b))
+  })
+})
+
+it("queues a steer for an agent that cannot steer a running turn", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, streamed }) => {
+    release()
+    await Effect.runPromise(threads.update({ id: thread.id, provider: "opencode" }))
+    await Effect.runPromise(runner.send(thread.id, "streams, then waits", []))
+    await streamed
+    await Effect.runPromise(runner.steer(thread.id, "change course", []))
+
+    const queued = await Effect.runPromise(threads.get(thread.id))
+    expect(queued.queue.map((message) => message.text)).toEqual(["change course"])
+    await Effect.runPromise(runner.interrupt(thread.id))
   })
 })
 

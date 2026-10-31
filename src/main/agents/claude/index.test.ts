@@ -410,7 +410,7 @@ describe("Claude idle sessions", () => {
         }
         const turn = yield* startTurn()
         yield* until(() => sdk.clis.at(-1)?.prompts.length === 1)
-        yield* provider.steer("thread-1", "Use pnpm instead", [])
+        yield* provider.steer!("thread-1", "Use pnpm instead", [])
         yield* until(() => latestCli().prompts.length === 2)
         const [prompt, steer] = latestCli().prompts.map((message) => message.uuid)
         latestCli().push({ ...succeeded, terminal_reason: "aborted_streaming", user_message_uuids: [prompt] })
@@ -434,7 +434,7 @@ describe("Claude idle sessions", () => {
         }
         const turn = yield* startTurn()
         yield* until(() => sdk.clis.at(-1)?.prompts.length === 1)
-        yield* provider.steer("thread-1", "Use pnpm instead", [])
+        yield* provider.steer!("thread-1", "Use pnpm instead", [])
         yield* until(() => latestCli().prompts.length === 2)
         const [prompt, steer] = latestCli().prompts.map((message) => message.uuid)
         latestCli().push({ ...succeeded, user_message_uuids: [prompt] }, textDelta("Switching to pnpm", steer), {
@@ -460,13 +460,13 @@ describe("Claude idle sessions", () => {
         }
         const abandoned = yield* startTurn()
         yield* until(() => sdk.clis.at(-1)?.prompts.length === 1)
-        yield* provider.steer("thread-1", "Use pnpm instead", [])
+        yield* provider.steer!("thread-1", "Use pnpm instead", [])
         yield* until(() => latestCli().prompts.length === 2)
         yield* Fiber.interrupt(abandoned.fiber)
 
         const turn = yield* startTurn(turnInput({ prompt: "Run the tests" }))
         yield* until(() => latestCli().prompts.length === 3)
-        yield* provider.steer("thread-1", "Only the unit tests", [])
+        yield* provider.steer!("thread-1", "Only the unit tests", [])
         yield* until(() => latestCli().prompts.length === 4)
         const [first, abandonedSteer, prompt, steer] = latestCli().prompts.map((message) => message.uuid)
         const mixed = [abandonedSteer, steer]
@@ -1017,7 +1017,7 @@ describe("Claude background sub-agents", () => {
         }
         const turn = yield* startTurn()
         yield* until(() => turn.events.some((event) => event.type === "subagent_updated"))
-        yield* provider.steer("thread-1", "How is it going?", [])
+        yield* provider.steer!("thread-1", "How is it going?", [])
         yield* until(() => latestCli().prompts.length === 2)
         const steer = latestCli().prompts[1]?.uuid
         latestCli().push(taskNotification("agent-1"), sessionState("idle"))
