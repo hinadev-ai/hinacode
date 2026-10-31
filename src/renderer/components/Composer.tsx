@@ -256,7 +256,7 @@ export function Composer({
           <ActivityIndicator thread={thread}>
             <QueueBar thread={thread} onEdit={() => inputRef.current?.focus()} onError={setError} />
           </ActivityIndicator>
-          <ComposerBar className="min-h-0 border-(color:--composer-edge) has-[[role=listbox]]:z-20">
+          <ComposerBar className="min-h-0 composer-edge has-[[role=listbox]]:z-20">
             {comments.length > 0 && (
               <ul
                 aria-label={m.comment_pending_label()}

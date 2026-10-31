@@ -833,19 +833,25 @@
   animation-timeline: scroll(self);
 }
 
-/* Cuts the bottom 12px of the activity tray's side borders, where its flares take over the outline. */
-@utility tray-flare-cut {
-  mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0), linear-gradient(#000 0 0);
-  mask-size:
-    100% 100%,
-    1px 12px,
-    1px 12px;
-  mask-position:
-    0 0,
-    left bottom,
-    right bottom;
-  mask-repeat: no-repeat;
-  mask-composite: exclude;
+/* The activity tray sits under the composer bar so its blur never picks up the bar's fill.
+   The bar draws its border on a layer above, opened where the tray joins it. */
+@utility composer-edge {
+  position: relative;
+  border-color: transparent;
+  &::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border: 1px solid var(--composer-edge);
+    border-radius: inherit;
+    pointer-events: none;
+  }
+  [data-slot="composer"]:has(> section > div:not(:empty)) &::after {
+    mask:
+      linear-gradient(#000 0 0),
+      linear-gradient(#000 0 0) top / calc(100% - 2 * (2.25rem + 1px)) 1px no-repeat;
+    mask-composite: exclude;
+  }
 }
 
 @utility send-halo {
