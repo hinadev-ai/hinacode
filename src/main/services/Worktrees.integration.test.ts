@@ -815,6 +815,20 @@ describe("checkout states", () => {
       }),
     ),
   )
+
+  it.live("reports untracked files as dirty when git status hides them", () =>
+    withRepo(({ projectId }) =>
+      Effect.gen(function* () {
+        const thread = yield* createThread(projectId, "untracked", "kk/untracked")
+        yield* waitUntilSetUp(thread.worktreeId)
+        const { id, path } = yield* worktreeOf(thread.worktreeId)
+        git(path, "config", "status.showUntrackedFiles", "no")
+        writeFileSync(join(path, "draft.txt"), "work")
+
+        expect(yield* Worktrees.use((worktrees) => worktrees.checkoutState(id))).toBe("dirty")
+      }),
+    ),
+  )
 })
 
 describe("startup", () => {
