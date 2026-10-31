@@ -25,7 +25,7 @@ export async function snoozeThread(thread: Thread, until: Date | null) {
   if (!until) return
   toast(m.snooze_done({ time: formatSnoozeTime(until, new Date(), getLocale()) }), {
     action: {
-      label: m.snooze_undo(),
+      label: m.common_undo(),
       onClick: () =>
         void update(thread.snoozedUntil).then(upsert, (cause: unknown) =>
           toast.error(m.sidebar_unsnooze_failed({ message: errorMessage(cause) })),

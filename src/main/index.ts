@@ -12,6 +12,8 @@ import { bringToFront, registerIpc, sendToWindows } from "./ipc.ts"
 import {
   attachmentRequest,
   BROWSER_PARTITION,
+  externalImageRequest,
+  externalImageTarget,
   externalUrl,
   githubAssetId,
   isAllowedNavigation,
@@ -21,6 +23,7 @@ import {
 } from "./security.ts"
 import {
   ATTACHMENT_PROTOCOL,
+  EXTERNAL_IMAGE_PROTOCOL,
   GITHUB_ASSET_PROTOCOL,
   LIQUID_GLASS_ARGUMENT,
   PROJECT_FILE_PROTOCOL,
@@ -68,6 +71,7 @@ protocol.registerSchemesAsPrivileged([
   // FIXME: Electron needs `stream` for <video> and <audio> to seek with Range requests
   { scheme: GITHUB_ASSET_PROTOCOL, privileges: { standard: true, secure: true, stream: true } },
   { scheme: PROJECT_FILE_PROTOCOL, privileges: { standard: true, secure: true, stream: true } },
+  { scheme: EXTERNAL_IMAGE_PROTOCOL, privileges: { standard: true, secure: true } },
 ])
 
 type AppRuntime = ManagedRuntime.ManagedRuntime<
@@ -121,6 +125,44 @@ const serveGitHubAssets = (runtime: AppRuntime) =>
     const signed = externalUrl(redirect.headers.get("location") ?? "")
     if (signed === null) return new Response(null, { status: redirect.status === 404 ? 404 : 502 })
     return net.fetch(signed, rangeOf(request))
+  })
+
+const MAX_IMAGE_REDIRECTS = 5
+const IMAGE_FETCH_TIMEOUT_MS = 15_000
+
+const fetchExternalImage = async (start: string) => {
+  let url = start
+  for (let hop = 0; hop <= MAX_IMAGE_REDIRECTS; hop++) {
+    const response = await fetch(url, {
+      redirect: "manual",
+      credentials: "omit",
+      headers: { accept: "image/*" },
+      signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS),
+    }).catch(() => null)
+    if (response === null) return new Response(null, { status: 502 })
+    if (response.status >= 300 && response.status < 400) {
+      await response.body?.cancel()
+      const location = response.headers.get("location")
+      const next = location === null ? null : externalImageTarget(new URL(location, url).href)
+      if (next === null) return new Response(null, { status: 502 })
+      url = next
+      continue
+    }
+    const type = response.headers.get("content-type") ?? ""
+    if (!response.ok) return new Response(null, { status: response.status })
+    if (!type.startsWith("image/")) return new Response(null, { status: 415 })
+    return new Response(response.body, {
+      status: 200,
+      headers: { "content-type": type, "cache-control": "private, max-age=3600" },
+    })
+  }
+  return new Response(null, { status: 502 })
+}
+
+const serveExternalImages = () =>
+  protocol.handle(EXTERNAL_IMAGE_PROTOCOL, async (request) => {
+    const target = externalImageRequest(request.url)
+    return target === null ? new Response(null, { status: 404 }) : fetchExternalImage(target)
   })
 
 const serveProjectFiles = (runtime: AppRuntime) =>
@@ -248,6 +290,7 @@ app.whenReady().then(async () => {
   serveAttachments(runtime, join(dataDir, "attachments"))
   serveGitHubAssets(runtime)
   serveProjectFiles(runtime)
+  serveExternalImages()
   limitBrowserPermissions()
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow(runtime)
