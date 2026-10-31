@@ -114,6 +114,19 @@ const setup = (options: { history?: SessionHistory } = {}) => {
 const partTypes = (parts: ReadonlyArray<MessagePart>) => parts.map((part) => part.type)
 
 describe("session import", () => {
+  it.effect("reuses one thread when the same session is imported twice at once", () => {
+    const { cliHome, layer, project } = setup()
+    return Effect.gen(function* () {
+      const { id, rootPath } = yield* project
+      writeSession(cliHome, rootPath, new Date("2026-10-01T00:00:00Z"))
+      const imports = yield* SessionImports
+      const request = { projectId: id, provider: "claude" as const, sessionId: fixtureId, accountId: null }
+      const imported = yield* Effect.all([imports.import(request), imports.import(request)], { concurrency: "unbounded" })
+      expect(imported[0].id).toBe(imported[1].id)
+      expect(yield* Threads.use((threads) => threads.list)).toHaveLength(1)
+    }).pipe(Effect.provide(layer))
+  })
+
   it.effect("lists the newest copy of each session and reports a home that can't be read", () => {
     const { cliHome, layer, project } = setup()
     return Effect.gen(function* () {
