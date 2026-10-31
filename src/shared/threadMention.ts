@@ -20,17 +20,25 @@ export function mentionableThreads<T extends MentionThread>(
 ): MentionableThreads<T> {
   const projectsById = new Map(projects.map((project) => [project.id, project]))
   const home = projectsById.get(thread.projectId)
-  const isSameRepository = (projectId: string) =>
-    projectId === thread.projectId ||
-    (home?.repository !== undefined && projectsById.get(projectId)?.repository === home.repository)
-  const isSameMachine = (other: T) => projectsById.get(other.projectId)?.environmentId === home?.environmentId
+  const isSameProject = (other: T) => other.projectId === thread.projectId
+  const isSameRepositoryElsewhere = (other: T) => {
+    const project = projectsById.get(other.projectId)
+    return (
+      home?.repository !== undefined &&
+      project?.repository === home.repository &&
+      project.environmentId !== home.environmentId
+    )
+  }
   const candidates = threads.filter(
-    (other) => other.id !== thread.id && other.status !== "archived" && isSameRepository(other.projectId),
+    (other) =>
+      other.id !== thread.id &&
+      other.status !== "archived" &&
+      (isSameProject(other) || isSameRepositoryElsewhere(other)),
   )
   // oxlint-disable-next-line unicorn/no-array-sort -- the phone runs this on Hermes, which has no `toSorted`; `filter` made a copy.
   candidates.sort((a, b) => a.sortIndex - b.sortIndex)
   return {
-    sameMachine: candidates.filter(isSameMachine),
-    otherMachines: candidates.filter((other) => !isSameMachine(other)),
+    sameMachine: candidates.filter(isSameProject),
+    otherMachines: candidates.filter((other) => !isSameProject(other)),
   }
 }
