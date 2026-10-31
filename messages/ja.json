@@ -783,7 +783,6 @@
   "pr_comment_placeholder": "GitHub にコメントを書く",
   "pr_comment_submit": "コメント",
   "pr_comment_failed": "コメントを投稿できませんでした：{message}",
-  "pr_comment_send": "エージェントに送る",
   "pr_comment_bot": "Bot",
   "pr_comment_more": "もっと見る",
   "pr_comment_less": "折りたたむ",

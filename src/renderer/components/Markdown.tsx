@@ -2,13 +2,31 @@ import { useAtomSuspense } from "@effect/atom-react"
 import { cn } from "cn"
 import { Effect } from "effect"
 import { AsyncResult, Atom } from "effect/reactivity"
-import { createContext, isValidElement, type ReactNode, Suspense, use, useDeferredValue, useState } from "react"
+import {
+  createContext,
+  isValidElement,
+  type ComponentProps,
+  type ReactNode,
+  Suspense,
+  use,
+  useDeferredValue,
+  useState,
+} from "react"
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { githubAssetUrl } from "../../shared/channels.ts"
+import { externalImageUrl, githubAssetUrl } from "../../shared/channels.ts"
 import type { Appearance } from "../../shared/domain.ts"
+import { useTheme } from "../lib/appearance.ts"
 import { useOpenThreadEnvironment } from "../lib/environments.ts"
-import { imageSource } from "../lib/imageSource.ts"
+import { imageSource, imageSrcSet } from "../lib/imageSource.ts"
+import type { RehypeEmbeddedHtml } from "../lib/embeddedHtml.ts"
+import {
+  mayContainEmbeddedHtml,
+  remarkUnknownTagsAsText,
+  segmentServiceBlocks,
+  type MarkdownSegment,
+  type ServiceBadge,
+} from "../lib/htmlInMarkdown.ts"
 import { remarkKbd } from "../lib/remarkKbd.ts"
 import { remarkPullRequests } from "../lib/remarkPullRequests.ts"
 import { familyOf } from "../lib/rpc.ts"
@@ -32,16 +50,61 @@ const bareGitHubAsset = (paragraph: ExtraProps["node"]) => {
 
 const BaseUrl = createContext<string | null>(null)
 
-function MarkdownImage({ src, alt }: { src: string | undefined; alt: string }) {
+const pixelSize = (value: unknown) => {
+  const parsed =
+    typeof value === "string" || typeof value === "number" ? Number.parseInt(String(value), 10) : Number.NaN
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+}
+
+function MarkdownImage({
+  src,
+  srcSet,
+  alt,
+  width,
+  height,
+}: {
+  src: string | undefined
+  srcSet?: string
+  alt: string
+  width?: unknown
+  height?: unknown
+}) {
   const environment = useOpenThreadEnvironment()
   const baseUrl = use(BaseUrl)
   const root = use(ThreadFolder)
+  const context = { environment, baseUrl, root }
+  const styledWidth = pixelSize(width)
+  const styledHeight = styledWidth === undefined ? pixelSize(height) : undefined
   return (
     <img
-      src={src === undefined ? undefined : imageSource(src, { environment, baseUrl, root })}
+      src={src === undefined ? undefined : imageSource(src, context)}
+      srcSet={srcSet === undefined ? undefined : imageSrcSet(srcSet, context)}
       alt={alt}
       loading="lazy"
+      width={styledWidth}
+      height={pixelSize(height)}
+      style={{
+        ...(styledWidth === undefined ? {} : { width: styledWidth }),
+        ...(styledHeight === undefined ? {} : { height: styledHeight }),
+      }}
       className="inline-block max-h-[min(32rem,60vh)] w-auto max-w-[min(100%,40rem)] rounded-md object-contain"
+    />
+  )
+}
+
+function ThemedSource({ media, srcSet, sizes }: { media?: string; srcSet?: string; sizes?: string }) {
+  const { theme } = useClientSettings().appearance
+  const { scheme } = useTheme(theme)
+  const environment = useOpenThreadEnvironment()
+  const baseUrl = use(BaseUrl)
+  const root = use(ThreadFolder)
+  const wanted = /prefers-color-scheme:\s*(dark|light)/i.exec(media ?? "")?.[1]?.toLowerCase()
+  if (wanted !== undefined && wanted !== scheme) return null
+  return (
+    <source
+      media={media}
+      srcSet={srcSet === undefined ? undefined : imageSrcSet(srcSet, { environment, baseUrl, root })}
+      sizes={sizes}
     />
   )
 }
@@ -51,7 +114,22 @@ const components: Components = {
     const asset = bareGitHubAsset(node)
     return asset ? <GitHubAttachment src={asset} /> : <p>{children}</p>
   },
-  img: ({ src, alt }) => <MarkdownImage src={typeof src === "string" ? src : undefined} alt={alt ?? ""} />,
+  img: ({ src, srcSet, alt, width, height }) => (
+    <MarkdownImage
+      src={typeof src === "string" ? src : undefined}
+      srcSet={typeof srcSet === "string" ? srcSet : undefined}
+      alt={alt ?? ""}
+      width={width}
+      height={height}
+    />
+  ),
+  source: ({ media, srcSet, sizes }) => (
+    <ThemedSource
+      media={typeof media === "string" ? media : undefined}
+      srcSet={typeof srcSet === "string" ? srcSet : undefined}
+      sizes={typeof sizes === "string" ? sizes : undefined}
+    />
+  ),
   a: ({ children, href }) =>
     isWebUrl(href) ? (
       <WebLink href={href}>{children}</WebLink>
@@ -82,6 +160,97 @@ const components: Components = {
   ),
 }
 
+function ServiceBadgeLink({ badge }: { badge: ServiceBadge }) {
+  const { theme } = useClientSettings().appearance
+  const { scheme } = useTheme(theme)
+  const src = (scheme === "dark" ? badge.darkSrc : badge.lightSrc) ?? badge.src
+  return (
+    <a href={badge.href} target="_blank" rel="noreferrer" className="inline-block shrink-0">
+      <img
+        src={externalImageUrl(src) ?? src}
+        alt={badge.alt}
+        loading="lazy"
+        width={badge.width ?? undefined}
+        height={badge.height ?? undefined}
+        className="h-7 w-auto max-w-full"
+      />
+    </a>
+  )
+}
+
+function ServiceBadges({ segment }: { segment: Extract<MarkdownSegment, { type: "badges" }> }) {
+  return (
+    <div className="not-prose my-[1em] border-t border-border pt-[1em]">
+      <div className="flex flex-wrap items-center gap-2">
+        {segment.badges.map((badge) => (
+          <ServiceBadgeLink key={badge.href} badge={badge} />
+        ))}
+      </div>
+      {segment.note !== null && segment.note !== "" && (
+        <p className="mt-1.5 text-xs text-muted-foreground">{segment.note}</p>
+      )}
+    </div>
+  )
+}
+
+type RemarkPlugins = ComponentProps<typeof ReactMarkdown>["remarkPlugins"]
+type RehypePlugins = ComponentProps<typeof ReactMarkdown>["rehypePlugins"]
+
+interface MarkdownSegmentsProps {
+  readonly segments: ReadonlyArray<MarkdownSegment>
+  readonly remarkPlugins: RemarkPlugins
+  readonly rehypePlugins: RehypePlugins
+}
+
+function MarkdownSegments({ segments, remarkPlugins, rehypePlugins }: MarkdownSegmentsProps) {
+  return (
+    <>
+      {segments.map((segment, index) =>
+        segment.type === "badges" ? (
+          <ServiceBadges key={index} segment={segment} />
+        ) : (
+          <ReactMarkdown
+            key={index}
+            remarkPlugins={remarkPlugins}
+            rehypePlugins={rehypePlugins}
+            components={components}
+          >
+            {segment.text}
+          </ReactMarkdown>
+        ),
+      )}
+    </>
+  )
+}
+
+let embeddedHtml: Promise<RehypeEmbeddedHtml | null> | undefined
+
+const loadEmbeddedHtml = () => {
+  if (embeddedHtml === undefined) {
+    embeddedHtml = import("../lib/embeddedHtml.ts").then((loaded) => loaded.rehypeEmbeddedHtml).catch(() => null)
+  }
+  return embeddedHtml
+}
+
+function EmbeddedMarkdownSegments({
+  segments,
+  remarkPlugins,
+  findPlugins,
+}: {
+  segments: ReadonlyArray<MarkdownSegment>
+  remarkPlugins: RemarkPlugins
+  findPlugins: RehypePlugins
+}) {
+  const rehypeEmbeddedHtml = use(loadEmbeddedHtml())
+  return (
+    <MarkdownSegments
+      segments={segments}
+      remarkPlugins={remarkPlugins}
+      rehypePlugins={rehypeEmbeddedHtml === null ? findPlugins : [rehypeEmbeddedHtml, ...(findPlugins ?? [])]}
+    />
+  )
+}
+
 export function Markdown({
   text,
   baseUrl = null,
@@ -93,15 +262,26 @@ export function Markdown({
 }) {
   const pattern = useFindPattern()
   const part = use(FindPartContext)
-  const rehypePlugins = pattern === null ? [] : [rehypeFindMarks(pattern, part)]
+  const findPlugins = pattern === null ? [] : [rehypeFindMarks(pattern, part)]
   const repository = useThreadRepository()
-  const remarkPlugins = repository ? [remarkGfm, remarkKbd, remarkPullRequests(repository)] : [remarkGfm, remarkKbd]
+  const remarkPlugins = repository
+    ? [remarkGfm, remarkKbd, remarkUnknownTagsAsText, remarkPullRequests(repository)]
+    : [remarkGfm, remarkKbd, remarkUnknownTagsAsText]
+  const segments = segmentServiceBlocks(text)
+  const needsEmbeddedHtml = segments.some(
+    (segment) => segment.type === "markdown" && mayContainEmbeddedHtml(segment.text),
+  )
+  const plain = <MarkdownSegments segments={segments} remarkPlugins={remarkPlugins} rehypePlugins={findPlugins} />
   return (
     <BaseUrl value={baseUrl}>
       <div className={cn("prose max-w-none prose-hina", className)}>
-        <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
-          {text}
-        </ReactMarkdown>
+        {needsEmbeddedHtml ? (
+          <Suspense fallback={plain}>
+            <EmbeddedMarkdownSegments segments={segments} remarkPlugins={remarkPlugins} findPlugins={findPlugins} />
+          </Suspense>
+        ) : (
+          plain
+        )}
       </div>
     </BaseUrl>
   )
