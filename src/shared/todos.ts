@@ -1,4 +1,4 @@
-import type { Message, MessagePart } from "../../shared/domain.ts"
+import type { Message, MessagePart } from "./domain.ts"
 
 export type TodoStatus = "pending" | "in_progress" | "completed" | "cancelled"
 
