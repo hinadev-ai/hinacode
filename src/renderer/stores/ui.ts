@@ -259,7 +259,7 @@ export const useUi = create<UiState>()((set, get) => ({
   showView: (threadId, view, options) =>
     set((state) => ({
       sidePanelViews: { ...state.sidePanelViews, [threadId]: view },
-      lastSidePanelView: view,
+      lastSidePanelView: view === "browser" ? state.lastSidePanelView : view,
       viewFocusRequest: options?.focus ? view : null,
       ...showPanel(),
     })),
