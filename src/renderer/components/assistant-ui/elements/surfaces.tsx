@@ -35,7 +35,7 @@ export const live = "text-blue-500 dark:text-blue-400"
 export const mono = "font-mono text-[11px] tracking-tight"
 
 export function ShimmerLabel({ active = true, className, ...props }: ComponentProps<"span"> & { active?: boolean }) {
-  return <span className={cn(active && "shimmer motion-reduce:animate-none", className)} {...props} />
+  return <span className={cn(active && "text-shimmer", className)} {...props} />
 }
 
 export const codeScroll = "overflow-x-auto"
