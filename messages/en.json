@@ -60,7 +60,6 @@
   "thread_composer_steer": "Steer",
   "thread_composer_queue_placeholder": "Queue a follow-up… Enter queues it, {steer} steers the agent now.",
   "thread_composer_queue": "Queue",
-  "thread_composer_steer_hint": "Steer the running turn now",
   "queue_label": "Queued messages",
   "queue_steer_now": "Steer now",
   "queue_edit": "Edit in the composer",

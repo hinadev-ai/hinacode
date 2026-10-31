@@ -1,7 +1,7 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type ComponentProps, type FormEvent, startTransition, useActionState, useState } from "react"
-import { RiFolderOpenLine, RiGithubFill } from "react-icons/ri"
+import { RiGithubFill } from "react-icons/ri"
 import type { Project } from "../../shared/domain.ts"
 import { type GitHubRepository, parseGitHubRepository } from "../../shared/github.ts"
 import {
@@ -31,6 +31,7 @@ import { Switch } from "./ui/switch.tsx"
 import { Textarea } from "./ui/textarea.tsx"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { suggestProjectName } from "../lib/projectName.ts"
+import { FolderOpenIcon } from "./icons/FolderOpenIcon.tsx"
 
 interface ProjectDialogProps {
   readonly open: boolean
@@ -139,7 +140,7 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
             />
             {canBrowse && (
               <Button type="button" variant="outline" onClick={browse}>
-                <RiFolderOpenLine aria-hidden />
+                <FolderOpenIcon aria-hidden />
                 {m.project_root_browse()}
               </Button>
             )}
@@ -254,7 +255,7 @@ function CloneTarget({ repository, value, canBrowse, onChange }: CloneTargetProp
         />
         {canBrowse && (
           <Button type="button" variant="outline" onClick={browse}>
-            <RiFolderOpenLine aria-hidden />
+            <FolderOpenIcon aria-hidden />
             {m.project_root_browse()}
           </Button>
         )}

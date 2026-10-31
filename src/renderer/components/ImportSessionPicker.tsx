@@ -4,7 +4,6 @@ import { useNavigate } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { useAtomValue } from "@effect/atom-react"
 import { useState } from "react"
-import { RiArrowRightUpLine, RiInboxArchiveLine } from "react-icons/ri"
 import { toast } from "sonner"
 import type { RpcResponse } from "../../shared/contract.ts"
 import type { ExternalSession, Project } from "../../shared/domain.ts"
@@ -17,6 +16,8 @@ import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useThreads } from "../stores/threads.ts"
 import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
+import { ImportIcon } from "./icons/ImportIcon.tsx"
+import { ArrowUpRightIcon } from "./icons/ArrowUpRightIcon.tsx"
 
 type Listing = RpcResponse<"sessions.listExternal">
 
@@ -65,7 +66,7 @@ function SessionRow({ project, session, importing, onChoose }: SessionRowProps) 
       {session.threadId !== null && (
         <span className="flex h-5 shrink-0 items-center gap-0.5 text-xs text-muted-foreground">
           {m.import_session_open()}
-          <RiArrowRightUpLine aria-hidden className="size-3.5" />
+          <ArrowUpRightIcon aria-hidden className="size-3.5" />
         </span>
       )}
     </Autocomplete.Item>
@@ -123,7 +124,7 @@ export default function ImportSessionPicker({ project, onClose }: { project: Pro
         itemToStringValue={(session: ExternalSession) => session.title}
       >
         <div className="flex items-center gap-2.5 border-b border-border px-3.5">
-          <RiInboxArchiveLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+          <ImportIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
           <Autocomplete.Input
             ref={focusOnMount}
             aria-label={m.import_session_input_label()}

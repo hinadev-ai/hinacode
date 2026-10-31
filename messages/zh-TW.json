@@ -60,7 +60,6 @@
   "thread_composer_steer": "引導",
   "thread_composer_queue_placeholder": "排入下一則訊息…Enter 排入佇列，{steer} 立即引導 agent。",
   "thread_composer_queue": "排入佇列",
-  "thread_composer_steer_hint": "立即引導執行中的回合",
   "queue_label": "佇列中的訊息",
   "queue_steer_now": "立即引導",
   "queue_edit": "在輸入框中編輯",
