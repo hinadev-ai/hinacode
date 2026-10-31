@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { homedir } from "node:os"
 import { extname, isAbsolute, join } from "node:path"
-import { Context, Effect, FileSystem, Layer, Option, Schema } from "effect"
+import { Cache, Context, Effect, FileSystem, Layer, Option, Schema } from "effect"
 import { SqlClient, SqlError, SqlSchema } from "effect/sql"
 import { Project } from "../../shared/domain.ts"
 import { type GitHubRepository, parseGitHubRepository } from "../../shared/github.ts"
@@ -100,6 +100,21 @@ const make = Effect.gen(function* () {
       ),
     )
 
+  const repositoryOf = (rootPath: string) =>
+    Effect.all({
+      url: git.run(rootPath, ["remote", "get-url", "origin"]),
+      prefix: git.run(rootPath, ["rev-parse", "--show-prefix"]),
+    }).pipe(
+      Effect.map(({ url, prefix }) => {
+        const origin = parseGitHubRepository(url)
+        if (origin === null) return undefined
+        const folder = prefix.trim().replace(/\/$/, "")
+        return [origin.owner, origin.name, folder].filter(Boolean).join("/").toLowerCase()
+      }),
+      Effect.orElseSucceed(() => undefined),
+    )
+  const repositories = yield* Cache.make({ lookup: repositoryOf, capacity: 256 })
+
   const ensureDirectory = (rootPath: string) =>
     fs.stat(rootPath).pipe(
       Effect.filterOrFail(
@@ -129,6 +144,7 @@ const make = Effect.gen(function* () {
       yield* sql`INSERT INTO project ${sql.insert(row)}`.pipe(
         Effect.mapError(mapWriteError("projects.create", input.rootPath)),
       )
+      yield* Cache.invalidate(repositories, input.rootPath)
       return { ...row, linearReview }
     })
 
@@ -148,20 +164,6 @@ const make = Effect.gen(function* () {
       Effect.orElseSucceed(() => false),
     )
 
-  const repositoryOf = (rootPath: string) =>
-    Effect.all({
-      url: git.run(rootPath, ["remote", "get-url", "origin"]),
-      prefix: git.run(rootPath, ["rev-parse", "--show-prefix"]),
-    }).pipe(
-      Effect.map(({ url, prefix }) => {
-        const origin = parseGitHubRepository(url)
-        if (origin === null) return undefined
-        const folder = prefix.trim().replace(/\/$/, "")
-        return [origin.owner, origin.name, folder].filter(Boolean).join("/").toLowerCase()
-      }),
-      Effect.orElseSucceed(() => undefined),
-    )
-
   const list = findAll(undefined).pipe(Effect.mapError(persistence("projects.list")))
 
   const listWithRepositories = list.pipe(
@@ -169,7 +171,7 @@ const make = Effect.gen(function* () {
       Effect.forEach(
         projects,
         (project) =>
-          repositoryOf(project.rootPath).pipe(
+          Cache.get(repositories, project.rootPath).pipe(
             Effect.map((repository) => (repository === undefined ? project : { ...project, repository })),
           ),
         { concurrency: "unbounded" },
@@ -237,6 +239,8 @@ const make = Effect.gen(function* () {
             linear_review = ${next.linearReview ? 1 : 0}, updated_at = ${next.updatedAt}
         WHERE id = ${next.id}
       `.pipe(Effect.mapError(mapWriteError("projects.update", next.rootPath)))
+      yield* Cache.invalidate(repositories, current.rootPath)
+      yield* Cache.invalidate(repositories, next.rootPath)
       return next
     })
 

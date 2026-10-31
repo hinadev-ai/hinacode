@@ -47,6 +47,7 @@ interface Probe {
   readonly inserting: Promise<void>
   readonly snapshotting: Promise<void>
   readonly idle: Promise<void>
+  readonly streamed: Promise<void>
   readonly turns: Array<{ readonly provider: ProviderId; readonly input: RunTurnInput }>
   readonly decisions: Array<{ readonly requestId: string; readonly decision: ApprovalDecision }>
   readonly calls: Array<{ readonly provider: ProviderId; readonly call: "closeSession" | "interrupt" }>
@@ -60,6 +61,8 @@ interface Probe {
   readonly turnBase: () => Promise<string | null>
   readonly storedMessages: (threadId: string) => Promise<ReadonlyArray<Message>>
 }
+
+const streamedWords = Array.from({ length: 400 }, (_, index) => `word${index} `)
 
 const wakeQueue = () => Effect.runSync(Queue.unbounded<Wake>())
 
@@ -92,6 +95,7 @@ const withPreparingThread = async (
   const snapshotting = Promise.withResolvers<void>()
   const snapshotReady = Promise.withResolvers<void>()
   const idle = Promise.withResolvers<void>()
+  const streamed = Promise.withResolvers<void>()
   const deliver = () => inserted.resolve()
   const snapshot = () => snapshotReady.resolve()
   let holdInsertion = options.pauseInsertion ?? false
@@ -147,6 +151,23 @@ const withPreparingThread = async (
         }
         if (input.prompt.endsWith("accepted input")) {
           return Stream.make({ type: "session_bound", providerSessionId: `${id}-session-${turns.length}` }, completed)
+        }
+        if (input.prompt === "streams, then waits") {
+          return Stream.fromIterable<AgentEvent>(
+            streamedWords.map((text): AgentEvent => ({ type: "text_delta", text })),
+          ).pipe(
+            Stream.concat(Stream.fromEffect(Effect.sync(() => streamed.resolve())).pipe(Stream.drain)),
+            Stream.concat(Stream.never),
+          )
+        }
+        if (input.prompt === "streams a reply") {
+          return Stream.fromIterable<AgentEvent>([
+            ...streamedWords.map((text): AgentEvent => ({ type: "text_delta", text })),
+            { type: "tool_call_started", callId: "call-1", name: "Bash", input: { command: "ls" } },
+            { type: "tool_call_finished", callId: "call-1", output: "README.md", isError: false },
+            ...streamedWords.map((text): AgentEvent => ({ type: "reasoning_delta", text })),
+            completed,
+          ])
         }
         if (input.prompt === "ends silently") {
           return Stream.make({ type: "session_bound", providerSessionId: `${id}-session-${turns.length}` })
@@ -310,6 +331,7 @@ const withPreparingThread = async (
         inserting: inserting.promise,
         snapshotting: snapshotting.promise,
         idle: idle.promise,
+        streamed: streamed.promise,
         turns,
         decisions,
         calls,
@@ -850,5 +872,67 @@ it("withdraws the requests a turn leaves unanswered when its stream ends without
         event: { type: "approval_resolved", requestId: "approval-1" },
       }),
     )
+  })
+})
+
+it("publishes streamed text in fewer pushes, in order, with the same transcript", async () => {
+  await withPreparingThread(async ({ runner, thread, release, idle, transcript, storedMessages }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "streams a reply", []))
+    await idle
+
+    const events = transcript.flatMap((push) => (push.type === "thread.event" ? [push.event] : []))
+    const kinds = events.map((event) => event.type).filter((type, index, all) => type !== all[index - 1])
+    expect(kinds).toEqual([
+      "text_delta",
+      "tool_call_started",
+      "tool_call_finished",
+      "reasoning_delta",
+      "turn_completed",
+    ])
+    expect(events.length).toBeLessThan(streamedWords.length)
+    const streamed = (type: AgentEvent["type"]) =>
+      events.flatMap((event) => (event.type === type && "text" in event ? [event.text] : [])).join("")
+    expect(streamed("text_delta")).toBe(streamedWords.join(""))
+    expect(streamed("reasoning_delta")).toBe(streamedWords.join(""))
+
+    const stored = (await storedMessages(thread.id)).at(-1)!
+    expect(stored.parts).toEqual([
+      { type: "text", text: streamedWords.join("") },
+      {
+        type: "tool_call",
+        callId: "call-1",
+        name: "Bash",
+        input: { command: "ls" },
+        status: "done",
+        output: "README.md",
+      },
+      { type: "reasoning", text: streamedWords.join("") },
+    ])
+    const transcriptSeqs = transcript.map((push) => push.seq)
+    expect(transcriptSeqs).toEqual(transcriptSeqs.toSorted((a, b) => a - b))
+  })
+})
+
+it("keeps the text streamed before a steer in the reply the steer closes", async () => {
+  await withPreparingThread(async ({ runner, thread, release, streamed, transcript }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "streams, then waits", []))
+    await streamed
+    await Effect.runPromise(runner.steer(thread.id, "change course", []))
+
+    const closed = transcript.findLast((push) => push.type === "message.updated")
+    expect(closed).toMatchObject({
+      type: "message.updated",
+      message: { role: "assistant", parts: [{ type: "text", text: streamedWords.join("") }] },
+    })
+    const { messages } = await Effect.runPromise(runner.transcript(thread.id))
+    expect(messages.map((message) => [message.role, message.parts])).toEqual([
+      ["user", [{ type: "text", text: "streams, then waits" }]],
+      ["assistant", [{ type: "text", text: streamedWords.join("") }]],
+      ["user", [{ type: "text", text: "change course" }]],
+      ["assistant", []],
+    ])
+    await Effect.runPromise(runner.interrupt(thread.id))
   })
 })

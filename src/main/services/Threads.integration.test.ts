@@ -38,14 +38,11 @@ const threadsLayer = threadsLayerBase.pipe(
 )
 
 describe("Threads", () => {
-  it.effect("forks a thread in its workspace with the transcript up to the chosen turn", () =>
+  it.effect("forks a thread with the transcript up to the chosen turn", () =>
     Effect.gen(function* () {
       const threads = yield* Threads
       const messages = yield* Messages
-      const { threadId, worktreeId } = yield* seedThread({
-        rootPath: "/repo",
-        worktree: { path: "/repo-feature", baseRef: "main", status: "ready" },
-      })
+      const { threadId } = yield* seedThread({ rootPath: "/repo" })
       const at = "2026-01-01T00:00:00.000Z"
       const message = (role: "user" | "assistant", text: string, checkpoint: string | null) => ({
         id: randomUUID(),
@@ -67,7 +64,7 @@ describe("Threads", () => {
 
       const fork = yield* threads.fork(threadId, turns[1]!.id)
 
-      expect(fork.worktreeId).toBe(worktreeId)
+      expect(fork.worktreeId).toBeNull()
       expect(fork.providerSessionId).toBeNull()
       expect(fork.forkedFrom).toStrictEqual({ sessionId: "session-1", checkpoint: "turn-1" })
       expect((yield* threads.get(fork.id)).forkedFrom).toStrictEqual(fork.forkedFrom)

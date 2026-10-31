@@ -2,6 +2,7 @@ import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { Effect, Schema } from "effect"
 import { Toolkit } from "effect/ai"
+import { NO_OPTIONAL_LOCKS_ENV } from "../../services/Git.ts"
 import { makeActiveWorkspace } from "../../services/workspace.ts"
 import * as McpTool from "./tool.ts"
 
@@ -21,7 +22,14 @@ export class GitCommandError extends Schema.TaggedError<GitCommandError>()("GitC
 
 const git = (cwd: string, args: ReadonlyArray<string>) =>
   Effect.tryPromise({
-    try: async () => (await execFileAsync("git", args, { cwd, maxBuffer: 64 * 1024 * 1024 })).stdout,
+    try: async () =>
+      (
+        await execFileAsync("git", args, {
+          cwd,
+          env: { ...process.env, ...NO_OPTIONAL_LOCKS_ENV },
+          maxBuffer: 64 * 1024 * 1024,
+        })
+      ).stdout,
     catch: (cause) =>
       new GitCommandError({
         args,

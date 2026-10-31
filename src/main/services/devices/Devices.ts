@@ -607,6 +607,7 @@ const make = (options: DevicesOptions) =>
       Effect.catchCause((cause) => Effect.logWarning("device cleanup failed", cause)),
     )
     yield* Effect.all([expireLeases, releaseArchived]).pipe(
+      Effect.when(Effect.sync(() => enabled)),
       Effect.schedule(Schedule.spaced(5000)),
       Effect.forkIn(scope),
     )

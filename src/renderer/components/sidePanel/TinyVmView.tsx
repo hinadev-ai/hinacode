@@ -43,7 +43,7 @@ interface VmScreenProps {
 
 export function VmScreen({ vm, ...rest }: VmScreenProps) {
   return vm.provider === "boat" ? (
-    <BoatVmScreen control={vm.control} {...rest} />
+    <BoatVmScreen control={vm.control} sandboxId={vm.sandboxId} {...rest} />
   ) : (
     <TinyVmScreen control={vm.control} {...rest} />
   )

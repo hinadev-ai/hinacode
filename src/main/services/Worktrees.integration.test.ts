@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process"
+import { randomUUID } from "node:crypto"
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, watch, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
@@ -6,6 +7,7 @@ import { describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Context, Deferred, Duration, Effect, Fiber, Layer, ManagedRuntime, PubSub } from "effect"
 import { SqlClient } from "effect/sql"
+import { TestClock } from "effect/testing"
 import type { PushEvent } from "../../shared/contract.ts"
 import type { Thread, Worktree } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
@@ -141,6 +143,18 @@ const archiveRemovingWorktree = (threadId: string) =>
   Settings.use((settings) => settings.set({ archive: { whenMerged: false, removeWorktree: true } })).pipe(
     Effect.andThen(Threads.use((threads) => threads.archive(threadId))),
   )
+
+const forkThread = (threadId: string) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    const messageId = randomUUID()
+    yield* sql`
+      INSERT INTO message (id, thread_id, role, parts, created_at, completed_at, usage, fork_point)
+      VALUES (${messageId}, ${threadId}, 'assistant', '[]', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z',
+              NULL, ${JSON.stringify({ sessionId: "session-1", checkpoint: "turn-1" })})
+    `
+    return yield* Threads.use((threads) => threads.fork(threadId, messageId))
+  })
 
 const shareWorktree = (threadId: string, worktreeId: string | null) =>
   Effect.gen(function* () {
@@ -524,6 +538,28 @@ describe("worktree ownership", () => {
     ),
   )
 
+  it.live("a fork gets its own checkout with the source's uncommitted work, so either can be archived", () =>
+    withRepo(({ projectId }) =>
+      Effect.gen(function* () {
+        const source = yield* createThread(projectId, "source", "kk/forked-source")
+        yield* waitUntilSetUp(source.worktreeId)
+        const sourceCheckout = yield* worktreeOf(source.worktreeId)
+        writeFileSync(join(sourceCheckout.path, "draft.txt"), "uncommitted\n")
+
+        const fork = yield* forkThread(source.id)
+        expect(fork.worktreeId).not.toBe(source.worktreeId)
+        yield* waitUntilSetUp(fork.worktreeId)
+        const forkCheckout = yield* worktreeOf(fork.worktreeId)
+        expect(readFileSync(join(forkCheckout.path, "draft.txt"), "utf8")).toBe("uncommitted\n")
+
+        yield* archiveRemovingWorktree(fork.id)
+        yield* archiveRemovingWorktree(source.id)
+        expect((yield* worktreeOf(fork.worktreeId)).status).toBe("removed")
+        expect((yield* worktreeOf(source.worktreeId)).status).toBe("removed")
+      }),
+    ),
+  )
+
   it.live("archiving keeps the checkout unless the settings remove it, and unarchiving brings the thread back", () =>
     withRepo(({ projectId }) =>
       Effect.gen(function* () {
@@ -553,6 +589,26 @@ describe("worktree ownership", () => {
         const worktree = yield* worktreeOf(thread.worktreeId)
         expect(worktree.status).toBe("removed")
         yield* waitUntilDeleted(worktree.path)
+      }),
+    ),
+  )
+
+  it.live("lists a removed worktree without the setup log of its deleted checkout", () =>
+    withRepo(({ projectId }) =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient
+        const kept = yield* createThread(projectId, "kept", "kk/kept")
+        const done = yield* createThread(projectId, "done", "kk/done")
+        yield* waitUntilSetUp(kept.worktreeId)
+        yield* waitUntilSetUp(done.worktreeId)
+        yield* sql`UPDATE worktree SET setup_log = 'installed\n'`
+        yield* archiveRemovingWorktree(done.id)
+
+        const listed = yield* Worktrees.use((worktrees) => worktrees.list)
+        const logOf = (id: string | null) => listed.find((worktree) => worktree.id === id)?.setupLog
+        expect(logOf(kept.worktreeId)).toBe("installed\n")
+        expect(logOf(done.worktreeId)).toBe("")
+        expect((yield* worktreeOf(done.worktreeId)).setupLog).toMatch(/^installed\n/)
       }),
     ),
   )
@@ -975,6 +1031,29 @@ describe("project root checkout", () => {
         )
         expect(switched._tag).toBe("Failure")
         expect(git(root, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("main")
+      }),
+    ),
+  )
+})
+
+describe("fetching origin", () => {
+  it.effect("fetches a project's origin at most once per interval", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        withOrigin(root)
+        const fetch = Worktrees.use((worktrees) => worktrees.fetch(projectId))
+        const hasOriginBranch = () => git(root, "for-each-ref", "refs/remotes/origin/feature/login").trim() !== ""
+
+        yield* fetch
+        expect(hasOriginBranch()).toBe(true)
+
+        git(root, "update-ref", "-d", "refs/remotes/origin/feature/login")
+        yield* fetch
+        expect(hasOriginBranch()).toBe(false)
+
+        yield* TestClock.adjust(WorktreesLayer.FETCH_INTERVAL)
+        yield* fetch
+        expect(hasOriginBranch()).toBe(true)
       }),
     ),
   )

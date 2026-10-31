@@ -7,6 +7,7 @@ import {
   readFileSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
@@ -59,6 +60,8 @@ beforeAll(() => {
   write(join(repo, "untracked/deep/u.txt"), "u\n")
   write(join(repo, "node_modules/pkg/index.js"), "x\n")
   write(join(repo, "debug.log"), "log\n")
+  write(join(repo, "src/trace.log"), "log\n")
+  write(join(repo, "src/gen/node_modules/x/y/z.js"), "z\n")
   symlinkSync(outside, join(repo, "escape"))
   symlinkSync(join(repo, "src"), join(repo, "inner"))
 
@@ -131,6 +134,27 @@ describe("fs.list", () => {
     }),
   )
 
+  it.effect("marks ignored files among tracked ones, and files several folders below an ignored folder", () =>
+    Effect.gen(function* () {
+      const src = byName(yield* run(list(repo, "src")))
+      expect(src["trace.log"]).toMatchObject({ ignored: true, gitStatus: null })
+      expect(src["a.ts"]?.ignored).toBe(false)
+      const deep = yield* run(list(repo, "src/gen/node_modules/x/y"))
+      expect(deep).toMatchObject([{ path: "src/gen/node_modules/x/y/z.js", ignored: true }])
+    }),
+  )
+
+  it.effect("lists a project that is a folder inside its repo, relative to that folder", () =>
+    Effect.gen(function* () {
+      const root = join(repo, "src")
+      const named = byName(yield* run(list(root, ""), { rootPath: root }))
+      expect(named["a.ts"]).toMatchObject({ path: "a.ts", gitStatus: "modified", ignored: false })
+      expect(named["new.ts"]?.gitStatus).toBe("untracked")
+      expect(named["trace.log"]).toMatchObject({ ignored: true, gitStatus: null })
+      expect(named["b.ts"]?.gitStatus).toBe(null)
+    }),
+  )
+
   it.effect("gives files their git status and folders the status of what changed under them", () =>
     Effect.gen(function* () {
       const root = byName(yield* run(list(repo, "")))
@@ -143,6 +167,16 @@ describe("fs.list", () => {
       expect(src["b.ts"]?.gitStatus).toBe(null)
       const deep = yield* run(list(repo, "untracked/deep"))
       expect(deep).toMatchObject([{ name: "u.txt", gitStatus: "untracked" }])
+    }),
+  )
+
+  it.effect("leaves the index alone, so it never holds index.lock while an agent runs git", () =>
+    Effect.gen(function* () {
+      const index = join(repo, ".git", "index")
+      utimesSync(join(repo, "README.md"), 1_000_000_000, 1_000_000_000)
+      const before = readFileSync(index)
+      yield* run(list(repo, ""))
+      expect(readFileSync(index).equals(before)).toBe(true)
     }),
   )
 

@@ -25,10 +25,11 @@ const found = new Map<string, string>()
 
 export const installedBinary = (provider: ProviderId, name: string) =>
   Effect.gen(function* () {
-    const path = found.get(name) ?? (yield* Effect.promise(() => findBinary(name)))
+    const key = `${name}\0${process.env["PATH"] ?? ""}`
+    const path = found.get(key) ?? (yield* Effect.promise(() => findBinary(name)))
     if (path === undefined) {
       return yield* new AgentError({ provider, message: `${install[provider]}, then try again` })
     }
-    found.set(name, path)
+    found.set(key, path)
     return path
   })
