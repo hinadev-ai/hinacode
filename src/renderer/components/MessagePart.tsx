@@ -9,6 +9,7 @@ import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
 import { statusOfCall, useOpenSubagent } from "../lib/subagents.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { countToolKinds, describeCommand, describeToolCall, type ToolKind } from "../lib/toolCall.ts"
+import { decodeUnicodeEscapes } from "../lib/unicodeEscapes.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
@@ -104,7 +105,7 @@ const field = (value: unknown, key: string): unknown =>
   typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined
 
 export function formatOutput(output: unknown): string {
-  if (typeof output === "string") return output
+  if (typeof output === "string") return decodeUnicodeEscapes(output)
   // FIXME: Codex wraps an MCP tool's result in `{ content: [...] }`
   const content = Array.isArray(output) ? output : field(output, "content")
   if (Array.isArray(content)) {
@@ -112,7 +113,7 @@ export function formatOutput(output: unknown): string {
       .map((block: unknown) => {
         if (field(block, "type") === "image") return m.tool_output_image()
         const text = field(block, "text")
-        return typeof text === "string" ? text : JSON.stringify(block)
+        return typeof text === "string" ? decodeUnicodeEscapes(text) : JSON.stringify(block)
       })
       .join("\n")
   }
