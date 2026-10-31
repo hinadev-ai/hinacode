@@ -1,6 +1,6 @@
 import { describe, expect, test } from "@effect/vitest"
 import type { LimitWindow } from "./limits.ts"
-import { formatResetIn, spentWindow } from "./planLimits.ts"
+import { formatResetIn, msUntilNextReset, spentWindow } from "./planLimits.ts"
 
 const now = Date.parse("2026-10-12T12:00:00.000Z")
 const inSeconds = (seconds: number) => new Date(now + seconds * 1000).toISOString()
@@ -47,5 +47,38 @@ describe("spentWindow", () => {
   test("counts a model's window only for that model", () => {
     expect(spentWindow([fable], "claude-fable-5-1")).toBe(fable)
     expect(spentWindow([fable], "claude-sonnet-5-5")).toBeUndefined()
+  })
+})
+
+const resetIn = (seconds: number | null): LimitWindow => ({
+  window: { kind: "session" },
+  usedPercent: 40,
+  resetsAt: seconds === null ? null : inSeconds(seconds),
+})
+const limits = (...windows: ReadonlyArray<LimitWindow>) => ({ windows, readAt: inSeconds(0) })
+
+describe("msUntilNextReset", () => {
+  test("is the time until the soonest window of any account resets", () => {
+    expect(
+      msUntilNextReset(
+        [
+          { provider: "claude", accountId: null, limits: limits(resetIn(3 * day), resetIn(2 * hour)) },
+          { provider: "codex", accountId: null, limits: limits(resetIn(hour)) },
+        ],
+        now,
+      ),
+    ).toBe(hour * 1000)
+  })
+
+  test("skips windows that already reset or never do, and accounts without limits", () => {
+    expect(
+      msUntilNextReset(
+        [
+          { provider: "claude", accountId: null, limits: limits(resetIn(-minute), resetIn(null)) },
+          { provider: "codex", accountId: null, limits: null },
+        ],
+        now,
+      ),
+    ).toBeUndefined()
   })
 })
