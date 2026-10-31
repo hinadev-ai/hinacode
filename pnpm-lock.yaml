@@ -445,9 +445,6 @@ importers:
       tsrs:
         specifier: 0.18.0-ts7.1.0-dev.20260929
         version: 0.18.0-ts7.1.0-dev.20260929
-      tw-shimmer:
-        specifier: ^0.4.13
-        version: 0.4.13(tailwindcss@4.3.3)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -6429,11 +6426,6 @@ packages:
     resolution: {integrity: sha512-9T0b4Uam/yMFIK16GUx0fUrJqYZnJ/gvSmV9JB8NTyDePvwCI45WFWxyEV/UMV3KfdNRJG/PBsm3fSIB9WmWsA==}
     engines: {node: '>=16.20.0'}
     hasBin: true
-
-  tw-shimmer@0.4.13:
-    resolution: {integrity: sha512-hEkTdCdOeDAr/Yx37U/W6BQjiXjLkGxugVIHsbCdSGDGHWzWMSyNNAqH+wVt0TinAtVsRsnwPYrIDbt2HSUAQg==}
-    peerDependencies:
-      tailwindcss: '>=4.0.0-0'
 
   type-fest@0.13.1:
     resolution: {integrity: sha512-34R7HTnG0XIJcBSn5XhDd7nNFPRcXYRZrBB2O2jdKqYODldSzBAqzsWoZYYvduky73toYS/ESqxPvkDf/F0XMg==}
@@ -13408,10 +13400,6 @@ snapshots:
       '@tsrs/linux-arm64-musl': 0.18.0-ts7.1.0-dev.20260929
       '@tsrs/linux-x64-gnu': 0.18.0-ts7.1.0-dev.20260929
       '@tsrs/linux-x64-musl': 0.18.0-ts7.1.0-dev.20260929
-
-  tw-shimmer@0.4.13(tailwindcss@4.3.3):
-    dependencies:
-      tailwindcss: 4.3.3
 
   type-fest@0.13.1:
     optional: true

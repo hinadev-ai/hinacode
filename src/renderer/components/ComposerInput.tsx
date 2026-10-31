@@ -15,7 +15,13 @@ import {
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
 import type { MentionableThreads } from "../../shared/threadMention.ts"
-import { completionAt, type CompletionQuery, type Suggestion, suggestionsFor } from "../../shared/composerSyntax.ts"
+import {
+  completionAt,
+  type CompletionQuery,
+  endsWithClosedFence,
+  type Suggestion,
+  suggestionsFor,
+} from "../../shared/composerSyntax.ts"
 import { useTheme } from "../lib/appearance.ts"
 import { chipBefore, composerSyntax, setComposerConfig } from "../lib/composerEditor.ts"
 import { useClientSettings } from "../lib/settings.ts"
@@ -124,6 +130,13 @@ export function ComposerInput({
     if (event.key === "Backspace" && chip !== null) {
       const spaceAfter = view.state.sliceDoc(chip.to, chip.to + 1) === " " ? 1 : 0
       view.dispatch({ changes: { from: chip.from, to: chip.to + spaceAfter } })
+      return true
+    }
+    const onLastLine = main.empty && view.state.doc.lineAt(main.head).number === view.state.doc.lines
+    const plainKey = !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey
+    if (event.key === "ArrowDown" && plainKey && onLastLine && endsWithClosedFence(view.state.doc.toString())) {
+      const end = view.state.doc.length
+      view.dispatch({ changes: { from: end, insert: "\n" }, selection: { anchor: end + 1 }, scrollIntoView: true })
       return true
     }
     if (event.key !== "Enter") return false

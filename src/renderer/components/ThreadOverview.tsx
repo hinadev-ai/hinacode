@@ -68,7 +68,7 @@ function ActionsMenuButton({ thread, project }: { thread: Thread; project: Proje
             size="icon-sm"
             aria-label={m.overview_actions()}
             title={m.overview_actions()}
-            className="@min-[48rem]:hidden"
+            className="beside-overview:hidden"
           />
         }
       >
@@ -98,7 +98,7 @@ export function ThreadOverview({ thread }: { thread: Thread }) {
   return (
     <aside
       aria-label={m.overview_label()}
-      className="-m-1 hidden min-h-0 w-66 scrollbar-none flex-col gap-2 overflow-y-auto p-1 @min-[48rem]:flex"
+      className="-m-1 hidden min-h-0 w-66 scrollbar-none flex-col gap-2 overflow-y-auto p-1 beside-overview:flex"
     >
       <Card title={m.overview_environment()}>
         <EnvironmentRows thread={thread} project={project} worktree={worktree} />
