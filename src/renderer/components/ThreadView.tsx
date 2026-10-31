@@ -33,7 +33,7 @@ import { Button } from "./ui/button.tsx"
 
 const FIND_DEBOUNCE_MS = 100
 
-const besideOverview = "group-data-[overview=true]/region:@min-[48rem]:@max-[83rem]:pe-70"
+const besideOverview = "@min-[48rem]:@max-[83rem]:pe-70"
 
 interface ThreadViewProps {
   readonly thread: Thread
@@ -48,7 +48,6 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
   const regionRef = useRef<HTMLDivElement>(null)
   const dockRef = useRef<HTMLDivElement>(null)
   useDockHeight(regionRef, dockRef)
-  const overviewOpen = useUi((state) => state.overviewOpen)
   const findOpen = useUi((state) => state.findThreadId === thread.id)
   const loaded = useMessages((state) => state.byThread[thread.id]?.status === "ready")
   const centered = useMessages((state) => {
@@ -61,11 +60,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
         <ThreadBreadcrumb thread={thread} agent={agent} />
         {actions}
       </header>
-      <div
-        ref={regionRef}
-        data-overview={overviewOpen}
-        className="group/region relative flex min-h-0 flex-1 flex-col [container-type:size]"
-      >
+      <div ref={regionRef} className="relative flex min-h-0 flex-1 flex-col [container-type:size]">
         <div className={cn("flex min-h-0 flex-1 flex-col overflow-auto", besideOverview)}>
           <ThreadRepository value={repository}>
             <ThreadFolder value={folder}>
