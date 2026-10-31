@@ -843,6 +843,28 @@ describe("Transport", () => {
       expect(urls()).toEqual([LAN, RELAY, LAN])
     })
 
+    it("races the relay alone when a direct address drops before ready after the network changes", async () => {
+      const transport = await connectOverRelay()
+      transport.networkChanged()
+      latest().open()
+      latest().challenge()
+      latest().drop()
+      expect(urls()).toEqual([LAN, RELAY, LAN, RELAY])
+      handshake(["call-keys"])
+      expect(statuses.at(-1)).toBe("connected")
+    })
+
+    it("races the relay alone when a direct address never says ready", async () => {
+      setup([direct(LAN), relay(RELAY)])
+      socketAt(LAN).open()
+      socketAt(LAN).challenge()
+      await vi.advanceTimersByTimeAsync(CONNECT_TIMEOUT_MS)
+      expect(socketAt(LAN).closed).toBe(true)
+      expect(urls()).toEqual([LAN, RELAY])
+      handshake(["call-keys"])
+      expect(statuses.at(-1)).toBe("connected")
+    })
+
     it("stops when the relay refuses the token", async () => {
       setup([direct(LAN), relay(RELAY)])
       await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)

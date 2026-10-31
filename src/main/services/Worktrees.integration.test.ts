@@ -7,6 +7,7 @@ import { describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Context, Deferred, Duration, Effect, Fiber, Layer, ManagedRuntime, PubSub } from "effect"
 import { SqlClient } from "effect/sql"
+import { TestClock } from "effect/testing"
 import type { PushEvent } from "../../shared/contract.ts"
 import type { Thread, Worktree } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
@@ -592,6 +593,26 @@ describe("worktree ownership", () => {
     ),
   )
 
+  it.live("lists a removed worktree without the setup log of its deleted checkout", () =>
+    withRepo(({ projectId }) =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient
+        const kept = yield* createThread(projectId, "kept", "kk/kept")
+        const done = yield* createThread(projectId, "done", "kk/done")
+        yield* waitUntilSetUp(kept.worktreeId)
+        yield* waitUntilSetUp(done.worktreeId)
+        yield* sql`UPDATE worktree SET setup_log = 'installed\n'`
+        yield* archiveRemovingWorktree(done.id)
+
+        const listed = yield* Worktrees.use((worktrees) => worktrees.list)
+        const logOf = (id: string | null) => listed.find((worktree) => worktree.id === id)?.setupLog
+        expect(logOf(kept.worktreeId)).toBe("installed\n")
+        expect(logOf(done.worktreeId)).toBe("")
+        expect((yield* worktreeOf(done.worktreeId)).setupLog).toMatch(/^installed\n/)
+      }),
+    ),
+  )
+
   it.live("archiving keeps the title, model and access mode saved while it removed the worktree", () =>
     Effect.gen(function* () {
       const removed = yield* Deferred.make<void>()
@@ -1010,6 +1031,29 @@ describe("project root checkout", () => {
         )
         expect(switched._tag).toBe("Failure")
         expect(git(root, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("main")
+      }),
+    ),
+  )
+})
+
+describe("fetching origin", () => {
+  it.effect("fetches a project's origin at most once per interval", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        withOrigin(root)
+        const fetch = Worktrees.use((worktrees) => worktrees.fetch(projectId))
+        const hasOriginBranch = () => git(root, "for-each-ref", "refs/remotes/origin/feature/login").trim() !== ""
+
+        yield* fetch
+        expect(hasOriginBranch()).toBe(true)
+
+        git(root, "update-ref", "-d", "refs/remotes/origin/feature/login")
+        yield* fetch
+        expect(hasOriginBranch()).toBe(false)
+
+        yield* TestClock.adjust(WorktreesLayer.FETCH_INTERVAL)
+        yield* fetch
+        expect(hasOriginBranch()).toBe(true)
       }),
     ),
   )

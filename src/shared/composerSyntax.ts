@@ -1,6 +1,6 @@
 import type { AgentCommand } from "./agent.ts"
 import type { PullRequestMatch, Thread } from "./domain.ts"
-import { mentionedThreadId, threadMention } from "./threadMention.ts"
+import { type MentionableThreads, mentionedThreadId, threadMention } from "./threadMention.ts"
 
 export type SyntaxKind = "text" | "bullet" | "code" | "command" | "mention"
 
@@ -192,7 +192,7 @@ export const suggestionsFor = (
   completion: CompletionQuery,
   commands: ReadonlyArray<AgentCommand>,
   files: ReadonlyArray<string>,
-  threads: ReadonlyArray<Thread>,
+  threads: MentionableThreads<Thread>,
   matchedPullRequests: ReadonlyArray<PullRequestMatch>,
 ): ReadonlyArray<Suggestion> => {
   const { trigger } = completion
@@ -203,7 +203,10 @@ export const suggestionsFor = (
   const suggestions: ReadonlyArray<Suggestion> =
     trigger === "@"
       ? [
-          ...matchThreads(threads, completion.query).map((thread): Suggestion => ({
+          ...[
+            ...matchThreads(threads.sameMachine, completion.query),
+            ...matchThreads(threads.otherMachines, completion.query),
+          ].map((thread): Suggestion => ({
             type: "thread",
             insert: threadMention(thread.id),
             thread,

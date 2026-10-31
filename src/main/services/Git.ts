@@ -22,6 +22,7 @@ export interface RunOptions {
 // FIXME: authenticate through gh, since macOS's osxkeychain helper opens a Keychain dialog over the app
 export const REMOTE_GIT_ARGS = ["-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential"]
 export const REMOTE_GIT_ENV = { GIT_TERMINAL_PROMPT: "0" }
+export const NO_OPTIONAL_LOCKS_ENV = { GIT_OPTIONAL_LOCKS: "0" }
 
 export const makeExec =
   (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) =>
@@ -108,7 +109,7 @@ export class Git extends Context.Service<
 const make = Effect.gen(function* () {
   const exec = makeExec(yield* ChildProcessSpawner.ChildProcessSpawner)
   const run = (cwd: string, args: ReadonlyArray<string>, options?: RunOptions) =>
-    exec("git", ["-C", cwd, ...args], cwd, options)
+    exec("git", ["-C", cwd, ...args], cwd, { ...options, env: { ...NO_OPTIONAL_LOCKS_ENV, ...options?.env } })
   const remote = (cwd: string, args: ReadonlyArray<string>) =>
     run(cwd, [...REMOTE_GIT_ARGS, ...args], { env: REMOTE_GIT_ENV })
 
@@ -151,10 +152,13 @@ const make = Effect.gen(function* () {
         hash,
         "--",
       ])
-    return Effect.all({
-      patch: diff(["--patch"]),
-      files: diff(["--name-status", "-z"]).pipe(Effect.map(parseNameStatus)),
-    })
+    return Effect.all(
+      {
+        patch: diff(["--patch"]),
+        files: diff(["--name-status", "-z"]).pipe(Effect.map(parseNameStatus)),
+      },
+      { concurrency: "unbounded" },
+    )
   }
 
   return Git.of({ run, remote, log, show })

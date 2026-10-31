@@ -561,7 +561,7 @@ const make = Effect.gen(function* () {
       const { turnBaseTree } = row.value
       if (turnBaseTree === null) return null
       const { cwd } = yield* activeWorkspace(id)
-      return yield* diffWorkingTree(cwd, turnBaseTree).pipe(Effect.provideContext(gitContext))
+      return yield* diffWorkingTree(cwd, Effect.succeed(turnBaseTree)).pipe(Effect.provideContext(gitContext))
     })
 
   const captureTurnBase = (cwd: string) =>

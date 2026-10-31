@@ -4,6 +4,7 @@ import { flushSync } from "react-dom"
 import { RiFileLine, RiSlashCommands2 } from "react-icons/ri"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
+import type { MentionableThreads } from "../../shared/threadMention.ts"
 import {
   completionAt,
   type CompletionQuery,
@@ -47,7 +48,7 @@ interface ComposerInputProps extends Omit<ComponentProps<"textarea">, "value" | 
   readonly onValueChange: (value: string) => void
   readonly commands: ReadonlyArray<AgentCommand>
   readonly files: ReadonlyArray<string>
-  readonly threads: ReadonlyArray<Thread>
+  readonly threads: MentionableThreads<Thread>
   readonly projectId: string
 }
 
@@ -77,7 +78,7 @@ export function ComposerInput({
   const known = {
     commands: new Set(commands.map((command) => command.trigger + command.name)),
     files: new Set(files),
-    threads: new Set(threads.map((thread) => thread.id)),
+    threads: new Set([...threads.sameMachine, ...threads.otherMachines].map((thread) => thread.id)),
   }
   const skill = leadingSkill(value, commands)
   const chipToken = skill?.token ?? ""
