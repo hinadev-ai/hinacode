@@ -653,6 +653,7 @@
   "pr_checks_pending": "Checks pending",
   "pr_card_failed": "Couldn't load this pull request. It may be an issue, private, or gh may be signed out.",
   "pr_card_loading": "Loading pull request…",
+  "overview_pr_failed": "Couldn't load from GitHub",
   "pr_card_size": "{additions} lines added, {deletions} lines removed",
   "pr_gh_missing": "Install the GitHub CLI (gh) to see pull request status and create pull requests.",
   "pr_gh_signed_out_before": "Run",

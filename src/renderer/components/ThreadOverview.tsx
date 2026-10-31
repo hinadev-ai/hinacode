@@ -6,6 +6,7 @@ import { useOpenSubagent } from "../lib/subagents.ts"
 import { environmentName, useCloud, useClouds, useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
 import { branchPullRequestAtom, projectsAtom, pullRequestStatusAtom } from "../lib/rpc.ts"
+import { pullRequestName } from "../lib/pullRequestRefs.ts"
 import { loadPullRequestsAtom, usePullRequests } from "../stores/pullRequests.ts"
 import { m } from "../paraglide/messages.js"
 import { type TerminalCommand, useTerminals } from "../stores/terminals.ts"
@@ -422,8 +423,6 @@ function PullRequests({ thread, worktree }: { thread: Thread; worktree: Worktree
   )
 }
 
-const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? url
-
 const pullRequestMeta = (pullRequest: PullRequest) =>
   [pullRequestStatusLabel[pullRequest.status](), pullRequest.review && reviewLabel[pullRequest.review]()]
     .filter(Boolean)
@@ -446,10 +445,17 @@ function PullRequestRow({ thread, url }: { thread: Thread; url: string }) {
       >
         <StatusIcon status={pullRequest?.status} colored className="size-4" />
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-sm">{pullRequest?.title ?? url}</span>
+          <span className="truncate text-sm">{pullRequest?.title ?? pullRequestName(url)}</span>
           <span className="truncate text-xs text-muted-foreground">
-            <span className="font-mono">#{pullRequest?.number ?? pullRequestNumber(url)}</span>
-            {pullRequest && ` · ${pullRequestMeta(pullRequest)}`}
+            {pullRequest ? (
+              <>
+                <span className="font-mono">#{pullRequest.number}</span> · {pullRequestMeta(pullRequest)}
+              </>
+            ) : AsyncResult.isFailure(status) ? (
+              m.overview_pr_failed()
+            ) : (
+              m.pr_card_loading()
+            )}
           </span>
         </span>
         {pullRequest?.checks && <ChecksIndicator checks={pullRequest.checks} />}

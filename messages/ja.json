@@ -653,6 +653,7 @@
   "pr_checks_pending": "チェック実行中",
   "pr_card_failed": "このプルリクエストを読み込めませんでした。非公開リポジトリであるか、Issue であるか、または gh からログアウトしている可能性があります。",
   "pr_card_loading": "プルリクエストを読み込み中…",
+  "overview_pr_failed": "GitHub から読み込めませんでした",
   "pr_card_size": "+{additions} 行 / -{deletions} 行",
   "pr_gh_missing": "プルリクエストの状態確認および作成を行うには、GitHub CLI (gh) をインストールしてください。",
   "pr_gh_signed_out_before": "ターミナルで「",

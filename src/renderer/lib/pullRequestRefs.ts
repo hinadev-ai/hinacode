@@ -19,6 +19,11 @@ const sameRepository = (a: GitHubRepository, b: GitHubRepository) =>
 export const pullRequestLabel = (ref: PullRequestRef, repository: GitHubRepository | null) =>
   repository && sameRepository(ref, repository) ? `#${ref.number}` : `${ref.owner}/${ref.name}#${ref.number}`
 
+export const pullRequestName = (url: string) => {
+  const ref = parsePullRequestUrl(url)
+  return ref ? pullRequestLabel(ref, null) : url
+}
+
 const pullRequestUrl = ({ owner, name }: GitHubRepository, number: string) =>
   `https://github.com/${owner}/${name}/pull/${number}`
 
