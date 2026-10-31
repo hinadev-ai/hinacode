@@ -172,7 +172,10 @@ describe("readClaudeSession", () => {
   })
 
   test("reports no history when the branch points at a record that is missing", async () => {
-    write(sessionId, transcript(prompt(1, null, "first"), reply(2, 1, "one"), prompt(3, 99, "second"), reply(4, 3, "two")))
+    write(
+      sessionId,
+      transcript(prompt(1, null, "first"), reply(2, 1, "one"), prompt(3, 99, "second"), reply(4, 3, "two")),
+    )
     expect((await readClaudeSession(home, cwd, sessionId)).messages).toBeNull()
   })
 

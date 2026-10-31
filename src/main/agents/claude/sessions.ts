@@ -123,11 +123,17 @@ const currentBranch = (entries: ReadonlyArray<Entry>): ReadonlyArray<Entry> => {
   )
   const branch: Array<Entry> = []
   const seen = new Set<string>()
-  for (let entry = leaf; entry?.uuid !== undefined && !seen.has(entry.uuid);) {
+  for (let entry = leaf; entry?.uuid !== undefined;) {
+    if (seen.has(entry.uuid)) throw new Error(`Claude transcript loops back to ${entry.uuid}`)
     seen.add(entry.uuid)
     branch.push(entry)
     const parent = entry.parentUuid ?? entry.logicalParentUuid
-    entry = typeof parent === "string" ? byUuid.get(parent) : undefined
+    if (typeof parent !== "string") break
+    const next = byUuid.get(parent)
+    if (next === undefined && typeof entry.parentUuid === "string") {
+      throw new Error(`Claude transcript is missing ${parent}`)
+    }
+    entry = next
   }
   return branch.toReversed()
 }
