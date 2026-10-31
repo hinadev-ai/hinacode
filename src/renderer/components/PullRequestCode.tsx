@@ -32,12 +32,13 @@ import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
 import { BookIcon } from "./icons/BookIcon.tsx"
 import { CodeIcon } from "./icons/CodeIcon.tsx"
 import { DatabaseIcon } from "./icons/DatabaseIcon.tsx"
+import { FlaskIcon } from "./icons/FlaskIcon.tsx"
+import { GuideIcon } from "./icons/GuideIcon.tsx"
 import { HammerIcon } from "./icons/HammerIcon.tsx"
 import type { IconComponent } from "./icons/Icon.tsx"
 import { ImageIcon } from "./icons/ImageIcon.tsx"
 import { LayoutIcon } from "./icons/LayoutIcon.tsx"
 import { MoreIcon } from "./icons/MoreIcon.tsx"
-import { NoteIcon } from "./icons/NoteIcon.tsx"
 import { PackageIcon } from "./icons/PackageIcon.tsx"
 import { PlayIcon } from "./icons/PlayIcon.tsx"
 import { PlugIcon } from "./icons/PlugIcon.tsx"
@@ -47,7 +48,6 @@ import { TerminalIcon } from "./icons/TerminalIcon.tsx"
 import { ToolsIcon } from "./icons/ToolsIcon.tsx"
 import { TranslateIcon } from "./icons/TranslateIcon.tsx"
 import { WarningIcon } from "./icons/WarningIcon.tsx"
-import { FlaskIcon } from "./icons/FlaskIcon.tsx"
 
 const categoryIcon = {
   ui: LayoutIcon,
@@ -109,7 +109,7 @@ export function PullRequestCode({ url }: { url: string }) {
         <TabsList aria-label={m.pr_code_view_label()} className="w-full">
           <TabsTrigger value="files">{m.pr_code_view_files()}</TabsTrigger>
           <TabsTrigger value="guide">
-            <BookIcon aria-hidden />
+            <GuideIcon aria-hidden />
             {m.pr_code_view_guide()}
           </TabsTrigger>
         </TabsList>
@@ -266,7 +266,7 @@ function NoteCard({ note, showLine = false }: { note: GuideFileNote | GuideLineN
       {note.critical ? (
         <CriticalMark className="mt-0.5" />
       ) : (
-        <NoteIcon aria-hidden className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+        <GuideIcon aria-hidden className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
       )}
       <div className="min-w-0 flex-1">
         {showLine && "line" in note && (

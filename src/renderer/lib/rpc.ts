@@ -235,6 +235,10 @@ export const commandsAtom = Atom.family((key: string) =>
   Atom.make(call("commands.list", { threadId: threadIdOf(key) })),
 )
 
+export const externalSessionsAtom = Atom.family((projectId: string) =>
+  Atom.make(call("sessions.listExternal", { projectId })),
+)
+
 export const filesAtom = Atom.family((key: string) => Atom.make(call("files.list", { threadId: threadIdOf(key) })))
 
 export const noFilesAtom = Atom.make(Effect.succeed<ReadonlyArray<string>>([]))

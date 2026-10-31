@@ -32,6 +32,10 @@ const renderPart = (part: Message["parts"][number]): string | null => {
       return `[context compaction: ${part.compaction.status}]`
     case "agent_switch":
       return `[agent switched: ${part.from} → ${part.to}]`
+    case "session_import":
+      return part.history === "replayed"
+        ? `[imported ${part.provider} session]`
+        : `[imported ${part.provider} session, earlier history not shown]`
   }
 }
 

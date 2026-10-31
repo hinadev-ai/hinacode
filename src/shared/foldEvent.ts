@@ -27,7 +27,12 @@ export function foldEvent(message: Message, event: AgentEvent, now: string): Mes
         ...message,
         parts: message.parts.map((part) =>
           part.type === "tool_call" && part.callId === event.callId
-            ? { ...part, output: event.output, status: event.isError ? "error" : "done" }
+            ? {
+                ...part,
+                output: event.output,
+                ...(event.fullOutputBytes !== undefined && { fullOutputBytes: event.fullOutputBytes }),
+                status: event.isError ? "error" : "done",
+              }
             : part,
         ),
       }

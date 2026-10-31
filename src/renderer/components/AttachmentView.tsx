@@ -16,7 +16,7 @@ import { FileIcon } from "./icons/FileIcon.tsx"
 const format = (value: number, unit: string) =>
   new Intl.NumberFormat(getLocale(), { style: "unit", unit, maximumFractionDigits: 1 }).format(value)
 
-const formatBytes = (bytes: number) => {
+export const formatBytes = (bytes: number) => {
   if (bytes >= 1024 * 1024) return format(bytes / 1024 / 1024, "megabyte")
   if (bytes >= 1024) return format(bytes / 1024, "kilobyte")
   return format(bytes, "byte")
