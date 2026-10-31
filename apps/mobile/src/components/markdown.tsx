@@ -9,6 +9,7 @@ import { copy } from "@/lib/copy"
 import { rewriteMarkdownExtras } from "@/lib/markdown-extras"
 import { resolveFileLink } from "@/lib/markdown-paths"
 import { openWebUrl } from "@/lib/open-url"
+import "./markdown.css"
 
 const HEADING_SIZES = [22, 20, 18, 16, 15, 15] as const
 const BLOCK_GAP = 10
