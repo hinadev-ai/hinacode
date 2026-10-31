@@ -196,6 +196,7 @@ const HIGHLIGHT_LIMIT = 300_000
 const LINE_HEIGHT = 18
 const DIGIT_WIDTH = 7.4
 const TITLE_INSET = 120
+const JUMP_STEPS = 80
 
 function highlightable(content: string) {
   if (content.length <= HIGHLIGHT_LIMIT) return content
@@ -231,11 +232,11 @@ function CodeView({ content, line, truncated }: { content: string; line: number 
       maxToRenderPerBatch={60}
       windowSize={15}
       contentContainerStyle={styles.code}
-      onScrollToIndexFailed={({ index, averageItemLength }) => {
-        if (attempts.current >= 5) return
+      onScrollToIndexFailed={({ index, highestMeasuredFrameIndex }) => {
+        if (attempts.current >= JUMP_STEPS) return
         attempts.current += 1
-        list.current?.scrollToOffset({ offset: index * averageItemLength, animated: false })
-        setTimeout(() => list.current?.scrollToIndex({ index, viewPosition: 0.3, animated: false }), 100)
+        list.current?.scrollToIndex({ index: highestMeasuredFrameIndex, animated: false })
+        setTimeout(() => list.current?.scrollToIndex({ index, viewPosition: 0.3, animated: false }), 50)
       }}
       renderItem={({ item, index }) => (
         <View style={styles.codeRow}>
