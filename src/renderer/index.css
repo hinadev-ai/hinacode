@@ -664,9 +664,10 @@
       @apply font-[inherit] underline underline-offset-2;
     }
 
-    /* Long tokens widen the table, which scrolls in its own wrapper, instead of breaking a path mid-name. */
+    /* `text-wrap-style` rather than `text-pretty`, whose `text-wrap` shorthand would undo a short cell's `whitespace-nowrap`. Long tokens widen the table, which scrolls in its own wrapper, instead of breaking a path mid-name. */
     & :where(td, th) {
-      @apply align-top text-pretty;
+      @apply align-top;
+      text-wrap-style: pretty;
       overflow-wrap: break-word;
     }
 
