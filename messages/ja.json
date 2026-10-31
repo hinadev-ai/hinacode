@@ -1616,7 +1616,6 @@
   "mobile_thread_missing": "このスレッドはもうありません。",
   "mobile_thread_loading": "スレッドを読み込み中",
   "mobile_chat_you": "あなた",
-  "mobile_chat_agent": "エージェント",
   "mobile_chat_transcript": "会話履歴",
   "mobile_chat_loading": "会話履歴を読み込み中",
   "mobile_chat_retry": "再試行",

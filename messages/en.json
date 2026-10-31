@@ -1670,7 +1670,6 @@
   "mobile_thread_missing": "This thread no longer exists.",
   "mobile_thread_loading": "Loading thread",
   "mobile_chat_you": "You",
-  "mobile_chat_agent": "Agent",
   "mobile_chat_transcript": "Transcript",
   "mobile_chat_loading": "Loading transcript",
   "mobile_chat_retry": "Retry",
