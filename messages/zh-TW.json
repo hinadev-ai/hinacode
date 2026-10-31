@@ -579,6 +579,8 @@
   "theme_system": "跟隨系統",
   "theme_light": "淺色",
   "theme_default": "深色",
+  "theme_hina_light": "Hina 淺色",
+  "theme_hina_dark": "Hina 深色",
   "settings_font_size": "字體大小",
   "settings_ui_font": "介面字型",
   "settings_mono_font": "等寬字型",
