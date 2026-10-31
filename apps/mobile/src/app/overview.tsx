@@ -185,10 +185,7 @@ function PullRequestRow({ row }: { row: OverviewPullRequest }) {
       </View>
       <View style={styles.rowBody}>
         <View style={styles.titleLine}>
-          <Text
-            numberOfLines={pullRequest === null ? 1 : 2}
-            style={[styles.title, { color: pullRequest === null ? theme.textMuted : theme.text }]}
-          >
+          <Text numberOfLines={2} style={[styles.title, { color: pullRequest === null ? theme.textMuted : theme.text }]}>
             {pullRequest?.title ?? reference}
           </Text>
           {pullRequest === null && row.error === null && (

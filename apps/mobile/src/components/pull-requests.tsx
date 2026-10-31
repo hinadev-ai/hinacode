@@ -200,7 +200,7 @@ function PullRequestCard({
             )}
           </View>
           <View style={styles.pending}>
-            <Text numberOfLines={1} style={[styles.title, { color: theme.textMuted }]}>
+            <Text numberOfLines={2} style={[styles.title, { color: theme.textMuted }]}>
               {reference}
             </Text>
             {failed !== null && (
