@@ -81,7 +81,7 @@ export function SettingsRow({
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityValue={value !== undefined ? { text: value } : undefined}
-      accessibilityState={{ disabled }}
+      aria-disabled={disabled}
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.surfaceStrong }]}
@@ -109,7 +109,8 @@ export function SwitchRow({
       <Toggle
         accessibilityRole="switch"
         accessibilityLabel={label}
-        accessibilityState={{ checked: value, disabled }}
+        aria-checked={value}
+        aria-disabled={disabled}
         value={value}
         disabled={disabled}
         onValueChange={onChange}

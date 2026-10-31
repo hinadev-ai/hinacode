@@ -59,7 +59,7 @@ export function TodoTray({ thread, messages }: { thread: Thread; messages: reado
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${copy("mobile_chat_todos_label")}, ${progress}`}
-        accessibilityState={{ expanded }}
+        aria-expanded={expanded}
         onPress={() => setExpanded(!expanded)}
         style={styles.header}
       >

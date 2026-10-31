@@ -157,7 +157,7 @@ function AssistantMessage({ message, root }: { message: Message; root: string | 
   const writingIndex = streaming && parts.at(-1)?.type === "text" ? parts.length - 1 : undefined
   const collapsed = new Set(collapsedParts(parts.map((part, index) => ({ part, index }))).map(({ index }) => index))
   return (
-    <View accessibilityState={{ busy: streaming }} style={styles.reply}>
+    <View aria-busy={streaming} style={styles.reply}>
       {folded && (
         <WorkedFor
           durationMs={durationMs}
@@ -257,7 +257,7 @@ function WorkedFor({
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityHint={copy(expanded ? "mobile_chat_hide_activity" : "mobile_chat_show_activity")}
-      accessibilityState={{ expanded }}
+      aria-expanded={expanded}
       onPress={onToggle}
       style={row}
     >
@@ -365,7 +365,7 @@ function Reasoning({ text }: { text: string }) {
     <View>
       <Pressable
         accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
+        aria-expanded={open}
         accessibilityLabel={copy("mobile_chat_reasoning")}
         onPress={() => setOpen(!open)}
         style={styles.disclosure}
@@ -591,7 +591,7 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
                   <Pressable
                     key={option.label}
                     accessibilityRole={question.multiSelect ? "checkbox" : "radio"}
-                    accessibilityState={{ checked: selected }}
+                    aria-checked={selected}
                     accessibilityLabel={option.label}
                     accessibilityHint={option.description}
                     onPress={() => toggle(question, option.label)}

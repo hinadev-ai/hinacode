@@ -395,7 +395,7 @@ function SendButton({
       testID={`composer-${action}`}
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled }}
+      aria-disabled={disabled}
       disabled={disabled}
       onPress={stopping ? onStop : onSend}
       hitSlop={(HIT - SEND_SIZE) / 2}

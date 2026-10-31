@@ -44,7 +44,8 @@ export function Button({
     <PressableScale
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled: inactive, busy }}
+      aria-disabled={inactive}
+      aria-busy={busy}
       disabled={inactive}
       style={[
         styles.button,
@@ -84,7 +85,8 @@ export function IconButton({
   return (
     <PressableScale
       accessibilityRole="button"
-      accessibilityState={{ disabled: inactive, busy }}
+      aria-disabled={inactive}
+      aria-busy={busy}
       disabled={inactive}
       style={[
         styles.iconButton,
@@ -300,7 +302,7 @@ export function SegmentedControl<T extends string>({
             testID={`tab-${segment.value}`}
             accessibilityRole="tab"
             accessibilityLabel={segment.label}
-            accessibilityState={{ selected }}
+            aria-selected={selected}
             onPress={() => onChange(segment.value)}
             style={styles.segment}
           >
@@ -354,7 +356,7 @@ export function UnderlineTabs<T extends string>({
             testID={`tab-${tab.value}`}
             accessibilityRole="tab"
             accessibilityLabel={tab.label}
-            accessibilityState={{ selected }}
+            aria-selected={selected}
             onLayout={(event) => {
               const { x, width } = event.nativeEvent.layout
               setLayouts((current) => ({ ...current, [tab.value]: { x, width } }))

@@ -129,7 +129,8 @@ export function OptionRow({
       accessibilityRole="radio"
       accessibilityLabel={label}
       accessibilityHint={hint}
-      accessibilityState={{ checked: selected, disabled }}
+      aria-checked={selected}
+      aria-disabled={disabled}
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [styles.option, (pressed || selected) && { backgroundColor: theme.surface }]}
