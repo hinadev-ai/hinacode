@@ -50,9 +50,14 @@ describe("lineSnippet", () => {
 
   it("starts a long line shortly before a late match, so the match stays in view", () => {
     const line = "export function handler7(input: string): number { return input.length * 7 } // needle-7"
-    const snippet = lineSnippet(line, "needle-7", 10)
+    const snippet = lineSnippet(line, "needle-7", { lead: 10 })
     expect(snippet.text).toBe("… * 7 } // needle-7")
     expect(snippet.text.slice(snippet.match?.start, snippet.match?.end)).toBe("needle-7")
+  })
+
+  it("keeps a line whole when the match already fits", () => {
+    const line = 'return f"hello {name}"  # needle-7'
+    expect(lineSnippet(line, "needle-7", { lead: 10 }).text).toBe(line)
   })
 
   it("has no match when the line does not contain the query", () => {

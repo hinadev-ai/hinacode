@@ -83,15 +83,15 @@ export interface LineSnippet {
 }
 
 /**
- * A content search hit's line without its indent, starting at most `lead` characters before the match, so a row
- * that truncates its end still shows what matched.
+ * A content search hit's line without its indent. When the match ends past `room` characters, where a row would
+ * truncate it, the line starts `lead` characters before the match instead.
  */
-export function lineSnippet(line: string, query: string, lead = 24): LineSnippet {
+export function lineSnippet(line: string, query: string, { lead = 24, room = 64 } = {}): LineSnippet {
   const text = line.trimStart()
   const lower = text.toLowerCase()
   const at = query === "" || lower.length !== text.length ? -1 : lower.indexOf(query.toLowerCase())
   if (at === -1) return { text, match: null }
-  const cut = Math.max(0, at - lead)
+  const cut = at + query.length > room ? Math.max(0, at - lead) : 0
   const ellipsis = cut > 0 ? "…" : ""
   const start = at - cut + ellipsis.length
   return { text: ellipsis + text.slice(cut), match: { start, end: start + query.length } }
