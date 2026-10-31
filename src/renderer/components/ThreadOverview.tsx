@@ -1,7 +1,6 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, startTransition, useState } from "react"
-import { RiListView } from "react-icons/ri"
 import type { Project, PullRequest, Thread, Worktree } from "../../shared/domain.ts"
 import { useOpenSubagent } from "../lib/subagents.ts"
 import { environmentName, useCloud, useClouds, useThreadEnvironment } from "../lib/environments.ts"
@@ -28,47 +27,78 @@ import { ProviderIcon } from "./ProviderIcon.tsx"
 import { ChecksIndicator, pullRequestStatusLabel, reviewLabel, StatusIcon } from "./ThreadPullRequests.tsx"
 import { StopSubagentButton, SubagentStatusIcon, subagentStats, useNow, useThreadSubagents } from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
 
-export const OVERVIEW_ID = "thread-overview"
 const SCRIPT_PREVIEW_LINES = 3
 const SUBAGENT_ROWS = 5
 
-export function OverviewToggle() {
-  const open = useUi((state) => state.overviewOpen)
-  const toggle = useUi((state) => state.toggleOverview)
-  const label = open ? m.overview_hide() : m.overview_show()
+const useThreadProject = (thread: Thread) =>
+  AsyncResult.getOrElse(useAtomValue(projectsAtom), () => []).find((candidate) => candidate.id === thread.projectId)
+
+const runInTerminal = (threadId: string) => (command: TerminalCommand) =>
+  void useTerminals.getState().openSession(threadId, command)
+
+function useActionRows(thread: Thread, project: Project) {
+  const globalActions = useSettings(useThreadEnvironment(thread.id)).actions
+  return [
+    ...(project.kind === "folder"
+      ? project.actions.map((action, index) => ({ action, scope: "project" as const, index }))
+      : []),
+    ...globalActions.map((action, index) => ({ action, scope: "global" as const, index })),
+  ]
+}
+
+export function ActionsMenu({ thread }: { thread: Thread }) {
+  const project = useThreadProject(thread)
+  if (!project) return null
+  return <ActionsMenuButton thread={thread} project={project} />
+}
+
+function ActionsMenuButton({ thread, project }: { thread: Thread; project: Project }) {
+  const rows = useActionRows(thread, project)
+  if (rows.length === 0) return null
+  const run = runInTerminal(thread.id)
   return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      aria-label={label}
-      title={label}
-      aria-expanded={open}
-      aria-controls={OVERVIEW_ID}
-      data-active={open}
-      className="data-[active=true]:bg-muted data-[active=true]:text-foreground"
-      onClick={toggle}
-    >
-      <RiListView aria-hidden />
-    </Button>
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={m.overview_actions()}
+            title={m.overview_actions()}
+            className="@min-[48rem]:hidden"
+          />
+        }
+      >
+        <PlayIcon aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        {rows.map(({ action, scope, index }) => (
+          <DropdownMenuItem
+            key={`${scope}-${index}`}
+            title={action.command}
+            onClick={() => run({ title: action.name, line: action.command })}
+          >
+            <span className="truncate">{action.name}</span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
 export function ThreadOverview({ thread }: { thread: Thread }) {
-  const open = useUi((state) => state.overviewOpen)
-  const project = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => []).find(
-    (candidate) => candidate.id === thread.projectId,
-  )
+  const project = useThreadProject(thread)
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
-  if (!open || !project) return null
-  const run = (command: TerminalCommand) => void useTerminals.getState().openSession(thread.id, command)
+  if (!project) return null
+  const run = runInTerminal(thread.id)
 
   return (
     <aside
-      id={OVERVIEW_ID}
       aria-label={m.overview_label()}
-      className="-m-1 flex min-h-0 w-66 flex-col gap-2 overflow-y-auto p-1 [scrollbar-width:none]"
+      className="-m-1 hidden min-h-0 w-66 @min-[48rem]:flex flex-col gap-2 overflow-y-auto p-1 [scrollbar-width:none]"
     >
       <Card title={m.overview_environment()}>
         <EnvironmentRows thread={thread} project={project} worktree={worktree} />
@@ -226,7 +256,7 @@ function SetupScript({ thread, project, worktree, onRun }: SetupScriptProps) {
 
 function Actions({ thread, project, onRun }: ActionsProps) {
   const environment = useThreadEnvironment(thread.id)
-  const globalActions = useSettings(environment).actions
+  const rows = useActionRows(thread, project)
   const [target, setTarget] = useState<ActionTarget>({ scope: "project", index: null })
   const [dialogOpen, setDialogOpen] = useState(false)
   const projectScoped = project.kind === "folder"
@@ -235,10 +265,6 @@ function Actions({ thread, project, onRun }: ActionsProps) {
       setTarget(next)
       setDialogOpen(true)
     })
-  const rows = [
-    ...(projectScoped ? project.actions.map((action, index) => ({ action, scope: "project" as const, index })) : []),
-    ...globalActions.map((action, index) => ({ action, scope: "global" as const, index })),
-  ]
   if (!projectScoped && rows.length === 0) return null
 
   return (
