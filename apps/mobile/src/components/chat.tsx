@@ -13,7 +13,7 @@ import type { Message, MessagePart, Thread, ToolCallStatus } from "@shared/domai
 import type { UsageLimit } from "@shared/limits.ts"
 import { useFocusEffect } from "expo-router"
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react"
-import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import { ActivityIndicator, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import Animated, { useReducedMotion } from "react-native-reanimated"
 import { Composer } from "@/components/composer"
 import { liquidGlass } from "@/components/glass"
@@ -734,5 +734,11 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   optionText: { flex: 1, gap: 2 },
-  answer: { minHeight: HIT, borderWidth: 1, borderRadius: radius.sm, paddingHorizontal: 10, fontSize: 16 },
+  answer: {
+    minHeight: HIT,
+    borderWidth: 1,
+    borderRadius: radius.sm,
+    paddingHorizontal: 10,
+    fontSize: Platform.OS === "web" ? 16 : 15,
+  },
 })
