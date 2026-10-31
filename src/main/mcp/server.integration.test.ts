@@ -47,6 +47,8 @@ import * as Scratch from "../services/Scratch.ts"
 
 const pushes: Array<PushEvent> = []
 const turnInputs: Array<RunTurnInput> = []
+const modelLookupStarted = Deferred.makeUnsafe<void>()
+const modelLookupResume = Deferred.makeUnsafe<void>()
 
 class Seeded extends Context.Service<Seeded, { readonly a: string; readonly b: string }>()("test/Seeded") {}
 
@@ -71,7 +73,24 @@ const fakeProvider = (id: ProviderId): AgentProvider => {
   const turns = new Map<string, Deferred.Deferred<void>>()
   return {
     id,
-    listModels: Effect.succeed([]),
+    listModels:
+      id === "codex"
+        ? Effect.gen(function* () {
+            yield* Deferred.succeed(modelLookupStarted, undefined)
+            yield* Deferred.await(modelLookupResume)
+            return [
+              {
+                id: "gpt-test",
+                label: "Test",
+                provider: id,
+                efforts: [],
+                defaultEffort: null,
+                fastMode: false,
+                autoMode: false,
+              },
+            ]
+          })
+        : Effect.succeed([]),
     account: () => Effect.succeed({ type: "signedOut" }),
     planLimits: () => Effect.succeed(null),
     usage: () => Effect.succeed(null),
@@ -1138,6 +1157,41 @@ layer(testLayer)("agent instructions", (it) => {
       const on = yield* instructionsOfNextTurn(b)
       expect(on).toContain("<hinacode>")
       expect(on).toContain("<tiny-vm>")
+    }),
+  )
+})
+
+layer(testLayer)("run_agent stopped-parent race", (it) => {
+  it.effect("refuses a pending child after its parent stops during model lookup", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      turnInputs.length = 0
+      yield* runner.send(a, "hi", [])
+      const call = yield* Effect.forkChild(
+        callAs(yield* mcp.connectionFor(a), "run_agent", {
+          provider: "codex",
+          description: "Late child",
+          prompt: "Reply child started after stop",
+        }),
+      )
+      yield* Deferred.await(modelLookupStarted)
+      yield* runner.interrupt(a)
+      const threads = yield* Threads
+      yield* until(
+        threads.get(a).pipe(
+          Effect.orDie,
+          Effect.map((thread) => (thread.status === "idle" ? Option.some(thread) : Option.none())),
+        ),
+      )
+      yield* Effect.yieldNow
+      yield* Deferred.succeed(modelLookupResume, undefined)
+      const result = yield* Fiber.join(call)
+      expect({ result, childInputs: turnInputs.filter((input) => input.threadId.includes(":agent:")) }).toMatchObject({
+        result: { isError: true },
+        childInputs: [],
+      })
     }),
   )
 })
