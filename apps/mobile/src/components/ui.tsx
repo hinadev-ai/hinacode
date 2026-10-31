@@ -230,8 +230,14 @@ export function EmptyState({
   return (
     <View style={styles.empty}>
       <Icon name={icon} size={28} color={theme.textMuted} />
-      <Text style={[styles.emptyTitle, { color: theme.text }]}>{title}</Text>
-      {hint !== undefined && <Text style={[styles.emptyHint, { color: theme.textMuted }]}>{hint}</Text>}
+      <Text textBreakStrategy="balanced" style={[styles.emptyTitle, { color: theme.text }]}>
+        {title}
+      </Text>
+      {hint !== undefined && (
+        <Text textBreakStrategy="balanced" style={[styles.emptyHint, { color: theme.textMuted }]}>
+          {hint}
+        </Text>
+      )}
       {action}
     </View>
   )
