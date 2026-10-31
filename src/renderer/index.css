@@ -6,7 +6,6 @@
 @import "@fontsource-variable/geist-mono";
 @import "@fontsource-variable/geist-mono/wght-italic.css";
 @import "@wterm/dom/css";
-@import "tw-shimmer";
 @plugin "@tailwindcss/typography";
 
 @font-face {
@@ -762,7 +761,9 @@
   }
 }
 
-/* A bright band sweeps across muted text. Unlike a pulse, the text never drops below its resting contrast. */
+/* A bright band sweeps across muted text. Unlike a pulse, the text never drops below its resting contrast. The band
+   layer is four times the text wide, so the band crosses the text in a third of each cycle and rests off it for the
+   rest. */
 @utility text-shimmer {
   position: relative;
   overflow: clip;
@@ -775,7 +776,7 @@
     position: absolute;
     inset-block: 0;
     left: 0;
-    width: 300%;
+    width: 400%;
     pointer-events: none;
     background: linear-gradient(90deg, transparent 40%, var(--foreground) 50%, transparent 60%);
     animation: text-shimmer 2s linear infinite;
@@ -788,7 +789,7 @@
 
 @keyframes text-shimmer {
   from {
-    translate: -66.667% 0;
+    translate: -75% 0;
   }
 }
 
