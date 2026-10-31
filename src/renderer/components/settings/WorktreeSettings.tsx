@@ -2,7 +2,6 @@ import { useAtomValue } from "@effect/atom-react"
 import { Link } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { useActionState, useState } from "react"
-import { RiChat3Line, RiDeleteBinLine } from "react-icons/ri"
 import { useShallow } from "zustand/react/shallow"
 import { type CheckoutState, isThreadBusy, type Project, type Thread, type Worktree } from "../../../shared/domain.ts"
 import { environmentName, useClouds } from "../../lib/environments.ts"
@@ -25,6 +24,8 @@ import {
 } from "../ui/alert-dialog.tsx"
 import { ArchiveSettings } from "./ArchiveSettings.tsx"
 import { SettingsSection, settingsGroupClass } from "./SettingsSection.tsx"
+import { ChatIcon } from "../icons/ChatIcon.tsx"
+import { TrashIcon } from "../icons/TrashIcon.tsx"
 import { WorktreeRootField } from "./WorktreeRootField.tsx"
 
 type Blocker = "setup" | "turn"
@@ -161,7 +162,7 @@ function WorktreeItem({ row }: { row: WorktreeRow }) {
                   params={{ threadId: thread.id }}
                   className="flex max-w-full min-w-0 items-center gap-1 text-foreground underline-offset-2 hover:underline"
                 >
-                  <RiChat3Line aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+                  <ChatIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
                   <span className="truncate">{thread.title}</span>
                 </Link>
               ))}
@@ -175,7 +176,7 @@ function WorktreeItem({ row }: { row: WorktreeRow }) {
         aria-label={m.settings_worktree_remove({ branch: worktree.branch })}
         onClick={() => setRemoving(true)}
       >
-        <RiDeleteBinLine aria-hidden />
+        <TrashIcon aria-hidden />
       </Button>
       <RemoveWorktreeDialog row={row} open={removing} onOpenChange={setRemoving} />
     </li>

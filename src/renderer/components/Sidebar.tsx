@@ -4,25 +4,7 @@ import { useRouter, useNavigate } from "@tanstack/react-router"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react"
-import type { IconType } from "react-icons"
-import {
-  RiAddLine,
-  RiArchiveLine,
-  RiArrowDownLine,
-  RiArrowDownSFill,
-  RiArrowRightSLine,
-  RiArrowUpLine,
-  RiChat3Line,
-  RiDeleteBinLine,
-  RiFilter3Fill,
-  RiFilter3Line,
-  RiFolder3Line,
-  RiFolderAddLine,
-  RiInbox2Line,
-  RiMoreFill,
-  RiPencilLine,
-  RiSearchLine,
-} from "react-icons/ri"
+import { RiInbox2Line } from "react-icons/ri"
 import { useShallow } from "zustand/react/shallow"
 import type { Project, SidebarGroup, Thread } from "../../shared/domain.ts"
 import { environmentOf, isStale, useCloud, useClouds } from "../lib/environments.ts"
@@ -52,6 +34,22 @@ import { GroupNameDialog } from "./GroupNameDialog.tsx"
 import { ResizeHandle } from "./ResizeHandle.tsx"
 import { ProjectDialog } from "./ProjectDialog.tsx"
 import { ProjectIcon } from "./ProjectIcon.tsx"
+import { ArchiveIcon } from "./icons/ArchiveIcon.tsx"
+import { ArrowDownIcon } from "./icons/ArrowDownIcon.tsx"
+import { ArrowUpIcon } from "./icons/ArrowUpIcon.tsx"
+import { ChatIcon } from "./icons/ChatIcon.tsx"
+import { ChevronDownIcon } from "./icons/ChevronDownIcon.tsx"
+import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
+import { FilterFillIcon } from "./icons/FilterFillIcon.tsx"
+import { FilterIcon } from "./icons/FilterIcon.tsx"
+import { FolderAddIcon } from "./icons/FolderAddIcon.tsx"
+import { FolderIcon } from "./icons/FolderIcon.tsx"
+import { MoreIcon } from "./icons/MoreIcon.tsx"
+import { PencilIcon } from "./icons/PencilIcon.tsx"
+import { PlusIcon } from "./icons/PlusIcon.tsx"
+import { SearchIcon } from "./icons/SearchIcon.tsx"
+import { TrashIcon } from "./icons/TrashIcon.tsx"
+import type { IconComponent } from "./icons/Icon.tsx"
 import { ProjectMenu } from "./ProjectMenu.tsx"
 import { SidebarThreadList } from "./SidebarThreadList.tsx"
 import { Button } from "./ui/button.tsx"
@@ -116,12 +114,12 @@ export function Sidebar({
       >
         <div className="flex flex-col gap-px px-2 pt-2">
           <NavRow
-            icon={RiAddLine}
+            icon={PlusIcon}
             label={m.command_thread_new()}
             onClick={() => usePalette.getState().show(NEW_THREAD_PREFIX)}
           />
           <div className="group/search flex h-8 items-center gap-2 rounded-md ps-2 pe-1 text-sidebar-foreground focus-within:bg-sidebar-accent hover:bg-sidebar-accent">
-            <RiSearchLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+            <SearchIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
             <input
               type="search"
               value={query}
@@ -137,8 +135,8 @@ export function Sidebar({
             className="w-full items-stretch gap-px bg-transparent p-0 *:data-[slot=tabs-indicator]:hidden"
           >
             <SidebarTabTrigger value="inbox" icon={RiInbox2Line} label={m.sidebar_tab_inbox()} />
-            <SidebarTabTrigger value="threads" icon={RiChat3Line} label={m.sidebar_tab_threads()} />
-            <SidebarTabTrigger value="archived" icon={RiArchiveLine} label={m.sidebar_tab_archived()} />
+            <SidebarTabTrigger value="threads" icon={ChatIcon} label={m.sidebar_tab_threads()} />
+            <SidebarTabTrigger value="archived" icon={ArchiveIcon} label={m.sidebar_tab_archived()} />
           </TabsList>
         </div>
         <ScrollArea className="min-h-0 flex-1">
@@ -158,7 +156,7 @@ export function Sidebar({
                     aria-label={m.sidebar_add_project()}
                     onClick={() => setAddProjectOpen(true)}
                   >
-                    <RiFolderAddLine aria-hidden />
+                    <FolderAddIcon aria-hidden />
                   </Button>
                 }
               />
@@ -243,7 +241,7 @@ function PinnedThreads({ query }: { query: Query }) {
     <Collapsible open={open} onOpenChange={setOpen} render={<section aria-label={m.sidebar_pinned()} />}>
       <CollapsibleTrigger className="group/heading mx-2 flex h-7 items-center gap-0.5 rounded-md px-2 text-xs font-medium text-muted-foreground outline-none hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring">
         <h2>{m.sidebar_pinned()}</h2>
-        <RiArrowDownSFill
+        <ChevronDownIcon
           aria-hidden
           className="size-4 -rotate-90 transition-transform group-data-panel-open/heading:rotate-0 motion-reduce:transition-none"
         />
@@ -264,7 +262,7 @@ function SectionHeading({ title, action }: { title: string; action?: ReactNode }
   )
 }
 
-function NavRow({ icon: Icon, label, onClick }: { icon: IconType; label: string; onClick: () => void }) {
+function NavRow({ icon: Icon, label, onClick }: { icon: IconComponent; label: string; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -277,7 +275,7 @@ function NavRow({ icon: Icon, label, onClick }: { icon: IconType; label: string;
   )
 }
 
-function SidebarTabTrigger({ value, icon: Icon, label }: { value: SidebarTab; icon: IconType; label: string }) {
+function SidebarTabTrigger({ value, icon: Icon, label }: { value: SidebarTab; icon: IconComponent; label: string }) {
   return (
     <TabsTrigger
       value={value}
@@ -343,7 +341,7 @@ function ProjectFilterMenu() {
   const setIds = useUi((state) => state.setSidebarProjectIds)
   const picked = new Set(ids)
   const active = projects.some((project) => picked.has(project.id))
-  const Icon = active ? RiFilter3Fill : RiFilter3Line
+  const Icon = active ? FilterFillIcon : FilterIcon
 
   return (
     <DropdownMenu>
@@ -440,7 +438,7 @@ function ProjectList({ query, onAddProject, focusAfterDelete }: ProjectListProps
             <p className="text-sm font-medium">{m.sidebar_empty_title()}</p>
             <p className="text-xs text-muted-foreground">{m.sidebar_empty_hint()}</p>
             <Button variant="outline" size="sm" onClick={onAddProject}>
-              <RiFolderAddLine aria-hidden />
+              <FolderAddIcon aria-hidden />
               {m.sidebar_add_project()}
             </Button>
           </div>
@@ -489,7 +487,7 @@ function GroupHeader({ group, open }: GroupHeaderProps) {
           onClick={() => void update((state) => setGroupCollapsed(state, group.id, open))}
           className="group/trigger flex min-w-0 flex-1 items-center gap-1 rounded-md px-1.5 py-1 text-left text-xs font-medium text-muted-foreground outline-none hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
         >
-          <RiArrowRightSLine
+          <ChevronRightIcon
             aria-hidden
             className="size-4 shrink-0 transition-transform group-aria-expanded/trigger:rotate-90 motion-reduce:transition-none"
           />
@@ -536,27 +534,27 @@ function GroupMenu({ group, open, onOpenChange }: GroupMenuProps) {
             />
           }
         >
-          <RiMoreFill aria-hidden />
+          <MoreIcon aria-hidden />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
           <DropdownMenuItem onClick={() => setRenameQueued(true)}>
-            <RiPencilLine aria-hidden />
+            <PencilIcon aria-hidden />
             {m.sidebar_group_rename()}
           </DropdownMenuItem>
           <DropdownMenuItem disabled={index <= 0} onClick={() => void update((next) => moveGroup(next, group.id, -1))}>
-            <RiArrowUpLine aria-hidden />
+            <ArrowUpIcon aria-hidden />
             {m.sidebar_group_move_up()}
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={index === state.groups.length - 1}
             onClick={() => void update((next) => moveGroup(next, group.id, 1))}
           >
-            <RiArrowDownLine aria-hidden />
+            <ArrowDownIcon aria-hidden />
             {m.sidebar_group_move_down()}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onClick={() => void update((next) => deleteGroup(next, group.id))}>
-            <RiDeleteBinLine aria-hidden />
+            <TrashIcon aria-hidden />
             {m.sidebar_group_delete()}
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -610,16 +608,16 @@ function ProjectGroup({ group, query, nested, focusAfterDelete }: ProjectGroupPr
             aria-label={m.sidebar_toggle_project({ project: first.name })}
             aria-describedby={cloud && cloudMarkId}
           >
-            <RiArrowRightSLine
+            <ChevronRightIcon
               aria-hidden
               className="size-4 shrink-0 text-muted-foreground transition-transform group-data-panel-open/trigger:rotate-90 motion-reduce:transition-none"
             />
             {cloud ? (
               <CloudMark cloud={cloud} id={cloudMarkId} className="size-4" />
             ) : first.kind === "chats" ? (
-              <RiChat3Line aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+              <ChatIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
             ) : (
-              <RiFolder3Line aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+              <FolderIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
             )}
             <span className="truncate font-medium" title={first.rootPath}>
               {first.name}
@@ -671,7 +669,7 @@ function NewThreadButton({ projects, buttonRef, onNewThread }: NewThreadButtonPr
       aria-label={m.sidebar_new_thread_in({ project: project.name })}
       onClick={() => onNewThread(project)}
     >
-      <RiAddLine aria-hidden />
+      <PlusIcon aria-hidden />
     </Button>
   )
 }

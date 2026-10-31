@@ -19,7 +19,7 @@ While a thread runs, the developer wants three answers at a glance: where it run
 
 ## Design
 
-- `Project.actions: Array<{ name, command }>`, stored as JSON in `project.actions` (migration 0031) and written through `projects.update`. Global actions are `Settings.actions`, written through `settings.set`. Settings belong to a machine, so a global action runs wherever that machine's terminals run.
+- `Project.actions: Array<{ name, command }>`, stored as JSON in `project.actions` (migration 0032) and written through `projects.update`. Global actions are `Settings.actions`, written through `settings.set`. Settings belong to a machine, so a global action runs wherever that machine's terminals run.
 - `terminal.open` takes an optional `command: { title, line }`. `Terminals` writes the line into the new shell and keeps the title on the `TerminalSession`, so the drawer tab shows it after a reload. Every terminal now gets `HINACODE_ROOT_PATH` and `HINACODE_WORKTREE_PATH`, so the setup script runs the same way it does during worktree setup.
 - `ThreadOverview` renders inside the thread view's floating column, above the floating tiny VM. When the transcript column (48rem) would run under the card, the transcript and composer get end padding so they move left instead.
 

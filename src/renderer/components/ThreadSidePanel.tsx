@@ -1,7 +1,6 @@
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cn } from "cn"
 import { createElement, type RefObject, Suspense, useEffect, useRef } from "react"
-import { RiSideBarFill } from "react-icons/ri"
 import type { Thread } from "../../shared/domain.ts"
 import { usePanelLayout, useSidePanelMaxWidth } from "../lib/panelLayout.ts"
 import { SIDE_PANEL_BOUNDS } from "../lib/panelSize.ts"
@@ -12,6 +11,7 @@ import { useThreadEnvironment } from "../lib/environments.ts"
 import { ActivityBar } from "./sidePanel/ActivityBar.tsx"
 import { type SidePanelView, useSidePanelViews, viewById } from "./sidePanel/views.ts"
 import { Button } from "./ui/button.tsx"
+import { SidebarFillIcon } from "./icons/SidebarFillIcon.tsx"
 
 const returnFocusToComposer = (panel: HTMLElement | null) => () => {
   if (panel?.contains(document.activeElement)) useUi.getState().requestComposerFocus()
@@ -125,7 +125,7 @@ export function PanelToggle({
       aria-expanded={expanded}
       onClick={closeDialog ? undefined : onToggle}
     >
-      <RiSideBarFill aria-hidden className="-scale-x-100" />
+      <SidebarFillIcon aria-hidden className="-scale-x-100" />
     </Button>
   )
   return closeDialog ? <DialogPrimitive.Close render={button} /> : button

@@ -1,7 +1,6 @@
 // oxlint-disable jsx-a11y/prefer-tag-over-role, jsx-a11y/click-events-have-key-events -- the WAI-ARIA combobox pattern: a textarea driving a listbox through aria-activedescendant, which <datalist> cannot do. Keys reach the options through the textarea.
 import { type ComponentProps, type KeyboardEvent, type Ref, useId, useImperativeHandle, useRef, useState } from "react"
 import { flushSync } from "react-dom"
-import { RiFileLine, RiSlashCommands2 } from "react-icons/ri"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
 import type { MentionableThreads } from "../../shared/threadMention.ts"
@@ -23,6 +22,8 @@ import { HighlightedCode } from "./HighlightedCode.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { SkillIcon } from "./icons/SkillIcon.tsx"
 import { StatusIcon } from "./ThreadPullRequests.tsx"
+import { FileIcon } from "./icons/FileIcon.tsx"
+import { SlashIcon } from "./icons/SlashIcon.tsx"
 
 const syntaxClass: Record<SyntaxKind, string> = {
   text: "text-foreground",
@@ -309,7 +310,7 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
     const slash = suggestion.path.lastIndexOf("/")
     return (
       <>
-        <RiFileLine aria-hidden className="size-3.5 shrink-0 self-center text-muted-foreground" />
+        <FileIcon aria-hidden className="size-3.5 shrink-0 self-center text-muted-foreground" />
         <span className="shrink-0 font-mono">{suggestion.path.slice(slash + 1)}</span>
         <span className="min-w-0 truncate text-xs text-muted-foreground">{suggestion.path.slice(0, slash + 1)}</span>
       </>
@@ -322,7 +323,7 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
       {isSkill ? (
         <SkillIcon className="size-3.5 shrink-0 self-center text-syntax-token" />
       ) : (
-        <RiSlashCommands2 aria-hidden className="size-3.5 shrink-0 self-center text-muted-foreground" />
+        <SlashIcon aria-hidden className="size-3.5 shrink-0 self-center text-muted-foreground" />
       )}
       <span className={cn("shrink-0 font-mono", isSkill && "text-syntax-token")}>{suggestion.insert}</span>
       {command.argumentHint !== "" && (

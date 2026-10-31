@@ -1,5 +1,13 @@
 import { Effect, Schema } from "effect"
-import { AgentProfileName, Compaction, ForkPoint, ProviderId, Question, TokenUsage } from "./agent.ts"
+import {
+  AccountProviderId,
+  AgentProfileName,
+  Compaction,
+  ForkPoint,
+  ProviderId,
+  Question,
+  TokenUsage,
+} from "./agent.ts"
 import { PickedDeviceElement } from "./device.ts"
 import { parsePullRequestSelector, PullRequestSelector } from "./github.ts"
 import { UsageLimit } from "./limits.ts"
@@ -409,6 +417,11 @@ export const MessagePart = Schema.Union([
   Schema.Struct({ type: Schema.Literal("questions"), text: Schema.String, questions: Schema.Array(Question) }),
   Schema.Struct({ type: Schema.Literal("compaction"), compaction: Compaction }),
   Schema.Struct({ type: Schema.Literal("agent_switch"), from: ProviderId, to: ProviderId }),
+  Schema.Struct({
+    type: Schema.Literal("session_import"),
+    provider: AccountProviderId,
+    history: Schema.Literals(["replayed", "unavailable"]),
+  }),
 ])
 export type MessagePart = typeof MessagePart.Type
 
@@ -448,6 +461,8 @@ export const ThemeId = Schema.Literals([
   "dracula",
   "material-theme",
   "pinky",
+  "hina-light",
+  "hina-dark",
 ])
 export type ThemeId = typeof ThemeId.Type
 
@@ -904,6 +919,22 @@ export const Automation = Schema.Struct({
   updatedAt: Timestamp,
 })
 export type Automation = typeof Automation.Type
+
+export const NativeSessionId = Schema.String.check(
+  Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+)
+
+export const ExternalSession = Schema.Struct({
+  provider: AccountProviderId,
+  sessionId: NativeSessionId,
+  accountId: Schema.NullOr(Schema.String),
+  title: Schema.String,
+  preview: Schema.String,
+  branch: Schema.NullOr(Schema.String),
+  updatedAt: Timestamp,
+  threadId: Schema.NullOr(Schema.String),
+})
+export type ExternalSession = typeof ExternalSession.Type
 
 export const ThreadSearchHit = Schema.Struct({
   threadId: Schema.String,

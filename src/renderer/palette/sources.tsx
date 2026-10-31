@@ -1,4 +1,3 @@
-import { RiAddLine, RiFileTextLine } from "react-icons/ri"
 import { ProjectIcon } from "../components/ProjectIcon.tsx"
 import { ProviderIcon } from "../components/ProviderIcon.tsx"
 import { commands, isCommandAvailable } from "../keybindings/commands.ts"
@@ -12,6 +11,8 @@ import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { type Project, threadFolder, Thread } from "../../shared/domain.ts"
 import type { PaletteContext, PaletteItem, PaletteSource } from "./types.ts"
+import { FileTextIcon } from "../components/icons/FileTextIcon.tsx"
+import { PlusIcon } from "../components/icons/PlusIcon.tsx"
 
 const iconClass = "size-3.5 shrink-0 text-muted-foreground"
 
@@ -44,7 +45,7 @@ export const projectsSource: PaletteSource = {
       group: "projects",
       title: m.sidebar_new_thread_in({ project: project.name }),
       subtitle: project.rootPath,
-      icon: <RiAddLine aria-hidden className={iconClass} />,
+      icon: <PlusIcon aria-hidden className={iconClass} />,
       ...cloudOf(project, ctx),
       run: () => void startThread(project.id, ctx.navigate),
     })),
@@ -73,6 +74,25 @@ export const newThreadSource: PaletteSource = {
     const current = `new-thread:${preferred}`
     const isCurrent = (item: PaletteItem) => item.id === current
     return [...items.filter(isCurrent), ...items.filter((item) => !isCurrent(item))]
+  },
+}
+
+export const importSessionSource: PaletteSource = {
+  group: "projects",
+  items: (_query, ctx) => {
+    const current = ctx.threadId ? ctx.threads[ctx.threadId]?.projectId : undefined
+    return ctx.projects
+      .filter((project) => project.kind === "folder")
+      .toSorted((a, b) => Number(b.id === current) - Number(a.id === current))
+      .map((project): PaletteItem => ({
+        id: `import-session:${project.id}`,
+        group: "projects",
+        title: project.name,
+        subtitle: project.rootPath,
+        icon: <ProjectIcon projectId={project.id} />,
+        ...cloudOf(project, ctx),
+        run: () => useUi.getState().setImportSessionProjectId(project.id),
+      }))
   },
 }
 
@@ -113,7 +133,7 @@ const fileItem = (ctx: PaletteContext, path: string): PaletteItem => {
     title: path.slice(slash + 1),
     ...(slash > 0 ? { subtitle: path.slice(0, slash) } : {}),
     keywords: [path],
-    icon: <RiFileTextLine aria-hidden className={iconClass} />,
+    icon: <FileTextIcon aria-hidden className={iconClass} />,
     run: () => openFile(ctx, path),
   }
 }

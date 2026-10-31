@@ -62,12 +62,12 @@ const scripts: ReadonlyArray<Script> = [
   {
     id: "mock-agent-migrations",
     label: "Review the project actions migration",
-    prompt: "Check that migration 0031 is additive and that old rows decode.",
+    prompt: "Check that migration 0032 is additive and that old rows decode.",
     status: "completed",
     startedSecondsAgo: 300,
     ranSeconds: 74,
     steps: [
-      read("src/main/db/migrations/0031_project_actions.ts", "ALTER TABLE project ADD COLUMN actions"),
+      read("src/main/db/migrations/0032_project_actions.ts", "ALTER TABLE project ADD COLUMN actions"),
       read("src/main/services/Projects.ts", "actions: Schema.fromJsonString(Schema.Array(ProjectAction))"),
       bash("pnpm test src/main/services/Projects.integration.test.ts", "8 passed"),
     ],

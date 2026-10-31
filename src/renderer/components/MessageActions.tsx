@@ -1,6 +1,5 @@
 import { useNavigate } from "@tanstack/react-router"
 import { cn } from "cn"
-import { RiGitForkLine } from "react-icons/ri"
 import type { Message } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
@@ -9,6 +8,7 @@ import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { CopyButton } from "./CopyButton.tsx"
 import { Button } from "./ui/button.tsx"
+import { ForkIcon } from "./icons/ForkIcon.tsx"
 
 const messageText = (message: Message) =>
   message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n\n")
@@ -47,7 +47,7 @@ export function MessageActions({ message, className }: { message: Message; class
           title={m.message_fork()}
           action={fork}
         >
-          <RiGitForkLine />
+          <ForkIcon />
         </Button>
       )}
     </div>

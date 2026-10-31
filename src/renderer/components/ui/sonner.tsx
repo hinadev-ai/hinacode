@@ -1,16 +1,20 @@
 import type { CSSProperties } from "react"
-import { RiAlertLine, RiCheckboxCircleLine, RiCloseCircleLine, RiInformationLine, RiLoader4Line } from "react-icons/ri"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
+import { AlertIcon } from "../icons/AlertIcon.tsx"
+import { CheckCircleIcon } from "../icons/CheckCircleIcon.tsx"
+import { InfoIcon } from "../icons/InfoIcon.tsx"
+import { SpinnerIcon } from "../icons/SpinnerIcon.tsx"
+import { XCircleIcon } from "../icons/XCircleIcon.tsx"
 
 const Toaster = (props: ToasterProps) => (
   <Sonner
     className="toaster group"
     icons={{
-      success: <RiCheckboxCircleLine className="size-4" />,
-      info: <RiInformationLine className="size-4" />,
-      warning: <RiAlertLine className="size-4 text-attention" />,
-      error: <RiCloseCircleLine className="size-4 text-destructive" />,
-      loading: <RiLoader4Line className="size-4 animate-spin motion-reduce:animate-none" />,
+      success: <CheckCircleIcon className="size-4" />,
+      info: <InfoIcon className="size-4" />,
+      warning: <AlertIcon className="size-4 text-attention" />,
+      error: <XCircleIcon className="size-4 text-destructive" />,
+      loading: <SpinnerIcon className="size-4 animate-spin motion-reduce:animate-none" />,
     }}
     style={
       {

@@ -1,7 +1,6 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, useState } from "react"
-import { RiCheckLine, RiCircleLine, RiErrorWarningLine, RiLoader4Line } from "react-icons/ri"
 import { devicePlatformOf, type PrepareStep, type ThreadDevice, type ThreadDevices } from "../../../../shared/device.ts"
 import type { Thread } from "../../../../shared/domain.ts"
 import { errorMessage } from "../../../lib/errorMessage.ts"
@@ -14,6 +13,10 @@ import { DeleteDeviceDialog } from "./DeleteDeviceDialog.tsx"
 import { DeviceList } from "./DeviceList.tsx"
 import { DeviceReady } from "./DeviceReady.tsx"
 import { devicePanelId, deviceTabId } from "./DeviceTabStrip.tsx"
+import { CheckIcon } from "../../icons/CheckIcon.tsx"
+import { CircleIcon } from "../../icons/CircleIcon.tsx"
+import { SpinnerIcon } from "../../icons/SpinnerIcon.tsx"
+import { WarningIcon } from "../../icons/WarningIcon.tsx"
 
 export function DevicesView({ thread }: { thread: Thread }) {
   const devices = useAtomValue(threadDevicesAtom(thread.id))
@@ -85,9 +88,9 @@ const stepLabel: Record<PrepareStep, () => string> = {
 type StepState = "done" | "running" | "pending"
 
 const stepIcon: Record<StepState, ReactNode> = {
-  done: <RiCheckLine aria-hidden className="size-4 shrink-0 text-success" />,
-  running: <RiLoader4Line aria-hidden className="size-4 shrink-0 animate-spin motion-reduce:animate-none" />,
-  pending: <RiCircleLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />,
+  done: <CheckIcon aria-hidden className="size-4 shrink-0 text-success" />,
+  running: <SpinnerIcon aria-hidden className="size-4 shrink-0 animate-spin motion-reduce:animate-none" />,
+  pending: <CircleIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />,
 }
 
 function Preparing({ step }: { step: PrepareStep }) {
@@ -179,7 +182,7 @@ function Failed({ threadId, device, onDetach }: FailedProps) {
 function Failure({ title, message, children }: { title?: string; message: string; children: ReactNode }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
-      <RiErrorWarningLine aria-hidden className="size-6 text-destructive" />
+      <WarningIcon aria-hidden className="size-6 text-destructive" />
       <div role="alert" className="flex flex-col gap-1">
         {title && <h3 className="text-sm font-medium">{title}</h3>}
         <p className="max-w-80 font-mono text-xs break-words text-muted-foreground">{message}</p>

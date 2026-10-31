@@ -1,18 +1,7 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, startTransition, useState } from "react"
-import type { IconType } from "react-icons"
-import {
-  RiAddLine,
-  RiArrowDownSFill,
-  RiComputerLine,
-  RiFolder3Line,
-  RiGitBranchLine,
-  RiGlobalLine,
-  RiListView,
-  RiPencilLine,
-  RiPlayLine,
-} from "react-icons/ri"
+import { RiListView } from "react-icons/ri"
 import type { Project, PullRequest, Thread, Worktree } from "../../shared/domain.ts"
 import { useOpenSubagent } from "../lib/subagents.ts"
 import { environmentName, useCloud, useClouds, useThreadEnvironment } from "../lib/environments.ts"
@@ -26,6 +15,15 @@ import { useWorktrees } from "../stores/worktrees.ts"
 import { ActionDialog, type ActionTarget } from "./ActionDialog.tsx"
 import { CloudMark } from "./CloudMark.tsx"
 import { ProjectDialog } from "./ProjectDialog.tsx"
+import { BranchIcon } from "./icons/BranchIcon.tsx"
+import { ChevronDownIcon } from "./icons/ChevronDownIcon.tsx"
+import { ComputerIcon } from "./icons/ComputerIcon.tsx"
+import { FolderIcon } from "./icons/FolderIcon.tsx"
+import { GlobeIcon } from "./icons/GlobeIcon.tsx"
+import { PencilIcon } from "./icons/PencilIcon.tsx"
+import { PlayIcon } from "./icons/PlayIcon.tsx"
+import { PlusIcon } from "./icons/PlusIcon.tsx"
+import type { IconComponent } from "./icons/Icon.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { ChecksIndicator, pullRequestStatusLabel, reviewLabel, StatusIcon } from "./ThreadPullRequests.tsx"
 import { StopSubagentButton, SubagentStatusIcon, subagentStats, useNow, useThreadSubagents } from "./ThreadAgents.tsx"
@@ -97,7 +95,7 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
     >
       <CollapsibleTrigger className="group/card flex items-center gap-0.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
         {title}
-        <RiArrowDownSFill
+        <ChevronDownIcon
           aria-hidden
           className="size-4 transition-transform group-data-panel-open/card:rotate-0 -rotate-90 motion-reduce:transition-none"
         />
@@ -107,7 +105,7 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-function Row({ icon: Icon, children, trailing }: { icon: IconType; children: ReactNode; trailing?: ReactNode }) {
+function Row({ icon: Icon, children, trailing }: { icon: IconComponent; children: ReactNode; trailing?: ReactNode }) {
   return (
     <div className="flex min-h-8 min-w-0 items-center gap-2 px-2 text-sm">
       <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
@@ -139,11 +137,11 @@ function EnvironmentRows({ thread, project, worktree }: WorkspaceProps) {
           <span className="truncate">{name}</span>
         </div>
       ) : (
-        <Row icon={RiComputerLine}>{name}</Row>
+        <Row icon={ComputerIcon}>{name}</Row>
       )}
       {live ? (
         <Row
-          icon={RiGitBranchLine}
+          icon={BranchIcon}
           trailing={
             <span
               data-status={live.status}
@@ -159,7 +157,7 @@ function EnvironmentRows({ thread, project, worktree }: WorkspaceProps) {
         </Row>
       ) : (
         project.kind === "folder" && (
-          <Row icon={RiFolder3Line}>
+          <Row icon={FolderIcon}>
             <span title={project.rootPath}>{folderName(project.rootPath)}</span>
           </Row>
         )
@@ -200,11 +198,11 @@ function SetupScript({ thread, project, worktree, onRun }: SetupScriptProps) {
           </pre>
           <div className="flex items-center gap-0.5 px-1 pt-1">
             <Button variant="ghost" size="xs" onClick={() => onRun({ title: m.project_setup_label(), line: script })}>
-              <RiPlayLine aria-hidden />
+              <PlayIcon aria-hidden />
               {m.overview_run()}
             </Button>
             <Button variant="ghost" size="xs" action={() => setEditing(true)}>
-              <RiPencilLine aria-hidden />
+              <PencilIcon aria-hidden />
               {m.overview_edit()}
             </Button>
             {worktree && worktree.status !== "removed" && (
@@ -254,11 +252,11 @@ function Actions({ thread, project, onRun }: ActionsProps) {
               onClick={() => onRun({ title: action.name, line: action.command })}
               className="flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <RiPlayLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+              <PlayIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
               <span className="truncate">{action.name}</span>
               {scope === "global" && (
                 <span title={m.action_scope_global()} className="ml-auto flex shrink-0 text-muted-foreground">
-                  <RiGlobalLine aria-hidden className="size-3.5" />
+                  <GlobeIcon aria-hidden className="size-3.5" />
                   <span className="sr-only">{m.action_scope_global()}</span>
                 </span>
               )}
@@ -270,7 +268,7 @@ function Actions({ thread, project, onRun }: ActionsProps) {
               className="mr-1 opacity-0 group-hover/action:opacity-100 focus-visible:opacity-100"
               onClick={() => edit({ scope, index })}
             >
-              <RiPencilLine aria-hidden />
+              <PencilIcon aria-hidden />
             </Button>
           </li>
         ))}
@@ -303,7 +301,7 @@ function AddRow({ label, onClick }: { label: string; onClick: () => void }) {
       onClick={onClick}
       className="flex min-h-8 items-center gap-2 rounded-md px-2 text-left text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <RiAddLine aria-hidden className="size-4 shrink-0" />
+      <PlusIcon aria-hidden className="size-4 shrink-0" />
       {label}
     </button>
   )
