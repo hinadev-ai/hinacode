@@ -71,9 +71,18 @@ it("leaves pull request URLs in links, autolinks, code and HTML attributes, and 
     "<https://github.com/a/b/pull/3> and `https://github.com/a/b/pull/4`",
     '<a href="https://github.com/a/b/pull/5">',
     "https://github.com/a/b/pull/6/files and https://github.com/a/b/issues/7 and https://example.com/a/b/pull/8",
-    "```",
+    "```sh",
     "https://github.com/a/b/pull/9",
     "```",
   ].join("\n")
   expect(rewriteMarkdownExtras(markdown)).toBe(markdown)
+})
+
+it("labels a fence with no language text, and leaves closing fences and fences inside a longer one", () => {
+  const markdown = ["```", "plain", "```", "", "````md", "```", "inside", "```", "````", "", "~~~ ", "tilde", "~~~"].join(
+    "\n",
+  )
+  expect(rewriteMarkdownExtras(markdown)).toBe(
+    ["```text", "plain", "```", "", "````md", "```", "inside", "```", "````", "", "~~~text", "tilde", "~~~"].join("\n"),
+  )
 })

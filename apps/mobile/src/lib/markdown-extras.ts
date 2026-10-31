@@ -1,4 +1,5 @@
 const FENCE = /^ {0,3}(`{3,}|~{3,})/
+const BARE_FENCE = /^ {0,3}(`{3,}|~{3,})[ \t]*$/m
 const FOOTNOTE_DEFINITION = /^ {0,3}\[\^([^\]\s]+)\]:[ \t]*(.*)$/
 const FOOTNOTE_REFERENCE = /\[\^([^\]\s]+)\]/g
 const KBD = /<kbd>(.*?)<\/kbd>/gi
@@ -38,8 +39,15 @@ const shortenPullRequestUrls = (prose: string) =>
     ),
   )
 
-/** Calls `visit` with each line outside fenced code blocks and whatever it returns replaces the line. */
-function mapProseLines(markdown: string, visit: (line: string) => string | null) {
+/**
+ * Calls `visit` with each line outside fenced code blocks and whatever it returns replaces the line. `open`, when
+ * given, rewrites each opening fence line.
+ */
+function mapProseLines(
+  markdown: string,
+  visit: (line: string) => string | null,
+  open: (line: string) => string = (line) => line,
+) {
   let fence: string | null = null
   const lines: string[] = []
   for (const line of markdown.split("\n")) {
@@ -49,7 +57,7 @@ function mapProseLines(markdown: string, visit: (line: string) => string | null)
       lines.push(line)
     } else if (marker !== undefined) {
       fence = marker
-      lines.push(line)
+      lines.push(open(line))
     } else {
       const visited = visit(line)
       if (visited !== null) lines.push(visited)
@@ -58,18 +66,28 @@ function mapProseLines(markdown: string, visit: (line: string) => string | null)
   return lines.join("\n")
 }
 
+const labelBareFence = (line: string) => (BARE_FENCE.test(line) ? `${line.trimEnd()}text` : line)
+
 /**
  * Rewrites what the phone's Markdown renderer has no syntax for into what it has, as the desktop renders it:
  * a bare GitHub pull request URL becomes a link named `owner/repo#n`, `<kbd>` becomes a code span, which the
  * renderer draws as a key cap, a footnote reference `[^id]` becomes a superscript number, and the definitions
- * move to a numbered list at the end, in the order they are first cited. Code blocks, code spans and existing
+ * move to a numbered list at the end, in the order they are first cited. A fence with no language is labelled
+ * `text`, so the code block header names it instead of standing empty. Code blocks, code spans and existing
  * links stay as written, and other HTML stays text.
  */
 export function rewriteMarkdownExtras(markdown: string) {
-  const linked = /github\.com\/\S+\/pull\//i.test(markdown)
-    ? mapProseLines(markdown, (line) => outsideCode(line, shortenPullRequestUrls))
-    : markdown
-  return rewriteKeysAndFootnotes(linked)
+  const linksPullRequests = /github\.com\/\S+\/pull\//i.test(markdown)
+  const labelsFences = BARE_FENCE.test(markdown)
+  const rewritten =
+    linksPullRequests || labelsFences
+      ? mapProseLines(
+          markdown,
+          (line) => (linksPullRequests ? outsideCode(line, shortenPullRequestUrls) : line),
+          labelBareFence,
+        )
+      : markdown
+  return rewriteKeysAndFootnotes(rewritten)
 }
 
 function rewriteKeysAndFootnotes(markdown: string) {
