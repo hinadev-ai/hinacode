@@ -364,7 +364,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
                     aria-label={m.sidebar_thread_reorder({ title: thread.title })}
                     aria-roledescription={m.sidebar_thread_reorder_role()}
                     data-reorder-handle
-                    className="sr-only cursor-grab focus-visible:not-sr-only"
+                    className="sr-only absolute cursor-grab focus-visible:not-sr-only focus-visible:relative"
                   >
                     <GripIcon aria-hidden />
                   </Button>
