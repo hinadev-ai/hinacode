@@ -6,6 +6,7 @@ import { Colors, mono, type Palette, radius, SyntaxColors } from "@/constants/th
 import { type Scheme, useScheme } from "@/hooks/use-theme"
 import { useWorkspaceImages } from "@/hooks/use-workspace-images"
 import { copy } from "@/lib/copy"
+import { rewriteMarkdownExtras } from "@/lib/markdown-extras"
 import { resolveFileLink } from "@/lib/markdown-paths"
 import { openWebUrl } from "@/lib/open-url"
 
@@ -143,7 +144,7 @@ export function Markdown({
   return (
     <>
       <EnrichedMarkdownText
-        markdown={markdown}
+        markdown={rewriteMarkdownExtras(markdown)}
         flavor="github"
         markdownStyle={STYLES[scheme]}
         md4cFlags={FLAGS}
