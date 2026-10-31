@@ -2129,5 +2129,15 @@
   "mobile_terminal_key_right": "右方向鍵",
   "mobile_terminal_open_failed": "無法開啟 shell：{message}",
   "mobile_terminal_exited": "Shell 已結束。",
-  "mobile_terminal_exited_code": "Shell 已結束，結束代碼為 {code}。"
+  "mobile_terminal_exited_code": "Shell 已結束，結束代碼為 {code}。",
+  "mobile_transport_not_sent": "未送出。桌面版已有一分鐘無法連線。",
+  "mobile_transport_may_have_run": "桌面版已有一分鐘無法連線。這個操作可能仍已執行。",
+  "mobile_transport_lost_reply": "桌面版回應前連線已中斷。這個操作可能仍已執行。",
+  "mobile_transport_disconnected": "已與桌面版中斷連線。",
+  "mobile_transport_not_connected": "尚未連線到桌面版。",
+  "mobile_transport_token_rotated": "桌面版已更換權杖。請用新的 QR 碼重新配對。",
+  "mobile_transport_token_refused": "桌面版拒絕了這個權杖。請從「設定」中的「遠端」重新配對。",
+  "mobile_transport_protocol_mismatch": "桌面版使用遠端協定 {desktop}，此 App 使用 {app}。請更新較舊的一方。",
+  "mobile_connection_no_server": "尚未連線到任何伺服器。",
+  "mobile_connection_server_gone": "已配對的伺服器都不再有這個項目。"
 }

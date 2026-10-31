@@ -2166,5 +2166,15 @@
   "mobile_terminal_key_right": "Right arrow",
   "mobile_terminal_open_failed": "Could not open a shell: {message}",
   "mobile_terminal_exited": "Shell exited.",
-  "mobile_terminal_exited_code": "Shell exited with code {code}."
+  "mobile_terminal_exited_code": "Shell exited with code {code}.",
+  "mobile_transport_not_sent": "Not sent. The desktop was unreachable for a minute.",
+  "mobile_transport_may_have_run": "The desktop was unreachable for a minute. The action may still have run.",
+  "mobile_transport_lost_reply": "The connection dropped before the desktop answered. The action may still have run.",
+  "mobile_transport_disconnected": "Disconnected from the desktop.",
+  "mobile_transport_not_connected": "Not connected to the desktop.",
+  "mobile_transport_token_rotated": "The token was rotated on the desktop. Pair again with the new QR code.",
+  "mobile_transport_token_refused": "The desktop refused this token. Pair again from Settings > Remote.",
+  "mobile_transport_protocol_mismatch": "The desktop speaks remote protocol {desktop}, this app speaks {app}. Update the older one.",
+  "mobile_connection_no_server": "Not connected to any server.",
+  "mobile_connection_server_gone": "No paired server has this anymore."
 }
