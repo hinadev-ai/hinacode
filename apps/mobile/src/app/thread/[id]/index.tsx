@@ -24,7 +24,6 @@ import { useThreadConnection } from "@/hooks/use-server"
 import { READABLE_WIDTH } from "@/constants/theme"
 import { useSplitLayout } from "@/hooks/use-split-layout"
 import { useTheme } from "@/hooks/use-theme"
-import { useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import type { Thread } from "@shared/domain.ts"
 import type { ThreadActionName } from "@/lib/thread-actions"
@@ -49,7 +48,6 @@ export default function ThreadScreen() {
   const status = useThreadConnection(id)
   // KeyboardAvoidingView measures itself against its parent, which starts below the stack header.
   const headerHeight = useHeaderHeight()
-  const terminalRemountKey = useConnection((state) => (state.features.has("terminal-attach") ? "attached" : state.generation))
   const [tab, setTab] = useState<Tab>("chat")
   // Files and the shell keep their state across tab switches once opened, and end with this screen.
   const [opened, setOpened] = useState<ReadonlySet<Tab>>(() => new Set(["chat"]))
@@ -159,7 +157,7 @@ export default function ThreadScreen() {
           {tab === "prs" && <PullRequests thread={thread} />}
           {opened.has("terminal") && (
             <View style={[styles.flex, tab !== "terminal" && styles.hidden]}>
-              <TerminalPanel key={terminalRemountKey} threadId={thread.id} />
+              <TerminalPanel threadId={thread.id} />
             </View>
           )}
         </KeyboardAvoidingView>

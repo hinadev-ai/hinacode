@@ -2,10 +2,11 @@ import type { PushEvent } from "@shared/contract.ts"
 import { useEffect, useEffectEvent, useRef, useState } from "react"
 import { Keyboard, Platform, Pressable, StyleSheet, Text, View } from "react-native"
 import { Icon } from "@/components/icon"
-import { Notice } from "@/components/ui"
+import { Button, Notice } from "@/components/ui"
 import { radius } from "@/constants/theme"
+import { useThreadServer } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
-import { call, onEvent, useConnection } from "@/lib/connection"
+import { call, onEvent, RpcError, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { TerminalOutput } from "@/lib/terminal-output"
@@ -19,11 +20,29 @@ type Session = { readonly id: string; size: string; generation: number }
 const clamp = (value: number) => Math.min(1000, Math.max(1, Math.floor(value)))
 
 /**
+ * The thread's shell, replaced by a fresh one when the developer asks after it exits. A desktop that cannot attach
+ * to a running shell gets a new one after each reconnect instead. Its server's features outlast a disconnect, so
+ * going offline keeps the output on screen.
+ */
+export function TerminalPanel({ threadId }: { threadId: string }) {
+  const [shell, setShell] = useState(0)
+  const server = useThreadServer(threadId)
+  const detached = server !== undefined && !server.features.has("terminal-attach")
+  return (
+    <TerminalSession
+      key={detached ? `${shell}:${server.generation}` : shell}
+      threadId={threadId}
+      onRestart={() => setShell(shell + 1)}
+    />
+  )
+}
+
+/**
  * A shell in the thread's worktree. The session opens once the view knows its grid size and is
  * closed when this component unmounts, i.e. when the thread screen goes away. After a reconnect it
  * attaches to the same session and catches up from the last output it showed.
  */
-export function TerminalPanel({ threadId }: { threadId: string }) {
+function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart: () => void }) {
   const theme = useTheme()
   const generation = useConnection((state) => state.generation)
   const view = useRef<TerminalViewHandle>(null)
@@ -35,8 +54,12 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
   const early = useRef<TerminalPush[]>([])
   const [output] = useState(() => new TerminalOutput())
   const latestSize = useRef({ cols: 80, rows: 24 })
-  const [exitCode, setExitCode] = useState<number | null | undefined>(undefined)
+  const [ended, setEnded] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const setExitCode = (code: number | null) =>
+    setEnded(
+      code === null ? copy("mobile_terminal_exited") : copy("mobile_terminal_exited_code", { code: String(code) }),
+    )
   const applicationCursor = useRef(false)
   const [ctrl, setCtrl] = useState(false)
   const keyboardVisible = useKeyboardVisible()
@@ -72,7 +95,8 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
         const text = output.attachFailed(token)
         if (text === null) return
         write(text)
-        setError(copy("mobile_terminal_reattach_failed", { message: errorText(cause) }))
+        if (cause instanceof RpcError && cause.tag === "NotFoundError") setEnded(copy("mobile_terminal_gone"))
+        else setError(copy("mobile_terminal_reattach_failed", { message: errorText(cause) }))
       },
     )
   }
@@ -135,7 +159,7 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
   }
 
   const send = (data: string) => {
-    if (session.current !== null && exitCode === undefined) {
+    if (session.current !== null && ended === null) {
       void call("terminal.write", { id: session.current.id, data }).catch(() => {})
     }
   }
@@ -153,14 +177,13 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
   return (
     <View style={styles.container}>
       {error !== null && <Notice text={error} tone="danger" />}
-      {exitCode !== undefined && (
-        <Notice
-          text={
-            exitCode === null
-              ? copy("mobile_terminal_exited")
-              : copy("mobile_terminal_exited_code", { code: String(exitCode) })
-          }
-        />
+      {ended !== null && (
+        <View style={styles.exited}>
+          <View style={styles.exitedNotice}>
+            <Notice text={ended} />
+          </View>
+          <Button label={copy("mobile_terminal_restart")} icon="RiTerminalBoxLine" onPress={onRestart} />
+        </View>
       )}
       <View style={[styles.surface, { borderColor: theme.border }]}>
         <TerminalView
@@ -171,7 +194,7 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
           onCursorMode={(mode) => (applicationCursor.current = mode)}
         />
       </View>
-      {keyboardVisible && exitCode === undefined && (
+      {keyboardVisible && ended === null && (
         <KeyRow ctrl={ctrl} onCtrl={() => setCtrl((armed) => !armed)} onKey={onKey} />
       )}
     </View>
@@ -240,6 +263,8 @@ function useKeyboardVisible() {
 const styles = StyleSheet.create({
   container: { flex: 1, gap: 8, paddingHorizontal: 12, paddingBottom: 12 },
   row: { flexDirection: "row", gap: 6 },
+  exited: { flexDirection: "row", alignItems: "center", gap: 8 },
+  exitedNotice: { flex: 1 },
   key: {
     flex: 1,
     height: 40,

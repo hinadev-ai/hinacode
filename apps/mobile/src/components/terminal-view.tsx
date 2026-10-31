@@ -1,6 +1,7 @@
 import { useImperativeHandle, useRef } from "react"
 import { WebView } from "react-native-webview"
 import { type TerminalViewProps, xtermTheme } from "./terminal-types"
+import { useScheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 import { TERMINAL_HTML } from "@/terminal/terminal-page"
 
@@ -11,6 +12,7 @@ type PageMessage =
 
 export function TerminalView({ ref, theme, onInput, onSize, onCursorMode }: TerminalViewProps) {
   const webview = useRef<WebView>(null)
+  const scheme = useScheme()
   useImperativeHandle(ref, () => ({
     write: (data) => webview.current?.injectJavaScript(`window.kkWrite(${JSON.stringify(data)});true;`),
   }))
@@ -21,7 +23,7 @@ export function TerminalView({ ref, theme, onInput, onSize, onCursorMode }: Term
       accessibilityLabel={copy("mobile_terminal_label")}
       originWhitelist={["*"]}
       source={{ html: TERMINAL_HTML }}
-      injectedJavaScriptBeforeContentLoaded={`window.kkTheme=${JSON.stringify(xtermTheme(theme))};true;`}
+      injectedJavaScriptBeforeContentLoaded={`window.kkTheme=${JSON.stringify(xtermTheme(theme, scheme))};true;`}
       keyboardDisplayRequiresUserAction={false}
       hideKeyboardAccessoryView
       bounces={false}

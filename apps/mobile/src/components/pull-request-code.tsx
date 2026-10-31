@@ -197,7 +197,7 @@ function FileRow({ entry }: { entry: GuideFile }) {
         </Rotate>
         <Text style={[styles.mark, { color: mark.color }]}>{mark.letter}</Text>
         <View style={styles.fileName}>
-          <Text numberOfLines={1} style={[styles.path, { color: theme.text }]}>
+          <Text numberOfLines={1} ellipsizeMode="middle" style={[styles.path, { color: theme.text }]}>
             {name}
           </Text>
           {folder !== "" && (
