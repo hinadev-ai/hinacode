@@ -3,7 +3,6 @@
   "app_name": "HinaCode",
   "sidebar_label": "Projects and threads",
   "sidebar_add_project": "Add project",
-  "sidebar_new_chat": "New chat",
   "sidebar_chats": "Chats",
   "sidebar_settings": "Settings",
   "sidebar_loading": "Loading projects…",
@@ -1106,7 +1105,6 @@
   "snooze_failed": "Could not snooze: {message}",
   "snooze_undo": "Undo",
   "sidebar_filter_label": "Filter threads and projects",
-  "sidebar_filter_placeholder": "Filter",
   "sidebar_filter_projects": "Filter by project",
   "sidebar_filter_all_projects": "All projects",
   "sidebar_no_archived": "No archived threads",
@@ -2077,5 +2075,8 @@
   "action_command_label": "Command",
   "action_command_placeholder": "pnpm dev",
   "action_delete": "Delete",
+  "sidebar_projects": "Projects",
+  "sidebar_views": "Views",
+  "sidebar_search_placeholder": "Search",
   "overview_agents_all": "View all {count}"
 }

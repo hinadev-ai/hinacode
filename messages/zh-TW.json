@@ -3,7 +3,6 @@
   "app_name": "HinaCode",
   "sidebar_label": "專案與對話串",
   "sidebar_add_project": "新增專案",
-  "sidebar_new_chat": "新聊天",
   "sidebar_chats": "聊天",
   "sidebar_settings": "設定",
   "sidebar_loading": "正在載入專案…",
@@ -1070,7 +1069,6 @@
   "snooze_failed": "無法延後：{message}",
   "snooze_undo": "復原",
   "sidebar_filter_label": "篩選對話串和專案",
-  "sidebar_filter_placeholder": "篩選",
   "sidebar_filter_projects": "依專案篩選",
   "sidebar_filter_all_projects": "所有專案",
   "sidebar_no_archived": "沒有已歸檔的對話串",
@@ -2040,5 +2038,8 @@
   "action_command_label": "指令",
   "action_command_placeholder": "pnpm dev",
   "action_delete": "刪除",
+  "sidebar_projects": "專案",
+  "sidebar_views": "檢視",
+  "sidebar_search_placeholder": "搜尋",
   "overview_agents_all": "查看全部 {count} 個"
 }
