@@ -17,6 +17,15 @@ const statusIcon: Record<Exclude<TodoStatus, "in_progress">, IconName> = {
   cancelled: "RiCloseCircleLine",
 }
 
+const todoKeys = (todos: ReadonlyArray<Todo>): Array<[string, Todo]> => {
+  const seen = new Map<string, number>()
+  return todos.map((todo) => {
+    const count = seen.get(todo.text) ?? 0
+    seen.set(todo.text, count + 1)
+    return [count === 0 ? todo.text : `${todo.text}#${count}`, todo]
+  })
+}
+
 function TodoIcon({ status }: { status: TodoStatus }) {
   const theme = useTheme()
   if (status === "in_progress") return <Spinner size={14} color={theme.text} />
@@ -85,8 +94,8 @@ export function TodoTray({ thread, messages }: { thread: Thread; messages: reado
             style={{ maxHeight: ROW_HEIGHT * VISIBLE_ROWS }}
             contentContainerStyle={styles.list}
           >
-            {todos.map((todo, index) => (
-              <TodoRow key={`${index}-${todo.text}`} todo={todo} />
+            {todoKeys(todos).map(([key, todo]) => (
+              <TodoRow key={key} todo={todo} />
             ))}
           </ScrollView>
         </FadeIn>
