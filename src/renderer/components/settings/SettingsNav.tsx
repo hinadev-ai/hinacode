@@ -1,19 +1,5 @@
 import { useNavigate, useRouter, useSearch } from "@tanstack/react-router"
 import { useRef, useState } from "react"
-import type { IconType } from "react-icons"
-import {
-  RiArrowLeftLine,
-  RiCpuLine,
-  RiFlaskLine,
-  RiFlashlightLine,
-  RiGitBranchLine,
-  RiKeyboardLine,
-  RiNotification3Line,
-  RiPaletteLine,
-  RiPlugLine,
-  RiServerLine,
-  RiSettings3Line,
-} from "react-icons/ri"
 import { usePanelLayout } from "../../lib/panelLayout.ts"
 import { SIDEBAR_BOUNDS, SIDEBAR_DEFAULT_WIDTH } from "../../lib/panelSize.ts"
 import { m } from "../../paraglide/messages.js"
@@ -22,13 +8,25 @@ import { ResizeHandle } from "../ResizeHandle.tsx"
 import { Button } from "../ui/button.tsx"
 import { Input } from "../ui/input.tsx"
 import { ScrollArea } from "../ui/scroll-area.tsx"
+import { ArrowLeftIcon } from "../icons/ArrowLeftIcon.tsx"
+import { BellIcon } from "../icons/BellIcon.tsx"
+import { BoltIcon } from "../icons/BoltIcon.tsx"
+import { BranchIcon } from "../icons/BranchIcon.tsx"
+import { CpuIcon } from "../icons/CpuIcon.tsx"
+import { FlaskIcon } from "../icons/FlaskIcon.tsx"
+import type { IconComponent } from "../icons/Icon.tsx"
+import { KeyboardIcon } from "../icons/KeyboardIcon.tsx"
+import { PaletteIcon } from "../icons/PaletteIcon.tsx"
+import { PlugIcon } from "../icons/PlugIcon.tsx"
+import { ServerIcon } from "../icons/ServerIcon.tsx"
+import { SettingsIcon } from "../icons/SettingsIcon.tsx"
 
 export interface SettingsPage {
   readonly id: string
   readonly scope: "app" | "environment"
   readonly label: () => string
   readonly description?: () => string
-  readonly icon: IconType
+  readonly icon: IconComponent
   readonly keywords: ReadonlyArray<() => string>
 }
 
@@ -37,14 +35,14 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
     id: "general",
     scope: "app",
     label: m.settings_general,
-    icon: RiSettings3Line,
+    icon: SettingsIcon,
     keywords: [m.settings_language, m.settings_version],
   },
   {
     id: "appearance",
     scope: "app",
     label: m.settings_appearance,
-    icon: RiPaletteLine,
+    icon: PaletteIcon,
     keywords: [m.settings_theme, m.settings_contrast, m.settings_font_size],
   },
   {
@@ -52,7 +50,7 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
     scope: "app",
     label: m.settings_notifications,
     description: m.settings_notifications_hint,
-    icon: RiNotification3Line,
+    icon: BellIcon,
     keywords: [
       m.settings_notifications_completed,
       m.settings_notifications_needs_input,
@@ -65,7 +63,7 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
     scope: "app",
     label: m.settings_keybindings,
     description: m.settings_keybindings_hint,
-    icon: RiKeyboardLine,
+    icon: KeyboardIcon,
     keywords: [],
   },
   {
@@ -73,7 +71,7 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
     scope: "environment",
     label: m.settings_providers,
     description: m.settings_models_hint,
-    icon: RiCpuLine,
+    icon: CpuIcon,
     keywords: [
       m.settings_default_model,
       m.settings_default_account,
@@ -88,7 +86,7 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
     scope: "environment",
     label: m.settings_worktrees,
     description: m.settings_worktrees_description,
-    icon: RiGitBranchLine,
+    icon: BranchIcon,
     keywords: [
       m.settings_worktree_root,
       m.settings_archive,
@@ -100,7 +98,7 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
     id: "integrations",
     scope: "environment",
     label: m.settings_integrations,
-    icon: RiPlugLine,
+    icon: PlugIcon,
     keywords: [m.settings_github_label, m.settings_linear_label, m.settings_slack_label],
   },
   {
@@ -108,7 +106,7 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
     scope: "environment",
     label: m.settings_automations,
     description: m.automations_description,
-    icon: RiFlashlightLine,
+    icon: BoltIcon,
     keywords: [m.automations_bind_label],
   },
   {
@@ -116,7 +114,7 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
     scope: "app",
     label: m.settings_connections,
     description: m.environments_description,
-    icon: RiServerLine,
+    icon: ServerIcon,
     keywords: [
       m.environment_relay_owner_token_label,
       m.environment_pairing_url_label,
@@ -129,7 +127,7 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
     scope: "environment",
     label: m.settings_experimental,
     description: m.settings_experimental_hint,
-    icon: RiFlaskLine,
+    icon: FlaskIcon,
     keywords: [m.settings_tiny_vm, m.settings_devices],
   },
 ]
@@ -191,7 +189,7 @@ export function SettingsNav() {
     >
       <div className="flex flex-col gap-1 px-2 pt-2 pb-1">
         <Button variant="ghost" size="sm" onClick={onLeave} className="justify-start text-muted-foreground">
-          <RiArrowLeftLine aria-hidden />
+          <ArrowLeftIcon aria-hidden />
           {m.settings_back()}
         </Button>
         <Input

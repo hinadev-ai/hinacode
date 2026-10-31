@@ -27,7 +27,7 @@ HinaCode runs Claude Code, Codex and Muse Code. A developer who pays for Cursor 
 - `Settings.enabledProviders` is `null` until the developer finishes onboarding, then the list they chose. `App` in `src/renderer/main.tsx` shows `Onboarding` instead of the router while it is `null`, so existing installs see the screen once, with their installed agents on. `enabledProviders()` and `newThreadProvider()` in `src/shared/providers.ts` are the one place that reads it. Start also moves `defaultProvider` to an enabled agent.
 - The rpc `agents.detect` returns, per provider, whether its CLI is on `PATH`. It reuses `findBinary`.
 - Every per-agent settings struct is built by one `perProvider` helper whose keys default on decode, so adding an agent no longer breaks settings saved by an older version.
-- Migration `0031_acp_providers` widens the `provider` CHECK on `thread` and `automation`.
+- Migration `0032_acp_providers` widens the `provider` CHECK on `thread` and `automation`.
 
 ## Out of scope
 

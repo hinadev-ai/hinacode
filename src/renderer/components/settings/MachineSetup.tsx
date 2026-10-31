@@ -2,15 +2,7 @@ import { useAtomValue } from "@effect/atom-react"
 import { useNavigate } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import type { ReactNode } from "react"
-import {
-  RiCheckLine,
-  RiCloudLine,
-  RiErrorWarningFill,
-  RiGithubFill,
-  RiMacbookLine,
-  RiSlackFill,
-  RiSubtractLine,
-} from "react-icons/ri"
+import { RiGithubFill, RiSlackFill } from "react-icons/ri"
 import type { AgentAccount, ProviderId } from "../../../shared/agent.ts"
 import type { EnvironmentStatus, GitHubAuth } from "../../../shared/domain.ts"
 import { enabledProviders } from "../../../shared/providers.ts"
@@ -24,6 +16,11 @@ import { ProviderIcon, providerLabel } from "../ProviderIcon.tsx"
 import { Button } from "../ui/button.tsx"
 import { Skeleton } from "../ui/skeleton.tsx"
 import { SettingsSection, settingsSurfaceClass } from "./SettingsSection.tsx"
+import { CheckIcon } from "../icons/CheckIcon.tsx"
+import { CloudIcon } from "../icons/CloudIcon.tsx"
+import { LaptopIcon } from "../icons/LaptopIcon.tsx"
+import { MinusIcon } from "../icons/MinusIcon.tsx"
+import { WarningFillIcon } from "../icons/WarningFillIcon.tsx"
 
 type Tone = "ready" | "attention" | "off" | "loading"
 
@@ -155,9 +152,9 @@ const setupRows = (providers: ReadonlyArray<ProviderId>): ReadonlyArray<Row> => 
 ]
 
 const toneIcon: Record<Tone, ReactNode> = {
-  ready: <RiCheckLine aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />,
-  attention: <RiErrorWarningFill aria-hidden className="size-3.5 shrink-0 text-attention" />,
-  off: <RiSubtractLine aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />,
+  ready: <CheckIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />,
+  attention: <WarningFillIcon aria-hidden className="size-3.5 shrink-0 text-attention" />,
+  off: <MinusIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />,
   loading: null,
 }
 
@@ -236,9 +233,9 @@ export function MachineSetup() {
                 <th key={machine.id ?? ""} scope="col" className="px-2.5 pt-2 pb-2.5 text-left align-top font-medium">
                   <span className="flex min-w-0 items-center gap-1.5">
                     {machine.id === null ? (
-                      <RiMacbookLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                      <LaptopIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
                     ) : (
-                      <RiCloudLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                      <CloudIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
                     )}
                     <span className="truncate">{machine.name}</span>
                   </span>
@@ -249,7 +246,7 @@ export function MachineSetup() {
                         linkTone[machine.cloud.status],
                       )}
                     >
-                      <RiErrorWarningFill aria-hidden className="size-3.5 shrink-0" />
+                      <WarningFillIcon aria-hidden className="size-3.5 shrink-0" />
                       {statusLabel[machine.cloud.status]()}
                     </span>
                   )}

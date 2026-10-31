@@ -26,6 +26,8 @@ export const themes: Record<ThemeId, Theme> = {
   dracula: { label: () => "Dracula", scheme: "dark", codeTheme: "dracula" },
   "material-theme": { label: () => "Material Theme", scheme: "dark", codeTheme: "material-theme" },
   pinky: { label: () => "Pinky", scheme: "light", codeTheme: "rose-pine-dawn" },
+  "hina-light": { label: m.theme_hina_light, scheme: "light", codeTheme: "vitesse-light" },
+  "hina-dark": { label: m.theme_hina_dark, scheme: "dark", codeTheme: "vitesse-dark" },
 }
 
 const systemAppearance = window.matchMedia("(prefers-color-scheme: dark)")

@@ -1,6 +1,5 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { RiAddLine, RiFolderAddLine } from "react-icons/ri"
 import { ChordKeys } from "../components/ChordKeys.tsx"
 import { Button } from "../components/ui/button.tsx"
 import { commands } from "../keybindings/commands.ts"
@@ -9,6 +8,8 @@ import { projectsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { NEW_THREAD_PREFIX, usePalette } from "../palette/usePalette.ts"
 import { useUi } from "../stores/ui.ts"
+import { FolderAddIcon } from "../components/icons/FolderAddIcon.tsx"
+import { PlusIcon } from "../components/icons/PlusIcon.tsx"
 
 const commandTitle = (id: "thread.new" | "project.add") => commands.find((command) => command.id === id)?.title() ?? ""
 
@@ -23,7 +24,7 @@ export function HomeRoute() {
       variant={hasProjects ? "outline" : "default"}
       onClick={() => useUi.getState().setAddProjectOpen(true)}
     >
-      <RiFolderAddLine aria-hidden />
+      <FolderAddIcon aria-hidden />
       {commandTitle("project.add")}
       {keymap["project.add"] && <ChordKeys chord={keymap["project.add"]} />}
     </Button>
@@ -38,7 +39,7 @@ export function HomeRoute() {
       <div className="flex flex-wrap justify-center gap-2">
         {hasProjects && (
           <Button size="lg" onClick={() => usePalette.getState().show(NEW_THREAD_PREFIX)}>
-            <RiAddLine aria-hidden />
+            <PlusIcon aria-hidden />
             {commandTitle("thread.new")}
             {keymap["thread.new"] && <ChordKeys chord={keymap["thread.new"]} />}
           </Button>

@@ -1,26 +1,24 @@
 import { useState } from "react"
-import type { IconType } from "react-icons"
-import {
-  RiArrowDownSLine,
-  RiCheckboxBlankCircleLine,
-  RiCheckboxCircleLine,
-  RiCloseCircleLine,
-  RiLoader4Line,
-} from "react-icons/ri"
 import type { Message, Thread } from "../../shared/domain.ts"
 import { latestTodos, type Todo, type TodoStatus } from "../lib/todos.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { useMessages } from "../stores/messages.ts"
 import { ActivityRow } from "./ActivityRow.tsx"
+import { CheckCircleIcon } from "./icons/CheckCircleIcon.tsx"
+import { ChevronDownIcon } from "./icons/ChevronDownIcon.tsx"
+import { CircleIcon } from "./icons/CircleIcon.tsx"
+import type { IconComponent } from "./icons/Icon.tsx"
+import { SpinnerIcon } from "./icons/SpinnerIcon.tsx"
+import { XCircleIcon } from "./icons/XCircleIcon.tsx"
 
 const NO_MESSAGES: ReadonlyArray<Message> = []
 
-const statusIcon: Record<TodoStatus, { readonly icon: IconType; readonly className: string }> = {
-  pending: { icon: RiCheckboxBlankCircleLine, className: "text-muted-foreground" },
-  in_progress: { icon: RiLoader4Line, className: "animate-spin motion-reduce:animate-none" },
-  completed: { icon: RiCheckboxCircleLine, className: "text-muted-foreground" },
-  cancelled: { icon: RiCloseCircleLine, className: "text-muted-foreground" },
+const statusIcon: Record<TodoStatus, { readonly icon: IconComponent; readonly className: string }> = {
+  pending: { icon: CircleIcon, className: "text-muted-foreground" },
+  in_progress: { icon: SpinnerIcon, className: "animate-spin motion-reduce:animate-none" },
+  completed: { icon: CheckCircleIcon, className: "text-muted-foreground" },
+  cancelled: { icon: XCircleIcon, className: "text-muted-foreground" },
 }
 
 function TodoIcon({ status, className }: { status: TodoStatus; className?: string }) {
@@ -72,7 +70,7 @@ export function TodoActivity({ thread }: { thread: Thread }) {
             <span className="truncate">{current.text}</span>
           </span>
         )}
-        <RiArrowDownSLine
+        <ChevronDownIcon
           aria-hidden
           className={cn(
             "ml-auto size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 motion-reduce:transition-none",

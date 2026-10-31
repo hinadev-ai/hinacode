@@ -1,5 +1,6 @@
+import type { AttachmentSource } from "../services/Attachments.ts"
 import { type Effect, Schema, type Stream } from "effect"
-import type { AccessMode, Attachment } from "../../shared/domain.ts"
+import type { AccessMode, Attachment, ExternalSession, Message } from "../../shared/domain.ts"
 import type { PlanLimits } from "../../shared/limits.ts"
 import type {
   AccountHome,
@@ -33,6 +34,20 @@ export interface BackgroundTasksChange {
   readonly tasks: ReadonlyArray<BackgroundTask>
 }
 
+export type NativeSession = Pick<ExternalSession, "sessionId" | "title" | "preview" | "branch" | "updatedAt">
+
+export type ImportedMessage = Pick<Message, "role" | "parts" | "createdAt" | "completedAt" | "forkPoint"> & {
+  readonly images?: ReadonlyArray<AttachmentSource>
+}
+
+export interface SessionHistory {
+  readonly title: string | null
+  readonly model: string | null
+  readonly messages: ReadonlyArray<ImportedMessage> | null
+}
+
+export const LISTED_SESSIONS = 50
+
 export interface AgentProvider {
   readonly id: ProviderId
   readonly listModels: Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
@@ -44,6 +59,15 @@ export interface AgentProvider {
     from: AccountHome | null,
     to: AccountHome | null,
   ) => Effect.Effect<void, AgentError>
+  readonly listSessions?: (
+    cwd: string,
+    home: AccountHome | null,
+  ) => Effect.Effect<ReadonlyArray<NativeSession>, AgentError>
+  readonly readSession?: (
+    sessionId: string,
+    cwd: string,
+    home: AccountHome | null,
+  ) => Effect.Effect<SessionHistory, AgentError>
   readonly listCommands: (input: {
     readonly threadId: string
     readonly cwd: string

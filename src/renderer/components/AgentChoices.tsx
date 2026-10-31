@@ -1,7 +1,8 @@
-import { RiArrowRightUpLine, RiCheckLine } from "react-icons/ri"
 import type { InstalledAgent, ProviderId } from "../../shared/agent.ts"
 import { providerCli } from "../../shared/providers.ts"
 import { m } from "../paraglide/messages.js"
+import { CheckIcon } from "./icons/CheckIcon.tsx"
+import { ExternalIcon } from "./icons/ExternalIcon.tsx"
 import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { Field, FieldContent, FieldDescription, FieldLabel } from "./ui/field.tsx"
 import { Switch } from "./ui/switch.tsx"
@@ -45,7 +46,7 @@ function AgentStatus({ provider, installed }: { provider: ProviderId; installed:
   if (installed) {
     return (
       <span className="inline-flex items-center gap-1">
-        <RiCheckLine aria-hidden className="size-3.5 text-success" />
+        <CheckIcon aria-hidden className="size-3.5 text-success" />
         {m.onboarding_installed()}
       </span>
     )
@@ -61,7 +62,7 @@ function AgentStatus({ provider, installed }: { provider: ProviderId; installed:
         className="inline-flex items-center text-foreground underline underline-offset-2"
       >
         {m.onboarding_install_short()}
-        <RiArrowRightUpLine aria-hidden className="size-3.5" />
+        <ExternalIcon aria-hidden className="size-3.5" />
       </a>
     </span>
   )

@@ -1,4 +1,3 @@
-import { RiChat3Line, RiErrorWarningLine, RiFileTextLine } from "react-icons/ri"
 import type { FileSearchHit, ThreadSearchHit } from "../../shared/domain.ts"
 import { ProviderIcon } from "../components/ProviderIcon.tsx"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -9,6 +8,9 @@ import { useUi } from "../stores/ui.ts"
 import { MAX_ITEMS_PER_GROUP, type RankedGroup, type RankedItem } from "./rank.ts"
 import { openFile } from "./sources.tsx"
 import type { PaletteContext, PaletteGroup, PaletteItem, PaletteSource } from "./types.ts"
+import { ChatIcon } from "../components/icons/ChatIcon.tsx"
+import { FileTextIcon } from "../components/icons/FileTextIcon.tsx"
+import { WarningIcon } from "../components/icons/WarningIcon.tsx"
 
 const iconClass = "size-3.5 shrink-0 text-muted-foreground"
 
@@ -21,7 +23,7 @@ const threadItem = (hit: ThreadSearchHit, query: string, ctx: PaletteContext): P
     group: "threads",
     title: hit.threadTitle,
     subtitle: hit.snippet,
-    icon: provider ? <ProviderIcon provider={provider} /> : <RiChat3Line aria-hidden className={iconClass} />,
+    icon: provider ? <ProviderIcon provider={provider} /> : <ChatIcon aria-hidden className={iconClass} />,
     run: () => {
       void ctx.navigate({ to: "/thread/$threadId", params: { threadId: hit.threadId } })
       useUi.getState().openFind(hit.threadId, query, hit.messageId)
@@ -34,7 +36,7 @@ const fileItem = (hit: FileSearchHit, ctx: PaletteContext): PaletteItem => ({
   group: "files",
   title: `${hit.path.slice(hit.path.lastIndexOf("/") + 1)}:${hit.line}`,
   subtitle: hit.text,
-  icon: <RiFileTextLine aria-hidden className={iconClass} />,
+  icon: <FileTextIcon aria-hidden className={iconClass} />,
   run: () => openFile(ctx, hit.path),
 })
 
@@ -42,7 +44,7 @@ const ripgrepMissingItem = (): PaletteItem => ({
   id: "match:ripgrep-missing",
   group: "files",
   title: m.search_ripgrep_missing(),
-  icon: <RiErrorWarningLine aria-hidden className={iconClass} />,
+  icon: <WarningIcon aria-hidden className={iconClass} />,
   run: () => {},
 })
 

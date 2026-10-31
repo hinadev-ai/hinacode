@@ -14,7 +14,6 @@ import {
   useState,
   useTransition,
 } from "react"
-import { RiCloseLine, RiFileCopyLine, RiFileEditLine } from "react-icons/ri"
 import { toast } from "sonner"
 import { useTheme } from "../lib/appearance.ts"
 import { projectFileUrl } from "../../shared/channels.ts"
@@ -29,6 +28,9 @@ import { FilePath } from "./FilePatch.tsx"
 import { LineCommentCard, LineCommentForm } from "./LineComment.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { Button } from "./ui/button.tsx"
+import { CloseIcon } from "./icons/CloseIcon.tsx"
+import { CopyIcon } from "./icons/CopyIcon.tsx"
+import { FileDiffIcon } from "./icons/FileDiffIcon.tsx"
 
 interface FileViewerProps {
   readonly threadId: string
@@ -218,7 +220,7 @@ function ViewerHeader({ path, onClose, onShowChanges, children }: ViewerHeaderPr
       {children}
       {onShowChanges && (
         <Button variant="ghost" size="xs" onClick={onShowChanges}>
-          <RiFileEditLine aria-hidden />
+          <FileDiffIcon aria-hidden />
           {m.explorer_show_changes()}
         </Button>
       )}
@@ -229,10 +231,10 @@ function ViewerHeader({ path, onClose, onShowChanges, children }: ViewerHeaderPr
         title={m.explorer_copy_path()}
         onClick={() => void navigator.clipboard.writeText(path)}
       >
-        <RiFileCopyLine aria-hidden />
+        <CopyIcon aria-hidden />
       </Button>
       <Button variant="ghost" size="icon-xs" aria-label={m.viewer_close()} title={m.viewer_close()} onClick={onClose}>
-        <RiCloseLine aria-hidden />
+        <CloseIcon aria-hidden />
       </Button>
     </header>
   )

@@ -290,8 +290,8 @@ const make = Effect.gen(function* () {
   const backgroundTasks = new Map<string, ReadonlyArray<BackgroundTask>>()
   let seq = 0
 
-  yield* threads.resetInterrupted
   yield* messages.closeInterrupted
+  yield* threads.resetInterrupted
 
   const providerFor = (id: ProviderId) => Effect.succeed(providers[id])
 

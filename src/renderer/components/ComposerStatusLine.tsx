@@ -1,6 +1,5 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { RiCloudLine, RiGitBranchLine, RiMacbookLine, RiStackLine } from "react-icons/ri"
 import type { PullRequest, PullRequestStatus, Thread } from "../../shared/domain.ts"
 import { environmentName, useClouds, usePullRequestHref, useThreadEnvironment } from "../lib/environments.ts"
 import { currentBranchAtom, pullRequestStatusesAtom } from "../lib/rpc.ts"
@@ -10,6 +9,10 @@ import { usePullRequests } from "../stores/pullRequests.ts"
 import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { StatusIcon, statusIndicator } from "./ThreadPullRequests.tsx"
+import { BranchIcon } from "./icons/BranchIcon.tsx"
+import { CloudIcon } from "./icons/CloudIcon.tsx"
+import { LaptopIcon } from "./icons/LaptopIcon.tsx"
+import { StackIcon } from "./icons/StackIcon.tsx"
 
 const statusLabel = {
   draft: m.pr_state_draft,
@@ -31,7 +34,7 @@ export function ComposerStatusLine({ thread }: { thread: Thread }) {
   const urls = links.map((link) => link.url)
   const pullRequests = useAtomValue(pullRequestStatusesAtom(environment, urls))
   const branch = worktree?.branch ?? rootBranch
-  const EnvironmentIcon = environment === null ? RiMacbookLine : RiCloudLine
+  const EnvironmentIcon = environment === null ? LaptopIcon : CloudIcon
 
   return (
     <div className="-mb-3 -ml-3 bg-background pt-1 pb-3 pl-3">
@@ -42,7 +45,7 @@ export function ComposerStatusLine({ thread }: { thread: Thread }) {
         </span>
         {branch !== "" && (
           <span className="flex min-w-0 items-center gap-1" title={worktree?.path}>
-            <RiGitBranchLine aria-hidden className="size-3 shrink-0" />
+            <BranchIcon aria-hidden className="size-3 shrink-0" />
             <span className="truncate font-mono">{branch}</span>
           </span>
         )}
@@ -55,7 +58,7 @@ export function ComposerStatusLine({ thread }: { thread: Thread }) {
               onClick={() => useUi.getState().showView(thread.id, "pullRequests", { focus: true })}
               className="flex shrink-0 items-center gap-1 rounded-sm tabular-nums outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <RiStackLine aria-hidden className="size-3" />
+              <StackIcon aria-hidden className="size-3" />
               <span aria-hidden>{urls.length}</span>
               <span className="sr-only">{m.sidebar_pull_request_stack({ count: String(urls.length) })}</span>
             </button>

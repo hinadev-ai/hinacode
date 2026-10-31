@@ -1,6 +1,7 @@
-import { RiCloudLine, RiCloudOffLine } from "react-icons/ri"
 import { type Cloud, useCloudStateText } from "../lib/environments.ts"
 import { m } from "../paraglide/messages.js"
+import { CloudIcon } from "./icons/CloudIcon.tsx"
+import { CloudOffIcon } from "./icons/CloudOffIcon.tsx"
 
 export function CloudMark({ cloud, id, className }: { cloud: Cloud; id?: string; className: string }) {
   const state = useCloudStateText(cloud)
@@ -8,7 +9,7 @@ export function CloudMark({ cloud, id, className }: { cloud: Cloud; id?: string;
     state === null
       ? m.environment_on({ environment: cloud.name })
       : m.environment_on_state({ environment: cloud.name, state })
-  const Icon = state === null ? RiCloudLine : RiCloudOffLine
+  const Icon = state === null ? CloudIcon : CloudOffIcon
   return (
     <span
       title={label}

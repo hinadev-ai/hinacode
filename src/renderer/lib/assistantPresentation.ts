@@ -22,7 +22,7 @@ export function assistantPresentation(message: Message, showElapsedTime = true):
     message.role === "user" ||
     message.completedAt === null ||
     !showElapsedTime ||
-    parts.every(({ part }) => part.type === "agent_switch")
+    parts.every(({ part }) => part.type === "agent_switch" || part.type === "session_import")
   )
     return { kind: "inline", parts }
   const durationMs = Date.parse(message.completedAt) - Date.parse(message.createdAt)

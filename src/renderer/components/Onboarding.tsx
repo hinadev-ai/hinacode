@@ -2,7 +2,6 @@ import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { useState } from "react"
-import { RiRefreshLine } from "react-icons/ri"
 import { type InstalledAgent, ProviderId } from "../../shared/agent.ts"
 import { newThreadProvider } from "../../shared/providers.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -10,6 +9,7 @@ import { installedAgentsAtom, updateSettingsAtom } from "../lib/rpc.ts"
 import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { AgentChoices } from "./AgentChoices.tsx"
+import { RefreshIcon } from "./icons/RefreshIcon.tsx"
 import { settingsGroupClass } from "./settings/SettingsSection.tsx"
 import { Button } from "./ui/button.tsx"
 
@@ -88,7 +88,7 @@ function AgentPicker({ installed, found, checking, onCheckAgain }: AgentPickerPr
       )}
       <footer className={cn("flex items-center justify-between gap-2", entering, "[animation-delay:200ms]")}>
         <Button variant="ghost" disabled={checking} onClick={onCheckAgain}>
-          <RiRefreshLine aria-hidden />
+          <RefreshIcon aria-hidden />
           {m.onboarding_check_again()}
         </Button>
         <Button size="lg" disabled={enabled.length === 0} action={start}>

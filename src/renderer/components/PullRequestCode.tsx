@@ -1,27 +1,6 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { useEffect, useId, useState, useTransition } from "react"
-import type { IconType } from "react-icons"
-import {
-  RiBookOpenLine,
-  RiBox3Line,
-  RiCodeSSlashLine,
-  RiDatabase2Line,
-  RiEqualizerLine,
-  RiErrorWarningLine,
-  RiFlaskLine,
-  RiHammerLine,
-  RiImageLine,
-  RiLayoutMasonryLine,
-  RiMoreLine,
-  RiPlayCircleLine,
-  RiPlugLine,
-  RiShieldKeyholeLine,
-  RiSparkling2Line,
-  RiTerminalBoxLine,
-  RiToolsLine,
-  RiTranslate2,
-} from "react-icons/ri"
 import type {
   GuideCategory,
   GuideFileNote,
@@ -50,25 +29,44 @@ import { Markdown } from "./Markdown.tsx"
 import { Button } from "./ui/button.tsx"
 import { SkeletonList } from "./ui/skeleton.tsx"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
+import { BookIcon } from "./icons/BookIcon.tsx"
+import { CodeIcon } from "./icons/CodeIcon.tsx"
+import { DatabaseIcon } from "./icons/DatabaseIcon.tsx"
+import { FlaskIcon } from "./icons/FlaskIcon.tsx"
+import { GuideIcon } from "./icons/GuideIcon.tsx"
+import { HammerIcon } from "./icons/HammerIcon.tsx"
+import type { IconComponent } from "./icons/Icon.tsx"
+import { ImageIcon } from "./icons/ImageIcon.tsx"
+import { LayoutIcon } from "./icons/LayoutIcon.tsx"
+import { MoreIcon } from "./icons/MoreIcon.tsx"
+import { PackageIcon } from "./icons/PackageIcon.tsx"
+import { PlayIcon } from "./icons/PlayIcon.tsx"
+import { PlugIcon } from "./icons/PlugIcon.tsx"
+import { ShieldKeyholeIcon } from "./icons/ShieldKeyholeIcon.tsx"
+import { SlidersIcon } from "./icons/SlidersIcon.tsx"
+import { TerminalIcon } from "./icons/TerminalIcon.tsx"
+import { ToolsIcon } from "./icons/ToolsIcon.tsx"
+import { TranslateIcon } from "./icons/TranslateIcon.tsx"
+import { WarningIcon } from "./icons/WarningIcon.tsx"
 
 const categoryIcon = {
-  ui: RiLayoutMasonryLine,
-  api: RiPlugLine,
-  core: RiCodeSSlashLine,
-  data: RiDatabase2Line,
-  cli: RiTerminalBoxLine,
-  security: RiShieldKeyholeLine,
-  tests: RiFlaskLine,
-  docs: RiBookOpenLine,
-  examples: RiPlayCircleLine,
-  deps: RiBox3Line,
-  build: RiHammerLine,
-  scripts: RiToolsLine,
-  config: RiEqualizerLine,
-  i18n: RiTranslate2,
-  assets: RiImageLine,
-  other: RiMoreLine,
-} satisfies Record<GuideCategory, IconType>
+  ui: LayoutIcon,
+  api: PlugIcon,
+  core: CodeIcon,
+  data: DatabaseIcon,
+  cli: TerminalIcon,
+  security: ShieldKeyholeIcon,
+  tests: FlaskIcon,
+  docs: BookIcon,
+  examples: PlayIcon,
+  deps: PackageIcon,
+  build: HammerIcon,
+  scripts: ToolsIcon,
+  config: SlidersIcon,
+  i18n: TranslateIcon,
+  assets: ImageIcon,
+  other: MoreIcon,
+} satisfies Record<GuideCategory, IconComponent>
 
 const categoryLabel = {
   ui: m.guide_category_ui,
@@ -111,7 +109,7 @@ export function PullRequestCode({ url }: { url: string }) {
         <TabsList aria-label={m.pr_code_view_label()} className="w-full">
           <TabsTrigger value="files">{m.pr_code_view_files()}</TabsTrigger>
           <TabsTrigger value="guide">
-            <RiSparkling2Line aria-hidden />
+            <GuideIcon aria-hidden />
             {m.pr_code_view_guide()}
           </TabsTrigger>
         </TabsList>
@@ -251,7 +249,7 @@ function PullRequestFileRow({ entry }: { entry: GuideFile }) {
 function CriticalMark({ className }: { className?: string }) {
   return (
     <span title={m.guide_critical()} className="flex shrink-0">
-      <RiErrorWarningLine aria-hidden className={cn("size-3.5 text-attention", className)} />
+      <WarningIcon aria-hidden className={cn("size-3.5 text-attention", className)} />
       <span className="sr-only">{m.guide_critical()}</span>
     </span>
   )
@@ -268,7 +266,7 @@ function NoteCard({ note, showLine = false }: { note: GuideFileNote | GuideLineN
       {note.critical ? (
         <CriticalMark className="mt-0.5" />
       ) : (
-        <RiSparkling2Line aria-hidden className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+        <GuideIcon aria-hidden className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
       )}
       <div className="min-w-0 flex-1">
         {showLine && "line" in note && (
