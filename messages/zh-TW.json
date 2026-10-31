@@ -65,7 +65,16 @@
   "queue_after_approval": "回覆核准請求後引導代理",
   "queue_edit": "在輸入框中編輯",
   "queue_remove": "從佇列移除",
-  "queue_attachments": "{count} 個附件",
+  "queue_attachments": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 個附件",
+        "countPlural=other": "{count} 個附件"
+      }
+    }
+  ],
   "settings_general": "一般",
   "settings_setup_title": "機器設定",
   "settings_setup_cell": "{machine} 的 {item}：{state}",
