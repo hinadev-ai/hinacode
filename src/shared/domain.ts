@@ -65,6 +65,11 @@ export type Worktree = typeof Worktree.Type
 export const CheckoutState = Schema.Literals(["clean", "dirty", "missing"])
 export type CheckoutState = typeof CheckoutState.Type
 
+export type WorkspaceStatus = WorktreeStatus | "missing"
+
+export const workspaceStatus = (status: WorktreeStatus, checkout: CheckoutState | null): WorkspaceStatus =>
+  status === "ready" && checkout === "missing" ? "missing" : status
+
 export const WorktreeCheckout = Schema.Struct({ id: Schema.String, state: CheckoutState })
 export type WorktreeCheckout = typeof WorktreeCheckout.Type
 

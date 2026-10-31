@@ -121,7 +121,9 @@ export const worktreeCheckoutsAtom = Atom.make(
   ),
 )
 
-export const worktreeCheckoutStateAtom = Atom.family((id: string) => Atom.make(call("worktrees.checkoutState", { id })))
+export const worktreeCheckoutStateAtom = Atom.family((id: string) =>
+  Atom.make(call("worktrees.checkoutState", { id })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
+)
 
 export const environmentsAtom = Atom.make((get) => {
   get.addFinalizer(

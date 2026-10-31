@@ -44,6 +44,7 @@ import type {
 import { isThreadBusy, spawnsSubagent } from "../../shared/domain.ts"
 import { previewPush } from "../../shared/compactTranscript.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
+import { resumeGraceMs } from "../../shared/limits.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { handoffPrompt } from "../agents/handoff.ts"
@@ -104,6 +105,13 @@ type SendError =
   | PullRequestElsewhereError
   | PullRequestUrlInvalidError
   | RootBusyError
+
+const resumeIsDue = (thread: Thread, now: string) => {
+  const reset = thread.usageLimit?.reset
+  return (
+    thread.status === "limited" && reset?.autoResume === true && Date.parse(reset.at) + resumeGraceMs <= Date.parse(now)
+  )
+}
 
 export class AgentRunner extends Context.Service<
   AgentRunner,
@@ -444,7 +452,8 @@ const make = Effect.gen(function* () {
           yield* updateThread({ id: thread.id, providerSessionId: event.providerSessionId })
         }
         if (event.type === "turn_completed" || event.type === "turn_failed") completed = event.type === "turn_completed"
-        const nextStatus = statusAfter(event)
+        const resolvedStatus = statusAfter(event)
+        const nextStatus = resolvedStatus === "running" && waitsOnUser(thread.id) ? "awaiting_approval" : resolvedStatus
         if (nextStatus !== undefined && nextStatus !== status) {
           status = nextStatus
           yield* updateThread({
@@ -970,9 +979,6 @@ const make = Effect.gen(function* () {
         activeTurns.get(threadId)?.steer(text, attachments, when) ?? sendWhen(threadId, text, attachments, {}, when),
     )
 
-  // FIXME: providers round their reset time and their clock drifts from ours
-  const resumeGraceMs = 60_000
-
   const resumeAtReset = (threadId: string, enabled: boolean) =>
     Effect.gen(function* () {
       const thread = yield* threads.get(threadId)
@@ -985,15 +991,6 @@ const make = Effect.gen(function* () {
         usageLimit: { ...limit, reset: { ...limit.reset, autoResume: enabled } },
       })
     }).pipe(exclusive(threadId))
-
-  const resumeIsDue = (thread: Thread, now: string) => {
-    const reset = thread.usageLimit?.reset
-    return (
-      thread.status === "limited" &&
-      reset?.autoResume === true &&
-      Date.parse(reset.at) + resumeGraceMs <= Date.parse(now)
-    )
-  }
 
   const consumeDueResume = (threadId: string, now: string) =>
     Effect.gen(function* () {

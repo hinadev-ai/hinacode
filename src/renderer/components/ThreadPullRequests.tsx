@@ -18,6 +18,7 @@ import { fixChecksPrompt, resolveConflictsPrompt } from "../../shared/pullReques
 import { checksIndicator as sharedChecksIndicator, isOpen, pullRequestIndicator } from "../../shared/threadStatus.ts"
 import { toIcon } from "../lib/indicators.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
+import { pullRequestName } from "../lib/pullRequestRefs.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
 import { useNow } from "../lib/useNow.ts"
 import {
@@ -70,11 +71,6 @@ import { Textarea } from "./ui/textarea.tsx"
 const PullRequestCode = lazy(() =>
   import("./PullRequestCode.tsx").then((module) => ({ default: module.PullRequestCode })),
 )
-
-const shortName = (url: string) => {
-  const match = /github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)/.exec(url)
-  return match ? `${match[1]}#${match[2]}` : url
-}
 
 export const pullRequestStatusLabel = {
   draft: m.pr_state_draft,
@@ -284,7 +280,7 @@ function PullRequestRow({
       >
         <StatusIcon status={pullRequest?.status} colored />
         <span className="min-w-0 truncate font-mono text-muted-foreground" title={pullRequest ? undefined : url}>
-          #{pullRequest?.number ?? shortName(url)}
+          {pullRequest ? `#${pullRequest.number}` : pullRequestName(url)}
         </span>
         <span className="min-w-0 flex-1 truncate" title={pullRequest?.title}>
           {pullRequest ? pullRequestSummary(pullRequest) : null}
@@ -422,7 +418,7 @@ function PullRequestLink({ threadId, url, className }: { threadId: string; url: 
         className,
       )}
     >
-      <span className="truncate">{shortName(url)}</span>
+      <span className="truncate">{pullRequestName(url)}</span>
       <ExternalIcon aria-hidden className="size-3 shrink-0" />
     </a>
   )
@@ -436,7 +432,7 @@ interface UnlinkButtonProps {
 
 function UnlinkButton({ threadId, url, onUnlinkFailed }: UnlinkButtonProps) {
   const [pending, startTransition] = useTransition()
-  const label = m.pr_links_unlink({ name: shortName(url) })
+  const label = m.pr_links_unlink({ name: pullRequestName(url) })
 
   const unlink = () =>
     startTransition(async () => {
@@ -637,7 +633,7 @@ function WatchButton({ threadId, url, watch }: { threadId: string; url: string; 
         variant={watching ? "secondary" : "ghost"}
         size="sm"
         aria-pressed={watching}
-        title={watching ? m.pr_watch_stop({ name: shortName(url) }) : m.pr_watch_hint()}
+        title={watching ? m.pr_watch_stop({ name: pullRequestName(url) }) : m.pr_watch_hint()}
         disabled={pending}
         onClick={toggle}
       >

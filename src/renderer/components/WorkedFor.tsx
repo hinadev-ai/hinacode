@@ -1,4 +1,4 @@
-import { formatWorkDuration } from "../lib/assistantPresentation.ts"
+import { formatWorkDuration } from "../../shared/workDuration.ts"
 import { m } from "../paraglide/messages.js"
 import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
 
@@ -14,6 +14,7 @@ export function WorkedFor({
   expanded?: boolean
   onExpandedChange?: (expanded: boolean) => void
 }) {
+  if (onExpandedChange === undefined && durationMs < 1000) return null
   const label = m.message_worked_for({ duration: formatWorkDuration(durationMs) })
   if (onExpandedChange === undefined) {
     return (

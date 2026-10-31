@@ -18,7 +18,6 @@ import {
 } from "react"
 import type { GitCommit, Thread } from "../../shared/domain.ts"
 import { useTheme } from "../lib/appearance.ts"
-import { errorMessage } from "../lib/errorMessage.ts"
 import { chipRefs, type GraphEdge, type GraphRow, laneCount, layoutGraph } from "../lib/gitGraph.ts"
 import { commitDiffAtom, commitKey, currentBranchAtom, gitLogAtom, gitLogLimitAtom, projectsAtom } from "../lib/rpc.ts"
 import { GIT_GRAPH_SPLIT_BOUNDS } from "../lib/panelSize.ts"
@@ -27,6 +26,7 @@ import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
+import { ErrorNotice } from "./ErrorNotice.tsx"
 import { Badge } from "./ui/badge.tsx"
 import { Button } from "./ui/button.tsx"
 import { ScrollArea } from "./ui/scroll-area.tsx"
@@ -101,21 +101,16 @@ function GitGraph({ root, branch, threadStatus }: { root: string; branch?: strin
             <GraphWithDiff root={root} branch={branch} commits={loaded} onEndReached={loadMore} />
           ),
         )
-        .onError((error) => <Notice alert>{m.git_graph_failed({ message: errorMessage(error) })}</Notice>)
+        .onError((error) => (
+          <ErrorNotice cause={error} describe={(message) => m.git_graph_failed({ message })} className="p-3" />
+        ))
         .orElse(() => null)}
     </div>
   )
 }
 
-function Notice({ children, alert = false, className }: { children: string; alert?: boolean; className?: string }) {
-  return (
-    <p
-      role={alert ? "alert" : undefined}
-      className={cn("p-3 text-xs", alert ? "text-destructive" : "text-muted-foreground", className)}
-    >
-      {children}
-    </p>
-  )
+function Notice({ children, className }: { children: string; className?: string }) {
+  return <p className={cn("p-3 text-xs text-muted-foreground", className)}>{children}</p>
 }
 
 interface GraphWithDiffProps {
@@ -428,7 +423,13 @@ function CommitFiles({ root, hash }: { root: string; hash: string }) {
   const patch = AsyncResult.isSuccess(diff) ? diff.value.patch : ""
   const files = parsePatchFiles(patch, `commit-${hash}`).flatMap((parsed) => parsed.files)
   if (AsyncResult.isFailure(diff)) {
-    return <Notice alert>{m.git_graph_diff_failed({ message: errorMessage(Cause.squash(diff.cause)) })}</Notice>
+    return (
+      <ErrorNotice
+        cause={Cause.squash(diff.cause)}
+        describe={(message) => m.git_graph_diff_failed({ message })}
+        className="p-3"
+      />
+    )
   }
   if (files.length === 0) return <Notice>{m.git_graph_diff_empty()}</Notice>
   return (

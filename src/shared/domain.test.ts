@@ -1,7 +1,7 @@
 import { Schema } from "effect"
 import { describe, expect, it } from "vitest"
 import { RpcMethods } from "./contract.ts"
-import { chatFolder, defaultSettings, PullRequest, Settings, Thread } from "./domain.ts"
+import { chatFolder, defaultSettings, PullRequest, Settings, Thread, workspaceStatus } from "./domain.ts"
 
 const legacySettings = Object.fromEntries(
   Object.entries(defaultSettings).filter(([key]) => key !== "defaultAccountName"),
@@ -98,6 +98,18 @@ describe("chatFolder", () => {
     expect(chatFolder("C:\\Users\\k\\AppData\\Roaming\\kkcode\\chats\\", "t1")).toBe(
       "C:\\Users\\k\\AppData\\Roaming\\kkcode\\chats\\t1",
     )
+  })
+})
+
+describe("workspaceStatus", () => {
+  it("is missing when a ready worktree's folder is gone", () => {
+    expect(workspaceStatus("ready", "missing")).toBe("missing")
+  })
+
+  it("keeps the worktree status while the folder is there or unknown", () => {
+    expect(workspaceStatus("ready", "clean")).toBe("ready")
+    expect(workspaceStatus("ready", null)).toBe("ready")
+    expect(workspaceStatus("removed", "missing")).toBe("removed")
   })
 })
 

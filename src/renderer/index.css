@@ -43,9 +43,9 @@
   }
 }
 
-/* Touch screens fire :hover on tap and leave it stuck, so hover styles only apply to a real pointer. */
+/* Touch screens fire :hover on tap and leave it stuck, so hover styles only apply to a real pointer. The outer parentheses let `not-hover:` negate the whole query. */
 @custom-variant hover {
-  @media (hover: hover) and (pointer: fine) {
+  @media ((hover: hover) and (pointer: fine)) {
     &:hover {
       @slot;
     }
@@ -643,7 +643,7 @@
     }
 
     & :where(code):not(:where(pre code)) {
-      @apply rounded-[0.25em] bg-foreground/10 px-[0.35em] py-[0.1em] text-[0.85em] font-normal text-foreground box-decoration-clone;
+      @apply rounded-[0.25em] bg-foreground/10 px-[0.35em] py-[0.1em] text-[0.85em] font-normal text-foreground box-decoration-clone wrap-anywhere;
     }
 
     & :where(code):not(:where(pre code))::before,
@@ -679,8 +679,11 @@
       @apply font-[inherit] underline underline-offset-2;
     }
 
+    /* `text-wrap-style` rather than `text-pretty`, whose `text-wrap` shorthand would undo a short cell's `whitespace-nowrap`. Long tokens widen the table, which scrolls in its own wrapper, instead of breaking a path mid-name. */
     & :where(td, th) {
-      @apply align-top text-pretty;
+      @apply align-top;
+      text-wrap-style: pretty;
+      overflow-wrap: break-word;
     }
 
     & :where(thead th) {
@@ -688,6 +691,7 @@
     }
 
     line-height: inherit;
+    overflow-wrap: anywhere;
 
     & :where(p, li) {
       @apply leading-relaxed;

@@ -184,12 +184,16 @@ const withPreparingThread = async (
         if (input.prompt === "ends silently") {
           return Stream.make({ type: "session_bound", providerSessionId: `${id}-session-${turns.length}` })
         }
-        if (input.prompt !== "needs approval" && input.prompt !== "needs approval, then ends silently")
+        if (
+          input.prompt !== "needs approval" &&
+          input.prompt !== "needs two approvals" &&
+          input.prompt !== "needs approval, then ends silently"
+        )
           return Stream.never
-        const requested: AgentEvent = {
+        const approval = (requestId: string): AgentEvent => ({
           type: "approval_requested",
           request: {
-            id: "approval-1",
+            id: requestId,
             threadId: input.threadId,
             provider: id,
             kind: "command",
@@ -198,10 +202,15 @@ const withPreparingThread = async (
             input: { command: "echo hi" },
             sessionScope: { tool: "Bash", kind: "command", value: "echo hi" },
           },
-        }
+        })
+        if (input.prompt === "needs two approvals")
+          return Stream.concat(
+            Stream.make(approval("approval-1"), approval("approval-2")),
+            Stream.fromQueue(resolutions),
+          )
         return input.prompt === "needs approval"
-          ? Stream.concat(Stream.make(requested), Stream.fromQueue(resolutions))
-          : Stream.make(requested)
+          ? Stream.concat(Stream.make(approval("approval-1")), Stream.fromQueue(resolutions))
+          : Stream.make(approval("approval-1"))
       }),
     wakes: Stream.fromQueue(wakes[id]),
     closeSession: () =>
@@ -753,6 +762,24 @@ it("does not steer a note the provider delivered with the denial", async () => {
     await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running"))
     expect(steers).toStrictEqual([])
     expect((await Effect.runPromise(threads.get(thread.id))).queue).toStrictEqual([])
+  })
+})
+
+it("stays awaiting approval until the last open request is answered", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "needs two approvals", []))
+    await vi.waitFor(async () =>
+      expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toHaveLength(2),
+    )
+    await Effect.runPromise(runner.respondApproval("approval-1", "allow"))
+    await vi.waitFor(async () =>
+      expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toHaveLength(1),
+    )
+    expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("awaiting_approval")
+
+    await Effect.runPromise(runner.respondApproval("approval-2", "allow"))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running"))
   })
 })
 

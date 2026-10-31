@@ -2,16 +2,24 @@ import { RiGitPullRequestLine } from "react-icons/ri"
 import { useAtomValue } from "@effect/atom-react"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { useParams } from "@tanstack/react-router"
-import { AsyncResult } from "effect/reactivity"
+import { AsyncResult, Atom } from "effect/reactivity"
 import {
+  type CheckoutState,
   type PullRequest,
   type Thread,
   threadFolder,
+  type WorkspaceStatus,
+  workspaceStatus,
   type Worktree,
-  type WorktreeStatus,
 } from "../../../shared/domain.ts"
 import { environmentName, useClouds, usePullRequestHref, useThreadEnvironment } from "../../lib/environments.ts"
-import { branchPullRequestAtom, callPromise, projectsAtom } from "../../lib/rpc.ts"
+import {
+  branchPullRequestAtom,
+  callPromise,
+  projectsAtom,
+  type RpcError,
+  worktreeCheckoutStateAtom,
+} from "../../lib/rpc.ts"
 import { m } from "../../paraglide/messages.js"
 import { useWorktrees } from "../../stores/worktrees.ts"
 import { ThreadPorts } from "../ThreadPorts.tsx"
@@ -99,17 +107,29 @@ const statusLabel = {
   ready: m.worktree_status_ready,
   failed: m.worktree_status_failed,
   removed: m.worktree_status_removed,
-} satisfies Record<WorktreeStatus, () => string>
+  missing: m.worktree_status_missing,
+} satisfies Record<WorkspaceStatus, () => string>
 
 const statusVariant = {
   preparing: "outline",
   ready: "secondary",
   failed: "destructive",
   removed: "ghost",
-} as const satisfies Record<WorktreeStatus, string>
+  missing: "outline",
+} as const satisfies Record<WorkspaceStatus, string>
+
+const unknownCheckout = Atom.make(AsyncResult.initial<CheckoutState, RpcError>())
+
+const useCheckoutState = (worktree: Worktree, local: boolean) =>
+  AsyncResult.getOrElse(
+    useAtomValue(local && worktree.status === "ready" ? worktreeCheckoutStateAtom(worktree.id) : unknownCheckout),
+    () => null,
+  )
 
 function WorktreeWorkspace({ worktree, canReveal }: { worktree: Worktree; canReveal: boolean }) {
-  const removed = worktree.status === "removed"
+  const status = workspaceStatus(worktree.status, useCheckoutState(worktree, canReveal))
+  const removed = status === "removed"
+  const gone = removed || status === "missing"
   const pullRequest = useBranchPullRequest(removed ? undefined : worktree.id)
   return (
     <div className="flex flex-col gap-2">
@@ -120,13 +140,19 @@ function WorktreeWorkspace({ worktree, canReveal }: { worktree: Worktree; canRev
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-1.5">
           {pullRequest && <PullRequestBadge pullRequest={pullRequest} />}
-          <Badge variant={statusVariant[worktree.status]}>{statusLabel[worktree.status]()}</Badge>
+          <Badge
+            variant={statusVariant[status]}
+            className={status === "missing" ? "border-attention/30 text-attention" : undefined}
+          >
+            {statusLabel[status]()}
+          </Badge>
         </span>
       </div>
       <p className="font-mono text-xs break-all text-muted-foreground">{worktree.path}</p>
       {removed && <p className="text-xs text-muted-foreground">{m.panel_removed_hint()}</p>}
+      {status === "missing" && <p className="text-xs text-muted-foreground">{m.panel_missing_hint()}</p>}
       {pullRequest?.status === "merged" && <p className="text-xs text-muted-foreground">{m.panel_pr_merged_hint()}</p>}
-      {canReveal && <RevealButton path={worktree.path} disabled={removed} />}
+      {canReveal && <RevealButton path={worktree.path} disabled={gone} />}
     </div>
   )
 }
