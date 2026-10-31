@@ -127,7 +127,7 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
         {title}
         <ChevronDownIcon
           aria-hidden
-          className="size-4 transition-transform group-data-panel-open/card:rotate-0 -rotate-90 motion-reduce:transition-none"
+          className="size-4 transition-transform group-data-panel-open/card:rotate-0 -rotate-90 cjk:-translate-y-[0.04em] motion-reduce:transition-none"
         />
       </CollapsibleTrigger>
       <CollapsibleContent className="flex flex-col gap-0.5 pt-0.5">{children}</CollapsibleContent>
