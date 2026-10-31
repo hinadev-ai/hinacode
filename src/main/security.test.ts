@@ -1,8 +1,10 @@
 import { describe, expect, test } from "@effect/vitest"
-import { attachmentUrl, githubAssetUrl, projectFileUrl } from "../shared/channels.ts"
+import { attachmentUrl, externalImageUrl, githubAssetUrl, projectFileUrl } from "../shared/channels.ts"
 import {
   attachmentRequest,
   BROWSER_PARTITION,
+  externalImageRequest,
+  externalImageTarget,
   externalUrl,
   githubAssetId,
   isAllowedNavigation,
@@ -198,6 +200,49 @@ describe("attachmentRequest", () => {
     expect(attachmentRequest("file:///etc/passwd")).toBe(null)
     expect(attachmentRequest("hinacode-attachment://other/%2Fetc%2Fpasswd")).toBe(null)
     expect(attachmentRequest("hinacode-attachment://file/%E0%A4%A")).toBe(null)
+  })
+})
+
+describe("externalImageRequest", () => {
+  test("round-trips an https image link, including its query", () => {
+    const target = "https://assets.example/bad ges/view.svg?theme=dark&size=2"
+    const url = externalImageUrl(target)
+    expect(url === null ? null : externalImageRequest(url)).toBe(
+      "https://assets.example/bad%20ges/view.svg?theme=dark&size=2",
+    )
+    expect(externalImageRequest(externalImageUrl("//assets.example/a.png") ?? "")).toBe("https://assets.example/a.png")
+  })
+
+  test("refuses non-web targets and strips credentials and fragments", () => {
+    expect(externalImageTarget("file:///etc/passwd")).toBe(null)
+    expect(externalImageTarget("data:image/png;base64,AA==")).toBe(null)
+    expect(externalImageTarget("javascript:alert(1)")).toBe(null)
+    expect(externalImageTarget("https://user:pass@assets.example/a.png#frag")).toBe("https://assets.example/a.png")
+    expect(externalImageRequest("hinacode-image://other/https%3A%2F%2Fassets.example%2Fa.png")).toBe(null)
+    expect(externalImageRequest("hinacode-image://image/%E0%A4%A")).toBe(null)
+    expect(externalImageRequest("https://assets.example/a.png")).toBe(null)
+  })
+
+  test("refuses local hosts so a comment cannot probe the network around the user", () => {
+    for (const target of [
+      "http://localhost:8080/a.png",
+      "http://router.local/a.png",
+      "http://127.0.0.1/a.png",
+      "http://2130706433/a.png",
+      "http://10.0.0.5/a.png",
+      "http://172.16.4.2/a.png",
+      "http://192.168.1.6/a.png",
+      "http://100.72.105.4/a.png",
+      "http://169.254.169.254/latest/meta-data",
+      "http://[::1]/a.png",
+      "http://[::ffff:127.0.0.1]/a.png",
+      "http://[fd00::1]/a.png",
+    ]) {
+      expect(externalImageTarget(target)).toBe(null)
+    }
+    expect(externalImageTarget("https://172.15.0.1/a.png")).toBe("https://172.15.0.1/a.png")
+    expect(externalImageTarget("https://100.63.0.1/a.png")).toBe("https://100.63.0.1/a.png")
+    expect(externalImageTarget("http://[::ffff:8.8.8.8]/a.png")).not.toBe(null)
   })
 })
 
