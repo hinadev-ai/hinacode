@@ -7,6 +7,7 @@ import {
   matchPullRequests,
   matchThreads,
   segmentText,
+  suggestionsFor,
 } from "./composerSyntax.ts"
 
 const known = {
@@ -158,5 +159,17 @@ describe("matchThreads", () => {
 
   test("keeps the given order for an empty query", () => {
     expect(matchThreads(threads, "").map((thread) => thread.id)).toStrictEqual(["a", "b", "c"])
+  })
+})
+
+describe("suggestionsFor", () => {
+  test("lists a command once when the agent reports it from several places", () => {
+    const commands = [command("$", "animate"), command("$", "animation-vocabulary"), command("$", "animate")]
+    const completion = { trigger: "$" as const, query: "anim", start: 0, end: 5 }
+    expect(
+      suggestionsFor(completion, commands, [], { sameMachine: [], otherMachines: [] }, []).map(
+        (suggestion) => suggestion.insert,
+      ),
+    ).toStrictEqual(["$animate", "$animation-vocabulary"])
   })
 })
