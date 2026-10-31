@@ -217,6 +217,7 @@ export function Composer({ thread }: { thread: Thread }) {
             backgroundColor: liquidGlass ? "transparent" : theme.surface,
             borderColor: focused ? theme.primary : liquidGlass ? "transparent" : theme.border,
           },
+          focused && { boxShadow: `0 0 0 2px ${theme.primary}` },
         ]}
       >
         <ComposerInput
