@@ -27,11 +27,10 @@ import { useUnseen } from "@/stores/unseen"
 const MARK_SIZE = 16
 const MARK_GAP = 10
 const STATUS_SIZE = 16
-/** A running row recedes, as on the desktop, until the developer reaches for it. */
-const WORKING_OPACITY = 0.6
 const noLinks: readonly PullRequestLink[] = []
 
-const titleColor = (theme: Palette, state: RowState) => {
+const titleColor = (theme: Palette, state: RowState, away: boolean) => {
+  if (away) return theme.textMuted
   switch (rowEmphasis[state]) {
     case "attention":
       return theme.text
@@ -131,12 +130,7 @@ export function ThreadRow({ thread, showProject }: { thread: Thread; showProject
         onAccessibilityAction={(event) => void runFromAccessibility(event.nativeEvent.actionName)}
         onPress={() => openThread(thread.id)}
         onLongPress={() => setActionsOpen(true)}
-        style={({ pressed }) => [
-          styles.row,
-          pressed && { backgroundColor: theme.surface },
-          rowEmphasis[state] === "working" && !pressed && !actionsOpen && { opacity: WORKING_OPACITY },
-          away && styles.away,
-        ]}
+        style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.surface }]}
       >
         {project !== undefined && (
           <View style={styles.projectLine}>
@@ -147,7 +141,7 @@ export function ThreadRow({ thread, showProject }: { thread: Thread; showProject
           </View>
         )}
         <View style={styles.titleLine}>
-          <Text numberOfLines={1} style={[styles.title, { color: titleColor(theme, state) }]}>
+          <Text numberOfLines={1} style={[styles.title, { color: titleColor(theme, state, away) }]}>
             {title}
           </Text>
           <ProviderMark provider={thread.provider} size={MARK_SIZE} />
@@ -212,7 +206,7 @@ const styles = StyleSheet.create({
   row: { borderRadius: radius.md, paddingHorizontal: 10, paddingVertical: 8, gap: 2 },
   titleLine: { flexDirection: "row", alignItems: "center", gap: MARK_GAP, minHeight: 22 },
   title: { flex: 1, fontSize: 16, lineHeight: 22 },
-  metaLine: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 18, opacity: 0.8 },
+  metaLine: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 18 },
   meta: { fontSize: 12, lineHeight: 18 },
   mono: { fontFamily: mono },
   projectLine: { flexDirection: "row", alignItems: "center", gap: 4 },
@@ -221,6 +215,5 @@ const styles = StyleSheet.create({
   removed: { textDecorationLine: "line-through" },
   pullRequest: { flexShrink: 0 },
   time: { marginLeft: "auto", paddingLeft: 4, flexShrink: 0, fontVariant: ["tabular-nums"] },
-  away: { opacity: 0.5 },
   status: { width: STATUS_SIZE, height: STATUS_SIZE },
 })
