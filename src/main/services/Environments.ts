@@ -591,11 +591,11 @@ const make = Effect.gen(function* () {
             round = "direct"
             continue
           }
+          if (!end.ready && won.route === "direct" && hasRelay) {
+            round = "relay"
+            continue
+          }
           if (end.code === CLOSE_UNAUTHORIZED || end.code === CLOSE_TOKEN_ROTATED) {
-            if (!end.ready && won.route === "direct" && hasRelay) {
-              round = "relay"
-              continue
-            }
             failAll(cloud, unauthorized(name))
             return yield* setStatus(cloud, "unauthorized")
           }
