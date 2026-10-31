@@ -47,7 +47,7 @@ export function OverviewToggle() {
       aria-expanded={open}
       aria-controls={OVERVIEW_ID}
       data-active={open}
-      className="data-[active=true]:bg-muted data-[active=true]:text-foreground"
+      className="hidden @min-[48rem]:inline-flex data-[active=true]:bg-muted data-[active=true]:text-foreground"
       onClick={toggle}
     >
       <RiListView aria-hidden />
@@ -68,7 +68,7 @@ export function ThreadOverview({ thread }: { thread: Thread }) {
     <aside
       id={OVERVIEW_ID}
       aria-label={m.overview_label()}
-      className="-m-1 flex min-h-0 w-66 flex-col gap-2 overflow-y-auto p-1 [scrollbar-width:none]"
+      className="-m-1 hidden min-h-0 w-66 @min-[48rem]:flex flex-col gap-2 overflow-y-auto p-1 [scrollbar-width:none]"
     >
       <Card title={m.overview_environment()}>
         <EnvironmentRows thread={thread} project={project} worktree={worktree} />
