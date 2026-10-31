@@ -140,6 +140,23 @@ describe("PullRequestWatcher", () => {
       }),
     )
 
+    it.effect("writes and pushes nothing when a poll finds the pull request unchanged", () =>
+      Effect.gen(function* () {
+        const { threadId } = yield* watchedThread("unchanged", (u) => detailFor(u))
+        yield* sweep
+        const before = yield* linkOf(threadId)
+        const pushed = pushes.length
+
+        yield* sweep
+        yield* sweep
+
+        expect(
+          pushes.slice(pushed).filter((push) => push.type === "thread.pullRequests" && push.threadId === threadId),
+        ).toStrictEqual([])
+        expect(yield* linkOf(threadId)).toStrictEqual(before)
+      }),
+    )
+
     it.effect("defers the wake while the thread waits on an approval", () =>
       Effect.gen(function* () {
         const { threadId } = yield* watchedThread("deferred", (u) => failing(u), "awaiting_approval")
