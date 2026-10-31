@@ -1,4 +1,4 @@
-import { formatWorkDuration } from "../lib/assistantPresentation.ts"
+import { formatWorkDuration } from "../../shared/workDuration.ts"
 import { m } from "../paraglide/messages.js"
 import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
 
