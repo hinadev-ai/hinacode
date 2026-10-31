@@ -13,7 +13,7 @@ import type { Message, MessagePart, Thread, ToolCallStatus } from "@shared/domai
 import type { UsageLimit } from "@shared/limits.ts"
 import { useFocusEffect } from "expo-router"
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react"
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
+import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import Animated, { useReducedMotion } from "react-native-reanimated"
 import { Composer } from "@/components/composer"
 import { liquidGlass } from "@/components/glass"
@@ -63,6 +63,9 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
   const arrivedAfterOpening = (newestFirstIndex: number) => newestFirst.length - 1 - newestFirstIndex > openedAt
   // With Liquid Glass the composer floats over the transcript, which pads itself clear of the dock's height.
   const [dockHeight, setDockHeight] = useState(0)
+  const hasRequests =
+    thread.usageLimit !== null ||
+    (history?.status === "ready" && history.approvals.length + history.questions.length > 0)
 
   return (
     <View style={styles.flex}>
@@ -79,6 +82,7 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
         <FlatList
           testID="transcript"
           accessibilityLabel={copy("mobile_chat_transcript")}
+          style={styles.flex}
           inverted
           data={newestFirst}
           keyExtractor={(message) => message.id}
@@ -115,14 +119,20 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
         />
       )}
       <View
-        style={liquidGlass ? styles.dockStack : undefined}
+        style={liquidGlass ? styles.dockStack : styles.dock}
         onLayout={liquidGlass ? (event) => setDockHeight(event.nativeEvent.layout.height) : undefined}
       >
-        {thread.usageLimit !== null && <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />}
-        {history?.status === "ready" &&
-          history.approvals.map((request) => <ApprovalCard key={request.id} request={request} />)}
-        {history?.status === "ready" &&
-          history.questions.map((request) => <QuestionCard key={request.id} request={request} />)}
+        {hasRequests && (
+          <ScrollView keyboardShouldPersistTaps="handled" style={styles.requests}>
+            {thread.usageLimit !== null && (
+              <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />
+            )}
+            {history?.status === "ready" &&
+              history.approvals.map((request) => <ApprovalCard key={request.id} request={request} />)}
+            {history?.status === "ready" &&
+              history.questions.map((request) => <QuestionCard key={request.id} request={request} />)}
+          </ScrollView>
+        )}
         {messages !== undefined && <TodoTray thread={thread} messages={messages} />}
         <Composer thread={thread} />
       </View>
@@ -652,7 +662,9 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   centered: { flex: 1, justifyContent: "center", alignItems: "center", padding: 20, gap: 12 },
   transcript: { padding: 16, gap: 12 },
-  dockStack: { position: "absolute", left: 0, right: 0, bottom: 0 },
+  dock: { flexShrink: 1 },
+  dockStack: { position: "absolute", left: 0, right: 0, bottom: 0, maxHeight: "100%" },
+  requests: { flexGrow: 0, flexShrink: 1 },
   earlier: { paddingVertical: 12 },
   empty: { textAlign: "center", padding: 24, fontSize: 15 },
   user: {
