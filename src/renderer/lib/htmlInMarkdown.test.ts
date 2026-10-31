@@ -2,8 +2,16 @@ import { describe, expect, test } from "@effect/vitest"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import ReactMarkdown from "react-markdown"
+import { defaultSchema } from "rehype-sanitize"
 import remarkGfm from "remark-gfm"
-import { parseBadgeBlock, rehypeEmbeddedHtml, remarkUnknownTagsAsText, segmentServiceBlocks } from "./htmlInMarkdown.ts"
+import { rehypeEmbeddedHtml } from "./embeddedHtml.ts"
+import {
+  mayContainEmbeddedHtml,
+  parseBadgeBlock,
+  renderableHtmlTags,
+  remarkUnknownTagsAsText,
+  segmentServiceBlocks,
+} from "./htmlInMarkdown.ts"
 import { remarkKbd } from "./remarkKbd.ts"
 
 const render = (text: string) =>
@@ -25,6 +33,19 @@ const codesmithFooter = [
 ].join("\n")
 
 describe("html in markdown", () => {
+  test("loads the html parser only for text that can contain a renderable tag", () => {
+    expect(mayContainEmbeddedHtml("A table follows.\n\n<table><tr><td>x</td></tr></table>")).toBe(true)
+    expect(mayContainEmbeddedHtml("One<br>two")).toBe(true)
+    expect(mayContainEmbeddedHtml("</details>")).toBe(true)
+    expect(mayContainEmbeddedHtml("Connecting to <hostname> through <Suspense>")).toBe(false)
+    expect(mayContainEmbeddedHtml("No markup here, only a < b comparison")).toBe(false)
+  })
+
+  test("keeps the lightweight tag list inside the sanitize schema", () => {
+    const schemaTags = new Set(defaultSchema.tagNames ?? [])
+    expect(renderableHtmlTags.filter((tag) => !schemaTags.has(tag))).toEqual([])
+  })
+
   test("renders a bot comment's html table and drops its marker comments", () => {
     const html = render(
       '<!-- Preview URL -->\n<table><tr><td><b>Build:</b> Success</td><td><a href="https://example.com">View logs</a></td></tr></table>',

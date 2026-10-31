@@ -1,20 +1,69 @@
-import rehypeRaw from "rehype-raw"
-import rehypeSanitize, { defaultSchema } from "rehype-sanitize"
-
 interface MdastNode {
   type: string
   value?: string
   children?: Array<MdastNode>
 }
 
-interface HastNode {
-  type: string
-  children?: Array<HastNode>
-}
+export const renderableHtmlTags = [
+  "a",
+  "b",
+  "blockquote",
+  "br",
+  "code",
+  "dd",
+  "del",
+  "details",
+  "div",
+  "dl",
+  "dt",
+  "em",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "hr",
+  "i",
+  "img",
+  "ins",
+  "kbd",
+  "li",
+  "ol",
+  "p",
+  "picture",
+  "pre",
+  "q",
+  "rp",
+  "rt",
+  "ruby",
+  "s",
+  "samp",
+  "section",
+  "source",
+  "span",
+  "strike",
+  "strong",
+  "sub",
+  "summary",
+  "sup",
+  "table",
+  "tbody",
+  "td",
+  "tfoot",
+  "th",
+  "thead",
+  "tr",
+  "tt",
+  "ul",
+  "var",
+] as const
 
-const formControls = new Set(["button", "fieldset", "form", "input", "label", "option", "select", "textarea"])
+const renderableTags = new Set<string>(renderableHtmlTags)
 
-const renderableTags = new Set((defaultSchema.tagNames ?? []).filter((tag) => !formControls.has(tag)))
+const embeddedHtmlTag = new RegExp(`</?(?:${renderableHtmlTags.join("|")})(?=[\\s/>]|$)`, "i")
+
+export const mayContainEmbeddedHtml = (text: string) => text.includes("<") && embeddedHtmlTag.test(text)
 
 const flowParents = new Set(["root", "blockquote", "listItem", "footnoteDefinition"])
 
@@ -38,32 +87,6 @@ const guardChildren = (node: MdastNode) => {
 }
 
 export const remarkUnknownTagsAsText = () => (tree: MdastNode) => guardChildren(tree)
-
-const schema = {
-  ...defaultSchema,
-  attributes: {
-    ...defaultSchema.attributes,
-    img: [...(defaultSchema.attributes?.["img"] ?? []), "srcSet", "sizes"],
-    source: [...(defaultSchema.attributes?.["source"] ?? []), "sizes"],
-  },
-}
-
-type HastTransform = (tree: HastNode, file?: unknown) => HastNode
-
-const parseRaw = rehypeRaw() as unknown as HastTransform
-const sanitize = rehypeSanitize(schema) as unknown as HastTransform
-
-const hasRawNode = (root: HastNode) => {
-  const stack: Array<HastNode> = [root]
-  for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
-    if (node.type === "raw") return true
-    if (node.children) stack.push(...node.children)
-  }
-  return false
-}
-
-export const rehypeEmbeddedHtml = () => (tree: HastNode, file?: unknown) =>
-  hasRawNode(tree) ? sanitize(parseRaw(tree, file), file) : tree
 
 export interface ServiceBadge {
   readonly href: string

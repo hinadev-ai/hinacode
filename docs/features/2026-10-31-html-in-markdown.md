@@ -48,18 +48,19 @@ source. Four stages, each with a fast path.
    renderable set stays HTML. Anything else, `<hostname>`, `<Suspense>`,
    `<your-name>`, becomes a text node with the same characters, so prose
    keeps its words. Code spans and fences never produce `html` nodes, so
-   code is untouched by construction. The renderable set derives from
-   the sanitize schema's tag list, minus form controls, so the guard
-   and the sanitizer cannot drift apart.
+   code is untouched by construction. The lightweight renderable set is
+   tested against the sanitize schema's tag list, so the guard cannot
+   admit a tag the sanitizer would drop.
 
-3. **Parse HTML only when it survives.** A rehype pass walks the tree
-   with early exit looking for a `raw` node. The large majority of agent
-   messages have none, and return untouched: no HTML parser, no
-   sanitizer walk. When a `raw` node exists, `rehype-raw` parses it and
-   `rehype-sanitize` applies the GitHub-modelled schema, extended with
-   `srcSet` and `sizes` so `<picture>` works. Detection happens on the
-   parsed tree, not on the source text, so `<div>` inside a code fence
-   never triggers the slow path.
+3. **Load and parse HTML only when it can survive.** A cheap source scan
+   decides whether the separate HTML chunk is needed at all, keeping the
+   parser out of the startup bundle. Agent prose with only placeholders
+   never loads it. Once loaded, a rehype pass walks the parsed tree with
+   early exit looking for a `raw` node, so markup inside a code fence
+   does not trigger a parse. When a `raw` node exists, `rehype-raw`
+   parses it and `rehype-sanitize` applies the GitHub-modelled schema,
+   extended with `srcSet` and `sizes` so `<picture>` works. The plain
+   render stays visible while the chunk loads.
 
 4. **Render with app components.** Images honor `width` and `height`
    attributes, so badges keep their intended size. A `<source>` whose

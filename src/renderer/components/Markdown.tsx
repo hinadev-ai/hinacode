@@ -2,7 +2,16 @@ import { useAtomSuspense } from "@effect/atom-react"
 import { cn } from "cn"
 import { Effect } from "effect"
 import { AsyncResult, Atom } from "effect/reactivity"
-import { createContext, isValidElement, type ReactNode, Suspense, use, useDeferredValue, useState } from "react"
+import {
+  createContext,
+  isValidElement,
+  type ComponentProps,
+  type ReactNode,
+  Suspense,
+  use,
+  useDeferredValue,
+  useState,
+} from "react"
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { externalImageUrl, githubAssetUrl } from "../../shared/channels.ts"
@@ -10,8 +19,9 @@ import type { Appearance } from "../../shared/domain.ts"
 import { useTheme } from "../lib/appearance.ts"
 import { useOpenThreadEnvironment } from "../lib/environments.ts"
 import { imageSource, imageSrcSet } from "../lib/imageSource.ts"
+import type { RehypeEmbeddedHtml } from "../lib/embeddedHtml.ts"
 import {
-  rehypeEmbeddedHtml,
+  mayContainEmbeddedHtml,
   remarkUnknownTagsAsText,
   segmentServiceBlocks,
   type MarkdownSegment,
@@ -183,6 +193,64 @@ function ServiceBadges({ segment }: { segment: Extract<MarkdownSegment, { type: 
   )
 }
 
+type RemarkPlugins = ComponentProps<typeof ReactMarkdown>["remarkPlugins"]
+type RehypePlugins = ComponentProps<typeof ReactMarkdown>["rehypePlugins"]
+
+interface MarkdownSegmentsProps {
+  readonly segments: ReadonlyArray<MarkdownSegment>
+  readonly remarkPlugins: RemarkPlugins
+  readonly rehypePlugins: RehypePlugins
+}
+
+function MarkdownSegments({ segments, remarkPlugins, rehypePlugins }: MarkdownSegmentsProps) {
+  return (
+    <>
+      {segments.map((segment, index) =>
+        segment.type === "badges" ? (
+          <ServiceBadges key={index} segment={segment} />
+        ) : (
+          <ReactMarkdown
+            key={index}
+            remarkPlugins={remarkPlugins}
+            rehypePlugins={rehypePlugins}
+            components={components}
+          >
+            {segment.text}
+          </ReactMarkdown>
+        ),
+      )}
+    </>
+  )
+}
+
+let embeddedHtml: Promise<RehypeEmbeddedHtml | null> | undefined
+
+const loadEmbeddedHtml = () => {
+  if (embeddedHtml === undefined) {
+    embeddedHtml = import("../lib/embeddedHtml.ts").then((loaded) => loaded.rehypeEmbeddedHtml).catch(() => null)
+  }
+  return embeddedHtml
+}
+
+function EmbeddedMarkdownSegments({
+  segments,
+  remarkPlugins,
+  findPlugins,
+}: {
+  segments: ReadonlyArray<MarkdownSegment>
+  remarkPlugins: RemarkPlugins
+  findPlugins: RehypePlugins
+}) {
+  const rehypeEmbeddedHtml = use(loadEmbeddedHtml())
+  return (
+    <MarkdownSegments
+      segments={segments}
+      remarkPlugins={remarkPlugins}
+      rehypePlugins={rehypeEmbeddedHtml === null ? findPlugins : [rehypeEmbeddedHtml, ...(findPlugins ?? [])]}
+    />
+  )
+}
+
 export function Markdown({
   text,
   baseUrl = null,
@@ -194,27 +262,25 @@ export function Markdown({
 }) {
   const pattern = useFindPattern()
   const part = use(FindPartContext)
-  const rehypePlugins = [rehypeEmbeddedHtml, ...(pattern === null ? [] : [rehypeFindMarks(pattern, part)])]
+  const findPlugins = pattern === null ? [] : [rehypeFindMarks(pattern, part)]
   const repository = useThreadRepository()
   const remarkPlugins = repository
     ? [remarkGfm, remarkKbd, remarkUnknownTagsAsText, remarkPullRequests(repository)]
     : [remarkGfm, remarkKbd, remarkUnknownTagsAsText]
+  const segments = segmentServiceBlocks(text)
+  const needsEmbeddedHtml = segments.some(
+    (segment) => segment.type === "markdown" && mayContainEmbeddedHtml(segment.text),
+  )
+  const plain = <MarkdownSegments segments={segments} remarkPlugins={remarkPlugins} rehypePlugins={findPlugins} />
   return (
     <BaseUrl value={baseUrl}>
       <div className={cn("prose max-w-none prose-hina", className)}>
-        {segmentServiceBlocks(text).map((segment, index) =>
-          segment.type === "badges" ? (
-            <ServiceBadges key={index} segment={segment} />
-          ) : (
-            <ReactMarkdown
-              key={index}
-              remarkPlugins={remarkPlugins}
-              rehypePlugins={rehypePlugins}
-              components={components}
-            >
-              {segment.text}
-            </ReactMarkdown>
-          ),
+        {needsEmbeddedHtml ? (
+          <Suspense fallback={plain}>
+            <EmbeddedMarkdownSegments segments={segments} remarkPlugins={remarkPlugins} findPlugins={findPlugins} />
+          </Suspense>
+        ) : (
+          plain
         )}
       </div>
     </BaseUrl>
