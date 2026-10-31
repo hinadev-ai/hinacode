@@ -55,13 +55,7 @@ import { Checkbox } from "./ui/checkbox.tsx"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu.tsx"
 import { Field, FieldLabel } from "./ui/field.tsx"
 import { Input } from "./ui/input.tsx"
-import {
-  Popover,
-  PopoverContent,
-  PopoverDescription,
-  PopoverHeader,
-  PopoverTitle,
-} from "./ui/popover.tsx"
+import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle } from "./ui/popover.tsx"
 import { ProjectIcon } from "./ProjectIcon.tsx"
 import { snoozeThread } from "./SnoozeDialog.tsx"
 import { AlarmIcon } from "./icons/AlarmIcon.tsx"
@@ -291,7 +285,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
       // FIXME: dnd-kit marks a handleless row as a button, which reads as disabled without a handle
       ref={reorderable ? ref : undefined}
       data-dragging={isDragSource}
-      data-menu-open={menuOpen}
+      data-menu-open={menuOpen || mode === "delete"}
       data-emphasis={rowEmphasis[state]}
       data-archived={archived}
       data-stale={isStale(cloud)}
@@ -714,7 +708,7 @@ function ThreadMeta({
 }) {
   const watching = links.some((link) => link.watch !== null)
   return (
-    <div className="flex min-w-0 items-center gap-2 pr-2 pb-1.5 pl-1.5 text-xs text-muted-foreground group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions)">
+    <div className="flex min-w-0 items-center gap-2 pr-2 pb-1.5 pl-1.5 text-xs text-muted-foreground">
       {cloud && <CloudMark cloud={cloud} className="size-3" />}
       {links.length > 0 && <SidebarPullRequests threadId={threadId} links={links} environment={environment} />}
       {watching && (
