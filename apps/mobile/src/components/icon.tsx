@@ -217,9 +217,12 @@ const hidden =
     ? { "aria-hidden": true }
     : { accessibilityElementsHidden: true, importantForAccessibility: "no" as const }
 
+// An icon beside text that runs out of room keeps its size; react-native-web lets an svg shrink by default.
+const unshrinkable = { flexShrink: 0 }
+
 export function Icon({ name, size = 16, color }: { name: IconName; size?: number; color: string }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color} {...hidden}>
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color} style={unshrinkable} {...hidden}>
       <Path d={paths[name]} />
     </Svg>
   )

@@ -122,6 +122,9 @@ const buttonColors = (theme: Palette) => ({
 
 export type Tone = "neutral" | "attention" | "running" | "danger"
 
+/** A pill's height, for rows that keep its place while it is hidden. */
+export const PILL_HEIGHT = 20
+
 export function Pill({ label, tone, icon }: { label: string; tone: Tone; icon?: IconName }) {
   const theme = useTheme()
   const [fg, bg] = toneColors(theme)[tone]
@@ -146,7 +149,9 @@ const toneColors = (theme: Palette): Record<Tone, [string, string]> => ({
 
 type Status = { label: string; tone: Tone; icon?: IconName }
 
-export const ThreadStatusPill = ({ status }: { status: ThreadStatus }) => <Pill {...threadStatus[status]} />
+/** Nothing while the thread is idle, since a quiet thread needs nobody. */
+export const ThreadStatusPill = ({ status }: { status: ThreadStatus }) =>
+  status === "idle" ? null : <Pill {...threadStatus[status]} />
 
 const connectionLabel: Record<ConnectionStatus, Status> = {
   connected: { label: copy("mobile_connection_connected"), tone: "running", icon: "RiWifiLine" },
@@ -442,10 +447,10 @@ const styles = StyleSheet.create({
     gap: 4,
     borderRadius: radius.full,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    height: PILL_HEIGHT,
     alignSelf: "flex-start",
   },
-  pillLabel: { fontSize: 12, fontWeight: "600" },
+  pillLabel: { fontSize: 12, lineHeight: 16, fontWeight: "600" },
   provider: { flexDirection: "row", alignItems: "center", gap: 4 },
   notice: { flexDirection: "row", alignItems: "flex-start", gap: 8, borderRadius: 8, padding: 12 },
   noticeText: { flex: 1, fontSize: 14, lineHeight: 18 },

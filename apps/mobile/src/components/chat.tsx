@@ -129,8 +129,7 @@ function MessageView({ message, root }: { message: Message; root: string | null 
   const theme = useTheme()
   if (message.role !== "user") return <AssistantMessage message={message} root={root} />
   return (
-    <View style={[styles.message, styles.user, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-      <Text style={[styles.role, { color: theme.textMuted }]}>{copy("mobile_chat_you")}</Text>
+    <View accessibilityLabel={copy("mobile_chat_you")} style={[styles.user, { backgroundColor: theme.surface }]}>
       {message.parts.map((part, index) => (
         <PartView key={index} part={part} />
       ))}
@@ -155,7 +154,6 @@ function formatWorkDuration(ms: number) {
 }
 
 function AssistantMessage({ message, root }: { message: Message; root: string | null }) {
-  const theme = useTheme()
   const [activityShown, setActivityShown] = useState(false)
   const parts = message.parts.filter(isOwnPart)
   const { completedAt } = message
@@ -167,8 +165,7 @@ function AssistantMessage({ message, root }: { message: Message; root: string | 
   const writingIndex = streaming && parts.at(-1)?.type === "text" ? parts.length - 1 : undefined
   const collapsed = new Set(collapsedParts(parts.map((part, index) => ({ part, index }))).map(({ index }) => index))
   return (
-    <View accessibilityState={{ busy: streaming }} style={styles.message}>
-      <Text style={[styles.role, { color: theme.textMuted }]}>{copy("mobile_chat_agent")}</Text>
+    <View accessibilityState={{ busy: streaming }} style={styles.reply}>
       {folded && (
         <WorkedFor
           durationMs={durationMs}
@@ -581,9 +578,15 @@ const styles = StyleSheet.create({
   dockStack: { position: "absolute", left: 0, right: 0, bottom: 0 },
   earlier: { paddingVertical: 12 },
   empty: { textAlign: "center", padding: 24, fontSize: 15 },
-  message: { gap: 6, borderRadius: radius.lg, padding: 12 },
-  user: { borderWidth: StyleSheet.hairlineWidth },
-  role: { fontSize: 12, fontWeight: "600" },
+  user: {
+    alignSelf: "flex-end",
+    maxWidth: "85%",
+    gap: 6,
+    borderRadius: radius.lg,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  reply: { gap: 6 },
   text: { fontSize: 15, lineHeight: 22 },
   pulse: { fontSize: 12 },
   workedFor: {
