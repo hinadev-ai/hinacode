@@ -14,6 +14,7 @@ import * as Relay from "./remote/relay.ts"
 import * as RemoteServer from "./remote/server.ts"
 import * as AgentAccounts from "./services/AgentAccounts.ts"
 import * as AgentLogins from "./services/AgentLogins.ts"
+import * as SessionImports from "./services/SessionImports.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as Browser from "./services/Browser.ts"
@@ -104,10 +105,19 @@ export const makeTestAppLayer = (
   const logins = AgentLogins.layer(join(dirname(dbPath), "cache")).pipe(
     Layer.provide(Layer.mergeAll(providers, agents)),
   )
+  const imports = SessionImports.layer.pipe(Layer.provide(Layer.mergeAll(providers, agents)))
   const environments = RelayAccount.layer({ serviceUrl: Relay.DEFAULT_RELAY_SERVICE_URL }).pipe(
     Layer.provide(Layer.mergeAll(Secrets.layer, agents)),
   )
-  const base = Layer.mergeAll(agents, automationsStub, updatesStub, logins, environments, PullRequestGuides.idleLayer)
+  const base = Layer.mergeAll(
+    agents,
+    automationsStub,
+    updatesStub,
+    logins,
+    imports,
+    environments,
+    PullRequestGuides.idleLayer,
+  )
   const app = Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base)))
   return Layer.mergeAll(RemoteServer.layer, answerAsksLayer).pipe(
     Layer.provideMerge(app),

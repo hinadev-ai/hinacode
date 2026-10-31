@@ -31,7 +31,13 @@ import type { LimitWindow, PlanLimits } from "../../../shared/limits.ts"
 import { nowIso } from "../../services/clock.ts"
 import { installedBinary } from "../binary.ts"
 import { COMPACT_COMMAND, isCompactCommand } from "../compact.ts"
-import { AgentError, type AgentProvider, type BackgroundTasksChange } from "../provider.ts"
+import {
+  AgentError,
+  type AgentProvider,
+  type BackgroundTasksChange,
+  LISTED_SESSIONS,
+  type SessionHistory,
+} from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { threadAccess, turnAccess } from "./access.ts"
 import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
@@ -39,15 +45,20 @@ import { codexHome, copyRollouts, makeRolloutUsage } from "./rollouts.ts"
 import { attachmentContext } from "../elementContext.ts"
 import { applyChildNotification, applyParentItem, type Subagents } from "./subagents.ts"
 import { skillInputs, toCommand } from "./skills.ts"
+import { toolInput, toolName, toolResult, toPostedQuestion } from "./items.ts"
+import { toImportedHistory, toNativeSessions } from "./sessions.ts"
 import {
   GetAccountRateLimitsResponse,
   GetAccountResponse,
   type RateLimitWindow,
   ThreadBackgroundTerminalsListResponse,
+  ThreadListResponse,
+  ThreadReadResponse,
+  ThreadTurnsListResponse,
 } from "./protocol.ts"
 import type {
+  HistoryTurn,
   ApprovalDecisionWire,
-  AsyncUserInputQuestion,
   ElicitationActionWire,
   GetAccountParams,
   McpServerElicitationRequestParams,
@@ -97,16 +108,6 @@ const toQuestion = (question: ToolRequestUserInputQuestion): Question => ({
   secret: question.isSecret,
 })
 
-const toPostedQuestion = (question: AsyncUserInputQuestion): Question => ({
-  id: question.title,
-  header: "",
-  question: question.title,
-  options: (question.options ?? []).map((label) => ({ label, description: "" })),
-  multiSelect: false,
-  allowsText: true,
-  secret: false,
-})
-
 const userInputResponse = (answers: QuestionAnswers): ToolRequestUserInputResponse => ({
   answers: Object.fromEntries(Object.entries(answers).map(([id, values]) => [id, { answers: [...values] }])),
 })
@@ -122,38 +123,6 @@ const userInput = (text: string, attachments: ReadonlyArray<Attachment>): Array<
     return context === null ? [image] : [image, textInput(context)]
   }),
 ]
-
-const toolName = (item: ThreadItem): string | undefined => {
-  switch (item.type) {
-    case "commandExecution":
-      return "Bash"
-    case "mcpToolCall":
-      return item.tool
-    case "fileChange":
-      return "Edit"
-    default:
-      return undefined
-  }
-}
-
-const toolInput = (item: ThreadItem): unknown =>
-  item.type === "fileChange" ? { path: item.changes.map((change) => change.path).join(", "), ...item } : item
-
-const toolResult = (item: ThreadItem, bufferedOutput: string | undefined): { output: unknown; isError: boolean } => {
-  switch (item.type) {
-    case "commandExecution":
-      return {
-        output: item.aggregatedOutput ?? bufferedOutput ?? item.status,
-        isError: item.status !== "completed" || (item.exitCode !== null && item.exitCode !== 0),
-      }
-    case "mcpToolCall":
-      return { output: item.error ?? item.result, isError: item.status !== "completed" }
-    case "fileChange":
-      return { output: item.status, isError: item.status !== "completed" }
-    default:
-      return { output: null, isError: false }
-  }
-}
 
 type RemoteTurn = { readonly threadId: string; readonly turnId: string }
 
@@ -378,6 +347,65 @@ const make = Effect.gen(function* () {
       try: () => rolloutUsage(home?.dir ?? codexHome())(threadId),
       catch: (cause) =>
         new AgentError({ provider: "codex", message: `Failed to read Codex rollouts: ${String(cause)}` }),
+    })
+
+  const invalidResponse = (what: string) => () =>
+    new AgentError({ provider: "codex", message: `Failed to ${what}: invalid response` })
+
+  const listSessions = (cwd: string, home: AccountHome | null) =>
+    Effect.gen(function* () {
+      const client = yield* getClient(home)
+      const raw = yield* client.request<unknown>("thread/list", {
+        cwd,
+        limit: LISTED_SESSIONS,
+        sortKey: "updated_at",
+        sourceKinds: ["cli", "vscode", "exec", "appServer"],
+      })
+      const response = yield* Schema.decodeUnknownEffect(ThreadListResponse)(raw).pipe(
+        Effect.mapError(invalidResponse("list Codex sessions")),
+      )
+      return toNativeSessions(response, cwd)
+    })
+
+  const listTurns = (client: CodexClient, threadId: string) =>
+    Effect.gen(function* () {
+      const turns: Array<HistoryTurn> = []
+      let cursor: string | null = null
+      do {
+        const raw = yield* client.request<unknown>("thread/turns/list", {
+          threadId,
+          cursor,
+          itemsView: "full",
+          sortDirection: "asc",
+        })
+        const page: typeof ThreadTurnsListResponse.Type =
+          yield* Schema.decodeUnknownEffect(ThreadTurnsListResponse)(raw)
+        turns.push(...page.data)
+        cursor = page.nextCursor
+      } while (cursor)
+      return turns
+    })
+
+  const readSession = (sessionId: string, cwd: string, home: AccountHome | null) =>
+    Effect.gen(function* () {
+      const client = yield* getClient(home)
+      const read = yield* client.request<unknown>("thread/read", { threadId: sessionId, includeTurns: false }).pipe(
+        Effect.flatMap(Schema.decodeUnknownEffect(ThreadReadResponse)),
+        Effect.mapError(
+          () => new AgentError({ provider: "codex", message: `Codex session ${sessionId} is no longer there` }),
+        ),
+      )
+      if (read.thread.cwd !== cwd) {
+        return yield* new AgentError({ provider: "codex", message: `Codex session ${sessionId} ran in another folder` })
+      }
+      return yield* listTurns(client, sessionId).pipe(
+        Effect.map((turns) => toImportedHistory(read, turns)),
+        Effect.orElseSucceed((): SessionHistory => ({
+          title: read.thread.name,
+          model: read.thread.model,
+          messages: null,
+        })),
+      )
     })
 
   const account = (home: AccountHome | null) =>
@@ -906,6 +934,8 @@ const make = Effect.gen(function* () {
     planLimits,
     usage: readUsage,
     copySession,
+    listSessions,
+    readSession,
     listCommands,
     runTurn,
     backgroundTasks: { changes: Stream.fromQueue(backgroundTaskChanges), stop: stopBackgroundTask },

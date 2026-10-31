@@ -10,9 +10,6 @@ export const statusOfCall = {
   error: "failed",
 } satisfies Record<ToolCallStatus, SubagentStatus>
 
-// FIXME: Claude Code named its sub-agent tool Task before it became Agent
-export const spawnsSubagent = (part: ToolCall) => part.name === "Agent" || part.name === "Task"
-
 export const isOwnPart = (part: MessagePart) => part.type !== "tool_call" || part.parentCallId === undefined
 
 export function useOpenSubagent(threadId: string) {

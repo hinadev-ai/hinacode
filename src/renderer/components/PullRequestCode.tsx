@@ -10,6 +10,7 @@ import {
   RiEqualizerLine,
   RiErrorWarningLine,
   RiFlaskLine,
+  RiGuideLine,
   RiHammerLine,
   RiImageLine,
   RiLayoutMasonryLine,
@@ -17,7 +18,6 @@ import {
   RiPlayCircleLine,
   RiPlugLine,
   RiShieldKeyholeLine,
-  RiSparkling2Line,
   RiTerminalBoxLine,
   RiToolsLine,
   RiTranslate2,
@@ -111,7 +111,7 @@ export function PullRequestCode({ url }: { url: string }) {
         <TabsList aria-label={m.pr_code_view_label()} className="w-full">
           <TabsTrigger value="files">{m.pr_code_view_files()}</TabsTrigger>
           <TabsTrigger value="guide">
-            <RiSparkling2Line aria-hidden />
+            <RiGuideLine aria-hidden />
             {m.pr_code_view_guide()}
           </TabsTrigger>
         </TabsList>
@@ -268,7 +268,7 @@ function NoteCard({ note, showLine = false }: { note: GuideFileNote | GuideLineN
       {note.critical ? (
         <CriticalMark className="mt-0.5" />
       ) : (
-        <RiSparkling2Line aria-hidden className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+        <RiGuideLine aria-hidden className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
       )}
       <div className="min-w-0 flex-1">
         {showLine && "line" in note && (

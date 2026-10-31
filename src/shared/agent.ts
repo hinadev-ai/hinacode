@@ -259,6 +259,7 @@ export const AgentEvent = Schema.Union([
     type: Schema.Literal("tool_call_finished"),
     callId: Schema.String,
     output: Schema.Unknown,
+    fullOutputBytes: Schema.optional(Schema.Number),
     isError: Schema.Boolean,
   }),
   Schema.Struct({

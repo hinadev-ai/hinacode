@@ -106,6 +106,7 @@ interface UiState {
   readonly addProjectOpen: boolean
   readonly resourcesOpen: boolean
   readonly snoozeThreadId: string | null
+  readonly importSessionProjectId: string | null
   readonly addProjectEnvironment: EnvironmentId
   readonly findThreadId: string | null
   readonly findQuery: string
@@ -132,6 +133,7 @@ interface UiState {
   readonly setAddProjectOpen: (open: boolean, environment?: EnvironmentId) => void
   readonly setResourcesOpen: (open: boolean) => void
   readonly setSnoozeThreadId: (threadId: string | null) => void
+  readonly setImportSessionProjectId: (projectId: string | null) => void
   readonly openFind: (threadId: string, query?: string, messageId?: string) => void
   readonly closeFind: () => void
   readonly setFindQuery: (query: string) => void
@@ -216,6 +218,7 @@ export const useUi = create<UiState>()((set, get) => ({
   resourcesOpen: false,
   addProjectEnvironment: null,
   snoozeThreadId: null,
+  importSessionProjectId: null,
   findThreadId: null,
   findQuery: "",
   findMessageId: null,
@@ -286,6 +289,7 @@ export const useUi = create<UiState>()((set, get) => ({
     if (snoozeThreadId !== null) rememberOpener()
     set({ snoozeThreadId })
   },
+  setImportSessionProjectId: (importSessionProjectId) => set({ importSessionProjectId }),
   openFind: (threadId, query, messageId) =>
     set((state) => ({
       findThreadId: threadId,

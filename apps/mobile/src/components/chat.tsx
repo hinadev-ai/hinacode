@@ -333,6 +333,14 @@ function PartView({ part }: { part: MessagePart }) {
           })}
         </Text>
       )
+    case "session_import":
+      return (
+        <Text style={{ color: theme.textMuted }}>
+          {copy(part.history === "replayed" ? "mobile_chat_session_imported" : "mobile_chat_session_imported_unavailable", {
+            agent: copy(`mobile_provider_${part.provider}`),
+          })}
+        </Text>
+      )
   }
 }
 

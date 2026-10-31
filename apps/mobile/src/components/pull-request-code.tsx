@@ -66,7 +66,7 @@ const noteKey = (note: GuideFileNote | GuideLineNote) =>
 
 const viewSegments = [
   { value: "files", label: copy("mobile_pr_code_files"), icon: "RiFileTextLine" },
-  { value: "guide", label: copy("mobile_pr_code_guide"), icon: "RiSparkling2Line" },
+  { value: "guide", label: copy("mobile_pr_code_guide"), icon: "RiGuideLine" },
 ] as const
 
 /** The Code tab: the pull request's changed files, listed by path or in the order its guide reads them. */
@@ -317,7 +317,7 @@ function NoteCard({ note, showLine = false }: { note: GuideFileNote | GuideLineN
       ]}
     >
       <Icon
-        name={critical ? "RiErrorWarningLine" : "RiSparkling2Line"}
+        name={critical ? "RiErrorWarningLine" : "RiGuideLine"}
         size={14}
         color={critical ? theme.attention : theme.textMuted}
       />

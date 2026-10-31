@@ -16,6 +16,7 @@ import { applyServeConfig, type ServeConfig } from "./serve.ts"
 import type { PushEvent } from "../shared/contract.ts"
 import * as AgentAccounts from "./services/AgentAccounts.ts"
 import * as AgentLogins from "./services/AgentLogins.ts"
+import * as SessionImports from "./services/SessionImports.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as Boat from "./services/boat/Boat.ts"
@@ -148,6 +149,7 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     updates,
     Mcp.serverLayer,
     AgentLogins.layer(join(userData, "cache")),
+    SessionImports.layer,
     RelayAccount.layer({ serviceUrl: relayServiceUrl }).pipe(Layer.provide(Secrets.layer)),
   ).pipe(Layer.provideMerge(agents))
   return Layer.mergeAll(RemoteServer.layer, answerAsksLayer).pipe(
