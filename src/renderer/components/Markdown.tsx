@@ -1,5 +1,8 @@
+import { useAtomSuspense } from "@effect/atom-react"
 import { cn } from "cn"
-import { createContext, isValidElement, type ReactNode, use, useEffect, useState } from "react"
+import { Effect } from "effect"
+import { AsyncResult, Atom } from "effect/reactivity"
+import { createContext, isValidElement, type ReactNode, Suspense, use, useDeferredValue, useState } from "react"
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { githubAssetUrl } from "../../shared/channels.ts"
@@ -8,8 +11,10 @@ import { useOpenThreadEnvironment } from "../lib/environments.ts"
 import { imageSource } from "../lib/imageSource.ts"
 import { remarkKbd } from "../lib/remarkKbd.ts"
 import { remarkPullRequests } from "../lib/remarkPullRequests.ts"
+import { familyOf } from "../lib/rpc.ts"
 import { useClientSettings } from "../lib/settings.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
+import { useDebouncedValue } from "../lib/useDebouncedValue.ts"
 import { ThreadFolder } from "../lib/threadRoot.ts"
 import { m } from "../paraglide/messages.js"
 import { CopyButton } from "./CopyButton.tsx"
@@ -150,58 +155,56 @@ const diagramFont = (uiFont: Appearance["uiFont"]) =>
     ? getComputedStyle(document.documentElement).getPropertyValue("--app-font-sans")
     : JSON.stringify(uiFont)
 
-type Diagram =
-  | { readonly status: "rendering" }
-  | { readonly status: "done"; readonly svg: string }
-  | { readonly status: "failed" }
-
 const RENDER_DELAY_MS = 250
 
-function MermaidDiagram({ code }: { code: string }) {
-  const [diagram, setDiagram] = useState<Diagram>({ status: "rendering" })
-  const { uiFont } = useClientSettings().appearance
+const diagramAtom = familyOf((code: string, uiFont: Appearance["uiFont"]) =>
+  Atom.make(
+    Effect.tryPromise(() =>
+      import("pele/lazy").then(({ renderAsync }) =>
+        renderAsync(code, { fontFamily: diagramFont(uiFont), fontSize: 12, links: false, images: false }),
+      ),
+    ),
+  ),
+)
 
-  useEffect(() => {
-    let cancelled = false
-    const timer = setTimeout(() => {
-      void import("pele/lazy")
-        .then(({ renderAsync }) =>
-          renderAsync(code, { fontFamily: diagramFont(uiFont), fontSize: 12, links: false, images: false }),
-        )
-        .then(({ svg }): Diagram => ({ status: "done", svg }))
-        .catch((): Diagram => ({ status: "failed" }))
-        .then((next) => !cancelled && setDiagram(next))
-    }, RENDER_DELAY_MS)
-    return () => {
-      cancelled = true
-      clearTimeout(timer)
-    }
-  }, [code, uiFont])
+function MermaidDiagram({ code }: { code: string }) {
+  const { uiFont } = useClientSettings().appearance
+  const settled = useDeferredValue(useDebouncedValue(code, RENDER_DELAY_MS))
 
   return (
     <CodeFigure label="mermaid" code={code}>
-      {diagram.status === "rendering" && (
-        <output
-          aria-label={m.markdown_diagram_rendering()}
-          className="m-3 block h-32 animate-pulse rounded-md bg-muted motion-reduce:animate-none"
-        />
-      )}
-      {diagram.status === "done" && (
-        // oxlint-disable-next-line hinacode/no-comments
-        // Pele escapes diagram text and filters links and styles: https://pele.run/security
-        <div
-          className="overflow-x-auto p-3 transition-opacity duration-200 ease-out starting:opacity-0 [&_svg]:mx-auto"
-          dangerouslySetInnerHTML={{ __html: diagram.svg }}
-        />
-      )}
-      {diagram.status === "failed" && (
-        <>
-          <p className="px-3 pt-2 text-xs text-muted-foreground">{m.markdown_diagram_failed()}</p>
-          <pre className="overflow-x-auto p-3 font-mono text-xs">
-            <code>{code}</code>
-          </pre>
-        </>
-      )}
+      <Suspense
+        fallback={
+          <output
+            aria-label={m.markdown_diagram_rendering()}
+            className="m-3 block h-32 animate-pulse rounded-md bg-muted motion-reduce:animate-none"
+          />
+        }
+      >
+        <RenderedDiagram code={settled} uiFont={uiFont} />
+      </Suspense>
     </CodeFigure>
+  )
+}
+
+function RenderedDiagram({ code, uiFont }: { code: string; uiFont: Appearance["uiFont"] }) {
+  const diagram = useAtomSuspense(diagramAtom(code, uiFont), { includeFailure: true })
+  if (AsyncResult.isFailure(diagram)) {
+    return (
+      <>
+        <p className="px-3 pt-2 text-xs text-muted-foreground">{m.markdown_diagram_failed()}</p>
+        <pre className="overflow-x-auto p-3 font-mono text-xs">
+          <code>{code}</code>
+        </pre>
+      </>
+    )
+  }
+  return (
+    // oxlint-disable-next-line hinacode/no-comments
+    // Pele escapes diagram text and filters links and styles: https://pele.run/security
+    <div
+      className="overflow-x-auto p-3 transition-opacity duration-200 ease-out starting:opacity-0 [&_svg]:mx-auto"
+      dangerouslySetInnerHTML={{ __html: diagram.value.svg }}
+    />
   )
 }

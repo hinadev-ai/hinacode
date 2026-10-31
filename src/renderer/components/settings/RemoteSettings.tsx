@@ -1,8 +1,9 @@
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
-import { AsyncResult } from "effect/reactivity"
+import { Effect } from "effect"
+import { AsyncResult, Atom } from "effect/reactivity"
 import QRCode from "qrcode"
-import { type FormEvent, useEffect, useId, useRef, useState, useTransition } from "react"
+import { type FormEvent, useId, useRef, useState, useTransition } from "react"
 import type { RelayStatus, RemotePairing } from "../../../shared/domain.ts"
 import { isPortInUse, pairingUrl } from "../../../shared/remote.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
@@ -447,22 +448,22 @@ function PairingDetails({ pairing, onRotated }: PairingDetailsProps) {
   )
 }
 
-function PairingQrCode({ url }: { url: string }) {
-  const [src, setSrc] = useState<string | null>(null)
+const qrCodeAtom = Atom.family((url: string) =>
+  Atom.make(Effect.promise(() => QRCode.toString(url, { type: "svg", margin: 1 }))),
+)
 
-  useEffect(() => {
-    let current = true
-    void QRCode.toString(url, { type: "svg", margin: 1 }).then(
-      (svg) => current && setSrc(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`),
-    )
-    return () => {
-      current = false
-    }
-  }, [url])
+function PairingQrCode({ url }: { url: string }) {
+  const svg = AsyncResult.getOrElse(useAtomValue(qrCodeAtom(url)), () => null)
 
   return (
     <div className="size-48 rounded-md bg-white p-2">
-      {src && <img src={src} alt={m.remote_pair_qr_label()} className="size-full" />}
+      {svg && (
+        <img
+          src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`}
+          alt={m.remote_pair_qr_label()}
+          className="size-full"
+        />
+      )}
     </div>
   )
 }

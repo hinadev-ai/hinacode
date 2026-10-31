@@ -92,6 +92,22 @@ describe("Projects.listWithRepositories", () => {
     }),
   )
 
+  it.live("remembers each root's repository until the project is edited", () =>
+    Effect.gen(function* () {
+      const projects = yield* Projects
+      const root = withOrigin("git@github.com:acme/old.git")
+      const project = yield* projects.create({ name: "repo", rootPath: root, setupScript: null })
+      const repository = Effect.map(projects.listWithRepositories, ([listed]) => listed?.repository)
+      expect(yield* repository).toBe("acme/old")
+
+      execFileSync("git", ["-C", root, "remote", "set-url", "origin", "git@github.com:acme/new.git"])
+      expect(yield* repository).toBe("acme/old")
+
+      yield* projects.update({ id: project.id, name: "renamed" })
+      expect(yield* repository).toBe("acme/new")
+    }).pipe(Effect.provide(projectsLayer)),
+  )
+
   it.live("leaves the key out without a GitHub origin", () =>
     Effect.gen(function* () {
       expect(yield* listedAt(withOrigin(null))).not.toHaveProperty("repository")

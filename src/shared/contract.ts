@@ -282,7 +282,7 @@ export const RpcMethods = {
     Schema.Struct({ id: Schema.String, query: Schema.String }),
     Schema.Array(PullRequestMatch),
   ),
-  "projects.fetch": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
+  "projects.fetch": rpc(Schema.Struct({ id: Schema.String }), Schema.Number),
   "projects.icon": rpc(Schema.Struct({ id: Schema.String }), Schema.NullOr(Schema.String)),
   "git.log": rpc(
     Schema.Struct({

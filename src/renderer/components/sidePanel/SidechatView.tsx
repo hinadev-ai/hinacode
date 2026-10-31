@@ -1,11 +1,12 @@
 import { useAtomValue } from "@effect/atom-react"
+import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { RiChatNewLine } from "react-icons/ri"
 import { isThreadBusy, type Thread } from "../../../shared/domain.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { repositoryAtom, callPromise } from "../../lib/rpc.ts"
-import { openSidechat } from "../../lib/sidechat.ts"
+import { sidechatAtom } from "../../lib/sidechat.ts"
 import { ThreadRepository } from "../../lib/threadRepository.ts"
 import { ThreadFolder, useThreadRoot } from "../../lib/threadRoot.ts"
 import { m } from "../../paraglide/messages.js"
@@ -20,25 +21,17 @@ import { Button } from "../ui/button.tsx"
 
 export function SidechatView({ thread }: { thread: Thread }) {
   const sidechat = useThreads((state) => state.sidechats[thread.id])
-  const missing = sidechat === undefined
-  const [error, setError] = useState<string | null>(null)
+  return sidechat ? <SidechatTranscript key={sidechat.id} sidechat={sidechat} /> : <OpenSidechat threadId={thread.id} />
+}
 
-  useEffect(() => {
-    if (!missing) return
-    openSidechat(thread.id).then(
-      () => setError(null),
-      (cause: unknown) => setError(errorMessage(cause)),
-    )
-  }, [thread.id, missing])
-
-  if (error !== null) {
-    return (
-      <p role="alert" className="m-auto px-4 text-center text-sm text-destructive">
-        {m.sidechat_open_failed({ message: error })}
-      </p>
-    )
-  }
-  return sidechat && <SidechatTranscript key={sidechat.id} sidechat={sidechat} />
+function OpenSidechat({ threadId }: { threadId: string }) {
+  const opened = useAtomValue(sidechatAtom(threadId))
+  if (!AsyncResult.isFailure(opened)) return null
+  return (
+    <p role="alert" className="m-auto px-4 text-center text-sm text-destructive">
+      {m.sidechat_open_failed({ message: errorMessage(Cause.squash(opened.cause)) })}
+    </p>
+  )
 }
 
 function SidechatTranscript({ sidechat }: { sidechat: Thread }) {

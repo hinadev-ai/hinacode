@@ -233,7 +233,18 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
                           },
                         },
                       ]
-                    : scriptedTurn,
+                    : input.prompt === "simulate a passed usage limit"
+                      ? [
+                          {
+                            type: "turn_limited",
+                            limit: {
+                              kind: "usage",
+                              message: "Usage limit reached",
+                              reset: { at: "2000-01-01T00:00:00.000Z", autoResume: false },
+                            },
+                          },
+                        ]
+                      : scriptedTurn,
       )
     }),
   ...(id === "claude" ? { wakes: Stream.fromQueue(claudeWakes) } : {}),
@@ -1057,6 +1068,23 @@ describe("limited threads over rpc", () => {
     expect(failure(await invoke("threads.resumeAtReset", { id: thread.id, enabled: true })).tag).toBe("AgentError")
   })
 
+  test("resends the last prompt once its limit has reset", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    const current = async () => result(await invoke("threads.list", undefined)).find((item) => item.id === thread.id)
+    const prompts = async () =>
+      result(await invoke("threads.transcript", { threadId: thread.id })).messages.filter(
+        (message) => message.role === "user",
+      ).length
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a passed usage limit" }))
+    await expect.poll(async () => (await current())?.status).toBe("limited")
+
+    result(await invoke("threads.resumeAtReset", { id: thread.id, enabled: true }))
+    await expect.poll(prompts, { timeout: 5_000 }).toBe(2)
+    await expect.poll(async () => (await current())?.status).toBe("idle")
+    result(await invoke("threads.delete", { id: thread.id }))
+  })
+
   test("continues a limited thread on another account with its session and last prompt", async () => {
     const spare = result(await invoke("accounts.create", newAccount("claude", "Spare")))
     const codex = result(await invoke("accounts.create", newAccount("codex", "Elsewhere")))
@@ -1706,6 +1734,36 @@ describe("remote mode", () => {
     await paired.send({ type: "ping", at: 42 })
     await paired.pong(42)
     expect(result(await paired.call("projects.list", undefined))).toBeInstanceOf(Array)
+    paired.socket.close()
+  })
+
+  test("sends a transcript larger than the socket buffer next to another call without closing", async () => {
+    const project = result(await invoke("projects.list", undefined))[0] ?? (await createProject("large-transcript"))
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    await runtime.runPromise(
+      Messages.Messages.use((messages) =>
+        messages.insert({
+          id: `${thread.id}-long`,
+          threadId: thread.id,
+          role: "assistant",
+          parts: [{ type: "text", text: "x".repeat(9 * 1024 * 1024) }],
+          createdAt: "2026-10-12T00:00:00.000Z",
+          completedAt: "2026-10-12T00:00:00.000Z",
+          usage: null,
+          forkPoint: null,
+        }),
+      ),
+    )
+    const paired = phone(port)
+    await paired.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
+    await paired.ready()
+
+    const [transcript, projects] = await Promise.all([
+      paired.call("threads.transcript", { threadId: thread.id }),
+      paired.call("projects.list", undefined),
+    ])
+    expect(result(transcript).messages).toHaveLength(1)
+    expect(result(projects)).toBeInstanceOf(Array)
     paired.socket.close()
   })
 
