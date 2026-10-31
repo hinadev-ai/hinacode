@@ -32,6 +32,18 @@
   }
 }
 
+/* The overview floats 17.5rem wide at the thread's inline end. It shows once the 48rem transcript column fits beside it,
+   and the column slides toward the start by however much it would overlap. Sliding the column instead of padding the
+   scroller keeps the scrollbar at the window edge. */
+@custom-variant beside-overview (@container thread (width >= 66rem));
+
+@utility clear-overview {
+  @variant beside-overview {
+    --tw-translate-x: min(0px, (100cqw - var(--container-3xl)) / 2 - 17.5rem);
+    translate: var(--tw-translate-x) var(--tw-translate-y);
+  }
+}
+
 /* Touch screens fire :hover on tap and leave it stuck, so hover styles only apply to a real pointer. */
 @custom-variant hover {
   @media (hover: hover) and (pointer: fine) {

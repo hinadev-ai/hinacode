@@ -33,8 +33,6 @@ import { Button } from "./ui/button.tsx"
 
 const FIND_DEBOUNCE_MS = 100
 
-const besideOverview = "@min-[48rem]:@max-[83rem]:pe-70"
-
 interface ThreadViewProps {
   readonly thread: Thread
   readonly agent?: string
@@ -56,12 +54,12 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
   })
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="@container window-drag flex min-h-12 shrink-0 flex-wrap items-center gap-2 px-3 py-2">
+      <header className="@container/thread window-drag flex min-h-12 shrink-0 flex-wrap items-center gap-2 px-3 py-2">
         <ThreadBreadcrumb thread={thread} agent={agent} />
         {actions}
       </header>
-      <div ref={regionRef} className="relative flex min-h-0 flex-1 flex-col [container-type:size]">
-        <div className={cn("flex min-h-0 flex-1 flex-col overflow-auto", besideOverview)}>
+      <div ref={regionRef} className="relative flex min-h-0 flex-1 flex-col overflow-x-clip [container:thread/size]">
+        <div className="flex min-h-0 flex-1 flex-col overflow-auto">
           <ThreadRepository value={repository}>
             <ThreadFolder value={folder}>
               <Transcript thread={thread} agent={agent} />
@@ -82,8 +80,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
           data-centered={centered}
           data-loaded={loaded}
           className={cn(
-            besideOverview,
-            "absolute inset-x-0 bottom-0 flex max-h-full flex-col data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] data-[loaded=false]:opacity-0 data-[loaded=true]:data-[centered=false]:transition-transform data-[loaded=true]:data-[centered=false]:duration-500 data-[loaded=true]:data-[centered=false]:ease-(--ease-drawer) motion-reduce:transition-none",
+            "clear-overview absolute inset-x-0 bottom-0 flex max-h-full flex-col data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] data-[loaded=false]:opacity-0 data-[loaded=true]:data-[centered=false]:transition-transform data-[loaded=true]:data-[centered=false]:duration-500 data-[loaded=true]:data-[centered=false]:ease-(--ease-drawer) motion-reduce:transition-none",
           )}
         >
           <Composer thread={thread} subagentCallId={agent}>
@@ -203,7 +200,7 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
           {worktree?.status === "preparing" ? (
             <WorktreePreparation worktree={worktree} />
           ) : (
-            <div className="mt-auto">
+            <div className="mt-auto clear-overview">
               <EmptyThread
                 project={isChat ? null : <ThreadProjectSwitch thread={thread} />}
                 environment={<ThreadEnvironmentSwitch thread={thread} />}

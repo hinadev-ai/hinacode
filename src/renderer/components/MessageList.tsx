@@ -179,7 +179,7 @@ function MessageBody({ message }: { message: Message }) {
       <article
         aria-label={m.message_you()}
         data-message-id={message.id}
-        className="group/message mx-auto flex w-full max-w-3xl flex-col items-end gap-1.5 px-4 py-2"
+        className="group/message clear-overview mx-auto flex w-full max-w-3xl flex-col items-end gap-1.5 px-4 py-2"
       >
         {attachments.length > 0 && (
           <div className="flex max-w-[85%] flex-wrap justify-end gap-2">
@@ -223,7 +223,7 @@ function AssistantBody({ message, showElapsedTime }: { message: Message; showEla
     <article
       aria-busy={streaming}
       data-message-id={message.id}
-      className="group/message mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-(--leading-message)"
+      className="group/message clear-overview mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-(--leading-message)"
     >
       {presentation.kind === "completed" ? (
         <WorkedFor
