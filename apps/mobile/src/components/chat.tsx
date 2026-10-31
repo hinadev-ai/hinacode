@@ -10,6 +10,7 @@ import { collapsedParts } from "@shared/activityFold.ts"
 import { toolSummary } from "@shared/compactTranscript.ts"
 import { formatWorkDuration } from "@shared/workDuration.ts"
 import type { Message, MessagePart, Thread, ToolCallStatus } from "@shared/domain.ts"
+import type { UsageLimit } from "@shared/limits.ts"
 import { useFocusEffect } from "expo-router"
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react"
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
@@ -24,11 +25,11 @@ import { cssEase, duration, rise } from "@/constants/motion"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
-import { copy } from "@/lib/copy"
+import { copy, locale } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { motion } from "@/lib/motion"
 import { useMessages } from "@/stores/messages"
-import { useThreadRoot } from "@/stores/threads"
+import { useThreadRoot, useThreads } from "@/stores/threads"
 
 /** Cards hold insets with `radius.sm` corners, so the card's own corners stay concentric with them. */
 const CARD_PADDING = 12
@@ -116,6 +117,7 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
         style={liquidGlass ? styles.dockStack : undefined}
         onLayout={liquidGlass ? (event) => setDockHeight(event.nativeEvent.layout.height) : undefined}
       >
+        {thread.usageLimit !== null && <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />}
         {history?.status === "ready" &&
           history.approvals.map((request) => <ApprovalCard key={request.id} request={request} />)}
         {history?.status === "ready" &&
@@ -462,6 +464,66 @@ function ApprovalCard({ request }: { request: ApprovalRequest }) {
   )
 }
 
+const formatResetTime = (at: string) => {
+  const date = new Date(at)
+  return Number.isFinite(date.getTime())
+    ? date.toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" })
+    : null
+}
+
+function UsageLimitCallout({ thread, limit }: { thread: Thread; limit: UsageLimit }) {
+  const theme = useTheme()
+  const { busy, error, run } = useAction()
+  const { reset } = limit
+  const resetTime = reset === null ? null : formatResetTime(reset.at)
+  const setAutoResume = (enabled: boolean) =>
+    void run(async () => useThreads.getState().upsert(await call("threads.resumeAtReset", { id: thread.id, enabled })))
+  return (
+    <ResolvableCard>
+      <View
+        testID="usage-limit"
+        accessibilityRole="summary"
+        style={[styles.card, { borderColor: theme.attention, backgroundColor: theme.attentionBg }]}
+      >
+        <View style={styles.cardHeading}>
+          <Icon name="RiErrorWarningLine" size={16} color={theme.attention} />
+          <Text accessibilityRole="header" style={[styles.cardTitle, styles.shrink, { color: theme.attention }]}>
+            {copy(limit.kind === "org_spend" ? "mobile_chat_org_spend_limit_title" : "mobile_chat_usage_limit_title")}
+          </Text>
+        </View>
+        <Text selectable style={[styles.cardBody, { color: theme.text }]}>
+          {limit.message}
+        </Text>
+        {limit.kind === "org_spend" && (
+          <Text style={[styles.cardNote, { color: theme.textMuted }]}>{copy("mobile_chat_org_spend_limit_hint")}</Text>
+        )}
+        {reset !== null && resetTime !== null && (
+          <>
+            <Text style={[styles.cardNote, { color: theme.textMuted }]}>
+              {copy("mobile_chat_usage_limit_reset", { time: resetTime })}
+            </Text>
+            {reset.autoResume && (
+              <Text style={[styles.cardNote, { color: theme.attention }]}>
+                {copy("mobile_chat_usage_limit_scheduled")}
+              </Text>
+            )}
+            <View style={styles.actions}>
+              <Button
+                testID="usage-limit-resume"
+                label={copy(reset.autoResume ? "mobile_chat_usage_limit_cancel_resume" : "mobile_chat_usage_limit_resume")}
+                busy={busy}
+                onPress={() => setAutoResume(!reset.autoResume)}
+                style={styles.cardButton}
+              />
+            </View>
+          </>
+        )}
+        {error !== null && <Text style={{ color: theme.danger }}>{error}</Text>}
+      </View>
+    </ResolvableCard>
+  )
+}
+
 function QuestionCard({ request }: { request: QuestionRequest }) {
   const theme = useTheme()
   const { busy, error, run } = useAction()
@@ -608,6 +670,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   cardTitle: { fontSize: 15, fontWeight: "600" },
+  cardHeading: { flexDirection: "row", alignItems: "center", gap: 8 },
+  cardBody: { fontSize: 15, lineHeight: 21 },
+  cardNote: { fontSize: 13, lineHeight: 18 },
+  cardButton: { borderRadius: radius.sm },
+  shrink: { flexShrink: 1 },
   detail: { fontFamily: mono, fontSize: 12, padding: 8, borderRadius: radius.sm },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" },
   question: { gap: 8 },
