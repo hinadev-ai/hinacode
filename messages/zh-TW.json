@@ -1638,7 +1638,7 @@
   "mobile_chat_transcript": "對話紀錄",
   "mobile_chat_loading": "正在載入對話紀錄",
   "mobile_chat_retry": "重試",
-  "mobile_chat_empty": "傳送提示以開始這個執行緒。",
+  "mobile_chat_empty": "傳送提示以開始這個對話串。",
   "mobile_chat_writing": "撰寫中…",
   "mobile_chat_thinking": "思考中…",
   "mobile_chat_worked_for": "已工作 {duration}",
