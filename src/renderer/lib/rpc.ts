@@ -1,6 +1,6 @@
 import { Effect, Schedule, Schema, Stream } from "effect"
 import { AsyncResult, Atom } from "effect/reactivity"
-import type { ProviderId } from "../../shared/agent.ts"
+import type { AgentCommand, ProviderId } from "../../shared/agent.ts"
 import { PushEvent, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../../shared/contract.ts"
 import type { Thread } from "../../shared/domain.ts"
 import { msUntilNextReset } from "../../shared/planLimits.ts"
@@ -234,6 +234,9 @@ const threadIdOf = (key: string) => key.split("\n")[0] ?? ""
 export const commandsAtom = Atom.family((key: string) =>
   Atom.make(call("commands.list", { threadId: threadIdOf(key) })),
 )
+
+export const threadCommands = (commands: ReadonlyArray<AgentCommand>, thread: Pick<Thread, "userSkills">) =>
+  commands.filter((command) => thread.userSkills || command.scope !== "user")
 
 export const filesAtom = Atom.family((key: string) => Atom.make(call("files.list", { threadId: threadIdOf(key) })))
 

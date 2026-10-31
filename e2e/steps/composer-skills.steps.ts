@@ -2,6 +2,7 @@ import { expect } from "@playwright/test"
 import { Given, Then, When } from "../support/fixtures.ts"
 import type { HinacodeApp } from "../support/app.ts"
 import { rpc } from "../support/rpc.ts"
+import { composerText } from "../support/ui.ts"
 
 const message = (app: HinacodeApp) => app.page.getByRole("combobox", { name: "Message", exact: true })
 
@@ -43,9 +44,9 @@ When("I pick {string} from the commands", async ({ todoApp: app }, insert: strin
 })
 
 Then("the message starts with the skill chip {string}", async ({ todoApp: app }, name: string) => {
-  await expect(message(app)).toHaveAccessibleDescription(`Skill: ${name}`)
-  await expect(app.page.getByText(name, { exact: true })).toBeVisible()
-  await expect(message(app)).not.toHaveValue(new RegExp(name))
+  const chip = message(app).locator(".cm-line").first().locator("[data-kind=command]").first()
+  await expect(chip).toHaveText(`/${name}`)
+  await expect.poll(() => composerText(message(app))).toMatch(new RegExp(`^/${name}`))
 })
 
 When("I send the message with its skill", async ({ todoApp: app }) => {
@@ -56,12 +57,32 @@ Then("my message {string} is in the thread", async ({ todoApp: app }, text: stri
   await expect(app.page.getByRole("article", { name: "You", exact: true })).toContainText(text)
 })
 
-When("I press Backspace at the start of the message", async ({ todoApp: app }) => {
-  await message(app).evaluate((textarea: HTMLTextAreaElement) => textarea.setSelectionRange(0, 0))
+When("I press Backspace right after the chip", async ({ todoApp: app }) => {
+  await message(app).press("Home")
+  await message(app).press("ArrowRight")
   await message(app).press("Backspace")
 })
 
 Then("the message has no skill chip and reads {string}", async ({ todoApp: app }, text: string) => {
-  await expect(message(app)).toHaveValue(text)
-  await expect(message(app)).toHaveAccessibleDescription("")
+  await expect.poll(() => composerText(message(app))).toBe(text)
+  await expect(message(app).locator("[data-kind=command]")).toHaveCount(0)
+})
+
+Then(
+  "the message shows the chips {string}, {string} and {string}",
+  async ({ todoApp: app }, first: string, second: string, third: string) => {
+    await expect(message(app).locator("[data-kind=command]")).toHaveText([first, second, third])
+  },
+)
+
+Then(
+  "my sent message shows the chips {string}, {string} and {string}",
+  async ({ todoApp: app }, first: string, second: string, third: string) => {
+    const sent = app.page.getByRole("article", { name: "You", exact: true })
+    await expect(sent.locator("[data-kind=command]")).toHaveText([first, second, third])
+  },
+)
+
+Then("the message shows the chip {string}", async ({ todoApp: app }, token: string) => {
+  await expect(message(app).locator("[data-kind=command]")).toHaveText([token])
 })

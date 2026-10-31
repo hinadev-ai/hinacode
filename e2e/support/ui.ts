@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test"
+import type { Locator, Page } from "@playwright/test"
 
 export const sidebar = (page: Page) => page.getByRole("navigation", { name: "Projects and threads" })
 
@@ -17,3 +17,6 @@ export const threadMenu = async (page: Page, title: string, item: string) => {
     .click()
   await page.getByRole("menuitem", { name: item, exact: true }).click()
 }
+
+export const composerText = (composer: Locator) =>
+  composer.evaluate((editor) => [...editor.querySelectorAll(".cm-line")].map((line) => line.textContent).join("\n"))

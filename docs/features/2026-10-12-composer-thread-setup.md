@@ -70,5 +70,5 @@ Out of scope: a default access mode for new threads in Settings, and per-project
 
 ## Highlighting and completion
 
-- **Highlighting.** The textarea's text is transparent, and a highlighted copy of the same text sits under it (`ComposerInput`, `shared/composerSyntax.ts`). It colors list markers, inline and fenced code, known commands and mentions of files that exist. Only color changes, never font or spacing, so both layers wrap the same way.
+- **Highlighting.** The composer is a CodeMirror editor whose document is the draft text and whose decorations come from `highlight` in `shared/composerSyntax.ts` (`ComposerInput`, `renderer/lib/composerEditor.ts`). It colors list markers, inline and fenced code, known commands and mentions of files that exist.
 - **Completion.** `/` completes Claude slash commands and skills (`commands.list`: the live session's `supportedCommands()`, or a throwaway CLI in the thread's directory, cached for a minute). `$` completes Codex skills (`skills/list`), and a sent `$name` also goes to Codex as a `skill` input item. `@` completes workspace files (`files.list`: `git ls-files --cached --others --exclude-standard`, refreshed after each turn). Arrow keys move, Enter or Tab inserts, Escape closes.

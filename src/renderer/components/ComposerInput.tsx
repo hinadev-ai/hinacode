@@ -1,55 +1,52 @@
-// oxlint-disable jsx-a11y/prefer-tag-over-role, jsx-a11y/click-events-have-key-events -- the WAI-ARIA combobox pattern: a textarea driving a listbox through aria-activedescendant, which <datalist> cannot do. Keys reach the options through the textarea.
-import { type ComponentProps, type KeyboardEvent, type Ref, useId, useImperativeHandle, useRef, useState } from "react"
-import { flushSync } from "react-dom"
+// oxlint-disable jsx-a11y/prefer-tag-over-role, jsx-a11y/click-events-have-key-events -- the WAI-ARIA combobox pattern: an editor driving a listbox through aria-activedescendant, which <datalist> cannot do. Keys reach the options through the editor.
+import { defaultKeymap, history, historyKeymap, insertNewline } from "@codemirror/commands"
+import { Compartment, EditorState, Prec } from "@codemirror/state"
+import { EditorView, keymap, type ViewUpdate } from "@codemirror/view"
+import {
+  type DragEvent as ReactDragEvent,
+  type Ref,
+  useEffect,
+  useEffectEvent,
+  useId,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react"
 import { RiFileLine, RiSlashCommands2 } from "react-icons/ri"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
 import type { MentionableThreads } from "../../shared/threadMention.ts"
-import {
-  completionAt,
-  type CompletionQuery,
-  type Fence,
-  fenceCode,
-  highlight,
-  leadingSkill,
-  type Suggestion,
-  suggestionsFor,
-  type SyntaxKind,
-} from "../../shared/composerSyntax.ts"
+import { completionAt, type CompletionQuery, type Suggestion, suggestionsFor } from "../../shared/composerSyntax.ts"
+import { useTheme } from "../lib/appearance.ts"
+import { chipBefore, composerSyntax, setComposerConfig } from "../lib/composerEditor.ts"
+import { useClientSettings } from "../lib/settings.ts"
 import { usePullRequestSearch } from "../lib/usePullRequestSearch.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
-import { HighlightedCode } from "./HighlightedCode.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { SkillIcon } from "./icons/SkillIcon.tsx"
 import { StatusIcon } from "./ThreadPullRequests.tsx"
 
-const syntaxClass: Record<SyntaxKind, string> = {
-  text: "text-foreground",
-  bullet: "text-muted-foreground",
-  code: "rounded-sm bg-muted text-foreground",
-  command: "text-syntax-token",
-  mention: "text-syntax-token",
-}
-
-const textLayout =
-  "col-start-1 row-start-1 max-h-60 px-2.5 py-2 text-base whitespace-pre-wrap [overflow-wrap:break-word] [scrollbar-gutter:stable] md:text-sm"
-
-// FIXME: browsers drop the line after a trailing newline in the highlighted copy, but not in the textarea
-const TRAILING_LINE = "\u200b"
-
 const scrollIntoViewNearest = (option: HTMLElement | null) => option?.scrollIntoView({ block: "nearest" })
 
-const afterChip = "indent-[calc(var(--skill-chip-width)_+_--spacing(1.5))]"
+export interface ComposerInputHandle {
+  focus(): void
+}
 
-interface ComposerInputProps extends Omit<ComponentProps<"textarea">, "value" | "onChange" | "ref"> {
-  readonly ref?: Ref<HTMLTextAreaElement>
+interface ComposerInputProps {
+  readonly ref?: Ref<ComposerInputHandle>
   readonly value: string
   readonly onValueChange: (value: string) => void
   readonly commands: ReadonlyArray<AgentCommand>
   readonly files: ReadonlyArray<string>
   readonly threads: MentionableThreads<Thread>
   readonly projectId: string
+  readonly placeholder: string
+  readonly "aria-label": string
+  readonly onEnter: (event: KeyboardEvent) => void
+  readonly onPaste?: (event: ClipboardEvent) => void
+  readonly onDrop?: (event: DragEvent) => void
+  readonly onDragOver?: (event: ReactDragEvent<HTMLDivElement>) => void
 }
 
 export function ComposerInput({
@@ -60,32 +57,23 @@ export function ComposerInput({
   files,
   threads,
   projectId,
-  onKeyDown,
   placeholder,
-  className,
-  ...props
+  "aria-label": label,
+  onEnter,
+  onPaste,
+  onDrop,
+  onDragOver,
 }: ComposerInputProps) {
-  const layersRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const highlightRef = useRef<HTMLDivElement>(null)
   const listId = useId()
-  const skillId = useId()
+  const parentRef = useRef<HTMLDivElement>(null)
+  const viewRef = useRef<EditorView | null>(null)
+  const [attributes] = useState(() => new Compartment())
   const [caret, setCaret] = useState(0)
   const [selected, setSelected] = useState({ start: -1, index: 0 })
   const [dismissedAt, setDismissedAt] = useState<number | null>(null)
-  useImperativeHandle(ref, () => textareaRef.current!, [])
+  const { codeTheme, scheme } = useTheme(useClientSettings().appearance.theme)
 
-  const known = {
-    commands: new Set(commands.map((command) => command.trigger + command.name)),
-    files: new Set(files),
-    threads: new Set([...threads.sameMachine, ...threads.otherMachines].map((thread) => thread.id)),
-  }
-  const skill = leadingSkill(value, commands)
-  const chipToken = skill?.token ?? ""
-  const text = value.slice(chipToken.length)
-  const segments = highlight(text, known)
-
-  const completion = completionAt(text, caret)
+  const completion = completionAt(value, caret)
   const active = completion && completion.start !== dismissedAt ? completion : null
   const pullRequests = usePullRequestSearch(projectId, active?.trigger === "#" ? active.query : null)
   const suggestions = active ? suggestionsFor(active, commands, files, threads, pullRequests) : []
@@ -93,29 +81,17 @@ export function ComposerInput({
   const activeIndex = completion?.start === selected.start ? Math.min(selected.index, suggestions.length - 1) : 0
   const optionId = (index: number) => `${listId}-${index}`
 
-  // FIXME: React attaches a child's ref before its parent's, so the observer reads layersRef when it fires
-  const measureChip = (element: HTMLElement | null) => {
-    if (element === null) return
-    const observer = new ResizeObserver(() =>
-      layersRef.current?.style.setProperty("--skill-chip-width", `${element.offsetWidth}px`),
-    )
-    observer.observe(element)
-    return () => observer.disconnect()
-  }
-
-  // FIXME: rendering a new value moves the textarea's caret to its end, so render now and put the caret back
-  const replace = (next: string, position: number) => {
-    const caretInText = Math.max(0, position - (leadingSkill(next, commands)?.token.length ?? 0))
-    flushSync(() => onValueChange(next))
-    textareaRef.current?.setSelectionRange(caretInText, caretInText)
-    setCaret(caretInText)
-    setDismissedAt(null)
-  }
-
   const pick = (suggestion: Suggestion) => {
-    if (completion === null) return
-    const before = `${chipToken}${text.slice(0, completion.start)}${suggestion.insert} `
-    replace(before + text.slice(completion.end).replace(/^ /, ""), before.length)
+    const view = viewRef.current
+    if (view === null || completion === null) return
+    const insert = `${suggestion.insert} `
+    const to = completion.end + (value[completion.end] === " " ? 1 : 0)
+    view.dispatch({
+      changes: { from: completion.start, to, insert },
+      selection: { anchor: completion.start + insert.length },
+    })
+    view.focus()
+    setDismissedAt(null)
   }
 
   const move = (step: 1 | -1) =>
@@ -124,104 +100,126 @@ export function ComposerInput({
       index: (activeIndex + step + suggestions.length) % suggestions.length,
     })
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (open && !event.nativeEvent.isComposing) {
-      const suggestion = suggestions[activeIndex]
-      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-        event.preventDefault()
-        move(event.key === "ArrowDown" ? 1 : -1)
-        return
-      }
-      if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey && suggestion) {
-        event.preventDefault()
-        pick(suggestion)
-        return
-      }
-      if (event.key === "Escape") {
-        event.preventDefault()
-        event.stopPropagation()
-        setDismissedAt(completion.start)
-        return
-      }
+  const keyDown = useEffectEvent((event: KeyboardEvent, view: EditorView) => {
+    if (event.isComposing) return false
+    const suggestion = suggestions[activeIndex]
+    if (open && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+      move(event.key === "ArrowDown" ? 1 : -1)
+      return true
     }
-    const { selectionStart, selectionEnd } = event.currentTarget
-    if (skill && event.key === "Backspace" && selectionStart === 0 && selectionEnd === 0) {
-      event.preventDefault()
-      replace(text, 0)
-      return
+    if (open && (event.key === "Enter" || event.key === "Tab") && !event.shiftKey && suggestion) {
+      pick(suggestion)
+      return true
     }
-    onKeyDown?.(event)
+    if (open && event.key === "Escape") {
+      event.stopPropagation()
+      setDismissedAt(completion.start)
+      return true
+    }
+    const { main } = view.state.selection
+    const chip = main.empty ? chipBefore(view, main.head) : null
+    if (event.key === "Backspace" && chip !== null) {
+      const spaceAfter = view.state.sliceDoc(chip.to, chip.to + 1) === " " ? 1 : 0
+      view.dispatch({ changes: { from: chip.from, to: chip.to + spaceAfter } })
+      return true
+    }
+    if (event.key !== "Enter") return false
+    if (event.shiftKey) insertNewline(view)
+    else onEnter(event)
+    return true
+  })
+
+  const changed = useEffectEvent((update: ViewUpdate) => {
+    const text = update.state.doc.toString()
+    if (update.docChanged && text !== value) onValueChange(text)
+    if (update.docChanged || update.selectionSet) setCaret(update.state.selection.main.head)
+  })
+  const pasted = useEffectEvent((event: ClipboardEvent) => onPaste?.(event))
+  const dropped = useEffectEvent((event: DragEvent) => onDrop?.(event))
+  const initialText = useEffectEvent(() => value)
+
+  useEffect(() => {
+    const view = new EditorView({
+      parent: parentRef.current!,
+      state: EditorState.create({
+        doc: initialText(),
+        extensions: [
+          history(),
+          composerSyntax,
+          attributes.of([]),
+          Prec.highest(
+            EditorView.domEventHandlers({
+              keydown: (event, editor) => {
+                const handled = keyDown(event, editor)
+                if (handled) event.preventDefault()
+                return handled
+              },
+              paste: (event) => {
+                pasted(event)
+                return event.defaultPrevented
+              },
+              drop: (event) => {
+                dropped(event)
+                return event.defaultPrevented
+              },
+            }),
+          ),
+          keymap.of([...defaultKeymap, ...historyKeymap]),
+          EditorView.updateListener.of(changed),
+        ],
+      }),
+    })
+    viewRef.current = view
+    return () => {
+      view.destroy()
+      viewRef.current = null
+    }
+  }, [attributes])
+  useImperativeHandle(ref, () => ({ focus: () => viewRef.current?.focus() }), [])
+
+  useEffect(() => {
+    const view = viewRef.current
+    if (view === null || view.state.doc.toString() === value) return
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: value },
+      selection: { anchor: value.length },
+    })
+  })
+
+  const contentAttributes: Record<string, string> = {
+    role: "combobox",
+    "aria-label": label,
+    "aria-placeholder": placeholder,
+    "aria-autocomplete": "list",
+    "aria-expanded": String(open),
+    ...(open ? { "aria-controls": listId, "aria-activedescendant": optionId(activeIndex) } : {}),
   }
+  const attributesKey = JSON.stringify(contentAttributes)
+  useEffect(() => {
+    const view = viewRef.current
+    if (view === null) return
+    setComposerConfig(view, {
+      commands,
+      files,
+      threadIds: [...threads.sameMachine, ...threads.otherMachines].map((thread) => thread.id),
+      placeholder,
+      codeTheme,
+      scheme,
+    })
+  })
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: attributes.reconfigure(Prec.highest(EditorView.contentAttributes.of(JSON.parse(attributesKey)))),
+    })
+  }, [attributes, attributesKey])
 
   return (
     <>
-      <div ref={layersRef} className="grid min-h-0">
-        <div
-          ref={highlightRef}
-          aria-hidden
-          className={cn(textLayout, skill && afterChip, "pointer-events-none relative overflow-hidden")}
-        >
-          {skill && (
-            <span
-              ref={measureChip}
-              className="absolute start-2.5 top-2 flex h-lh max-w-1/2 items-center gap-1 rounded-md bg-syntax-token/12 px-1.5 indent-0 font-medium text-syntax-token"
-            >
-              <SkillIcon className="size-3.5 shrink-0" />
-              <span className="truncate">{skill.command.name}</span>
-            </span>
-          )}
-          {segments.map((segment, index) => {
-            if (segment.kind === "fence")
-              return (
-                <FenceCard key={index} fence={segment} firstLine={index === 0} last={index === segments.length - 1} />
-              )
-            const shown = segments[index - 1]?.kind === "fence" ? segment.text.replace(/^\n/, "") : segment.text
-            return (
-              <span key={index} className={syntaxClass[segment.kind]}>
-                {shown}
-              </span>
-            )
-          })}
-          {segments.at(-1)?.kind !== "fence" && TRAILING_LINE}
-        </div>
-        <textarea
-          ref={textareaRef}
-          role="combobox"
-          aria-autocomplete="list"
-          aria-expanded={open}
-          aria-controls={open ? listId : undefined}
-          aria-activedescendant={open ? optionId(activeIndex) : undefined}
-          aria-describedby={skill ? skillId : undefined}
-          value={text}
-          onChange={(event) => {
-            const next = chipToken + event.target.value
-            if (leadingSkill(next, commands)?.token !== skill?.token) {
-              replace(next, chipToken.length + event.target.selectionStart)
-              return
-            }
-            onValueChange(next)
-            setCaret(event.target.selectionStart)
-          }}
-          onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
-          onScroll={(event) => {
-            if (highlightRef.current) highlightRef.current.scrollTop = event.currentTarget.scrollTop
-          }}
-          onKeyDown={handleKeyDown}
-          placeholder={skill ? skill.command.argumentHint : placeholder}
-          className={cn(
-            textLayout,
-            skill && afterChip,
-            "field-sizing-content min-h-0 w-full resize-none bg-transparent text-transparent caret-foreground outline-none placeholder:text-muted-foreground",
-            className,
-          )}
-          {...props}
-        />
-      </div>
-      {skill && (
-        <span id={skillId} hidden>
-          {m.composer_skill({ name: skill.command.name })}
-        </span>
-      )}
+      <div
+        ref={parentRef}
+        onDragOver={onDragOver}
+        className="flex min-h-0 flex-col text-base md:text-sm [&_.cm-editor]:min-h-0"
+      />
       {open && (
         <div
           id={listId}
@@ -232,8 +230,8 @@ export function ComposerInput({
           {suggestions.map((suggestion, index) => (
             <div
               key={suggestion.insert}
-              ref={index === activeIndex ? scrollIntoViewNearest : undefined}
               id={optionId(index)}
+              ref={index === activeIndex ? scrollIntoViewNearest : undefined}
               role="option"
               tabIndex={-1}
               aria-selected={index === activeIndex}
@@ -248,22 +246,6 @@ export function ComposerInput({
         </div>
       )}
     </>
-  )
-}
-
-function FenceCard({ fence, firstLine, last }: { fence: Fence; firstLine: boolean; last: boolean }) {
-  return (
-    <span className={cn("-mx-1 block rounded-md bg-muted px-1 text-foreground", !firstLine && "indent-0")}>
-      <span className="text-muted-foreground">{fence.open}</span>
-      {fence.lines.length > 0 && (
-        <>
-          {"\n"}
-          <HighlightedCode code={fenceCode(fence)} language={fence.language} />
-        </>
-      )}
-      {fence.close !== null && <span className="text-muted-foreground">{`\n${fence.close}`}</span>}
-      {last && TRAILING_LINE}
-    </span>
   )
 }
 
