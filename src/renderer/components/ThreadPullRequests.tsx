@@ -14,7 +14,7 @@ import type {
   ReviewStatus,
   Thread,
 } from "../../shared/domain.ts"
-import { addressCommentPrompt, fixChecksPrompt, resolveConflictsPrompt } from "../../shared/pullRequestPrompts.ts"
+import { fixChecksPrompt, resolveConflictsPrompt } from "../../shared/pullRequestPrompts.ts"
 import { checksIndicator as sharedChecksIndicator, isOpen, pullRequestIndicator } from "../../shared/threadStatus.ts"
 import { toIcon } from "../lib/indicators.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -350,7 +350,7 @@ function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }:
             <Markdown text={pullRequest.body} className="prose-sm" />
           )}
         </Section>
-        <CommentsSection pullRequest={pullRequest} threadId={threadId} onPosted={refresh} />
+        <CommentsSection pullRequest={pullRequest} onPosted={refresh} />
       </article>
     ))
     .onError((error) => (
@@ -774,15 +774,7 @@ function ChecksSection({ pullRequest }: { pullRequest: PullRequestDetail }) {
   )
 }
 
-function CommentsSection({
-  pullRequest,
-  threadId,
-  onPosted,
-}: {
-  pullRequest: PullRequestDetail
-  threadId: string
-  onPosted: () => void
-}) {
+function CommentsSection({ pullRequest, onPosted }: { pullRequest: PullRequestDetail; onPosted: () => void }) {
   const { comments } = pullRequest
   return (
     <Section
@@ -795,7 +787,7 @@ function CommentsSection({
       ) : (
         <ol className="flex flex-col gap-5">
           {comments.map((comment) => (
-            <Comment key={comment.id} comment={comment} pullRequest={pullRequest} threadId={threadId} />
+            <Comment key={comment.id} comment={comment} />
           ))}
         </ol>
       )}
@@ -806,15 +798,7 @@ function CommentsSection({
 
 const LONG_COMMENT = 600
 
-function Comment({
-  comment,
-  pullRequest,
-  threadId,
-}: {
-  comment: PullRequestComment
-  pullRequest: PullRequestDetail
-  threadId: string
-}) {
+function Comment({ comment }: { comment: PullRequestComment }) {
   const now = useNow()
   const locale = getLocale()
   const [expanded, setExpanded] = useState(false)
@@ -824,7 +808,13 @@ function Comment({
   const where = location && `${location.path}${location.line === null ? "" : `:${location.line}`}`
 
   return (
-    <li className="flex flex-col gap-1.5">
+    <li
+      className={cn(
+        "flex flex-col gap-1.5",
+        comment.authorKind === "bot" &&
+          "opacity-70 transition-opacity duration-200 ease-out hover:opacity-100 focus-within:opacity-100 motion-reduce:transition-none",
+      )}
+    >
       <header className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
         <span className="min-w-0 truncate font-medium text-foreground">{comment.author}</span>
         {comment.authorKind === "bot" && (
@@ -866,11 +856,6 @@ function Comment({
           {expanded ? m.pr_comment_less() : m.pr_comment_more()}
         </Button>
       )}
-      <AskAgentButton
-        threadId={threadId}
-        prompt={addressCommentPrompt(pullRequest, comment)}
-        label={m.pr_comment_send()}
-      />
     </li>
   )
 }

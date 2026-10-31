@@ -1,6 +1,7 @@
 import { describe, expect, test } from "@effect/vitest"
 import {
   completionAt,
+  endsWithClosedFence,
   highlight,
   leadingSkill,
   matchFiles,
@@ -171,5 +172,15 @@ describe("suggestionsFor", () => {
         (suggestion) => suggestion.insert,
       ),
     ).toStrictEqual(["$animate", "$animation-vocabulary"])
+  })
+})
+
+describe("endsWithClosedFence", () => {
+  test("is true only when the last line closes a fence", () => {
+    expect(endsWithClosedFence("look\n```json\n{}\n```")).toBe(true)
+    expect(endsWithClosedFence("```\na\n```\n")).toBe(false)
+    expect(endsWithClosedFence("```json\n{}")).toBe(false)
+    expect(endsWithClosedFence("```")).toBe(false)
+    expect(endsWithClosedFence("```\na\n```\n```")).toBe(false)
   })
 })

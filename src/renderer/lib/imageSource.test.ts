@@ -1,6 +1,6 @@
 import { describe, expect, test } from "@effect/vitest"
-import { attachmentUrl, projectFileUrl } from "../../shared/channels.ts"
-import { imageSource } from "./imageSource.ts"
+import { attachmentUrl, externalImageUrl, projectFileUrl } from "../../shared/channels.ts"
+import { imageSource, imageSrcSet } from "./imageSource.ts"
 
 const root = "/Volumes/work/worktrees/app-1a2b"
 const inThread = { environment: null, baseUrl: null, root }
@@ -20,5 +20,20 @@ describe("imageSource", () => {
     const saved = "/Users/me/Library/Application Support/kkcode/attachments/t/vm.png"
     expect(imageSource(encodeURI(saved), inThread)).toBe(attachmentUrl(saved, null))
     expect(imageSource(`${root}-other/a.png`, inThread)).toBe(attachmentUrl(`${root}-other/a.png`, null))
+  })
+
+  test("proxies web images so the page policy can keep refusing direct web loads", () => {
+    const badge = "https://assets.example/view-dark.svg"
+    expect(imageSource(badge, inThread)).toBe(externalImageUrl(badge))
+    expect(imageSource("//assets.example/view-dark.svg", inThread)).toBe(externalImageUrl(badge))
+    expect(imageSource("data:image/png;base64,AA==", inThread)).toBe("data:image/png;base64,AA==")
+  })
+
+  test("rewrites every entry of a srcset and keeps its descriptors", () => {
+    expect(imageSrcSet("https://assets.example/a.png 1x, ./b.png 2x", inThread)).toBe(
+      `${externalImageUrl("https://assets.example/a.png")} 1x, ${projectFileUrl(root, "b.png")} 2x`,
+    )
+    const dataSet = "data:image/png;base64,AA== 1x, data:image/png;base64,BB== 2x"
+    expect(imageSrcSet(dataSet, inThread)).toBe(dataSet)
   })
 })

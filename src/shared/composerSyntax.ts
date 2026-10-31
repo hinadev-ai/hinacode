@@ -75,6 +75,16 @@ const merge = (segments: ReadonlyArray<Segment>) =>
     return merged
   }, [])
 
+export function endsWithClosedFence(text: string): boolean {
+  let inFence = false
+  let closedLast = false
+  for (const line of text.split("\n")) {
+    closedLast = inFence && FENCE.test(line)
+    if (FENCE.test(line)) inFence = !inFence
+  }
+  return closedLast
+}
+
 export function highlight(text: string, known: KnownTokens): ReadonlyArray<Segment> {
   const segments: Array<Segment> = []
   const lines = text.split("\n")

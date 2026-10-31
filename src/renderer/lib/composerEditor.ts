@@ -171,7 +171,11 @@ const marksPlugin = ViewPlugin.fromClass(
   {
     decorations: (plugin) => plugin.decorations,
     eventHandlers: {
+      compositionstart: (_, view) => {
+        view.dom.dataset.composing = ""
+      },
       compositionend: (_, view) => {
+        delete view.dom.dataset.composing
         requestAnimationFrame(() => view.dispatch({ effects: redraw.of(null) }))
       },
     },
@@ -194,6 +198,7 @@ const layout = EditorView.theme({
   ".cm-content": { padding: "0.5rem 0.625rem", minHeight: "calc(1lh + 1rem)", caretColor: "currentColor" },
   ".cm-line": { padding: "0" },
   ".cm-line.cm-fence-line": { margin: "0 -0.25rem", padding: "0 0.25rem" },
+  "&[data-composing] [data-placeholder]::before, &[data-composing] [data-placeholder]::after": { content: "none" },
 })
 
 export const composerSyntax: Extension = [configField, marksPlugin, layout, EditorView.lineWrapping]

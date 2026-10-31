@@ -1,4 +1,8 @@
 import { fileURLToPath } from "node:url"
+import { paraglideVitePlugin } from "@inlang/paraglide-js"
+import tailwindcss from "@tailwindcss/vite"
+import { playwright } from "@vitest/browser-playwright"
+import react from "@vitejs/plugin-react"
 import { defineConfig } from "vitest/config"
 
 export default defineConfig({
@@ -26,6 +30,28 @@ export default defineConfig({
         test: {
           name: "mobile",
           include: ["apps/mobile/src/{lib,stores}/*.test.ts"],
+        },
+      },
+      {
+        resolve: { alias: { "@": fileURLToPath(new URL("./src/renderer", import.meta.url)) } },
+        plugins: [
+          react(),
+          tailwindcss(),
+          paraglideVitePlugin({
+            project: "./project.inlang",
+            outdir: "./src/renderer/paraglide",
+            strategy: ["globalVariable", "baseLocale"],
+          }),
+        ],
+        test: {
+          name: "component",
+          include: ["src/renderer/**/*.component.test.tsx"],
+          browser: {
+            enabled: true,
+            headless: true,
+            provider: playwright(),
+            instances: [{ browser: "chromium" }],
+          },
         },
       },
       {

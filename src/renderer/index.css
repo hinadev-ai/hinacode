@@ -6,7 +6,6 @@
 @import "@fontsource-variable/geist-mono";
 @import "@fontsource-variable/geist-mono/wght-italic.css";
 @import "@wterm/dom/css";
-@import "tw-shimmer";
 @plugin "@tailwindcss/typography";
 
 @font-face {
@@ -19,12 +18,28 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Noto's Han and kana sit 0.04em above DM Sans' line box center. Text snaps to whole pixels and SVG does not, so
+   icons beside a CJK label move up instead of the label moving down. */
+@custom-variant cjk (&:is(:lang(zh-TW), :lang(ja)));
+
 /* macOS glass sits behind the page (src/main/liquidGlass.ts). The chrome lets it through unless transparency is reduced. */
 @custom-variant glass {
   @media (prefers-reduced-transparency: no-preference) {
     &:is([data-glass] *) {
       @slot;
     }
+  }
+}
+
+/* The overview floats 17.5rem wide at the thread's inline end. It shows once the 48rem transcript column fits beside it,
+   and the column slides toward the start by however much it would overlap. Sliding the column instead of padding the
+   scroller keeps the scrollbar at the window edge. */
+@custom-variant beside-overview (@container thread (width >= 66rem));
+
+@utility clear-overview {
+  @variant beside-overview {
+    --tw-translate-x: min(0px, (100cqw - var(--container-3xl)) / 2 - 17.5rem);
+    translate: var(--tw-translate-x) var(--tw-translate-y);
   }
 }
 
@@ -742,7 +757,9 @@
   }
 }
 
-/* A bright band sweeps across muted text. Unlike a pulse, the text never drops below its resting contrast. */
+/* A bright band sweeps across muted text. Unlike a pulse, the text never drops below its resting contrast. The band
+   layer is four times the text wide, so the band crosses the text in a third of each cycle and rests off it for the
+   rest. */
 @utility text-shimmer {
   position: relative;
   overflow: clip;
@@ -755,7 +772,7 @@
     position: absolute;
     inset-block: 0;
     left: 0;
-    width: 300%;
+    width: 400%;
     pointer-events: none;
     background: linear-gradient(90deg, transparent 40%, var(--foreground) 50%, transparent 60%);
     animation: text-shimmer 2s linear infinite;
@@ -768,7 +785,7 @@
 
 @keyframes text-shimmer {
   from {
-    translate: -66.667% 0;
+    translate: -75% 0;
   }
 }
 
