@@ -115,18 +115,20 @@ test("completed responses fold their activity and keep the answer", () => {
   expect(foldedParts(assistantPresentation(message([tool, answer])))).toEqual([{ part: answer, index: 1 }])
 })
 
-test("formats whole elapsed seconds as mm:ss or h:mm:ss", () => {
+test("formats short turns in seconds and longer turns as m:ss or h:mm:ss", () => {
   for (const [ms, expected] of [
-    [0, "00:00"],
-    [999, "00:00"],
-    [1_999, "00:01"],
-    [59_000, "00:59"],
-    [60_000, "01:00"],
-    [485_000, "08:05"],
+    [0, "<1s"],
+    [999, "<1s"],
+    [1_000, "1s"],
+    [4_200, "4s"],
+    [59_999, "59s"],
+    [60_000, "1:00"],
+    [485_000, "8:05"],
     [3_599_999, "59:59"],
     [3_600_000, "1:00:00"],
     [3_723_000, "1:02:03"],
-    [-1_000, "00:00"],
+    [-1_000, "<1s"],
+    [Number.NaN, "<1s"],
   ] as const) {
     expect(formatWorkDuration(ms)).toBe(expected)
   }
