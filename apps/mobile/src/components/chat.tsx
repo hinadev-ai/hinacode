@@ -23,8 +23,8 @@ import { FadeIn, Rotate, Spinner } from "@/components/motion"
 import { TodoTray } from "@/components/todo-tray"
 import { Button, Notice, Pill, subheading } from "@/components/ui"
 import { cssEase, duration, rise } from "@/constants/motion"
-import { HIT, mono, radius } from "@/constants/theme"
-import { useTheme } from "@/hooks/use-theme"
+import { Colors, HIT, mono, radius } from "@/constants/theme"
+import { useScheme, useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
 import { copy, locale } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
@@ -222,27 +222,31 @@ function ReplyText({
   )
 }
 
-const pulse = { "50%": { opacity: 0.5 } }
+const pulse = {
+  light: { "50%": { color: Colors.light.text } },
+  dark: { "50%": { color: Colors.dark.text } },
+}
 
 /** The desktop's `animate-pulse` line under a streaming reply. Reduce motion holds it still. */
 function Pulse({ text }: { text: string }) {
   const theme = useTheme()
+  const scheme = useScheme()
   const reduced = useReducedMotion()
   return (
-    <Animated.View
-      style={
-        reduced
-          ? undefined
-          : {
-              animationName: pulse,
-              animationDuration: 2000,
-              animationIterationCount: "infinite",
-              animationTimingFunction: cssEase.pulse,
-            }
-      }
+    <Animated.Text
+      style={[
+        styles.pulse,
+        { color: theme.textMuted },
+        !reduced && {
+          animationName: pulse[scheme],
+          animationDuration: 2000,
+          animationIterationCount: "infinite",
+          animationTimingFunction: cssEase.pulse,
+        },
+      ]}
     >
-      <Text style={[styles.pulse, { color: theme.textMuted }]}>{text}</Text>
-    </Animated.View>
+      {text}
+    </Animated.Text>
   )
 }
 
