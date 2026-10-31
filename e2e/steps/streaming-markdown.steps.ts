@@ -6,6 +6,7 @@ import type { TranscriptPush } from "../../src/shared/contract.ts"
 import { type Message, Thread } from "../../src/shared/domain.ts"
 import type { HinacodeApp } from "../support/app.ts"
 import { Then, When } from "../support/fixtures.ts"
+import { composerText } from "../support/ui.ts"
 import { rpc } from "../support/rpc.ts"
 
 interface Stream {
@@ -320,7 +321,7 @@ When("I type, scroll and resize while the agent streams many Markdown blocks", a
     await composer.pressSequentially("Keep this draft")
     await expect(article(app.page)).not.toContainText("Live 0:")
     await composer.pressSequentially(" while output arrives")
-    await expect(composer).toHaveValue("Keep this draft while output arrives")
+    await expect.poll(() => composerText(composer)).toBe("Keep this draft while output arrives")
     await expect
       .poll(() => viewport.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop))
       .toBeLessThan(5)
@@ -344,7 +345,9 @@ When("I type, scroll and resize while the agent streams many Markdown blocks", a
 Then("my draft and reading position survive the continuing stream", async ({ app }) => {
   const stream = streamOf(app)
   if (stream.readingPosition === undefined) throw new Error("reading position was not recorded")
-  await expect(app.page.getByLabel("Message", { exact: true })).toHaveValue("Keep this draft while output arrives")
+  await expect
+    .poll(() => composerText(app.page.getByLabel("Message", { exact: true })))
+    .toBe("Keep this draft while output arrives")
   await expect.poll(() => scrollContainer(app.page).evaluate((node) => node.scrollTop)).toBe(stream.readingPosition)
   await expect(article(app.page)).toHaveAttribute("aria-busy", "true")
   await app.pushEvents([eventPush(stream, { type: "turn_completed" })])

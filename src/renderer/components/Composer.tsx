@@ -3,13 +3,13 @@ import { formatForDisplay } from "@tanstack/react-hotkeys"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import {
-  type ClipboardEvent,
-  type DragEvent,
+  type DragEvent as ReactDragEvent,
   type FormEvent,
-  type KeyboardEvent,
   type ReactNode,
   type RefObject,
+  lazy,
   startTransition,
+  Suspense,
   useEffect,
   useEffectEvent,
   useRef,
@@ -31,6 +31,7 @@ import {
   filesAtom,
   noFilesAtom,
   projectsAtom,
+  threadCommands,
 } from "../lib/rpc.ts"
 import { askSidechat, sidechatCommand, sidechatQuestion } from "../lib/sidechat.ts"
 import { useIsChat } from "../lib/useIsChat.ts"
@@ -50,7 +51,7 @@ import {
 import { PendingAttachment } from "./AttachmentView.tsx"
 import { ThreadPicker, WorkspacePicker } from "./ComposerControls.tsx"
 import { ComposerStatusLine } from "./ComposerStatusLine.tsx"
-import { ComposerInput } from "./ComposerInput.tsx"
+import type { ComposerInputHandle } from "./ComposerInput.tsx"
 import { ContextRing } from "./ContextRing.tsx"
 import { PendingLineComment } from "./LineComment.tsx"
 import { ActivityIndicator } from "./ActivityIndicator.tsx"
@@ -68,7 +69,7 @@ const readAsDataUrl = (file: File) =>
     reader.readAsDataURL(file)
   })
 
-const onDragOver = (event: DragEvent<HTMLTextAreaElement>) => {
+const onDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
   if (event.dataTransfer.types.includes("Files")) event.preventDefault()
 }
 
@@ -77,6 +78,9 @@ type StageSource = RpcRequest<"attachments.stage">["source"]
 type Delivery = "queue" | "steer"
 
 const STEER_CHORD = "Mod+Enter"
+
+const composerInputModule = import("./ComposerInput.tsx")
+const ComposerInput = lazy(() => composerInputModule.then((module) => ({ default: module.ComposerInput })))
 
 const deliveryOf = (event: KeyboardEvent) => (event.metaKey || event.ctrlKey ? "steer" : "queue")
 
@@ -117,11 +121,12 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   const [error, setError] = useState<string | null>(null)
   const [isSending, startSending] = useTransition()
   const [isStaging, startStaging] = useTransition()
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const inputRef = useRef<ComposerInputHandle>(null)
   const key = completionKey(thread)
   const commandsResult = useAtomValue(commandsAtom(key))
-  const agentCommands = AsyncResult.getOrElse(commandsResult, (): ReadonlyArray<AgentCommand> => []).filter(
-    (command) => thread.userSkills || command.scope !== "user",
+  const agentCommands = threadCommands(
+    AsyncResult.getOrElse(commandsResult, (): ReadonlyArray<AgentCommand> => []),
+    thread,
   )
   const commands = isSidechat ? agentCommands : [sidechatCommand(), ...agentCommands]
   const commandsError = AsyncResult.isFailure(commandsResult)
@@ -138,6 +143,11 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   const busy = isThreadBusy(thread.status)
   const hasDraft = text.trim() !== "" || attachments.length > 0 || comments.length > 0
   const canSend = hasDraft && !isSending && !isStaging
+  const placeholder = busy
+    ? m.thread_composer_queue_placeholder({ steer: formatForDisplay(STEER_CHORD) })
+    : isSidechat
+      ? m.sidechat_placeholder()
+      : m.thread_composer_placeholder()
   const modifierHeld = useModifierHeld()
   const clickDelivery: Delivery = modifierHeld ? "steer" : "queue"
   const sendMode: SendGlyphMode = !(busy || isSending) ? "send" : hasDraft ? clickDelivery : "stop"
@@ -184,24 +194,25 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
     }
   }
 
-  const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
-    const images = [...event.clipboardData.files].filter((file) => file.type.startsWith("image/"))
+  const onPaste = (event: ClipboardEvent) => {
+    const images = [...(event.clipboardData?.files ?? [])].filter((file) => file.type.startsWith("image/"))
     if (images.length === 0) return
     event.preventDefault()
     stage(images.map(sourceOf))
   }
 
-  const onDrop = (event: DragEvent<HTMLTextAreaElement>) => {
-    if (event.dataTransfer.files.length === 0) return
+  const onDrop = (event: DragEvent) => {
+    const dropped = [...(event.dataTransfer?.files ?? [])]
+    if (dropped.length === 0) return
     event.preventDefault()
-    stage([...event.dataTransfer.files].map(sourceOf))
+    stage(dropped.map(sourceOf))
   }
 
   const stop = () => {
     callPromise("threads.interrupt", { threadId: thread.id }).catch((cause: unknown) => setError(errorMessage(cause)))
   }
 
-  useComposerRequests(textareaRef, isSidechat, () => {
+  const focusWhenReady = useComposerRequests(inputRef, isSidechat, () => {
     if (busy || isSending) stop()
   })
 
@@ -219,19 +230,13 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
     wasBusy.current = busy
   }, [busy, refreshFiles, refreshCommands])
 
-  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return
-    event.preventDefault()
-    send(deliveryOf(event))
-  }
-
   return (
     <div className="flex min-h-0 flex-col px-3 pb-3">
       <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-col bg-background empty:hidden">{children}</div>
       <form onSubmit={onSubmit} className="flex max-h-[60cqh] min-h-0 shrink-0 flex-col">
         <ComposerRoot className="mx-auto flex min-h-0 max-w-3xl flex-col [--composer-edge:color-mix(in_oklab,var(--border)_60%,transparent)] has-[[data-slot=composer-bar]:focus-within]:[--composer-edge:var(--ring)]">
           <ActivityIndicator thread={thread}>
-            <QueueBar thread={thread} onEdit={() => textareaRef.current?.focus()} onError={setError} />
+            <QueueBar thread={thread} onEdit={() => inputRef.current?.focus()} onError={setError} />
           </ActivityIndicator>
           <ComposerBar className="min-h-0 border-(color:--composer-edge) has-[[role=listbox]]:z-20">
             {comments.length > 0 && (
@@ -264,30 +269,25 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
                 ))}
               </ul>
             )}
-            <ComposerInput
-              ref={textareaRef}
-              aria-label={isSidechat ? m.panel_tab_sidechat() : m.thread_composer_label()}
-              placeholder={
-                busy
-                  ? m.thread_composer_queue_placeholder({ steer: formatForDisplay(STEER_CHORD) })
-                  : isSidechat
-                    ? m.sidechat_placeholder()
-                    : m.thread_composer_placeholder()
-              }
-              value={text}
-              onValueChange={(next) => useDrafts.getState().setText(thread.id, next)}
-              commands={commands}
-              files={files}
-              threads={mentionable}
-              projectId={thread.projectId}
-              onKeyDown={onKeyDown}
-              onPaste={onPaste}
-              onDragOver={onDragOver}
-              onDrop={onDrop}
-              rows={2}
-              className="min-h-[calc(1lh+1rem)]"
-            />
-            <ComposerToolbar className="shrink-0 gap-2">
+            <Suspense fallback={<DraftPreview text={text} placeholder={placeholder} />}>
+              <ComposerInput
+                ref={inputRef}
+                aria-label={isSidechat ? m.panel_tab_sidechat() : m.thread_composer_label()}
+                placeholder={placeholder}
+                value={text}
+                onValueChange={(next) => useDrafts.getState().setText(thread.id, next)}
+                commands={commands}
+                files={files}
+                threads={mentionable}
+                projectId={thread.projectId}
+                onEnter={(event) => send(deliveryOf(event))}
+                onPaste={onPaste}
+                onDragOver={onDragOver}
+                onDrop={onDrop}
+                focusOnMount={focusWhenReady}
+              />
+            </Suspense>
+            <ComposerToolbar className="relative shrink-0 gap-2">
               <ComposerActions className="min-w-0 flex-1">
                 <AttachButton onClick={pickFiles} disabled={isStaging} />
                 <ThreadPicker thread={thread} canSwitchAgent={!busy && !isSidechat} onError={setError} />
@@ -313,27 +313,47 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
 }
 
 function useComposerRequests(
-  textareaRef: RefObject<HTMLTextAreaElement | null>,
+  inputRef: RefObject<ComposerInputHandle | null>,
   isSidechat: boolean,
   onInterrupt: () => void,
 ) {
   const interrupt = useEffectEvent(onInterrupt)
+  const [focusWhenReady, setFocusWhenReady] = useState(false)
+  const focus = useEffectEvent(() => {
+    if (inputRef.current) inputRef.current.focus()
+    else setFocusWhenReady(true)
+  })
 
   useEffect(() => {
     if (isSidechat) return
     return useUi.subscribe((state, previous) => {
-      if (state.composerFocusRequest !== previous.composerFocusRequest) textareaRef.current?.focus()
+      if (state.composerFocusRequest !== previous.composerFocusRequest) focus()
       if (state.interruptRequest !== previous.interruptRequest) interrupt()
     })
-  }, [textareaRef, isSidechat])
+  }, [isSidechat])
 
   const sidechatFocusRequested = useUi((state) => isSidechat && state.viewFocusRequest === "sidechat")
   useEffect(() => {
     if (!sidechatFocusRequested) return
     useUi.getState().clearViewFocusRequest()
     // FIXME: Base UI Dialog places its initial focus a frame late, which would take focus back
-    requestAnimationFrame(() => textareaRef.current?.focus())
-  }, [textareaRef, sidechatFocusRequested])
+    requestAnimationFrame(() => focus())
+  }, [sidechatFocusRequested])
+
+  return focusWhenReady
+}
+
+function DraftPreview({ text, placeholder }: { text: string; placeholder: string }) {
+  return (
+    <p
+      className={cn(
+        "max-h-60 min-h-[calc(1lh+1rem)] overflow-hidden px-2.5 py-2 text-base whitespace-pre-wrap md:text-sm",
+        text === "" && "text-muted-foreground",
+      )}
+    >
+      {text === "" ? placeholder : text}
+    </p>
+  )
 }
 
 function AttachButton({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {

@@ -4,14 +4,14 @@ import { useTheme } from "../lib/appearance.ts"
 import { useClientSettings } from "../lib/settings.ts"
 import { FindPartContext, Highlighted, highlightRuns, type Run, useFindPattern } from "./FindHighlight.tsx"
 
-interface Loaded {
+export interface Loaded {
   readonly highlighter: DiffsHighlighter
   readonly theme: string
 }
 
 const highlighters = new Map<string, Promise<Loaded | null>>()
 
-const highlighterFor = (theme: string | undefined, scheme: "dark" | "light", language: string) => {
+export const highlighterFor = (theme: string | undefined, scheme: "dark" | "light", language: string) => {
   const key = `${theme ?? scheme}\0${language}`
   let loaded = highlighters.get(key)
   if (loaded === undefined) {
@@ -46,12 +46,15 @@ interface TokensProps {
 function Tokens({ code, language, theme, scheme }: TokensProps) {
   const loaded = use(highlighterFor(theme, scheme, language))
   if (loaded === null) return <Highlighted text={code} />
+  return <HighlightedRuns runs={codeRuns(loaded, code, language)} />
+}
+
+export function codeRuns(loaded: Loaded, code: string, language: string) {
   const { tokens } = loaded.highlighter.codeToTokens(code, { lang: language, theme: loaded.theme })
-  const runs = tokens.flatMap((line, index): Array<Run> => [
+  return tokens.flatMap((line, index): Array<Run> => [
     ...(index === 0 ? [] : [{ text: "\n" }]),
     ...line.map((token) => ({ text: token.content, color: token.color })),
   ])
-  return <HighlightedRuns runs={runs} />
 }
 
 function HighlightedRuns({ runs }: { runs: ReadonlyArray<Run> }) {

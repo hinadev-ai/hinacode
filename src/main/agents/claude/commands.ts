@@ -1,14 +1,17 @@
 import type { SlashCommand } from "@anthropic-ai/claude-agent-sdk"
 import type { AgentCommand } from "../../../shared/agent.ts"
+import { isCommandName } from "../../../shared/composerSyntax.ts"
 
 // FIXME: Claude Code reports a skill's scope only as a "(user)" or "(project)" suffix of its description
 const SCOPE = /\s*\((user|project)\)$/
 
 export const toCommand = (command: SlashCommand): AgentCommand => {
   const scope = SCOPE.exec(command.description)?.[1]
+  const typed = isCommandName(command.name) ? command.name : command.aliases?.find(isCommandName)
   return {
     trigger: "/",
-    name: command.name,
+    name: typed ?? command.name,
+    ...(typed !== undefined && typed !== command.name && { label: command.name }),
     description: command.description.replace(SCOPE, ""),
     argumentHint: command.argumentHint,
     ...(command.builtin === true && { builtin: true }),
