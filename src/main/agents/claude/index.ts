@@ -47,6 +47,7 @@ import { hinacodeMcpServer } from "./mcp.ts"
 import { attachmentContext } from "../elementContext.ts"
 import { makeQuestions, QUESTION_TOOL } from "./questions.ts"
 import { claudeHome, copyTranscripts, makeTranscriptUsage } from "./transcripts.ts"
+import { listClaudeSessions, readClaudeSession } from "./sessions.ts"
 
 export class ClaudeProvider extends Context.Service<ClaudeProvider, AgentProvider>()(
   "hinacode/agents/ClaudeProvider",
@@ -837,6 +838,18 @@ export const layer = Layer.effect(
         catch: agentError("Failed to read Claude transcripts"),
       })
 
+    const listSessions = (cwd: string, home: AccountHome | null) =>
+      Effect.tryPromise({
+        try: () => listClaudeSessions(home?.dir ?? claudeHome(), cwd),
+        catch: agentError("Failed to list Claude sessions"),
+      })
+
+    const readSession = (sessionId: string, cwd: string, home: AccountHome | null) =>
+      Effect.tryPromise({
+        try: () => readClaudeSession(home?.dir ?? claudeHome(), cwd, sessionId),
+        catch: agentError("Failed to read the Claude session"),
+      })
+
     const listCommands = ({
       threadId,
       cwd,
@@ -867,6 +880,8 @@ export const layer = Layer.effect(
       planLimits,
       usage,
       copySession,
+      listSessions,
+      readSession,
       listCommands,
       runTurn,
       wakes: Stream.fromQueue(wakes),

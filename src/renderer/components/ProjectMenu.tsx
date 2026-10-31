@@ -1,11 +1,20 @@
 import { Fragment, type RefObject, useState } from "react"
-import { RiAddLine, RiCloseLine, RiDeleteBinLine, RiFolderSharedLine, RiMoreFill, RiPencilLine } from "react-icons/ri"
+import {
+  RiAddLine,
+  RiCloseLine,
+  RiDeleteBinLine,
+  RiFolderSharedLine,
+  RiInboxArchiveLine,
+  RiMoreFill,
+  RiPencilLine,
+} from "react-icons/ri"
 import type { Project } from "../../shared/domain.ts"
 import { environmentName, environmentOf, useClouds } from "../lib/environments.ts"
 import { assignGroup, createGroup } from "../lib/sidebarGroups.ts"
 import { useSidebarGroups } from "../lib/useSidebarGroups.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
+import { useUi } from "../stores/ui.ts"
 import { DeleteProjectDialog } from "./DeleteProjectDialog.tsx"
 import { GroupNameDialog } from "./GroupNameDialog.tsx"
 import { OpenWithSubmenu } from "./OpenWith.tsx"
@@ -25,7 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx"
 
-type Action = "edit" | "newThread" | "delete"
+type Action = "edit" | "newThread" | "importSession" | "delete"
 
 interface Picked {
   readonly action: Action
@@ -51,6 +60,7 @@ export function ProjectMenu({ rowKey, projects, open, onOpenChange, onNewThread,
 
   const runQueued = () => {
     if (queued?.action === "newThread") onNewThread(queued.project)
+    else if (queued?.action === "importSession") useUi.getState().setImportSessionProjectId(queued.project.id)
     else setDialog(queued)
     setQueued(null)
   }
@@ -172,6 +182,12 @@ function ProjectMenuItems({ project, onPick }: { project: Project; onPick: (pick
         <RiAddLine aria-hidden />
         {m.sidebar_project_new_thread()}
       </DropdownMenuItem>
+      {project.kind === "folder" && (
+        <DropdownMenuItem onClick={() => onPick({ action: "importSession", project })}>
+          <RiInboxArchiveLine aria-hidden />
+          {m.sidebar_project_import_session()}
+        </DropdownMenuItem>
+      )}
       {environmentOf(project) === null && <OpenWithSubmenu path={project.rootPath} target="folder" />}
       <DropdownMenuItem variant="destructive" disabled={busy} onClick={() => onPick({ action: "delete", project })}>
         <RiDeleteBinLine aria-hidden />

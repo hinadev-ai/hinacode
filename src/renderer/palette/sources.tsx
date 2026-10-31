@@ -76,6 +76,25 @@ export const newThreadSource: PaletteSource = {
   },
 }
 
+export const importSessionSource: PaletteSource = {
+  group: "projects",
+  items: (_query, ctx) => {
+    const current = ctx.threadId ? ctx.threads[ctx.threadId]?.projectId : undefined
+    return ctx.projects
+      .filter((project) => project.kind === "folder")
+      .toSorted((a, b) => Number(b.id === current) - Number(a.id === current))
+      .map((project): PaletteItem => ({
+        id: `import-session:${project.id}`,
+        group: "projects",
+        title: project.name,
+        subtitle: project.rootPath,
+        icon: <ProjectIcon projectId={project.id} />,
+        ...cloudOf(project, ctx),
+        run: () => useUi.getState().setImportSessionProjectId(project.id),
+      }))
+  },
+}
+
 export const commandsSource: PaletteSource = {
   group: "commands",
   items: (_query, ctx) =>

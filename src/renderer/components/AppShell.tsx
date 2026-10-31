@@ -6,6 +6,7 @@ import { useUi } from "../stores/ui.ts"
 import { useAgentUpdateNotices } from "./AgentUpdateNotices.tsx"
 import { useGitHubRateLimitNotices } from "./GitHubRateLimitNotices.tsx"
 import { CommandPalette } from "./CommandPalette.tsx"
+import { ImportSessionDialog } from "./ImportSessionDialog.tsx"
 import { SnoozeDialog } from "./SnoozeDialog.tsx"
 import { SettingsNav } from "./settings/SettingsNav.tsx"
 import { Sidebar } from "./Sidebar.tsx"
@@ -59,6 +60,7 @@ export function AppShell() {
       <CommandPalette />
       <ThreadSwitcher />
       <SnoozeDialog />
+      <ImportSessionDialog />
     </div>
   )
 }

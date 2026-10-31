@@ -35,6 +35,7 @@ export function searchableText(part: MessagePart): string {
     case "attachment":
     case "compaction":
     case "agent_switch":
+    case "session_import":
       return ""
   }
 }
