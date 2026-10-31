@@ -349,9 +349,9 @@ function ToolStatus({ status }: { status: ToolCallStatus }) {
   const { label, tone, icon } = toolStatus[status]
   const color = tone === "running" ? theme.running : tone === "danger" ? theme.danger : theme.textMuted
   return (
-    <View style={styles.status}>
+    <View accessible accessibilityLabel={copy(label)} style={styles.status}>
       {status === "running" ? <Spinner size={14} color={color} /> : <Icon name={icon} size={14} color={color} />}
-      <Pill label={copy(label)} tone={tone} />
+      {status !== "done" && <Pill label={copy(label)} tone={tone} />}
     </View>
   )
 }
