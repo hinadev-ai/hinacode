@@ -3,6 +3,8 @@ const FOOTNOTE_DEFINITION = /^ {0,3}\[\^([^\]\s]+)\]:[ \t]*(.*)$/
 const FOOTNOTE_REFERENCE = /\[\^([^\]\s]+)\]/g
 const KBD = /<kbd>(.*?)<\/kbd>/gi
 const CODE_SPAN = /(`+)[^`]+?\1(?!`)/g
+const LINK_OR_AUTOLINK = /!?\[[^\]]*\]\([^)]*\)|<[^>\s]+>/g
+const PULL_REQUEST_URL = /(?<![\w/"'=])https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)(?![\w/?#=&-])/gi
 const SUPERSCRIPT_DIGITS = "⁰¹²³⁴⁵⁶⁷⁸⁹"
 
 const superscript = (value: number) =>
@@ -15,16 +17,26 @@ const codeSpan = (text: string) => (text.includes("`") ? `\`\` ${text} \`\`` : `
 
 const keysAsCode = (prose: string) => prose.replace(KBD, (_, key: string) => codeSpan(key))
 
-/** Applies `rewrite` to a line's prose, leaving its inline code spans as written. */
-function outsideCode(line: string, rewrite: (prose: string) => string) {
+/** Applies `rewrite` to the parts of `text` that `protect` does not match, leaving those matches as written. */
+function outside(protect: RegExp, text: string, rewrite: (rest: string) => string) {
   let result = ""
   let last = 0
-  for (const match of line.matchAll(CODE_SPAN)) {
-    result += rewrite(line.slice(last, match.index)) + match[0]
+  for (const match of text.matchAll(protect)) {
+    result += rewrite(text.slice(last, match.index)) + match[0]
     last = match.index + match[0].length
   }
-  return result + rewrite(line.slice(last))
+  return result + rewrite(text.slice(last))
 }
+
+const outsideCode = (line: string, rewrite: (prose: string) => string) => outside(CODE_SPAN, line, rewrite)
+
+const shortenPullRequestUrls = (prose: string) =>
+  outside(LINK_OR_AUTOLINK, prose, (text) =>
+    text.replace(
+      PULL_REQUEST_URL,
+      (url, owner: string, name: string, number: string) => `[${owner}/${name}#${number}](${url})`,
+    ),
+  )
 
 /** Calls `visit` with each line outside fenced code blocks and whatever it returns replaces the line. */
 function mapProseLines(markdown: string, visit: (line: string) => string | null) {
@@ -48,11 +60,19 @@ function mapProseLines(markdown: string, visit: (line: string) => string | null)
 
 /**
  * Rewrites what the phone's Markdown renderer has no syntax for into what it has, as the desktop renders it:
- * `<kbd>` becomes a code span, which the renderer draws as a key cap, a footnote reference `[^id]` becomes a
- * superscript number, and the definitions move to a numbered list at the end, in the order they are first cited.
- * Code blocks and code spans stay as written, and other HTML stays text.
+ * a bare GitHub pull request URL becomes a link named `owner/repo#n`, `<kbd>` becomes a code span, which the
+ * renderer draws as a key cap, a footnote reference `[^id]` becomes a superscript number, and the definitions
+ * move to a numbered list at the end, in the order they are first cited. Code blocks, code spans and existing
+ * links stay as written, and other HTML stays text.
  */
 export function rewriteMarkdownExtras(markdown: string) {
+  const linked = /github\.com\/\S+\/pull\//i.test(markdown)
+    ? mapProseLines(markdown, (line) => outsideCode(line, shortenPullRequestUrls))
+    : markdown
+  return rewriteKeysAndFootnotes(linked)
+}
+
+function rewriteKeysAndFootnotes(markdown: string) {
   if (!/<kbd>|\[\^/i.test(markdown)) return markdown
 
   const definitions = new Map<string, string>()

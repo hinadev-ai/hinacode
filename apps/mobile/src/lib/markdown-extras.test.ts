@@ -57,3 +57,23 @@ it("leaves code spans and fenced code blocks as written", () => {
     ].join("\n"),
   )
 })
+
+it("names a bare pull request URL owner/repo#n", () => {
+  expect(rewriteMarkdownExtras("Opened https://github.com/hinadev-ai/hinacode/pull/460.")).toBe(
+    "Opened [hinadev-ai/hinacode#460](https://github.com/hinadev-ai/hinacode/pull/460).",
+  )
+  expect(rewriteMarkdownExtras("(https://github.com/a/b.c/pull/1)")).toBe("([a/b.c#1](https://github.com/a/b.c/pull/1))")
+})
+
+it("leaves pull request URLs in links, autolinks, code and HTML attributes, and other URLs, as written", () => {
+  const markdown = [
+    "[the PR](https://github.com/a/b/pull/1) and [https://github.com/a/b/pull/2](https://github.com/a/b/pull/2)",
+    "<https://github.com/a/b/pull/3> and `https://github.com/a/b/pull/4`",
+    '<a href="https://github.com/a/b/pull/5">',
+    "https://github.com/a/b/pull/6/files and https://github.com/a/b/issues/7 and https://example.com/a/b/pull/8",
+    "```",
+    "https://github.com/a/b/pull/9",
+    "```",
+  ].join("\n")
+  expect(rewriteMarkdownExtras(markdown)).toBe(markdown)
+})
