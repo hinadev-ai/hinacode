@@ -6,7 +6,7 @@ import { Button, Notice } from "@/components/ui"
 import { radius } from "@/constants/theme"
 import { useThreadServer } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
-import { call, onEvent, useConnection } from "@/lib/connection"
+import { call, onEvent, RpcError, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { TerminalOutput } from "@/lib/terminal-output"
@@ -54,8 +54,12 @@ function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart:
   const early = useRef<TerminalPush[]>([])
   const [output] = useState(() => new TerminalOutput())
   const latestSize = useRef({ cols: 80, rows: 24 })
-  const [exitCode, setExitCode] = useState<number | null | undefined>(undefined)
+  const [ended, setEnded] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const setExitCode = (code: number | null) =>
+    setEnded(
+      code === null ? copy("mobile_terminal_exited") : copy("mobile_terminal_exited_code", { code: String(code) }),
+    )
   const applicationCursor = useRef(false)
   const [ctrl, setCtrl] = useState(false)
   const keyboardVisible = useKeyboardVisible()
@@ -91,7 +95,8 @@ function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart:
         const text = output.attachFailed(token)
         if (text === null) return
         write(text)
-        setError(copy("mobile_terminal_reattach_failed", { message: errorText(cause) }))
+        if (cause instanceof RpcError && cause.tag === "NotFoundError") setEnded(copy("mobile_terminal_gone"))
+        else setError(copy("mobile_terminal_reattach_failed", { message: errorText(cause) }))
       },
     )
   }
@@ -154,7 +159,7 @@ function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart:
   }
 
   const send = (data: string) => {
-    if (session.current !== null && exitCode === undefined) {
+    if (session.current !== null && ended === null) {
       void call("terminal.write", { id: session.current.id, data }).catch(() => {})
     }
   }
@@ -172,16 +177,10 @@ function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart:
   return (
     <View style={styles.container}>
       {error !== null && <Notice text={error} tone="danger" />}
-      {exitCode !== undefined && (
+      {ended !== null && (
         <View style={styles.exited}>
           <View style={styles.exitedNotice}>
-            <Notice
-              text={
-                exitCode === null
-                  ? copy("mobile_terminal_exited")
-                  : copy("mobile_terminal_exited_code", { code: String(exitCode) })
-              }
-            />
+            <Notice text={ended} />
           </View>
           <Button label={copy("mobile_terminal_restart")} icon="RiTerminalBoxLine" onPress={onRestart} />
         </View>
@@ -195,7 +194,7 @@ function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart:
           onCursorMode={(mode) => (applicationCursor.current = mode)}
         />
       </View>
-      {keyboardVisible && exitCode === undefined && (
+      {keyboardVisible && ended === null && (
         <KeyRow ctrl={ctrl} onCtrl={() => setCtrl((armed) => !armed)} onKey={onKey} />
       )}
     </View>

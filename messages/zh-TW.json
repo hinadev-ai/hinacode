@@ -2140,6 +2140,7 @@
   "mobile_terminal_exited": "Shell 已結束。",
   "mobile_terminal_exited_code": "Shell 已結束，結束代碼為 {code}。",
   "mobile_terminal_restart": "開新的 Shell",
+  "mobile_terminal_gone": "桌面上已經沒有這個 Shell。",
   "mobile_transport_not_sent": "未送出。桌面版已有一分鐘無法連線。",
   "mobile_transport_may_have_run": "桌面版已有一分鐘無法連線。這個操作可能仍已執行。",
   "mobile_transport_lost_reply": "桌面版回應前連線已中斷。這個操作可能仍已執行。",

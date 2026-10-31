@@ -2122,6 +2122,7 @@
   "mobile_terminal_exited": "シェルが終了しました。",
   "mobile_terminal_exited_code": "シェルが終了コード {code} で終了しました。",
   "mobile_terminal_restart": "新しいシェル",
+  "mobile_terminal_gone": "デスクトップにこのシェルはもうありません。",
   "mobile_transport_not_sent": "送信されませんでした。デスクトップに 1 分間接続できませんでした。",
   "mobile_transport_may_have_run": "デスクトップに 1 分間接続できませんでした。操作は実行された可能性があります。",
   "mobile_transport_lost_reply": "デスクトップが応答する前に接続が切れました。操作は実行された可能性があります。",

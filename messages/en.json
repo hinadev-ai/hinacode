@@ -2177,6 +2177,7 @@
   "mobile_terminal_exited": "Shell exited.",
   "mobile_terminal_exited_code": "Shell exited with code {code}.",
   "mobile_terminal_restart": "New shell",
+  "mobile_terminal_gone": "The desktop no longer has this shell.",
   "mobile_transport_not_sent": "Not sent. The desktop was unreachable for a minute.",
   "mobile_transport_may_have_run": "The desktop was unreachable for a minute. The action may still have run.",
   "mobile_transport_lost_reply": "The connection dropped before the desktop answered. The action may still have run.",
