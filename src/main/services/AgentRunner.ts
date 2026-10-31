@@ -480,8 +480,10 @@ const make = Effect.gen(function* () {
       }).pipe(exclusive(thread.id))
 
     let next: QueuedMessage | undefined
+    let finishing = false
     const withdraw = (event: AgentEvent) => publishTranscript({ type: "thread.event", threadId: thread.id, event })
     const finish = Effect.gen(function* () {
+      finishing = true
       yield* deltas.flush
       for (const [id, request] of approvals) {
         if (request.threadId !== thread.id) continue
@@ -573,7 +575,16 @@ const make = Effect.gen(function* () {
       yield* provider.interrupt(thread.id)
     })
 
-    return { provider, steer, run, follow, handle, interrupt, messages: () => turnMessages }
+    return {
+      provider,
+      steer,
+      run,
+      follow,
+      handle,
+      interrupt,
+      messages: () => turnMessages,
+      isFinishing: () => finishing,
+    }
   }
 
   const runAgent = (threadId: string, request: AgentRequest) =>
@@ -619,6 +630,12 @@ const make = Effect.gen(function* () {
       let reply = ""
       let failure: string | null = null
       let stopped = false
+      if (activeTurns.get(threadId) !== turn || turn.isFinishing()) {
+        return yield* new AgentError({
+          provider: "hinacode",
+          message: "This thread's turn ended before the agent started.",
+        })
+      }
       agentRuns.set(id, {
         threadId,
         stop: Effect.suspend(() => {
