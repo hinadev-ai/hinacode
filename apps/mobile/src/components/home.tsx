@@ -393,7 +393,7 @@ function ProjectHeader({ project, open, onToggle }: { project: Project; open: bo
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={copy("mobile_home_toggle_project", { project: project.name })}
-          aria-expanded={open}
+          accessibilityState={{ expanded: open }}
           onPress={onToggle}
           style={({ pressed }) => [styles.projectToggle, pressed && { backgroundColor: theme.surface }]}
         >

@@ -15,7 +15,6 @@ import { mentionableThreads } from "@shared/threadMention.ts"
 import { useEffect, useRef, useState } from "react"
 import {
   Image,
-  Keyboard,
   Platform,
   Pressable,
   ScrollView,
@@ -39,7 +38,7 @@ import { useThreadServer } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
 import { keepSkillWhole } from "@/lib/composer-text"
-import { copy, locale } from "@/lib/copy"
+import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { motion } from "@/lib/motion"
 import { useDrafts } from "@/stores/drafts"
@@ -105,7 +104,7 @@ function useCompletions(thread: Thread, busy: boolean, wantsFiles: boolean, onEr
     let current = true
     call("commands.list", { threadId: thread.id }).then(
       (next) => current && setCommands(next),
-      (cause: unknown) => current && onError(copy("mobile_composer_commands_failed", { message: errorText(cause) })),
+      (cause: unknown) => current && onError(`Could not list commands: ${errorText(cause)}`),
     )
     return () => {
       current = false
@@ -116,7 +115,7 @@ function useCompletions(thread: Thread, busy: boolean, wantsFiles: boolean, onEr
     let current = true
     call("files.list", { threadId: thread.id }).then(
       (paths) => current && setFiles({ key: filesKey, paths }),
-      (cause: unknown) => current && onError(copy("mobile_composer_files_failed", { message: errorText(cause) })),
+      (cause: unknown) => current && onError(`Could not list files: ${errorText(cause)}`),
     )
     return () => {
       current = false
@@ -153,12 +152,6 @@ export function Composer({ thread }: { thread: Thread }) {
   useEffect(() => {
     if (connected) useModels.getState().load(server, thread.provider).catch((cause: unknown) => setError(errorText(cause)))
   }, [connected, server, thread.provider])
-
-  useEffect(() => {
-    if (Platform.OS !== "android") return
-    const hidden = Keyboard.addListener("keyboardDidHide", () => inputRef.current?.blur())
-    return () => hidden.remove()
-  }, [])
 
   const send = async () => {
     // A second tap can land before the re-render that empties the composer, so check the store, not `hasDraft`.
@@ -224,13 +217,12 @@ export function Composer({ thread }: { thread: Thread }) {
             backgroundColor: liquidGlass ? "transparent" : theme.surface,
             borderColor: focused ? theme.primary : liquidGlass ? "transparent" : theme.border,
           },
-          focused && { boxShadow: `0 0 0 2px ${theme.primary}` },
         ]}
       >
         <ComposerInput
           ref={inputRef}
           testID="composer-input"
-          accessibilityLabel={copy("mobile_composer_message")}
+          accessibilityLabel="Message"
           value={text}
           commands={commands}
           known={known}
@@ -249,7 +241,7 @@ export function Composer({ thread }: { thread: Thread }) {
           }}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          placeholder={busy ? copy("mobile_composer_steer_placeholder") : copy("mobile_composer_placeholder")}
+          placeholder={busy ? "Steer the running turn" : "Ask the agent"}
           placeholderTextColor={theme.textMuted}
           multiline
           style={[styles.input, { color: theme.text }]}
@@ -301,7 +293,7 @@ function Suggestions({
   return (
     <ScrollView
       testID="composer-suggestions"
-      accessibilityLabel={completion.trigger === "@" ? copy("mobile_composer_mentions") : copy("mobile_composer_commands")}
+      accessibilityLabel={completion.trigger === "@" ? "Mentions" : "Commands"}
       keyboardShouldPersistTaps="always"
       style={[
         styles.suggestions,
@@ -361,20 +353,19 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
         </View>
       )
     }
-    case "file": {
-      const slash = suggestion.path.lastIndexOf("/")
+    case "file":
       return (
         <View style={styles.suggestionLine}>
           <Icon name="RiFileLine" size={14} color={theme.textMuted} />
-          <Text numberOfLines={1} style={[styles.suggestionFile, { color: theme.text }]}>
-            {suggestion.path.slice(slash + 1)}
-          </Text>
-          <Text numberOfLines={1} style={[styles.suggestionFolder, { color: theme.textMuted }]}>
-            {suggestion.path.slice(0, slash + 1)}
+          <Text
+            numberOfLines={1}
+            ellipsizeMode="head"
+            style={[styles.suggestionTitle, styles.suggestionName, { color: theme.text }]}
+          >
+            {suggestion.path}
           </Text>
         </View>
       )
-    }
   }
 }
 
@@ -393,7 +384,7 @@ function SendButton({
   const theme = useTheme()
   const stopping = busy && !hasDraft
   const action = stopping ? "stop" : busy ? "steer" : "send"
-  const label = copy(`mobile_composer_${action}`)
+  const label = stopping ? "Stop" : busy ? "Steer" : "Send"
   const disabled = !stopping && !hasDraft
   const halo = action === "send" && hasDraft
   const background = stopping ? theme.dangerBg : disabled ? theme.surfaceStrong : theme.primary
@@ -403,7 +394,7 @@ function SendButton({
       testID={`composer-${action}`}
       accessibilityRole="button"
       accessibilityLabel={label}
-      aria-disabled={disabled}
+      accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={stopping ? onStop : onSend}
       hitSlop={(HIT - SEND_SIZE) / 2}
@@ -469,42 +460,42 @@ function useThreadModels(thread: Thread) {
 }
 
 const providers: Record<ProviderId, { label: string; icon: IconName }> = {
-  claude: { label: copy("mobile_provider_claude"), icon: "RiClaudeFill" },
-  codex: { label: copy("mobile_provider_codex"), icon: "RiOpenaiFill" },
-  muse: { label: copy("mobile_provider_muse"), icon: "RiMetaFill" },
+  claude: { label: "Claude Code", icon: "RiClaudeFill" },
+  codex: { label: "Codex", icon: "RiOpenaiFill" },
+  muse: { label: "Muse Code", icon: "RiMetaFill" },
 }
 
 const effortLabels: Record<string, string> = {
-  minimal: copy("mobile_composer_effort_minimal"),
-  low: copy("mobile_composer_effort_low"),
-  medium: copy("mobile_composer_effort_medium"),
-  high: copy("mobile_composer_effort_high"),
-  xhigh: copy("mobile_composer_effort_xhigh"),
-  max: copy("mobile_composer_effort_max"),
-  ultra: copy("mobile_composer_effort_ultra"),
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high",
+  max: "Max",
+  ultra: "Ultra",
 }
 const effortLabel = (effort: string) => effortLabels[effort] ?? effort
 
 const DEFAULT_EFFORT = "default"
 
 const accessModes: Record<AccessMode, { label: string; icon: IconName }> = {
-  supervised: { label: copy("mobile_settings_access_supervised"), icon: "RiShieldUserLine" },
-  auto: { label: copy("mobile_settings_access_auto"), icon: "RiShieldCheckLine" },
-  full: { label: copy("mobile_settings_access_full"), icon: "RiLockUnlockLine" },
+  supervised: { label: "Supervised", icon: "RiShieldUserLine" },
+  auto: { label: "Auto", icon: "RiShieldCheckLine" },
+  full: { label: "Full access", icon: "RiLockUnlockLine" },
 }
 
 /** What each mode lets through, which differs by agent and, for Claude's auto mode, by model. */
 const supervisedHints: Record<ProviderId, string> = {
-  claude: copy("mobile_settings_access_supervised_hint"),
-  codex: copy("mobile_composer_access_supervised_codex"),
-  muse: copy("mobile_composer_access_supervised_muse"),
+  claude: "Asks before edits and commands",
+  codex: "Asks before any command that isn't read-only",
+  muse: "Asks before commands and edits",
 }
 
 const autoHints: Record<ProviderId, (model: ModelInfo | undefined) => string> = {
   claude: (model) =>
-    model?.autoMode ? copy("mobile_composer_access_auto_claude") : copy("mobile_composer_access_auto_claude_edits"),
-  codex: () => copy("mobile_composer_access_auto_codex"),
-  muse: () => copy("mobile_composer_access_auto_muse"),
+    model?.autoMode ? "Claude approves safe actions and asks about the rest" : "Edits run without asking; commands still ask",
+  codex: () => "Runs freely in the sandbox; asks to go beyond it",
+  muse: () => "Runs freely in the sandbox, network included; asks to go beyond it",
 }
 
 const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | undefined) => {
@@ -514,7 +505,7 @@ const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | u
     case "auto":
       return autoHints[thread.provider](model)
     case "full":
-      return copy("mobile_settings_access_full_hint")
+      return "Runs everything without asking"
   }
 }
 
@@ -555,7 +546,7 @@ const accountHint = (option: AccountOption, now: number) =>
   option.spent !== undefined
     ? option.spent.resetsAt === null
       ? copy("mobile_thread_account_limit_reached_no_reset")
-      : copy("mobile_thread_account_limit_reached", { duration: formatResetIn(option.spent.resetsAt, now, locale) })
+      : copy("mobile_thread_account_limit_reached", { duration: formatResetIn(option.spent.resetsAt, now, "en") })
     : option.mostUsed !== undefined
       ? copy("mobile_thread_account_used", { percent: String(Math.round(option.mostUsed.usedPercent)) })
       : undefined
@@ -582,7 +573,7 @@ function SettingsChip({ thread, onError }: { thread: Thread; onError: OnError })
       <Pressable
         testID="composer-settings"
         accessibilityRole="button"
-        accessibilityLabel={copy("mobile_composer_settings")}
+        accessibilityLabel="Thread settings"
         accessibilityValue={{ text: `${providers[thread.provider].label}, ${modelLabel}` }}
         onPress={() => setOpen(true)}
         hitSlop={{ top: (HIT - CHIP_HEIGHT) / 2, bottom: (HIT - CHIP_HEIGHT) / 2 }}
@@ -645,14 +636,12 @@ function SettingsSheet({
     )
   }
 
-  const defaultEffort = current?.defaultEffort
-    ? copy("mobile_composer_effort_default_named", { effort: effortLabel(current.defaultEffort) })
-    : copy("mobile_composer_effort_default")
+  const defaultEffort = current?.defaultEffort ? `Default (${effortLabel(current.defaultEffort)})` : "Default effort"
 
   return (
-    <Sheet title={copy("mobile_composer_settings")} open={open} onClose={onClose} fit>
+    <Sheet title="Thread settings" open={open} onClose={onClose} fit>
           {unstarted && (
-            <Section title={copy("mobile_composer_agent")}>
+            <Section title="Agent">
               {ProviderId.literals.map((provider) => (
                 <OptionRow
                   key={provider}
@@ -664,7 +653,7 @@ function SettingsSheet({
               ))}
             </Section>
           )}
-          <Section title={copy("mobile_composer_model")}>
+          <Section title="Model">
             {shownModels.map((model) => (
               <OptionRow
                 key={model.id}
@@ -690,7 +679,7 @@ function SettingsSheet({
             </Section>
           )}
           {current !== undefined && current.efforts.length > 0 && (
-            <Section title={copy("mobile_composer_effort")}>
+            <Section title="Effort">
               {[
                 { value: DEFAULT_EFFORT, label: defaultEffort },
                 ...current.efforts.map((effort) => ({ value: effort, label: effortLabel(effort) })),
@@ -714,18 +703,18 @@ function SettingsSheet({
             </Section>
           )}
           {current?.fastMode && (
-            <Section title={copy("mobile_composer_speed")} role="group">
+            <Section title="Speed">
               <ToggleRow
                 icon="RiFlashlightLine"
-                label={copy("mobile_composer_fast_mode")}
-                hint={copy("mobile_composer_fast_mode_hint")}
+                label="Fast mode"
+                hint="Faster responses that use more of your plan"
                 value={thread.fastMode}
                 onValueChange={(fastMode) => void update({ id: thread.id, fastMode }, onError)}
               />
             </Section>
           )}
           {hidesUserSkills[thread.provider] && (
-            <Section title={copy("mobile_thread_conversation")} role="group">
+            <Section title={copy("mobile_thread_conversation")}>
               <ToggleRow
                 icon="RiChat1Line"
                 label={copy("mobile_thread_conversation_mode")}
@@ -735,7 +724,7 @@ function SettingsSheet({
               />
             </Section>
           )}
-          <Section title={copy("mobile_composer_access")}>
+          <Section title="Access">
             {AccessMode.literals.map((mode) => (
               <OptionRow
                 key={mode}
@@ -793,7 +782,7 @@ const styles = StyleSheet.create({
     maxHeight: LINE_HEIGHT * MAX_LINES + INPUT_PADDING * 2,
     paddingHorizontal: 6,
     paddingVertical: INPUT_PADDING,
-    fontSize: 16,
+    fontSize: 15,
     lineHeight: LINE_HEIGHT,
     textAlignVertical: "top",
     // react-native-web renders a fixed-height textarea; this lets the browser grow it with its text.
@@ -807,8 +796,6 @@ const styles = StyleSheet.create({
   suggestionDescription: { fontSize: 13 },
   suggestionLine: { flexDirection: "row", alignItems: "center", gap: 8 },
   suggestionTitle: { flexShrink: 1, fontSize: 15 },
-  suggestionFile: { flexShrink: 0, maxWidth: "70%", fontFamily: mono, fontSize: 14 },
-  suggestionFolder: { flex: 1, fontSize: 13 },
   chip: {
     height: CHIP_HEIGHT,
     flexShrink: 1,

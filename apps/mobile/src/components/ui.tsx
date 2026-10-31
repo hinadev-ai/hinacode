@@ -17,7 +17,7 @@ import Animated, { useReducedMotion } from "react-native-reanimated"
 import { Icon, type IconName } from "@/components/icon"
 import { PressableScale, Spinner } from "@/components/motion"
 import { cssEase, duration } from "@/constants/motion"
-import { HIT, type Palette, PILL_HEIGHT, ProviderColors, radius } from "@/constants/theme"
+import { HIT, type Palette, ProviderColors, radius } from "@/constants/theme"
 import { threadStatus } from "@/constants/thread-status"
 import { useScheme, useTheme } from "@/hooks/use-theme"
 import type { ConnectionStatus } from "@/lib/connection"
@@ -44,8 +44,7 @@ export function Button({
     <PressableScale
       accessibilityRole="button"
       accessibilityLabel={label}
-      aria-disabled={inactive}
-      aria-busy={busy}
+      accessibilityState={{ disabled: inactive, busy }}
       disabled={inactive}
       style={[
         styles.button,
@@ -85,8 +84,7 @@ export function IconButton({
   return (
     <PressableScale
       accessibilityRole="button"
-      aria-disabled={inactive}
-      aria-busy={busy}
+      accessibilityState={{ disabled: inactive, busy }}
       disabled={inactive}
       style={[
         styles.iconButton,
@@ -108,7 +106,7 @@ export function Toggle(props: Omit<SwitchProps, "trackColor" | "thumbColor">) {
     <Switch
       {...props}
       {...webThumb}
-      trackColor={{ true: theme.primary, false: theme.controlOff }}
+      trackColor={{ true: theme.primary, false: theme.surfaceStrong }}
       thumbColor="#ffffff"
     />
   )
@@ -148,9 +146,7 @@ const toneColors = (theme: Palette): Record<Tone, [string, string]> => ({
 
 type Status = { label: string; tone: Tone; icon?: IconName }
 
-/** Nothing while the thread is idle, since a quiet thread needs nobody. */
-export const ThreadStatusPill = ({ status }: { status: ThreadStatus }) =>
-  status === "idle" ? null : <Pill {...threadStatus[status]} />
+export const ThreadStatusPill = ({ status }: { status: ThreadStatus }) => <Pill {...threadStatus[status]} />
 
 const connectionLabel: Record<ConnectionStatus, Status> = {
   connected: { label: copy("mobile_connection_connected"), tone: "running", icon: "RiWifiLine" },
@@ -230,14 +226,8 @@ export function EmptyState({
   return (
     <View style={styles.empty}>
       <Icon name={icon} size={28} color={theme.textMuted} />
-      <Text textBreakStrategy="balanced" style={[styles.emptyTitle, { color: theme.text }]}>
-        {title}
-      </Text>
-      {hint !== undefined && (
-        <Text textBreakStrategy="balanced" style={[styles.emptyHint, { color: theme.textMuted }]}>
-          {hint}
-        </Text>
-      )}
+      <Text style={[styles.emptyTitle, { color: theme.text }]}>{title}</Text>
+      {hint !== undefined && <Text style={[styles.emptyHint, { color: theme.textMuted }]}>{hint}</Text>}
       {action}
     </View>
   )
@@ -305,7 +295,7 @@ export function SegmentedControl<T extends string>({
             testID={`tab-${segment.value}`}
             accessibilityRole="tab"
             accessibilityLabel={segment.label}
-            aria-selected={selected}
+            accessibilityState={{ selected }}
             onPress={() => onChange(segment.value)}
             style={styles.segment}
           >
@@ -359,7 +349,7 @@ export function UnderlineTabs<T extends string>({
             testID={`tab-${tab.value}`}
             accessibilityRole="tab"
             accessibilityLabel={tab.label}
-            aria-selected={selected}
+            accessibilityState={{ selected }}
             onLayout={(event) => {
               const { x, width } = event.nativeEvent.layout
               setLayouts((current) => ({ ...current, [tab.value]: { x, width } }))
@@ -452,10 +442,10 @@ const styles = StyleSheet.create({
     gap: 4,
     borderRadius: radius.full,
     paddingHorizontal: 8,
-    height: PILL_HEIGHT,
+    paddingVertical: 2,
     alignSelf: "flex-start",
   },
-  pillLabel: { fontSize: 12, lineHeight: 16, fontWeight: "600" },
+  pillLabel: { fontSize: 12, fontWeight: "600" },
   provider: { flexDirection: "row", alignItems: "center", gap: 4 },
   notice: { flexDirection: "row", alignItems: "flex-start", gap: 8, borderRadius: 8, padding: 12 },
   noticeText: { flex: 1, fontSize: 14, lineHeight: 18 },

@@ -58,21 +58,14 @@ export default function HomeScreen() {
           headerShown: true,
           title: copy("mobile_home_title"),
           headerLeft:
-            isIOS && connection !== "connected"
-              ? () => (
+            connection === "connected"
+              ? undefined
+              : () => (
                   <View style={styles.headerLeft}>
                     <ConnectionBadge status={connection} />
                   </View>
-                )
-              : undefined,
-          headerRight: isIOS
-            ? undefined
-            : () => (
-                <View style={styles.headerRight}>
-                  {connection !== "connected" && <ConnectionBadge status={connection} />}
-                  <HomeActions onNewThread={() => setNewThreadOpen(true)} />
-                </View>
-              ),
+                ),
+          headerRight: isIOS ? undefined : () => <HomeActions onNewThread={() => setNewThreadOpen(true)} />,
         }}
       />
       {isIOS && (
@@ -96,5 +89,4 @@ const styles = StyleSheet.create({
   header: { padding: 4 },
   center: { flex: 1, justifyContent: "center" },
   headerLeft: { paddingHorizontal: 4 },
-  headerRight: { flexDirection: "row", alignItems: "center", gap: 4 },
 })

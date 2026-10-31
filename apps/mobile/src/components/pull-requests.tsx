@@ -20,7 +20,6 @@ import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
-import { pullRequestReference } from "@/lib/overview"
 import { usePullRequests } from "@/stores/pull-requests"
 import { useThreads } from "@/stores/threads"
 
@@ -165,18 +164,13 @@ function PullRequestCard({
   }, [url])
 
   const watching = (link?.watch ?? null) !== null
-  const failed = remote?.status === "error" ? remote.message : null
-  const reference = pullRequestReference(url)
-  const review = pr !== null && (pr.status === "open" || pr.status === "draft") ? pr.review : null
   const label =
     pr === null
-      ? [reference, failed !== null && copy("mobile_pr_card_failed", { message: failed })]
-          .filter((part) => typeof part === "string")
-          .join(", ")
+      ? url
       : [
           pr.title,
           pullRequestLabel(String(pr.number), pr),
-          review !== null && reviewLabel(review),
+          pr.review !== null && reviewLabel(pr.review),
           watching && copy("mobile_pr_watching"),
         ]
           .filter((part) => typeof part === "string")
@@ -192,29 +186,13 @@ function PullRequestCard({
     >
       {pr === null ? (
         <View style={styles.titleRow}>
-          <View style={styles.titleIcon}>
-            {failed === null ? (
-              <Icon name="RiGitPullRequestLine" size={18} color={theme.textMuted} />
-            ) : (
-              <Icon name="RiErrorWarningLine" size={18} color={theme.danger} />
-            )}
-          </View>
-          <View style={styles.pending}>
-            <Text numberOfLines={2} style={[styles.title, { color: theme.textMuted }]}>
-              {reference}
-            </Text>
-            {failed !== null && (
-              <Text numberOfLines={1} style={[styles.note, { color: theme.textMuted }]}>
-                {copy("mobile_pr_lookup_failed")}
-              </Text>
-            )}
-          </View>
-          {failed === null ? (
-            <Reveal style={styles.titleIcon}>
+          <Text numberOfLines={1} style={[styles.url, { color: theme.textMuted }]}>
+            {url}
+          </Text>
+          {remote?.status !== "error" && (
+            <Reveal>
               <Spinner size={14} color={theme.textMuted} />
             </Reveal>
-          ) : (
-            <Icon name="RiArrowRightSLine" size={18} color={theme.textMuted} />
           )}
         </View>
       ) : (
@@ -248,13 +226,18 @@ function PullRequestCard({
             {pr.checks !== null && (
               <Pill label={checksLabel(pr.checks)} tone={checksTone[pr.checks]} icon={checksIcon[pr.checks]} />
             )}
-            {review !== null && <Pill label={reviewLabel(review)} tone={reviewTone[review]} />}
+            {pr.review !== null && <Pill label={reviewLabel(pr.review)} tone={reviewTone[pr.review]} />}
             {watching && <Pill label={copy("mobile_pr_watching")} tone="neutral" icon="RiEyeLine" />}
           </View>
         </>
       )}
       {link === null && (
         <Text style={[styles.note, { color: theme.textMuted }]}>{copy("mobile_pr_from_branch")}</Text>
+      )}
+      {remote?.status === "error" && (
+        <Text style={[styles.note, { color: theme.danger }]}>
+          {copy("mobile_pr_card_failed", { message: remote.message })}
+        </Text>
       )}
     </PressableScale>
   )
@@ -268,10 +251,10 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
   titleIcon: { paddingTop: 2 },
   title: { flex: 1, fontSize: 16, fontWeight: "600", lineHeight: 22 },
-  pending: { flex: 1, gap: 2 },
+  url: { flex: 1, fontSize: 14 },
   meta: { flexDirection: "row", alignItems: "center", gap: 12 },
   branches: { flexShrink: 1, fontFamily: mono, fontSize: 12 },
-  size: { flexShrink: 0, fontFamily: mono, fontSize: 12 },
+  size: { fontFamily: mono, fontSize: 12 },
   pills: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   note: { fontSize: 13, lineHeight: 18 },
 })

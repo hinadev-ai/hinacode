@@ -63,10 +63,7 @@ function Card({
   onDismiss: () => void
 }) {
   const theme = useTheme()
-  const [pressed, setPressed] = useState(false)
-  const [focused, setFocused] = useState(false)
-  const held = pressed || focused
-  const holdWhileFocused = { onFocus: () => setFocused(true), onBlur: () => setFocused(false) }
+  const [held, setHeld] = useState(false)
   const { kind, title, body, threadId } = notice
   const icon = icons[kind]
 
@@ -96,9 +93,8 @@ function Card({
         accessibilityRole="button"
         accessibilityLabel={`${title}. ${body}`}
         onPress={open}
-        onPressIn={() => setPressed(true)}
-        onPressOut={() => setPressed(false)}
-        {...holdWhileFocused}
+        onPressIn={() => setHeld(true)}
+        onPressOut={() => setHeld(false)}
         style={styles.content}
       >
         <Icon name={icon.name} size={20} color={theme[icon.color]} />
@@ -111,19 +107,8 @@ function Card({
           </Text>
         </View>
       </Pressable>
-      <Button
-        label={copy("mobile_notify_open")}
-        onPress={open}
-        hitSlop={4}
-        style={styles.open}
-        {...holdWhileFocused}
-      />
-      <IconButton
-        icon="RiCloseLine"
-        accessibilityLabel={copy("mobile_notify_dismiss")}
-        onPress={onDismiss}
-        {...holdWhileFocused}
-      />
+      <Button label={copy("mobile_notify_open")} onPress={open} hitSlop={4} style={styles.open} />
+      <IconButton icon="RiCloseLine" accessibilityLabel={copy("mobile_notify_dismiss")} onPress={onDismiss} />
     </motion.View>
   )
 }

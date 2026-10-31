@@ -11,7 +11,6 @@ import {
   REMOTE_PROTOCOL_VERSION,
   ServerFrame,
 } from "@shared/remote.ts"
-import { copy } from "./copy"
 
 export type TransportStatus = "connecting" | "connected" | "offline" | "unauthorized"
 
@@ -40,9 +39,9 @@ const MIN_RETRY_MS = 500
 const MAX_RETRY_MS = 10_000
 const JITTER = 0.3
 
-export const NOT_SENT_MESSAGE = copy("mobile_transport_not_sent")
-export const MAY_HAVE_RUN_MESSAGE = copy("mobile_transport_may_have_run")
-export const LOST_REPLY_MESSAGE = copy("mobile_transport_lost_reply")
+export const NOT_SENT_MESSAGE = "Not sent. The desktop was unreachable for a minute."
+export const MAY_HAVE_RUN_MESSAGE = "The desktop was unreachable for a minute. The action may still have run."
+export const LOST_REPLY_MESSAGE = "The connection dropped before the desktop answered. The action may still have run."
 
 export interface SocketLike {
   onopen: (() => void) | null
@@ -183,14 +182,14 @@ export class Transport {
     this.dropSocket()
     clearTimeout(this.retryTimer)
     clearTimeout(this.offlineTimer)
-    this.failAll(new RpcError("Offline", copy("mobile_transport_disconnected")))
+    this.failAll(new RpcError("Offline", "Disconnected from the desktop."))
   }
 
   /** Sends `payload` once it can, and resolves with the desktop's answer. */
   call(method: string, payload: unknown): Promise<RpcEnvelope<unknown>> {
     return new Promise((resolve, reject) => {
       if (this.stopped || this.status === "unauthorized") {
-        reject(new RpcError("Offline", copy("mobile_transport_not_connected")))
+        reject(new RpcError("Offline", "Not connected to the desktop."))
         return
       }
       const call: PendingCall = {
@@ -326,8 +325,8 @@ export class Transport {
       this.dropSocket()
       this.unauthorized(
         code === CLOSE_TOKEN_ROTATED
-          ? copy("mobile_transport_token_rotated")
-          : copy("mobile_transport_token_refused"),
+          ? "The token was rotated on the desktop. Pair again with the new QR code."
+          : "The desktop refused this token. Pair again from Settings > Remote.",
       )
       return
     }
@@ -398,10 +397,7 @@ export class Transport {
     if (version !== REMOTE_PROTOCOL_VERSION) {
       this.dropSocket()
       this.unauthorized(
-        copy("mobile_transport_protocol_mismatch", {
-          desktop: String(version),
-          app: String(REMOTE_PROTOCOL_VERSION),
-        }),
+        `The desktop speaks remote protocol ${version}, this app speaks ${REMOTE_PROTOCOL_VERSION}. Update the older one.`,
       )
       return
     }

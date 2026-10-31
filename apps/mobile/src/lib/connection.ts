@@ -12,7 +12,6 @@ import {
 import { learnFromAnswer, learnFromPush, makeOwners, type Owners, stampProjects } from "@shared/owners.ts"
 import { dialPlan } from "@shared/remote.ts"
 import { type Entity, routes } from "@shared/routes.ts"
-import { copy } from "./copy"
 import type { StoredServer } from "./stored-target"
 import { CONNECT_TIMEOUT_MS, PROBE_TIMEOUT_MS, RpcError, Transport, type TransportStatus } from "./transport"
 
@@ -263,7 +262,7 @@ function findOwner(entity: Entity, id: string): Promise<string | null> {
   })
 }
 
-const offline = () => new RpcError("Offline", copy("mobile_connection_no_server"))
+const offline = () => new RpcError("Offline", "Not connected to any server.")
 
 /** Sends one call to one server and learns the ids in its answer. */
 async function send(serverId: string, method: RpcMethod, payload: unknown): Promise<RpcEnvelope<unknown>> {
@@ -310,7 +309,7 @@ async function dispatch(method: RpcMethod, payload: unknown, named: string | und
   if (route.to === "owner" && servers.length > 1) {
     const id = payloadId(payload, route.key)
     const owner = id === undefined ? null : await findOwner(route.entity, id)
-    if (owner === null) throw new RpcError("NotFoundError", copy("mobile_connection_server_gone"))
+    if (owner === null) throw new RpcError("NotFoundError", "No paired server has this anymore.")
     return send(owner, method, payload)
   }
   const target =

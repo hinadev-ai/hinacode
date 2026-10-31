@@ -122,7 +122,7 @@ function useMotion({ initial, animate, exit, transition, layout, whileTap }: Mot
   const animateTo = (target: Target | undefined, resolve: (key: Key) => number | string | undefined) => {
     for (const key of Object.keys(values) as Key[]) {
       const to = resolve(key)
-      if (to === undefined) continue
+      if (to === undefined || to === values[key].get()) continue
       if (reduced && moves(key)) values[key].set(resting(key))
       else values[key].set(animation(key, to, target?.transition ?? transition))
     }

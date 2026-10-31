@@ -23,7 +23,7 @@ import { call, RpcError } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { basename, dirname, entryIcon } from "@/lib/file-kinds"
-import { lineSnippet, matchPaths, type PathMatch } from "@/lib/path-match"
+import { matchPaths, type PathMatch } from "@/lib/path-match"
 import { useThreadRoot } from "@/stores/threads"
 
 type GitStatus = NonNullable<FsEntry["gitStatus"]>
@@ -249,7 +249,7 @@ function EntryRow({ entry, onPress }: { entry: FsEntry; onPress: () => void }) {
       style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.surface }]}
     >
       <Icon name={entryIcon(entry.path, entry.kind)} size={18} color={theme.textMuted} />
-      <Text numberOfLines={1} ellipsizeMode="middle" style={[styles.rowName, { color: nameColor }]}>
+      <Text numberOfLines={1} style={[styles.rowName, { color: nameColor }]}>
         {entry.name}
       </Text>
       {entry.gitStatus !== null && (
@@ -439,9 +439,8 @@ function ContentSearch({ threadId, query }: { threadId: string; query: string })
 function HitRow({ hit, query, onPress }: { hit: FileSearchHit; query: string; onPress: () => void }) {
   const theme = useTheme()
   const location = `${hit.path}:${hit.line}`
-  const snippet = lineSnippet(hit.text, query)
-  const { match } = snippet
-  const hits = new Set(match === null ? [] : Array.from({ length: match.end - match.start }, (_, i) => match.start + i))
+  const at = hit.text.toLowerCase().indexOf(query.toLowerCase())
+  const hits = new Set(at === -1 ? [] : Array.from({ length: query.length }, (_, index) => at + index))
   return (
     <Pressable
       accessibilityRole="button"
@@ -455,7 +454,7 @@ function HitRow({ hit, query, onPress }: { hit: FileSearchHit; query: string; on
       {/* The desktop's find highlight: a violet wash, since amber would read as needing attention. */}
       <Text numberOfLines={2} style={[styles.hitText, { color: theme.text }]}>
         <Emphasized
-          text={snippet.text}
+          text={hit.text}
           offset={0}
           hits={hits}
           style={[styles.strong, { backgroundColor: theme.tokenBg }]}

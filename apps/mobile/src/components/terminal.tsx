@@ -2,11 +2,10 @@ import type { PushEvent } from "@shared/contract.ts"
 import { useEffect, useEffectEvent, useRef, useState } from "react"
 import { Keyboard, Platform, Pressable, StyleSheet, Text, View } from "react-native"
 import { Icon } from "@/components/icon"
-import { Button, Notice } from "@/components/ui"
+import { Notice } from "@/components/ui"
 import { radius } from "@/constants/theme"
-import { useThreadServer } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
-import { call, onEvent, RpcError, useConnection } from "@/lib/connection"
+import { call, onEvent, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { TerminalOutput } from "@/lib/terminal-output"
@@ -20,29 +19,11 @@ type Session = { readonly id: string; size: string; generation: number }
 const clamp = (value: number) => Math.min(1000, Math.max(1, Math.floor(value)))
 
 /**
- * The thread's shell, replaced by a fresh one when the developer asks after it exits. A desktop that cannot attach
- * to a running shell gets a new one after each reconnect instead. Its server's features outlast a disconnect, so
- * going offline keeps the output on screen.
- */
-export function TerminalPanel({ threadId }: { threadId: string }) {
-  const [shell, setShell] = useState(0)
-  const server = useThreadServer(threadId)
-  const detached = server !== undefined && !server.features.has("terminal-attach")
-  return (
-    <TerminalSession
-      key={detached ? `${shell}:${server.generation}` : shell}
-      threadId={threadId}
-      onRestart={() => setShell(shell + 1)}
-    />
-  )
-}
-
-/**
  * A shell in the thread's worktree. The session opens once the view knows its grid size and is
  * closed when this component unmounts, i.e. when the thread screen goes away. After a reconnect it
  * attaches to the same session and catches up from the last output it showed.
  */
-function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart: () => void }) {
+export function TerminalPanel({ threadId }: { threadId: string }) {
   const theme = useTheme()
   const generation = useConnection((state) => state.generation)
   const view = useRef<TerminalViewHandle>(null)
@@ -54,13 +35,8 @@ function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart:
   const early = useRef<TerminalPush[]>([])
   const [output] = useState(() => new TerminalOutput())
   const latestSize = useRef({ cols: 80, rows: 24 })
-  const repaint = useRef(false)
-  const [ended, setEnded] = useState<string | null>(null)
+  const [exitCode, setExitCode] = useState<number | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
-  const setExitCode = (code: number | null) =>
-    setEnded(
-      code === null ? copy("mobile_terminal_exited") : copy("mobile_terminal_exited_code", { code: String(code) }),
-    )
   const applicationCursor = useRef(false)
   const [ctrl, setCtrl] = useState(false)
   const keyboardVisible = useKeyboardVisible()
@@ -96,8 +72,7 @@ function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart:
         const text = output.attachFailed(token)
         if (text === null) return
         write(text)
-        if (cause instanceof RpcError && cause.tag === "NotFoundError") setEnded(copy("mobile_terminal_gone"))
-        else setError(copy("mobile_terminal_reattach_failed", { message: errorText(cause) }))
+        setError(copy("mobile_terminal_reattach_failed", { message: errorText(cause) }))
       },
     )
   }
@@ -135,11 +110,7 @@ function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart:
 
   const onSize = (cols: number, rows: number) => {
     latestSize.current = { cols: clamp(cols), rows: clamp(rows) }
-    if (session.current !== null) {
-      if (repaint.current && useConnection.getState().features.has("terminal-attach")) attach(session.current)
-      repaint.current = false
-      return resize(session.current)
-    }
+    if (session.current !== null) return resize(session.current)
     if (opening.current) return
     opening.current = true
     call("terminal.open", { threadId, ...latestSize.current }).then(
@@ -158,13 +129,13 @@ function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart:
       },
       (cause) => {
         opening.current = false
-        setError(copy("mobile_terminal_open_failed", { message: errorText(cause) }))
+        setError(`Could not open a shell: ${errorText(cause)}`)
       },
     )
   }
 
   const send = (data: string) => {
-    if (session.current !== null && ended === null) {
+    if (session.current !== null && exitCode === undefined) {
       void call("terminal.write", { id: session.current.id, data }).catch(() => {})
     }
   }
@@ -182,13 +153,8 @@ function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart:
   return (
     <View style={styles.container}>
       {error !== null && <Notice text={error} tone="danger" />}
-      {ended !== null && (
-        <View style={styles.exited}>
-          <View style={styles.exitedNotice}>
-            <Notice text={ended} />
-          </View>
-          <Button label={copy("mobile_terminal_restart")} icon="RiTerminalBoxLine" onPress={onRestart} />
-        </View>
+      {exitCode !== undefined && (
+        <Notice text={`Shell exited${exitCode === null ? "" : ` with code ${exitCode}`}.`} />
       )}
       <View style={[styles.surface, { borderColor: theme.border }]}>
         <TerminalView
@@ -197,13 +163,9 @@ function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart:
           onInput={onInput}
           onSize={onSize}
           onCursorMode={(mode) => (applicationCursor.current = mode)}
-          onBlank={() => {
-            output.lost()
-            repaint.current = true
-          }}
         />
       </View>
-      {keyboardVisible && ended === null && (
+      {keyboardVisible && exitCode === undefined && (
         <KeyRow ctrl={ctrl} onCtrl={() => setCtrl((armed) => !armed)} onKey={onKey} />
       )}
     </View>
@@ -221,11 +183,11 @@ function KeyRow({ ctrl, onCtrl, onKey }: { ctrl: boolean; onCtrl: () => void; on
       pressed && styles.pressed,
     ]
   return (
-    <View accessibilityRole="toolbar" accessibilityLabel={copy("mobile_terminal_keys")} style={styles.row}>
+    <View accessibilityRole="toolbar" accessibilityLabel="Terminal keys" style={styles.row}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={copy("mobile_terminal_control")}
-        accessibilityHint={copy("mobile_terminal_control_hint")}
+        accessibilityLabel="Control"
+        accessibilityHint="Applies Control to the next key you type"
         accessibilityState={{ selected: ctrl }}
         onPress={onCtrl}
         style={keyStyle(ctrl)}
@@ -272,8 +234,6 @@ function useKeyboardVisible() {
 const styles = StyleSheet.create({
   container: { flex: 1, gap: 8, paddingHorizontal: 12, paddingBottom: 12 },
   row: { flexDirection: "row", gap: 6 },
-  exited: { flexDirection: "row", alignItems: "center", gap: 8 },
-  exitedNotice: { flex: 1 },
   key: {
     flex: 1,
     height: 40,

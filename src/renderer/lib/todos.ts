@@ -1,4 +1,4 @@
-import type { Message, MessagePart } from "./domain.ts"
+import type { Message, MessagePart } from "../../shared/domain.ts"
 
 export type TodoStatus = "pending" | "in_progress" | "completed" | "cancelled"
 
@@ -8,10 +8,6 @@ export interface Todo {
 }
 
 type ToolPart = Extract<MessagePart, { type: "tool_call" }>
-
-const TODO_TOOLS = new Set(["write_todos", "TodoWrite", "update_plan", "TaskCreate", "TaskUpdate"])
-
-export const isTodoTool = (name: string) => TODO_TOOLS.has(name)
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
@@ -44,7 +40,7 @@ const readList = (value: unknown, textKey: string): Array<Todo> | null => {
   return todos
 }
 
-export const createdTaskId = (output: unknown): string | null => {
+const createdTaskId = (output: unknown): string | null => {
   if (typeof output === "string") return /^Task #(\S+) created/.exec(output)?.[1] ?? null
   if (isRecord(output) && isRecord(output["task"]) && typeof output["task"]["id"] === "string")
     return output["task"]["id"]

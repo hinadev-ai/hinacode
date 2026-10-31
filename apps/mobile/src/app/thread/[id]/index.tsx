@@ -11,23 +11,15 @@ import { PullRequests } from "@/components/pull-requests"
 import { TerminalPanel } from "@/components/terminal"
 import { useThreadActions } from "@/components/thread-actions"
 import { SidebarButton, SidebarToolbarButton } from "@/components/thread-sidebar"
-import {
-  IconButton,
-  Notice,
-  ProviderLabel,
-  type Segment,
-  SegmentedControl,
-  ThreadStatusPill,
-} from "@/components/ui"
+import { IconButton, Notice, ProviderLabel, type Segment, SegmentedControl, ThreadStatusPill } from "@/components/ui"
 import { useThreadConnection } from "@/hooks/use-server"
-import { PILL_HEIGHT, READABLE_WIDTH } from "@/constants/theme"
-import { headerStatus } from "@/lib/header-status"
+import { READABLE_WIDTH } from "@/constants/theme"
 import { useSplitLayout } from "@/hooks/use-split-layout"
 import { useTheme } from "@/hooks/use-theme"
+import { useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import type { Thread } from "@shared/domain.ts"
 import type { ThreadActionName } from "@/lib/thread-actions"
-import { useMessages } from "@/stores/messages"
 import { useThreads } from "@/stores/threads"
 import { useUnseen } from "@/stores/unseen"
 
@@ -45,14 +37,11 @@ export default function ThreadScreen() {
   const split = useSplitLayout()
   const { id } = useLocalSearchParams<{ id: string }>()
   const thread = useThreads((state) => state.byId[id])
-  const waiting = useMessages((state) => {
-    const history = state.byThread[id]
-    return history?.status === "ready" && (history.approvals.length > 0 || history.questions.length > 0)
-  })
   const loaded = useThreads((state) => state.status === "ready")
   const status = useThreadConnection(id)
   // KeyboardAvoidingView measures itself against its parent, which starts below the stack header.
   const headerHeight = useHeaderHeight()
+  const terminalRemountKey = useConnection((state) => (state.features.has("terminal-attach") ? "attached" : state.generation))
   const [tab, setTab] = useState<Tab>("chat")
   // Files and the shell keep their state across tab switches once opened, and end with this screen.
   const [opened, setOpened] = useState<ReadonlySet<Tab>>(() => new Set(["chat"]))
@@ -103,7 +92,7 @@ export default function ThreadScreen() {
             />
           )}
           <View style={styles.titleColumn}>
-            <Text accessibilityRole="header" style={[styles.title, { color: theme.text }]}>
+            <Text accessibilityRole="header" numberOfLines={1} style={[styles.title, { color: theme.text }]}>
               {title}
             </Text>
             {thread !== undefined && <ProviderLabel provider={thread.provider} size={12} />}
@@ -111,7 +100,7 @@ export default function ThreadScreen() {
           {thread !== undefined && (
             <View style={styles.status}>
               <ThreadPullRequestChip thread={thread} onPress={() => select("prs")} />
-              <ThreadStatusPill status={headerStatus(thread.status, waiting)} />
+              <ThreadStatusPill status={thread.status} />
             </View>
           )}
         </View>
@@ -123,9 +112,9 @@ export default function ThreadScreen() {
             <ProviderLabel provider={thread.provider} size={12} />
             <View style={styles.spacer} />
             <ThreadPullRequestChip thread={thread} onPress={() => select("prs")} />
-            {/* A pill aligns itself to the start, which in this row is the top. The slot keeps the row's height while it hides. */}
-            <View style={styles.pillSlot}>
-              <ThreadStatusPill status={headerStatus(thread.status, waiting)} />
+            {/* A pill aligns itself to the start, which in this row is the top. */}
+            <View>
+              <ThreadStatusPill status={thread.status} />
             </View>
           </View>
         )}
@@ -162,7 +151,7 @@ export default function ThreadScreen() {
           {tab === "prs" && <PullRequests thread={thread} />}
           {opened.has("terminal") && (
             <View style={[styles.flex, tab !== "terminal" && styles.hidden]}>
-              <TerminalPanel threadId={thread.id} />
+              <TerminalPanel key={terminalRemountKey} threadId={thread.id} />
             </View>
           )}
         </KeyboardAvoidingView>
@@ -231,7 +220,7 @@ const styles = StyleSheet.create({
   },
   readable: { width: "100%", maxWidth: READABLE_WIDTH, alignSelf: "center" },
   titleColumn: { flex: 1, gap: 2 },
-  title: { fontSize: 16, lineHeight: 20, fontWeight: "600" },
+  title: { fontSize: 16, fontWeight: "600" },
   status: { flexDirection: "row", alignItems: "center", gap: 6, paddingRight: 8 },
   subheader: {
     flexDirection: "row",
@@ -241,7 +230,6 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   spacer: { flex: 1 },
-  pillSlot: { minHeight: PILL_HEIGHT },
   tabs: { margin: 12 },
   banner: { paddingHorizontal: 12, paddingBottom: 8 },
   missing: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },

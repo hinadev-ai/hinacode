@@ -1,6 +1,5 @@
 import { type Message, type MessagePart, spawnsSubagent } from "./domain.ts"
 import type { PushEvent, TranscriptPush } from "./contract.ts"
-import { createdTaskId, isTodoTool } from "./todos.ts"
 
 const SUMMARY_KEYS = ["command", "file_path", "path", "pattern", "url", "description"]
 
@@ -14,8 +13,7 @@ export function toolSummary(input: unknown): { readonly key: string; readonly li
   return null
 }
 
-function compactInput(name: string, input: unknown) {
-  if (isTodoTool(name)) return input
+function compactInput(input: unknown) {
   const summary = toolSummary(input)
   return summary === null ? {} : { [summary.key]: summary.line }
 }
@@ -23,9 +21,8 @@ function compactInput(name: string, input: unknown) {
 function compactPart(part: MessagePart): MessagePart {
   switch (part.type) {
     case "tool_call": {
-      const { output, fullOutputBytes: _fullOutputBytes, input, ...rest } = part
-      const compacted = { ...rest, input: compactInput(part.name, input) }
-      return isTodoTool(part.name) ? { ...compacted, output } : compacted
+      const { output: _output, fullOutputBytes: _fullOutputBytes, input, ...rest } = part
+      return { ...rest, input: compactInput(input) }
     }
     case "file_change":
       return part.diff === "" ? part : { ...part, diff: "" }
@@ -49,10 +46,10 @@ export function compactPush(push: typeof PushEvent.Encoded): typeof PushEvent.En
   const { event } = push
   switch (event.type) {
     case "tool_call_started":
-      return { ...push, event: { ...event, input: compactInput(event.name, event.input) } }
+      return { ...push, event: { ...event, input: compactInput(event.input) } }
     case "tool_call_finished": {
       const { fullOutputBytes: _fullOutputBytes, ...rest } = event
-      return { ...push, event: createdTaskId(event.output) === null ? { ...rest, output: "" } : rest }
+      return { ...push, event: { ...rest, output: "" } }
     }
     case "file_changed":
       return { ...push, event: { ...event, diff: "" } }

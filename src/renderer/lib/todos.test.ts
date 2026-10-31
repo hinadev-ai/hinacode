@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { Message, MessagePart } from "./domain.ts"
+import type { Message, MessagePart } from "../../shared/domain.ts"
 import { latestTodos } from "./todos.ts"
 
 const tool = (name: string, input: unknown, output?: unknown, parentCallId?: string): MessagePart => ({

@@ -9,7 +9,6 @@ import { Icon } from "@/components/icon"
 import { Button, Notice } from "@/components/ui"
 import { mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
-import { copy } from "@/lib/copy"
 
 /**
  * Scan or paste a pairing URL. The first pairing needs no `onPaired`: the protected stack swaps this screen for
@@ -53,13 +52,14 @@ export function PairingForm({
         <Icon name="RiSmartphoneLine" size={28} color={theme.onPrimary} />
       </View>
       <Text style={[styles.lead, { color: theme.textMuted }]}>
-        {copy("mobile_pairing_lead")}
+        On the desktop, open Settings, Remote, and turn on Allow remote control. Scan the QR code it shows, or paste
+        the pairing URL. A cloud prints its QR code when you run hinacode serve, or hinacode pair later.
       </Text>
       {refused !== null && <Notice text={refused} tone="danger" />}
       {native && (
         <Button
           testID="scan-qr-button"
-          label={copy("mobile_pairing_scan")}
+          label="Scan QR code"
           icon="RiQrScanLine"
           variant="primary"
           onPress={() => setScanning(true)}
@@ -67,11 +67,11 @@ export function PairingForm({
       )}
       <View style={styles.field}>
         <Text nativeID="pairing-url-label" style={[styles.label, { color: theme.text }]}>
-          {copy("mobile_pairing_url")}
+          Pairing URL
         </Text>
         <TextInput
           testID="pairing-url-input"
-          accessibilityLabel={copy("mobile_pairing_url")}
+          accessibilityLabel="Pairing URL"
           accessibilityLabelledBy="pairing-url-label"
           value={text}
           onChangeText={(value) => {
@@ -90,13 +90,13 @@ export function PairingForm({
         />
         {invalid && (
           <Text accessibilityRole="alert" style={{ color: theme.danger }}>
-            {copy("mobile_pairing_invalid")}
+            This is not a HinaCode pairing URL. Copy it again from Settings, Remote.
           </Text>
         )}
       </View>
       <Button
         testID="connect-button"
-        label={copy("mobile_pairing_connect")}
+        label="Connect"
         variant={native ? "secondary" : "primary"}
         onPress={() => void submit(text)}
       />
@@ -140,12 +140,12 @@ function Scanner({ onClose, onScan }: { onClose: () => void; onScan: (data: stri
           <View style={styles.permission}>
             <Icon name="RiCameraLine" size={28} color={theme.textMuted} />
             <Text style={{ color: theme.text, fontSize: 16, textAlign: "center" }}>
-              {copy("mobile_pairing_camera_needed")}
+              HinaCode needs the camera to read the pairing QR code.
             </Text>
-            <Button label={copy("mobile_pairing_allow_camera")} variant="primary" onPress={() => void requestPermission()} />
+            <Button label="Allow camera" variant="primary" onPress={() => void requestPermission()} />
           </View>
         )}
-        <Button label={copy("mobile_pairing_cancel")} icon="RiCloseLine" onPress={onClose} style={styles.cancel} />
+        <Button label="Cancel" icon="RiCloseLine" onPress={onClose} style={styles.cancel} />
       </SafeAreaView>
     </Modal>
   )

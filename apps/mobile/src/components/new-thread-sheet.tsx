@@ -189,11 +189,10 @@ function SheetRow({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={hint}
-      aria-busy={busy}
-      aria-disabled={disabled}
+      accessibilityState={{ busy, disabled }}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [sheetStyles.option, pressed && { backgroundColor: theme.sheetRaised }]}
+      style={({ pressed }) => [sheetStyles.option, pressed && { backgroundColor: theme.surface }]}
     >
       <Icon name={icon} size={18} color={theme.text} />
       <View style={sheetStyles.optionText}>

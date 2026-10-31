@@ -1,7 +1,7 @@
 import type { LinearIssue, PullRequest, PullRequestLink, Thread } from "@shared/domain.ts"
 import { expect, it } from "vitest"
 import type { Remote } from "@/stores/pull-requests"
-import { pullRequestOverview, pullRequestReference, sortIssues } from "./overview"
+import { pullRequestOverview, sortIssues } from "./overview"
 
 const pr = (n: number) => `https://github.com/acme/app/pull/${n}`
 
@@ -61,10 +61,4 @@ it("lists each issue once, work in progress first, then by priority with no prio
     issue("todo-low", "unstarted", 4, "2026-10-20"),
   ])
   expect(sorted.map((entry) => entry.id)).toStrictEqual(["doing", "todo-low", "todo-none", "backlog"])
-})
-
-it("names a pull request by its repository and number, before GitHub answers", () => {
-  expect(pullRequestReference(pr(7))).toBe("acme/app #7")
-  expect(pullRequestReference("https://example.com/pull/9")).toBe("#9")
-  expect(pullRequestReference("https://example.com/")).toBe("#?")
 })

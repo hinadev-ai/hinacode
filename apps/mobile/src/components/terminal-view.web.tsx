@@ -3,8 +3,6 @@ import { FitAddon } from "@xterm/addon-fit"
 import { Terminal } from "@xterm/xterm"
 import { useEffect, useEffectEvent, useImperativeHandle, useRef } from "react"
 import { View, type ViewInstance } from "react-native"
-import { useScheme } from "@/hooks/use-theme"
-import { copy } from "@/lib/copy"
 import { type TerminalViewProps, xtermTheme } from "./terminal-types"
 
 export function TerminalView({ ref, theme, onInput, onSize, onCursorMode }: TerminalViewProps) {
@@ -13,8 +11,7 @@ export function TerminalView({ ref, theme, onInput, onSize, onCursorMode }: Term
   const input = useEffectEvent(onInput)
   const sized = useEffectEvent(onSize)
   const cursorMode = useEffectEvent(onCursorMode)
-  const scheme = useScheme()
-  const initialTheme = useEffectEvent(() => xtermTheme(theme, scheme))
+  const initialTheme = useEffectEvent(() => xtermTheme(theme))
 
   useImperativeHandle(ref, () => ({ write: (data) => terminal.current?.write(data) }))
 
@@ -61,14 +58,14 @@ export function TerminalView({ ref, theme, onInput, onSize, onCursorMode }: Term
   }, [])
 
   useEffect(() => {
-    if (terminal.current) terminal.current.options.theme = xtermTheme(theme, scheme)
-  }, [theme, scheme])
+    if (terminal.current) terminal.current.options.theme = xtermTheme(theme)
+  }, [theme])
 
   return (
     <View
       ref={container}
       testID="terminal"
-      accessibilityLabel={copy("mobile_terminal_label")}
+      accessibilityLabel="Terminal"
       style={{ flex: 1, padding: 6, backgroundColor: theme.background }}
     />
   )

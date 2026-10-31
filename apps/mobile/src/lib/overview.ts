@@ -1,13 +1,5 @@
 import type { LinearIssue, PullRequest, PullRequestLink, Thread } from "@shared/domain.ts"
-import { parseGitHubRepository } from "@shared/github.ts"
-import { pullRequestNumber, type Remote } from "@/stores/pull-requests"
-
-/** `owner/repo #123`, read from the URL, so a row can name its pull request before or without GitHub's answer. */
-export function pullRequestReference(url: string) {
-  const repository = parseGitHubRepository(url)
-  const number = `#${pullRequestNumber(url) ?? "?"}`
-  return repository === null ? number : `${repository.owner}/${repository.name} ${number}`
-}
+import type { Remote } from "@/stores/pull-requests"
 
 /** Why an open pull request waits on the developer. */
 export type PullRequestNeed = "checks" | "changes" | "conflicts"

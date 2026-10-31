@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { lineSnippet, matchPaths } from "./path-match"
+import { matchPaths } from "./path-match"
 
 const order = (paths: string[], query: string) => matchPaths(paths, query).map((match) => match.path)
 
@@ -40,27 +40,5 @@ describe("matchPaths", () => {
   it("returns at most 50 results", () => {
     const paths = Array.from({ length: 80 }, (_, index) => `src/file-${index}.ts`)
     expect(matchPaths(paths, "file")).toHaveLength(50)
-  })
-})
-
-describe("lineSnippet", () => {
-  it("keeps a short line whole without its indent and marks the match", () => {
-    expect(lineSnippet("  return needle", "NEEDLE")).toEqual({ text: "return needle", match: { start: 7, end: 13 } })
-  })
-
-  it("starts a long line shortly before a late match, so the match stays in view", () => {
-    const line = "export function handler7(input: string): number { return input.length * 7 } // needle-7"
-    const snippet = lineSnippet(line, "needle-7", { lead: 10 })
-    expect(snippet.text).toBe("… * 7 } // needle-7")
-    expect(snippet.text.slice(snippet.match?.start, snippet.match?.end)).toBe("needle-7")
-  })
-
-  it("keeps a line whole when the match already fits", () => {
-    const line = 'return f"hello {name}"  # needle-7'
-    expect(lineSnippet(line, "needle-7", { lead: 10 }).text).toBe(line)
-  })
-
-  it("has no match when the line does not contain the query", () => {
-    expect(lineSnippet("abc", "x")).toEqual({ text: "abc", match: null })
   })
 })

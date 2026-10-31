@@ -11,7 +11,7 @@ import { PullRequestMark, usePullRequestAttention, usePullRequestSummary } from 
 import { ThreadActionsSheet, useThreadActions } from "@/components/thread-actions"
 import { ProviderMark } from "@/components/ui"
 import { listEntering, listExiting } from "@/constants/motion"
-import { indicatorGlyph, mono, radius, subheading, type Palette } from "@/constants/theme"
+import { indicatorGlyph, mono, type Palette, radius } from "@/constants/theme"
 import { useNow } from "@/hooks/use-now"
 import { useProjectServer, useSeveralServers } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
@@ -27,10 +27,11 @@ import { useUnseen } from "@/stores/unseen"
 const MARK_SIZE = 16
 const MARK_GAP = 10
 const STATUS_SIZE = 16
+/** A running row recedes, as on the desktop, until the developer reaches for it. */
+const WORKING_OPACITY = 0.6
 const noLinks: readonly PullRequestLink[] = []
 
-const titleColor = (theme: Palette, state: RowState, away: boolean) => {
-  if (away) return theme.textMuted
+const titleColor = (theme: Palette, state: RowState) => {
   switch (rowEmphasis[state]) {
     case "attention":
       return theme.text
@@ -130,7 +131,12 @@ export function ThreadRow({ thread, showProject }: { thread: Thread; showProject
         onAccessibilityAction={(event) => void runFromAccessibility(event.nativeEvent.actionName)}
         onPress={() => openThread(thread.id)}
         onLongPress={() => setActionsOpen(true)}
-        style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.surface }]}
+        style={({ pressed }) => [
+          styles.row,
+          pressed && { backgroundColor: theme.surface },
+          rowEmphasis[state] === "working" && !pressed && !actionsOpen && { opacity: WORKING_OPACITY },
+          away && styles.away,
+        ]}
       >
         {project !== undefined && (
           <View style={styles.projectLine}>
@@ -141,7 +147,7 @@ export function ThreadRow({ thread, showProject }: { thread: Thread; showProject
           </View>
         )}
         <View style={styles.titleLine}>
-          <Text numberOfLines={1} style={[styles.title, { color: titleColor(theme, state, away) }]}>
+          <Text numberOfLines={1} style={[styles.title, { color: titleColor(theme, state) }]}>
             {title}
           </Text>
           <ProviderMark provider={thread.provider} size={MARK_SIZE} />
@@ -195,7 +201,7 @@ function StatusIndicator({ state }: { state: IndicatedState }) {
 export function SectionLabel({ label }: { label: string }) {
   const theme = useTheme()
   return (
-    <Text accessibilityRole="header" {...subheading} style={[styles.sectionLabel, { color: theme.textMuted }]}>
+    <Text accessibilityRole="header" style={[styles.sectionLabel, { color: theme.textMuted }]}>
       {label}
     </Text>
   )
@@ -206,7 +212,7 @@ const styles = StyleSheet.create({
   row: { borderRadius: radius.md, paddingHorizontal: 10, paddingVertical: 8, gap: 2 },
   titleLine: { flexDirection: "row", alignItems: "center", gap: MARK_GAP, minHeight: 22 },
   title: { flex: 1, fontSize: 16, lineHeight: 22 },
-  metaLine: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 18 },
+  metaLine: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 18, opacity: 0.8 },
   meta: { fontSize: 12, lineHeight: 18 },
   mono: { fontFamily: mono },
   projectLine: { flexDirection: "row", alignItems: "center", gap: 4 },
@@ -215,5 +221,6 @@ const styles = StyleSheet.create({
   removed: { textDecorationLine: "line-through" },
   pullRequest: { flexShrink: 0 },
   time: { marginLeft: "auto", paddingLeft: 4, flexShrink: 0, fontVariant: ["tabular-nums"] },
+  away: { opacity: 0.5 },
   status: { width: STATUS_SIZE, height: STATUS_SIZE },
 })

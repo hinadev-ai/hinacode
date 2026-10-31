@@ -2,7 +2,7 @@ import { Children, Fragment, isValidElement, type ReactNode } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 import { Icon, type IconName } from "@/components/icon"
 import { Toggle } from "@/components/ui"
-import { HIT, mono, radius, subheading } from "@/constants/theme"
+import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 
 /** An inset group of rows with a small header above it and an optional footnote under it. */
@@ -20,7 +20,7 @@ export function SettingsGroup({
   const rows = Children.toArray(children).filter(isValidElement)
   return (
     <View style={styles.group}>
-      <Text accessibilityRole="header" {...subheading} style={[styles.groupTitle, { color: theme.textMuted }]}>
+      <Text accessibilityRole="header" style={[styles.groupTitle, { color: theme.textMuted }]}>
         {title}
       </Text>
       <View style={[styles.rows, { backgroundColor: theme.surface }]}>
@@ -48,13 +48,11 @@ export function SettingsRow({
   value,
   monospace = false,
   disabled = false,
-  labelLines,
   onPress,
   children,
 }: {
   icon?: IconName
   label: string
-  labelLines?: number
   /** Muted text at the trailing edge, such as the current choice. */
   value?: string
   monospace?: boolean
@@ -67,9 +65,7 @@ export function SettingsRow({
   const content = (
     <>
       {icon !== undefined && <Icon name={icon} size={18} color={theme.textMuted} />}
-      <Text numberOfLines={labelLines} style={[styles.label, { color: disabled ? theme.textMuted : theme.text }]}>
-        {label}
-      </Text>
+      <Text style={[styles.label, { color: disabled ? theme.textMuted : theme.text }]}>{label}</Text>
       {value !== undefined && (
         <Text numberOfLines={1} style={[styles.value, monospace && styles.mono, { color: theme.textMuted }]}>
           {value}
@@ -85,7 +81,7 @@ export function SettingsRow({
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityValue={value !== undefined ? { text: value } : undefined}
-      aria-disabled={disabled}
+      accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.surfaceStrong }]}
@@ -110,7 +106,14 @@ export function SwitchRow({
 }) {
   return (
     <SettingsRow icon={icon} label={label} disabled={disabled}>
-      <Toggle accessibilityLabel={label} value={value} disabled={disabled} onValueChange={onChange} />
+      <Toggle
+        accessibilityRole="switch"
+        accessibilityLabel={label}
+        accessibilityState={{ checked: value, disabled }}
+        value={value}
+        disabled={disabled}
+        onValueChange={onChange}
+      />
     </SettingsRow>
   )
 }

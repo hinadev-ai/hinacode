@@ -1,8 +1,6 @@
-import { useImperativeHandle, useRef, useState } from "react"
+import { useImperativeHandle, useRef } from "react"
 import { WebView } from "react-native-webview"
 import { type TerminalViewProps, xtermTheme } from "./terminal-types"
-import { useScheme } from "@/hooks/use-theme"
-import { copy } from "@/lib/copy"
 import { TERMINAL_HTML } from "@/terminal/terminal-page"
 
 type PageMessage =
@@ -10,30 +8,23 @@ type PageMessage =
   | { type: "size"; cols: number; rows: number }
   | { type: "cursorMode"; applicationCursor: boolean }
 
-export function TerminalView({ ref, theme, onInput, onSize, onCursorMode, onBlank }: TerminalViewProps) {
+export function TerminalView({ ref, theme, onInput, onSize, onCursorMode }: TerminalViewProps) {
   const webview = useRef<WebView>(null)
-  const scheme = useScheme()
-  const [page, setPage] = useState(0)
   useImperativeHandle(ref, () => ({
     write: (data) => webview.current?.injectJavaScript(`window.kkWrite(${JSON.stringify(data)});true;`),
   }))
   return (
     <WebView
-      key={page}
       ref={webview}
       testID="terminal"
-      accessibilityLabel={copy("mobile_terminal_label")}
+      accessibilityLabel="Terminal"
       originWhitelist={["*"]}
       source={{ html: TERMINAL_HTML }}
-      injectedJavaScriptBeforeContentLoaded={`window.kkTheme=${JSON.stringify(xtermTheme(theme, scheme))};true;`}
+      injectedJavaScriptBeforeContentLoaded={`window.kkTheme=${JSON.stringify(xtermTheme(theme))};true;`}
       keyboardDisplayRequiresUserAction={false}
       hideKeyboardAccessoryView
       bounces={false}
       style={{ flex: 1, backgroundColor: theme.background }}
-      onRenderProcessGone={() => {
-        onBlank()
-        setPage(page + 1)
-      }}
       onMessage={(event) => {
         const message = JSON.parse(event.nativeEvent.data) as PageMessage
         if (message.type === "input") onInput(message.data)
