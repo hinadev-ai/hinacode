@@ -21,11 +21,13 @@ import {
 } from "@/components/ui"
 import { useThreadConnection } from "@/hooks/use-server"
 import { PILL_HEIGHT, READABLE_WIDTH } from "@/constants/theme"
+import { headerStatus } from "@/lib/header-status"
 import { useSplitLayout } from "@/hooks/use-split-layout"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 import type { Thread } from "@shared/domain.ts"
 import type { ThreadActionName } from "@/lib/thread-actions"
+import { useMessages } from "@/stores/messages"
 import { useThreads } from "@/stores/threads"
 import { useUnseen } from "@/stores/unseen"
 
@@ -43,6 +45,10 @@ export default function ThreadScreen() {
   const split = useSplitLayout()
   const { id } = useLocalSearchParams<{ id: string }>()
   const thread = useThreads((state) => state.byId[id])
+  const waiting = useMessages((state) => {
+    const history = state.byThread[id]
+    return history?.status === "ready" && (history.approvals.length > 0 || history.questions.length > 0)
+  })
   const loaded = useThreads((state) => state.status === "ready")
   const status = useThreadConnection(id)
   // KeyboardAvoidingView measures itself against its parent, which starts below the stack header.
@@ -105,7 +111,7 @@ export default function ThreadScreen() {
           {thread !== undefined && (
             <View style={styles.status}>
               <ThreadPullRequestChip thread={thread} onPress={() => select("prs")} />
-              <ThreadStatusPill status={thread.status} />
+              <ThreadStatusPill status={headerStatus(thread.status, waiting)} />
             </View>
           )}
         </View>
@@ -119,7 +125,7 @@ export default function ThreadScreen() {
             <ThreadPullRequestChip thread={thread} onPress={() => select("prs")} />
             {/* A pill aligns itself to the start, which in this row is the top. The slot keeps the row's height while it hides. */}
             <View style={styles.pillSlot}>
-              <ThreadStatusPill status={thread.status} />
+              <ThreadStatusPill status={headerStatus(thread.status, waiting)} />
             </View>
           </View>
         )}
