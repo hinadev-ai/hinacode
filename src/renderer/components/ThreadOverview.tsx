@@ -26,6 +26,7 @@ import { useWorktrees } from "../stores/worktrees.ts"
 import { ActionDialog, type ActionTarget } from "./ActionDialog.tsx"
 import { CloudMark } from "./CloudMark.tsx"
 import { ProjectDialog } from "./ProjectDialog.tsx"
+import { ProviderIcon } from "./ProviderIcon.tsx"
 import { ChecksIndicator, pullRequestStatusLabel, reviewLabel, StatusIcon } from "./ThreadPullRequests.tsx"
 import { StopSubagentButton, SubagentStatusIcon, subagentStats, useNow, useThreadSubagents } from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
@@ -328,7 +329,7 @@ function Subagents({ thread }: { thread: Thread }) {
                 onClick={() => callId !== null && open(callId)}
                 className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <SubagentStatusIcon status={subagent.status} />
+                <ProviderIcon provider={thread.provider} className="size-4" />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate text-sm" title={subagent.label}>
                     {subagent.label}
@@ -338,13 +339,23 @@ function Subagents({ thread }: { thread: Thread }) {
                   </span>
                 </span>
               </button>
-              {subagent.status === "running" && (
-                <StopSubagentButton
-                  threadId={thread.id}
-                  subagent={subagent}
-                  className="mr-1 opacity-0 group-focus-within/agent:opacity-100 group-hover/agent:opacity-100"
+              <span className="relative mr-1 flex size-6 shrink-0 items-center justify-center">
+                <SubagentStatusIcon
+                  status={subagent.status}
+                  className={
+                    subagent.status === "running"
+                      ? "group-focus-within/agent:invisible group-hover/agent:invisible"
+                      : undefined
+                  }
                 />
-              )}
+                {subagent.status === "running" && (
+                  <StopSubagentButton
+                    threadId={thread.id}
+                    subagent={subagent}
+                    className="absolute inset-0 opacity-0 group-focus-within/agent:opacity-100 group-hover/agent:opacity-100"
+                  />
+                )}
+              </span>
             </li>
           )
         })}
