@@ -135,7 +135,10 @@ export function matchCommands(
   completion: CompletionQuery & { readonly trigger: AgentCommand["trigger"] },
 ) {
   const query = completion.query.toLowerCase()
-  const candidates = commands.filter((command) => command.trigger === completion.trigger)
+  const firstByName = new Map<string, AgentCommand>()
+  for (const command of commands)
+    if (command.trigger === completion.trigger && !firstByName.has(command.name)) firstByName.set(command.name, command)
+  const candidates = [...firstByName.values()]
   const prefixed = candidates.filter((command) => command.name.toLowerCase().startsWith(query))
   const containing = candidates.filter(
     (command) => !prefixed.includes(command) && command.name.toLowerCase().includes(query),
