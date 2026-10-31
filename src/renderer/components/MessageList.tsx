@@ -179,7 +179,7 @@ function MessageBody({ message }: { message: Message }) {
       <article
         aria-label={m.message_you()}
         data-message-id={message.id}
-        className="group/message clear-overview mx-auto flex w-full max-w-3xl flex-col items-end gap-1.5 px-4 py-2"
+        className="group/message mx-auto flex w-full max-w-3xl clear-overview flex-col items-end gap-1.5 px-4 py-2"
       >
         {attachments.length > 0 && (
           <div className="flex max-w-[85%] flex-wrap justify-end gap-2">
@@ -189,7 +189,7 @@ function MessageBody({ message }: { message: Message }) {
           </div>
         )}
         {text !== "" && (
-          <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm leading-(--leading-message) whitespace-pre-wrap wrap-break-word text-secondary-foreground">
+          <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm leading-(--leading-message) wrap-break-word whitespace-pre-wrap text-secondary-foreground">
             <FindPartContext value={message.parts.findIndex((part) => part.type === "text")}>
               <SentText text={text} commands={commands} />
             </FindPartContext>
@@ -223,7 +223,7 @@ function AssistantBody({ message, showElapsedTime }: { message: Message; showEla
     <article
       aria-busy={streaming}
       data-message-id={message.id}
-      className="group/message clear-overview mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-(--leading-message)"
+      className="group/message mx-auto w-full max-w-3xl clear-overview px-4 py-2 text-sm leading-(--leading-message)"
     >
       {presentation.kind === "completed" ? (
         <WorkedFor
@@ -240,7 +240,7 @@ function AssistantBody({ message, showElapsedTime }: { message: Message; showEla
         <AssistantParts message={message} parts={shownParts} writingIndex={writingIndex} />
       </PartThread>
       {streaming && (parts.length === 0 || writingIndex !== undefined) && (
-        <p className="text-xs text-shimmer">
+        <p className="text-shimmer text-xs">
           {writingIndex !== undefined ? m.message_writing() : m.message_thinking()}
         </p>
       )}

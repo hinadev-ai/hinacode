@@ -233,7 +233,7 @@ export function ComposerInput({
 
   return (
     <>
-      <div ref={parentRef} onDragOver={onDragOver} className="flex min-h-0 flex-col text-base md:text-sm" />
+      <div ref={parentRef} onDragOver={onDragOver} className="flex min-h-0 flex-col text-sm" />
       {open && (
         <div
           id={listId}

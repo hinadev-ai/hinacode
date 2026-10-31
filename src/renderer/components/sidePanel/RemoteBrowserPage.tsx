@@ -205,7 +205,7 @@ export function RemoteBrowserPage({ threadId, tabId, initialUrl, active }: Remot
             spellCheck={false}
             autoCapitalize="off"
             autoCorrect="off"
-            className="h-7 font-mono text-xs md:text-xs"
+            className="h-7 font-mono text-xs"
           />
         </form>
         <span

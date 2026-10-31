@@ -73,7 +73,7 @@ function PaletteResult({ entry, onChoose }: { entry: RankedItem; onChoose: (item
     <Autocomplete.Item
       value={entry}
       onClick={() => onChoose(item)}
-      className="flex min-h-9 cursor-default items-center gap-2.5 rounded-lg px-2.5 text-sm outline-none select-none [scroll-margin-block:0.25rem] data-highlighted:bg-accent data-highlighted:text-accent-foreground data-highlighted:inset-ring data-highlighted:inset-ring-ring/50"
+      className="flex min-h-9 cursor-default [scroll-margin-block:0.25rem] items-center gap-2.5 rounded-lg px-2.5 text-sm outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-highlighted:inset-ring data-highlighted:inset-ring-ring/50"
     >
       <span className="flex size-4 shrink-0 items-center justify-center">{item.icon}</span>
       <span className="flex min-w-0 flex-1 items-baseline gap-2">
@@ -198,7 +198,7 @@ export function CommandPalette() {
           <DialogPrimitive.Popup
             aria-label={m.palette_label()}
             finalFocus={returnFocus}
-            className="flex max-h-[min(30rem,76dvh)] w-full max-w-xl flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/10 outline-none transition-[opacity,scale] duration-150 ease-(--ease-out) data-starting-style:scale-98 data-starting-style:opacity-0"
+            className="flex max-h-[min(30rem,76dvh)] w-full max-w-xl flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/10 transition-[opacity,scale] duration-150 ease-out outline-none data-starting-style:scale-98 data-starting-style:opacity-0"
           >
             <PaletteBody key={openRequest} onChoose={choose} />
           </DialogPrimitive.Popup>

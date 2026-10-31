@@ -48,7 +48,7 @@ export function UsageLimitCallout({
         <WarningIcon aria-hidden className="size-4 shrink-0" />
         {limit.kind === "org_spend" ? m.thread_org_spend_limit_title() : m.thread_usage_limit_title()}
       </h2>
-      <p className="text-sm break-words whitespace-pre-wrap">{limit.message}</p>
+      <p className="text-sm wrap-break-word whitespace-pre-wrap">{limit.message}</p>
       {limit.kind === "org_spend" && <p className="text-xs text-muted-foreground">{m.thread_org_spend_limit_hint()}</p>}
       {canResume && (
         <p className="text-xs text-muted-foreground">

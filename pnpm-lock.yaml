@@ -409,6 +409,9 @@ importers:
       oxlint-plugin-react-doctor:
         specifier: 0.9.17
         version: 0.9.17
+      oxlint-tailwindcss:
+        specifier: 1.16.0
+        version: 1.16.0
       pele:
         specifier: 1.9.0
         version: 1.9.0
@@ -5625,6 +5628,10 @@ packages:
   oxlint-plugin-react-doctor@0.9.17:
     resolution: {integrity: sha512-j6tdFoJbLztISYNlw7LMT+6naqhVsXTNn7drhoGRIqf0x2mCSD2Ur71hK0E/VrLens355finI6j+sMqHxHpEfA==}
     engines: {node: ^20.19.0 || >=22.13.0}
+
+  oxlint-tailwindcss@1.16.0:
+    resolution: {integrity: sha512-qwkw3gahMiLOVkZAInULbvnFaFceanEnk+GxpMyNZU4bq2nRmZd3xD4En0EhIakEBiIt15RiGwQ7AuhrllNoNw==}
+    engines: {node: ^20.19.0 || >=22.12.0}
 
   oxlint@1.87.0:
     resolution: {integrity: sha512-drxVlaW7Oqq7wSy1CN25znRu00aRq8n57Q2wniJRxCmtYVz07ufCm7EVDPQFZURrTgQIjzKrVEHAD/HcvJXObg==}
@@ -12520,6 +12527,11 @@ snapshots:
       eslint-visitor-keys: 5.0.1
       lightningcss: 1.33.0
       oxc-parser: 0.148.0
+
+  oxlint-tailwindcss@1.16.0:
+    dependencies:
+      '@tailwindcss/node': 4.3.3
+      tailwindcss: 4.3.3
 
   oxlint@1.87.0:
     optionalDependencies:

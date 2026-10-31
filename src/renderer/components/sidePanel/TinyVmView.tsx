@@ -413,7 +413,7 @@ export function IconAction({ icon: Icon, label, onClick, disabled = false, class
 
 export function ScreenFallback() {
   return (
-    <div className="flex aspect-[16/10] w-full items-center justify-center rounded-md bg-muted">
+    <div className="flex aspect-16/10 w-full items-center justify-center rounded-md bg-muted">
       <Spinner label={m.vm_connecting()} />
     </div>
   )
@@ -446,7 +446,7 @@ function Failure({ title, message, retry, pending = false, onRetry }: FailurePro
       <WarningIcon aria-hidden className="size-6 text-destructive" />
       <div role="alert" className="flex flex-col gap-1">
         {title && <h3 className="text-sm font-medium">{title}</h3>}
-        <p className="max-w-80 font-mono text-xs break-words text-muted-foreground">{message}</p>
+        <p className="max-w-80 font-mono text-xs wrap-break-word text-muted-foreground">{message}</p>
       </div>
       <Button variant="outline" size="sm" disabled={pending} onClick={onRetry}>
         {retry}

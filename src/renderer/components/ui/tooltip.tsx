@@ -35,7 +35,7 @@ function TooltipContent({
         <TooltipPrimitive.Popup
           data-slot="tooltip-content"
           className={cn(
-            "z-50 inline-flex w-fit max-w-xs origin-(--transform-origin) items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-xs text-background has-data-[slot=kbd]:pr-1.5 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-50 **:data-[slot=kbd]:rounded-sm **:data-[slot=kbd]:h-4 **:data-[slot=kbd]:min-w-4 **:data-[slot=kbd]:px-0.5 **:data-[slot=kbd]:text-[0.625rem] **:data-[slot=kbd-group]:gap-0.5 transition-[opacity,scale] duration-125 ease-out data-ending-style:scale-97 data-ending-style:opacity-0 data-starting-style:scale-97 data-starting-style:opacity-0 data-instant:transition-none",
+            "z-50 inline-flex w-fit max-w-xs origin-(--transform-origin) items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-xs text-background transition-[opacity,scale] duration-125 ease-out has-data-[slot=kbd]:pr-1.5 data-ending-style:scale-97 data-ending-style:opacity-0 data-instant:transition-none data-starting-style:scale-97 data-starting-style:opacity-0 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-50 **:data-[slot=kbd]:h-4 **:data-[slot=kbd]:min-w-4 **:data-[slot=kbd]:rounded-sm **:data-[slot=kbd]:px-0.5 **:data-[slot=kbd]:text-[0.625rem] **:data-[slot=kbd-group]:gap-0.5",
             className,
           )}
           {...props}

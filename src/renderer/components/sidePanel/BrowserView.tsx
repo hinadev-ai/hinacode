@@ -240,7 +240,7 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
             spellCheck={false}
             autoCapitalize="off"
             autoCorrect="off"
-            className="h-7 font-mono text-xs md:text-xs"
+            className="h-7 font-mono text-xs"
           />
         </form>
         <ViewportMenu device={device} onChange={setDevice} />
@@ -285,7 +285,7 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
         )}
         {failure && <LoadFailure failure={failure} onRetry={() => open(failure.url)} />}
         {picking && (
-          <output className="pointer-events-none absolute inset-x-3 bottom-3 rounded-lg border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md animate-fade-in motion-reduce:animate-none">
+          <output className="pointer-events-none absolute inset-x-3 bottom-3 animate-fade-in rounded-lg border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md motion-reduce:animate-none">
             {m.browser_pick_hint()}
           </output>
         )}

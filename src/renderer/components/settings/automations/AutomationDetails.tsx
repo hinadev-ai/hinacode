@@ -115,7 +115,7 @@ function RunNowForm({ automation }: { automation: Automation }) {
           value={payload}
           onChange={(event) => setPayload(event.target.value)}
           spellCheck={false}
-          className="max-h-60 min-h-24 font-mono text-xs md:text-xs"
+          className="max-h-60 min-h-24 font-mono text-xs"
         />
         <FieldDescription>{m.automations_payload_hint()}</FieldDescription>
         <div className="flex items-center gap-3">
@@ -199,7 +199,7 @@ function RunRow({ run }: { run: AutomationRun }) {
           {m.automations_run_duplicate({ key: run.eventKey })}
         </p>
       )}
-      {run.error !== null && <p className="break-words whitespace-pre-wrap text-destructive">{run.error}</p>}
+      {run.error !== null && <p className="wrap-break-word whitespace-pre-wrap text-destructive">{run.error}</p>}
     </li>
   )
 }

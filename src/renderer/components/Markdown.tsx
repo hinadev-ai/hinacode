@@ -274,7 +274,7 @@ export function Markdown({
   const plain = <MarkdownSegments segments={segments} remarkPlugins={remarkPlugins} rehypePlugins={findPlugins} />
   return (
     <BaseUrl value={baseUrl}>
-      <div className={cn("prose max-w-none prose-hina", className)}>
+      <div className={cn("prose-hina prose max-w-none", className)}>
         {needsEmbeddedHtml ? (
           <Suspense fallback={plain}>
             <EmbeddedMarkdownSegments segments={segments} remarkPlugins={remarkPlugins} findPlugins={findPlugins} />

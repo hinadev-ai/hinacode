@@ -256,7 +256,7 @@ export function Composer({
           <ActivityIndicator thread={thread}>
             <QueueBar thread={thread} onEdit={() => inputRef.current?.focus()} onError={setError} />
           </ActivityIndicator>
-          <ComposerBar className="min-h-0 composer-edge has-[[role=listbox]]:z-20">
+          <ComposerBar className="composer-edge min-h-0 has-[[role=listbox]]:z-20">
             {comments.length > 0 && (
               <ul
                 aria-label={m.comment_pending_label()}
@@ -369,7 +369,7 @@ function DraftPreview({ text, placeholder }: { text: string; placeholder: string
   return (
     <p
       className={cn(
-        "max-h-60 min-h-[calc(1lh+1rem)] overflow-hidden px-2.5 py-2 text-base whitespace-pre-wrap md:text-sm",
+        "max-h-60 min-h-[calc(1lh+1rem)] overflow-hidden px-2.5 py-2 text-sm whitespace-pre-wrap",
         text === "" && "text-muted-foreground",
       )}
     >

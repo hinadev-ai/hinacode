@@ -128,7 +128,7 @@ export default function TinyVmScreen({
       onDragOver={onFileDragOver}
       onDrop={onDrop}
       className={cn(
-        "relative aspect-[16/10] w-full overflow-hidden bg-muted [&:fullscreen]:rounded-none",
+        "relative aspect-16/10 w-full overflow-hidden bg-muted [&:fullscreen]:rounded-none",
         !bare && "rounded-md",
         !bare && control === "user" && "outline-2 outline-offset-2 outline-working",
       )}
@@ -144,7 +144,7 @@ export default function TinyVmScreen({
         </div>
       )}
       {fileDrag && (
-        <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-background/80 p-6 text-center outline-2 -outline-offset-8 outline-dashed outline-working">
+        <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-background/80 p-6 text-center outline-2 -outline-offset-8 outline-working outline-dashed">
           <UploadIcon aria-hidden className="size-6" />
           <p className="text-sm">{m.vm_drop_hint()}</p>
         </div>

@@ -70,7 +70,7 @@ export function LineCommentForm({
         onChange={(event) => setBody(event.target.value)}
         onKeyDown={onKeyDown}
         rows={2}
-        className="min-h-14 rounded-md text-xs md:text-xs"
+        className="min-h-14 rounded-md text-xs"
       />
       <div className="flex justify-end gap-1">
         <Button type="button" variant="ghost" size="xs" onClick={onCancel}>
@@ -99,7 +99,7 @@ export function LineCommentCard({
       className="m-2 flex max-w-xl items-start gap-2 rounded-lg border border-border bg-background py-1.5 pr-1.5 pl-2.5 font-sans text-xs"
     >
       <ChatIcon aria-hidden className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-      <p className="min-w-0 flex-1 py-0.5 break-words whitespace-pre-wrap">{comment.body}</p>
+      <p className="min-w-0 flex-1 py-0.5 wrap-break-word whitespace-pre-wrap">{comment.body}</p>
       <Button variant="ghost" size="icon-xs" aria-label={m.comment_edit()} title={m.comment_edit()} onClick={onEdit}>
         <PencilIcon aria-hidden />
       </Button>

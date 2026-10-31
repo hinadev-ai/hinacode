@@ -54,7 +54,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
   })
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="@container/thread window-drag flex min-h-12 shrink-0 flex-wrap items-center gap-2 px-3 py-2">
+      <header className="@container/thread flex min-h-12 shrink-0 flex-wrap items-center gap-2 px-3 py-2 window-drag">
         <ThreadBreadcrumb thread={thread} agent={agent} />
         {actions}
       </header>
@@ -68,7 +68,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
         </div>
         <div
           className={cn(
-            "absolute end-4 z-10 flex max-w-[calc(100%-2rem)] flex-col items-end gap-2 empty:hidden",
+            "absolute inset-e-4 z-10 flex max-w-[calc(100%-2rem)] flex-col items-end gap-2 empty:hidden",
             findOpen ? "top-13" : "top-3",
             centered ? "max-h-[calc(50%-var(--dock-height)/2-1.5rem)]" : "max-h-[calc(100%-var(--dock-height)-1.5rem)]",
           )}
@@ -80,7 +80,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
           data-centered={centered}
           data-loaded={loaded}
           className={cn(
-            "clear-overview absolute inset-x-0 bottom-0 flex max-h-full flex-col data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] data-[loaded=false]:opacity-0 data-[loaded=true]:data-[centered=false]:transition-transform data-[loaded=true]:data-[centered=false]:duration-500 data-[loaded=true]:data-[centered=false]:ease-(--ease-drawer) motion-reduce:transition-none",
+            "absolute inset-x-0 bottom-0 flex max-h-full clear-overview flex-col data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] data-[loaded=false]:opacity-0 data-[loaded=true]:data-[centered=false]:transition-transform data-[loaded=true]:data-[centered=false]:duration-500 data-[loaded=true]:data-[centered=false]:ease-drawer motion-reduce:transition-none",
           )}
         >
           <Composer thread={thread} subagentCallId={agent}>
@@ -172,11 +172,11 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
   }
 
   if (history === undefined || history.status === "loading") {
-    return <p className="clear-overview m-auto animate-reveal text-sm text-muted-foreground">{m.thread_loading()}</p>
+    return <p className="m-auto clear-overview animate-reveal text-sm text-muted-foreground">{m.thread_loading()}</p>
   }
   if (history.status === "error") {
     return (
-      <div role="alert" className="clear-overview m-auto flex max-w-3xl flex-col items-center gap-2 px-4">
+      <div role="alert" className="m-auto flex max-w-3xl clear-overview flex-col items-center gap-2 px-4">
         <p className="text-center text-sm wrap-break-word text-destructive">
           {m.thread_load_failed({ message: history.message })}
         </p>

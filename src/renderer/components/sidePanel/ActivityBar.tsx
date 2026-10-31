@@ -84,7 +84,7 @@ function ActivityTab({ view, threadId, chord, selected, focusable, panelId }: Ac
             tabIndex={focusable ? 0 : -1}
             onClick={() => useUi.getState().toggleView(threadId, view.id)}
             className={cn(
-              "pressable relative flex size-9 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+              "relative flex size-9 items-center justify-center rounded-md text-muted-foreground pressable outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
               selected && "bg-muted text-foreground",
             )}
           />

@@ -137,7 +137,7 @@ interface AutomationDialogProps {
 export function AutomationDialog({ state, projects, onClose, onCreated }: AutomationDialogProps) {
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {state.mode === "create" ? m.automations_dialog_create_title() : m.automations_dialog_edit_title()}

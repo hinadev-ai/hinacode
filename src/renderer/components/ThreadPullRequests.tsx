@@ -812,7 +812,7 @@ function Comment({ comment }: { comment: PullRequestComment }) {
       className={cn(
         "flex flex-col gap-1.5",
         comment.authorKind === "bot" &&
-          "opacity-70 transition-opacity duration-200 ease-out hover:opacity-100 focus-within:opacity-100 motion-reduce:transition-none",
+          "opacity-70 transition-opacity duration-200 ease-out focus-within:opacity-100 hover:opacity-100 motion-reduce:transition-none",
       )}
     >
       <header className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
@@ -891,7 +891,7 @@ function CommentComposer({ url, onPosted }: { url: string; onPosted: () => void 
         placeholder={m.pr_comment_placeholder()}
         aria-label={m.pr_comment_placeholder()}
         disabled={!signedIn}
-        className="max-h-48 text-xs md:text-xs"
+        className="max-h-48 text-xs"
       />
       <div className="flex items-center gap-2">
         {error && (
