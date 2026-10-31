@@ -1,0 +1,57 @@
+---
+import { LockIcon, PhoneIcon, ServerIcon } from "../icons.ts"
+import { translator, type Locale } from "../i18n.ts"
+
+interface Props {
+  locale: Locale
+}
+
+const t = translator(Astro.props.locale)
+
+const points = [
+  { Icon: ServerIcon, title: t("site_remote_1_title"), body: t("site_remote_1_body") },
+  { Icon: PhoneIcon, title: t("site_remote_2_title"), body: t("site_remote_2_body") },
+  { Icon: LockIcon, title: t("site_remote_3_title"), body: t("site_remote_3_body") },
+]
+const pairing = "hinacode://connect?host=100.86.12.4&port=48081&token=••••••"
+---
+
+<section class="mx-auto max-w-[76rem] px-5 pt-28 sm:px-8 sm:pt-40">
+  <div class="grid items-center gap-12 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-16">
+    <div>
+      <h2 class="display display-3 leading-[1.08] font-semibold">{t("site_remote_title")}</h2>
+      <p class="mt-4 text-[17px] leading-relaxed text-ink-soft">{t("site_remote_lede")}</p>
+      <ul class="mt-9 space-y-6">
+        {
+          points.map(({ Icon, title, body }) => (
+            <li class="flex gap-4">
+              <Icon aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-ink [--sun:var(--color-coral)]" />
+              <div>
+                <h3 class="font-semibold">{title}</h3>
+                <p class="mt-1 text-[15px] leading-relaxed text-ink-soft">{body}</p>
+              </div>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+    <figure class="min-w-0 overflow-hidden rounded-2xl bg-ink text-paper shadow-window">
+      <div class="flex h-10 items-center gap-1.5 border-b border-paper/10 px-4">
+        <span class="size-2.5 rounded-full bg-paper/20"></span>
+        <span class="size-2.5 rounded-full bg-paper/20"></span>
+        <span class="size-2.5 rounded-full bg-paper/20"></span>
+        <span class="ms-3 font-mono text-xs text-paper/75">you@mac-mini</span>
+      </div>
+      <pre
+        class="overflow-x-auto p-5 font-mono text-[12.5px] leading-6 sm:p-6"><code><span class="text-coral select-none">$ </span>npx hinacode serve
+<span class="text-paper/75">HinaCode cloud 0.2.0
+data: /Users/you/.hinacode-cloud
+
+Pair a phone: scan this code in the HinaCode app, or paste the URL.</span>
+  {pairing}
+<span class="text-paper/75">Pair a desktop: Settings &gt; Environments &gt; Add environment, with one of:</span>
+  {pairing}
+<span class="text-paper/75">Keep the token in these URLs private. Run `hinacode pair` to print them again.</span></code></pre>
+    </figure>
+  </div>
+</section>

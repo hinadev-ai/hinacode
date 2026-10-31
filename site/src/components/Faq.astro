@@ -1,0 +1,40 @@
+---
+import { ChevronDownIcon } from "../icons.ts"
+import { translator, type Locale } from "../i18n.ts"
+
+interface Props {
+  locale: Locale
+}
+
+const t = translator(Astro.props.locale)
+
+const questions = [
+  [t("site_faq_cost_q"), t("site_faq_cost_a")],
+  [t("site_faq_agents_q"), t("site_faq_agents_a")],
+  [t("site_faq_code_q"), t("site_faq_code_a")],
+  [t("site_faq_stable_q"), t("site_faq_stable_a")],
+  [t("site_faq_platforms_q"), t("site_faq_platforms_a")],
+]
+---
+
+<section class="mx-auto max-w-[76rem] px-5 pt-28 sm:px-8 sm:pt-40">
+  <div class="grid gap-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,9fr)] lg:gap-16">
+    <h2 class="display display-3 leading-[1.08] font-semibold">{t("site_faq_title")}</h2>
+    <div class="divide-y divide-line border-y border-line">
+      {
+        questions.map(([question, answer]) => (
+          <details class="group">
+            <summary class="flex cursor-pointer list-none items-center justify-between gap-6 rounded-lg py-5 text-[17px] font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 [&::-webkit-details-marker]:hidden">
+              {question}
+              <ChevronDownIcon
+                aria-hidden="true"
+                className="size-4 shrink-0 text-ink-soft transition-[rotate] duration-200 ease-(--ease-out) group-open:rotate-180"
+              />
+            </summary>
+            <p class="max-w-[40rem] pb-6 text-[15px] leading-relaxed text-ink-soft">{answer}</p>
+          </details>
+        ))
+      }
+    </div>
+  </div>
+</section>
