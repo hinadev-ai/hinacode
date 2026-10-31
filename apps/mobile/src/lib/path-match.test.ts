@@ -51,7 +51,7 @@ describe("lineSnippet", () => {
   it("starts a long line shortly before a late match, so the match stays in view", () => {
     const line = "export function handler7(input: string): number { return input.length * 7 } // needle-7"
     const snippet = lineSnippet(line, "needle-7", 10)
-    expect(snippet.text).toBe("…* 7 } // needle-7")
+    expect(snippet.text).toBe("… * 7 } // needle-7")
     expect(snippet.text.slice(snippet.match?.start, snippet.match?.end)).toBe("needle-7")
   })
 

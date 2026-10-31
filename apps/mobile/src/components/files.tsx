@@ -23,7 +23,7 @@ import { call, RpcError } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { basename, dirname, entryIcon } from "@/lib/file-kinds"
-import { matchPaths, type PathMatch } from "@/lib/path-match"
+import { lineSnippet, matchPaths, type PathMatch } from "@/lib/path-match"
 import { useThreadRoot } from "@/stores/threads"
 
 type GitStatus = NonNullable<FsEntry["gitStatus"]>
@@ -439,8 +439,9 @@ function ContentSearch({ threadId, query }: { threadId: string; query: string })
 function HitRow({ hit, query, onPress }: { hit: FileSearchHit; query: string; onPress: () => void }) {
   const theme = useTheme()
   const location = `${hit.path}:${hit.line}`
-  const at = hit.text.toLowerCase().indexOf(query.toLowerCase())
-  const hits = new Set(at === -1 ? [] : Array.from({ length: query.length }, (_, index) => at + index))
+  const snippet = lineSnippet(hit.text, query)
+  const { match } = snippet
+  const hits = new Set(match === null ? [] : Array.from({ length: match.end - match.start }, (_, i) => match.start + i))
   return (
     <Pressable
       accessibilityRole="button"
@@ -454,7 +455,7 @@ function HitRow({ hit, query, onPress }: { hit: FileSearchHit; query: string; on
       {/* The desktop's find highlight: a violet wash, since amber would read as needing attention. */}
       <Text numberOfLines={2} style={[styles.hitText, { color: theme.text }]}>
         <Emphasized
-          text={hit.text}
+          text={snippet.text}
           offset={0}
           hits={hits}
           style={[styles.strong, { backgroundColor: theme.tokenBg }]}

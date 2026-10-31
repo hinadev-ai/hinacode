@@ -75,3 +75,24 @@ export function matchPaths(paths: readonly string[], query: string): PathMatch[]
   matches.sort((a, b) => b.score - a.score || a.path.length - b.path.length || (a.path < b.path ? -1 : 1))
   return matches.slice(0, MAX_RESULTS)
 }
+
+export interface LineSnippet {
+  readonly text: string
+  /** The first case-insensitive occurrence of the query in `text`, as `[start, end)`. */
+  readonly match: { readonly start: number; readonly end: number } | null
+}
+
+/**
+ * A content search hit's line without its indent, starting at most `lead` characters before the match, so a row
+ * that truncates its end still shows what matched.
+ */
+export function lineSnippet(line: string, query: string, lead = 24): LineSnippet {
+  const text = line.trimStart()
+  const lower = text.toLowerCase()
+  const at = query === "" || lower.length !== text.length ? -1 : lower.indexOf(query.toLowerCase())
+  if (at === -1) return { text, match: null }
+  const cut = Math.max(0, at - lead)
+  const ellipsis = cut > 0 ? "…" : ""
+  const start = at - cut + ellipsis.length
+  return { text: ellipsis + text.slice(cut), match: { start, end: start + query.length } }
+}
