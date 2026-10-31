@@ -34,7 +34,11 @@ export const segmentText = (segment: Segment) =>
 
 const FENCE = /^\s*```\s*([^\s`]*)/
 const BULLET = /^(\s*)([-*+]|\d+[.)])(?=\s)/
-const INLINE = /`[^`\n]+`|(?<=^|\s)(?:@[^\s]+|[/$][\w:-]+(?:\.[\w:-]+)*)/g
+const NAME = String.raw`[\w:-]+(?:\.[\w:-]+)*`
+const INLINE = new RegExp(String.raw`\`[^\`\n]+\`|(?<=^|\s)(?:@[^\s]+|[/$]${NAME})`, "g")
+const WHOLE_NAME = new RegExp(`^${NAME}$`)
+
+export const isCommandName = (name: string) => WHOLE_NAME.test(name)
 const TRAILING_PUNCTUATION = /[,.;:!?)\]]+$/
 
 const classify = (token: string, known: KnownTokens): { kind: SyntaxKind; text: string } | null => {
