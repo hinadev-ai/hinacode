@@ -1,4 +1,4 @@
-import type { Message, MessagePart } from "./domain.ts"
+import { type Message, type MessagePart, spawnsSubagent } from "./domain.ts"
 import type { PushEvent, TranscriptPush } from "./contract.ts"
 
 const SUMMARY_KEYS = ["command", "file_path", "path", "pattern", "url", "description"]
@@ -76,7 +76,7 @@ function outputPreview(output: unknown) {
 }
 
 const previewPart = (part: MessagePart): MessagePart => {
-  if (part.type !== "tool_call") return part
+  if (part.type !== "tool_call" || spawnsSubagent(part)) return part
   const preview = outputPreview(part.output)
   return preview === undefined ? part : { ...part, ...preview }
 }

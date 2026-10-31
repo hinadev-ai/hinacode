@@ -18,11 +18,11 @@ import {
   RiToolsLine,
 } from "react-icons/ri"
 import type { Compaction, ProviderId } from "../../shared/agent.ts"
-import type { MessagePart, ToolCallStatus } from "../../shared/domain.ts"
+import { type MessagePart, spawnsSubagent, type ToolCallStatus } from "../../shared/domain.ts"
 import { ansiSegments } from "../lib/ansi.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
-import { spawnsSubagent, statusOfCall, useOpenSubagent } from "../lib/subagents.ts"
+import { statusOfCall, useOpenSubagent } from "../lib/subagents.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { countToolKinds, describeCommand, describeToolCall, type ToolKind } from "../lib/toolCall.ts"
 import { cn } from "../lib/utils.ts"

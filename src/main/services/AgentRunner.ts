@@ -41,7 +41,7 @@ import type {
   ThreadStatus,
   WorkspaceChoice,
 } from "../../shared/domain.ts"
-import { isThreadBusy } from "../../shared/domain.ts"
+import { isThreadBusy, spawnsSubagent } from "../../shared/domain.ts"
 import { previewPush } from "../../shared/compactTranscript.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
@@ -325,8 +325,10 @@ const make = Effect.gen(function* () {
     return push.publish({ type: "thread.subagents", threadId, subagents: listSubagents(threadId) })
   }
 
-  const publishTranscript = (event: DistributiveOmit<TranscriptPush, "seq">) =>
-    push.publish(previewPush({ ...event, seq: ++seq }))
+  const publishTranscript = (event: DistributiveOmit<TranscriptPush, "seq">, { whole = false } = {}) => {
+    const numbered = { ...event, seq: ++seq }
+    return push.publish(whole ? numbered : previewPush(numbered))
+  }
 
   const gitOutput = (cwd: string, args: ReadonlyArray<string>) =>
     git.run(cwd, args).pipe(
@@ -372,6 +374,7 @@ const make = Effect.gen(function* () {
     let persistedAt = Date.now()
     let persistMs = 0
     const dirty = new Set<string>()
+    const subagentCalls = new Set<string>()
 
     const persist = Effect.suspend(() => {
       const changed = turnMessages.filter((message) => dirty.has(message.id))
@@ -399,7 +402,9 @@ const make = Effect.gen(function* () {
                 }
               : received
         if (event.type === "subagent_updated") return yield* updateSubagent(thread.id, event.subagent)
-        yield* publishTranscript({ type: "thread.event", threadId: thread.id, event })
+        if (event.type === "tool_call_started" && spawnsSubagent(event)) subagentCalls.add(event.callId)
+        const whole = event.type === "tool_call_finished" && subagentCalls.has(event.callId)
+        yield* publishTranscript({ type: "thread.event", threadId: thread.id, event }, { whole })
         setTurnMessages(foldTranscript(turnMessages, event, yield* nowIso))
 
         if (event.type === "approval_requested") approvals.set(event.request.id, event.request)
