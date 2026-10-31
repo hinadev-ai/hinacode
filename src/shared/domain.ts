@@ -4,6 +4,7 @@ import {
   AgentProfileName,
   Compaction,
   ForkPoint,
+  isRunAgentTool,
   ProviderId,
   Question,
   TokenUsage,
@@ -427,7 +428,8 @@ export const MessagePart = Schema.Union([
 export type MessagePart = typeof MessagePart.Type
 
 // FIXME: Claude Code named its sub-agent tool Task before it became Agent
-export const spawnsSubagent = (call: { readonly name: string }) => call.name === "Agent" || call.name === "Task"
+export const spawnsSubagent = (call: { readonly name: string }) =>
+  call.name === "Agent" || call.name === "Task" || isRunAgentTool(call.name)
 
 export const MessageRole = Schema.Literals(["user", "assistant"])
 export type MessageRole = typeof MessageRole.Type

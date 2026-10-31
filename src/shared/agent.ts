@@ -1,4 +1,4 @@
-import { Schema } from "effect"
+import { Predicate, Schema } from "effect"
 import type { AccessMode, Attachment } from "./domain.ts"
 import { PlanLimits, UsageLimit } from "./limits.ts"
 
@@ -201,6 +201,7 @@ export type SubagentStatus = typeof SubagentStatus.Type
 
 export const Subagent = Schema.Struct({
   id: Schema.String,
+  provider: Schema.optionalKey(ProviderId),
   label: Schema.String,
   callId: Schema.NullOr(Schema.String),
   status: SubagentStatus,
@@ -307,4 +308,14 @@ export interface RunTurnInput {
 export interface McpConnection {
   readonly url: string
   readonly headers: { readonly authorization: string }
+}
+
+export const RUN_AGENT_TOOL = "run_agent"
+
+export const isRunAgentTool = (name: string) => name === RUN_AGENT_TOOL || name === `mcp__hinacode__${RUN_AGENT_TOOL}`
+
+export const toolArgument = (input: unknown, key: string): unknown => {
+  if (!Predicate.isObject(input)) return undefined
+  const record = input as Record<string, unknown>
+  return key in record ? record[key] : toolArgument(record["arguments"], key)
 }

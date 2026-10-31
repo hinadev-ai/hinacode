@@ -35,7 +35,7 @@ The tabs follow the Base UI tabs keyboard model: arrow keys move between them.
 
 - Persistence. Sub-agents last until the app restarts. History is in the transcript's `Agent` tool calls.
 - A sub-agent's own text between tool calls. Its view shows the prompt, the calls and the final result.
-- Steering a single sub-agent. The composer in a sub-agent's view still steers the thread's agent.
+- Steering a single sub-agent. A sub-agent's view disables the composer, and its stop button stops that sub-agent.
 - Codex sub-agent approvals. Requests from a child thread are still not routed to the approval UI.
 
 ## Verification

@@ -70,8 +70,9 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
         </div>
         <div
           className={cn(
-            "absolute end-4 z-10 flex max-h-[calc(100%-var(--dock-height)-1.5rem)] max-w-[calc(100%-2rem)] flex-col items-end gap-2 empty:hidden",
+            "absolute end-4 z-10 flex max-w-[calc(100%-2rem)] flex-col items-end gap-2 empty:hidden",
             findOpen ? "top-13" : "top-3",
+            centered ? "max-h-[calc(50%-var(--dock-height)/2-1.5rem)]" : "max-h-[calc(100%-var(--dock-height)-1.5rem)]",
           )}
         >
           {overlay}
@@ -85,7 +86,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
             "absolute inset-x-0 bottom-0 flex max-h-full flex-col data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] data-[loaded=false]:opacity-0 data-[loaded=true]:data-[centered=false]:transition-transform data-[loaded=true]:data-[centered=false]:duration-500 data-[loaded=true]:data-[centered=false]:ease-(--ease-drawer) motion-reduce:transition-none",
           )}
         >
-          <Composer thread={thread}>
+          <Composer thread={thread} subagentCallId={agent}>
             <PendingRequests thread={thread} />
             {thread.status === "limited" && thread.usageLimit !== null ? (
               <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />

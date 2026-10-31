@@ -465,7 +465,7 @@ const make = Effect.gen(function* () {
                 skills: { config: hiddenSkills.map((skill) => ({ path: skill.path, enabled: false })) },
               }),
               mcp_servers: {
-                hinacode: { url: input.mcpServer.url, http_headers: input.mcpServer.headers, tool_timeout_sec: 600 },
+                hinacode: { url: input.mcpServer.url, http_headers: input.mcpServer.headers, tool_timeout_sec: 3600 },
               },
             },
             developerInstructions: input.instructions,

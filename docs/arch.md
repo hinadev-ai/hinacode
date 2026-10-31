@@ -569,6 +569,7 @@ flowchart LR
     linear["linear_get_issue, linear_search_issues,<br/>linear_create_comment, linear_update_issue_state"]
     secret["request_secret"]
     create["create_thread, list_machines"]
+    run["run_agent"]
     control["list_threads, read_thread,<br/>send_to_thread, stop_thread"]
   end
   review --> ws["makeActiveWorkspace → git diff"]
@@ -577,10 +578,11 @@ flowchart LR
   secret --> runner["AgentRunner.requestSecret<br/>card in the thread, value stored by Secrets"]
   create --> threads["Threads.create (created_by = thread:caller)<br/>+ AgentRunner.send"]
   create -- "machine: id" --> peers["Peers: threads.create + threads.steer<br/>on that machine's project of the same repository"]
+  run --> agentRun["AgentRunner.runAgent<br/>provider.runTurn in the caller's workspace<br/>row in the caller's Agents tab"]
   control --> scope["same project as the caller<br/>AgentRunner.transcript / steer / send / interrupt"]
 ```
 
-`request_secret` blocks until the user answers the card or the turn ends; the value goes renderer → main → `Secrets` and never into an event, a message or the tool result. `create_thread` makes an ordinary thread of the same project, or with `machine` of the project with the same GitHub repository on that machine: `created_by` records where it came from, nothing else ties it to its creator. The thread controls reach any thread of the caller's project, not only the ones it created; `send_to_thread` and `stop_thread` refuse the caller itself. Codex gets `tool_timeout_sec = 600` for this server so a user has time to answer.
+`request_secret` blocks until the user answers the card or the turn ends; the value goes renderer → main → `Secrets` and never into an event, a message or the tool result. `create_thread` makes an ordinary thread of the same project, or with `machine` of the project with the same GitHub repository on that machine: `created_by` records where it came from, nothing else ties it to its creator. The thread controls reach any thread of the caller's project, not only the ones it created; `send_to_thread` and `stop_thread` refuse the caller itself. `run_agent` runs one turn of any provider as a sub-agent of the caller's running turn and returns its last text; see [the feature doc](features/2026-10-30-run-agent.md). Codex gets `tool_timeout_sec = 3600` for this server so a user has time to answer and a sub-agent has time to finish.
 
 Each tool's parameters are an Effect Schema. The same schema produces the JSON Schema shown to the agent and decodes its input.
 

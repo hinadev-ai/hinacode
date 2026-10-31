@@ -150,7 +150,7 @@ describe("previewMessage", () => {
   })
 
   test("leaves a sub-agent's report whole", () => {
-    const reports = ["Agent", "Task"].map((name) => ({ ...call(lines), name }))
+    const reports = ["Agent", "Task", "mcp__hinacode__run_agent", "run_agent"].map((name) => ({ ...call(lines), name }))
     expect(previewMessage(message(reports)).parts).toStrictEqual(reports)
   })
 

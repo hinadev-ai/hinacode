@@ -5,11 +5,10 @@ import { m } from "../paraglide/messages.js"
 import { useMessages } from "../stores/messages.ts"
 import { useSubagentByCallId } from "../stores/subagents.ts"
 import { useUi } from "../stores/ui.ts"
-import { Markdown } from "./Markdown.tsx"
 import { MessageList } from "./MessageList.tsx"
 import { formatOutput } from "./MessagePart.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
-import { StopSubagentButton, SubagentStatusIcon, subagentStats, useNow } from "./ThreadAgents.tsx"
+import { SubagentStatusIcon, subagentStats, useNow } from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
 import { ArrowLeftIcon } from "./icons/ArrowLeftIcon.tsx"
 
@@ -61,6 +60,20 @@ export function SubagentTranscript({
     createdAt === undefined
       ? []
       : [
+          ...(prompt
+            ? [
+                {
+                  id: `subagent:${callId}:prompt`,
+                  threadId: thread.id,
+                  role: "user" as const,
+                  parts: [{ type: "text" as const, text: prompt }],
+                  createdAt,
+                  completedAt: createdAt,
+                  usage: null,
+                  forkPoint: null,
+                },
+              ]
+            : []),
           {
             id: `subagent:${callId}`,
             threadId: thread.id,
@@ -84,7 +97,7 @@ export function SubagentTranscript({
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-1.5 px-4 pt-4">
       <div className="flex min-w-0 items-center gap-2">
         {status && <SubagentStatusIcon status={status} />}
-        <ProviderIcon provider={thread.provider} />
+        <ProviderIcon provider={subagent?.provider ?? thread.provider} />
         <h2
           ref={headingRef}
           tabIndex={-1}
@@ -98,9 +111,7 @@ export function SubagentTranscript({
             {subagentStats(subagent, now)}
           </span>
         )}
-        {subagent?.status === "running" && <StopSubagentButton threadId={thread.id} subagent={subagent} />}
       </div>
-      {prompt && <Prompt prompt={prompt} />}
     </div>
   )
 
@@ -133,16 +144,5 @@ export function SubagentTranscript({
         />
       )}
     </div>
-  )
-}
-
-function Prompt({ prompt }: { prompt: string }) {
-  return (
-    <section className="mt-1 text-sm">
-      <h3 className="mb-1 text-xs text-muted-foreground">{m.agents_prompt()}</h3>
-      <div className="border-l-2 border-border pl-3">
-        <Markdown text={prompt} />
-      </div>
-    </section>
   )
 }

@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router"
-import type { SubagentStatus } from "../../shared/agent.ts"
+import { type SubagentStatus, toolArgument } from "../../shared/agent.ts"
 import type { Message, MessagePart, ToolCallStatus } from "../../shared/domain.ts"
 
 type ToolCall = Extract<MessagePart, { type: "tool_call" }>
@@ -41,8 +41,7 @@ export function findSubagentWork(messages: ReadonlyArray<Message>, callId: strin
 }
 
 export const inputField = (part: ToolCall | undefined, key: string): string | undefined => {
-  const value: unknown =
-    typeof part?.input === "object" && part.input !== null ? Reflect.get(part.input, key) : undefined
+  const value = toolArgument(part?.input, key)
   return typeof value === "string" ? value : undefined
 }
 
