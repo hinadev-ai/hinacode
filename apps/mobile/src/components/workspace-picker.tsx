@@ -7,6 +7,7 @@ import { OptionRow, Section, Sheet } from "@/components/sheet"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
+import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { useDrafts, type Workspace } from "@/stores/drafts"
 
@@ -98,15 +99,15 @@ export function WorkspaceChip({ thread, onError }: { thread: Thread; onError: (m
   const currentBranch = useCurrentBranch(thread.projectId)
   const mode = workspace?.mode ?? "local"
   const ref = workspace?.ref ?? currentBranch
-  const label = ref === "" ? "Project root" : ref
+  const label = ref === "" ? copy("mobile_workspace_project_root") : ref
 
   return (
     <>
       <Pressable
         testID="composer-workspace"
         accessibilityRole="button"
-        accessibilityLabel="Workspace"
-        accessibilityValue={{ text: mode === "worktree" ? `New worktree from ${label}` : label }}
+        accessibilityLabel={copy("mobile_workspace_title")}
+        accessibilityValue={{ text: mode === "worktree" ? copy("mobile_workspace_new_worktree_from", { ref: label }) : label }}
         onPress={() => setOpen(true)}
         hitSlop={{ top: (HIT - CHIP_HEIGHT) / 2, bottom: (HIT - CHIP_HEIGHT) / 2 }}
         style={({ pressed }) => [styles.chip, pressed && { backgroundColor: theme.surfaceStrong }]}
@@ -119,7 +120,7 @@ export function WorkspaceChip({ thread, onError }: { thread: Thread; onError: (m
         <Text numberOfLines={1} style={[styles.chipLabel, { color: theme.text }]}>
           {label}
         </Text>
-        {mode === "worktree" && <Text style={[styles.chipMode, { color: theme.textMuted }]}>Worktree</Text>}
+        {mode === "worktree" && <Text style={[styles.chipMode, { color: theme.textMuted }]}>{copy("mobile_workspace_worktree")}</Text>}
       </Pressable>
       <WorkspaceSheet
         thread={thread}
@@ -153,37 +154,37 @@ function WorkspaceSheet({
 
   return (
     <Sheet
-      title="Workspace"
+      title={copy("mobile_workspace_title")}
       open={open}
       onClose={onClose}
       header={
         <TextInput
           testID="workspace-ref"
-          accessibilityLabel="Branch or pull request"
+          accessibilityLabel={copy("mobile_workspace_ref_label")}
           value={workspace.ref}
           onChangeText={pick}
-          placeholder="Branch, #123 or pull request URL"
+          placeholder={copy("mobile_workspace_ref_placeholder")}
           placeholderTextColor={theme.textMuted}
           autoCapitalize="none"
           autoCorrect={false}
           spellCheck={false}
           clearButtonMode="while-editing"
-          style={[styles.refInput, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
+          style={[styles.refInput, { color: theme.text, backgroundColor: theme.sheetRaised, borderColor: theme.border }]}
         />
       }
     >
-      <Section title="Run in">
+      <Section title={copy("mobile_workspace_run_in")}>
         <OptionRow
-          label="Project root"
+          label={copy("mobile_workspace_project_root")}
           icon="RiFolderLine"
-          hint="Switches the project root to this branch"
+          hint={copy("mobile_workspace_project_root_hint")}
           selected={workspace.mode === "local"}
           onPress={() => workspace.mode !== "local" && setWorkspace(null)}
         />
         <OptionRow
-          label="New worktree"
+          label={copy("mobile_workspace_new_worktree")}
           icon="RiGitBranchLine"
-          hint="Its own checkout, on a new branch from this one"
+          hint={copy("mobile_workspace_new_worktree_hint")}
           selected={workspace.mode === "worktree"}
           onPress={() =>
             workspace.mode !== "worktree" &&
@@ -192,14 +193,14 @@ function WorkspaceSheet({
         />
       </Section>
       {pullRequests.length > 0 && (
-        <Section title="Pull requests">
+        <Section title={copy("mobile_workspace_pull_requests")}>
           {pullRequests.map((pullRequest) => {
             const ref = `#${pullRequest.number}`
             return (
               <OptionRow
                 key={pullRequest.number}
                 label={`${ref} ${pullRequest.title}`}
-                hint={pullRequest.isDraft ? `Draft, ${pullRequest.headRefName}` : pullRequest.headRefName}
+                hint={pullRequest.isDraft ? copy("mobile_workspace_draft", { branch: pullRequest.headRefName }) : pullRequest.headRefName}
                 icon="RiGitPullRequestLine"
                 selected={workspace.ref.trim() === ref}
                 onPress={() => pick(ref)}
@@ -209,7 +210,7 @@ function WorkspaceSheet({
         </Section>
       )}
       {branches.length > 0 && (
-        <Section title="Branches">
+        <Section title={copy("mobile_workspace_branches")}>
           {branches.map((branch) => (
             <OptionRow
               key={branch}

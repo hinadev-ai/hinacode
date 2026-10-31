@@ -1,5 +1,5 @@
-import { useState } from "react"
-import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native"
+import { useRef, useState } from "react"
+import { Platform, Pressable, StyleSheet, TextInput, type TextInputInstance, View } from "react-native"
 import Animated from "react-native-reanimated"
 import { Icon } from "@/components/icon"
 import { cssEase, duration } from "@/constants/motion"
@@ -23,14 +23,20 @@ export function SearchField({
   testID?: string
 }) {
   const theme = useTheme()
+  const input = useRef<TextInputInstance>(null)
   const [focused, setFocused] = useState(false)
   const filled = value !== ""
+  const clear = () => {
+    onChange("")
+    input.current?.focus()
+  }
   return (
     <View
       style={[styles.field, { backgroundColor: theme.surface, borderColor: focused ? theme.primary : "transparent" }]}
     >
       <Icon name="RiSearchLine" size={18} color={theme.textMuted} />
       <TextInput
+        ref={input}
         testID={testID}
         accessibilityLabel={placeholder}
         value={value}
@@ -59,10 +65,10 @@ export function SearchField({
           testID={testID === undefined ? undefined : `${testID}-clear`}
           accessibilityRole="button"
           accessibilityLabel={clearLabel}
-          accessibilityElementsHidden={!filled}
-          importantForAccessibility={filled ? "auto" : "no-hide-descendants"}
-          hitSlop={8}
-          onPress={() => onChange("")}
+          aria-hidden={!filled}
+          tabIndex={filled ? 0 : -1}
+          hitSlop={10}
+          onPress={clear}
           style={styles.clear}
         >
           <Icon name="RiCloseCircleFill" size={18} color={theme.textMuted} />
@@ -85,6 +91,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+    minWidth: 0,
     fontSize: 16,
     paddingVertical: 10,
     // The field's border shows focus, so the browser's own ring would draw a square inside the rounded field.

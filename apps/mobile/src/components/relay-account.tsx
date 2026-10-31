@@ -95,6 +95,10 @@ function RelaySignIn({ initialUrl }: { initialUrl: string }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const submit = async () => {
+    if (serviceUrl.trim() === "" || ownerToken.trim() === "") {
+      setError(copy("mobile_relay_fields_required"))
+      return
+    }
     setBusy(true)
     setError(null)
     try {
@@ -132,7 +136,6 @@ function RelaySignIn({ initialUrl }: { initialUrl: string }) {
         variant="primary"
         label={copy("mobile_relay_sign_in")}
         busy={busy}
-        disabled={serviceUrl.trim() === "" || ownerToken.trim() === ""}
         onPress={() => void submit()}
       />
     </View>
