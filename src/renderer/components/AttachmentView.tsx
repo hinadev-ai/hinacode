@@ -17,7 +17,8 @@ const format = (value: number, unit: string) =>
   new Intl.NumberFormat(getLocale(), { style: "unit", unit, maximumFractionDigits: 1 }).format(value)
 
 export const formatBytes = (bytes: number) => {
-  if (bytes >= 1024 * 1024) return format(bytes / 1024 / 1024, "megabyte")
+  if (bytes >= 1024 ** 3) return format(bytes / 1024 ** 3, "gigabyte")
+  if (bytes >= 1024 ** 2) return format(bytes / 1024 ** 2, "megabyte")
   if (bytes >= 1024) return format(bytes / 1024, "kilobyte")
   return format(bytes, "byte")
 }
