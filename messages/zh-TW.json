@@ -47,6 +47,8 @@
   "thread_status_pr_changes_requested": "合併請求被要求修改",
   "thread_usage_limit_title": "已達用量上限",
   "thread_usage_limit_reset": "用量將於 {time} 重設。",
+  "thread_usage_limit_was_reset": "用量已於 {time} 重設。",
+  "thread_usage_limit_try_again": "再試一次",
   "thread_usage_limit_resume_at_reset": "重設後繼續",
   "thread_usage_limit_scheduled": "已排定自動繼續。",
   "thread_usage_limit_cancel_resume": "取消自動繼續",

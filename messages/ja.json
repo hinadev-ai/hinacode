@@ -47,6 +47,8 @@
   "thread_status_pr_changes_requested": "プルリクエストに変更がリクエストされています",
   "thread_usage_limit_title": "利用上限に達しました",
   "thread_usage_limit_reset": "{time} にリセットされます。",
+  "thread_usage_limit_was_reset": "{time} にリセットされました。",
+  "thread_usage_limit_try_again": "再試行",
   "thread_usage_limit_resume_at_reset": "リセット後に再開",
   "thread_usage_limit_scheduled": "自動再開を予約しました。",
   "thread_usage_limit_cancel_resume": "自動再開をキャンセル",

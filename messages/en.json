@@ -47,6 +47,8 @@
   "thread_status_pr_changes_requested": "Changes requested on the pull request",
   "thread_usage_limit_title": "Usage limit reached",
   "thread_usage_limit_reset": "Resets at {time}.",
+  "thread_usage_limit_was_reset": "Reset at {time}.",
+  "thread_usage_limit_try_again": "Try again",
   "thread_usage_limit_resume_at_reset": "Resume at reset",
   "thread_usage_limit_scheduled": "Automatic resume scheduled.",
   "thread_usage_limit_cancel_resume": "Cancel automatic resume",

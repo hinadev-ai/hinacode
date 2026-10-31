@@ -4,6 +4,7 @@ import type { Thread } from "../../shared/domain.ts"
 import type { UsageLimit } from "../../shared/limits.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
+import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useThreads } from "../stores/threads.ts"
@@ -11,6 +12,13 @@ import { SwitchAccountButton, useAccountOptions } from "./AccountSwitch.tsx"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { WarningIcon } from "./icons/WarningIcon.tsx"
+
+export const resetCopy = (at: string, now: number): string | null => {
+  const resetAt = Date.parse(at)
+  if (!Number.isFinite(resetAt)) return null
+  const time = new Intl.DateTimeFormat(getLocale(), { dateStyle: "medium", timeStyle: "short" }).format(resetAt)
+  return resetAt <= now ? m.thread_usage_limit_was_reset({ time }) : m.thread_usage_limit_reset({ time })
+}
 
 export function UsageLimitCallout({
   thread,
@@ -30,13 +38,11 @@ export function UsageLimitCallout({
       return errorMessage(cause)
     }
   }, null)
+  const now = useNow()
   const reset = limit.reset
-  const resetDate = reset === null ? null : new Date(reset.at)
-  const resetTime =
-    resetDate !== null && Number.isFinite(resetDate.getTime())
-      ? new Intl.DateTimeFormat(getLocale(), { dateStyle: "medium", timeStyle: "short" }).format(resetDate)
-      : null
-  const canResume = reset !== null && resetTime !== null
+  const resetText = reset === null ? null : resetCopy(reset.at, now)
+  const canResume = reset !== null && resetText !== null
+  const hasReset = reset !== null && Date.parse(reset.at) <= now
 
   return (
     <section
@@ -52,7 +58,7 @@ export function UsageLimitCallout({
       {limit.kind === "org_spend" && <p className="text-xs text-muted-foreground">{m.thread_org_spend_limit_hint()}</p>}
       {canResume && (
         <p className="text-xs text-muted-foreground">
-          <time dateTime={reset.at}>{m.thread_usage_limit_reset({ time: resetTime })}</time>
+          <time dateTime={reset.at}>{resetText}</time>
         </p>
       )}
       {(suggestion || canResume) && (
@@ -67,7 +73,7 @@ export function UsageLimitCallout({
               label={m.account_continue_on({ account: suggestion.name })}
             />
           )}
-          {canResume && (
+          {canResume && !(hasReset && reset.autoResume) && (
             <Button
               type="button"
               variant="outline"
@@ -76,7 +82,11 @@ export function UsageLimitCallout({
               aria-busy={isPending}
               action={() => setAutoResume(!reset.autoResume)}
             >
-              {reset.autoResume ? m.thread_usage_limit_cancel_resume() : m.thread_usage_limit_resume_at_reset()}
+              {hasReset
+                ? m.thread_usage_limit_try_again()
+                : reset.autoResume
+                  ? m.thread_usage_limit_cancel_resume()
+                  : m.thread_usage_limit_resume_at_reset()}
             </Button>
           )}
         </div>
