@@ -352,7 +352,7 @@ const styles = StyleSheet.create({
   loading: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 24 },
   failed: { gap: 8, paddingHorizontal: 8 },
   retry: { alignSelf: "flex-start" },
-  issueHeader: { gap: 10, paddingHorizontal: 16, paddingBottom: 8 },
+  issueHeader: { gap: 10, paddingHorizontal: 12, paddingBottom: 8 },
   issueTitle: { fontSize: 16, lineHeight: 22 },
   openLinear: { alignSelf: "flex-start" },
   startLabel: { fontSize: 13, fontWeight: "500", paddingTop: 6 },
