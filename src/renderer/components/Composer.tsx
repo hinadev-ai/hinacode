@@ -45,7 +45,6 @@ import {
   ComposerBar,
   Composer as ComposerRoot,
   ComposerSend,
-  type ComposerSendMode,
   ComposerToolbar,
 } from "./assistant-ui/elements/composer.tsx"
 import { PendingAttachment } from "./AttachmentView.tsx"
@@ -59,6 +58,7 @@ import { QueueBar } from "./QueueBar.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 import { useModifierHeld } from "../lib/useModifierHeld.ts"
+import type { SendGlyphMode } from "./icons/SendGlyph.tsx"
 
 const readAsDataUrl = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -140,7 +140,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   const canSend = hasDraft && !isSending && !isStaging
   const modifierHeld = useModifierHeld()
   const clickDelivery: Delivery = modifierHeld ? "steer" : "queue"
-  const sendMode: ComposerSendMode = !(busy || isSending) ? "send" : hasDraft ? clickDelivery : "stop"
+  const sendMode: SendGlyphMode = !(busy || isSending) ? "send" : hasDraft ? clickDelivery : "stop"
 
   const send = (delivery: Delivery) => {
     if (!canSend) return
@@ -354,7 +354,7 @@ function AttachButton({ onClick, disabled }: { onClick: () => void; disabled: bo
   )
 }
 
-function SendButton({ mode, canSend, onStop }: { mode: ComposerSendMode; canSend: boolean; onStop: () => void }) {
+function SendButton({ mode, canSend, onStop }: { mode: SendGlyphMode; canSend: boolean; onStop: () => void }) {
   const label = {
     send: m.thread_composer_send(),
     queue: m.thread_composer_queue(),

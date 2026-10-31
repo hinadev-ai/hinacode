@@ -10,20 +10,8 @@ import {
   useState,
 } from "react"
 import { cn } from "@/lib/utils"
-import {
-  field,
-  floating,
-  ghostButton,
-  iconSwap,
-  iconSwapIn,
-  iconSwapOut,
-  inkButton,
-  mono,
-  paper,
-  ShimmerLabel,
-} from "./surfaces"
+import { field, floating, ghostButton, inkButton, mono, paper, ShimmerLabel } from "./surfaces"
 import { clamp, pct } from "../utils/range"
-import { ArrowUpIcon } from "../../icons/ArrowUpIcon.tsx"
 import { CheckIcon } from "../../icons/CheckIcon.tsx"
 import { CloseIcon } from "../../icons/CloseIcon.tsx"
 import { FileImageIcon } from "../../icons/FileImageIcon.tsx"
@@ -32,9 +20,8 @@ import { FileZipIcon } from "../../icons/FileZipIcon.tsx"
 import type { IconComponent } from "../../icons/Icon.tsx"
 import { MicIcon } from "../../icons/MicIcon.tsx"
 import { PlusIcon } from "../../icons/PlusIcon.tsx"
-import { QueueIcon } from "../../icons/QueueIcon.tsx"
 import { SpinnerIcon } from "../../icons/SpinnerIcon.tsx"
-import { SteerIcon } from "../../icons/SteerIcon.tsx"
+import { SendGlyph, type SendGlyphMode } from "../../icons/SendGlyph.tsx"
 import { StopIcon } from "../../icons/StopIcon.tsx"
 
 export interface ComposerAttachment {
@@ -493,18 +480,15 @@ export function ComposerVoiceButton({
   )
 }
 
-export type ComposerSendMode = "send" | "queue" | "steer" | "stop"
-
 export function ComposerSend({
   mode,
   idle,
   className,
   ...props
 }: Omit<ComponentProps<"button">, "children"> & {
-  mode: ComposerSendMode
+  mode: SendGlyphMode
   idle: boolean
 }) {
-  const swap = (shown: ComposerSendMode) => cn(iconSwap, mode === shown ? iconSwapIn : iconSwapOut)
   return (
     <button
       type="button"
@@ -518,10 +502,7 @@ export function ComposerSend({
       )}
       {...props}
     >
-      <ArrowUpIcon className={cn(swap("send"), "size-4")} />
-      <QueueIcon className={cn(swap("queue"), "size-4")} />
-      <SteerIcon className={cn(swap("steer"), "size-4")} />
-      <StopIcon className={cn(swap("stop"), "size-3 fill-current")} />
+      <SendGlyph mode={mode} className="size-4" />
     </button>
   )
 }
