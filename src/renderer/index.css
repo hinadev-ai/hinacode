@@ -28,9 +28,9 @@
   }
 }
 
-/* Touch screens fire :hover on tap and leave it stuck, so hover styles only apply to a real pointer. */
+/* Touch screens fire :hover on tap and leave it stuck, so hover styles only apply to a real pointer. The outer parentheses let `not-hover:` negate the whole query. */
 @custom-variant hover {
-  @media (hover: hover) and (pointer: fine) {
+  @media ((hover: hover) and (pointer: fine)) {
     &:hover {
       @slot;
     }
