@@ -77,7 +77,7 @@ const ContentBlock = Schema.Union([
     content: Schema.optional(Schema.Unknown),
     is_error: Schema.optional(Schema.Boolean),
   }),
-  Schema.Struct({ type: Schema.Literal("image") }),
+  Schema.Struct({ type: Schema.Literal("image"), source: Schema.Unknown }),
   Schema.Struct({ type: Schema.Literal("redacted_thinking") }),
 ])
 type ContentBlock = typeof ContentBlock.Type
@@ -136,6 +136,20 @@ const currentBranch = (entries: ReadonlyArray<Entry>): ReadonlyArray<Entry> => {
     entry = next
   }
   return branch.toReversed()
+}
+
+const Base64Image = Schema.Struct({
+  type: Schema.Literal("base64"),
+  media_type: Schema.String,
+  data: Schema.String,
+})
+const decodeBase64Image = Schema.decodeUnknownOption(Base64Image)
+
+const imageSource = (source: unknown) => {
+  const image = decodeBase64Image(source)
+  if (Option.isNone(image)) throw new Error("Claude transcript has an image that isn't inline")
+  const { media_type, data } = image.value
+  return { dataUrl: `data:${media_type};base64,${data}`, name: `image.${media_type.split("/")[1]}` }
 }
 
 const COMMAND = /<command-name>(.*?)<\/command-name>[\s\S]*?(?:<command-args>([\s\S]*?)<\/command-args>|$)/
@@ -217,9 +231,11 @@ export const toImportedHistory = (sessionId: string, entries: ReadonlyArray<Entr
       .flatMap((block) => (block.type === "text" ? [block.text] : []))
       .join("\n")
       .trim()
-    if (text === "" || LOCAL_OUTPUT.test(text) || INTERRUPTED.test(text)) continue
+    const images = blocks.flatMap((block) => (block.type === "image" ? [imageSource(block.source)] : []))
+    if (text === "" && images.length === 0) continue
+    if (LOCAL_OUTPUT.test(text) || INTERRUPTED.test(text)) continue
     if (TASK_NOTIFICATION.test(text)) transcript.endTurn()
-    else transcript.prompt(promptText(text), at)
+    else transcript.prompt(promptText(text), at, images)
   }
   return { title: titleOf(entries), model, messages: transcript.finish() }
 }

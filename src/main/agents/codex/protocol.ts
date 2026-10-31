@@ -171,9 +171,11 @@ export type ThreadItem =
       text: string
       questions?: Array<AsyncUserInputQuestion> | null
     }
-  | { type: "userMessage"; id: string; content: Array<{ type: string; text?: string }> }
+  | { type: "userMessage"; id: string; content: Array<UserMessageInput> }
   | { type: "reasoning"; id: string; summary: Array<string>; content: Array<string> }
   | { type: "plan" | "webSearch" | "contextCompaction"; id: string }
+
+export type UserMessageInput = { type: string; text?: string; url?: string; path?: string }
 
 export type AsyncUserInputQuestion = { title: string; options: Array<string> | null }
 

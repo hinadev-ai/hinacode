@@ -1,3 +1,4 @@
+import type { AttachmentSource } from "../services/Attachments.ts"
 import { type Effect, Schema, type Stream } from "effect"
 import type { AccessMode, Attachment, ExternalSession, Message } from "../../shared/domain.ts"
 import type { PlanLimits } from "../../shared/limits.ts"
@@ -35,7 +36,9 @@ export interface BackgroundTasksChange {
 
 export type NativeSession = Pick<ExternalSession, "sessionId" | "title" | "preview" | "branch" | "updatedAt">
 
-export type ImportedMessage = Pick<Message, "role" | "parts" | "createdAt" | "completedAt" | "forkPoint">
+export type ImportedMessage = Pick<Message, "role" | "parts" | "createdAt" | "completedAt" | "forkPoint"> & {
+  readonly images?: ReadonlyArray<AttachmentSource>
+}
 
 export interface SessionHistory {
   readonly title: string | null

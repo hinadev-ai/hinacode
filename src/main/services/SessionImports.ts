@@ -5,8 +5,9 @@ import type { AccountHome, AccountProviderId } from "../../shared/agent.ts"
 import type { ExternalSession, Message, Thread } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
-import { AgentError, type AgentProvider } from "../agents/provider.ts"
+import { AgentError, type AgentProvider, type ImportedMessage } from "../agents/provider.ts"
 import { AgentAccounts } from "./AgentAccounts.ts"
+import { Attachments } from "./Attachments.ts"
 import { type NotFoundError, type PersistenceError, persistence, type WorktreeTakenError } from "./errors.ts"
 import { Messages } from "./Messages.ts"
 import { Projects } from "./Projects.ts"
@@ -49,6 +50,7 @@ const make = Effect.gen(function* () {
   const messages = yield* Messages
   const accounts = yield* AgentAccounts
   const settings = yield* Settings
+  const attachments = yield* Attachments
   const providers: Record<AccountProviderId, AgentProvider> = {
     claude: yield* ClaudeProvider,
     codex: yield* CodexProvider,
@@ -135,6 +137,18 @@ const make = Effect.gen(function* () {
       : readSession(sessionId, cwd, home)
   }
 
+  const withStagedImages = (threadId: string, history: ReadonlyArray<ImportedMessage> | null) =>
+    history === null
+      ? Effect.succeed(null)
+      : Effect.forEach(history, ({ images = [], ...message }) =>
+          Effect.forEach(images, (image) => attachments.stage(threadId, image)).pipe(
+            Effect.map((staged) => ({
+              ...message,
+              parts: [...message.parts, ...staged.map((attachment) => ({ type: "attachment" as const, attachment }))],
+            })),
+          ),
+        ).pipe(Effect.orElseSucceed(() => null))
+
   const boundThread = (provider: AccountProviderId, sessionId: string) =>
     boundThreads.pipe(Effect.map((bound) => bound.get(`${provider}:${sessionId}`)))
 
@@ -162,15 +176,14 @@ const make = Effect.gen(function* () {
             if (raced !== undefined) return raced
             const created = yield* threads.create({ projectId, title, provider, model })
             const thread = yield* threads.update({ id: created.id, accountId, providerSessionId: sessionId })
-            const replayed = history.messages ?? []
+            const staged = yield* withStagedImages(thread.id, history.messages)
+            const replayed = staged ?? []
             const lastAt = replayed.at(-1)?.completedAt ?? replayed.at(-1)?.createdAt ?? thread.createdAt
             const rule: Message = {
               id: randomUUID(),
               threadId: thread.id,
               role: "assistant",
-              parts: [
-                { type: "session_import", provider, history: history.messages === null ? "unavailable" : "replayed" },
-              ],
+              parts: [{ type: "session_import", provider, history: staged === null ? "unavailable" : "replayed" }],
               createdAt: lastAt,
               completedAt: lastAt,
               usage: null,

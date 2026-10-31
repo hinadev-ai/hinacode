@@ -1,5 +1,6 @@
 import type { AgentEvent, ForkPoint } from "../../shared/agent.ts"
 import type { Message } from "../../shared/domain.ts"
+import type { AttachmentSource } from "../services/Attachments.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import type { ImportedMessage } from "./provider.ts"
 
@@ -8,6 +9,7 @@ export const makeTranscriptBuilder = () => {
   let turnOpen = false
   let turnEndedAt = ""
   let pendingForkPoint: ForkPoint | null = null
+  const imagesById = new Map<string, ReadonlyArray<AttachmentSource>>()
 
   const add = (role: Message["role"], parts: Message["parts"], at: string) => {
     messages = [
@@ -37,9 +39,10 @@ export const makeTranscriptBuilder = () => {
   }
 
   return {
-    prompt: (text: string, at: string) => {
+    prompt: (text: string, at: string, images: ReadonlyArray<AttachmentSource> = []) => {
       endTurn()
-      add("user", [{ type: "text", text }], at)
+      if (images.length > 0) imagesById.set(String(messages.length), images)
+      add("user", text === "" ? [] : [{ type: "text", text }], at)
     },
     event: (event: AgentEvent, at: string) => {
       if (!turnOpen) add("assistant", [], at)
@@ -53,13 +56,10 @@ export const makeTranscriptBuilder = () => {
     endTurn,
     finish: (): ReadonlyArray<ImportedMessage> => {
       endTurn()
-      return messages.map(({ role, parts, createdAt, completedAt, forkPoint }) => ({
-        role,
-        parts,
-        createdAt,
-        completedAt,
-        forkPoint,
-      }))
+      return messages.map(({ id, role, parts, createdAt, completedAt, forkPoint }) => {
+        const images = imagesById.get(id)
+        return { role, parts, createdAt, completedAt, forkPoint, ...(images && { images }) }
+      })
     },
   }
 }

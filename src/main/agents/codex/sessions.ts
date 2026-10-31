@@ -1,8 +1,9 @@
 import type { AgentEvent } from "../../../shared/agent.ts"
 import { makeTranscriptBuilder } from "../importTranscript.ts"
 import type { NativeSession, SessionHistory } from "../provider.ts"
+import type { AttachmentSource } from "../../services/Attachments.ts"
 import { toolInput, toolName, toolResult, toPostedQuestion } from "./items.ts"
-import type { HistoryTurn, ThreadItem, ThreadListResponse, ThreadReadResponse } from "./protocol.ts"
+import type { HistoryTurn, ThreadItem, ThreadListResponse, ThreadReadResponse, UserMessageInput } from "./protocol.ts"
 
 const PREVIEW_LENGTH = 300
 
@@ -64,6 +65,15 @@ const itemEvents = (item: ThreadItem): ReadonlyArray<AgentEvent> => {
   }
 }
 
+const DATA_IMAGE = /^data:image\/(\w+);base64,/
+
+const imageOf = (input: UserMessageInput): ReadonlyArray<AttachmentSource | null> => {
+  if (input.type === "localImage" && input.path !== undefined) return [{ path: input.path }]
+  if (input.type !== "image") return []
+  const format = DATA_IMAGE.exec(input.url ?? "")?.[1]
+  return [format === undefined ? null : { dataUrl: input.url!, name: `image.${format}` }]
+}
+
 export const toImportedHistory = (
   { thread }: ThreadReadResponse,
   turns: ReadonlyArray<HistoryTurn>,
@@ -81,8 +91,15 @@ export const toImportedHistory = (
           .flatMap((input) => (input.type === "text" && input.text !== undefined ? [input.text] : []))
           .join("\n")
           .trim()
-        if (text === "") transcript.endTurn()
-        else transcript.prompt(text, startedAt)
+        const images = item.content.flatMap(imageOf)
+        if (images.includes(null)) return { title, model, messages: null }
+        if (text === "" && images.length === 0) transcript.endTurn()
+        else
+          transcript.prompt(
+            text,
+            startedAt,
+            images.filter((image) => image !== null),
+          )
         continue
       }
       for (const event of itemEvents(item)) transcript.event(event, startedAt)
