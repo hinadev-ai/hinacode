@@ -59,7 +59,6 @@ const eventPush = (stream: Stream, event: AgentEvent): TranscriptPush => ({
   event,
 })
 
-// Observe the first boundary render: retrying later could hide text appearing only on the cadence timer.
 const firstBoundaryText = async (page: Page, selector: string) => {
   const observation = await page.evaluateHandle(
     (boundary) => ({
@@ -86,7 +85,7 @@ const firstBoundaryText = async (page: Page, selector: string) => {
 }
 
 When("the agent starts streaming in {string}", async ({ app, names }, title: string) => {
-  await expect(app.page.getByRole("heading", { name: "Do anything", exact: true })).toBeVisible()
+  await expect(app.page.getByRole("heading", { name: /^What do you want to (work on|ask)/ })).toBeVisible()
   const listed = (await rpc(app.page, "threads.list", undefined)).find((item) => item.title === names.of(title))
   if (!listed) throw new Error(`no seeded thread named ${title}`)
   const thread = Schema.decodeUnknownSync(Thread)(listed)
@@ -100,6 +99,7 @@ When("the agent starts streaming in {string}", async ({ app, names }, title: str
     createdAt: new Date().toISOString(),
     completedAt: null,
     usage: null,
+    forkPoint: null,
   }
   const stream: Stream = { thread, message, seq, text: "" }
   streams.set(app, stream)
@@ -156,7 +156,6 @@ Then("the completed Markdown exactly matches its full snapshot", async ({ app })
   const stream = streamOf(app)
   const rendered = article(app.page)
   await expect(rendered).toHaveAttribute("aria-busy", "false")
-  // A code block shows plain text until its language's grammar loads, so the snapshot waits for the colors.
   await expect(rendered.locator("figure:has(figcaption span:not(:empty)) pre > code:not(:has(span))")).toHaveCount(0)
   const html = await renderedHtml(app.page)
   const snapshot: Message = {

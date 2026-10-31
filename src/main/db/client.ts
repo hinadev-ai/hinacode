@@ -7,14 +7,11 @@ const setup = Layer.effectDiscard(
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient
     yield* sql`PRAGMA foreign_keys = ON`
+    yield* sql`PRAGMA synchronous = NORMAL`
     yield* runMigrations
   }),
 )
 
-/**
- * SQLite at `filename`, WAL on (the client's default), foreign keys on, migrations applied.
- * Columns are snake_case in SQL and camelCase in TypeScript.
- */
 export const layer = (filename: string) =>
   setup.pipe(
     Layer.provideMerge(

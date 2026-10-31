@@ -1,3 +1,4 @@
+import { collapsedParts } from "../../shared/activityFold.ts"
 import type { Message, MessagePart } from "../../shared/domain.ts"
 import { isOwnPart } from "./subagents.ts"
 import { groupToolCalls, type TranscriptBlock } from "./toolCall.ts"
@@ -17,15 +18,25 @@ export type AssistantPresentation =
 
 export function assistantPresentation(message: Message, showElapsedTime = true): AssistantPresentation {
   const parts = message.parts.flatMap((part, index) => (isOwnPart(part) ? [{ part, index }] : []))
-  if (message.role === "user" || message.completedAt === null || !showElapsedTime) return { kind: "inline", parts }
+  if (
+    message.role === "user" ||
+    message.completedAt === null ||
+    !showElapsedTime ||
+    parts.every(({ part }) => part.type === "agent_switch")
+  )
+    return { kind: "inline", parts }
   const durationMs = Date.parse(message.completedAt) - Date.parse(message.createdAt)
   if (!(durationMs >= 0)) return { kind: "inline", parts }
   return { kind: "completed", durationMs, parts }
 }
 
-/** Reasoning, tool calls and file changes. A finished response folds them behind its Worked for row. */
-export const isActivity = (part: MessagePart) =>
-  part.type === "reasoning" || part.type === "tool_call" || part.type === "file_change"
+export const INLINE_TAIL_PARTS = 50
+
+export function foldedParts(presentation: AssistantPresentation): ReadonlyArray<IndexedMessagePart> {
+  return presentation.kind === "completed"
+    ? collapsedParts(presentation.parts)
+    : presentation.parts.slice(-INLINE_TAIL_PARTS)
+}
 
 export function presentationBlocks(parts: ReadonlyArray<IndexedMessagePart>): Array<TranscriptBlock> {
   const blocks: Array<TranscriptBlock> = []

@@ -12,14 +12,6 @@ const progress = "Checking the repository."
 const responseArticle = (page: Page) => page.locator("article[aria-busy]")
 const workRow = (page: Page) => responseArticle(page).locator('[data-slot="worked-for"]')
 
-Given("worked-for uses the {string} appearance", async ({ app }, appearance: string) => {
-  if (appearance !== "light" && appearance !== "dark") throw new Error(`Unknown appearance ${appearance}`)
-  const settings = await rpc(app.page, "clientSettings.get", undefined)
-  await rpc(app.page, "clientSettings.set", {
-    appearance: { ...settings.appearance, theme: appearance === "light" ? "light" : "default" },
-  })
-})
-
 Given(
   "the thread {string} has a {word} response that took {int} seconds",
   async ({ app, threadIds }, title: string, state: string, seconds: number) => {
@@ -50,27 +42,66 @@ Given(
       createdAt,
       completedAt: state === "running" ? null : completedAt,
       usage: null,
+      forkPoint: null,
     }
     responses.set(app, response)
-    const db = new DatabaseSync(app.dbPath)
-    try {
-      db.prepare(
-        "INSERT INTO message(id, thread_id, role, parts, created_at, completed_at) VALUES (?, ?, ?, ?, ?, ?)",
-      ).run(
-        response.id,
-        response.threadId,
-        response.role,
-        JSON.stringify(response.parts),
-        response.createdAt,
-        response.completedAt,
-      )
-      if (state === "running") db.prepare("UPDATE thread SET status = 'running' WHERE id = ?").run(threadId)
-    } finally {
-      db.close()
-    }
-    await app.reload()
+    await seedResponse(app, response)
   },
 )
+
+Given(
+  "the thread {string} has a running response with {int} steps",
+  async ({ app, threadIds }, title: string, count: number) => {
+    const threadId = threadIds.get(title)
+    if (!threadId) throw new Error(`Thread ${title} was not seeded`)
+    await seedResponse(app, {
+      id: randomUUID(),
+      threadId,
+      role: "assistant",
+      parts: Array.from({ length: count }, (_, index) => ({ type: "text", text: `Step ${index}` })),
+      createdAt: "2026-10-12T00:00:00.000Z",
+      completedAt: null,
+      usage: null,
+      forkPoint: null,
+    })
+  },
+)
+
+async function seedResponse(app: HinacodeApp, response: Message) {
+  const db = new DatabaseSync(app.dbPath)
+  try {
+    db.prepare(
+      "INSERT INTO message(id, thread_id, role, parts, created_at, completed_at) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run(
+      response.id,
+      response.threadId,
+      response.role,
+      JSON.stringify(response.parts),
+      response.createdAt,
+      response.completedAt,
+    )
+    if (response.completedAt === null)
+      db.prepare("UPDATE thread SET status = 'running' WHERE id = ?").run(response.threadId)
+  } finally {
+    db.close()
+  }
+  await app.reload()
+}
+
+Then("the response folds {string} above {string}", async ({ app }, folded: string, latest: string) => {
+  const toggle = responseArticle(app.page).getByRole("button", { name: folded, exact: true })
+  await expect(toggle).toHaveAttribute("aria-expanded", "false")
+  await expect(responseArticle(app.page).getByText(latest, { exact: true })).toBeVisible()
+  await expect(responseArticle(app.page).getByText("Step 0", { exact: true })).toHaveCount(0)
+})
+
+When("I unfold {string}", async ({ app }, folded: string) => {
+  await responseArticle(app.page).getByRole("button", { name: folded, exact: true }).click()
+})
+
+Then("the response shows {string}", async ({ app }, text: string) => {
+  await expect(responseArticle(app.page).getByText(text, { exact: true })).toBeVisible()
+})
 
 Then("the worked-for row shows {string} without a collapse control", async ({ app }, duration: string) => {
   await expect(workRow(app.page)).toHaveText(`Worked for ${duration}`)
@@ -83,15 +114,12 @@ Then("the worked-for row shows {string} with its activity hidden", async ({ app 
   const toggle = responseArticle(app.page).getByRole("button", { name: `Worked for ${duration}`, exact: true })
   await expect(toggle).toHaveAttribute("aria-expanded", "false")
   await expect(responseArticle(app.page).getByRole("button", { name: /pwd/ })).toHaveCount(0)
+  await expect(responseArticle(app.page).getByText(progress, { exact: true })).toHaveCount(0)
 })
 
 When("I toggle the worked-for row with {string}", async ({ app }, key: string) => {
   await workRow(app.page).focus()
   await app.page.keyboard.press(key)
-})
-
-Then("the response progress is visible", async ({ app }) => {
-  await expect(responseArticle(app.page).getByText(progress, { exact: true })).toBeVisible()
 })
 
 Then("the timed command contains the current find match", async ({ app }) => {

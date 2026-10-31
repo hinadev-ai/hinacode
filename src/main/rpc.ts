@@ -1,5 +1,5 @@
 import { homedir } from "node:os"
-import { Cause, Effect, Schema } from "effect"
+import { Cause, Effect, Option, Schema } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
 import { availableUpdates, installUpdate } from "./agents/updates.ts"
 import { compactMessage, transcriptPage } from "../shared/compactTranscript.ts"
@@ -30,7 +30,8 @@ import { Automations } from "./services/automations/Automations.ts"
 import { Linear } from "./services/Linear.ts"
 import { McpCredentials } from "./mcp/index.ts"
 import { Ports } from "./services/Ports.ts"
-import { networkAddresses, RemoteAccess } from "./remote/access.ts"
+import { networkAddresses } from "./network.ts"
+import { RemoteAccess } from "./remote/access.ts"
 import { Relay } from "./remote/relay.ts"
 import { Projects } from "./services/Projects.ts"
 import { PullRequestGuides } from "./services/PullRequestGuides.ts"
@@ -45,6 +46,7 @@ import { Updates } from "./services/Updates.ts"
 import { randomName, Threads } from "./services/Threads.ts"
 import { VmPasskeyRelay } from "./services/tinyVm/passkey/PasskeyRelay.ts"
 import { type ScreenOwner, TinyVm, VmError } from "./services/tinyVm/TinyVm.ts"
+import { Devices } from "./services/devices/Devices.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 
 export type AppServices =
@@ -80,24 +82,21 @@ export type AppServices =
   | Events
   | TinyVm
   | VmPasskeyRelay
+  | Devices
 
 export interface HandlerError {
   readonly _tag: string
   readonly message: string
 }
 
-/**
- * What only the desktop window can do, bound to the window that called. `ipc.ts` builds it; remote callers
- * pass null, and the remote listener refuses these methods before they reach a handler.
- */
 export interface DesktopCalls {
   readonly show: Effect.Effect<void>
   readonly focus: Effect.Effect<void>
+  readonly setBadgeCount: (count: number) => Effect.Effect<void>
   readonly setColorScheme: (scheme: "dark" | "light" | "system") => Effect.Effect<void>
   readonly reveal: (path: string) => Effect.Effect<void>
   readonly openers: Effect.Effect<ReadonlyArray<Opener>>
   readonly openWith: (path: string, opener: OpenerId) => Effect.Effect<void, HandlerError>
-  /** Opens an http(s) URL in the default browser. Anything else is ignored. */
   readonly openExternal: (url: string) => Effect.Effect<void>
   readonly pickFolder: Effect.Effect<string | null>
   readonly pickFiles: Effect.Effect<ReadonlyArray<string>>
@@ -113,7 +112,6 @@ type Handlers = {
   ) => Effect.Effect<RpcResponse<M>, HandlerError, AppServices>
 }
 
-/** What a new thread of `provider` starts with: the options last picked for one, else the agent's first model. */
 const newThreadOptions = (provider: ProviderId) =>
   Effect.gen(function* () {
     const settings = yield* Settings.use((service) => service.get)
@@ -122,7 +120,6 @@ const newThreadOptions = (provider: ProviderId) =>
     return { model, effort: settings.defaultEffort[provider], fastMode: settings.defaultFastMode[provider] }
   })
 
-/** A thread's options become the next new thread's defaults while it is still being set up, before its first message. */
 const rememberNewThreadOptions = (thread: Thread) =>
   Effect.gen(function* () {
     if (yield* Threads.use((threads) => threads.started(thread.id))) return
@@ -140,7 +137,6 @@ const rememberNewThreadOptions = (thread: Thread) =>
     )
   })
 
-/** Where a repository thread's first turn runs becomes where the next new one starts. Returns the save to run once it sent. */
 const rememberWorkspaceMode = (threadId: string, mode: WorkspaceChoice["mode"]) =>
   Effect.gen(function* () {
     const thread = yield* Threads.use((threads) => threads.get(threadId))
@@ -151,7 +147,6 @@ const rememberWorkspaceMode = (threadId: string, mode: WorkspaceChoice["mode"]) 
       : Effect.void
   })
 
-/** Git history is only read from a checkout hinacode recorded, never from a path the renderer made up. */
 const knownRoot = (root: string) =>
   Effect.gen(function* () {
     const projects = yield* Projects.use((service) => service.list)
@@ -163,7 +158,6 @@ const knownRoot = (root: string) =>
     return root
   })
 
-/** Shells sitting in a worktree would outlive it, so they end before the thread or its project goes away. */
 const closeTerminals = (threadId: string) => Terminals.use((terminals) => terminals.closeThread(threadId))
 
 const startGuideForHead = (detail: PullRequestDetail) => PullRequestGuides.use((guides) => guides.ensure(detail))
@@ -175,6 +169,7 @@ const handlers: Handlers = {
   "browser.close": (input) => Browser.use((browser) => browser.close(input)),
   "app.ready": (_, desktop) => desktop?.show ?? Effect.void,
   "app.focus": (_, desktop) => desktop?.focus ?? Effect.void,
+  "app.setBadgeCount": ({ count }, desktop) => desktop?.setBadgeCount(count) ?? Effect.void,
   "app.setColorScheme": (scheme, desktop) => desktop?.setColorScheme(scheme) ?? Effect.void,
   "projects.list": () => Projects.use((projects) => projects.listWithRepositories),
   "projects.create": (input) => Projects.use((projects) => projects.create(input)),
@@ -182,31 +177,46 @@ const handlers: Handlers = {
   "projects.update": (input) => Projects.use((projects) => projects.update(input)),
   "projects.delete": ({ id }) =>
     Effect.gen(function* () {
-      const threads = yield* Threads.use((service) => service.list)
-      yield* Effect.forEach(
-        threads.filter((thread) => thread.projectId === id),
-        (thread) => closeTerminals(thread.id),
-      )
+      const threads = (yield* Threads.use((service) => service.list)).filter((thread) => thread.projectId === id)
+      yield* Effect.forEach(threads, (thread) => closeTerminals(thread.id))
       yield* Projects.use((projects) => projects.remove(id))
+      yield* Effect.forEach(threads, (thread) =>
+        Events.use((events) => events.publish({ type: "thread.removed", id: thread.id })),
+      )
     }),
 
   "threads.list": () => Threads.use((threads) => threads.list),
-  // Thread changes are pushed as well as returned, so a phone and the desktop window stay in step.
-  "threads.create": ({ projectId }) =>
+  "threads.create": ({ projectId, title, provider: chosenProvider, model, effort, worktree, createdBy }) =>
     Effect.gen(function* () {
-      const { defaultProvider: provider } = yield* Settings.use((service) => service.get)
-      const options = yield* newThreadOptions(provider)
+      const { defaultProvider } = yield* Settings.use((service) => service.get)
+      const provider = chosenProvider ?? defaultProvider
+      const defaults =
+        model === undefined ? yield* newThreadOptions(provider) : { model, effort: undefined, fastMode: undefined }
       const thread = yield* Threads.use((threads) =>
-        threads.create({ projectId, title: randomName(), provider, ...options }),
+        threads.create({
+          projectId,
+          title: title ?? randomName(),
+          provider,
+          ...defaults,
+          effort: effort ?? defaults.effort,
+          worktree,
+          createdBy,
+        }),
       )
       yield* Events.use((events) => events.publish({ type: "thread.updated", thread }))
       return thread
     }),
-  // Another agent starts from its own defaults, not the model, effort and tier picked for the last one.
   "threads.update": (input) =>
     Effect.gen(function* () {
-      const patch = input.provider === undefined ? input : { ...(yield* newThreadOptions(input.provider)), ...input }
-      const thread = yield* Threads.use((threads) => threads.update(patch))
+      const { provider: switchTo } = input
+      const thread =
+        switchTo === undefined
+          ? yield* Threads.use((threads) => threads.update(input))
+          : yield* newThreadOptions(switchTo).pipe(
+              Effect.flatMap((defaults) =>
+                AgentRunner.use((runner) => runner.switchAgent({ ...defaults, ...input, provider: switchTo })),
+              ),
+            )
       if (input.accessMode !== undefined) {
         yield* AgentRunner.use((runner) => runner.setAccessMode(thread.id, thread.accessMode))
       }
@@ -218,7 +228,14 @@ const handlers: Handlers = {
       return thread
     }),
   "threads.delete": ({ id, removeWorktree }) =>
-    closeTerminals(id).pipe(
+    Threads.use((threads) => threads.sidechatOf(id)).pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.void,
+          onSome: (sidechat) => AgentRunner.use((runner) => runner.interrupt(sidechat.id)),
+        }),
+      ),
+      Effect.andThen(closeTerminals(id)),
       Effect.andThen(Threads.use((threads) => threads.remove(id, { removeWorktree }))),
       Effect.andThen(Events.use((events) => events.publish({ type: "thread.removed", id }))),
     ),
@@ -233,12 +250,18 @@ const handlers: Handlers = {
   "worktrees.create": (input) => Worktrees.use((worktrees) => worktrees.create(input)),
   "worktrees.remove": ({ id, deleteBranch }) => Worktrees.use((worktrees) => worktrees.remove(id, deleteBranch)),
   "worktrees.checkouts": () => Worktrees.use((worktrees) => worktrees.checkouts),
+  "worktrees.checkoutState": ({ id }) => Worktrees.use((worktrees) => worktrees.checkoutState(id)),
   "worktrees.setupLog": ({ id }) => Worktrees.use((worktrees) => Effect.map(worktrees.get(id), (w) => w.setupLog)),
   "worktrees.stopSetup": ({ id }) => Worktrees.use((worktrees) => worktrees.stopSetup(id)),
   "worktrees.pullRequest": ({ id }) => Worktrees.use((worktrees) => worktrees.pullRequest(id)),
   "threads.changes": ({ threadId, scope }) => Threads.use((threads) => threads.changes(threadId, scope)),
   "threads.archive": ({ threadId }) => Threads.use((threads) => threads.archive(threadId)),
   "threads.unarchive": ({ threadId }) => Threads.use((threads) => threads.unarchive(threadId)),
+  "threads.fork": ({ threadId, messageId }) =>
+    Threads.use((threads) => threads.fork(threadId, messageId)).pipe(
+      Effect.tap((thread) => Events.use((events) => events.publish({ type: "thread.updated", thread }))),
+    ),
+  "threads.sidechat": ({ threadId }) => Threads.use((threads) => threads.sidechat(threadId)),
   "projects.currentBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.currentBranch(id)),
   "projects.defaultBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.defaultBranch(id)),
   "projects.branches": ({ id }) => Worktrees.use((worktrees) => worktrees.branches(id)),
@@ -294,15 +317,21 @@ const handlers: Handlers = {
     desktop?.askNotificationPermission(title, body) ?? Effect.succeed("noAnswer" as const),
 
   "models.list": ({ provider }) => AgentRunner.use((runner) => runner.listModels(provider)),
-  "agents.account": ({ provider, accountId }) => AgentLogins.use((logins) => logins.account(provider, accountId)),
-  // e2e runs on machines with real, possibly outdated CLIs, whose update toast would cover the UI under test.
+  "agents.account": ({ provider, accountId, refresh }) =>
+    AgentLogins.use((logins) => logins.account(provider, accountId, { refresh })),
   "agents.updates": () => (process.env["HINACODE_SKIP_AGENT_UPDATES"] ? Effect.succeed([]) : availableUpdates),
   "agents.update": ({ provider }) => installUpdate(provider),
   "limits.list": () => AgentRunner.use((runner) => runner.limits),
   "accounts.list": () => AgentAccounts.use((accounts) => accounts.list),
   "accounts.create": (input) => AgentAccounts.use((accounts) => accounts.create(input)),
-  "accounts.rename": ({ id, name }) => AgentAccounts.use((accounts) => accounts.rename(id, name)),
-  "accounts.delete": ({ id }) => AgentAccounts.use((accounts) => accounts.remove(id)),
+  "accounts.rename": ({ id, name }) =>
+    AgentAccounts.use((accounts) => accounts.rename(id, name)).pipe(
+      Effect.tap(() => AgentLogins.use((logins) => logins.forget(id))),
+    ),
+  "accounts.delete": ({ id }) =>
+    AgentAccounts.use((accounts) => accounts.remove(id)).pipe(
+      Effect.tap(() => AgentLogins.use((logins) => logins.forget(id))),
+    ),
   "commands.list": ({ threadId }) => AgentRunner.use((runner) => runner.listCommands(threadId)),
   "files.list": ({ threadId }) => Threads.use((threads) => threads.listFiles(threadId)),
   "search.threads": ({ query, limit }) => Search.use((search) => search.threads(query, limit)),
@@ -330,6 +359,10 @@ const handlers: Handlers = {
   "threads.send": ({ threadId, prompt, attachments = [], workspace }) =>
     Effect.gen(function* () {
       const remember = yield* rememberWorkspaceMode(threadId, workspace?.mode ?? "local")
+      if ((yield* Threads.use((threads) => threads.get(threadId))).status === "archived") {
+        const thread = yield* Threads.use((threads) => threads.unarchive(threadId))
+        yield* Events.use((events) => events.publish({ type: "thread.updated", thread }))
+      }
       yield* AgentRunner.use((runner) => runner.send(threadId, prompt, attachments, { workspace }))
       yield* remember
     }),
@@ -373,6 +406,7 @@ const handlers: Handlers = {
   "pullRequestGuides.retry": ({ url }) => PullRequestGuides.use((guides) => guides.retry(url)),
   "github.merge": ({ url, method }) => GitHub.use((github) => github.merge(url, method)),
   "github.close": ({ url }) => GitHub.use((github) => github.close(url)),
+  "github.comment": ({ url, body }) => GitHub.use((github) => github.comment(url, body)),
   "linear.issues": () => Linear.use((linear) => linear.assignedIssues),
   "github.repository": ({ projectId }) =>
     Projects.use((projects) => projects.get(projectId)).pipe(
@@ -389,11 +423,23 @@ const handlers: Handlers = {
   "terminal.list": ({ threadId }) => Terminals.use((terminals) => terminals.list(threadId)),
   "terminal.attach": ({ id, since }) => Terminals.use((terminals) => terminals.attach(id, since)),
 
+  "devices.list": () => Devices.use((devices) => devices.list()),
+  "device.get": ({ threadId }) => Devices.use((devices) => devices.get(threadId)),
+  "device.attach": ({ threadId, deviceId }) => Devices.use((devices) => devices.attach(threadId, deviceId)),
+  "device.create": ({ threadId, model }) => Devices.use((devices) => devices.create(threadId, model)),
+  "device.detach": ({ threadId, deviceId }) => Devices.use((devices) => devices.detach(threadId, deviceId)),
+  "device.delete": ({ threadId, deviceId }) => Devices.use((devices) => devices.delete(threadId, deviceId)),
+  "device.frame": (input) => Devices.use((devices) => devices.frame(input)),
+  "device.command": (input) => Devices.use((devices) => devices.command(input)),
+  "device.control": ({ threadId, deviceId, control }) =>
+    Devices.use((devices) => devices.control(threadId, deviceId, control)),
+  "device.pick": (input) => Devices.use((devices) => devices.pick(input)),
   "vm.get": ({ threadId }) => TinyVm.use((vm) => vm.get(threadId)),
   "vm.start": ({ threadId, template }) => TinyVm.use((vm) => vm.start(threadId, template)),
   "vm.stop": ({ threadId }) => TinyVm.use((vm) => vm.stop(threadId)),
   "vm.control": ({ threadId, control }) => TinyVm.use((vm) => vm.setControl(threadId, control)),
   "vm.host": () => TinyVm.use((vm) => vm.host),
+  "vm.desktop.url": ({ threadId }) => TinyVm.use((vm) => vm.desktopUrl(threadId)).pipe(Effect.map((url) => ({ url }))),
   "vm.screen.open": ({ threadId, streamId }, desktop) => {
     const owner = desktop?.screenOwner
     return owner
@@ -478,10 +524,6 @@ const call = <M extends RpcMethod>(method: M, payload: unknown, desktop: Desktop
   )
 }
 
-/**
- * Decodes one `{ method, payload }` call, runs its handler and encodes the answer. Shared by the Electron
- * `rpc` channel and the remote listener, which passes null for `desktop`.
- */
 export const dispatch = (
   raw: unknown,
   desktop: DesktopCalls | null,

@@ -8,7 +8,6 @@ interface WorktreesState {
   readonly appendSetupLog: (id: string, chunk: string) => void
 }
 
-/** Worktrees by id. Loaded at boot, then kept current by `worktree.updated` and `worktree.setupLog` pushes. */
 export const useWorktrees = create<WorktreesState>()((set) => ({
   byId: {},
   replaceAll: (worktrees) => set({ byId: Object.fromEntries(worktrees.map((worktree) => [worktree.id, worktree])) }),

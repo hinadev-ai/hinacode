@@ -1,5 +1,6 @@
 import { cn } from "cn"
-import { type KeyboardEvent, useEffect, useRef } from "react"
+import type { KeyboardEvent } from "react"
+import { flushSync } from "react-dom"
 import type { Thread } from "../../../shared/domain.ts"
 import { m } from "../../paraglide/messages.js"
 import { type BrowserTab, selectBrowserTabs, useBrowserTabs } from "../../stores/browserTabs.ts"
@@ -14,28 +15,22 @@ export const browserPanelId = (threadId: string, tabId: string) => `browser-page
 const tabLabel = (tab: BrowserTab) =>
   tab.title || (tab.url && (URL.parse(tab.url)?.host || tab.url)) || m.browser_new_tab()
 
-/**
- * The Browser view's header: a horizontal WAI-ARIA tablist with automatic activation, since a hidden tab shows
- * without a reload. Arrow keys switch tabs and Delete closes the focused one.
- */
 export function BrowserTabStrip({ thread }: { thread: Thread }) {
   const threadId = thread.id
   const { tabs, activeId } = useBrowserTabs(selectBrowserTabs(threadId))
-  const keyboardMove = useRef(false)
 
-  useEffect(() => {
-    if (!keyboardMove.current) return
-    keyboardMove.current = false
-    document.getElementById(browserTabId(threadId, activeId))?.focus()
-  }, [threadId, activeId])
+  const focusActiveTabAfter = (update: () => void) => {
+    flushSync(update)
+    const { activeId: next } = selectBrowserTabs(threadId)(useBrowserTabs.getState())
+    document.getElementById(browserTabId(threadId, next))?.focus()
+  }
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const store = useBrowserTabs.getState()
     const index = tabs.findIndex((tab) => tab.id === activeId)
     if (event.key === "Delete") {
       event.preventDefault()
-      keyboardMove.current = true
-      store.closeTab(threadId, activeId)
+      focusActiveTabAfter(() => store.closeTab(threadId, activeId))
       return
     }
     const target = {
@@ -46,8 +41,7 @@ export function BrowserTabStrip({ thread }: { thread: Thread }) {
     }[event.key]
     if (!target) return
     event.preventDefault()
-    keyboardMove.current = true
-    store.selectTab(threadId, target.id)
+    focusActiveTabAfter(() => store.selectTab(threadId, target.id))
   }
 
   const closable = tabs.length > 1 || tabs[0]!.url !== null

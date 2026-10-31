@@ -2,6 +2,7 @@ import { expect } from "@playwright/test"
 import { Given, Then, When } from "../support/fixtures.ts"
 import type { HinacodeApp } from "../support/app.ts"
 import { rpc } from "../support/rpc.ts"
+import { sidebar } from "../support/ui.ts"
 
 const tray = (app: HinacodeApp) => app.page.getByRole("region", { name: "Agent activity", exact: true })
 const backgroundTasks = (app: HinacodeApp) => tray(app).getByRole("list", { name: "Background tasks", exact: true })
@@ -57,6 +58,10 @@ Then("the background task {string} is still running", async ({ activityApp: app 
   await expect(backgroundTasks(app).getByRole("button", { name: `Stop ${label}`, exact: true })).toBeVisible()
 })
 
+Then("the sidebar shows the thread working in the background", async ({ activityApp: app }) => {
+  await expect(sidebar(app.page).getByRole("link", { name: "Shells" })).toContainText("Working in the background")
+})
+
 When("I type {string} in the activity thread's message", async ({ activityApp: app }, text: string) => {
   await app.page.getByRole("combobox", { name: "Message", exact: true }).pressSequentially(text)
 })
@@ -65,7 +70,6 @@ Then("the commands list covers the activity tray", async ({ activityApp: app }) 
   const list = app.page.getByRole("listbox", { name: "Commands", exact: true })
   const box = await list.boundingBox()
   if (box === null) throw new Error("The commands list is not shown")
-  // The list's bottom edge sits over the tray, so a tray painted above the list hides it there.
   const point = { x: box.x + box.width / 2, y: box.y + box.height - 4 }
   const topmost = await app.page.evaluate(
     ({ x, y }) => document.elementFromPoint(x, y)?.closest("[role=listbox]") !== null,

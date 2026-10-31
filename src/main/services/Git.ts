@@ -15,21 +15,15 @@ export class CommandError extends Schema.TaggedError<CommandError>()("CommandErr
 }
 
 export interface RunOptions {
-  /** Exit codes treated as success besides 0, e.g. 1 for `git rev-parse --verify --quiet` on a missing ref. */
   readonly okExitCodes?: ReadonlyArray<number>
-  /** Added to the inherited environment. */
   readonly env?: Record<string, string>
 }
 
-/**
- * Prefix for a git command that reaches a remote. It authenticates through `gh` in place of the system
- * credential helper, which on macOS is osxkeychain and opens a Keychain password dialog over the app.
- */
+// FIXME: authenticate through gh, since macOS's osxkeychain helper opens a Keychain dialog over the app
 export const REMOTE_GIT_ARGS = ["-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential"]
-/** Without a terminal git would wait forever on a credential prompt; fail fast instead. */
 export const REMOTE_GIT_ENV = { GIT_TERMINAL_PROMPT: "0" }
+export const NO_OPTIONAL_LOCKS_ENV = { GIT_OPTIONAL_LOCKS: "0" }
 
-/** Runs `command` in `cwd` and returns stdout. A command that cannot start fails with exit code -1. */
 export const makeExec =
   (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) =>
   (command: string, args: ReadonlyArray<string>, cwd: string, options?: RunOptions) =>
@@ -63,7 +57,6 @@ const toChangedStatus = (letter: string): ChangedFileStatus => {
   return "modified"
 }
 
-/** Parses `git diff --name-status -z`: alternating status letter and path. */
 export const parseNameStatus = (output: string) => {
   const fields = output.split("\0").filter(Boolean)
   const files: Array<{ path: string; status: ChangedFileStatus }> = []
@@ -76,11 +69,9 @@ export const parseNameStatus = (output: string) => {
 const LOG_FIELDS = ["%H", "%P", "%an", "%ad", "%D", "%s"]
 export const LOG_FORMAT = LOG_FIELDS.join("%x00")
 
-/** `HEAD -> main, origin/main, tag: v1` becomes `HEAD`, `main`, `origin/main`, `tag: v1`. */
 const parseRefs = (decorations: string) =>
   decorations === "" ? [] : decorations.split(", ").flatMap((ref) => ref.split(" -> "))
 
-/** Parses `git log -z --format=<LOG_FORMAT>`: every field and every commit ends at a NUL. */
 export const parseLog = (output: string): Array<GitCommit> => {
   const fields = output.split("\0")
   const commits: Array<GitCommit> = []
@@ -104,17 +95,13 @@ export const parseLog = (output: string): Array<GitCommit> => {
 export class Git extends Context.Service<
   Git,
   {
-    /** Runs `git -C cwd ...args` and returns stdout. */
     readonly run: (
       cwd: string,
       args: ReadonlyArray<string>,
       options?: RunOptions,
     ) => Effect.Effect<string, CommandError>
-    /** Like `run`, for commands that reach a remote, such as `fetch`. Never prompts for credentials. */
     readonly remote: (cwd: string, args: ReadonlyArray<string>) => Effect.Effect<string, CommandError>
-    /** Up to `limit` commits reachable from branches, remote branches, tags and HEAD, children before parents. */
     readonly log: (cwd: string, limit: number) => Effect.Effect<Array<GitCommit>, CommandError>
-    /** The commit's changes against its first parent. `hash` must already be validated as hex. */
     readonly show: (cwd: string, hash: string) => Effect.Effect<CommitDiff, CommandError>
   }
 >()("hinacode/Git") {}
@@ -122,12 +109,11 @@ export class Git extends Context.Service<
 const make = Effect.gen(function* () {
   const exec = makeExec(yield* ChildProcessSpawner.ChildProcessSpawner)
   const run = (cwd: string, args: ReadonlyArray<string>, options?: RunOptions) =>
-    exec("git", ["-C", cwd, ...args], cwd, options)
+    exec("git", ["-C", cwd, ...args], cwd, { ...options, env: { ...NO_OPTIONAL_LOCKS_ENV, ...options?.env } })
   const remote = (cwd: string, args: ReadonlyArray<string>) =>
     run(cwd, [...REMOTE_GIT_ARGS, ...args], { env: REMOTE_GIT_ENV })
 
-  // Not `--all`: that also walks the stash and tool-private refs such as editor checkpoints,
-  // which show up as disconnected lanes that are not history.
+  // FIXME: `--all` also walks the stash and tool-private refs such as editor checkpoints
   const log = (cwd: string, limit: number) =>
     run(cwd, [
       "log",
@@ -135,7 +121,6 @@ const make = Effect.gen(function* () {
       "--remotes",
       "--tags",
       "HEAD",
-      // An unborn HEAD in a repository without commits is skipped instead of failing.
       "--ignore-missing",
       "--decorate-refs=refs/heads/",
       "--decorate-refs=refs/remotes/",
@@ -151,8 +136,6 @@ const make = Effect.gen(function* () {
     ]).pipe(Effect.map(parseLog))
 
   const show = (cwd: string, hash: string) => {
-    // Pinned against user config (mnemonic prefixes, color, quoted paths) like `Worktrees.changes`.
-    // A merge diffs against its first parent: the combined `--cc` diff is not a patch the viewer parses.
     const diff = (args: ReadonlyArray<string>) =>
       run(cwd, [
         "-c",
@@ -169,10 +152,13 @@ const make = Effect.gen(function* () {
         hash,
         "--",
       ])
-    return Effect.all({
-      patch: diff(["--patch"]),
-      files: diff(["--name-status", "-z"]).pipe(Effect.map(parseNameStatus)),
-    })
+    return Effect.all(
+      {
+        patch: diff(["--patch"]),
+        files: diff(["--name-status", "-z"]).pipe(Effect.map(parseNameStatus)),
+      },
+      { concurrency: "unbounded" },
+    )
   }
 
   return Git.of({ run, remote, log, show })

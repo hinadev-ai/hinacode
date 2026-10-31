@@ -26,11 +26,29 @@ import { SpinnerIcon } from "../icons/SpinnerIcon.tsx"
 import { WarningIcon } from "../icons/WarningIcon.tsx"
 
 export const TinyVmScreen = lazy(() => import("./TinyVmScreen.tsx"))
+const BoatVmScreen = lazy(() => import("./BoatVmScreen.tsx"))
 
-/** Hands control back from inside the screen, where noVNC takes every other key. */
+interface VmScreenProps {
+  readonly threadId: string
+  readonly vm: RunningVm
+  readonly bare?: boolean
+  readonly fullscreenControls?: ReactNode
+  readonly onHandBack: () => void
+  readonly onReconnect: () => void
+  readonly onDropFiles: (paths: ReadonlyArray<string>) => void
+  readonly dropping: boolean
+}
+
+export function VmScreen({ vm, ...rest }: VmScreenProps) {
+  return vm.provider === "boat" ? (
+    <BoatVmScreen control={vm.control} sandboxId={vm.sandboxId} {...rest} />
+  ) : (
+    <TinyVmScreen control={vm.control} {...rest} />
+  )
+}
+
 export const HAND_BACK_CHORD = "Mod+Escape"
 
-/** A thread shows its screen in one place at a time, so the id is unique in the document. */
 export const vmScreenId = (threadId: string) => `tiny-vm-screen-${threadId}`
 
 export const showVmFullscreen = (threadId: string) =>
@@ -38,12 +56,10 @@ export const showVmFullscreen = (threadId: string) =>
 
 export type RunningVm = Extract<ThreadVm, { status: "running" }>
 
-/** The thread's tiny VM: its live screen, who controls it, and starting or stopping it. */
 export function TinyVmView({ thread }: { thread: Thread }) {
   const vm = useAtomValue(threadVmAtom(thread.id))
   const refresh = useAtomRefresh(threadVmAtom(thread.id))
 
-  // A desktop needs the room an editor gets.
   useEffect(() => {
     useUi.getState().setSidePanelWide(true)
     return () => useUi.getState().setSidePanelWide(false)
@@ -60,7 +76,6 @@ export function TinyVmView({ thread }: { thread: Thread }) {
   )
 }
 
-/** Copies dropped host paths into the VM through the caller's action runner, so errors land in its strip. */
 export function useVmDrop(threadId: string, run: (action: () => Promise<unknown>) => void) {
   const [dropping, setDropping] = useState(false)
   const onDropFiles = (paths: ReadonlyArray<string>) => {
@@ -77,7 +92,6 @@ export function useVmDrop(threadId: string, run: (action: () => Promise<unknown>
   return { dropping, onDropFiles }
 }
 
-/** Runs one rpc at a time and keeps its error for display. */
 export function useVmAction() {
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -103,7 +117,6 @@ interface VmTemplateSelectProps {
   readonly onChange: (name: string) => void
 }
 
-/** Picks among the templates the sbx host lists, keeping a configured name the host no longer has selectable. */
 export function VmTemplateSelect({ id, templates, value, onChange }: VmTemplateSelectProps) {
   const listed = templates.map((template) => ({ value: template.name, label: templateLabel(template) }))
   const items = listed.some((item) => item.value === value) ? listed : [{ value, label: value }, ...listed]
@@ -147,15 +160,20 @@ function VmState({ threadId, vm }: { threadId: string; vm: ThreadVm }) {
   }
 }
 
-/** The empty state: what the VM is, which template to restore, and the button that starts it. */
 function NoVm({ threadId }: { threadId: string }) {
   const { pending, error, run } = useVmAction()
   const environment = useThreadEnvironment(threadId)
   const { experimental } = useSettings(environment)
   const host = useAtomValue(vmHostAtom(environment))
   const [picked, setPicked] = useState<string | null>(null)
-  const templates = AsyncResult.isSuccess(host) && host.value.status === "connected" ? host.value.templates : []
-  const template = picked ?? experimental.tinyVmTemplate
+  const templates =
+    AsyncResult.isSuccess(host) &&
+    host.value.status === "connected" &&
+    host.value.provider === experimental.tinyVmProvider
+      ? host.value.templates
+      : []
+  const template =
+    picked ?? (experimental.tinyVmProvider === "boat" ? experimental.tinyVmBoatSize : experimental.tinyVmTemplate)
   const start = () => run(() => callPromise("vm.start", { threadId, template }))
 
   return (
@@ -207,7 +225,7 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
           />
         )}
         <ScreenshotButton threadId={threadId} run={run} />
-        {experimental.tinyVmPasskeys && <PasskeyButton threadId={threadId} run={run} />}
+        {experimental.tinyVmPasskeys && vm.provider === "sbx" && <PasskeyButton threadId={threadId} run={run} />}
         {control}
         {!floating && (
           <>
@@ -227,7 +245,10 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
       {vm.profile === "copy" && (
         <p className="border-b border-border px-3 py-1.5 text-xs text-muted-foreground">{m.vm_profile_copy_note()}</p>
       )}
-      {experimental.tinyVmPasskeys && <PasskeyNotice threadId={threadId} run={run} />}
+      {vm.provider === "boat" && (
+        <p className="border-b border-border px-3 py-1.5 text-xs text-muted-foreground">{m.vm_boat_keeps_disk()}</p>
+      )}
+      {experimental.tinyVmPasskeys && vm.provider === "sbx" && <PasskeyNotice threadId={threadId} run={run} />}
       {floating ? (
         <Centered>
           <PipIcon aria-hidden className="size-6 text-muted-foreground" />
@@ -240,10 +261,10 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
       ) : (
         <div className="min-h-0 flex-1 overflow-auto p-3">
           <Suspense fallback={<ScreenFallback />}>
-            <TinyVmScreen
+            <VmScreen
               key={`${vm.sandboxId}:${attempt}`}
               threadId={threadId}
-              control={vm.control}
+              vm={vm}
               fullscreenControls={control}
               onHandBack={() => run(() => callPromise("vm.control", { threadId, control: "agent" }))}
               onReconnect={() => setAttempt((count) => count + 1)}
@@ -257,7 +278,6 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
   )
 }
 
-/** Who drives the VM, in amber when the agent is waiting for the user to hand it back. */
 export function ControlStatus({ vm }: { vm: RunningVm }) {
   const waiting = vm.control === "user" && vm.agentWaiting
   const label = waiting ? m.vm_agent_waiting() : vm.control === "user" ? m.vm_control_user() : m.vm_control_agent()
@@ -283,7 +303,6 @@ interface ControlButtonProps {
   readonly run: (action: () => Promise<unknown>) => void
 }
 
-/** One element for both labels, so focus stays on it when control changes hands. */
 export function ControlButton({ threadId, vm, pending, run }: ControlButtonProps) {
   const setControl = (control: VmControl) => run(() => callPromise("vm.control", { threadId, control }))
   return (

@@ -1,5 +1,5 @@
 // oxlint-disable unicorn/prefer-add-event-listener -- VncChannel has only the on* handler fields noVNC assigns.
-import { describe, expect, test, vi } from "vitest"
+import { describe, expect, onTestFinished, test, vi } from "vitest"
 import { VncChannel } from "./vncChannel.ts"
 
 interface Call {
@@ -31,7 +31,6 @@ function fakeBridge() {
       },
     },
   })
-  /** The next call of `method` after the ones already made. */
   const nextCall = (method: string) => {
     const seen = calls.filter((call) => call.method === method).length
     return new Promise<Call>((resolve) => waiters.push({ method, seen, resolve }))
@@ -39,6 +38,11 @@ function fakeBridge() {
   const push = (event: unknown) => {
     for (const listener of listeners) listener(event)
   }
+  onTestFinished(() => {
+    for (const call of calls.filter((candidate) => candidate.method === "vm.screen.open")) {
+      push({ type: "vm.screen.closed", streamId: call.payload.streamId })
+    }
+  })
   const sent = () =>
     calls.filter((call) => call.method === "vm.screen.send").map((call) => [...(call.payload.data ?? [])])
   return { nextCall, push, sent, listeners }

@@ -14,14 +14,9 @@ const stringify = (value: unknown) => {
   return String(value)
 }
 
-/**
- * Fills `{{a.b.c}}` placeholders from `payload`. Missing values become an empty string, objects
- * become JSON, and nothing is HTML-escaped because the result is a prompt, not markup.
- */
 export const renderTemplate = (template: string, payload: unknown) =>
   template.replace(PLACEHOLDER, (_, path: string) => stringify(lookup(payload, path)))
 
-/** A git branch name built from free text: keeps `/`, replaces everything else unsafe with `-`. */
 export const slugifyBranch = (text: string) =>
   text
     .toLowerCase()
@@ -36,7 +31,6 @@ export const slugifyBranch = (text: string) =>
 
 const TITLE_LIMIT = 80
 
-/** The first non-empty line of the rendered prompt, shortened for the sidebar. */
 export const titleFromPrompt = (prompt: string, fallback: string) => {
   const line = prompt
     .split("\n")

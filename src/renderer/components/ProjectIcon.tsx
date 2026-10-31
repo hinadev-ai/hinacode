@@ -4,7 +4,6 @@ import { projectIconAtom } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
 import { FolderIcon } from "./icons/FolderIcon.tsx"
 
-/** The project's own favicon, or a folder when it has none. */
 export function ProjectIcon({ projectId, className = "size-4" }: { projectId: string; className?: string }) {
   const icon = AsyncResult.getOrElse(useAtomValue(projectIconAtom(projectId)), () => null)
   return icon === null ? (

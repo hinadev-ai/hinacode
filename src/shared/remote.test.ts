@@ -12,6 +12,17 @@ import {
 } from "./remote.ts"
 
 describe("remote frames", () => {
+  it.each([
+    { type: "auth", token: "token" },
+    { type: "auth", nonce: "nonce", proof: "proof" },
+  ])("keeps the compact-events choice for $type authentication", (auth) => {
+    for (const compactEvents of [true, false]) {
+      const frame = { ...auth, compactEvents }
+      expect(Schema.decodeUnknownSync(ClientFrame)(frame)).toEqual(frame)
+    }
+    expect(Schema.decodeUnknownOption(ClientFrame)({ ...auth, compactEvents: "true" })._tag).toBe("None")
+  })
+
   it("keeps known capabilities when ready advertises a future feature", () => {
     const ready = { type: "ready", version: 1, features: ["heartbeat", "some-future-feature"] }
     const frame = Schema.decodeUnknownSync(ServerFrame)(ready)

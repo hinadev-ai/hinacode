@@ -12,6 +12,7 @@ const assistant = (id: string, parts: Message["parts"] = []): Message => ({
   createdAt: "2026-10-12T00:00:00.000Z",
   completedAt: null,
   usage: null,
+  forkPoint: null,
 })
 const user = (id: string): Message => ({ ...assistant(id), role: "user", parts: [{ type: "text", text: "hi" }] })
 

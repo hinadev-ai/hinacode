@@ -3,10 +3,6 @@ import { m } from "../paraglide/messages.js"
 import { CloudIcon } from "./icons/CloudIcon.tsx"
 import { CloudOffIcon } from "./icons/CloudOffIcon.tsx"
 
-/**
- * Marks a project or thread that lives on a cloud. The cloud is crossed out while it is not connected, and the label
- * names the machine and its state.
- */
 export function CloudMark({ cloud, id, className }: { cloud: Cloud; id?: string; className: string }) {
   const state = useCloudStateText(cloud)
   const label =

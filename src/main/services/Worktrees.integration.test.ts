@@ -1,11 +1,13 @@
 import { execFileSync } from "node:child_process"
+import { randomUUID } from "node:crypto"
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, watch, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
-import { Context, Deferred, Effect, Fiber, Layer, ManagedRuntime, PubSub } from "effect"
+import { Context, Deferred, Duration, Effect, Fiber, Layer, ManagedRuntime, PubSub } from "effect"
 import { SqlClient } from "effect/sql"
+import { TestClock } from "effect/testing"
 import type { PushEvent } from "../../shared/contract.ts"
 import type { Thread, Worktree } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
@@ -22,26 +24,28 @@ import * as SettingsLayer from "./Settings.ts"
 import * as ThreadsLayer from "./Threads.ts"
 import { Worktrees } from "./Worktrees.ts"
 import * as WorktreesLayer from "./Worktrees.ts"
+import * as Scratch from "./Scratch.ts"
 
 const git = (cwd: string, ...args: Array<string>) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" })
 
 type Services = Threads | Worktrees | Projects | Settings | SqlClient.SqlClient | Pushes
 
-/** What the service would push to the renderer; tests wait on these instead of polling the database. */
 class Pushes extends Context.Service<Pushes, PubSub.PubSub<PushEvent>>()("test/Pushes") {}
 
 const makeLayer = (
   dbPath: string,
   pushes: PubSub.PubSub<PushEvent>,
   events: Events["Service"] = Events.of({ publish: (event) => Effect.asVoid(PubSub.publish(pushes, event)) }),
+  setupTimeout: Duration.Input = WorktreesLayer.SETUP_TIMEOUT,
 ) =>
   ThreadsLayer.layer.pipe(
+    Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
     Layer.provide(Terminals.layer),
-    Layer.provideMerge(WorktreesLayer.layer),
+    Layer.provideMerge(WorktreesLayer.layerWithSetupTimeout(setupTimeout)),
     Layer.provideMerge(ProjectsLayer.layer),
     Layer.provide(AgentAccounts.layer),
-    Layer.provideMerge(SettingsLayer.layer),
-    Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer, Layer.succeed(Events, events))),
+    Layer.provideMerge(SettingsLayer.layer(dirname(dbPath))),
+    Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer).pipe(Layer.provideMerge(Layer.succeed(Events, events)))),
     Layer.provideMerge(Db.layer(dbPath)),
     Layer.provideMerge(Layer.succeed(Pushes, pushes)),
     Layer.provide(NodeServices.layer),
@@ -50,16 +54,11 @@ const makeLayer = (
 interface Repo {
   readonly root: string
   readonly projectId: string
-  /** Opens the same database in a fresh service layer, as a relaunch of the app would, and lists worktrees. */
   readonly restart: Effect.Effect<ReadonlyArray<Worktree>>
 }
 
 const worktreeOf = (worktreeId: string | null) => Worktrees.use((worktrees) => worktrees.get(worktreeId!))
 
-/**
- * Setup runs in the background and ends with a `worktree.updated` push. Subscribing before reading the
- * row means a push between the two cannot be missed.
- */
 const waitUntilSetUp = (worktreeId: string | null) =>
   Effect.gen(function* () {
     const updates = yield* PubSub.subscribe(yield* Pushes)
@@ -75,7 +74,6 @@ const waitUntilSetUp = (worktreeId: string | null) =>
     }
   }).pipe(Effect.scoped)
 
-/** Removal deletes the checkout in the background after marking the row removed; the parent directory reports it. */
 const waitUntilDeleted = (path: string) =>
   Effect.callback<void>((resume) => {
     let done = false
@@ -95,27 +93,25 @@ const waitForAllSetups = Worktrees.use((worktrees) => worktrees.list).pipe(
   Effect.orDie,
 )
 
-/**
- * A throwaway git repo registered as a project, with the service layer built on a database next to
- * it. The layer is torn down only after background setups finish, so none of them writes to a closed
- * database.
- */
 const withRepo = <A, E>(
   f: (repo: Repo) => Effect.Effect<A, E, Services>,
-  events?: (pushes: PubSub.PubSub<PushEvent>) => Events["Service"],
+  options: {
+    readonly events?: (pushes: PubSub.PubSub<PushEvent>) => Events["Service"]
+    readonly setupTimeout?: Duration.Input
+  } = {},
 ) =>
   Effect.gen(function* () {
     const dir = yield* Effect.acquireRelease(
       Effect.sync(() => mkdtempSync(join(tmpdir(), "kk-worktrees-test-"))),
       (path) => Effect.sync(() => rmSync(path, { recursive: true, force: true })),
     )
-    // Unresolved on purpose. macOS's temp dir goes through the /var symlink, and git reports resolved paths.
+    // FIXME: kept unresolved, since macOS's temp dir is behind the /var symlink and git reports resolved paths
     const root = join(dir, "repo")
     execFileSync("git", ["init", "-q", "-b", "main", root])
     git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
     const dbPath = join(dir, "hinacode.sqlite")
     const pushes = yield* PubSub.unbounded<PushEvent>()
-    // A separate runtime, as the app has after a relaunch; `Effect.provide` would reuse the open layers.
+    // FIXME: `Effect.provide` would reuse the open layers instead of relaunching
     const restart = Effect.acquireUseRelease(
       Effect.sync(() => ManagedRuntime.make(makeLayer(dbPath, pushes))),
       (runtime) => Effect.promise(() => runtime.runPromise(Worktrees.use((worktrees) => worktrees.list))),
@@ -126,7 +122,10 @@ const withRepo = <A, E>(
         projects.create({ name: "repo", rootPath: root, setupScript: null }),
       )
       return yield* f({ root, projectId: project.id, restart })
-    }).pipe(Effect.ensuring(waitForAllSetups), Effect.provide(makeLayer(dbPath, pushes, events?.(pushes))))
+    }).pipe(
+      Effect.ensuring(waitForAllSetups),
+      Effect.provide(makeLayer(dbPath, pushes, options.events?.(pushes), options.setupTimeout)),
+    )
   })
 
 const createThread = (projectId: string, title: string, branch?: string) =>
@@ -145,7 +144,18 @@ const archiveRemovingWorktree = (threadId: string) =>
     Effect.andThen(Threads.use((threads) => threads.archive(threadId))),
   )
 
-/** Rows written before ownership was enforced can point two threads at one checkout. */
+const forkThread = (threadId: string) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    const messageId = randomUUID()
+    yield* sql`
+      INSERT INTO message (id, thread_id, role, parts, created_at, completed_at, usage, fork_point)
+      VALUES (${messageId}, ${threadId}, 'assistant', '[]', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z',
+              NULL, ${JSON.stringify({ sessionId: "session-1", checkpoint: "turn-1" })})
+    `
+    return yield* Threads.use((threads) => threads.fork(threadId, messageId))
+  })
+
 const shareWorktree = (threadId: string, worktreeId: string | null) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient
@@ -286,14 +296,12 @@ describe("background setup", () => {
           settled = true
           return worktree
         })
-      // The setup script is running and blocked on the release file, so the wait cannot have settled.
       await started.promise
       expect(settled).toBe(false)
 
       writeFileSync(releasePath, "")
       expect(await prepared).toMatchObject({ id: preparing.id, status: "ready" })
       expect(settled).toBe(true)
-      // A worktree that is already prepared answers at once.
       expect(
         await runtime.runPromise(Worktrees.use((worktrees) => worktrees.whenPrepared(preparing.id))),
       ).toMatchObject({ id: preparing.id, status: "ready" })
@@ -342,9 +350,57 @@ describe("background setup", () => {
       }),
     ),
   )
+
+  it.live("a background process holding the setup output does not keep the worktree preparing", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        const pidPath = join(root, "background.pid")
+        const notices = yield* PubSub.subscribe(yield* Pushes)
+        yield* Projects.use((projects) =>
+          projects.update({
+            id: projectId,
+            setupScript: ['printf "setup started\\n"', "sleep 20 &", `echo $! > "${pidPath}"`].join("\n"),
+          }),
+        )
+        const thread = yield* createThread(projectId, "background", "kk/background")
+        const prepared = yield* Worktrees.use((worktrees) => worktrees.whenPrepared(thread.worktreeId!))
+
+        expect(prepared.status).toBe("ready")
+        expect(prepared.setupLog).toMatch(/background process/)
+        expect(isAlive(Number(readFileSync(pidPath, "utf8")))).toBe(false)
+        expect(yield* takeSetupNotice(notices, prepared.id)).toBe("backgroundOutput")
+      }).pipe(Effect.scoped),
+    ),
+  )
+
+  it.live("a setup script that runs past the timeout fails the worktree and stops the script", () =>
+    withRepo(
+      ({ root, projectId }) =>
+        Effect.gen(function* () {
+          const pidPath = join(root, "setup.pid")
+          const notices = yield* PubSub.subscribe(yield* Pushes)
+          yield* startHangingSetup(projectId, pidPath)
+          const thread = yield* createThread(projectId, "slow", "kk/slow")
+          const prepared = yield* Worktrees.use((worktrees) => worktrees.whenPrepared(thread.worktreeId!))
+
+          expect(prepared.status).toBe("failed")
+          expect(prepared.setupLog).toMatch(/timed out after 1s/)
+          expect(isAlive(Number(readFileSync(pidPath, "utf8")))).toBe(false)
+          expect(yield* takeSetupNotice(notices, prepared.id)).toBe("timedOut")
+        }).pipe(Effect.scoped),
+      { setupTimeout: "1 second" },
+    ),
+  )
 })
 
-/** Ignores SIGTERM, as a script stuck in a child that traps it would. Gives up on its own so a failing test cannot leak it. */
+const takeSetupNotice = (updates: PubSub.Subscription<PushEvent>, worktreeId: string) =>
+  Effect.gen(function* () {
+    while (true) {
+      const event = yield* PubSub.take(updates)
+      if (event.type === "worktree.setupNotice" && event.id === worktreeId) return event.notice
+    }
+  })
+
 const startHangingSetup = (projectId: string, pidPath: string) =>
   Projects.use((projects) =>
     projects.update({
@@ -482,6 +538,28 @@ describe("worktree ownership", () => {
     ),
   )
 
+  it.live("a fork gets its own checkout with the source's uncommitted work, so either can be archived", () =>
+    withRepo(({ projectId }) =>
+      Effect.gen(function* () {
+        const source = yield* createThread(projectId, "source", "kk/forked-source")
+        yield* waitUntilSetUp(source.worktreeId)
+        const sourceCheckout = yield* worktreeOf(source.worktreeId)
+        writeFileSync(join(sourceCheckout.path, "draft.txt"), "uncommitted\n")
+
+        const fork = yield* forkThread(source.id)
+        expect(fork.worktreeId).not.toBe(source.worktreeId)
+        yield* waitUntilSetUp(fork.worktreeId)
+        const forkCheckout = yield* worktreeOf(fork.worktreeId)
+        expect(readFileSync(join(forkCheckout.path, "draft.txt"), "utf8")).toBe("uncommitted\n")
+
+        yield* archiveRemovingWorktree(fork.id)
+        yield* archiveRemovingWorktree(source.id)
+        expect((yield* worktreeOf(fork.worktreeId)).status).toBe("removed")
+        expect((yield* worktreeOf(source.worktreeId)).status).toBe("removed")
+      }),
+    ),
+  )
+
   it.live("archiving keeps the checkout unless the settings remove it, and unarchiving brings the thread back", () =>
     withRepo(({ projectId }) =>
       Effect.gen(function* () {
@@ -511,6 +589,26 @@ describe("worktree ownership", () => {
         const worktree = yield* worktreeOf(thread.worktreeId)
         expect(worktree.status).toBe("removed")
         yield* waitUntilDeleted(worktree.path)
+      }),
+    ),
+  )
+
+  it.live("lists a removed worktree without the setup log of its deleted checkout", () =>
+    withRepo(({ projectId }) =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient
+        const kept = yield* createThread(projectId, "kept", "kk/kept")
+        const done = yield* createThread(projectId, "done", "kk/done")
+        yield* waitUntilSetUp(kept.worktreeId)
+        yield* waitUntilSetUp(done.worktreeId)
+        yield* sql`UPDATE worktree SET setup_log = 'installed\n'`
+        yield* archiveRemovingWorktree(done.id)
+
+        const listed = yield* Worktrees.use((worktrees) => worktrees.list)
+        const logOf = (id: string | null) => listed.find((worktree) => worktree.id === id)?.setupLog
+        expect(logOf(kept.worktreeId)).toBe("installed\n")
+        expect(logOf(done.worktreeId)).toBe("")
+        expect((yield* worktreeOf(done.worktreeId)).setupLog).toMatch(/^installed\n/)
       }),
     ),
   )
@@ -554,7 +652,7 @@ describe("worktree ownership", () => {
             }
             yield* waitUntilDeleted((yield* worktreeOf(thread.worktreeId)).path)
           }),
-        holdRemoval,
+        { events: holdRemoval },
       )
     }),
   )
@@ -624,11 +722,9 @@ describe("removal", () => {
         const thread = yield* createThread(projectId, "locked", "kk/locked")
         yield* waitUntilSetUp(thread.worktreeId)
         const worktree = yield* worktreeOf(thread.worktreeId)
-        // git refuses to delete a branch whose ref is locked, after `git worktree remove` already succeeded.
         writeFileSync(join(root, ".git", "refs", "heads", "kk", "locked.lock"), "")
 
         yield* Worktrees.use((worktrees) => worktrees.remove(worktree.id, "force"))
-        // A create of the same branch waits for the deletion to finish.
         yield* Effect.exit(
           Worktrees.use((worktrees) => worktrees.create({ projectId, branch: "kk/locked", baseRef: "main" })),
         )
@@ -663,7 +759,6 @@ describe("force removal", () => {
           arrange(root, worktree.path)
 
           yield* Worktrees.use((worktrees) => worktrees.remove(worktree.id, "keep"))
-          // A create of the same branch waits for the deletion to finish.
           yield* Worktrees.use((worktrees) => worktrees.create({ projectId, branch: "kk/old", baseRef: "main" }))
 
           expect((yield* worktreeOf(worktree.id)).status).toBe("removed")
@@ -699,6 +794,24 @@ describe("checkout states", () => {
             { id: ids["missing"], state: "missing" },
           ]),
         )
+      }),
+    ),
+  )
+
+  it.live("reports one worktree as clean once its changes are committed", () =>
+    withRepo(({ projectId }) =>
+      Effect.gen(function* () {
+        const thread = yield* createThread(projectId, "commit", "kk/commit")
+        yield* waitUntilSetUp(thread.worktreeId)
+        const { id, path } = yield* worktreeOf(thread.worktreeId)
+        const stateOf = Worktrees.use((worktrees) => worktrees.checkoutState(id))
+
+        writeFileSync(join(path, "draft.txt"), "work")
+        expect(yield* stateOf).toBe("dirty")
+
+        git(path, "add", "draft.txt")
+        git(path, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "work")
+        expect(yield* stateOf).toBe("clean")
       }),
     ),
   )
@@ -789,10 +902,6 @@ const commit = (cwd: string, message: string) => {
   return git(cwd, "rev-parse", "HEAD").trim()
 }
 
-/**
- * Gives the repo an `origin` holding a pull request branch and a fork's pull request, which GitHub only
- * serves as `refs/pull/<n>/head`. Neither exists locally, as for a pull request someone else opened.
- */
 const withOrigin = (root: string) => {
   const origin = join(dirname(root), "origin.git")
   execFileSync("git", ["init", "-q", "--bare", origin])
@@ -922,6 +1031,29 @@ describe("project root checkout", () => {
         )
         expect(switched._tag).toBe("Failure")
         expect(git(root, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("main")
+      }),
+    ),
+  )
+})
+
+describe("fetching origin", () => {
+  it.effect("fetches a project's origin at most once per interval", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        withOrigin(root)
+        const fetch = Worktrees.use((worktrees) => worktrees.fetch(projectId))
+        const hasOriginBranch = () => git(root, "for-each-ref", "refs/remotes/origin/feature/login").trim() !== ""
+
+        yield* fetch
+        expect(hasOriginBranch()).toBe(true)
+
+        git(root, "update-ref", "-d", "refs/remotes/origin/feature/login")
+        yield* fetch
+        expect(hasOriginBranch()).toBe(false)
+
+        yield* TestClock.adjust(WorktreesLayer.FETCH_INTERVAL)
+        yield* fetch
+        expect(hasOriginBranch()).toBe(true)
       }),
     ),
   )

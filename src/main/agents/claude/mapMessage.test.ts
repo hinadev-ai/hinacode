@@ -167,7 +167,6 @@ describe("mapMessage usage limits", () => {
   })
 })
 
-// Shapes recorded from a Claude Code run that spawned two parallel sub-agents.
 const started = {
   type: "system",
   subtype: "task_started",

@@ -1,10 +1,10 @@
 import { errorMessage } from "../../../lib/errorMessage.ts"
-import { useAtomValue } from "@effect/atom-react"
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, startTransition, useActionState, useState } from "react"
 import { ProviderId } from "../../../../shared/agent.ts"
 import type { Automation, AutomationTrigger, AutomationTriggerType, Project } from "../../../../shared/domain.ts"
-import { callPromise, modelsAtom } from "../../../lib/rpc.ts"
+import { automationsAtom, callPromise, modelsAtom } from "../../../lib/rpc.ts"
 import { useSettings } from "../../../lib/settings.ts"
 import { useSettingsEnvironment } from "../../../lib/environments.ts"
 import { m } from "../../../paraglide/messages.js"
@@ -30,7 +30,6 @@ const triggerTypes: ReadonlyArray<AutomationTriggerType> = ["webhook", "github.i
 const isProviderId = (value: unknown): value is ProviderId => ProviderId.literals.some((id) => id === value)
 const isTriggerType = (value: unknown): value is AutomationTriggerType => triggerTypes.some((type) => type === value)
 
-/** Placeholders each trigger's payload offers, shown under the prompt template. */
 const placeholderHints = {
   webhook: ["{{body.*}}", "{{headers.*}}"],
   "github.issue": ["{{issue.title}}", "{{issue.body}}", "{{issue.url}}", "{{issue.number}}", "{{issue.author}}"],
@@ -38,7 +37,6 @@ const placeholderHints = {
   "slack.mention": ["{{message.text}}", "{{message.permalink}}", "{{message.channel}}", "{{message.user}}"],
 } satisfies Record<AutomationTriggerType, ReadonlyArray<string>>
 
-/** Every field of every trigger, flat, so switching trigger type keeps what was typed. */
 interface Draft {
   readonly name: string
   readonly projectId: string
@@ -133,7 +131,6 @@ interface AutomationDialogProps {
   readonly state: AutomationDialogState
   readonly projects: ReadonlyArray<Project>
   readonly onClose: () => void
-  /** Called after a create; `secret` is the webhook secret, shown only once. */
   readonly onCreated: (automation: Automation, secret: string | null) => void
 }
 
@@ -163,6 +160,7 @@ interface AutomationFormProps {
 function AutomationForm({ state, projects, onDone, onCreated }: AutomationFormProps) {
   const environment = useSettingsEnvironment()
   const { defaultModel } = useSettings(environment)
+  const refreshList = useAtomRefresh(automationsAtom(environment))
   const editing = state.mode === "edit"
   const [draft, setDraft] = useState<Draft>(() =>
     editing ? draftFrom(state.automation) : emptyDraft(projects[0]?.id ?? "", defaultModel.claude ?? ""),
@@ -183,12 +181,14 @@ function AutomationForm({ state, projects, onDone, onCreated }: AutomationFormPr
     try {
       if (editing) {
         await callPromise("automations.update", { id: state.automation.id, ...fields })
+        refreshList()
         onDone()
       } else {
         const { automation, secret } = await callPromise("automations.create", {
           projectId: input.projectId,
           ...fields,
         })
+        refreshList()
         onCreated(automation, secret)
       }
       return null
@@ -464,13 +464,11 @@ interface ModelFieldProps {
   readonly onChange: (model: string) => void
 }
 
-/** A select of the provider's models, or a free-text model id when it cannot list them. */
 function ModelField({ provider, value, onChange }: ModelFieldProps) {
   const environment = useSettingsEnvironment()
   const models = useAtomValue(modelsAtom(environment, provider))
   const listed = AsyncResult.getOrElse(models, () => [])
   const items = listed.map((model) => ({ value: model.id, label: model.label }))
-  // A stored id the provider no longer lists stays selectable instead of vanishing.
   if (value !== "" && !items.some((item) => item.value === value)) items.push({ value, label: value })
 
   return (

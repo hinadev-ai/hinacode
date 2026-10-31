@@ -6,7 +6,6 @@ import { InfoIcon } from "../icons/InfoIcon.tsx"
 import { SpinnerIcon } from "../icons/SpinnerIcon.tsx"
 import { XCircleIcon } from "../icons/XCircleIcon.tsx"
 
-/** Colors only the icon, so a toast reads as calm surface plus one status signal. */
 const Toaster = (props: ToasterProps) => (
   <Sonner
     className="toaster group"
@@ -21,7 +20,7 @@ const Toaster = (props: ToasterProps) => (
       {
         "--normal-bg": "var(--popover)",
         "--normal-text": "var(--popover-foreground)",
-        "--normal-border": "var(--border)",
+        "--normal-border": "var(--color-border)",
         "--border-radius": "var(--radius)",
         fontFamily: "inherit",
       } as CSSProperties

@@ -90,6 +90,19 @@ describe("Search.threads", () => {
     }).pipe(withSearch(Search.layer)),
   )
 
+  it.effect("leaves side chats out of the results", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient
+      const { threadId } = yield* seedThread({ rootPath: repo })
+      yield* sql`INSERT INTO thread (id, project_id, title, provider, model, status, sort_index, created_at, updated_at, side_of)
+        SELECT 'side', project_id, title, provider, model, status, sort_index, created_at, updated_at, id
+        FROM thread WHERE id = ${threadId}`
+      yield* insertMessage("side", [text("only the side chat says pineapple")])
+      const search = yield* Search.Search
+      expect(yield* search.threads("pineapple")).toStrictEqual([])
+    }).pipe(withSearch(Search.layer)),
+  )
+
   it.effect("matches short, CJK and wildcard-looking queries literally", () =>
     Effect.gen(function* () {
       const { threadId } = yield* seedThread({ rootPath: repo })

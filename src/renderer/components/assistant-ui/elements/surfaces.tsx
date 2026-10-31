@@ -18,7 +18,7 @@ export const pressable =
   "transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96] motion-reduce:transition-none"
 
 export const ghostButton =
-  "flex items-center justify-center rounded-full text-muted-foreground outline-hidden transition-[background-color,color,scale] duration-150 hover:bg-foreground/[0.06] hover:text-foreground/90 active:scale-[0.96] focus-visible:ring-1 focus-visible:ring-foreground/20 motion-reduce:transition-none dark:hover:bg-foreground/[0.09]"
+  "flex items-center justify-center rounded-full text-muted-foreground outline-hidden transition-[background-color,color,scale] duration-150 hover:bg-foreground/[0.06] hover:text-foreground/90 active:scale-[0.96] focus-visible:ring-3 focus-visible:ring-ring/50 motion-reduce:transition-none dark:hover:bg-foreground/[0.09]"
 
 export const inkButton =
   "bg-foreground text-background transition-[opacity,scale] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:opacity-90 active:scale-[0.96] motion-reduce:transition-none forced-colors:border"
@@ -48,18 +48,9 @@ export function ShimmerLabel({ active = true, className, ...props }: ComponentPr
   return <span className={cn(active && "shimmer motion-reduce:animate-none", className)} {...props} />
 }
 
-/**
- * Scroll region for content that keeps its own whitespace. `whitespace-pre` in
- * a bounded box clips a long line with no way to reach it, so the rows scroll
- * instead.
- *
- * `codeSurface` wraps all the rows as one block, and the rows are its children.
- * It cannot go on each row: `min-width: 100%` resolves against the scroll
- * container's visible width rather than its scroll width, so a per-row width
- * leaves every row except the longest ending its background at the fold.
- */
 export const codeScroll = "overflow-x-auto"
 
+// FIXME: min-width: 100% resolves against a scroller's visible width, so one surface wraps all rows
 export const codeSurface = "w-max min-w-full"
 
 export function SwapLabel({

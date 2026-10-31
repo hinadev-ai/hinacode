@@ -30,7 +30,6 @@ const asStatus = (value: unknown): TodoStatus => {
   }
 }
 
-/** One replace-all list: entries keyed by `textKey` ("text", "content" or "step") plus a `status`. */
 const readList = (value: unknown, textKey: string): Array<Todo> | null => {
   if (!Array.isArray(value)) return null
   const todos: Array<Todo> = []
@@ -41,7 +40,6 @@ const readList = (value: unknown, textKey: string): Array<Todo> | null => {
   return todos
 }
 
-/** The id a TaskCreate result reports, in its text ("Task #1 created…") or structured form. */
 const createdTaskId = (output: unknown): string | null => {
   if (typeof output === "string") return /^Task #(\S+) created/.exec(output)?.[1] ?? null
   if (isRecord(output) && isRecord(output["task"]) && typeof output["task"]["id"] === "string")
@@ -49,14 +47,6 @@ const createdTaskId = (output: unknown): string | null => {
   return null
 }
 
-/**
- * The thread's current task list, folded from the main agent's own todo tool calls in transcript order.
- *
- * Muse's `write_todos`, Claude's legacy `TodoWrite` and Codex's `update_plan` each carry the whole list
- * in their input (their results only acknowledge it), so the newest such call wins. Claude's
- * `TaskCreate`/`TaskUpdate` pair is incremental and folds by task id instead. A sub-agent's list
- * (a `parentCallId` part) is its own progress, not the thread's, and never replaces it.
- */
 export function latestTodos(messages: ReadonlyArray<Message>): ReadonlyArray<Todo> {
   let todos: Array<Todo> = []
   let taskIds: Array<string> = []

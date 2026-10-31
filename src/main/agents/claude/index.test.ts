@@ -98,7 +98,6 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   createSdkMcpServer: vi.fn(),
 }))
 
-// The SDK is faked, so the test must not depend on a `claude` install on the machine running it.
 vi.mock("../binary.ts", async () => {
   const { succeed } = await import("effect/Effect")
   return { installedBinary: (_provider: string, name: string) => succeed(name) }
@@ -153,13 +152,13 @@ const turnInput = (overrides: Partial<RunTurnInput> = {}): RunTurnInput => ({
   userSkills: true,
   accessMode: "supervised",
   resumeSessionId: null,
+  forkAt: null,
   home: null,
   mcpServer: { url: "http://127.0.0.1:1/mcp", headers: { authorization: "Bearer test" } },
   instructions: "Work in hinacode",
   ...overrides,
 })
 
-/** Lets promise callbacks and forked fibers run; TestClock only moves Effect's own clock. */
 const tick = Effect.yieldNow
 const settle = Effect.gen(function* () {
   for (let i = 0; i < 5; i++) yield* tick
@@ -887,6 +886,36 @@ describe("Claude background tasks", () => {
     ),
   )
 
+  it.effect(
+    "closes the session a thread leaves, so a scheduled wakeup never fires and the next turn starts fresh",
+    () =>
+      lifecycle(
+        Effect.gen(function* () {
+          const provider = yield* ClaudeProvider
+          const tasks = provider.backgroundTasks
+          if (tasks === undefined) return yield* Effect.die("backgroundTasks is missing")
+          const changes = yield* tasks.changes.pipe(Stream.take(2), Stream.runCollect, Effect.forkChild)
+          sdk.respond = (cli) =>
+            cli.push(
+              init("session-1"),
+              ...scheduleWakeup({ delaySeconds: 1800, reason: "Poll", prompt: "Poll" }, { scheduledFor: 1_800_000 }),
+              succeeded,
+            )
+          yield* runTurn()
+
+          yield* (provider.closeSession ?? (() => Effect.die("closeSession is missing")))("thread-1", null)
+          expect(latestCli().close).toHaveBeenCalledOnce()
+          const [, ended] = yield* Fiber.join(changes)
+          expect(ended).toStrictEqual({ threadId: "thread-1", tasks: [] })
+
+          sdk.respond = completeWith(succeeded, "session-2")
+          yield* runTurn()
+          expect(sdk.clis).toHaveLength(2)
+          expect(latestCli().options.resume).toBeUndefined()
+        }),
+      ),
+  )
+
   it.effect("closes an idle CLI 60 seconds after a wakeup that never fires", () =>
     lifecycle(
       Effect.gen(function* () {
@@ -929,7 +958,6 @@ describe("Claude background tasks", () => {
 
 const sessionState = (state: "idle" | "running") => ({ type: "system", subtype: "session_state_changed", state })
 
-/** What a turn showed, in order: sub-agent statuses, text and its end. */
 const reported = (events: ReadonlyArray<AgentEvent>) =>
   events.flatMap((event) =>
     event.type === "subagent_updated"
@@ -1084,7 +1112,7 @@ describe("Claude background sub-agents", () => {
           sessionState("idle"),
         )
         const woken = Option.getOrThrow(yield* Fiber.join(wake))
-        expect(woken.threadId).toBe("thread-1")
+        expect(woken).toMatchObject({ threadId: "thread-1", sessionId: "session-1" })
         expect(reported(yield* Stream.runCollect(woken.events))).toEqual([
           "subagent running",
           "subagent completed",

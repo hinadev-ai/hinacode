@@ -13,6 +13,7 @@ node scripts/perf/measure.ts <port> <label> archive <threadId>  # turns on workt
 node scripts/perf/measure.ts <port> <label> typing <threadId>   # composer key-to-paint latency
 node scripts/perf/measure.ts <port> <label> reply <threadId>    # needs HINACODE_MOCK_CLAUDE=stream
 node scripts/perf/measure.ts <port> <label> typing-reply <threadId>  # typing while that reply streams
+node scripts/perf/measure.ts <port> <label> find <threadId>          # twelve settled no-match queries
 node scripts/perf/analyze-profile.ts .context/perf/<label>-scroll.cpuprofile
 node scripts/perf/compare.ts <before-label> <after-label>
 ```
@@ -23,8 +24,10 @@ Results land in `.context/perf/`. Reload the renderer after seeding: the sidebar
 
 `measure.ts` reloads the renderer with `react-commits.js` installed where React DevTools would hook in, so
 `typing`, `switch`, `reply` and `typing-reply` report which components rendered in every commit, next to the
-renderer's script, style and layout time from `Performance.getMetrics`. The renderer bundle is not minified, so
-component names survive the production build.
+renderer's script, style and layout time from `Performance.getMetrics`. Build both versions with
+`HINACODE_KEEP_NAMES=1` to retain component names while keeping production minification enabled.
+The harness fixes the viewport at 1280 by 820 CSS pixels and starts each capture at the home route.
+The first switch must open a transcript rather than time a click on an already open thread.
 
 | Scenario                  | What it does                                           | Read first                                    |
 | ------------------------- | ------------------------------------------------------ | --------------------------------------------- |
@@ -32,6 +35,10 @@ component names survive the production build.
 | `switch <threadId...>`    | Opens each thread from the sidebar, three rounds       | Open time, renders, long tasks                |
 | `reply <threadId>`        | Sends "go" and waits until the mock reply has finished | Frame gaps, renders, `MessageBody` renders    |
 | `typing-reply <threadId>` | Sends "go", then types while the reply streams         | Key to next paint of keys that land mid-reply |
+
+To open a thread in the middle of a long turn, start the instance with `HINACODE_MOCK_CLAUDE=long-turn` and send the
+thread any prompt. The mock streams 400 reasoning and Bash steps, then keeps streaming text until Stop, so `switch`
+can time it while it runs.
 
 `reply` needs an instance started with `HINACODE_MOCK_CLAUDE=stream`. Its turn runs through the real main process:
 reasoning, six reads, then the Markdown fixture in 30-character deltas every 20 ms. No account is used. Both
@@ -45,8 +52,8 @@ this machine closer to a low-end laptop.
 S=.agents/skills/verify-hinacode/scripts
 HINACODE_MOCK_CLAUDE=stream $S/launch.sh 9473 /tmp/kk-perf-ab
 $S/seed-repo.sh /tmp/kk-perf-ab/repo && node scripts/perf/seed.ts /tmp/kk-perf-ab /tmp/kk-perf-ab/repo
-pnpm build && cp -r out .context/perf/before-out   # on the base commit
-pnpm build && cp -r out .context/perf/after-out    # on the change
+HINACODE_KEEP_NAMES=1 pnpm build && cp -r out .context/perf/before-out   # on the base commit
+HINACODE_KEEP_NAMES=1 pnpm build && cp -r out .context/perf/after-out    # on the change
 scripts/perf/suite.sh 9473 /tmp/kk-perf-ab 5 before=.context/perf/before-out after=.context/perf/after-out
 node scripts/perf/suite-compare.ts before after
 ```
@@ -59,6 +66,11 @@ Every capture also writes `<label>-<name>.commits.json`. `commits.ts` groups its
 rendered, so a commit that repeats with more components than it needs stands out. `PROFILE=1` adds a CPU profile
 for `analyze-profile.ts`. `TRACE=1` adds a trace that the DevTools Performance panel opens, and `trace-summary.ts`
 totals its style, layout and paint work. Both add overhead, so compare only runs captured the same way.
+
+Use total task duration and frame gaps when code moves into Promise continuations. CDP's script duration counter
+can omit microtask work, so a lower script duration alone does not establish lower CPU use.
+`find` changes twelve queries and waits for each debounced search to settle. Compare its task time and the
+tokenization component's render count when changing find subscriptions.
 
 ### 2026-10-22 capture
 
@@ -85,6 +97,29 @@ warm switch from 49 to 45 ms. Raw captures use the `before3` and `after3` labels
 Deferring transcript updates with `useDeferredValue` was measured and left out. It did not move typing mid-reply,
 because what still blocks a key then is commit work: LegendList measuring rows, the Markdown mount when the reply
 finishes, and mermaid layout.
+
+## Measure remote payload and transcript costs
+
+```sh
+node --expose-gc scripts/perf/remote.ts .context/perf/remote.json
+```
+
+This standalone probe uses synthetic data and the production schemas, `compactPush`, `compactMessage`, Events
+layer, and Messages service. It creates an in-memory SQLite database with production migrations, so it needs no
+running app or user profile. It reports raw JSON bytes, an independent per-frame deflate estimate, parse and
+decode time, and publication plus serialization time for zero, one, and three clients. Full and compact fanout
+workloads alternate for nine measured runs after warmup. The stream has 20 tool calls with 12 KiB inputs,
+64 KiB outputs, 8 KiB diffs, and 100 text deltas.
+
+Histories contain 200 and 2,000 messages. Each report separates complete database reads and their retained heap
+increase from compacting, paging, encoding, and decoding the returned page. `--expose-gc` makes the retained heap
+comparison collect garbage before and after a read. Read time includes SQL and JSON schema decoding. The current
+handler reads the entire transcript before selecting its 64 KiB page, so a small response can still cost a large
+allocation. The report also measures proof CPU cost and records an oversized single-message page.
+
+These are Node CPU and byte measurements. They exclude transport, relay, TLS, compression context takeover,
+Hermes, phone memory, and React rendering. Raw bytes are stable for the deterministic stream. Timing and heap
+results depend on the machine. The report records CPU, Node version, load average, and sample counts.
 
 ## Profile the phone app
 
@@ -192,6 +227,119 @@ Top costs, largest first:
    and 263 ms to mount the visible messages, after a 44 ms first paint.
 5. **Typing** costs two commits per key. One re-renders `InternalTextInput`, the other `Composer` and `Suggestions`
    (`src/components/composer.tsx`). That is about 1 ms per key, the smallest cost here.
+
+## Battery
+
+`battery.ts` measures what the phone app spends while agents stream on the desktop, on an Android emulator or an iOS
+simulator, in a Release build. It sits between the app and an isolated `hinacode serve` as a TCP proxy that counts
+the bytes on the socket, keeps several mocked Claude threads streaming, and reads the app's CPU time: `/proc/<pid>/stat`
+on Android, `ps` for the simulator's process on iOS. It measures 60 s on Home in the foreground, then 120 s after the
+app went to the background.
+
+```sh
+DATA=/tmp/kk-battery PORT=48190
+HINACODE_USER_DATA=$DATA HINACODE_MOCK_CLAUDE=stream HINACODE_SERVE_RELAY=off HINACODE_SERVE_AUTO_UPDATE=0 \
+  node out/main/daemon.js serve --host 127.0.0.1 --port $PORT   # prints the token in its pairing URL
+
+export BATTERY_DAEMON_PORT=$PORT BATTERY_TOKEN=<token>
+BATTERY_PLATFORM=android BATTERY_SERIAL=emulator-5580 node scripts/perf/battery.ts run android-base-1
+BATTERY_PLATFORM=ios BATTERY_UDID=<simulator udid> node scripts/perf/battery.ts run ios-base-1
+node scripts/perf/battery.ts compare android-base android-after
+node scripts/perf/battery.ts check android-base android-after
+```
+
+Install the Release build first: the APK from `pnpm install:android`, or the `.app` from the `xcodebuild` line in
+"Profile the phone app" with `simctl install`. The first run pairs the app through a `hinacode://connect` link to the
+proxy, so launch the iOS app once by hand before it. `BATTERY_STREAMS` (3) sets how many threads stream and
+`BATTERY_GAP_MS` (4000) the pause between their turns. `compare` pools every `<label>-<n>` run and prints medians per
+minute, CPU ranges, and host load. `check` requires three runs per build and fails unless background bytes and
+foreground frames decrease by at least 90%. On Android it also requires 90% less background CPU. A simulator's
+suspended background CPU cannot establish that improvement on iOS.
+
+A capture fails if an owned mock turn fails or reaches a limit, its daemon connection drops, or any mock thread
+completes no turn during a phase. Each new capture records completed turns. Frames and saved captures are decoded
+with schemas before the budget is checked.
+
+Alternate the builds, terminate the app between runs, and confirm that the foreground phase shows Home. Chat,
+Files, and another retained thread have different workloads. Use a separate daemon and proxy port per platform
+when running both together, so each phone sees exactly its own three streaming threads. The proxy's frame count
+includes native WebSocket control frames. A TCP connection alone does not prove authentication; check the phone
+shows connected threads before accepting a capture.
+
+Keep simulator signing enabled; SecureStore needs the generated Keychain entitlement even in a simulator build.
+A blank interface is a failed run. Pair with the intended proxy once through the app if the simulator ignores
+the pairing link, then keep that port between runs. Pick an unused proxy port before pairing, such as
+`BATTERY_PROXY_PORT=48399`, so another app's cached pairing cannot add authentication traffic to the counter.
+
+| Measurement   | What it stands for                                                                               |
+| ------------- | ------------------------------------------------------------------------------------------------ |
+| cpuMs         | The app's CPU time. On the simulator the app is suspended in the background, so it reads 0 there |
+| bytesDown     | Bytes forwarded by the proxy, including bytes queued for a suspended receiver                    |
+| framesDown    | WebSocket frames forwarded by the proxy, including control frames                                |
+| activeSeconds | Seconds with traffic at the proxy, not device wakeups or measured radio activity                 |
+
+Read these as relative numbers. The emulator and the simulator run on the Mac's CPU, and a phone's power draw also
+depends on its radio and screen, which neither models. Do not convert these numbers to battery percentage or
+claim that each frame wakes the radio.
+
+### Capture power on physical phones
+
+Connect trusted devices with Android USB debugging or iOS Developer Mode enabled. Install the Release builds
+being compared and record each build's revision and artifact hash separately. Start an isolated daemon reachable
+from the phones over the same Wi-Fi network, pair both apps with its LAN address, then keep its mock workload
+running:
+
+```sh
+BATTERY_DAEMON_PORT=<daemon port> BATTERY_TOKEN=<token> node scripts/perf/battery.ts load
+```
+
+Collect Android snapshots around the workload. No global battery statistics are reset. The snapshots record
+charging state, model, emulator status, package battery statistics, and wake locks:
+
+```sh
+adb devices -l
+node scripts/perf/device-power.ts android <serial> android-base start
+# Use the app, then leave it in the background for a fixed interval.
+node scripts/perf/device-power.ts android <serial> android-base stop
+```
+
+Subtract counters only across a continuous battery-statistics session. Use the same device, duration, charging
+state, brightness, and network for each build. Android BatteryStats reports estimated energy; hardware power
+rails or an external meter can provide stronger evidence. USB reverse forwarding does not measure Wi-Fi or
+cellular radio costs. Use Wi-Fi for the app connection when comparing radio use. See
+[Android's dumpsys documentation](https://developer.android.com/tools/dumpsys#batterystats).
+
+For iOS, the installed Xcode must provide the Power Profiler template. Capture each build and an app-closed
+device-idle control for the same duration:
+
+```sh
+xcrun devicectl list devices
+node scripts/perf/device-power.ts ios <physical device udid> ios-base 10m
+```
+
+Artifacts go under `.context/battery/devices/<label>/`. The iOS command records a Power Profiler trace and its
+table of contents. A paired debugger affects device sleep. For the final idle comparison, collect an untethered
+on-device Performance Trace and open it in Instruments. Follow
+[Apple's Power Profiler guide](https://developer.apple.com/documentation/xcode/measuring-your-app-s-power-use-with-power-profiler).
+Repeat baseline and candidate captures in alternating order, then compare background energy against the same
+90% reduction target. Physical power acceptance remains pending until these captures exist.
+
+### Replay the saved battery results
+
+The [2026-10-29 captures](results/mobile-battery-2026-10-29.json) include build hashes, raw measurements, idle
+controls, and the hidden-tab checks. Recompute the budgets without running a device:
+
+```sh
+export BATTERY_RESULTS_FILE=scripts/perf/results/mobile-battery-2026-10-29.json
+node scripts/perf/battery.ts check android-final-base android-final-cutoff
+node scripts/perf/battery.ts check ios-compare-base ios-cutoff
+```
+
+There are three baseline and three final captures per platform. The Android background CPU median fell from
+1719 to 35 ms/min; background bytes fell from 97522 to zero. iOS background bytes fell from 209418 to zero.
+Foreground frames on Home fell by 98% on both platforms. Host load varied; each capture preserves it, and an
+additional Android baseline control measured 1899 ms/min of background CPU. These are resource measurements,
+not measured battery savings. Physical power acceptance remains pending.
 
 ## Measure streaming Markdown
 

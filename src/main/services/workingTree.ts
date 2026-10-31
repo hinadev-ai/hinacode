@@ -3,31 +3,36 @@ import { Effect, FileSystem } from "effect"
 import type { Changes } from "../../shared/domain.ts"
 import { Git, parseNameStatus } from "./Git.ts"
 
-/**
- * Writes the whole working tree, untracked but not ignored files included, as a git tree and returns
- * its sha. The real index is left alone: staging happens in a copy of it.
- */
+const indexPaths = new Map<string, string>()
+
+const indexPathOf = (cwd: string) =>
+  Effect.gen(function* () {
+    const cached = indexPaths.get(cwd)
+    if (cached !== undefined) return cached
+    const git = yield* Git
+    const path = (yield* git.run(cwd, ["rev-parse", "--path-format=absolute", "--git-path", "index"])).trim()
+    indexPaths.set(cwd, path)
+    return path
+  })
+
 export const snapshotWorkingTree = (cwd: string) =>
   Effect.gen(function* () {
     const git = yield* Git
     const fs = yield* FileSystem.FileSystem
-    const realIndex = (yield* git.run(cwd, ["rev-parse", "--path-format=absolute", "--git-path", "index"])).trim()
+    const realIndex = yield* indexPathOf(cwd)
     const index = join(yield* fs.makeTempDirectoryScoped({ prefix: "hinacode-index-" }), "index")
-    // Starting from the real index keeps its stat cache, so `add -A` only rehashes files that changed.
-    // A repo without commits may have no index yet.
+    // FIXME: `git add -A` rehashes every file unless the index copy keeps the real index's stat cache
     if (yield* fs.exists(realIndex)) yield* fs.copyFile(realIndex, index)
+    else indexPaths.delete(cwd)
     const env = { GIT_INDEX_FILE: index }
     yield* git.run(cwd, ["add", "-A"], { env })
     return (yield* git.run(cwd, ["write-tree"], { env })).trim()
   }).pipe(Effect.scoped)
 
-/** What the working tree changed since `base`, a commit or tree, new files included. */
-export const diffWorkingTree = (cwd: string, base: string) =>
+export const diffWorkingTree = <E, R>(cwd: string, base: Effect.Effect<string, E, R>) =>
   Effect.gen(function* () {
     const git = yield* Git
-    const tree = yield* snapshotWorkingTree(cwd)
-    // Pin the output format against user config (diff.mnemonicPrefix, color.ui, quoted non-ASCII paths)
-    // so the renderer can find each file's section by its `a/… b/…` header.
+    const [baseTree, tree] = yield* Effect.all([base, snapshotWorkingTree(cwd)], { concurrency: "unbounded" })
     const diff = (args: ReadonlyArray<string>) =>
       git.run(cwd, [
         "-c",
@@ -39,10 +44,12 @@ export const diffWorkingTree = (cwd: string, base: string) =>
         "--src-prefix=a/",
         "--dst-prefix=b/",
         ...args,
-        base,
+        baseTree,
         tree,
       ])
-    const files = parseNameStatus(yield* diff(["--name-status", "-z"]))
-    const patch = yield* diff([])
+    const { files, patch } = yield* Effect.all(
+      { files: diff(["--name-status", "-z"]).pipe(Effect.map(parseNameStatus)), patch: diff([]) },
+      { concurrency: "unbounded" },
+    )
     return { files, patch } satisfies Changes
   })

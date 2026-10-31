@@ -8,12 +8,12 @@ import type { LimitWindowKind } from "../../shared/limits.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
 import { type AccountOption, accountOptions, formatMinutes, formatResetIn } from "../../shared/planLimits.ts"
+import { useDefaultAccountName, useProviderAccounts } from "../lib/accounts.ts"
 import { accountLimitsAtom, callPromise } from "../lib/rpc.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useThreads } from "../stores/threads.ts"
-import { useDefaultAccountName, useProviderAccounts } from "./settings/AccountSettings.tsx"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { WarningIcon } from "./icons/WarningIcon.tsx"
@@ -31,7 +31,6 @@ const windowLabel = (window: LimitWindowKind) => {
   }
 }
 
-/** "Resets in 2h 10m, Mon 3:40 PM". */
 const resetLabel = (resetsAt: string, now: number, locale: string) =>
   m.limits_resets_in({
     duration: formatResetIn(resetsAt, now, locale),
@@ -55,7 +54,6 @@ export function useAccountOptions(thread: AccountThread) {
   return { options, current, suggestion }
 }
 
-/** What the account picker says under an account's name. */
 export function useAccountHint() {
   const now = useNow()
   const locale = getLocale()
@@ -69,12 +67,10 @@ export function useAccountHint() {
         : undefined
 }
 
-/** Moves the thread to `accountId`, carrying its conversation over. `resend` runs the last prompt again there. */
 export async function switchAccount(threadId: string, accountId: string | null, resend = false) {
   useThreads.getState().upsert(await callPromise("threads.switchAccount", { id: threadId, accountId, resend }))
 }
 
-/** A button that switches the thread to `to`, showing the error beside it when the switch is refused. */
 export function SwitchAccountButton({
   threadId,
   to,
@@ -104,7 +100,6 @@ export function SwitchAccountButton({
   )
 }
 
-/** Shown above the composer when the thread's account has spent a window, before anything is sent to it. */
 export function AccountLimitNotice({ thread }: { thread: AccountThread }) {
   const { current, suggestion } = useAccountOptions(thread)
   const now = useNow()

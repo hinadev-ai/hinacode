@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util"
 import { Context, Effect, Layer, Schedule, Semaphore } from "effect"
 import type { PullRequestLink, PullRequestWatch } from "../../shared/domain.ts"
 import { AgentRunner } from "./AgentRunner.ts"
@@ -8,16 +9,9 @@ import { PullRequests } from "./PullRequests.ts"
 import { Threads } from "./Threads.ts"
 
 const POLL_INTERVAL = "1 minute"
-/** A watch ends itself after this many wakes, so a long-lived pull request cannot loop a thread forever. */
 const MAX_WAKES = 25
-/** Consecutive unreadable polls before a watch gives up. At one poll a minute this is about 15 minutes. */
 const MAX_FAILURES = 15
 
-/**
- * Polls every watched pull request once a minute and wakes its thread with what changed. A watch's
- * snapshot only moves when its news was delivered or when a poll found no news, so a thread that cannot
- * take a wake yet gets the same news on a later poll instead of a queue building up behind it.
- */
 export class PullRequestWatcher extends Context.Service<PullRequestWatcher, { readonly sweep: Effect.Effect<void> }>()(
   "hinacode/PullRequestWatcher",
 ) {}
@@ -42,8 +36,12 @@ const make = Effect.gen(function* () {
       Effect.catchTag("NotFoundError", () => Effect.succeed(false)),
     )
 
-  const record = (link: PullRequestLink, watch: PullRequestWatch, patch: Partial<PullRequestWatch>) =>
-    pullRequests.updateWatch(link.id, watch.generation, { ...watch, ...patch })
+  const record = (link: PullRequestLink, watch: PullRequestWatch, patch: Partial<PullRequestWatch>) => {
+    const next = { ...watch, ...patch }
+    return isDeepStrictEqual({ ...next, lastPolledAt: watch.lastPolledAt }, watch)
+      ? Effect.succeed(false)
+      : pullRequests.updateWatch(link.id, watch.generation, next)
+  }
 
   const wake = (link: PullRequestLink, generation: PullRequestWatch["generation"], text: string) =>
     runner
@@ -61,7 +59,6 @@ const make = Effect.gen(function* () {
         ),
       )
 
-  /** Ends the watch and tells the thread why, unless the thread cannot take a message right now. */
   const stopWithWake = (link: PullRequestLink, watch: PullRequestWatch, reason: string) =>
     Effect.gen(function* () {
       const thread = yield* threads.get(link.threadId)

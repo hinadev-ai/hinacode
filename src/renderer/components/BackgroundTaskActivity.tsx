@@ -21,10 +21,6 @@ const kinds = {
   other: { icon: SpinnerIcon, label: m.activity_background_other },
 } satisfies Record<BackgroundTaskKind, { readonly icon: IconComponent; readonly label: () => string }>
 
-/**
- * A line per background task, such as a dev server Claude started with `run_in_background`, each with a stop
- * button. A wakeup the agent scheduled shows when it fires instead, since nothing can cancel it from outside.
- */
 export function BackgroundTaskActivity({ threadId }: { threadId: string }) {
   const tasks = useThreadBackgroundTasks(threadId)
   if (tasks.length === 0) return null

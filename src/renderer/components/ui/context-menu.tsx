@@ -9,7 +9,6 @@ function ContextMenuTrigger({ ...props }: ContextMenuPrimitive.Trigger.Props) {
   return <ContextMenuPrimitive.Trigger data-slot="context-menu-trigger" {...props} />
 }
 
-/** Items are the `DropdownMenuItem`s from `dropdown-menu.tsx`; both are Base UI menu items. */
 function ContextMenuContent({ className, ...props }: ContextMenuPrimitive.Popup.Props) {
   return (
     <ContextMenuPrimitive.Portal>

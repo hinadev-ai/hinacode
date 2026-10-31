@@ -11,7 +11,6 @@ import {
   type FsFileContent,
 } from "../../shared/domain.ts"
 import { mimeOf } from "../../shared/media.ts"
-import { SLOW_CONSUMER_BYTES } from "../../shared/remote.ts"
 import { isInside } from "../security.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
 import { Events } from "./Events.ts"
@@ -25,9 +24,8 @@ const reasons = {
   tooLarge: "is too large to preview from",
 } as const
 
-const MAX_PREVIEW_BYTES = (SLOW_CONSUMER_BYTES / 4) * 3
+const MAX_PREVIEW_BYTES = 6 * 1024 * 1024
 
-/** The renderer asked for something outside the folders hinacode manages, or for something that is gone. */
 export class FsAccessError extends Schema.TaggedError<FsAccessError>()("FsAccessError", {
   root: Schema.String,
   path: Schema.String,
@@ -40,7 +38,6 @@ export class FsAccessError extends Schema.TaggedError<FsAccessError>()("FsAccess
   }
 }
 
-/** The file no longer holds the text an edit started from, so saving would drop someone else's change. */
 export class FsWriteConflict extends Schema.TaggedError<FsWriteConflict>()("FsWriteConflict", {
   root: Schema.String,
   path: Schema.String,
@@ -53,37 +50,22 @@ export class FsWriteConflict extends Schema.TaggedError<FsWriteConflict>()("FsWr
 export class Files extends Context.Service<
   Files,
   {
-    /**
-     * One level of the folder `path` (relative, "" for the root) under `root`, folders first. `root` must be
-     * a project root or a worktree that is not removed, and `path` must resolve inside it.
-     */
     readonly list: (
       root: string,
       path: string,
     ) => Effect.Effect<ReadonlyArray<FsEntry>, FsAccessError | PersistenceError>
-    /** The real absolute path of `path` under `root`, checked like `list`. */
     readonly resolve: (root: string, path: string) => Effect.Effect<string, FsAccessError | PersistenceError>
-    /** Up to the first `MAX_READ_BYTES` of the file `path` under `root`, checked like `list`. */
     readonly read: (root: string, path: string) => Effect.Effect<FsFileContent, FsAccessError | PersistenceError>
-    /** The file `path` under `root` as a base64 data URL, checked like `read`. Fails with `tooLarge` over `MAX_PREVIEW_BYTES`. */
     readonly preview: (
       root: string,
       path: string,
     ) => Effect.Effect<{ readonly dataUrl: string }, FsAccessError | PersistenceError>
-    /**
-     * Replaces the text of the existing file `path` under `root`, checked like `read`. Fails with
-     * `FsWriteConflict` when `expected` is not null and the file no longer holds it.
-     */
     readonly write: (
       root: string,
       path: string,
       content: string,
       expected: string | null,
     ) => Effect.Effect<void, FsAccessError | FsWriteConflict | PersistenceError>
-    /**
-     * Replaces the folders under `root` that push `fs.changed`. Folders that no longer exist are skipped,
-     * and an empty `paths` closes every watcher of the root.
-     */
     readonly watch: (
       root: string,
       paths: ReadonlyArray<string>,
@@ -95,10 +77,8 @@ const WATCH_DEBOUNCE_MS = 100
 
 export const MAX_READ_BYTES = 1024 * 1024
 
-/** Git's own test: a NUL byte in the first 8000 bytes makes a file binary. */
 const BINARY_SNIFF_BYTES = 8000
 
-/** Reads one byte past the cap, which tells a file of exactly the cap from a longer one. */
 const readStart = async (file: string): Promise<FsFileContent> => {
   const handle = await open(file, "r")
   try {
@@ -125,7 +105,6 @@ const kindOf = (dirent: Dirent): FsEntryKind => {
 
 const childPath = (parent: string, name: string) => (parent === "" ? name : `${parent}/${name}`)
 
-/** A `git status --porcelain` XY code as one status. */
 const porcelainStatus = (code: string): ChangedFileStatus => {
   if (code === "??") return "untracked"
   if (code.includes("U") || code === "DD" || code === "AA") return "conflict"
@@ -134,7 +113,6 @@ const porcelainStatus = (code: string): ChangedFileStatus => {
   return "modified"
 }
 
-/** A folder shows conflict if anything under it conflicts, the shared status if all agree, else modified. */
 const summarize = (statuses: ReadonlyArray<ChangedFileStatus>): ChangedFileStatus | null => {
   const [first] = statuses
   if (first === undefined) return null
@@ -142,10 +120,6 @@ const summarize = (statuses: ReadonlyArray<ChangedFileStatus>): ChangedFileStatu
   return first !== "deleted" && statuses.every((status) => status === first) ? first : "modified"
 }
 
-/**
- * The statuses that apply to `path`: its own, those of everything under it, and that of an untracked
- * folder above it, which `git status` reports as a single `dir/` entry.
- */
 const statusOf = (path: string, changed: ReadonlyMap<string, ChangedFileStatus>) => {
   const below = `${path}/`
   const statuses: Array<ChangedFileStatus> = []
@@ -156,7 +130,11 @@ const statusOf = (path: string, changed: ReadonlyMap<string, ChangedFileStatus>)
   return summarize(statuses)
 }
 
-/** The real path `path` names under `root`, refusing `..`, absolute paths and symlinks that lead out of `root`. */
+const isIgnored = (path: string, ignored: ReadonlyArray<string>) =>
+  ignored.some(
+    (ignoredPath) => ignoredPath === path || (ignoredPath.endsWith("/") && `${path}/`.startsWith(ignoredPath)),
+  )
+
 const resolveInside = (root: string, path: string) =>
   Effect.gen(function* () {
     const segments = path === "" ? [] : path.split("/")
@@ -183,7 +161,6 @@ const readEntries = (root: string, path: string, dir: string) =>
     ),
   )
 
-/** The chats root and thread id `root` is the `chatFolder` of, or nulls when it can't be one. */
 const chatFolderParts = (root: string) => {
   const cut = Math.max(root.lastIndexOf("/"), root.lastIndexOf("\\"))
   const parts = { chatsRoot: root.slice(0, cut), threadId: root.slice(cut + 1) }
@@ -212,7 +189,6 @@ const make = Effect.gen(function* () {
     },
   })
 
-  /** The base ref to diff a worktree against, or null for a project root or chat folder. Fails for any other folder. */
   const knownRoot = (root: string) =>
     Effect.gen(function* () {
       const rows = yield* findRoot(root).pipe(Effect.mapError(persistence("files.root")))
@@ -220,102 +196,82 @@ const make = Effect.gen(function* () {
       return rows.find((row) => row.baseRef !== null)?.baseRef ?? null
     })
 
-  /**
-   * Whether git ignores an entry of the folder `path`. `check-ignore` on every entry took 180 ms for a
-   * 5,000-entry folder, so it only asks about the folder itself, and one `ls-files` lists the ignored
-   * entries, stopping at ignored folders. Outside a git repository nothing is ignored.
-   */
-  const ignoredIn = (root: string, path: string) =>
-    Effect.all(
-      [
-        path === ""
-          ? Effect.succeed(false)
-          : git.run(root, ["check-ignore", "--", path], { okExitCodes: [1] }).pipe(
-              Effect.map((output) => output.trim() !== ""),
-              Effect.orElseSucceed(() => false),
-            ),
-        // Fails inside an ignored folder, where the folder check already answers.
-        git
-          .run(root, [
-            "ls-files",
-            "--others",
-            "--ignored",
-            "--exclude-standard",
-            "--directory",
-            "-z",
-            "--",
-            path || ".",
-          ])
-          .pipe(
-            Effect.map((output) => new Set(output.split("\0").map((ignored) => ignored.replace(/\/$/, "")))),
-            Effect.orElseSucceed(() => new Set<string>()),
-          ),
-      ],
-      { concurrency: "unbounded" },
-    ).pipe(
-      Effect.map(
-        ([folderIgnored, ignored]) =>
-          (entryPath: string) =>
-            folderIgnored || ignored.has(entryPath),
-      ),
-    )
+  const prefixes = new Map<string, string>()
 
-  /** What the agent committed on the worktree's branch, relative to `root`, so the tree agrees with the Changes list. */
+  const prefixOf = (root: string) =>
+    Effect.gen(function* () {
+      const cached = prefixes.get(root)
+      if (cached !== undefined) return cached
+      const prefix = (yield* git.run(root, ["rev-parse", "--show-prefix"])).trim()
+      prefixes.set(root, prefix)
+      return prefix
+    })
+
   const committed = (root: string, pathspec: string, baseRef: string | null) =>
     baseRef === null
       ? Effect.succeed([])
-      : git.run(root, ["merge-base", baseRef, "HEAD"]).pipe(
-          Effect.flatMap((mergeBase) =>
-            git.run(root, [
-              "diff",
-              "--name-status",
-              "-z",
-              "--no-renames",
-              "--relative",
-              mergeBase.trim(),
-              "--",
-              pathspec,
-            ]),
-          ),
-          Effect.map(parseNameStatus),
-          // A base ref that no longer exists leaves only the uncommitted changes to show.
-          Effect.orElseSucceed(() => []),
-        )
+      : git
+          .run(root, [
+            "diff",
+            "--name-status",
+            "-z",
+            "--no-renames",
+            "--relative",
+            "--merge-base",
+            baseRef,
+            "--",
+            pathspec,
+          ])
+          .pipe(
+            Effect.map(parseNameStatus),
+            Effect.orElseSucceed(() => []),
+          )
 
-  /** Changed paths under `path`, relative to `root`. Untracked folders keep a trailing `/`. */
-  const changedPaths = (root: string, path: string, baseRef: string | null) =>
+  const gitState = (root: string, path: string, baseRef: string | null) =>
     Effect.gen(function* () {
       const pathspec = path === "" ? "." : path
       const [prefix, porcelain, fromBase] = yield* Effect.all(
         [
-          git.run(root, ["rev-parse", "--show-prefix"]),
-          git.run(root, ["status", "--porcelain", "-z", "--no-renames", "--untracked-files=normal", "--", pathspec]),
+          prefixOf(root),
+          git.run(root, [
+            "status",
+            "--porcelain",
+            "-z",
+            "--no-renames",
+            "--untracked-files=normal",
+            "--ignored=matching",
+            "--",
+            pathspec,
+          ]),
           committed(root, pathspec, baseRef),
         ],
         { concurrency: "unbounded" },
       )
       const changed = new Map(fromBase.map((file) => [file.path, file.status]))
-      // Porcelain paths are relative to the repository, not to `root` when the project is a subfolder of it.
-      const repoPrefix = prefix.trim()
+      const ignored: Array<string> = []
       for (const record of porcelain.split("\0")) {
         const repoPath = record.slice(3)
-        if (record.length < 4 || !repoPath.startsWith(repoPrefix)) continue
-        const status = porcelainStatus(record.slice(0, 2))
-        const relativePath = repoPath.slice(repoPrefix.length)
-        if (status === "conflict" || !changed.has(relativePath)) changed.set(relativePath, status)
+        if (record.length < 4 || !repoPath.startsWith(prefix)) continue
+        const code = record.slice(0, 2)
+        const relativePath = repoPath.slice(prefix.length)
+        const status = porcelainStatus(code)
+        if (code === "!!") ignored.push(relativePath)
+        else if (status === "conflict" || !changed.has(relativePath)) changed.set(relativePath, status)
       }
-      return changed
-    }).pipe(Effect.orElseSucceed(() => new Map<string, ChangedFileStatus>()))
+      return { changed, ignored }
+    }).pipe(Effect.orElseSucceed(() => ({ changed: new Map<string, ChangedFileStatus>(), ignored: [] })))
 
   const list = (root: string, path: string) =>
     Effect.gen(function* () {
       const baseRef = yield* knownRoot(root)
       const entries = yield* readEntries(root, path, yield* resolveInside(root, path))
-      const [isIgnored, changed] = yield* Effect.all([ignoredIn(root, path), changedPaths(root, path, baseRef)], {
-        concurrency: "unbounded",
-      })
+      const { changed, ignored } = yield* gitState(root, path, baseRef)
       return entries
-        .map((entry) => ({ ...entry, ignored: isIgnored(entry.path), gitStatus: statusOf(entry.path, changed) }))
+        .map((entry) => ({
+          ...entry,
+          ignored: isIgnored(entry.path, ignored),
+          gitStatus: statusOf(entry.path, changed),
+        }))
         .toSorted(byKindThenName)
     })
 
@@ -360,7 +316,6 @@ const make = Effect.gen(function* () {
       })
     })
 
-  /** Root -> watched folder path -> close. */
   const watchers = new Map<string, Map<string, () => void>>()
 
   const watchDir = (root: string, path: string, dir: string) =>
@@ -371,7 +326,6 @@ const make = Effect.gen(function* () {
         timer = setTimeout(() => Effect.runFork(events.publish({ type: "fs.changed", root, path })), WATCH_DEBOUNCE_MS)
       }
       const watcher = watchFs(dir, changed)
-      // The folder went away. The renderer re-lists it, gets an error and drops it.
       watcher.on("error", changed)
       return () => {
         clearTimeout(timer)
@@ -386,7 +340,6 @@ const make = Effect.gen(function* () {
 
   const watch = (root: string, paths: ReadonlyArray<string>) =>
     Effect.gen(function* () {
-      // Closing needs no check, so a thread view can let go of a worktree that was just removed.
       if (paths.length === 0) return closeAll(root)
       yield* knownRoot(root)
       const current = watchers.get(root) ?? new Map<string, () => void>()

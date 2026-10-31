@@ -1,5 +1,6 @@
 import { describe, expect, it, test } from "@effect/vitest"
 import { Effect, Layer, Sink, Stream } from "effect"
+import { TestClock } from "effect/testing"
 import { ChildProcessSpawner } from "effect/process"
 import {
   GitHub,
@@ -10,7 +11,9 @@ import {
   toPullRequest,
   toPullRequestDetail,
 } from "./GitHub.ts"
+import type { PushEvent } from "../../shared/contract.ts"
 import { parseGitHubPullRequestUrl } from "../../shared/github.ts"
+import { Events } from "./Events.ts"
 
 const account = (overrides: Partial<{ state: string; active: boolean; login: string }>) => ({
   state: "success",
@@ -119,6 +122,7 @@ describe("toPullRequestDetail", () => {
     headRefName: "feat/pr-tab",
     headRefOid: "abc1234",
     changedFiles: 4,
+    comments: [],
     mergeable: "CONFLICTING",
     statusCheckRollup: [
       {
@@ -156,6 +160,7 @@ describe("toPullRequestDetail", () => {
       headRef: "feat/pr-tab",
       head: "abc1234",
       changedFiles: 4,
+      comments: [],
       checkRuns: [
         { name: "CI / test", status: "failing", url: "https://github.com/hinadev-ai/hinacode/actions/runs/1/job/2" },
         { name: "vercel", status: "pending", url: "https://vercel.com/hinadev-ai/hinacode/abc" },
@@ -191,38 +196,57 @@ describe("parseGitHubPullRequestUrl", () => {
   })
 })
 
-const ghFails = (stderr: string) =>
-  layer.pipe(
-    Layer.provide(
-      Layer.succeed(
-        ChildProcessSpawner.ChildProcessSpawner,
-        ChildProcessSpawner.make(() =>
-          Effect.succeed(
-            ChildProcessSpawner.makeHandle({
-              pid: ChildProcessSpawner.ProcessId(1),
-              exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(1)),
-              isRunning: Effect.succeed(false),
-              kill: () => Effect.void,
-              stdin: Sink.drain,
-              stdout: Stream.empty,
-              stderr: Stream.make(new TextEncoder().encode(stderr)),
-              all: Stream.empty,
-              getInputFd: () => Sink.drain,
-              getOutputFd: () => Stream.empty,
-              unref: Effect.succeed(Effect.void),
-            }),
-          ),
-        ),
-      ),
+interface GhReply {
+  readonly stdout?: string
+  readonly stderr?: string
+  readonly exitCode?: number
+}
+
+const fakeGh = (reply: (args: ReadonlyArray<string>) => GhReply) => {
+  const runs: Array<ReadonlyArray<string>> = []
+  const pushed: Array<PushEvent> = []
+  const events = Layer.succeed(Events, Events.of({ publish: (event) => Effect.sync(() => void pushed.push(event)) }))
+  const spawner = ChildProcessSpawner.make((command) => {
+    const args = command._tag === "StandardCommand" ? command.args : []
+    runs.push(args)
+    const { stdout = "", stderr = "", exitCode = 0 } = reply(args)
+    return Effect.succeed(
+      ChildProcessSpawner.makeHandle({
+        pid: ChildProcessSpawner.ProcessId(1),
+        exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(exitCode)),
+        isRunning: Effect.succeed(false),
+        kill: () => Effect.void,
+        stdin: Sink.drain,
+        stdout: Stream.make(new TextEncoder().encode(stdout)),
+        stderr: Stream.make(new TextEncoder().encode(stderr)),
+        all: Stream.empty,
+        getInputFd: () => Sink.drain,
+        getOutputFd: () => Stream.empty,
+        unref: Effect.succeed(Effect.void),
+      }),
+    )
+  })
+  return {
+    runs,
+    pushed,
+    layer: layer.pipe(
+      Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner)),
+      Layer.provide(events),
     ),
-  )
+  }
+}
+
+const ghFails = (stderr: string) => fakeGh(() => ({ stderr, exitCode: 1 })).layer
 
 describe("pull request actions", () => {
   const ghMustNotRun = Layer.succeed(
     ChildProcessSpawner.ChildProcessSpawner,
     ChildProcessSpawner.make(() => Effect.die("gh must not run")),
   )
-  const github = layer.pipe(Layer.provide(ghMustNotRun))
+  const github = layer.pipe(
+    Layer.provide(ghMustNotRun),
+    Layer.provide(Layer.succeed(Events, Events.of({ publish: () => Effect.void }))),
+  )
 
   it.effect("reject a URL that is not a pull request before running gh", () =>
     Effect.gen(function* () {
@@ -358,4 +382,388 @@ describe("pullRequestFiles", () => {
       expect(yield* pullRequestFiles("")).toStrictEqual([])
     }),
   )
+})
+
+const PR_URL = "https://github.com/o/r/pull/7"
+
+const graphqlPullRequest = (title: string, state = "OPEN") => ({
+  data: {
+    repository: {
+      pullRequest: {
+        url: PR_URL,
+        number: 7,
+        title,
+        state,
+        isDraft: false,
+        reviewDecision: null,
+        mergeable: "MERGEABLE",
+        author: { login: "octocat" },
+        headRefName: "feat/x",
+        baseRefName: "main",
+        headRefOid: "abc",
+        additions: 1,
+        deletions: 0,
+        changedFiles: 1,
+        body: "",
+        comments: {
+          nodes: [
+            {
+              id: "IC_2",
+              body: "Ready for another look.",
+              createdAt: "2026-10-02T00:00:00Z",
+              url: "https://github.com/o/r/pull/7#issuecomment-2",
+              viewerDidAuthor: true,
+              author: { __typename: "User", login: "octocat" },
+            },
+          ],
+        },
+        reviews: {
+          nodes: [
+            {
+              id: "PRR_1",
+              body: "Two things before this lands.",
+              createdAt: "2026-10-01T00:00:00Z",
+              url: "https://github.com/o/r/pull/7#pullrequestreview-1",
+              viewerDidAuthor: false,
+              author: { __typename: "Bot", login: "copilot-pull-request-reviewer" },
+            },
+            {
+              id: "PRR_3",
+              body: "",
+              createdAt: "2026-10-03T00:00:00Z",
+              url: "https://github.com/o/r/pull/7#pullrequestreview-3",
+              viewerDidAuthor: false,
+              author: { __typename: "User", login: "reviewer" },
+            },
+          ],
+        },
+        reviewThreads: {
+          nodes: [
+            {
+              isResolved: false,
+              comments: {
+                nodes: [
+                  {
+                    id: "PRRC_1",
+                    body: "This leaks the handle.",
+                    createdAt: "2026-10-01T00:00:01Z",
+                    url: "https://github.com/o/r/pull/7#discussion_r1",
+                    viewerDidAuthor: false,
+                    author: null,
+                    path: "src/a.ts",
+                    line: 12,
+                  },
+                ],
+              },
+            },
+            {
+              isResolved: true,
+              comments: {
+                nodes: [
+                  {
+                    id: "PRRC_2",
+                    body: "Typo.",
+                    createdAt: "2026-10-01T00:00:02Z",
+                    url: "https://github.com/o/r/pull/7#discussion_r2",
+                    viewerDidAuthor: false,
+                    author: { __typename: "User", login: "reviewer" },
+                    path: "src/b.ts",
+                    line: 3,
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        commits: {
+          nodes: [
+            {
+              commit: {
+                statusCheckRollup: {
+                  contexts: {
+                    nodes: [
+                      {
+                        __typename: "CheckRun",
+                        name: "e2e (macos)",
+                        status: "COMPLETED",
+                        conclusion: "FAILURE",
+                        detailsUrl: "https://github.com/o/r/actions/runs/1/job/2",
+                        checkSuite: { workflowRun: { workflow: { name: "CI" } } },
+                      },
+                      {
+                        __typename: "CheckRun",
+                        name: "Workers Builds: site",
+                        status: "IN_PROGRESS",
+                        conclusion: null,
+                        detailsUrl: "https://dash.cloudflare.com/builds/3",
+                        checkSuite: { workflowRun: null },
+                      },
+                      {
+                        __typename: "StatusContext",
+                        context: "React Doctor",
+                        state: "SUCCESS",
+                        targetUrl: "https://github.com/o/r/actions/runs/4",
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          ],
+        },
+      },
+    },
+  },
+})
+
+interface Budget {
+  readonly remaining?: number
+  readonly limit?: number
+  readonly reset?: number
+  readonly status?: string
+  readonly retryAfter?: number
+}
+
+const apiReply = (
+  body: unknown,
+  { remaining = 4000, limit = 5000, reset = 3600, status = "200 OK", retryAfter }: Budget = {},
+): GhReply => {
+  const json = JSON.stringify(body)
+  const headers = [
+    `X-Ratelimit-Limit: ${limit}`,
+    `X-Ratelimit-Remaining: ${remaining}`,
+    `X-Ratelimit-Reset: ${reset}`,
+    "X-Ratelimit-Resource: graphql",
+    `X-Ratelimit-Used: ${limit - remaining}`,
+    ...(retryAfter === undefined ? [] : [`Retry-After: ${retryAfter}`]),
+  ]
+  const failed = !status.startsWith("200") || json.includes('"errors"')
+  return { stdout: `HTTP/2.0 ${status}\n${headers.join("\r\n")}\r\n\r\n${json}`, exitCode: failed ? 1 : 0 }
+}
+
+const primaryLimitHit = (reset: number) =>
+  apiReply(
+    { errors: [{ type: "RATE_LIMITED", message: "API rate limit already exceeded for user ID 1." }] },
+    { remaining: 0, reset },
+  )
+
+const secondaryLimitHit = (retryAfter?: number) =>
+  apiReply(
+    { message: "You have exceeded a secondary rate limit. Please wait a few minutes before you try again." },
+    { remaining: 3000, status: "403 Forbidden", retryAfter },
+  )
+
+const graphqlUsedUp = (reset: number) =>
+  JSON.stringify({ resources: { core: { remaining: 4000, reset }, graphql: { remaining: 0, reset } } })
+
+const isRead = (args: ReadonlyArray<string>) => args[0] === "api" && args[1] === "graphql"
+const isRateLimitProbe = (args: ReadonlyArray<string>) => args[0] === "api" && args[1] === "rate_limit"
+
+describe("pull request reads", () => {
+  it.effect("reads a pull request and its checks from GitHub's GraphQL answer", () => {
+    const gh = fakeGh(() => apiReply(graphqlPullRequest("Checks")))
+    return Effect.gen(function* () {
+      const detail = yield* (yield* GitHub).pullRequestDetail(PR_URL)
+      expect(detail).toMatchObject({
+        title: "Checks",
+        status: "open",
+        review: null,
+        checks: "failing",
+        author: "octocat",
+      })
+      expect(detail.checkRuns).toStrictEqual([
+        { name: "CI / e2e (macos)", status: "failing", url: "https://github.com/o/r/actions/runs/1/job/2" },
+        { name: "Workers Builds: site", status: "pending", url: "https://dash.cloudflare.com/builds/3" },
+        { name: "React Doctor", status: "passing", url: "https://github.com/o/r/actions/runs/4" },
+      ])
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("reads conversation, review and unresolved inline comments, oldest first, with who wrote them", () => {
+    const gh = fakeGh(() => apiReply(graphqlPullRequest("Comments")))
+    return Effect.gen(function* () {
+      const { comments } = yield* (yield* GitHub).pullRequestDetail(PR_URL)
+      expect(
+        comments.map(({ id, author, authorKind, location }) => ({ id, author, authorKind, location })),
+      ).toStrictEqual([
+        { id: "PRR_1", author: "copilot-pull-request-reviewer", authorKind: "bot", location: null },
+        { id: "PRRC_1", author: "ghost", authorKind: "human", location: { path: "src/a.ts", line: 12 } },
+        { id: "IC_2", author: "octocat", authorKind: "you", location: null },
+      ])
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("a comment posted through HinaCode shows on the next read", () => {
+    const gh = fakeGh(() => apiReply(graphqlPullRequest("Commenting")))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* github.pullRequestDetail(PR_URL)
+      yield* github.comment(PR_URL, "--looks good")
+      expect(gh.runs.at(-1)).toStrictEqual(["pr", "comment", PR_URL, "--body", "--looks good"])
+      yield* github.pullRequestDetail(PR_URL)
+      expect(gh.runs.filter(isRead)).toHaveLength(2)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("everyone asking about the same pull request shares one gh run while it is fresh", () => {
+    const gh = fakeGh(() => apiReply(graphqlPullRequest("Shared")))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* Effect.all([github.pullRequest(PR_URL), github.pullRequest(PR_URL), github.pullRequestDetail(PR_URL)], {
+        concurrency: "unbounded",
+      })
+      yield* TestClock.adjust("29 seconds")
+      yield* github.pullRequest(PR_URL)
+      expect(gh.runs.filter(isRead)).toHaveLength(1)
+
+      yield* TestClock.adjust("1 second")
+      yield* github.pullRequest(PR_URL)
+      expect(gh.runs.filter(isRead)).toHaveLength(2)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("a merge through HinaCode shows on the next read", () => {
+    let state = "OPEN"
+    const gh = fakeGh((args) => {
+      if (args[1] === "merge") state = "MERGED"
+      return apiReply(graphqlPullRequest("Merging", state))
+    })
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* github.pullRequest(PR_URL)
+      yield* github.merge(PR_URL, "squash")
+      expect((yield* github.pullRequest(PR_URL)).status).toBe("merged")
+    }).pipe(Effect.provide(gh.layer))
+  })
+})
+
+describe("rate limits", () => {
+  it.effect("does not run gh again until a used-up rate limit resets", () => {
+    const gh = fakeGh(() => primaryLimitHit(3600))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      expect((yield* Effect.flip(github.pullRequest(PR_URL)))._tag).toBe("GitHubRateLimitedError")
+      yield* TestClock.adjust("59 minutes")
+      expect((yield* Effect.flip(github.pullRequestDetail(PR_URL)))._tag).toBe("GitHubRateLimitedError")
+      expect((yield* Effect.flip(github.merge(PR_URL, "squash")))._tag).toBe("GitHubRateLimitedError")
+      expect(gh.runs).toHaveLength(1)
+
+      yield* TestClock.adjust("1 minute")
+      yield* Effect.flip(github.pullRequest(PR_URL))
+      expect(gh.runs).toHaveLength(2)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("stops before GitHub refuses once a response says nothing is left", () => {
+    const gh = fakeGh(() => apiReply(graphqlPullRequest("Last one"), { remaining: 0, reset: 600 }))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* github.pullRequest(PR_URL)
+      yield* TestClock.adjust("9 minutes")
+      expect((yield* github.pullRequest(PR_URL)).title).toBe("Last one")
+      expect(gh.runs).toHaveLength(1)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("waits as long as retry-after asks after a secondary rate limit", () => {
+    const gh = fakeGh(() => secondaryLimitHit(120))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* Effect.flip(github.pullRequest(PR_URL))
+      yield* TestClock.adjust("119 seconds")
+      yield* Effect.flip(github.pullRequest(PR_URL))
+      expect(gh.runs.filter(isRead)).toHaveLength(1)
+
+      yield* TestClock.adjust("1 second")
+      yield* Effect.flip(github.pullRequest(PR_URL))
+      expect(gh.runs.filter(isRead)).toHaveLength(2)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("waits a minute after a secondary rate limit without retry-after, then twice as long", () => {
+    const gh = fakeGh(() => secondaryLimitHit())
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* Effect.flip(github.pullRequest(PR_URL))
+      yield* TestClock.adjust("59 seconds")
+      yield* Effect.flip(github.pullRequest(PR_URL))
+      expect(gh.runs.filter(isRead)).toHaveLength(1)
+
+      yield* TestClock.adjust("1 second")
+      yield* Effect.flip(github.pullRequest(PR_URL))
+      expect(gh.runs.filter(isRead)).toHaveLength(2)
+
+      yield* TestClock.adjust("119 seconds")
+      yield* Effect.flip(github.pullRequest(PR_URL))
+      expect(gh.runs.filter(isRead)).toHaveLength(2)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("a rate limit another gh command hits pauses pull request reads too", () => {
+    const gh = fakeGh((args) => {
+      if (isRateLimitProbe(args)) return { stdout: graphqlUsedUp(3600) }
+      if (args[1] === "merge")
+        return { stderr: "GraphQL: API rate limit already exceeded for user ID 1.\n", exitCode: 1 }
+      return apiReply(graphqlPullRequest("Unread"))
+    })
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      expect((yield* Effect.flip(github.merge(PR_URL, "squash")))._tag).toBe("GitHubRateLimitedError")
+      expect((yield* Effect.flip(github.pullRequest(PR_URL)))._tag).toBe("GitHubRateLimitedError")
+      expect(gh.runs.filter(isRead)).toHaveLength(0)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("keeps answering with the last read while GitHub is rate limited", () => {
+    let limited = false
+    const gh = fakeGh(() => (limited ? primaryLimitHit(3600) : apiReply(graphqlPullRequest("Before the limit"))))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* github.pullRequest(PR_URL)
+      limited = true
+      yield* TestClock.adjust("5 minutes")
+      expect((yield* github.pullRequest(PR_URL)).title).toBe("Before the limit")
+      expect((yield* github.pullRequestDetail(PR_URL)).title).toBe("Before the limit")
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("refreshes pull requests every 5 minutes once less than a fifth of the budget is left", () => {
+    const gh = fakeGh(() => apiReply(graphqlPullRequest("Low"), { remaining: 999 }))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* github.pullRequest(PR_URL)
+      yield* TestClock.adjust("4 minutes")
+      yield* github.pullRequest(PR_URL)
+      expect(gh.runs.filter(isRead)).toHaveLength(1)
+
+      yield* TestClock.adjust("1 minute")
+      yield* github.pullRequest(PR_URL)
+      expect(gh.runs.filter(isRead)).toHaveLength(2)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("tells the windows once when the budget runs low and once when it runs out", () => {
+    let remaining = 4000
+    const gh = fakeGh(() => apiReply(graphqlPullRequest("Budget"), { remaining, reset: 3600 }))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      const readFresh = Effect.andThen(TestClock.adjust("5 minutes"), github.pullRequest(PR_URL))
+      for (const left of [4000, 999, 600, 0]) {
+        remaining = left
+        yield* readFresh
+      }
+      expect(gh.pushed).toStrictEqual([
+        {
+          type: "github.rateLimit",
+          level: "low",
+          rateLimit: { resource: "graphql", limit: 5000, remaining: 999, used: 4001, resetsAt: 3_600_000 },
+        },
+        {
+          type: "github.rateLimit",
+          level: "exhausted",
+          rateLimit: { resource: "graphql", limit: 5000, remaining: 0, used: 5000, resetsAt: 3_600_000 },
+        },
+      ])
+    }).pipe(Effect.provide(gh.layer))
+  })
 })

@@ -11,7 +11,8 @@ This directory is the maintained source for verifying what a hinacode user can d
 - Variables from SKILL.md are set: `S`, `PORT`, `DATA`, `SHOTS`, `AB`.
 - `$S/launch.sh $PORT $DATA` printed `hinacode ready` and `$S/doctor.sh $PORT $DATA` exits 0.
 - `$S/seed-repo.sh $DATA/repo` created the scratch repo. Feature files call the project on it `demo` unless they say otherwise.
-- `$AB connect $PORT` succeeded and the window shows the hinacode sidebar.
+- `$AB connect $PORT` and `$AB set viewport 1600 1000` succeeded, the `Update available` toasts are dismissed, and the window shows the hinacode sidebar.
+- New threads start in `Full access`, which never asks. Recipes that click `Allow` set `Access` first.
 - Never drive an instance that this run did not launch.
 
 ## Driving conventions
@@ -35,13 +36,14 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 
 ## Features
 
-- [Projects and threads](./projects-and-threads.md): fully automated except pointer-drag reorder and the native folder picker.
+- [Projects and threads](./projects-and-threads.md): automated except pointer-drag reorder, project edit, clone, new chat and the native folder picker.
 - [Chat with Claude Code](./chat-claude.md): send, streaming, tool rows, approvals, interrupt, restore and resume after relaunch. Real turns only.
 - [Chat with Codex](./chat-codex.md): the same on Codex, including MCP elicitation approvals for hinacode tools. Real turns only.
-- [Chat with Muse Code](./chat-muse.md): the same on Muse Code, with staged command approvals. Real turns only.
-- [Worktrees](./worktrees.md): setup services and panels automated; composer creation and branch naming need a real first turn, and the `PR <state>` badge needs a GitHub remote.
-- [Steering and attachments](./steering-and-attachments.md): steering a running turn on both agents, paste, drop and remove attachments. Real turns only.
-- [MCP tools and pull request links](./mcp-and-pull-requests.md): contract and panel automated; `link_pull_request` from inside a turn, `gh` status, creating a pull request, the `gh` sign-in states, `request_secret` cards and `create_thread` during actual agent turns by hand; the thread controls are automated.
-- [Settings](./settings.md): automated except the Codex default model and the Slack token, which share code with the automated cases.
-- [Ports](./ports.md): automated except a listener spawned by an agent.
-- [Automations](./automations.md): creation and rejects automated; signed deliveries, dedup, run now, worktree runs, pollers and the listener port by hand, since each starts a thread.
+- [Chat with Muse Code](./chat-muse.md): the same on Muse Code, with network approvals under `Ask me` and usage over rpc. Real turns only.
+- [Worktrees](./worktrees.md): setup services and panels automated; composer creation works under the usage-limit mock, branch naming needs a real first turn, and PR checkouts and the `PR <state>` badge need a GitHub remote.
+- [Steering and attachments](./steering-and-attachments.md): paste and the queue restore automated; steering and queueing on both agents need real turns, drop and remove need none.
+- [MCP tools and pull request links](./mcp-and-pull-requests.md): contract and panel automated; watching PRs, `link_pull_request` from inside a turn, `gh` status, the `gh` sign-in states, `request_secret` cards and `create_thread` during actual agent turns by hand; the thread controls are automated.
+- [Settings](./settings.md): twelve pages; automated except the Codex default model and the Slack token, which share code with the automated cases.
+- [Ports](./ports.md): automated except listeners spawned from the thread's terminal or its Claude Code CLI.
+- [Automations](./automations.md): creation and rejects automated; signed deliveries, dedup, run now, worktree runs, pollers, the listener port and delete by hand.
+- [Remote mode](./remote.md): integration tests only; the remote listener and pairing, a paired `hinacode serve` cloud, its projects in the sidebar and the settings picker by hand, with no agent turn.

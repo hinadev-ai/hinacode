@@ -1,16 +1,11 @@
 import type { Subagent, SubagentStatus } from "../../../shared/agent.ts"
 import type { Item } from "./protocol.ts"
 
-/** Sub-agents of one hinacode thread, keyed by their `subagent` item's id. */
 export type Subagents = Map<string, Subagent>
 
 const firstLine = (text: string) => text.trim().split("\n", 1)[0] ?? ""
 
-/**
- * A `subagent` item stays `inProgress` after the child finishes, because it can still take a follow-up.
- * `resultReady` is the end of the work the Agents tab shows, and a cancelled result means it was stopped.
- * A terminal item status, when one ever arrives, outranks both.
- */
+// FIXME: Muse keeps a `subagent` item inProgress after the child finishes
 const statusOf = (item: Item): SubagentStatus => {
   switch (item.status) {
     case "completed":
@@ -27,11 +22,7 @@ const statusOf = (item: Item): SubagentStatus => {
   return item.result.errorKind === "cancelled" ? "stopped" : "failed"
 }
 
-/**
- * Applies one `subagent` item of the parent session. Returns the changed sub-agent, or undefined when
- * nothing it shows changed. The child's own session sends no frames on this connection, so the row has
- * its objective, tokens and result, but no tool calls.
- */
+// FIXME: the child's own session sends no frames on this connection, so a row has no tool calls
 export function applySubagentItem(subagents: Subagents, item: Item, now: string): Subagent | undefined {
   const current = subagents.get(item.itemId)
   const status = statusOf(item)

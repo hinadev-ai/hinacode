@@ -5,7 +5,6 @@ import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
 const rowClassName =
   "mb-2 flex min-h-8 w-full items-center gap-1.5 border-b border-border text-xs text-muted-foreground tabular-nums"
 
-/** Elapsed time of a finished response. Given `onExpandedChange`, it also shows and hides the response's activity. */
 export function WorkedFor({
   durationMs,
   expanded = false,
@@ -23,10 +22,43 @@ export function WorkedFor({
       </div>
     )
   }
+  return <ActivityToggle slot="worked-for" label={label} expanded={expanded} onExpandedChange={onExpandedChange} />
+}
+
+export function EarlierActivity({
+  count,
+  expanded,
+  onExpandedChange,
+}: {
+  count: number
+  expanded: boolean
+  onExpandedChange: (expanded: boolean) => void
+}) {
+  return (
+    <ActivityToggle
+      slot="earlier-activity"
+      label={m.message_earlier_activity({ count })}
+      expanded={expanded}
+      onExpandedChange={onExpandedChange}
+    />
+  )
+}
+
+function ActivityToggle({
+  slot,
+  label,
+  expanded,
+  onExpandedChange,
+}: {
+  slot: string
+  label: string
+  expanded: boolean
+  onExpandedChange: (expanded: boolean) => void
+}) {
   return (
     <button
       type="button"
-      data-slot="worked-for"
+      data-slot={slot}
       aria-expanded={expanded}
       title={expanded ? m.message_hide_activity() : m.message_show_activity()}
       onClick={() => onExpandedChange(!expanded)}

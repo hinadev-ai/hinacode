@@ -51,14 +51,14 @@ RemoteFeature = "heartbeat" | "call-keys" | "terminal-attach"
 
 Close codes, in `src/main/remote/access.ts`:
 
-| Code | Meaning                                            | Client action    |
-| ---- | -------------------------------------------------- | ---------------- |
-| 4001 | wrong token                                        | stop, pair again |
-| 4002 | token rotated                                      | stop, pair again |
-| 4003 | listener stopped                                   | retry            |
-| 4004 | no `auth` within the deadline (new; was 4001)      | retry            |
-| 4005 | malformed frame (new; was 4001)                    | retry            |
-| 4006 | client too slow, `bufferedAmount` over 8 MiB (new) | retry            |
+| Code | Meaning                                              | Client action    |
+| ---- | ---------------------------------------------------- | ---------------- |
+| 4001 | wrong token                                          | stop, pair again |
+| 4002 | token rotated                                        | stop, pair again |
+| 4003 | listener stopped                                     | retry            |
+| 4004 | no `auth` within the deadline (new; was 4001)        | retry            |
+| 4005 | malformed frame (new; was 4001)                      | retry            |
+| 4006 | client too slow (removed, old servers still send it) | retry            |
 
 ### Which calls are safe to repeat
 
@@ -71,7 +71,7 @@ Close codes, in `src/main/remote/access.ts`:
 
 - **Call keys.** `RemoteServer` keeps `keyed: Map<key, { result: Promise<RpcEnvelope>, settledAt: number | null }>`. A call whose key is in flight waits for the same promise. A settled key answers its stored envelope without running anything. Entries expire 5 minutes after settling, and the map holds at most 2,000 entries, evicting the oldest settled one. When every entry is still running, a new keyed call receives `RemoteBusy` without dispatching; retries of existing keys still join their original call. The cache lives in memory: after a restart a retried mutation runs again, which is acceptable because a restart also ended the original.
 - **Heartbeat.** It answers `ping` with `pong`. Every 20 s it sends a WebSocket protocol ping to each authenticated socket and terminates one that has not answered the previous ping. React Native, browsers and `ws` answer protocol pings on their own. The schedule is an Effect `Schedule`, so tests drive it with `TestClock`.
-- **Slow consumers.** `send` closes the socket with 4006 when `bufferedAmount` is over 8 MiB, instead of letting a dead phone buffer terminal output until TCP gives up.
+- **Slow consumers.** The heartbeat catches them. Its protocol ping queues behind every frame still buffered, so a client that cannot drain within a beat misses its pong and is terminated. A check on `bufferedAmount` in `send` used to close with 4006 at 8 MiB, but `ws` counts a frame waiting for deflate at its full size, so one large transcript closed a healthy link.
 - `maxPayload` rises from 1 MiB to 16 MiB, so a large `fs.write` routed to a cloud does not drop the link.
 
 ### Clients (phone `apps/mobile/src/lib/connection.ts`, desktop `src/main/services/Environments.ts`)

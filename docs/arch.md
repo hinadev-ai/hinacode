@@ -65,22 +65,28 @@ flowchart LR
   mainHandle -- "channel: event" --> rendererCall
 ```
 
-| Channel | Direction       | Carries                                                                                                                                                                                                                                                                                                                                                                                                    |
-| ------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rpc`   | renderer → main | `app.focus`, `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `questions.respond`, `secrets.respond`, `settings.*`, `notifications.*`, `secrets.*`, `ports.*`, `terminal.*`, `automations.*`, `models.list`, `agents.account`, `accounts.*`, `limits.list`, `commands.list`, `files.list`, `git.log`, `git.show`, `fs.list`, `fs.read`, `fs.write`, `fs.watch`, `attachments.stage`, dialogs |
-| `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `pullRequest.guide`, `thread.subagents`, `automation.run`, `fs.changed`, `terminal.data` (pty output batched per 16 ms), `terminal.exited`                                                                                                |
+| Channel | Direction       | Carries                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rpc`   | renderer → main | `app.focus`, `app.setBadgeCount`, `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `questions.respond`, `secrets.respond`, `settings.*`, `notifications.*`, `secrets.*`, `ports.*`, `terminal.*`, `automations.*`, `models.list`, `agents.account`, `accounts.*`, `limits.list`, `commands.list`, `files.list`, `git.log`, `git.show`, `fs.list`, `fs.read`, `fs.write`, `fs.watch`, `attachments.stage`, dialogs |
+| `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `pullRequest.guide`, `thread.subagents`, `automation.run`, `fs.changed`, `terminal.data` (pty output batched per 16 ms), `terminal.exited`                                                                                                                     |
 
 Only the top-level app frame may send `rpc` (`isTrustedSender` in `security.ts`).
 
 Remote mode (`src/main/remote/`) is a second transport for the same contract. A phone opens a WebSocket on `settings.remote`, answers the server's `challenge` with `{ type: "auth", nonce, proof }`, a proof of the token rather than the token (`shared/proof.ts`, [ADR 0022](adr/0022-clients-prove-the-pairing-token.md)), and then `{ type: "call", id, method, payload }` frames go through the same `dispatch` (`rpc.ts`) as the Electron channel with no `DesktopCalls`, while every push is forwarded as `{ type: "event", event }`. The token lives in `Secrets`; `desktopOnlyMethods` in the contract lists what the phone cannot call. Thread create, update and delete push `thread.updated` and `thread.removed`, so the desktop window and a phone stay in step. See `features/2026-10-12-remote-mode.md`. `ready.features` negotiates application heartbeats and mutation call keys. The listener retains keyed mutation results in memory across sockets, while the desktop keeps pending cloud calls through reconnects and retries reads for a fresh snapshot. Calls expire after a total minute offline. The phone keeps its transcript and pending actions during reconnects, then atomically replaces loaded snapshots after `ready`. It reads transcripts with `compact`, which leaves out tool outputs and file diffs it never shows (see `features/2026-10-18-mobile-workbench.md`). A pairing URL carries every reachable host in order; the phone rotates after failed attempts and starts reconnects at its last successful host. Desktop environments probe every host at once, keep the earliest that answers, and wait at most a second for earlier hosts once a later one answered. See `features/2026-10-16-resilient-remote.md`.
 
-`hinacode serve` (`npx hinacode serve`) runs the same layer graph as a headless cloud in plain Node, with no Electron (`src/main/daemon.ts`, built to `out/main/daemon.js` and published to npm). `app.ts` builds the graph for both entries; the daemon passes no keyring, an npm `Updates` (`cloudUpdater.ts`), no window sink, and forces the remote listener on at boot (`serve.ts`), then prints the pairing URLs to stdout. It takes its own `HINACODE_USER_DATA` (default `~/.hinacode-cloud`) and therefore its own database, projects and threads. Main-process code that the daemon loads must not import `electron`; the desktop-only pieces live in `index.ts`, `ipc.ts`, `updater.ts` and `notificationPermission.ts`. See `features/2026-10-14-remote-clouds.md` and [ADR 0016](adr/0016-cloud-daemon-and-dumb-relay.md).
+`hinacode serve` (`npx hinacode serve`) runs the same layer graph as a headless cloud in plain Node, with no Electron. It has its own build (`vite.server.config.ts`, entry `src/main/daemon.ts`, output `out/server/daemon.js`), separate from the desktop's electron-vite build. That build bundles every JavaScript dependency except the externals in `scripts/server-package.ts` (`node-pty` and `playwright-core`, which load files from their own packages at runtime). `pnpm stage:server` writes a publishable package into `dist-npm` whose manifest lists only those externals, and `pnpm verify:server` installs it away from the checkout and boots it. The repository root is private and never published. `app.ts` builds the graph for both entries; the daemon passes no keyring, an npm `Updates` (`cloudUpdater.ts`), no window sink, and forces the remote listener on at boot (`serve.ts`), then prints the pairing URLs to stdout. It takes its own `HINACODE_USER_DATA` (default `~/.hinacode-cloud`) and therefore its own database, projects and threads. Main-process code that the daemon loads must not import `electron`; the desktop-only pieces live in `index.ts`, `ipc.ts`, `updater.ts` and `notificationPermission.ts`. See `features/2026-10-14-remote-clouds.md`, `features/2026-10-28-server-npm-package.md` and [ADR 0016](adr/0016-cloud-daemon-and-dumb-relay.md).
 
 ### Environments: routing a window call
 
 A desktop pairs with clouds (`environments.add`) and keeps one live WebSocket to each, speaking the phone's protocol (`services/Environments.ts`). The window has no active environment. `registerIpc` routes every call through `route` in `environments/route.ts` by `routes[method]` in `src/shared/routes.ts`; the remote listener keeps plain local `dispatch`. See `features/2026-10-15-desktop-environments.md`.
 
 The phone does the same with no local machine: it pairs with each server directly, keeps one `Transport` per server, and `call` in `apps/mobile/src/lib/connection.ts` routes by the same table and owner index. An id no server has claimed waits until every server has listed its threads, and a named call without a server goes to the first connected one. See `features/2026-10-24-mobile-servers.md`.
+
+Phones negotiate `watch` to limit pushes. The focused chat tab watches its transcript; other cached histories
+refresh when reopened. Backgrounding closes the sockets and stops client heartbeats, direct-address probes, and
+reconnect attempts. Foregrounding opens the connections and refreshes snapshots through `ready`. Socket-delivered
+background notifications require a future platform push path. See
+`features/2026-10-29-mobile-battery.md`.
 
 ```mermaid
 flowchart LR
@@ -101,15 +107,17 @@ flowchart LR
 
 Any machine with remote control on can also run a relay (`src/main/remote/relay.ts`): a Cloudflare named tunnel that the relay service creates in HinaCode's account, served by a `cloudflared` child that points at the remote listener. Its hostname travels as `relay` in the pairing URL and the `ready` frame, so clients paired before it existed learn it. Both clients dial with `dialPlan`: every direct address at once and the relay half a second later, and the first socket to open wins. Over the relay they check the direct addresses every minute and move over when one answers. The protocol over the tunnel is the same one. See `features/2026-10-24-relay.md` and [ADR 0020](adr/0020-cloudflare-tunnel-as-the-relay.md).
 
-The visible thread owns its renderer history. Leaving it unloads the transcript even while its agent runs; the main process owns ongoing turns and pending approvals. Reopening reads a fresh sequence-numbered snapshot. Each load has an identity so a response from an earlier visit cannot replace a newer snapshot.
+The renderer keeps the histories of the 8 most recently viewed threads, so reopening one renders from memory instead of fetching a snapshot. A cached history keeps folding pushes while its thread is off screen; the main process owns ongoing turns and pending approvals. That only stays correct because every change main makes to a transcript or its requests goes out as a push: `finish` publishes the message it closes and withdraws the requests it drops, and deleting a project sends `thread.removed` for each thread. The history viewed longest ago is evicted past the limit, a removed thread is evicted at once, and a cloud reconnect refetches the cached histories of that cloud. Each load has an identity so a response from an earlier load cannot replace a newer snapshot.
 
-Ready renderer histories publish adjacent text or reasoning deltas in fixed 100 ms groups. A different event flushes the pending group and applies its own change in one store update. Loading histories retain raw sequence-numbered pushes for snapshot reconciliation. Unloading cancels the pending timer and lets the next snapshot restore persisted content. The main process still publishes and folds every event individually; its existing batched persistence is unchanged.
+Ready renderer histories publish adjacent text or reasoning deltas in fixed 100 ms groups. A different event flushes the pending group and applies its own change in one store update. Loading histories retain raw sequence-numbered pushes for snapshot reconciliation. Evicting cancels the pending timer and lets the next snapshot restore persisted content. Before that, the main process joins adjacent deltas of one kind into a single `thread.event` (`coalesceDeltas.ts`), described under [A turn, end to end](#a-turn-end-to-end).
 
-The native window starts hidden. The renderer loads settings, applies appearance, and commits the first React view before calling `app.ready`. Main shows the requesting window after the existing sender and schema checks. System appearance is a renderer media-query subscription shared by the document and diffs; the selected theme remains in SQLite.
+The native window starts hidden. The renderer loads settings, applies appearance, and commits the first React view before calling `app.ready`. Main shows the requesting window after the existing sender and schema checks. System appearance is a renderer media-query subscription shared by the document and diffs; the selected theme remains in `client-settings.json`.
 
 ## Main-process layers
 
-The main process is one Effect layer graph, built by `src/main/app.ts` before the window can call in. The desktop (`index.ts`) and the cloud daemon (`daemon.ts`) build the same graph.
+The main process is one Effect layer graph, built by `src/main/app.ts`. The desktop (`index.ts`) and the cloud daemon (`daemon.ts`) build the same graph. The desktop opens its window while the graph builds, and `rpc` calls wait for it. The build waits for the login shell's PATH (`shellPath.ts`); the desktop starts from the PATH it saved in `<dataDir>/shell-path` on the last launch and refreshes it from `$SHELL -ilc` in the background, so only the first launch waits for the shell.
+
+Both receive a data directory as `userData`: `HINACODE_USER_DATA`, else `~/.hinacode` (`~/.hinacode-dev` unpackaged) for the desktop and `~/.hinacode-cloud` for the daemon. The database, `chats/`, `attachments/`, `accounts/`, `tiny-vm/` and `cloudflared/` sit at its top. The desktop points Electron's `userData` at `<dataDir>/chromium`, so Chromium's profile and its `SingletonLock` stay in there. On the first launch without the override, `dataDir.ts` moves the old `<appData>/kkcode` (or `kkcode-dev`) profile into this layout and rewrites the paths the database stored under it.
 
 ```mermaid
 flowchart BT
@@ -225,6 +233,9 @@ sequenceDiagram
   AR->>P: runTurn(cwd, model, resumeSessionId, mcpServer)
   loop each AgentEvent
     P-->>AR: event
+    opt text_delta or reasoning_delta
+      AR->>AR: join into the pending delta, publish it within 50 ms
+    end
     AR-->>R: push thread.event (seq)
     AR->>AR: foldTranscript in memory
     AR->>DB: persist dirty messages every 500 ms, or 10x the last persist time if longer
@@ -270,6 +281,7 @@ sequenceDiagram
 ```
 
 - Each thread has a `Semaphore` (`exclusive`). Everything that changes a transcript runs under it, so a transcript read never sees a change before the push that announced it.
+- Adjacent `text_delta` or `reasoning_delta` events are joined into one, which is published and folded 50 ms after the first, or as soon as any other event arrives, a steer closes the reply, or the turn finishes. Providers emit a delta every few tokens, often dozens a second; joining them brings a streaming thread down to about twenty pushes, schema encodes and IPC sends a second, and the 50 ms window stays under the renderer's own 100 ms group. Unpublished text is not folded either, so a `threads.transcript` snapshot never holds text whose push has not gone out.
 - `subagent_updated` skips the transcript fold and the `thread.event` push. The runner keeps sub-agents in memory only and serves them through `subagents.list`. When a turn ends, `finish` marks any sub-agent still running as stopped, since nothing will report on it after that.
 - Provider errors become `turn_failed`, so `run` never fails and `finish` always runs.
 - A turn the agent started (`wakes`) waits until the thread is free, then runs through the same `makeTurn`, so steering, stopping, queueing and `finish` work as for any turn. If the runner cannot adopt it, `Wake.discard` stops the provider turn without reading its stream.
@@ -403,6 +415,7 @@ erDiagram
     text snoozed_until "out of the Inbox until then, null or past = not snoozed"
     text queue "JSON QueuedMessage[], oldest first"
     text turn_base_tree "git tree at latest turn start"
+    text side_of FK "CASCADE, unique, set = side chat of that thread"
   }
   message {
     text id PK
@@ -452,11 +465,11 @@ erDiagram
   }
 ```
 
-- `setting` holds both settings and secrets. Secrets live under `secret.<name>` and are sealed by the `Keyring` the entry point provides: Electron `safeStorage` on the desktop (the real login Keychain in the packaged app, Chromium's mock keychain in unpackaged runs), and none in `hinacode serve`, which stores them as plaintext. A secret that won't decrypt under the current key reads as unset.
-- `setting` rows are split between `Settings` (the environment: models, archive, worktree root, ...) and `ClientSettings` (this desktop: locale, keybindings, appearance, notifications). The keys never overlap; a cloud only reads `Settings`.
+- `setting` holds secrets and a few internal rows (`environment.id`, `relay.tunnel`). Secrets live under `secret.<name>` and are sealed by the `Keyring` the entry point provides: Electron `safeStorage` on the desktop (the real login Keychain in the packaged app, Chromium's mock keychain in unpackaged runs), and none in `hinacode serve`, which stores them as plaintext. A secret that won't decrypt under the current key reads as unset.
+- Settings are JSON files in the data dir, not rows: `settings.json` holds `Settings` (the environment: models, archive, worktree root, ...), `client-settings.json` holds `ClientSettings` (this desktop: locale, appearance, notifications), and `keybindings.json` holds its keybindings as a bare `{ commandId: chord }` record. Each file holds only the keys that were set, laid over the defaults on every read, so a hand edit applies on the next read. A cloud only reads `Settings`. Migration 0027 moved the old rows into the files.
 - `environment` (migration `0015_environments`) lists the clouds this desktop paired with. It is unrelated to the other tables: a cloud's projects and threads stay in the cloud's database.
 - `Threads.captureTurnBase` returns the working tree's snapshot without changing the thread row. An unreadable or non-git directory returns null. The runner calls `recordTurnBase` only after its final delivery checks, so rejected input preserves the last accepted turn's baseline and diff. An accepted input with no snapshot records null.
-- `project.kind` is `chats` for exactly one row per machine (a partial unique index), made at startup in `<userData>/chats` by `Projects.ensureChats`. Each of its threads works in `<rootPath>/<threadId>`, which `makeActiveWorkspace` derives rather than stores. `Threads` makes that folder on create and unarchive, and deletes it on archive and delete. Chats start in conversation mode, and their composer shows only the machine picker.
+- `project.kind` is `chats` for exactly one row per machine (a partial unique index), made at startup in `<dataDir>/chats` by `Projects.ensureChats`. Each of its threads works in `<rootPath>/<threadId>`, which `makeActiveWorkspace` derives rather than stores. `Threads` makes that folder on create and unarchive, and deletes it on archive and delete. Chats start in conversation mode, and their composer shows only the machine picker.
 - A removed worktree keeps its row, and `thread.worktree_id` keeps pointing at it so history shows where the thread ran. Always resolve the working directory through `makeActiveWorkspace` (`services/workspace.ts`), which falls back to the project root.
 
 ## Lifecycles
@@ -530,7 +543,7 @@ stateDiagram-v2
 
 <!-- thread-chart:end -->
 
-- **Setup scripts** run with `$HINACODE_ROOT_PATH`, `$HINACODE_WORKTREE_PATH` and `$HINACODE_BRANCH`. A row still `preparing` at boot becomes `failed`, never re-run, because re-running an arbitrary script unasked isn't safe. A script can hang, so the setup log has a Stop button (`worktrees.stopSetup`), and removing the worktree stops it too. Stopping kills the script's process group, with SIGKILL after 3 seconds, and the worktree ends `failed`, so a send waiting on it goes ahead.
+- **Setup scripts** run with `$HINACODE_ROOT_PATH`, `$HINACODE_WORKTREE_PATH` and `$HINACODE_BRANCH`. A row still `preparing` at boot becomes `failed`, never re-run, because re-running an arbitrary script unasked isn't safe. A script can hang, so the setup log has a Stop button (`worktrees.stopSetup`), and removing the worktree stops it too. Stopping kills the script's process group, with SIGKILL after 3 seconds, and the worktree ends `failed`, so a send waiting on it goes ahead. `worktrees.list` leaves out the setup log of a removed worktree, whose checkout is gone, so the startup list does not grow with every worktree ever made; `worktrees.setupLog` still reads it.
 - **Terminals** live in main memory until closed, with their thread, or with the app, and outlive a renderer reload. Each keeps its last 256 KiB of UTF-8 output, and every `terminal.data` carries `offset`, where its text starts in the session's output, in UTF-16 characters. A screen calls `terminal.attach` with the offset it has reached when its session opens, when the drawer first lists the sessions, when a cloud reconnects, and when a push skips ahead. The answer appends, or clears the screen when the scrollback no longer reaches that offset, and pushes that overlap it are trimmed (`lib/terminalStream.ts`). An exited session can be attached until it is closed.
 - **Archiving** a thread hides it in the sidebar's Archived tab, and unarchiving brings it back as `idle`. Archiving refuses a `running` or `awaiting_approval` thread with `ThreadBusyError`. It checks the status, removes the worktree, ends the thread's terminals and writes `archived` inside `Worktrees.exclusive`, where a turn also marks its thread running, so a turn cannot start halfway through an archive. With `settings.archive.removeWorktree` on, archiving also removes its worktree. The branch is deleted only when it is merged into the worktree's base ref. The row turns `removed` at once, and the files and branch are deleted on a detached fiber, so archiving a large tree returns immediately. Creating the same branch again waits for that deletion. An unarchived thread whose worktree is gone works in the project root.
 - **AutoArchive** sweeps every 3 minutes while `settings.archive.whenMerged` is on. It asks `gh` for each linked pull request of threads that are neither archived nor mid-turn, archives the threads that are done, and pushes `thread.updated`. A thread in a worktree is done once its own branch's pull request is merged or closed; other pull requests it linked hold it only while it watches them. Removing a worktree then deletes every removed worktree's merged branch in the project, merged locally or on GitHub, except branches a live worktree checks out or forks from.
@@ -551,7 +564,7 @@ flowchart LR
     prs["link_pull_request<br/>list_thread_pull_requests<br/>unlink_pull_request<br/>watch_pull_request, unwatch_pull_request"]
     linear["linear_get_issue, linear_search_issues,<br/>linear_create_comment, linear_update_issue_state"]
     secret["request_secret"]
-    create["create_thread"]
+    create["create_thread, list_machines"]
     control["list_threads, read_thread,<br/>send_to_thread, stop_thread"]
   end
   review --> ws["makeActiveWorkspace → git diff"]
@@ -559,10 +572,11 @@ flowchart LR
   linear --> apikey["Linear service<br/>Secrets: linear.apiKey"]
   secret --> runner["AgentRunner.requestSecret<br/>card in the thread, value stored by Secrets"]
   create --> threads["Threads.create (created_by = thread:caller)<br/>+ AgentRunner.send"]
+  create -- "machine: id" --> peers["Peers: threads.create + threads.steer<br/>on that machine's project of the same repository"]
   control --> scope["same project as the caller<br/>AgentRunner.transcript / steer / send / interrupt"]
 ```
 
-`request_secret` blocks until the user answers the card or the turn ends; the value goes renderer → main → `Secrets` and never into an event, a message or the tool result. `create_thread` makes an ordinary thread of the same project: `created_by` records where it came from, nothing else ties it to its creator. The thread controls reach any thread of the caller's project, not only the ones it created; `send_to_thread` and `stop_thread` refuse the caller itself. Codex gets `tool_timeout_sec = 600` for this server so a user has time to answer.
+`request_secret` blocks until the user answers the card or the turn ends; the value goes renderer → main → `Secrets` and never into an event, a message or the tool result. `create_thread` makes an ordinary thread of the same project, or with `machine` of the project with the same GitHub repository on that machine: `created_by` records where it came from, nothing else ties it to its creator. The thread controls reach any thread of the caller's project, not only the ones it created; `send_to_thread` and `stop_thread` refuse the caller itself. Codex gets `tool_timeout_sec = 600` for this server so a user has time to answer.
 
 Each tool's parameters are an Effect Schema. The same schema produces the JSON Schema shown to the agent and decodes its input.
 

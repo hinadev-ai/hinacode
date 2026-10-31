@@ -6,10 +6,10 @@ import { foldTranscript } from "../../shared/foldEvent.ts"
 import { callPromise } from "../lib/rpc.ts"
 
 const STREAM_PUBLICATION_INTERVAL_MS = 100
+const CACHED_HISTORY_LIMIT = 8
 
 type ReadyHistory = {
   readonly status: "ready"
-  /** Pushes up to this `seq` are already in the snapshot. The rpc reply can overtake them, so they may still arrive. */
   readonly snapshotSeq: number
   readonly messages: ReadonlyArray<Message>
   readonly approvals: ReadonlyArray<ApprovalRequest>
@@ -18,24 +18,18 @@ type ReadyHistory = {
 }
 
 export type ThreadHistory =
-  /** `pending` holds pushes that arrive before the snapshot, which may or may not contain them. */
   | { readonly status: "loading"; readonly loadId: symbol; readonly pending: ReadonlyArray<TranscriptPush> }
   | { readonly status: "error"; readonly message: string }
   | ReadyHistory
 
 interface MessagesState {
   readonly byThread: Readonly<Record<string, ThreadHistory>>
-  /** Loads a thread's history once; later changes arrive through `receive`. */
   readonly load: (threadId: string) => Promise<void>
-  /** Drops a thread's history so the next `load` reads the persisted copy again. */
+  readonly reload: (threadId: string) => Promise<void>
   readonly unload: (threadId: string) => void
   readonly receive: (push: TranscriptPush) => void
 }
 
-/**
- * Transcript, pending approvals, questions and secret requests per thread. Threads that were never opened ignore pushes: their
- * first `load` reads a snapshot instead.
- */
 export const useMessages = create<MessagesState>()((set, get) => {
   const pendingDeltas = new Map<
     string,
@@ -55,37 +49,61 @@ export const useMessages = create<MessagesState>()((set, get) => {
       return next === undefined || next === history ? state : { byThread: { ...state.byThread, [threadId]: next } }
     })
 
+  const leastRecentlyViewedFirst: string[] = []
+  const forget = (threadIds: ReadonlyArray<string>) => {
+    if (threadIds.length === 0) return
+    for (const threadId of threadIds) {
+      takePending(threadId)
+      const index = leastRecentlyViewedFirst.indexOf(threadId)
+      if (index !== -1) leastRecentlyViewedFirst.splice(index, 1)
+    }
+    set((state) => ({
+      byThread: Object.fromEntries(
+        Object.entries(state.byThread).filter(([threadId]) => !threadIds.includes(threadId)),
+      ),
+    }))
+  }
+  const markViewed = (threadId: string) => {
+    const index = leastRecentlyViewedFirst.indexOf(threadId)
+    if (index !== -1) leastRecentlyViewedFirst.splice(index, 1)
+    leastRecentlyViewedFirst.push(threadId)
+    forget(leastRecentlyViewedFirst.slice(0, -CACHED_HISTORY_LIMIT))
+  }
+  const fetchHistory = async (threadId: string) => {
+    takePending(threadId)
+    const loadId = Symbol(threadId)
+    setHistory(threadId, () => ({ status: "loading", loadId, pending: [] }))
+    const settle = (update: (pending: ReadonlyArray<TranscriptPush>) => ThreadHistory) =>
+      setHistory(threadId, (history) =>
+        history?.status === "loading" && history.loadId === loadId ? update(history.pending) : history,
+      )
+    try {
+      const { seq, ...snapshot } = await callPromise("threads.transcript", { threadId })
+      settle((pending) =>
+        pending
+          .filter((push) => push.seq > seq)
+          .reduce<ReadyHistory>(applyPush, { status: "ready", snapshotSeq: seq, ...snapshot }),
+      )
+    } catch (cause) {
+      settle(() => ({ status: "error", message: cause instanceof Error ? cause.message : String(cause) }))
+    }
+  }
+
   return {
     byThread: {},
 
     load: async (threadId) => {
+      markViewed(threadId)
       const current = get().byThread[threadId]
       if (current !== undefined && current.status !== "error") return
-      const loadId = Symbol(threadId)
-      setHistory(threadId, () => ({ status: "loading", loadId, pending: [] }))
-      const settle = (update: (pending: ReadonlyArray<TranscriptPush>) => ThreadHistory) =>
-        setHistory(threadId, (history) =>
-          history?.status === "loading" && history.loadId === loadId ? update(history.pending) : history,
-        )
-      try {
-        const { seq, ...snapshot } = await callPromise("threads.transcript", { threadId })
-        settle((pending) =>
-          pending
-            .filter((push) => push.seq > seq)
-            .reduce<ReadyHistory>(applyPush, { status: "ready", snapshotSeq: seq, ...snapshot }),
-        )
-      } catch (cause) {
-        settle(() => ({ status: "error", message: cause instanceof Error ? cause.message : String(cause) }))
-      }
+      await fetchHistory(threadId)
     },
 
-    unload: (threadId) => {
-      takePending(threadId)
-      set((state) => {
-        const { [threadId]: _dropped, ...byThread } = state.byThread
-        return { byThread }
-      })
+    reload: async (threadId) => {
+      if (get().byThread[threadId] !== undefined) await fetchHistory(threadId)
     },
+
+    unload: (threadId) => forget([threadId]),
 
     receive: (push) => {
       const threadId = pushThreadId(push)
@@ -99,7 +117,6 @@ export const useMessages = create<MessagesState>()((set, get) => {
           return
         }
         if (pending === undefined) {
-          // Start once per group; later deltas never postpone publication.
           pendingDeltas.set(threadId, {
             pushes: [push],
             timer: setTimeout(() => {

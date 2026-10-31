@@ -11,8 +11,18 @@ import { completionAt, type Suggestion, suggestionsFor } from "@shared/composerS
 import type { RpcRequest } from "@shared/contract.ts"
 import { AccessMode, isThreadBusy, type Settings, type Thread, toCheckoutTarget } from "@shared/domain.ts"
 import { type AccountOption, accountOptions, formatResetIn } from "@shared/planLimits.ts"
+import { mentionableThreads } from "@shared/threadMention.ts"
 import { useEffect, useRef, useState } from "react"
-import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import {
+  Image,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  type TextInputInstance,
+  View,
+} from "react-native"
 import Animated, { useReducedMotion } from "react-native-reanimated"
 import { ComposerInput } from "@/components/composer-input"
 import { GlassFill, liquidGlass } from "@/components/glass"
@@ -86,6 +96,7 @@ function useCompletions(thread: Thread, busy: boolean, wantsFiles: boolean, onEr
   const [commands, setCommands] = useState<readonly AgentCommand[]>([])
   const [files, setFiles] = useState<{ readonly key: string; readonly paths: readonly string[] } | null>(null)
   const byId = useThreads((state) => state.byId)
+  const projects = useThreads((state) => state.projects)
   const filesKey = `${thread.id}|${thread.worktreeId}|${busy}`
   const filesFresh = files?.key === filesKey
   useEffect(() => {
@@ -110,9 +121,7 @@ function useCompletions(thread: Thread, busy: boolean, wantsFiles: boolean, onEr
       current = false
     }
   }, [connected, wantsFiles, filesFresh, filesKey, thread.id, onError])
-  const threads = Object.values(byId)
-    .filter((other) => other.projectId === thread.projectId && other.id !== thread.id && other.status !== "archived")
-    .sort((a, b) => a.sortIndex - b.sortIndex)
+  const threads = mentionableThreads(thread, Object.values(byId), projects)
   return { commands, files: files?.paths ?? [], threads }
 }
 
@@ -125,7 +134,7 @@ export function Composer({ thread }: { thread: Thread }) {
   const [caret, setCaret] = useState(0)
   /** Set only right after a pick, to put the caret after the inserted command; any edit or move hands it back. */
   const [placedCaret, setPlacedCaret] = useState<{ start: number } | undefined>()
-  const inputRef = useRef<TextInput>(null)
+  const inputRef = useRef<TextInputInstance>(null)
   const [error, setError] = useState<string | null>(null)
   const unstarted = useUnstarted(thread)
   const server = useThreadServer(thread.id)?.id
@@ -136,7 +145,7 @@ export function Composer({ thread }: { thread: Thread }) {
   const known = {
     commands: new Set(commands.map((command) => command.trigger + command.name)),
     files: new Set(files),
-    threads: new Set(threads.map((other) => other.id)),
+    threads: new Set([...threads.sameMachine, ...threads.otherMachines].map((other) => other.id)),
   }
   const hasDraft = text.trim() !== ""
 
@@ -630,7 +639,7 @@ function SettingsSheet({
   const defaultEffort = current?.defaultEffort ? `Default (${effortLabel(current.defaultEffort)})` : "Default effort"
 
   return (
-    <Sheet title="Thread settings" open={open} onClose={onClose}>
+    <Sheet title="Thread settings" open={open} onClose={onClose} fit>
           {unstarted && (
             <Section title="Agent">
               {ProviderId.literals.map((provider) => (

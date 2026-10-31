@@ -422,7 +422,7 @@ function ModelSheet({
 
   const failure = error?.attempt === attempt ? error.message : null
   return (
-    <Sheet title={copy("mobile_settings_model_sheet_title", { agent })} open onClose={onClose}>
+    <Sheet title={copy("mobile_settings_model_sheet_title", { agent })} open onClose={onClose} fit>
       <View>
         <OptionRow
           label={copy("mobile_settings_agent_default")}

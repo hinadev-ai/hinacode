@@ -34,24 +34,18 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { toIcon } from "../lib/indicators.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
 import { formatSnoozeTime } from "../lib/snooze.ts"
-import {
-  callPromise,
-  currentBranchAtom,
-  type EnvironmentId,
-  projectsAtom,
-  pullRequestAttentionAtom,
-} from "../lib/rpc.ts"
+import { callPromise, type EnvironmentId, projectsAtom, pullRequestAttentionAtom } from "../lib/rpc.ts"
 import { type Cloud, isStale, useCloud, useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
+import { useBackgroundTasks } from "../stores/backgroundTasks.ts"
 import { useDrafts } from "../stores/drafts.ts"
 import { usePullRequests } from "../stores/pullRequests.ts"
 import { lastActivity, useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { useUnseen } from "../stores/unseen.ts"
-import { useWorktrees } from "../stores/worktrees.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { SidebarPullRequests } from "./SidebarPullRequests.tsx"
 import { ArchiveDialog, useActiveWorktree } from "./ArchiveDialog.tsx"
@@ -73,7 +67,6 @@ import { ProjectIcon } from "./ProjectIcon.tsx"
 import { snoozeThread } from "./SnoozeDialog.tsx"
 import { AlarmIcon } from "./icons/AlarmIcon.tsx"
 import { ArchiveIcon } from "./icons/ArchiveIcon.tsx"
-import { BranchIcon } from "./icons/BranchIcon.tsx"
 import { CopyIcon } from "./icons/CopyIcon.tsx"
 import { EyeIcon } from "./icons/EyeIcon.tsx"
 import { EyeOffIcon } from "./icons/EyeOffIcon.tsx"
@@ -91,13 +84,11 @@ type DragDropPlugins = NonNullable<ComponentProps<typeof DragDropProvider>["plug
 
 const titleOf = (id: unknown) => useThreads.getState().byId[String(id)]?.title ?? ""
 
-// Each list has its own drag and drop manager, so its draggables are exactly the list's rows.
 const position = (source: Draggable) => ({
   position: String((isSortable(source) ? source.index : 0) + 1),
   total: String([...(source.manager?.registry.draggables ?? [])].length),
 })
 
-/** Screen reader instructions and announcements for one list, in the current locale. */
 const accessibility = () =>
   Accessibility.configure({
     screenReaderInstructions: { draggable: m.sidebar_drag_instructions() },
@@ -119,10 +110,6 @@ const plugins: DragDropPlugins = (defaults) => [
   accessibility(),
 ]
 
-/**
- * Rows drag by the whole row with the mouse (after a few pixels, so clicks still navigate) and by
- * the grip handle from the keyboard, which is dnd-kit's default keyboard sensor.
- */
 const sensors = [
   PointerSensor.configure({
     activatorElements: (source) => [source.element],
@@ -139,22 +126,15 @@ const sensors = [
 ]
 
 interface SidebarThreadListProps {
-  /** Names the list, such as a project group's key; it scopes drag and drop to the list. */
   readonly group: string
-  /** The rows to show, already narrowed to the sidebar's tab and filter. */
   readonly threads: ReadonlyArray<Thread>
-  /** Only a project group's full list of active threads can be reordered, since a drop saves every row's position. */
   readonly reorderable: boolean
-  /** Names each row's project, for lists that mix projects. */
   readonly showProject?: boolean
-  /** Says the project has no threads when the list is empty. */
   readonly showEmptyHint?: boolean
-  /** Takes focus after a delete leaves the list empty. */
   readonly newThreadButtonRef?: RefObject<HTMLButtonElement | null>
   readonly className?: string
 }
 
-/** A list of thread rows, reorderable by drag when it is one project's complete list. */
 export function SidebarThreadList({
   group,
   threads,
@@ -165,7 +145,6 @@ export function SidebarThreadList({
   className = "",
 }: SidebarThreadListProps) {
   const firstRowRef = useRef<HTMLAnchorElement>(null)
-  // A deleted or archived row takes the focused element with it; keep focus in the list instead of on <body>.
   const focusAfterRemoval = () => firstRowRef.current ?? newThreadButtonRef?.current ?? null
   const [listRef, setAnimate] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
   const DROP_ANIMATION_MS = 300
@@ -176,7 +155,6 @@ export function SidebarThreadList({
       thread.sortIndex === index ? [] : [{ ...thread, sortIndex: index }],
     )
     const { upsert } = useThreads.getState()
-    // dnd-kit already shows the new order; commit it to the store before animations resume.
     flushSync(() => moved.forEach(upsert))
     try {
       const saved = await Promise.all(
@@ -198,8 +176,7 @@ export function SidebarThreadList({
         onDragStart={() => setAnimate(false)}
         onDragEnd={(event) => {
           if (!event.canceled) void save(move([...threads], event))
-          // dnd-kit is still playing its drop animation here; resuming auto-animate now makes both
-          // libraries move the same rows and the dropped row slides twice.
+          // FIXME: dnd-kit still plays its drop animation here, and auto-animate on top slides the row twice
           setTimeout(() => setAnimate(true), DROP_ANIMATION_MS)
         }}
       >
@@ -246,7 +223,6 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
   const { ref, handleRef, isDragSource } = useSortable({ id: thread.id, index, group, disabled: !reorderable })
   const [menuOpen, setMenuOpen] = useState(false)
   const [mode, setMode] = useState<RowMode>("idle")
-  // Menu items queue their mode and apply it once the menu has closed and handed focus back.
   const [queued, setQueued] = useState<RowMode | null>(null)
   const menuTriggerRef = useRef<HTMLButtonElement>(null)
   const worktree = useActiveWorktree(thread)
@@ -255,12 +231,11 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
   const { archive: archiveSettings } = useSettings(environment)
   const busy = isThreadBusy(thread.status)
   const archived = thread.status === "archived"
-  // Archiving is reversible, so it only asks first when it would also delete a worktree folder.
   const archiveDeletes = archiveSettings.removeWorktree && worktree !== undefined
   const meta = useThreadMeta(thread, showProject)
+  const hasMeta = cloud !== undefined || meta.links.length > 0
   const state = useThreadRowState(thread)
 
-  // The row leaves this tab's list; once it is gone, keep focus in the sidebar without scrolling to the first row.
   const moveOut = (updated: Thread) => {
     flushSync(() => useThreads.getState().upsert(updated))
     if (document.activeElement === document.body) focusAfterRemoval()?.focus({ preventScroll: true })
@@ -300,7 +275,6 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
   const closeDialog = (open: boolean) => {
     if (!open) setMode("idle")
   }
-  // The menu trigger only exists outside rename mode, so render it before handing focus back.
   const finishRename = () => {
     flushSync(() => setMode("idle"))
     menuTriggerRef.current?.focus()
@@ -308,8 +282,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
 
   return (
     <li
-      // dnd-kit decorates the handle, or the row when there is none, as a button. Without a handle the
-      // row would read as a disabled button, so it only gets the row while the handle is there.
+      // FIXME: dnd-kit marks a handleless row as a button, which reads as disabled without a handle
       ref={reorderable ? ref : undefined}
       data-dragging={isDragSource}
       data-menu-open={menuOpen}
@@ -317,13 +290,14 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
       data-archived={archived}
       data-stale={isStale(cloud)}
       data-show-project={meta.project !== null}
-      // Room the title and meta leave for the action buttons: archive or unarchive, delete and the menu, plus a
-      // focused reorder handle.
-      className="group/thread relative rounded-md [--row-actions:--spacing(20)] has-[[data-reorder-handle]:focus-visible]:[--row-actions:--spacing(26)] text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=attention]:text-sidebar-foreground data-[emphasis=working]:text-muted-foreground data-[emphasis=working]:not-hover:not-focus-within:not-has-[a[data-status=active]]:opacity-60 data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
+      data-meta={hasMeta}
+      onPointerEnter={(event) => scrollTitle(event.currentTarget)}
+      onPointerLeave={(event) => stopTitle(event.currentTarget)}
+      className="group/thread relative rounded-md [--row-actions:--spacing(20)] has-[[data-reorder-handle]:focus-visible]:[--row-actions:--spacing(26)] text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=working]:text-muted-foreground data-[emphasis=working]:not-hover:not-focus-within:not-has-[a[data-status=active]]:opacity-60 data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
     >
       {meta.project !== null && (
-        <div className="flex min-w-0 items-center gap-2 pt-1.5 pr-2 pl-1.5 text-xs text-muted-foreground">
-          <ProjectIcon projectId={thread.projectId} className="size-3.5" />
+        <div className="flex min-w-0 items-center gap-1 pt-1.5 pr-2 pl-1.5 text-xs text-muted-foreground">
+          <ProjectIcon projectId={thread.projectId} className="size-3 text-current" />
           <span className="truncate" title={meta.project}>
             {meta.project}
           </span>
@@ -341,18 +315,29 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
             event.preventDefault()
             setMenuOpen(true)
           }}
-          // The link's ::after covers the whole row, so the second line clicks through to the thread too.
           data-reorderable={reorderable}
-          className="flex items-center gap-2 rounded-md pt-1.5 pr-2 group-data-[show-project=true]/thread:pt-0.5 pb-0.5 pl-1.5 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions) focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
+          className="flex items-center gap-2 rounded-md pt-1.5 pr-2 group-data-[show-project=true]/thread:pt-0.5 pb-0.5 group-data-[meta=false]/thread:pb-1.5 pl-1.5 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions) focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
         >
-          <ProviderIcon provider={thread.provider} />
-          <span dir="auto" className="min-w-0 flex-1 truncate text-left text-[0.9375rem]" title={thread.title}>
-            {thread.title}
+          <span
+            dir="auto"
+            className="min-w-0 flex-1 truncate text-left text-[0.9375rem] group-hover/thread:text-clip"
+            title={thread.title}
+          >
+            <span data-title-text className="group-hover/thread:inline-block">
+              {thread.title}
+            </span>
           </span>
           <StatusIndicator state={state} />
+          <span
+            aria-hidden
+            className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden"
+          >
+            <ActivityTime {...meta} />
+            <ProviderIcon provider={meta.provider} className="size-3" />
+          </span>
         </Link>
       )}
-      <ThreadMeta {...meta} cloud={cloud} environment={environment} />
+      {hasMeta && <ThreadMeta links={meta.links} threadId={thread.id} cloud={cloud} environment={environment} />}
 
       {mode !== "renaming" && (
         <div className="absolute inset-y-0 right-1 flex items-center gap-0.5 opacity-0 group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 focus-within:opacity-100 group-data-[menu-open=true]/thread:opacity-100 has-[[data-popup-open]]:opacity-100">
@@ -375,7 +360,6 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
                   size="icon-xs"
                   aria-label={m.sidebar_thread_reorder({ title: thread.title })}
                   aria-roledescription={m.sidebar_thread_reorder_role()}
-                  // Rows drag by the whole row with the mouse, so the handle only shows for keyboard reordering.
                   data-reorder-handle
                   className="sr-only cursor-grab focus-visible:not-sr-only"
                 >
@@ -494,7 +478,6 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
   )
 }
 
-/** Rename starts from an explicit menu choice, so the field takes focus as soon as it appears. */
 const focusOnMount = (input: HTMLInputElement | null) => input?.focus()
 
 function RenameInput({ thread, onDone }: { thread: Thread; onDone: () => void }) {
@@ -524,11 +507,9 @@ function RenameInput({ thread, onDone }: { thread: Thread; onDone: () => void })
     }
   }
 
-  // Laid out like the row's link, so swapping one for the other does not move the list.
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-2 pt-1.5 pr-2 pb-0.5 pl-1.5 group-data-[show-project=true]/thread:pt-0.5">
-        <ProviderIcon provider={thread.provider} />
         <span className="flex min-w-0 flex-1 flex-col">
           <Input
             ref={focusOnMount}
@@ -559,11 +540,9 @@ interface DeleteThreadPopoverProps {
   readonly disabled: boolean
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
-  /** Where focus goes once the thread is gone, since the row that opened the confirmation is gone too. */
   readonly focusAfterDelete: () => HTMLElement | null
 }
 
-/** The row's delete button. It confirms right below itself, so the pointer barely moves to finish a delete. */
 function DeleteThreadPopover({
   thread,
   cloud,
@@ -576,7 +555,6 @@ function DeleteThreadPopover({
   const router = useRouter()
   const [removeWorktree, setRemoveWorktree] = useState(true)
   const removeWorktreeId = useId()
-  // The cloud owns the thread and its worktree, so deleting needs it to answer.
   const offline = isStale(cloud)
 
   const [error, remove, isPending] = useActionState(async () => {
@@ -635,7 +613,6 @@ function DeleteThreadPopover({
             {error}
           </p>
         )}
-        {/* Confirm comes first, the nearest button to the trash icon the pointer just clicked. */}
         <div className="flex gap-2">
           <Button variant="destructive" size="sm" disabled={isPending || offline} action={remove}>
             {m.delete_dialog_confirm()}
@@ -653,7 +630,7 @@ const awaiting = toIcon(rowStatusIndicator.awaiting_approval)
 
 const statusIcons: Partial<Record<RowState, { label: () => string; Icon: IconComponent; className: string }>> = {
   running: { label: m.thread_status_running, ...toIcon(rowStatusIndicator.running) },
-  // A few rings when the thread starts waiting catch the eye of someone working in another thread; then it rests.
+  background: { label: m.thread_status_background, ...toIcon(rowStatusIndicator.background) },
   awaiting_approval: {
     label: m.thread_status_awaiting_approval,
     Icon: awaiting.Icon,
@@ -670,12 +647,12 @@ const statusIcons: Partial<Record<RowState, { label: () => string; Icon: IconCom
   },
 }
 
-/** The status a thread shows wherever it is listed: its turn, an unseen result, or a pull request needing action. */
 export function useThreadRowState(thread: Thread): RowState {
   const environment = useThreadEnvironment(thread.id)
   const links = usePullRequests((state) => state.byThreadId[thread.id]) ?? noLinks
   return rowState(
     thread.status,
+    useBackgroundTasks((state) => (state.byThreadId[thread.id]?.length ?? 0) > 0),
     useUnseen((unseen) => unseen.byThreadId[thread.id]),
     useAtomValue(
       pullRequestAttentionAtom(
@@ -698,25 +675,19 @@ export function StatusIndicator({ state }: { state: RowState }): ReactNode {
   )
 }
 
-/** The branch a thread works on: its worktree's, or the one checked out in the project root. */
 function useThreadMeta(thread: Thread, showProject: boolean) {
-  const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
-  const rootBranch = AsyncResult.getOrElse(useAtomValue(currentBranchAtom(thread.projectId)), () => null)
   const links = usePullRequests((state) => state.byThreadId[thread.id]) ?? noLinks
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
   return {
     project: showProject ? (projects.find((project) => project.id === thread.projectId)?.name ?? null) : null,
-    branch: worktree?.branch ?? rootBranch,
-    // A removed worktree's branch is struck through: the thread works in the project root now.
-    removed: worktree?.status === "removed",
     links,
     threadId: thread.id,
+    provider: thread.provider,
     updatedAt: lastActivity(thread),
     snoozedUntil: useSnoozedUntil(thread),
   }
 }
 
-/** When the thread wakes, or null when it is not snoozed. */
 function useSnoozedUntil(thread: Thread) {
   const now = useNow()
   return thread.snoozedUntil !== null && Date.parse(thread.snoozedUntil) > now ? thread.snoozedUntil : null
@@ -726,31 +697,20 @@ const noLinks: ReadonlyArray<PullRequestLink> = []
 const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? ""
 
 function ThreadMeta({
-  branch,
-  removed,
   links,
   threadId,
-  updatedAt,
-  snoozedUntil,
   cloud,
   environment,
-}: ReturnType<typeof useThreadMeta> & { cloud: Cloud | undefined; environment: EnvironmentId }) {
+}: {
+  links: ReadonlyArray<PullRequestLink>
+  threadId: string
+  cloud: Cloud | undefined
+  environment: EnvironmentId
+}) {
   const watching = links.some((link) => link.watch !== null)
-  // The minimum height is one line plus padding. Without a branch the hidden time is the only child, and a
-  // collapsing row would slide out from under the pointer and flicker.
   return (
-    <div className="flex min-h-5.5 min-w-0 items-center gap-2 pr-2 pb-1.5 pl-7 text-xs text-muted-foreground group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions)">
+    <div className="flex min-w-0 items-center gap-2 pr-2 pb-1.5 pl-1.5 text-xs text-muted-foreground group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions)">
       {cloud && <CloudMark cloud={cloud} className="size-3" />}
-      {branch !== null && (
-        <span
-          className="flex min-w-0 items-center gap-1 data-[removed=true]:line-through"
-          data-removed={removed}
-          title={m.sidebar_worktree_branch({ branch })}
-        >
-          <BranchIcon aria-hidden className="size-3 shrink-0" />
-          <span className="truncate font-mono">{branch}</span>
-        </span>
-      )}
       {links.length > 0 && <SidebarPullRequests threadId={threadId} links={links} environment={environment} />}
       {watching && (
         <span title={m.sidebar_watching()} className="flex shrink-0">
@@ -758,12 +718,41 @@ function ThreadMeta({
           <span className="sr-only">{m.sidebar_watching()}</span>
         </span>
       )}
-      {snoozedUntil === null ? <LastActive updatedAt={updatedAt} /> : <WakeTime snoozedUntil={snoozedUntil} />}
     </div>
   )
 }
 
-/** Hidden while the row's actions are showing, so it does not sit under the reorder and menu buttons. */
+const TITLE_SCROLL_DELAY_MS = 400
+const TITLE_SCROLL_PX_PER_S = 60
+
+const titleText = (row: HTMLElement) => row.querySelector<HTMLElement>("[data-title-text]")
+
+function scrollTitle(row: HTMLElement) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return
+  requestAnimationFrame(() => {
+    const text = titleText(row)
+    const box = text?.parentElement
+    if (!text || !box || !row.matches(":hover")) return
+    const overflow = text.offsetWidth - box.clientWidth
+    if (overflow <= 0) return
+    const distance = getComputedStyle(box).direction === "rtl" ? overflow : -overflow
+    text.animate([{ transform: "translateX(0)" }, { transform: `translateX(${distance}px)` }], {
+      duration: (overflow / TITLE_SCROLL_PX_PER_S) * 1000,
+      delay: TITLE_SCROLL_DELAY_MS,
+      easing: "linear",
+      fill: "forwards",
+    })
+  })
+}
+
+function stopTitle(row: HTMLElement) {
+  for (const animation of titleText(row)?.getAnimations() ?? []) animation.cancel()
+}
+
+function ActivityTime({ updatedAt, snoozedUntil }: { updatedAt: string; snoozedUntil: string | null }) {
+  return snoozedUntil === null ? <LastActive updatedAt={updatedAt} /> : <WakeTime snoozedUntil={snoozedUntil} />
+}
+
 function LastActive({ updatedAt }: { updatedAt: string }) {
   const now = useNow()
   const locale = getLocale()
@@ -771,14 +760,13 @@ function LastActive({ updatedAt }: { updatedAt: string }) {
     <time
       dateTime={updatedAt}
       title={new Date(updatedAt).toLocaleString(locale, { dateStyle: "long", timeStyle: "short" })}
-      className="ml-auto shrink-0 tabular-nums group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden"
+      className="tabular-nums"
     >
       {formatRelativeTime(updatedAt, now, locale)}
     </time>
   )
 }
 
-/** Where the last activity would be, so a snoozed row says when it comes back instead. */
 function WakeTime({ snoozedUntil }: { snoozedUntil: string }) {
   const now = useNow()
   const locale = getLocale()
@@ -787,7 +775,7 @@ function WakeTime({ snoozedUntil }: { snoozedUntil: string }) {
     <time
       dateTime={snoozedUntil}
       title={m.sidebar_snoozed_until({ time })}
-      className="ml-auto flex shrink-0 items-center gap-1 tabular-nums group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden"
+      className="flex items-center gap-1 tabular-nums"
     >
       <SnoozeIcon aria-hidden className="size-3" />
       <span className="sr-only">{m.sidebar_snoozed_until({ time })}</span>

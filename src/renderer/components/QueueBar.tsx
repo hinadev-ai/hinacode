@@ -16,7 +16,6 @@ import { PencilIcon } from "./icons/PencilIcon.tsx"
 const summaryOf = (message: QueuedMessage) =>
   message.text.trim() || m.queue_attachments({ count: String(message.attachments.length) })
 
-/** Messages waiting for the running turn, in the activity tray. Each one can jump the queue or go back to the draft. */
 export function QueueBar({
   thread,
   onEdit,
@@ -29,7 +28,6 @@ export function QueueBar({
   const [listRef] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
   if (thread.queue.length === 0) return null
 
-  /** Null when the runner already sent it, so nothing is sent or restored twice. */
   const take = (id: string) => callPromise("threads.unqueue", { threadId: thread.id, id })
 
   const restore = (message: QueuedMessage) => {
@@ -84,7 +82,9 @@ export function QueueBar({
             }
           >
             <ClockIcon aria-hidden className="size-3.5 shrink-0" />
-            <span className="truncate text-foreground">{summaryOf(message)}</span>
+            <span className="truncate text-foreground" title={summaryOf(message)}>
+              {summaryOf(message)}
+            </span>
           </ActivityRow>
         </li>
       ))}

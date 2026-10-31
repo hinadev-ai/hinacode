@@ -2,17 +2,12 @@ import type { TerminalAttachment, TerminalSession } from "../../shared/domain.ts
 
 interface Screen {
   readonly write: (data: string) => void
-  /** Clears the screen and its scrollback. */
   readonly reset: () => void
   readonly exited: (exitCode: number | null) => void
 }
 
 type Held = { readonly data: string; readonly offset: number | undefined } | { readonly exitCode: number | null }
 
-/**
- * Puts one session's output on its screen exactly once, in order, from `terminal.data` pushes and `terminal.attach`
- * answers that can overlap or leave gaps around a reconnect.
- */
 export class TerminalStream {
   readonly #screen: Screen
   readonly #fetch: (since: number) => Promise<TerminalAttachment>
@@ -27,7 +22,6 @@ export class TerminalStream {
     this.#fetch = fetch
   }
 
-  /** A push. `offset` is missing from clouds older than `terminal.attach`, so such output is written as it comes. */
   data(data: string, offset?: number) {
     if (this.#disposed) return
     if (this.#attaching) this.#held.push({ data, offset })
@@ -45,7 +39,6 @@ export class TerminalStream {
     this.#screen.exited(exitCode)
   }
 
-  /** Catches the screen up with the session's kept output. Resolves with the session, or null when attach failed. */
   dispose() {
     this.#disposed = true
     this.#held = []

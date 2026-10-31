@@ -23,7 +23,7 @@ pnpm test         # node --test, *.test.ts next to source
 pnpm check:specs  # TLC over specs/*.cfg, needs Java 11+ (see specs/README.md)
 ```
 
-Run `pnpm typecheck && pnpm lint && pnpm test` before you call work done. CI runs the same checks on every pull request, plus `pnpm test:e2e` on `ubuntu-latest`, and on the self-hosted home Mac for branches in this repo (never for forks), and React Doctor comments on the ones that touch React code.
+Run `pnpm typecheck && pnpm lint && pnpm test` before you call work done. CI runs the same checks on every pull request, plus `pnpm test:e2e` on `ubuntu-latest`, and React Doctor comments on the ones that touch React code.
 
 ## Architecture
 
@@ -42,7 +42,7 @@ messages/     Paraglide catalogs: en.json, zh-TW.json and ja.json
 
 - Renderer and main talk over one `rpc` IPC channel. Add a method to `src/shared/contract.ts` with request and response schemas, then handle it in `src/main/rpc.ts`. Main pushes live updates on the `event` channel.
 - Main-process code is Effect services: `class X extends Context.Service<...>` plus an exported `layer`. Follow `services/Threads.ts`.
-- Each schema change gets a new migration in `src/main/db/migrations/`. Never edit a migration that has shipped.
+- Each schema change gets a new migration in `src/main/db/migrations/`. Never edit a migration that has shipped. Id 3 belonged to a removed migration that some databases already recorded, so never reuse it.
 - A new agent backend is one `AgentProvider` in `src/main/agents/` plus the registrations and capability checklist in `docs/agent-providers.md`.
 - Every UI string lives in `messages/en.json`, `messages/zh-TW.json` and `messages/ja.json`. Add all three; `src/renderer/messages.test.ts` fails when a catalog misses a key or a placeholder. Don't hardcode copy in components.
 
@@ -50,6 +50,8 @@ messages/     Paraglide catalogs: en.json, zh-TW.json and ja.json
 
 - The renderer lints with the React Compiler rules (`react/purity`, `react/refs` and the rest) and the React Doctor rules listed in `.oxlintrc.json`. Code the compiler cannot optimize fails `pnpm lint`.
 - Our own rules live in `packages/oxlint-plugin-hinacode`. `no-manual-memo` bans `useMemo`, `useCallback` and `memo` because the compiler memoizes. `no-wall-clock-in-test` bans timers, `Date.now()` and `new Date()` in tests. `prefer-start-transition` warns when a click or submit handler sets state outside a transition. Base components run their action props in one: Button `action`, Tabs `changeAction`.
+- Effects only synchronize with systems outside React: subscriptions, DOM APIs, timers, IPC. Derive values during render, act in the event handler that caused the change, load data with an atom, and reset a component with `key`. `react/set-state-in-effect`, the react-doctor effect rules and `hinacode/no-promise-state-in-effect` enforce most of this. Keep calling `useEffect` directly rather than wrapping it in a `useMountEffect`, because those rules only recognize `useEffect`.
+- `no-comments` bans comments. Name things so the code explains itself, and put the reasoning in `docs/` or the commit message. Mark a workaround for something we cannot change with `// FIXME:`. For the rare comment that nothing else can carry, put `// oxlint-disable-next-line hinacode/no-comments` above it. Tool directives such as `oxlint-disable`, `@ts-expect-error` and `/// <reference>` still work.
 - Internal scripts are TypeScript that Node runs directly (`node scripts/tlc.ts`), so they use erasable syntax only and `.ts` import paths. `tsconfig.scripts.json` type-checks them. `bin/hinacode.mjs` stays JavaScript because it ships in the npm package, and Node does not strip types under `node_modules`.
 - Tests use `node:test` and `node:assert/strict`, run against a real SQLite DB (`db/testing.ts`) and real temp git repos. Don't mock what you can run.
 - For a bug, commit a failing `test(scope): reproduce ...` first, then the fix.

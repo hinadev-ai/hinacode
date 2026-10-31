@@ -8,7 +8,10 @@ import { Effect, Layer } from "effect"
 import * as Db from "../db/client.ts"
 import * as Git from "./Git.ts"
 import * as GitHub from "./GitHub.ts"
+import { Events } from "./Events.ts"
 import { Projects, layer } from "./Projects.ts"
+
+const noEvents = Layer.succeed(Events, { publish: () => Effect.void })
 
 const dirs: Array<string> = []
 afterAll(() => dirs.forEach((dir) => rmSync(dir, { recursive: true, force: true })))
@@ -25,7 +28,7 @@ const repoWith = (files: Record<string, string | Buffer>) => {
 }
 
 const projectsLayer = layer.pipe(
-  Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer, Db.layer(":memory:"))),
+  Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer.pipe(Layer.provide(noEvents)), Db.layer(":memory:"))),
   Layer.provide(NodeServices.layer),
 )
 
@@ -87,6 +90,22 @@ describe("Projects.listWithRepositories", () => {
       const root = join(withOrigin("git@github.com:Acme/Mono.git"), "apps/web")
       expect((yield* listedAt(root))?.repository).toBe("acme/mono/apps/web")
     }),
+  )
+
+  it.live("remembers each root's repository until the project is edited", () =>
+    Effect.gen(function* () {
+      const projects = yield* Projects
+      const root = withOrigin("git@github.com:acme/old.git")
+      const project = yield* projects.create({ name: "repo", rootPath: root, setupScript: null })
+      const repository = Effect.map(projects.listWithRepositories, ([listed]) => listed?.repository)
+      expect(yield* repository).toBe("acme/old")
+
+      execFileSync("git", ["-C", root, "remote", "set-url", "origin", "git@github.com:acme/new.git"])
+      expect(yield* repository).toBe("acme/old")
+
+      yield* projects.update({ id: project.id, name: "renamed" })
+      expect(yield* repository).toBe("acme/new")
+    }).pipe(Effect.provide(projectsLayer)),
   )
 
   it.live("leaves the key out without a GitHub origin", () =>

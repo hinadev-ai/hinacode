@@ -151,6 +151,7 @@ export class Transport {
   private attempt = 0
   private nextCallId = 1
   private foreground = true
+  private watching: readonly string[] = []
   private stopped = false
   private route: Dial["route"] | null = null
   private sentAuth: SentAuth = null
@@ -215,31 +216,32 @@ export class Transport {
   /** The network changed: the old TCP connection is likely dead even if it looks open, so start over now. */
   networkChanged() {
     if (this.stopped || this.status === "unauthorized") return
+    if (!this.foreground) return this.onLinkLost()
     this.redial()
   }
 
-  /** The app moved to or from the foreground. Timers do not run reliably in the background, so they stop. */
+  /** Closes the background socket; foregrounding reconnects and reloads through the normal handshake. */
   setForeground(foreground: boolean) {
     if (this.foreground === foreground) return
     this.foreground = foreground
     if (!foreground) {
-      this.stopHeartbeat()
-      this.stopDirectChecks()
+      clearTimeout(this.retryTimer)
+      this.retryTimer = undefined
+      if (this.status === "connecting" || this.status === "connected") this.onLinkLost()
       return
     }
     if (this.stopped || this.status === "unauthorized") return
-    if (this.status === "connected") {
-      if (this.checksDirect()) {
-        this.checkDirect()
-        this.startDirectChecks()
-      }
-      if (!this.features.has("heartbeat")) return
-      this.ping()
-      this.startPings()
-      this.closeIfSilentFor(PROBE_TIMEOUT_MS)
-    } else if (this.status === "offline") {
-      this.reconnectNow()
-    }
+    if (this.status === "offline") this.reconnectNow()
+  }
+
+  /** Asks the desktop for the transcripts of `threadIds` only, from now and after every handshake. */
+  setWatching(threadIds: readonly string[]) {
+    this.watching = threadIds
+    if (this.status === "connected") this.sendWatching()
+  }
+
+  private sendWatching() {
+    if (this.features.has("watch")) this.sendFrame({ type: "watch", threadIds: this.watching })
   }
 
   /** Dials `dials` from the next round on, keeping the current socket and every pending call. */
@@ -249,21 +251,21 @@ export class Transport {
 
   /** Skips the remaining backoff. */
   reconnectNow() {
-    if (this.status !== "offline" || this.retryTimer === undefined) return
+    if (this.stopped || !this.foreground || this.status !== "offline") return
     clearTimeout(this.retryTimer)
     this.retryTimer = undefined
     this.open()
   }
 
   private open(round: Round = "both") {
-    if (this.stopped) return
+    if (this.stopped || !this.foreground) return
     this.retryTimer = undefined
     this.setStatus("connecting", null)
     this.round = round
-    this.connectTimer = setTimeout(
-      () => (this.socket === null ? this.noneOpened() : this.onLinkLost()),
-      CONNECT_TIMEOUT_MS,
-    )
+    this.connectTimer = setTimeout(() => {
+      if (this.socket === null) this.noneOpened()
+      else if (!this.triedRelayInstead(this.route!)) this.onLinkLost()
+    }, CONNECT_TIMEOUT_MS)
     this.cancelRace = race(
       round === "both"
         ? this.dials
@@ -293,7 +295,7 @@ export class Transport {
     this.challengeTimer = setTimeout(() => {
       if (route === "relay" || !this.hasRelay()) {
         this.sentAuth = "token"
-        this.sendFrame({ type: "auth", token: this.options.token })
+        this.sendFrame({ type: "auth", token: this.options.token, compactEvents: true })
       } else this.closed(CLOSE_UNAUTHORIZED, route)
     }, CHALLENGE_WAIT_MS)
     ws.onmessage = (message) => {
@@ -304,14 +306,21 @@ export class Transport {
     }
   }
 
+  /**
+   * Away from home, a stranger's HinaCode can answer at the same LAN address and refuse a token the machine still
+   * accepts, and after a network change a direct address can open and then never authenticate. Either way it wins
+   * every race against the relay, so a direct session that ends before `ready` leaves the next round to the relay,
+   * whose hostname is the machine's own.
+   */
+  private triedRelayInstead(route: Dial["route"]) {
+    if (route !== "direct" || this.status !== "connecting" || !this.hasRelay()) return false
+    this.dropSocket()
+    this.open("relay")
+    return true
+  }
+
   private closed(code: number, route: Dial["route"]) {
-    // Away from home, a stranger's HinaCode can answer at the same LAN address and refuse a token the machine
-    // still accepts, so only the relay, whose hostname is the machine's own, gets the last word.
-    if (code === CLOSE_UNAUTHORIZED && route === "direct" && this.status === "connecting" && this.hasRelay()) {
-      this.dropSocket()
-      this.open("relay")
-      return
-    }
+    if (this.triedRelayInstead(route)) return
     if (code === CLOSE_UNAUTHORIZED || code === CLOSE_TOKEN_ROTATED) {
       this.dropSocket()
       this.unauthorized(
@@ -334,7 +343,12 @@ export class Transport {
     const { token } = this.options
     const clientNonce = newNonce()
     this.sentAuth = { expectedProof: serverProof(token, clientNonce, serverNonce) }
-    this.sendFrame({ type: "auth", nonce: clientNonce, proof: clientProof(token, serverNonce, clientNonce) })
+    this.sendFrame({
+      type: "auth",
+      nonce: clientNonce,
+      proof: clientProof(token, serverNonce, clientNonce),
+      compactEvents: true,
+    })
   }
 
   /** Whether a `ready` came from a server that holds the token. One that only received the token itself cannot say. */
@@ -403,6 +417,7 @@ export class Transport {
       this.closeIfSilentFor(IDLE_TIMEOUT_MS)
     }
     if (this.checksDirect() && this.foreground) this.startDirectChecks()
+    this.sendWatching()
     this.options.onReady(this.features, environment, relay)
   }
 
@@ -504,10 +519,12 @@ export class Transport {
     }
     this.expireOfflineCalls()
     this.setStatus("offline", null)
+    clearTimeout(this.retryTimer)
+    this.retryTimer = undefined
+    if (this.stopped || !this.foreground) return
     const base = Math.min(MAX_RETRY_MS, MIN_RETRY_MS * 2 ** this.attempt)
     const random = this.options.random ?? Math.random
     this.attempt++
-    clearTimeout(this.retryTimer)
     this.retryTimer = setTimeout(() => this.open(), base * (1 + (random() * 2 - 1) * JITTER))
   }
 

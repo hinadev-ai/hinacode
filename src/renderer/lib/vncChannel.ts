@@ -9,10 +9,7 @@ export interface VncCloseEvent {
   readonly wasClean: boolean
 }
 
-/**
- * A WebSocket-shaped channel to a thread's VNC server, carried over rpc, for noVNC's `RFB`. noVNC checks that
- * every public field below exists before it attaches, so they stay class fields even while null.
- */
+// FIXME: noVNC checks that every public field exists before it attaches, so they stay fields even while null
 export class VncChannel {
   binaryType = "arraybuffer"
   readonly protocol = ""
@@ -23,14 +20,12 @@ export class VncChannel {
   onerror: ((event: unknown) => void) | null = null
 
   readonly #streamId = crypto.randomUUID()
-  /** Data that arrived before `onopen`. Null once open. */
   #early: Array<Uint8Array> | null = []
   #sending: Promise<void> = Promise.resolve()
   readonly #opened: Promise<void>
   readonly #unsubscribe: () => void
 
   constructor(threadId: string) {
-    // Subscribed before opening, since main may push the server's first bytes before the rpc resolves.
     this.#unsubscribe = onPushEvent((event) => {
       if (event.type === "vm.screen.data" && event.streamId === this.#streamId) this.#receive(event.data)
       if (event.type === "vm.screen.closed" && event.streamId === this.#streamId) {
@@ -43,7 +38,7 @@ export class VncChannel {
     )
   }
 
-  /** Copies the bytes at once: noVNC reuses the buffer behind `data`. */
+  // FIXME: noVNC reuses the buffer behind data, so copy it at once
   send(data: Uint8Array) {
     if (this.readyState !== "open") return
     const bytes = data.slice()
@@ -60,7 +55,6 @@ export class VncChannel {
     if (this.readyState === "closing" || this.readyState === "closed") return
     this.readyState = "closing"
     this.#early = null
-    // After the open settles, so main never sees the close before the stream exists.
     void this.#opened
       .then(() => callPromise("vm.screen.close", { streamId: this.#streamId }))
       .catch(() => {})

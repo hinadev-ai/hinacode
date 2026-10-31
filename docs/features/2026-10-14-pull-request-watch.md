@@ -45,6 +45,7 @@ WatchSnapshot = {
   mergeable: Mergeable
   head: string                     // head commit oid
   failingChecks: string[]          // names, so a second failure is still news
+  comments: string[] | null        // ids told about, without the gh account's own; null before comments were watched
 }
 ```
 
@@ -67,10 +68,13 @@ Three state rules carry the whole feature.
 | `reviewChanged`  | The review decision becomes approved or changes requested       |
 | `conflicting`    | GitHub starts reporting the branch as conflicting with its base |
 | `mergedOrClosed` | The pull request leaves the open states                         |
+| `commented`      | A comment id appears that is not from the gh account itself     |
 
 There is deliberately no event for "checks pending" or "review required". Those are the absence of news. The diff is one pure function in `src/main/services/pullRequestWatch.ts`, taking the stored snapshot, the fresh one, and the interest set, and returning the events to report. The same module renders the wake message from a pull request detail plus its events, so both halves are covered by plain unit tests.
 
-A fresh watch has no snapshot, which the diff treats as a neutral pull request with no checks and no review. Watching a pull request whose checks already failed therefore reports that failure on the first poll, and watching a quiet one stays quiet.
+A fresh watch has no snapshot, which the diff treats as a neutral pull request with no checks and no review. Watching a pull request whose checks already failed therefore reports that failure on the first poll, and watching a quiet one stays quiet. Comments are the exception: a fresh watch, and a stored snapshot whose `comments` is null, take the comments already there as told, so starting a watch never replays a pull request's history.
+
+Comment news is keyed on comment ids. The agent posts with the same gh account the watch reads as, so that account's comments are left out, or the agent's own reply would wake it. Bots that keep one report comment edit it in place on every push, and an edit keeps the id, so edits are never news. The wake quotes each new comment with its author, a bot mark, and its location, and frames the quoted text as feedback written by others rather than as instructions from the user.
 
 ### Polling and waking
 

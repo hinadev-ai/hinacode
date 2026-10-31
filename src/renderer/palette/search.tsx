@@ -14,7 +14,6 @@ import { WarningIcon } from "../components/icons/WarningIcon.tsx"
 
 const iconClass = "size-3.5 shrink-0 text-muted-foreground"
 
-/** Starting a ripgrep per keystroke would pile up processes, so file search waits for a pause. */
 const FILES_DEBOUNCE_MS = 150
 
 const threadItem = (hit: ThreadSearchHit, query: string, ctx: PaletteContext): PaletteItem => {
@@ -54,10 +53,6 @@ const logFailure = (what: string) => (cause: unknown) => {
   return []
 }
 
-/**
- * Share only pending requests when the palette asks again during a streamed turn. Settled answers
- * are discarded so reopening or repeating a search reads current messages and workspace files.
- */
 let lastThreads: { query: string; items: Promise<ReadonlyArray<ThreadSearchHit>> } | null = null
 let lastFiles: { key: string; items: Promise<ReadonlyArray<PaletteItem>> } | null = null
 
@@ -93,7 +88,6 @@ const searchFiles = async (
   )
 }
 
-/** Lines in the open thread's workspace. */
 export const fileSearchSource: PaletteSource = {
   group: "files",
   items: (query, ctx) => {
@@ -117,10 +111,6 @@ const matchIndexes = (text: string, pattern: RegExp | null): Array<number> =>
         Array.from({ length: match[0].length }, (_, offset) => match.index + offset),
       )
 
-/**
- * Keeps the order main returned, newest message and ripgrep's order, and marks the literal query
- * rather than fuzzy matched characters, since that is what matched.
- */
 export function rankLiteral(items: ReadonlyArray<PaletteItem>, query: string): ReadonlyArray<RankedGroup> {
   const pattern = findPattern(query)
   const groups = new Map<PaletteGroup, Array<RankedItem>>()

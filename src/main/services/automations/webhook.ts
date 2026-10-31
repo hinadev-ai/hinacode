@@ -9,7 +9,6 @@ export const hookPath = (automationId: string) => `/hooks/${automationId}`
 
 const SIGNATURE_HEADERS = ["x-hinacode-signature", "x-hub-signature-256"]
 
-/** Checks a `sha256=<hex>` HMAC of the raw body, the format GitHub uses for X-Hub-Signature-256. */
 export const signatureMatches = (secret: string, body: Uint8Array, header: string | undefined) => {
   const hex = header?.startsWith("sha256=") ? header.slice("sha256=".length) : undefined
   if (hex === undefined || !/^[0-9a-f]{64}$/i.test(hex)) return false
@@ -31,7 +30,6 @@ export interface WebhookTarget {
 }
 
 export interface WebhookHandlers {
-  /** Undefined when no webhook automation has this id. */
   readonly target: (automationId: string) => Effect.Effect<WebhookTarget | undefined>
   readonly deliver: (automationId: string, eventKey: string, payload: unknown) => Effect.Effect<AutomationRun>
 }
@@ -66,10 +64,6 @@ const handleHook = (handlers: WebhookHandlers) =>
     }
   }).pipe(Effect.catchTag("HttpServerError", () => Effect.succeed(json({ error: "unreadable_body" }, 400))))
 
-/**
- * The webhook HTTP server, separate from the MCP server so its address can be fixed and exposed
- * beyond loopback. Fails to build when the port is taken.
- */
 export const webhookServer = (address: { readonly host: string; readonly port: number }, handlers: WebhookHandlers) =>
   HttpRouter.serve(HttpRouter.add("POST", "/hooks/:id", handleHook(handlers)), {
     disableListenLog: true,

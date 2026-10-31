@@ -19,16 +19,12 @@ const NpmRelease = Schema.Struct({ version: Schema.String })
 
 export interface CloudUpdaterOptions {
   readonly current: string
-  /** The installed `hinacode` package, two levels above `out/main/daemon.js`. */
   readonly packageRoot: string
   readonly registry: string
-  /** Stops the cloud and starts the installed release in its place. */
   readonly restart: () => void
-  /** Installs a release on its own once no turn is running, instead of waiting for a click on the desktop. */
   readonly autoInstall: boolean
 }
 
-/** The prefix `npm install -g` used, when `packageRoot` is a global install at `<prefix>/lib/node_modules/hinacode`. */
 const globalPrefix = (packageRoot: string) => {
   const nodeModules = dirname(packageRoot)
   const lib = dirname(nodeModules)
@@ -36,11 +32,6 @@ const globalPrefix = (packageRoot: string) => {
   return isGlobal && basename(lib) === "lib" ? dirname(lib) : undefined
 }
 
-/**
- * Whether restarting the cloud now would destroy no work in progress: no turn running or waiting on the user, no
- * message queued for one, no worktree setup script running, and no terminal still running, since a restart kills its
- * shell. An exited terminal stays listed until its tab is closed, and holds nothing.
- */
 export const isIdle = (cloud: {
   readonly threads: ReadonlyArray<Pick<Thread, "status" | "queue">>
   readonly worktrees: ReadonlyArray<Pick<Worktree, "status">>
@@ -53,7 +44,6 @@ export const isIdle = (cloud: {
 const make = ({ current, packageRoot, registry, restart, autoInstall }: CloudUpdaterOptions) =>
   Effect.gen(function* () {
     const prefix = globalPrefix(packageRoot)
-    // `process.execve`, which restarts in place, does not exist on Windows.
     if (prefix === undefined || process.platform === "win32") return unsupported(current)
 
     const events = yield* Events
@@ -72,7 +62,6 @@ const make = ({ current, packageRoot, registry, restart, autoInstall }: CloudUpd
       return Schema.decodeUnknownSync(NpmRelease)(await response.json()).version
     })
 
-    // A check asked for during the scheduled one waits for it, so its caller reads a settled state.
     const checkLock = yield* Semaphore.make(1)
     const check = Effect.suspend(() =>
       state.type === "downloading"
@@ -86,7 +75,7 @@ const make = ({ current, packageRoot, registry, restart, autoInstall }: CloudUpd
           ),
     ).pipe(checkLock.withPermit)
 
-    // npm's shebang runs the first `node` on PATH, so put the node that runs this cloud first.
+    // FIXME: npm's shebang runs the first `node` on PATH
     const npmEnv = { ...process.env, PATH: [dirname(process.execPath), process.env["PATH"]].join(delimiter) }
     const npmInstall = (version: string) =>
       Effect.tryPromise({
@@ -98,7 +87,7 @@ const make = ({ current, packageRoot, registry, restart, autoInstall }: CloudUpd
               "--global",
               `--prefix=${prefix}`,
               `--registry=${registry}`,
-              // npm 11 skips install scripts it was not told to run, and node-pty's picks its prebuilt binary.
+              // FIXME: npm 11 skips install scripts it was not told to run, and node-pty's picks its prebuilt binary
               "--allow-scripts=node-pty",
               `hinacode@${version}`,
             ],
@@ -118,7 +107,6 @@ const make = ({ current, packageRoot, registry, restart, autoInstall }: CloudUpd
               onFailure: (error) => set({ type: "failed", message: error.message }),
               onSuccess: () => Effect.sync(restart),
             }),
-            // The caller's rpc returns now; the cloud restarts once npm finishes.
             Effect.forkDetach,
           ),
         ),
@@ -127,7 +115,6 @@ const make = ({ current, packageRoot, registry, restart, autoInstall }: CloudUpd
 
     yield* Effect.repeat(check, Schedule.spaced(CHECK_INTERVAL)).pipe(Effect.forkScoped)
 
-    // Starting only while idle leaves npm's own run as the one window where new work can be cut off.
     const [threads, worktrees, terminals] = [yield* Threads, yield* Worktrees, yield* Terminals]
     const idle = Effect.gen(function* () {
       const list = yield* threads.list
@@ -147,5 +134,4 @@ const make = ({ current, packageRoot, registry, restart, autoInstall }: CloudUpd
     })
   })
 
-/** Updates for `hinacode serve`: checks npm, and installs the release in place of the running one. */
 export const layer = (options: CloudUpdaterOptions) => Layer.effect(Updates, make(options))

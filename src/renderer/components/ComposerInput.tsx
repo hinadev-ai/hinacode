@@ -1,17 +1,9 @@
 // oxlint-disable jsx-a11y/prefer-tag-over-role, jsx-a11y/click-events-have-key-events -- the WAI-ARIA combobox pattern: a textarea driving a listbox through aria-activedescendant, which <datalist> cannot do. Keys reach the options through the textarea.
-import {
-  type ComponentProps,
-  type KeyboardEvent,
-  type Ref,
-  useEffect,
-  useId,
-  useImperativeHandle,
-  useRef,
-  useState,
-} from "react"
+import { type ComponentProps, type KeyboardEvent, type Ref, useId, useImperativeHandle, useRef, useState } from "react"
 import { flushSync } from "react-dom"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
+import type { MentionableThreads } from "../../shared/threadMention.ts"
 import {
   completionAt,
   type CompletionQuery,
@@ -33,7 +25,6 @@ import { StatusIcon } from "./ThreadPullRequests.tsx"
 import { FileIcon } from "./icons/FileIcon.tsx"
 import { SlashIcon } from "./icons/SlashIcon.tsx"
 
-/** Colors only, never font or spacing: the highlighted copy must wrap exactly like the textarea above it. */
 const syntaxClass: Record<SyntaxKind, string> = {
   text: "text-foreground",
   bullet: "text-muted-foreground",
@@ -42,14 +33,14 @@ const syntaxClass: Record<SyntaxKind, string> = {
   mention: "text-syntax-token",
 }
 
-/** Shared by the textarea and the highlighted copy under it, so both lay text out identically. */
 const textLayout =
   "col-start-1 row-start-1 max-h-60 px-2.5 py-2 text-base whitespace-pre-wrap [overflow-wrap:break-word] [scrollbar-gutter:stable] md:text-sm"
 
-/** A trailing newline only takes up a line in the textarea once something follows it. */
+// FIXME: browsers drop the line after a trailing newline in the highlighted copy, but not in the textarea
 const TRAILING_LINE = "\u200b"
 
-/** Starts both layers' first line after the skill chip, whose width `measureChip` keeps up to date. */
+const scrollIntoViewNearest = (option: HTMLElement | null) => option?.scrollIntoView({ block: "nearest" })
+
 const afterChip = "indent-[calc(var(--skill-chip-width)_+_--spacing(1.5))]"
 
 interface ComposerInputProps extends Omit<ComponentProps<"textarea">, "value" | "onChange" | "ref"> {
@@ -57,19 +48,11 @@ interface ComposerInputProps extends Omit<ComponentProps<"textarea">, "value" | 
   readonly value: string
   readonly onValueChange: (value: string) => void
   readonly commands: ReadonlyArray<AgentCommand>
-  /** Workspace paths offered after `@`. */
   readonly files: ReadonlyArray<string>
-  /** Other threads offered after `@`, before the files. */
-  readonly threads: ReadonlyArray<Thread>
+  readonly threads: MentionableThreads<Thread>
   readonly projectId: string
 }
 
-/**
- * The composer's textarea with Markdown-ish highlighting and completion of `/commands`, `$skills`,
- * `@` mentions of threads and files, and `#` pull requests. The textarea's own text is transparent and sits over a highlighted copy of the same text.
- * A skill that starts the message shows as a chip before the text, and the textarea holds only the text after it.
- * The suggestion list is positioned against the nearest positioned ancestor, the composer box.
- */
 export function ComposerInput({
   ref,
   value,
@@ -88,17 +71,15 @@ export function ComposerInput({
   const highlightRef = useRef<HTMLDivElement>(null)
   const listId = useId()
   const skillId = useId()
-  /** Caret, selected option and dismissed token are indexes into `text`, the part of the message in the textarea. */
   const [caret, setCaret] = useState(0)
   const [selected, setSelected] = useState({ start: -1, index: 0 })
-  /** Start of the token whose suggestions Escape closed; they stay closed until another token is typed. */
   const [dismissedAt, setDismissedAt] = useState<number | null>(null)
   useImperativeHandle(ref, () => textareaRef.current!, [])
 
   const known = {
     commands: new Set(commands.map((command) => command.trigger + command.name)),
     files: new Set(files),
-    threads: new Set(threads.map((thread) => thread.id)),
+    threads: new Set([...threads.sameMachine, ...threads.otherMachines].map((thread) => thread.id)),
   }
   const skill = leadingSkill(value, commands)
   const chipToken = skill?.token ?? ""
@@ -113,14 +94,7 @@ export function ComposerInput({
   const activeIndex = completion?.start === selected.start ? Math.min(selected.index, suggestions.length - 1) : 0
   const optionId = (index: number) => `${listId}-${index}`
 
-  useEffect(() => {
-    if (open) document.getElementById(optionId(activeIndex))?.scrollIntoView({ block: "nearest" })
-  })
-
-  /**
-   * Keeps the chip's width in `--skill-chip-width` for `afterChip`. The observer reads `layersRef` when it fires,
-   * because React attaches a child's ref before its parent's.
-   */
+  // FIXME: React attaches a child's ref before its parent's, so the observer reads layersRef when it fires
   const measureChip = (element: HTMLElement | null) => {
     if (element === null) return
     const observer = new ResizeObserver(() =>
@@ -130,11 +104,7 @@ export function ComposerInput({
     return () => observer.disconnect()
   }
 
-  /**
-   * Sets the whole message and puts the caret at `position`, an index into it. Rendering a new value moves the
-   * textarea's caret to its end, so render now and put the caret back. A chip that appears or goes away shifts every
-   * index into `text`, which also invalidates the dismissed token.
-   */
+  // FIXME: rendering a new value moves the textarea's caret to its end, so render now and put the caret back
   const replace = (next: string, position: number) => {
     const caretInText = Math.max(0, position - (leadingSkill(next, commands)?.token.length ?? 0))
     flushSync(() => onValueChange(next))
@@ -193,8 +163,6 @@ export function ComposerInput({
           className={cn(textLayout, skill && afterChip, "pointer-events-none relative overflow-hidden")}
         >
           {skill && (
-            // At the start of the first line, one line high. `indent-0` keeps it from inheriting the indent its own width
-            // sets, and `max-w-1/2` leaves the first word room, which would otherwise break mid-word to fit beside the chip.
             <span
               ref={measureChip}
               className="absolute start-2.5 top-2 flex h-lh max-w-1/2 items-center gap-1 rounded-md bg-syntax-token/12 px-1.5 indent-0 font-medium text-syntax-token"
@@ -208,7 +176,6 @@ export function ComposerInput({
               return (
                 <FenceCard key={index} fence={segment} firstLine={index === 0} last={index === segments.length - 1} />
               )
-            // A card is a block, which already ends its line, so the line break after it would add one.
             const shown = segments[index - 1]?.kind === "fence" ? segment.text.replace(/^\n/, "") : segment.text
             return (
               <span key={index} className={syntaxClass[segment.kind]}>
@@ -229,7 +196,6 @@ export function ComposerInput({
           value={text}
           onChange={(event) => {
             const next = chipToken + event.target.value
-            // The space that ends a skill's name moves the name into the chip.
             if (leadingSkill(next, commands)?.token !== skill?.token) {
               replace(next, chipToken.length + event.target.selectionStart)
               return
@@ -267,15 +233,15 @@ export function ComposerInput({
           {suggestions.map((suggestion, index) => (
             <div
               key={suggestion.insert}
+              ref={index === activeIndex ? scrollIntoViewNearest : undefined}
               id={optionId(index)}
               role="option"
               tabIndex={-1}
               aria-selected={index === activeIndex}
-              // Keeps focus, and the caret, in the textarea.
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => pick(suggestion)}
               onMouseMove={() => index !== activeIndex && setSelected({ start: completion.start, index })}
-              className="flex cursor-default items-baseline gap-2 rounded-lg px-2 py-1.5 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+              className="flex cursor-default items-baseline gap-2 rounded-[9px] px-2 py-1.5 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
             >
               <SuggestionRow suggestion={suggestion} />
             </div>
@@ -286,13 +252,8 @@ export function ComposerInput({
   )
 }
 
-/**
- * A fenced block as one full-width card. It keeps the textarea's font and line height, and its padding only extends
- * the fill sideways into the layer's own padding, so every line stays where the textarea puts it.
- */
 function FenceCard({ fence, firstLine, last }: { fence: Fence; firstLine: boolean; last: boolean }) {
   return (
-    // Only the layer's first line starts after the skill chip, and a block would inherit that indent.
     <span className={cn("-mx-1 block rounded-md bg-muted px-1 text-foreground", !firstLine && "indent-0")}>
       <span className="text-muted-foreground">{fence.open}</span>
       {fence.lines.length > 0 && (
@@ -314,7 +275,6 @@ const listLabel = {
   $: m.composer_commands_label,
 } satisfies Record<CompletionQuery["trigger"], () => string>
 
-/** Names what a completion is, for a developer who does not know the icons yet. */
 function commandKind(command: AgentCommand) {
   if (command.builtin === true) return m.composer_kind_command()
   if (command.scope === "user") return m.composer_kind_user_skill()

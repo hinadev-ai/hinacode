@@ -8,7 +8,6 @@ const root = "01a0c6f7-8e77-75b1-9d6a-f583fa33e0da"
 const child = "01a0c6f8-4963-79d3-a97a-5abc24adef4e"
 const unrelated = "01a0c6f9-0000-7000-8000-000000000000"
 
-// Trimmed from codex-cli 0.155 rollouts. A sub-agent's session_meta names the root thread as session_id.
 const sessionMeta = (id: string, sessionId: string) =>
   JSON.stringify({
     type: "session_meta",
@@ -59,7 +58,6 @@ describe("makeRolloutUsage", () => {
       tokenCount(2500, 1800, 120),
       turnContext("gpt-6-sol"),
       tokenCount(4000, 3000, 200),
-      // The total restarts from zero partway through a rollout.
       tokenCount(300, 100, 10),
     ])
     write("2026-09-22", "11-35-55", child, [

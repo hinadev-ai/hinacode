@@ -7,12 +7,11 @@ import { unsupported, Updates } from "./services/Updates.ts"
 
 const CHECK_INTERVAL = "4 hours"
 
-/** Checks for releases at launch, every few hours and on request, and downloads them in the background. */
 const make = Effect.gen(function* () {
   const current = app.getVersion()
   if (!app.isPackaged) return unsupported(current)
 
-  // electron-updater is CommonJS and defines `autoUpdater` as a getter, which Node only exposes on the default export.
+  // FIXME: electron-updater is CommonJS, so Node exposes the `autoUpdater` getter only on the default export
   const { autoUpdater } = updater
   const events = yield* Events
   let state: UpdateState = { type: "idle" }
@@ -30,7 +29,6 @@ const make = Effect.gen(function* () {
     Effect.runFork(Effect.logWarning("update failed", error))
   })
 
-  // Failures also arrive as the `error` event above.
   const check = Effect.suspend(() =>
     state.type === "checking" || state.type === "downloading" || state.type === "ready"
       ? Effect.void

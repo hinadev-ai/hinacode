@@ -19,11 +19,9 @@ type WireMessage = {
 
 export interface CodexClient {
   readonly isAlive: () => boolean
-  /** Fails if the app-server does not answer in time. Only control calls are requests; turn output arrives as notifications. */
   readonly request: <A = unknown>(method: string, params: unknown) => Effect.Effect<A, AgentError>
   readonly respond: (id: RequestId, result: unknown) => Effect.Effect<void>
   readonly respondError: (id: RequestId, code: number, message: string) => Effect.Effect<void>
-  /** Receives every server notification, server request, and process exit until the scope closes. */
   readonly subscribe: (listener: (message: Incoming) => void) => Effect.Effect<void, never, Scope.Scope>
 }
 
@@ -32,11 +30,6 @@ const codexError = (message: string) => new AgentError({ provider: "codex", mess
 const REQUEST_TIMEOUT = Duration.seconds(60)
 const INITIALIZE_TIMEOUT = Duration.seconds(30)
 
-/**
- * Spawns `codex app-server` and performs the initialize handshake.
- * The process is killed when the scope closes.
- * Wire format: newline-delimited JSON-RPC 2.0 without the "jsonrpc" field.
- */
 export const makeCodexClient = (options: {
   readonly binaryPath: string
   readonly clientVersion: string

@@ -10,6 +10,7 @@ import { usePalette } from "../palette/usePalette.ts"
 import { m } from "../paraglide/messages.js"
 import { useClouds } from "../lib/environments.ts"
 import { useThreads } from "../stores/threads.ts"
+import { returnFocus } from "../stores/ui.ts"
 import { ChordKeys } from "./ChordKeys.tsx"
 import { CloudMark } from "./CloudMark.tsx"
 import { Dialog, DialogOverlay, DialogPortal } from "./ui/dialog.tsx"
@@ -17,7 +18,6 @@ import { SearchIcon } from "./icons/SearchIcon.tsx"
 
 type SourceResult = ReturnType<PaletteSource["items"]>
 
-/** Calls every source for the query. Async results join once they settle, so sync groups never wait on files. */
 function useSourceItems(sources: ReadonlyArray<PaletteSource>, query: string, ctx: PaletteContext) {
   const results = sources.map((source) => source.items(query, ctx))
   const [settled, setSettled] = useState<ReadonlyMap<SourceResult, ReadonlyArray<PaletteItem>>>(new Map())
@@ -28,6 +28,7 @@ function useSourceItems(sources: ReadonlyArray<PaletteSource>, query: string, ct
       if (!(result instanceof Promise)) continue
       void result.then((items) => {
         if (!current) return
+        // oxlint-disable-next-line hinacode/no-promise-state-in-effect -- sync sources show at once and async ones join as they settle; Suspense would hold every keystroke for the slowest source.
         setSettled((previous) =>
           previous.has(result)
             ? previous
@@ -45,7 +46,6 @@ function useSourceItems(sources: ReadonlyArray<PaletteSource>, query: string, ct
 
 const focusOnMount = (input: HTMLInputElement | null) => input?.focus()
 
-/** Bolds the matched characters, so the user sees why a result is there. */
 function Highlighted({ text, matches }: { text: string; matches: ReadonlyArray<number> }) {
   if (matches.length === 0) return text
   const matched = new Set(matches)
@@ -111,7 +111,6 @@ function PaletteBody({ onChoose }: { onChoose: (item: PaletteItem, remember: boo
   const items = useSourceItems(mode.sources, search, ctx)
   const groups = mode.rank ? mode.rank(items, search) : rankPalette(items, search, recent)
   const choose = (item: PaletteItem) => onChoose(item, mode.rank === undefined)
-  // On the document rather than the field, so a chord pressed right after the palette opens, before the field has focus, still counts.
   useHotkeys(
     mode.runsChords
       ? items.flatMap((item) =>
@@ -130,20 +129,20 @@ function PaletteBody({ onChoose }: { onChoose: (item: PaletteItem, remember: boo
       keepHighlight
       value={query}
       onValueChange={(value, details) => {
-        // Choosing an item would put its title in the field while the palette closes.
+        // FIXME: Base UI puts the chosen item's title in the field while the palette closes
         if (details.reason !== "item-press") usePalette.getState().setQuery(value)
       }}
       itemToStringValue={(entry: RankedItem) => entry.item.title}
     >
       <div className="flex items-center gap-2.5 border-b border-border px-3.5">
         <SearchIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-        {/* Focused on mount rather than by the dialog a frame later, so Enter pressed right after opening chooses. */}
+        {/* FIXME: Base UI Dialog focuses a frame late, which would drop an Enter pressed right after opening */}
         <Autocomplete.Input
           ref={focusOnMount}
           aria-label={m.palette_search_label()}
           placeholder={mode.placeholder()}
           onKeyDown={(event) => {
-            // The always-open list would otherwise take Escape for itself and keep the dialog up.
+            // FIXME: Base UI's always-open list takes Escape for itself and keeps the dialog up
             if (event.key === "Escape") usePalette.getState().hide()
           }}
           className="h-12 w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
@@ -168,7 +167,6 @@ function PaletteBody({ onChoose }: { onChoose: (item: PaletteItem, remember: boo
   )
 }
 
-/** Quick open and command palette in one dialog. Mount once, in the app shell. */
 export function CommandPalette() {
   const open = usePalette((state) => state.open)
   const openRequest = usePalette((state) => state.openRequest)
@@ -179,8 +177,7 @@ export function CommandPalette() {
     usePalette.getState().hide()
   }
 
-  // Base UI moves focus back to where it was in the frame after the close completes, so the item runs a
-  // frame later to keep whatever it focuses, such as the composer or the find bar.
+  // FIXME: Base UI returns focus a frame after the close completes, which would steal focus from the chosen item
   const runChosen = (isOpen: boolean) => {
     const choice = chosen.current
     chosen.current = null
@@ -198,9 +195,9 @@ export function CommandPalette() {
       <DialogPortal>
         <DialogOverlay />
         <DialogPrimitive.Viewport className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[12dvh]">
-          {/* No exit transition: the palette gets out of the way at once, so the chosen action runs without a wait. */}
           <DialogPrimitive.Popup
             aria-label={m.palette_label()}
+            finalFocus={returnFocus}
             className="flex max-h-[min(30rem,76dvh)] w-full max-w-xl flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/10 outline-none transition-[opacity,scale] duration-150 ease-(--ease-out) data-starting-style:scale-98 data-starting-style:opacity-0"
           >
             <PaletteBody key={openRequest} onChoose={choose} />

@@ -1,6 +1,6 @@
 import { expect, test } from "@effect/vitest"
 import type { Message, MessagePart } from "../../shared/domain.ts"
-import { assistantPresentation, formatWorkDuration, isActivity } from "./assistantPresentation.ts"
+import { assistantPresentation, foldedParts, formatWorkDuration, INLINE_TAIL_PARTS } from "./assistantPresentation.ts"
 
 const message = (
   parts: ReadonlyArray<MessagePart>,
@@ -13,6 +13,7 @@ const message = (
   createdAt: "2026-10-12T00:00:00.000Z",
   completedAt,
   usage: null,
+  forkPoint: null,
 })
 
 const tool: MessagePart = {
@@ -102,6 +103,18 @@ test("duration belongs to each steered response segment", () => {
   expect(assistantPresentation(afterSteer)).toMatchObject({ kind: "completed", durationMs: 365_000 })
 })
 
+test("long running responses fold everything before their latest parts", () => {
+  const parts = Array.from({ length: INLINE_TAIL_PARTS + 3 }, (_, index) => ({ ...tool, callId: `call-${index}` }))
+  const presentation = assistantPresentation(message(parts, null))
+  expect(foldedParts(presentation)).toEqual(presentation.parts.slice(3))
+  expect(foldedParts(assistantPresentation(message(parts.slice(0, 2), null)))).toHaveLength(2)
+})
+
+test("completed responses fold their activity and keep the answer", () => {
+  const answer: MessagePart = { type: "text", text: "Done." }
+  expect(foldedParts(assistantPresentation(message([tool, answer])))).toEqual([{ part: answer, index: 1 }])
+})
+
 test("formats whole elapsed seconds as mm:ss or h:mm:ss", () => {
   for (const [ms, expected] of [
     [0, "00:00"],
@@ -119,16 +132,10 @@ test("formats whole elapsed seconds as mm:ss or h:mm:ss", () => {
   }
 })
 
-test("reasoning, tools and file changes are activity, while text, questions and attachments are the reply", () => {
-  const reply: ReadonlyArray<MessagePart> = [
-    { type: "text", text: "Done." },
-    { type: "questions", text: "Which approach?", questions: [] },
-  ]
-  const activity: ReadonlyArray<MessagePart> = [
-    { type: "reasoning", text: "Look first." },
-    tool,
-    { type: "file_change", path: "README.md", diff: "+Done" },
-  ]
-  expect(reply.map(isActivity)).toEqual([false, false])
-  expect(activity.map(isActivity)).toEqual([true, true, true])
+test("an agent switch stays inline without a Worked for row", () => {
+  const parts: ReadonlyArray<MessagePart> = [{ type: "agent_switch", from: "claude", to: "codex" }]
+  expect(assistantPresentation(message(parts, "2026-10-12T00:00:00.000Z"))).toEqual({
+    kind: "inline",
+    parts: [{ part: parts[0], index: 0 }],
+  })
 })

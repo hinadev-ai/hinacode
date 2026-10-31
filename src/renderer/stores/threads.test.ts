@@ -1,10 +1,12 @@
 import { expect, test } from "@effect/vitest"
 import type { Thread } from "../../shared/domain.ts"
 import {
+  selectAwakeThreads,
   selectInboxThreads,
   selectPinnedThreads,
   selectSnoozedThreads,
   selectUnpinnedProjectThreads,
+  useThreads,
 } from "./threads.ts"
 
 const thread = (id: string, patch: Partial<Thread>): Thread => ({
@@ -20,6 +22,8 @@ const thread = (id: string, patch: Partial<Thread>): Thread => ({
   accessMode: "auto",
   accountId: null,
   providerSessionId: null,
+  forkedFrom: null,
+  sideOf: null,
   status: "idle",
   usageLimit: null,
   sortIndex: 0,
@@ -71,4 +75,29 @@ test("pinned threads are listed in the order they were pinned, without archived 
 
 test("a project's unpinned threads leave out the pinned ones", () => {
   expect(ids(selectUnpinnedProjectThreads("p1")(state))).toStrictEqual(["old", "wakesLater", "wakesSoon", "woke"])
+})
+
+test("awake threads are the active ones not snoozed, pinned or not, which the Dock badge counts", () => {
+  expect(ids(selectAwakeThreads(now)(state)).toSorted()).toStrictEqual([
+    "new",
+    "old",
+    "pinnedFirst",
+    "pinnedLater",
+    "woke",
+  ])
+})
+
+test("keeps side chats apart from the thread list and drops them with their parent", () => {
+  const parent = thread("parent", {})
+  const side = thread("side", { sideOf: "parent" })
+  useThreads.getState().replaceAll([parent])
+  useThreads.getState().upsert(side)
+  expect(Object.keys(useThreads.getState().byId)).toStrictEqual(["parent"])
+  expect(useThreads.getState().sidechats).toStrictEqual({ parent: side })
+
+  useThreads.getState().remove("side")
+  expect(useThreads.getState().sidechats).toStrictEqual({})
+  useThreads.getState().upsert(side)
+  useThreads.getState().remove("parent")
+  expect(useThreads.getState()).toMatchObject({ byId: {}, sidechats: {} })
 })

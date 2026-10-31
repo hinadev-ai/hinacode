@@ -1,11 +1,3 @@
-// Stands in for `codex app-server` in tests. Every received message is appended to $FAKE_CODEX_LOG as a JSON line.
-// $FAKE_CODEX_CONTROL is a JSON file re-read on every request and whenever it changes:
-//   stall: methods to hold without replying, until `release` becomes true
-//   holdTurn: keep a started turn running until turn/interrupt instead of completing it right away
-//   accountFromHome: account/read reports `<basename of $CODEX_HOME>@example.com`
-//   subagent: spawn a sub-agent thread that runs one command before the turn completes
-//   compaction: compact the context before the turn's reply, as Codex does past model_auto_compact_token_limit
-//   backgroundTerminal: start a command that keeps running in a background terminal after the turn completes
 import { appendFileSync, readFileSync, watch } from "node:fs"
 import { basename } from "node:path"
 import { createInterface } from "node:readline"
@@ -14,7 +6,6 @@ const control = () => {
   try {
     return JSON.parse(readFileSync(process.env.FAKE_CODEX_CONTROL, "utf8"))
   } catch {
-    // The test is mid-write; the next change event reads the finished file.
     return {}
   }
 }
@@ -40,7 +31,6 @@ const breakdown = (inputTokens, outputTokens) => ({
   outputTokens,
   reasoningOutputTokens: 0,
 })
-// A completed turn makes two model requests.
 const turnTokenUsage = [
   { total: breakdown(1000, 50), last: breakdown(1000, 50), modelContextWindow: 258400 },
   { total: breakdown(3200, 80), last: breakdown(2200, 30), modelContextWindow: 258400 },
@@ -68,7 +58,6 @@ const spawnSubagent = (threadId, turnId) => {
 }
 
 const held = []
-/** Background terminals keyed by Codex thread id. */
 const terminals = new Map()
 let turns = 0
 let activeQuestion = null
@@ -114,6 +103,8 @@ const reply = ({ id, method, params }) => {
     case "thread/start":
     case "thread/resume":
       return send({ id, result: { thread: { id: "codex-thread" }, sandbox: sandboxPolicy(params.sandbox) } })
+    case "thread/fork":
+      return send({ id, result: { thread: { id: "codex-fork" }, sandbox: sandboxPolicy(params.sandbox) } })
     case "turn/start": {
       const turnId = `turn-${++turns}`
       send({ id, result: { turn: { id: turnId } } })
@@ -200,6 +191,18 @@ const reply = ({ id, method, params }) => {
       terminals.set(params.threadId, rest)
       return send({ id, result: { terminated: rest.length < running.length } })
     }
+    case "thread/compact/start": {
+      const turnId = `turn-${++turns}`
+      send({ id, result: {} })
+      send({ method: "turn/started", params: { threadId: params.threadId, turn: { id: turnId } } })
+      for (const event of ["item/started", "item/completed"]) {
+        send({
+          method: event,
+          params: { threadId: params.threadId, turnId, item: { type: "contextCompaction", id: "c1" } },
+        })
+      }
+      return completeTurn(params.threadId, turnId, "completed")
+    }
     case "turn/interrupt":
       send({ id, result: {} })
       return completeTurn(params.threadId, params.turnId, "interrupted")
@@ -217,7 +220,6 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   else reply(message)
 })
 
-// Held messages go out when the test flips `release`; the control file changing is the only trigger.
 watch(process.env.FAKE_CODEX_CONTROL, () => {
   if (activeQuestion && control().cancelQuestion) {
     send({

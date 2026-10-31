@@ -6,7 +6,6 @@ import { copyTranscripts, makeTranscriptUsage } from "./transcripts.ts"
 
 const sessionId = "31ee17f8-6200-4a50-80ff-96241b83319e"
 
-// Trimmed from Claude Code 2.x transcripts: every content block of a message gets its own line.
 const assistant = (
   messageId: string,
   model: string,

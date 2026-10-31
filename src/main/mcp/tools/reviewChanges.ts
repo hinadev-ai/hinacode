@@ -2,6 +2,7 @@ import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { Effect, Schema } from "effect"
 import { Toolkit } from "effect/ai"
+import { NO_OPTIONAL_LOCKS_ENV } from "../../services/Git.ts"
 import { makeActiveWorkspace } from "../../services/workspace.ts"
 import * as McpTool from "./tool.ts"
 
@@ -21,7 +22,14 @@ export class GitCommandError extends Schema.TaggedError<GitCommandError>()("GitC
 
 const git = (cwd: string, args: ReadonlyArray<string>) =>
   Effect.tryPromise({
-    try: async () => (await execFileAsync("git", args, { cwd, maxBuffer: 64 * 1024 * 1024 })).stdout,
+    try: async () =>
+      (
+        await execFileAsync("git", args, {
+          cwd,
+          env: { ...process.env, ...NO_OPTIONAL_LOCKS_ENV },
+          maxBuffer: 64 * 1024 * 1024,
+        })
+      ).stdout,
     catch: (cause) =>
       new GitCommandError({
         args,
@@ -30,7 +38,6 @@ const git = (cwd: string, args: ReadonlyArray<string>) =>
       }),
   })
 
-// Fixed diff output regardless of the user's git config (mnemonic prefixes, color, external diff tools).
 const DIFF_FLAGS = ["--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/"]
 
 const fenced = (language: string, body: string) =>
@@ -43,11 +50,9 @@ const truncate = (report: string) =>
 
 interface ReviewTarget {
   readonly cwd: string
-  /** Set when the thread runs in a worktree: also diff against the merge-base with this ref. */
   readonly baseRef: string | null
 }
 
-/** Markdown report of a workspace's changes: `git status`, the diff against HEAD and, for worktrees, against the base. */
 const reviewChanges = ({ cwd, baseRef }: ReviewTarget) =>
   Effect.gen(function* () {
     const [status, headDiff] = yield* Effect.all(

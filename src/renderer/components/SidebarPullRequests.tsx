@@ -45,7 +45,6 @@ export function SidebarPullRequests({
 }) {
   const urls = links.map((link) => link.url)
   const pullRequests = useAtomValue(pullRequestStatusesAtom(environment, urls))
-  // Held here rather than in the card, which unmounts as soon as the pointer moves to the dialog.
   const [merging, setMerging] = useState<ReadonlyArray<PullRequest>>([])
   const [mergeOpen, setMergeOpen] = useState(false)
   const merge = (oldestFirst: ReadonlyArray<PullRequest>) => {
@@ -69,7 +68,7 @@ export function SidebarPullRequests({
           <HoverCardTrigger
             render={<button type="button" aria-label={m.sidebar_pull_request_stack({ count: String(links.length) })} />}
             delay={300}
-            className={cn(aboveRowLinkTrigger, "hover:text-foreground")}
+            className={cn(aboveRowLinkTrigger, "text-muted-foreground hover:text-foreground")}
           >
             <StackIcon aria-hidden className="size-3" />+{links.length}
           </HoverCardTrigger>
@@ -121,7 +120,10 @@ function SinglePullRequest({
         rel="noreferrer"
         delay={300}
         aria-label={m.sidebar_pull_request({ number })}
-        className={cn(aboveRowLinkTrigger, status ? statusIndicator[status].className : "hover:text-foreground")}
+        className={cn(
+          aboveRowLinkTrigger,
+          status ? statusIndicator[status].className : "text-muted-foreground hover:text-foreground",
+        )}
       >
         <StatusIcon status={status} className="size-3" />#{number}
       </HoverCardTrigger>

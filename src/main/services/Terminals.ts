@@ -13,7 +13,6 @@ export class TerminalError extends Schema.TaggedError<TerminalError>()("Terminal
   message: Schema.String,
 }) {}
 
-/** About one frame. A `cat` of a large file becomes a few pushes per frame instead of one per pty read. */
 const FLUSH_INTERVAL_MS = 16
 const FLUSH_SIZE = 256 * 1024
 const SCROLLBACK_BYTES = 256 * 1024
@@ -26,7 +25,6 @@ interface Live {
   pending: Array<string>
   pendingSize: number
   timer: ReturnType<typeof setTimeout> | undefined
-  /** Closed by the user or with its thread: forget it once the shell has exited. */
   closing: boolean
 }
 
@@ -40,15 +38,9 @@ export class Terminals extends Context.Service<
     }) => Effect.Effect<TerminalSession, PersistenceError | NotFoundError | TerminalError>
     readonly write: (id: string, data: string) => Effect.Effect<void, NotFoundError>
     readonly resize: (id: string, cols: number, rows: number) => Effect.Effect<void, NotFoundError>
-    /**
-     * Output from offset `since`, or from the oldest kept output when `since` is null or older. Works on an exited
-     * session until it is closed. A push whose `offset` is below `offset + data.length` repeats some of `data`.
-     */
     readonly attach: (id: string, since: number | null) => Effect.Effect<TerminalAttachment, NotFoundError>
-    /** Ends the shell if it still runs and forgets the session. */
     readonly close: (id: string) => Effect.Effect<void>
     readonly list: (threadId: string) => Effect.Effect<ReadonlyArray<TerminalSession>>
-    /** Ends every session of the thread, before its worktree goes away. */
     readonly closeThread: (threadId: string) => Effect.Effect<void>
   }
 >()("hinacode/Terminals") {}
@@ -58,7 +50,6 @@ const make = Effect.gen(function* () {
   const activeWorkspace = yield* makeActiveWorkspace
   const sessions = new Map<string, Live>()
 
-  // pty callbacks run outside any fiber.
   const publish = (event: PushEvent) => Effect.runFork(events.publish(event))
 
   const flush = (live: Live) => {
@@ -108,7 +99,6 @@ const make = Effect.gen(function* () {
       const live: Live = {
         session: { id: randomUUID(), threadId, cwd, cols, rows, status: "running", exitCode: null },
         pty: proc,
-        // Lets the ports panel count a dev server started here as the thread's.
         unregisterPid: registerAgentPid(threadId, proc.pid),
         scrollback: new TerminalScrollback(SCROLLBACK_BYTES),
         pending: [],

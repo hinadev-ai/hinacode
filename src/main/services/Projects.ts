@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { homedir } from "node:os"
 import { extname, isAbsolute, join } from "node:path"
-import { Context, Effect, FileSystem, Layer, Option, Schema } from "effect"
+import { Cache, Context, Effect, FileSystem, Layer, Option, Schema } from "effect"
 import { SqlClient, SqlError, SqlSchema } from "effect/sql"
 import { Project } from "../../shared/domain.ts"
 import { type GitHubRepository, parseGitHubRepository } from "../../shared/github.ts"
@@ -41,28 +41,19 @@ export class Projects extends Context.Service<
   Projects,
   {
     readonly list: Effect.Effect<ReadonlyArray<Project>, PersistenceError>
-    /** `list` plus each project's `repository`, read from its checkout, so a desktop can group one repository's machines. */
     readonly listWithRepositories: Effect.Effect<ReadonlyArray<Project>, PersistenceError>
     readonly get: (id: string) => Effect.Effect<Project, PersistenceError | NotFoundError>
-    /** Adds the folder at `rootPath` (a leading `~` is the home directory), creating it when it does not exist. */
     readonly create: (input: CreateProject) => Effect.Effect<Project, WriteError>
-    /**
-     * Clones the repository into `rootPath` (a leading `~` is the home directory) and adds it. A folder
-     * that already holds a clone of the same repository is added as it is; one holding other files is refused.
-     */
     readonly clone: (
       input: CloneProject,
     ) => Effect.Effect<Project, WriteError | ProjectFolderNotEmptyError | CommandError>
     readonly update: (input: UpdateProject) => Effect.Effect<Project, WriteError | NotFoundError>
     readonly remove: (id: string) => Effect.Effect<void, PersistenceError>
-    /** Adds the chats project at `rootPath` if this machine has none, else moves it there, and makes the folder. */
     readonly ensureChats: (rootPath: string) => Effect.Effect<Project, PersistenceError | ProjectRootInvalidError>
-    /** The project's own favicon as a data URL, or null when it has none in a usual place. */
     readonly icon: (id: string) => Effect.Effect<string | null, PersistenceError | NotFoundError>
   }
 >()("hinacode/Projects") {}
 
-/** The absolute path a typed root means, with a leading `~` as the home directory. */
 const resolveRoot = (rootPath: string) => {
   const resolved = rootPath.trim().replace(/^~(?=$|\/)/, homedir())
   return isAbsolute(resolved) ? Effect.succeed(resolved) : Effect.fail(new ProjectRootInvalidError({ rootPath }))
@@ -76,11 +67,9 @@ const mapWriteError = (operation: string, rootPath: string) => (cause: unknown) 
 const ICON_TYPES: Record<string, string> = { ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon" }
 const ICON_NAMES = ["favicon.svg", "favicon.png", "favicon.ico", "icon.svg", "icon.png"]
 const ICON_DIRS = ["", "public", "static", "app", "src/app", "assets", "apps/web/public", "apps/web/app"]
-/** Where web apps keep their favicon, the project root first. */
 const ICON_PATHS = ICON_DIRS.flatMap((dir) => ICON_NAMES.map((name) => join(dir, name)))
 const ICON_LIMIT_BYTES = 100 * 1024
 
-/** The project table row. SQLite has no boolean, so `linear_review` is a bit. */
 const ProjectRow = Schema.Struct({ ...Project.fields, linearReview: Schema.BooleanFromBit })
 
 const make = Effect.gen(function* () {
@@ -111,6 +100,21 @@ const make = Effect.gen(function* () {
       ),
     )
 
+  const repositoryOf = (rootPath: string) =>
+    Effect.all({
+      url: git.run(rootPath, ["remote", "get-url", "origin"]),
+      prefix: git.run(rootPath, ["rev-parse", "--show-prefix"]),
+    }).pipe(
+      Effect.map(({ url, prefix }) => {
+        const origin = parseGitHubRepository(url)
+        if (origin === null) return undefined
+        const folder = prefix.trim().replace(/\/$/, "")
+        return [origin.owner, origin.name, folder].filter(Boolean).join("/").toLowerCase()
+      }),
+      Effect.orElseSucceed(() => undefined),
+    )
+  const repositories = yield* Cache.make({ lookup: repositoryOf, capacity: 256 })
+
   const ensureDirectory = (rootPath: string) =>
     fs.stat(rootPath).pipe(
       Effect.filterOrFail(
@@ -140,6 +144,7 @@ const make = Effect.gen(function* () {
       yield* sql`INSERT INTO project ${sql.insert(row)}`.pipe(
         Effect.mapError(mapWriteError("projects.create", input.rootPath)),
       )
+      yield* Cache.invalidate(repositories, input.rootPath)
       return { ...row, linearReview }
     })
 
@@ -159,20 +164,6 @@ const make = Effect.gen(function* () {
       Effect.orElseSucceed(() => false),
     )
 
-  const repositoryOf = (rootPath: string) =>
-    Effect.all({
-      url: git.run(rootPath, ["remote", "get-url", "origin"]),
-      prefix: git.run(rootPath, ["rev-parse", "--show-prefix"]),
-    }).pipe(
-      Effect.map(({ url, prefix }) => {
-        const origin = parseGitHubRepository(url)
-        if (origin === null) return undefined
-        const folder = prefix.trim().replace(/\/$/, "")
-        return [origin.owner, origin.name, folder].filter(Boolean).join("/").toLowerCase()
-      }),
-      Effect.orElseSucceed(() => undefined),
-    )
-
   const list = findAll(undefined).pipe(Effect.mapError(persistence("projects.list")))
 
   const listWithRepositories = list.pipe(
@@ -180,7 +171,7 @@ const make = Effect.gen(function* () {
       Effect.forEach(
         projects,
         (project) =>
-          repositoryOf(project.rootPath).pipe(
+          Cache.get(repositories, project.rootPath).pipe(
             Effect.map((repository) => (repository === undefined ? project : { ...project, repository })),
           ),
         { concurrency: "unbounded" },
@@ -248,6 +239,8 @@ const make = Effect.gen(function* () {
             linear_review = ${next.linearReview ? 1 : 0}, updated_at = ${next.updatedAt}
         WHERE id = ${next.id}
       `.pipe(Effect.mapError(mapWriteError("projects.update", next.rootPath)))
+      yield* Cache.invalidate(repositories, current.rootPath)
+      yield* Cache.invalidate(repositories, next.rootPath)
       return next
     })
 

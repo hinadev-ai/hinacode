@@ -15,7 +15,6 @@ import { Skeleton } from "./ui/skeleton.tsx"
 const RADIUS = 6.5
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS
 const WARNING_FRACTION = 0.8
-/** Swatches for the `used` categories, in the order the agent lists them. */
 const USED_SWATCHES = [
   "bg-blue-500",
   "bg-orange-500",
@@ -35,10 +34,6 @@ const formatTokens = (tokens: number) =>
 const formatShare = (fraction: number) =>
   new Intl.NumberFormat(getLocale(), { style: "percent", maximumFractionDigits: 1 }).format(fraction)
 
-/**
- * The context window as of the thread's latest completed turn that reported one. A `/compact` turn makes
- * no model request, so a compaction after that turn sets what is used instead.
- */
 const latestContext =
   (threadId: string) =>
   (state: ReturnType<typeof useMessages.getState>): ContextWindow | null => {
@@ -48,6 +43,7 @@ const latestContext =
     for (let index = history.messages.length - 1; index >= 0; index--) {
       const message = history.messages[index]
       if (message?.role !== "assistant") continue
+      if (message.parts.some((part) => part.type === "agent_switch")) return null
       const context = message.usage?.context
       if (context !== undefined) return compactedTo === null ? context : { ...context, usedTokens: compactedTo }
       compactedTo ??= compactedTokens(message.parts)
@@ -63,7 +59,6 @@ const compactedTokens = (parts: ReadonlyArray<MessagePart>) => {
 const fractionOf = ({ usedTokens, maxTokens }: ContextWindow) =>
   maxTokens > 0 ? Math.min(usedTokens / maxTokens, 1) : 0
 
-/** How full the agent's context window is, so the developer knows when to start a fresh thread. */
 export function ContextRing({ threadId, provider }: { threadId: string; provider: ProviderId }) {
   const context = useMessages(useShallow(latestContext(threadId)))
   if (context === null) return null
@@ -92,7 +87,6 @@ export function ContextRing({ threadId, provider }: { threadId: string; provider
         className="max-h-(--available-height) w-80 gap-3 overflow-y-auto tabular-nums *:shrink-0"
       >
         <PopoverTitle>{m.thread_context_window()}</PopoverTitle>
-        {/* Codex and Muse report only how many tokens are used, not what they hold. */}
         {provider === "claude" ? <Breakdown threadId={threadId} context={context} /> : <Totals context={context} />}
       </PopoverContent>
     </Popover>
@@ -120,7 +114,6 @@ function Ring({ fraction }: { fraction: number }) {
   )
 }
 
-/** Only mounts while the popover is open, so the agent counts its context only when someone looks. */
 function Breakdown({ threadId, context }: { threadId: string; context: ContextWindow }) {
   const result = useAtomValue(contextBreakdownAtom(threadId))
   return AsyncResult.builder(result)

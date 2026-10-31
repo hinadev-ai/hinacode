@@ -11,7 +11,7 @@ hinacode is an Electron 44 app built with electron-vite. The surface a user touc
 
 Run `pnpm test:e2e` first. Playwright drives the built app through the Gherkin scenarios in `e2e/features`, one isolated instance per worker, and covers everything a user can do without an agent turn, a GitHub account or a native dialog: projects and threads (add, errors, collapse, keyboard reorder, rename, archive and unarchive, filters, delete, restart), worktrees (setup script and its variables, setup log, failure, changes and diffs, archive cleanup), ports (listing, scope, the two-click stop), the MCP server contract (tool list, credential checks, `review_changes`, linking and unlinking pull requests, Linear without a key), webhook automations (creation, the one-time secret, unsigned, unknown and disabled deliveries), and settings (language, default model, shortcut recording, conflicts, reset, encrypted secrets). A green run is the proof for those; do not redo them by hand.
 
-This skill is for what a test cannot own: real Claude Code and Codex turns, tools called from inside a turn, GitHub through a real `gh`, deliveries and automations that start threads, native file pickers, and screenshots or videos for a pull request. `features/README.md` lists, per feature, which sub-features are automated and which are left to a verification run.
+This skill is for what a test cannot own: real Claude Code, Codex and Muse Code turns, remote mode against a `hinacode serve` cloud, tools called from inside a turn, GitHub through a real `gh`, deliveries and automations that start threads, native file pickers, and screenshots or videos for a pull request. `features/README.md` lists, per feature, which sub-features are automated and which are left to a verification run.
 
 All helpers live in `scripts/` next to this file. Run from the repo root and set these once per run:
 
@@ -40,7 +40,7 @@ What it does:
 
 Ready means it printed `hinacode ready: cdp=... data=... session=... webhook-port=...`. Teardown is [Cleanup](#cleanup). To restart the same profile, for example to prove history restore or resume, run `$S/stop.sh $DATA` and then `$S/launch.sh $PORT $DATA --no-build`.
 
-Isolation: each instance needs its own `HINACODE_USER_DATA` (SQLite, settings, secrets) and its own CDP port. The MCP server picks a free port by itself. Never drive an instance you did not launch, such as the user's own hinacode or another agent's port 9222 to 9234.
+Isolation: each instance needs its own `HINACODE_USER_DATA` (SQLite, settings, secrets) and its own CDP port. `$DATA` holds `hinacode.sqlite`, `chats/` and `attachments/`; Chromium's profile, with `localStorage`, is `$DATA/chromium`. The MCP server picks a free port by itself. Never drive an instance you did not launch, such as the user's own hinacode or another agent's port 9222 to 9234.
 
 Verification must never access the user's `kkcode Safe Storage` Keychain item. An unpackaged run (`out/main/index.js`) switches itself to Chromium's mock keychain, so no flag is needed. A packaged build does not, so pass `--use-mock-keychain` when you launch one by hand. The mock key is public, so save only dummy secrets in these profiles. Never ask the user to approve a Keychain prompt for verification. Stop the test instance if one appears.
 
@@ -50,7 +50,7 @@ Verification must never access the user's `kkcode Safe Storage` Keychain item. A
 $S/doctor.sh $PORT $DATA
 ```
 
-Read-only. Exit 0 means: the recorded session is alive, the CDP port belongs to it, it runs with `HINACODE_USER_DATA=$DATA`, the renderer is loaded from this checkout's `out/`, rpc answers, and the webhook listener is ours. It warns when `src/` or `messages/` changed after the last build. Run it first, and again whenever anything looks off. If a line says FAIL, do not drive that instance.
+Read-only. Exit 0 means: the recorded session is alive, the CDP port belongs to it, it runs with `HINACODE_USER_DATA=$DATA`, the renderer is loaded from this checkout's `out/`, rpc answers, and the webhook listener is ours. Agent CLIs inherit Electron's listening sockets, so doctor treats a port's root holder, the one whose parent does not hold it too, as its owner. It warns when `src/` or `messages/` changed after the last build. Run it first, and again whenever anything looks off. If a line says FAIL, do not drive that instance.
 
 ## Drive
 
@@ -58,24 +58,28 @@ Attach once, then use the same session for every command:
 
 ```sh
 $AB connect $PORT
+$AB set viewport 1600 1000                                     # redo after every relaunch
+$AB find role button click --name "Dismiss" --exact            # once per `Update available: <agent>` toast
 $AB snapshot -i                                                # accessibility tree with @refs
 $AB find role button click --name "New thread in demo" --exact # role + accessible name
-$AB find label "Root path" fill "$DATA/repo"
+$AB find label "Folder or GitHub repository" fill "$DATA/repo"
 $AB focus 'button[aria-label="Reorder first thread"]'          # CSS on aria-label when find has no action for it
 $AB wait 'h1'                                                  # wait for UI, never a bare sleep after a click
 $AB screenshot "$SHOTS/<feature>-<step>.png"
 ```
 
+Without `set viewport` the window is 720 wide: the sidebar auto-hides and home buttons get shortcut suffixes in their names (`Add project Ctrl+Shift+N`), which breaks `--exact`. `Update available: <agent>` toasts arrive seconds after launch as `[role=dialog]`, cover the side panel's top right, and keep `wait --fn '!document.querySelector("[role=dialog]")'` from ever passing; dismiss each one.
+
 Run `agent-browser skills get electron` once if you have not used agent-browser with Electron before. Always pass `--session`: the default session is shared with other agents.
 
-Handles: prefer accessible names. The English strings are in `messages/en.json` (zh-TW and ja in `messages/zh-TW.json` and `messages/ja.json`), so a name like `New thread in {project}` is greppable there. Useful ones: `Add project`, `New thread in <project>`, `Actions for <title>`, `Reorder <title>`, combobox `Message` (the composer), combobox `Model` (every agent's models before the first message), comboboxes `Effort` / `Access` (folded into button `More options` when the composer is narrow), group `Workspace` with checkbox `Worktree` and combobox `Branch or pull request`, toggle `Fast`, listboxes `Commands` / `Files`, buttons `Send` / `Steer` / `Stop`, `Allow` / `Allow for session` / `Deny`, `Show thread details`, `Settings`, `Back to threads`.
+Handles: prefer accessible names. The English strings are in `messages/en.json` (zh-TW and ja in `messages/zh-TW.json` and `messages/ja.json`), so a name like `New thread in {project}` is greppable there. Useful ones: `Add project`, `New thread in <project>`, `Actions for <title>`, `Reorder <title>`, combobox `Message` (the composer), combobox `Model` (every agent's models whenever no turn runs), combobox `Access` (`Supervised`, `Auto`, `Full access`; new threads start in `Full access`, which never asks), combobox `Effort` (`Effort` and `Access` fold into button `More options` when the composer is narrow), group `Workspace` with checkbox `Worktree` and combobox `Branch or pull request`, toggle `Fast`, listboxes `Commands` (`/`), `Mentions` (`@`) and `Pull requests` (`#`), buttons `Send`, and `Stop` / `Queue` / `Steer` while running, `Allow` / `Allow for session` / `Deny`, `Show thread details`, link `Settings`. `Escape` leaves Settings; there is no back button.
 
 Rules that came out of real runs:
 
-- Pass `--exact` to `find`. The open thread's sidebar row is itself a `button` whose name contains `Actions for <title>` and `Reorder <title>`, so a substring match clicks the row instead.
-- `find` searches the whole page, including what sits behind a dialog. Settings has comboboxes named after agents (`Claude Code`, `Codex`) and the composer has `Model`; scope with CSS when a name could match twice.
+- Pass `--exact` to `find`. A thread's sidebar row is a link with separate buttons `Reorder <title>`, `Archive <title>`, `Delete <title>` and `Actions for <title>`, and names like `Actions for demo` are substrings of others.
+- `find` searches the whole page, including what sits behind a dialog. Settings repeats names (every agent's combobox is `Default model`, Linear and Slack both have `Save`); use ids such as `#default-model-codex` or `#secret-slack-token`, and scope with CSS when a name could match twice.
 - Selects are base-ui popups: click the combobox, `$AB wait '[role=option]'`, then `$AB find role option click --name "<label>" --exact`. If a popup opens under the header, where a click misses, use the keyboard: `$AB focus 'button[aria-label="Model"]'`, `$AB press Enter`, `$AB press ArrowDown`, `$AB press Enter`, then check the combobox text.
-- A new thread has no title of its own. `New thread in <project>` and `Ctrl+N` create `thread-xxxxx` at once and focus `Message`. Read the title with `$AB get text h1`, or rename it from the sidebar menu when a fixed title matters. The first send renames it (and its worktree branch) in the background, so do not hard-code the placeholder past that point.
+- A new thread has no title of its own. `New thread in <project>` creates `thread-xxxxx` at once and focuses `Message`; `Ctrl+N` first opens the palette's new-thread list, where you pick the project. Read the title with `$AB get text h1`, or rename it from the sidebar menu when a fixed title matters. The first send renames it (and its worktree branch) in the background, so do not hard-code the placeholder past that point.
 - `find` does not wait, and menus, select popups (`[role=option]`), inline inputs and dialogs render a beat after the click. After opening wait for `[role=menu]`, `[role=option]`, `[role=dialog]`, `[role=alertdialog]` or the input; after closing a dialog wait with `$AB wait --fn '!document.querySelector("[role=dialog]")'`. A closed select keeps its options in the page, so wait on the combobox's `aria-expanded="false"` instead of on `[role=option]` disappearing. `snapshot` can lag an animation, so trust the wait, not one snapshot.
 - After `stop.sh` and a relaunch the agent-browser session loses its CDP attachment and opens a blank browser. Pass `--cdp $PORT` on every command after a relaunch (or on every command, which is simplest).
 - `find` supports `click`, `fill`, `check`, `hover`, `text`. For focus or keyboard work use `$AB focus '<css>'` and `$AB press <Key>`.
@@ -103,7 +107,7 @@ Other helpers:
 
 ### Things CDP cannot do
 
-- The native folder and file pickers (`Browse…`, `Attach files`) open GTK dialogs on Xvfb that CDP cannot reach. Type the path into `Root path`. For attachments, paste or drop a `File` through `$AB eval`, or stage with `attachments.stage`.
+- The native folder and file pickers (`Browse…`, `Attach files`) open GTK dialogs on Xvfb that CDP cannot reach. Type the path into `Folder or GitHub repository`. For attachments, paste or drop a `File` through `$AB eval`, or stage with `attachments.stage`.
 - `Show in folder` and PR links open outside the app. Assert the link `href`, do not click.
 
 ### Agents cost money

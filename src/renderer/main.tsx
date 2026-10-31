@@ -3,9 +3,10 @@ import { RegistryContext } from "@effect/atom-react"
 import { RouterProvider } from "@tanstack/react-router"
 import { Effect } from "effect"
 import { AsyncResult, AtomRegistry } from "effect/reactivity"
-import { MotionConfig } from "motion/react"
 import { StrictMode, useEffect, useLayoutEffect } from "react"
 import { createRoot } from "react-dom/client"
+import { toast } from "sonner"
+import { DockBadge } from "./components/DockBadge.tsx"
 import { Toaster } from "./components/ui/sonner.tsx"
 import { TooltipProvider } from "./components/ui/tooltip.tsx"
 import { applyAppearance, themes, useTheme } from "./lib/appearance.ts"
@@ -14,6 +15,7 @@ import { callPromise, clientSettingsAtom, onPushEvent, projectsAtom, settingsAto
 import { terminalExited, writeTerminal } from "./lib/terminalScreens.ts"
 import { useClientSettings } from "./lib/settings.ts"
 import { notifyThreadEvent, recordUnseenOutcome } from "./lib/threadNotifications.ts"
+import { m } from "./paraglide/messages.js"
 import { router } from "./router.tsx"
 import { useBackgroundTasks } from "./stores/backgroundTasks.ts"
 import { useLocale } from "./stores/locale.ts"
@@ -22,7 +24,9 @@ import { usePullRequestGuides } from "./stores/pullRequestGuides.ts"
 import { loadAllPullRequestsAtom, usePullRequests } from "./stores/pullRequests.ts"
 import { useSubagents } from "./stores/subagents.ts"
 import { useTerminals } from "./stores/terminals.ts"
-import { useThreads } from "./stores/threads.ts"
+import { errorMessage } from "./lib/errorMessage.ts"
+import { openSidechat } from "./lib/sidechat.ts"
+import { selectThread, useThreads } from "./stores/threads.ts"
 import { useUnseen } from "./stores/unseen.ts"
 import { useWorktrees } from "./stores/worktrees.ts"
 
@@ -40,41 +44,30 @@ function App() {
   useLayoutEffect(() => {
     void callPromise("app.ready", undefined)
   }, [])
-  // Remount on locale change so every message function runs again; router and atoms live outside.
+  // FIXME: Paraglide messages read the locale when called, so the tree remounts on locale change
   return (
-    <MotionConfig reducedMotion="user">
-      <TooltipProvider key={locale}>
-        <RouterProvider router={router} />
-        {/* Below the 3rem header and clear of the side panel's activity bar, so no control is covered. */}
-        <Toaster position="top-right" offset={{ top: "3.5rem", right: "3.5rem" }} theme={theme.scheme} />
-      </TooltipProvider>
-    </MotionConfig>
+    <TooltipProvider key={locale}>
+      <RouterProvider router={router} />
+      <DockBadge />
+      <Toaster position="top-right" offset={{ top: "3.5rem", right: "3.5rem" }} theme={theme.scheme} />
+    </TooltipProvider>
   )
 }
 
-/** Threads and worktrees of every environment, which main merges into one list each. */
 async function loadLists() {
-  const [threads, worktrees] = await Promise.all([
-    callPromise("threads.list", undefined),
-    callPromise("worktrees.list", undefined),
+  await Promise.all([
+    callPromise("threads.list", undefined).then(useThreads.getState().replaceAll),
+    callPromise("worktrees.list", undefined).then(useWorktrees.getState().replaceAll),
   ])
-  useThreads.getState().replaceAll(threads)
-  useWorktrees.getState().replaceAll(worktrees)
 }
 
-const [settings] = await Promise.all([
-  Effect.runPromise(AtomRegistry.getResult(registry, clientSettingsAtom)),
-  loadLists(),
-  Effect.runPromise(Effect.ignore(AtomRegistry.getResult(registry, settingsAtom(null)))),
-])
-useLocale.getState().apply(settings.locale)
-applyAppearance(settings.appearance)
 onPushEvent((event) => {
   switch (event.type) {
     case "thread.updated":
       return useThreads.getState().upsert(event.thread)
     case "thread.removed":
       useUnseen.getState().clear(event.id)
+      useMessages.getState().unload(event.id)
       return useThreads.getState().remove(event.id)
     case "message.created":
     case "message.updated":
@@ -82,13 +75,19 @@ onPushEvent((event) => {
     case "thread.event": {
       useMessages.getState().receive(event)
       recordUnseenOutcome(event.threadId, event.event)
-      const { notifications } = AsyncResult.getOrElse(registry.get(clientSettingsAtom), () => settings)
-      return notifyThreadEvent(event.threadId, event.event, notifications)
+      const settings = AsyncResult.getOrElse(registry.get(clientSettingsAtom), () => null)
+      return settings && notifyThreadEvent(event.threadId, event.event, settings.notifications)
     }
     case "worktree.updated":
       return useWorktrees.getState().upsert(event.worktree)
     case "worktree.setupLog":
       return useWorktrees.getState().appendSetupLog(event.id, event.chunk)
+    case "worktree.setupNotice":
+      return toast.warning(
+        event.notice === "timedOut"
+          ? m.panel_setup_timed_out({ branch: event.branch })
+          : m.panel_setup_background_output({ branch: event.branch }),
+      )
     case "thread.pullRequests":
       return usePullRequests.getState().replace(event.threadId, event.links)
     case "pullRequest.guide":
@@ -103,15 +102,14 @@ onPushEvent((event) => {
       terminalExited(event.id, event.exitCode)
       return useTerminals.getState().markExited(event.id, event.exitCode)
     case "environment.status":
-      // A cloud that connects fills its sidebar section from fresh lists.
       if (event.status !== "connected") return
       registry.refresh(projectsAtom)
       registry.refresh(loadAllPullRequestsAtom)
       reloadTranscripts(event.id)
+      refreshSidechats(event.id)
       reattachTerminals(event.id)
       return void loadLists()
     case "environments.changed":
-      // A cloud the relay dropped takes its projects and threads out of the sidebar.
       registry.refresh(projectsAtom)
       return void loadLists()
   }
@@ -122,21 +120,25 @@ const isOnCloud = (environmentId: string) => {
   const onCloud = new Set(
     projects.filter((project) => project.environmentId === environmentId).map((project) => project.id),
   )
-  const threads = useThreads.getState().byId
-  return (threadId: string) => onCloud.has(threads[threadId]?.projectId ?? "")
+  const threads = useThreads.getState()
+  return (threadId: string) => onCloud.has(selectThread(threadId)(threads)?.projectId ?? "")
 }
 
-/**
- * Pushes a cloud sent while its socket was down are gone, and a restarted cloud counts `seq` from zero again, so
- * every open transcript of that cloud is read again from a fresh snapshot.
- */
 const reloadTranscripts = (environmentId: string) => {
   const onCloud = isOnCloud(environmentId)
-  const { byThread, unload, load } = useMessages.getState()
+  const { byThread, reload } = useMessages.getState()
   for (const threadId of Object.keys(byThread)) {
-    if (!onCloud(threadId)) continue
-    unload(threadId)
-    void load(threadId)
+    if (onCloud(threadId)) void reload(threadId)
+  }
+}
+
+const refreshSidechats = (environmentId: string) => {
+  const onCloud = isOnCloud(environmentId)
+  for (const parentId of Object.keys(useThreads.getState().sidechats)) {
+    if (onCloud(parentId))
+      openSidechat(parentId).catch((cause: unknown) =>
+        console.error(`Could not refresh a side chat: ${errorMessage(cause)}`),
+      )
   }
 }
 
@@ -148,6 +150,13 @@ const reattachTerminals = (environmentId: string) => {
   }
 }
 
+const [settings] = await Promise.all([
+  Effect.runPromise(AtomRegistry.getResult(registry, clientSettingsAtom)),
+  loadLists(),
+  Effect.runPromise(Effect.ignore(AtomRegistry.getResult(registry, settingsAtom(null)))),
+])
+useLocale.getState().apply(settings.locale)
+applyAppearance(settings.appearance)
 const root = document.getElementById("root")
 if (!root) throw new Error("#root is missing from index.html")
 

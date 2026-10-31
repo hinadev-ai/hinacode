@@ -9,7 +9,6 @@ import { errorMessage } from "./errorMessage.ts"
 import { registry } from "./registry.ts"
 import { callPromise, projectsAtom } from "./rpc.ts"
 
-/** Ticks the worktree box of a new repository thread when the last one started in a worktree. */
 async function pickRememberedWorkspace(thread: Thread) {
   const project = AsyncResult.getOrElse(registry.get(projectsAtom), () => []).find(
     (candidate) => candidate.id === thread.projectId,
@@ -21,7 +20,6 @@ async function pickRememberedWorkspace(thread: Thread) {
   useDrafts.getState().setWorkspace(thread.id, { mode: "worktree", ref })
 }
 
-/** Creates an empty thread and opens it with the composer focused, where its agent and workspace are picked. */
 export async function startThread(projectId: string, navigate: ReturnType<typeof useNavigate>) {
   try {
     const thread = await callPromise("threads.create", { projectId })
@@ -34,11 +32,6 @@ export async function startThread(projectId: string, navigate: ReturnType<typeof
   }
 }
 
-/**
- * Moves a thread with no messages yet to `projectId`, the same repository or the chats on another machine. A thread lives on
- * the machine it was created on, so this creates one there, hands it the draft and agent, and deletes the old one.
- * Staged attachments stay behind with their files on the old machine.
- */
 export async function moveUnstartedThread(thread: Thread, projectId: string, navigate: ReturnType<typeof useNavigate>) {
   const created = await callPromise("threads.create", { projectId })
   const moved =

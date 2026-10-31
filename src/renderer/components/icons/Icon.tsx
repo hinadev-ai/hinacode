@@ -3,7 +3,6 @@ import type { ReactNode, SVGProps } from "react"
 export type IconProps = SVGProps<SVGSVGElement>
 export type IconComponent = (props: IconProps) => ReactNode
 
-/** Base for HinaCode's icons: a 24-unit grid stroked at 2.4 in `currentColor`, sized `1em` like react-icons. */
 export function Icon(props: IconProps) {
   return (
     <svg

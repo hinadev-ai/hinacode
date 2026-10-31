@@ -21,10 +21,10 @@ export const mockScenarios = [
   "stream",
   "activity",
   "approvals",
+  "long-turn",
 ] as const
 export type MockScenario = (typeof mockScenarios)[number]
 
-/** A skill and one of Claude Code's own commands, which the composer shows differently. */
 const commands: ReadonlyArray<AgentCommand> = [
   {
     trigger: "/",
@@ -49,7 +49,6 @@ const toolCall = (callId: string, name: string, input: unknown, output: string):
 
 const chunks = (text: string, size: number) => text.match(new RegExp(`[\\s\\S]{1,${size}}`, "g")) ?? []
 
-/** Every turn replies with a fixture of each Markdown construct, in chunks like a streamed reply. */
 const markdownTurn = (): Array<AgentEvent> => [
   ...chunks(markdownFixture, 400).map((text): AgentEvent => ({ type: "text_delta", text })),
   { type: "turn_completed" },
@@ -64,11 +63,6 @@ const streamTurn = (): Array<AgentEvent> => [
   { type: "turn_completed" },
 ]
 
-/**
- * A turn that plans three tasks and starts the second, then a follow-up that finishes the list.
- * Inputs and outputs match a real Claude Code transcript, so the composer's task list folds the
- * same calls it would see from the CLI.
- */
 const todoTurn = (first: boolean): Array<AgentEvent> =>
   first
     ? [
@@ -111,10 +105,6 @@ const todoTurn = (first: boolean): Array<AgentEvent> =>
         { type: "turn_completed" },
       ]
 
-/**
- * A turn that keeps running with every kind of activity at once: a plan, a sub-agent, and two shells started with
- * `run_in_background` that outlive the turn until they are stopped.
- */
 const activityTurn = (): Array<AgentEvent> => [
   ...todoTurn(true).filter((event) => event.type !== "turn_completed" && event.type !== "text_delta"),
   {
@@ -146,6 +136,18 @@ const activityTurn = (): Array<AgentEvent> => [
   ),
 ]
 
+const longTurn = (): Array<AgentEvent> =>
+  Array.from({ length: 400 }, (_, index): Array<AgentEvent> => [
+    { type: "reasoning_delta", text: `Step ${index}. ${markdownFixture.slice(0, 400)}` },
+    ...toolCall(
+      `long-bash-${index}`,
+      "Bash",
+      { command: `pnpm vitest run step-${index}.test.ts`, description: `Run step ${index}` },
+      markdownFixture.repeat(3).slice(0, 4000),
+    ),
+    ...(index % 16 === 0 ? [{ type: "text_delta", text: `Step ${index} passes.\n\n` } satisfies AgentEvent] : []),
+  ]).flat()
+
 const activityShells = (): Array<BackgroundTask> => [
   { id: "shell-1", kind: "shell", label: "Start the dev server", startedAt: new Date().toISOString() },
   { id: "shell-2", kind: "shell", label: "Watch the unit tests", startedAt: new Date().toISOString() },
@@ -161,7 +163,6 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
       const heldTurns = new Map<string, Deferred.Deferred<void>>()
       const requests = new Map<string, Deferred.Deferred<void>>()
       let requestCount = 0
-      /** Emits `requested` now, and `resolved` once the user answers it. */
       const awaitAnswer = (requested: AgentEvent, resolved: AgentEvent, id: string) => {
         const answered = Deferred.makeUnsafe<void>()
         requests.set(id, answered)
@@ -189,7 +190,6 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
             plan: "Claude Max",
             organization: "Example Org",
           }),
-        // The CLI's own login has spent its 5-hour window and added accounts have room, so a switch can be tried.
         planLimits: (home) =>
           Effect.succeed(
             scenario === "usage-limit"
@@ -219,6 +219,16 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
                 Stream.fromIterable(activityTurn()),
                 Stream.fromEffect(Deferred.await(interrupted).pipe(Effect.as(ended))),
               )
+            }
+            if (scenario === "long-turn") {
+              const interrupted = Deferred.makeUnsafe<void>()
+              heldTurns.set(input.threadId, interrupted)
+              const ended: AgentEvent = { type: "turn_failed", message: "Interrupted" }
+              const streaming = Stream.tick("100 millis").pipe(
+                Stream.map((): AgentEvent => ({ type: "text_delta", text: "streaming " })),
+                Stream.interruptWhen(Deferred.await(interrupted)),
+              )
+              return Stream.fromIterable(longTurn()).pipe(Stream.concat(streaming), Stream.concat(Stream.make(ended)))
             }
             if (scenario === "approvals") {
               const approval = (title: string, command: string) => {
@@ -266,7 +276,6 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
                 { type: "question_resolved", requestId: questionId },
                 questionId,
               )
-              // Two approvals wait side by side, then a question, then a streamed reply.
               return Stream.merge(
                 approval("Run pnpm install", "pnpm install"),
                 approval("Run pnpm test", "pnpm test"),

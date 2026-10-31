@@ -5,13 +5,11 @@ import { join } from "node:path"
 import { promisify } from "node:util"
 import { Data, Effect } from "effect"
 
-/** Bump with the URLs and checksums below. The checksums are from the release notes, or hashed from the download. */
 export const CLOUDFLARED_VERSION = "2026.10.3"
 
 export interface CloudflaredAsset {
   readonly url: string
   readonly sha256: string
-  /** macOS releases are gzipped tarballs holding `cloudflared`; the others are the executable itself. */
   readonly archive: "tgz" | "binary"
 }
 
@@ -45,20 +43,14 @@ const ASSETS: Partial<Record<`${NodeJS.Platform}-${NodeJS.Architecture}`, Cloudf
   },
 }
 
-/** The release asset for this machine, or undefined where Cloudflare publishes none. */
 export const platformAsset = (): CloudflaredAsset | undefined => ASSETS[`${process.platform}-${process.arch}`]
 
-/** `message` finishes the sentence "Cannot install cloudflared: ...". */
 export class CloudflaredInstallError extends Data.TaggedError("CloudflaredInstallError")<{
   readonly message: string
 }> {}
 
 const executable = process.platform === "win32" ? "cloudflared.exe" : "cloudflared"
 
-/**
- * The pinned `cloudflared` under `dir`, downloading and checking it first when it is not there yet.
- * Each version gets its own folder, renamed into place only once it is complete.
- */
 export const installCloudflared = (
   dir: string,
   asset: CloudflaredAsset | undefined,

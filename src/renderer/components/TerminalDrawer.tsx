@@ -13,7 +13,6 @@ import { PlusIcon } from "./icons/PlusIcon.tsx"
 import { TerminalIcon } from "./icons/TerminalIcon.tsx"
 
 const MIN_HEIGHT = TERMINAL_HEIGHT_BOUNDS.min
-/** Room the transcript and composer keep above the drawer. */
 const RESERVED_HEIGHT = 200
 const KEYBOARD_STEP = 24
 
@@ -36,7 +35,6 @@ export function TerminalToggle({ threadId }: { threadId: string }) {
   )
 }
 
-/** Shells in the thread's workspace, one tab per session, docked under the composer. */
 export function TerminalDrawer({ threadId }: { threadId: string }) {
   const thread = useTerminals((state) => state.byThreadId[threadId])
   if (!thread?.open) return null
@@ -54,8 +52,6 @@ function OpenDrawer({ threadId, sessions, activeId }: OpenDrawerProps) {
   const error = useTerminals((state) => state.error)
   const sectionRef = useRef<HTMLElement>(null)
 
-  // Clicking the drawer's chrome types into the shell, the way clicking the screen does. It is a pointer
-  // shortcut only: keyboard users reach the screen's textbox with Tab.
   useEffect(() => {
     const section = sectionRef.current!
     const focusShell = (event: globalThis.MouseEvent) => {
@@ -172,7 +168,6 @@ function TerminalScreen({ id, active }: { id: string; active: boolean }) {
   )
 }
 
-/** The drawer's top edge. Drag it, or focus it and use the arrow keys. */
 function ResizeHandle({ height }: { height: number }) {
   const setHeight = useTerminals((state) => state.setHeight)
   const ref = useRef<HTMLDivElement>(null)

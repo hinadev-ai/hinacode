@@ -8,9 +8,7 @@ import type { Opener, OpenerId } from "../shared/domain.ts"
 
 interface Launcher {
   readonly name: string
-  /** The bundle name on macOS, or null when the app has no macOS build. */
   readonly bundle: string | null
-  /** The command the app installs on Linux and Windows, or null when it has none there. */
   readonly cli: string | null
   readonly opensFiles: boolean
 }
@@ -45,7 +43,6 @@ const applicationDirs = ["/Applications", join(homedir(), "Applications"), "/Sys
 
 const executableNames = (cli: string) => (process.platform === "win32" ? [`${cli}.cmd`, `${cli}.exe`, cli] : [cli])
 
-/** Where the app is installed: its bundle on macOS, its command on PATH elsewhere. */
 const locate = (launcher: Launcher): Promise<string | null> => {
   if (process.platform === "darwin") {
     const { bundle } = launcher
@@ -59,7 +56,7 @@ const locate = (launcher: Launcher): Promise<string | null> => {
 
 const iconOf = async (location: string) => {
   if (process.platform !== "darwin") return null
-  // `app.getFileIcon` answers a generic placeholder for an app bundle. QuickLook draws the app's own icon.
+  // FIXME: `app.getFileIcon` answers a generic placeholder for an app bundle
   const icon = await nativeImage.createThumbnailFromPath(location, { width: 64, height: 64 }).catch(() => null)
   return icon === null || icon.isEmpty() ? null : icon.toDataURL()
 }
@@ -82,9 +79,8 @@ const launch = (location: string, path: string) =>
       execFile("open", ["-a", location, path], (error) => (error ? reject(error) : resolve()))
       return
     }
-    // The editor outlives this app by design, so it drops the tag the development resource monitor follows.
     const env = { ...process.env, HINACODE_INSTANCE: undefined }
-    // A `.cmd` shim only runs through the shell on Windows, which joins the arguments unquoted.
+    // FIXME: a `.cmd` shim only runs through the Windows shell, which joins arguments unquoted
     const child =
       process.platform === "win32"
         ? spawn(`"${location}"`, [`"${path}"`], { detached: true, stdio: "ignore", shell: true, env })

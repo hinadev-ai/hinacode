@@ -1,6 +1,5 @@
 import { Icon, type IconProps } from "./Icon.tsx"
 
-/** Marks an agent skill: a box with its lid tilted open. */
 export function SkillIcon(props: IconProps) {
   return (
     <Icon aria-hidden {...props}>

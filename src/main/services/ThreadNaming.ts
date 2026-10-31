@@ -22,22 +22,13 @@ const SYSTEM_PROMPT = `You name coding tasks in a developer's sidebar. Given the
 - title: at most 50 characters, sentence case, no trailing period, in the language of the message
 - branch: 2 to 5 lowercase English words joined by hyphens, with no prefix`
 
-/** Enough of a long first message to tell what it is about. */
 const PROMPT_LIMIT = 4000
 
-/**
- * What naming may change. `titleAndBranch` is only for a branch hinacode created for this task: renaming any
- * other branch, such as a pull request's head, detaches it from its upstream and its pull request.
- */
 export type NamingScope = "title" | "titleAndBranch"
 
 export class ThreadNaming extends Context.Service<
   ThreadNaming,
   {
-    /**
-     * Titles the thread from its first message and, within `scope`, renames its worktree branch. Never fails:
-     * on any error the placeholder names stay. A title the user changed in the meantime is kept.
-     */
     readonly nameFromPrompt: (thread: Thread, prompt: string, scope: NamingScope) => Effect.Effect<void>
   }
 >()("hinacode/ThreadNaming") {}
@@ -52,7 +43,6 @@ const suggest = (model: string, prompt: string) =>
         const stream = query({
           prompt: prompt.slice(0, PROMPT_LIMIT),
           options: {
-            // The SDK replaces the child env instead of merging it.
             env: { ...process.env },
             pathToClaudeCodeExecutable,
             model,

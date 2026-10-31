@@ -14,7 +14,7 @@ import {
   type Frame,
   type Page,
   type Request,
-} from "playwright"
+} from "playwright-core"
 import { RpcMethods, type RpcRequest } from "../../shared/contract.ts"
 import {
   BrowserFrame,

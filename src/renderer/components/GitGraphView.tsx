@@ -36,7 +36,6 @@ import { TagIcon } from "./icons/TagIcon.tsx"
 const ROW_HEIGHT = 28
 const LANE_INSET = 8
 const NODE_RADIUS = 3.5
-/** Lanes narrow down to `MIN_LANE_WIDTH` to fit this width, so the subject keeps room in the side panel. */
 const MAX_GRAPH_WIDTH = 112
 const MAX_LANE_WIDTH = 12
 const MIN_LANE_WIDTH = 8
@@ -44,10 +43,6 @@ const LANE_COLORS = 6
 const PAGE_SIZE = 500
 const MAX_COMMITS = 10_000
 
-/**
- * The commit graph of the checkout a thread works in: its worktree, or the project root when the thread
- * has none. Selecting a commit shows its diff below the list.
- */
 export function GitGraphView({ thread }: { thread: Thread }) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
@@ -67,7 +62,6 @@ function GitGraph({ root, branch, threadStatus }: { root: string; branch?: strin
   const refresh = useAtomRefresh(logAtom)
   const [limit, setLimit] = useAtom(gitLogLimitAtom(root))
 
-  // A turn ending is when an agent's commits land, so a status change asks again.
   const lastStatus = useRef(threadStatus)
   useEffect(() => {
     if (lastStatus.current === threadStatus) return
@@ -185,7 +179,6 @@ function GraphWithDiff({ root, branch, commits, onEndReached }: GraphWithDiffPro
   )
 
   const showDiff = diffOpen && selectedCommit !== undefined
-  // A diff needs the room a file viewer gets.
   useEffect(() => {
     useUi.getState().setSidePanelWide(showDiff)
     return () => useUi.getState().setSidePanelWide(false)
@@ -282,14 +275,9 @@ interface GraphSize {
 
 const laneColor = (lane: number) => `var(--graph-lane-${lane % LANE_COLORS})`
 
-/**
- * Each edge spans two rows, from one center line to the next. A row draws the whole curve of the
- * previous row's edges and of its own, and its viewport clips each to the half that falls inside it.
- */
 function GraphLanes({ row, incoming, graph }: { row: GraphRow; incoming: ReadonlyArray<GraphEdge>; graph: GraphSize }) {
   const laneX = (lane: number) => LANE_INSET + lane * graph.laneWidth
   const center = ROW_HEIGHT / 2
-  /** A line between center lines `y` and `y + ROW_HEIGHT`, curving when it changes lanes. */
   const edge = ({ fromLane, toLane }: GraphEdge, y: number, key: string) => {
     const x1 = laneX(fromLane)
     const x2 = laneX(toLane)
@@ -317,9 +305,7 @@ function GraphLanes({ row, incoming, graph }: { row: GraphRow; incoming: Readonl
   )
 }
 
-/** One chip keeps the subject readable in the side panel; the rest are counted, and named on hover. */
 function RefChips({ refs, branch }: { refs: ReadonlyArray<string>; branch: string | undefined }) {
-  // The thread's branch names the row best, then HEAD; both are what the thread is working on.
   const rank = (ref: string) => (ref === branch ? 2 : ref === "HEAD" ? 1 : 0)
   const shown = chipRefs(refs).toSorted((a, b) => rank(b) - rank(a))
   const first = shown[0]
@@ -367,7 +353,6 @@ const relativeTime = (iso: string) => {
 
 const { min: MIN_SPLIT, max: MAX_SPLIT } = GIT_GRAPH_SPLIT_BOUNDS
 
-/** The divider between the list and the diff. Dragging or the arrow keys move it. */
 function SplitHandle({ value, onChange }: { value: number; onChange: (value: number) => void }) {
   const clamp = (next: number) => Math.min(Math.max(next, MIN_SPLIT), MAX_SPLIT)
 
@@ -414,7 +399,6 @@ function SplitHandle({ value, onChange }: { value: number; onChange: (value: num
 }
 
 function CommitDiffPane({ root, commit }: { root: string; commit: GitCommit }) {
-  // Moving through commits keeps the last diff on screen until the next one loads.
   const shownHash = useDeferredValue(commit.hash)
   return (
     <section

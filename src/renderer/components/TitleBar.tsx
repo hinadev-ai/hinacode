@@ -13,15 +13,16 @@ import { SettingsIcon } from "./icons/SettingsIcon.tsx"
 import { SidebarFillIcon } from "./icons/SidebarFillIcon.tsx"
 import { SidebarIcon } from "./icons/SidebarIcon.tsx"
 
-// The main process hides the native title bar on macOS only, and the traffic lights sit in this bar's left inset.
 const besideTrafficLights = detectPlatform() === "mac"
 
 export function TitleBar({
   compact,
   sidebarButtonRef,
+  className,
 }: {
   compact: boolean
   sidebarButtonRef: RefObject<HTMLButtonElement | null>
+  className?: string
 }) {
   const sidebarShown = useUi((state) => (compact ? state.sidebarOverlayOpen : state.sidebarOpen))
   const toggleSidebar = useUi((state) => state.toggleSidebar)
@@ -31,8 +32,9 @@ export function TitleBar({
   return (
     <header
       className={cn(
-        "window-drag flex h-titlebar shrink-0 items-center gap-0.5 border-b border-sidebar-border bg-sidebar glass:bg-sidebar/80 pr-2 text-sidebar-foreground select-none",
+        "window-drag flex h-titlebar shrink-0 items-center gap-0.5 bg-sidebar glass:bg-sidebar/80 pr-2 text-sidebar-foreground select-none",
         besideTrafficLights ? "pl-22" : "pl-3",
+        className,
       )}
     >
       <span className="mr-3 font-heading text-sm font-semibold">{m.app_name()}</span>
@@ -55,7 +57,13 @@ export function TitleBar({
           {chord && <ChordKeys chord={chord} />}
         </TooltipContent>
       </Tooltip>
-      <Button variant="ghost" size="icon-sm" render={<Link to="/settings" />} aria-label={m.sidebar_settings()}>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        render={<Link to="/settings" />}
+        aria-label={m.sidebar_settings()}
+        className="data-[status=active]:bg-sidebar-accent data-[status=active]:text-sidebar-accent-foreground"
+      >
         <SettingsIcon aria-hidden />
       </Button>
       <MachineResourcesButton />

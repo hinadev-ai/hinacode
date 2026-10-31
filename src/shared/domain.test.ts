@@ -19,6 +19,8 @@ const legacyThread: Omit<Thread, "userSkills"> = {
   accessMode: "supervised",
   accountId: null,
   providerSessionId: null,
+  forkedFrom: null,
+  sideOf: null,
   status: "idle",
   usageLimit: null,
   sortIndex: 0,
@@ -90,6 +92,27 @@ describe("chatFolder", () => {
     expect(chatFolder("/home/k/.config/kkcode/chats", "t1")).toBe("/home/k/.config/kkcode/chats/t1")
     expect(chatFolder("C:\\Users\\k\\AppData\\Roaming\\kkcode\\chats\\", "t1")).toBe(
       "C:\\Users\\k\\AppData\\Roaming\\kkcode\\chats\\t1",
+    )
+  })
+})
+
+describe("listener settings", () => {
+  const setSettings = Schema.decodeUnknownSync(RpcMethods["settings.set"].request)
+
+  it("refuse an address that binds every interface", () => {
+    for (const bindHost of ["0.0.0.0", "::"]) {
+      expect(() => setSettings({ remote: { enabled: true, bindHost, port: 48081 } })).toThrow()
+      expect(() => setSettings({ automations: { bindHost, port: 48080 } })).toThrow()
+    }
+  })
+
+  it("let remote control turn on only with a picked interface", () => {
+    expect(() => setSettings({ remote: { enabled: true, bindHost: null, port: 48081 } })).toThrow()
+    expect(setSettings({ remote: { enabled: false, bindHost: null, port: 48081 } })).toStrictEqual({
+      remote: { enabled: false, bindHost: null, port: 48081 },
+    })
+    expect(setSettings({ remote: { enabled: true, bindHost: "100.64.0.2", port: 48081 } }).remote?.bindHost).toBe(
+      "100.64.0.2",
     )
   })
 })

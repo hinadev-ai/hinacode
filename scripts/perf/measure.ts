@@ -1,12 +1,8 @@
 #!/usr/bin/env node
-// Usage: measure.ts <cdp-port> <label> <scenario> [args...]
-//   switch <threadId...>        click each sidebar thread link in turn, 3 rounds; time to painted transcript + heap
-//   scroll <threadId>           open the thread, scroll bottom->top->bottom one step per frame; frame times + heap
-//   archive <threadId>          turn on worktree removal, time the threads.archive rpc, and the latency of a cheap rpc while it runs
-// Writes results/<label>-<scenario>.json under .context/perf/.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { WebSocket, type MessageEvent } from "ws"
 
 type Target = { type: string; url: string; webSocketDebuggerUrl: string }
 type Reply = { id?: number; error?: unknown; result?: unknown }
@@ -44,7 +40,7 @@ await new Promise((resolve, reject) => {
 let nextId = 1
 const pending = new Map<number, (msg: Reply) => void>()
 ws.addEventListener("message", (e) => {
-  const msg: Reply = JSON.parse(e.data)
+  const msg: Reply = JSON.parse(e.data.toString())
   if (msg.id && pending.has(msg.id)) {
     pending.get(msg.id)!(msg)
     pending.delete(msg.id)
@@ -76,11 +72,18 @@ const waitFor = async (expression: string, timeoutMs = 20000) => {
 }
 
 await send("Performance.enable")
+await send("Emulation.setDeviceMetricsOverride", {
+  width: 1280,
+  height: 820,
+  deviceScaleFactor: 1,
+  mobile: false,
+})
 await send("HeapProfiler.enable")
 await send("Page.enable")
 await send("Page.addScriptToEvaluateOnNewDocument", {
   source: readFileSync(join(dirname(fileURLToPath(import.meta.url)), "react-commits.js"), "utf8"),
 })
+await evaluate('localStorage.setItem("hinacode.location", "/")')
 await send("Page.reload")
 const cpuThrottle = Number(process.env.CPU_THROTTLE ?? 1)
 await send("Emulation.setCPUThrottlingRate", { rate: cpuThrottle })
@@ -115,7 +118,7 @@ const summarizeCommits = (commits: Commit[]) => {
 const startTrace = async () => {
   const events: unknown[] = []
   const collect = (e: MessageEvent) => {
-    const msg: { method?: string; params: { value: unknown[] } } = JSON.parse(e.data)
+    const msg: { method?: string; params: { value: unknown[] } } = JSON.parse(e.data.toString())
     if (msg.method === "Tracing.dataCollected") events.push(...msg.params.value)
   }
   ws.addEventListener("message", collect)
@@ -134,7 +137,7 @@ const startTrace = async () => {
   return async (file: string) => {
     const complete = new Promise<void>((resolve) => {
       const done = (e: MessageEvent) => {
-        if (JSON.parse(e.data).method !== "Tracing.tracingComplete") return
+        if (JSON.parse(e.data.toString()).method !== "Tracing.tracingComplete") return
         ws.removeEventListener("message", done)
         resolve()
       }
@@ -232,7 +235,6 @@ const heap = async () => {
   }
 }
 
-// Installed once per page: long task observer + helpers the scenarios call.
 await evaluate(`(() => {
   if (window.__perf) return
   const lt = []
@@ -281,12 +283,14 @@ await evaluate(`(() => {
       if (!link) throw new Error("no sidebar link for " + id)
       const t0 = performance.now()
       link.click()
-      // painted = the transcript exists and two frames passed with the same article count
+      // painted = the transcript is visible (LegendList holds it at opacity 0 until its first layout) and two frames kept the same article count
       let last = -1, stable = 0
       while (stable < 2) {
         await frame()
-        const n = document.querySelectorAll("main article").length
-        if (n > 0 && n === last) stable++; else stable = 0
+        const articles = document.querySelectorAll("main article")
+        const n = articles.length
+        const shown = n > 0 && articles[n - 1].checkVisibility({ opacityProperty: true })
+        if (shown && n === last) stable++; else stable = 0
         last = n
         if (performance.now() - t0 > 20000) throw new Error("timeout opening " + id + ": " + JSON.stringify({ articles: n, shown: document.querySelector("main")?.innerText.slice(0, 200) }))
       }
@@ -319,7 +323,14 @@ await evaluate(`(() => {
   }
 })()`)
 
-const results: Record<string, unknown> = { label, scenario, args, cpuThrottle, at: new Date().toISOString() }
+const results: Record<string, unknown> = {
+  label,
+  scenario,
+  args,
+  cpuThrottle,
+  viewport: await evaluate("({width: innerWidth, height: innerHeight, devicePixelRatio})"),
+  at: new Date().toISOString(),
+}
 if (scenario === "switch") {
   results.heapStart = await heap()
   const rounds: unknown[] = []
@@ -411,6 +422,30 @@ if (scenario === "switch") {
   results.rendersPerKey = +(renders.renders / TYPED_TEXT.length).toFixed(1)
   results.renders = renders
   results.longTaskMs = await longTaskMs(since)
+} else if (scenario === "find") {
+  await evaluate(`window.__perf.openThread(${JSON.stringify(args[0])})`)
+  await settleTranscript()
+  await press("f", "KeyF", 70, 2)
+  const input = `document.querySelector('input[aria-label="Find in thread"]')`
+  await waitFor(`${input} !== null`)
+  const queries = Array.from({ length: 12 }, (_, index) => `qzx${"z".repeat(index)}`)
+  const since = await evaluate<number>("performance.now()")
+  const { work, renders } = await record("find", async () => {
+    for (const query of queries) {
+      await evaluate(`${input}.focus()`)
+      await press("a", "KeyA", 65, 2)
+      await send("Input.insertText", { text: query })
+      await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+      await waitFor(`document.querySelector('search output')?.getAttribute('aria-busy') === 'false'`)
+      if (!(await evaluate(`document.querySelector('search output')?.textContent === 'No results'`)))
+        throw new Error("expected a settled no-match query")
+    }
+  })
+  results.workload = { queries }
+  results.work = work
+  results.renders = renders
+  results.longTaskMs = await longTaskMs(since)
+  await press("Escape", "Escape", 27)
 } else if (scenario === "typing-reply") {
   await evaluate(`window.__perf.openThread(${JSON.stringify(args[0])})`)
   await settleTranscript()
@@ -475,4 +510,4 @@ writeFileSync(file, JSON.stringify(results, null, 2))
 console.log(JSON.stringify(results, null, 2))
 console.log(file)
 await send("Emulation.setCPUThrottlingRate", { rate: 1 })
-ws.close()
+ws.terminate()

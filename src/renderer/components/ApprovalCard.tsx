@@ -7,7 +7,6 @@ import { FieldError } from "./ui/field.tsx"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { ShieldIcon } from "./icons/ShieldIcon.tsx"
 
-/** One pending tool approval. It disappears when the provider reports `approval_resolved`. */
 export function ApprovalCard({ request, providerLabel }: { request: ApprovalRequest; providerLabel: string }) {
   const [error, respond, isPending] = useActionState(async (_: string | null, decision: ApprovalDecision) => {
     try {

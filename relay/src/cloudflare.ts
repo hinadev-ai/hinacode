@@ -2,7 +2,6 @@ import { Option, Schema } from "effect"
 
 export type Fetch = (input: URL, init: RequestInit) => Promise<Response>
 
-/** A Cloudflare call that failed. `message` is a sentence the relay returns as its 502 body. */
 export class CloudflareError extends Error {}
 
 const API = "https://api.cloudflare.com/client/v4"
@@ -29,9 +28,7 @@ export interface Cloudflare {
   createCname(hostname: string, content: string): Promise<string>
   updateCname(recordId: string, hostname: string, content: string): Promise<void>
   tunnelToken(tunnelId: string): Promise<string>
-  /** Deletes the record. One that is already gone counts as deleted. */
   deleteRecord(recordId: string): Promise<void>
-  /** Deletes the tunnel and its connections. One that is already gone counts as deleted. */
   deleteTunnel(tunnelId: string): Promise<void>
 }
 
@@ -45,7 +42,6 @@ export const makeCloudflare = (fetch: Fetch, config: CloudflareConfig): Cloudfla
   const account = `/accounts/${config.accountId}`
   const zone = `/zones/${config.zoneId}`
 
-  /** `action` finishes the sentence "Cloudflare could not ...". */
   const send = async (action: string, method: string, path: string, body?: unknown) => {
     let response: Response
     try {

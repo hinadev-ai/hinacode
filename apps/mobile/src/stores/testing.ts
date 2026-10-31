@@ -22,6 +22,7 @@ export const message = (id: string, threadId = "t1"): Message => ({
   createdAt: "2026-10-16T00:00:00.000Z",
   completedAt: null,
   usage: null,
+  forkPoint: null,
 })
 
 export const thread = (id: string, updatedAt: string, title = id) => ({ id, updatedAt, title }) as unknown as Thread

@@ -14,7 +14,6 @@ import { WarningFillIcon } from "../components/icons/WarningFillIcon.tsx"
 import { XCircleFillIcon } from "../components/icons/XCircleFillIcon.tsx"
 import type { IndicatorTone } from "../../shared/threadStatus.ts"
 
-/** Keyed by the icon names in `shared/threadStatus.ts`, which the phone app shares. */
 const icons = {
   RiCheckboxCircleFill: CheckCircleFillIcon,
   RiCloseCircleFill: XCircleFillIcon,
@@ -40,7 +39,6 @@ const toneClassName = {
   prMerged: "text-pr-merged",
 } satisfies Record<IndicatorTone, string>
 
-/** A thread or pull request indicator from `shared/threadStatus.ts`, as an icon component and a text color. */
 export const toIcon = ({ icon, tone }: { icon: keyof typeof icons; tone: IndicatorTone }) => ({
   Icon: icons[icon],
   className: toneClassName[tone],

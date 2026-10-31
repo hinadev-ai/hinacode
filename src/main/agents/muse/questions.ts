@@ -1,7 +1,6 @@
 import type { Question, QuestionAnswers } from "../../../shared/agent.ts"
 import type { UserInputAnswer, UserInputQuestion } from "./protocol.ts"
 
-/** Muse caps a typed answer at 500 characters. */
 const MAX_TEXT = 500
 
 export const toQuestion = (question: UserInputQuestion): Question => ({
@@ -14,10 +13,6 @@ export const toQuestion = (question: UserInputQuestion): Question => ({
   secret: false,
 })
 
-/**
- * MSP wants exactly one answer per question: the picked label, the picked labels, or typed text. A skipped
- * question is answered in words so the model knows. Null when every question was skipped, which cancels the ask.
- */
 export const toAnswers = (
   questions: ReadonlyArray<UserInputQuestion>,
   answers: QuestionAnswers,

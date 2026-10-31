@@ -21,7 +21,6 @@ const cloudOf = (project: Project, ctx: PaletteContext): Pick<PaletteItem, "clou
   return cloud ? { cloud, keywords: [cloud.name] } : {}
 }
 
-/** Threads in sidebar order. */
 export const threadsSource: PaletteSource = {
   group: "threads",
   items: (_query, ctx) =>
@@ -52,10 +51,6 @@ export const projectsSource: PaletteSource = {
     })),
 }
 
-/**
- * Projects to start a thread in, the open thread's project first, else the project of the newest thread the user
- * created. Mod+1 to Mod+9 follow the project list, so a project keeps its chord whichever thread is open.
- */
 export const newThreadSource: PaletteSource = {
   group: "projects",
   items: (_query, ctx) => {
@@ -82,7 +77,6 @@ export const newThreadSource: PaletteSource = {
   },
 }
 
-/** The registry, with each command's effective chord. */
 export const commandsSource: PaletteSource = {
   group: "commands",
   items: (_query, ctx) =>
@@ -100,7 +94,6 @@ export const commandsSource: PaletteSource = {
       }),
 }
 
-/** Shows `path` in the open thread's Files panel, whose explorer is keyed by the same root `FilesView` picks. */
 export const openFile = (ctx: PaletteContext, path: string) => {
   const thread = ctx.threadId ? ctx.threads[ctx.threadId] : undefined
   if (!thread) return
@@ -120,7 +113,6 @@ const fileItem = (ctx: PaletteContext, path: string): PaletteItem => {
     group: "files",
     title: path.slice(slash + 1),
     ...(slash > 0 ? { subtitle: path.slice(0, slash) } : {}),
-    // The whole path, so a query such as "renderer/comp" can span the directory and the name.
     keywords: [path],
     icon: <FileTextIcon aria-hidden className={iconClass} />,
     run: () => openFile(ctx, path),
@@ -130,7 +122,6 @@ const fileItem = (ctx: PaletteContext, path: string): PaletteItem => {
 const FILES_TTL_MS = 5_000
 let filesCache: { threadId: string; at: number; items: Promise<ReadonlyArray<PaletteItem>> } | null = null
 
-/** Listing a large repo takes a moment, so keystrokes within a few seconds share one listing. */
 const threadFiles = (threadId: string, ctx: PaletteContext) => {
   if (filesCache?.threadId === threadId && Date.now() - filesCache.at < FILES_TTL_MS) return filesCache.items
   const items = callPromise("files.list", { threadId }).then(
@@ -144,7 +135,6 @@ const threadFiles = (threadId: string, ctx: PaletteContext) => {
   return items
 }
 
-/** Files in the open thread's workspace. Only for a typed query, since a list of arbitrary files is noise. */
 export const filesSource: PaletteSource = {
   group: "files",
   items: (query, ctx) => (ctx.threadId && query.trim() !== "" ? threadFiles(ctx.threadId, ctx) : []),

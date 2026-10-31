@@ -1,7 +1,9 @@
+import { useAtomValue } from "@effect/atom-react"
 import { useActionState } from "react"
+import { AsyncResult } from "effect/reactivity"
 import { isThreadBusy, type Thread, type Worktree } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
-import { callPromise } from "../lib/rpc.ts"
+import { callPromise, worktreeCheckoutStateAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useWorktrees } from "../stores/worktrees.ts"
 import {
@@ -15,7 +17,6 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog.tsx"
 
-/** The thread's worktree while it still exists on disk. */
 export const useActiveWorktree = (thread: Thread) =>
   useWorktrees((state) => {
     const worktree = thread.worktreeId ? state.byId[thread.worktreeId] : undefined
@@ -24,14 +25,12 @@ export const useActiveWorktree = (thread: Thread) =>
 
 interface ArchiveDialogProps {
   readonly thread: Thread
-  /** The worktree that archiving deletes. */
   readonly worktree: Worktree
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
   readonly onArchived: (thread: Thread) => void
 }
 
-/** Confirms archiving a thread when that also deletes its worktree folder, the one part that cannot be undone. */
 export function ArchiveDialog({ thread, worktree, open, onOpenChange, onArchived }: ArchiveDialogProps) {
   const [error, archive, isPending] = useActionState(async () => {
     try {
@@ -49,6 +48,7 @@ export function ArchiveDialog({ thread, worktree, open, onOpenChange, onArchived
         <AlertDialogHeader>
           <AlertDialogTitle>{m.archive_dialog_title()}</AlertDialogTitle>
           <AlertDialogDescription>{m.archive_dialog_worktree({ path: worktree.path })}</AlertDialogDescription>
+          <UncommittedChangesWarning worktreeId={worktree.id} />
           <AlertDialogDescription>
             {m.archive_dialog_branch({ branch: worktree.branch, baseRef: worktree.baseRef })}
           </AlertDialogDescription>
@@ -66,5 +66,15 @@ export function ArchiveDialog({ thread, worktree, open, onOpenChange, onArchived
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  )
+}
+
+function UncommittedChangesWarning({ worktreeId }: { worktreeId: string }) {
+  const state = useAtomValue(worktreeCheckoutStateAtom(worktreeId))
+  if (AsyncResult.getOrElse(state, () => null) !== "dirty") return null
+  return (
+    <AlertDialogDescription className="font-medium text-destructive">
+      {m.worktree_remove_dirty()}
+    </AlertDialogDescription>
   )
 }

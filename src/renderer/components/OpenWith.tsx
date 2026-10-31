@@ -30,7 +30,6 @@ const useOpeners = (target: Target) => {
   return target === "file" ? openers.filter((opener) => opener.opensFiles) : openers
 }
 
-/** Opens `path` in the app, and remembers the app for the thread header's one-click button. */
 const useOpenWith = () => {
   const save = useAtomSet(updateClientSettingsAtom, { mode: "promise" })
   return (path: string, opener: Opener) =>
@@ -67,7 +66,6 @@ function OpenerItems({ path, target }: { path: string; target: Target }) {
   )
 }
 
-/** An "Open with" submenu for a menu that already lists other actions on `path`. */
 export function OpenWithSubmenu({ path, target }: { path: string; target: Target }) {
   return (
     <DropdownMenuSub>
@@ -82,7 +80,6 @@ export function OpenWithSubmenu({ path, target }: { path: string; target: Target
   )
 }
 
-/** The thread header's "Open with" button. A cloud thread's folder is on that machine, so it has none. */
 export function ThreadOpenWith({ thread }: { thread: Thread }) {
   const root = useThreadRoot(thread)
   const local = useThreadEnvironment(thread.id) === null
@@ -90,10 +87,6 @@ export function ThreadOpenWith({ thread }: { thread: Thread }) {
   return <OpenWithButton path={root.path} />
 }
 
-/**
- * Opens the folder in the app used last with one click, and lists the other apps beside it. Before any app was
- * used, or once it is gone, the first app found stands in.
- */
 function OpenWithButton({ path }: { path: string }) {
   const openers = useOpeners("folder")
   const { openWith } = useClientSettings()

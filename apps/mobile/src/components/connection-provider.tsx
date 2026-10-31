@@ -10,6 +10,7 @@ import {
   restoreAnswers,
   setForeground,
   setServers,
+  setWatching,
   storedServers,
   useConnection,
 } from "@/lib/connection"
@@ -36,11 +37,6 @@ export function forgetServer(id: string) {
   void usePullRequests.getState().load()
 }
 
-/**
- * Restores the paired servers and preferences, syncs with the relay account at launch and on every return to the
- * foreground, saves the server list whenever it changes, accepts `hinacode://connect` links, and keeps the thread,
- * message and pull request stores in step with every server's socket. Renders nothing until storage has been read.
- */
 export function ConnectionProvider({ children }: { children: ReactNode }) {
   const [restored, setRestored] = useState(false)
   const generation = useConnection((state) => state.generation)
@@ -84,6 +80,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   }, [url, restored])
 
   useEffect(() => {
+    setForeground(AppState.currentState !== "background")
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active" || state === "background") setForeground(state === "active")
       if (state === "active") void useRelayAccount.getState().sync()
@@ -103,9 +100,18 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
 
   useEffect(
     () =>
+      useMessages.subscribe((state, previous) => {
+        if (state.watched !== previous.watched) setWatching([...state.watched])
+      }),
+    [],
+  )
+
+  useEffect(
+    () =>
       onEvent((event) => {
         if (isTranscriptPush(event)) useMessages.getState().receive(event)
-        else if (event.type === "thread.updated") useThreads.getState().upsert(event.thread)
+        else if (event.type === "thread.updated" && event.thread.sideOf === null)
+          useThreads.getState().upsert(event.thread)
         else if (event.type === "thread.removed") useThreads.getState().remove(event.id)
         else if (event.type === "worktree.updated") useThreads.getState().upsertWorktree(event.worktree)
         else if (event.type === "thread.pullRequests") usePullRequests.getState().replace(event.threadId, event.links)

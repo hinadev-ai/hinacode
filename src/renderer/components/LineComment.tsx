@@ -21,7 +21,6 @@ interface LineCommentFormProps {
   readonly onCancel: () => void
 }
 
-/** Writes or edits a comment under the lines it is about. `mod+Enter` submits, Escape cancels. */
 export function LineCommentForm({
   path,
   startLine,
@@ -34,7 +33,7 @@ export function LineCommentForm({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const canSubmit = body.trim() !== ""
 
-  // The file viewer lays out its annotations after React mounts them, and focus only sticks once the box has a size.
+  // FIXME: @pierre/diffs lays out annotations after React mounts them, and focus only sticks once the box has a size
   useEffect(() => {
     const textarea = textareaRef.current
     if (!textarea) return
@@ -53,7 +52,6 @@ export function LineCommentForm({
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Keys typed here belong to the comment. Escape must not close the file, and mod+s must not save it.
     event.stopPropagation()
     if (event.key === "Escape") onCancel()
     else if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) submit(event)
@@ -62,7 +60,7 @@ export function LineCommentForm({
   return (
     <form
       onSubmit={submit}
-      className="m-2 flex max-w-xl flex-col gap-2 rounded-lg border border-border bg-background p-2 font-sans"
+      className="m-2 flex max-w-xl flex-col gap-2 rounded-[17px] border border-border bg-background p-2 font-sans"
     >
       <Textarea
         ref={textareaRef}
@@ -72,7 +70,7 @@ export function LineCommentForm({
         onChange={(event) => setBody(event.target.value)}
         onKeyDown={onKeyDown}
         rows={2}
-        className="min-h-14 text-xs md:text-xs"
+        className="min-h-14 rounded-md text-xs md:text-xs"
       />
       <div className="flex justify-end gap-1">
         <Button type="button" variant="ghost" size="xs" onClick={onCancel}>
@@ -86,7 +84,6 @@ export function LineCommentForm({
   )
 }
 
-/** A comment under its lines in the file viewer, waiting to be sent with the next message. */
 export function LineCommentCard({
   comment,
   onEdit,
@@ -119,7 +116,6 @@ export function LineCommentCard({
   )
 }
 
-/** A comment in the composer, sent with the message, with a remove button. */
 export function PendingLineComment({ comment, onRemove }: { comment: LineComment; onRemove: () => void }) {
   return (
     <div className="relative">

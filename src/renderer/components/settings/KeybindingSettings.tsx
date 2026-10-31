@@ -11,7 +11,7 @@ import { ChordKeys } from "../ChordKeys.tsx"
 import { Button } from "../ui/button.tsx"
 import { FieldError } from "../ui/field.tsx"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table.tsx"
-import { SettingsSection, settingsSurfaceClass } from "./SettingsSection.tsx"
+import { SettingsPageAction, SettingsSection, settingsSurfaceClass } from "./SettingsSection.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { WarningIcon } from "../icons/WarningIcon.tsx"
 
@@ -39,7 +39,6 @@ export function KeybindingSettings() {
 
   const bind = (command: Command, chord: string) => {
     const { [command.id]: _previous, ...rest } = overrides
-    // Only overrides are stored, so picking the default again drops the override.
     void saveOverrides(chord === command.defaultKeys ? rest : { ...rest, [command.id]: chord })
   }
 
@@ -49,7 +48,6 @@ export function KeybindingSettings() {
   }
 
   const recordingCommand = commands.find((command) => command.id === recordingId)
-  // Records the physical key, so a binding stays on the same key across keyboard layouts.
   const recorder = useHotkeyRecorder({
     onRecord: (hotkey) => {
       setRecordingId(null)
@@ -73,10 +71,8 @@ export function KeybindingSettings() {
   }
 
   return (
-    <SettingsSection
-      title={m.settings_keybindings()}
-      description={m.settings_keybindings_hint()}
-      action={
+    <SettingsSection>
+      <SettingsPageAction>
         <Button
           variant="outline"
           size="sm"
@@ -85,10 +81,8 @@ export function KeybindingSettings() {
         >
           {m.settings_keybindings_reset_all()}
         </Button>
-      }
-    >
+      </SettingsPageAction>
       {error && <FieldError>{error}</FieldError>}
-      {/* Rows keep the table's hairlines, recolored to read on the surface. */}
       <div className={cn(settingsSurfaceClass, "px-2 [&_tr]:border-foreground/8")}>
         <Table className="table-fixed">
           <TableHeader>

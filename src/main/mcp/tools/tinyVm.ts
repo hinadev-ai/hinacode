@@ -7,7 +7,6 @@ import type { WrittenTree } from "../../services/tinyVm/tar.ts"
 import { MAX_TRANSFER_BYTES, TinyVm } from "../../services/tinyVm/TinyVm.ts"
 import * as McpTool from "./tool.ts"
 
-/** Waits this long after acting before the screenshot, so the screen has reacted. */
 export const SETTLE_MS = 500
 const MAX_OUTPUT_CHARS = 20_000
 
@@ -21,7 +20,7 @@ const tail = (label: string, bytes: Uint8Array) => {
 const execReport = (result: ExecResult, timeoutSeconds: number, background: boolean) => {
   if (background) {
     return result.exitCode === 0 && result.pid !== undefined
-      ? `Started in the background as pid ${result.pid}. Output goes to ${result.log ?? "the sbx log"}.`
+      ? `Started in the background as pid ${result.pid}. Output goes to ${result.log ?? "its log file in the VM"}.`
       : `Could not start it in the background (exit code ${result.exitCode}). ${result.error ?? ""}`.trim()
   }
   const status =
@@ -55,7 +54,7 @@ const HANDED_BACK =
 
 export const VmTools = Toolkit.make(
   McpTool.make("vm_screenshot", {
-    description: `Take a screenshot of the tiny VM's 1280×800 desktop. ${STARTS}`,
+    description: `Take a screenshot of the tiny VM's desktop. ${STARTS}`,
     parameters: Schema.Struct({
       save: Schema.optionalKey(
         Schema.Boolean.annotate({
@@ -133,6 +132,10 @@ export const VmTools = Toolkit.make(
       ),
     }),
   }),
+  McpTool.make("vm_stop", {
+    description:
+      "Stop the thread's tiny VM. On boat.dev its disk is snapshotted and billing stops, and the next VM tool call resumes it. On an sbx host the sandbox is deleted and the next call starts a fresh one. Call it when you are done with the desktop, and do not start the VM just to stop it.",
+  }),
   McpTool.make("vm_pull_file", {
     description: `Copy a file or folder from the tiny VM to this machine, to hand back something made or downloaded there. It lands in a new folder HinaCode picks, and the result names the path; copy or move it from there yourself. At most ${MAX_TRANSFER_BYTES / 1024 / 1024} MB, so compress or split anything bigger first. Symlinks are skipped and files lose their execute bit. ${STARTS}`,
     parameters: Schema.Struct({
@@ -166,7 +169,7 @@ export const vmToolsLayer = VmTools.toLayer(
         return [...shown(data, caption), ...(notice === undefined ? [] : [{ type: "text", text: notice } as const])]
       })
 
-    /** The angle brackets keep a path with spaces, like `Application Support`, one Markdown link. */
+    // FIXME: Markdown needs angle brackets to keep a link path with spaces whole
     const saveScreen = (threadId: string) =>
       Effect.gen(function* () {
         const data = yield* tinyVm.screenshot(threadId)
@@ -174,10 +177,9 @@ export const vmToolsLayer = VmTools.toLayer(
           dataUrl: `data:image/png;base64,${Buffer.from(data).toString("base64")}`,
           name: "vm-screenshot.png",
         })
-        return shown(data, `Screen 1280×800, saved to ${path}. Embed it with: ![VM screenshot](<${path}>)`)
+        return shown(data, `Screen, saved to ${path}. Embed it with: ![VM screenshot](<${path}>)`)
       })
 
-    /** Performs one pointer or keyboard action, then shows the agent the screen it left. */
     const actAndLook = (action: VmAction, done: string) =>
       Effect.gen(function* () {
         const threadId = yield* McpTool.CallingThread
@@ -188,7 +190,7 @@ export const vmToolsLayer = VmTools.toLayer(
 
     return VmTools.of({
       vm_screenshot: ({ save = false }) =>
-        McpTool.CallingThread.use((threadId) => (save ? saveScreen(threadId) : screen(threadId, "Screen 1280×800."))),
+        McpTool.CallingThread.use((threadId) => (save ? saveScreen(threadId) : screen(threadId, "Screen."))),
       vm_click: ({ x, y, button = "left", clicks = 1 }) =>
         actAndLook(
           { type: "click", x, y, button, clicks },
@@ -211,6 +213,19 @@ export const vmToolsLayer = VmTools.toLayer(
             const notice = yield* droppedNotice(threadId)
             const report = execReport(output, timeoutSeconds, background)
             return notice === undefined ? report : `${report}\n\n${notice}`
+          }),
+        ),
+      vm_stop: () =>
+        McpTool.CallingThread.use((threadId) =>
+          Effect.gen(function* () {
+            const before = yield* tinyVm.get(threadId)
+            if (before.status === "none") return "The tiny VM is not running."
+            yield* tinyVm.stop(threadId)
+            const after = yield* tinyVm.get(threadId)
+            if (after.status === "running") return "Could not stop the tiny VM. It is still running; try again."
+            return before.status === "running" && before.provider === "boat"
+              ? "Stopped the tiny VM. Its disk is snapshotted on boat.dev and billing for it has stopped. The next VM tool call resumes it."
+              : "Stopped the tiny VM. Its sandbox is deleted, so the next VM tool call starts a fresh one."
           }),
         ),
       vm_pull_file: ({ path }) =>

@@ -44,7 +44,7 @@ import {
 } from "./mapMessage.ts"
 import { toPlanLimits } from "./limits.ts"
 import { hinacodeMcpServer } from "./mcp.ts"
-import { elementContext } from "../elementContext.ts"
+import { attachmentContext } from "../elementContext.ts"
 import { makeQuestions, QUESTION_TOOL } from "./questions.ts"
 import { claudeHome, copyTranscripts, makeTranscriptUsage } from "./transcripts.ts"
 
@@ -72,11 +72,6 @@ const FALLBACK_MODELS: ReadonlyArray<ModelInfo> = [
 const isEffortLevel = (effort: string | null): effort is EffortLevel =>
   effort !== null && CLAUDE_EFFORT_LEVELS.includes(effort)
 
-/**
- * Claude Code modes offered beside the effort levels. Ultrathink is a prompt keyword that asks for deeper
- * reasoning on the turn at the model's default effort. Ultracode has Claude orchestrate dynamic workflows, and
- * runs at extra high effort like `claude --effort ultracode`; a model without extra high cannot run it.
- */
 const ULTRATHINK = "ultrathink"
 const ULTRACODE = "ultracode"
 
@@ -108,32 +103,24 @@ interface Session extends MapState, ApprovalSession {
   readonly autoCompactTokens: number | null
   permissionMode: PermissionMode
   sessionId: string | null
+  lastAssistantUuid: string | null
   turn: TurnQueue | null
   interrupted: boolean
-  /** Uuids of the prompts sent during the current turn: the first one and every steer. */
   readonly turnPrompts: Set<string>
-  /** Uuids of the prompts sent in any turn that no result has answered yet. */
   readonly unanswered: Set<string>
-  /** Uuids of the prompts the CLI's current response answers, as stamped on its first message. */
   answering: ReadonlyArray<string>
   readonly tasks: Map<string, string | undefined>
   taskSnapshots: boolean
-  /** What the latest snapshot showed as background tasks. Only CLIs that send snapshots fill it. */
   backgroundTasks: ReadonlyArray<BackgroundTask>
-  /** The `ScheduleWakeup` call whose result has not arrived yet. */
   wakeupCall: WakeupCall | null
-  /** The turn the agent scheduled for later. The CLI fires it only while its process lives. */
   wakeup: BackgroundTask | null
-  /** The CLI sends `session_state_changed`, so a turn ends when it goes idle instead of at its result. */
   reportsState: boolean
-  /** The event that ends the turn once the CLI goes idle, mapped from the turn's latest result. */
   heldEnd: AgentEvent | null
   claims: number
   expiry: Fiber.Fiber<void> | null
   closed: boolean
 }
 
-/** Deferred tools sit outside the window until the agent loads one, so they are left out. */
 const toContextBreakdown = (usage: SDKControlGetContextUsageResponse): ContextBreakdown => ({
   usedTokens: usage.totalTokens,
   maxTokens: usage.rawMaxTokens,
@@ -145,14 +132,12 @@ const toContextBreakdown = (usage: SDKControlGetContextUsageResponse): ContextBr
 const isIdle = (session: Session) =>
   session.turn === null && session.claims === 0 && session.unanswered.size === 0 && session.tasks.size === 0
 
-/** The CLI reports it is working while no turn is open: it started on its own, not on a prompt. */
 const startsByItself = (session: Session, message: SDKMessage) =>
   message.type === "system" &&
   message.subtype === "session_state_changed" &&
   message.state === "running" &&
   session.turn === null
 
-/** A steer of the current turn the CLI has not answered yet, which will get its own result. */
 const awaitsAnswer = (session: Session) => [...session.turnPrompts].some((uuid) => session.unanswered.has(uuid))
 
 interface SessionContext {
@@ -218,7 +203,6 @@ const sameHome = (a: AccountHome | null, b: AccountHome | null) => a?.dir === b?
 const sameContext = (a: SessionContext, b: SessionContext) =>
   a.cwd === b.cwd && sameHome(a.home, b.home) && a.instructions === b.instructions
 
-/** The CLI's env for an account: its own home, or the user's default one for null. */
 const homeEnv = (home: AccountHome | null): NodeJS.ProcessEnv =>
   home === null ? { ...process.env } : { ...process.env, CLAUDE_CONFIG_DIR: home.dir }
 
@@ -245,7 +229,6 @@ const copySession = (sessionId: string, from: AccountHome | null, to: AccountHom
     ),
   )
 
-/** The Messages API rejects base64 images above 5 MB. */
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 type ContentBlock = Exclude<SDKUserMessage["message"]["content"], string>[number]
@@ -254,10 +237,6 @@ type ImageMediaType = Extract<Extract<ContentBlock, { type: "image" }>["source"]
 const IMAGE_MEDIA_TYPES: ReadonlyArray<string> = ["image/png", "image/jpeg", "image/gif", "image/webp"]
 const isImageMediaType = (mime: string): mime is ImageMediaType => IMAGE_MEDIA_TYPES.includes(mime)
 
-/**
- * Images go inline as base64, followed by what the user picked when the image is a browser element. Other files
- * are named by path so the agent reads them with its own tools.
- */
 const attachmentBlocks = (attachment: Attachment) =>
   Effect.gen(function* () {
     const fileBlock: ContentBlock = { type: "text", text: `Attached file: ${attachment.path}` }
@@ -276,7 +255,8 @@ const attachmentBlocks = (attachment: Attachment) =>
       type: "image",
       source: { type: "base64", media_type: attachment.mime, data },
     }
-    return attachment.element ? [block, { type: "text" as const, text: elementContext(attachment.element) }] : [block]
+    const context = attachmentContext(attachment)
+    return context === null ? [block] : [block, { type: "text" as const, text: context }]
   })
 
 const userMessage = (prompt: string, attachments: ReadonlyArray<Attachment>, priority?: SDKUserMessage["priority"]) =>
@@ -293,7 +273,6 @@ const userMessage = (prompt: string, attachments: ReadonlyArray<Attachment>, pri
     } satisfies SDKUserMessage
   })
 
-/** The prompts a response answers. The CLI stamps them on the response's first message and on its result. */
 const answeredPrompts = (message: SDKMessage) => {
   if (message.type !== "stream_event" && message.type !== "assistant" && message.type !== "result") return undefined
   return (
@@ -303,12 +282,11 @@ const answeredPrompts = (message: SDKMessage) => {
 
 const baseOptions = (home: AccountHome | null) =>
   Effect.map(installedBinary("claude", home?.binary ?? "claude"), (path): Options => ({
-    // The SDK replaces the child env instead of merging it.
+    // FIXME: the SDK replaces the child env instead of merging it
     env: homeEnv(home),
     pathToClaudeCodeExecutable: path,
   }))
 
-/** Asks a throwaway CLI one question, then closes it. It loads no settings unless `options` asks for them. */
 const probe = <A>(
   read: (probe: Query) => Promise<A>,
   failure: string,
@@ -351,10 +329,6 @@ const planLimits = (home: AccountHome | null) =>
     Effect.orElseSucceed(() => null),
   )
 
-/**
- * A throwaway CLI in `cwd` that loads the same settings, skills and plugins a thread there would. Keyed
- * by `commandsKey`, since the account's home holds the user-level ones.
- */
 const probeCommands = (key: string) => {
   const { cwd, home } = JSON.parse(key) as { cwd: string; home: AccountHome | null }
   return probe((cli) => cli.supportedCommands(), "Failed to list Claude commands", home, {
@@ -386,6 +360,8 @@ export const layer = Layer.effect(
       if (session.turn === null) return
       if ((event.type === "turn_failed" || event.type === "turn_limited") && session.interrupted)
         event = { type: "turn_failed", message: "Interrupted" }
+      if (event.type === "turn_completed" && session.sessionId !== null && session.lastAssistantUuid !== null)
+        event = { ...event, forkPoint: { sessionId: session.sessionId, checkpoint: session.lastAssistantUuid } }
       Queue.offerUnsafe(session.turn, event)
       if (isTerminal(event)) {
         Queue.endUnsafe(session.turn)
@@ -421,7 +397,6 @@ export const layer = Layer.effect(
     const closeSessionUnsafe = (session: Session) => {
       if (session.closed) return
       session.closed = true
-      // The CLI's background shells and scheduled wakeups end with its process.
       setBackgroundTasks(session, [], null)
       cancelExpiry(session)
       if (sessions.get(session.threadId) === session) sessions.delete(session.threadId)
@@ -438,14 +413,12 @@ export const layer = Layer.effect(
         const now = yield* Clock.currentTimeMillis
         const firesAt = session.wakeup?.firesAt
         const untilWakeup = firesAt === undefined ? 0 : Date.parse(firesAt) - now
-        // A due wakeup has fired or is about to, and the idle grace covers a CLI that fires it late.
         if (firesAt !== undefined && untilWakeup <= 0) setBackgroundTasks(session, session.backgroundTasks, null)
         if (!isIdle(session)) {
           cancelExpiry(session)
           return
         }
         if (session.expiry !== null) return
-        // The CLI fires a wakeup only while its process lives.
         const expire = Effect.sleep(Duration.sum(Duration.millis(Math.max(0, untilWakeup)), IDLE_SESSION_TTL)).pipe(
           Effect.andThen(
             Effect.sync(() => {
@@ -476,7 +449,6 @@ export const layer = Layer.effect(
         release,
       )
 
-    /** A run id that sorts before the task's current one belongs to an earlier run of a resumed task. */
     const isLateRun = (session: Session, taskId: string, runId: string | undefined) => {
       const current = session.tasks.get(taskId)
       return runId !== undefined && current !== undefined && runId < current
@@ -505,7 +477,7 @@ export const layer = Layer.effect(
         setBackgroundTasks(session, backgroundTasksOf(message, session.backgroundTasks, new Date().toISOString()))
         return
       }
-      // CLIs that predate snapshots only send these edges, and the SDK says not to correlate the two streams.
+      // FIXME: CLIs that predate snapshots only send these edges, and the SDK says not to correlate the two streams
       if (session.taskSnapshots) return
       switch (message.subtype) {
         case "task_started":
@@ -534,26 +506,23 @@ export const layer = Layer.effect(
       trackTask(session, message)
       if (message.type === "system" && message.subtype === "session_state_changed") {
         session.reportsState = true
-        // Unlike a result, idle waits for background sub-agents and for Claude's replies to their reports.
         if (message.state === "idle" && session.turn !== null && !awaitsAnswer(session))
           emit(session, session.heldEnd ?? { type: "turn_completed" })
         return
       }
       const answered = answeredPrompts(message)
       if (answered !== undefined) session.answering = answered
-      // A response that answers only prompts of a turn whose consumer left before its result. The CLI can batch
-      // such a steer with a steer of the current turn, and that response belongs to the current turn.
       const stale = session.answering.length > 0 && session.answering.every((uuid) => !session.turnPrompts.has(uuid))
       if (message.type === "result") {
-        // CLIs that predate the stamps name no prompt; ending the turn beats waiting for a result that never comes.
+        // FIXME: CLIs that predate prompt stamps name no prompt
         for (const uuid of answered ?? [...session.unanswered]) session.unanswered.delete(uuid)
         session.answering = []
-        // A steer the CLI read too late to abort the response gets its own result after this one.
         if (stale || awaitsAnswer(session)) {
           resetTurnLimits(session)
           return
         }
       } else if (stale) return
+      if (message.type === "assistant" && message.parent_tool_use_id === null) session.lastAssistantUuid = message.uuid
       if (message.type === "system" && message.subtype === "init") {
         session.sessionId = message.session_id
         resumable.set(session.threadId, {
@@ -571,10 +540,9 @@ export const layer = Layer.effect(
       }
     }
 
-    /** Reads every SDK message of the session for its lifetime and routes it to the active turn. */
     const pump = (session: Session) =>
       Stream.fromAsyncIterable(
-        // Iterate the Query itself: its return() closes the transport, the raw generator's does not.
+        // FIXME: the Query's return() closes the transport, the raw generator's does not
         { [Symbol.asyncIterator]: () => session.query },
         agentError("Claude Code stream failed"),
       ).pipe(
@@ -623,7 +591,7 @@ export const layer = Layer.effect(
               prompt: Stream.toAsyncIterable(Stream.fromQueue(prompts)),
               options: {
                 ...base,
-                // Sends `session_state_changed`. Its idle is the only signal that background sub-agents are done.
+                // FIXME: session_state_changed idle is the CLI's only signal that background sub-agents are done
                 env: { ...base.env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" },
                 cwd: input.cwd,
                 model: input.model,
@@ -635,25 +603,22 @@ export const layer = Layer.effect(
                   ...(hidden !== null && { skillOverrides: hidden }),
                 },
                 ...(resume === undefined ? {} : { resume }),
+                ...(input.forkAt !== null && { forkSession: true, resumeSessionAt: input.forkAt }),
                 includePartialMessages: true,
                 settingSources: ["user", "project", "local"],
                 systemPrompt: { type: "preset", preset: "claude_code", append: input.instructions },
                 permissionMode: mode,
-                // Lets a live session switch to full access; the mode above decides what runs unasked.
+                // FIXME: the SDK lets a live session switch to full access only when this is set at start
                 allowDangerouslySkipPermissions: true,
                 thinking: { type: "adaptive", display: "summarized" },
-                // One-line "what it is doing now" for each sub-agent in the Agents tab.
                 agentProgressSummaries: true,
-                // Only invoked after the first prompt, by which time `session` is assigned.
                 canUseTool: (toolName, toolInput, options) =>
                   toolName === QUESTION_TOOL
                     ? questions.ask(session, toolInput, options)
                     : approvals.ask(session, toolName, toolInput, options),
                 mcpServers: { hinacode: hinacodeMcpServer(input.mcpServer) },
                 abortController: abort,
-                // Same as the SDK's default spawn, plus the pid so the thread's open ports can be found.
-                // The SDK does not read stderr from a custom spawn, so it is not piped (an unread pipe
-                // would eventually block the CLI).
+                // FIXME: the SDK never reads stderr from a custom spawn, and an unread pipe would block the CLI
                 spawnClaudeCodeProcess: ({ command, args, cwd, env, signal }) => {
                   const child = spawn(command, args, { cwd, env, signal, stdio: ["pipe", "pipe", "ignore"] })
                   if (child.pid !== undefined) child.once("exit", registerAgentPid(input.threadId, child.pid))
@@ -685,6 +650,7 @@ export const layer = Layer.effect(
           subagents: new Map(),
           lastRequest: null,
           sessionId: resume ?? null,
+          lastAssistantUuid: null,
           turn: null,
           interrupted: false,
           turnPrompts: new Set(),
@@ -710,8 +676,7 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         const existing = sessions.get(input.threadId)
         if (existing !== undefined) {
-          // The CLI lists skills to the model and reads the auto-compact window once per process, so a
-          // change to either needs a new one.
+          // FIXME: the CLI reads its skills and auto-compact window once per process
           if (
             sameContext(existing, input) &&
             existing.userSkills === input.userSkills &&
@@ -748,7 +713,6 @@ export const layer = Layer.effect(
       session.lastRequest = null
     }
 
-    /** A consumer that stops reading mid-turn means the turn should stop too. */
     const abandon = (session: Session, turn: TurnQueue) =>
       session.turn === turn
         ? Effect.sync(() => {
@@ -757,15 +721,17 @@ export const layer = Layer.effect(
           }).pipe(Effect.andThen(interruptQuery(session)))
         : Effect.void
 
-    /** The CLI started work by itself, such as resuming a sub-agent whose background shell finished. */
     const wake = (session: Session) =>
       Effect.gen(function* () {
+        const { sessionId } = session
+        if (sessionId === null) return
         const turn: TurnQueue = yield* Queue.unbounded<AgentEvent, AgentError | Cause.Done>()
         session.reportsState = true
         openTurn(session, turn)
         const events = Stream.fromQueue(turn).pipe(Stream.ensuring(Effect.suspend(() => abandon(session, turn))))
         yield* Queue.offer(wakes, {
           threadId: session.threadId,
+          sessionId,
           events,
           discard: Effect.suspend(() => abandon(session, turn)),
         })
@@ -859,7 +825,6 @@ export const layer = Layer.effect(
       return [...byId.values()]
     })
 
-    // A failure is not cached, so a fresh install of Claude Code shows its models right away.
     const cachedModels = yield* Effect.cachedWithTTL(fetchModels, (exit) =>
       Exit.isSuccess(exit) ? Duration.minutes(10) : Duration.zero,
     )
@@ -907,7 +872,6 @@ export const layer = Layer.effect(
       wakes: Stream.fromQueue(wakes),
       backgroundTasks: {
         changes: Stream.fromQueue(backgroundTaskChanges),
-        // A background task's id is its CLI task id, like a sub-agent's.
         stop: (threadId, taskId) =>
           Effect.suspend(() => {
             const session = sessions.get(threadId)
@@ -925,6 +889,12 @@ export const layer = Layer.effect(
         const session = sessions.get(threadId)
         return session === undefined ? Effect.void : interruptQuery(session)
       },
+      closeSession: (threadId) =>
+        Effect.sync(() => {
+          resumable.delete(threadId)
+          const session = sessions.get(threadId)
+          if (session !== undefined) closeSessionUnsafe(session)
+        }),
       contextBreakdown: (threadId) =>
         Effect.suspend(() => {
           const session = sessions.get(threadId)
@@ -936,7 +906,6 @@ export const layer = Layer.effect(
             }),
           ).pipe(Effect.map(toContextBreakdown))
         }),
-      // A sub-agent's id is its CLI task id.
       stopSubagent: (threadId, subagentId) =>
         Effect.suspend(() => {
           const session = sessions.get(threadId)

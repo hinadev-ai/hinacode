@@ -6,6 +6,7 @@ import { NodeServices } from "@effect/platform-node"
 import { Deferred, Effect, Fiber, Layer } from "effect"
 import type { PushEvent } from "../../shared/contract.ts"
 import type { PullRequestDetail, ThreadStatus } from "../../shared/domain.ts"
+import { allWatchEventKinds } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
 import * as AgentAccounts from "./AgentAccounts.ts"
@@ -20,6 +21,7 @@ import { layer as settingsLayer } from "./Settings.ts"
 import * as Terminals from "./Terminals.ts"
 import { Threads, layer as threadsLayer } from "./Threads.ts"
 import * as Worktrees from "./Worktrees.ts"
+import * as Scratch from "./Scratch.ts"
 
 const pushes: Array<PushEvent> = []
 const wakes: Array<{ readonly threadId: string; readonly text: string }> = []
@@ -55,11 +57,12 @@ const base = realpathSync(mkdtempSync(join(tmpdir(), "kk-pr-watcher-")))
 afterAll(() => rmSync(base, { recursive: true, force: true }))
 
 const domain = threadsLayer.pipe(
+  Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
   Layer.provideMerge(Terminals.layer),
   Layer.provideMerge(Worktrees.layer),
   Layer.provideMerge(Projects.layer),
   Layer.provide(AgentAccounts.layer),
-  Layer.provideMerge(settingsLayer),
+  Layer.provideMerge(settingsLayer(mkdtempSync(join(tmpdir(), "kk-watcher-settings-")))),
 )
 const testLayer = watcherLayer.pipe(
   Layer.provideMerge(pullRequestsLayer),
@@ -88,6 +91,7 @@ const detailFor = (url: string, overrides: Partial<PullRequestDetail> = {}): Pul
   head: "abc1234",
   mergeable: "mergeable",
   changedFiles: 1,
+  comments: [],
   checkRuns: [],
   ...overrides,
 })
@@ -133,6 +137,23 @@ describe("PullRequestWatcher", () => {
         expect(sent[0]?.text).toContain("CI / test")
         expect((yield* linkOf(threadId))?.watch).toMatchObject({ wakes: 1, failures: 0 })
         expect((yield* linkOf(threadId))?.watch?.snapshot?.failingChecks).toStrictEqual(["CI / test"])
+      }),
+    )
+
+    it.effect("writes and pushes nothing when a poll finds the pull request unchanged", () =>
+      Effect.gen(function* () {
+        const { threadId } = yield* watchedThread("unchanged", (u) => detailFor(u))
+        yield* sweep
+        const before = yield* linkOf(threadId)
+        const pushed = pushes.length
+
+        yield* sweep
+        yield* sweep
+
+        expect(
+          pushes.slice(pushed).filter((push) => push.type === "thread.pullRequests" && push.threadId === threadId),
+        ).toStrictEqual([])
+        expect(yield* linkOf(threadId)).toStrictEqual(before)
       }),
     )
 
@@ -245,7 +266,7 @@ describe("PullRequests watch persistence", () => {
 
         const restarted = yield* pullRequests.watch(threadId, url)
         expect(restarted.watch?.generation).not.toBe(firstWatch.generation)
-        expect(restarted.watch?.events).toHaveLength(5)
+        expect(restarted.watch?.events).toStrictEqual(allWatchEventKinds)
 
         const current = restarted.watch
         if (current === null) throw new Error("watch missing after restart")

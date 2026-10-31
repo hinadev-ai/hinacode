@@ -164,15 +164,13 @@ function useMotion({ initial, animate, exit, transition, layout, whileTap }: Mot
     ((): LayoutAnimation => {
       "worklet"
       const exitTransition = exit.transition ?? transition
-      const initialValues: StyleProps = {}
-      const animations: StyleProps = {}
-      if (exit.opacity !== undefined) {
-        initialValues.opacity = opacity.get() as number
-        animations.opacity = animation("opacity", exit.opacity, exitTransition)
+      const initialValues: StyleProps = {
+        ...(exit.opacity !== undefined && { opacity: opacity.get() as number }),
+        ...(exit.y !== undefined && !reduced && { transform: [{ translateY: y.get() as number }] }),
       }
-      if (exit.y !== undefined && !reduced) {
-        initialValues.transform = [{ translateY: y.get() as number }]
-        animations.transform = [{ translateY: animation("y", exit.y, exitTransition) }]
+      const animations: StyleProps = {
+        ...(exit.opacity !== undefined && { opacity: animation("opacity", exit.opacity, exitTransition) }),
+        ...(exit.y !== undefined && !reduced && { transform: [{ translateY: animation("y", exit.y, exitTransition) }] }),
       }
       return { initialValues, animations }
     })

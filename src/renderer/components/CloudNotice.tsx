@@ -10,7 +10,6 @@ import { Button } from "./ui/button.tsx"
 import { CloudOffIcon } from "./icons/CloudOffIcon.tsx"
 import { WarningIcon } from "./icons/WarningIcon.tsx"
 
-/** Says above the composer that the thread's cloud cannot take messages right now, and what to do about it. */
 export function CloudNotice({ threadId }: { threadId: string }) {
   const cloud = useCloud(useThreadEnvironment(threadId))
   if (cloud === undefined || cloud.status === "connected") return null
@@ -53,7 +52,7 @@ function CloudNoticeBody({ cloud }: { cloud: Cloud }) {
         <Button
           variant="outline"
           size="sm"
-          render={<Link to="/settings" search={{ page: "environments" }} />}
+          render={<Link to="/settings" search={{ page: "connections" }} />}
           nativeButton={false}
         >
           {m.environment_pair_again()}
