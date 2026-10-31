@@ -1,5 +1,5 @@
 import "./index.css"
-import { RegistryContext } from "@effect/atom-react"
+import { RegistryContext, useAtomValue } from "@effect/atom-react"
 import { RouterProvider } from "@tanstack/react-router"
 import { Effect } from "effect"
 import { AsyncResult, AtomRegistry } from "effect/reactivity"
@@ -7,6 +7,7 @@ import { StrictMode, useEffect, useLayoutEffect } from "react"
 import { createRoot } from "react-dom/client"
 import { toast } from "sonner"
 import { DockBadge } from "./components/DockBadge.tsx"
+import { Onboarding } from "./components/Onboarding.tsx"
 import { Toaster } from "./components/ui/sonner.tsx"
 import { TooltipProvider } from "./components/ui/tooltip.tsx"
 import { applyAppearance, themes, useTheme } from "./lib/appearance.ts"
@@ -37,6 +38,8 @@ function App() {
   const { appearance } = useClientSettings()
   const theme = useTheme(appearance.theme)
   useLayoutEffect(() => applyAppearance(appearance, theme.scheme), [appearance, theme.scheme])
+  const settings = useAtomValue(settingsAtom(null))
+  const choosingAgents = AsyncResult.isSuccess(settings) && settings.value.enabledProviders === null
   const nativeScheme = themes[appearance.theme].scheme
   useEffect(() => {
     void callPromise("app.setColorScheme", nativeScheme)
@@ -47,7 +50,7 @@ function App() {
   // FIXME: Paraglide messages read the locale when called, so the tree remounts on locale change
   return (
     <TooltipProvider key={locale}>
-      <RouterProvider router={router} />
+      {choosingAgents ? <Onboarding /> : <RouterProvider router={router} />}
       <DockBadge />
       <Toaster position="top-right" offset={{ top: "3.5rem", right: "3.5rem" }} theme={theme.scheme} />
     </TooltipProvider>

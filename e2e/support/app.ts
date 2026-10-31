@@ -2,10 +2,11 @@ import { _electron as electron, type ElectronApplication, type Page } from "@pla
 import electronBinary, { type BrowserWindow as ElectronWindow } from "electron"
 import { Schema } from "effect"
 import { spawn } from "node:child_process"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
+import { ProviderId } from "../../src/shared/agent.ts"
 import type { PushEvent } from "../../src/shared/contract.ts"
 import { rpc } from "./rpc.ts"
 
@@ -111,6 +112,7 @@ const launch = async (
 
 export const spawnApp = async (options: SpawnAppOptions = {}): Promise<HinacodeApp> => {
   const userData = mkdtempSync(join(tmpdir(), "kk-e2e-"))
+  writeFileSync(join(userData, "settings.json"), JSON.stringify({ enabledProviders: ProviderId.literals }))
   let current = await launch(userData, options)
   await rpc(current.page, "settings.set", { automations: { bindHost: "127.0.0.1", port: await freePort() } })
   return {

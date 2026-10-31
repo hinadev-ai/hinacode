@@ -98,6 +98,10 @@ export const settingsAtom = Atom.family((environment: EnvironmentId) =>
   Atom.make(call("settings.get", undefined, { environment })).pipe(Atom.keepAlive),
 )
 
+export const installedAgentsAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.make(call("agents.detect", undefined, { environment })),
+)
+
 export const updateSettingsAtom = Atom.family((environment: EnvironmentId) =>
   Atom.fn((patch: RpcRequest<"settings.set">) =>
     call("settings.set", patch, { environment }).pipe(Effect.tap(() => Atom.refresh(settingsAtom(environment)))),

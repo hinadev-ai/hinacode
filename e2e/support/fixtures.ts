@@ -4,7 +4,8 @@ import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { expect } from "@playwright/test"
 import { createBdd, test as base } from "playwright-bdd"
-import { defaultClientSettings } from "../../src/shared/domain.ts"
+import { ProviderId } from "../../src/shared/agent.ts"
+import { defaultClientSettings, defaultSettings } from "../../src/shared/domain.ts"
 import { type HinacodeApp, spawnApp } from "./app.ts"
 import type { Listener } from "./listener.ts"
 import { rpc } from "./rpc.ts"
@@ -175,7 +176,8 @@ AfterScenario(async ({ app, $testInfo }) => {
     await $testInfo.attach("screenshot", { body: await app.page.screenshot(), contentType: "image/png" })
   }
   await rpc(app.page, "settings.set", {
-    defaultModel: { claude: null, codex: null, muse: null },
+    defaultModel: defaultSettings.defaultModel,
+    enabledProviders: ProviderId.literals,
     archive: { whenMerged: false, removeWorktree: false },
   })
   await rpc(app.page, "clientSettings.set", {

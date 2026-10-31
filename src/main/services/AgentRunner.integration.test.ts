@@ -13,6 +13,8 @@ import type { Message, Thread } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
+import { CursorProvider } from "../agents/cursor/index.ts"
+import { OpencodeProvider } from "../agents/opencode/index.ts"
 import { AgentError, type AgentProvider, type Wake } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
@@ -107,7 +109,13 @@ const withPreparingThread = async (
   const calls: Probe["calls"] = []
   const transcript: Probe["transcript"] = []
   let closeFails = false
-  const wakes = { claude: wakeQueue(), codex: wakeQueue(), muse: wakeQueue() }
+  const wakes = {
+    claude: wakeQueue(),
+    codex: wakeQueue(),
+    muse: wakeQueue(),
+    cursor: wakeQueue(),
+    opencode: wakeQueue(),
+  }
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
       Layer.provideMerge(Scratch.layer(join(dir, "scratch"))),
@@ -251,6 +259,8 @@ const withPreparingThread = async (
             Layer.succeed(ClaudeProvider, provider("claude")),
             Layer.succeed(CodexProvider, provider("codex")),
             Layer.succeed(MuseProvider, provider("muse")),
+            Layer.succeed(CursorProvider, provider("cursor")),
+            Layer.succeed(OpencodeProvider, provider("opencode")),
             Layer.succeed(Secrets, {
               get: () => Effect.succeed(Option.none()),
               has: () => Effect.succeed(false),

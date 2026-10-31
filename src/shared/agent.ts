@@ -2,7 +2,7 @@ import { Schema } from "effect"
 import type { AccessMode, Attachment } from "./domain.ts"
 import { PlanLimits, UsageLimit } from "./limits.ts"
 
-export const ProviderId = Schema.Literals(["claude", "codex", "muse"])
+export const ProviderId = Schema.Literals(["claude", "codex", "muse", "cursor", "opencode"])
 export type ProviderId = typeof ProviderId.Type
 
 export const AccountProviderId = Schema.Literals(["claude", "codex"])
@@ -28,6 +28,9 @@ export const ModelInfo = Schema.Struct({
   autoMode: Schema.Boolean,
 })
 export type ModelInfo = typeof ModelInfo.Type
+
+export const InstalledAgent = Schema.Struct({ provider: ProviderId, installed: Schema.Boolean })
+export type InstalledAgent = typeof InstalledAgent.Type
 
 export const AgentAccount = Schema.Union([
   Schema.Struct({

@@ -2,6 +2,7 @@ import { useAutoAnimate } from "@formkit/auto-animate/react"
 import type { IconType } from "react-icons"
 import { RiCloseLine, RiCornerDownRightLine, RiPencilLine, RiTimeLine } from "react-icons/ri"
 import type { QueuedMessage, Thread } from "../../shared/domain.ts"
+import { steersRunningTurn } from "../../shared/providers.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
@@ -68,11 +69,13 @@ export function QueueBar({
           <ActivityRow
             actions={
               <>
-                <QueueAction
-                  icon={RiCornerDownRightLine}
-                  label={m.queue_steer_now()}
-                  onClick={() => steerNow(message.id)}
-                />
+                {steersRunningTurn[thread.provider] && (
+                  <QueueAction
+                    icon={RiCornerDownRightLine}
+                    label={m.queue_steer_now()}
+                    onClick={() => steerNow(message.id)}
+                  />
+                )}
                 <QueueAction icon={RiPencilLine} label={m.queue_edit()} onClick={() => edit(message.id)} />
                 <QueueAction icon={RiCloseLine} label={m.queue_remove()} onClick={() => remove(message.id)} />
               </>

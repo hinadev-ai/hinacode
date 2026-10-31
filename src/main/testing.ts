@@ -4,6 +4,8 @@ import { Effect, Layer } from "effect"
 import type { ClaudeProvider } from "./agents/claude/index.ts"
 import type { CodexProvider } from "./agents/codex/index.ts"
 import type { MuseProvider } from "./agents/muse/index.ts"
+import type { CursorProvider } from "./agents/cursor/index.ts"
+import type { OpencodeProvider } from "./agents/opencode/index.ts"
 import * as Db from "./db/client.ts"
 import { sendToWindows } from "./ipc.ts"
 import { answerAsksLayer } from "./environments/route.ts"
@@ -49,7 +51,7 @@ const automationsStub = Layer.succeed(Automations, {} as typeof Automations.Serv
 const updatesStub = Layer.succeed(Updates, unsupported("0.0.0"))
 
 export interface TestAppOptions {
-  readonly providers: Layer.Layer<ClaudeProvider | CodexProvider | MuseProvider>
+  readonly providers: Layer.Layer<ClaudeProvider | CodexProvider | MuseProvider | CursorProvider | OpencodeProvider>
   readonly events?: Layer.Layer<Events | PushBroadcast | WindowPush>
 }
 

@@ -5,6 +5,8 @@ import * as ClaudeProvider from "./agents/claude/index.ts"
 import { mockScenarios, usageLimitLayer } from "./agents/claude/mock.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import { MuseProvider } from "./agents/muse/index.ts"
+import { CursorProvider } from "./agents/cursor/index.ts"
+import { OpencodeProvider } from "./agents/opencode/index.ts"
 import * as Db from "./db/client.ts"
 import { answerAsksLayer } from "./environments/route.ts"
 import * as Mcp from "./mcp/index.ts"
@@ -153,7 +155,9 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
   return Layer.mergeAll(RemoteServer.layer, answerAsksLayer).pipe(
     Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),
     Layer.provideMerge(services),
-    Layer.provide(Layer.mergeAll(claude, CodexProvider.layer, MuseProvider.layer)),
+    Layer.provide(
+      Layer.mergeAll(claude, CodexProvider.layer, MuseProvider.layer, CursorProvider.layer, OpencodeProvider.layer),
+    ),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
     Layer.provideMerge(makeEventsLayer(toWindows)),
     Layer.provide(Layer.mergeAll(Db.layer(join(userData, "hinacode.sqlite")), keyring)),

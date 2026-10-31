@@ -50,6 +50,8 @@ import { handoffPrompt } from "../agents/handoff.ts"
 import { latestForkPoint, sidechatPrompt, unseenSince } from "../agents/sidechat.ts"
 import { agentInstructions, type AgentEnvironment } from "../agents/instructions.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
+import { CursorProvider } from "../agents/cursor/index.ts"
+import { OpencodeProvider } from "../agents/opencode/index.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
 import { AgentError, type AgentProvider, type Wake } from "../agents/provider.ts"
 import { Events } from "./Events.ts"
@@ -255,6 +257,8 @@ const make = Effect.gen(function* () {
     claude: yield* ClaudeProvider,
     codex: yield* CodexProvider,
     muse: yield* MuseProvider,
+    cursor: yield* CursorProvider,
+    opencode: yield* OpencodeProvider,
   }
 
   type LimitsKey = Pick<AccountLimits, "provider" | "accountId">

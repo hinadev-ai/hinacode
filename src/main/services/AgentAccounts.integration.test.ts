@@ -90,7 +90,9 @@ describe("agent accounts", () => {
         const claude = yield* accounts.create(newAccount("claude", "Work"))
         const codex = yield* accounts.create(newAccount("codex", "Work"))
         yield* Settings.use((settings) =>
-          settings.set({ defaultAccount: { claude: claude.id, codex: codex.id, muse: null } }),
+          settings.set({
+            defaultAccount: { claude: claude.id, codex: codex.id, muse: null, cursor: null, opencode: null },
+          }),
         )
 
         const thread = yield* newThread
@@ -123,7 +125,7 @@ describe("agent accounts", () => {
         mkdirSync(home)
         const work = yield* accounts.create(newAccount("claude", "Work", home))
         yield* Settings.use((settings) =>
-          settings.set({ defaultAccount: { claude: work.id, codex: null, muse: null } }),
+          settings.set({ defaultAccount: { claude: work.id, codex: null, muse: null, cursor: null, opencode: null } }),
         )
         const thread = yield* newThread
 

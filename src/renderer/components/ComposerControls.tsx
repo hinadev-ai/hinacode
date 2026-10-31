@@ -22,6 +22,7 @@ import { type ModelInfo, presetModels, ProviderId, unlistedModel } from "../../s
 import type { RpcRequest } from "../../shared/contract.ts"
 import { AccessMode, type OpenPullRequest, type Project, type Thread } from "../../shared/domain.ts"
 import { parsePullRequestSelector } from "../../shared/github.ts"
+import { enabledProviders } from "../../shared/providers.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import {
   branchesAtom,
@@ -148,6 +149,8 @@ const supervisedHint = {
   claude: m.access_supervised_hint_claude,
   codex: m.access_supervised_hint_codex,
   muse: m.access_supervised_hint_muse,
+  cursor: m.access_supervised_hint_acp,
+  opencode: m.access_supervised_hint_acp,
 } satisfies Record<ProviderId, () => string>
 
 const autoHint = {
@@ -155,6 +158,8 @@ const autoHint = {
     model?.autoMode ? m.access_auto_hint_claude() : m.access_auto_hint_claude_edits(),
   codex: m.access_auto_hint_codex,
   muse: m.access_auto_hint_muse,
+  cursor: m.access_auto_hint_acp,
+  opencode: m.access_auto_hint_acp,
 } satisfies Record<ProviderId, (model: ModelInfo | undefined) => string>
 
 const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | undefined) => {
@@ -168,7 +173,13 @@ const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | u
   }
 }
 
-const hidesUserSkills = { claude: true, codex: true, muse: false } satisfies Record<ProviderId, boolean>
+const hidesUserSkills = {
+  claude: true,
+  codex: true,
+  muse: false,
+  cursor: false,
+  opencode: false,
+} satisfies Record<ProviderId, boolean>
 
 interface AgentTab {
   readonly value: string
@@ -182,6 +193,7 @@ interface AgentTab {
 function useAgentTabs(thread: Thread, canSwitchAgent: boolean): ReadonlyArray<AgentTab> {
   const accounts = useAccountOptions(thread).options
   const accountHint = useAccountHint()
+  const enabled = enabledProviders(useSettings(useThreadEnvironment(thread.id)))
   const turnRunning = thread.status === "running" || thread.status === "awaiting_approval"
   const own: ReadonlyArray<AgentTab> =
     accounts.length < 2
@@ -201,7 +213,7 @@ function useAgentTabs(thread: Thread, canSwitchAgent: boolean): ReadonlyArray<Ag
           hint: accountHint(option),
           disabled: turnRunning && option.id !== thread.accountId,
         }))
-  const others = ProviderId.literals
+  const others = enabled
     .filter((provider) => provider !== thread.provider)
     .map((provider) => ({ value: provider, provider, label: providerLabel[provider](), disabled: !canSwitchAgent }))
   return [...own, ...others]

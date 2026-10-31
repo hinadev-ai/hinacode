@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { Effect, Option, Schema } from "effect"
-import { type AgentUpdate, UpdatableProviderId } from "../../shared/agent.ts"
+import { type AgentUpdate, type ProviderId, UpdatableProviderId } from "../../shared/agent.ts"
 import { installedBinary } from "./binary.ts"
 import { AgentError } from "./provider.ts"
 
@@ -59,10 +59,15 @@ const availableUpdate = (provider: UpdatableProviderId) =>
     return isNewer(latest, current) ? Option.some<AgentUpdate>({ provider, current, latest }) : Option.none()
   }).pipe(Effect.catch(() => Effect.succeedNone))
 
-export const availableUpdates = Effect.map(
-  Effect.forEach(UpdatableProviderId.literals, availableUpdate, { concurrency: "unbounded" }),
-  (updates) => updates.flatMap((update) => Option.toArray(update)),
-)
+export const availableUpdates = (providers: ReadonlyArray<ProviderId>) =>
+  Effect.map(
+    Effect.forEach(
+      UpdatableProviderId.literals.filter((provider) => providers.includes(provider)),
+      availableUpdate,
+      { concurrency: "unbounded" },
+    ),
+    (updates) => updates.flatMap((update) => Option.toArray(update)),
+  )
 
 // FIXME: a CLI's installer may exit cleanly without updating, such as a lagging Homebrew cask
 export const installUpdate = (provider: UpdatableProviderId) =>

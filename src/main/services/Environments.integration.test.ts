@@ -36,6 +36,8 @@ import {
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
+import { CursorProvider } from "../agents/cursor/index.ts"
+import { OpencodeProvider } from "../agents/opencode/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import { registerIpc } from "../ipc.ts"
 import { CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED, RemoteAccess } from "../remote/access.ts"
@@ -105,6 +107,8 @@ const providers = Layer.mergeAll(
   Layer.succeed(ClaudeProvider, provider("claude")),
   Layer.succeed(CodexProvider, provider("codex")),
   Layer.succeed(MuseProvider, provider("muse")),
+  Layer.succeed(CursorProvider, provider("cursor")),
+  Layer.succeed(OpencodeProvider, provider("opencode")),
 )
 
 const makeCloudEvents = () => {

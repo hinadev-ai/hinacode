@@ -13,8 +13,10 @@ import {
 } from "react-icons/ri"
 import type { AgentAccount, ProviderId } from "../../../shared/agent.ts"
 import type { EnvironmentStatus, GitHubAuth } from "../../../shared/domain.ts"
+import { enabledProviders } from "../../../shared/providers.ts"
 import { type Cloud, statusLabel, useCloudStateText, useClouds } from "../../lib/environments.ts"
 import { accountAtom, type EnvironmentId, gitHubAuthAtom, secretStoredAtom } from "../../lib/rpc.ts"
+import { useSettings } from "../../lib/settings.ts"
 import { cn } from "../../lib/utils.ts"
 import { m } from "../../paraglide/messages.js"
 import { LinearIcon } from "../icons/LinearIcon.tsx"
@@ -121,8 +123,8 @@ function SecretCell({ name, ...props }: CellProps & { name: string }) {
   )
 }
 
-const rows: ReadonlyArray<Row> = [
-  ...(["claude", "codex", "muse"] as const).map((provider): Row => ({
+const setupRows = (providers: ReadonlyArray<ProviderId>): ReadonlyArray<Row> => [
+  ...providers.map((provider): Row => ({
     id: provider,
     label: providerLabel[provider],
     icon: <ProviderIcon provider={provider} className="size-4" />,
@@ -208,6 +210,7 @@ function UnreachableCell({ cloud, span, onOpen }: { cloud: Cloud; span: number; 
 
 export function MachineSetup() {
   const clouds = useClouds()
+  const rows = setupRows(enabledProviders(useSettings(null)))
   const machines: ReadonlyArray<Machine> = [
     { id: null, name: m.environment_this_machine(), cloud: null },
     ...clouds.map((cloud) => ({ id: cloud.id, name: cloud.name, cloud })),

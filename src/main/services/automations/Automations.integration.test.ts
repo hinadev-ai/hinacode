@@ -13,6 +13,8 @@ import type { PushEvent } from "../../../shared/contract.ts"
 import { ClaudeProvider } from "../../agents/claude/index.ts"
 import { CodexProvider } from "../../agents/codex/index.ts"
 import { MuseProvider } from "../../agents/muse/index.ts"
+import { CursorProvider } from "../../agents/cursor/index.ts"
+import { OpencodeProvider } from "../../agents/opencode/index.ts"
 import type { AgentProvider } from "../../agents/provider.ts"
 import * as Db from "../../db/client.ts"
 import { seedThread } from "../../db/testing.ts"
@@ -110,6 +112,8 @@ const makeLayer = (pushes: Array<PushEvent>, port: number) => {
         Layer.succeed(ClaudeProvider, provider("claude")),
         Layer.succeed(CodexProvider, provider("codex")),
         Layer.succeed(MuseProvider, provider("muse")),
+        Layer.succeed(CursorProvider, provider("cursor")),
+        Layer.succeed(OpencodeProvider, provider("opencode")),
       ).pipe(
         Layer.provideMerge(Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) })),
       ),

@@ -41,8 +41,9 @@ setsid bash -c 'echo $$ >"$1/kk-verify.sid"; cd "$2"; exec env -u WAYLAND_DISPLA
 for _ in $(seq 1 60); do
   if node "$here/rpc.ts" "$port" settings.get >/dev/null 2>&1; then
     # A fresh profile listens for automation webhooks on 48080, which another instance may hold.
-    # Moving it to 40000 + cdp port keeps instances apart.
-    node "$here/rpc.ts" "$port" settings.set "{\"automations\":{\"bindHost\":\"127.0.0.1\",\"port\":$((40000 + port))}}" >/dev/null
+    # Moving it to 40000 + cdp port keeps instances apart. Turning every agent on skips the first-run agent picker.
+    agents='["claude","codex","muse","cursor","opencode"]'
+    node "$here/rpc.ts" "$port" settings.set "{\"automations\":{\"bindHost\":\"127.0.0.1\",\"port\":$((40000 + port))},\"enabledProviders\":$agents}" >/dev/null
     echo "hinacode ready: cdp=$port data=$data session=$(cat "$data/kk-verify.sid") webhook-port=$((40000 + port)) log=$data/electron.log"
     exit 0
   fi
