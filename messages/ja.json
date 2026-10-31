@@ -2046,5 +2046,13 @@
   "sidebar_search_placeholder": "検索",
   "overview_agents_all": "すべて表示（{count}）",
   "action_scope_label": "使える場所",
-  "action_scope_global": "すべてのプロジェクト"
+  "action_scope_global": "すべてのプロジェクト",
+  "mobile_pairing_lead": "デスクトップの「設定」から「リモート接続」を開き、「リモート操作を許可」をオンにしてください。表示された QR コードを読み取るか、ペアリング用 URL を貼り付けます。クラウドでは hinacode serve の実行時、または後から hinacode pair を実行すると QR コードが表示されます。",
+  "mobile_pairing_scan": "QR コードを読み取る",
+  "mobile_pairing_url": "ペアリング用 URL",
+  "mobile_pairing_invalid": "HinaCode のペアリング用 URL ではありません。「設定」の「リモート接続」からもう一度コピーしてください。",
+  "mobile_pairing_connect": "接続",
+  "mobile_pairing_camera_needed": "ペアリング用の QR コードを読み取るには、カメラへのアクセスが必要です。",
+  "mobile_pairing_allow_camera": "カメラを許可",
+  "mobile_pairing_cancel": "キャンセル"
 }

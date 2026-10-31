@@ -2101,5 +2101,13 @@
   "sidebar_search_placeholder": "Search",
   "overview_agents_all": "View all {count}",
   "action_scope_label": "Available in",
-  "action_scope_global": "All projects"
+  "action_scope_global": "All projects",
+  "mobile_pairing_lead": "On the desktop, open Settings, Remote, and turn on Allow remote control. Scan the QR code it shows, or paste the pairing URL. A cloud prints its QR code when you run hinacode serve, or hinacode pair later.",
+  "mobile_pairing_scan": "Scan QR code",
+  "mobile_pairing_url": "Pairing URL",
+  "mobile_pairing_invalid": "This is not a HinaCode pairing URL. Copy it again from Settings, Remote.",
+  "mobile_pairing_connect": "Connect",
+  "mobile_pairing_camera_needed": "HinaCode needs the camera to read the pairing QR code.",
+  "mobile_pairing_allow_camera": "Allow camera",
+  "mobile_pairing_cancel": "Cancel"
 }

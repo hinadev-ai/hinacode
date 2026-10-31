@@ -2064,5 +2064,13 @@
   "sidebar_search_placeholder": "搜尋",
   "overview_agents_all": "查看全部 {count} 個",
   "action_scope_label": "適用範圍",
-  "action_scope_global": "所有專案"
+  "action_scope_global": "所有專案",
+  "mobile_pairing_lead": "在桌面版開啟「設定」中的「遠端」，並開啟「允許遠端控制」。掃描畫面上的 QR 碼，或貼上配對網址。雲端機器會在執行 hinacode serve 時，或之後執行 hinacode pair 時印出 QR 碼。",
+  "mobile_pairing_scan": "掃描 QR 碼",
+  "mobile_pairing_url": "配對網址",
+  "mobile_pairing_invalid": "這不是 HinaCode 的配對網址。請從「設定」中的「遠端」重新複製。",
+  "mobile_pairing_connect": "連線",
+  "mobile_pairing_camera_needed": "HinaCode 需要使用相機來讀取配對 QR 碼。",
+  "mobile_pairing_allow_camera": "允許使用相機",
+  "mobile_pairing_cancel": "取消"
 }
