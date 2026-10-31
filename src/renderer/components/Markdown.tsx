@@ -98,7 +98,7 @@ export function Markdown({
   const remarkPlugins = repository ? [remarkGfm, remarkKbd, remarkPullRequests(repository)] : [remarkGfm, remarkKbd]
   return (
     <BaseUrl value={baseUrl}>
-      <div className={cn("prose max-w-none prose-hina", className)}>
+      <div className={cn("prose-hina prose max-w-none", className)}>
         <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
           {text}
         </ReactMarkdown>

@@ -56,11 +56,11 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
   })
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="@container window-drag flex min-h-12 shrink-0 flex-wrap items-center gap-2 px-3 py-2">
+      <header className="@container flex min-h-12 shrink-0 flex-wrap items-center gap-2 px-3 py-2 window-drag">
         <ThreadBreadcrumb thread={thread} agent={agent} />
         {actions}
       </header>
-      <div ref={regionRef} className="relative flex min-h-0 flex-1 flex-col [container-type:size]">
+      <div ref={regionRef} className="@container-size relative flex min-h-0 flex-1 flex-col">
         <div className={cn("flex min-h-0 flex-1 flex-col overflow-auto", besideOverview)}>
           <ThreadRepository value={repository}>
             <ThreadFolder value={folder}>
@@ -70,7 +70,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
         </div>
         <div
           className={cn(
-            "absolute end-4 z-10 flex max-w-[calc(100%-2rem)] flex-col items-end gap-2 empty:hidden",
+            "absolute inset-e-4 z-10 flex max-w-[calc(100%-2rem)] flex-col items-end gap-2 empty:hidden",
             findOpen ? "top-13" : "top-3",
             centered ? "max-h-[calc(50%-var(--dock-height)/2-1.5rem)]" : "max-h-[calc(100%-var(--dock-height)-1.5rem)]",
           )}
@@ -83,7 +83,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
           data-loaded={loaded}
           className={cn(
             besideOverview,
-            "absolute inset-x-0 bottom-0 flex max-h-full flex-col data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] data-[loaded=false]:opacity-0 data-[loaded=true]:data-[centered=false]:transition-transform data-[loaded=true]:data-[centered=false]:duration-500 data-[loaded=true]:data-[centered=false]:ease-(--ease-drawer) motion-reduce:transition-none",
+            "absolute inset-x-0 bottom-0 flex max-h-full flex-col data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] data-[loaded=false]:opacity-0 data-[loaded=true]:data-[centered=false]:transition-transform data-[loaded=true]:data-[centered=false]:duration-500 data-[loaded=true]:data-[centered=false]:ease-drawer motion-reduce:transition-none",
           )}
         >
           <Composer thread={thread} subagentCallId={agent}>

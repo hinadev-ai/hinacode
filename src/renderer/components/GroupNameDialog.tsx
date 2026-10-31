@@ -15,7 +15,7 @@ interface GroupNameDialogProps {
 export function GroupNameDialog({ name, open, onOpenChange, onSubmit }: GroupNameDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-w-md">
         <NameForm
           current={name}
           onSubmit={(next) => {

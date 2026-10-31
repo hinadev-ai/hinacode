@@ -88,7 +88,7 @@ function AgentUpdateNotice({ update, toastId, onSettings }: AgentUpdateNoticePro
       </p>
       <p className="text-muted-foreground">{m.agent_update_body()}</p>
       {error && (
-        <p role="alert" className="text-xs break-words text-destructive">
+        <p role="alert" className="text-xs wrap-break-word text-destructive">
           {error}
         </p>
       )}

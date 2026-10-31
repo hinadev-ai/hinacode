@@ -185,7 +185,7 @@ export function SettingsNav() {
       hidden={!compact && !sidebarOpen}
       data-compact={compact}
       style={compact ? undefined : { width: sidebarWidth }}
-      className="relative flex min-h-0 shrink-0 flex-col border-r border-sidebar-border bg-sidebar glass:bg-sidebar/80 text-sidebar-foreground data-[compact=false]:flex-1 data-[compact=true]:w-52"
+      className="relative flex min-h-0 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground data-[compact=false]:flex-1 data-[compact=true]:w-52 glass:bg-sidebar/80"
     >
       <div className="flex flex-col gap-1 px-2 pt-2 pb-1">
         <Button variant="ghost" size="sm" onClick={onLeave} className="justify-start text-muted-foreground">
@@ -216,9 +216,9 @@ export function SettingsNav() {
                   type="button"
                   aria-current={page.id === current.id && setting === undefined ? "page" : undefined}
                   onClick={() => onOpen(page.id)}
-                  className="pressable flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-ring aria-[current=page]:bg-sidebar-accent aria-[current=page]:font-medium aria-[current=page]:text-sidebar-accent-foreground"
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground pressable outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-ring aria-[current=page]:bg-sidebar-accent aria-[current=page]:font-medium aria-[current=page]:text-sidebar-accent-foreground"
                 >
-                  <page.icon aria-hidden className="size-4 shrink-0 self-start mt-0.5" />
+                  <page.icon aria-hidden className="mt-0.5 size-4 shrink-0 self-start" />
                   {setting === undefined ? (
                     page.label()
                   ) : (

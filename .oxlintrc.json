@@ -9,6 +9,10 @@
     {
       "name": "hinacode",
       "specifier": "oxlint-plugin-hinacode"
+    },
+    {
+      "name": "tailwindcss",
+      "specifier": "oxlint-tailwindcss"
     }
   ],
   "categories": {
@@ -33,11 +37,20 @@
       "error",
       {
         "paths": [
-          { "name": "lucide", "message": "No Lucide icons. Use react-icons/ri (Remix)." },
-          { "name": "react-icons/lu", "message": "No Lucide icons. Use react-icons/ri (Remix)." }
+          {
+            "name": "lucide",
+            "message": "No Lucide icons. Use react-icons/ri (Remix)."
+          },
+          {
+            "name": "react-icons/lu",
+            "message": "No Lucide icons. Use react-icons/ri (Remix)."
+          }
         ],
         "patterns": [
-          { "group": ["@lucide/*", "lucide-*"], "message": "No Lucide icons. Use react-icons/ri (Remix)." },
+          {
+            "group": ["@lucide/*", "lucide-*"],
+            "message": "No Lucide icons. Use react-icons/ri (Remix)."
+          },
           {
             "group": ["@remixicon/*"],
             "message": "Use the HinaCode icons in src/renderer/components/icons, or react-icons/ri."
@@ -93,7 +106,35 @@
         "react-doctor/prefer-use-sync-external-store": "error",
         "hinacode/no-manual-memo": "error",
         "hinacode/no-promise-state-in-effect": "error",
-        "hinacode/prefer-start-transition": "warn"
+        "hinacode/prefer-start-transition": "warn",
+        "tailwindcss/no-conflicting-classes": "error",
+        "tailwindcss/no-contradicting-variants": "warn",
+        "tailwindcss/no-dark-without-light": "warn",
+        "tailwindcss/no-duplicate-classes": "warn",
+        "tailwindcss/no-dynamic-classes": "error",
+        "tailwindcss/no-unknown-classes": "error",
+        "tailwindcss/enforce-canonical": "warn",
+        "tailwindcss/enforce-negative-arbitrary-values": "warn",
+        "tailwindcss/no-deprecated-classes": "error",
+        "tailwindcss/no-unnecessary-arbitrary-value": "warn",
+        "tailwindcss/consistent-variant-order": "warn",
+        "tailwindcss/enforce-consistent-important-position": "warn",
+        "tailwindcss/enforce-consistent-variable-syntax": "warn",
+        "tailwindcss/enforce-shorthand": "warn",
+        "tailwindcss/enforce-sort-order": "warn",
+        "tailwindcss/no-unnecessary-whitespace": "warn",
+        "tailwindcss/no-hardcoded-colors": "warn",
+        "tailwindcss/no-restricted-classes": [
+          "error",
+          {
+            "patterns": [
+              {
+                "pattern": "(^|:)((not-)?((max|min)-(sm|md|lg|xl|2xl|\\[[^\\]]*\\])|sm|md|lg|xl|2xl)|\\[@media[^\\]]*width[^\\]]*\\]):",
+                "message": "Respond to the parent's size with a container query (@container plus @sm:, @md:), not the window's width."
+              }
+            ]
+          }
+        ]
       }
     },
     {
@@ -116,5 +157,10 @@
       }
     }
   ],
-  "ignorePatterns": ["out/**", "src/renderer/paraglide/**", "e2e/.features-gen/**", "apps/mobile/**"]
+  "ignorePatterns": ["out/**", "src/renderer/paraglide/**", "e2e/.features-gen/**", "apps/mobile/**"],
+  "settings": {
+    "tailwindcss": {
+      "entryPoint": "src/renderer/index.css"
+    }
+  }
 }

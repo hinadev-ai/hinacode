@@ -98,7 +98,7 @@ export function ThreadOverview({ thread }: { thread: Thread }) {
   return (
     <aside
       aria-label={m.overview_label()}
-      className="-m-1 hidden min-h-0 w-66 @min-[48rem]:flex flex-col gap-2 overflow-y-auto p-1 [scrollbar-width:none]"
+      className="-m-1 hidden min-h-0 w-66 scrollbar-none flex-col gap-2 overflow-y-auto p-1 @min-[48rem]:flex"
     >
       <Card title={m.overview_environment()}>
         <EnvironmentRows thread={thread} project={project} worktree={worktree} />
@@ -127,7 +127,7 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
         {title}
         <ChevronDownIcon
           aria-hidden
-          className="size-4 transition-transform group-data-panel-open/card:rotate-0 -rotate-90 cjk:-translate-y-[0.04em] motion-reduce:transition-none"
+          className="size-4 -rotate-90 transition-transform group-data-panel-open/card:rotate-0 motion-reduce:transition-none cjk:translate-y-[-0.04em]"
         />
       </CollapsibleTrigger>
       <CollapsibleContent className="flex flex-col gap-0.5 pt-0.5">{children}</CollapsibleContent>

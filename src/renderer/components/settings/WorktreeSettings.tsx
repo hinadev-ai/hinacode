@@ -210,7 +210,7 @@ function RemoveWorktreeDialog({ row, open, onOpenChange }: RemoveWorktreeDialogP
           <AlertDialogTitle className="break-all">
             {m.worktree_remove_title({ branch: worktree.branch })}
           </AlertDialogTitle>
-          <AlertDialogDescription className="break-words">
+          <AlertDialogDescription className="wrap-break-word">
             {m.worktree_remove_body({ path: worktree.path })}
           </AlertDialogDescription>
           {checkout === "dirty" && (

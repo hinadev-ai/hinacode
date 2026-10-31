@@ -51,7 +51,7 @@ export function SubagentActivity({ thread }: { thread: Thread }) {
             {newest.label}
           </span>
           {detail && (
-            <span className="shrink-[4] truncate" title={newest.summary ?? undefined}>
+            <span className="shrink-4 truncate" title={newest.summary ?? undefined}>
               {detail}
             </span>
           )}

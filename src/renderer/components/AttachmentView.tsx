@@ -29,7 +29,7 @@ export function AttachmentView({ attachment }: { attachment: Attachment }) {
       type="button"
       onClick={() => void callPromise("shell.reveal", { path: attachment.path })}
       title={m.attachment_reveal({ name: attachment.name })}
-      className="pressable rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="rounded-lg pressable outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <FileChip attachment={attachment} />
     </button>
@@ -52,11 +52,11 @@ function ImageAttachment({ attachment }: { attachment: Attachment }) {
     <Dialog>
       <DialogTrigger
         title={m.attachment_open_image({ name: title })}
-        className="pressable rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="rounded-lg pressable outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <Preview attachment={attachment} onError={() => setMissing(true)} />
       </DialogTrigger>
-      <DialogContent className="max-h-[90vh] sm:max-w-4xl">
+      <DialogContent className="max-h-[90vh] max-w-4xl">
         <DialogTitle className={cn("truncate pr-8", picked !== null && "font-mono text-sm")}>{title}</DialogTitle>
         <img
           src={src}

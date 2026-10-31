@@ -906,7 +906,7 @@ function CommentComposer({ url, onPosted }: { url: string; onPosted: () => void 
         placeholder={m.pr_comment_placeholder()}
         aria-label={m.pr_comment_placeholder()}
         disabled={!signedIn}
-        className="max-h-48 text-xs md:text-xs"
+        className="max-h-48 text-xs"
       />
       <div className="flex items-center gap-2">
         {error && (

@@ -162,7 +162,7 @@ function MachineRow({
   const working = useWorkingCount(environment)
   return (
     <tr className="border-t border-border align-top">
-      <th scope="row" className="py-2 pr-3 pl-3 text-left font-normal">
+      <th scope="row" className="px-3 py-2 text-left font-normal">
         <span className="flex min-w-0 items-center gap-1.5">
           {icon}
           <span className="truncate font-medium" title={name}>

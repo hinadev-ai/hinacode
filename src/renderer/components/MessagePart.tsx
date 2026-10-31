@@ -364,7 +364,7 @@ function CommandLabel({ call, truncate }: { call: ToolCall; truncate: string }) 
         <Highlighted text={command} />
       </span>
       {distinctLabel !== null && (
-        <span className={cn("min-w-0 max-w-1/2 shrink-0", truncate)} title={distinctLabel}>
+        <span className={cn("max-w-1/2 min-w-0 shrink-0", truncate)} title={distinctLabel}>
           <Highlighted text={distinctLabel} />
         </span>
       )}
@@ -402,7 +402,7 @@ function CommandView({
     <div className={cn("rounded-md bg-muted/50 p-2 font-mono", scroll)}>
       <section>
         <h4 className="sr-only">{m.tool_command()}</h4>
-        <pre className="whitespace-pre-wrap wrap-anywhere">
+        <pre className="wrap-anywhere whitespace-pre-wrap">
           <ShellCode code={command} />
         </pre>
       </section>
@@ -410,7 +410,7 @@ function CommandView({
         <section className="mt-2">
           <h4 className="sr-only">{m.tool_output()}</h4>
           {fullOutputButton}
-          <pre className="ansi-output whitespace-pre-wrap wrap-anywhere text-muted-foreground">
+          <pre className="ansi-output wrap-anywhere whitespace-pre-wrap text-muted-foreground">
             {output === "" ? m.tool_no_output() : <AnsiText text={output} />}
           </pre>
         </section>
@@ -450,7 +450,7 @@ function ToolSection({
     <section>
       <h4 className="mb-1 font-medium text-muted-foreground">{label}</h4>
       {fullOutputButton}
-      <pre className={cn("rounded-md bg-muted/50 p-2 font-mono whitespace-pre-wrap wrap-anywhere", scroll)}>{text}</pre>
+      <pre className={cn("rounded-md bg-muted/50 p-2 font-mono wrap-anywhere whitespace-pre-wrap", scroll)}>{text}</pre>
     </section>
   )
 }
@@ -467,7 +467,7 @@ function FileChangePart({ path, diff }: { path: string; diff: string }) {
   )
   if (diff === "")
     return (
-      <div className="my-1 -mx-2 flex items-center gap-2 px-2 py-1 pl-7.5 text-xs text-muted-foreground">{row}</div>
+      <div className="-mx-2 my-1 flex items-center gap-2 px-2 py-1 pl-7.5 text-xs text-muted-foreground">{row}</div>
     )
   return (
     <Collapsible className="my-1">

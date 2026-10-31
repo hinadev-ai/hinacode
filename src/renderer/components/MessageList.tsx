@@ -189,7 +189,7 @@ function MessageBody({ message }: { message: Message }) {
           </div>
         )}
         {text !== "" && (
-          <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm leading-(--leading-message) whitespace-pre-wrap wrap-break-word text-secondary-foreground">
+          <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm leading-(--leading-message) wrap-break-word whitespace-pre-wrap text-secondary-foreground">
             <FindPartContext value={message.parts.findIndex((part) => part.type === "text")}>
               <SentText text={text} commands={commands} />
             </FindPartContext>
@@ -240,7 +240,7 @@ function AssistantBody({ message, showElapsedTime }: { message: Message; showEla
         <AssistantParts message={message} parts={shownParts} writingIndex={writingIndex} />
       </PartThread>
       {streaming && (parts.length === 0 || writingIndex !== undefined) && (
-        <p className="text-xs text-shimmer">
+        <p className="text-shimmer text-xs">
           {writingIndex !== undefined ? m.message_writing() : m.message_thinking()}
         </p>
       )}

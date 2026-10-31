@@ -363,7 +363,7 @@ interface AddAccountDialogProps {
 function AddAccountDialog({ provider, open, onOpenChange }: AddAccountDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-w-md">
         <AddAccountForm provider={provider} onCreated={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
@@ -463,7 +463,7 @@ interface RenameAccountDialogProps {
 function RenameAccountDialog({ name, onRename, open, onOpenChange }: RenameAccountDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-w-md">
         <RenameForm name={name} onRename={onRename} onSaved={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
