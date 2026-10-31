@@ -6,7 +6,7 @@ import { useOpenSubagent } from "../lib/subagents.ts"
 import { environmentName, useCloud, useClouds, useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
 import { branchPullRequestAtom, projectsAtom, pullRequestStatusAtom } from "../lib/rpc.ts"
-import { pullRequestName } from "../lib/pullRequestRefs.ts"
+import { parsePullRequestUrl } from "../lib/pullRequestRefs.ts"
 import { loadPullRequestsAtom, usePullRequests } from "../stores/pullRequests.ts"
 import { m } from "../paraglide/messages.js"
 import { type TerminalCommand, useTerminals } from "../stores/terminals.ts"
@@ -431,6 +431,13 @@ const pullRequestMeta = (pullRequest: PullRequest) =>
 function PullRequestRow({ thread, url }: { thread: Thread; url: string }) {
   const status = useAtomValue(pullRequestStatusAtom(useThreadEnvironment(thread.id), url))
   const pullRequest = AsyncResult.isSuccess(status) ? status.value : undefined
+  const ref = parsePullRequestUrl(url)
+  const number = pullRequest?.number ?? ref?.number
+  const note = pullRequest
+    ? pullRequestMeta(pullRequest)
+    : AsyncResult.isFailure(status)
+      ? m.overview_pr_failed()
+      : m.pr_card_loading()
 
   return (
     <li>
@@ -445,17 +452,14 @@ function PullRequestRow({ thread, url }: { thread: Thread; url: string }) {
       >
         <StatusIcon status={pullRequest?.status} colored className="size-4" />
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-sm">{pullRequest?.title ?? pullRequestName(url)}</span>
+          <span className="truncate text-sm">{pullRequest?.title ?? (ref ? `${ref.owner}/${ref.name}` : url)}</span>
           <span className="truncate text-xs text-muted-foreground">
-            {pullRequest ? (
+            {number !== undefined && (
               <>
-                <span className="font-mono">#{pullRequest.number}</span> · {pullRequestMeta(pullRequest)}
+                <span className="font-mono">#{number}</span> ·{" "}
               </>
-            ) : AsyncResult.isFailure(status) ? (
-              m.overview_pr_failed()
-            ) : (
-              m.pr_card_loading()
             )}
+            {note}
           </span>
         </span>
         {pullRequest?.checks && <ChecksIndicator checks={pullRequest.checks} />}
