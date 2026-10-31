@@ -2,6 +2,7 @@ import { describe, expect, test } from "@effect/vitest"
 import type { Message } from "./domain.ts"
 import {
   compactMessage,
+  compactPush,
   previewMessage,
   previewPush,
   TOOL_OUTPUT_PREVIEW_CHARS,
@@ -87,6 +88,39 @@ describe("compactMessage", () => {
     expect(latestTodos([compactMessage(message(parts))])).toStrictEqual([
       { text: "Read README.md", status: "completed" },
     ])
+  })
+
+  test("keeps the id a created task reports, so a later update finds it", () => {
+    const parts: Message["parts"] = [
+      {
+        type: "tool_call",
+        callId: "create",
+        name: "TaskCreate",
+        input: { subject: "Ship it" },
+        output: "Task #7 created successfully: Ship it",
+        status: "done",
+      },
+      {
+        type: "tool_call",
+        callId: "update",
+        name: "TaskUpdate",
+        input: { taskId: "7", status: "completed" },
+        status: "done",
+      },
+    ]
+    expect(latestTodos([compactMessage(message(parts))])).toStrictEqual([{ text: "Ship it", status: "completed" }])
+    const finished = compactPush({
+      type: "thread.event",
+      threadId: "t",
+      messageId: "m",
+      event: {
+        type: "tool_call_finished",
+        callId: "create",
+        output: "Task #7 created successfully: Ship it",
+        isError: false,
+      },
+    } as never)
+    expect((finished as { event: { output: unknown } }).event.output).toBe("Task #7 created successfully: Ship it")
   })
 })
 
