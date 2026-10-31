@@ -38,7 +38,7 @@ export function ProjectIcon({ projectId, size }: { projectId: string; size: numb
       resizeMode="contain"
       accessibilityIgnoresInvertColors
       onError={() => setFailed(icon)}
-      style={{ width: size, height: size }}
+      style={{ width: size, height: size, flexShrink: 0 }}
     />
   )
 }
