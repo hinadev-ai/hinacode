@@ -15,6 +15,7 @@ import { mentionableThreads } from "@shared/threadMention.ts"
 import { useEffect, useRef, useState } from "react"
 import {
   Image,
+  Keyboard,
   Platform,
   Pressable,
   ScrollView,
@@ -152,6 +153,12 @@ export function Composer({ thread }: { thread: Thread }) {
   useEffect(() => {
     if (connected) useModels.getState().load(server, thread.provider).catch((cause: unknown) => setError(errorText(cause)))
   }, [connected, server, thread.provider])
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return
+    const hidden = Keyboard.addListener("keyboardDidHide", () => inputRef.current?.blur())
+    return () => hidden.remove()
+  }, [])
 
   const send = async () => {
     // A second tap can land before the re-render that empties the composer, so check the store, not `hasDraft`.
