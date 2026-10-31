@@ -353,7 +353,7 @@ function Subagents({ thread }: { thread: Thread }) {
                 onClick={() => callId !== null && open(callId)}
                 className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <ProviderIcon provider={thread.provider} className="size-4" />
+                <ProviderIcon provider={subagent.provider ?? thread.provider} className="size-4" />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate text-sm" title={subagent.label}>
                     {subagent.label}
