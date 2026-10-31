@@ -34,7 +34,7 @@ export const segmentText = (segment: Segment) =>
 
 const FENCE = /^\s*```\s*([^\s`]*)/
 const BULLET = /^(\s*)([-*+]|\d+[.)])(?=\s)/
-const INLINE = /`[^`\n]+`|(?<=^|\s)[/$@][^\s]+/g
+const INLINE = /`[^`\n]+`|(?<=^|\s)(?:@[^\s]+|[/$][\w:-]+(?:\.[\w:-]+)*)/g
 const TRAILING_PUNCTUATION = /[,.;:!?)\]]+$/
 
 const classify = (token: string, known: KnownTokens): { kind: SyntaxKind; text: string } | null => {
