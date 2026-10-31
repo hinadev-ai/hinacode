@@ -85,6 +85,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+    minWidth: 0,
     fontSize: 16,
     paddingVertical: 10,
     // The field's border shows focus, so the browser's own ring would draw a square inside the rounded field.
