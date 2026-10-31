@@ -128,6 +128,9 @@ export const HIT = 44
 /** A status pill's height, for rows that keep its place while it is hidden. */
 export const PILL_HEIGHT = 20
 
+/** Section headings sit under the screen title, which is the only level-1 heading. */
+export const subheading = { "aria-level": 2 } as object
+
 /** The widest a column of prose gets on a tablet, so lines stay readable. Every phone is narrower. */
 export const READABLE_WIDTH = 720
 

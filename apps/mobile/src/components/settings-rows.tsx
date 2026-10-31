@@ -1,8 +1,8 @@
 import { Children, Fragment, isValidElement, type ReactNode } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 import { Icon, type IconName } from "@/components/icon"
-import { subheading, Toggle } from "@/components/ui"
-import { HIT, mono, radius } from "@/constants/theme"
+import { Toggle } from "@/components/ui"
+import { HIT, mono, radius, subheading } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 
 /** An inset group of rows with a small header above it and an optional footnote under it. */

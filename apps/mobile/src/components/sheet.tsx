@@ -14,9 +14,9 @@ import {
 import Animated, { SlideInDown } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon, type IconName } from "@/components/icon"
-import { IconButton, subheading } from "@/components/ui"
+import { IconButton } from "@/components/ui"
 import { duration, ease } from "@/constants/motion"
-import { Colors, HIT, mono, radius } from "@/constants/theme"
+import { Colors, HIT, mono, radius, subheading } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 
