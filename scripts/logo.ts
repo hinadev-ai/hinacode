@@ -37,7 +37,7 @@ const toward = (from: Point, to: Point, r: number): Point => {
   return { x: from.x + ((to.x - from.x) * r) / d, y: from.y + ((to.y - from.y) * r) / d }
 }
 
-function unfilledMark() {
+function mark(barFill: string, sunFill: string) {
   const { fillet, sun } = shapeOn256Grid
   const innerEdge = center - shapeOn256Grid.gap / 2
   const bottom = top + shapeOn256Grid.barHeight
@@ -78,14 +78,14 @@ function unfilledMark() {
         return `L${round2(p.x)} ${round2(p.y)}`
       })
       .join("") + "Z"
-  return `<path d="${path(leftBar)}${path(rightBar)}"/><circle cx="${center}" cy="${center}" r="${sun}"/>`
+  return `<path fill="${barFill}" d="${path(leftBar)}${path(rightBar)}"/><circle fill="${sunFill}" cx="${center}" cy="${center}" r="${sun}"/>`
 }
 
-const paperMarkOnCoralTile = (markTransform = "translate(36 36) scale(0.71875)", extra = "") =>
+const inkMarkOnPaperTile = (markTransform = "translate(36 36) scale(0.71875)", extra = "") =>
   [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">`,
-    `  <rect width="256" height="256" rx="56" fill="${palette.coral}"/>`,
-    `  <g fill="${palette.paper}" transform="${markTransform}">${unfilledMark()}</g>`,
+    `  <rect width="256" height="256" rx="56" fill="${palette.paper}"/>`,
+    `  <g transform="${markTransform}">${mark(palette.ink, palette.coral)}</g>`,
     ...(extra ? [extra] : []),
     `</svg>`,
     ``,
@@ -99,12 +99,12 @@ const devBandBelowLiftedMark = [
 const macTile = 824
 const macCanvas = 1024
 const viewBox = [leftEdge, rightBarTop, 2 * (center - leftEdge), 2 * (center - rightBarTop)].join(" ")
-writeFileSync("assets/icon.svg", paperMarkOnCoralTile())
-writeFileSync("site/public/favicon.svg", paperMarkOnCoralTile())
-writeFileSync("assets/icon-dev.svg", paperMarkOnCoralTile("translate(36 20) scale(0.71875)", devBandBelowLiftedMark))
+writeFileSync("assets/icon.svg", inkMarkOnPaperTile())
+writeFileSync("site/public/favicon.svg", inkMarkOnPaperTile())
+writeFileSync("assets/icon-dev.svg", inkMarkOnPaperTile("translate(36 20) scale(0.71875)", devBandBelowLiftedMark))
 writeFileSync(
   "assets/logo.svg",
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" fill="currentColor">${unfilledMark()}</svg>\n`,
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">${mark("currentColor", "var(--sun, currentColor)")}</svg>\n`,
 )
 for (const name of ["icon", "icon-dev"]) {
   const png = execFileSync("rsvg-convert", ["-w", String(macTile), "-h", String(macTile), `assets/${name}.svg`])
