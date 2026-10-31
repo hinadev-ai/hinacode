@@ -889,18 +889,12 @@
 }
 
 /*
- * Press feedback for buttons and clickable rows. Menu triggers are left still so their popup anchors to a stable rect.
- * A wide target sets a gentler `--press-scale`, since the same scale moves its edges further.
+ * State transitions for buttons and clickable rows. Pressing does not scale them.
  */
 @utility pressable {
-  transition-property: color, background-color, border-color, box-shadow, opacity, scale;
+  transition-property: color, background-color, border-color, box-shadow, opacity;
   transition-duration: 160ms;
   transition-timing-function: var(--ease-out);
-  @media (prefers-reduced-motion: no-preference) {
-    &:active:not([aria-haspopup], :disabled) {
-      scale: var(--press-scale, 0.97);
-    }
-  }
 }
 
 /*

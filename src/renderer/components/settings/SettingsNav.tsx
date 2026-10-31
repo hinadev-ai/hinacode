@@ -216,7 +216,7 @@ export function SettingsNav() {
                   type="button"
                   aria-current={page.id === current.id && setting === undefined ? "page" : undefined}
                   onClick={() => onOpen(page.id)}
-                  className="pressable flex w-full items-center gap-2 rounded-md [--press-scale:0.99] px-2 py-1.5 text-left text-sm text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-ring aria-[current=page]:bg-sidebar-accent aria-[current=page]:font-medium aria-[current=page]:text-sidebar-accent-foreground"
+                  className="pressable flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-ring aria-[current=page]:bg-sidebar-accent aria-[current=page]:font-medium aria-[current=page]:text-sidebar-accent-foreground"
                 >
                   <page.icon aria-hidden className="size-4 shrink-0 self-start mt-0.5" />
                   {setting === undefined ? (
