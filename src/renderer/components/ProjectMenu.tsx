@@ -1,11 +1,11 @@
 import { Fragment, type RefObject, useState } from "react"
-import { RiAddLine, RiCloseLine, RiDeleteBinLine, RiFolderSharedLine, RiMoreFill, RiPencilLine } from "react-icons/ri"
 import type { Project } from "../../shared/domain.ts"
 import { environmentName, environmentOf, useClouds } from "../lib/environments.ts"
 import { assignGroup, createGroup } from "../lib/sidebarGroups.ts"
 import { useSidebarGroups } from "../lib/useSidebarGroups.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
+import { useUi } from "../stores/ui.ts"
 import { DeleteProjectDialog } from "./DeleteProjectDialog.tsx"
 import { GroupNameDialog } from "./GroupNameDialog.tsx"
 import { OpenWithSubmenu } from "./OpenWith.tsx"
@@ -24,8 +24,15 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx"
+import { CloseIcon } from "./icons/CloseIcon.tsx"
+import { FolderMoveIcon } from "./icons/FolderMoveIcon.tsx"
+import { MoreIcon } from "./icons/MoreIcon.tsx"
+import { PencilIcon } from "./icons/PencilIcon.tsx"
+import { PlusIcon } from "./icons/PlusIcon.tsx"
+import { TrashIcon } from "./icons/TrashIcon.tsx"
+import { ImportIcon } from "./icons/ImportIcon.tsx"
 
-type Action = "edit" | "newThread" | "delete"
+type Action = "edit" | "newThread" | "importSession" | "delete"
 
 interface Picked {
   readonly action: Action
@@ -51,6 +58,7 @@ export function ProjectMenu({ rowKey, projects, open, onOpenChange, onNewThread,
 
   const runQueued = () => {
     if (queued?.action === "newThread") onNewThread(queued.project)
+    else if (queued?.action === "importSession") useUi.getState().setImportSessionProjectId(queued.project.id)
     else setDialog(queued)
     setQueued(null)
   }
@@ -81,7 +89,7 @@ export function ProjectMenu({ rowKey, projects, open, onOpenChange, onNewThread,
             />
           }
         >
-          <RiMoreFill aria-hidden />
+          <MoreIcon aria-hidden />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
           <MoveToGroupSubmenu rowKey={rowKey} onNewGroup={() => setQueued({ action: "newGroup" })} />
@@ -124,7 +132,7 @@ function MoveToGroupSubmenu({ rowKey, onNewGroup }: { rowKey: string; onNewGroup
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger>
-        <RiFolderSharedLine aria-hidden />
+        <FolderMoveIcon aria-hidden />
         {m.sidebar_project_move_to_group()}
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="w-48">
@@ -141,12 +149,12 @@ function MoveToGroupSubmenu({ rowKey, onNewGroup }: { rowKey: string; onNewGroup
         ))}
         {state.groups.length > 0 && <DropdownMenuSeparator />}
         <DropdownMenuItem onClick={onNewGroup}>
-          <RiAddLine aria-hidden />
+          <PlusIcon aria-hidden />
           {m.sidebar_project_new_group()}
         </DropdownMenuItem>
         {current && (
           <DropdownMenuItem onClick={() => void update((next) => assignGroup(next, rowKey, null))}>
-            <RiCloseLine aria-hidden />
+            <CloseIcon aria-hidden />
             {m.sidebar_project_remove_from_group()}
           </DropdownMenuItem>
         )}
@@ -165,16 +173,22 @@ function ProjectMenuItems({ project, onPick }: { project: Project; onPick: (pick
   return (
     <>
       <DropdownMenuItem onClick={() => onPick({ action: "edit", project })}>
-        <RiPencilLine aria-hidden />
+        <PencilIcon aria-hidden />
         {m.sidebar_project_edit()}
       </DropdownMenuItem>
       <DropdownMenuItem onClick={() => onPick({ action: "newThread", project })}>
-        <RiAddLine aria-hidden />
+        <PlusIcon aria-hidden />
         {m.sidebar_project_new_thread()}
       </DropdownMenuItem>
+      {project.kind === "folder" && (
+        <DropdownMenuItem onClick={() => onPick({ action: "importSession", project })}>
+          <ImportIcon aria-hidden />
+          {m.sidebar_project_import_session()}
+        </DropdownMenuItem>
+      )}
       {environmentOf(project) === null && <OpenWithSubmenu path={project.rootPath} target="folder" />}
       <DropdownMenuItem variant="destructive" disabled={busy} onClick={() => onPick({ action: "delete", project })}>
-        <RiDeleteBinLine aria-hidden />
+        <TrashIcon aria-hidden />
         {m.sidebar_project_delete()}
       </DropdownMenuItem>
     </>

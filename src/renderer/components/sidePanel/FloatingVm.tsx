@@ -2,7 +2,6 @@ import { useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { Suspense, useRef, useState } from "react"
-import { RiFullscreenLine, RiPictureInPictureExitLine } from "react-icons/ri"
 import { callPromise, threadVmAtom } from "../../lib/rpc.ts"
 import { useThreadEnvironment } from "../../lib/environments.ts"
 import { useSettings } from "../../lib/settings.ts"
@@ -23,6 +22,8 @@ import {
   VmScreen,
   useVmDrop,
 } from "./TinyVmView.tsx"
+import { FullscreenIcon } from "../icons/FullscreenIcon.tsx"
+import { PipExitIcon } from "../icons/PipExitIcon.tsx"
 
 export default function FloatingVm({ threadId }: { threadId: string }) {
   const vm = useAtomValue(threadVmAtom(threadId))
@@ -70,12 +71,8 @@ function FloatingScreen({ threadId, vm }: { threadId: string; vm: RunningVm }) {
           {control}
           <ScreenshotButton threadId={threadId} run={run} />
           {experimental.tinyVmPasskeys && vm.provider === "sbx" && <PasskeyButton threadId={threadId} run={run} />}
-          <IconAction icon={RiFullscreenLine} label={m.vm_fullscreen()} onClick={() => showVmFullscreen(threadId)} />
-          <IconAction
-            icon={RiPictureInPictureExitLine}
-            label={m.vm_dock()}
-            onClick={() => setPlacement(threadId, "panel")}
-          />
+          <IconAction icon={FullscreenIcon} label={m.vm_fullscreen()} onClick={() => showVmFullscreen(threadId)} />
+          <IconAction icon={PipExitIcon} label={m.vm_dock()} onClick={() => setPlacement(threadId, "panel")} />
         </div>
         {error && (
           <p role="alert" className="border-b border-border px-2.5 py-1 text-xs text-destructive">

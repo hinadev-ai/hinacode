@@ -1,18 +1,9 @@
 // oxlint-disable jsx-a11y/prefer-tag-over-role, jsx-a11y/click-events-have-key-events -- the WAI-ARIA combobox pattern: a textarea driving a listbox through aria-activedescendant, which <datalist> cannot do. Keys reach the options through the textarea.
-import {
-  type ComponentProps,
-  type KeyboardEvent,
-  type Ref,
-  useEffect,
-  useId,
-  useImperativeHandle,
-  useRef,
-  useState,
-} from "react"
+import { type ComponentProps, type KeyboardEvent, type Ref, useId, useImperativeHandle, useRef, useState } from "react"
 import { flushSync } from "react-dom"
-import { RiFileLine, RiSlashCommands2 } from "react-icons/ri"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
+import type { MentionableThreads } from "../../shared/threadMention.ts"
 import {
   completionAt,
   type CompletionQuery,
@@ -31,6 +22,8 @@ import { HighlightedCode } from "./HighlightedCode.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { SkillIcon } from "./icons/SkillIcon.tsx"
 import { StatusIcon } from "./ThreadPullRequests.tsx"
+import { FileIcon } from "./icons/FileIcon.tsx"
+import { SlashIcon } from "./icons/SlashIcon.tsx"
 
 const syntaxClass: Record<SyntaxKind, string> = {
   text: "text-foreground",
@@ -46,6 +39,8 @@ const textLayout =
 // FIXME: browsers drop the line after a trailing newline in the highlighted copy, but not in the textarea
 const TRAILING_LINE = "\u200b"
 
+const scrollIntoViewNearest = (option: HTMLElement | null) => option?.scrollIntoView({ block: "nearest" })
+
 const afterChip = "indent-[calc(var(--skill-chip-width)_+_--spacing(1.5))]"
 
 interface ComposerInputProps extends Omit<ComponentProps<"textarea">, "value" | "onChange" | "ref"> {
@@ -54,7 +49,7 @@ interface ComposerInputProps extends Omit<ComponentProps<"textarea">, "value" | 
   readonly onValueChange: (value: string) => void
   readonly commands: ReadonlyArray<AgentCommand>
   readonly files: ReadonlyArray<string>
-  readonly threads: ReadonlyArray<Thread>
+  readonly threads: MentionableThreads<Thread>
   readonly projectId: string
 }
 
@@ -84,7 +79,7 @@ export function ComposerInput({
   const known = {
     commands: new Set(commands.map((command) => command.trigger + command.name)),
     files: new Set(files),
-    threads: new Set(threads.map((thread) => thread.id)),
+    threads: new Set([...threads.sameMachine, ...threads.otherMachines].map((thread) => thread.id)),
   }
   const skill = leadingSkill(value, commands)
   const chipToken = skill?.token ?? ""
@@ -98,10 +93,6 @@ export function ComposerInput({
   const open = completion !== null && suggestions.length > 0
   const activeIndex = completion?.start === selected.start ? Math.min(selected.index, suggestions.length - 1) : 0
   const optionId = (index: number) => `${listId}-${index}`
-
-  useEffect(() => {
-    if (open) document.getElementById(optionId(activeIndex))?.scrollIntoView({ block: "nearest" })
-  })
 
   // FIXME: React attaches a child's ref before its parent's, so the observer reads layersRef when it fires
   const measureChip = (element: HTMLElement | null) => {
@@ -242,6 +233,7 @@ export function ComposerInput({
           {suggestions.map((suggestion, index) => (
             <div
               key={suggestion.insert}
+              ref={index === activeIndex ? scrollIntoViewNearest : undefined}
               id={optionId(index)}
               role="option"
               tabIndex={-1}
@@ -318,7 +310,7 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
     const slash = suggestion.path.lastIndexOf("/")
     return (
       <>
-        <RiFileLine aria-hidden className="size-3.5 shrink-0 self-center text-muted-foreground" />
+        <FileIcon aria-hidden className="size-3.5 shrink-0 self-center text-muted-foreground" />
         <span className="shrink-0 font-mono">{suggestion.path.slice(slash + 1)}</span>
         <span className="min-w-0 truncate text-xs text-muted-foreground">{suggestion.path.slice(0, slash + 1)}</span>
       </>
@@ -331,7 +323,7 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
       {isSkill ? (
         <SkillIcon className="size-3.5 shrink-0 self-center text-syntax-token" />
       ) : (
-        <RiSlashCommands2 aria-hidden className="size-3.5 shrink-0 self-center text-muted-foreground" />
+        <SlashIcon aria-hidden className="size-3.5 shrink-0 self-center text-muted-foreground" />
       )}
       <span className={cn("shrink-0 font-mono", isSkill && "text-syntax-token")}>{suggestion.insert}</span>
       {command.argumentHint !== "" && (

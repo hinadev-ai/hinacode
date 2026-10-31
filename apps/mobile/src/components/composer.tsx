@@ -11,6 +11,7 @@ import { completionAt, type Suggestion, suggestionsFor } from "@shared/composerS
 import type { RpcRequest } from "@shared/contract.ts"
 import { AccessMode, isThreadBusy, type Settings, type Thread, toCheckoutTarget } from "@shared/domain.ts"
 import { type AccountOption, accountOptions, formatResetIn } from "@shared/planLimits.ts"
+import { mentionableThreads } from "@shared/threadMention.ts"
 import { useEffect, useRef, useState } from "react"
 import {
   Image,
@@ -95,6 +96,7 @@ function useCompletions(thread: Thread, busy: boolean, wantsFiles: boolean, onEr
   const [commands, setCommands] = useState<readonly AgentCommand[]>([])
   const [files, setFiles] = useState<{ readonly key: string; readonly paths: readonly string[] } | null>(null)
   const byId = useThreads((state) => state.byId)
+  const projects = useThreads((state) => state.projects)
   const filesKey = `${thread.id}|${thread.worktreeId}|${busy}`
   const filesFresh = files?.key === filesKey
   useEffect(() => {
@@ -119,9 +121,7 @@ function useCompletions(thread: Thread, busy: boolean, wantsFiles: boolean, onEr
       current = false
     }
   }, [connected, wantsFiles, filesFresh, filesKey, thread.id, onError])
-  const threads = Object.values(byId)
-    .filter((other) => other.projectId === thread.projectId && other.id !== thread.id && other.status !== "archived")
-    .sort((a, b) => a.sortIndex - b.sortIndex)
+  const threads = mentionableThreads(thread, Object.values(byId), projects)
   return { commands, files: files?.paths ?? [], threads }
 }
 
@@ -145,7 +145,7 @@ export function Composer({ thread }: { thread: Thread }) {
   const known = {
     commands: new Set(commands.map((command) => command.trigger + command.name)),
     files: new Set(files),
-    threads: new Set(threads.map((other) => other.id)),
+    threads: new Set([...threads.sameMachine, ...threads.otherMachines].map((other) => other.id)),
   }
   const hasDraft = text.trim() !== ""
 

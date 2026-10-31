@@ -97,7 +97,7 @@ const serve = async (argv: ReadonlyArray<string>, userData: string) => {
   const config = serveConfig(argv, process.env)
   mkdirSync(userData, { recursive: true, mode: 0o700 })
   lockDataDir(userData)
-  await hydratePath(process.env)
+  await hydratePath(process.env).ready
 
   const runtime = ManagedRuntime.make(
     makeAppLayer({

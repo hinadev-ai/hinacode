@@ -41,7 +41,8 @@ import type {
   ThreadStatus,
   WorkspaceChoice,
 } from "../../shared/domain.ts"
-import { isThreadBusy } from "../../shared/domain.ts"
+import { isThreadBusy, spawnsSubagent } from "../../shared/domain.ts"
+import { previewPush } from "../../shared/compactTranscript.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
@@ -54,6 +55,7 @@ import { McpCredentials } from "../mcp/credentials.ts"
 import { AgentError, type AgentProvider, type Wake } from "../agents/provider.ts"
 import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
+import { makeDeltaCoalescer } from "./coalesceDeltas.ts"
 import {
   NotFoundError,
   type PersistenceError,
@@ -156,6 +158,7 @@ export class AgentRunner extends Context.Service<
       value: string | null,
     ) => Effect.Effect<void, PersistenceError | NotFoundError | ThreadStartedError>
     readonly transcript: (threadId: string) => Effect.Effect<RpcResponse<"threads.transcript">, PersistenceError>
+    readonly toolOutput: (threadId: string, callId: string) => Effect.Effect<unknown, PersistenceError | NotFoundError>
     readonly listModels: (provider: ProviderId) => Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
     readonly limits: Effect.Effect<ReadonlyArray<AccountLimits>, PersistenceError>
     readonly usage: (
@@ -297,8 +300,8 @@ const make = Effect.gen(function* () {
   const backgroundTasks = new Map<string, ReadonlyArray<BackgroundTask>>()
   let seq = 0
 
-  yield* threads.resetInterrupted
   yield* messages.closeInterrupted
+  yield* threads.resetInterrupted
 
   const providerFor = (id: ProviderId) => Effect.succeed(providers[id])
 
@@ -344,30 +347,32 @@ const make = Effect.gen(function* () {
       { discard: true },
     )
 
-  const publishTranscript = (event: DistributiveOmit<TranscriptPush, "seq">) => push.publish({ ...event, seq: ++seq })
+  const publishTranscript = (event: DistributiveOmit<TranscriptPush, "seq">, { whole = false } = {}) => {
+    const numbered = { ...event, seq: ++seq }
+    return push.publish(whole ? numbered : previewPush(numbered))
+  }
 
   const gitOutput = (cwd: string, args: ReadonlyArray<string>) =>
     git.run(cwd, args).pipe(
-      Effect.map((out) => out.trim() || null),
-      Effect.orElseSucceed(() => null),
+      Effect.map((out) => out.trim()),
+      Effect.option,
     )
 
   const readEnvironment = (thread: Thread, { cwd, rootPath }: ActiveWorkspace) =>
     Effect.all(
       [
-        gitOutput(cwd, ["rev-parse", "--is-inside-work-tree"]),
         gitOutput(cwd, ["branch", "--show-current"]),
         gitOutput(cwd, ["remote", "get-url", "origin"]),
         scratch.ensure(thread),
       ],
       { concurrency: "unbounded" },
     ).pipe(
-      Effect.map(([insideWorkTree, branch, remote, scratchDirectory]): AgentEnvironment => ({
-        gitRepository: insideWorkTree === "true",
-        branch,
+      Effect.map(([branch, remote, scratchDirectory]): AgentEnvironment => ({
+        gitRepository: Option.isSome(branch),
+        branch: Option.getOrNull(branch) || null,
         cwd,
         rootPath,
-        remote,
+        remote: Option.getOrNull(remote) || null,
         platform: process.platform,
         scratchDirectory,
       })),
@@ -390,6 +395,7 @@ const make = Effect.gen(function* () {
     let persistedAt = Date.now()
     let persistMs = 0
     const dirty = new Set<string>()
+    const subagentCalls = new Set<string>()
 
     const persist = Effect.suspend(() => {
       const changed = turnMessages.filter((message) => dirty.has(message.id))
@@ -405,19 +411,11 @@ const make = Effect.gen(function* () {
       turnMessages = next
     }
 
-    const handle = (received: AgentEvent) =>
+    const apply = (event: AgentEvent) =>
       Effect.gen(function* () {
-        const event: AgentEvent =
-          received.type === "tool_call_finished"
-            ? { ...received, output: withoutImageData(received.output) }
-            : received.type === "turn_completed" && received.forkPoint !== undefined
-              ? {
-                  ...received,
-                  forkPoint: { ...received.forkPoint, owner: { provider: provider.id, accountId: thread.accountId } },
-                }
-              : received
-        if (event.type === "subagent_updated") return yield* updateSubagent(thread.id, event.subagent)
-        yield* publishTranscript({ type: "thread.event", threadId: thread.id, event })
+        if (event.type === "tool_call_started" && spawnsSubagent(event)) subagentCalls.add(event.callId)
+        const whole = event.type === "tool_call_finished" && subagentCalls.has(event.callId)
+        yield* publishTranscript({ type: "thread.event", threadId: thread.id, event }, { whole })
         setTurnMessages(foldTranscript(turnMessages, event, yield* nowIso))
 
         if (event.type === "approval_requested") approvals.set(event.request.id, event.request)
@@ -439,6 +437,23 @@ const make = Effect.gen(function* () {
         }
         const interval = Math.max(PERSIST_INTERVAL_MS, PERSIST_BACKOFF * persistMs)
         if (dirty.size > 0 && Date.now() - persistedAt >= interval) yield* persist
+      })
+
+    const deltas = makeDeltaCoalescer({ apply, exclusive: exclusive(thread.id), scope })
+
+    const handle = (received: AgentEvent) =>
+      Effect.gen(function* () {
+        const event: AgentEvent =
+          received.type === "tool_call_finished"
+            ? { ...received, output: withoutImageData(received.output) }
+            : received.type === "turn_completed" && received.forkPoint !== undefined
+              ? {
+                  ...received,
+                  forkPoint: { ...received.forkPoint, owner: { provider: provider.id, accountId: thread.accountId } },
+                }
+              : received
+        if (event.type === "subagent_updated") return yield* updateSubagent(thread.id, event.subagent)
+        yield* deltas.offer(event)
       }).pipe(exclusive(thread.id))
 
     const steer = (
@@ -448,6 +463,7 @@ const make = Effect.gen(function* () {
     ) =>
       Effect.gen(function* () {
         if (!(yield* when)) return false
+        yield* deltas.flush
         yield* provider.steer(thread.id, text, attachments)
         const now = yield* nowIso
         const current = turnMessages.at(-1)!
@@ -466,6 +482,7 @@ const make = Effect.gen(function* () {
     let next: QueuedMessage | undefined
     const withdraw = (event: AgentEvent) => publishTranscript({ type: "thread.event", threadId: thread.id, event })
     const finish = Effect.gen(function* () {
+      yield* deltas.flush
       for (const [id, request] of approvals) {
         if (request.threadId !== thread.id) continue
         approvals.delete(id)
@@ -907,18 +924,20 @@ const make = Effect.gen(function* () {
       })
     }).pipe(exclusive(threadId))
 
+  const resumeIsDue = (thread: Thread, now: string) => {
+    const reset = thread.usageLimit?.reset
+    return (
+      thread.status === "limited" &&
+      reset?.autoResume === true &&
+      Date.parse(reset.at) + resumeGraceMs <= Date.parse(now)
+    )
+  }
+
   const consumeDueResume = (threadId: string, now: string) =>
     Effect.gen(function* () {
       const thread = yield* threads.get(threadId)
       const limit = thread.usageLimit
-      if (
-        busyThreads.has(thread.id) ||
-        thread.status !== "limited" ||
-        limit === null ||
-        !limit.reset?.autoResume ||
-        Date.parse(limit.reset.at) + resumeGraceMs > Date.parse(now)
-      )
-        return
+      if (busyThreads.has(thread.id) || limit?.reset == null || !resumeIsDue(thread, now)) return
       yield* updateThread({ id: thread.id, usageLimit: { ...limit, reset: { ...limit.reset, autoResume: false } } })
       return yield* lastPrompt(thread.id)
     }).pipe(exclusive(threadId))
@@ -935,7 +954,8 @@ const make = Effect.gen(function* () {
 
   const resumeDue = Effect.gen(function* () {
     const now = yield* nowIso
-    for (const candidate of yield* threads.list) {
+    const due = (yield* threads.list).filter((thread) => resumeIsDue(thread, now))
+    for (const candidate of due) {
       yield* Effect.gen(function* () {
         const prompt = yield* consumeDueResume(candidate.id, now)
         if (prompt !== undefined) yield* resend(candidate.id, prompt)
@@ -1152,6 +1172,22 @@ const make = Effect.gen(function* () {
           seq,
         }
       }).pipe(exclusive(threadId)),
+    toolOutput: (threadId, callId) => {
+      const live = activeTurns
+        .get(threadId)
+        ?.messages()
+        .flatMap((message) => message.parts)
+        .find((part) => part.type === "tool_call" && part.callId === callId)
+      const persisted = messages.toolOutput(threadId, callId).pipe(
+        Effect.flatMap(
+          Option.match({
+            onNone: () => Effect.fail(new NotFoundError({ entity: "tool call", id: callId })),
+            onSome: Effect.succeed,
+          }),
+        ),
+      )
+      return live?.type === "tool_call" && live.output !== undefined ? Effect.succeed(live.output) : persisted
+    },
     listModels: (id) => providers[id]?.listModels ?? Effect.succeed([]),
     limits: Effect.gen(function* () {
       const added = yield* accounts.list

@@ -8,6 +8,8 @@ export const SEARCH_PREFIX = "%"
 
 export const NEW_THREAD_PREFIX = "+"
 
+export const IMPORT_SESSION_PREFIX = "<"
+
 const MAX_RECENT = 20
 
 interface PaletteState {

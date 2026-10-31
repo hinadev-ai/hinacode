@@ -18,7 +18,6 @@ import {
   reachesPhone,
   type RemoteFeature,
   type ServerFrame,
-  SLOW_CONSUMER_BYTES,
 } from "../../shared/remote.ts"
 import { type AppServices, dispatch } from "../rpc.ts"
 import { PushBroadcast } from "../services/Events.ts"
@@ -27,7 +26,6 @@ import {
   CLOSE_AUTH_TIMEOUT,
   CLOSE_LISTENER_STOPPED,
   CLOSE_MALFORMED_FRAME,
-  CLOSE_SLOW_CONSUMER,
   CLOSE_TOKEN_ROTATED,
   CLOSE_UNAUTHORIZED,
   RemoteAccess,
@@ -59,7 +57,6 @@ const desktopOnly = (method: string): RpcEnvelope<never> => ({
 
 const send = (socket: WebSocket, frame: typeof ServerFrame.Encoded) => {
   if (socket.readyState !== WebSocket.OPEN) return
-  if (socket.bufferedAmount > SLOW_CONSUMER_BYTES) return socket.close(CLOSE_SLOW_CONSUMER, "slow consumer")
   socket.send(JSON.stringify(frame))
 }
 

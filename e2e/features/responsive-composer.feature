@@ -13,13 +13,13 @@ Feature: Responsive composer
     Examples:
       | width | height | fontSize | status  | action |
       | 720   | 480    | 16       | idle    | Send   |
-      | 720   | 480    | 16       | running | Steer  |
+      | 720   | 480    | 16       | running | Queue  |
       | 720   | 480    | 32       | idle    | Send   |
-      | 720   | 480    | 32       | running | Steer  |
+      | 720   | 480    | 32       | running | Queue  |
       | 320   | 480    | 16       | idle    | Send   |
-      | 320   | 480    | 16       | running | Steer  |
+      | 320   | 480    | 16       | running | Queue  |
       | 360   | 240    | 16       | idle    | Send   |
-      | 360   | 240    | 16       | running | Steer  |
+      | 360   | 240    | 16       | running | Queue  |
 
   Scenario Outline: An empty running composer keeps Stop inside the window
     Given a project "demo" for my repository

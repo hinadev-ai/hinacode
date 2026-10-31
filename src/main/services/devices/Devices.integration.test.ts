@@ -298,5 +298,31 @@ describe("Devices", () => {
         expect(devices.has(CREATED_DEVICE)).toBe(created)
       }),
     )
+
+    it.effect("leaves an archived thread's simulator alone while devices are off", () =>
+      Effect.gen(function* () {
+        const settings = yield* Settings
+        const service = yield* Devices
+        const setDevices = (on: boolean) =>
+          Effect.gen(function* () {
+            yield* settings.set({ experimental: { ...(yield* settings.get).experimental, devices: on } })
+            while (service.enabled() !== on) yield* Effect.yieldNow
+          })
+        const { threadId } = yield* seedThread({ rootPath: "/tmp/kk-devices-off" })
+        expect((yield* service.create(threadId)).phase).toBe("ready")
+        removed.length = 0
+
+        yield* setDevices(false)
+        yield* archive(threadId)
+        yield* TestClock.adjust("6 seconds")
+        yield* Effect.yieldNow
+        expect(removed).toEqual([])
+
+        yield* setDevices(true)
+        yield* TestClock.adjust("6 seconds")
+        yield* eventually(() => removed.length > 0)
+        expect(removed).toEqual([CREATED_DEVICE])
+      }),
+    )
   })
 })

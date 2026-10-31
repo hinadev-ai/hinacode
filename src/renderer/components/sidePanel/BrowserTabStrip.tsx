@@ -1,10 +1,13 @@
 import { cn } from "cn"
-import { type KeyboardEvent, useEffect, useRef } from "react"
-import { RiAddLine, RiCloseLine, RiGlobalLine } from "react-icons/ri"
+import type { KeyboardEvent } from "react"
+import { flushSync } from "react-dom"
 import type { Thread } from "../../../shared/domain.ts"
 import { m } from "../../paraglide/messages.js"
 import { type BrowserTab, selectBrowserTabs, useBrowserTabs } from "../../stores/browserTabs.ts"
 import { Button } from "../ui/button.tsx"
+import { CloseIcon } from "../icons/CloseIcon.tsx"
+import { GlobeIcon } from "../icons/GlobeIcon.tsx"
+import { PlusIcon } from "../icons/PlusIcon.tsx"
 
 export const browserTabId = (threadId: string, tabId: string) => `browser-tab-${threadId}-${tabId}`
 export const browserPanelId = (threadId: string, tabId: string) => `browser-page-${threadId}-${tabId}`
@@ -15,21 +18,19 @@ const tabLabel = (tab: BrowserTab) =>
 export function BrowserTabStrip({ thread }: { thread: Thread }) {
   const threadId = thread.id
   const { tabs, activeId } = useBrowserTabs(selectBrowserTabs(threadId))
-  const keyboardMove = useRef(false)
 
-  useEffect(() => {
-    if (!keyboardMove.current) return
-    keyboardMove.current = false
-    document.getElementById(browserTabId(threadId, activeId))?.focus()
-  }, [threadId, activeId])
+  const focusActiveTabAfter = (update: () => void) => {
+    flushSync(update)
+    const { activeId: next } = selectBrowserTabs(threadId)(useBrowserTabs.getState())
+    document.getElementById(browserTabId(threadId, next))?.focus()
+  }
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const store = useBrowserTabs.getState()
     const index = tabs.findIndex((tab) => tab.id === activeId)
     if (event.key === "Delete") {
       event.preventDefault()
-      keyboardMove.current = true
-      store.closeTab(threadId, activeId)
+      focusActiveTabAfter(() => store.closeTab(threadId, activeId))
       return
     }
     const target = {
@@ -40,8 +41,7 @@ export function BrowserTabStrip({ thread }: { thread: Thread }) {
     }[event.key]
     if (!target) return
     event.preventDefault()
-    keyboardMove.current = true
-    store.selectTab(threadId, target.id)
+    focusActiveTabAfter(() => store.selectTab(threadId, target.id))
   }
 
   const closable = tabs.length > 1 || tabs[0]!.url !== null
@@ -66,7 +66,7 @@ export function BrowserTabStrip({ thread }: { thread: Thread }) {
         title={m.browser_new_tab()}
         onClick={() => useBrowserTabs.getState().openTab(threadId)}
       >
-        <RiAddLine aria-hidden />
+        <PlusIcon aria-hidden />
       </Button>
     </div>
   )
@@ -106,7 +106,7 @@ function Tab({ threadId, tab, selected, closable }: TabProps) {
           closable ? "pr-7" : "pr-2.5",
         )}
       >
-        <RiGlobalLine aria-hidden className="size-4 shrink-0" />
+        <GlobeIcon aria-hidden className="size-4 shrink-0" />
         <span className="truncate">{label}</span>
       </button>
       {closable && (
@@ -121,7 +121,7 @@ function Tab({ threadId, tab, selected, closable }: TabProps) {
             !selected && "invisible group-hover:visible",
           )}
         >
-          <RiCloseLine aria-hidden className="size-3.5" />
+          <CloseIcon aria-hidden className="size-3.5" />
         </button>
       )}
     </div>

@@ -1,6 +1,5 @@
 import { cn } from "cn"
 import { useState } from "react"
-import { RiCloseLine, RiFileLine } from "react-icons/ri"
 import { attachmentUrl } from "../../shared/channels.ts"
 import type { PickedDeviceElement } from "../../shared/device.ts"
 import type { Attachment, PickedElement } from "../../shared/domain.ts"
@@ -11,11 +10,13 @@ import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { Button } from "./ui/button.tsx"
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "./ui/dialog.tsx"
+import { CloseIcon } from "./icons/CloseIcon.tsx"
+import { FileIcon } from "./icons/FileIcon.tsx"
 
 const format = (value: number, unit: string) =>
   new Intl.NumberFormat(getLocale(), { style: "unit", unit, maximumFractionDigits: 1 }).format(value)
 
-const formatBytes = (bytes: number) => {
+export const formatBytes = (bytes: number) => {
   if (bytes >= 1024 * 1024) return format(bytes / 1024 / 1024, "megabyte")
   if (bytes >= 1024) return format(bytes / 1024, "kilobyte")
   return format(bytes, "byte")
@@ -116,7 +117,7 @@ export function PendingAttachment({ attachment, onRemove }: { attachment: Attach
         })}
         className="absolute -top-1.5 -right-1.5 rounded-full border border-border"
       >
-        <RiCloseLine aria-hidden />
+        <CloseIcon aria-hidden />
       </Button>
     </div>
   )
@@ -137,7 +138,7 @@ function Thumbnail({ attachment, onError }: { attachment: Attachment; onError?: 
 function FileChip({ attachment }: { attachment: Attachment }) {
   return (
     <span className="flex h-16 max-w-56 items-center gap-2 rounded-lg border border-border bg-background/50 px-3 text-left text-xs">
-      <RiFileLine aria-hidden className="size-5 shrink-0 text-muted-foreground" />
+      <FileIcon aria-hidden className="size-5 shrink-0 text-muted-foreground" />
       <span className="flex min-w-0 flex-col">
         <span className="truncate font-medium" title={attachment.name}>
           {attachment.name}

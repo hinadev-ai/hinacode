@@ -2,7 +2,6 @@ import { Autocomplete } from "@base-ui/react/autocomplete"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { normalizeHotkey, useHotkeys } from "@tanstack/react-hotkeys"
 import { useDeferredValue, useEffect, useRef, useState } from "react"
-import { RiSearchLine } from "react-icons/ri"
 import { useCommandContext, useKeymap } from "../keybindings/useKeybindings.ts"
 import { type RankedItem, rankPalette } from "../palette/rank.ts"
 import { groupLabels, modeOf } from "../palette/modes.ts"
@@ -15,6 +14,7 @@ import { returnFocus } from "../stores/ui.ts"
 import { ChordKeys } from "./ChordKeys.tsx"
 import { CloudMark } from "./CloudMark.tsx"
 import { Dialog, DialogOverlay, DialogPortal } from "./ui/dialog.tsx"
+import { SearchIcon } from "./icons/SearchIcon.tsx"
 
 type SourceResult = ReturnType<PaletteSource["items"]>
 
@@ -28,6 +28,7 @@ function useSourceItems(sources: ReadonlyArray<PaletteSource>, query: string, ct
       if (!(result instanceof Promise)) continue
       void result.then((items) => {
         if (!current) return
+        // oxlint-disable-next-line hinacode/no-promise-state-in-effect -- sync sources show at once and async ones join as they settle; Suspense would hold every keystroke for the slowest source.
         setSettled((previous) =>
           previous.has(result)
             ? previous
@@ -134,7 +135,7 @@ function PaletteBody({ onChoose }: { onChoose: (item: PaletteItem, remember: boo
       itemToStringValue={(entry: RankedItem) => entry.item.title}
     >
       <div className="flex items-center gap-2.5 border-b border-border px-3.5">
-        <RiSearchLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+        <SearchIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
         {/* FIXME: Base UI Dialog focuses a frame late, which would drop an Enter pressed right after opening */}
         <Autocomplete.Input
           ref={focusOnMount}

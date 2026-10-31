@@ -11,25 +11,6 @@ import {
   useRef,
   useState,
 } from "react"
-import type { IconType } from "react-icons"
-import {
-  RiArrowRightSLine,
-  RiAtLine,
-  RiCollapseVerticalLine,
-  RiFileCodeLine,
-  RiFileCopyLine,
-  RiFileEditLine,
-  RiFileLine,
-  RiFileMusicLine,
-  RiFileTextLine,
-  RiFileVideoLine,
-  RiFolderLine,
-  RiFolderOpenLine,
-  RiImageLine,
-  RiLinksLine,
-  RiMarkdownLine,
-  RiRefreshLine,
-} from "react-icons/ri"
 import { type FsEntry, isThreadBusy, type Thread } from "../../shared/domain.ts"
 import { extensionOf, type FilePreview, previewOf } from "../lib/filePreview.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
@@ -45,38 +26,55 @@ import { Button } from "./ui/button.tsx"
 import { OpenWithSubmenu } from "./OpenWith.tsx"
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "./ui/context-menu.tsx"
 import { DropdownMenuItem } from "./ui/dropdown-menu.tsx"
+import { AtIcon } from "./icons/AtIcon.tsx"
+import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
+import { CollapseIcon } from "./icons/CollapseIcon.tsx"
+import { CopyIcon } from "./icons/CopyIcon.tsx"
+import { FileCodeIcon } from "./icons/FileCodeIcon.tsx"
+import { FileDiffIcon } from "./icons/FileDiffIcon.tsx"
+import { FileIcon } from "./icons/FileIcon.tsx"
+import { FileMusicIcon } from "./icons/FileMusicIcon.tsx"
+import { FileTextIcon } from "./icons/FileTextIcon.tsx"
+import { FileVideoIcon } from "./icons/FileVideoIcon.tsx"
+import { FolderIcon } from "./icons/FolderIcon.tsx"
+import { FolderOpenIcon } from "./icons/FolderOpenIcon.tsx"
+import type { IconComponent } from "./icons/Icon.tsx"
+import { ImageIcon } from "./icons/ImageIcon.tsx"
+import { LinkIcon } from "./icons/LinkIcon.tsx"
+import { MarkdownIcon } from "./icons/MarkdownIcon.tsx"
+import { RefreshIcon } from "./icons/RefreshIcon.tsx"
 
 const ROW_HEIGHT = 24
 const INDENT = 12
 const TYPEAHEAD_RESET_MS = 600
 const MIN_PANE_HEIGHT = FILE_TREE_HEIGHT_BOUNDS.min
 
-const iconsByPreview: Readonly<Record<FilePreview, IconType>> = {
-  image: RiImageLine,
-  svg: RiImageLine,
-  video: RiFileVideoLine,
-  audio: RiFileMusicLine,
-  html: RiFileCodeLine,
-  markdown: RiMarkdownLine,
+const iconsByPreview: Readonly<Record<FilePreview, IconComponent>> = {
+  image: ImageIcon,
+  svg: ImageIcon,
+  video: FileVideoIcon,
+  audio: FileMusicIcon,
+  html: FileCodeIcon,
+  markdown: MarkdownIcon,
 }
 
-const iconsByExtension: Readonly<Record<string, IconType>> = {
-  mdx: RiMarkdownLine,
-  txt: RiFileTextLine,
-  json: RiFileTextLine,
-  yaml: RiFileTextLine,
-  yml: RiFileTextLine,
-  toml: RiFileTextLine,
+const iconsByExtension: Readonly<Record<string, IconComponent>> = {
+  mdx: MarkdownIcon,
+  txt: FileTextIcon,
+  json: FileTextIcon,
+  yaml: FileTextIcon,
+  yml: FileTextIcon,
+  toml: FileTextIcon,
 }
 const CODE = /^(ts|tsx|js|jsx|mjs|cjs|css|html|py|rs|go|rb|java|kt|swift|c|h|cpp|sh|sql)$/
 
-const fileIcon = (entry: FsEntry, expanded: boolean): IconType => {
-  if (entry.kind === "dir") return expanded ? RiFolderOpenLine : RiFolderLine
-  if (entry.kind === "symlink") return RiLinksLine
+const fileIcon = (entry: FsEntry, expanded: boolean): IconComponent => {
+  if (entry.kind === "dir") return expanded ? FolderOpenIcon : FolderIcon
+  if (entry.kind === "symlink") return LinkIcon
   const preview = previewOf(entry.name)
   if (preview !== null) return iconsByPreview[preview]
   const extension = extensionOf(entry.name)
-  return iconsByExtension[extension] ?? (CODE.test(extension) ? RiFileCodeLine : RiFileLine)
+  return iconsByExtension[extension] ?? (CODE.test(extension) ? FileCodeIcon : FileIcon)
 }
 
 const foldersDownTo = (path: string) =>
@@ -276,19 +274,15 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground" title={root}>
           {rootName}
         </span>
-        <HeaderButton
-          label={m.explorer_collapse_all()}
-          onClick={() => collapseAll(root)}
-          icon={RiCollapseVerticalLine}
-        />
+        <HeaderButton label={m.explorer_collapse_all()} onClick={() => collapseAll(root)} icon={CollapseIcon} />
         {canReveal && (
           <HeaderButton
             label={m.panel_reveal()}
             onClick={() => void callPromise("shell.reveal", { path: root })}
-            icon={RiFolderOpenLine}
+            icon={FolderOpenIcon}
           />
         )}
-        <HeaderButton label={m.explorer_refresh()} onClick={() => void refresh(root)} icon={RiRefreshLine} />
+        <HeaderButton label={m.explorer_refresh()} onClick={() => void refresh(root)} icon={RefreshIcon} />
       </header>
       <div
         className={cn("flex min-h-0 flex-col", tree.opened === null ? "flex-1" : "shrink-0")}
@@ -332,17 +326,17 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
             {selectedEntry && (
               <ContextMenuContent>
                 <DropdownMenuItem onClick={() => mention(selectedEntry)}>
-                  <RiAtLine aria-hidden />
+                  <AtIcon aria-hidden />
                   {m.explorer_mention()}
                 </DropdownMenuItem>
                 {hasDiff(selectedEntry) && (
                   <DropdownMenuItem onClick={() => showChanges(selectedEntry)}>
-                    <RiFileEditLine aria-hidden />
+                    <FileDiffIcon aria-hidden />
                     {m.explorer_show_changes()}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(selectedEntry.path)}>
-                  <RiFileCopyLine aria-hidden />
+                  <CopyIcon aria-hidden />
                   {m.explorer_copy_path()}
                 </DropdownMenuItem>
                 {canReveal && (
@@ -375,7 +369,7 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
   )
 }
 
-function HeaderButton({ label, icon: Icon, onClick }: { label: string; icon: IconType; onClick: () => void }) {
+function HeaderButton({ label, icon: Icon, onClick }: { label: string; icon: IconComponent; onClick: () => void }) {
   return (
     <Button variant="ghost" size="icon-xs" aria-label={label} title={label} onClick={onClick}>
       <Icon aria-hidden />
@@ -474,7 +468,7 @@ function TreeItem({ row, id, selected, expanded, unsaved, onClick, onContextMenu
           style={{ left: 8 + level * INDENT + 7 }}
         />
       ))}
-      <RiArrowRightSLine
+      <ChevronRightIcon
         aria-hidden
         className={cn(
           "size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ease-out motion-reduce:transition-none",

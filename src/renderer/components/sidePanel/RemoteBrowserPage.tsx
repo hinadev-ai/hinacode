@@ -1,13 +1,5 @@
 import { cn } from "cn"
 import { type FormEvent, useEffect, useId, useRef, useState } from "react"
-import {
-  RiArrowLeftLine,
-  RiArrowRightLine,
-  RiCloseLine,
-  RiCloudLine,
-  RiCursorLine,
-  RiRefreshLine,
-} from "react-icons/ri"
 import type { BrowserState } from "../../../shared/browser.ts"
 import { browserUrl } from "../../lib/browserUrl.ts"
 import { elementLabel } from "../../lib/elementPicker.ts"
@@ -21,6 +13,12 @@ import { BrowserStart, type Device, LoadFailure, ViewportMenu } from "./BrowserC
 import { browserPanelId, browserTabId } from "./BrowserTabStrip.tsx"
 import { browserViewport, RemoteBrowserSession } from "./remoteBrowserSession.ts"
 import { RemoteBrowserSurface } from "./RemoteBrowserSurface.tsx"
+import { ArrowLeftIcon } from "../icons/ArrowLeftIcon.tsx"
+import { ArrowRightIcon } from "../icons/ArrowRightIcon.tsx"
+import { CloseIcon } from "../icons/CloseIcon.tsx"
+import { CloudIcon } from "../icons/CloudIcon.tsx"
+import { CursorIcon } from "../icons/CursorIcon.tsx"
+import { RefreshIcon } from "../icons/RefreshIcon.tsx"
 
 type Connection =
   | { readonly kind: "idle" }
@@ -170,7 +168,7 @@ export function RemoteBrowserPage({ threadId, tabId, initialUrl, active }: Remot
           disabled={!state?.back}
           onClick={() => sessionRef.current?.command({ kind: "back" })}
         >
-          <RiArrowLeftLine aria-hidden />
+          <ArrowLeftIcon aria-hidden />
         </Button>
         <Button
           variant="ghost"
@@ -180,7 +178,7 @@ export function RemoteBrowserPage({ threadId, tabId, initialUrl, active }: Remot
           disabled={!state?.forward}
           onClick={() => sessionRef.current?.command({ kind: "forward" })}
         >
-          <RiArrowRightLine aria-hidden />
+          <ArrowRightIcon aria-hidden />
         </Button>
         <Button
           variant="ghost"
@@ -190,7 +188,7 @@ export function RemoteBrowserPage({ threadId, tabId, initialUrl, active }: Remot
           disabled={state === null}
           onClick={() => sessionRef.current?.command({ kind: loading ? "stop" : "reload" })}
         >
-          {loading ? <RiCloseLine aria-hidden /> : <RiRefreshLine aria-hidden />}
+          {loading ? <CloseIcon aria-hidden /> : <RefreshIcon aria-hidden />}
         </Button>
         <form onSubmit={submit} className="mx-1 min-w-0 flex-1">
           <Input
@@ -214,7 +212,7 @@ export function RemoteBrowserPage({ threadId, tabId, initialUrl, active }: Remot
           title={m.browser_remote_description()}
           className="mx-1 inline-flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground"
         >
-          <RiCloudLine aria-hidden className="size-3" />
+          <CloudIcon aria-hidden className="size-3" />
           {m.browser_remote()}
         </span>
         <ViewportMenu device={device} onChange={setDevice} />
@@ -234,7 +232,7 @@ export function RemoteBrowserPage({ threadId, tabId, initialUrl, active }: Remot
           }}
           className={cn(picking && "text-primary")}
         >
-          <RiCursorLine aria-hidden />
+          <CursorIcon aria-hidden />
         </Button>
       </div>
       <div ref={viewportRef} className="relative min-h-0 flex-1">

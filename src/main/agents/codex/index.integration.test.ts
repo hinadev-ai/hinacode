@@ -8,6 +8,7 @@ import type { AccountHome, AgentEvent, RunTurnInput } from "../../../shared/agen
 import { AGENT_INSTRUCTIONS } from "../instructions.ts"
 import type { BackgroundTasksChange } from "../provider.ts"
 import { CodexProvider } from "./index.ts"
+import fruitShop from "./fixtures/fruit-shop-thread.json" with { type: "json" }
 
 const bin = mkdtempSync(join(tmpdir(), "kk-fake-codex-"))
 writeFileSync(join(bin, "codex"), `#!/bin/sh\nexec node ${join(import.meta.dirname, "fakeAppServer.mjs")} "$@"\n`)
@@ -30,6 +31,7 @@ type Control = {
   plan?: boolean
   compaction?: boolean
   backgroundTerminal?: boolean
+  sessions?: { list: unknown; read: unknown; turnPages: ReadonlyArray<unknown> }
   skills?: import("./protocol.ts").SkillsListResponse["data"]
 }
 type Received = {
@@ -876,6 +878,84 @@ describe("Codex accounts", () => {
         yield* provider.interrupt("thread-personal")
         yield* finishesSoon(onPersonal.fiber)
         expect(countOf("turn/interrupt")).toBe(2)
+      }),
+    ),
+  )
+})
+
+describe("Codex session import", () => {
+  const sessionId = fruitShop.read.thread.id
+  const cwd = "/work/fruit-shop"
+
+  it.live("lists the sessions recorded in the folder, whoever started them", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({ sessions: fruitShop })
+        const sessions = yield* provider.listSessions!(cwd, null)
+        expect(sessions).toStrictEqual([
+          {
+            sessionId,
+            title: "Append the line 'papaya' to stock.txt using a shell command, then reply with just: added",
+            preview: "Append the line 'papaya' to stock.txt using a shell command, then reply with just: added",
+            branch: "main",
+            updatedAt: new Date(fruitShop.list.data[0]!.updatedAt * 1000).toISOString(),
+          },
+        ])
+        const listed = received().find((message) => message.method === "thread/list")
+        expect(listed?.params).toMatchObject({ cwd, sourceKinds: ["cli", "vscode", "exec", "appServer"] })
+        expect(yield* provider.listSessions!("/work/other", null)).toStrictEqual([])
+      }),
+    ),
+  )
+
+  it.live("reads every turn across pages, with tool calls and fork points", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({ sessions: fruitShop })
+        const history = yield* provider.readSession!(sessionId, cwd, null)
+        expect(countOf("thread/turns/list")).toBe(2)
+        expect(history.model).toBe("gpt-6.1-sol")
+        const messages = history.messages ?? []
+        expect(messages.map((message) => message.role)).toStrictEqual(["user", "assistant", "user", "assistant"])
+        expect(messages[0]?.parts).toStrictEqual([
+          {
+            type: "text",
+            text: "Append the line 'papaya' to stock.txt using a shell command, then reply with just: added",
+          },
+        ])
+        const reply = messages[1]!
+        expect(reply.parts.map((part) => part.type)).toStrictEqual(["text", "tool_call", "text"])
+        expect(reply.parts[1]).toMatchObject({ type: "tool_call", name: "Bash", status: "done" })
+        expect(reply.forkPoint).toStrictEqual({ sessionId, checkpoint: fruitShop.turnPages[0]!.data[0]!.id })
+        expect(messages[3]?.parts.at(-1)).toStrictEqual({ type: "text", text: "4" })
+      }),
+    ),
+  )
+
+  it.live("fails for a session that is gone or ran in another folder", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({ sessions: fruitShop })
+        const gone = yield* Effect.flip(provider.readSession!("00000000-0000-4000-8000-000000000000", cwd, null))
+        expect(gone.message).toContain("no longer there")
+        const elsewhere = yield* Effect.flip(provider.readSession!(sessionId, "/work/other", null))
+        expect(elsewhere.message).toContain("another folder")
+      }),
+    ),
+  )
+
+  it.live("imports without history when a turn comes back without its full items", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        const page = fruitShop.turnPages[0]!
+        const summarized = { ...page, data: page.data.map((turn) => ({ ...turn, itemsView: "summary" })) }
+        setControl({ sessions: { ...fruitShop, turnPages: [summarized, fruitShop.turnPages[1]!] } })
+        const history = yield* provider.readSession!(sessionId, cwd, null)
+        expect(history).toStrictEqual({ title: null, model: "gpt-6.1-sol", messages: null })
       }),
     ),
   )

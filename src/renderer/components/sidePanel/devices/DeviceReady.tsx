@@ -1,26 +1,6 @@
 import { cn } from "cn"
 import { Schema } from "effect"
-import { type FormEvent, useEffect, useId, useRef, useState } from "react"
-import type { IconType } from "react-icons"
-import {
-  RiArrowGoBackLine,
-  RiBookOpenLine,
-  RiCursorLine,
-  RiErrorWarningLine,
-  RiHome5Line,
-  RiKeyboardBoxLine,
-  RiLinkM,
-  RiLockLine,
-  RiMoonLine,
-  RiMore2Line,
-  RiSmartphoneLine,
-  RiStackLine,
-  RiSunLine,
-  RiTabletLine,
-  RiVolumeDownLine,
-  RiVolumeUpLine,
-  RiAnticlockwise2Line,
-} from "react-icons/ri"
+import { type FormEvent, useEffect, useEffectEvent, useId, useRef, useState } from "react"
 import {
   DeviceCommand,
   type DeviceButton,
@@ -43,6 +23,24 @@ import { IconAction, useVmAction } from "../TinyVmView.tsx"
 import { DeleteDeviceDialog, deleteDeviceLabel } from "./DeleteDeviceDialog.tsx"
 import { DeviceSession, type FrameShape } from "./deviceSession.ts"
 import { DeviceScreen } from "./DeviceScreen.tsx"
+import { BookIcon } from "../../icons/BookIcon.tsx"
+import { CursorIcon } from "../../icons/CursorIcon.tsx"
+import { HomeIcon } from "../../icons/HomeIcon.tsx"
+import type { IconComponent } from "../../icons/Icon.tsx"
+import { KeyboardIcon } from "../../icons/KeyboardIcon.tsx"
+import { LinkIcon } from "../../icons/LinkIcon.tsx"
+import { LockIcon } from "../../icons/LockIcon.tsx"
+import { MoonIcon } from "../../icons/MoonIcon.tsx"
+import { MoreVerticalIcon } from "../../icons/MoreVerticalIcon.tsx"
+import { PhoneIcon } from "../../icons/PhoneIcon.tsx"
+import { RotateIcon } from "../../icons/RotateIcon.tsx"
+import { StackIcon } from "../../icons/StackIcon.tsx"
+import { SunIcon } from "../../icons/SunIcon.tsx"
+import { TabletIcon } from "../../icons/TabletIcon.tsx"
+import { UndoIcon } from "../../icons/UndoIcon.tsx"
+import { VolumeDownIcon } from "../../icons/VolumeDownIcon.tsx"
+import { VolumeUpIcon } from "../../icons/VolumeUpIcon.tsx"
+import { WarningIcon } from "../../icons/WarningIcon.tsx"
 
 type ReadyDevice = Extract<ThreadDevice, { phase: "ready" }>
 type Appearance = "light" | "dark"
@@ -98,7 +96,6 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
   const [hardwareKeyboard, setHardwareKeyboard] = useState(() => localStorage.getItem(hardwareKeyboardKey) === "on")
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const sessionRef = useRef<DeviceSession | null>(null)
-  const controlRef = useRef(control)
   const hintId = useId()
   const owned = device.ownerThreadId === threadId
   const deviceId = device.id
@@ -122,17 +119,14 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
     }
   }, [threadId, deviceId])
 
-  useEffect(() => {
-    controlRef.current = control
-  }, [control])
-
+  const handBack = useEffectEvent(() => {
+    if (control === "user") void callPromise("device.control", { threadId, deviceId, control: "agent" }).catch(() => {})
+  })
   useEffect(
     () => () => {
-      if (controlRef.current === "user") {
-        void callPromise("device.control", { threadId, deviceId, control: "agent" }).catch(() => {})
-      }
+      handBack()
     },
-    [threadId, deviceId],
+    [],
   )
 
   const onCanvas = (canvas: HTMLCanvasElement | null) => {
@@ -206,22 +200,22 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
         aria-label={m.devices_toolbar({ name: device.name })}
         className="flex min-h-10 shrink-0 flex-wrap items-center gap-0.5 border-b border-border px-2 py-1.5"
       >
-        <IconAction icon={RiHome5Line} label={m.devices_home()} onClick={() => press("home")} />
-        <IconAction icon={RiLockLine} label={m.devices_lock()} onClick={() => press("lock")} />
-        <IconAction icon={RiVolumeDownLine} label={m.devices_volume_down()} onClick={() => press("volumeDown")} />
-        <IconAction icon={RiVolumeUpLine} label={m.devices_volume_up()} onClick={() => press("volumeUp")} />
-        <IconAction icon={RiAnticlockwise2Line} label={m.devices_rotate()} onClick={() => send({ kind: "rotate" })} />
+        <IconAction icon={HomeIcon} label={m.devices_home()} onClick={() => press("home")} />
+        <IconAction icon={LockIcon} label={m.devices_lock()} onClick={() => press("lock")} />
+        <IconAction icon={VolumeDownIcon} label={m.devices_volume_down()} onClick={() => press("volumeDown")} />
+        <IconAction icon={VolumeUpIcon} label={m.devices_volume_up()} onClick={() => press("volumeUp")} />
+        <IconAction icon={RotateIcon} label={m.devices_rotate()} onClick={() => send({ kind: "rotate" })} />
         {shape?.posture && (
           <PostureButtons current={shape.posture} onPick={(posture) => send({ kind: "posture", posture })} />
         )}
         {device.platform === "android" && (
           <>
-            <IconAction icon={RiArrowGoBackLine} label={m.devices_back()} onClick={() => press("back")} />
-            <IconAction icon={RiStackLine} label={m.devices_recents()} onClick={() => press("recents")} />
+            <IconAction icon={UndoIcon} label={m.devices_back()} onClick={() => press("back")} />
+            <IconAction icon={StackIcon} label={m.devices_recents()} onClick={() => press("recents")} />
           </>
         )}
         <IconAction
-          icon={appearance === "dark" ? RiSunLine : RiMoonLine}
+          icon={appearance === "dark" ? SunIcon : MoonIcon}
           label={appearance === "dark" ? m.devices_appearance_light() : m.devices_appearance_dark()}
           onClick={toggleAppearance}
         />
@@ -240,7 +234,7 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
               />
             }
           >
-            <RiCursorLine aria-hidden />
+            <CursorIcon aria-hidden />
           </TooltipTrigger>
           <TooltipContent>{picking ? m.devices_pick_cancel() : m.devices_pick()}</TooltipContent>
         </Tooltip>
@@ -257,7 +251,7 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
               />
             }
           >
-            <RiKeyboardBoxLine aria-hidden />
+            <KeyboardIcon aria-hidden />
           </TooltipTrigger>
           <TooltipContent>{m.devices_hardware_keyboard_hint()}</TooltipContent>
         </Tooltip>
@@ -269,7 +263,7 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
                 <DropdownMenuTrigger
                   render={<Button variant="ghost" size="icon-xs" aria-label={m.devices_more()} disabled={pending} />}
                 >
-                  <RiMore2Line aria-hidden />
+                  <MoreVerticalIcon aria-hidden />
                 </DropdownMenuTrigger>
               }
             />
@@ -320,7 +314,7 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
             waiting ? "font-medium text-attention" : control === "user" ? "text-foreground" : "text-muted-foreground",
           )}
         >
-          {waiting && <RiErrorWarningLine aria-hidden className="size-3.5 shrink-0" />}
+          {waiting && <WarningIcon aria-hidden className="size-3.5 shrink-0" />}
           <span className="truncate">{status}</span>
         </p>
         {control === "user" && (
@@ -375,7 +369,7 @@ function OpenLink({ onOpen }: { onOpen: (url: string) => void }) {
         <TooltipTrigger
           render={
             <PopoverTrigger render={<Button variant="ghost" size="icon-xs" aria-label={m.devices_open_link()} />}>
-              <RiLinkM aria-hidden />
+              <LinkIcon aria-hidden />
             </PopoverTrigger>
           }
         />
@@ -411,11 +405,12 @@ function OpenLink({ onOpen }: { onOpen: (url: string) => void }) {
   )
 }
 
-const postures: ReadonlyArray<{ posture: DevicePosture; icon: IconType; label: () => string; turned?: boolean }> = [
-  { posture: "closed", icon: RiSmartphoneLine, label: m.devices_posture_closed },
-  { posture: "halfOpen", icon: RiBookOpenLine, label: m.devices_posture_half_open },
-  { posture: "flat", icon: RiTabletLine, label: m.devices_posture_flat, turned: true },
-]
+const postures: ReadonlyArray<{ posture: DevicePosture; icon: IconComponent; label: () => string; turned?: boolean }> =
+  [
+    { posture: "closed", icon: PhoneIcon, label: m.devices_posture_closed },
+    { posture: "halfOpen", icon: BookIcon, label: m.devices_posture_half_open },
+    { posture: "flat", icon: TabletIcon, label: m.devices_posture_flat, turned: true },
+  ]
 
 function PostureButtons({ current, onPick }: { current: DevicePosture; onPick: (posture: DevicePosture) => void }) {
   return postures.map(({ posture, icon: Icon, label, turned }) => (

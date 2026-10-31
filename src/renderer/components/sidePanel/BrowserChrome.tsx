@@ -1,7 +1,6 @@
 import { useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
-import { RiComputerLine, RiErrorWarningLine, RiGlobalLine, RiSmartphoneLine, RiTabletLine } from "react-icons/ri"
 import { threadPortsAtom } from "../../lib/rpc.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
@@ -15,6 +14,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu.tsx"
+import { ComputerIcon } from "../icons/ComputerIcon.tsx"
+import { GlobeIcon } from "../icons/GlobeIcon.tsx"
+import { PhoneIcon } from "../icons/PhoneIcon.tsx"
+import { TabletIcon } from "../icons/TabletIcon.tsx"
+import { WarningIcon } from "../icons/WarningIcon.tsx"
 
 export interface Device {
   readonly name: string
@@ -52,7 +56,7 @@ export function ViewportMenu({
   onChange: (device: Device | null) => void
 }) {
   const devices = [...DEVICES.phone, ...DEVICES.tablet]
-  const Icon = device === null ? RiComputerLine : DEVICES.phone.includes(device) ? RiSmartphoneLine : RiTabletLine
+  const Icon = device === null ? ComputerIcon : DEVICES.phone.includes(device) ? PhoneIcon : TabletIcon
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -116,7 +120,7 @@ export function BrowserStart({
   const unique = [...new Map(ports.map((port) => [port.port, port])).values()]
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
-      <RiGlobalLine aria-hidden className="size-6 text-muted-foreground" />
+      <GlobeIcon aria-hidden className="size-6 text-muted-foreground" />
       <div className="flex flex-col gap-1">
         <h3 className="text-sm font-medium">{m.browser_start_title()}</h3>
         <p className="max-w-64 text-xs text-pretty text-muted-foreground">{hint}</p>
@@ -149,7 +153,7 @@ export function LoadFailure({ failure, onRetry }: { failure: Failure; onRetry: (
       role="alert"
       className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background p-6 text-center"
     >
-      <RiErrorWarningLine aria-hidden className="size-6 text-muted-foreground" />
+      <WarningIcon aria-hidden className="size-6 text-muted-foreground" />
       <div className="flex flex-col gap-1">
         <p className="text-sm font-medium break-all">{m.browser_load_failed({ url: failure.url })}</p>
         <p className="font-mono text-xs text-muted-foreground">{failure.description}</p>

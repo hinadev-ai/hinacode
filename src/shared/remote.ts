@@ -6,8 +6,6 @@ export const REMOTE_PATH = "/remote"
 
 export const REMOTE_PROTOCOL_VERSION = 1
 
-export const SLOW_CONSUMER_BYTES = 8 * 1024 * 1024
-
 export const RemoteFeature = ["heartbeat", "call-keys", "terminal-attach", "asks", "watch"] as const
 export type RemoteFeature = (typeof RemoteFeature)[number]
 

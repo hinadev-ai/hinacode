@@ -1,8 +1,10 @@
-import { Effect, Schedule, Schema, Stream } from "effect"
+import { Duration, Effect, Schedule, Schema, Stream } from "effect"
 import { AsyncResult, Atom } from "effect/reactivity"
 import type { ProviderId } from "../../shared/agent.ts"
 import { PushEvent, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../../shared/contract.ts"
 import type { Thread } from "../../shared/domain.ts"
+import { PULL_REQUEST_REFRESH } from "../../shared/github.ts"
+import { msUntilNextReset } from "../../shared/planLimits.ts"
 import { pullRequestAttention } from "../../shared/threadStatus.ts"
 import { m } from "../paraglide/messages.js"
 
@@ -41,8 +43,30 @@ export const callPromise = <M extends RpcMethod>(method: M, payload: RpcRequest<
 
 const decodePushEvent = Schema.decodeUnknownSync(PushEvent)
 
-export const onPushEvent = (listener: (event: PushEvent) => void) =>
-  window.hinacode.onEvent((raw) => listener(decodePushEvent(raw)))
+let pushListeners: ReadonlyArray<(event: PushEvent) => void> = []
+let stopBridgeEvents: (() => void) | undefined
+
+const broadcastPushEvent = (raw: typeof PushEvent.Encoded) => {
+  const event = decodePushEvent(raw)
+  for (const listener of pushListeners) {
+    try {
+      listener(event)
+    } catch (error) {
+      reportError(error)
+    }
+  }
+}
+
+export const onPushEvent = (listener: (event: PushEvent) => void) => {
+  pushListeners = [...pushListeners, listener]
+  stopBridgeEvents ??= window.hinacode.onEvent(broadcastPushEvent)
+  return () => {
+    pushListeners = pushListeners.filter((other) => other !== listener)
+    if (pushListeners.length > 0) return
+    stopBridgeEvents?.()
+    stopBridgeEvents = undefined
+  }
+}
 
 export const familyOf = <Args extends ReadonlyArray<unknown>, A extends object>(make: (...args: Args) => A) => {
   const family = Atom.family((key: string) => make(...(JSON.parse(key) as Args)))
@@ -212,7 +236,13 @@ export const commandsAtom = Atom.family((key: string) =>
   Atom.make(call("commands.list", { threadId: threadIdOf(key) })),
 )
 
+export const externalSessionsAtom = Atom.family((projectId: string) =>
+  Atom.make(call("sessions.listExternal", { projectId })),
+)
+
 export const filesAtom = Atom.family((key: string) => Atom.make(call("files.list", { threadId: threadIdOf(key) })))
+
+export const noFilesAtom = Atom.make(Effect.succeed<ReadonlyArray<string>>([]))
 
 export const projectIconAtom = Atom.family((projectId: string) =>
   Atom.make(call("projects.icon", { id: projectId })).pipe(Atom.keepAlive),
@@ -226,9 +256,13 @@ const remoteFetchAtom = Atom.family((projectId: string) =>
   Atom.make(call("projects.fetch", { id: projectId })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
 )
 
+const remoteFetchedAtAtom = Atom.family((projectId: string) =>
+  Atom.make((get) => AsyncResult.getOrElse(get(remoteFetchAtom(projectId)), () => null)),
+)
+
 export const branchesAtom = Atom.family((projectId: string) =>
   Atom.make((get) => {
-    get(remoteFetchAtom(projectId))
+    get(remoteFetchedAtAtom(projectId))
     return call("projects.branches", { id: projectId })
   }),
 )
@@ -245,7 +279,7 @@ export const pullRequestSearchAtom = familyOf((projectId: string, query: string 
 
 export const defaultBranchAtom = Atom.family((projectId: string) =>
   Atom.make((get) => {
-    get(remoteFetchAtom(projectId))
+    get(remoteFetchedAtAtom(projectId))
     return call("projects.defaultBranch", { id: projectId })
   }),
 )
@@ -281,17 +315,47 @@ export const commitKey = (root: string, hash: string) => `${root}\n${hash}`
 
 const windowReturnSignal = Atom.readable((get) => {
   let count = 0
-  const bump = () => {
-    if (document.visibilityState === "visible") get.setSelf(++count)
+  let away = false
+  const leave = () => {
+    away = true
   }
-  window.addEventListener("focus", bump)
-  document.addEventListener("visibilitychange", bump)
+  const comeBack = () => {
+    if (!away || document.visibilityState !== "visible") return
+    away = false
+    get.setSelf(++count)
+  }
+  const onVisibilityChange = () => (document.visibilityState === "visible" ? comeBack() : leave())
+  window.addEventListener("blur", leave)
+  window.addEventListener("focus", comeBack)
+  document.addEventListener("visibilitychange", onVisibilityChange)
   get.addFinalizer(() => {
-    window.removeEventListener("focus", bump)
-    document.removeEventListener("visibilitychange", bump)
+    window.removeEventListener("blur", leave)
+    window.removeEventListener("focus", comeBack)
+    document.removeEventListener("visibilitychange", onVisibilityChange)
   })
   return count
 })
+
+const refreshInStepWhileVisible =
+  (interval: Duration.Duration) =>
+  <A>(self: Atom.Atom<A>) => {
+    const millis = Duration.toMillis(interval)
+    return Atom.transform(self, (get) => {
+      let timer: ReturnType<typeof setTimeout>
+      const scheduleNextRefresh = () => {
+        timer = setTimeout(
+          () => {
+            scheduleNextRefresh()
+            if (!document.hidden) get.refresh(self)
+          },
+          millis - (Date.now() % millis),
+        )
+      }
+      scheduleNextRefresh()
+      get.addFinalizer(() => clearTimeout(timer))
+      return get(self)
+    })
+  }
 
 const gitHubLookup = <Args extends ReadonlyArray<unknown>, A>(
   lookup: (...args: Args) => Effect.Effect<A, RpcError>,
@@ -301,7 +365,7 @@ const gitHubLookup = <Args extends ReadonlyArray<unknown>, A>(
   return familyOf((...args: Args) =>
     cached(...args).pipe(
       Atom.swr({ staleTime: "30 seconds", revalidateOnFocus: true, focusSignal: windowReturnSignal }),
-      Atom.withRefresh("60 seconds"),
+      refreshInStepWhileVisible(PULL_REQUEST_REFRESH),
     ),
   )
 }
@@ -403,6 +467,10 @@ export const threadDevicesAtom = Atom.family((threadId: string) =>
   ),
 )
 
+export const vmDesktopUrlAtom = familyOf((threadId: string, _sandboxId: string) =>
+  Atom.make(call("vm.desktop.url", { threadId })),
+)
+
 export const deviceHostAtom = Atom.family((threadId: string) => Atom.make(call("devices.list", { threadId })))
 
 export const vmHostAtom = Atom.family((environment: EnvironmentId) =>
@@ -433,14 +501,25 @@ export const contextBreakdownAtom = Atom.family((threadId: string) =>
   }),
 )
 
+const longestTimeoutMs = 2 ** 31 - 1
+
 export const accountLimitsAtom = Atom.make((get) => {
   get.addFinalizer(
     onPushEvent((event) => {
       if (event.type === "thread.event" && turnEnds.has(event.event.type)) get.refreshSelf()
     }),
   )
-  return Stream.fromEffectSchedule(call("limits.list", undefined), Schedule.spaced("2 minutes"))
-})
+  return call("limits.list", undefined).pipe(
+    Effect.tap((limits) =>
+      Effect.sync(() => {
+        const resetIn = msUntilNextReset(limits, Date.now())
+        if (resetIn === undefined) return
+        const timer = setTimeout(() => get.refreshSelf(), Math.min(resetIn, longestTimeoutMs))
+        get.addFinalizer(() => clearTimeout(timer))
+      }),
+    ),
+  )
+}).pipe(Atom.swr({ staleTime: "5 minutes", revalidateOnFocus: true, focusSignal: windowReturnSignal }))
 
 export const remoteStatusAtom = Atom.make(
   Stream.fromEffectSchedule(call("remote.status", undefined), Schedule.spaced("2 seconds")),

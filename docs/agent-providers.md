@@ -30,6 +30,7 @@ A cell says yes when the provider maps the capability today. A cell says no when
 | Session copy between accounts    | `copySession`                                               | yes                | yes                      | no                 | Account switch on a started thread             |
 | Closing a session                | `closeSession`                                              | yes                | yes                      | yes                | Agent switch on a started thread               |
 | Fork from a turn                 | `turn_completed.forkPoint`, `RunTurnInput.forkAt`           | yes                | yes                      | no                 | Fork button under a reply                      |
+| Session import                   | `listSessions`, `readSession`                               | yes                | yes                      | no                 | Import session dialog                          |
 
 ### Notes on the rows that differ
 
@@ -57,7 +58,9 @@ A cell says yes when the provider maps the capability today. A cell says no when
 
 **Session copy between accounts.** `copySession` copies transcripts between agent homes so a resumed turn keeps its history (`src/main/agents/provider.ts`). Claude implements it at `src/main/agents/claude/index.ts`. Codex implements it at `src/main/agents/codex/index.ts`. Muse has no agent home and leaves it out. `AccountProviderId` therefore lists only `claude` and `codex` (`src/shared/agent.ts`). The runner refuses an account switch when `copySession` is missing (`src/main/services/AgentRunner.ts`).
 
-**Fork from a turn.** A provider that can fork its session puts a `forkPoint` on `turn_completed`: its session id and its own id for the end of that turn (`src/shared/agent.ts`). The runner stamps it with the agent and account that ran the turn and stores it on the turn's last message, and the fork button shows only there. A fork starts in that account, and switching its account before it sends copies the source session along. A fork's first turn gets the source session as `resumeSessionId` and the checkpoint as `forkAt`. Claude resumes with `forkSession` and `resumeSessionAt` set to the turn's last assistant message uuid (`src/main/agents/claude/index.ts`). Codex calls `thread/fork` with `lastTurnId` (`src/main/agents/codex/index.ts`). Muse has no fork and sends no `forkPoint`.
+**Fork from a turn.** A provider that can fork its session puts a `forkPoint` on `turn_completed`: its session id and its own id for the end of that turn (`src/shared/agent.ts`). The runner stamps it with the agent and account that ran the turn and stores it on the turn's last message, and the fork button shows only there. A fork starts in that account, and switching its account before it sends copies the source session along. A fork's first turn gets the source session as `resumeSessionId` and the checkpoint as `forkAt`. Claude resumes with `forkSession` and `resumeSessionAt` set to the turn's last assistant message uuid (`src/main/agents/claude/index.ts`). Codex calls `thread/fork` with `lastTurnId` (`src/main/agents/codex/index.ts`). Muse has no fork and sends no `forkPoint`. A fork of a thread in a worktree gets its own checkout on `<branch>-fork-xxxxx`, started from the source branch with the source's uncommitted changes, so each checkout keeps a single owner and either thread can be archived or deleted on its own.
+
+**Session import.** `listSessions` finds the sessions an agent home recorded in a folder, whoever started them, and `readSession` rebuilds one as thread messages through `makeTranscriptBuilder` (`src/main/agents/importTranscript.ts`), which folds native records with the same `foldTranscript` a live turn uses. Claude lists through the SDK with a read-only `SessionStore` over the home and walks the transcript itself, across compactions (`src/main/agents/claude/sessions.ts`). Codex calls `thread/list`, `thread/read` and `thread/turns/list` (`src/main/agents/codex/index.ts`). `SessionImports` binds the thread to the session and the home's account (`src/main/services/SessionImports.ts`). Muse has no agent home and leaves both out. See `docs/features/2026-10-31-import-sessions.md`.
 
 ## Adding a provider
 
@@ -94,16 +97,18 @@ Map each row or leave it out on purpose. Prove each mapped row with a test again
 - Closing a session. Stop everything the thread's session runs between turns, publish the empty background task set, and forget anything the next turn would resume. Test that its background work ends.
 - Access mode. Map every `AccessMode` to the native policy. Apply `setAccessMode` live or return void for next turn. Test the mapping table, like `src/main/agents/codex/access.test.ts`.
 - Session copy. Implement `copySession` only with added accounts. Overwrite older copies in the target home. Test a copy then a resume in the new home.
+- Session import. List only sessions whose recorded cwd is exactly the folder. Read every turn, and return null messages rather than part of the history. Fail when the session is gone. Test against a transcript or response recorded from the real CLI.
 - Fork. Send `forkPoint` on `turn_completed` only when a turn started with `forkAt` set to it can fork the session there. Test that `forkAt` starts a new session, like the `Codex fork` test in `src/main/agents/codex/index.integration.test.ts`.
 
 ### Optional fields
 
-Five fields of `AgentProvider` are optional.
+Seven fields of `AgentProvider` are optional.
 
 - `copySession`. Leave it out without added accounts. The UI then refuses an account switch on a started thread (`src/main/services/AgentRunner.ts`).
 - `wakes`. Leave it out when the agent never starts a turn. The runner skips the provider (`src/main/services/AgentRunner.ts`). Nothing changes in the UI.
 - `backgroundTasks`. Leave it out when the agent cannot list and stop background work. The list stays empty and the stop call fails with an agent error (`src/main/services/AgentRunner.ts`). The activity section renders nothing.
 - `closeSession`. Leave it out when the agent keeps nothing running between turns and resumes only `RunTurnInput.resumeSessionId`. Switching agents then only changes the stored provider.
+- `listSessions` and `readSession`. Leave them out without an agent home. The import dialog then lists none of the agent's sessions.
 - `stopSubagent`. Leave it out when the agent cannot stop one child. The stop call fails with an agent error (`src/main/services/AgentRunner.ts`). The sub-agent still shows in the activity tray.
 
 Every other field is required. A provider that cannot do a required thing still returns the empty or void form. Examples follow. `planLimits` returns null. `usage` returns null. `setAccessMode` returns void and applies on the next turn.

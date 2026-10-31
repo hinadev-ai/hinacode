@@ -1,11 +1,11 @@
 import { startTransition, useActionState } from "react"
-import { RiShieldCheckLine } from "react-icons/ri"
 import type { ApprovalDecision, ApprovalRequest, SessionScope } from "../../shared/agent.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { errorMessage } from "../lib/errorMessage.ts"
+import { ShieldIcon } from "./icons/ShieldIcon.tsx"
 
 export function ApprovalCard({ request, providerLabel }: { request: ApprovalRequest; providerLabel: string }) {
   const [error, respond, isPending] = useActionState(async (_: string | null, decision: ApprovalDecision) => {
@@ -24,7 +24,7 @@ export function ApprovalCard({ request, providerLabel }: { request: ApprovalRequ
       className="mx-auto mb-2 flex w-full max-w-3xl flex-col gap-2 rounded-xl border border-attention/40 bg-attention/5 p-3 transition-[opacity,translate] duration-200 ease-out starting:opacity-0 motion-safe:starting:translate-y-1"
     >
       <h2 id={`approval-${request.id}`} className="flex items-center gap-2 text-sm font-semibold">
-        <RiShieldCheckLine aria-hidden className="size-4 text-attention" />
+        <ShieldIcon aria-hidden className="size-4 text-attention" />
         {m.approval_title({ provider: providerLabel })}
       </h2>
       <p className="text-sm">{request.title}</p>

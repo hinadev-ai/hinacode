@@ -496,15 +496,14 @@ interface PairAgainFormProps {
   readonly onPaired: () => void
 }
 
+const focusOnMount = (input: HTMLInputElement | null) => input?.focus()
+
 function PairAgainForm({ id, cloud, onCancel, onPaired }: PairAgainFormProps) {
   const addEnvironment = useAtomSet(addEnvironmentAtom, { mode: "promise" })
   const [pairingUrl, setPairingUrl] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [pending, startPair] = useTransition()
   const inputId = useId()
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => inputRef.current?.focus(), [])
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -531,7 +530,7 @@ function PairAgainForm({ id, cloud, onCancel, onPaired }: PairAgainFormProps) {
         <FieldLabel htmlFor={inputId}>{m.environment_new_pairing_url_label()}</FieldLabel>
         <div className="flex flex-wrap gap-2">
           <Input
-            ref={inputRef}
+            ref={focusOnMount}
             id={inputId}
             required
             value={pairingUrl}
