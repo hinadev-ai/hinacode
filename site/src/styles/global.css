@@ -106,6 +106,38 @@
   animation: running 1.6s var(--ease-out) infinite;
 }
 
+@utility agent-running {
+  animation: agent-breathe 2.4s var(--ease-out) infinite;
+}
+
+@utility agent-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: agent-ring 2s var(--ease-out) infinite;
+}
+
+@utility field-fade {
+  mask-image: linear-gradient(to right, transparent 10%, black 60%), linear-gradient(to bottom, black 70%, transparent);
+  mask-composite: intersect;
+}
+
+@keyframes agent-breathe {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes agent-ring {
+  from {
+    opacity: 0.9;
+    scale: 0.7;
+  }
+  to {
+    opacity: 0;
+    scale: 1.5;
+  }
+}
+
 @keyframes stream-in {
   from {
     opacity: 0;
@@ -131,6 +163,8 @@
   .stream-word,
   .item-enter,
   .running-dot,
+  .agent-running,
+  .agent-ring,
   .animate-spin {
     animation: none;
   }

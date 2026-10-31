@@ -3,6 +3,7 @@ import Demo from "../demo/Demo.tsx"
 import { demoKeys } from "../demo/copy.ts"
 import { pick, translator, type Locale } from "../i18n.ts"
 import { RELEASES_URL } from "../links.ts"
+import AgentField from "./AgentField.astro"
 import Download from "./Download.astro"
 import GithubButton from "./GithubButton.astro"
 
@@ -14,7 +15,9 @@ const { locale } = Astro.props
 const t = translator(locale)
 ---
 
-<section class="mx-auto max-w-[76rem] px-5 pt-12 sm:px-8 sm:pt-20">
+<section class="relative isolate">
+  <AgentField class="field-fade absolute inset-y-0 end-0 -z-10 hidden h-full w-[min(56vw,54rem)] lg:block" />
+  <div class="mx-auto max-w-[76rem] px-5 pt-12 sm:px-8 sm:pt-20">
   <a
     href={RELEASES_URL}
     class="pressable inline-flex max-w-full items-center gap-2.5 rounded-full bg-surface py-1 ps-1 pe-3.5 text-[13px] text-ink-soft shadow-[0_0_0_1px_var(--color-line)] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2"
@@ -31,7 +34,16 @@ const t = translator(locale)
     <Download locale={locale} />
     <GithubButton locale={locale} />
   </div>
-  <p class="mt-4 text-sm text-ink-soft">{t("site_hero_meta")}</p>
+  <p class="mt-4 text-sm text-ink-soft">
+    {t("site_hero_meta")}
+    <a
+      href={RELEASES_URL}
+      class="ms-1 rounded font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2"
+    >
+      {t("site_download_all")}
+    </a>
+  </p>
+  </div>
 </section>
 
 <section id="demo" aria-label={t("site_demo_label")} class="mx-auto max-w-[80rem] px-3 pt-14 sm:px-8 sm:pt-16">

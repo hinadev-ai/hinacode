@@ -19,13 +19,13 @@ const tools = [
 ]
 ---
 
-<section class="mx-auto max-w-[76rem] px-5 pt-28 sm:px-8 sm:pt-40">
-  <div class="grid gap-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,9fr)] lg:gap-16">
+<section class="mt-28 border-y border-line bg-surface sm:mt-40">
+  <div class="mx-auto grid max-w-[76rem] gap-10 px-5 py-24 sm:px-8 sm:py-32 lg:grid-cols-[minmax(0,5fr)_minmax(0,9fr)] lg:gap-16">
     <div class="self-start lg:sticky lg:top-24">
       <h2 class="display display-3 leading-[1.08] font-semibold">{t("site_tools_title")}</h2>
       <p class="mt-4 text-[17px] leading-relaxed text-ink-soft">{t("site_tools_lede")}</p>
     </div>
-    <dl class="divide-y divide-line border-y border-line">
+    <dl class="divide-y divide-line-strong/70 border-y border-line-strong/70">
       {
         tools.map(({ Icon, names, body }) => (
           <div class="grid gap-2 py-5 sm:grid-cols-[15.5rem_minmax(0,1fr)] sm:gap-8">
