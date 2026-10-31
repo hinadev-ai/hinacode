@@ -8,8 +8,12 @@ describe("resetCopy", () => {
     expect(resetCopy(at, Date.parse("2026-10-19T00:00:00Z"))).toMatch(/^Resets at /)
   })
 
-  test("says the limit reset once that time has passed", () => {
-    expect(resetCopy(at, Date.parse("2026-10-31T00:00:00Z"))).toMatch(/^Reset at .+\.$/)
+  test("keeps saying resets at while main's grace after the reset still runs", () => {
+    expect(resetCopy(at, Date.parse("2026-10-20T00:00:55Z"))).toMatch(/^Resets at /)
+  })
+
+  test("says the limit reset once that time and the grace have passed", () => {
+    expect(resetCopy(at, Date.parse("2026-10-20T00:01:00Z"))).toMatch(/^Reset at .+\.$/)
   })
 
   test("has nothing to say about a time it cannot read", () => {

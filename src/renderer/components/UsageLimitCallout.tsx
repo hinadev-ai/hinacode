@@ -1,7 +1,7 @@
 // oxlint-disable jsx-a11y/prefer-tag-over-role -- The live region groups a heading, provider message, and controls.
 import { useActionState, useId } from "react"
 import type { Thread } from "../../shared/domain.ts"
-import type { UsageLimit } from "../../shared/limits.ts"
+import { resetHasPassed, type UsageLimit } from "../../shared/limits.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { useNow } from "../lib/useNow.ts"
@@ -17,7 +17,7 @@ export const resetCopy = (at: string, now: number): string | null => {
   const resetAt = Date.parse(at)
   if (!Number.isFinite(resetAt)) return null
   const time = new Intl.DateTimeFormat(getLocale(), { dateStyle: "medium", timeStyle: "short" }).format(resetAt)
-  return resetAt <= now ? m.thread_usage_limit_was_reset({ time }) : m.thread_usage_limit_reset({ time })
+  return resetHasPassed(at, now) ? m.thread_usage_limit_was_reset({ time }) : m.thread_usage_limit_reset({ time })
 }
 
 export function UsageLimitCallout({
@@ -34,7 +34,7 @@ export function UsageLimitCallout({
   const reset = limit.reset
   const resetText = reset === null ? null : resetCopy(reset.at, now)
   const canResume = reset !== null && resetText !== null
-  const hasReset = reset !== null && Date.parse(reset.at) <= now
+  const hasReset = reset !== null && resetHasPassed(reset.at, now)
 
   return (
     <section
@@ -65,9 +65,7 @@ export function UsageLimitCallout({
               label={m.account_continue_on({ account: suggestion.name })}
             />
           )}
-          {canResume && !(hasReset && reset.autoResume) && (
-            <ResumeButton threadId={threadId} autoResume={reset.autoResume} hasReset={hasReset} />
-          )}
+          {canResume && <ResumeButton threadId={threadId} autoResume={reset.autoResume} hasReset={hasReset} />}
         </div>
       )}
     </section>
@@ -75,8 +73,8 @@ export function UsageLimitCallout({
 }
 
 const resumeLabel = (autoResume: boolean, hasReset: boolean) => {
-  if (hasReset) return m.thread_usage_limit_try_again()
-  return autoResume ? m.thread_usage_limit_cancel_resume() : m.thread_usage_limit_resume_at_reset()
+  if (autoResume) return m.thread_usage_limit_cancel_resume()
+  return hasReset ? m.thread_usage_limit_try_again() : m.thread_usage_limit_resume_at_reset()
 }
 
 function ResumeButton({

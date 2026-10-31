@@ -12,6 +12,14 @@ export const UsageLimit = Schema.Union([
 ])
 export type UsageLimit = typeof UsageLimit.Type
 
+// FIXME: providers round their reset time and their clock drifts from ours
+export const resumeGraceMs = 60_000
+
+export const resetHasPassed = (at: string, now: number): boolean => {
+  const resetAt = Date.parse(at)
+  return Number.isFinite(resetAt) && resetAt + resumeGraceMs <= now
+}
+
 export const LimitWindowKind = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("session") }),
   Schema.Struct({ kind: Schema.Literal("weekly") }),
