@@ -11,7 +11,15 @@ import { PullRequests } from "@/components/pull-requests"
 import { TerminalPanel } from "@/components/terminal"
 import { useThreadActions } from "@/components/thread-actions"
 import { SidebarButton, SidebarToolbarButton } from "@/components/thread-sidebar"
-import { IconButton, Notice, ProviderLabel, type Segment, SegmentedControl, ThreadStatusPill } from "@/components/ui"
+import {
+  IconButton,
+  Notice,
+  PILL_HEIGHT,
+  ProviderLabel,
+  type Segment,
+  SegmentedControl,
+  ThreadStatusPill,
+} from "@/components/ui"
 import { useThreadConnection } from "@/hooks/use-server"
 import { READABLE_WIDTH } from "@/constants/theme"
 import { useSplitLayout } from "@/hooks/use-split-layout"
@@ -112,8 +120,8 @@ export default function ThreadScreen() {
             <ProviderLabel provider={thread.provider} size={12} />
             <View style={styles.spacer} />
             <ThreadPullRequestChip thread={thread} onPress={() => select("prs")} />
-            {/* A pill aligns itself to the start, which in this row is the top. */}
-            <View>
+            {/* A pill aligns itself to the start, which in this row is the top. The slot keeps the row's height while it hides. */}
+            <View style={styles.pillSlot}>
               <ThreadStatusPill status={thread.status} />
             </View>
           </View>
@@ -230,6 +238,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   spacer: { flex: 1 },
+  pillSlot: { minHeight: PILL_HEIGHT },
   tabs: { margin: 12 },
   banner: { paddingHorizontal: 12, paddingBottom: 8 },
   missing: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
