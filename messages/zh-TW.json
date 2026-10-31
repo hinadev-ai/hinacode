@@ -2044,8 +2044,6 @@
   "sidechat_new": "新的側邊聊天",
   "sidechat_open_failed": "無法開啟側邊聊天：{message}",
   "overview_label": "概覽",
-  "overview_show": "顯示概覽",
-  "overview_hide": "隱藏概覽",
   "overview_environment": "環境",
   "overview_actions": "動作",
   "overview_run": "執行",

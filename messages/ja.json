@@ -2026,8 +2026,6 @@
   "sidechat_new": "新しいサイドチャット",
   "sidechat_open_failed": "サイドチャットを開けませんでした：{message}",
   "overview_label": "概要",
-  "overview_show": "概要を表示",
-  "overview_hide": "概要を隠す",
   "overview_environment": "環境",
   "overview_actions": "アクション",
   "overview_run": "実行",

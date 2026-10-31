@@ -2081,8 +2081,6 @@
   "sidechat_new": "New side chat",
   "sidechat_open_failed": "Could not open the side chat: {message}",
   "overview_label": "Overview",
-  "overview_show": "Show overview",
-  "overview_hide": "Hide overview",
   "overview_environment": "Environment",
   "overview_actions": "Actions",
   "overview_run": "Run",

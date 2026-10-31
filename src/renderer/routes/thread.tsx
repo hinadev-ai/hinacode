@@ -5,7 +5,7 @@ import { FloatingTinyVm } from "../components/FloatingTinyVm.tsx"
 import { ThreadOpenWith } from "../components/OpenWith.tsx"
 import { TerminalDrawer, TerminalToggle } from "../components/TerminalDrawer.tsx"
 import { PanelToggle, ThreadSidePanel } from "../components/ThreadSidePanel.tsx"
-import { OverviewToggle, ThreadOverview } from "../components/ThreadOverview.tsx"
+import { ActionsMenu, ThreadOverview } from "../components/ThreadOverview.tsx"
 import { ThreadView } from "../components/ThreadView.tsx"
 import { Dialog, DialogPortal, DialogTitle } from "../components/ui/dialog.tsx"
 import { usePanelLayout } from "../lib/panelLayout.ts"
@@ -60,7 +60,7 @@ export function ThreadRoute() {
           actions={
             <>
               <ThreadOpenWith thread={thread} />
-              <OverviewToggle />
+              <ActionsMenu thread={thread} />
               <TerminalToggle threadId={thread.id} />
               {!docked && <PanelToggle buttonRef={toggleRef} expanded={overlayOpen} onToggle={togglePanel} />}
             </>
