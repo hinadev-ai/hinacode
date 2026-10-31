@@ -37,18 +37,13 @@ function FloatingScreen({ threadId, vm }: { threadId: string; vm: RunningVm }) {
   const width = useUi((state) => state.vmFloatingWidth)
   const setWidth = useUi((state) => state.setVmFloatingWidth)
   const setPlacement = useUi((state) => state.setVmPlacement)
-  const findOpen = useUi((state) => state.findThreadId === threadId)
   const ref = useRef<HTMLDivElement>(null)
   const [attempt, setAttempt] = useState(0)
   const waiting = vm.control === "user" && vm.agentWaiting
   const control = <ControlButton threadId={threadId} vm={vm} pending={pending} run={run} />
 
   return (
-    <div
-      ref={ref}
-      style={{ width }}
-      className={cn("absolute right-4 z-10 max-w-[calc(100%-2rem)]", findOpen ? "top-13" : "top-3")}
-    >
+    <div ref={ref} style={{ width }} className="relative max-w-full shrink-0">
       <ResizeHandle
         label={m.vm_floating_resize()}
         edge="left"

@@ -1,5 +1,6 @@
 import type { LegendListRef } from "@legendapp/list/react"
 import { useAtomValue } from "@effect/atom-react"
+import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, type RefObject, useEffect, useRef } from "react"
 import type { Thread } from "../../shared/domain.ts"
@@ -31,6 +32,8 @@ import { Button } from "./ui/button.tsx"
 
 const FIND_DEBOUNCE_MS = 100
 
+const besideOverview = "group-data-[overview=true]/region:@min-[48rem]:@max-[83rem]:pe-70"
+
 interface ThreadViewProps {
   readonly thread: Thread
   readonly agent?: string
@@ -44,6 +47,8 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
   const regionRef = useRef<HTMLDivElement>(null)
   const dockRef = useRef<HTMLDivElement>(null)
   useDockHeight(regionRef, dockRef)
+  const overviewOpen = useUi((state) => state.overviewOpen)
+  const findOpen = useUi((state) => state.findThreadId === thread.id)
   const loaded = useMessages((state) => state.byThread[thread.id]?.status === "ready")
   const centered = useMessages((state) => {
     const history = state.byThread[thread.id]
@@ -55,20 +60,34 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
         <ThreadBreadcrumb thread={thread} agent={agent} />
         {actions}
       </header>
-      <div ref={regionRef} className="relative flex min-h-0 flex-1 flex-col [container-type:size]">
-        <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+      <div
+        ref={regionRef}
+        data-overview={overviewOpen}
+        className="group/region relative flex min-h-0 flex-1 flex-col [container-type:size]"
+      >
+        <div className={cn("flex min-h-0 flex-1 flex-col overflow-auto", besideOverview)}>
           <ThreadRepository value={repository}>
             <ThreadFolder value={folder}>
               <Transcript thread={thread} agent={agent} />
             </ThreadFolder>
           </ThreadRepository>
         </div>
-        {overlay}
+        <div
+          className={cn(
+            "absolute end-4 z-10 flex max-h-[calc(100%-var(--dock-height)-1.5rem)] max-w-[calc(100%-2rem)] flex-col items-end gap-2 empty:hidden",
+            findOpen ? "top-13" : "top-3",
+          )}
+        >
+          {overlay}
+        </div>
         <div
           ref={dockRef}
           data-centered={centered}
           data-loaded={loaded}
-          className="absolute inset-x-0 bottom-0 flex max-h-full flex-col data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] data-[loaded=false]:opacity-0 data-[loaded=true]:data-[centered=false]:transition-transform data-[loaded=true]:data-[centered=false]:duration-500 data-[loaded=true]:data-[centered=false]:ease-(--ease-drawer) motion-reduce:transition-none"
+          className={cn(
+            besideOverview,
+            "absolute inset-x-0 bottom-0 flex max-h-full flex-col data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] data-[loaded=false]:opacity-0 data-[loaded=true]:data-[centered=false]:transition-transform data-[loaded=true]:data-[centered=false]:duration-500 data-[loaded=true]:data-[centered=false]:ease-(--ease-drawer) motion-reduce:transition-none",
+          )}
         >
           <Composer thread={thread}>
             <PendingRequests thread={thread} />

@@ -148,7 +148,7 @@ export function ThreadPullRequests({ thread }: { thread: Thread }) {
     useAtomValue(branchPullRequestAtom(live ? worktree.id : null)),
     () => null,
   )
-  const [picked, setPicked] = useState<string | null>(null)
+  const picked = useUi((state) => state.pickedPullRequests[threadId])
   const [tab, setTab] = useState<PullRequestTab>("info")
   const [unlinkError, setUnlinkError] = useState<string | null>(null)
 
@@ -170,7 +170,7 @@ export function ThreadPullRequests({ thread }: { thread: Thread }) {
   const linked = new Set(links.map((link) => link.url))
   const urls = [...linked]
   if (branchPullRequest && !linked.has(branchPullRequest.url)) urls.push(branchPullRequest.url)
-  const selected = picked && urls.includes(picked) ? picked : (branchPullRequest?.url ?? urls.at(-1))
+  const selected = picked !== undefined && urls.includes(picked) ? picked : (branchPullRequest?.url ?? urls.at(-1))
   const watch = links.find((link) => link.url === selected)?.watch ?? null
 
   return (
@@ -189,7 +189,7 @@ export function ThreadPullRequests({ thread }: { thread: Thread }) {
                 url={url}
                 selected={url === selected}
                 watching={links.some((link) => link.url === url && link.watch !== null)}
-                onSelect={() => setPicked(url)}
+                onSelect={() => useUi.getState().pickPullRequest(threadId, url)}
               />
             ))}
           </ul>
