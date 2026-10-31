@@ -417,8 +417,13 @@ function ResolvableCard({ children }: { children: ReactNode }) {
 function ApprovalCard({ request }: { request: ApprovalRequest }) {
   const theme = useTheme()
   const { busy, error, run } = useAction()
-  const respond = (decision: ApprovalDecision) => () =>
-    void run(() => call("approvals.respond", { requestId: request.id, decision }))
+  const [note, setNote] = useState("")
+  const respond = (decision: ApprovalDecision) => () => {
+    const trimmed = note.trim()
+    void run(() =>
+      call("approvals.respond", { requestId: request.id, decision, ...(trimmed !== "" && { note: trimmed }) }),
+    )
+  }
   return (
     <ResolvableCard>
       <View
@@ -436,6 +441,15 @@ function ApprovalCard({ request }: { request: ApprovalRequest }) {
             {request.detail}
           </Text>
         )}
+        <TextInput
+          accessibilityLabel={copy("mobile_chat_approval_note_label")}
+          value={note}
+          onChangeText={setNote}
+          editable={!busy}
+          placeholder={copy("mobile_chat_approval_note_placeholder")}
+          placeholderTextColor={theme.textMuted}
+          style={[styles.answer, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
+        />
         <View style={styles.actions}>
           <Button
             testID="approval-allow"
@@ -443,12 +457,14 @@ function ApprovalCard({ request }: { request: ApprovalRequest }) {
             variant="primary"
             busy={busy}
             onPress={respond("allow")}
+            style={styles.cardButton}
           />
           <Button
             testID="approval-allow-session"
             label={copy("mobile_chat_allow_session")}
             disabled={busy}
             onPress={respond("allow_for_session")}
+            style={styles.cardButton}
           />
           <Button
             testID="approval-deny"
@@ -456,6 +472,7 @@ function ApprovalCard({ request }: { request: ApprovalRequest }) {
             variant="danger"
             disabled={busy}
             onPress={respond("deny")}
+            style={styles.cardButton}
           />
         </View>
         {error !== null && <Text style={{ color: theme.danger }}>{error}</Text>}
@@ -613,8 +630,15 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
             busy={busy}
             disabled={Object.keys(answers).length === 0}
             onPress={() => respond(answers)}
+            style={styles.cardButton}
           />
-          <Button testID="question-skip" label={copy("mobile_chat_skip")} disabled={busy} onPress={() => respond({})} />
+          <Button
+            testID="question-skip"
+            label={copy("mobile_chat_skip")}
+            disabled={busy}
+            onPress={() => respond({})}
+            style={styles.cardButton}
+          />
         </View>
         {error !== null && <Text style={{ color: theme.danger }}>{error}</Text>}
       </View>

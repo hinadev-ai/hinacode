@@ -1651,6 +1651,8 @@
   "mobile_chat_allow": "許可",
   "mobile_chat_allow_session": "このセッションで許可",
   "mobile_chat_deny": "拒否",
+  "mobile_chat_approval_note_label": "エージェントへのメモ",
+  "mobile_chat_approval_note_placeholder": "エージェントへのメモ（任意）",
   "mobile_chat_usage_limit_title": "利用上限に達しました",
   "mobile_chat_org_spend_limit_title": "組織の利用上限額に達しました",
   "mobile_chat_org_spend_limit_hint": "組織の管理者に月間利用上限額の引き上げを依頼してください。引き上げ後でなければ、セッションのリセット時に再開しても失敗します。",
