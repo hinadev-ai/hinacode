@@ -41,6 +41,7 @@ Feature: Worktrees
     And archiving removes worktrees
     When I create a thread titled "wt dirty" in "wt-dirty" in a new worktree
     And the workspace status becomes "Ready"
+    And I commit a change in the worktree
     And I leave an uncommitted change in the worktree
     And I archive the thread after confirming its uncommitted changes
     Then the worktree is removed from disk but its branch is kept

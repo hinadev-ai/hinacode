@@ -231,7 +231,6 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
   const { archive: archiveSettings } = useSettings(environment)
   const busy = isThreadBusy(thread.status)
   const archived = thread.status === "archived"
-  const archiveDeletes = archiveSettings.removeWorktree && worktree !== undefined
   const meta = useThreadMeta(thread, showProject)
   const hasMeta = cloud !== undefined || meta.links.length > 0
   const state = useThreadRowState(thread)
@@ -242,6 +241,14 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
   }
   const archive = async () => {
     try {
+      if (
+        archiveSettings.removeWorktree &&
+        worktree &&
+        (await callPromise("worktrees.checkoutState", { id: worktree.id })) === "dirty"
+      ) {
+        setMode("archive")
+        return
+      }
       moveOut(await callPromise("threads.archive", { threadId: thread.id }))
     } catch (cause) {
       toast.error(m.sidebar_archive_failed({ message: errorMessage(cause) }))
@@ -372,7 +379,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
                 aria-label={m.sidebar_thread_archive_label({ title: thread.title })}
                 title={m.sidebar_thread_archive()}
                 disabled={busy}
-                onClick={archiveDeletes ? () => setMode("archive") : () => void archive()}
+                onClick={() => void archive()}
               >
                 <ArchiveIcon aria-hidden />
               </Button>
@@ -451,9 +458,9 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
                   {m.sidebar_thread_unarchive()}
                 </DropdownMenuItem>
               ) : (
-                <DropdownMenuItem disabled={busy} onClick={archiveDeletes ? queue("archive") : () => void archive()}>
+                <DropdownMenuItem disabled={busy} onClick={() => void archive()}>
                   <ArchiveIcon aria-hidden />
-                  {archiveDeletes ? m.sidebar_thread_archive_confirm() : m.sidebar_thread_archive()}
+                  {m.sidebar_thread_archive()}
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem variant="destructive" disabled={busy || isStale(cloud)} onClick={queue("delete")}>
