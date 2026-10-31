@@ -624,6 +624,8 @@
   "theme_system": "System",
   "theme_light": "Light",
   "theme_default": "Dark",
+  "theme_hina_light": "Hina Light",
+  "theme_hina_dark": "Hina Dark",
   "settings_font_size": "Font size",
   "settings_ui_font": "Interface font",
   "settings_mono_font": "Monospace font",

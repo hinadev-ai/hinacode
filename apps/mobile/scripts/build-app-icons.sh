@@ -10,9 +10,9 @@ out=assets/images
 sed 's/ rx="[^"]*"//' "$src" | rsvg-convert -w 1024 -o "$out/icon.png"
 sed 's/ rx="[^"]*"//; /<g /d' "$src" | rsvg-convert -w 1024 -o "$out/android-icon-background.png"
 
-# Android crops adaptive layers to a 66dp circle of the 108dp canvas. The mark reaches 51 units
-# from the centre, so a 168-unit viewBox keeps it inside: 51 / 168 < 33 / 108.
-mark() { sed '/<rect /d; s/viewBox="[^"]*"/viewBox="-20 -20 168 168"/' "$src"; }
+# Android crops adaptive layers to a 66dp circle of the 108dp canvas. A pill cap reaches 86.2 units
+# from the centre, so a 288-unit viewBox keeps the mark inside: 86.2 / 288 < 33 / 108.
+mark() { sed '/<rect /d; s/viewBox="[^"]*"/viewBox="-16 -16 288 288"/' "$src"; }
 mark | rsvg-convert -w 1024 -o "$out/android-icon-foreground.png"
 mark | rsvg-convert -w 1024 -o "$out/android-icon-monochrome.png"
 
