@@ -9,6 +9,7 @@ import { githubAssetUrl } from "../../shared/channels.ts"
 import type { Appearance } from "../../shared/domain.ts"
 import { useOpenThreadEnvironment } from "../lib/environments.ts"
 import { imageSource } from "../lib/imageSource.ts"
+import { rehypeGitHubHtml } from "../lib/rehypeGitHubHtml.ts"
 import { remarkKbd } from "../lib/remarkKbd.ts"
 import { remarkPullRequests } from "../lib/remarkPullRequests.ts"
 import { familyOf } from "../lib/rpc.ts"
@@ -85,15 +86,20 @@ const components: Components = {
 export function Markdown({
   text,
   baseUrl = null,
+  html = false,
   className,
 }: {
   text: string
   baseUrl?: string | null
+  html?: boolean
   className?: string
 }) {
   const pattern = useFindPattern()
   const part = use(FindPartContext)
-  const rehypePlugins = pattern === null ? [] : [rehypeFindMarks(pattern, part)]
+  const rehypePlugins = [
+    ...(html ? rehypeGitHubHtml : []),
+    ...(pattern === null ? [] : [rehypeFindMarks(pattern, part)]),
+  ]
   const repository = useThreadRepository()
   const remarkPlugins = repository ? [remarkGfm, remarkKbd, remarkPullRequests(repository)] : [remarkGfm, remarkKbd]
   return (

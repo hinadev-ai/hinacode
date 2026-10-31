@@ -347,7 +347,7 @@ function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }:
           {pullRequest.body.trim() === "" ? (
             <p className="text-xs text-muted-foreground">{m.pr_description_empty()}</p>
           ) : (
-            <Markdown text={pullRequest.body} className="prose-sm" />
+            <Markdown text={pullRequest.body} html className="prose-sm" />
           )}
         </Section>
         <CommentsSection pullRequest={pullRequest} threadId={threadId} onPosted={refresh} />
@@ -853,6 +853,7 @@ function Comment({
       )}
       <Markdown
         text={comment.body}
+        html
         className={cn("prose-sm text-xs", folded && "max-h-32 overflow-hidden mask-b-from-50%")}
       />
       {comment.body.length > LONG_COMMENT && (
