@@ -1,5 +1,6 @@
 import type { CheckRun, CheckRunStatus, MergeMethod, PullRequestDetail, PullRequestLink } from "@shared/domain.ts"
 import { linearReviewUrl } from "@shared/github.ts"
+import { steersRunningTurn } from "@shared/providers.ts"
 import { fixChecksPrompt, resolveConflictsPrompt } from "@shared/pullRequestPrompts.ts"
 import { Stack, useLocalSearchParams } from "expo-router"
 import { type ReactNode, useEffect, useState } from "react"
@@ -241,9 +242,13 @@ function Block({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-/** Sends the prompt into the thread: steers the running turn, or starts one. */
+/** Sends the prompt into the thread: steers the running turn, queues it for agents that can't steer, or starts one. */
 function AskAgentButton({ threadId, prompt, label }: { threadId: string; prompt: string; label: string }) {
   const theme = useTheme()
+  const steers = useThreads((state) => {
+    const provider = state.byId[threadId]?.provider
+    return provider === undefined || steersRunningTurn[provider]
+  })
   const [state, setState] = useState<
     { type: "idle" } | { type: "sending" } | { type: "sent" } | { type: "failed"; message: string }
   >({ type: "idle" })
@@ -251,7 +256,7 @@ function AskAgentButton({ threadId, prompt, label }: { threadId: string; prompt:
   const send = async () => {
     setState({ type: "sending" })
     try {
-      await call("threads.steer", { threadId, text: prompt })
+      await call(steers ? "threads.steer" : "threads.queue", { threadId, text: prompt })
       setState({ type: "sent" })
     } catch (cause) {
       setState({ type: "failed", message: errorText(cause) })
