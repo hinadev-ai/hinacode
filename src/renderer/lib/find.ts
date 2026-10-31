@@ -72,8 +72,8 @@ export function findMatches(messages: ReadonlyArray<Message>, query: string): Ar
         search(message.id, block.index, searchableText(block.part))
         continue
       }
-      for (const [position, call] of block.calls.entries()) {
-        search(message.id, block.index + position, toolRowSearchText(call))
+      for (const [position, part] of block.parts.entries()) {
+        search(message.id, block.index + position, part.type === "tool_call" ? toolRowSearchText(part) : "")
       }
     }
   }

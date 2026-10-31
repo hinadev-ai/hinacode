@@ -276,7 +276,7 @@ function AssistantParts({
   return presentationBlocks(parts).map((block) => {
     const { index } = block
     if (block.type === "tools") {
-      return <ToolGroup key={index} messageId={message.id} index={index} calls={block.calls} />
+      return <ToolGroup key={index} messageId={message.id} index={index} parts={block.parts} />
     }
     const { part } = block
     return (

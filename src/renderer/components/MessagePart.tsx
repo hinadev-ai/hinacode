@@ -8,7 +8,7 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
 import { statusOfCall, useOpenSubagent } from "../lib/subagents.ts"
 import { callPromise } from "../lib/rpc.ts"
-import { countToolKinds, describeCommand, describeToolCall, type ToolKind } from "../lib/toolCall.ts"
+import { type ActivityPart, countToolKinds, describeCommand, describeToolCall, type ToolKind } from "../lib/toolCall.ts"
 import { decodeUnicodeEscapes } from "../lib/unicodeEscapes.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
@@ -275,13 +275,14 @@ function summarizeTools(calls: ReadonlyArray<ToolCall>): string {
 export function ToolGroup({
   messageId,
   index,
-  calls,
+  parts,
 }: {
   messageId: string
   index: number
-  calls: ReadonlyArray<ToolCall>
+  parts: ReadonlyArray<ActivityPart>
 }) {
-  const count = calls.length
+  const calls = parts.filter((part) => part.type === "tool_call")
+  const count = parts.length
   const running = calls.findLast((call) => call.status === "running")
   const failed = calls.filter((call) => call.status === "error").length
   const reveal = useUi((state) => state.findReveal)
@@ -315,11 +316,15 @@ export function ToolGroup({
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-1 max-h-96 overflow-y-auto rounded-lg border border-border">
         <ul className="divide-y divide-border">
-          {calls.map((call, position) => (
-            <li key={call.callId}>
-              <FindPartContext value={index + position}>
-                <ToolRow call={call} reveal={revealHere?.match.partIndex === index + position ? revealHere : null} />
-              </FindPartContext>
+          {parts.map((part, position) => (
+            <li key={index + position}>
+              {part.type === "reasoning" ? (
+                <ReasoningRow text={part.text} />
+              ) : (
+                <FindPartContext value={index + position}>
+                  <ToolRow call={part} reveal={revealHere?.match.partIndex === index + position ? revealHere : null} />
+                </FindPartContext>
+              )}
             </li>
           ))}
         </ul>
@@ -328,6 +333,24 @@ export function ToolGroup({
   )
 }
 
+function ReasoningRow({ text }: { text: string }) {
+  return (
+    <Collapsible>
+      <CollapsibleTrigger className={groupRowTrigger}>
+        <BrainIcon aria-hidden className="size-3.5 shrink-0" />
+        <span className="min-w-0 truncate">{m.message_thinking()}</span>
+        <Chevron />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="px-3 pb-2 text-xs whitespace-pre-wrap text-muted-foreground">
+        {text.trim()}
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+const groupRowTrigger =
+  "group/trigger flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset data-panel-open:text-foreground"
+
 function ToolRow({ call, reveal }: { call: ToolCall; reveal: FindRevealRequest | null }) {
   const truncate = reveal === null ? "truncate" : "wrap-anywhere"
   const isCommand = call.name === "Bash"
@@ -335,13 +358,10 @@ function ToolRow({ call, reveal }: { call: ToolCall; reveal: FindRevealRequest |
   const Icon = toolIcons[call.name] ?? ToolsIcon
   return (
     <Collapsible>
-      <CollapsibleTrigger className="group/trigger flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset data-panel-open:text-foreground">
+      <CollapsibleTrigger className={groupRowTrigger}>
         <Icon aria-hidden className="size-3.5 shrink-0" />
         {isCommand ? <CommandLabel call={call} truncate={truncate} /> : <ToolLabel call={call} truncate={truncate} />}
-        <ChevronRightIcon
-          aria-hidden
-          className="size-3.5 shrink-0 transition-transform group-data-panel-open/trigger:rotate-90 motion-reduce:transition-none"
-        />
+        <Chevron />
         {call.status !== "done" && (
           <span className="ml-auto shrink-0" title={statusLabel[call.status]()}>
             {statusIcon[call.status]}
