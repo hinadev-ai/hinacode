@@ -135,9 +135,12 @@ const make = Effect.gen(function* () {
       : readSession(sessionId, cwd, home)
   }
 
+  const boundThread = (provider: AccountProviderId, sessionId: string) =>
+    boundThreads.pipe(Effect.map((bound) => bound.get(`${provider}:${sessionId}`)))
+
   const importSession = ({ projectId, provider, sessionId, accountId }: ImportSession) =>
     Effect.gen(function* () {
-      const existing = (yield* boundThreads).get(`${provider}:${sessionId}`)
+      const existing = yield* boundThread(provider, sessionId)
       if (existing !== undefined) return existing
       const cwd = yield* folderOf(projectId)
       if (accountId !== null && (yield* accounts.get(accountId)).provider !== provider) {
@@ -155,6 +158,8 @@ const make = Effect.gen(function* () {
       return yield* sql
         .withTransaction(
           Effect.gen(function* () {
+            const raced = yield* boundThread(provider, sessionId)
+            if (raced !== undefined) return raced
             const created = yield* threads.create({ projectId, title, provider, model })
             const thread = yield* threads.update({ id: created.id, accountId, providerSessionId: sessionId })
             const replayed = history.messages ?? []
