@@ -171,6 +171,16 @@ describe("readClaudeSession", () => {
     expect(messages.at(-1)).toStrictEqual(["assistant", "reply 599"])
   })
 
+  test("reports no history when the branch points at a record that is missing", async () => {
+    write(sessionId, transcript(prompt(1, null, "first"), reply(2, 1, "one"), prompt(3, 99, "second"), reply(4, 3, "two")))
+    expect((await readClaudeSession(home, cwd, sessionId)).messages).toBeNull()
+  })
+
+  test("reports no history when the branch loops back on itself", async () => {
+    write(sessionId, transcript(prompt(1, 2, "first"), reply(2, 1, "one")))
+    expect((await readClaudeSession(home, cwd, sessionId)).messages).toBeNull()
+  })
+
   test("fails for a session that is gone or ran in another folder", async () => {
     await expect(readClaudeSession(home, cwd, sessionId)).rejects.toThrow("no longer")
     write(fixtureId, fixture)
