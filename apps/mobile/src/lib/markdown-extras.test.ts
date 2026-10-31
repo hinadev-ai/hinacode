@@ -65,6 +65,16 @@ it("names a bare pull request URL owner/repo#n", () => {
   expect(rewriteMarkdownExtras("(https://github.com/a/b.c/pull/1)")).toBe("([a/b.c#1](https://github.com/a/b.c/pull/1))")
 })
 
+it("keeps the punctuation that ends a sentence out of a bare URL", () => {
+  expect(rewriteMarkdownExtras("A bare URL autolinks: https://github.com/hinadev-ai/hinacode. Next.")).toBe(
+    "A bare URL autolinks: <https://github.com/hinadev-ai/hinacode>. Next.",
+  )
+  expect(rewriteMarkdownExtras("See https://example.com/a?b=1, then go.")).toBe("See <https://example.com/a?b=1>, then go.")
+  expect(rewriteMarkdownExtras("`https://example.com.` and <https://example.com>.")).toBe(
+    "`https://example.com.` and <https://example.com>.",
+  )
+})
+
 it("leaves pull request URLs in links, autolinks, code and HTML attributes, and other URLs, as written", () => {
   const markdown = [
     "[the PR](https://github.com/a/b/pull/1) and [https://github.com/a/b/pull/2](https://github.com/a/b/pull/2)",
