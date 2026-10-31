@@ -613,10 +613,13 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
                       },
                     ]}
                   >
-                    <Text style={{ color: theme.text, fontWeight: "600" }}>{option.label}</Text>
-                    {option.description !== "" && (
-                      <Text style={{ color: theme.textMuted, fontSize: 13 }}>{option.description}</Text>
-                    )}
+                    <View style={styles.optionText}>
+                      <Text style={{ color: theme.text, fontWeight: "600" }}>{option.label}</Text>
+                      {option.description !== "" && (
+                        <Text style={{ color: theme.textMuted, fontSize: 13 }}>{option.description}</Text>
+                      )}
+                    </View>
+                    {selected && <Icon name="RiCheckLine" size={18} color={theme.text} />}
                   </Pressable>
                 )
               })}
@@ -717,6 +720,15 @@ const styles = StyleSheet.create({
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" },
   question: { gap: 8 },
   options: { gap: 6 },
-  option: { minHeight: HIT, borderWidth: 1, borderRadius: radius.sm, padding: 10, justifyContent: "center", gap: 2 },
+  option: {
+    minHeight: HIT,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: radius.sm,
+    padding: 10,
+  },
+  optionText: { flex: 1, gap: 2 },
   answer: { minHeight: HIT, borderWidth: 1, borderRadius: radius.sm, paddingHorizontal: 10 },
 })
