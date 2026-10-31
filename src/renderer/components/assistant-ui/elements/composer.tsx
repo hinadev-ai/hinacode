@@ -32,7 +32,9 @@ import { FileZipIcon } from "../../icons/FileZipIcon.tsx"
 import type { IconComponent } from "../../icons/Icon.tsx"
 import { MicIcon } from "../../icons/MicIcon.tsx"
 import { PlusIcon } from "../../icons/PlusIcon.tsx"
+import { QueueIcon } from "../../icons/QueueIcon.tsx"
 import { SpinnerIcon } from "../../icons/SpinnerIcon.tsx"
+import { SteerIcon } from "../../icons/SteerIcon.tsx"
 import { StopIcon } from "../../icons/StopIcon.tsx"
 
 export interface ComposerAttachment {
@@ -491,31 +493,35 @@ export function ComposerVoiceButton({
   )
 }
 
+export type ComposerSendMode = "send" | "queue" | "steer" | "stop"
+
 export function ComposerSend({
-  streaming,
+  mode,
   idle,
   className,
   ...props
 }: Omit<ComponentProps<"button">, "children"> & {
-  streaming: boolean
+  mode: ComposerSendMode
   idle: boolean
 }) {
+  const swap = (shown: ComposerSendMode) => cn(iconSwap, mode === shown ? iconSwapIn : iconSwapOut)
   return (
     <button
       type="button"
-      aria-label={streaming ? "Stop generating" : "Send message"}
       data-slot="composer-send"
       className={cn(
         "grid size-8 place-items-center rounded-full",
-        streaming || !idle
+        mode === "stop" || !idle
           ? "relative send-halo transition-[scale] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96] motion-reduce:transition-none forced-colors:border"
           : "bg-foreground/[0.06] text-muted-foreground inset-ring-border dark:bg-foreground/[0.09] inset-ring transition-colors forced-colors:border forced-colors:border-[GrayText] forced-colors:text-[GrayText]",
         className,
       )}
       {...props}
     >
-      <ArrowUpIcon className={cn(iconSwap, "size-4", streaming ? iconSwapOut : iconSwapIn)} />
-      <StopIcon className={cn(iconSwap, "size-3 fill-current", streaming ? iconSwapIn : iconSwapOut)} />
+      <ArrowUpIcon className={cn(swap("send"), "size-4")} />
+      <QueueIcon className={cn(swap("queue"), "size-4")} />
+      <SteerIcon className={cn(swap("steer"), "size-4")} />
+      <StopIcon className={cn(swap("stop"), "size-3 fill-current")} />
     </button>
   )
 }

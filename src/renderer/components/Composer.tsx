@@ -45,10 +45,10 @@ import {
   ComposerBar,
   Composer as ComposerRoot,
   ComposerSend,
+  type ComposerSendMode,
   ComposerToolbar,
 } from "./assistant-ui/elements/composer.tsx"
 import { PendingAttachment } from "./AttachmentView.tsx"
-import { ChordKeys } from "./ChordKeys.tsx"
 import { ThreadPicker, WorkspacePicker } from "./ComposerControls.tsx"
 import { ComposerStatusLine } from "./ComposerStatusLine.tsx"
 import { ComposerInput } from "./ComposerInput.tsx"
@@ -56,10 +56,9 @@ import { ContextRing } from "./ContextRing.tsx"
 import { PendingLineComment } from "./LineComment.tsx"
 import { ActivityIndicator } from "./ActivityIndicator.tsx"
 import { QueueBar } from "./QueueBar.tsx"
-import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
-import { SteerIcon } from "./icons/SteerIcon.tsx"
+import { useModifierHeld } from "../lib/useModifierHeld.ts"
 
 const readAsDataUrl = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -139,6 +138,9 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   const busy = isThreadBusy(thread.status)
   const hasDraft = text.trim() !== "" || attachments.length > 0 || comments.length > 0
   const canSend = hasDraft && !isSending && !isStaging
+  const modifierHeld = useModifierHeld()
+  const clickDelivery: Delivery = modifierHeld ? "steer" : "queue"
+  const sendMode: ComposerSendMode = !(busy || isSending) ? "send" : hasDraft ? clickDelivery : "stop"
 
   const send = (delivery: Delivery) => {
     if (!canSend) return
@@ -205,7 +207,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    send("queue")
+    send(clickDelivery)
   }
 
   const wasBusy = useRef(busy)
@@ -291,8 +293,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
                 <ThreadPicker thread={thread} canSwitchAgent={!busy && !isSidechat} onError={setError} />
               </ComposerActions>
               <ContextRing threadId={thread.id} provider={thread.provider} />
-              <SteerButton busy={busy} hasDraft={hasDraft} canSend={canSend} onSteer={() => send("steer")} />
-              <SendButton busy={busy || isSending} hasDraft={hasDraft} canSend={canSend} onStop={stop} />
+              <SendButton mode={sendMode} canSend={canSend} onStop={stop} />
             </ComposerToolbar>
           </ComposerBar>
         </ComposerRoot>
@@ -353,55 +354,23 @@ function AttachButton({ onClick, disabled }: { onClick: () => void; disabled: bo
   )
 }
 
-function SteerButton({
-  busy,
-  hasDraft,
-  canSend,
-  onSteer,
-}: {
-  busy: boolean
-  hasDraft: boolean
-  canSend: boolean
-  onSteer: () => void
-}) {
-  if (!busy || !hasDraft) return null
-  return (
-    <Tooltip>
-      <TooltipTrigger render={<Button type="button" variant="ghost" size="sm" disabled={!canSend} onClick={onSteer} />}>
-        <SteerIcon aria-hidden />
-        {m.thread_composer_steer()}
-      </TooltipTrigger>
-      <TooltipContent>
-        {m.thread_composer_steer_hint()}
-        <ChordKeys chord={STEER_CHORD} />
-      </TooltipContent>
-    </Tooltip>
-  )
-}
-
-function SendButton({
-  busy,
-  hasDraft,
-  canSend,
-  onStop,
-}: {
-  busy: boolean
-  hasDraft: boolean
-  canSend: boolean
-  onStop: () => void
-}) {
-  const stopping = busy && !hasDraft
-  const label = stopping ? m.thread_composer_stop() : busy ? m.thread_composer_queue() : m.thread_composer_send()
+function SendButton({ mode, canSend, onStop }: { mode: ComposerSendMode; canSend: boolean; onStop: () => void }) {
+  const label = {
+    send: m.thread_composer_send(),
+    queue: m.thread_composer_queue(),
+    steer: m.thread_composer_steer(),
+    stop: m.thread_composer_stop(),
+  }[mode]
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <ComposerSend
-            type={stopping ? "button" : "submit"}
-            onClick={stopping ? onStop : undefined}
-            streaming={stopping}
+            type={mode === "stop" ? "button" : "submit"}
+            onClick={mode === "stop" ? onStop : undefined}
+            mode={mode}
             idle={!canSend}
-            disabled={!stopping && !canSend}
+            disabled={mode !== "stop" && !canSend}
             aria-label={label}
           />
         }

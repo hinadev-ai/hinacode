@@ -60,7 +60,6 @@
   "thread_composer_steer": "割り込み指示",
   "thread_composer_queue_placeholder": "次のメッセージを予約…Enter で予約、{steer} で今すぐ割り込み指示します。",
   "thread_composer_queue": "予約",
-  "thread_composer_steer_hint": "実行中のターンに今すぐ割り込み指示",
   "queue_label": "予約中のメッセージ",
   "queue_steer_now": "今すぐ割り込み指示",
   "queue_edit": "入力欄で編集",
