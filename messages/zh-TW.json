@@ -1712,6 +1712,7 @@
   "mobile_pr_empty_hint": "agent 開好之後會連結到這裡。",
   "mobile_pr_create": "建立合併請求",
   "mobile_pr_card_failed": "無法載入這個合併請求：{message}",
+  "mobile_pr_lookup_failed": "無法從 GitHub 載入",
   "mobile_pr_from_branch": "來自這個對話串的分支",
   "mobile_pr_number": "合併請求 #{number}",
   "mobile_pr_more": "另有 {count} 個連結",

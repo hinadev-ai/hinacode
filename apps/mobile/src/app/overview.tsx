@@ -1,5 +1,4 @@
 import type { LinearIssue } from "@shared/domain.ts"
-import { parseGitHubRepository } from "@shared/github.ts"
 import { router, useFocusEffect } from "expo-router"
 import { useCallback, useState } from "react"
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
@@ -13,10 +12,16 @@ import { useTheme } from "@/hooks/use-theme"
 import { useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { openWebUrl } from "@/lib/open-url"
-import { issueDraft, type OverviewPullRequest, type PullRequestNeed, pullRequestOverview } from "@/lib/overview"
+import {
+  issueDraft,
+  type OverviewPullRequest,
+  type PullRequestNeed,
+  pullRequestOverview,
+  pullRequestReference,
+} from "@/lib/overview"
 import { checksIcon, checksLabel, reviewLabel, statusGlyph, statusLabel } from "@/lib/pull-request-labels"
 import { useLinear } from "@/stores/linear"
-import { pullRequestNumber, usePullRequests } from "@/stores/pull-requests"
+import { usePullRequests } from "@/stores/pull-requests"
 import { useThreads } from "@/stores/threads"
 
 /** Each read runs `gh` on the desktop, so the overview keeps only a few of them going at once. */
@@ -146,13 +151,13 @@ function PullRequestRow({ row }: { row: OverviewPullRequest }) {
   const theme = useTheme()
   const thread = useThreads((state) => state.byId[row.threadId])
   const { pullRequest } = row
-  const repository = parseGitHubRepository(row.url)
-  const number = pullRequest?.number ?? pullRequestNumber(row.url) ?? "?"
-  const reference = `${repository === null ? "" : `${repository.owner}/${repository.name} `}#${number}`
+  const reference = pullRequestReference(row.url)
   const glyph =
-    pullRequest === null
-      ? { name: "RiGitPullRequestLine" as const, color: theme.textMuted }
-      : statusGlyph(theme)[pullRequest.status]
+    pullRequest !== null
+      ? statusGlyph(theme)[pullRequest.status]
+      : row.error !== null
+        ? { name: "RiErrorWarningLine" as const, color: theme.danger }
+        : { name: "RiGitPullRequestLine" as const, color: theme.textMuted }
   const checks = pullRequest !== null && pullRequest.status !== "merged" ? pullRequest.checks : null
 
   const label = [
@@ -161,6 +166,7 @@ function PullRequestRow({ row }: { row: OverviewPullRequest }) {
     pullRequest !== null && statusLabel(pullRequest.status),
     checks !== null && checksLabel(checks),
     ...row.needs.filter((need) => need !== "checks").map((need) => needs[need].label()),
+    row.error !== null && copy("mobile_pr_card_failed", { message: row.error }),
     thread?.title,
   ]
     .filter((part) => typeof part === "string")
@@ -179,7 +185,10 @@ function PullRequestRow({ row }: { row: OverviewPullRequest }) {
       </View>
       <View style={styles.rowBody}>
         <View style={styles.titleLine}>
-          <Text numberOfLines={2} style={[styles.title, { color: pullRequest === null ? theme.textMuted : theme.text }]}>
+          <Text
+            numberOfLines={pullRequest === null ? 1 : 2}
+            style={[styles.title, { color: pullRequest === null ? theme.textMuted : theme.text }]}
+          >
             {pullRequest?.title ?? reference}
           </Text>
           {pullRequest === null && row.error === null && (
@@ -214,8 +223,8 @@ function PullRequestRow({ row }: { row: OverviewPullRequest }) {
           </View>
         )}
         {row.error !== null && (
-          <Text numberOfLines={2} style={[styles.metaText, { color: theme.danger }]}>
-            {copy("mobile_pr_card_failed", { message: row.error })}
+          <Text numberOfLines={1} style={[styles.metaText, { color: theme.textMuted }]}>
+            {copy("mobile_pr_lookup_failed")}
           </Text>
         )}
       </View>

@@ -1694,6 +1694,7 @@
   "mobile_pr_empty_hint": "エージェントが作成すると、ここにリンクされます。",
   "mobile_pr_create": "プルリクエストを作成",
   "mobile_pr_card_failed": "このプルリクエストを読み込めませんでした：{message}",
+  "mobile_pr_lookup_failed": "GitHub から読み込めませんでした",
   "mobile_pr_from_branch": "このスレッドのブランチから",
   "mobile_pr_number": "プルリクエスト #{number}",
   "mobile_pr_more": "ほかに {count} 件リンク",

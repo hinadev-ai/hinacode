@@ -1748,6 +1748,7 @@
   "mobile_pr_empty_hint": "The agent can open one and link it here.",
   "mobile_pr_create": "Create pull request",
   "mobile_pr_card_failed": "Could not load this pull request: {message}",
+  "mobile_pr_lookup_failed": "Could not load from GitHub",
   "mobile_pr_from_branch": "From this thread's branch",
   "mobile_pr_number": "Pull request #{number}",
   "mobile_pr_more": "{count} more linked",
