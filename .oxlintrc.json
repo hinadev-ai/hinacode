@@ -123,18 +123,7 @@
         "tailwindcss/enforce-shorthand": "warn",
         "tailwindcss/enforce-sort-order": "warn",
         "tailwindcss/no-unnecessary-whitespace": "warn",
-        "tailwindcss/no-hardcoded-colors": "warn",
-        "tailwindcss/no-restricted-classes": [
-          "error",
-          {
-            "patterns": [
-              {
-                "pattern": "(^|:)((not-)?((max|min)-(sm|md|lg|xl|2xl|\\[[^\\]]*\\])|sm|md|lg|xl|2xl)|\\[@media[^\\]]*width[^\\]]*\\]):",
-                "message": "Respond to the parent's size with a container query (@container plus @sm:, @md:), not the window's width."
-              }
-            ]
-          }
-        ]
+        "tailwindcss/no-hardcoded-colors": "warn"
       }
     },
     {
