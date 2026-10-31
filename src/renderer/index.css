@@ -19,6 +19,10 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Noto's Han and kana sit 0.04em above DM Sans' line box center. Text snaps to whole pixels and SVG does not, so
+   icons beside a CJK label move up instead of the label moving down. */
+@custom-variant cjk (&:is(:lang(zh-TW), :lang(ja)));
+
 /* macOS glass sits behind the page (src/main/liquidGlass.ts). The chrome lets it through unless transparency is reduced. */
 @custom-variant glass {
   @media (prefers-reduced-transparency: no-preference) {
