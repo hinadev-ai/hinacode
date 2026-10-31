@@ -109,7 +109,7 @@ Any machine with remote control on can also run a relay (`src/main/remote/relay.
 
 The renderer keeps the histories of the 8 most recently viewed threads, so reopening one renders from memory instead of fetching a snapshot. A cached history keeps folding pushes while its thread is off screen; the main process owns ongoing turns and pending approvals. That only stays correct because every change main makes to a transcript or its requests goes out as a push: `finish` publishes the message it closes and withdraws the requests it drops, and deleting a project sends `thread.removed` for each thread. The history viewed longest ago is evicted past the limit, a removed thread is evicted at once, and a cloud reconnect refetches the cached histories of that cloud. Each load has an identity so a response from an earlier load cannot replace a newer snapshot.
 
-Ready renderer histories publish adjacent text or reasoning deltas in fixed 100 ms groups. A different event flushes the pending group and applies its own change in one store update. Loading histories retain raw sequence-numbered pushes for snapshot reconciliation. Evicting cancels the pending timer and lets the next snapshot restore persisted content. The main process still publishes and folds every event individually; its existing batched persistence is unchanged.
+Ready renderer histories publish adjacent text or reasoning deltas in fixed 100 ms groups. A different event flushes the pending group and applies its own change in one store update. Loading histories retain raw sequence-numbered pushes for snapshot reconciliation. Evicting cancels the pending timer and lets the next snapshot restore persisted content. Before that, the main process joins adjacent deltas of one kind into a single `thread.event` (`coalesceDeltas.ts`), described under [A turn, end to end](#a-turn-end-to-end).
 
 The native window starts hidden. The renderer loads settings, applies appearance, and commits the first React view before calling `app.ready`. Main shows the requesting window after the existing sender and schema checks. System appearance is a renderer media-query subscription shared by the document and diffs; the selected theme remains in `client-settings.json`.
 
@@ -233,6 +233,9 @@ sequenceDiagram
   AR->>P: runTurn(cwd, model, resumeSessionId, mcpServer)
   loop each AgentEvent
     P-->>AR: event
+    opt text_delta or reasoning_delta
+      AR->>AR: join into the pending delta, publish it within 50 ms
+    end
     AR-->>R: push thread.event (seq)
     AR->>AR: foldTranscript in memory
     AR->>DB: persist dirty messages every 500 ms, or 10x the last persist time if longer
@@ -278,6 +281,7 @@ sequenceDiagram
 ```
 
 - Each thread has a `Semaphore` (`exclusive`). Everything that changes a transcript runs under it, so a transcript read never sees a change before the push that announced it.
+- Adjacent `text_delta` or `reasoning_delta` events are joined into one, which is published and folded 50 ms after the first, or as soon as any other event arrives, a steer closes the reply, or the turn finishes. Providers emit a delta every few tokens, often dozens a second; joining them brings a streaming thread down to about twenty pushes, schema encodes and IPC sends a second, and the 50 ms window stays under the renderer's own 100 ms group. Unpublished text is not folded either, so a `threads.transcript` snapshot never holds text whose push has not gone out.
 - `subagent_updated` skips the transcript fold and the `thread.event` push. The runner keeps sub-agents in memory only and serves them through `subagents.list`. When a turn ends, `finish` marks any sub-agent still running as stopped, since nothing will report on it after that.
 - Provider errors become `turn_failed`, so `run` never fails and `finish` always runs.
 - A turn the agent started (`wakes`) waits until the thread is free, then runs through the same `makeTurn`, so steering, stopping, queueing and `finish` work as for any turn. If the runner cannot adopt it, `Wake.discard` stops the provider turn without reading its stream.

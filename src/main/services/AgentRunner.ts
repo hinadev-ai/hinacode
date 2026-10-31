@@ -53,6 +53,7 @@ import { McpCredentials } from "../mcp/credentials.ts"
 import { AgentError, type AgentProvider, type Wake } from "../agents/provider.ts"
 import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
+import { makeDeltaCoalescer } from "./coalesceDeltas.ts"
 import {
   NotFoundError,
   type PersistenceError,
@@ -383,18 +384,8 @@ const make = Effect.gen(function* () {
       turnMessages = next
     }
 
-    const handle = (received: AgentEvent) =>
+    const apply = (event: AgentEvent) =>
       Effect.gen(function* () {
-        const event: AgentEvent =
-          received.type === "tool_call_finished"
-            ? { ...received, output: withoutImageData(received.output) }
-            : received.type === "turn_completed" && received.forkPoint !== undefined
-              ? {
-                  ...received,
-                  forkPoint: { ...received.forkPoint, owner: { provider: provider.id, accountId: thread.accountId } },
-                }
-              : received
-        if (event.type === "subagent_updated") return yield* updateSubagent(thread.id, event.subagent)
         yield* publishTranscript({ type: "thread.event", threadId: thread.id, event })
         setTurnMessages(foldTranscript(turnMessages, event, yield* nowIso))
 
@@ -417,6 +408,23 @@ const make = Effect.gen(function* () {
         }
         const interval = Math.max(PERSIST_INTERVAL_MS, PERSIST_BACKOFF * persistMs)
         if (dirty.size > 0 && Date.now() - persistedAt >= interval) yield* persist
+      })
+
+    const deltas = makeDeltaCoalescer({ apply, exclusive: exclusive(thread.id), scope })
+
+    const handle = (received: AgentEvent) =>
+      Effect.gen(function* () {
+        const event: AgentEvent =
+          received.type === "tool_call_finished"
+            ? { ...received, output: withoutImageData(received.output) }
+            : received.type === "turn_completed" && received.forkPoint !== undefined
+              ? {
+                  ...received,
+                  forkPoint: { ...received.forkPoint, owner: { provider: provider.id, accountId: thread.accountId } },
+                }
+              : received
+        if (event.type === "subagent_updated") return yield* updateSubagent(thread.id, event.subagent)
+        yield* deltas.offer(event)
       }).pipe(exclusive(thread.id))
 
     const steer = (
@@ -426,6 +434,7 @@ const make = Effect.gen(function* () {
     ) =>
       Effect.gen(function* () {
         if (!(yield* when)) return false
+        yield* deltas.flush
         yield* provider.steer(thread.id, text, attachments)
         const now = yield* nowIso
         const current = turnMessages.at(-1)!
@@ -444,6 +453,7 @@ const make = Effect.gen(function* () {
     let next: QueuedMessage | undefined
     const withdraw = (event: AgentEvent) => publishTranscript({ type: "thread.event", threadId: thread.id, event })
     const finish = Effect.gen(function* () {
+      yield* deltas.flush
       for (const [id, request] of approvals) {
         if (request.threadId !== thread.id) continue
         approvals.delete(id)
