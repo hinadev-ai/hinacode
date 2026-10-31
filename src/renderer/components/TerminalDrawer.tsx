@@ -86,7 +86,7 @@ function OpenDrawer({ threadId, sessions, activeId }: OpenDrawerProps) {
               <SessionTab
                 key={session.id}
                 session={session}
-                name={m.terminal_tab({ index: index + 1 })}
+                name={session.title ?? m.terminal_tab({ index: index + 1 })}
                 onClose={() => void terminals().close(threadId, session.id)}
               />
             ))}
