@@ -430,7 +430,14 @@ export const RpcMethods = {
     Schema.Void,
   ),
   "threads.interrupt": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
-  "approvals.respond": rpc(Schema.Struct({ requestId: Schema.String, decision: ApprovalDecision }), Schema.Void),
+  "approvals.respond": rpc(
+    Schema.Struct({
+      requestId: Schema.String,
+      decision: ApprovalDecision,
+      note: Schema.optionalKey(Schema.String),
+    }),
+    Schema.Void,
+  ),
   "questions.respond": rpc(Schema.Struct({ requestId: Schema.String, answers: QuestionAnswers }), Schema.Void),
   "secrets.has": rpc(Schema.Struct({ name: Schema.String }), Schema.Boolean),
   "secrets.set": rpc(Schema.Struct({ name: Schema.String, value: Schema.String }), Schema.Void),

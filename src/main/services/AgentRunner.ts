@@ -146,7 +146,11 @@ export class AgentRunner extends Context.Service<
     ) => Effect.Effect<Thread, SendError>
     readonly switchAgent: (input: UpdateThread & { readonly provider: ProviderId }) => Effect.Effect<Thread, SendError>
     readonly setAccessMode: (threadId: string, accessMode: AccessMode) => Effect.Effect<void, AgentError>
-    readonly respondApproval: (requestId: string, decision: ApprovalDecision) => Effect.Effect<void>
+    readonly respondApproval: (
+      requestId: string,
+      decision: ApprovalDecision,
+      note?: string,
+    ) => Effect.Effect<void, PersistenceError | NotFoundError>
     readonly respondQuestion: (requestId: string, answers: QuestionAnswers) => Effect.Effect<void>
     readonly requestSecret: (
       threadId: string,
@@ -305,15 +309,13 @@ const make = Effect.gen(function* () {
 
   const providerFor = (id: ProviderId) => Effect.succeed(providers[id])
 
-  const respondApproval = (requestId: string, decision: ApprovalDecision) =>
-    Effect.suspend(() => {
-      const request = approvals.get(requestId)
-      if (request === undefined) return Effect.void
-      return providers[request.provider]?.respondApproval(requestId, decision) ?? Effect.void
-    })
-
   const updateThread = (input: Parameters<typeof threads.update>[0]) =>
     threads.update(input).pipe(Effect.tap((thread) => push.publish({ type: "thread.updated", thread })))
+
+  const waitsOnUser = (threadId: string) =>
+    [...approvals.values(), ...questions.values(), ...[...secretRequests.values()].map(({ request }) => request)].some(
+      (request) => request.threadId === threadId,
+    )
 
   const exclusive =
     (threadId: string) =>
@@ -322,6 +324,22 @@ const make = Effect.gen(function* () {
       if (lock === undefined) threadLocks.set(threadId, (lock = Semaphore.makeUnsafe(1)))
       return Semaphore.withPermit(lock, effect)
     }
+
+  const respondApproval = (requestId: string, decision: ApprovalDecision, note?: string) =>
+    Effect.suspend(() => {
+      const request = approvals.get(requestId)
+      if (request === undefined) return Effect.void
+      const text = note?.trim() || undefined
+      return Effect.gen(function* () {
+        const delivered = yield* providers[request.provider].respondApproval(requestId, decision, text)
+        if (text === undefined || delivered) return
+        const { queue } = yield* threads.get(request.threadId)
+        yield* updateThread({
+          id: request.threadId,
+          queue: [{ id: randomUUID(), text, attachments: [], steer: true }, ...queue],
+        })
+      }).pipe(exclusive(request.threadId))
+    })
 
   const listSubagents = (threadId: string) => [...(subagents.get(threadId)?.values() ?? [])].toReversed()
 
@@ -435,6 +453,13 @@ const make = Effect.gen(function* () {
             ...(event.type === "turn_limited" ? { usageLimit: event.limit } : {}),
           })
         }
+        if (
+          event.type === "approval_resolved" ||
+          event.type === "question_resolved" ||
+          event.type === "secret_resolved"
+        ) {
+          yield* steerHeld
+        }
         const interval = Math.max(PERSIST_INTERVAL_MS, PERSIST_BACKOFF * persistMs)
         if (dirty.size > 0 && Date.now() - persistedAt >= interval) yield* persist
       })
@@ -456,6 +481,16 @@ const make = Effect.gen(function* () {
         yield* deltas.offer(event)
       }).pipe(exclusive(thread.id))
 
+    const steerHeld: Effect.Effect<void> = Effect.gen(function* () {
+      if (waitsOnUser(thread.id)) return
+      const held = (yield* threads.get(thread.id)).queue.filter((message) => message.steer)
+      for (const message of held) {
+        yield* steerNow(message.text, message.attachments)
+        const { queue } = yield* threads.get(thread.id)
+        yield* updateThread({ id: thread.id, queue: queue.filter((queued) => queued.id !== message.id) })
+      }
+    }).pipe(Effect.catch((error) => Effect.logWarning("held message did not steer", error)))
+
     const steer = (
       text: string,
       attachments: ReadonlyArray<Attachment>,
@@ -463,6 +498,17 @@ const make = Effect.gen(function* () {
     ) =>
       Effect.gen(function* () {
         if (!(yield* when)) return false
+        if (!waitsOnUser(thread.id)) {
+          yield* steerNow(text, attachments)
+          return true
+        }
+        const { queue } = yield* threads.get(thread.id)
+        yield* updateThread({ id: thread.id, queue: [...queue, { id: randomUUID(), text, attachments, steer: true }] })
+        return true
+      }).pipe(exclusive(thread.id))
+
+    const steerNow = (text: string, attachments: ReadonlyArray<Attachment>) =>
+      Effect.gen(function* () {
         yield* deltas.flush
         yield* provider.steer(thread.id, text, attachments)
         const now = yield* nowIso
@@ -476,8 +522,7 @@ const make = Effect.gen(function* () {
         yield* insertMessage(userMessage(thread.id, text, attachments, now))
         yield* insertMessage(next)
         turnMessages = [...turnMessages, next]
-        return true
-      }).pipe(exclusive(thread.id))
+      })
 
     let next: QueuedMessage | undefined
     let finishing = false
@@ -1165,7 +1210,7 @@ const make = Effect.gen(function* () {
         yield* turn.provider.setAccessMode(threadId, accessMode)
         if (accessMode !== "full") return
         for (const request of approvals.values()) {
-          if (request.threadId === threadId) yield* respondApproval(request.id, "allow")
+          if (request.threadId === threadId) yield* respondApproval(request.id, "allow").pipe(Effect.orDie)
         }
       }),
     respondApproval,

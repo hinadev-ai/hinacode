@@ -31,7 +31,7 @@ import { installedBinary } from "../binary.ts"
 import { attachmentContext } from "../elementContext.ts"
 import { COMPACT_COMMAND, isCompactCommand } from "../compact.ts"
 import { AgentError, type AgentProvider, type BackgroundTasksChange, type Wake } from "../provider.ts"
-import { choiceFor, sessionScope, toApprovalRequest } from "./approvals.ts"
+import { choiceFor, sessionScope, takesNote, toApprovalRequest } from "./approvals.ts"
 import { backgroundTasksAfter, isBackgrounded } from "./backgroundTasks.ts"
 import { toAccount, toModelInfo } from "./catalog.ts"
 import { type Incoming, makeMuseHost, type MuseHost, REQUEST_TIMEOUT, toAgentError } from "./host.ts"
@@ -124,6 +124,7 @@ interface Approval {
   readonly id: string
   params: ApprovalRequestParams
   decision: ApprovalDecision | undefined
+  note: string | undefined
   presented: boolean
   answered: number | undefined
 }
@@ -334,7 +335,10 @@ const make = Effect.gen(function* () {
 
   const getHost = (home: AccountHome | null) => getEntry(home).pipe(Effect.map((entry) => entry.host))
 
-  const approvals = new Map<string, Deferred.Deferred<ApprovalDecision>>()
+  const approvals = new Map<
+    string,
+    { readonly approval: Approval; readonly deferred: Deferred.Deferred<ApprovalDecision> }
+  >()
   const questions = new Map<string, Deferred.Deferred<QuestionAnswers>>()
   const threadSessions = new Map<string, string>()
   const subagentsByThread = new Map<string, Subagents>()
@@ -584,6 +588,7 @@ const make = Effect.gen(function* () {
               approvalId: approval.params.approvalId,
               requirementId: approval.params.currentRequirementId,
               choiceId: choice.choiceId,
+              ...(choice.acceptsFeedback && approval.note !== undefined && { feedback: approval.note }),
             })
             .pipe(Effect.catch((error) => Effect.logWarning("approval/decide failed", error.message)))
         })
@@ -612,6 +617,7 @@ const make = Effect.gen(function* () {
             id: randomUUID(),
             params,
             decision: undefined,
+            note: undefined,
             presented: false,
             answered: undefined,
           }
@@ -622,7 +628,7 @@ const make = Effect.gen(function* () {
           }
           approval.presented = true
           const deferred = yield* Deferred.make<ApprovalDecision>()
-          approvals.set(approval.id, deferred)
+          approvals.set(approval.id, { approval, deferred })
           yield* emit({
             type: "approval_requested",
             request: toApprovalRequest(params, approval.id, threadId),
@@ -1077,11 +1083,14 @@ const make = Effect.gen(function* () {
       yield* current.host.command("subagent/stop", { sessionId, subagentId }).pipe(Effect.mapError(toAgentError))
     })
 
-  const respondApproval = (requestId: string, decision: ApprovalDecision) =>
+  const respondApproval = (requestId: string, decision: ApprovalDecision, note?: string) =>
     Effect.suspend(() => {
-      const deferred = approvals.get(requestId)
-      return deferred ? Deferred.succeed(deferred, decision) : Effect.void
-    }).pipe(Effect.asVoid)
+      const pending = approvals.get(requestId)
+      if (pending === undefined) return Effect.succeed(false)
+      const delivered = note !== undefined && takesNote(decision, pending.approval.params.availableChoices)
+      if (delivered) pending.approval.note = note
+      return Deferred.succeed(pending.deferred, decision).pipe(Effect.as(delivered))
+    })
 
   const respondQuestion = (requestId: string, answers: QuestionAnswers) =>
     Effect.suspend(() => {

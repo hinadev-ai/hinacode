@@ -156,11 +156,13 @@ export function Composer({
   const canSend = hasDraft && !isSending && !isStaging
   const placeholder = inSubagent
     ? m.agents_composer_placeholder()
-    : busy
-      ? m.thread_composer_queue_placeholder({ steer: formatForDisplay(STEER_CHORD) })
-      : isSidechat
-        ? m.sidechat_placeholder()
-        : m.thread_composer_placeholder()
+    : thread.status === "awaiting_approval"
+      ? m.thread_composer_approval_placeholder({ steer: formatForDisplay(STEER_CHORD) })
+      : busy
+        ? m.thread_composer_queue_placeholder({ steer: formatForDisplay(STEER_CHORD) })
+        : isSidechat
+          ? m.sidechat_placeholder()
+          : m.thread_composer_placeholder()
   const modifierHeld = useModifierHeld()
   const clickDelivery: Delivery = modifierHeld ? "steer" : "queue"
   const sendMode: SendGlyphMode = !(busy || isSending) ? "send" : hasDraft ? clickDelivery : "stop"

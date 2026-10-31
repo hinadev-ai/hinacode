@@ -1,22 +1,35 @@
-import { startTransition, useActionState } from "react"
+import { type KeyboardEvent, startTransition, useActionState, useState } from "react"
 import type { ApprovalDecision, ApprovalRequest, SessionScope } from "../../shared/agent.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
+import { Input } from "./ui/input.tsx"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { ShieldIcon } from "./icons/ShieldIcon.tsx"
 
 export function ApprovalCard({ request, providerLabel }: { request: ApprovalRequest; providerLabel: string }) {
+  const [note, setNote] = useState("")
   const [error, respond, isPending] = useActionState(async (_: string | null, decision: ApprovalDecision) => {
     try {
-      await callPromise("approvals.respond", { requestId: request.id, decision })
+      const trimmed = note.trim()
+      await callPromise("approvals.respond", {
+        requestId: request.id,
+        decision,
+        ...(trimmed !== "" && { note: trimmed }),
+      })
       return null
     } catch (cause) {
       return errorMessage(cause)
     }
   }, null)
   const choose = (decision: ApprovalDecision) => () => startTransition(() => respond(decision))
+
+  const onNoteKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== "Enter" || event.nativeEvent.isComposing || note.trim() === "") return
+    event.preventDefault()
+    choose("deny")()
+  }
 
   return (
     <section
@@ -32,6 +45,15 @@ export function ApprovalCard({ request, providerLabel }: { request: ApprovalRequ
         {request.detail}
       </pre>
       {request.sessionScope && <SessionScopeNote scope={request.sessionScope} />}
+      <Input
+        aria-label={m.approval_note_label()}
+        placeholder={m.approval_note_placeholder()}
+        value={note}
+        onChange={(event) => setNote(event.target.value)}
+        onKeyDown={onNoteKeyDown}
+        disabled={isPending}
+        autoComplete="off"
+      />
       <div className="flex flex-wrap gap-2">
         <Button size="sm" disabled={isPending} onClick={choose("allow")}>
           {m.approval_allow()}
