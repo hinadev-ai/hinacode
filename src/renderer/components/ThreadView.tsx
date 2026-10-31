@@ -172,12 +172,14 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
   }
 
   if (history === undefined || history.status === "loading") {
-    return <p className="m-auto animate-reveal text-sm text-muted-foreground">{m.thread_loading()}</p>
+    return <p className="clear-overview m-auto animate-reveal text-sm text-muted-foreground">{m.thread_loading()}</p>
   }
   if (history.status === "error") {
     return (
-      <div role="alert" className="m-auto flex flex-col items-center gap-2">
-        <p className="text-sm text-destructive">{m.thread_load_failed({ message: history.message })}</p>
+      <div role="alert" className="clear-overview m-auto flex max-w-3xl flex-col items-center gap-2 px-4">
+        <p className="text-center text-sm wrap-break-word text-destructive">
+          {m.thread_load_failed({ message: history.message })}
+        </p>
         <Button variant="outline" size="sm" onClick={retry}>
           {m.common_retry()}
         </Button>

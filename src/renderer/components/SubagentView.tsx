@@ -132,7 +132,7 @@ export function SubagentTranscript({
       {transcript.length === 0 ? (
         <>
           {header}
-          <p className="m-auto px-4 text-sm text-muted-foreground">{m.agents_missing()}</p>
+          <p className="clear-overview m-auto px-4 text-sm text-muted-foreground">{m.agents_missing()}</p>
         </>
       ) : (
         <MessageList
