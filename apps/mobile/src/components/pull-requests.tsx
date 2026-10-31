@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
   pending: { flex: 1, gap: 2 },
   meta: { flexDirection: "row", alignItems: "center", gap: 12 },
   branches: { flexShrink: 1, fontFamily: mono, fontSize: 12 },
-  size: { fontFamily: mono, fontSize: 12 },
+  size: { flexShrink: 0, fontFamily: mono, fontSize: 12 },
   pills: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   note: { fontSize: 13, lineHeight: 18 },
 })
