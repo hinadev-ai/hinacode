@@ -2,7 +2,7 @@ import type { AgentCommand } from "./agent.ts"
 import type { PullRequestMatch, Thread } from "./domain.ts"
 import { type MentionableThreads, mentionedThreadId, threadMention } from "./threadMention.ts"
 
-export type SyntaxKind = "text" | "bullet" | "code" | "command" | "mention"
+export type SyntaxKind = "text" | "bullet" | "code" | "strong" | "rule" | "command" | "mention"
 
 export interface KnownTokens {
   readonly commands: ReadonlySet<string>
@@ -34,8 +34,13 @@ export const segmentText = (segment: Segment) =>
 
 const FENCE = /^\s*```\s*([^\s`]*)/
 const BULLET = /^(\s*)([-*+]|\d+[.)])(?=\s)/
+const RULE = /^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/
+const LIST_ITEM = /^(\s*)(?:([-*+])|(\d+)([.)]))(\s+)(\[[ xX]\]\s+)?/
 const NAME = String.raw`[\w:-]+(?:\.[\w:-]+)*`
-const INLINE = new RegExp(String.raw`\`[^\`\n]+\`|(?<=^|\s)(?:@[^\s]+|[/$]${NAME})`, "g")
+const INLINE = new RegExp(
+  String.raw`\`[^\`\n]+\`|\*\*[^\s*](?:[^*\n]*[^\s*])?\*\*|(?<=^|\s)(?:@[^\s]+|[/$]${NAME})`,
+  "g",
+)
 const WHOLE_NAME = new RegExp(`^${NAME}$`)
 
 export const isCommandName = (name: string) => WHOLE_NAME.test(name)
@@ -43,6 +48,7 @@ const TRAILING_PUNCTUATION = /[,.;:!?)\]]+$/
 
 const classify = (token: string, known: KnownTokens): { kind: SyntaxKind; text: string } | null => {
   if (token.startsWith("`")) return { kind: "code", text: token }
+  if (token.startsWith("**")) return { kind: "strong", text: token }
   if (token.startsWith("@")) {
     const mention = token.replace(TRAILING_PUNCTUATION, "")
     const threadId = mentionedThreadId(mention)
@@ -85,6 +91,49 @@ export function endsWithClosedFence(text: string): boolean {
   return closedLast
 }
 
+const insideFence = (text: string, lineStart: number) => {
+  const fences = text
+    .slice(0, lineStart)
+    .split("\n")
+    .filter((line) => FENCE.test(line))
+  return fences.length % 2 === 1
+}
+
+export interface TextEdit {
+  readonly from: number
+  readonly to: number
+  readonly insert: string
+  readonly anchor: number
+}
+
+const listItemAt = (text: string, caret: number) => {
+  const lineStart = text.lastIndexOf("\n", caret - 1) + 1
+  const lineEnd = text.indexOf("\n", caret)
+  const line = text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd)
+  const item = LIST_ITEM.exec(line)
+  if (item === null || caret - lineStart < item[0].length || insideFence(text, lineStart)) return null
+  return { lineStart, line, item }
+}
+
+export function continueList(text: string, from: number, to: number): TextEdit | null {
+  const found = listItemAt(text, from)
+  if (found === null) return null
+  const { lineStart, line, item } = found
+  const [marker, indent = "", bullet, number, delimiter, space, task] = item
+  if (from === to && line.slice(marker.length).trim() === "")
+    return { from: lineStart, to: lineStart + line.length, insert: "", anchor: lineStart }
+  const next = bullet ?? `${Number(number) + 1}${delimiter}`
+  const insert = `\n${indent}${next}${space}${task === undefined ? "" : "[ ] "}`
+  return { from, to, insert, anchor: from + insert.length }
+}
+
+export function listBackspace(text: string, caret: number): TextEdit | null {
+  const found = listItemAt(text, caret)
+  if (found === null || caret !== found.lineStart + found.item[0].length) return null
+  const from = found.lineStart + (found.item[1]?.length ?? 0)
+  return { from, to: caret, insert: "", anchor: from }
+}
+
 export function highlight(text: string, known: KnownTokens): ReadonlyArray<Segment> {
   const segments: Array<Segment> = []
   const lines = text.split("\n")
@@ -103,6 +152,10 @@ export function highlight(text: string, known: KnownTokens): ReadonlyArray<Segme
         close: lines[close] ?? null,
       })
       index = end
+      continue
+    }
+    if (RULE.test(line)) {
+      segments.push({ kind: "rule", text: line })
       continue
     }
     const bullet = BULLET.exec(line)

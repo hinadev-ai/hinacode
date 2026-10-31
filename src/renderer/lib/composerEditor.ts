@@ -76,12 +76,38 @@ class ChipWidget extends WidgetType {
   }
 }
 
+class TextWidget extends WidgetType {
+  readonly className: string
+  readonly text: string
+
+  constructor(className: string, text = "") {
+    super()
+    this.className = className
+    this.text = text
+  }
+
+  override eq(other: TextWidget) {
+    return other.className === this.className && other.text === this.text
+  }
+
+  toDOM() {
+    const span = document.createElement("span")
+    span.className = this.className
+    span.textContent = this.text
+    return span
+  }
+}
+
+const dot = new TextWidget("text-muted-foreground", "•")
+const rule = new TextWidget("inline-block w-full border-t border-border align-middle")
+
 const markClass = {
   bullet: "text-muted-foreground",
   code: "rounded-sm bg-muted",
+  strong: "font-semibold",
   command: "text-syntax-token",
   mention: "text-syntax-token",
-  fenceMarker: "text-muted-foreground",
+  marker: "text-muted-foreground",
 }
 
 const placeholderBefore =
@@ -97,11 +123,19 @@ function build(view: EditorView) {
   const { main } = state.selection
   const decorations: Array<Range<Decoration>> = []
   const chips: Array<Range<Decoration>> = []
+  const atomic: Array<Range<Decoration>> = []
   for (const mark of composerMarks(text, config.known, config.commands, main.empty ? main.head : null)) {
     if (mark.kind === "chip") {
       const chip = Decoration.replace({ widget: new ChipWidget(mark.command) }).range(mark.from, mark.to)
       decorations.push(chip)
       chips.push(chip)
+      atomic.push(chip)
+    } else if (mark.kind === "dot") {
+      const replaced = Decoration.replace({ widget: dot }).range(mark.from, mark.to)
+      decorations.push(replaced)
+      atomic.push(replaced)
+    } else if (mark.kind === "rule") {
+      decorations.push(Decoration.replace({ widget: rule }).range(mark.from, mark.to))
     } else if (mark.kind === "fenceLine") {
       const edges = [mark.first && "rounded-t-md", mark.last && "rounded-b-md"].filter(Boolean).join(" ")
       decorations.push(Decoration.line({ class: `cm-fence-line bg-muted ${edges}` }).range(mark.from))
@@ -142,30 +176,30 @@ function build(view: EditorView) {
         class: text === "" ? placeholderBefore : placeholderAfter,
       }).range(0),
     )
-  return { decorations: Decoration.set(decorations, true), chips: Decoration.set(chips, true) }
+  return { decorations: Decoration.set(decorations, true), atomic: Decoration.set(atomic, true) }
 }
 
 const marksPlugin = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet
-    chips: DecorationSet
+    atomic: DecorationSet
 
     constructor(view: EditorView) {
-      ;({ decorations: this.decorations, chips: this.chips } = build(view))
+      ;({ decorations: this.decorations, atomic: this.atomic } = build(view))
     }
 
     update(update: ViewUpdate) {
       // FIXME: CodeMirror ends an IME composition when decorations next to its text are redrawn
       if (update.view.composing) {
         this.decorations = this.decorations.map(update.changes)
-        this.chips = this.chips.map(update.changes)
+        this.atomic = this.atomic.map(update.changes)
         return
       }
       const configured = update.transactions.some((transaction) =>
         transaction.effects.some((effect) => effect.is(setConfig) || effect.is(redraw)),
       )
       if (update.docChanged || update.selectionSet || configured)
-        ({ decorations: this.decorations, chips: this.chips } = build(update.view))
+        ({ decorations: this.decorations, atomic: this.atomic } = build(update.view))
     }
   },
   {
@@ -179,13 +213,13 @@ const marksPlugin = ViewPlugin.fromClass(
         requestAnimationFrame(() => view.dispatch({ effects: redraw.of(null) }))
       },
     },
-    provide: (plugin) => EditorView.atomicRanges.of((view) => view.plugin(plugin)?.chips ?? Decoration.none),
+    provide: (plugin) => EditorView.atomicRanges.of((view) => view.plugin(plugin)?.atomic ?? Decoration.none),
   },
 )
 
-export function chipBefore(view: EditorView, pos: number) {
+export function atomicBefore(view: EditorView, pos: number) {
   let found: { from: number; to: number } | null = null
-  view.plugin(marksPlugin)?.chips.between(pos - 1, pos, (from, to) => {
+  view.plugin(marksPlugin)?.atomic.between(pos - 1, pos, (from, to) => {
     if (to === pos) found = { from, to }
   })
   return found as { from: number; to: number } | null

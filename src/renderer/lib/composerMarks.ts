@@ -4,7 +4,7 @@ import { fenceCode, highlight, type KnownTokens, segmentText } from "../../share
 export type Mark =
   | { readonly kind: "chip"; readonly from: number; readonly to: number; readonly command: AgentCommand }
   | {
-      readonly kind: "bullet" | "code" | "command" | "mention" | "fenceMarker"
+      readonly kind: "bullet" | "dot" | "code" | "strong" | "rule" | "command" | "mention" | "marker"
       readonly from: number
       readonly to: number
     }
@@ -25,6 +25,20 @@ export function composerMarks(
     const piece = segmentText(segment)
     offset += piece.length
     if (segment.kind === "text") continue
+    if (segment.kind === "strong") {
+      marks.push({ kind: "strong", from, to: offset }, { kind: "marker", from, to: from + 2 })
+      marks.push({ kind: "marker", from: offset - 2, to: offset })
+      continue
+    }
+    if (segment.kind === "rule") {
+      const caretOnLine = caret !== null && caret >= from && caret <= offset
+      marks.push({ kind: caretOnLine ? "marker" : "rule", from, to: offset })
+      continue
+    }
+    if (segment.kind === "bullet" && /^[-*+]$/.test(piece)) {
+      marks.push({ kind: "dot", from, to: offset })
+      continue
+    }
     if (segment.kind !== "fence") {
       const command = segment.kind === "command" ? byToken.get(piece) : undefined
       const stillTyping = caret === offset && (offset === text.length || text[offset] === "\n")
@@ -37,7 +51,7 @@ export function composerMarks(
     lines.forEach((line, index) => {
       marks.push({ kind: "fenceLine", from: lineStart, first: index === 0, last: index === lines.length - 1 })
       const isFenceLine = index === 0 || (segment.close !== null && index === lines.length - 1)
-      if (isFenceLine && line !== "") marks.push({ kind: "fenceMarker", from: lineStart, to: lineStart + line.length })
+      if (isFenceLine && line !== "") marks.push({ kind: "marker", from: lineStart, to: lineStart + line.length })
       lineStart += line.length + 1
     })
     if (segment.language !== "" && segment.lines.length > 0)
