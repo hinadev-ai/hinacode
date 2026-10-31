@@ -66,15 +66,16 @@ When("I paste {int} images into the message", async ({ app }, count: number) => 
 
 Then("the message field and {word} action fit inside the window", async ({ app }, action: string) => {
   const page = app.page
-  const textarea = page.getByLabel("Message", { exact: true })
+  const message = page.getByLabel("Message", { exact: true })
+  const field = page.locator(".cm-editor").filter({ has: message })
   const button = page.getByRole("button", { name: action, exact: true })
   await expect(button).toBeEnabled()
   await expect
     .poll(
       async () => {
-        const field = await textarea.boundingBox()
+        const box = await field.boundingBox()
         const control = await button.boundingBox()
-        const lineHeight = await textarea.evaluate((node) => {
+        const lineHeight = await message.evaluate((node) => {
           const style = getComputedStyle(node)
           return (
             Number.parseFloat(style.lineHeight) +
@@ -84,9 +85,9 @@ Then("the message field and {word} action fit inside the window", async ({ app }
         })
         const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
         return {
-          usableWidth: field !== null && field.width >= 200,
-          usableHeight: field !== null && field.height >= lineHeight,
-          fieldVisible: field !== null && field.x >= 0 && field.y >= 0 && field.y + field.height <= viewport.height,
+          usableWidth: box !== null && box.width >= 200,
+          usableHeight: box !== null && box.height >= lineHeight,
+          fieldVisible: box !== null && box.x >= 0 && box.y >= 0 && box.y + box.height <= viewport.height,
           actionVisible:
             control !== null &&
             control.x >= 0 &&
@@ -95,7 +96,7 @@ Then("the message field and {word} action fit inside the window", async ({ app }
             control.y + control.height <= viewport.height,
         }
       },
-      { message: "textarea and message action stay usable without manually hiding panels" },
+      { message: "message field and action stay usable without manually hiding panels" },
     )
     .toEqual({ usableWidth: true, usableHeight: true, fieldVisible: true, actionVisible: true })
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
