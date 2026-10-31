@@ -11,6 +11,8 @@ export const Colors = {
     background: "#ffffff",
     surface: "#f4f4f5",
     surfaceStrong: "#e4e4e7",
+    /** A switch's off track, 3:1 on `surface` and `background` so the control reads when it is off. */
+    controlOff: "#8a8a93",
     border: "#e4e4e7",
     primary: "#7c3aed",
     onPrimary: "#ffffff",
@@ -43,6 +45,7 @@ export const Colors = {
     background: "#0a0a0a",
     surface: "#18181b",
     surfaceStrong: "#27272a",
+    controlOff: "#71717a",
     border: "#27272a",
     primary: "#7c3aed",
     onPrimary: "#ffffff",

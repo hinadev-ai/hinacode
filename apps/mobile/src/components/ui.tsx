@@ -108,7 +108,7 @@ export function Toggle(props: Omit<SwitchProps, "trackColor" | "thumbColor">) {
     <Switch
       {...props}
       {...webThumb}
-      trackColor={{ true: theme.primary, false: theme.surfaceStrong }}
+      trackColor={{ true: theme.primary, false: theme.controlOff }}
       thumbColor="#ffffff"
     />
   )
