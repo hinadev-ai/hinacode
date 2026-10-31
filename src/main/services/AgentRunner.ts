@@ -452,7 +452,8 @@ const make = Effect.gen(function* () {
           yield* updateThread({ id: thread.id, providerSessionId: event.providerSessionId })
         }
         if (event.type === "turn_completed" || event.type === "turn_failed") completed = event.type === "turn_completed"
-        const nextStatus = statusAfter(event)
+        const resolvedStatus = statusAfter(event)
+        const nextStatus = resolvedStatus === "running" && waitsOnUser(thread.id) ? "awaiting_approval" : resolvedStatus
         if (nextStatus !== undefined && nextStatus !== status) {
           status = nextStatus
           yield* updateThread({
