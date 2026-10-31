@@ -8,7 +8,9 @@ type Key = Extract<keyof typeof en, `mobile_${string}`>
 
 const catalogs: Record<CatalogLocale, Record<Key, string>> = { en, ja, "zh-TW": zhTW }
 
-const catalog = catalogs[resolveCatalogLocale(deviceLanguageTags())]
+export const locale = resolveCatalogLocale(deviceLanguageTags())
+
+const catalog = catalogs[locale]
 
 export const copy = (key: Key, params: Readonly<Record<string, string>> = {}) =>
   catalog[key].replace(/\{(\w+)\}/g, (placeholder, name: string) => params[name] ?? placeholder)
