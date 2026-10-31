@@ -217,6 +217,7 @@ export function Composer({ thread }: { thread: Thread }) {
             backgroundColor: liquidGlass ? "transparent" : theme.surface,
             borderColor: focused ? theme.primary : liquidGlass ? "transparent" : theme.border,
           },
+          focused && { boxShadow: `0 0 0 2px ${theme.primary}` },
         ]}
       >
         <ComposerInput
@@ -785,7 +786,7 @@ const styles = StyleSheet.create({
     maxHeight: LINE_HEIGHT * MAX_LINES + INPUT_PADDING * 2,
     paddingHorizontal: 6,
     paddingVertical: INPUT_PADDING,
-    fontSize: 15,
+    fontSize: 16,
     lineHeight: LINE_HEIGHT,
     textAlignVertical: "top",
     // react-native-web renders a fixed-height textarea; this lets the browser grow it with its text.

@@ -14,7 +14,7 @@ import {
 import Animated, { SlideInDown } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon, type IconName } from "@/components/icon"
-import { IconButton } from "@/components/ui"
+import { IconButton, subheading } from "@/components/ui"
 import { duration, ease } from "@/constants/motion"
 import { Colors, HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
@@ -85,7 +85,7 @@ export function Sheet({
           ]}
         >
           <View style={styles.sheetHeader}>
-            <Text accessibilityRole="header" style={[styles.sheetTitle, { color: theme.text }]}>
+            <Text accessibilityRole="header" {...subheading} style={[styles.sheetTitle, { color: theme.text }]}>
               {title}
             </Text>
             <IconButton icon="RiCloseLine" accessibilityLabel={copy("mobile_sheet_close")} onPress={onClose} />

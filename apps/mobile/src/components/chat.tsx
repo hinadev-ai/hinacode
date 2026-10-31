@@ -13,7 +13,7 @@ import type { Message, MessagePart, Thread, ToolCallStatus } from "@shared/domai
 import type { UsageLimit } from "@shared/limits.ts"
 import { useFocusEffect } from "expo-router"
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react"
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
+import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import Animated, { useReducedMotion } from "react-native-reanimated"
 import { Composer } from "@/components/composer"
 import { liquidGlass } from "@/components/glass"
@@ -21,10 +21,10 @@ import { Icon, type IconName } from "@/components/icon"
 import { Markdown } from "@/components/markdown"
 import { FadeIn, Rotate, Spinner } from "@/components/motion"
 import { TodoTray } from "@/components/todo-tray"
-import { Button, Notice, Pill } from "@/components/ui"
+import { Button, Notice, Pill, subheading } from "@/components/ui"
 import { cssEase, duration, rise } from "@/constants/motion"
-import { HIT, mono, radius } from "@/constants/theme"
-import { useTheme } from "@/hooks/use-theme"
+import { Colors, HIT, mono, radius } from "@/constants/theme"
+import { useScheme, useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
 import { copy, locale } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
@@ -63,6 +63,9 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
   const arrivedAfterOpening = (newestFirstIndex: number) => newestFirst.length - 1 - newestFirstIndex > openedAt
   // With Liquid Glass the composer floats over the transcript, which pads itself clear of the dock's height.
   const [dockHeight, setDockHeight] = useState(0)
+  const hasRequests =
+    thread.usageLimit !== null ||
+    (history?.status === "ready" && history.approvals.length + history.questions.length > 0)
 
   return (
     <View style={styles.flex}>
@@ -79,6 +82,7 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
         <FlatList
           testID="transcript"
           accessibilityLabel={copy("mobile_chat_transcript")}
+          style={styles.flex}
           inverted
           data={newestFirst}
           keyExtractor={(message) => message.id}
@@ -115,14 +119,20 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
         />
       )}
       <View
-        style={liquidGlass ? styles.dockStack : undefined}
+        style={liquidGlass ? styles.dockStack : styles.dock}
         onLayout={liquidGlass ? (event) => setDockHeight(event.nativeEvent.layout.height) : undefined}
       >
-        {thread.usageLimit !== null && <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />}
-        {history?.status === "ready" &&
-          history.approvals.map((request) => <ApprovalCard key={request.id} request={request} />)}
-        {history?.status === "ready" &&
-          history.questions.map((request) => <QuestionCard key={request.id} request={request} />)}
+        {hasRequests && (
+          <ScrollView keyboardShouldPersistTaps="handled" style={styles.requests}>
+            {thread.usageLimit !== null && (
+              <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />
+            )}
+            {history?.status === "ready" &&
+              history.approvals.map((request) => <ApprovalCard key={request.id} request={request} />)}
+            {history?.status === "ready" &&
+              history.questions.map((request) => <QuestionCard key={request.id} request={request} />)}
+          </ScrollView>
+        )}
         {messages !== undefined && <TodoTray thread={thread} messages={messages} />}
         <Composer thread={thread} />
       </View>
@@ -212,27 +222,31 @@ function ReplyText({
   )
 }
 
-const pulse = { "50%": { opacity: 0.5 } }
+const pulse = {
+  light: { "50%": { color: Colors.light.text } },
+  dark: { "50%": { color: Colors.dark.text } },
+}
 
 /** The desktop's `animate-pulse` line under a streaming reply. Reduce motion holds it still. */
 function Pulse({ text }: { text: string }) {
   const theme = useTheme()
+  const scheme = useScheme()
   const reduced = useReducedMotion()
   return (
-    <Animated.View
-      style={
-        reduced
-          ? undefined
-          : {
-              animationName: pulse,
-              animationDuration: 2000,
-              animationIterationCount: "infinite",
-              animationTimingFunction: cssEase.pulse,
-            }
-      }
+    <Animated.Text
+      style={[
+        styles.pulse,
+        { color: theme.textMuted },
+        !reduced && {
+          animationName: pulse[scheme],
+          animationDuration: 2000,
+          animationIterationCount: "infinite",
+          animationTimingFunction: cssEase.pulse,
+        },
+      ]}
     >
-      <Text style={[styles.pulse, { color: theme.textMuted }]}>{text}</Text>
-    </Animated.View>
+      {text}
+    </Animated.Text>
   )
 }
 
@@ -285,7 +299,7 @@ function PartView({ part }: { part: MessagePart }) {
       return (
         <View style={[styles.tool, { borderColor: theme.border }]}>
           <Icon name="RiToolsLine" size={14} color={theme.textMuted} />
-          <Text numberOfLines={1} style={[styles.toolName, { color: theme.text }]}>
+          <Text style={[styles.toolName, { color: theme.text }]}>
             {part.name}
             {summary && <Text style={{ color: theme.textMuted }}> {summary}</Text>}
           </Text>
@@ -297,7 +311,7 @@ function PartView({ part }: { part: MessagePart }) {
       return (
         <View style={styles.fileChange}>
           <Icon name="RiPencilLine" size={14} color={theme.textMuted} />
-          <Text numberOfLines={1} style={[styles.toolName, { color: theme.textMuted }]}>
+          <Text style={[styles.toolName, { color: theme.textMuted }]}>
             {copy("mobile_chat_edited", { path: part.path })}
           </Text>
         </View>
@@ -435,11 +449,7 @@ function ApprovalCard({ request }: { request: ApprovalRequest }) {
       >
         <Text style={[styles.cardTitle, { color: theme.text }]}>{request.title}</Text>
         {request.detail !== "" && (
-          <Text
-            numberOfLines={8}
-            selectable
-            style={[styles.detail, { color: theme.text, backgroundColor: theme.surface }]}
-          >
+          <Text selectable style={[styles.detail, { color: theme.text, backgroundColor: theme.surface }]}>
             {request.detail}
           </Text>
         )}
@@ -505,7 +515,11 @@ function UsageLimitCallout({ thread, limit }: { thread: Thread; limit: UsageLimi
       >
         <View style={styles.cardHeading}>
           <Icon name="RiErrorWarningLine" size={16} color={theme.attention} />
-          <Text accessibilityRole="header" style={[styles.cardTitle, styles.shrink, { color: theme.attention }]}>
+          <Text
+            accessibilityRole="header"
+            {...subheading}
+            style={[styles.cardTitle, styles.shrink, { color: theme.attention }]}
+          >
             {copy(limit.kind === "org_spend" ? "mobile_chat_org_spend_limit_title" : "mobile_chat_usage_limit_title")}
           </Text>
         </View>
@@ -602,10 +616,13 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
                       },
                     ]}
                   >
-                    <Text style={{ color: theme.text, fontWeight: "600" }}>{option.label}</Text>
-                    {option.description !== "" && (
-                      <Text style={{ color: theme.textMuted, fontSize: 13 }}>{option.description}</Text>
-                    )}
+                    <View style={styles.optionText}>
+                      <Text style={{ color: theme.text, fontWeight: "600" }}>{option.label}</Text>
+                      {option.description !== "" && (
+                        <Text style={{ color: theme.textMuted, fontSize: 13 }}>{option.description}</Text>
+                      )}
+                    </View>
+                    {selected && <Icon name="RiCheckLine" size={18} color={theme.text} />}
                   </Pressable>
                 )
               })}
@@ -651,7 +668,9 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   centered: { flex: 1, justifyContent: "center", alignItems: "center", padding: 20, gap: 12 },
   transcript: { padding: 16, gap: 12 },
-  dockStack: { position: "absolute", left: 0, right: 0, bottom: 0 },
+  dock: { flexShrink: 1 },
+  dockStack: { position: "absolute", left: 0, right: 0, bottom: 0, maxHeight: "100%" },
+  requests: { flexGrow: 0, flexShrink: 1 },
   earlier: { paddingVertical: 12 },
   empty: { textAlign: "center", padding: 24, fontSize: 15 },
   user: {
@@ -704,6 +723,15 @@ const styles = StyleSheet.create({
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" },
   question: { gap: 8 },
   options: { gap: 6 },
-  option: { minHeight: HIT, borderWidth: 1, borderRadius: radius.sm, padding: 10, justifyContent: "center", gap: 2 },
-  answer: { minHeight: HIT, borderWidth: 1, borderRadius: radius.sm, paddingHorizontal: 10 },
+  option: {
+    minHeight: HIT,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: radius.sm,
+    padding: 10,
+  },
+  optionText: { flex: 1, gap: 2 },
+  answer: { minHeight: HIT, borderWidth: 1, borderRadius: radius.sm, paddingHorizontal: 10, fontSize: 16 },
 })

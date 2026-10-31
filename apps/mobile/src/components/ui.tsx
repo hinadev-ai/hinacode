@@ -127,6 +127,8 @@ export type Tone = "neutral" | "attention" | "running" | "danger"
 /** A pill's height, for rows that keep its place while it is hidden. */
 export const PILL_HEIGHT = 20
 
+export const subheading = { "aria-level": 2 } as object
+
 export function Pill({ label, tone, icon }: { label: string; tone: Tone; icon?: IconName }) {
   const theme = useTheme()
   const [fg, bg] = toneColors(theme)[tone]

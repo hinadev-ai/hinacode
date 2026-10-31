@@ -98,7 +98,7 @@ export default function ThreadScreen() {
             />
           )}
           <View style={styles.titleColumn}>
-            <Text accessibilityRole="header" numberOfLines={1} style={[styles.title, { color: theme.text }]}>
+            <Text accessibilityRole="header" style={[styles.title, { color: theme.text }]}>
               {title}
             </Text>
             {thread !== undefined && <ProviderLabel provider={thread.provider} size={12} />}
@@ -226,7 +226,7 @@ const styles = StyleSheet.create({
   },
   readable: { width: "100%", maxWidth: READABLE_WIDTH, alignSelf: "center" },
   titleColumn: { flex: 1, gap: 2 },
-  title: { fontSize: 16, fontWeight: "600" },
+  title: { fontSize: 16, lineHeight: 20, fontWeight: "600" },
   status: { flexDirection: "row", alignItems: "center", gap: 6, paddingRight: 8 },
   subheader: {
     flexDirection: "row",
