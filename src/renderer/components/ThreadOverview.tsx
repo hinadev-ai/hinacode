@@ -98,7 +98,7 @@ export function ThreadOverview({ thread }: { thread: Thread }) {
   return (
     <aside
       aria-label={m.overview_label()}
-      className="-m-1 hidden min-h-0 w-66 @min-[48rem]:flex flex-col gap-2 overflow-y-auto p-1 [scrollbar-width:none]"
+      className="scroll-fade-y -m-1 hidden min-h-0 w-66 @min-[48rem]:flex flex-col gap-2 overflow-y-auto p-1 [scrollbar-width:none]"
     >
       <Card title={m.overview_environment()}>
         <EnvironmentRows thread={thread} project={project} worktree={worktree} />
