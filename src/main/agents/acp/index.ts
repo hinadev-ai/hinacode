@@ -576,7 +576,6 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
       usage: () => Effect.succeed(null),
       listCommands,
       runTurn,
-      steer: () => Effect.fail(agentError(`${name} cannot add to a running turn. Queue the message instead`)),
       interrupt,
       closeSession,
       respondApproval,

@@ -842,10 +842,10 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
           expect(commands.some((command) => command.name === "probe-echo")).toBe(true)
           const path = join(cwd, "attached.txt")
           writeFileSync(path, "hello")
-          yield* provider.steer(turn.threadId, "/probe-echo steering-fruit", [
+          yield* provider.steer!(turn.threadId, "/probe-echo steering-fruit", [
             { id: "steering-file", name: "attached.txt", path, mime: "text/plain", kind: "file", bytes: 5 },
           ])
-          yield* provider.steer(turn.threadId, "ordinary follow-up", [])
+          yield* provider.steer!(turn.threadId, "ordinary follow-up", [])
           yield* provider.interrupt(turn.threadId)
           yield* Fiber.join(turn.fiber)
           expect(turn.events.at(-1)).toStrictEqual({ type: "turn_failed", message: "Turn interrupted" })

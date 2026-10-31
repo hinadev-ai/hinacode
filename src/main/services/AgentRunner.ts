@@ -445,7 +445,7 @@ const make = Effect.gen(function* () {
       when: Effect.Effect<boolean, PersistenceError>,
     ) =>
       Effect.gen(function* () {
-        if (!(yield* when)) return false
+        if (provider.steer === undefined || !(yield* when)) return false
         yield* deltas.flush
         yield* provider.steer(thread.id, text, attachments)
         const now = yield* nowIso
@@ -759,10 +759,14 @@ const make = Effect.gen(function* () {
     )
 
   const steerWhen: typeof AgentRunner.Service.steerWhen = ({ threadId, text, attachments, when }) =>
-    Effect.suspend(
-      () =>
-        activeTurns.get(threadId)?.steer(text, attachments, when) ?? sendWhen(threadId, text, attachments, {}, when),
-    )
+    Effect.suspend(() => {
+      const turn = activeTurns.get(threadId)
+      if (turn === undefined) return sendWhen(threadId, text, attachments, {}, when)
+      if (turn.provider.steer !== undefined) return turn.steer(text, attachments, when)
+      return Effect.flatMap(when, (ready) =>
+        ready ? Effect.as(queue(threadId, text, attachments), true) : Effect.succeed(false),
+      )
+    })
 
   // FIXME: providers round their reset time and their clock drifts from ours
   const resumeGraceMs = 60_000

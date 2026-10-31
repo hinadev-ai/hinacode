@@ -31,7 +31,7 @@ HinaCode runs Claude Code, Codex and Muse Code. A developer who pays for Cursor 
 
 ## Out of scope
 
-- Steering a running turn. ACP has no steer, so the provider refuses it and the developer queues the message instead.
+- Steering a running turn. ACP has no steer, so the provider leaves `steer` out and the runner queues anything that would steer, including `send_to_thread` and pull request notices.
 - Sub-agents, background tasks, forks, account switching and compaction. ACP has no wire form for them yet.
 - Signing in from HinaCode. Both CLIs sign in through their own browser flow, and the onboarding row links to it.
 

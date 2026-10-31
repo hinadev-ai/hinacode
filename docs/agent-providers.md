@@ -41,7 +41,7 @@ A cell says yes when the provider maps the capability today. A cell says no when
 
 **Approvals and questions.** All three map approvals to `approval_requested` and answer through `respondApproval`. Codex emits it at `src/main/agents/codex/index.ts`. Muse emits it at `src/main/agents/muse/index.ts`. A `question_requested` blocks the turn until `respondQuestion` answers it. Codex also emits `questions_posted` at `src/main/agents/codex/index.ts`. That variant never blocks the turn (`src/shared/agent.ts`). The user answers it with the next message.
 
-**Steering and interrupt.** All three implement `steer` and `interrupt`. `steer` fails when no turn is running (`src/main/agents/provider.ts`). Codex interrupts with `turn/interrupt` (`src/main/agents/codex/index.ts`). Claude interrupts the SDK query (`src/main/agents/claude/index.ts`).
+**Steering and interrupt.** Claude, Codex and Muse implement `steer`, and every provider implements `interrupt`. `steer` fails when no turn is running (`src/main/agents/provider.ts`). Codex interrupts with `turn/interrupt` (`src/main/agents/codex/index.ts`). Claude interrupts the SDK query (`src/main/agents/claude/index.ts`).
 
 **Auto-compaction.** All three emit `compaction_updated` with the full current state (`src/shared/agent.ts`). The state is `running`, `done` or `failed` (`src/shared/agent.ts`). The threshold arrives as `autoCompactTokens` on `RunTurnInput` (`src/shared/agent.ts`). Null keeps the agent threshold. Claude passes it to the SDK as `autoCompactWindow` (`src/main/agents/claude/index.ts`). Claude reports state from `status` and `compact_boundary` messages (`src/main/agents/claude/mapMessage.ts`). Codex passes it as `model_auto_compact_token_limit` (`src/main/agents/codex/index.ts`). Codex reports `contextCompaction` items (`src/main/agents/codex/index.ts`). Its `done` state is always `auto` with null token counts (`src/main/agents/codex/index.ts`). Muse reports `compaction` items (`src/main/agents/muse/index.ts`). MSP takes no threshold. HinaCode therefore compares the latest context size itself and calls `session/compact` before the turn (`src/main/agents/muse/index.ts`).
 
@@ -100,12 +100,13 @@ Map each row or leave it out on purpose. Prove each mapped row with a test again
 
 ### Optional fields
 
-Five fields of `AgentProvider` are optional.
+Six fields of `AgentProvider` are optional.
 
 - `copySession`. Leave it out without added accounts. The UI then refuses an account switch on a started thread (`src/main/services/AgentRunner.ts`).
 - `wakes`. Leave it out when the agent never starts a turn. The runner skips the provider (`src/main/services/AgentRunner.ts`). Nothing changes in the UI.
 - `backgroundTasks`. Leave it out when the agent cannot list and stop background work. The list stays empty and the stop call fails with an agent error (`src/main/services/AgentRunner.ts`). The activity section renders nothing.
 - `closeSession`. Leave it out when the agent keeps nothing running between turns and resumes only `RunTurnInput.resumeSessionId`. Switching agents then only changes the stored provider.
+- `steer`. Leave it out when the agent cannot add input to a running turn. The runner then queues the message for after the turn, so the composer, `send_to_thread` and pull request notices still reach the agent (`src/main/services/AgentRunner.ts`). Add the agent to `steersRunningTurn` too, so the composer offers Queue only.
 - `stopSubagent`. Leave it out when the agent cannot stop one child. The stop call fails with an agent error (`src/main/services/AgentRunner.ts`). The sub-agent still shows in the activity tray.
 
 Every other field is required. A provider that cannot do a required thing still returns the empty or void form. Examples follow. `planLimits` returns null. `usage` returns null. `setAccessMode` returns void and applies on the next turn.

@@ -317,12 +317,11 @@ describe("makeAcpProvider", () => {
     }).pipe(Effect.scoped),
   )
 
-  it.live("refuses to steer and to use an added account", () =>
+  it.live("leaves out steering and refuses an added account", () =>
     Effect.gen(function* () {
       const { provider: make } = setup()
       const provider = yield* make
-      const steer = yield* provider.steer("t1", "more", []).pipe(Effect.flip)
-      expect(steer.message).toBe("opencode cannot add to a running turn. Queue the message instead")
+      expect(provider.steer).toBeUndefined()
       const account = yield* provider.account({ dir: "/tmp/x", binary: "opencode" }).pipe(Effect.flip)
       expect(account.message).toBe("opencode runs on its CLI login only")
       expect(yield* provider.account(null)).toStrictEqual({ type: "external", service: "fake" })

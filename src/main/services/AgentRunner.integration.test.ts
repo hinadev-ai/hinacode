@@ -213,7 +213,7 @@ const withPreparingThread = async (
       closeFails
         ? Effect.fail(new AgentError({ provider: id, message: "The session did not leave" }))
         : Effect.sync(() => calls.push({ provider: id, call: "closeSession" })),
-    steer: () => Effect.void,
+    ...(id !== "opencode" && { steer: () => Effect.void }),
     interrupt: () => Effect.sync(() => calls.push({ provider: id, call: "interrupt" })),
     setAccessMode: () => Effect.void,
     respondApproval: (requestId, decision) => Effect.sync(() => decisions.push({ requestId, decision })),
@@ -941,6 +941,20 @@ it("publishes streamed text in fewer pushes, in order, with the same transcript"
     ])
     const transcriptSeqs = transcript.map((push) => push.seq)
     expect(transcriptSeqs).toEqual(transcriptSeqs.toSorted((a, b) => a - b))
+  })
+})
+
+it("queues a steer for an agent that cannot steer a running turn", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, streamed }) => {
+    release()
+    await Effect.runPromise(threads.update({ id: thread.id, provider: "opencode" }))
+    await Effect.runPromise(runner.send(thread.id, "streams, then waits", []))
+    await streamed
+    await Effect.runPromise(runner.steer(thread.id, "change course", []))
+
+    const queued = await Effect.runPromise(threads.get(thread.id))
+    expect(queued.queue.map((message) => message.text)).toEqual(["change course"])
+    await Effect.runPromise(runner.interrupt(thread.id))
   })
 })
 
