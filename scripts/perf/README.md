@@ -108,7 +108,6 @@ don't blur the numbers for a thread open.
 ```sh
 pnpm build
 mkdir -p /tmp/kk-perf-real && sqlite3 ~/path/to/hinacode.sqlite ".backup /tmp/kk-perf-real/hinacode.sqlite"
-sqlite3 /tmp/kk-perf-real/hinacode.sqlite "UPDATE pull_request_link SET watch = NULL"
 node scripts/perf/main.ts base /tmp/kk-perf-real            # on the base build
 node scripts/perf/main.ts after /tmp/kk-perf-real           # on the change, same profile
 node scripts/perf/main.ts compare base after
@@ -120,10 +119,12 @@ launch it opens the two largest non-archived threads and the smallest one from t
 (cold, then switching back) and idles for `IDLE_SECONDS` (default 120) to count background queries and processes
 per hour. Pass thread ids after the data dir to pick other threads. Results land in `.context/perf/<label>-main.json`.
 
-The profile must live under `/tmp/kk-`, and the instance runs with `HINACODE_MOCK_CLAUDE=stream`, which also turns
-off pull request guides, so a copied profile never starts a real agent turn. Clearing `watch` keeps the PR watcher
-from delivering to a thread. Each launch reopens the last route, so after the first run startup includes opening a
-thread. `PORT` picks the CDP port (default 9290) and `DISPLAY_FOR_PERF` the X display (default `:99`).
+The profile must live under `/tmp/kk-`. The instance runs with `HINACODE_MOCK_AGENTS=stream`, which serves Claude,
+Codex and Muse from the simulation and turns off pull request guides, so a due auto-resume or queued message in the
+copy streams a simulated reply instead of starting a real agent in the original checkout. Before each benchmark the
+script clears every PR watch and disables every automation in the copy, so no automation creates a worktree there.
+Each launch reopens the last route, so after the first run startup includes opening a thread. `PORT` picks the CDP
+port (default 9290) and `DISPLAY_FOR_PERF` the X display (default `:99`).
 
 ## Measure remote payload and transcript costs
 

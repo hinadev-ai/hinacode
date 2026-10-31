@@ -63,11 +63,11 @@ export interface AppOptions {
   readonly serve?: ServeConfig
 }
 
-const simulatedClaude = (env: NodeJS.ProcessEnv) => {
-  const mode = env["HINACODE_MOCK_CLAUDE"]
+const simulatedClaude = (variable: "HINACODE_MOCK_AGENTS" | "HINACODE_MOCK_CLAUDE", env: NodeJS.ProcessEnv) => {
+  const mode = env[variable]
   if (mode === undefined) return undefined
   const scenario = mockScenarios.find((candidate) => candidate === mode)
-  if (scenario === undefined) throw new Error(`HINACODE_MOCK_CLAUDE must be one of ${mockScenarios.join(", ")}`)
+  if (scenario === undefined) throw new Error(`${variable} must be one of ${mockScenarios.join(", ")}`)
   if (!env["HINACODE_USER_DATA"]) throw new Error("Claude simulation requires HINACODE_USER_DATA")
   const resetMs = Number(env["HINACODE_MOCK_RESET_MS"] ?? 60000)
   if (!Number.isFinite(resetMs) || Math.abs(resetMs) > 3600000)
@@ -76,10 +76,25 @@ const simulatedClaude = (env: NodeJS.ProcessEnv) => {
 }
 
 export const agentProviders = (env: NodeJS.ProcessEnv) => {
-  const simulated = simulatedClaude(env)
+  const everyAgent = simulatedClaude("HINACODE_MOCK_AGENTS", env)
+  if (everyAgent !== undefined)
+    return {
+      simulated: true,
+      layer: Layer.mergeAll(
+        Layer.effect(
+          CodexProvider,
+          ClaudeProvider.ClaudeProvider.useSync((claude) => ({ ...claude, id: "codex" })),
+        ),
+        Layer.effect(
+          MuseProvider,
+          ClaudeProvider.ClaudeProvider.useSync((claude) => ({ ...claude, id: "muse" })),
+        ),
+      ).pipe(Layer.provideMerge(everyAgent)),
+    }
+  const claude = simulatedClaude("HINACODE_MOCK_CLAUDE", env)
   return {
-    simulated: simulated !== undefined,
-    layer: Layer.mergeAll(simulated ?? ClaudeProvider.layer, CodexProvider.layer, MuseProvider.layer),
+    simulated: claude !== undefined,
+    layer: Layer.mergeAll(claude ?? ClaudeProvider.layer, CodexProvider.layer, MuseProvider.layer),
   }
 }
 

@@ -168,7 +168,7 @@ const launch = (data: string, trace: string) =>
         DISPLAY: process.env["DISPLAY_FOR_PERF"] ?? ":99",
         HINACODE_USER_DATA: data,
         HINACODE_TRACE: trace,
-        HINACODE_MOCK_CLAUDE: process.env["HINACODE_MOCK_CLAUDE"] ?? "stream",
+        HINACODE_MOCK_AGENTS: "stream",
       },
     },
   )
@@ -207,6 +207,12 @@ const openThread = (id: string) => `(async () => {
   return performance.now() - t0
 })()`
 
+const stopBackgroundDeliveries = (data: string) => {
+  const db = new DatabaseSync(join(data, "hinacode.sqlite"))
+  db.exec("UPDATE pull_request_link SET watch = NULL; UPDATE automation SET enabled = 0")
+  db.close()
+}
+
 const pickThreads = (data: string, requested: ReadonlyArray<string>) => {
   const db = new DatabaseSync(join(data, "hinacode.sqlite"), { readOnly: true })
   const rows = db
@@ -229,6 +235,7 @@ const measure = async (label: string, data: string, requested: ReadonlyArray<str
   if (!existsSync(join(data, "hinacode.sqlite")))
     throw new Error(`${data} has no hinacode.sqlite; seed or copy one first`)
   if (!existsSync(join(repo, "out", "main", "index.js"))) throw new Error("build first: pnpm build")
+  stopBackgroundDeliveries(data)
   const threads = pickThreads(data, requested)
   const startups: Array<Startup> = []
   const opens: Array<Open> = []
