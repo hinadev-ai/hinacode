@@ -364,7 +364,7 @@ function CheckRow({ run }: { run: CheckRun }) {
         <Icon {...glyphs[run.status]} size={16} />
       )}
       <Text
-        numberOfLines={1}
+        numberOfLines={2}
         style={[styles.runName, { color: run.status === "failing" ? theme.text : theme.textMuted }]}
       >
         {run.name}
@@ -566,7 +566,7 @@ const styles = StyleSheet.create({
   ask: { gap: 8, alignItems: "flex-start" },
   sent: { flexDirection: "row", alignItems: "center", gap: 6 },
   run: { minHeight: HIT, flexDirection: "row", alignItems: "center", gap: 10 },
-  runName: { flex: 1, fontSize: 14 },
+  runName: { flex: 1, fontSize: 14, lineHeight: 19, paddingVertical: 6 },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   hint: { fontSize: 13, lineHeight: 18 },
   methods: { gap: 2 },
