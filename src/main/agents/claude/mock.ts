@@ -35,6 +35,13 @@ const commands: ReadonlyArray<AgentCommand> = [
   },
   {
     trigger: "/",
+    name: "code-review",
+    description: "Review the changes on this branch.",
+    argumentHint: "<branch>",
+    scope: "user",
+  },
+  {
+    trigger: "/",
     name: "compact",
     description: "Free up context by summarizing the conversation so far",
     argumentHint: "<optional custom summarization instructions>",

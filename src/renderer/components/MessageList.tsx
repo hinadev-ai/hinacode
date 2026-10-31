@@ -2,6 +2,7 @@ import { LegendList, type LegendListRef } from "@legendapp/list/react"
 import { Link } from "@tanstack/react-router"
 import { cn } from "cn"
 import { createContext, Fragment, type ReactElement, type ReactNode, use, type Ref, useState } from "react"
+import type { AgentCommand } from "../../shared/agent.ts"
 import type { Message, MessagePart } from "../../shared/domain.ts"
 import { fenceCode, highlight, type KnownTokens } from "../../shared/composerSyntax.ts"
 import { THREAD_MENTION } from "../../shared/threadMention.ts"
@@ -17,6 +18,7 @@ import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { AttachmentView } from "./AttachmentView.tsx"
+import { CommandChip } from "./CommandChip.tsx"
 import { FindPartContext, Highlighted } from "./FindHighlight.tsx"
 import { HighlightedCode } from "./HighlightedCode.tsx"
 import { Markdown } from "./Markdown.tsx"
@@ -34,9 +36,14 @@ const renderItem = ({ item }: { item: Message }) => <MessageItem message={item} 
 const edgeSpacer = <div className="h-4" />
 const endSpacer = <div className="h-[calc(var(--dock-height,0px)+1rem)]" />
 
-const TranscriptContext = createContext<{ readonly providerLabel: string; readonly showElapsedTime: boolean }>({
+const TranscriptContext = createContext<{
+  readonly providerLabel: string
+  readonly showElapsedTime: boolean
+  readonly commands: ReadonlyArray<AgentCommand>
+}>({
   providerLabel: "",
   showElapsedTime: true,
+  commands: [],
 })
 
 const LastMessageContext = createContext<string | undefined>(undefined)
@@ -48,15 +55,17 @@ export function MessageList({
   header,
   alignItemsAtEnd = true,
   showElapsedTime = true,
+  commands = [],
 }: {
   messages: ReadonlyArray<Message>
   providerLabel: string
+  commands?: ReadonlyArray<AgentCommand>
   listRef?: Ref<LegendListRef>
   header?: ReactElement
   alignItemsAtEnd?: boolean
   showElapsedTime?: boolean
 }) {
-  const transcript = { providerLabel, showElapsedTime }
+  const transcript = { providerLabel, showElapsedTime, commands }
   return (
     <TranscriptContext value={transcript}>
       <LastMessageContext value={messages.at(-1)?.id}>
@@ -113,13 +122,17 @@ function WithThreadMentions({ text }: { text: string }) {
   return nodes
 }
 
-const NO_KNOWN_TOKENS: KnownTokens = { commands: new Set(), files: new Set(), threads: new Set() }
-
 const insetCode = "bg-background font-mono text-[0.91em]"
 
-function SentText({ text }: { text: string }) {
+function SentText({ text, commands }: { text: string; commands: ReadonlyArray<AgentCommand> }) {
   const repository = useThreadRepository()
-  const segments = highlight(text, NO_KNOWN_TOKENS)
+  const byToken = new Map(commands.map((command) => [command.trigger + command.name, command]))
+  const known: KnownTokens = {
+    commands: new Set(byToken.keys()),
+    files: new Set(),
+    threads: new Set(),
+  }
+  const segments = highlight(text, known)
   return segments.map((segment, index) => {
     if (segment.kind === "fence")
       return (
@@ -134,6 +147,13 @@ function SentText({ text }: { text: string }) {
         <code key={index} className={cn(insetCode, "rounded-[0.25em] px-[0.3em] py-[0.1em]")}>
           <Highlighted text={segment.text.slice(1, -1)} />
         </code>
+      )
+    const command = segment.kind === "command" ? byToken.get(segment.text) : undefined
+    if (command !== undefined)
+      return (
+        <CommandChip key={index} command={command}>
+          <Highlighted text={command.label ?? command.name} />
+        </CommandChip>
       )
     let prose = segment.text
     if (segments[index - 1]?.kind === "fence") prose = prose.replace(/^\n/, "")
@@ -151,7 +171,7 @@ function SentText({ text }: { text: string }) {
 }
 
 function MessageBody({ message }: { message: Message }) {
-  const { showElapsedTime } = use(TranscriptContext)
+  const { showElapsedTime, commands } = use(TranscriptContext)
   if (message.role === "user") {
     const text = message.parts.map((part) => (part.type === "text" ? part.text : "")).join("")
     const attachments = message.parts.flatMap((part) => (part.type === "attachment" ? [part.attachment] : []))
@@ -171,7 +191,7 @@ function MessageBody({ message }: { message: Message }) {
         {text !== "" && (
           <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm leading-(--leading-message) whitespace-pre-wrap wrap-break-word text-secondary-foreground">
             <FindPartContext value={message.parts.findIndex((part) => part.type === "text")}>
-              <SentText text={text} />
+              <SentText text={text} commands={commands} />
             </FindPartContext>
           </div>
         )}

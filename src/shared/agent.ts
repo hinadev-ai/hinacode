@@ -84,6 +84,7 @@ export const presetModels = (
 export const AgentCommand = Schema.Struct({
   trigger: Schema.Literals(["/", "$"]),
   name: Schema.String,
+  label: Schema.optionalKey(Schema.String),
   description: Schema.String,
   argumentHint: Schema.String,
   builtin: Schema.optionalKey(Schema.Boolean),
