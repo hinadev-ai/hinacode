@@ -1056,7 +1056,6 @@
   "sidebar_thread_unarchive": "取消歸檔",
   "sidebar_thread_unarchive_label": "取消歸檔「{title}」",
   "sidebar_thread_archive_label": "歸檔「{title}」",
-  "sidebar_thread_delete_label": "刪除「{title}」",
   "sidebar_thread_unwatch": "停止監看",
   "sidebar_archive_failed": "無法歸檔：{message}",
   "sidebar_unarchive_failed": "無法取消歸檔：{message}",

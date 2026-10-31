@@ -61,7 +61,6 @@ import {
   PopoverDescription,
   PopoverHeader,
   PopoverTitle,
-  PopoverTrigger,
 } from "./ui/popover.tsx"
 import { ProjectIcon } from "./ProjectIcon.tsx"
 import { snoozeThread } from "./SnoozeDialog.tsx"
@@ -300,7 +299,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
       data-meta={hasMeta}
       onPointerEnter={(event) => scrollTitle(event.currentTarget)}
       onPointerLeave={(event) => stopTitle(event.currentTarget)}
-      className="group/thread relative rounded-md [--row-actions:--spacing(20)] has-[[data-reorder-handle]:focus-visible]:[--row-actions:--spacing(26)] text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=working]:text-muted-foreground data-[emphasis=working]:not-hover:not-focus-within:not-has-[a[data-status=active]]:opacity-60 data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
+      className="group/thread relative rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=working]:text-muted-foreground data-[emphasis=working]:not-hover:not-focus-within:not-has-[a[data-status=active]]:opacity-60 data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
     >
       {meta.project !== null && (
         <div className="flex min-w-0 items-center gap-1 pt-1.5 pr-2 pl-1.5 text-xs text-muted-foreground">
@@ -313,165 +312,176 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
       {mode === "renaming" ? (
         <RenameInput thread={thread} onDone={finishRename} />
       ) : (
-        <Link
-          ref={linkRef}
-          to="/thread/$threadId"
-          params={{ threadId: thread.id }}
-          draggable={false}
-          onContextMenu={(event) => {
-            event.preventDefault()
-            setMenuOpen(true)
-          }}
-          data-reorderable={reorderable}
-          className="flex items-center gap-2 rounded-md pt-1.5 pr-2 group-data-[show-project=true]/thread:pt-0.5 pb-0.5 group-data-[meta=false]/thread:pb-1.5 pl-1.5 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions) focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
-        >
-          <span
-            dir="auto"
-            className="min-w-0 flex-1 truncate text-left text-[0.9375rem] group-hover/thread:text-clip"
-            title={thread.title}
+        <div className="grid grid-cols-1">
+          <Link
+            ref={linkRef}
+            to="/thread/$threadId"
+            params={{ threadId: thread.id }}
+            draggable={false}
+            onContextMenu={(event) => {
+              event.preventDefault()
+              setMenuOpen(true)
+            }}
+            data-reorderable={reorderable}
+            className="[grid-area:1/1] flex items-center gap-2 rounded-md pt-1.5 pr-2 group-data-[show-project=true]/thread:pt-0.5 pb-0.5 group-data-[meta=false]/thread:pb-1.5 pl-1.5 outline-none after:absolute after:inset-0 after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
           >
-            <span data-title-text className="group-hover/thread:inline-block">
-              {thread.title}
-            </span>
-          </span>
-          <StatusIndicator state={state} />
-          <span
-            aria-hidden
-            className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden"
-          >
-            <ActivityTime {...meta} />
-            <ProviderIcon provider={meta.provider} className="size-3" />
-          </span>
-        </Link>
-      )}
-      {hasMeta && <ThreadMeta links={meta.links} threadId={thread.id} cloud={cloud} environment={environment} />}
-
-      {mode !== "renaming" && (
-        <div className="absolute inset-y-0 right-1 flex items-center gap-0.5 opacity-0 group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 focus-within:opacity-100 group-data-[menu-open=true]/thread:opacity-100 has-[[data-popup-open]]:opacity-100">
-          {archived ? (
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label={m.sidebar_thread_unarchive_label({ title: thread.title })}
-              title={m.sidebar_thread_unarchive()}
-              onClick={() => void unarchive()}
+            <span
+              dir="auto"
+              className="min-w-0 flex-1 truncate text-left text-[0.9375rem] group-hover/thread:text-clip"
+              title={thread.title}
             >
-              <UnarchiveIcon aria-hidden />
-            </Button>
-          ) : (
-            <>
-              {reorderable && (
-                <Button
-                  ref={handleRef}
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={m.sidebar_thread_reorder({ title: thread.title })}
-                  aria-roledescription={m.sidebar_thread_reorder_role()}
-                  data-reorder-handle
-                  className="sr-only cursor-grab focus-visible:not-sr-only"
-                >
-                  <GripIcon aria-hidden />
-                </Button>
-              )}
+              <span data-title-text className="group-hover/thread:inline-block">
+                {thread.title}
+              </span>
+            </span>
+            <StatusIndicator state={state} />
+            <span aria-hidden className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+              <ActivityTime {...meta} />
+              <ProviderIcon provider={meta.provider} className="size-3" />
+            </span>
+          </Link>
+          <div
+            data-row-actions
+            className="relative [grid-area:1/1] mr-1 flex items-center gap-0.5 self-center justify-self-end rounded-md bg-sidebar-accent before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-linear-to-l before:from-sidebar-accent opacity-0 group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 focus-within:opacity-100 group-data-[menu-open=true]/thread:opacity-100 has-[[data-popup-open]]:opacity-100"
+          >
+            {archived ? (
               <Button
                 variant="ghost"
                 size="icon-xs"
-                aria-label={m.sidebar_thread_archive_label({ title: thread.title })}
-                title={m.sidebar_thread_archive()}
-                disabled={busy}
-                onClick={() => void archive()}
+                aria-label={m.sidebar_thread_unarchive_label({ title: thread.title })}
+                title={m.sidebar_thread_unarchive()}
+                onClick={() => void unarchive()}
               >
-                <ArchiveIcon aria-hidden />
+                <UnarchiveIcon aria-hidden />
               </Button>
-            </>
-          )}
-          <DeleteThreadPopover
-            thread={thread}
-            cloud={cloud}
-            disabled={busy || isStale(cloud)}
-            open={mode === "delete"}
-            onOpenChange={(open) => setMode(open ? "delete" : "idle")}
-            focusAfterDelete={focusAfterRemoval}
-          />
-          <DropdownMenu
-            open={menuOpen}
-            onOpenChange={setMenuOpen}
-            onOpenChangeComplete={(open) => {
-              if (open || !queued) return
-              setMode(queued)
-              setQueued(null)
-            }}
-          >
-            <DropdownMenuTrigger
-              ref={menuTriggerRef}
-              render={
-                <Button variant="ghost" size="icon-xs" aria-label={m.sidebar_thread_actions({ title: thread.title })} />
-              }
+            ) : (
+              <>
+                {reorderable && (
+                  <Button
+                    ref={handleRef}
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={m.sidebar_thread_reorder({ title: thread.title })}
+                    aria-roledescription={m.sidebar_thread_reorder_role()}
+                    data-reorder-handle
+                    className="sr-only cursor-grab focus-visible:not-sr-only"
+                  >
+                    <GripIcon aria-hidden />
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={m.snooze_label({ title: thread.title })}
+                  title={m.sidebar_thread_snooze()}
+                  onClick={() => useUi.getState().setSnoozeThreadId(thread.id)}
+                >
+                  <SnoozeIcon aria-hidden className="size-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={m.sidebar_thread_archive_label({ title: thread.title })}
+                  title={m.sidebar_thread_archive()}
+                  disabled={busy}
+                  onClick={() => void archive()}
+                >
+                  <ArchiveIcon aria-hidden className="size-4" />
+                </Button>
+              </>
+            )}
+            <DropdownMenu
+              open={menuOpen}
+              onOpenChange={setMenuOpen}
+              onOpenChangeComplete={(open) => {
+                if (open || !queued) return
+                setMode(queued)
+                setQueued(null)
+              }}
             >
-              <MoreIcon aria-hidden />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuItem onClick={queue("renaming")}>
-                <PencilIcon aria-hidden />
-                {m.sidebar_thread_rename()}
-              </DropdownMenuItem>
-              {!archived && (
-                <DropdownMenuItem onClick={() => void togglePin()}>
-                  {pinned ? <UnpinIcon aria-hidden /> : <PinIcon aria-hidden />}
-                  {pinned ? m.sidebar_thread_unpin() : m.sidebar_thread_pin()}
+              <DropdownMenuTrigger
+                ref={menuTriggerRef}
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={m.sidebar_thread_actions({ title: thread.title })}
+                  />
+                }
+              >
+                <MoreIcon aria-hidden />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem onClick={queue("renaming")}>
+                  <PencilIcon aria-hidden />
+                  {m.sidebar_thread_rename()}
                 </DropdownMenuItem>
-              )}
-              {!archived && (
-                <DropdownMenuItem onClick={() => useUi.getState().setSnoozeThreadId(thread.id)}>
-                  <SnoozeIcon aria-hidden />
-                  {m.sidebar_thread_snooze()}
-                </DropdownMenuItem>
-              )}
-              {!archived && meta.snoozedUntil !== null && (
-                <DropdownMenuItem onClick={() => void snoozeThread(thread, null)}>
-                  <AlarmIcon aria-hidden />
-                  {m.sidebar_thread_unsnooze()}
-                </DropdownMenuItem>
-              )}
-              {watched.length === 0 ? (
-                <DropdownMenuItem disabled>
-                  <EyeOffIcon aria-hidden />
-                  {m.sidebar_thread_unwatch()}
-                </DropdownMenuItem>
-              ) : (
-                watched.map((link) => (
-                  <DropdownMenuItem key={link.id} onClick={() => void unwatch(link.url)}>
-                    <EyeOffIcon aria-hidden />
-                    {watched.length > 1
-                      ? m.pr_watch_stop({ name: `#${pullRequestNumber(link.url)}` })
-                      : m.sidebar_thread_unwatch()}
+                {!archived && (
+                  <DropdownMenuItem onClick={() => void togglePin()}>
+                    {pinned ? <UnpinIcon aria-hidden /> : <PinIcon aria-hidden />}
+                    {pinned ? m.sidebar_thread_unpin() : m.sidebar_thread_pin()}
                   </DropdownMenuItem>
-                ))
-              )}
-              <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(thread.id)}>
-                <CopyIcon aria-hidden />
-                {m.sidebar_thread_copy_id()}
-              </DropdownMenuItem>
-              {archived ? (
-                <DropdownMenuItem onClick={() => void unarchive()}>
-                  <UnarchiveIcon aria-hidden />
-                  {m.sidebar_thread_unarchive()}
+                )}
+                {!archived && (
+                  <DropdownMenuItem onClick={() => useUi.getState().setSnoozeThreadId(thread.id)}>
+                    <SnoozeIcon aria-hidden />
+                    {m.sidebar_thread_snooze()}
+                  </DropdownMenuItem>
+                )}
+                {!archived && meta.snoozedUntil !== null && (
+                  <DropdownMenuItem onClick={() => void snoozeThread(thread, null)}>
+                    <AlarmIcon aria-hidden />
+                    {m.sidebar_thread_unsnooze()}
+                  </DropdownMenuItem>
+                )}
+                {watched.length === 0 ? (
+                  <DropdownMenuItem disabled>
+                    <EyeOffIcon aria-hidden />
+                    {m.sidebar_thread_unwatch()}
+                  </DropdownMenuItem>
+                ) : (
+                  watched.map((link) => (
+                    <DropdownMenuItem key={link.id} onClick={() => void unwatch(link.url)}>
+                      <EyeOffIcon aria-hidden />
+                      {watched.length > 1
+                        ? m.pr_watch_stop({ name: `#${pullRequestNumber(link.url)}` })
+                        : m.sidebar_thread_unwatch()}
+                    </DropdownMenuItem>
+                  ))
+                )}
+                <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(thread.id)}>
+                  <CopyIcon aria-hidden />
+                  {m.sidebar_thread_copy_id()}
                 </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem disabled={busy} onClick={() => void archive()}>
-                  <ArchiveIcon aria-hidden />
-                  {m.sidebar_thread_archive()}
+                {archived ? (
+                  <DropdownMenuItem onClick={() => void unarchive()}>
+                    <UnarchiveIcon aria-hidden />
+                    {m.sidebar_thread_unarchive()}
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem disabled={busy} onClick={() => void archive()}>
+                    <ArchiveIcon aria-hidden />
+                    {m.sidebar_thread_archive()}
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem variant="destructive" disabled={busy || isStale(cloud)} onClick={queue("delete")}>
+                  <TrashIcon aria-hidden />
+                  {m.sidebar_thread_delete()}
                 </DropdownMenuItem>
-              )}
-              <DropdownMenuItem variant="destructive" disabled={busy || isStale(cloud)} onClick={queue("delete")}>
-                <TrashIcon aria-hidden />
-                {m.sidebar_thread_delete()}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       )}
-
+      {hasMeta && <ThreadMeta links={meta.links} threadId={thread.id} cloud={cloud} environment={environment} />}
+      <DeleteThreadPopover
+        thread={thread}
+        cloud={cloud}
+        anchor={menuTriggerRef}
+        open={mode === "delete"}
+        onOpenChange={(open) => setMode(open ? "delete" : "idle")}
+        focusAfterDelete={focusAfterRemoval}
+      />
       {worktree && (
         <ArchiveDialog
           thread={thread}
@@ -544,7 +554,7 @@ function RenameInput({ thread, onDone }: { thread: Thread; onDone: () => void })
 interface DeleteThreadPopoverProps {
   readonly thread: Thread
   readonly cloud: Cloud | undefined
-  readonly disabled: boolean
+  readonly anchor: RefObject<HTMLElement | null>
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
   readonly focusAfterDelete: () => HTMLElement | null
@@ -553,7 +563,7 @@ interface DeleteThreadPopoverProps {
 function DeleteThreadPopover({
   thread,
   cloud,
-  disabled,
+  anchor,
   open,
   onOpenChange,
   focusAfterDelete,
@@ -580,24 +590,12 @@ function DeleteThreadPopover({
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger
-        disabled={disabled}
-        render={
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label={m.sidebar_thread_delete_label({ title: thread.title })}
-            title={m.sidebar_thread_delete()}
-          />
-        }
-      >
-        <TrashIcon aria-hidden />
-      </PopoverTrigger>
       <PopoverContent
         side="right"
         align="start"
+        anchor={anchor}
         className="w-64"
-        finalFocus={() => (useThreads.getState().byId[thread.id] ? true : focusAfterDelete())}
+        finalFocus={() => (useThreads.getState().byId[thread.id] ? anchor.current : focusAfterDelete())}
       >
         <PopoverHeader>
           <PopoverTitle>{m.delete_dialog_title()}</PopoverTitle>
@@ -740,7 +738,7 @@ function scrollTitle(row: HTMLElement) {
     const text = titleText(row)
     const box = text?.parentElement
     if (!text || !box || !row.matches(":hover")) return
-    const overflow = text.offsetWidth - box.clientWidth
+    const overflow = text.offsetWidth - box.clientWidth + coveredByActions(row, box)
     if (overflow <= 0) return
     const distance = getComputedStyle(box).direction === "rtl" ? overflow : -overflow
     text.animate([{ transform: "translateX(0)" }, { transform: `translateX(${distance}px)` }], {
@@ -750,6 +748,12 @@ function scrollTitle(row: HTMLElement) {
       fill: "forwards",
     })
   })
+}
+
+function coveredByActions(row: HTMLElement, box: HTMLElement) {
+  const actions = row.querySelector("[data-row-actions]")
+  if (!actions) return 0
+  return Math.max(0, box.getBoundingClientRect().right - actions.getBoundingClientRect().left)
 }
 
 function stopTitle(row: HTMLElement) {
