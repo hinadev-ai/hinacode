@@ -15,6 +15,7 @@ We are building a harness, not a chat app. Our features help a developer manage 
 
 ```sh
 pnpm dev          # electron-vite dev
+pnpm dev:remote   # headless dev app with DevTools at http://<tailscale-ip>:9333, for working from another device
 pnpm build        # main, preload and renderer into out/
 pnpm typecheck    # tsrs over the node, web, web-test, e2e and scripts tsconfigs
 pnpm lint         # oxlint
