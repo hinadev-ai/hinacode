@@ -16,7 +16,6 @@ import {
   useRef,
   useState,
 } from "react"
-import { RiPriceTag3Line, RiRefreshLine } from "react-icons/ri"
 import type { GitCommit, Thread } from "../../shared/domain.ts"
 import { useTheme } from "../lib/appearance.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -31,6 +30,8 @@ import { useWorktrees } from "../stores/worktrees.ts"
 import { Badge } from "./ui/badge.tsx"
 import { Button } from "./ui/button.tsx"
 import { ScrollArea } from "./ui/scroll-area.tsx"
+import { RefreshIcon } from "./icons/RefreshIcon.tsx"
+import { TagIcon } from "./icons/TagIcon.tsx"
 
 const ROW_HEIGHT = 28
 const LANE_INSET = 8
@@ -85,7 +86,7 @@ function GitGraph({ root, branch, threadStatus }: { root: string; branch?: strin
           title={m.git_graph_refresh()}
           onClick={refresh}
         >
-          <RiRefreshLine
+          <RefreshIcon
             aria-hidden
             className={log.waiting ? "animate-spin-late motion-reduce:animate-none" : undefined}
           />
@@ -320,7 +321,7 @@ function RefChips({ refs, branch }: { refs: ReadonlyArray<string>; branch: strin
           emphasized ? "border-working/50 bg-working/10 text-working" : "text-muted-foreground",
         )}
       >
-        {tag !== undefined && <RiPriceTag3Line aria-hidden />}
+        {tag !== undefined && <TagIcon aria-hidden />}
         <span className="truncate">{tag ?? first}</span>
       </Badge>
       {shown.length > 1 && (

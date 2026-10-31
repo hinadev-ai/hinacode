@@ -69,6 +69,8 @@ import {
   TerminalAttachment,
   TerminalOffset,
   TerminalSession,
+  ExternalSession,
+  NativeSessionId,
   Thread,
   Timestamp,
   ThreadSearchHit,
@@ -272,6 +274,24 @@ export const RpcMethods = {
   "threads.changes": rpc(Schema.Struct({ threadId: Schema.String, scope: ChangesScope }), Schema.NullOr(Changes)),
   "threads.fork": rpc(Schema.Struct({ threadId: Schema.String, messageId: Schema.String }), Thread),
   "threads.sidechat": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
+  "sessions.listExternal": rpc(
+    Schema.Struct({ projectId: Schema.String }),
+    Schema.Struct({
+      sessions: Schema.Array(ExternalSession),
+      failures: Schema.Array(
+        Schema.Struct({ provider: AccountProviderId, accountId: Schema.NullOr(Schema.String), message: Schema.String }),
+      ),
+    }),
+  ),
+  "sessions.import": rpc(
+    Schema.Struct({
+      projectId: Schema.String,
+      provider: AccountProviderId,
+      sessionId: NativeSessionId,
+      accountId: Schema.NullOr(Schema.String),
+    }),
+    Thread,
+  ),
   "threads.archive": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   "threads.unarchive": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   "projects.currentBranch": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
@@ -397,6 +417,7 @@ export const RpcMethods = {
       seq: Schema.Number,
     }),
   ),
+  "threads.toolOutput": rpc(Schema.Struct({ threadId: Schema.String, callId: Schema.String }), Schema.Unknown),
   "threads.send": rpc(
     Schema.Struct({
       threadId: Schema.String,
@@ -598,6 +619,8 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "threads.changes": "read",
   "threads.fork": "mutation",
   "threads.sidechat": "mutation",
+  "sessions.listExternal": "read",
+  "sessions.import": "mutation",
   "threads.archive": "mutation",
   "threads.unarchive": "mutation",
   "projects.currentBranch": "read",
@@ -655,6 +678,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "updates.check": "mutation",
   "updates.install": "mutation",
   "threads.transcript": "read",
+  "threads.toolOutput": "read",
   "threads.send": "mutation",
   "threads.queue": "mutation",
   "threads.unqueue": "mutation",

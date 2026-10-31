@@ -9,33 +9,20 @@ import {
   useRef,
   useState,
 } from "react"
-import {
-  RiAddLine,
-  RiArrowUpLine,
-  RiCheckLine,
-  RiCloseLine,
-  RiFileImageLine,
-  RiFileTextLine,
-  RiFileZipLine,
-  RiLoader4Line,
-  RiMicLine,
-  RiStopFill,
-} from "react-icons/ri"
-import type { IconType } from "react-icons"
 import { cn } from "@/lib/utils"
-import {
-  field,
-  floating,
-  ghostButton,
-  iconSwap,
-  iconSwapIn,
-  iconSwapOut,
-  inkButton,
-  mono,
-  paper,
-  ShimmerLabel,
-} from "./surfaces"
+import { field, floating, ghostButton, inkButton, mono, paper, ShimmerLabel } from "./surfaces"
 import { clamp, pct } from "../utils/range"
+import { CheckIcon } from "../../icons/CheckIcon.tsx"
+import { CloseIcon } from "../../icons/CloseIcon.tsx"
+import { FileImageIcon } from "../../icons/FileImageIcon.tsx"
+import { FileTextIcon } from "../../icons/FileTextIcon.tsx"
+import { FileZipIcon } from "../../icons/FileZipIcon.tsx"
+import type { IconComponent } from "../../icons/Icon.tsx"
+import { MicIcon } from "../../icons/MicIcon.tsx"
+import { PlusIcon } from "../../icons/PlusIcon.tsx"
+import { SpinnerIcon } from "../../icons/SpinnerIcon.tsx"
+import { SendGlyph, type SendGlyphMode } from "../../icons/SendGlyph.tsx"
+import { StopIcon } from "../../icons/StopIcon.tsx"
 
 export interface ComposerAttachment {
   name: string
@@ -48,7 +35,7 @@ export interface ComposerAttachment {
 export interface ComposerCommand {
   name: string
   description: string
-  icon: IconType
+  icon: IconComponent
 }
 
 export interface ComposerPerson {
@@ -63,10 +50,10 @@ export interface ComposerUsage {
   total: number
 }
 
-const ATTACHMENT_ICONS: Record<NonNullable<ComposerAttachment["kind"]>, IconType> = {
-  image: RiFileImageLine,
-  text: RiFileTextLine,
-  archive: RiFileZipLine,
+const ATTACHMENT_ICONS: Record<NonNullable<ComposerAttachment["kind"]>, IconComponent> = {
+  image: FileImageIcon,
+  text: FileTextIcon,
+  archive: FileZipIcon,
 }
 
 const BARS = Array.from({ length: 14 }, (_, i) => i)
@@ -276,7 +263,7 @@ export function ComposerAttachmentChip({
       </span>
       <span className="ms-1 flex w-5 items-center justify-end">
         {attachment.state === "uploading" ? (
-          <RiLoader4Line className="text-muted-foreground size-3.5 animate-spin motion-reduce:animate-none" />
+          <SpinnerIcon className="text-muted-foreground size-3.5 animate-spin motion-reduce:animate-none" />
         ) : attachment.state === "done" && onRemove ? (
           <button
             type="button"
@@ -284,10 +271,10 @@ export function ComposerAttachmentChip({
             onClick={() => onRemove(attachment.name)}
             className={cn(ghostButton, "size-5 [&_svg]:size-3")}
           >
-            <RiCloseLine />
+            <CloseIcon />
           </button>
         ) : attachment.state === "done" ? (
-          <RiCheckLine className="size-3.5 text-emerald-500" />
+          <CheckIcon className="size-3.5 text-emerald-500" />
         ) : null}
       </span>
       {attachment.state === "uploading" && (
@@ -381,7 +368,7 @@ export function ComposerAttachButton({ className, ...props }: Omit<ComponentProp
       className={cn(ghostButton, "size-8 disabled:pointer-events-none disabled:opacity-30", className)}
       {...props}
     >
-      <RiAddLine className="size-4" />
+      <PlusIcon className="size-4" />
     </button>
   )
 }
@@ -488,36 +475,34 @@ export function ComposerVoiceButton({
       )}
       {...props}
     >
-      {active ? <RiStopFill className="size-3 fill-current" /> : <RiMicLine className="size-4" />}
+      {active ? <StopIcon className="size-3 fill-current" /> : <MicIcon className="size-4" />}
     </button>
   )
 }
 
 export function ComposerSend({
-  streaming,
+  mode,
   idle,
   className,
   ...props
 }: Omit<ComponentProps<"button">, "children"> & {
-  streaming: boolean
+  mode: SendGlyphMode
   idle: boolean
 }) {
   return (
     <button
       type="button"
-      aria-label={streaming ? "Stop generating" : "Send message"}
       data-slot="composer-send"
       className={cn(
         "grid size-8 place-items-center rounded-full",
-        streaming || !idle
+        mode === "stop" || !idle
           ? "relative send-halo transition-[scale] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96] motion-reduce:transition-none forced-colors:border"
           : "bg-foreground/[0.06] text-muted-foreground inset-ring-border dark:bg-foreground/[0.09] inset-ring transition-colors forced-colors:border forced-colors:border-[GrayText] forced-colors:text-[GrayText]",
         className,
       )}
       {...props}
     >
-      <RiArrowUpLine className={cn(iconSwap, "size-4", streaming ? iconSwapOut : iconSwapIn)} />
-      <RiStopFill className={cn(iconSwap, "size-3 fill-current", streaming ? iconSwapIn : iconSwapOut)} />
+      <SendGlyph mode={mode} className="size-4" />
     </button>
   )
 }

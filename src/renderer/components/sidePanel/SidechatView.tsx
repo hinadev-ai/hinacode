@@ -2,7 +2,6 @@ import { useAtomValue } from "@effect/atom-react"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { useEffect } from "react"
-import { RiChatNewLine } from "react-icons/ri"
 import { isThreadBusy, type Thread } from "../../../shared/domain.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { repositoryAtom, callPromise } from "../../lib/rpc.ts"
@@ -18,6 +17,7 @@ import { SubagentLinks } from "../MessagePart.tsx"
 import { providerLabel } from "../ProviderIcon.tsx"
 import { PendingRequests } from "../ThreadView.tsx"
 import { Button } from "../ui/button.tsx"
+import { ChatNewIcon } from "../icons/ChatNewIcon.tsx"
 
 export function SidechatView({ thread }: { thread: Thread }) {
   const sidechat = useThreads((state) => state.sidechats[thread.id])
@@ -88,7 +88,7 @@ export function SidechatHeader({ thread }: { thread: Thread }) {
           action={discard}
           className="ms-auto"
         >
-          <RiChatNewLine aria-hidden />
+          <ChatNewIcon aria-hidden />
         </Button>
       )}
     </div>

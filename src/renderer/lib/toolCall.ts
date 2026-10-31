@@ -1,5 +1,4 @@
-import type { MessagePart } from "../../shared/domain.ts"
-import { spawnsSubagent } from "./subagents.ts"
+import { type MessagePart, spawnsSubagent } from "../../shared/domain.ts"
 
 const SUMMARY_KEYS = ["command", "file_path", "notebook_path", "pattern", "path", "url", "query", "description"]
 

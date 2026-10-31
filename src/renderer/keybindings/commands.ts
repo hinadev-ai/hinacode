@@ -6,7 +6,13 @@ import type { RpcRequest } from "../../shared/contract.ts"
 import { type ClientSettings, type ExperimentalSettings, Locale, type Project } from "../../shared/domain.ts"
 import { registry } from "../lib/registry.ts"
 import { projectsAtom } from "../lib/rpc.ts"
-import { COMMAND_PREFIX, NEW_THREAD_PREFIX, SEARCH_PREFIX, usePalette } from "../palette/usePalette.ts"
+import {
+  COMMAND_PREFIX,
+  IMPORT_SESSION_PREFIX,
+  NEW_THREAD_PREFIX,
+  SEARCH_PREFIX,
+  usePalette,
+} from "../palette/usePalette.ts"
 import { m } from "../paraglide/messages.js"
 import { useBrowserTabs } from "../stores/browserTabs.ts"
 import { useLocale } from "../stores/locale.ts"
@@ -104,6 +110,12 @@ export const commands = [
             : useUi.getState().setAddProjectOpen(true),
       ),
     when: "!terminalFocus",
+  },
+  {
+    id: "session.import",
+    defaultKeys: "",
+    title: m.command_session_import,
+    run: () => usePalette.getState().show(IMPORT_SESSION_PREFIX),
   },
   {
     id: "project.add",

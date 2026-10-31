@@ -1,3 +1,4 @@
+import { RiGitPullRequestLine } from "react-icons/ri"
 import { Autocomplete } from "@base-ui/react/autocomplete"
 import { Toggle } from "@base-ui/react/toggle"
 import { ToggleGroup } from "@base-ui/react/toggle-group"
@@ -7,17 +8,6 @@ import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { toast } from "sonner"
 import { type KeyboardEvent, useEffect, useId, useRef, useState, useTransition } from "react"
-import type { IconType } from "react-icons"
-import {
-  RiChat3Line,
-  RiCheckLine,
-  RiFlashlightLine,
-  RiGitBranchLine,
-  RiGitPullRequestLine,
-  RiLockUnlockLine,
-  RiShieldCheckLine,
-  RiShieldUserLine,
-} from "react-icons/ri"
 import { type ModelInfo, presetModels, ProviderId, unlistedModel } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import { AccessMode, type OpenPullRequest, type Project, type Thread } from "../../shared/domain.ts"
@@ -59,6 +49,14 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover.tsx"
 import { Slider } from "./ui/slider.tsx"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
+import { BoltIcon } from "./icons/BoltIcon.tsx"
+import { BranchIcon } from "./icons/BranchIcon.tsx"
+import { ChatIcon } from "./icons/ChatIcon.tsx"
+import { CheckIcon } from "./icons/CheckIcon.tsx"
+import type { IconComponent } from "./icons/Icon.tsx"
+import { ShieldIcon } from "./icons/ShieldIcon.tsx"
+import { ShieldUserIcon } from "./icons/ShieldUserIcon.tsx"
+import { UnlockIcon } from "./icons/UnlockIcon.tsx"
 
 interface ControlProps {
   readonly thread: Thread
@@ -129,10 +127,10 @@ const effortShare = (model: ModelInfo | undefined, effort: string | null) => {
   return (model.efforts.indexOf(effort) + 1) / model.efforts.length
 }
 
-export const accessModes: Record<AccessMode, { readonly icon: IconType; readonly label: () => string }> = {
-  supervised: { icon: RiShieldUserLine, label: m.access_supervised },
-  auto: { icon: RiShieldCheckLine, label: m.access_auto },
-  full: { icon: RiLockUnlockLine, label: m.access_full },
+export const accessModes: Record<AccessMode, { readonly icon: IconComponent; readonly label: () => string }> = {
+  supervised: { icon: ShieldUserIcon, label: m.access_supervised },
+  auto: { icon: ShieldIcon, label: m.access_auto },
+  full: { icon: UnlockIcon, label: m.access_full },
 }
 
 const museAccessLabels: Record<AccessMode, () => string> = {
@@ -350,7 +348,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
         <ProviderIcon provider={thread.provider} />
         <span className="min-w-0 truncate text-foreground">{selected.label}</span>
         {effort !== null && <span className="shrink-0">{effortLabel(effort)}</span>}
-        {thread.fastMode && <RiFlashlightLine aria-hidden className="shrink-0" />}
+        {thread.fastMode && <BoltIcon aria-hidden className="shrink-0" />}
         {thread.accessMode === "full" && <AccessIcon aria-hidden className="shrink-0 text-destructive" />}
       </PopoverTrigger>
       <PopoverContent
@@ -421,7 +419,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
                 >
                   <span className="min-w-0 flex-1 truncate">{model.label}</span>
                   {index < 9 && <Kbd aria-hidden>{index + 1}</Kbd>}
-                  <RiCheckLine aria-hidden className={cn("size-4 shrink-0", !isSelected && "invisible")} />
+                  <CheckIcon aria-hidden className={cn("size-4 shrink-0", !isSelected && "invisible")} />
                 </button>
               </li>
             )
@@ -439,7 +437,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
           <div className="flex flex-wrap items-center justify-end gap-1.5 empty:hidden">
             {toggleFast && (
               <ModeToggle
-                icon={RiFlashlightLine}
+                icon={BoltIcon}
                 label={m.thread_fast_mode()}
                 hint={m.thread_fast_mode_hint()}
                 shortcut="F"
@@ -449,7 +447,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
             )}
             {toggleConversation && (
               <ModeToggle
-                icon={RiChat3Line}
+                icon={ChatIcon}
                 label={m.thread_conversation_mode()}
                 hint={m.thread_conversation_mode_hint()}
                 shortcut="C"
@@ -520,7 +518,7 @@ function EffortSlider({ model, value, onCommit }: EffortSliderProps) {
 }
 
 interface ModeToggleProps {
-  readonly icon: IconType
+  readonly icon: IconComponent
   readonly label: string
   readonly hint: string
   readonly shortcut: string
@@ -658,7 +656,7 @@ function RefSuggestionItem({ suggestion }: { suggestion: RefSuggestion }) {
         </>
       ) : (
         <>
-          <RiGitBranchLine aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+          <BranchIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="min-w-0 truncate font-mono">{suggestion.ref}</span>
         </>
       )}
@@ -812,7 +810,7 @@ export function WorkspacePicker({ thread, workspace }: { thread: Thread; workspa
   const setWorkspace = (next: Draft["workspace"]) => useDrafts.getState().setWorkspace(thread.id, next)
   const mode = workspace?.mode ?? "local"
   const ref = workspace?.ref ?? currentBranch
-  const RefIcon = parsePullRequestSelector(ref) ? RiGitPullRequestLine : RiGitBranchLine
+  const RefIcon = parsePullRequestSelector(ref) ? RiGitPullRequestLine : BranchIcon
 
   return (
     <div className="mx-auto mt-1 flex w-full max-w-3xl items-center gap-1 px-1">

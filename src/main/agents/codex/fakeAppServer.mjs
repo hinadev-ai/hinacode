@@ -100,6 +100,19 @@ const reply = ({ id, method, params }) => {
       })
     case "skills/list":
       return send({ id, result: { data: control().skills ?? [] } })
+    case "thread/list":
+      return send({ id, result: control().sessions?.list ?? { data: [], nextCursor: null } })
+    case "thread/read": {
+      const read = control().sessions?.read
+      return read?.thread.id === params.threadId
+        ? send({ id, result: read })
+        : send({ id, error: { code: -32600, message: `thread not loaded: ${params.threadId}` } })
+    }
+    case "thread/turns/list": {
+      const pages = control().sessions?.turnPages ?? []
+      const index = params.cursor ? pages.findIndex((page) => page.nextCursor === params.cursor) + 1 : 0
+      return send({ id, result: pages[index] ?? { data: [], nextCursor: null } })
+    }
     case "thread/start":
     case "thread/resume":
       return send({ id, result: { thread: { id: "codex-thread" }, sandbox: sandboxPolicy(params.sandbox) } })

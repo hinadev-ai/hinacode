@@ -1,5 +1,13 @@
 import { Effect, Schema } from "effect"
-import { AgentProfileName, Compaction, ForkPoint, ProviderId, Question, TokenUsage } from "./agent.ts"
+import {
+  AccountProviderId,
+  AgentProfileName,
+  Compaction,
+  ForkPoint,
+  ProviderId,
+  Question,
+  TokenUsage,
+} from "./agent.ts"
 import { PickedDeviceElement } from "./device.ts"
 import { parsePullRequestSelector, PullRequestSelector } from "./github.ts"
 import { UsageLimit } from "./limits.ts"
@@ -397,6 +405,7 @@ export const MessagePart = Schema.Union([
     name: Schema.String,
     input: Schema.Unknown,
     output: Schema.optional(Schema.Unknown),
+    fullOutputBytes: Schema.optional(Schema.Number),
     status: ToolCallStatus,
     parentCallId: Schema.optional(Schema.String),
   }),
@@ -405,8 +414,16 @@ export const MessagePart = Schema.Union([
   Schema.Struct({ type: Schema.Literal("questions"), text: Schema.String, questions: Schema.Array(Question) }),
   Schema.Struct({ type: Schema.Literal("compaction"), compaction: Compaction }),
   Schema.Struct({ type: Schema.Literal("agent_switch"), from: ProviderId, to: ProviderId }),
+  Schema.Struct({
+    type: Schema.Literal("session_import"),
+    provider: AccountProviderId,
+    history: Schema.Literals(["replayed", "unavailable"]),
+  }),
 ])
 export type MessagePart = typeof MessagePart.Type
+
+// FIXME: Claude Code named its sub-agent tool Task before it became Agent
+export const spawnsSubagent = (call: { readonly name: string }) => call.name === "Agent" || call.name === "Task"
 
 export const MessageRole = Schema.Literals(["user", "assistant"])
 export type MessageRole = typeof MessageRole.Type
@@ -441,6 +458,8 @@ export const ThemeId = Schema.Literals([
   "dracula",
   "material-theme",
   "pinky",
+  "hina-light",
+  "hina-dark",
 ])
 export type ThemeId = typeof ThemeId.Type
 
@@ -894,6 +913,22 @@ export const Automation = Schema.Struct({
   updatedAt: Timestamp,
 })
 export type Automation = typeof Automation.Type
+
+export const NativeSessionId = Schema.String.check(
+  Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+)
+
+export const ExternalSession = Schema.Struct({
+  provider: AccountProviderId,
+  sessionId: NativeSessionId,
+  accountId: Schema.NullOr(Schema.String),
+  title: Schema.String,
+  preview: Schema.String,
+  branch: Schema.NullOr(Schema.String),
+  updatedAt: Timestamp,
+  threadId: Schema.NullOr(Schema.String),
+})
+export type ExternalSession = typeof ExternalSession.Type
 
 export const ThreadSearchHit = Schema.Struct({
   threadId: Schema.String,

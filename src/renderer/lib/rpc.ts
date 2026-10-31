@@ -1,8 +1,9 @@
-import { Effect, Schedule, Schema, Stream } from "effect"
+import { Duration, Effect, Schedule, Schema, Stream } from "effect"
 import { AsyncResult, Atom } from "effect/reactivity"
 import type { ProviderId } from "../../shared/agent.ts"
 import { PushEvent, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../../shared/contract.ts"
 import type { Thread } from "../../shared/domain.ts"
+import { PULL_REQUEST_REFRESH } from "../../shared/github.ts"
 import { msUntilNextReset } from "../../shared/planLimits.ts"
 import { pullRequestAttention } from "../../shared/threadStatus.ts"
 import { m } from "../paraglide/messages.js"
@@ -235,6 +236,10 @@ export const commandsAtom = Atom.family((key: string) =>
   Atom.make(call("commands.list", { threadId: threadIdOf(key) })),
 )
 
+export const externalSessionsAtom = Atom.family((projectId: string) =>
+  Atom.make(call("sessions.listExternal", { projectId })),
+)
+
 export const filesAtom = Atom.family((key: string) => Atom.make(call("files.list", { threadId: threadIdOf(key) })))
 
 export const noFilesAtom = Atom.make(Effect.succeed<ReadonlyArray<string>>([]))
@@ -331,6 +336,27 @@ const windowReturnSignal = Atom.readable((get) => {
   return count
 })
 
+const refreshInStepWhileVisible =
+  (interval: Duration.Duration) =>
+  <A>(self: Atom.Atom<A>) => {
+    const millis = Duration.toMillis(interval)
+    return Atom.transform(self, (get) => {
+      let timer: ReturnType<typeof setTimeout>
+      const scheduleNextRefresh = () => {
+        timer = setTimeout(
+          () => {
+            scheduleNextRefresh()
+            if (!document.hidden) get.refresh(self)
+          },
+          millis - (Date.now() % millis),
+        )
+      }
+      scheduleNextRefresh()
+      get.addFinalizer(() => clearTimeout(timer))
+      return get(self)
+    })
+  }
+
 const gitHubLookup = <Args extends ReadonlyArray<unknown>, A>(
   lookup: (...args: Args) => Effect.Effect<A, RpcError>,
 ) => {
@@ -339,7 +365,7 @@ const gitHubLookup = <Args extends ReadonlyArray<unknown>, A>(
   return familyOf((...args: Args) =>
     cached(...args).pipe(
       Atom.swr({ staleTime: "30 seconds", revalidateOnFocus: true, focusSignal: windowReturnSignal }),
-      Atom.withRefresh("60 seconds"),
+      refreshInStepWhileVisible(PULL_REQUEST_REFRESH),
     ),
   )
 }

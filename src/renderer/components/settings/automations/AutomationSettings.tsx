@@ -3,7 +3,6 @@ import { cn } from "cn"
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, useState, useTransition } from "react"
-import { RiAddLine, RiArrowDownSLine, RiDeleteBinLine, RiPencilLine } from "react-icons/ri"
 import type { Automation, Project } from "../../../../shared/domain.ts"
 import { automationsAtom, callPromise, projectsAtom, updateSettingsAtom } from "../../../lib/rpc.ts"
 import { useSettings } from "../../../lib/settings.ts"
@@ -32,6 +31,10 @@ import { AutomationDetails, WebhookUrlField } from "./AutomationDetails.tsx"
 import { AutomationDialog, type AutomationDialogState } from "./AutomationForm.tsx"
 import { CopyField, formatTime, RunStatusBadge, triggerLabel } from "./shared.tsx"
 import { SkeletonList } from "../../ui/skeleton.tsx"
+import { ChevronDownIcon } from "../../icons/ChevronDownIcon.tsx"
+import { PencilIcon } from "../../icons/PencilIcon.tsx"
+import { PlusIcon } from "../../icons/PlusIcon.tsx"
+import { TrashIcon } from "../../icons/TrashIcon.tsx"
 
 const errorText = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))
 
@@ -47,7 +50,7 @@ export function AutomationSettings() {
     <SettingsSection>
       <SettingsPageAction>
         <Button size="sm" onClick={() => setDialog({ mode: "create" })} disabled={projects.length === 0}>
-          <RiAddLine aria-hidden />
+          <PlusIcon aria-hidden />
           {m.automations_new()}
         </Button>
       </SettingsPageAction>
@@ -251,7 +254,7 @@ function AutomationItem({ automation, projectName, onEdit }: AutomationItemProps
           aria-controls={detailsId}
           onClick={() => setExpanded((open) => !open)}
         >
-          <RiArrowDownSLine
+          <ChevronDownIcon
             aria-hidden
             className={cn(
               "transition-transform duration-200 ease-out motion-reduce:transition-none",
@@ -261,7 +264,7 @@ function AutomationItem({ automation, projectName, onEdit }: AutomationItemProps
           {m.automations_details()}
         </Button>
         <Button variant="ghost" size="sm" onClick={onEdit}>
-          <RiPencilLine aria-hidden />
+          <PencilIcon aria-hidden />
           {m.automations_edit()}
         </Button>
         <DeleteAutomation
@@ -290,7 +293,7 @@ function DeleteAutomation({ name, pending, onConfirm }: DeleteAutomationProps) {
   return (
     <AlertDialog>
       <AlertDialogTrigger render={<Button variant="ghost" size="sm" className="text-destructive" />}>
-        <RiDeleteBinLine aria-hidden />
+        <TrashIcon aria-hidden />
         {m.automations_delete()}
       </AlertDialogTrigger>
       <AlertDialogContent>

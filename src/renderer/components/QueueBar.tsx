@@ -1,6 +1,4 @@
 import { useAutoAnimate } from "@formkit/auto-animate/react"
-import type { IconType } from "react-icons"
-import { RiCloseLine, RiCornerDownRightLine, RiPencilLine, RiShieldCheckLine, RiTimeLine } from "react-icons/ri"
 import type { QueuedMessage, Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
@@ -9,6 +7,12 @@ import { useDrafts } from "../stores/drafts.ts"
 import { ActivityRow } from "./ActivityRow.tsx"
 import { Button } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
+import { ClockIcon } from "./icons/ClockIcon.tsx"
+import { ShieldIcon } from "./icons/ShieldIcon.tsx"
+import { CloseIcon } from "./icons/CloseIcon.tsx"
+import { SteerIcon } from "./icons/SteerIcon.tsx"
+import type { IconComponent } from "./icons/Icon.tsx"
+import { PencilIcon } from "./icons/PencilIcon.tsx"
 
 const summaryOf = (message: QueuedMessage) =>
   message.text.trim() || m.queue_attachments({ count: String(message.attachments.length) })
@@ -68,20 +72,16 @@ export function QueueBar({
           <ActivityRow
             actions={
               <>
-                <QueueAction
-                  icon={RiCornerDownRightLine}
-                  label={m.queue_steer_now()}
-                  onClick={() => steerNow(message.id)}
-                />
-                <QueueAction icon={RiPencilLine} label={m.queue_edit()} onClick={() => edit(message.id)} />
-                <QueueAction icon={RiCloseLine} label={m.queue_remove()} onClick={() => remove(message.id)} />
+                <QueueAction icon={SteerIcon} label={m.queue_steer_now()} onClick={() => steerNow(message.id)} />
+                <QueueAction icon={PencilIcon} label={m.queue_edit()} onClick={() => edit(message.id)} />
+                <QueueAction icon={CloseIcon} label={m.queue_remove()} onClick={() => remove(message.id)} />
               </>
             }
           >
             {message.steer ? (
-              <RiShieldCheckLine aria-hidden className="size-3.5 shrink-0" />
+              <ShieldIcon aria-hidden className="size-3.5 shrink-0" />
             ) : (
-              <RiTimeLine aria-hidden className="size-3.5 shrink-0" />
+              <ClockIcon aria-hidden className="size-3.5 shrink-0" />
             )}
             <span className="truncate text-foreground" title={summaryOf(message)}>
               {summaryOf(message)}
@@ -94,7 +94,7 @@ export function QueueBar({
   )
 }
 
-function QueueAction({ icon: Icon, label, onClick }: { icon: IconType; label: string; onClick: () => void }) {
+function QueueAction({ icon: Icon, label, onClick }: { icon: IconComponent; label: string; onClick: () => void }) {
   return (
     <Tooltip>
       <TooltipTrigger

@@ -1,7 +1,6 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, useState, useTransition } from "react"
-import { RiCheckboxCircleFill } from "react-icons/ri"
 import { callPromise, gitHubAuthAtom, secretStoredAtom } from "../../lib/rpc.ts"
 import { useSettingsEnvironment } from "../../lib/environments.ts"
 import { m } from "../../paraglide/messages.js"
@@ -10,6 +9,7 @@ import { Field, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx
 import { Input } from "../ui/input.tsx"
 import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
+import { CheckCircleFillIcon } from "../icons/CheckCircleFillIcon.tsx"
 
 export function IntegrationSettings() {
   return (
@@ -50,7 +50,7 @@ function GitHubStatus() {
                 case "signedIn":
                   return (
                     <>
-                      <RiCheckboxCircleFill aria-hidden className="size-4 text-success" />
+                      <CheckCircleFillIcon aria-hidden className="size-4 text-success" />
                       {m.settings_github_signed_in({ host: status.host, login: status.login })}
                     </>
                   )
@@ -123,7 +123,7 @@ export function SecretField({ name, label, placeholder, hint }: SecretFieldProps
           .onSuccess((has) =>
             has ? (
               <>
-                <RiCheckboxCircleFill aria-hidden className="size-4 text-success" />
+                <CheckCircleFillIcon aria-hidden className="size-4 text-success" />
                 {m.settings_linear_stored()}
               </>
             ) : (

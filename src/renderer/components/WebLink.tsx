@@ -2,13 +2,13 @@ import { useAtomValue } from "@effect/atom-react"
 import { useParams } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { createContext, type ReactNode, useContext } from "react"
-import { RiGlobalLine } from "react-icons/ri"
 import { parsePullRequestUrl, pullRequestLabel } from "../lib/pullRequestRefs.ts"
 import { usePullRequestHref } from "../lib/environments.ts"
 import { faviconAtom } from "../lib/rpc.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
 import { WithLinkIcon } from "./LinkIcon.tsx"
 import { PullRequestLink } from "./PullRequestLink.tsx"
+import { GlobeIcon } from "./icons/GlobeIcon.tsx"
 
 export const isWebUrl = (href: string | undefined): href is string => /^https?:\/\//i.test(href ?? "")
 
@@ -16,7 +16,7 @@ const originOf = (href: string) => URL.parse(href)?.origin ?? ""
 
 export const FaviconOrigins = createContext<ReadonlySet<string>>(new Set())
 
-const placeholder = <RiGlobalLine className="block size-full text-muted-foreground" />
+const placeholder = <GlobeIcon className="block size-full text-muted-foreground" />
 
 function Favicon({ origin }: { origin: string }) {
   return useContext(FaviconOrigins).has(origin) ? <FetchedFavicon origin={origin} /> : placeholder

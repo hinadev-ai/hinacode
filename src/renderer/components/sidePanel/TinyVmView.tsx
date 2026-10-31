@@ -2,18 +2,6 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { lazy, type ReactNode, Suspense, useEffect, useState, useTransition } from "react"
-import type { IconType } from "react-icons"
-import {
-  RiCameraLine,
-  RiComputerLine,
-  RiErrorWarningLine,
-  RiFingerprintLine,
-  RiFullscreenLine,
-  RiLoader4Line,
-  RiPictureInPicture2Line,
-  RiPictureInPictureExitLine,
-  RiSave3Line,
-} from "react-icons/ri"
 import type { Thread, ThreadVm, VmControl, VmPasskey, VmTemplate } from "../../../shared/domain.ts"
 import { useThreadEnvironment } from "../../lib/environments.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
@@ -26,6 +14,16 @@ import { HoldToConfirmButton } from "../HoldToConfirmButton.tsx"
 import { Button } from "../ui/button.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip.tsx"
+import { CameraIcon } from "../icons/CameraIcon.tsx"
+import { ComputerIcon } from "../icons/ComputerIcon.tsx"
+import { FingerprintIcon } from "../icons/FingerprintIcon.tsx"
+import { FullscreenIcon } from "../icons/FullscreenIcon.tsx"
+import type { IconComponent } from "../icons/Icon.tsx"
+import { PipExitIcon } from "../icons/PipExitIcon.tsx"
+import { PipIcon } from "../icons/PipIcon.tsx"
+import { SaveIcon } from "../icons/SaveIcon.tsx"
+import { SpinnerIcon } from "../icons/SpinnerIcon.tsx"
+import { WarningIcon } from "../icons/WarningIcon.tsx"
 
 export const TinyVmScreen = lazy(() => import("./TinyVmScreen.tsx"))
 const BoatVmScreen = lazy(() => import("./BoatVmScreen.tsx"))
@@ -180,7 +178,7 @@ function NoVm({ threadId }: { threadId: string }) {
 
   return (
     <Centered>
-      <RiComputerLine aria-hidden className="size-6 text-muted-foreground" />
+      <ComputerIcon aria-hidden className="size-6 text-muted-foreground" />
       <div className="flex flex-col gap-1">
         <h3 className="text-sm font-medium">{m.vm_empty_title()}</h3>
         <p className="max-w-64 text-xs text-pretty text-muted-foreground">{m.vm_empty_body()}</p>
@@ -221,7 +219,7 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
         <ControlStatus vm={vm} />
         {vm.profile === "owner" && (
           <IconAction
-            icon={RiSave3Line}
+            icon={SaveIcon}
             label={m.vm_profile_save()}
             onClick={() => run(() => callPromise("vm.profile.save", { threadId }))}
           />
@@ -231,12 +229,8 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
         {control}
         {!floating && (
           <>
-            <IconAction
-              icon={RiPictureInPicture2Line}
-              label={m.vm_float()}
-              onClick={() => setPlacement(threadId, "floating")}
-            />
-            <IconAction icon={RiFullscreenLine} label={m.vm_fullscreen()} onClick={() => showVmFullscreen(threadId)} />
+            <IconAction icon={PipIcon} label={m.vm_float()} onClick={() => setPlacement(threadId, "floating")} />
+            <IconAction icon={FullscreenIcon} label={m.vm_fullscreen()} onClick={() => showVmFullscreen(threadId)} />
           </>
         )}
         <HoldToConfirmButton disabled={pending} onConfirm={() => run(() => callPromise("vm.stop", { threadId }))}>
@@ -257,10 +251,10 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
       {experimental.tinyVmPasskeys && vm.provider === "sbx" && <PasskeyNotice threadId={threadId} run={run} />}
       {floating ? (
         <Centered>
-          <RiPictureInPicture2Line aria-hidden className="size-6 text-muted-foreground" />
+          <PipIcon aria-hidden className="size-6 text-muted-foreground" />
           <p className="max-w-64 text-sm text-pretty">{m.vm_floating_body()}</p>
           <Button variant="outline" size="sm" onClick={() => setPlacement(threadId, "panel")}>
-            <RiPictureInPictureExitLine aria-hidden />
+            <PipExitIcon aria-hidden />
             {m.vm_dock()}
           </Button>
         </Centered>
@@ -296,7 +290,7 @@ export function ControlStatus({ vm }: { vm: RunningVm }) {
         waiting ? "font-medium text-attention" : vm.control === "user" ? "text-foreground" : "text-muted-foreground",
       )}
     >
-      {waiting && <RiErrorWarningLine aria-hidden className="size-3.5 shrink-0" />}
+      {waiting && <WarningIcon aria-hidden className="size-3.5 shrink-0" />}
       <span className="truncate">{label}</span>
     </p>
   )
@@ -341,7 +335,7 @@ export function ScreenshotButton({ threadId, run }: VmActionButtonProps) {
       const attachment = await callPromise("vm.screenshot.save", { threadId })
       await callPromise("shell.reveal", { path: attachment.path })
     })
-  return <IconAction icon={RiCameraLine} label={m.vm_screenshot_save()} onClick={save} />
+  return <IconAction icon={CameraIcon} label={m.vm_screenshot_save()} onClick={save} />
 }
 
 export function PasskeyButton({ threadId, run }: VmActionButtonProps) {
@@ -352,13 +346,13 @@ export function PasskeyButton({ threadId, run }: VmActionButtonProps) {
   switch (state.status) {
     case "off":
     case "failed":
-      return <IconAction icon={RiFingerprintLine} label={m.vm_passkey_prepare()} onClick={prepare} />
+      return <IconAction icon={FingerprintIcon} label={m.vm_passkey_prepare()} onClick={prepare} />
     case "ready":
       return (
-        <IconAction icon={RiFingerprintLine} label={m.vm_passkey_ready()} onClick={prepare} className="text-success" />
+        <IconAction icon={FingerprintIcon} label={m.vm_passkey_ready()} onClick={prepare} className="text-success" />
       )
     case "pending":
-      return <IconAction icon={RiFingerprintLine} label={m.vm_passkey_pending({ origin: state.origin })} disabled />
+      return <IconAction icon={FingerprintIcon} label={m.vm_passkey_pending({ origin: state.origin })} disabled />
   }
 }
 
@@ -376,7 +370,7 @@ export function PasskeyNotice({ threadId, run }: VmActionButtonProps) {
   if (state.status !== "pending") return null
   return (
     <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs">
-      <RiFingerprintLine aria-hidden className="size-3.5 shrink-0" />
+      <FingerprintIcon aria-hidden className="size-3.5 shrink-0" />
       <p aria-live="polite" className="min-w-0 flex-1 truncate" title={m.vm_passkey_pending({ origin: state.origin })}>
         {m.vm_passkey_pending({ origin: state.origin })}
       </p>
@@ -388,7 +382,7 @@ export function PasskeyNotice({ threadId, run }: VmActionButtonProps) {
 }
 
 interface IconActionProps {
-  readonly icon: IconType
+  readonly icon: IconComponent
   readonly label: string
   readonly onClick?: () => void
   readonly disabled?: boolean
@@ -432,7 +426,7 @@ function Centered({ children }: { children: ReactNode }) {
 export function Spinner({ label }: { label: string }) {
   return (
     <output className="flex flex-1 items-center justify-center gap-2 p-6 text-sm text-muted-foreground">
-      <RiLoader4Line aria-hidden className="size-4 animate-spin motion-reduce:animate-none" />
+      <SpinnerIcon aria-hidden className="size-4 animate-spin motion-reduce:animate-none" />
       {label}
     </output>
   )
@@ -449,7 +443,7 @@ interface FailureProps {
 function Failure({ title, message, retry, pending = false, onRetry }: FailureProps) {
   return (
     <Centered>
-      <RiErrorWarningLine aria-hidden className="size-6 text-destructive" />
+      <WarningIcon aria-hidden className="size-6 text-destructive" />
       <div role="alert" className="flex flex-col gap-1">
         {title && <h3 className="text-sm font-medium">{title}</h3>}
         <p className="max-w-80 font-mono text-xs break-words text-muted-foreground">{message}</p>

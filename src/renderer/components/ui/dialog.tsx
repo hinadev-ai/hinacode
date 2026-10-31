@@ -6,7 +6,7 @@ import { cn } from "cn"
 
 import { m } from "@/paraglide/messages.js"
 import { Button } from "@/components/ui/button"
-import { RiCloseLine } from "react-icons/ri"
+import { CloseIcon } from "../icons/CloseIcon.tsx"
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
@@ -62,7 +62,7 @@ function DialogContent({
             data-slot="dialog-close"
             render={<Button variant="ghost" className="absolute top-2 right-2" size="icon-sm" />}
           >
-            <RiCloseLine />
+            <CloseIcon />
             <span className="sr-only">{m.common_close()}</span>
           </DialogPrimitive.Close>
         )}

@@ -27,6 +27,23 @@
       {
         "allow": ["**/*.css"]
       }
+    ],
+    "hinacode/allergic-to-sparkling-icon": "error",
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          { "name": "lucide", "message": "No Lucide icons. Use react-icons/ri (Remix)." },
+          { "name": "react-icons/lu", "message": "No Lucide icons. Use react-icons/ri (Remix)." }
+        ],
+        "patterns": [
+          { "group": ["@lucide/*", "lucide-*"], "message": "No Lucide icons. Use react-icons/ri (Remix)." },
+          {
+            "group": ["@remixicon/*"],
+            "message": "Use the HinaCode icons in src/renderer/components/icons, or react-icons/ri."
+          }
+        ]
+      }
     ]
   },
   "overrides": [

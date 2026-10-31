@@ -1,7 +1,21 @@
 import { homedir } from "node:os"
 import { dirname } from "node:path"
 import { parsePatch } from "@pulls.review/core/patch-parser"
-import { Cache, Clock, Context, Effect, Exit, Layer, Schema, Semaphore, Struct } from "effect"
+import {
+  type Array as Arr,
+  Cache,
+  Clock,
+  Context,
+  Duration,
+  Effect,
+  Exit,
+  Layer,
+  Request,
+  RequestResolver,
+  Schema,
+  Semaphore,
+  Struct,
+} from "effect"
 import { ChildProcessSpawner } from "effect/process"
 import type {
   CheckRun,
@@ -20,7 +34,12 @@ import type {
   PullRequestMatch,
 } from "../../shared/domain.ts"
 import { PullRequestComment } from "../../shared/domain.ts"
-import { type GitHubRepository, parseGitHubPullRequestUrl, parseGitHubRepository } from "../../shared/github.ts"
+import {
+  type GitHubRepository,
+  parseGitHubPullRequestUrl,
+  parseGitHubRepository,
+  PULL_REQUEST_REFRESH,
+} from "../../shared/github.ts"
 import { Events } from "./Events.ts"
 import { CommandError, makeExec, REMOTE_GIT_ARGS, REMOTE_GIT_ENV, type RunOptions } from "./Git.ts"
 
@@ -139,26 +158,32 @@ const PullRequestDetailFields = Schema.Struct({
 type PullRequestDetailFields = typeof PullRequestDetailFields.Type
 
 // FIXME: `gh pr view` hides GitHub's rate limit headers, so this asks `gh api graphql` instead
-const PULL_REQUEST_QUERY = `query PullRequest($owner: String!, $name: String!, $number: Int!) {
-  repository(owner: $owner, name: $name) {
-    pullRequest(number: $number) {
-      url number title state isDraft reviewDecision mergeable
-      author { login }
-      headRefName baseRefName headRefOid additions deletions changedFiles body
-      commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
-        ... on CheckRun { __typename name status conclusion detailsUrl checkSuite { workflowRun { workflow { name } } } }
-        ... on StatusContext { __typename context state targetUrl }
-      } } } } } }
-      comments(last: 50) { nodes { ...Comment url } }
-      reviews(last: 50) { nodes { ...Comment url } }
-      reviewThreads(last: 50) { nodes { isResolved comments(first: 20) { nodes { ...Comment url path line } } } }
-    }
-  }
+const PULL_REQUEST_FRAGMENTS = `fragment PullRequestFields on PullRequest {
+  url number title state isDraft reviewDecision mergeable
+  author { login }
+  headRefName baseRefName headRefOid additions deletions changedFiles body
+  commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
+    ... on CheckRun { __typename name status conclusion detailsUrl checkSuite { workflowRun { workflow { name } } } }
+    ... on StatusContext { __typename context state targetUrl }
+  } } } } } }
+  comments(last: 50) { nodes { ...Comment url } }
+  reviews(last: 50) { nodes { ...Comment url } }
+  reviewThreads(last: 50) { nodes { isResolved comments(first: 20) { nodes { ...Comment url path line } } } }
 }
 
 fragment Comment on Comment {
   id body createdAt viewerDidAuthor author { __typename login }
 }`
+
+export const pullRequestsQuery = (count: number) => {
+  const aliases = Array.from({ length: count }, (_, index) => index)
+  const variables = aliases.map((index) => `$owner${index}: String!, $name${index}: String!, $number${index}: Int!`)
+  const reads = aliases.map(
+    (index) =>
+      `  pr${index}: repository(owner: $owner${index}, name: $name${index}) { pullRequest(number: $number${index}) { ...PullRequestFields } }`,
+  )
+  return `query PullRequests(${variables.join(", ")}) {\n${reads.join("\n")}\n}\n\n${PULL_REQUEST_FRAGMENTS}`
+}
 
 const GraphQLCheck = Schema.Union([
   Schema.Struct({
@@ -226,11 +251,25 @@ const GraphQLPullRequest = Schema.Struct({
   }),
 })
 
-const decodePullRequestResponse = Schema.decodeUnknownEffect(
+const decodePullRequestsResponse = Schema.decodeUnknownEffect(
   Schema.fromJsonString(
-    Schema.Struct({ data: Schema.Struct({ repository: Schema.Struct({ pullRequest: GraphQLPullRequest }) }) }),
+    Schema.Struct({
+      data: Schema.NullOr(
+        Schema.Record(Schema.String, Schema.NullOr(Schema.Struct({ pullRequest: Schema.NullOr(Schema.Unknown) }))),
+      ),
+    }),
   ),
 )
+const decodeGraphQLPullRequest = Schema.decodeUnknownEffect(GraphQLPullRequest)
+
+class PullRequestRead extends Request.Class<
+  { readonly url: string },
+  PullRequestDetailFields,
+  GitHubError | Schema.SchemaError
+> {}
+
+const PULL_REQUESTS_PER_QUERY = 10
+const BATCH_WINDOW_MS = 20
 
 const toRollupEntry = (check: typeof GraphQLCheck.Type): RollupEntry => {
   if (check.__typename === "StatusContext") {
@@ -450,9 +489,16 @@ const budgetLevel = ({ limit, remaining }: GitHubRateLimit): BudgetLevel =>
 const ApiErrorBody = Schema.Struct({
   message: Schema.optionalKey(Schema.String),
   errors: Schema.optionalKey(
-    Schema.Array(Schema.Struct({ type: Schema.optionalKey(Schema.String), message: Schema.String })),
+    Schema.Array(
+      Schema.Struct({
+        type: Schema.optionalKey(Schema.String),
+        message: Schema.String,
+        path: Schema.optionalKey(Schema.Array(Schema.Union([Schema.String, Schema.Number]))),
+      }),
+    ),
   ),
 })
+type ApiErrorBody = typeof ApiErrorBody.Type
 const decodeApiErrorBody = Schema.decodeUnknownOption(Schema.fromJsonString(ApiErrorBody))
 
 const decodeAuthStatus = Schema.decodeUnknownEffect(AuthStatusJson)
@@ -544,9 +590,9 @@ const RATE_LIMITED = /rate limit/i
 const SECONDARY_PAUSE_MS = 60_000
 const MAX_SECONDARY_PAUSE_MS = 15 * 60_000
 
-const OPEN_PULL_REQUEST_TTL = "30 seconds"
+const OPEN_PULL_REQUEST_TTL = Duration.subtract(PULL_REQUEST_REFRESH, Duration.seconds(10))
 const LOW_BUDGET_PULL_REQUEST_TTL = "5 minutes"
-const FINISHED_PULL_REQUEST_TTL = "10 minutes"
+const FINISHED_PULL_REQUEST_TTL = "1 hour"
 
 const make = Effect.gen(function* () {
   const exec = makeExec(yield* ChildProcessSpawner.ChildProcessSpawner)
@@ -628,7 +674,9 @@ const make = Effect.gen(function* () {
       return stdout
     })
 
-  const ghApi = (args: ReadonlyArray<string>): Effect.Effect<string, GitHubError> =>
+  const ghApi = (
+    args: ReadonlyArray<string>,
+  ): Effect.Effect<{ readonly body: string; readonly errors: NonNullable<ApiErrorBody["errors"]> }, GitHubError> =>
     Effect.gen(function* () {
       yield* failIfPaused
       // FIXME: gh exits 1 for any error response; the status line and body say which
@@ -651,13 +699,13 @@ const make = Effect.gen(function* () {
           now < pausedUntil ? pausedUntil : pauseFor(now, Number.isFinite(retryAfter) ? retryAfter : undefined)
         return yield* new GitHubRateLimitedError({ resetsAt })
       }
-      if (response.status >= 400 || errors.length > 0) {
+      if (response.status >= 400) {
         return yield* new GitHubApiError({
           detail: errors.map((entry) => entry.message).join("\n") || message || `HTTP ${response.status}`,
         })
       }
       secondaryHits = 0
-      return response.body
+      return { body: response.body, errors }
     })
 
   const auth = gh(homedir(), ["auth", "status", "--json", "hosts"]).pipe(
@@ -708,27 +756,48 @@ const make = Effect.gen(function* () {
 
   const lastRead = new Map<string, PullRequestDetailFields>()
 
-  const fetchPullRequest = (url: string) => {
-    const [owner = "", name = "", , number = ""] = new URL(url).pathname.slice(1).split("/")
-    return ghApi([
-      "graphql",
-      "-f",
-      `query=${PULL_REQUEST_QUERY}`,
-      "-f",
-      `owner=${owner}`,
-      "-f",
-      `name=${name}`,
-      "-F",
-      `number=${number}`,
-    ]).pipe(
-      Effect.flatMap(decodePullRequestResponse),
-      Effect.map(({ data }) => fromGraphQL(data.repository.pullRequest)),
-    )
-  }
+  const fetchPullRequests = (entries: Arr.NonEmptyArray<Request.Entry<PullRequestRead>>) =>
+    Effect.gen(function* () {
+      const variables = entries.flatMap(({ request }, index) => {
+        const [owner = "", name = "", , number = ""] = new URL(request.url).pathname.slice(1).split("/")
+        return ["-f", `owner${index}=${owner}`, "-f", `name${index}=${name}`, "-F", `number${index}=${number}`]
+      })
+      const { body, errors } = yield* ghApi([
+        "graphql",
+        "-f",
+        `query=${pullRequestsQuery(entries.length)}`,
+        ...variables,
+      ])
+      const { data } = yield* decodePullRequestsResponse(body)
+      yield* Effect.forEach(
+        entries,
+        (entry, index) => {
+          const alias = `pr${index}`
+          const pullRequest = data?.[alias]?.pullRequest
+          const detail = errors
+            .filter((error) => error.path === undefined || error.path[0] === alias)
+            .map((error) => error.message)
+            .join("\n")
+          const read: Effect.Effect<PullRequestDetailFields, GitHubApiError | Schema.SchemaError> =
+            pullRequest === undefined || pullRequest === null
+              ? Effect.fail(new GitHubApiError({ detail: detail || "GitHub did not return this pull request" }))
+              : Effect.map(decodeGraphQLPullRequest(pullRequest), fromGraphQL)
+          return Effect.map(Effect.exit(read), (exit) => entry.completeUnsafe(exit))
+        },
+        { discard: true },
+      )
+    })
+
+  const pullRequestReads = RequestResolver.make(fetchPullRequests).pipe(
+    RequestResolver.setDelayEffect(
+      Effect.promise(() => new Promise((resolve) => setTimeout(resolve, BATCH_WINDOW_MS))),
+    ),
+    RequestResolver.batchN(PULL_REQUESTS_PER_QUERY),
+  )
 
   const reads = yield* Cache.makeWith(
     (url: string) =>
-      fetchPullRequest(url).pipe(
+      Effect.request(new PullRequestRead({ url }), pullRequestReads).pipe(
         Effect.tap((json) => Effect.sync(() => lastRead.set(url, json))),
         Effect.catchTag("GitHubRateLimitedError", (error) => {
           const last = lastRead.get(url)

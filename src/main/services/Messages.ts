@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Schema } from "effect"
+import { Context, Effect, Layer, Option, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { ForkPoint, TokenUsage } from "../../shared/agent.ts"
 import { Message, MessagePart } from "../../shared/domain.ts"
@@ -17,6 +17,7 @@ export class Messages extends Context.Service<
   Messages,
   {
     readonly list: (threadId: string) => Effect.Effect<ReadonlyArray<Message>, PersistenceError>
+    readonly toolOutput: (threadId: string, callId: string) => Effect.Effect<Option.Option<unknown>, PersistenceError>
     readonly insert: (message: Message) => Effect.Effect<void, PersistenceError>
     readonly update: (message: Message) => Effect.Effect<void, PersistenceError>
     readonly closeInterrupted: Effect.Effect<void, PersistenceError>
@@ -33,12 +34,30 @@ const make = Effect.gen(function* () {
     execute: (threadId) => sql`SELECT * FROM message WHERE thread_id = ${threadId} ORDER BY created_at, rowid`,
   })
 
+  const findToolOutput = SqlSchema.findOneOption({
+    Request: Schema.Struct({ threadId: Schema.String, callId: Schema.String }),
+    Result: Schema.Struct({ output: Schema.fromJsonString(Schema.Unknown) }),
+    execute: ({ threadId, callId }) => sql`
+      SELECT part.value -> '$.output' AS output
+      FROM message, json_each(message.parts) AS part
+      WHERE message.thread_id = ${threadId}
+        AND json_extract(part.value, '$.type') = 'tool_call'
+        AND json_extract(part.value, '$.callId') = ${callId}
+        AND part.value -> '$.output' IS NOT NULL
+    `,
+  })
+
   const findInterrupted = SqlSchema.findAll({
     Request: Schema.Void,
     Result: MessageRow,
     execute: () => sql`
       SELECT * FROM message
-      WHERE role = 'assistant' AND (
+      WHERE role = 'assistant'
+      AND thread_id IN (
+        SELECT id FROM thread WHERE status IN ('running', 'awaiting_approval', 'limited')
+        UNION SELECT thread_id FROM message WHERE completed_at IS NULL
+      )
+      AND (
         completed_at IS NULL OR EXISTS (
           SELECT 1 FROM json_each(message.parts)
           WHERE json_extract(value, '$.type') = 'tool_call' AND json_extract(value, '$.status') = 'running'
@@ -75,6 +94,11 @@ const make = Effect.gen(function* () {
 
   return Messages.of({
     list: (threadId) => findByThread(threadId).pipe(Effect.mapError(persistence("messages.list"))),
+    toolOutput: (threadId, callId) =>
+      findToolOutput({ threadId, callId }).pipe(
+        Effect.map(Option.map((row) => row.output)),
+        Effect.mapError(persistence("messages.toolOutput")),
+      ),
     insert: (message) =>
       encodeRow(message).pipe(
         Effect.flatMap((row) => sql`INSERT INTO message ${sql.insert(row)}`),
