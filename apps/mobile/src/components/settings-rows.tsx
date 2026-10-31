@@ -110,15 +110,7 @@ export function SwitchRow({
 }) {
   return (
     <SettingsRow icon={icon} label={label} disabled={disabled}>
-      <Toggle
-        accessibilityRole="switch"
-        accessibilityLabel={label}
-        aria-checked={value}
-        aria-disabled={disabled}
-        value={value}
-        disabled={disabled}
-        onValueChange={onChange}
-      />
+      <Toggle accessibilityLabel={label} value={value} disabled={disabled} onValueChange={onChange} />
     </SettingsRow>
   )
 }
