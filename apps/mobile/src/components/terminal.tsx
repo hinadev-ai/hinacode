@@ -2,7 +2,7 @@ import type { PushEvent } from "@shared/contract.ts"
 import { useEffect, useEffectEvent, useRef, useState } from "react"
 import { Keyboard, Platform, Pressable, StyleSheet, Text, View } from "react-native"
 import { Icon } from "@/components/icon"
-import { Notice } from "@/components/ui"
+import { Button, Notice } from "@/components/ui"
 import { radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, onEvent, useConnection } from "@/lib/connection"
@@ -18,12 +18,18 @@ type Session = { readonly id: string; size: string; generation: number }
 
 const clamp = (value: number) => Math.min(1000, Math.max(1, Math.floor(value)))
 
+/** The thread's shell, replaced by a fresh one when the developer asks after it exits. */
+export function TerminalPanel({ threadId }: { threadId: string }) {
+  const [shell, setShell] = useState(0)
+  return <TerminalSession key={shell} threadId={threadId} onRestart={() => setShell(shell + 1)} />
+}
+
 /**
  * A shell in the thread's worktree. The session opens once the view knows its grid size and is
  * closed when this component unmounts, i.e. when the thread screen goes away. After a reconnect it
  * attaches to the same session and catches up from the last output it showed.
  */
-export function TerminalPanel({ threadId }: { threadId: string }) {
+function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart: () => void }) {
   const theme = useTheme()
   const generation = useConnection((state) => state.generation)
   const view = useRef<TerminalViewHandle>(null)
@@ -154,13 +160,18 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
     <View style={styles.container}>
       {error !== null && <Notice text={error} tone="danger" />}
       {exitCode !== undefined && (
-        <Notice
-          text={
-            exitCode === null
-              ? copy("mobile_terminal_exited")
-              : copy("mobile_terminal_exited_code", { code: String(exitCode) })
-          }
-        />
+        <View style={styles.exited}>
+          <View style={styles.exitedNotice}>
+            <Notice
+              text={
+                exitCode === null
+                  ? copy("mobile_terminal_exited")
+                  : copy("mobile_terminal_exited_code", { code: String(exitCode) })
+              }
+            />
+          </View>
+          <Button label={copy("mobile_terminal_restart")} icon="RiTerminalBoxLine" onPress={onRestart} />
+        </View>
       )}
       <View style={[styles.surface, { borderColor: theme.border }]}>
         <TerminalView
@@ -240,6 +251,8 @@ function useKeyboardVisible() {
 const styles = StyleSheet.create({
   container: { flex: 1, gap: 8, paddingHorizontal: 12, paddingBottom: 12 },
   row: { flexDirection: "row", gap: 6 },
+  exited: { flexDirection: "row", alignItems: "center", gap: 8 },
+  exitedNotice: { flex: 1 },
   key: {
     flex: 1,
     height: 40,
