@@ -515,7 +515,7 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
   const stateOf = (worktree: Worktree) =>
     Effect.gen(function* () {
       if (!(yield* fs.exists(worktree.path))) return "missing"
-      const status = yield* git.run(worktree.path, ["status", "--porcelain"])
+      const status = yield* git.run(worktree.path, ["status", "--porcelain", "--untracked-files=normal"])
       return status.trim() === "" ? "clean" : "dirty"
     })
 

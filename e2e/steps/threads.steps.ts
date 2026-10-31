@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test"
 import { type Names, Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
-import { sidebar, threadMenu } from "../support/ui.ts"
+import { clickRowButton, sidebar, threadMenu } from "../support/ui.ts"
 
 When("I start a new thread in {string}", async ({ app, names }, project: string) => {
   await app.page.getByRole("button", { name: `New thread in ${names.of(project)}`, exact: true }).click()
@@ -66,9 +66,7 @@ When("I scroll the sidebar to the thread {string}", async ({ app, names }, title
 })
 
 When("I archive the thread {string} from its row", async ({ app, names }, title: string) => {
-  const archive = sidebar(app.page).getByRole("button", { name: `Archive ${names.of(title)}`, exact: true })
-  await archive.locator("xpath=ancestor::li[1]").hover()
-  await archive.click()
+  await clickRowButton(sidebar(app.page), `Archive ${names.of(title)}`)
 })
 
 Then("the thread {string} is in view in the sidebar", async ({ app, names }, title: string) => {
@@ -80,10 +78,12 @@ When("I open the sidebar tab {string}", async ({ app }, tab: string) => {
   await expect(openTab(app.page)).toHaveCount(1)
 })
 
+When("I undo from the toast", async ({ app }) => {
+  await app.page.getByRole("button", { name: "Undo", exact: true }).click()
+})
+
 When("I unarchive the thread {string}", async ({ app, names }, title: string) => {
-  await sidebar(app.page)
-    .getByRole("button", { name: `Unarchive ${names.of(title)}`, exact: true })
-    .click()
+  await clickRowButton(sidebar(app.page), `Unarchive ${names.of(title)}`)
 })
 
 const sidebarFilter = (page: Page) => sidebar(page).getByRole("searchbox", { name: "Filter threads and projects" })
@@ -102,10 +102,8 @@ When("I show only the project {string} in the sidebar", async ({ app, names }, p
   await app.page.keyboard.press("Escape")
 })
 
-When("I delete the thread {string} from its row", async ({ app, names }, title: string) => {
-  const remove = sidebar(app.page).getByRole("button", { name: `Delete ${names.of(title)}`, exact: true })
-  await remove.locator("xpath=ancestor::li[1]").hover()
-  await remove.click()
+When("I delete the thread {string} from its menu", async ({ app, names }, title: string) => {
+  await threadMenu(app.page, names.of(title), "Delete…")
   const dialog = app.page.getByRole("dialog")
   await expect(dialog).toContainText(`"${names.of(title)}"`)
   await dialog.getByRole("button", { name: "Delete thread", exact: true }).click()
@@ -192,9 +190,7 @@ Then("the open tab lists the thread {string}", async ({ app, names }, title: str
 })
 
 const openTabMenu = async (page: Page, title: string, item: string) => {
-  await openTab(page)
-    .getByRole("button", { name: `Actions for ${title}`, exact: true })
-    .click()
+  await clickRowButton(openTab(page), `Actions for ${title}`)
   await page.getByRole("menuitem", { name: item, exact: true }).click()
 }
 
@@ -273,6 +269,6 @@ Then("the row of the thread {string} keeps its height when hovered", async ({ ap
   const heightOf = async () => (await row.boundingBox())?.height
   await app.page.mouse.move(0, 0)
   const resting = await heightOf()
-  await link.hover()
+  await row.hover()
   await expect.poll(heightOf).toBe(resting)
 })
