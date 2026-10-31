@@ -242,10 +242,16 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
         setMode("archive")
         return
       }
-      moveOut(await callPromise("threads.archive", { threadId: thread.id }))
+      moveOutArchived(await callPromise("threads.archive", { threadId: thread.id }))
     } catch (cause) {
       toast.error(m.sidebar_archive_failed({ message: errorMessage(cause) }))
     }
+  }
+  const moveOutArchived = (updated: Thread) => {
+    moveOut(updated)
+    toast(m.sidebar_thread_archived({ title: updated.title }), {
+      action: { label: m.common_undo(), onClick: () => void unarchive() },
+    })
   }
   const unarchive = async () => {
     try {
@@ -482,7 +488,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
           worktree={worktree}
           open={mode === "archive"}
           onOpenChange={closeDialog}
-          onArchived={moveOut}
+          onArchived={moveOutArchived}
         />
       )}
     </li>
