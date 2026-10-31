@@ -19,16 +19,25 @@ import {
 import { cn } from "../lib/utils.ts"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
-import { isThreadBusy, type Thread, toCheckoutTarget } from "../../shared/domain.ts"
+import { isThreadBusy, type Project, type Thread, toCheckoutTarget } from "../../shared/domain.ts"
+import { mentionableThreads } from "../../shared/threadMention.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { promptWithComments } from "../lib/lineComments.ts"
-import { callPromise, commandsAtom, completionKey, currentBranchAtom, filesAtom, noFilesAtom } from "../lib/rpc.ts"
+import {
+  callPromise,
+  commandsAtom,
+  completionKey,
+  currentBranchAtom,
+  filesAtom,
+  noFilesAtom,
+  projectsAtom,
+} from "../lib/rpc.ts"
 import { askSidechat, sidechatCommand, sidechatQuestion } from "../lib/sidechat.ts"
 import { useIsChat } from "../lib/useIsChat.ts"
 import { m } from "../paraglide/messages.js"
 import { type Draft, emptyDraft, useDrafts } from "../stores/drafts.ts"
 import { useMessages } from "../stores/messages.ts"
-import { selectProjectThreads, useThreads } from "../stores/threads.ts"
+import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import {
   ComposerActions,
@@ -122,9 +131,8 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   const files = AsyncResult.getOrElse(useAtomValue(filesSource), (): ReadonlyArray<string> => [])
   const refreshFiles = useAtomRefresh(filesSource)
   const threadsById = useThreads((state) => state.byId)
-  const otherThreads = selectProjectThreads(thread.projectId)({ byId: threadsById }).filter(
-    (other) => other.id !== thread.id,
-  )
+  const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => [])
+  const mentionable = mentionableThreads(thread, Object.values(threadsById), projects)
   const refreshCommands = useAtomRefresh(commandsAtom(key))
   const refreshRootBranch = useAtomRefresh(currentBranchAtom(thread.projectId))
   const busy = isThreadBusy(thread.status)
@@ -267,7 +275,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
               onValueChange={(next) => useDrafts.getState().setText(thread.id, next)}
               commands={commands}
               files={files}
-              threads={otherThreads}
+              threads={mentionable}
               projectId={thread.projectId}
               onKeyDown={onKeyDown}
               onPaste={onPaste}

@@ -974,6 +974,26 @@ describe("desktop environments over a flaky link", () => {
     }
   })
 
+  test("a direct address that opens but never says ready leaves the link on the relay", async () => {
+    const relay = await scriptedCloud("stuck-direct", { tls })
+    const port = await pairThenLoseDirect("stuck-direct", relay.relay)
+    const stuck = await scriptedCloud("stuck-direct", { port })
+    stuck.holdReady()
+    try {
+      await vi.waitFor(async () => {
+        await adjust("500 millis")
+        expect(stuck.hasHeldReady()).toBe(true)
+      })
+      await adjust("10 seconds")
+      await connectedTimes("stuck-direct", 2)
+      expect(relay.auths).toStrictEqual(["token"])
+    } finally {
+      await remove("stuck-direct")
+      relay.stop()
+      stuck.stop()
+    }
+  })
+
   test("a direct address that sends no challenge gets no token when the pairing has a relay", async () => {
     const relay = await scriptedCloud("silent-direct", { tls })
     const port = await pairThenLoseDirect("silent-direct", relay.relay)

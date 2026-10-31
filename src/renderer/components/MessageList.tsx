@@ -21,7 +21,7 @@ import { FindPartContext, Highlighted } from "./FindHighlight.tsx"
 import { HighlightedCode } from "./HighlightedCode.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { MessageActions } from "./MessageActions.tsx"
-import { MessagePartView, ToolGroup, useFindDisclosure } from "./MessagePart.tsx"
+import { MessagePartView, PartThread, ToolGroup, useFindDisclosure } from "./MessagePart.tsx"
 import { PostedQuestionsCard } from "./QuestionCard.tsx"
 import { FaviconOrigins, WebLink } from "./WebLink.tsx"
 import { EarlierActivity, WorkedFor } from "./WorkedFor.tsx"
@@ -216,7 +216,9 @@ function AssistantBody({ message, showElapsedTime }: { message: Message; showEla
           <EarlierActivity count={foldedCount} expanded={activityShown} onExpandedChange={setActivityShown} />
         )
       )}
-      <AssistantParts message={message} parts={shownParts} writingIndex={writingIndex} />
+      <PartThread value={message.threadId}>
+        <AssistantParts message={message} parts={shownParts} writingIndex={writingIndex} />
+      </PartThread>
       {streaming && (parts.length === 0 || writingIndex !== undefined) && (
         <p className="text-xs text-shimmer">
           {writingIndex !== undefined ? m.message_writing() : m.message_thinking()}

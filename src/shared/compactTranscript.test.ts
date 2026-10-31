@@ -1,6 +1,14 @@
 import { describe, expect, test } from "@effect/vitest"
 import type { Message } from "./domain.ts"
-import { compactMessage, TRANSCRIPT_PAGE_BYTES, toolSummary, transcriptPage } from "./compactTranscript.ts"
+import {
+  compactMessage,
+  previewMessage,
+  previewPush,
+  TOOL_OUTPUT_PREVIEW_CHARS,
+  TRANSCRIPT_PAGE_BYTES,
+  toolSummary,
+  transcriptPage,
+} from "./compactTranscript.ts"
 
 const message = (parts: Message["parts"]): Message => ({
   id: "m",
@@ -24,6 +32,7 @@ describe("compactMessage", () => {
           name: "Bash",
           input: { command: "cat <<EOF\nlong\nEOF", description: "Write a file" },
           output: "a\nb",
+          fullOutputBytes: 3,
           status: "done",
         },
         {
@@ -109,5 +118,70 @@ describe("transcriptPage", () => {
 
   test("an unknown message gives an empty page", () => {
     expect(transcriptPage(transcript, "gone")).toStrictEqual({ messages: [], hasEarlier: false })
+  })
+})
+
+const call = (output: unknown): Message["parts"][number] => ({
+  type: "tool_call",
+  callId: "c",
+  name: "Bash",
+  input: { command: "seq" },
+  output,
+  status: "done",
+})
+
+describe("previewMessage", () => {
+  const lines = Array.from({ length: 1000 }, (_, line) => `line ${line}`).join("\n")
+
+  test("keeps the whole lines at the end of a long string output and records its full size", () => {
+    const [part] = previewMessage(message([call(lines)])).parts
+    const preview = part?.type === "tool_call" ? String(part.output) : ""
+    expect(part).toMatchObject({ fullOutputBytes: lines.length })
+    expect(preview.length).toBeLessThanOrEqual(TOOL_OUTPUT_PREVIEW_CHARS)
+    expect(preview).toMatch(/^line \d+\n/)
+    expect(lines.endsWith(preview)).toBe(true)
+  })
+
+  test("cuts a long output without line breaks at the limit and counts UTF-8 bytes", () => {
+    const wide = "漢".repeat(TOOL_OUTPUT_PREVIEW_CHARS + 1)
+    expect(previewMessage(message([call(wide)])).parts).toStrictEqual([
+      { ...call("漢".repeat(TOOL_OUTPUT_PREVIEW_CHARS)), fullOutputBytes: wide.length * 3 },
+    ])
+  })
+
+  test("leaves a sub-agent's report whole", () => {
+    const reports = ["Agent", "Task"].map((name) => ({ ...call(lines), name }))
+    expect(previewMessage(message(reports)).parts).toStrictEqual(reports)
+  })
+
+  test("leaves short and structured outputs whole", () => {
+    const parts = [call("x".repeat(TOOL_OUTPUT_PREVIEW_CHARS)), call([{ type: "text", text: lines }])]
+    expect(previewMessage(message(parts)).parts).toStrictEqual(parts)
+  })
+})
+
+describe("previewPush", () => {
+  test("shortens a finished call's long output and leaves other events alone", () => {
+    const long = "x".repeat(TOOL_OUTPUT_PREVIEW_CHARS * 2)
+    const finished = previewPush({
+      type: "thread.event",
+      seq: 1,
+      threadId: "t",
+      event: { type: "tool_call_finished", callId: "c", output: long, isError: false },
+    })
+    expect(finished).toStrictEqual({
+      type: "thread.event",
+      seq: 1,
+      threadId: "t",
+      event: {
+        type: "tool_call_finished",
+        callId: "c",
+        output: long.slice(-TOOL_OUTPUT_PREVIEW_CHARS),
+        fullOutputBytes: long.length,
+        isError: false,
+      },
+    })
+    const delta = { type: "thread.event", seq: 2, threadId: "t", event: { type: "text_delta", text: long } } as const
+    expect(previewPush(delta)).toBe(delta)
   })
 })

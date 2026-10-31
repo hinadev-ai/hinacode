@@ -262,10 +262,10 @@ export class Transport {
     this.retryTimer = undefined
     this.setStatus("connecting", null)
     this.round = round
-    this.connectTimer = setTimeout(
-      () => (this.socket === null ? this.noneOpened() : this.onLinkLost()),
-      CONNECT_TIMEOUT_MS,
-    )
+    this.connectTimer = setTimeout(() => {
+      if (this.socket === null) this.noneOpened()
+      else if (!this.triedRelayInstead(this.route!)) this.onLinkLost()
+    }, CONNECT_TIMEOUT_MS)
     this.cancelRace = race(
       round === "both"
         ? this.dials
@@ -306,14 +306,21 @@ export class Transport {
     }
   }
 
+  /**
+   * Away from home, a stranger's HinaCode can answer at the same LAN address and refuse a token the machine still
+   * accepts, and after a network change a direct address can open and then never authenticate. Either way it wins
+   * every race against the relay, so a direct session that ends before `ready` leaves the next round to the relay,
+   * whose hostname is the machine's own.
+   */
+  private triedRelayInstead(route: Dial["route"]) {
+    if (route !== "direct" || this.status !== "connecting" || !this.hasRelay()) return false
+    this.dropSocket()
+    this.open("relay")
+    return true
+  }
+
   private closed(code: number, route: Dial["route"]) {
-    // Away from home, a stranger's HinaCode can answer at the same LAN address and refuse a token the machine
-    // still accepts, so only the relay, whose hostname is the machine's own, gets the last word.
-    if (code === CLOSE_UNAUTHORIZED && route === "direct" && this.status === "connecting" && this.hasRelay()) {
-      this.dropSocket()
-      this.open("relay")
-      return
-    }
+    if (this.triedRelayInstead(route)) return
     if (code === CLOSE_UNAUTHORIZED || code === CLOSE_TOKEN_ROTATED) {
       this.dropSocket()
       this.unauthorized(
