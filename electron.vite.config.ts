@@ -37,6 +37,13 @@ export default defineConfig({
     resolve: { alias: { "@": resolve(import.meta.dirname, "src/renderer") } },
     build: { minify: true },
     esbuild: process.env.HINACODE_KEEP_NAMES ? { keepNames: true } : undefined,
-    plugins: [react({ babel: { plugins: ["babel-plugin-react-compiler"] } }), tailwindcss(), paraglide()],
+    plugins: [
+      react({
+        exclude: [/\/node_modules\//, /\/src\/renderer\/paraglide\//],
+        babel: { plugins: ["babel-plugin-react-compiler"] },
+      }),
+      tailwindcss(),
+      paraglide(),
+    ],
   },
 })

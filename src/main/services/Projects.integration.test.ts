@@ -108,6 +108,22 @@ describe("Projects.listWithRepositories", () => {
     }).pipe(Effect.provide(projectsLayer)),
   )
 
+  it.live("keeps a project's actions across edits that leave them out", () =>
+    Effect.gen(function* () {
+      const projects = yield* Projects
+      const project = yield* projects.create({ name: "repo", rootPath: withOrigin(null), setupScript: null })
+      expect(project.actions).toStrictEqual([])
+
+      const actions = [
+        { name: "Dev server", command: "pnpm dev" },
+        { name: "Test", command: "pnpm test" },
+      ]
+      yield* projects.update({ id: project.id, actions })
+      yield* projects.update({ id: project.id, name: "renamed" })
+      expect((yield* projects.get(project.id)).actions).toStrictEqual(actions)
+    }).pipe(Effect.provide(projectsLayer)),
+  )
+
   it.live("leaves the key out without a GitHub origin", () =>
     Effect.gen(function* () {
       expect(yield* listedAt(withOrigin(null))).not.toHaveProperty("repository")

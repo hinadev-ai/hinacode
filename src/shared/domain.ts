@@ -20,6 +20,9 @@ export type Timestamp = typeof Timestamp.Type
 export const ProjectKind = Schema.Literals(["folder", "chats"])
 export type ProjectKind = typeof ProjectKind.Type
 
+export const ProjectAction = Schema.Struct({ name: Schema.String, command: Schema.String })
+export type ProjectAction = typeof ProjectAction.Type
+
 export const Project = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
@@ -31,6 +34,7 @@ export const Project = Schema.Struct({
   repository: Schema.optionalKey(Schema.String),
   linearReview: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
   kind: ProjectKind.pipe(Schema.withDecodingDefaultKey(Effect.succeed("folder" as const))),
+  actions: Schema.Array(ProjectAction).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 })
 export type Project = typeof Project.Type
 
@@ -618,6 +622,7 @@ export const Settings = Schema.Struct({
   archive: ArchiveSettings,
   experimental: ExperimentalSettings,
   worktreeRoot: Schema.NullOr(Schema.String.check(Schema.isPattern(/^\//))),
+  actions: Schema.Array(ProjectAction).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 })
 export type Settings = typeof Settings.Type
 
@@ -649,6 +654,7 @@ export const defaultSettings: Settings = {
     tinyVmSetupScript: "",
   },
   worktreeRoot: null,
+  actions: [],
 }
 
 export const Machine = Schema.Struct({
@@ -848,6 +854,7 @@ export const TerminalSession = Schema.Struct({
   rows: Schema.Number,
   status: Schema.Literals(["running", "exited"]),
   exitCode: Schema.NullOr(Schema.Number),
+  title: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
 })
 export type TerminalSession = typeof TerminalSession.Type
 

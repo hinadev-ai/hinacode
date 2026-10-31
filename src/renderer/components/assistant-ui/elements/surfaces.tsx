@@ -14,14 +14,11 @@ export const field = "bg-foreground/[0.04] forced-colors:border dark:bg-foregrou
 export const fieldInteractive =
   "bg-foreground/[0.04] transition-colors hover:bg-foreground/[0.07] forced-colors:border dark:bg-foreground/[0.06] dark:hover:bg-foreground/[0.09]"
 
-export const pressable =
-  "transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.96] motion-reduce:transition-none"
-
 export const ghostButton =
-  "flex items-center justify-center rounded-full text-muted-foreground outline-hidden transition-[background-color,color,scale] duration-150 hover:bg-foreground/[0.06] hover:text-foreground/90 active:scale-[0.96] focus-visible:ring-3 focus-visible:ring-ring/50 motion-reduce:transition-none dark:hover:bg-foreground/[0.09]"
+  "flex items-center justify-center rounded-full text-muted-foreground outline-hidden transition-[background-color,color] duration-150 hover:bg-foreground/[0.06] hover:text-foreground/90 focus-visible:ring-3 focus-visible:ring-ring/50 motion-reduce:transition-none dark:hover:bg-foreground/[0.09]"
 
 export const inkButton =
-  "bg-foreground text-background transition-[opacity,scale] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:opacity-90 active:scale-[0.96] motion-reduce:transition-none forced-colors:border"
+  "bg-foreground text-background transition-opacity duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:opacity-90 motion-reduce:transition-none forced-colors:border"
 
 export const labelSwap =
   "col-start-1 row-start-1 flex w-max items-center gap-1.5 leading-none transition-[opacity,filter] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none"

@@ -26,6 +26,7 @@ describe("activeWorkspace", () => {
         rootPath: "/repo",
         worktreeId: null,
         baseRef: null,
+        branch: null,
       })
     }),
   )
@@ -38,6 +39,7 @@ describe("activeWorkspace", () => {
         rootPath: "/repo",
         worktreeId: expect.any(String),
         baseRef: "main",
+        branch: "feature",
       })
     }),
   )
@@ -53,6 +55,7 @@ describe("activeWorkspace", () => {
         rootPath: "/repo",
         worktreeId: null,
         baseRef: null,
+        branch: null,
       })
     }),
   )
@@ -68,6 +71,7 @@ describe("activeWorkspace", () => {
         rootPath: "/repo",
         worktreeId: null,
         baseRef: null,
+        branch: null,
       })
     }),
   )

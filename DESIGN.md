@@ -16,7 +16,7 @@ Developers who run several Claude Code and Codex agents at once across repositor
 - **Type:** DM Sans Variable for UI, with Noto Sans TC or JP for Han and kana. Code and paths use Paper Mono by defaults. Sizes come from the Tailwind scale plus `text-2xs`, in rem so they follow the font size setting. Rely on weight and size for hierarchy before color.
 - **Mark:** `scripts/logo.ts` draws the logo and writes every icon from it, in the coral `#E56B4F`, teal `#167A79`, ink `#233737` and paper `#F7F7F2` palette that the Hina Light and Hina Dark themes use. Coral on paper is 3:1, so never set body text in coral.
 - **Theme:** light and dark are equal citizens, and every UI change is checked in both. New profiles follow the system appearance. Don't add dark-only assumptions.
-- **Motion:** use the easings in `index.css` (`--ease-out` and the rest), keep it short (under 200 ms for UI feedback), and use the `pressable` utility for press feedback. Every animation has a reduced-motion variant.
+- **Motion:** use the easings in `index.css` (`--ease-out` and the rest), keep it short (under 200 ms for UI feedback), and use the `pressable` utility for state transitions on clickable elements. Pressing does not scale anything. Every animation has a reduced-motion variant.
 
 ### Design Principles
 
