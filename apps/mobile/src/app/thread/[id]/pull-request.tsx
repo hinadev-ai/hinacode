@@ -165,7 +165,9 @@ function PullRequestView({
         </View>
         <View style={styles.pills}>
           <PullRequestState status={detail.status} />
-          {detail.review !== null && <Pill label={reviewLabel(detail.review)} tone={reviewTone[detail.review]} />}
+          {isOpen(detail) && detail.review !== null && (
+            <Pill label={reviewLabel(detail.review)} tone={reviewTone[detail.review]} />
+          )}
           {isOpen(detail) && detail.mergeable === "mergeable" && (
             <Pill label={copy("mobile_pr_mergeable")} tone="neutral" icon="RiCheckLine" />
           )}

@@ -167,7 +167,7 @@ function PullRequestCard({
   const watching = (link?.watch ?? null) !== null
   const failed = remote?.status === "error" ? remote.message : null
   const reference = pullRequestReference(url)
-  const review = pr?.review ?? null
+  const review = pr !== null && (pr.status === "open" || pr.status === "draft") ? pr.review : null
   const label =
     pr === null
       ? [reference, failed !== null && copy("mobile_pr_card_failed", { message: failed })]
