@@ -94,6 +94,63 @@ describe("Terminals", () => {
     )
 
     it.effect(
+      "runs a project action with the setup script's variables and keeps the shell",
+      () =>
+        Effect.gen(function* () {
+          const root = gitRepo("action-root")
+          const worktree = gitRepo("action-worktree")
+          const { threadId } = yield* seedThread({
+            rootPath: root,
+            worktree: { path: worktree, baseRef: "main", status: "ready" },
+          })
+          const terminals = yield* Terminals
+          const updates = yield* PubSub.subscribe(yield* Pushes)
+          const session = yield* terminals.open({
+            threadId,
+            cols: 200,
+            rows: 24,
+            command: {
+              title: "Paths",
+              line: 'echo "root=$HINACODE_ROOT_PATH tree=$HINACODE_WORKTREE_PATH branch=$HINACODE_BRANCH"',
+            },
+          })
+          expect(session.title).toBe("Paths")
+
+          let text = ""
+          while (!text.includes(`root=${root} tree=${worktree} branch=feature`)) {
+            const event = yield* PubSub.take(updates)
+            if (event.type === "terminal.data" && event.id === session.id) text += event.data
+          }
+          expect(yield* terminals.list(threadId)).toMatchObject([{ id: session.id, status: "running" }])
+        }).pipe(Effect.scoped),
+      30_000,
+    )
+
+    it.effect(
+      "keeps a multi-line action's later lines out of an earlier command's input",
+      () =>
+        Effect.gen(function* () {
+          const { threadId } = yield* seedThread({ rootPath: gitRepo("multiline") })
+          const terminals = yield* Terminals
+          const updates = yield* PubSub.subscribe(yield* Pushes)
+          const session = yield* terminals.open({
+            threadId,
+            cols: 120,
+            rows: 24,
+            command: { title: "Script", line: "read reply\necho second-$((1 + 1))" },
+          })
+          yield* terminals.write(session.id, "\n")
+
+          let text = ""
+          while (!text.includes("second-2")) {
+            const event = yield* PubSub.take(updates)
+            if (event.type === "terminal.data" && event.id === session.id) text += event.data
+          }
+        }).pipe(Effect.scoped),
+      30_000,
+    )
+
+    it.effect(
       "ends every session of a thread and reports each exit",
       () =>
         Effect.gen(function* () {

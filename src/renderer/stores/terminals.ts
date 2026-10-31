@@ -5,6 +5,11 @@ import { loadSize, saveSize, TERMINAL_HEIGHT_BOUNDS } from "../lib/panelSize.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { attachTerminalOutput, disposeTerminal } from "../lib/terminalScreens.ts"
 
+export interface TerminalCommand {
+  readonly title: string
+  readonly line: string
+}
+
 interface ThreadTerminals {
   readonly sessions: ReadonlyArray<TerminalSession>
   readonly activeId: string | null
@@ -18,7 +23,7 @@ interface TerminalsState {
   readonly setHeight: (height: number) => void
   readonly setActive: (threadId: string, id: string) => void
   readonly toggle: (threadId: string) => Promise<void>
-  readonly openSession: (threadId: string) => Promise<void>
+  readonly openSession: (threadId: string, command?: TerminalCommand) => Promise<void>
   readonly close: (threadId: string, id: string) => Promise<void>
   readonly attach: (id: string) => Promise<void>
   readonly markExited: (id: string, exitCode: number | null) => void
@@ -62,9 +67,9 @@ export const useTerminals = create<TerminalsState>()((set, get) => {
     if (session?.status === "exited") markExited(id, session.exitCode)
   }
 
-  const openSession = async (threadId: string) => {
+  const openSession = async (threadId: string, command?: TerminalCommand) => {
     try {
-      const session = await callPromise("terminal.open", { threadId, ...INITIAL_SIZE })
+      const session = await callPromise("terminal.open", { threadId, ...INITIAL_SIZE, command })
       set({ error: null })
       update(threadId, (current) => ({ sessions: [...current.sessions, session], activeId: session.id, open: true }))
       void attach(session.id)

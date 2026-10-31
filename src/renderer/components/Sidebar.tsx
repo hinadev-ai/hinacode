@@ -3,7 +3,8 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { useRouter, useNavigate } from "@tanstack/react-router"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { AsyncResult } from "effect/reactivity"
-import { type RefObject, useEffect, useId, useRef, useState } from "react"
+import { type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react"
+import { RiInbox2Line } from "react-icons/ri"
 import { useShallow } from "zustand/react/shallow"
 import type { Project, SidebarGroup, Thread } from "../../shared/domain.ts"
 import { environmentOf, isStale, useCloud, useClouds } from "../lib/environments.ts"
@@ -16,6 +17,7 @@ import { SIDEBAR_BOUNDS, SIDEBAR_DEFAULT_WIDTH } from "../lib/panelSize.ts"
 import { startThread } from "../lib/startThread.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
+import { NEW_THREAD_PREFIX, usePalette } from "../palette/usePalette.ts"
 import {
   selectArchivedThreads,
   selectInboxThreads,
@@ -32,6 +34,22 @@ import { GroupNameDialog } from "./GroupNameDialog.tsx"
 import { ResizeHandle } from "./ResizeHandle.tsx"
 import { ProjectDialog } from "./ProjectDialog.tsx"
 import { ProjectIcon } from "./ProjectIcon.tsx"
+import { ArchiveIcon } from "./icons/ArchiveIcon.tsx"
+import { ArrowDownIcon } from "./icons/ArrowDownIcon.tsx"
+import { ArrowUpIcon } from "./icons/ArrowUpIcon.tsx"
+import { ChatIcon } from "./icons/ChatIcon.tsx"
+import { ChevronDownIcon } from "./icons/ChevronDownIcon.tsx"
+import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
+import { FilterFillIcon } from "./icons/FilterFillIcon.tsx"
+import { FilterIcon } from "./icons/FilterIcon.tsx"
+import { FolderAddIcon } from "./icons/FolderAddIcon.tsx"
+import { FolderIcon } from "./icons/FolderIcon.tsx"
+import { MoreIcon } from "./icons/MoreIcon.tsx"
+import { PencilIcon } from "./icons/PencilIcon.tsx"
+import { PlusIcon } from "./icons/PlusIcon.tsx"
+import { SearchIcon } from "./icons/SearchIcon.tsx"
+import { TrashIcon } from "./icons/TrashIcon.tsx"
+import type { IconComponent } from "./icons/Icon.tsx"
 import { ProjectMenu } from "./ProjectMenu.tsx"
 import { SidebarThreadList } from "./SidebarThreadList.tsx"
 import { Button } from "./ui/button.tsx"
@@ -45,22 +63,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx"
-import { Input } from "./ui/input.tsx"
 import { ScrollArea } from "./ui/scroll-area.tsx"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.tsx"
-import { ArrowDownIcon } from "./icons/ArrowDownIcon.tsx"
-import { ArrowUpIcon } from "./icons/ArrowUpIcon.tsx"
-import { ChatIcon } from "./icons/ChatIcon.tsx"
-import { ChatNewIcon } from "./icons/ChatNewIcon.tsx"
-import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
-import { FilterFillIcon } from "./icons/FilterFillIcon.tsx"
-import { FilterIcon } from "./icons/FilterIcon.tsx"
-import { FolderAddIcon } from "./icons/FolderAddIcon.tsx"
-import { FolderIcon } from "./icons/FolderIcon.tsx"
-import { MoreIcon } from "./icons/MoreIcon.tsx"
-import { PencilIcon } from "./icons/PencilIcon.tsx"
-import { PlusIcon } from "./icons/PlusIcon.tsx"
-import { TrashIcon } from "./icons/TrashIcon.tsx"
 
 export function Sidebar({
   compact,
@@ -102,61 +106,71 @@ export function Sidebar({
           : "relative flex min-h-0 flex-1 flex-col border-r border-sidebar-border bg-sidebar glass:bg-sidebar/80 text-sidebar-foreground"
       }
     >
-      <div className="flex items-center gap-0.5 px-2 pt-2 pb-1">
-        <Input
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          aria-label={m.sidebar_filter_label()}
-          placeholder={m.sidebar_filter_placeholder()}
-          className="mr-1 h-7 min-w-0 flex-1 text-sm glass:glass-field"
-        />
-        <ProjectFilterMenu />
-        <NewChatButton />
-        <Button
-          ref={addProjectButtonRef}
-          variant="ghost"
-          size="icon-xs"
-          aria-label={m.sidebar_add_project()}
-          onClick={() => setAddProjectOpen(true)}
-        >
-          <FolderAddIcon aria-hidden />
-        </Button>
-      </div>
-
-      <PinnedThreads query={query.trim().toLocaleLowerCase()} />
-
-      <Tabs value={tab} onValueChange={(value: SidebarTab) => setTab(value)} className="min-h-0 flex-1 gap-1">
-        <TabsList variant="line" className="w-full justify-start px-2">
-          <TabsTrigger value="inbox" className="flex-none px-2 text-xs">
-            {m.sidebar_tab_inbox()}
-          </TabsTrigger>
-          <TabsTrigger value="threads" className="flex-none px-2 text-xs">
-            {m.sidebar_tab_threads()}
-          </TabsTrigger>
-          <TabsTrigger value="archived" className="flex-none px-2 text-xs">
-            {m.sidebar_tab_archived()}
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="inbox" className="flex min-h-0 flex-col">
-          <ScrollArea className="min-h-0 flex-1">
-            <InboxList query={query.trim().toLocaleLowerCase()} />
-          </ScrollArea>
-        </TabsContent>
-        <TabsContent value="threads" className="flex min-h-0 flex-col">
-          <ScrollArea className="min-h-0 flex-1">
-            <ProjectList
-              query={query.trim().toLocaleLowerCase()}
-              onAddProject={() => setAddProjectOpen(true)}
-              focusAfterDelete={addProjectButtonRef}
+      <Tabs
+        value={tab}
+        onValueChange={(value: SidebarTab) => setTab(value)}
+        orientation="vertical"
+        className="min-h-0 flex-1 flex-col gap-3"
+      >
+        <div className="flex flex-col gap-px px-2 pt-2">
+          <NavRow
+            icon={PlusIcon}
+            label={m.command_thread_new()}
+            onClick={() => usePalette.getState().show(NEW_THREAD_PREFIX)}
+          />
+          <div className="group/search flex h-8 items-center gap-2 rounded-md ps-2 pe-1 text-sidebar-foreground focus-within:bg-sidebar-accent hover:bg-sidebar-accent">
+            <SearchIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              aria-label={m.sidebar_filter_label()}
+              placeholder={m.sidebar_search_placeholder()}
+              className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-sidebar-foreground [&::-webkit-search-cancel-button]:hidden"
             />
-          </ScrollArea>
-        </TabsContent>
-        <TabsContent value="archived" className="flex min-h-0 flex-col">
-          <ScrollArea className="min-h-0 flex-1">
-            <ArchivedList query={query.trim().toLocaleLowerCase()} />
-          </ScrollArea>
-        </TabsContent>
+            <ProjectFilterMenu />
+          </div>
+          <TabsList
+            aria-label={m.sidebar_views()}
+            className="w-full items-stretch gap-px bg-transparent p-0 *:data-[slot=tabs-indicator]:hidden"
+          >
+            <SidebarTabTrigger value="inbox" icon={RiInbox2Line} label={m.sidebar_tab_inbox()} />
+            <SidebarTabTrigger value="threads" icon={ChatIcon} label={m.sidebar_tab_threads()} />
+            <SidebarTabTrigger value="archived" icon={ArchiveIcon} label={m.sidebar_tab_archived()} />
+          </TabsList>
+        </div>
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="flex flex-col gap-3 pb-3">
+            <PinnedThreads query={query.trim().toLocaleLowerCase()} />
+            <TabsContent value="inbox" className="flex flex-col">
+              <InboxList query={query.trim().toLocaleLowerCase()} />
+            </TabsContent>
+            <TabsContent value="threads" className="flex flex-col">
+              <SectionHeading
+                title={m.sidebar_projects()}
+                action={
+                  <Button
+                    ref={addProjectButtonRef}
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={m.sidebar_add_project()}
+                    onClick={() => setAddProjectOpen(true)}
+                  >
+                    <FolderAddIcon aria-hidden />
+                  </Button>
+                }
+              />
+              <ProjectList
+                query={query.trim().toLocaleLowerCase()}
+                onAddProject={() => setAddProjectOpen(true)}
+                focusAfterDelete={addProjectButtonRef}
+              />
+            </TabsContent>
+            <TabsContent value="archived" className="flex flex-col">
+              <ArchivedList query={query.trim().toLocaleLowerCase()} />
+            </TabsContent>
+          </div>
+        </ScrollArea>
       </Tabs>
 
       <ProjectDialog
@@ -221,17 +235,55 @@ function useMatchingThreads(select: (state: Pick<ThreadsState, "byId">) => Reado
 
 function PinnedThreads({ query }: { query: Query }) {
   const threads = useMatchingThreads(selectPinnedThreads, query)
+  const [open, setOpen] = useState(true)
   if (threads.length === 0) return null
   return (
-    <section
-      aria-label={m.sidebar_pinned()}
-      className="flex max-h-1/3 shrink-0 flex-col border-b border-sidebar-border pb-1"
+    <Collapsible open={open} onOpenChange={setOpen} render={<section aria-label={m.sidebar_pinned()} />}>
+      <CollapsibleTrigger className="group/heading mx-2 flex h-7 items-center gap-0.5 rounded-md px-2 text-xs font-medium text-muted-foreground outline-none hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring">
+        <h2>{m.sidebar_pinned()}</h2>
+        <ChevronDownIcon
+          aria-hidden
+          className="size-4 -rotate-90 transition-transform group-data-panel-open/heading:rotate-0 motion-reduce:transition-none"
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <SidebarThreadList group="pinned" threads={threads} reorderable={false} showProject className="px-2" />
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+function SectionHeading({ title, action }: { title: string; action?: ReactNode }) {
+  return (
+    <div className="mx-2 flex h-7 items-center justify-between gap-2 ps-2 pe-1">
+      <h2 className="text-xs font-medium text-muted-foreground">{title}</h2>
+      {action}
+    </div>
+  )
+}
+
+function NavRow({ icon: Icon, label, onClick }: { icon: IconComponent; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex h-8 items-center gap-2 rounded-md px-2 text-left text-sm text-sidebar-foreground outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring"
     >
-      <h2 className="px-3.5 pt-1 text-xs font-medium text-muted-foreground">{m.sidebar_pinned()}</h2>
-      <ScrollArea className="min-h-0">
-        <SidebarThreadList group="pinned" threads={threads} reorderable={false} showProject className="px-1.5" />
-      </ScrollArea>
-    </section>
+      <Icon aria-hidden className="size-4 shrink-0" />
+      {label}
+    </button>
+  )
+}
+
+function SidebarTabTrigger({ value, icon: Icon, label }: { value: SidebarTab; icon: IconComponent; label: string }) {
+  return (
+    <TabsTrigger
+      value={value}
+      className="h-8 flex-none justify-start gap-2 rounded-md border-0 px-2 text-sm font-normal text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-active:font-medium data-active:text-sidebar-foreground dark:text-muted-foreground dark:data-active:text-sidebar-foreground"
+    >
+      <Icon aria-hidden />
+      {label}
+    </TabsTrigger>
   )
 }
 
@@ -241,23 +293,18 @@ function InboxList({ query }: { query: Query }) {
   const snoozed = useMatchingThreads(selectSnoozedThreads(now), query)
   return (
     <>
+      <SectionHeading title={m.sidebar_tab_inbox()} />
       {threads.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-muted-foreground">
+        <p className="px-4 py-1 text-xs text-muted-foreground">
           {query === "" ? m.sidebar_no_inbox() : m.sidebar_no_matches()}
         </p>
       ) : (
-        <SidebarThreadList group="inbox" threads={threads} reorderable={false} showProject className="px-1.5 pb-3" />
+        <SidebarThreadList group="inbox" threads={threads} reorderable={false} showProject className="px-2" />
       )}
       {snoozed.length > 0 && (
-        <section aria-label={m.sidebar_snoozed()} className="border-t border-sidebar-border pt-1">
-          <h2 className="px-3.5 pt-1 text-xs font-medium text-muted-foreground">{m.sidebar_snoozed()}</h2>
-          <SidebarThreadList
-            group="snoozed"
-            threads={snoozed}
-            reorderable={false}
-            showProject
-            className="px-1.5 pb-3"
-          />
+        <section aria-label={m.sidebar_snoozed()} className="pt-3">
+          <SectionHeading title={m.sidebar_snoozed()} />
+          <SidebarThreadList group="snoozed" threads={snoozed} reorderable={false} showProject className="px-2" />
         </section>
       )}
     </>
@@ -266,12 +313,17 @@ function InboxList({ query }: { query: Query }) {
 
 function ArchivedList({ query }: { query: Query }) {
   const threads = useMatchingThreads(selectArchivedThreads, query)
-  return threads.length === 0 ? (
-    <p className="px-3 py-2 text-xs text-muted-foreground">
-      {query === "" ? m.sidebar_no_archived() : m.sidebar_no_matches()}
-    </p>
-  ) : (
-    <SidebarThreadList group="archived" threads={threads} reorderable={false} showProject className="px-1.5 pb-3" />
+  return (
+    <>
+      <SectionHeading title={m.sidebar_tab_archived()} />
+      {threads.length === 0 ? (
+        <p className="px-4 py-1 text-xs text-muted-foreground">
+          {query === "" ? m.sidebar_no_archived() : m.sidebar_no_matches()}
+        </p>
+      ) : (
+        <SidebarThreadList group="archived" threads={threads} reorderable={false} showProject className="px-2" />
+      )}
+    </>
   )
 }
 
@@ -391,7 +443,7 @@ function ProjectList({ query, onAddProject, focusAfterDelete }: ProjectListProps
             </Button>
           </div>
         )}
-        <ul ref={listRef} className="flex flex-col gap-0.5 px-1.5 pb-3">
+        <ul ref={listRef} className="flex flex-col gap-0.5 px-2">
           {shown.length === 0 && (
             <li className="px-1.5 py-2 text-xs text-muted-foreground">{m.sidebar_no_matches()}</li>
           )}
@@ -618,23 +670,6 @@ function NewThreadButton({ projects, buttonRef, onNewThread }: NewThreadButtonPr
       onClick={() => onNewThread(project)}
     >
       <PlusIcon aria-hidden />
-    </Button>
-  )
-}
-
-function NewChatButton() {
-  const navigate = useNavigate()
-  const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
-  const chats = projects.find((project) => project.kind === "chats" && project.environmentId === undefined)
-  if (chats === undefined) return null
-  return (
-    <Button
-      variant="ghost"
-      size="icon-xs"
-      aria-label={m.sidebar_new_chat()}
-      onClick={() => void startThread(chats.id, navigate)}
-    >
-      <ChatNewIcon aria-hidden />
     </Button>
   )
 }

@@ -43,6 +43,7 @@ let findRevealRequests = 0
 const SIDEBAR_WIDTH_KEY = "hinacode.sidebarWidth"
 const SIDEBAR_PROJECTS_KEY = "hinacode.sidebarProjects"
 const SIDEBAR_TAB_KEY = "hinacode.sidebarTab"
+const OVERVIEW_OPEN_KEY = "hinacode.overviewOpen"
 const RECENT_THREADS_KEY = "hinacode.recentThreads"
 const PULL_REQUEST_CODE_VIEW_KEY = "hinacode.pullRequestCodeView"
 const COLLAPSED_PULL_REQUEST_SECTIONS_KEY = "hinacode.collapsedPullRequestSections"
@@ -82,6 +83,10 @@ interface UiState {
   readonly sidebarOverlayOpen: boolean
   readonly sidePanelOverlayOpen: boolean
   readonly sidebarTab: SidebarTab
+  readonly overviewOpen: boolean
+  readonly pickedPullRequests: Readonly<Record<string, string>>
+  readonly pickPullRequest: (threadId: string, url: string) => void
+  readonly toggleOverview: () => void
   readonly pullRequestCodeView: PullRequestCodeView
   readonly sidebarQuery: string
   readonly sidebarProjectIds: ReadonlyArray<string>
@@ -179,6 +184,15 @@ export const useUi = create<UiState>()((set, get) => ({
   sidebarOverlayOpen: false,
   sidePanelOverlayOpen: false,
   sidebarTab: loadSidebarTab(),
+  overviewOpen: localStorage.getItem(OVERVIEW_OPEN_KEY) !== "false",
+  pickedPullRequests: {},
+  pickPullRequest: (threadId, url) =>
+    set((state) => ({ pickedPullRequests: { ...state.pickedPullRequests, [threadId]: url } })),
+  toggleOverview: () => {
+    const overviewOpen = !get().overviewOpen
+    localStorage.setItem(OVERVIEW_OPEN_KEY, String(overviewOpen))
+    set({ overviewOpen })
+  },
   pullRequestCodeView: loadPullRequestCodeView(),
   sidebarQuery: "",
   sidebarProjectIds: loadStrings(SIDEBAR_PROJECTS_KEY),

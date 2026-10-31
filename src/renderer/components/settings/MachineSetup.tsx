@@ -174,7 +174,7 @@ function SetupButton({ item, machine, onOpen, check }: CellProps & { check: Chec
         machine: machine.name,
         state: check.tone === "loading" ? m.settings_account_loading() : check.text,
       })}
-      className="pressable flex w-full min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-left outline-none [--press-scale:0.98] hover:bg-foreground/6 focus-visible:ring-2 focus-visible:ring-ring"
+      className="pressable flex w-full min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-left outline-none hover:bg-foreground/6 focus-visible:ring-2 focus-visible:ring-ring"
     >
       {check.tone === "loading" ? (
         <Skeleton className="h-3.5 w-24 bg-foreground/10" />

@@ -20,6 +20,7 @@
   "scripts": {
     "dev": "node scripts/dev-app-identity.ts && node scripts/build-resource-monitor.ts && electron-vite dev",
     "dev:markdown": "HINACODE_MOCK_CLAUDE=markdown HINACODE_USER_DATA=/tmp/kk-markdown pnpm dev",
+    "dev:overview": "node scripts/overview-mock/seed.ts /tmp/kk-overview && HINACODE_MOCK_CLAUDE=subagents HINACODE_USER_DATA=/tmp/kk-overview pnpm dev",
     "dev:remote": "node scripts/remote-devtools.ts",
     "build": "electron-vite build",
     "build:server": "vite build --config vite.server.config.ts --ssr src/main/daemon.ts --outDir out/server",

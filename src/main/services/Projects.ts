@@ -3,7 +3,7 @@ import { homedir } from "node:os"
 import { extname, isAbsolute, join } from "node:path"
 import { Cache, Context, Effect, FileSystem, Layer, Option, Schema } from "effect"
 import { SqlClient, SqlError, SqlSchema } from "effect/sql"
-import { Project } from "../../shared/domain.ts"
+import { Project, ProjectAction } from "../../shared/domain.ts"
 import { type GitHubRepository, parseGitHubRepository } from "../../shared/github.ts"
 import { nowIso } from "./clock.ts"
 import {
@@ -33,6 +33,7 @@ export interface UpdateProject {
   readonly rootPath?: string | undefined
   readonly setupScript?: string | null | undefined
   readonly linearReview?: boolean | undefined
+  readonly actions?: ReadonlyArray<ProjectAction> | undefined
 }
 
 type WriteError = PersistenceError | ProjectPathTakenError | ProjectRootInvalidError
@@ -70,7 +71,11 @@ const ICON_DIRS = ["", "public", "static", "app", "src/app", "assets", "apps/web
 const ICON_PATHS = ICON_DIRS.flatMap((dir) => ICON_NAMES.map((name) => join(dir, name)))
 const ICON_LIMIT_BYTES = 100 * 1024
 
-const ProjectRow = Schema.Struct({ ...Project.fields, linearReview: Schema.BooleanFromBit })
+const ProjectRow = Schema.Struct({
+  ...Project.fields,
+  linearReview: Schema.BooleanFromBit,
+  actions: Schema.fromJsonString(Schema.Array(ProjectAction)),
+})
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
@@ -133,11 +138,12 @@ const make = Effect.gen(function* () {
   const insert = (input: CreateProject) =>
     Effect.gen(function* () {
       const now = yield* nowIso
-      const { linearReview, ...row }: Project = {
+      const { linearReview, actions, ...row }: Project = {
         id: randomUUID(),
         ...input,
         linearReview: false,
         kind: "folder",
+        actions: [],
         createdAt: now,
         updatedAt: now,
       }
@@ -145,7 +151,7 @@ const make = Effect.gen(function* () {
         Effect.mapError(mapWriteError("projects.create", input.rootPath)),
       )
       yield* Cache.invalidate(repositories, input.rootPath)
-      return { ...row, linearReview }
+      return { ...row, linearReview, actions }
     })
 
   const create = (input: CreateProject) =>
@@ -231,12 +237,14 @@ const make = Effect.gen(function* () {
         rootPath: input.rootPath ?? current.rootPath,
         setupScript: input.setupScript === undefined ? current.setupScript : input.setupScript,
         linearReview: input.linearReview ?? current.linearReview,
+        actions: input.actions ?? current.actions,
         updatedAt: yield* nowIso,
       }
       yield* sql`
         UPDATE project
         SET name = ${next.name}, root_path = ${next.rootPath}, setup_script = ${next.setupScript},
-            linear_review = ${next.linearReview ? 1 : 0}, updated_at = ${next.updatedAt}
+            linear_review = ${next.linearReview ? 1 : 0}, actions = ${JSON.stringify(next.actions)},
+            updated_at = ${next.updatedAt}
         WHERE id = ${next.id}
       `.pipe(Effect.mapError(mapWriteError("projects.update", next.rootPath)))
       yield* Cache.invalidate(repositories, current.rootPath)
