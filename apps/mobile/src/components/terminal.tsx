@@ -4,6 +4,7 @@ import { Keyboard, Platform, Pressable, StyleSheet, Text, View } from "react-nat
 import { Icon } from "@/components/icon"
 import { Button, Notice } from "@/components/ui"
 import { radius } from "@/constants/theme"
+import { useThreadServer } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { call, onEvent, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
@@ -18,10 +19,22 @@ type Session = { readonly id: string; size: string; generation: number }
 
 const clamp = (value: number) => Math.min(1000, Math.max(1, Math.floor(value)))
 
-/** The thread's shell, replaced by a fresh one when the developer asks after it exits. */
+/**
+ * The thread's shell, replaced by a fresh one when the developer asks after it exits. A desktop that cannot attach
+ * to a running shell gets a new one after each reconnect instead. Its server's features outlast a disconnect, so
+ * going offline keeps the output on screen.
+ */
 export function TerminalPanel({ threadId }: { threadId: string }) {
   const [shell, setShell] = useState(0)
-  return <TerminalSession key={shell} threadId={threadId} onRestart={() => setShell(shell + 1)} />
+  const server = useThreadServer(threadId)
+  const detached = server !== undefined && !server.features.has("terminal-attach")
+  return (
+    <TerminalSession
+      key={detached ? `${shell}:${server.generation}` : shell}
+      threadId={threadId}
+      onRestart={() => setShell(shell + 1)}
+    />
+  )
 }
 
 /**
