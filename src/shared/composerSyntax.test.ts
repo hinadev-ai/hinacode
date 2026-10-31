@@ -7,6 +7,7 @@ import {
   matchPullRequests,
   matchThreads,
   segmentText,
+  suggestionsFor,
 } from "./composerSyntax.ts"
 
 const known = {
@@ -43,6 +44,15 @@ describe("highlight", () => {
   test("keeps every character of empty and unclosed fences", () => {
     for (const text of ["```\n```", "```\n\n```", "```py", "```py\nx = 1\n"])
       expect(highlight(text, known).map(segmentText).join("")).toBe(text)
+  })
+
+  test("marks every known command, also before punctuation and Japanese text", () => {
+    const text = "/kalan-mode first, then $verify-hinacode. Again /kalan-mode、and /kalan-modeで。Not /kalan-modes"
+    const segments = highlight(text, known)
+    expect(segments.map(segmentText).join("")).toBe(text)
+    expect(
+      segments.filter((segment) => segment.kind === "command").map((segment) => segmentText(segment)),
+    ).toStrictEqual(["/kalan-mode", "$verify-hinacode", "/kalan-mode", "/kalan-mode"])
   })
 
   test("marks mentions of known threads only", () => {
@@ -149,5 +159,17 @@ describe("matchThreads", () => {
 
   test("keeps the given order for an empty query", () => {
     expect(matchThreads(threads, "").map((thread) => thread.id)).toStrictEqual(["a", "b", "c"])
+  })
+})
+
+describe("suggestionsFor", () => {
+  test("lists a command once when the agent reports it from several places", () => {
+    const commands = [command("$", "animate"), command("$", "animation-vocabulary"), command("$", "animate")]
+    const completion = { trigger: "$" as const, query: "anim", start: 0, end: 5 }
+    expect(
+      suggestionsFor(completion, commands, [], { sameMachine: [], otherMachines: [] }, []).map(
+        (suggestion) => suggestion.insert,
+      ),
+    ).toStrictEqual(["$animate", "$animation-vocabulary"])
   })
 })

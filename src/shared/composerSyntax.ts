@@ -34,7 +34,11 @@ export const segmentText = (segment: Segment) =>
 
 const FENCE = /^\s*```\s*([^\s`]*)/
 const BULLET = /^(\s*)([-*+]|\d+[.)])(?=\s)/
-const INLINE = /`[^`\n]+`|(?<=^|\s)[/$@][^\s]+/g
+const NAME = String.raw`[\w:-]+(?:\.[\w:-]+)*`
+const INLINE = new RegExp(String.raw`\`[^\`\n]+\`|(?<=^|\s)(?:@[^\s]+|[/$]${NAME})`, "g")
+const WHOLE_NAME = new RegExp(`^${NAME}$`)
+
+export const isCommandName = (name: string) => WHOLE_NAME.test(name)
 const TRAILING_PUNCTUATION = /[,.;:!?)\]]+$/
 
 const classify = (token: string, known: KnownTokens): { kind: SyntaxKind; text: string } | null => {
@@ -135,7 +139,10 @@ export function matchCommands(
   completion: CompletionQuery & { readonly trigger: AgentCommand["trigger"] },
 ) {
   const query = completion.query.toLowerCase()
-  const candidates = commands.filter((command) => command.trigger === completion.trigger)
+  const firstByName = new Map<string, AgentCommand>()
+  for (const command of commands)
+    if (command.trigger === completion.trigger && !firstByName.has(command.name)) firstByName.set(command.name, command)
+  const candidates = [...firstByName.values()]
   const prefixed = candidates.filter((command) => command.name.toLowerCase().startsWith(query))
   const containing = candidates.filter(
     (command) => !prefixed.includes(command) && command.name.toLowerCase().includes(query),

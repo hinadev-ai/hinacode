@@ -28,14 +28,24 @@ interface Live {
   closing: boolean
 }
 
+const quoteForShell = (text: string) => `'${text.replaceAll("'", `'\\''`)}'`
+
+export const typedLine = (shell: string, line: string) =>
+  line.includes("\n") ? `${shell} -c ${quoteForShell(line)}` : line
+
+export interface OpenTerminal {
+  readonly threadId: string
+  readonly cols: number
+  readonly rows: number
+  readonly command?: { readonly title: string; readonly line: string } | undefined
+}
+
 export class Terminals extends Context.Service<
   Terminals,
   {
-    readonly open: (input: {
-      readonly threadId: string
-      readonly cols: number
-      readonly rows: number
-    }) => Effect.Effect<TerminalSession, PersistenceError | NotFoundError | TerminalError>
+    readonly open: (
+      input: OpenTerminal,
+    ) => Effect.Effect<TerminalSession, PersistenceError | NotFoundError | TerminalError>
     readonly write: (id: string, data: string) => Effect.Effect<void, NotFoundError>
     readonly resize: (id: string, cols: number, rows: number) => Effect.Effect<void, NotFoundError>
     readonly attach: (id: string, since: number | null) => Effect.Effect<TerminalAttachment, NotFoundError>
@@ -81,9 +91,9 @@ const make = Effect.gen(function* () {
     return live && !live.closing ? Effect.succeed(live) : Effect.fail(new NotFoundError({ entity: "terminal", id }))
   }
 
-  const open = ({ threadId, cols, rows }: { threadId: string; cols: number; rows: number }) =>
+  const open = ({ threadId, cols, rows, command }: OpenTerminal) =>
     Effect.gen(function* () {
-      const { cwd } = yield* activeWorkspace(threadId)
+      const { cwd, rootPath, branch } = yield* activeWorkspace(threadId)
       const shell = process.env["SHELL"] || "/bin/zsh"
       const proc = yield* Effect.try({
         try: () =>
@@ -92,12 +102,29 @@ const make = Effect.gen(function* () {
             cols,
             rows,
             cwd,
-            env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor", TERM_PROGRAM: "hinacode" },
+            env: {
+              ...process.env,
+              TERM: "xterm-256color",
+              COLORTERM: "truecolor",
+              TERM_PROGRAM: "hinacode",
+              HINACODE_ROOT_PATH: rootPath,
+              HINACODE_WORKTREE_PATH: cwd,
+              ...(branch === null ? {} : { HINACODE_BRANCH: branch }),
+            },
           }),
         catch: (cause) => new TerminalError({ message: `Could not start ${shell} in ${cwd}: ${String(cause)}` }),
       })
       const live: Live = {
-        session: { id: randomUUID(), threadId, cwd, cols, rows, status: "running", exitCode: null },
+        session: {
+          id: randomUUID(),
+          threadId,
+          cwd,
+          cols,
+          rows,
+          status: "running",
+          exitCode: null,
+          title: command?.title ?? null,
+        },
         pty: proc,
         unregisterPid: registerAgentPid(threadId, proc.pid),
         scrollback: new TerminalScrollback(SCROLLBACK_BYTES),
@@ -115,6 +142,7 @@ const make = Effect.gen(function* () {
         if (live.closing) sessions.delete(live.session.id)
         publish({ type: "terminal.exited", id: live.session.id, exitCode })
       })
+      if (command) proc.write(`${typedLine(shell, command.line)}\r`)
       return live.session
     })
 

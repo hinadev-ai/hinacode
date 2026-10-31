@@ -36,6 +36,26 @@ describe("toCommand", () => {
   })
 })
 
+describe("toCommand with a name that has spaces", () => {
+  test("types the skill by its folder, the alias that /name runs, and keeps the name as its label", () => {
+    expect(
+      toCommand({
+        name: "Create PR",
+        aliases: ["create-pr"],
+        description: "Open a pull request. (user)",
+        argumentHint: "",
+      }),
+    ).toStrictEqual({
+      trigger: "/",
+      name: "create-pr",
+      label: "Create PR",
+      description: "Open a pull request.",
+      argumentHint: "",
+      scope: "user",
+    })
+  })
+})
+
 describe("hideUserCommands", () => {
   test("also disables a renamed user's skill through its directory alias", () => {
     expect(

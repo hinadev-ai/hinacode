@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite"
 import type { QueuedMessage } from "../../src/shared/domain.ts"
 import { Given, Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
+import { composerText } from "../support/ui.ts"
 import { SEEDED_AT } from "../support/seed.ts"
 
 const queuedText = "Queued follow-up"
@@ -55,7 +56,7 @@ Then(
   async ({ app, threadIds }, draft: string) => {
     await expect(app.page.getByRole("alert").filter({ hasText: "Cannot send to an archived thread" })).toBeVisible()
     const composer = app.page.getByLabel("Message", { exact: true })
-    await expect(composer).toHaveValue(`${queuedText}\n${draft}`)
+    await expect.poll(() => composerText(composer)).toBe(`${queuedText}\n${draft}`)
     await expect(composer).toBeFocused()
     await expect(app.page.getByRole("button", { name: `Remove ${attachmentName}`, exact: true })).toBeVisible()
     await expect(app.page.getByRole("button", { name: "Remove image-0.png", exact: true })).toBeVisible()

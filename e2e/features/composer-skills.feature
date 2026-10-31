@@ -1,7 +1,7 @@
 Feature: Skill chips in the composer
-  A skill at the start of a message shows as a chip before the text, so the developer sees which
-  skill the agent will run. The simulated agent lists one skill and one of Claude Code's own
-  commands, so no real agent turn is needed.
+  Every skill and command in a message shows as a chip, so the developer sees what the agent
+  will get. The simulated agent lists two skills and one of Claude Code's own commands, so no real
+  agent turn is needed.
 
   Background:
     Given an isolated thread with a simulated agent that has a skill
@@ -19,12 +19,18 @@ Feature: Skill chips in the composer
     And I send the message with its skill
     Then my message "/triage-issue the login test fails on CI" is in the thread
 
-  Scenario: Backspace before the text removes the chip
+  Scenario: Every skill in the message is a chip, before and after sending
+    When I type "/triage-issue the login test, then /code-review。Again /triage-issue now" in the message
+    Then the message shows the chips "/triage-issue", "/code-review" and "/triage-issue"
+    When I send the message with its skill
+    Then my sent message shows the chips "/triage-issue", "/code-review" and "/triage-issue"
+
+  Scenario: Backspace after a chip removes it
     When I type "/triage-issue the login test" in the message
     Then the message starts with the skill chip "triage-issue"
-    When I press Backspace at the start of the message
+    When I press Backspace right after the chip
     Then the message has no skill chip and reads "the login test"
 
-  Scenario: Claude Code's own commands stay plain text
+  Scenario: Claude Code's own commands are chips too
     When I type "/compact keep the plan" in the message
-    Then the message has no skill chip and reads "/compact keep the plan"
+    Then the message shows the chip "/compact"

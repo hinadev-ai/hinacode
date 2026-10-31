@@ -8,6 +8,7 @@ export const ActiveWorkspace = Schema.Struct({
   rootPath: Schema.String,
   worktreeId: Schema.NullOr(Schema.String),
   baseRef: Schema.NullOr(Schema.String),
+  branch: Schema.NullOr(Schema.String),
 })
 export type ActiveWorkspace = typeof ActiveWorkspace.Type
 
@@ -23,7 +24,7 @@ export const makeActiveWorkspace = Effect.gen(function* () {
     Request: Schema.String,
     Result: WorkspaceRow,
     execute: (threadId) => sql`
-      SELECT COALESCE(worktree.path, project.root_path) AS cwd, project.root_path, project.kind, worktree.id AS worktree_id, worktree.base_ref,
+      SELECT COALESCE(worktree.path, project.root_path) AS cwd, project.root_path, project.kind, worktree.id AS worktree_id, worktree.base_ref, worktree.branch,
         COALESCE(thread.side_of, thread.id) AS folder_owner
       FROM thread
       JOIN project ON project.id = thread.project_id

@@ -10,6 +10,7 @@ import {
   orgSpendLimitMessage,
 } from "./fixtures/usageLimit.ts"
 import markdownFixture from "./fixtures/markdown.md?raw"
+import { mockSubagents } from "./fixtures/subagents.ts"
 import { ClaudeProvider } from "./index.ts"
 import { mapMessage, type MapState } from "./mapMessage.ts"
 
@@ -22,6 +23,7 @@ export const mockScenarios = [
   "activity",
   "approvals",
   "long-turn",
+  "subagents",
 ] as const
 export type MockScenario = (typeof mockScenarios)[number]
 
@@ -32,6 +34,13 @@ const commands: ReadonlyArray<AgentCommand> = [
     description: "Reproduce a reported bug and find its cause.",
     argumentHint: "",
     scope: "project",
+  },
+  {
+    trigger: "/",
+    name: "code-review",
+    description: "Review the changes on this branch.",
+    argumentHint: "<branch>",
+    scope: "user",
   },
   {
     trigger: "/",
@@ -161,6 +170,10 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
       const shells = new Map<string, ReadonlyArray<BackgroundTask>>()
       const shellChanges = yield* Queue.unbounded<BackgroundTasksChange>()
       const heldTurns = new Map<string, Deferred.Deferred<void>>()
+      const subagentTurns = new Map<
+        string,
+        { readonly stop: (id: string, at: number) => Array<AgentEvent>; readonly pushed: Queue.Queue<AgentEvent> }
+      >()
       const requests = new Map<string, Deferred.Deferred<void>>()
       let requestCount = 0
       const awaitAnswer = (requested: AgentEvent, resolved: AgentEvent, id: string) => {
@@ -218,6 +231,29 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
               return Stream.concat(
                 Stream.fromIterable(activityTurn()),
                 Stream.fromEffect(Deferred.await(interrupted).pipe(Effect.as(ended))),
+              )
+            }
+            if (scenario === "subagents") {
+              const interrupted = Deferred.makeUnsafe<void>()
+              heldTurns.set(input.threadId, interrupted)
+              const turn = mockSubagents(Date.now())
+              const ended: AgentEvent = { type: "turn_failed", message: "Interrupted" }
+              const progress = Stream.tick("2 seconds").pipe(
+                Stream.drop(1),
+                Stream.flatMap(() => Stream.fromIterable(turn.tick(Date.now()))),
+              )
+              return Stream.unwrap(
+                Effect.map(Queue.unbounded<AgentEvent>(), (pushed) => {
+                  subagentTurns.set(input.threadId, { stop: turn.stop, pushed })
+                  return Stream.fromIterable(turn.initial).pipe(
+                    Stream.concat(
+                      Stream.merge(progress, Stream.fromQueue(pushed)).pipe(
+                        Stream.interruptWhen(Deferred.await(interrupted)),
+                      ),
+                    ),
+                    Stream.concat(Stream.make(ended)),
+                  )
+                }),
               )
             }
             if (scenario === "long-turn") {
@@ -351,6 +387,11 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
               ),
             ),
         },
+        stopSubagent: (threadId, subagentId) =>
+          Effect.sync(() => {
+            const turn = subagentTurns.get(threadId)
+            for (const event of turn?.stop(subagentId, Date.now()) ?? []) Queue.offerUnsafe(turn!.pushed, event)
+          }),
         steer: () => Effect.fail(new AgentError({ provider: "claude", message: "No turn is running on this thread" })),
         interrupt: (threadId) => {
           const held = heldTurns.get(threadId)

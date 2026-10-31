@@ -53,6 +53,7 @@ import {
   Opener,
   OpenerId,
   Project,
+  ProjectAction,
   GitHubAuth,
   GitHubRateLimit,
   PullRequest,
@@ -208,6 +209,7 @@ export const RpcMethods = {
       rootPath: Schema.optional(Schema.String),
       setupScript: Schema.optional(Schema.NullOr(Schema.String)),
       linearReview: Schema.optional(Schema.Boolean),
+      actions: Schema.optional(Schema.Array(ProjectAction)),
     }),
     Project,
   ),
@@ -475,7 +477,12 @@ export const RpcMethods = {
   "ports.kill": rpc(Schema.Struct({ pid: Schema.Number }), Schema.Void),
 
   "terminal.open": rpc(
-    Schema.Struct({ threadId: Schema.String, cols: TerminalSize, rows: TerminalSize }),
+    Schema.Struct({
+      threadId: Schema.String,
+      cols: TerminalSize,
+      rows: TerminalSize,
+      command: Schema.optional(Schema.Struct({ title: Schema.String, line: Schema.String })),
+    }),
     TerminalSession,
   ),
   "terminal.write": rpc(Schema.Struct({ id: Schema.String, data: Schema.String }), Schema.Void),

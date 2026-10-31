@@ -395,6 +395,7 @@ erDiagram
     text id PK
     text root_path UK
     text setup_script
+    text actions "JSON [{name, command}]"
     text kind "folder|chats"
   }
   worktree {

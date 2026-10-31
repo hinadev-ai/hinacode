@@ -41,6 +41,11 @@ describe("older cloud responses", () => {
     })
   })
 
+  it("has no global actions when settings predate them", () => {
+    const { actions: _actions, ...withoutActions } = defaultSettings
+    expect(Schema.decodeUnknownSync(Settings)(withoutActions).actions).toStrictEqual([])
+  })
+
   it("keeps user skills enabled for threads from before conversation mode", () => {
     expect(Schema.decodeUnknownSync(Thread)(legacyThread).userSkills).toBe(true)
   })

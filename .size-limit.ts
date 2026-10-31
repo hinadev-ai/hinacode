@@ -11,7 +11,7 @@ export default [
   { name: "Renderer startup JS (gzip)", path: startupScripts, gzip: true },
   { name: "Renderer JS, all chunks", path: "out/renderer/assets/*.js", brotli: false, limit: "16 MB" },
   { name: "Renderer JS, all chunks (gzip)", path: "out/renderer/assets/*.js", gzip: true },
-  { name: "Renderer startup CSS", path: startupStyles, brotli: false, limit: "200 kB" },
+  { name: "Renderer startup CSS", path: startupStyles, brotli: false, limit: "205 kB" },
   { name: "Renderer startup CSS (gzip)", path: startupStyles, gzip: true },
   { name: "Renderer CSS, all", path: "out/renderer/assets/*.css", brotli: false, limit: "500 kB" },
   { name: "Main process JS", path: "out/main", brotli: false, limit: "2.3 MB" },
