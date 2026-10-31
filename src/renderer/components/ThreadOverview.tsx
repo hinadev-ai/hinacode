@@ -317,7 +317,7 @@ function Subagents({ thread }: { thread: Thread }) {
   const shown = subagents.toSorted((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, SUBAGENT_ROWS)
 
   return (
-    <Card title={m.agents_list_label()}>
+    <Card title={m.panel_tab_agents()}>
       <ul className="flex flex-col gap-0.5">
         {shown.map((subagent) => {
           const { callId } = subagent
