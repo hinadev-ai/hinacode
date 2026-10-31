@@ -75,6 +75,8 @@ const merge = (segments: ReadonlyArray<Segment>) =>
     return merged
   }, [])
 
+export const endsWithClosedFence = (text: string) => false
+
 export function highlight(text: string, known: KnownTokens): ReadonlyArray<Segment> {
   const segments: Array<Segment> = []
   const lines = text.split("\n")
