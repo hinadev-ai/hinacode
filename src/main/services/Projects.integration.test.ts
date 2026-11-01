@@ -197,6 +197,20 @@ describe("Projects.create with a new GitHub repository", () => {
     }),
   )
 
+  it.live("keeps already staged files out of the published initial commit", () =>
+    Effect.gen(function* () {
+      const rootPath = repoWith({ ".env": "SECRET=1" })
+      execFileSync("git", ["-C", rootPath, "add", ".env"])
+      yield* Projects.use((projects) =>
+        projects.create({ name: "staged", rootPath, setupScript: null, createRepository: "public" }),
+      ).pipe(Effect.provide(withGitHub(() => Effect.void)))
+      const git = (...args: Array<string>) =>
+        execFileSync("git", ["-C", rootPath, ...args], { encoding: "utf8" }).trim()
+      expect(git("ls-tree", "-r", "--name-only", "HEAD")).toBe("")
+      expect(git("diff", "--cached", "--name-only")).toBe(".env")
+    }),
+  )
+
   it.live("refuses a folder that already has an origin before creating anything on GitHub", () =>
     Effect.gen(function* () {
       const rootPath = withOrigin("https://github.com/octocat/elsewhere.git")
