@@ -25,6 +25,7 @@ import * as Browser from "./services/Browser.ts"
 import * as Automations from "./services/automations/Automations.ts"
 import * as ClientSettings from "./services/ClientSettings.ts"
 import * as Environments from "./services/Environments.ts"
+import * as DeviceHub from "./services/devices/DeviceHub.ts"
 import { type Events, makeEventsLayer } from "./services/Events.ts"
 import * as Favicons from "./services/Favicons.ts"
 import * as Files from "./services/Files.ts"
@@ -50,7 +51,6 @@ import * as TinyVm from "./services/tinyVm/TinyVm.ts"
 import type { Updates } from "./services/Updates.ts"
 import * as Worktrees from "./services/Worktrees.ts"
 import { makeAndroidDriver } from "./services/devices/android.ts"
-import { devicesLayer } from "./services/devices/Devices.ts"
 import { makeIosDriver, simslimAvailable } from "./services/devices/ios.ts"
 import { simhelperSources } from "./services/devices/simhelperSources.ts"
 import { traceLayer } from "./trace.ts"
@@ -138,16 +138,16 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
   }).pipe(Layer.provide(boat))
   const passkeys = PasskeyRelay.layer(join(userData, "tiny-vm")).pipe(Layer.provide(tinyVm))
   const peers = Peers.layer.pipe(
-    Layer.provideMerge(Environments.layer),
+    Layer.provideMerge(serve === undefined ? Environments.layer : Environments.cloudLayer),
     Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)),
   )
-  const devices = devicesLayer({
+  const devices = DeviceHub.devicesThroughHubLayer({
     drivers: {
       ios: makeIosDriver({ cacheDir: join(userData, "devices"), sources: simhelperSources }),
       android: makeAndroidDriver(),
     },
     simslimAvailable: () => simslimAvailable(),
-  })
+  }).pipe(Layer.provide(peers))
   const features = Layer.mergeAll(
     Mcp.credentialsLayer,
     Ports.layer,

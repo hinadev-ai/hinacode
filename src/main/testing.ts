@@ -42,7 +42,8 @@ import * as Threads from "./services/Threads.ts"
 import { ThreadNaming } from "./services/ThreadNaming.ts"
 import * as PasskeyRelay from "./services/tinyVm/passkey/PasskeyRelay.ts"
 import * as TinyVm from "./services/tinyVm/TinyVm.ts"
-import { unavailableDevicesLayer } from "./services/devices/unavailable.ts"
+import { devicesThroughHubLayer, type Drivers } from "./services/devices/DeviceHub.ts"
+import { unavailableDriver } from "./services/devices/unavailable.ts"
 import { unsupported, Updates } from "./services/Updates.ts"
 import * as Worktrees from "./services/Worktrees.ts"
 
@@ -52,11 +53,18 @@ const updatesStub = Layer.succeed(Updates, unsupported("0.0.0"))
 export interface TestAppOptions {
   readonly providers: Layer.Layer<ClaudeProvider | CodexProvider | MuseProvider>
   readonly events?: Layer.Layer<Events | PushBroadcast | WindowPush>
+  readonly deviceDrivers?: Drivers
+  readonly cloud?: boolean
+}
+
+const noDevices: Drivers = {
+  ios: unavailableDriver({ kind: "missing", tool: "xcode" }),
+  android: unavailableDriver({ kind: "missing", tool: "androidSdk" }),
 }
 
 export const makeTestAppLayer = (
   dbPath: string,
-  { providers, events = makeEventsLayer(sendToWindows) }: TestAppOptions,
+  { providers, events = makeEventsLayer(sendToWindows), deviceDrivers = noDevices, cloud = false }: TestAppOptions,
 ) => {
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
@@ -82,7 +90,7 @@ export const makeTestAppLayer = (
   const passkeys = PasskeyRelay.layer(join(dirname(dbPath), "tiny-vm")).pipe(Layer.provide(tinyVm))
   const linear = Linear.layer.pipe(Layer.provide(Secrets.layer))
   const peers = Peers.layer.pipe(
-    Layer.provideMerge(Environments.layer),
+    Layer.provideMerge(cloud ? Environments.cloudLayer : Environments.layer),
     Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)),
   )
   const features = Layer.mergeAll(
@@ -96,7 +104,9 @@ export const makeTestAppLayer = (
     passkeys,
     linear,
     peers,
-    unavailableDevicesLayer,
+    devicesThroughHubLayer({ drivers: deviceDrivers, simslimAvailable: () => Promise.resolve(false) }).pipe(
+      Layer.provide(peers),
+    ),
   ).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(
     Layer.provide(Layer.mergeAll(providers, Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }))),

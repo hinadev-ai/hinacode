@@ -363,7 +363,7 @@ const send = (live: Live, call: Pending) => {
 
 const environmentDialPlan = ({ host, port, relay }: Environment) => dialPlan({ hosts: [host], port, relay })
 
-const make = Effect.gen(function* () {
+const make = Effect.fnUntraced(function* (options: { readonly actsAsHub: boolean }) {
   const sql = yield* SqlClient.SqlClient
   const secrets = yield* Secrets
   const events = yield* Events
@@ -486,7 +486,7 @@ const make = Effect.gen(function* () {
                 learnRelay(cloud, frame.relay ?? null)
                 const live: Live = { socket, dedupesCalls: frame.features?.includes("call-keys") ?? false }
                 cloud.live = live
-                if (frame.features?.includes("asks")) sendFrame(socket, { type: "hub" })
+                if (options.actsAsHub && frame.features?.includes("asks")) sendFrame(socket, { type: "hub" })
                 for (const call of cloud.outbox.values()) {
                   pauseOfflineTimer(call)
                   if (call.priorOfflineMs >= OFFLINE_LIMIT_MS) expire(cloud, call)
@@ -866,4 +866,6 @@ const make = Effect.gen(function* () {
   })
 })
 
-export const layer = Layer.effect(Environments, make)
+export const layer = Layer.effect(Environments, make({ actsAsHub: true }))
+
+export const cloudLayer = Layer.effect(Environments, make({ actsAsHub: false }))

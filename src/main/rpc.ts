@@ -47,6 +47,7 @@ import { SessionImports } from "./services/SessionImports.ts"
 import { randomName, Threads } from "./services/Threads.ts"
 import { VmPasskeyRelay } from "./services/tinyVm/passkey/PasskeyRelay.ts"
 import { type ScreenOwner, TinyVm, VmError } from "./services/tinyVm/TinyVm.ts"
+import { DeviceHub } from "./services/devices/DeviceHub.ts"
 import { Devices } from "./services/devices/Devices.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 
@@ -85,6 +86,7 @@ export type AppServices =
   | TinyVm
   | VmPasskeyRelay
   | Devices
+  | DeviceHub
 
 export interface HandlerError {
   readonly _tag: string
@@ -460,6 +462,20 @@ const handlers: Handlers = {
   "device.control": ({ threadId, deviceId, control }) =>
     Devices.use((devices) => devices.control(threadId, deviceId, control)),
   "device.pick": (input) => Devices.use((devices) => devices.pick(input)),
+  "deviceHost.list": (input) => DeviceHub.use((hub) => hub.host["deviceHost.list"](input)),
+  "deviceHost.boot": (input) => DeviceHub.use((hub) => hub.host["deviceHost.boot"](input)),
+  "deviceHost.create": (input) => DeviceHub.use((hub) => hub.host["deviceHost.create"](input)),
+  "deviceHost.remove": (input) => DeviceHub.use((hub) => hub.host["deviceHost.remove"](input)),
+  "deviceHost.screenshot": (input) => DeviceHub.use((hub) => hub.host["deviceHost.screenshot"](input)),
+  "deviceHost.describe": (input) => DeviceHub.use((hub) => hub.host["deviceHost.describe"](input)),
+  "deviceHost.launch": (input) => DeviceHub.use((hub) => hub.host["deviceHost.launch"](input)),
+  "deviceHost.open": (input) => DeviceHub.use((hub) => hub.host["deviceHost.open"](input)),
+  "deviceHost.frame": (input) => DeviceHub.use((hub) => hub.host["deviceHost.frame"](input)),
+  "deviceHost.send": (input) => DeviceHub.use((hub) => hub.host["deviceHost.send"](input)),
+  "deviceHost.close": (input) => DeviceHub.use((hub) => hub.host["deviceHost.close"](input)),
+  "deviceHub.status": () => DeviceHub.use((hub) => hub.status),
+  "deviceHub.link": ({ pairingUrl }) => DeviceHub.use((hub) => hub.link(pairingUrl)),
+  "deviceHub.unlink": () => DeviceHub.use((hub) => hub.unlink),
   "vm.get": ({ threadId }) => TinyVm.use((vm) => vm.get(threadId)),
   "vm.start": ({ threadId, template }) => TinyVm.use((vm) => vm.start(threadId, template)),
   "vm.stop": ({ threadId }) => TinyVm.use((vm) => vm.stop(threadId)),

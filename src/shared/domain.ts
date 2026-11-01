@@ -547,6 +547,7 @@ export const ExperimentalSettings = Schema.Struct({
   tinyVmEnv: Schema.Record(Schema.String, Schema.String),
   tinyVmSetupScript: Schema.String,
   devices: Schema.Boolean,
+  deviceHub: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
 })
 export type ExperimentalSettings = typeof ExperimentalSettings.Type
 
@@ -685,6 +686,7 @@ export const defaultSettings: Settings = {
     tinyVmProfile: false,
     tinyVmPasskeys: false,
     devices: false,
+    deviceHub: null,
     tinyVmEnv: {},
     tinyVmSetupScript: "",
   },
@@ -725,6 +727,13 @@ export type RelayAccountStatus = typeof RelayAccountStatus.Type
 
 export const EnvironmentStatus = Schema.Literals(["connecting", "connected", "offline", "unauthorized", "incompatible"])
 export type EnvironmentStatus = typeof EnvironmentStatus.Type
+
+export const DeviceHubLink = Schema.Struct({
+  environmentId: Schema.String,
+  name: Schema.String,
+  status: EnvironmentStatus,
+})
+export type DeviceHubLink = typeof DeviceHubLink.Type
 
 export const Environments = Schema.Struct({
   clouds: Schema.Array(
