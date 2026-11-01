@@ -12,7 +12,12 @@ import { MachineSetup } from "./MachineSetup.tsx"
 import { SettingsGroup } from "./SettingsSection.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
 
-const localeLabel = { en: m.locale_en, "zh-TW": m.locale_zh_tw, ja: m.locale_ja } satisfies Record<Locale, () => string>
+const localeLabel = {
+  en: m.locale_en,
+  "zh-TW": m.locale_zh_tw,
+  "zh-CN": m.locale_zh_cn,
+  ja: m.locale_ja,
+} satisfies Record<Locale, () => string>
 const isLocale = (value: unknown): value is Locale => Locale.literals.some((locale) => locale === value)
 
 export function GeneralSettings() {
