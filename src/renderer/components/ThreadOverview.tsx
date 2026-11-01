@@ -22,10 +22,10 @@ import { useWorktrees } from "../stores/worktrees.ts"
 import { ActionDialog, type ActionTarget } from "./ActionDialog.tsx"
 import { CloudMark } from "./CloudMark.tsx"
 import { ProjectDialog } from "./ProjectDialog.tsx"
+import { ProjectIcon } from "./ProjectIcon.tsx"
 import { LineCounts } from "./LineCounts.tsx"
 import { BranchIcon } from "./icons/BranchIcon.tsx"
 import { ComputerIcon } from "./icons/ComputerIcon.tsx"
-import { FolderIcon } from "./icons/FolderIcon.tsx"
 import { ChatNewIcon } from "./icons/ChatNewIcon.tsx"
 import { FileDiffIcon } from "./icons/FileDiffIcon.tsx"
 import { FileTextIcon } from "./icons/FileTextIcon.tsx"
@@ -197,6 +197,12 @@ function Environment({ thread, project, worktree }: WorkspaceProps) {
       <h2 className="flex min-h-8 items-center truncate px-2 text-sm text-muted-foreground">
         {m.overview_environment()}
       </h2>
+      {folder && (
+        <div className={rowClassName} title={project.rootPath}>
+          <ProjectIcon projectId={project.id} />
+          <span className="min-w-0 flex-1 truncate">{project.name}</span>
+        </div>
+      )}
       <div className={rowClassName}>
         {cloud ? (
           <CloudMark cloud={cloud} className="size-4" />
@@ -205,7 +211,7 @@ function Environment({ thread, project, worktree }: WorkspaceProps) {
         )}
         <span className="min-w-0 flex-1 truncate">{machine}</span>
       </div>
-      {worktree ? (
+      {worktree && (
         <>
           <div className={rowClassName} title={worktree.path}>
             <BranchIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
@@ -221,19 +227,10 @@ function Environment({ thread, project, worktree }: WorkspaceProps) {
           </div>
           <ChangesRow thread={thread} />
         </>
-      ) : (
-        folder && (
-          <div className={rowClassName} title={project.rootPath}>
-            <FolderIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate">{folderName(project.rootPath)}</span>
-          </div>
-        )
       )}
     </>
   )
 }
-
-const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
 
 function ChangesRow({ thread }: { thread: Thread }) {
   const { changes } = useThreadChanges(thread, "worktree")
