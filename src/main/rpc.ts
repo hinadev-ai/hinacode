@@ -416,8 +416,8 @@ const handlers: Handlers = {
     PullRequests.use((pullRequests) => pullRequests.unwatch(threadId, url)),
   "github.auth": () => GitHub.use((github) => github.auth),
   "github.pullRequest": ({ url }) => GitHub.use((github) => github.pullRequest(url)),
-  "github.pullRequestDetail": ({ url }) =>
-    GitHub.use((github) => github.pullRequestDetail(url)).pipe(Effect.tap(startGuideForHead)),
+  "github.pullRequestDetail": ({ url, fresh }) =>
+    GitHub.use((github) => github.pullRequestDetail(url, { fresh })).pipe(Effect.tap(startGuideForHead)),
   "github.pullRequestFiles": ({ url }) =>
     GitHub.use((github) => github.pullRequestDiff(url)).pipe(Effect.flatMap(pullRequestFiles)),
   "pullRequestGuides.get": ({ url }) => PullRequestGuides.use((guides) => guides.get(url)),
