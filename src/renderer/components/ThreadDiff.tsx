@@ -1,9 +1,10 @@
-import { useAtomRefresh, useAtomSuspense, useAtomValue } from "@effect/atom-react"
+import { useAtomSuspense } from "@effect/atom-react"
 import { cn } from "cn"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { Suspense, useDeferredValue, useEffect, useRef } from "react"
+import { Suspense, useDeferredValue } from "react"
 import type { ChangesScope, Thread } from "../../shared/domain.ts"
+import { useThreadChanges } from "../lib/threadChanges.ts"
 import { lineCounts } from "../lib/patch.ts"
 import { threadChangesAtom } from "../lib/rpc.ts"
 import { useThreadRoot } from "../lib/threadRoot.ts"
@@ -71,16 +72,7 @@ interface ChangesListProps {
 }
 
 function ChangesList({ thread, scope, stale, baseLabel }: ChangesListProps) {
-  const changesAtom = threadChangesAtom(`${thread.id}\n${scope}`)
-  const changes = useAtomValue(changesAtom)
-  const refresh = useAtomRefresh(changesAtom)
-
-  const lastStatus = useRef(thread.status)
-  useEffect(() => {
-    if (lastStatus.current === thread.status) return
-    lastStatus.current = thread.status
-    refresh()
-  }, [thread.status, refresh])
+  const { changes, refresh } = useThreadChanges(thread, scope)
 
   return (
     <section

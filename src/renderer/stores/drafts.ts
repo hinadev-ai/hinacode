@@ -15,6 +15,7 @@ export const emptyDraft: Draft = { text: "", attachments: [], workspace: null, c
 interface DraftsState {
   readonly byThreadId: Readonly<Record<string, Draft>>
   readonly setText: (threadId: string, text: string) => void
+  readonly appendText: (threadId: string, text: string) => void
   readonly appendMention: (threadId: string, path: string) => void
   readonly addAttachments: (threadId: string, attachments: ReadonlyArray<Attachment>) => void
   readonly removeAttachment: (threadId: string, attachmentId: string) => void
@@ -43,11 +44,12 @@ export const useDrafts = create<DraftsState>()((set, get) => {
   return {
     byThreadId: {},
     setText: (threadId, text) => update(threadId, (draft) => ({ ...draft, text })),
-    appendMention: (threadId, path) =>
+    appendText: (threadId, text) =>
       update(threadId, (draft) => ({
         ...draft,
-        text: `${draft.text}${draft.text === "" || /\s$/.test(draft.text) ? "" : " "}@${path} `,
+        text: `${draft.text}${draft.text === "" || /\s$/.test(draft.text) ? "" : " "}${text} `,
       })),
+    appendMention: (threadId, path) => get().appendText(threadId, `@${path}`),
     addAttachments: (threadId, attachments) =>
       update(threadId, (draft) => ({ ...draft, attachments: [...draft.attachments, ...attachments] })),
     removeAttachment: (threadId, attachmentId) =>
