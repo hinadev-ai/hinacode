@@ -25,6 +25,7 @@ import { Markdown } from "./Markdown.tsx"
 import { MessageActions } from "./MessageActions.tsx"
 import { MessagePartView, PartThread, ToolGroup, useFindDisclosure } from "./MessagePart.tsx"
 import { PostedQuestionsCard } from "./QuestionCard.tsx"
+import { TurnChanges } from "./TurnChanges.tsx"
 import { FaviconOrigins, WebLink } from "./WebLink.tsx"
 import { EarlierActivity, WorkedFor } from "./WorkedFor.tsx"
 
@@ -40,10 +41,12 @@ const TranscriptContext = createContext<{
   readonly providerLabel: string
   readonly showElapsedTime: boolean
   readonly commands: ReadonlyArray<AgentCommand>
+  readonly turnChanges: boolean
 }>({
   providerLabel: "",
   showElapsedTime: true,
   commands: [],
+  turnChanges: false,
 })
 
 const LastMessageContext = createContext<string | undefined>(undefined)
@@ -56,6 +59,7 @@ export function MessageList({
   alignItemsAtEnd = true,
   showElapsedTime = true,
   commands = [],
+  turnChanges = false,
 }: {
   messages: ReadonlyArray<Message>
   providerLabel: string
@@ -64,8 +68,9 @@ export function MessageList({
   header?: ReactElement
   alignItemsAtEnd?: boolean
   showElapsedTime?: boolean
+  turnChanges?: boolean
 }) {
-  const transcript = { providerLabel, showElapsedTime, commands }
+  const transcript = { providerLabel, showElapsedTime, commands, turnChanges }
   return (
     <TranscriptContext value={transcript}>
       <LastMessageContext value={messages.at(-1)?.id}>
@@ -259,9 +264,16 @@ function AssistantBody({ message, showElapsedTime }: { message: Message; showEla
           {writingIndex !== undefined ? m.message_writing() : m.message_thinking()}
         </p>
       )}
+      {!streaming && <LatestTurnChanges message={message} />}
       {!streaming && <MessageActions message={message} className="-ml-2" />}
     </article>
   )
+}
+
+function LatestTurnChanges({ message }: { message: Message }) {
+  const { turnChanges } = use(TranscriptContext)
+  const latest = use(LastMessageContext) === message.id
+  return turnChanges && latest && <TurnChanges threadId={message.threadId} messageId={message.id} />
 }
 
 function AssistantParts({

@@ -2206,5 +2206,31 @@
   "mobile_transport_token_refused": "The desktop refused this token. Pair again from Settings > Remote.",
   "mobile_transport_protocol_mismatch": "The desktop speaks remote protocol {desktop}, this app speaks {app}. Update the older one.",
   "mobile_connection_no_server": "Not connected to any server.",
-  "mobile_connection_server_gone": "No paired server has this anymore."
+  "mobile_connection_server_gone": "No paired server has this anymore.",
+  "turn_changes_edited": "Edited {file}",
+  "turn_changes_created": "Created {file}",
+  "turn_changes_deleted": "Deleted {file}",
+  "turn_changes_files": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Edited {count} file",
+        "countPlural=other": "Edited {count} files"
+      }
+    }
+  ],
+  "turn_changes_undo": "Undo",
+  "turn_changes_view": "View changes",
+  "turn_changes_undone": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Undid changes to {count} file",
+        "countPlural=other": "Undid changes to {count} files"
+      }
+    }
+  ],
+  "transcript_scroll_to_latest": "Scroll to latest message"
 }

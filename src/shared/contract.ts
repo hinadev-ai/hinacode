@@ -275,6 +275,7 @@ export const RpcMethods = {
   "worktrees.stopSetup": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   "worktrees.pullRequest": rpc(Schema.Struct({ id: Schema.String }), Schema.NullOr(PullRequest)),
   "threads.changes": rpc(Schema.Struct({ threadId: Schema.String, scope: ChangesScope }), Schema.NullOr(Changes)),
+  "threads.undoTurn": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "threads.fork": rpc(Schema.Struct({ threadId: Schema.String, messageId: Schema.String }), Thread),
   "threads.sidechat": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   "sessions.listExternal": rpc(
@@ -629,6 +630,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "worktrees.stopSetup": "mutation",
   "worktrees.pullRequest": "read",
   "threads.changes": "read",
+  "threads.undoTurn": "mutation",
   "threads.fork": "mutation",
   "threads.sidechat": "mutation",
   "sessions.listExternal": "read",

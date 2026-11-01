@@ -2197,5 +2197,31 @@
   "mobile_transport_token_refused": "桌面版拒绝了此令牌。请从“设置”中的“远程”重新配对。",
   "mobile_transport_protocol_mismatch": "桌面版使用远程协议 {desktop}，此应用使用 {app}。请更新版本较旧的一方。",
   "mobile_connection_no_server": "尚未连接到任何服务器。",
-  "mobile_connection_server_gone": "已配对的服务器中已没有此项。"
+  "mobile_connection_server_gone": "已配对的服务器中已没有此项。",
+  "turn_changes_edited": "编辑了 {file}",
+  "turn_changes_created": "新增了 {file}",
+  "turn_changes_deleted": "删除了 {file}",
+  "turn_changes_files": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "编辑了 {count} 个文件",
+        "countPlural=other": "编辑了 {count} 个文件"
+      }
+    }
+  ],
+  "turn_changes_undo": "撤销",
+  "turn_changes_view": "查看更改",
+  "turn_changes_undone": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "已撤销 {count} 个文件的更改",
+        "countPlural=other": "已撤销 {count} 个文件的更改"
+      }
+    }
+  ],
+  "transcript_scroll_to_latest": "滚动到最新消息"
 }

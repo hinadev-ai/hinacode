@@ -2151,5 +2151,13 @@
   "mobile_transport_token_refused": "デスクトップがこのトークンを拒否しました。「設定」の「リモート接続」からもう一度ペアリングしてください。",
   "mobile_transport_protocol_mismatch": "デスクトップのリモートプロトコルは {desktop}、このアプリは {app} です。古いほうを更新してください。",
   "mobile_connection_no_server": "どのサーバーにも接続していません。",
-  "mobile_connection_server_gone": "ペアリング済みのサーバーにはもう存在しません。"
+  "mobile_connection_server_gone": "ペアリング済みのサーバーにはもう存在しません。",
+  "turn_changes_edited": "{file} を編集しました",
+  "turn_changes_created": "{file} を作成しました",
+  "turn_changes_deleted": "{file} を削除しました",
+  "turn_changes_files": "{count} ファイルを編集しました",
+  "turn_changes_undo": "元に戻す",
+  "turn_changes_view": "変更を表示",
+  "turn_changes_undone": "{count} ファイルの変更を元に戻しました",
+  "transcript_scroll_to_latest": "最新のメッセージへスクロール"
 }
