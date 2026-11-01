@@ -24,6 +24,8 @@ import { CloudMark } from "./CloudMark.tsx"
 import { ProjectDialog } from "./ProjectDialog.tsx"
 import { LineCounts } from "./LineCounts.tsx"
 import { BranchIcon } from "./icons/BranchIcon.tsx"
+import { ComputerIcon } from "./icons/ComputerIcon.tsx"
+import { FolderIcon } from "./icons/FolderIcon.tsx"
 import { ChatNewIcon } from "./icons/ChatNewIcon.tsx"
 import { FileDiffIcon } from "./icons/FileDiffIcon.tsx"
 import { FileTextIcon } from "./icons/FileTextIcon.tsx"
@@ -124,13 +126,12 @@ export function ThreadOverview({ thread }: { thread: Thread }) {
   return (
     <aside
       aria-label={m.overview_label()}
-      className="-m-1 hidden min-h-0 w-66 scroll-fade-y scrollbar-none flex-col overflow-y-auto p-1 beside-overview:flex"
+      className="-m-1 hidden min-h-0 w-70 scroll-fade-y scrollbar-none flex-col overflow-y-auto p-1 beside-overview:flex"
     >
       <div className="flex flex-col gap-0.5 rounded-2xl border border-border bg-background/95 p-1.5 shadow-sm backdrop-blur">
-        <WorkspaceHeader thread={thread} project={project} worktree={live} onRun={run} />
-        {live && <ChangesRow thread={thread} />}
-        {live && <BranchRow thread={thread} worktree={live} />}
+        <Environment thread={thread} project={project} worktree={live} />
         <PullRequests thread={thread} worktree={live} />
+        {project.kind === "folder" && <SetupScript thread={thread} project={project} worktree={live} onRun={run} />}
         <Actions thread={thread} project={project} onRun={run} />
         <Subagents thread={thread} />
       </div>
@@ -184,82 +185,55 @@ interface WorkspaceProps {
   readonly worktree: Worktree | undefined
 }
 
-function WorkspaceHeader({ thread, project, worktree, onRun }: WorkspaceProps & { onRun: RunCommand }) {
+function Environment({ thread, project, worktree }: WorkspaceProps) {
   const environment = useThreadEnvironment(thread.id)
   const cloud = useCloud(environment)
   const machine = environmentName(environment, useClouds())
   const folder = project.kind === "folder"
-  const path = worktree?.path ?? (folder ? project.rootPath : undefined)
-
-  return (
-    <div className="flex min-h-8 min-w-0 items-center gap-2 pr-0.5 pl-2">
-      {cloud && <CloudMark cloud={cloud} className="size-4" />}
-      <h2
-        title={[cloud ? machine : undefined, path].filter(Boolean).join("\n")}
-        className="min-w-0 flex-1 truncate text-sm text-muted-foreground"
-      >
-        {folder ? project.name : machine}
-      </h2>
-      {folder && <SetupScriptMenu thread={thread} project={project} worktree={worktree} onRun={onRun} />}
-    </div>
-  )
-}
-
-function SetupScriptMenu({ thread, project, worktree, onRun }: WorkspaceProps & { onRun: RunCommand }) {
-  const [editing, setEditing] = useState(false)
-  const script = project.setupScript
-  const failed = worktree?.status === "failed"
-  const edit = () => startTransition(() => setEditing(true))
+  const status = worktree && worktreeStatus[worktree.status]?.()
 
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label={m.overview_workspace_menu()}
-              title={m.overview_workspace_menu()}
-              className="text-muted-foreground"
-            />
-          }
-        >
-          <MoreIcon aria-hidden />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
-          {script === null ? (
-            <DropdownMenuItem onClick={edit}>
-              <PlusIcon aria-hidden />
-              {m.overview_setup_add()}
-            </DropdownMenuItem>
-          ) : (
-            <>
-              <DropdownMenuItem title={script} onClick={() => onRun({ title: m.project_setup_label(), line: script })}>
-                <PlayIcon aria-hidden />
-                {m.overview_setup_run()}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={edit}>
-                <PencilIcon aria-hidden />
-                {m.overview_setup_edit()}
-              </DropdownMenuItem>
-            </>
-          )}
-          {worktree && (
-            <DropdownMenuItem
-              variant={failed ? "destructive" : "default"}
-              onClick={() => useUi.getState().showView(thread.id, "details")}
-            >
-              <FileTextIcon aria-hidden />
-              {failed ? m.worktree_status_failed() : m.overview_setup_log()}
-            </DropdownMenuItem>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <ProjectDialog open={editing} onOpenChange={setEditing} project={project} />
+      <h2 className="flex min-h-8 items-center truncate px-2 text-sm text-muted-foreground">
+        {m.overview_environment()}
+      </h2>
+      <div className={rowClassName}>
+        {cloud ? (
+          <CloudMark cloud={cloud} className="size-4" />
+        ) : (
+          <ComputerIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+        )}
+        <span className="min-w-0 flex-1 truncate">{machine}</span>
+      </div>
+      {worktree ? (
+        <>
+          <div className={rowClassName} title={worktree.path}>
+            <BranchIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate font-mono text-xs">{worktree.branch}</span>
+            {status && (
+              <span
+                data-status={worktree.status}
+                className="shrink-0 text-xs text-muted-foreground data-[status=failed]:text-destructive"
+              >
+                {status}
+              </span>
+            )}
+          </div>
+          <ChangesRow thread={thread} />
+        </>
+      ) : (
+        folder && (
+          <div className={rowClassName} title={project.rootPath}>
+            <FolderIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate">{folderName(project.rootPath)}</span>
+          </div>
+        )
+      )}
     </>
   )
 }
+
+const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
 
 function ChangesRow({ thread }: { thread: Thread }) {
   const { changes } = useThreadChanges(thread, "worktree")
@@ -276,37 +250,69 @@ function ChangesRow({ thread }: { thread: Thread }) {
   )
 }
 
-function BranchRow({ thread, worktree }: { thread: Thread; worktree: Worktree }) {
-  const branchPullRequest = AsyncResult.getOrElse(useAtomValue(branchPullRequestAtom(worktree.id)), () => null)
-  const linked = usePullRequests((state) =>
-    (state.byThreadId[thread.id] ?? []).some((link) => link.url === branchPullRequest?.url),
-  )
-  const status = worktreeStatus[worktree.status]?.()
+const SCRIPT_PREVIEW_LINES = 3
 
-  if (!branchPullRequest) {
-    return (
-      <div className={rowClassName} title={worktree.path}>
-        <BranchIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate font-mono text-xs">{worktree.branch}</span>
-        {status && (
-          <span
-            data-status={worktree.status}
-            className="shrink-0 text-xs text-muted-foreground data-[status=failed]:text-destructive"
-          >
-            {status}
-          </span>
-        )}
-      </div>
-    )
-  }
+function SetupScript({ thread, project, worktree, onRun }: WorkspaceProps & { onRun: RunCommand }) {
+  const [editing, setEditing] = useState(false)
+  const script = project.setupScript
+  const failed = worktree?.status === "failed"
+  const edit = () => startTransition(() => setEditing(true))
+
   return (
-    <PullRequestRow
-      thread={thread}
-      url={branchPullRequest.url}
-      linked={linked}
-      icon={BranchIcon}
-      title={`${worktree.branch}\n${branchPullRequest.title}`}
-    />
+    <Section
+      title={m.project_setup_label()}
+      action={
+        script === null && (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={m.overview_setup_add()}
+            title={m.overview_setup_add()}
+            className="text-muted-foreground"
+            onClick={edit}
+          >
+            <PlusIcon aria-hidden />
+          </Button>
+        )
+      }
+    >
+      {script !== null && (
+        <div>
+          <pre title={script} className="mx-1 rounded-md bg-muted/60 px-2 py-1.5 font-mono text-xs/relaxed">
+            {script
+              .split("\n")
+              .slice(0, SCRIPT_PREVIEW_LINES)
+              .map((line, index) => (
+                <span key={index} className="block truncate">
+                  {line}
+                </span>
+              ))}
+          </pre>
+          <div className="flex items-center gap-0.5 px-1 pt-1">
+            <Button variant="ghost" size="xs" onClick={() => onRun({ title: m.project_setup_label(), line: script })}>
+              <PlayIcon aria-hidden />
+              {m.overview_run()}
+            </Button>
+            <Button variant="ghost" size="xs" onClick={edit}>
+              <PencilIcon aria-hidden />
+              {m.overview_edit()}
+            </Button>
+            {worktree && (
+              <Button
+                variant="ghost"
+                size="xs"
+                data-failed={failed}
+                className="ml-auto data-[failed=true]:text-destructive"
+                onClick={() => useUi.getState().showView(thread.id, "details")}
+              >
+                {failed ? m.worktree_status_failed() : m.overview_setup_log()}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+      <ProjectDialog open={editing} onOpenChange={setEditing} project={project} />
+    </Section>
   )
 }
 
@@ -317,15 +323,18 @@ function PullRequests({ thread, worktree }: { thread: Thread; worktree: Worktree
     useAtomValue(branchPullRequestAtom(worktree ? worktree.id : null)),
     () => null,
   )
-  const urls = links.map((link) => link.url).filter((url) => url !== branchPullRequest?.url)
+  const linked = new Set(links.map((link) => link.url))
+  const urls = [
+    ...new Set([...(branchPullRequest ? [branchPullRequest.url] : []), ...links.map((link) => link.url).toReversed()]),
+  ]
   if (urls.length === 0) return null
 
   return (
     <Section title={m.pr_links_title()}>
       <ul className="flex flex-col gap-0.5">
-        {urls.toReversed().map((url) => (
+        {urls.map((url) => (
           <li key={url}>
-            <PullRequestRow thread={thread} url={url} linked />
+            <PullRequestRow thread={thread} url={url} linked={linked.has(url)} />
           </li>
         ))}
       </ul>
@@ -345,24 +354,22 @@ interface PullRequestRowProps {
   readonly thread: Thread
   readonly url: string
   readonly linked: boolean
-  readonly icon?: IconComponent
-  readonly title?: string
 }
 
-function PullRequestRow({ thread, url, linked, icon, title }: PullRequestRowProps) {
+function PullRequestRow({ thread, url, linked }: PullRequestRowProps) {
   const status = useAtomValue(pullRequestStatusAtom(useThreadEnvironment(thread.id), url))
   const pullRequest = AsyncResult.isSuccess(status) ? status.value : undefined
   const ref = parsePullRequestUrl(url)
   const name = pullRequest?.title ?? (ref ? `${ref.owner}/${ref.name}#${ref.number}` : url)
   const indicator = pullRequest ? statusIndicator[pullRequest.status] : undefined
-  const Icon = icon ?? indicator?.Icon ?? RiGitPullRequestLine
+  const Icon = indicator?.Icon ?? RiGitPullRequestLine
   const rowRef = useRef<HTMLDivElement>(null)
 
   return (
     <div ref={rowRef} className="group/pr flex items-center rounded-lg hover:bg-muted has-data-popup-open:bg-muted">
       <button
         type="button"
-        title={title ?? url}
+        title={url}
         onClick={() => openPullRequest(thread.id, url)}
         className={cn(rowClassName, "flex-1")}
       >

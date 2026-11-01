@@ -10,13 +10,13 @@ While a thread runs, the developer wants three answers at a glance: where it run
 ## User flow
 
 1. A thread shows one floating card at the top right of the transcript, toggled by the list icon in the thread header. The choice persists.
-2. The header names the project, with the cloud's mark when the thread runs on one. Its menu runs or edits the setup script (or adds one) and opens the setup log in the Details tab.
-3. A worktree thread shows Changes, with the worktree's added and removed lines, which opens the Changes tab. Below it, the branch row shows the branch name, or the title of the branch's pull request once it has one.
-4. Every pull request row has a "Pull request actions" menu: view it (with copy link and open on GitHub), Code changes with its line counts (opens the Code tab), Status, Add to chat (appends the URL to the composer), and Unlink from thread for linked ones. A colored dot on the icon shows checks.
-5. Pull requests lists the linked pull requests other than the branch's, newest first.
+2. Environment shows the machine (this machine or a cloud) and the worktree branch, or the project folder for a thread without a worktree. A worktree thread also shows Changes, with the worktree's added and removed lines, which opens the Changes tab.
+3. Pull requests lists the branch's pull request first, then the linked ones, newest first. A colored dot on the icon shows checks. A row opens that pull request in the Pull requests tab.
+4. Every pull request row has a "Pull request actions" menu: view it (with copy link and open on GitHub), Code changes with its line counts (opens the Changes tab), Status, Add to chat (appends the URL to the composer), and Unlink from thread for linked ones.
+5. Setup script shows the first lines of the project's setup script. Run executes it in a new terminal tab, Edit opens the project dialog, and Log opens the Details tab with the setup log.
 6. Actions lists the project's named commands, then the global ones, marked with a globe, that every project on this machine shares. Clicking one opens a terminal tab named after it, in the thread's workspace, and types the command. The shell stays open when the command ends. The + in the section header and the pencil on a row open a dialog with Name, Command and where it is available (this project or all projects), plus Delete when editing. Changing where an existing action is available moves it.
 7. Agents appears once the thread has started any. It lists the five newest, with status, tool count, tokens and elapsed time. A row opens that sub-agent's transcript, a running one has a stop button on hover, and View all opens the Agents tab.
-8. Chat threads have no project actions, so they show the machine, global Actions, Pull requests and Agents.
+8. Chat threads have no project actions, so they show Environment, global Actions, Pull requests and Agents.
 
 ## Design
 
