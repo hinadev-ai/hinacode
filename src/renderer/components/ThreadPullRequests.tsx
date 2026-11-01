@@ -2,7 +2,6 @@ import { RiGitClosePullRequestLine, RiGitPullRequestLine } from "react-icons/ri"
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { create } from "zustand"
 import { createContext, lazy, type ReactNode, Suspense, use, useId, useState, useTransition } from "react"
 import type {
   CheckRunStatus,
@@ -247,50 +246,7 @@ export function ThreadPullRequests({ thread }: { thread: Thread }) {
   )
 }
 
-const linkedListLayouts = ["rows", "compact", "byRepository"] as const
-type LinkedListLayout = (typeof linkedListLayouts)[number]
-const LINKED_LIST_LAYOUT_KEY = "hinacode.linkedListLayout"
-
-const useLinkedListLayout = create<{
-  readonly layout: LinkedListLayout
-  readonly setLayout: (layout: LinkedListLayout) => void
-}>()((set) => ({
-  layout: linkedListLayouts.find((layout) => layout === localStorage.getItem(LINKED_LIST_LAYOUT_KEY)) ?? "rows",
-  setLayout: (layout) => {
-    localStorage.setItem(LINKED_LIST_LAYOUT_KEY, layout)
-    set({ layout })
-  },
-}))
-
-const layoutNames: Record<LinkedListLayout, string> = {
-  rows: "Rows",
-  compact: "Compact",
-  byRepository: "By repository",
-}
-
-function LinkedListLayoutPicker() {
-  const layout = useLinkedListLayout((state) => state.layout)
-  const setLayout = useLinkedListLayout((state) => state.setLayout)
-  return (
-    <fieldset className="flex gap-1 rounded-lg border border-dashed p-1">
-      <legend className="sr-only">Linked pull request layout</legend>
-      {linkedListLayouts.map((option) => (
-        <Button
-          key={option}
-          size="xs"
-          variant={option === layout ? "secondary" : "ghost"}
-          aria-pressed={option === layout}
-          action={() => setLayout(option)}
-        >
-          {layoutNames[option]}
-        </Button>
-      ))}
-    </fieldset>
-  )
-}
-
 interface LinkedList {
-  readonly layout: LinkedListLayout
   readonly selected: string
   readonly watched: ReadonlySet<string>
   readonly order: ReadonlyMap<string, number>
@@ -303,15 +259,6 @@ const flatten = (stacks: ReadonlyArray<StackNode>): ReadonlyArray<string> =>
   stacks.flatMap((stack) => [stack.url, ...flatten(stack.children)])
 
 const repositoryName = (url: string) => /github\.com\/([^/]+\/[^/]+)\/pull\//.exec(url)?.[1] ?? url
-
-const byRepository = (stacks: ReadonlyArray<StackNode>) => {
-  const groups = new Map<string, Array<StackNode>>()
-  for (const stack of stacks) {
-    const repository = repositoryName(stack.url)
-    groups.set(repository, [...(groups.get(repository) ?? []), stack])
-  }
-  return [...groups]
-}
 
 const ENTRANCE_STAGGER_MS = 25
 
@@ -328,10 +275,8 @@ function LinkedPullRequests({
 }) {
   const environment = useOpenThreadEnvironment()
   const branches = useAtomValue(pullRequestStatusesAtom(environment, urls))
-  const layout = useLinkedListLayout((state) => state.layout)
   const stacks = pullRequestStacks(urls, branches)
   const list: LinkedList = {
-    layout,
     selected,
     watched,
     order: new Map(flatten(stacks).map((url, index) => [url, index])),
@@ -339,24 +284,7 @@ function LinkedPullRequests({
   }
   return (
     <LinkedListContext value={list}>
-      <div className="flex flex-col gap-3">
-        {import.meta.env.DEV && <LinkedListLayoutPicker />}
-        <div className="flex flex-col gap-4">
-          {layout === "byRepository" ? (
-            byRepository(stacks).map(([repository, group]) => (
-              <section key={repository} aria-label={repository} className="flex flex-col gap-1">
-                <h3 className="flex items-center gap-1.5 px-2 font-mono text-xs text-muted-foreground">
-                  <span className="truncate">{repository}</span>
-                  <span className="tabular-nums">{flatten(group).length}</span>
-                </h3>
-                <PullRequestTree stacks={group} />
-              </section>
-            ))
-          ) : (
-            <PullRequestTree stacks={stacks} />
-          )}
-        </div>
-      </div>
+      <PullRequestTree stacks={stacks} />
     </LinkedListContext>
   )
 }
@@ -380,7 +308,6 @@ function LinkedPullRequestRow({ url, children }: { url: string; children: ReactN
   if (list === null) return null
   const pullRequest = AsyncResult.isSuccess(status) ? status.value : undefined
   const selected = list.selected === url
-  const showDetails = list.layout !== "compact" || selected
 
   return (
     <li
@@ -393,7 +320,7 @@ function LinkedPullRequestRow({ url, children }: { url: string; children: ReactN
         onClick={() => list.onSelect(url)}
         className="relative isolate grid w-full grid-cols-[auto_minmax(0,1fr)] gap-x-2.5 rounded-lg px-2 py-1.5 text-left text-xs outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring aria-current:bg-muted"
       >
-        <span className={cn("flex pt-0.5", showDetails && "row-span-2")}>
+        <span className="row-span-2 flex pt-0.5">
           <ChangingStatusIcon status={pullRequest?.status} />
         </span>
         <span className="flex min-w-0 items-center gap-1.5">
@@ -415,18 +342,16 @@ function LinkedPullRequestRow({ url, children }: { url: string; children: ReactN
             </span>
           )}
         </span>
-        {showDetails && pullRequest && (
+        {pullRequest && (
           <span className="col-start-2 overflow-hidden">
             <span className="flex min-w-0 items-center gap-2.5 pt-1 text-muted-foreground">
               <span className="flex shrink-0 items-center gap-1.5">
                 <Avatar login={pullRequest.author} />
                 {pullRequest.author}
               </span>
-              {list.layout !== "byRepository" && (
-                <span className="min-w-0 shrink-2 truncate font-mono" title={repositoryName(url)}>
-                  {repositoryName(url)}
-                </span>
-              )}
+              <span className="min-w-0 shrink-2 truncate font-mono" title={repositoryName(url)}>
+                {repositoryName(url)}
+              </span>
               <span
                 className="min-w-0 truncate font-mono"
                 title={`${pullRequest.baseRefName} ← ${pullRequest.headRefName}`}
