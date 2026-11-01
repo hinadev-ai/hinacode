@@ -103,11 +103,13 @@ export function PanelToggle({
   onToggle,
   buttonRef,
   closeDialog = false,
+  className,
 }: {
   expanded: boolean
   onToggle: () => void
   buttonRef?: RefObject<HTMLButtonElement | null>
   closeDialog?: boolean
+  className?: string
 }) {
   const label = expanded ? m.panel_hide() : m.panel_show()
   const button = (
@@ -115,6 +117,7 @@ export function PanelToggle({
       ref={buttonRef}
       variant="ghost"
       size="icon-sm"
+      className={className}
       aria-label={label}
       title={label}
       aria-expanded={expanded}
