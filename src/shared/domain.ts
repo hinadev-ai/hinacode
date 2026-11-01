@@ -188,6 +188,9 @@ export const CheckRun = Schema.Struct({
 })
 export type CheckRun = typeof CheckRun.Type
 
+export const DiffSide = Schema.Literals(["LEFT", "RIGHT"])
+export type DiffSide = typeof DiffSide.Type
+
 export const CommentAuthorKind = Schema.Literals(["you", "human", "bot"])
 export type CommentAuthorKind = typeof CommentAuthorKind.Type
 
@@ -198,9 +201,31 @@ export const PullRequestComment = Schema.Struct({
   body: Schema.String,
   createdAt: Schema.String,
   url: Schema.String,
-  location: Schema.NullOr(Schema.Struct({ path: Schema.String, line: Schema.NullOr(Schema.Number) })),
+  location: Schema.NullOr(
+    Schema.Struct({ path: Schema.String, line: Schema.NullOr(Schema.Number), side: Schema.optional(DiffSide) }),
+  ),
 })
 export type PullRequestComment = typeof PullRequestComment.Type
+
+export const ReviewLineComment = Schema.Struct({
+  body: Schema.String.check(Schema.isNonEmpty()),
+  commit: Schema.String,
+  path: Schema.String,
+  side: DiffSide,
+  startLine: Schema.Int,
+  endLine: Schema.Int,
+})
+export type ReviewLineComment = typeof ReviewLineComment.Type
+
+export const LineComment = Schema.Struct({
+  id: Schema.String,
+  path: Schema.String,
+  startLine: Schema.Int,
+  endLine: Schema.Int,
+  code: Schema.String,
+  body: Schema.String,
+})
+export type LineComment = typeof LineComment.Type
 
 export const PullRequestDetail = Schema.Struct({
   ...PullRequest.fields,

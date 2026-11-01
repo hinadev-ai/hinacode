@@ -93,12 +93,24 @@ function ActivityTab({ view, threadId, chord, selected, focusable, panelId }: Ac
         {createElement(view.icon, { "aria-hidden": true, className: "size-[1.125rem]" })}
         <span className="sr-only">{view.title()}</span>
         {view.badge && <ViewBadge useCount={view.badge} threadId={threadId} />}
+        {view.dot && <ViewDot useLabel={view.dot} threadId={threadId} />}
       </TooltipTrigger>
       <TooltipContent side="left">
         {view.title()}
         {chord && <ChordKeys chord={chord} />}
       </TooltipContent>
     </Tooltip>
+  )
+}
+
+function ViewDot({ useLabel, threadId }: { useLabel: (threadId: string) => string | null; threadId: string }) {
+  // oxlint-disable-next-line react/rules-of-hooks -- the registry is a module constant, so each keyed dot always gets the same hook.
+  const label = useLabel(threadId)
+  if (label === null) return null
+  return (
+    <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-pr-open ring-2 ring-background">
+      <span className="sr-only">{label}</span>
+    </span>
   )
 }
 

@@ -203,7 +203,7 @@ beforeAll(async () => {
     expect((await cloud.runPromise(RemoteAccess.use((remote) => remote.status))).listening).toBe(true),
   )
   desktop = ManagedRuntime.make(makeDesktop(join(dir, "desktop", "hinacode.sqlite")))
-  registerIpc(desktop, appUrl)
+  registerIpc(desktop, appUrl, () => {})
   desktopMachine = await desktop.runPromise(RemoteAccess.use((remote) => Effect.succeed(remote.identity)))
 
   const pairing = await cloud.runPromise(RemoteAccess.use((remote) => remote.pairing))

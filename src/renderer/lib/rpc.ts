@@ -441,6 +441,11 @@ export const pullRequestFilesAtom = familyOf((environment: EnvironmentId, url: s
   Atom.make(call("github.pullRequestFiles", { url }, { environment })).pipe(Atom.setIdleTTL("10 minutes")),
 )
 
+export const pullRequestFileContentAtom = familyOf(
+  (environment: EnvironmentId, url: string, ref: string, path: string) =>
+    Atom.make(call("github.fileContent", { url, ref, path }, { environment })).pipe(Atom.setIdleTTL("10 minutes")),
+)
+
 export const gitHubAuthAtom = Atom.family((environment: EnvironmentId) =>
   Atom.make(call("github.auth", undefined, { environment })).pipe(Atom.setIdleTTL("12 hours")),
 )
