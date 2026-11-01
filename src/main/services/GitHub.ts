@@ -39,6 +39,7 @@ import {
   parseGitHubPullRequestUrl,
   parseGitHubRepository,
   PULL_REQUEST_REFRESH,
+  type RepositoryVisibility,
 } from "../../shared/github.ts"
 import { Events } from "./Events.ts"
 import { CommandError, makeExec, REMOTE_GIT_ARGS, REMOTE_GIT_ENV, type RunOptions } from "./Git.ts"
@@ -580,6 +581,7 @@ export class GitHub extends Context.Service<
       branches: { readonly head: string; readonly base: string },
     ) => Effect.Effect<string, GitHubError>
     readonly clone: (repository: GitHubRepository, dest: string) => Effect.Effect<void, CommandError>
+    readonly createRepository: (cwd: string, visibility: RepositoryVisibility) => Effect.Effect<void, GitHubError>
     readonly repository: (cwd: string) => Effect.Effect<GitHubRepository | null>
   }
 >()("hinacode/GitHub") {}
@@ -736,6 +738,9 @@ const make = Effect.gen(function* () {
       Effect.map((stdout) => stdout.trim().split("\n").at(-1) ?? ""),
     )
 
+  const createRepository = (cwd: string, visibility: RepositoryVisibility) =>
+    gh(cwd, ["repo", "create", "--source", cwd, "--remote", "origin", `--${visibility}`, "--push"]).pipe(Effect.asVoid)
+
   const clone = ({ owner, name }: GitHubRepository, dest: string) => {
     // FIXME: a full https URL keeps gh from switching to a configured ssh git_protocol
     const url = `https://github.com/${owner}/${name}.git`
@@ -890,6 +895,7 @@ const make = Effect.gen(function* () {
       ),
     createPullRequest,
     clone,
+    createRepository,
     repository,
   })
 })

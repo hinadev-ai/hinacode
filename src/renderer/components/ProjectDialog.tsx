@@ -3,7 +3,7 @@ import { AsyncResult } from "effect/reactivity"
 import { type ComponentProps, type FormEvent, startTransition, useActionState, useState } from "react"
 import { RiGithubFill } from "react-icons/ri"
 import type { Project } from "../../shared/domain.ts"
-import { type GitHubRepository, parseGitHubRepository } from "../../shared/github.ts"
+import { type GitHubRepository, parseGitHubRepository, type RepositoryVisibility } from "../../shared/github.ts"
 import {
   callPromise,
   cloneProjectAtom,
@@ -83,6 +83,7 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
   const [linearReview, setLinearReview] = useState(project?.linearReview ?? false)
   const repository = project ? null : parseGitHubRepository(rootPath)
   const [cloneTo, setCloneTo] = useState<string | null>(null)
+  const [newRepository, setNewRepository] = useState<RepositoryVisibility | null>(null)
   const [environment, setEnvironment] = useState<EnvironmentId>(() =>
     project ? environmentOf(project) : initialEnvironment,
   )
@@ -91,22 +92,37 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
 
   const [error, submit, isPending] = useActionState(async (_: string | null, form: FormData) => {
     const setupScript = String(form.get("setupScript") ?? "").trim() || null
-    try {
+    const save = () => {
       if (project)
-        await updateProject({ id: project.id, name: name.trim(), rootPath: rootPath.trim(), setupScript, linearReview })
-      else if (repository)
-        await cloneProject({
+        return updateProject({
+          id: project.id,
+          name: name.trim(),
+          rootPath: rootPath.trim(),
+          setupScript,
+          linearReview,
+        })
+      if (repository)
+        return cloneProject({
           environment,
           repository,
           rootPath: (cloneTo ?? defaultCloneTo).trim(),
           name: name.trim() || repository.name,
           setupScript,
         })
-      else await createProject({ environment, name: name.trim(), rootPath: rootPath.trim(), setupScript })
+      return createProject({
+        environment,
+        name: name.trim(),
+        rootPath: rootPath.trim(),
+        setupScript,
+        ...(newRepository ? { createRepository: newRepository } : {}),
+      })
+    }
+    try {
+      await save()
+      onSaved()
     } catch (cause) {
       return errorMessage(cause)
     }
-    onSaved()
     return null
   }, null)
 
@@ -192,6 +208,7 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
             </span>
           </FieldDescription>
         </Field>
+        {!project && !repository && <NewRepositoryField value={newRepository} onChange={setNewRepository} />}
         {project && (
           <Field orientation="horizontal">
             <FieldContent>
@@ -208,14 +225,60 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
         <Button type="submit" disabled={isPending}>
           {project
             ? m.project_save()
-            : !repository
-              ? m.project_submit()
-              : isPending
+            : repository
+              ? isPending
                 ? m.project_cloning()
-                : m.project_clone_submit()}
+                : m.project_clone_submit()
+              : isPending && newRepository
+                ? m.project_creating_repository()
+                : m.project_submit()}
         </Button>
       </DialogFooter>
     </form>
+  )
+}
+
+function NewRepositoryField({
+  value,
+  onChange,
+}: {
+  value: RepositoryVisibility | null
+  onChange: (visibility: RepositoryVisibility | null) => void
+}) {
+  const visibilities = [
+    { value: "private", label: m.project_repository_private() },
+    { value: "public", label: m.project_repository_public() },
+  ] as const
+  return (
+    <Field orientation="horizontal">
+      <FieldLabel htmlFor="project-create-repository" className="flex-1">
+        <RiGithubFill aria-hidden className="size-4 shrink-0" />
+        {m.project_create_repository()}
+      </FieldLabel>
+      {value !== null && (
+        <Select
+          items={visibilities}
+          value={value}
+          onValueChange={(next) => (next === "private" || next === "public") && onChange(next)}
+        >
+          <SelectTrigger size="sm" className="w-28" aria-label={m.project_create_repository()}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {visibilities.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+      <Switch
+        id="project-create-repository"
+        checked={value !== null}
+        onCheckedChange={(checked) => onChange(checked ? "private" : null)}
+      />
+    </Field>
   )
 }
 

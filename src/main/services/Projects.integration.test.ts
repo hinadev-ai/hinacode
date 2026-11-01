@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, wri
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
-import { afterAll, describe, expect, it } from "@effect/vitest"
+import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import { Effect, Layer } from "effect"
 import * as Db from "../db/client.ts"
 import * as Git from "./Git.ts"
@@ -160,6 +160,65 @@ describe("Projects.create", () => {
         Projects.use((projects) => projects.create({ name: "notes", rootPath, setupScript: null })),
       ).pipe(Effect.flip)
       expect(error._tag).toBe("ProjectRootInvalidError")
+    }),
+  )
+})
+
+const withGitHub = (createRepository: GitHub.GitHub["Service"]["createRepository"]) =>
+  layer.pipe(
+    Layer.provide(Layer.mergeAll(Git.layer, Layer.mock(GitHub.GitHub, { createRepository }), Db.layer(":memory:"))),
+    Layer.provide(NodeServices.layer),
+  )
+
+describe("Projects.create with a new GitHub repository", () => {
+  const identity = {
+    GIT_AUTHOR_NAME: "t",
+    GIT_AUTHOR_EMAIL: "t@t",
+    GIT_COMMITTER_NAME: "t",
+    GIT_COMMITTER_EMAIL: "t@t",
+  }
+  beforeAll(() => {
+    Object.assign(process.env, identity)
+    return () => Object.keys(identity).forEach((key) => delete process.env[key])
+  })
+
+  it.live("starts the folder's history and publishes it with the chosen visibility", () =>
+    Effect.gen(function* () {
+      const rootPath = join(emptyDir(), "new-app")
+      const published: Array<[string, string]> = []
+      const project = yield* Projects.use((projects) =>
+        projects.create({ name: "new-app", rootPath, setupScript: null, createRepository: "private" }),
+      ).pipe(Effect.provide(withGitHub((cwd, visibility) => Effect.sync(() => void published.push([cwd, visibility])))))
+      expect(project.rootPath).toBe(rootPath)
+      expect(published).toStrictEqual([[rootPath, "private"]])
+      expect(execFileSync("git", ["-C", rootPath, "rev-list", "--count", "HEAD"], { encoding: "utf8" }).trim()).toBe(
+        "1",
+      )
+    }),
+  )
+
+  it.live("refuses a folder that already has an origin before creating anything on GitHub", () =>
+    Effect.gen(function* () {
+      const rootPath = withOrigin("https://github.com/octocat/elsewhere.git")
+      const published: Array<string> = []
+      const error = yield* Projects.use((projects) =>
+        projects.create({ name: "elsewhere", rootPath, setupScript: null, createRepository: "private" }),
+      ).pipe(Effect.flip, Effect.provide(withGitHub((cwd) => Effect.sync(() => void published.push(cwd)))))
+      expect(error._tag).toBe("ProjectOriginTakenError")
+      expect(published).toStrictEqual([])
+    }),
+  )
+
+  it.live("adds no project when GitHub refuses the repository", () =>
+    Effect.gen(function* () {
+      const rootPath = join(emptyDir(), "taken")
+      const refused = new Git.CommandError({ command: "gh", args: [], exitCode: 1, stderr: "name already exists" })
+      const listed = yield* Projects.use((projects) =>
+        projects
+          .create({ name: "taken", rootPath, setupScript: null, createRepository: "private" })
+          .pipe(Effect.flip, Effect.andThen(projects.list)),
+      ).pipe(Effect.provide(withGitHub(() => Effect.fail(refused))))
+      expect(listed).toStrictEqual([])
     }),
   )
 })
