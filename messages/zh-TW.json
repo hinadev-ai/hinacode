@@ -2191,5 +2191,6 @@
   "pr_preview_before": "變更前",
   "pr_preview_after": "變更後",
   "pr_preview_too_large": "檔案太大，無法預覽。",
-  "pr_preview_failed": "無法載入檔案：{message}"
+  "pr_preview_failed": "無法載入檔案：{message}",
+  "settings_guide_model_picker": "導覽模型"
 }

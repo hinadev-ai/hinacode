@@ -2173,5 +2173,6 @@
   "pr_preview_before": "変更前",
   "pr_preview_after": "変更後",
   "pr_preview_too_large": "大きすぎてプレビューできません。",
-  "pr_preview_failed": "ファイルを読み込めませんでした: {message}"
+  "pr_preview_failed": "ファイルを読み込めませんでした: {message}",
+  "settings_guide_model_picker": "ガイドのモデル"
 }

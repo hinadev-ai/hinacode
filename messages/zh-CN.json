@@ -2219,5 +2219,6 @@
   "pr_preview_before": "变更前",
   "pr_preview_after": "变更后",
   "pr_preview_too_large": "文件太大，无法预览。",
-  "pr_preview_failed": "无法加载文件：{message}"
+  "pr_preview_failed": "无法加载文件：{message}",
+  "settings_guide_model_picker": "指南模型"
 }

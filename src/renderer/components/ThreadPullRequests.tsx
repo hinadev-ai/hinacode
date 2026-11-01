@@ -34,6 +34,7 @@ import {
 import { pullRequestStacks, type StackNode } from "../lib/pullRequestStack.ts"
 import { cn } from "../lib/utils.ts"
 import { useOpenThreadEnvironment, usePullRequestHref } from "../lib/environments.ts"
+import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { loadPullRequestsAtom, usePullRequests } from "../stores/pullRequests.ts"
@@ -516,7 +517,9 @@ function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }:
   const environment = useOpenThreadEnvironment()
   const detailAtom = pullRequestDetailAtom(environment, url)
   const detail = useAtomValue(detailAtom)
-  const tab = useUi((state) => state.pullRequestTab)
+  const guideEnabled = useSettings(environment).pullRequestGuide.enabled
+  const chosenTab = useUi((state) => state.pullRequestTab)
+  const tab = chosenTab === "guide" && !guideEnabled ? "info" : chosenTab
   const setTab = useUi((state) => state.setPullRequestTab)
 
   return AsyncResult.builder(detail)
@@ -537,9 +540,11 @@ function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }:
             <TabsTrigger value="files" className="flex-none px-2 text-xs">
               {m.pr_tab_changes()}
             </TabsTrigger>
-            <TabsTrigger value="guide" className="flex-none px-2 text-xs">
-              {m.pr_code_view_guide()}
-            </TabsTrigger>
+            {guideEnabled && (
+              <TabsTrigger value="guide" className="flex-none px-2 text-xs">
+                {m.pr_code_view_guide()}
+              </TabsTrigger>
+            )}
           </TabsList>
         </Tabs>
         {tab === "info" ? (

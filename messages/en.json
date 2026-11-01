@@ -2228,5 +2228,6 @@
   "pr_preview_before": "Before",
   "pr_preview_after": "After",
   "pr_preview_too_large": "Too large to preview.",
-  "pr_preview_failed": "Could not load the file: {message}"
+  "pr_preview_failed": "Could not load the file: {message}",
+  "settings_guide_model_picker": "Guide model"
 }

@@ -648,7 +648,11 @@ export const Settings = Schema.Struct({
     Schema.Struct({ enabled: Schema.Literal(true), bindHost: BindHost, port: ListenPort }),
   ]),
   textGenerationModel: Schema.String,
-  pullRequestGuide: Schema.Struct({ model: Schema.String, effort: Schema.String }),
+  pullRequestGuide: Schema.Struct({
+    enabled: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+    model: Schema.String,
+    effort: Schema.String,
+  }),
   defaultAccessMode: AccessMode,
   archive: ArchiveSettings,
   experimental: ExperimentalSettings,
@@ -670,7 +674,7 @@ export const defaultSettings: Settings = {
   automations: { bindHost: "127.0.0.1", port: 48080 },
   remote: { enabled: false, bindHost: null, port: 48081 },
   textGenerationModel: "claude-sonnet-5-5",
-  pullRequestGuide: { model: "claude-sonnet-5-5", effort: "high" },
+  pullRequestGuide: { enabled: false, model: "claude-sonnet-5-5", effort: "high" },
   defaultAccessMode: "full",
   archive: { whenMerged: false, removeWorktree: false },
   experimental: {
