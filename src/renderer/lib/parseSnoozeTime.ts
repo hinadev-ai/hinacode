@@ -10,6 +10,7 @@ const parsers: Record<Locale, ReadonlyArray<typeof en.casual>> = {
   en: [en.casual],
   ja: [ja.casual, en.casual],
   "zh-TW": [zh.hant.casual, en.casual],
+  "zh-CN": [zh.hans.casual, en.casual],
 }
 
 export function parseSnoozeTime(text: string, now: Date, locale: Locale): ParsedSnooze {

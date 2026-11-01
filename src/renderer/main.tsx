@@ -155,7 +155,7 @@ const [settings] = await Promise.all([
   loadLists(),
   Effect.runPromise(Effect.ignore(AtomRegistry.getResult(registry, settingsAtom(null)))),
 ])
-useLocale.getState().apply(settings.locale)
+await useLocale.getState().apply(settings.locale)
 applyAppearance(settings.appearance)
 const root = document.getElementById("root")
 if (!root) throw new Error("#root is missing from index.html")
