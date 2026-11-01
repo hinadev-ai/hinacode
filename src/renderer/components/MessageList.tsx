@@ -1,7 +1,16 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react"
 import { Link } from "@tanstack/react-router"
 import { cn } from "cn"
-import { createContext, Fragment, type ReactElement, type ReactNode, use, type Ref, useState } from "react"
+import {
+  createContext,
+  Fragment,
+  type ReactElement,
+  type ReactNode,
+  type RefObject,
+  use,
+  useRef,
+  useState,
+} from "react"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { Message, MessagePart } from "../../shared/domain.ts"
 import { fenceCode, highlight, isUnorderedBullet, type KnownTokens, type Segment } from "../../shared/composerSyntax.ts"
@@ -12,6 +21,7 @@ import {
   type IndexedMessagePart,
   presentationBlocks,
 } from "../lib/assistantPresentation.ts"
+import { useFollowLatest } from "../lib/followLatest.ts"
 import { faviconOrigins, linkify } from "../lib/linkify.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
 import { m } from "../paraglide/messages.js"
@@ -26,6 +36,8 @@ import { MessageActions } from "./MessageActions.tsx"
 import { MessagePartView, PartThread, ToolGroup, useFindDisclosure } from "./MessagePart.tsx"
 import { PostedQuestionsCard } from "./QuestionCard.tsx"
 import { TurnChanges } from "./TurnChanges.tsx"
+import { ArrowDownIcon } from "./icons/ArrowDownIcon.tsx"
+import { Button } from "./ui/button.tsx"
 import { FaviconOrigins, WebLink } from "./WebLink.tsx"
 import { EarlierActivity, WorkedFor } from "./WorkedFor.tsx"
 
@@ -64,31 +76,49 @@ export function MessageList({
   messages: ReadonlyArray<Message>
   providerLabel: string
   commands?: ReadonlyArray<AgentCommand>
-  listRef?: Ref<LegendListRef>
+  listRef?: RefObject<LegendListRef | null>
   header?: ReactElement
   alignItemsAtEnd?: boolean
   showElapsedTime?: boolean
   turnChanges?: boolean
 }) {
   const transcript = { providerLabel, showElapsedTime, commands, turnChanges }
+  const ownRef = useRef<LegendListRef>(null)
+  const ref = listRef ?? ownRef
+  const { listProps, anchored, atEnd, jumpToLatest } = useFollowLatest(ref, messages)
   return (
     <TranscriptContext value={transcript}>
       <LastMessageContext value={messages.at(-1)?.id}>
-        <LegendList
-          ref={listRef}
-          data={messages}
-          keyExtractor={keyExtractor}
-          renderItem={renderItem}
-          estimatedItemSize={ESTIMATED_MESSAGE_SIZE}
-          getItemType={getItemType}
-          alignItemsAtEnd={alignItemsAtEnd}
-          initialScrollAtEnd
-          maintainScrollAtEnd
-          maintainVisibleContentPosition
-          ListHeaderComponent={header ?? edgeSpacer}
-          ListFooterComponent={endSpacer}
-          className="min-h-0 flex-1 scroll-fade"
-        />
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <LegendList
+            ref={ref}
+            data={messages}
+            keyExtractor={keyExtractor}
+            renderItem={renderItem}
+            estimatedItemSize={ESTIMATED_MESSAGE_SIZE}
+            getItemType={getItemType}
+            alignItemsAtEnd={alignItemsAtEnd && !anchored}
+            initialScrollAtEnd
+            maintainVisibleContentPosition
+            {...listProps}
+            ListHeaderComponent={header ?? edgeSpacer}
+            ListFooterComponent={endSpacer}
+            className="min-h-0 flex-1 scroll-fade"
+          />
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label={m.transcript_scroll_to_latest()}
+            inert={atEnd}
+            action={jumpToLatest}
+            className={cn(
+              "absolute bottom-[calc(var(--dock-height,0px)+0.75rem)] left-1/2 -translate-x-1/2 rounded-full bg-popover shadow-md dark:bg-popover dark:hover:bg-muted transition-[opacity,scale] duration-150 ease-out motion-reduce:transition-none",
+              atEnd && "pointer-events-none scale-90 opacity-0",
+            )}
+          >
+            <ArrowDownIcon aria-hidden />
+          </Button>
+        </div>
       </LastMessageContext>
     </TranscriptContext>
   )
