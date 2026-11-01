@@ -301,6 +301,12 @@ export const threadChangesAtom = Atom.family((key: string) => {
   )
 })
 
+export const turnChangesAtom = Atom.family((messageKey: string) => {
+  const [threadId = ""] = messageKey.split("\n")
+  return Atom.make(call("threads.changes", { threadId, scope: "turn" }))
+})
+export const turnChangesKey = (threadId: string, messageId: string) => `${threadId}\n${messageId}`
+
 export const gitLogLimitAtom = Atom.family((_root: string) => Atom.make(200))
 
 export const gitLogAtom = Atom.family((root: string) =>
