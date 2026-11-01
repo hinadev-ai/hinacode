@@ -11,6 +11,9 @@ export const GitHubRepository = Schema.Struct({
 })
 export type GitHubRepository = typeof GitHubRepository.Type
 
+export const RepositoryVisibility = Schema.Literals(["private", "public"])
+export type RepositoryVisibility = typeof RepositoryVisibility.Type
+
 const CLONE_COMMAND = /^(?:git\s+clone|gh\s+repo\s+clone)\s+/
 const URL_FORMS = [
   /^(?:https?:\/\/)?(?:www\.)?github\.com\/([^/]+)\/([^/]+)(?:\/.*)?$/,

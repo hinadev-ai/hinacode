@@ -43,6 +43,14 @@ export class ProjectRootInvalidError extends Schema.TaggedError<ProjectRootInval
   }
 }
 
+export class ProjectOriginTakenError extends Schema.TaggedError<ProjectOriginTakenError>()("ProjectOriginTakenError", {
+  rootPath: Schema.String,
+}) {
+  override get message(): string {
+    return `${this.rootPath} already has an origin remote, so it cannot be published as a new GitHub repository`
+  }
+}
+
 export class ProjectFolderNotEmptyError extends Schema.TaggedError<ProjectFolderNotEmptyError>()(
   "ProjectFolderNotEmptyError",
   { rootPath: Schema.String },

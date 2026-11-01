@@ -88,7 +88,7 @@ import {
   OpenPullRequest,
   PullRequestMatch,
 } from "./domain.ts"
-import { GitHubRepository } from "./github.ts"
+import { GitHubRepository, RepositoryVisibility } from "./github.ts"
 import { PendingLink, RelayHost } from "./relayMachines.ts"
 import { BrowserCommand, BrowserSession, BrowserSnapshot, BrowserUrl, BrowserViewport } from "./browser.ts"
 import {
@@ -190,6 +190,7 @@ export const RpcMethods = {
       name: Schema.String,
       rootPath: Schema.String,
       setupScript: Schema.NullOr(Schema.String),
+      createRepository: Schema.optional(RepositoryVisibility),
     }),
     Project,
   ),
