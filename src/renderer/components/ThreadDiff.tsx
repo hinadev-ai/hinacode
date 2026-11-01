@@ -117,11 +117,6 @@ function ChangedFiles({ thread, scope }: { thread: Thread; scope: ChangesScope }
   const openPath = useUi((state) => state.changesPath)
   const setOpenPath = useUi((state) => state.setChangesPath)
 
-  useEffect(() => {
-    useUi.getState().setSidePanelWide(openPath !== null)
-    return () => useUi.getState().setSidePanelWide(false)
-  }, [openPath])
-
   const loaded = AsyncResult.isSuccess(changes) ? changes.value : null
   const diffs = splitPatch(loaded?.patch ?? "", loaded?.files.map((file) => file.path) ?? [])
 

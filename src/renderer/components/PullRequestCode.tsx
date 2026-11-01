@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { useEffect, useId, useState, useTransition } from "react"
+import { useId, useState, useTransition } from "react"
 import type {
   GuideCategory,
   GuideFileNote,
@@ -98,10 +98,6 @@ export function PullRequestCode({ url }: { url: string }) {
   const view = useUi((state) => state.pullRequestCodeView)
   const setView = useUi((state) => state.setPullRequestCodeView)
 
-  useEffect(() => {
-    useUi.getState().setSidePanelWide(true)
-    return () => useUi.getState().setSidePanelWide(false)
-  }, [])
 
   return (
     <div className="flex flex-col gap-3">

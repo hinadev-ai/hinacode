@@ -26,7 +26,6 @@ export type SidePanelViewId =
   | "tinyVm"
   | "devices"
   | "sidechat"
-export type SidePanelSize = "normal" | "wide"
 const sidebarTabs = ["inbox", "threads", "archived"] as const
 export type SidebarTab = (typeof sidebarTabs)[number]
 
@@ -70,10 +69,7 @@ const loadPullRequestCodeView = (): PullRequestCodeView =>
 const isPullRequestSection = (value: string): value is PullRequestSection =>
   pullRequestSections.some((section) => section === value)
 
-const sidePanelWidthKeys: Record<SidePanelSize, string> = {
-  normal: "hinacode.sidePanelWidth",
-  wide: "hinacode.sidePanelWideWidth",
-}
+const SIDE_PANEL_WIDTH_KEY = "hinacode.sidePanelWidth"
 
 interface UiState {
   readonly sidebarOpen: boolean
@@ -90,8 +86,7 @@ interface UiState {
   readonly collapsedPullRequestSections: ReadonlyArray<PullRequestSection>
   readonly sidePanelViews: Readonly<Record<string, SidePanelViewId>>
   readonly lastSidePanelView: SidePanelViewId
-  readonly sidePanelWide: boolean
-  readonly sidePanelWidths: Readonly<Record<SidePanelSize, number | null>>
+  readonly sidePanelWidth: number | null
   readonly viewFocusRequest: SidePanelViewId | null
   readonly changesPath: string | null
   readonly vmPlacements: Readonly<Record<string, VmPlacement>>
@@ -127,7 +122,6 @@ interface UiState {
   readonly showView: (threadId: string, view: SidePanelViewId, options?: { readonly focus?: boolean }) => void
   readonly toggleView: (threadId: string, view: SidePanelViewId, options?: { readonly focus?: boolean }) => void
   readonly clearViewFocusRequest: () => void
-  readonly setSidePanelWide: (wide: boolean) => void
   readonly setChangesPath: (path: string | null) => void
   readonly requestComposerFocus: () => void
   readonly requestInterrupt: () => void
@@ -141,7 +135,7 @@ interface UiState {
   readonly setFindQuery: (query: string) => void
   readonly revealFindMatch: (match: FindMatch | null) => void
   readonly setSidebarWidth: (width: number) => void
-  readonly setSidePanelWidth: (size: SidePanelSize, width: number | null) => void
+  readonly setSidePanelWidth: (width: number | null) => void
   readonly recentThreadIds: ReadonlyArray<string>
   readonly visitThread: (threadId: string) => void
   readonly threadSwitcher: ThreadSwitcher | null
@@ -190,11 +184,7 @@ export const useUi = create<UiState>()((set, get) => ({
   collapsedPullRequestSections: loadStrings(COLLAPSED_PULL_REQUEST_SECTIONS_KEY).filter(isPullRequestSection),
   sidePanelViews: {},
   lastSidePanelView: "details",
-  sidePanelWide: false,
-  sidePanelWidths: {
-    normal: loadSize(sidePanelWidthKeys.normal, SIDE_PANEL_BOUNDS),
-    wide: loadSize(sidePanelWidthKeys.wide, SIDE_PANEL_BOUNDS),
-  },
+  sidePanelWidth: loadSize(SIDE_PANEL_WIDTH_KEY, SIDE_PANEL_BOUNDS),
   viewFocusRequest: null,
   changesPath: null,
   vmPlacements: {},
@@ -277,7 +267,6 @@ export const useUi = create<UiState>()((set, get) => ({
     else state.showView(threadId, view, options)
   },
   clearViewFocusRequest: () => set({ viewFocusRequest: null }),
-  setSidePanelWide: (sidePanelWide) => set({ sidePanelWide }),
   setChangesPath: (changesPath) => set({ changesPath }),
   requestComposerFocus: () => set((state) => ({ composerFocusRequest: state.composerFocusRequest + 1 })),
   requestInterrupt: () => set((state) => ({ interruptRequest: state.interruptRequest + 1 })),
@@ -310,10 +299,10 @@ export const useUi = create<UiState>()((set, get) => ({
     saveSize(SIDEBAR_WIDTH_KEY, sidebarWidth)
     set({ sidebarWidth })
   },
-  setSidePanelWidth: (size, width) => {
+  setSidePanelWidth: (width) => {
     const clamped = width === null ? null : clampSize(SIDE_PANEL_BOUNDS, width)
-    saveSize(sidePanelWidthKeys[size], clamped)
-    set((state) => ({ sidePanelWidths: { ...state.sidePanelWidths, [size]: clamped } }))
+    saveSize(SIDE_PANEL_WIDTH_KEY, clamped)
+    set({ sidePanelWidth: clamped })
   },
   recentThreadIds: loadStrings(RECENT_THREADS_KEY),
   visitThread: (threadId) => {

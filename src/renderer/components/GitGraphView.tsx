@@ -174,10 +174,6 @@ function GraphWithDiff({ root, branch, commits, onEndReached }: GraphWithDiffPro
   )
 
   const showDiff = diffOpen && selectedCommit !== undefined
-  useEffect(() => {
-    useUi.getState().setSidePanelWide(showDiff)
-    return () => useUi.getState().setSidePanelWide(false)
-  }, [showDiff])
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div

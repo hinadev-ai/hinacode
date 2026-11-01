@@ -1,7 +1,7 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
-import { lazy, type ReactNode, Suspense, useEffect, useState, useTransition } from "react"
+import { lazy, type ReactNode, Suspense, useState, useTransition } from "react"
 import type { Thread, ThreadVm, VmControl, VmPasskey, VmTemplate } from "../../../shared/domain.ts"
 import { useThreadEnvironment } from "../../lib/environments.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
@@ -59,11 +59,6 @@ export type RunningVm = Extract<ThreadVm, { status: "running" }>
 export function TinyVmView({ thread }: { thread: Thread }) {
   const vm = useAtomValue(threadVmAtom(thread.id))
   const refresh = useAtomRefresh(threadVmAtom(thread.id))
-
-  useEffect(() => {
-    useUi.getState().setSidePanelWide(true)
-    return () => useUi.getState().setSidePanelWide(false)
-  }, [])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
