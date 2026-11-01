@@ -1,5 +1,6 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
+import { listMotion } from "../lib/listMotion.ts"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, useEffect, useState } from "react"
 import { toast } from "sonner"
@@ -93,7 +94,7 @@ export function ThreadAgents({ thread }: { thread: Thread }) {
   const { load, reload, subagents } = useThreadSubagents(thread.id)
   const open = useOpenSubagent(thread.id)
   const now = useNow(subagents?.some((subagent) => subagent.status === "running") ?? false)
-  const [listRef] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
+  const [listRef] = useAutoAnimate<HTMLUListElement>(listMotion)
 
   if (!subagents) {
     return AsyncResult.builder(load)

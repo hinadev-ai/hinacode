@@ -26,6 +26,7 @@ export function searchableText(part: MessagePart): string {
     case "questions":
       return part.text
     case "tool_call": {
+      if (part.name === "Bash") return commandSearchText(commandFindText(part))
       const { name, summary } = describeToolCall(part)
       return `${name}\n${summary}`
     }
@@ -54,9 +55,6 @@ export function commandFindText(call: ToolCall): CommandFindText {
 export const commandSearchText = ({ distinctLabel, command }: CommandFindText) =>
   distinctLabel === null ? command : `${command}\n${distinctLabel}`
 
-const toolRowSearchText = (call: ToolCall) =>
-  call.name === "Bash" ? commandSearchText(commandFindText(call)) : searchableText(call)
-
 export function findMatches(messages: ReadonlyArray<Message>, query: string): Array<FindMatch> {
   const pattern = findPattern(query)
   if (pattern === null) return []
@@ -72,8 +70,8 @@ export function findMatches(messages: ReadonlyArray<Message>, query: string): Ar
         search(message.id, block.index, searchableText(block.part))
         continue
       }
-      for (const [position, call] of block.calls.entries()) {
-        search(message.id, block.index + position, toolRowSearchText(call))
+      for (const [position, part] of block.parts.entries()) {
+        search(message.id, block.index + position, searchableText(part))
       }
     }
   }

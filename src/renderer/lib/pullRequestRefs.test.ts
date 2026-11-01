@@ -1,6 +1,6 @@
 import { describe, expect, test } from "@effect/vitest"
 import { linkify } from "./linkify.ts"
-import { linkPullRequestNumbers, parsePullRequestUrl, pullRequestLabel } from "./pullRequestRefs.ts"
+import { linkPullRequestNumbers, parsePullRequestUrl, pullRequestLabel, pullRequestName } from "./pullRequestRefs.ts"
 
 const repository = { owner: "hinadev-ai", name: "hinacode" }
 const numbers = (text: string) =>
@@ -66,5 +66,18 @@ describe("pullRequestLabel", () => {
     expect(pullRequestLabel({ owner: "HINADEV-AI", name: "hinacode", number: 4 }, repository)).toBe("#4")
     expect(pullRequestLabel({ owner: "other", name: "hinacode", number: 4 }, repository)).toBe("other/hinacode#4")
     expect(pullRequestLabel({ owner: "other", name: "hinacode", number: 4 }, null)).toBe("other/hinacode#4")
+  })
+})
+
+describe("pullRequestName", () => {
+  test("names a pull request url as owner/repo#n", () => {
+    expect(
+      pullRequestName("https://github.com/northwind-industries-holdings/customer-onboarding-platform-monorepo/pull/1"),
+    ).toBe("northwind-industries-holdings/customer-onboarding-platform-monorepo#1")
+  })
+
+  test("keeps anything else as it is", () => {
+    const url = "https://gitlab.com/a/b/-/merge_requests/1"
+    expect(pullRequestName(url)).toBe(url)
   })
 })

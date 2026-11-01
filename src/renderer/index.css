@@ -43,9 +43,9 @@
   }
 }
 
-/* Touch screens fire :hover on tap and leave it stuck, so hover styles only apply to a real pointer. */
+/* Touch screens fire :hover on tap and leave it stuck, so hover styles only apply to a real pointer. The outer parentheses let `not-hover:` negate the whole query. */
 @custom-variant hover {
-  @media (hover: hover) and (pointer: fine) {
+  @media ((hover: hover) and (pointer: fine)) {
     &:hover {
       @slot;
     }
@@ -86,6 +86,7 @@
     0.997,
     1
   );
+  --default-transition-timing-function: var(--ease-out);
   --spacing-titlebar: 2.5rem;
   /* Badges and dense labels such as git refs. In rem, so it follows the font size setting. */
   --text-2xs: 0.6875rem;
@@ -643,7 +644,7 @@
     }
 
     & :where(code):not(:where(pre code)) {
-      @apply rounded-[0.25em] bg-foreground/10 px-[0.35em] py-[0.1em] text-[0.85em] font-normal text-foreground box-decoration-clone;
+      @apply rounded-[0.25em] bg-foreground/10 px-[0.35em] py-[0.1em] text-[0.85em] font-normal text-foreground box-decoration-clone wrap-anywhere;
     }
 
     & :where(code):not(:where(pre code))::before,
@@ -679,8 +680,11 @@
       @apply font-[inherit] underline underline-offset-2;
     }
 
+    /* `text-wrap-style` rather than `text-pretty`, whose `text-wrap` shorthand would undo a short cell's `whitespace-nowrap`. Long tokens widen the table, which scrolls in its own wrapper, instead of breaking a path mid-name. */
     & :where(td, th) {
-      @apply align-top text-pretty;
+      @apply align-top;
+      text-wrap-style: pretty;
+      overflow-wrap: break-word;
     }
 
     & :where(thead th) {
@@ -688,6 +692,7 @@
     }
 
     line-height: inherit;
+    overflow-wrap: anywhere;
 
     & :where(p, li) {
       @apply leading-relaxed;
@@ -997,5 +1002,31 @@
   [data-starting-style],
   [data-ending-style] {
     scale: none !important;
+  }
+}
+
+/* Sonner injects its own stylesheet after this one, so these selectors carry the toaster for specificity. */
+[data-sonner-toaster] [data-sonner-toast] {
+  transition:
+    transform 250ms var(--ease-out),
+    opacity 250ms var(--ease-out),
+    height 250ms var(--ease-out),
+    box-shadow 200ms var(--ease-out);
+}
+
+[data-sonner-toaster] [data-sonner-toast] > * {
+  transition: opacity 250ms var(--ease-out);
+}
+
+[data-sonner-toaster]
+  [data-sonner-toast][data-removed="true"][data-front="false"][data-swipe-out="false"][data-expanded="false"] {
+  transition:
+    transform 200ms var(--ease-out),
+    opacity 150ms var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-sonner-toaster] [data-sonner-toast] {
+    transition: opacity 200ms var(--ease-out) !important;
   }
 }

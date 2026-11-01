@@ -54,6 +54,7 @@ export const learnFromAnswer = (
       return each(result, learnProject(teach))
     case "threads.list":
     case "threads.create":
+    case "threads.draft":
     case "threads.update":
     case "threads.archive":
     case "threads.unarchive":

@@ -43,6 +43,14 @@ export class ProjectRootInvalidError extends Schema.TaggedError<ProjectRootInval
   }
 }
 
+export class ProjectOriginTakenError extends Schema.TaggedError<ProjectOriginTakenError>()("ProjectOriginTakenError", {
+  rootPath: Schema.String,
+}) {
+  override get message(): string {
+    return `${this.rootPath} already has an origin remote, so it cannot be published as a new GitHub repository`
+  }
+}
+
 export class ProjectFolderNotEmptyError extends Schema.TaggedError<ProjectFolderNotEmptyError>()(
   "ProjectFolderNotEmptyError",
   { rootPath: Schema.String },
@@ -107,7 +115,7 @@ export class ThreadBusyError extends Schema.TaggedError<ThreadBusyError>()("Thre
   id: Schema.String,
 }) {
   override get message(): string {
-    return "This thread is still running. Stop it or wait for it to finish before archiving."
+    return "This thread is still running. Stop it or wait for it to finish."
   }
 }
 

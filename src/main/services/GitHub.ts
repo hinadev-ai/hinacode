@@ -1,4 +1,5 @@
 import { homedir } from "node:os"
+import { isDeepStrictEqual } from "node:util"
 import { dirname } from "node:path"
 import { parsePatch } from "@pulls.review/core/patch-parser"
 import {
@@ -39,6 +40,7 @@ import {
   parseGitHubPullRequestUrl,
   parseGitHubRepository,
   PULL_REQUEST_REFRESH,
+  type RepositoryVisibility,
 } from "../../shared/github.ts"
 import { Events } from "./Events.ts"
 import { CommandError, makeExec, REMOTE_GIT_ARGS, REMOTE_GIT_ENV, type RunOptions } from "./Git.ts"
@@ -553,6 +555,7 @@ export class GitHub extends Context.Service<
     ) => Effect.Effect<PullRequest, GitHubError | PullRequestUrlInvalidError | Schema.SchemaError>
     readonly pullRequestDetail: (
       url: string,
+      options?: { readonly fresh?: boolean | undefined },
     ) => Effect.Effect<PullRequestDetail, GitHubError | PullRequestUrlInvalidError | Schema.SchemaError>
     readonly pullRequestDiff: (
       url: string,
@@ -580,6 +583,7 @@ export class GitHub extends Context.Service<
       branches: { readonly head: string; readonly base: string },
     ) => Effect.Effect<string, GitHubError>
     readonly clone: (repository: GitHubRepository, dest: string) => Effect.Effect<void, CommandError>
+    readonly createRepository: (cwd: string, visibility: RepositoryVisibility) => Effect.Effect<void, GitHubError>
     readonly repository: (cwd: string) => Effect.Effect<GitHubRepository | null>
   }
 >()("hinacode/GitHub") {}
@@ -593,10 +597,14 @@ const MAX_SECONDARY_PAUSE_MS = 15 * 60_000
 const OPEN_PULL_REQUEST_TTL = Duration.subtract(PULL_REQUEST_REFRESH, Duration.seconds(10))
 const LOW_BUDGET_PULL_REQUEST_TTL = "5 minutes"
 const FINISHED_PULL_REQUEST_TTL = "1 hour"
+const FRESH_READ_WINDOW = "10 seconds"
+const MERGEABLE_RECHECK = "2 seconds"
+const MERGEABLE_RECHECKS = 5
 
 const make = Effect.gen(function* () {
   const exec = makeExec(yield* ChildProcessSpawner.ChildProcessSpawner)
   const events = yield* Events
+  const layerScope = yield* Effect.scope
 
   const ghUnpaused = (cwd: string, args: ReadonlyArray<string>, options?: Pick<RunOptions, "okExitCodes">) =>
     exec("gh", args, cwd, { ...options, env: { GH_PROMPT_DISABLED: "1", NO_COLOR: "1" } }).pipe(
@@ -736,6 +744,9 @@ const make = Effect.gen(function* () {
       Effect.map((stdout) => stdout.trim().split("\n").at(-1) ?? ""),
     )
 
+  const createRepository = (cwd: string, visibility: RepositoryVisibility) =>
+    gh(cwd, ["repo", "create", "--source", cwd, "--remote", "origin", `--${visibility}`, "--push"]).pipe(Effect.asVoid)
+
   const clone = ({ owner, name }: GitHubRepository, dest: string) => {
     // FIXME: a full https URL keeps gh from switching to a configured ssh git_protocol
     const url = `https://github.com/${owner}/${name}.git`
@@ -755,6 +766,7 @@ const make = Effect.gen(function* () {
     Effect.flatMap(requirePullRequestUrl(raw), (url) => gh(homedir(), args(url)))
 
   const lastRead = new Map<string, PullRequestDetailFields>()
+  const mergeableRechecks = new Map<string, number>()
 
   const fetchPullRequests = (entries: Arr.NonEmptyArray<Request.Entry<PullRequestRead>>) =>
     Effect.gen(function* () {
@@ -795,10 +807,34 @@ const make = Effect.gen(function* () {
     RequestResolver.batchN(PULL_REQUESTS_PER_QUERY),
   )
 
+  const announceChange = (url: string, json: PullRequestDetailFields) => {
+    const previous = lastRead.get(url)
+    lastRead.set(url, json)
+    return previous === undefined || isDeepStrictEqual(previous, json)
+      ? Effect.void
+      : events.publish({ type: "github.pullRequest", url })
+  }
+
+  const recheckMergeable = (url: string, json: PullRequestDetailFields) => {
+    if (json.state !== "OPEN" || json.mergeable !== "UNKNOWN") {
+      mergeableRechecks.delete(url)
+      return Effect.void
+    }
+    const rechecks = mergeableRechecks.get(url) ?? 0
+    if (rechecks >= MERGEABLE_RECHECKS) return Effect.void
+    mergeableRechecks.set(url, rechecks + 1)
+    return Effect.sleep(MERGEABLE_RECHECK).pipe(
+      Effect.andThen(reread(url)),
+      Effect.ignore,
+      Effect.forkIn(layerScope),
+      Effect.asVoid,
+    )
+  }
+
   const reads = yield* Cache.makeWith(
     (url: string) =>
       Effect.request(new PullRequestRead({ url }), pullRequestReads).pipe(
-        Effect.tap((json) => Effect.sync(() => lastRead.set(url, json))),
+        Effect.tap((json) => Effect.andThen(announceChange(url, json), recheckMergeable(url, json))),
         Effect.catchTag("GitHubRateLimitedError", (error) => {
           const last = lastRead.get(url)
           return last === undefined ? Effect.fail(error) : Effect.succeed(last)
@@ -814,11 +850,41 @@ const make = Effect.gen(function* () {
     },
   )
 
-  const read = (raw: string) => Effect.flatMap(requirePullRequestUrl(raw), (url) => Cache.get(reads, url))
+  function reread(url: string): Effect.Effect<PullRequestDetailFields, GitHubError | Schema.SchemaError> {
+    return Cache.invalidate(reads, url).pipe(Effect.andThen(Cache.get(reads, url)))
+  }
 
-  const ghWrite = (raw: string, args: (url: string) => ReadonlyArray<string>) =>
+  const freshReads = yield* Cache.makeWith((url: string) => Effect.asVoid(reread(url)), {
+    capacity: 1000,
+    timeToLive: (exit) => (Exit.isFailure(exit) ? 0 : FRESH_READ_WINDOW),
+  })
+
+  const read = (raw: string, fresh = false) =>
     Effect.flatMap(requirePullRequestUrl(raw), (url) =>
-      gh(homedir(), args(url)).pipe(Effect.andThen(Cache.invalidate(reads, url)), Effect.asVoid),
+      fresh ? Effect.andThen(Cache.get(freshReads, url), Cache.get(reads, url)) : Cache.get(reads, url),
+    )
+
+  const openInRepository = (url: string) =>
+    Effect.map(Cache.keys(reads), (keys) => {
+      const repository = url.slice(0, url.lastIndexOf("/") + 1)
+      const open = [...keys].filter((key) => key.startsWith(repository) && lastRead.get(key)?.state === "OPEN")
+      return [...new Set([url, ...open])]
+    })
+
+  const ghWrite = (
+    raw: string,
+    args: (url: string) => ReadonlyArray<string>,
+    affected: (url: string) => Effect.Effect<ReadonlyArray<string>> = (url) => Effect.succeed([url]),
+  ) =>
+    Effect.flatMap(requirePullRequestUrl(raw), (url) =>
+      gh(homedir(), args(url)).pipe(
+        Effect.onExit((exit) =>
+          Effect.flatMap(Exit.isSuccess(exit) ? affected(url) : Effect.succeed([url]), (urls) =>
+            Effect.forEach(urls, (each) => Effect.ignore(reread(each)), { concurrency: "unbounded", discard: true }),
+          ),
+        ),
+        Effect.asVoid,
+      ),
     )
 
   const repository = (cwd: string) =>
@@ -834,7 +900,7 @@ const make = Effect.gen(function* () {
     ),
     run: gh,
     pullRequest: (raw) => Effect.map(read(raw), toPullRequest),
-    pullRequestDetail: (raw) => Effect.map(read(raw), toPullRequestDetail),
+    pullRequestDetail: (raw, options) => Effect.map(read(raw, options?.fresh), toPullRequestDetail),
     pullRequestDiff: (raw) =>
       ghByUrl(raw, (url) => ["pr", "diff", url, "--color=never"]).pipe(
         Effect.catchIf(
@@ -842,7 +908,7 @@ const make = Effect.gen(function* () {
           () => Effect.fail(new PullRequestDiffTooLargeError()),
         ),
       ),
-    merge: (raw, method) => ghWrite(raw, (url) => ["pr", "merge", url, `--${method}`]),
+    merge: (raw, method) => ghWrite(raw, (url) => ["pr", "merge", url, `--${method}`], openInRepository),
     close: (raw) => ghWrite(raw, (url) => ["pr", "close", url]),
     comment: (raw, body) => ghWrite(raw, (url) => ["pr", "comment", url, "--body", body]),
     branchPullRequest,
@@ -890,6 +956,7 @@ const make = Effect.gen(function* () {
       ),
     createPullRequest,
     clone,
+    createRepository,
     repository,
   })
 })

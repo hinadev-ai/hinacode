@@ -8,7 +8,7 @@ import { useUi } from "../stores/ui.ts"
 import { MessageList } from "./MessageList.tsx"
 import { formatOutput } from "./MessagePart.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
-import { SubagentStatusIcon, subagentStats, useNow } from "./ThreadAgents.tsx"
+import { StopSubagentButton, SubagentStatusIcon, subagentStats, useNow } from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
 import { ArrowLeftIcon } from "./icons/ArrowLeftIcon.tsx"
 
@@ -94,7 +94,7 @@ export function SubagentTranscript({
   }
 
   const header = (
-    <div className="clear-overview mx-auto flex w-full max-w-3xl flex-col gap-1.5 px-4 pt-4">
+    <div className="mx-auto flex w-full max-w-3xl clear-overview flex-col gap-1.5 px-4 pt-4">
       <div className="flex min-w-0 items-center gap-2">
         {status && <SubagentStatusIcon status={status} />}
         <ProviderIcon provider={subagent?.provider ?? thread.provider} />
@@ -111,13 +111,14 @@ export function SubagentTranscript({
             {subagentStats(subagent, now)}
           </span>
         )}
+        {subagent?.status === "running" && <StopSubagentButton threadId={thread.id} subagent={subagent} />}
       </div>
     </div>
   )
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="clear-overview mx-auto w-full max-w-3xl shrink-0 px-4 pt-3">
+      <div className="mx-auto w-full max-w-3xl shrink-0 clear-overview px-4 pt-3">
         <Button
           variant="ghost"
           size="xs"
@@ -132,7 +133,7 @@ export function SubagentTranscript({
       {transcript.length === 0 ? (
         <>
           {header}
-          <p className="clear-overview m-auto px-4 text-sm text-muted-foreground">{m.agents_missing()}</p>
+          <p className="m-auto clear-overview px-4 text-sm text-muted-foreground">{m.agents_missing()}</p>
         </>
       ) : (
         <MessageList

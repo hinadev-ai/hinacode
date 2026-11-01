@@ -1,6 +1,7 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
+import { listMotion } from "../lib/listMotion.ts"
 import { useState, useTransition } from "react"
 import type { OpenPort } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -17,7 +18,7 @@ export function ThreadPorts({ threadId }: { threadId: string }) {
   const ports = useAtomValue(threadPortsAtom(threadId))
   const refresh = useAtomRefresh(threadPortsAtom(threadId))
   const [killError, setKillError] = useState<string | null>(null)
-  const [listRef] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
+  const [listRef] = useAutoAnimate<HTMLUListElement>(listMotion)
 
   const failed = (message: string) => (
     <div role="alert" className="flex items-center gap-2">

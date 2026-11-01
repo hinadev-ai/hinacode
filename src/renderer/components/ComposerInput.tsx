@@ -18,12 +18,14 @@ import type { MentionableThreads } from "../../shared/threadMention.ts"
 import {
   completionAt,
   type CompletionQuery,
+  continueList,
   endsWithClosedFence,
+  listBackspace,
   type Suggestion,
   suggestionsFor,
 } from "../../shared/composerSyntax.ts"
 import { useTheme } from "../lib/appearance.ts"
-import { chipBefore, composerSyntax, setComposerConfig } from "../lib/composerEditor.ts"
+import { atomicBefore, composerSyntax, setComposerConfig } from "../lib/composerEditor.ts"
 import { useClientSettings } from "../lib/settings.ts"
 import { usePullRequestSearch } from "../lib/usePullRequestSearch.ts"
 import { cn } from "../lib/utils.ts"
@@ -126,7 +128,18 @@ export function ComposerInput({
       return true
     }
     const { main } = view.state.selection
-    const chip = main.empty ? chipBefore(view, main.head) : null
+    const text = view.state.doc.toString()
+    const listEdit =
+      event.key === "Backspace" && main.empty
+        ? listBackspace(text, main.head)
+        : event.key === "Enter" && event.shiftKey
+          ? continueList(text, main.from, main.to)
+          : null
+    if (listEdit !== null) {
+      view.dispatch({ changes: listEdit, selection: { anchor: listEdit.anchor }, scrollIntoView: true })
+      return true
+    }
+    const chip = main.empty ? atomicBefore(view, main.head) : null
     if (event.key === "Backspace" && chip !== null) {
       const spaceAfter = view.state.sliceDoc(chip.to, chip.to + 1) === " " ? 1 : 0
       view.dispatch({ changes: { from: chip.from, to: chip.to + spaceAfter } })
@@ -134,7 +147,7 @@ export function ComposerInput({
     }
     const onLastLine = main.empty && view.state.doc.lineAt(main.head).number === view.state.doc.lines
     const plainKey = !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey
-    if (event.key === "ArrowDown" && plainKey && onLastLine && endsWithClosedFence(view.state.doc.toString())) {
+    if (event.key === "ArrowDown" && plainKey && onLastLine && endsWithClosedFence(text)) {
       const end = view.state.doc.length
       view.dispatch({ changes: { from: end, insert: "\n" }, selection: { anchor: end + 1 }, scrollIntoView: true })
       return true
@@ -170,6 +183,11 @@ export function ComposerInput({
                 const handled = keyDown(event, editor)
                 if (handled) event.preventDefault()
                 return handled
+              },
+              keypress: (event) => {
+                if (event.key !== "Enter") return false
+                event.preventDefault()
+                return true
               },
               paste: (event) => {
                 pasted(event)
@@ -233,7 +251,7 @@ export function ComposerInput({
 
   return (
     <>
-      <div ref={parentRef} onDragOver={onDragOver} className="flex min-h-0 flex-col text-base md:text-sm" />
+      <div ref={parentRef} onDragOver={onDragOver} className="flex min-h-0 flex-col text-sm" />
       {open && (
         <div
           id={listId}

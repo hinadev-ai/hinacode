@@ -66,11 +66,12 @@ interface DeviceStateProps {
 }
 
 function DeviceState({ threadId, device, onDetach }: DeviceStateProps) {
+  const [preparedOnScreen] = useState(device.phase === "preparing")
   switch (device.phase) {
     case "preparing":
       return <Preparing step={device.step} />
     case "ready":
-      return <DeviceReady threadId={threadId} device={device} onDetach={onDetach} />
+      return <DeviceReady threadId={threadId} device={device} onDetach={onDetach} bootedOnScreen={preparedOnScreen} />
     case "failed":
       return <Failed threadId={threadId} device={device} onDetach={onDetach} />
   }
@@ -185,7 +186,7 @@ function Failure({ title, message, children }: { title?: string; message: string
       <WarningIcon aria-hidden className="size-6 text-destructive" />
       <div role="alert" className="flex flex-col gap-1">
         {title && <h3 className="text-sm font-medium">{title}</h3>}
-        <p className="max-w-80 font-mono text-xs break-words text-muted-foreground">{message}</p>
+        <p className="max-w-80 font-mono text-xs wrap-break-word text-muted-foreground">{message}</p>
       </div>
       {children}
     </div>

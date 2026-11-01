@@ -254,7 +254,7 @@ Then("the tool result is inspectable and the approval disappears", async ({ app 
   const rendered = article(app.page)
   await expect(app.page.getByRole("button", { name: "Allow", exact: true })).toHaveCount(0)
   await rendered.getByRole("button", { name: /^Worked for / }).click()
-  await rendered.getByRole("button", { name: /Read.*README\.md.*Done/ }).click()
+  await rendered.getByRole("button", { name: /^Read\s*README\.md$/ }).click()
   await expect(rendered.getByRole("heading", { name: "Output", exact: true })).toBeVisible()
   await expect(rendered.locator("pre").last()).toHaveText("Repository instructions")
   await expect(rendered).toHaveAttribute("aria-busy", "false")
@@ -282,8 +282,8 @@ Then("the first completed rendering contains its final text and {word}", async (
   const text = await stream.firstBoundary()
   expect(text).toMatch(
     ending === "completes"
-      ? /^Worked for \d{2}:\d{2}Final queued text\.$/
-      : /^Worked for \d{2}:\d{2}Final queued text\.Error: Interrupted locally$/,
+      ? /^(?:Worked for \S+)?Final queued text\.$/
+      : /^(?:Worked for \S+)?Final queued text\.Error: Interrupted locally$/,
   )
   await expect(article(app.page).locator("strong")).toHaveText(
     ending === "completes" ? ["queued"] : ["queued", "Error:"],

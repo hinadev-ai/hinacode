@@ -1,8 +1,8 @@
-import { Duration, Effect, Schedule, Schema, Stream } from "effect"
+import { Duration, Effect, Option, Schedule, Schema, Stream } from "effect"
 import { AsyncResult, Atom } from "effect/reactivity"
 import type { AgentCommand, ProviderId } from "../../shared/agent.ts"
 import { PushEvent, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../../shared/contract.ts"
-import type { Thread } from "../../shared/domain.ts"
+import type { PullRequest, Thread } from "../../shared/domain.ts"
 import { PULL_REQUEST_REFRESH } from "../../shared/github.ts"
 import { msUntilNextReset } from "../../shared/planLimits.ts"
 import { pullRequestAttention } from "../../shared/threadStatus.ts"
@@ -121,7 +121,9 @@ export const worktreeCheckoutsAtom = Atom.make(
   ),
 )
 
-export const worktreeCheckoutStateAtom = Atom.family((id: string) => Atom.make(call("worktrees.checkoutState", { id })))
+export const worktreeCheckoutStateAtom = Atom.family((id: string) =>
+  Atom.make(call("worktrees.checkoutState", { id })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
+)
 
 export const environmentsAtom = Atom.make((get) => {
   get.addFinalizer(
@@ -299,6 +301,12 @@ export const threadChangesAtom = Atom.family((key: string) => {
   )
 })
 
+export const turnChangesAtom = Atom.family((messageKey: string) => {
+  const [threadId = ""] = messageKey.split("\n")
+  return Atom.make(call("threads.changes", { threadId, scope: "turn" }))
+})
+export const turnChangesKey = (threadId: string, messageId: string) => `${threadId}\n${messageId}`
+
 export const gitLogLimitAtom = Atom.family((_root: string) => Atom.make(200))
 
 export const gitLogAtom = Atom.family((root: string) =>
@@ -361,25 +369,38 @@ const refreshInStepWhileVisible =
   }
 
 const gitHubLookup = <Args extends ReadonlyArray<unknown>, A>(
-  lookup: (...args: Args) => Effect.Effect<A, RpcError>,
+  lookup: (...args: Args) => (get: Atom.AtomContext) => Effect.Effect<A, RpcError>,
+  { revalidateOnFocus = true }: { readonly revalidateOnFocus?: boolean } = {},
 ) => {
   // FIXME: an atom family holds its atoms weakly, and the wrapper below is dropped on unmount
   const cached = familyOf((...args: Args) => Atom.make(lookup(...args)).pipe(Atom.setIdleTTL("10 minutes")))
   return familyOf((...args: Args) =>
     cached(...args).pipe(
-      Atom.swr({ staleTime: "30 seconds", revalidateOnFocus: true, focusSignal: windowReturnSignal }),
+      Atom.swr({ staleTime: "30 seconds", revalidateOnFocus, focusSignal: windowReturnSignal }),
       refreshInStepWhileVisible(PULL_REQUEST_REFRESH),
     ),
   )
 }
 
-export const branchPullRequestAtom = gitHubLookup((worktreeId: string | null) =>
-  worktreeId ? call("worktrees.pullRequest", { id: worktreeId }) : Effect.succeed(null),
-)
+const refreshWhenPullRequestChanges = (get: Atom.AtomContext, url: string) =>
+  get.addFinalizer(
+    onPushEvent((event) => {
+      if (event.type === "github.pullRequest" && event.url === url) get.refreshSelf()
+    }),
+  )
 
-export const pullRequestStatusAtom = gitHubLookup((environment: EnvironmentId, url: string) =>
-  call("github.pullRequest", { url }, { environment }),
-)
+export const branchPullRequestAtom = gitHubLookup((worktreeId: string | null) => (get) => {
+  const known = Option.getOrUndefined(get.self<AsyncResult.AsyncResult<PullRequest | null, RpcError>>())
+  if (known !== undefined && AsyncResult.isSuccess(known) && known.value !== null) {
+    refreshWhenPullRequestChanges(get, known.value.url)
+  }
+  return worktreeId ? call("worktrees.pullRequest", { id: worktreeId }) : Effect.succeed(null)
+})
+
+export const pullRequestStatusAtom = gitHubLookup((environment: EnvironmentId, url: string) => (get) => {
+  refreshWhenPullRequestChanges(get, url)
+  return call("github.pullRequest", { url }, { environment })
+})
 
 export const pullRequestStatusesAtom = familyOf((environment: EnvironmentId, urls: ReadonlyArray<string>) =>
   Atom.make((get) =>
@@ -399,8 +420,27 @@ export const pullRequestAttentionsAtom = familyOf(
     Atom.make((get) => threads.map(([environment, urls]) => get(pullRequestAttentionAtom(environment, urls)))),
 )
 
-export const pullRequestDetailAtom = gitHubLookup((environment: EnvironmentId, url: string) =>
-  call("github.pullRequestDetail", { url }, { environment }),
+const pullRequestDetailLookup = gitHubLookup(
+  (environment: EnvironmentId, url: string) => (get) => {
+    refreshWhenPullRequestChanges(get, url)
+    return call("github.pullRequestDetail", { url }, { environment })
+  },
+  { revalidateOnFocus: false },
+)
+
+const readFreshOnWindowReturn =
+  (environment: EnvironmentId, url: string) =>
+  <A>(self: Atom.Atom<A>) =>
+    Atom.transform(self, (get) => {
+      get.once(windowReturnSignal)
+      get.subscribe(windowReturnSignal, () =>
+        Effect.runFork(Effect.ignore(call("github.pullRequestDetail", { url, fresh: true }, { environment }))),
+      )
+      return get(self)
+    })
+
+export const pullRequestDetailAtom = familyOf((environment: EnvironmentId, url: string) =>
+  pullRequestDetailLookup(environment, url).pipe(readFreshOnWindowReturn(environment, url)),
 )
 
 export const pullRequestFilesAtom = familyOf((environment: EnvironmentId, url: string, _forHead: string) =>
