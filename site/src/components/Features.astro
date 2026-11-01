@@ -22,16 +22,15 @@ import {
   SteerIcon,
   TerminalIcon,
 } from "../icons.ts"
-import { demoKeys } from "../demo/copy.ts"
 import { pick, translator, type Locale, type StringKey } from "../i18n.ts"
-import Vignette from "./Vignette.tsx"
+import Vignette, { vignetteKeys } from "./Vignette.tsx"
 
 interface Props {
   locale: Locale
 }
 
 const t = translator(Astro.props.locale)
-const copy = pick(Astro.props.locale, demoKeys)
+const copy = pick(Astro.props.locale, vignetteKeys)
 
 const groups = [
   { id: "start" as const, icons: [BranchIcon, StackIcon, BoltIcon, AtIcon] },

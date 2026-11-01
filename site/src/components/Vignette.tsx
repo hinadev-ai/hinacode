@@ -2,11 +2,34 @@ import type { ReactNode } from "react"
 import { RiGitMergeLine } from "react-icons/ri"
 import { fill } from "../fill.ts"
 import { BranchIcon, CheckCircleFillIcon, ShieldIcon } from "../icons.ts"
-import type { DemoCopy } from "../demo/copy.ts"
-import type { ProviderId, ThreadStatus } from "../demo/engine.ts"
-import { buttonStyles, providerName, ProviderMark, StatusGlyph } from "../demo/ui.tsx"
+import type { ProviderId } from "../../../src/shared/agent.ts"
+import type { StringKey } from "../i18n.ts"
+import { buttonStyles, providerName, ProviderMark, StatusGlyph, type ThreadStatus } from "./AppParts.tsx"
 
 export type VignetteId = "start" | "watch" | "steer" | "review" | "ship"
+
+export const vignetteKeys = [
+  "provider_claude",
+  "provider_codex",
+  "provider_muse",
+  "approval_title",
+  "approval_allow",
+  "approval_allow_session",
+  "approval_deny",
+  "thread_status_running",
+  "pr_checks_failing",
+  "pr_state_merged",
+  "site_demo_needs_you",
+  "site_demo_done",
+  "site_demo_merged_event",
+  "site_demo_t1_title",
+  "site_demo_t1_pr",
+  "site_demo_t2_title",
+  "site_demo_t3_title",
+  "site_demo_t4_title",
+] as const satisfies readonly StringKey[]
+
+export type VignetteCopy = Record<(typeof vignetteKeys)[number], string>
 
 const paperCard =
   "bg-paper shadow-[0_0_0_1px_oklch(0_0_0/0.06),0_1px_2px_oklch(0_0_0/0.04),0_12px_28px_-12px_oklch(0.32_0.026_196/0.16)]"
@@ -24,7 +47,7 @@ function Frame({ children, className = paperCard }: { children: ReactNode; class
   )
 }
 
-function Worktrees({ copy }: { copy: DemoCopy }) {
+function Worktrees({ copy }: { copy: VignetteCopy }) {
   const branches: [string, ProviderId][] = [
     ["fix/flaky-login", "claude"],
     ["feat/csv-export", "codex"],
@@ -51,7 +74,7 @@ function Worktrees({ copy }: { copy: DemoCopy }) {
   )
 }
 
-function Inbox({ copy }: { copy: DemoCopy }) {
+function Inbox({ copy }: { copy: VignetteCopy }) {
   const rows: [string, ThreadStatus, string][] = [
     [copy.site_demo_t2_title, "needs-you", copy.site_demo_needs_you],
     [copy.site_demo_t1_title, "running", copy.thread_status_running],
@@ -81,7 +104,7 @@ function Inbox({ copy }: { copy: DemoCopy }) {
   )
 }
 
-function Approval({ copy }: { copy: DemoCopy }) {
+function Approval({ copy }: { copy: VignetteCopy }) {
   return (
     <Frame className={attentionCard}>
       <p className="flex items-center gap-1.5 text-[12px] font-semibold">
@@ -122,7 +145,7 @@ function Diff() {
   )
 }
 
-function PullRequest({ copy }: { copy: DemoCopy }) {
+function PullRequest({ copy }: { copy: VignetteCopy }) {
   return (
     <Frame>
       <div className="flex items-start gap-2 px-1">
@@ -147,7 +170,7 @@ function PullRequest({ copy }: { copy: DemoCopy }) {
   )
 }
 
-export default function Vignette({ id, copy }: { id: VignetteId; copy: DemoCopy }) {
+export default function Vignette({ id, copy }: { id: VignetteId; copy: VignetteCopy }) {
   switch (id) {
     case "start":
       return <Worktrees copy={copy} />

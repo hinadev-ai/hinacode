@@ -1,9 +1,8 @@
 ---
-import Demo from "../demo/Demo.tsx"
-import { demoKeys } from "../demo/copy.ts"
-import { pick, translator, type Locale } from "../i18n.ts"
+import { translator, type Locale } from "../i18n.ts"
 import { RELEASES_URL } from "../links.ts"
 import AgentField from "./AgentField.astro"
+import AppWindow from "./AppWindow.astro"
 import Download from "./Download.astro"
 import GithubButton from "./GithubButton.astro"
 
@@ -47,9 +46,5 @@ const t = translator(locale)
 </section>
 
 <section id="demo" aria-label={t("site_demo_label")} class="mx-auto max-w-[80rem] px-3 pt-14 sm:px-8 sm:pt-16">
-  <p class="mx-2 mb-4 flex max-w-[44rem] items-start gap-2.5 text-sm text-ink-soft sm:mx-0">
-    <span aria-hidden="true" class="mt-[0.4rem] size-2 shrink-0 rounded-full bg-coral"></span>
-    {t("site_demo_hint")}
-  </p>
-  <Demo client:load copy={pick(locale, demoKeys)} locale={locale} />
+  <AppWindow locale={locale} />
 </section>
