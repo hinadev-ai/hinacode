@@ -2220,5 +2220,31 @@
   "pr_preview_after": "变更后",
   "pr_preview_too_large": "文件太大，无法预览。",
   "pr_preview_failed": "无法加载文件：{message}",
-  "settings_guide_model_picker": "指南模型"
+  "settings_guide_model_picker": "指南模型",
+  "turn_changes_edited": "编辑了 {file}",
+  "turn_changes_created": "新增了 {file}",
+  "turn_changes_deleted": "删除了 {file}",
+  "turn_changes_files": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "编辑了 {count} 个文件",
+        "countPlural=other": "编辑了 {count} 个文件"
+      }
+    }
+  ],
+  "turn_changes_undo": "撤销",
+  "turn_changes_view": "查看更改",
+  "turn_changes_undone": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "已撤销 {count} 个文件的更改",
+        "countPlural=other": "已撤销 {count} 个文件的更改"
+      }
+    }
+  ],
+  "transcript_scroll_to_latest": "滚动到最新消息"
 }

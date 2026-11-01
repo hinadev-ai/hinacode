@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import type { ChangesScope } from "../../shared/domain.ts"
 import type { FindMatch, FindRevealRequest } from "../lib/find.ts"
 import { getPanelLayout } from "../lib/panelLayout.ts"
 import type { EnvironmentId } from "../lib/rpc.ts"
@@ -90,6 +91,8 @@ interface UiState {
   readonly sidePanelWidth: number | null
   readonly viewFocusRequest: SidePanelViewId | null
   readonly changesPath: string | null
+  readonly changesScopes: Readonly<Record<string, ChangesScope>>
+  readonly setChangesScope: (threadId: string, scope: ChangesScope) => void
   readonly vmPlacements: Readonly<Record<string, VmPlacement>>
   readonly vmFloatingWidth: number
   readonly setVmPlacement: (threadId: string, placement: VmPlacement) => void
@@ -190,6 +193,9 @@ export const useUi = create<UiState>()((set, get) => ({
   sidePanelWidth: loadSize(SIDE_PANEL_WIDTH_KEY, SIDE_PANEL_BOUNDS),
   viewFocusRequest: null,
   changesPath: null,
+  changesScopes: {},
+  setChangesScope: (threadId, scope) =>
+    set((state) => ({ changesScopes: { ...state.changesScopes, [threadId]: scope } })),
   vmPlacements: {},
   vmFloatingWidth: loadSize(VM_FLOATING_WIDTH_KEY, VM_FLOATING_BOUNDS) ?? VM_FLOATING_DEFAULT_WIDTH,
   setVmPlacement: (threadId, placement) =>

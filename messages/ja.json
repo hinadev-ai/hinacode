@@ -2174,5 +2174,13 @@
   "pr_preview_after": "変更後",
   "pr_preview_too_large": "大きすぎてプレビューできません。",
   "pr_preview_failed": "ファイルを読み込めませんでした: {message}",
-  "settings_guide_model_picker": "ガイドのモデル"
+  "settings_guide_model_picker": "ガイドのモデル",
+  "turn_changes_edited": "{file} を編集しました",
+  "turn_changes_created": "{file} を作成しました",
+  "turn_changes_deleted": "{file} を削除しました",
+  "turn_changes_files": "{count} ファイルを編集しました",
+  "turn_changes_undo": "元に戻す",
+  "turn_changes_view": "変更を表示",
+  "turn_changes_undone": "{count} ファイルの変更を元に戻しました",
+  "transcript_scroll_to_latest": "最新のメッセージへスクロール"
 }

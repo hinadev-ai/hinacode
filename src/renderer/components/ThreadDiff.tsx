@@ -2,8 +2,9 @@ import { useAtomRefresh, useAtomSuspense, useAtomValue } from "@effect/atom-reac
 import { cn } from "cn"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { Suspense, useDeferredValue, useEffect, useRef, useState } from "react"
+import { Suspense, useDeferredValue, useEffect, useRef } from "react"
 import type { ChangesScope, Thread } from "../../shared/domain.ts"
+import { lineCounts } from "../lib/patch.ts"
 import { threadChangesAtom } from "../lib/rpc.ts"
 import { useThreadRoot } from "../lib/threadRoot.ts"
 import { m } from "../paraglide/messages.js"
@@ -23,16 +24,6 @@ interface FileDiff {
   readonly removed: number
 }
 
-const lineCounts = (filePatch: string) => {
-  let added = 0
-  let removed = 0
-  for (const line of filePatch.split("\n")) {
-    if (line.startsWith("+") && !line.startsWith("+++")) added++
-    else if (line.startsWith("-") && !line.startsWith("---")) removed++
-  }
-  return { added, removed }
-}
-
 const splitPatch = (patch: string, paths: ReadonlyArray<string>) => {
   const chunks = patch.split(/^(?=diff --git )/m)
   const byPath = new Map<string, FileDiff>()
@@ -46,12 +37,13 @@ const splitPatch = (patch: string, paths: ReadonlyArray<string>) => {
 export function ThreadDiff({ thread }: { thread: Thread }) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   const hasWorktree = worktree !== undefined && worktree.status !== "removed"
-  const [scope, setScope] = useState<ChangesScope>(hasWorktree ? "worktree" : "turn")
+  const scope = useUi((state) => state.changesScopes[thread.id]) ?? (hasWorktree ? "worktree" : "turn")
+  const setScope = useUi((state) => state.setChangesScope)
   const shownScope = useDeferredValue(scope)
 
   return (
     <div className="flex flex-col gap-3 p-4">
-      <Tabs value={scope} changeAction={(value: ChangesScope) => setScope(value)}>
+      <Tabs value={scope} changeAction={(value: ChangesScope) => setScope(thread.id, value)}>
         <TabsList aria-label={m.diff_scope_label()} className="w-full">
           <TabsTrigger value="worktree">{m.diff_scope_worktree()}</TabsTrigger>
           <TabsTrigger value="turn">{m.diff_scope_turn()}</TabsTrigger>

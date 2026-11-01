@@ -131,6 +131,7 @@ export const routes: Record<RpcMethod, Route> = {
   "threads.resumeAtReset": owner("thread", "id"),
   "threads.switchAccount": owner("thread", "id"),
   "threads.changes": thread,
+  "threads.undoTurn": thread,
   "threads.fork": thread,
   "threads.sidechat": thread,
   "sessions.listExternal": owner("project", "projectId"),

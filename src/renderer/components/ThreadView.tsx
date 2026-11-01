@@ -227,7 +227,13 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
           <div className="h-[calc(50cqh+var(--dock-height)/2+1.5rem)] shrink-0" />
         </>
       ) : (
-        <MessageList messages={history.messages} providerLabel={label} commands={commands} listRef={listRef} />
+        <MessageList
+          messages={history.messages}
+          providerLabel={label}
+          commands={commands}
+          listRef={listRef}
+          turnChanges
+        />
       )}
     </FindPatternContext>
   )
