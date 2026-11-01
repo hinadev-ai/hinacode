@@ -31,7 +31,7 @@ export function GeneralSettings() {
     if (!isLocale(next) || next === locale) return
     try {
       const saved = await updateClientSettings({ locale: next })
-      applyLocale(saved.locale)
+      await applyLocale(saved.locale)
     } catch (cause) {
       setError(errorMessage(cause))
     }

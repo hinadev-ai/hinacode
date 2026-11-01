@@ -30,7 +30,7 @@
     "serve": "vite build --config vite.server.config.ts --ssr src/main/daemon.ts --outDir out/server && node out/server/daemon.js serve",
     "stage:server": "node scripts/stage-server-package.ts",
     "verify:server": "node scripts/verify-server-package.ts",
-    "paraglide": "paraglide-js compile --project ./project.inlang --outdir ./src/renderer/paraglide --strategy globalVariable baseLocale --silent",
+    "paraglide": "paraglide-js compile --project ./project.inlang --outdir ./src/renderer/paraglide --strategy globalVariable baseLocale --output-structure locale-modules --silent",
     "typecheck": "pnpm paraglide && tsrs --noEmit -p tsconfig.node.json && tsrs --noEmit -p tsconfig.web.json && tsrs --noEmit -p tsconfig.web-test.json && tsrs --noEmit -p tsconfig.e2e.json && tsrs --noEmit -p tsconfig.scripts.json",
     "lint": "oxlint",
     "check:specs": "node scripts/tlc.ts",
