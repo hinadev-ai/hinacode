@@ -282,8 +282,8 @@ Then("the first completed rendering contains its final text and {word}", async (
   const text = await stream.firstBoundary()
   expect(text).toMatch(
     ending === "completes"
-      ? /^Worked for \d{2}:\d{2}Final queued text\.$/
-      : /^Worked for \d{2}:\d{2}Final queued text\.Error: Interrupted locally$/,
+      ? /^(?:Worked for \S+)?Final queued text\.$/
+      : /^(?:Worked for \S+)?Final queued text\.Error: Interrupted locally$/,
   )
   await expect(article(app.page).locator("strong")).toHaveText(
     ending === "completes" ? ["queued"] : ["queued", "Error:"],

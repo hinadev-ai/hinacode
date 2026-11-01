@@ -15,7 +15,7 @@ import type { IconComponent } from "./icons/Icon.tsx"
 import { PencilIcon } from "./icons/PencilIcon.tsx"
 
 const summaryOf = (message: QueuedMessage) =>
-  message.text.trim() || m.queue_attachments({ count: String(message.attachments.length) })
+  message.text.trim() || m.queue_attachments({ count: message.attachments.length })
 
 export function QueueBar({
   thread,

@@ -20,10 +20,10 @@ export function ansiSegments(text: string): Array<AnsiSegment> {
     const { decorations } = entry
     if (decorations.includes("hidden")) return []
     const style: CSSProperties = {
-      color: color(entry.fg, entry.fg_truecolor),
+      color:
+        color(entry.fg, entry.fg_truecolor) ?? (decorations.includes("dim") ? "var(--muted-foreground)" : undefined),
       backgroundColor: color(entry.bg, entry.bg_truecolor),
       fontWeight: decorations.includes("bold") ? "bold" : undefined,
-      opacity: decorations.includes("dim") ? 0.7 : undefined,
       fontStyle: decorations.includes("italic") ? "italic" : undefined,
       textDecorationLine:
         [

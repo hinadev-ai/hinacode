@@ -10,7 +10,7 @@ import { FadeIn, PressableScale, Reveal, Rotate, Spinner } from "@/components/mo
 import { PullRequestCode } from "@/components/pull-request-code"
 import { PullRequestState } from "@/components/pull-request-state"
 import { reviewLabel, reviewTone } from "@/lib/pull-request-labels"
-import { OptionRow, Section, Sheet } from "@/components/sheet"
+import { OptionRow, Sheet } from "@/components/sheet"
 import { Button, IconButton, Notice, Pill, Toggle, UnderlineTabs } from "@/components/ui"
 import { HIT, mono } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
@@ -165,7 +165,9 @@ function PullRequestView({
         </View>
         <View style={styles.pills}>
           <PullRequestState status={detail.status} />
-          {detail.review !== null && <Pill label={reviewLabel(detail.review)} tone={reviewTone[detail.review]} />}
+          {isOpen(detail) && detail.review !== null && (
+            <Pill label={reviewLabel(detail.review)} tone={reviewTone[detail.review]} />
+          )}
           {isOpen(detail) && detail.mergeable === "mergeable" && (
             <Pill label={copy("mobile_pr_mergeable")} tone="neutral" icon="RiCheckLine" />
           )}
@@ -362,7 +364,7 @@ function CheckRow({ run }: { run: CheckRun }) {
         <Icon {...glyphs[run.status]} size={16} />
       )}
       <Text
-        numberOfLines={1}
+        numberOfLines={2}
         style={[styles.runName, { color: run.status === "failing" ? theme.text : theme.textMuted }]}
       >
         {run.name}
@@ -463,7 +465,11 @@ function Merge({ detail, onChanged }: { detail: PullRequestDetail; onChanged: ()
         <Text style={[styles.hint, { color: theme.textMuted }]}>{copy("mobile_pr_merge_blocked_draft")}</Text>
       )}
       <Sheet title={copy("mobile_pr_merge_method")} open={picking} onClose={() => setPicking(false)} fit>
-        <Section title={copy("mobile_pr_merge_method")}>
+        <View
+          accessibilityRole="radiogroup"
+          accessibilityLabel={copy("mobile_pr_merge_method")}
+          style={styles.methods}
+        >
           {mergeMethods.map((option) => (
             <OptionRow
               key={option}
@@ -473,7 +479,7 @@ function Merge({ detail, onChanged }: { detail: PullRequestDetail; onChanged: ()
               onPress={() => pickMethod(option)}
             />
           ))}
-        </Section>
+        </View>
       </Sheet>
     </View>
   )
@@ -560,9 +566,10 @@ const styles = StyleSheet.create({
   ask: { gap: 8, alignItems: "flex-start" },
   sent: { flexDirection: "row", alignItems: "center", gap: 6 },
   run: { minHeight: HIT, flexDirection: "row", alignItems: "center", gap: 10 },
-  runName: { flex: 1, fontSize: 14 },
+  runName: { flex: 1, fontSize: 14, lineHeight: 19, paddingVertical: 6 },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   hint: { fontSize: 13, lineHeight: 18 },
+  methods: { gap: 2 },
   watch: { minHeight: HIT, flexDirection: "row", alignItems: "center", gap: 12 },
   watchText: { flex: 1, gap: 2 },
   watchLabel: { fontSize: 15, fontWeight: "500" },

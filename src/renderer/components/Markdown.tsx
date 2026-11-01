@@ -109,6 +109,8 @@ function ThemedSource({ media, srcSet, sizes }: { media?: string; srcSet?: strin
   )
 }
 
+const isShortCell = (children: ReactNode) => typeof children === "string" && children.length <= 20
+
 const components: Components = {
   p: ({ children, node }) => {
     const asset = bareGitHubAsset(node)
@@ -157,6 +159,11 @@ const components: Components = {
     <div className="my-[2em] overflow-x-auto [&>table]:my-0">
       <table>{children}</table>
     </div>
+  ),
+  td: ({ children, style }) => (
+    <td style={style} className={isShortCell(children) ? "whitespace-nowrap" : undefined}>
+      {children}
+    </td>
   ),
 }
 

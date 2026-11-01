@@ -1,6 +1,6 @@
 import { useState } from "react"
 import type { Message, Thread } from "../../shared/domain.ts"
-import { latestTodos, type Todo, type TodoStatus } from "../lib/todos.ts"
+import { latestTodos, type Todo, type TodoStatus } from "../../shared/todos.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { useMessages } from "../stores/messages.ts"
