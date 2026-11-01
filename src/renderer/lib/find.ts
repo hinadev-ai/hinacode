@@ -1,6 +1,6 @@
 import type { Message, MessagePart } from "../../shared/domain.ts"
 import { assistantPresentation, presentationBlocks } from "./assistantPresentation.ts"
-import { describeCommand, describeToolCall } from "./toolCall.ts"
+import { describeCommand, describeToolCall, skillsUsed } from "./toolCall.ts"
 
 type ToolCall = Extract<MessagePart, { type: "tool_call" }>
 
@@ -26,6 +26,8 @@ export function searchableText(part: MessagePart): string {
     case "questions":
       return part.text
     case "tool_call": {
+      const skills = skillsUsed(part)
+      if (skills !== null) return skills.join("\n")
       if (part.name === "Bash") return commandSearchText(commandFindText(part))
       const { name, summary } = describeToolCall(part)
       return `${name}\n${summary}`

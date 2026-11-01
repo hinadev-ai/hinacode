@@ -2177,5 +2177,25 @@
   "turn_changes_undo": "復原",
   "turn_changes_view": "查看變更",
   "turn_changes_undone": "已復原 {count} 個檔案的變更",
-  "transcript_scroll_to_latest": "捲動到最新訊息"
+  "transcript_scroll_to_latest": "捲動到最新訊息",
+  "tool_kind_skill": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "使用了 {count} 個技能",
+        "countPlural=other": "使用了 {count} 個技能"
+      }
+    }
+  ],
+  "tool_skill_used": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "使用技能 {skills}",
+        "countPlural=other": "使用技能 {skills}"
+      }
+    }
+  ]
 }

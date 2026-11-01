@@ -70,7 +70,35 @@ export function groupToolCalls(parts: ReadonlyArray<MessagePart>, startIndex = 0
   return blocks
 }
 
-export type ToolKind = "command" | "read" | "edit" | "search" | "other"
+const SKILL_FILE = /(?:^|\/)skills\/([^/]+)\/SKILL\.md$/
+const READ_PROGRAMS = new Set(["cat", "head", "nl"])
+
+const skillFromFile = (path: string) => SKILL_FILE.exec(path.replace(/^['"]|['"]$/g, ""))?.[1]
+
+function skillsReadBy(command: string): Array<string> | null {
+  const [program, ...rest] = command.trim().split(/\s+/)
+  const paths = program === "sed" && rest[0] === "-n" ? rest.slice(2) : READ_PROGRAMS.has(program ?? "") ? rest : []
+  const skills = paths.map(skillFromFile)
+  return skills.length > 0 && skills.every((skill) => skill !== undefined) ? skills : null
+}
+
+const textField = (input: unknown, key: string) => {
+  const value: unknown = typeof input === "object" && input !== null ? Reflect.get(input, key) : undefined
+  return typeof value === "string" && value !== "" ? value : undefined
+}
+
+export function skillsUsed(call: ToolCall): Array<string> | null {
+  const named =
+    call.name === "Skill"
+      ? textField(call.input, "skill")
+      : call.name === "read_skill"
+        ? textField(call.input, "name")
+        : undefined
+  if (named !== undefined) return [named]
+  return call.name === "Bash" ? skillsReadBy(describeToolCall(call).summary) : null
+}
+
+export type ToolKind = "command" | "read" | "edit" | "search" | "skill" | "other"
 
 const toolKinds: Record<string, ToolKind> = {
   Bash: "command",
@@ -85,11 +113,12 @@ const toolKinds: Record<string, ToolKind> = {
 
 export function countToolKinds(calls: ReadonlyArray<ToolCall>): Array<{ kind: ToolKind; count: number }> {
   const counts = new Map<ToolKind, number>(
-    (["command", "read", "edit", "search", "other"] as const).map((kind) => [kind, 0]),
+    (["command", "read", "edit", "search", "skill", "other"] as const).map((kind) => [kind, 0]),
   )
   for (const call of calls) {
-    const kind = toolKinds[call.name] ?? "other"
-    counts.set(kind, (counts.get(kind) ?? 0) + 1)
+    const skills = skillsUsed(call)
+    const kind = skills === null ? (toolKinds[call.name] ?? "other") : "skill"
+    counts.set(kind, (counts.get(kind) ?? 0) + (skills?.length ?? 1))
   }
   return [...counts].flatMap(([kind, count]) => (count > 0 ? [{ kind, count }] : []))
 }
