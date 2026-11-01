@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import "tailwindcss" source(".");
 @import "shadcn/tailwind.css";
 /* The opsz files carry DM Sans' optical-size axis, so small UI text gets the sturdier small-size cut. Italics are real faces. */
 @import "@fontsource-variable/dm-sans/opsz.css";
