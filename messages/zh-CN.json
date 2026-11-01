@@ -412,7 +412,6 @@
   "agents_batch_running": "{running}/{total} 运行中",
   "agents_batch_failed": "{count} 个失败",
   "agents_stop": "停止 {label}",
-  "agents_composer_placeholder": "子智能体不接收消息",
   "agents_stop_failed": "无法停止子智能体：{message}",
   "activity_label": "智能体活动",
   "activity_background_label": "后台任务",
