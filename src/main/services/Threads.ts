@@ -630,17 +630,17 @@ const make = Effect.gen(function* () {
       if (base === null) return
       const { files } = yield* turnChanges(base)
       const root = (yield* git.run(base.cwd, ["rev-parse", "--show-toplevel"])).trim()
+      yield* Effect.forEach(
+        files.filter((file) => file.status === "added"),
+        (file) => fs.remove(join(root, file.path), { force: true }),
+        { discard: true },
+      )
       const restored = files.filter((file) => file.status !== "added").map((file) => file.path)
       if (restored.length > 0) {
         yield* git.run(root, ["restore", `--source=${base.tree}`, "--worktree", "--", ...restored], {
           env: { GIT_LITERAL_PATHSPECS: "1" },
         })
       }
-      yield* Effect.forEach(
-        files.filter((file) => file.status === "added"),
-        (file) => fs.remove(join(root, file.path), { force: true }),
-        { discard: true },
-      )
     })
 
   const captureTurnBase = (cwd: string) =>
