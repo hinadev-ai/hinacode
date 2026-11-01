@@ -30,11 +30,12 @@ import type {
   PullRequestDetail,
   PullRequestFile,
   PullRequestStatus,
+  ReviewLineComment,
   ReviewStatus,
   OpenPullRequest,
   PullRequestMatch,
 } from "../../shared/domain.ts"
-import { PullRequestComment } from "../../shared/domain.ts"
+import { DiffSide, PullRequestComment } from "../../shared/domain.ts"
 import {
   type GitHubRepository,
   parseGitHubPullRequestUrl,
@@ -97,6 +98,32 @@ export class PullRequestDiffTooLargeError extends Schema.TaggedError<PullRequest
 export const requirePullRequestUrl = (raw: string): Effect.Effect<string, PullRequestUrlInvalidError> => {
   const url = parseGitHubPullRequestUrl(raw.trim())
   return url === undefined ? Effect.fail(new PullRequestUrlInvalidError({ url: raw })) : Effect.succeed(url)
+}
+
+export const reviewCommentArgs = (url: string, comment: ReviewLineComment) => {
+  const { pathname } = new URL(url)
+  const [, owner, repo, , number] = pathname.split("/")
+  const range =
+    comment.startLine === comment.endLine
+      ? []
+      : ["-F", `start_line=${comment.startLine}`, "-f", `start_side=${comment.side}`]
+  return [
+    "api",
+    "--method",
+    "POST",
+    `repos/${owner}/${repo}/pulls/${number}/comments`,
+    "-f",
+    `body=${comment.body}`,
+    "-f",
+    `commit_id=${comment.commit}`,
+    "-f",
+    `path=${comment.path}`,
+    "-F",
+    `line=${comment.endLine}`,
+    "-f",
+    `side=${comment.side}`,
+    ...range,
+  ]
 }
 
 const AuthStatusJson = Schema.fromJsonString(
@@ -170,7 +197,7 @@ const PULL_REQUEST_FRAGMENTS = `fragment PullRequestFields on PullRequest {
   } } } } } }
   comments(last: 50) { nodes { ...Comment url } }
   reviews(last: 50) { nodes { ...Comment url } }
-  reviewThreads(last: 50) { nodes { isResolved comments(first: 20) { nodes { ...Comment url path line } } } }
+  reviewThreads(last: 50) { nodes { isResolved diffSide comments(first: 20) { nodes { ...Comment url path line } } } }
 }
 
 fragment Comment on Comment {
@@ -236,6 +263,7 @@ const GraphQLPullRequest = Schema.Struct({
     nodes: Schema.Array(
       Schema.Struct({
         isResolved: Schema.Boolean,
+        diffSide: DiffSide,
         comments: Schema.Struct({ nodes: Schema.Array(GraphQLReviewComment) }),
       }),
     ),
@@ -311,7 +339,9 @@ const toComments = ({
     ...reviewThreads.nodes
       .filter((thread) => !thread.isResolved)
       .flatMap((thread) =>
-        thread.comments.nodes.map((comment) => toComment(comment, { path: comment.path, line: comment.line })),
+        thread.comments.nodes.map((comment) =>
+          toComment(comment, { path: comment.path, line: comment.line, side: thread.diffSide }),
+        ),
       ),
   ].toSorted((a, b) => a.createdAt.localeCompare(b.createdAt))
 
@@ -514,6 +544,16 @@ const PullRequestHead = Schema.Struct({
   isCrossRepository: Schema.Boolean,
 })
 export type PullRequestHead = typeof PullRequestHead.Type
+const decodeContents = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(Schema.Struct({ encoding: Schema.String, content: Schema.String })),
+)
+
+export const contentsPath = (url: string, ref: string, path: string) => {
+  const [, owner, repo] = new URL(url).pathname.split("/")
+  const file = path.split("/").map(encodeURIComponent).join("/")
+  return `repos/${owner}/${repo}/contents/${file}?ref=${encodeURIComponent(ref)}`
+}
+
 const decodePullRequestHead = Schema.decodeUnknownEffect(Schema.fromJsonString(PullRequestHead))
 
 const decodeOpenPullRequests = Schema.decodeUnknownEffect(
@@ -560,9 +600,18 @@ export class GitHub extends Context.Service<
     readonly pullRequestDiff: (
       url: string,
     ) => Effect.Effect<string, GitHubError | PullRequestUrlInvalidError | PullRequestDiffTooLargeError>
+    readonly fileContent: (
+      url: string,
+      ref: string,
+      path: string,
+    ) => Effect.Effect<string | null, GitHubError | PullRequestUrlInvalidError | Schema.SchemaError>
     readonly merge: (url: string, method: MergeMethod) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
     readonly close: (url: string) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
     readonly comment: (url: string, body: string) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
+    readonly reviewComment: (
+      url: string,
+      comment: ReviewLineComment,
+    ) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
     readonly branchPullRequest: (
       cwd: string,
       branch: string,
@@ -908,9 +957,15 @@ const make = Effect.gen(function* () {
           () => Effect.fail(new PullRequestDiffTooLargeError()),
         ),
       ),
+    fileContent: (raw, ref, path) =>
+      ghByUrl(raw, (url) => ["api", contentsPath(url, ref, path)]).pipe(
+        Effect.flatMap(decodeContents),
+        Effect.map(({ encoding, content }) => (encoding === "base64" ? content.replaceAll("\n", "") : null)),
+      ),
     merge: (raw, method) => ghWrite(raw, (url) => ["pr", "merge", url, `--${method}`], openInRepository),
     close: (raw) => ghWrite(raw, (url) => ["pr", "close", url]),
     comment: (raw, body) => ghWrite(raw, (url) => ["pr", "comment", url, "--body", body]),
+    reviewComment: (raw, comment) => ghWrite(raw, (url) => reviewCommentArgs(url, comment)),
     branchPullRequest,
     pullRequestHead: (cwd, selector) =>
       gh(cwd, ["pr", "view", selector, "--json", "url,number,headRefName,baseRefName,isCrossRepository"]).pipe(

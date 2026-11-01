@@ -14,10 +14,13 @@ import { registry } from "./lib/registry.ts"
 import { callPromise, clientSettingsAtom, onPushEvent, projectsAtom, settingsAtom } from "./lib/rpc.ts"
 import { terminalExited, writeTerminal } from "./lib/terminalScreens.ts"
 import { useClientSettings } from "./lib/settings.ts"
+import { windowEntry } from "./lib/windowEntry.ts"
 import { notifyThreadEvent, recordUnseenOutcome } from "./lib/threadNotifications.ts"
 import { m } from "./paraglide/messages.js"
 import { router } from "./router.tsx"
+import { pullRequestWindowRouter } from "./pullRequestWindowRouter.ts"
 import { useBackgroundTasks } from "./stores/backgroundTasks.ts"
+import { useDrafts } from "./stores/drafts.ts"
 import { useLocale } from "./stores/locale.ts"
 import { useMessages } from "./stores/messages.ts"
 import { usePullRequestGuides } from "./stores/pullRequestGuides.ts"
@@ -31,6 +34,8 @@ import { useUnseen } from "./stores/unseen.ts"
 import { useWorktrees } from "./stores/worktrees.ts"
 
 if (window.hinacode.liquidGlass) document.documentElement.dataset.glass = ""
+
+const activeRouter = windowEntry === null ? router : pullRequestWindowRouter(windowEntry)
 
 function App() {
   const locale = useLocale((state) => state.locale)
@@ -47,8 +52,8 @@ function App() {
   // FIXME: Paraglide messages read the locale when called, so the tree remounts on locale change
   return (
     <TooltipProvider key={locale}>
-      <RouterProvider router={router} />
-      <DockBadge />
+      <RouterProvider router={activeRouter} />
+      {windowEntry === null && <DockBadge />}
       <Toaster position="top-right" offset={{ top: "3.5rem", right: "3.5rem" }} theme={theme.scheme} />
     </TooltipProvider>
   )
@@ -90,6 +95,8 @@ onPushEvent((event) => {
       )
     case "thread.pullRequests":
       return usePullRequests.getState().replace(event.threadId, event.links)
+    case "thread.lineComment":
+      return useDrafts.getState().addComment(event.threadId, event.comment)
     case "pullRequest.guide":
       return usePullRequestGuides.getState().replace(event.url, event.state)
     case "thread.subagents":

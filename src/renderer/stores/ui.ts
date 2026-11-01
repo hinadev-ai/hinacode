@@ -27,12 +27,11 @@ export type SidePanelViewId =
   | "tinyVm"
   | "devices"
   | "sidechat"
-export type SidePanelSize = "normal" | "wide"
 const sidebarTabs = ["inbox", "threads", "archived"] as const
 export type SidebarTab = (typeof sidebarTabs)[number]
 
-export const pullRequestCodeViews = ["files", "guide"] as const
-export type PullRequestCodeView = (typeof pullRequestCodeViews)[number]
+export const pullRequestTabs = ["info", "files", "guide"] as const
+export type PullRequestTab = (typeof pullRequestTabs)[number]
 export type VmPlacement = "panel" | "floating"
 export type ComposerPicker = "model" | "effort"
 
@@ -45,7 +44,7 @@ const SIDEBAR_WIDTH_KEY = "hinacode.sidebarWidth"
 const SIDEBAR_PROJECTS_KEY = "hinacode.sidebarProjects"
 const SIDEBAR_TAB_KEY = "hinacode.sidebarTab"
 const RECENT_THREADS_KEY = "hinacode.recentThreads"
-const PULL_REQUEST_CODE_VIEW_KEY = "hinacode.pullRequestCodeView"
+const PULL_REQUEST_TAB_KEY = "hinacode.pullRequestTab"
 const COLLAPSED_PULL_REQUEST_SECTIONS_KEY = "hinacode.collapsedPullRequestSections"
 const VM_FLOATING_WIDTH_KEY = "hinacode.vmFloatingWidth"
 const FILE_TREE_HEIGHT_KEY = "hinacode.fileTreeHeight"
@@ -65,16 +64,13 @@ function loadStrings(key: string): ReadonlyArray<string> {
 const loadSidebarTab = (): SidebarTab =>
   sidebarTabs.find((tab) => tab === localStorage.getItem(SIDEBAR_TAB_KEY)) ?? "threads"
 
-const loadPullRequestCodeView = (): PullRequestCodeView =>
-  pullRequestCodeViews.find((view) => view === localStorage.getItem(PULL_REQUEST_CODE_VIEW_KEY)) ?? "files"
+const loadPullRequestTab = (): PullRequestTab =>
+  pullRequestTabs.find((tab) => tab === localStorage.getItem(PULL_REQUEST_TAB_KEY)) ?? "info"
 
 const isPullRequestSection = (value: string): value is PullRequestSection =>
   pullRequestSections.some((section) => section === value)
 
-const sidePanelWidthKeys: Record<SidePanelSize, string> = {
-  normal: "hinacode.sidePanelWidth",
-  wide: "hinacode.sidePanelWideWidth",
-}
+const SIDE_PANEL_WIDTH_KEY = "hinacode.sidePanelWidth"
 
 interface UiState {
   readonly sidebarOpen: boolean
@@ -85,14 +81,14 @@ interface UiState {
   readonly sidebarTab: SidebarTab
   readonly pickedPullRequests: Readonly<Record<string, string>>
   readonly pickPullRequest: (threadId: string, url: string) => void
-  readonly pullRequestCodeView: PullRequestCodeView
+  readonly pullRequestTab: PullRequestTab
+  readonly linkedPullRequestsOpen: boolean
   readonly sidebarQuery: string
   readonly sidebarProjectIds: ReadonlyArray<string>
   readonly collapsedPullRequestSections: ReadonlyArray<PullRequestSection>
   readonly sidePanelViews: Readonly<Record<string, SidePanelViewId>>
   readonly lastSidePanelView: SidePanelViewId
-  readonly sidePanelWide: boolean
-  readonly sidePanelWidths: Readonly<Record<SidePanelSize, number | null>>
+  readonly sidePanelWidth: number | null
   readonly viewFocusRequest: SidePanelViewId | null
   readonly changesPath: string | null
   readonly changesScopes: Readonly<Record<string, ChangesScope>>
@@ -123,14 +119,14 @@ interface UiState {
   readonly setSidebarOverlayOpen: (open: boolean) => void
   readonly setSidePanelOverlayOpen: (open: boolean) => void
   readonly setSidebarTab: (tab: SidebarTab) => void
-  readonly setPullRequestCodeView: (view: PullRequestCodeView) => void
+  readonly setPullRequestTab: (tab: PullRequestTab) => void
+  readonly setLinkedPullRequestsOpen: (open: boolean) => void
   readonly setSidebarQuery: (query: string) => void
   readonly setSidebarProjectIds: (ids: ReadonlyArray<string>) => void
   readonly setPullRequestSectionOpen: (section: PullRequestSection, open: boolean) => void
   readonly showView: (threadId: string, view: SidePanelViewId, options?: { readonly focus?: boolean }) => void
   readonly toggleView: (threadId: string, view: SidePanelViewId, options?: { readonly focus?: boolean }) => void
   readonly clearViewFocusRequest: () => void
-  readonly setSidePanelWide: (wide: boolean) => void
   readonly setChangesPath: (path: string | null) => void
   readonly requestComposerFocus: () => void
   readonly requestInterrupt: () => void
@@ -144,7 +140,7 @@ interface UiState {
   readonly setFindQuery: (query: string) => void
   readonly revealFindMatch: (match: FindMatch | null) => void
   readonly setSidebarWidth: (width: number) => void
-  readonly setSidePanelWidth: (size: SidePanelSize, width: number | null) => void
+  readonly setSidePanelWidth: (width: number | null) => void
   readonly recentThreadIds: ReadonlyArray<string>
   readonly visitThread: (threadId: string) => void
   readonly threadSwitcher: ThreadSwitcher | null
@@ -187,17 +183,14 @@ export const useUi = create<UiState>()((set, get) => ({
   pickedPullRequests: {},
   pickPullRequest: (threadId, url) =>
     set((state) => ({ pickedPullRequests: { ...state.pickedPullRequests, [threadId]: url } })),
-  pullRequestCodeView: loadPullRequestCodeView(),
+  pullRequestTab: loadPullRequestTab(),
+  linkedPullRequestsOpen: false,
   sidebarQuery: "",
   sidebarProjectIds: loadStrings(SIDEBAR_PROJECTS_KEY),
   collapsedPullRequestSections: loadStrings(COLLAPSED_PULL_REQUEST_SECTIONS_KEY).filter(isPullRequestSection),
   sidePanelViews: {},
   lastSidePanelView: "details",
-  sidePanelWide: false,
-  sidePanelWidths: {
-    normal: loadSize(sidePanelWidthKeys.normal, SIDE_PANEL_BOUNDS),
-    wide: loadSize(sidePanelWidthKeys.wide, SIDE_PANEL_BOUNDS),
-  },
+  sidePanelWidth: loadSize(SIDE_PANEL_WIDTH_KEY, SIDE_PANEL_BOUNDS),
   viewFocusRequest: null,
   changesPath: null,
   changesScopes: {},
@@ -255,10 +248,11 @@ export const useUi = create<UiState>()((set, get) => ({
     localStorage.setItem(SIDEBAR_TAB_KEY, sidebarTab)
     set({ sidebarTab })
   },
-  setPullRequestCodeView: (pullRequestCodeView) => {
-    localStorage.setItem(PULL_REQUEST_CODE_VIEW_KEY, pullRequestCodeView)
-    set({ pullRequestCodeView })
+  setPullRequestTab: (pullRequestTab) => {
+    localStorage.setItem(PULL_REQUEST_TAB_KEY, pullRequestTab)
+    set({ pullRequestTab })
   },
+  setLinkedPullRequestsOpen: (linkedPullRequestsOpen) => set({ linkedPullRequestsOpen }),
   setSidebarQuery: (sidebarQuery) => set({ sidebarQuery }),
   setSidebarProjectIds: (sidebarProjectIds) => {
     localStorage.setItem(SIDEBAR_PROJECTS_KEY, JSON.stringify(sidebarProjectIds))
@@ -283,7 +277,6 @@ export const useUi = create<UiState>()((set, get) => ({
     else state.showView(threadId, view, options)
   },
   clearViewFocusRequest: () => set({ viewFocusRequest: null }),
-  setSidePanelWide: (sidePanelWide) => set({ sidePanelWide }),
   setChangesPath: (changesPath) => set({ changesPath }),
   requestComposerFocus: () => set((state) => ({ composerFocusRequest: state.composerFocusRequest + 1 })),
   requestInterrupt: () => set((state) => ({ interruptRequest: state.interruptRequest + 1 })),
@@ -316,10 +309,10 @@ export const useUi = create<UiState>()((set, get) => ({
     saveSize(SIDEBAR_WIDTH_KEY, sidebarWidth)
     set({ sidebarWidth })
   },
-  setSidePanelWidth: (size, width) => {
+  setSidePanelWidth: (width) => {
     const clamped = width === null ? null : clampSize(SIDE_PANEL_BOUNDS, width)
-    saveSize(sidePanelWidthKeys[size], clamped)
-    set((state) => ({ sidePanelWidths: { ...state.sidePanelWidths, [size]: clamped } }))
+    saveSize(SIDE_PANEL_WIDTH_KEY, clamped)
+    set({ sidePanelWidth: clamped })
   },
   recentThreadIds: loadStrings(RECENT_THREADS_KEY),
   visitThread: (threadId) => {

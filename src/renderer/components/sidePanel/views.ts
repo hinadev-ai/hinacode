@@ -12,6 +12,7 @@ import { DeviceTabStrip } from "./devices/DeviceTabStrip.tsx"
 import { DetailsView } from "./DetailsView.tsx"
 import { SidechatHeader, SidechatView } from "./SidechatView.tsx"
 import { AgentsView, PullRequestsView } from "./SimpleViews.tsx"
+import { PullRequestsHeader, useLinkedPullRequestsLabel } from "../ThreadPullRequests.tsx"
 import { BranchIcon } from "../icons/BranchIcon.tsx"
 import { ChatsIcon } from "../icons/ChatsIcon.tsx"
 import { ComputerIcon } from "../icons/ComputerIcon.tsx"
@@ -38,6 +39,7 @@ export interface SidePanelView {
   readonly component: ComponentType<{ thread: Thread }>
   readonly header?: ComponentType<{ thread: Thread }>
   readonly badge?: (threadId: string) => number
+  readonly dot?: (threadId: string) => string | null
   readonly experiment?: keyof ExperimentalSettings
 }
 
@@ -58,6 +60,8 @@ export const sidePanelViews: ReadonlyArray<SidePanelView> = [
     title: m.pr_links_title,
     commandId: "view.pullRequests",
     component: PullRequestsView,
+    header: PullRequestsHeader,
+    dot: useLinkedPullRequestsLabel,
   },
   {
     id: "agents",
