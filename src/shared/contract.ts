@@ -228,6 +228,7 @@ export const RpcMethods = {
     }),
     Thread,
   ),
+  "threads.draft": rpc(Schema.Struct({ projectId: Schema.String }), Thread),
   "threads.update": rpc(
     Schema.Struct({
       id: Schema.String,
@@ -611,6 +612,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "projects.delete": "mutation",
   "threads.list": "read",
   "threads.create": "mutation",
+  "threads.draft": "mutation",
   "threads.update": "mutation",
   "threads.delete": "mutation",
   "threads.resumeAtReset": "mutation",

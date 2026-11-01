@@ -4,6 +4,7 @@ import { copy } from "@/lib/copy"
 
 /** The thread header's status, as on the desktop: a quiet label, colored only when a usage limit stops the thread. */
 export const threadStatus: Record<ThreadStatus, { label: string; tone: Tone }> = {
+  draft: { label: copy("mobile_status_draft"), tone: "neutral" },
   idle: { label: copy("mobile_status_idle"), tone: "neutral" },
   running: { label: copy("mobile_status_running"), tone: "neutral" },
   awaiting_approval: { label: copy("mobile_status_awaiting"), tone: "neutral" },

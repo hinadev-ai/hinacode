@@ -580,7 +580,7 @@ function ProjectGroup({ group, query, nested, focusAfterDelete }: ProjectGroupPr
   const { projects } = group
   const [first] = projects
   const navigate = useNavigate()
-  const newThread = (project: Project) => void startThread(project.id, navigate)
+  const newThread = (project: Project) => void startThread(project, navigate)
   const newThreadButtonRef = useRef<HTMLButtonElement>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [open, setOpen] = useState(true)

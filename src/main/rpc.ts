@@ -208,6 +208,16 @@ const handlers: Handlers = {
       yield* Events.use((events) => events.publish({ type: "thread.updated", thread }))
       return thread
     }),
+  "threads.draft": ({ projectId }) =>
+    Effect.gen(function* () {
+      const { defaultProvider: provider } = yield* Settings.use((service) => service.get)
+      const options = yield* newThreadOptions(provider)
+      const thread = yield* Threads.use((threads) =>
+        threads.draft({ projectId, title: randomName(), provider, ...options }),
+      )
+      yield* Events.use((events) => events.publish({ type: "thread.updated", thread }))
+      return thread
+    }),
   "threads.update": (input) =>
     Effect.gen(function* () {
       const { provider: switchTo } = input

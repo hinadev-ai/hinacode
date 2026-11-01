@@ -15,7 +15,7 @@ import { errorText } from "@/lib/error-text"
 import { groupByRepository, projectsByActivity } from "@/lib/projects"
 import { createThread } from "@/lib/start-thread"
 import { useDrafts } from "@/stores/drafts"
-import { useThreads } from "@/stores/threads"
+import { listedThreads, useThreads } from "@/stores/threads"
 
 /**
  * Starts a thread in a project, the most recently active first, or goes on to add a project. A repository checked
@@ -38,7 +38,7 @@ export function NewThreadSheet({
   const projects = useThreads((state) => state.projects)
   const byId = useThreads((state) => state.byId)
   const servers = useConnection((state) => state.servers)
-  const groups = groupByRepository(projectsByActivity(projects, Object.values(byId)))
+  const groups = groupByRepository(projectsByActivity(projects, listedThreads(byId)))
   const [choosing, setChoosing] = useState<readonly Project[] | null>(null)
   const [creating, setCreating] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)

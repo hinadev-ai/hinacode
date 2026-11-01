@@ -132,7 +132,7 @@ function ThreadBreadcrumb({ thread, agent }: { thread: Thread; agent: string | u
         <li className="flex min-w-0 items-center gap-1.5">
           {project && <Separator />}
           <h1 dir="auto" className="truncate font-semibold" title={thread.title}>
-            {thread.title}
+            {thread.status === "draft" ? m.thread_draft_title() : thread.title}
           </h1>
         </li>
         {agent !== undefined && <SubagentCrumb threadId={thread.id} callId={agent} />}

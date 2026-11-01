@@ -104,6 +104,10 @@ export const useThreads = create<ThreadsState>()((set, get) => {
 })
 
 /** A project's threads in the order the developer arranged them in the desktop sidebar. */
+/** Every thread but the drafts New thread opens, which the server lists only after their first message. */
+export const listedThreads = (byId: Readonly<Record<string, Thread>>) =>
+  Object.values(byId).filter((thread) => thread.status !== "draft")
+
 export const sortThreads = (threads: readonly Thread[]) => [...threads].sort((a, b) => a.sortIndex - b.sortIndex)
 
 const newestFirst = (a: Thread, b: Thread) => b.updatedAt.localeCompare(a.updatedAt)
