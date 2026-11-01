@@ -184,6 +184,11 @@ export function ComposerInput({
                 if (handled) event.preventDefault()
                 return handled
               },
+              keypress: (event) => {
+                if (event.key !== "Enter") return false
+                event.preventDefault()
+                return true
+              },
               paste: (event) => {
                 pasted(event)
                 return event.defaultPrevented

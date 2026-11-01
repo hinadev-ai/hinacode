@@ -4,7 +4,7 @@ import { cn } from "cn"
 import { createContext, Fragment, type ReactElement, type ReactNode, use, type Ref, useState } from "react"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { Message, MessagePart } from "../../shared/domain.ts"
-import { fenceCode, highlight, type KnownTokens, type Segment } from "../../shared/composerSyntax.ts"
+import { fenceCode, highlight, isUnorderedBullet, type KnownTokens, type Segment } from "../../shared/composerSyntax.ts"
 import { THREAD_MENTION } from "../../shared/threadMention.ts"
 import {
   assistantPresentation,
@@ -143,6 +143,12 @@ function SentText({ text, commands }: { text: string; commands: ReadonlyArray<Ag
             <HighlightedCode code={fenceCode(segment)} language={segment.language} />
           </code>
         </pre>
+      )
+    if (segment.kind === "bullet")
+      return (
+        <span key={index} className="text-muted-foreground">
+          {isUnorderedBullet(segment.text) ? "•" : segment.text}
+        </span>
       )
     if (segment.kind === "rule") return <hr key={index} className="my-2 border-border" />
     if (segment.kind === "strong")

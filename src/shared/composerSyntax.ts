@@ -43,6 +43,8 @@ const INLINE = new RegExp(
 )
 const WHOLE_NAME = new RegExp(`^${NAME}$`)
 
+export const isUnorderedBullet = (marker: string) => /^[-*+]$/.test(marker)
+
 export const isCommandName = (name: string) => WHOLE_NAME.test(name)
 const TRAILING_PUNCTUATION = /[,.;:!?)\]]+$/
 

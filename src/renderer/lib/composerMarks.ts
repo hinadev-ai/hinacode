@@ -1,5 +1,5 @@
 import type { AgentCommand } from "../../shared/agent.ts"
-import { fenceCode, highlight, type KnownTokens, segmentText } from "../../shared/composerSyntax.ts"
+import { fenceCode, highlight, isUnorderedBullet, type KnownTokens, segmentText } from "../../shared/composerSyntax.ts"
 
 export type Mark =
   | { readonly kind: "chip"; readonly from: number; readonly to: number; readonly command: AgentCommand }
@@ -35,7 +35,7 @@ export function composerMarks(
       marks.push({ kind: caretOnLine ? "marker" : "rule", from, to: offset })
       continue
     }
-    if (segment.kind === "bullet" && /^[-*+]$/.test(piece)) {
+    if (segment.kind === "bullet" && isUnorderedBullet(piece)) {
       marks.push({ kind: "dot", from, to: offset })
       continue
     }
