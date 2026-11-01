@@ -36,25 +36,37 @@ const unwrapShell = (command: string) => {
 
 type ToolCall = Extract<MessagePart, { type: "tool_call" }>
 
+export type ActivityPart = ToolCall | Extract<MessagePart, { type: "reasoning" }>
+
 export type TranscriptBlock =
   | { readonly type: "part"; readonly part: MessagePart; readonly index: number }
-  | { readonly type: "tools"; readonly calls: ReadonlyArray<ToolCall>; readonly index: number }
+  | { readonly type: "tools"; readonly parts: ReadonlyArray<ActivityPart>; readonly index: number }
 
-const isFoldable = (part: MessagePart): part is ToolCall => part.type === "tool_call" && !spawnsSubagent(part)
+const isFoldable = (part: MessagePart): part is ActivityPart =>
+  part.type === "reasoning" || (part.type === "tool_call" && !spawnsSubagent(part))
 
 export function groupToolCalls(parts: ReadonlyArray<MessagePart>, startIndex = 0): Array<TranscriptBlock> {
   const blocks: Array<TranscriptBlock> = []
+  let run: Array<ActivityPart> = []
+  const endRun = (end: number) => {
+    const start = end - run.length
+    if (run.length > 1 && run.some((part) => part.type === "tool_call")) {
+      blocks.push({ type: "tools", parts: run, index: start })
+    } else {
+      blocks.push(...run.map((part, position) => ({ type: "part" as const, part, index: start + position })))
+    }
+    run = []
+  }
   for (const [position, part] of parts.entries()) {
     const index = startIndex + position
-    const previous = blocks.at(-1)
-    const run =
-      previous?.type === "tools" ? previous.calls : previous && isFoldable(previous.part) ? [previous.part] : null
-    if (previous && run && isFoldable(part)) {
-      blocks[blocks.length - 1] = { type: "tools", calls: [...run, part], index: previous.index }
-    } else {
-      blocks.push({ type: "part", part, index })
+    if (isFoldable(part)) {
+      run.push(part)
+      continue
     }
+    endRun(index)
+    blocks.push({ type: "part", part, index })
   }
+  endRun(startIndex + parts.length)
   return blocks
 }
 

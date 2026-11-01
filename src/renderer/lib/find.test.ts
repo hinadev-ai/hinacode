@@ -57,7 +57,7 @@ test("searches what the collapsed transcript shows and skips what sits behind a 
     ]),
   ]
   expect(findMatches(messages, "migrate")).toEqual([
-    { messageId: "m1", partIndex: 1, offset: 10 },
+    { messageId: "m1", partIndex: 1, offset: 5 },
     { messageId: "m1", partIndex: 2, offset: 7 },
   ])
 })

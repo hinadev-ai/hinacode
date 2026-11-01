@@ -17,6 +17,7 @@ const read = (callId: string): MessagePart => ({
   status: "done",
 })
 const text = (value: string): MessagePart => ({ type: "text", text: value })
+const thinking = (value: string): MessagePart => ({ type: "reasoning", text: value })
 
 const agent = (callId: string): MessagePart => ({
   type: "tool_call",
@@ -31,7 +32,7 @@ describe("groupToolCalls", () => {
     const parts = [text("look"), bash("a"), read("r"), bash("c"), text("done")]
     expect(groupToolCalls(parts)).toStrictEqual([
       { type: "part", part: parts[0], index: 0 },
-      { type: "tools", calls: [parts[1], parts[2], parts[3]], index: 1 },
+      { type: "tools", parts: [parts[1], parts[2], parts[3]], index: 1 },
       { type: "part", part: parts[4], index: 4 },
     ])
   })
@@ -39,6 +40,19 @@ describe("groupToolCalls", () => {
   test("leaves a lone call, calls split by other parts, and sub-agent calls as they are", () => {
     const parts = [bash("a"), text("x"), read("r"), agent("s"), bash("c")]
     expect(groupToolCalls(parts).map((block) => block.type)).toStrictEqual(["part", "part", "part", "part", "part"])
+  })
+
+  test("folds thinking between tool calls into the same block until the agent writes text", () => {
+    const parts = [thinking("t1"), bash("a"), thinking("t2"), bash("b"), thinking("t3"), text("done")]
+    expect(groupToolCalls(parts)).toStrictEqual([
+      { type: "tools", parts: parts.slice(0, 5), index: 0 },
+      { type: "part", part: parts[5], index: 5 },
+    ])
+  })
+
+  test("leaves thinking without any tool call as it is", () => {
+    const parts = [thinking("t1"), thinking("t2"), text("done")]
+    expect(groupToolCalls(parts).map((block) => block.type)).toStrictEqual(["part", "part", "part"])
   })
 })
 
