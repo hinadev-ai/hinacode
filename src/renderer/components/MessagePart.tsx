@@ -255,9 +255,19 @@ const toolKindLabel = {
   other: m.tool_kind_other,
 } satisfies Record<ToolKind, (inputs: { count: number }) => string>
 
+const conjunctionFormats = new Map<string, Intl.ListFormat>()
+
+function conjunctionFormat(locale: string) {
+  const cached = conjunctionFormats.get(locale)
+  if (cached) return cached
+  const format = new Intl.ListFormat(locale, { type: "conjunction" })
+  conjunctionFormats.set(locale, format)
+  return format
+}
+
 function summarizeTools(calls: ReadonlyArray<ToolCall>): string {
   const locale = getLocale()
-  const summary = new Intl.ListFormat(locale, { type: "conjunction" }).format(
+  const summary = conjunctionFormat(locale).format(
     countToolKinds(calls).map(({ kind, count }) => toolKindLabel[kind]({ count })),
   )
   return summary.charAt(0).toLocaleUpperCase(locale) + summary.slice(1)
@@ -374,7 +384,7 @@ function SkillLabel({ skills, truncate }: { skills: ReadonlyArray<string>; trunc
   const names = skills.map((skill) => `"${labels.get(skill) ?? skill.slice(skill.indexOf(":") + 1)}"`)
   const text = m.tool_skill_used({
     count: skills.length,
-    skills: new Intl.ListFormat(getLocale(), { type: "conjunction" }).format(names),
+    skills: conjunctionFormat(getLocale()).format(names),
   })
   return (
     <span className={cn("min-w-0", truncate)} title={text}>
