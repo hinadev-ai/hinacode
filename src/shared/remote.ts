@@ -4,6 +4,8 @@ import { PushEvent, type RpcMethod } from "./contract.ts"
 
 export const REMOTE_PATH = "/remote"
 
+export const REMOTE_MAX_FRAME_BYTES = 16 * 1024 * 1024
+
 export const REMOTE_PROTOCOL_VERSION = 1
 
 export const RemoteFeature = ["heartbeat", "call-keys", "terminal-attach", "asks", "watch"] as const

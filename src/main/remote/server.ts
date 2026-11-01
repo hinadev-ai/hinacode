@@ -13,6 +13,7 @@ import { newNonce } from "../../shared/proof.ts"
 import type { Settings as SettingsValue } from "../../shared/domain.ts"
 import {
   ClientFrame,
+  REMOTE_MAX_FRAME_BYTES,
   REMOTE_PATH,
   REMOTE_PROTOCOL_VERSION,
   reachesPhone,
@@ -35,7 +36,6 @@ import { type Hub, Peers } from "./peers.ts"
 
 const AUTH_TIMEOUT = Duration.seconds(5)
 const HEARTBEAT_INTERVAL = Duration.seconds(20)
-const MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
 const CALL_KEY_TTL_MS = Duration.toMillis(Duration.minutes(5))
 export const MAX_CALL_KEYS = 2000
 
@@ -239,7 +239,7 @@ const make = Effect.gen(function* () {
         const wss = new WebSocketServer({
           server,
           path: REMOTE_PATH,
-          maxPayload: MAX_PAYLOAD_BYTES,
+          maxPayload: REMOTE_MAX_FRAME_BYTES,
           perMessageDeflate: true,
         })
         wss.on("connection", accept)
