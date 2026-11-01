@@ -32,6 +32,11 @@ export type SidebarTab = (typeof sidebarTabs)[number]
 
 export const pullRequestCodeViews = ["files", "guide"] as const
 export type PullRequestCodeView = (typeof pullRequestCodeViews)[number]
+export type PullRequestTab = "info" | "code"
+export interface PickedPullRequest {
+  readonly url: string
+  readonly tab: PullRequestTab
+}
 export type VmPlacement = "panel" | "floating"
 export type ComposerPicker = "model" | "effort"
 
@@ -82,8 +87,8 @@ interface UiState {
   readonly sidebarOverlayOpen: boolean
   readonly sidePanelOverlayOpen: boolean
   readonly sidebarTab: SidebarTab
-  readonly pickedPullRequests: Readonly<Record<string, string>>
-  readonly pickPullRequest: (threadId: string, url: string) => void
+  readonly pickedPullRequests: Readonly<Record<string, PickedPullRequest>>
+  readonly pickPullRequest: (threadId: string, url: string, tab?: PullRequestTab) => void
   readonly pullRequestCodeView: PullRequestCodeView
   readonly sidebarQuery: string
   readonly sidebarProjectIds: ReadonlyArray<string>
@@ -182,8 +187,8 @@ export const useUi = create<UiState>()((set, get) => ({
   sidePanelOverlayOpen: false,
   sidebarTab: loadSidebarTab(),
   pickedPullRequests: {},
-  pickPullRequest: (threadId, url) =>
-    set((state) => ({ pickedPullRequests: { ...state.pickedPullRequests, [threadId]: url } })),
+  pickPullRequest: (threadId, url, tab = "info") =>
+    set((state) => ({ pickedPullRequests: { ...state.pickedPullRequests, [threadId]: { url, tab } } })),
   pullRequestCodeView: loadPullRequestCodeView(),
   sidebarQuery: "",
   sidebarProjectIds: loadStrings(SIDEBAR_PROJECTS_KEY),

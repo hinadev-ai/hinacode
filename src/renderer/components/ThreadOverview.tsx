@@ -1,37 +1,60 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { type ReactNode, startTransition, useState } from "react"
-import type { Project, PullRequest, Thread, Worktree } from "../../shared/domain.ts"
+import { type ReactNode, type RefObject, startTransition, useRef, useState } from "react"
+import { RiGitPullRequestLine, RiGithubFill } from "react-icons/ri"
+import { toast } from "sonner"
+import type { ChecksStatus, Project, PullRequest, Thread, Worktree } from "../../shared/domain.ts"
+import { errorMessage } from "../lib/errorMessage.ts"
 import { useOpenSubagent } from "../lib/subagents.ts"
-import { environmentName, useCloud, useClouds, useThreadEnvironment } from "../lib/environments.ts"
+import { environmentName, useCloud, useClouds, usePullRequestHref, useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
-import { branchPullRequestAtom, projectsAtom, pullRequestStatusAtom } from "../lib/rpc.ts"
+import { branchPullRequestAtom, callPromise, projectsAtom, pullRequestStatusAtom } from "../lib/rpc.ts"
+import { patchLineCounts, useThreadChanges } from "../lib/threadChanges.ts"
+import { cn } from "../lib/utils.ts"
 import { parsePullRequestUrl } from "../lib/pullRequestRefs.ts"
 import { loadPullRequestsAtom, usePullRequests } from "../stores/pullRequests.ts"
 import { m } from "../paraglide/messages.js"
+import { useDrafts } from "../stores/drafts.ts"
 import { type TerminalCommand, useTerminals } from "../stores/terminals.ts"
-import { useUi } from "../stores/ui.ts"
+import { type PullRequestTab, useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { ActionDialog, type ActionTarget } from "./ActionDialog.tsx"
 import { CloudMark } from "./CloudMark.tsx"
 import { ProjectDialog } from "./ProjectDialog.tsx"
+import { LineCounts } from "./LineCounts.tsx"
 import { BranchIcon } from "./icons/BranchIcon.tsx"
-import { ChevronDownIcon } from "./icons/ChevronDownIcon.tsx"
-import { ComputerIcon } from "./icons/ComputerIcon.tsx"
-import { FolderIcon } from "./icons/FolderIcon.tsx"
+import { ChatNewIcon } from "./icons/ChatNewIcon.tsx"
+import { FileDiffIcon } from "./icons/FileDiffIcon.tsx"
+import { FileTextIcon } from "./icons/FileTextIcon.tsx"
 import { GlobeIcon } from "./icons/GlobeIcon.tsx"
+import type { IconComponent } from "./icons/Icon.tsx"
+import { LinkIcon } from "./icons/LinkIcon.tsx"
+import { MoreIcon } from "./icons/MoreIcon.tsx"
 import { PencilIcon } from "./icons/PencilIcon.tsx"
 import { PlayIcon } from "./icons/PlayIcon.tsx"
 import { PlusIcon } from "./icons/PlusIcon.tsx"
-import type { IconComponent } from "./icons/Icon.tsx"
+import { RobotIcon } from "./icons/RobotIcon.tsx"
+import { UnlinkIcon } from "./icons/UnlinkIcon.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
-import { ChecksIndicator, pullRequestStatusLabel, reviewLabel, StatusIcon } from "./ThreadPullRequests.tsx"
+import {
+  checksIndicator,
+  pullRequestStatusLabel,
+  reviewLabel,
+  StatusIcon,
+  statusIndicator,
+} from "./ThreadPullRequests.tsx"
 import { StopSubagentButton, SubagentStatusIcon, subagentStats, useNow, useThreadSubagents } from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu.tsx"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLinkItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu.tsx"
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 
-const SCRIPT_PREVIEW_LINES = 3
 const SUBAGENT_ROWS = 5
 
 const useThreadProject = (thread: Thread) =>
@@ -94,55 +117,63 @@ export function ThreadOverview({ thread }: { thread: Thread }) {
   const project = useThreadProject(thread)
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   if (!project) return null
+  const live = worktree && worktree.status !== "removed" ? worktree : undefined
   const run = runInTerminal(thread.id)
 
   return (
     <aside
       aria-label={m.overview_label()}
-      className="scroll-fade-y -m-1 hidden min-h-0 w-66 scrollbar-none flex-col gap-2 overflow-y-auto p-1 beside-overview:flex"
+      className="-m-1 hidden min-h-0 w-66 scroll-fade-y scrollbar-none flex-col overflow-y-auto p-1 beside-overview:flex"
     >
-      <Card title={m.overview_environment()}>
-        <EnvironmentRows thread={thread} project={project} worktree={worktree} />
-      </Card>
-      {project.kind === "folder" && (
-        <Card title={m.project_setup_label()}>
-          <SetupScript thread={thread} project={project} worktree={worktree} onRun={run} />
-        </Card>
-      )}
-      <Actions thread={thread} project={project} onRun={run} />
-      <PullRequests thread={thread} worktree={worktree} />
-      <Subagents thread={thread} />
+      <div className="flex flex-col gap-0.5 rounded-2xl border border-border bg-background/95 p-1.5 shadow-sm backdrop-blur">
+        <WorkspaceHeader thread={thread} project={project} worktree={live} onRun={run} />
+        {live && <ChangesRow thread={thread} />}
+        {live && <BranchRow thread={thread} worktree={live} />}
+        <PullRequests thread={thread} worktree={live} />
+        <Actions thread={thread} project={project} onRun={run} />
+        <Subagents thread={thread} />
+      </div>
     </aside>
   )
 }
 
-function Card({ title, children }: { title: string; children: ReactNode }) {
-  const [open, setOpen] = useState(true)
+function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
   return (
-    <Collapsible
-      open={open}
-      onOpenChange={setOpen}
-      className="rounded-xl border border-border bg-background/95 p-1.5 shadow-sm backdrop-blur"
-    >
-      <CollapsibleTrigger className="group/card flex items-center gap-0.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
-        {title}
-        <ChevronDownIcon
-          aria-hidden
-          className="size-4 -rotate-90 transition-transform group-data-panel-open/card:rotate-0 motion-reduce:transition-none cjk:translate-y-[-0.04em]"
-        />
-      </CollapsibleTrigger>
-      <CollapsibleContent className="flex flex-col gap-0.5 pt-0.5">{children}</CollapsibleContent>
-    </Collapsible>
+    <section aria-label={title} className="flex flex-col gap-0.5">
+      <hr aria-hidden className="mx-2 my-1.5 border-border" />
+      <div className="flex min-h-8 items-center justify-between gap-2 pr-0.5 pl-2">
+        <h3 className="truncate text-sm text-muted-foreground">{title}</h3>
+        {action}
+      </div>
+      {children}
+    </section>
   )
 }
 
-function Row({ icon: Icon, children, trailing }: { icon: IconComponent; children: ReactNode; trailing?: ReactNode }) {
+const rowClassName =
+  "flex min-h-9 w-full min-w-0 items-center gap-2.5 rounded-lg px-2 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+
+function RowButton({
+  icon: Icon,
+  iconClassName,
+  onClick,
+  title,
+  trailing,
+  children,
+}: {
+  icon: IconComponent
+  iconClassName?: string
+  onClick: () => void
+  title?: string
+  trailing?: ReactNode
+  children: ReactNode
+}) {
   return (
-    <div className="flex min-h-8 min-w-0 items-center gap-2 px-2 text-sm">
-      <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+    <button type="button" title={title} onClick={onClick} className={cn(rowClassName, "hover:bg-muted")}>
+      <Icon aria-hidden className={cn("size-4 shrink-0 text-muted-foreground", iconClassName)} />
       <span className="min-w-0 flex-1 truncate">{children}</span>
       {trailing}
-    </div>
+    </button>
   )
 }
 
@@ -152,110 +183,333 @@ interface WorkspaceProps {
   readonly worktree: Worktree | undefined
 }
 
-const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
-
-function EnvironmentRows({ thread, project, worktree }: WorkspaceProps) {
+function WorkspaceHeader({ thread, project, worktree, onRun }: WorkspaceProps & { onRun: RunCommand }) {
   const environment = useThreadEnvironment(thread.id)
   const cloud = useCloud(environment)
-  const name = environmentName(environment, useClouds())
-  const live = worktree && worktree.status !== "removed" ? worktree : undefined
+  const machine = environmentName(environment, useClouds())
+  const folder = project.kind === "folder"
+  const path = worktree?.path ?? (folder ? project.rootPath : undefined)
+
+  return (
+    <div className="flex min-h-8 min-w-0 items-center gap-2 pr-0.5 pl-2">
+      {cloud && <CloudMark cloud={cloud} className="size-4" />}
+      <h2
+        title={[cloud ? machine : undefined, path].filter(Boolean).join("\n")}
+        className="min-w-0 flex-1 truncate text-sm text-muted-foreground"
+      >
+        {folder ? project.name : machine}
+      </h2>
+      {folder && <SetupScriptMenu thread={thread} project={project} worktree={worktree} onRun={onRun} />}
+    </div>
+  )
+}
+
+function SetupScriptMenu({ thread, project, worktree, onRun }: WorkspaceProps & { onRun: RunCommand }) {
+  const [editing, setEditing] = useState(false)
+  const script = project.setupScript
+  const failed = worktree?.status === "failed"
+  const edit = () => startTransition(() => setEditing(true))
 
   return (
     <>
-      {cloud ? (
-        <div className="flex min-h-8 items-center gap-2 px-2 text-sm">
-          <CloudMark cloud={cloud} className="size-4" />
-          <span className="truncate">{name}</span>
-        </div>
-      ) : (
-        <Row icon={ComputerIcon}>{name}</Row>
-      )}
-      {live ? (
-        <Row
-          icon={BranchIcon}
-          trailing={
-            <span
-              data-status={live.status}
-              className="shrink-0 text-xs text-muted-foreground empty:hidden data-[status=failed]:text-destructive"
-            >
-              {worktreeStatus[live.status]?.()}
-            </span>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={m.overview_workspace_menu()}
+              title={m.overview_workspace_menu()}
+              className="text-muted-foreground"
+            />
           }
         >
-          <span className="font-mono text-xs" title={live.path}>
-            {live.branch}
-          </span>
-        </Row>
-      ) : (
-        project.kind === "folder" && (
-          <Row icon={FolderIcon}>
-            <span title={project.rootPath}>{folderName(project.rootPath)}</span>
-          </Row>
-        )
-      )}
+          <MoreIcon aria-hidden />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          {script === null ? (
+            <DropdownMenuItem onClick={edit}>
+              <PlusIcon aria-hidden />
+              {m.overview_setup_add()}
+            </DropdownMenuItem>
+          ) : (
+            <>
+              <DropdownMenuItem title={script} onClick={() => onRun({ title: m.project_setup_label(), line: script })}>
+                <PlayIcon aria-hidden />
+                {m.overview_setup_run()}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={edit}>
+                <PencilIcon aria-hidden />
+                {m.overview_setup_edit()}
+              </DropdownMenuItem>
+            </>
+          )}
+          {worktree && (
+            <DropdownMenuItem
+              variant={failed ? "destructive" : "default"}
+              onClick={() => useUi.getState().showView(thread.id, "details")}
+            >
+              <FileTextIcon aria-hidden />
+              {failed ? m.worktree_status_failed() : m.overview_setup_log()}
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <ProjectDialog open={editing} onOpenChange={setEditing} project={project} />
     </>
   )
 }
+
+function ChangesRow({ thread }: { thread: Thread }) {
+  const { changes } = useThreadChanges(thread, "worktree")
+  const counts = AsyncResult.isSuccess(changes) && changes.value ? patchLineCounts(changes.value.patch) : undefined
+
+  return (
+    <RowButton
+      icon={FileDiffIcon}
+      onClick={() => useUi.getState().showView(thread.id, "changes")}
+      trailing={counts && <LineCounts added={counts.added} removed={counts.removed} />}
+    >
+      {m.overview_changes()}
+    </RowButton>
+  )
+}
+
+function BranchRow({ thread, worktree }: { thread: Thread; worktree: Worktree }) {
+  const branchPullRequest = AsyncResult.getOrElse(useAtomValue(branchPullRequestAtom(worktree.id)), () => null)
+  const linked = usePullRequests((state) =>
+    (state.byThreadId[thread.id] ?? []).some((link) => link.url === branchPullRequest?.url),
+  )
+  const status = worktreeStatus[worktree.status]?.()
+
+  if (!branchPullRequest) {
+    return (
+      <div className={rowClassName} title={worktree.path}>
+        <BranchIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate font-mono text-xs">{worktree.branch}</span>
+        {status && (
+          <span
+            data-status={worktree.status}
+            className="shrink-0 text-xs text-muted-foreground data-[status=failed]:text-destructive"
+          >
+            {status}
+          </span>
+        )}
+      </div>
+    )
+  }
+  return (
+    <PullRequestRow
+      thread={thread}
+      url={branchPullRequest.url}
+      linked={linked}
+      icon={BranchIcon}
+      title={`${worktree.branch}\n${branchPullRequest.title}`}
+    />
+  )
+}
+
+function PullRequests({ thread, worktree }: { thread: Thread; worktree: Worktree | undefined }) {
+  useAtomValue(loadPullRequestsAtom(thread.id))
+  const links = usePullRequests((state) => state.byThreadId[thread.id]) ?? []
+  const branchPullRequest = AsyncResult.getOrElse(
+    useAtomValue(branchPullRequestAtom(worktree ? worktree.id : null)),
+    () => null,
+  )
+  const urls = links.map((link) => link.url).filter((url) => url !== branchPullRequest?.url)
+  if (urls.length === 0) return null
+
+  return (
+    <Section title={m.pr_links_title()}>
+      <ul className="flex flex-col gap-0.5">
+        {urls.toReversed().map((url) => (
+          <li key={url}>
+            <PullRequestRow thread={thread} url={url} linked />
+          </li>
+        ))}
+      </ul>
+    </Section>
+  )
+}
+
+const openPullRequest = (threadId: string, url: string, tab?: PullRequestTab) => {
+  useUi.getState().pickPullRequest(threadId, url, tab)
+  useUi.getState().showView(threadId, "pullRequests")
+}
+
+interface PullRequestRowProps {
+  readonly thread: Thread
+  readonly url: string
+  readonly linked: boolean
+  readonly icon?: IconComponent
+  readonly title?: string
+}
+
+function PullRequestRow({ thread, url, linked, icon, title }: PullRequestRowProps) {
+  const status = useAtomValue(pullRequestStatusAtom(useThreadEnvironment(thread.id), url))
+  const pullRequest = AsyncResult.isSuccess(status) ? status.value : undefined
+  const ref = parsePullRequestUrl(url)
+  const name = pullRequest?.title ?? (ref ? `${ref.owner}/${ref.name}#${ref.number}` : url)
+  const indicator = pullRequest ? statusIndicator[pullRequest.status] : undefined
+  const Icon = icon ?? indicator?.Icon ?? RiGitPullRequestLine
+  const rowRef = useRef<HTMLDivElement>(null)
+
+  return (
+    <div ref={rowRef} className="group/pr flex items-center rounded-lg hover:bg-muted has-data-popup-open:bg-muted">
+      <button
+        type="button"
+        title={title ?? url}
+        onClick={() => openPullRequest(thread.id, url)}
+        className={cn(rowClassName, "flex-1")}
+      >
+        <span className="relative flex shrink-0">
+          <Icon aria-hidden className={cn("size-4", indicator?.className ?? "text-muted-foreground")} />
+          {pullRequest?.checks && <ChecksDot checks={pullRequest.checks} />}
+        </span>
+        <span className="min-w-0 flex-1 truncate">{name}</span>
+      </button>
+      <PullRequestMenu
+        thread={thread}
+        url={url}
+        pullRequest={pullRequest}
+        linked={linked}
+        anchor={rowRef}
+        className="mr-1 opacity-0 group-hover/pr:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100"
+      />
+    </div>
+  )
+}
+
+const checksDotColor = {
+  passing: "bg-success",
+  failing: "bg-destructive",
+  pending: "bg-attention",
+} satisfies Record<ChecksStatus, string>
+
+function ChecksDot({ checks }: { checks: ChecksStatus }) {
+  const label = checksIndicator[checks].label()
+  return (
+    <span
+      title={label}
+      className={cn(
+        "absolute -right-0.5 -bottom-0.5 size-2 rounded-full ring-2 ring-background",
+        checksDotColor[checks],
+      )}
+    >
+      <span className="sr-only">{label}</span>
+    </span>
+  )
+}
+
+interface PullRequestMenuProps {
+  readonly thread: Thread
+  readonly url: string
+  readonly pullRequest: PullRequest | undefined
+  readonly linked: boolean
+  readonly anchor: RefObject<HTMLElement | null>
+  readonly className?: string
+}
+
+function PullRequestMenu({ thread, url, pullRequest, linked, anchor, className }: PullRequestMenuProps) {
+  const href = usePullRequestHref(thread.id, url)
+  const number = pullRequest?.number ?? parsePullRequestUrl(url)?.number
+  const unlink = () =>
+    callPromise("pullRequests.unlink", { threadId: thread.id, url }).catch((cause: unknown) =>
+      toast.error(m.overview_pr_unlink_failed({ message: errorMessage(cause) })),
+    )
+
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={m.overview_pr_actions()}
+                  className={cn("text-muted-foreground", className)}
+                />
+              }
+            />
+          }
+        >
+          <MoreIcon aria-hidden />
+        </TooltipTrigger>
+        <TooltipContent>{m.overview_pr_actions()}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent anchor={anchor} side="left" align="start" sideOffset={12} className="w-64">
+        <div className="flex items-center">
+          <DropdownMenuItem className="flex-1" onClick={() => openPullRequest(thread.id, url)}>
+            <FileTextIcon aria-hidden />
+            {number === undefined ? m.overview_pr_view() : m.overview_pr_view_number({ number })}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            aria-label={m.overview_pr_copy_link()}
+            title={m.overview_pr_copy_link()}
+            onClick={() =>
+              void navigator.clipboard.writeText(href).then(() => toast.success(m.overview_pr_link_copied()))
+            }
+          >
+            <LinkIcon aria-hidden />
+          </DropdownMenuItem>
+          <DropdownMenuLinkItem
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            closeOnClick
+            aria-label={m.overview_pr_open_github()}
+            title={href}
+          >
+            <RiGithubFill aria-hidden />
+          </DropdownMenuLinkItem>
+        </div>
+        <DropdownMenuItem onClick={() => openPullRequest(thread.id, url, "code")}>
+          <FileDiffIcon aria-hidden />
+          <span className="flex-1">{m.overview_pr_code()}</span>
+          {pullRequest && <LineCounts added={pullRequest.additions} removed={pullRequest.deletions} />}
+        </DropdownMenuItem>
+        {pullRequest && (
+          <DropdownMenuItem onClick={() => openPullRequest(thread.id, url)}>
+            <StatusIcon status={pullRequest.status} className="size-4" />
+            {m.overview_pr_status()}
+            <span className="min-w-0 flex-1 truncate text-right text-muted-foreground">
+              {pullRequestMeta(pullRequest)}
+            </span>
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem onClick={() => useDrafts.getState().appendText(thread.id, url)}>
+          <ChatNewIcon aria-hidden />
+          {m.overview_pr_add_to_chat()}
+        </DropdownMenuItem>
+        {linked && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onClick={() => void unlink()}>
+              <UnlinkIcon aria-hidden />
+              {m.overview_pr_unlink()}
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+const pullRequestMeta = (pullRequest: PullRequest) =>
+  [pullRequestStatusLabel[pullRequest.status](), pullRequest.review && reviewLabel[pullRequest.review]()]
+    .filter(Boolean)
+    .join(" · ")
 
 const worktreeStatus: Partial<Record<Worktree["status"], () => string>> = {
   preparing: m.worktree_status_preparing,
   failed: m.worktree_status_failed,
 }
 
-interface SetupScriptProps extends WorkspaceProps {
-  readonly onRun: (command: TerminalCommand) => void
-}
+type RunCommand = (command: TerminalCommand) => void
 
-function SetupScript({ thread, project, worktree, onRun }: SetupScriptProps) {
-  const [editing, setEditing] = useState(false)
-  const script = project.setupScript
-  const failed = worktree?.status === "failed"
-
-  return (
-    <>
-      {script === null ? (
-        <AddRow label={m.overview_setup_add()} onClick={() => startTransition(() => setEditing(true))} />
-      ) : (
-        <div>
-          <pre title={script} className="mx-1 rounded-md bg-muted/60 px-2 py-1.5 font-mono text-xs/relaxed">
-            {script
-              .split("\n")
-              .slice(0, SCRIPT_PREVIEW_LINES)
-              .map((line, index) => (
-                <span key={index} className="block truncate">
-                  {line}
-                </span>
-              ))}
-          </pre>
-          <div className="flex items-center gap-0.5 px-1 pt-1">
-            <Button variant="ghost" size="xs" onClick={() => onRun({ title: m.project_setup_label(), line: script })}>
-              <PlayIcon aria-hidden />
-              {m.overview_run()}
-            </Button>
-            <Button variant="ghost" size="xs" action={() => setEditing(true)}>
-              <PencilIcon aria-hidden />
-              {m.overview_edit()}
-            </Button>
-            {worktree && worktree.status !== "removed" && (
-              <Button
-                variant="ghost"
-                size="xs"
-                data-failed={failed}
-                className="ml-auto data-[failed=true]:text-destructive"
-                onClick={() => useUi.getState().showView(thread.id, "details")}
-              >
-                {failed ? m.worktree_status_failed() : m.overview_setup_log()}
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
-      <ProjectDialog open={editing} onOpenChange={setEditing} project={project} />
-    </>
-  )
-}
-
-function Actions({ thread, project, onRun }: ActionsProps) {
+function Actions({ thread, project, onRun }: { thread: Thread; project: Project; onRun: RunCommand }) {
   const environment = useThreadEnvironment(thread.id)
   const rows = useActionRows(thread, project)
   const [target, setTarget] = useState<ActionTarget>({ scope: "project", index: null })
@@ -269,15 +523,29 @@ function Actions({ thread, project, onRun }: ActionsProps) {
   if (!projectScoped && rows.length === 0) return null
 
   return (
-    <Card title={m.overview_actions()}>
+    <Section
+      title={m.overview_actions()}
+      action={
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={m.overview_action_add()}
+          title={m.overview_action_add()}
+          className="text-muted-foreground"
+          onClick={() => edit({ scope: projectScoped ? "project" : "global", index: null })}
+        >
+          <PlusIcon aria-hidden />
+        </Button>
+      }
+    >
       <ul className="flex flex-col gap-0.5">
         {rows.map(({ action, scope, index }) => (
-          <li key={`${scope}-${index}`} className="group/action flex items-center rounded-md hover:bg-muted">
+          <li key={`${scope}-${index}`} className="group/action flex items-center rounded-lg hover:bg-muted">
             <button
               type="button"
               title={action.command}
               onClick={() => onRun({ title: action.name, line: action.command })}
-              className="flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className={cn(rowClassName, "flex-1")}
             >
               <PlayIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
               <span className="truncate">{action.name}</span>
@@ -300,10 +568,6 @@ function Actions({ thread, project, onRun }: ActionsProps) {
           </li>
         ))}
       </ul>
-      <AddRow
-        label={m.overview_action_add()}
-        onClick={() => edit({ scope: projectScoped ? "project" : "global", index: null })}
-      />
       <ActionDialog
         project={project}
         environment={environment}
@@ -311,26 +575,7 @@ function Actions({ thread, project, onRun }: ActionsProps) {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
       />
-    </Card>
-  )
-}
-
-interface ActionsProps {
-  readonly thread: Thread
-  readonly project: Project
-  readonly onRun: (command: TerminalCommand) => void
-}
-
-function AddRow({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex min-h-8 items-center gap-2 rounded-md px-2 text-left text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <PlusIcon aria-hidden className="size-4 shrink-0" />
-      {label}
-    </button>
+    </Section>
   )
 }
 
@@ -342,17 +587,17 @@ function Subagents({ thread }: { thread: Thread }) {
   const shown = subagents.toSorted((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, SUBAGENT_ROWS)
 
   return (
-    <Card title={m.panel_tab_agents()}>
+    <Section title={m.panel_tab_agents()}>
       <ul className="flex flex-col gap-0.5">
         {shown.map((subagent) => {
           const { callId } = subagent
           return (
-            <li key={subagent.id} className="group/agent flex items-center rounded-md hover:bg-muted">
+            <li key={subagent.id} className="group/agent flex items-center rounded-lg hover:bg-muted">
               <button
                 type="button"
                 disabled={callId === null}
                 onClick={() => callId !== null && open(callId)}
-                className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className={cn(rowClassName, "min-h-10 flex-1 py-1")}
               >
                 <ProviderIcon provider={subagent.provider ?? thread.provider} className="size-4" />
                 <span className="flex min-w-0 flex-1 flex-col">
@@ -386,84 +631,14 @@ function Subagents({ thread }: { thread: Thread }) {
         })}
       </ul>
       {subagents.length > shown.length && (
-        <Button
-          variant="ghost"
-          size="xs"
-          className="mx-1 self-start text-muted-foreground"
+        <RowButton
+          icon={RobotIcon}
           onClick={() => useUi.getState().showView(thread.id, "agents")}
+          iconClassName="text-muted-foreground/70"
         >
-          {m.overview_agents_all({ count: subagents.length })}
-        </Button>
+          <span className="text-muted-foreground">{m.overview_agents_all({ count: subagents.length })}</span>
+        </RowButton>
       )}
-    </Card>
-  )
-}
-
-function PullRequests({ thread, worktree }: { thread: Thread; worktree: Worktree | undefined }) {
-  useAtomValue(loadPullRequestsAtom(thread.id))
-  const links = usePullRequests((state) => state.byThreadId[thread.id]) ?? []
-  const live = worktree !== undefined && worktree.status !== "removed"
-  const branchPullRequest = AsyncResult.getOrElse(
-    useAtomValue(branchPullRequestAtom(live ? worktree.id : null)),
-    () => null,
-  )
-  const urls = [
-    ...new Set([...(branchPullRequest ? [branchPullRequest.url] : []), ...links.map((link) => link.url).toReversed()]),
-  ]
-  if (urls.length === 0) return null
-
-  return (
-    <Card title={m.pr_links_title()}>
-      <ul className="flex flex-col gap-0.5">
-        {urls.map((url) => (
-          <PullRequestRow key={url} thread={thread} url={url} />
-        ))}
-      </ul>
-    </Card>
-  )
-}
-
-const pullRequestMeta = (pullRequest: PullRequest) =>
-  [pullRequestStatusLabel[pullRequest.status](), pullRequest.review && reviewLabel[pullRequest.review]()]
-    .filter(Boolean)
-    .join(" · ")
-
-function PullRequestRow({ thread, url }: { thread: Thread; url: string }) {
-  const status = useAtomValue(pullRequestStatusAtom(useThreadEnvironment(thread.id), url))
-  const pullRequest = AsyncResult.isSuccess(status) ? status.value : undefined
-  const ref = parsePullRequestUrl(url)
-  const number = pullRequest?.number ?? ref?.number
-  const note = pullRequest
-    ? pullRequestMeta(pullRequest)
-    : AsyncResult.isFailure(status)
-      ? m.overview_pr_failed()
-      : m.pr_card_loading()
-
-  return (
-    <li>
-      <button
-        type="button"
-        title={url}
-        onClick={() => {
-          useUi.getState().pickPullRequest(thread.id, url)
-          useUi.getState().showView(thread.id, "pullRequests")
-        }}
-        className="flex min-h-10 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <StatusIcon status={pullRequest?.status} colored className="size-4" />
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-sm">{pullRequest?.title ?? (ref ? `${ref.owner}/${ref.name}` : url)}</span>
-          <span className="truncate text-xs text-muted-foreground">
-            {number !== undefined && (
-              <>
-                <span className="font-mono">#{number}</span> ·{" "}
-              </>
-            )}
-            {note}
-          </span>
-        </span>
-        {pullRequest?.checks && <ChecksIndicator checks={pullRequest.checks} />}
-      </button>
-    </li>
+    </Section>
   )
 }

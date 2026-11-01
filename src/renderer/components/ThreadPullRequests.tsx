@@ -33,7 +33,7 @@ import { useOpenThreadEnvironment, usePullRequestHref } from "../lib/environment
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { loadPullRequestsAtom, usePullRequests } from "../stores/pullRequests.ts"
-import { type PullRequestSection, useUi } from "../stores/ui.ts"
+import { type PullRequestSection, type PullRequestTab, useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { Markdown } from "./Markdown.tsx"
 import {
@@ -128,8 +128,6 @@ export function StatusIcon({
   )
 }
 
-type PullRequestTab = "info" | "code"
-
 export function ThreadPullRequests({ thread }: { thread: Thread }) {
   const threadId = thread.id
   const loadAtom = loadPullRequestsAtom(threadId)
@@ -143,7 +141,6 @@ export function ThreadPullRequests({ thread }: { thread: Thread }) {
     () => null,
   )
   const picked = useUi((state) => state.pickedPullRequests[threadId])
-  const [tab, setTab] = useState<PullRequestTab>("info")
   const [unlinkError, setUnlinkError] = useState<string | null>(null)
 
   if (!links) {
@@ -164,7 +161,9 @@ export function ThreadPullRequests({ thread }: { thread: Thread }) {
   const linked = new Set(links.map((link) => link.url))
   const urls = [...linked]
   if (branchPullRequest && !linked.has(branchPullRequest.url)) urls.push(branchPullRequest.url)
-  const selected = picked !== undefined && urls.includes(picked) ? picked : (branchPullRequest?.url ?? urls.at(-1))
+  const selected =
+    picked !== undefined && urls.includes(picked.url) ? picked.url : (branchPullRequest?.url ?? urls.at(-1))
+  const tab = picked !== undefined && picked.url === selected ? picked.tab : "info"
   const watch = links.find((link) => link.url === selected)?.watch ?? null
 
   return (
@@ -183,7 +182,7 @@ export function ThreadPullRequests({ thread }: { thread: Thread }) {
                 url={url}
                 selected={url === selected}
                 watching={links.some((link) => link.url === url && link.watch !== null)}
-                onSelect={() => useUi.getState().pickPullRequest(threadId, url)}
+                onSelect={() => useUi.getState().pickPullRequest(threadId, url, tab)}
               />
             ))}
           </ul>
@@ -197,7 +196,7 @@ export function ThreadPullRequests({ thread }: { thread: Thread }) {
           watch={watch}
           linked={linked.has(selected)}
           tab={tab}
-          onTabChange={setTab}
+          onTabChange={(next) => useUi.getState().pickPullRequest(threadId, selected, next)}
           onUnlinkFailed={setUnlinkError}
         />
       )}

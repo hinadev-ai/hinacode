@@ -1,9 +1,10 @@
-import { useAtomRefresh, useAtomSuspense, useAtomValue } from "@effect/atom-react"
+import { useAtomSuspense } from "@effect/atom-react"
 import { cn } from "cn"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { Suspense, useDeferredValue, useEffect, useRef, useState } from "react"
+import { Suspense, useDeferredValue, useEffect, useState } from "react"
 import type { ChangesScope, Thread } from "../../shared/domain.ts"
+import { patchLineCounts, useThreadChanges } from "../lib/threadChanges.ts"
 import { threadChangesAtom } from "../lib/rpc.ts"
 import { useThreadRoot } from "../lib/threadRoot.ts"
 import { m } from "../paraglide/messages.js"
@@ -23,22 +24,12 @@ interface FileDiff {
   readonly removed: number
 }
 
-const lineCounts = (filePatch: string) => {
-  let added = 0
-  let removed = 0
-  for (const line of filePatch.split("\n")) {
-    if (line.startsWith("+") && !line.startsWith("+++")) added++
-    else if (line.startsWith("-") && !line.startsWith("---")) removed++
-  }
-  return { added, removed }
-}
-
 const splitPatch = (patch: string, paths: ReadonlyArray<string>) => {
   const chunks = patch.split(/^(?=diff --git )/m)
   const byPath = new Map<string, FileDiff>()
   for (const path of paths) {
     const chunk = chunks.find((candidate) => candidate.slice(0, candidate.indexOf("\n")).endsWith(` b/${path}`))
-    if (chunk !== undefined) byPath.set(path, { patch: chunk, ...lineCounts(chunk) })
+    if (chunk !== undefined) byPath.set(path, { patch: chunk, ...patchLineCounts(chunk) })
   }
   return byPath
 }
@@ -79,16 +70,7 @@ interface ChangesListProps {
 }
 
 function ChangesList({ thread, scope, stale, baseLabel }: ChangesListProps) {
-  const changesAtom = threadChangesAtom(`${thread.id}\n${scope}`)
-  const changes = useAtomValue(changesAtom)
-  const refresh = useAtomRefresh(changesAtom)
-
-  const lastStatus = useRef(thread.status)
-  useEffect(() => {
-    if (lastStatus.current === thread.status) return
-    lastStatus.current = thread.status
-    refresh()
-  }, [thread.status, refresh])
+  const { changes, refresh } = useThreadChanges(thread, scope)
 
   return (
     <section

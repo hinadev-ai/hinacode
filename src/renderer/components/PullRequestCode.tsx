@@ -48,6 +48,7 @@ import { TerminalIcon } from "./icons/TerminalIcon.tsx"
 import { ToolsIcon } from "./icons/ToolsIcon.tsx"
 import { TranslateIcon } from "./icons/TranslateIcon.tsx"
 import { WarningIcon } from "./icons/WarningIcon.tsx"
+import { LineCounts } from "./LineCounts.tsx"
 
 const categoryIcon = {
   ui: LayoutIcon,
@@ -188,19 +189,6 @@ function DiffSummary({ files }: { files: ReadonlyArray<PullRequestFile> }) {
       <span className="tabular-nums">{m.pr_code_summary({ count: files.length })}</span>
       <LineCounts added={added} removed={removed} />
     </p>
-  )
-}
-
-function LineCounts({ added, removed }: { added: number; removed: number }) {
-  return (
-    <span className="font-mono tabular-nums" aria-label={m.diff_line_counts({ added, removed })}>
-      <span aria-hidden className="text-vcs-added">
-        +{added}
-      </span>{" "}
-      <span aria-hidden className="text-destructive">
-        −{removed}
-      </span>
-    </span>
   )
 }
 
