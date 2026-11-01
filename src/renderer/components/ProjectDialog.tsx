@@ -1,4 +1,5 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
+import { useNavigate } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { type ComponentProps, type FormEvent, startTransition, useActionState, useState } from "react"
 import { RiGithubFill } from "react-icons/ri"
@@ -31,6 +32,7 @@ import { Switch } from "./ui/switch.tsx"
 import { Textarea } from "./ui/textarea.tsx"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { suggestProjectName } from "../lib/projectName.ts"
+import { startThread } from "../lib/startThread.ts"
 import { FolderOpenIcon } from "./icons/FolderOpenIcon.tsx"
 
 interface ProjectDialogProps {
@@ -42,6 +44,11 @@ interface ProjectDialogProps {
 }
 
 export function ProjectDialog({ open, onOpenChange, project, environment = null, finalFocus }: ProjectDialogProps) {
+  const navigate = useNavigate()
+  const onSaved = (saved: Project) => {
+    onOpenChange(false)
+    if (!project) void startThread(saved, navigate)
+  }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg" finalFocus={finalFocus}>
@@ -51,7 +58,7 @@ export function ProjectDialog({ open, onOpenChange, project, environment = null,
             {project ? m.project_edit_description({ project: project.name }) : m.project_dialog_description()}
           </DialogDescription>
         </DialogHeader>
-        <ProjectForm project={project} initialEnvironment={environment} onSaved={() => onOpenChange(false)} />
+        <ProjectForm project={project} initialEnvironment={environment} onSaved={onSaved} />
       </DialogContent>
     </Dialog>
   )
@@ -70,7 +77,7 @@ function useDefaultCloneParent(environment: EnvironmentId) {
 interface ProjectFormProps {
   readonly project: Project | undefined
   readonly initialEnvironment: EnvironmentId
-  readonly onSaved: () => void
+  readonly onSaved: (project: Project) => void
 }
 
 function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps) {
@@ -118,8 +125,7 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
       })
     }
     try {
-      await save()
-      onSaved()
+      onSaved(await save())
     } catch (cause) {
       return errorMessage(cause)
     }
