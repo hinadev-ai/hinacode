@@ -1,14 +1,6 @@
 import { useAtomValue } from "@effect/atom-react"
 import { detectPlatform } from "@tanstack/react-hotkeys"
-import {
-  createMemoryHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-  Outlet,
-  useParams,
-  useSearch,
-} from "@tanstack/react-router"
+import { useParams, useSearch } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { useState, useTransition } from "react"
 import type { PullRequestDetail, PullRequestFile } from "../../shared/domain.ts"
@@ -33,24 +25,7 @@ import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
 
 const besideTrafficLights = detectPlatform() === "mac"
 
-const rootRoute = createRootRoute({ component: Outlet })
-
-const pullRequestRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/thread/$threadId/pull-request",
-  component: PullRequestWindow,
-  validateSearch: (search: Record<string, unknown>): { url: string } => ({
-    url: typeof search.url === "string" ? search.url : "",
-  }),
-})
-
-export const pullRequestWindowRouter = (entry: string) =>
-  createRouter({
-    routeTree: rootRoute.addChildren([pullRequestRoute]),
-    history: createMemoryHistory({ initialEntries: [entry] }),
-  })
-
-function PullRequestWindow() {
+export function PullRequestWindow() {
   const { threadId } = useParams({ strict: false })
   const { url = "" } = useSearch({ strict: false }) as { url?: string }
   const environment = useThreadEnvironment(threadId)
@@ -156,17 +131,17 @@ function ReviewWorkspace({
   files: ReadonlyArray<PullRequestFile>
 }) {
   const { url, head } = pullRequest
-  const viewed = useViewedPaths(url, head)
+  const viewed = new Set(useViewedPaths(url, head))
   const setViewed = useViewedFiles((state) => state.setViewed)
   const [filter, setFilter] = useState("")
   const [openPaths, setOpenPaths] = useState<ReadonlySet<string>>(
-    () => new Set(files.filter((file) => !viewed.includes(file.path)).map((file) => file.path)),
+    () => new Set(files.filter((file) => !viewed.has(file.path)).map((file) => file.path)),
   )
   const [, startTransition] = useTransition()
   const query = filter.trim().toLowerCase()
   const shown = query === "" ? files : files.filter((file) => file.path.toLowerCase().includes(query))
   const indexOf = new Map(files.map((file, index) => [file.path, index]))
-  const viewedCount = files.filter((file) => viewed.includes(file.path)).length
+  const viewedCount = files.filter((file) => viewed.has(file.path)).length
 
   const setOpen = (path: string, open: boolean) => {
     const next = new Set(openPaths)
@@ -217,7 +192,7 @@ function ReviewWorkspace({
                 review={{
                   open: openPaths.has(file.path),
                   onToggle: () => startTransition(() => setOpen(file.path, !openPaths.has(file.path))),
-                  viewed: viewed.includes(file.path),
+                  viewed: viewed.has(file.path),
                   onViewedChange: (next) =>
                     startTransition(() => {
                       setViewed(url, head, file.path, next)
@@ -240,7 +215,7 @@ function FileTreeFolderView({
   depth,
 }: {
   folder: FileTreeFolder<PullRequestFile>
-  viewed: ReadonlyArray<string>
+  viewed: ReadonlySet<string>
   onReveal: (path: string) => void
   depth: number
 }) {
@@ -259,10 +234,10 @@ function FileTreeFolderView({
             className="flex w-full min-w-0 items-center gap-1.5 rounded-md py-1 pe-1.5 text-start text-xs outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
           >
             <FileIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className={cn("min-w-0 flex-1 truncate", viewed.includes(file.path) && "text-muted-foreground")}>
+            <span className={cn("min-w-0 flex-1 truncate", viewed.has(file.path) && "text-muted-foreground")}>
               {file.path.slice(file.path.lastIndexOf("/") + 1)}
             </span>
-            {viewed.includes(file.path) && (
+            {viewed.has(file.path) && (
               <span title={m.pr_file_viewed()} className="flex shrink-0">
                 <CheckIcon aria-hidden className="size-3.5 text-muted-foreground" />
                 <span className="sr-only">{m.pr_file_viewed()}</span>
@@ -282,7 +257,7 @@ function FolderItem({
   depth,
 }: {
   folder: FileTreeFolder<PullRequestFile>
-  viewed: ReadonlyArray<string>
+  viewed: ReadonlySet<string>
   onReveal: (path: string) => void
   depth: number
 }) {

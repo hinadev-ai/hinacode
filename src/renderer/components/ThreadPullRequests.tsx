@@ -2,7 +2,6 @@ import { RiGitClosePullRequestLine, RiGitPullRequestLine } from "react-icons/ri"
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { AnimatePresence, motion, MotionConfig } from "motion/react"
 import { create } from "zustand"
 import { createContext, lazy, type ReactNode, Suspense, use, useId, useState, useTransition } from "react"
 import type {
@@ -314,8 +313,7 @@ const byRepository = (stacks: ReadonlyArray<StackNode>) => {
   return [...groups]
 }
 
-const EASE_OUT = [0.23, 1, 0.32, 1] as const
-const ENTRANCE_STAGGER = 0.025
+const ENTRANCE_STAGGER_MS = 25
 
 function LinkedPullRequests({
   urls,
@@ -340,28 +338,26 @@ function LinkedPullRequests({
     onSelect,
   }
   return (
-    <MotionConfig reducedMotion="user">
-      <LinkedListContext value={list}>
-        <div className="flex flex-col gap-3">
-          {import.meta.env.DEV && <LinkedListLayoutPicker />}
-          <div className="flex flex-col gap-4">
-            {layout === "byRepository" ? (
-              byRepository(stacks).map(([repository, group]) => (
-                <section key={repository} aria-label={repository} className="flex flex-col gap-1">
-                  <h3 className="flex items-center gap-1.5 px-2 font-mono text-xs text-muted-foreground">
-                    <span className="truncate">{repository}</span>
-                    <span className="tabular-nums">{flatten(group).length}</span>
-                  </h3>
-                  <PullRequestTree stacks={group} />
-                </section>
-              ))
-            ) : (
-              <PullRequestTree stacks={stacks} />
-            )}
-          </div>
+    <LinkedListContext value={list}>
+      <div className="flex flex-col gap-3">
+        {import.meta.env.DEV && <LinkedListLayoutPicker />}
+        <div className="flex flex-col gap-4">
+          {layout === "byRepository" ? (
+            byRepository(stacks).map(([repository, group]) => (
+              <section key={repository} aria-label={repository} className="flex flex-col gap-1">
+                <h3 className="flex items-center gap-1.5 px-2 font-mono text-xs text-muted-foreground">
+                  <span className="truncate">{repository}</span>
+                  <span className="tabular-nums">{flatten(group).length}</span>
+                </h3>
+                <PullRequestTree stacks={group} />
+              </section>
+            ))
+          ) : (
+            <PullRequestTree stacks={stacks} />
+          )}
         </div>
-      </LinkedListContext>
-    </MotionConfig>
+      </div>
+    </LinkedListContext>
   )
 }
 
@@ -387,10 +383,9 @@ function LinkedPullRequestRow({ url, children }: { url: string; children: ReactN
   const showDetails = list.layout !== "compact" || selected
 
   return (
-    <motion.li
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.18, ease: EASE_OUT, delay: (list.order.get(url) ?? 0) * ENTRANCE_STAGGER }}
+    <li
+      className="animate-fade-in [animation-fill-mode:backwards] motion-reduce:animate-none"
+      style={{ animationDelay: `${(list.order.get(url) ?? 0) * ENTRANCE_STAGGER_MS}ms` }}
     >
       <button
         type="button"
@@ -420,58 +415,40 @@ function LinkedPullRequestRow({ url, children }: { url: string; children: ReactN
             </span>
           )}
         </span>
-        <AnimatePresence initial={false}>
-          {showDetails && pullRequest && (
-            <motion.span
-              key="details"
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.18, ease: EASE_OUT }}
-              className="col-start-2 overflow-hidden"
-            >
-              <span className="flex min-w-0 items-center gap-2.5 pt-1 text-muted-foreground">
-                <span className="flex shrink-0 items-center gap-1.5">
-                  <Avatar login={pullRequest.author} />
-                  {pullRequest.author}
-                </span>
-                {list.layout !== "byRepository" && (
-                  <span className="min-w-0 shrink-2 truncate font-mono" title={repositoryName(url)}>
-                    {repositoryName(url)}
-                  </span>
-                )}
-                <span
-                  className="min-w-0 truncate font-mono"
-                  title={`${pullRequest.baseRefName} ← ${pullRequest.headRefName}`}
-                >
-                  {m.pr_branches_into({ base: pullRequest.baseRefName, head: pullRequest.headRefName })}
-                </span>
+        {showDetails && pullRequest && (
+          <span className="col-start-2 overflow-hidden">
+            <span className="flex min-w-0 items-center gap-2.5 pt-1 text-muted-foreground">
+              <span className="flex shrink-0 items-center gap-1.5">
+                <Avatar login={pullRequest.author} />
+                {pullRequest.author}
               </span>
-            </motion.span>
-          )}
-        </AnimatePresence>
+              {list.layout !== "byRepository" && (
+                <span className="min-w-0 shrink-2 truncate font-mono" title={repositoryName(url)}>
+                  {repositoryName(url)}
+                </span>
+              )}
+              <span
+                className="min-w-0 truncate font-mono"
+                title={`${pullRequest.baseRefName} ← ${pullRequest.headRefName}`}
+              >
+                {m.pr_branches_into({ base: pullRequest.baseRefName, head: pullRequest.headRefName })}
+              </span>
+            </span>
+          </span>
+        )}
       </button>
       {children}
-    </motion.li>
+    </li>
   )
 }
 
 function ChangingStatusIcon({ status }: { status: PullRequestStatus | undefined }) {
   return (
     <span className="relative flex size-4">
-      <AnimatePresence initial={false} mode="popLayout">
-        <motion.span
-          key={status ?? "loading"}
-          className="flex"
-          initial={{ scale: 0.25, opacity: 0, filter: "blur(4px)" }}
-          animate={{ scale: 1, opacity: 1, filter: "blur(0px)" }}
-          exit={{ scale: 0.25, opacity: 0, filter: "blur(4px)" }}
-          transition={{ type: "spring", duration: 0.3, bounce: 0 }}
-        >
-          <StatusIcon status={status} colored className="size-4" />
-          <span className="sr-only">{status && pullRequestStatusLabel[status]()}</span>
-        </motion.span>
-      </AnimatePresence>
+      <span key={status ?? "loading"} className="flex animate-fade-in motion-reduce:animate-none">
+        <StatusIcon status={status} colored className="size-4" />
+        <span className="sr-only">{status && pullRequestStatusLabel[status]()}</span>
+      </span>
     </span>
   )
 }
