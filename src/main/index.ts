@@ -9,6 +9,7 @@ import { handleContextMenu } from "./contextMenu.ts"
 import { chromiumDir, moveLegacyProfile } from "./dataDir.ts"
 import { keepAppMenu } from "./appMenu.ts"
 import { bringToFront, registerIpc, sendToWindows } from "./ipc.ts"
+import { pullRequestWindows } from "./pullRequestWindows.ts"
 import {
   attachmentRequest,
   BROWSER_PARTITION,
@@ -29,7 +30,6 @@ import {
   PROJECT_FILE_PROTOCOL,
 } from "../shared/channels.ts"
 import { RpcMethods } from "../shared/contract.ts"
-import { parseGitHubPullRequestUrl } from "../shared/github.ts"
 import * as ClientSettings from "./services/ClientSettings.ts"
 import * as Environments from "./services/Environments.ts"
 import * as Files from "./services/Files.ts"
@@ -257,22 +257,18 @@ const createWindow = (runtime: AppRuntime, entry?: string) => {
   return window
 }
 
-const pullRequestWindows = new Map<string, BrowserWindow>()
-
-const openPullRequestWindow = (runtime: AppRuntime) => (threadId: string, raw: string) => {
-  const url = parseGitHubPullRequestUrl(raw)
-  if (url === undefined) return
-  const existing = pullRequestWindows.get(url)
-  if (existing && !existing.isDestroyed()) {
-    bringToFront(existing)
-    return
-  }
-  const entry = `/thread/${encodeURIComponent(threadId)}/pull-request?${new URLSearchParams({ url })}`
-  const window = createWindow(runtime, entry)
-  window.removeMenu()
-  pullRequestWindows.set(url, window)
-  window.on("closed", () => pullRequestWindows.delete(url))
-}
+const openPullRequestWindow = (runtime: AppRuntime) =>
+  pullRequestWindows({
+    open: (threadId, url) => {
+      const window = createWindow(
+        runtime,
+        `/thread/${encodeURIComponent(threadId)}/pull-request?${new URLSearchParams({ url })}`,
+      )
+      window.removeMenu()
+      return window
+    },
+    focus: bringToFront,
+  })
 
 app.whenReady().then(async () => {
   const sbxConfigPath = join(app.getPath("appData"), "sbx", "config.json")
