@@ -48,6 +48,7 @@ import { randomName, Threads } from "./services/Threads.ts"
 import { VmPasskeyRelay } from "./services/tinyVm/passkey/PasskeyRelay.ts"
 import { type ScreenOwner, TinyVm, VmError } from "./services/tinyVm/TinyVm.ts"
 import { DeviceHub } from "./services/devices/DeviceHub.ts"
+import { InstantVms } from "./services/instantVm/InstantVms.ts"
 import { Devices } from "./services/devices/Devices.ts"
 import { Worktrees } from "./services/Worktrees.ts"
 
@@ -87,6 +88,7 @@ export type AppServices =
   | VmPasskeyRelay
   | Devices
   | DeviceHub
+  | InstantVms
 
 export interface HandlerError {
   readonly _tag: string
@@ -326,7 +328,10 @@ const handlers: Handlers = {
   "clientSettings.set": (patch) => ClientSettings.use((settings) => settings.set(patch)),
   "environments.list": () => Environments.use((environments) => environments.list),
   "environments.add": (input) => Environments.use((environments) => environments.add(input)),
-  "environments.remove": ({ id }) => Environments.use((environments) => environments.remove(id)),
+  "environments.remove": ({ id }) =>
+    Environments.use((environments) => environments.remove(id)).pipe(
+      Effect.andThen(InstantVms.use((instantVms) => instantVms.release(id))),
+    ),
   "environments.reconnect": ({ id }) => Environments.use((environments) => environments.reconnect(id)),
   "relayAccount.status": () => RelayAccount.use((account) => account.status),
   "relayAccount.signIn": ({ ownerToken }) => RelayAccount.use((account) => account.signIn(ownerToken)),

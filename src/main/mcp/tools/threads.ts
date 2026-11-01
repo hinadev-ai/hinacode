@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect"
+import { Effect, Option, Schema } from "effect"
 import { Toolkit } from "effect/ai"
 import { ProviderId } from "../../../shared/agent.ts"
 import { isThreadBusy, type Machine, type Message, type Thread, type Worktree } from "../../../shared/domain.ts"
@@ -6,6 +6,7 @@ import { RemoteAccess } from "../../remote/access.ts"
 import { Peers } from "../../remote/peers.ts"
 import { AgentRunner } from "../../services/AgentRunner.ts"
 import { Events } from "../../services/Events.ts"
+import { InstantVms } from "../../services/instantVm/InstantVms.ts"
 import { Projects } from "../../services/Projects.ts"
 import { PullRequests } from "../../services/PullRequests.ts"
 import { Threads } from "../../services/Threads.ts"
@@ -104,7 +105,7 @@ export const ThreadTools = Toolkit.make(
       machine: Schema.optionalKey(
         Schema.String.annotate({
           description:
-            "Id of the machine to run it on, from list_machines. That machine needs a project for this GitHub repository. Defaults to this machine.",
+            "Id of the machine to run it on, from list_machines. That machine needs a project for this GitHub repository. Pass `new` to start a fresh cloud VM, clone this repository there and run the thread on it; that takes a few minutes and the VM shows up as another machine. Defaults to this machine.",
         }),
       ),
     }),
@@ -156,6 +157,7 @@ export const threadToolsLayer = ThreadTools.toLayer(
     const projects = yield* Projects
     const peers = yield* Peers
     const { identity } = yield* RemoteAccess
+    const instantVms = yield* Effect.serviceOption(InstantVms)
 
     const projectThread = (targetId: string) =>
       Effect.gen(function* () {
@@ -240,6 +242,13 @@ export const threadToolsLayer = ThreadTools.toLayer(
           : locate(targetId),
       )
 
+    const startInstantVm = (repository: string) =>
+      Effect.gen(function* () {
+        if (Option.isNone(instantVms)) return yield* Effect.fail({ message: "This machine cannot start cloud VMs." })
+        const vm = yield* instantVms.value.provision(repository)
+        return { id: vm.environmentId, name: vm.name, projectIds: [vm.projectId] }
+      })
+
     return ThreadTools.of({
       create_thread: ({ title, prompt, provider, model, effort, worktree, machine }) =>
         Effect.gen(function* () {
@@ -264,9 +273,12 @@ export const threadToolsLayer = ThreadTools.toLayer(
                 message: "This project has no GitHub origin, so its threads can only run on this machine.",
               })
             }
-            const target = (yield* otherMachines(repository).pipe(
-              Effect.mapError((error) => ({ message: `The other machines are out of reach: ${error.message}` })),
-            )).find(({ id }) => id === machine)
+            const target =
+              machine === "new"
+                ? yield* startInstantVm(repository)
+                : (yield* otherMachines(repository).pipe(
+                    Effect.mapError((error) => ({ message: `The other machines are out of reach: ${error.message}` })),
+                  )).find(({ id }) => id === machine)
             if (target === undefined) {
               return yield* Effect.fail({ message: `No machine has id ${machine}. Call list_machines for the ids.` })
             }

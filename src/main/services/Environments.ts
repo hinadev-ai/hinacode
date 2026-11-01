@@ -62,6 +62,7 @@ export class Environments extends Context.Service<
     readonly forward: (environmentId: string, call: ForwardedCall) => Effect.Effect<RpcEnvelope<unknown>>
     readonly gather: (call: ForwardedCall) => Effect.Effect<ReadonlyArray<unknown>>
     readonly owner: (entity: Entity, id: string) => string | undefined
+    readonly pairingOf: (id: string) => Effect.Effect<PairingTarget | null, PersistenceError>
     readonly answerAsks: (answer: (call: ForwardedCall) => Effect.Effect<RpcEnvelope<unknown>>) => Effect.Effect<void>
   }
 >()("hinacode/Environments") {}
@@ -849,6 +850,16 @@ const make = Effect.fnUntraced(function* (options: { readonly actsAsHub: boolean
 
   yield* Effect.forEach(yield* findAll(undefined).pipe(Effect.mapError(persistence("environments.load"))), start)
 
+  const pairingOf = (id: string) =>
+    Effect.gen(function* () {
+      const cloud = clouds.get(id)
+      if (cloud === undefined) return null
+      const token = Option.getOrNull(yield* secrets.get(tokenSecret(id)))
+      if (token === null) return null
+      const { host, port, relay } = cloud.environment
+      return { hosts: [host], port, token, relay } satisfies PairingTarget
+    })
+
   return Environments.of({
     list,
     add,
@@ -859,6 +870,7 @@ const make = Effect.fnUntraced(function* (options: { readonly actsAsHub: boolean
     forward,
     gather,
     owner: owners.owner,
+    pairingOf,
     answerAsks: (answerWith) =>
       Effect.sync(() => {
         answer = answerWith

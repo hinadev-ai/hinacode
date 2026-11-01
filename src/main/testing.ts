@@ -36,6 +36,8 @@ import * as RelayAccount from "./services/RelayAccount.ts"
 import * as Scratch from "./services/Scratch.ts"
 import * as Search from "./services/Search.ts"
 import * as Secrets from "./services/Secrets.ts"
+import * as Boat from "./services/boat/Boat.ts"
+import * as InstantVms from "./services/instantVm/InstantVms.ts"
 import * as Settings from "./services/Settings.ts"
 import * as Terminals from "./services/Terminals.ts"
 import * as Threads from "./services/Threads.ts"
@@ -93,6 +95,9 @@ export const makeTestAppLayer = (
     Layer.provideMerge(cloud ? Environments.cloudLayer : Environments.layer),
     Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)),
   )
+  const instantVms = InstantVms.layer({ sandboxesPath: join(dirname(dbPath), "instant-vms.json"), env: {} }).pipe(
+    Layer.provide(Layer.mergeAll(Boat.layer({}).pipe(Layer.provide(Secrets.layer)), peers, Secrets.layer)),
+  )
   const features = Layer.mergeAll(
     Mcp.credentialsLayer,
     Ports.layer,
@@ -104,6 +109,7 @@ export const makeTestAppLayer = (
     passkeys,
     linear,
     peers,
+    instantVms,
     devicesThroughHubLayer({ drivers: deviceDrivers, simslimAvailable: () => Promise.resolve(false) }).pipe(
       Layer.provide(peers),
     ),

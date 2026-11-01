@@ -655,10 +655,14 @@ export const boatClient = (input: { readonly baseUrl: string; readonly apiKey: R
     return attempt(DESKTOP_MAX_ATTEMPTS)
   }
 
-  const hostPort = (id: string, port: number) =>
+  const hostPort = (
+    id: string,
+    port: number,
+    access: { readonly public: boolean; readonly localhost: boolean } = { public: false, localhost: false },
+  ) =>
     jsonRequest(HostResponse, "POST /sandboxes/{id}/host", "POST", sandboxPath(id, "/host"), {
       sandboxId: id,
-      body: { port },
+      body: { port, ...access },
     }).pipe(
       within(REQUEST_TIMEOUT_SECONDS),
       Effect.map(({ url }) => url),

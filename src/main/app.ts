@@ -26,6 +26,7 @@ import * as Automations from "./services/automations/Automations.ts"
 import * as ClientSettings from "./services/ClientSettings.ts"
 import * as Environments from "./services/Environments.ts"
 import * as DeviceHub from "./services/devices/DeviceHub.ts"
+import * as InstantVms from "./services/instantVm/InstantVms.ts"
 import { type Events, makeEventsLayer } from "./services/Events.ts"
 import * as Favicons from "./services/Favicons.ts"
 import * as Files from "./services/Files.ts"
@@ -148,6 +149,9 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     },
     simslimAvailable: () => simslimAvailable(),
   }).pipe(Layer.provide(peers))
+  const instantVms = InstantVms.layer({ sandboxesPath: join(userData, "instant-vms.json"), env: process.env }).pipe(
+    Layer.provide(Layer.mergeAll(boat, peers, Secrets.layer)),
+  )
   const features = Layer.mergeAll(
     Mcp.credentialsLayer,
     Ports.layer,
@@ -160,6 +164,7 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     passkeys,
     peers,
     devices,
+    instantVms,
     linearLayer(process.env),
   ).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
