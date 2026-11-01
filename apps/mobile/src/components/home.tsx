@@ -21,7 +21,7 @@ import { openThread } from "@/lib/navigation"
 import type { HomeTab } from "@/lib/preferences"
 import { createThread } from "@/lib/start-thread"
 import { usePreferences } from "@/stores/preferences"
-import { archivedThreads, inboxThreads, pinnedThreads, sortThreads, useThreads } from "@/stores/threads"
+import { archivedThreads, inboxThreads, listedThreads, pinnedThreads, sortThreads, useThreads } from "@/stores/threads"
 
 /** Overview, New thread and Settings, in the home screen's header or the sidebar's. */
 export function HomeActions({ onNewThread }: { onNewThread: () => void }) {
@@ -289,7 +289,7 @@ function HomeList({
   const projects = useThreads((state) => state.projects)
   const byId = useThreads((state) => state.byId)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())
-  const items = homeItems(tab, projects, Object.values(byId), collapsed)
+  const items = homeItems(tab, projects, listedThreads(byId), collapsed)
 
   const toggle = (projectId: string) => {
     const next = new Set(collapsed)

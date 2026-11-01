@@ -33,6 +33,7 @@ export function mentionableThreads<T extends MentionThread>(
     (other) =>
       other.id !== thread.id &&
       other.status !== "archived" &&
+      other.status !== "draft" &&
       (isSameProject(other) || isSameRepositoryElsewhere(other)),
   )
   // oxlint-disable-next-line unicorn/no-array-sort -- the phone runs this on Hermes, which has no `toSorted`; `filter` made a copy.

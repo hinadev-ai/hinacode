@@ -2,6 +2,7 @@ import { expect, test } from "@effect/vitest"
 import type { Thread } from "../../shared/domain.ts"
 import {
   selectAwakeThreads,
+  selectOpenableThread,
   selectInboxThreads,
   selectPinnedThreads,
   selectSnoozedThreads,
@@ -100,4 +101,20 @@ test("keeps side chats apart from the thread list and drops them with their pare
   useThreads.getState().upsert(side)
   useThreads.getState().remove("parent")
   expect(useThreads.getState()).toMatchObject({ byId: {}, sidechats: {} })
+})
+
+test("keeps drafts out of every thread list until their first send lists them", () => {
+  const draft = thread("draft", { status: "draft" })
+  useThreads.getState().replaceAll([thread("listed", {}), draft])
+  expect(Object.keys(useThreads.getState().byId)).toStrictEqual(["listed"])
+  expect(selectOpenableThread("draft")(useThreads.getState())).toBe(draft)
+
+  const sent = { ...draft, status: "idle" as const }
+  useThreads.getState().upsert(sent)
+  expect(useThreads.getState().drafts).toStrictEqual({})
+  expect(selectOpenableThread("draft")(useThreads.getState())).toBe(sent)
+
+  useThreads.getState().upsert(draft)
+  useThreads.getState().remove("draft")
+  expect(useThreads.getState()).toMatchObject({ drafts: {}, byId: { listed: thread("listed", {}) } })
 })

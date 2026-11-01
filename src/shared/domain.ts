@@ -334,7 +334,7 @@ export const PullRequestMatch = Schema.Struct({
 })
 export type PullRequestMatch = typeof PullRequestMatch.Type
 
-export const ThreadStatus = Schema.Literals(["idle", "running", "awaiting_approval", "limited", "archived"])
+export const ThreadStatus = Schema.Literals(["draft", "idle", "running", "awaiting_approval", "limited", "archived"])
 export type ThreadStatus = typeof ThreadStatus.Type
 
 export const isThreadBusy = (status: ThreadStatus) => status === "running" || status === "awaiting_approval"
