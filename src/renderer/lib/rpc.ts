@@ -530,6 +530,25 @@ export const vmHostAtom = Atom.family((environment: EnvironmentId) =>
   Atom.make(call("vm.host", undefined, { environment })),
 )
 
+export const deviceHubAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.make(call("deviceHub.status", undefined, { environment })),
+)
+
+const refreshDeviceHub = (environment: EnvironmentId) =>
+  Effect.andThen(Atom.refresh(deviceHubAtom(environment)), Atom.refresh(settingsAtom(environment)))
+
+export const linkDeviceHubAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.fn((pairingUrl: string) =>
+    call("deviceHub.link", { pairingUrl }, { environment }).pipe(Effect.tap(() => refreshDeviceHub(environment))),
+  ),
+)
+
+export const unlinkDeviceHubAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.fn(() =>
+    call("deviceHub.unlink", undefined, { environment }).pipe(Effect.tap(() => refreshDeviceHub(environment))),
+  ),
+)
+
 export const threadVmPasskeyAtom = Atom.family((threadId: string) =>
   Atom.make(
     pushFirst(

@@ -1,6 +1,6 @@
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { useEffect, useState } from "react"
+import { type FormEvent, useEffect, useState, useTransition } from "react"
 import type {
   BoatVmSize,
   ExperimentalSettings as ExperimentalSettingsValue,
@@ -10,12 +10,13 @@ import type {
 } from "../../../shared/domain.ts"
 import { formatEnvLines, parseEnvLines } from "../../lib/envLines.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
-import { updateSettingsAtom, vmHostAtom } from "../../lib/rpc.ts"
+import { deviceHubAtom, linkDeviceHubAtom, unlinkDeviceHubAtom, updateSettingsAtom, vmHostAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
-import { useSettingsEnvironment } from "../../lib/environments.ts"
+import { statusLabel, useSettingsEnvironment } from "../../lib/environments.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
+import { Input } from "../ui/input.tsx"
 import { Switch } from "../ui/switch.tsx"
 import { Textarea } from "../ui/textarea.tsx"
 import { VmTemplateSelect } from "../sidePanel/TinyVmView.tsx"
@@ -50,6 +51,7 @@ export function ExperimentalSettings() {
       <SettingsGroup>
         <TinyVmSettings experimental={experimental} setExperimental={setExperimental} />
         <DevicesSettings experimental={experimental} setExperimental={setExperimental} />
+        <InstantVmSettings />
       </SettingsGroup>
       {error && <FieldError>{error}</FieldError>}
     </SettingsSection>
@@ -160,13 +162,104 @@ function DevicesSettings({
   setExperimental: SetExperimental
 }) {
   return (
-    <VmSwitchField
-      id="settings-experimental-devices"
-      label={m.settings_devices()}
-      hint={m.settings_devices_hint()}
-      checked={experimental.devices}
-      onCheckedChange={(checked) => void setExperimental({ devices: checked })}
-    />
+    <>
+      <VmSwitchField
+        id="settings-experimental-devices"
+        label={m.settings_devices()}
+        hint={m.settings_devices_hint()}
+        checked={experimental.devices}
+        onCheckedChange={(checked) => void setExperimental({ devices: checked })}
+      />
+      {experimental.devices && <DeviceHubField />}
+    </>
+  )
+}
+
+function DeviceHubField() {
+  const environment = useSettingsEnvironment()
+  const hub = useAtomValue(deviceHubAtom(environment))
+  const link = useAtomSet(linkDeviceHubAtom(environment), { mode: "promise" })
+  const unlink = useAtomSet(unlinkDeviceHubAtom(environment), { mode: "promise" })
+  const [draft, setDraft] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [pending, startTransition] = useTransition()
+  const linked = AsyncResult.getOrElse(hub, () => null)
+
+  const run = (action: () => Promise<unknown>) =>
+    startTransition(async () => {
+      setError(null)
+      try {
+        await action()
+      } catch (cause) {
+        setError(errorMessage(cause))
+      }
+    })
+
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    startTransition(async () => {
+      setError(null)
+      try {
+        await link(draft.trim())
+        setDraft("")
+      } catch (cause) {
+        setError(errorMessage(cause))
+      }
+    })
+  }
+
+  return (
+    <Field>
+      <FieldLabel htmlFor="settings-experimental-device-hub">{m.settings_device_hub()}</FieldLabel>
+      {linked ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <p aria-live="polite" className="text-sm">
+            {m.settings_device_hub_linked({ name: linked.name })}
+            {linked.status !== "connected" && (
+              <span className="text-muted-foreground"> · {statusLabel[linked.status]()}</span>
+            )}
+          </p>
+          <Button variant="ghost" size="xs" disabled={pending} onClick={() => run(() => unlink())}>
+            {m.settings_device_hub_unlink()}
+          </Button>
+        </div>
+      ) : (
+        <form onSubmit={onSubmit} className="flex items-center gap-2">
+          <Input
+            id="settings-experimental-device-hub"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder="hinacode://connect?..."
+            autoComplete="off"
+            spellCheck={false}
+            className="w-72 font-mono"
+          />
+          <Button type="submit" variant="outline" disabled={pending || draft.trim() === ""}>
+            {m.settings_device_hub_link()}
+          </Button>
+        </form>
+      )}
+      <FieldDescription>{withCode(m.settings_device_hub_hint())}</FieldDescription>
+      {error && <FieldError>{error}</FieldError>}
+    </Field>
+  )
+}
+
+function InstantVmSettings() {
+  return (
+    <>
+      <Field>
+        <FieldLabel>{m.settings_instant_vm()}</FieldLabel>
+        <FieldDescription>{withCode(m.settings_instant_vm_hint())}</FieldDescription>
+      </Field>
+      <BoatKeyField />
+      <SecretField
+        name="instantVm.env"
+        label={m.settings_instant_vm_env_label()}
+        placeholder="CLAUDE_CODE_OAUTH_TOKEN=... GH_TOKEN=..."
+        hint={m.settings_instant_vm_env_hint()}
+      />
+    </>
   )
 }
 

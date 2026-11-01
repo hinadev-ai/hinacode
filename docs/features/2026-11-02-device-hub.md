@@ -11,7 +11,7 @@ T3 Code solves this with SSH: the environment server opens an SSH tunnel to the 
 
 ## User flow
 
-1. On the Mac, run HinaCode (desktop or `hinacode serve`). Its pairing URL is in Settings > Remote, or `hinacode pair` prints it.
+1. On the Mac, run HinaCode (desktop or `hinacode serve`). Its pairing URL is in Settings > Connections, or `hinacode pair` prints it.
 2. On the machine that needs devices, open Settings > Experimental (on the desktop, pick that environment first), turn on Devices and paste the Mac's URL under Device hub. The row then says "Using devices from mac-mini".
 3. The thread's Devices view now lists the Mac's simulators and emulators. New simulator, Attach, the live screen, control hand-over and every `device_*` agent tool work as they do locally.
 4. Unlink switches back to this machine's own devices.

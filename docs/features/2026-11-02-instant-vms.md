@@ -14,7 +14,7 @@ boat.dev already backs Tiny VM. A boat sandbox is an Ubuntu VM with Node, both a
 1. In Settings > Experimental > Instant VMs, add the boat API key and the VM environment, such as `CLAUDE_CODE_OAUTH_TOKEN=… GH_TOKEN=…`.
 2. An agent calls `create_thread` with `machine: "new"`. The call takes a few minutes.
 3. The new VM appears as another machine, `boat-1a2b3c4d`, with the repository cloned, and the thread starts its first turn there. It shows in the sidebar like any cloud thread.
-4. Settings > Environments > Remove on that machine deletes the sandbox. A forgotten one archives itself after boat's two-hour TTL.
+4. Settings > Connections > Remove on that machine deletes the sandbox. A forgotten one archives itself after boat's two-hour TTL.
 
 ## Design
 
