@@ -45,6 +45,7 @@ import { useDrafts } from "../stores/drafts.ts"
 import { usePullRequests } from "../stores/pullRequests.ts"
 import { lastActivity, useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
+import { listMotionPausedWhile } from "../lib/listMotion.ts"
 import { useUnseen } from "../stores/unseen.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { SidebarPullRequests } from "./SidebarPullRequests.tsx"
@@ -128,6 +129,8 @@ interface SidebarThreadListProps {
   readonly className?: string
 }
 
+export const sidebarListMotion = listMotionPausedWhile(() => useUi.getState().sidebarQuery !== "")
+
 export function SidebarThreadList({
   group,
   threads,
@@ -139,7 +142,7 @@ export function SidebarThreadList({
 }: SidebarThreadListProps) {
   const firstRowRef = useRef<HTMLAnchorElement>(null)
   const focusAfterRemoval = () => firstRowRef.current ?? newThreadButtonRef?.current ?? null
-  const [listRef, setAnimate] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
+  const [listRef, setAnimate] = useAutoAnimate<HTMLUListElement>(sidebarListMotion)
   const DROP_ANIMATION_MS = 300
   const [reorderError, setReorderError] = useState<string | null>(null)
 

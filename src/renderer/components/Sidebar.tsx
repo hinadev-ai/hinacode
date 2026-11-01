@@ -51,7 +51,7 @@ import { SearchIcon } from "./icons/SearchIcon.tsx"
 import { TrashIcon } from "./icons/TrashIcon.tsx"
 import type { IconComponent } from "./icons/Icon.tsx"
 import { ProjectMenu } from "./ProjectMenu.tsx"
-import { SidebarThreadList } from "./SidebarThreadList.tsx"
+import { SidebarThreadList, sidebarListMotion } from "./SidebarThreadList.tsx"
 import { Button } from "./ui/button.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
 import { Dialog, DialogPortal, DialogTitle } from "./ui/dialog.tsx"
@@ -393,7 +393,7 @@ interface ProjectListProps {
 function ProjectList({ query, onAddProject, focusAfterDelete }: ProjectListProps) {
   const projects = useAtomValue(projectsAtom)
   const refresh = useAtomRefresh(projectsAtom)
-  const [listRef] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
+  const [listRef] = useAutoAnimate<HTMLUListElement>(sidebarListMotion)
   const groups = groupProjects(useFilteredProjects(AsyncResult.getOrElse(projects, () => [])))
   const shownKeys = useThreads(
     useShallow((state) =>
