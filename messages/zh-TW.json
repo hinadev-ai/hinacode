@@ -1593,6 +1593,7 @@
   "mobile_time_minutes": "{count} 分鐘前",
   "mobile_time_hours": "{count} 小時前",
   "mobile_time_days": "{count} 天前",
+  "mobile_status_draft": "草稿",
   "mobile_status_idle": "閒置",
   "mobile_status_running": "執行中",
   "mobile_status_background": "在背景執行中",

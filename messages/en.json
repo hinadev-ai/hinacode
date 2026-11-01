@@ -1629,6 +1629,7 @@
   "mobile_time_minutes": "{count}m ago",
   "mobile_time_hours": "{count}h ago",
   "mobile_time_days": "{count}d ago",
+  "mobile_status_draft": "Draft",
   "mobile_status_idle": "Idle",
   "mobile_status_running": "Running",
   "mobile_status_background": "Working in the background",

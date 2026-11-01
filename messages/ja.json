@@ -1575,6 +1575,7 @@
   "mobile_time_minutes": "{count}分前",
   "mobile_time_hours": "{count}時間前",
   "mobile_time_days": "{count}日前",
+  "mobile_status_draft": "下書き",
   "mobile_status_idle": "待機中",
   "mobile_status_running": "実行中",
   "mobile_status_background": "バックグラウンドで作業中",
