@@ -64,6 +64,8 @@ const TranscriptContext = createContext<{
 
 const LastMessageContext = createContext<string | undefined>(undefined)
 
+const NO_COMMANDS: ReadonlyArray<AgentCommand> = []
+
 export function MessageList({
   messages,
   providerLabel,
@@ -71,7 +73,7 @@ export function MessageList({
   header,
   alignItemsAtEnd = true,
   showElapsedTime = true,
-  commands = [],
+  commands = NO_COMMANDS,
   turnChanges = false,
 }: {
   messages: ReadonlyArray<Message>
