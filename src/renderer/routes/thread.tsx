@@ -53,7 +53,7 @@ export function ThreadRoute() {
           agent={agent}
           overlay={
             <>
-              <ThreadOverview thread={thread} />
+              {agent === undefined && <ThreadOverview thread={thread} />}
               <FloatingTinyVm threadId={thread.id} />
             </>
           }

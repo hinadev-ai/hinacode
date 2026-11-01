@@ -1,9 +1,10 @@
 // oxlint-disable jsx-a11y/prefer-tag-over-role -- The live region groups a heading, provider message, and controls.
 import { useActionState, useId } from "react"
 import type { Thread } from "../../shared/domain.ts"
-import type { UsageLimit } from "../../shared/limits.ts"
+import { resetHasPassed, type UsageLimit } from "../../shared/limits.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
+import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useThreads } from "../stores/threads.ts"
@@ -11,6 +12,13 @@ import { SwitchAccountButton, useAccountOptions } from "./AccountSwitch.tsx"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { WarningIcon } from "./icons/WarningIcon.tsx"
+
+export const resetCopy = (at: string, now: number): string | null => {
+  const resetAt = Date.parse(at)
+  if (!Number.isFinite(resetAt)) return null
+  const time = new Intl.DateTimeFormat(getLocale(), { dateStyle: "medium", timeStyle: "short" }).format(resetAt)
+  return resetHasPassed(at, now) ? m.thread_usage_limit_was_reset({ time }) : m.thread_usage_limit_reset({ time })
+}
 
 export function UsageLimitCallout({
   thread,
@@ -22,21 +30,11 @@ export function UsageLimitCallout({
   const threadId = thread.id
   const titleId = useId()
   const { suggestion } = useAccountOptions(thread)
-  const [error, setAutoResume, isPending] = useActionState(async (_: string | null, enabled: boolean) => {
-    try {
-      useThreads.getState().upsert(await callPromise("threads.resumeAtReset", { id: threadId, enabled }))
-      return null
-    } catch (cause) {
-      return errorMessage(cause)
-    }
-  }, null)
+  const now = useNow()
   const reset = limit.reset
-  const resetDate = reset === null ? null : new Date(reset.at)
-  const resetTime =
-    resetDate !== null && Number.isFinite(resetDate.getTime())
-      ? new Intl.DateTimeFormat(getLocale(), { dateStyle: "medium", timeStyle: "short" }).format(resetDate)
-      : null
-  const canResume = reset !== null && resetTime !== null
+  const resetText = reset === null ? null : resetCopy(reset.at, now)
+  const canResume = reset !== null && resetText !== null
+  const hasReset = reset !== null && resetHasPassed(reset.at, now)
 
   return (
     <section
@@ -52,7 +50,7 @@ export function UsageLimitCallout({
       {limit.kind === "org_spend" && <p className="text-xs text-muted-foreground">{m.thread_org_spend_limit_hint()}</p>}
       {canResume && (
         <p className="text-xs text-muted-foreground">
-          <time dateTime={reset.at}>{m.thread_usage_limit_reset({ time: resetTime })}</time>
+          <time dateTime={reset.at}>{resetText}</time>
         </p>
       )}
       {(suggestion || canResume) && (
@@ -67,21 +65,48 @@ export function UsageLimitCallout({
               label={m.account_continue_on({ account: suggestion.name })}
             />
           )}
-          {canResume && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={isPending}
-              aria-busy={isPending}
-              action={() => setAutoResume(!reset.autoResume)}
-            >
-              {reset.autoResume ? m.thread_usage_limit_cancel_resume() : m.thread_usage_limit_resume_at_reset()}
-            </Button>
-          )}
+          {canResume && <ResumeButton threadId={threadId} autoResume={reset.autoResume} hasReset={hasReset} />}
         </div>
       )}
-      {error && <FieldError>{error}</FieldError>}
     </section>
+  )
+}
+
+const resumeLabel = (autoResume: boolean, hasReset: boolean) => {
+  if (autoResume) return m.thread_usage_limit_cancel_resume()
+  return hasReset ? m.thread_usage_limit_try_again() : m.thread_usage_limit_resume_at_reset()
+}
+
+function ResumeButton({
+  threadId,
+  autoResume,
+  hasReset,
+}: {
+  threadId: string
+  autoResume: boolean
+  hasReset: boolean
+}) {
+  const [error, setAutoResume, isPending] = useActionState(async (_: string | null, enabled: boolean) => {
+    try {
+      useThreads.getState().upsert(await callPromise("threads.resumeAtReset", { id: threadId, enabled }))
+      return null
+    } catch (cause) {
+      return errorMessage(cause)
+    }
+  }, null)
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={isPending}
+        aria-busy={isPending}
+        action={() => setAutoResume(!autoResume)}
+      >
+        {resumeLabel(autoResume, hasReset)}
+      </Button>
+      {error && <FieldError className="basis-full">{error}</FieldError>}
+    </>
   )
 }

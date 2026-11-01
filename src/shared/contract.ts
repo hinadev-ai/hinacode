@@ -276,6 +276,7 @@ export const RpcMethods = {
   "worktrees.stopSetup": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   "worktrees.pullRequest": rpc(Schema.Struct({ id: Schema.String }), Schema.NullOr(PullRequest)),
   "threads.changes": rpc(Schema.Struct({ threadId: Schema.String, scope: ChangesScope }), Schema.NullOr(Changes)),
+  "threads.undoTurn": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "threads.fork": rpc(Schema.Struct({ threadId: Schema.String, messageId: Schema.String }), Thread),
   "threads.sidechat": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   "sessions.listExternal": rpc(
@@ -460,7 +461,10 @@ export const RpcMethods = {
 
   "github.auth": rpc(Schema.Void, GitHubAuth),
   "github.pullRequest": rpc(Schema.Struct({ url: Schema.String }), PullRequest),
-  "github.pullRequestDetail": rpc(Schema.Struct({ url: Schema.String }), PullRequestDetail),
+  "github.pullRequestDetail": rpc(
+    Schema.Struct({ url: Schema.String, fresh: Schema.optionalKey(Schema.Boolean) }),
+    PullRequestDetail,
+  ),
   "github.pullRequestFiles": rpc(Schema.Struct({ url: Schema.String }), Schema.Array(PullRequestFile)),
   "github.merge": rpc(Schema.Struct({ url: Schema.String, method: MergeMethod }), Schema.Void),
   "github.close": rpc(Schema.Struct({ url: Schema.String }), Schema.Void),
@@ -627,6 +631,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "worktrees.stopSetup": "mutation",
   "worktrees.pullRequest": "read",
   "threads.changes": "read",
+  "threads.undoTurn": "mutation",
   "threads.fork": "mutation",
   "threads.sidechat": "mutation",
   "sessions.listExternal": "read",
@@ -868,6 +873,7 @@ export const PushEvent = Schema.Union([
     links: Schema.Array(PullRequestLink),
   }),
   Schema.Struct({ type: Schema.Literal("pullRequest.guide"), url: Schema.String, state: PullRequestGuideState }),
+  Schema.Struct({ type: Schema.Literal("github.pullRequest"), url: Schema.String }),
   Schema.Struct({
     type: Schema.Literal("github.rateLimit"),
     level: Schema.Literals(["low", "exhausted"]),

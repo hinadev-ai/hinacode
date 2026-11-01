@@ -320,10 +320,15 @@ kbd {
     opacity 150ms var(--ease-out),
     translate 150ms var(--ease-out);
 }
-.backed:hover .backed-tip,
 .backed:focus-visible .backed-tip {
   opacity: 1;
   translate: -50% 0;
+}
+@media (hover: hover) and (pointer: fine) {
+  .backed:hover .backed-tip {
+    opacity: 1;
+    translate: -50% 0;
+  }
 }
 
 h1 {
@@ -1095,7 +1100,6 @@ h2 em {
   font-size: 12px;
   transition:
     translate 80ms var(--ease-out),
-    border-bottom-width 80ms var(--ease-out),
     color 80ms,
     border-color 80ms;
 }
@@ -1329,8 +1333,8 @@ footer a:hover {
     animation: none;
     display: none;
   }
-  .btn:active {
-    transform: none;
+  .backed-tip {
+    translate: -50% 0;
   }
 }
 

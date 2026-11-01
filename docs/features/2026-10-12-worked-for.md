@@ -9,11 +9,11 @@ Developers returning to a finished response cannot see how long it took. Its too
 
 ## User flow
 
-While the agent runs, its activity stays visible. Once a running response has more than 50 parts, only the latest 50 render, under an `N earlier steps` row that opens the rest in place, so a long turn costs the same to open as a short one. When an assistant response completes, a quiet `Worked for 08:05` row appears above it, and the response's reasoning, tool calls, and file changes fold away. So do the progress notes the agent wrote before its last tool call, which narrate the work rather than answer. Questions, attachments, and the answer stay visible in their original order. A response the user steered or stopped mid-work keeps its last text, because that is what the user's next message answers. Selecting the row, or pressing Enter or Space on it, shows the activity again in place.
+While the agent runs, its activity stays visible. Once a running response has more than 50 parts, only the latest 50 render, under an `N earlier steps` row that opens the rest in place, so a long turn costs the same to open as a short one. When an assistant response completes, a quiet `Worked for 8:05` row appears above it, and the response's reasoning, tool calls, and file changes fold away. So do the progress notes the agent wrote before its last tool call, which narrate the work rather than answer. Questions, attachments, and the answer stay visible in their original order. A response the user steered or stopped mid-work keeps its last text, because that is what the user's next message answers. Selecting the row, or pressing Enter or Space on it, shows the activity again in place.
 
 Back-to-back tool calls of any kind fold into one line that names what they did, such as `Ran 2 commands, read 2 files, and searched once`. The line opens into a list capped at 24rem that scrolls, and each row opens into its input and output. Sub-agent calls never fold, because their row opens the sub-agent's own view.
 
-Text-only responses show the elapsed time with no disclosure. Find in thread searches the hidden activity too. A match there opens the Worked for row, or the earlier steps row of a running response, and the tool group that holds it. Closing Find leaves them open until the reader closes them.
+Text-only responses show the elapsed time with no disclosure, and skip the row when they took under a second. Find in thread searches the hidden activity too. A match there opens the Worked for row, or the earlier steps row of a running response, and the tool group that holds it. Closing Find leaves them open until the reader closes them.
 
 ## Design
 
@@ -21,7 +21,7 @@ Text-only responses show the elapsed time with no disclosure. Find in thread sea
 
 The renderer derives an `AssistantPresentation` union. Both variants hold indexed visible `parts`. `completed` adds `durationMs`; `inline` has no elapsed-time row. Original part indices preserve React keys, tool grouping, and find targets. `isActivity` marks reasoning, tool calls, and file changes. `collapsedParts` in `src/shared/activityFold.ts` drops those and the progress notes before the last of them; desktop and mobile both use it. A completed response shows only those parts until its row is expanded, so activity keeps its exact position between progress messages when shown. The expanded state lives in the message's component, like every other disclosure in the transcript, and resets when the list virtualizes the message away. Nested subagent calls remain in the subagent view. Synthetic subagent transcripts keep their existing rendering.
 
-No migration, RPC method, provider event, or new trust boundary is needed. Invalid or reversed timestamps retain the existing inline rendering. Empty closed messages stay hidden. Duration uses `mm:ss`, or `h:mm:ss` above an hour. Theme tokens support both themes. The row's chevron turns with the disclosure and holds still under reduced motion.
+No migration, RPC method, provider event, or new trust boundary is needed. Invalid or reversed timestamps retain the existing inline rendering. Empty closed messages stay hidden. Duration reads `4s` under a minute (`<1s` under a second), then `m:ss`, or `h:mm:ss` above an hour. Theme tokens support both themes. The row's chevron turns with the disclosure and holds still under reduced motion.
 
 ## Out of scope
 

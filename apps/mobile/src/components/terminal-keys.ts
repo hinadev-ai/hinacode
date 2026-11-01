@@ -1,4 +1,5 @@
 import type { IconName } from "@/components/icon"
+import { copy } from "@/lib/copy"
 
 export type TerminalKey = "escape" | "tab" | "up" | "down" | "left" | "right"
 
@@ -6,10 +7,10 @@ export type TerminalKey = "escape" | "tab" | "up" | "down" | "left" | "right"
 export const terminalKeys: readonly { key: TerminalKey; label: string; icon?: IconName }[] = [
   { key: "escape", label: "Esc" },
   { key: "tab", label: "Tab" },
-  { key: "left", label: "Left arrow", icon: "RiArrowLeftSLine" },
-  { key: "up", label: "Up arrow", icon: "RiArrowUpSLine" },
-  { key: "down", label: "Down arrow", icon: "RiArrowDownSLine" },
-  { key: "right", label: "Right arrow", icon: "RiArrowRightSLine" },
+  { key: "left", label: copy("mobile_terminal_key_left"), icon: "RiArrowLeftSLine" },
+  { key: "up", label: copy("mobile_terminal_key_up"), icon: "RiArrowUpSLine" },
+  { key: "down", label: copy("mobile_terminal_key_down"), icon: "RiArrowDownSLine" },
+  { key: "right", label: copy("mobile_terminal_key_right"), icon: "RiArrowRightSLine" },
 ]
 
 const arrowCodes = { up: "A", down: "B", right: "C", left: "D" } as const

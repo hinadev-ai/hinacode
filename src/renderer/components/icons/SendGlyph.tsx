@@ -24,7 +24,7 @@ const slots = [0, 1, 2, 3, 4] as const
 
 const visible = ([x1, y1, x2, y2]: Segment) => x1 !== x2 || y1 !== y2
 
-const morph = "duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none"
+const morph = "duration-200 ease-out motion-reduce:transition-none"
 
 export function SendGlyph({ mode, ...props }: IconProps & { mode: SendGlyphMode }) {
   const steer = mode === "steer"
@@ -58,7 +58,7 @@ export function SendGlyph({ mode, ...props }: IconProps & { mode: SendGlyphMode 
         fill="var(--sun, currentColor)"
         stroke="none"
         className={cn("origin-center transition-[scale,opacity]", morph)}
-        style={{ scale: steer ? 1 : 0, opacity: steer ? 1 : 0 }}
+        style={{ scale: steer ? 1 : 0.5, opacity: steer ? 1 : 0 }}
       />
       <rect
         x="7.5"

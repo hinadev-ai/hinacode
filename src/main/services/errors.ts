@@ -115,7 +115,7 @@ export class ThreadBusyError extends Schema.TaggedError<ThreadBusyError>()("Thre
   id: Schema.String,
 }) {
   override get message(): string {
-    return "This thread is still running. Stop it or wait for it to finish before archiving."
+    return "This thread is still running. Stop it or wait for it to finish."
   }
 }
 

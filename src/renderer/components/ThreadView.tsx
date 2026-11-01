@@ -17,7 +17,7 @@ import { useWorktrees } from "../stores/worktrees.ts"
 import { useUi } from "../stores/ui.ts"
 import { ApprovalCard } from "./ApprovalCard.tsx"
 import { CloudNotice } from "./CloudNotice.tsx"
-import { Composer } from "./Composer.tsx"
+import { Composer, ComposerNotices } from "./Composer.tsx"
 import { ThreadEnvironmentSwitch, ThreadProjectSwitch } from "./ComposerControls.tsx"
 import { FindBar } from "./FindBar.tsx"
 import { FindPatternContext } from "./FindHighlight.tsx"
@@ -52,13 +52,30 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
     const history = state.byThread[thread.id]
     return agent === undefined && history?.status === "ready" && history.messages.length === 0
   })
+  const notices = (
+    <>
+      <PendingRequests thread={thread} />
+      {thread.status === "limited" && thread.usageLimit !== null ? (
+        <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />
+      ) : (
+        <AccountLimitNotice key={thread.id} thread={thread} />
+      )}
+      <CloudNotice threadId={thread.id} />
+    </>
+  )
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="@container/thread flex min-h-12 shrink-0 flex-wrap items-center gap-2 px-3 py-2 window-drag">
         <ThreadBreadcrumb thread={thread} agent={agent} />
         {actions}
       </header>
-      <div ref={regionRef} className="relative flex min-h-0 flex-1 flex-col overflow-x-clip [container:thread/size]">
+      <div
+        ref={regionRef}
+        className={cn(
+          "relative flex min-h-0 flex-1 flex-col overflow-x-clip",
+          agent === undefined ? "[container:thread/size]" : "[container-type:size]",
+        )}
+      >
         <div className="flex min-h-0 flex-1 flex-col overflow-auto">
           <ThreadRepository value={repository}>
             <ThreadFolder value={folder}>
@@ -80,18 +97,16 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
           data-centered={centered}
           data-loaded={loaded}
           className={cn(
-            "absolute inset-x-0 bottom-0 flex max-h-full clear-overview flex-col data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] data-[loaded=false]:opacity-0 data-[loaded=true]:data-[centered=false]:transition-transform data-[loaded=true]:data-[centered=false]:duration-500 data-[loaded=true]:data-[centered=false]:ease-drawer motion-reduce:transition-none",
+            "absolute inset-x-0 bottom-0 flex max-h-full clear-overview flex-col data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] data-[loaded=false]:opacity-0 data-[loaded=true]:data-[centered=false]:transition-transform data-[loaded=true]:data-[centered=false]:duration-300 data-[loaded=true]:data-[centered=false]:ease-drawer motion-reduce:transition-none",
           )}
         >
-          <Composer thread={thread} subagentCallId={agent}>
-            <PendingRequests thread={thread} />
-            {thread.status === "limited" && thread.usageLimit !== null ? (
-              <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />
-            ) : (
-              <AccountLimitNotice key={thread.id} thread={thread} />
-            )}
-            <CloudNotice threadId={thread.id} />
-          </Composer>
+          {agent === undefined ? (
+            <Composer thread={thread}>{notices}</Composer>
+          ) : (
+            <div className="px-3 pb-3">
+              <ComposerNotices>{notices}</ComposerNotices>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -212,7 +227,13 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
           <div className="h-[calc(50cqh+var(--dock-height)/2+1.5rem)] shrink-0" />
         </>
       ) : (
-        <MessageList messages={history.messages} providerLabel={label} commands={commands} listRef={listRef} />
+        <MessageList
+          messages={history.messages}
+          providerLabel={label}
+          commands={commands}
+          listRef={listRef}
+          turnChanges
+        />
       )}
     </FindPatternContext>
   )
