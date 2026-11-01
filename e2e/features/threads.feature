@@ -108,6 +108,12 @@ Feature: Threads
     Then no thread is snoozed
     And the open tab lists the thread "Later"
 
+  Scenario: A row's menu opens from a click that lands before the row registers the pointer
+    Given the project "demo" has a thread "Moved"
+    And I open the sidebar tab "Inbox"
+    When I click the menu button of the thread "Moved" with the pointer resting elsewhere
+    Then the thread menu offers "Snooze…"
+
   Scenario Outline: Enter on a time the picker can't use keeps it open, until a preset is picked with the keyboard
     Given the project "demo" has a thread "Later"
     And I open the sidebar tab "Inbox"
