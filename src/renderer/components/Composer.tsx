@@ -301,7 +301,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
           </ComposerBar>
         </ComposerRoot>
         {error !== null ? (
-          <FieldError className="mx-auto mt-1 w-full max-w-3xl px-3">{error}</FieldError>
+          <FieldError className="mx-auto w-full max-w-3xl bg-background px-3 pt-1">{error}</FieldError>
         ) : (
           commandsError !== null && <CommandsError message={commandsError} />
         )}
@@ -410,7 +410,7 @@ function SendButton({ mode, canSend, onStop }: { mode: SendGlyphMode; canSend: b
 function CommandsError({ message }: { message: string }) {
   const [expanded, setExpanded] = useState(false)
   return (
-    <FieldError className="mx-auto mt-1 flex w-full max-w-3xl items-start gap-2 px-3 text-xs">
+    <FieldError className="mx-auto flex w-full max-w-3xl items-start gap-2 bg-background px-3 pt-1 text-xs">
       <span className={cn("min-w-0 flex-1 select-text", expanded ? "whitespace-pre-wrap" : "truncate")}>{message}</span>
       <button
         type="button"

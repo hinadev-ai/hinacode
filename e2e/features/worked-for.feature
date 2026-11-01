@@ -8,14 +8,14 @@ Feature: Worked for
   Scenario: Completed activity toggles with the keyboard
     Given the thread "Timed response" has a finished response that took 485 seconds
     When I open the thread "Timed response" from the sidebar
-    Then the worked-for row shows "08:05" with its activity hidden
+    Then the worked-for row shows "8:05" with its activity hidden
     And the finished answer stays visible
     When I toggle the worked-for row with "Enter"
     Then the response progress and tool are visible
     When I inspect the timed command
     Then the timed command output is visible
     When I toggle the worked-for row with "Space"
-    Then the worked-for row shows "08:05" with its activity hidden
+    Then the worked-for row shows "8:05" with its activity hidden
     And the finished answer stays visible
 
   Scenario: Activity stays visible until the response completes
@@ -24,7 +24,7 @@ Feature: Worked for
     Then the response progress and tool are visible
     And the response has no worked-for row
     When the timed response completes
-    Then the worked-for row shows "08:05" with its activity hidden
+    Then the worked-for row shows "8:05" with its activity hidden
     And the finished answer stays visible
 
   Scenario: A long running response folds all but its latest steps
@@ -43,11 +43,11 @@ Feature: Worked for
     When I close Find
     Then the response progress and tool are visible
     When I toggle the worked-for row with "Enter"
-    Then the worked-for row shows "08:05" with its activity hidden
+    Then the worked-for row shows "8:05" with its activity hidden
     And the finished answer stays visible
 
   Scenario: Text-only answers show elapsed time without a disclosure
     Given the thread "Timed response" has a text-only response that took 485 seconds
     When I open the thread "Timed response" from the sidebar
-    Then the worked-for row shows "08:05" without a collapse control
+    Then the worked-for row shows "8:05" without a collapse control
     And the finished answer stays visible

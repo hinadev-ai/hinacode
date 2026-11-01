@@ -181,7 +181,9 @@ function SetupButton({ item, machine, onOpen, check }: CellProps & { check: Chec
       ) : (
         <>
           {toneIcon[check.tone]}
-          <span className={cn("truncate", check.tone === "off" && "text-muted-foreground")}>{check.text}</span>
+          <span className={cn("truncate", check.tone === "off" && "text-muted-foreground")} title={check.text}>
+            {check.text}
+          </span>
         </>
       )}
     </button>
@@ -234,7 +236,9 @@ export function MachineSetup() {
                     ) : (
                       <CloudIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
                     )}
-                    <span className="truncate">{machine.name}</span>
+                    <span className="truncate" title={machine.name}>
+                      {machine.name}
+                    </span>
                   </span>
                   {machine.cloud !== null && machine.cloud.status !== "connected" && (
                     <span

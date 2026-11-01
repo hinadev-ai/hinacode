@@ -4,12 +4,12 @@ import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { Suspense, useDeferredValue, useEffect, useRef, useState } from "react"
 import type { ChangesScope, Thread } from "../../shared/domain.ts"
-import { errorMessage } from "../lib/errorMessage.ts"
 import { threadChangesAtom } from "../lib/rpc.ts"
 import { useThreadRoot } from "../lib/threadRoot.ts"
 import { m } from "../paraglide/messages.js"
 import { useExplorer } from "../stores/explorer.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
+import { ErrorNotice } from "./ErrorNotice.tsx"
 import { FileDiffRow, fileStatusMark } from "./FilePatch.tsx"
 import { useUi } from "../stores/ui.ts"
 import { Button } from "./ui/button.tsx"
@@ -126,11 +126,7 @@ function ChangedFiles({ thread, scope }: { thread: Thread; scope: ChangesScope }
   const diffs = splitPatch(loaded?.patch ?? "", loaded?.files.map((file) => file.path) ?? [])
 
   if (AsyncResult.isFailure(changes)) {
-    return (
-      <p role="alert" className="text-xs text-destructive">
-        {m.diff_failed({ message: errorMessage(Cause.squash(changes.cause)) })}
-      </p>
-    )
+    return <ErrorNotice cause={Cause.squash(changes.cause)} describe={(message) => m.diff_failed({ message })} />
   }
   const result = changes.value
   if (result === null) {
