@@ -1,11 +1,9 @@
 import type { Thread, ThreadSearchHit } from "@shared/domain.ts"
 import { type ReactNode, useEffect, useState } from "react"
-import { Pressable, StyleSheet, Text, View } from "react-native"
-import Animated, { LayoutAnimationConfig, LinearTransition } from "react-native-reanimated"
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native"
 import { Reveal, Spinner } from "@/components/motion"
 import { SectionLabel, ThreadRow } from "@/components/thread-row"
 import { EmptyState, Notice, ProviderMark } from "@/components/ui"
-import { duration, listEntering, listExiting } from "@/constants/motion"
 import { radius } from "@/constants/theme"
 import { useNow } from "@/hooks/use-now"
 import { useTheme } from "@/hooks/use-theme"
@@ -90,22 +88,19 @@ export function SearchResults({
   const items = searchItems(threads, messages)
 
   return (
-    <LayoutAnimationConfig skipEntering>
-      <Animated.FlatList
-        testID="search-results"
-        style={nativeHeader ? { backgroundColor: theme.background } : undefined}
-        contentInsetAdjustmentBehavior={nativeHeader ? "automatic" : "never"}
-        data={items}
-        keyExtractor={(item) => item.key}
-        itemLayoutAnimation={LinearTransition.duration(duration.fast)}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        contentContainerStyle={styles.list}
-        ListHeaderComponent={<>{header}</>}
-        renderItem={({ item }) => <SearchRow item={item} query={query} />}
-        ListFooterComponent={<SearchFooter messages={messages} empty={items.length === 0} />}
-      />
-    </LayoutAnimationConfig>
+    <FlatList
+      testID="search-results"
+      style={nativeHeader ? { backgroundColor: theme.background } : undefined}
+      contentInsetAdjustmentBehavior={nativeHeader ? "automatic" : "never"}
+      data={items}
+      keyExtractor={(item) => item.key}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      contentContainerStyle={styles.list}
+      ListHeaderComponent={<>{header}</>}
+      renderItem={({ item }) => <SearchRow item={item} query={query} />}
+      ListFooterComponent={<SearchFooter messages={messages} empty={items.length === 0} />}
+    />
   )
 }
 
@@ -162,34 +157,32 @@ function MessageHitRow({ hit, query }: { hit: ThreadSearchHit; query: string }) 
   const title = hit.threadTitle || copy("mobile_home_untitled")
   const time = relativeTime(hit.at, now)
   return (
-    <Animated.View entering={listEntering} exiting={listExiting}>
-      <Pressable
-        testID={`message-hit-${hit.messageId}`}
-        accessibilityRole="button"
-        accessibilityLabel={[title, hit.snippet, time].join(", ")}
-        onPress={() => openThread(hit.threadId)}
-        style={({ pressed }) => [styles.hit, pressed && { backgroundColor: theme.surface }]}
-      >
-        <View style={styles.hitHeader}>
-          {provider === undefined ? <View style={styles.markSpace} /> : <ProviderMark provider={provider} size={16} />}
-          <Text numberOfLines={1} style={[styles.hitTitle, { color: theme.textResting }]}>
-            {title}
-          </Text>
-          <Text style={[styles.hitTime, { color: theme.textMuted }]}>{time}</Text>
-        </View>
-        <Text numberOfLines={2} style={[styles.snippet, { color: theme.textMuted }]}>
-          {emphasize(hit.snippet, query).map((part) =>
-            part.match ? (
-              <Text key={part.start} style={[styles.match, { color: theme.text }]}>
-                {part.text}
-              </Text>
-            ) : (
-              part.text
-            ),
-          )}
+    <Pressable
+      testID={`message-hit-${hit.messageId}`}
+      accessibilityRole="button"
+      accessibilityLabel={[title, hit.snippet, time].join(", ")}
+      onPress={() => openThread(hit.threadId)}
+      style={({ pressed }) => [styles.hit, pressed && { backgroundColor: theme.surface }]}
+    >
+      <View style={styles.hitHeader}>
+        {provider === undefined ? <View style={styles.markSpace} /> : <ProviderMark provider={provider} size={16} />}
+        <Text numberOfLines={1} style={[styles.hitTitle, { color: theme.textResting }]}>
+          {title}
         </Text>
-      </Pressable>
-    </Animated.View>
+        <Text style={[styles.hitTime, { color: theme.textMuted }]}>{time}</Text>
+      </View>
+      <Text numberOfLines={2} style={[styles.snippet, { color: theme.textMuted }]}>
+        {emphasize(hit.snippet, query).map((part) =>
+          part.match ? (
+            <Text key={part.start} style={[styles.match, { color: theme.text }]}>
+              {part.text}
+            </Text>
+          ) : (
+            part.text
+          ),
+        )}
+      </Text>
+    </Pressable>
   )
 }
 

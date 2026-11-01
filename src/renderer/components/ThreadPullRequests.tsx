@@ -808,7 +808,7 @@ function Comment({ comment }: { comment: PullRequestComment }) {
       className={cn(
         "flex flex-col gap-1.5",
         comment.authorKind === "bot" &&
-          "opacity-70 transition-opacity duration-200 ease-out focus-within:opacity-100 hover:opacity-100 motion-reduce:transition-none",
+          "opacity-70 transition-opacity duration-200 ease-out focus-within:opacity-100 hover:opacity-100",
       )}
     >
       <header className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">

@@ -1,4 +1,4 @@
-import { cubicBezier, Easing, FadeIn, FadeOut } from "react-native-reanimated"
+import { cubicBezier, Easing, FadeIn, FadeOut, LinearTransition, SlideInDown } from "react-native-reanimated"
 import type { Spring } from "@/lib/motion"
 
 /** The desktop's curves from `src/renderer/index.css`, for worklet animations. */
@@ -41,3 +41,6 @@ export const rise = { initial: { opacity: 0, y: 4 }, animate: { opacity: 1, y: 0
 /** Rows fade as they join or leave a list, and the rest slide into place with a layout transition. */
 export const listEntering = FadeIn.duration(duration.fast)
 export const listExiting = FadeOut.duration(duration.fast)
+
+export const listLayout = LinearTransition.duration(duration.base).easing(ease.inOut)
+export const sheetEntering = SlideInDown.duration(duration.sheet).easing(ease.drawer)

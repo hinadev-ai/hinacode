@@ -97,7 +97,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
           data-centered={centered}
           data-loaded={loaded}
           className={cn(
-            "absolute inset-x-0 bottom-0 flex max-h-full clear-overview flex-col data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] data-[loaded=false]:opacity-0 data-[loaded=true]:data-[centered=false]:transition-transform data-[loaded=true]:data-[centered=false]:duration-500 data-[loaded=true]:data-[centered=false]:ease-drawer motion-reduce:transition-none",
+            "absolute inset-x-0 bottom-0 flex max-h-full clear-overview flex-col data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] data-[loaded=false]:opacity-0 data-[loaded=true]:data-[centered=false]:transition-transform data-[loaded=true]:data-[centered=false]:duration-300 data-[loaded=true]:data-[centered=false]:ease-drawer motion-reduce:transition-none",
           )}
         >
           {agent === undefined ? (
