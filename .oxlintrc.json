@@ -147,7 +147,14 @@
       }
     }
   ],
-  "ignorePatterns": ["out/**", "src/renderer/paraglide/**", "e2e/.features-gen/**", "apps/mobile/**"],
+  "ignorePatterns": [
+    "out/**",
+    "src/renderer/paraglide/**",
+    "e2e/.features-gen/**",
+    "apps/mobile/**",
+    "site/public/app/**",
+    "site/app/recording.json"
+  ],
   "settings": {
     "tailwindcss": {
       "entryPoint": "src/renderer/index.css"
