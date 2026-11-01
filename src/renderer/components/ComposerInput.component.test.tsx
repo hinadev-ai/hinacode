@@ -85,6 +85,19 @@ test("continues a list on shift+enter and leaves it on an empty item", async () 
   await expect.poll(() => value).toBe("1. first\n2. second\n- dot\n")
 })
 
+test("ignores the separate char event a DevTools screencast sends after Enter", async () => {
+  await renderComposer()
+  await page.getByRole("combobox", { name: "Message" }).click()
+
+  await type("- 123")
+  const enter = { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, modifiers: shift }
+  await cdp().send("Input.dispatchKeyEvent", { type: "keyDown", ...enter })
+  await cdp().send("Input.dispatchKeyEvent", { type: "char", text: "\r", ...enter })
+  await cdp().send("Input.dispatchKeyEvent", { type: "keyUp", ...enter })
+  await type("456")
+  await expect.poll(() => value).toBe("- 123\n- 456")
+})
+
 test("hides the placeholder while an IME composes the first character", async () => {
   await renderComposer()
   await page.getByRole("combobox", { name: "Message" }).click()
