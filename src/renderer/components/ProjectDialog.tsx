@@ -44,7 +44,7 @@ interface ProjectDialogProps {
 export function ProjectDialog({ open, onOpenChange, project, environment = null, finalFocus }: ProjectDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg" finalFocus={finalFocus}>
+      <DialogContent className="max-w-lg" finalFocus={finalFocus}>
         <DialogHeader>
           <DialogTitle>{project ? m.project_edit_title() : m.project_dialog_title()}</DialogTitle>
           <DialogDescription>

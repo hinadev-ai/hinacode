@@ -426,7 +426,7 @@ function GuideJobNotice({ environment, url, currentHead, status, state }: GuideJ
   if (job?.status === "running") {
     return (
       <div className="flex flex-col gap-2">
-        <p className="text-xs text-shimmer">{m.guide_writing({ commit: shortCommit(currentHead) })}</p>
+        <p className="text-shimmer text-xs">{m.guide_writing({ commit: shortCommit(currentHead) })}</p>
         <p className="text-xs text-muted-foreground">{m.guide_writing_hint()}</p>
       </div>
     )

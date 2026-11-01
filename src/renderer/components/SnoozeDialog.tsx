@@ -51,7 +51,7 @@ export function SnoozeDialog() {
         <DialogPrimitive.Viewport className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[12dvh]">
           <DialogPrimitive.Popup
             finalFocus={returnFocus}
-            className="flex max-h-[min(24rem,76dvh)] w-full max-w-md flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/10 outline-none transition-[opacity,scale] duration-150 ease-(--ease-out) data-starting-style:scale-98 data-starting-style:opacity-0"
+            className="flex max-h-[min(24rem,76dvh)] w-full max-w-md flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/10 transition-[opacity,scale] duration-150 ease-out outline-none data-starting-style:scale-98 data-starting-style:opacity-0"
           >
             {thread && (
               <Suspense>

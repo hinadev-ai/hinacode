@@ -113,6 +113,7 @@
     "oxlint": "1.87.0",
     "oxlint-plugin-hinacode": "workspace:*",
     "oxlint-plugin-react-doctor": "0.9.17",
+    "oxlint-tailwindcss": "1.16.0",
     "pele": "1.9.0",
     "playwright": "1.64.0",
     "playwright-bdd": "9.2.1",

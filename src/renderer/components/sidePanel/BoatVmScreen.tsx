@@ -104,7 +104,7 @@ export default function BoatVmScreen({
         !bare && control === "user" && "outline-2 outline-offset-2 outline-working",
       )}
     >
-      {url !== null && <webview src={url} title={m.vm_screen()} className="absolute inset-0 flex h-full w-full" />}
+      {url !== null && <webview src={url} title={m.vm_screen()} className="absolute inset-0 flex size-full" />}
       {url !== null && control !== "user" && <div aria-hidden className="absolute inset-0" />}
       {fullscreen && (
         <div className="absolute top-3 right-3 z-10 flex items-center gap-2 rounded-[12px] bg-background/90 p-1 shadow-md">
@@ -116,7 +116,7 @@ export default function BoatVmScreen({
         </div>
       )}
       {fileDrag && (
-        <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-background/80 p-6 text-center outline-2 -outline-offset-8 outline-dashed outline-working">
+        <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-background/80 p-6 text-center outline-2 -outline-offset-8 outline-working outline-dashed">
           <UploadIcon aria-hidden className="size-6" />
           <p className="text-sm">{m.vm_drop_hint()}</p>
         </div>
@@ -137,7 +137,7 @@ export default function BoatVmScreen({
           className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-muted p-6 text-center"
         >
           <p className="text-sm">{m.vm_desktop_failed()}</p>
-          <p className="max-w-80 font-mono text-xs break-words text-muted-foreground">{failure}</p>
+          <p className="max-w-80 font-mono text-xs wrap-break-word text-muted-foreground">{failure}</p>
           <Button
             variant="outline"
             size="sm"

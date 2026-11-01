@@ -321,7 +321,7 @@ interface SecretDialogProps {
 function SecretDialog({ automation, secret, onClose }: SecretDialogProps) {
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{m.automations_secret_title({ name: automation.name })}</DialogTitle>
           <DialogDescription>{m.automations_secret_description()}</DialogDescription>

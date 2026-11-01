@@ -47,7 +47,7 @@ function SidechatTranscript({ sidechat }: { sidechat: Thread }) {
   }, [load, unload, sidechat.id])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col [container-type:size]">
+    <div className="@container-size flex min-h-0 flex-1 flex-col">
       <ThreadRepository value={repository}>
         <ThreadFolder value={folder}>
           {history?.status === "ready" && history.messages.length > 0 ? (

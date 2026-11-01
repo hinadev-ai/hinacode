@@ -130,7 +130,7 @@ export function ResizeHandle({ label, edge, targetRef, bounds, onResize, onReset
     >
       <div
         aria-hidden
-        className="mx-auto h-full w-0.5 bg-sidebar-ring opacity-0 transition-opacity duration-100 ease-(--ease-out) group-hover:opacity-100 group-focus-visible:opacity-100 group-data-dragging:opacity-100 motion-reduce:transition-none"
+        className="mx-auto h-full w-0.5 bg-sidebar-ring opacity-0 transition-opacity duration-100 ease-out group-hover:opacity-100 group-focus-visible:opacity-100 group-data-dragging:opacity-100 motion-reduce:transition-none"
       />
     </div>
   )

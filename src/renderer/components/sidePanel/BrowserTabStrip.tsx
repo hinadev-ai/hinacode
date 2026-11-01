@@ -53,7 +53,7 @@ export function BrowserTabStrip({ thread }: { thread: Thread }) {
         role="tablist"
         aria-label={m.browser_tabs()}
         onKeyDown={onKeyDown}
-        className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]"
+        className="flex min-w-0 scrollbar-none items-center gap-1 overflow-x-auto"
       >
         {tabs.map((tab) => (
           <Tab key={tab.id} threadId={threadId} tab={tab} selected={tab.id === activeId} closable={closable} />
@@ -102,7 +102,7 @@ function Tab({ threadId, tab, selected, closable }: TabProps) {
           if (event.button === 1 && closable) close()
         }}
         className={cn(
-          "pressable flex h-full min-w-0 flex-1 items-center gap-2 rounded-md pl-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+          "flex h-full min-w-0 flex-1 items-center gap-2 rounded-md pl-2.5 text-sm pressable outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
           closable ? "pr-7" : "pr-2.5",
         )}
       >

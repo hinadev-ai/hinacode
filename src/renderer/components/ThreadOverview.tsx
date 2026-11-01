@@ -99,7 +99,7 @@ export function ThreadOverview({ thread }: { thread: Thread }) {
   return (
     <aside
       aria-label={m.overview_label()}
-      className="scroll-fade-y -m-1 hidden min-h-0 w-66 beside-overview:flex flex-col gap-2 overflow-y-auto p-1 [scrollbar-width:none]"
+      className="scroll-fade-y -m-1 hidden min-h-0 w-66 scrollbar-none flex-col gap-2 overflow-y-auto p-1 beside-overview:flex"
     >
       <Card title={m.overview_environment()}>
         <EnvironmentRows thread={thread} project={project} worktree={worktree} />
@@ -128,7 +128,7 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
         {title}
         <ChevronDownIcon
           aria-hidden
-          className="size-4 transition-transform group-data-panel-open/card:rotate-0 -rotate-90 cjk:-translate-y-[0.04em] motion-reduce:transition-none"
+          className="size-4 -rotate-90 transition-transform group-data-panel-open/card:rotate-0 motion-reduce:transition-none cjk:translate-y-[-0.04em]"
         />
       </CollapsibleTrigger>
       <CollapsibleContent className="flex flex-col gap-0.5 pt-0.5">{children}</CollapsibleContent>
@@ -354,7 +354,7 @@ function Subagents({ thread }: { thread: Thread }) {
                 onClick={() => callId !== null && open(callId)}
                 className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <ProviderIcon provider={thread.provider} className="size-4" />
+                <ProviderIcon provider={subagent.provider ?? thread.provider} className="size-4" />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate text-sm" title={subagent.label}>
                     {subagent.label}

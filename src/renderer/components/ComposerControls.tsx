@@ -377,7 +377,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
           className="-mx-2 gap-1 border-b border-border px-2 pb-2"
         >
           <div className="flex items-center gap-2">
-            <TabsList className="min-w-0 justify-start overflow-x-auto bg-transparent p-0 [scrollbar-width:none] motion-safe:scroll-smooth">
+            <TabsList className="min-w-0 scrollbar-none justify-start overflow-x-auto bg-transparent p-0 motion-safe:scroll-smooth">
               {tabs.map((candidate) => (
                 <Tooltip key={candidate.value}>
                   <TooltipTrigger
@@ -403,7 +403,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
         </Tabs>
         <ul
           aria-label={m.thread_model_picker()}
-          className="scroll-fade-y flex max-h-72 min-h-0 flex-col gap-0.5 overflow-y-auto"
+          className="flex max-h-72 min-h-0 scroll-fade-y flex-col gap-0.5 overflow-y-auto"
         >
           {models.map((model, index) => {
             const isSelected = isThreadTab(tab, thread) && sameModel(model, selected)
@@ -643,7 +643,7 @@ function RefSuggestionItem({ suggestion }: { suggestion: RefSuggestion }) {
   return (
     <Autocomplete.Item
       value={suggestion}
-      className="flex h-7 cursor-default items-center gap-2 rounded-sm px-2 text-xs outline-none select-none [scroll-margin-block:0.25rem] data-highlighted:bg-accent data-highlighted:text-accent-foreground"
+      className="flex h-7 cursor-default [scroll-margin-block:0.25rem] items-center gap-2 rounded-sm px-2 text-xs outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground"
     >
       {suggestion.kind === "pullRequest" ? (
         <>
@@ -700,12 +700,12 @@ function RefInput({
           if (event.key === "Enter") event.preventDefault()
         }}
         render={
-          <Input className="field-sizing-content h-6 max-w-96 min-w-16 rounded-sm border-0 px-1 font-mono text-xs text-foreground shadow-none focus-visible:ring-2 md:text-xs dark:bg-transparent" />
+          <Input className="field-sizing-content h-6 max-w-96 min-w-16 rounded-sm border-0 px-1 font-mono text-xs text-foreground shadow-none focus-visible:ring-2 dark:bg-transparent" />
         }
       />
       <Autocomplete.Portal>
         <Autocomplete.Positioner side="top" align="start" sideOffset={6} collisionPadding={8} className="isolate z-50">
-          <Autocomplete.Popup className="max-h-[min(20rem,var(--available-height))] w-96 max-w-(--available-width) origin-(--transform-origin) overflow-y-auto overscroll-contain rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 transition-[opacity,scale] duration-150 ease-(--ease-out) data-ending-style:scale-97 data-ending-style:opacity-0 data-ending-style:duration-100 data-starting-style:scale-97 data-starting-style:opacity-0 motion-reduce:transition-none">
+          <Autocomplete.Popup className="max-h-[min(20rem,var(--available-height))] w-96 max-w-(--available-width) origin-(--transform-origin) overflow-y-auto overscroll-contain rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 transition-[opacity,scale] duration-150 ease-out data-ending-style:scale-97 data-ending-style:opacity-0 data-ending-style:duration-100 data-starting-style:scale-97 data-starting-style:opacity-0 motion-reduce:transition-none">
             <Autocomplete.List className="scroll-py-1">
               {(group: (typeof groups)[number]) => (
                 <Autocomplete.Group key={group.label} items={group.items} className="not-last:mb-1">

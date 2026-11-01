@@ -103,7 +103,7 @@ export function Sidebar({
       className={
         compact
           ? "flex min-h-0 w-full flex-1 flex-col bg-sidebar text-sidebar-foreground"
-          : "relative flex min-h-0 flex-1 flex-col border-r border-sidebar-border bg-sidebar glass:bg-sidebar/80 text-sidebar-foreground"
+          : "relative flex min-h-0 flex-1 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground glass:bg-sidebar/80"
       }
     >
       <Tabs
@@ -243,7 +243,7 @@ function PinnedThreads({ query }: { query: Query }) {
         <h2>{m.sidebar_pinned()}</h2>
         <ChevronDownIcon
           aria-hidden
-          className="size-4 -rotate-90 transition-transform group-data-panel-open/heading:rotate-0 cjk:-translate-y-[0.04em] motion-reduce:transition-none"
+          className="size-4 -rotate-90 transition-transform group-data-panel-open/heading:rotate-0 motion-reduce:transition-none cjk:translate-y-[-0.04em]"
         />
       </CollapsibleTrigger>
       <CollapsibleContent>
@@ -279,7 +279,7 @@ function SidebarTabTrigger({ value, icon: Icon, label }: { value: SidebarTab; ic
   return (
     <TabsTrigger
       value={value}
-      className="h-8 flex-none justify-start gap-2 rounded-md border-0 px-2 text-sm font-normal text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-active:font-medium data-active:text-sidebar-foreground dark:text-muted-foreground dark:data-active:text-sidebar-foreground"
+      className="h-8 flex-none justify-start gap-2 rounded-md border-0 px-2 text-sm font-normal text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring dark:text-muted-foreground data-active:font-medium data-active:text-sidebar-foreground dark:data-active:text-sidebar-foreground"
     >
       <Icon aria-hidden />
       {label}
@@ -604,7 +604,7 @@ function ProjectGroup({ group, query, nested, focusAfterDelete }: ProjectGroupPr
         >
           <CollapsibleTrigger
             data-stale={isStale(cloud)}
-            className="group/trigger flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1.5 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[stale=true]:text-muted-foreground"
+            className="group/trigger flex min-w-0 flex-1 items-center gap-1.5 rounded-md p-1.5 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[stale=true]:text-muted-foreground"
             aria-label={m.sidebar_toggle_project({ project: first.name })}
             aria-describedby={cloud && cloudMarkId}
           >
@@ -635,7 +635,7 @@ function ProjectGroup({ group, query, nested, focusAfterDelete }: ProjectGroupPr
             />
           )}
         </div>
-        <CollapsibleContent className="h-(--collapsible-panel-height) overflow-clip transition-[height] [overflow-clip-margin:2px] duration-200 ease-out data-ending-style:h-0 data-starting-style:h-0 motion-reduce:transition-none">
+        <CollapsibleContent className="h-(--collapsible-panel-height) overflow-clip transition-[height] duration-200 ease-out [overflow-clip-margin:2px] data-ending-style:h-0 data-starting-style:h-0 motion-reduce:transition-none">
           <SidebarThreadList
             group={group.key}
             threads={threads}

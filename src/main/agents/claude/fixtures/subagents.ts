@@ -9,6 +9,7 @@ interface Step {
 interface Script {
   readonly id: string
   readonly label: string
+  readonly provider?: Subagent["provider"]
   readonly prompt: string
   readonly status: Subagent["status"]
   readonly startedSecondsAgo: number
@@ -45,6 +46,7 @@ const scripts: ReadonlyArray<Script> = [
   {
     id: "mock-agent-flaky",
     label: "Reproduce the flaky macOS job",
+    provider: "codex",
     prompt: "Run the e2e suite for threads.feature five times and report which scenario fails.",
     status: "running",
     startedSecondsAgo: 128,
@@ -158,6 +160,7 @@ export function mockSubagents(now: number) {
       ...script.steps.flatMap((step, index) => stepEvents(script, step, index)),
       update({
         id: script.id,
+        ...(script.provider && { provider: script.provider }),
         label: script.label,
         callId: callIdOf(script),
         status: "running",

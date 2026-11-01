@@ -4,7 +4,7 @@ import { cn } from "cn"
 import { createContext, Fragment, type ReactElement, type ReactNode, use, type Ref, useState } from "react"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { Message, MessagePart } from "../../shared/domain.ts"
-import { fenceCode, highlight, type KnownTokens } from "../../shared/composerSyntax.ts"
+import { fenceCode, highlight, isUnorderedBullet, type KnownTokens, type Segment } from "../../shared/composerSyntax.ts"
 import { THREAD_MENTION } from "../../shared/threadMention.ts"
 import {
   assistantPresentation,
@@ -122,6 +122,8 @@ function WithThreadMentions({ text }: { text: string }) {
   return nodes
 }
 
+const isBlock = (segment: Segment | undefined) => segment?.kind === "fence" || segment?.kind === "rule"
+
 const insetCode = "bg-background font-mono text-[0.91em]"
 
 function SentText({ text, commands }: { text: string; commands: ReadonlyArray<AgentCommand> }) {
@@ -142,6 +144,19 @@ function SentText({ text, commands }: { text: string; commands: ReadonlyArray<Ag
           </code>
         </pre>
       )
+    if (segment.kind === "bullet")
+      return (
+        <span key={index} className="text-muted-foreground">
+          {isUnorderedBullet(segment.text) ? "•" : segment.text}
+        </span>
+      )
+    if (segment.kind === "rule") return <hr key={index} className="my-2 border-border" />
+    if (segment.kind === "strong")
+      return (
+        <strong key={index} className="font-semibold">
+          <Highlighted text={segment.text.slice(2, -2)} />
+        </strong>
+      )
     if (segment.kind === "code")
       return (
         <code key={index} className={cn(insetCode, "rounded-[0.25em] px-[0.3em] py-[0.1em]")}>
@@ -156,8 +171,8 @@ function SentText({ text, commands }: { text: string; commands: ReadonlyArray<Ag
         </CommandChip>
       )
     let prose = segment.text
-    if (segments[index - 1]?.kind === "fence") prose = prose.replace(/^\n/, "")
-    if (segments[index + 1]?.kind === "fence") prose = prose.replace(/\n$/, "")
+    if (isBlock(segments[index - 1])) prose = prose.replace(/^\n/, "")
+    if (isBlock(segments[index + 1])) prose = prose.replace(/\n$/, "")
     return linkify(prose, repository).map((link, linkIndex) =>
       link.type === "link" ? (
         <WebLink key={`${index}:${linkIndex}`} href={link.href}>
@@ -179,7 +194,7 @@ function MessageBody({ message }: { message: Message }) {
       <article
         aria-label={m.message_you()}
         data-message-id={message.id}
-        className="group/message clear-overview mx-auto flex w-full max-w-3xl flex-col items-end gap-1.5 px-4 py-2"
+        className="group/message mx-auto flex w-full max-w-3xl clear-overview flex-col items-end gap-1.5 px-4 py-2"
       >
         {attachments.length > 0 && (
           <div className="flex max-w-[85%] flex-wrap justify-end gap-2">
@@ -189,7 +204,7 @@ function MessageBody({ message }: { message: Message }) {
           </div>
         )}
         {text !== "" && (
-          <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm leading-(--leading-message) whitespace-pre-wrap wrap-break-word text-secondary-foreground">
+          <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm leading-(--leading-message) wrap-break-word whitespace-pre-wrap text-secondary-foreground">
             <FindPartContext value={message.parts.findIndex((part) => part.type === "text")}>
               <SentText text={text} commands={commands} />
             </FindPartContext>
@@ -223,7 +238,7 @@ function AssistantBody({ message, showElapsedTime }: { message: Message; showEla
     <article
       aria-busy={streaming}
       data-message-id={message.id}
-      className="group/message clear-overview mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-(--leading-message)"
+      className="group/message mx-auto w-full max-w-3xl clear-overview px-4 py-2 text-sm leading-(--leading-message)"
     >
       {presentation.kind === "completed" ? (
         <WorkedFor
@@ -240,7 +255,7 @@ function AssistantBody({ message, showElapsedTime }: { message: Message; showEla
         <AssistantParts message={message} parts={shownParts} writingIndex={writingIndex} />
       </PartThread>
       {streaming && (parts.length === 0 || writingIndex !== undefined) && (
-        <p className="text-xs text-shimmer">
+        <p className="text-shimmer text-xs">
           {writingIndex !== undefined ? m.message_writing() : m.message_thinking()}
         </p>
       )}

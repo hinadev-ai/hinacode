@@ -8,7 +8,7 @@ import { XCircleIcon } from "../icons/XCircleIcon.tsx"
 
 const Toaster = (props: ToasterProps) => (
   <Sonner
-    className="toaster group"
+    className="group"
     icons={{
       success: <CheckCircleIcon className="size-4" />,
       info: <InfoIcon className="size-4" />,
