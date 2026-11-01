@@ -142,8 +142,8 @@ export function ThreadOverview({ thread }: { thread: Thread }) {
 function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section aria-label={title} className="flex flex-col gap-0.5">
-      <hr aria-hidden className="mx-2 my-1.5 border-border" />
-      <div className="flex min-h-8 items-center justify-between gap-2 pr-0.5 pl-2">
+      <hr aria-hidden className="mx-2 my-1 border-border" />
+      <div className="flex min-h-7 items-center justify-between gap-2 pr-0.5 pl-2">
         <h3 className="truncate text-sm text-muted-foreground">{title}</h3>
         {action}
       </div>
@@ -153,7 +153,7 @@ function Section({ title, action, children }: { title: string; action?: ReactNod
 }
 
 const rowClassName =
-  "flex min-h-9 w-full min-w-0 items-center gap-2.5 rounded-lg px-2 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+  "flex min-h-8 w-full min-w-0 items-center gap-2.5 rounded-lg px-2 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
 
 function RowButton({
   icon: Icon,
@@ -194,7 +194,7 @@ function Environment({ thread, project, worktree }: WorkspaceProps) {
 
   return (
     <>
-      <h2 className="flex min-h-8 items-center truncate px-2 text-sm text-muted-foreground">
+      <h2 className="flex min-h-7 items-center truncate px-2 text-sm text-muted-foreground">
         {m.overview_environment()}
       </h2>
       {folder && (
@@ -605,7 +605,7 @@ function Subagents({ thread }: { thread: Thread }) {
                 type="button"
                 disabled={callId === null}
                 onClick={() => callId !== null && open(callId)}
-                className={cn(rowClassName, "min-h-10 flex-1 py-1")}
+                className={cn(rowClassName, "min-h-9 flex-1 py-0.5")}
               >
                 <ProviderIcon provider={subagent.provider ?? thread.provider} className="size-4" />
                 <span className="flex min-w-0 flex-1 flex-col">
