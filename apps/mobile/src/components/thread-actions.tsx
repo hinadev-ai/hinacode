@@ -109,7 +109,8 @@ export function ThreadActionsSheet({
                 testID={`thread-action-${action.name}`}
                 accessibilityRole="button"
                 accessibilityLabel={label}
-                accessibilityState={{ busy: state.running === action.name, disabled: busy }}
+                aria-busy={state.running === action.name}
+                aria-disabled={busy}
                 disabled={busy}
                 onPress={() => void run(action.name)}
                 style={({ pressed }) => [
