@@ -20,7 +20,7 @@ pnpm --dir site build
 
 - `src/pages` holds the six routes. Each renders `components/Home.astro` or `components/Pricing.astro` with a locale.
 - `src/components` holds the sections. Icons come from the app's own set through `src/icons.ts`.
-- `app/` builds the real HinaCode renderer for the browser, replaying a recorded session. `pnpm --dir site app` builds it into `public/app/`, and `dev` and `build` run it first. See `scripts/site-demo/README.md` to record it again.
+- `app/` builds the real HinaCode renderer for the browser, replaying a recorded session. `pnpm --dir site app` builds it into `public/app/`, and `dev` and `build` run it first.
 - `src/styles/global.css` holds the Hina Light tokens, fonts and the few animations.
 
 ## Edit copy

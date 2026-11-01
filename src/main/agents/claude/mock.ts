@@ -9,7 +9,6 @@ import {
   usageLimitSessionId,
   orgSpendLimitMessage,
 } from "./fixtures/usageLimit.ts"
-import { demoTurn, type DemoStep } from "./fixtures/demo.ts"
 import markdownFixture from "./fixtures/markdown.md?raw"
 import { mockSubagents } from "./fixtures/subagents.ts"
 import { ClaudeProvider } from "./index.ts"
@@ -25,7 +24,6 @@ export const mockScenarios = [
   "approvals",
   "long-turn",
   "subagents",
-  "demo",
 ] as const
 export type MockScenario = (typeof mockScenarios)[number]
 
@@ -267,39 +265,6 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
                 Stream.interruptWhen(Deferred.await(interrupted)),
               )
               return Stream.fromIterable(longTurn()).pipe(Stream.concat(streaming), Stream.concat(Stream.make(ended)))
-            }
-            if (scenario === "demo") {
-              const play = (step: DemoStep): Stream.Stream<AgentEvent> => {
-                if (step.kind === "event")
-                  return Stream.make(step.event).pipe(Stream.tap(() => Effect.sleep(step.pauseMs)))
-                const id = `demo-request-${++requestCount}`
-                if (step.kind === "approval")
-                  return awaitAnswer(
-                    {
-                      type: "approval_requested",
-                      request: {
-                        id,
-                        threadId: input.threadId,
-                        provider: "claude",
-                        kind: "command",
-                        title: step.title,
-                        detail: step.command,
-                        input: { command: step.command, description: step.title },
-                      },
-                    },
-                    { type: "approval_resolved", requestId: id },
-                    id,
-                  )
-                return awaitAnswer(
-                  {
-                    type: "question_requested",
-                    request: { id, threadId: input.threadId, provider: "claude", questions: [step.question] },
-                  },
-                  { type: "question_resolved", requestId: id },
-                  id,
-                )
-              }
-              return Stream.fromIterable(demoTurn(input.prompt)).pipe(Stream.flatMap(play))
             }
             if (scenario === "approvals") {
               const approval = (title: string, command: string) => {
