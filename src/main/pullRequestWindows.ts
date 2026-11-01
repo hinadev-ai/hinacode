@@ -16,13 +16,14 @@ export const pullRequestWindows = <W extends ReviewWindow>({
   return (threadId: string, raw: string) => {
     const url = parseGitHubPullRequestUrl(raw)
     if (url === undefined) return
-    const existing = windows.get(url)
+    const key = JSON.stringify([threadId, url])
+    const existing = windows.get(key)
     if (existing && !existing.isDestroyed()) {
       focus(existing)
       return
     }
     const window = open(threadId, url)
-    windows.set(url, window)
-    window.on("closed", () => windows.delete(url))
+    windows.set(key, window)
+    window.on("closed", () => windows.delete(key))
   }
 }
