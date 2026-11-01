@@ -336,7 +336,7 @@ function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }:
         />
         <Attention pullRequest={pullRequest} threadId={threadId} />
         {isOpen(pullRequest.status) && (
-          <PullRequestActions pullRequest={pullRequest} threadId={threadId} watch={watch} onDone={refresh} />
+          <PullRequestActions pullRequest={pullRequest} threadId={threadId} watch={watch} />
         )}
         <ChecksSection pullRequest={pullRequest} />
         <Section id="description" title={m.pr_description()}>
@@ -346,7 +346,7 @@ function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }:
             <Markdown text={pullRequest.body} className="prose-sm" />
           )}
         </Section>
-        <CommentsSection pullRequest={pullRequest} onPosted={refresh} />
+        <CommentsSection pullRequest={pullRequest} />
       </article>
     ))
     .onError((error) => (
@@ -536,17 +536,14 @@ function PullRequestActions({
   pullRequest,
   threadId,
   watch,
-  onDone,
 }: {
   pullRequest: PullRequestDetail
   threadId: string
   watch: PullRequestWatch | null
-  onDone: () => void
 }) {
   const environment = useOpenThreadEnvironment()
   const [method, setMethod] = useState<MergeMethod>("squash")
   const [confirming, setConfirming] = useState<PendingAction | null>(null)
-  const refreshStatus = useAtomRefresh(pullRequestStatusAtom(environment, pullRequest.url))
   const signedIn = AsyncResult.getOrElse(useAtomValue(gitHubAuthAtom(environment)), () => null)?.type === "signedIn"
   const blocker =
     pullRequest.status === "draft"
@@ -602,10 +599,6 @@ function PullRequestActions({
         pullRequest={pullRequest}
         action={confirming}
         onOpenChange={(open) => !open && setConfirming(null)}
-        onDone={() => {
-          onDone()
-          refreshStatus()
-        }}
       />
     </div>
   )
@@ -653,12 +646,10 @@ function ConfirmDialog({
   pullRequest,
   action,
   onOpenChange,
-  onDone,
 }: {
   pullRequest: PullRequestDetail
   action: PendingAction | null
   onOpenChange: (open: boolean) => void
-  onDone: () => void
 }) {
   const environment = useOpenThreadEnvironment()
   const [pending, startTransition] = useTransition()
@@ -676,7 +667,6 @@ function ConfirmDialog({
           await callPromise("github.merge", { url: pullRequest.url, method: shown.method }, { environment })
         else await callPromise("github.close", { url: pullRequest.url }, { environment })
         onOpenChange(false)
-        onDone()
       } catch (cause) {
         setError(errorMessage(cause))
       }
@@ -770,7 +760,7 @@ function ChecksSection({ pullRequest }: { pullRequest: PullRequestDetail }) {
   )
 }
 
-function CommentsSection({ pullRequest, onPosted }: { pullRequest: PullRequestDetail; onPosted: () => void }) {
+function CommentsSection({ pullRequest }: { pullRequest: PullRequestDetail }) {
   const { comments } = pullRequest
   return (
     <Section
@@ -787,7 +777,7 @@ function CommentsSection({ pullRequest, onPosted }: { pullRequest: PullRequestDe
           ))}
         </ol>
       )}
-      <CommentComposer url={pullRequest.url} onPosted={onPosted} />
+      <CommentComposer url={pullRequest.url} />
     </Section>
   )
 }
@@ -856,7 +846,7 @@ function Comment({ comment }: { comment: PullRequestComment }) {
   )
 }
 
-function CommentComposer({ url, onPosted }: { url: string; onPosted: () => void }) {
+function CommentComposer({ url }: { url: string }) {
   const environment = useOpenThreadEnvironment()
   const signedIn = AsyncResult.getOrElse(useAtomValue(gitHubAuthAtom(environment)), () => null)?.type === "signedIn"
   const [body, setBody] = useState("")
@@ -870,7 +860,6 @@ function CommentComposer({ url, onPosted }: { url: string; onPosted: () => void 
       try {
         await callPromise("github.comment", { url, body }, { environment })
         setBody("")
-        onPosted()
       } catch (cause) {
         setError(m.pr_comment_failed({ message: errorMessage(cause) }))
       }
