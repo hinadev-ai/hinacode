@@ -1,47 +1,38 @@
 import type { useNavigate } from "@tanstack/react-router"
-import { AsyncResult } from "effect/reactivity"
-import type { Thread } from "../../shared/domain.ts"
-import { useDrafts } from "../stores/drafts.ts"
+import type { Project, Thread } from "../../shared/domain.ts"
+import { emptyDraft, useDrafts } from "../stores/drafts.ts"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { environmentOf } from "./environments.ts"
 import { errorMessage } from "./errorMessage.ts"
-import { registry } from "./registry.ts"
-import { callPromise, projectsAtom } from "./rpc.ts"
+import { callPromise } from "./rpc.ts"
 
-async function pickRememberedWorkspace(thread: Thread) {
-  const project = AsyncResult.getOrElse(registry.get(projectsAtom), () => []).find(
-    (candidate) => candidate.id === thread.projectId,
-  )
-  if (project?.kind !== "folder") return
+async function pickRememberedWorkspace(thread: Thread, project: Project) {
+  if (project.kind !== "folder" || useDrafts.getState().byThreadId[thread.id]?.workspace) return
   const settings = await callPromise("settings.get", undefined, { environment: environmentOf(project) })
   if (settings.defaultWorkspaceMode !== "worktree") return
   const ref = await callPromise("projects.defaultBranch", { id: project.id })
   useDrafts.getState().setWorkspace(thread.id, { mode: "worktree", ref })
 }
 
-export async function startThread(projectId: string, navigate: ReturnType<typeof useNavigate>) {
+export async function startThread(project: Project, navigate: ReturnType<typeof useNavigate>) {
   try {
-    const thread = await callPromise("threads.create", { projectId })
-    useThreads.getState().upsert(thread)
-    await pickRememberedWorkspace(thread)
-    await navigate({ to: "/thread/$threadId", params: { threadId: thread.id } })
+    const draft = await callPromise("threads.draft", { projectId: project.id })
+    useThreads.getState().upsert(draft)
+    await pickRememberedWorkspace(draft, project)
+    await navigate({ to: "/thread/$threadId", params: { threadId: draft.id } })
     useUi.getState().requestComposerFocus()
   } catch (cause) {
-    console.error(`Could not create a thread: ${errorMessage(cause)}`)
+    console.error(`Could not open a new thread: ${errorMessage(cause)}`)
   }
 }
 
-export async function moveUnstartedThread(thread: Thread, projectId: string, navigate: ReturnType<typeof useNavigate>) {
-  const created = await callPromise("threads.create", { projectId })
-  const moved =
-    created.provider === thread.provider
-      ? created
-      : await callPromise("threads.update", { id: created.id, provider: thread.provider })
-  useThreads.getState().upsert(moved)
-  const draft = useDrafts.getState().take(thread.id)
-  useDrafts.getState().restore(moved.id, { ...draft, attachments: [] })
-  await navigate({ to: "/thread/$threadId", params: { threadId: moved.id }, replace: true })
+export async function moveDraft(thread: Thread, projectId: string, navigate: ReturnType<typeof useNavigate>) {
+  const target = await callPromise("threads.draft", { projectId })
+  useThreads.getState().upsert(target)
+  const { text, comments } = useDrafts.getState().take(thread.id)
+  useDrafts.getState().restore(target.id, { ...emptyDraft, text, comments })
+  await navigate({ to: "/thread/$threadId", params: { threadId: target.id }, replace: true })
   useUi.getState().requestComposerFocus()
-  await callPromise("threads.delete", { id: thread.id, removeWorktree: false })
+  if (thread.status !== "draft") await callPromise("threads.delete", { id: thread.id, removeWorktree: false })
 }

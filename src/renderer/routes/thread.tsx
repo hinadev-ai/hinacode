@@ -10,7 +10,7 @@ import { ThreadView } from "../components/ThreadView.tsx"
 import { Dialog, DialogPortal, DialogTitle } from "../components/ui/dialog.tsx"
 import { usePanelLayout } from "../lib/panelLayout.ts"
 import { m } from "../paraglide/messages.js"
-import { useThreads } from "../stores/threads.ts"
+import { selectOpenableThread, useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { useUnseen } from "../stores/unseen.ts"
 
@@ -32,7 +32,7 @@ function useVisit(threadId: string) {
 export function ThreadRoute() {
   const { threadId } = route.useParams()
   const { agent } = route.useSearch()
-  const thread = useThreads((state) => state.byId[threadId])
+  const thread = useThreads(selectOpenableThread(threadId))
   const togglePanel = useUi((state) => state.toggleSidePanel)
   const overlayOpen = useUi((state) => state.sidePanelOverlayOpen)
   const setOverlayOpen = useUi((state) => state.setSidePanelOverlayOpen)

@@ -1,24 +1,38 @@
 import { expect, type Locator, type Page } from "@playwright/test"
 import { type Names, Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
-import { clickRowButton, sidebar, threadMenu } from "../support/ui.ts"
+import { clickRowButton, composerText, sidebar, threadMenu } from "../support/ui.ts"
 
 When("I start a new thread in {string}", async ({ app, names }, project: string) => {
   await app.page.getByRole("button", { name: `New thread in ${names.of(project)}`, exact: true }).click()
 })
 
-const placeholderTitle = /^thread-[0-9a-f]{5}$/
+const composer = (page: Page) => page.getByRole("combobox", { name: "Message", exact: true })
+
+const openThread = async (page: Page) => {
+  const location = await page.evaluate(() => localStorage.getItem("hinacode.location"))
+  const id = location?.match(/^\/thread\/([^/?]+)/)?.[1]
+  const threads = await rpc(page, "threads.list", undefined)
+  return threads.find((thread) => thread.id === id)
+}
 
 Then("a new thread is open with the composer focused", async ({ app }) => {
-  await expect(app.page.getByRole("heading", { level: 1, name: placeholderTitle })).toBeVisible()
-  await expect(app.page.getByLabel("Message", { exact: true })).toBeFocused()
+  await expect(app.page.getByRole("heading", { level: 1, name: "New thread", exact: true })).toBeVisible()
+  await expect(composer(app.page)).toBeFocused()
 })
 
-Then("the sidebar lists the open thread", async ({ app }) => {
-  const title = await app.page.getByRole("heading", { level: 1, name: placeholderTitle }).textContent()
-  await expect(
-    app.page.getByRole("navigation", { name: "Projects and threads" }).getByRole("link", { name: title ?? "" }),
-  ).toBeVisible()
+Then("the sidebar does not list the open draft", async ({ app }) => {
+  const draft = await openThread(app.page)
+  expect(draft?.status).toBe("draft")
+  await expect(sidebar(app.page).getByRole("link", { name: draft?.title ?? "", exact: true })).toHaveCount(0)
+})
+
+When("I type {string} into the composer", async ({ app }, text: string) => {
+  await composer(app.page).pressSequentially(text)
+})
+
+Then("the composer holds {string}", async ({ app }, text: string) => {
+  await expect.poll(() => composerText(composer(app.page))).toBe(text)
 })
 
 When("I open the thread {string} from the sidebar", async ({ app, names }, title: string) => {
@@ -233,11 +247,7 @@ Then("the open tab does not list the thread {string}", async ({ app, names }, ti
   await expect(openTab(app.page).getByRole("link", { name: names.of(title) })).toBeHidden()
 })
 
-const openThreadProjectId = async (page: Page) => {
-  const title = await page.getByRole("heading", { level: 1 }).textContent()
-  const threads = await rpc(page, "threads.list", undefined)
-  return threads.find((thread) => thread.title === title)?.projectId
-}
+const openThreadProjectId = async (page: Page) => (await openThread(page))?.projectId
 
 Then("the open thread belongs to the project {string}", async ({ app, projectIds }, project: string) => {
   expect(await openThreadProjectId(app.page)).toBe(projectIds.get(project))
