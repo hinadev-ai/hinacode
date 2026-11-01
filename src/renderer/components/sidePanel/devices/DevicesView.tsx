@@ -66,11 +66,12 @@ interface DeviceStateProps {
 }
 
 function DeviceState({ threadId, device, onDetach }: DeviceStateProps) {
+  const [preparedOnScreen] = useState(device.phase === "preparing")
   switch (device.phase) {
     case "preparing":
       return <Preparing step={device.step} />
     case "ready":
-      return <DeviceReady threadId={threadId} device={device} onDetach={onDetach} />
+      return <DeviceReady threadId={threadId} device={device} onDetach={onDetach} bootedOnScreen={preparedOnScreen} />
     case "failed":
       return <Failed threadId={threadId} device={device} onDetach={onDetach} />
   }
