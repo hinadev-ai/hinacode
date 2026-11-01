@@ -398,7 +398,7 @@ function CommitDiffPane({ root, commit }: { root: string; commit: GitCommit }) {
   return (
     <section
       aria-label={m.git_graph_diff_label({ hash: commit.hash.slice(0, 7) })}
-      className="flex min-h-0 flex-1 animate-fade-in flex-col motion-reduce:animate-none"
+      className="flex min-h-0 flex-1 animate-fade-in flex-col"
     >
       <div className="flex shrink-0 items-baseline gap-2 px-3 py-2 text-xs">
         <code className="shrink-0 font-mono text-muted-foreground">{commit.hash.slice(0, 7)}</code>

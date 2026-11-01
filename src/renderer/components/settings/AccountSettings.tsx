@@ -267,7 +267,7 @@ function AccountStatus({ provider, account }: { provider: ProviderId; account: A
         title={m.settings_account_refresh({ name })}
         action={refresh}
       >
-        <RefreshIcon aria-hidden className="group-aria-busy/button:animate-spin" />
+        <RefreshIcon aria-hidden className="group-aria-busy/button:animate-spin motion-reduce:animate-none" />
       </Button>
     </>
   )
