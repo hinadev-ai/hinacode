@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Usage: launch.sh <cdp-port> <user-data-dir> [--no-build]
-# Builds the checkout, starts one isolated hinacode instance on Xvfb :99 and waits until the renderer answers rpc.
+# Builds the checkout, starts one isolated hinacode instance (on Xvfb :99 on Linux, as a real window on macOS)
+# and waits until the renderer answers rpc.
 set -euo pipefail
 
 port=${1:?cdp port, e.g. 9235}
@@ -9,17 +10,18 @@ build=${3:-build}
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(git -C "$here" rev-parse --show-toplevel)
 xvfb="$HOME/.local/xvfb/usr/bin/Xvfb"
+source "$here/proc.sh"
 
 if curl -fs "http://127.0.0.1:$port/json/version" >/dev/null; then
   echo "CDP port $port is already in use. Pick another port or run cleanup.sh for the instance that owns it." >&2
   exit 1
 fi
-if [[ -f "$data/kk-verify.sid" ]] && pgrep -s "$(cat "$data/kk-verify.sid")" >/dev/null; then
+if [[ -f "$data/kk-verify.sid" ]] && session_alive "$(cat "$data/kk-verify.sid")"; then
   echo "$data already belongs to a running instance (session $(cat "$data/kk-verify.sid"))." >&2
   exit 1
 fi
 
-if [[ ! -S /tmp/.X11-unix/X99 ]]; then
+if ! is_mac && [[ ! -S /tmp/.X11-unix/X99 ]]; then
   echo "starting Xvfb :99"
   setsid "$xvfb" :99 -screen 0 1600x1000x24 -nolisten tcp >/tmp/hinacode-xvfb.log 2>&1 < /dev/null &
   for _ in $(seq 1 50); do [[ -S /tmp/.X11-unix/X99 ]] && break; sleep 0.1; done
@@ -33,10 +35,17 @@ fi
 mkdir -p "$data"
 # A new session holds the app and every agent it spawns, so cleanup.sh can stop exactly those.
 # pnpm moves its children into new process groups, so the session id is the handle, not the pgid.
-setsid bash -c 'echo $$ >"$1/kk-verify.sid"; cd "$2"; exec env -u WAYLAND_DISPLAY \
-  GDK_SCALE=1 ELECTRON_OZONE_PLATFORM_HINT=x11 XDG_SESSION_TYPE=x11 HINACODE_USER_DATA="$1" DISPLAY=:99 pnpm exec electron \
-  --no-sandbox --disable-gpu --remote-debugging-port="$3" out/main/index.js' _ "$data" "$repo" "$port" \
-  >"$data/electron.log" 2>&1 </dev/null &
+if is_mac; then
+  electron=$(cd "$repo" && node -p 'require("electron")')
+  new_session bash -c 'echo $$ >"$1/kk-verify.sid"; cd "$2"; exec env -u ELECTRON_RUN_AS_NODE HINACODE_USER_DATA="$1" \
+    "$4" --remote-debugging-port="$3" out/main/index.js' _ "$data" "$repo" "$port" "$electron" \
+    >"$data/electron.log" 2>&1 </dev/null &
+else
+  new_session bash -c 'echo $$ >"$1/kk-verify.sid"; cd "$2"; exec env -u WAYLAND_DISPLAY -u ELECTRON_RUN_AS_NODE \
+    GDK_SCALE=1 ELECTRON_OZONE_PLATFORM_HINT=x11 XDG_SESSION_TYPE=x11 HINACODE_USER_DATA="$1" DISPLAY=:99 pnpm exec electron \
+    --no-sandbox --disable-gpu --remote-debugging-port="$3" out/main/index.js' _ "$data" "$repo" "$port" \
+    >"$data/electron.log" 2>&1 </dev/null &
+fi
 
 for _ in $(seq 1 60); do
   if node "$here/rpc.ts" "$port" settings.get >/dev/null 2>&1; then
