@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { Context, Effect, FileSystem, Layer, Option, type PlatformError, Schema } from "effect"
+import { Context, Effect, FileSystem, Layer, Option, type PlatformError, Schema, Semaphore } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { ForkPoint, ProviderId } from "../../shared/agent.ts"
 import { UsageLimit } from "../../shared/limits.ts"
@@ -64,6 +64,8 @@ export interface CreateThread {
   readonly createdBy?: string | undefined
 }
 
+export type DraftThread = Omit<CreateThread, "worktree" | "createdBy">
+
 export interface UpdateThread {
   readonly id: string
   readonly title?: string | undefined
@@ -115,6 +117,10 @@ export class Threads extends Context.Service<
       id: string,
     ) => Effect.Effect<ReadonlyArray<string>, PersistenceError | NotFoundError | CommandError>
     readonly started: (id: string) => Effect.Effect<boolean, PersistenceError>
+    readonly draft: (
+      input: DraftThread,
+    ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeTakenError>
+    readonly promoteDraft: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly prepareWorkspace: (
       id: string,
       choice: WorkspaceChoice,
@@ -178,6 +184,12 @@ const make = Effect.gen(function* () {
     Result: ThreadRow,
     execute: (id) => sql`SELECT * FROM thread WHERE id = ${id}`,
   })
+  const findDraft = SqlSchema.findOneOption({
+    Request: Schema.String,
+    Result: ThreadRow,
+    execute: (projectId) =>
+      sql`SELECT * FROM thread WHERE project_id = ${projectId} AND status = 'draft' AND created_by = 'user' ORDER BY created_at DESC LIMIT 1`,
+  })
   const findSidechat = SqlSchema.findOneOption({
     Request: Schema.String,
     Result: ThreadRow,
@@ -235,13 +247,10 @@ const make = Effect.gen(function* () {
       ),
     )
 
-  const create = ({
-    worktree: worktreeInput,
-    createdBy = "user",
-    effort = null,
-    fastMode = false,
-    ...input
-  }: CreateThread) =>
+  const insertThread = (
+    { worktree: worktreeInput, createdBy = "user", effort = null, fastMode = false, ...input }: CreateThread,
+    status: "draft" | "idle",
+  ) =>
     Effect.gen(function* () {
       const project = yield* projects.get(input.projectId)
       const worktree = worktreeInput
@@ -262,7 +271,7 @@ const make = Effect.gen(function* () {
         providerSessionId: null,
         forkedFrom: null,
         sideOf: null,
-        status: "idle",
+        status,
         usageLimit: null,
         sortIndex: next,
         pinnedAt: null,
@@ -277,6 +286,39 @@ const make = Effect.gen(function* () {
       yield* syncChatFolder(thread, true)
       return thread
     })
+
+  const create = (input: CreateThread) => insertThread(input, "idle")
+
+  const drafting = Semaphore.makeUnsafe(1)
+
+  const draft = (input: DraftThread) =>
+    Effect.gen(function* () {
+      const existing = yield* findDraft(input.projectId).pipe(Effect.mapError(persistence("threads.draft")))
+      if (Option.isNone(existing)) return yield* insertThread({ ...input, createdBy: "user" }, "draft")
+      const { defaultAccessMode, defaultAccount } = yield* settings.get
+      return yield* write(existing.value, {
+        id: existing.value.id,
+        provider: input.provider,
+        model: input.model,
+        effort: input.effort ?? null,
+        fastMode: input.fastMode ?? false,
+        accessMode: defaultAccessMode,
+        accountId: defaultAccount[input.provider],
+      })
+    }).pipe(drafting.withPermits(1))
+
+  const promoteDraft = (id: string) =>
+    Effect.gen(function* () {
+      const thread = yield* get(id)
+      if (thread.status !== "draft") return thread
+      const { next } = yield* nextSortIndex(thread.projectId).pipe(Effect.mapError(persistence("threads.promoteDraft")))
+      const now = yield* nowIso
+      yield* sql`
+        UPDATE thread SET status = 'idle', sort_index = ${next}, created_at = ${now}, updated_at = ${now}
+        WHERE id = ${thread.id}
+      `.pipe(Effect.mapError(persistence("threads.promoteDraft")))
+      return { ...thread, status: "idle" as const, sortIndex: next, createdAt: now, updatedAt: now }
+    }).pipe(drafting.withPermits(1))
 
   const forkWorktree = (source: Thread) =>
     Effect.gen(function* () {
@@ -623,6 +665,8 @@ const make = Effect.gen(function* () {
     sidechatOf: (parentId: string) => findSidechat(parentId).pipe(Effect.mapError(persistence("threads.sidechatOf"))),
     rebaseSidechat,
     started,
+    draft,
+    promoteDraft,
     prepareWorkspace,
     listFiles,
     changes,

@@ -30,7 +30,7 @@ interface ActionDialogProps {
 export function ActionDialog({ project, environment, target, open, onOpenChange }: ActionDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{target.index === null ? m.action_new_title() : m.action_edit_title()}</DialogTitle>
         </DialogHeader>
@@ -143,7 +143,7 @@ function ActionForm({ project, environment, target, onSaved }: ActionFormProps) 
           <Button
             type="button"
             variant="destructive"
-            className="sm:mr-auto"
+            className="mr-auto"
             disabled={isPending}
             action={() => submit("delete")}
           >

@@ -17,7 +17,7 @@ import { useWorktrees } from "../stores/worktrees.ts"
 import { useUi } from "../stores/ui.ts"
 import { ApprovalCard } from "./ApprovalCard.tsx"
 import { CloudNotice } from "./CloudNotice.tsx"
-import { Composer } from "./Composer.tsx"
+import { Composer, ComposerNotices } from "./Composer.tsx"
 import { ThreadEnvironmentSwitch, ThreadProjectSwitch } from "./ComposerControls.tsx"
 import { FindBar } from "./FindBar.tsx"
 import { FindPatternContext } from "./FindHighlight.tsx"
@@ -52,13 +52,30 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
     const history = state.byThread[thread.id]
     return agent === undefined && history?.status === "ready" && history.messages.length === 0
   })
+  const notices = (
+    <>
+      <PendingRequests thread={thread} />
+      {thread.status === "limited" && thread.usageLimit !== null ? (
+        <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />
+      ) : (
+        <AccountLimitNotice key={thread.id} thread={thread} />
+      )}
+      <CloudNotice threadId={thread.id} />
+    </>
+  )
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="@container/thread window-drag flex min-h-12 shrink-0 flex-wrap items-center gap-2 px-3 py-2">
+      <header className="@container/thread flex min-h-12 shrink-0 flex-wrap items-center gap-2 px-3 py-2 window-drag">
         <ThreadBreadcrumb thread={thread} agent={agent} />
         {actions}
       </header>
-      <div ref={regionRef} className="relative flex min-h-0 flex-1 flex-col overflow-x-clip [container:thread/size]">
+      <div
+        ref={regionRef}
+        className={cn(
+          "relative flex min-h-0 flex-1 flex-col overflow-x-clip",
+          agent === undefined ? "[container:thread/size]" : "[container-type:size]",
+        )}
+      >
         <div className="flex min-h-0 flex-1 flex-col overflow-auto">
           <ThreadRepository value={repository}>
             <ThreadFolder value={folder}>
@@ -68,7 +85,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
         </div>
         <div
           className={cn(
-            "absolute end-4 z-10 flex max-w-[calc(100%-2rem)] flex-col items-end gap-2 empty:hidden",
+            "absolute inset-e-4 z-10 flex max-w-[calc(100%-2rem)] flex-col items-end gap-2 empty:hidden",
             findOpen ? "top-13" : "top-3",
             centered ? "max-h-[calc(50%-var(--dock-height)/2-1.5rem)]" : "max-h-[calc(100%-var(--dock-height)-1.5rem)]",
           )}
@@ -80,18 +97,16 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
           data-centered={centered}
           data-loaded={loaded}
           className={cn(
-            "clear-overview absolute inset-x-0 bottom-0 flex max-h-full flex-col data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] data-[loaded=false]:opacity-0 data-[loaded=true]:data-[centered=false]:transition-transform data-[loaded=true]:data-[centered=false]:duration-500 data-[loaded=true]:data-[centered=false]:ease-(--ease-drawer) motion-reduce:transition-none",
+            "absolute inset-x-0 bottom-0 flex max-h-full clear-overview flex-col data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] data-[loaded=false]:opacity-0 data-[loaded=true]:data-[centered=false]:transition-transform data-[loaded=true]:data-[centered=false]:duration-500 data-[loaded=true]:data-[centered=false]:ease-drawer motion-reduce:transition-none",
           )}
         >
-          <Composer thread={thread} subagentCallId={agent}>
-            <PendingRequests thread={thread} />
-            {thread.status === "limited" && thread.usageLimit !== null ? (
-              <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />
-            ) : (
-              <AccountLimitNotice key={thread.id} thread={thread} />
-            )}
-            <CloudNotice threadId={thread.id} />
-          </Composer>
+          {agent === undefined ? (
+            <Composer thread={thread}>{notices}</Composer>
+          ) : (
+            <div className="px-3 pb-3">
+              <ComposerNotices>{notices}</ComposerNotices>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -117,7 +132,7 @@ function ThreadBreadcrumb({ thread, agent }: { thread: Thread; agent: string | u
         <li className="flex min-w-0 items-center gap-1.5">
           {project && <Separator />}
           <h1 dir="auto" className="truncate font-semibold" title={thread.title}>
-            {thread.title}
+            {thread.status === "draft" ? m.thread_draft_title() : thread.title}
           </h1>
         </li>
         {agent !== undefined && <SubagentCrumb threadId={thread.id} callId={agent} />}
@@ -172,11 +187,11 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
   }
 
   if (history === undefined || history.status === "loading") {
-    return <p className="clear-overview m-auto animate-reveal text-sm text-muted-foreground">{m.thread_loading()}</p>
+    return <p className="m-auto clear-overview animate-reveal text-sm text-muted-foreground">{m.thread_loading()}</p>
   }
   if (history.status === "error") {
     return (
-      <div role="alert" className="clear-overview m-auto flex max-w-3xl flex-col items-center gap-2 px-4">
+      <div role="alert" className="m-auto flex max-w-3xl clear-overview flex-col items-center gap-2 px-4">
         <p className="text-center text-sm wrap-break-word text-destructive">
           {m.thread_load_failed({ message: history.message })}
         </p>

@@ -101,7 +101,7 @@ export function DeviceTabStrip({ thread }: { thread: Thread }) {
           role="tablist"
           aria-label={m.devices_tabs()}
           onKeyDown={onKeyDown}
-          className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]"
+          className="flex min-w-0 scrollbar-none items-center gap-1 overflow-x-auto"
         >
           {devices.map((entry, index) => (
             <DeviceTab
@@ -172,7 +172,7 @@ function DeviceTab({ threadId, entry, selected, focusable, onSelect, onClose }: 
         onAuxClick={(event) => {
           if (event.button === 1) onClose()
         }}
-        className="pressable flex h-full min-w-0 flex-1 items-center gap-2 rounded-md pr-7 pl-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md pr-7 pl-2.5 text-sm pressable outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
       >
         {entry.phase === "preparing" ? (
           <SpinnerIcon aria-hidden className="size-4 shrink-0 animate-spin motion-reduce:animate-none" />

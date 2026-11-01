@@ -299,7 +299,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
       data-meta={hasMeta}
       onPointerEnter={(event) => scrollTitle(event.currentTarget)}
       onPointerLeave={(event) => stopTitle(event.currentTarget)}
-      className="group/thread relative rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=working]:text-muted-foreground data-[emphasis=working]:not-hover:not-focus-within:not-has-[a[data-status=active]]:opacity-60 data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
+      className="group/thread relative rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=working]:text-muted-foreground data-[emphasis=working]:not-has-[a[data-status=active]]:not-hover:not-focus-within:opacity-60 data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
     >
       {meta.project !== null && (
         <div className="flex min-w-0 items-center gap-1 pt-1.5 pr-2 pl-1.5 text-xs text-muted-foreground">
@@ -323,7 +323,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
               setMenuOpen(true)
             }}
             data-reorderable={reorderable}
-            className="[grid-area:1/1] flex items-center gap-2 rounded-md pt-1.5 pr-2 group-data-[show-project=true]/thread:pt-0.5 pb-0.5 group-data-[meta=false]/thread:pb-1.5 pl-1.5 outline-none after:absolute after:inset-0 after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
+            className="flex items-center gap-2 rounded-md pt-1.5 pr-2 pb-0.5 pl-1.5 outline-none [grid-area:1/1] group-data-[meta=false]/thread:pb-1.5 group-data-[show-project=true]/thread:pt-0.5 after:absolute after:inset-0 after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
           >
             <span
               dir="auto"
@@ -342,7 +342,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
           </Link>
           <div
             data-row-actions
-            className="relative [grid-area:1/1] mr-1 flex items-center gap-0.5 self-center justify-self-end rounded-md bg-sidebar-accent before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-linear-to-l before:from-sidebar-accent opacity-0 pointer-events-none group-hover/thread:pointer-events-auto group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 focus-within:opacity-100 group-data-[menu-open=true]/thread:opacity-100 has-[[data-popup-open]]:opacity-100"
+            className="pointer-events-none relative mr-1 flex items-center gap-0.5 self-center justify-self-end rounded-md bg-sidebar-accent opacity-0 [grid-area:1/1] group-hover/thread:pointer-events-auto group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 group-data-[menu-open=true]/thread:opacity-100 before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-linear-to-l before:from-sidebar-accent focus-within:opacity-100 has-[[data-popup-open]]:opacity-100"
           >
             {archived ? (
               <Button
@@ -364,7 +364,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
                     aria-label={m.sidebar_thread_reorder({ title: thread.title })}
                     aria-roledescription={m.sidebar_thread_reorder_role()}
                     data-reorder-handle
-                    className="sr-only absolute cursor-grab focus-visible:not-sr-only focus-visible:relative"
+                    className="cursor-grab not-focus-visible:sr-only"
                   >
                     <GripIcon aria-hidden />
                   </Button>

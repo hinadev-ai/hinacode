@@ -390,7 +390,7 @@ function OpenLink({ onOpen }: { onOpen: (url: string) => void }) {
             spellCheck={false}
             autoCapitalize="off"
             autoCorrect="off"
-            className="h-7 font-mono text-xs md:text-xs"
+            className="h-7 font-mono text-xs"
           />
           {invalid ? (
             <p id={errorId} role="alert" className="text-xs text-destructive">

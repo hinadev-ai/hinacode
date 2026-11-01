@@ -56,6 +56,7 @@ export const rowEmphasis = {
   pr_conflicting: "attention",
   pr_checksFailing: "attention",
   pr_changesRequested: "attention",
+  draft: "resting",
   idle: "resting",
   archived: "resting",
   running: "working",
