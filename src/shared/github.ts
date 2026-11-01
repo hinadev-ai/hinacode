@@ -58,3 +58,13 @@ export const PullRequestSelector = Schema.String.check(
 const GITHUB_PULL_REQUEST = /^https:\/\/github\.com\/(?=[^/]+\/[^/]+\/pull\/\d+)/i
 
 export const linearReviewUrl = (url: string) => url.replace(GITHUB_PULL_REQUEST, "https://linear.review/")
+
+const isPathSegment = (segment: string) => segment !== "" && segment !== "." && segment !== ".."
+
+export const RepositoryPath = Schema.String.check(
+  Schema.makeFilter((path) => path.split("/").every(isPathSegment) || "a path inside the repository"),
+)
+
+export const GitRefName = Schema.String.check(
+  Schema.makeFilter((ref) => (/^[\w./-]+$/.test(ref) && ref.split("/").every(isPathSegment)) || "a git ref"),
+)

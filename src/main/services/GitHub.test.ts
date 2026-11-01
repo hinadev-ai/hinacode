@@ -442,6 +442,7 @@ const graphqlPullRequest = (title: string, state = "OPEN") => ({
           nodes: [
             {
               isResolved: false,
+              diffSide: "LEFT",
               comments: {
                 nodes: [
                   {
@@ -459,6 +460,7 @@ const graphqlPullRequest = (title: string, state = "OPEN") => ({
             },
             {
               isResolved: true,
+              diffSide: "RIGHT",
               comments: {
                 nodes: [
                   {
@@ -588,7 +590,7 @@ describe("pull request reads", () => {
         comments.map(({ id, author, authorKind, location }) => ({ id, author, authorKind, location })),
       ).toStrictEqual([
         { id: "PRR_1", author: "copilot-pull-request-reviewer", authorKind: "bot", location: null },
-        { id: "PRRC_1", author: "ghost", authorKind: "human", location: { path: "src/a.ts", line: 12 } },
+        { id: "PRRC_1", author: "ghost", authorKind: "human", location: { path: "src/a.ts", line: 12, side: "LEFT" } },
         { id: "IC_2", author: "octocat", authorKind: "you", location: null },
       ])
     }).pipe(Effect.provide(gh.layer))
@@ -603,6 +605,60 @@ describe("pull request reads", () => {
       expect(gh.runs).toContainEqual(["pr", "comment", PR_URL, "--body", "--looks good"])
       yield* github.pullRequestDetail(PR_URL)
       expect(gh.runs.filter(isRead)).toHaveLength(2)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("a line comment goes to GitHub on the pull request's head and shows on the next read", () => {
+    const gh = fakeGh(() => apiReply(graphqlPullRequest("LineComment")))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* github.pullRequestDetail(PR_URL)
+      yield* github.reviewComment(PR_URL, {
+        body: "@here why?",
+        commit: "abc",
+        path: "src/a.ts",
+        side: "LEFT",
+        startLine: 3,
+        endLine: 5,
+      })
+      expect(gh.runs).toContainEqual([
+        "api",
+        "--method",
+        "POST",
+        "repos/o/r/pulls/7/comments",
+        "-f",
+        "body=@here why?",
+        "-f",
+        "commit_id=abc",
+        "-f",
+        "path=src/a.ts",
+        "-F",
+        "line=5",
+        "-f",
+        "side=LEFT",
+        "-F",
+        "start_line=3",
+        "-f",
+        "start_side=LEFT",
+      ])
+      yield* github.pullRequestDetail(PR_URL)
+      expect(gh.runs.filter(isRead)).toHaveLength(2)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("reads a file's bytes at a ref of the pull request's repository", () => {
+    const gh = fakeGh(() => ({ stdout: JSON.stringify({ encoding: "base64", content: "aGk=\nIQ==\n" }) }))
+    return Effect.gen(function* () {
+      const content = yield* (yield* GitHub).fileContent(PR_URL, "feat/x", "assets/my logo.png")
+      expect(content).toBe("aGk=IQ==")
+      expect(gh.runs).toContainEqual(["api", "repos/o/r/contents/assets/my%20logo.png?ref=feat%2Fx"])
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("a file too large for the contents API has no preview", () => {
+    const gh = fakeGh(() => ({ stdout: JSON.stringify({ encoding: "none", content: "" }) }))
+    return Effect.gen(function* () {
+      expect(yield* (yield* GitHub).fileContent(PR_URL, "abc", "big.png")).toBeNull()
     }).pipe(Effect.provide(gh.layer))
   })
 

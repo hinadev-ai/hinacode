@@ -1,12 +1,13 @@
-import { RiGitPullRequestLine } from "react-icons/ri"
+import { RiGitClosePullRequestLine, RiGitPullRequestLine } from "react-icons/ri"
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
+import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { lazy, type ReactNode, Suspense, useId, useState, useTransition } from "react"
+import { create } from "zustand"
+import { createContext, lazy, type ReactNode, Suspense, use, useId, useState, useTransition } from "react"
 import type {
   CheckRunStatus,
   ChecksStatus,
   MergeMethod,
-  PullRequest,
   PullRequestComment,
   PullRequestDetail,
   PullRequestStatus,
@@ -27,14 +28,18 @@ import {
   gitHubAuthAtom,
   pullRequestDetailAtom,
   pullRequestStatusAtom,
+  pullRequestStatusesAtom,
 } from "../lib/rpc.ts"
+import { pullRequestStacks, type StackNode } from "../lib/pullRequestStack.ts"
 import { cn } from "../lib/utils.ts"
 import { useOpenThreadEnvironment, usePullRequestHref } from "../lib/environments.ts"
+import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { loadPullRequestsAtom, usePullRequests } from "../stores/pullRequests.ts"
-import { type PullRequestSection, useUi } from "../stores/ui.ts"
+import { type PullRequestSection, type PullRequestTab, useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
+import { externalImageUrl } from "../../shared/channels.ts"
 import { Markdown } from "./Markdown.tsx"
 import {
   AlertDialog,
@@ -52,8 +57,10 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collap
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx"
 import { SkeletonList } from "./ui/skeleton.tsx"
@@ -61,10 +68,12 @@ import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
 import { ChevronDownIcon } from "./icons/ChevronDownIcon.tsx"
 import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
 import { ExternalIcon } from "./icons/ExternalIcon.tsx"
+import { FileDiffIcon } from "./icons/FileDiffIcon.tsx"
 import { EyeFillIcon } from "./icons/EyeFillIcon.tsx"
 import { EyeIcon } from "./icons/EyeIcon.tsx"
 import type { IconComponent } from "./icons/Icon.tsx"
 import { MinusCircleIcon } from "./icons/MinusCircleIcon.tsx"
+import { MoreIcon } from "./icons/MoreIcon.tsx"
 import { UnlinkIcon } from "./icons/UnlinkIcon.tsx"
 import { Textarea } from "./ui/textarea.tsx"
 
@@ -128,23 +137,57 @@ export function StatusIcon({
   )
 }
 
-type PullRequestTab = "info" | "code"
-
-export function ThreadPullRequests({ thread }: { thread: Thread }) {
-  const threadId = thread.id
-  const loadAtom = loadPullRequestsAtom(threadId)
-  const load = useAtomValue(loadAtom)
-  const reload = useAtomRefresh(loadAtom)
-  const links = usePullRequests((state) => state.byThreadId[threadId])
+const useThreadPullRequestUrls = (thread: Thread) => {
+  const links = usePullRequests((state) => state.byThreadId[thread.id])
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   const live = worktree !== undefined && worktree.status !== "removed"
   const branchPullRequest = AsyncResult.getOrElse(
     useAtomValue(branchPullRequestAtom(live ? worktree.id : null)),
     () => null,
   )
+  const urls = [...new Set(links?.map((link) => link.url))]
+  if (branchPullRequest && !urls.includes(branchPullRequest.url)) urls.push(branchPullRequest.url)
+  return { links, urls, branchPullRequest }
+}
+
+export const useLinkedPullRequestsLabel = (threadId: string) => {
+  const count = usePullRequests((state) => state.byThreadId[threadId]?.length ?? 0)
+  return count === 0 ? null : m.sidebar_pull_request_stack({ count })
+}
+
+export function PullRequestsHeader({ thread }: { thread: Thread }) {
+  const { urls } = useThreadPullRequestUrls(thread)
+  const open = useUi((state) => state.linkedPullRequestsOpen)
+  const setOpen = useUi((state) => state.setLinkedPullRequestsOpen)
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-2 ps-2">
+      <h2 className="truncate text-sm font-medium">{m.pr_links_title()}</h2>
+      {urls.length > 0 && (
+        <Button
+          variant={open ? "secondary" : "ghost"}
+          size="xs"
+          aria-pressed={open}
+          className="ms-auto"
+          action={() => setOpen(!open)}
+        >
+          {m.pr_tab_linked()}
+          <span className="text-muted-foreground tabular-nums">{urls.length}</span>
+        </Button>
+      )}
+    </div>
+  )
+}
+
+export function ThreadPullRequests({ thread }: { thread: Thread }) {
+  const threadId = thread.id
+  const loadAtom = loadPullRequestsAtom(threadId)
+  const load = useAtomValue(loadAtom)
+  const reload = useAtomRefresh(loadAtom)
+  const { links, urls, branchPullRequest } = useThreadPullRequestUrls(thread)
   const picked = useUi((state) => state.pickedPullRequests[threadId])
-  const [tab, setTab] = useState<PullRequestTab>("info")
+  const listOpen = useUi((state) => state.linkedPullRequestsOpen)
   const [unlinkError, setUnlinkError] = useState<string | null>(null)
+  const [, startTransition] = useTransition()
 
   if (!links) {
     return AsyncResult.builder(load)
@@ -162,43 +205,36 @@ export function ThreadPullRequests({ thread }: { thread: Thread }) {
   }
 
   const linked = new Set(links.map((link) => link.url))
-  const urls = [...linked]
-  if (branchPullRequest && !linked.has(branchPullRequest.url)) urls.push(branchPullRequest.url)
   const selected = picked !== undefined && urls.includes(picked) ? picked : (branchPullRequest?.url ?? urls.at(-1))
-  const watch = links.find((link) => link.url === selected)?.watch ?? null
+  const watched = new Set(links.filter((link) => link.watch !== null).map((link) => link.url))
+
+  if (selected === undefined) {
+    return (
+      <div className="flex flex-col gap-4">
+        <p className="text-xs text-muted-foreground">{m.pr_links_empty()}</p>
+        <GitHubAuthHint />
+      </div>
+    )
+  }
+
+  const select = (url: string) =>
+    startTransition(() => {
+      useUi.getState().pickPullRequest(threadId, url)
+      useUi.getState().setLinkedPullRequestsOpen(false)
+    })
 
   return (
     <div className="flex flex-col gap-4">
-      {urls.length === 0 && <p className="text-xs text-muted-foreground">{m.pr_links_empty()}</p>}
-      {urls.length > 1 && (
-        <Section
-          id="links"
-          title={m.pr_links_title()}
-          collapsedSummary={<span className="font-normal tabular-nums">{urls.length}</span>}
-        >
-          <ul className="flex flex-col gap-0.5">
-            {urls.map((url) => (
-              <PullRequestRow
-                key={url}
-                url={url}
-                selected={url === selected}
-                watching={links.some((link) => link.url === url && link.watch !== null)}
-                onSelect={() => useUi.getState().pickPullRequest(threadId, url)}
-              />
-            ))}
-          </ul>
-        </Section>
-      )}
-      {selected && (
-        <SelectedPullRequest
+      {listOpen ? (
+        <LinkedPullRequests urls={urls} selected={selected} watched={watched} onSelect={select} />
+      ) : (
+        <PullRequestDetailView
           key={selected}
           threadId={threadId}
           url={selected}
-          watch={watch}
+          watch={links.find((link) => link.url === selected)?.watch ?? null}
           linked={linked.has(selected)}
-          tab={tab}
-          onTabChange={setTab}
-          onUnlinkFailed={setUnlinkError}
+          onUnlinkFailed={(message) => startTransition(() => setUnlinkError(message))}
         />
       )}
       {unlinkError && (
@@ -211,28 +247,209 @@ export function ThreadPullRequests({ thread }: { thread: Thread }) {
   )
 }
 
-interface SelectedPullRequestProps extends PullRequestDetailViewProps {
-  readonly tab: PullRequestTab
-  readonly onTabChange: (tab: PullRequestTab) => void
+const linkedListLayouts = ["rows", "compact", "byRepository"] as const
+type LinkedListLayout = (typeof linkedListLayouts)[number]
+const LINKED_LIST_LAYOUT_KEY = "hinacode.linkedListLayout"
+
+const useLinkedListLayout = create<{
+  readonly layout: LinkedListLayout
+  readonly setLayout: (layout: LinkedListLayout) => void
+}>()((set) => ({
+  layout: linkedListLayouts.find((layout) => layout === localStorage.getItem(LINKED_LIST_LAYOUT_KEY)) ?? "rows",
+  setLayout: (layout) => {
+    localStorage.setItem(LINKED_LIST_LAYOUT_KEY, layout)
+    set({ layout })
+  },
+}))
+
+const layoutNames: Record<LinkedListLayout, string> = {
+  rows: "Rows",
+  compact: "Compact",
+  byRepository: "By repository",
 }
 
-function SelectedPullRequest({ tab, onTabChange, ...detail }: SelectedPullRequestProps) {
+function LinkedListLayoutPicker() {
+  const layout = useLinkedListLayout((state) => state.layout)
+  const setLayout = useLinkedListLayout((state) => state.setLayout)
   return (
-    <div className="flex flex-col gap-4">
-      <Tabs value={tab} onValueChange={(value: PullRequestTab) => onTabChange(value)}>
-        <TabsList variant="line" aria-label={m.pr_view_label()}>
-          <TabsTrigger value="info">{m.pr_tab_info()}</TabsTrigger>
-          <TabsTrigger value="code">{m.pr_tab_code()}</TabsTrigger>
-        </TabsList>
-      </Tabs>
-      {tab === "info" ? (
-        <PullRequestDetailView {...detail} />
-      ) : (
-        <Suspense>
-          <PullRequestCode url={detail.url} />
-        </Suspense>
-      )}
-    </div>
+    <fieldset className="flex gap-1 rounded-lg border border-dashed p-1">
+      <legend className="sr-only">Linked pull request layout</legend>
+      {linkedListLayouts.map((option) => (
+        <Button
+          key={option}
+          size="xs"
+          variant={option === layout ? "secondary" : "ghost"}
+          aria-pressed={option === layout}
+          action={() => setLayout(option)}
+        >
+          {layoutNames[option]}
+        </Button>
+      ))}
+    </fieldset>
+  )
+}
+
+interface LinkedList {
+  readonly layout: LinkedListLayout
+  readonly selected: string
+  readonly watched: ReadonlySet<string>
+  readonly order: ReadonlyMap<string, number>
+  readonly onSelect: (url: string) => void
+}
+
+const LinkedListContext = createContext<LinkedList | null>(null)
+
+const flatten = (stacks: ReadonlyArray<StackNode>): ReadonlyArray<string> =>
+  stacks.flatMap((stack) => [stack.url, ...flatten(stack.children)])
+
+const repositoryName = (url: string) => /github\.com\/([^/]+\/[^/]+)\/pull\//.exec(url)?.[1] ?? url
+
+const byRepository = (stacks: ReadonlyArray<StackNode>) => {
+  const groups = new Map<string, Array<StackNode>>()
+  for (const stack of stacks) {
+    const repository = repositoryName(stack.url)
+    groups.set(repository, [...(groups.get(repository) ?? []), stack])
+  }
+  return [...groups]
+}
+
+const ENTRANCE_STAGGER_MS = 25
+
+function LinkedPullRequests({
+  urls,
+  selected,
+  watched,
+  onSelect,
+}: {
+  urls: ReadonlyArray<string>
+  selected: string
+  watched: ReadonlySet<string>
+  onSelect: (url: string) => void
+}) {
+  const environment = useOpenThreadEnvironment()
+  const branches = useAtomValue(pullRequestStatusesAtom(environment, urls))
+  const layout = useLinkedListLayout((state) => state.layout)
+  const stacks = pullRequestStacks(urls, branches)
+  const list: LinkedList = {
+    layout,
+    selected,
+    watched,
+    order: new Map(flatten(stacks).map((url, index) => [url, index])),
+    onSelect,
+  }
+  return (
+    <LinkedListContext value={list}>
+      <div className="flex flex-col gap-3">
+        {import.meta.env.DEV && <LinkedListLayoutPicker />}
+        <div className="flex flex-col gap-4">
+          {layout === "byRepository" ? (
+            byRepository(stacks).map(([repository, group]) => (
+              <section key={repository} aria-label={repository} className="flex flex-col gap-1">
+                <h3 className="flex items-center gap-1.5 px-2 font-mono text-xs text-muted-foreground">
+                  <span className="truncate">{repository}</span>
+                  <span className="tabular-nums">{flatten(group).length}</span>
+                </h3>
+                <PullRequestTree stacks={group} />
+              </section>
+            ))
+          ) : (
+            <PullRequestTree stacks={stacks} />
+          )}
+        </div>
+      </div>
+    </LinkedListContext>
+  )
+}
+
+function PullRequestTree({ stacks, nested = false }: { stacks: ReadonlyArray<StackNode>; nested?: boolean }) {
+  return (
+    <ul className={cn("flex flex-col gap-0.5", nested && "ms-4 border-s ps-2")}>
+      {stacks.map((stack) => (
+        <LinkedPullRequestRow key={stack.url} url={stack.url}>
+          {stack.children.length > 0 && <PullRequestTree stacks={stack.children} nested />}
+        </LinkedPullRequestRow>
+      ))}
+    </ul>
+  )
+}
+
+function LinkedPullRequestRow({ url, children }: { url: string; children: ReactNode }) {
+  const list = use(LinkedListContext)
+  const environment = useOpenThreadEnvironment()
+  const status = useAtomValue(pullRequestStatusAtom(environment, url))
+  if (list === null) return null
+  const pullRequest = AsyncResult.isSuccess(status) ? status.value : undefined
+  const selected = list.selected === url
+  const showDetails = list.layout !== "compact" || selected
+
+  return (
+    <li
+      className="animate-fade-in [animation-fill-mode:backwards] motion-reduce:animate-none"
+      style={{ animationDelay: `${(list.order.get(url) ?? 0) * ENTRANCE_STAGGER_MS}ms` }}
+    >
+      <button
+        type="button"
+        aria-current={selected || undefined}
+        onClick={() => list.onSelect(url)}
+        className="relative isolate grid w-full grid-cols-[auto_minmax(0,1fr)] gap-x-2.5 rounded-lg px-2 py-1.5 text-left text-xs outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring aria-current:bg-muted"
+      >
+        <span className={cn("flex pt-0.5", showDetails && "row-span-2")}>
+          <ChangingStatusIcon status={pullRequest?.status} />
+        </span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="shrink-0 font-mono text-muted-foreground">#{pullRequest?.number ?? "…"}</span>
+          <span className="min-w-0 truncate text-[0.8125rem] font-medium" title={pullRequest?.title}>
+            {pullRequest?.title}
+          </span>
+          {pullRequest?.checks && <ChecksIndicator checks={pullRequest.checks} />}
+          {list.watched.has(url) && (
+            <span title={m.pr_watching()} className="flex shrink-0">
+              <EyeIcon aria-hidden className="size-3.5 text-muted-foreground" />
+              <span className="sr-only">{m.pr_watching()}</span>
+            </span>
+          )}
+          {pullRequest && (
+            <span className="ms-auto shrink-0 font-mono tabular-nums">
+              <span className="text-success">+{pullRequest.additions}</span>{" "}
+              <span className="text-destructive">−{pullRequest.deletions}</span>
+            </span>
+          )}
+        </span>
+        {showDetails && pullRequest && (
+          <span className="col-start-2 overflow-hidden">
+            <span className="flex min-w-0 items-center gap-2.5 pt-1 text-muted-foreground">
+              <span className="flex shrink-0 items-center gap-1.5">
+                <Avatar login={pullRequest.author} />
+                {pullRequest.author}
+              </span>
+              {list.layout !== "byRepository" && (
+                <span className="min-w-0 shrink-2 truncate font-mono" title={repositoryName(url)}>
+                  {repositoryName(url)}
+                </span>
+              )}
+              <span
+                className="min-w-0 truncate font-mono"
+                title={`${pullRequest.baseRefName} ← ${pullRequest.headRefName}`}
+              >
+                {m.pr_branches_into({ base: pullRequest.baseRefName, head: pullRequest.headRefName })}
+              </span>
+            </span>
+          </span>
+        )}
+      </button>
+      {children}
+    </li>
+  )
+}
+
+function ChangingStatusIcon({ status }: { status: PullRequestStatus | undefined }) {
+  return (
+    <span className="relative flex size-4">
+      <span key={status ?? "loading"} className="flex animate-fade-in motion-reduce:animate-none">
+        <StatusIcon status={status} colored className="size-4" />
+        <span className="sr-only">{status && pullRequestStatusLabel[status]()}</span>
+      </span>
+    </span>
   )
 }
 
@@ -254,51 +471,6 @@ function GitHubAuthHint() {
       return null
   }
 }
-
-function PullRequestRow({
-  url,
-  selected,
-  watching,
-  onSelect,
-}: {
-  url: string
-  selected: boolean
-  watching: boolean
-  onSelect: () => void
-}) {
-  const environment = useOpenThreadEnvironment()
-  const status = useAtomValue(pullRequestStatusAtom(environment, url))
-  const pullRequest = AsyncResult.isSuccess(status) ? status.value : undefined
-
-  return (
-    <li>
-      <button
-        type="button"
-        aria-current={selected || undefined}
-        onClick={onSelect}
-        className="flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring aria-current:bg-muted"
-      >
-        <StatusIcon status={pullRequest?.status} colored />
-        <span className="min-w-0 truncate font-mono text-muted-foreground" title={pullRequest ? undefined : url}>
-          {pullRequest ? `#${pullRequest.number}` : pullRequestName(url)}
-        </span>
-        <span className="min-w-0 flex-1 truncate" title={pullRequest?.title}>
-          {pullRequest ? pullRequestSummary(pullRequest) : null}
-        </span>
-        {watching && (
-          <span title={m.pr_watching()} className="flex shrink-0">
-            <EyeIcon aria-hidden className="size-3.5 text-muted-foreground" />
-            <span className="sr-only">{m.pr_watching()}</span>
-          </span>
-        )}
-        {pullRequest?.checks && <ChecksIndicator checks={pullRequest.checks} />}
-      </button>
-    </li>
-  )
-}
-
-const pullRequestSummary = ({ title, status, review }: PullRequest) =>
-  [pullRequestStatusLabel[status](), review && reviewLabel[review](), title].filter(Boolean).join(" · ")
 
 export function ChecksIndicator({ checks, className }: { checks: ChecksStatus; className?: string }) {
   const { Icon, className: color, label } = checksIndicator[checks]
@@ -322,8 +494,10 @@ function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }:
   const environment = useOpenThreadEnvironment()
   const detailAtom = pullRequestDetailAtom(environment, url)
   const detail = useAtomValue(detailAtom)
-  const refresh = useAtomRefresh(detailAtom)
-  const signedIn = AsyncResult.getOrElse(useAtomValue(gitHubAuthAtom(environment)), () => null)?.type === "signedIn"
+  const guideEnabled = useSettings(environment).pullRequestGuide.enabled
+  const chosenTab = useUi((state) => state.pullRequestTab)
+  const tab = chosenTab === "guide" && !guideEnabled ? "info" : chosenTab
+  const setTab = useUi((state) => state.setPullRequestTab)
 
   return AsyncResult.builder(detail)
     .onSuccess((pullRequest) => (
@@ -331,81 +505,288 @@ function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }:
         <PullRequestHeader
           pullRequest={pullRequest}
           threadId={threadId}
+          watch={watch}
           linked={linked}
           onUnlinkFailed={onUnlinkFailed}
         />
-        <Attention pullRequest={pullRequest} threadId={threadId} />
-        {isOpen(pullRequest.status) && (
-          <PullRequestActions pullRequest={pullRequest} threadId={threadId} watch={watch} />
+        <Tabs value={tab} changeAction={(value: PullRequestTab) => setTab(value)}>
+          <TabsList variant="line" aria-label={m.pr_view_label()} className="-ms-2 group-data-horizontal/tabs:h-7">
+            <TabsTrigger value="info" className="flex-none px-2 text-xs">
+              {m.pr_tab_info()}
+            </TabsTrigger>
+            <TabsTrigger value="files" className="flex-none px-2 text-xs">
+              {m.pr_tab_changes()}
+            </TabsTrigger>
+            {guideEnabled && (
+              <TabsTrigger value="guide" className="flex-none px-2 text-xs">
+                {m.pr_code_view_guide()}
+              </TabsTrigger>
+            )}
+          </TabsList>
+        </Tabs>
+        {tab === "info" ? (
+          <>
+            <Attention pullRequest={pullRequest} threadId={threadId} />
+            <ChecksSection pullRequest={pullRequest} />
+            <Section id="description" title={m.pr_description()}>
+              {pullRequest.body.trim() === "" ? (
+                <p className="text-xs text-muted-foreground">{m.pr_description_empty()}</p>
+              ) : (
+                <FoldedMarkdown text={pullRequest.body} className="prose-sm" foldedClassName="max-h-48" />
+              )}
+            </Section>
+            <CommentsSection pullRequest={pullRequest} />
+          </>
+        ) : (
+          <Suspense>
+            <PullRequestCode url={pullRequest.url} view={tab} />
+          </Suspense>
         )}
-        <ChecksSection pullRequest={pullRequest} />
-        <Section id="description" title={m.pr_description()}>
-          {pullRequest.body.trim() === "" ? (
-            <p className="text-xs text-muted-foreground">{m.pr_description_empty()}</p>
-          ) : (
-            <Markdown text={pullRequest.body} className="prose-sm" />
-          )}
-        </Section>
-        <CommentsSection pullRequest={pullRequest} />
       </article>
     ))
-    .onError((error) => (
-      <div className="flex flex-col gap-1.5">
-        <div className="flex items-center gap-2 text-xs">
-          <PullRequestLink threadId={threadId} url={url} className="min-w-0 flex-1" />
-          {linked && <UnlinkButton threadId={threadId} url={url} onUnlinkFailed={onUnlinkFailed} />}
-        </div>
-        {signedIn && (
-          <div role="alert" className="flex items-center gap-2">
-            <p className="min-w-0 flex-1 text-xs wrap-anywhere text-destructive">
-              {m.pr_detail_failed({ message: errorMessage(error) })}
-            </p>
-            <Button variant="outline" size="xs" onClick={refresh}>
-              {m.common_retry()}
-            </Button>
-          </div>
-        )}
-      </div>
+    .orElse(() => (
+      <PullRequestDetailFallback
+        detail={detail}
+        threadId={threadId}
+        url={url}
+        linked={linked}
+        onUnlinkFailed={onUnlinkFailed}
+      />
     ))
-    .orElse(() => <SkeletonList label={m.pr_detail_loading()} rows={3} rowClassName="h-4" />)
+}
+
+function PullRequestDetailFallback({
+  detail,
+  threadId,
+  url,
+  linked,
+  onUnlinkFailed,
+}: {
+  detail: AsyncResult.AsyncResult<PullRequestDetail, unknown>
+  threadId: string
+  url: string
+  linked: boolean
+  onUnlinkFailed: (message: string | null) => void
+}) {
+  const environment = useOpenThreadEnvironment()
+  const refresh = useAtomRefresh(pullRequestDetailAtom(environment, url))
+  const signedIn = AsyncResult.getOrElse(useAtomValue(gitHubAuthAtom(environment)), () => null)?.type === "signedIn"
+  if (!AsyncResult.isFailure(detail)) {
+    return <SkeletonList label={m.pr_detail_loading()} rows={3} rowClassName="h-4" />
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2 text-xs">
+        <PullRequestLink threadId={threadId} url={url} className="min-w-0 flex-1" />
+        {linked && <UnlinkButton threadId={threadId} url={url} onUnlinkFailed={onUnlinkFailed} />}
+      </div>
+      {signedIn && (
+        <div role="alert" className="flex items-center gap-2">
+          <p className="min-w-0 flex-1 text-xs wrap-anywhere text-destructive">
+            {m.pr_detail_failed({ message: errorMessage(Cause.squash(detail.cause)) })}
+          </p>
+          <Button variant="outline" size="xs" onClick={refresh}>
+            {m.common_retry()}
+          </Button>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function PullRequestHeader({
   pullRequest,
   threadId,
+  watch,
   linked,
   onUnlinkFailed,
 }: {
   pullRequest: PullRequestDetail
   threadId: string
+  watch: PullRequestWatch | null
   linked: boolean
   onUnlinkFailed: (message: string | null) => void
 }) {
+  const environment = useOpenThreadEnvironment()
+  const signedIn = AsyncResult.getOrElse(useAtomValue(gitHubAuthAtom(environment)), () => null)?.type === "signedIn"
+  const [method, setMethod] = useState<MergeMethod>("squash")
+  const [confirming, setConfirming] = useState<PendingAction | null>(null)
+  const [, startTransition] = useTransition()
+  const open = isOpen(pullRequest.status)
+  const blocker =
+    pullRequest.status === "draft"
+      ? m.pr_merge_blocked_draft()
+      : pullRequest.mergeable === "conflicting"
+        ? m.pr_merge_blocked_conflicts()
+        : null
+
   return (
-    <header className="flex flex-col gap-1.5">
-      <div className="flex items-start gap-2">
-        <h3 className="min-w-0 flex-1 text-sm font-medium text-pretty">{pullRequest.title}</h3>
-        {linked && <UnlinkButton threadId={threadId} url={pullRequest.url} onUnlinkFailed={onUnlinkFailed} />}
+    <header className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1">
+        <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+          <PullRequestLink threadId={threadId} url={pullRequest.url} className="shrink-0 hover:text-foreground">
+            #{pullRequest.number}
+          </PullRequestLink>
+          <span className="min-w-0 truncate font-mono" title={`${pullRequest.baseRef} ← ${pullRequest.headRef}`}>
+            {m.pr_branches_into({ base: pullRequest.baseRef, head: pullRequest.headRef })}
+          </span>
+          <span
+            className={cn(
+              "ms-auto flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 font-medium capitalize",
+              statusIndicator[pullRequest.status].className,
+            )}
+          >
+            <StatusIcon status={pullRequest.status} />
+            {pullRequestStatusLabel[pullRequest.status]()}
+          </span>
+          <MoreMenu
+            threadId={threadId}
+            url={pullRequest.url}
+            linked={linked}
+            onUnlinkFailed={onUnlinkFailed}
+            onClose={open && signedIn ? () => startTransition(() => setConfirming({ type: "close" })) : null}
+          />
+        </div>
+        <h3 className="text-base/snug font-semibold text-pretty">{pullRequest.title}</h3>
       </div>
-      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-        <span className={cn("flex items-center gap-1 font-medium", statusIndicator[pullRequest.status].className)}>
-          <StatusIcon status={pullRequest.status} />
-          {pullRequestStatusLabel[pullRequest.status]()}
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="flex min-w-0 items-center gap-2 text-xs">
+          <Avatar login={pullRequest.author} />
+          <span className="truncate font-medium">{pullRequest.author}</span>
         </span>
-        {pullRequest.review && <span>{reviewLabel[pullRequest.review]()}</span>}
-        <PullRequestLink threadId={threadId} url={pullRequest.url} className="hover:text-foreground" />
+        <span className="flex shrink-0 items-center gap-2 text-xs whitespace-nowrap tabular-nums">
+          <span
+            className="flex items-center gap-1 text-muted-foreground"
+            title={m.pr_code_summary({ count: pullRequest.changedFiles })}
+          >
+            <FileDiffIcon aria-hidden className="size-3.5" />
+            {pullRequest.changedFiles}
+            <span className="sr-only">{m.pr_code_summary({ count: pullRequest.changedFiles })}</span>
+          </span>
+          <span
+            className="font-mono"
+            title={m.pr_card_size({ additions: pullRequest.additions, deletions: pullRequest.deletions })}
+          >
+            <span className="text-success">+{pullRequest.additions}</span>{" "}
+            <span className="text-destructive">−{pullRequest.deletions}</span>
+          </span>
+        </span>
+        {open && (
+          <div className="ms-auto flex shrink-0 items-center gap-1">
+            <MergeSplitButton
+              method={method}
+              onMethodChange={(next) => startTransition(() => setMethod(next))}
+              disabled={!signedIn || blocker !== null}
+              onMerge={() => startTransition(() => setConfirming({ type: "merge", method }))}
+            />
+            <WatchButton threadId={threadId} url={pullRequest.url} watch={watch} />
+          </div>
+        )}
       </div>
-      <p
-        className="truncate font-mono text-xs text-muted-foreground"
-        title={`${pullRequest.headRef} → ${pullRequest.baseRef}`}
-      >
-        {m.pr_branches({ head: pullRequest.headRef, base: pullRequest.baseRef })}
-      </p>
+      {open && blocker && <p className="text-xs text-muted-foreground">{blocker}</p>}
+      <ConfirmDialog
+        pullRequest={pullRequest}
+        action={confirming}
+        onOpenChange={(next) => !next && setConfirming(null)}
+      />
     </header>
   )
 }
 
-function PullRequestLink({ threadId, url, className }: { threadId: string; url: string; className?: string }) {
+function Avatar({ login }: { login: string }) {
+  const [failed, setFailed] = useState(false)
+  const src = externalImageUrl(`https://github.com/${login}.png?size=48`)
+  if (failed || src === null) {
+    return (
+      <span
+        aria-hidden
+        className="flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-[0.5625rem] font-medium uppercase"
+      >
+        {login.slice(0, 1)}
+      </span>
+    )
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      className="size-4 shrink-0 rounded-full bg-muted outline-1 -outline-offset-1 outline-white/10"
+      onError={() => setFailed(true)}
+    />
+  )
+}
+
+function MoreMenu({
+  threadId,
+  url,
+  linked,
+  onUnlinkFailed,
+  onClose,
+}: {
+  threadId: string
+  url: string
+  linked: boolean
+  onUnlinkFailed: (message: string | null) => void
+  onClose: (() => void) | null
+}) {
+  const href = usePullRequestHref(threadId, url)
+  const [, startTransition] = useTransition()
+
+  const unlink = () =>
+    startTransition(async () => {
+      try {
+        await callPromise("pullRequests.unlink", { threadId, url })
+        onUnlinkFailed(null)
+      } catch (cause) {
+        onUnlinkFailed(errorMessage(cause))
+      }
+    })
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={<Button variant="ghost" size="icon-xs" aria-label={m.pr_more_actions()} title={m.pr_more_actions()} />}
+      >
+        <MoreIcon aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuItem
+          render={<a href={href} target="_blank" rel="noreferrer" aria-label={m.pr_open_on_github()} />}
+        >
+          <ExternalIcon aria-hidden />
+          {m.pr_open_on_github()}
+        </DropdownMenuItem>
+        {linked && (
+          <DropdownMenuItem onClick={unlink}>
+            <UnlinkIcon aria-hidden />
+            {m.pr_unlink()}
+          </DropdownMenuItem>
+        )}
+        {onClose && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onClick={onClose}>
+              <RiGitClosePullRequestLine aria-hidden />
+              {m.pr_close()}
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function PullRequestLink({
+  threadId,
+  url,
+  className,
+  children,
+}: {
+  threadId: string
+  url: string
+  className?: string
+  children?: ReactNode
+}) {
   const href = usePullRequestHref(threadId, url)
   return (
     <a
@@ -418,7 +799,7 @@ function PullRequestLink({ threadId, url, className }: { threadId: string; url: 
         className,
       )}
     >
-      <span className="truncate">{pullRequestName(url)}</span>
+      <span className="truncate">{children ?? pullRequestName(url)}</span>
       <ExternalIcon aria-hidden className="size-3 shrink-0" />
     </a>
   )
@@ -532,75 +913,61 @@ function AskAgentButton({ threadId, prompt, label }: { threadId: string; prompt:
 
 type PendingAction = { type: "merge"; method: MergeMethod } | { type: "close" }
 
-function PullRequestActions({
-  pullRequest,
-  threadId,
-  watch,
-}: {
-  pullRequest: PullRequestDetail
-  threadId: string
-  watch: PullRequestWatch | null
-}) {
-  const environment = useOpenThreadEnvironment()
-  const [method, setMethod] = useState<MergeMethod>("squash")
-  const [confirming, setConfirming] = useState<PendingAction | null>(null)
-  const signedIn = AsyncResult.getOrElse(useAtomValue(gitHubAuthAtom(environment)), () => null)?.type === "signedIn"
-  const blocker =
-    pullRequest.status === "draft"
-      ? m.pr_merge_blocked_draft()
-      : pullRequest.mergeable === "conflicting"
-        ? m.pr_merge_blocked_conflicts()
-        : null
+const mergeSegment =
+  "flex items-center outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:cursor-not-allowed"
 
+function MergeSplitButton({
+  method,
+  onMethodChange,
+  disabled,
+  onMerge,
+}: {
+  method: MergeMethod
+  onMethodChange: (method: MergeMethod) => void
+  disabled: boolean
+  onMerge: () => void
+}) {
+  const MergeIcon = statusIndicator.merged.Icon
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex flex-wrap items-center gap-2">
-        <div data-slot="button-group" className="flex">
-          <Button
-            size="sm"
-            className="rounded-r-none"
-            disabled={!signedIn || blocker !== null}
-            onClick={() => setConfirming({ type: "merge", method })}
-          >
-            {mergeLabel[method]()}
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  size="icon-sm"
-                  className="rounded-l-none border-l border-primary-foreground/20"
-                  aria-label={m.pr_merge_method()}
-                  title={m.pr_merge_method()}
-                  disabled={!signedIn || blocker !== null}
-                />
-              }
-            >
-              <ChevronDownIcon aria-hidden />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-44">
-              <DropdownMenuRadioGroup value={method} onValueChange={(value: MergeMethod) => setMethod(value)}>
-                {(["squash", "merge", "rebase"] as const).map((option) => (
-                  <DropdownMenuRadioItem key={option} value={option} closeOnClick>
-                    {mergeLabel[option]()}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-        <Button variant="ghost" size="sm" disabled={!signedIn} onClick={() => setConfirming({ type: "close" })}>
-          {m.pr_close()}
-        </Button>
-        <WatchButton threadId={threadId} url={pullRequest.url} watch={watch} />
-      </div>
-      {blocker && <p className="text-xs text-muted-foreground">{blocker}</p>}
-      <ConfirmDialog
-        pullRequest={pullRequest}
-        action={confirming}
-        onOpenChange={(open) => !open && setConfirming(null)}
-      />
-    </div>
+    <fieldset
+      aria-label={mergeLabel[method]()}
+      className="merge-pill m-0 flex h-7 min-w-0 rounded-full border-0 p-0 text-xs font-medium"
+    >
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onMerge}
+        className={cn(mergeSegment, "gap-1.5 rounded-s-full ps-2.5 pe-2")}
+      >
+        <MergeIcon aria-hidden className="size-3.5" />
+        {mergeLabel[method]()}
+      </button>
+      <span aria-hidden className={cn("my-1.5 w-px", disabled ? "bg-border" : "bg-primary-foreground/25")} />
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <button
+              type="button"
+              aria-label={m.pr_merge_method()}
+              title={m.pr_merge_method()}
+              disabled={disabled}
+              className={cn(mergeSegment, "rounded-e-full ps-1.5 pe-2")}
+            />
+          }
+        >
+          <ChevronDownIcon aria-hidden className="size-3.5" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuRadioGroup value={method} onValueChange={(value: MergeMethod) => onMethodChange(value)}>
+            {(["squash", "merge", "rebase"] as const).map((option) => (
+              <DropdownMenuRadioItem key={option} value={option} closeOnClick>
+                {mergeLabel[option]()}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </fieldset>
   )
 }
 
@@ -624,17 +991,17 @@ function WatchButton({ threadId, url, watch }: { threadId: string; url: string; 
     <>
       <Button
         variant={watching ? "secondary" : "ghost"}
-        size="sm"
+        size="icon-sm"
         aria-pressed={watching}
+        aria-label={watching ? m.pr_watching() : m.pr_watch()}
         title={watching ? m.pr_watch_stop({ name: pullRequestName(url) }) : m.pr_watch_hint()}
         disabled={pending}
         onClick={toggle}
       >
         {watching ? <EyeFillIcon aria-hidden /> : <EyeIcon aria-hidden />}
-        {watching ? m.pr_watching() : m.pr_watch()}
       </Button>
       {error && (
-        <p role="alert" className="basis-full text-xs text-destructive">
+        <p role="alert" className="basis-full text-end text-xs text-destructive">
           {m.pr_watch_failed({ message: error })}
         </p>
       )}
@@ -714,16 +1081,24 @@ function ConfirmDialog({
 }
 
 function ChecksSection({ pullRequest }: { pullRequest: PullRequestDetail }) {
-  const ran = pullRequest.checkRuns.filter((run) => run.status !== "skipped")
-  const skipped = pullRequest.checkRuns.length - ran.length
   if (pullRequest.checkRuns.length === 0) return null
 
   return (
     <Section
       id="checks"
       title={m.pr_checks()}
-      collapsedSummary={pullRequest.checks && <ChecksIndicator checks={pullRequest.checks} />}
+      summary={pullRequest.checks && <ChecksIndicator checks={pullRequest.checks} />}
     >
+      <CheckRunList pullRequest={pullRequest} />
+    </Section>
+  )
+}
+
+function CheckRunList({ pullRequest }: { pullRequest: PullRequestDetail }) {
+  const ran = pullRequest.checkRuns.filter((run) => run.status !== "skipped")
+  const skipped = pullRequest.checkRuns.length - ran.length
+  return (
+    <>
       <ul className="flex flex-col gap-0.5">
         {ran.map((run, index) => {
           const { Icon, className, label } = checkRunIndicator[run.status]
@@ -756,7 +1131,7 @@ function ChecksSection({ pullRequest }: { pullRequest: PullRequestDetail }) {
         })}
       </ul>
       {skipped > 0 && <p className="text-xs text-muted-foreground">{m.pr_checks_skipped_count({ count: skipped })}</p>}
-    </Section>
+    </>
   )
 }
 
@@ -766,7 +1141,7 @@ function CommentsSection({ pullRequest }: { pullRequest: PullRequestDetail }) {
     <Section
       id="comments"
       title={m.pr_comments()}
-      collapsedSummary={<span className="font-normal tabular-nums">{comments.length}</span>}
+      summary={<span className="font-normal tabular-nums">{comments.length}</span>}
     >
       {comments.length === 0 ? (
         <p className="text-xs text-muted-foreground">{m.pr_comments_empty()}</p>
@@ -782,16 +1157,46 @@ function CommentsSection({ pullRequest }: { pullRequest: PullRequestDetail }) {
   )
 }
 
-const LONG_COMMENT = 600
+const LONG_TEXT = 600
 
-function Comment({ comment }: { comment: PullRequestComment }) {
-  const now = useNow()
-  const locale = getLocale()
+function FoldedMarkdown({
+  text,
+  className,
+  foldedClassName,
+}: {
+  text: string
+  className: string
+  foldedClassName: string
+}) {
   const [expanded, setExpanded] = useState(false)
   const [, startTransition] = useTransition()
-  const folded = comment.body.length > LONG_COMMENT && !expanded
+  const long = text.length > LONG_TEXT
+  return (
+    <>
+      <Markdown
+        text={text}
+        className={cn(className, long && !expanded && cn("overflow-hidden mask-b-from-50%", foldedClassName))}
+      />
+      {long && (
+        <Button
+          variant="link"
+          size="xs"
+          className="self-start px-0"
+          aria-expanded={expanded}
+          onClick={() => startTransition(() => setExpanded(!expanded))}
+        >
+          {expanded ? m.pr_comment_less() : m.pr_comment_more()}
+        </Button>
+      )}
+    </>
+  )
+}
+
+export function Comment({ comment, showLocation = true }: { comment: PullRequestComment; showLocation?: boolean }) {
+  const now = useNow()
+  const locale = getLocale()
   const { location } = comment
-  const where = location && `${location.path}${location.line === null ? "" : `:${location.line}`}`
+  const where = showLocation && location && `${location.path}${location.line === null ? "" : `:${location.line}`}`
 
   return (
     <li
@@ -827,21 +1232,7 @@ function Comment({ comment }: { comment: PullRequestComment }) {
           {where}
         </p>
       )}
-      <Markdown
-        text={comment.body}
-        className={cn("prose-sm text-xs", folded && "max-h-32 overflow-hidden mask-b-from-50%")}
-      />
-      {comment.body.length > LONG_COMMENT && (
-        <Button
-          variant="link"
-          size="xs"
-          className="self-start px-0"
-          aria-expanded={expanded}
-          onClick={() => startTransition(() => setExpanded(!expanded))}
-        >
-          {expanded ? m.pr_comment_less() : m.pr_comment_more()}
-        </Button>
-      )}
+      <FoldedMarkdown text={comment.body} className="prose-sm text-xs" foldedClassName="max-h-32" />
     </li>
   )
 }
@@ -895,11 +1286,11 @@ function CommentComposer({ url }: { url: string }) {
 interface SectionProps {
   readonly id: PullRequestSection
   readonly title: string
-  readonly collapsedSummary?: ReactNode
+  readonly summary?: ReactNode
   readonly children: ReactNode
 }
 
-function Section({ id, title, collapsedSummary, children }: SectionProps) {
+function Section({ id, title, summary, children }: SectionProps) {
   const headingId = useId()
   const open = useUi((state) => !state.collapsedPullRequestSections.includes(id))
   const setOpen = useUi((state) => state.setPullRequestSectionOpen)
@@ -917,7 +1308,7 @@ function Section({ id, title, collapsedSummary, children }: SectionProps) {
             className="size-3.5 shrink-0 transition-transform group-data-panel-open/trigger:rotate-90 motion-reduce:transition-none"
           />
           <span id={headingId}>{title}</span>
-          {!open && collapsedSummary}
+          {summary}
         </CollapsibleTrigger>
       </h4>
       <CollapsibleContent className="flex flex-col gap-2">{children}</CollapsibleContent>

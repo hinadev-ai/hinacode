@@ -94,6 +94,7 @@ export interface HandlerError {
 export interface DesktopCalls {
   readonly show: Effect.Effect<void>
   readonly focus: Effect.Effect<void>
+  readonly openPullRequestWindow: (threadId: string, url: string) => Effect.Effect<void>
   readonly setBadgeCount: (count: number) => Effect.Effect<void>
   readonly setColorScheme: (scheme: "dark" | "light" | "system") => Effect.Effect<void>
   readonly reveal: (path: string) => Effect.Effect<void>
@@ -171,6 +172,10 @@ const handlers: Handlers = {
   "browser.close": (input) => Browser.use((browser) => browser.close(input)),
   "app.ready": (_, desktop) => desktop?.show ?? Effect.void,
   "app.focus": (_, desktop) => desktop?.focus ?? Effect.void,
+  "windows.openPullRequest": ({ threadId, url }, desktop) =>
+    desktop?.openPullRequestWindow(threadId, url) ?? Effect.void,
+  "windows.addLineComment": ({ threadId, comment }) =>
+    Events.use((events) => events.publish({ type: "thread.lineComment", threadId, comment })),
   "app.setBadgeCount": ({ count }, desktop) => desktop?.setBadgeCount(count) ?? Effect.void,
   "app.setColorScheme": (scheme, desktop) => desktop?.setColorScheme(scheme) ?? Effect.void,
   "projects.list": () => Projects.use((projects) => projects.listWithRepositories),
@@ -426,6 +431,8 @@ const handlers: Handlers = {
   "github.merge": ({ url, method }) => GitHub.use((github) => github.merge(url, method)),
   "github.close": ({ url }) => GitHub.use((github) => github.close(url)),
   "github.comment": ({ url, body }) => GitHub.use((github) => github.comment(url, body)),
+  "github.fileContent": ({ url, ref, path }) => GitHub.use((github) => github.fileContent(url, ref, path)),
+  "github.reviewComment": ({ url, comment }) => GitHub.use((github) => github.reviewComment(url, comment)),
   "linear.issues": () => Linear.use((linear) => linear.assignedIssues),
   "github.repository": ({ projectId }) =>
     Projects.use((projects) => projects.get(projectId)).pipe(

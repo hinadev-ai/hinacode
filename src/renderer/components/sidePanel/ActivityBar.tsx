@@ -1,5 +1,5 @@
 import { cn } from "cn"
-import { createElement, type KeyboardEvent, useRef } from "react"
+import { createElement, type KeyboardEvent, useId, useRef } from "react"
 import { useKeymap } from "../../keybindings/useKeybindings.ts"
 import { m } from "../../paraglide/messages.js"
 import { useUi } from "../../stores/ui.ts"
@@ -71,14 +71,16 @@ interface ActivityTabProps {
 }
 
 function ActivityTab({ view, threadId, chord, selected, focusable, panelId }: ActivityTabProps) {
+  const statusId = useId()
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          // oxlint-disable-next-line jsx-a11y/control-has-associated-label -- TooltipTrigger passes in the sr-only title as the label.
           <button
             type="button"
             role="tab"
+            aria-label={view.title()}
+            aria-describedby={`${statusId}-badge ${statusId}-dot`}
             aria-selected={selected}
             aria-controls={selected ? panelId : undefined}
             tabIndex={focusable ? 0 : -1}
@@ -91,8 +93,8 @@ function ActivityTab({ view, threadId, chord, selected, focusable, panelId }: Ac
         }
       >
         {createElement(view.icon, { "aria-hidden": true, className: "size-[1.125rem]" })}
-        <span className="sr-only">{view.title()}</span>
-        {view.badge && <ViewBadge useCount={view.badge} threadId={threadId} />}
+        {view.badge && <ViewBadge useCount={view.badge} threadId={threadId} id={`${statusId}-badge`} />}
+        {view.dot && <ViewDot useLabel={view.dot} threadId={threadId} id={`${statusId}-dot`} />}
       </TooltipTrigger>
       <TooltipContent side="left">
         {view.title()}
@@ -102,14 +104,45 @@ function ActivityTab({ view, threadId, chord, selected, focusable, panelId }: Ac
   )
 }
 
-function ViewBadge({ useCount, threadId }: { useCount: (threadId: string) => number; threadId: string }) {
+function ViewDot({
+  useLabel,
+  threadId,
+  id,
+}: {
+  useLabel: (threadId: string) => string | null
+  threadId: string
+  id: string
+}) {
+  // oxlint-disable-next-line react/rules-of-hooks -- the registry is a module constant, so each keyed dot always gets the same hook.
+  const label = useLabel(threadId)
+  if (label === null) return null
+  return (
+    <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-pr-open ring-2 ring-background">
+      <span id={id} className="sr-only">
+        {label}
+      </span>
+    </span>
+  )
+}
+
+function ViewBadge({
+  useCount,
+  threadId,
+  id,
+}: {
+  useCount: (threadId: string) => number
+  threadId: string
+  id: string
+}) {
   // oxlint-disable-next-line react/rules-of-hooks -- the registry is a module constant, so each keyed badge always gets the same hook.
   const count = useCount(threadId)
   if (count === 0) return null
   return (
     <span className="absolute -top-0.5 -right-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-working px-1 text-2xs font-medium text-background tabular-nums">
       <span aria-hidden>{count}</span>
-      <span className="sr-only">{m.agents_running_count({ count })}</span>
+      <span id={id} className="sr-only">
+        {m.agents_running_count({ count })}
+      </span>
     </span>
   )
 }

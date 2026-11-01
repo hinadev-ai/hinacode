@@ -24,6 +24,8 @@ import {
   UpdatableProviderId,
 } from "./agent.ts"
 import {
+  LineComment,
+  ReviewLineComment,
   AccessMode,
   CheckoutState,
   SetupNotice,
@@ -88,7 +90,7 @@ import {
   OpenPullRequest,
   PullRequestMatch,
 } from "./domain.ts"
-import { GitHubRepository, RepositoryVisibility } from "./github.ts"
+import { GitHubRepository, GitRefName, RepositoryPath, RepositoryVisibility } from "./github.ts"
 import { PendingLink, RelayHost } from "./relayMachines.ts"
 import { BrowserCommand, BrowserSession, BrowserSnapshot, BrowserUrl, BrowserViewport } from "./browser.ts"
 import {
@@ -162,6 +164,8 @@ export const RpcMethods = {
   ),
   "app.ready": rpc(Schema.Void, Schema.Void),
   "app.focus": rpc(Schema.Void, Schema.Void),
+  "windows.openPullRequest": rpc(Schema.Struct({ threadId: Schema.String, url: Schema.String }), Schema.Void),
+  "windows.addLineComment": rpc(Schema.Struct({ threadId: Schema.String, comment: LineComment }), Schema.Void),
   "app.setBadgeCount": rpc(Schema.Struct({ count: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)) }), Schema.Void),
   "app.setColorScheme": rpc(Schema.Literals(["dark", "light", "system"]), Schema.Void),
   "browser.open": rpc(
@@ -469,6 +473,11 @@ export const RpcMethods = {
   "github.merge": rpc(Schema.Struct({ url: Schema.String, method: MergeMethod }), Schema.Void),
   "github.close": rpc(Schema.Struct({ url: Schema.String }), Schema.Void),
   "github.comment": rpc(Schema.Struct({ url: Schema.String, body: Schema.String }), Schema.Void),
+  "github.fileContent": rpc(
+    Schema.Struct({ url: Schema.String, ref: GitRefName, path: RepositoryPath }),
+    Schema.NullOr(Schema.String),
+  ),
+  "github.reviewComment": rpc(Schema.Struct({ url: Schema.String, comment: ReviewLineComment }), Schema.Void),
   "pullRequestGuides.get": rpc(Schema.Struct({ url: Schema.String }), PullRequestGuideState),
   "pullRequestGuides.retry": rpc(Schema.Struct({ url: Schema.String }), Schema.Void),
   "linear.issues": rpc(Schema.Void, Schema.Array(LinearIssue)),
@@ -608,6 +617,8 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "device.pick": "mutation",
   "app.ready": "mutation",
   "app.focus": "mutation",
+  "windows.openPullRequest": "mutation",
+  "windows.addLineComment": "mutation",
   "app.setBadgeCount": "mutation",
   "app.setColorScheme": "mutation",
   "projects.list": "read",
@@ -723,6 +734,8 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "github.merge": "mutation",
   "github.close": "mutation",
   "github.comment": "mutation",
+  "github.fileContent": "read",
+  "github.reviewComment": "mutation",
   "pullRequestGuides.get": "read",
   "pullRequestGuides.retry": "mutation",
   "github.repository": "read",
@@ -781,6 +794,8 @@ export const mutations: ReadonlySet<string> = new Set(
 export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "app.ready",
   "app.focus",
+  "windows.openPullRequest",
+  "windows.addLineComment",
   "app.setBadgeCount",
   "app.setColorScheme",
   "dialog.pickFolder",
@@ -874,6 +889,7 @@ export const PushEvent = Schema.Union([
   }),
   Schema.Struct({ type: Schema.Literal("pullRequest.guide"), url: Schema.String, state: PullRequestGuideState }),
   Schema.Struct({ type: Schema.Literal("github.pullRequest"), url: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("thread.lineComment"), threadId: Schema.String, comment: LineComment }),
   Schema.Struct({
     type: Schema.Literal("github.rateLimit"),
     level: Schema.Literals(["low", "exhausted"]),

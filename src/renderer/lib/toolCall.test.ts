@@ -1,6 +1,6 @@
 import { describe, expect, test } from "@effect/vitest"
 import type { MessagePart } from "../../shared/domain.ts"
-import { countToolKinds, describeCommand, groupToolCalls } from "./toolCall.ts"
+import { countToolKinds, describeCommand, groupToolCalls, skillsUsed } from "./toolCall.ts"
 
 const bash = (callId: string, input: object = { command: `echo ${callId}` }): MessagePart => ({
   type: "tool_call",
@@ -76,5 +76,42 @@ describe("describeCommand", () => {
     expect(describeCommand(bash("b", { command: "ls -la" }) as Extract<MessagePart, { type: "tool_call" }>)).toBe(
       "ls -la",
     )
+  })
+})
+
+const call = (name: string, input: unknown) =>
+  ({ type: "tool_call", callId: name, name, input, status: "done" }) as Extract<MessagePart, { type: "tool_call" }>
+const codex = (command: string) => call("Bash", { command: `/usr/bin/zsh -lc '${command}'` })
+
+describe("skillsUsed", () => {
+  test("reads the skill from Claude's Skill tool and Muse's read_skill tool", () => {
+    expect(skillsUsed(call("Skill", { skill: "create-pr" }))).toStrictEqual(["create-pr"])
+    expect(skillsUsed(call("read_skill", { name: "verify-hinacode" }))).toStrictEqual(["verify-hinacode"])
+  })
+
+  test("treats a Codex command that only reads SKILL.md files as skill use", () => {
+    expect(skillsUsed(codex("cat /home/me/.agents/skills/code-review/SKILL.md"))).toStrictEqual(["code-review"])
+    expect(
+      skillsUsed(codex("sed -n 1,200p .agents/skills/verify-hinacode/SKILL.md .agents/skills/unslop/SKILL.md")),
+    ).toStrictEqual(["verify-hinacode", "unslop"])
+  })
+
+  test("leaves commands that do more than read skills, and other tools, alone", () => {
+    expect(skillsUsed(call("Bash", { command: "cat README.md .agents/skills/verify-hinacode/SKILL.md" }))).toBeNull()
+    expect(skillsUsed(call("Bash", { command: "cat .agents/skills/a/SKILL.md && pnpm test" }))).toBeNull()
+    expect(skillsUsed(call("Read", { file_path: ".agents/skills/a/SKILL.md" }))).toBeNull()
+    expect(skillsUsed(call("Skill", {}))).toBeNull()
+  })
+
+  test("counts each skill used as its own kind, even when one command reads several", () => {
+    const calls = [
+      call("Skill", { skill: "a" }),
+      codex("cat skills/b/SKILL.md skills/c/SKILL.md"),
+      call("Bash", { command: "ls" }),
+    ]
+    expect(countToolKinds(calls)).toStrictEqual([
+      { kind: "command", count: 1 },
+      { kind: "skill", count: 3 },
+    ])
   })
 })

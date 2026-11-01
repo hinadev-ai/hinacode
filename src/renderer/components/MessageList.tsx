@@ -24,6 +24,7 @@ import {
 import { useFollowLatest } from "../lib/followLatest.ts"
 import { faviconOrigins, linkify } from "../lib/linkify.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
+import { skillLabelsOf } from "../lib/toolCall.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
@@ -33,7 +34,7 @@ import { FindPartContext, Highlighted } from "./FindHighlight.tsx"
 import { HighlightedCode } from "./HighlightedCode.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { MessageActions } from "./MessageActions.tsx"
-import { MessagePartView, PartThread, ToolGroup, useFindDisclosure } from "./MessagePart.tsx"
+import { MessagePartView, PartThread, SkillLabels, ToolGroup, useFindDisclosure } from "./MessagePart.tsx"
 import { PostedQuestionsCard } from "./QuestionCard.tsx"
 import { TurnChanges } from "./TurnChanges.tsx"
 import { ArrowDownIcon } from "./icons/ArrowDownIcon.tsx"
@@ -63,6 +64,8 @@ const TranscriptContext = createContext<{
 
 const LastMessageContext = createContext<string | undefined>(undefined)
 
+const NO_COMMANDS: ReadonlyArray<AgentCommand> = []
+
 export function MessageList({
   messages,
   providerLabel,
@@ -70,7 +73,7 @@ export function MessageList({
   header,
   alignItemsAtEnd = true,
   showElapsedTime = true,
-  commands = [],
+  commands = NO_COMMANDS,
   turnChanges = false,
 }: {
   messages: ReadonlyArray<Message>
@@ -86,40 +89,43 @@ export function MessageList({
   const ownRef = useRef<LegendListRef>(null)
   const ref = listRef ?? ownRef
   const { listProps, anchored, atEnd, jumpToLatest } = useFollowLatest(ref, messages)
+  const skillLabels = skillLabelsOf(commands)
   return (
     <TranscriptContext value={transcript}>
-      <LastMessageContext value={messages.at(-1)?.id}>
-        <div className="relative flex min-h-0 flex-1 flex-col">
-          <LegendList
-            ref={ref}
-            data={messages}
-            keyExtractor={keyExtractor}
-            renderItem={renderItem}
-            estimatedItemSize={ESTIMATED_MESSAGE_SIZE}
-            getItemType={getItemType}
-            alignItemsAtEnd={alignItemsAtEnd && !anchored}
-            initialScrollAtEnd
-            maintainVisibleContentPosition
-            {...listProps}
-            ListHeaderComponent={header ?? edgeSpacer}
-            ListFooterComponent={endSpacer}
-            className="min-h-0 flex-1 scroll-fade"
-          />
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label={m.transcript_scroll_to_latest()}
-            inert={atEnd}
-            action={jumpToLatest}
-            className={cn(
-              "absolute bottom-[calc(var(--dock-height,0px)+0.75rem)] left-1/2 -translate-x-1/2 rounded-full bg-popover shadow-md dark:bg-popover dark:hover:bg-muted transition-[opacity,scale] duration-150 ease-out motion-reduce:transition-none",
-              atEnd && "pointer-events-none scale-90 opacity-0",
-            )}
-          >
-            <ArrowDownIcon aria-hidden />
-          </Button>
-        </div>
-      </LastMessageContext>
+      <SkillLabels value={skillLabels}>
+        <LastMessageContext value={messages.at(-1)?.id}>
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <LegendList
+              ref={ref}
+              data={messages}
+              keyExtractor={keyExtractor}
+              renderItem={renderItem}
+              estimatedItemSize={ESTIMATED_MESSAGE_SIZE}
+              getItemType={getItemType}
+              alignItemsAtEnd={alignItemsAtEnd && !anchored}
+              initialScrollAtEnd
+              maintainVisibleContentPosition
+              {...listProps}
+              ListHeaderComponent={header ?? edgeSpacer}
+              ListFooterComponent={endSpacer}
+              className="min-h-0 flex-1 scroll-fade"
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label={m.transcript_scroll_to_latest()}
+              inert={atEnd}
+              action={jumpToLatest}
+              className={cn(
+                "absolute bottom-[calc(var(--dock-height,0px)+0.75rem)] left-1/2 -translate-x-1/2 rounded-full bg-popover shadow-md dark:bg-popover dark:hover:bg-muted transition-[opacity,scale] duration-150 ease-out motion-reduce:transition-none",
+                atEnd && "pointer-events-none scale-90 opacity-0",
+              )}
+            >
+              <ArrowDownIcon aria-hidden />
+            </Button>
+          </div>
+        </LastMessageContext>
+      </SkillLabels>
     </TranscriptContext>
   )
 }

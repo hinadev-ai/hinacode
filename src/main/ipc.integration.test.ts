@@ -142,6 +142,7 @@ const claudeWakes = Effect.runSync(Queue.unbounded<Wake>())
 const turnHomes: Array<AccountHome | null> = []
 const turnResumes: Array<{ readonly resumeSessionId: string | null; readonly forkAt: string | null }> = []
 const turnPrompts: Array<string> = []
+const openedWindows: Array<{ readonly threadId: string; readonly url: string }> = []
 
 const copiedSessions: Array<{
   readonly sessionId: string
@@ -340,7 +341,7 @@ beforeAll(async () => {
     "init",
   ])
   runtime = ManagedRuntime.make(makeLayer(join(dir, "hinacode.sqlite")))
-  registerIpc(runtime, appUrl)
+  registerIpc(runtime, appUrl, (threadId, url) => openedWindows.push({ threadId, url }))
 })
 
 afterAll(async () => {
@@ -436,6 +437,15 @@ describe("rpc contract", () => {
     expect(["unknown", "granted", "denied", "notDetermined"]).toContain(
       result(await invoke("notifications.permission", undefined)),
     )
+  })
+
+  test("opens a pull request in its own window from the app frame only", async () => {
+    const payload = { threadId: "t1", url: "https://github.com/o/r/pull/7" }
+    result(await invoke("windows.openPullRequest", payload))
+    expect(
+      failure(await invoke("windows.openPullRequest", payload, { url: "https://evil.example/", parent: null })).tag,
+    ).toBe("UntrustedSender")
+    expect(openedWindows).toStrictEqual([payload])
   })
 
   test("answers an unknown method and a payload outside the contract with a schema error", async () => {

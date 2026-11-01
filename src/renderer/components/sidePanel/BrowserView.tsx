@@ -40,11 +40,6 @@ export function BrowserView({ thread }: { thread: Thread }) {
   const remote = useThreadEnvironment(thread.id) !== null
   const Page = remote ? RemoteBrowserPage : BrowserPage
 
-  useEffect(() => {
-    useUi.getState().setSidePanelWide(true)
-    return () => useUi.getState().setSidePanelWide(false)
-  }, [])
-
   return (
     <div className="relative min-h-0 flex-1">
       {tabs.map((tab) => (
