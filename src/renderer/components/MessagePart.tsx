@@ -8,7 +8,17 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
 import { statusOfCall, useOpenSubagent } from "../lib/subagents.ts"
 import { callPromise } from "../lib/rpc.ts"
-import { type ActivityPart, countToolKinds, describeCommand, describeToolCall, type ToolKind } from "../lib/toolCall.ts"
+import {
+  type ActivityPart,
+  conjunctionFormat,
+  countToolKinds,
+  describeCommand,
+  describeToolCall,
+  type SkillLabels as SkillLabelMap,
+  skillsUsed,
+  skillUseText,
+  type ToolKind,
+} from "../lib/toolCall.ts"
 import { decodeUnicodeEscapes } from "../lib/unicodeEscapes.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
@@ -34,6 +44,7 @@ import { GlobeIcon } from "./icons/GlobeIcon.tsx"
 import type { IconComponent } from "./icons/Icon.tsx"
 import { PencilIcon } from "./icons/PencilIcon.tsx"
 import { SearchIcon } from "./icons/SearchIcon.tsx"
+import { SkillIcon } from "./icons/SkillIcon.tsx"
 import { SpinnerIcon } from "./icons/SpinnerIcon.tsx"
 import { TerminalIcon } from "./icons/TerminalIcon.tsx"
 import { ToolsIcon } from "./icons/ToolsIcon.tsx"
@@ -135,6 +146,8 @@ const statusLabel = {
 export const SubagentLinks = createContext(true)
 
 export const PartThread = createContext("")
+
+export const SkillLabels = createContext<SkillLabelMap>(new Map())
 
 function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call" }> }) {
   const linksSubagents = use(SubagentLinks)
@@ -241,12 +254,13 @@ const toolKindLabel = {
   read: m.tool_kind_read,
   edit: m.tool_kind_edit,
   search: m.tool_kind_search,
+  skill: m.tool_kind_skill,
   other: m.tool_kind_other,
 } satisfies Record<ToolKind, (inputs: { count: number }) => string>
 
 function summarizeTools(calls: ReadonlyArray<ToolCall>): string {
   const locale = getLocale()
-  const summary = new Intl.ListFormat(locale, { type: "conjunction" }).format(
+  const summary = conjunctionFormat(locale).format(
     countToolKinds(calls).map(({ kind, count }) => toolKindLabel[kind]({ count })),
   )
   return summary.charAt(0).toLocaleUpperCase(locale) + summary.slice(1)
@@ -330,12 +344,15 @@ export function ToolGroup({
 function ToolRow({ call, reveal }: { call: ToolCall; reveal: FindRevealRequest | null }) {
   const truncate = reveal === null ? "truncate" : "wrap-anywhere"
   const { summary } = describeToolCall(call)
-  const Icon = toolIcons[call.name] ?? ToolsIcon
+  const skills = skillsUsed(call)
+  const Icon = skills === null ? (toolIcons[call.name] ?? ToolsIcon) : SkillIcon
   return (
     <Collapsible>
       <CollapsibleTrigger className={disclosureTrigger}>
         <Icon aria-hidden className="size-4 shrink-0" />
-        {call.name === "Bash" ? (
+        {skills !== null ? (
+          <SkillLabel skills={skills} truncate={truncate} />
+        ) : call.name === "Bash" ? (
           <CommandLabel call={call} truncate={truncate} />
         ) : (
           <ToolLabel call={call} truncate={truncate} />
@@ -352,6 +369,15 @@ function ToolRow({ call, reveal }: { call: ToolCall; reveal: FindRevealRequest |
         <ToolCallDetails call={call} summary={summary} inGroup />
       </CollapsibleContent>
     </Collapsible>
+  )
+}
+
+function SkillLabel({ skills, truncate }: { skills: ReadonlyArray<string>; truncate: string }) {
+  const text = skillUseText(skills, use(SkillLabels))
+  return (
+    <span className={cn("min-w-0", truncate)} title={text}>
+      <Highlighted text={text} />
+    </span>
   )
 }
 

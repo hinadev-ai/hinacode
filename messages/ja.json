@@ -2163,5 +2163,7 @@
   "turn_changes_undo": "元に戻す",
   "turn_changes_view": "変更を表示",
   "turn_changes_undone": "{count} ファイルの変更を元に戻しました",
-  "transcript_scroll_to_latest": "最新のメッセージへスクロール"
+  "transcript_scroll_to_latest": "最新のメッセージへスクロール",
+  "tool_kind_skill": "{count} 件のスキルを使用",
+  "tool_skill_used": "スキル {skills} を使用"
 }

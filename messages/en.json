@@ -2236,5 +2236,25 @@
       }
     }
   ],
-  "transcript_scroll_to_latest": "Scroll to latest message"
+  "transcript_scroll_to_latest": "Scroll to latest message",
+  "tool_kind_skill": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "used {count} skill",
+        "countPlural=other": "used {count} skills"
+      }
+    }
+  ],
+  "tool_skill_used": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Use skill {skills}",
+        "countPlural=other": "Use skills {skills}"
+      }
+    }
+  ]
 }
