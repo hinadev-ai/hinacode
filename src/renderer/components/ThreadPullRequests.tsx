@@ -18,6 +18,7 @@ import { fixChecksPrompt, resolveConflictsPrompt } from "../../shared/pullReques
 import { checksIndicator as sharedChecksIndicator, isOpen, pullRequestIndicator } from "../../shared/threadStatus.ts"
 import { toIcon } from "../lib/indicators.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
+import { pullRequestName } from "../lib/pullRequestRefs.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
 import { useNow } from "../lib/useNow.ts"
 import {
@@ -70,11 +71,6 @@ import { Textarea } from "./ui/textarea.tsx"
 const PullRequestCode = lazy(() =>
   import("./PullRequestCode.tsx").then((module) => ({ default: module.PullRequestCode })),
 )
-
-const shortName = (url: string) => {
-  const match = /github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)/.exec(url)
-  return match ? `${match[1]}#${match[2]}` : url
-}
 
 export const pullRequestStatusLabel = {
   draft: m.pr_state_draft,
@@ -284,7 +280,7 @@ function PullRequestRow({
       >
         <StatusIcon status={pullRequest?.status} colored />
         <span className="min-w-0 truncate font-mono text-muted-foreground" title={pullRequest ? undefined : url}>
-          #{pullRequest?.number ?? shortName(url)}
+          {pullRequest ? `#${pullRequest.number}` : pullRequestName(url)}
         </span>
         <span className="min-w-0 flex-1 truncate" title={pullRequest?.title}>
           {pullRequest ? pullRequestSummary(pullRequest) : null}
@@ -340,7 +336,7 @@ function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }:
         />
         <Attention pullRequest={pullRequest} threadId={threadId} />
         {isOpen(pullRequest.status) && (
-          <PullRequestActions pullRequest={pullRequest} threadId={threadId} watch={watch} onDone={refresh} />
+          <PullRequestActions pullRequest={pullRequest} threadId={threadId} watch={watch} />
         )}
         <ChecksSection pullRequest={pullRequest} />
         <Section id="description" title={m.pr_description()}>
@@ -350,7 +346,7 @@ function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }:
             <Markdown text={pullRequest.body} className="prose-sm" />
           )}
         </Section>
-        <CommentsSection pullRequest={pullRequest} onPosted={refresh} />
+        <CommentsSection pullRequest={pullRequest} />
       </article>
     ))
     .onError((error) => (
@@ -422,7 +418,7 @@ function PullRequestLink({ threadId, url, className }: { threadId: string; url: 
         className,
       )}
     >
-      <span className="truncate">{shortName(url)}</span>
+      <span className="truncate">{pullRequestName(url)}</span>
       <ExternalIcon aria-hidden className="size-3 shrink-0" />
     </a>
   )
@@ -436,7 +432,7 @@ interface UnlinkButtonProps {
 
 function UnlinkButton({ threadId, url, onUnlinkFailed }: UnlinkButtonProps) {
   const [pending, startTransition] = useTransition()
-  const label = m.pr_links_unlink({ name: shortName(url) })
+  const label = m.pr_links_unlink({ name: pullRequestName(url) })
 
   const unlink = () =>
     startTransition(async () => {
@@ -540,17 +536,14 @@ function PullRequestActions({
   pullRequest,
   threadId,
   watch,
-  onDone,
 }: {
   pullRequest: PullRequestDetail
   threadId: string
   watch: PullRequestWatch | null
-  onDone: () => void
 }) {
   const environment = useOpenThreadEnvironment()
   const [method, setMethod] = useState<MergeMethod>("squash")
   const [confirming, setConfirming] = useState<PendingAction | null>(null)
-  const refreshStatus = useAtomRefresh(pullRequestStatusAtom(environment, pullRequest.url))
   const signedIn = AsyncResult.getOrElse(useAtomValue(gitHubAuthAtom(environment)), () => null)?.type === "signedIn"
   const blocker =
     pullRequest.status === "draft"
@@ -606,10 +599,6 @@ function PullRequestActions({
         pullRequest={pullRequest}
         action={confirming}
         onOpenChange={(open) => !open && setConfirming(null)}
-        onDone={() => {
-          onDone()
-          refreshStatus()
-        }}
       />
     </div>
   )
@@ -637,7 +626,7 @@ function WatchButton({ threadId, url, watch }: { threadId: string; url: string; 
         variant={watching ? "secondary" : "ghost"}
         size="sm"
         aria-pressed={watching}
-        title={watching ? m.pr_watch_stop({ name: shortName(url) }) : m.pr_watch_hint()}
+        title={watching ? m.pr_watch_stop({ name: pullRequestName(url) }) : m.pr_watch_hint()}
         disabled={pending}
         onClick={toggle}
       >
@@ -657,12 +646,10 @@ function ConfirmDialog({
   pullRequest,
   action,
   onOpenChange,
-  onDone,
 }: {
   pullRequest: PullRequestDetail
   action: PendingAction | null
   onOpenChange: (open: boolean) => void
-  onDone: () => void
 }) {
   const environment = useOpenThreadEnvironment()
   const [pending, startTransition] = useTransition()
@@ -680,7 +667,6 @@ function ConfirmDialog({
           await callPromise("github.merge", { url: pullRequest.url, method: shown.method }, { environment })
         else await callPromise("github.close", { url: pullRequest.url }, { environment })
         onOpenChange(false)
-        onDone()
       } catch (cause) {
         setError(errorMessage(cause))
       }
@@ -774,7 +760,7 @@ function ChecksSection({ pullRequest }: { pullRequest: PullRequestDetail }) {
   )
 }
 
-function CommentsSection({ pullRequest, onPosted }: { pullRequest: PullRequestDetail; onPosted: () => void }) {
+function CommentsSection({ pullRequest }: { pullRequest: PullRequestDetail }) {
   const { comments } = pullRequest
   return (
     <Section
@@ -791,7 +777,7 @@ function CommentsSection({ pullRequest, onPosted }: { pullRequest: PullRequestDe
           ))}
         </ol>
       )}
-      <CommentComposer url={pullRequest.url} onPosted={onPosted} />
+      <CommentComposer url={pullRequest.url} />
     </Section>
   )
 }
@@ -812,7 +798,7 @@ function Comment({ comment }: { comment: PullRequestComment }) {
       className={cn(
         "flex flex-col gap-1.5",
         comment.authorKind === "bot" &&
-          "opacity-70 transition-opacity duration-200 ease-out hover:opacity-100 focus-within:opacity-100 motion-reduce:transition-none",
+          "opacity-70 transition-opacity duration-200 ease-out focus-within:opacity-100 hover:opacity-100",
       )}
     >
       <header className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
@@ -860,7 +846,7 @@ function Comment({ comment }: { comment: PullRequestComment }) {
   )
 }
 
-function CommentComposer({ url, onPosted }: { url: string; onPosted: () => void }) {
+function CommentComposer({ url }: { url: string }) {
   const environment = useOpenThreadEnvironment()
   const signedIn = AsyncResult.getOrElse(useAtomValue(gitHubAuthAtom(environment)), () => null)?.type === "signedIn"
   const [body, setBody] = useState("")
@@ -874,7 +860,6 @@ function CommentComposer({ url, onPosted }: { url: string; onPosted: () => void 
       try {
         await callPromise("github.comment", { url, body }, { environment })
         setBody("")
-        onPosted()
       } catch (cause) {
         setError(m.pr_comment_failed({ message: errorMessage(cause) }))
       }
@@ -891,7 +876,7 @@ function CommentComposer({ url, onPosted }: { url: string; onPosted: () => void 
         placeholder={m.pr_comment_placeholder()}
         aria-label={m.pr_comment_placeholder()}
         disabled={!signedIn}
-        className="max-h-48 text-xs md:text-xs"
+        className="max-h-48 text-xs"
       />
       <div className="flex items-center gap-2">
         {error && (

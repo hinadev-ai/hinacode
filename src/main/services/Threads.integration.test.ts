@@ -270,4 +270,19 @@ describe("Threads", () => {
       yield* threads.remove(archived.id)
     }).pipe(Effect.provide(threadsLayer)),
   )
+
+  it.effect("a draft takes the next place in its project when it is sent", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const { projectId } = yield* seedThread({ rootPath: "/repo" })
+      const draft = yield* threads.draft({ projectId, title: "draft", provider: "claude", model: "m" })
+      const later = yield* threads.create({ projectId, title: "later", provider: "claude", model: "m" })
+
+      const promoted = yield* threads.promoteDraft(draft.id)
+
+      expect(promoted.status).toBe("idle")
+      expect(promoted.sortIndex).toBeGreaterThan(later.sortIndex)
+      expect(yield* threads.get(draft.id)).toStrictEqual(promoted)
+    }).pipe(Effect.provide(threadsLayer)),
+  )
 })

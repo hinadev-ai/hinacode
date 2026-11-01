@@ -4,23 +4,28 @@ import { extname, isAbsolute, join } from "node:path"
 import { Cache, Context, Effect, FileSystem, Layer, Option, Schema } from "effect"
 import { SqlClient, SqlError, SqlSchema } from "effect/sql"
 import { Project, ProjectAction } from "../../shared/domain.ts"
-import { type GitHubRepository, parseGitHubRepository } from "../../shared/github.ts"
+import { type GitHubRepository, parseGitHubRepository, type RepositoryVisibility } from "../../shared/github.ts"
 import { nowIso } from "./clock.ts"
 import {
   NotFoundError,
   type PersistenceError,
   ProjectFolderNotEmptyError,
+  ProjectOriginTakenError,
   ProjectPathTakenError,
   ProjectRootInvalidError,
   persistence,
 } from "./errors.ts"
 import { type CommandError, Git } from "./Git.ts"
-import { GitHub } from "./GitHub.ts"
+import { GitHub, type GitHubError } from "./GitHub.ts"
 
 export interface CreateProject {
   readonly name: string
   readonly rootPath: string
   readonly setupScript: string | null
+}
+
+export interface CreateFolderProject extends CreateProject {
+  readonly createRepository?: RepositoryVisibility | undefined
 }
 
 export interface CloneProject extends CreateProject {
@@ -44,7 +49,9 @@ export class Projects extends Context.Service<
     readonly list: Effect.Effect<ReadonlyArray<Project>, PersistenceError>
     readonly listWithRepositories: Effect.Effect<ReadonlyArray<Project>, PersistenceError>
     readonly get: (id: string) => Effect.Effect<Project, PersistenceError | NotFoundError>
-    readonly create: (input: CreateProject) => Effect.Effect<Project, WriteError>
+    readonly create: (
+      input: CreateFolderProject,
+    ) => Effect.Effect<Project, WriteError | CommandError | GitHubError | ProjectOriginTakenError>
     readonly clone: (
       input: CloneProject,
     ) => Effect.Effect<Project, WriteError | ProjectFolderNotEmptyError | CommandError>
@@ -59,6 +66,12 @@ const resolveRoot = (rootPath: string) => {
   const resolved = rootPath.trim().replace(/^~(?=$|\/)/, homedir())
   return isAbsolute(resolved) ? Effect.succeed(resolved) : Effect.fail(new ProjectRootInvalidError({ rootPath }))
 }
+
+const succeeds = <E>(effect: Effect.Effect<unknown, E>) =>
+  effect.pipe(
+    Effect.as(true),
+    Effect.orElseSucceed(() => false),
+  )
 
 const mapWriteError = (operation: string, rootPath: string) => (cause: unknown) =>
   SqlError.isSqlError(cause) && cause.reason._tag === "UniqueViolation"
@@ -154,10 +167,24 @@ const make = Effect.gen(function* () {
       return { ...row, linearReview, actions }
     })
 
-  const create = (input: CreateProject) =>
+  const publish = (rootPath: string, visibility: RepositoryVisibility) =>
+    Effect.gen(function* () {
+      if (!(yield* succeeds(git.run(rootPath, ["rev-parse", "--is-inside-work-tree"])))) {
+        yield* git.run(rootPath, ["init"])
+      } else if (yield* succeeds(git.run(rootPath, ["remote", "get-url", "origin"]))) {
+        return yield* new ProjectOriginTakenError({ rootPath })
+      }
+      if (!(yield* succeeds(git.run(rootPath, ["rev-parse", "--verify", "HEAD"])))) {
+        yield* git.run(rootPath, ["commit", "--only", "--allow-empty", "-m", "Initial commit"])
+      }
+      yield* github.createRepository(rootPath, visibility)
+    })
+
+  const create = ({ createRepository, ...input }: CreateFolderProject) =>
     Effect.gen(function* () {
       const rootPath = yield* resolveRoot(input.rootPath)
       yield* makeDirectory(rootPath)
+      if (createRepository !== undefined) yield* publish(rootPath, createRepository)
       return yield* insert({ ...input, rootPath })
     })
 

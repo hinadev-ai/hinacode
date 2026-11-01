@@ -120,7 +120,9 @@ function ProjectWorktrees({ group }: { group: ProjectGroup }) {
   return (
     <div className="flex flex-col gap-2">
       <h3 className="flex min-w-0 items-baseline gap-2 px-1 text-sm font-medium">
-        <span className="truncate">{group.project?.name ?? m.settings_worktree_unknown_project()}</span>
+        <span className="truncate" title={group.project?.name}>
+          {group.project?.name ?? m.settings_worktree_unknown_project()}
+        </span>
         {clouds.length > 0 && (
           <span className="shrink-0 text-xs font-normal text-muted-foreground">
             {environmentName(environment, clouds)}
@@ -163,7 +165,9 @@ function WorktreeItem({ row }: { row: WorktreeRow }) {
                   className="flex max-w-full min-w-0 items-center gap-1 text-foreground underline-offset-2 hover:underline"
                 >
                   <ChatIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
-                  <span className="truncate">{thread.title}</span>
+                  <span className="truncate" title={thread.title}>
+                    {thread.title}
+                  </span>
                 </Link>
               ))}
         </p>
@@ -210,7 +214,7 @@ function RemoveWorktreeDialog({ row, open, onOpenChange }: RemoveWorktreeDialogP
           <AlertDialogTitle className="break-all">
             {m.worktree_remove_title({ branch: worktree.branch })}
           </AlertDialogTitle>
-          <AlertDialogDescription className="break-words">
+          <AlertDialogDescription className="wrap-break-word">
             {m.worktree_remove_body({ path: worktree.path })}
           </AlertDialogDescription>
           {checkout === "dirty" && (

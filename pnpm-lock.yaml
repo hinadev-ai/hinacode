@@ -213,6 +213,9 @@ importers:
       '@effect/sql-sqlite-node':
         specifier: 4.0.3
         version: 4.0.3(effect@4.0.3)
+      '@fontsource-variable/noto-sans-sc':
+        specifier: ^5.3.1
+        version: 5.3.1
       '@grpc/grpc-js':
         specifier: ^1.14.6
         version: 1.14.6
@@ -409,6 +412,9 @@ importers:
       oxlint-plugin-react-doctor:
         specifier: 0.9.17
         version: 0.9.17
+      oxlint-tailwindcss:
+        specifier: 1.16.0
+        version: 1.16.0
       pele:
         specifier: 1.9.0
         version: 1.9.0
@@ -1723,6 +1729,9 @@ packages:
 
   '@fontsource-variable/noto-sans-jp@5.3.0':
     resolution: {integrity: sha512-XVL9GfGBRjj523v9w3Bctu4mNq7E5rUa+AMZm8DK1EM3LAGlKC3DZMvuqkLn4DB4TwwoAjcsJUCiRpUTDzzOkw==}
+
+  '@fontsource-variable/noto-sans-sc@5.3.1':
+    resolution: {integrity: sha512-UB96JJ17HyD5ehEU7Em0hDdh7fvTMB4B4Hzmq5c4QaNwwSLqTrdM2S+coySeBqCkXwh0DxqXT0b0wMrmzorFpQ==}
 
   '@fontsource-variable/noto-sans-tc@5.3.0':
     resolution: {integrity: sha512-sniyvTx+yRXlce9bjBV0i3kBG3/YFJiz6SZA9plNJLCR4TbY8il+G759gAXWHZu01eAclbJEN2YR+qbQjZTjkg==}
@@ -5692,6 +5701,10 @@ packages:
     resolution: {integrity: sha512-j6tdFoJbLztISYNlw7LMT+6naqhVsXTNn7drhoGRIqf0x2mCSD2Ur71hK0E/VrLens355finI6j+sMqHxHpEfA==}
     engines: {node: ^20.19.0 || >=22.13.0}
 
+  oxlint-tailwindcss@1.16.0:
+    resolution: {integrity: sha512-qwkw3gahMiLOVkZAInULbvnFaFceanEnk+GxpMyNZU4bq2nRmZd3xD4En0EhIakEBiIt15RiGwQ7AuhrllNoNw==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+
   oxlint@1.87.0:
     resolution: {integrity: sha512-drxVlaW7Oqq7wSy1CN25znRu00aRq8n57Q2wniJRxCmtYVz07ufCm7EVDPQFZURrTgQIjzKrVEHAD/HcvJXObg==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -8586,6 +8599,8 @@ snapshots:
   '@fontsource-variable/geist@5.3.0': {}
 
   '@fontsource-variable/noto-sans-jp@5.3.0': {}
+
+  '@fontsource-variable/noto-sans-sc@5.3.1': {}
 
   '@fontsource-variable/noto-sans-tc@5.3.0': {}
 
@@ -12633,6 +12648,11 @@ snapshots:
       eslint-visitor-keys: 5.0.1
       lightningcss: 1.33.0
       oxc-parser: 0.148.0
+
+  oxlint-tailwindcss@1.16.0:
+    dependencies:
+      '@tailwindcss/node': 4.3.3
+      tailwindcss: 4.3.3
 
   oxlint@1.87.0:
     optionalDependencies:

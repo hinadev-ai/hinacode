@@ -2,12 +2,12 @@ import type { Thread } from "@shared/domain.ts"
 import { setStringAsync } from "expo-clipboard"
 import { useEffect, useEffectEvent, useState } from "react"
 import { AccessibilityInfo, Modal, Pressable, StyleSheet, Text, View } from "react-native"
-import Animated, { SlideInDown } from "react-native-reanimated"
+import Animated from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon } from "@/components/icon"
 import { IconSwap, Spinner } from "@/components/motion"
 import { Notice } from "@/components/ui"
-import { duration, ease } from "@/constants/motion"
+import { sheetEntering } from "@/constants/motion"
 import { Colors, HIT, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
@@ -40,7 +40,6 @@ export function useThreadActions(thread: Thread) {
   return { actions: threadActions(thread), running, error, run, clearError: () => setError(null) }
 }
 
-const rise = SlideInDown.duration(duration.sheet).easing(ease.drawer)
 const COPIED_MS = 800
 
 /** A short action list that rises from the bottom over a scrim, with the thread's title on top. */
@@ -89,7 +88,7 @@ export function ThreadActionsSheet({
         style={styles.scrim}
       />
       <Animated.View
-        entering={rise}
+        entering={sheetEntering}
         accessibilityViewIsModal
         style={[
           styles.sheet,
@@ -109,7 +108,8 @@ export function ThreadActionsSheet({
                 testID={`thread-action-${action.name}`}
                 accessibilityRole="button"
                 accessibilityLabel={label}
-                accessibilityState={{ busy: state.running === action.name, disabled: busy }}
+                aria-busy={state.running === action.name}
+                aria-disabled={busy}
                 disabled={busy}
                 onPress={() => void run(action.name)}
                 style={({ pressed }) => [

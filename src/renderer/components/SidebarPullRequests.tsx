@@ -5,8 +5,7 @@ import { openChecks } from "../../shared/threadStatus.ts"
 import { usePullRequestHref } from "../lib/environments.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { parsePullRequestUrl } from "../lib/pullRequestRefs.ts"
-import { registry } from "../lib/registry.ts"
-import { callPromise, type EnvironmentId, pullRequestStatusAtom, pullRequestStatusesAtom } from "../lib/rpc.ts"
+import { callPromise, type EnvironmentId, pullRequestStatusesAtom } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { PullRequestCard } from "./PullRequestLink.tsx"
@@ -210,8 +209,6 @@ function MergeDialog({
         } catch (cause) {
           setError(m.sidebar_pr_merge_failed({ number: pullRequest.number, message: errorMessage(cause) }))
           return
-        } finally {
-          registry.refresh(pullRequestStatusAtom(environment, pullRequest.url))
         }
       }
       onOpenChange(false)

@@ -78,9 +78,10 @@ interface DeviceReadyProps {
   readonly threadId: string
   readonly device: ReadyDevice
   readonly onDetach: () => void
+  readonly bootedOnScreen: boolean
 }
 
-export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyProps) {
+export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen }: DeviceReadyProps) {
   const { device, screen, control, agentWaiting } = ready
   const { pending, error, run } = useVmAction()
   const [commandError, setCommandError] = useState<string | null>(null)
@@ -194,7 +195,7 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
   const shownError = error ?? commandError ?? frameError
 
   return (
-    <div className="flex min-h-0 flex-1 animate-fade-in flex-col motion-reduce:animate-none">
+    <div className={cn("flex min-h-0 flex-1 flex-col", bootedOnScreen && "animate-fade-in")}>
       <div
         role="toolbar"
         aria-label={m.devices_toolbar({ name: device.name })}
@@ -390,7 +391,7 @@ function OpenLink({ onOpen }: { onOpen: (url: string) => void }) {
             spellCheck={false}
             autoCapitalize="off"
             autoCorrect="off"
-            className="h-7 font-mono text-xs md:text-xs"
+            className="h-7 font-mono text-xs"
           />
           {invalid ? (
             <p id={errorId} role="alert" className="text-xs text-destructive">

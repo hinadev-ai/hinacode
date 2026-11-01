@@ -38,19 +38,22 @@ src/main      Main process. One Effect layer graph (app.ts), run by Electron (in
 src/preload   contextBridge exposing window.hinacode { rpc, onEvent, pathForFile }
 src/renderer  React 19, TanStack Router, zustand stores, Tailwind 4, shadcn on Base UI
 src/shared    Effect Schema contracts (contract.ts rpc method map, domain.ts, agent.ts) and pure code both apps run, such as routes.ts
-messages/     Paraglide catalogs: en.json, zh-TW.json and ja.json
+messages/     Paraglide catalogs: en.json, zh-TW.json, zh-CN.json and ja.json
 ```
 
 - Renderer and main talk over one `rpc` IPC channel. Add a method to `src/shared/contract.ts` with request and response schemas, then handle it in `src/main/rpc.ts`. Main pushes live updates on the `event` channel.
 - Main-process code is Effect services: `class X extends Context.Service<...>` plus an exported `layer`. Follow `services/Threads.ts`.
 - Each schema change gets a new migration in `src/main/db/migrations/`. Never edit a migration that has shipped. Id 3 belonged to a removed migration that some databases already recorded, so never reuse it.
 - A new agent backend is one `AgentProvider` in `src/main/agents/` plus the registrations and capability checklist in `docs/agent-providers.md`.
-- Every UI string lives in `messages/en.json`, `messages/zh-TW.json` and `messages/ja.json`. Add all three; `src/renderer/messages.test.ts` fails when a catalog misses a key or a placeholder. Don't hardcode copy in components.
+- Every UI string lives in `messages/en.json`, `messages/zh-TW.json`, `messages/zh-CN.json` and `messages/ja.json`. Add all four; `src/renderer/messages.test.ts` fails when a catalog misses a key or a placeholder. Don't hardcode copy in components.
+- The renderer bundles English only. `vite.paraglide.ts` turns every other locale into a chunk that `useLocale().apply` loads before switching, so a new locale costs startup nothing.
 
 ## Conventions
 
 - The renderer lints with the React Compiler rules (`react/purity`, `react/refs` and the rest) and the React Doctor rules listed in `.oxlintrc.json`. Code the compiler cannot optimize fails `pnpm lint`.
 - Our own rules live in `packages/oxlint-plugin-hinacode`. `no-manual-memo` bans `useMemo`, `useCallback` and `memo` because the compiler memoizes. `no-wall-clock-in-test` bans timers, `Date.now()` and `new Date()` in tests. `prefer-start-transition` warns when a click or submit handler sets state outside a transition. `no-responsive-padding-on-scroller` bans size-conditional padding (`@md:pe-8`, `md:px-4`) on a scroll container, because it moves the content and the scrollbar as the space changes; keep the scroller full width and move or hide what does not fit. `allergic-to-sparkling-icon` bans sparkling icons (`Sparkling`, `Sparkle`, `Sparkles`) from react-icons. Base components run their action props in one: Button `action`, Tabs `changeAction`.
+- `oxlint-tailwindcss` checks class names against the theme in `src/renderer/index.css`. Run `pnpm lint --fix` to sort and canonicalize classes.
+- Size a component's layout to its parent, not the window. Mark the parent `@container` and use `@sm:`, `@md:` or `@max-md:`, because panels resize independently of the window. Keep viewport breakpoints (`md:`, `@media (width ...)`) for things that really follow the window, such as the root font size.
 - Effects only synchronize with systems outside React: subscriptions, DOM APIs, timers, IPC. Derive values during render, act in the event handler that caused the change, load data with an atom, and reset a component with `key`. `react/set-state-in-effect`, the react-doctor effect rules and `hinacode/no-promise-state-in-effect` enforce most of this. Keep calling `useEffect` directly rather than wrapping it in a `useMountEffect`, because those rules only recognize `useEffect`.
 - `no-comments` bans comments. Name things so the code explains itself, and put the reasoning in `docs/` or the commit message. Mark a workaround for something we cannot change with `// FIXME:`. For the rare comment that nothing else can carry, put `// oxlint-disable-next-line hinacode/no-comments` above it. Tool directives such as `oxlint-disable`, `@ts-expect-error` and `/// <reference>` still work.
 - Internal scripts are TypeScript that Node runs directly (`node scripts/tlc.ts`), so they use erasable syntax only and `.ts` import paths. `tsconfig.scripts.json` type-checks them. `bin/hinacode.mjs` stays JavaScript because it ships in the npm package, and Node does not strip types under `node_modules`.

@@ -91,7 +91,7 @@ function ViewContent({ thread, view, panelId, compact }: ViewContentProps) {
       )}
       <header
         className={cn(
-          "window-drag flex h-12 shrink-0 items-center justify-between gap-2 pr-2",
+          "flex h-12 shrink-0 items-center justify-between gap-2 pr-2 window-drag",
           header ? "pl-2" : "pl-4",
         )}
       >

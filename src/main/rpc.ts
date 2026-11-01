@@ -208,6 +208,16 @@ const handlers: Handlers = {
       yield* Events.use((events) => events.publish({ type: "thread.updated", thread }))
       return thread
     }),
+  "threads.draft": ({ projectId }) =>
+    Effect.gen(function* () {
+      const { defaultProvider: provider } = yield* Settings.use((service) => service.get)
+      const options = yield* newThreadOptions(provider)
+      const thread = yield* Threads.use((threads) =>
+        threads.draft({ projectId, title: randomName(), provider, ...options }),
+      )
+      yield* Events.use((events) => events.publish({ type: "thread.updated", thread }))
+      return thread
+    }),
   "threads.update": (input) =>
     Effect.gen(function* () {
       const { provider: switchTo } = input
@@ -257,6 +267,7 @@ const handlers: Handlers = {
   "worktrees.stopSetup": ({ id }) => Worktrees.use((worktrees) => worktrees.stopSetup(id)),
   "worktrees.pullRequest": ({ id }) => Worktrees.use((worktrees) => worktrees.pullRequest(id)),
   "threads.changes": ({ threadId, scope }) => Threads.use((threads) => threads.changes(threadId, scope)),
+  "threads.undoTurn": ({ threadId }) => Threads.use((threads) => threads.undoTurn(threadId)),
   "threads.archive": ({ threadId }) => Threads.use((threads) => threads.archive(threadId)),
   "threads.unarchive": ({ threadId }) => Threads.use((threads) => threads.unarchive(threadId)),
   "threads.fork": ({ threadId, messageId }) =>
@@ -406,8 +417,8 @@ const handlers: Handlers = {
     PullRequests.use((pullRequests) => pullRequests.unwatch(threadId, url)),
   "github.auth": () => GitHub.use((github) => github.auth),
   "github.pullRequest": ({ url }) => GitHub.use((github) => github.pullRequest(url)),
-  "github.pullRequestDetail": ({ url }) =>
-    GitHub.use((github) => github.pullRequestDetail(url)).pipe(Effect.tap(startGuideForHead)),
+  "github.pullRequestDetail": ({ url, fresh }) =>
+    GitHub.use((github) => github.pullRequestDetail(url, { fresh })).pipe(Effect.tap(startGuideForHead)),
   "github.pullRequestFiles": ({ url }) =>
     GitHub.use((github) => github.pullRequestDiff(url)).pipe(Effect.flatMap(pullRequestFiles)),
   "pullRequestGuides.get": ({ url }) => PullRequestGuides.use((guides) => guides.get(url)),

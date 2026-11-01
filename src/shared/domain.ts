@@ -65,6 +65,11 @@ export type Worktree = typeof Worktree.Type
 export const CheckoutState = Schema.Literals(["clean", "dirty", "missing"])
 export type CheckoutState = typeof CheckoutState.Type
 
+export type WorkspaceStatus = WorktreeStatus | "missing"
+
+export const workspaceStatus = (status: WorktreeStatus, checkout: CheckoutState | null): WorkspaceStatus =>
+  status === "ready" && checkout === "missing" ? "missing" : status
+
 export const WorktreeCheckout = Schema.Struct({ id: Schema.String, state: CheckoutState })
 export type WorktreeCheckout = typeof WorktreeCheckout.Type
 
@@ -334,7 +339,7 @@ export const PullRequestMatch = Schema.Struct({
 })
 export type PullRequestMatch = typeof PullRequestMatch.Type
 
-export const ThreadStatus = Schema.Literals(["idle", "running", "awaiting_approval", "limited", "archived"])
+export const ThreadStatus = Schema.Literals(["draft", "idle", "running", "awaiting_approval", "limited", "archived"])
 export type ThreadStatus = typeof ThreadStatus.Type
 
 export const isThreadBusy = (status: ThreadStatus) => status === "running" || status === "awaiting_approval"
@@ -446,7 +451,7 @@ export const Message = Schema.Struct({
 })
 export type Message = typeof Message.Type
 
-export const Locale = Schema.Literals(["en", "zh-TW", "ja"])
+export const Locale = Schema.Literals(["en", "zh-TW", "zh-CN", "ja"])
 export type Locale = typeof Locale.Type
 
 export const ThemeId = Schema.Literals([

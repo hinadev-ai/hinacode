@@ -15,7 +15,7 @@ import { errorText } from "@/lib/error-text"
 import { groupByRepository, projectsByActivity } from "@/lib/projects"
 import { createThread } from "@/lib/start-thread"
 import { useDrafts } from "@/stores/drafts"
-import { useThreads } from "@/stores/threads"
+import { listedThreads, useThreads } from "@/stores/threads"
 
 /**
  * Starts a thread in a project, the most recently active first, or goes on to add a project. A repository checked
@@ -38,7 +38,7 @@ export function NewThreadSheet({
   const projects = useThreads((state) => state.projects)
   const byId = useThreads((state) => state.byId)
   const servers = useConnection((state) => state.servers)
-  const groups = groupByRepository(projectsByActivity(projects, Object.values(byId)))
+  const groups = groupByRepository(projectsByActivity(projects, listedThreads(byId)))
   const [choosing, setChoosing] = useState<readonly Project[] | null>(null)
   const [creating, setCreating] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -189,10 +189,11 @@ function SheetRow({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={hint}
-      accessibilityState={{ busy, disabled }}
+      aria-busy={busy}
+      aria-disabled={disabled}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [sheetStyles.option, pressed && { backgroundColor: theme.surface }]}
+      style={({ pressed }) => [sheetStyles.option, pressed && { backgroundColor: theme.sheetRaised }]}
     >
       <Icon name={icon} size={18} color={theme.text} />
       <View style={sheetStyles.optionText}>

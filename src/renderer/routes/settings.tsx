@@ -74,7 +74,7 @@ export function SettingsRoute() {
     <div className="flex min-h-0 flex-1">
       {compact && <SettingsNav />}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="window-drag shrink-0 [scrollbar-gutter:stable_both-edges] overflow-hidden">
+        <header className="shrink-0 scrollbar-gutter-both overflow-hidden window-drag">
           <div className="mx-auto flex w-full max-w-3xl items-start gap-3 px-8 pt-5 pb-6">
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <h1 className="text-lg font-semibold">{page.label()}</h1>
@@ -96,7 +96,7 @@ export function SettingsRoute() {
             )}
           </div>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable_both-edges]">
+        <div className="min-h-0 flex-1 scrollbar-gutter-both overflow-y-auto">
           <div className="mx-auto w-full max-w-3xl px-8 pb-12">
             <PageActionSlotProvider value={actionSlot}>
               {page.scope === "environment" ? (

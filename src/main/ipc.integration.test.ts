@@ -606,6 +606,42 @@ describe("projects, threads and settings over rpc", () => {
     expect(result(await invoke("threads.create", { projectId: project.id })).accessMode).toBe("auto")
   })
 
+  test("a project keeps one draft until its first message, which turns it into a listed thread", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const draft = result(await invoke("threads.draft", { projectId: project.id }))
+    expect(draft.status).toBe("draft")
+    expect(result(await invoke("threads.draft", { projectId: project.id })).id).toBe(draft.id)
+
+    result(await invoke("threads.send", { threadId: draft.id, prompt: "hi" }))
+    const sent = result(await invoke("threads.list", undefined)).find((listed) => listed.id === draft.id)
+    expect(sent?.status).not.toBe("draft")
+    expect(result(await invoke("threads.draft", { projectId: project.id })).id).not.toBe(draft.id)
+  })
+
+  test("two New thread clicks at once open the same draft", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const [first, second] = await Promise.all([
+      invoke("threads.draft", { projectId: project.id }),
+      invoke("threads.draft", { projectId: project.id }),
+    ])
+    expect(result(first).id).toBe(result(second).id)
+  })
+
+  test("a reused draft starts as the last new thread was set up", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const draft = result(await invoke("threads.draft", { projectId: project.id }))
+    const other = result(await invoke("threads.create", { projectId: project.id }))
+    result(await invoke("threads.update", { id: other.id, provider: "codex" }))
+    result(await invoke("threads.update", { id: other.id, accessMode: "auto" }))
+
+    expect(result(await invoke("threads.draft", { projectId: project.id }))).toMatchObject({
+      id: draft.id,
+      provider: "codex",
+      model: "codex-model",
+      accessMode: "auto",
+    } satisfies Partial<Thread>)
+  })
+
   test("reordering a thread keeps its updatedAt", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     const created = result(await invoke("threads.create", { projectId: project.id }))
