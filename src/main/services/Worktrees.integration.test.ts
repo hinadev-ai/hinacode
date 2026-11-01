@@ -909,6 +909,31 @@ describe("thread changes", () => {
       }),
     ),
   )
+
+  it.live("undoing a turn restores what it edited, deleted and added, and leaves other files alone", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        const thread = yield* createThread(projectId, "undo")
+        writeFileSync(join(root, "edited.txt"), "before\n")
+        writeFileSync(join(root, "deleted.txt"), "keep me\n")
+        git(root, "add", "edited.txt", "deleted.txt")
+        writeFileSync(join(root, "untouched.txt"), "mine\n")
+        const base = yield* Threads.use((threads) => threads.captureTurnBase(root))
+        yield* Threads.use((threads) => threads.recordTurnBase({ threadId: thread.id, tree: base }))
+
+        writeFileSync(join(root, "edited.txt"), "after\n")
+        rmSync(join(root, "deleted.txt"))
+        writeFileSync(join(root, "added.txt"), "new\n")
+        yield* Threads.use((threads) => threads.undoTurn(thread.id))
+
+        expect(readFileSync(join(root, "edited.txt"), "utf8")).toBe("before\n")
+        expect(readFileSync(join(root, "deleted.txt"), "utf8")).toBe("keep me\n")
+        expect(existsSync(join(root, "added.txt"))).toBe(false)
+        expect(readFileSync(join(root, "untouched.txt"), "utf8")).toBe("mine\n")
+        expect((yield* Threads.use((threads) => threads.changes(thread.id, "turn")))?.files).toStrictEqual([])
+      }),
+    ),
+  )
 })
 
 const commit = (cwd: string, message: string) => {
