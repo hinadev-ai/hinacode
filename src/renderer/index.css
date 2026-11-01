@@ -86,6 +86,7 @@
     0.997,
     1
   );
+  --default-transition-timing-function: var(--ease-out);
   --spacing-titlebar: 2.5rem;
   /* Badges and dense labels such as git refs. In rem, so it follows the font size setting. */
   --text-2xs: 0.6875rem;
@@ -1001,5 +1002,31 @@
   [data-starting-style],
   [data-ending-style] {
     scale: none !important;
+  }
+}
+
+/* Sonner injects its own stylesheet after this one, so these selectors carry the toaster for specificity. */
+[data-sonner-toaster] [data-sonner-toast] {
+  transition:
+    transform 250ms var(--ease-out),
+    opacity 250ms var(--ease-out),
+    height 250ms var(--ease-out),
+    box-shadow 200ms var(--ease-out);
+}
+
+[data-sonner-toaster] [data-sonner-toast] > * {
+  transition: opacity 250ms var(--ease-out);
+}
+
+[data-sonner-toaster]
+  [data-sonner-toast][data-removed="true"][data-front="false"][data-swipe-out="false"][data-expanded="false"] {
+  transition:
+    transform 200ms var(--ease-out),
+    opacity 150ms var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-sonner-toaster] [data-sonner-toast] {
+    transition: opacity 200ms var(--ease-out) !important;
   }
 }
