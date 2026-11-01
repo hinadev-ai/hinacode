@@ -30,8 +30,10 @@ const TRAILING_LINE = "​"
 const spanStyle = (kind: ComposerSpan["kind"], theme: Palette): TextStyle => {
   switch (kind) {
     case "text":
+    case "strong":
       return { color: theme.text }
     case "bullet":
+    case "rule":
       return { color: theme.textMuted }
     case "code":
       return { color: theme.text, backgroundColor: theme.surfaceStrong }

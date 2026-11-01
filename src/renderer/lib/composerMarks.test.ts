@@ -46,11 +46,26 @@ describe("composerMarks", () => {
     const marks = composerMarks("run\n```ts\nconst a = 1\n```", known, commands, null)
     expect(marks).toStrictEqual([
       { kind: "fenceLine", from: 4, first: true, last: false },
-      { kind: "fenceMarker", from: 4, to: 9 },
+      { kind: "marker", from: 4, to: 9 },
       { kind: "fenceLine", from: 10, first: false, last: false },
       { kind: "fenceLine", from: 22, first: false, last: true },
-      { kind: "fenceMarker", from: 22, to: 25 },
+      { kind: "marker", from: 22, to: 25 },
       { kind: "fenceCode", from: 10, code: "const a = 1", language: "ts" },
     ])
+  })
+
+  test("bold the text between its muted markers, and show a bullet as a dot", () => {
+    expect(composerMarks("- **hi**\n2. x", known, commands, null)).toStrictEqual([
+      { kind: "dot", from: 0, to: 1 },
+      { kind: "strong", from: 2, to: 8 },
+      { kind: "marker", from: 2, to: 4 },
+      { kind: "marker", from: 6, to: 8 },
+      { kind: "bullet", from: 9, to: 11 },
+    ])
+  })
+
+  test("draw a rule until the caret enters its line", () => {
+    expect(composerMarks("a\n---", known, commands, 0)).toStrictEqual([{ kind: "rule", from: 2, to: 5 }])
+    expect(composerMarks("a\n---", known, commands, 5)).toStrictEqual([{ kind: "marker", from: 2, to: 5 }])
   })
 })
