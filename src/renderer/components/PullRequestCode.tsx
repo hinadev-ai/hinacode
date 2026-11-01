@@ -248,14 +248,14 @@ function ReviewedFiles({
   comments: ReadonlyArray<PullRequestComment>
   files: ReadonlyArray<PullRequestFile>
 }) {
-  const viewed = useViewedPaths(url, head)
+  const viewed = new Set(useViewedPaths(url, head))
   const setViewed = useViewedFiles((state) => state.setViewed)
   const { threadId } = useParams({ strict: false })
   const [openPaths, setOpenPaths] = useState<ReadonlySet<string>>(() => new Set())
   const [, startTransition] = useTransition()
   const added = files.reduce((sum, file) => sum + file.additions, 0)
   const removed = files.reduce((sum, file) => sum + file.deletions, 0)
-  const viewedCount = files.filter((file) => viewed.includes(file.path)).length
+  const viewedCount = files.filter((file) => viewed.has(file.path)).length
   const allOpen = files.length > 0 && files.every((file) => openPaths.has(file.path))
 
   const withOpen = (path: string, open: boolean) => {
@@ -322,7 +322,7 @@ function ReviewedFiles({
                     review={{
                       open: openPaths.has(file.path),
                       onToggle: () => toggle(file.path),
-                      viewed: viewed.includes(file.path),
+                      viewed: viewed.has(file.path),
                       onViewedChange: (next) => markViewed(file.path, next),
                     }}
                   />
