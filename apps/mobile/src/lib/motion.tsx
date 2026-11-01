@@ -4,7 +4,6 @@ import Animated, {
   type EasingFunction,
   type EasingFunctionFactory,
   type LayoutAnimation,
-  LinearTransition,
   ReduceMotion,
   type SharedValue,
   type StyleProps,
@@ -15,7 +14,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated"
-import { duration, ease } from "@/constants/motion"
+import { duration, ease, listLayout } from "@/constants/motion"
 
 /**
  * A small take on Motion's `motion` components (`motion/react`) for React Native, run by Reanimated on the UI thread.
@@ -99,7 +98,6 @@ function animation<T extends number | string>(key: Key, target: T, transition: T
   return picked?.delay ? withDelay(picked.delay, run, ReduceMotion.Never) : run
 }
 
-const layoutTransition = LinearTransition.duration(duration.base).easing(ease.out)
 
 /**
  * Under reduce motion, `y`, `scale` and `rotate` jump to their `animate` value, so `initial`, `exit` and `whileTap`
@@ -180,7 +178,7 @@ function useMotion({ initial, animate, exit, transition, layout, whileTap }: Mot
     onPressOut: () => animateTo(animate, (key) => (whileTap?.[key] === undefined ? undefined : resting(key))),
   }
 
-  return { style, exiting, layout: layout && !reduced ? layoutTransition : undefined, tap }
+  return { style, exiting, layout: layout && !reduced ? listLayout : undefined, tap }
 }
 
 function MotionView({

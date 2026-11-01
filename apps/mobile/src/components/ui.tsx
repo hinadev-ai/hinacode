@@ -385,9 +385,8 @@ export function UnderlineTabs<T extends string>({
             styles.underline,
             {
               backgroundColor: theme.text,
-              width: active.width,
-              transform: [{ translateX: active.x }],
-              transitionProperty: ["transform", "width"] as ["transform", "width"],
+              transform: [{ translateX: active.x }, { scaleX: active.width }],
+              transitionProperty: "transform",
               ...transition,
             },
           ]}
@@ -406,7 +405,7 @@ const styles = StyleSheet.create({
   lineTabs: { flexDirection: "row" },
   lineTab: { minHeight: HIT, justifyContent: "center", paddingHorizontal: 10 },
   lineTabLabel: { fontSize: 15, fontWeight: "500" },
-  underline: { position: "absolute", left: 0, bottom: 0, height: 2, borderRadius: 1 },
+  underline: { position: "absolute", left: 0, bottom: 0, width: 1, height: 2, transformOrigin: "left" },
   segments: { flexDirection: "row", padding: SEGMENT_GAP, gap: SEGMENT_GAP, borderRadius: radius.md + SEGMENT_GAP },
   thumb: {
     position: "absolute",

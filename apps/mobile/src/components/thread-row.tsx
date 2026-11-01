@@ -10,7 +10,7 @@ import { ProjectIcon } from "@/components/project-icon"
 import { PullRequestMark, usePullRequestAttention, usePullRequestSummary } from "@/components/pull-request-badge"
 import { ThreadActionsSheet, useThreadActions } from "@/components/thread-actions"
 import { ProviderMark } from "@/components/ui"
-import { listEntering, listExiting } from "@/constants/motion"
+import type { listEntering, listExiting } from "@/constants/motion"
 import { indicatorGlyph, mono, radius, subheading, type Palette } from "@/constants/theme"
 import { useNow } from "@/hooks/use-now"
 import { useProjectServer, useSeveralServers } from "@/hooks/use-server"
@@ -61,7 +61,17 @@ const isIndicated = (state: RowState): state is IndicatedState => state in rowSt
  * A thread in a list, laid out like a desktop sidebar row: the agent's mark, the title and its status icon, then
  * the project, branch, pull request and last activity. Tap opens it, long press offers pin and archive.
  */
-export function ThreadRow({ thread, showProject }: { thread: Thread; showProject: boolean }) {
+export function ThreadRow({
+  thread,
+  showProject,
+  entering,
+  exiting,
+}: {
+  thread: Thread
+  showProject: boolean
+  entering?: typeof listEntering
+  exiting?: typeof listExiting
+}) {
   const theme = useTheme()
   const now = useNow()
   const project = useThreads((threads) =>
@@ -120,7 +130,7 @@ export function ThreadRow({ thread, showProject }: { thread: Thread; showProject
   }
 
   return (
-    <Animated.View entering={listEntering} exiting={listExiting}>
+    <Animated.View entering={entering} exiting={exiting}>
       <Pressable
         testID={`thread-row-${thread.id}`}
         accessibilityRole="button"

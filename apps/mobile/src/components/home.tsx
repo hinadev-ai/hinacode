@@ -2,7 +2,7 @@ import type { Project, Thread } from "@shared/domain.ts"
 import { router, Stack } from "expo-router"
 import { type ReactNode, useState } from "react"
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
-import Animated, { LayoutAnimationConfig, LinearTransition } from "react-native-reanimated"
+import Animated, { LayoutAnimationConfig } from "react-native-reanimated"
 import { liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
 import { Reveal, Rotate, Spinner } from "@/components/motion"
@@ -11,7 +11,7 @@ import { ServerMark } from "@/components/server-mark"
 import { SectionLabel, ThreadRow } from "@/components/thread-row"
 import { SearchResults } from "@/components/thread-search"
 import { Button, EmptyState, IconButton, Notice, type Tab, UnderlineTabs } from "@/components/ui"
-import { duration } from "@/constants/motion"
+import { listEntering, listExiting, listLayout } from "@/constants/motion"
 import { radius } from "@/constants/theme"
 import { useProjectServer } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
@@ -225,6 +225,9 @@ type HomeItem =
 const threadItems = (prefix: string, threads: readonly Thread[], showProject: boolean): HomeItem[] =>
   threads.map((thread) => ({ kind: "thread", key: `${prefix}:${thread.id}`, thread, showProject }))
 
+const threadIds = (items: readonly HomeItem[]): ReadonlySet<string> =>
+  new Set(items.flatMap((item) => (item.kind === "thread" ? [item.thread.id] : [])))
+
 function homeItems(
   tab: HomeTab,
   projects: readonly Project[],
@@ -290,6 +293,8 @@ function HomeList({
   const byId = useThreads((state) => state.byId)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())
   const items = homeItems(tab, projects, listedThreads(byId), collapsed)
+  const [shown, setShown] = useState(() => ({ tab, threadIds: threadIds(items) }))
+  if (shown.tab !== tab) setShown({ tab, threadIds: threadIds(items) })
 
   const toggle = (projectId: string) => {
     const next = new Set(collapsed)
@@ -307,13 +312,19 @@ function HomeList({
         data={items}
         extraData={selectedId}
         keyExtractor={(item) => item.key}
-        itemLayoutAnimation={LinearTransition.duration(duration.fast)}
+        itemLayoutAnimation={listLayout}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         contentContainerStyle={styles.list}
         ListHeaderComponent={<>{header}</>}
         renderItem={({ item }) => (
-          <HomeRow item={item} tab={tab} selectedId={selectedId} onToggleProject={toggle} />
+          <HomeRow
+            item={item}
+            tab={tab}
+            selectedId={selectedId}
+            arrived={item.kind === "thread" && !shown.threadIds.has(item.thread.id)}
+            onToggleProject={toggle}
+          />
         )}
       />
     </LayoutAnimationConfig>
@@ -324,11 +335,13 @@ function HomeRow({
   item,
   tab,
   selectedId,
+  arrived,
   onToggleProject,
 }: {
   item: HomeItem
   tab: HomeTab
   selectedId?: string
+  arrived: boolean
   onToggleProject: (projectId: string) => void
 }) {
   const theme = useTheme()
@@ -346,7 +359,14 @@ function HomeRow({
         />
       )
     case "thread": {
-      const row = <ThreadRow thread={item.thread} showProject={item.showProject} />
+      const row = (
+        <ThreadRow
+          thread={item.thread}
+          showProject={item.showProject}
+          entering={arrived ? listEntering : undefined}
+          exiting={listExiting}
+        />
+      )
       return item.thread.id === selectedId ? (
         <View style={[styles.selected, { backgroundColor: theme.surface }]}>{row}</View>
       ) : (

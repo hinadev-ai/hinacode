@@ -32,7 +32,7 @@ import { IconSwap } from "@/components/motion"
 import { OptionRow, Section, Sheet, sheetStyles } from "@/components/sheet"
 import { Toggle } from "@/components/ui"
 import { WorkspaceChip } from "@/components/workspace-picker"
-import { ease, PRESSED_SCALE, pressSpring } from "@/constants/motion"
+import { cssEase, ease, PRESSED_SCALE, pressSpring } from "@/constants/motion"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useNow } from "@/hooks/use-now"
 import { useThreadServer } from "@/hooks/use-server"
@@ -426,7 +426,7 @@ const spin = { from: { transform: [{ rotate: "0deg" }] }, to: { transform: [{ ro
 
 /**
  * The desktop's `send-halo`: a holographic pearl under Perlin grain. React Native has no conic gradient,
- * so a linear one turns instead, and it turns while there is a draft because a phone has no hover.
+ * so a linear one turns instead, once as a draft begins because a phone has no hover.
  */
 function SendHalo() {
   const theme = useTheme()
@@ -441,9 +441,9 @@ function SendHalo() {
           },
           !reduced && {
             animationName: spin,
-            animationDuration: 6000,
-            animationIterationCount: "infinite",
-            animationTimingFunction: "linear",
+            animationDuration: 1200,
+            animationIterationCount: 1,
+            animationTimingFunction: cssEase.out,
           },
         ]}
       />
