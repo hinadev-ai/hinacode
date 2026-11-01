@@ -36,6 +36,29 @@ it("stages a picked image as a data URL", async () => {
   await expect(staging).resolves.toMatchObject({ preview: "file:///photo.png", attachment: { id: "a" } })
 })
 
+const JPEG = "/9j/4AAQSkZJRgABAQ=="
+
+it.each([
+  ["image/heic", "IMG_0001.heic", "IMG_0001.jpg"],
+  ["image/png", "photo.png", "photo.jpg"],
+  [undefined, null, "image.jpg"],
+])("labels JPEG bytes as JPEG when the picker declared %s", async (mimeType, fileName, name) => {
+  void stageImage("t1", { ...asset(JPEG), mimeType, fileName })
+  await flush()
+
+  expect(calls[0]!.payload).toEqual({ threadId: "t1", source: { dataUrl: `data:image/jpeg;base64,${JPEG}`, name } })
+})
+
+it("keeps the declared type of bytes it does not recognize", async () => {
+  void stageImage("t1", { ...asset("AAECAwQFBgcICQoL"), mimeType: "image/heic", fileName: "IMG_0001.heic" })
+  await flush()
+
+  expect(calls[0]!.payload).toEqual({
+    threadId: "t1",
+    source: { dataUrl: "data:image/heic;base64,AAECAwQFBgcICQoL", name: "IMG_0001.heic" },
+  })
+})
+
 it("refuses an image too large for one socket frame without sending it", async () => {
   await expect(stageImage("t1", asset("A".repeat(REMOTE_MAX_FRAME_BYTES)))).rejects.toThrow("photo.png is too large")
   expect(calls).toHaveLength(0)
