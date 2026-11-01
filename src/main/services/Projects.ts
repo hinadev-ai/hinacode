@@ -175,7 +175,7 @@ const make = Effect.gen(function* () {
         return yield* new ProjectOriginTakenError({ rootPath })
       }
       if (!(yield* succeeds(git.run(rootPath, ["rev-parse", "--verify", "HEAD"])))) {
-        yield* git.run(rootPath, ["commit", "--allow-empty", "-m", "Initial commit"])
+        yield* git.run(rootPath, ["commit", "--only", "--allow-empty", "-m", "Initial commit"])
       }
       yield* github.createRepository(rootPath, visibility)
     })
