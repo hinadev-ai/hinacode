@@ -1,7 +1,7 @@
 import { AtomRegistry } from "effect/reactivity"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import type { PushEvent } from "../../shared/contract.ts"
-import { onPushEvent, pullRequestDetailAtom, pullRequestStatusAtom } from "./rpc.ts"
+import { branchPullRequestAtom, onPushEvent, pullRequestDetailAtom, pullRequestStatusAtom } from "./rpc.ts"
 
 let bridgeListeners: ReadonlyArray<(event: unknown) => void> = []
 const push = (event: unknown) => {
@@ -147,6 +147,34 @@ test("a pull request lookup reads again when main says that pull request changed
   await vi.waitFor(() => expect(lookups).toBe(1))
 
   push({ type: "github.pullRequest", url: "https://github.com/o/r/pull/2" })
+  push({ type: "github.pullRequest", url: PULL_REQUEST.url })
+  await vi.waitFor(() => expect(lookups).toBe(2))
+
+  unmount()
+  registry.dispose()
+})
+
+test("a branch's pull request reads again when main says it changed, from the first lookup on", async () => {
+  let lookups = 0
+  vi.stubGlobal("document", Object.assign(new EventTarget(), { hidden: false, visibilityState: "visible" }))
+  vi.stubGlobal(
+    "window",
+    Object.assign(new EventTarget(), {
+      hinacode: {
+        onEvent,
+        rpc: async () => {
+          lookups++
+          return { result: PULL_REQUEST }
+        },
+      },
+    }),
+  )
+  const registry = AtomRegistry.make()
+  const branch = branchPullRequestAtom("worktree-1")
+  const unmount = registry.mount(branch)
+  await vi.waitFor(() => expect(registry.get(branch)).toMatchObject({ _tag: "Success", waiting: false }))
+  expect(lookups).toBe(1)
+
   push({ type: "github.pullRequest", url: PULL_REQUEST.url })
   await vi.waitFor(() => expect(lookups).toBe(2))
 
