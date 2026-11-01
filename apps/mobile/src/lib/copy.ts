@@ -1,12 +1,13 @@
 import en from "../../../../messages/en.json"
 import ja from "../../../../messages/ja.json"
+import zhCN from "../../../../messages/zh-CN.json"
 import zhTW from "../../../../messages/zh-TW.json"
 import { deviceLanguageTags } from "./device-locale"
 import { type CatalogLocale, resolveCatalogLocale } from "./locale"
 
 type Key = Extract<keyof typeof en, `mobile_${string}`>
 
-const catalogs: Record<CatalogLocale, Record<Key, string>> = { en, ja, "zh-TW": zhTW }
+const catalogs: Record<CatalogLocale, Record<Key, string>> = { en, ja, "zh-TW": zhTW, "zh-CN": zhCN }
 
 export const locale = resolveCatalogLocale(deviceLanguageTags())
 

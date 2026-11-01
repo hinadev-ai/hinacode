@@ -1,4 +1,5 @@
 import { useAutoAnimate } from "@formkit/auto-animate/react"
+import { listMotion } from "../lib/listMotion.ts"
 import type { QueuedMessage, Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
@@ -26,7 +27,7 @@ export function QueueBar({
   onEdit: () => void
   onError: (message: string) => void
 }) {
-  const [listRef] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
+  const [listRef] = useAutoAnimate<HTMLUListElement>(listMotion)
   if (thread.queue.length === 0) return null
 
   const take = (id: string) => callPromise("threads.unqueue", { threadId: thread.id, id })

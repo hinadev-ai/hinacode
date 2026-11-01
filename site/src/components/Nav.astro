@@ -1,59 +1,45 @@
 ---
+import { RiGithubFill } from "react-icons/ri"
+import { localizedPath, translator, type Locale, type Page } from "../i18n.ts"
+import { REPO_URL } from "../links.ts"
+import Download from "./Download.astro"
+import LanguageMenu from "./LanguageMenu.astro"
 import Mark from "./Mark.astro"
-import { locales, languageNames, localizedPath, messages, type Locale, type Page } from "../i18n"
+
 interface Props {
-  page: Page
   locale: Locale
+  page: Page
 }
-const { page, locale } = Astro.props
-const t = messages(locale)
-const home = page === "pricing" ? localizedPath(locale, "home") : ""
+
+const { locale, page } = Astro.props
+const t = translator(locale)
+const home = localizedPath(locale, "home")
+const link =
+  "pressable hidden h-8 items-center rounded-full px-3 text-[13px] font-medium text-ink-soft hover:bg-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 sm:inline-flex"
 ---
 
-<header class="nav">
-  <div class="nav-inner">
-    <a class="brand" href={localizedPath(locale, "home")} aria-label={t.site_home_name}>
-      <Mark class="mark" />
-      HinaCode
+<header class="sticky top-0 z-40 border-b border-line/80 bg-paper/80 backdrop-blur-md">
+  <div class="mx-auto flex h-14 max-w-[76rem] items-center gap-2 px-5 sm:px-8">
+    <a
+      href={home}
+      aria-label={t("site_nav_home")}
+      class="me-3 flex items-center gap-2 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4"
+    >
+      <Mark class="size-[1.375rem]" />
+      <span class="text-[15px] font-semibold tracking-[-0.01em]">HinaCode</span>
     </a>
-    <nav class="nav-links" aria-label={t.site_sections}>
-      <a href={`${home}#quiet`}>{t.site_nav_quiet}</a>
-      <a href={`${home}#features`}>{t.site_nav_features}</a>
-      <a href={`${home}#keyboard`}>{t.site_nav_keyboard}</a>
-      <a href={`${home}#faq`}>{t.site_nav_faq}</a>
-      <a href={localizedPath(locale, "pricing")} aria-current={page === "pricing" ? "page" : undefined}>
-        {t.site_pricing}
+    <nav class="flex items-center">
+      <a href={`${home}#features`} class={link}>{t("site_nav_features")}</a>
+      <a href={localizedPath(locale, "pricing")} aria-current={page === "pricing" ? "page" : undefined} class:list={[link, "aria-[current=page]:text-ink"]}>
+        {t("site_nav_pricing")}
       </a>
     </nav>
-    <a class="btn btn-primary btn-sm nav-cta" href="https://github.com/hinadev-ai/hinacode/releases/latest">
-      {t.site_download}
-    </a>
-    <details class="language-menu">
-      <summary aria-label={`${t.site_language} ${languageNames[locale]}`}>
-        {languageNames[locale]}
-        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path
-            d="m4.5 6.5 3.5 3 3.5-3"
-            stroke="currentColor"
-            stroke-width="1.2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </summary>
-      <nav aria-label={t.site_language}>
-        {locales.map((language) => (
-          <a
-            href={localizedPath(language, page)}
-            lang={language}
-            hreflang={language}
-            aria-current={language === locale ? "page" : undefined}
-            data-language-link
-          >
-            {languageNames[language]}
-          </a>
-        ))}
-      </nav>
-    </details>
+    <div class="ms-auto flex items-center gap-1">
+      <a href={REPO_URL} aria-label={t("site_nav_github")} class="pressable grid size-8 place-items-center rounded-full text-ink-soft hover:bg-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2">
+        <RiGithubFill aria-hidden="true" className="size-[1.125rem]" />
+      </a>
+      <LanguageMenu locale={locale} page={page} />
+      <Download locale={locale} size="sm" class="ms-1" />
+    </div>
   </div>
 </header>

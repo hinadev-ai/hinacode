@@ -11,19 +11,17 @@ import {
   View,
   type ViewStyle,
 } from "react-native"
-import Animated, { SlideInDown } from "react-native-reanimated"
+import Animated from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon, type IconName } from "@/components/icon"
 import { IconButton } from "@/components/ui"
-import { duration, ease } from "@/constants/motion"
+import { sheetEntering } from "@/constants/motion"
 import { Colors, HIT, mono, radius, subheading } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 
 const SHEET_PADDING = 8
 const SHEET_MAX_WIDTH = 640
-
-const rise = SlideInDown.duration(duration.sheet).easing(ease.drawer)
 
 /**
  * A sheet with a title and a close button, full height by default or as tall as its content with `fit`. The scrim
@@ -71,7 +69,7 @@ export function Sheet({
         />
         {!fullScreen && <View pointerEvents="none" style={fit ? styles.fill : { height: insets.top + 12 }} />}
         <Animated.View
-          entering={rise}
+          entering={sheetEntering}
           accessibilityViewIsModal
           style={[
             styles.sheet,

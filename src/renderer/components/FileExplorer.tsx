@@ -174,12 +174,6 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
     treeRef.current?.focus()
   }
 
-  const fileOpen = tree.opened !== null
-  useEffect(() => {
-    useUi.getState().setSidePanelWide(fileOpen)
-    return () => useUi.getState().setSidePanelWide(false)
-  }, [fileOpen])
-
   const showChanges = (entry: FsEntry) => {
     useUi.getState().setChangesPath(entry.path)
     useUi.getState().showView(thread.id, "changes")

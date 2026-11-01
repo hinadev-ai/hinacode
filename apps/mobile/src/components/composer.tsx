@@ -28,11 +28,11 @@ import Animated, { useReducedMotion } from "react-native-reanimated"
 import { ComposerInput } from "@/components/composer-input"
 import { GlassFill, liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
-import { IconSwap } from "@/components/motion"
+import { IconSwap, Spinner } from "@/components/motion"
 import { OptionRow, Section, Sheet, sheetStyles } from "@/components/sheet"
 import { Toggle } from "@/components/ui"
 import { WorkspaceChip } from "@/components/workspace-picker"
-import { ease, PRESSED_SCALE, pressSpring } from "@/constants/motion"
+import { cssEase, ease, PRESSED_SCALE, pressSpring } from "@/constants/motion"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useNow } from "@/hooks/use-now"
 import { useThreadServer } from "@/hooks/use-server"
@@ -42,7 +42,8 @@ import { keepSkillWhole } from "@/lib/composer-text"
 import { copy, locale } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { motion } from "@/lib/motion"
-import { useDrafts } from "@/stores/drafts"
+import { pickImages, stageImage } from "@/lib/stage-images"
+import { type DraftImage, useDrafts } from "@/stores/drafts"
 import { useMessages } from "@/stores/messages"
 import { modelsOn, useModels } from "@/stores/models"
 import { useThreads } from "@/stores/threads"
@@ -62,6 +63,7 @@ const INPUT_PADDING = 6
 const MAX_LINES = 5
 const CHIP_HEIGHT = 32
 const SEND_SIZE = 36
+const IMAGE_SIZE = 56
 const SUGGESTION_HEIGHT = 48
 const VISIBLE_SUGGESTIONS = 4.5
 
@@ -130,6 +132,8 @@ export function Composer({ thread }: { thread: Thread }) {
   const theme = useTheme()
   const text = useDrafts((state) => state.byThreadId[thread.id] ?? "")
   const sending = useDrafts((state) => state.sending[thread.id])
+  const images = useDrafts((state) => state.images[thread.id]) ?? []
+  const [staging, setStaging] = useState(false)
   const connected = useConnection((state) => state.status === "connected")
   const [focused, setFocused] = useState(false)
   const [caret, setCaret] = useState(0)
@@ -148,7 +152,7 @@ export function Composer({ thread }: { thread: Thread }) {
     files: new Set(files),
     threads: new Set([...threads.sameMachine, ...threads.otherMachines].map((other) => other.id)),
   }
-  const hasDraft = text.trim() !== ""
+  const hasDraft = text.trim() !== "" || images.length > 0
 
   useEffect(() => {
     if (connected) useModels.getState().load(server, thread.provider).catch((cause: unknown) => setError(errorText(cause)))
@@ -163,17 +167,19 @@ export function Composer({ thread }: { thread: Thread }) {
   const send = async () => {
     // A second tap can land before the re-render that empties the composer, so check the store, not `hasDraft`.
     const sent = useDrafts.getState().take(thread.id)
-    const prompt = sent.trim()
-    if (prompt === "") return useDrafts.getState().restore(thread.id, sent)
+    const prompt = sent.text.trim()
+    if (prompt === "" && sent.images.length === 0) return useDrafts.getState().restore(thread.id, sent)
+    const attachments = sent.images.map((image) => image.attachment)
     const workspace = unstarted ? useDrafts.getState().workspaces[thread.id] : undefined
     setError(null)
     try {
-      await useDrafts.getState().trackSending(thread.id, prompt, () =>
+      await useDrafts.getState().trackSending(thread.id, prompt || attachments.map(({ name }) => name).join(", "), () =>
         busy
-          ? call("threads.steer", { threadId: thread.id, text: prompt })
+          ? call("threads.steer", { threadId: thread.id, text: prompt, attachments })
           : call("threads.send", {
               threadId: thread.id,
               prompt,
+              attachments,
               workspace: workspace && { mode: workspace.mode, target: toCheckoutTarget(workspace.ref) },
             }),
       )
@@ -181,6 +187,19 @@ export function Composer({ thread }: { thread: Thread }) {
       useDrafts.getState().restore(thread.id, sent)
       setError(errorText(cause))
     }
+  }
+
+  const attachImages = async () => {
+    const assets = await pickImages()
+    if (assets.length === 0) return
+    setError(null)
+    setStaging(true)
+    const results = await Promise.allSettled(assets.map((asset) => stageImage(thread.id, asset)))
+    setStaging(false)
+    const staged = results.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))
+    useDrafts.getState().addImages(thread.id, staged)
+    const failed = results.find((result) => result.status === "rejected")
+    if (failed) setError(errorText(failed.reason))
   }
 
   const stop = () => {
@@ -227,6 +246,9 @@ export function Composer({ thread }: { thread: Thread }) {
           focused && { boxShadow: `0 0 0 2px ${theme.primary}` },
         ]}
       >
+        {images.length > 0 && (
+          <DraftImages images={images} onRemove={(id) => useDrafts.getState().removeImage(thread.id, id)} />
+        )}
         <ComposerInput
           ref={inputRef}
           testID="composer-input"
@@ -256,10 +278,11 @@ export function Composer({ thread }: { thread: Thread }) {
         />
         <View style={styles.toolbar}>
           <View style={styles.chips}>
+            <AttachButton staging={staging} onPress={() => void attachImages()} />
             <SettingsChip thread={thread} onError={setError} />
             {unstarted && <WorkspaceChip thread={thread} onError={setError} />}
           </View>
-          <SendButton busy={busy} hasDraft={hasDraft} onSend={() => void send()} onStop={stop} />
+          <SendButton busy={busy} hasDraft={hasDraft && !staging} onSend={() => void send()} onStop={stop} />
         </View>
       </View>
       {error !== null && (
@@ -268,6 +291,58 @@ export function Composer({ thread }: { thread: Thread }) {
         </Text>
       )}
     </View>
+  )
+}
+
+function AttachButton({ staging, onPress }: { staging: boolean; onPress: () => void }) {
+  const theme = useTheme()
+  return (
+    <Pressable
+      testID="composer-attach"
+      accessibilityRole="button"
+      accessibilityLabel={copy("mobile_composer_attach_images")}
+      accessibilityState={{ busy: staging, disabled: staging }}
+      disabled={staging}
+      onPress={onPress}
+      hitSlop={(HIT - CHIP_HEIGHT) / 2}
+      style={({ pressed }) => [
+        styles.attach,
+        pressed && { backgroundColor: theme.surfaceStrong },
+        pressed && styles.pressed,
+      ]}
+    >
+      {staging ? (
+        <Spinner size={16} color={theme.textMuted} />
+      ) : (
+        <Icon name="RiImageLine" size={16} color={theme.textMuted} />
+      )}
+    </Pressable>
+  )
+}
+
+function DraftImages({ images, onRemove }: { images: readonly DraftImage[]; onRemove: (id: string) => void }) {
+  const theme = useTheme()
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.images}>
+      {images.map(({ attachment, preview }) => (
+        <View key={attachment.id} testID="composer-image">
+          <Image
+            source={{ uri: preview }}
+            accessibilityLabel={attachment.name}
+            style={[styles.image, { backgroundColor: theme.surfaceStrong }]}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={copy("mobile_composer_remove_image", { name: attachment.name })}
+            onPress={() => onRemove(attachment.id)}
+            hitSlop={8}
+            style={styles.removeImage}
+          >
+            <Icon name="RiCloseCircleFill" size={20} color={theme.text} />
+          </Pressable>
+        </View>
+      ))}
+    </ScrollView>
   )
 }
 
@@ -426,7 +501,7 @@ const spin = { from: { transform: [{ rotate: "0deg" }] }, to: { transform: [{ ro
 
 /**
  * The desktop's `send-halo`: a holographic pearl under Perlin grain. React Native has no conic gradient,
- * so a linear one turns instead, and it turns while there is a draft because a phone has no hover.
+ * so a linear one turns instead, once as a draft begins because a phone has no hover.
  */
 function SendHalo() {
   const theme = useTheme()
@@ -441,9 +516,9 @@ function SendHalo() {
           },
           !reduced && {
             animationName: spin,
-            animationDuration: 6000,
-            animationIterationCount: "infinite",
-            animationTimingFunction: "linear",
+            animationDuration: 1200,
+            animationIterationCount: 1,
+            animationTimingFunction: cssEase.out,
           },
         ]}
       />
@@ -819,6 +894,16 @@ const styles = StyleSheet.create({
     paddingRight: 10,
     borderRadius: radius.full,
   },
+  attach: {
+    width: CHIP_HEIGHT,
+    height: CHIP_HEIGHT,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.full,
+  },
+  images: { gap: 8, paddingHorizontal: 6, paddingTop: 6 },
+  image: { width: IMAGE_SIZE, height: IMAGE_SIZE, borderRadius: radius.md },
+  removeImage: { position: "absolute", top: -6, right: -6 },
   chipLabel: { flexShrink: 1, fontSize: 13, fontWeight: "500" },
   pressed: { transform: [{ scale: 0.96 }] },
   send: {

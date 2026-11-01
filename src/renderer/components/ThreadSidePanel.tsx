@@ -48,8 +48,7 @@ function ViewContent({ thread, view, panelId, compact }: ViewContentProps) {
   const maximum = useSidePanelMaxWidth()
   const content = createElement(view.component, { thread })
   const header = view.header && createElement(view.header, { thread })
-  const size = useUi((state) => (state.sidePanelWide ? "wide" : "normal"))
-  const width = useUi((state) => state.sidePanelWidths[size])
+  const width = useUi((state) => state.sidePanelWidth)
   const setWidth = useUi((state) => state.setSidePanelWidth)
   const toggleSidePanel = useUi((state) => state.toggleSidePanel)
   const ref = useRef<HTMLElement | null>(null)
@@ -73,11 +72,7 @@ function ViewContent({ thread, view, panelId, compact }: ViewContentProps) {
       tabIndex={-1}
       aria-label={view.title()}
       style={compact ? undefined : { width: width ?? undefined, maxWidth: maximum }}
-      className={cn(
-        "relative flex min-h-0 min-w-0 flex-col outline-none",
-        compact ? "flex-1" : "max-w-[50vw] transition-[width] duration-200 ease-out motion-reduce:transition-none",
-        !compact && (size === "wide" ? "w-[min(44rem,50vw)]" : "w-96"),
-      )}
+      className={cn("relative flex min-h-0 min-w-0 flex-col outline-none", compact ? "flex-1" : "w-96 max-w-[50vw]")}
     >
       {!compact && (
         <ResizeHandle
@@ -85,8 +80,8 @@ function ViewContent({ thread, view, panelId, compact }: ViewContentProps) {
           edge="left"
           targetRef={ref}
           bounds={{ min: SIDE_PANEL_BOUNDS.min, max: maximum }}
-          onResize={(next) => setWidth(size, next)}
-          onReset={() => setWidth(size, null)}
+          onResize={setWidth}
+          onReset={() => setWidth(null)}
         />
       )}
       <header
@@ -108,11 +103,13 @@ export function PanelToggle({
   onToggle,
   buttonRef,
   closeDialog = false,
+  className,
 }: {
   expanded: boolean
   onToggle: () => void
   buttonRef?: RefObject<HTMLButtonElement | null>
   closeDialog?: boolean
+  className?: string
 }) {
   const label = expanded ? m.panel_hide() : m.panel_show()
   const button = (
@@ -120,6 +117,7 @@ export function PanelToggle({
       ref={buttonRef}
       variant="ghost"
       size="icon-sm"
+      className={className}
       aria-label={label}
       title={label}
       aria-expanded={expanded}

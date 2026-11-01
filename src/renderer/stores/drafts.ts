@@ -1,14 +1,7 @@
 import { create } from "zustand"
-import type { Attachment } from "../../shared/domain.ts"
+import type { Attachment, LineComment } from "../../shared/domain.ts"
 
-export interface LineComment {
-  readonly id: string
-  readonly path: string
-  readonly startLine: number
-  readonly endLine: number
-  readonly code: string
-  readonly body: string
-}
+export type { LineComment }
 
 export interface Draft {
   readonly text: string

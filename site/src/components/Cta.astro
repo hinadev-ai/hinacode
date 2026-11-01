@@ -1,0 +1,23 @@
+---
+import { translator, type Locale } from "../i18n.ts"
+import Download from "./Download.astro"
+import GithubButton from "./GithubButton.astro"
+import Mark from "./Mark.astro"
+
+interface Props {
+  locale: Locale
+}
+
+const { locale } = Astro.props
+const t = translator(locale)
+---
+
+<section class="mx-auto max-w-[76rem] px-5 py-28 text-center sm:px-8 sm:py-40">
+  <Mark class="mx-auto size-14" />
+  <h2 class="display mt-7 display-2 leading-[1.05] font-semibold">{t("site_cta_title")}</h2>
+  <p class="mx-auto mt-4 max-w-[32rem] text-lg text-ink-soft">{t("site_cta_lede")}</p>
+  <div class="mt-9 flex flex-wrap justify-center gap-3">
+    <Download locale={locale} />
+    <GithubButton locale={locale} />
+  </div>
+</section>

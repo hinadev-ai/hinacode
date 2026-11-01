@@ -442,6 +442,7 @@ const graphqlPullRequest = (title: string, state = "OPEN") => ({
           nodes: [
             {
               isResolved: false,
+              diffSide: "LEFT",
               comments: {
                 nodes: [
                   {
@@ -459,6 +460,7 @@ const graphqlPullRequest = (title: string, state = "OPEN") => ({
             },
             {
               isResolved: true,
+              diffSide: "RIGHT",
               comments: {
                 nodes: [
                   {
@@ -588,7 +590,7 @@ describe("pull request reads", () => {
         comments.map(({ id, author, authorKind, location }) => ({ id, author, authorKind, location })),
       ).toStrictEqual([
         { id: "PRR_1", author: "copilot-pull-request-reviewer", authorKind: "bot", location: null },
-        { id: "PRRC_1", author: "ghost", authorKind: "human", location: { path: "src/a.ts", line: 12 } },
+        { id: "PRRC_1", author: "ghost", authorKind: "human", location: { path: "src/a.ts", line: 12, side: "LEFT" } },
         { id: "IC_2", author: "octocat", authorKind: "you", location: null },
       ])
     }).pipe(Effect.provide(gh.layer))
@@ -600,9 +602,63 @@ describe("pull request reads", () => {
       const github = yield* GitHub
       yield* github.pullRequestDetail(PR_URL)
       yield* github.comment(PR_URL, "--looks good")
-      expect(gh.runs.at(-1)).toStrictEqual(["pr", "comment", PR_URL, "--body", "--looks good"])
+      expect(gh.runs).toContainEqual(["pr", "comment", PR_URL, "--body", "--looks good"])
       yield* github.pullRequestDetail(PR_URL)
       expect(gh.runs.filter(isRead)).toHaveLength(2)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("a line comment goes to GitHub on the pull request's head and shows on the next read", () => {
+    const gh = fakeGh(() => apiReply(graphqlPullRequest("LineComment")))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* github.pullRequestDetail(PR_URL)
+      yield* github.reviewComment(PR_URL, {
+        body: "@here why?",
+        commit: "abc",
+        path: "src/a.ts",
+        side: "LEFT",
+        startLine: 3,
+        endLine: 5,
+      })
+      expect(gh.runs).toContainEqual([
+        "api",
+        "--method",
+        "POST",
+        "repos/o/r/pulls/7/comments",
+        "-f",
+        "body=@here why?",
+        "-f",
+        "commit_id=abc",
+        "-f",
+        "path=src/a.ts",
+        "-F",
+        "line=5",
+        "-f",
+        "side=LEFT",
+        "-F",
+        "start_line=3",
+        "-f",
+        "start_side=LEFT",
+      ])
+      yield* github.pullRequestDetail(PR_URL)
+      expect(gh.runs.filter(isRead)).toHaveLength(2)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("reads a file's bytes at a ref of the pull request's repository", () => {
+    const gh = fakeGh(() => ({ stdout: JSON.stringify({ encoding: "base64", content: "aGk=\nIQ==\n" }) }))
+    return Effect.gen(function* () {
+      const content = yield* (yield* GitHub).fileContent(PR_URL, "feat/x", "assets/my logo.png")
+      expect(content).toBe("aGk=IQ==")
+      expect(gh.runs).toContainEqual(["api", "repos/o/r/contents/assets/my%20logo.png?ref=feat%2Fx"])
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("a file too large for the contents API has no preview", () => {
+    const gh = fakeGh(() => ({ stdout: JSON.stringify({ encoding: "none", content: "" }) }))
+    return Effect.gen(function* () {
+      expect(yield* (yield* GitHub).fileContent(PR_URL, "abc", "big.png")).toBeNull()
     }).pipe(Effect.provide(gh.layer))
   })
 
@@ -665,7 +721,119 @@ describe("pull request reads", () => {
       expect((yield* github.pullRequest(PR_URL)).status).toBe("merged")
     }).pipe(Effect.provide(gh.layer))
   })
+
+  it.effect("tells every view when a read comes back different, and only then", () => {
+    let title = "Before"
+    const gh = fakeGh(() => apiReply(graphqlPullRequest(title)))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* github.pullRequest(PR_URL)
+      yield* TestClock.adjust("1 minute")
+      yield* github.pullRequest(PR_URL)
+      expect(gh.pushed.filter(isPullRequestPush)).toStrictEqual([])
+
+      title = "After"
+      yield* TestClock.adjust("1 minute")
+      yield* github.pullRequest(PR_URL)
+      expect(gh.pushed.filter(isPullRequestPush)).toStrictEqual([{ type: "github.pullRequest", url: PR_URL }])
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("reads again while GitHub is still working out whether the branch conflicts", () => {
+    let mergeable = "UNKNOWN"
+    const gh = fakeGh(() => apiReply(withMergeable(graphqlPullRequest("Conflict"), mergeable)))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      expect((yield* github.pullRequestDetail(PR_URL)).mergeable).toBe("unknown")
+
+      mergeable = "CONFLICTING"
+      yield* TestClock.adjust("2 seconds")
+      expect((yield* github.pullRequestDetail(PR_URL)).mergeable).toBe("conflicting")
+      expect(gh.pushed.filter(isPullRequestPush)).toStrictEqual([{ type: "github.pullRequest", url: PR_URL }])
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("gives up on a mergeability GitHub never works out after a few reads", () => {
+    const gh = fakeGh(() => apiReply(withMergeable(graphqlPullRequest("Stuck"), "UNKNOWN")))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* github.pullRequestDetail(PR_URL)
+      for (let tick = 0; tick < 10; tick++) {
+        yield* TestClock.adjust("2 seconds")
+        yield* github.pullRequestDetail(PR_URL)
+      }
+      expect(gh.runs.filter(isRead)).toHaveLength(6)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("a merge rereads the open pull requests of the same repository in one gh run", () => {
+    const merged = new Set<string>()
+    const gh = fakeGh((args) => {
+      if (args[1] === "merge") merged.add(String(args[2]))
+      const numbers = args.flatMap((arg) => /^number\d+=(\d+)$/.exec(arg)?.slice(1) ?? [])
+      const reads = numbers.map((number, index) => {
+        const url = urlOf(Number(number))
+        const pullRequest = graphqlPullRequest(`#${number}`, merged.has(url) ? "MERGED" : "OPEN").data.pr0.pullRequest
+        return [`pr${index}`, { pullRequest: { ...pullRequest, url } }]
+      })
+      return apiReply({ data: Object.fromEntries(reads) })
+    })
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* Effect.all([github.pullRequest(urlOf(1)), github.pullRequest(urlOf(2))], { concurrency: "unbounded" })
+      yield* github.merge(urlOf(1), "squash")
+      expect(gh.runs.filter(isRead)).toHaveLength(2)
+      expect(gh.pushed.filter(isPullRequestPush)).toStrictEqual([{ type: "github.pullRequest", url: urlOf(1) }])
+      expect((yield* github.pullRequest(urlOf(1))).status).toBe("merged")
+      expect(gh.runs.filter(isRead)).toHaveLength(2)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("a merge GitHub refuses rereads the pull request, so a conflict it missed shows", () => {
+    let mergeable = "MERGEABLE"
+    const gh = fakeGh((args) => {
+      if (args[1] === "merge") {
+        mergeable = "CONFLICTING"
+        return { stderr: "Pull request is not mergeable: the merge commit cannot be cleanly created.", exitCode: 1 }
+      }
+      return apiReply(withMergeable(graphqlPullRequest("Refused"), mergeable))
+    })
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* github.pullRequestDetail(PR_URL)
+      yield* Effect.flip(github.merge(PR_URL, "squash"))
+      expect(gh.pushed.filter(isPullRequestPush)).toStrictEqual([{ type: "github.pullRequest", url: PR_URL }])
+      expect((yield* github.pullRequestDetail(PR_URL)).mergeable).toBe("conflicting")
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("a fresh read skips the cache, and fresh reads close together share one gh run", () => {
+    let title = "Cached"
+    const gh = fakeGh(() => apiReply(graphqlPullRequest(title)))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* github.pullRequestDetail(PR_URL)
+      title = "Closed on GitHub"
+      const [first, second] = yield* Effect.all(
+        [github.pullRequestDetail(PR_URL, { fresh: true }), github.pullRequestDetail(PR_URL, { fresh: true })],
+        { concurrency: "unbounded" },
+      )
+      expect([first.title, second.title]).toStrictEqual(["Closed on GitHub", "Closed on GitHub"])
+      yield* github.pullRequestDetail(PR_URL, { fresh: true })
+      expect(gh.runs.filter(isRead)).toHaveLength(2)
+
+      yield* TestClock.adjust("10 seconds")
+      yield* github.pullRequestDetail(PR_URL, { fresh: true })
+      expect(gh.runs.filter(isRead)).toHaveLength(3)
+    }).pipe(Effect.provide(gh.layer))
+  })
 })
+
+const withMergeable = (reply: ReturnType<typeof graphqlPullRequest>, mergeable: string) => ({
+  data: { pr0: { pullRequest: { ...reply.data.pr0.pullRequest, mergeable } } },
+})
+
+const isPullRequestPush = (event: PushEvent) => event.type === "github.pullRequest"
 
 describe("rate limits", () => {
   it.effect("does not run gh again until a used-up rate limit resets", () => {

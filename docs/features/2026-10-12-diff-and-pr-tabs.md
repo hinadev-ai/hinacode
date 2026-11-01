@@ -16,6 +16,7 @@ A developer who finishes reviewing a thread still has to leave hinacode for two 
 5. If checks fail, a red callout offers **Ask the agent to fix**. If the branch conflicts with its base, an amber callout offers **Ask the agent to resolve**. Each one sends a prompt into the thread, steering a running turn or starting one, and names the failing checks or the base branch.
 6. **Squash and merge** is a split button, and its menu switches to a merge commit or a rebase. **Close pull request** sits next to it. Both confirm in a dialog first. Merging is disabled for drafts and conflicting branches, with the reason shown.
 7. Comments lists the conversation comments, review summaries and unresolved inline comments, oldest first. An inline comment shows its `path:line`. A long comment starts folded behind **Show more**. Each comment has **Send to agent**, which steers the thread with the comment quoted, its author, its location and its link. A box below the list posts a new comment to GitHub (mod+Enter or **Comment**).
+8. In the PR's Changes tab and in its own window, hovering a diff line shows a **+** in the gutter. Dragging across line numbers first picks a range. The form under the line has **Add to thread**, which adds a line comment to the thread's composer (mod+Enter), and **Comment on GitHub**, which posts a review comment on the PR's head commit. Unresolved GitHub review comments show under the line they belong to.
 
 ## Design
 
@@ -25,13 +26,15 @@ A developer who finishes reviewing a thread still has to leave hinacode for two 
 - rpc: `threads.changes({ threadId, scope })` returns `Changes | null`, where null means the scope has no base. It replaces `worktrees.changes`.
 - rpc: `github.pullRequestDetail`, `github.merge` and `github.close` run `gh` from the home directory, so gh never touches a local checkout. Merge never passes `--delete-branch`, because the branch is checked out in a worktree.
 - Trust boundary: those URLs come from the renderer and become `gh` argv. `requirePullRequestUrl` canonicalizes every one to `https://github.com/<owner>/<repo>/pull/<n>` first, so a value like `--admin` never reaches gh as a flag.
-- Comments ride on the same GraphQL read as the rest of the detail (last 50 of each kind, 20 per review thread), so they share its cache and rate limit pacing. Resolved threads and empty reviews are dropped in main. `github.comment` runs `gh pr comment <url> --body <text>` and invalidates the cached read, so the new comment shows on the refresh that follows.
+- Comments ride on the same GraphQL read as the rest of the detail (last 50 of each kind, 20 per review thread), so they share its cache and rate limit pacing. Resolved threads and empty reviews are dropped in main. `github.comment` runs `gh pr comment <url> --body <text>`.
+- Main owns PR state. Its cache answers every window, and it publishes `github.pullRequest { url }` whenever a read comes back different, so every view of that PR rereads the cache at once instead of on its own timer. Main reads again right after it merges, closes or comments, even when `gh` fails, because a refused merge usually means our state was stale. A merge also rereads the other open PRs of that repository it has cached, in the same GraphQL query. GitHub answers `mergeable: UNKNOWN` for about a second after a base branch moves, so main asks again every 2 s, up to 5 times, until it knows. Returning to the window asks for a fresh read of the PR on screen, and fresh reads of one PR within 10 s share one `gh` run.
+- Line comments: `github.reviewComment` runs `gh api --method POST repos/<owner>/<repo>/pulls/<n>/comments` with `commit_id`, `path`, `line`, `side` and, for a range, `start_line` and `start_side`, then rereads the PR so the comment shows inline. A review thread's `diffSide` places its comments on the old or new side. Drafts live in each window's memory, so the PR window sends **Add to thread** through `windows.addLineComment`, and main publishes `thread.lineComment` to every window. The main window's composer picks it up.
 - The fix, resolve and comment prompts are built in the renderer from the detail it already has, and sent with the existing `threads.steer`. No new rpc.
 
 ## Out of scope
 
 - A resizable or wider side panel for long diffs.
-- Replying to or resolving review threads, and rendering the raw HTML that bots put in comments.
+- Replying to or resolving review threads, batching line comments into one pending review, and rendering the raw HTML that bots put in comments.
 - Auto-merge, merge queues, and deleting the remote branch on merge. Archiving the thread can already remove the worktree and branch.
 - Turn history beyond the latest turn.
 - An unreferenced snapshot tree can be pruned by `git gc` after the prune window (two weeks by default). The Latest turn diff then shows an error until the next turn.

@@ -9,7 +9,7 @@ export const FindPartContext = createContext<number | null>(null)
 export const partMatchSelector = (partIndex: number) => `mark[data-find-match][data-find-part="${partIndex}"]`
 
 export const markClassName =
-  "rounded-[2px] bg-find-match text-inherit transition-[background-color,outline-color] duration-150 ease-out outline-1 outline-transparent data-current:bg-find-match-current data-current:outline-find-match-ring motion-reduce:transition-none"
+  "rounded-[2px] bg-find-match text-inherit transition-[background-color,outline-color] duration-150 ease-out outline-1 outline-transparent data-current:bg-find-match-current data-current:outline-find-match-ring"
 
 export function highlight(text: string, pattern: RegExp | null, part: number | null = null): ReactNode {
   if (pattern === null) return text

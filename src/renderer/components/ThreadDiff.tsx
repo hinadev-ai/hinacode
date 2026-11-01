@@ -2,9 +2,10 @@ import { useAtomSuspense } from "@effect/atom-react"
 import { cn } from "cn"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { Suspense, useDeferredValue, useEffect, useState } from "react"
+import { Suspense, useDeferredValue } from "react"
 import type { ChangesScope, Thread } from "../../shared/domain.ts"
-import { patchLineCounts, useThreadChanges } from "../lib/threadChanges.ts"
+import { useThreadChanges } from "../lib/threadChanges.ts"
+import { lineCounts } from "../lib/patch.ts"
 import { threadChangesAtom } from "../lib/rpc.ts"
 import { useThreadRoot } from "../lib/threadRoot.ts"
 import { m } from "../paraglide/messages.js"
@@ -29,7 +30,7 @@ const splitPatch = (patch: string, paths: ReadonlyArray<string>) => {
   const byPath = new Map<string, FileDiff>()
   for (const path of paths) {
     const chunk = chunks.find((candidate) => candidate.slice(0, candidate.indexOf("\n")).endsWith(` b/${path}`))
-    if (chunk !== undefined) byPath.set(path, { patch: chunk, ...patchLineCounts(chunk) })
+    if (chunk !== undefined) byPath.set(path, { patch: chunk, ...lineCounts(chunk) })
   }
   return byPath
 }
@@ -37,12 +38,13 @@ const splitPatch = (patch: string, paths: ReadonlyArray<string>) => {
 export function ThreadDiff({ thread }: { thread: Thread }) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   const hasWorktree = worktree !== undefined && worktree.status !== "removed"
-  const [scope, setScope] = useState<ChangesScope>(hasWorktree ? "worktree" : "turn")
+  const scope = useUi((state) => state.changesScopes[thread.id]) ?? (hasWorktree ? "worktree" : "turn")
+  const setScope = useUi((state) => state.setChangesScope)
   const shownScope = useDeferredValue(scope)
 
   return (
     <div className="flex flex-col gap-3 p-4">
-      <Tabs value={scope} changeAction={(value: ChangesScope) => setScope(value)}>
+      <Tabs value={scope} changeAction={(value: ChangesScope) => setScope(thread.id, value)}>
         <TabsList aria-label={m.diff_scope_label()} className="w-full">
           <TabsTrigger value="worktree">{m.diff_scope_worktree()}</TabsTrigger>
           <TabsTrigger value="turn">{m.diff_scope_turn()}</TabsTrigger>
@@ -98,11 +100,6 @@ function ChangedFiles({ thread, scope }: { thread: Thread; scope: ChangesScope }
   const root = useThreadRoot(thread)
   const openPath = useUi((state) => state.changesPath)
   const setOpenPath = useUi((state) => state.setChangesPath)
-
-  useEffect(() => {
-    useUi.getState().setSidePanelWide(openPath !== null)
-    return () => useUi.getState().setSidePanelWide(false)
-  }, [openPath])
 
   const loaded = AsyncResult.isSuccess(changes) ? changes.value : null
   const diffs = splitPatch(loaded?.patch ?? "", loaded?.files.map((file) => file.path) ?? [])

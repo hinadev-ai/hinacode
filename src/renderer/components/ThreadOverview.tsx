@@ -9,7 +9,8 @@ import { useOpenSubagent } from "../lib/subagents.ts"
 import { environmentName, useCloud, useClouds, usePullRequestHref, useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
 import { branchPullRequestAtom, callPromise, projectsAtom, pullRequestStatusAtom } from "../lib/rpc.ts"
-import { patchLineCounts, useThreadChanges } from "../lib/threadChanges.ts"
+import { lineCounts } from "../lib/patch.ts"
+import { useThreadChanges } from "../lib/threadChanges.ts"
 import { cn } from "../lib/utils.ts"
 import { parsePullRequestUrl } from "../lib/pullRequestRefs.ts"
 import { loadPullRequestsAtom, usePullRequests } from "../stores/pullRequests.ts"
@@ -262,7 +263,7 @@ function SetupScriptMenu({ thread, project, worktree, onRun }: WorkspaceProps & 
 
 function ChangesRow({ thread }: { thread: Thread }) {
   const { changes } = useThreadChanges(thread, "worktree")
-  const counts = AsyncResult.isSuccess(changes) && changes.value ? patchLineCounts(changes.value.patch) : undefined
+  const counts = AsyncResult.isSuccess(changes) && changes.value ? lineCounts(changes.value.patch) : undefined
 
   return (
     <RowButton
@@ -333,8 +334,11 @@ function PullRequests({ thread, worktree }: { thread: Thread; worktree: Worktree
 }
 
 const openPullRequest = (threadId: string, url: string, tab?: PullRequestTab) => {
-  useUi.getState().pickPullRequest(threadId, url, tab)
-  useUi.getState().showView(threadId, "pullRequests")
+  const ui = useUi.getState()
+  ui.pickPullRequest(threadId, url)
+  ui.setLinkedPullRequestsOpen(false)
+  if (tab) ui.setPullRequestTab(tab)
+  ui.showView(threadId, "pullRequests")
 }
 
 interface PullRequestRowProps {
@@ -465,7 +469,7 @@ function PullRequestMenu({ thread, url, pullRequest, linked, anchor, className }
             <RiGithubFill aria-hidden />
           </DropdownMenuLinkItem>
         </div>
-        <DropdownMenuItem onClick={() => openPullRequest(thread.id, url, "code")}>
+        <DropdownMenuItem onClick={() => openPullRequest(thread.id, url, "files")}>
           <FileDiffIcon aria-hidden />
           <span className="flex-1">{m.overview_pr_code()}</span>
           {pullRequest && <LineCounts added={pullRequest.additions} removed={pullRequest.deletions} />}

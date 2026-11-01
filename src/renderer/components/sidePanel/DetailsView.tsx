@@ -1,6 +1,7 @@
 import { RiGitPullRequestLine } from "react-icons/ri"
 import { useAtomValue } from "@effect/atom-react"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
+import { listMotion } from "../../lib/listMotion.ts"
 import { useParams } from "@tanstack/react-router"
 import { AsyncResult, Atom } from "effect/reactivity"
 import {
@@ -35,7 +36,7 @@ import { FolderOpenIcon } from "../icons/FolderOpenIcon.tsx"
 
 export function DetailsView({ thread }: { thread: Thread }) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
-  const [sectionsRef] = useAutoAnimate<HTMLDivElement>({ duration: 150 })
+  const [sectionsRef] = useAutoAnimate<HTMLDivElement>(listMotion)
   const environment = useThreadEnvironment(thread.id)
   const clouds = useClouds()
   const local = environment === null

@@ -9,6 +9,7 @@ import { handleContextMenu } from "./contextMenu.ts"
 import { chromiumDir, moveLegacyProfile } from "./dataDir.ts"
 import { keepAppMenu } from "./appMenu.ts"
 import { bringToFront, registerIpc, sendToWindows } from "./ipc.ts"
+import { pullRequestWindows } from "./pullRequestWindows.ts"
 import {
   attachmentRequest,
   BROWSER_PARTITION,
@@ -216,10 +217,10 @@ const limitBrowserPermissions = () => {
   browser.setPermissionCheckHandler((_page, permission) => permission === "clipboard-sanitized-write")
 }
 
-const createWindow = (runtime: AppRuntime) => {
+const createWindow = (runtime: AppRuntime, entry?: string) => {
   const window = new BrowserWindow({
-    width: 1280,
-    height: 820,
+    width: entry ? 1200 : 1280,
+    height: entry ? 880 : 820,
     minWidth: 720,
     minHeight: 480,
     show: false,
@@ -252,8 +253,22 @@ const createWindow = (runtime: AppRuntime) => {
   window.webContents.on("did-attach-webview", (_event, page) => keepOnTheWeb(page))
   handleContextMenu(window, runtime, appUrl)
 
-  void window.loadURL(appUrl)
+  void window.loadURL(entry ? `${appUrl}?${new URLSearchParams({ entry })}` : appUrl)
+  return window
 }
+
+const openPullRequestWindow = (runtime: AppRuntime) =>
+  pullRequestWindows({
+    open: (threadId, url) => {
+      const window = createWindow(
+        runtime,
+        `/thread/${encodeURIComponent(threadId)}/pull-request?${new URLSearchParams({ url })}`,
+      )
+      window.removeMenu()
+      return window
+    },
+    focus: bringToFront,
+  })
 
 app.whenReady().then(async () => {
   const sbxConfigPath = join(app.getPath("appData"), "sbx", "config.json")
@@ -282,7 +297,7 @@ app.whenReady().then(async () => {
     const timeout = new Promise((resolve) => setTimeout(resolve, QUIT_TIMEOUT_MS))
     void Promise.race([disposal, timeout]).then(() => app.quit())
   })
-  registerIpc(runtime, appUrl)
+  registerIpc(runtime, appUrl, openPullRequestWindow(runtime))
   powerMonitor.on("resume", () =>
     runtime.runFork(Effect.flatMap(Environments.Environments, (environments) => environments.reconnectAll)),
   )

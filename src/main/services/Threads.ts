@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto"
+import { join } from "node:path"
 import { Context, Effect, FileSystem, Layer, Option, type PlatformError, Schema, Semaphore } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { ForkPoint, ProviderId } from "../../shared/agent.ts"
@@ -148,6 +149,12 @@ export class Threads extends Context.Service<
       id: string,
       scope: ChangesScope,
     ) => Effect.Effect<Changes | null, PersistenceError | NotFoundError | CommandError | PlatformError.PlatformError>
+    readonly undoTurn: (
+      id: string,
+    ) => Effect.Effect<
+      void,
+      PersistenceError | NotFoundError | CommandError | PlatformError.PlatformError | ThreadBusyError
+    >
     readonly captureTurnBase: (cwd: string) => Effect.Effect<string | null>
     readonly recordTurnBase: (input: {
       readonly threadId: string
@@ -598,12 +605,42 @@ const make = Effect.gen(function* () {
         const { worktreeId } = yield* get(id)
         return worktreeId === null ? null : yield* worktrees.changes(worktreeId)
       }
+      const base = yield* turnBase(id)
+      return base === null ? null : yield* turnChanges(base)
+    })
+
+  const turnBase = (id: string) =>
+    Effect.gen(function* () {
       const row = yield* findTurnBase(id).pipe(Effect.mapError(persistence("threads.turnBase")))
       if (Option.isNone(row)) return yield* new NotFoundError({ entity: "thread", id })
       const { turnBaseTree } = row.value
       if (turnBaseTree === null) return null
       const { cwd } = yield* activeWorkspace(id)
-      return yield* diffWorkingTree(cwd, Effect.succeed(turnBaseTree)).pipe(Effect.provideContext(gitContext))
+      return { tree: turnBaseTree, cwd }
+    })
+
+  const turnChanges = ({ tree, cwd }: { tree: string; cwd: string }) =>
+    diffWorkingTree(cwd, Effect.succeed(tree)).pipe(Effect.provideContext(gitContext))
+
+  const undoTurn = (id: string) =>
+    Effect.gen(function* () {
+      const thread = yield* get(id)
+      if (isThreadBusy(thread.status)) return yield* new ThreadBusyError({ id })
+      const base = yield* turnBase(id)
+      if (base === null) return
+      const { files } = yield* turnChanges(base)
+      const root = (yield* git.run(base.cwd, ["rev-parse", "--show-toplevel"])).trim()
+      yield* Effect.forEach(
+        files.filter((file) => file.status === "added"),
+        (file) => fs.remove(join(root, file.path), { force: true }),
+        { discard: true },
+      )
+      const restored = files.filter((file) => file.status !== "added").map((file) => file.path)
+      if (restored.length > 0) {
+        yield* git.run(root, ["restore", `--source=${base.tree}`, "--worktree", "--", ...restored], {
+          env: { GIT_LITERAL_PATHSPECS: "1" },
+        })
+      }
     })
 
   const captureTurnBase = (cwd: string) =>
@@ -670,6 +707,7 @@ const make = Effect.gen(function* () {
     prepareWorkspace,
     listFiles,
     changes,
+    undoTurn,
     captureTurnBase,
     recordTurnBase,
     archive,

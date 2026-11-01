@@ -1,0 +1,71 @@
+---
+interface Props {
+  class?: string
+}
+
+type Agent = { x: number; y: number; r: number; state: "idle" | "done" | "running" | "waiting"; delay: number }
+
+const COLUMNS = 28
+const ROWS = 19
+const GAP = 24
+
+function seeded(seed: number) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0
+    let value = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+    value = (value + Math.imul(value ^ (value >>> 7), 61 | value)) ^ value
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+const random = seeded(7)
+const agents: Agent[] = []
+for (let row = 0; row < ROWS; row++) {
+  for (let column = 0; column < COLUMNS; column++) {
+    const towardEdge = column / (COLUMNS - 1)
+    const roll = random()
+    if (roll > 0.15 + towardEdge * 0.75) continue
+    const pick = towardEdge < 0.55 ? 1 : random()
+    const state = pick < 0.035 ? "running" : pick < 0.05 ? "waiting" : pick < 0.1 ? "done" : "idle"
+    agents.push({
+      x: column * GAP + GAP / 2,
+      y: row * GAP + GAP / 2,
+      r: state === "idle" ? 2 + Math.round(random() * 2) : 4,
+      state,
+      delay: Math.round(random() * 2400),
+    })
+  }
+}
+
+const fills = {
+  idle: "fill-line-strong",
+  done: "fill-teal/70",
+  running: "fill-coral agent-running",
+  waiting: "fill-attention",
+}
+---
+
+<svg
+  aria-hidden="true"
+  viewBox={`0 0 ${COLUMNS * GAP} ${ROWS * GAP}`}
+  preserveAspectRatio="xMaxYMid slice"
+  class:list={["pointer-events-none select-none", Astro.props.class]}
+>
+  {
+    agents.map(({ x, y, r, state, delay }) => (
+      <>
+        {state === "waiting" && (
+          <circle
+            cx={x}
+            cy={y}
+            r={r + 4}
+            class="agent-ring fill-none stroke-attention"
+            stroke-width="1.5"
+            style={`animation-delay:${delay}ms`}
+          />
+        )}
+        <circle cx={x} cy={y} r={r} class={fills[state]} style={`animation-delay:${delay}ms`} />
+      </>
+    ))
+  }
+</svg>

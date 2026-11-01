@@ -24,6 +24,8 @@ import {
   UpdatableProviderId,
 } from "./agent.ts"
 import {
+  LineComment,
+  ReviewLineComment,
   AccessMode,
   CheckoutState,
   SetupNotice,
@@ -88,7 +90,7 @@ import {
   OpenPullRequest,
   PullRequestMatch,
 } from "./domain.ts"
-import { GitHubRepository } from "./github.ts"
+import { GitHubRepository, GitRefName, RepositoryPath, RepositoryVisibility } from "./github.ts"
 import { PendingLink, RelayHost } from "./relayMachines.ts"
 import { BrowserCommand, BrowserSession, BrowserSnapshot, BrowserUrl, BrowserViewport } from "./browser.ts"
 import {
@@ -162,6 +164,8 @@ export const RpcMethods = {
   ),
   "app.ready": rpc(Schema.Void, Schema.Void),
   "app.focus": rpc(Schema.Void, Schema.Void),
+  "windows.openPullRequest": rpc(Schema.Struct({ threadId: Schema.String, url: Schema.String }), Schema.Void),
+  "windows.addLineComment": rpc(Schema.Struct({ threadId: Schema.String, comment: LineComment }), Schema.Void),
   "app.setBadgeCount": rpc(Schema.Struct({ count: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)) }), Schema.Void),
   "app.setColorScheme": rpc(Schema.Literals(["dark", "light", "system"]), Schema.Void),
   "browser.open": rpc(
@@ -190,6 +194,7 @@ export const RpcMethods = {
       name: Schema.String,
       rootPath: Schema.String,
       setupScript: Schema.NullOr(Schema.String),
+      createRepository: Schema.optional(RepositoryVisibility),
     }),
     Project,
   ),
@@ -275,6 +280,7 @@ export const RpcMethods = {
   "worktrees.stopSetup": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   "worktrees.pullRequest": rpc(Schema.Struct({ id: Schema.String }), Schema.NullOr(PullRequest)),
   "threads.changes": rpc(Schema.Struct({ threadId: Schema.String, scope: ChangesScope }), Schema.NullOr(Changes)),
+  "threads.undoTurn": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "threads.fork": rpc(Schema.Struct({ threadId: Schema.String, messageId: Schema.String }), Thread),
   "threads.sidechat": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   "sessions.listExternal": rpc(
@@ -459,11 +465,19 @@ export const RpcMethods = {
 
   "github.auth": rpc(Schema.Void, GitHubAuth),
   "github.pullRequest": rpc(Schema.Struct({ url: Schema.String }), PullRequest),
-  "github.pullRequestDetail": rpc(Schema.Struct({ url: Schema.String }), PullRequestDetail),
+  "github.pullRequestDetail": rpc(
+    Schema.Struct({ url: Schema.String, fresh: Schema.optionalKey(Schema.Boolean) }),
+    PullRequestDetail,
+  ),
   "github.pullRequestFiles": rpc(Schema.Struct({ url: Schema.String }), Schema.Array(PullRequestFile)),
   "github.merge": rpc(Schema.Struct({ url: Schema.String, method: MergeMethod }), Schema.Void),
   "github.close": rpc(Schema.Struct({ url: Schema.String }), Schema.Void),
   "github.comment": rpc(Schema.Struct({ url: Schema.String, body: Schema.String }), Schema.Void),
+  "github.fileContent": rpc(
+    Schema.Struct({ url: Schema.String, ref: GitRefName, path: RepositoryPath }),
+    Schema.NullOr(Schema.String),
+  ),
+  "github.reviewComment": rpc(Schema.Struct({ url: Schema.String, comment: ReviewLineComment }), Schema.Void),
   "pullRequestGuides.get": rpc(Schema.Struct({ url: Schema.String }), PullRequestGuideState),
   "pullRequestGuides.retry": rpc(Schema.Struct({ url: Schema.String }), Schema.Void),
   "linear.issues": rpc(Schema.Void, Schema.Array(LinearIssue)),
@@ -603,6 +617,8 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "device.pick": "mutation",
   "app.ready": "mutation",
   "app.focus": "mutation",
+  "windows.openPullRequest": "mutation",
+  "windows.addLineComment": "mutation",
   "app.setBadgeCount": "mutation",
   "app.setColorScheme": "mutation",
   "projects.list": "read",
@@ -626,6 +642,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "worktrees.stopSetup": "mutation",
   "worktrees.pullRequest": "read",
   "threads.changes": "read",
+  "threads.undoTurn": "mutation",
   "threads.fork": "mutation",
   "threads.sidechat": "mutation",
   "sessions.listExternal": "read",
@@ -717,6 +734,8 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "github.merge": "mutation",
   "github.close": "mutation",
   "github.comment": "mutation",
+  "github.fileContent": "read",
+  "github.reviewComment": "mutation",
   "pullRequestGuides.get": "read",
   "pullRequestGuides.retry": "mutation",
   "github.repository": "read",
@@ -775,6 +794,8 @@ export const mutations: ReadonlySet<string> = new Set(
 export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "app.ready",
   "app.focus",
+  "windows.openPullRequest",
+  "windows.addLineComment",
   "app.setBadgeCount",
   "app.setColorScheme",
   "dialog.pickFolder",
@@ -867,6 +888,8 @@ export const PushEvent = Schema.Union([
     links: Schema.Array(PullRequestLink),
   }),
   Schema.Struct({ type: Schema.Literal("pullRequest.guide"), url: Schema.String, state: PullRequestGuideState }),
+  Schema.Struct({ type: Schema.Literal("github.pullRequest"), url: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("thread.lineComment"), threadId: Schema.String, comment: LineComment }),
   Schema.Struct({
     type: Schema.Literal("github.rateLimit"),
     level: Schema.Literals(["low", "exhausted"]),

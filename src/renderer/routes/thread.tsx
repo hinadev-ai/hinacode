@@ -35,6 +35,7 @@ export function ThreadRoute() {
   const thread = useThreads(selectOpenableThread(threadId))
   const togglePanel = useUi((state) => state.toggleSidePanel)
   const overlayOpen = useUi((state) => state.sidePanelOverlayOpen)
+  const dockedOpen = useUi((state) => state.sidePanelOpen)
   const setOverlayOpen = useUi((state) => state.setSidePanelOverlayOpen)
   const docked = usePanelLayout() === "wide"
   const toggleRef = useRef<HTMLButtonElement>(null)
@@ -63,6 +64,7 @@ export function ThreadRoute() {
               <ActionsMenu thread={thread} />
               <TerminalToggle threadId={thread.id} />
               {!docked && <PanelToggle buttonRef={toggleRef} expanded={overlayOpen} onToggle={togglePanel} />}
+              {docked && !dockedOpen && <PanelToggle expanded={false} onToggle={togglePanel} className="-me-1" />}
             </>
           }
         />

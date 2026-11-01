@@ -13,10 +13,10 @@ describe("resolveCatalogLocale", () => {
     }
   })
 
-  it("skips Simplified Chinese", () => {
-    expect(resolveCatalogLocale(["zh-CN"])).toBe("en")
-    expect(resolveCatalogLocale(["zh-Hans-HK"])).toBe("en")
-    expect(resolveCatalogLocale(["zh"])).toBe("en")
+  it("reads Simplified and bare Chinese tags as zh-CN", () => {
+    for (const tag of ["zh-CN", "zh-Hans", "zh-Hans-CN", "zh-Hans-HK", "zh_Hans_SG", "zh-SG", "zh"]) {
+      expect(resolveCatalogLocale([tag])).toBe("zh-CN")
+    }
   })
 
   it("takes the first preferred language it has a catalog for", () => {

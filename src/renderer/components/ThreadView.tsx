@@ -97,7 +97,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
           data-centered={centered}
           data-loaded={loaded}
           className={cn(
-            "absolute inset-x-0 bottom-0 flex max-h-full clear-overview flex-col data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] data-[loaded=false]:opacity-0 data-[loaded=true]:data-[centered=false]:transition-transform data-[loaded=true]:data-[centered=false]:duration-500 data-[loaded=true]:data-[centered=false]:ease-drawer motion-reduce:transition-none",
+            "absolute inset-x-0 bottom-0 flex max-h-full clear-overview flex-col data-[centered=true]:translate-y-[calc(var(--dock-height)/2-50cqh)] data-[loaded=false]:opacity-0 data-[loaded=true]:data-[centered=false]:transition-transform data-[loaded=true]:data-[centered=false]:duration-300 data-[loaded=true]:data-[centered=false]:ease-drawer motion-reduce:transition-none",
           )}
         >
           {agent === undefined ? (
@@ -203,7 +203,9 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
   }
   return (
     <FindPatternContext value={pattern}>
-      {findOpen && agent === undefined && <FindBar messages={history.messages} query={findQuery} listRef={listRef} />}
+      {findOpen && agent === undefined && (
+        <FindBar messages={history.messages} commands={commands} query={findQuery} listRef={listRef} />
+      )}
       {agent !== undefined ? (
         <SubagentTranscript
           key={agent}
@@ -227,7 +229,13 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
           <div className="h-[calc(50cqh+var(--dock-height)/2+1.5rem)] shrink-0" />
         </>
       ) : (
-        <MessageList messages={history.messages} providerLabel={label} commands={commands} listRef={listRef} />
+        <MessageList
+          messages={history.messages}
+          providerLabel={label}
+          commands={commands}
+          listRef={listRef}
+          turnChanges
+        />
       )}
     </FindPatternContext>
   )

@@ -217,6 +217,20 @@ When(
   },
 )
 
+When(
+  "I click the menu button of the thread {string} with the pointer resting elsewhere",
+  async ({ app, names }, title: string) => {
+    await app.page.mouse.move(0, 0)
+    await openTab(app.page)
+      .getByRole("button", { name: `Actions for ${names.of(title)}`, exact: true })
+      .click()
+  },
+)
+
+Then("the thread menu offers {string}", async ({ app }, item: string) => {
+  await expect(app.page.getByRole("menuitem", { name: item, exact: true })).toBeVisible()
+})
+
 const snoozePicker = (page: Page) => page.getByRole("dialog", { name: /^Snooze / })
 
 When(

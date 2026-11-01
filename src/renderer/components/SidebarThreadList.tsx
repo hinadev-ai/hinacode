@@ -45,6 +45,7 @@ import { useDrafts } from "../stores/drafts.ts"
 import { usePullRequests } from "../stores/pullRequests.ts"
 import { lastActivity, useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
+import { listMotionPausedWhile } from "../lib/listMotion.ts"
 import { useUnseen } from "../stores/unseen.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { SidebarPullRequests } from "./SidebarPullRequests.tsx"
@@ -128,6 +129,8 @@ interface SidebarThreadListProps {
   readonly className?: string
 }
 
+export const sidebarListMotion = listMotionPausedWhile(() => useUi.getState().sidebarQuery !== "")
+
 export function SidebarThreadList({
   group,
   threads,
@@ -139,7 +142,7 @@ export function SidebarThreadList({
 }: SidebarThreadListProps) {
   const firstRowRef = useRef<HTMLAnchorElement>(null)
   const focusAfterRemoval = () => firstRowRef.current ?? newThreadButtonRef?.current ?? null
-  const [listRef, setAnimate] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
+  const [listRef, setAnimate] = useAutoAnimate<HTMLUListElement>(sidebarListMotion)
   const DROP_ANIMATION_MS = 300
   const [reorderError, setReorderError] = useState<string | null>(null)
 
@@ -342,7 +345,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
           </Link>
           <div
             data-row-actions
-            className="pointer-events-none relative mr-1 flex items-center gap-0.5 self-center justify-self-end rounded-md bg-sidebar-accent opacity-0 [grid-area:1/1] group-hover/thread:pointer-events-auto group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 group-data-[menu-open=true]/thread:opacity-100 before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-linear-to-l before:from-sidebar-accent focus-within:opacity-100 has-[[data-popup-open]]:opacity-100"
+            className="relative mr-1 flex items-center gap-0.5 self-center justify-self-end rounded-md bg-sidebar-accent opacity-0 [grid-area:1/1] group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 group-data-[menu-open=true]/thread:opacity-100 before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-linear-to-l before:from-sidebar-accent focus-within:opacity-100 has-[[data-popup-open]]:opacity-100 [@media(hover:none)]:pointer-events-none"
           >
             {archived ? (
               <Button
