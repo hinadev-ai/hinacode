@@ -6,7 +6,11 @@ export type DemoStep =
   | { readonly kind: "question"; readonly question: Question }
 
 const say = (text: string): Array<DemoStep> =>
-  (text.match(/\S+\s*/g) ?? []).map((word) => ({ kind: "event", event: { type: "text_delta", text: word }, pauseMs: 35 }))
+  (text.match(/\S+\s*/g) ?? []).map((word) => ({
+    kind: "event",
+    event: { type: "text_delta", text: word },
+    pauseMs: 35,
+  }))
 
 const think = (text: string): Array<DemoStep> =>
   (text.match(/\S+\s*/g) ?? []).map((word) => ({
