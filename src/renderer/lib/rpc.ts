@@ -1,8 +1,8 @@
-import { Duration, Effect, Option, Schedule, Schema, Stream } from "effect"
+import { Duration, Effect, Schedule, Schema, Stream } from "effect"
 import { AsyncResult, Atom } from "effect/reactivity"
 import type { AgentCommand, ProviderId } from "../../shared/agent.ts"
 import { PushEvent, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../../shared/contract.ts"
-import type { PullRequest, Thread } from "../../shared/domain.ts"
+import type { Thread } from "../../shared/domain.ts"
 import { PULL_REQUEST_REFRESH } from "../../shared/github.ts"
 import { msUntilNextReset } from "../../shared/planLimits.ts"
 import { pullRequestAttention } from "../../shared/threadStatus.ts"
@@ -389,13 +389,18 @@ const refreshWhenPullRequestChanges = (get: Atom.AtomContext, url: string) =>
     }),
   )
 
-export const branchPullRequestAtom = gitHubLookup((worktreeId: string | null) => (get) => {
-  const known = Option.getOrUndefined(get.self<AsyncResult.AsyncResult<PullRequest | null, RpcError>>())
-  if (known !== undefined && AsyncResult.isSuccess(known) && known.value !== null) {
-    refreshWhenPullRequestChanges(get, known.value.url)
-  }
-  return worktreeId ? call("worktrees.pullRequest", { id: worktreeId }) : Effect.succeed(null)
-})
+export const branchPullRequestAtom = gitHubLookup(
+  (worktreeId: string | null) => (get) =>
+    worktreeId
+      ? call("worktrees.pullRequest", { id: worktreeId }).pipe(
+          Effect.tap((pullRequest) =>
+            Effect.sync(() => {
+              if (pullRequest !== null) refreshWhenPullRequestChanges(get, pullRequest.url)
+            }),
+          ),
+        )
+      : Effect.succeed(null),
+)
 
 export const pullRequestStatusAtom = gitHubLookup((environment: EnvironmentId, url: string) => (get) => {
   refreshWhenPullRequestChanges(get, url)
