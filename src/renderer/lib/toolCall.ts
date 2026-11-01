@@ -1,4 +1,7 @@
+import type { AgentCommand } from "../../shared/agent.ts"
 import { type MessagePart, spawnsSubagent } from "../../shared/domain.ts"
+import { m } from "../paraglide/messages.js"
+import { getLocale } from "../paraglide/runtime.js"
 
 const SUMMARY_KEYS = ["command", "file_path", "notebook_path", "pattern", "path", "url", "query", "description"]
 
@@ -96,6 +99,26 @@ export function skillsUsed(call: ToolCall): Array<string> | null {
         : undefined
   if (named !== undefined) return [named]
   return call.name === "Bash" ? skillsReadBy(describeToolCall(call).summary) : null
+}
+
+export type SkillLabels = ReadonlyMap<string, string>
+
+export const skillLabelsOf = (commands: ReadonlyArray<AgentCommand>): SkillLabels =>
+  new Map(commands.map((command) => [command.name, command.label ?? command.name]))
+
+const conjunctionFormats = new Map<string, Intl.ListFormat>()
+
+export function conjunctionFormat(locale: string) {
+  const cached = conjunctionFormats.get(locale)
+  if (cached) return cached
+  const format = new Intl.ListFormat(locale, { type: "conjunction" })
+  conjunctionFormats.set(locale, format)
+  return format
+}
+
+export function skillUseText(skills: ReadonlyArray<string>, labels: SkillLabels): string {
+  const names = skills.map((skill) => `"${labels.get(skill) ?? skill.slice(skill.indexOf(":") + 1)}"`)
+  return m.tool_skill_used({ count: skills.length, skills: conjunctionFormat(getLocale()).format(names) })
 }
 
 export type ToolKind = "command" | "read" | "edit" | "search" | "skill" | "other"

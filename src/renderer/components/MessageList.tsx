@@ -24,6 +24,7 @@ import {
 import { useFollowLatest } from "../lib/followLatest.ts"
 import { faviconOrigins, linkify } from "../lib/linkify.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
+import { skillLabelsOf } from "../lib/toolCall.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
@@ -86,7 +87,7 @@ export function MessageList({
   const ownRef = useRef<LegendListRef>(null)
   const ref = listRef ?? ownRef
   const { listProps, anchored, atEnd, jumpToLatest } = useFollowLatest(ref, messages)
-  const skillLabels = new Map(commands.map((command) => [command.name, command.label ?? command.name]))
+  const skillLabels = skillLabelsOf(commands)
   return (
     <TranscriptContext value={transcript}>
       <SkillLabels value={skillLabels}>

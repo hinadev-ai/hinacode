@@ -10,10 +10,13 @@ import { statusOfCall, useOpenSubagent } from "../lib/subagents.ts"
 import { callPromise } from "../lib/rpc.ts"
 import {
   type ActivityPart,
+  conjunctionFormat,
   countToolKinds,
   describeCommand,
   describeToolCall,
+  type SkillLabels as SkillLabelMap,
   skillsUsed,
+  skillUseText,
   type ToolKind,
 } from "../lib/toolCall.ts"
 import { decodeUnicodeEscapes } from "../lib/unicodeEscapes.ts"
@@ -144,7 +147,7 @@ export const SubagentLinks = createContext(true)
 
 export const PartThread = createContext("")
 
-export const SkillLabels = createContext<ReadonlyMap<string, string>>(new Map())
+export const SkillLabels = createContext<SkillLabelMap>(new Map())
 
 function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call" }> }) {
   const linksSubagents = use(SubagentLinks)
@@ -254,16 +257,6 @@ const toolKindLabel = {
   skill: m.tool_kind_skill,
   other: m.tool_kind_other,
 } satisfies Record<ToolKind, (inputs: { count: number }) => string>
-
-const conjunctionFormats = new Map<string, Intl.ListFormat>()
-
-function conjunctionFormat(locale: string) {
-  const cached = conjunctionFormats.get(locale)
-  if (cached) return cached
-  const format = new Intl.ListFormat(locale, { type: "conjunction" })
-  conjunctionFormats.set(locale, format)
-  return format
-}
 
 function summarizeTools(calls: ReadonlyArray<ToolCall>): string {
   const locale = getLocale()
@@ -380,12 +373,7 @@ function ToolRow({ call, reveal }: { call: ToolCall; reveal: FindRevealRequest |
 }
 
 function SkillLabel({ skills, truncate }: { skills: ReadonlyArray<string>; truncate: string }) {
-  const labels = use(SkillLabels)
-  const names = skills.map((skill) => `"${labels.get(skill) ?? skill.slice(skill.indexOf(":") + 1)}"`)
-  const text = m.tool_skill_used({
-    count: skills.length,
-    skills: conjunctionFormat(getLocale()).format(names),
-  })
+  const text = skillUseText(skills, use(SkillLabels))
   return (
     <span className={cn("min-w-0", truncate)} title={text}>
       <Highlighted text={text} />

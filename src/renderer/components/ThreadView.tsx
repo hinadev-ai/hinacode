@@ -203,7 +203,9 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
   }
   return (
     <FindPatternContext value={pattern}>
-      {findOpen && agent === undefined && <FindBar messages={history.messages} query={findQuery} listRef={listRef} />}
+      {findOpen && agent === undefined && (
+        <FindBar messages={history.messages} commands={commands} query={findQuery} listRef={listRef} />
+      )}
       {agent !== undefined ? (
         <SubagentTranscript
           key={agent}
