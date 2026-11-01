@@ -815,6 +815,10 @@ const make = Effect.gen(function* () {
         yield* checkStopped
         if (!(yield* when)) return null
         let thread = yield* threads.get(threadId)
+        if (thread.status === "draft") {
+          thread = yield* threads.promoteDraft(threadId)
+          yield* push.publish({ type: "thread.updated", thread })
+        }
         const first = !(yield* threads.started(threadId))
         if (first && thread.sideOf !== null) {
           const parent = yield* threads.get(thread.sideOf)

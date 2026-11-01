@@ -339,7 +339,7 @@ export const threadToolsLayer = ThreadTools.toLayer(
                 place: { here: false, machine },
               })),
           ]
-            .filter(({ thread }) => thread.status !== "archived")
+            .filter(({ thread }) => thread.status !== "archived" && thread.status !== "draft")
             .map(({ thread, place }) => ({
               id: thread.id,
               title: thread.title,

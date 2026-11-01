@@ -14,7 +14,7 @@ import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { openThread } from "@/lib/navigation"
 import { relativeTime } from "@/lib/relative-time"
-import { matchThreads, useThreads } from "@/stores/threads"
+import { listedThreads, matchThreads, useThreads } from "@/stores/threads"
 
 const THREAD_LIMIT = 20
 const MESSAGE_LIMIT = 30
@@ -85,7 +85,7 @@ export function SearchResults({
   const theme = useTheme()
   const projects = useThreads((state) => state.projects)
   const byId = useThreads((state) => state.byId)
-  const threads = matchThreads(Object.values(byId), projects, query).slice(0, THREAD_LIMIT)
+  const threads = matchThreads(listedThreads(byId), projects, query).slice(0, THREAD_LIMIT)
   const messages = useMessageSearch(query)
   const items = searchItems(threads, messages)
 

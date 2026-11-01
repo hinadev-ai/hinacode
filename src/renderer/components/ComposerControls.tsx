@@ -25,7 +25,7 @@ import {
 } from "../lib/rpc.ts"
 import { environmentName, environmentOf, useClouds, useThreadEnvironment } from "../lib/environments.ts"
 import { groupProjects } from "../lib/projectGroups.ts"
-import { moveUnstartedThread } from "../lib/startThread.ts"
+import { moveDraft } from "../lib/startThread.ts"
 import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { type Draft, useDrafts } from "../stores/drafts.ts"
@@ -748,7 +748,7 @@ function ContextSwitch({
   const move = (projectId: string) =>
     startMoving(async () => {
       try {
-        await moveUnstartedThread(thread, projectId, navigate)
+        await moveDraft(thread, projectId, navigate)
       } catch (cause) {
         toast.error(errorMessage(cause))
       }
