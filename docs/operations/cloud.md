@@ -55,6 +55,7 @@ The cloud then prints the pairing block with its relay hostname in every URL, an
 
 - `hinacode serve: another hinacode serve (pid N) uses ...` or `the HinaCode app (pid N) uses ...`: give this cloud its own `HINACODE_USER_DATA`.
 - `hinacode serve: port 48081 is in use ...`: another cloud, or the desktop app's Settings > Connections, holds the port. Pick another with `--port`.
+- `remote address is not up yet, retrying ... EADDRNOTAVAIL`: the `--host` address is not on any interface yet, as when the cloud starts at boot before Tailscale. The cloud keeps running and binds once the address comes up, retrying every 30 seconds at most.
 - `automation webhook listener failed ... 48080`: the desktop app on the same machine holds the webhook port. The cloud keeps running; only its webhooks are off.
 - Phone cannot connect: use the Tailscale URL the daemon printed, and confirm both devices are on the same tailnet and the firewall allows the port. The transport is plain WebSocket, encrypted by Tailscale or your LAN only.
 - Lost the pairing URL: run `hinacode pair` with the same `HINACODE_USER_DATA`. It prints the same token without a restart. Restart with `--rotate-token` only when a token may have leaked, since every client must pair again.

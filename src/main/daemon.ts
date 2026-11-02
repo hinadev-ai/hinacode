@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url"
 import { Effect, Layer, ManagedRuntime, References } from "effect"
 import QRCode from "qrcode"
 import type { RemotePairing } from "../shared/domain.ts"
-import { isPortInUse, pairingUrl } from "../shared/remote.ts"
+import { isAddressNotUpYet, isPortInUse, pairingUrl } from "../shared/remote.ts"
 import { makeAppLayer } from "./app.ts"
 import * as CloudUpdater from "./cloudUpdater.ts"
 import { chromiumDir, desktopPid, isAlive } from "./dataDir.ts"
@@ -81,6 +81,7 @@ const listening = async (runtime: ManagedRuntime.ManagedRuntime<RemoteAccess | S
   for (;;) {
     const status = await runtime.runPromise(RemoteAccess.use((remote) => remote.status))
     if (status.listening) break
+    if (status.listenError !== null && isAddressNotUpYet(status.listenError)) break
     if (status.listenError !== null && isPortInUse(status.listenError)) {
       const { port } = (await runtime.runPromise(Settings.use((settings) => settings.get))).remote
       throw new Error(

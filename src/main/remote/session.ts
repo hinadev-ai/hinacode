@@ -13,6 +13,7 @@ import {
 } from "../../shared/contract.ts"
 import {
   ClientFrame,
+  isAddressNotUpYet,
   REMOTE_MAX_FRAME_BYTES,
   REMOTE_PATH,
   REMOTE_PROTOCOL_VERSION,
@@ -23,6 +24,7 @@ import {
 import { CLOSE_LISTENER_STOPPED, CLOSE_MALFORMED_FRAME, type EnvironmentIdentity } from "./access.ts"
 
 const HEARTBEAT_INTERVAL = Duration.seconds(20)
+const ADDRESS_RETRY = Schedule.min([Schedule.exponential("500 millis"), Schedule.spaced("30 seconds")])
 const CALL_KEY_TTL_MS = Duration.toMillis(Duration.minutes(5))
 export const MAX_CALL_KEYS = 2000
 
@@ -229,3 +231,6 @@ export const listenWebSockets = ({
         server.close()
       }),
   )
+
+export const retryUntilAddressIsUp = <A, R>(listen: Effect.Effect<A, Error, R>) =>
+  listen.pipe(Effect.retry({ while: (error) => isAddressNotUpYet(error.message), schedule: ADDRESS_RETRY }))

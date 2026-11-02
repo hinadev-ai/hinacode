@@ -3,6 +3,7 @@ import { Cause, Duration, Effect, Fiber, FiberHandle, Layer, Stream } from "effe
 import type { WebSocket } from "ws"
 import { newNonce } from "../../shared/proof.ts"
 import { PRIVATE_NETWORKS, type Settings as SettingsValue } from "../../shared/domain.ts"
+import { isAddressNotUpYet } from "../../shared/remote.ts"
 import { isPrivateAddress } from "../network.ts"
 import { dispatch } from "../rpc.ts"
 import { PushBroadcast } from "../services/Events.ts"
@@ -17,7 +18,7 @@ import {
   relayHostname,
 } from "./access.ts"
 import { type Hub, Peers } from "./peers.ts"
-import { describeError, listenWebSockets, makeSessions, readFrame, send } from "./session.ts"
+import { describeError, listenWebSockets, makeSessions, readFrame, retryUntilAddressIsUp, send } from "./session.ts"
 
 const AUTH_TIMEOUT = Duration.seconds(5)
 
@@ -108,6 +109,14 @@ const make = Effect.gen(function* () {
       accept,
       perMessageDeflate: true,
     }).pipe(
+      Effect.tapError(({ message }) =>
+        isAddressNotUpYet(message)
+          ? access
+              .report({ listenError: message })
+              .pipe(Effect.andThen(Effect.logWarning("remote address is not up yet, retrying", message)))
+          : Effect.void,
+      ),
+      retryUntilAddressIsUp,
       Effect.andThen(access.report({ listening: true, listenError: null })),
       Effect.andThen(Effect.logInfo("remote listening", `${address.bindHost}:${address.port}`)),
       Effect.andThen(Effect.never),
