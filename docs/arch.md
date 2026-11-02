@@ -184,7 +184,7 @@ classDiagram
     approval mode from the thread's access mode, set live
   }
   class AcpProvider {
-    one opencode acp process, respawned on exit
+    one opencode acp process per turn
     one ACP session per thread, session/load to resume
     hinacode answers session/request_permission from the access mode
   }
