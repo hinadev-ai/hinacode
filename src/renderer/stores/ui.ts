@@ -27,6 +27,7 @@ export type SidePanelViewId =
   | "tinyVm"
   | "devices"
   | "sidechat"
+  | "artifacts"
 const sidebarTabs = ["inbox", "threads", "archived"] as const
 export type SidebarTab = (typeof sidebarTabs)[number]
 

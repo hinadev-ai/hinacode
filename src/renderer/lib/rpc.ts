@@ -631,6 +631,17 @@ export const automationsAtom = Atom.family((environment: EnvironmentId) =>
   }),
 )
 
+export const artifactsAtom = Atom.make((get) => {
+  get.addFinalizer(
+    onPushEvent(
+      (event) => (event.type === "artifact.updated" || event.type === "environment.status") && get.refreshSelf(),
+    ),
+  )
+  return call("artifacts.list", undefined).pipe(
+    Effect.map((artifacts) => artifacts.toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt))),
+  )
+})
+
 export const automationRunsAtom = Atom.family((automationId: string) =>
   Atom.make((get) => {
     get.addFinalizer(onAutomationRun((id) => id === automationId && get.refreshSelf()))

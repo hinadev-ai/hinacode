@@ -1,0 +1,120 @@
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
+import { AsyncResult } from "effect/reactivity"
+import type { Artifact } from "../../../shared/artifact.ts"
+import { artifactUrl } from "../../../shared/channels.ts"
+import type { Thread } from "../../../shared/domain.ts"
+import { environmentName, useClouds } from "../../lib/environments.ts"
+import { errorMessage } from "../../lib/errorMessage.ts"
+import { formatRelativeTime } from "../../lib/relativeTime.ts"
+import { artifactsAtom } from "../../lib/rpc.ts"
+import { useNow } from "../../lib/useNow.ts"
+import { m } from "../../paraglide/messages.js"
+import { getLocale } from "../../paraglide/runtime.js"
+import { useArtifacts } from "../../stores/artifacts.ts"
+import { ArrowLeftIcon } from "../icons/ArrowLeftIcon.tsx"
+import { Button } from "../ui/button.tsx"
+import { SkeletonList } from "../ui/skeleton.tsx"
+import { ViewBody } from "./Section.tsx"
+
+const noArtifacts: ReadonlyArray<Artifact> = []
+
+function useSelectedArtifact(threadId: string) {
+  const id = useArtifacts((state) => state.selected[threadId])
+  const artifacts = AsyncResult.getOrElse(useAtomValue(artifactsAtom), () => noArtifacts)
+  return artifacts.find((artifact) => artifact.id === id)
+}
+
+export function ArtifactsHeader({ thread }: { thread: Thread }) {
+  const selected = useSelectedArtifact(thread.id)
+  const select = useArtifacts((state) => state.select)
+  if (selected === undefined) return <h2 className="truncate pl-2 text-sm font-medium">{m.panel_tab_artifacts()}</h2>
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-1">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={m.artifacts_back()}
+        title={m.artifacts_back()}
+        action={() => select(thread.id, null)}
+      >
+        <ArrowLeftIcon aria-hidden />
+      </Button>
+      <h2 className="truncate text-sm font-medium">{selected.title}</h2>
+    </div>
+  )
+}
+
+export function ArtifactsView({ thread }: { thread: Thread }) {
+  const selected = useSelectedArtifact(thread.id)
+  if (selected !== undefined) {
+    return (
+      <iframe
+        src={`${artifactUrl(selected.id)}?v=${selected.version}`}
+        title={selected.title}
+        sandbox="allow-scripts"
+        referrerPolicy="no-referrer"
+        className="min-h-0 flex-1 border-0 bg-white"
+      />
+    )
+  }
+  return (
+    <ViewBody>
+      <ArtifactList threadId={thread.id} />
+    </ViewBody>
+  )
+}
+
+function ArtifactList({ threadId }: { threadId: string }) {
+  const artifacts = useAtomValue(artifactsAtom)
+  const refresh = useAtomRefresh(artifactsAtom)
+  const failed = (message: string) => (
+    <div role="alert" className="flex items-center gap-2">
+      <p className="min-w-0 flex-1 text-xs wrap-anywhere text-destructive">{m.artifacts_failed({ message })}</p>
+      <Button variant="outline" size="xs" onClick={refresh}>
+        {m.sidebar_retry()}
+      </Button>
+    </div>
+  )
+  return AsyncResult.builder(artifacts)
+    .onInitial(() => <SkeletonList label={m.artifacts_loading()} rows={3} rowClassName="h-9" />)
+    .onSuccess((list) =>
+      list.length === 0 ? (
+        <p className="text-xs text-muted-foreground">{m.artifacts_empty()}</p>
+      ) : (
+        <ul className="-mx-2 flex flex-col">
+          {list.map((artifact) => (
+            <ArtifactRow
+              key={`${artifact.environmentId ?? ""}:${artifact.id}`}
+              threadId={threadId}
+              artifact={artifact}
+            />
+          ))}
+        </ul>
+      ),
+    )
+    .onError((error) => failed(errorMessage(error)))
+    .orElse(() => failed(""))
+}
+
+function ArtifactRow({ threadId, artifact }: { threadId: string; artifact: Artifact }) {
+  const select = useArtifacts((state) => state.select)
+  const clouds = useClouds()
+  const now = useNow()
+  const updated = formatRelativeTime(artifact.updatedAt, now, getLocale())
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => select(threadId, artifact.id)}
+        className="flex w-full min-w-0 flex-col gap-0.5 rounded-md px-2 py-1.5 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span className="truncate text-sm">{artifact.title}</span>
+        <span className="truncate text-xs text-muted-foreground">
+          {artifact.environmentId === undefined
+            ? updated
+            : m.artifacts_updated_on({ time: updated, machine: environmentName(artifact.environmentId, clouds) })}
+        </span>
+      </button>
+    </li>
+  )
+}
