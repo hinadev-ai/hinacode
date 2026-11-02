@@ -28,7 +28,7 @@ export function TerminalToggle({ threadId }: { threadId: string }) {
       aria-label={label}
       title={label}
       aria-expanded={open}
-      onClick={() => void useTerminals.getState().toggle(threadId)}
+      action={() => useTerminals.getState().toggle(threadId)}
     >
       <TerminalIcon aria-hidden />
     </Button>
@@ -99,7 +99,7 @@ function OpenDrawer({ threadId, sessions, activeId }: OpenDrawerProps) {
             size="icon-xs"
             aria-label={m.terminal_new()}
             title={m.terminal_new()}
-            onClick={() => void terminals().openSession(threadId)}
+            action={() => terminals().openSession(threadId)}
           >
             <PlusIcon aria-hidden />
           </Button>

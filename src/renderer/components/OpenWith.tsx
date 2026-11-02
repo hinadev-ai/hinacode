@@ -32,10 +32,14 @@ const useOpeners = (target: Target) => {
 
 const useOpenWith = () => {
   const save = useAtomSet(updateClientSettingsAtom, { mode: "promise" })
-  return (path: string, opener: Opener) =>
-    callPromise("shell.openWith", { path, opener: opener.id })
-      .then(() => save({ openWith: opener.id }))
-      .catch((cause: unknown) => toast.error(m.open_with_failed({ app: opener.name, message: errorMessage(cause) })))
+  return async (path: string, opener: Opener) => {
+    try {
+      await callPromise("shell.openWith", { path, opener: opener.id })
+      await save({ openWith: opener.id })
+    } catch (cause) {
+      toast.error(m.open_with_failed({ app: opener.name, message: errorMessage(cause) }))
+    }
+  }
 }
 
 function OpenerIcon({ opener }: { opener: Opener }) {
@@ -101,7 +105,7 @@ function OpenWithButton({ path }: { path: string }) {
           size="icon-sm"
           aria-label={m.open_in({ app: preferred.name })}
           title={m.open_in({ app: preferred.name })}
-          onClick={() => void open(path, preferred)}
+          action={() => open(path, preferred)}
         >
           <OpenerIcon opener={preferred} />
         </Button>

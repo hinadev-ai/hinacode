@@ -14,7 +14,7 @@ import {
 } from "react"
 import type { Environment, RelayAccountStatus } from "../../../shared/domain.ts"
 import type { PendingLink, RelayHost } from "../../../shared/relayMachines.ts"
-import { errorMessage } from "../../lib/errorMessage.ts"
+import { errorMessage, toastError } from "../../lib/errorMessage.ts"
 import { type Cloud, cloudAddress, incompatibleText, useClouds } from "../../lib/environments.ts"
 import { formatRelativeTime } from "../../lib/relativeTime.ts"
 import {
@@ -614,7 +614,7 @@ function CloudUpdateButton({ cloud }: { cloud: Cloud }) {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => void callPromise("updates.check", undefined, { environment: cloud.id })}
+          action={() => callPromise("updates.check", undefined, { environment: cloud.id }).catch(toastError)}
         >
           {m.update_check()}
         </Button>

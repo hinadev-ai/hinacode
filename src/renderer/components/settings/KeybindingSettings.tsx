@@ -77,7 +77,7 @@ export function KeybindingSettings() {
           variant="outline"
           size="sm"
           disabled={Object.keys(overrides).length === 0}
-          onClick={() => void saveOverrides({})}
+          action={() => saveOverrides({})}
         >
           {m.settings_keybindings_reset_all()}
         </Button>

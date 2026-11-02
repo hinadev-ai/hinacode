@@ -14,6 +14,7 @@ import {
 import { type FsEntry, isThreadBusy, type Thread } from "../../shared/domain.ts"
 import { extensionOf, type FilePreview, previewOf } from "../lib/filePreview.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
+import { toastError } from "../lib/errorMessage.ts"
 import { FILE_TREE_HEIGHT_BOUNDS } from "../lib/panelSize.ts"
 import { callPromise, onPushEvent } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
@@ -268,15 +269,15 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground" title={root}>
           {rootName}
         </span>
-        <HeaderButton label={m.explorer_collapse_all()} onClick={() => collapseAll(root)} icon={CollapseIcon} />
+        <HeaderButton label={m.explorer_collapse_all()} action={() => collapseAll(root)} icon={CollapseIcon} />
         {canReveal && (
           <HeaderButton
             label={m.panel_reveal()}
-            onClick={() => void callPromise("shell.reveal", { path: root })}
+            action={() => callPromise("shell.reveal", { path: root }).catch(toastError)}
             icon={FolderOpenIcon}
           />
         )}
-        <HeaderButton label={m.explorer_refresh()} onClick={() => void refresh(root)} icon={RefreshIcon} />
+        <HeaderButton label={m.explorer_refresh()} action={() => refresh(root)} icon={RefreshIcon} />
       </header>
       <div
         className={cn("flex min-h-0 flex-col", tree.opened === null ? "flex-1" : "shrink-0")}
@@ -363,9 +364,17 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
   )
 }
 
-function HeaderButton({ label, icon: Icon, onClick }: { label: string; icon: IconComponent; onClick: () => void }) {
+function HeaderButton({
+  label,
+  icon: Icon,
+  action,
+}: {
+  label: string
+  icon: IconComponent
+  action: () => void | Promise<void>
+}) {
   return (
-    <Button variant="ghost" size="icon-xs" aria-label={label} title={label} onClick={onClick}>
+    <Button variant="ghost" size="icon-xs" aria-label={label} title={label} action={action}>
       <Icon aria-hidden />
     </Button>
   )
