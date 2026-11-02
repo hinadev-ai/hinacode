@@ -29,6 +29,7 @@ export default defineConfig({
   renderer: {
     resolve: { alias: { "@": resolve(import.meta.dirname, "src/renderer") } },
     build: { minify: true },
+    worker: { format: "es" },
     esbuild: process.env.HINACODE_KEEP_NAMES ? { keepNames: true } : undefined,
     plugins: [
       react({

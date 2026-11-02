@@ -2,18 +2,16 @@ import { randomUUID } from "node:crypto"
 import { access, constants } from "node:fs/promises"
 import { join } from "node:path"
 import { Context, Effect, Layer, Schedule, Schema } from "effect"
-import {
-  chromium,
-  errors,
-  type Browser as ChromiumBrowser,
-  type BrowserContext,
-  type CDPSession,
-  type Dialog,
-  type Download,
-  type FileChooser,
-  type Frame,
-  type Page,
-  type Request,
+import type {
+  Browser as ChromiumBrowser,
+  BrowserContext,
+  CDPSession,
+  Dialog,
+  Download,
+  FileChooser,
+  Frame,
+  Page,
+  Request,
 } from "playwright-core"
 import { RpcMethods, type RpcRequest } from "../../shared/contract.ts"
 import {
@@ -146,7 +144,10 @@ const make = (options: BrowserOptions) =>
       if (disposed) return Promise.reject(new BrowserError({ message: "Browser service has stopped" }))
       if (processPromise) return processPromise
       const pending = (async () => {
-        const path = await executablePath(options.executablePath ?? process.env["HINACODE_BROWSER_EXECUTABLE_PATH"])
+        const [path, { chromium }] = await Promise.all([
+          executablePath(options.executablePath ?? process.env["HINACODE_BROWSER_EXECUTABLE_PATH"]),
+          import("playwright-core"),
+        ])
         try {
           return await chromium.launch({
             executablePath: path,
@@ -503,6 +504,7 @@ const make = (options: BrowserOptions) =>
                 { timeout: 5000 },
               )
             } catch (cause) {
+              const { errors } = await import("playwright-core")
               if (!(cause instanceof errors.TimeoutError)) throw cause
             }
           }
