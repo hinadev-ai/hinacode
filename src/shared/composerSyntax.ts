@@ -149,7 +149,7 @@ interface ListBlock {
 interface ListCaret {
   readonly lines: ReadonlyArray<string>
   readonly row: number
-  readonly afterPrefix: number
+  readonly fromPrefixEnd: number
 }
 
 const listBlockAt = (text: string, caret: number): ListBlock | null => {
@@ -170,12 +170,18 @@ const listBlockAt = (text: string, caret: number): ListBlock | null => {
 
 function renumber(lines: ReadonlyArray<string>): Array<string> {
   const levels: Array<{ indent: number; kind: string; next: number }> = []
-  return lines.map((line) => {
-    const item = listItem(line)
-    if (item === null) {
+  const shifts: Array<{ indent: number; by: number }> = []
+  return lines.map((original) => {
+    const originalItem = listItem(original)
+    if (originalItem === null) {
       levels.length = 0
-      return line
+      shifts.length = 0
+      return original
     }
+    while ((shifts.at(-1)?.indent ?? -1) >= originalItem.indent.length) shifts.pop()
+    const by = shifts.reduce((sum, shift) => sum + shift.by, 0)
+    const line = by >= 0 ? " ".repeat(by) + original : original.slice(-by)
+    const item = listItem(line)!
     const indent = item.indent.length
     while ((levels.at(-1)?.indent ?? -1) > indent) levels.pop()
     if (levels.at(-1)?.indent === indent && levels.at(-1)?.kind !== item.kind) levels.pop()
@@ -184,7 +190,10 @@ function renumber(lines: ReadonlyArray<string>): Array<string> {
       level = { indent, kind: item.kind, next: levels.length === 0 ? Number.parseInt(item.marker) : 1 }
       levels.push(level)
     }
-    return item.ordered ? withMarker(line, item, item.indent, `${level.next++}${item.kind}`) : line
+    if (!item.ordered) return line
+    const marker = `${level.next++}${item.kind}`
+    shifts.push({ indent: originalItem.indent.length, by: marker.length - item.marker.length })
+    return withMarker(line, item, item.indent, marker)
   })
 }
 
@@ -217,7 +226,7 @@ function shiftItem(lines: ReadonlyArray<string>, row: number, direction: 1 | -1)
     const sibling = previousSiblingRow(lines, row, depth)
     if (sibling === null) return lines
     const firstChild = sibling + 1 < row ? listItem(lines[sibling + 1]!) : null
-    indent = " ".repeat(firstChild?.indent.length ?? contentColumn(listItem(lines[sibling]!)!))
+    indent = firstChild?.indent ?? " ".repeat(contentColumn(listItem(lines[sibling]!)!))
   } else {
     if (depth === 0) return lines
     const parent = parentRow(lines, row, depth)
@@ -238,7 +247,7 @@ function replaceBlock(text: string, block: ListBlock, next: ListCaret, removed =
   const lines = renumber(next.lines)
   const lineStart = block.from + lines.slice(0, next.row).join("\n").length + (next.row > 0 ? 1 : 0)
   const caretLine = lines[next.row]!
-  const anchor = lineStart + (listItem(caretLine)?.prefix.length ?? 0) + next.afterPrefix
+  const anchor = Math.max(lineStart, lineStart + (listItem(caretLine)?.prefix.length ?? 0) + next.fromPrefixEnd)
   let from = block.from
   let to = block.to + removed
   let insert = lines.join("\n")
@@ -254,28 +263,33 @@ function replaceBlock(text: string, block: ListBlock, next: ListCaret, removed =
 }
 
 export function continueList(text: string, from: number, to: number): TextEdit | null {
-  const block = listBlockAt(text.slice(0, from) + text.slice(to), from)
-  if (block === null) return null
-  const { lines, row, column } = block
-  const line = lines[row]!
-  const item = listItem(line)!
-  if (column < item.prefix.length) return null
-  if (from === to && line.slice(item.prefix.length).trim() === "") {
+  const original = listBlockAt(text, from)
+  if (original === null) return null
+  const item = listItem(original.lines[original.row]!)!
+  if (original.column < item.prefix.length) return null
+  if (from === to && original.lines[original.row]!.slice(item.prefix.length).trim() === "") {
+    const { lines, row } = original
     const nested = parentRow(lines, row, item.indent.length) !== null
     const left = nested ? shiftItem(lines, row, -1) : lines.with(row, "")
-    return replaceBlock(text, block, { lines: left, row, afterPrefix: 0 })
+    return replaceBlock(text, original, { lines: left, row, fromPrefixEnd: 0 })
   }
+  const block = listBlockAt(text.slice(0, from) + text.slice(to), from)!
+  const { lines, row, column } = block
+  const line = lines[row]!
   const nextMarker = item.ordered ? `${Number.parseInt(item.marker) + 1}${item.kind}` : item.marker
-  const nextLine = `${item.indent}${nextMarker}${item.space}${item.task ? "[ ] " : ""}${line.slice(column)}`
+  const nextHead = `${item.indent}${nextMarker}${item.space}${item.task ? "[ ] " : ""}`
+  const nextLine = nextHead + line.slice(column)
   const split = [...lines.slice(0, row), line.slice(0, column), nextLine, ...lines.slice(row + 1)]
-  return replaceBlock(text, block, { lines: split, row: row + 1, afterPrefix: 0 }, to - from)
+  const fromPrefixEnd = nextHead.length - listItem(nextLine)!.prefix.length
+  return replaceBlock(text, block, { lines: split, row: row + 1, fromPrefixEnd }, to - from)
 }
 
 export function indentList(text: string, caret: number, direction: 1 | -1): TextEdit | null {
   const block = listBlockAt(text, caret)
   if (block === null) return null
-  const afterPrefix = Math.max(0, block.column - listItem(block.lines[block.row]!)!.prefix.length)
-  return replaceBlock(text, block, { lines: shiftItem(block.lines, block.row, direction), row: block.row, afterPrefix })
+  const fromPrefixEnd = block.column - listItem(block.lines[block.row]!)!.prefix.length
+  const lines = shiftItem(block.lines, block.row, direction)
+  return replaceBlock(text, block, { lines, row: block.row, fromPrefixEnd })
 }
 
 export function listBackspace(text: string, caret: number): TextEdit | null {
