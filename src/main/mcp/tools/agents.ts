@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect"
-import { Toolkit } from "effect/ai"
+import { Tool, Toolkit } from "effect/ai"
 import { ProviderId, RUN_AGENT_TOOL } from "../../../shared/agent.ts"
 import { AgentRunner } from "../../services/AgentRunner.ts"
 import * as McpTool from "./tool.ts"
@@ -19,7 +19,7 @@ export const AgentTools = Toolkit.make(
         Schema.String.annotate({ description: "Reasoning effort, one the model lists in `<agents>`." }),
       ),
     }),
-  }),
+  }).annotate(Tool.Readonly, true),
 )
 
 export const agentToolsLayer = AgentTools.toLayer(
