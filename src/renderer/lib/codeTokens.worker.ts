@@ -1,6 +1,6 @@
-import { attachResolvedLanguages, attachResolvedThemes, getSharedHighlighter } from "@pierre/diffs"
-import type { ThemeRegistrationResolved } from "@pierre/diffs"
 import type { ResolvedLanguage } from "@pierre/diffs/worker"
+import { createHighlighterCore, type ThemeRegistrationResolved } from "shiki/core"
+import { createJavaScriptRegexEngine } from "shiki/engine/javascript"
 import type { Run } from "../components/FindHighlight.tsx"
 import { codeRuns } from "./codeTokens.ts"
 
@@ -18,12 +18,12 @@ export interface CodeTokensResponse {
   readonly runs: ReadonlyArray<Run> | null
 }
 
-const highlighter = getSharedHighlighter({ themes: [], langs: [] })
+const highlighter = createHighlighterCore({ themes: [], langs: [], engine: createJavaScriptRegexEngine() })
 
 const tokenize = async ({ code, language, theme, resolvedLanguage, resolvedTheme }: CodeTokensRequest) => {
   const loaded = await highlighter
-  if (resolvedLanguage) attachResolvedLanguages(resolvedLanguage, loaded)
-  if (resolvedTheme) attachResolvedThemes(resolvedTheme, loaded)
+  if (resolvedLanguage) loaded.loadLanguageSync(resolvedLanguage.data)
+  if (resolvedTheme) loaded.loadThemeSync(resolvedTheme)
   return codeRuns({ highlighter: loaded, theme }, code, language)
 }
 

@@ -1,8 +1,8 @@
-import type { DiffsHighlighter } from "@pierre/diffs"
+import type { HighlighterCore } from "shiki/core"
 import type { Run } from "../components/FindHighlight.tsx"
 
 export interface Loaded {
-  readonly highlighter: DiffsHighlighter
+  readonly highlighter: Pick<HighlighterCore, "codeToTokens">
   readonly theme: string
 }
 

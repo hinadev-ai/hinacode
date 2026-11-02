@@ -9,7 +9,7 @@ const startupStyles = [...html.matchAll(/href="\.\/(assets\/[^"]+\.css)"/g)].map
 export default [
   { name: "Renderer startup JS", path: startupScripts, brotli: false, limit: "2.1 MB" },
   { name: "Renderer startup JS (gzip)", path: startupScripts, gzip: true },
-  { name: "Renderer JS, all chunks", path: "out/renderer/assets/*.js", brotli: false, limit: "16 MB" },
+  { name: "Renderer JS, all chunks", path: "out/renderer/assets/*.js", brotli: false, limit: "16.1 MB" },
   { name: "Renderer JS, all chunks (gzip)", path: "out/renderer/assets/*.js", gzip: true },
   { name: "Renderer startup CSS", path: startupStyles, brotli: false, limit: "205 kB" },
   { name: "Renderer startup CSS (gzip)", path: startupStyles, gzip: true },
