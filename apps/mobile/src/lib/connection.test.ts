@@ -20,7 +20,7 @@ class FakeSocket {
   close() {}
 
   /** Opens, challenges, and proves the token `server()` pairs with back to the client's answer. */
-  ready(environment?: { id: string; name: string }, relay?: string) {
+  ready(environment?: { id: string; name: string }, relay?: string, hosts?: readonly string[]) {
     this.onopen?.()
     this.receive({ type: "challenge", nonce: "server-nonce" })
     const proof = serverProof("t", this.sent.find((frame) => frame.type === "auth")!.nonce!, "server-nonce")
@@ -30,6 +30,7 @@ class FakeSocket {
       features: ["call-keys"],
       ...(environment && { environment }),
       relay,
+      hosts,
       proof,
     })
   }
@@ -299,6 +300,39 @@ describe("servers", () => {
       expect(FakeSocket.all.at(-1)?.url).toBe("ws://127.0.0.1:1003/remote")
       vi.advanceTimersByTime(RELAY_DELAY_MS)
       expect(FakeSocket.all.at(-1)?.url).toBe("wss://c.example.com/remote")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("moves off the relay to the LAN address the desktop reports, without waiting for the next check", async () => {
+    vi.useFakeTimers()
+    try {
+      const tailscaleOnly = { ...server("c", 1003), hosts: ["100.64.0.2"] as const, relay: "c.example.com" }
+      setServers([...useConnection.getState().servers, tailscaleOnly])
+      await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
+      const relay = FakeSocket.all.at(-1)!
+      expect(relay.url).toBe("wss://c.example.com/remote")
+
+      relay.ready({ id: "env-c", name: "laptop" }, "c.example.com", ["100.64.0.2", "192.168.1.5"])
+      expect(useConnection.getState().servers.find((entry) => entry.id === "c")?.hosts).toEqual([
+        "100.64.0.2",
+        "192.168.1.5",
+      ])
+      const check = FakeSocket.all.findLast((socket) => socket.url === "ws://192.168.1.5:1003/remote")!
+      expect(check).toBeDefined()
+
+      check.onopen?.()
+      expect(check.sent).toEqual([])
+      const lan = FakeSocket.all.at(-1)!
+      expect(lan.url).toBe("ws://192.168.1.5:1003/remote")
+      expect(lan).not.toBe(check)
+      lan.ready({ id: "env-c", name: "laptop" }, "c.example.com", ["100.64.0.2", "192.168.1.5"])
+
+      unanswered(call("projects.list", undefined, { server: "c" }))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(lan.calls("projects.list")).toHaveLength(1)
+      expect(relay.calls("projects.list")).toHaveLength(0)
     } finally {
       vi.useRealTimers()
     }

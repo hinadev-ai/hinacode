@@ -1,15 +1,9 @@
 #!/usr/bin/env sh
 # Builds a standalone Release APK from this checkout and installs it on the phone adb sees.
-# Run with `pnpm install:android`. Pass an adb serial as the first argument when several devices are attached.
+# Run with `pnpm install:android`, which sets JAVA_HOME and ANDROID_HOME through android-env.sh.
+# Pass an adb serial as the first argument when several devices are attached.
 set -eu
 cd "$(dirname "$0")/.."
-
-if [ -z "${JAVA_HOME:-}" ]; then
-  for jdk in "/Applications/Android Studio.app/Contents/jbr/Contents/Home" /opt/homebrew/opt/openjdk@21 /opt/homebrew/opt/openjdk@17; do
-    [ -x "$jdk/bin/java" ] && export JAVA_HOME="$jdk" && break
-  done
-fi
-export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 
 # android/ is generated and ignored, so regenerate it to pick up new native modules, icons and app.json changes.
 # Prebuild also rewrites app.json and package.json for a bare workflow, so put them back.

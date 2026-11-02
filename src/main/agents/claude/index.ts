@@ -1,16 +1,15 @@
 import { spawn } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { readFile } from "node:fs/promises"
-import {
-  type AccountInfo,
-  type EffortLevel,
-  type PermissionMode,
-  query,
-  type Options,
-  type Query,
-  type SDKControlGetContextUsageResponse,
-  type SDKMessage,
-  type SDKUserMessage,
+import type {
+  AccountInfo,
+  EffortLevel,
+  PermissionMode,
+  Options,
+  Query,
+  SDKControlGetContextUsageResponse,
+  SDKMessage,
+  SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk"
 import { Cache, Cause, Clock, Context, Duration, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect"
 import {
@@ -28,7 +27,13 @@ import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { nowIso } from "../../services/clock.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
 import { installedBinary } from "../binary.ts"
-import { AgentError, type AgentProvider, type BackgroundTasksChange, type Wake } from "../provider.ts"
+import {
+  AgentError,
+  type AgentProvider,
+  type BackgroundTasksChange,
+  type SteerPriority,
+  type Wake,
+} from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { permissionMode } from "./access.ts"
 import { type ApprovalSession, makeApprovals } from "./approvals.ts"
@@ -295,6 +300,7 @@ const probe = <A>(
   Effect.gen(function* () {
     const prompts = yield* Queue.unbounded<SDKUserMessage>()
     const base = yield* baseOptions(home)
+    const { query } = yield* Effect.promise(() => import("@anthropic-ai/claude-agent-sdk"))
     const cli = query({
       prompt: Stream.toAsyncIterable(Stream.fromQueue(prompts)),
       options: { ...base, settingSources: [], persistSession: false, ...options },
@@ -584,6 +590,7 @@ export const layer = Layer.effect(
         const base = yield* baseOptions(input.home)
         const hidden = yield* skillOverrides(input)
         const effort = effortLevelOf(input.effort)
+        const { query } = yield* Effect.promise(() => import("@anthropic-ai/claude-agent-sdk"))
         const handle = yield* Effect.try({
           try: () =>
             query({
@@ -791,9 +798,9 @@ export const layer = Layer.effect(
         ),
       )
 
-    const steer = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>) =>
+    const steer = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>, priority: SteerPriority) =>
       Effect.gen(function* () {
-        const message = yield* userMessage(text, attachments, "now")
+        const message = yield* userMessage(text, attachments, priority)
         const session = sessions.get(threadId)
         if (session?.turn == null) {
           return yield* new AgentError({ provider: "claude", message: "No turn is running on this thread" })

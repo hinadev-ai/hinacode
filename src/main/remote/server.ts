@@ -1,4 +1,5 @@
 import { createServer, type Server } from "node:http"
+import type { Socket } from "node:net"
 import { Cause, Clock, Duration, Effect, Fiber, FiberHandle, Layer, Option, Schedule, Schema, Stream } from "effect"
 import { WebSocket, WebSocketServer } from "ws"
 import { compactPush } from "../../shared/compactTranscript.ts"
@@ -10,7 +11,7 @@ import {
   type RpcMethod,
 } from "../../shared/contract.ts"
 import { newNonce } from "../../shared/proof.ts"
-import type { Settings as SettingsValue } from "../../shared/domain.ts"
+import { PRIVATE_NETWORKS, type Settings as SettingsValue } from "../../shared/domain.ts"
 import {
   ClientFrame,
   REMOTE_MAX_FRAME_BYTES,
@@ -20,10 +21,12 @@ import {
   type RemoteFeature,
   type ServerFrame,
 } from "../../shared/remote.ts"
+import { isPrivateAddress } from "../network.ts"
 import { type AppServices, dispatch } from "../rpc.ts"
 import { PushBroadcast } from "../services/Events.ts"
 import { Settings } from "../services/Settings.ts"
 import {
+  advertisedHosts,
   CLOSE_AUTH_TIMEOUT,
   CLOSE_LISTENER_STOPPED,
   CLOSE_MALFORMED_FRAME,
@@ -64,6 +67,9 @@ const busy: RpcEnvelope<never> = {
   error: { tag: "RemoteBusy", message: "Too many actions are still running. Try again when one finishes." },
 }
 
+const staysOnPrivateNetworks = (socket: Socket) =>
+  [socket.localAddress, socket.remoteAddress].every((address) => address !== undefined && isPrivateAddress(address))
+
 const describeError = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
 const describeCause = (cause: Cause.Cause<unknown>) => describeError(Cause.squash(cause))
@@ -88,6 +94,7 @@ const make = Effect.gen(function* () {
   const runPromise = Effect.runPromiseWith(services)
   const now = () => Effect.runSyncWith(services)(Clock.currentTimeMillis)
 
+  let current = (yield* settings.get).remote
   const sockets = new Map<WebSocket, PhonePeer>()
   const countConnected = () => runFork(access.report({ connected: sockets.size }))
 
@@ -122,6 +129,7 @@ const make = Effect.gen(function* () {
       version: REMOTE_PROTOCOL_VERSION,
       environment: access.identity,
       features: FEATURES,
+      hosts: advertisedHosts(current.bindHost),
       ...(relay !== null && { relay }),
       ...(proof !== undefined && { proof }),
     })
@@ -236,6 +244,11 @@ const make = Effect.gen(function* () {
     Effect.acquireRelease(
       Effect.callback<{ server: Server; wss: WebSocketServer }, Error>((resume) => {
         const server = createServer((_, response) => response.writeHead(404).end())
+        const everyInterface = address.bindHost === PRIVATE_NETWORKS
+        if (everyInterface)
+          server.on("connection", (socket) => {
+            if (!staysOnPrivateNetworks(socket)) socket.destroy()
+          })
         const wss = new WebSocketServer({
           server,
           path: REMOTE_PATH,
@@ -245,7 +258,9 @@ const make = Effect.gen(function* () {
         wss.on("connection", accept)
         // FIXME: ws re-emits the http server's errors on wss, and an unhandled emit throws
         wss.on("error", (error) => resume(Effect.fail(error)))
-        server.listen(address.port, address.bindHost, () => resume(Effect.succeed({ server, wss })))
+        server.listen(address.port, everyInterface ? "0.0.0.0" : address.bindHost, () =>
+          resume(Effect.succeed({ server, wss })),
+        )
       }),
       // FIXME: wss.close() leaves an external http server listening
       // FIXME: closeAllConnections() skips upgraded sockets
@@ -284,7 +299,6 @@ const make = Effect.gen(function* () {
 
   yield* heartbeat.pipe(Effect.repeat(Schedule.spaced(HEARTBEAT_INTERVAL)), Effect.forkScoped)
 
-  let current = (yield* settings.get).remote
   yield* apply(current)
   yield* (yield* settings.changes).pipe(
     Stream.runForEach(({ remote }) => {

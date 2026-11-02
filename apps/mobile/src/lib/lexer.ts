@@ -1,3 +1,4 @@
+import { basename, extension } from "@/lib/file-kinds"
 import type { SyntaxClass, SyntaxSpan } from "@/lib/highlight"
 
 const KEYWORDS = new Set(
@@ -36,6 +37,17 @@ const CONSTANTS = new Set(
   "true false True False null nil None undefined NaN Infinity self this super".split(" "),
 )
 
+/** Extensions, or lowercased names of files without one, whose language starts a line comment with `#`. */
+const HASH_COMMENT_LANGUAGES = new Set(
+  (
+    "sh bash zsh fish ps1 py rb pl r jl ex exs nix tf yaml yml toml ini cfg conf properties graphql gql cmake mk " +
+    "env gitignore gitattributes dockerignore editorconfig makefile dockerfile"
+  ).split(" "),
+)
+
+const startsCommentWithHash = (path: string) =>
+  HASH_COMMENT_LANGUAGES.has(extension(path) || basename(path).toLowerCase())
+
 const OPERATOR_CHARS = new Set("=+-*/%!<>&|^~?:")
 
 const isSpace = (c: string) => c === " " || c === "\t" || c === "\n" || c === "\r"
@@ -47,10 +59,12 @@ const isUpper = (c: string) => c >= "A" && c <= "Z"
 const isAllCaps = (word: string) => /^[A-Z][A-Z0-9_]+$/.test(word)
 
 /**
- * Labels `code` with the nine classes `gpu-lexer` uses, without knowing its language. The spans cover the whole
- * source in order, and adjacent spans never share a class. Runs in linear time.
+ * Labels `code` with the nine classes `gpu-lexer` uses. Only the file name at `path` hints at the language, to
+ * tell whether `#` starts a comment. The spans cover the whole source in order, and adjacent spans never share a
+ * class. Runs in linear time.
  */
-export function lex(code: string): SyntaxSpan[] {
+export function lex(code: string, path: string): SyntaxSpan[] {
+  const hashComments = startsCommentWithHash(path)
   const spans: SyntaxSpan[] = []
   const push = (type: SyntaxClass, start: number, end: number) => {
     if (end <= start) return
@@ -82,7 +96,7 @@ export function lex(code: string): SyntaxSpan[] {
     if (c === "/" && next === "/") return lineEnd(at)
     if (c === "/" && next === "*") return until(at + 2, "*/")
     if (c === "<" && code.startsWith("<!--", at)) return until(at + 4, "-->")
-    if (c === "#" && (atLineStart(at) || (followsSpace(at) && endsWord(at + 1)))) return lineEnd(at)
+    if (c === "#" && hashComments && (atLineStart(at) || (followsSpace(at) && endsWord(at + 1)))) return lineEnd(at)
     if (c === "-" && next === "-" && code[at + 2] === " " && followsSpace(at)) return lineEnd(at)
     return -1
   }

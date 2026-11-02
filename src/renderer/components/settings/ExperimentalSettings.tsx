@@ -141,13 +141,6 @@ function SbxVmFields({
         checked={experimental.tinyVmProfile}
         onCheckedChange={(checked) => void setExperimental({ tinyVmProfile: checked })}
       />
-      <VmSwitchField
-        id="settings-experimental-tiny-vm-passkeys"
-        label={m.settings_tiny_vm_passkeys()}
-        hint={m.settings_tiny_vm_passkeys_hint()}
-        checked={experimental.tinyVmPasskeys}
-        onCheckedChange={(checked) => void setExperimental({ tinyVmPasskeys: checked })}
-      />
     </>
   )
 }

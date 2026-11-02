@@ -82,6 +82,7 @@ export function PairingForm({
           placeholderTextColor={theme.textMuted}
           autoCapitalize="none"
           autoCorrect={false}
+          keyboardType="url"
           multiline
           style={[
             styles.input,
