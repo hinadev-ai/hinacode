@@ -1,4 +1,5 @@
 import { definePlugin } from "@oxlint/plugins"
+import { noAsyncOnClick } from "./noAsyncOnClick.ts"
 import { noComments } from "./noComments.ts"
 import { allergicToSparklingIcon } from "./allergicToSparklingIcon.ts"
 import { noManualMemo } from "./noManualMemo.ts"
@@ -10,6 +11,7 @@ import { preferStartTransition } from "./preferStartTransition.ts"
 export default definePlugin({
   meta: { name: "hinacode" },
   rules: {
+    "no-async-on-click": noAsyncOnClick,
     "no-comments": noComments,
     "allergic-to-sparkling-icon": allergicToSparklingIcon,
     "no-manual-memo": noManualMemo,

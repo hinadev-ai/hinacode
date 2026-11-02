@@ -104,6 +104,7 @@
         "react-doctor/no-effect-with-fresh-deps": "error",
         "react-doctor/prefer-use-effect-event": "error",
         "react-doctor/prefer-use-sync-external-store": "error",
+        "hinacode/no-async-on-click": "error",
         "hinacode/no-manual-memo": "error",
         "hinacode/no-promise-state-in-effect": "error",
         "hinacode/no-responsive-padding-on-scroller": "error",
