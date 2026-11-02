@@ -3,7 +3,7 @@ import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { KnownTokens } from "../../shared/composerSyntax.ts"
 import { chipIconClass, chipIconShape, commandChipClass } from "../components/CommandChip.tsx"
-import { codeRuns, highlighterFor, type Loaded } from "../components/HighlightedCode.tsx"
+import { codeRuns, highlighterFor, type Loaded } from "./codeTokens.ts"
 import { composerMarks } from "./composerMarks.ts"
 import { iconDom } from "./iconDom.ts"
 
