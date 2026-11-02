@@ -44,6 +44,7 @@ import { McpCredentials, layer as credentialsLayer } from "./credentials.ts"
 import { layer as serverLayer } from "./server.ts"
 import { SETTLE_MS } from "./tools/tinyVm.ts"
 import * as Scratch from "../services/Scratch.ts"
+import * as Search from "../services/Search.ts"
 
 const pushes: Array<PushEvent> = []
 const turnInputs: Array<RunTurnInput> = []
@@ -144,6 +145,7 @@ const core = Layer.mergeAll(
   Attachments.layer(join(mkdtempSync(join(tmpdir(), "kk-mcp-")), "attachments")),
   secretsLayer.pipe(Layer.provide(noKeyring)),
   credentialsLayer,
+  Search.layer,
 )
 const vmProfileDir = mkdtempSync(join(tmpdir(), "kk-vm-profile-"))
 const tinyVm = Layer.unwrap(
@@ -666,15 +668,65 @@ layer(testLayer)("thread controls", (it) => {
     }),
   )
 
-  it.effect("a thread of another project or a deleted one is out of reach", () =>
+  it.effect("search_threads marks the caller's own thread", () =>
+    Effect.gen(function* () {
+      const { a } = yield* Seeded
+      const self = yield* childOf(a, "Self finder")
+      const found = JSON.parse((yield* callFrom(self, "search_threads", { query: "self finder" })).text)
+      expect(found).toStrictEqual([expect.objectContaining({ id: self, self: true })])
+    }),
+  )
+
+  it.effect("read_thread reads a thread of another project and names its project", () =>
     Effect.gen(function* () {
       const { a, b } = yield* Seeded
-      for (const name of ["read_thread", "send_to_thread", "stop_thread"]) {
+      const result = yield* callFrom(a, "read_thread", { threadId: b })
+      expect(result.isError).toBe(false)
+      expect(result.text).toContain(`<environment>\nproject: demo (/repo-b)\nworkspace: project root\n</environment>`)
+      const gone = yield* callFrom(a, "read_thread", { threadId: "thread-gone" })
+      expect(gone).toStrictEqual({ text: "Thread thread-gone no longer exists.", isError: true, images: [] })
+    }),
+  )
+
+  it.effect("send_to_thread and stop_thread refuse a thread of another project", () =>
+    Effect.gen(function* () {
+      const { a, b } = yield* Seeded
+      for (const name of ["send_to_thread", "stop_thread"]) {
         const result = yield* callFrom(a, name, { threadId: b, prompt: "x" })
         expect(result).toStrictEqual({ text: `Thread ${b} is not in this project.`, isError: true, images: [] })
       }
-      const gone = yield* callFrom(a, "read_thread", { threadId: "thread-gone" })
-      expect(gone).toStrictEqual({ text: "Thread thread-gone no longer exists.", isError: true, images: [] })
+    }),
+  )
+
+  it.effect("search_threads finds threads of every project by title or message", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const runner = yield* AgentRunner
+      const { a, b } = yield* Seeded
+      yield* threads.update({ id: b, title: "Revert pricing to 50pt" })
+      const other = yield* childOf(b, "Unrelated")
+      yield* runner.send(other, "Check the 50PT charges again", [])
+      yield* runner.interrupt(other)
+      const result = yield* callFrom(a, "search_threads", { query: "50pt" })
+      expect(result.isError).toBe(false)
+      const hits = JSON.parse(result.text) as Array<{ id: string; title: string; project: string; snippet?: string }>
+      expect(hits.map((hit) => hit.id)).toStrictEqual([b, other])
+      expect(hits[0]).toMatchObject({ title: "Revert pricing to 50pt", project: "demo (/repo-b)" })
+      expect(hits[1]!.snippet).toContain("50PT charges")
+      const padded = JSON.parse((yield* callFrom(a, "search_threads", { query: "  50pt " })).text) as Array<{
+        id: string
+      }>
+      expect(padded.map((hit) => hit.id)).toStrictEqual([b, other])
+      expect(JSON.parse((yield* callFrom(a, "search_threads", { query: "nothing like this" })).text)).toStrictEqual([])
+      yield* runner.send(b, "Older note about 50pt", [])
+      yield* runner.interrupt(b)
+      yield* runner.send(other, "Newer 50pt charge", [])
+      yield* runner.interrupt(other)
+      const third = yield* childOf(b, "Third")
+      yield* runner.send(third, "Newest 50pt charge", [])
+      yield* runner.interrupt(third)
+      const first = JSON.parse((yield* callFrom(a, "search_threads", { query: "50pt", limit: 1 })).text)
+      expect(first).toStrictEqual([expect.objectContaining({ id: b, snippet: "Older note about 50pt" })])
     }),
   )
 
