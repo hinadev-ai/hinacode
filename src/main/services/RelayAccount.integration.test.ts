@@ -229,7 +229,7 @@ describe("RelayAccount", () => {
       Effect.gen(function* () {
         const error = yield* account.use((relayAccount) => relayAccount.machines).pipe(Effect.flip)
 
-        expect(error.message).toMatch(/[Ss]ign in/)
+        expect(error.message).toBe("Sign in to the relay in Settings > Connections first.")
         expect(relay.calls).toStrictEqual([])
       }),
     )
@@ -267,7 +267,7 @@ describe("RelayAccount", () => {
     )
   })
 
-  it.live("removing this desktop from here is refused and points to Settings > Remote", () => {
+  it.live("removing this desktop from here is refused and points to Settings > Connections", () => {
     const relay = standInRelay()
     return withAccount(
       relay,
@@ -280,7 +280,7 @@ describe("RelayAccount", () => {
           .use((relayAccount) => relayAccount.removeMachine({ id: "host-self" }))
           .pipe(Effect.flip)
 
-        expect(error.message).toMatch(/Remove relay.*Settings > Remote/)
+        expect(error.message).toBe("To unlink this machine, use Remove relay in Settings > Connections.")
         expect(relay.calls).not.toContain("DELETE /v1/hosts/host-self")
         expect(relay.hosts.map((host) => host.id)).toStrictEqual(["host-1", "host-self"])
       }),

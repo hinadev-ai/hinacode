@@ -1,11 +1,14 @@
+import type { Socket } from "node:net"
 import { Cause, Duration, Effect, Fiber, FiberHandle, Layer, Stream } from "effect"
 import type { WebSocket } from "ws"
 import { newNonce } from "../../shared/proof.ts"
-import type { Settings as SettingsValue } from "../../shared/domain.ts"
+import { PRIVATE_NETWORKS, type Settings as SettingsValue } from "../../shared/domain.ts"
+import { isPrivateAddress } from "../network.ts"
 import { dispatch } from "../rpc.ts"
 import { PushBroadcast } from "../services/Events.ts"
 import { Settings } from "../services/Settings.ts"
 import {
+  advertisedHosts,
   CLOSE_AUTH_TIMEOUT,
   CLOSE_MALFORMED_FRAME,
   CLOSE_TOKEN_ROTATED,
@@ -20,12 +23,17 @@ const AUTH_TIMEOUT = Duration.seconds(5)
 
 const describeCause = (cause: Cause.Cause<unknown>) => describeError(Cause.squash(cause))
 
+const staysOnPrivateNetworks = (socket: Socket) =>
+  [socket.localAddress, socket.remoteAddress].every((address) => address !== undefined && isPrivateAddress(address))
+
 const make = Effect.gen(function* () {
   const access = yield* RemoteAccess
   const broadcast = yield* PushBroadcast
   const settings = yield* Settings
   const peers = yield* Peers
   const runFork = Effect.runForkWith(yield* Effect.context<never>())
+
+  let current = (yield* settings.get).remote
 
   const sessions = yield* makeSessions({
     call: (raw) => dispatch(raw, null),
@@ -40,7 +48,7 @@ const make = Effect.gen(function* () {
     { proof, compactEvents }: { proof: string | undefined; compactEvents: boolean },
   ) => {
     const relay = relayHostname(Effect.runSync(access.status).relay) ?? undefined
-    sessions.attach(socket, { compactEvents, relay, proof })
+    sessions.attach(socket, { compactEvents, relay, proof, hosts: advertisedHosts(current.bindHost) })
     countConnected()
     socket.on("close", countConnected)
   }
@@ -89,7 +97,14 @@ const make = Effect.gen(function* () {
 
   const listen = (address: Extract<SettingsValue["remote"], { enabled: true }>) =>
     listenWebSockets({
-      listen: (server, listening) => server.listen(address.port, address.bindHost, listening),
+      listen: (server, listening) => {
+        const everyInterface = address.bindHost === PRIVATE_NETWORKS
+        if (everyInterface)
+          server.on("connection", (socket) => {
+            if (!staysOnPrivateNetworks(socket)) socket.destroy()
+          })
+        server.listen(address.port, everyInterface ? "0.0.0.0" : address.bindHost, listening)
+      },
       accept,
       perMessageDeflate: true,
     }).pipe(
@@ -119,7 +134,6 @@ const make = Effect.gen(function* () {
       )
     })
 
-  let current = (yield* settings.get).remote
   yield* apply(current)
   yield* (yield* settings.changes).pipe(
     Stream.runForEach(({ remote }) => {

@@ -1,3 +1,4 @@
+import type { NonEmptyReadonlyArray } from "effect/Array"
 import { createServer, type Server } from "node:http"
 import { Clock, Duration, Effect, Fiber, Option, Schedule, Schema, type Scope } from "effect"
 import { WebSocket, WebSocketServer } from "ws"
@@ -88,7 +89,12 @@ export const makeSessions = <R>({ call, subscribe, environment, features }: Sess
 
     const attach = (
       socket: WebSocket,
-      { compactEvents, relay, proof }: { compactEvents: boolean; relay?: string; proof?: string },
+      {
+        compactEvents,
+        relay,
+        proof,
+        hosts,
+      }: { compactEvents: boolean; relay?: string; proof?: string; hosts?: NonEmptyReadonlyArray<string> },
     ) => {
       const peer: Peer = { awaitingPong: false, watching: null }
       peers.set(socket, peer)
@@ -112,6 +118,7 @@ export const makeSessions = <R>({ call, subscribe, environment, features }: Sess
         version: REMOTE_PROTOCOL_VERSION,
         environment,
         features,
+        ...(hosts !== undefined && { hosts }),
         ...(relay !== undefined && { relay }),
         ...(proof !== undefined && { proof }),
       })

@@ -3,7 +3,7 @@ export type DialTarget = { readonly host: string; readonly port: number } | { re
 export const unreachableMessage = (target: DialTarget, code: string | undefined, reason: string) => {
   // FIXME: Cloudflare answers 502 or 530 while the tunnel is down
   if ("relay" in target) {
-    return `${target.relay} did not answer. Check that the relay is connected in Settings > Remote on that machine.`
+    return `${target.relay} did not answer. Check that the relay is connected in Settings > Connections on that machine.`
   }
   const { host, port } = target
   switch (code) {

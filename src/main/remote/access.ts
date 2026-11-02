@@ -2,8 +2,10 @@ import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto"
 import { hostname } from "node:os"
 import { Context, Effect, Layer, Option, PubSub, Stream } from "effect"
 import { SqlClient } from "effect/sql"
-import type { RelayStatus, RemotePairing, RemoteStatus } from "../../shared/domain.ts"
+import { isReadonlyArrayNonEmpty, type NonEmptyReadonlyArray } from "effect/Array"
+import { PRIVATE_NETWORKS, type RelayStatus, type RemotePairing, type RemoteStatus } from "../../shared/domain.ts"
 import { clientProof, serverProof } from "../../shared/proof.ts"
+import { privateAddresses } from "../network.ts"
 import { type PersistenceError, persistence } from "../services/errors.ts"
 import { Secrets } from "../services/Secrets.ts"
 import { Settings } from "../services/Settings.ts"
@@ -23,6 +25,12 @@ export const CLOSE_AUTH_TIMEOUT = 4004
 export const CLOSE_MALFORMED_FRAME = 4005
 
 const LOOPBACK = "127.0.0.1"
+
+export const advertisedHosts = (bindHost: string | null): NonEmptyReadonlyArray<string> => {
+  if (bindHost !== PRIVATE_NETWORKS) return [bindHost ?? LOOPBACK]
+  const hosts = privateAddresses()
+  return isReadonlyArrayNonEmpty(hosts) ? hosts : [LOOPBACK]
+}
 
 export const relayHostname = (relay: RelayStatus) => ("hostname" in relay ? relay.hostname : null)
 
@@ -65,7 +73,7 @@ const make = Effect.gen(function* () {
 
   const pairingFor = (current: string) =>
     Effect.map(settings.get, ({ remote }) => ({
-      hosts: [remote.bindHost ?? LOOPBACK] as const,
+      hosts: advertisedHosts(remote.bindHost),
       port: remote.port,
       token: current,
       relay: relayHostname(report.relay),

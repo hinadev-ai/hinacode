@@ -65,6 +65,7 @@ export const ServerFrame = Schema.Union([
     version: Schema.Int,
     environment: Schema.optionalKey(Schema.Struct({ id: Schema.String, name: Schema.String })),
     features: Schema.optionalKey(Schema.Array(Schema.String)),
+    hosts: Schema.optionalKey(Schema.NonEmptyArray(Schema.String)),
     relay: Schema.optionalKey(Schema.String),
     proof: Schema.optionalKey(Schema.String),
   }),

@@ -46,7 +46,6 @@ import * as SystemResources from "./services/SystemResources.ts"
 import * as Terminals from "./services/Terminals.ts"
 import * as ThreadNaming from "./services/ThreadNaming.ts"
 import * as Threads from "./services/Threads.ts"
-import * as PasskeyRelay from "./services/tinyVm/passkey/PasskeyRelay.ts"
 import * as TinyVm from "./services/tinyVm/TinyVm.ts"
 import type { Updates } from "./services/Updates.ts"
 import * as Worktrees from "./services/Worktrees.ts"
@@ -137,7 +136,6 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
   const tinyVm = TinyVm.layer({ configPath: sbxConfigPath, env: process.env }, join(userData, "tiny-vm"), {
     desktopRedirect: serve === undefined,
   }).pipe(Layer.provide(boat))
-  const passkeys = PasskeyRelay.layer(join(userData, "tiny-vm")).pipe(Layer.provide(tinyVm))
   const peers = Peers.layer.pipe(
     Layer.provideMerge(Environments.layer),
     Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)),
@@ -158,7 +156,6 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     remoteAccess,
     relay,
     tinyVm,
-    passkeys,
     peers,
     devices,
     linearLayer(process.env),
