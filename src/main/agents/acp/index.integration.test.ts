@@ -272,12 +272,32 @@ describe("makeAcpProvider", () => {
       const { provider: make, received } = setup()
       const provider = yield* make
       const models = yield* provider.listModels
-      expect(models.map((model) => [model.id, model.label])).toStrictEqual([
-        ["fake/default", "Fake Default"],
-        ["fake/other", "Fake Other"],
+      expect(models.map((model) => [model.id, model.label, model.efforts])).toStrictEqual([
+        ["fake/default", "Fake Default", []],
+        ["fake/other", "Fake Other", ["low", "high"]],
       ])
       yield* provider.listModels
       expect(received().filter((message) => message.method === "session/new")).toHaveLength(1)
+    }).pipe(Effect.scoped),
+  )
+
+  it.live("sets the effort a turn asks for, and refuses one the model does not offer", () =>
+    Effect.gen(function* () {
+      const { provider: make, received } = setup()
+      const provider = yield* make
+      yield* runToEnd(provider, input({ model: "fake/other", effort: "high" }))
+      yield* runToEnd(provider, input({ model: "fake/other", effort: null, resumeSessionId: "ses_1" }))
+      const efforts = received()
+        .filter(
+          (message) => message.method === "session/set_config_option" && message.params?.["configId"] === "effort",
+        )
+        .map((message) => message.params?.["value"])
+      expect(efforts).toStrictEqual(["high"])
+
+      const refused = yield* runToEnd(provider, input({ model: "fake/other", effort: "max" })).pipe(Effect.flip)
+      expect(refused.message).toBe("fake/other has no max effort. Its levels: low, high.")
+      const none = yield* runToEnd(provider, input({ effort: "high" })).pipe(Effect.flip)
+      expect(none.message).toBe("fake/default has no high effort. Its levels: none.")
     }).pipe(Effect.scoped),
   )
 

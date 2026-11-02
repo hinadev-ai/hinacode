@@ -103,6 +103,7 @@ function usePickerModels(environment: EnvironmentId, provider: ProviderId, keep:
 const CLI_LOGIN = "cli"
 
 const effortLabels: Record<string, () => string> = {
+  none: m.effort_none,
   minimal: m.effort_minimal,
   low: m.effort_low,
   medium: m.effort_medium,

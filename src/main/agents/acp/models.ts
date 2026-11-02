@@ -1,5 +1,5 @@
 import type { ModelInfo, ProviderId } from "../../../shared/agent.ts"
-import type { SessionSetup } from "./protocol.ts"
+import type { ConfigOption, SessionSetup } from "./protocol.ts"
 
 export type ModelSelector =
   | { readonly via: "config"; readonly configId: string; readonly current: string | null }
@@ -10,8 +10,31 @@ interface ModelChoice {
   readonly label: string
 }
 
-const modelConfig = (setup: SessionSetup) =>
-  setup.configOptions?.find((option) => option.category === "model" && option.type === "select")
+export const AGENT_DEFAULT_EFFORT = "default"
+
+const selectConfig = (setup: SessionSetup, category: string) =>
+  setup.configOptions?.find((option) => option.category === category && option.type === "select")
+
+const modelConfig = (setup: SessionSetup) => selectConfig(setup, "model")
+
+const optionValues = (config: ConfigOption) =>
+  (config.options ?? []).flatMap((entry) => ("group" in entry ? entry.options : [entry])).map((choice) => choice.value)
+
+export interface EffortSelector {
+  readonly configId: string
+  readonly current: string | null
+  readonly levels: ReadonlyArray<string>
+}
+
+export const effortSelector = (setup: SessionSetup): EffortSelector | null => {
+  const config = selectConfig(setup, "thought_level")
+  if (config === undefined) return null
+  const current = typeof config.currentValue === "string" ? config.currentValue : null
+  return { configId: config.id, current, levels: optionValues(config) }
+}
+
+export const effortLevels = (setup: SessionSetup) =>
+  effortSelector(setup)?.levels.filter((level) => level !== AGENT_DEFAULT_EFFORT) ?? []
 
 export const modelSelector = (setup: SessionSetup): ModelSelector | null => {
   const config = modelConfig(setup)
@@ -42,7 +65,11 @@ const modelChoices = (setup: SessionSetup): { current: string | null; choices: R
   return { current: null, choices: [] }
 }
 
-export const toModelInfos = (setup: SessionSetup, provider: ProviderId): ReadonlyArray<ModelInfo> => {
+export const toModelInfos = (
+  setup: SessionSetup,
+  provider: ProviderId,
+  efforts: ReadonlyMap<string, ReadonlyArray<string>> = new Map(),
+): ReadonlyArray<ModelInfo> => {
   const { current, choices } = modelChoices(setup)
   const ordered = [
     ...choices.filter((choice) => choice.id === current),
@@ -52,7 +79,7 @@ export const toModelInfos = (setup: SessionSetup, provider: ProviderId): Readonl
     id: choice.id,
     label: choice.label,
     provider,
-    efforts: [],
+    efforts: efforts.get(choice.id) ?? [],
     defaultEffort: null,
     fastMode: false,
     autoMode: false,

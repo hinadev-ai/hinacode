@@ -36,7 +36,40 @@ const createdSessions = () =>
         .split("\n")
         .filter((line) => line.includes('"method":"session/new"')).length
 
-const modelSetup = () =>
+const efforts: Record<string, Array<string>> = { "fake/other": ["low", "high", "default"] }
+const current = new Map<string, { model: string; effort: string }>()
+
+const configFor = (sessionId: string) => {
+  const { model, effort } = current.get(sessionId) ?? { model: "fake/default", effort: "default" }
+  const levels = efforts[model]
+  return [
+    {
+      id: "model",
+      name: "Model",
+      category: "model",
+      type: "select",
+      currentValue: model,
+      options: [
+        { value: "fake/other", name: "Fake Other" },
+        { value: "fake/default", name: "Fake Default" },
+      ],
+    },
+    ...(levels === undefined
+      ? []
+      : [
+          {
+            id: "effort",
+            name: "Effort",
+            category: "thought_level",
+            type: "select",
+            currentValue: effort,
+            options: levels.map((value) => ({ value, name: value })),
+          },
+        ]),
+  ]
+}
+
+const modelSetup = (sessionId: string) =>
   legacyModels
     ? {
         models: {
@@ -47,21 +80,7 @@ const modelSetup = () =>
           ],
         },
       }
-    : {
-        configOptions: [
-          {
-            id: "model",
-            name: "Model",
-            category: "model",
-            type: "select",
-            currentValue: "fake/default",
-            options: [
-              { value: "fake/other", name: "Fake Other" },
-              { value: "fake/default", name: "Fake Default" },
-            ],
-          },
-        ],
-      }
+    : { configOptions: configFor(sessionId) }
 
 const writeTool = async (sessionId: string, cwd: string) => {
   const path = `${cwd}/hello.txt`
@@ -180,7 +199,7 @@ const handle = (message: Message) => {
         })
       }
       const sessionId = `ses_${createdSessions()}`
-      send({ id: message.id, result: { sessionId, ...modelSetup() } })
+      send({ id: message.id, result: { sessionId, ...modelSetup(sessionId) } })
       return update(sessionId, {
         sessionUpdate: "available_commands_update",
         availableCommands: [{ name: "review", description: "Review the diff", input: { hint: "branch" } }],
@@ -193,9 +212,19 @@ const handle = (message: Message) => {
       }
       update(sessionId, { sessionUpdate: "user_message_chunk", content: { type: "text", text: "old question" } })
       update(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "replayed" } })
-      return send({ id: message.id, result: modelSetup() })
+      return send({ id: message.id, result: modelSetup(sessionId) })
     }
-    case "session/set_config_option":
+    case "session/set_config_option": {
+      const sessionId = params["sessionId"] as string
+      const selected = current.get(sessionId) ?? { model: "fake/default", effort: "default" }
+      current.set(
+        sessionId,
+        params["configId"] === "model"
+          ? { model: params["value"] as string, effort: "default" }
+          : { ...selected, effort: params["value"] as string },
+      )
+      return send({ id: message.id, result: { configOptions: configFor(sessionId) } })
+    }
     case "session/set_model":
     case "session/close":
       return send({ id: message.id, result: {} })

@@ -18,7 +18,7 @@ import { attachmentContext } from "../elementContext.ts"
 import { AgentError, type AgentProvider } from "../provider.ts"
 import { autoAllows, mergePermissionTool, optionFor, permissionOutcome, toApprovalRequest } from "./approvals.ts"
 import { type AcpClient, type AcpFailure, type Incoming, makeAcpClient, type RequestId } from "./client.ts"
-import { modelSelector, type ModelSelector, toModelInfos } from "./models.ts"
+import { AGENT_DEFAULT_EFFORT, effortLevels, effortSelector, modelSelector, toModelInfos } from "./models.ts"
 import {
   AvailableCommandsUpdate,
   InitializeResponse,
@@ -209,16 +209,26 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
       )
     }
 
-    const selectModel = (client: AcpClient, sessionId: string, selector: ModelSelector | null, model: string) => {
-      if (model === "" || selector === null || selector.current === model) return Effect.void
+    const setOption = (client: AcpClient, sessionId: string, configId: string, value: string) =>
+      call(client, "session/set_config_option", { sessionId, configId, value }, SessionSetup)
+
+    const selectModel = (client: AcpClient, sessionId: string, setup: SessionSetup, model: string) => {
+      const selector = modelSelector(setup)
+      if (model === "" || selector === null || selector.current === model) return Effect.succeed(setup)
       return selector.via === "config"
-        ? call(
-            client,
-            "session/set_config_option",
-            { sessionId, configId: selector.configId, value: model },
-            Schema.Unknown,
-          )
-        : call(client, "session/set_model", { sessionId, modelId: model }, Schema.Unknown)
+        ? setOption(client, sessionId, selector.configId, model)
+        : call(client, "session/set_model", { sessionId, modelId: model }, Schema.Unknown).pipe(Effect.as(setup))
+    }
+
+    const selectEffort = (client: AcpClient, sessionId: string, setup: SessionSetup, input: RunTurnInput) => {
+      const selector = effortSelector(setup)
+      const wanted = input.effort ?? AGENT_DEFAULT_EFFORT
+      if (selector === null || !selector.levels.includes(wanted)) {
+        if (input.effort === null) return Effect.void
+        const offered = selector === null ? "none" : effortLevels(setup).join(", ")
+        return Effect.fail(agentError(`${input.model} has no ${input.effort} effort. Its levels: ${offered}.`))
+      }
+      return selector.current === wanted ? Effect.void : setOption(client, sessionId, selector.configId, wanted)
     }
 
     const promptBlocks = (text: string, attachments: ReadonlyArray<Attachment>, images: boolean) =>
@@ -372,7 +382,8 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
           })
           const { sessionId, setup, isNew } = yield* openSession(client, input)
           yield* emit({ type: "session_bound", providerSessionId: sessionId })
-          yield* selectModel(client, sessionId, modelSelector(setup), input.model)
+          const selected = yield* selectModel(client, sessionId, setup, input.model)
+          yield* selectEffort(client, sessionId, selected, input)
 
           const inbox = yield* Queue.unbounded<TurnMessage>()
           yield* client.subscribe((message) => Queue.offerUnsafe(inbox, message))
@@ -420,7 +431,15 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
         if (probedModels !== undefined) return probedModels
         const { client } = yield* startAgent
         const probe = yield* call(client, "session/new", { cwd: homedir(), mcpServers: [] }, NewSessionResponse)
-        probedModels = toModelInfos(probe, config.id)
+        const selector = modelSelector(probe)
+        const efforts = new Map<string, ReadonlyArray<string>>()
+        if (selector?.via === "config") {
+          for (const { id } of toModelInfos(probe, config.id)) {
+            const selected = yield* setOption(client, probe.sessionId, selector.configId, id).pipe(Effect.option)
+            if (selected._tag === "Some") efforts.set(id, effortLevels(selected.value))
+          }
+        }
+        probedModels = toModelInfos(probe, config.id, efforts)
         return probedModels
       }).pipe(Effect.scoped),
     )

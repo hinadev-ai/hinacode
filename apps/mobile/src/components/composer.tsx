@@ -565,6 +565,7 @@ const providers: Record<ProviderId, { label: string; icon: IconName }> = {
 }
 
 const effortLabels: Record<string, string> = {
+  none: copy("mobile_composer_effort_none"),
   minimal: copy("mobile_composer_effort_minimal"),
   low: copy("mobile_composer_effort_low"),
   medium: copy("mobile_composer_effort_medium"),
