@@ -19,6 +19,7 @@ import {
 import { parseGitHubRepository } from "../../shared/github.ts"
 import { nowIso } from "./clock.ts"
 import {
+  type FolderMissingError,
   NotFoundError,
   type PersistenceError,
   persistence,
@@ -116,7 +117,7 @@ export class Threads extends Context.Service<
     ) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly listFiles: (
       id: string,
-    ) => Effect.Effect<ReadonlyArray<string>, PersistenceError | NotFoundError | CommandError>
+    ) => Effect.Effect<ReadonlyArray<string>, PersistenceError | NotFoundError | FolderMissingError | CommandError>
     readonly started: (id: string) => Effect.Effect<boolean, PersistenceError>
     readonly draft: (
       input: DraftThread,
@@ -148,12 +149,20 @@ export class Threads extends Context.Service<
     readonly changes: (
       id: string,
       scope: ChangesScope,
-    ) => Effect.Effect<Changes | null, PersistenceError | NotFoundError | CommandError | PlatformError.PlatformError>
+    ) => Effect.Effect<
+      Changes | null,
+      PersistenceError | NotFoundError | FolderMissingError | CommandError | PlatformError.PlatformError
+    >
     readonly undoTurn: (
       id: string,
     ) => Effect.Effect<
       void,
-      PersistenceError | NotFoundError | CommandError | PlatformError.PlatformError | ThreadBusyError
+      | PersistenceError
+      | NotFoundError
+      | FolderMissingError
+      | CommandError
+      | PlatformError.PlatformError
+      | ThreadBusyError
     >
     readonly captureTurnBase: (cwd: string) => Effect.Effect<string | null>
     readonly recordTurnBase: (input: {

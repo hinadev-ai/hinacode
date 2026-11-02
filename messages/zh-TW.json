@@ -1528,6 +1528,7 @@
   "mobile_files_contents_heading": "包含「{query}」的行",
   "mobile_files_searching": "正在搜尋內容",
   "mobile_files_no_lines": "沒有包含「{query}」的行",
+  "mobile_folder_missing": "桌面上找不到這個討論串的資料夾，可能已被移動或刪除。",
   "mobile_files_ripgrep_missing": "搜尋內容需要桌面端的 ripgrep (rg)，但那裡沒有安裝。",
   "mobile_files_status_added": "新增",
   "mobile_files_status_modified": "修改",

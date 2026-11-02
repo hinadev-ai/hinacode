@@ -3,7 +3,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
-import { Effect, Layer } from "effect"
+import { NodeServices } from "@effect/platform-node"
+import { Effect, type FileSystem, Layer } from "effect"
 import { SqlClient } from "effect/sql"
 import type { MessagePart } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
@@ -25,8 +26,8 @@ beforeAll(() => {
 
 afterAll(() => rmSync(repo, { recursive: true, force: true }))
 
-const withSearch = (layer: Layer.Layer<Search.Search, never, SqlClient.SqlClient>) =>
-  Effect.provide(layer.pipe(Layer.provideMerge(Db.layer(":memory:"))))
+const withSearch = (layer: Layer.Layer<Search.Search, never, SqlClient.SqlClient | FileSystem.FileSystem>) =>
+  Effect.provide(layer.pipe(Layer.provideMerge(Db.layer(":memory:")), Layer.provide(NodeServices.layer)))
 
 let clock = 0
 const insertMessage = (threadId: string, parts: ReadonlyArray<MessagePart>) =>
@@ -71,6 +72,43 @@ describe("Search.threads", () => {
       expect(hits[0]?.snippet).toMatch(/^….*then the migration passed.*…$/)
       expect(hits[0]?.snippet.length).toBeLessThanOrEqual(82)
       expect(hits[1]?.snippet).toBe("Ran the MIGRATION for worktrees")
+    }).pipe(withSearch(Search.layer)),
+  )
+
+  it.effect("perThread keeps an older thread that a busy thread would push past the limit", () =>
+    Effect.gen(function* () {
+      const quiet = (yield* seedThread({ rootPath: repo })).threadId
+      const busy = (yield* seedThread({ rootPath: `${repo}-busy` })).threadId
+      const quietHit = yield* insertMessage(quiet, [text("the deploy failed once")])
+      for (let index = 0; index < 5; index++) yield* insertMessage(busy, [text(`deploy attempt ${index}`)])
+      const busyHit = yield* insertMessage(busy, [text("deploy attempt final")])
+      const search = yield* Search.Search
+
+      expect((yield* search.threads("deploy", 3)).map((hit) => hit.threadId)).toStrictEqual([busy, busy, busy])
+      const hits = yield* search.perThread("Deploy", { limit: 3 })
+      expect(hits.map((hit) => [hit.threadId, hit.messageId])).toStrictEqual([
+        [busy, busyHit],
+        [quiet, quietHit],
+      ])
+      expect(hits[0]?.snippet).toBe("deploy attempt final")
+      const onlyQuiet = yield* search.perThread("deploy", { limit: 3, threadIds: [quiet] })
+      expect(onlyQuiet.map((hit) => hit.messageId)).toStrictEqual([quietHit])
+      expect(yield* search.perThread("deploy", { limit: 3, threadIds: [] })).toStrictEqual([])
+      expect(yield* search.perThread(" ", { limit: 3 })).toStrictEqual([])
+    }).pipe(withSearch(Search.layer)),
+  )
+
+  it.effect("perThread ranks by when a message was written, not when it was stored", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient
+      const recent = (yield* seedThread({ rootPath: `${repo}-recent` })).threadId
+      const imported = (yield* seedThread({ rootPath: `${repo}-imported` })).threadId
+      yield* insertMessage(recent, [text("the invoice job ran")])
+      const old = yield* insertMessage(imported, [text("the invoice job ran last year")])
+      yield* sql`UPDATE message SET created_at = '2025-01-01T00:00:00.000Z' WHERE id = ${old}`
+      const search = yield* Search.Search
+
+      expect((yield* search.perThread("invoice", { limit: 1 })).map((hit) => hit.threadId)).toStrictEqual([recent])
     }).pipe(withSearch(Search.layer)),
   )
 
@@ -240,6 +278,6 @@ describe("Search.files", () => {
       )
       expect(missing._tag).toBe("RipgrepMissingError")
       expect(notStarting._tag).toBe("RipgrepMissingError")
-    }).pipe(Effect.provide(Db.layer(":memory:"))),
+    }).pipe(Effect.provide(Layer.mergeAll(Db.layer(":memory:"), NodeServices.layer))),
   )
 })

@@ -1,8 +1,8 @@
-import { mkdtempSync, writeFileSync } from "node:fs"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { afterEach, describe, expect, it } from "@effect/vitest"
+import { afterAll, afterEach, describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, Random, Stream } from "effect"
 import { SqlClient } from "effect/sql"
@@ -136,8 +136,11 @@ const addIssue = (createdAt = issueAt, number = 32) => {
   })
 }
 
+const repo = mkdtempSync(join(tmpdir(), "kk-automations-repo-"))
+afterAll(() => rmSync(repo, { recursive: true, force: true }))
+
 const initialize = Effect.gen(function* () {
-  const { projectId } = yield* seedThread({ rootPath: "/repo" })
+  const { projectId } = yield* seedThread({ rootPath: repo })
   yield* Secrets.Secrets.use((secrets) => secrets.set(Linear.LINEAR_API_KEY_SECRET, "test-api-key"))
   yield* McpCredentials.use((credentials) => credentials.listening("http://127.0.0.1:1/mcp"))
   return projectId

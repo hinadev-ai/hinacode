@@ -1555,6 +1555,7 @@
   "mobile_files_contents_heading": "包含“{query}”的行",
   "mobile_files_searching": "正在搜索内容",
   "mobile_files_no_lines": "没有包含“{query}”的行",
+  "mobile_folder_missing": "桌面上找不到这个对话的文件夹，可能已被移动或删除。",
   "mobile_files_ripgrep_missing": "内容搜索需要桌面端安装 ripgrep (rg)，但那里没有安装。",
   "mobile_files_status_added": "新增",
   "mobile_files_status_modified": "修改",
