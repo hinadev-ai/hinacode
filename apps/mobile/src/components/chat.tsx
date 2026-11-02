@@ -19,7 +19,7 @@ import { Composer } from "@/components/composer"
 import { liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
 import { Markdown } from "@/components/markdown"
-import { FadeIn, Rotate, Spinner } from "@/components/motion"
+import { FadeIn, PressableScale, Rotate, Spinner } from "@/components/motion"
 import { TodoTray } from "@/components/todo-tray"
 import { Button, Notice, Pill } from "@/components/ui"
 import { cssEase, duration, rise } from "@/constants/motion"
@@ -602,7 +602,7 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
               {question.options.map((option) => {
                 const selected = picked[question.id]?.includes(option.label) ?? false
                 return (
-                  <Pressable
+                  <PressableScale
                     key={option.label}
                     accessibilityRole={question.multiSelect ? "checkbox" : "radio"}
                     aria-checked={selected}
@@ -624,7 +624,7 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
                       )}
                     </View>
                     {selected && <Icon name="RiCheckLine" size={18} color={theme.text} />}
-                  </Pressable>
+                  </PressableScale>
                 )
               })}
             </View>
