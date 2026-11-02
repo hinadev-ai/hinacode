@@ -31,7 +31,7 @@ import sideChat from "./migrations/0030_side_chat.ts"
 import projectActions from "./migrations/0032_project_actions.ts"
 import messageOpen from "./migrations/0031_message_open.ts"
 import threadDraft from "./migrations/0033_thread_draft.ts"
-import opencodeProvider from "./migrations/0034_opencode_provider.ts"
+import opencodeProvider from "./migrations/0035_opencode_provider.ts"
 import archiveSharedChats from "./migrations/0024_archive_shared_chats.ts"
 import ftsToolTitles from "./migrations/0034_fts_tool_titles.ts"
 
@@ -71,8 +71,8 @@ export const runMigrations = run({
     "31_message_open": messageOpen,
     "32_project_actions": projectActions,
     "33_thread_draft": threadDraft,
-    "34_opencode_provider": opencodeProvider,
     "34_fts_tool_titles": ftsToolTitles,
+    "35_opencode_provider": opencodeProvider,
   }),
 }).pipe(
   Effect.tap((ran) =>
