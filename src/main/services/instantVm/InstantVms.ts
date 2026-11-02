@@ -6,6 +6,7 @@ import { type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from ".
 import { pairingUrl, parsePairingUrl } from "../../../shared/remote.ts"
 import { Boat, type BoatClient } from "../boat/Boat.ts"
 import { Environments } from "../Environments.ts"
+import { Events } from "../Events.ts"
 import { Secrets } from "../Secrets.ts"
 import { Settings } from "../Settings.ts"
 import { encodeTar } from "../tinyVm/tar.ts"
@@ -107,6 +108,7 @@ const make = (options: InstantVmsOptions) =>
   Effect.gen(function* () {
     const boat = yield* Boat
     const environments = yield* Environments
+    const events = yield* Events
     const secrets = yield* Secrets
     const settings = yield* Settings
 
@@ -185,6 +187,7 @@ const make = (options: InstantVmsOptions) =>
             setupScript: null,
           })
           yield* linkDeviceHub(environment.id)
+          yield* events.publish({ type: "environments.changed" })
           return { environmentId: environment.id, name: environment.name, projectId: project.id }
         })
         return yield* provisioned.pipe(Effect.tapError(() => client.remove(id).pipe(Effect.ignore)))
