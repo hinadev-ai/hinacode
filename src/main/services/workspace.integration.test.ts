@@ -1,5 +1,10 @@
-import { describe, expect, it } from "@effect/vitest"
-import { Effect } from "effect"
+import { execFileSync } from "node:child_process"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { afterAll, describe, expect, it } from "@effect/vitest"
+import { NodeServices } from "@effect/platform-node"
+import { Effect, Layer } from "effect"
 import { SqlClient } from "effect/sql"
 import * as Db from "../db/client.ts"
 import { type SeedThread, seedThread } from "../db/testing.ts"
@@ -15,7 +20,31 @@ const resolve = (
     yield* mutate(sql, ids)
     const activeWorkspace = yield* makeActiveWorkspace
     return yield* activeWorkspace(ids.threadId).pipe(Effect.result)
-  }).pipe(Effect.provide(Db.layer(":memory:")))
+  }).pipe(Effect.provide(Layer.mergeAll(Db.layer(":memory:"), NodeServices.layer)))
+
+const base = mkdtempSync(join(tmpdir(), "kk-workspace-"))
+afterAll(() => rmSync(base, { recursive: true, force: true }))
+
+const repoWithWorktree = () => {
+  const repo = join(base, "repo")
+  const worktree = join(base, "wt")
+  execFileSync("git", ["init", "-q", "-b", "main", repo])
+  execFileSync("git", [
+    "-C",
+    repo,
+    "-c",
+    "user.email=t@t",
+    "-c",
+    "user.name=t",
+    "commit",
+    "-q",
+    "--allow-empty",
+    "-m",
+    "init",
+  ])
+  execFileSync("git", ["-C", repo, "worktree", "add", "-q", "-b", "feature", worktree, "main"])
+  return { repo, worktree }
+}
 
 describe("activeWorkspace", () => {
   it.effect("is the project root with no base for a thread without a worktree", () =>
@@ -73,6 +102,15 @@ describe("activeWorkspace", () => {
         baseRef: null,
         branch: null,
       })
+    }),
+  )
+
+  it.effect("fails with FolderMissingError once the worktree folder is deleted on disk", () =>
+    Effect.gen(function* () {
+      const { repo, worktree } = repoWithWorktree()
+      rmSync(worktree, { recursive: true, force: true })
+      const result = yield* resolve({ rootPath: repo, worktree: { path: worktree, baseRef: "main", status: "ready" } })
+      expect(result._tag === "Failure" && result.failure).toMatchObject({ _tag: "FolderMissingError", path: worktree })
     }),
   )
 
