@@ -2,6 +2,7 @@ import { resolve } from "node:path"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
+import { excalidraw } from "./vite.excalidraw.ts"
 import { paraglide } from "./vite.paraglide.ts"
 
 export default defineConfig({
@@ -15,6 +16,7 @@ export default defineConfig({
     }),
     tailwindcss(),
     paraglide(),
+    excalidraw(),
   ],
   build: { outDir: resolve(import.meta.dirname, "site/public/app"), emptyOutDir: true, target: "es2024" },
   worker: { format: "es" },
