@@ -7,6 +7,12 @@ const legacySettings = Object.fromEntries(
   Object.entries(defaultSettings).filter(([key]) => key !== "defaultAccountName"),
 )
 
+const withoutOpencode = (value: unknown) => {
+  if (typeof value !== "object" || value === null || !("claude" in value)) return value
+  const { opencode: _opencode, ...rest } = value as Record<string, unknown>
+  return rest
+}
+
 const legacyThread: Omit<Thread, "userSkills"> = {
   id: "older-cloud-thread",
   projectId: "project",
@@ -38,7 +44,18 @@ describe("older cloud responses", () => {
       claude: null,
       codex: null,
       muse: null,
+      opencode: null,
     })
+  })
+
+  it("gives opencode empty defaults in settings saved before it existed", () => {
+    const beforeOpencode = Object.fromEntries(
+      Object.entries(defaultSettings).map(([key, value]) => [key, withoutOpencode(value)]),
+    )
+    const settings = Schema.decodeUnknownSync(Settings)(beforeOpencode)
+    expect(settings.defaultModel.opencode).toBeNull()
+    expect(settings.modelPresets.opencode).toStrictEqual([])
+    expect(settings.defaultFastMode.opencode).toBe(false)
   })
 
   it("has no global actions when settings predate them", () => {

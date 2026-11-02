@@ -146,6 +146,7 @@ const supervisedHint = {
   claude: m.access_supervised_hint_claude,
   codex: m.access_supervised_hint_codex,
   muse: m.access_supervised_hint_muse,
+  opencode: m.access_supervised_hint_opencode,
 } satisfies Record<ProviderId, () => string>
 
 const autoHint = {
@@ -153,6 +154,7 @@ const autoHint = {
     model?.autoMode ? m.access_auto_hint_claude() : m.access_auto_hint_claude_edits(),
   codex: m.access_auto_hint_codex,
   muse: m.access_auto_hint_muse,
+  opencode: m.access_auto_hint_opencode,
 } satisfies Record<ProviderId, (model: ModelInfo | undefined) => string>
 
 const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | undefined) => {
@@ -166,7 +168,10 @@ const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | u
   }
 }
 
-const hidesUserSkills = { claude: true, codex: true, muse: false } satisfies Record<ProviderId, boolean>
+const hidesUserSkills = { claude: true, codex: true, muse: false, opencode: false } satisfies Record<
+  ProviderId,
+  boolean
+>
 
 interface AgentTab {
   readonly value: string

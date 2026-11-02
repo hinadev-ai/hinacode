@@ -3,6 +3,7 @@ import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, useRef, useState, useTransition } from "react"
 import { CLAUDE_EFFORT_LEVELS, type ModelInfo, ProviderId, unlistedModel } from "../../../shared/agent.ts"
 import { AccessMode, AUTO_COMPACT_RANGE } from "../../../shared/domain.ts"
+import { providerInfo } from "../../../shared/providers.ts"
 import { modelsAtom, updateSettingsAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { useSettingsEnvironment } from "../../lib/environments.ts"
@@ -51,7 +52,7 @@ function ProviderModels({ provider }: { provider: ProviderId }) {
         {AsyncResult.isSuccess(models) && models.value.length > 0 && (
           <ModelPresetField provider={provider} models={models.value} />
         )}
-        <AutoCompactField provider={provider} />
+        {providerInfo[provider].autoCompacts && <AutoCompactField provider={provider} />}
       </SettingsGroup>
     </fieldset>
   )

@@ -51,6 +51,7 @@ const signedOutHint = {
   claude: m.settings_account_signed_out_claude,
   codex: m.settings_account_signed_out_codex,
   muse: m.settings_account_signed_out_muse,
+  opencode: m.settings_account_signed_out_opencode,
 } satisfies Record<ProviderId, () => string>
 
 const addsAccounts = Schema.is(AccountProviderId)

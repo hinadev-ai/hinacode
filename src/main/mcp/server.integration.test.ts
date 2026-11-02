@@ -15,6 +15,7 @@ import { defaultSettings } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
+import { OpencodeProvider } from "../agents/opencode/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { layer as RemoteAccessLayer } from "../remote/access.ts"
@@ -121,6 +122,7 @@ const stubs = Layer.mergeAll(
   Layer.succeed(ClaudeProvider, fakeProvider("claude")),
   Layer.succeed(CodexProvider, fakeProvider("codex")),
   Layer.succeed(MuseProvider, fakeProvider("muse")),
+  Layer.succeed(OpencodeProvider, fakeProvider("opencode")),
   Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) }),
   Layer.succeed(
     Peers,

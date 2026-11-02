@@ -52,6 +52,7 @@ import { latestForkPoint, sidechatPrompt, unseenSince } from "../agents/sidechat
 import { agentInstructions, type AgentEnvironment } from "../agents/instructions.ts"
 import { spawningCallId } from "../agents/runAgent.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
+import { OpencodeProvider } from "../agents/opencode/index.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
 import { AgentError, type AgentProvider, type SteerPriority, type Wake } from "../agents/provider.ts"
 import { Events } from "./Events.ts"
@@ -280,6 +281,7 @@ const make = Effect.gen(function* () {
     claude: yield* ClaudeProvider,
     codex: yield* CodexProvider,
     muse: yield* MuseProvider,
+    opencode: yield* OpencodeProvider,
   }
 
   type LimitsKey = Pick<AccountLimits, "provider" | "accountId">
@@ -341,10 +343,11 @@ const make = Effect.gen(function* () {
       return Effect.gen(function* () {
         const delivered = yield* providers[request.provider].respondApproval(requestId, decision, text)
         if (text === undefined || delivered) return
+        const steers = providers[request.provider].steer !== undefined
         const { queue } = yield* threads.get(request.threadId)
         yield* updateThread({
           id: request.threadId,
-          queue: [{ id: randomUUID(), text, attachments: [], steer: true }, ...queue],
+          queue: [{ id: randomUUID(), text, attachments: [], ...(steers && { steer: true as const }) }, ...queue],
         })
       }).pipe(exclusive(request.threadId))
     })
@@ -506,7 +509,7 @@ const make = Effect.gen(function* () {
       when: Effect.Effect<boolean, PersistenceError>,
     ) =>
       Effect.gen(function* () {
-        if (!(yield* when)) return false
+        if (provider.steer === undefined || !(yield* when)) return false
         if (!waitsOnUser(thread.id)) {
           yield* steerTurn(text, attachments, "now")
           return true
@@ -518,6 +521,7 @@ const make = Effect.gen(function* () {
 
     const steerTurn = (text: string, attachments: ReadonlyArray<Attachment>, priority: SteerPriority) =>
       Effect.gen(function* () {
+        if (provider.steer === undefined) return
         yield* deltas.flush
         yield* provider.steer(thread.id, text, attachments, priority)
         const now = yield* nowIso
@@ -978,10 +982,14 @@ const make = Effect.gen(function* () {
     )
 
   const steerWhen: typeof AgentRunner.Service.steerWhen = ({ threadId, text, attachments, when }) =>
-    Effect.suspend(
-      () =>
-        activeTurns.get(threadId)?.steer(text, attachments, when) ?? sendWhen(threadId, text, attachments, {}, when),
-    )
+    Effect.suspend(() => {
+      const turn = activeTurns.get(threadId)
+      if (turn === undefined) return sendWhen(threadId, text, attachments, {}, when)
+      if (turn.provider.steer !== undefined) return turn.steer(text, attachments, when)
+      return Effect.flatMap(when, (ready) =>
+        ready ? Effect.as(queue(threadId, text, attachments), true) : Effect.succeed(false),
+      )
+    })
 
   const resumeAtReset = (threadId: string, enabled: boolean) =>
     Effect.gen(function* () {
