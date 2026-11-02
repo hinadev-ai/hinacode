@@ -7,6 +7,13 @@ import { slugifyBranch } from "./automations/template.ts"
 const MAX_SLUG_LENGTH = 40
 const REMOVING_SUFFIX = ".removing"
 
+// FIXME: Electron's fs reads `.asar` files as folders, so a recursive delete of a checkout with Electron installed fails
+const fsWithoutAsar = (process.getBuiltinModule("original-fs") ??
+  process.getBuiltinModule("node:fs")) as typeof import("node:fs")
+
+const deleteTree = (path: string) =>
+  Effect.tryPromise(() => fsWithoutAsar.promises.rm(path, { recursive: true, force: true }))
+
 const timestamp = (iso: string) => new Date(iso).toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "-")
 
 const slug = (title: string) =>
@@ -24,7 +31,7 @@ export class Scratch extends Context.Service<
   }
 >()("hinacode/Scratch") {}
 
-export const layer = (root: string) =>
+export const layer = (root: string, deleteFolder: (path: string) => Effect.Effect<void, unknown> = deleteTree) =>
   Layer.effect(
     Scratch,
     Effect.gen(function* () {
@@ -39,9 +46,9 @@ export const layer = (root: string) =>
 
       const deleteInBackground = (name: string) =>
         Effect.forkDetach(
-          fs
-            .remove(join(root, name), { recursive: true, force: true })
-            .pipe(Effect.catchCause((cause) => Effect.logWarning("scratch folder deletion failed", name, cause))),
+          deleteFolder(join(root, name)).pipe(
+            Effect.catchCause((cause) => Effect.logWarning("scratch folder deletion failed", name, cause)),
+          ),
         )
 
       yield* names.pipe(

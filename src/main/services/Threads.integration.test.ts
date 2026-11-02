@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { afterAll, describe, expect, it } from "@effect/vitest"
-import { Effect, FileSystem, Layer } from "effect"
+import { Effect, type FileSystem, Layer } from "effect"
 import { SqlClient } from "effect/sql"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
@@ -39,14 +39,6 @@ const makeThreadsLayer = (scratch: Layer.Layer<Scratch.Scratch, never, FileSyste
   )
 
 const threadsLayer = makeThreadsLayer(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-"))))
-
-const stalledDeletes = Layer.effect(
-  FileSystem.FileSystem,
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    return FileSystem.FileSystem.of({ ...fs, remove: () => Effect.never })
-  }),
-).pipe(Layer.provide(NodeServices.layer))
 
 const sidechatRepos = mkdtempSync(join(tmpdir(), "kk-sidechat-"))
 afterAll(() => rmSync(sidechatRepos, { recursive: true, force: true }))
@@ -302,9 +294,7 @@ describe("Threads", () => {
       const fresh = yield* scratch.ensure(thread)
       expect(existsSync(join(fresh, "experiment.py"))).toBe(false)
     }).pipe(
-      Effect.provide(
-        makeThreadsLayer(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-"))).pipe(Layer.provide(stalledDeletes))),
-      ),
+      Effect.provide(makeThreadsLayer(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")), () => Effect.never))),
     ),
   )
 
