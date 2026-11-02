@@ -55,6 +55,7 @@ export function HomeActions({ onNewThread }: { onNewThread: () => void }) {
  * iOS keeps every action in the header and the search under the title.
  */
 export function HomeToolbars({ onNewThread }: { onNewThread: () => void }) {
+  const theme = useTheme()
   const overview = (
     <Stack.Toolbar.Button
       icon="square.grid.2x2"
@@ -99,6 +100,7 @@ export function HomeToolbars({ onNewThread }: { onNewThread: () => void }) {
         <Stack.Toolbar.Button
           icon="square.and.pencil"
           variant="prominent"
+          tintColor={theme.primary}
           accessibilityLabel={copy("mobile_home_new_thread")}
           onPress={onNewThread}
         >
