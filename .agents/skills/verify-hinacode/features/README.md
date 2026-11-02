@@ -41,7 +41,7 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 - [Chat with Codex](./chat-codex.md): the same on Codex, including MCP elicitation approvals for hinacode tools. Real turns only.
 - [Chat with Muse Code](./chat-muse.md): the same on Muse Code, with network approvals under `Ask me` and usage over rpc. Real turns only.
 - [Worktrees](./worktrees.md): setup services and panels automated; composer creation works under the usage-limit mock, branch naming needs a real first turn, and PR checkouts and the `PR <state>` badge need a GitHub remote.
-- [Steering and attachments](./steering-and-attachments.md): paste and the queue restore automated; steering, held steers and queueing need real turns, drop and remove need none. Open bug: a held steer aborts the tool call it waited on.
+- [Steering and attachments](./steering-and-attachments.md): paste and the queue restore automated; steering, held steers and queueing need real turns, drop and remove need none.
 - [MCP tools and pull request links](./mcp-and-pull-requests.md): contract and panel automated; eighteen tools; watching PRs, the PR detail panel and review window, `link_pull_request` from inside a turn, `gh` status, the `gh` sign-in states, `request_secret` cards and `create_thread` during actual agent turns by hand; the thread controls are automated.
 - [Settings](./settings.md): ten pages; automated except the Codex default model, the Slack token and the theme read-back, which share code with the automated cases.
 - [Ports](./ports.md): automated except listeners spawned from the thread's terminal or its Claude Code CLI.

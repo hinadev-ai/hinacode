@@ -48,7 +48,6 @@ Preconditions:
 - The Claude Code CLI rejects a standalone `sleep N`, so the turn finishes at once. Keep a turn busy with `python3 -c 'import time; time.sleep(N)'`.
 - Default access is `Full access`, which never shows `Allow`. Pick `Supervised` in the picker first when a step clicks it.
 - Paste stages images only; anything else pasted is ignored. Unnamed pastes become `pasted.png`. Attachments are limited to 20 MB.
-- Open bug, seen 2026-11-02 on Claude `Sonnet 5.5`: a held steer delivered right after `Allow` aborts the approved tool call (`Command was aborted before completion`, row `Failed`), the steer arrives, and Claude asks for the same approval again. A second `Allow` then runs it. Report this as the product bug, not as a harness failure.
 - `Attach files` opens a native picker (GTK on Linux, Cocoa on macOS) that CDP cannot see. Report `attach-button` as not driven, or stage directly with `$S/rpc.ts $PORT attachments.stage '{"threadId":"<id>","source":{"path":"/abs/file"}}'` and say so.
 - Files built in `eval` have no disk path (`pathForFile` returns `""`), so they are staged from a data URL. Real drops from a file manager are staged by path. These are different code paths; say which one you proved.
 - `Open <name>` and `Show <name> in folder` are `title` attributes, not accessible names; select them with CSS.
