@@ -4,7 +4,7 @@ export const isServerExternal = (id: string): boolean =>
   SERVER_EXTERNALS.some((name) => id === name || id.startsWith(`${name}/`))
 
 export const SERVER_BIN = `#!/usr/bin/env node
-await import("../out/server/daemon.js")
+await import("../out/server/cli.js")
 `
 
 export interface RootManifest {

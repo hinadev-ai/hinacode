@@ -11,6 +11,7 @@
     "vite.paraglide.ts",
     "src/main/**/*",
     "src/preload/**/*",
-    "src/shared/**/*"
+    "src/shared/**/*",
+    "src/cli/**/*"
   ]
 }
