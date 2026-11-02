@@ -47,7 +47,7 @@ export const artifactTools = {
     }),
     handle: async (store, input) => {
       const artifact = await store.publish(input)
-      return `Published "${artifact.title}" as artifact ${artifact.id}, version ${artifact.version}. Pass id "${artifact.id}" to publish_artifact to update it.`
+      return `Published artifact ${artifact.id} version ${artifact.version}: "${artifact.title}". Pass id "${artifact.id}" to publish_artifact to update it.`
     },
   }),
   list_artifacts: tool({

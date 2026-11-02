@@ -25,7 +25,7 @@ test("publishes, lists and reads back an artifact through the tool handlers", as
       ],
     }),
   )
-  const id = published.match(/artifact ([a-z0-9]+), version 1/)?.[1] ?? ""
+  const id = published.match(/^Published artifact ([a-z0-9]+) version 1:/)?.[1] ?? ""
 
   expect(JSON.parse(await list_artifacts.handle(store, {}))).toEqual([
     { id, title: "Notes", version: 1, updatedAt: expect.any(String) },
