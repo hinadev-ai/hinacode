@@ -181,9 +181,10 @@ export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen 
     run(async () => {
       const canvas = canvasRef.current
       if (!canvas) return
-      const attachment = await callPromise("attachments.stage", {
+      const attachment = await callPromise("device.screenshot.save", {
         threadId,
-        source: { dataUrl: canvas.toDataURL("image/png"), name: `${device.name}.png` },
+        dataUrl: canvas.toDataURL("image/png"),
+        name: `${device.name}.png`,
       })
       await callPromise("shell.reveal", { path: attachment.path })
     })

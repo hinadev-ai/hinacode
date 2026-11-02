@@ -31,6 +31,7 @@ export const routes: Record<RpcMethod, Route> = {
   "device.command": thread,
   "device.control": thread,
   "device.pick": thread,
+  "device.screenshot.save": client,
   "app.ready": client,
   "app.focus": client,
   "windows.openPullRequest": client,
