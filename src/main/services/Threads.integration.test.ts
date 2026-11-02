@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { afterAll, describe, expect, it } from "@effect/vitest"
-import { Effect, Layer } from "effect"
+import { Effect, type FileSystem, Layer } from "effect"
 import { SqlClient } from "effect/sql"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
@@ -21,21 +21,24 @@ import { makeActiveWorkspace } from "./workspace.ts"
 import * as Worktrees from "./Worktrees.ts"
 import * as Scratch from "./Scratch.ts"
 
-const threadsLayer = threadsLayerBase.pipe(
-  Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
-  Layer.provideMerge(Terminals.layer),
-  Layer.provideMerge(Worktrees.layer),
-  Layer.provideMerge(Projects.layer),
-  Layer.provideMerge(AgentAccounts.layer),
-  Layer.provideMerge(Settings.layer(mkdtempSync(join(tmpdir(), "kk-threads-settings-")))),
-  Layer.provide(
-    Layer.mergeAll(Git.layer, GitHub.layer).pipe(
-      Layer.provideMerge(Layer.succeed(Events, { publish: () => Effect.void })),
+const makeThreadsLayer = (scratch: Layer.Layer<Scratch.Scratch, never, FileSystem.FileSystem>) =>
+  threadsLayerBase.pipe(
+    Layer.provideMerge(scratch),
+    Layer.provideMerge(Terminals.layer),
+    Layer.provideMerge(Worktrees.layer),
+    Layer.provideMerge(Projects.layer),
+    Layer.provideMerge(AgentAccounts.layer),
+    Layer.provideMerge(Settings.layer(mkdtempSync(join(tmpdir(), "kk-threads-settings-")))),
+    Layer.provide(
+      Layer.mergeAll(Git.layer, GitHub.layer).pipe(
+        Layer.provideMerge(Layer.succeed(Events, { publish: () => Effect.void })),
+      ),
     ),
-  ),
-  Layer.provideMerge(Db.layer(":memory:")),
-  Layer.provideMerge(NodeServices.layer),
-)
+    Layer.provideMerge(Db.layer(":memory:")),
+    Layer.provideMerge(NodeServices.layer),
+  )
+
+const threadsLayer = makeThreadsLayer(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-"))))
 
 const sidechatRepos = mkdtempSync(join(tmpdir(), "kk-sidechat-"))
 afterAll(() => rmSync(sidechatRepos, { recursive: true, force: true }))
@@ -276,6 +279,23 @@ describe("Threads", () => {
       expect(existsSync(deletedFolder)).toBe(false)
       yield* threads.remove(archived.id)
     }).pipe(Effect.provide(threadsLayer)),
+  )
+
+  it.live("archives a thread without waiting for its scratch folder's files to be deleted", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const scratch = yield* Scratch.Scratch
+      const thread = yield* threads.get((yield* seedThread({ rootPath: "/repo" })).threadId)
+      const folder = yield* scratch.ensure(thread)
+      writeFileSync(join(folder, "experiment.py"), "print(1)")
+
+      yield* threads.archive(thread.id).pipe(Effect.timeout("5 seconds"))
+
+      const fresh = yield* scratch.ensure(thread)
+      expect(existsSync(join(fresh, "experiment.py"))).toBe(false)
+    }).pipe(
+      Effect.provide(makeThreadsLayer(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")), () => Effect.never))),
+    ),
   )
 
   it.effect("a draft takes the next place in its project when it is sent", () =>
