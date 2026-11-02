@@ -80,6 +80,7 @@ export default function OverviewScreen() {
     { label: copy("mobile_overview_needs_you"), rows: overview.attention },
     { label: copy("mobile_overview_open"), rows: overview.open },
     { label: copy("mobile_overview_merged"), rows: overview.merged },
+    { label: copy("mobile_overview_unknown"), rows: overview.unknown },
   ].filter((group) => group.rows.length > 0)
 
   return (
