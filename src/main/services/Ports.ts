@@ -3,7 +3,7 @@ import { readdir, readFile, readlink, realpath } from "node:fs/promises"
 import { sep } from "node:path"
 import { Context, Effect, Layer, Schema } from "effect"
 import type { OpenPort } from "../../shared/domain.ts"
-import type { NotFoundError, PersistenceError } from "./errors.ts"
+import type { FolderMissingError, NotFoundError, PersistenceError } from "./errors.ts"
 import { makeActiveWorkspace } from "./workspace.ts"
 
 export class PortsError extends Schema.TaggedError<PortsError>()("PortsError", {
@@ -242,7 +242,7 @@ export class Ports extends Context.Service<
   {
     readonly listForThread: (
       threadId: string,
-    ) => Effect.Effect<ReadonlyArray<OpenPort>, PersistenceError | NotFoundError | PortsError>
+    ) => Effect.Effect<ReadonlyArray<OpenPort>, PersistenceError | NotFoundError | FolderMissingError | PortsError>
     readonly kill: (pid: number) => Effect.Effect<void, PortsError>
   }
 >()("hinacode/Ports") {}

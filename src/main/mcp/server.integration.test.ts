@@ -1,9 +1,9 @@
 import { EventEmitter } from "node:events"
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { readFile, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { expect, layer } from "@effect/vitest"
+import { afterAll, expect, layer } from "@effect/vitest"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { NodeServices } from "@effect/platform-node"
@@ -51,13 +51,20 @@ const turnInputs: Array<RunTurnInput> = []
 const modelLookupStarted = Deferred.makeUnsafe<void>()
 const modelLookupResume = Deferred.makeUnsafe<void>()
 
+const repos = mkdtempSync(join(tmpdir(), "kk-mcp-repos-"))
+afterAll(() => rmSync(repos, { recursive: true, force: true }))
+const repoA = join(repos, "repo-a")
+const repoB = join(repos, "repo-b")
+mkdirSync(repoA)
+mkdirSync(repoB)
+
 class Seeded extends Context.Service<Seeded, { readonly a: string; readonly b: string }>()("test/Seeded") {}
 
 const seeded = Layer.effect(
   Seeded,
   Effect.gen(function* () {
-    const a = (yield* seedThread({ rootPath: "/repo-a" })).threadId
-    const b = (yield* seedThread({ rootPath: "/repo-b" })).threadId
+    const a = (yield* seedThread({ rootPath: repoA })).threadId
+    const b = (yield* seedThread({ rootPath: repoB })).threadId
     return { a, b }
   }),
 )

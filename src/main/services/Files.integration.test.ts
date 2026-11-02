@@ -222,6 +222,17 @@ describe("fs.list", () => {
     }),
   )
 
+  it.effect("says the folder is missing once a worktree's folder is deleted on disk", () =>
+    Effect.gen(function* () {
+      const deleted = join(dir, "deleted-wt")
+      git(repo, "worktree", "add", "-q", "-b", "deleted", deleted, "main")
+      rmSync(deleted, { recursive: true, force: true })
+      const seed = { rootPath: repo, worktree: { path: deleted, baseRef: "main", status: "ready" as const } }
+      const error = yield* run(list(deleted, ""), seed).pipe(Effect.flip)
+      expect(error).toMatchObject({ _tag: "FolderMissingError", path: deleted })
+    }),
+  )
+
   it.effect("lists a chat's own folder, but no other folder in the chats root", () =>
     Effect.gen(function* () {
       const chats = join(dir, "chats")
