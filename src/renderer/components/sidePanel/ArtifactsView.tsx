@@ -6,6 +6,7 @@ import type { Thread } from "../../../shared/domain.ts"
 import { environmentName, useClouds } from "../../lib/environments.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { formatRelativeTime } from "../../lib/relativeTime.ts"
+import { useArtifactTheme } from "../../lib/artifactTheme.ts"
 import { artifactsAtom } from "../../lib/rpc.ts"
 import { useNow } from "../../lib/useNow.ts"
 import { m } from "../../paraglide/messages.js"
@@ -44,16 +45,18 @@ export function ArtifactsHeader({ thread }: { thread: Thread }) {
   )
 }
 
+
 export function ArtifactsView({ thread }: { thread: Thread }) {
   const selected = useSelectedArtifact(thread.id)
+  const theme = useArtifactTheme()
   if (selected !== undefined) {
     return (
       <iframe
-        src={`${artifactUrl(selected.id, selected.entry)}?v=${selected.version}`}
+        src={`${artifactUrl(selected.id, selected.entry)}?v=${selected.version}&theme=${encodeURIComponent(theme)}`}
         title={selected.title}
         sandbox="allow-scripts"
         referrerPolicy="no-referrer"
-        className="min-h-0 flex-1 border-0 bg-white"
+        className="min-h-0 flex-1 border-0 bg-background"
       />
     )
   }

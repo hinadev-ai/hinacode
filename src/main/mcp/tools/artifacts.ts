@@ -1,6 +1,7 @@
 import { ArtifactError, type ArtifactTool, artifactTools } from "@hinacode/artifacts"
 import { Context, Effect, Option, Schema } from "effect"
 import { McpSchema, McpServer } from "effect/ai"
+import { ARTIFACT_THEME_GUIDE } from "../../../shared/artifactTheme.ts"
 import { Artifacts } from "../../services/Artifacts.ts"
 import { McpCredentials } from "../credentials.ts"
 import { callingThreadId, invalidCredential, text } from "./tool.ts"
@@ -18,7 +19,7 @@ export const registerArtifactTools = Effect.gen(function* () {
     server.addTool({
       tool: new McpSchema.Tool({
         name,
-        description: tool.description,
+        description: name === "publish_artifact" ? `${tool.description}\n\n${ARTIFACT_THEME_GUIDE}` : tool.description,
         inputSchema: decodeInputSchema(tool.input.toJSONSchema()),
       }),
       annotations: Context.empty(),

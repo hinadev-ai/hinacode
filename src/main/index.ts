@@ -32,6 +32,7 @@ import {
   LIQUID_GLASS_ARGUMENT,
   PROJECT_FILE_PROTOCOL,
 } from "../shared/channels.ts"
+import { injectArtifactTheme, parseArtifactTheme } from "../shared/artifactTheme.ts"
 import { RpcMethods } from "../shared/contract.ts"
 import * as Artifacts from "./services/Artifacts.ts"
 import * as ClientSettings from "./services/ClientSettings.ts"
@@ -104,6 +105,15 @@ const withHeaders = (response: Response, extra: Record<string, string>) => {
 const sandboxed = (response: Response) => withHeaders(response, { "content-security-policy": "sandbox allow-scripts" })
 
 const artifactResponse = (response: Response) => withHeaders(response, ARTIFACT_HEADERS)
+
+const themedArtifact = async (request: Request, response: Response) => {
+  const type = response.headers.get("content-type") ?? ""
+  if (!type.startsWith("text/html")) return artifactResponse(response)
+  const theme = parseArtifactTheme(new URL(request.url).searchParams.get("theme"))
+  if (theme === undefined) return artifactResponse(response)
+  const html = injectArtifactTheme(await response.text(), theme)
+  return artifactResponse(new Response(html, { status: response.status, headers: { "content-type": type } }))
+}
 
 const serveAttachments = (runtime: AppRuntime, attachmentsRoot: string) =>
   protocol.handle(ATTACHMENT_PROTOCOL, async (request) => {
@@ -199,15 +209,15 @@ const serveArtifacts = (runtime: AppRuntime) =>
       Effect.map(Environments.Environments, (environments) => environments.owner("artifact", target.id)),
     )
     if (cloud !== undefined)
-      return artifactResponse(await fetchFromCloud(runtime, cloud, { method: "artifacts.file", payload: target }))
+      return themedArtifact(
+        request,
+        await fetchFromCloud(runtime, cloud, { method: "artifacts.file", payload: target }),
+      )
     const file = await runtime.runPromise(
       Artifacts.Artifacts.use((artifacts) => artifacts.file(target.id, target.path)),
     )
-    return artifactResponse(
-      file === null
-        ? new Response(null, { status: 404 })
-        : new Response(file.bytes, { headers: { "content-type": file.type } }),
-    )
+    if (file === null) return artifactResponse(new Response(null, { status: 404 }))
+    return themedArtifact(request, new Response(file.bytes, { headers: { "content-type": file.type } }))
   })
 
 const safeStorageKeyring = Layer.succeed(

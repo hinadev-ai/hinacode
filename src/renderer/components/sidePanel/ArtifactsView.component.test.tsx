@@ -1,4 +1,4 @@
-import { expect, test } from "vitest"
+import { expect, onTestFinished, test } from "vitest"
 import { page } from "vitest/browser"
 import { render } from "vitest-browser-react"
 import type { Artifact } from "../../../shared/artifact.ts"
@@ -71,14 +71,33 @@ test("lists artifacts newest first, opens one in a sandboxed frame, follows new 
 
   await page.getByRole("button", { name: /Release notes/ }).click()
   const frame = page.getByTitle("Release notes")
-  await expect.element(frame).toHaveAttribute("src", "hinacode-artifact://newer/index.html?v=2")
+  await expect
+    .element(frame)
+    .toHaveAttribute("src", expect.stringMatching(/^hinacode-artifact:\/\/newer\/index\.html\?v=2&/))
   await expect.element(frame).toHaveAttribute("sandbox", "allow-scripts")
 
   artifacts = [{ ...artifacts[1]!, version: 3, updatedAt: "2026-11-01T03:00:00.000Z" }, artifacts[0]!]
   for (const listener of listeners) listener({ type: "artifact.updated", artifact: artifacts[0]! })
-  await expect.element(frame).toHaveAttribute("src", "hinacode-artifact://newer/index.html?v=3")
+  await expect
+    .element(frame)
+    .toHaveAttribute("src", expect.stringMatching(/^hinacode-artifact:\/\/newer\/index\.html\?v=3&/))
 
   await page.getByRole("button", { name: "Back to artifacts" }).click()
   await expect.element(page.getByRole("heading", { name: "Artifacts" })).toBeInTheDocument()
   await expect.element(rows.first()).toMatchTextContent(/^Release notes/)
+})
+
+test("passes the app theme to the frame and follows a theme switch", async () => {
+  await render(<ArtifactsView thread={thread} />)
+  await page.getByRole("button", { name: /Release notes/ }).click()
+  const frame = page.getByTitle("Release notes")
+  const theme = () => JSON.parse(new URL(frame.element().getAttribute("src")!).searchParams.get("theme")!)
+
+  await expect.poll(() => theme().scheme).toBe("light")
+  expect(theme().tokens["--background"]).toBe("oklch(1 0 0)")
+
+  document.documentElement.classList.add("dark")
+  onTestFinished(() => document.documentElement.classList.remove("dark"))
+  await expect.poll(() => theme().scheme).toBe("dark")
+  expect(theme().tokens["--background"]).toBe("oklch(0.145 0 0)")
 })
