@@ -1,6 +1,8 @@
 import { randomBytes, randomUUID } from "node:crypto"
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
+import { setTimeout as delay } from "node:timers/promises"
+import { lock } from "proper-lockfile"
 import { type Artifact, ArtifactSchema, contentType, isArtifactId, normalizeArtifactPath } from "./artifact.ts"
 
 export const MAX_ARTIFACT_BYTES = 16 * 1024 * 1024
@@ -63,13 +65,43 @@ const claimVersion = async (directory: string, from: number): Promise<number> =>
     await mkdir(join(directory, String(from)))
     return from
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
+    if (!(error instanceof Error) || !("code" in error) || error.code !== "EEXIST") throw error
     return claimVersion(directory, from + 1)
+  }
+}
+
+const lockArtifact = async (directory: string, onCompromised: (error: Error) => void) => {
+  for (;;) {
+    try {
+      return await lock(directory, { realpath: false, onCompromised })
+    } catch (error) {
+      if (!(error instanceof Error) || !("code" in error) || error.code !== "ELOCKED") throw error
+      await delay(25)
+    }
   }
 }
 
 export const openArtifactStore = (root: string, options: { now?: () => Date } = {}): ArtifactStore => {
   const now = options.now ?? (() => new Date())
+
+  const withLock = async <T>(id: string, operation: (assertLocked: () => void) => Promise<T>): Promise<T> => {
+    await mkdir(root, { recursive: true })
+    let compromised: Error | undefined
+    const release = await lockArtifact(join(root, id), (error) => {
+      compromised = error
+    })
+    const assertLocked = () => {
+      if (compromised !== undefined)
+        throw new ArtifactError("The artifact lock was lost. Try publishing again.", { cause: compromised })
+    }
+    try {
+      const result = await operation(assertLocked)
+      assertLocked()
+      return result
+    } finally {
+      if (compromised === undefined) await release()
+    }
+  }
 
   const get = async (id: string): Promise<Artifact | null> => {
     if (!isArtifactId(id)) return null
@@ -100,57 +132,73 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
     if (input.id !== undefined && !isArtifactId(input.id)) {
       throw new ArtifactError(`Invalid artifact id "${input.id}". Pass an id that publish_artifact returned.`)
     }
-    const previous = input.id === undefined ? null : await get(input.id)
-    if (input.id !== undefined && previous === null) {
-      throw new ArtifactError(`No artifact has the id "${input.id}". Omit id to publish a new artifact.`)
-    }
+    const id = input.id ?? newId()
+    return withLock(id, async (assertLocked) => {
+      const previous = input.id === undefined ? null : await get(id)
+      if (input.id !== undefined && previous === null) {
+        throw new ArtifactError(`No artifact has the id "${id}". Omit id to publish a new artifact.`)
+      }
 
-    const id = previous?.id ?? newId()
-    const directory = join(root, id)
-    await mkdir(directory, { recursive: true })
-    const version = await claimVersion(directory, (previous?.version ?? 0) + 1)
-    const versionDirectory = join(directory, String(version))
-    for (const [path, bytes] of files) {
-      const target = join(versionDirectory, path)
-      await mkdir(dirname(target), { recursive: true })
-      await writeFile(target, bytes)
-    }
+      const directory = join(root, id)
+      await mkdir(directory, { recursive: true })
+      const version = await claimVersion(directory, (previous?.version ?? 0) + 1)
+      const versionDirectory = join(directory, String(version))
+      for (const [path, bytes] of files) {
+        assertLocked()
+        const target = join(versionDirectory, path)
+        await mkdir(dirname(target), { recursive: true })
+        await writeFile(target, bytes)
+      }
 
-    const timestamp = now().toISOString()
-    const artifact: Artifact = {
-      id,
-      title,
-      entry,
-      version,
-      files: Array.from(files, ([path, bytes]) => ({ path, type: contentType(path), size: bytes.byteLength })),
-      createdAt: previous?.createdAt ?? timestamp,
-      updatedAt: timestamp,
-    }
-    const temporary = join(directory, `artifact.json.${randomUUID()}.tmp`)
-    await writeFile(temporary, `${JSON.stringify(artifact, null, 2)}\n`)
-    await rename(temporary, join(directory, "artifact.json"))
+      const timestamp = now().toISOString()
+      const artifact: Artifact = {
+        id,
+        title,
+        entry,
+        version,
+        files: Array.from(files, ([path, bytes]) => ({ path, type: contentType(path), size: bytes.byteLength })),
+        createdAt: previous?.createdAt ?? timestamp,
+        updatedAt: timestamp,
+      }
+      const temporary = join(directory, `artifact.json.${randomUUID()}.tmp`)
+      await writeFile(temporary, `${JSON.stringify(artifact, null, 2)}\n`)
+      assertLocked()
+      await rename(temporary, join(directory, "artifact.json"))
 
-    const stale = (await readdir(directory)).filter((name) => /^\d+$/.test(name) && Number(name) < version - 1)
-    await Promise.all(stale.map((name) => rm(join(directory, name), { recursive: true, force: true })))
-    return artifact
+      const stale = (await readdir(directory)).filter(
+        (name) => /^\d+$/.test(name) && Number(name) !== version && Number(name) !== previous?.version,
+      )
+      assertLocked()
+      await Promise.all(stale.map((name) => rm(join(directory, name), { recursive: true, force: true })))
+      return artifact
+    })
   }
 
   const file = async (id: string, path: string) => {
     const normalized = normalizeArtifactPath(path)
-    const artifact = normalized === null ? null : await get(id)
-    const listed = artifact?.files.find((candidate) => candidate.path === normalized)
-    if (!artifact || !listed) return null
-    try {
-      return { bytes: await readFile(join(root, id, String(artifact.version), listed.path)), type: listed.type }
-    } catch {
-      return null
+    if (normalized === null) return null
+    let missingVersion: number | undefined
+    for (;;) {
+      const artifact = await get(id)
+      const listed = artifact?.files.find((candidate) => candidate.path === normalized)
+      if (!artifact || !listed || artifact.version === missingVersion) return null
+      try {
+        return { bytes: await readFile(join(root, id, String(artifact.version), listed.path)), type: listed.type }
+      } catch (error) {
+        if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") return null
+        missingVersion = artifact.version
+      }
     }
   }
 
   const remove = async (id: string) => {
-    if ((await get(id)) === null) return false
-    await rm(join(root, id), { recursive: true, force: true })
-    return true
+    if (!isArtifactId(id)) return false
+    return withLock(id, async (assertLocked) => {
+      if ((await get(id)) === null) return false
+      assertLocked()
+      await rm(join(root, id), { recursive: true, force: true })
+      return true
+    })
   }
 
   return { root, publish, get, list, file, remove }

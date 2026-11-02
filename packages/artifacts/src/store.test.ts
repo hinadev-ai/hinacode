@@ -1,6 +1,6 @@
 import { fork } from "node:child_process"
 import { once } from "node:events"
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, watch, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, onTestFinished, test } from "vitest"
@@ -102,7 +102,7 @@ describe("openArtifactStore", () => {
     const publishers = await Promise.all(
       Array.from({ length: 11 }, () => storeProcess("publish", store.root, first.id)),
     )
-    const outcomes = await Promise.allSettled(
+    const publishing = Promise.allSettled(
       publishers.map(({ child }, index) => {
         const published = once(child, "message").then(([message]) => ArtifactSchema.parse(message))
         const files = [page(`v${index}`)]
@@ -112,6 +112,17 @@ describe("openArtifactStore", () => {
         return published
       }),
     )
+    let finished = false
+    void publishing.then(() => {
+      finished = true
+    })
+    const readWhilePublishing = async () => {
+      for (;;) {
+        expect(await store.file(first.id, "index.html")).not.toBeNull()
+        if (finished) return
+      }
+    }
+    const [outcomes] = await Promise.all([publishing, readWhilePublishing()])
 
     expect(outcomes.map((outcome) => outcome.status)).toEqual(publishers.map(() => "fulfilled"))
     const updates = outcomes.flatMap((outcome) => (outcome.status === "fulfilled" ? [outcome.value] : []))
@@ -131,6 +142,7 @@ describe("openArtifactStore", () => {
     mkdirSync(partial)
     writeFileSync(join(partial, "index.html"), "incomplete")
     const { child, closed } = await storeProcess("hold", store.root, first.id)
+    expect(new TextDecoder().decode((await store.file(first.id, "index.html"))?.bytes)).toBe("<!doctype html>v1")
     child.kill("SIGKILL")
     await closed
     const stale = new Date("2000-01-01T00:00:00.000Z")
@@ -140,8 +152,78 @@ describe("openArtifactStore", () => {
     expect(current.version).toBe(3)
     expect((await store.get(first.id))?.version).toBe(3)
     expect(new TextDecoder().decode((await store.file(first.id, "index.html"))?.bytes)).toBe("<!doctype html>v3")
-    expect(readdirSync(join(store.root, first.id)).filter((name) => /^\d+$/.test(name)).toSorted()).toEqual(["1", "3"])
+    expect(
+      readdirSync(join(store.root, first.id))
+        .filter((name) => /^\d+$/.test(name))
+        .toSorted(),
+    ).toEqual(["1", "3"])
     expect(existsSync(join(store.root, `${first.id}.lock`))).toBe(false)
+  })
+
+  test("deleting an artifact waits for its active publisher and leaves no resurrected manifest", async () => {
+    const store = openTemporaryStore()
+    const first = await store.publish({ title: "Chart", files: [page("v1")] })
+    const { child } = await storeProcess("publish", store.root, first.id)
+    const writing = new Promise<void>((resolve, reject) => {
+      const watcher = watch(join(store.root, first.id), (_event, name) => {
+        if (name !== "2") return
+        watcher.close()
+        resolve()
+      })
+      watcher.once("error", reject)
+      onTestFinished(() => watcher.close())
+    })
+    const published = once(child, "message").then(([message]) => ArtifactSchema.parse(message))
+    child.send({
+      id: first.id,
+      title: "Chart",
+      files: [
+        page("v2"),
+        ...Array.from({ length: 1000 }, (_, file) => ({ path: `assets/${file}.txt`, content: "slow" })),
+      ],
+    })
+    await writing
+    const [updated, removed] = await Promise.all([published, store.remove(first.id)])
+    expect(updated.version).toBe(2)
+    expect(removed).toBe(true)
+    expect(await store.get(first.id)).toBeNull()
+    expect(existsSync(join(store.root, first.id))).toBe(false)
+    expect(existsSync(join(store.root, `${first.id}.lock`))).toBe(false)
+  })
+
+  test("a failed file write keeps the committed version and releases the lock for a later publish", async () => {
+    const store = openTemporaryStore()
+    const first = await store.publish({ title: "Chart", files: [page("v1")] })
+    await expect(
+      store.publish({
+        id: first.id,
+        title: "Chart",
+        files: [page("v2"), { path: "x".repeat(300), content: "invalid file name" }],
+      }),
+    ).rejects.toThrow()
+    expect(await store.get(first.id)).toEqual(first)
+    expect(new TextDecoder().decode((await store.file(first.id, "index.html"))?.bytes)).toBe("<!doctype html>v1")
+    expect(existsSync(join(store.root, `${first.id}.lock`))).toBe(false)
+
+    const recovered = await store.publish({ id: first.id, title: "Chart", files: [page("v3")] })
+    expect(recovered.version).toBe(3)
+    expect(
+      readdirSync(join(store.root, first.id))
+        .filter((name) => /^\d+$/.test(name))
+        .toSorted(),
+    ).toEqual(["1", "3"])
+  })
+
+  test("surfaces a permanent lock filesystem error without retrying forever", async () => {
+    const store = openTemporaryStore()
+    const first = await store.publish({ title: "Chart", files: [page("v1")] })
+    const lockPath = join(store.root, `${first.id}.lock`)
+    writeFileSync(lockPath, "not a lock directory")
+    const stale = new Date("2000-01-01T00:00:00.000Z")
+    utimesSync(lockPath, stale, stale)
+
+    await expect(store.publish({ id: first.id, title: "Chart", files: [page("v2")] })).rejects.toThrow()
+    expect(await store.get(first.id)).toEqual(first)
   })
 
   test("stores binary files from base64", async () => {
