@@ -34,7 +34,12 @@ On the phone, the changes a developer waits for happen without motion. A sent pr
 - Press feedback is a spring (`pressSpring`), so a tap that lifts mid-shrink turns back without a jolt.
 - `PressableScale`, `Reveal`, `FadeIn`, `RiseIn`, `IconSwap` and `Rotate` in `components/motion.tsx` keep their names and props and are built on it. `Spinner` and `StatusDot` loop forever, which the API does not do, so they stay CSS animations.
 
-Where it is used: the transcript's new messages, approval and question cards, the composer's send and stop button, the banner and `Notice`.
+Where it is used:
+
+- The transcript's new messages, approval and question cards, the composer's send and stop button, the banner and `Notice`.
+- The todo tray rises in when the agent writes a plan while the thread is open, and fades out once every step is settled and the turn has ended. A tray that was already there when the thread opened stays still, like the messages.
+- A thread's status, in its Home row and in the thread header, fades into each new state, so Running turning into Needs you or Done is noticed from the corner of the eye. `useChanged` keeps the status a screen opens with still.
+- Answer options in a question card shrink while pressed, like every other card-shaped button. The todo tray's header tints while pressed, like a thread row.
 
 Where it is not:
 
@@ -42,6 +47,8 @@ Where it is not:
 - Tab switches are frequent, and the segmented control's thumb already slides. Fading the panel would only delay the content.
 - The connection badge. The home header remounts it on every retry, so a fade there would flash on each attempt while offline.
 - Streaming text. Animating each chunk would cost frames on the busiest path and draw the eye to every token.
+- Height changes: the todo tray expanding, the composer growing, the request stack shrinking. Only `transform` and `opacity` stay on the UI thread, and a scaled stand-in for height distorts text, so these jump and their contents fade.
+- The todo tray's current step. Real agents advance it every few minutes, so almost nobody is looking when it swaps, and the progress count changes with it.
 
 ## Out of scope
 
