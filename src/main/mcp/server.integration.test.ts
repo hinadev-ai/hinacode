@@ -20,6 +20,7 @@ import * as Db from "../db/client.ts"
 import { layer as RemoteAccessLayer } from "../remote/access.ts"
 import { Peers } from "../remote/peers.ts"
 import { seedThread } from "../db/testing.ts"
+import * as Artifacts from "../services/Artifacts.ts"
 import * as Attachments from "../services/Attachments.ts"
 import * as AgentAccounts from "../services/AgentAccounts.ts"
 import { AgentRunner, layer as runnerLayer } from "../services/AgentRunner.ts"
@@ -142,6 +143,7 @@ const core = Layer.mergeAll(
   ),
   Messages.layer,
   Attachments.layer(join(mkdtempSync(join(tmpdir(), "kk-mcp-")), "attachments")),
+  Artifacts.layer(join(mkdtempSync(join(tmpdir(), "kk-mcp-")), "artifacts")),
   secretsLayer.pipe(Layer.provide(noKeyring)),
   credentialsLayer,
 )
@@ -313,6 +315,44 @@ layer(testLayer)("mcp server credentials", (it) => {
     Effect.gen(function* () {
       const mcp = yield* McpCredentials
       yield* rejects(yield* mcp.connectionFor("thread-gone"))
+    }),
+  )
+})
+
+layer(testLayer)("artifact tools", (it) => {
+  it.effect("a thread publishes an artifact, finds it in the list and reads it back", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      const connection = yield* mcp.connectionFor(a)
+
+      const published = yield* callAs(connection, "publish_artifact", {
+        title: "Report",
+        files: [{ path: "index.html", content: "<h1>Report</h1>" }],
+      })
+      expect(published.isError).toBe(false)
+      const id = /^Published artifact ([a-z0-9-]+) version 1:/.exec(published.text)?.[1]
+
+      const listed = yield* callAs(connection, "list_artifacts")
+      expect(JSON.parse(listed.text)).toEqual([{ id, title: "Report", version: 1, updatedAt: expect.any(String) }])
+      const read = yield* callAs(connection, "read_artifact", { id, path: "index.html" })
+      expect(read).toMatchObject({ isError: false, text: "<h1>Report</h1>" })
+    }),
+  )
+
+  it.effect("store errors and invalid input come back as error results", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      const connection = yield* mcp.connectionFor(a)
+
+      const escaped = yield* callAs(connection, "publish_artifact", {
+        title: "Escape",
+        files: [{ path: "../x.html", content: "" }],
+      })
+      expect(escaped).toMatchObject({ isError: true, text: expect.stringContaining('Invalid file path "../x.html"') })
+      const incomplete = yield* callAs(connection, "publish_artifact", { title: "No files" })
+      expect(incomplete).toMatchObject({ isError: true, text: expect.stringMatching(/^files: /) })
     }),
   )
 })

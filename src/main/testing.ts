@@ -16,6 +16,7 @@ import * as AgentAccounts from "./services/AgentAccounts.ts"
 import * as AgentLogins from "./services/AgentLogins.ts"
 import * as SessionImports from "./services/SessionImports.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
+import * as Artifacts from "./services/Artifacts.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as Browser from "./services/Browser.ts"
 import { Automations } from "./services/automations/Automations.ts"
@@ -69,6 +70,7 @@ export const makeTestAppLayer = (
     ClientSettings.layer(dirname(dbPath)),
     Messages.layer,
     Attachments.layer(join(dirname(dbPath), "attachments")),
+    Artifacts.layer(join(dirname(dbPath), "artifacts")),
     Search.layer,
     Files.layer,
   )
