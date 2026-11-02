@@ -214,7 +214,7 @@ function VmProviderField({ value, onChange }: { value: VmProvider; onChange: (pr
         value={value}
         onValueChange={(next) => typeof next === "string" && isVmProvider(next) && onChange(next)}
       >
-        <SelectTrigger id="settings-experimental-tiny-vm-provider" className="w-full">
+        <SelectTrigger id="settings-experimental-tiny-vm-provider">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
