@@ -530,15 +530,6 @@ export const vmHostAtom = Atom.family((environment: EnvironmentId) =>
   Atom.make(call("vm.host", undefined, { environment })),
 )
 
-export const threadVmPasskeyAtom = Atom.family((threadId: string) =>
-  Atom.make(
-    pushFirst(
-      (event) => (event.type === "vm.passkey.updated" && event.threadId === threadId ? event.passkey : undefined),
-      call("vm.passkey.get", { threadId }),
-    ),
-  ),
-)
-
 const turnEnds = new Set(["turn_completed", "turn_failed", "turn_limited"])
 
 export const contextBreakdownAtom = Atom.family((threadId: string) =>

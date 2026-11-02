@@ -68,3 +68,15 @@ it("names a pull request by its repository and number, before GitHub answers", (
   expect(pullRequestReference("https://example.com/pull/9")).toBe("#9")
   expect(pullRequestReference("https://example.com/")).toBe("#?")
 })
+
+it("keeps a pull request GitHub could not resolve out of Open, unless a watch snapshot knows its state", () => {
+  const failed: Remote<PullRequest> = { status: "error", message: "Not Found", at: 0 }
+  const overview = pullRequestOverview(
+    [link("t1", 1, "2026-10-20"), link("t1", 2, "2026-10-19", { status: "open", checks: null, review: null })],
+    { t1: thread("t1") },
+    { [pr(1)]: failed, [pr(2)]: failed },
+  )
+
+  expect(overview.open.map((row) => row.url)).toStrictEqual([pr(2)])
+  expect(overview.unknown.map((row) => [row.url, row.error])).toStrictEqual([[pr(1), "Not Found"]])
+})

@@ -1,0 +1,19 @@
+diff --git a/postinstall.mjs b/postinstall.mjs
+index 8ae2eee851112137c62357af3324e1352a29a3e6..b4b690b6dd3885cd05b954bfdb5265d39082fad1 100644
+--- a/postinstall.mjs
++++ b/postinstall.mjs
+@@ -129,10 +129,12 @@ if (!enableMath) {
+ }
+ 
+ if (failed) {
+-  console.warn(
++  console.error(
+     `${LOG} Some downloads failed. Ensure network access to registry.npmjs.org and github.com, ` +
+-    `then re-run: node node_modules/react-native-enriched-markdown/postinstall.mjs`
++    `then re-run: node node_modules/react-native-enriched-markdown/postinstall.mjs\n` +
++    `${LOG} "fetch failed" usually means this Node has no CA bundle. Run: NODE_EXTRA_CA_CERTS=/etc/ssl/cert.pem pnpm install`
+   );
++  process.exit(1);
+ }
+ 
+ console.log(`${LOG} postinstall complete.`);

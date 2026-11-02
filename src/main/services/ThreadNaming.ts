@@ -1,4 +1,3 @@
-import { query } from "@anthropic-ai/claude-agent-sdk"
 import { Context, Duration, Effect, Layer, Schema } from "effect"
 import type { Thread } from "../../shared/domain.ts"
 import { installedBinary } from "../agents/binary.ts"
@@ -40,6 +39,7 @@ const suggest = (model: string, prompt: string) =>
       try: async (signal) => {
         const abortController = new AbortController()
         signal.addEventListener("abort", () => abortController.abort())
+        const { query } = await import("@anthropic-ai/claude-agent-sdk")
         const stream = query({
           prompt: prompt.slice(0, PROMPT_LIMIT),
           options: {
