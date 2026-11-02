@@ -43,28 +43,33 @@ const subscribeAppearance = (listener: () => void) => {
   }
 }
 
-const resolveScheme = (theme: ThemeId): "dark" | "light" => {
-  const scheme = themes[theme].scheme
-  if (scheme !== "system") return scheme
-  return systemAppearance.matches ? "dark" : "light"
+const resolveTheme = (theme: ThemeId): ThemeId => {
+  if (theme !== "system") return theme
+  return systemAppearance.matches ? "hina-dark" : "hina-light"
 }
 
+const resolveScheme = (theme: ThemeId): "dark" | "light" =>
+  themes[resolveTheme(theme)].scheme === "dark" ? "dark" : "light"
+
 export function useTheme(theme: ThemeId) {
-  const scheme = useSyncExternalStore(subscribeAppearance, () => resolveScheme(theme))
-  return { ...themes[theme], scheme }
+  const id = useSyncExternalStore(subscribeAppearance, () => resolveTheme(theme))
+  return { ...themes[id], id, scheme: resolveScheme(id) }
 }
 
 const fontFamily = (name: string | null) => (name === null ? "" : JSON.stringify(name))
 
+export const isNeutralTheme = (theme: ThemeId) => theme === "default" || theme === "light"
+
 export function applyAppearance(
   { theme, fontSize, uiFont, monoFont, contrast }: Appearance,
-  scheme: "dark" | "light" = resolveScheme(theme),
+  resolved: ThemeId = resolveTheme(theme),
 ) {
   const root = document.documentElement
+  const scheme = resolveScheme(resolved)
   root.classList.toggle("dark", scheme === "dark")
   root.style.colorScheme = scheme
-  if (theme === "default" || theme === "system" || theme === "light") delete root.dataset.theme
-  else root.dataset.theme = theme
+  if (isNeutralTheme(resolved)) delete root.dataset.theme
+  else root.dataset.theme = resolved
   root.style.fontSize = `${fontSize}px`
   root.style.setProperty("--ui-font", fontFamily(uiFont))
   root.style.setProperty("--mono-font", fontFamily(monoFont))
