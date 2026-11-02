@@ -425,6 +425,23 @@ describe("Claude idle sessions", () => {
     ),
   )
 
+  it.effect("lets a steer wait for the running tool call instead of aborting it", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        sdk.respond = (cli) => {
+          if (cli.prompts.length === 1) cli.push(init("session-1"))
+        }
+        yield* startTurn()
+        yield* until(() => sdk.clis.at(-1)?.prompts.length === 1)
+        yield* provider.steer("thread-1", "Use pnpm instead", [], "now")
+        yield* provider.steer("thread-1", "Then run lint", [], "next")
+        yield* until(() => latestCli().prompts.length === 3)
+        expect(latestCli().prompts.map((message) => message.priority)).toStrictEqual([undefined, "now", "next"])
+      }),
+    ),
+  )
+
   it.effect("answers a steer sent while Claude finishes within the same turn", () =>
     lifecycle(
       Effect.gen(function* () {
