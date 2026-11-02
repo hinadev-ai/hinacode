@@ -1,0 +1,18 @@
+{
+  "name": "@hinacode/artifacts",
+  "version": "0.0.0",
+  "description": "Local artifacts for coding agents: an MCP server that publishes HTML pages and a loopback preview.",
+  "license": "MIT",
+  "bin": {
+    "hinacode-artifacts": "src/cli.ts"
+  },
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "zod": "^4.6.5"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}

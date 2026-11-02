@@ -222,6 +222,9 @@ importers:
       '@grpc/proto-loader':
         specifier: ^0.8.1
         version: 0.8.1
+      '@hinacode/artifacts':
+        specifier: workspace:*
+        version: link:packages/artifacts
       '@linear/sdk':
         specifier: 97.1.0
         version: 97.1.0(graphql@17.0.2)
@@ -476,6 +479,15 @@ importers:
       node-mac-permissions:
         specifier: github:codebytere/node-mac-permissions#7bdd039cc5bb0dd9c81540df4340b0c4bdb3be37
         version: https://codeload.github.com/codebytere/node-mac-permissions/tar.gz/7bdd039cc5bb0dd9c81540df4340b0c4bdb3be37
+
+  packages/artifacts:
+    dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: 1.32.1
+        version: 1.32.1(supports-color@7.2.0)(zod@4.6.5)
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
 
   packages/oxlint-plugin-hinacode:
     dependencies:
