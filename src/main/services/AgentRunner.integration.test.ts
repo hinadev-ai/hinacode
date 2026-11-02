@@ -1092,3 +1092,68 @@ it("keeps the text streamed before a steer in the reply the steer closes", async
     await Effect.runPromise(runner.interrupt(thread.id))
   })
 })
+
+const overdue = "2020-01-01T09:00:00.000Z"
+const later = "2999-01-01T09:00:00.000Z"
+
+it("sends an overdue scheduled message and keeps the later one", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, turns }) => {
+    release()
+    await Effect.runPromise(runner.schedule({ threadId: thread.id, text: "tomorrow", attachments: [], sendAt: later }))
+    await Effect.runPromise(runner.schedule({ threadId: thread.id, text: "now", attachments: [], sendAt: overdue }))
+    expect((await Effect.runPromise(threads.get(thread.id))).scheduled.map((message) => message.text)).toEqual([
+      "now",
+      "tomorrow",
+    ])
+
+    await Effect.runPromise(runner.sendDueSchedules)
+
+    await vi.waitFor(() => expect(turns.map((turn) => turn.input.prompt)).toEqual(["now"]))
+    expect((await Effect.runPromise(threads.get(thread.id))).scheduled).toStrictEqual([
+      { id: expect.any(String), text: "tomorrow", attachments: [], sendAt: later },
+    ])
+    await Effect.runPromise(runner.interrupt(thread.id))
+  })
+})
+
+it("queues a scheduled message that comes due during a turn", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, streamed }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "streams, then waits", []))
+    await streamed
+    await Effect.runPromise(runner.schedule({ threadId: thread.id, text: "next", attachments: [], sendAt: overdue }))
+
+    await Effect.runPromise(runner.sendDueSchedules)
+
+    const current = await Effect.runPromise(threads.get(thread.id))
+    expect(current.scheduled).toStrictEqual([])
+    expect(current.queue.map((message) => message.text)).toEqual(["next"])
+    await Effect.runPromise(runner.interrupt(thread.id))
+  })
+})
+
+it("keeps a scheduled message that failed to send, with the reason, until it is rescheduled", async () => {
+  await withPreparingThread(async ({ runner, threads, worktrees, thread, release, turns }) => {
+    release()
+    await vi.waitFor(async () =>
+      expect((await Effect.runPromise(worktrees.get(thread.worktreeId!))).status).toBe("ready"),
+    )
+    const { path } = await Effect.runPromise(worktrees.get(thread.worktreeId!))
+    rmSync(path, { recursive: true, force: true })
+    await Effect.runPromise(runner.schedule({ threadId: thread.id, text: "lost", attachments: [], sendAt: overdue }))
+
+    await Effect.runPromise(runner.sendDueSchedules)
+    await Effect.runPromise(runner.sendDueSchedules)
+
+    const [failed] = (await Effect.runPromise(threads.get(thread.id))).scheduled
+    expect(failed).toMatchObject({ text: "lost", sendAt: overdue, failure: expect.any(String) })
+    expect(turns).toStrictEqual([])
+
+    await Effect.runPromise(runner.reschedule(thread.id, failed!.id, later))
+    expect((await Effect.runPromise(threads.get(thread.id))).scheduled).toStrictEqual([
+      { id: failed!.id, text: "lost", attachments: [], sendAt: later },
+    ])
+    expect(await Effect.runPromise(runner.unschedule(thread.id, failed!.id))).toMatchObject({ text: "lost" })
+    expect((await Effect.runPromise(threads.get(thread.id))).scheduled).toStrictEqual([])
+  })
+})

@@ -397,6 +397,11 @@ const handlers: Handlers = {
   "threads.queue": ({ threadId, text, attachments = [] }) =>
     AgentRunner.use((runner) => runner.queue(threadId, text, attachments)),
   "threads.unqueue": ({ threadId, id }) => AgentRunner.use((runner) => runner.unqueue(threadId, id)),
+  "threads.schedule": ({ threadId, text, attachments = [], workspace, sendAt }) =>
+    AgentRunner.use((runner) => runner.schedule({ threadId, text, attachments, workspace, sendAt })),
+  "threads.reschedule": ({ threadId, id, sendAt }) =>
+    AgentRunner.use((runner) => runner.reschedule(threadId, id, sendAt)),
+  "threads.unschedule": ({ threadId, id }) => AgentRunner.use((runner) => runner.unschedule(threadId, id)),
   "threads.interrupt": ({ threadId }) => AgentRunner.use((runner) => runner.interrupt(threadId)),
   "threads.reveal": ({ threadId }) => Events.use((events) => events.publish({ type: "thread.reveal", threadId })),
   "approvals.respond": ({ requestId, decision, note }) =>

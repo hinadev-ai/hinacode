@@ -37,6 +37,7 @@ import type {
   Attachment,
   Message,
   QueuedMessage,
+  ScheduledMessage,
   Thread,
   ThreadStatus,
   WorkspaceChoice,
@@ -117,6 +118,20 @@ const resumeIsDue = (thread: Thread, now: string) => {
   )
 }
 
+const isDue = (message: ScheduledMessage, now: string) =>
+  message.failure === undefined && Date.parse(message.sendAt) <= Date.parse(now)
+
+const bySendAt = (messages: ReadonlyArray<ScheduledMessage>) =>
+  messages.toSorted((a, b) => Date.parse(a.sendAt) - Date.parse(b.sendAt))
+
+export interface ScheduleInput {
+  readonly threadId: string
+  readonly text: string
+  readonly attachments: ReadonlyArray<Attachment>
+  readonly workspace?: WorkspaceChoice | undefined
+  readonly sendAt: string
+}
+
 export class AgentRunner extends Context.Service<
   AgentRunner,
   {
@@ -140,6 +155,17 @@ export class AgentRunner extends Context.Service<
       threadId: string,
       id: string,
     ) => Effect.Effect<QueuedMessage | null, PersistenceError | NotFoundError | ThreadStartedError>
+    readonly schedule: (input: ScheduleInput) => Effect.Effect<void, PersistenceError | NotFoundError>
+    readonly reschedule: (
+      threadId: string,
+      id: string,
+      sendAt: string,
+    ) => Effect.Effect<void, PersistenceError | NotFoundError>
+    readonly unschedule: (
+      threadId: string,
+      id: string,
+    ) => Effect.Effect<ScheduledMessage | null, PersistenceError | NotFoundError>
+    readonly sendDueSchedules: Effect.Effect<void, PersistenceError>
     readonly steerWhen: (input: {
       readonly threadId: string
       readonly text: string
@@ -1056,6 +1082,83 @@ const make = Effect.gen(function* () {
     }
   })
 
+  const schedule = ({ threadId, text, attachments, workspace, sendAt }: ScheduleInput) =>
+    Effect.gen(function* () {
+      const thread = yield* threads.get(threadId)
+      const message: ScheduledMessage = { id: randomUUID(), text, attachments, sendAt, ...(workspace && { workspace }) }
+      yield* updateThread({ id: threadId, scheduled: bySendAt([...thread.scheduled, message]) })
+    }).pipe(exclusive(threadId))
+
+  const reschedule = (threadId: string, id: string, sendAt: string) =>
+    Effect.gen(function* () {
+      const thread = yield* threads.get(threadId)
+      if (!thread.scheduled.some((message) => message.id === id)) return
+      const moved = thread.scheduled.map((message) => {
+        if (message.id !== id) return message
+        const { failure, ...retried } = message
+        return failure === undefined ? { ...message, sendAt } : { ...retried, sendAt }
+      })
+      yield* updateThread({ id: threadId, scheduled: bySendAt(moved) })
+    }).pipe(exclusive(threadId))
+
+  const unschedule = (threadId: string, id: string) =>
+    Effect.gen(function* () {
+      const thread = yield* threads.get(threadId)
+      const message = thread.scheduled.find((scheduled) => scheduled.id === id)
+      if (message === undefined) return null
+      yield* updateThread({ id: threadId, scheduled: thread.scheduled.filter((scheduled) => scheduled.id !== id) })
+      return message
+    }).pipe(exclusive(threadId))
+
+  const takeDue = (threadId: string, now: string) =>
+    Effect.gen(function* () {
+      const thread = yield* threads.get(threadId)
+      const message = thread.scheduled.find((scheduled) => isDue(scheduled, now))
+      if (message === undefined) return undefined
+      yield* updateThread({
+        id: threadId,
+        scheduled: thread.scheduled.filter((scheduled) => scheduled.id !== message.id),
+      })
+      return message
+    }).pipe(exclusive(threadId))
+
+  const deliverScheduled = (threadId: string, message: ScheduledMessage) =>
+    Effect.gen(function* () {
+      if ((yield* threads.get(threadId)).status === "archived") {
+        yield* push.publish({ type: "thread.updated", thread: yield* threads.unarchive(threadId) })
+      }
+      const workspace = (yield* threads.started(threadId)) ? undefined : message.workspace
+      yield* workspace === undefined
+        ? queue(threadId, message.text, message.attachments)
+        : send(threadId, message.text, message.attachments, { workspace })
+    })
+
+  const sendDueSchedules = Effect.gen(function* () {
+    const now = yield* nowIso
+    const due = (yield* threads.list).filter((thread) => thread.scheduled.some((message) => isDue(message, now)))
+    for (const candidate of due) {
+      const message = yield* takeDue(candidate.id, now).pipe(
+        Effect.catch((error) =>
+          Effect.logWarning("could not take a scheduled message", error).pipe(Effect.as(undefined)),
+        ),
+      )
+      if (message === undefined) continue
+      yield* deliverScheduled(candidate.id, message).pipe(
+        Effect.catch((error) =>
+          Effect.gen(function* () {
+            yield* Effect.logWarning("scheduled message did not send", error)
+            const thread = yield* threads.get(candidate.id)
+            const failed = { ...message, failure: error.message }
+            yield* updateThread({ id: candidate.id, scheduled: bySendAt([...thread.scheduled, failed]) })
+          }).pipe(
+            exclusive(candidate.id),
+            Effect.catch((cause) => Effect.logError("failed to put back a scheduled message", cause)),
+          ),
+        ),
+      )
+    }
+  })
+
   const switchAccount: typeof AgentRunner.Service.switchAccount = (threadId, accountId, options) =>
     Effect.gen(function* () {
       const switched = yield* Effect.gen(function* () {
@@ -1117,6 +1220,9 @@ const make = Effect.gen(function* () {
 
   yield* resumeDue.pipe(
     Effect.catch((error) => Effect.logWarning("limit reset check failed", error)),
+    Effect.andThen(
+      sendDueSchedules.pipe(Effect.catch((error) => Effect.logWarning("scheduled message check failed", error))),
+    ),
     Effect.repeat(Schedule.spaced("1 second")),
     Effect.forkIn(scope),
   )
@@ -1221,6 +1327,10 @@ const make = Effect.gen(function* () {
     send,
     queue,
     unqueue,
+    schedule,
+    reschedule,
+    unschedule,
+    sendDueSchedules,
     resumeAtReset,
     switchAccount,
     switchAgent,
