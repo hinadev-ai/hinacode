@@ -187,6 +187,8 @@
   "panel_label": "對話串詳細資訊",
   "panel_show": "顯示對話串詳細資訊",
   "panel_hide": "隱藏對話串詳細資訊",
+  "panel_expand": "放大面板",
+  "panel_restore": "還原面板",
   "panel_resize": "調整對話串詳細資訊寬度",
   "panel_workspace": "工作區",
   "panel_workspace_root": "在專案根目錄執行",

@@ -178,6 +178,8 @@
   "panel_label": "对话详情",
   "panel_show": "显示对话详情",
   "panel_hide": "隐藏对话详情",
+  "panel_expand": "放大面板",
+  "panel_restore": "还原面板",
   "panel_resize": "调整对话详情宽度",
   "panel_workspace": "工作区",
   "panel_workspace_root": "在项目根目录运行",

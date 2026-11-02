@@ -11,7 +11,7 @@ import { Dialog, DialogPortal, DialogTitle } from "../components/ui/dialog.tsx"
 import { usePanelLayout } from "../lib/panelLayout.ts"
 import { m } from "../paraglide/messages.js"
 import { selectOpenableThread, useThreads } from "../stores/threads.ts"
-import { useUi } from "../stores/ui.ts"
+import { useSidePanelExpanded, useUi } from "../stores/ui.ts"
 import { useUnseen } from "../stores/unseen.ts"
 
 const route = getRouteApi("/thread/$threadId")
@@ -38,6 +38,7 @@ export function ThreadRoute() {
   const dockedOpen = useUi((state) => state.sidePanelOpen)
   const setOverlayOpen = useUi((state) => state.setSidePanelOverlayOpen)
   const docked = usePanelLayout() === "wide"
+  const expanded = useSidePanelExpanded()
   const toggleRef = useRef<HTMLButtonElement>(null)
   useMarkSeen(threadId)
   useVisit(threadId)
@@ -47,7 +48,7 @@ export function ThreadRoute() {
   }
   return (
     <div className="flex min-h-0 flex-1">
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div hidden={expanded} className="flex min-w-0 flex-1 flex-col">
         <ThreadView
           key={thread.id}
           thread={thread}

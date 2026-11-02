@@ -187,6 +187,8 @@
   "panel_label": "スレッドの詳細",
   "panel_show": "スレッドの詳細を表示",
   "panel_hide": "スレッドの詳細を非表示",
+  "panel_expand": "パネルを拡大",
+  "panel_restore": "パネルを元に戻す",
   "panel_resize": "スレッドの詳細パネルのサイズを変更",
   "panel_workspace": "ワークスペース",
   "panel_workspace_root": "プロジェクトルートで実行",
