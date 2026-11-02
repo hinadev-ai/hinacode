@@ -157,7 +157,12 @@ export class Threads extends Context.Service<
       id: string,
     ) => Effect.Effect<
       void,
-      PersistenceError | NotFoundError | CommandError | PlatformError.PlatformError | ThreadBusyError
+      | PersistenceError
+      | NotFoundError
+      | FolderMissingError
+      | CommandError
+      | PlatformError.PlatformError
+      | ThreadBusyError
     >
     readonly captureTurnBase: (cwd: string) => Effect.Effect<string | null>
     readonly recordTurnBase: (input: {
