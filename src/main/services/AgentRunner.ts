@@ -50,7 +50,8 @@ import { CodexProvider } from "../agents/codex/index.ts"
 import { handoffPrompt } from "../agents/handoff.ts"
 import { latestForkPoint, sidechatPrompt, unseenSince } from "../agents/sidechat.ts"
 import { agentInstructions, type AgentEnvironment } from "../agents/instructions.ts"
-import { spawningCallId } from "../agents/runAgent.ts"
+import { pickedSubagentModel, spawningCallId } from "../agents/runAgent.ts"
+import { providerInfo } from "../../shared/providers.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
@@ -645,6 +646,28 @@ const make = Effect.gen(function* () {
     }
   }
 
+  const subagentModel = (request: AgentRequest, threadModel: string | null) =>
+    Effect.gen(function* () {
+      if (providerInfo[request.provider].subagentModels === "picked") {
+        const { modelPresets } = yield* settings.get
+        const resolved = pickedSubagentModel({
+          agent: providerInfo[request.provider].name,
+          requested: request.model,
+          threadModel,
+          picked: modelPresets[request.provider],
+        })
+        if (resolved.kind === "refused") {
+          return yield* new AgentError({ provider: request.provider, message: resolved.message })
+        }
+        return resolved.model
+      }
+      const model = request.model ?? threadModel ?? (yield* providers[request.provider].listModels)[0]?.id
+      if (model === undefined) {
+        return yield* new AgentError({ provider: request.provider, message: "This agent lists no models." })
+      }
+      return model
+    })
+
   const runAgent = (threadId: string, request: AgentRequest) =>
     Effect.gen(function* () {
       const turn = activeTurns.get(threadId)
@@ -654,10 +677,7 @@ const make = Effect.gen(function* () {
       const thread = yield* threads.get(threadId)
       const provider = providers[request.provider]
       const sameProvider = request.provider === thread.provider
-      const model = request.model ?? (sameProvider ? thread.model : (yield* provider.listModels)[0]?.id)
-      if (model === undefined) {
-        return yield* new AgentError({ provider: request.provider, message: "This agent lists no models." })
-      }
+      const model = yield* subagentModel(request, sameProvider ? thread.model : null)
       const workspace = yield* activeWorkspace(threadId)
       const [home, environment, mcpServer, { experimental, autoCompactTokens }, startedAt] = yield* Effect.all([
         accounts.home(sameProvider ? thread.accountId : null),

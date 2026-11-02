@@ -467,6 +467,41 @@ layer(testLayer)("run_agent", (it) => {
     }),
   )
 
+  it.effect("runs opencode only on a model the user picked, and names them when it refuses", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const mcp = yield* McpCredentials
+      const settings = yield* Settings.Settings
+      const { a } = yield* Seeded
+      const connection = yield* mcp.connectionFor(a)
+      const ask = (model?: string) =>
+        callAs(connection, "run_agent", {
+          provider: "opencode",
+          description: "Cheap pass",
+          prompt: "Reply Looks good.",
+          ...(model !== undefined && { model }),
+        })
+      yield* runner.send(a, "hi", [])
+
+      expect(yield* ask()).toMatchObject({
+        isError: true,
+        text: "The user has not picked any opencode models for sub-agents. Ask them to pick some in Settings, Providers, opencode, Models in the picker.",
+      })
+      yield* settings.set({
+        modelPresets: { ...defaultSettings.modelPresets, opencode: ["openrouter/a", "openrouter/b"] },
+      })
+      expect(yield* ask("openrouter/z")).toMatchObject({
+        isError: true,
+        text: "openrouter/z is not among the opencode models the user picked. Use one of: openrouter/a, openrouter/b.",
+      })
+      turnInputs.length = 0
+      expect(yield* ask()).toMatchObject({ isError: false })
+      expect(turnInputs.at(-1)).toMatchObject({ model: "openrouter/a" })
+      yield* settings.set({ modelPresets: defaultSettings.modelPresets })
+      yield* runner.interrupt(a)
+    }),
+  )
+
   it.effect("refuses outside a turn", () =>
     Effect.gen(function* () {
       const mcp = yield* McpCredentials
