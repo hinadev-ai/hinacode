@@ -196,17 +196,18 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
       return { client, capabilities: initialized.agentCapabilities ?? {} }
     })
 
-    const openSession = (client: AcpClient, input: RunTurnInput) =>
-      input.resumeSessionId === null
-        ? call(client, "session/new", { cwd: input.cwd, mcpServers: mcpServers(input) }, NewSessionResponse).pipe(
-            Effect.map((created) => ({ sessionId: created.sessionId, setup: created, isNew: true })),
-          )
-        : call(
-            client,
-            "session/load",
-            { sessionId: input.resumeSessionId, cwd: input.cwd, mcpServers: mcpServers(input) },
-            SessionSetup,
-          ).pipe(Effect.map((loaded) => ({ sessionId: input.resumeSessionId!, setup: loaded, isNew: false })))
+    const openSession = (client: AcpClient, input: RunTurnInput) => {
+      const { resumeSessionId: sessionId, cwd } = input
+      const servers = mcpServers(input)
+      if (sessionId === null) {
+        return call(client, "session/new", { cwd, mcpServers: servers }, NewSessionResponse).pipe(
+          Effect.map((created) => ({ sessionId: created.sessionId, setup: created, isNew: true })),
+        )
+      }
+      return call(client, "session/load", { sessionId, cwd, mcpServers: servers }, SessionSetup).pipe(
+        Effect.map((loaded) => ({ sessionId, setup: loaded, isNew: false })),
+      )
+    }
 
     const selectModel = (client: AcpClient, sessionId: string, selector: ModelSelector | null, model: string) => {
       if (model === "" || selector === null || selector.current === model) return Effect.void
