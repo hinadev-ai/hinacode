@@ -1,2 +1,2 @@
 #!/usr/bin/env node
-await import("../out/server/daemon.js")
+await import("../out/server/cli.js")

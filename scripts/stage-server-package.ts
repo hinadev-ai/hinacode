@@ -7,7 +7,7 @@ const repoRoot = resolve(import.meta.dirname, "..")
 const outDir = resolve(repoRoot, process.argv[2] ?? "dist-npm")
 if (outDir === repoRoot) throw new Error("staging directory must not be the repository root")
 
-const built = join(repoRoot, "out", "server", "daemon.js")
+const built = join(repoRoot, "out", "server", "cli.js")
 if (!existsSync(built)) throw new Error(`${built} is missing. Run pnpm build:server first.`)
 
 const root = parseRootManifest(JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")))

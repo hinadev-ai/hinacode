@@ -9,6 +9,7 @@ import * as Db from "./db/client.ts"
 import { answerAsksLayer } from "./environments/route.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as RemoteAccess from "./remote/access.ts"
+import * as CliSocket from "./remote/cliSocket.ts"
 import * as Peers from "./remote/peers.ts"
 import * as Relay from "./remote/relay.ts"
 import * as RemoteServer from "./remote/server.ts"
@@ -171,7 +172,7 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     SessionImports.layer,
     RelayAccount.layer({ serviceUrl: relayServiceUrl }).pipe(Layer.provide(Secrets.layer)),
   ).pipe(Layer.provideMerge(agents))
-  return Layer.mergeAll(RemoteServer.layer, answerAsksLayer).pipe(
+  return Layer.mergeAll(RemoteServer.layer, CliSocket.layer(userData), answerAsksLayer).pipe(
     Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),
     Layer.provideMerge(services),
     Layer.provide(providers.layer),
