@@ -9,6 +9,7 @@
     "electron.vite.config.ts",
     "vite.server.config.ts",
     "vite.paraglide.ts",
+    "vite.excalidraw.ts",
     "src/main/**/*",
     "src/preload/**/*",
     "src/shared/**/*",

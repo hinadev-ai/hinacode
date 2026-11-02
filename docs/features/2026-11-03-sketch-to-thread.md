@@ -24,6 +24,7 @@ The drawing stays in the panel per thread until the app restarts, so it can be t
 - `SketchHeader` exports the stored scene with `exportToBlob` (white background, light mode, so the agent always gets dark strokes on white) and stages it through the same `attachments.stage` rpc with a `dataUrl` source that pasted images use. Nothing new crosses the IPC boundary.
 - `SketchView` is `lazy()`, and the header loads `exportToBlob` with a dynamic import, so Excalidraw never enters the startup bundle.
 - Excalidraw fetches its fonts from `window.EXCALIDRAW_ASSET_PATH`, falling back to esm.sh. `vite-plugin-static-copy` copies the Latin font families into `out/renderer/excalidraw/fonts`, and the view points the asset path there.
+- `vite.excalidraw.ts` resolves three of Excalidraw's dynamic imports to an empty module: Mermaid (its text-to-diagram dialog and Mermaid paste), every locale HinaCode does not ship, and the font subsetter that only SVG export and SVG copy use. That cuts Excalidraw's lazy JS from 7.6 MB to 1.3 MB. Those three features fail inside the canvas; PNG attach does not touch them.
 
 ## Prototype findings
 
@@ -33,12 +34,13 @@ Both candidates were built and driven in the real app over CDP.
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Dialog vs side panel              | The dialog closed on Escape, which Excalidraw also uses to finish text, and threw the drawing away. It also measured the canvas during its 0.97 scale-in animation, leaving the canvas 35px short of the right edge. The side panel had neither problem, needed no composer change, and keeps the thread visible while drawing. At the default 385px width Excalidraw switches to its compact layout; the panel's expand button fixes that. |
 | Renders under the sandbox and CSP | Yes. Canvas, tools and PNG export work with the existing CSP. The only casualty was fonts: `font-src 'self' data:` and `default-src 'self'` block esm.sh, so text fell back to a serif face until the fonts were served locally.                                                                                                                                                                                                            |
-| Bundle cost                       | Excalidraw adds about 2.8 MB of JS across lazy chunks (renderer output 31.5 MB to 39.7 MB including locales and 480 KB of fonts). The startup assets referenced by `index.html` grew by 9.8 KB raw (2.6 KB gzip), all of it English copy and the view, command and settings registration. No Excalidraw code is in a startup asset.                                                                                                         |
+| Bundle cost                       | As published, Excalidraw adds 7.6 MB of lazy JS: a second Mermaid with cytoscape and katex, 50 locales, and a 1.8 MB font subsetter. Dropping those leaves 1.3 MB of JS and 145 KB of CSS, all in lazy chunks, plus 480 KB of fonts. Startup assets grew by 9.8 KB raw (2.6 KB gzip), which is the English copy and the view, command and settings registration.                                                                            |
 
 ## Out of scope
 
 - The Excalidraw scene JSON. The agents read the PNG well (Sonnet described boxes, the arrow and the handwritten note in the verification run), and the JSON costs tokens without a use yet. Add it when an agent needs to edit a drawing.
 - Persisting drawings across restarts, and undo history across panel remounts.
+- Mermaid to Excalidraw, SVG export and copy, and Excalidraw's own locales beyond English, Chinese and Japanese. Restoring any of them is one line in `vite.excalidraw.ts` and a raised budget.
 - The CJK font family (Xiaolai, 13 MB). Chinese and Japanese text in a sketch renders in a system font.
 - An entry point in the composer. The side panel tab and command palette are enough for an experiment, and the composer is being reworked elsewhere.
 
