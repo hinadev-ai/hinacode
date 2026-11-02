@@ -1,7 +1,7 @@
-import { Effect, Option, Schema } from "effect"
+import { Effect, FileSystem, Option, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { chatFolder, ProjectKind } from "../../shared/domain.ts"
-import { NotFoundError, persistence } from "./errors.ts"
+import { FolderMissingError, NotFoundError, persistence } from "./errors.ts"
 
 export const ActiveWorkspace = Schema.Struct({
   cwd: Schema.String,
@@ -18,8 +18,18 @@ const WorkspaceRow = Schema.Struct({
   folderOwner: Schema.String,
 })
 
+export const makeRequireFolder = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem
+  return (path: string) =>
+    fs.exists(path).pipe(
+      Effect.orElseSucceed(() => true),
+      Effect.flatMap((exists) => (exists ? Effect.void : Effect.fail(new FolderMissingError({ path })))),
+    )
+})
+
 export const makeActiveWorkspace = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
+  const requireFolder = yield* makeRequireFolder
   const find = SqlSchema.findOneOption({
     Request: Schema.String,
     Result: WorkspaceRow,
@@ -44,5 +54,6 @@ export const makeActiveWorkspace = Effect.gen(function* () {
           },
         }),
       ),
+      Effect.tap((workspace) => requireFolder(workspace.cwd)),
     )
 })

@@ -56,7 +56,8 @@
     "lint": "expo lint",
     "build:terminal": "node ./scripts/build-terminal-html.mts",
     "build:icons": "./scripts/build-app-icons.sh",
-    "install:android": "./scripts/android-env.sh ./scripts/install-android.sh"
+    "install:android": "./scripts/android-env.sh ./scripts/install-android.sh",
+    "install:ios": "./scripts/install-ios.sh"
   },
   "private": true,
   "enriched-markdown": {

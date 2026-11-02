@@ -286,7 +286,7 @@ export function Composer({ thread }: { thread: Thread }) {
         </View>
       </View>
       {error !== null && (
-        <Text accessibilityRole="alert" style={[styles.error, { color: theme.danger }]}>
+        <Text accessibilityRole="alert" numberOfLines={3} style={[styles.error, { color: theme.danger }]}>
           {error}
         </Text>
       )}

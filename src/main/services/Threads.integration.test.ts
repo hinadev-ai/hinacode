@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto"
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
-import { describe, expect, it } from "@effect/vitest"
+import { afterAll, describe, expect, it } from "@effect/vitest"
 import { Effect, Layer } from "effect"
 import { SqlClient } from "effect/sql"
 import * as Db from "../db/client.ts"
@@ -34,8 +34,11 @@ const threadsLayer = threadsLayerBase.pipe(
     ),
   ),
   Layer.provideMerge(Db.layer(":memory:")),
-  Layer.provide(NodeServices.layer),
+  Layer.provideMerge(NodeServices.layer),
 )
+
+const sidechatRepos = mkdtempSync(join(tmpdir(), "kk-sidechat-"))
+afterAll(() => rmSync(sidechatRepos, { recursive: true, force: true }))
 
 describe("Threads", () => {
   it.effect("forks a thread with the transcript up to the chosen turn", () =>
@@ -118,9 +121,13 @@ describe("Threads", () => {
     Effect.gen(function* () {
       const threads = yield* Threads
       const activeWorkspace = yield* makeActiveWorkspace
+      const repo = join(sidechatRepos, "repo")
+      const feature = join(sidechatRepos, "repo-feature")
+      mkdirSync(repo)
+      mkdirSync(feature)
       const { threadId, worktreeId } = yield* seedThread({
-        rootPath: "/repo",
-        worktree: { path: "/repo-feature", baseRef: "main", status: "ready" },
+        rootPath: repo,
+        worktree: { path: feature, baseRef: "main", status: "ready" },
       })
 
       const [side, again] = yield* Effect.all([threads.sidechat(threadId), threads.sidechat(threadId)], {
@@ -129,7 +136,7 @@ describe("Threads", () => {
 
       expect(again.id).toBe(side.id)
       expect(side).toMatchObject({ sideOf: threadId, worktreeId, accessMode: "supervised", forkedFrom: null })
-      expect((yield* activeWorkspace(side.id)).cwd).toBe("/repo-feature")
+      expect((yield* activeWorkspace(side.id)).cwd).toBe(feature)
       expect((yield* threads.list).map((thread) => thread.id)).toStrictEqual([threadId])
 
       yield* threads.remove(threadId)
