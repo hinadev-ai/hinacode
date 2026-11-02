@@ -73,6 +73,15 @@ describe("continueList", () => {
     expect(press("1. a\n   1. x|\n   2. y\n2. b", shiftEnter)).toBe("1. a\n   1. x\n   2. |\n   3. y\n2. b")
   })
 
+  test("keeps nested items under a number that grows a digit", () => {
+    expect(press("8. a|\n9. b\n   - child", shiftEnter)).toBe("8. a\n9. |\n10. b\n    - child")
+  })
+
+  test("continues when the selection ends right before the item text", () => {
+    expect(continueList("- one two", 2, 5)).toStrictEqual({ from: 2, to: 5, insert: "\n- ", anchor: 5 })
+    expect(continueList("- one\n- two three", 2, 11)).toStrictEqual({ from: 2, to: 11, insert: "\n- ", anchor: 5 })
+  })
+
   test("moves an empty nested item up a level", () => {
     expect(press("1. a\n   - x\n   - |", shiftEnter)).toBe("1. a\n   - x\n2. |")
     expect(press("1. a\n   1. |\n2. b", shiftEnter)).toBe("1. a\n2. |\n3. b")
@@ -84,6 +93,14 @@ describe("indentList", () => {
     expect(press("- a\n- |b", tab)).toBe("- a\n  - |b")
     expect(press("1. a\n2. b|\n3. c", tab)).toBe("1. a\n   1. b|\n2. c")
     expect(press("1. a\n   1. x\n2. |b", tab)).toBe("1. a\n   1. x\n   2. |b")
+  })
+
+  test("reuses the indent of the existing nested items, tabs included", () => {
+    expect(press("- parent\n\t- one\n- two|", tab)).toBe("- parent\n\t- one\n\t- two|")
+  })
+
+  test("keeps a caret that sits before the marker", () => {
+    expect(press("- a\n|- b", tab)).toBe("- a\n  |- b")
   })
 
   test("carries the nested items along", () => {
