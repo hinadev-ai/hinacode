@@ -6,6 +6,7 @@ import { ARTIFACT_HEADERS } from "@hinacode/artifacts"
 import { app, BrowserWindow, dialog, net, powerMonitor, protocol, safeStorage, session, shell } from "electron"
 import { Effect, Layer, ManagedRuntime, Option, Schema } from "effect"
 import { makeAppLayer } from "./app.ts"
+import { electronArtifactInspector } from "./artifactInspector.ts"
 import { handleContextMenu } from "./contextMenu.ts"
 import { chromiumDir, moveLegacyProfile } from "./dataDir.ts"
 import { keepAppMenu } from "./appMenu.ts"
@@ -324,6 +325,7 @@ app.whenReady().then(async () => {
       keyring: safeStorageKeyring,
       updates: Updater.layer,
       toWindows: sendToWindows,
+      artifactInspector: electronArtifactInspector,
     }).pipe(Layer.provide(Layer.effectDiscard(Effect.promise(() => shellPath.ready)))),
   )
   let disposed = false
