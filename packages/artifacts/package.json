@@ -1,6 +1,7 @@
 {
   "name": "@hinacode/artifacts",
   "version": "0.0.0",
+  "private": true,
   "description": "Local artifacts for coding agents: an MCP server that publishes HTML pages and a loopback preview.",
   "license": "MIT",
   "bin": {

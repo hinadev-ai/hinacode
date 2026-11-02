@@ -6,18 +6,20 @@ Artifacts live in `$HINACODE_ARTIFACTS`, or `~/.hinacode/artifacts`, which is al
 
 ## Add the MCP server
 
+The package is not on npm yet, because Node does not strip types under `node_modules`. Until it ships a build, point the harness at the checkout.
+
 Claude Code:
 
 ```sh
-claude mcp add artifacts -- npx -y @hinacode/artifacts mcp
+claude mcp add artifacts -- node /path/to/hinacode/packages/artifacts/src/cli.ts mcp
 ```
 
 Codex, in `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.artifacts]
-command = "npx"
-args = ["-y", "@hinacode/artifacts", "mcp"]
+command = "node"
+args = ["/path/to/hinacode/packages/artifacts/src/cli.ts", "mcp"]
 ```
 
 The server has three tools: `publish_artifact`, `list_artifacts` and `read_artifact`. Publishing again with the same id updates the artifact in place.
@@ -25,7 +27,7 @@ The server has three tools: `publish_artifact`, `list_artifacts` and `read_artif
 ## Preview
 
 ```sh
-npx @hinacode/artifacts serve --port 4100
+node packages/artifacts/src/cli.ts serve --port 4100
 ```
 
 Open `http://127.0.0.1:4100` for the list. An open artifact reloads when the agent publishes a new version. The server listens on loopback only.

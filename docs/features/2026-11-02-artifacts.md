@@ -13,7 +13,7 @@ Agents often finish with something to look at: a report, a chart, a prototype, a
 2. The tool call in the transcript shows a card with the title. Clicking it opens the Artifacts side panel on that artifact, rendered in a sandboxed frame.
 3. The agent calls `publish_artifact` again with the same id. The open preview reloads to the new version.
 4. The Artifacts side panel lists every artifact on every connected machine, newest first, with the machine it lives on. An artifact on a cloud opens on the desktop the same way a local one does.
-5. Outside HinaCode, `npx @hinacode/artifacts mcp` gives any MCP harness the same tools, and `npx @hinacode/artifacts serve` previews the store in a browser.
+5. Outside HinaCode, `hinacode-artifacts mcp` gives any MCP harness the same tools, and `hinacode-artifacts serve` previews the store in a browser.
 
 ## Design
 
@@ -63,6 +63,8 @@ The store root is `$HINACODE_ARTIFACTS` or `~/.hinacode/artifacts`, which is the
 The trust boundary is the frame. Artifact HTML is agent output and is treated as hostile: no same origin, no `rpc`, no navigation of the app.
 
 ## Out of scope
+
+- Publishing the package to npm. The bin is TypeScript, which Node refuses to run under `node_modules`, so it needs a build first. Until then the package is private and harnesses run it from the checkout.
 
 - Publishing to a URL, comments and access control. Sharing means connected machines only.
 - The phone app. It has no artifact view yet.
