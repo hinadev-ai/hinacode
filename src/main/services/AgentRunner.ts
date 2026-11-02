@@ -52,7 +52,7 @@ import { agentInstructions, type AgentEnvironment } from "../agents/instructions
 import { spawningCallId } from "../agents/runAgent.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
-import { AgentError, type AgentProvider, type Wake } from "../agents/provider.ts"
+import { AgentError, type AgentProvider, type SteerPriority, type Wake } from "../agents/provider.ts"
 import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
 import { makeDeltaCoalescer } from "./coalesceDeltas.ts"
@@ -485,7 +485,7 @@ const make = Effect.gen(function* () {
       if (waitsOnUser(thread.id)) return
       const held = (yield* threads.get(thread.id)).queue.filter((message) => message.steer)
       for (const message of held) {
-        yield* steerNow(message.text, message.attachments)
+        yield* steerTurn(message.text, message.attachments, "next")
         const { queue } = yield* threads.get(thread.id)
         yield* updateThread({ id: thread.id, queue: queue.filter((queued) => queued.id !== message.id) })
       }
@@ -499,7 +499,7 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         if (!(yield* when)) return false
         if (!waitsOnUser(thread.id)) {
-          yield* steerNow(text, attachments)
+          yield* steerTurn(text, attachments, "now")
           return true
         }
         const { queue } = yield* threads.get(thread.id)
@@ -507,10 +507,10 @@ const make = Effect.gen(function* () {
         return true
       }).pipe(exclusive(thread.id))
 
-    const steerNow = (text: string, attachments: ReadonlyArray<Attachment>) =>
+    const steerTurn = (text: string, attachments: ReadonlyArray<Attachment>, priority: SteerPriority) =>
       Effect.gen(function* () {
         yield* deltas.flush
-        yield* provider.steer(thread.id, text, attachments)
+        yield* provider.steer(thread.id, text, attachments, priority)
         const now = yield* nowIso
         const current = turnMessages.at(-1)!
         const closed: Message = { ...current, completedAt: now }

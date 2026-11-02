@@ -27,7 +27,13 @@ import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { nowIso } from "../../services/clock.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
 import { installedBinary } from "../binary.ts"
-import { AgentError, type AgentProvider, type BackgroundTasksChange, type Wake } from "../provider.ts"
+import {
+  AgentError,
+  type AgentProvider,
+  type BackgroundTasksChange,
+  type SteerPriority,
+  type Wake,
+} from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { permissionMode } from "./access.ts"
 import { type ApprovalSession, makeApprovals } from "./approvals.ts"
@@ -793,9 +799,9 @@ export const layer = Layer.effect(
         ),
       )
 
-    const steer = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>) =>
+    const steer = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>, priority: SteerPriority) =>
       Effect.gen(function* () {
-        const message = yield* userMessage(text, attachments, "now")
+        const message = yield* userMessage(text, attachments, priority)
         const session = sessions.get(threadId)
         if (session?.turn == null) {
           return yield* new AgentError({ provider: "claude", message: "No turn is running on this thread" })
