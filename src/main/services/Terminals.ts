@@ -3,7 +3,7 @@ import * as pty from "node-pty"
 import { Context, Effect, Layer, Schema } from "effect"
 import type { PushEvent } from "../../shared/contract.ts"
 import type { TerminalAttachment, TerminalSession } from "../../shared/domain.ts"
-import { NotFoundError, type PersistenceError } from "./errors.ts"
+import { type FolderMissingError, NotFoundError, type PersistenceError } from "./errors.ts"
 import { Events } from "./Events.ts"
 import { registerAgentPid } from "./Ports.ts"
 import { TerminalScrollback } from "./terminalScrollback.ts"
@@ -45,7 +45,7 @@ export class Terminals extends Context.Service<
   {
     readonly open: (
       input: OpenTerminal,
-    ) => Effect.Effect<TerminalSession, PersistenceError | NotFoundError | TerminalError>
+    ) => Effect.Effect<TerminalSession, PersistenceError | NotFoundError | FolderMissingError | TerminalError>
     readonly write: (id: string, data: string) => Effect.Effect<void, NotFoundError>
     readonly resize: (id: string, cols: number, rows: number) => Effect.Effect<void, NotFoundError>
     readonly attach: (id: string, since: number | null) => Effect.Effect<TerminalAttachment, NotFoundError>

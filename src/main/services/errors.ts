@@ -60,6 +60,14 @@ export class UnknownRootError extends Schema.TaggedError<UnknownRootError>()("Un
   }
 }
 
+export class FolderMissingError extends Schema.TaggedError<FolderMissingError>()("FolderMissingError", {
+  path: Schema.String,
+}) {
+  override get message(): string {
+    return `The folder ${this.path} is missing. It was moved or deleted.`
+  }
+}
+
 export class PullRequestElsewhereError extends Schema.TaggedError<PullRequestElsewhereError>()(
   "PullRequestElsewhereError",
   { url: Schema.String, repository: Schema.String },

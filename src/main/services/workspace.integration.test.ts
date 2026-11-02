@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, describe, expect, it } from "@effect/vitest"
@@ -24,6 +24,10 @@ const resolve = (
 
 const base = mkdtempSync(join(tmpdir(), "kk-workspace-"))
 afterAll(() => rmSync(base, { recursive: true, force: true }))
+const root = join(base, "root")
+const wt = join(base, "root-wt")
+mkdirSync(root)
+mkdirSync(wt)
 
 const repoWithWorktree = () => {
   const repo = join(base, "repo")
@@ -49,10 +53,10 @@ const repoWithWorktree = () => {
 describe("activeWorkspace", () => {
   it.effect("is the project root with no base for a thread without a worktree", () =>
     Effect.gen(function* () {
-      const result = yield* resolve({ rootPath: "/repo" })
+      const result = yield* resolve({ rootPath: root })
       expect(result._tag === "Success" && result.success).toStrictEqual({
-        cwd: "/repo",
-        rootPath: "/repo",
+        cwd: root,
+        rootPath: root,
         worktreeId: null,
         baseRef: null,
         branch: null,
@@ -62,10 +66,10 @@ describe("activeWorkspace", () => {
 
   it.effect("is the worktree and its base while the worktree is active", () =>
     Effect.gen(function* () {
-      const result = yield* resolve({ rootPath: "/repo", worktree: { path: "/wt", baseRef: "main", status: "ready" } })
+      const result = yield* resolve({ rootPath: root, worktree: { path: wt, baseRef: "main", status: "ready" } })
       expect(result._tag === "Success" && result.success).toStrictEqual({
-        cwd: "/wt",
-        rootPath: "/repo",
+        cwd: wt,
+        rootPath: root,
         worktreeId: expect.any(String),
         baseRef: "main",
         branch: "feature",
@@ -76,12 +80,12 @@ describe("activeWorkspace", () => {
   it.effect("falls back to the project root with no base once the worktree is removed", () =>
     Effect.gen(function* () {
       const result = yield* resolve({
-        rootPath: "/repo",
-        worktree: { path: "/wt", baseRef: "main", status: "removed" },
+        rootPath: root,
+        worktree: { path: wt, baseRef: "main", status: "removed" },
       })
       expect(result._tag === "Success" && result.success).toStrictEqual({
-        cwd: "/repo",
-        rootPath: "/repo",
+        cwd: root,
+        rootPath: root,
         worktreeId: null,
         baseRef: null,
         branch: null,
@@ -92,12 +96,12 @@ describe("activeWorkspace", () => {
   it.effect("falls back to the project root when the worktree row is gone", () =>
     Effect.gen(function* () {
       const result = yield* resolve(
-        { rootPath: "/repo", worktree: { path: "/wt", baseRef: "main", status: "ready" } },
+        { rootPath: root, worktree: { path: wt, baseRef: "main", status: "ready" } },
         (sql) => sql`DELETE FROM worktree`,
       )
       expect(result._tag === "Success" && result.success).toStrictEqual({
-        cwd: "/repo",
-        rootPath: "/repo",
+        cwd: root,
+        rootPath: root,
         worktreeId: null,
         baseRef: null,
         branch: null,
@@ -117,7 +121,7 @@ describe("activeWorkspace", () => {
   it.effect("fails with NotFoundError for a deleted thread", () =>
     Effect.gen(function* () {
       const result = yield* resolve(
-        { rootPath: "/repo" },
+        { rootPath: root },
         (sql, { threadId }) => sql`DELETE FROM thread WHERE id = ${threadId}`,
       )
       expect(result._tag === "Failure" && result.failure._tag).toBe("NotFoundError")

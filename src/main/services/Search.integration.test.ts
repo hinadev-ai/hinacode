@@ -3,7 +3,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
-import { Effect, Layer } from "effect"
+import { NodeServices } from "@effect/platform-node"
+import { Effect, type FileSystem, Layer } from "effect"
 import { SqlClient } from "effect/sql"
 import type { MessagePart } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
@@ -24,8 +25,8 @@ beforeAll(() => {
 
 afterAll(() => rmSync(repo, { recursive: true, force: true }))
 
-const withSearch = (layer: Layer.Layer<Search.Search, never, SqlClient.SqlClient>) =>
-  Effect.provide(layer.pipe(Layer.provideMerge(Db.layer(":memory:"))))
+const withSearch = (layer: Layer.Layer<Search.Search, never, SqlClient.SqlClient | FileSystem.FileSystem>) =>
+  Effect.provide(layer.pipe(Layer.provideMerge(Db.layer(":memory:")), Layer.provide(NodeServices.layer)))
 
 let clock = 0
 const insertMessage = (threadId: string, parts: ReadonlyArray<MessagePart>) =>
@@ -192,6 +193,6 @@ describe("Search.files", () => {
       )
       expect(missing._tag).toBe("RipgrepMissingError")
       expect(notStarting._tag).toBe("RipgrepMissingError")
-    }).pipe(Effect.provide(Db.layer(":memory:"))),
+    }).pipe(Effect.provide(Layer.mergeAll(Db.layer(":memory:"), NodeServices.layer))),
   )
 })

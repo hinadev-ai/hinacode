@@ -12,9 +12,10 @@ import {
 } from "../../shared/domain.ts"
 import { mimeOf } from "../../shared/media.ts"
 import { isInside } from "../security.ts"
-import { type PersistenceError, persistence } from "./errors.ts"
+import { type FolderMissingError, type PersistenceError, persistence } from "./errors.ts"
 import { Events } from "./Events.ts"
 import { Git, parseNameStatus } from "./Git.ts"
+import { makeRequireFolder } from "./workspace.ts"
 
 const reasons = {
   unknownRoot: "is not a project root, worktree or chat folder",
@@ -53,23 +54,29 @@ export class Files extends Context.Service<
     readonly list: (
       root: string,
       path: string,
-    ) => Effect.Effect<ReadonlyArray<FsEntry>, FsAccessError | PersistenceError>
-    readonly resolve: (root: string, path: string) => Effect.Effect<string, FsAccessError | PersistenceError>
-    readonly read: (root: string, path: string) => Effect.Effect<FsFileContent, FsAccessError | PersistenceError>
+    ) => Effect.Effect<ReadonlyArray<FsEntry>, FsAccessError | FolderMissingError | PersistenceError>
+    readonly resolve: (
+      root: string,
+      path: string,
+    ) => Effect.Effect<string, FsAccessError | FolderMissingError | PersistenceError>
+    readonly read: (
+      root: string,
+      path: string,
+    ) => Effect.Effect<FsFileContent, FsAccessError | FolderMissingError | PersistenceError>
     readonly preview: (
       root: string,
       path: string,
-    ) => Effect.Effect<{ readonly dataUrl: string }, FsAccessError | PersistenceError>
+    ) => Effect.Effect<{ readonly dataUrl: string }, FsAccessError | FolderMissingError | PersistenceError>
     readonly write: (
       root: string,
       path: string,
       content: string,
       expected: string | null,
-    ) => Effect.Effect<void, FsAccessError | FsWriteConflict | PersistenceError>
+    ) => Effect.Effect<void, FsAccessError | FolderMissingError | FsWriteConflict | PersistenceError>
     readonly watch: (
       root: string,
       paths: ReadonlyArray<string>,
-    ) => Effect.Effect<void, FsAccessError | PersistenceError>
+    ) => Effect.Effect<void, FsAccessError | FolderMissingError | PersistenceError>
   }
 >()("hinacode/Files") {}
 
@@ -171,6 +178,7 @@ const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
   const git = yield* Git
   const events = yield* Events
+  const requireFolder = yield* makeRequireFolder
 
   const findRoot = SqlSchema.findAll({
     Request: Schema.String,
@@ -193,6 +201,7 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const rows = yield* findRoot(root).pipe(Effect.mapError(persistence("files.root")))
       if (rows.length === 0) return yield* new FsAccessError({ root, path: "", reason: "unknownRoot" })
+      yield* requireFolder(root)
       return rows.find((row) => row.baseRef !== null)?.baseRef ?? null
     })
 

@@ -330,6 +330,7 @@ const withPreparingThread = async (
           ),
         ),
         Layer.provideMerge(Layer.succeedContext(context)),
+        Layer.provide(NodeServices.layer),
       ),
     )
     try {

@@ -1,8 +1,9 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises"
 import { createServer } from "node:http"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, test } from "vitest"
+import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import type { BrowserCommand } from "../../shared/browser.ts"
 import * as Db from "../db/client.ts"
@@ -35,6 +36,8 @@ addEventListener('scroll',()=>fetch('/events?type=scroll&y='+scrollY))
 const fixture = async (options: BrowserOptions = {}) => {
   const directory = await mkdtemp(join(tmpdir(), "hinacode-browser-"))
   cleanups.push(() => rm(directory, { recursive: true, force: true }))
+  const secondDirectory = join(directory, "second")
+  await mkdir(secondDirectory)
   const events: Array<URL> = []
   const requests: Array<{ method: string; path: string; body: string }> = []
   let deliverPopup: (() => void) | null = null
@@ -89,11 +92,12 @@ const fixture = async (options: BrowserOptions = {}) => {
   const runtime = ManagedRuntime.make(
     browserLayer(options).pipe(
       Layer.provideMerge(Layer.merge(Db.layer(":memory:"), Attachments.layer(join(directory, "attachments")))),
+      Layer.provide(NodeServices.layer),
     ),
   )
   cleanups.push(() => runtime.dispose())
   const [first, second] = await runtime.runPromise(
-    Effect.all([seedThread({ rootPath: directory }), seedThread({ rootPath: join(directory, "second") })]),
+    Effect.all([seedThread({ rootPath: directory }), seedThread({ rootPath: secondDirectory })]),
   )
   const browser = await runtime.runPromise(Browser)
   const open = async (threadId = first.threadId, path = "/") => {

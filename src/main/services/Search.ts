@@ -4,7 +4,7 @@ import { createInterface } from "node:readline"
 import { Context, Effect, Layer, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { FileSearchHit, ThreadSearchHit } from "../../shared/domain.ts"
-import { type NotFoundError, type PersistenceError, persistence } from "./errors.ts"
+import { type FolderMissingError, type NotFoundError, type PersistenceError, persistence } from "./errors.ts"
 import { makeActiveWorkspace } from "./workspace.ts"
 
 export class RipgrepMissingError extends Schema.TaggedError<RipgrepMissingError>()("RipgrepMissingError", {}) {
@@ -108,7 +108,10 @@ export class Search extends Context.Service<
       threadId: string,
       query: string,
       limit?: number,
-    ) => Effect.Effect<ReadonlyArray<FileSearchHit>, PersistenceError | NotFoundError | RipgrepMissingError>
+    ) => Effect.Effect<
+      ReadonlyArray<FileSearchHit>,
+      PersistenceError | NotFoundError | FolderMissingError | RipgrepMissingError
+    >
   }
 >()("hinacode/Search") {}
 
