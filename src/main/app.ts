@@ -5,10 +5,12 @@ import * as ClaudeProvider from "./agents/claude/index.ts"
 import { mockScenarios, usageLimitLayer } from "./agents/claude/mock.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import { MuseProvider } from "./agents/muse/index.ts"
+import { OpencodeProvider } from "./agents/opencode/index.ts"
 import * as Db from "./db/client.ts"
 import { answerAsksLayer } from "./environments/route.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as RemoteAccess from "./remote/access.ts"
+import * as CliSocket from "./remote/cliSocket.ts"
 import * as Peers from "./remote/peers.ts"
 import * as Relay from "./remote/relay.ts"
 import * as RemoteServer from "./remote/server.ts"
@@ -90,12 +92,21 @@ export const agentProviders = (env: NodeJS.ProcessEnv) => {
           MuseProvider,
           ClaudeProvider.ClaudeProvider.useSync((claude) => ({ ...claude, id: "muse" })),
         ),
+        Layer.effect(
+          OpencodeProvider,
+          ClaudeProvider.ClaudeProvider.useSync((claude) => ({ ...claude, id: "opencode" })),
+        ),
       ).pipe(Layer.provideMerge(everyAgent)),
     }
   const claude = simulatedClaude("HINACODE_MOCK_CLAUDE", env)
   return {
     simulated: claude !== undefined,
-    layer: Layer.mergeAll(claude ?? ClaudeProvider.layer, CodexProvider.layer, MuseProvider.layer),
+    layer: Layer.mergeAll(
+      claude ?? ClaudeProvider.layer,
+      CodexProvider.layer,
+      MuseProvider.layer,
+      OpencodeProvider.layer,
+    ),
   }
 }
 
@@ -173,7 +184,7 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     SessionImports.layer,
     RelayAccount.layer({ serviceUrl: relayServiceUrl }).pipe(Layer.provide(Secrets.layer)),
   ).pipe(Layer.provideMerge(agents))
-  return Layer.mergeAll(RemoteServer.layer, answerAsksLayer).pipe(
+  return Layer.mergeAll(RemoteServer.layer, CliSocket.layer(userData), answerAsksLayer).pipe(
     Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),
     Layer.provideMerge(services),
     Layer.provide(providers.layer),

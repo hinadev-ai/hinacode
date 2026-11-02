@@ -9,6 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
+      "appleTeamId": "ZY99H6ZA58",
       "infoPlist": {
         "NSLocalNetworkUsageDescription": "HinaCode connects to your desktop directly when both are on the same network."
       }

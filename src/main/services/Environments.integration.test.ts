@@ -36,6 +36,7 @@ import {
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
+import { OpencodeProvider } from "../agents/opencode/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import { registerIpc } from "../ipc.ts"
 import { CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED, RemoteAccess } from "../remote/access.ts"
@@ -106,6 +107,7 @@ const providers = Layer.mergeAll(
   Layer.succeed(ClaudeProvider, provider("claude")),
   Layer.succeed(CodexProvider, provider("codex")),
   Layer.succeed(MuseProvider, provider("muse")),
+  Layer.succeed(OpencodeProvider, provider("opencode")),
 )
 
 const makeCloudEvents = () => {
@@ -359,6 +361,28 @@ describe("desktop environments", () => {
     const { dataUrl } = result(await invoke("attachments.read", { path: staged.path }, cloudId))
     expect(dataUrl).toBe(`data:image/png;base64,${Buffer.from("png bytes").toString("base64")}`)
     expect(failure(await invoke("attachments.read", { path: picked }, cloudId)).tag).toBe("AttachmentError")
+  })
+
+  test("a device screenshot from a cloud thread is saved on the desktop for the local file manager", async () => {
+    const saved = await electron.handlers.get(RPC_CHANNEL)!(
+      { sender: {}, senderFrame: { url: appUrl, parent: null } },
+      {
+        method: "device.screenshot.save",
+        payload: {
+          threadId: cloudThread,
+          dataUrl: `data:image/png;base64,${Buffer.from("screen bytes").toString("base64")}`,
+          name: "Cloud phone.png",
+        },
+      },
+    )
+    expect(saved).toMatchObject({
+      result: {
+        path: expect.stringContaining(join(dir, "desktop", "attachments", cloudThread)),
+        name: "Cloud phone.png",
+        mime: "image/png",
+        bytes: 12,
+      },
+    })
   })
 
   test("the file viewer previews a cloud's files from the cloud, inside the root only", async () => {

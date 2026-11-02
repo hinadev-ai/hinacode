@@ -1,9 +1,9 @@
 import { EventEmitter } from "node:events"
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { readFile, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { expect, layer } from "@effect/vitest"
+import { afterAll, expect, layer } from "@effect/vitest"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { NodeServices } from "@effect/platform-node"
@@ -15,6 +15,7 @@ import { defaultSettings } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
+import { OpencodeProvider } from "../agents/opencode/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { layer as RemoteAccessLayer } from "../remote/access.ts"
@@ -45,19 +46,27 @@ import { McpCredentials, layer as credentialsLayer } from "./credentials.ts"
 import { layer as serverLayer } from "./server.ts"
 import { SETTLE_MS } from "./tools/tinyVm.ts"
 import * as Scratch from "../services/Scratch.ts"
+import * as Search from "../services/Search.ts"
 
 const pushes: Array<PushEvent> = []
 const turnInputs: Array<RunTurnInput> = []
 const modelLookupStarted = Deferred.makeUnsafe<void>()
 const modelLookupResume = Deferred.makeUnsafe<void>()
 
+const repos = mkdtempSync(join(tmpdir(), "kk-mcp-repos-"))
+afterAll(() => rmSync(repos, { recursive: true, force: true }))
+const repoA = join(repos, "repo-a")
+const repoB = join(repos, "repo-b")
+mkdirSync(repoA)
+mkdirSync(repoB)
+
 class Seeded extends Context.Service<Seeded, { readonly a: string; readonly b: string }>()("test/Seeded") {}
 
 const seeded = Layer.effect(
   Seeded,
   Effect.gen(function* () {
-    const a = (yield* seedThread({ rootPath: "/repo-a" })).threadId
-    const b = (yield* seedThread({ rootPath: "/repo-b" })).threadId
+    const a = (yield* seedThread({ rootPath: repoA })).threadId
+    const b = (yield* seedThread({ rootPath: repoB })).threadId
     return { a, b }
   }),
 )
@@ -122,6 +131,7 @@ const stubs = Layer.mergeAll(
   Layer.succeed(ClaudeProvider, fakeProvider("claude")),
   Layer.succeed(CodexProvider, fakeProvider("codex")),
   Layer.succeed(MuseProvider, fakeProvider("muse")),
+  Layer.succeed(OpencodeProvider, fakeProvider("opencode")),
   Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) }),
   Layer.succeed(
     Peers,
@@ -146,6 +156,7 @@ const core = Layer.mergeAll(
   Artifacts.layer(join(mkdtempSync(join(tmpdir(), "kk-mcp-")), "artifacts")),
   secretsLayer.pipe(Layer.provide(noKeyring)),
   credentialsLayer,
+  Search.layer,
 )
 const vmProfileDir = mkdtempSync(join(tmpdir(), "kk-vm-profile-"))
 const tinyVm = Layer.unwrap(
@@ -505,6 +516,41 @@ layer(testLayer)("run_agent", (it) => {
     }),
   )
 
+  it.effect("runs opencode only on a model the user picked, and names them when it refuses", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const mcp = yield* McpCredentials
+      const settings = yield* Settings.Settings
+      const { a } = yield* Seeded
+      const connection = yield* mcp.connectionFor(a)
+      const ask = (model?: string) =>
+        callAs(connection, "run_agent", {
+          provider: "opencode",
+          description: "Cheap pass",
+          prompt: "Reply Looks good.",
+          ...(model !== undefined && { model }),
+        })
+      yield* runner.send(a, "hi", [])
+
+      expect(yield* ask()).toMatchObject({
+        isError: true,
+        text: "The user has not picked any opencode models for sub-agents. Ask them to pick some in Settings, Providers, opencode, Models in the picker.",
+      })
+      yield* settings.set({
+        modelPresets: { ...defaultSettings.modelPresets, opencode: ["openrouter/a", "openrouter/b"] },
+      })
+      expect(yield* ask("openrouter/z")).toMatchObject({
+        isError: true,
+        text: "openrouter/z is not among the opencode models the user picked. Use one of: openrouter/a, openrouter/b.",
+      })
+      turnInputs.length = 0
+      expect(yield* ask()).toMatchObject({ isError: false })
+      expect(turnInputs.at(-1)).toMatchObject({ model: "openrouter/a" })
+      yield* settings.set({ modelPresets: defaultSettings.modelPresets })
+      yield* runner.interrupt(a)
+    }),
+  )
+
   it.effect("refuses outside a turn", () =>
     Effect.gen(function* () {
       const mcp = yield* McpCredentials
@@ -706,15 +752,65 @@ layer(testLayer)("thread controls", (it) => {
     }),
   )
 
-  it.effect("a thread of another project or a deleted one is out of reach", () =>
+  it.effect("search_threads marks the caller's own thread", () =>
+    Effect.gen(function* () {
+      const { a } = yield* Seeded
+      const self = yield* childOf(a, "Self finder")
+      const found = JSON.parse((yield* callFrom(self, "search_threads", { query: "self finder" })).text)
+      expect(found).toStrictEqual([expect.objectContaining({ id: self, self: true })])
+    }),
+  )
+
+  it.effect("read_thread reads a thread of another project and names its project", () =>
     Effect.gen(function* () {
       const { a, b } = yield* Seeded
-      for (const name of ["read_thread", "send_to_thread", "stop_thread"]) {
+      const result = yield* callFrom(a, "read_thread", { threadId: b })
+      expect(result.isError).toBe(false)
+      expect(result.text).toContain(`<environment>\nproject: demo (${repoB})\nworkspace: project root\n</environment>`)
+      const gone = yield* callFrom(a, "read_thread", { threadId: "thread-gone" })
+      expect(gone).toStrictEqual({ text: "Thread thread-gone no longer exists.", isError: true, images: [] })
+    }),
+  )
+
+  it.effect("send_to_thread and stop_thread refuse a thread of another project", () =>
+    Effect.gen(function* () {
+      const { a, b } = yield* Seeded
+      for (const name of ["send_to_thread", "stop_thread"]) {
         const result = yield* callFrom(a, name, { threadId: b, prompt: "x" })
         expect(result).toStrictEqual({ text: `Thread ${b} is not in this project.`, isError: true, images: [] })
       }
-      const gone = yield* callFrom(a, "read_thread", { threadId: "thread-gone" })
-      expect(gone).toStrictEqual({ text: "Thread thread-gone no longer exists.", isError: true, images: [] })
+    }),
+  )
+
+  it.effect("search_threads finds threads of every project by title or message", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const runner = yield* AgentRunner
+      const { a, b } = yield* Seeded
+      yield* threads.update({ id: b, title: "Revert pricing to 50pt" })
+      const other = yield* childOf(b, "Unrelated")
+      yield* runner.send(other, "Check the 50PT charges again", [])
+      yield* runner.interrupt(other)
+      const result = yield* callFrom(a, "search_threads", { query: "50pt" })
+      expect(result.isError).toBe(false)
+      const hits = JSON.parse(result.text) as Array<{ id: string; title: string; project: string; snippet?: string }>
+      expect(hits.map((hit) => hit.id)).toStrictEqual([b, other])
+      expect(hits[0]).toMatchObject({ title: "Revert pricing to 50pt", project: `demo (${repoB})` })
+      expect(hits[1]!.snippet).toContain("50PT charges")
+      const padded = JSON.parse((yield* callFrom(a, "search_threads", { query: "  50pt " })).text) as Array<{
+        id: string
+      }>
+      expect(padded.map((hit) => hit.id)).toStrictEqual([b, other])
+      expect(JSON.parse((yield* callFrom(a, "search_threads", { query: "nothing like this" })).text)).toStrictEqual([])
+      yield* runner.send(b, "Older note about 50pt", [])
+      yield* runner.interrupt(b)
+      yield* runner.send(other, "Newer 50pt charge", [])
+      yield* runner.interrupt(other)
+      const third = yield* childOf(b, "Third")
+      yield* runner.send(third, "Newest 50pt charge", [])
+      yield* runner.interrupt(third)
+      const first = JSON.parse((yield* callFrom(a, "search_threads", { query: "50pt", limit: 1 })).text)
+      expect(first).toStrictEqual([expect.objectContaining({ id: b, snippet: "Older note about 50pt" })])
     }),
   )
 

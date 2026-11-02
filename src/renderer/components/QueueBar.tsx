@@ -1,6 +1,7 @@
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { listMotion } from "../lib/listMotion.ts"
 import type { QueuedMessage, Thread } from "../../shared/domain.ts"
+import { providerInfo } from "../../shared/providers.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
@@ -73,7 +74,9 @@ export function QueueBar({
           <ActivityRow
             actions={
               <>
-                <QueueAction icon={SteerIcon} label={m.queue_steer_now()} onClick={() => steerNow(message.id)} />
+                {providerInfo[thread.provider].steersRunningTurn && (
+                  <QueueAction icon={SteerIcon} label={m.queue_steer_now()} onClick={() => steerNow(message.id)} />
+                )}
                 <QueueAction icon={PencilIcon} label={m.queue_edit()} onClick={() => edit(message.id)} />
                 <QueueAction icon={CloseIcon} label={m.queue_remove()} onClick={() => remove(message.id)} />
               </>

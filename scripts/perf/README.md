@@ -126,6 +126,32 @@ script clears every PR watch and disables every automation in the copy, so no au
 Each launch reopens the last route, so after the first run startup includes opening a thread. `PORT` picks the CDP
 port (default 9290) and `DISPLAY_FOR_PERF` the X display (default `:99`).
 
+## Runtime budget in CI
+
+The `bundle-size` job builds the pull request and its base, then `budget.ts` launches each build in turn on the
+same seeded profile and posts the medians under the size table. The JS bundle loads from disk, so its size says
+little about how fast the app feels; these say more.
+
+```sh
+pnpm build                                                    # in both checkouts
+node scripts/perf/budget.ts run <base-checkout> <head-checkout> .context/perf/runtime.json
+node scripts/perf/budget.ts report .context/perf/runtime.json  # exits 1 over budget
+```
+
+| Measurement                 | How it is taken                                                                          |
+| --------------------------- | ---------------------------------------------------------------------------------------- |
+| Launch to restored thread   | Spawn until the sidebar lists threads and the restored 200-turn transcript stops growing |
+| CPU time until then         | User and system time of the Electron process tree, from `/proc`                          |
+| Open a 40-turn thread       | Sidebar click until that transcript stops growing                                        |
+| Idle CPU                    | CPU time of the process tree over `IDLE_SECONDS` (30) after a 5 s settle                 |
+| Memory, all processes (PSS) | Sum of `Pss` in `/proc/<pid>/smaps_rollup` across the tree, after idle                   |
+| Renderer JS heap            | `JSHeapUsedSize` after a forced GC                                                       |
+
+Each build gets one warm-up launch, then `RUNS` (5) measured launches, alternating which build goes first. A
+measurement fails only when the pull request's median exceeds the base by both the percentage and the absolute
+amount in `budget.ts`, because a shared runner moves single launches by more than either alone. Comparing a build
+with itself on one machine is the way to check that the limits still leave room for that noise. It is Linux only.
+
 ## Measure remote payload and transcript costs
 
 ```sh
@@ -267,7 +293,7 @@ app went to the background.
 ```sh
 DATA=/tmp/kk-battery PORT=48190
 HINACODE_USER_DATA=$DATA HINACODE_MOCK_CLAUDE=stream HINACODE_SERVE_RELAY=off HINACODE_SERVE_AUTO_UPDATE=0 \
-  node out/main/daemon.js serve --host 127.0.0.1 --port $PORT   # prints the token in its pairing URL
+  node bin/hinacode.mjs serve --host 127.0.0.1 --port $PORT   # prints the token in its pairing URL
 
 export BATTERY_DAEMON_PORT=$PORT BATTERY_TOKEN=<token>
 BATTERY_PLATFORM=android BATTERY_SERIAL=emulator-5580 node scripts/perf/battery.ts run android-base-1

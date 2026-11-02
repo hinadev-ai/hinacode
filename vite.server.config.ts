@@ -6,9 +6,10 @@ export default defineConfig({
     outDir: "out/server",
     emptyOutDir: true,
     target: "node24",
+    ssr: true,
     commonjsOptions: { transformMixedEsModules: true },
     rollupOptions: {
-      input: { daemon: "src/main/daemon.ts" },
+      input: { cli: "src/cli/main.ts", daemon: "src/main/daemon.ts" },
       external: (id) => isServerExternal(id),
       output: {
         format: "es",

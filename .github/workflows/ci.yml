@@ -152,7 +152,7 @@ jobs:
     needs: changes
     if: github.event_name == 'pull_request' && needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     permissions:
       contents: read
       pull-requests: write
@@ -179,17 +179,25 @@ jobs:
           for dir in base head; do
             (cd "$dir" && pnpm install --frozen-lockfile && pnpm build && pnpm exec electron-builder --linux AppImage --publish never)
           done
+      - run: sudo apt-get update && sudo apt-get install --yes xvfb
+      # Launches alternate between the two builds, so runner noise lands on both sides.
+      - name: Run both commits
+        run: xvfb-run -a sh -c 'DISPLAY_FOR_PERF=$DISPLAY node head/scripts/perf/budget.ts run base head runtime.json'
       - name: Measure
         working-directory: head
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        # size-limit exits 1 over budget. The last step fails the job after the comment is posted.
+        # size-limit and budget.ts exit 1 over budget. The last steps fail the job after the comment is posted.
         run: |
           cp .size-limit.ts ../base/
           pnpm exec size-limit --json --config ../base/.size-limit.ts > ../base.json || true
           pnpm exec size-limit --json > ../head.json || true
-          node scripts/bundle-size.ts ../base.json ../head.json "$BASE_SHA" "$HEAD_SHA" | tee ../comment.md >> "$GITHUB_STEP_SUMMARY"
+          {
+            node scripts/bundle-size.ts ../base.json ../head.json "$BASE_SHA" "$HEAD_SHA"
+            echo
+            node scripts/perf/budget.ts report ../runtime.json || true
+          } | tee ../comment.md >> "$GITHUB_STEP_SUMMARY"
       # A fork's pull request gets a read-only token, so it only has the job summary.
       # The marker finds this job's own comment, since React Doctor posts as the same bot.
       - if: github.event.pull_request.head.repo.full_name == github.repository
@@ -205,9 +213,13 @@ jobs:
           else
             gh pr comment "$PR" --body-file comment.md
           fi
-      - name: Check the budgets
+      - name: Check the size budgets
         working-directory: head
         run: pnpm exec size-limit
+      - name: Check the runtime budgets
+        if: ${{ !cancelled() }}
+        working-directory: head
+        run: node scripts/perf/budget.ts report ../runtime.json > /dev/null
 
   e2e-linux:
     name: e2e (linux ${{ matrix.shard }}/4)

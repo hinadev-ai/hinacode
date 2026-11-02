@@ -81,7 +81,7 @@ export const ServerFrame = Schema.Union([
 ])
 export type ServerFrame = typeof ServerFrame.Type
 
-const noticeEvents: ReadonlySet<string> = new Set([
+export const noticeEvents: ReadonlySet<string> = new Set([
   "turn_completed",
   "turn_failed",
   "turn_limited",

@@ -28,6 +28,7 @@ import type { PlanLimits } from "../shared/limits.ts"
 import { ClaudeProvider } from "./agents/claude/index.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import { MuseProvider } from "./agents/muse/index.ts"
+import { OpencodeProvider } from "./agents/opencode/index.ts"
 import { AgentError, type AgentProvider, type Wake } from "./agents/provider.ts"
 import { registerIpc } from "./ipc.ts"
 import { makeTestAppLayer } from "./testing.ts"
@@ -35,7 +36,7 @@ import { Events } from "./services/Events.ts"
 import * as Messages from "./services/Messages.ts"
 import { privateAddresses } from "./network.ts"
 import * as RemoteAccess from "./remote/access.ts"
-import { MAX_CALL_KEYS } from "./remote/server.ts"
+import { MAX_CALL_KEYS } from "./remote/session.ts"
 import { unusedLoopbackPort } from "./remote/testing.ts"
 import * as PullRequests from "./services/PullRequests.ts"
 import * as Settings from "./services/Settings.ts"
@@ -290,6 +291,7 @@ const providers = Layer.mergeAll(
   Layer.succeed(ClaudeProvider, scriptedProvider("claude")),
   Layer.succeed(CodexProvider, scriptedProvider("codex")),
   Layer.succeed(MuseProvider, scriptedProvider("muse")),
+  Layer.succeed(OpencodeProvider, scriptedProvider("opencode")),
 )
 
 const makeLayer = (dbPath: string) => makeTestAppLayer(dbPath, { providers })
@@ -1048,6 +1050,7 @@ describe("plan limits over rpc", () => {
       { provider: "codex", accountId: null, limits: null },
       { provider: "codex", accountId: work.id, limits: null },
       { provider: "muse", accountId: null, limits: null },
+      { provider: "opencode", accountId: null, limits: null },
     ])
   })
 })
