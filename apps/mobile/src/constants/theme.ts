@@ -13,6 +13,8 @@ export const Colors = {
     surfaceStrong: "#e4e4e7",
     /** A switch's off track, 3:1 on `surface` and `background` so the control reads when it is off. */
     controlOff: "#8a8a93",
+    /** A filled control that cannot be pressed yet, under `textMuted`. A step above every surface it sits on. */
+    disabled: "#e4e4e7",
     /** A sheet over the scrim, and a selected or pressed row on it. Dark sheets sit a step above the page. */
     sheet: "#ffffff",
     sheetRaised: "#f4f4f5",
@@ -49,6 +51,7 @@ export const Colors = {
     surface: "#18181b",
     surfaceStrong: "#27272a",
     controlOff: "#71717a",
+    disabled: "#3f3f46",
     sheet: "#18181b",
     sheetRaised: "#27272a",
     border: "#27272a",
