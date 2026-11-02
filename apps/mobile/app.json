@@ -8,7 +8,10 @@
     "scheme": "hinacode",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "HinaCode connects to your desktop directly when both are on the same network."
+      }
     },
     "android": {
       "adaptiveIcon": {
