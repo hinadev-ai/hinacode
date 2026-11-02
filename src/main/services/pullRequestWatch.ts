@@ -56,7 +56,7 @@ export const watchEvents = (
   const before = previous ?? neutral(next)
 
   if (!isOpen(next)) {
-    return isOpen(before) && wants.has("mergedOrClosed") ? ["mergedOrClosed"] : []
+    return next.status === "closed" && isOpen(before) && wants.has("mergedOrClosed") ? ["mergedOrClosed"] : []
   }
 
   const newHead = before.head !== next.head
