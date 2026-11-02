@@ -52,6 +52,7 @@ const pushes: Array<PushEvent> = []
 const turnInputs: Array<RunTurnInput> = []
 const modelLookupStarted = Deferred.makeUnsafe<void>()
 const modelLookupResume = Deferred.makeUnsafe<void>()
+let holdModelLookup = false
 
 const repos = mkdtempSync(join(tmpdir(), "kk-mcp-repos-"))
 afterAll(() => rmSync(repos, { recursive: true, force: true }))
@@ -86,8 +87,10 @@ const fakeProvider = (id: ProviderId): AgentProvider => {
     listModels:
       id === "codex"
         ? Effect.gen(function* () {
-            yield* Deferred.succeed(modelLookupStarted, undefined)
-            yield* Deferred.await(modelLookupResume)
+            if (holdModelLookup) {
+              yield* Deferred.succeed(modelLookupStarted, undefined)
+              yield* Deferred.await(modelLookupResume)
+            }
             return [
               {
                 id: "gpt-test",
@@ -1305,6 +1308,8 @@ layer(testLayer)("run_agent stopped-parent race", (it) => {
       const { a } = yield* Seeded
       turnInputs.length = 0
       yield* runner.send(a, "hi", [])
+      yield* until(Effect.sync(() => Option.fromNullishOr(turnInputs.find((turn) => turn.threadId === a))))
+      holdModelLookup = true
       const call = yield* Effect.forkChild(
         callAs(yield* mcp.connectionFor(a), "run_agent", {
           provider: "codex",
