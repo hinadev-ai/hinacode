@@ -634,7 +634,11 @@ export const automationsAtom = Atom.family((environment: EnvironmentId) =>
 export const artifactsAtom = Atom.make((get) => {
   get.addFinalizer(
     onPushEvent(
-      (event) => (event.type === "artifact.updated" || event.type === "environment.status") && get.refreshSelf(),
+      (event) =>
+        (event.type === "artifact.updated" ||
+          event.type === "environment.status" ||
+          event.type === "environments.changed") &&
+        get.refreshSelf(),
     ),
   )
   return call("artifacts.list", undefined).pipe(

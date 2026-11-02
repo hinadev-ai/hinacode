@@ -49,7 +49,7 @@ export function ArtifactsView({ thread }: { thread: Thread }) {
   if (selected !== undefined) {
     return (
       <iframe
-        src={`${artifactUrl(selected.id)}?v=${selected.version}`}
+        src={`${artifactUrl(selected.id, selected.entry)}?v=${selected.version}`}
         title={selected.title}
         sandbox="allow-scripts"
         referrerPolicy="no-referrer"
