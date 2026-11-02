@@ -343,7 +343,7 @@ const make = Effect.gen(function* () {
       return Effect.gen(function* () {
         const delivered = yield* providers[request.provider].respondApproval(requestId, decision, text)
         if (text === undefined || delivered) return
-        const steers = providers[request.provider].steer !== undefined
+        const steers = activeTurns.get(request.threadId)?.provider.steer !== undefined
         const { queue } = yield* threads.get(request.threadId)
         yield* updateThread({
           id: request.threadId,
@@ -494,7 +494,7 @@ const make = Effect.gen(function* () {
       }).pipe(exclusive(thread.id))
 
     const steerHeld: Effect.Effect<void> = Effect.gen(function* () {
-      if (waitsOnUser(thread.id)) return
+      if (provider.steer === undefined || waitsOnUser(thread.id)) return
       const held = (yield* threads.get(thread.id)).queue.filter((message) => message.steer)
       for (const message of held) {
         yield* steerTurn(message.text, message.attachments, "next")
