@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
+import { PRIVATE_NETWORKS } from "../../../shared/domain.ts"
 import { type EnvironmentId, networkAddressesAtom } from "../../lib/rpc.ts"
 import { m } from "../../paraglide/messages.js"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
@@ -11,11 +12,13 @@ interface BindHostSelectProps {
   readonly environment: EnvironmentId
   readonly value: string | null
   readonly onChange: (bindHost: string) => void
+  readonly privateNetworks?: boolean
 }
 
-export function BindHostSelect({ id, environment, value, onChange }: BindHostSelectProps) {
+export function BindHostSelect({ id, environment, value, onChange, privateNetworks = false }: BindHostSelectProps) {
   const addresses = AsyncResult.getOrElse(useAtomValue(networkAddressesAtom(environment)), () => [])
   const items = [
+    ...(privateNetworks ? [{ value: PRIVATE_NETWORKS, label: m.settings_bind_private_networks() }] : []),
     ...addresses.map(({ name, address }) => ({ value: address, label: `${name} (${address})` })),
     { value: LOOPBACK, label: m.settings_bind_loopback() },
   ]

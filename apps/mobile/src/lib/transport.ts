@@ -60,13 +60,14 @@ export interface TransportOptions {
   readonly isMutation: (method: string) => boolean
   readonly onStatus: (status: TransportStatus, error: string | null) => void
   /**
-   * Called on every handshake with the features this desktop understands, which HinaCode it is when it says, and
-   * its relay hostname, null when it has none.
+   * Called on every handshake with the features this desktop understands, which HinaCode it is when it says, its
+   * relay hostname, null when it has none, and the addresses it listens on now, undefined when it does not say.
    */
   readonly onReady: (
     features: ReadonlySet<string>,
     environment: ServerIdentity | undefined,
     relay: string | null,
+    hosts: NonEmptyReadonlyArray<string> | undefined,
   ) => void
   readonly onEvent: (event: PushEvent) => void
   readonly createSocket?: (url: string) => SocketLike
@@ -245,9 +246,19 @@ export class Transport {
     if (this.features.has("watch")) this.sendFrame({ type: "watch", threadIds: this.watching })
   }
 
-  /** Dials `dials` from the next round on, keeping the current socket and every pending call. */
+  /**
+   * Dials `dials` from the next round on, keeping the current socket and every pending call. A link over the relay
+   * checks a new direct address at once, so a phone that just learned the desktop's LAN address moves to it.
+   */
   setDials(dials: NonEmptyReadonlyArray<Dial>) {
+    const directUrls = (list: readonly Dial[]) =>
+      list
+        .filter((dial) => dial.route === "direct")
+        .map((dial) => dial.url)
+        .join(" ")
+    const newDirect = directUrls(dials) !== directUrls(this.dials)
     this.dials = dials
+    if (newDirect && this.status === "connected" && this.checksDirect() && this.foreground) this.checkDirect()
   }
 
   /** Skips the remaining backoff. */
@@ -373,7 +384,7 @@ export class Transport {
         return this.answerChallenge(frame.nonce)
       case "ready":
         if (!this.provesToken(frame.proof)) return this.closed(CLOSE_UNAUTHORIZED, route)
-        return this.ready(frame.version, frame.features ?? [], frame.environment, frame.relay ?? null)
+        return this.ready(frame.version, frame.features ?? [], frame.environment, frame.relay ?? null, frame.hosts)
       case "result": {
         const call = this.pending.get(frame.id)
         this.pending.delete(frame.id)
@@ -393,6 +404,7 @@ export class Transport {
     features: readonly string[],
     environment: ServerIdentity | undefined,
     relay: string | null,
+    hosts: NonEmptyReadonlyArray<string> | undefined,
   ) {
     clearTimeout(this.connectTimer)
     if (version !== REMOTE_PROTOCOL_VERSION) {
@@ -422,7 +434,7 @@ export class Transport {
     }
     if (this.checksDirect() && this.foreground) this.startDirectChecks()
     this.sendWatching()
-    this.options.onReady(this.features, environment, relay)
+    this.options.onReady(this.features, environment, relay, hosts)
   }
 
   private sendCall(call: PendingCall) {

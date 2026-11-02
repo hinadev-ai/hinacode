@@ -924,6 +924,7 @@
   "remote_status_checking": "リスナーの状態を確認中…",
   "remote_status_starting": "リスナーを起動中…",
   "remote_status_listening": "{address} で待機中",
+  "remote_status_listening_private": "ローカルネットワークと Tailscale のポート {port} で待機中",
   "remote_status_connected": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
@@ -946,10 +947,12 @@
   "mobile_terminal_reattach_failed": "シェルに再接続できませんでした：{message}",
   "remote_bind_label": "リスナーの待機インターフェース",
   "settings_bind_loopback": "ローカルマシンのみ (127.0.0.1)",
+  "settings_bind_private_networks": "ローカルネットワークと Tailscale",
   "settings_bind_placeholder": "インターフェースを選択",
   "remote_bind_loopback_hint": "このマシンからのみ接続できます。",
   "remote_bind_required_hint": "オンにする前に、スマートフォンがこのマシンに接続するインターフェース（Tailscale のアドレスなど）を選んでください。",
   "remote_bind_address_hint": "{address} に到達できるデバイスが、アクセストークンで接続できます。",
+  "remote_bind_private_hint": "同じ Wi-Fi または tailnet 上のデバイスが、アクセストークンで接続できます。パブリックアドレスからの接続は拒否されます。",
   "settings_bind_address_gone": "{address}（現在このマシンにありません）",
   "remote_network_note": "通常の LAN 接続は暗号化されません。Tailscale を使うか、信頼できないネットワークではオフにしてください。",
   "remote_port_label": "ポート",

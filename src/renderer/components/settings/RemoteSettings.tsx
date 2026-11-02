@@ -4,7 +4,7 @@ import { Effect } from "effect"
 import { AsyncResult, Atom } from "effect/reactivity"
 import QRCode from "qrcode"
 import { type FormEvent, useId, useRef, useState, useTransition } from "react"
-import type { RelayStatus, RemotePairing } from "../../../shared/domain.ts"
+import { PRIVATE_NETWORKS, type RelayStatus, type RemotePairing } from "../../../shared/domain.ts"
 import { isPortInUse, pairingUrl } from "../../../shared/remote.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { callPromise, remotePairingAtom, remoteStatusAtom, updateSettingsAtom } from "../../lib/rpc.ts"
@@ -116,7 +116,9 @@ function ListenerStatus({ remote }: { remote: RemoteSettingsValue }) {
         <>
           <span className="flex items-center gap-2">
             <StatusDot className="bg-success" />
-            {m.remote_status_listening({ address: `${remote.bindHost}:${remote.port}` })}
+            {remote.bindHost === PRIVATE_NETWORKS
+              ? m.remote_status_listening_private({ port: remote.port })
+              : m.remote_status_listening({ address: `${remote.bindHost}:${remote.port}` })}
           </span>
           <span className="text-muted-foreground tabular-nums">{m.remote_status_connected({ count: connected })}</span>
         </>
@@ -150,6 +152,7 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
             environment={null}
             value={remote.bindHost}
             onChange={(bindHost) => onSave({ ...remote, bindHost })}
+            privateNetworks
           />
         </Field>
         <form onSubmit={onSubmit} className="flex items-end gap-2">
@@ -176,7 +179,9 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
           ? m.remote_bind_required_hint()
           : remote.bindHost === LOOPBACK
             ? m.remote_bind_loopback_hint()
-            : m.remote_bind_address_hint({ address: remote.bindHost })}
+            : remote.bindHost === PRIVATE_NETWORKS
+              ? m.remote_bind_private_hint()
+              : m.remote_bind_address_hint({ address: remote.bindHost })}
       </FieldDescription>
       <FieldDescription>{m.remote_network_note()}</FieldDescription>
     </div>
