@@ -3,10 +3,13 @@ import { resolve } from "node:path"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "electron-vite"
+import { viteStaticCopy } from "vite-plugin-static-copy"
 import { lazyLocales, paraglide } from "./vite.paraglide.ts"
 
 // FIXME: Electron 44 downloads its binary on the first require("electron"), which electron-vite 5 never calls
 process.env.ELECTRON_EXEC_PATH ??= createRequire(import.meta.url)("electron")
+
+const excalidrawDist = "node_modules/@excalidraw/excalidraw/dist/prod"
 
 export default defineConfig({
   main: {
@@ -39,6 +42,15 @@ export default defineConfig({
       tailwindcss(),
       paraglide(),
       lazyLocales(),
+      viteStaticCopy({
+        targets: [
+          {
+            src: `../../${excalidrawDist}/fonts/!(Xiaolai)`,
+            dest: "excalidraw",
+            rename: { stripBase: excalidrawDist.split("/").length },
+          },
+        ],
+      }),
     ],
   },
 })

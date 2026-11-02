@@ -50,6 +50,13 @@ export function ExperimentalSettings() {
       <SettingsGroup>
         <TinyVmSettings experimental={experimental} setExperimental={setExperimental} />
         <DevicesSettings experimental={experimental} setExperimental={setExperimental} />
+        <VmSwitchField
+          id="settings-experimental-sketch"
+          label={m.settings_sketch()}
+          hint={m.settings_sketch_hint()}
+          checked={experimental.sketch}
+          onCheckedChange={(checked) => void setExperimental({ sketch: checked })}
+        />
       </SettingsGroup>
       {error && <FieldError>{error}</FieldError>}
     </SettingsSection>

@@ -236,6 +236,13 @@ export const commands = [
     experiment: "devices",
   },
   {
+    id: "view.sketch",
+    defaultKeys: "",
+    title: m.command_view_sketch,
+    run: (ctx) => showView(ctx, "sketch"),
+    experiment: "sketch",
+  },
+  {
     id: "turn.interrupt",
     defaultKeys: "mod+shift+c",
     title: m.command_turn_interrupt,

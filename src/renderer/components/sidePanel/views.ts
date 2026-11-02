@@ -12,6 +12,7 @@ import { BrowserTabStrip } from "./BrowserTabStrip.tsx"
 import { DeviceTabStrip } from "./devices/DeviceTabStrip.tsx"
 import { DetailsView } from "./DetailsView.tsx"
 import { SidechatHeader, SidechatView } from "./SidechatView.tsx"
+import { SketchHeader } from "./SketchHeader.tsx"
 import { AgentsView, PullRequestsView } from "./SimpleViews.tsx"
 import { PullRequestsHeader, useLinkedPullRequestsLabel } from "../ThreadPullRequests.tsx"
 import { BranchIcon } from "../icons/BranchIcon.tsx"
@@ -23,6 +24,7 @@ import { GlobeIcon } from "../icons/GlobeIcon.tsx"
 import type { IconComponent } from "../icons/Icon.tsx"
 import { InfoIcon } from "../icons/InfoIcon.tsx"
 import { LayoutIcon } from "../icons/LayoutIcon.tsx"
+import { PencilIcon } from "../icons/PencilIcon.tsx"
 import { PhoneIcon } from "../icons/PhoneIcon.tsx"
 import { RobotIcon } from "../icons/RobotIcon.tsx"
 
@@ -32,6 +34,7 @@ const GitGraphView = lazy(() => import("../GitGraphView.tsx").then((module) => (
 const TinyVmView = lazy(() => import("./TinyVmView.tsx").then((module) => ({ default: module.TinyVmView })))
 const BrowserView = lazy(() => import("./BrowserView.tsx").then((module) => ({ default: module.BrowserView })))
 const DevicesView = lazy(() => import("./devices/DevicesView.tsx").then((module) => ({ default: module.DevicesView })))
+const SketchView = lazy(() => import("./SketchView.tsx").then((module) => ({ default: module.SketchView })))
 
 export interface SidePanelView {
   readonly id: SidePanelViewId
@@ -113,6 +116,15 @@ export const sidePanelViews: ReadonlyArray<SidePanelView> = [
     component: DevicesView,
     header: DeviceTabStrip,
     experiment: "devices",
+  },
+  {
+    id: "sketch",
+    icon: PencilIcon,
+    title: m.panel_tab_sketch,
+    commandId: "view.sketch",
+    component: SketchView,
+    header: SketchHeader,
+    experiment: "sketch",
   },
 ]
 

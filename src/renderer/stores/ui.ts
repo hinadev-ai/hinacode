@@ -26,6 +26,7 @@ export type SidePanelViewId =
   | "browser"
   | "tinyVm"
   | "devices"
+  | "sketch"
   | "sidechat"
   | "artifacts"
 const sidebarTabs = ["inbox", "threads", "archived"] as const

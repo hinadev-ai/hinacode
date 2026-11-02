@@ -550,6 +550,7 @@ export const ExperimentalSettings = Schema.Struct({
   tinyVmEnv: Schema.Record(Schema.String, Schema.String),
   tinyVmSetupScript: Schema.String,
   devices: Schema.Boolean,
+  sketch: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
 })
 export type ExperimentalSettings = typeof ExperimentalSettings.Type
 
@@ -681,6 +682,7 @@ export const defaultSettings: Settings = {
     tinyVmTemplate: "default",
     tinyVmProfile: false,
     devices: false,
+    sketch: false,
     tinyVmEnv: {},
     tinyVmSetupScript: "",
   },
