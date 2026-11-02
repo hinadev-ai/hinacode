@@ -689,7 +689,7 @@ layer(testLayer)("thread controls", (it) => {
       const { a, b } = yield* Seeded
       const result = yield* callFrom(a, "read_thread", { threadId: b })
       expect(result.isError).toBe(false)
-      expect(result.text).toContain(`<environment>\nproject: demo (/repo-b)\nworkspace: project root\n</environment>`)
+      expect(result.text).toContain(`<environment>\nproject: demo (${repoB})\nworkspace: project root\n</environment>`)
       const gone = yield* callFrom(a, "read_thread", { threadId: "thread-gone" })
       expect(gone).toStrictEqual({ text: "Thread thread-gone no longer exists.", isError: true, images: [] })
     }),
@@ -718,7 +718,7 @@ layer(testLayer)("thread controls", (it) => {
       expect(result.isError).toBe(false)
       const hits = JSON.parse(result.text) as Array<{ id: string; title: string; project: string; snippet?: string }>
       expect(hits.map((hit) => hit.id)).toStrictEqual([b, other])
-      expect(hits[0]).toMatchObject({ title: "Revert pricing to 50pt", project: "demo (/repo-b)" })
+      expect(hits[0]).toMatchObject({ title: "Revert pricing to 50pt", project: `demo (${repoB})` })
       expect(hits[1]!.snippet).toContain("50PT charges")
       const padded = JSON.parse((yield* callFrom(a, "search_threads", { query: "  50pt " })).text) as Array<{
         id: string
