@@ -57,6 +57,16 @@ const decodeFiles = (files: PublishInput["files"]) => {
   return decoded
 }
 
+const claimVersion = async (directory: string, from: number): Promise<number> => {
+  try {
+    await mkdir(join(directory, String(from)))
+    return from
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
+    return claimVersion(directory, from + 1)
+  }
+}
+
 export const openArtifactStore = (root: string, options: { now?: () => Date } = {}): ArtifactStore => {
   const now = options.now ?? (() => new Date())
 
@@ -95,10 +105,10 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
     }
 
     const id = previous?.id ?? newId()
-    const version = (previous?.version ?? 0) + 1
     const directory = join(root, id)
+    await mkdir(directory, { recursive: true })
+    const version = await claimVersion(directory, (previous?.version ?? 0) + 1)
     const versionDirectory = join(directory, String(version))
-    await rm(versionDirectory, { recursive: true, force: true })
     for (const [path, bytes] of files) {
       const target = join(versionDirectory, path)
       await mkdir(dirname(target), { recursive: true })
