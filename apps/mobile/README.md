@@ -17,7 +17,7 @@ Replies render through `react-native-enriched-markdown`, a native Fabric compone
 
 `pnpm install` lets that library's postinstall run (`allowBuilds` in `pnpm-workspace.yaml`), because it downloads the tree-sitter grammars the native build compiles for code highlighting.
 
-The phone must reach the desktop directly. Tailscale on both devices is the simplest way: open the dev server through the desktop's Tailscale name, and set Settings > Remote > Remote listener to the desktop's Tailscale address.
+The phone must reach the desktop directly. Tailscale on both devices is the simplest way: open the dev server through the desktop's Tailscale name, and set Settings > Connections > Remote listener to the desktop's Tailscale address.
 
 ### Run on an iOS simulator with Xcode 27
 
@@ -92,7 +92,7 @@ The bundle runs on Hermes, which has none of the ES2023 array methods such as `t
 
 ## Pair
 
-1. On the desktop, open Settings, Remote, and turn on Allow remote control.
+1. On the desktop, open Settings, Connections, and turn on Allow remote control.
 2. In the app, tap Scan QR code and point it at the QR code, or paste the `hinacode://connect?host=...&port=...&token=...` URL (it repeats `host` for each address the app may try) into Pairing URL and tap Connect. Opening that URL on the phone also pairs, since the app registers the `hinacode` scheme.
 
 The phone retains the thread while reconnecting and queues actions for up to a minute offline. Supported desktops deduplicate retried mutations and let the terminal attach to its existing shell and retained output.
