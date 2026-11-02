@@ -1,8 +1,10 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs"
+import { fork } from "node:child_process"
+import { once } from "node:events"
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, onTestFinished, test } from "vitest"
-import { normalizeArtifactPath } from "./artifact.ts"
+import { ArtifactSchema, normalizeArtifactPath } from "./artifact.ts"
 import { ArtifactError, MAX_ARTIFACT_BYTES, openArtifactStore } from "./store.ts"
 
 const minutes = () => {
@@ -17,6 +19,21 @@ const openTemporaryStore = () => {
 }
 
 const page = (body: string) => ({ path: "index.html", content: `<!doctype html>${body}` })
+
+const storeProcess = async (mode: "publish" | "hold", root: string, id: string) => {
+  const child = fork(new URL("./store.test.process.ts", import.meta.url), [mode, root, id], {
+    execArgv: [],
+    stdio: ["ignore", "ignore", "pipe", "ipc"],
+  })
+  const closed = once(child, "exit")
+  onTestFinished(async () => {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL")
+    await closed
+  })
+  const [ready] = await once(child, "message")
+  expect(ready).toBe("ready")
+  return { child, closed }
+}
 
 describe("normalizeArtifactPath", () => {
   test("keeps relative paths inside the artifact", () => {
@@ -77,6 +94,54 @@ describe("openArtifactStore", () => {
     const entry = await store.file(first.id, "index.html")
     const published = updates.find((update) => update.version === current?.version)
     expect(new TextDecoder().decode(entry?.bytes)).toBe(`<!doctype html>${published === updates[0] ? "a" : "b"}`)
+  })
+
+  test("publishes independent processes without deleting active writes or rolling the manifest back", async () => {
+    const store = openTemporaryStore()
+    const first = await store.publish({ title: "Chart", files: [page("v1")] })
+    const publishers = await Promise.all(
+      Array.from({ length: 11 }, () => storeProcess("publish", store.root, first.id)),
+    )
+    const outcomes = await Promise.allSettled(
+      publishers.map(({ child }, index) => {
+        const published = once(child, "message").then(([message]) => ArtifactSchema.parse(message))
+        const files = [page(`v${index}`)]
+        if (index === 0)
+          files.push(...Array.from({ length: 1000 }, (_, file) => ({ path: `assets/${file}.txt`, content: "slow" })))
+        child.send({ id: first.id, title: `Chart ${index}`, files })
+        return published
+      }),
+    )
+
+    expect(outcomes.map((outcome) => outcome.status)).toEqual(publishers.map(() => "fulfilled"))
+    const updates = outcomes.flatMap((outcome) => (outcome.status === "fulfilled" ? [outcome.value] : []))
+    const current = await store.get(first.id)
+    expect(current?.version).toBe(Math.max(...updates.map((update) => update.version)))
+    expect(new Set(updates.map((update) => update.version)).size).toBe(publishers.length)
+    for (const file of current?.files ?? []) {
+      const found = await store.file(first.id, file.path)
+      expect(found?.bytes.byteLength, file.path).toBe(file.size)
+    }
+  }, 30_000)
+
+  test("recovers an abandoned process lock and keeps the previous committed version after a partial write", async () => {
+    const store = openTemporaryStore()
+    const first = await store.publish({ title: "Chart", files: [page("v1")] })
+    const partial = join(store.root, first.id, "2")
+    mkdirSync(partial)
+    writeFileSync(join(partial, "index.html"), "incomplete")
+    const { child, closed } = await storeProcess("hold", store.root, first.id)
+    child.kill("SIGKILL")
+    await closed
+    const stale = new Date("2000-01-01T00:00:00.000Z")
+    utimesSync(join(store.root, `${first.id}.lock`), stale, stale)
+
+    const current = await store.publish({ id: first.id, title: "Chart", files: [page("v3")] })
+    expect(current.version).toBe(3)
+    expect((await store.get(first.id))?.version).toBe(3)
+    expect(new TextDecoder().decode((await store.file(first.id, "index.html"))?.bytes)).toBe("<!doctype html>v3")
+    expect(readdirSync(join(store.root, first.id)).filter((name) => /^\d+$/.test(name)).toSorted()).toEqual(["1", "3"])
+    expect(existsSync(join(store.root, `${first.id}.lock`))).toBe(false)
   })
 
   test("stores binary files from base64", async () => {
