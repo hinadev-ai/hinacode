@@ -24,6 +24,7 @@ import { DeleteDeviceDialog, deleteDeviceLabel } from "./DeleteDeviceDialog.tsx"
 import { DeviceSession, type FrameShape } from "./deviceSession.ts"
 import { DeviceScreen } from "./DeviceScreen.tsx"
 import { BookIcon } from "../../icons/BookIcon.tsx"
+import { CameraIcon } from "../../icons/CameraIcon.tsx"
 import { CursorIcon } from "../../icons/CursorIcon.tsx"
 import { HomeIcon } from "../../icons/HomeIcon.tsx"
 import type { IconComponent } from "../../icons/Icon.tsx"
@@ -176,6 +177,17 @@ export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen 
       }
     })
 
+  const saveScreenshot = () =>
+    run(async () => {
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const attachment = await callPromise("attachments.stage", {
+        threadId,
+        source: { dataUrl: canvas.toDataURL("image/png"), name: `${device.name}.png` },
+      })
+      await callPromise("shell.reveal", { path: attachment.path })
+    })
+
   const detach = () =>
     run(async () => {
       await callPromise("device.detach", { threadId, deviceId })
@@ -221,6 +233,12 @@ export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen 
           onClick={toggleAppearance}
         />
         <OpenLink onOpen={(url) => send({ kind: "openUrl", url })} />
+        <IconAction
+          icon={CameraIcon}
+          label={m.devices_screenshot_save()}
+          disabled={shape === null || pending}
+          onClick={saveScreenshot}
+        />
         <Tooltip>
           <TooltipTrigger
             render={
