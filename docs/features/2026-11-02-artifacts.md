@@ -70,6 +70,15 @@ Pages style themselves with the app's theme tokens (`--background`, `--primary`,
 
 The artifact header has an Export menu with HTML and PDF. `artifacts.export` is a desktop-only rpc: main asks where to save, then loads `hinacode-artifact://<id>/<entry>?theme=...`, so a cloud's artifact exports the same way a local one does. HTML is the entry with the current theme inserted, fetched with `net.fetch`. PDF renders the page in a hidden sandboxed window, waits for fonts and one second for scripts that draw, then calls `printToPDF`. Only the entry is exported; an artifact that links other files exports without them.
 
+### Artifacts belong to a thread
+
+The list used to hold every artifact from every thread, project and machine, with nothing to say where one came from. A developer looking for "the chart from the migration thread" scanned titles, and an agent after compaction picked an id out of everyone's artifacts.
+
+The manifest now records `threadId`, the thread whose MCP credential published it. The package takes it as a host-supplied `threadId` on `publish`, never from the agent's input, and keeps the creator's on updates, so an artifact stays where it was born. Artifacts from other harnesses have none.
+
+- The panel lists this thread's artifacts first. The rest follow under "Other threads", each row naming its thread, and the row's menu offers "Go to thread".
+- `list_artifacts` lists the calling thread's artifacts. `all: true` lists everyone's, with the thread each came from. The stdio server has no thread, so it lists everything as before.
+
 ### Delete
 
 Right-clicking an artifact in the list offers Delete. `artifacts.delete` routes to the machine that owns the id and removes the artifact's directory. The service pushes `artifact.removed`, and so does its watcher when another harness deletes a directory, so every open list drops it. There is no undo.
