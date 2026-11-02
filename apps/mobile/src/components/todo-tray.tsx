@@ -4,9 +4,11 @@ import { useState } from "react"
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import { Icon, type IconName } from "@/components/icon"
 import { FadeIn, Rotate, Spinner } from "@/components/motion"
+import { duration, rise } from "@/constants/motion"
 import { HIT, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
+import { motion } from "@/lib/motion"
 
 const ROW_HEIGHT = 28
 const VISIBLE_ROWS = 5.5
@@ -53,24 +55,37 @@ function TodoRow({ todo }: { todo: Todo }) {
   )
 }
 
+/**
+ * The agent's plan above the composer. It rises in when a plan starts while the thread is open and fades out once every
+ * step is settled and the turn has ended.
+ */
 export function TodoTray({ thread, messages }: { thread: Thread; messages: readonly Message[] }) {
   const theme = useTheme()
   const [expanded, setExpanded] = useState(false)
   const todos = latestTodos(messages)
   const done = todos.filter((todo) => todo.status === "completed").length
   const settled = todos.every((todo) => todo.status === "completed" || todo.status === "cancelled")
-  if (todos.length === 0 || (settled && !isThreadBusy(thread.status))) return null
+  const shown = todos.length > 0 && !(settled && !isThreadBusy(thread.status))
+  const [shownOnOpen, setShownOnOpen] = useState(shown)
+  if (shownOnOpen && !shown) setShownOnOpen(false)
+  if (!shown) return null
   const current = todos.find((todo) => todo.status === "in_progress") ?? todos.find((todo) => todo.status === "pending")
   const progress = copy("mobile_chat_todos_progress", { done: String(done), total: String(todos.length) })
 
   return (
-    <View testID="todo-tray" style={[styles.tray, { borderColor: theme.border, backgroundColor: theme.background }]}>
+    <motion.View
+      testID="todo-tray"
+      initial={!shownOnOpen && rise.initial}
+      animate={rise.animate}
+      exit={{ opacity: 0, transition: { duration: duration.fast } }}
+      style={[styles.tray, { borderColor: theme.border, backgroundColor: theme.background }]}
+    >
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${copy("mobile_chat_todos_label")}, ${progress}`}
         aria-expanded={expanded}
         onPress={() => setExpanded(!expanded)}
-        style={styles.header}
+        style={({ pressed }) => [styles.header, pressed && { backgroundColor: theme.surface }]}
       >
         <Text style={[styles.progress, { color: theme.textMuted }]}>{progress}</Text>
         {!expanded && current !== undefined && (
@@ -100,7 +115,7 @@ export function TodoTray({ thread, messages }: { thread: Thread; messages: reado
           </ScrollView>
         </FadeIn>
       )}
-    </View>
+    </motion.View>
   )
 }
 
