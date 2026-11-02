@@ -700,6 +700,23 @@ describe("worktree ownership", () => {
     ),
   )
 
+  it.live("forks a new branch when the project root has the requested branch checked out", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        git(root, "switch", "-q", "-c", "feat/artifact")
+        git(root, "commit", "-q", "--allow-empty", "-m", "root work")
+
+        const worktree = yield* Worktrees.use((worktrees) =>
+          worktrees.create({ projectId, branch: "feat/artifact", baseRef: "main" }),
+        )
+        expect(worktree.branch).toMatch(/^feat\/artifact-[0-9a-f]{5}$/)
+        expect(git(worktree.path, "branch", "--show-current").trim()).toBe(worktree.branch)
+        expect(git(worktree.path, "rev-parse", "HEAD")).toBe(git(root, "rev-parse", "feat/artifact"))
+        expect(git(root, "branch", "--show-current").trim()).toBe("feat/artifact")
+      }),
+    ),
+  )
+
   it.live("puts new checkouts in the worktree root setting, in a folder named after the project", () =>
     withRepo(({ root, projectId }) =>
       Effect.gen(function* () {
