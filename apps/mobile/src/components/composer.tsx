@@ -11,6 +11,7 @@ import { completionAt, type Suggestion, suggestionsFor } from "@shared/composerS
 import type { RpcRequest } from "@shared/contract.ts"
 import { AccessMode, isThreadBusy, type Settings, type Thread, toCheckoutTarget } from "@shared/domain.ts"
 import { type AccountOption, accountOptions, formatResetIn } from "@shared/planLimits.ts"
+import { providerInfo } from "@shared/providers.ts"
 import { mentionableThreads } from "@shared/threadMention.ts"
 import { useEffect, useRef, useState } from "react"
 import {
@@ -144,6 +145,7 @@ export function Composer({ thread }: { thread: Thread }) {
   const unstarted = useUnstarted(thread)
   const server = useThreadServer(thread.id)?.id
   const busy = isThreadBusy(thread.status)
+  const steers = providerInfo[thread.provider].steersRunningTurn
   const wantsFiles = completionAt(text, Math.min(caret, text.length))?.trigger === "@"
   const completions = useCompletions(thread, busy, wantsFiles, setError)
   const { commands, files, threads } = completions
@@ -175,7 +177,7 @@ export function Composer({ thread }: { thread: Thread }) {
     try {
       await useDrafts.getState().trackSending(thread.id, prompt || attachments.map(({ name }) => name).join(", "), () =>
         busy
-          ? call("threads.steer", { threadId: thread.id, text: prompt, attachments })
+          ? call(steers ? "threads.steer" : "threads.queue", { threadId: thread.id, text: prompt, attachments })
           : call("threads.send", {
               threadId: thread.id,
               prompt,
@@ -271,7 +273,11 @@ export function Composer({ thread }: { thread: Thread }) {
           }}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          placeholder={busy ? copy("mobile_composer_steer_placeholder") : copy("mobile_composer_placeholder")}
+          placeholder={
+            busy
+              ? copy(steers ? "mobile_composer_steer_placeholder" : "mobile_composer_queue_placeholder")
+              : copy("mobile_composer_placeholder")
+          }
           placeholderTextColor={theme.textMuted}
           multiline
           style={[styles.input, { color: theme.text }]}
@@ -282,7 +288,13 @@ export function Composer({ thread }: { thread: Thread }) {
             <SettingsChip thread={thread} onError={setError} />
             {unstarted && <WorkspaceChip thread={thread} onError={setError} />}
           </View>
-          <SendButton busy={busy} hasDraft={hasDraft && !staging} onSend={() => void send()} onStop={stop} />
+          <SendButton
+            busy={busy}
+            steers={steers}
+            hasDraft={hasDraft && !staging}
+            onSend={() => void send()}
+            onStop={stop}
+          />
         </View>
       </View>
       {error !== null && (
@@ -453,21 +465,23 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
   }
 }
 
-/** While the agent runs, an empty composer offers Stop and a draft offers Steer. */
+/** While the agent runs, an empty composer offers Stop and a draft offers Steer, or Queue if the agent can't steer. */
 function SendButton({
   busy,
+  steers,
   hasDraft,
   onSend,
   onStop,
 }: {
   busy: boolean
+  steers: boolean
   hasDraft: boolean
   onSend: () => void
   onStop: () => void
 }) {
   const theme = useTheme()
   const stopping = busy && !hasDraft
-  const action = stopping ? "stop" : busy ? "steer" : "send"
+  const action = stopping ? "stop" : busy ? (steers ? "steer" : "queue") : "send"
   const label = copy(`mobile_composer_${action}`)
   const disabled = !stopping && !hasDraft
   const halo = action === "send" && hasDraft
@@ -547,9 +561,11 @@ const providers: Record<ProviderId, { label: string; icon: IconName }> = {
   claude: { label: copy("mobile_provider_claude"), icon: "RiClaudeFill" },
   codex: { label: copy("mobile_provider_codex"), icon: "RiOpenaiFill" },
   muse: { label: copy("mobile_provider_muse"), icon: "RiMetaFill" },
+  opencode: { label: copy("mobile_provider_opencode"), icon: "OpencodeMark" },
 }
 
 const effortLabels: Record<string, string> = {
+  none: copy("mobile_composer_effort_none"),
   minimal: copy("mobile_composer_effort_minimal"),
   low: copy("mobile_composer_effort_low"),
   medium: copy("mobile_composer_effort_medium"),
@@ -573,6 +589,7 @@ const supervisedHints: Record<ProviderId, string> = {
   claude: copy("mobile_settings_access_supervised_hint"),
   codex: copy("mobile_composer_access_supervised_codex"),
   muse: copy("mobile_composer_access_supervised_muse"),
+  opencode: copy("mobile_composer_access_supervised_opencode"),
 }
 
 const autoHints: Record<ProviderId, (model: ModelInfo | undefined) => string> = {
@@ -580,6 +597,7 @@ const autoHints: Record<ProviderId, (model: ModelInfo | undefined) => string> = 
     model?.autoMode ? copy("mobile_composer_access_auto_claude") : copy("mobile_composer_access_auto_claude_edits"),
   codex: () => copy("mobile_composer_access_auto_codex"),
   muse: () => copy("mobile_composer_access_auto_muse"),
+  opencode: () => copy("mobile_composer_access_auto_opencode"),
 }
 
 const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | undefined) => {
@@ -593,8 +611,8 @@ const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | u
   }
 }
 
-/** Muse Code has no way to leave out the user's own skills. */
-const hidesUserSkills: Record<ProviderId, boolean> = { claude: true, codex: true, muse: false }
+/** Muse Code and opencode have no way to leave out the user's own skills. */
+const hidesUserSkills: Record<ProviderId, boolean> = { claude: true, codex: true, muse: false, opencode: false }
 
 interface ServerOptions {
   readonly profiles: readonly AgentProfile[]

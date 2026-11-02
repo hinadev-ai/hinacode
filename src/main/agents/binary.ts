@@ -2,6 +2,7 @@ import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { Effect } from "effect"
 import type { ProviderId } from "../../shared/agent.ts"
+import { providerInfo } from "../../shared/providers.ts"
 import { AgentError } from "./provider.ts"
 
 const execFileAsync = promisify(execFile)
@@ -15,12 +16,6 @@ export const findBinary = async (name: string): Promise<string | undefined> => {
   }
 }
 
-const install: Record<ProviderId, string> = {
-  claude: "Claude Code is not installed. Install it from https://code.claude.com/docs/en/setup",
-  codex: "Codex is not installed. Install it from https://learn.chatgpt.com/docs/codex/cli",
-  muse: "Muse Code is not installed. Install it from https://dev.meta.ai/docs/muse-code",
-}
-
 const found = new Map<string, string>()
 
 export const installedBinary = (provider: ProviderId, name: string) =>
@@ -28,7 +23,11 @@ export const installedBinary = (provider: ProviderId, name: string) =>
     const key = `${name}\0${process.env["PATH"] ?? ""}`
     const path = found.get(key) ?? (yield* Effect.promise(() => findBinary(name)))
     if (path === undefined) {
-      return yield* new AgentError({ provider, message: `${install[provider]}, then try again` })
+      const { name: label, installUrl } = providerInfo[provider]
+      return yield* new AgentError({
+        provider,
+        message: `${label} is not installed. Install it from ${installUrl}, then try again`,
+      })
     }
     found.set(key, path)
     return path

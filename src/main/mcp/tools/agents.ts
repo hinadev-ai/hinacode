@@ -7,7 +7,7 @@ import * as McpTool from "./tool.ts"
 export const AgentTools = Toolkit.make(
   McpTool.make(RUN_AGENT_TOOL, {
     description:
-      "Run a sub-agent on any provider HinaCode supports, such as Codex from a Claude thread, through its SDK in this thread's workspace. Use it instead of running the `codex` or `claude` CLI in a shell. It shows in this thread's Agents tab, where the user can watch and stop it, and this call waits for it to finish and returns its final reply. Defaults to that provider's first model, or this thread's model on the same provider.",
+      "Run a sub-agent on any provider HinaCode supports, such as Codex from a Claude thread, through its SDK in this thread's workspace. Use it instead of running the `codex` or `claude` CLI in a shell. It shows in this thread's Agents tab, where the user can watch and stop it, and this call waits for it to finish and returns its final reply. Defaults to that provider's first model, or this thread's model on the same provider. opencode runs only the models the user picked for it in Settings, and the error lists them.",
     parameters: Schema.Struct({
       provider: ProviderId,
       description: Schema.String.annotate({ description: "A few words shown as the sub-agent's label." }),

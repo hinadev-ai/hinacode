@@ -15,6 +15,7 @@ import { defaultSettings } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
+import { OpencodeProvider } from "../agents/opencode/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { layer as RemoteAccessLayer } from "../remote/access.ts"
@@ -129,6 +130,7 @@ const stubs = Layer.mergeAll(
   Layer.succeed(ClaudeProvider, fakeProvider("claude")),
   Layer.succeed(CodexProvider, fakeProvider("codex")),
   Layer.succeed(MuseProvider, fakeProvider("muse")),
+  Layer.succeed(OpencodeProvider, fakeProvider("opencode")),
   Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) }),
   Layer.succeed(
     Peers,
@@ -470,6 +472,41 @@ layer(testLayer)("run_agent", (it) => {
       expect(result).toMatchObject({ isError: true, text: "The user stopped this agent." })
       expect((yield* runner.subagents(a)).find((subagent) => subagent.id === running.id)?.status).toBe("stopped")
       expect((yield* runner.transcript(a)).messages.at(-1)?.completedAt).toBeNull()
+      yield* runner.interrupt(a)
+    }),
+  )
+
+  it.effect("runs opencode only on a model the user picked, and names them when it refuses", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const mcp = yield* McpCredentials
+      const settings = yield* Settings.Settings
+      const { a } = yield* Seeded
+      const connection = yield* mcp.connectionFor(a)
+      const ask = (model?: string) =>
+        callAs(connection, "run_agent", {
+          provider: "opencode",
+          description: "Cheap pass",
+          prompt: "Reply Looks good.",
+          ...(model !== undefined && { model }),
+        })
+      yield* runner.send(a, "hi", [])
+
+      expect(yield* ask()).toMatchObject({
+        isError: true,
+        text: "The user has not picked any opencode models for sub-agents. Ask them to pick some in Settings, Providers, opencode, Models in the picker.",
+      })
+      yield* settings.set({
+        modelPresets: { ...defaultSettings.modelPresets, opencode: ["openrouter/a", "openrouter/b"] },
+      })
+      expect(yield* ask("openrouter/z")).toMatchObject({
+        isError: true,
+        text: "openrouter/z is not among the opencode models the user picked. Use one of: openrouter/a, openrouter/b.",
+      })
+      turnInputs.length = 0
+      expect(yield* ask()).toMatchObject({ isError: false })
+      expect(turnInputs.at(-1)).toMatchObject({ model: "openrouter/a" })
+      yield* settings.set({ modelPresets: defaultSettings.modelPresets })
       yield* runner.interrupt(a)
     }),
   )

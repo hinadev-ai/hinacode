@@ -1,10 +1,9 @@
 import type { ProviderId } from "../../shared/agent.ts"
 import type { Message, MessagePart } from "../../shared/domain.ts"
+import { providerInfo } from "../../shared/providers.ts"
 
 const HANDOFF_TOKENS = 16_000
 const TOOL_INPUT_LIMIT = 200
-
-const agentName: Record<ProviderId, string> = { claude: "Claude Code", codex: "Codex", muse: "Muse Code" }
 
 const estimateTokens = (text: string) => Math.ceil(Buffer.byteLength(text) / 3)
 
@@ -40,7 +39,7 @@ const renderSaid = (part: MessagePart): string | null => {
     case "attachment":
       return `[attachment ${part.attachment.name} at ${part.attachment.path}]`
     case "agent_switch":
-      return `[the conversation moved from ${agentName[part.from]} to ${agentName[part.to]} here]`
+      return `[the conversation moved from ${providerInfo[part.from].name} to ${providerInfo[part.to].name} here]`
     default:
       return null
   }
@@ -126,8 +125,8 @@ export function handoffPrompt(input: {
 }): string {
   const origin =
     input.from === input.to
-      ? `This conversation ran in an earlier ${agentName[input.to]} session that you cannot resume.`
-      : `This conversation started with ${agentName[input.from]} and continues with you. Tool names below are ${agentName[input.from]}'s and may differ from yours.`
+      ? `This conversation ran in an earlier ${providerInfo[input.to].name} session that you cannot resume.`
+      : `This conversation started with ${providerInfo[input.from].name} and continues with you. Tool names below are ${providerInfo[input.from].name}'s and may differ from yours.`
   return [
     "<conversation_handoff>",
     [
