@@ -17,7 +17,9 @@ const bridge: HinacodeBridge = {
       return { result: Schema.encodeSync(RpcMethods["clientSettings.get"].response)(defaultClientSettings) }
     if (method === "threads.interrupt") return { result: undefined }
     if (method === "attachments.stage")
-      return { result: { id: "a-1", name: "notes.txt", path: "/tmp/notes.txt", mime: "text/plain", kind: "file", bytes: 1 } }
+      return {
+        result: { id: "a-1", name: "notes.txt", path: "/tmp/notes.txt", mime: "text/plain", kind: "file", bytes: 1 },
+      }
     return { error: { tag: "NotStubbed", message: method } }
   },
   onEvent: () => () => {},
