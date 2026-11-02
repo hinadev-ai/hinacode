@@ -174,7 +174,7 @@ const make = (options: InstantVmsOptions) =>
           const environment = yield* environments
             .add({
               name: `boat-${label}`,
-              pairingUrl: pairingUrl({ hosts: [hosted], port: 443, token: guest.token, relay: hosted }),
+              pairingUrl: pairingUrl({ hosts: [hosted], port: 443, token: guest.token, relay: null }),
             })
             .pipe(Effect.mapError(failWith("pairing the VM")))
           yield* writeJson(options.sandboxesPath, { ...(yield* readSandboxes), [environment.id]: id })

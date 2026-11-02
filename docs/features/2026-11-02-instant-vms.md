@@ -24,7 +24,7 @@ boat.dev already backs Tiny VM. A boat sandbox is an Ubuntu VM with Node, both a
 2. `npm install -g hinacode`. `HINACODE_INSTANT_VM_PACKAGE` points at a local tarball to install instead, for running a branch.
 3. Start `hinacode serve` bound to `127.0.0.1:47821` as a detached boat command, then poll `hinacode pair` for its pairing URL.
 4. `POST /sandboxes/{id}/host` with `public` and `localhost` gives `https://<sandbox>-47821.on.boat.dev`. HinaCode's own token and challenge protect the socket, so the boat cookie gate is not needed.
-5. Pair it through `Environments.add`, with the boat hostname as the relay route (`wss://<host>/remote`).
+5. Pair it through `Environments.add` as host `<sandbox>-47821.on.boat.dev` on port 443. A remote on port 443 is dialed over TLS (`wss://<host>/remote`), since nothing serves plain WebSockets there.
 6. `projects.clone` on the new machine, then `create_thread` continues as for any other machine.
 7. When this machine has a device hub with a relay hostname, the VM links the same hub, so an agent in a boat VM can drive the Mac's simulator.
 

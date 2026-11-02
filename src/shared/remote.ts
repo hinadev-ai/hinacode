@@ -118,8 +118,12 @@ export const pairingUrl = ({ hosts, port, token, relay }: PairingTarget) => {
   return url.toString()
 }
 
-export const remoteWebSocketUrl = ({ host, port }: { readonly host: string; readonly port: number }) =>
-  `ws://${host.includes(":") ? `[${host}]` : host}:${port}${REMOTE_PATH}`
+const TLS_PORT = 443
+
+export const remoteWebSocketUrl = ({ host, port }: { readonly host: string; readonly port: number }) => {
+  const authority = host.includes(":") ? `[${host}]` : host
+  return port === TLS_PORT ? `wss://${authority}${REMOTE_PATH}` : `ws://${authority}:${port}${REMOTE_PATH}`
+}
 
 // FIXME: Cloudflare serves a tunnel on port 443 only
 export const relayWebSocketUrl = (relay: string) => `wss://${relay}${REMOTE_PATH}`
