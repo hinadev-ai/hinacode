@@ -161,6 +161,10 @@ export const RpcMethods = {
     }),
     Schema.NullOr(PickedDeviceElement),
   ),
+  "device.screenshot.save": rpc(
+    Schema.Struct({ threadId: Schema.String, dataUrl: Schema.String, name: Schema.String }),
+    Attachment,
+  ),
   "app.ready": rpc(Schema.Void, Schema.Void),
   "app.focus": rpc(Schema.Void, Schema.Void),
   "windows.openPullRequest": rpc(Schema.Struct({ threadId: Schema.String, url: Schema.String }), Schema.Void),
@@ -612,6 +616,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "device.command": "mutation",
   "device.control": "mutation",
   "device.pick": "mutation",
+  "device.screenshot.save": "mutation",
   "app.ready": "mutation",
   "app.focus": "mutation",
   "windows.openPullRequest": "mutation",
@@ -787,6 +792,7 @@ export const mutations: ReadonlySet<string> = new Set(
 )
 
 export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
+  "device.screenshot.save",
   "app.ready",
   "app.focus",
   "windows.openPullRequest",
