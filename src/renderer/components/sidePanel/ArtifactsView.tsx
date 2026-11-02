@@ -1,5 +1,7 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
+import { RiDownload2Line } from "react-icons/ri"
+import { toast } from "sonner"
 import type { Artifact } from "../../../shared/artifact.ts"
 import { artifactUrl } from "../../../shared/channels.ts"
 import type { Thread } from "../../../shared/domain.ts"
@@ -7,13 +9,14 @@ import { environmentName, useClouds } from "../../lib/environments.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { formatRelativeTime } from "../../lib/relativeTime.ts"
 import { useArtifactTheme } from "../../lib/artifactTheme.ts"
-import { artifactsAtom } from "../../lib/rpc.ts"
+import { artifactsAtom, callPromise } from "../../lib/rpc.ts"
 import { useNow } from "../../lib/useNow.ts"
 import { m } from "../../paraglide/messages.js"
 import { getLocale } from "../../paraglide/runtime.js"
 import { useArtifacts } from "../../stores/artifacts.ts"
 import { ArrowLeftIcon } from "../icons/ArrowLeftIcon.tsx"
 import { Button } from "../ui/button.tsx"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu.tsx"
 import { SkeletonList } from "../ui/skeleton.tsx"
 import { ViewBody } from "./Section.tsx"
 
@@ -40,11 +43,36 @@ export function ArtifactsHeader({ thread }: { thread: Thread }) {
       >
         <ArrowLeftIcon aria-hidden />
       </Button>
-      <h2 className="truncate text-sm font-medium">{selected.title}</h2>
+      <h2 className="min-w-0 flex-1 truncate text-sm font-medium">{selected.title}</h2>
+      <ExportMenu artifact={selected} />
     </div>
   )
 }
 
+function ExportMenu({ artifact }: { artifact: Artifact }) {
+  const theme = useArtifactTheme()
+  const save = (format: "html" | "pdf") =>
+    callPromise("artifacts.export", { id: artifact.id, entry: artifact.entry, title: artifact.title, format, theme })
+      .then((path) => {
+        if (path !== null) toast(m.artifacts_exported({ path }))
+      })
+      .catch((cause: unknown) => toast.error(m.artifacts_export_failed({ message: errorMessage(cause) })))
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button variant="ghost" size="icon-sm" aria-label={m.artifacts_export()} title={m.artifacts_export()} />
+        }
+      >
+        <RiDownload2Line aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => void save("html")}>{m.artifacts_export_html()}</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => void save("pdf")}>{m.artifacts_export_pdf()}</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
 
 export function ArtifactsView({ thread }: { thread: Thread }) {
   const selected = useSelectedArtifact(thread.id)

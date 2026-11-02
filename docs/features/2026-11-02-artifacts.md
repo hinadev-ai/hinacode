@@ -64,6 +64,10 @@ The store root is `$HINACODE_ARTIFACTS` or `~/.hinacode/artifacts`, which is the
 
 Pages style themselves with the app's theme tokens (`--background`, `--primary`, `--graph-lane-1`, ...), listed in `THEME_TOKENS` in `src/shared/artifactTheme.ts`. The renderer reads their computed values from whatever theme is applied and passes them as `?theme=` on the frame URL. The protocol handler decodes them and inserts a `<style>` on `:root` into every HTML response, so a new theme needs no change here; only exposing a new token does. HinaCode appends the token guide to `publish_artifact`'s description when it registers the tool. The package knows nothing about the theme, so `hinacode-artifacts serve` shows pages unthemed. A theme switch changes the URL, so the page reloads. A frame's own `prefers-color-scheme` follows the OS, not the app, so the guide tells agents not to write one.
 
+### Export
+
+The artifact header has an Export menu with HTML and PDF. `artifacts.export` is a desktop-only rpc: main asks where to save, then loads `hinacode-artifact://<id>/<entry>?theme=...`, so a cloud's artifact exports the same way a local one does. HTML is the entry with the current theme inserted, fetched with `net.fetch`. PDF renders the page in a hidden sandboxed window, waits for fonts and one second for scripts that draw, then calls `printToPDF`. Only the entry is exported; an artifact that links other files exports without them.
+
 The trust boundary is the frame. Artifact HTML is agent output and is treated as hostile: no same origin, no `rpc`, no navigation of the app.
 
 ## Out of scope

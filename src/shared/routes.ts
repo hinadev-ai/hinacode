@@ -48,6 +48,7 @@ export const routes: Record<RpcMethod, Route> = {
   "app.setColorScheme": client,
   "dialog.pickFolder": client,
   "dialog.pickFiles": client,
+  "artifacts.export": client,
   "shell.reveal": client,
   "shell.openers": client,
   "shell.openWith": client,

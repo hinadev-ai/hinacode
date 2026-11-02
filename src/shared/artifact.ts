@@ -14,3 +14,12 @@ export const Artifact = Schema.Struct({
   environmentId: Schema.optionalKey(Schema.String),
 })
 export type Artifact = typeof Artifact.Type
+
+export const ArtifactExportRequest = Schema.Struct({
+  id: Schema.String,
+  entry: Schema.String,
+  title: Schema.String,
+  format: Schema.Literals(["html", "pdf"]),
+  theme: Schema.String,
+})
+export type ArtifactExportRequest = typeof ArtifactExportRequest.Type

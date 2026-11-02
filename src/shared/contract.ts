@@ -1,5 +1,5 @@
 import { Schema, Struct } from "effect"
-import { Artifact } from "./artifact.ts"
+import { Artifact, ArtifactExportRequest } from "./artifact.ts"
 import {
   AccountLimits,
   AccountProviderId,
@@ -563,6 +563,7 @@ export const RpcMethods = {
     Schema.Struct({ id: Schema.String, path: Schema.String }),
     Schema.Struct({ dataUrl: Schema.String }),
   ),
+  "artifacts.export": rpc(ArtifactExportRequest, Schema.NullOr(Schema.String)),
   "automations.create": rpc(
     AutomationInput,
     Schema.Struct({ automation: Automation, secret: Schema.NullOr(Schema.String) }),
@@ -771,6 +772,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "automations.list": "read",
   "artifacts.list": "read",
   "artifacts.file": "read",
+  "artifacts.export": "mutation",
   "automations.create": "mutation",
   "automations.update": "mutation",
   "automations.delete": "mutation",
@@ -801,6 +803,7 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "app.setColorScheme",
   "dialog.pickFolder",
   "dialog.pickFiles",
+  "artifacts.export",
   "shell.reveal",
   "shell.openers",
   "shell.openWith",
