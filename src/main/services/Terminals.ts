@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto"
+import { userInfo } from "node:os"
 import * as pty from "node-pty"
 import { Context, Effect, Layer, Schema } from "effect"
 import type { PushEvent } from "../../shared/contract.ts"
@@ -16,6 +17,17 @@ export class TerminalError extends Schema.TaggedError<TerminalError>()("Terminal
 const FLUSH_INTERVAL_MS = 16
 const FLUSH_SIZE = 256 * 1024
 const SCROLLBACK_BYTES = 256 * 1024
+
+export const terminalShell = (env: NodeJS.ProcessEnv, accountShell: string | null) =>
+  env["SHELL"] || accountShell || "/bin/sh"
+
+const loginShell = () => {
+  try {
+    return userInfo().shell
+  } catch {
+    return null
+  }
+}
 
 interface Live {
   session: TerminalSession
@@ -94,7 +106,7 @@ const make = Effect.gen(function* () {
   const open = ({ threadId, cols, rows, command }: OpenTerminal) =>
     Effect.gen(function* () {
       const { cwd, rootPath, branch } = yield* activeWorkspace(threadId)
-      const shell = process.env["SHELL"] || "/bin/zsh"
+      const shell = terminalShell(process.env, loginShell())
       const proc = yield* Effect.try({
         try: () =>
           pty.spawn(shell, ["-l"], {
