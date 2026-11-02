@@ -48,12 +48,14 @@ const themeStyle = ({ scheme, tokens }: ArtifactTheme) =>
 const HEAD = /<head(?:\s[^>]*)?>/i
 const DOCTYPE = /^\s*<!doctype[^>]*>/i
 
-export const injectArtifactTheme = (html: string, theme: ArtifactTheme) => {
-  const style = `<style id="hinacode-theme">${themeStyle(theme)}</style>`
+export const insertAtHeadStart = (html: string, snippet: string) => {
   const anchor = HEAD.exec(html) ?? DOCTYPE.exec(html)
-  if (anchor === null) return style + html
+  if (anchor === null) return snippet + html
   const at = anchor.index + anchor[0].length
-  return html.slice(0, at) + style + html.slice(at)
+  return html.slice(0, at) + snippet + html.slice(at)
 }
+
+export const injectArtifactTheme = (html: string, theme: ArtifactTheme) =>
+  insertAtHeadStart(html, `<style id="hinacode-theme">${themeStyle(theme)}</style>`)
 
 export const ARTIFACT_THEME_GUIDE = `HinaCode sets its theme on :root and paints html with --background, --foreground and a system font. Tokens: ${THEME_TOKENS.join(", ")}. --working is the brand violet, --attention a warning, and --graph-lane-1 to 5 are chart series. Color everything through these, for example --accent: var(--working) or color-mix(in oklab, var(--success) 15%, var(--background)). No literal colors and no prefers-color-scheme blocks: the app theme can differ from the OS.`

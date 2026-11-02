@@ -1779,6 +1779,20 @@
   "artifacts_back": "アーティファクト一覧に戻る",
   "artifacts_loading": "アーティファクトを読み込み中…",
   "artifacts_empty": "アーティファクトはまだありません",
+  "artifacts_page_loading": "アーティファクトを読み込み中…",
+  "artifacts_version": "v{version}",
+  "artifacts_problems": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "このページで {count} 件の問題",
+        "countPlural=other": "このページで {count} 件の問題"
+      }
+    }
+  ],
+  "artifacts_ask_to_fix": "エージェントに修正を依頼",
+  "artifacts_fix_prompt": "アーティファクト「{title}」（{id}）がサイドパネルで次の問題を報告しました:\n{problems}\n修正して、もう一度公開してください。",
   "artifacts_failed": "アーティファクト一覧を取得できませんでした：{message}",
   "artifacts_updated_on": "{time}、{machine}",
   "artifacts_delete": "削除",
