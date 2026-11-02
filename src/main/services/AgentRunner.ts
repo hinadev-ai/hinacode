@@ -491,7 +491,9 @@ const make = Effect.gen(function* () {
                   ...received,
                   forkPoint: { ...received.forkPoint, owner: { provider: provider.id, accountId: thread.accountId } },
                 }
-              : received
+              : received.type === "turn_failed" && (yield* Deferred.isDone(stop))
+                ? { ...received, stopped: true }
+                : received
         if (event.type === "subagent_updated") return yield* updateSubagent(thread.id, event.subagent)
         yield* deltas.offer(event)
       }).pipe(exclusive(thread.id))
