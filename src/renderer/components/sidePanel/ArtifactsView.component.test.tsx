@@ -5,6 +5,7 @@ import type { Artifact } from "../../../shared/artifact.ts"
 import type { HinacodeBridge, PushEvent } from "../../../shared/contract.ts"
 import type { Environments, Thread } from "../../../shared/domain.ts"
 import "../../index.css"
+import { useArtifacts } from "../../stores/artifacts.ts"
 import { ArtifactsHeader, ArtifactsView } from "./ArtifactsView.tsx"
 
 const artifact = (id: string, title: string, version: number, updatedAt: string, environmentId?: string): Artifact => ({
@@ -40,9 +41,15 @@ const environments: Environments = {
   ],
 }
 
+const deleted: Array<{ payload: unknown; environment: string | undefined }> = []
+
 const bridge: HinacodeBridge = {
-  rpc: async (method) => {
+  rpc: async (method, payload, environment) => {
     if (method === "artifacts.list") return { result: artifacts }
+    if (method === "artifacts.delete") {
+      deleted.push({ payload, environment })
+      return { result: undefined }
+    }
     if (method === "environments.list") return { result: environments }
     return { error: { tag: "NotStubbed", message: method } }
   },
@@ -100,4 +107,13 @@ test("passes the app theme to the frame and follows a theme switch", async () =>
   onTestFinished(() => document.documentElement.classList.remove("dark"))
   await expect.poll(() => theme().scheme).toBe("dark")
   expect(theme().tokens["--background"]).toBe("oklch(0.145 0 0)")
+})
+
+test("deletes an artifact from its context menu on the machine that holds it", async () => {
+  useArtifacts.getState().select(thread.id, null)
+  await render(<ArtifactsView thread={thread} />)
+  await page.getByRole("button", { name: /Release notes/ }).click({ button: "right" })
+  await page.getByRole("menuitem", { name: "Delete" }).click()
+
+  await expect.poll(() => deleted).toEqual([{ payload: { id: "newer" }, environment: "cloud-1" }])
 })

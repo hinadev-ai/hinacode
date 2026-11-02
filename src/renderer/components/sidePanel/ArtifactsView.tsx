@@ -15,7 +15,9 @@ import { m } from "../../paraglide/messages.js"
 import { getLocale } from "../../paraglide/runtime.js"
 import { useArtifacts } from "../../stores/artifacts.ts"
 import { ArrowLeftIcon } from "../icons/ArrowLeftIcon.tsx"
+import { TrashIcon } from "../icons/TrashIcon.tsx"
 import { Button } from "../ui/button.tsx"
+import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../ui/context-menu.tsx"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu.tsx"
 import { SkeletonList } from "../ui/skeleton.tsx"
 import { ViewBody } from "./Section.tsx"
@@ -132,20 +134,34 @@ function ArtifactRow({ threadId, artifact }: { threadId: string; artifact: Artif
   const clouds = useClouds()
   const now = useNow()
   const updated = formatRelativeTime(artifact.updatedAt, now, getLocale())
+  const remove = () =>
+    callPromise("artifacts.delete", { id: artifact.id }, { environment: artifact.environmentId })
+      .then(() => toast(m.artifacts_deleted({ title: artifact.title })))
+      .catch((cause: unknown) =>
+        toast.error(m.artifacts_delete_failed({ title: artifact.title, message: errorMessage(cause) })),
+      )
   return (
-    <li>
-      <button
-        type="button"
-        onClick={() => select(threadId, artifact.id)}
-        className="flex w-full min-w-0 flex-col gap-0.5 rounded-md px-2 py-1.5 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <span className="truncate text-sm">{artifact.title}</span>
-        <span className="truncate text-xs text-muted-foreground">
-          {artifact.environmentId === undefined
-            ? updated
-            : m.artifacts_updated_on({ time: updated, machine: environmentName(artifact.environmentId, clouds) })}
-        </span>
-      </button>
-    </li>
+    <ContextMenu>
+      <ContextMenuTrigger render={<li />}>
+        <button
+          type="button"
+          onClick={() => select(threadId, artifact.id)}
+          className="flex w-full min-w-0 flex-col gap-0.5 rounded-md px-2 py-1.5 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span className="truncate text-sm">{artifact.title}</span>
+          <span className="truncate text-xs text-muted-foreground">
+            {artifact.environmentId === undefined
+              ? updated
+              : m.artifacts_updated_on({ time: updated, machine: environmentName(artifact.environmentId, clouds) })}
+          </span>
+        </button>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <DropdownMenuItem variant="destructive" onClick={() => void remove()}>
+          <TrashIcon aria-hidden />
+          {m.artifacts_delete()}
+        </DropdownMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }

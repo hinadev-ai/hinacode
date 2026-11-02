@@ -137,4 +137,18 @@ describe("openArtifactStore", () => {
     expect(await store.file(artifact.id, "../artifact.json")).toBeNull()
     expect(await store.file("../escape", "index.html")).toBeNull()
   })
+
+  test("removes an artifact and refuses ids it does not hold", async () => {
+    const store = openTemporaryStore()
+    const kept = await store.publish({ title: "Kept", files: [page("")] })
+    const removed = await store.publish({ title: "Removed", files: [page("")] })
+    mkdirSync(join(store.root, "stray"))
+
+    expect(await store.remove(removed.id)).toBe(true)
+    expect(existsSync(join(store.root, removed.id))).toBe(false)
+    expect((await store.list()).map((artifact) => artifact.id)).toEqual([kept.id])
+
+    for (const id of [removed.id, "stray", "..", "../escape"]) expect(await store.remove(id), id).toBe(false)
+    expect(existsSync(join(store.root, "stray"))).toBe(true)
+  })
 })

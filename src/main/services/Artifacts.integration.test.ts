@@ -60,4 +60,30 @@ describe("Artifacts", () => {
       expect(missing._tag).toBe("NotFoundError")
     }),
   )
+
+  it.live("pushes artifact.removed once, whether HinaCode or another harness deletes it", () =>
+    Effect.gen(function* () {
+      const root = mkdtempSync(join(tmpdir(), "kk-artifacts-"))
+      const elsewhere = openArtifactStore(root)
+      const ours = yield* Effect.promise(() => elsewhere.publish(page("Ours", "<p>1</p>")))
+      const theirs = yield* Effect.promise(() => elsewhere.publish(page("Theirs", "<p>2</p>")))
+
+      const [removals, missing] = yield* withArtifacts(root, (pushes) =>
+        Effect.gen(function* () {
+          yield* Artifacts.use((artifacts) => artifacts.remove(ours.id))
+          yield* Effect.promise(() => elsewhere.remove(theirs.id))
+          const pushed = [yield* Queue.take(pushes), yield* Queue.take(pushes)]
+          yield* Effect.sleep("200 millis")
+          const missing = yield* Effect.flip(Artifacts.use((artifacts) => artifacts.remove(ours.id)))
+          return [[...pushed, ...(yield* Queue.clear(pushes))], missing] as const
+        }),
+      )
+
+      expect(removals).toEqual([
+        { type: "artifact.removed", id: ours.id },
+        { type: "artifact.removed", id: theirs.id },
+      ])
+      expect(missing._tag).toBe("NotFoundError")
+    }),
+  )
 })

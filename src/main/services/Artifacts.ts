@@ -18,6 +18,7 @@ export class Artifacts extends Context.Service<
     readonly list: Effect.Effect<ReadonlyArray<Artifact>>
     readonly file: (id: string, path: string) => Effect.Effect<ArtifactFileBytes | null>
     readonly preview: (id: string, path: string) => Effect.Effect<{ readonly dataUrl: string }, NotFoundError>
+    readonly remove: (id: string) => Effect.Effect<void, NotFoundError>
   }
 >()("hinacode/Artifacts") {}
 
@@ -33,9 +34,14 @@ const make = (root: string) =>
     const announced = new Map<string, string>()
     const timers = new Map<string, ReturnType<typeof setTimeout>>()
 
+    const forget = (id: string) => {
+      if (announced.delete(id)) Effect.runFork(events.publish({ type: "artifact.removed", id }))
+    }
+
     const announce = async (id: string) => {
       const artifact = await store.get(id)
-      if (artifact === null || announced.get(id) === artifact.updatedAt) return
+      if (artifact === null) return forget(id)
+      if (announced.get(id) === artifact.updatedAt) return
       announced.set(id, artifact.updatedAt)
       Effect.runFork(events.publish({ type: "artifact.updated", artifact }))
     }
@@ -89,7 +95,14 @@ const make = (root: string) =>
             }),
       )
 
-    return Artifacts.of({ store, list: Effect.promise(() => store.list()), file, preview })
+    const remove = (id: string) =>
+      Effect.flatMap(
+        Effect.promise(() => store.remove(id)),
+        (removed) =>
+          removed ? Effect.sync(() => forget(id)) : Effect.fail(new NotFoundError({ entity: "artifact", id })),
+      )
+
+    return Artifacts.of({ store, list: Effect.promise(() => store.list()), file, preview, remove })
   })
 
 export const layer = (root: string) => Layer.effect(Artifacts, make(root))

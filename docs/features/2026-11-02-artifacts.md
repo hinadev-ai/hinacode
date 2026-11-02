@@ -68,6 +68,10 @@ Pages style themselves with the app's theme tokens (`--background`, `--primary`,
 
 The artifact header has an Export menu with HTML and PDF. `artifacts.export` is a desktop-only rpc: main asks where to save, then loads `hinacode-artifact://<id>/<entry>?theme=...`, so a cloud's artifact exports the same way a local one does. HTML is the entry with the current theme inserted, fetched with `net.fetch`. PDF renders the page in a hidden sandboxed window, waits for fonts and one second for scripts that draw, then calls `printToPDF`. Only the entry is exported; an artifact that links other files exports without them.
 
+### Delete
+
+Right-clicking an artifact in the list offers Delete. `artifacts.delete` routes to the machine that owns the id and removes the artifact's directory. The service pushes `artifact.removed`, and so does its watcher when another harness deletes a directory, so every open list drops it. There is no undo.
+
 The trust boundary is the frame. Artifact HTML is agent output and is treated as hostile: no same origin, no `rpc`, no navigation of the app.
 
 ## Out of scope

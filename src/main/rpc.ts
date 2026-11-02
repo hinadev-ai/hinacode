@@ -496,6 +496,7 @@ const handlers: Handlers = {
   "automations.list": () => Automations.use((automations) => automations.list),
   "artifacts.list": () => Artifacts.use((artifacts) => artifacts.list),
   "artifacts.file": ({ id, path }) => Artifacts.use((artifacts) => artifacts.preview(id, path)),
+  "artifacts.delete": ({ id }) => Artifacts.use((artifacts) => artifacts.remove(id)),
   "artifacts.export": (request, desktop) => desktop?.exportArtifact(request) ?? Effect.succeed(null),
   "automations.create": (input) => Automations.use((automations) => automations.create(input)),
   "automations.update": (input) => Automations.use((automations) => automations.update(input)),

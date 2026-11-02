@@ -22,6 +22,7 @@ export type ArtifactStore = {
   get(id: string): Promise<Artifact | null>
   list(): Promise<Artifact[]>
   file(id: string, path: string): Promise<{ bytes: Uint8Array<ArrayBuffer>; type: string } | null>
+  remove(id: string): Promise<boolean>
 }
 
 const ID_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz"
@@ -146,5 +147,11 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
     }
   }
 
-  return { root, publish, get, list, file }
+  const remove = async (id: string) => {
+    if ((await get(id)) === null) return false
+    await rm(join(root, id), { recursive: true, force: true })
+    return true
+  }
+
+  return { root, publish, get, list, file, remove }
 }

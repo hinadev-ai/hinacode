@@ -49,6 +49,7 @@ export const routes: Record<RpcMethod, Route> = {
   "dialog.pickFolder": client,
   "dialog.pickFiles": client,
   "artifacts.export": client,
+  "artifacts.delete": owner("artifact", "id"),
   "shell.reveal": client,
   "shell.openers": client,
   "shell.openWith": client,

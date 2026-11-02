@@ -564,6 +564,7 @@ export const RpcMethods = {
     Schema.Struct({ dataUrl: Schema.String }),
   ),
   "artifacts.export": rpc(ArtifactExportRequest, Schema.NullOr(Schema.String)),
+  "artifacts.delete": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   "automations.create": rpc(
     AutomationInput,
     Schema.Struct({ automation: Automation, secret: Schema.NullOr(Schema.String) }),
@@ -773,6 +774,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "artifacts.list": "read",
   "artifacts.file": "read",
   "artifacts.export": "mutation",
+  "artifacts.delete": "mutation",
   "automations.create": "mutation",
   "automations.update": "mutation",
   "automations.delete": "mutation",
@@ -911,6 +913,7 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("fs.changed"), root: Schema.String, path: Schema.String }),
   Schema.Struct({ type: Schema.Literal("automation.run"), run: AutomationRun }),
   Schema.Struct({ type: Schema.Literal("artifact.updated"), artifact: Artifact }),
+  Schema.Struct({ type: Schema.Literal("artifact.removed"), id: Schema.String }),
   Schema.Struct({
     type: Schema.Literal("terminal.data"),
     id: Schema.String,

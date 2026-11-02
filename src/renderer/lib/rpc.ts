@@ -636,6 +636,7 @@ export const artifactsAtom = Atom.make((get) => {
     onPushEvent(
       (event) =>
         (event.type === "artifact.updated" ||
+          event.type === "artifact.removed" ||
           event.type === "environment.status" ||
           event.type === "environments.changed") &&
         get.refreshSelf(),
