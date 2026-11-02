@@ -65,6 +65,20 @@ describe("openArtifactStore", () => {
     expect(existsSync(join(store.root, first.id, "2"))).toBe(true)
   })
 
+  test("gives concurrent updates of one artifact their own versions", async () => {
+    const store = openTemporaryStore()
+    const first = await store.publish({ title: "Chart", files: [page("v1")] })
+    const updates = await Promise.all(
+      ["a", "b"].map((body) => store.publish({ id: first.id, title: "Chart", files: [page(body)] })),
+    )
+
+    expect(updates.map((update) => update.version).toSorted()).toEqual([2, 3])
+    const current = await store.get(first.id)
+    const entry = await store.file(first.id, "index.html")
+    const published = updates.find((update) => update.version === current?.version)
+    expect(new TextDecoder().decode(entry?.bytes)).toBe(`<!doctype html>${published === updates[0] ? "a" : "b"}`)
+  })
+
   test("stores binary files from base64", async () => {
     const store = openTemporaryStore()
     const pixel = Buffer.from([0x89, 0x50, 0x4e, 0x47])
