@@ -604,6 +604,8 @@ export const defaultClientSettings: ClientSettings = {
 export const AUTO_COMPACT_RANGE = { minimum: 100_000, maximum: 1_000_000 } as const
 const AutoCompactTokens = Schema.Int.check(Schema.isBetween(AUTO_COMPACT_RANGE))
 
+export const PRIVATE_NETWORKS = "private"
+
 export const BindHost = Schema.String.check(Schema.isPattern(/^(?!(?:0\.0\.0\.0|::|::0|\[::\])$)\S+$/))
 
 const ListenPort = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 }))
