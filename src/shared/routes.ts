@@ -1,6 +1,15 @@
 import type { RpcMethod } from "./contract.ts"
 
-export type Entity = "thread" | "project" | "worktree" | "terminal" | "automation" | "request" | "root" | "stream"
+export type Entity =
+  | "thread"
+  | "project"
+  | "worktree"
+  | "terminal"
+  | "automation"
+  | "request"
+  | "root"
+  | "stream"
+  | "artifact"
 
 export type Route =
   | { readonly to: "client" }
@@ -40,6 +49,8 @@ export const routes: Record<RpcMethod, Route> = {
   "app.setColorScheme": client,
   "dialog.pickFolder": client,
   "dialog.pickFiles": client,
+  "artifacts.export": client,
+  "artifacts.delete": owner("artifact", "id"),
   "shell.reveal": client,
   "shell.openers": client,
   "shell.openWith": client,
@@ -76,6 +87,7 @@ export const routes: Record<RpcMethod, Route> = {
   "linear.issues": all,
   "limits.list": named,
   "search.threads": all,
+  "artifacts.list": all,
 
   "settings.get": named,
   "settings.set": named,
@@ -205,6 +217,8 @@ export const routes: Record<RpcMethod, Route> = {
   "fs.preview": root,
   "fs.write": root,
   "fs.watch": root,
+
+  "artifacts.file": owner("artifact", "id"),
 
   "vm.screen.send": owner("stream", "streamId"),
   "vm.screen.close": owner("stream", "streamId"),

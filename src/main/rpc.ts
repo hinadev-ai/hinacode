@@ -13,9 +13,11 @@ import type {
   WorkspaceChoice,
 } from "../shared/domain.ts"
 import { type RpcEnvelope, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../shared/contract.ts"
+import type { ArtifactExportRequest } from "../shared/artifact.ts"
 import { AgentAccounts } from "./services/AgentAccounts.ts"
 import { AgentLogins } from "./services/AgentLogins.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
+import { Artifacts } from "./services/Artifacts.ts"
 import { Attachments } from "./services/Attachments.ts"
 import { Browser } from "./services/Browser.ts"
 import { UnknownRootError } from "./services/errors.ts"
@@ -69,6 +71,7 @@ export type AppServices =
   | Ports
   | Terminals
   | Attachments
+  | Artifacts
   | Browser
   | Automations
   | Git
@@ -101,6 +104,7 @@ export interface DesktopCalls {
   readonly openExternal: (url: string) => Effect.Effect<void>
   readonly pickFolder: Effect.Effect<string | null>
   readonly pickFiles: Effect.Effect<ReadonlyArray<string>>
+  readonly exportArtifact: (request: ArtifactExportRequest) => Effect.Effect<string | null, HandlerError>
   readonly notificationPermission: Effect.Effect<NotificationPermission>
   readonly askNotificationPermission: (title: string, body: string) => Effect.Effect<PermissionRequestOutcome>
   readonly screenOwner: ScreenOwner | null
@@ -493,6 +497,10 @@ const handlers: Handlers = {
   "dialog.pickFiles": (_, desktop) => desktop?.pickFiles ?? Effect.succeed([]),
 
   "automations.list": () => Automations.use((automations) => automations.list),
+  "artifacts.list": () => Artifacts.use((artifacts) => artifacts.list),
+  "artifacts.file": ({ id, path }) => Artifacts.use((artifacts) => artifacts.preview(id, path)),
+  "artifacts.delete": ({ id }) => Artifacts.use((artifacts) => artifacts.remove(id)),
+  "artifacts.export": (request, desktop) => desktop?.exportArtifact(request) ?? Effect.succeed(null),
   "automations.create": (input) => Automations.use((automations) => automations.create(input)),
   "automations.update": (input) => Automations.use((automations) => automations.update(input)),
   "automations.delete": ({ id }) => Automations.use((automations) => automations.remove(id)),

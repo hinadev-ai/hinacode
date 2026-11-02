@@ -4,6 +4,7 @@ import {
   AgentProfileName,
   Compaction,
   ForkPoint,
+  isPublishArtifactTool,
   isRunAgentTool,
   ProviderId,
   Question,
@@ -460,6 +461,9 @@ export type MessagePart = typeof MessagePart.Type
 // FIXME: Claude Code named its sub-agent tool Task before it became Agent
 export const spawnsSubagent = (call: { readonly name: string }) =>
   call.name === "Agent" || call.name === "Task" || isRunAgentTool(call.name)
+
+export const publishesArtifact = (call: { readonly name: string; readonly status: ToolCallStatus }) =>
+  isPublishArtifactTool(call.name) && call.status !== "error"
 
 export const MessageRole = Schema.Literals(["user", "assistant"])
 export type MessageRole = typeof MessageRole.Type

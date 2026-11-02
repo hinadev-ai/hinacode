@@ -9,7 +9,7 @@ import {
   type RpcRequest,
   type RpcResponse,
 } from "@shared/contract.ts"
-import { learnFromAnswer, learnFromPush, makeOwners, type Owners, stampProjects } from "@shared/owners.ts"
+import { learnFromAnswer, learnFromPush, makeOwners, type Owners, stampEnvironment } from "@shared/owners.ts"
 import { dialPlan, pairingUrl, parsePairingUrl } from "@shared/remote.ts"
 import { type Entity, routes } from "@shared/routes.ts"
 import { copy } from "./copy"
@@ -278,7 +278,7 @@ async function send(serverId: string, method: RpcMethod, payload: unknown): Prom
   if ("error" in envelope) return envelope
   learnFromAnswer(owners, serverId, method, payload, envelope.result)
   if (method === "threads.list") updateServer(serverId, { listed: true })
-  return { result: stampProjects(method, envelope.result, serverId) }
+  return { result: stampEnvironment(method, envelope.result, serverId) }
 }
 
 /**

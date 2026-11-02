@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from "electro
 import { Effect, type ManagedRuntime } from "effect"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import type { PushEvent, RpcEnvelope } from "../shared/contract.ts"
+import { exportArtifact } from "./artifactExport.ts"
 import { route } from "./environments/route.ts"
 import { askNotificationPermission, notificationPermission } from "./notificationPermission.ts"
 import type { AppServices, DesktopCalls } from "./rpc.ts"
@@ -49,6 +50,11 @@ const desktopCalls = (window: BrowserWindow | null, openPullRequestWindow: OpenP
   pickFiles: Effect.map(showOpenDialog(window, { properties: ["openFile", "multiSelections"] }), (result) =>
     result.canceled ? [] : result.filePaths,
   ),
+  exportArtifact: (request) =>
+    Effect.tryPromise({
+      try: () => exportArtifact(window, request),
+      catch: (cause) => ({ _tag: "ExportFailed", message: cause instanceof Error ? cause.message : String(cause) }),
+    }),
   notificationPermission,
   askNotificationPermission,
   screenOwner: window?.webContents ?? null,

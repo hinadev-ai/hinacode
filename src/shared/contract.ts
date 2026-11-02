@@ -1,4 +1,5 @@
 import { Schema, Struct } from "effect"
+import { Artifact, ArtifactExportRequest } from "./artifact.ts"
 import {
   AccountLimits,
   AccountProviderId,
@@ -562,6 +563,13 @@ export const RpcMethods = {
   "dialog.pickFiles": rpc(Schema.Void, Schema.Array(Schema.String)),
 
   "automations.list": rpc(Schema.Void, Schema.Array(Automation)),
+  "artifacts.list": rpc(Schema.Void, Schema.Array(Artifact)),
+  "artifacts.file": rpc(
+    Schema.Struct({ id: Schema.String, path: Schema.String }),
+    Schema.Struct({ dataUrl: Schema.String }),
+  ),
+  "artifacts.export": rpc(ArtifactExportRequest, Schema.NullOr(Schema.String)),
+  "artifacts.delete": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   "automations.create": rpc(
     AutomationInput,
     Schema.Struct({ automation: Automation, secret: Schema.NullOr(Schema.String) }),
@@ -770,6 +778,10 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "attachments.read": "read",
   "dialog.pickFiles": "mutation",
   "automations.list": "read",
+  "artifacts.list": "read",
+  "artifacts.file": "read",
+  "artifacts.export": "mutation",
+  "artifacts.delete": "mutation",
   "automations.create": "mutation",
   "automations.update": "mutation",
   "automations.delete": "mutation",
@@ -801,6 +813,7 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "app.setColorScheme",
   "dialog.pickFolder",
   "dialog.pickFiles",
+  "artifacts.export",
   "shell.reveal",
   "shell.openers",
   "shell.openWith",
@@ -908,6 +921,8 @@ export const PushEvent = Schema.Union([
   }),
   Schema.Struct({ type: Schema.Literal("fs.changed"), root: Schema.String, path: Schema.String }),
   Schema.Struct({ type: Schema.Literal("automation.run"), run: AutomationRun }),
+  Schema.Struct({ type: Schema.Literal("artifact.updated"), artifact: Artifact }),
+  Schema.Struct({ type: Schema.Literal("artifact.removed"), id: Schema.String }),
   Schema.Struct({
     type: Schema.Literal("terminal.data"),
     id: Schema.String,

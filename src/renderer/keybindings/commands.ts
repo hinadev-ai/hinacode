@@ -206,6 +206,12 @@ export const commands = [
     run: (ctx) => showView(ctx, "browser"),
   },
   {
+    id: "view.artifacts",
+    defaultKeys: "",
+    title: m.command_view_artifacts,
+    run: (ctx) => showView(ctx, "artifacts"),
+  },
+  {
     id: "browser.newTab",
     defaultKeys: "mod+t",
     title: m.command_browser_new_tab,

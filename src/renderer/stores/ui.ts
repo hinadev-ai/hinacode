@@ -1,7 +1,7 @@
 import { create } from "zustand"
 import type { ChangesScope } from "../../shared/domain.ts"
 import type { FindMatch, FindRevealRequest } from "../lib/find.ts"
-import { getPanelLayout } from "../lib/panelLayout.ts"
+import { getPanelLayout, usePanelLayout } from "../lib/panelLayout.ts"
 import type { EnvironmentId } from "../lib/rpc.ts"
 import { cycleSwitcher, type ThreadSwitcher, visitRecent } from "../lib/threadSwitcher.ts"
 import {
@@ -27,6 +27,7 @@ export type SidePanelViewId =
   | "tinyVm"
   | "devices"
   | "sidechat"
+  | "artifacts"
 const sidebarTabs = ["inbox", "threads", "archived"] as const
 export type SidebarTab = (typeof sidebarTabs)[number]
 
@@ -89,6 +90,7 @@ interface UiState {
   readonly sidePanelViews: Readonly<Record<string, SidePanelViewId>>
   readonly lastSidePanelView: SidePanelViewId
   readonly sidePanelWidth: number | null
+  readonly sidePanelExpanded: boolean
   readonly viewFocusRequest: SidePanelViewId | null
   readonly changesPath: string | null
   readonly changesScopes: Readonly<Record<string, ChangesScope>>
@@ -116,6 +118,7 @@ interface UiState {
   readonly findReveal: FindRevealRequest | null
   readonly toggleSidebar: () => void
   readonly toggleSidePanel: () => void
+  readonly toggleSidePanelExpanded: () => void
   readonly setSidebarOverlayOpen: (open: boolean) => void
   readonly setSidePanelOverlayOpen: (open: boolean) => void
   readonly setSidebarTab: (tab: SidebarTab) => void
@@ -158,7 +161,13 @@ export const selectSidePanelView =
 const showPanel = () =>
   getPanelLayout() === "wide" ? { sidePanelOpen: true } : { sidePanelOverlayOpen: true, sidebarOverlayOpen: false }
 
-const hidePanel = () => (getPanelLayout() === "wide" ? { sidePanelOpen: false } : { sidePanelOverlayOpen: false })
+const hidePanel = () =>
+  getPanelLayout() === "wide" ? { sidePanelOpen: false, sidePanelExpanded: false } : { sidePanelOverlayOpen: false }
+
+export const useSidePanelExpanded = () => {
+  const docked = usePanelLayout() === "wide"
+  return useUi((state) => docked && state.sidePanelOpen && state.sidePanelExpanded)
+}
 
 let opener: Element | null = null
 
@@ -191,6 +200,7 @@ export const useUi = create<UiState>()((set, get) => ({
   sidePanelViews: {},
   lastSidePanelView: "details",
   sidePanelWidth: loadSize(SIDE_PANEL_WIDTH_KEY, SIDE_PANEL_BOUNDS),
+  sidePanelExpanded: false,
   viewFocusRequest: null,
   changesPath: null,
   changesScopes: {},
@@ -237,9 +247,10 @@ export const useUi = create<UiState>()((set, get) => ({
   toggleSidePanel: () =>
     set((state) =>
       getPanelLayout() === "wide"
-        ? { sidePanelOpen: !state.sidePanelOpen, sidePanelOverlayOpen: false }
+        ? { sidePanelOpen: !state.sidePanelOpen, sidePanelOverlayOpen: false, sidePanelExpanded: false }
         : { sidePanelOverlayOpen: !state.sidePanelOverlayOpen, sidebarOverlayOpen: false },
     ),
+  toggleSidePanelExpanded: () => set((state) => ({ sidePanelExpanded: !state.sidePanelExpanded })),
   setSidebarOverlayOpen: (open) =>
     set((state) => ({ sidebarOverlayOpen: open, sidePanelOverlayOpen: open ? false : state.sidePanelOverlayOpen })),
   setSidePanelOverlayOpen: (open) =>

@@ -314,6 +314,14 @@ export const RUN_AGENT_TOOL = "run_agent"
 
 export const isRunAgentTool = (name: string) => name === RUN_AGENT_TOOL || name === `mcp__hinacode__${RUN_AGENT_TOOL}`
 
+export const PUBLISH_ARTIFACT_TOOL = "publish_artifact"
+
+export const isPublishArtifactTool = (name: string) =>
+  name === PUBLISH_ARTIFACT_TOOL || name === `mcp__hinacode__${PUBLISH_ARTIFACT_TOOL}`
+
+export const publishedArtifactId = (result: string) =>
+  /^Published artifact ([a-z0-9][a-z0-9-]*) version \d+/.exec(result)?.[1] ?? null
+
 export const toolArgument = (input: unknown, key: string): unknown => {
   if (!Predicate.isObject(input)) return undefined
   const record = input as Record<string, unknown>

@@ -19,6 +19,7 @@ export class NotFoundError extends Schema.TaggedError<NotFoundError>()("NotFound
     "account",
     "fork point",
     "tool call",
+    "artifact",
   ]),
   id: Schema.String,
 }) {

@@ -9,6 +9,7 @@ import {
   usageLimitSessionId,
   orgSpendLimitMessage,
 } from "./fixtures/usageLimit.ts"
+import { artifactTurn } from "./fixtures/artifacts.ts"
 import markdownFixture from "./fixtures/markdown.md?raw"
 import { mockSubagents } from "./fixtures/subagents.ts"
 import { ClaudeProvider } from "./index.ts"
@@ -24,6 +25,7 @@ export const mockScenarios = [
   "approvals",
   "long-turn",
   "subagents",
+  "artifacts",
 ] as const
 export type MockScenario = (typeof mockScenarios)[number]
 
@@ -167,6 +169,7 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
     ClaudeProvider,
     Effect.gen(function* () {
       const attempted = new Set<string>()
+      const artifacts = new Map<string, string>()
       const shells = new Map<string, ReadonlyArray<BackgroundTask>>()
       const shellChanges = yield* Queue.unbounded<BackgroundTasksChange>()
       const heldTurns = new Map<string, Deferred.Deferred<void>>()
@@ -319,6 +322,17 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
                 Stream.concat(question),
                 Stream.concat(Stream.fromIterable(streamTurn()).pipe(Stream.tap(() => Effect.sleep("20 millis")))),
               )
+            }
+            if (scenario === "artifacts") {
+              const { started, finished } = artifactTurn(
+                `mock-artifact-${++requestCount}`,
+                input.prompt,
+                input.mcpServer,
+                artifacts.get(input.threadId),
+                (id) => artifacts.set(input.threadId, id),
+              )
+              const bound: AgentEvent = { type: "session_bound", providerSessionId: `mock-artifacts-${input.threadId}` }
+              return Stream.concat(Stream.make(bound, started), Stream.fromIterableEffect(finished))
             }
             if (scenario === "markdown") return Stream.fromIterable(markdownTurn())
             if (scenario === "stream")
