@@ -704,7 +704,7 @@ describe("worktree ownership", () => {
     withRepo(({ root, projectId }) =>
       Effect.gen(function* () {
         git(root, "switch", "-q", "-c", "feat/artifact")
-        git(root, "commit", "-q", "--allow-empty", "-m", "root work")
+        git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "root work")
 
         const worktree = yield* Worktrees.use((worktrees) =>
           worktrees.create({ projectId, branch: "feat/artifact", baseRef: "main" }),
