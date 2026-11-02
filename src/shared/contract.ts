@@ -558,6 +558,11 @@ export const RpcMethods = {
   "dialog.pickFiles": rpc(Schema.Void, Schema.Array(Schema.String)),
 
   "automations.list": rpc(Schema.Void, Schema.Array(Automation)),
+  "artifacts.list": rpc(Schema.Void, Schema.Array(Artifact)),
+  "artifacts.file": rpc(
+    Schema.Struct({ id: Schema.String, path: Schema.String }),
+    Schema.Struct({ dataUrl: Schema.String }),
+  ),
   "automations.create": rpc(
     AutomationInput,
     Schema.Struct({ automation: Automation, secret: Schema.NullOr(Schema.String) }),
@@ -764,6 +769,8 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "attachments.read": "read",
   "dialog.pickFiles": "mutation",
   "automations.list": "read",
+  "artifacts.list": "read",
+  "artifacts.file": "read",
   "automations.create": "mutation",
   "automations.update": "mutation",
   "automations.delete": "mutation",

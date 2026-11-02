@@ -16,6 +16,7 @@ import { type RpcEnvelope, type RpcMethod, RpcMethods, type RpcRequest, type Rpc
 import { AgentAccounts } from "./services/AgentAccounts.ts"
 import { AgentLogins } from "./services/AgentLogins.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
+import { Artifacts } from "./services/Artifacts.ts"
 import { Attachments } from "./services/Attachments.ts"
 import { Browser } from "./services/Browser.ts"
 import { UnknownRootError } from "./services/errors.ts"
@@ -69,6 +70,7 @@ export type AppServices =
   | Ports
   | Terminals
   | Attachments
+  | Artifacts
   | Browser
   | Automations
   | Git
@@ -490,6 +492,8 @@ const handlers: Handlers = {
   "dialog.pickFiles": (_, desktop) => desktop?.pickFiles ?? Effect.succeed([]),
 
   "automations.list": () => Automations.use((automations) => automations.list),
+  "artifacts.list": () => Artifacts.use((artifacts) => artifacts.list),
+  "artifacts.file": ({ id, path }) => Artifacts.use((artifacts) => artifacts.preview(id, path)),
   "automations.create": (input) => Automations.use((automations) => automations.create(input)),
   "automations.update": (input) => Automations.use((automations) => automations.update(input)),
   "automations.delete": ({ id }) => Automations.use((automations) => automations.remove(id)),
