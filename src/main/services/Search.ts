@@ -4,7 +4,7 @@ import { createInterface } from "node:readline"
 import { Context, Effect, Layer, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { FileSearchHit, ThreadSearchHit } from "../../shared/domain.ts"
-import { type NotFoundError, type PersistenceError, persistence } from "./errors.ts"
+import { type FolderMissingError, type NotFoundError, type PersistenceError, persistence } from "./errors.ts"
 import { makeActiveWorkspace } from "./workspace.ts"
 
 export class RipgrepMissingError extends Schema.TaggedError<RipgrepMissingError>()("RipgrepMissingError", {}) {
@@ -100,15 +100,27 @@ const runRipgrep = (rg: string, root: string, query: string, limit: number) =>
     })
   })
 
+export interface PerThreadOptions {
+  readonly limit: number
+  readonly threadIds?: ReadonlyArray<string>
+}
+
 export class Search extends Context.Service<
   Search,
   {
     readonly threads: (query: string, limit?: number) => Effect.Effect<ReadonlyArray<ThreadSearchHit>, PersistenceError>
+    readonly perThread: (
+      query: string,
+      options: PerThreadOptions,
+    ) => Effect.Effect<ReadonlyArray<ThreadSearchHit>, PersistenceError>
     readonly files: (
       threadId: string,
       query: string,
       limit?: number,
-    ) => Effect.Effect<ReadonlyArray<FileSearchHit>, PersistenceError | NotFoundError | RipgrepMissingError>
+    ) => Effect.Effect<
+      ReadonlyArray<FileSearchHit>,
+      PersistenceError | NotFoundError | FolderMissingError | RipgrepMissingError
+    >
   }
 >()("hinacode/Search") {}
 
@@ -144,14 +156,50 @@ export const make = (ripgrep: () => string | undefined) =>
       },
     })
 
+    const findNewestPerThread = SqlSchema.findAll({
+      Request: Schema.Struct({
+        query: Schema.String,
+        limit: Schema.Number,
+        threadIds: Schema.optionalKey(Schema.Array(Schema.String)),
+      }),
+      Result: ThreadRow,
+      execute: ({ query, limit, threadIds }) => {
+        const { pattern, escaped } = likePattern(query)
+        const inThreads = threadIds === undefined ? sql.literal("") : sql`AND ${sql.in("m.thread_id", threadIds)}`
+        return sql`
+          SELECT thread_id, thread_title, project_id, message_id, body, at FROM (
+            SELECT m.thread_id, t.title AS thread_title, t.project_id, m.id AS message_id, f.body, m.created_at AS at,
+              f.rowid AS position,
+              ROW_NUMBER() OVER (PARTITION BY m.thread_id ORDER BY m.created_at DESC, f.rowid DESC) AS rank
+            FROM message_fts f
+            JOIN message m ON m.rowid = f.rowid
+            JOIN thread t ON t.id = m.thread_id
+            WHERE f.body LIKE ${pattern} ${sql.literal(escaped ? "ESCAPE '\\'" : "")} AND t.side_of IS NULL ${inThreads}
+          )
+          WHERE rank = 1
+          ORDER BY at DESC, position DESC
+          LIMIT ${limit}
+        `
+      },
+    })
+
+    const withSnippet = (query: string) => (rows: ReadonlyArray<typeof ThreadRow.Type>) =>
+      rows.map(({ body, ...hit }) => ({ ...hit, snippet: snippetAround(body, query, SNIPPET_WIDTH) }))
+
     const threads = (query: string, limit = DEFAULT_LIMIT) =>
       query.trim() === ""
         ? Effect.succeed([])
         : findMessages({ query, limit }).pipe(
-            Effect.map((rows) =>
-              rows.map(({ body, ...hit }) => ({ ...hit, snippet: snippetAround(body, query, SNIPPET_WIDTH) })),
-            ),
+            Effect.map(withSnippet(query)),
             Effect.mapError(persistence("search.threads")),
+          )
+
+    const perThread = (query: string, options: PerThreadOptions) =>
+      query.trim() === "" || options.threadIds?.length === 0
+        ? Effect.succeed([])
+        : findNewestPerThread({ query, ...options }).pipe(
+            Effect.map(withSnippet(query)),
+            Effect.mapError(persistence("search.perThread")),
           )
 
     const files = (threadId: string, query: string, limit = DEFAULT_LIMIT) =>
@@ -163,7 +211,7 @@ export const make = (ripgrep: () => string | undefined) =>
         return yield* runRipgrep(rg, cwd, query, limit)
       })
 
-    return Search.of({ threads, files })
+    return Search.of({ threads, perThread, files })
   })
 
 export const layer = Layer.effect(Search, make(resolveRipgrep))

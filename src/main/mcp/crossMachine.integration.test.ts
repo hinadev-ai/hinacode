@@ -282,6 +282,33 @@ describe("thread tools across machines", () => {
     expect(read).toStrictEqual({ isError: true, text: `Thread ${otherRepoThread} no longer exists.` })
   })
 
+  test("a desktop thread reads a desktop thread of another repository and names its project", async () => {
+    const read = await callAs(desktop, desktopThread, "read_thread", { threadId: otherRepoThread })
+    expect(read.isError).toBe(false)
+    expect(read.text).toContain(`thread_id: ${otherRepoThread}`)
+    expect(read.text).toMatch(
+      /<environment>\nproject: other \(.+other-repo\)\nworkspace: project root\n<\/environment>/,
+    )
+    expect(read.text).not.toContain("machine:")
+  })
+
+  test("a desktop thread cannot send to or stop a desktop thread of another repository", async () => {
+    for (const name of ["send_to_thread", "stop_thread"]) {
+      const refused = await callAs(desktop, desktopThread, name, { threadId: otherRepoThread, prompt: "hi" })
+      expect(refused).toStrictEqual({ isError: true, text: `Thread ${otherRepoThread} is not in this project.` })
+    }
+  })
+
+  test("search_threads on each machine finds that machine's threads of every project", async () => {
+    await seedMessage(desktop, otherRepoThread, "the other repo also says hello")
+    const onDesktop = JSON.parse((await callAs(desktop, desktopThread, "search_threads", { query: "hello" })).text)
+    expect(onDesktop.map((hit: { id: string }) => hit.id).toSorted()).toStrictEqual(
+      [desktopThread, otherRepoThread].toSorted(),
+    )
+    const onCloud = JSON.parse((await callAs(cloud, cloudThread, "search_threads", { query: "hello" })).text)
+    expect(onCloud.map((hit: { id: string }) => hit.id)).toStrictEqual([cloudThread])
+  })
+
   test("a cloud thread sends to a desktop thread through the hub, with a model and effort", async () => {
     const sent = await callAs(cloud, cloudThread, "send_to_thread", {
       threadId: desktopThread,

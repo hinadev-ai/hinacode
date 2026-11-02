@@ -58,6 +58,7 @@ import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
 import { makeDeltaCoalescer } from "./coalesceDeltas.ts"
 import {
+  type FolderMissingError,
   NotFoundError,
   type PersistenceError,
   type PullRequestElsewhereError,
@@ -95,6 +96,7 @@ export interface SendOptions {
 
 type SendError =
   | AgentError
+  | FolderMissingError
   | PersistenceError
   | NotFoundError
   | CommandError
@@ -183,7 +185,7 @@ export class AgentRunner extends Context.Service<
     readonly runAgent: (
       threadId: string,
       request: AgentRequest,
-    ) => Effect.Effect<string, AgentError | PersistenceError | NotFoundError>
+    ) => Effect.Effect<string, AgentError | PersistenceError | NotFoundError | FolderMissingError>
     readonly stopSubagent: (
       threadId: string,
       subagentId: string,
@@ -195,7 +197,7 @@ export class AgentRunner extends Context.Service<
     ) => Effect.Effect<void, AgentError | PersistenceError | NotFoundError>
     readonly listCommands: (
       threadId: string,
-    ) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError | PersistenceError | NotFoundError>
+    ) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError | PersistenceError | NotFoundError | FolderMissingError>
   }
 >()("hinacode/AgentRunner") {}
 
