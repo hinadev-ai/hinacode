@@ -1,5 +1,5 @@
 import { join } from "node:path"
-import lock from "proper-lockfile"
+import { lock } from "proper-lockfile"
 import { openArtifactStore } from "./store.ts"
 import { artifactTools } from "./tools.ts"
 
