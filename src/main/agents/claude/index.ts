@@ -23,6 +23,7 @@ import {
   type ModelInfo,
   type RunTurnInput,
 } from "../../../shared/agent.ts"
+import { AGENT_IMAGE_MAX_BYTES, AGENT_IMAGE_TYPES } from "../../../shared/agentImages.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { nowIso } from "../../services/clock.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
@@ -230,19 +231,16 @@ const copySession = (sessionId: string, from: AccountHome | null, to: AccountHom
     ),
   )
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024
-
 type ContentBlock = Exclude<SDKUserMessage["message"]["content"], string>[number]
 type ImageMediaType = Extract<Extract<ContentBlock, { type: "image" }>["source"], { type: "base64" }>["media_type"]
 
-const IMAGE_MEDIA_TYPES: ReadonlyArray<string> = ["image/png", "image/jpeg", "image/gif", "image/webp"]
-const isImageMediaType = (mime: string): mime is ImageMediaType => IMAGE_MEDIA_TYPES.includes(mime)
+const isImageMediaType = (mime: string): mime is ImageMediaType => AGENT_IMAGE_TYPES.includes(mime)
 
 const attachmentBlocks = (attachment: Attachment) =>
   Effect.gen(function* () {
     const fileBlock: ContentBlock = { type: "text", text: `Attached file: ${attachment.path}` }
     if (attachment.kind !== "image" || !isImageMediaType(attachment.mime)) return [fileBlock]
-    if (attachment.bytes > MAX_IMAGE_BYTES) {
+    if (attachment.bytes > AGENT_IMAGE_MAX_BYTES) {
       return yield* new AgentError({
         provider: "claude",
         message: `${attachment.name} is larger than 5 MB, the limit for images sent to Claude`,

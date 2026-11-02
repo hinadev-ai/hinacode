@@ -2,7 +2,7 @@ import { AGENT_IMAGE_MAX_BYTES } from "@shared/agentImages.ts"
 import { expect, it } from "vitest"
 import { attachmentName, base64Bytes, fitImage } from "./attachable-image"
 
-const head = (...bytes: ReadonlyArray<number | string>) =>
+const head = (...bytes: readonly (number | string)[]) =>
   Uint8Array.from(bytes.flatMap((part) => (typeof part === "string" ? [...part].map((c) => c.charCodeAt(0)) : [part])))
 
 const JPEG = head(0xff, 0xd8, 0xff, 0xe0)
