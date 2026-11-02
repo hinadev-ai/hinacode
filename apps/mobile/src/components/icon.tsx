@@ -207,9 +207,12 @@ const paths = {
     "M2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12ZM20 12C20 16.4183 16.4183 20 12 20C7.58172 20 4 16.4183 4 12C4 7.58172 7.58172 4 12 4C16.4183 4 20 7.58172 20 12ZM18 12C18 15.3137 15.3137 18 12 18V6C15.3137 6 18 8.68629 18 12Z",
   RiTaskLine:
     "M19 4H5V20H19V4ZM3 2.9918C3 2.44405 3.44749 2 3.9985 2H19.9997C20.5519 2 20.9996 2.44772 20.9997 3L21 20.9925C21 21.5489 20.5551 22 20.0066 22H3.9934C3.44476 22 3 21.5447 3 21.0082V2.9918ZM11.2929 13.1213L15.5355 8.87868L16.9497 10.2929L11.2929 15.9497L7.40381 12.0607L8.81802 10.6464L11.2929 13.1213Z",
+  OpencodeMark: "M22 24H2V0h20zM17 4.8H7v14.4h10z",
 } as const
 
 export type IconName = keyof typeof paths
+
+const evenOdd: ReadonlySet<IconName> = new Set(["OpencodeMark"])
 
 // react-native-svg hands unknown props to the DOM on web, where only `aria-hidden` is valid.
 const hidden =
@@ -223,7 +226,7 @@ const unshrinkable = { flexShrink: 0 }
 export function Icon({ name, size = 16, color }: { name: IconName; size?: number; color: string }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill={color} style={unshrinkable} {...hidden}>
-      <Path d={paths[name]} />
+      <Path d={paths[name]} fillRule={evenOdd.has(name) ? "evenodd" : undefined} />
     </Svg>
   )
 }
