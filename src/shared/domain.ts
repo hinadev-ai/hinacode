@@ -543,7 +543,6 @@ export const ExperimentalSettings = Schema.Struct({
   tinyVmBoatSize: BoatVmSize.pipe(Schema.withDecodingDefaultKey(Effect.succeed("default" as const))),
   tinyVmTemplate: Schema.String,
   tinyVmProfile: Schema.Boolean,
-  tinyVmPasskeys: Schema.Boolean,
   tinyVmEnv: Schema.Record(Schema.String, Schema.String),
   tinyVmSetupScript: Schema.String,
   devices: Schema.Boolean,
@@ -683,7 +682,6 @@ export const defaultSettings: Settings = {
     tinyVmBoatSize: "default",
     tinyVmTemplate: "default",
     tinyVmProfile: false,
-    tinyVmPasskeys: false,
     devices: false,
     tinyVmEnv: {},
     tinyVmSetupScript: "",
@@ -796,22 +794,6 @@ export type VmHostStatus = typeof VmHostStatus.Type
 
 export const VmDesktopUrl = Schema.Struct({ url: Schema.String })
 export type VmDesktopUrl = typeof VmDesktopUrl.Type
-
-export const VmPasskeyKind = Schema.Literals(["get", "create"])
-export type VmPasskeyKind = typeof VmPasskeyKind.Type
-
-export const VmPasskey = Schema.Union([
-  Schema.Struct({ status: Schema.Literal("off") }),
-  Schema.Struct({ status: Schema.Literal("ready") }),
-  Schema.Struct({
-    status: Schema.Literal("pending"),
-    kind: VmPasskeyKind,
-    origin: Schema.String,
-    rpId: Schema.String,
-  }),
-  Schema.Struct({ status: Schema.Literal("failed"), message: Schema.String }),
-])
-export type VmPasskey = typeof VmPasskey.Type
 
 export const WatchEventKind = Schema.Literals([
   "checksFailed",

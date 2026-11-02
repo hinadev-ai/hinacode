@@ -405,13 +405,6 @@ it.effect("a boat VM starts, runs, clicks, stops into a snapshot and resumes on 
       const replay = yield* Effect.promise(() => fetch(url, { redirect: "manual" }))
       expect(replay.status).toBe(404)
 
-      const tunnelError = yield* run(
-        TinyVm.use((vm) => vm.openTunnel("thread-1", 9222)).pipe(
-          Effect.match({ onFailure: (error) => error.message, onSuccess: () => "" }),
-        ),
-      )
-      expect(tunnelError).toContain("boat VM")
-
       yield* run(TinyVm.use((vm) => vm.stop("thread-1")))
       expect(fake.stops()).toBe(1)
       expect(yield* run(TinyVm.use((vm) => vm.get("thread-1")))).toEqual({ status: "none" })
