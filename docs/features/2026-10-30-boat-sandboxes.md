@@ -73,7 +73,7 @@ The screen cannot be the sbx RFB tunnel. Boat has no raw TCP tunnel. A new rpc `
 
 Agent input (`act`) translates each `VmAction` to an `xdotool` command on `DISPLAY=:0` in one exec. The guest desktop is 1920x1080, so `vm_screenshot` returns that geometry and clicks use it. The screenshot itself is the existing exec path (`import -window root png:-`), which works because boat exec returns real bytes through the file wrap above.
 
-What boat refuses, by construction. `openScreen` and `openTunnel` fail with a message naming the boat provider. That turns off passkey relay and CDP browser access into the guest while boat is selected. The settings page hides the passkey and profile toggles for boat, and the agent instructions drop the sbx-only helper names.
+What boat refuses, by construction. `openScreen` fails with a message naming the boat provider. The settings page hides the profile toggle for boat, and the agent instructions drop the sbx-only helper names.
 
 ### Security
 
@@ -88,7 +88,7 @@ Sandboxes bill per second while running. Creates and resumes send `ttlSeconds` 7
 - Judging a long interactive desktop session on a paid plan. The trial run covered start, exec, and screenshots, not hours of streaming from an EU guest.
 - Deleting a thread's boat VM sandbox from the UI, and forking sandboxes.
 - `boat prompt` (agents inside the sandbox), hosted port URLs in the ports panel, and boat environments.
-- Passkey relay, Chromium profile tars, and CDP into the guest on boat.
+- Chromium profile tars and CDP into the guest on boat.
 - Cloud devices on boat. A boat Android device was built during this experiment and removed before merge: every frame was an exec round trip, so it felt worse than a local emulator, and its first boot needs the `large` size the trial locks. iOS in the cloud is a separate problem. Boat has no macOS machines. Its docs and homepage (checked 2026-10-30) list one guest kind, an x86_64 Ubuntu VM, in four sizes, and the `machineTypes` in `GET /limits` is a size list, not an OS list. The iOS simulator needs macOS and Xcode, so it cannot run in a boat sandbox. Cloud iOS needs a Mac backend behind the same device seam: the developer's own Mac running HinaCode, or a rented Mac (MacStadium, EC2 Mac, Scaleway) driven over SSH with `simctl`. That backend is a follow-up. Running macOS in QEMU inside a boat Linux sandbox was rejected: it breaks Apple's EULA on non-Apple hardware, and the simulator inside it is too slow and flaky to debug in.
 - The Mod+Escape hand-back chord while the boat desktop webview has focus. The stream is a separate web contents, so the chord goes to the guest. The Hand back button is the path.
 - File drops onto the boat screen while the developer has control, for the same web-contents reason. Drops land while the agent has control and the shield is up.

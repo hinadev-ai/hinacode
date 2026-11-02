@@ -40,7 +40,6 @@ import * as Settings from "./services/Settings.ts"
 import * as Terminals from "./services/Terminals.ts"
 import * as Threads from "./services/Threads.ts"
 import { ThreadNaming } from "./services/ThreadNaming.ts"
-import * as PasskeyRelay from "./services/tinyVm/passkey/PasskeyRelay.ts"
 import * as TinyVm from "./services/tinyVm/TinyVm.ts"
 import { unavailableDevicesLayer } from "./services/devices/unavailable.ts"
 import { unsupported, Updates } from "./services/Updates.ts"
@@ -79,7 +78,6 @@ export const makeTestAppLayer = (
     { configPath: join(dirname(dbPath), "sbx", "config.json"), env: {} },
     join(dirname(dbPath), "tiny-vm"),
   )
-  const passkeys = PasskeyRelay.layer(join(dirname(dbPath), "tiny-vm")).pipe(Layer.provide(tinyVm))
   const linear = Linear.layer.pipe(Layer.provide(Secrets.layer))
   const peers = Peers.layer.pipe(
     Layer.provideMerge(Environments.layer),
@@ -93,7 +91,6 @@ export const makeTestAppLayer = (
     remoteAccess,
     relay,
     tinyVm,
-    passkeys,
     linear,
     peers,
     unavailableDevicesLayer,

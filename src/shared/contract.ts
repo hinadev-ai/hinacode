@@ -83,7 +83,6 @@ import {
   VmControl,
   VmDesktopUrl,
   VmHostStatus,
-  VmPasskey,
   Worktree,
   WorktreeCheckout,
   WorkspaceChoice,
@@ -524,9 +523,6 @@ export const RpcMethods = {
   ),
   "vm.profile.save": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "vm.screenshot.save": rpc(Schema.Struct({ threadId: Schema.String }), Attachment),
-  "vm.passkey.get": rpc(Schema.Struct({ threadId: Schema.String }), VmPasskey),
-  "vm.passkey.prepare": rpc(Schema.Struct({ threadId: Schema.String }), VmPasskey),
-  "vm.passkey.cancel": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
 
   "threads.steer": rpc(
     Schema.Struct({
@@ -762,9 +758,6 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "vm.files.drop": "mutation",
   "vm.profile.save": "mutation",
   "vm.screenshot.save": "mutation",
-  "vm.passkey.get": "read",
-  "vm.passkey.prepare": "mutation",
-  "vm.passkey.cancel": "mutation",
   "threads.steer": "mutation",
   "attachments.stage": "mutation",
   "attachments.read": "read",
@@ -808,7 +801,6 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "fs.watch",
   "vm.screen.open",
   "vm.files.drop",
-  "vm.passkey.prepare",
   "remote.pairing",
   "remote.rotateToken",
   "remote.setupRelay",
@@ -919,7 +911,6 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("environments.changed") }),
   Schema.Struct({ type: Schema.Literal("vm.updated"), threadId: Schema.String, vm: ThreadVm }),
   Schema.Struct({ type: Schema.Literal("device.updated"), threadId: Schema.String, devices: ThreadDevices }),
-  Schema.Struct({ type: Schema.Literal("vm.passkey.updated"), threadId: Schema.String, passkey: VmPasskey }),
   Schema.Struct({ type: Schema.Literal("vm.screen.data"), streamId: Schema.String, data: Schema.Uint8Array }),
   Schema.Struct({ type: Schema.Literal("vm.screen.closed"), streamId: Schema.String }),
   Schema.Struct({ type: Schema.Literal("menu.command"), command: MenuCommand }),

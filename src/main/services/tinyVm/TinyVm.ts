@@ -81,12 +81,7 @@ export class TinyVm extends Context.Service<
       hostPaths: ReadonlyArray<string>,
     ) => Effect.Effect<ReadonlyArray<string>, VmError>
     readonly takeDropped: (threadId: string) => Effect.Effect<ReadonlyArray<string>>
-    readonly stageArchive: (threadId: string, guestPath: string, tar: Uint8Array) => Effect.Effect<void, VmError>
     readonly pullFiles: (threadId: string, guestPath: string) => Effect.Effect<WrittenTree, VmError>
-    readonly openTunnel: (
-      threadId: string,
-      port: number,
-    ) => Effect.Effect<{ readonly socket: Socket; readonly head: Uint8Array }, VmError>
     readonly saveProfile: (threadId: string) => Effect.Effect<void, VmError>
     readonly openScreen: (threadId: string, streamId: string, owner: ScreenOwner) => Effect.Effect<void, VmError>
     readonly sendScreen: (streamId: string, data: Uint8Array) => Effect.Effect<void>
@@ -781,9 +776,6 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
         return paths as ReadonlyArray<string>
       })
 
-    const stageArchive = (threadId: string, guestPath: string, tar: Uint8Array) =>
-      withSandbox(threadId, (sbx, sandboxId) => sbx.putFiles(sandboxId, guestPath, tar))
-
     const pullFiles = (threadId: string, guestPath: string) =>
       withSandbox(threadId, (sbx, sandboxId) =>
         Effect.gen(function* () {
@@ -805,17 +797,6 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
           return yield* writeTree(join(dataDir, PULLED_DIR, threadId, randomUUID()), entries)
         }),
       )
-
-    const openTunnel = (threadId: string, port: number) =>
-      Effect.gen(function* () {
-        const vm = yield* ensureRunning(threadId)
-        if (vm.provider === "boat")
-          return yield* new VmError({
-            message: "Port tunnels are not available on a boat VM, so passkeys and guest CDP stay off.",
-          })
-        const sbx = yield* sbxClientEffect
-        return yield* guardGone(threadId, vm.sandboxId, sbx.tunnel(vm.sandboxId, port))
-      })
 
     const fetchDesktopUrl = (threadId: string) =>
       Effect.gen(function* () {
@@ -1104,9 +1085,7 @@ const make = (source: LoginSource, dataDir: string, desktopRedirect = true) =>
       exec,
       dropFiles,
       takeDropped,
-      stageArchive,
       pullFiles,
-      openTunnel,
       saveProfile,
       openScreen,
       sendScreen,
