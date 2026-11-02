@@ -8,8 +8,15 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { useOpenSubagent } from "../lib/subagents.ts"
 import { environmentName, useCloud, useClouds, usePullRequestHref, useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
-import { branchPullRequestAtom, callPromise, projectsAtom, pullRequestStatusAtom } from "../lib/rpc.ts"
-import { lineCounts } from "../lib/patch.ts"
+import {
+  branchPullRequestAtom,
+  callPromise,
+  projectsAtom,
+  pullRequestStatusAtom,
+  pullRequestStatusesAtom,
+} from "../lib/rpc.ts"
+import { lineCounts } from "../../shared/patch.ts"
+import { deriveShipReport } from "../../shared/shipReport.ts"
 import { useThreadChanges } from "../lib/threadChanges.ts"
 import { cn } from "../lib/utils.ts"
 import { parsePullRequestUrl } from "../lib/pullRequestRefs.ts"
@@ -24,6 +31,7 @@ import { CloudMark } from "./CloudMark.tsx"
 import { ProjectDialog } from "./ProjectDialog.tsx"
 import { ProjectIcon } from "./ProjectIcon.tsx"
 import { LineCounts } from "./LineCounts.tsx"
+import { ShipReportView } from "./ShipReport.tsx"
 import { BranchIcon } from "./icons/BranchIcon.tsx"
 import { ComputerIcon } from "./icons/ComputerIcon.tsx"
 import { ChatNewIcon } from "./icons/ChatNewIcon.tsx"
@@ -130,6 +138,7 @@ export function ThreadOverview({ thread }: { thread: Thread }) {
     >
       <div className="flex flex-col gap-0.5 rounded-2xl border border-border bg-background/95 p-1.5 shadow-sm backdrop-blur">
         <Environment thread={thread} project={project} worktree={live} />
+        {live && <ShipReportSection thread={thread} worktree={live} />}
         <PullRequests thread={thread} worktree={live} />
         {project.kind === "folder" && <SetupScript thread={thread} project={project} worktree={live} onRun={run} />}
         <Actions thread={thread} project={project} onRun={run} />
@@ -313,17 +322,39 @@ function SetupScript({ thread, project, worktree, onRun }: WorkspaceProps & { on
   )
 }
 
-function PullRequests({ thread, worktree }: { thread: Thread; worktree: Worktree | undefined }) {
+function usePullRequestUrls(thread: Thread, worktree: Worktree | undefined) {
   useAtomValue(loadPullRequestsAtom(thread.id))
   const links = usePullRequests((state) => state.byThreadId[thread.id]) ?? []
-  const branchPullRequest = AsyncResult.getOrElse(
-    useAtomValue(branchPullRequestAtom(worktree ? worktree.id : null)),
-    () => null,
-  )
+  const branchResult = useAtomValue(branchPullRequestAtom(worktree ? worktree.id : null))
+  const branchPullRequest = AsyncResult.getOrElse(branchResult, () => null)
   const linked = new Set(links.map((link) => link.url))
   const urls = [
     ...new Set([...(branchPullRequest ? [branchPullRequest.url] : []), ...links.map((link) => link.url).toReversed()]),
   ]
+  return { urls, linked, discovering: worktree !== undefined && !AsyncResult.isSuccess(branchResult) }
+}
+
+function ShipReportSection({ thread, worktree }: { thread: Thread; worktree: Worktree }) {
+  const { changes } = useThreadChanges(thread, "worktree")
+  const { urls, discovering } = usePullRequestUrls(thread, worktree)
+  const statuses = useAtomValue(pullRequestStatusesAtom(useThreadEnvironment(thread.id), urls))
+  const report = deriveShipReport({
+    threadStatus: thread.status,
+    changes: AsyncResult.isSuccess(changes) ? changes.value : null,
+    changesUnavailable: !AsyncResult.isSuccess(changes),
+    unresolvedPullRequests: statuses.filter((pullRequest) => pullRequest === undefined).length + (discovering ? 1 : 0),
+    pullRequests: statuses.flatMap((pullRequest) => (pullRequest ? [pullRequest] : [])),
+  })
+  const openChanges = () => {
+    const ui = useUi.getState()
+    ui.setChangesScope(thread.id, "worktree")
+    ui.showView(thread.id, "changes")
+  }
+  return <ShipReportView report={report} title={thread.title} onOpenChanges={openChanges} />
+}
+
+function PullRequests({ thread, worktree }: { thread: Thread; worktree: Worktree | undefined }) {
+  const { urls, linked } = usePullRequestUrls(thread, worktree)
   if (urls.length === 0) return null
 
   return (
