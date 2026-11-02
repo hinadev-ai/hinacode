@@ -144,8 +144,10 @@ const make = (options: BrowserOptions) =>
       if (disposed) return Promise.reject(new BrowserError({ message: "Browser service has stopped" }))
       if (processPromise) return processPromise
       const pending = (async () => {
-        const path = await executablePath(options.executablePath ?? process.env["HINACODE_BROWSER_EXECUTABLE_PATH"])
-        const { chromium } = await import("playwright-core")
+        const [path, { chromium }] = await Promise.all([
+          executablePath(options.executablePath ?? process.env["HINACODE_BROWSER_EXECUTABLE_PATH"]),
+          import("playwright-core"),
+        ])
         try {
           return await chromium.launch({
             executablePath: path,
