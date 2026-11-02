@@ -176,6 +176,21 @@ test("run --wait ends with the done outcome", async () => {
   expect(value).toMatchObject({ outcome: "done", title: expect.any(String) })
 })
 
+test("run leaves the desktop composer's draft available", async () => {
+  const projects = await withCli((client) => client.call("projects.list", undefined))
+  const project = projects.find((candidate) => candidate.rootPath === repo)!
+  const draft = await withCli((client) => client.call("threads.draft", { projectId: project.id }))
+  const { value } = await run("make a separate CLI thread", false)
+  expect(value).not.toMatchObject({ threadId: draft.id })
+  expect(await statusOf(draft.id)).toBe("draft")
+})
+
+test("concurrent runs create distinct threads", async () => {
+  const outputs = await Promise.all([run("first independent task", false), run("second independent task", false)])
+  const ids = outputs.map(({ value }) => (value as { threadId: string }).threadId)
+  expect(new Set(ids).size).toBe(2)
+})
+
 test("run --wait exits 2 on an approval, the inbox lists it, and answering it lets the turn finish", async () => {
   const { value, code } = await run(ASKING_PROMPT, true)
   expect(code).toBe(EXIT.needsHuman)
