@@ -8,7 +8,8 @@
     "scheme": "hinacode",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "appleTeamId": "ZY99H6ZA58"
     },
     "android": {
       "adaptiveIcon": {

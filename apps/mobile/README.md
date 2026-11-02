@@ -90,6 +90,16 @@ The phone reaches the desktop over plain `ws://`, which Android blocks in Releas
 
 The bundle runs on Hermes, which has none of the ES2023 array methods such as `toSorted`. `tsconfig.json` pins `lib` to ES2022 so `npx tsc --noEmit` catches them; `src/hermes.d.ts` adds back the two Hermes does have.
 
+### Install a standalone build on iOS
+
+Plug in a trusted iPhone or iPad with Developer Mode on and run:
+
+```sh
+pnpm install:ios            # or: pnpm install:ios <device UDID>
+```
+
+`scripts/install-ios.sh` regenerates `ios/` with `expo prebuild --clean`, builds a Release app with `xcodebuild`, installs it with `devicectl`, and opens it. Signing uses `appleTeamId` from `app.json`. Without the clean prebuild, an old `ios/` keeps stale icons and native settings even though the JavaScript is current.
+
 ## Pair
 
 1. On the desktop, open Settings, Remote, and turn on Allow remote control.
