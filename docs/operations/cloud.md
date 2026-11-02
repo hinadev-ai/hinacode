@@ -12,7 +12,7 @@ npx hinacode serve
 
 From a checkout, `pnpm serve` builds and runs the same daemon.
 
-The daemon keeps its data in `HINACODE_USER_DATA`, default `~/.hinacode-cloud`, and prints the pairing block: a phone URL for its address and a QR code to scan in the mobile app, then the URL to add under Settings > Environments on the desktop. It listens on one address, never every interface: `--host`, else the one it used last, else its Tailscale address. A machine without Tailscale needs `--host`, such as a LAN address, or `--host 127.0.0.1 --relay on` to be reached only through the relay. `0.0.0.0` and `::` are refused. `hinacode pair` prints the same block again, whether the daemon runs or not. The data directory holds `hinacode.sqlite`, attachments, and the pairing token inside the database. A desktop app and a cloud refuse to share one directory, and so do two clouds. The daemon spots a desktop by the `SingletonLock` in the directory's `chromium/`.
+The daemon keeps its data in `HINACODE_USER_DATA`, default `~/.hinacode-cloud`, and prints the pairing block: a phone URL for its address and a QR code to scan in the mobile app, then the URL to add under Settings > Connections on the desktop. It listens on one address, never every interface: `--host`, else the one it used last, else its Tailscale address. A machine without Tailscale needs `--host`, such as a LAN address, or `--host 127.0.0.1 --relay on` to be reached only through the relay. `0.0.0.0` and `::` are refused. `hinacode pair` prints the same block again, whether the daemon runs or not. The data directory holds `hinacode.sqlite`, attachments, and the pairing token inside the database. A desktop app and a cloud refuse to share one directory, and so do two clouds. The daemon spots a desktop by the `SingletonLock` in the directory's `chromium/`.
 
 Options, flags first, then environment, then stored settings:
 
@@ -45,7 +45,7 @@ The cloud then prints the pairing block with its relay hostname in every URL, an
 ## Keep it running
 
 - Install it once instead of resolving it on every boot: `npm install -g --allow-scripts=node-pty hinacode`, then run `hinacode serve`. npm 11 skips node-pty's install script without that flag, and the terminal then fails to start.
-- A cloud installed with `npm install -g` updates itself: it checks npm every 4 hours and installs a new release once no turn, queued message, setup script or terminal is running. To update right away, use Settings, Environments, `Update all` on the desktop. The cloud installs the release into the same npm prefix and restarts itself under the same pid, so a systemd or launchd service keeps running it. A cloud started with `npx` or from a checkout does not update itself. By hand, run `npm install -g --allow-scripts=node-pty hinacode@latest` and restart.
+- A cloud installed with `npm install -g` updates itself: it checks npm every 4 hours and installs a new release once no turn, queued message, setup script or terminal is running. To update right away, use Settings, Connections, `Update all` on the desktop. The cloud installs the release into the same npm prefix and restarts itself under the same pid, so a systemd or launchd service keeps running it. A cloud started with `npx` or from a checkout does not update itself. By hand, run `npm install -g --allow-scripts=node-pty hinacode@latest` and restart.
 - systemd user unit: `ExecStart=/usr/bin/env hinacode serve`, `Environment=PATH=...` with the directories of `node`, `claude`, `codex` and `gh`, `Restart=on-failure`, `StandardOutput=append:%h/.hinacode-cloud/serve.log`. Run `loginctl enable-linger $USER` so it starts at boot without a login. `SIGTERM` is handled: running turns persist before exit, at most 5 seconds.
 - launchd: `hinacode serve`, `KeepAlive` true, stdout to a log file so the pairing URL survives the boot.
 - Agent logins belong to the cloud: run `claude login`, `codex login`, `muse login` and `gh auth login` in a shell on that machine, once. hinacode never signs in for you.
@@ -54,7 +54,7 @@ The cloud then prints the pairing block with its relay hostname in every URL, an
 ## Troubleshooting
 
 - `hinacode serve: another hinacode serve (pid N) uses ...` or `the HinaCode app (pid N) uses ...`: give this cloud its own `HINACODE_USER_DATA`.
-- `hinacode serve: port 48081 is in use ...`: another cloud, or the desktop app's Settings > Remote, holds the port. Pick another with `--port`.
+- `hinacode serve: port 48081 is in use ...`: another cloud, or the desktop app's Settings > Connections, holds the port. Pick another with `--port`.
 - `automation webhook listener failed ... 48080`: the desktop app on the same machine holds the webhook port. The cloud keeps running; only its webhooks are off.
 - Phone cannot connect: use the Tailscale URL the daemon printed, and confirm both devices are on the same tailnet and the firewall allows the port. The transport is plain WebSocket, encrypted by Tailscale or your LAN only.
 - Lost the pairing URL: run `hinacode pair` with the same `HINACODE_USER_DATA`. It prints the same token without a restart. Restart with `--rotate-token` only when a token may have leaked, since every client must pair again.

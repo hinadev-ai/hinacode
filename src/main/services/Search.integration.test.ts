@@ -7,6 +7,7 @@ import { Effect, Layer } from "effect"
 import { SqlClient } from "effect/sql"
 import type { MessagePart } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
+import ftsToolTitles from "../db/migrations/0034_fts_tool_titles.ts"
 import { seedThread } from "../db/testing.ts"
 import * as Search from "./Search.ts"
 
@@ -45,6 +46,13 @@ const insertMessage = (threadId: string, parts: ReadonlyArray<MessagePart>) =>
   })
 
 const text = (value: string): MessagePart => ({ type: "text", text: value })
+const call = (callId: string, name: string, input: unknown): MessagePart => ({
+  type: "tool_call",
+  callId,
+  name,
+  input,
+  status: "done",
+})
 
 describe("Search.threads", () => {
   it.effect("finds substrings case-insensitively, newest first, with a snippet around the match", () =>
@@ -87,6 +95,46 @@ describe("Search.threads", () => {
       expect((yield* search.threads("messages_fts")).map((hit) => hit.messageId)).toStrictEqual([tool])
       expect(yield* search.threads("hidden")).toStrictEqual([])
       expect(yield* search.threads("secret")).toStrictEqual([])
+    }).pipe(withSearch(Search.layer)),
+  )
+
+  it.effect("shows a tool call the way the transcript titles it, not its raw input", () =>
+    Effect.gen(function* () {
+      const { threadId } = yield* seedThread({ rootPath: repo })
+      const message = yield* insertMessage(threadId, [
+        call("c1", "mcp__hinacode__create_thread", { prompt: "Retry failed payments", mode: "worktree" }),
+        call("c2", "WebFetch", { url: "https://docs.stripe.com/webhooks", prompt: "How are retries scheduled?" }),
+        call("c3", "search_issues", {
+          type: "mcpToolCall",
+          server: "linear",
+          tool: "search_issues",
+          arguments: { query: "stripe refunds" },
+        }),
+      ])
+      const search = yield* Search.Search
+
+      const [hit] = yield* search.threads("stripe")
+      expect(hit?.snippet).toContain("create_thread WebFetch https://docs.stripe.com/webhooks linear/search_issues")
+      expect(hit?.snippet).not.toMatch(/[{}"]/)
+      expect((yield* search.threads("linear/search_issues")).map(({ messageId }) => messageId)).toStrictEqual([message])
+      expect(yield* search.threads("worktree")).toStrictEqual([])
+    }).pipe(withSearch(Search.layer)),
+  )
+
+  it.effect("reindexes tool calls that an older index stored as raw input", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient
+      const { threadId } = yield* seedThread({ rootPath: repo })
+      const message = yield* insertMessage(threadId, [
+        { type: "tool_call", callId: "c1", name: "Grep", input: { pattern: "stripe", glob: "*.ts" }, status: "done" },
+      ])
+      yield* sql`UPDATE message_fts SET body = ${`Grep\n{"pattern":"stripe","glob":"*.ts"}`}`
+      yield* ftsToolTitles
+      const search = yield* Search.Search
+
+      expect((yield* search.threads("stripe")).map((hit) => [hit.messageId, hit.snippet])).toStrictEqual([
+        [message, "Grep stripe"],
+      ])
     }).pipe(withSearch(Search.layer)),
   )
 

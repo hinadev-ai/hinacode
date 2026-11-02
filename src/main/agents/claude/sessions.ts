@@ -1,6 +1,6 @@
 import { readdir, readFile, stat } from "node:fs/promises"
 import { join } from "node:path"
-import { listSessions, type SessionStore } from "@anthropic-ai/claude-agent-sdk"
+import type { SessionStore } from "@anthropic-ai/claude-agent-sdk"
 import { Option, Schema } from "effect"
 import { makeTranscriptBuilder } from "../importTranscript.ts"
 import { LISTED_SESSIONS, type NativeSession, type SessionHistory } from "../provider.ts"
@@ -55,6 +55,7 @@ const shorten = (text: string, length: number) => {
 }
 
 export const listClaudeSessions = async (home: string, cwd: string): Promise<ReadonlyArray<NativeSession>> => {
+  const { listSessions } = await import("@anthropic-ai/claude-agent-sdk")
   const sessions = await listSessions({ dir: cwd, sessionStore: homeStore(home), limit: LISTED_SESSIONS })
   return sessions
     .filter((session) => session.cwd === undefined || session.cwd === cwd)
