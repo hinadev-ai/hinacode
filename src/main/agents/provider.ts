@@ -95,3 +95,5 @@ export interface AgentProvider {
   readonly respondQuestion: (requestId: string, answers: QuestionAnswers) => Effect.Effect<void>
   readonly setAccessMode: (threadId: string, accessMode: AccessMode) => Effect.Effect<void, AgentError>
 }
+
+export const MCP_TOOL_TIMEOUT_SECONDS = 3600
