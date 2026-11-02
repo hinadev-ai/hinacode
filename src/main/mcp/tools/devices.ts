@@ -195,7 +195,9 @@ export const deviceToolsLayer = DeviceTools.toLayer(
       device_launch: ({ device, app }) =>
         McpTool.CallingThread.use((threadId) =>
           Effect.gen(function* () {
-            yield* devices.launch(threadId, device, app)
+            if ((yield* devices.launch(threadId, device, app)) === "handedBack") {
+              return yield* screen(threadId, device, HANDED_BACK)
+            }
             yield* Effect.sleep(SETTLE_MS * 2)
             return yield* screen(threadId, device, `Launched ${app} on`)
           }),

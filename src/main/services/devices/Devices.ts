@@ -59,7 +59,11 @@ export class Devices extends Context.Service<
       threadId: string,
       device: string | undefined,
     ) => Effect.Effect<ReadonlyArray<DeviceElement>, DevicesError>
-    readonly launch: (threadId: string, device: string | undefined, app: string) => Effect.Effect<void, DevicesError>
+    readonly launch: (
+      threadId: string,
+      device: string | undefined,
+      app: string,
+    ) => Effect.Effect<AgentInput, DevicesError>
   }
 >()("hinacode/Devices") {}
 
@@ -700,13 +704,14 @@ const make = (options: DevicesOptions) =>
           return driverOf(state.device.id).describe(state.device.id)
         }),
       launch: (threadId, device, app) =>
-        attempt(async (signal) => {
+        attempt(async (signal): Promise<AgentInput> => {
           const { state } = await chosen(threadId, device)
           if (state.control === "user") {
             await waitForHandBack(threadId, state.device.id, signal)
-            return
+            return "handedBack"
           }
           await driverOf(state.device.id).launch(state.device.id, app)
+          return "done"
         }),
     })
   })
