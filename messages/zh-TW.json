@@ -1809,6 +1809,7 @@
   "artifacts_export_failed": "無法匯出成品：{message}",
   "artifact_untitled": "未命名成品",
   "artifact_open": "開啟 {title}",
+  "thread_card_open": "開啟對話串「{title}」",
   "settings_devices": "裝置",
   "settings_devices_hint": "把執行緒所在機器上的 iOS 模擬器和 Android 模擬器串流到側邊面板。代理用 device 工具操作它們，你直接操作畫面就能接手。",
   "devices_new_simulator": "為此執行緒建立模擬器",

@@ -9,7 +9,13 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { NodeServices } from "@effect/platform-node"
 import { Context, Deferred, type Duration, Effect, Fiber, Layer, Option, Stream } from "effect"
 import { TestClock } from "effect/testing"
-import type { AgentEvent, McpConnection, ProviderId, RunTurnInput } from "../../shared/agent.ts"
+import {
+  type AgentEvent,
+  createdThreadId,
+  type McpConnection,
+  type ProviderId,
+  type RunTurnInput,
+} from "../../shared/agent.ts"
 import type { PushEvent } from "../../shared/contract.ts"
 import { defaultSettings } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
@@ -570,8 +576,8 @@ layer(testLayer)("create_thread", (it) => {
         prompt: "Look into the flaky test",
       })
       expect(result.isError).toBe(false)
-      const id = /Created thread (\S+)/.exec(result.text)?.[1]
-      if (id === undefined) throw new Error(`no thread id in ${result.text}`)
+      const id = createdThreadId(result.text)
+      if (id === null) throw new Error(`no thread id in ${result.text}`)
 
       const child = yield* threads.get(id)
       expect(child).toMatchObject({
@@ -736,7 +742,7 @@ layer(testLayer)("thread controls", (it) => {
       const threads = yield* Threads
       const { a } = yield* Seeded
       const created = yield* callFrom(a, "create_thread", { title: "Effortful", prompt: "Go", effort: "high" })
-      const id = /Created thread (\S+) /.exec(created.text)![1]!
+      const id = createdThreadId(created.text)!
       expect(yield* threads.get(id)).toMatchObject({ effort: "high" })
       yield* (yield* AgentRunner).interrupt(id)
     }),

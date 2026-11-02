@@ -322,6 +322,13 @@ export const isPublishArtifactTool = (name: string) =>
 export const publishedArtifactId = (result: string) =>
   /^Published artifact ([a-z0-9][a-z0-9-]*) version \d+/.exec(result)?.[1] ?? null
 
+export const CREATE_THREAD_TOOL = "create_thread"
+
+export const isCreateThreadTool = (name: string) =>
+  name === CREATE_THREAD_TOOL || name === `mcp__hinacode__${CREATE_THREAD_TOOL}`
+
+export const createdThreadId = (result: string) => /^Created thread ([\w-]+)/.exec(result)?.[1] ?? null
+
 export const toolArgument = (input: unknown, key: string): unknown => {
   if (!Predicate.isObject(input)) return undefined
   const record = input as Record<string, unknown>

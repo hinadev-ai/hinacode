@@ -1837,6 +1837,7 @@
   "artifacts_export_failed": "无法导出成品：{message}",
   "artifact_untitled": "未命名成品",
   "artifact_open": "打开 {title}",
+  "thread_card_open": "打开对话“{title}”",
   "settings_devices": "设备",
   "settings_devices_hint": "将对话所在机器上的 iOS 模拟器和 Android 模拟器投射到侧边面板。智能体通过设备工具操控它们，你直接在屏幕上操作即可接管。",
   "devices_new_simulator": "为此对话新建模拟器",
