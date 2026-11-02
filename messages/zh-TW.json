@@ -74,6 +74,17 @@
   "queue_after_approval": "回覆核准請求後引導代理",
   "queue_edit": "在輸入框中編輯",
   "queue_remove": "從佇列移除",
+  "schedule_send": "排程傳送",
+  "schedule_title": "稍後傳送這則訊息",
+  "schedule_input_label": "傳送時間",
+  "schedule_placeholder": "今晚 23:00、明天 9:00、2 小時後",
+  "schedule_at_limit_reset": "用量限制重置時",
+  "scheduled_label": "已排程的訊息",
+  "scheduled_sends_at": "{time} 傳送",
+  "scheduled_failed": "未能傳送：{reason}",
+  "scheduled_change_time": "變更時間",
+  "scheduled_edit": "在輸入框中編輯",
+  "scheduled_cancel": "取消排程傳送",
   "queue_attachments": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
