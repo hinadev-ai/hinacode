@@ -1,4 +1,5 @@
 import { Schema, Struct } from "effect"
+import { Artifact } from "./artifact.ts"
 import {
   AccountLimits,
   AccountProviderId,
@@ -899,6 +900,7 @@ export const PushEvent = Schema.Union([
   }),
   Schema.Struct({ type: Schema.Literal("fs.changed"), root: Schema.String, path: Schema.String }),
   Schema.Struct({ type: Schema.Literal("automation.run"), run: AutomationRun }),
+  Schema.Struct({ type: Schema.Literal("artifact.updated"), artifact: Artifact }),
   Schema.Struct({
     type: Schema.Literal("terminal.data"),
     id: Schema.String,
