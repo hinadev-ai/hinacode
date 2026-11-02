@@ -71,12 +71,12 @@ test("lists artifacts newest first, opens one in a sandboxed frame, follows new 
 
   await page.getByRole("button", { name: /Release notes/ }).click()
   const frame = page.getByTitle("Release notes")
-  await expect.element(frame).toHaveAttribute("src", "hinacode-artifact://newer/?v=2")
+  await expect.element(frame).toHaveAttribute("src", "hinacode-artifact://newer/index.html?v=2")
   await expect.element(frame).toHaveAttribute("sandbox", "allow-scripts")
 
   artifacts = [{ ...artifacts[1]!, version: 3, updatedAt: "2026-11-01T03:00:00.000Z" }, artifacts[0]!]
   for (const listener of listeners) listener({ type: "artifact.updated", artifact: artifacts[0]! })
-  await expect.element(frame).toHaveAttribute("src", "hinacode-artifact://newer/?v=3")
+  await expect.element(frame).toHaveAttribute("src", "hinacode-artifact://newer/index.html?v=3")
 
   await page.getByRole("button", { name: "Back to artifacts" }).click()
   await expect.element(page.getByRole("heading", { name: "Artifacts" })).toBeInTheDocument()
