@@ -30,3 +30,8 @@ export const PROJECT_FILE_PROTOCOL = "hinacode-file"
 
 export const projectFileUrl = (root: string, path: string) =>
   `${PROJECT_FILE_PROTOCOL}://root/${encodeURIComponent(root)}/${path.split("/").map(encodeURIComponent).join("/")}`
+
+export const ARTIFACT_PROTOCOL = "hinacode-artifact"
+
+export const artifactUrl = (id: string, path = "") =>
+  `${ARTIFACT_PROTOCOL}://${id}/${path.split("/").map(encodeURIComponent).join("/")}`
