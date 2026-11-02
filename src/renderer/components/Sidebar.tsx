@@ -484,6 +484,7 @@ function GroupHeader({ group, open }: GroupHeaderProps) {
           type="button"
           aria-expanded={open}
           aria-label={m.sidebar_group_toggle({ group: group.name })}
+          // oxlint-disable-next-line hinacode/no-async-on-click
           onClick={() => void update((state) => setGroupCollapsed(state, group.id, open))}
           className="group/trigger flex min-w-0 flex-1 items-center gap-1 rounded-md px-1.5 py-1 text-left text-xs font-medium text-muted-foreground outline-none hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
         >

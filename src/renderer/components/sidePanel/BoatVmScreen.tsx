@@ -4,7 +4,7 @@ import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { type DragEvent, type ReactNode, useEffect, useEffectEvent, useRef, useState } from "react"
 import type { VmControl } from "../../../shared/domain.ts"
-import { errorMessage } from "../../lib/errorMessage.ts"
+import { errorMessage, toastError } from "../../lib/errorMessage.ts"
 import { vmDesktopUrlAtom } from "../../lib/rpc.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
@@ -109,7 +109,7 @@ export default function BoatVmScreen({
       {fullscreen && (
         <div className="absolute top-3 right-3 z-10 flex items-center gap-2 rounded-[12px] bg-background/90 p-1 shadow-md">
           {fullscreenControls}
-          <Button variant="ghost" size="xs" onClick={() => void document.exitFullscreen()}>
+          <Button variant="ghost" size="xs" action={() => document.exitFullscreen().catch(toastError)}>
             <FullscreenExitIcon aria-hidden />
             {m.vm_exit_fullscreen()}
           </Button>

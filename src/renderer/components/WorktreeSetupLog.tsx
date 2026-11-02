@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from "react"
 import type { Worktree } from "../../shared/domain.ts"
+import { toastError } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { Button } from "./ui/button.tsx"
@@ -48,7 +49,7 @@ export function WorktreeSetupLog({ worktree }: { worktree: Worktree }) {
           variant="outline"
           size="xs"
           className="self-start"
-          onClick={() => void callPromise("worktrees.stopSetup", { id: worktree.id })}
+          action={() => callPromise("worktrees.stopSetup", { id: worktree.id }).catch(toastError)}
         >
           {m.panel_setup_stop()}
         </Button>

@@ -14,6 +14,7 @@ import {
   type Worktree,
 } from "../../../shared/domain.ts"
 import { environmentName, useClouds, usePullRequestHref, useThreadEnvironment } from "../../lib/environments.ts"
+import { toastError } from "../../lib/errorMessage.ts"
 import {
   branchPullRequestAtom,
   callPromise,
@@ -77,7 +78,7 @@ function RevealButton({ path, disabled }: { path: string; disabled?: boolean }) 
       size="xs"
       className="self-start"
       disabled={disabled}
-      onClick={() => void callPromise("shell.reveal", { path })}
+      action={() => callPromise("shell.reveal", { path }).catch(toastError)}
     >
       <FolderOpenIcon aria-hidden />
       {m.panel_reveal()}

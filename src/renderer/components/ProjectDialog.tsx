@@ -30,7 +30,7 @@ import { Input } from "./ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
 import { Switch } from "./ui/switch.tsx"
 import { Textarea } from "./ui/textarea.tsx"
-import { errorMessage } from "../lib/errorMessage.ts"
+import { errorMessage, toastError } from "../lib/errorMessage.ts"
 import { suggestProjectName } from "../lib/projectName.ts"
 import { startThread } from "../lib/startThread.ts"
 import { FolderOpenIcon } from "./icons/FolderOpenIcon.tsx"
@@ -161,7 +161,7 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
               spellCheck={false}
             />
             {canBrowse && (
-              <Button type="button" variant="outline" onClick={browse}>
+              <Button type="button" variant="outline" action={() => browse().catch(toastError)}>
                 <FolderOpenIcon aria-hidden />
                 {m.project_root_browse()}
               </Button>
@@ -323,7 +323,7 @@ function CloneTarget({ repository, value, canBrowse, onChange }: CloneTargetProp
           className="font-mono"
         />
         {canBrowse && (
-          <Button type="button" variant="outline" onClick={browse}>
+          <Button type="button" variant="outline" action={() => browse().catch(toastError)}>
             <FolderOpenIcon aria-hidden />
             {m.project_root_browse()}
           </Button>

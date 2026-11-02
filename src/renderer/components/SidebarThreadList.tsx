@@ -353,7 +353,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
                 size="icon-xs"
                 aria-label={m.sidebar_thread_unarchive_label({ title: thread.title })}
                 title={m.sidebar_thread_unarchive()}
-                onClick={() => void unarchive()}
+                action={unarchive}
               >
                 <UnarchiveIcon aria-hidden />
               </Button>
@@ -387,7 +387,7 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
                   aria-label={m.sidebar_thread_archive_label({ title: thread.title })}
                   title={m.sidebar_thread_archive()}
                   disabled={busy}
-                  onClick={() => void archive()}
+                  action={archive}
                 >
                   <ArchiveIcon aria-hidden className="size-4" />
                 </Button>

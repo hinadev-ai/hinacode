@@ -296,7 +296,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
             </Suspense>
             <ComposerToolbar className="relative shrink-0 gap-2">
               <ComposerActions className="min-w-0 flex-1">
-                <AttachButton onClick={pickFiles} disabled={isStaging} />
+                <AttachButton onClick={() => startStaging(pickFiles)} disabled={isStaging} />
                 <ThreadPicker thread={thread} canSwitchAgent={!busy && !isSidechat} onError={setError} />
               </ComposerActions>
               <ContextRing threadId={thread.id} provider={thread.provider} />

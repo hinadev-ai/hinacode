@@ -2,7 +2,7 @@ import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, useEffect, useState } from "react"
 import type { ClientSettings } from "../../../shared/domain.ts"
-import { errorMessage } from "../../lib/errorMessage.ts"
+import { errorMessage, toastError } from "../../lib/errorMessage.ts"
 import { notify } from "../../lib/notify.ts"
 import { callPromise, notificationPermissionAtom, updateClientSettingsAtom } from "../../lib/rpc.ts"
 import { useClientSettings } from "../../lib/settings.ts"
@@ -121,7 +121,7 @@ function PermissionNotice() {
         title={m.settings_notifications_not_determined()}
         body={m.settings_notifications_not_determined_hint()}
         action={
-          <Button variant="outline" size="sm" onClick={() => void ask()}>
+          <Button variant="outline" size="sm" action={() => ask().catch(toastError)}>
             {m.settings_notifications_allow()}
           </Button>
         }

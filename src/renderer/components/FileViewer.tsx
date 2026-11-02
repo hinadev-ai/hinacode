@@ -17,7 +17,7 @@ import {
 import { toast } from "sonner"
 import { useTheme } from "../lib/appearance.ts"
 import { projectFileUrl } from "../../shared/channels.ts"
-import { errorMessage } from "../lib/errorMessage.ts"
+import { errorMessage, toastError } from "../lib/errorMessage.ts"
 import { type FilePreview, hasSource, previewOf } from "../lib/filePreview.ts"
 import { callPromise, fileContentAtom, onPushEvent, RpcError } from "../lib/rpc.ts"
 import { useClientSettings } from "../lib/settings.ts"
@@ -229,7 +229,7 @@ function ViewerHeader({ path, onClose, onShowChanges, children }: ViewerHeaderPr
         size="icon-xs"
         aria-label={m.explorer_copy_path()}
         title={m.explorer_copy_path()}
-        onClick={() => void navigator.clipboard.writeText(path)}
+        action={() => navigator.clipboard.writeText(path).catch(toastError)}
       >
         <CopyIcon aria-hidden />
       </Button>

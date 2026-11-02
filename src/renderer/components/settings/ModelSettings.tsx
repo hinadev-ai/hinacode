@@ -156,7 +156,7 @@ function ModelPresetField({ provider, models }: { provider: ProviderId; models: 
           </SelectContent>
         </Select>
         {selected.length > 0 && (
-          <Button variant="ghost" size="sm" onClick={() => void save([])}>
+          <Button variant="ghost" size="sm" action={() => save([])}>
             {m.settings_model_preset_clear()}
           </Button>
         )}
@@ -440,7 +440,7 @@ function ModelSelect({
         </SelectContent>
       </Select>
       {clearable && current !== null && (
-        <Button variant="ghost" size="sm" onClick={() => void onSave(null)}>
+        <Button variant="ghost" size="sm" action={() => onSave(null)}>
           {m.settings_models_clear()}
         </Button>
       )}
