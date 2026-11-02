@@ -360,6 +360,28 @@ describe("desktop environments", () => {
     expect(failure(await invoke("attachments.read", { path: picked }, cloudId)).tag).toBe("AttachmentError")
   })
 
+  test("a device screenshot from a cloud thread is saved on the desktop for the local file manager", async () => {
+    const saved = await electron.handlers.get(RPC_CHANNEL)!(
+      { sender: {}, senderFrame: { url: appUrl, parent: null } },
+      {
+        method: "device.screenshot.save",
+        payload: {
+          threadId: cloudThread,
+          dataUrl: `data:image/png;base64,${Buffer.from("screen bytes").toString("base64")}`,
+          name: "Cloud phone.png",
+        },
+      },
+    )
+    expect(saved).toMatchObject({
+      result: {
+        path: expect.stringContaining(join(dir, "desktop", "attachments", cloudThread)),
+        name: "Cloud phone.png",
+        mime: "image/png",
+        bytes: 12,
+      },
+    })
+  })
+
   test("the file viewer previews a cloud's files from the cloud, inside the root only", async () => {
     writeFileSync(join(cloudRepo, "page.html"), "<h1>cloud</h1>")
     const { dataUrl } = result(await invoke("fs.preview", { root: cloudRepo, path: "page.html" }))
