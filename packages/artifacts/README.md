@@ -24,6 +24,8 @@ args = ["/path/to/hinacode/packages/artifacts/src/cli.ts", "mcp"]
 
 The server has three tools: `publish_artifact`, `list_artifacts` and `read_artifact`. Publishing again with the same id updates the artifact in place.
 
+Processes sharing a store serialize updates and deletion per artifact. Readers can keep loading the current version during publication. The store retains the previous committed version and recovers stale locks left by a crashed process.
+
 ## Preview
 
 ```sh

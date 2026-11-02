@@ -41,7 +41,9 @@ type Artifact = {
 }
 ```
 
-`publish` writes the next version directory, renames the manifest over the old one, then deletes versions older than the previous one. A reader that picked up the old manifest still finds its files. Paths are relative and normalized, and anything that escapes the version directory is refused. The entry must be one of the files. A version holds at most 16 MB.
+`publish` and `remove` hold the same per-artifact filesystem lock across processes. Publication reads the previous manifest under that lock, writes a new version, renames the manifest last, and keeps the current and previous committed versions. An incomplete directory left by a crashed writer cannot replace the previous committed version. The sibling `<id>.lock` directory uses `proper-lockfile`'s heartbeat and stale-lock recovery, so a killed writer does not block future updates permanently.
+
+File reads stay unlocked, so an existing preview remains readable while an update is written. If cleanup removes a file between reading its manifest and opening it, the reader retries only when the manifest has advanced. Paths are relative and normalized, and anything that escapes the version directory is refused. The entry must be one of the files. A version holds at most 16 MB.
 
 The package exports:
 
@@ -85,6 +87,6 @@ The trust boundary is the frame. Artifact HTML is agent output and is treated as
 
 ## Verification
 
-- `packages/artifacts`: unit tests over a temp directory for publish, update, path escapes, the size cap and the fetch handler's headers.
+- `packages/artifacts`: real-directory tests for publish, update, path escapes, the size cap and the fetch handler's headers. Independent Node processes exercise concurrent updates, preview reads, publish/delete ordering and recovery after a killed writer leaves an incomplete version.
 - `mcp/server.integration.test.ts`: a thread publishes through the built-in MCP server and reads it back.
 - The real app with `verify-hinacode`: publish from a scripted turn, open the card, publish again and watch the preview reload. Pair a `hinacode serve` cloud, publish there, and open it from the desktop's Artifacts page.
