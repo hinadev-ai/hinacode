@@ -70,6 +70,15 @@ Pages style themselves with the app's theme tokens (`--background`, `--primary`,
 
 The artifact header has an Export menu with HTML and PDF. `artifacts.export` is a desktop-only rpc: main asks where to save, then loads `hinacode-artifact://<id>/<entry>?theme=...`, so a cloud's artifact exports the same way a local one does. HTML is the entry with the current theme inserted, fetched with `net.fetch`. PDF renders the page in a hidden sandboxed window, waits for fonts and one second for scripts that draw, then calls `printToPDF`. Only the entry is exported; an artifact that links other files exports without them.
 
+### What the frame is doing
+
+A broken page used to sit at "Loading…" with no sign that anything failed, and a new version replaced the old one with no sign it had changed.
+
+- The header shows the version, such as `v3`, so an update is visible.
+- Until the frame fires `load`, a thin bar runs along the top of the panel. It fades in after a short delay, so a page that loads at once does not flash it.
+- The protocol inserts a small reporter script into every HTML response, next to the theme. Inside a frame it posts `{ type: "hinacode-artifact-problem", message }` to the parent for uncaught errors, unhandled rejections, `console.error` and resources that fail to load. Outside a frame, as in an exported file, it does nothing. The panel accepts a message only from its own frame's window and decodes it with a schema. The page controls the text, so it is shown as plain text and nothing else.
+- Problems collect in a strip under the frame. "Ask agent to fix" adds the title, id and messages to the thread's draft, so the developer can send it with their own words.
+
 ### Delete
 
 Right-clicking an artifact in the list offers Delete. `artifacts.delete` routes to the machine that owns the id and removes the artifact's directory. The service pushes `artifact.removed`, and so does its watcher when another harness deletes a directory, so every open list drops it. There is no undo.
