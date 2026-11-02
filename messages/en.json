@@ -1712,6 +1712,7 @@
   "mobile_files_contents_heading": "Lines containing “{query}”",
   "mobile_files_searching": "Searching contents",
   "mobile_files_no_lines": "No lines contain “{query}”",
+  "mobile_folder_missing": "This thread's folder is missing on the desktop. It was moved or deleted.",
   "mobile_files_ripgrep_missing": "Content search needs ripgrep (rg) on the desktop, and it is not installed there.",
   "mobile_files_status_added": "Added",
   "mobile_files_status_modified": "Modified",

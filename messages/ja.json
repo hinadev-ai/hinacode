@@ -1658,6 +1658,7 @@
   "mobile_files_contents_heading": "「{query}」を含む行",
   "mobile_files_searching": "中身を検索しています",
   "mobile_files_no_lines": "「{query}」を含む行はありません",
+  "mobile_folder_missing": "デスクトップ上にこのスレッドのフォルダが見つかりません。移動または削除されたようです。",
   "mobile_files_ripgrep_missing": "中身の検索にはデスクトップ側の ripgrep (rg) が必要ですが、インストールされていません。",
   "mobile_files_status_added": "追加",
   "mobile_files_status_modified": "変更",
