@@ -1,4 +1,5 @@
-import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react"
+import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState, useTransition } from "react"
+import { errorMessage } from "../lib/errorMessage.ts"
 import { lineRange } from "../lib/lineComments.ts"
 import { m } from "../paraglide/messages.js"
 import type { LineComment } from "../stores/drafts.ts"
@@ -17,7 +18,10 @@ interface LineCommentFormProps {
   readonly startLine: number
   readonly endLine: number
   readonly initialBody?: string
-  readonly onSubmit: (body: string) => void
+  readonly submitLabel?: string
+  readonly placeholder?: string
+  readonly onSubmit: (body: string) => void | Promise<void>
+  readonly alternate?: { readonly label: string; readonly onSubmit: (body: string) => Promise<void> }
   readonly onCancel: () => void
 }
 
@@ -26,12 +30,17 @@ export function LineCommentForm({
   startLine,
   endLine,
   initialBody = "",
+  submitLabel = initialBody === "" ? m.comment_add() : m.comment_update(),
+  placeholder = m.comment_placeholder(),
   onSubmit,
+  alternate,
   onCancel,
 }: LineCommentFormProps) {
   const [body, setBody] = useState(initialBody)
+  const [error, setError] = useState<string | null>(null)
+  const [pending, startTransition] = useTransition()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const canSubmit = body.trim() !== ""
+  const canSubmit = body.trim() !== "" && !pending
 
   // FIXME: @pierre/diffs lays out annotations after React mounts them, and focus only sticks once the box has a size
   useEffect(() => {
@@ -46,9 +55,19 @@ export function LineCommentForm({
     return () => observer.disconnect()
   }, [])
 
+  const send = (submitBody: (body: string) => void | Promise<void>) =>
+    startTransition(async () => {
+      setError(null)
+      try {
+        await submitBody(body.trim())
+      } catch (cause) {
+        setError(errorMessage(cause))
+      }
+    })
+
   const submit = (event?: FormEvent) => {
     event?.preventDefault()
-    if (canSubmit) onSubmit(body.trim())
+    if (canSubmit) send(onSubmit)
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -65,19 +84,35 @@ export function LineCommentForm({
       <Textarea
         ref={textareaRef}
         aria-label={m.comment_label({ location: location({ path, startLine, endLine }) })}
-        placeholder={m.comment_placeholder()}
+        placeholder={placeholder}
         value={body}
         onChange={(event) => setBody(event.target.value)}
         onKeyDown={onKeyDown}
         rows={2}
-        className="min-h-14 rounded-md text-xs md:text-xs"
+        className="min-h-14 rounded-md text-xs"
       />
+      {error && (
+        <p role="alert" className="px-1 text-xs wrap-anywhere text-destructive">
+          {error}
+        </p>
+      )}
       <div className="flex justify-end gap-1">
         <Button type="button" variant="ghost" size="xs" onClick={onCancel}>
           {m.comment_cancel()}
         </Button>
+        {alternate && (
+          <Button
+            type="button"
+            variant="outline"
+            size="xs"
+            disabled={!canSubmit}
+            onClick={() => send(alternate.onSubmit)}
+          >
+            {alternate.label}
+          </Button>
+        )}
         <Button type="submit" size="xs" disabled={!canSubmit} title={m.comment_submit_hint()}>
-          {initialBody === "" ? m.comment_add() : m.comment_update()}
+          {submitLabel}
         </Button>
       </div>
     </form>
@@ -99,7 +134,7 @@ export function LineCommentCard({
       className="m-2 flex max-w-xl items-start gap-2 rounded-lg border border-border bg-background py-1.5 pr-1.5 pl-2.5 font-sans text-xs"
     >
       <ChatIcon aria-hidden className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-      <p className="min-w-0 flex-1 py-0.5 break-words whitespace-pre-wrap">{comment.body}</p>
+      <p className="min-w-0 flex-1 py-0.5 wrap-break-word whitespace-pre-wrap">{comment.body}</p>
       <Button variant="ghost" size="icon-xs" aria-label={m.comment_edit()} title={m.comment_edit()} onClick={onEdit}>
         <PencilIcon aria-hidden />
       </Button>

@@ -8,7 +8,17 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
 import { statusOfCall, useOpenSubagent } from "../lib/subagents.ts"
 import { callPromise } from "../lib/rpc.ts"
-import { countToolKinds, describeCommand, describeToolCall, type ToolKind } from "../lib/toolCall.ts"
+import {
+  type ActivityPart,
+  conjunctionFormat,
+  countToolKinds,
+  describeCommand,
+  describeToolCall,
+  type SkillLabels as SkillLabelMap,
+  skillsUsed,
+  skillUseText,
+  type ToolKind,
+} from "../lib/toolCall.ts"
 import { decodeUnicodeEscapes } from "../lib/unicodeEscapes.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
@@ -34,6 +44,7 @@ import { GlobeIcon } from "./icons/GlobeIcon.tsx"
 import type { IconComponent } from "./icons/Icon.tsx"
 import { PencilIcon } from "./icons/PencilIcon.tsx"
 import { SearchIcon } from "./icons/SearchIcon.tsx"
+import { SkillIcon } from "./icons/SkillIcon.tsx"
 import { SpinnerIcon } from "./icons/SpinnerIcon.tsx"
 import { TerminalIcon } from "./icons/TerminalIcon.tsx"
 import { ToolsIcon } from "./icons/ToolsIcon.tsx"
@@ -62,26 +73,26 @@ export function MessagePartView({ part }: { part: MessagePart }) {
 }
 
 const disclosureTrigger =
-  "group/trigger -mx-2 flex w-[calc(100%+1rem)] min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-panel-open:text-foreground"
+  "group/trigger flex w-fit max-w-full min-w-0 items-center gap-2 rounded-sm py-0.5 text-left text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-panel-open:text-foreground"
 
 function Chevron() {
   return (
     <ChevronRightIcon
       aria-hidden
-      className="size-3.5 shrink-0 transition-transform group-data-panel-open/trigger:rotate-90 motion-reduce:transition-none"
+      className="size-3.5 shrink-0 opacity-0 transition-[rotate,opacity] group-hover/trigger:opacity-100 group-focus-visible/trigger:opacity-100 group-data-panel-open/trigger:rotate-90 group-data-panel-open/trigger:opacity-100 motion-reduce:transition-none"
     />
   )
 }
 
 function ReasoningPart({ text }: { text: string }) {
   return (
-    <Collapsible className="my-1">
+    <Collapsible className="my-2">
       <CollapsibleTrigger className={disclosureTrigger}>
-        <Chevron />
-        <BrainIcon aria-hidden className="size-3.5 shrink-0" />
+        <BrainIcon aria-hidden className="size-4 shrink-0" />
         {m.message_thinking()}
+        <Chevron />
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1 border-l-2 border-border pl-3 text-xs whitespace-pre-wrap text-muted-foreground">
+      <CollapsibleContent className="mt-1 border-l-2 border-border pl-3 text-sm whitespace-pre-wrap text-muted-foreground">
         {text.trim()}
       </CollapsibleContent>
     </Collapsible>
@@ -136,32 +147,15 @@ export const SubagentLinks = createContext(true)
 
 export const PartThread = createContext("")
 
+export const SkillLabels = createContext<SkillLabelMap>(new Map())
+
 function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call" }> }) {
   const linksSubagents = use(SubagentLinks)
   if (linksSubagents && spawnsSubagent(part)) return <SubagentCallPart part={part} />
-  const Icon = toolIcons[part.name] ?? ToolsIcon
-  const { name, summary } = describeToolCall(part)
-
   return (
-    <Collapsible className="my-1">
-      <CollapsibleTrigger className={disclosureTrigger}>
-        <Chevron />
-        <Icon aria-hidden className="size-3.5 shrink-0" />
-        <span className="shrink-0 font-medium">
-          <Highlighted text={name} />
-        </span>
-        <span className="min-w-0 flex-1 truncate font-mono" title={summary}>
-          <Highlighted text={summary} />
-        </span>
-        <span className="shrink-0" title={statusLabel[part.status]()}>
-          {statusIcon[part.status]}
-          <span className="sr-only">{statusLabel[part.status]()}</span>
-        </span>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1 text-xs">
-        <ToolCallDetails call={part} summary={summary} />
-      </CollapsibleContent>
-    </Collapsible>
+    <div className="my-2">
+      <ToolRow call={part} reveal={null} />
+    </div>
   )
 }
 
@@ -228,13 +222,12 @@ function SubagentCallPart({ part }: { part: Extract<MessagePart, { type: "tool_c
   const { name, summary } = describeToolCall(part)
 
   return (
-    <button type="button" onClick={() => open(part.callId)} className={`my-1 ${disclosureTrigger}`}>
-      <span className="size-3.5 shrink-0" />
-      {provider ? <ProviderIcon provider={provider} muted /> : <ToolsIcon aria-hidden className="size-3.5 shrink-0" />}
-      <span className="shrink-0 font-medium">
+    <button type="button" onClick={() => open(part.callId)} className={`my-2 ${disclosureTrigger}`}>
+      {provider ? <ProviderIcon provider={provider} muted /> : <ToolsIcon aria-hidden className="size-4 shrink-0" />}
+      <span className="shrink-0">
         <Highlighted text={name} />
       </span>
-      <span className="min-w-0 flex-1 truncate" title={summary}>
+      <span className="min-w-0 truncate" title={summary}>
         <Highlighted text={summary} />
       </span>
       <SubagentStatusIcon status={subagent?.status ?? statusOfCall[part.status]} className="size-3.5" />
@@ -261,12 +254,13 @@ const toolKindLabel = {
   read: m.tool_kind_read,
   edit: m.tool_kind_edit,
   search: m.tool_kind_search,
+  skill: m.tool_kind_skill,
   other: m.tool_kind_other,
 } satisfies Record<ToolKind, (inputs: { count: number }) => string>
 
 function summarizeTools(calls: ReadonlyArray<ToolCall>): string {
   const locale = getLocale()
-  const summary = new Intl.ListFormat(locale, { type: "conjunction" }).format(
+  const summary = conjunctionFormat(locale).format(
     countToolKinds(calls).map(({ kind, count }) => toolKindLabel[kind]({ count })),
   )
   return summary.charAt(0).toLocaleUpperCase(locale) + summary.slice(1)
@@ -275,13 +269,14 @@ function summarizeTools(calls: ReadonlyArray<ToolCall>): string {
 export function ToolGroup({
   messageId,
   index,
-  calls,
+  parts,
 }: {
   messageId: string
   index: number
-  calls: ReadonlyArray<ToolCall>
+  parts: ReadonlyArray<ActivityPart>
 }) {
-  const count = calls.length
+  const calls = parts.filter((part) => part.type === "tool_call")
+  const count = parts.length
   const running = calls.findLast((call) => call.status === "running")
   const failed = calls.filter((call) => call.status === "error").length
   const reveal = useUi((state) => state.findReveal)
@@ -294,14 +289,25 @@ export function ToolGroup({
       : null
   const [open, setOpen] = useFindDisclosure(revealHere)
 
+  const [onlyCall] = calls
+  if (calls.length === 1 && onlyCall) {
+    return (
+      <FindPartContext value={index + parts.indexOf(onlyCall)}>
+        <div className="my-2">
+          <ToolRow call={onlyCall} reveal={revealHere} />
+        </div>
+      </FindPartContext>
+    )
+  }
+  const Icon = toolIcons[calls[0]?.name ?? ""] ?? ToolsIcon
+
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="my-1">
+    <Collapsible open={open} onOpenChange={setOpen} className="my-2">
       <CollapsibleTrigger className={disclosureTrigger}>
-        <Chevron />
-        <ToolsIcon aria-hidden className="size-3.5 shrink-0" />
-        <span className="min-w-0 shrink truncate font-medium tabular-nums">{summarizeTools(calls)}</span>
+        <Icon aria-hidden className="size-4 shrink-0" />
+        <span className="min-w-0 shrink truncate tabular-nums">{summarizeTools(calls)}</span>
         {running && (
-          <span className="min-w-0 flex-1 truncate">
+          <span className="min-w-0 truncate">
             <Highlighted text={describeCommand(running)} />
           </span>
         )}
@@ -311,17 +317,24 @@ export function ToolGroup({
             {m.tool_commands_failed({ count: failed })}
           </span>
         )}
-        {running && <span className="ml-auto shrink-0">{statusIcon.running}</span>}
+        {running && <span className="shrink-0">{statusIcon.running}</span>}
+        <Chevron />
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1 max-h-96 overflow-y-auto rounded-lg border border-border">
-        <ul className="divide-y divide-border">
-          {calls.map((call, position) => (
-            <li key={call.callId}>
-              <FindPartContext value={index + position}>
-                <ToolRow call={call} reveal={revealHere?.match.partIndex === index + position ? revealHere : null} />
-              </FindPartContext>
-            </li>
-          ))}
+      <CollapsibleContent>
+        <ul className="mt-1 flex flex-col gap-1">
+          {parts.map(
+            (part, position) =>
+              part.type === "tool_call" && (
+                <li key={part.callId}>
+                  <FindPartContext value={index + position}>
+                    <ToolRow
+                      call={part}
+                      reveal={revealHere?.match.partIndex === index + position ? revealHere : null}
+                    />
+                  </FindPartContext>
+                </li>
+              ),
+          )}
         </ul>
       </CollapsibleContent>
     </Collapsible>
@@ -330,29 +343,41 @@ export function ToolGroup({
 
 function ToolRow({ call, reveal }: { call: ToolCall; reveal: FindRevealRequest | null }) {
   const truncate = reveal === null ? "truncate" : "wrap-anywhere"
-  const isCommand = call.name === "Bash"
   const { summary } = describeToolCall(call)
-  const Icon = toolIcons[call.name] ?? ToolsIcon
+  const skills = skillsUsed(call)
+  const Icon = skills === null ? (toolIcons[call.name] ?? ToolsIcon) : SkillIcon
   return (
     <Collapsible>
-      <CollapsibleTrigger className="group/trigger flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left text-xs text-muted-foreground outline-none hover:bg-muted/50 hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset data-panel-open:text-foreground">
-        <Icon aria-hidden className="size-3.5 shrink-0" />
-        {isCommand ? <CommandLabel call={call} truncate={truncate} /> : <ToolLabel call={call} truncate={truncate} />}
-        <ChevronRightIcon
-          aria-hidden
-          className="size-3.5 shrink-0 transition-transform group-data-panel-open/trigger:rotate-90 motion-reduce:transition-none"
-        />
+      <CollapsibleTrigger className={disclosureTrigger}>
+        <Icon aria-hidden className="size-4 shrink-0" />
+        {skills !== null ? (
+          <SkillLabel skills={skills} truncate={truncate} />
+        ) : call.name === "Bash" ? (
+          <CommandLabel call={call} truncate={truncate} />
+        ) : (
+          <ToolLabel call={call} truncate={truncate} />
+        )}
         {call.status !== "done" && (
-          <span className="ml-auto shrink-0" title={statusLabel[call.status]()}>
+          <span className="shrink-0" title={statusLabel[call.status]()}>
             {statusIcon[call.status]}
             <span className="sr-only">{statusLabel[call.status]()}</span>
           </span>
         )}
+        <Chevron />
       </CollapsibleTrigger>
-      <CollapsibleContent className="px-3 pb-2 text-xs">
+      <CollapsibleContent className="mt-1 mb-2 text-xs">
         <ToolCallDetails call={call} summary={summary} inGroup />
       </CollapsibleContent>
     </Collapsible>
+  )
+}
+
+function SkillLabel({ skills, truncate }: { skills: ReadonlyArray<string>; truncate: string }) {
+  const text = skillUseText(skills, use(SkillLabels))
+  return (
+    <span className={cn("min-w-0", truncate)} title={text}>
+      <Highlighted text={text} />
+    </span>
   )
 }
 
@@ -360,11 +385,11 @@ function CommandLabel({ call, truncate }: { call: ToolCall; truncate: string }) 
   const { distinctLabel, command } = commandFindText(call)
   return (
     <>
-      <span className={cn("min-w-0 font-mono", truncate)} title={command}>
+      <span className={cn("min-w-0", truncate)} title={command}>
         <Highlighted text={command} />
       </span>
       {distinctLabel !== null && (
-        <span className={cn("min-w-0 max-w-1/2 shrink-0", truncate)} title={distinctLabel}>
+        <span className={cn("max-w-1/2 min-w-0 shrink-0", truncate)} title={distinctLabel}>
           <Highlighted text={distinctLabel} />
         </span>
       )}
@@ -376,10 +401,10 @@ function ToolLabel({ call, truncate }: { call: ToolCall; truncate: string }) {
   const { name, summary } = describeToolCall(call)
   return (
     <>
-      <span className="shrink-0 font-medium">
+      <span className="shrink-0">
         <Highlighted text={name} />
       </span>
-      <span className={cn("min-w-0 font-mono", truncate)} title={summary}>
+      <span className={cn("min-w-0", truncate)} title={summary}>
         <Highlighted text={summary} />
       </span>
     </>
@@ -402,7 +427,7 @@ function CommandView({
     <div className={cn("rounded-md bg-muted/50 p-2 font-mono", scroll)}>
       <section>
         <h4 className="sr-only">{m.tool_command()}</h4>
-        <pre className="whitespace-pre-wrap wrap-anywhere">
+        <pre className="wrap-anywhere whitespace-pre-wrap">
           <ShellCode code={command} />
         </pre>
       </section>
@@ -410,7 +435,7 @@ function CommandView({
         <section className="mt-2">
           <h4 className="sr-only">{m.tool_output()}</h4>
           {fullOutputButton}
-          <pre className="ansi-output whitespace-pre-wrap wrap-anywhere text-muted-foreground">
+          <pre className="ansi-output wrap-anywhere whitespace-pre-wrap text-muted-foreground">
             {output === "" ? m.tool_no_output() : <AnsiText text={output} />}
           </pre>
         </section>
@@ -450,7 +475,7 @@ function ToolSection({
     <section>
       <h4 className="mb-1 font-medium text-muted-foreground">{label}</h4>
       {fullOutputButton}
-      <pre className={cn("rounded-md bg-muted/50 p-2 font-mono whitespace-pre-wrap wrap-anywhere", scroll)}>{text}</pre>
+      <pre className={cn("rounded-md bg-muted/50 p-2 font-mono wrap-anywhere whitespace-pre-wrap", scroll)}>{text}</pre>
     </section>
   )
 }
@@ -458,22 +483,19 @@ function ToolSection({
 function FileChangePart({ path, diff }: { path: string; diff: string }) {
   const row = (
     <>
-      <FileDiffIcon aria-hidden className="size-3.5 shrink-0" />
+      <FileDiffIcon aria-hidden className="size-4 shrink-0" />
       <span className="shrink-0">{m.file_change_label()}</span>
-      <span className="min-w-0 truncate font-mono" title={path}>
+      <span className="min-w-0 truncate" title={path}>
         <Highlighted text={path} />
       </span>
     </>
   )
-  if (diff === "")
-    return (
-      <div className="my-1 -mx-2 flex items-center gap-2 px-2 py-1 pl-7.5 text-xs text-muted-foreground">{row}</div>
-    )
+  if (diff === "") return <div className="my-2 flex items-center gap-2 py-0.5 text-sm text-muted-foreground">{row}</div>
   return (
-    <Collapsible className="my-1">
+    <Collapsible className="my-2">
       <CollapsibleTrigger className={disclosureTrigger}>
-        <Chevron />
         {row}
+        <Chevron />
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-1">
         <pre className="max-h-80 overflow-auto rounded-md bg-muted/50 p-2 font-mono text-xs">{diff}</pre>

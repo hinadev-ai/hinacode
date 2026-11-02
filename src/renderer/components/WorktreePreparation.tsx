@@ -28,7 +28,7 @@ function Step({ state, label, children }: { state: StepState; label: string; chi
 
 export function WorktreePreparation({ worktree }: { worktree: Worktree }) {
   return (
-    <output className="clear-overview m-auto flex w-full max-w-lg flex-col gap-4 px-4">
+    <output className="m-auto flex w-full max-w-lg clear-overview flex-col gap-4 px-4">
       <div className="flex flex-col items-center gap-1 text-center">
         <h2 className="text-sm font-semibold">{m.worktree_preparation_title()}</h2>
         <p className="text-sm text-muted-foreground">{m.worktree_preparation_hint()}</p>

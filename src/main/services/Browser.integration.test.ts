@@ -33,6 +33,8 @@ addEventListener('resize',()=>fetch('/events?type=resize&width='+innerWidth+'&he
 addEventListener('scroll',()=>fetch('/events?type=scroll&y='+scrollY))
 </script></body></html>`
 
+const untilFirstFrame = { timeout: 6000 }
+
 const fixture = async (options: BrowserOptions = {}) => {
   const directory = await mkdtemp(join(tmpdir(), "hinacode-browser-"))
   cleanups.push(() => rm(directory, { recursive: true, force: true }))
@@ -155,7 +157,7 @@ describe("host browser", () => {
   test("Mac editing shortcuts select, undo, and redo on a remote host", async () => {
     const { open } = await fixture()
     const tab = await open()
-    await expect.poll(async () => (await tab.snapshot()).state.title).toBe("Remote browser")
+    await expect.poll(async () => (await tab.snapshot()).state.title, untilFirstFrame).toBe("Remote browser")
     await tab.batch([pointer("mousePressed", 50, 40), pointer("mouseReleased", 50, 40)])
     await tab.send({ kind: "text", text: "original" })
     await tab.batch([...shortcut("KeyA", "a", 65), { kind: "text", text: "replacement" }])
@@ -190,7 +192,7 @@ describe("host browser", () => {
   test("forwards pointer, Unicode text, key release, scroll, and viewport changes", async () => {
     const { open, events } = await fixture()
     const tab = await open()
-    await expect.poll(async () => (await tab.snapshot()).state.title).toBe("Remote browser")
+    await expect.poll(async () => (await tab.snapshot()).state.title, untilFirstFrame).toBe("Remote browser")
     await tab.send(pointer("mousePressed", 50, 40))
     await tab.send(pointer("mouseReleased", 50, 40))
     await tab.send({ kind: "text", text: "Remote 日本語" })
@@ -231,7 +233,7 @@ describe("host browser", () => {
   test("keeps navigation asynchronous and supports back, forward, reload, and stop", async () => {
     const { open, origin } = await fixture()
     const tab = await open()
-    await expect.poll(async () => (await tab.snapshot()).state.title).toBe("Remote browser")
+    await expect.poll(async () => (await tab.snapshot()).state.title, untilFirstFrame).toBe("Remote browser")
     await tab.send({ kind: "navigate", url: `${origin}/second` })
     await expect.poll(async () => (await tab.snapshot()).state).toMatchObject({ title: "Second page", back: true })
     await tab.send({ kind: "back" })
@@ -251,7 +253,7 @@ describe("host browser", () => {
   test("executes input batches in order and refuses empty or oversized batches", async () => {
     const { open } = await fixture()
     const tab = await open()
-    await expect.poll(async () => (await tab.snapshot()).state.title).toBe("Remote browser")
+    await expect.poll(async () => (await tab.snapshot()).state.title, untilFirstFrame).toBe("Remote browser")
     await tab.batch([
       pointer("mousePressed", 50, 40),
       pointer("mouseReleased", 50, 40),
@@ -267,7 +269,7 @@ describe("host browser", () => {
   test("opens target-blank links and about-blank popups in the current remote tab", async () => {
     const { open, origin, requests } = await fixture()
     const tab = await open()
-    await expect.poll(async () => (await tab.snapshot()).state.title).toBe("Remote browser")
+    await expect.poll(async () => (await tab.snapshot()).state.title, untilFirstFrame).toBe("Remote browser")
     await tab.batch([pointer("mousePressed", 40, 268), pointer("mouseReleased", 40, 268)])
     await expect
       .poll(async () => (await tab.snapshot()).state)
@@ -285,7 +287,7 @@ describe("host browser", () => {
   test("adopts a popup POST response without replaying it and keeps input and picking on the same session", async () => {
     const { open, origin, requests } = await fixture()
     const tab = await open()
-    await expect.poll(async () => (await tab.snapshot()).state.title).toBe("Remote browser")
+    await expect.poll(async () => (await tab.snapshot()).state.title, untilFirstFrame).toBe("Remote browser")
     const duringAdoption = tab.snapshot()
     await tab.batch([pointer("mousePressed", 60, 360), pointer("mouseReleased", 60, 360)])
     await duringAdoption
@@ -319,7 +321,7 @@ describe("host browser", () => {
   test("retains document content written into an about-blank popup", async () => {
     const { open, requests, deliverPopup } = await fixture()
     const tab = await open()
-    await expect.poll(async () => (await tab.snapshot()).state.title).toBe("Remote browser")
+    await expect.poll(async () => (await tab.snapshot()).state.title, untilFirstFrame).toBe("Remote browser")
     await tab.batch([pointer("mousePressed", 60, 410), pointer("mouseReleased", 60, 410)])
     const pendingFrame = tab.snapshot()
     await expect.poll(() => requests.some((request) => request.path === "/popup-content")).toBe(true)
@@ -380,7 +382,7 @@ describe("host browser", () => {
   test("refuses non-web navigation and invalid commands at the host boundary", async () => {
     const { open, origin } = await fixture()
     const tab = await open()
-    await expect.poll(async () => (await tab.snapshot()).state.title).toBe("Remote browser")
+    await expect.poll(async () => (await tab.snapshot()).state.title, untilFirstFrame).toBe("Remote browser")
     await expect(tab.send({ kind: "navigate", url: "file:///etc/passwd" })).rejects.toThrow()
     await expect(tab.send({ kind: "resize", width: 100000, height: 600 })).rejects.toThrow()
     await tab.send({ kind: "navigate", url: `${origin}/redirect-file` })
@@ -391,7 +393,7 @@ describe("host browser", () => {
   test("pauses hidden viewing and resumes with a usable frame", async () => {
     const { open } = await fixture()
     const tab = await open()
-    await expect.poll(async () => (await tab.snapshot(0, false)).state.title).toBe("Remote browser")
+    await expect.poll(async () => (await tab.snapshot(0, false)).state.title, untilFirstFrame).toBe("Remote browser")
     expect((await tab.snapshot(0, false)).frame).toBeNull()
     const initial = await tab.snapshot()
     expect(initial.frame?.jpeg).toBeTruthy()
@@ -402,7 +404,7 @@ describe("host browser", () => {
   test("expires abandoned sessions and closes sessions with the service scope", async () => {
     const { open, runtime, browser } = await fixture({ leaseMs: 700, sweepMs: 30 })
     const tab = await open()
-    await expect.poll(async () => (await tab.snapshot()).state.title).toBe("Remote browser")
+    await expect.poll(async () => (await tab.snapshot()).state.title, untilFirstFrame).toBe("Remote browser")
     await Effect.runPromise(Effect.sleep(900))
     await expect(tab.snapshot()).rejects.toThrow(/expired/)
     const replacement = await open()

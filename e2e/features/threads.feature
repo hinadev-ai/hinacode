@@ -5,10 +5,19 @@ Feature: Threads
   Background:
     Given a project "demo" for my repository
 
-  Scenario: Starting a thread opens it at once, ready for the first message
+  Scenario: Starting a thread opens a draft, ready for the first message and kept out of the sidebar
     When I start a new thread in "demo"
     Then a new thread is open with the composer focused
-    And the sidebar lists the open thread
+    And the sidebar does not list the open draft
+
+  Scenario: Starting a thread again in a project brings back its draft as it was left
+    Given the project "demo" has a thread "One"
+    When I start a new thread in "demo"
+    And I type "half a thought" into the composer
+    And I open the thread "One" from the sidebar
+    And I start a new thread in "demo"
+    Then a new thread is open with the composer focused
+    And the composer holds "half a thought"
 
   Scenario: Switching between threads replaces the open thread instead of stacking it
     Given the project "demo" has a thread "One"
@@ -98,6 +107,12 @@ Feature: Threads
     When I unsnooze the thread "Later" from its menu
     Then no thread is snoozed
     And the open tab lists the thread "Later"
+
+  Scenario: A row's menu opens from a click that lands before the row registers the pointer
+    Given the project "demo" has a thread "Moved"
+    And I open the sidebar tab "Inbox"
+    When I click the menu button of the thread "Moved" with the pointer resting elsewhere
+    Then the thread menu offers "Snooze…"
 
   Scenario Outline: Enter on a time the picker can't use keeps it open, until a preset is picked with the keyboard
     Given the project "demo" has a thread "Later"

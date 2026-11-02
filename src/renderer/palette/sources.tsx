@@ -47,7 +47,7 @@ export const projectsSource: PaletteSource = {
       subtitle: project.rootPath,
       icon: <PlusIcon aria-hidden className={iconClass} />,
       ...cloudOf(project, ctx),
-      run: () => void startThread(project.id, ctx.navigate),
+      run: () => void startThread(project, ctx.navigate),
     })),
 }
 
@@ -62,7 +62,7 @@ export const newThreadSource: PaletteSource = {
       icon: <ProjectIcon projectId={project.id} />,
       ...cloudOf(project, ctx),
       ...(index < 9 ? { chord: `Mod+${index + 1}` } : {}),
-      run: () => void startThread(project.id, ctx.navigate),
+      run: () => void startThread(project, ctx.navigate),
     }))
     const newest = Object.values(ctx.threads)
       .filter((thread) => thread.createdBy === "user")

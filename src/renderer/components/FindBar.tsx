@@ -1,7 +1,9 @@
 import type { LegendListRef } from "@legendapp/list/react"
 import { type KeyboardEvent, type RefObject, useEffect, useEffectEvent, useRef, useState } from "react"
+import type { AgentCommand } from "../../shared/agent.ts"
 import type { Message } from "../../shared/domain.ts"
 import { type FindMatch, findMatches } from "../lib/find.ts"
+import { skillLabelsOf } from "../lib/toolCall.ts"
 import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
 import { partMatchSelector } from "./FindHighlight.tsx"
@@ -40,10 +42,12 @@ const ordinalInPart = (matches: ReadonlyArray<FindMatch>, current: number) => {
 
 export function FindBar({
   messages,
+  commands,
   query,
   listRef,
 }: {
   messages: ReadonlyArray<Message>
+  commands: ReadonlyArray<AgentCommand>
   query: string
   listRef: RefObject<LegendListRef | null>
 }) {
@@ -58,7 +62,7 @@ export function FindBar({
   const revealToken = useRef(0)
 
   const startMessageId = useUi((state) => state.findMessageId)
-  const matches = findMatches(messages, query)
+  const matches = findMatches(messages, query, skillLabelsOf(commands))
   const inMessage = matches.findLastIndex((match) => match.messageId === startMessageId)
   const start = inMessage === -1 ? matches.length - 1 : inMessage
   const [selected, setSelected] = useState<{ query: string; index: number } | null>(null)

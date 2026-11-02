@@ -1,6 +1,6 @@
 import type { Message, MessagePart } from "../../shared/domain.ts"
 import { assistantPresentation, presentationBlocks } from "./assistantPresentation.ts"
-import { describeCommand, describeToolCall } from "./toolCall.ts"
+import { describeCommand, describeToolCall, type SkillLabels, skillsUsed, skillUseText } from "./toolCall.ts"
 
 type ToolCall = Extract<MessagePart, { type: "tool_call" }>
 
@@ -20,12 +20,15 @@ const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&
 export const findPattern = (query: string): RegExp | null =>
   query.trim() === "" ? null : new RegExp(escapeRegExp(query), "giu")
 
-export function searchableText(part: MessagePart): string {
+export function searchableText(part: MessagePart, skillLabels: SkillLabels): string {
   switch (part.type) {
     case "text":
     case "questions":
       return part.text
     case "tool_call": {
+      const skills = skillsUsed(part)
+      if (skills !== null) return skillUseText(skills, skillLabels)
+      if (part.name === "Bash") return commandSearchText(commandFindText(part))
       const { name, summary } = describeToolCall(part)
       return `${name}\n${summary}`
     }
@@ -54,10 +57,11 @@ export function commandFindText(call: ToolCall): CommandFindText {
 export const commandSearchText = ({ distinctLabel, command }: CommandFindText) =>
   distinctLabel === null ? command : `${command}\n${distinctLabel}`
 
-const toolRowSearchText = (call: ToolCall) =>
-  call.name === "Bash" ? commandSearchText(commandFindText(call)) : searchableText(call)
-
-export function findMatches(messages: ReadonlyArray<Message>, query: string): Array<FindMatch> {
+export function findMatches(
+  messages: ReadonlyArray<Message>,
+  query: string,
+  skillLabels: SkillLabels = new Map(),
+): Array<FindMatch> {
   const pattern = findPattern(query)
   if (pattern === null) return []
   const matches: Array<FindMatch> = []
@@ -69,11 +73,11 @@ export function findMatches(messages: ReadonlyArray<Message>, query: string): Ar
     const writing = message.completedAt === null && parts.at(-1)?.part.type === "text"
     for (const block of presentationBlocks(writing ? parts.slice(0, -1) : parts)) {
       if (block.type === "part") {
-        search(message.id, block.index, searchableText(block.part))
+        search(message.id, block.index, searchableText(block.part, skillLabels))
         continue
       }
-      for (const [position, call] of block.calls.entries()) {
-        search(message.id, block.index + position, toolRowSearchText(call))
+      for (const [position, part] of block.parts.entries()) {
+        search(message.id, block.index + position, searchableText(part, skillLabels))
       }
     }
   }

@@ -33,7 +33,7 @@ export function MessageActions({ message, className }: { message: Message; class
   return (
     <div
       className={cn(
-        "flex gap-0.5 text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 focus-within:opacity-100 motion-reduce:transition-none",
+        "flex gap-0.5 text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 focus-within:opacity-100",
         className,
       )}
     >

@@ -1,24 +1,36 @@
 import { AtomRegistry } from "effect/reactivity"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import type { PushEvent } from "../../shared/contract.ts"
-import { onPushEvent, pullRequestStatusAtom } from "./rpc.ts"
+import { branchPullRequestAtom, onPushEvent, pullRequestDetailAtom, pullRequestStatusAtom } from "./rpc.ts"
 
 let bridgeListeners: ReadonlyArray<(event: unknown) => void> = []
 const push = (event: unknown) => {
   for (const listener of bridgeListeners) listener(event)
 }
 
+const onEvent = (listener: (event: unknown) => void) => {
+  bridgeListeners = [...bridgeListeners, listener]
+  return () => {
+    bridgeListeners = bridgeListeners.filter((other) => other !== listener)
+  }
+}
+
+const PULL_REQUEST = {
+  url: "https://github.com/o/r/pull/1",
+  number: 1,
+  title: "Poll",
+  status: "open",
+  checks: "passing",
+  review: null,
+  author: "octocat",
+  headRefName: "feature",
+  baseRefName: "main",
+  additions: 1,
+  deletions: 0,
+}
+
 beforeEach(() => {
-  vi.stubGlobal("window", {
-    hinacode: {
-      onEvent: (listener: (event: unknown) => void) => {
-        bridgeListeners = [...bridgeListeners, listener]
-        return () => {
-          bridgeListeners = bridgeListeners.filter((other) => other !== listener)
-        }
-      },
-    },
-  })
+  vi.stubGlobal("window", { hinacode: { onEvent } })
 })
 
 afterEach(() => {
@@ -88,23 +100,10 @@ test("pull request polling resumes after the window hides across a refresh and r
     "window",
     Object.assign(new EventTarget(), {
       hinacode: {
+        onEvent,
         rpc: async () => {
           lookups++
-          return {
-            result: {
-              url: "https://github.com/o/r/pull/1",
-              number: 1,
-              title: "Poll",
-              status: "open",
-              checks: "passing",
-              review: null,
-              author: "octocat",
-              headRefName: "feature",
-              baseRefName: "main",
-              additions: 1,
-              deletions: 0,
-            },
-          }
+          return { result: PULL_REQUEST }
         },
       },
     }),
@@ -123,6 +122,88 @@ test("pull request polling resumes after the window hides across a refresh and r
   expect(lookups).toBe(2)
   await vi.advanceTimersByTimeAsync(120_000)
   expect(lookups).toBe(4)
+
+  unmount()
+  registry.dispose()
+})
+
+test("a pull request lookup reads again when main says that pull request changed", async () => {
+  let lookups = 0
+  vi.stubGlobal("document", Object.assign(new EventTarget(), { hidden: false, visibilityState: "visible" }))
+  vi.stubGlobal(
+    "window",
+    Object.assign(new EventTarget(), {
+      hinacode: {
+        onEvent,
+        rpc: async () => {
+          lookups++
+          return { result: PULL_REQUEST }
+        },
+      },
+    }),
+  )
+  const registry = AtomRegistry.make()
+  const unmount = registry.mount(pullRequestStatusAtom(null, PULL_REQUEST.url))
+  await vi.waitFor(() => expect(lookups).toBe(1))
+
+  push({ type: "github.pullRequest", url: "https://github.com/o/r/pull/2" })
+  push({ type: "github.pullRequest", url: PULL_REQUEST.url })
+  await vi.waitFor(() => expect(lookups).toBe(2))
+
+  unmount()
+  registry.dispose()
+})
+
+test("a branch's pull request reads again when main says it changed, from the first lookup on", async () => {
+  let lookups = 0
+  vi.stubGlobal("document", Object.assign(new EventTarget(), { hidden: false, visibilityState: "visible" }))
+  vi.stubGlobal(
+    "window",
+    Object.assign(new EventTarget(), {
+      hinacode: {
+        onEvent,
+        rpc: async () => {
+          lookups++
+          return { result: PULL_REQUEST }
+        },
+      },
+    }),
+  )
+  const registry = AtomRegistry.make()
+  const branch = branchPullRequestAtom("worktree-1")
+  const unmount = registry.mount(branch)
+  await vi.waitFor(() => expect(registry.get(branch)).toMatchObject({ _tag: "Success", waiting: false }))
+  expect(lookups).toBe(1)
+
+  push({ type: "github.pullRequest", url: PULL_REQUEST.url })
+  await vi.waitFor(() => expect(lookups).toBe(2))
+
+  unmount()
+  registry.dispose()
+})
+
+test("returning to the window asks main once for a fresh read of the pull request on screen", async () => {
+  const payloads: Array<unknown> = []
+  const page = Object.assign(new EventTarget(), { hidden: false, visibilityState: "visible" })
+  const app = Object.assign(new EventTarget(), {
+    hinacode: {
+      onEvent,
+      rpc: async (_method: string, payload: unknown) => {
+        payloads.push(payload)
+        return { result: PULL_REQUEST }
+      },
+    },
+  })
+  vi.stubGlobal("document", page)
+  vi.stubGlobal("window", app)
+  const registry = AtomRegistry.make()
+  const unmount = registry.mount(pullRequestDetailAtom(null, PULL_REQUEST.url))
+  await vi.waitFor(() => expect(payloads).toHaveLength(1))
+
+  app.dispatchEvent(new Event("blur"))
+  app.dispatchEvent(new Event("focus"))
+  await vi.waitFor(() => expect(payloads).toHaveLength(2))
+  expect(payloads.at(-1)).toStrictEqual({ url: PULL_REQUEST.url, fresh: true })
 
   unmount()
   registry.dispose()

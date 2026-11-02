@@ -10,7 +10,7 @@ import { ThreadView } from "../components/ThreadView.tsx"
 import { Dialog, DialogPortal, DialogTitle } from "../components/ui/dialog.tsx"
 import { usePanelLayout } from "../lib/panelLayout.ts"
 import { m } from "../paraglide/messages.js"
-import { useThreads } from "../stores/threads.ts"
+import { selectOpenableThread, useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { useUnseen } from "../stores/unseen.ts"
 
@@ -32,9 +32,10 @@ function useVisit(threadId: string) {
 export function ThreadRoute() {
   const { threadId } = route.useParams()
   const { agent } = route.useSearch()
-  const thread = useThreads((state) => state.byId[threadId])
+  const thread = useThreads(selectOpenableThread(threadId))
   const togglePanel = useUi((state) => state.toggleSidePanel)
   const overlayOpen = useUi((state) => state.sidePanelOverlayOpen)
+  const dockedOpen = useUi((state) => state.sidePanelOpen)
   const setOverlayOpen = useUi((state) => state.setSidePanelOverlayOpen)
   const docked = usePanelLayout() === "wide"
   const toggleRef = useRef<HTMLButtonElement>(null)
@@ -53,7 +54,7 @@ export function ThreadRoute() {
           agent={agent}
           overlay={
             <>
-              <ThreadOverview thread={thread} />
+              {agent === undefined && <ThreadOverview thread={thread} />}
               <FloatingTinyVm threadId={thread.id} />
             </>
           }
@@ -63,6 +64,7 @@ export function ThreadRoute() {
               <ActionsMenu thread={thread} />
               <TerminalToggle threadId={thread.id} />
               {!docked && <PanelToggle buttonRef={toggleRef} expanded={overlayOpen} onToggle={togglePanel} />}
+              {docked && !dockedOpen && <PanelToggle expanded={false} onToggle={togglePanel} className="-me-1" />}
             </>
           }
         />

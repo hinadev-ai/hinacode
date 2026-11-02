@@ -149,11 +149,21 @@ const linkToNewThread = (name: string, url: string) =>
 
 describe("PullRequestGuides", () => {
   layer(testLayer, { excludeTestServices: true })((it) => {
+    it.effect("writes no guide while guides are turned off, which is the default", () =>
+      Effect.gen(function* () {
+        const url = "https://github.com/o/off/pull/1"
+        yield* ensure(url, "h1")
+        expect(yield* get(url)).toStrictEqual({ guide: null, job: null })
+        expect(diffsFetched).not.toContain(url)
+        expect(queriesFor(url)).toStrictEqual([])
+      }),
+    )
+
     it.effect("writes the guide for a head once, with pulls.review's prompt, the settings and read-only tools", () =>
       Effect.gen(function* () {
         const url = "https://github.com/o/once/pull/1"
         yield* Settings.use((settings) =>
-          settings.set({ pullRequestGuide: { model: "claude-opus-5-5", effort: "max" } }),
+          settings.set({ pullRequestGuide: { enabled: true, model: "claude-opus-5-5", effort: "max" } }),
         )
         yield* ensure(url, "h1")
         const { guide, job } = yield* until(url, (state) => state.guide !== null)

@@ -231,7 +231,7 @@ beforeAll(async () => {
       yield* Effect.never
     }).pipe(Effect.scoped),
   )
-  registerIpc(desktop, appUrl)
+  registerIpc(desktop, appUrl, () => {})
 })
 
 afterAll(async () => {

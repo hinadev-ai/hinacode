@@ -1,10 +1,19 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react"
 import { Link } from "@tanstack/react-router"
 import { cn } from "cn"
-import { createContext, Fragment, type ReactElement, type ReactNode, use, type Ref, useState } from "react"
+import {
+  createContext,
+  Fragment,
+  type ReactElement,
+  type ReactNode,
+  type RefObject,
+  use,
+  useRef,
+  useState,
+} from "react"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { Message, MessagePart } from "../../shared/domain.ts"
-import { fenceCode, highlight, type KnownTokens } from "../../shared/composerSyntax.ts"
+import { fenceCode, highlight, isUnorderedBullet, type KnownTokens, type Segment } from "../../shared/composerSyntax.ts"
 import { THREAD_MENTION } from "../../shared/threadMention.ts"
 import {
   assistantPresentation,
@@ -12,8 +21,10 @@ import {
   type IndexedMessagePart,
   presentationBlocks,
 } from "../lib/assistantPresentation.ts"
+import { useFollowLatest } from "../lib/followLatest.ts"
 import { faviconOrigins, linkify } from "../lib/linkify.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
+import { skillLabelsOf } from "../lib/toolCall.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
@@ -23,8 +34,11 @@ import { FindPartContext, Highlighted } from "./FindHighlight.tsx"
 import { HighlightedCode } from "./HighlightedCode.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { MessageActions } from "./MessageActions.tsx"
-import { MessagePartView, PartThread, ToolGroup, useFindDisclosure } from "./MessagePart.tsx"
+import { MessagePartView, PartThread, SkillLabels, ToolGroup, useFindDisclosure } from "./MessagePart.tsx"
 import { PostedQuestionsCard } from "./QuestionCard.tsx"
+import { TurnChanges } from "./TurnChanges.tsx"
+import { ArrowDownIcon } from "./icons/ArrowDownIcon.tsx"
+import { Button } from "./ui/button.tsx"
 import { FaviconOrigins, WebLink } from "./WebLink.tsx"
 import { EarlierActivity, WorkedFor } from "./WorkedFor.tsx"
 
@@ -40,13 +54,17 @@ const TranscriptContext = createContext<{
   readonly providerLabel: string
   readonly showElapsedTime: boolean
   readonly commands: ReadonlyArray<AgentCommand>
+  readonly turnChanges: boolean
 }>({
   providerLabel: "",
   showElapsedTime: true,
   commands: [],
+  turnChanges: false,
 })
 
 const LastMessageContext = createContext<string | undefined>(undefined)
+
+const NO_COMMANDS: ReadonlyArray<AgentCommand> = []
 
 export function MessageList({
   messages,
@@ -55,36 +73,59 @@ export function MessageList({
   header,
   alignItemsAtEnd = true,
   showElapsedTime = true,
-  commands = [],
+  commands = NO_COMMANDS,
+  turnChanges = false,
 }: {
   messages: ReadonlyArray<Message>
   providerLabel: string
   commands?: ReadonlyArray<AgentCommand>
-  listRef?: Ref<LegendListRef>
+  listRef?: RefObject<LegendListRef | null>
   header?: ReactElement
   alignItemsAtEnd?: boolean
   showElapsedTime?: boolean
+  turnChanges?: boolean
 }) {
-  const transcript = { providerLabel, showElapsedTime, commands }
+  const transcript = { providerLabel, showElapsedTime, commands, turnChanges }
+  const ownRef = useRef<LegendListRef>(null)
+  const ref = listRef ?? ownRef
+  const { listProps, anchored, atEnd, jumpToLatest } = useFollowLatest(ref, messages)
+  const skillLabels = skillLabelsOf(commands)
   return (
     <TranscriptContext value={transcript}>
-      <LastMessageContext value={messages.at(-1)?.id}>
-        <LegendList
-          ref={listRef}
-          data={messages}
-          keyExtractor={keyExtractor}
-          renderItem={renderItem}
-          estimatedItemSize={ESTIMATED_MESSAGE_SIZE}
-          getItemType={getItemType}
-          alignItemsAtEnd={alignItemsAtEnd}
-          initialScrollAtEnd
-          maintainScrollAtEnd
-          maintainVisibleContentPosition
-          ListHeaderComponent={header ?? edgeSpacer}
-          ListFooterComponent={endSpacer}
-          className="min-h-0 flex-1 scroll-fade"
-        />
-      </LastMessageContext>
+      <SkillLabels value={skillLabels}>
+        <LastMessageContext value={messages.at(-1)?.id}>
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <LegendList
+              ref={ref}
+              data={messages}
+              keyExtractor={keyExtractor}
+              renderItem={renderItem}
+              estimatedItemSize={ESTIMATED_MESSAGE_SIZE}
+              getItemType={getItemType}
+              alignItemsAtEnd={alignItemsAtEnd && !anchored}
+              initialScrollAtEnd
+              maintainVisibleContentPosition
+              {...listProps}
+              ListHeaderComponent={header ?? edgeSpacer}
+              ListFooterComponent={endSpacer}
+              className="min-h-0 flex-1 scroll-fade"
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label={m.transcript_scroll_to_latest()}
+              inert={atEnd}
+              action={jumpToLatest}
+              className={cn(
+                "absolute bottom-[calc(var(--dock-height,0px)+0.75rem)] left-1/2 -translate-x-1/2 rounded-full bg-popover shadow-md dark:bg-popover dark:hover:bg-muted transition-[opacity,scale] duration-150 ease-out motion-reduce:transition-none",
+                atEnd && "pointer-events-none scale-90 opacity-0",
+              )}
+            >
+              <ArrowDownIcon aria-hidden />
+            </Button>
+          </div>
+        </LastMessageContext>
+      </SkillLabels>
     </TranscriptContext>
   )
 }
@@ -122,6 +163,8 @@ function WithThreadMentions({ text }: { text: string }) {
   return nodes
 }
 
+const isBlock = (segment: Segment | undefined) => segment?.kind === "fence" || segment?.kind === "rule"
+
 const insetCode = "bg-background font-mono text-[0.91em]"
 
 function SentText({ text, commands }: { text: string; commands: ReadonlyArray<AgentCommand> }) {
@@ -142,6 +185,19 @@ function SentText({ text, commands }: { text: string; commands: ReadonlyArray<Ag
           </code>
         </pre>
       )
+    if (segment.kind === "bullet")
+      return (
+        <span key={index} className="text-muted-foreground">
+          {isUnorderedBullet(segment.text) ? "•" : segment.text}
+        </span>
+      )
+    if (segment.kind === "rule") return <hr key={index} className="my-2 border-border" />
+    if (segment.kind === "strong")
+      return (
+        <strong key={index} className="font-semibold">
+          <Highlighted text={segment.text.slice(2, -2)} />
+        </strong>
+      )
     if (segment.kind === "code")
       return (
         <code key={index} className={cn(insetCode, "rounded-[0.25em] px-[0.3em] py-[0.1em]")}>
@@ -156,8 +212,8 @@ function SentText({ text, commands }: { text: string; commands: ReadonlyArray<Ag
         </CommandChip>
       )
     let prose = segment.text
-    if (segments[index - 1]?.kind === "fence") prose = prose.replace(/^\n/, "")
-    if (segments[index + 1]?.kind === "fence") prose = prose.replace(/\n$/, "")
+    if (isBlock(segments[index - 1])) prose = prose.replace(/^\n/, "")
+    if (isBlock(segments[index + 1])) prose = prose.replace(/\n$/, "")
     return linkify(prose, repository).map((link, linkIndex) =>
       link.type === "link" ? (
         <WebLink key={`${index}:${linkIndex}`} href={link.href}>
@@ -179,7 +235,7 @@ function MessageBody({ message }: { message: Message }) {
       <article
         aria-label={m.message_you()}
         data-message-id={message.id}
-        className="group/message clear-overview mx-auto flex w-full max-w-3xl flex-col items-end gap-1.5 px-4 py-2"
+        className="group/message mx-auto flex w-full max-w-3xl clear-overview flex-col items-end gap-1.5 px-4 py-2"
       >
         {attachments.length > 0 && (
           <div className="flex max-w-[85%] flex-wrap justify-end gap-2">
@@ -189,7 +245,7 @@ function MessageBody({ message }: { message: Message }) {
           </div>
         )}
         {text !== "" && (
-          <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm leading-(--leading-message) whitespace-pre-wrap wrap-break-word text-secondary-foreground">
+          <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm leading-(--leading-message) wrap-break-word whitespace-pre-wrap text-secondary-foreground">
             <FindPartContext value={message.parts.findIndex((part) => part.type === "text")}>
               <SentText text={text} commands={commands} />
             </FindPartContext>
@@ -223,7 +279,7 @@ function AssistantBody({ message, showElapsedTime }: { message: Message; showEla
     <article
       aria-busy={streaming}
       data-message-id={message.id}
-      className="group/message clear-overview mx-auto w-full max-w-3xl px-4 py-2 text-sm leading-(--leading-message)"
+      className="group/message mx-auto w-full max-w-3xl clear-overview px-4 py-2 text-sm leading-(--leading-message)"
     >
       {presentation.kind === "completed" ? (
         <WorkedFor
@@ -240,13 +296,20 @@ function AssistantBody({ message, showElapsedTime }: { message: Message; showEla
         <AssistantParts message={message} parts={shownParts} writingIndex={writingIndex} />
       </PartThread>
       {streaming && (parts.length === 0 || writingIndex !== undefined) && (
-        <p className="text-xs text-shimmer">
+        <p className="text-shimmer text-xs">
           {writingIndex !== undefined ? m.message_writing() : m.message_thinking()}
         </p>
       )}
+      {!streaming && <LatestTurnChanges message={message} />}
       {!streaming && <MessageActions message={message} className="-ml-2" />}
     </article>
   )
+}
+
+function LatestTurnChanges({ message }: { message: Message }) {
+  const { turnChanges } = use(TranscriptContext)
+  const latest = use(LastMessageContext) === message.id
+  return turnChanges && latest && <TurnChanges threadId={message.threadId} messageId={message.id} />
 }
 
 function AssistantParts({
@@ -261,7 +324,7 @@ function AssistantParts({
   return presentationBlocks(parts).map((block) => {
     const { index } = block
     if (block.type === "tools") {
-      return <ToolGroup key={index} messageId={message.id} index={index} calls={block.calls} />
+      return <ToolGroup key={index} messageId={message.id} index={index} parts={block.parts} />
     }
     const { part } = block
     return (

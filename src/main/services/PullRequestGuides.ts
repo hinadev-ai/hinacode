@@ -192,6 +192,7 @@ const make = Effect.gen(function* () {
         return
       }
       if (diffTooLarge(detail)) return
+      if (!(yield* settings.get).pullRequestGuide.enabled) return
       const job = jobs.get(detail.url)
       if (job?.head === detail.head && (job.status === "running" || !retry)) return
       if ((yield* stored(detail.url))?.head === detail.head) return

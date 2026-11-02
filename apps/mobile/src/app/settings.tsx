@@ -305,10 +305,12 @@ function ServerPreferences({ server }: { server: Server | undefined }) {
             label={accessModes[mode].label}
             hint={accessModes[mode].hint}
             icon={accessModes[mode].icon}
-            color={offline ? theme.textMuted : mode === "full" ? theme.danger : undefined}
+            color={mode === "full" ? theme.danger : undefined}
+            disabled={offline}
             selected={settings.defaultAccessMode === mode}
+            style={styles.groupOption}
             onPress={() => {
-              if (!offline && settings.defaultAccessMode !== mode) write(settings, { defaultAccessMode: mode })
+              if (settings.defaultAccessMode !== mode) write(settings, { defaultAccessMode: mode })
             }}
           />
         ))}
@@ -469,6 +471,7 @@ function ServerSettings() {
             key={server.id}
             icon="RiComputerLine"
             label={serverName(server)}
+            labelLines={1}
             onPress={() => setOpenId(server.id)}
           >
             <ConnectionBadge status={server.status} />
@@ -555,4 +558,5 @@ const styles = StyleSheet.create({
   source: { fontSize: 13 },
   address: { fontFamily: mono, fontSize: 13 },
   serverPicker: { padding: 8 },
+  groupOption: { paddingHorizontal: 16, borderRadius: 0 },
 })

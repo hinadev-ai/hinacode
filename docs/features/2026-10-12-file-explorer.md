@@ -17,7 +17,7 @@ The side panel also outgrew its tabs. Details carried the workspace, setup log, 
 4. Files shows the thread's working directory: its worktree, or the project root. Folders come first, then files, sorted case-insensitively. `.git` is hidden.
 5. Changed entries are colored and carry a letter: amber M modified, emerald A added or U untracked, red C conflict. A folder takes the color of what changed inside it. Gitignored entries are dimmed.
 6. Keyboard, following the WAI-ARIA tree pattern: Up and Down move, Home and End jump, Right expands a folder or moves into it, Left collapses a folder or moves to its parent, typing letters jumps to the next entry whose name starts with them.
-7. Enter or a click on a folder toggles it. Enter or a click on a file opens it below the tree: read-only, highlighted, with line numbers and horizontal scroll. The panel widens while a file is open. The split between tree and file can be dragged, or focused and moved with Up and Down. Escape in the tree or the viewer closes the file. The viewer reloads when the file changes on disk.
+7. Enter or a click on a folder toggles it. Enter or a click on a file opens it below the tree: read-only, highlighted, with line numbers and horizontal scroll. The split between tree and file can be dragged, or focused and moved with Up and Down. Escape in the tree or the viewer closes the file. The viewer reloads when the file changes on disk.
 8. Right-click opens a menu: Mention in message, Show changes (changed files in a worktree, switches to the Changes view with that diff open), Copy path, and Open with (editors, or Show in folder). The viewer header has Copy path and Close.
 9. The Files header has Collapse all, Show in folder and Refresh. The tree updates by itself when files appear, disappear or change in an expanded folder, and when a turn ends.
 
@@ -40,7 +40,7 @@ Details and Pull requests do not use `mod+shift+i` and `mod+shift+r`. hinacode k
 
 `src/renderer/components/sidePanel/views.ts` is a registry of `SidePanelView { id, icon, title, commandId, component, badge? }`, one entry per view in bar order. `ActivityBar` renders the entries as a vertical `role="tablist"` with roving focus; `ThreadSidePanel` renders the selected entry's component in a `role="tabpanel"` named after the view. Neither has a branch per view. A view that is not built yet, such as Git, is an entry whose component is a one-line empty state, so the git graph replaces one component.
 
-`useUi` keeps `sidePanelViews` (thread id to view), `lastSidePanelView`, and `sidePanelWide`, which a view sets while it shows a file or a diff. The commands `view.details`, `view.files`, `view.changes`, `view.git`, `view.pullRequests` and `view.agents` call `toggleView`, which shows the view and asks it to take focus, or hides the panel when that view is already shown. Docked, the bar stays on screen while the view is hidden. In the narrow layout the bar and the view open together in the overlay.
+`useUi` keeps `sidePanelViews` (thread id to view), `lastSidePanelView`, and one `sidePanelWidth` that only the resize handle changes, so switching views or opening a file never moves the panel edge. The commands `view.details`, `view.files`, `view.changes`, `view.git`, `view.pullRequests` and `view.agents` call `toggleView`, which shows the view and asks it to take focus, or hides the panel when that view is already shown. Docked, the bar stays on screen while the view is hidden. In the narrow layout the bar and the view open together in the overlay.
 
 ### File explorer
 

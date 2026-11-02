@@ -1,5 +1,6 @@
 import { describe, expect, test } from "@effect/vitest"
-import { linearReviewUrl, parseGitHubRepository } from "./github.ts"
+import { Schema } from "effect"
+import { GitRefName, linearReviewUrl, parseGitHubRepository, RepositoryPath } from "./github.ts"
 
 const repo = { owner: "kjj6198", name: "myprofile" }
 
@@ -61,5 +62,19 @@ describe("linearReviewUrl", () => {
   test("leaves other urls alone", () => {
     for (const url of ["https://github.com/linear/linear/issues/4", "https://example.com/a/b/pull/1"])
       expect(linearReviewUrl(url)).toBe(url)
+  })
+})
+
+describe("file paths and refs sent to the GitHub API", () => {
+  test("allow paths inside the repository and branch or commit refs", () => {
+    expect(Schema.is(RepositoryPath)("assets/my logo.png")).toBe(true)
+    expect(Schema.is(GitRefName)("feat/diff-review")).toBe(true)
+    expect(Schema.is(GitRefName)("433c5ea")).toBe(true)
+  })
+
+  test("refuse anything that could climb out to another API path", () => {
+    for (const path of ["../../user", "a/../b", "/etc", "a//b", "a/"])
+      expect(Schema.is(RepositoryPath)(path)).toBe(false)
+    for (const ref of ["../main", "main?x=1", "a b", "main&ref=x"]) expect(Schema.is(GitRefName)(ref)).toBe(false)
   })
 })

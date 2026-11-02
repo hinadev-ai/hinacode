@@ -15,6 +15,7 @@ import { mentionableThreads } from "@shared/threadMention.ts"
 import { useEffect, useRef, useState } from "react"
 import {
   Image,
+  Keyboard,
   Platform,
   Pressable,
   ScrollView,
@@ -27,21 +28,22 @@ import Animated, { useReducedMotion } from "react-native-reanimated"
 import { ComposerInput } from "@/components/composer-input"
 import { GlassFill, liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
-import { IconSwap } from "@/components/motion"
+import { IconSwap, Spinner } from "@/components/motion"
 import { OptionRow, Section, Sheet, sheetStyles } from "@/components/sheet"
 import { Toggle } from "@/components/ui"
 import { WorkspaceChip } from "@/components/workspace-picker"
-import { ease, PRESSED_SCALE, pressSpring } from "@/constants/motion"
+import { cssEase, ease, PRESSED_SCALE, pressSpring } from "@/constants/motion"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useNow } from "@/hooks/use-now"
 import { useThreadServer } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
 import { keepSkillWhole } from "@/lib/composer-text"
-import { copy } from "@/lib/copy"
+import { copy, locale } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { motion } from "@/lib/motion"
-import { useDrafts } from "@/stores/drafts"
+import { pickImages, stageImage } from "@/lib/stage-images"
+import { type DraftImage, useDrafts } from "@/stores/drafts"
 import { useMessages } from "@/stores/messages"
 import { modelsOn, useModels } from "@/stores/models"
 import { useThreads } from "@/stores/threads"
@@ -61,6 +63,7 @@ const INPUT_PADDING = 6
 const MAX_LINES = 5
 const CHIP_HEIGHT = 32
 const SEND_SIZE = 36
+const IMAGE_SIZE = 56
 const SUGGESTION_HEIGHT = 48
 const VISIBLE_SUGGESTIONS = 4.5
 
@@ -104,7 +107,7 @@ function useCompletions(thread: Thread, busy: boolean, wantsFiles: boolean, onEr
     let current = true
     call("commands.list", { threadId: thread.id }).then(
       (next) => current && setCommands(next),
-      (cause: unknown) => current && onError(`Could not list commands: ${errorText(cause)}`),
+      (cause: unknown) => current && onError(copy("mobile_composer_commands_failed", { message: errorText(cause) })),
     )
     return () => {
       current = false
@@ -115,7 +118,7 @@ function useCompletions(thread: Thread, busy: boolean, wantsFiles: boolean, onEr
     let current = true
     call("files.list", { threadId: thread.id }).then(
       (paths) => current && setFiles({ key: filesKey, paths }),
-      (cause: unknown) => current && onError(`Could not list files: ${errorText(cause)}`),
+      (cause: unknown) => current && onError(copy("mobile_composer_files_failed", { message: errorText(cause) })),
     )
     return () => {
       current = false
@@ -129,6 +132,8 @@ export function Composer({ thread }: { thread: Thread }) {
   const theme = useTheme()
   const text = useDrafts((state) => state.byThreadId[thread.id] ?? "")
   const sending = useDrafts((state) => state.sending[thread.id])
+  const images = useDrafts((state) => state.images[thread.id]) ?? []
+  const [staging, setStaging] = useState(false)
   const connected = useConnection((state) => state.status === "connected")
   const [focused, setFocused] = useState(false)
   const [caret, setCaret] = useState(0)
@@ -147,26 +152,34 @@ export function Composer({ thread }: { thread: Thread }) {
     files: new Set(files),
     threads: new Set([...threads.sameMachine, ...threads.otherMachines].map((other) => other.id)),
   }
-  const hasDraft = text.trim() !== ""
+  const hasDraft = text.trim() !== "" || images.length > 0
 
   useEffect(() => {
     if (connected) useModels.getState().load(server, thread.provider).catch((cause: unknown) => setError(errorText(cause)))
   }, [connected, server, thread.provider])
 
+  useEffect(() => {
+    if (Platform.OS !== "android") return
+    const hidden = Keyboard.addListener("keyboardDidHide", () => inputRef.current?.blur())
+    return () => hidden.remove()
+  }, [])
+
   const send = async () => {
     // A second tap can land before the re-render that empties the composer, so check the store, not `hasDraft`.
     const sent = useDrafts.getState().take(thread.id)
-    const prompt = sent.trim()
-    if (prompt === "") return useDrafts.getState().restore(thread.id, sent)
+    const prompt = sent.text.trim()
+    if (prompt === "" && sent.images.length === 0) return useDrafts.getState().restore(thread.id, sent)
+    const attachments = sent.images.map((image) => image.attachment)
     const workspace = unstarted ? useDrafts.getState().workspaces[thread.id] : undefined
     setError(null)
     try {
-      await useDrafts.getState().trackSending(thread.id, prompt, () =>
+      await useDrafts.getState().trackSending(thread.id, prompt || attachments.map(({ name }) => name).join(", "), () =>
         busy
-          ? call("threads.steer", { threadId: thread.id, text: prompt })
+          ? call("threads.steer", { threadId: thread.id, text: prompt, attachments })
           : call("threads.send", {
               threadId: thread.id,
               prompt,
+              attachments,
               workspace: workspace && { mode: workspace.mode, target: toCheckoutTarget(workspace.ref) },
             }),
       )
@@ -174,6 +187,19 @@ export function Composer({ thread }: { thread: Thread }) {
       useDrafts.getState().restore(thread.id, sent)
       setError(errorText(cause))
     }
+  }
+
+  const attachImages = async () => {
+    const assets = await pickImages()
+    if (assets.length === 0) return
+    setError(null)
+    setStaging(true)
+    const results = await Promise.allSettled(assets.map((asset) => stageImage(thread.id, asset)))
+    setStaging(false)
+    const staged = results.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))
+    useDrafts.getState().addImages(thread.id, staged)
+    const failed = results.find((result) => result.status === "rejected")
+    if (failed) setError(errorText(failed.reason))
   }
 
   const stop = () => {
@@ -217,12 +243,16 @@ export function Composer({ thread }: { thread: Thread }) {
             backgroundColor: liquidGlass ? "transparent" : theme.surface,
             borderColor: focused ? theme.primary : liquidGlass ? "transparent" : theme.border,
           },
+          focused && { boxShadow: `0 0 0 2px ${theme.primary}` },
         ]}
       >
+        {images.length > 0 && (
+          <DraftImages images={images} onRemove={(id) => useDrafts.getState().removeImage(thread.id, id)} />
+        )}
         <ComposerInput
           ref={inputRef}
           testID="composer-input"
-          accessibilityLabel="Message"
+          accessibilityLabel={copy("mobile_composer_message")}
           value={text}
           commands={commands}
           known={known}
@@ -241,17 +271,18 @@ export function Composer({ thread }: { thread: Thread }) {
           }}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          placeholder={busy ? "Steer the running turn" : "Ask the agent"}
+          placeholder={busy ? copy("mobile_composer_steer_placeholder") : copy("mobile_composer_placeholder")}
           placeholderTextColor={theme.textMuted}
           multiline
           style={[styles.input, { color: theme.text }]}
         />
         <View style={styles.toolbar}>
           <View style={styles.chips}>
+            <AttachButton staging={staging} onPress={() => void attachImages()} />
             <SettingsChip thread={thread} onError={setError} />
             {unstarted && <WorkspaceChip thread={thread} onError={setError} />}
           </View>
-          <SendButton busy={busy} hasDraft={hasDraft} onSend={() => void send()} onStop={stop} />
+          <SendButton busy={busy} hasDraft={hasDraft && !staging} onSend={() => void send()} onStop={stop} />
         </View>
       </View>
       {error !== null && (
@@ -260,6 +291,58 @@ export function Composer({ thread }: { thread: Thread }) {
         </Text>
       )}
     </View>
+  )
+}
+
+function AttachButton({ staging, onPress }: { staging: boolean; onPress: () => void }) {
+  const theme = useTheme()
+  return (
+    <Pressable
+      testID="composer-attach"
+      accessibilityRole="button"
+      accessibilityLabel={copy("mobile_composer_attach_images")}
+      accessibilityState={{ busy: staging, disabled: staging }}
+      disabled={staging}
+      onPress={onPress}
+      hitSlop={(HIT - CHIP_HEIGHT) / 2}
+      style={({ pressed }) => [
+        styles.attach,
+        pressed && { backgroundColor: theme.surfaceStrong },
+        pressed && styles.pressed,
+      ]}
+    >
+      {staging ? (
+        <Spinner size={16} color={theme.textMuted} />
+      ) : (
+        <Icon name="RiImageLine" size={16} color={theme.textMuted} />
+      )}
+    </Pressable>
+  )
+}
+
+function DraftImages({ images, onRemove }: { images: readonly DraftImage[]; onRemove: (id: string) => void }) {
+  const theme = useTheme()
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.images}>
+      {images.map(({ attachment, preview }) => (
+        <View key={attachment.id} testID="composer-image">
+          <Image
+            source={{ uri: preview }}
+            accessibilityLabel={attachment.name}
+            style={[styles.image, { backgroundColor: theme.surfaceStrong }]}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={copy("mobile_composer_remove_image", { name: attachment.name })}
+            onPress={() => onRemove(attachment.id)}
+            hitSlop={8}
+            style={styles.removeImage}
+          >
+            <Icon name="RiCloseCircleFill" size={20} color={theme.text} />
+          </Pressable>
+        </View>
+      ))}
+    </ScrollView>
   )
 }
 
@@ -293,7 +376,7 @@ function Suggestions({
   return (
     <ScrollView
       testID="composer-suggestions"
-      accessibilityLabel={completion.trigger === "@" ? "Mentions" : "Commands"}
+      accessibilityLabel={completion.trigger === "@" ? copy("mobile_composer_mentions") : copy("mobile_composer_commands")}
       keyboardShouldPersistTaps="always"
       style={[
         styles.suggestions,
@@ -353,19 +436,20 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
         </View>
       )
     }
-    case "file":
+    case "file": {
+      const slash = suggestion.path.lastIndexOf("/")
       return (
         <View style={styles.suggestionLine}>
           <Icon name="RiFileLine" size={14} color={theme.textMuted} />
-          <Text
-            numberOfLines={1}
-            ellipsizeMode="head"
-            style={[styles.suggestionTitle, styles.suggestionName, { color: theme.text }]}
-          >
-            {suggestion.path}
+          <Text numberOfLines={1} style={[styles.suggestionFile, { color: theme.text }]}>
+            {suggestion.path.slice(slash + 1)}
+          </Text>
+          <Text numberOfLines={1} style={[styles.suggestionFolder, { color: theme.textMuted }]}>
+            {suggestion.path.slice(0, slash + 1)}
           </Text>
         </View>
       )
+    }
   }
 }
 
@@ -384,7 +468,7 @@ function SendButton({
   const theme = useTheme()
   const stopping = busy && !hasDraft
   const action = stopping ? "stop" : busy ? "steer" : "send"
-  const label = stopping ? "Stop" : busy ? "Steer" : "Send"
+  const label = copy(`mobile_composer_${action}`)
   const disabled = !stopping && !hasDraft
   const halo = action === "send" && hasDraft
   const background = stopping ? theme.dangerBg : disabled ? theme.surfaceStrong : theme.primary
@@ -394,7 +478,7 @@ function SendButton({
       testID={`composer-${action}`}
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled }}
+      aria-disabled={disabled}
       disabled={disabled}
       onPress={stopping ? onStop : onSend}
       hitSlop={(HIT - SEND_SIZE) / 2}
@@ -417,7 +501,7 @@ const spin = { from: { transform: [{ rotate: "0deg" }] }, to: { transform: [{ ro
 
 /**
  * The desktop's `send-halo`: a holographic pearl under Perlin grain. React Native has no conic gradient,
- * so a linear one turns instead, and it turns while there is a draft because a phone has no hover.
+ * so a linear one turns instead, once as a draft begins because a phone has no hover.
  */
 function SendHalo() {
   const theme = useTheme()
@@ -432,9 +516,9 @@ function SendHalo() {
           },
           !reduced && {
             animationName: spin,
-            animationDuration: 6000,
-            animationIterationCount: "infinite",
-            animationTimingFunction: "linear",
+            animationDuration: 1200,
+            animationIterationCount: 1,
+            animationTimingFunction: cssEase.out,
           },
         ]}
       />
@@ -460,42 +544,42 @@ function useThreadModels(thread: Thread) {
 }
 
 const providers: Record<ProviderId, { label: string; icon: IconName }> = {
-  claude: { label: "Claude Code", icon: "RiClaudeFill" },
-  codex: { label: "Codex", icon: "RiOpenaiFill" },
-  muse: { label: "Muse Code", icon: "RiMetaFill" },
+  claude: { label: copy("mobile_provider_claude"), icon: "RiClaudeFill" },
+  codex: { label: copy("mobile_provider_codex"), icon: "RiOpenaiFill" },
+  muse: { label: copy("mobile_provider_muse"), icon: "RiMetaFill" },
 }
 
 const effortLabels: Record<string, string> = {
-  minimal: "Minimal",
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  xhigh: "Extra high",
-  max: "Max",
-  ultra: "Ultra",
+  minimal: copy("mobile_composer_effort_minimal"),
+  low: copy("mobile_composer_effort_low"),
+  medium: copy("mobile_composer_effort_medium"),
+  high: copy("mobile_composer_effort_high"),
+  xhigh: copy("mobile_composer_effort_xhigh"),
+  max: copy("mobile_composer_effort_max"),
+  ultra: copy("mobile_composer_effort_ultra"),
 }
 const effortLabel = (effort: string) => effortLabels[effort] ?? effort
 
 const DEFAULT_EFFORT = "default"
 
 const accessModes: Record<AccessMode, { label: string; icon: IconName }> = {
-  supervised: { label: "Supervised", icon: "RiShieldUserLine" },
-  auto: { label: "Auto", icon: "RiShieldCheckLine" },
-  full: { label: "Full access", icon: "RiLockUnlockLine" },
+  supervised: { label: copy("mobile_settings_access_supervised"), icon: "RiShieldUserLine" },
+  auto: { label: copy("mobile_settings_access_auto"), icon: "RiShieldCheckLine" },
+  full: { label: copy("mobile_settings_access_full"), icon: "RiLockUnlockLine" },
 }
 
 /** What each mode lets through, which differs by agent and, for Claude's auto mode, by model. */
 const supervisedHints: Record<ProviderId, string> = {
-  claude: "Asks before edits and commands",
-  codex: "Asks before any command that isn't read-only",
-  muse: "Asks before commands and edits",
+  claude: copy("mobile_settings_access_supervised_hint"),
+  codex: copy("mobile_composer_access_supervised_codex"),
+  muse: copy("mobile_composer_access_supervised_muse"),
 }
 
 const autoHints: Record<ProviderId, (model: ModelInfo | undefined) => string> = {
   claude: (model) =>
-    model?.autoMode ? "Claude approves safe actions and asks about the rest" : "Edits run without asking; commands still ask",
-  codex: () => "Runs freely in the sandbox; asks to go beyond it",
-  muse: () => "Runs freely in the sandbox, network included; asks to go beyond it",
+    model?.autoMode ? copy("mobile_composer_access_auto_claude") : copy("mobile_composer_access_auto_claude_edits"),
+  codex: () => copy("mobile_composer_access_auto_codex"),
+  muse: () => copy("mobile_composer_access_auto_muse"),
 }
 
 const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | undefined) => {
@@ -505,7 +589,7 @@ const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | u
     case "auto":
       return autoHints[thread.provider](model)
     case "full":
-      return "Runs everything without asking"
+      return copy("mobile_settings_access_full_hint")
   }
 }
 
@@ -546,7 +630,7 @@ const accountHint = (option: AccountOption, now: number) =>
   option.spent !== undefined
     ? option.spent.resetsAt === null
       ? copy("mobile_thread_account_limit_reached_no_reset")
-      : copy("mobile_thread_account_limit_reached", { duration: formatResetIn(option.spent.resetsAt, now, "en") })
+      : copy("mobile_thread_account_limit_reached", { duration: formatResetIn(option.spent.resetsAt, now, locale) })
     : option.mostUsed !== undefined
       ? copy("mobile_thread_account_used", { percent: String(Math.round(option.mostUsed.usedPercent)) })
       : undefined
@@ -573,7 +657,7 @@ function SettingsChip({ thread, onError }: { thread: Thread; onError: OnError })
       <Pressable
         testID="composer-settings"
         accessibilityRole="button"
-        accessibilityLabel="Thread settings"
+        accessibilityLabel={copy("mobile_composer_settings")}
         accessibilityValue={{ text: `${providers[thread.provider].label}, ${modelLabel}` }}
         onPress={() => setOpen(true)}
         hitSlop={{ top: (HIT - CHIP_HEIGHT) / 2, bottom: (HIT - CHIP_HEIGHT) / 2 }}
@@ -636,12 +720,14 @@ function SettingsSheet({
     )
   }
 
-  const defaultEffort = current?.defaultEffort ? `Default (${effortLabel(current.defaultEffort)})` : "Default effort"
+  const defaultEffort = current?.defaultEffort
+    ? copy("mobile_composer_effort_default_named", { effort: effortLabel(current.defaultEffort) })
+    : copy("mobile_composer_effort_default")
 
   return (
-    <Sheet title="Thread settings" open={open} onClose={onClose} fit>
+    <Sheet title={copy("mobile_composer_settings")} open={open} onClose={onClose} fit>
           {unstarted && (
-            <Section title="Agent">
+            <Section title={copy("mobile_composer_agent")}>
               {ProviderId.literals.map((provider) => (
                 <OptionRow
                   key={provider}
@@ -653,7 +739,7 @@ function SettingsSheet({
               ))}
             </Section>
           )}
-          <Section title="Model">
+          <Section title={copy("mobile_composer_model")}>
             {shownModels.map((model) => (
               <OptionRow
                 key={model.id}
@@ -679,7 +765,7 @@ function SettingsSheet({
             </Section>
           )}
           {current !== undefined && current.efforts.length > 0 && (
-            <Section title="Effort">
+            <Section title={copy("mobile_composer_effort")}>
               {[
                 { value: DEFAULT_EFFORT, label: defaultEffort },
                 ...current.efforts.map((effort) => ({ value: effort, label: effortLabel(effort) })),
@@ -703,18 +789,18 @@ function SettingsSheet({
             </Section>
           )}
           {current?.fastMode && (
-            <Section title="Speed">
+            <Section title={copy("mobile_composer_speed")} role="group">
               <ToggleRow
                 icon="RiFlashlightLine"
-                label="Fast mode"
-                hint="Faster responses that use more of your plan"
+                label={copy("mobile_composer_fast_mode")}
+                hint={copy("mobile_composer_fast_mode_hint")}
                 value={thread.fastMode}
                 onValueChange={(fastMode) => void update({ id: thread.id, fastMode }, onError)}
               />
             </Section>
           )}
           {hidesUserSkills[thread.provider] && (
-            <Section title={copy("mobile_thread_conversation")}>
+            <Section title={copy("mobile_thread_conversation")} role="group">
               <ToggleRow
                 icon="RiChat1Line"
                 label={copy("mobile_thread_conversation_mode")}
@@ -724,7 +810,7 @@ function SettingsSheet({
               />
             </Section>
           )}
-          <Section title="Access">
+          <Section title={copy("mobile_composer_access")}>
             {AccessMode.literals.map((mode) => (
               <OptionRow
                 key={mode}
@@ -782,7 +868,7 @@ const styles = StyleSheet.create({
     maxHeight: LINE_HEIGHT * MAX_LINES + INPUT_PADDING * 2,
     paddingHorizontal: 6,
     paddingVertical: INPUT_PADDING,
-    fontSize: 15,
+    fontSize: 16,
     lineHeight: LINE_HEIGHT,
     textAlignVertical: "top",
     // react-native-web renders a fixed-height textarea; this lets the browser grow it with its text.
@@ -796,6 +882,8 @@ const styles = StyleSheet.create({
   suggestionDescription: { fontSize: 13 },
   suggestionLine: { flexDirection: "row", alignItems: "center", gap: 8 },
   suggestionTitle: { flexShrink: 1, fontSize: 15 },
+  suggestionFile: { flexShrink: 0, maxWidth: "70%", fontFamily: mono, fontSize: 14 },
+  suggestionFolder: { flex: 1, fontSize: 13 },
   chip: {
     height: CHIP_HEIGHT,
     flexShrink: 1,
@@ -806,6 +894,16 @@ const styles = StyleSheet.create({
     paddingRight: 10,
     borderRadius: radius.full,
   },
+  attach: {
+    width: CHIP_HEIGHT,
+    height: CHIP_HEIGHT,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.full,
+  },
+  images: { gap: 8, paddingHorizontal: 6, paddingTop: 6 },
+  image: { width: IMAGE_SIZE, height: IMAGE_SIZE, borderRadius: radius.md },
+  removeImage: { position: "absolute", top: -6, right: -6 },
   chipLabel: { flexShrink: 1, fontSize: 13, fontWeight: "500" },
   pressed: { transform: [{ scale: 0.96 }] },
   send: {
