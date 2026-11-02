@@ -627,6 +627,7 @@ flowchart TB
   page["In-app browser page<br/>webview: sandbox, no preload,<br/>persist:browser session"] -- "picked element,<br/>schema-decoded" --> renderer
   repo["Project repo config<br/>.claude settings, hooks, CLAUDE.md"] -- "loaded like the CLI: importing trusts it" --> agents
   main -- "hinacode-file: known roots only,<br/>CSP sandbox allow-scripts" --> preview["File preview iframe<br/>opaque origin"]
+  main -- "hinacode-artifact: store or owning cloud,<br/>CSP sandbox allow-scripts, no-store" --> artifact["Artifact iframe<br/>opaque origin"]
   main -- "hinacode-github-asset: gh token stays in main" --> renderer
 ```
 
@@ -653,4 +654,5 @@ Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md
 | Renderer state                            | `src/renderer/stores/`                                     |
 | Side panel views and activity bar         | `src/renderer/components/sidePanel/`                       |
 | File listing, reading, watching           | `src/main/services/Files.ts`                               |
+| Artifacts store, watcher and MCP tools    | `src/main/services/Artifacts.ts`, `packages/artifacts/`    |
 | Development resource monitor              | `src/main/resourceMonitor.ts`, `tools/resource-monitor/`   |
