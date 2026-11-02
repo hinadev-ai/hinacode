@@ -270,7 +270,7 @@ export function continueList(text: string, from: number, to: number): TextEdit |
   if (from === to && original.lines[original.row]!.slice(item.prefix.length).trim() === "") {
     const { lines, row } = original
     const nested = parentRow(lines, row, item.indent.length) !== null
-    const left = nested ? shiftItem(lines, row, -1) : lines.with(row, "")
+    const left = nested ? shiftItem(lines, row, -1) : [...lines.slice(0, row), "", ...lines.slice(row + 1)]
     return replaceBlock(text, original, { lines: left, row, fromPrefixEnd: 0 })
   }
   const block = listBlockAt(text.slice(0, from) + text.slice(to), from)!
