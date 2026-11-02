@@ -18,6 +18,8 @@ export const Colors = {
     /** A sheet over the scrim, and a selected or pressed row on it. Dark sheets sit a step above the page. */
     sheet: "#ffffff",
     sheetRaised: "#f4f4f5",
+    /** Dims the page under a sheet. The dark page is already near black, so it needs a heavier scrim to recede. */
+    scrim: "rgba(10, 10, 10, 0.5)",
     border: "#e4e4e7",
     primary: "#7c3aed",
     onPrimary: "#ffffff",
@@ -54,6 +56,7 @@ export const Colors = {
     disabled: "#3f3f46",
     sheet: "#18181b",
     sheetRaised: "#27272a",
+    scrim: "rgba(0, 0, 0, 0.72)",
     border: "#27272a",
     primary: "#7c3aed",
     onPrimary: "#ffffff",

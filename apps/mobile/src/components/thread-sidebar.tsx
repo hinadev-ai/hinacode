@@ -8,7 +8,6 @@ import { HomeActions, HomeContent } from "@/components/home"
 import { NewThreadSheet } from "@/components/new-thread-sheet"
 import { ConnectionBadge, IconButton } from "@/components/ui"
 import { cssEase, duration } from "@/constants/motion"
-import { Colors } from "@/constants/theme"
 import { SIDEBAR_WIDTH, useSidebar } from "@/hooks/use-split-layout"
 import { useTheme } from "@/hooks/use-theme"
 import { useConnection } from "@/lib/connection"
@@ -20,6 +19,7 @@ import { copy } from "@/lib/copy"
  */
 export function ThreadSidebar() {
   const { beside, open, toggle } = useSidebar()
+  const theme = useTheme()
   const reduced = useReducedMotion()
   // It comes in on the sheets' curve and leaves a little quicker. Under Reduce Motion it moves at once and the scrim
   // still fades, as in `lib/motion.tsx`. CSS transitions, because that API animates neither width nor x.
@@ -41,7 +41,10 @@ export function ThreadSidebar() {
       <Animated.View
         aria-hidden={!open}
         pointerEvents={open ? "auto" : "none"}
-        style={[styles.scrim, { opacity: open ? 0.5 : 0, transitionProperty: "opacity", ...fade }]}
+        style={[
+          styles.scrim,
+          { backgroundColor: theme.scrim, opacity: open ? 1 : 0, transitionProperty: "opacity", ...fade },
+        ]}
       >
         <Pressable
           accessibilityRole="button"
@@ -128,8 +131,7 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   // The list keeps its width and rides the closing edge out, instead of being squeezed.
   beside: { overflow: "hidden", alignItems: "flex-end" },
-  // The scrim is dark in both themes, like the sheets'.
-  scrim: { ...StyleSheet.absoluteFill, zIndex: 1, backgroundColor: Colors.dark.background },
+  scrim: { ...StyleSheet.absoluteFill, zIndex: 1 },
   over: { position: "absolute", top: 0, bottom: 0, left: 0, zIndex: 2 },
   list: { flex: 1, width: SIDEBAR_WIDTH, borderRightWidth: StyleSheet.hairlineWidth },
   glassList: { overflow: "hidden", borderColor: "transparent" },
