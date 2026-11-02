@@ -61,14 +61,14 @@ Three state rules carry the whole feature.
 
 `WatchEventKind` is the set a watch can care about. The default watch cares about all of them. The MCP tool accepts a subset.
 
-| Kind             | Fires when                                                      |
-| ---------------- | --------------------------------------------------------------- |
-| `checksFailed`   | A check name joins the failing set for the current head         |
-| `checksPassed`   | Checks reach passing for a head that was not already passing    |
-| `reviewChanged`  | The review decision becomes approved or changes requested       |
-| `conflicting`    | GitHub starts reporting the branch as conflicting with its base |
-| `mergedOrClosed` | The pull request leaves the open states                         |
-| `commented`      | A comment id appears that is not from the gh account itself     |
+| Kind             | Fires when                                                                  |
+| ---------------- | --------------------------------------------------------------------------- |
+| `checksFailed`   | A check name joins the failing set for the current head                     |
+| `checksPassed`   | Checks reach passing for a head that was not already passing                |
+| `reviewChanged`  | The review decision becomes approved or changes requested                   |
+| `conflicting`    | GitHub starts reporting the branch as conflicting with its base             |
+| `mergedOrClosed` | The pull request is closed without merging. A merge ends the watch silently |
+| `commented`      | A comment id appears that is not from the gh account itself                 |
 
 There is deliberately no event for "checks pending" or "review required". Those are the absence of news. The diff is one pure function in `src/main/services/pullRequestWatch.ts`, taking the stored snapshot, the fresh one, and the interest set, and returning the events to report. The same module renders the wake message from a pull request detail plus its events, so both halves are covered by plain unit tests.
 
