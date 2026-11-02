@@ -90,6 +90,36 @@ describe("Search.threads", () => {
     }).pipe(withSearch(Search.layer)),
   )
 
+  it.effect("shows a tool call the way the transcript titles it, not its raw input", () =>
+    Effect.gen(function* () {
+      const { threadId } = yield* seedThread({ rootPath: repo })
+      const call = (callId: string, name: string, input: unknown): MessagePart => ({
+        type: "tool_call",
+        callId,
+        name,
+        input,
+        status: "done",
+      })
+      const message = yield* insertMessage(threadId, [
+        call("c1", "mcp__hinacode__create_thread", { prompt: "Retry failed payments", mode: "worktree" }),
+        call("c2", "WebFetch", { url: "https://docs.stripe.com/webhooks", prompt: "How are retries scheduled?" }),
+        call("c3", "search_issues", {
+          type: "mcpToolCall",
+          server: "linear",
+          tool: "search_issues",
+          arguments: { query: "stripe refunds" },
+        }),
+      ])
+      const search = yield* Search.Search
+
+      const [hit] = yield* search.threads("stripe")
+      expect(hit?.snippet).toContain("create_thread WebFetch https://docs.stripe.com/webhooks linear/search_issues")
+      expect(hit?.snippet).not.toMatch(/[{}"]/)
+      expect((yield* search.threads("linear/search_issues")).map((hit) => hit.messageId)).toStrictEqual([message])
+      expect(yield* search.threads("worktree")).toStrictEqual([])
+    }).pipe(withSearch(Search.layer)),
+  )
+
   it.effect("leaves side chats out of the results", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient
