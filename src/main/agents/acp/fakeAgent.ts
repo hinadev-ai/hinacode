@@ -132,8 +132,8 @@ const prompt = async (message: Message) => {
   }
   if (text === "ask") {
     let cancelled = false
-    const cancel = new Promise<void>((resolve) => cancels.set(sessionId, () => resolve(void (cancelled = true))))
-    await Promise.race([writeTool(sessionId, "/fake"), cancel])
+    cancels.set(sessionId, () => void (cancelled = true))
+    await writeTool(sessionId, "/fake")
     cancels.delete(sessionId)
     if (cancelled) return send({ id: message.id, result: { stopReason: "cancelled" } })
     update(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "done" } })
