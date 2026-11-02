@@ -310,14 +310,23 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
 
   const removals = new Map<string, Fiber.Fiber<void>>()
 
-  const findOrphan = (rootPath: string, checkouts: string, branch: string) =>
+  const findCheckout = (rootPath: string, checkouts: string, branch: string) =>
     Effect.gen(function* () {
-      const checkout = (yield* registeredCheckouts(rootPath)).find(
-        ({ path, ref }) => ref === `refs/heads/${branch}` && dirname(path) === checkouts,
-      )
-      if (!checkout) return Option.none()
+      const checkout = (yield* registeredCheckouts(rootPath)).find(({ ref }) => ref === `refs/heads/${branch}`)
+      if (!checkout) return { _tag: "free" } as const
+      const orphan = dirname(checkout.path) === checkouts
       const recorded = yield* findByPath(checkout.path).pipe(Effect.mapError(persistence("worktrees.create")))
-      return Option.isNone(recorded) ? Option.some(checkout.path) : Option.none()
+      return orphan && Option.isNone(recorded)
+        ? ({ _tag: "orphan", path: checkout.path } as const)
+        : ({ _tag: "taken" } as const)
+    })
+
+  const worktreeAddArgs = (rootPath: string, path: string, { branch, baseRef, startPoint }: CreateWorktree) =>
+    Effect.gen(function* () {
+      if (yield* branchExists(rootPath, branch)) return ["worktree", "add", path, branch]
+      if (startPoint !== undefined) return ["worktree", "add", "-b", branch, path, startPoint]
+      // FIXME: forking from `origin/main` makes it the upstream, and a plain `git push` then fails
+      return ["worktree", "add", "--no-track", "-b", branch, path, baseRef]
     })
 
   const create = (input: CreateWorktree) =>
@@ -337,16 +346,12 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
       const { worktreeRoot } = yield* settings.get
       const checkouts = checkoutsDir(rootPath, worktreeRoot === null ? null : yield* resolve(worktreeRoot))
       const id = randomUUID()
-      const orphan = yield* findOrphan(rootPath, checkouts, input.branch)
-      const path = Option.getOrElse(orphan, () => checkoutPath(checkouts, input.branch, id))
-      if (Option.isNone(orphan)) {
-        const args = (yield* branchExists(rootPath, input.branch))
-          ? ["worktree", "add", path, input.branch]
-          : input.startPoint === undefined
-            ? // FIXME: forking from `origin/main` makes it the upstream, and a plain `git push` then fails
-              ["worktree", "add", "--no-track", "-b", input.branch, path, input.baseRef]
-            : ["worktree", "add", "-b", input.branch, path, input.startPoint]
-        yield* git.run(rootPath, args)
+      const checkout = yield* findCheckout(rootPath, checkouts, input.branch)
+      const branch = checkout._tag === "taken" ? `${input.branch}-${id.slice(0, 5)}` : input.branch
+      const path = checkout._tag === "orphan" ? checkout.path : checkoutPath(checkouts, branch, id)
+      if (checkout._tag !== "orphan") {
+        const startPoint = checkout._tag === "taken" ? input.branch : input.startPoint
+        yield* git.run(rootPath, yield* worktreeAddArgs(rootPath, path, { ...input, branch, startPoint }))
         if (input.workingTree !== undefined) {
           yield* git.run(path, ["read-tree", "-m", "-u", "HEAD", input.workingTree])
           yield* git.run(path, ["reset", "--quiet"])
@@ -357,7 +362,7 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
         id,
         projectId: project.id,
         path: yield* resolve(path),
-        branch: input.branch,
+        branch,
         baseRef: input.baseRef,
         status: "preparing",
         setupLog: "",
