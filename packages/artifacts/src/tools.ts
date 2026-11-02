@@ -17,23 +17,31 @@ const existing = async (store: ArtifactStore, id: string) => {
   return artifact
 }
 
+const PUBLISH_GUIDE = `Publish an HTML page for the developer to look at: a report, chart, diagram or prototype. Write one self-contained index.html with inline <style> and <script type="module">, so names like top or name do not clash with window globals. To change it, publish again with the same id and every file.
+
+The page runs in a sandboxed frame with no origin: storage, cookies, alert/confirm/prompt, form submission, popups, downloads and links that leave the page do nothing. Keep state in memory and show URLs as text. CDN files load when the network allows; pin exact versions. At most ${MAX_ARTIFACT_BYTES / 1024 / 1024} MB.
+
+The preview is a side panel, often 360 to 700px wide. Never scroll sideways: let rows wrap, give text-holding flex and grid children min-width: 0, and put wide tables and code in an overflow-x: auto box. No 100vh heroes. For icons, load https://cdn.jsdelivr.net/npm/remixicon@4.6.0/fonts/remixicon.css and write <i class="ri-git-branch-line"></i>; no emoji icons.`
+
 export const artifactTools = {
   publish_artifact: tool({
-    description: [
-      "Publish something for the developer to look at: a report, a chart, a diagram, a prototype.",
-      "Send a self-contained HTML page, or a few files with relative links between them.",
-      "It renders in a sandboxed frame: scripts run, but the page has no origin, so it cannot use cookies, storage or the host's credentials.",
-      "Inline what you can; external scripts and styles load only if the network allows them.",
-      `A version holds at most ${MAX_ARTIFACT_BYTES / 1024 / 1024} MB.`,
-      "The result has the artifact id. To change the artifact, publish again with the same id and the full set of files; the open preview reloads to the new version.",
-    ].join(" "),
+    description: PUBLISH_GUIDE,
     input: z.object({
       id: z
         .string()
         .optional()
         .describe("The id of an artifact to update in place. Omit it to publish a new artifact."),
-      title: z.string().min(1).describe("A short title for the artifact."),
-      entry: z.string().optional().describe('The file the preview opens. Defaults to "index.html".'),
+      title: z
+        .string()
+        .min(1)
+        .describe(
+          'The artifact\'s name, two to four words specific to this page, such as "Q3 Latency Report". No explanation after a dash or colon. Keep it when you update.',
+        ),
+      entry: z
+        .string()
+        .regex(/\.html$/i, "The entry must be an .html file.")
+        .optional()
+        .describe('The HTML file the preview opens. Defaults to "index.html".'),
       files: z
         .array(
           z.object({
