@@ -30,10 +30,7 @@ import {
 import { SkeletonList } from "../../ui/skeleton.tsx"
 import { IconAction, useVmAction } from "../TinyVmView.tsx"
 import { DeleteDeviceDialog } from "./DeleteDeviceDialog.tsx"
-import { ChevronDownIcon } from "../../icons/ChevronDownIcon.tsx"
-import { PlusIcon } from "../../icons/PlusIcon.tsx"
-import { RefreshIcon } from "../../icons/RefreshIcon.tsx"
-import { TrashIcon } from "../../icons/TrashIcon.tsx"
+import { ChevronDownIcon, PlusIcon, RefreshIcon, TrashIcon } from "@hinacode/icons"
 
 const SIMSLIM_INSTALL = "brew install mobai-app/tap/simslim"
 

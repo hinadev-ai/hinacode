@@ -7,9 +7,7 @@ import { formatSnoozeTime, type SnoozePresetId, snoozePresets } from "../lib/sno
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
-import { AlarmIcon } from "./icons/AlarmIcon.tsx"
-import { CalendarIcon } from "./icons/CalendarIcon.tsx"
-import { SnoozeIcon } from "./icons/SnoozeIcon.tsx"
+import { AlarmIcon, CalendarIcon, SnoozeIcon } from "@hinacode/icons"
 
 interface Choice {
   readonly id: string

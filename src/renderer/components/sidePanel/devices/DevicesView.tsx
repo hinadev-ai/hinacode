@@ -13,10 +13,7 @@ import { DeleteDeviceDialog } from "./DeleteDeviceDialog.tsx"
 import { DeviceList } from "./DeviceList.tsx"
 import { DeviceReady } from "./DeviceReady.tsx"
 import { devicePanelId, deviceTabId } from "./DeviceTabStrip.tsx"
-import { CheckIcon } from "../../icons/CheckIcon.tsx"
-import { CircleIcon } from "../../icons/CircleIcon.tsx"
-import { SpinnerIcon } from "../../icons/SpinnerIcon.tsx"
-import { WarningIcon } from "../../icons/WarningIcon.tsx"
+import { CheckIcon, CircleIcon, SpinnerIcon, WarningIcon } from "@hinacode/icons"
 
 export function DevicesView({ thread }: { thread: Thread }) {
   const devices = useAtomValue(threadDevicesAtom(thread.id))

@@ -1,7 +1,7 @@
 import { cn } from "cn"
 import { errorSummary } from "../lib/errorMessage.ts"
 import { m } from "../paraglide/messages.js"
-import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
+import { ChevronRightIcon } from "@hinacode/icons"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
 
 export function ErrorNotice({

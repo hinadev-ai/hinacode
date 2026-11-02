@@ -14,15 +14,17 @@ import { HoldToConfirmButton } from "../HoldToConfirmButton.tsx"
 import { Button } from "../ui/button.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip.tsx"
-import { CameraIcon } from "../icons/CameraIcon.tsx"
-import { ComputerIcon } from "../icons/ComputerIcon.tsx"
-import { FullscreenIcon } from "../icons/FullscreenIcon.tsx"
-import type { IconComponent } from "../icons/Icon.tsx"
-import { PipExitIcon } from "../icons/PipExitIcon.tsx"
-import { PipIcon } from "../icons/PipIcon.tsx"
-import { SaveIcon } from "../icons/SaveIcon.tsx"
-import { SpinnerIcon } from "../icons/SpinnerIcon.tsx"
-import { WarningIcon } from "../icons/WarningIcon.tsx"
+import {
+  CameraIcon,
+  ComputerIcon,
+  FullscreenIcon,
+  type IconComponent,
+  PipExitIcon,
+  PipIcon,
+  SaveIcon,
+  SpinnerIcon,
+  WarningIcon,
+} from "@hinacode/icons"
 
 export const TinyVmScreen = lazy(() => import("./TinyVmScreen.tsx"))
 const BoatVmScreen = lazy(() => import("./BoatVmScreen.tsx"))

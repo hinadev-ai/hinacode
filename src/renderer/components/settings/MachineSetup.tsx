@@ -14,11 +14,7 @@ import { ProviderIcon, providerLabel } from "../ProviderIcon.tsx"
 import { Button } from "../ui/button.tsx"
 import { Skeleton } from "../ui/skeleton.tsx"
 import { SettingsSection, settingsSurfaceClass } from "./SettingsSection.tsx"
-import { CheckIcon } from "../icons/CheckIcon.tsx"
-import { CloudIcon } from "../icons/CloudIcon.tsx"
-import { LaptopIcon } from "../icons/LaptopIcon.tsx"
-import { MinusIcon } from "../icons/MinusIcon.tsx"
-import { WarningFillIcon } from "../icons/WarningFillIcon.tsx"
+import { CheckIcon, CloudIcon, LaptopIcon, MinusIcon, WarningFillIcon } from "@hinacode/icons"
 
 type Tone = "ready" | "attention" | "off" | "loading"
 

@@ -31,9 +31,7 @@ import { Badge } from "../ui/badge.tsx"
 import { Button } from "../ui/button.tsx"
 import { ScrollArea } from "../ui/scroll-area.tsx"
 import { Section } from "./Section.tsx"
-import { BranchIcon } from "../icons/BranchIcon.tsx"
-import { CloudIcon } from "../icons/CloudIcon.tsx"
-import { FolderOpenIcon } from "../icons/FolderOpenIcon.tsx"
+import { BranchIcon, CloudIcon, FolderOpenIcon } from "@hinacode/icons"
 
 export function DetailsView({ thread }: { thread: Thread }) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))

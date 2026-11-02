@@ -23,25 +23,27 @@ import { IconAction, useVmAction } from "../TinyVmView.tsx"
 import { DeleteDeviceDialog, deleteDeviceLabel } from "./DeleteDeviceDialog.tsx"
 import { DeviceSession, type FrameShape } from "./deviceSession.ts"
 import { DeviceScreen } from "./DeviceScreen.tsx"
-import { BookIcon } from "../../icons/BookIcon.tsx"
-import { CameraIcon } from "../../icons/CameraIcon.tsx"
-import { CursorIcon } from "../../icons/CursorIcon.tsx"
-import { HomeIcon } from "../../icons/HomeIcon.tsx"
-import type { IconComponent } from "../../icons/Icon.tsx"
-import { KeyboardIcon } from "../../icons/KeyboardIcon.tsx"
-import { LinkIcon } from "../../icons/LinkIcon.tsx"
-import { LockIcon } from "../../icons/LockIcon.tsx"
-import { MoonIcon } from "../../icons/MoonIcon.tsx"
-import { MoreVerticalIcon } from "../../icons/MoreVerticalIcon.tsx"
-import { PhoneIcon } from "../../icons/PhoneIcon.tsx"
-import { RotateIcon } from "../../icons/RotateIcon.tsx"
-import { StackIcon } from "../../icons/StackIcon.tsx"
-import { SunIcon } from "../../icons/SunIcon.tsx"
-import { TabletIcon } from "../../icons/TabletIcon.tsx"
-import { UndoIcon } from "../../icons/UndoIcon.tsx"
-import { VolumeDownIcon } from "../../icons/VolumeDownIcon.tsx"
-import { VolumeUpIcon } from "../../icons/VolumeUpIcon.tsx"
-import { WarningIcon } from "../../icons/WarningIcon.tsx"
+import {
+  BookIcon,
+  CameraIcon,
+  CursorIcon,
+  HomeIcon,
+  type IconComponent,
+  KeyboardIcon,
+  LinkIcon,
+  LockIcon,
+  MoonIcon,
+  MoreVerticalIcon,
+  PhoneIcon,
+  RotateIcon,
+  StackIcon,
+  SunIcon,
+  TabletIcon,
+  UndoIcon,
+  VolumeDownIcon,
+  VolumeUpIcon,
+  WarningIcon,
+} from "@hinacode/icons"
 
 type ReadyDevice = Extract<ThreadDevice, { phase: "ready" }>
 type Appearance = "light" | "dark"

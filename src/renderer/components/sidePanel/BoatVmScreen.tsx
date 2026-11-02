@@ -9,8 +9,7 @@ import { vmDesktopUrlAtom } from "../../lib/rpc.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
 import { Spinner, vmScreenId } from "./TinyVmView.tsx"
-import { FullscreenExitIcon } from "../icons/FullscreenExitIcon.tsx"
-import { UploadIcon } from "../icons/UploadIcon.tsx"
+import { FullscreenExitIcon, UploadIcon } from "@hinacode/icons"
 
 const carriesFiles = (event: DragEvent<HTMLElement>) => event.dataTransfer.types.includes("Files")
 

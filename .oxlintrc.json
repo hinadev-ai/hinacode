@@ -53,7 +53,7 @@
           },
           {
             "group": ["@remixicon/*"],
-            "message": "Use the HinaCode icons in src/renderer/components/icons, or react-icons/ri."
+            "message": "Use the HinaCode icons in @hinacode/icons, or react-icons/ri."
           }
         ]
       }

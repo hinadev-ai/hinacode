@@ -11,9 +11,7 @@ import { useThreadEnvironment } from "../lib/environments.ts"
 import { ActivityBar } from "./sidePanel/ActivityBar.tsx"
 import { type SidePanelView, useSidePanelViews, viewById } from "./sidePanel/views.ts"
 import { Button } from "./ui/button.tsx"
-import { FullscreenExitIcon } from "./icons/FullscreenExitIcon.tsx"
-import { FullscreenIcon } from "./icons/FullscreenIcon.tsx"
-import { SidebarFillIcon } from "./icons/SidebarFillIcon.tsx"
+import { FullscreenExitIcon, FullscreenIcon, SidebarFillIcon } from "@hinacode/icons"
 
 const returnFocusToComposer = (panel: HTMLElement | null) => () => {
   if (panel?.contains(document.activeElement)) useUi.getState().requestComposerFocus()

@@ -10,7 +10,7 @@ import { formatOutput } from "./MessagePart.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { StopSubagentButton, SubagentStatusIcon, subagentStats, useNow } from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
-import { ArrowLeftIcon } from "./icons/ArrowLeftIcon.tsx"
+import { ArrowLeftIcon } from "@hinacode/icons"
 
 export function useSubagentLabel(threadId: string, callId: string) {
   const reported = useSubagentByCallId(threadId, callId)?.label

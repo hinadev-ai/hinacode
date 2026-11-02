@@ -6,7 +6,7 @@ import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Input } from "./ui/input.tsx"
 import { errorMessage } from "../lib/errorMessage.ts"
-import { ShieldIcon } from "./icons/ShieldIcon.tsx"
+import { ShieldIcon } from "@hinacode/icons"
 
 export function ApprovalCard({ request, providerLabel }: { request: ApprovalRequest; providerLabel: string }) {
   const [note, setNote] = useState("")
