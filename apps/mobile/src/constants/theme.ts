@@ -37,6 +37,8 @@ export const Colors = {
     /** Skills, commands and mentions in the composer, as the desktop's `--syntax-token`. */
     token: "#7c3aed",
     tokenBg: "rgba(124, 58, 237, 0.12)",
+    /** A search match in a line of code, the desktop's `--color-find-match`. */
+    findMatch: "rgba(124, 58, 237, 0.22)",
     /** The send button's holographic pearl, the desktop's `send-halo` in the default themes. */
     haloA: "#5ee7ff",
     haloB: "#ff7ae0",
@@ -72,6 +74,7 @@ export const Colors = {
     prMerged: "#a371f7",
     token: "#a78bfa",
     tokenBg: "rgba(167, 139, 250, 0.16)",
+    findMatch: "rgba(167, 139, 250, 0.3)",
     haloA: "#aef3ff",
     haloB: "#ffc6f5",
     haloC: "#fff3b0",
