@@ -3,6 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, describe, expect, layer } from "@effect/vitest"
+import { NodeServices } from "@effect/platform-node"
 import { Context, Effect, Layer, PubSub } from "effect"
 import type { PushEvent } from "../../shared/contract.ts"
 import * as Db from "../db/client.ts"
@@ -18,6 +19,7 @@ const testLayer = terminalsLayer.pipe(
   Layer.provide(Layer.succeed(Events, Events.of({ publish: (event) => Effect.asVoid(PubSub.publish(pushes, event)) }))),
   Layer.provideMerge(Db.layer(":memory:")),
   Layer.provideMerge(Layer.succeed(Pushes, pushes)),
+  Layer.provide(NodeServices.layer),
 )
 
 const base = realpathSync(mkdtempSync(join(tmpdir(), "kk-terminals-")))
