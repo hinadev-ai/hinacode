@@ -148,6 +148,12 @@ describe("pairing URLs", () => {
     expect(remoteWebSocketUrl({ host: "mac.local", port: 47821 })).toBe("ws://mac.local:47821/remote")
   })
 
+  it("dials TLS on port 443, where an HTTPS port proxy answers", () => {
+    expect(remoteWebSocketUrl({ host: "box-1-47821.on.boat.dev", port: 443 })).toBe(
+      "wss://box-1-47821.on.boat.dev/remote",
+    )
+  })
+
   it("dials the direct addresses at once and the relay a moment later", () => {
     expect(dialPlan({ hosts: ["100.64.0.2", "mac.local"], port: 47821, relay: "r.example.com" })).toEqual([
       { url: "ws://100.64.0.2:47821/remote", route: "direct", delayMs: 0 },
