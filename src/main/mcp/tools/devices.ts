@@ -1,8 +1,15 @@
 import { Effect, Schema } from "effect"
 import { type McpSchema, Toolkit } from "effect/ai"
-import { DeviceButton, type DeviceCommand, type DeviceElement, DeviceUrl } from "../../../shared/device.ts"
+import {
+  type AgentAction,
+  DeviceApp,
+  DeviceButton,
+  type DeviceCommand,
+  type DeviceElement,
+  DeviceUrl,
+} from "../../../shared/device.ts"
 import { Attachments } from "../../services/Attachments.ts"
-import { Devices } from "../../services/devices/Devices.ts"
+import { type AgentSteps, Devices } from "../../services/devices/Devices.ts"
 import * as McpTool from "./tool.ts"
 
 const Point = (what: string) =>
@@ -67,7 +74,7 @@ export const DeviceTools = Toolkit.make(
   }),
   McpTool.make("device_launch", {
     description: `Launch an installed app by its iOS bundle id or Android package name. ${STARTS} ${SHOWS}`,
-    parameters: Schema.Struct({ device: Target, app: Schema.String.check(Schema.isMaxLength(300)) }),
+    parameters: Schema.Struct({ device: Target, app: DeviceApp }),
   }),
   McpTool.make("device_open_url", {
     description: `Open a URL on the device, such as a deep link like myapp://settings or an Expo dev server URL. ${STARTS} ${SHOWS}`,
@@ -126,19 +133,13 @@ export const deviceToolsLayer = DeviceTools.toLayer(
     const actAndLook = (
       threadId: string,
       device: string | undefined,
-      steps: ReadonlyArray<ReadonlyArray<DeviceCommand>>,
+      action: AgentAction,
+      input: AgentSteps,
       done: string,
-      gapMs = 0,
-      release: ReadonlyArray<DeviceCommand> = [],
     ) =>
       Effect.gen(function* () {
-        for (const [index, commands] of steps.entries()) {
-          if (index > 0 && gapMs > 0) yield* Effect.sleep(gapMs)
-          const outcome = yield* devices.act(threadId, device, commands)
-          if (outcome === "handedBack") {
-            if (index > 0 && release.length > 0) yield* devices.act(threadId, device, release)
-            return yield* screen(threadId, device, HANDED_BACK)
-          }
+        if ((yield* devices.act(threadId, device, action, input)) === "handedBack") {
+          return yield* screen(threadId, device, HANDED_BACK)
         }
         yield* Effect.sleep(SETTLE_MS)
         return yield* screen(threadId, device, done)
@@ -154,12 +155,15 @@ export const deviceToolsLayer = DeviceTools.toLayer(
             return yield* actAndLook(
               threadId,
               deviceId,
-              [
-                [
-                  { kind: "touch", phase: "down", ...point },
-                  { kind: "touch", phase: "up", ...point },
+              { kind: "tap", ...point },
+              {
+                steps: [
+                  [
+                    { kind: "touch", phase: "down", ...point },
+                    { kind: "touch", phase: "up", ...point },
+                  ],
                 ],
-              ],
+              },
               `Tapped ${x}, ${y} on`,
             )
           }),
@@ -177,20 +181,35 @@ export const deviceToolsLayer = DeviceTools.toLayer(
             return yield* actAndLook(
               threadId,
               deviceId,
-              [[{ kind: "touch", phase: "down", ...from }], ...moves, [{ kind: "touch", phase: "up", ...to }]],
+              { kind: "swipe", ...from, toX: to.x, toY: to.y, durationMs },
+              {
+                steps: [[{ kind: "touch", phase: "down", ...from }], ...moves, [{ kind: "touch", phase: "up", ...to }]],
+                gapMs: durationMs / (SWIPE_STEPS + 1),
+                release: [{ kind: "touch", phase: "up", ...to }],
+              },
               `Swiped from ${x}, ${y} to ${toX}, ${toY} on`,
-              durationMs / (SWIPE_STEPS + 1),
-              [{ kind: "touch", phase: "up", ...to }],
             )
           }),
         ),
       device_type: ({ device, text }) =>
         McpTool.CallingThread.use((threadId) =>
-          actAndLook(threadId, device, [[{ kind: "text", text }]], `Typed ${[...text].length} characters on`),
+          actAndLook(
+            threadId,
+            device,
+            { kind: "type", characters: [...text].length },
+            { steps: [[{ kind: "text", text }]] },
+            `Typed ${[...text].length} characters on`,
+          ),
         ),
       device_button: ({ device, button }) =>
         McpTool.CallingThread.use((threadId) =>
-          actAndLook(threadId, device, [[{ kind: "button", button }]], `Pressed ${button} on`),
+          actAndLook(
+            threadId,
+            device,
+            { kind: "button", button },
+            { steps: [[{ kind: "button", button }]] },
+            `Pressed ${button} on`,
+          ),
         ),
       device_launch: ({ device, app }) =>
         McpTool.CallingThread.use((threadId) =>
@@ -204,7 +223,13 @@ export const deviceToolsLayer = DeviceTools.toLayer(
         ),
       device_open_url: ({ device, url }) =>
         McpTool.CallingThread.use((threadId) =>
-          actAndLook(threadId, device, [[{ kind: "openUrl", url }]], `Opened ${url} on`),
+          actAndLook(
+            threadId,
+            device,
+            { kind: "openUrl", url },
+            { steps: [[{ kind: "openUrl", url }]] },
+            `Opened ${url} on`,
+          ),
         ),
       device_describe_ui: ({ device }) =>
         McpTool.CallingThread.use((threadId) =>

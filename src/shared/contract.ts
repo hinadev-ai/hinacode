@@ -94,6 +94,7 @@ import { GitHubRepository, GitRefName, RepositoryPath, RepositoryVisibility } fr
 import { PendingLink, RelayHost } from "./relayMachines.ts"
 import { BrowserCommand, BrowserSession, BrowserSnapshot, BrowserUrl, BrowserViewport } from "./browser.ts"
 import {
+  AgentAction,
   DeviceCommand,
   SimulatorModelId,
   DeviceControl,
@@ -919,6 +920,12 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("environments.changed") }),
   Schema.Struct({ type: Schema.Literal("vm.updated"), threadId: Schema.String, vm: ThreadVm }),
   Schema.Struct({ type: Schema.Literal("device.updated"), threadId: Schema.String, devices: ThreadDevices }),
+  Schema.Struct({
+    type: Schema.Literal("device.agentAction"),
+    threadId: Schema.String,
+    deviceId: DeviceId,
+    action: AgentAction,
+  }),
   Schema.Struct({ type: Schema.Literal("vm.passkey.updated"), threadId: Schema.String, passkey: VmPasskey }),
   Schema.Struct({ type: Schema.Literal("vm.screen.data"), streamId: Schema.String, data: Schema.Uint8Array }),
   Schema.Struct({ type: Schema.Literal("vm.screen.closed"), streamId: Schema.String }),

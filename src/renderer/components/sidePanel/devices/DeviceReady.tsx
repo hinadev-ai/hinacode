@@ -1,6 +1,6 @@
 import { cn } from "cn"
 import { Schema } from "effect"
-import { type FormEvent, useEffect, useEffectEvent, useId, useRef, useState } from "react"
+import { type FormEvent, startTransition, useEffect, useEffectEvent, useId, useRef, useState } from "react"
 import {
   DeviceCommand,
   type DeviceButton,
@@ -10,7 +10,7 @@ import {
   type ThreadDevice,
 } from "../../../../shared/device.ts"
 import { deviceElementLabel } from "../../../lib/elementPicker.ts"
-import { callPromise } from "../../../lib/rpc.ts"
+import { callPromise, onPushEvent } from "../../../lib/rpc.ts"
 import { m } from "../../../paraglide/messages.js"
 import { useDrafts } from "../../../stores/drafts.ts"
 import { useUi } from "../../../stores/ui.ts"
@@ -20,6 +20,7 @@ import { Input } from "../../ui/input.tsx"
 import { Popover, PopoverContent, PopoverDescription, PopoverTrigger } from "../../ui/popover.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip.tsx"
 import { IconAction, useVmAction } from "../TinyVmView.tsx"
+import { AgentCaption, type ShownAgentAction } from "./AgentActivity.tsx"
 import { DeleteDeviceDialog, deleteDeviceLabel } from "./DeleteDeviceDialog.tsx"
 import { DeviceSession, type FrameShape } from "./deviceSession.ts"
 import { DeviceScreen } from "./DeviceScreen.tsx"
@@ -91,6 +92,7 @@ export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen 
   const [picking, setPicking] = useState(false)
   const [announcement, setAnnouncement] = useState("")
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [agentAction, setAgentAction] = useState<ShownAgentAction | null>(null)
   const [appearance, setAppearance] = useState<Appearance>(() =>
     localStorage.getItem(appearanceKey(device.id)) === "dark" ? "dark" : "light",
   )
@@ -119,6 +121,15 @@ export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen 
       sessionRef.current = null
     }
   }, [threadId, deviceId])
+
+  useEffect(
+    () =>
+      onPushEvent((event) => {
+        if (event.type !== "device.agentAction" || event.threadId !== threadId || event.deviceId !== deviceId) return
+        setAgentAction((previous) => ({ id: (previous?.id ?? 0) + 1, action: event.action }))
+      }),
+    [threadId, deviceId],
+  )
 
   const handBack = useEffectEvent(() => {
     if (control === "user") void callPromise("device.control", { threadId, deviceId, control: "agent" }).catch(() => {})
@@ -186,7 +197,7 @@ export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen 
       await callPromise(owned ? "device.detach" : "device.delete", { threadId, deviceId })
       onDetach()
     })
-  const waiting = control === "user" && agentWaiting
+  const waiting = control === "user" ? agentWaiting : null
   const status = waiting
     ? m.devices_agent_waiting()
     : control === "user"
@@ -297,13 +308,21 @@ export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen 
           stalled={stalled}
           picking={picking}
           hintId={hintId}
+          agentAction={agentAction}
+          agentWaiting={waiting}
           onPick={pick}
           onCancelPick={() => setPicking(false)}
         />
-        {picking && (
+        {picking ? (
           <output className="pointer-events-none absolute inset-x-3 bottom-3 rounded-lg border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
             {m.devices_pick_hint()}
           </output>
+        ) : (
+          <AgentCaption
+            shown={agentAction}
+            waiting={waiting}
+            onDone={() => startTransition(() => setAgentAction(null))}
+          />
         )}
       </div>
       <div className="flex min-h-10 shrink-0 items-center gap-2 border-t border-border px-3 py-1.5">

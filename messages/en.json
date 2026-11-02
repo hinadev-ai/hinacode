@@ -1898,6 +1898,22 @@
   "devices_control_user": "You have control",
   "devices_agent_waiting": "The agent is waiting for you to hand back",
   "devices_hand_back": "Hand back",
+  "devices_action_tap": "Tap",
+  "devices_action_swipe": "Swipe",
+  "devices_action_type": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Type {count} character",
+        "countPlural=other": "Type {count} characters"
+      }
+    }
+  ],
+  "devices_action_launch": "Launch {app}",
+  "devices_action_open": "Open {url}",
+  "devices_agent_next": "Next: {action}",
+  "devices_agent_used": "The agent used a device",
   "attachment_device": "Device",
   "attachment_device_role": "Role",
   "attachment_device_identifier": "Identifier",
