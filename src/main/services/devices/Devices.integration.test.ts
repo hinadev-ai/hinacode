@@ -235,7 +235,7 @@ describe("Devices", () => {
         yield* eventually(() => finished || launched.length > 0)
         expect(launched).toEqual([])
         yield* service.control(threadId, USERS_DEVICE, "agent")
-        yield* Fiber.join(agent)
+        expect(yield* Fiber.join(agent)).toBe("handedBack")
         expect(launched).toEqual([])
         yield* service.detach(threadId, USERS_DEVICE)
       }),
