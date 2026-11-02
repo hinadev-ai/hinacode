@@ -34,13 +34,12 @@ const onMachine = (client: Client, here: Project, projects: ReadonlyArray<Projec
     if (machine === undefined) {
       return yield* usageError(`no machine named ${wanted}. Run hinacode machines to see them.`)
     }
-    if (machine.projectIds.includes(here.id)) return here
-    const twin = projects.find(
-      (project) =>
-        machine.projectIds.includes(project.id) &&
-        here.repository !== undefined &&
-        project.repository === here.repository,
-    )
+    const machineProjects = new Set(machine.projectIds)
+    if (machineProjects.has(here.id)) return here
+    const twin =
+      here.repository === undefined
+        ? undefined
+        : projects.find((project) => machineProjects.has(project.id) && project.repository === here.repository)
     if (twin === undefined) {
       return yield* usageError(`${machine.name} has no project for ${here.repository ?? here.name}.`)
     }
