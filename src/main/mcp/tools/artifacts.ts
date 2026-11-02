@@ -25,10 +25,14 @@ export const registerArtifactTools = Effect.gen(function* () {
       annotations: Context.empty(),
       handle: (payload) =>
         Effect.gen(function* () {
-          if (Option.isNone(yield* callingThreadId(credentials))) return invalidCredential
+          const threadId = yield* callingThreadId(credentials)
+          if (Option.isNone(threadId)) return invalidCredential
           const input = tool.input.safeParse(payload ?? {})
           if (!input.success) return invalidInput(input.error.issues)
-          return yield* Effect.tryPromise({ try: () => tool.handle(store, input.data), catch: (cause) => cause }).pipe(
+          return yield* Effect.tryPromise({
+            try: () => tool.handle(store, input.data, { threadId: threadId.value }),
+            catch: (cause) => cause,
+          }).pipe(
             Effect.map((result) => text(result)),
             Effect.catch((cause) =>
               cause instanceof ArtifactError
