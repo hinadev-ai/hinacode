@@ -34,7 +34,7 @@ export function SearchField({
     <View
       style={[styles.field, { backgroundColor: theme.surface, borderColor: focused ? theme.primary : "transparent" }]}
     >
-      <Icon name="RiSearchLine" size={18} color={theme.textMuted} />
+      <Icon name="Search" size={18} color={theme.textMuted} />
       <TextInput
         ref={input}
         testID={testID}
@@ -71,7 +71,7 @@ export function SearchField({
           onPress={clear}
           style={styles.clear}
         >
-          <Icon name="RiCloseCircleFill" size={18} color={theme.textMuted} />
+          <Icon name="XCircleFill" size={18} color={theme.textMuted} />
         </Pressable>
       </Animated.View>
     </View>

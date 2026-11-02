@@ -84,7 +84,7 @@ export function SidebarButton() {
   return (
     <IconButton
       testID="sidebar-button"
-      icon="RiSideBarLine"
+      icon="Sidebar"
       accessibilityLabel={copy(open ? "mobile_home_hide_list" : "mobile_home_show_list")}
       onPress={toggle}
     />

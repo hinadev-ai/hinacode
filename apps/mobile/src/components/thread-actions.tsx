@@ -124,7 +124,7 @@ export function ThreadActionsSheet({
                   <IconSwap
                     showSecond={done}
                     first={<Icon name={action.icon} size={18} color={theme.text} />}
-                    second={<Icon name="RiCheckLine" size={18} color={theme.running} />}
+                    second={<Icon name="Check" size={18} color={theme.running} />}
                   />
                 )}
                 <Text style={[styles.actionLabel, { color: theme.text }]}>{label}</Text>

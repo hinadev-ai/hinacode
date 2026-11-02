@@ -30,7 +30,7 @@ export function ServerMark({ server }: { server: Server | undefined }) {
   return (
     <View accessible accessibilityLabel={serverLabel(server)} style={styles.mark}>
       <Icon
-        name={server.status === "connected" ? "RiComputerLine" : "RiWifiOffLine"}
+        name={server.status === "connected" ? "Computer" : "CloudOff"}
         size={12}
         color={theme.textMuted}
       />

@@ -19,9 +19,9 @@ export const checksLabel = (checks: ChecksStatus) => copy(`mobile_pr_checks_${ch
 /** Only failing checks need the developer, so only they get a color, as on the desktop. */
 export const checksTone: Record<ChecksStatus, Tone> = { passing: "neutral", failing: "danger", pending: "neutral" }
 export const checksIcon: Record<ChecksStatus, IconName> = {
-  passing: "RiCheckLine",
-  failing: "RiErrorWarningLine",
-  pending: "RiLoader4Line",
+  passing: "Check",
+  failing: "Warning",
+  pending: "Spinner",
 }
 
 const reviewKeys = {

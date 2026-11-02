@@ -29,19 +29,19 @@ export function HomeActions({ onNewThread }: { onNewThread: () => void }) {
     <View style={styles.actions}>
       <IconButton
         testID="overview-button"
-        icon="RiDashboardLine"
+        icon="Layout"
         accessibilityLabel={copy("mobile_home_overview")}
         onPress={() => router.push("/overview")}
       />
       <IconButton
         testID="new-thread-button"
-        icon="RiAddLine"
+        icon="Plus"
         accessibilityLabel={copy("mobile_home_new_thread")}
         onPress={onNewThread}
       />
       <IconButton
         testID="settings-button"
-        icon="RiSettings3Line"
+        icon="Settings"
         accessibilityLabel={copy("mobile_home_settings")}
         onPress={() => router.push("/settings")}
       />
@@ -141,14 +141,14 @@ export function HomeContent({
     </Reveal>
   ) : noProjects ? (
     <EmptyState
-      icon="RiFolderAddLine"
+      icon="FolderAdd"
       title={copy("mobile_home_no_projects")}
       hint={copy("mobile_home_no_projects_hint")}
       action={
         <Button
           testID="add-project-button"
           label={copy("mobile_home_add_project")}
-          icon="RiFolderAddLine"
+          icon="FolderAdd"
           variant="primary"
           onPress={() => router.push("/project/new")}
         />
@@ -160,7 +160,7 @@ export function HomeContent({
       <Notice text={loadError} tone="danger" />
       <Button
         label={copy("mobile_home_retry")}
-        icon="RiRefreshLine"
+        icon="Refresh"
         style={styles.retry}
         onPress={() => void useThreads.getState().load()}
       />
@@ -259,7 +259,7 @@ function homeItems(
       items.push({
         kind: "empty",
         key: "empty:archived",
-        icon: "RiArchiveLine",
+        icon: "Archive",
         title: copy("mobile_home_archived_empty"),
       })
     items.push(...threadItems("thread", archived, true))
@@ -418,9 +418,9 @@ function ProjectHeader({ project, open, onToggle }: { project: Project; open: bo
           style={({ pressed }) => [styles.projectToggle, pressed && { backgroundColor: theme.surface }]}
         >
           <Rotate turned={open}>
-            <Icon name="RiArrowRightSLine" size={16} color={theme.textMuted} />
+            <Icon name="ChevronRight" size={16} color={theme.textMuted} />
           </Rotate>
-          <Icon name="RiFolder3Line" size={16} color={theme.textMuted} />
+          <Icon name="Folder" size={16} color={theme.textMuted} />
           <Text numberOfLines={1} style={[styles.projectName, { color: theme.text }]}>
             {project.name}
           </Text>
@@ -428,7 +428,7 @@ function ProjectHeader({ project, open, onToggle }: { project: Project; open: bo
         </Pressable>
         <IconButton
           testID={`new-thread-in-${project.id}`}
-          icon="RiAddLine"
+          icon="Plus"
           accessibilityLabel={copy("mobile_home_new_in_project", { project: project.name })}
           busy={creating}
           onPress={() => void create()}

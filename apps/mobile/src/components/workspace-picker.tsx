@@ -113,7 +113,7 @@ export function WorkspaceChip({ thread, onError }: { thread: Thread; onError: (m
         style={({ pressed }) => [styles.chip, pressed && { backgroundColor: theme.surfaceStrong }]}
       >
         <Icon
-          name={parsePullRequestSelector(ref) ? "RiGitPullRequestLine" : "RiGitBranchLine"}
+          name={parsePullRequestSelector(ref) ? "RiGitPullRequestLine" : "Branch"}
           size={14}
           color={theme.textMuted}
         />
@@ -176,14 +176,14 @@ function WorkspaceSheet({
       <Section title={copy("mobile_workspace_run_in")}>
         <OptionRow
           label={copy("mobile_workspace_project_root")}
-          icon="RiFolderLine"
+          icon="Folder"
           hint={copy("mobile_workspace_project_root_hint")}
           selected={workspace.mode === "local"}
           onPress={() => workspace.mode !== "local" && setWorkspace(null)}
         />
         <OptionRow
           label={copy("mobile_workspace_new_worktree")}
-          icon="RiGitBranchLine"
+          icon="Branch"
           hint={copy("mobile_workspace_new_worktree_hint")}
           selected={workspace.mode === "worktree"}
           onPress={() =>
@@ -215,7 +215,7 @@ function WorkspaceSheet({
             <OptionRow
               key={branch}
               label={branch}
-              icon="RiGitBranchLine"
+              icon="Branch"
               monospace
               selected={workspace.ref.trim() === branch}
               onPress={() => pick(branch)}

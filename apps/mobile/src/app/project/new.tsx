@@ -144,7 +144,7 @@ export default function AddProjectScreen() {
         <Button
           testID="add-project-submit"
           label={copy(repository === null ? "mobile_project_add" : "mobile_project_clone")}
-          icon={repository === null ? "RiFolderAddLine" : "RiGithubFill"}
+          icon={repository === null ? "FolderAdd" : "RiGithubFill"}
           variant="primary"
           busy={busy}
           disabled={!ready}
