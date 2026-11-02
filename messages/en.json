@@ -1650,6 +1650,7 @@
   "mobile_overview_needs_you": "Needs you",
   "mobile_overview_open": "Open",
   "mobile_overview_merged": "Merged",
+  "mobile_overview_unknown": "Unknown state",
   "mobile_overview_pull_requests_empty": "No pull requests on active threads",
   "mobile_overview_pull_requests_empty_hint": "Pull requests the agents link to a thread show up here.",
   "mobile_overview_linear": "Linear",
