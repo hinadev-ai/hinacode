@@ -109,14 +109,15 @@ interface VmTemplateSelectProps {
   readonly templates: ReadonlyArray<VmTemplate>
   readonly value: string
   readonly onChange: (name: string) => void
+  readonly className?: string
 }
 
-export function VmTemplateSelect({ id, templates, value, onChange }: VmTemplateSelectProps) {
+export function VmTemplateSelect({ id, templates, value, onChange, className }: VmTemplateSelectProps) {
   const listed = templates.map((template) => ({ value: template.name, label: templateLabel(template) }))
   const items = listed.some((item) => item.value === value) ? listed : [{ value, label: value }, ...listed]
   return (
     <Select items={items} value={value} onValueChange={(next) => typeof next === "string" && onChange(next)}>
-      <SelectTrigger id={id} className="w-full">
+      <SelectTrigger id={id} className={className}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -187,6 +188,7 @@ function NoVm({ threadId }: { threadId: string }) {
             templates={templates}
             value={template}
             onChange={setPicked}
+            className="w-full"
           />
         </div>
       )}
