@@ -137,11 +137,6 @@ Then("the code block contains {string}", async ({ app }, text: string) => {
   await expect(article(app.page).locator("pre code")).toHaveText(text)
 })
 
-Then("there is no Markdown table yet", async ({ app }) => {
-  await expect(article(app.page)).toContainText("| Name | Value |")
-  await expect(article(app.page).getByRole("table")).toHaveCount(0)
-})
-
 Then("the Markdown table has a row {string} with value {string}", async ({ app }, name: string, value: string) => {
   const table = article(app.page).getByRole("table")
   await expect(table.getByRole("columnheader")).toHaveText(["Name", "Value"])
