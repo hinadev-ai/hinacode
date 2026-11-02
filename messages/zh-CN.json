@@ -1290,7 +1290,7 @@
   "environment_relay_refresh": "刷新",
   "environment_relay_no_machines": "还没有机器关联到这个中继。",
   "environment_relay_this_machine": "本机",
-  "environment_relay_this_machine_hint": "如需取消关联本机，请使用「设置 > 远程」中的「移除中继」。",
+  "environment_relay_this_machine_hint": "如需取消关联本机，请使用「设置 > 连接」中的「移除中继」。",
   "environment_relay_not_published": "尚未发布。请更新那台机器上的 HinaCode。",
   "environment_relay_show": "在我的设备上显示",
   "environment_relay_remove": "移除",

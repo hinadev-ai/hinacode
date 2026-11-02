@@ -1299,7 +1299,7 @@
   "environment_relay_refresh": "Refresh",
   "environment_relay_no_machines": "No machines are linked to this relay yet.",
   "environment_relay_this_machine": "This machine",
-  "environment_relay_this_machine_hint": "To unlink this machine, use Remove relay in Settings > Remote.",
+  "environment_relay_this_machine_hint": "To unlink this machine, use Remove relay in Settings > Connections.",
   "environment_relay_not_published": "Not published yet. Update HinaCode on that machine.",
   "environment_relay_show": "Show on my devices",
   "environment_relay_remove": "Remove",

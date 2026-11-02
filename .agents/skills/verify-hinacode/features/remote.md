@@ -1,6 +1,6 @@
 # Remote mode
 
-A user can control hinacode from elsewhere in two ways. Settings > Remote turns on a token-guarded listener that the phone app pairs with, and optionally a relay that reaches it from any network. Settings > Environments pairs this desktop with a cloud, a machine running `hinacode serve`; the cloud's projects and threads then show in the sidebar with a cloud icon, and their agents run on that machine. Settings then edits either machine through the `Editing settings for` picker. No agent turn is needed.
+A user can control hinacode from elsewhere in two ways. The Remote section of Settings > Connections turns on a token-guarded listener that the phone app pairs with, and optionally a relay that reaches it from any network. Its Add environment form pairs this desktop with a cloud, a machine running `hinacode serve`; the cloud's projects and threads then show in the sidebar with a cloud icon, and their agents run on that machine. Settings then edits either machine through the `Editing settings for` picker. No agent turn is needed.
 
 ## Automated coverage
 
@@ -29,7 +29,7 @@ Preconditions:
 - `AB="agent-browser --session kkv-$PORT-remote"`, connected.
 - `CLOUD=/tmp/kk-cloud-$PORT`, `CPORT=$((30000 + PORT))`, `RPORT=$((31000 + PORT))`, all free.
 
-- **Listener and pairing.** Open Settings > `Remote`. Set `Remote listener` to `This machine only (127.0.0.1)`, `$AB fill '#remote-port' $RPORT`, click `Save`, then turn on `Allow remote control`. The status reads `Listening on 127.0.0.1:<RPORT>` and `Pair a phone` appears. `$S/rpc.ts $PORT remote.status` shows `"listening": true`; `remote.pairing` shows the token that `#remote-pair-url` contains. Screenshot `remote-01-pairing.png`. Click `Rotate token`; no dialog opens, and `remote.pairing` returns a new token.
+- **Listener and pairing.** Open Settings > `Connections`. Set `Remote listener` to `This machine only (127.0.0.1)`, `$AB fill '#remote-port' $RPORT`, click `Save`, then turn on `Allow remote control`. The status reads `Listening on 127.0.0.1:<RPORT>` and `Pair a phone` appears. `$S/rpc.ts $PORT remote.status` shows `"listening": true`; `remote.pairing` shows the token that `#remote-pair-url` contains. Screenshot `remote-01-pairing.png`. Click `Rotate token`; no dialog opens, and `remote.pairing` returns a new token.
 - **Start a cloud.** `mkdir -p $CLOUD && $S/seed-repo.sh $CLOUD/repo`, then `HINACODE_USER_DATA=$CLOUD HINACODE_SERVE_AUTO_UPDATE=0 setsid node out/main/daemon.js serve --host 127.0.0.1 --port $CPORT --relay off > $CLOUD/serve.log 2>&1 & echo $! > $CLOUD/serve.pid`. Wait until the log has `Pair a desktop:`; the line after it is the URL: `URL=$(grep -A1 'Pair a desktop' $CLOUD/serve.log | tail -1 | tr -d ' ')`.
 - **Add the environment.** Settings > `Environments`, `$AB fill '#environment-name' kk-cloud`, `$AB fill '#environment-pairing-url' "$URL"`, click `Add`. `Connected to kk-cloud.` shows and the card reads `Connected`. Screenshot `remote-02-environment.png`. `$S/rpc.ts $PORT environments.list` lists it.
 - **Cloud project in the sidebar.** Click `Add a project on kk-cloud`, fill `Folder or GitHub repository` with `$CLOUD/repo`, `Add project`. The sidebar gains the project with the cloud icon, whose hidden label reads `On kk-cloud`. Screenshot `remote-03-cloud-sidebar.png`.

@@ -64,7 +64,7 @@ const pairingText = async (userData: string, pairing: RemotePairing) => {
     `  ${phoneUrl}`,
     qr,
     ...(pairing.relay === null ? [] : [`Reachable from any network through ${pairing.relay}.`, ""]),
-    "Pair a desktop: Settings > Environments > Add environment, with one of:",
+    "Pair a desktop: Settings > Connections > Add environment, with one of:",
     ...pairing.hosts.map((host) => `  ${pairingUrl({ ...pairing, hosts: [host] })}`),
     "Keep the token in these URLs private. Run `hinacode pair` to print them again.",
     "",

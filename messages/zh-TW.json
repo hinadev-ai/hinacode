@@ -1263,7 +1263,7 @@
   "environment_relay_refresh": "重新整理",
   "environment_relay_no_machines": "這個中繼還沒有連結任何機器。",
   "environment_relay_this_machine": "這台機器",
-  "environment_relay_this_machine_hint": "若要解除這台機器的連結，請使用「設定 > 遠端」中的「移除中繼」。",
+  "environment_relay_this_machine_hint": "若要解除這台機器的連結，請使用「設定 > 連線」中的「移除中繼」。",
   "environment_relay_not_published": "尚未發布。請更新那台機器上的 HinaCode。",
   "environment_relay_show": "在我的裝置上顯示",
   "environment_relay_remove": "移除",
