@@ -161,6 +161,10 @@ export const RpcMethods = {
     }),
     Schema.NullOr(PickedDeviceElement),
   ),
+  "device.screenshot.save": rpc(
+    Schema.Struct({ threadId: Schema.String, dataUrl: Schema.String, name: Schema.String }),
+    Attachment,
+  ),
   "app.ready": rpc(Schema.Void, Schema.Void),
   "app.focus": rpc(Schema.Void, Schema.Void),
   "windows.openPullRequest": rpc(Schema.Struct({ threadId: Schema.String, url: Schema.String }), Schema.Void),
@@ -436,6 +440,7 @@ export const RpcMethods = {
     Schema.Void,
   ),
   "threads.interrupt": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
+  "threads.reveal": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "approvals.respond": rpc(
     Schema.Struct({
       requestId: Schema.String,
@@ -611,6 +616,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "device.command": "mutation",
   "device.control": "mutation",
   "device.pick": "mutation",
+  "device.screenshot.save": "mutation",
   "app.ready": "mutation",
   "app.focus": "mutation",
   "windows.openPullRequest": "mutation",
@@ -705,6 +711,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "threads.queue": "mutation",
   "threads.unqueue": "mutation",
   "threads.interrupt": "mutation",
+  "threads.reveal": "mutation",
   "approvals.respond": "mutation",
   "questions.respond": "mutation",
   "secrets.has": "read",
@@ -785,6 +792,7 @@ export const mutations: ReadonlySet<string> = new Set(
 )
 
 export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
+  "device.screenshot.save",
   "app.ready",
   "app.focus",
   "windows.openPullRequest",
@@ -866,6 +874,7 @@ export const PushEvent = Schema.Union([
   ...TranscriptPush.members,
   Schema.Struct({ type: Schema.Literal("thread.updated"), thread: Thread }),
   Schema.Struct({ type: Schema.Literal("thread.removed"), id: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("thread.reveal"), threadId: Schema.String }),
   Schema.Struct({ type: Schema.Literal("worktree.updated"), worktree: Worktree }),
   Schema.Struct({ type: Schema.Literal("worktree.setupLog"), id: Schema.String, chunk: Schema.String }),
   Schema.Struct({

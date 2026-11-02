@@ -1,34 +1,15 @@
-import { createServer, type Server } from "node:http"
 import type { Socket } from "node:net"
-import { Cause, Clock, Duration, Effect, Fiber, FiberHandle, Layer, Option, Schedule, Schema, Stream } from "effect"
-import { WebSocket, WebSocketServer } from "ws"
-import { compactPush } from "../../shared/compactTranscript.ts"
-import {
-  desktopOnlyMethods,
-  desktopOnlyPushes,
-  mutations,
-  type RpcEnvelope,
-  type RpcMethod,
-} from "../../shared/contract.ts"
+import { Cause, Duration, Effect, Fiber, FiberHandle, Layer, Stream } from "effect"
+import type { WebSocket } from "ws"
 import { newNonce } from "../../shared/proof.ts"
 import { PRIVATE_NETWORKS, type Settings as SettingsValue } from "../../shared/domain.ts"
-import {
-  ClientFrame,
-  REMOTE_MAX_FRAME_BYTES,
-  REMOTE_PATH,
-  REMOTE_PROTOCOL_VERSION,
-  reachesPhone,
-  type RemoteFeature,
-  type ServerFrame,
-} from "../../shared/remote.ts"
 import { isPrivateAddress } from "../network.ts"
-import { type AppServices, dispatch } from "../rpc.ts"
+import { dispatch } from "../rpc.ts"
 import { PushBroadcast } from "../services/Events.ts"
 import { Settings } from "../services/Settings.ts"
 import {
   advertisedHosts,
   CLOSE_AUTH_TIMEOUT,
-  CLOSE_LISTENER_STOPPED,
   CLOSE_MALFORMED_FRAME,
   CLOSE_TOKEN_ROTATED,
   CLOSE_UNAUTHORIZED,
@@ -36,147 +17,40 @@ import {
   relayHostname,
 } from "./access.ts"
 import { type Hub, Peers } from "./peers.ts"
+import { describeError, listenWebSockets, makeSessions, readFrame, send } from "./session.ts"
 
 const AUTH_TIMEOUT = Duration.seconds(5)
-const HEARTBEAT_INTERVAL = Duration.seconds(20)
-const CALL_KEY_TTL_MS = Duration.toMillis(Duration.minutes(5))
-export const MAX_CALL_KEYS = 2000
-
-const FEATURES: ReadonlyArray<RemoteFeature> = ["heartbeat", "call-keys", "terminal-attach", "asks", "watch"]
-
-const decodeClientFrame = Schema.decodeUnknownOption(ClientFrame)
-
-const parseFrame = (raw: unknown): ClientFrame | undefined => {
-  try {
-    return Option.getOrUndefined(decodeClientFrame(JSON.parse(String(raw))))
-  } catch {
-    return undefined
-  }
-}
-
-const desktopOnly = (method: string): RpcEnvelope<never> => ({
-  error: { tag: "DesktopOnly", message: `${method} is only available in the desktop window` },
-})
-
-const send = (socket: WebSocket, frame: typeof ServerFrame.Encoded) => {
-  if (socket.readyState !== WebSocket.OPEN) return
-  socket.send(JSON.stringify(frame))
-}
-
-const busy: RpcEnvelope<never> = {
-  error: { tag: "RemoteBusy", message: "Too many actions are still running. Try again when one finishes." },
-}
-
-const staysOnPrivateNetworks = (socket: Socket) =>
-  [socket.localAddress, socket.remoteAddress].every((address) => address !== undefined && isPrivateAddress(address))
-
-const describeError = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
 const describeCause = (cause: Cause.Cause<unknown>) => describeError(Cause.squash(cause))
 
-interface KeyedCall {
-  readonly result: Promise<RpcEnvelope<unknown>>
-  readonly settledAt: number | null
-}
-
-interface PhonePeer {
-  awaitingPong: boolean
-  watching: ReadonlySet<string> | null
-}
+const staysOnPrivateNetworks = (socket: Socket) =>
+  [socket.localAddress, socket.remoteAddress].every((address) => address !== undefined && isPrivateAddress(address))
 
 const make = Effect.gen(function* () {
   const access = yield* RemoteAccess
   const broadcast = yield* PushBroadcast
   const settings = yield* Settings
   const peers = yield* Peers
-  const services = yield* Effect.context<AppServices | PushBroadcast>()
-  const runFork = Effect.runForkWith(services)
-  const runPromise = Effect.runPromiseWith(services)
-  const now = () => Effect.runSyncWith(services)(Clock.currentTimeMillis)
+  const runFork = Effect.runForkWith(yield* Effect.context<never>())
 
   let current = (yield* settings.get).remote
-  const sockets = new Map<WebSocket, PhonePeer>()
-  const countConnected = () => runFork(access.report({ connected: sockets.size }))
+
+  const sessions = yield* makeSessions({
+    call: (raw) => dispatch(raw, null),
+    subscribe: broadcast.subscribe,
+    environment: access.identity,
+    features: ["heartbeat", "call-keys", "terminal-attach", "asks", "watch"],
+  })
+  const countConnected = () => runFork(access.report({ connected: sessions.count() }))
 
   const attach = (
     socket: WebSocket,
-    { proof, compactEvents }: { readonly proof: string | undefined; readonly compactEvents: boolean },
+    { proof, compactEvents }: { proof: string | undefined; compactEvents: boolean },
   ) => {
-    const peer: PhonePeer = { awaitingPong: false, watching: null }
-    sockets.set(socket, peer)
-    socket.on("pong", () => {
-      peer.awaitingPong = false
-    })
+    const relay = relayHostname(Effect.runSync(access.status).relay) ?? undefined
+    sessions.attach(socket, { compactEvents, relay, proof, hosts: advertisedHosts(current.bindHost) })
     countConnected()
-    const subscription = runFork(
-      Effect.scoped(
-        broadcast
-          .subscribe((event) => {
-            if (desktopOnlyPushes.has(event.type) || !reachesPhone(event, peer.watching)) return
-            send(socket, { type: "event", event: compactEvents ? compactPush(event) : event })
-          })
-          .pipe(Effect.andThen(Effect.never)),
-      ),
-    )
-    socket.on("close", () => {
-      sockets.delete(socket)
-      countConnected()
-      runFork(Fiber.interrupt(subscription))
-    })
-    const relay = relayHostname(Effect.runSyncWith(services)(access.status).relay)
-    send(socket, {
-      type: "ready",
-      version: REMOTE_PROTOCOL_VERSION,
-      environment: access.identity,
-      features: FEATURES,
-      hosts: advertisedHosts(current.bindHost),
-      ...(relay !== null && { relay }),
-      ...(proof !== undefined && { proof }),
-    })
-  }
-
-  const run = (method: string, payload: unknown): Promise<RpcEnvelope<unknown>> =>
-    desktopOnlyMethods.has(method as RpcMethod)
-      ? Promise.resolve(desktopOnly(method))
-      : runPromise(dispatch({ method, payload }, null)).catch((error: unknown) => ({
-          error: { tag: "Defect", message: describeError(error) },
-        }))
-
-  const keyed = new Map<string, KeyedCall>()
-
-  const oldestSettled = () => {
-    for (const [stored, entry] of keyed) if (entry.settledAt !== null) return stored
-    return undefined
-  }
-
-  const markSettled = (key: string, result: Promise<RpcEnvelope<unknown>>) => {
-    keyed.delete(key)
-    keyed.set(key, { result, settledAt: now() })
-  }
-
-  const runOnce = (key: string, method: string, payload: unknown): Promise<RpcEnvelope<unknown>> => {
-    const at = now()
-    for (const [stored, entry] of keyed) {
-      if (entry.settledAt === null) continue
-      if (at - entry.settledAt < CALL_KEY_TTL_MS) break
-      keyed.delete(stored)
-    }
-    const existing = keyed.get(key)
-    if (existing !== undefined) return existing.result
-    if (keyed.size >= MAX_CALL_KEYS) {
-      const evicted = oldestSettled()
-      if (evicted === undefined) return Promise.resolve(busy)
-      keyed.delete(evicted)
-    }
-    const result = run(method, payload)
-    keyed.set(key, { result, settledAt: null })
-    void result.then(() => markSettled(key, result))
-    return result
-  }
-
-  const handleCall = (socket: WebSocket, { id, method, payload, key }: Extract<ClientFrame, { type: "call" }>) => {
-    const result = key !== undefined && mutations.has(method) ? runOnce(key, method, payload) : run(method, payload)
-    void result.then((envelope) => send(socket, { type: "result", id, envelope }))
+    socket.on("close", countConnected)
   }
 
   const accept = (socket: WebSocket) => {
@@ -194,10 +68,8 @@ const make = Effect.gen(function* () {
     })
     socket.on("error", () => {})
     socket.on("message", (raw, isBinary) => {
-      // FIXME: ws still emits frames that arrive during the close handshake
-      if (socket.readyState !== WebSocket.OPEN) return
-      const frame = isBinary ? undefined : parseFrame(raw)
-      if (frame === undefined) return socket.close(CLOSE_MALFORMED_FRAME, "malformed frame")
+      const frame = readFrame(socket, raw, isBinary)
+      if (frame === undefined) return
       if (generation === null) {
         if (frame.type !== "auth") return socket.close(CLOSE_MALFORMED_FRAME, "expected auth")
         const proof =
@@ -212,65 +84,30 @@ const make = Effect.gen(function* () {
         return attach(socket, { proof, compactEvents: frame.compactEvents ?? false })
       }
       if (access.generation() !== generation) return socket.close(CLOSE_TOKEN_ROTATED, "token rotated")
-      if (frame.type === "ping") return send(socket, { type: "pong", at: frame.at })
-      if (frame.type === "call") return handleCall(socket, frame)
-      if (frame.type === "hub") hub ??= peers.join((ask) => send(socket, ask))
-      const peer = sockets.get(socket)
-      if (peer !== undefined && frame.type === "watch") peer.watching = new Set(frame.threadIds)
+      if (frame.type === "auth") return
+      if (frame.type === "hub") return void (hub ??= peers.join((ask) => send(socket, ask)))
       if (frame.type === "answer") {
         const { envelope } = frame
-        hub?.answer(frame.id, "error" in envelope ? envelope : { result: envelope.result })
+        return hub?.answer(frame.id, "error" in envelope ? envelope : { result: envelope.result })
       }
+      sessions.receive(socket, frame)
     })
     send(socket, { type: "challenge", nonce: challenge })
   }
 
-  const closeAll = (code: number, reason: string) => {
-    for (const socket of sockets.keys()) socket.close(code, reason)
-  }
-
-  const heartbeat = Effect.sync(() => {
-    for (const [socket, peer] of sockets) {
-      if (peer.awaitingPong) {
-        socket.terminate()
-        continue
-      }
-      peer.awaitingPong = true
-      socket.ping()
-    }
-  })
-
   const listen = (address: Extract<SettingsValue["remote"], { enabled: true }>) =>
-    Effect.acquireRelease(
-      Effect.callback<{ server: Server; wss: WebSocketServer }, Error>((resume) => {
-        const server = createServer((_, response) => response.writeHead(404).end())
+    listenWebSockets({
+      listen: (server, listening) => {
         const everyInterface = address.bindHost === PRIVATE_NETWORKS
         if (everyInterface)
           server.on("connection", (socket) => {
             if (!staysOnPrivateNetworks(socket)) socket.destroy()
           })
-        const wss = new WebSocketServer({
-          server,
-          path: REMOTE_PATH,
-          maxPayload: REMOTE_MAX_FRAME_BYTES,
-          perMessageDeflate: true,
-        })
-        wss.on("connection", accept)
-        // FIXME: ws re-emits the http server's errors on wss, and an unhandled emit throws
-        wss.on("error", (error) => resume(Effect.fail(error)))
-        server.listen(address.port, everyInterface ? "0.0.0.0" : address.bindHost, () =>
-          resume(Effect.succeed({ server, wss })),
-        )
-      }),
-      // FIXME: wss.close() leaves an external http server listening
-      // FIXME: closeAllConnections() skips upgraded sockets
-      ({ server, wss }) =>
-        Effect.sync(() => {
-          for (const socket of wss.clients) socket.close(CLOSE_LISTENER_STOPPED, "listener stopped")
-          server.closeAllConnections()
-          server.close()
-        }),
-    ).pipe(
+        server.listen(address.port, everyInterface ? "0.0.0.0" : address.bindHost, listening)
+      },
+      accept,
+      perMessageDeflate: true,
+    }).pipe(
       Effect.andThen(access.report({ listening: true, listenError: null })),
       Effect.andThen(Effect.logInfo("remote listening", `${address.bindHost}:${address.port}`)),
       Effect.andThen(Effect.never),
@@ -297,8 +134,6 @@ const make = Effect.gen(function* () {
       )
     })
 
-  yield* heartbeat.pipe(Effect.repeat(Schedule.spaced(HEARTBEAT_INTERVAL)), Effect.forkScoped)
-
   yield* apply(current)
   yield* (yield* settings.changes).pipe(
     Stream.runForEach(({ remote }) => {
@@ -311,7 +146,7 @@ const make = Effect.gen(function* () {
     Effect.forkScoped,
   )
   yield* access.rotations.pipe(
-    Stream.runForEach(() => Effect.sync(() => closeAll(CLOSE_TOKEN_ROTATED, "token rotated"))),
+    Stream.runForEach(() => Effect.sync(() => sessions.closeAll(CLOSE_TOKEN_ROTATED, "token rotated"))),
     Effect.forkScoped,
   )
 })

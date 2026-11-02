@@ -26,6 +26,7 @@ import type {
   RunTurnInput,
   SessionScope,
 } from "../../../shared/agent.ts"
+import { AGENT_IMAGE_MAX_BYTES, AGENT_IMAGE_TYPES } from "../../../shared/agentImages.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { installedBinary } from "../binary.ts"
 import { attachmentContext } from "../elementContext.ts"
@@ -80,9 +81,6 @@ const permissionProfiles: Record<AccessMode, string> = {
   full: ":unrestricted",
 }
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024
-const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
-
 const museError = (message: string) => new AgentError({ provider: "muse", message })
 
 const interruptedEvent: AgentEvent = { type: "turn_failed", message: "Turn interrupted" }
@@ -135,7 +133,11 @@ const textPart = (text: string): TurnInputPart => ({ type: "text", text })
 
 const userInput = (text: string, attachments: ReadonlyArray<Attachment>) =>
   Effect.forEach(attachments, (attachment) => {
-    if (attachment.kind !== "image" || !IMAGE_TYPES.has(attachment.mime) || attachment.bytes > MAX_IMAGE_BYTES) {
+    if (
+      attachment.kind !== "image" ||
+      !AGENT_IMAGE_TYPES.includes(attachment.mime) ||
+      attachment.bytes > AGENT_IMAGE_MAX_BYTES
+    ) {
       return Effect.succeed([textPart(`Attached file: ${attachment.path}`)])
     }
     return Effect.tryPromise({

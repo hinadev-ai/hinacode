@@ -293,7 +293,7 @@ app went to the background.
 ```sh
 DATA=/tmp/kk-battery PORT=48190
 HINACODE_USER_DATA=$DATA HINACODE_MOCK_CLAUDE=stream HINACODE_SERVE_RELAY=off HINACODE_SERVE_AUTO_UPDATE=0 \
-  node out/main/daemon.js serve --host 127.0.0.1 --port $PORT   # prints the token in its pairing URL
+  node bin/hinacode.mjs serve --host 127.0.0.1 --port $PORT   # prints the token in its pairing URL
 
 export BATTERY_DAEMON_PORT=$PORT BATTERY_TOKEN=<token>
 BATTERY_PLATFORM=android BATTERY_SERIAL=emulator-5580 node scripts/perf/battery.ts run android-base-1

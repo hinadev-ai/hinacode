@@ -394,6 +394,7 @@ const handlers: Handlers = {
     AgentRunner.use((runner) => runner.queue(threadId, text, attachments)),
   "threads.unqueue": ({ threadId, id }) => AgentRunner.use((runner) => runner.unqueue(threadId, id)),
   "threads.interrupt": ({ threadId }) => AgentRunner.use((runner) => runner.interrupt(threadId)),
+  "threads.reveal": ({ threadId }) => Events.use((events) => events.publish({ type: "thread.reveal", threadId })),
   "approvals.respond": ({ requestId, decision, note }) =>
     AgentRunner.use((runner) => runner.respondApproval(requestId, decision, note)),
   "questions.respond": ({ requestId, answers }) =>
@@ -458,6 +459,8 @@ const handlers: Handlers = {
   "device.control": ({ threadId, deviceId, control }) =>
     Devices.use((devices) => devices.control(threadId, deviceId, control)),
   "device.pick": (input) => Devices.use((devices) => devices.pick(input)),
+  "device.screenshot.save": ({ threadId, dataUrl, name }) =>
+    Attachments.use((attachments) => attachments.stage(threadId, { dataUrl, name })),
   "vm.get": ({ threadId }) => TinyVm.use((vm) => vm.get(threadId)),
   "vm.start": ({ threadId, template }) => TinyVm.use((vm) => vm.start(threadId, template)),
   "vm.stop": ({ threadId }) => TinyVm.use((vm) => vm.stop(threadId)),

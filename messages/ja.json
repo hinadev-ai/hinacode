@@ -1822,6 +1822,7 @@
   "devices_volume_down": "音量を下げる",
   "devices_volume_up": "音量を上げる",
   "devices_rotate": "回転",
+  "devices_screenshot_save": "スクリーンショットを保存",
   "devices_posture_closed": "折りたたみ",
   "devices_posture_half_open": "半開き",
   "devices_posture_flat": "全開",
