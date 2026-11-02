@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, renameSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
-import { ARTIFACT_CSP } from "@hinacode/artifacts"
+import { ARTIFACT_HEADERS } from "@hinacode/artifacts"
 import { app, BrowserWindow, dialog, net, powerMonitor, protocol, safeStorage, session, shell } from "electron"
 import { Effect, Layer, ManagedRuntime, Option, Schema } from "effect"
 import { makeAppLayer } from "./app.ts"
@@ -77,7 +77,7 @@ protocol.registerSchemesAsPrivileged([
   { scheme: GITHUB_ASSET_PROTOCOL, privileges: { standard: true, secure: true, stream: true } },
   { scheme: PROJECT_FILE_PROTOCOL, privileges: { standard: true, secure: true, stream: true } },
   { scheme: EXTERNAL_IMAGE_PROTOCOL, privileges: { standard: true, secure: true } },
-  { scheme: ARTIFACT_PROTOCOL, privileges: { standard: true, secure: true } },
+  { scheme: ARTIFACT_PROTOCOL, privileges: { standard: true, secure: true, corsEnabled: true, supportFetchAPI: true } },
 ])
 
 type AppRuntime = ManagedRuntime.ManagedRuntime<
@@ -103,12 +103,7 @@ const withHeaders = (response: Response, extra: Record<string, string>) => {
 
 const sandboxed = (response: Response) => withHeaders(response, { "content-security-policy": "sandbox allow-scripts" })
 
-const artifactResponse = (response: Response) =>
-  withHeaders(response, {
-    "content-security-policy": ARTIFACT_CSP,
-    "cache-control": "no-store",
-    "x-content-type-options": "nosniff",
-  })
+const artifactResponse = (response: Response) => withHeaders(response, ARTIFACT_HEADERS)
 
 const serveAttachments = (runtime: AppRuntime, attachmentsRoot: string) =>
   protocol.handle(ATTACHMENT_PROTOCOL, async (request) => {

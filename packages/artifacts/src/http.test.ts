@@ -29,6 +29,7 @@ describe("handleArtifactRequest", () => {
     expect(Object.fromEntries(response.headers)).toEqual({
       "content-type": "text/html; charset=utf-8",
       "content-security-policy": "sandbox allow-scripts",
+      "access-control-allow-origin": "null",
       "cache-control": "no-store",
       "x-content-type-options": "nosniff",
     })

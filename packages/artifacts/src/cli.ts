@@ -40,7 +40,7 @@ const listPage = (artifacts: Artifact[]) =>
 const viewPage = (artifact: Artifact) =>
   page(
     artifact.title,
-    `<body style="margin:0;height:100vh"><iframe sandbox="allow-scripts" src="/a/${artifact.id}/" style="display:block;border:0;width:100%;height:100%"></iframe><script>
+    `<body style="margin:0;height:100vh"><iframe sandbox="allow-scripts" src="/a/${artifact.id}/${artifact.entry.split("/").map(encodeURIComponent).join("/")}" style="display:block;border:0;width:100%;height:100%"></iframe><script>
 let version = ${artifact.version}
 const frame = document.querySelector("iframe")
 setInterval(async () => {
