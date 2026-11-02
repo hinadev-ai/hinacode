@@ -1636,6 +1636,7 @@
   "mobile_overview_needs_you": "需要你处理",
   "mobile_overview_open": "进行中",
   "mobile_overview_merged": "已合并",
+  "mobile_overview_unknown": "状态未知",
   "mobile_overview_pull_requests_empty": "活跃对话中没有拉取请求",
   "mobile_overview_pull_requests_empty_hint": "智能体关联到对话的拉取请求会显示在这里。",
   "mobile_overview_linear": "Linear",

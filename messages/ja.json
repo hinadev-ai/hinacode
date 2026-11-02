@@ -1591,6 +1591,7 @@
   "mobile_overview_needs_you": "対応が必要",
   "mobile_overview_open": "オープン",
   "mobile_overview_merged": "マージ済み",
+  "mobile_overview_unknown": "状態不明",
   "mobile_overview_pull_requests_empty": "進行中のスレッドに PR はありません",
   "mobile_overview_pull_requests_empty_hint": "エージェントがスレッドにリンクしたプルリクエストがここに表示されます。",
   "mobile_overview_linear": "Linear",
