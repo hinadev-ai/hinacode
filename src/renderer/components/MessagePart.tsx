@@ -4,12 +4,11 @@ import { toast } from "sonner"
 import {
   type AccountProviderId,
   type Compaction,
-  isPublishArtifactTool,
   type ProviderId,
   publishedArtifactId,
   toolArgument,
 } from "../../shared/agent.ts"
-import { type MessagePart, spawnsSubagent, type ToolCallStatus } from "../../shared/domain.ts"
+import { type MessagePart, publishesArtifact, spawnsSubagent, type ToolCallStatus } from "../../shared/domain.ts"
 import { ansiSegments } from "../lib/ansi.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
@@ -161,7 +160,7 @@ export const SkillLabels = createContext<SkillLabelMap>(new Map())
 function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call" }> }) {
   const linksSubagents = use(SubagentLinks)
   if (linksSubagents && spawnsSubagent(part)) return <SubagentCallPart part={part} />
-  if (isPublishArtifactTool(part.name) && part.status !== "error") return <ArtifactCallPart part={part} />
+  if (publishesArtifact(part)) return <ArtifactCallPart part={part} />
   return (
     <div className="my-2">
       <ToolRow call={part} reveal={null} />
