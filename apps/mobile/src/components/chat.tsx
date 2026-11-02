@@ -102,6 +102,7 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
           windowSize={9}
           contentContainerStyle={[styles.transcript, liquidGlass && { paddingTop: dockHeight + 16 }]}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           // Inverted, so the end is the top: scrolling up to the oldest message reads the page before it.
           onEndReached={() => void useMessages.getState().loadEarlier(thread.id)}
           onEndReachedThreshold={1}
@@ -124,7 +125,7 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
         onLayout={liquidGlass ? (event) => setDockHeight(event.nativeEvent.layout.height) : undefined}
       >
         {hasRequests && (
-          <ScrollView keyboardShouldPersistTaps="handled" style={styles.requests}>
+          <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" style={styles.requests}>
             {thread.usageLimit !== null && (
               <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />
             )}
