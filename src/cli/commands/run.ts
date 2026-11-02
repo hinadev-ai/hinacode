@@ -71,7 +71,7 @@ export const runThread = (client: Client, options: RunOptions) =>
     const here = yield* Effect.fromResult(resolved)
     const project = options.machine === undefined ? here : yield* onMachine(client, here, projects, options.machine)
 
-    const draft = yield* client.call("threads.draft", { projectId: project.id })
+    const created = yield* client.call("threads.create", { projectId: project.id })
     const settings = {
       ...(options.provider !== undefined && { provider: options.provider }),
       ...(options.model !== undefined && { model: options.model }),
@@ -79,7 +79,9 @@ export const runThread = (client: Client, options: RunOptions) =>
       ...(options.accessMode !== undefined && { accessMode: options.accessMode }),
     }
     const thread =
-      Object.keys(settings).length === 0 ? draft : yield* client.call("threads.update", { id: draft.id, ...settings })
+      Object.keys(settings).length === 0
+        ? created
+        : yield* client.call("threads.update", { id: created.id, ...settings })
     const attachments = yield* Effect.forEach(options.attach, (path) =>
       client.call("attachments.stage", { threadId: thread.id, source: { path: resolve(options.cwd, path) } }),
     )
