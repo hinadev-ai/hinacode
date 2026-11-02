@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 import Animated from "react-native-reanimated"
 import { Icon } from "@/components/icon"
-import { AttentionRing } from "@/components/motion"
+import { AttentionRing, FadeIn, useChanged } from "@/components/motion"
 import { ServerMark, serverLabel } from "@/components/server-mark"
 import { ProjectIcon } from "@/components/project-icon"
 import { PullRequestMark, usePullRequestAttention, usePullRequestSummary } from "@/components/pull-request-badge"
@@ -90,6 +90,7 @@ export function ThreadRow({
     useUnseen((unseen) => unseen.byThreadId[thread.id]),
     usePullRequestAttention(links),
   )
+  const stateChanged = useChanged(state)
   const latest = links.at(-1)
   const number = latest === undefined ? null : pullRequestNumber(latest.url)
   const summary = usePullRequestSummary(latest?.url ?? null)
@@ -155,7 +156,7 @@ export function ThreadRow({
             {title}
           </Text>
           <ProviderMark provider={thread.provider} size={MARK_SIZE} />
-          {isIndicated(state) && <StatusIndicator state={state} />}
+          {isIndicated(state) && <StatusIndicator state={state} changed={stateChanged} />}
         </View>
         <View style={styles.metaLine}>
           <ServerMark server={showProject ? server : undefined} />
@@ -190,15 +191,18 @@ export function ThreadRow({
   )
 }
 
-/** The desktop sidebar's status icon. A thread that starts waiting for approval rings a few times, then rests. */
-function StatusIndicator({ state }: { state: IndicatedState }) {
+/**
+ * The desktop sidebar's status icon, which fades into each new state. A thread that starts waiting for approval rings
+ * a few times, then rests.
+ */
+function StatusIndicator({ state, changed }: { state: IndicatedState; changed: boolean }) {
   const theme = useTheme()
   const glyph = indicatorGlyph(theme, rowStatusIndicator[state])
   return (
-    <View style={styles.status}>
+    <FadeIn key={state} enabled={changed} style={styles.status}>
       <Icon {...glyph} size={STATUS_SIZE} />
       {state === "awaiting_approval" && <AttentionRing color={glyph.color} />}
-    </View>
+    </FadeIn>
   )
 }
 

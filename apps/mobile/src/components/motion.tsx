@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { type ReactNode, useState } from "react"
 import { type PressableProps, type StyleProp, StyleSheet, View, type ViewStyle } from "react-native"
 import Animated, { useReducedMotion } from "react-native-reanimated"
 import { Icon } from "@/components/icon"
@@ -98,6 +98,16 @@ export function FadeIn({
       {children}
     </motion.View>
   )
+}
+
+/**
+ * Whether `value` has changed since the component mounted. Key a `FadeIn` on the value and enable it with this, so a
+ * status that turns while someone watches fades in while the one the screen opened with shows at once.
+ */
+export function useChanged(value: string) {
+  const [seen, setSeen] = useState({ value, changed: false })
+  if (seen.value !== value) setSeen({ value, changed: true })
+  return seen.changed
 }
 
 /** A card that appears while on screen rises 4 px as it fades in. Reduce motion keeps the fade. */
