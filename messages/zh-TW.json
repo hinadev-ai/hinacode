@@ -1606,6 +1606,7 @@
   "mobile_overview_needs_you": "需要你處理",
   "mobile_overview_open": "開啟中",
   "mobile_overview_merged": "已合併",
+  "mobile_overview_unknown": "狀態不明",
   "mobile_overview_pull_requests_empty": "進行中的對話串沒有合併請求",
   "mobile_overview_pull_requests_empty_hint": "agent 連結到對話串的合併請求會顯示在這裡。",
   "mobile_overview_linear": "Linear",

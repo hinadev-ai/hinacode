@@ -21,5 +21,6 @@ export default defineConfig({
     }),
   ],
   build: { outDir: resolve(import.meta.dirname, "site/public/app"), emptyOutDir: true, target: "es2024" },
+  worker: { format: "es" },
   server: { port: 4419, strictPort: true },
 })

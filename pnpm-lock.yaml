@@ -442,6 +442,9 @@ importers:
       shadcn:
         specifier: 4.21.4
         version: 4.21.4(supports-color@7.2.0)
+      shiki:
+        specifier: 4.5.0
+        version: 4.5.0
       size-limit:
         specifier: 14.3.0
         version: 14.3.0

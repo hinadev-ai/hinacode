@@ -27,6 +27,8 @@ export interface PullRequestOverview {
   readonly attention: readonly OverviewPullRequest[]
   readonly open: readonly OverviewPullRequest[]
   readonly merged: readonly OverviewPullRequest[]
+  /** GitHub could not answer and no watch snapshot knows the state, so the row claims none. */
+  readonly unknown: readonly OverviewPullRequest[]
   /** Every pull request worth reading from GitHub: the ones linked to a thread that is not archived. */
   readonly urls: readonly string[]
 }
@@ -47,8 +49,8 @@ export function pullRequestOverview(
     newest.set(link.url, link)
   }
 
-  const overview = { attention: [], open: [], merged: [] } as {
-    [K in "attention" | "open" | "merged"]: OverviewPullRequest[]
+  const overview = { attention: [], open: [], merged: [], unknown: [] } as {
+    [K in "attention" | "open" | "merged" | "unknown"]: OverviewPullRequest[]
   }
   for (const link of newest.values()) {
     const remote = pullRequests[link.url]
@@ -73,7 +75,8 @@ export function pullRequestOverview(
       error: remote?.status === "error" ? remote.message : null,
       needs,
     }
-    if (status === "merged") overview.merged.push(row)
+    if (status === undefined && row.error !== null) overview.unknown.push(row)
+    else if (status === "merged") overview.merged.push(row)
     else if (needs.length > 0) overview.attention.push(row)
     else overview.open.push(row)
   }
