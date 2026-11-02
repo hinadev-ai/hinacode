@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { Deferred, Duration, Effect, Exit, Queue, Schema, Scope, Semaphore, Stream } from "effect"
 import type {
-  AccountHome,
   AgentAccount,
   AgentCommand,
   AgentEvent,
@@ -21,9 +20,7 @@ import { autoAllows, mergePermissionTool, optionFor, permissionOutcome, toApprov
 import { type AcpClient, type AcpFailure, type Incoming, makeAcpClient, type RequestId } from "./client.ts"
 import { modelSelector, type ModelSelector, toModelInfos } from "./models.ts"
 import {
-  type AgentCapabilities,
   AvailableCommandsUpdate,
-  ConfigOptionUpdate,
   InitializeResponse,
   METHOD_NOT_FOUND,
   NewSessionResponse,
@@ -53,19 +50,6 @@ const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp
 
 const interruptedEvent: AgentEvent = { type: "turn_failed", message: "Turn interrupted" }
 
-interface LoadedSession {
-  model: ModelSelector | null
-  needsInstructions: boolean
-}
-
-interface Entry {
-  readonly client: AcpClient
-  readonly scope: Scope.Closeable
-  readonly capabilities: AgentCapabilities
-  readonly sessions: Map<string, LoadedSession>
-  readonly commands: Map<string, ReadonlyArray<AgentCommand>>
-}
-
 interface PendingPermission {
   readonly approvalId: string | null
   readonly options: ReadonlyArray<PermissionOption>
@@ -81,16 +65,25 @@ interface Run {
 }
 
 type ContentBlock =
-  | { readonly type: "text"; readonly text: string }
+  | {
+      readonly type: "text"
+      readonly text: string
+      readonly annotations?: { readonly audience: ReadonlyArray<string> }
+    }
   | { readonly type: "image"; readonly data: string; readonly mimeType: string }
 
 const textBlock = (text: string): ContentBlock => ({ type: "text", text })
+
+const instructionsBlock = (text: string): ContentBlock => ({
+  type: "text",
+  text,
+  annotations: { audience: ["assistant"] },
+})
 
 type TurnMessage = Incoming | { readonly kind: "prompted"; readonly exit: Exit.Exit<PromptResponse, AgentError> }
 
 const decodeNotification = Schema.decodeUnknownOption(SessionNotification)
 const decodeCommands = Schema.decodeUnknownOption(AvailableCommandsUpdate)
-const decodeConfigUpdate = Schema.decodeUnknownOption(ConfigOptionUpdate)
 const decodePermission = Schema.decodeUnknownOption(RequestPermissionParams)
 
 const mcpServers = (input: RunTurnInput) => [
@@ -150,36 +143,28 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
         .request(method, params, timeout)
         .pipe(Effect.mapError(toAgentError), Effect.flatMap(decodeResponse(method, schema)))
 
-    const entryLock = yield* Semaphore.make(1)
-    let current: Entry | undefined
     const runs = new Map<string, Run>()
-    const threadSessions = new Map<string, string>()
     const accessModes = new Map<string, AccessMode>()
     const approvals = new Map<string, Deferred.Deferred<ApprovalDecision>>()
+    const commands = new Map<string, ReadonlyArray<AgentCommand>>()
 
     const runOfSession = (sessionId: string) => [...runs.values()].find((run) => run.sessionId === sessionId)
 
-    const trackSession = (entry: Entry, params: unknown) => {
-      const notification = decodeNotification(params)
+    const trackCommands = (threadId: string, message: Incoming) => {
+      if (message.kind !== "notification" || message.method !== "session/update") return
+      const notification = decodeNotification(message.params)
       if (notification._tag === "None") return
-      const { sessionId, update } = notification.value
-      const commands = decodeCommands(update)
-      if (commands._tag === "Some") {
-        entry.commands.set(
-          sessionId,
-          commands.value.availableCommands.map((command) => ({
-            trigger: "/",
-            name: command.name,
-            description: command.description ?? "",
-            argumentHint: command.input?.hint ?? "",
-          })),
-        )
-      }
-      const configUpdate = decodeConfigUpdate(update)
-      const session = entry.sessions.get(sessionId)
-      if (configUpdate._tag === "Some" && session !== undefined) {
-        session.model = modelSelector({ configOptions: configUpdate.value.configOptions }) ?? session.model
-      }
+      const update = decodeCommands(notification.value.update)
+      if (update._tag === "None") return
+      commands.set(
+        threadId,
+        update.value.availableCommands.map((command) => ({
+          trigger: "/",
+          name: command.name,
+          description: command.description ?? "",
+          argumentHint: command.input?.hint ?? "",
+        })),
+      )
     }
 
     const answerUnowned = (client: AcpClient, message: Incoming) => {
@@ -194,111 +179,46 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
       }
     }
 
-    const getEntry = (home: AccountHome | null) =>
-      Semaphore.withPermit(
-        entryLock,
-        Effect.gen(function* () {
-          if (home !== null) return yield* agentError(`${name} runs on its CLI login only`)
-          if (current?.client.isAlive()) return current
-          if (current) yield* Scope.close(current.scope, Exit.void)
-          const binaryPath = config.binary ?? (yield* installedBinary(config.id, providerInfo[config.id].binary))
-          const scope = yield* Scope.make()
-          const entry = yield* Effect.gen(function* () {
-            const client = yield* makeAcpClient({
-              binaryPath,
-              args: config.args,
-              env: { ...process.env, ...config.env },
-            })
-            const initialized = yield* call(
-              client,
-              "initialize",
-              {
-                protocolVersion: PROTOCOL_VERSION,
-                clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
-                clientInfo: { name: "hinacode", title: "HinaCode", version: CLIENT_VERSION },
-              },
-              InitializeResponse,
-              INITIALIZE_TIMEOUT,
-            )
-            const started: Entry = {
-              client,
-              scope,
-              capabilities: initialized.agentCapabilities ?? {},
-              sessions: new Map(),
-              commands: new Map(),
-            }
-            yield* client.subscribe((message) => {
-              if (message.kind === "notification" && message.method === "session/update") {
-                trackSession(started, message.params)
-              }
-              answerUnowned(client, message)
-            })
-            return started
-          }).pipe(
-            Scope.provide(scope),
-            Effect.onError(() => Scope.close(scope, Exit.void)),
-          )
-          current = entry
-          return entry
-        }),
+    const startAgent = Effect.gen(function* () {
+      const binaryPath = config.binary ?? (yield* installedBinary(config.id, providerInfo[config.id].binary))
+      const client = yield* makeAcpClient({ binaryPath, args: config.args, env: { ...process.env, ...config.env } })
+      const initialized = yield* call(
+        client,
+        "initialize",
+        {
+          protocolVersion: PROTOCOL_VERSION,
+          clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+          clientInfo: { name: "hinacode", title: "HinaCode", version: CLIENT_VERSION },
+        },
+        InitializeResponse,
+        INITIALIZE_TIMEOUT,
       )
-    yield* Effect.addFinalizer(() => (current ? Scope.close(current.scope, Exit.void) : Effect.void))
+      return { client, capabilities: initialized.agentCapabilities ?? {} }
+    })
 
-    const newSession = (entry: Entry, cwd: string, servers: ReadonlyArray<unknown>) =>
-      Effect.gen(function* () {
-        const created = yield* call(entry.client, "session/new", { cwd, mcpServers: servers }, NewSessionResponse)
-        const session: LoadedSession = { model: modelSelector(created), needsInstructions: true }
-        entry.sessions.set(created.sessionId, session)
-        return { sessionId: created.sessionId, setup: created, session }
-      })
+    const openSession = (client: AcpClient, input: RunTurnInput) =>
+      input.resumeSessionId === null
+        ? call(client, "session/new", { cwd: input.cwd, mcpServers: mcpServers(input) }, NewSessionResponse).pipe(
+            Effect.map((created) => ({ sessionId: created.sessionId, setup: created, isNew: true })),
+          )
+        : call(
+            client,
+            "session/load",
+            { sessionId: input.resumeSessionId, cwd: input.cwd, mcpServers: mcpServers(input) },
+            SessionSetup,
+          ).pipe(Effect.map((loaded) => ({ sessionId: input.resumeSessionId!, setup: loaded, isNew: false })))
 
-    const loadSession = (entry: Entry, sessionId: string, input: RunTurnInput) =>
-      Effect.gen(function* () {
-        const known = entry.sessions.get(sessionId)
-        if (known !== undefined) return known
-        if (entry.capabilities.loadSession !== true) return undefined
-        const params = { sessionId, cwd: input.cwd, mcpServers: mcpServers(input) }
-        const loaded = yield* call(entry.client, "session/load", params, SessionSetup).pipe(
-          Effect.catchIf(
-            (error) => error.message !== signedOut,
-            (error) =>
-              Effect.logWarning(`${name} could not load session ${sessionId}`, error.message).pipe(
-                Effect.as(undefined),
-              ),
-          ),
-        )
-        if (loaded === undefined) return undefined
-        const session: LoadedSession = { model: modelSelector(loaded), needsInstructions: false }
-        entry.sessions.set(sessionId, session)
-        return session
-      })
-
-    const selectModel = (entry: Entry, sessionId: string, session: LoadedSession, model: string) =>
-      Effect.gen(function* () {
-        const selector = session.model
-        if (model === "" || selector === null || selector.current === model) return
-        if (selector.via === "config") {
-          const params = { sessionId, configId: selector.configId, value: model }
-          yield* call(entry.client, "session/set_config_option", params, Schema.Unknown)
-          session.model = { ...selector, current: model }
-        } else {
-          yield* call(entry.client, "session/set_model", { sessionId, modelId: model }, Schema.Unknown)
-          session.model = { ...selector, current: model }
-        }
-      })
-
-    const openSession = (entry: Entry, input: RunTurnInput) =>
-      Effect.gen(function* () {
-        const resumed =
-          input.resumeSessionId === null ? undefined : yield* loadSession(entry, input.resumeSessionId, input)
-        const opened =
-          resumed === undefined || input.resumeSessionId === null
-            ? yield* newSession(entry, input.cwd, mcpServers(input))
-            : { sessionId: input.resumeSessionId, session: resumed }
-        threadSessions.set(input.threadId, opened.sessionId)
-        yield* selectModel(entry, opened.sessionId, opened.session, input.model)
-        return opened
-      })
+    const selectModel = (client: AcpClient, sessionId: string, selector: ModelSelector | null, model: string) => {
+      if (model === "" || selector === null || selector.current === model) return Effect.void
+      return selector.via === "config"
+        ? call(
+            client,
+            "session/set_config_option",
+            { sessionId, configId: selector.configId, value: model },
+            Schema.Unknown,
+          )
+        : call(client, "session/set_model", { sessionId, modelId: model }, Schema.Unknown)
+    }
 
     const promptBlocks = (text: string, attachments: ReadonlyArray<Attachment>, images: boolean) =>
       Effect.forEach(attachments, (attachment): Effect.Effect<ReadonlyArray<ContentBlock>, AgentError> => {
@@ -442,21 +362,25 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
     const runTurn = (input: RunTurnInput): Stream.Stream<AgentEvent, AgentError> =>
       turnStream(input.threadId, (run, emit) =>
         Effect.gen(function* () {
+          if (input.home !== null) return yield* agentError(`${name} runs on its CLI login only`)
           accessModes.set(input.threadId, input.accessMode)
-          const entry = yield* getEntry(input.home)
-          const { client } = entry
-          const { sessionId, session } = yield* openSession(entry, input)
+          const { client, capabilities } = yield* startAgent
+          yield* client.subscribe((message) => {
+            trackCommands(input.threadId, message)
+            answerUnowned(client, message)
+          })
+          const { sessionId, setup, isNew } = yield* openSession(client, input)
           yield* emit({ type: "session_bound", providerSessionId: sessionId })
+          yield* selectModel(client, sessionId, modelSelector(setup), input.model)
 
           const inbox = yield* Queue.unbounded<TurnMessage>()
           yield* client.subscribe((message) => Queue.offerUnsafe(inbox, message))
           const mapper = makeUpdateMapper(randomUUID())
           Object.assign(run, { client, sessionId, mapper })
 
-          const images = entry.capabilities.promptCapabilities?.image === true
+          const images = capabilities.promptCapabilities?.image === true
           const blocks = yield* promptBlocks(input.prompt, input.attachments, images)
-          const prompt = session.needsInstructions ? [textBlock(input.instructions), ...blocks] : blocks
-          session.needsInstructions = false
+          const prompt = isNew ? [instructionsBlock(input.instructions), ...blocks] : blocks
           run.prompting = true
           yield* call(client, "session/prompt", { sessionId, prompt }, PromptResponse, null).pipe(
             Effect.exit,
@@ -493,18 +417,15 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
       probeLock,
       Effect.gen(function* () {
         if (probedModels !== undefined) return probedModels
-        const entry = yield* getEntry(null)
-        const { setup } = yield* newSession(entry, homedir(), [])
-        probedModels = toModelInfos(setup, config.id)
+        const { client } = yield* startAgent
+        const probe = yield* call(client, "session/new", { cwd: homedir(), mcpServers: [] }, NewSessionResponse)
+        probedModels = toModelInfos(probe, config.id)
         return probedModels
-      }),
+      }).pipe(Effect.scoped),
     )
 
     const listCommands = ({ threadId }: { readonly threadId: string }) =>
-      Effect.sync(() => {
-        const sessionId = threadSessions.get(threadId)
-        return sessionId === undefined ? [] : (current?.commands.get(sessionId) ?? [])
-      })
+      Effect.sync(() => commands.get(threadId) ?? [])
 
     const interrupt = (threadId: string) =>
       Effect.suspend(() => {
@@ -524,20 +445,6 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
           )
       }).pipe(Effect.asVoid)
 
-    const closeSession = (threadId: string) =>
-      Effect.gen(function* () {
-        const sessionId = threadSessions.get(threadId)
-        threadSessions.delete(threadId)
-        accessModes.delete(threadId)
-        const entry = current
-        if (sessionId === undefined || entry === undefined) return
-        if (entry.client.isAlive() && entry.capabilities.sessionCapabilities?.close !== undefined) {
-          yield* entry.client.request("session/close", { sessionId }).pipe(Effect.ignore)
-        }
-        entry.sessions.delete(sessionId)
-        entry.commands.delete(sessionId)
-      })
-
     const respondApproval = (requestId: string, decision: ApprovalDecision) =>
       Effect.suspend(() => {
         const deferred = approvals.get(requestId)
@@ -554,7 +461,6 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
       listCommands,
       runTurn,
       interrupt,
-      closeSession,
       respondApproval,
       respondQuestion: () => Effect.void,
       setAccessMode: (threadId, accessMode) => Effect.sync(() => void accessModes.set(threadId, accessMode)),

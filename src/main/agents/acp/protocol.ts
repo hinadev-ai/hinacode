@@ -74,11 +74,6 @@ export const AvailableCommandsUpdate = Schema.Struct({
   ),
 })
 
-export const ConfigOptionUpdate = Schema.Struct({
-  sessionUpdate: Schema.Literal("config_option_update"),
-  configOptions: Schema.Array(ConfigOption),
-})
-
 export const ToolCallFields = Schema.Struct({
   toolCallId: Schema.String,
   title: Schema.optional(Schema.NullOr(Schema.String)),

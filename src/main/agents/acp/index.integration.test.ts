@@ -121,7 +121,7 @@ describe("makeAcpProvider", () => {
       const prompts = received().filter((message) => message.method === "session/prompt")
       expect(prompts.map((message) => message.params?.prompt)).toStrictEqual([
         [
-          { type: "text", text: "You run inside HinaCode." },
+          { type: "text", text: "You run inside HinaCode.", annotations: { audience: ["assistant"] } },
           { type: "text", text: "hello" },
         ],
         [{ type: "text", text: "again" }],
@@ -257,12 +257,13 @@ describe("makeAcpProvider", () => {
     }).pipe(Effect.scoped),
   )
 
-  it.live("starts a new session when the agent cannot load the old one", () =>
+  it.live("fails the turn rather than start a session without the thread's history", () =>
     Effect.gen(function* () {
-      const { provider: make } = setup()
+      const { provider: make, received } = setup()
       const provider = yield* make
-      const events = yield* runToEnd(provider, input({ resumeSessionId: "ses_missing" }))
-      expect(events[0]).toStrictEqual({ type: "session_bound", providerSessionId: "ses_1" })
+      const error = yield* runToEnd(provider, input({ resumeSessionId: "ses_missing" })).pipe(Effect.flip)
+      expect(error.message).toBe("opencode session/load failed: Session not found")
+      expect(received().filter((message) => message.method === "session/new")).toStrictEqual([])
     }).pipe(Effect.scoped),
   )
 
@@ -289,6 +290,7 @@ describe("makeAcpProvider", () => {
       yield* runToEnd(provider, input({ model: "legacy-other", resumeSessionId: "ses_2" }))
       expect(received().filter((message) => message.method === "session/set_model")).toMatchObject([
         { params: { sessionId: "ses_2", modelId: "legacy-other" } },
+        { params: { sessionId: "ses_2", modelId: "legacy-other" } },
       ])
     }).pipe(Effect.scoped),
   )
@@ -313,16 +315,25 @@ describe("makeAcpProvider", () => {
     }).pipe(Effect.scoped),
   )
 
-  it.live("closes the thread's session", () =>
+  it.live("runs each turn in its own agent process, so threads never share MCP credentials", () =>
     Effect.gen(function* () {
       const { provider: make, received } = setup()
       const provider = yield* make
-      yield* runToEnd(provider, input())
-      yield* provider.closeSession!("t1", null)
-      expect(received().find((message) => message.method === "session/close")?.params).toStrictEqual({
-        sessionId: "ses_1",
-      })
-      expect(yield* provider.listCommands({ threadId: "t1", cwd: tmpdir(), home: null })).toStrictEqual([])
+      const waiting = yield* startTurn(provider, input({ prompt: "ask" }))
+      yield* waiting.until((event) => event.type === "approval_requested")
+      const other = { url: "http://127.0.0.1:9/mcp", headers: { authorization: "Bearer other" } }
+      yield* runToEnd(provider, input({ threadId: "t2", mcpServer: other }))
+      yield* provider.interrupt("t1")
+      yield* Fiber.join(waiting.fiber)
+
+      expect(received().filter((message) => message.method === "initialize")).toHaveLength(2)
+      const credentials = received()
+        .filter((message) => message.method === "session/new")
+        .map((message) => message.params?.["mcpServers"])
+      expect(credentials).toMatchObject([
+        [{ headers: [{ name: "authorization", value: "Bearer test" }] }],
+        [{ headers: [{ name: "authorization", value: "Bearer other" }] }],
+      ])
     }).pipe(Effect.scoped),
   )
 })

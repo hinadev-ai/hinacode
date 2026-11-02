@@ -1,4 +1,4 @@
-import { appendFileSync } from "node:fs"
+import { appendFileSync, readFileSync } from "node:fs"
 import { createInterface } from "node:readline"
 
 type Id = number | string
@@ -28,7 +28,13 @@ const ask = (method: string, params: object) =>
   })
 
 const cancels = new Map<string, () => void>()
-let sessions = 0
+
+const createdSessions = () =>
+  logPath === undefined
+    ? 1
+    : readFileSync(logPath, "utf8")
+        .split("\n")
+        .filter((line) => line.includes('"method":"session/new"')).length
 
 const modelSetup = () =>
   legacyModels
@@ -173,7 +179,7 @@ const handle = (message: Message) => {
           },
         })
       }
-      const sessionId = `ses_${++sessions}`
+      const sessionId = `ses_${createdSessions()}`
       send({ id: message.id, result: { sessionId, ...modelSetup() } })
       return update(sessionId, {
         sessionUpdate: "available_commands_update",
