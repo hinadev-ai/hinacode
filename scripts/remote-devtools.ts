@@ -48,7 +48,7 @@ const proxy = createServer((req, res) => {
       answer.pipe(res)
     },
   )
-  upstream.on("error", () => res.writeHead(502).end("HinaCode is not running."))
+  upstream.on("error", () => (res.headersSent ? res.destroy() : res.writeHead(502).end("HinaCode is not running.")))
   req.pipe(upstream)
 })
 
