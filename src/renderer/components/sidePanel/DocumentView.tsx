@@ -38,6 +38,7 @@ import { useClientSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import { useDrafts } from "../../stores/drafts.ts"
 import { Button } from "../ui/button.tsx"
+import { DocumentCodeBlock } from "./DocumentChart.tsx"
 import { ScrollArea } from "../ui/scroll-area.tsx"
 
 const loadFailed = (message: string) => (
@@ -59,8 +60,9 @@ const extensions = (placeholder: string, theme: CodeTheme) => [
   StarterKit.configure({
     underline: false,
     link: { openOnClick: false },
-    codeBlock: { HTMLAttributes: { spellcheck: "false" } },
+    codeBlock: false,
   }),
+  DocumentCodeBlock,
   TaskList,
   TaskItem.configure({ nested: true }),
   TableKit.configure({ table: { resizable: false } }),

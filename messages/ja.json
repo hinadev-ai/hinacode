@@ -1851,6 +1851,20 @@
   "documents_placeholder": "書き始めましょう…",
   "documents_toolbar": "書式",
   "documents_selection_toolbar": "文字の書式",
+  "documents_chart_data": "データ",
+  "documents_chart_source": "ソース",
+  "documents_chart_loading": "グラフを描画中…",
+  "documents_chart_invalid": "このグラフは描画できません: {message}",
+  "documents_chart_rows": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 行",
+        "countPlural=other": "{count} 行"
+      }
+    }
+  ],
   "documents_heading_1": "見出し 1",
   "documents_heading_2": "見出し 2",
   "documents_heading_3": "見出し 3",

@@ -89,6 +89,28 @@ Let the developer edit what the agent writes.
 \`\`\`ts
 type ArtifactKind = "page" | "document"
 \`\`\`
+
+\`\`\`chart
+{
+  "type": "bar",
+  "title": "Daily sales peaked at ¥63,900 on 10/17",
+  "notes": "Total ¥283,675 from 10/15 to 10/19",
+  "x": "day",
+  "series": [
+    { "key": "chat", "label": "Chat" },
+    { "key": "drama", "label": "Drama" },
+    { "key": "replay", "label": "Replay" }
+  ],
+  "unit": { "prefix": "¥" },
+  "rows": [
+    { "day": "10-15", "chat": 25875, "drama": 18700, "replay": 60 },
+    { "day": "10-16", "chat": 31900, "drama": 18000, "replay": 0 },
+    { "day": "10-17", "chat": 54800, "drama": 9100, "replay": 0 },
+    { "day": "10-18", "chat": 52300, "drama": 9200, "replay": 0 },
+    { "day": "10-19", "chat": 45700, "drama": 8000, "replay": 40 }
+  ]
+}
+\`\`\`
 `
 
 export type MockDocument = {

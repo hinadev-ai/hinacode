@@ -1905,6 +1905,20 @@
   "documents_placeholder": "Start writing…",
   "documents_toolbar": "Formatting",
   "documents_selection_toolbar": "Text formatting",
+  "documents_chart_data": "Data",
+  "documents_chart_source": "Source",
+  "documents_chart_loading": "Drawing chart…",
+  "documents_chart_invalid": "This chart cannot be drawn: {message}",
+  "documents_chart_rows": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} row",
+        "countPlural=other": "{count} rows"
+      }
+    }
+  ],
   "documents_heading_1": "Heading 1",
   "documents_heading_2": "Heading 2",
   "documents_heading_3": "Heading 3",

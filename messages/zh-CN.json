@@ -1897,6 +1897,20 @@
   "documents_placeholder": "开始写作…",
   "documents_toolbar": "格式",
   "documents_selection_toolbar": "文字格式",
+  "documents_chart_data": "数据",
+  "documents_chart_source": "源码",
+  "documents_chart_loading": "正在绘制图表…",
+  "documents_chart_invalid": "无法绘制这个图表：{message}",
+  "documents_chart_rows": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 行",
+        "countPlural=other": "{count} 行"
+      }
+    }
+  ],
   "documents_heading_1": "标题 1",
   "documents_heading_2": "标题 2",
   "documents_heading_3": "标题 3",

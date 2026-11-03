@@ -63,6 +63,28 @@ The editor follows a small state machine: `saved`, `dirty`, `saving`, `conflict`
 
 Closing the editor saves pending edits at once. If that save fails or conflicts, the edits and the revision they started from stay in memory, so reopening the document restores them and raises the conflict again. They do not survive quitting the app.
 
+### Charts
+
+A chart is a fenced code block whose language is `chart` and whose body is JSON, so it round-trips through Markdown and the agent writes it like any fence:
+
+```ts
+type ChartSpec = {
+  type: "bar" | "line"
+  title?: string
+  notes?: string
+  x: string
+  series: Array<{ key: string; label?: string }>
+  unit?: { prefix?: string; suffix?: string }
+  rows: Array<Record<string, string | number | null>>
+}
+```
+
+A bar chart stacks its series and a line chart draws one line per series. The highest point gets a label. Colors come from the theme's `--graph-lane-*` tokens, so the agent never picks one. At most 6 series and 500 rows. `src/shared/documentChart.ts` decodes the JSON with a schema, because the agent wrote it, and a chart that fails shows its error and its source instead of a blank box.
+
+In the editor, a code block whose language is `chart` becomes a card with the title, notes, legend and plot, plus Data (the rows as a table) and Source (the JSON, editable, redrawing as you type). Every other code block keeps a plain view.
+
+Two things load only when needed. Observable Plot, which draws the SVG, is a lazy chunk imported when a document contains a chart. The chart syntax is about 450 tokens that agents need only when drawing one, so it is not in the thread instructions or the `publish_document` description. That description says charts exist and points at `document_chart_guide`, which returns `CHART_GUIDE`. A test parses the guide's example with the renderer's parser, so the guide cannot teach a chart that does not draw.
+
 ### Export
 
 Markdown export writes the stored `document.md`. PDF export prints what the editor renders, so tables, checklists and highlighted code look the same on paper. The renderer copies the editor's DOM, with each checkbox's state written into its `checked` attribute, and sends it as `artifacts.export` with `format: "document-pdf"`. A page export carries an artifact id and entry instead, and the request is a union so neither can carry the other's fields. Main wraps the HTML in a print page (`src/shared/documentPrint.ts`) whose CSP allows no script and no network, adds the app theme, and prints it in the same hidden sandboxed window as a page's PDF. Page margins are padding repeated on every page, so the theme's background reaches the paper's edge.
@@ -87,6 +109,7 @@ The first two route by the artifact's owner and the third by the thread's, so a 
 - Uploading images into a document.
 - Starting a new thread from a document.
 - Renaming a document from the UI. The agent sets the title.
+- Pie, area and scatter charts, chart colors chosen by the agent, and charts in transcript Markdown.
 - Picking a code block's language from the toolbar. Type it after the fence, as in Markdown.
 
 ## Verification

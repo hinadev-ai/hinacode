@@ -29,7 +29,17 @@ table { width: 100%; border-collapse: collapse; break-inside: avoid; }
 th, td { padding: 0.4em 0.6em; border-bottom: 1px solid var(--border); text-align: start; vertical-align: top; }
 th > p, td > p { margin: 0; }
 img { max-width: 100%; }
-.ProseMirror-separator { display: none; }
+.ProseMirror-separator, [data-print-hidden], pre[hidden] { display: none; }
+[data-chart] { margin: 0 0 1.2em; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; break-inside: avoid; }
+[data-chart] > div:first-child { padding: 0.9em 1em; }
+[data-chart] p { margin: 0; }
+[data-chart] pre { display: none; }
+[data-chart-title] { font-weight: 600; }
+[data-chart-notes] { margin-top: 0.2em; font-size: 0.85em; white-space: pre-line; color: var(--muted-foreground); }
+[data-chart] ul { display: flex; flex-wrap: wrap; gap: 0.3em 1.2em; margin: 0.6em 0; padding: 0; list-style: none; font-size: 0.8em; color: var(--muted-foreground); }
+[data-chart] li { display: flex; align-items: center; gap: 0.4em; }
+[data-chart] li > span { width: 0.65em; height: 0.65em; border-radius: 2px; }
+[data-chart] svg { display: block; max-width: 100%; height: auto; }
 `
 
 export const documentPrintHtml = (title: string, body: string) =>

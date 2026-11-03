@@ -1869,6 +1869,20 @@
   "documents_placeholder": "開始撰寫…",
   "documents_toolbar": "格式",
   "documents_selection_toolbar": "文字格式",
+  "documents_chart_data": "資料",
+  "documents_chart_source": "原始碼",
+  "documents_chart_loading": "正在繪製圖表…",
+  "documents_chart_invalid": "無法繪製這個圖表：{message}",
+  "documents_chart_rows": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 列",
+        "countPlural=other": "{count} 列"
+      }
+    }
+  ],
   "documents_heading_1": "標題 1",
   "documents_heading_2": "標題 2",
   "documents_heading_3": "標題 3",

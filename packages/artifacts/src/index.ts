@@ -10,6 +10,7 @@ export {
   isArtifactId,
   normalizeArtifactPath,
 } from "./artifact.ts"
+export { CHART_GUIDE } from "./chartGuide.ts"
 export { ARTIFACT_HEADERS, handleArtifactRequest } from "./http.ts"
 export {
   ArtifactConflictError,

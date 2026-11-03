@@ -18,7 +18,8 @@ const highlight = (doc: Node, theme: CodeTheme, redraw: () => void) => {
   const decorations: Array<Decoration> = []
   doc.descendants((node, position) => {
     if (node.type.name !== "codeBlock") return true
-    const language = typeof node.attrs["language"] === "string" ? node.attrs["language"].toLowerCase() : ""
+    const named = typeof node.attrs["language"] === "string" ? node.attrs["language"].toLowerCase() : ""
+    const language = named === "chart" ? "json" : named
     if (language === "") return false
     const key = `${theme.codeTheme ?? theme.scheme}\0${language}`
     const highlighter = highlighters.get(key)
