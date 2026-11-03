@@ -53,13 +53,13 @@ When("I stop the turn", async ({ activityApp: app }) => {
   await expect(app.page.getByRole("button", { name: "Send", exact: true })).toBeVisible()
 })
 
-Then("the background task {string} is still running", async ({ activityApp: app }, label: string) => {
+Then("no background task is left", async ({ activityApp: app }) => {
   await expect(tray(app)).not.toContainText("Audit the composer")
-  await expect(backgroundTasks(app).getByRole("button", { name: `Stop ${label}`, exact: true })).toBeVisible()
+  await expect(backgroundTasks(app).getByRole("listitem")).toHaveCount(0)
 })
 
-Then("the sidebar shows the thread working in the background", async ({ activityApp: app }) => {
-  await expect(sidebar(app.page).getByRole("link", { name: "Shells" })).toContainText("Working in the background")
+Then("the sidebar no longer shows the thread working in the background", async ({ activityApp: app }) => {
+  await expect(sidebar(app.page).getByRole("link", { name: "Shells" })).not.toContainText("Working in the background")
 })
 
 When("I type {string} in the activity thread's message", async ({ activityApp: app }, text: string) => {
