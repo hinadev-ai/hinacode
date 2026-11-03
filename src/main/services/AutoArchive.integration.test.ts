@@ -157,18 +157,27 @@ const git = (cwd: string, ...args: Array<string>) =>
 const localBranches = (root: string) =>
   git(root, "for-each-ref", "--format=%(refname:short)", "refs/heads").split("\n").filter(Boolean).toSorted()
 
+const watchUnlessMissing = (folder: string, listener: () => void) => {
+  try {
+    return watch(folder, listener)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
+    throw error
+  }
+}
+
 const waitUntilGone = (path: string) =>
   Effect.callback<void>((resume) => {
     let done = false
     const check = () => {
       if (done || existsSync(path)) return
       done = true
-      watcher.close()
+      watcher?.close()
       resume(Effect.void)
     }
-    const watcher = watch(dirname(path), check)
+    const watcher = watchUnlessMissing(dirname(path), check)
     check()
-    return Effect.sync(() => watcher.close())
+    return Effect.sync(() => watcher?.close())
   })
 
 const waitUntilBranchGone = (root: string, branch: string) => waitUntilGone(join(root, ".git", "refs", "heads", branch))
