@@ -407,6 +407,7 @@
   "viewer_failed": "ファイルを開けませんでした：{message}",
   "viewer_binary": "バイナリファイルのため表示できません。",
   "viewer_truncated": "先頭 1 MB のみ表示しています。",
+  "viewer_plain_text": "ファイルが大きいため、シンタックスハイライトなしで表示しています。",
   "viewer_close": "ファイルを閉じる",
   "viewer_resize": "ビューアのサイズを変更",
   "viewer_unsaved": "未保存の変更があります",

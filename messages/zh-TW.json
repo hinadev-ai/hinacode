@@ -407,6 +407,7 @@
   "viewer_failed": "無法開啟檔案：{message}",
   "viewer_binary": "這是二進位檔案，不會顯示。",
   "viewer_truncated": "只顯示這個檔案的前 1 MB。",
+  "viewer_plain_text": "這個檔案太大，所以不套用語法高亮。",
   "viewer_close": "關閉檔案",
   "viewer_resize": "調整檔案檢視器大小",
   "viewer_unsaved": "尚未儲存的變更",

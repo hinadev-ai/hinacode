@@ -23,6 +23,7 @@ import { emptyTree, flattenTree, parentOf, type TreeRow, useExplorer } from "../
 import { useUi } from "../stores/ui.ts"
 import { fileStatusMark } from "./FilePatch.tsx"
 import { FileViewer } from "./FileViewer.tsx"
+import { HighlightWorkerPool } from "./HighlightWorkerPool.tsx"
 import { Button } from "./ui/button.tsx"
 import { OpenWithSubmenu } from "./OpenWith.tsx"
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "./ui/context-menu.tsx"
@@ -350,13 +351,15 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
       {tree.opened !== null && (
         <>
           <SplitHandle height={treeHeight} onResize={setTreeHeight} container={containerRef} />
-          <FileViewer
-            threadId={thread.id}
-            root={root}
-            path={tree.opened}
-            onClose={closeFile}
-            onShowChanges={openedEntry && hasDiff(openedEntry) ? () => showChanges(openedEntry) : undefined}
-          />
+          <HighlightWorkerPool>
+            <FileViewer
+              threadId={thread.id}
+              root={root}
+              path={tree.opened}
+              onClose={closeFile}
+              onShowChanges={openedEntry && hasDiff(openedEntry) ? () => showChanges(openedEntry) : undefined}
+            />
+          </HighlightWorkerPool>
         </>
       )}
       <p aria-live="polite" className="sr-only">

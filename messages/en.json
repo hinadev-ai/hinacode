@@ -407,6 +407,7 @@
   "viewer_failed": "Could not open the file: {message}",
   "viewer_binary": "This is a binary file, so it is not shown.",
   "viewer_truncated": "Showing the first 1 MB of this file.",
+  "viewer_plain_text": "This file is large, so it is shown without syntax highlighting.",
   "viewer_close": "Close file",
   "viewer_resize": "Resize file viewer",
   "viewer_unsaved": "Unsaved changes",

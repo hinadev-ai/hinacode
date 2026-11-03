@@ -398,6 +398,7 @@
   "viewer_failed": "无法打开文件：{message}",
   "viewer_binary": "这是二进制文件，不予显示。",
   "viewer_truncated": "仅显示该文件的前 1 MB。",
+  "viewer_plain_text": "该文件较大，因此不使用语法高亮显示。",
   "viewer_close": "关闭文件",
   "viewer_resize": "调整文件查看器大小",
   "viewer_unsaved": "有未保存的更改",
