@@ -52,6 +52,7 @@ const start = async (account: RelayAccount, home: RelayMachine, machines: Readon
     messages: transportMessages,
     onHomeStatus: homeStatus.set,
     signOut: leave,
+    switchMachine,
   })
   Object.defineProperty(window, "hinacode", { value: bridge })
   await serveResources(bridge)

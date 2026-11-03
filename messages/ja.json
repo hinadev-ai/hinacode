@@ -2466,5 +2466,6 @@
   "web_transport_not_connected": "マシンに接続されていません。",
   "web_transport_token_rotated": "マシンのトークンが更新されました。このページを再読み込みして relay から新しいトークンを取得してください。",
   "web_transport_token_refused": "マシンがトークンを拒否しました。新しいトークンが relay に公開されたら、このページを再読み込みしてください。",
-  "web_transport_protocol_mismatch": "マシンはリモートプロトコル {machine}、このページは {app} を使っています。古いほうを更新してください。"
+  "web_transport_protocol_mismatch": "マシンはリモートプロトコル {machine}、このページは {app} を使っています。古いほうを更新してください。",
+  "web_remove_home_machine": "{machine} がこのページを動かしています。先に別のマシンに切り替えてから削除してください。"
 }

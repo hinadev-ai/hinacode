@@ -6,7 +6,8 @@ import {
   type EnvironmentStatus,
   type NotificationPermission,
 } from "../../../src/shared/domain.ts"
-import type { RelayMachine } from "../../../src/shared/relayMachines.ts"
+import type { RelayHost, RelayMachine } from "../../../src/shared/relayMachines.ts"
+import { m } from "@/paraglide/messages.js"
 import type { RelayAccount } from "./account.ts"
 
 const CLIENT_SETTINGS_KEY = "hinacode.clientSettings"
@@ -40,6 +41,23 @@ export const makeBrowserAnswers = (context: BrowserContext) => {
   lineComments.addEventListener("message", (message: MessageEvent<typeof PushEvent.Encoded>) =>
     context.emit(message.data),
   )
+
+  const relay = async (method: string, path: string, body?: unknown): Promise<unknown> => {
+    const response = await fetch(`${context.account.serviceUrl.replace(/\/+$/, "")}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${context.account.ownerToken}`,
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    })
+    const answer: unknown = response.status === 204 ? undefined : await response.json().catch(() => undefined)
+    if (response.ok) return answer
+    const reason = (answer as { error?: unknown } | undefined)?.error
+    throw new Error(typeof reason === "string" ? reason : m.web_relay_bad_status({ status: String(response.status) }))
+  }
+
+  const hosts = async () => ((await relay("GET", "/v1/hosts")) as { hosts: ReadonlyArray<RelayHost> }).hosts
 
   const relayStatus = () => ({
     state: "signedIn" as const,
@@ -98,7 +116,18 @@ export const makeBrowserAnswers = (context: BrowserContext) => {
       context.signOut()
       return { state: "signedOut" }
     },
-    "relayAccount.machines": () => [],
+    "relayAccount.machines": hosts,
+    "relayAccount.setShown": async ({ id, enabled }: { id: string; enabled: boolean }) => {
+      await relay("PATCH", `/v1/hosts/${encodeURIComponent(id)}`, { enabled })
+      return hosts()
+    },
+    "relayAccount.removeMachine": async ({ id }: { id: string }) => {
+      const listed = await hosts()
+      if (listed.some((host) => host.id === id && host.environmentId === context.home.environmentId))
+        throw new Error(m.web_remove_home_machine({ machine: context.home.name }))
+      await relay("DELETE", `/v1/hosts/${encodeURIComponent(id)}`)
+      return hosts()
+    },
     "windows.openPullRequest": ({ threadId, url }: { threadId: string; url: string }) => {
       const entry = `/thread/${encodeURIComponent(threadId)}/pull-request?${new URLSearchParams({ url })}`
       window.open(`${location.pathname}?${new URLSearchParams({ entry })}`, "_blank")

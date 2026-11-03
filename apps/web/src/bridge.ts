@@ -28,6 +28,7 @@ export const connectMachines = ({
   messages,
   onHomeStatus,
   signOut,
+  switchMachine,
 }: {
   readonly account: RelayAccount
   readonly home: RelayMachine
@@ -35,6 +36,7 @@ export const connectMachines = ({
   readonly messages: TransportMessages
   readonly onHomeStatus: (status: HomeStatus) => void
   readonly signOut: () => void
+  readonly switchMachine: () => void
 }): HinacodeBridge => {
   const listeners = new Set<(event: typeof PushEvent.Encoded) => void>()
   const emit = (event: typeof PushEvent.Encoded) => {
@@ -112,6 +114,6 @@ export const connectMachines = ({
     },
     pathForFile: () => "",
     liquidGlass: false,
-    runtime: { kind: "web", machine: { id: home.environmentId, name: home.name } },
+    runtime: { kind: "web", machine: { id: home.environmentId, name: home.name }, switchMachine },
   }
 }

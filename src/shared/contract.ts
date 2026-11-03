@@ -1029,5 +1029,9 @@ export interface HinacodeBridge {
   readonly liquidGlass: boolean
   readonly runtime:
     | { readonly kind: "desktop" }
-    | { readonly kind: "web"; readonly machine: { readonly id: string; readonly name: string } }
+    | {
+        readonly kind: "web"
+        readonly machine: { readonly id: string; readonly name: string }
+        readonly switchMachine: () => void
+      }
 }

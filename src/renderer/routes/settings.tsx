@@ -23,16 +23,18 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { usePanelLayout } from "../lib/panelLayout.ts"
 import { type EnvironmentId, settingsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
-import { thisMachineName } from "../lib/runtime.ts"
+import { inBrowser, thisMachineName } from "../lib/runtime.ts"
 import { CloudIcon, LaptopIcon } from "@hinacode/icons"
 
 function ConnectionSettings() {
   return (
     <div className="flex flex-col gap-12">
       <EnvironmentSettings />
-      <LoadedSettings environment={null}>
-        <RemoteSettings />
-      </LoadedSettings>
+      {!inBrowser() && (
+        <LoadedSettings environment={null}>
+          <RemoteSettings />
+        </LoadedSettings>
+      )}
     </div>
   )
 }

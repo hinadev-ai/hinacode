@@ -2502,5 +2502,6 @@
   "web_transport_not_connected": "尚未連線到機器。",
   "web_transport_token_rotated": "機器的權杖已更換。請重新整理此頁面，從 relay 取得新的權杖。",
   "web_transport_token_refused": "機器拒絕了權杖。等它把新權杖發布到 relay 後，再重新整理此頁面。",
-  "web_transport_protocol_mismatch": "這台機器使用遠端協定 {machine}，此頁面使用 {app}。請更新較舊的一方。"
+  "web_transport_protocol_mismatch": "這台機器使用遠端協定 {machine}，此頁面使用 {app}。請更新較舊的一方。",
+  "web_remove_home_machine": "{machine} 正在執行此頁面。請先切換到其他機器，再移除它。"
 }

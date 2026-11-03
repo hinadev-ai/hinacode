@@ -53,6 +53,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../
 import { Input } from "../ui/input.tsx"
 import { Switch } from "../ui/switch.tsx"
 import { SettingsPageAction, SettingsSection, settingsGroupClass, settingsSurfaceClass } from "./SettingsSection.tsx"
+import { inBrowser, switchMachine } from "../../lib/runtime.ts"
 
 export function EnvironmentSettings() {
   const clouds = useClouds()
@@ -72,7 +73,7 @@ export function EnvironmentSettings() {
           ))}
         </ul>
       )}
-      <AddEnvironmentForm />
+      {!inBrowser() && <AddEnvironmentForm />}
     </SettingsSection>
   )
 }
@@ -156,6 +157,7 @@ function RelaySignedIn({ status }: { status: Extract<RelayAccountStatus, { state
           >
             {syncing ? m.environment_relay_syncing() : m.environment_relay_sync_now()}
           </Button>
+          <SwitchMachineButton />
           <RelaySignOutButton />
         </div>
       </div>
@@ -236,7 +238,7 @@ function RelayMachineRow({ host, self }: { host: RelayHost; self: boolean }) {
         </div>
       </div>
       {!host.published && <FieldDescription>{m.environment_relay_not_published()}</FieldDescription>}
-      {self && <FieldDescription>{m.environment_relay_this_machine_hint()}</FieldDescription>}
+      {self && !inBrowser() && <FieldDescription>{m.environment_relay_this_machine_hint()}</FieldDescription>}
       {error && <FieldError>{error}</FieldError>}
     </li>
   )
@@ -280,6 +282,16 @@ function RemoveRelayMachineButton({ host }: { host: RelayHost }) {
         </AlertDialogContent>
       </AlertDialog>
     </>
+  )
+}
+
+function SwitchMachineButton() {
+  const switchTo = switchMachine()
+  if (switchTo === null) return null
+  return (
+    <Button variant="outline" size="sm" onClick={switchTo}>
+      {m.web_switch_machine()}
+    </Button>
   )
 }
 
