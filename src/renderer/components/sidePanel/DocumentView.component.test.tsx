@@ -201,3 +201,42 @@ test("changes a code block's language after it was written", async () => {
   await expect.element(picker).toHaveTextContent("Python")
   await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).toContain("```python\nconst version = 1\n```")
 })
+
+test("shows a link's card on hover, not while the caret moves through it", async () => {
+  stored = { ...stored, markdown: "# Release plan\n\nRead [the design](https://hinacode.dev/design) first.\n" }
+  const editor = await openDocument()
+  const link = editor.getByRole("link")
+
+  await page.getByText(/^Read/).click()
+  await userEvent.keyboard("{Home}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}")
+  await userEvent.keyboard("x")
+  await expect.element(page.getByRole("button", { name: "Edit link" })).not.toBeInTheDocument()
+
+  await link.hover()
+  await page.getByRole("button", { name: "Edit link" }).click()
+  const text = page.getByRole("textbox", { name: "Text", exact: true })
+  await expect.element(page.getByRole("textbox", { name: "Link", exact: true })).toHaveValue("https://hinacode.dev/design")
+  await text.fill("the spec")
+  await page.getByRole("textbox", { name: "Link", exact: true }).fill("hinacode.dev/spec")
+  await userEvent.keyboard("{Enter}")
+
+  await expect
+    .poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 })
+    .toContain("Read [the spec](https://hinacode.dev/spec) first.")
+})
+
+test("links the selected text with Cmd+K", async () => {
+  await openDocument()
+  await page.getByText(/^Ship the/).click()
+  await userEvent.keyboard("{End}{Shift>}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{/Shift}")
+  await userEvent.keyboard("{Meta>}k{/Meta}")
+
+  const address = page.getByRole("textbox", { name: "Link", exact: true })
+  await expect.element(address).toHaveFocus()
+  await expect.element(page.getByRole("textbox", { name: "Text", exact: true })).toHaveValue("first.")
+  await userEvent.keyboard("hinacode.dev{Enter}")
+
+  await expect
+    .poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 })
+    .toContain("Ship the **editor** [first.](https://hinacode.dev)")
+})
