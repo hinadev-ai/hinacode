@@ -9,7 +9,7 @@ import { Field, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx
 import { Input } from "../ui/input.tsx"
 import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
-import { CheckCircleFillIcon } from "../icons/CheckCircleFillIcon.tsx"
+import { CheckCircleFillIcon } from "@hinacode/icons"
 
 export function IntegrationSettings() {
   return (

@@ -62,6 +62,7 @@
     "qrcode": "^1.5.4",
     "rehype-raw": "7.0.0",
     "rehype-sanitize": "6.0.0",
+    "undici": "7.30.0",
     "ws": "8.22.0"
   },
   "devDependencies": {
@@ -81,6 +82,7 @@
     "@fontsource-variable/noto-sans-jp": "^5.3.0",
     "@fontsource-variable/noto-sans-tc": "^5.3.0",
     "@formkit/auto-animate": "0.10.0",
+    "@hinacode/icons": "workspace:*",
     "@inlang/paraglide-js": "2.27.0",
     "@legendapp/list": "3.6.0",
     "@novnc/novnc": "1.7.0",

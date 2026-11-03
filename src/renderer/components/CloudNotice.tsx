@@ -7,8 +7,7 @@ import { m } from "../paraglide/messages.js"
 import { useLocale } from "../stores/locale.ts"
 import { ReconnectButton } from "./ReconnectButton.tsx"
 import { Button } from "./ui/button.tsx"
-import { CloudOffIcon } from "./icons/CloudOffIcon.tsx"
-import { WarningIcon } from "./icons/WarningIcon.tsx"
+import { CloudOffIcon, WarningIcon } from "@hinacode/icons"
 
 export function CloudNotice({ threadId }: { threadId: string }) {
   const cloud = useCloud(useThreadEnvironment(threadId))

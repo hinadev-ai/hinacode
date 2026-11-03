@@ -18,7 +18,7 @@ import {
 } from "./ui/field.tsx"
 import { Input } from "./ui/input.tsx"
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group.tsx"
-import { QuestionIcon } from "./icons/QuestionIcon.tsx"
+import { QuestionIcon } from "@hinacode/icons"
 
 type Draft = { readonly picked: ReadonlyArray<string>; readonly text: string }
 

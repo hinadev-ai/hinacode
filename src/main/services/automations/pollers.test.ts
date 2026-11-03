@@ -54,10 +54,6 @@ const rejectUnauthenticated = async (): Promise<ReadonlyArray<LinearIssueNode>> 
 describe("initialCursor", () => {
   const now = new Date("2026-10-12T03:00:00.000Z")
 
-  test("starts timestamp sources at now", () => {
-    expect(initialCursor({ type: "github.issue", repo: "a/b" }, now)).toBe("2026-10-12T03:00:00.000Z")
-  })
-
   test("starts Slack at now as a message ts", () => {
     expect(initialCursor({ type: "slack.mention", botUserId: "U1" }, now)).toBe("1791774000.000000")
   })

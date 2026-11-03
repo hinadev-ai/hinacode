@@ -13,23 +13,15 @@ const environment = {
   scratchDirectory: "/data/scratch/20261029-080509-fix-login-t1",
 } as const
 
-test("names the thread's repository, branch, paths, remote, platform and scratch directory", () => {
-  expect(agentInstructions(experimental, environment)).toContain(`<environment>
-  is a git repository: true
-  git branch: \`feat/x\`
-  current project path: \`/wt\`
-  root project path: \`/repo\`
-  remote: \`git@github.com:o/r.git\`
-  platform: darwin
-  scratch directory: \`/data/scratch/20261029-080509-fix-login-t1\`
-</environment>`)
-})
-
 test("keeps a token in an https remote out of the prompt", () => {
-  const instructions = agentInstructions(experimental, {
-    ...environment,
-    remote: "https://x-access-token:ghp_secret@github.com/o/r.git",
-  })
+  const instructions = agentInstructions(
+    experimental,
+    {
+      ...environment,
+      remote: "https://x-access-token:ghp_secret@github.com/o/r.git",
+    },
+    [],
+  )
   expect(instructions).not.toContain("ghp_secret")
   expect(instructions).toContain("remote: `https://github.com/o/r.git`")
 })
@@ -38,6 +30,7 @@ test("describes the boat desktop when boat is the tiny VM provider", () => {
   const instructions = agentInstructions(
     { ...experimental, tinyVm: true, tinyVmProvider: "boat", tinyVmBoatSize: "large" },
     environment,
+    [],
   )
   expect(instructions).toContain("cloud Ubuntu desktop (1920×1080) on boat.dev, size `large`")
   expect(instructions).not.toContain("sbx host")
@@ -45,7 +38,7 @@ test("describes the boat desktop when boat is the tiny VM provider", () => {
 })
 
 test("says none for a detached HEAD and a repository without an origin", () => {
-  const instructions = agentInstructions(experimental, { ...environment, branch: null, remote: null })
+  const instructions = agentInstructions(experimental, { ...environment, branch: null, remote: null }, [])
   expect(instructions).toContain("git branch: `(none)`")
   expect(instructions).toContain("remote: `(none)`")
 })

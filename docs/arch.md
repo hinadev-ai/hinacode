@@ -290,7 +290,7 @@ sequenceDiagram
 - Each thread has a `Semaphore` (`exclusive`). Everything that changes a transcript runs under it, so a transcript read never sees a change before the push that announced it.
 - Adjacent `text_delta` or `reasoning_delta` events are joined into one, which is published and folded 50 ms after the first, or as soon as any other event arrives, a steer closes the reply, or the turn finishes. Providers emit a delta every few tokens, often dozens a second; joining them brings a streaming thread down to about twenty pushes, schema encodes and IPC sends a second, and the 50 ms window stays under the renderer's own 100 ms group. Unpublished text is not folded either, so a `threads.transcript` snapshot never holds text whose push has not gone out.
 - `subagent_updated` skips the transcript fold and the `thread.event` push. The runner keeps sub-agents in memory only and serves them through `subagents.list`. When a turn ends, `finish` marks any sub-agent still running as stopped, since nothing will report on it after that.
-- Provider errors become `turn_failed`, so `run` never fails and `finish` always runs.
+- Provider errors become `turn_failed`, so `run` never fails and `finish` always runs. A `turn_failed` that arrives after the user pressed Stop gets `stopped: true`, so the transcript, notifications and unread dots treat it as an ordinary end rather than a failure.
 - A turn the agent started (`wakes`) waits until the thread is free, then runs through the same `makeTurn`, so steering, stopping, queueing and `finish` work as for any turn. If the runner cannot adopt it, `Wake.discard` stops the provider turn without reading its stream.
 - On boot, `resetInterrupted` and `closeInterrupted` mark anything a killed app left running as over.
 
@@ -641,6 +641,7 @@ flowchart TB
   repo["Project repo config<br/>.claude settings, hooks, CLAUDE.md"] -- "loaded like the CLI: importing trusts it" --> agents
   main -- "hinacode-file: known roots only,<br/>CSP sandbox allow-scripts" --> preview["File preview iframe<br/>opaque origin"]
   main -- "hinacode-artifact: store or owning cloud,<br/>CSP sandbox allow-scripts, no-store" --> artifact["Artifact iframe<br/>opaque origin"]
+  main -- "publish check: hidden sandboxed window,<br/>DevTools events schema-decoded" --> check["Artifact check page<br/>opaque origin"]
   main -- "hinacode-github-asset: gh token stays in main" --> renderer
 ```
 

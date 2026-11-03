@@ -19,7 +19,10 @@ export class Messages extends Context.Service<
     readonly list: (threadId: string) => Effect.Effect<ReadonlyArray<Message>, PersistenceError>
     readonly toolOutput: (threadId: string, callId: string) => Effect.Effect<Option.Option<unknown>, PersistenceError>
     readonly insert: (message: Message) => Effect.Effect<void, PersistenceError>
-    readonly update: (message: Message, previous: Message) => Effect.Effect<void, PersistenceError>
+    readonly update: (
+      message: Message,
+      previous: Message,
+    ) => Effect.Effect<{ readonly bytes: number }, PersistenceError>
     readonly closeInterrupted: Effect.Effect<void, PersistenceError>
   }
 >()("hinacode/Messages") {}
@@ -93,6 +96,7 @@ const make = Effect.gen(function* () {
       if (message.parts.length < previous.parts.length) {
         yield* sql`DELETE FROM message_part WHERE message_id = ${message.id} AND idx >= ${message.parts.length}`
       }
+      return { bytes: rows.reduce((total, row) => total + row.part.length, 0) }
     })
 
   const saveClosed = (message: Message) =>
@@ -102,13 +106,16 @@ const make = Effect.gen(function* () {
           UPDATE message
           SET parts = ${row.parts}, completed_at = ${row.completedAt}, usage = ${row.usage}, fork_point = ${row.forkPoint}
           WHERE id = ${row.id}
-        `.pipe(Effect.andThen(sql`DELETE FROM message_part WHERE message_id = ${row.id}`), sql.withTransaction),
+        `.pipe(
+          Effect.andThen(sql`DELETE FROM message_part WHERE message_id = ${row.id}`),
+          sql.withTransaction,
+          Effect.as({ bytes: row.parts.length }),
+        ),
       ),
     )
 
   const update = (message: Message, previous: Message) =>
     (message.completedAt === null ? saveOpenParts(message, previous) : saveClosed(message)).pipe(
-      Effect.asVoid,
       Effect.mapError(persistence("messages.update")),
     )
 
@@ -118,11 +125,15 @@ const make = Effect.gen(function* () {
       Effect.flatMap((row) => sql`INSERT INTO message ${sql.insert(row)}`),
       Effect.andThen(saveOpenParts(message, empty)),
       sql.withTransaction,
+      Effect.asVoid,
     )
   }
 
   const insertClosed = (message: Message) =>
-    encodeRow(message).pipe(Effect.flatMap((row) => sql`INSERT INTO message ${sql.insert(row)}`))
+    encodeRow(message).pipe(
+      Effect.flatMap((row) => sql`INSERT INTO message ${sql.insert(row)}`),
+      Effect.asVoid,
+    )
 
   const closeInterrupted = Effect.gen(function* () {
     const now = yield* nowIso
@@ -149,7 +160,6 @@ const make = Effect.gen(function* () {
       ),
     insert: (message) =>
       (message.completedAt === null ? insertOpen(message) : insertClosed(message)).pipe(
-        Effect.asVoid,
         Effect.mapError(persistence("messages.insert")),
       ),
     update,

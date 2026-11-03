@@ -8,7 +8,7 @@ import { faviconAtom } from "../lib/rpc.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
 import { WithLinkIcon } from "./LinkIcon.tsx"
 import { PullRequestLink } from "./PullRequestLink.tsx"
-import { GlobeIcon } from "./icons/GlobeIcon.tsx"
+import { GlobeIcon } from "@hinacode/icons"
 
 export const isWebUrl = (href: string | undefined): href is string => /^https?:\/\//i.test(href ?? "")
 

@@ -5,12 +5,14 @@ import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { useMessages } from "../stores/messages.ts"
 import { ActivityRow } from "./ActivityRow.tsx"
-import { CheckCircleIcon } from "./icons/CheckCircleIcon.tsx"
-import { ChevronDownIcon } from "./icons/ChevronDownIcon.tsx"
-import { CircleIcon } from "./icons/CircleIcon.tsx"
-import type { IconComponent } from "./icons/Icon.tsx"
-import { SpinnerIcon } from "./icons/SpinnerIcon.tsx"
-import { XCircleIcon } from "./icons/XCircleIcon.tsx"
+import {
+  CheckCircleIcon,
+  ChevronDownIcon,
+  CircleIcon,
+  type IconComponent,
+  SpinnerIcon,
+  XCircleIcon,
+} from "@hinacode/icons"
 
 const NO_MESSAGES: ReadonlyArray<Message> = []
 

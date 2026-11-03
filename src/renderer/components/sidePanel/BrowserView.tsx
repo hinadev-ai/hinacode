@@ -21,11 +21,7 @@ import { Input } from "../ui/input.tsx"
 import { BrowserStart, type Device, type Failure, LoadFailure, ViewportMenu } from "./BrowserChrome.tsx"
 import { browserPanelId, browserTabId } from "./BrowserTabStrip.tsx"
 import { RemoteBrowserPage } from "./RemoteBrowserPage.tsx"
-import { ArrowLeftIcon } from "../icons/ArrowLeftIcon.tsx"
-import { ArrowRightIcon } from "../icons/ArrowRightIcon.tsx"
-import { CloseIcon } from "../icons/CloseIcon.tsx"
-import { CursorIcon } from "../icons/CursorIcon.tsx"
-import { RefreshIcon } from "../icons/RefreshIcon.tsx"
+import { ArrowLeftIcon, ArrowRightIcon, CloseIcon, CursorIcon, RefreshIcon } from "@hinacode/icons"
 
 const ALLOW_POPUPS: Record<string, string> = { allowpopups: "" }
 

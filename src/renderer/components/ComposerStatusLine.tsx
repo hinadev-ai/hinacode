@@ -9,10 +9,7 @@ import { usePullRequests } from "../stores/pullRequests.ts"
 import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { StatusIcon, statusIndicator } from "./ThreadPullRequests.tsx"
-import { BranchIcon } from "./icons/BranchIcon.tsx"
-import { CloudIcon } from "./icons/CloudIcon.tsx"
-import { LaptopIcon } from "./icons/LaptopIcon.tsx"
-import { StackIcon } from "./icons/StackIcon.tsx"
+import { BranchIcon, CloudIcon, LaptopIcon, StackIcon } from "@hinacode/icons"
 
 const statusLabel = {
   draft: m.pr_state_draft,

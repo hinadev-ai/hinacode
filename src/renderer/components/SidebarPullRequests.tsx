@@ -23,7 +23,7 @@ import {
 import { Button } from "./ui/button.tsx"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
-import { StackIcon } from "./icons/StackIcon.tsx"
+import { StackIcon } from "@hinacode/icons"
 
 const mergeMethods = ["squash", "merge", "rebase"] as const
 const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? ""

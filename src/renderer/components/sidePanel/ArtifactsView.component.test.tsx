@@ -6,6 +6,7 @@ import type { HinacodeBridge, PushEvent } from "../../../shared/contract.ts"
 import type { Environments, Thread } from "../../../shared/domain.ts"
 import "../../index.css"
 import { useArtifacts } from "../../stores/artifacts.ts"
+import { useDrafts } from "../../stores/drafts.ts"
 import { ArtifactsHeader, ArtifactsView } from "./ArtifactsView.tsx"
 
 const artifact = (id: string, title: string, version: number, updatedAt: string, environmentId?: string): Artifact => ({
@@ -116,4 +117,30 @@ test("deletes an artifact from its context menu on the machine that holds it", a
   await page.getByRole("menuitem", { name: "Delete" }).click()
 
   await expect.poll(() => deleted).toEqual([{ payload: { id: "newer" }, environment: "cloud-1" }])
+})
+
+test("keeps a bounded list of the open frame's problems and ignores other frames", async () => {
+  useArtifacts.getState().select(thread.id, "newer")
+  const stranger = document.createElement("iframe")
+  document.body.append(stranger)
+  onTestFinished(() => stranger.remove())
+  await render(<ArtifactsView thread={thread} />)
+  const frame = page.getByTitle("Release notes").element() as HTMLIFrameElement
+  const report = (source: Window | null, message: string) =>
+    window.dispatchEvent(new MessageEvent("message", { source, data: { type: "hinacode-artifact-problem", message } }))
+
+  report(stranger.contentWindow, "from another frame")
+  for (let index = 0; index < 500; index++) report(frame.contentWindow, `frame ${index}`)
+  report(frame.contentWindow, "frame 0")
+
+  const problems = page.getByRole("region", { name: /problems on this page/ })
+  await expect.element(problems).toHaveAccessibleName("20 problems on this page")
+  expect(problems.getByRole("listitem").elements()).toHaveLength(20)
+  await expect.element(problems.getByText("frame 0", { exact: true })).toBeInTheDocument()
+  expect(problems.getByText("from another frame").elements()).toHaveLength(0)
+
+  await problems.getByRole("button", { name: "Ask agent to fix" }).click()
+  const prompt = useDrafts.getState().byThreadId[thread.id]?.text ?? ""
+  expect(prompt.match(/^- frame \d+$/gm)).toHaveLength(20)
+  expect(prompt).not.toContain("from another frame")
 })

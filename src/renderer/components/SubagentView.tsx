@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react"
 import type { Message, Thread } from "../../shared/domain.ts"
-import { findSubagentWork, inputField, statusOfCall, subagentReport, useOpenSubagent } from "../lib/subagents.ts"
+import { findSubagentWork, inputField, statusOfCall, subagentReport } from "../../shared/subagents.ts"
+import { useOpenSubagent } from "../lib/subagents.ts"
 import { m } from "../paraglide/messages.js"
 import { useMessages } from "../stores/messages.ts"
 import { useSubagentByCallId } from "../stores/subagents.ts"
@@ -10,7 +11,7 @@ import { formatOutput } from "./MessagePart.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { StopSubagentButton, SubagentStatusIcon, subagentStats, useNow } from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
-import { ArrowLeftIcon } from "./icons/ArrowLeftIcon.tsx"
+import { ArrowLeftIcon } from "@hinacode/icons"
 
 export function useSubagentLabel(threadId: string, callId: string) {
   const reported = useSubagentByCallId(threadId, callId)?.label

@@ -33,7 +33,7 @@ import { Textarea } from "./ui/textarea.tsx"
 import { errorMessage, toastError } from "../lib/errorMessage.ts"
 import { suggestProjectName } from "../lib/projectName.ts"
 import { startThread } from "../lib/startThread.ts"
-import { FolderOpenIcon } from "./icons/FolderOpenIcon.tsx"
+import { FolderOpenIcon } from "@hinacode/icons"
 
 interface ProjectDialogProps {
   readonly open: boolean

@@ -16,7 +16,7 @@ import { getLocale } from "../paraglide/runtime.js"
 import { useThreads } from "../stores/threads.ts"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
-import { WarningIcon } from "./icons/WarningIcon.tsx"
+import { WarningIcon } from "@hinacode/icons"
 
 const windowLabel = (window: LimitWindowKind) => {
   switch (window.kind) {

@@ -128,7 +128,7 @@ function SearchFooter({ messages, empty }: { messages: MessageSearch; empty: boo
   if (messages.state === "error") return <Notice text={messages.error} tone="danger" />
   if (empty)
     return (
-      <EmptyState icon="RiSearchLine" title={copy("mobile_search_empty")} hint={copy("mobile_search_empty_hint")} />
+      <EmptyState icon="Search" title={copy("mobile_search_empty")} hint={copy("mobile_search_empty_hint")} />
     )
   return null
 }

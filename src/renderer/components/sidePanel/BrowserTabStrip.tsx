@@ -5,9 +5,7 @@ import type { Thread } from "../../../shared/domain.ts"
 import { m } from "../../paraglide/messages.js"
 import { type BrowserTab, selectBrowserTabs, useBrowserTabs } from "../../stores/browserTabs.ts"
 import { Button } from "../ui/button.tsx"
-import { CloseIcon } from "../icons/CloseIcon.tsx"
-import { GlobeIcon } from "../icons/GlobeIcon.tsx"
-import { PlusIcon } from "../icons/PlusIcon.tsx"
+import { CloseIcon, GlobeIcon, PlusIcon } from "@hinacode/icons"
 
 export const browserTabId = (threadId: string, tabId: string) => `browser-tab-${threadId}-${tabId}`
 export const browserPanelId = (threadId: string, tabId: string) => `browser-page-${threadId}-${tabId}`

@@ -2,12 +2,12 @@
 export type FileKind = "image" | "svg" | "markdown" | "text"
 
 export type FileIcon =
-  | "RiFolderLine"
-  | "RiFileCodeLine"
-  | "RiImageLine"
-  | "RiMarkdownLine"
-  | "RiFileTextLine"
-  | "RiFileLine"
+  | "Folder"
+  | "FileCode"
+  | "Image"
+  | "Markdown"
+  | "FileText"
+  | "File"
 
 const images = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif"])
 const markdown = new Set(["md", "mdx", "markdown"])
@@ -44,13 +44,13 @@ export function fileKind(path: string): FileKind {
 
 /** The listing's icon for an entry. Symlinks get the file icons, since they are never followed. */
 export function entryIcon(path: string, kind: "file" | "dir" | "symlink"): FileIcon {
-  if (kind === "dir") return "RiFolderLine"
+  if (kind === "dir") return "Folder"
   const ext = extension(path)
-  if (images.has(ext) || ext === "svg") return "RiImageLine"
-  if (markdown.has(ext)) return "RiMarkdownLine"
-  if (code.has(ext)) return "RiFileCodeLine"
-  if (text.has(ext) || textNames.has(basename(path).toLowerCase())) return "RiFileTextLine"
-  return "RiFileLine"
+  if (images.has(ext) || ext === "svg") return "Image"
+  if (markdown.has(ext)) return "Markdown"
+  if (code.has(ext)) return "FileCode"
+  if (text.has(ext) || textNames.has(basename(path).toLowerCase())) return "FileText"
+  return "File"
 }
 
 const viewBoxPattern = /viewBox\s*=\s*["']\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)[\s,]+([\d.]+)/i

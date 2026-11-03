@@ -7,12 +7,7 @@ import { useThreadBackgroundTasks } from "../stores/backgroundTasks.ts"
 import { ActivityRow } from "./ActivityRow.tsx"
 import { Button } from "./ui/button.tsx"
 import { toast } from "sonner"
-import { AlarmIcon } from "./icons/AlarmIcon.tsx"
-import { FlowIcon } from "./icons/FlowIcon.tsx"
-import type { IconComponent } from "./icons/Icon.tsx"
-import { SpinnerIcon } from "./icons/SpinnerIcon.tsx"
-import { StopIcon } from "./icons/StopIcon.tsx"
-import { TerminalIcon } from "./icons/TerminalIcon.tsx"
+import { AlarmIcon, FlowIcon, type IconComponent, SpinnerIcon, StopIcon, TerminalIcon } from "@hinacode/icons"
 
 const kinds = {
   shell: { icon: TerminalIcon, label: m.activity_background_shell },

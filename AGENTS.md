@@ -38,6 +38,7 @@ src/main      Main process. One Effect layer graph (app.ts), run by Electron (in
 src/preload   contextBridge exposing window.hinacode { rpc, onEvent, pathForFile }
 src/renderer  React 19, TanStack Router, zustand stores, Tailwind 4, shadcn on Base UI
 src/shared    Effect Schema contracts (contract.ts rpc method map, domain.ts, agent.ts) and pure code both apps run, such as routes.ts
+packages/icons  @hinacode/icons: HinaCode's icons, one file each, rendered by the renderer and apps/mobile
 messages/     Paraglide catalogs: en.json, zh-TW.json, zh-CN.json and ja.json
 ```
 
@@ -60,8 +61,8 @@ messages/     Paraglide catalogs: en.json, zh-TW.json, zh-CN.json and ja.json
 - Tests use `node:test` and `node:assert/strict`, run against a real SQLite DB (`db/testing.ts`) and real temp git repos. Don't mock what you can run.
 - Renderer component tests are `*.component.test.tsx`. Vitest runs them in headless Chromium with the app stylesheet, so they can check computed styles and drive input over `cdp()`. Stub `window.hinacode` for the rpc calls the component makes.
 - For a bug, commit a failing `test(scope): reproduce ...` first, then the fix.
-- Icons are HinaCode's own, one component per file in `src/renderer/components/icons/` on the shared `Icon` base (24 grid, `1em`, `currentColor`). Brand marks, GitHub's pull request states (open, merged, draft, closed) and any icon we have not drawn yet come from `react-icons/ri` (Remix). `shadcn add` writes `@remixicon/react` imports, because `components.json` says `remixicon`; swap them for ours or `react-icons/ri`. Lucide is banned, including `react-icons/lu`.
-- A new icon follows the set's rules: stroke 2.4 with round caps and joins, every curve a circle arc, radius-3 corners on containers, a gap where shapes cross, and at most one dot filled with `var(--sun, currentColor)`. Masks take their ids from `useId`. Never use a sparkle icon.
+- Icons are HinaCode's own, one component per file in `packages/icons/src/` (`@hinacode/icons`), drawn with the `Svg`, `Path`, `Circle`, `Rect`, `G` and `Mask` primitives from `./primitives` so the desktop (DOM: 24 grid, `1em`, `currentColor`) and the mobile app (react-native-svg) render the same file. Export a new icon from `index.ts`. An icon that needs DOM-only features, such as `SendGlyph`'s CSS transitions, stays in `src/renderer/components/icons/` on the shared `Icon` base. Brand marks, GitHub's pull request states (open, merged, draft, closed) and any icon we have not drawn yet come from `react-icons/ri` (Remix). `shadcn add` writes `@remixicon/react` imports, because `components.json` says `remixicon`; swap them for ours or `react-icons/ri`. Lucide is banned, including `react-icons/lu`.
+- A new icon follows the set's rules: stroke 2.4 with round caps and joins, every curve a circle arc, radius-3 corners on containers, a gap where shapes cross, and at most one dot filled with `sun` from the primitives (`var(--sun, currentColor)` on the desktop, the `sun` prop on mobile). Masks take their ids from `useId`. Never use a sparkle icon.
 - Add shadcn components into `src/renderer/components/ui/` with the `base-nova` style. They are built on `@base-ui/react`, not Radix.
 - The product's display name is HinaCode, in UI copy, agent-facing prose and docs. Names, IDs, labels and schemes stay `hinacode`: the MCP server, `hinacode://`, `hinacode serve`. Only `app.setName` and the profile directory keep the old `kkcode`, so installs keep their data and Keychain item (see `src/main/index.ts`)
 - Branches are `feat/*` or `fix/*`, merged into `main` by PR. Commits follow Conventional Commits with a scope, e.g. `fix(mcp): bind credentials to one thread`.

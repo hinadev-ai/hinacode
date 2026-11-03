@@ -5,10 +5,7 @@ import { m } from "../paraglide/messages.js"
 import type { LineComment } from "../stores/drafts.ts"
 import { Button } from "./ui/button.tsx"
 import { Textarea } from "./ui/textarea.tsx"
-import { ChatIcon } from "./icons/ChatIcon.tsx"
-import { CloseIcon } from "./icons/CloseIcon.tsx"
-import { PencilIcon } from "./icons/PencilIcon.tsx"
-import { TrashIcon } from "./icons/TrashIcon.tsx"
+import { ChatIcon, CloseIcon, PencilIcon, TrashIcon } from "@hinacode/icons"
 
 const location = (comment: Pick<LineComment, "path" | "startLine" | "endLine">) =>
   `${comment.path}:${lineRange(comment)}`

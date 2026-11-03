@@ -8,8 +8,7 @@ import { m } from "../paraglide/messages.js"
 import { useDismissedUpdates } from "../stores/dismissedUpdates.ts"
 import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
 import { Button } from "./ui/button.tsx"
-import { ArrowDownCircleFillIcon } from "./icons/ArrowDownCircleFillIcon.tsx"
-import { CloseIcon } from "./icons/CloseIcon.tsx"
+import { ArrowDownCircleFillIcon, CloseIcon } from "@hinacode/icons"
 
 const CHECK_EVERY_MS = 4 * 60 * 60_000
 
