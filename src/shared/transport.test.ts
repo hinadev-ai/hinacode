@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { TRANSCRIPT_PAGE_BYTES } from "@shared/compactTranscript.ts"
-import { clientProof, serverProof } from "@shared/proof.ts"
+import { TRANSCRIPT_PAGE_BYTES } from "./compactTranscript.ts"
+import { clientProof, serverProof } from "./proof.ts"
 import {
   CHALLENGE_WAIT_MS,
   DIRECT_CHECK_INTERVAL_MS,
@@ -9,23 +9,33 @@ import {
   dialPlan,
   RELAY_DELAY_MS,
   TAILSCALE_DELAY_MS,
-} from "@shared/remote.ts"
+} from "./remote.ts"
 import {
   CLOSE_TOKEN_ROTATED,
   CLOSE_UNAUTHORIZED,
   CONNECT_TIMEOUT_MS,
-  LOST_REPLY_MESSAGE,
-  MAY_HAVE_RUN_MESSAGE,
-  NOT_SENT_MESSAGE,
   type SocketLike,
   Transport,
+  type TransportMessages,
   type TransportStatus,
   IDLE_TIMEOUT_MS,
-} from "./transport"
+} from "./transport.ts"
 
 const TOKEN = "secret"
 
-/** A socket and the server behind it, which holds `TOKEN`. */
+const MESSAGES: TransportMessages = {
+  notSent: "not sent",
+  mayHaveRun: "may have run",
+  lostReply: "lost reply",
+  disconnected: "disconnected",
+  notConnected: "not connected",
+  tokenRotated: "token rotated",
+  tokenRefused: "token refused",
+  protocolMismatch: (server, client) => `protocol ${server} vs ${client}`,
+}
+
+const jumpClock = (ms: number) => vi.setSystemTime(vi.getMockedSystemTime()!.getTime() + ms)
+
 class FakeSocket implements SocketLike {
   onopen: (() => void) | null = null
   onmessage: ((message: { data: unknown }) => void) | null = null
@@ -34,7 +44,11 @@ class FakeSocket implements SocketLike {
   closed = false
   serverNonce: string | undefined
 
-  constructor(readonly url: string) {}
+  readonly url: string
+
+  constructor(url: string) {
+    this.url = url
+  }
 
   send(data: string) {
     this.sent.push(JSON.parse(data))
@@ -50,7 +64,6 @@ class FakeSocket implements SocketLike {
     this.serverNonce = nonce
     this.receive({ type: "challenge", nonce })
   }
-  /** Proves `TOKEN` back when the client proved it, as a current server does; an older one omits the proof. */
   ready(features: readonly string[] = ["heartbeat", "call-keys", "terminal-attach"], version = 1) {
     const auth = this.sent.find((frame) => frame.type === "auth")
     const proof =
@@ -88,7 +101,7 @@ let plan: readonly Dial[] = []
 const direct = (url: string): Dial => ({ url, route: "direct", delayMs: 0 })
 const relay = (url: string): Dial => ({ url, route: "relay", delayMs: RELAY_DELAY_MS })
 
-function setup(dials: readonly [Dial, ...Dial[]] = [direct("ws://desktop/remote")]) {
+function setup(dials: readonly [Dial, ...Dial[]] = [direct("ws://desktop/remote")], { compact = true } = {}) {
   sockets = []
   statuses = []
   ready = 0
@@ -98,6 +111,8 @@ function setup(dials: readonly [Dial, ...Dial[]] = [direct("ws://desktop/remote"
   const transport = new Transport({
     dials,
     token: TOKEN,
+    messages: MESSAGES,
+    compact,
     isMutation: (method) => MUTATIONS.has(method),
     onStatus: (status) => statuses.push(status),
     onReady: () => ready++,
@@ -138,8 +153,6 @@ beforeEach(() => {
 })
 afterEach(() => {
   vi.useRealTimers()
-  // Away from home a direct address may be a stranger's HinaCode, so only a pairing without a relay ever sends it
-  // the token.
   if (!plan.some((dial) => dial.route === "relay")) return
   const directUrls = new Set(plan.filter((dial) => dial.route === "direct").map((dial) => dial.url))
   for (const socket of sockets.filter((socket) => directUrls.has(socket.url)))
@@ -163,6 +176,22 @@ describe("Transport", () => {
     expect(ready).toBe(1)
   })
 
+  it("leaves compact events out of its proof when not compact", () => {
+    setup(undefined, { compact: false })
+    latest().open()
+    latest().challenge("server-nonce")
+    expect(latest().sent).toEqual([{ type: "auth", nonce: expect.any(String), proof: expect.any(String) }])
+    latest().ready()
+    expect(statuses.at(-1)).toBe("connected")
+  })
+
+  it("leaves compact events out of a raw token when not compact", async () => {
+    setup(undefined, { compact: false })
+    latest().open()
+    await vi.advanceTimersByTimeAsync(CHALLENGE_WAIT_MS)
+    expect(latest().sent).toEqual([{ type: "auth", token: TOKEN }])
+  })
+
   it("queues a call made while connecting and sends it after ready", async () => {
     const transport = setup()
     const result = transport.call("threads.list", undefined)
@@ -179,7 +208,11 @@ describe("Transport", () => {
     const send = track(transport.call("threads.send", { prompt: "hi" }))
     const read = track(transport.call("threads.list", undefined))
     const allow = track(transport.call("approvals.respond", { decision: "allow" }))
-    expect(latest().calls().map((frame) => frame.key)).toEqual(["key-1", undefined, "key-2"])
+    expect(
+      latest()
+        .calls()
+        .map((frame) => frame.key),
+    ).toEqual(["key-1", undefined, "key-2"])
 
     latest().drop()
     expect(statuses.at(-1)).toBe("offline")
@@ -226,26 +259,26 @@ describe("Transport", () => {
       await vi.advanceTimersByTimeAsync(29_999)
       expect(send.error).toBeUndefined()
       await vi.advanceTimersByTimeAsync(1)
-      expect(send.error).toMatchObject({ tag: "Timeout", message: MAY_HAVE_RUN_MESSAGE })
+      expect(send.error).toMatchObject({ tag: "Timeout", message: MESSAGES.mayHaveRun })
     })
 
     it("says not sent when the call never left the phone", async () => {
       const transport = setup()
       const send = track(transport.call("threads.send", {}))
       await vi.advanceTimersByTimeAsync(60_000)
-      expect(send.error).toMatchObject({ tag: "Timeout", message: NOT_SENT_MESSAGE })
+      expect(send.error).toMatchObject({ tag: "Timeout", message: MESSAGES.notSent })
     })
 
     it("expires a call on ready when the clock jumped past the limit before its timer ran", async () => {
       const transport = setup()
       const send = track(transport.call("threads.send", {}))
       const read = track(transport.call("threads.list", undefined))
-      vi.setSystemTime(Date.now() + 61_000)
+      jumpClock(61_000)
       handshake()
       await vi.advanceTimersByTimeAsync(0)
       expect(latest().calls()).toEqual([])
-      expect(send.error).toMatchObject({ tag: "Timeout", message: NOT_SENT_MESSAGE })
-      expect(read.error).toMatchObject({ tag: "Timeout", message: NOT_SENT_MESSAGE })
+      expect(send.error).toMatchObject({ tag: "Timeout", message: MESSAGES.notSent })
+      expect(read.error).toMatchObject({ tag: "Timeout", message: MESSAGES.notSent })
     })
 
     it("counts earlier outages when a late ready arrives", async () => {
@@ -254,26 +287,26 @@ describe("Transport", () => {
       const send = track(transport.call("threads.send", {}))
       latest().drop()
       await vi.advanceTimersByTimeAsync(400)
-      vi.setSystemTime(Date.now() + 30_000)
+      jumpClock(30_000)
       await vi.advanceTimersByTimeAsync(100)
       handshake()
       expect(latest().calls()).toHaveLength(1)
 
       latest().drop()
       await vi.advanceTimersByTimeAsync(400)
-      vi.setSystemTime(Date.now() + 29_600)
+      jumpClock(29_600)
       await vi.advanceTimersByTimeAsync(100)
       const before = latest().calls().length
       handshake()
       await vi.advanceTimersByTimeAsync(0)
       expect(latest().calls()).toHaveLength(before)
-      expect(send.error).toMatchObject({ tag: "Timeout", message: MAY_HAVE_RUN_MESSAGE })
+      expect(send.error).toMatchObject({ tag: "Timeout", message: MESSAGES.mayHaveRun })
     })
 
     it("still sends a call whose outage stayed under the limit", async () => {
       const transport = setup()
       const send = track(transport.call("threads.send", {}))
-      vi.setSystemTime(Date.now() + 59_000)
+      jumpClock(59_000)
       handshake()
       expect(latest().calls()).toHaveLength(1)
       latest().result(1)
@@ -334,6 +367,8 @@ describe("Transport", () => {
       const transport = new Transport({
         dials: [direct("ws://desktop/remote")],
         token: "secret",
+        messages: MESSAGES,
+        compact: true,
         isMutation: () => false,
         onStatus: () => {},
         onReady: () => {},
@@ -360,17 +395,20 @@ describe("Transport", () => {
       expect(sockets).toHaveLength(2)
     })
 
-    it.each([CLOSE_UNAUTHORIZED, CLOSE_TOKEN_ROTATED])("stops after close code %i and fails pending calls", async (code) => {
-      const transport = setup()
-      const send = track(transport.call("threads.send", {}))
-      latest().open()
-      latest().challenge()
-      latest().drop(code)
-      await vi.advanceTimersByTimeAsync(60_000)
-      expect(sockets).toHaveLength(1)
-      expect(statuses.at(-1)).toBe("unauthorized")
-      expect(send.error).toMatchObject({ tag: "Unauthorized" })
-    })
+    it.each([CLOSE_UNAUTHORIZED, CLOSE_TOKEN_ROTATED])(
+      "stops after close code %i and fails pending calls",
+      async (code) => {
+        const transport = setup()
+        const send = track(transport.call("threads.send", {}))
+        latest().open()
+        latest().challenge()
+        latest().drop(code)
+        await vi.advanceTimersByTimeAsync(60_000)
+        expect(sockets).toHaveLength(1)
+        expect(statuses.at(-1)).toBe("unauthorized")
+        expect(send.error).toMatchObject({ tag: "Unauthorized" })
+      },
+    )
   })
 
   describe("heartbeat", () => {
@@ -453,7 +491,7 @@ describe("Transport", () => {
       const sending = track(transport.call("threads.send", { prompt: "hi" }))
       transport.setForeground(false)
       await vi.advanceTimersByTimeAsync(0)
-      expect(sending.error).toMatchObject({ tag: "Offline", message: LOST_REPLY_MESSAGE })
+      expect(sending.error).toMatchObject({ tag: "Offline", message: MESSAGES.lostReply })
       transport.setForeground(true)
       handshake([])
       expect(latest().calls()).toEqual([])
@@ -523,7 +561,7 @@ describe("Transport", () => {
       transport.setForeground(false)
       latest().drop()
       await vi.advanceTimersByTimeAsync(60_000)
-      expect(send.error).toMatchObject({ tag: "Timeout", message: MAY_HAVE_RUN_MESSAGE })
+      expect(send.error).toMatchObject({ tag: "Timeout", message: MESSAGES.mayHaveRun })
       expect(sockets).toHaveLength(1)
     })
 
@@ -555,6 +593,16 @@ describe("Transport", () => {
       handshake(["heartbeat"])
       transport.setWatching(["t1"])
       expect(watchFrames()).toEqual([])
+    })
+
+    it("never narrows the transcripts when not compact, even to a desktop that offers it", () => {
+      const transport = setup(undefined, { compact: false })
+      handshake(["heartbeat", "watch"])
+      transport.setWatching(["t1"])
+      transport.networkChanged()
+      handshake(["heartbeat", "watch"])
+      transport.setWatching(["t2"])
+      expect(sockets.flatMap((socket) => socket.sent).filter((frame) => frame.type === "watch")).toEqual([])
     })
   })
 
@@ -628,7 +676,7 @@ describe("Transport", () => {
 
       latest().drop()
       await vi.advanceTimersByTimeAsync(0)
-      expect(send.error).toMatchObject({ tag: "Offline", message: LOST_REPLY_MESSAGE })
+      expect(send.error).toMatchObject({ tag: "Offline", message: MESSAGES.lostReply })
 
       await vi.advanceTimersByTimeAsync(500)
       handshake([])
@@ -659,7 +707,7 @@ describe("Transport", () => {
       await vi.advanceTimersByTimeAsync(60_000)
       expect(statuses.at(-1)).toBe("unauthorized")
       expect(sockets).toHaveLength(1)
-      expect(read.error).toMatchObject({ tag: "Unauthorized" })
+      expect(read.error).toMatchObject({ tag: "Unauthorized", message: "protocol 2 vs 1" })
     })
   })
 

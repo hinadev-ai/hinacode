@@ -14,9 +14,16 @@ import { dialPlan, pairingUrl, parsePairingUrl } from "@shared/remote.ts"
 import { type Entity, routes } from "@shared/routes.ts"
 import { copy } from "./copy"
 import type { StoredServer } from "./stored-target"
-import { CONNECT_TIMEOUT_MS, PROBE_TIMEOUT_MS, RpcError, Transport, type TransportStatus } from "./transport"
+import {
+  CONNECT_TIMEOUT_MS,
+  PROBE_TIMEOUT_MS,
+  RpcError,
+  Transport,
+  type TransportMessages,
+  type TransportStatus,
+} from "@shared/transport.ts"
 
-export { RpcError } from "./transport"
+export { RpcError } from "@shared/transport.ts"
 
 export type ConnectionStatus = TransportStatus
 
@@ -117,10 +124,24 @@ const sameTarget = (a: StoredServer, b: StoredServer) => a.port === b.port && a.
 
 const sameDials = (a: StoredServer, b: StoredServer) => a.relay === b.relay && a.hosts.join(" ") === b.hosts.join(" ")
 
+const transportMessages: TransportMessages = {
+  notSent: copy("mobile_transport_not_sent"),
+  mayHaveRun: copy("mobile_transport_may_have_run"),
+  lostReply: copy("mobile_transport_lost_reply"),
+  disconnected: copy("mobile_transport_disconnected"),
+  notConnected: copy("mobile_transport_not_connected"),
+  tokenRotated: copy("mobile_transport_token_rotated"),
+  tokenRefused: copy("mobile_transport_token_refused"),
+  protocolMismatch: (server, client) =>
+    copy("mobile_transport_protocol_mismatch", { desktop: String(server), app: String(client) }),
+}
+
 function open(server: StoredServer) {
   const transport = new Transport({
     dials: dialPlan(server),
     token: server.token,
+    messages: transportMessages,
+    compact: true,
     isMutation: (method) => mutations.has(method),
     onStatus: (status, error) => {
       if (transports.get(server.id) === transport) updateServer(server.id, { status, error })

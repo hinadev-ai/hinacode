@@ -1,7 +1,7 @@
 import { Option, Schema } from "effect"
 import type { NonEmptyReadonlyArray } from "effect/Array"
-import type { PushEvent, RpcEnvelope } from "@shared/contract.ts"
-import { clientProof, newNonce, serverProof } from "@shared/proof.ts"
+import type { PushEvent, RpcEnvelope } from "./contract.ts"
+import { clientProof, newNonce, serverProof } from "./proof.ts"
 import {
   CHALLENGE_WAIT_MS,
   type ClientFrame,
@@ -10,8 +10,7 @@ import {
   DIRECT_CHECK_TIMEOUT_MS,
   REMOTE_PROTOCOL_VERSION,
   ServerFrame,
-} from "@shared/remote.ts"
-import { copy } from "./copy"
+} from "./remote.ts"
 
 export type TransportStatus = "connecting" | "connected" | "offline" | "unauthorized"
 
@@ -21,11 +20,11 @@ export interface ServerIdentity {
 }
 
 export class RpcError extends Error {
-  constructor(
-    readonly tag: string,
-    message: string,
-  ) {
+  readonly tag: string
+
+  constructor(tag: string, message: string) {
     super(message)
+    this.tag = tag
   }
 }
 
@@ -40,10 +39,6 @@ const MIN_RETRY_MS = 500
 const MAX_RETRY_MS = 10_000
 const JITTER = 0.3
 
-export const NOT_SENT_MESSAGE = copy("mobile_transport_not_sent")
-export const MAY_HAVE_RUN_MESSAGE = copy("mobile_transport_may_have_run")
-export const LOST_REPLY_MESSAGE = copy("mobile_transport_lost_reply")
-
 export interface SocketLike {
   onopen: (() => void) | null
   onmessage: ((message: { data: unknown }) => void) | null
@@ -52,17 +47,24 @@ export interface SocketLike {
   close(): void
 }
 
+export interface TransportMessages {
+  readonly notSent: string
+  readonly mayHaveRun: string
+  readonly lostReply: string
+  readonly disconnected: string
+  readonly notConnected: string
+  readonly tokenRotated: string
+  readonly tokenRefused: string
+  readonly protocolMismatch: (server: number, client: number) => string
+}
+
 export interface TransportOptions {
-  /** What to dial in each round, from `dialPlan`. */
   readonly dials: NonEmptyReadonlyArray<Dial>
   readonly token: string
-  /** Whether `method` changes state on the desktop, so a retry must carry a call key. */
+  readonly messages: TransportMessages
+  readonly compact: boolean
   readonly isMutation: (method: string) => boolean
   readonly onStatus: (status: TransportStatus, error: string | null) => void
-  /**
-   * Called on every handshake with the features this desktop understands, which HinaCode it is when it says, its
-   * relay hostname, null when it has none, and the addresses it listens on now, undefined when it does not say.
-   */
   readonly onReady: (
     features: ReadonlySet<string>,
     environment: ServerIdentity | undefined,
@@ -90,27 +92,17 @@ interface PendingCall {
 
 const decodeFrame = Schema.decodeUnknownOption(ServerFrame)
 
-/**
- * What a round dials: the whole plan, or one route alone. A relay round follows a direct address that refused the
- * token, and its link checks no direct address. A direct round follows a direct check that answered.
- */
 type Round = "both" | Dial["route"]
 
-/** What the current socket was sent: nothing yet, the token itself, or a proof the server's `ready` must answer. */
 type SentAuth = null | "token" | { readonly expectedProof: string }
 
 const randomKey = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
 
-/**
- * Opens a socket for each of `dials` after its delay and hands the first one to open to `onOpen`. Every other socket
- * closes without a frame sent, so only the winner ever sees the token. `onFail` runs when every socket closed
- * before one opened. Returns a function that cancels the race and closes what it opened.
- */
-function race(
+function raceToOpen(
   dials: readonly Dial[],
   createSocket: (url: string) => SocketLike,
-  onOpen: (ws: SocketLike, dial: Dial) => void,
-  onFail: () => void,
+  onFirstOpen: (ws: SocketLike, dial: Dial) => void,
+  onAllClosed: () => void,
 ): () => void {
   const timers: ReturnType<typeof setTimeout>[] = []
   const live = new Set<SocketLike>()
@@ -130,13 +122,13 @@ function race(
       if (done) return ws.close()
       live.delete(ws)
       cancel()
-      onOpen(ws, dial)
+      onFirstOpen(ws, dial)
     }
     ws.onclose = () => {
       live.delete(ws)
       if (done || started < dials.length || live.size > 0) return
       cancel()
-      onFail()
+      onAllClosed()
     }
   }
   for (const dial of dials) {
@@ -170,7 +162,10 @@ export class Transport {
   private checkTimer: ReturnType<typeof setInterval> | undefined
   private dials: NonEmptyReadonlyArray<Dial>
 
-  constructor(private readonly options: TransportOptions) {
+  private readonly options: TransportOptions
+
+  constructor(options: TransportOptions) {
+    this.options = options
     this.dials = options.dials
   }
 
@@ -178,20 +173,18 @@ export class Transport {
     this.open()
   }
 
-  /** Closes for good, failing every pending call. */
   stop() {
     this.stopped = true
     this.dropSocket()
     clearTimeout(this.retryTimer)
     clearTimeout(this.offlineTimer)
-    this.failAll(new RpcError("Offline", copy("mobile_transport_disconnected")))
+    this.failAll(new RpcError("Offline", this.options.messages.disconnected))
   }
 
-  /** Sends `payload` once it can, and resolves with the desktop's answer. */
   call(method: string, payload: unknown): Promise<RpcEnvelope<unknown>> {
     return new Promise((resolve, reject) => {
       if (this.stopped || this.status === "unauthorized") {
-        reject(new RpcError("Offline", copy("mobile_transport_not_connected")))
+        reject(new RpcError("Offline", this.options.messages.notConnected))
         return
       }
       const call: PendingCall = {
@@ -215,14 +208,12 @@ export class Transport {
     })
   }
 
-  /** The network changed: the old TCP connection is likely dead even if it looks open, so start over now. */
   networkChanged() {
     if (this.stopped || this.status === "unauthorized") return
     if (!this.foreground) return this.onLinkLost()
     this.redial()
   }
 
-  /** Closes the background socket; foregrounding reconnects and reloads through the normal handshake. */
   setForeground(foreground: boolean) {
     if (this.foreground === foreground) return
     this.foreground = foreground
@@ -236,20 +227,15 @@ export class Transport {
     if (this.status === "offline") this.reconnectNow()
   }
 
-  /** Asks the desktop for the transcripts of `threadIds` only, from now and after every handshake. */
   setWatching(threadIds: readonly string[]) {
     this.watching = threadIds
     if (this.status === "connected") this.sendWatching()
   }
 
   private sendWatching() {
-    if (this.features.has("watch")) this.sendFrame({ type: "watch", threadIds: this.watching })
+    if (this.options.compact && this.features.has("watch")) this.sendFrame({ type: "watch", threadIds: this.watching })
   }
 
-  /**
-   * Dials `dials` from the next round on, keeping the current socket and every pending call. A link over the relay
-   * checks a new direct address at once, so a phone that just learned the desktop's LAN address moves to it.
-   */
   setDials(dials: NonEmptyReadonlyArray<Dial>) {
     const directUrls = (list: readonly Dial[]) =>
       list
@@ -261,7 +247,6 @@ export class Transport {
     if (newDirect && this.status === "connected" && this.checksDirect() && this.foreground) this.checkDirect()
   }
 
-  /** Skips the remaining backoff. */
   reconnectNow() {
     if (this.stopped || !this.foreground || this.status !== "offline") return
     clearTimeout(this.retryTimer)
@@ -278,7 +263,7 @@ export class Transport {
       if (this.socket === null) this.noneOpened()
       else if (!this.triedRelayInstead(this.route!)) this.onLinkLost()
     }, CONNECT_TIMEOUT_MS)
-    this.cancelRace = race(
+    this.cancelRace = raceToOpen(
       round === "both"
         ? this.dials
         : this.dials
@@ -290,7 +275,6 @@ export class Transport {
     )
   }
 
-  /** The direct address a check found is gone again, so the relay may answer instead, without waiting. */
   private noneOpened() {
     if (this.round !== "direct") return this.onLinkLost()
     this.dropSocket()
@@ -304,12 +288,10 @@ export class Transport {
     this.cancelRace = undefined
     this.socket = ws
     this.route = route
-    // A server that predates the challenge only gets the token where a stranger cannot be listening: over the relay,
-    // or on a pairing without one. A direct address of a pairing with a relay always runs a server that challenges.
     this.challengeTimer = setTimeout(() => {
       if (route === "relay" || !this.hasRelay()) {
         this.sentAuth = "token"
-        this.sendFrame({ type: "auth", token: this.options.token, compactEvents: true })
+        this.sendFrame({ type: "auth", token: this.options.token, ...this.compactEvents() })
       } else this.closed(CLOSE_UNAUTHORIZED, route)
     }, CHALLENGE_WAIT_MS)
     ws.onmessage = (message) => {
@@ -320,12 +302,6 @@ export class Transport {
     }
   }
 
-  /**
-   * Away from home, a stranger's HinaCode can answer at the same LAN address and refuse a token the machine still
-   * accepts, and after a network change a direct address can open and then never authenticate. Either way it wins
-   * every race against the relay, so a direct session that ends before `ready` leaves the next round to the relay,
-   * whose hostname is the machine's own.
-   */
   private triedRelayInstead(route: Dial["route"]) {
     if (route !== "direct" || this.status !== "connecting" || !this.hasRelay()) return false
     this.dropSocket()
@@ -338,13 +314,15 @@ export class Transport {
     if (code === CLOSE_UNAUTHORIZED || code === CLOSE_TOKEN_ROTATED) {
       this.dropSocket()
       this.unauthorized(
-        code === CLOSE_TOKEN_ROTATED
-          ? copy("mobile_transport_token_rotated")
-          : copy("mobile_transport_token_refused"),
+        code === CLOSE_TOKEN_ROTATED ? this.options.messages.tokenRotated : this.options.messages.tokenRefused,
       )
       return
     }
     this.onLinkLost()
+  }
+
+  private compactEvents() {
+    return this.options.compact ? { compactEvents: true } : {}
   }
 
   private hasRelay() {
@@ -361,11 +339,10 @@ export class Transport {
       type: "auth",
       nonce: clientNonce,
       proof: clientProof(token, serverNonce, clientNonce),
-      compactEvents: true,
+      ...this.compactEvents(),
     })
   }
 
-  /** Whether a `ready` came from a server that holds the token. One that only received the token itself cannot say. */
   private provesToken(proof: string | undefined) {
     return this.sentAuth === "token" || (this.sentAuth !== null && proof === this.sentAuth.expectedProof)
   }
@@ -411,12 +388,7 @@ export class Transport {
     clearTimeout(this.connectTimer)
     if (version !== REMOTE_PROTOCOL_VERSION) {
       this.dropSocket()
-      this.unauthorized(
-        copy("mobile_transport_protocol_mismatch", {
-          desktop: String(version),
-          app: String(REMOTE_PROTOCOL_VERSION),
-        }),
-      )
+      this.unauthorized(this.options.messages.protocolMismatch(version, REMOTE_PROTOCOL_VERSION))
       return
     }
     this.expireOfflineCalls()
@@ -497,12 +469,11 @@ export class Transport {
     this.cancelCheck?.()
   }
 
-  /** Opens the direct addresses without the token. When one answers, the relay link gives way to a direct round. */
   private checkDirect() {
     const direct = this.dials.filter((dial) => dial.route === "direct")
     if (direct.length === 0) return
     this.cancelCheck?.()
-    const cancelRace = race(
+    const cancelRace = raceToOpen(
       direct,
       this.createSocket,
       (ws) => {
@@ -529,10 +500,10 @@ export class Transport {
   private onLinkLost() {
     this.dropSocket()
     const now = Date.now()
-    for (const call of [...this.pending.values()]) {
+    for (const call of this.pending.values()) {
       if (call.unsafeToResend) {
         this.pending.delete(call.id)
-        call.reject(new RpcError("Offline", LOST_REPLY_MESSAGE))
+        call.reject(new RpcError("Offline", this.options.messages.lostReply))
       } else if (call.offlineSince === null) call.offlineSince = now
     }
     this.expireOfflineCalls()
@@ -572,7 +543,7 @@ export class Transport {
     clearTimeout(this.offlineTimer)
     const now = Date.now()
     let next = Infinity
-    for (const call of [...this.pending.values()]) {
+    for (const call of this.pending.values()) {
       if (call.offlineSince === null) continue
       const remaining = OFFLINE_LIMIT_MS - call.priorOfflineMs - (now - call.offlineSince)
       if (remaining > 0) {
@@ -581,7 +552,9 @@ export class Transport {
       }
       this.pending.delete(call.id)
       const mayHaveRun = call.sent && call.key !== undefined
-      call.reject(new RpcError("Timeout", mayHaveRun ? MAY_HAVE_RUN_MESSAGE : NOT_SENT_MESSAGE))
+      call.reject(
+        new RpcError("Timeout", mayHaveRun ? this.options.messages.mayHaveRun : this.options.messages.notSent),
+      )
     }
     if (next !== Infinity) this.offlineTimer = setTimeout(() => this.expireOfflineCalls(), next)
   }

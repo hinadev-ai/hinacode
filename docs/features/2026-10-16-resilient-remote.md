@@ -104,6 +104,17 @@ The phone's `Transport` takes one socket URL per host. It tries the last host th
 
 The QR code in Settings > Remote carries every reachable host, Tailscale first, and the page lists them instead of asking for one. `hinacode serve` prints that URL for phones and one single-host URL per address for desktops. A desktop environment keeps one host: `environments.add` probes every host at once and stores the earliest in URL order that answers, waiting at most a second for earlier hosts once a later one answered, so the phone's URL pairs a desktop too.
 
+## Transport
+
+`src/shared/transport.ts` is the phone's client, and the browser client reuses it. Each app passes its own error copy as `messages`. With `compact` on, `auth` asks for compact events and the client sends `watch` frames, so the server sends only the transcripts on screen. A client that renders full transcripts turns `compact` off and never sends `watch`.
+
+- A round races the dial plan. Every socket that loses the race closes before it sends a frame, so only the winner ever sees the token.
+- A server that predates the challenge gets the raw token only where a stranger cannot be listening: over the relay, or on a pairing without a relay. A direct address of a pairing with a relay always runs a server that challenges, so the client closes one that stays silent.
+- A `ready` must prove the token back, unless the client sent the raw token.
+- Away from home, a stranger's HinaCode can answer at the same LAN address and refuse a token the machine still accepts. After a network change, a direct address can open and never authenticate. Either way it wins every race against the relay, so a direct session that ends before `ready` leaves the next round to the relay alone, whose hostname is the machine's own.
+- While connected over the relay, the client opens the direct addresses without the token, at once when it learns a new one and then on an interval. When one opens, it redials the direct route alone. If that round opens nothing, it races the whole plan again without waiting.
+- In the background the client closes its socket and does not retry. Pending calls stay queued and keep counting toward the offline limit. Returning to the foreground reconnects at once through the normal handshake, which reloads the snapshots.
+
 ## Slices
 
 Each slice is one PR with its own check:
