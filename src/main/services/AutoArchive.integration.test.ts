@@ -5,6 +5,7 @@ import { dirname, join } from "node:path"
 import { afterAll, describe, expect, layer } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Deferred, Effect, Fiber, Layer } from "effect"
+import { SqlClient } from "effect/sql"
 import type { PushEvent } from "../../shared/contract.ts"
 import type { PullRequest, PullRequestDetail, PullRequestStatus, ThreadStatus } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
@@ -332,6 +333,31 @@ describe("worktree cleanup across threads", () => {
         yield* waitUntilBranchGone(root, "kk/conductor")
         yield* waitUntilBranchGone(root, "kk/worker")
         expect(localBranches(root)).toStrictEqual(["main"])
+      }),
+    )
+
+    it.effect("archives a finished thread whose worktree an open fork still uses, and the fork removes it later", () =>
+      Effect.gen(function* () {
+        yield* cleanupOn
+        const { projectId } = yield* project("shared")
+        const source = yield* worktreeThread(projectId, "kk/shared")
+        const fork = yield* Threads.use((threads) =>
+          threads.create({ projectId, title: "kk/shared (fork)", provider: "claude", model: "m" }),
+        )
+        const sql = yield* SqlClient.SqlClient
+        yield* sql`UPDATE thread SET worktree_id = (SELECT worktree_id FROM thread WHERE id = ${source.threadId}) WHERE id = ${fork.id}`
+        const url = yield* linkPullRequest(source, "kk/shared", "merged")
+
+        yield* sweep
+
+        expect(yield* statusOf(source.threadId)).toBe("archived")
+        expect(existsSync(source.path)).toBe(true)
+
+        yield* PullRequests.use((pullRequests) => pullRequests.link(fork.id, url))
+        yield* sweep
+
+        expect(yield* statusOf(fork.id)).toBe("archived")
+        yield* waitUntilGone(source.path)
       }),
     )
 
