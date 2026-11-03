@@ -73,7 +73,7 @@ import {
 } from "./errors.ts"
 import { Git, type CommandError } from "./Git.ts"
 import type { GitHubError, PullRequestUrlInvalidError } from "./GitHub.ts"
-import { Messages } from "./Messages.ts"
+import { Messages, type ToolCallRef } from "./Messages.ts"
 import { PullRequests } from "./PullRequests.ts"
 import { Scratch } from "./Scratch.ts"
 import { Settings } from "./Settings.ts"
@@ -204,7 +204,7 @@ export class AgentRunner extends Context.Service<
       value: string | null,
     ) => Effect.Effect<void, PersistenceError | NotFoundError | ThreadStartedError>
     readonly transcript: (threadId: string) => Effect.Effect<RpcResponse<"threads.transcript">, PersistenceError>
-    readonly toolOutput: (threadId: string, callId: string) => Effect.Effect<unknown, PersistenceError | NotFoundError>
+    readonly toolOutput: (call: ToolCallRef) => Effect.Effect<unknown, PersistenceError | NotFoundError>
     readonly listModels: (provider: ProviderId) => Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
     readonly limits: Effect.Effect<ReadonlyArray<AccountLimits>, PersistenceError>
     readonly usage: (
@@ -1491,16 +1491,16 @@ const make = Effect.gen(function* () {
           seq,
         }
       }).pipe(exclusive(threadId)),
-    toolOutput: (threadId, callId) => {
+    toolOutput: (call) => {
       const live = activeTurns
-        .get(threadId)
+        .get(call.threadId)
         ?.messages()
         .flatMap((message) => message.parts)
-        .find((part) => part.type === "tool_call" && part.callId === callId)
-      const persisted = messages.toolOutput(threadId, callId).pipe(
+        .find((part) => part.type === "tool_call" && part.callId === call.callId)
+      const persisted = messages.toolOutput(call).pipe(
         Effect.flatMap(
           Option.match({
-            onNone: () => Effect.fail(new NotFoundError({ entity: "tool call", id: callId })),
+            onNone: () => Effect.fail(new NotFoundError({ entity: "tool call", id: call.callId })),
             onSome: Effect.succeed,
           }),
         ),

@@ -1294,8 +1294,11 @@ describe("long tool outputs over rpc", () => {
       },
     ])
 
-    expect(result(await invoke("threads.toolOutput", { threadId: thread.id, callId: "long-1" }))).toBe(longOutput)
-    expect(failure(await invoke("threads.toolOutput", { threadId: thread.id, callId: "missing" })).tag).toBe(
+    const messageId = result(await invoke("threads.transcript", { threadId: thread.id })).messages.at(-1)?.id ?? ""
+    expect(result(await invoke("threads.toolOutput", { threadId: thread.id, messageId, callId: "long-1" }))).toBe(
+      longOutput,
+    )
+    expect(failure(await invoke("threads.toolOutput", { threadId: thread.id, messageId, callId: "missing" })).tag).toBe(
       "NotFoundError",
     )
   })

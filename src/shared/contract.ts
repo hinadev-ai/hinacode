@@ -434,7 +434,10 @@ export const RpcMethods = {
       seq: Schema.Number,
     }),
   ),
-  "threads.toolOutput": rpc(Schema.Struct({ threadId: Schema.String, callId: Schema.String }), Schema.Unknown),
+  "threads.toolOutput": rpc(
+    Schema.Struct({ threadId: Schema.String, messageId: Schema.String, callId: Schema.String }),
+    Schema.Unknown,
+  ),
   "threads.send": rpc(
     Schema.Struct({
       threadId: Schema.String,

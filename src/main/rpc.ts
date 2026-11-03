@@ -384,7 +384,7 @@ const handlers: Handlers = {
           : { ...transcript, ...transcriptPage(messages, page.before) }
       }),
     ),
-  "threads.toolOutput": ({ threadId, callId }) => AgentRunner.use((runner) => runner.toolOutput(threadId, callId)),
+  "threads.toolOutput": (input) => AgentRunner.use((runner) => runner.toolOutput(input)),
   "threads.send": ({ threadId, prompt, attachments = [], workspace }) =>
     Effect.gen(function* () {
       const remember = yield* rememberWorkspaceMode(threadId, workspace?.mode ?? "local")
