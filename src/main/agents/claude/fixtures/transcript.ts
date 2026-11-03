@@ -319,9 +319,31 @@ export const approvals = (): Array<MockStep> => [
         allowsText: true,
         secret: false,
       },
+      {
+        id: "checks",
+        header: "Checks",
+        question: "Which checks should run before the server starts?",
+        options: [
+          { label: "Typecheck", description: "" },
+          { label: "Lint", description: "" },
+          { label: "Unit tests", description: "Slower, about a minute" },
+        ],
+        multiSelect: true,
+        allowsText: false,
+        secret: false,
+      },
+      {
+        id: "branch",
+        header: "",
+        question: "What should the preview branch be called?",
+        options: [],
+        multiSelect: false,
+        allowsText: true,
+        secret: false,
+      },
     ],
   },
-  ...say("Thanks. The dev server will use that port.", 52_000),
+  ...say("Thanks. The dev server will use those settings.", 52_000),
 ]
 
 export const failure = (): Array<MockStep> => [
