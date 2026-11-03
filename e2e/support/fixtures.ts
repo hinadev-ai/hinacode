@@ -9,6 +9,7 @@ import { type HinacodeApp, spawnApp } from "./app.ts"
 import type { Listener } from "./listener.ts"
 import { rpc } from "./rpc.ts"
 import { Seed } from "./seed.ts"
+import { closeMachine, type Machine, type Relay, relayListing, serveWebApp, startMachine, startRelay } from "./web.ts"
 
 export interface Names {
   readonly of: (name: string) => string
@@ -28,6 +29,34 @@ export interface ChosenModel {
   label: string | null
 }
 
+export interface WebStack {
+  readonly appUrl: string
+  readonly relay: Relay
+  readonly machine: Machine
+}
+
+const createRepo = (path: string) => {
+  mkdirSync(path, { recursive: true })
+  writeFileSync(join(path, "README.md"), "# e2e\n")
+  writeFileSync(join(path, ".gitignore"), ".env\n")
+  writeFileSync(join(path, ".env"), "E2E_SECRET=from-root\n")
+  execFileSync("git", ["init", "-q", "-b", "main", path])
+  execFileSync("git", ["-C", path, "add", "README.md", ".gitignore"])
+  execFileSync("git", [
+    "-C",
+    path,
+    "-c",
+    "user.email=e2e@hinacode",
+    "-c",
+    "user.name=e2e",
+    "commit",
+    "-q",
+    "-m",
+    "init",
+  ])
+  return path
+}
+
 interface TestFixtures {
   readonly usageLimitApp: HinacodeApp
   readonly automaticResumeApp: HinacodeApp
@@ -42,11 +71,14 @@ interface TestFixtures {
   readonly agent: AgentState
   readonly webhook: WebhookState
   readonly chosenModel: ChosenModel
+  readonly web: WebStack
+  readonly webRepo: string
 }
 
 interface WorkerFixtures {
   readonly app: HinacodeApp
   readonly seed: Seed
+  readonly webStack: WebStack
 }
 
 // FIXME: react/rules-of-hooks mistakes Playwright's use callback for React's hook
@@ -129,28 +161,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     const suffix = randomBytes(3).toString("hex")
     await provide({ of: (name) => `${name}-${suffix}` })
   },
-  repo: async ({ app, names }, provide) => {
-    const path = join(app.userData, "repos", names.of("repo"))
-    mkdirSync(path, { recursive: true })
-    writeFileSync(join(path, "README.md"), "# e2e\n")
-    writeFileSync(join(path, ".gitignore"), ".env\n")
-    writeFileSync(join(path, ".env"), "E2E_SECRET=from-root\n")
-    execFileSync("git", ["init", "-q", "-b", "main", path])
-    execFileSync("git", ["-C", path, "add", "README.md", ".gitignore"])
-    execFileSync("git", [
-      "-C",
-      path,
-      "-c",
-      "user.email=e2e@hinacode",
-      "-c",
-      "user.name=e2e",
-      "commit",
-      "-q",
-      "-m",
-      "init",
-    ])
-    await provide(path)
-  },
+  repo: async ({ app, names }, provide) => provide(createRepo(join(app.userData, "repos", names.of("repo")))),
   projectIds: async ({}, provide) => provide(new Map()),
   threadIds: async ({}, provide) => provide(new Map()),
   listeners: async ({}, provide) => {
@@ -165,12 +176,39 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   agent: async ({}, provide) => provide({ connection: null, result: null }),
   webhook: async ({}, provide) => provide({ automations: new Map(), response: null }),
   chosenModel: async ({}, provide) => provide({ label: null }),
+  webStack: [
+    async ({}, provide) => {
+      const machine = await startMachine("E2E Studio")
+      const relay = await startRelay([relayListing(machine)], randomBytes(16).toString("hex"))
+      const webApp = await serveWebApp()
+      try {
+        await provide({ appUrl: webApp.url, relay, machine })
+      } finally {
+        await webApp.close()
+        await relay.close()
+        await closeMachine(machine)
+      }
+    },
+    { scope: "worker" },
+  ],
+  web: async ({ webStack }, provide) => {
+    await webStack.machine.start()
+    await provide(webStack)
+  },
+  webRepo: async ({ web, names }, provide) =>
+    provide(createRepo(join(web.machine.userData, "repos", names.of("repo")))),
 })
 /* oxlint-enable react/rules-of-hooks, no-empty-pattern */
 
 export const { Given, When, Then, AfterScenario } = createBdd(test)
 
-AfterScenario(async ({ app, $testInfo }) => {
+AfterScenario("@web", async ({ page, $testInfo }) => {
+  if ($testInfo.status !== $testInfo.expectedStatus) {
+    await $testInfo.attach("screenshot", { body: await page.screenshot(), contentType: "image/png" })
+  }
+})
+
+AfterScenario("not @web", async ({ app, $testInfo }) => {
   if ($testInfo.status !== $testInfo.expectedStatus) {
     await $testInfo.attach("screenshot", { body: await app.page.screenshot(), contentType: "image/png" })
   }

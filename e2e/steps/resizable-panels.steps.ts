@@ -13,7 +13,7 @@ const rememberStart = async (app: HinacodeApp) => {
   if (!startWidths.has(app)) startWidths.set(app, await widthOf(detailsView(app.page)))
 }
 
-AfterScenario(async ({ app }) => {
+AfterScenario("not @web", async ({ app }) => {
   startWidths.delete(app)
   await app.page.evaluate(() => {
     for (const key of Object.keys(localStorage)) if (key.endsWith("Width")) localStorage.removeItem(key)

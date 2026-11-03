@@ -44,7 +44,7 @@ export interface HinacodeApp {
   readonly close: () => Promise<void>
 }
 
-const freePort = () =>
+export const freePort = () =>
   new Promise<number>((done, fail) => {
     const server = createServer()
     server.listen(0, "127.0.0.1", () => {
@@ -84,10 +84,16 @@ const appEnv = (userData: string, options: SpawnAppOptions) => {
   }
 }
 
+const requireDisplay = () => {
+  if (process.platform === "darwin" || process.env.DISPLAY) return
+  throw new Error("No DISPLAY for Electron. Run under `xvfb-run -a pnpm test:e2e` or start `Xvfb :99`.")
+}
+
 const launch = async (
   userData: string,
   options: SpawnAppOptions,
 ): Promise<{ app: ElectronApplication; page: Page } & StartupAppearance> => {
+  requireDisplay()
   const app = await electron.launch({ executablePath, args: appArgs, cwd: projectRoot, env: appEnv(userData, options) })
   await app.evaluate(
     ({ app: electronApp, BrowserWindow }) =>

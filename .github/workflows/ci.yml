@@ -40,7 +40,6 @@ jobs:
             desktop:
               - *app
               - '!apps/mobile/**'
-              - '!apps/web/**'
               - '!tools/**'
               - '!scripts/**'
               - '!**/*.test.ts'
@@ -244,6 +243,8 @@ jobs:
       # Without a window manager, minimizing a window does nothing. Search runs ripgrep.
       - run: sudo apt-get update && sudo apt-get install --yes xvfb openbox ripgrep
       - run: pnpm install --frozen-lockfile
+      # The web app scenarios drive Playwright's own Chromium.
+      - run: pnpm exec playwright install chromium
       - run: pnpm exec bddgen -c e2e/playwright.config.ts
       # A shard runs every test of the projects its tests depend on, so desktop runs as its own pass instead.
       - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm exec playwright test -c e2e/playwright.config.ts --project parallel --shard ${{ matrix.shard }}/4'
