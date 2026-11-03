@@ -13,11 +13,17 @@ const MessageRow = Schema.Struct({
   forkPoint: Schema.NullOr(Schema.fromJsonString(ForkPoint)),
 })
 
+export interface ToolCallRef {
+  readonly threadId: string
+  readonly messageId: string
+  readonly callId: string
+}
+
 export class Messages extends Context.Service<
   Messages,
   {
     readonly list: (threadId: string) => Effect.Effect<ReadonlyArray<Message>, PersistenceError>
-    readonly toolOutput: (threadId: string, callId: string) => Effect.Effect<Option.Option<unknown>, PersistenceError>
+    readonly toolOutput: (call: ToolCallRef) => Effect.Effect<Option.Option<unknown>, PersistenceError>
     readonly insert: (message: Message) => Effect.Effect<void, PersistenceError>
     readonly update: (
       message: Message,
@@ -48,12 +54,13 @@ const make = Effect.gen(function* () {
   })
 
   const findToolOutput = SqlSchema.findOneOption({
-    Request: Schema.Struct({ threadId: Schema.String, callId: Schema.String }),
+    Request: Schema.Struct({ threadId: Schema.String, messageId: Schema.String, callId: Schema.String }),
     Result: Schema.Struct({ output: Schema.fromJsonString(Schema.Unknown) }),
-    execute: ({ threadId, callId }) => sql`
+    execute: ({ threadId, messageId, callId }) => sql`
       SELECT part.value -> '$.output' AS output
       FROM message, json_each(message.parts) AS part
-      WHERE message.thread_id = ${threadId}
+      WHERE message.id = ${messageId}
+        AND message.thread_id = ${threadId}
         AND json_extract(part.value, '$.type') = 'tool_call'
         AND json_extract(part.value, '$.callId') = ${callId}
         AND part.value -> '$.output' IS NOT NULL
@@ -153,8 +160,8 @@ const make = Effect.gen(function* () {
 
   return Messages.of({
     list: (threadId) => findByThread(threadId).pipe(Effect.mapError(persistence("messages.list"))),
-    toolOutput: (threadId, callId) =>
-      findToolOutput({ threadId, callId }).pipe(
+    toolOutput: (call) =>
+      findToolOutput(call).pipe(
         Effect.map(Option.map((row) => row.output)),
         Effect.mapError(persistence("messages.toolOutput")),
       ),

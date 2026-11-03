@@ -161,7 +161,36 @@ describe("Messages.toolOutput", () => {
         const messages = yield* Messages.Messages
         const message = yield* openTurn([{ ...runningCall, status: "done", output: "done" }])
 
-        expect(yield* messages.toolOutput(message.threadId, "c1")).toStrictEqual(Option.some("done"))
+        expect(
+          yield* messages.toolOutput({ threadId: message.threadId, messageId: message.id, callId: "c1" }),
+        ).toStrictEqual(Option.some("done"))
+      }),
+    ),
+  )
+
+  it.effect("reads the output from the message that holds the call", () =>
+    withMessages(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient
+        const threadId = yield* threadWithTurn("idle", "2026-10-31T00:00:00.000Z")
+        const other = yield* threadWithTurn("idle", "2026-10-31T00:00:00.000Z")
+        const finishedCall: MessagePart = { ...runningCall, status: "done", output: "full output" }
+        yield* sql`INSERT INTO message ${sql.insert({
+          id: `${threadId}-later`,
+          threadId,
+          role: "assistant",
+          parts: JSON.stringify([{ type: "text", text: "done" }, finishedCall]),
+          createdAt: "2026-10-31T00:00:01.000Z",
+          completedAt: "2026-10-31T00:00:02.000Z",
+        })}`
+        const messages = yield* Messages.Messages
+        const toolOutput = (call: Partial<Messages.ToolCallRef>) =>
+          messages.toolOutput({ threadId, messageId: `${threadId}-later`, callId: "c1", ...call })
+
+        expect(yield* toolOutput({})).toStrictEqual(Option.some("full output"))
+        expect(yield* toolOutput({ messageId: `${threadId}-turn` })).toStrictEqual(Option.none())
+        expect(yield* toolOutput({ threadId: other })).toStrictEqual(Option.none())
+        expect(yield* toolOutput({ callId: "missing" })).toStrictEqual(Option.none())
       }),
     ),
   )
