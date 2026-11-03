@@ -1177,3 +1177,23 @@ it("keeps a scheduled message that failed to send, with the reason, until it is 
     expect((await Effect.runPromise(threads.get(thread.id))).scheduled).toStrictEqual([])
   })
 })
+
+it("keeps a scheduled message stored until its turn starts, and sends it once", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, waiting, turns }) => {
+    await Effect.runPromise(
+      runner.schedule({ threadId: thread.id, text: "keep this", attachments: [], sendAt: overdue }),
+    )
+    const delivery = Effect.runPromise(runner.sendDueSchedules)
+    await waiting
+
+    expect((await Effect.runPromise(threads.get(thread.id))).scheduled.map((message) => message.text)).toEqual([
+      "keep this",
+    ])
+
+    release()
+    await delivery
+    await vi.waitFor(() => expect(turns.map((turn) => turn.input.prompt)).toEqual(["keep this"]))
+    expect((await Effect.runPromise(threads.get(thread.id))).scheduled).toStrictEqual([])
+    await Effect.runPromise(runner.interrupt(thread.id))
+  })
+})
