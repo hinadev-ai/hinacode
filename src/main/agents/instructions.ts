@@ -1,5 +1,8 @@
 import type { ExperimentalSettings } from "../../shared/domain.ts"
+import type { ModelInfo } from "../../shared/agent.ts"
+import { providerInfo } from "../../shared/providers.ts"
 import { threadMention } from "../../shared/threadMention.ts"
+import type { SubagentChoice } from "./runAgent.ts"
 
 // FIXME: Claude Code defers MCP tools, so agents see only their names until they load one
 export const AGENT_INSTRUCTIONS = `<hinacode>
@@ -107,10 +110,34 @@ const environmentInstructions = ({
   scratch directory: \`${scratchDirectory}\`
 </environment>`
 
-export const agentInstructions = (experimental: ExperimentalSettings, environment: AgentEnvironment): string =>
+const modelLine = ({ id, label, efforts }: ModelInfo) =>
+  `  - \`${id}\`${label === id ? "" : ` (${label})`}${efforts.length === 0 ? "" : `, effort: ${efforts.join(", ")}`}`
+
+const choiceLines = (choice: SubagentChoice) => {
+  const { name } = providerInfo[choice.provider]
+  if (choice.kind === "unpicked") {
+    return [
+      `- \`${choice.provider}\` (${name}): the user has not picked any models for sub-agents. When they ask for one, tell them to pick models in Settings, Providers, ${name}, Models in the picker.`,
+    ]
+  }
+  return [`- \`${choice.provider}\` (${name}):`, ...choice.models.map(modelLine)]
+}
+
+const agentsInstructions = (choices: ReadonlyArray<SubagentChoice>) => `<agents>
+The hinacode \`run_agent\` tool runs a sub-agent on any provider below. Pass \`provider\`, \`model\` and \`effort\` exactly as listed. When the user names a model loosely, such as by its label or version, pick the closest listed id.
+
+${choices.flatMap(choiceLines).join("\n")}
+</agents>`
+
+export const agentInstructions = (
+  experimental: ExperimentalSettings,
+  environment: AgentEnvironment,
+  subagents: ReadonlyArray<SubagentChoice>,
+): string =>
   [
     AGENT_INSTRUCTIONS,
     environmentInstructions(environment),
+    ...(subagents.length === 0 ? [] : [agentsInstructions(subagents)]),
     ...(experimental.tinyVm
       ? [
           experimental.tinyVmProvider === "boat"
