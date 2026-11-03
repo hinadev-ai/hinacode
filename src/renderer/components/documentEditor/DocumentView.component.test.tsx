@@ -113,6 +113,9 @@ const openDocument = async () => {
   return editor
 }
 
+const mod = /Mac/.test(navigator.platform) ? "Meta" : "Control"
+const withMod = (event: KeyboardEvent) => (mod === "Meta" ? event.metaKey : event.ctrlKey)
+
 const typeAtEnd = async (text: string) => {
   await page.getByText(/^Ship the/).click()
   await userEvent.keyboard("{End}")
@@ -193,14 +196,14 @@ test("keeps the editor's own shortcuts from reaching the app's", async () => {
   await openDocument()
   const reached: Array<string> = []
   const listener = (event: KeyboardEvent) => {
-    if (event.metaKey && event.key !== "Meta") reached.push(event.key)
+    if (withMod(event) && event.key !== mod) reached.push(event.key)
   }
   document.addEventListener("keydown", listener)
   onTestFinished(() => document.removeEventListener("keydown", listener))
 
   await page.getByText(/^Ship the/).click()
-  await userEvent.keyboard("{Meta>}b{/Meta}")
-  await userEvent.keyboard("{Meta>}p{/Meta}")
+  await userEvent.keyboard(`{${mod}>}b{/${mod}}`)
+  await userEvent.keyboard(`{${mod}>}p{/${mod}}`)
 
   expect(reached).toEqual(["p"])
 })
@@ -248,7 +251,7 @@ test("links the selected text with Cmd+K", async () => {
   await openDocument()
   await page.getByText(/^Ship the/).click()
   await userEvent.keyboard("{End}{Shift>}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{/Shift}")
-  await userEvent.keyboard("{Meta>}k{/Meta}")
+  await userEvent.keyboard(`{${mod}>}k{/${mod}}`)
 
   const address = page.getByRole("textbox", { name: "Link", exact: true })
   await expect.element(address).toHaveFocus()
