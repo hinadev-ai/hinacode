@@ -680,7 +680,12 @@ const make = Effect.gen(function* () {
         const thread = yield* get(id)
         if (isThreadBusy(thread.status)) return yield* new ThreadBusyError({ id })
         if ((yield* settings.get).archive.removeWorktree && thread.worktreeId) {
-          yield* worktrees.removeWhileExclusive(thread.worktreeId, "ifMerged", id)
+          yield* worktrees.removeWhileExclusive(thread.worktreeId, "ifMerged", id).pipe(
+            Effect.catchIf(
+              (error) => error._tag === "WorktreeBusyError" && error.reason === "shared",
+              () => Effect.void,
+            ),
+          )
         }
         yield* terminals.closeThread(id)
         yield* sql`
