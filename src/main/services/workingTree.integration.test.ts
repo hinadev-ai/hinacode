@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process"
-import { mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { describe, expect, it } from "@effect/vitest"
-import { Effect, FileSystem, Layer } from "effect"
+import { Effect, Fiber, FileSystem, Layer } from "effect"
 import { SpanLedger, traceLayer } from "../trace.ts"
 import * as Git from "./Git.ts"
 import { diffWorkingTree, snapshotWorkingTree } from "./workingTree.ts"
@@ -159,4 +159,26 @@ describe("diffWorkingTree", () => {
       trace,
     ).pipe(Effect.ensuring(Effect.sync(() => rmSync(traceDir, { recursive: true, force: true }))))
   })
+
+  it.live("never hands a request a snapshot that started before it", () =>
+    withRepo((root) =>
+      Effect.gen(function* () {
+        writeFileSync(join(root, "kept.txt"), "before\n")
+        commitAll(root)
+        const base = yield* snapshotWorkingTree(root)
+        const started = join(root, ".git", "snapshot-started")
+        git(root, "config", "filter.slow.clean", `touch '${started}'; sleep 1; cat`)
+        writeFileSync(join(root, ".git", "info", "attributes"), "kept.txt filter=slow\n")
+        writeFileSync(join(root, "kept.txt"), "during\n")
+
+        const first = yield* Effect.forkChild(diffWorkingTree(root, Effect.succeed(base)))
+        while (!existsSync(started)) yield* Effect.sleep("10 millis")
+        writeFileSync(join(root, "late.txt"), "late\n")
+        const second = yield* diffWorkingTree(root, Effect.succeed(base))
+        yield* Fiber.join(first)
+
+        expect(second.files.map((file) => file.path)).toContain("late.txt")
+      }),
+    ),
+  )
 })
