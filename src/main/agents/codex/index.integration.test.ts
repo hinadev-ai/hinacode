@@ -36,6 +36,7 @@ type Control = {
   postedQuestions?: Array<import("./protocol.ts").AsyncUserInputQuestion>
   cancelQuestion?: boolean
   accountFromHome?: boolean
+  unauthorized?: boolean
   subagent?: boolean
   subagentPending?: boolean
   finishSubagent?: boolean
@@ -425,6 +426,23 @@ describe("Codex token usage", () => {
           type: "turn_completed",
           usage: { inputTokens: 3200, outputTokens: 80, context: { usedTokens: 2230, maxTokens: 258400 } },
           forkPoint: { sessionId: "codex-thread", checkpoint: "turn-1" },
+        })
+      }),
+    ),
+  )
+})
+
+describe("Codex sign-in", () => {
+  it.live("tells the developer which command signs the account back in", () =>
+    withProvider(
+      Effect.gen(function* () {
+        setControl({ unauthorized: true })
+        const turn = yield* startTurn("thread-a", { dir: "/tmp/codex work", binary: "codex" })
+        yield* finishesSoon(turn.fiber)
+        expect(turn.events.at(-1)).toStrictEqual({
+          type: "turn_failed",
+          message: "Your access token could not be refreshed",
+          loginCommand: "CODEX_HOME='/tmp/codex work' codex login",
         })
       }),
     ),

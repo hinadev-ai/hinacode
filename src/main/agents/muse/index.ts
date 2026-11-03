@@ -841,6 +841,7 @@ const make = Effect.gen(function* () {
           yield* emit({
             type: "turn_failed",
             message: params.error?.message ?? params.reason ?? `Turn ${params.terminal}`,
+            ...(params.error?.kind === "authRequired" && { loginCommand: "muse login" }),
           })
         })
 
