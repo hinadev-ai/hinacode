@@ -15,17 +15,19 @@ import { DetailsView } from "./DetailsView.tsx"
 import { SidechatHeader, SidechatView } from "./SidechatView.tsx"
 import { AgentsView, PullRequestsView } from "./SimpleViews.tsx"
 import { PullRequestsHeader, useLinkedPullRequestsLabel } from "../ThreadPullRequests.tsx"
-import { BranchIcon } from "../icons/BranchIcon.tsx"
-import { ChatsIcon } from "../icons/ChatsIcon.tsx"
-import { ComputerIcon } from "../icons/ComputerIcon.tsx"
-import { FileDiffIcon } from "../icons/FileDiffIcon.tsx"
-import { FilesIcon } from "../icons/FilesIcon.tsx"
-import { GlobeIcon } from "../icons/GlobeIcon.tsx"
-import type { IconComponent } from "../icons/Icon.tsx"
-import { InfoIcon } from "../icons/InfoIcon.tsx"
-import { LayoutIcon } from "../icons/LayoutIcon.tsx"
-import { PhoneIcon } from "../icons/PhoneIcon.tsx"
-import { RobotIcon } from "../icons/RobotIcon.tsx"
+import {
+  BranchIcon,
+  ChatsIcon,
+  ComputerIcon,
+  FileDiffIcon,
+  FilesIcon,
+  GlobeIcon,
+  type IconComponent,
+  InfoIcon,
+  LayoutIcon,
+  PhoneIcon,
+  RobotIcon,
+} from "@hinacode/icons"
 
 const FilesView = lazy(() => import("./FilesView.tsx").then((module) => ({ default: module.FilesView })))
 const ChangesView = lazy(() => import("./ChangesView.tsx").then((module) => ({ default: module.ChangesView })))

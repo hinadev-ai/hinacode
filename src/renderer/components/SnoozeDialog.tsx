@@ -7,8 +7,7 @@ import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
-import { AlarmIcon } from "./icons/AlarmIcon.tsx"
-import { SnoozeIcon } from "./icons/SnoozeIcon.tsx"
+import { AlarmIcon, SnoozeIcon } from "@hinacode/icons"
 import { TimePickerDialog } from "./TimePickerDialog.tsx"
 
 export async function snoozeThread(thread: Thread, until: Date | null) {

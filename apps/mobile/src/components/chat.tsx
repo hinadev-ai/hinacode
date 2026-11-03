@@ -291,7 +291,7 @@ function WorkedFor({
     >
       {text}
       <Rotate turned={expanded}>
-        <Icon name="RiArrowRightSLine" size={14} color={theme.textMuted} />
+        <Icon name="ChevronRight" size={14} color={theme.textMuted} />
       </Rotate>
     </Pressable>
   )
@@ -313,7 +313,7 @@ function PartView({ part, threadId }: { part: MessagePart; threadId: string }) {
       const summary = toolSummary(part.input)?.line
       return (
         <View style={[styles.tool, { borderColor: theme.border }]}>
-          <Icon name="RiToolsLine" size={14} color={theme.textMuted} />
+          <Icon name="Tools" size={14} color={theme.textMuted} />
           <Text style={[styles.toolName, { color: theme.text }]}>
             {part.name}
             {summary && <Text style={{ color: theme.textMuted }}> {summary}</Text>}
@@ -325,7 +325,7 @@ function PartView({ part, threadId }: { part: MessagePart; threadId: string }) {
     case "file_change":
       return (
         <View style={styles.fileChange}>
-          <Icon name="RiPencilLine" size={14} color={theme.textMuted} />
+          <Icon name="Pencil" size={14} color={theme.textMuted} />
           <Text style={[styles.toolName, { color: theme.textMuted }]}>
             {copy("mobile_chat_edited", { path: part.path })}
           </Text>
@@ -370,9 +370,9 @@ const compactionCopy = {
 } as const satisfies Record<Compaction["status"], CopyKey>
 
 const toolStatus = {
-  running: { label: "mobile_chat_tool_running", tone: "running", icon: "RiLoader4Line" },
-  error: { label: "mobile_chat_tool_failed", tone: "danger", icon: "RiErrorWarningLine" },
-  done: { label: "mobile_chat_tool_done", tone: "neutral", icon: "RiCheckLine" },
+  running: { label: "mobile_chat_tool_running", tone: "running", icon: "Spinner" },
+  error: { label: "mobile_chat_tool_failed", tone: "danger", icon: "Warning" },
+  done: { label: "mobile_chat_tool_done", tone: "neutral", icon: "Check" },
 } as const satisfies Record<ToolCallStatus, { label: CopyKey; tone: "running" | "danger" | "neutral"; icon: IconName }>
 
 function ToolStatus({ status }: { status: ToolCallStatus }) {
@@ -400,7 +400,7 @@ function Reasoning({ text }: { text: string }) {
         style={styles.disclosure}
       >
         <Rotate turned={open}>
-          <Icon name="RiArrowRightSLine" size={16} color={theme.textMuted} />
+          <Icon name="ChevronRight" size={16} color={theme.textMuted} />
         </Rotate>
         <Text style={{ color: theme.textMuted, fontSize: 13 }}>
           {copy(open ? "mobile_chat_hide_reasoning" : "mobile_chat_reasoning")}
@@ -529,7 +529,7 @@ function UsageLimitCallout({ thread, limit }: { thread: Thread; limit: UsageLimi
         style={[styles.card, { borderColor: theme.attention, backgroundColor: theme.attentionBg }]}
       >
         <View style={styles.cardHeading}>
-          <Icon name="RiErrorWarningLine" size={16} color={theme.attention} />
+          <Icon name="Warning" size={16} color={theme.attention} />
           <Text
             accessibilityRole="header"
             {...subheading}
@@ -637,7 +637,7 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
                         <Text style={{ color: theme.textMuted, fontSize: 13 }}>{option.description}</Text>
                       )}
                     </View>
-                    {selected && <Icon name="RiCheckLine" size={18} color={theme.text} />}
+                    {selected && <Icon name="Check" size={18} color={theme.text} />}
                   </Pressable>
                 )
               })}

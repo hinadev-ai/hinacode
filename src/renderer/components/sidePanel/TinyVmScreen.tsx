@@ -8,8 +8,7 @@ import { VncChannel } from "../../lib/vncChannel.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
 import { HAND_BACK_CHORD, Spinner, vmScreenId } from "./TinyVmView.tsx"
-import { FullscreenExitIcon } from "../icons/FullscreenExitIcon.tsx"
-import { UploadIcon } from "../icons/UploadIcon.tsx"
+import { FullscreenExitIcon, UploadIcon } from "@hinacode/icons"
 
 type Connection = "connecting" | "connected" | "lost"
 

@@ -2,11 +2,7 @@ import type { CSSProperties } from "react"
 import { RiCloseLine } from "react-icons/ri"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { m } from "@/paraglide/messages.js"
-import { AlertIcon } from "../icons/AlertIcon.tsx"
-import { CheckCircleIcon } from "../icons/CheckCircleIcon.tsx"
-import { InfoIcon } from "../icons/InfoIcon.tsx"
-import { SpinnerIcon } from "../icons/SpinnerIcon.tsx"
-import { XCircleIcon } from "../icons/XCircleIcon.tsx"
+import { AlertIcon, CheckCircleIcon, InfoIcon, SpinnerIcon, XCircleIcon } from "@hinacode/icons"
 
 const Toaster = (props: ToasterProps) => (
   <Sonner

@@ -168,7 +168,7 @@ function FolderBrowser({ root, threadId }: { root: string; threadId: string }) {
             data={shown.value}
             keyExtractor={(entry) => entry.path}
             renderItem={({ item }) => <EntryRow entry={item} onPress={() => open(item)} />}
-            ListEmptyComponent={<EmptyState icon="RiFolderOpenLine" title={copy("mobile_files_empty_folder")} />}
+            ListEmptyComponent={<EmptyState icon="FolderOpen" title={copy("mobile_files_empty_folder")} />}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={reload} tintColor={theme.textMuted} />}
             contentContainerStyle={styles.listContent}
             keyboardShouldPersistTaps="handled"
@@ -207,7 +207,7 @@ function Breadcrumbs({
         const name = depth === 0 ? rootName : basename(path)
         return (
           <View key={path} style={styles.crumbItem}>
-            {depth > 0 && <Icon name="RiArrowRightSLine" size={14} color={theme.textMuted} />}
+            {depth > 0 && <Icon name="ChevronRight" size={14} color={theme.textMuted} />}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={name}
@@ -257,7 +257,7 @@ function EntryRow({ entry, onPress }: { entry: FsEntry; onPress: () => void }) {
           {statusLetter[entry.gitStatus]}
         </Text>
       )}
-      {folder && <Icon name="RiArrowRightSLine" size={18} color={theme.textMuted} />}
+      {folder && <Icon name="ChevronRight" size={18} color={theme.textMuted} />}
     </Pressable>
   )
 }
@@ -304,7 +304,7 @@ function PathSearch({
             onPress={onSearchContents}
             style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.surface }]}
           >
-            <Icon name="RiSearchLine" size={18} color={theme.link} />
+            <Icon name="Search" size={18} color={theme.link} />
             <Text numberOfLines={1} style={[styles.rowName, { color: theme.link }]}>
               {copy("mobile_files_search_contents", { query })}
             </Text>
@@ -482,7 +482,7 @@ export function Failure({ message, onRetry }: { message: string; onRetry: () => 
   return (
     <View style={[styles.padded, styles.failure]}>
       <Notice text={message} tone="danger" />
-      <Button label={copy("mobile_files_retry")} icon="RiRefreshLine" onPress={onRetry} style={styles.retry} />
+      <Button label={copy("mobile_files_retry")} icon="Refresh" onPress={onRetry} style={styles.retry} />
     </View>
   )
 }

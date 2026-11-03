@@ -6,7 +6,7 @@ import { cn } from "cn"
 
 import { m } from "@/paraglide/messages.js"
 import { Button } from "@/components/ui/button"
-import { CloseIcon } from "../icons/CloseIcon.tsx"
+import { CloseIcon } from "@hinacode/icons"
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />

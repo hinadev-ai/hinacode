@@ -93,7 +93,7 @@ function filterRefs({ branches, pullRequests }: Refs, query: string) {
  * worktree forked from a branch or checked out from a pull request. Shown until the first message.
  */
 const refIcon = (ref: string) =>
-  ref === "" ? "RiFolderLine" : parsePullRequestSelector(ref) ? "RiGitPullRequestLine" : "RiGitBranchLine"
+  ref === "" ? "Folder" : parsePullRequestSelector(ref) ? "RiGitPullRequestLine" : "Branch"
 
 export function WorkspaceChip({ thread, onError }: { thread: Thread; onError: (message: string) => void }) {
   const theme = useTheme()
@@ -175,14 +175,14 @@ function WorkspaceSheet({
       <Section title={copy("mobile_workspace_run_in")}>
         <OptionRow
           label={copy("mobile_workspace_project_root")}
-          icon="RiFolderLine"
+          icon="Folder"
           hint={copy("mobile_workspace_project_root_hint")}
           selected={workspace.mode === "local"}
           onPress={() => workspace.mode !== "local" && setWorkspace(null)}
         />
         <OptionRow
           label={copy("mobile_workspace_new_worktree")}
-          icon="RiGitBranchLine"
+          icon="Branch"
           hint={copy("mobile_workspace_new_worktree_hint")}
           selected={workspace.mode === "worktree"}
           onPress={() =>
@@ -214,7 +214,7 @@ function WorkspaceSheet({
             <OptionRow
               key={branch}
               label={branch}
-              icon="RiGitBranchLine"
+              icon="Branch"
               monospace
               selected={workspace.ref.trim() === branch}
               onPress={() => pick(branch)}

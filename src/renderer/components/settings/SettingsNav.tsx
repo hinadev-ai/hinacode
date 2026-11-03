@@ -8,18 +8,20 @@ import { ResizeHandle } from "../ResizeHandle.tsx"
 import { Button } from "../ui/button.tsx"
 import { Input } from "../ui/input.tsx"
 import { ScrollArea } from "../ui/scroll-area.tsx"
-import { ArrowLeftIcon } from "../icons/ArrowLeftIcon.tsx"
-import { BellIcon } from "../icons/BellIcon.tsx"
-import { BoltIcon } from "../icons/BoltIcon.tsx"
-import { BranchIcon } from "../icons/BranchIcon.tsx"
-import { CpuIcon } from "../icons/CpuIcon.tsx"
-import { FlaskIcon } from "../icons/FlaskIcon.tsx"
-import type { IconComponent } from "../icons/Icon.tsx"
-import { KeyboardIcon } from "../icons/KeyboardIcon.tsx"
-import { PaletteIcon } from "../icons/PaletteIcon.tsx"
-import { PlugIcon } from "../icons/PlugIcon.tsx"
-import { ServerIcon } from "../icons/ServerIcon.tsx"
-import { SettingsIcon } from "../icons/SettingsIcon.tsx"
+import {
+  ArrowLeftIcon,
+  BellIcon,
+  BoltIcon,
+  BranchIcon,
+  CpuIcon,
+  FlaskIcon,
+  type IconComponent,
+  KeyboardIcon,
+  PaletteIcon,
+  PlugIcon,
+  ServerIcon,
+  SettingsIcon,
+} from "@hinacode/icons"
 
 export interface SettingsPage {
   readonly id: string

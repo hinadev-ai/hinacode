@@ -28,10 +28,7 @@ import {
 } from "./ui/popover.tsx"
 import { Skeleton } from "./ui/skeleton.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
-import { CloudIcon } from "./icons/CloudIcon.tsx"
-import { CloudOffIcon } from "./icons/CloudOffIcon.tsx"
-import { ComputerIcon } from "./icons/ComputerIcon.tsx"
-import { GaugeIcon } from "./icons/GaugeIcon.tsx"
+import { CloudIcon, CloudOffIcon, ComputerIcon, GaugeIcon } from "@hinacode/icons"
 
 const WINDOW_MS = 10 * 60 * 1000
 const HOT = 0.9

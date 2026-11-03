@@ -14,7 +14,7 @@ import { returnFocus } from "../stores/ui.ts"
 import { ChordKeys } from "./ChordKeys.tsx"
 import { CloudMark } from "./CloudMark.tsx"
 import { Dialog, DialogOverlay, DialogPortal } from "./ui/dialog.tsx"
-import { SearchIcon } from "./icons/SearchIcon.tsx"
+import { SearchIcon } from "@hinacode/icons"
 
 type SourceResult = ReturnType<PaletteSource["items"]>
 

@@ -8,10 +8,7 @@ import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
 import { partMatchSelector } from "./FindHighlight.tsx"
 import { Button } from "./ui/button.tsx"
-import { ChevronDownIcon } from "./icons/ChevronDownIcon.tsx"
-import { ChevronUpIcon } from "./icons/ChevronUpIcon.tsx"
-import { CloseIcon } from "./icons/CloseIcon.tsx"
-import { SearchIcon } from "./icons/SearchIcon.tsx"
+import { ChevronDownIcon, ChevronUpIcon, CloseIcon, SearchIcon } from "@hinacode/icons"
 
 const MOUNT_WAIT_FRAMES = 10
 

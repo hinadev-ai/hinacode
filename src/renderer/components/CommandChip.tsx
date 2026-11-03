@@ -1,7 +1,6 @@
 import type { ReactNode } from "react"
 import type { AgentCommand } from "../../shared/agent.ts"
-import { SkillIcon, skillIconShape } from "./icons/SkillIcon.tsx"
-import { SlashIcon, slashIconShape } from "./icons/SlashIcon.tsx"
+import { SkillIcon, skillIconShape, SlashIcon, slashIconShape } from "@hinacode/icons"
 
 export const commandChipClass =
   "inline-flex items-baseline gap-1 rounded-md bg-syntax-token/12 px-1.5 font-medium whitespace-nowrap text-syntax-token"

@@ -1,8 +1,7 @@
 import * as React from "react"
 import { Menu as MenuPrimitive } from "@base-ui/react/menu"
 import { cn } from "cn"
-import { CheckIcon } from "../icons/CheckIcon.tsx"
-import { ChevronRightIcon } from "../icons/ChevronRightIcon.tsx"
+import { CheckIcon, ChevronRightIcon } from "@hinacode/icons"
 
 function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
   return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />

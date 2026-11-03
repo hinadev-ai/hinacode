@@ -23,10 +23,8 @@ import { usePullRequestSearch } from "../lib/usePullRequestSearch.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { ProviderIcon } from "./ProviderIcon.tsx"
-import { SkillIcon } from "./icons/SkillIcon.tsx"
+import { FileIcon, SkillIcon, SlashIcon } from "@hinacode/icons"
 import { StatusIcon } from "./ThreadPullRequests.tsx"
-import { FileIcon } from "./icons/FileIcon.tsx"
-import { SlashIcon } from "./icons/SlashIcon.tsx"
 
 const scrollIntoViewNearest = (option: HTMLElement | null) => option?.scrollIntoView({ block: "nearest" })
 

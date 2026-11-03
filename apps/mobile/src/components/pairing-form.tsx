@@ -50,7 +50,7 @@ export function PairingForm({
       keyboardShouldPersistTaps="handled"
     >
       <View style={[styles.mark, { backgroundColor: theme.primary }]}>
-        <Icon name="RiSmartphoneLine" size={28} color={theme.onPrimary} />
+        <Icon name="Phone" size={28} color={theme.onPrimary} />
       </View>
       <Text style={[styles.lead, { color: theme.textMuted }]}>
         {copy("mobile_pairing_lead")}
@@ -139,14 +139,14 @@ function Scanner({ onClose, onScan }: { onClose: () => void; onScan: (data: stri
           />
         ) : (
           <View style={styles.permission}>
-            <Icon name="RiCameraLine" size={28} color={theme.textMuted} />
+            <Icon name="Camera" size={28} color={theme.textMuted} />
             <Text style={{ color: theme.text, fontSize: 16, textAlign: "center" }}>
               {copy("mobile_pairing_camera_needed")}
             </Text>
             <Button label={copy("mobile_pairing_allow_camera")} variant="primary" onPress={() => void requestPermission()} />
           </View>
         )}
-        <Button label={copy("mobile_pairing_cancel")} icon="RiCloseLine" onPress={onClose} style={styles.cancel} />
+        <Button label={copy("mobile_pairing_cancel")} icon="Close" onPress={onClose} style={styles.cancel} />
       </SafeAreaView>
     </Modal>
   )
