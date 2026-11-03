@@ -8,6 +8,7 @@ const byTag: Readonly<Record<string, (detail: string) => string>> = {
   PersistenceError: () => m.error_persistence(),
   ProjectPathTakenError: () => m.error_project_path_taken(),
   ProjectRootInvalidError: () => m.error_project_root_invalid(),
+  ProjectInWslError: () => m.error_project_in_wsl(),
   ProjectFolderNotEmptyError: () => m.error_project_folder_not_empty(),
   PullRequestUrlInvalidError: () => m.error_pull_request_url_invalid(),
   PullRequestDiffTooLargeError: () => m.error_pull_request_diff_too_large(),

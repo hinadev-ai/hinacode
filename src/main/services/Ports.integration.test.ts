@@ -7,7 +7,7 @@ import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer } from "effect"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
-import { belongsToWorkspace, parseSs, Ports, layer as portsLayer } from "./Ports.ts"
+import { belongsToWorkspace, parseNetstat, parseSs, Ports, layer as portsLayer } from "./Ports.ts"
 
 const listenerPids: Array<number> = []
 
@@ -88,6 +88,28 @@ describe("parseSs", () => {
       { pid: 21, command: "claude", port: 8080 },
       { pid: 22, command: "my (dev) srv", port: 8080 },
       { pid: 40, command: "python3", port: 4000 },
+    ])
+  })
+})
+
+const NETSTAT = `
+使用中連線
+
+  協定   本機位址               外部位址               狀態            PID
+  TCP    0.0.0.0:22             0.0.0.0:0              LISTENING       3120
+  TCP    127.0.0.1:5173         0.0.0.0:0              ABHÖREN         7788
+  TCP    10.10.10.50:22         10.10.10.1:50122       ESTABLISHED     3120
+  TCP    [::]:8080              [::]:0                 LISTENING       4412
+  TCP    [::1]:9235             [::]:0                 LISTENING       4412
+`
+
+describe("parseNetstat", () => {
+  it("reads listening sockets in any display language, across address families", () => {
+    expect(parseNetstat(NETSTAT)).toStrictEqual([
+      { pid: 3120, port: 22 },
+      { pid: 7788, port: 5173 },
+      { pid: 4412, port: 8080 },
+      { pid: 4412, port: 9235 },
     ])
   })
 })

@@ -26,6 +26,21 @@ Options, flags first, then environment, then stored settings:
 
 Nothing compiles at install: `node-pty` ships prebuilds for macOS, Linux and Windows on x64 and arm64.
 
+## Run it in WSL
+
+Code that lives in WSL runs best in WSL: its `node_modules`, toolchains and agents are Linux builds, and Windows git refuses a repository on `\\wsl.localhost` as dubious ownership. So the Windows app refuses a project folder under `\\wsl.localhost` or `\\wsl$` and points here instead.
+
+1. In a WSL shell, install Node and start a cloud on loopback. WSL shares `localhost` with Windows, so nothing else can reach it:
+
+   ```sh
+   npx hinacode serve --host 127.0.0.1
+   ```
+
+2. In the Windows app, open Settings > Connections and paste the `hinacode://connect` URL it printed.
+3. Add the project on that machine as `~/code/app`. Threads, worktrees, setup scripts and the terminal then run in WSL.
+
+Sign in to the agents inside WSL too, such as `claude login`.
+
 ## Reach it from anywhere
 
 Without Tailscale, a cloud is reachable only on its LAN. The HinaCode relay gives it a public hostname through a Cloudflare tunnel, so the phone and the desktop reach it from any network. Design: `docs/features/2026-10-24-relay.md`.

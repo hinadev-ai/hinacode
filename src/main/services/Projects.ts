@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { homedir } from "node:os"
-import { extname, isAbsolute, join } from "node:path"
+import { extname, isAbsolute, join, resolve, sep } from "node:path"
 import { Cache, Context, Effect, FileSystem, Layer, Option, Schema } from "effect"
 import { SqlClient, SqlError, SqlSchema } from "effect/sql"
 import { Project, ProjectAction } from "../../shared/domain.ts"
@@ -12,6 +12,7 @@ import {
   ProjectFolderNotEmptyError,
   ProjectOriginTakenError,
   ProjectPathTakenError,
+  ProjectInWslError,
   ProjectRootInvalidError,
   persistence,
 } from "./errors.ts"
@@ -41,7 +42,7 @@ export interface UpdateProject {
   readonly actions?: ReadonlyArray<ProjectAction> | undefined
 }
 
-type WriteError = PersistenceError | ProjectPathTakenError | ProjectRootInvalidError
+type WriteError = PersistenceError | ProjectPathTakenError | ProjectRootInvalidError | ProjectInWslError
 
 export class Projects extends Context.Service<
   Projects,
@@ -62,9 +63,16 @@ export class Projects extends Context.Service<
   }
 >()("hinacode/Projects") {}
 
+const HOME_PREFIX = sep === "\\" ? /^~(?=$|[\\/])/ : /^~(?=$|\/)/
+
+const WSL_SHARE = /^\\\\wsl(?:\.localhost|\$)\\/i
+
 const resolveRoot = (rootPath: string) => {
-  const resolved = rootPath.trim().replace(/^~(?=$|\/)/, homedir())
-  return isAbsolute(resolved) ? Effect.succeed(resolved) : Effect.fail(new ProjectRootInvalidError({ rootPath }))
+  const expanded = rootPath.trim().replace(HOME_PREFIX, homedir())
+  if (WSL_SHARE.test(expanded)) return Effect.fail(new ProjectInWslError({ rootPath }))
+  return isAbsolute(expanded)
+    ? Effect.succeed(resolve(expanded))
+    : Effect.fail(new ProjectRootInvalidError({ rootPath }))
 }
 
 const succeeds = <E>(effect: Effect.Effect<unknown, E>) =>
