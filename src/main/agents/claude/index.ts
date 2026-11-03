@@ -725,7 +725,7 @@ export const layer = Layer.effect(
       Effect.flatMap(permissionModeFor(input.accessMode, input.model), (mode) =>
         Effect.suspend(() => {
           const existing = sessions.get(input.threadId)
-          if (existing !== undefined && !isIdle(existing)) return Effect.void
+          if (existing !== undefined && (!isIdle(existing) || existing.wakeup !== null)) return Effect.void
           return Effect.acquireUseRelease(reuseOrStartSession(input, mode), () => Effect.void, release)
         }).pipe(lockedSession(input.threadId)),
       )
