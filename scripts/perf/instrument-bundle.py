@@ -7,13 +7,13 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[2]
 scratch = root / ".context/perf"
 pattern = re.compile(
-    r"function (Markdown(?:\$\w+)?)\((\w+)\) \{\n"
-    r"  const processor = createProcessor\(\2\);\n"
-    r"  const file = createFile\(\2\);\n"
-    r"  return post\(processor.runSync\(processor.parse\(file\), file\), \2\);\n\}"
+    r"function (?P<name>[\w$]+)\((?P<options>[\w$]+)\)\{"
+    r"const (?P<processor>[\w$]+)=(?P<createProcessor>[\w$]+)\((?P=options)\),"
+    r"(?P<file>[\w$]+)=(?P<createFile>[\w$]+)\((?P=options)\);"
+    r"return (?P<post>[\w$]+)\((?P=processor)\.runSync\((?P=processor)\.parse\((?P=file)\),(?P=file)\),(?P=options)\)\}"
 )
 matches = []
-for path in (root / "out/renderer/assets").glob("index-*.js"):
+for path in (root / "out/renderer/assets").glob("*.js"):
     source = path.read_text()
     if "__hinacodePerfMarkdown" in source:
         raise SystemExit("Already instrumented. Run pnpm build to restore before instrumenting again.")
@@ -32,15 +32,16 @@ metadata = {
     "version": 1,
     "bundle": str(path.relative_to(root)),
     "originalSha256": digest,
-    "functionName": match[1],
+    "functionName": match["name"],
 }
+m = match.groupdict()
 replacement = f"""globalThis.__hinacodePerfMarkdown = {{ ...{json.dumps(metadata)}, samples: null }};
-function {match[1]}({match[2]}) {{
+function {m["name"]}({m["options"]}) {{
   const started = performance.now();
-  const processor = createProcessor({match[2]});
-  const file = createFile({match[2]});
-  const result = post(processor.runSync(processor.parse(file), file), {match[2]});
-  if (globalThis.__hinacodePerfMarkdown.samples) globalThis.__hinacodePerfMarkdown.samples.push({{chars: file.value.length, ms: performance.now() - started}});
+  const {m["processor"]} = {m["createProcessor"]}({m["options"]});
+  const {m["file"]} = {m["createFile"]}({m["options"]});
+  const result = {m["post"]}({m["processor"]}.runSync({m["processor"]}.parse({m["file"]}), {m["file"]}), {m["options"]});
+  if (globalThis.__hinacodePerfMarkdown.samples) globalThis.__hinacodePerfMarkdown.samples.push({{chars: {m["file"]}.value.length, ms: performance.now() - started}});
   return result;
 }}"""
 instrumented = (source[:match.start()] + replacement + source[match.end():]).encode()
