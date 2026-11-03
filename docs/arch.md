@@ -115,7 +115,7 @@ The native window starts hidden. The renderer loads settings, applies appearance
 
 ## Main-process layers
 
-The main process is one Effect layer graph, built by `src/main/app.ts`. The desktop (`index.ts`) and the cloud daemon (`daemon.ts`) build the same graph. The desktop opens its window while the graph builds, and `rpc` calls wait for it. The build waits for the login shell's PATH (`shellPath.ts`); the desktop starts from the PATH it saved in `<dataDir>/shell-path` on the last launch and refreshes it from `$SHELL -ilc` in the background, so only the first launch waits for the shell.
+The main process is one Effect layer graph, built by `src/main/app.ts`. The desktop (`index.ts`) and the cloud daemon (`daemon.ts`) build the same graph. The desktop's entry is `boot.ts`, which turns on Node's module compile cache and then imports `index.ts`, so warm launches reuse V8 code for the bundle and its external packages. The desktop opens its window while the graph builds, and `rpc` calls wait for it. The build waits for the login shell's PATH (`shellPath.ts`); the desktop starts from the PATH it saved in `<dataDir>/shell-path` on the last launch and refreshes it from `$SHELL -ilc` in the background, so only the first launch waits for the shell.
 
 Both receive a data directory as `userData`: `HINACODE_USER_DATA`, else `~/.hinacode` (`~/.hinacode-dev` unpackaged) for the desktop and `~/.hinacode-cloud` for the daemon. The database, `chats/`, `attachments/`, `accounts/`, `tiny-vm/` and `cloudflared/` sit at its top. The desktop points Electron's `userData` at `<dataDir>/chromium`, so Chromium's profile and its `SingletonLock` stay in there. On the first launch without the override, `dataDir.ts` moves the old `<appData>/kkcode` (or `kkcode-dev`) profile into this layout and rewrites the paths the database stored under it.
 
@@ -660,6 +660,7 @@ Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md
 | Concern                                   | Path                                                       |
 | ----------------------------------------- | ---------------------------------------------------------- |
 | Layer graph                               | `src/main/app.ts`                                          |
+| Desktop entry, module compile cache       | `src/main/boot.ts`                                         |
 | Window, custom protocols                  | `src/main/index.ts`                                        |
 | Cloud daemon (`hinacode serve`)           | `src/main/daemon.ts`                                       |
 | rpc handlers                              | `src/main/rpc.ts`                                          |
