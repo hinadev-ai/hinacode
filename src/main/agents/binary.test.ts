@@ -31,4 +31,11 @@ describe.skipIf(process.platform === "win32")("installedBinary", () => {
     process.env["PATH"] = `${fresh}:${inherited}`
     expect(await Effect.runPromise(installedBinary("claude", "kk-fake-cli"))).toBe(join(fresh, "kk-fake-cli"))
   })
+
+  it("finds the CLI on a PATH that has no `which`, as on Windows", async () => {
+    const bin = cliIn(mkdtempSync(join(tmpdir(), "kk-binary-")), "bin")
+
+    process.env["PATH"] = bin
+    expect(await Effect.runPromise(installedBinary("claude", "kk-fake-cli"))).toBe(join(bin, "kk-fake-cli"))
+  })
 })
