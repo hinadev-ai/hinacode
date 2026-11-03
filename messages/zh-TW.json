@@ -1821,6 +1821,20 @@
   "artifacts_back": "返回成品列表",
   "artifacts_loading": "正在載入成品…",
   "artifacts_empty": "還沒有成品",
+  "artifacts_page_loading": "正在載入成品…",
+  "artifacts_version": "v{version}",
+  "artifacts_problems": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "此頁面有 {count} 個問題",
+        "countPlural=other": "此頁面有 {count} 個問題"
+      }
+    }
+  ],
+  "artifacts_ask_to_fix": "請代理修正",
+  "artifacts_fix_prompt": "成品「{title}」（{id}）在側邊面板回報了以下問題：\n{problems}\n請修正後重新發布。",
   "artifacts_this_thread": "此對話串",
   "artifacts_this_thread_empty": "此對話串還沒有發布成品",
   "artifacts_other_threads": "其他對話串",

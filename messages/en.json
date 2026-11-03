@@ -1857,6 +1857,20 @@
   "artifacts_back": "Back to artifacts",
   "artifacts_loading": "Loading artifacts…",
   "artifacts_empty": "No artifacts yet",
+  "artifacts_page_loading": "Loading artifact…",
+  "artifacts_version": "v{version}",
+  "artifacts_problems": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} problem on this page",
+        "countPlural=other": "{count} problems on this page"
+      }
+    }
+  ],
+  "artifacts_ask_to_fix": "Ask agent to fix",
+  "artifacts_fix_prompt": "The artifact \"{title}\" ({id}) reported these problems in the side panel:\n{problems}\nFix them and publish it again.",
   "artifacts_this_thread": "This thread",
   "artifacts_this_thread_empty": "Nothing published from this thread yet",
   "artifacts_other_threads": "Other threads",
