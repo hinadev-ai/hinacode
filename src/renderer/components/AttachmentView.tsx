@@ -11,8 +11,7 @@ import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { Button } from "./ui/button.tsx"
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "./ui/dialog.tsx"
-import { CloseIcon } from "./icons/CloseIcon.tsx"
-import { FileIcon } from "./icons/FileIcon.tsx"
+import { CloseIcon, FileIcon } from "@hinacode/icons"
 
 const format = (value: number, unit: string) =>
   new Intl.NumberFormat(getLocale(), { style: "unit", unit, maximumFractionDigits: 1 }).format(value)

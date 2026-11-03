@@ -13,12 +13,7 @@ import { BrowserStart, type Device, LoadFailure, ViewportMenu } from "./BrowserC
 import { browserPanelId, browserTabId } from "./BrowserTabStrip.tsx"
 import { browserViewport, RemoteBrowserSession } from "./remoteBrowserSession.ts"
 import { RemoteBrowserSurface } from "./RemoteBrowserSurface.tsx"
-import { ArrowLeftIcon } from "../icons/ArrowLeftIcon.tsx"
-import { ArrowRightIcon } from "../icons/ArrowRightIcon.tsx"
-import { CloseIcon } from "../icons/CloseIcon.tsx"
-import { CloudIcon } from "../icons/CloudIcon.tsx"
-import { CursorIcon } from "../icons/CursorIcon.tsx"
-import { RefreshIcon } from "../icons/RefreshIcon.tsx"
+import { ArrowLeftIcon, ArrowRightIcon, CloseIcon, CloudIcon, CursorIcon, RefreshIcon } from "@hinacode/icons"
 
 type Connection =
   | { readonly kind: "idle" }

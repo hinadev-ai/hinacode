@@ -23,8 +23,7 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { usePanelLayout } from "../lib/panelLayout.ts"
 import { type EnvironmentId, settingsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
-import { CloudIcon } from "../components/icons/CloudIcon.tsx"
-import { LaptopIcon } from "../components/icons/LaptopIcon.tsx"
+import { CloudIcon, LaptopIcon } from "@hinacode/icons"
 
 function ConnectionSettings() {
   return (

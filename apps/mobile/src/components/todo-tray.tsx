@@ -12,9 +12,9 @@ const ROW_HEIGHT = 28
 const VISIBLE_ROWS = 5.5
 
 const statusIcon: Record<Exclude<TodoStatus, "in_progress">, IconName> = {
-  pending: "RiCircleLine",
-  completed: "RiCheckboxCircleLine",
-  cancelled: "RiCloseCircleLine",
+  pending: "Circle",
+  completed: "CheckCircle",
+  cancelled: "XCircle",
 }
 
 const todoKeys = (todos: ReadonlyArray<Todo>): Array<[string, Todo]> => {
@@ -83,7 +83,7 @@ export function TodoTray({ thread, messages }: { thread: Thread; messages: reado
         )}
         <View style={styles.chevron}>
           <Rotate turned={expanded}>
-            <Icon name="RiArrowRightSLine" size={16} color={theme.textMuted} />
+            <Icon name="ChevronRight" size={16} color={theme.textMuted} />
           </Rotate>
         </View>
       </Pressable>

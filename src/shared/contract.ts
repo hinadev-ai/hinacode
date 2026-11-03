@@ -1,5 +1,6 @@
 import { Schema, Struct } from "effect"
 import { Artifact, ArtifactExportRequest } from "./artifact.ts"
+import { ArtifactTheme } from "./artifactTheme.ts"
 import {
   AccountLimits,
   AccountProviderId,
@@ -37,6 +38,7 @@ import {
   RelayAccountStatus,
   Attachment,
   QueuedMessage,
+  ScheduledMessage,
   Automation,
   Changes,
   ChangesScope,
@@ -52,6 +54,7 @@ import {
   NotificationPermission,
   PermissionRequestOutcome,
   Message,
+  MessagePart,
   OpenPort,
   Opener,
   OpenerId,
@@ -94,6 +97,7 @@ import { GitHubRepository, GitRefName, RepositoryPath, RepositoryVisibility } fr
 import { PendingLink, RelayHost } from "./relayMachines.ts"
 import { BrowserCommand, BrowserSession, BrowserSnapshot, BrowserUrl, BrowserViewport } from "./browser.ts"
 import {
+  AgentAction,
   DeviceCommand,
   SimulatorModelId,
   DeviceControl,
@@ -457,6 +461,14 @@ export const RpcMethods = {
   "secrets.clear": rpc(Schema.Struct({ name: Schema.String }), Schema.Void),
   "subagents.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(Subagent)),
   "subagents.stop": rpc(Schema.Struct({ threadId: Schema.String, subagentId: Schema.String }), Schema.Void),
+  "subagents.transcript": rpc(
+    Schema.Struct({ threadId: Schema.String, callId: Schema.String }),
+    Schema.Struct({
+      spawn: Schema.NullOr(MessagePart),
+      calls: Schema.Array(MessagePart),
+      startedAt: Schema.NullOr(Schema.String),
+    }),
+  ),
   "backgroundTasks.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(BackgroundTask)),
   "backgroundTasks.stop": rpc(Schema.Struct({ threadId: Schema.String, taskId: Schema.String }), Schema.Void),
   "threads.usage": rpc(Schema.Struct({ threadId: Schema.String }), Schema.NullOr(ThreadUsage)),
@@ -549,6 +561,24 @@ export const RpcMethods = {
     Schema.Void,
   ),
   "threads.unqueue": rpc(Schema.Struct({ threadId: Schema.String, id: Schema.String }), Schema.NullOr(QueuedMessage)),
+  "threads.schedule": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      text: Schema.String,
+      attachments: Schema.optional(Schema.Array(Attachment)),
+      workspace: Schema.optional(WorkspaceChoice),
+      sendAt: Timestamp,
+    }),
+    Schema.Void,
+  ),
+  "threads.reschedule": rpc(
+    Schema.Struct({ threadId: Schema.String, id: Schema.String, sendAt: Timestamp }),
+    Schema.Void,
+  ),
+  "threads.unschedule": rpc(
+    Schema.Struct({ threadId: Schema.String, id: Schema.String }),
+    Schema.NullOr(ScheduledMessage),
+  ),
 
   "attachments.stage": rpc(
     Schema.Struct({
@@ -571,6 +601,7 @@ export const RpcMethods = {
   ),
   "artifacts.export": rpc(ArtifactExportRequest, Schema.NullOr(Schema.String)),
   "artifacts.delete": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
+  "artifacts.setTheme": rpc(ArtifactTheme, Schema.Void),
   "automations.create": rpc(
     AutomationInput,
     Schema.Struct({ automation: Automation, secret: Schema.NullOr(Schema.String) }),
@@ -719,6 +750,9 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "threads.send": "mutation",
   "threads.queue": "mutation",
   "threads.unqueue": "mutation",
+  "threads.schedule": "mutation",
+  "threads.reschedule": "mutation",
+  "threads.unschedule": "mutation",
   "threads.interrupt": "mutation",
   "threads.warm": "mutation",
   "threads.reveal": "mutation",
@@ -729,6 +763,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "secrets.clear": "mutation",
   "subagents.list": "read",
   "subagents.stop": "mutation",
+  "subagents.transcript": "read",
   "backgroundTasks.list": "read",
   "backgroundTasks.stop": "mutation",
   "threads.usage": "read",
@@ -784,6 +819,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "artifacts.file": "read",
   "artifacts.export": "mutation",
   "artifacts.delete": "mutation",
+  "artifacts.setTheme": "mutation",
   "automations.create": "mutation",
   "automations.update": "mutation",
   "automations.delete": "mutation",
@@ -816,6 +852,7 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "dialog.pickFolder",
   "dialog.pickFiles",
   "artifacts.export",
+  "artifacts.setTheme",
   "shell.reveal",
   "shell.openers",
   "shell.openWith",
@@ -937,6 +974,12 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("environments.changed") }),
   Schema.Struct({ type: Schema.Literal("vm.updated"), threadId: Schema.String, vm: ThreadVm }),
   Schema.Struct({ type: Schema.Literal("device.updated"), threadId: Schema.String, devices: ThreadDevices }),
+  Schema.Struct({
+    type: Schema.Literal("device.agentAction"),
+    threadId: Schema.String,
+    deviceId: DeviceId,
+    action: AgentAction,
+  }),
   Schema.Struct({ type: Schema.Literal("vm.screen.data"), streamId: Schema.String, data: Schema.Uint8Array }),
   Schema.Struct({ type: Schema.Literal("vm.screen.closed"), streamId: Schema.String }),
   Schema.Struct({ type: Schema.Literal("menu.command"), command: MenuCommand }),

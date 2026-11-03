@@ -9,6 +9,7 @@ import {
   Layer,
   Option,
   Predicate,
+  Record,
   type Schema,
   Schedule,
   Semaphore,
@@ -35,8 +36,10 @@ import type {
 import type {
   AccessMode,
   Attachment,
+  ExperimentalSettings,
   Message,
   QueuedMessage,
+  ScheduledMessage,
   Thread,
   ThreadStatus,
   WorkspaceChoice,
@@ -50,7 +53,7 @@ import { CodexProvider } from "../agents/codex/index.ts"
 import { handoffPrompt } from "../agents/handoff.ts"
 import { latestForkPoint, sidechatPrompt, unseenSince } from "../agents/sidechat.ts"
 import { agentInstructions, type AgentEnvironment } from "../agents/instructions.ts"
-import { pickedSubagentModel, spawningCallId } from "../agents/runAgent.ts"
+import { pickedSubagentModel, spawningCallId, subagentChoices } from "../agents/runAgent.ts"
 import { providerInfo } from "../../shared/providers.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
@@ -81,7 +84,7 @@ import { AgentAccounts } from "./AgentAccounts.ts"
 import { type ActiveWorkspace, makeActiveWorkspace } from "./workspace.ts"
 
 const PERSIST_INTERVAL_MS = 500
-const PERSIST_BACKOFF = 10
+const PERSIST_BYTES_PER_SECOND = 256 * 1024
 const interruptedSend = () => new AgentError({ provider: "hinacode", message: "Message send interrupted" })
 
 export interface AgentRequest {
@@ -94,6 +97,7 @@ export interface AgentRequest {
 
 export interface SendOptions {
   readonly workspace?: WorkspaceChoice | undefined
+  readonly scheduledId?: string | undefined
 }
 
 type SendError =
@@ -115,6 +119,20 @@ const resumeIsDue = (thread: Thread, now: string) => {
   return (
     thread.status === "limited" && reset?.autoResume === true && Date.parse(reset.at) + resumeGraceMs <= Date.parse(now)
   )
+}
+
+const isDue = (message: ScheduledMessage, now: string) =>
+  message.failure === undefined && Date.parse(message.sendAt) <= Date.parse(now)
+
+const bySendAt = (messages: ReadonlyArray<ScheduledMessage>) =>
+  messages.toSorted((a, b) => Date.parse(a.sendAt) - Date.parse(b.sendAt))
+
+export interface ScheduleInput {
+  readonly threadId: string
+  readonly text: string
+  readonly attachments: ReadonlyArray<Attachment>
+  readonly workspace?: WorkspaceChoice | undefined
+  readonly sendAt: string
 }
 
 export class AgentRunner extends Context.Service<
@@ -140,6 +158,17 @@ export class AgentRunner extends Context.Service<
       threadId: string,
       id: string,
     ) => Effect.Effect<QueuedMessage | null, PersistenceError | NotFoundError | ThreadStartedError>
+    readonly schedule: (input: ScheduleInput) => Effect.Effect<void, PersistenceError | NotFoundError>
+    readonly reschedule: (
+      threadId: string,
+      id: string,
+      sendAt: string,
+    ) => Effect.Effect<void, PersistenceError | NotFoundError>
+    readonly unschedule: (
+      threadId: string,
+      id: string,
+    ) => Effect.Effect<ScheduledMessage | null, PersistenceError | NotFoundError>
+    readonly sendDueSchedules: Effect.Effect<void, PersistenceError>
     readonly steerWhen: (input: {
       readonly threadId: string
       readonly text: string
@@ -224,8 +253,14 @@ const statusAfter = (event: AgentEvent): ThreadStatus | undefined => {
   }
 }
 
-const userMessage = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>, now: string): Message => ({
-  id: randomUUID(),
+const userMessage = (
+  threadId: string,
+  text: string,
+  attachments: ReadonlyArray<Attachment>,
+  now: string,
+  id: string = randomUUID(),
+): Message => ({
+  id,
   threadId,
   role: "user",
   parts: [
@@ -288,6 +323,21 @@ const make = Effect.gen(function* () {
     opencode: yield* OpencodeProvider,
   }
 
+  const listedModels = (provider: AgentProvider) =>
+    provider.listModels.pipe(
+      Effect.timeout(Duration.seconds(3)),
+      Effect.orElseSucceed(() => null),
+    )
+
+  const subagentInstructions = (experimental: ExperimentalSettings, environment: AgentEnvironment) =>
+    Effect.gen(function* () {
+      const [listed, { modelPresets }] = yield* Effect.all(
+        [Effect.all(Record.map(providers, listedModels), { concurrency: "unbounded" }), settings.get],
+        { concurrency: "unbounded" },
+      )
+      return agentInstructions(experimental, environment, subagentChoices(listed, modelPresets))
+    })
+
   type LimitsKey = Pick<AccountLimits, "provider" | "accountId">
   const cachedLimits = yield* Cache.make({
     lookup: (key: string) => {
@@ -303,8 +353,10 @@ const make = Effect.gen(function* () {
   })
 
   const turns = yield* FiberMap.make<string>()
+  const deliveries = yield* FiberMap.make<string>()
   const busyThreads = new Set<string>()
   const pendingSends = new Map<string, Deferred.Deferred<void>>()
+  const pendingScheduledSends = new Map<string, Deferred.Deferred<void>>()
   const activeTurns = new Map<string, ReturnType<typeof makeTurn>>()
   const approvals = new Map<string, ApprovalRequest>()
   const questions = new Map<string, QuestionRequest>()
@@ -325,6 +377,13 @@ const make = Effect.gen(function* () {
 
   const updateThread = (input: Parameters<typeof threads.update>[0]) =>
     threads.update(input).pipe(Effect.tap((thread) => push.publish({ type: "thread.updated", thread })))
+
+  const removeScheduled = (threadId: string, id: string) =>
+    Effect.gen(function* () {
+      const thread = yield* threads.get(threadId)
+      if (!thread.scheduled.some((message) => message.id === id)) return
+      yield* updateThread({ id: threadId, scheduled: thread.scheduled.filter((message) => message.id !== id) })
+    })
 
   const waitsOnUser = (threadId: string) =>
     [...approvals.values(), ...questions.values(), ...[...secretRequests.values()].map(({ request }) => request)].some(
@@ -452,7 +511,7 @@ const make = Effect.gen(function* () {
     let status: ThreadStatus = "running"
     let completed = false
     let persistedAt = Date.now()
-    let persistMs = 0
+    let persistedBytes = 0
     const dirty = new Set<string>()
     const subagentCalls = new Set<string>()
 
@@ -460,8 +519,10 @@ const make = Effect.gen(function* () {
       const changed = turnMessages.filter((message) => dirty.has(message.id))
       dirty.clear()
       persistedAt = Date.now()
-      return Effect.forEach(changed, messages.update, { discard: true }).pipe(
-        Effect.ensuring(Effect.sync(() => (persistMs = Date.now() - persistedAt))),
+      return Effect.forEach(changed, messages.update).pipe(
+        Effect.map((writes) => {
+          persistedBytes = writes.reduce((total, { bytes }) => total + bytes, 0)
+        }),
       )
     })
 
@@ -502,7 +563,7 @@ const make = Effect.gen(function* () {
         ) {
           yield* steerHeld
         }
-        const interval = Math.max(PERSIST_INTERVAL_MS, PERSIST_BACKOFF * persistMs)
+        const interval = Math.max(PERSIST_INTERVAL_MS, (persistedBytes / PERSIST_BYTES_PER_SECOND) * 1000)
         if (dirty.size > 0 && Date.now() - persistedAt >= interval) yield* persist
       })
 
@@ -518,7 +579,9 @@ const make = Effect.gen(function* () {
                   ...received,
                   forkPoint: { ...received.forkPoint, owner: { provider: provider.id, accountId: thread.accountId } },
                 }
-              : received
+              : received.type === "turn_failed" && (yield* Deferred.isDone(stop))
+                ? { ...received, stopped: true }
+                : received
         if (event.type === "subagent_updated") return yield* updateSubagent(thread.id, event.subagent)
         yield* deltas.offer(event)
       }).pipe(exclusive(thread.id))
@@ -631,10 +694,11 @@ const make = Effect.gen(function* () {
         Stream.unwrap(
           Effect.gen(function* () {
             const input = yield* sessionInput(thread, provider, cwd, home, environment)
+            const instructions = yield* subagentInstructions(experimental, environment)
             if (yield* Deferred.isDone(stop)) {
               return Stream.succeed<AgentEvent>({ type: "turn_failed", message: "Turn interrupted" })
             }
-            return provider.runTurn({ ...input, prompt, attachments })
+            return provider.runTurn({ ...input, prompt, attachments, instructions, })
           }),
         ),
       )
@@ -696,6 +760,7 @@ const make = Effect.gen(function* () {
         settings.get,
         nowIso,
       ])
+      const instructions = yield* subagentInstructions(experimental, environment)
 
       const id = randomUUID()
       const sessionId = `${threadId}:agent:${id}`
@@ -784,7 +849,7 @@ const make = Effect.gen(function* () {
           forkAt: null,
           home,
           mcpServer,
-          instructions: agentInstructions(experimental, environment),
+          instructions,
         })
         .pipe(
           Stream.runForEach(forward),
@@ -917,7 +982,8 @@ const make = Effect.gen(function* () {
             const agentPrompt = yield* promptForSession(thread, prompt)
             const now = yield* nowIso
             const assistant = openAssistantMessage(threadId, now)
-            yield* insertMessage(userMessage(threadId, prompt, attachments, now))
+            yield* insertMessage(userMessage(threadId, prompt, attachments, now, options.scheduledId))
+            if (options.scheduledId !== undefined) yield* removeScheduled(threadId, options.scheduledId)
             yield* insertMessage(assistant)
             yield* updateThread({ id: threadId, status: "running" })
             return { thread, environment, agentPrompt, turn: makeTurn(thread, provider, cwd, home, assistant, stop) }
@@ -927,6 +993,7 @@ const make = Effect.gen(function* () {
         const { thread: currentThread, environment, agentPrompt, turn } = admitted
         activeTurns.set(threadId, turn)
         pendingSends.delete(threadId)
+        if (options.scheduledId !== undefined) pendingScheduledSends.delete(options.scheduledId)
         yield* FiberMap.run(turns, threadId, turn.run(agentPrompt, attachments, environment))
         if (
           pending.first &&
@@ -949,10 +1016,16 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const stop = Deferred.makeUnsafe<void>()
       pendingSends.set(threadId, stop)
+      if (options.scheduledId !== undefined) pendingScheduledSends.set(options.scheduledId, stop)
       const accepted = yield* activeWorkspace(threadId).pipe(
         Effect.flatMap(({ worktreeId }) => startTurn(threadId, prompt, attachments, options, stop, when, worktreeId)),
         Effect.onError(() => Effect.sync(() => busyThreads.delete(threadId))),
-        Effect.ensuring(Effect.sync(() => pendingSends.get(threadId) === stop && pendingSends.delete(threadId))),
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (pendingSends.get(threadId) === stop) pendingSends.delete(threadId)
+            if (options.scheduledId !== undefined) pendingScheduledSends.delete(options.scheduledId)
+          }),
+        ),
       )
       if (!accepted) busyThreads.delete(threadId)
       return accepted
@@ -1064,6 +1137,126 @@ const make = Effect.gen(function* () {
     }
   })
 
+  const schedule = ({ threadId, text, attachments, workspace, sendAt }: ScheduleInput) =>
+    Effect.gen(function* () {
+      const thread = yield* threads.get(threadId)
+      const message: ScheduledMessage = { id: randomUUID(), text, attachments, sendAt, ...(workspace && { workspace }) }
+      yield* updateThread({ id: threadId, scheduled: bySendAt([...thread.scheduled, message]) })
+    }).pipe(exclusive(threadId))
+
+  const sending = new Set<string>()
+
+  const wasSent = (threadId: string, id: string) =>
+    messages.list(threadId).pipe(Effect.map((stored) => stored.some((message) => message.id === id)))
+
+  const stopDelivery = (id: string) =>
+    Effect.gen(function* () {
+      while (sending.has(id)) {
+        const pending = pendingScheduledSends.get(id)
+        if (pending !== undefined) yield* Deferred.succeed(pending, undefined)
+        yield* Effect.sleep("20 millis")
+      }
+    })
+
+  const reschedule = (threadId: string, id: string, sendAt: string) =>
+    stopDelivery(id).pipe(
+      Effect.andThen(
+        Effect.gen(function* () {
+          const thread = yield* threads.get(threadId)
+          if (!thread.scheduled.some((message) => message.id === id)) return
+          if (yield* wasSent(threadId, id)) return yield* removeScheduled(threadId, id)
+          const moved = thread.scheduled.map((message) => {
+            if (message.id !== id) return message
+            const { failure, ...retried } = message
+            return failure === undefined ? { ...message, sendAt } : { ...retried, sendAt }
+          })
+          yield* updateThread({ id: threadId, scheduled: bySendAt(moved) })
+        }).pipe(exclusive(threadId)),
+      ),
+    )
+
+  const unschedule = (threadId: string, id: string) =>
+    stopDelivery(id).pipe(
+      Effect.andThen(
+        Effect.gen(function* () {
+          const message = (yield* threads.get(threadId)).scheduled.find((scheduled) => scheduled.id === id)
+          if (message === undefined) return null
+          const sent = yield* wasSent(threadId, id)
+          yield* removeScheduled(threadId, id)
+          return sent ? null : message
+        }).pipe(exclusive(threadId)),
+      ),
+    )
+
+  const claimDue = (threadId: string, now: string) =>
+    Effect.gen(function* () {
+      const message = (yield* threads.get(threadId)).scheduled.find((scheduled) => isDue(scheduled, now))
+      if (message === undefined) return undefined
+      if (yield* wasSent(threadId, message.id)) {
+        yield* removeScheduled(threadId, message.id)
+        return undefined
+      }
+      sending.add(message.id)
+      return message
+    }).pipe(exclusive(threadId))
+
+  const queueScheduled = (threadId: string, message: ScheduledMessage) =>
+    Effect.gen(function* () {
+      if (!busyThreads.has(threadId)) return false
+      const thread = yield* threads.get(threadId)
+      yield* updateThread({
+        id: threadId,
+        queue: [...thread.queue, { id: randomUUID(), text: message.text, attachments: message.attachments }],
+        scheduled: thread.scheduled.filter((scheduled) => scheduled.id !== message.id),
+      })
+      return true
+    }).pipe(exclusive(threadId))
+
+  const markScheduledFailed = (threadId: string, id: string, failure: string) =>
+    Effect.gen(function* () {
+      const thread = yield* threads.get(threadId)
+      if (!thread.scheduled.some((message) => message.id === id)) return
+      const scheduled = thread.scheduled.map((message) => (message.id === id ? { ...message, failure } : message))
+      yield* updateThread({ id: threadId, scheduled })
+    }).pipe(exclusive(threadId))
+
+  const deliverScheduled = (threadId: string, message: ScheduledMessage) =>
+    Effect.gen(function* () {
+      let thread = yield* threads.get(threadId)
+      if (thread.status === "archived") {
+        thread = yield* threads.unarchive(threadId)
+        yield* push.publish({ type: "thread.updated", thread })
+      }
+      const fresh = thread.worktreeId === null && !(yield* threads.started(threadId))
+      const workspace = fresh ? message.workspace : undefined
+      if (workspace === undefined && (yield* queueScheduled(threadId, message))) return
+      yield* send(threadId, message.text, message.attachments, { workspace, scheduledId: message.id })
+    })
+
+  const deliverDue = (threadId: string) =>
+    Effect.gen(function* () {
+      const message = yield* claimDue(threadId, yield* nowIso)
+      if (message === undefined) return
+      yield* deliverScheduled(threadId, message).pipe(
+        Effect.catch((error) =>
+          Effect.logWarning("scheduled message did not send", error).pipe(
+            Effect.andThen(markScheduledFailed(threadId, message.id, error.message)),
+          ),
+        ),
+        Effect.ensuring(Effect.sync(() => sending.delete(message.id))),
+      )
+    }).pipe(Effect.catch((error) => Effect.logWarning("could not deliver a scheduled message", error)))
+
+  const sendDueSchedules = Effect.gen(function* () {
+    const now = yield* nowIso
+    const due = (yield* threads.list).filter((thread) => thread.scheduled.some((message) => isDue(message, now)))
+    yield* Effect.forEach(
+      due,
+      (thread) => FiberMap.run(deliveries, thread.id, deliverDue(thread.id), { onlyIfMissing: true }),
+      { discard: true },
+    )
+  })
+
   const switchAccount: typeof AgentRunner.Service.switchAccount = (threadId, accountId, options) =>
     Effect.gen(function* () {
       const switched = yield* Effect.gen(function* () {
@@ -1125,6 +1318,9 @@ const make = Effect.gen(function* () {
 
   yield* resumeDue.pipe(
     Effect.catch((error) => Effect.logWarning("limit reset check failed", error)),
+    Effect.andThen(
+      sendDueSchedules.pipe(Effect.catch((error) => Effect.logWarning("scheduled message check failed", error))),
+    ),
     Effect.repeat(Schedule.spaced("1 second")),
     Effect.forkIn(scope),
   )
@@ -1243,6 +1439,10 @@ const make = Effect.gen(function* () {
     send,
     queue,
     unqueue,
+    schedule,
+    reschedule,
+    unschedule,
+    sendDueSchedules,
     resumeAtReset,
     switchAccount,
     switchAgent,

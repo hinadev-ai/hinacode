@@ -3,6 +3,7 @@ import { Cause, Effect, Option, Schema } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
 import { availableUpdates, installUpdate } from "./agents/updates.ts"
 import { compactMessage, previewMessage, transcriptPage } from "../shared/compactTranscript.ts"
+import { compactSubagentWork } from "../shared/subagents.ts"
 import type {
   NotificationPermission,
   Opener,
@@ -17,6 +18,7 @@ import type { ArtifactExportRequest } from "../shared/artifact.ts"
 import { AgentAccounts } from "./services/AgentAccounts.ts"
 import { AgentLogins } from "./services/AgentLogins.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
+import { ArtifactInspector } from "./services/ArtifactInspector.ts"
 import { Artifacts } from "./services/Artifacts.ts"
 import { Attachments } from "./services/Attachments.ts"
 import { Browser } from "./services/Browser.ts"
@@ -72,6 +74,7 @@ export type AppServices =
   | Terminals
   | Attachments
   | Artifacts
+  | ArtifactInspector
   | Browser
   | Automations
   | Git
@@ -397,6 +400,11 @@ const handlers: Handlers = {
   "threads.queue": ({ threadId, text, attachments = [] }) =>
     AgentRunner.use((runner) => runner.queue(threadId, text, attachments)),
   "threads.unqueue": ({ threadId, id }) => AgentRunner.use((runner) => runner.unqueue(threadId, id)),
+  "threads.schedule": ({ threadId, text, attachments = [], workspace, sendAt }) =>
+    AgentRunner.use((runner) => runner.schedule({ threadId, text, attachments, workspace, sendAt })),
+  "threads.reschedule": ({ threadId, id, sendAt }) =>
+    AgentRunner.use((runner) => runner.reschedule(threadId, id, sendAt)),
+  "threads.unschedule": ({ threadId, id }) => AgentRunner.use((runner) => runner.unschedule(threadId, id)),
   "threads.interrupt": ({ threadId }) => AgentRunner.use((runner) => runner.interrupt(threadId)),
   "threads.warm": ({ threadId }) => AgentRunner.use((runner) => runner.warm(threadId)),
   "threads.reveal": ({ threadId }) => Events.use((events) => events.publish({ type: "thread.reveal", threadId })),
@@ -412,6 +420,10 @@ const handlers: Handlers = {
   "subagents.list": ({ threadId }) => AgentRunner.use((runner) => runner.subagents(threadId)),
   "subagents.stop": ({ threadId, subagentId }) =>
     AgentRunner.use((runner) => runner.stopSubagent(threadId, subagentId)),
+  "subagents.transcript": ({ threadId, callId }) =>
+    AgentRunner.use((runner) => runner.transcript(threadId)).pipe(
+      Effect.map(({ messages }) => compactSubagentWork(messages, callId)),
+    ),
   "backgroundTasks.list": ({ threadId }) => AgentRunner.use((runner) => runner.backgroundTasks(threadId)),
   "backgroundTasks.stop": ({ threadId, taskId }) =>
     AgentRunner.use((runner) => runner.stopBackgroundTask(threadId, taskId)),
@@ -501,6 +513,7 @@ const handlers: Handlers = {
   "artifacts.list": () => Artifacts.use((artifacts) => artifacts.list),
   "artifacts.file": ({ id, path }) => Artifacts.use((artifacts) => artifacts.preview(id, path)),
   "artifacts.delete": ({ id }) => Artifacts.use((artifacts) => artifacts.remove(id)),
+  "artifacts.setTheme": (theme) => ArtifactInspector.use((inspector) => inspector.setTheme(theme)),
   "artifacts.export": (request, desktop) => desktop?.exportArtifact(request) ?? Effect.succeed(null),
   "automations.create": (input) => Automations.use((automations) => automations.create(input)),
   "automations.update": (input) => Automations.use((automations) => automations.update(input)),

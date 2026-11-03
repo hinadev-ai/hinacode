@@ -37,7 +37,7 @@ import { MessageActions } from "./MessageActions.tsx"
 import { MessagePartView, PartThread, SkillLabels, ToolGroup, useFindDisclosure } from "./MessagePart.tsx"
 import { PostedQuestionsCard } from "./QuestionCard.tsx"
 import { TurnChanges } from "./TurnChanges.tsx"
-import { ArrowDownIcon } from "./icons/ArrowDownIcon.tsx"
+import { ArrowDownIcon } from "@hinacode/icons"
 import { Button } from "./ui/button.tsx"
 import { FaviconOrigins, WebLink } from "./WebLink.tsx"
 import { EarlierActivity, WorkedFor } from "./WorkedFor.tsx"
@@ -117,7 +117,7 @@ export function MessageList({
               inert={atEnd}
               action={jumpToLatest}
               className={cn(
-                "absolute bottom-[calc(var(--dock-height,0px)+0.75rem)] left-1/2 -translate-x-1/2 rounded-full bg-popover shadow-md dark:bg-popover dark:hover:bg-muted transition-[opacity,scale] duration-150 ease-out motion-reduce:transition-none",
+                "absolute bottom-[calc(var(--dock-height,0px)+0.75rem)] left-1/2 -translate-x-1/2 rounded-full bg-popover shadow-md transition-[opacity,scale] duration-150 ease-out motion-reduce:transition-none dark:bg-popover dark:hover:bg-muted",
                 atEnd && "pointer-events-none scale-90 opacity-0",
               )}
             >

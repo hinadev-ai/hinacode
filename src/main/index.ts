@@ -6,6 +6,7 @@ import { ARTIFACT_HEADERS } from "@hinacode/artifacts"
 import { app, BrowserWindow, dialog, net, powerMonitor, protocol, safeStorage, session, shell } from "electron"
 import { Effect, Layer, ManagedRuntime, Option, Schema } from "effect"
 import { makeAppLayer } from "./app.ts"
+import { electronArtifactInspector } from "./artifactInspector.ts"
 import { handleContextMenu } from "./contextMenu.ts"
 import { chromiumDir, moveLegacyProfile } from "./dataDir.ts"
 import { keepAppMenu } from "./appMenu.ts"
@@ -32,6 +33,7 @@ import {
   LIQUID_GLASS_ARGUMENT,
   PROJECT_FILE_PROTOCOL,
 } from "../shared/channels.ts"
+import { injectProblemReporter } from "../shared/artifactProblems.ts"
 import { injectArtifactTheme, parseArtifactTheme } from "../shared/artifactTheme.ts"
 import { RpcMethods } from "../shared/contract.ts"
 import * as Artifacts from "./services/Artifacts.ts"
@@ -111,7 +113,7 @@ const themedArtifact = async (request: Request, response: Response) => {
   if (!type.startsWith("text/html")) return artifactResponse(response)
   const theme = parseArtifactTheme(new URL(request.url).searchParams.get("theme"))
   if (theme === undefined) return artifactResponse(response)
-  const html = injectArtifactTheme(await response.text(), theme)
+  const html = injectArtifactTheme(injectProblemReporter(await response.text()), theme)
   return artifactResponse(new Response(html, { status: response.status, headers: { "content-type": type } }))
 }
 
@@ -324,6 +326,7 @@ app.whenReady().then(async () => {
       keyring: safeStorageKeyring,
       updates: Updater.layer,
       toWindows: sendToWindows,
+      artifactInspector: electronArtifactInspector,
     }).pipe(Layer.provide(Layer.effectDiscard(Effect.promise(() => shellPath.ready)))),
   )
   let disposed = false

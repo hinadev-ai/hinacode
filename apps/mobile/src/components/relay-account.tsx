@@ -50,19 +50,19 @@ function RelayStatus({ serviceUrl }: { serviceUrl: string }) {
     <>
       {error !== null && <Notice tone="danger" text={error} />}
       <SettingsGroup title={copy("mobile_relay_title")} footnote={copy("mobile_relay_signed_in_footnote")}>
-        <SettingsRow icon="RiPlugLine" label={copy("mobile_relay_service")} value={hostOf(serviceUrl)} />
+        <SettingsRow icon="Plug" label={copy("mobile_relay_service")} value={hostOf(serviceUrl)} />
         <SettingsRow
-          icon="RiComputerLine"
+          icon="Computer"
           label={copy("mobile_relay_machines")}
           value={machines === null ? undefined : String(machines)}
         />
         <SettingsRow
-          icon="RiTimeLine"
+          icon="Clock"
           label={copy("mobile_relay_last_sync")}
           value={syncedAt === null ? copy("mobile_relay_never") : relativeTime(syncedAt, now)}
         />
         <SettingsRow
-          icon="RiRefreshLine"
+          icon="Refresh"
           label={copy("mobile_relay_sync_now")}
           disabled={syncing}
           onPress={() => void sync()}
@@ -132,7 +132,7 @@ function RelaySignIn({ initialUrl }: { initialUrl: string }) {
       />
       {error !== null && <Notice tone="danger" text={error} />}
       <Button
-        icon="RiShieldKeyholeLine"
+        icon="ShieldKeyhole"
         variant="primary"
         label={copy("mobile_relay_sign_in")}
         busy={busy}

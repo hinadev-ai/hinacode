@@ -74,7 +74,7 @@ export function NewThreadSheet({
 
   const addProject = () => {
     close()
-    router.push("/project/new")
+    router.push({ pathname: "/project/new", params: draft === undefined ? {} : { draft } })
   }
 
   if (choosing !== null) {
@@ -90,7 +90,7 @@ export function NewThreadSheet({
               <SheetRow
                 key={project.id}
                 testID={`new-thread-${project.id}`}
-                icon={connected ? "RiComputerLine" : "RiWifiOffLine"}
+                icon={connected ? "Computer" : "CloudOff"}
                 label={server === undefined ? name : serverName(server)}
                 hint={project.rootPath}
                 accessibilityLabel={copy("mobile_home_new_on_server", {
@@ -105,7 +105,7 @@ export function NewThreadSheet({
           })}
           <SheetRow
             testID="new-thread-back"
-            icon="RiArrowLeftSLine"
+            icon="ChevronLeft"
             label={copy("mobile_home_new_thread_back")}
             hint={copy("mobile_home_new_thread_back_hint")}
             accessibilityLabel={copy("mobile_home_new_thread_back")}
@@ -129,7 +129,7 @@ export function NewThreadSheet({
             <SheetRow
               key={project.id}
               testID={`new-thread-${project.id}`}
-              icon="RiFolderLine"
+              icon="Folder"
               label={project.name}
               hint={
                 spread
@@ -150,7 +150,7 @@ export function NewThreadSheet({
         })}
         <SheetRow
           testID="new-thread-add-project"
-          icon="RiFolderAddLine"
+          icon="FolderAdd"
           label={copy("mobile_home_add_project")}
           hint={copy("mobile_home_add_project_hint")}
           accessibilityLabel={copy("mobile_home_add_project")}
@@ -208,7 +208,7 @@ function SheetRow({
         {busy ? (
           <Spinner size={18} color={theme.textMuted} />
         ) : (
-          <Icon name="RiArrowRightSLine" size={18} color={theme.textMuted} />
+          <Icon name="ChevronRight" size={18} color={theme.textMuted} />
         )}
       </View>
     </Pressable>

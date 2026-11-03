@@ -13,13 +13,15 @@ import type { ChangedFileStatus, PullRequestFileStatus } from "../../shared/doma
 import { useTheme } from "../lib/appearance.ts"
 import { useClientSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
-import { ArrowRightIcon } from "./icons/ArrowRightIcon.tsx"
-import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
-import { CopyIcon } from "./icons/CopyIcon.tsx"
-import type { IconComponent } from "./icons/Icon.tsx"
-import { MinusIcon } from "./icons/MinusIcon.tsx"
-import { PlusIcon } from "./icons/PlusIcon.tsx"
-import { WarningIcon } from "./icons/WarningIcon.tsx"
+import {
+  ArrowRightIcon,
+  ChevronRightIcon,
+  CopyIcon,
+  type IconComponent,
+  MinusIcon,
+  PlusIcon,
+  WarningIcon,
+} from "@hinacode/icons"
 import { Button } from "./ui/button.tsx"
 
 export interface FileMark {

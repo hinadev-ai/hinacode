@@ -39,11 +39,11 @@ export default function HomeScreen() {
         )}
         <View style={styles.center}>
           <EmptyState
-            icon="RiChat1Line"
+            icon="Chat"
             title={copy("mobile_home_no_selection")}
             action={
               !sidebar.open && (
-                <Button label={copy("mobile_home_show_list")} icon="RiSideBarLine" onPress={sidebar.toggle} />
+                <Button label={copy("mobile_home_show_list")} icon="Sidebar" onPress={sidebar.toggle} />
               )
             }
           />

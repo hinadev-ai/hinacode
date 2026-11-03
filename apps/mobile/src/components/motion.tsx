@@ -28,7 +28,7 @@ export function Spinner({ size = 16, color }: { size?: number; color: string }) 
             }
       }
     >
-      <Icon name="RiLoader4Line" size={size} color={color} />
+      <Icon name="Spinner" size={size} color={color} />
     </Animated.View>
   )
 }

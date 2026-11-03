@@ -18,6 +18,7 @@ const alertFor = (event: AgentEvent): { readonly alert: ThreadAlert; readonly bo
     case "secret_requested":
       return { alert: "needsInput", body: m.notification_secret() }
     case "turn_failed":
+      if (event.stopped) return undefined
       return { alert: "failed", body: m.notification_failed({ message: event.message.split("\n")[0] ?? "" }) }
     case "turn_limited":
       return { alert: "failed", body: m.notification_limited() }

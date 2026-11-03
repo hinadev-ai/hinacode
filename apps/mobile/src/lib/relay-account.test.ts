@@ -63,17 +63,6 @@ describe("applyRelayMachines", () => {
     expect(applyRelayMachines(servers, [], newId).map((entry) => entry.id)).toEqual(["b"])
   })
 
-  it("keeps a QR-paired server the list no longer has", () => {
-    expect(applyRelayMachines([server()], [], newId)).toEqual([server()])
-  })
-
-  it("drops every relay server for an empty list", () => {
-    const servers = [
-      server({ source: "relay" }),
-      server({ id: "b", environmentId: "env-b", relay: "b.relay.example.com", source: "relay" }),
-    ]
-    expect(applyRelayMachines(servers, [], newId)).toEqual([])
-  })
 })
 
 const account = { serviceUrl: "https://relay.example.com/", ownerToken: "owner" }

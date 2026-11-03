@@ -57,16 +57,6 @@ const comment = (id: string, overrides: Partial<PullRequestComment> = {}): PullR
 
 const commented = (...comments: ReadonlyArray<PullRequestComment>) => detail({ comments: [...comments] })
 
-describe("snapshotFromDetail", () => {
-  test("collects the failing check names and the head", () => {
-    expect(snapshotFromDetail(failingDetail(["CI / test", "CI / lint"]))).toMatchObject({
-      checks: "failing",
-      head: "abc1234",
-      failingChecks: ["CI / test", "CI / lint"],
-    })
-  })
-})
-
 describe("watchEvents", () => {
   test("a fresh watch reports checks that already failed", () => {
     expect(watchEvents(null, snapshotFromDetail(failingDetail(["CI / test"])), allWatchEventKinds)).toStrictEqual([

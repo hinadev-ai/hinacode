@@ -28,7 +28,7 @@ export function ProjectIcon({ projectId, size }: { projectId: string; size: numb
   const theme = useTheme()
   const icon = useProjectIcon(projectId)
   const [failed, setFailed] = useState<string | null>(null)
-  if (icon === null || failed === icon) return <Icon name="RiFolder3Line" size={size} color={theme.textMuted} />
+  if (icon === null || failed === icon) return <Icon name="Folder" size={size} color={theme.textMuted} />
   // Native Image cannot draw SVG; the web's <img> can.
   const svg = Platform.OS === "web" ? null : svgMarkup(icon)
   if (svg !== null) return <SvgXml xml={svg} width={size} height={size} />

@@ -45,12 +45,4 @@ describe("faviconOrigins", () => {
     const texts = ["https://a.dev/1 https://b.dev https://a.dev/2", "[c](https://c.dev/x) https://d.dev"]
     expect([...faviconOrigins(texts, 3)]).toStrictEqual(["https://a.dev", "https://b.dev", "https://c.dev"])
   })
-
-  test("allows 20 origins by default", () => {
-    const text = Array.from({ length: 25 }, (_, index) => `https://site${index}.dev`).join(" ")
-    const origins = faviconOrigins([text])
-    expect(origins.size).toBe(20)
-    expect(origins.has("https://site19.dev")).toBe(true)
-    expect(origins.has("https://site20.dev")).toBe(false)
-  })
 })

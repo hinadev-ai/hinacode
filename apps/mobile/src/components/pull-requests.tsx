@@ -196,7 +196,7 @@ function PullRequestCard({
             {failed === null ? (
               <Icon name="RiGitPullRequestLine" size={18} color={theme.textMuted} />
             ) : (
-              <Icon name="RiErrorWarningLine" size={18} color={theme.danger} />
+              <Icon name="Warning" size={18} color={theme.danger} />
             )}
           </View>
           <View style={styles.pending}>
@@ -214,7 +214,7 @@ function PullRequestCard({
               <Spinner size={14} color={theme.textMuted} />
             </Reveal>
           ) : (
-            <Icon name="RiArrowRightSLine" size={18} color={theme.textMuted} />
+            <Icon name="ChevronRight" size={18} color={theme.textMuted} />
           )}
         </View>
       ) : (
@@ -226,7 +226,7 @@ function PullRequestCard({
             <Text numberOfLines={3} style={[styles.title, { color: theme.text }]}>
               {pr.title} <Text style={{ color: theme.textMuted, fontWeight: "400" }}>#{pr.number}</Text>
             </Text>
-            <Icon name="RiArrowRightSLine" size={18} color={theme.textMuted} />
+            <Icon name="ChevronRight" size={18} color={theme.textMuted} />
           </View>
           <View style={styles.meta}>
             <Text numberOfLines={1} style={[styles.branches, { color: theme.textMuted }]}>
@@ -249,7 +249,7 @@ function PullRequestCard({
               <Pill label={checksLabel(pr.checks)} tone={checksTone[pr.checks]} icon={checksIcon[pr.checks]} />
             )}
             {review !== null && <Pill label={reviewLabel(review)} tone={reviewTone[review]} />}
-            {watching && <Pill label={copy("mobile_pr_watching")} tone="neutral" icon="RiEyeLine" />}
+            {watching && <Pill label={copy("mobile_pr_watching")} tone="neutral" icon="Eye" />}
           </View>
         </>
       )}

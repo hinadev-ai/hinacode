@@ -16,8 +16,7 @@ import { FileDiffRow, fileStatusMark } from "./FilePatch.tsx"
 import { useUi } from "../stores/ui.ts"
 import { Button } from "./ui/button.tsx"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
-import { FileTextIcon } from "./icons/FileTextIcon.tsx"
-import { RefreshIcon } from "./icons/RefreshIcon.tsx"
+import { FileTextIcon, RefreshIcon } from "@hinacode/icons"
 
 interface FileDiff {
   readonly patch: string

@@ -1,5 +1,6 @@
+import { useEffect, useSyncExternalStore } from "react"
 import { type ArtifactTheme, THEME_TOKENS } from "../../shared/artifactTheme.ts"
-import { useSyncExternalStore } from "react"
+import { callPromise } from "./rpc.ts"
 
 const subscribe = (listener: () => void) => {
   const observer = new MutationObserver(listener)
@@ -7,15 +8,27 @@ const subscribe = (listener: () => void) => {
   return () => observer.disconnect()
 }
 
-const readTheme = () => {
+const currentTheme = (): ArtifactTheme => {
   const style = getComputedStyle(document.documentElement)
-  const theme: ArtifactTheme = {
+  return {
     scheme: document.documentElement.classList.contains("dark") ? "dark" : "light",
     tokens: Object.fromEntries(
       THEME_TOKENS.map((token) => [token, style.getPropertyValue(token).trim()]),
     ) as ArtifactTheme["tokens"],
   }
-  return JSON.stringify(theme)
 }
 
+const readTheme = () => JSON.stringify(currentTheme())
+
 export const useArtifactTheme = () => useSyncExternalStore(subscribe, readTheme)
+
+const shareTheme = () => {
+  callPromise("artifacts.setTheme", currentTheme()).catch(() => undefined)
+}
+
+export function useShareArtifactTheme() {
+  useEffect(() => {
+    shareTheme()
+    return subscribe(shareTheme)
+  }, [])
+}

@@ -1,7 +1,6 @@
 import { type Cloud, useCloudStateText } from "../lib/environments.ts"
 import { m } from "../paraglide/messages.js"
-import { CloudIcon } from "./icons/CloudIcon.tsx"
-import { CloudOffIcon } from "./icons/CloudOffIcon.tsx"
+import { CloudIcon, CloudOffIcon } from "@hinacode/icons"
 
 export function CloudMark({ cloud, id, className }: { cloud: Cloud; id?: string; className: string }) {
   const state = useCloudStateText(cloud)

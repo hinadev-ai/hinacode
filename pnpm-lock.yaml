@@ -258,6 +258,9 @@ importers:
       rehype-sanitize:
         specifier: 6.0.0
         version: 6.0.0
+      undici:
+        specifier: 7.30.0
+        version: 7.30.0
       ws:
         specifier: 8.22.0
         version: 8.22.0
@@ -310,6 +313,9 @@ importers:
       '@formkit/auto-animate':
         specifier: 0.10.0
         version: 0.10.0
+      '@hinacode/icons':
+        specifier: workspace:*
+        version: link:packages/icons
       '@inlang/paraglide-js':
         specifier: 2.27.0
         version: 2.27.0(typescript@6.0.3)(vite@7.3.7(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.1))
@@ -499,6 +505,8 @@ importers:
         specifier: ^4.1.4
         version: 4.1.4
 
+  packages/icons: {}
+
   packages/oxlint-plugin-hinacode:
     dependencies:
       '@oxlint/plugins':
@@ -550,6 +558,9 @@ importers:
       '@fontsource-variable/noto-sans-tc':
         specifier: ^5.3.0
         version: 5.3.0
+      '@hinacode/icons':
+        specifier: workspace:*
+        version: link:../packages/icons
       '@tailwindcss/vite':
         specifier: 4.3.3
         version: 4.3.3(vite@7.3.7(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.1))

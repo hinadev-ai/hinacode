@@ -9,9 +9,7 @@ import { ChordKeys } from "./ChordKeys.tsx"
 import { MachineResourcesButton } from "./MachineResources.tsx"
 import { Button } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
-import { SettingsIcon } from "./icons/SettingsIcon.tsx"
-import { SidebarFillIcon } from "./icons/SidebarFillIcon.tsx"
-import { SidebarIcon } from "./icons/SidebarIcon.tsx"
+import { SettingsIcon, SidebarFillIcon, SidebarIcon } from "@hinacode/icons"
 
 const besideTrafficLights = detectPlatform() === "mac"
 

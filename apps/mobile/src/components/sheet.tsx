@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon, type IconName } from "@/components/icon"
 import { IconButton } from "@/components/ui"
 import { sheetEntering } from "@/constants/motion"
-import { Colors, HIT, mono, radius, subheading } from "@/constants/theme"
+import { HIT, mono, radius, subheading } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 
@@ -65,7 +65,7 @@ export function Sheet({
           accessibilityRole="button"
           accessibilityLabel={copy("mobile_sheet_close")}
           onPress={onClose}
-          style={[StyleSheet.absoluteFill, styles.backdrop]}
+          style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim }]}
         />
         {!fullScreen && <View pointerEvents="none" style={fit ? styles.fill : { height: insets.top + 12 }} />}
         <Animated.View
@@ -86,7 +86,7 @@ export function Sheet({
             <Text accessibilityRole="header" {...subheading} style={[styles.sheetTitle, { color: theme.text }]}>
               {title}
             </Text>
-            <IconButton icon="RiCloseLine" accessibilityLabel={copy("mobile_sheet_close")} onPress={onClose} />
+            <IconButton icon="Close" accessibilityLabel={copy("mobile_sheet_close")} onPress={onClose} />
           </View>
           {header}
           <ScrollView
@@ -169,7 +169,7 @@ export function OptionRow({
           </Text>
         )}
       </View>
-      {selected && <Icon name="RiCheckLine" size={18} color={theme.text} />}
+      {selected && <Icon name="Check" size={18} color={theme.text} />}
     </Pressable>
   )
 }
@@ -192,8 +192,6 @@ export const sheetStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   ...sheetStyles,
-  // The scrim is dark in both themes, so it borrows the dark palette's background.
-  backdrop: { backgroundColor: Colors.dark.background, opacity: 0.5 },
   fill: { flex: 1 },
   fitSheet: { maxHeight: "85%" },
   fitScroll: { flexGrow: 0 },

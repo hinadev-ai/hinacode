@@ -1,6 +1,13 @@
 import { Deferred, Effect, Layer, Queue, Stream } from "effect"
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
-import { type AgentCommand, type AgentEvent, type BackgroundTask, unlistedModel } from "../../../shared/agent.ts"
+import {
+  type AgentCommand,
+  type AgentEvent,
+  type BackgroundTask,
+  type ContextBreakdown,
+  type RunTurnInput,
+  unlistedModel,
+} from "../../../shared/agent.ts"
 import { AgentError, type BackgroundTasksChange } from "../provider.ts"
 import {
   usageLimitAssistant,
@@ -9,25 +16,55 @@ import {
   usageLimitSessionId,
   orgSpendLimitMessage,
 } from "./fixtures/usageLimit.ts"
-import { artifactTurn } from "./fixtures/artifacts.ts"
+import { artifactTurn, publishArtifact } from "./fixtures/artifacts.ts"
+import { mockModel } from "./fixtures/sdk.ts"
+import {
+  approvals,
+  compaction,
+  everything,
+  failure,
+  finished,
+  stoppable,
+  thinkingStream,
+  toolKinds,
+  toolStates,
+} from "./fixtures/transcript.ts"
 import markdownFixture from "./fixtures/markdown.md?raw"
 import { mockSubagents } from "./fixtures/subagents.ts"
 import { ClaudeProvider } from "./index.ts"
 import { mapMessage, type MapState } from "./mapMessage.ts"
+import { type ApprovalReply, type MockStep, play } from "./play.ts"
 
-export const mockScenarios = [
-  "usage-limit",
-  "org-spend-limit",
-  "todos",
-  "markdown",
-  "stream",
-  "activity",
-  "approvals",
-  "long-turn",
-  "subagents",
-  "artifacts",
-] as const
-export type MockScenario = (typeof mockScenarios)[number]
+export const mockScenarioDescriptions = {
+  everything: "Walk through every tool kind and state, thinking, compaction, approvals and a question.",
+  tools: "Call every tool the transcript renders specially, a sub-agent and an artifact.",
+  "tool-states": "End tools in each state: slow, long output, empty, failed, image and MCP error.",
+  thinking: "Stream a thinking block, then a Markdown reply.",
+  compaction: "Compact the context once, then fail a second compaction.",
+  approvals: "Ask four approvals and a question. Allow or deny each one.",
+  error: "Fail the turn with an API error.",
+  stop: "Keep a command and a reply running until you press Stop.",
+  "usage-limit": "Hit the plan usage limit. The next attempt succeeds.",
+  "org-spend-limit": "Hit the organization monthly spend limit.",
+  todos: "Create three tasks. The next message completes them.",
+  markdown: "Answer with every Markdown construct the transcript renders.",
+  stream: "Stream thinking, six reads and a long reply quickly.",
+  activity: "Start background shells, a sub-agent and tasks, then wait for Stop.",
+  "long-turn": "Replay 400 steps, then stream until Stop.",
+  subagents: "Run six sub-agents that report progress every two seconds.",
+  artifacts: "Publish an artifact named after the prompt.",
+} as const satisfies Record<string, string>
+export type MockScenario = keyof typeof mockScenarioDescriptions
+export const mockScenarios = Object.keys(mockScenarioDescriptions) as ReadonlyArray<MockScenario>
+
+const isMockScenario = (name: string): name is MockScenario => Object.hasOwn(mockScenarioDescriptions, name)
+
+const MOCK_COMMAND = /^\/mock-([a-z-]+)\b/
+
+export const scenarioOf = (prompt: string, fallback: MockScenario): MockScenario => {
+  const named = MOCK_COMMAND.exec(prompt.trim())?.[1]
+  return named !== undefined && isMockScenario(named) ? named : fallback
+}
 
 const commands: ReadonlyArray<AgentCommand> = [
   {
@@ -51,6 +88,13 @@ const commands: ReadonlyArray<AgentCommand> = [
     argumentHint: "<optional custom summarization instructions>",
     builtin: true,
   },
+  ...mockScenarios.map((scenario): AgentCommand => ({
+    trigger: "/",
+    name: `mock-${scenario}`,
+    description: mockScenarioDescriptions[scenario],
+    argumentHint: "",
+    builtin: true,
+  })),
 ]
 
 const toolCall = (callId: string, name: string, input: unknown, output: string): Array<AgentEvent> => [
@@ -164,7 +208,45 @@ const activityShells = (): Array<BackgroundTask> => [
   { id: "shell-2", kind: "shell", label: "Watch the unit tests", startedAt: new Date().toISOString() },
 ]
 
-export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAfterMs = 60000) =>
+const contextBreakdown: ContextBreakdown = {
+  usedTokens: 142_000,
+  maxTokens: 200_000,
+  categories: [
+    { name: "System prompt", tokens: 6_200, kind: "used" },
+    { name: "System tools", tokens: 14_800, kind: "used" },
+    { name: "MCP tools", tokens: 9_400, kind: "used" },
+    { name: "Messages", tokens: 111_600, kind: "used" },
+    { name: "Free space", tokens: 25_000, kind: "free" },
+    { name: "Autocompact buffer", tokens: 33_000, kind: "buffer" },
+  ],
+}
+
+const playedSteps = {
+  everything: () => [...everything(), finished()],
+  tools: () => [...toolKinds(), finished()],
+  "tool-states": () => [...toolStates(), finished()],
+  thinking: () => [...thinkingStream(), finished()],
+  compaction: () => [...compaction(), finished()],
+  approvals: () => [...approvals(), finished()],
+  error: failure,
+  stop: stoppable,
+} satisfies Partial<Record<MockScenario, () => ReadonlyArray<MockStep>>>
+
+const awaitReply = <A>(replies: Map<string, Deferred.Deferred<A>>, id: string) => {
+  const pending = Deferred.makeUnsafe<A>()
+  replies.set(id, pending)
+  return Deferred.await(pending)
+}
+
+const reply = <A>(replies: Map<string, Deferred.Deferred<A>>, id: string, value: A) => {
+  const pending = replies.get(id)
+  replies.delete(id)
+  return pending === undefined ? Effect.succeed(false) : Deferred.succeed(pending, value)
+}
+
+const isPlayed = (scenario: MockScenario): scenario is keyof typeof playedSteps => Object.hasOwn(playedSteps, scenario)
+
+export const usageLimitLayer = (defaultScenario: MockScenario = "usage-limit", resetAfterMs = 60000) =>
   Layer.effect(
     ClaudeProvider,
     Effect.gen(function* () {
@@ -172,33 +254,139 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
       const artifacts = new Map<string, string>()
       const shells = new Map<string, ReadonlyArray<BackgroundTask>>()
       const shellChanges = yield* Queue.unbounded<BackgroundTasksChange>()
-      const heldTurns = new Map<string, Deferred.Deferred<void>>()
+      const stopped = new Map<string, Deferred.Deferred<void>>()
       const subagentTurns = new Map<
         string,
         { readonly stop: (id: string, at: number) => Array<AgentEvent>; readonly pushed: Queue.Queue<AgentEvent> }
       >()
-      const requests = new Map<string, Deferred.Deferred<void>>()
-      let requestCount = 0
-      const awaitAnswer = (requested: AgentEvent, resolved: AgentEvent, id: string) => {
-        const answered = Deferred.makeUnsafe<void>()
-        requests.set(id, answered)
-        return Stream.concat(
-          Stream.make(requested),
-          Stream.fromEffect(Deferred.await(answered).pipe(Effect.as(resolved))),
-        )
-      }
-      const answer = (id: string) => {
-        const answered = requests.get(id)
-        requests.delete(id)
-        return answered === undefined ? Effect.void : Deferred.succeed(answered, undefined).pipe(Effect.asVoid)
-      }
+      const approvalReplies = new Map<string, Deferred.Deferred<ApprovalReply>>()
+      const questionReplies = new Map<string, Deferred.Deferred<void>>()
+      let artifactCalls = 0
       const setShells = (threadId: string, tasks: ReadonlyArray<BackgroundTask>) => {
         shells.set(threadId, tasks)
         Queue.offerUnsafe(shellChanges, { threadId, tasks })
       }
+      const interrupted: AgentEvent = { type: "turn_failed", message: "Interrupted" }
+      const untilStopped = (stop: Deferred.Deferred<void>) => Deferred.await(stop).pipe(Effect.as(interrupted))
+
+      const usageLimitTurn = (input: RunTurnInput, scenario: "usage-limit" | "org-spend-limit") => {
+        if (attempted.has(input.threadId) || input.resumeSessionId !== null) {
+          const events: Array<AgentEvent> = [
+            { type: "text_delta", text: "The retry completed successfully." },
+            { type: "turn_completed" },
+          ]
+          return Stream.fromIterable(events)
+        }
+        attempted.add(input.threadId)
+        const state: MapState = {
+          pendingEdits: new Map(),
+          subagents: new Map(),
+          lastRequest: null,
+          limitMessage: null,
+          limitResetAt: null,
+        }
+        const resetsAt = Math.ceil((Date.now() + resetAfterMs) / 1000)
+        const resetTime = new Intl.DateTimeFormat("en-US", {
+          timeZone: "Asia/Tokyo",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        }).format(resetsAt * 1000)
+        const message =
+          scenario === "org-spend-limit"
+            ? orgSpendLimitMessage
+            : `You've hit your limit · resets ${resetTime} (Asia/Tokyo)`
+        const sdkMessages: ReadonlyArray<SDKMessage> = [
+          { ...rejectedRateLimit, rate_limit_info: { ...rejectedRateLimit.rate_limit_info, resetsAt } },
+          {
+            ...usageLimitAssistant,
+            message: { ...usageLimitAssistant.message, content: [{ type: "text", text: message, citations: [] }] },
+          },
+          { ...usageLimitResult, result: message },
+        ]
+        const events: Array<AgentEvent> = [
+          { type: "session_bound", providerSessionId: usageLimitSessionId },
+          ...sdkMessages.flatMap((sdkMessage) => mapMessage(sdkMessage, state, new Date().toISOString())),
+        ]
+        return Stream.fromIterable(events)
+      }
+
+      const runScenario = (
+        scenario: MockScenario,
+        input: RunTurnInput,
+        stop: Deferred.Deferred<void>,
+      ): Stream.Stream<AgentEvent> => {
+        if (isPlayed(scenario)) {
+          return play(playedSteps[scenario](), {
+            threadId: input.threadId,
+            stopped: stop,
+            sleep: (ms) => Effect.sleep(ms),
+            approve: (request) => awaitReply(approvalReplies, request.id),
+            answer: (request) => awaitReply(questionReplies, request.id),
+            publishArtifact: (args) => publishArtifact(input.mcpServer, args),
+          })
+        }
+        switch (scenario) {
+          case "usage-limit":
+          case "org-spend-limit":
+            return usageLimitTurn(input, scenario)
+          case "activity":
+            setShells(input.threadId, activityShells())
+            return Stream.concat(Stream.fromIterable(activityTurn()), Stream.fromEffect(untilStopped(stop)))
+          case "subagents": {
+            const turn = mockSubagents(Date.now())
+            const progress = Stream.tick("2 seconds").pipe(
+              Stream.drop(1),
+              Stream.flatMap(() => Stream.fromIterable(turn.tick(Date.now()))),
+            )
+            return Stream.unwrap(
+              Effect.map(Queue.unbounded<AgentEvent>(), (pushed) => {
+                subagentTurns.set(input.threadId, { stop: turn.stop, pushed })
+                return Stream.fromIterable(turn.initial).pipe(
+                  Stream.concat(
+                    Stream.merge(progress, Stream.fromQueue(pushed)).pipe(Stream.interruptWhen(Deferred.await(stop))),
+                  ),
+                  Stream.concat(Stream.make(interrupted)),
+                )
+              }),
+            )
+          }
+          case "long-turn": {
+            const streaming = Stream.tick("100 millis").pipe(
+              Stream.map((): AgentEvent => ({ type: "text_delta", text: "streaming " })),
+              Stream.interruptWhen(Deferred.await(stop)),
+            )
+            return Stream.fromIterable(longTurn()).pipe(
+              Stream.concat(streaming),
+              Stream.concat(Stream.make(interrupted)),
+            )
+          }
+          case "artifacts": {
+            const { started, finished: published } = artifactTurn(
+              `mock-artifact-${++artifactCalls}`,
+              input.prompt,
+              input.mcpServer,
+              artifacts.get(input.threadId),
+              (id) => artifacts.set(input.threadId, id),
+            )
+            const bound: AgentEvent = { type: "session_bound", providerSessionId: `mock-artifacts-${input.threadId}` }
+            return Stream.concat(Stream.make(bound, started), Stream.fromIterableEffect(published))
+          }
+          case "markdown":
+            return Stream.fromIterable(markdownTurn())
+          case "stream":
+            return Stream.fromIterable(streamTurn()).pipe(Stream.tap(() => Effect.sleep("20 millis")))
+          case "todos": {
+            const first = !attempted.has(input.threadId)
+            attempted.add(input.threadId)
+            return Stream.fromIterable(todoTurn(first))
+          }
+        }
+      }
+
       return ClaudeProvider.of({
         id: "claude",
-        listModels: Effect.succeed([unlistedModel("claude-sonnet-5-5", "claude")]),
+        listModels: Effect.succeed([unlistedModel(mockModel, "claude")]),
         account: () =>
           Effect.succeed({
             type: "subscription",
@@ -208,7 +396,7 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
           }),
         planLimits: (home) =>
           Effect.succeed(
-            scenario === "usage-limit"
+            defaultScenario === "usage-limit"
               ? {
                   windows: [
                     {
@@ -226,170 +414,9 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
         listCommands: () => Effect.succeed(commands),
         runTurn: (input) =>
           Stream.suspend(() => {
-            if (scenario === "activity") {
-              setShells(input.threadId, activityShells())
-              const interrupted = Deferred.makeUnsafe<void>()
-              heldTurns.set(input.threadId, interrupted)
-              const ended: AgentEvent = { type: "turn_failed", message: "Interrupted" }
-              return Stream.concat(
-                Stream.fromIterable(activityTurn()),
-                Stream.fromEffect(Deferred.await(interrupted).pipe(Effect.as(ended))),
-              )
-            }
-            if (scenario === "subagents") {
-              const interrupted = Deferred.makeUnsafe<void>()
-              heldTurns.set(input.threadId, interrupted)
-              const turn = mockSubagents(Date.now())
-              const ended: AgentEvent = { type: "turn_failed", message: "Interrupted" }
-              const progress = Stream.tick("2 seconds").pipe(
-                Stream.drop(1),
-                Stream.flatMap(() => Stream.fromIterable(turn.tick(Date.now()))),
-              )
-              return Stream.unwrap(
-                Effect.map(Queue.unbounded<AgentEvent>(), (pushed) => {
-                  subagentTurns.set(input.threadId, { stop: turn.stop, pushed })
-                  return Stream.fromIterable(turn.initial).pipe(
-                    Stream.concat(
-                      Stream.merge(progress, Stream.fromQueue(pushed)).pipe(
-                        Stream.interruptWhen(Deferred.await(interrupted)),
-                      ),
-                    ),
-                    Stream.concat(Stream.make(ended)),
-                  )
-                }),
-              )
-            }
-            if (scenario === "long-turn") {
-              const interrupted = Deferred.makeUnsafe<void>()
-              heldTurns.set(input.threadId, interrupted)
-              const ended: AgentEvent = { type: "turn_failed", message: "Interrupted" }
-              const streaming = Stream.tick("100 millis").pipe(
-                Stream.map((): AgentEvent => ({ type: "text_delta", text: "streaming " })),
-                Stream.interruptWhen(Deferred.await(interrupted)),
-              )
-              return Stream.fromIterable(longTurn()).pipe(Stream.concat(streaming), Stream.concat(Stream.make(ended)))
-            }
-            if (scenario === "approvals") {
-              const approval = (title: string, command: string) => {
-                const id = `mock-approval-${++requestCount}`
-                return awaitAnswer(
-                  {
-                    type: "approval_requested",
-                    request: {
-                      id,
-                      threadId: input.threadId,
-                      provider: "claude",
-                      kind: "command",
-                      title,
-                      detail: command,
-                    },
-                  },
-                  { type: "approval_resolved", requestId: id },
-                  id,
-                )
-              }
-              const questionId = `mock-question-${++requestCount}`
-              const question = awaitAnswer(
-                {
-                  type: "question_requested",
-                  request: {
-                    id: questionId,
-                    threadId: input.threadId,
-                    provider: "claude",
-                    questions: [
-                      {
-                        id: "port",
-                        header: "Dev server",
-                        question: "Which port should the dev server use?",
-                        options: [
-                          { label: "3000", description: "The project default" },
-                          { label: "5173", description: "Vite's default" },
-                        ],
-                        multiSelect: false,
-                        allowsText: false,
-                        secret: false,
-                      },
-                    ],
-                  },
-                },
-                { type: "question_resolved", requestId: questionId },
-                questionId,
-              )
-              return Stream.merge(
-                approval("Run pnpm install", "pnpm install"),
-                approval("Run pnpm test", "pnpm test"),
-              ).pipe(
-                Stream.concat(question),
-                Stream.concat(Stream.fromIterable(streamTurn()).pipe(Stream.tap(() => Effect.sleep("20 millis")))),
-              )
-            }
-            if (scenario === "artifacts") {
-              const { started, finished } = artifactTurn(
-                `mock-artifact-${++requestCount}`,
-                input.prompt,
-                input.mcpServer,
-                artifacts.get(input.threadId),
-                (id) => artifacts.set(input.threadId, id),
-              )
-              const bound: AgentEvent = { type: "session_bound", providerSessionId: `mock-artifacts-${input.threadId}` }
-              return Stream.concat(Stream.make(bound, started), Stream.fromIterableEffect(finished))
-            }
-            if (scenario === "markdown") return Stream.fromIterable(markdownTurn())
-            if (scenario === "stream")
-              return Stream.fromIterable(streamTurn()).pipe(Stream.tap(() => Effect.sleep("20 millis")))
-            if (scenario === "todos") {
-              const first = !attempted.has(input.threadId)
-              attempted.add(input.threadId)
-              return Stream.fromIterable(todoTurn(first))
-            }
-            if (attempted.has(input.threadId) || input.resumeSessionId !== null) {
-              const events: Array<AgentEvent> = [
-                { type: "text_delta", text: "The retry completed successfully." },
-                { type: "turn_completed" },
-              ]
-              return Stream.fromIterable(events)
-            }
-            attempted.add(input.threadId)
-            const state: MapState = {
-              pendingEdits: new Map(),
-              subagents: new Map(),
-              lastRequest: null,
-              limitMessage: null,
-              limitResetAt: null,
-            }
-            const resetsAt = Math.ceil((Date.now() + resetAfterMs) / 1000)
-            const resetTime = new Intl.DateTimeFormat("en-US", {
-              timeZone: "Asia/Tokyo",
-              hour: "numeric",
-              minute: "2-digit",
-              hour12: true,
-            }).format(resetsAt * 1000)
-            const message =
-              scenario === "org-spend-limit"
-                ? orgSpendLimitMessage
-                : `You've hit your limit · resets ${resetTime} (Asia/Tokyo)`
-            const sdkMessages: ReadonlyArray<SDKMessage> = [
-              {
-                ...rejectedRateLimit,
-                rate_limit_info: {
-                  ...rejectedRateLimit.rate_limit_info,
-                  resetsAt,
-                },
-              },
-              {
-                ...usageLimitAssistant,
-                message: {
-                  ...usageLimitAssistant.message,
-                  content: [{ type: "text", text: message, citations: [] }],
-                },
-              },
-              { ...usageLimitResult, result: message },
-            ]
-            const events: Array<AgentEvent> = [
-              { type: "session_bound", providerSessionId: usageLimitSessionId },
-              ...sdkMessages.flatMap((sdkMessage) => mapMessage(sdkMessage, state, new Date().toISOString())),
-            ]
-            return Stream.fromIterable(events)
+            const stop = Deferred.makeUnsafe<void>()
+            stopped.set(input.threadId, stop)
+            return runScenario(scenarioOf(input.prompt, defaultScenario), input, stop)
           }),
         backgroundTasks: {
           changes: Stream.fromQueue(shellChanges),
@@ -401,6 +428,7 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
               ),
             ),
         },
+        contextBreakdown: () => Effect.succeed(contextBreakdown),
         stopSubagent: (threadId, subagentId) =>
           Effect.sync(() => {
             const turn = subagentTurns.get(threadId)
@@ -408,11 +436,14 @@ export const usageLimitLayer = (scenario: MockScenario = "usage-limit", resetAft
           }),
         steer: () => Effect.fail(new AgentError({ provider: "claude", message: "No turn is running on this thread" })),
         interrupt: (threadId) => {
-          const held = heldTurns.get(threadId)
-          return held === undefined ? Effect.void : Deferred.succeed(held, undefined).pipe(Effect.asVoid)
+          const stop = stopped.get(threadId)
+          return stop === undefined ? Effect.void : Deferred.succeed(stop, undefined).pipe(Effect.asVoid)
         },
-        respondApproval: (id) => answer(id).pipe(Effect.as(false)),
-        respondQuestion: answer,
+        respondApproval: (id, decision, note) =>
+          reply(approvalReplies, id, note === undefined ? { decision } : { decision, note }).pipe(
+            Effect.as(decision === "deny" && note !== undefined),
+          ),
+        respondQuestion: (id) => reply(questionReplies, id, undefined).pipe(Effect.asVoid),
         setAccessMode: () => Effect.void,
       })
     }),

@@ -19,9 +19,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx"
-import { ChevronDownIcon } from "./icons/ChevronDownIcon.tsx"
-import { ExternalIcon } from "./icons/ExternalIcon.tsx"
-import { FolderOpenIcon } from "./icons/FolderOpenIcon.tsx"
+import { ChevronDownIcon, ExternalIcon, FolderOpenIcon } from "@hinacode/icons"
 
 type Target = "folder" | "file"
 

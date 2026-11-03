@@ -1,6 +1,6 @@
 import type { Project } from "@shared/domain.ts"
 import { parseGitHubRepository } from "@shared/github.ts"
-import { router } from "expo-router"
+import { router, useLocalSearchParams } from "expo-router"
 import { useHeaderHeight } from "expo-router/react-navigation"
 import { useRef, useState } from "react"
 import { KeyboardAvoidingView, ScrollView, StyleSheet, Text, TextInput, type TextInputProps, View } from "react-native"
@@ -13,10 +13,13 @@ import { call, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { baseName, defaultCloneFolder } from "@/lib/projects"
+import { createThread } from "@/lib/start-thread"
+import { useDrafts } from "@/stores/drafts"
 import { useThreads } from "@/stores/threads"
 
 export default function AddProjectScreen() {
   const theme = useTheme()
+  const { draft } = useLocalSearchParams<{ draft?: string }>()
   // KeyboardAvoidingView measures itself against its parent, which starts below the stack header.
   const headerHeight = useHeaderHeight()
   const servers = useConnection((state) => state.servers)
@@ -58,8 +61,8 @@ export default function AddProjectScreen() {
             ))
       added.current = project
       useThreads.getState().addProject(project)
-      const thread = await call("threads.create", { projectId: project.id })
-      useThreads.getState().upsert(thread)
+      const thread = await createThread(project)
+      if (draft !== undefined) useDrafts.getState().setText(thread.id, draft)
       router.replace({ pathname: "/thread/[id]", params: { id: thread.id } })
     } catch (cause) {
       setError(errorText(cause))
@@ -144,7 +147,7 @@ export default function AddProjectScreen() {
         <Button
           testID="add-project-submit"
           label={copy(repository === null ? "mobile_project_add" : "mobile_project_clone")}
-          icon={repository === null ? "RiFolderAddLine" : "RiGithubFill"}
+          icon={repository === null ? "FolderAdd" : "RiGithubFill"}
           variant="primary"
           busy={busy}
           disabled={!ready}

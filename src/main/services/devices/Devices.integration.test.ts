@@ -6,7 +6,8 @@ import { NodeServices } from "@effect/platform-node"
 import { Effect, Fiber, Layer } from "effect"
 import { SqlClient } from "effect/sql"
 import { TestClock } from "effect/testing"
-import type { Device, DeviceCommand, DeviceId } from "../../../shared/device.ts"
+import type { PushEvent } from "../../../shared/contract.ts"
+import type { AgentAction, Device, DeviceCommand, DeviceId } from "../../../shared/device.ts"
 import * as Db from "../../db/client.ts"
 import { seedThread } from "../../db/testing.ts"
 import { Events } from "../Events.ts"
@@ -27,6 +28,7 @@ let failingRemovals = 0
 let removalGate: Promise<void> | undefined
 let removalStarted = false
 const launched: Array<DeviceId> = []
+const published: Array<PushEvent> = []
 const sent: Array<{ readonly deviceId: DeviceId; readonly command: DeviceCommand }> = []
 const devices = new Map<DeviceId, Device>([
   [
@@ -86,7 +88,7 @@ const testLayer = devicesLayer({
   simslimAvailable: () => Promise.resolve(true),
 }).pipe(
   Layer.provideMerge(settingsLayer(mkdtempSync(join(tmpdir(), "kk-devices-settings-")))),
-  Layer.provide(Layer.succeed(Events, { publish: () => Effect.void })),
+  Layer.provide(Layer.succeed(Events, { publish: (event) => Effect.sync(() => void published.push(event)) })),
   Layer.provideMerge(Db.layer(":memory:")),
   Layer.provide(NodeServices.layer),
 )
@@ -100,6 +102,8 @@ const eventually = (check: () => boolean) =>
   })
 
 const touch: DeviceCommand = { kind: "touch", phase: "down", x: 0.5, y: 0.5 }
+const tap: AgentAction = { kind: "tap", x: 0.5, y: 0.5 }
+const tapping = { steps: [[touch]] }
 
 describe("Devices", () => {
   layer(testLayer)((it) => {
@@ -154,17 +158,37 @@ describe("Devices", () => {
         yield* service.command({ threadId, deviceId: USERS_DEVICE, commands: [touch] })
         sent.length = 0
 
-        const agent = yield* Effect.forkChild(service.act(threadId, undefined, [touch]))
+        const agent = yield* Effect.forkChild(service.act(threadId, undefined, tap, tapping))
         let [state] = yield* service.get(threadId)
         for (let turn = 0; turn < 1000 && !(state?.phase === "ready" && state.agentWaiting); turn++) {
           yield* Effect.yieldNow
           ;[state] = yield* service.get(threadId)
         }
-        expect(state?.phase === "ready" && state.control === "user" && state.agentWaiting).toBe(true)
+        expect(state?.phase === "ready" && state.control === "user" && state.agentWaiting).toEqual(tap)
 
         yield* service.control(threadId, USERS_DEVICE, "agent")
         expect(yield* Fiber.join(agent)).toBe("handedBack")
         expect(sent).toEqual([])
+      }),
+    )
+
+    it.effect("announces a swipe of many steps once, before its first touch", () =>
+      Effect.gen(function* () {
+        const service = yield* Devices
+        const { threadId } = yield* seedThread({ rootPath: "/tmp/kk-devices-announce" })
+        yield* service.attach(threadId, USERS_DEVICE)
+        const swipe: AgentAction = { kind: "swipe", x: 0.5, y: 0.8, toX: 0.5, toY: 0.2, durationMs: 300 }
+        const move: DeviceCommand = { kind: "touch", phase: "move", x: 0.5, y: 0.5 }
+        published.length = 0
+        sent.length = 0
+
+        expect(yield* service.act(threadId, undefined, swipe, { steps: [[touch], [move], [touch]] })).toBe("done")
+        const announced = () =>
+          published.filter((event) => event.type === "device.agentAction" && event.threadId === threadId)
+        yield* eventually(() => announced().length > 0)
+        expect(announced()).toEqual([{ type: "device.agentAction", threadId, deviceId: USERS_DEVICE, action: swipe }])
+        expect(sent).toHaveLength(3)
+        yield* service.detach(threadId, USERS_DEVICE)
       }),
     )
 
@@ -179,13 +203,13 @@ describe("Devices", () => {
           SECOND_DEVICE,
         ])
 
-        const unnamed = yield* Effect.flip(service.act(threadId, undefined, [touch]))
+        const unnamed = yield* Effect.flip(service.act(threadId, undefined, tap, tapping))
         expect(unnamed.message).toContain("Someone's iPhone")
         expect(unnamed.message).toContain("Someone's iPad")
 
         yield* service.command({ threadId, deviceId: USERS_DEVICE, commands: [touch] })
         sent.length = 0
-        expect(yield* service.act(threadId, "someone's ipad", [touch])).toBe("done")
+        expect(yield* service.act(threadId, "someone's ipad", tap, tapping)).toBe("done")
         expect(sent).toEqual([{ deviceId: SECOND_DEVICE, command: touch }])
       }),
     )
@@ -202,13 +226,13 @@ describe("Devices", () => {
         let outcome: string | undefined
         const agent = yield* Effect.forkChild(
           service
-            .act(second.threadId, undefined, [touch])
+            .act(second.threadId, undefined, tap, tapping)
             .pipe(Effect.tap((value) => Effect.sync(() => (outcome = value)))),
         )
         yield* eventually(() => outcome !== undefined || sent.length > 0)
         expect(sent).toEqual([])
         const [state] = yield* service.get(second.threadId)
-        expect(state?.phase === "ready" && state.control === "user" && state.agentWaiting).toBe(true)
+        expect(state?.phase === "ready" && state.control === "user" && state.agentWaiting).toEqual(tap)
         const refused = yield* Effect.flip(service.control(second.threadId, USERS_DEVICE, "agent"))
         expect(refused.message).toContain("another thread")
         expect(sent).toEqual([])
@@ -235,7 +259,7 @@ describe("Devices", () => {
         yield* eventually(() => finished || launched.length > 0)
         expect(launched).toEqual([])
         yield* service.control(threadId, USERS_DEVICE, "agent")
-        yield* Fiber.join(agent)
+        expect(yield* Fiber.join(agent)).toBe("handedBack")
         expect(launched).toEqual([])
         yield* service.detach(threadId, USERS_DEVICE)
       }),
@@ -293,7 +317,7 @@ describe("Devices", () => {
         sent.length = 0
         const created = devices.has(CREATED_DEVICE)
 
-        expect(yield* service.act(threadId, undefined, [touch])).toBe("done")
+        expect(yield* service.act(threadId, undefined, tap, tapping)).toBe("done")
         expect(sent).toEqual([{ deviceId: REMEMBERED_DEVICE, command: touch }])
         expect(devices.has(CREATED_DEVICE)).toBe(created)
       }),

@@ -18,8 +18,7 @@ import {
   VmScreen,
   useVmDrop,
 } from "./TinyVmView.tsx"
-import { FullscreenIcon } from "../icons/FullscreenIcon.tsx"
-import { PipExitIcon } from "../icons/PipExitIcon.tsx"
+import { FullscreenIcon, PipExitIcon } from "@hinacode/icons"
 
 export default function FloatingVm({ threadId }: { threadId: string }) {
   const vm = useAtomValue(threadVmAtom(threadId))

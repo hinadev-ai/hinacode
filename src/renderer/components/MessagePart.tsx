@@ -1,18 +1,27 @@
-import { useParams } from "@tanstack/react-router"
+import { Link, useParams } from "@tanstack/react-router"
 import { createContext, type ReactNode, use, useState } from "react"
 import { toast } from "sonner"
 import {
   type AccountProviderId,
   type Compaction,
+  createdThreadId,
   type ProviderId,
   publishedArtifactId,
   toolArgument,
 } from "../../shared/agent.ts"
-import { type MessagePart, publishesArtifact, spawnsSubagent, type ToolCallStatus } from "../../shared/domain.ts"
+import {
+  type MessagePart,
+  createsThread,
+  publishesArtifact,
+  spawnsSubagent,
+  type Thread,
+  type ToolCallStatus,
+} from "../../shared/domain.ts"
 import { ansiSegments } from "../lib/ansi.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
-import { statusOfCall, useOpenSubagent } from "../lib/subagents.ts"
+import { statusOfCall } from "../../shared/subagents.ts"
+import { useOpenSubagent } from "../lib/subagents.ts"
 import { callPromise } from "../lib/rpc.ts"
 import {
   type ActivityPart,
@@ -38,25 +47,29 @@ import { FindPartContext, FindPatternContext, Highlighted } from "./FindHighligh
 import { HighlightedCode } from "./HighlightedCode.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
+import { StatusIndicator, useThreadRowState } from "./SidebarThreadList.tsx"
 import { SubagentStatusIcon } from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
-import { BrainIcon } from "./icons/BrainIcon.tsx"
-import { CheckIcon } from "./icons/CheckIcon.tsx"
-import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
-import { CollapseIcon } from "./icons/CollapseIcon.tsx"
-import { FileDiffIcon } from "./icons/FileDiffIcon.tsx"
-import { FileTextIcon } from "./icons/FileTextIcon.tsx"
-import { GlobeIcon } from "./icons/GlobeIcon.tsx"
-import type { IconComponent } from "./icons/Icon.tsx"
-import { LayoutIcon } from "./icons/LayoutIcon.tsx"
-import { PencilIcon } from "./icons/PencilIcon.tsx"
-import { SearchIcon } from "./icons/SearchIcon.tsx"
-import { SkillIcon } from "./icons/SkillIcon.tsx"
-import { SpinnerIcon } from "./icons/SpinnerIcon.tsx"
-import { TerminalIcon } from "./icons/TerminalIcon.tsx"
-import { ToolsIcon } from "./icons/ToolsIcon.tsx"
-import { WarningIcon } from "./icons/WarningIcon.tsx"
+import {
+  BrainIcon,
+  ChatNewIcon,
+  CheckIcon,
+  ChevronRightIcon,
+  CollapseIcon,
+  FileDiffIcon,
+  FileTextIcon,
+  GlobeIcon,
+  type IconComponent,
+  LayoutIcon,
+  PencilIcon,
+  SearchIcon,
+  SkillIcon,
+  SpinnerIcon,
+  TerminalIcon,
+  ToolsIcon,
+  WarningIcon,
+} from "@hinacode/icons"
 
 export function MessagePartView({ part }: { part: MessagePart }) {
   switch (part.type) {
@@ -161,6 +174,7 @@ function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call"
   const linksSubagents = use(SubagentLinks)
   if (linksSubagents && spawnsSubagent(part)) return <SubagentCallPart part={part} />
   if (publishesArtifact(part)) return <ArtifactCallPart part={part} />
+  if (createsThread(part)) return <ThreadCallPart part={part} />
   return (
     <div className="my-2">
       <ToolRow call={part} reveal={null} />
@@ -265,6 +279,46 @@ function ArtifactCallPart({ part }: { part: ToolCall }) {
       </span>
       {part.status === "running" ? statusIcon.running : <ChevronRightIcon aria-hidden className="size-3.5 shrink-0" />}
     </button>
+  )
+}
+
+const threadCard = "my-2 flex w-full max-w-sm min-w-0 items-center gap-3 rounded-lg border border-border px-3 py-2.5"
+
+function ThreadCallPart({ part }: { part: ToolCall }) {
+  const threadId = part.output === undefined ? null : createdThreadId(formatOutput(part.output))
+  const thread = useThreads((state) => (threadId === null ? undefined : state.byId[threadId]))
+  if (thread !== undefined) return <ThreadCard thread={thread} />
+  const title = toolArgument(part.input, "title")
+  return (
+    <div className={cn(threadCard, "text-muted-foreground")}>
+      <ChatNewIcon aria-hidden className="size-4 shrink-0" />
+      <span className="min-w-0 flex-1 truncate text-sm">
+        <Highlighted text={typeof title === "string" ? title : ""} />
+      </span>
+      {part.status === "running" && statusIcon.running}
+    </div>
+  )
+}
+
+function ThreadCard({ thread }: { thread: Thread }) {
+  const state = useThreadRowState(thread)
+  return (
+    <Link
+      to="/thread/$threadId"
+      params={{ threadId: thread.id }}
+      aria-label={m.thread_card_open({ title: thread.title })}
+      className={cn(
+        threadCard,
+        "bg-background/50 outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+    >
+      <ProviderIcon provider={thread.provider} muted />
+      <span className="min-w-0 flex-1 truncate text-sm">
+        <Highlighted text={thread.title} />
+      </span>
+      <StatusIndicator state={state} />
+      <ChevronRightIcon aria-hidden className="size-3.5 shrink-0" />
+    </Link>
   )
 }
 
