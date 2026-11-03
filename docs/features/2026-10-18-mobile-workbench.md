@@ -40,7 +40,7 @@ Reanimated 4 with the desktop's curves from `src/renderer/index.css`: `ease.out`
 
 ### Notifications
 
-`lib/thread-alerts.ts` maps a `thread.event` to an alert with the desktop's table: `turn_completed` is completed, approval, question and secret requests need input, `turn_failed` and `turn_limited` failed. A thread on screen raises nothing, and a finished turn with queued messages behind it raises nothing. Elsewhere in the app a banner slides in. In the background the phone posts a local notification through `expo-notifications`, or a web `Notification`, keyed by thread so a newer one replaces the older. Tapping it opens the thread.
+`lib/thread-alerts.ts` maps a `thread.event` to an alert with the desktop's table: `turn_completed` is completed, approval, question and secret requests need input, `turn_failed` and `turn_limited` failed, except a `turn_failed` marked `stopped` by the user's Stop. A thread on screen raises nothing, and a finished turn with queued messages behind it raises nothing. Elsewhere in the app a banner slides in. In the background the phone posts a local notification through `expo-notifications`, or a web `Notification`, keyed by thread so a newer one replaces the older. Tapping it opens the thread.
 
 ### Performance
 

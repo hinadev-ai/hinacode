@@ -485,7 +485,7 @@ function SendButton({
   const label = copy(`mobile_composer_${action}`)
   const disabled = !stopping && !hasDraft
   const halo = action === "send" && hasDraft
-  const background = stopping ? theme.dangerBg : disabled ? theme.surfaceStrong : theme.primary
+  const background = stopping ? theme.dangerBg : disabled ? theme.disabled : theme.primary
 
   return (
     <motion.Pressable

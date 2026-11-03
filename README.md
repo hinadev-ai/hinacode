@@ -39,7 +39,7 @@ Simulate an exhausted Claude account without using the account:
 HINACODE_USER_DATA=/tmp/kk-limit-demo HINACODE_MOCK_CLAUDE=usage-limit pnpm dev
 ```
 
-The first message in each thread reaches the limit. The next attempt succeeds. The callout offers **Resume at reset**, which retries once at the provider's reset time and survives restart. Set `HINACODE_MOCK_RESET_MS=5000` for a five-second reset. Use `HINACODE_MOCK_CLAUDE=org-spend-limit` to simulate the organization monthly spend cap and its `/usage-credits` guidance. That case has no automatic reset action.
+The first message in each thread reaches the limit. The next attempt succeeds. The callout offers **Resume at reset**, which retries once at the provider's reset time and survives restart. Set `HINACODE_MOCK_RESET_MS=5000` for a five-second reset. Use `HINACODE_MOCK_CLAUDE=org-spend-limit` to simulate the organization monthly spend cap and its `/usage-credits` guidance. That case has no automatic reset action. See [docs/operations/mock-claude.md](docs/operations/mock-claude.md) for the other scenarios, each one `/mock-<scenario>` message away.
 
 Headless verification on a machine without a display uses Xvfb and Chrome DevTools:
 

@@ -1,5 +1,5 @@
 import type { AgentCommand } from "../../shared/agent.ts"
-import { type MessagePart, publishesArtifact, spawnsSubagent } from "../../shared/domain.ts"
+import { type MessagePart, createsThread, publishesArtifact, spawnsSubagent } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 
@@ -46,7 +46,8 @@ export type TranscriptBlock =
   | { readonly type: "tools"; readonly parts: ReadonlyArray<ActivityPart>; readonly index: number }
 
 const isFoldable = (part: MessagePart): part is ActivityPart =>
-  part.type === "reasoning" || (part.type === "tool_call" && !spawnsSubagent(part) && !publishesArtifact(part))
+  part.type === "reasoning" ||
+  (part.type === "tool_call" && !spawnsSubagent(part) && !publishesArtifact(part) && !createsThread(part))
 
 export function groupToolCalls(parts: ReadonlyArray<MessagePart>, startIndex = 0): Array<TranscriptBlock> {
   const blocks: Array<TranscriptBlock> = []

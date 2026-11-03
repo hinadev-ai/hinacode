@@ -74,7 +74,7 @@ export function NewThreadSheet({
 
   const addProject = () => {
     close()
-    router.push("/project/new")
+    router.push({ pathname: "/project/new", params: draft === undefined ? {} : { draft } })
   }
 
   if (choosing !== null) {

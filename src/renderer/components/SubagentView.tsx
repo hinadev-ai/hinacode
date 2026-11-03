@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react"
 import type { Message, Thread } from "../../shared/domain.ts"
-import { findSubagentWork, inputField, statusOfCall, subagentReport, useOpenSubagent } from "../lib/subagents.ts"
+import { findSubagentWork, inputField, statusOfCall, subagentReport } from "../../shared/subagents.ts"
+import { useOpenSubagent } from "../lib/subagents.ts"
 import { m } from "../paraglide/messages.js"
 import { useMessages } from "../stores/messages.ts"
 import { useSubagentByCallId } from "../stores/subagents.ts"

@@ -166,6 +166,7 @@ export const routes: Record<RpcMethod, Route> = {
   "search.files": thread,
   "subagents.list": thread,
   "subagents.stop": thread,
+  "subagents.transcript": thread,
   "backgroundTasks.list": thread,
   "backgroundTasks.stop": thread,
   "pullRequests.list": thread,

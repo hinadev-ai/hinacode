@@ -1,5 +1,6 @@
 import {
   ArchiveIcon,
+  ArrowLeftIcon,
   ArrowUpIcon,
   BellIcon,
   BoltIcon,
@@ -62,6 +63,7 @@ import {
   SlidersIcon,
   SpinnerIcon,
   StackIcon,
+  StopCircleIcon,
   StopIcon,
   SunIcon,
   TerminalIcon,
@@ -82,6 +84,7 @@ import {
 
 const hinacode = {
   Archive: ArchiveIcon,
+  ArrowLeft: ArrowLeftIcon,
   ArrowUp: ArrowUpIcon,
   Bell: BellIcon,
   Bolt: BoltIcon,
@@ -141,6 +144,7 @@ const hinacode = {
   Spinner: SpinnerIcon,
   Stack: StackIcon,
   Stop: StopIcon,
+  StopCircle: StopCircleIcon,
   Sun: SunIcon,
   Terminal: TerminalIcon,
   Tools: ToolsIcon,
