@@ -138,6 +138,7 @@ describe("Messages.update", () => {
         const messages = yield* Messages.Messages
         const previous = yield* openTurn([text("searchable words")])
         const closed: Message = { ...previous, completedAt: "2026-11-03T00:00:01.000Z" }
+        yield* sql`DELETE FROM message_cjk_stale`
 
         yield* messages.update(closed, previous)
 
@@ -149,6 +150,9 @@ describe("Messages.update", () => {
           SELECT body FROM message_fts WHERE rowid = (SELECT rowid FROM message WHERE id = ${previous.id})
         `
         expect(fts?.body).toContain("searchable words")
+        expect(
+          yield* sql`SELECT 1 AS stale FROM message_cjk_stale WHERE rowid = (SELECT rowid FROM message WHERE id = ${previous.id})`,
+        ).toStrictEqual([{ stale: 1 }])
       }),
     ),
   )

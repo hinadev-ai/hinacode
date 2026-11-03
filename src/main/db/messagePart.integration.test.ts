@@ -4,7 +4,7 @@ import { SqlClient } from "effect/sql"
 import type { MessagePart } from "../../shared/domain.ts"
 import * as Messages from "../services/Messages.ts"
 import * as Db from "./client.ts"
-import messagePart from "./migrations/0037_message_part.ts"
+import messagePart from "./migrations/0038_message_part.ts"
 import { seedThread } from "./testing.ts"
 
 const text = (value: string): MessagePart => ({ type: "text", text: value })

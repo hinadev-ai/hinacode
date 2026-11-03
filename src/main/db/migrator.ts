@@ -35,8 +35,8 @@ import opencodeProvider from "./migrations/0035_opencode_provider.ts"
 import archiveSharedChats from "./migrations/0024_archive_shared_chats.ts"
 import ftsToolTitles from "./migrations/0034_fts_tool_titles.ts"
 import threadScheduled from "./migrations/0036_thread_scheduled.ts"
-import messagePart from "./migrations/0037_message_part.ts"
 import ftsCjkGrams from "./migrations/0037_fts_cjk_grams.ts"
+import messagePart from "./migrations/0038_message_part.ts"
 
 const run = Migrator.make({})
 
@@ -77,8 +77,8 @@ export const runMigrations = run({
     "34_fts_tool_titles": ftsToolTitles,
     "35_opencode_provider": opencodeProvider,
     "36_thread_scheduled": threadScheduled,
-    "37_message_part": messagePart,
     "37_fts_cjk_grams": ftsCjkGrams,
+    "38_message_part": messagePart,
   }),
 }).pipe(
   Effect.tap((ran) =>
