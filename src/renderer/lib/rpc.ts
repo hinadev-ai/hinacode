@@ -565,14 +565,12 @@ export const accountLimitsAtom = Atom.make((get) => {
   )
 }).pipe(Atom.swr({ staleTime: "5 minutes", revalidateOnFocus: true, focusSignal: windowReturnSignal }))
 
-export const remoteStatusAtom = Atom.make(
-  Stream.fromEffectSchedule(call("remote.status", undefined), Schedule.spaced("2 seconds")),
+export const remoteStatusAtom = Atom.make(call("remote.status", undefined)).pipe(
+  refreshInStepWhileVisible(Duration.seconds(2)),
 )
 
 export const machineResourcesAtom = Atom.family((environment: EnvironmentId) =>
-  Atom.make(
-    Stream.fromEffectSchedule(call("system.resources", undefined, { environment }), Schedule.spaced("5 seconds")),
-  ),
+  Atom.make(call("system.resources", undefined, { environment })).pipe(refreshInStepWhileVisible(Duration.seconds(5))),
 )
 
 export const remotePairingAtom = Atom.make((get) => {
@@ -624,11 +622,8 @@ const onAutomationRun = (listener: (automationId: string) => void) =>
 export const automationsAtom = Atom.family((environment: EnvironmentId) =>
   Atom.make((get) => {
     get.addFinalizer(onAutomationRun(() => get.refreshSelf()))
-    return Stream.fromEffectSchedule(
-      call("automations.list", undefined, { environment }),
-      Schedule.spaced("15 seconds"),
-    )
-  }),
+    return call("automations.list", undefined, { environment })
+  }).pipe(refreshInStepWhileVisible(Duration.seconds(15))),
 )
 
 export const artifactsAtom = Atom.make((get) => {
