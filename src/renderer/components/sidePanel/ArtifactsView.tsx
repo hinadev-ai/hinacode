@@ -120,7 +120,9 @@ function ArtifactFrame({ threadId, artifact, theme }: { threadId: string; artifa
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       {!loaded && (
-        <p className="absolute top-4 left-4 animate-reveal text-xs text-muted-foreground">{m.artifacts_page_loading()}</p>
+        <p className="absolute top-4 left-4 animate-reveal text-xs text-muted-foreground">
+          {m.artifacts_page_loading()}
+        </p>
       )}
       <iframe
         ref={frame}
@@ -162,7 +164,9 @@ function ArtifactProblems({
     >
       <div className="flex items-center gap-2">
         <WarningIcon aria-hidden className="size-4 shrink-0 text-destructive" />
-        <h3 className="min-w-0 flex-1 truncate text-xs font-medium">{m.artifacts_problems({ count: problems.length })}</h3>
+        <h3 className="min-w-0 flex-1 truncate text-xs font-medium">
+          {m.artifacts_problems({ count: problems.length })}
+        </h3>
         <Button variant="outline" size="xs" action={askToFix}>
           {m.artifacts_ask_to_fix()}
         </Button>
