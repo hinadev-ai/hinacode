@@ -24,6 +24,7 @@ import {
   everything,
   failure,
   finished,
+  signedOut,
   stoppable,
   thinkingStream,
   toolKinds,
@@ -43,6 +44,7 @@ export const mockScenarioDescriptions = {
   compaction: "Compact the context once, then fail a second compaction.",
   approvals: "Ask four approvals and a question. Allow or deny each one.",
   error: "Fail the turn with an API error.",
+  "signed-out": "Fail the turn because the Claude login expired.",
   stop: "Keep a command and a reply running until you press Stop.",
   "usage-limit": "Hit the plan usage limit. The next attempt succeeds.",
   "org-spend-limit": "Hit the organization monthly spend limit.",
@@ -230,6 +232,7 @@ const playedSteps = {
   compaction: () => [...compaction(), finished()],
   approvals: () => [...approvals(), finished()],
   error: failure,
+  "signed-out": signedOut,
   stop: stoppable,
 } satisfies Partial<Record<MockScenario, () => ReadonlyArray<MockStep>>>
 
@@ -284,8 +287,10 @@ export const usageLimitLayer = (defaultScenario: MockScenario = "usage-limit", r
           pendingEdits: new Map(),
           subagents: new Map(),
           lastRequest: null,
+          home: null,
           limitMessage: null,
           limitResetAt: null,
+          signedOut: false,
         }
         const resetsAt = Math.ceil((Date.now() + resetAfterMs) / 1000)
         const resetTime = new Intl.DateTimeFormat("en-US", {

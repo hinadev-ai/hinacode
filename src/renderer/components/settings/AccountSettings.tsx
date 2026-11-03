@@ -2,7 +2,14 @@ import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { Schema } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, type ReactNode, useId, useState, useTransition } from "react"
-import { AccountProviderId, type AgentAccount, type AgentProfile, type ProviderId } from "../../../shared/agent.ts"
+import {
+  AccountProviderId,
+  type AgentAccount,
+  type AgentProfile,
+  configDirVariable,
+  loginCommand,
+  type ProviderId,
+} from "../../../shared/agent.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import {
   accountAtom,
@@ -51,20 +58,6 @@ const signedOutHint = {
 } satisfies Record<ProviderId, () => string>
 
 const addsAccounts = Schema.is(AccountProviderId)
-
-const configDirVariable = { claude: "CLAUDE_CONFIG_DIR", codex: "CODEX_HOME" } satisfies Record<
-  AccountProviderId,
-  string
->
-
-const shellQuote = (value: string) => (/^[\w./~-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`)
-
-const loginCommand = (account: AgentProfile) =>
-  [
-    `${configDirVariable[account.provider]}=${shellQuote(account.configDir)}`,
-    shellQuote(account.binary),
-    ...(account.provider === "claude" ? ["auth", "login"] : ["login"]),
-  ].join(" ")
 
 export function AccountList({ provider }: { provider: ProviderId }) {
   const environment = useSettingsEnvironment()
@@ -199,7 +192,7 @@ function AccountRow({ account }: { account: AgentProfile }) {
           <div className="flex min-w-0 flex-col items-start gap-1 text-xs">
             <span className="text-muted-foreground">{m.settings_account_sign_in_terminal()}</span>
             <code className="max-w-full rounded-md bg-muted px-2 py-1 font-mono break-all select-all">
-              {loginCommand(account)}
+              {loginCommand(account.provider, { dir: account.configDir, binary: account.binary })}
             </code>
             <Button variant="ghost" size="xs" className="-ml-2" onClick={refreshStatus}>
               {m.settings_account_check_again()}
