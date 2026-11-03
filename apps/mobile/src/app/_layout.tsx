@@ -20,6 +20,8 @@ export const unstable_settings = { anchor: "index" }
 // content at the top, which would slide under it, so keep the opaque header until they are designed for that.
 enableLegacyHeaderAppearance()
 
+const largeTitle = { headerLargeTitleEnabled: isIOS, headerTransparent: false }
+
 export default function RootLayout() {
   const scheme = useScheme()
   const theme = useTheme()
@@ -66,7 +68,7 @@ function Routes() {
           <Stack.Protected guard={paired}>
             <Stack.Screen
               name="index"
-              options={{ title: copy("mobile_home_title"), headerLargeTitleEnabled: isIOS }}
+              options={{ title: copy("mobile_home_title"), ...largeTitle }}
             />
             {/* Picking a thread in the sidebar swaps the detail, as Mail does, instead of sliding a page in. */}
             <Stack.Screen name="thread/[id]/index" options={{ title: "", animation: split ? "none" : undefined }} />
@@ -75,11 +77,11 @@ function Routes() {
             <Stack.Screen name="thread/[id]/subagent" options={{ title: "" }} />
             <Stack.Screen
               name="overview"
-              options={{ title: copy("mobile_overview_title"), headerLargeTitleEnabled: isIOS }}
+              options={{ title: copy("mobile_overview_title"), ...largeTitle }}
             />
             <Stack.Screen
               name="settings"
-              options={{ title: copy("mobile_settings_title"), headerLargeTitleEnabled: isIOS }}
+              options={{ title: copy("mobile_settings_title"), ...largeTitle }}
             />
             <Stack.Screen
               name="project/new"
@@ -89,7 +91,7 @@ function Routes() {
           <Stack.Protected guard={!paired}>
             <Stack.Screen
               name="connect"
-              options={{ title: copy("mobile_connect_title"), headerLargeTitleEnabled: isIOS }}
+              options={{ title: copy("mobile_connect_title"), ...largeTitle }}
             />
           </Stack.Protected>
         </Stack>
