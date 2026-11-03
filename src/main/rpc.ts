@@ -398,6 +398,7 @@ const handlers: Handlers = {
     AgentRunner.use((runner) => runner.queue(threadId, text, attachments)),
   "threads.unqueue": ({ threadId, id }) => AgentRunner.use((runner) => runner.unqueue(threadId, id)),
   "threads.interrupt": ({ threadId }) => AgentRunner.use((runner) => runner.interrupt(threadId)),
+  "threads.warm": ({ threadId }) => AgentRunner.use((runner) => runner.warm(threadId)),
   "threads.reveal": ({ threadId }) => Events.use((events) => events.publish({ type: "thread.reveal", threadId })),
   "approvals.respond": ({ requestId, decision, note }) =>
     AgentRunner.use((runner) => runner.respondApproval(requestId, decision, note)),

@@ -215,6 +215,13 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
     stage(dropped.map(sourceOf))
   }
 
+  const canWarm = !busy && !isSidechat && !(unstarted && workspace !== null)
+  const changeText = (next: string) => {
+    if (text === "" && next !== "" && canWarm)
+      callPromise("threads.warm", { threadId: thread.id }).catch(() => undefined)
+    useDrafts.getState().setText(thread.id, next)
+  }
+
   const stop = () => {
     callPromise("threads.interrupt", { threadId: thread.id }).catch((cause: unknown) => setError(errorMessage(cause)))
   }
@@ -282,7 +289,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
                 aria-label={isSidechat ? m.panel_tab_sidechat() : m.thread_composer_label()}
                 placeholder={placeholder}
                 value={text}
-                onValueChange={(next) => useDrafts.getState().setText(thread.id, next)}
+                onValueChange={changeText}
                 commands={commands}
                 files={files}
                 threads={mentionable}

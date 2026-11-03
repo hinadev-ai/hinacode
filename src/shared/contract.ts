@@ -441,6 +441,7 @@ export const RpcMethods = {
     Schema.Void,
   ),
   "threads.interrupt": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
+  "threads.warm": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "threads.reveal": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "approvals.respond": rpc(
     Schema.Struct({
@@ -719,6 +720,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "threads.queue": "mutation",
   "threads.unqueue": "mutation",
   "threads.interrupt": "mutation",
+  "threads.warm": "mutation",
   "threads.reveal": "mutation",
   "approvals.respond": "mutation",
   "questions.respond": "mutation",

@@ -14,7 +14,7 @@ import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
-import { AgentError, type AgentProvider, type SteerPriority, type Wake } from "../agents/provider.ts"
+import { AgentError, type AgentProvider, type SessionInput, type SteerPriority, type Wake } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
 import * as AgentAccounts from "./AgentAccounts.ts"
@@ -50,6 +50,7 @@ interface Probe {
   readonly idle: Promise<void>
   readonly streamed: Promise<void>
   readonly turns: Array<{ readonly provider: ProviderId; readonly input: RunTurnInput }>
+  readonly warms: Array<SessionInput>
   readonly decisions: Array<{ readonly requestId: string; readonly decision: ApprovalDecision; readonly note?: string }>
   readonly steers: Array<{ readonly text: string; readonly priority: SteerPriority }>
   readonly calls: Array<{ readonly provider: ProviderId; readonly call: "closeSession" | "interrupt" }>
@@ -105,6 +106,7 @@ const withPreparingThread = async (
   let holdInsertion = options.pauseInsertion ?? false
   let holdSnapshot = options.pauseSnapshot ?? false
   const turns: Probe["turns"] = []
+  const warms: Probe["warms"] = []
   const decisions: Probe["decisions"] = []
   const steers: Probe["steers"] = []
   const resolutions = Effect.runSync(Queue.unbounded<AgentEvent>())
@@ -218,6 +220,7 @@ const withPreparingThread = async (
           ? Stream.concat(Stream.make(approval("approval-1")), Stream.fromQueue(resolutions))
           : Stream.make(approval("approval-1"))
       }),
+    warm: (input) => Effect.sync(() => void warms.push(input)),
     wakes: Stream.fromQueue(wakes[id]),
     closeSession: () =>
       closeFails
@@ -369,6 +372,7 @@ const withPreparingThread = async (
         idle: idle.promise,
         streamed: streamed.promise,
         turns,
+        warms,
         decisions,
         steers,
         calls,
@@ -656,6 +660,24 @@ it("tells the agent the branch and paths it works in", async () => {
   remote: \`(none)\`
   platform: ${process.platform}
 `)
+  })
+})
+
+it("warms the session with the same input the next send runs its turn with", async () => {
+  await withPreparingThread(async ({ runner, thread, turns, warms, idle, release }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+    await idle
+
+    await vi.waitFor(async () => {
+      await Effect.runPromise(runner.warm(thread.id))
+      expect(warms).toHaveLength(1)
+    })
+    await vi.waitFor(() => Effect.runPromise(runner.send(thread.id, "accepted input", [])))
+    await vi.waitFor(() => expect(turns).toHaveLength(2))
+
+    const { prompt: _prompt, attachments: _attachments, ...sent } = turns[1]!.input
+    expect(warms).toStrictEqual([sent])
   })
 })
 
