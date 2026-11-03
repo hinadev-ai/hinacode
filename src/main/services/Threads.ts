@@ -1,6 +1,18 @@
 import { randomUUID } from "node:crypto"
 import { join } from "node:path"
-import { Context, Effect, FileSystem, Layer, Option, type PlatformError, Schema, Semaphore } from "effect"
+import {
+  Context,
+  Effect,
+  FileSystem,
+  Layer,
+  Option,
+  type PlatformError,
+  PubSub,
+  Schema,
+  type Scope,
+  Semaphore,
+  Stream,
+} from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { ForkPoint, ProviderId } from "../../shared/agent.ts"
 import { UsageLimit } from "../../shared/limits.ts"
@@ -104,6 +116,7 @@ export class Threads extends Context.Service<
       input: CreateThread,
     ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeTakenError>
     readonly update: (input: UpdateThread) => Effect.Effect<Thread, PersistenceError | NotFoundError>
+    readonly writes: Effect.Effect<Stream.Stream<Thread>, never, Scope.Scope>
     readonly fork: (
       threadId: string,
       messageId: string,
@@ -191,6 +204,7 @@ const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
 
   const encodeRow = Schema.encodeEffect(ThreadRow)
+  const written = yield* PubSub.unbounded<Thread>()
 
   const findAll = SqlSchema.findAll({
     Request: Schema.Void,
@@ -539,6 +553,7 @@ const make = Effect.gen(function* () {
             queue = ${JSON.stringify(next.queue)}, scheduled = ${JSON.stringify(next.scheduled)}
         WHERE id = ${next.id}
       `.pipe(Effect.mapError(persistence("threads.update")))
+      yield* PubSub.publish(written, next)
       return next
     })
 
@@ -718,6 +733,7 @@ const make = Effect.gen(function* () {
     get,
     create,
     update,
+    writes: Effect.map(PubSub.subscribe(written), Stream.fromSubscription),
     fork,
     sidechat,
     sidechatOf: (parentId: string) => findSidechat(parentId).pipe(Effect.mapError(persistence("threads.sidechatOf"))),
