@@ -643,7 +643,10 @@ export const layer = Layer.effect(
                 // FIXME: the SDK never reads stderr from a custom spawn, and an unread pipe would block the CLI
                 spawnClaudeCodeProcess: ({ command, args, cwd, env, signal }) => {
                   const child = spawn(command, args, { cwd, env, signal, stdio: ["pipe", "pipe", "ignore"] })
-                  if (child.pid !== undefined) child.once("exit", registerAgentPid(input.threadId, child.pid))
+                  child.once(
+                    "exit",
+                    registerAgentPid(input.threadId, () => child.pid),
+                  )
                   return child
                 },
               },

@@ -224,17 +224,22 @@ export const belongsToWorkspace =
     return proc.cwd !== null && isInside(proc.cwd, workspacePath)
   }
 
-const agentPidsByThread = new Map<string, Set<number>>()
+type PidOf = () => number | undefined
 
-export const registerAgentPid = (threadId: string, pid: number): (() => void) => {
+const agentPidsByThread = new Map<string, Set<PidOf>>()
+
+export const registerAgentPid = (threadId: string, pidOf: PidOf): (() => void) => {
   const pids = agentPidsByThread.get(threadId) ?? new Set()
-  pids.add(pid)
+  pids.add(pidOf)
   agentPidsByThread.set(threadId, pids)
   return () => {
-    pids.delete(pid)
+    pids.delete(pidOf)
     if (pids.size === 0) agentPidsByThread.delete(threadId)
   }
 }
+
+const agentPidsOf = (threadId: string) =>
+  new Set([...(agentPidsByThread.get(threadId) ?? [])].map((pidOf) => pidOf()).filter((pid) => pid !== undefined))
 
 const scanners: Partial<Record<NodeJS.Platform, ListeningScanner>> = {
   linux: findListeningPortsWithSs,
@@ -288,7 +293,7 @@ const make = Effect.gen(function* () {
       const listening = yield* scanListening(
         belongsToWorkspace({
           workspacePath,
-          agentPids: agentPidsByThread.get(threadId) ?? new Set(),
+          agentPids: agentPidsOf(threadId),
           selfPid: process.pid,
         }),
       )

@@ -141,7 +141,7 @@ const make = Effect.gen(function* () {
           title: command?.title ?? null,
         },
         pty: proc,
-        unregisterPid: registerAgentPid(threadId, proc.pid),
+        unregisterPid: registerAgentPid(threadId, () => proc.pid),
         scrollback: new TerminalScrollback(SCROLLBACK_BYTES),
         pending: [],
         pendingSize: 0,
