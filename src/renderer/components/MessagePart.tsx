@@ -12,7 +12,8 @@ import { type MessagePart, publishesArtifact, spawnsSubagent, type ToolCallStatu
 import { ansiSegments } from "../lib/ansi.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
-import { statusOfCall, useOpenSubagent } from "../lib/subagents.ts"
+import { statusOfCall } from "../../shared/subagents.ts"
+import { useOpenSubagent } from "../lib/subagents.ts"
 import { callPromise } from "../lib/rpc.ts"
 import {
   type ActivityPart,

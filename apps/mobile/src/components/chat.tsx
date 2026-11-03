@@ -9,7 +9,8 @@ import type {
 import { collapsedParts } from "@shared/activityFold.ts"
 import { toolSummary } from "@shared/compactTranscript.ts"
 import { formatWorkDuration } from "@shared/workDuration.ts"
-import type { Message, MessagePart, Thread, ToolCallStatus } from "@shared/domain.ts"
+import { type Message, type MessagePart, spawnsSubagent, type Thread, type ToolCallStatus } from "@shared/domain.ts"
+import { isOwnPart } from "@shared/subagents.ts"
 import type { UsageLimit } from "@shared/limits.ts"
 import { useFocusEffect } from "expo-router"
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react"
@@ -20,6 +21,7 @@ import { liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
 import { Markdown } from "@/components/markdown"
 import { FadeIn, Rotate, Spinner } from "@/components/motion"
+import { SubagentCall, SubagentTray } from "@/components/subagents"
 import { TodoTray } from "@/components/todo-tray"
 import { Button, Notice, Pill } from "@/components/ui"
 import { cssEase, duration, rise } from "@/constants/motion"
@@ -30,6 +32,7 @@ import { copy, locale } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { motion } from "@/lib/motion"
 import { useMessages } from "@/stores/messages"
+import { useSubagents } from "@/stores/subagents"
 import { useThreadRoot, useThreads } from "@/stores/threads"
 
 /** Cards hold insets with `radius.sm` corners, so the card's own corners stay concentric with them. */
@@ -55,6 +58,9 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
   useEffect(() => {
     if (connected && history === undefined) void useMessages.getState().load(thread.id)
   }, [connected, history, thread.id])
+  useEffect(() => {
+    if (connected) void useSubagents.getState().load(thread.id).catch(() => {})
+  }, [connected, thread.id])
 
   const messages = history?.status === "ready" ? history.messages : undefined
   const [openedNewest, setOpenedNewest] = useState<string | null>()
@@ -135,6 +141,7 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
               history.questions.map((request) => <QuestionCard key={request.id} request={request} />)}
           </ScrollView>
         )}
+        <SubagentTray thread={thread} />
         {messages !== undefined && <TodoTray thread={thread} messages={messages} />}
         <Composer thread={thread} />
       </View>
@@ -148,22 +155,27 @@ function MessageView({ message, root }: { message: Message; root: string | null 
   return (
     <View accessibilityLabel={copy("mobile_chat_you")} style={[styles.user, { backgroundColor: theme.surface }]}>
       {message.parts.map((part, index) => (
-        <PartView key={index} part={part} />
+        <PartView key={index} part={part} threadId={message.threadId} />
       ))}
     </View>
   )
 }
 
-/** A sub-agent's tool calls belong to its own transcript, which the phone does not show. */
-const isOwnPart = (part: MessagePart) => part.type !== "tool_call" || part.parentCallId === undefined
-
-function AssistantMessage({ message, root }: { message: Message; root: string | null }) {
+export function AssistantMessage({
+  message,
+  root,
+  foldsActivity = true,
+}: {
+  message: Message
+  root: string | null
+  foldsActivity?: boolean
+}) {
   const [activityShown, setActivityShown] = useState(false)
   const parts = message.parts.filter(isOwnPart)
   const { completedAt } = message
   const streaming = completedAt === null
   const durationMs = completedAt === null ? NaN : Date.parse(completedAt) - Date.parse(message.createdAt)
-  const folded = durationMs >= 0
+  const folded = foldsActivity && durationMs >= 0
   // A steer sent before the agent said anything closes an empty assistant message.
   if (!streaming && parts.length === 0) return null
   const writingIndex = streaming && parts.at(-1)?.type === "text" ? parts.length - 1 : undefined
@@ -188,7 +200,7 @@ function AssistantMessage({ message, root }: { message: Message; root: string | 
               threadId={message.threadId}
             />
           ) : (
-            <PartView key={index} part={part} />
+            <PartView key={index} part={part} threadId={message.threadId} />
           )
         if (!folded || collapsed.has(index)) return view
         return activityShown ? <FadeIn key={index}>{view}</FadeIn> : null
@@ -285,7 +297,7 @@ function WorkedFor({
   )
 }
 
-function PartView({ part }: { part: MessagePart }) {
+function PartView({ part, threadId }: { part: MessagePart; threadId: string }) {
   const theme = useTheme()
   switch (part.type) {
     case "text":
@@ -297,6 +309,7 @@ function PartView({ part }: { part: MessagePart }) {
     case "reasoning":
       return <Reasoning text={part.text} />
     case "tool_call": {
+      if (spawnsSubagent(part)) return <SubagentCall part={part} threadId={threadId} />
       const summary = toolSummary(part.input)?.line
       return (
         <View style={[styles.tool, { borderColor: theme.border }]}>
