@@ -79,6 +79,15 @@ A broken page used to sit at "Loading…" with no sign that anything failed, and
 - The protocol inserts a small reporter script into every HTML response, next to the theme. Inside a frame it posts `{ type: "hinacode-artifact-problem", message }` to the parent for uncaught errors, unhandled rejections, `console.error` and resources that fail to load. Outside a frame, as in an exported file, it does nothing. The panel accepts a message only from its own frame's window and decodes it with a schema. The page controls the text, so it is shown as plain text and nothing else.
 - Problems collect in a strip under the frame, deduplicated and capped at the first 20 messages of 500 characters each, so a page that logs a new error every frame cannot grow the app renderer without limit. "Ask agent to fix" adds the title, id and messages to the thread's draft, so the developer can send it with their own words.
 
+### Artifacts belong to a thread
+
+The list used to hold every artifact from every thread, project and machine, with nothing to say where one came from. A developer looking for "the chart from the migration thread" scanned titles, and an agent after compaction picked an id out of everyone's artifacts.
+
+The manifest now records `threadId`, the thread whose MCP credential published it. The package takes it as a host-supplied `threadId` on `publish`, never from the agent's input, and keeps the creator's on updates, so an artifact stays where it was born. Artifacts from other harnesses have none.
+
+- The panel lists this thread's artifacts first. The rest follow under "Other threads", each row naming its thread, and the row's menu offers "Go to thread".
+- `list_artifacts` lists the calling thread's artifacts. `all: true` lists everyone's, with the thread each came from. The stdio server has no thread, so it lists everything as before.
+
 ### Check on publish
 
 An agent that publishes a page cannot see it. In the first dogfood run a real turn ended with "I haven't opened it to check how it renders", and a page whose module import failed sat at "Loading…" with nobody told.

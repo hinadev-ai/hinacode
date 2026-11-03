@@ -15,6 +15,7 @@ export type PublishInput = {
   id?: string
   title: string
   entry?: string
+  threadId?: string
   files: Array<{ path: string; content: string; encoding?: "utf8" | "base64" }>
 }
 
@@ -151,6 +152,7 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
       }
 
       const timestamp = now().toISOString()
+      const threadId = previous?.threadId ?? input.threadId
       const artifact: Artifact = {
         id,
         title,
@@ -159,6 +161,7 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
         files: Array.from(files, ([path, bytes]) => ({ path, type: contentType(path), size: bytes.byteLength })),
         createdAt: previous?.createdAt ?? timestamp,
         updatedAt: timestamp,
+        ...(threadId === undefined ? {} : { threadId }),
       }
       const temporary = join(directory, `artifact.json.${randomUUID()}.tmp`)
       await writeFile(temporary, `${JSON.stringify(artifact, null, 2)}\n`)
