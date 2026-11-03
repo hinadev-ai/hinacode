@@ -12,7 +12,7 @@ import {
   linkOfElement,
   openLink,
   removeLink,
-} from "../../lib/documentLinks.ts"
+} from "./linkEditing.ts"
 import { m } from "../../paraglide/messages.js"
 import { CopyButton } from "../CopyButton.tsx"
 import { Button } from "../ui/button.tsx"

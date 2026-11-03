@@ -1,7 +1,7 @@
 import type { Editor } from "@tiptap/core"
-import type { DocumentContent } from "../../shared/artifact.ts"
-import { errorMessage } from "./errorMessage.ts"
-import { callPromise, type EnvironmentId } from "./rpc.ts"
+import type { DocumentContent } from "../../../shared/artifact.ts"
+import { errorMessage } from "../../lib/errorMessage.ts"
+import { callPromise, type EnvironmentId } from "../../lib/rpc.ts"
 
 const SAVE_DELAY_MS = 500
 

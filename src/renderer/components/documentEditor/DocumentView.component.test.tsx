@@ -8,7 +8,7 @@ import { defaultClientSettings, type Thread } from "../../../shared/domain.ts"
 import "../../index.css"
 import { useArtifacts } from "../../stores/artifacts.ts"
 import { useDrafts } from "../../stores/drafts.ts"
-import { ArtifactsHeader, ArtifactsView } from "./ArtifactsView.tsx"
+import { ArtifactsHeader, ArtifactsView } from "../sidePanel/ArtifactsView.tsx"
 
 const AGENT_MARKDOWN = `# Release plan
 

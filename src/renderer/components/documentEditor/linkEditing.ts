@@ -1,7 +1,7 @@
 import { type Editor, Extension, getMarkRange } from "@tiptap/core"
 import { Plugin, PluginKey } from "@tiptap/pm/state"
 import { Decoration, DecorationSet } from "@tiptap/pm/view"
-import { linkHref } from "../../shared/documentLink.ts"
+import { linkHref } from "../../../shared/documentLink.ts"
 
 export type LinkRange = { readonly from: number; readonly to: number }
 

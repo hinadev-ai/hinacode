@@ -2,8 +2,8 @@ import { Extension } from "@tiptap/core"
 import type { Node } from "@tiptap/pm/model"
 import { Plugin, PluginKey } from "@tiptap/pm/state"
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view"
-import type { Run } from "../components/FindHighlight.tsx"
-import { codeRuns, highlighterFor, type Loaded } from "./codeTokens.ts"
+import type { Run } from "../FindHighlight.tsx"
+import { codeRuns, highlighterFor, type Loaded } from "../../lib/codeTokens.ts"
 
 export type CodeTheme = { readonly codeTheme: string | undefined; readonly scheme: "dark" | "light" }
 

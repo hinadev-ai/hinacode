@@ -34,7 +34,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { SkeletonList } from "../ui/skeleton.tsx"
 import { Section, ViewBody } from "./Section.tsx"
 
-const DocumentView = lazy(() => import("./DocumentView.tsx").then((module) => ({ default: module.DocumentView })))
+const DocumentView = lazy(() => import("../documentEditor/DocumentView.tsx").then((module) => ({ default: module.DocumentView })))
 
 const noArtifacts: ReadonlyArray<Artifact> = []
 

@@ -24,7 +24,7 @@ import {
   RiStrikethrough,
   RiTable2,
 } from "react-icons/ri"
-import { editedLink, editLink, selectedLinkRange } from "../../lib/documentLinks.ts"
+import { editedLink, editLink, selectedLinkRange } from "./linkEditing.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
 
