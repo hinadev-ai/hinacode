@@ -477,9 +477,12 @@ const make = Effect.gen(function* () {
     home: AccountHome | null,
     environment: AgentEnvironment,
   ) =>
-    Effect.map(
-      Effect.all([mcp.connectionFor(thread.id), settings.get]),
-      ([mcpServer, { experimental, autoCompactTokens }]): SessionInput => ({
+    Effect.gen(function* () {
+      const [mcpServer, { experimental, autoCompactTokens }] = yield* Effect.all([
+        mcp.connectionFor(thread.id),
+        settings.get,
+      ])
+      const input: SessionInput = {
         threadId: thread.id,
         cwd,
         model: thread.model,
@@ -492,9 +495,10 @@ const make = Effect.gen(function* () {
         forkAt: thread.providerSessionId === null ? (thread.forkedFrom?.checkpoint ?? null) : null,
         home,
         mcpServer,
-        instructions: agentInstructions(experimental, environment),
-      }),
-    )
+        instructions: yield* subagentInstructions(experimental, environment),
+      }
+      return input
+    })
 
   const insertMessage = (message: Message) =>
     messages.insert(message).pipe(Effect.andThen(publishTranscript({ type: "message.created", message })))
@@ -694,11 +698,10 @@ const make = Effect.gen(function* () {
         Stream.unwrap(
           Effect.gen(function* () {
             const input = yield* sessionInput(thread, provider, cwd, home, environment)
-            const instructions = yield* subagentInstructions(experimental, environment)
             if (yield* Deferred.isDone(stop)) {
               return Stream.succeed<AgentEvent>({ type: "turn_failed", message: "Turn interrupted" })
             }
-            return provider.runTurn({ ...input, prompt, attachments, instructions, })
+            return provider.runTurn({ ...input, prompt, attachments })
           }),
         ),
       )
