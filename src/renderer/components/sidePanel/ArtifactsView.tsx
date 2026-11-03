@@ -1,4 +1,5 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
+import { useNavigate } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { RiDownload2Line } from "react-icons/ri"
 import { toast } from "sonner"
@@ -14,13 +15,15 @@ import { useNow } from "../../lib/useNow.ts"
 import { m } from "../../paraglide/messages.js"
 import { getLocale } from "../../paraglide/runtime.js"
 import { useArtifacts } from "../../stores/artifacts.ts"
+import { useThreads } from "../../stores/threads.ts"
 import { ArrowLeftIcon } from "../icons/ArrowLeftIcon.tsx"
+import { ArrowRightIcon } from "../icons/ArrowRightIcon.tsx"
 import { TrashIcon } from "../icons/TrashIcon.tsx"
 import { Button } from "../ui/button.tsx"
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../ui/context-menu.tsx"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu.tsx"
 import { SkeletonList } from "../ui/skeleton.tsx"
-import { ViewBody } from "./Section.tsx"
+import { Section, ViewBody } from "./Section.tsx"
 
 const noArtifacts: ReadonlyArray<Artifact> = []
 
@@ -110,27 +113,47 @@ function ArtifactList({ threadId }: { threadId: string }) {
   )
   return AsyncResult.builder(artifacts)
     .onInitial(() => <SkeletonList label={m.artifacts_loading()} rows={3} rowClassName="h-9" />)
-    .onSuccess((list) =>
-      list.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{m.artifacts_empty()}</p>
-      ) : (
-        <ul className="-mx-2 flex flex-col">
-          {list.map((artifact) => (
-            <ArtifactRow
-              key={`${artifact.environmentId ?? ""}:${artifact.id}`}
-              threadId={threadId}
-              artifact={artifact}
-            />
-          ))}
-        </ul>
-      ),
-    )
+    .onSuccess((list) => {
+      if (list.length === 0) return <p className="text-xs text-muted-foreground">{m.artifacts_empty()}</p>
+      const mine = list.filter((artifact) => artifact.threadId === threadId)
+      const others = list.filter((artifact) => artifact.threadId !== threadId)
+      return (
+        <>
+          <Section title={m.artifacts_this_thread()}>
+            {mine.length === 0 ? (
+              <p className="text-xs text-muted-foreground">{m.artifacts_this_thread_empty()}</p>
+            ) : (
+              <ArtifactRows threadId={threadId} artifacts={mine} />
+            )}
+          </Section>
+          {others.length > 0 && (
+            <Section title={m.artifacts_other_threads()}>
+              <ArtifactRows threadId={threadId} artifacts={others} />
+            </Section>
+          )}
+        </>
+      )
+    })
     .onError((error) => failed(errorMessage(error)))
     .orElse(() => failed(""))
 }
 
+function ArtifactRows({ threadId, artifacts }: { threadId: string; artifacts: ReadonlyArray<Artifact> }) {
+  return (
+    <ul className="-mx-2 flex flex-col">
+      {artifacts.map((artifact) => (
+        <ArtifactRow key={`${artifact.environmentId ?? ""}:${artifact.id}`} threadId={threadId} artifact={artifact} />
+      ))}
+    </ul>
+  )
+}
+
 function ArtifactRow({ threadId, artifact }: { threadId: string; artifact: Artifact }) {
   const select = useArtifacts((state) => state.select)
+  const navigate = useNavigate()
+  const origin = useThreads((state) =>
+    artifact.threadId === undefined || artifact.threadId === threadId ? undefined : state.byId[artifact.threadId],
+  )
   const clouds = useClouds()
   const now = useNow()
   const updated = formatRelativeTime(artifact.updatedAt, now, getLocale())
@@ -150,6 +173,7 @@ function ArtifactRow({ threadId, artifact }: { threadId: string; artifact: Artif
         >
           <span className="truncate text-sm">{artifact.title}</span>
           <span className="truncate text-xs text-muted-foreground">
+            {origin === undefined ? null : `${origin.title} · `}
             {artifact.environmentId === undefined
               ? updated
               : m.artifacts_updated_on({ time: updated, machine: environmentName(artifact.environmentId, clouds) })}
@@ -157,6 +181,12 @@ function ArtifactRow({ threadId, artifact }: { threadId: string; artifact: Artif
         </button>
       </ContextMenuTrigger>
       <ContextMenuContent>
+        {origin !== undefined && (
+          <DropdownMenuItem onClick={() => void navigate({ to: "/thread/$threadId", params: { threadId: origin.id } })}>
+            <ArrowRightIcon aria-hidden />
+            {m.artifacts_go_to_thread()}
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem variant="destructive" onClick={() => void remove()}>
           <TrashIcon aria-hidden />
           {m.artifacts_delete()}
