@@ -3,13 +3,8 @@ import { injectProblemReporter } from "../../../src/shared/artifactProblems.ts"
 import { injectArtifactTheme, parseArtifactTheme } from "../../../src/shared/artifactTheme.ts"
 import { desktopResourceUrl } from "../../../src/shared/channels.ts"
 
-const SANDBOX = { "content-security-policy": "sandbox allow-scripts" }
-const ARTIFACT_HEADERS = {
-  ...SANDBOX,
-  "access-control-allow-origin": "null",
-  "cache-control": "no-store",
-  "x-content-type-options": "nosniff",
-}
+const SANDBOX = { "content-security-policy": "sandbox allow-scripts", "x-content-type-options": "nosniff" }
+const ARTIFACT_HEADERS = { "access-control-allow-origin": "null", "cache-control": "no-store" }
 
 const LINKED_FILES = [
   ["script", "src"],
@@ -27,7 +22,7 @@ export interface ResourceAnswer {
   readonly body: ArrayBuffer | null
 }
 
-const notFound: ResourceAnswer = { status: 404, headers: {}, body: null }
+const notFound: ResourceAnswer = { status: 404, headers: SANDBOX, body: null }
 
 const segments = (pathname: string) => {
   try {
@@ -103,8 +98,8 @@ export const resolveResource = async (
     status: 200,
     headers: {
       "content-type": type,
+      ...SANDBOX,
       ...(desktop.protocol === "hinacode-artifact:" ? ARTIFACT_HEADERS : {}),
-      ...(desktop.protocol === "hinacode-file:" ? SANDBOX : {}),
     },
     body: page === null ? await file.arrayBuffer() : new TextEncoder().encode(page).buffer,
   }
