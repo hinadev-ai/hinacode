@@ -258,14 +258,20 @@ test("links the selected text with Cmd+K", async () => {
 
 test("renames the document from the panel header once, showing the new name while it saves", async () => {
   await openDocument()
+  const field = page.getByRole("textbox", { name: "New name for Release plan" })
 
   await page.getByRole("button", { name: "Release plan", exact: true }).click()
-  await page.getByRole("textbox", { name: "New name for Release plan" }).fill("Launch plan")
+  await field.fill("Discarded")
+  await userEvent.keyboard("{Escape}")
+  await expect.element(field).not.toBeInTheDocument()
+
+  await page.getByRole("button", { name: "Release plan", exact: true }).click()
+  await field.fill("Launch plan")
   await userEvent.keyboard("{Enter}")
 
   const renamed = page.getByRole("button", { name: "Launch plan", exact: true })
   await expect.element(renamed).toBeInTheDocument()
-  await expect.element(page.getByRole("textbox", { name: "New name for Release plan" })).not.toBeInTheDocument()
+  await expect.element(field).not.toBeInTheDocument()
   await page.getByRole("textbox", { name: "Release plan" }).click()
   finishRename()
 

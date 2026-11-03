@@ -1,7 +1,7 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { useNavigate } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
-import { type KeyboardEvent, lazy, startTransition, useEffect, useOptimistic, useRef, useState } from "react"
+import { type KeyboardEvent, lazy, useEffect, useOptimistic, useRef, useState, useTransition } from "react"
 import { RiDownload2Line } from "react-icons/ri"
 import { toast } from "sonner"
 import { type Artifact, type ArtifactExportRequest, isDocument } from "../../../shared/artifact.ts"
@@ -71,10 +71,11 @@ export function ArtifactsHeader({ thread }: { thread: Thread }) {
 
 function ArtifactTitle({ artifact }: { artifact: Artifact }) {
   const [editing, setEditing] = useState(false)
+  const [renaming, startRenaming] = useTransition()
   const [title, showTitle] = useOptimistic(artifact.title)
 
   const rename = (next: string) =>
-    startTransition(async () => {
+    startRenaming(async () => {
       setEditing(false)
       const trimmed = next.trim()
       if (trimmed === "" || trimmed === artifact.title) return
@@ -86,15 +87,16 @@ function ArtifactTitle({ artifact }: { artifact: Artifact }) {
       ).catch((cause: unknown) => toast.error(m.artifacts_rename_failed({ message: errorMessage(cause) })))
     })
 
-  if (editing)
-    return <TitleInput title={title} onRename={rename} onCancel={() => startTransition(() => setEditing(false))} />
+  if (editing && !renaming)
+    return <TitleInput title={title} onRename={rename} onCancel={() => startRenaming(() => setEditing(false))} />
   return (
     <h2 className="min-w-0">
       <button
         type="button"
         title={m.artifacts_rename()}
-        onClick={() => startTransition(() => setEditing(true))}
-        className="block max-w-full cursor-text truncate rounded-md px-1.5 py-0.5 text-sm font-medium outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+        disabled={renaming}
+        onClick={() => startRenaming(() => setEditing(true))}
+        className="block max-w-full cursor-text truncate rounded-md px-1.5 py-0.5 text-sm font-medium outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-default hover:disabled:bg-transparent"
       >
         {title}
       </button>
@@ -117,7 +119,7 @@ function TitleInput({
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
       event.preventDefault()
-      onRename(draft)
+      event.currentTarget.blur()
     }
     if (event.key === "Escape") {
       event.preventDefault()
