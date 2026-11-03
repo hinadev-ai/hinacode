@@ -51,7 +51,7 @@ so the decode in `MessageRow` stays the same. `toolOutput` looks in `message_par
 
 **Why not patch the JSON in place.** `json_set` still makes SQLite rewrite the whole record, so the bytes written stay the same.
 
-**Migration `0037_message_part`** creates the table and moves the parts of every open message into it, so a database that crashed mid-turn reads back the same before and after. Closed messages do not move.
+**Migration `0038_message_part`** creates the table and moves the parts of every open message into it, so a database that crashed mid-turn reads back the same before and after. Closed messages do not move.
 
 With this, a save no longer grows with the turn. The byte budget from #553 still spaces saves by the bytes the last one wrote, which is now the size of the changed parts, so streaming turns keep the 500 ms cadence.
 
