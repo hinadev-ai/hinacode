@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { beforeEach, expect, test } from "vitest"
+import { beforeEach, expect, onTestFinished, test } from "vitest"
 import { page, userEvent } from "vitest/browser"
 import { render } from "vitest-browser-react"
 import type { Artifact, DocumentSaveResult } from "../../../shared/artifact.ts"
@@ -163,4 +163,41 @@ test("colors a code block in the language the Markdown names", async () => {
   await expect.poll(() => block.querySelectorAll("span[style*='color']").length, { timeout: 10_000 }).toBeGreaterThan(1)
   expect(block.textContent).toBe("const version = 1")
   expect(saves).toEqual([])
+})
+
+test("deletes a table from the menu on the table and saves the document without it", async () => {
+  const editor = await openDocument()
+  await editor.getByRole("cell", { name: "Store" }).click()
+  await page.getByRole("button", { name: "Delete table" }).click()
+
+  await expect.element(editor.getByRole("table")).not.toBeInTheDocument()
+  await expect.poll(() => saves.at(-1)?.markdown, { timeout: 3000 }).not.toMatch(/\|\s*Step\s*\|/)
+})
+
+test("keeps the editor's own shortcuts from reaching the app's", async () => {
+  await openDocument()
+  const reached: Array<string> = []
+  const listener = (event: KeyboardEvent) => {
+    if (event.metaKey && event.key !== "Meta") reached.push(event.key)
+  }
+  document.addEventListener("keydown", listener)
+  onTestFinished(() => document.removeEventListener("keydown", listener))
+
+  await page.getByText(/^Ship the/).click()
+  await userEvent.keyboard("{Meta>}b{/Meta}")
+  await userEvent.keyboard("{Meta>}p{/Meta}")
+
+  expect(reached).toEqual(["p"])
+})
+
+test("changes a code block's language after it was written", async () => {
+  await openDocument()
+  const picker = page.getByRole("combobox", { name: "Code language" })
+  await expect.element(picker).toHaveTextContent("TypeScript")
+
+  await picker.click()
+  await page.getByRole("option", { name: "Python" }).click()
+
+  await expect.element(picker).toHaveTextContent("Python")
+  await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).toContain("```python\nconst version = 1\n```")
 })

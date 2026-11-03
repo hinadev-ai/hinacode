@@ -33,7 +33,7 @@ img { max-width: 100%; }
 [data-chart] { margin: 0 0 1.2em; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; break-inside: avoid; }
 [data-chart] > div:first-child { padding: 0.9em 1em; }
 [data-chart] p { margin: 0; }
-[data-chart] pre { display: none; }
+[data-chart] pre, [data-chart] [hidden] { display: none; }
 [data-chart-title] { font-weight: 600; }
 [data-chart-notes] { margin-top: 0.2em; font-size: 0.85em; white-space: pre-line; color: var(--muted-foreground); }
 [data-chart] ul { display: flex; flex-wrap: wrap; gap: 0.3em 1.2em; margin: 0.6em 0; padding: 0; list-style: none; font-size: 0.8em; color: var(--muted-foreground); }

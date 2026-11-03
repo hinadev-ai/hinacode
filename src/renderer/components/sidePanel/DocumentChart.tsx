@@ -1,6 +1,4 @@
-import { CodeBlock } from "@tiptap/extension-code-block"
-import type { Node as ProseMirrorNode } from "@tiptap/pm/model"
-import { NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, type ReactNodeViewProps } from "@tiptap/react"
+import { NodeViewContent, NodeViewWrapper, type ReactNodeViewProps } from "@tiptap/react"
 import { lazy, Suspense, useDeferredValue, useState } from "react"
 import { type Chart, formatChartValue, parseChart } from "../../../shared/documentChart.ts"
 import { useDebouncedValue } from "../../lib/useDebouncedValue.ts"
@@ -8,49 +6,22 @@ import { m } from "../../paraglide/messages.js"
 import { getLocale } from "../../paraglide/runtime.js"
 import { Button } from "../ui/button.tsx"
 import { chartLane } from "./chartLanes.ts"
+import { CHART_LANGUAGE, CodeLanguagePicker } from "./CodeLanguagePicker.tsx"
 
 const ChartPlot = lazy(() => import("./ChartPlot.tsx"))
 
-const CHART_LANGUAGE = "chart"
 const REDRAW_DELAY_MS = 200
 
 type Panel = "none" | "data" | "source"
 
-const plainCodeBlock = (node: ProseMirrorNode) => {
-  const dom = document.createElement("pre")
-  const code = document.createElement("code")
-  const language: unknown = node.attrs["language"]
-  if (typeof language === "string" && language !== "") code.className = `language-${language}`
-  dom.spellcheck = false
-  dom.append(code)
-  return {
-    dom,
-    contentDOM: code,
-    update: (next: ProseMirrorNode) => next.type === node.type && next.attrs["language"] === language,
-  }
-}
-
-export const DocumentCodeBlock = CodeBlock.extend({
-  addNodeView() {
-    const chart = ReactNodeViewRenderer(ChartBlock, {
-      update: ({ newNode, updateProps }) => {
-        if (newNode.attrs["language"] !== CHART_LANGUAGE) return false
-        updateProps()
-        return true
-      },
-    })
-    return (props) => (props.node.attrs["language"] === CHART_LANGUAGE ? chart(props) : plainCodeBlock(props.node))
-  },
-})
-
-function ChartBlock({ node }: ReactNodeViewProps) {
+export function ChartBlock({ node, updateAttributes }: ReactNodeViewProps) {
   const [panel, setPanel] = useState<Panel>("none")
   const source = useDeferredValue(useDebouncedValue(node.textContent, REDRAW_DELAY_MS))
   const parsed = parseChart(source)
   const toggle = (next: Panel) => setPanel((current) => (current === next ? "none" : next))
   return (
     <NodeViewWrapper data-chart className="not-prose my-5 overflow-hidden rounded-xl border border-border">
-      <div contentEditable={false} className="flex flex-col gap-3 p-4">
+      <div contentEditable={false} data-node-control className="flex flex-col gap-3 p-4">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
             {parsed.ok && parsed.chart.spec.title !== undefined && (
@@ -69,7 +40,7 @@ function ChartBlock({ node }: ReactNodeViewProps) {
               </p>
             )}
           </div>
-          <div data-print-hidden className="flex shrink-0 gap-0.5">
+          <div data-print-hidden className="flex shrink-0 items-center gap-0.5">
             {parsed.ok && (
               <Button
                 variant="ghost"
@@ -95,13 +66,17 @@ function ChartBlock({ node }: ReactNodeViewProps) {
         {parsed.ok && <ChartBody chart={parsed.chart} />}
       </div>
       {parsed.ok && panel === "data" && <ChartData chart={parsed.chart} />}
-      <pre
-        hidden={parsed.ok && panel !== "source"}
-        spellCheck={false}
-        className="m-0 border-t border-border bg-muted px-4 py-3 font-mono text-xs whitespace-pre-wrap"
-      >
-        <NodeViewContent<"code"> as="code" />
-      </pre>
+      <div hidden={parsed.ok && panel !== "source"} className="relative">
+        <pre
+          spellCheck={false}
+          className="m-0 border-t border-border bg-muted px-4 py-3 font-mono text-xs whitespace-pre-wrap"
+        >
+          <NodeViewContent<"code"> as="code" />
+        </pre>
+        <div contentEditable={false} data-node-control data-print-hidden className="absolute top-1.5 right-1.5">
+          <CodeLanguagePicker language={CHART_LANGUAGE} onChange={(next) => updateAttributes({ language: next })} />
+        </div>
+      </div>
     </NodeViewWrapper>
   )
 }
@@ -136,6 +111,7 @@ function ChartData({ chart }: { chart: Chart }) {
   return (
     <div
       contentEditable={false}
+      data-node-control
       className="border-t border-border transition-opacity duration-150 ease-out starting:opacity-0"
     >
       <div className="max-h-64 overflow-auto">

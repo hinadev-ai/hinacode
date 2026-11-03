@@ -57,7 +57,11 @@ The persisted format is Markdown, not the editor's JSON. Agents read and write M
 
 ### Editor
 
-The renderer edits documents with Tiptap over ProseMirror and `@tiptap/markdown`, using StarterKit, task lists, tables and images. Saves go through `artifacts.saveDocument`, which writes as the developer. Code blocks are colored with the same shiki highlighter and code theme as the transcript, in the language the fence names. A ProseMirror plugin turns the tokens into decorations, so the colors never reach the Markdown.
+The renderer edits documents with Tiptap over ProseMirror and `@tiptap/markdown`, using StarterKit, task lists, tables and images. Saves go through `artifacts.saveDocument`, which writes as the developer.
+
+The toolbar holds block tools. Bold, italic, strikethrough, inline code and links live in a menu over the selected text. Cmd+K opens a link field at the selection. With the caret inside a link, the menu shows its address with Edit and Remove, and Cmd+click opens it. Links accept http(s) and mailto only, and a bare host gets `https://` (`src/shared/documentLink.ts`). A table shows its own menu at its top right: add or delete a row or column, and Delete table. Every code block has a language picker in its corner, which can also turn the block into a chart.
+
+The editor stops a key it handled from reaching the app's shortcuts, so Cmd+B makes text bold without also toggling the sidebar. Controls inside a block's node view, such as the language picker, keep their events from the editor, so choosing from them never moves the caret. Code blocks are colored with the same shiki highlighter and code theme as the transcript, in the language the fence names. A ProseMirror plugin turns the tokens into decorations, so the colors never reach the Markdown.
 
 The editor follows a small state machine: `saved`, `dirty`, `saving`, `conflict`. A save waits for a short pause in typing. The editor saves only after a change the developer made, never after loading content, so opening an agent's document does not rewrite its Markdown. A transaction that only normalizes the document, such as the empty paragraph ProseMirror appends after a final code block, does not count as an edit. A newer revision in `artifact.updated` replaces the content when the editor is `saved`. When the editor holds unsaved edits, the next save fails with a conflict, and the panel offers Keep mine (save over the new version) or Use theirs (load it and drop the edits).
 
@@ -110,7 +114,6 @@ The first two route by the artifact's owner and the third by the thread's, so a 
 - Starting a new thread from a document.
 - Renaming a document from the UI. The agent sets the title.
 - Pie, area and scatter charts, chart colors chosen by the agent, and charts in transcript Markdown.
-- Picking a code block's language from the toolbar. Type it after the fence, as in Markdown.
 
 ## Verification
 
