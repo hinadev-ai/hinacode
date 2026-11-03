@@ -62,6 +62,7 @@
     "qrcode": "^1.5.4",
     "rehype-raw": "7.0.0",
     "rehype-sanitize": "6.0.0",
+    "undici": "7.30.0",
     "ws": "8.22.0"
   },
   "devDependencies": {

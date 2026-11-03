@@ -1,5 +1,6 @@
 import { Schema, Struct } from "effect"
 import { Artifact, ArtifactExportRequest } from "./artifact.ts"
+import { ArtifactTheme } from "./artifactTheme.ts"
 import {
   AccountLimits,
   AccountProviderId,
@@ -52,6 +53,7 @@ import {
   NotificationPermission,
   PermissionRequestOutcome,
   Message,
+  MessagePart,
   OpenPort,
   Opener,
   OpenerId,
@@ -456,6 +458,14 @@ export const RpcMethods = {
   "secrets.clear": rpc(Schema.Struct({ name: Schema.String }), Schema.Void),
   "subagents.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(Subagent)),
   "subagents.stop": rpc(Schema.Struct({ threadId: Schema.String, subagentId: Schema.String }), Schema.Void),
+  "subagents.transcript": rpc(
+    Schema.Struct({ threadId: Schema.String, callId: Schema.String }),
+    Schema.Struct({
+      spawn: Schema.NullOr(MessagePart),
+      calls: Schema.Array(MessagePart),
+      startedAt: Schema.NullOr(Schema.String),
+    }),
+  ),
   "backgroundTasks.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(BackgroundTask)),
   "backgroundTasks.stop": rpc(Schema.Struct({ threadId: Schema.String, taskId: Schema.String }), Schema.Void),
   "threads.usage": rpc(Schema.Struct({ threadId: Schema.String }), Schema.NullOr(ThreadUsage)),
@@ -570,6 +580,7 @@ export const RpcMethods = {
   ),
   "artifacts.export": rpc(ArtifactExportRequest, Schema.NullOr(Schema.String)),
   "artifacts.delete": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
+  "artifacts.setTheme": rpc(ArtifactTheme, Schema.Void),
   "automations.create": rpc(
     AutomationInput,
     Schema.Struct({ automation: Automation, secret: Schema.NullOr(Schema.String) }),
@@ -727,6 +738,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "secrets.clear": "mutation",
   "subagents.list": "read",
   "subagents.stop": "mutation",
+  "subagents.transcript": "read",
   "backgroundTasks.list": "read",
   "backgroundTasks.stop": "mutation",
   "threads.usage": "read",
@@ -782,6 +794,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "artifacts.file": "read",
   "artifacts.export": "mutation",
   "artifacts.delete": "mutation",
+  "artifacts.setTheme": "mutation",
   "automations.create": "mutation",
   "automations.update": "mutation",
   "automations.delete": "mutation",
@@ -814,6 +827,7 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "dialog.pickFolder",
   "dialog.pickFiles",
   "artifacts.export",
+  "artifacts.setTheme",
   "shell.reveal",
   "shell.openers",
   "shell.openWith",

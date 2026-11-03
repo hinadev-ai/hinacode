@@ -282,7 +282,11 @@ export const AgentEvent = Schema.Union([
     usage: Schema.optional(TokenUsage),
     forkPoint: Schema.optional(ForkPoint),
   }),
-  Schema.Struct({ type: Schema.Literal("turn_failed"), message: Schema.String }),
+  Schema.Struct({
+    type: Schema.Literal("turn_failed"),
+    message: Schema.String,
+    stopped: Schema.optional(Schema.Boolean),
+  }),
   Schema.Struct({ type: Schema.Literal("turn_limited"), limit: UsageLimit }),
 ])
 export type AgentEvent = typeof AgentEvent.Type
@@ -321,6 +325,13 @@ export const isPublishArtifactTool = (name: string) =>
 
 export const publishedArtifactId = (result: string) =>
   /^Published artifact ([a-z0-9][a-z0-9-]*) version \d+/.exec(result)?.[1] ?? null
+
+export const CREATE_THREAD_TOOL = "create_thread"
+
+export const isCreateThreadTool = (name: string) =>
+  name === CREATE_THREAD_TOOL || name === `mcp__hinacode__${CREATE_THREAD_TOOL}`
+
+export const createdThreadId = (result: string) => /^Created thread ([\w-]+)/.exec(result)?.[1] ?? null
 
 export const toolArgument = (input: unknown, key: string): unknown => {
   if (!Predicate.isObject(input)) return undefined

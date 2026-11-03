@@ -35,6 +35,9 @@ const callTool = async (connection: McpConnection, name: string, args: Record<st
   }
 }
 
+export const publishArtifact = (connection: McpConnection, input: Record<string, unknown>) =>
+  Effect.promise(() => callTool(connection, PUBLISH_ARTIFACT_TOOL, input))
+
 export const artifactTurn = (
   callId: string,
   prompt: string,
@@ -53,7 +56,7 @@ export const artifactTurn = (
     name: `mcp__hinacode__${PUBLISH_ARTIFACT_TOOL}`,
     input,
   }
-  const finished = Effect.promise(() => callTool(connection, PUBLISH_ARTIFACT_TOOL, input)).pipe(
+  const finished = publishArtifact(connection, input).pipe(
     Effect.map(({ output, isError }): ReadonlyArray<AgentEvent> => {
       const id = publishedArtifactId(output)
       if (id !== null) published(id)

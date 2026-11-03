@@ -458,7 +458,7 @@ function HitRow({ hit, query, onPress }: { hit: FileSearchHit; query: string; on
           text={snippet.text}
           offset={0}
           hits={hits}
-          style={[styles.strong, { backgroundColor: theme.tokenBg }]}
+          style={[styles.strong, { backgroundColor: theme.findMatch }]}
         />
       </Text>
     </Pressable>
