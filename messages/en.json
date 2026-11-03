@@ -371,6 +371,7 @@
   "error_persistence": "Could not read or write the local database. Try again, and restart HinaCode if it keeps failing.",
   "error_project_path_taken": "Another project already uses this folder.",
   "error_project_root_invalid": "That path is a file or not a full path. Enter a folder path such as ~/code/app.",
+  "error_project_in_wsl": "This folder is inside WSL. Run npx hinacode serve --host 127.0.0.1 in WSL, add it under Settings > Connections, then add the project on that machine as ~/code/app.",
   "error_project_folder_not_empty": "That folder already has other files. Pick an empty folder or a new path.",
   "error_pull_request_url_invalid": "That is not a GitHub pull request link. Use https://github.com/owner/repo/pull/123.",
   "error_pull_request_diff_too_large": "GitHub does not serve diffs over 20,000 lines or 300 files. Open the pull request on GitHub to read it.",

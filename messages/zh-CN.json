@@ -362,6 +362,7 @@
   "error_persistence": "无法读写本地数据库。请重试；如果持续失败，请重启 HinaCode。",
   "error_project_path_taken": "已有其他项目使用这个文件夹。",
   "error_project_root_invalid": "该路径是文件，或不是完整路径。请输入文件夹路径，例如 ~/code/app。",
+  "error_project_in_wsl": "这个文件夹在 WSL 里。请在 WSL 中运行 npx hinacode serve --host 127.0.0.1，在“设置 > 连接”中添加它，再在那台机器上以 ~/code/app 添加项目。",
   "error_project_folder_not_empty": "该文件夹中已有其他文件。请选择空文件夹或新路径。",
   "error_pull_request_url_invalid": "这不是 GitHub 拉取请求链接。请使用 https://github.com/owner/repo/pull/123。",
   "error_pull_request_diff_too_large": "GitHub 不提供超过 20,000 行或 300 个文件的 diff。请在 GitHub 上打开该拉取请求查看。",

@@ -44,6 +44,14 @@ export class ProjectRootInvalidError extends Schema.TaggedError<ProjectRootInval
   }
 }
 
+export class ProjectInWslError extends Schema.TaggedError<ProjectInWslError>()("ProjectInWslError", {
+  rootPath: Schema.String,
+}) {
+  override get message(): string {
+    return `${this.rootPath} is inside WSL. Run hinacode serve in WSL and add the project on that machine`
+  }
+}
+
 export class ProjectOriginTakenError extends Schema.TaggedError<ProjectOriginTakenError>()("ProjectOriginTakenError", {
   rootPath: Schema.String,
 }) {

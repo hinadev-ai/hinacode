@@ -12,6 +12,7 @@ import {
   ProjectFolderNotEmptyError,
   ProjectOriginTakenError,
   ProjectPathTakenError,
+  ProjectInWslError,
   ProjectRootInvalidError,
   persistence,
 } from "./errors.ts"
@@ -41,7 +42,7 @@ export interface UpdateProject {
   readonly actions?: ReadonlyArray<ProjectAction> | undefined
 }
 
-type WriteError = PersistenceError | ProjectPathTakenError | ProjectRootInvalidError
+type WriteError = PersistenceError | ProjectPathTakenError | ProjectRootInvalidError | ProjectInWslError
 
 export class Projects extends Context.Service<
   Projects,
@@ -64,8 +65,11 @@ export class Projects extends Context.Service<
 
 const HOME_PREFIX = sep === "\\" ? /^~(?=$|[\\/])/ : /^~(?=$|\/)/
 
+const WSL_SHARE = /^\\\\wsl(?:\.localhost|\$)\\/i
+
 const resolveRoot = (rootPath: string) => {
   const expanded = rootPath.trim().replace(HOME_PREFIX, homedir())
+  if (WSL_SHARE.test(expanded)) return Effect.fail(new ProjectInWslError({ rootPath }))
   return isAbsolute(expanded)
     ? Effect.succeed(resolve(expanded))
     : Effect.fail(new ProjectRootInvalidError({ rootPath }))

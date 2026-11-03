@@ -371,6 +371,7 @@
   "error_persistence": "無法讀寫本機資料庫。請再試一次，若持續失敗請重新啟動 HinaCode。",
   "error_project_path_taken": "已有其他專案使用這個資料夾。",
   "error_project_root_invalid": "這個路徑是檔案，或不是完整路徑。請輸入資料夾路徑，例如 ~/code/app。",
+  "error_project_in_wsl": "這個資料夾在 WSL 裡。請在 WSL 中執行 npx hinacode serve --host 127.0.0.1，到「設定 > 連線」加入它，再在那台機器上以 ~/code/app 加入專案。",
   "error_project_folder_not_empty": "這個資料夾裡已經有其他檔案，請選擇空的資料夾或新的路徑。",
   "error_pull_request_url_invalid": "這不是 GitHub 合併請求連結，請使用 https://github.com/owner/repo/pull/123 的格式。",
   "error_pull_request_diff_too_large": "GitHub 不提供超過 20,000 行或 300 個檔案的差異，請到 GitHub 開啟合併請求查看。",
