@@ -15,6 +15,8 @@ type Instrumentation = { originalSha256: string; bundle: string; instrumentedSha
 type Marker = { version: number; originalSha256: string; bundle: string }
 type Raw = {
   frames: number[]
+  firstDeltaAt: number
+  firstPaintAt: number
   longTasks: { ms: number }[]
   events: Push[]
   hidden: boolean
@@ -258,13 +260,16 @@ try {
     settlingMs: 1000,
   }
   await renderer.eval(`(() => {
-    const state = globalThis.__hinacodePerfFrames = { gaps: [], longTasks: [], events: [], hidden: false, active: true };
+    const state = globalThis.__hinacodePerfFrames = { gaps: [], longTasks: [], events: [], hidden: false, active: true,
+      articleSelector: ${JSON.stringify(`main article[data-message-id="perf-${runId}"]`)} };
     state.observer = new PerformanceObserver(list => state.longTasks.push(...list.getEntries().map(e => ({ start: e.startTime, ms: e.duration }))));
     state.observer.observe({ type: 'longtask', buffered: false });
     state.visibilityListener = () => { state.hidden ||= document.visibilityState !== 'visible'; };
     document.addEventListener('visibilitychange', state.visibilityListener);
     state.off = window.hinacode.onEvent(push => {
-      if (push.message?.threadId === ${JSON.stringify(threadId)} || push.threadId === ${JSON.stringify(threadId)}) state.events.push(push);
+      if (push.message?.threadId !== ${JSON.stringify(threadId)} && push.threadId !== ${JSON.stringify(threadId)}) return;
+      state.events.push(push);
+      if (push.event?.type === 'text_delta') state.firstDeltaAt ??= performance.now();
     });
     const tick = () => {
       if (!state.active) return;
@@ -272,6 +277,8 @@ try {
       if (state.last !== undefined) state.gaps.push(now - state.last);
       state.last = now;
       state.hidden ||= document.visibilityState !== 'visible';
+      if (state.firstDeltaAt !== undefined && state.firstPaintAt === undefined &&
+        document.querySelector(state.articleSelector + ' .text-shimmer')?.textContent === 'Writing…') state.firstPaintAt = now;
       state.raf = requestAnimationFrame(tick);
     };
     state.raf = requestAnimationFrame(tick);
@@ -354,7 +361,7 @@ try {
     const state = __hinacodePerfFrames;
     state.active = false; cancelAnimationFrame(state.raf); state.observer.disconnect(); state.off(); document.removeEventListener('visibilitychange', state.visibilityListener);
     const el = [...document.querySelectorAll('main article')].at(-1);
-    return { frames: state.gaps, longTasks: state.longTasks, events: state.events, hidden: state.hidden,
+    return { frames: state.gaps, firstDeltaAt: state.firstDeltaAt, firstPaintAt: state.firstPaintAt, longTasks: state.longTasks, events: state.events, hidden: state.hidden,
       visibility: document.visibilityState, parses: globalThis.__hinacodePerfMarkdown?.samples ?? null,
       dom: { html: el.innerHTML, text: el.textContent, busy: el.getAttribute('aria-busy'),
         headings: el.querySelectorAll('h1').length, tables: el.querySelectorAll('table').length, codeBlocks: el.querySelectorAll('pre').length } };
@@ -362,6 +369,7 @@ try {
   assert.equal(raw.visibility, "visible")
   assert.equal(raw.hidden, false, "renderer was hidden during streaming")
   assert(raw.frames.length >= 30, "insufficient streaming frames")
+  assert(raw.firstPaintAt !== undefined, "the first delta never reached the screen")
   assert.equal(raw.events.length, 162, "expected message.created, 160 deltas and turn_completed only")
   assert.equal(raw.events[0]!.message?.id, message.id)
   assert.equal(raw.events.at(-1)!.event?.type, "turn_completed")
@@ -415,6 +423,7 @@ try {
     idle: { ...stats(idle.frames), visibility: idle.visibility, hidden: idle.hidden },
     viewport: idle.viewport,
     stream: stats(raw.frames),
+    firstPaintMs: raw.firstPaintAt - raw.firstDeltaAt,
     timing,
     parsing: parseEnabled
       ? {
@@ -438,7 +447,14 @@ try {
   writeFileSync(file, JSON.stringify(result, null, 2))
   console.log(
     JSON.stringify(
-      { file, idle: result.idle, stream: result.stream, parsing: result.parsing, emitMs: timing.emitMs },
+      {
+        file,
+        idle: result.idle,
+        stream: result.stream,
+        firstPaintMs: result.firstPaintMs,
+        parsing: result.parsing,
+        emitMs: timing.emitMs,
+      },
       null,
       2,
     ),

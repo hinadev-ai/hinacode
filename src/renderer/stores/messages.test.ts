@@ -152,7 +152,7 @@ test("keeps a secret request until it is resolved or the turn ends", async () =>
   expect(ready().secretRequests).toStrictEqual([])
 })
 
-test("batches sustained text deltas and publishes the complete turn immediately", async () => {
+test("throttles sustained text deltas to one publication per window and publishes the complete turn immediately", async () => {
   const loading = store().load(threadId)
   transcriptResponse.resolve({
     result: { messages: [assistant("")], approvals: [approval], questions: [], secretRequests: [], seq: 0 },
@@ -163,30 +163,28 @@ test("batches sustained text deltas and publishes the complete turn immediately"
   let publications = 0
   const unsubscribe = useMessages.subscribe(() => publications++)
   try {
-    store().receive(event(1, { type: "text_delta", text: "a" }))
-    vi.advanceTimersByTime(20)
-    store().receive(event(2, { type: "text_delta", text: "b" }))
-    vi.advanceTimersByTime(20)
-    store().receive(event(3, { type: "text_delta", text: "c" }))
-    vi.advanceTimersByTime(60)
+    store().receive(event(1, { type: "text_delta", text: "0" }))
+    expect(publications).toBe(1)
+    expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "0" }])
 
-    const firstWindowPublications = publications
-    expect.soft(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "abc" }])
+    let expected = "0"
+    for (let seq = 2; seq <= 26; seq++) {
+      vi.advanceTimersByTime(20)
+      store().receive(event(seq, { type: "text_delta", text: ` ${seq}` }))
+      expected += ` ${seq}`
+    }
+    expect(publications).toBeLessThanOrEqual(1 + 500 / 100)
 
-    vi.advanceTimersByTime(10)
-    store().receive(event(4, { type: "text_delta", text: "d" }))
-    vi.advanceTimersByTime(20)
-    store().receive(event(5, { type: "text_delta", text: "e" }))
     const beforeCompletionPublications = publications
-    store().receive(event(6, { type: "turn_completed" }))
+    store().receive(event(27, { type: "turn_completed" }))
 
-    expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "abcde" }])
+    expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: expected }])
     expect(ready().messages[0]?.completedAt).toEqual(expect.any(String))
     expect(ready().approvals).toStrictEqual([])
-    const completedPublications = publications
+    expect(publications).toBe(beforeCompletionPublications + 1)
+    expect(vi.getTimerCount()).toBe(0)
     vi.runAllTimers()
-    expect(publications).toBe(completedPublications)
-    expect([firstWindowPublications, beforeCompletionPublications, completedPublications]).toStrictEqual([1, 1, 2])
+    expect(publications).toBe(beforeCompletionPublications + 1)
   } finally {
     unsubscribe()
     store().unload(threadId)
@@ -196,39 +194,41 @@ test("batches sustained text deltas and publishes the complete turn immediately"
 })
 
 test.each(["text_delta", "reasoning_delta"] satisfies AgentEvent["type"][])(
-  "%s publishes at the first delta's 100 ms deadline",
+  "%s publishes the first delta at once and the rest at the window end",
   async (type) => {
     await loadReady()
     const published: unknown[] = []
     const unsubscribe = useMessages.subscribe(() => published.push(ready().messages[0]?.parts))
+    const parts = (text: string) =>
+      type === "text_delta"
+        ? [{ type: "text", text }]
+        : [
+            { type: "text", text: "" },
+            { type: "reasoning", text },
+          ]
     try {
       store().receive(event(1, { type, text: "a" }))
+      expect(published).toStrictEqual([parts("a")])
+      expect(vi.getTimerCount()).toBe(1)
+
       vi.advanceTimersByTime(30)
       store().receive(event(2, { type, text: "b" }))
       vi.advanceTimersByTime(69)
-      expect(published).toStrictEqual([])
       store().receive(event(3, { type, text: "c" }))
+      expect(published).toStrictEqual([parts("a")])
       vi.advanceTimersByTime(1)
-      const parts =
-        type === "text_delta"
-          ? [{ type: "text", text: "abc" }]
-          : [
-              { type: "text", text: "" },
-              { type: "reasoning", text: "abc" },
-            ]
-      expect(published).toStrictEqual([parts])
+      expect(published).toStrictEqual([parts("a"), parts("abc")])
+      expect(vi.getTimerCount()).toBe(1)
+
+      vi.advanceTimersByTime(100)
+      expect(published).toHaveLength(2)
       expect(vi.getTimerCount()).toBe(0)
 
       vi.advanceTimersByTime(500)
       store().receive(event(4, { type, text: "d" }))
-      vi.advanceTimersByTime(99)
-      expect(published).toHaveLength(1)
-      vi.advanceTimersByTime(1)
-      expect(published).toHaveLength(2)
-      expect(ready().messages[0]?.parts.at(-1)).toStrictEqual({
-        type: type === "text_delta" ? "text" : "reasoning",
-        text: "abcd",
-      })
+      expect(published).toStrictEqual([parts("a"), parts("abc"), parts("abcd")])
+      vi.advanceTimersByTime(100)
+      expect(published).toHaveLength(3)
       expect(vi.getTimerCount()).toBe(0)
     } finally {
       unsubscribe()
@@ -236,7 +236,7 @@ test.each(["text_delta", "reasoning_delta"] satisfies AgentEvent["type"][])(
   },
 )
 
-test("approval request and resolution publish pending text with the approval state in one update", async () => {
+test("approval request and resolution publish held text with the approval state in one update", async () => {
   await loadReady()
   const published: unknown[] = []
   const unsubscribe = useMessages.subscribe(() =>
@@ -246,24 +246,24 @@ test("approval request and resolution publish pending text with the approval sta
     }),
   )
   try {
-    store().receive(event(1, { type: "text_delta", text: "before request" }))
-    store().receive(event(2, { type: "approval_requested", request: approval }))
+    store().receive(event(1, { type: "text_delta", text: "before" }))
+    store().receive(event(2, { type: "text_delta", text: " request" }))
+    store().receive(event(3, { type: "approval_requested", request: approval }))
     expect(published).toStrictEqual([
-      {
-        parts: [{ type: "text", text: "before request" }],
-        approvals: [approval],
-      },
+      { parts: [{ type: "text", text: "before" }], approvals: [] },
+      { parts: [{ type: "text", text: "before request" }], approvals: [approval] },
     ])
     expect(vi.getTimerCount()).toBe(0)
 
-    store().receive(event(3, { type: "text_delta", text: " and resolution" }))
-    store().receive(event(4, { type: "approval_resolved", requestId: approval.id }))
-    expect(published).toStrictEqual([
-      { parts: [{ type: "text", text: "before request" }], approvals: [approval] },
+    store().receive(event(4, { type: "text_delta", text: " and" }))
+    store().receive(event(5, { type: "text_delta", text: " resolution" }))
+    store().receive(event(6, { type: "approval_resolved", requestId: approval.id }))
+    expect(published.slice(2)).toStrictEqual([
+      { parts: [{ type: "text", text: "before request and" }], approvals: [approval] },
       { parts: [{ type: "text", text: "before request and resolution" }], approvals: [] },
     ])
     vi.runAllTimers()
-    expect(published).toHaveLength(2)
+    expect(published).toHaveLength(4)
     expect(vi.getTimerCount()).toBe(0)
   } finally {
     unsubscribe()
@@ -274,7 +274,7 @@ test.each([
   { type: "turn_completed", usage: { inputTokens: 10, outputTokens: 20 } },
   { type: "turn_failed", message: "provider stopped" },
 ] satisfies AgentEvent[])(
-  "$type flushes reasoning, clears approvals and closes running tools synchronously",
+  "$type flushes held reasoning, clears approvals and closes running tools synchronously",
   async (terminal) => {
     await loadReady(
       threadId,
@@ -289,9 +289,11 @@ test.each([
     const published: unknown[] = []
     const unsubscribe = useMessages.subscribe(() => published.push(ready()))
     try {
-      store().receive(event(1, { type: "reasoning_delta", text: "last thought" }))
-      store().receive(event(2, terminal))
+      store().receive(event(1, { type: "reasoning_delta", text: "last" }))
       expect(published).toHaveLength(1)
+      store().receive(event(2, { type: "reasoning_delta", text: " thought" }))
+      store().receive(event(3, terminal))
+      expect(published).toHaveLength(2)
       expect(ready().messages[0]?.parts).toStrictEqual([
         { type: "tool_call", callId: "c1", name: "shell", input: "ls", status: "error" },
         { type: "reasoning", text: "last thought" },
@@ -302,44 +304,49 @@ test.each([
       expect(ready().approvals).toStrictEqual([])
       expect(vi.getTimerCount()).toBe(0)
       vi.runAllTimers()
-      expect(published).toHaveLength(1)
+      expect(published).toHaveLength(2)
     } finally {
       unsubscribe()
     }
   },
 )
 
-test("tool, reasoning, file and session boundaries retain part order and publish together", async () => {
+test("tool, reasoning, file and session boundaries retain part order and publish held deltas with them", async () => {
   await loadReady()
   const published: unknown[] = []
   const unsubscribe = useMessages.subscribe(() => published.push(ready().messages[0]?.parts))
   try {
-    store().receive(event(1, { type: "text_delta", text: "intro" }))
-    store().receive(event(2, { type: "tool_call_started", callId: "c1", name: "shell", input: "ls" }))
-    expect(published).toHaveLength(1)
+    store().receive(event(1, { type: "text_delta", text: "in" }))
+    store().receive(event(2, { type: "text_delta", text: "tro" }))
+    store().receive(event(3, { type: "tool_call_started", callId: "c1", name: "shell", input: "ls" }))
+    expect(published).toHaveLength(2)
     expect(ready().messages[0]?.parts).toStrictEqual([
       { type: "text", text: "intro" },
       { type: "tool_call", callId: "c1", name: "shell", input: "ls", status: "running" },
     ])
-    store().receive(event(3, { type: "text_delta", text: "after tool" }))
-    store().receive(event(4, { type: "reasoning_delta", text: "think" }))
-    expect(published).toHaveLength(2)
+    store().receive(event(4, { type: "text_delta", text: "after" }))
+    store().receive(event(5, { type: "text_delta", text: " tool" }))
+    store().receive(event(6, { type: "reasoning_delta", text: "think" }))
+    expect(published).toHaveLength(4)
     expect(ready().messages[0]?.parts.slice(-2)).toStrictEqual([
       { type: "text", text: "after tool" },
       { type: "reasoning", text: "think" },
     ])
-    store().receive(event(5, { type: "reasoning_delta", text: " more" }))
+    store().receive(event(7, { type: "reasoning_delta", text: " more" }))
     vi.advanceTimersByTime(100)
-    expect(published).toHaveLength(3)
-    store().receive(event(6, { type: "text_delta", text: "answer" }))
-    store().receive(event(7, { type: "file_changed", path: "src/a.ts", diff: "+answer" }))
-    expect(published).toHaveLength(4)
-    store().receive(event(8, { type: "text_delta", text: "tail" }))
-    store().receive(event(9, { type: "tool_call_finished", callId: "c1", output: "files", isError: false }))
     expect(published).toHaveLength(5)
-    store().receive(event(10, { type: "text_delta", text: " end" }))
-    store().receive(event(11, { type: "session_bound", providerSessionId: "s1" }))
-    expect(published).toHaveLength(6)
+    store().receive(event(8, { type: "text_delta", text: "answer" }))
+    store().receive(event(9, { type: "file_changed", path: "src/a.ts", diff: "+answer" }))
+    expect(published).toHaveLength(7)
+    store().receive(event(10, { type: "text_delta", text: "tail" }))
+    store().receive(event(11, { type: "tool_call_finished", callId: "c1", output: "files", isError: false }))
+    expect(published).toHaveLength(9)
+    store().receive(event(12, { type: "text_delta", text: " end" }))
+    expect(published).toHaveLength(10)
+    expect(ready().messages[0]?.parts.at(-1)).toStrictEqual({ type: "text", text: "tail end" })
+    store().receive(event(13, { type: "text_delta", text: " now" }))
+    store().receive(event(14, { type: "session_bound", providerSessionId: "s1" }))
+    expect(published).toHaveLength(11)
     expect(ready().messages[0]?.parts).toStrictEqual([
       { type: "text", text: "intro" },
       { type: "tool_call", callId: "c1", name: "shell", input: "ls", status: "done", output: "files" },
@@ -347,7 +354,7 @@ test("tool, reasoning, file and session boundaries retain part order and publish
       { type: "reasoning", text: "think more" },
       { type: "text", text: "answer" },
       { type: "file_change", path: "src/a.ts", diff: "+answer" },
-      { type: "text", text: "tail end" },
+      { type: "text", text: "tail end now" },
     ])
     expect(vi.getTimerCount()).toBe(0)
   } finally {
@@ -365,29 +372,35 @@ test("reasoning followed by text creates a synchronous boundary", async () => {
     { type: "reasoning", text: "think first" },
     { type: "text", text: "answer" },
   ])
+  expect(vi.getTimerCount()).toBe(1)
+  vi.advanceTimersByTime(100)
   expect(vi.getTimerCount()).toBe(0)
 })
 
-test("message replacement wins over pending deltas before steering opens another assistant message", async () => {
+test("message replacement wins over held deltas before steering opens another assistant message", async () => {
   await loadReady()
   const published: unknown[] = []
   const unsubscribe = useMessages.subscribe(() => published.push(ready().messages))
   try {
-    store().receive(event(1, { type: "text_delta", text: "stale draft" }))
+    store().receive(event(1, { type: "text_delta", text: "stale" }))
+    store().receive(event(2, { type: "text_delta", text: " draft" }))
     const replaced = { ...assistant("authoritative"), completedAt: "2026-10-12T00:00:01.000Z" }
-    store().receive({ type: "message.updated", seq: 2, message: replaced })
-    expect(published).toStrictEqual([[replaced]])
-    expect(vi.getTimerCount()).toBe(0)
-    store().receive(event(3, { type: "text_delta", text: " before steer" }))
-    const user: Message = { ...assistant("steer"), id: "u1", role: "user" }
-    store().receive({ type: "message.created", seq: 4, message: user })
+    store().receive({ type: "message.updated", seq: 3, message: replaced })
     expect(published).toHaveLength(2)
+    expect(published.at(-1)).toStrictEqual([replaced])
+    expect(vi.getTimerCount()).toBe(0)
+    store().receive(event(4, { type: "text_delta", text: " before" }))
+    store().receive(event(5, { type: "text_delta", text: " steer" }))
+    const user: Message = { ...assistant("steer"), id: "u1", role: "user" }
+    store().receive({ type: "message.created", seq: 6, message: user })
+    expect(published).toHaveLength(4)
     expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "authoritative before steer" }])
     const next = { ...assistant(""), id: "m2" }
-    store().receive({ type: "message.created", seq: 5, message: next })
-    store().receive(event(6, { type: "text_delta", text: "new response" }))
-    store().receive(event(7, { type: "turn_completed" }))
-    expect(published).toHaveLength(4)
+    store().receive({ type: "message.created", seq: 7, message: next })
+    store().receive(event(8, { type: "text_delta", text: "new" }))
+    store().receive(event(9, { type: "text_delta", text: " response" }))
+    store().receive(event(10, { type: "turn_completed" }))
+    expect(published).toHaveLength(7)
     expect(ready().messages.map((message) => [message.id, message.parts])).toStrictEqual([
       ["m1", [{ type: "text", text: "authoritative before steer" }]],
       ["u1", [{ type: "text", text: "steer" }]],
@@ -399,25 +412,29 @@ test("message replacement wins over pending deltas before steering opens another
   }
 })
 
-test("interleaved threads keep independent deadlines and synchronous boundaries", async () => {
+test("interleaved threads keep independent windows and synchronous boundaries", async () => {
   await loadReady()
   await loadReady("t2")
   store().receive(event(1, { type: "text_delta", text: "one" }))
+  expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "one" }])
   vi.advanceTimersByTime(20)
   store().receive(event(1, { type: "text_delta", text: "two" }, "t2"))
+  expect(ready("t2").messages[0]?.parts).toStrictEqual([{ type: "text", text: "two" }])
   vi.advanceTimersByTime(20)
   store().receive(event(2, { type: "text_delta", text: " more" }))
+  store().receive(event(2, { type: "text_delta", text: " too" }, "t2"))
   vi.advanceTimersByTime(60)
   expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "one more" }])
-  expect(ready("t2").messages[0]?.parts).toStrictEqual([{ type: "text", text: "" }])
+  expect(ready("t2").messages[0]?.parts).toStrictEqual([{ type: "text", text: "two" }])
   store().receive(event(3, { type: "text_delta", text: " final" }))
   store().receive(event(4, { type: "approval_requested", request: approval }))
   expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "one more final" }])
   expect(vi.getTimerCount()).toBe(1)
   vi.advanceTimersByTime(19)
-  expect(ready("t2").messages[0]?.parts).toStrictEqual([{ type: "text", text: "" }])
-  vi.advanceTimersByTime(1)
   expect(ready("t2").messages[0]?.parts).toStrictEqual([{ type: "text", text: "two" }])
+  vi.advanceTimersByTime(1)
+  expect(ready("t2").messages[0]?.parts).toStrictEqual([{ type: "text", text: "two too" }])
+  vi.advanceTimersByTime(100)
   expect(vi.getTimerCount()).toBe(0)
 })
 
@@ -462,21 +479,20 @@ test("loading keeps raw text and reasoning pushes until snapshot sequence filter
   expect(ready().messages[0]?.parts.at(-1)).toStrictEqual({ type: "text", text: "after snapshot live" })
 })
 
-test("unload cancels pending deltas and reload uses the authoritative snapshot", async () => {
+test("unload cancels held deltas and reload uses the authoritative snapshot", async () => {
   await loadReady()
-  store().receive(event(1, { type: "text_delta", text: "discard me" }))
+  store().receive(event(1, { type: "text_delta", text: "shown" }))
+  store().receive(event(2, { type: "text_delta", text: " held" }))
   vi.advanceTimersByTime(30)
   store().unload(threadId)
   expect(vi.getTimerCount()).toBe(0)
   expect(store().byThread[threadId]).toBeUndefined()
-  store().receive(event(2, { type: "text_delta", text: "unloaded" }))
+  store().receive(event(3, { type: "text_delta", text: "unloaded" }))
   await loadReady(threadId, [assistant("snapshot")])
-  store().receive(event(3, { type: "text_delta", text: " fresh" }))
-  vi.advanceTimersByTime(70)
-  expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "snapshot" }])
-  vi.advanceTimersByTime(30)
+  store().receive(event(4, { type: "text_delta", text: " fresh" }))
   expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "snapshot fresh" }])
-  store().receive(event(4, { type: "reasoning_delta", text: "discard thought" }))
+  store().receive(event(5, { type: "reasoning_delta", text: "thought" }))
+  store().receive(event(6, { type: "reasoning_delta", text: " discarded" }))
   store().unload(threadId)
   vi.runAllTimers()
   expect(store().byThread[threadId]).toBeUndefined()
