@@ -987,6 +987,30 @@ describe("Claude background tasks", () => {
       ),
   )
 
+  it.effect("keeps a scheduled wakeup when a warm brings a different context", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        sdk.respond = (cli) =>
+          cli.push(
+            init("session-1"),
+            ...scheduleWakeup({ delaySeconds: 600, reason: "Poll", prompt: "Poll" }, { scheduledFor: 600_000 }),
+            succeeded,
+          )
+        yield* runTurn()
+
+        yield* warm(turnInput({ instructions: "Work in hinacode on feat/renamed", cwd: "/repo-renamed" }))
+        expect(sdk.clis).toHaveLength(1)
+        expect(latestCli().close).not.toHaveBeenCalled()
+
+        yield* TestClock.adjust("10 minutes")
+        const wake = yield* Stream.runHead(provider.wakes ?? Stream.empty).pipe(Effect.forkChild)
+        latestCli().push(sessionState("running"))
+        expect(Option.isSome(yield* Fiber.join(wake))).toBe(true)
+      }),
+    ),
+  )
+
   it.effect("closes an idle CLI 60 seconds after a wakeup that never fires", () =>
     lifecycle(
       Effect.gen(function* () {
