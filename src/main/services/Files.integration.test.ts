@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process"
 import {
   appendFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -364,6 +365,179 @@ describe("fs.write", () => {
       expect(existsSync(join(repo, "untracked/edits/missing.txt"))).toBe(false)
     }),
   )
+})
+
+const create = (root: string, path: string, kind: "file" | "dir") =>
+  run(Files.use((files) => files.create(root, path, kind)))
+const rename = (root: string, from: string, to: string) => run(Files.use((files) => files.rename(root, from, to)))
+const remove = (root: string, path: string) => run(Files.use((files) => files.remove(root, path)))
+
+const scratch = (name: string) => {
+  const path = `untracked/ops/${name}`
+  mkdirSync(join(repo, path), { recursive: true })
+  return path
+}
+
+const pathRefusals: ReadonlyArray<[string, () => string, string]> = [
+  ["a path through ..", () => "../outside/new.txt", "outsideRoot"],
+  ["an absolute path", () => join(outside, "new.txt"), "outsideRoot"],
+  ["the root itself", () => "", "outsideRoot"],
+  [".git", () => ".git", "outsideRoot"],
+  ["a path inside .git", () => ".git/hooks/pre-commit", "outsideRoot"],
+  ["a path through a symlink that leaves the root", () => "escape/new.txt", "outsideRoot"],
+]
+
+describe("fs.create", () => {
+  it.effect("creates an empty file and a folder", () =>
+    Effect.gen(function* () {
+      const path = scratch("create")
+      yield* create(repo, `${path}/new.txt`, "file")
+      yield* create(repo, `${path}/folder`, "dir")
+      expect(readFileSync(join(repo, path, "new.txt"), "utf8")).toBe("")
+      expect(lstatSync(join(repo, path, "folder")).isDirectory()).toBe(true)
+    }),
+  )
+
+  it.effect("refuses a name that already exists, and leaves it alone", () =>
+    Effect.gen(function* () {
+      const path = scratch("create-exists")
+      write(join(repo, path, "taken.txt"), "kept\n")
+      mkdirSync(join(repo, path, "taken"))
+      const file = yield* create(repo, `${path}/taken.txt`, "file").pipe(Effect.flip)
+      const folder = yield* create(repo, `${path}/taken`, "dir").pipe(Effect.flip)
+      expect(file).toMatchObject({ _tag: "FsAccessError", reason: "exists" })
+      expect(folder).toMatchObject({ _tag: "FsAccessError", reason: "exists" })
+      expect(readFileSync(join(repo, path, "taken.txt"), "utf8")).toBe("kept\n")
+    }),
+  )
+
+  for (const [name, path, reason] of pathRefusals) {
+    it.effect(`refuses ${name}`, () =>
+      Effect.gen(function* () {
+        const error = yield* create(repo, path(), "file").pipe(Effect.flip)
+        expect(error).toMatchObject({ _tag: "FsAccessError", reason })
+        expect(existsSync(join(outside, "new.txt"))).toBe(false)
+      }),
+    )
+  }
+})
+
+describe("fs.rename", () => {
+  it.effect("renames a file and a folder", () =>
+    Effect.gen(function* () {
+      const path = scratch("rename")
+      write(join(repo, path, "old.txt"), "text\n")
+      write(join(repo, path, "old-folder/inside.txt"), "inside\n")
+      yield* rename(repo, `${path}/old.txt`, `${path}/new.txt`)
+      yield* rename(repo, `${path}/old-folder`, `${path}/new-folder`)
+      expect(readFileSync(join(repo, path, "new.txt"), "utf8")).toBe("text\n")
+      expect(readFileSync(join(repo, path, "new-folder/inside.txt"), "utf8")).toBe("inside\n")
+      expect(existsSync(join(repo, path, "old.txt"))).toBe(false)
+      expect(existsSync(join(repo, path, "old-folder"))).toBe(false)
+    }),
+  )
+
+  it.effect("refuses to overwrite an existing entry", () =>
+    Effect.gen(function* () {
+      const path = scratch("rename-exists")
+      write(join(repo, path, "a.txt"), "a\n")
+      write(join(repo, path, "b.txt"), "b\n")
+      mkdirSync(join(repo, path, "empty"))
+      const file = yield* rename(repo, `${path}/a.txt`, `${path}/b.txt`).pipe(Effect.flip)
+      const folder = yield* rename(repo, `${path}/a.txt`, `${path}/empty`).pipe(Effect.flip)
+      expect(file).toMatchObject({ _tag: "FsAccessError", reason: "exists" })
+      expect(folder).toMatchObject({ _tag: "FsAccessError", reason: "exists" })
+      expect(readFileSync(join(repo, path, "a.txt"), "utf8")).toBe("a\n")
+      expect(readFileSync(join(repo, path, "b.txt"), "utf8")).toBe("b\n")
+    }),
+  )
+
+  it.effect("allows a target that is the same entry, as a case-only rename is on a case-insensitive disk", () =>
+    Effect.gen(function* () {
+      const path = scratch("rename-same")
+      write(join(repo, path, "same.txt"), "same\n")
+      yield* rename(repo, `${path}/same.txt`, `${path}/same.txt`)
+      expect(readFileSync(join(repo, path, "same.txt"), "utf8")).toBe("same\n")
+    }),
+  )
+
+  it.effect("renames a symlink itself, not its target", () =>
+    Effect.gen(function* () {
+      const path = scratch("rename-link")
+      symlinkSync(outside, join(repo, path, "link"))
+      yield* rename(repo, `${path}/link`, `${path}/moved`)
+      expect(lstatSync(join(repo, path, "moved")).isSymbolicLink()).toBe(true)
+      expect(readFileSync(join(outside, "secret.txt"), "utf8")).toBe("secret\n")
+    }),
+  )
+
+  it.effect("refuses a missing source", () =>
+    Effect.gen(function* () {
+      const path = scratch("rename-missing")
+      const error = yield* rename(repo, `${path}/missing.txt`, `${path}/new.txt`).pipe(Effect.flip)
+      expect(error).toMatchObject({ _tag: "FsAccessError", reason: "unreadable" })
+    }),
+  )
+
+  for (const [name, path, reason] of pathRefusals) {
+    it.effect(`refuses to rename to or from ${name}`, () =>
+      Effect.gen(function* () {
+        const folder = scratch(`rename-refusal-${name.replaceAll(/\W/g, "-")}`)
+        write(join(repo, folder, "file.txt"), "file\n")
+        const to = yield* rename(repo, `${folder}/file.txt`, path()).pipe(Effect.flip)
+        const from = yield* rename(repo, path(), `${folder}/other.txt`).pipe(Effect.flip)
+        expect(to).toMatchObject({ _tag: "FsAccessError", reason })
+        expect(from).toMatchObject({ _tag: "FsAccessError", reason })
+        expect(readFileSync(join(repo, folder, "file.txt"), "utf8")).toBe("file\n")
+        expect(existsSync(join(outside, "new.txt"))).toBe(false)
+      }),
+    )
+  }
+})
+
+describe("fs.delete", () => {
+  it.effect("deletes a file and a folder with everything inside", () =>
+    Effect.gen(function* () {
+      const path = scratch("delete")
+      write(join(repo, path, "file.txt"), "file\n")
+      write(join(repo, path, "folder/deep/inside.txt"), "inside\n")
+      yield* remove(repo, `${path}/file.txt`)
+      yield* remove(repo, `${path}/folder`)
+      expect(existsSync(join(repo, path, "file.txt"))).toBe(false)
+      expect(existsSync(join(repo, path, "folder"))).toBe(false)
+    }),
+  )
+
+  it.effect("deletes a symlink and keeps what it points to", () =>
+    Effect.gen(function* () {
+      const path = scratch("delete-link")
+      symlinkSync(outside, join(repo, path, "folder-link"))
+      symlinkSync(join(outside, "secret.txt"), join(repo, path, "file-link"))
+      yield* remove(repo, `${path}/folder-link`)
+      yield* remove(repo, `${path}/file-link`)
+      expect(existsSync(join(repo, path, "folder-link"))).toBe(false)
+      expect(existsSync(join(repo, path, "file-link"))).toBe(false)
+      expect(readFileSync(join(outside, "secret.txt"), "utf8")).toBe("secret\n")
+    }),
+  )
+
+  it.effect("refuses a missing entry", () =>
+    Effect.gen(function* () {
+      const error = yield* remove(repo, `${scratch("delete-missing")}/missing.txt`).pipe(Effect.flip)
+      expect(error).toMatchObject({ _tag: "FsAccessError", reason: "unreadable" })
+    }),
+  )
+
+  for (const [name, path, reason] of pathRefusals) {
+    it.effect(`refuses ${name}`, () =>
+      Effect.gen(function* () {
+        const error = yield* remove(repo, path()).pipe(Effect.flip)
+        expect(error).toMatchObject({ _tag: "FsAccessError", reason })
+        expect(existsSync(join(repo, ".git"))).toBe(true)
+        expect(readFileSync(join(outside, "secret.txt"), "utf8")).toBe("secret\n")
+      }),
+    )
+  }
 })
 
 describe("fs.watch", () => {

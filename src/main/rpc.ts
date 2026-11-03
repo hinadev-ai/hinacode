@@ -368,6 +368,9 @@ const handlers: Handlers = {
   "fs.read": ({ root, path }) => Files.use((files) => files.read(root, path)),
   "fs.preview": ({ root, path }) => Files.use((files) => files.preview(root, path)),
   "fs.write": ({ root, path, content, expected }) => Files.use((files) => files.write(root, path, content, expected)),
+  "fs.create": ({ root, path, kind }) => Files.use((files) => files.create(root, path, kind)),
+  "fs.rename": ({ root, from, to }) => Files.use((files) => files.rename(root, from, to)),
+  "fs.delete": ({ root, path }) => Files.use((files) => files.remove(root, path)),
   "fs.watch": ({ root, paths }) => Files.use((files) => files.watch(root, paths)),
   "dialog.pickFolder": (_, desktop) => desktop?.pickFolder ?? Effect.succeed(null),
 
