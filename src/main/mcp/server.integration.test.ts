@@ -119,6 +119,14 @@ const fakeProvider = (id: ProviderId): AgentProvider => {
       Stream.unwrap(
         Effect.map(Deferred.make<void>(), (done) => {
           turnInputs.push(input)
+          const slow = /^Reply (.+) after (\d+) minutes$/.exec(input.prompt)
+          if (slow !== null) {
+            const [, text = "", minutes = "0"] = slow
+            return Stream.fromEffect(Effect.sleep(`${Number(minutes)} minutes`)).pipe(
+              Stream.drain,
+              Stream.concat(Stream.fromIterable(scriptedAgentTurn(text))),
+            )
+          }
           const reply = /^Reply (.+)$/.exec(input.prompt)?.[1]
           if (reply !== undefined) return Stream.fromIterable(scriptedAgentTurn(reply))
           turns.set(input.threadId, done)
@@ -239,6 +247,12 @@ const until = <A>(check: Effect.Effect<Option.Option<A>>): Effect.Effect<A> =>
 
 const advanceUntil = <A>(step: Duration.Input, check: Effect.Effect<Option.Option<A>>) =>
   until(Effect.andThen(TestClock.adjust(step), check))
+
+const settled = (call: Fiber.Fiber<ToolResult, unknown>) =>
+  advanceUntil(
+    "1 minute",
+    Effect.sync(() => Option.fromNullishOr(call.pollUnsafe())),
+  ).pipe(Effect.andThen(Fiber.join(call)))
 
 const secretPath = (threadId: string, name: string) =>
   Effect.gen(function* () {
@@ -513,6 +527,41 @@ layer(testLayer)("run_agent", (it) => {
       expect(result).toMatchObject({ isError: true, text: "The user stopped this agent." })
       expect((yield* runner.subagents(a)).find((subagent) => subagent.id === running.id)?.status).toBe("stopped")
       expect((yield* runner.transcript(a)).messages.at(-1)?.completedAt).toBeNull()
+      yield* runner.interrupt(a)
+    }),
+  )
+
+  it.effect("hands back a slow agent before the caller's client gives up, and wait_agent returns its reply", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      const connection = yield* mcp.connectionFor(a)
+      yield* runner.send(a, "hi", [])
+
+      const started = yield* settled(
+        yield* Effect.forkChild(
+          callAs(connection, "run_agent", {
+            provider: "codex",
+            description: "Slow review",
+            prompt: "Reply Looks good. after 6 minutes",
+            model: "gpt-test",
+          }),
+        ),
+      )
+      const [running] = yield* runner.subagents(a)
+      expect(running).toMatchObject({ label: "Slow review", status: "running" })
+      expect(started).toMatchObject({ isError: false })
+      expect(started.text).toContain(`wait_agent with agentId "${running?.id}"`)
+
+      const finished = yield* settled(
+        yield* Effect.forkChild(callAs(connection, "wait_agent", { agentId: running?.id })),
+      )
+      expect(finished).toMatchObject({ isError: false, text: "Looks good." })
+      expect(yield* callAs(connection, "wait_agent", { agentId: "not-an-agent" })).toMatchObject({
+        isError: true,
+        text: "No agent not-an-agent runs in this thread's turn.",
+      })
       yield* runner.interrupt(a)
     }),
   )
