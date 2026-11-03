@@ -34,6 +34,7 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { toIcon } from "../lib/indicators.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
 import { formatSnoozeTime } from "../lib/snooze.ts"
+import { nestChildren } from "../lib/threadTree.ts"
 import { callPromise, type EnvironmentId, projectsAtom, pullRequestAttentionAtom } from "../lib/rpc.ts"
 import { type Cloud, isStale, useCloud, useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
@@ -147,6 +148,7 @@ export function SidebarThreadList({
   const [listRef, setAnimate] = useAutoAnimate<HTMLUListElement>(sidebarListMotion)
   const DROP_ANIMATION_MS = 300
   const [reorderError, setReorderError] = useState<string | null>(null)
+  const entries = nestChildren(threads)
 
   const save = async (ordered: ReadonlyArray<Thread>) => {
     const moved = ordered.flatMap((thread, index) =>
@@ -173,7 +175,13 @@ export function SidebarThreadList({
         sensors={sensors}
         onDragStart={() => setAnimate(false)}
         onDragEnd={(event) => {
-          if (!event.canceled) void save(move([...threads], event))
+          if (!event.canceled)
+            void save(
+              move(
+                entries.map((entry) => entry.thread),
+                event,
+              ),
+            )
           // FIXME: dnd-kit still plays its drop animation here, and auto-animate on top slides the row twice
           setTimeout(() => setAnimate(true), DROP_ANIMATION_MS)
         }}
@@ -182,13 +190,14 @@ export function SidebarThreadList({
           {threads.length === 0 && showEmptyHint && (
             <li className="px-1.5 py-1 text-xs text-muted-foreground">{m.sidebar_no_threads()}</li>
           )}
-          {threads.map((thread, index) => (
+          {entries.map(({ thread, nested }, index) => (
             <ThreadRow
               key={thread.id}
               thread={thread}
+              nested={nested}
               index={index}
               group={group}
-              reorderable={reorderable}
+              reorderable={reorderable && !nested}
               showProject={showProject}
               linkRef={index === 0 ? firstRowRef : undefined}
               focusAfterRemoval={focusAfterRemoval}
@@ -209,6 +218,7 @@ type RowMode = "idle" | "renaming" | "archive" | "delete"
 
 interface ThreadRowProps {
   readonly thread: Thread
+  readonly nested: boolean
   readonly index: number
   readonly group: string
   readonly reorderable: boolean
@@ -217,7 +227,16 @@ interface ThreadRowProps {
   readonly focusAfterRemoval: () => HTMLElement | null
 }
 
-function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, focusAfterRemoval }: ThreadRowProps) {
+function ThreadRow({
+  thread,
+  nested,
+  index,
+  group,
+  reorderable,
+  showProject,
+  linkRef,
+  focusAfterRemoval,
+}: ThreadRowProps) {
   const { ref, handleRef, isDragSource } = useSortable({ id: thread.id, index, group, disabled: !reorderable })
   const [menuOpen, setMenuOpen] = useState(false)
   const [mode, setMode] = useState<RowMode>("idle")
@@ -299,12 +318,13 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
       data-menu-open={menuOpen || mode === "delete"}
       data-emphasis={rowEmphasis[state]}
       data-archived={archived}
+      data-nested={nested}
       data-stale={isStale(cloud)}
       data-show-project={meta.project !== null}
       data-meta={hasMeta}
       onPointerEnter={(event) => scrollTitle(event.currentTarget)}
       onPointerLeave={(event) => stopTitle(event.currentTarget)}
-      className="group/thread relative rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=working]:text-muted-foreground data-[emphasis=working]:not-has-[a[data-status=active]]:not-hover:not-focus-within:opacity-60 data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
+      className="group/thread relative rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=working]:text-muted-foreground data-[emphasis=working]:not-has-[a[data-status=active]]:not-hover:not-focus-within:opacity-60 data-[nested=true]:ms-3.5 data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
     >
       {meta.project !== null && (
         <div className="flex min-w-0 items-center gap-1 pt-1.5 pr-2 pl-1.5 text-xs text-muted-foreground">
