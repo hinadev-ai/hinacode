@@ -282,7 +282,11 @@ export const AgentEvent = Schema.Union([
     usage: Schema.optional(TokenUsage),
     forkPoint: Schema.optional(ForkPoint),
   }),
-  Schema.Struct({ type: Schema.Literal("turn_failed"), message: Schema.String }),
+  Schema.Struct({
+    type: Schema.Literal("turn_failed"),
+    message: Schema.String,
+    stopped: Schema.optional(Schema.Boolean),
+  }),
   Schema.Struct({ type: Schema.Literal("turn_limited"), limit: UsageLimit }),
 ])
 export type AgentEvent = typeof AgentEvent.Type
