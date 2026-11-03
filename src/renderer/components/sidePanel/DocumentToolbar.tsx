@@ -2,8 +2,8 @@ import type { Editor } from "@tiptap/core"
 import { CellSelection } from "@tiptap/pm/tables"
 import { useEditorState } from "@tiptap/react"
 import { BubbleMenu } from "@tiptap/react/menus"
-import { TrashIcon, PencilIcon } from "@hinacode/icons"
-import { type ComponentType, useEffect, useRef, useState } from "react"
+import { TrashIcon } from "@hinacode/icons"
+import type { ComponentType } from "react"
 import {
   RiBold,
   RiCodeBoxLine,
@@ -18,15 +18,13 @@ import {
   RiInsertRowBottom,
   RiItalic,
   RiLink,
-  RiLinkUnlinkM,
   RiListCheck3,
   RiListOrdered,
   RiListUnordered,
   RiStrikethrough,
   RiTable2,
 } from "react-icons/ri"
-import { linkHref } from "../../../shared/documentLink.ts"
-import { openLink, setLinkEditing } from "../../lib/documentLinks.ts"
+import { editedLink, editLink, selectedLinkRange } from "../../lib/documentLinks.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
 
@@ -163,7 +161,7 @@ const link: Tool = {
   label: m.documents_link,
   icon: RiLink,
   active: (editor) => editor.isActive("link"),
-  run: (editor) => setLinkEditing(editor, true),
+  run: (editor) => editLink(editor, selectedLinkRange(editor)),
 }
 
 const allTools = [...headings, ...lists, ...blocks, ...marks, link]
@@ -240,121 +238,22 @@ const floatingSurface =
 
 export function SelectionMenu({ editor }: { editor: Editor }) {
   const { active } = useActiveTools(editor)
-  const { editingLink, href, empty } = useEditorState({
-    editor,
-    selector: ({ editor: current }) => ({
-      editingLink: current.storage.linkEditing.open,
-      href:
-        typeof current.getAttributes("link")["href"] === "string"
-          ? String(current.getAttributes("link")["href"])
-          : null,
-      empty: current.state.selection.empty,
-    }),
-  })
   return (
     <BubbleMenu
       editor={editor}
       pluginKey="selectionMenu"
       shouldShow={({ editor: current, state }) =>
         current.isEditable &&
+        !state.selection.empty &&
         !(state.selection instanceof CellSelection) &&
         !current.isActive("codeBlock") &&
-        (!state.selection.empty || current.isActive("link") || current.storage.linkEditing.open)
+        editedLink(current) === null
       }
     >
       <div role="toolbar" aria-label={m.documents_selection_toolbar()} className={floatingSurface}>
-        {editingLink ? (
-          <LinkForm key={href ?? ""} editor={editor} href={href} />
-        ) : empty && href !== null ? (
-          <LinkPreview editor={editor} href={href} />
-        ) : (
-          <ToolGroup editor={editor} tools={[...marks, link]} active={active} />
-        )}
+        <ToolGroup editor={editor} tools={[...marks, link]} active={active} />
       </div>
     </BubbleMenu>
-  )
-}
-
-function LinkForm({ editor, href }: { editor: Editor; href: string | null }) {
-  const input = useRef<HTMLInputElement>(null)
-  const [text, setText] = useState(href ?? "")
-  const target = linkHref(text)
-  useEffect(() => input.current?.focus(), [])
-  const close = () => {
-    setLinkEditing(editor, false)
-    editor.commands.focus()
-  }
-  const apply = () => {
-    if (target === null) return
-    const insertsText = editor.state.selection.empty && !editor.isActive("link")
-    const chain = editor.chain().focus()
-    if (insertsText)
-      chain.insertContent({ type: "text", text: target, marks: [{ type: "link", attrs: { href: target } }] }).run()
-    else chain.extendMarkRange("link").setLink({ href: target }).run()
-    setLinkEditing(editor, false)
-  }
-  return (
-    <form
-      className="flex items-center gap-1"
-      onSubmit={(event) => {
-        event.preventDefault()
-        apply()
-      }}
-    >
-      <input
-        ref={input}
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key !== "Escape") return
-          event.preventDefault()
-          close()
-        }}
-        placeholder={m.documents_link_placeholder()}
-        aria-label={m.documents_link_address()}
-        aria-invalid={text.trim() !== "" && target === null}
-        className="h-7 w-56 min-w-0 rounded-md bg-transparent px-2 text-sm outline-none placeholder:text-muted-foreground aria-invalid:text-destructive"
-      />
-      <Button type="submit" size="xs" disabled={target === null}>
-        {m.documents_link_apply()}
-      </Button>
-    </form>
-  )
-}
-
-function LinkPreview({ editor, href }: { editor: Editor; href: string }) {
-  return (
-    <div className="flex items-center gap-0.5">
-      <a
-        href={href}
-        title={m.documents_link_open()}
-        onClick={(event) => {
-          event.preventDefault()
-          openLink(href)
-        }}
-        className="max-w-56 truncate px-2 text-xs text-primary underline-offset-2 hover:underline"
-      >
-        {href}
-      </a>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label={m.documents_link_edit()}
-        title={m.documents_link_edit()}
-        onClick={() => setLinkEditing(editor, true)}
-      >
-        <PencilIcon aria-hidden />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label={m.documents_link_remove()}
-        title={m.documents_link_remove()}
-        onClick={() => editor.chain().focus().extendMarkRange("link").unsetLink().run()}
-      >
-        <RiLinkUnlinkM aria-hidden />
-      </Button>
-    </div>
   )
 }
 

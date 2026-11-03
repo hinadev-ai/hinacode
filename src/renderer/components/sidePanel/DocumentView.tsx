@@ -22,6 +22,7 @@ import { useDrafts } from "../../stores/drafts.ts"
 import { Button } from "../ui/button.tsx"
 import { ScrollArea } from "../ui/scroll-area.tsx"
 import { DocumentCodeBlock } from "./DocumentCodeBlock.tsx"
+import { LinkEditor, LinkHoverCard } from "./DocumentLinks.tsx"
 import { DocumentToolbar, SelectionMenu, TableMenu } from "./DocumentToolbar.tsx"
 
 const loadFailed = (message: string) => (
@@ -114,6 +115,8 @@ function DocumentEditor({
     <div className="flex min-h-0 flex-1 flex-col transition-[opacity,translate] duration-200 ease-out starting:opacity-0 motion-safe:starting:translate-x-2">
       <DocumentToolbar editor={editor} />
       <SelectionMenu editor={editor} />
+      <LinkHoverCard editor={editor} />
+      <LinkEditor editor={editor} />
       <TableMenu editor={editor} />
       {status.type === "conflict" && <ConflictBanner sync={sync} />}
       <ScrollArea className="min-h-0 flex-1">

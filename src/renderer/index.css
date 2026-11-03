@@ -1203,6 +1203,11 @@
     }
   }
 
+  & [data-link-target] {
+    border-radius: 2px;
+    background: color-mix(in oklab, var(--primary) 18%, transparent);
+  }
+
   & .selectedCell::after {
     position: absolute;
     inset: 0;
