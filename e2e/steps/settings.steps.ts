@@ -37,6 +37,10 @@ Given("the saved language is {string}", ({ seed }, locale: string) => {
   seed.setting("locale", locale)
 })
 
+Given("the pull request guide is turned on", ({ seed }) => {
+  seed.setting("pullRequestGuide", { enabled: true, model: "claude-sonnet-5-5", effort: "high" })
+})
+
 Given("the shortcut for {string} is saved as {string}", ({ seed }, command: string, chord: string) => {
   seed.setting("keybindings", { [commandId(command)]: chord })
 })
@@ -162,4 +166,18 @@ Then("the archive settings are saved as both on", async ({ app }) => {
   await expect
     .poll(async () => (await rpc(app.page, "settings.get", undefined)).archive)
     .toStrictEqual({ whenMerged: true, removeWorktree: true })
+})
+
+When("I scroll the settings page past its end", async ({ app }) => {
+  await expect(app.page.getByRole("switch", { name: "Pull request guide", exact: true })).toBeChecked()
+  await app.page.getByRole("switch", { name: "Pull request guide", exact: true }).hover()
+  for (let tick = 0; tick < 20; tick++) await app.page.mouse.wheel(0, 400)
+})
+
+Then("the window has not scrolled", async ({ app }) => {
+  const scrolled = await app.page.evaluate(() => {
+    const root = document.scrollingElement!
+    return { top: root.scrollTop, overflow: root.scrollHeight - root.clientHeight }
+  })
+  expect(scrolled).toEqual({ top: 0, overflow: 0 })
 })
