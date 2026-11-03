@@ -32,7 +32,7 @@ CREATE TABLE message_part (
 
 `foldEvent` changes a message without touching the parts it leaves alone: a delta replaces the last part, `tool_call_started` appends one, and `tool_call_finished` replaces the one it finishes. Every other part keeps its object identity. So `Messages.update(message, previous)` writes only the parts where `message.parts[i] !== previous.parts[i]`, in one `INSERT OR REPLACE`. A save costs the size of what changed, usually the one text part the deltas are growing.
 
-The runner already tracks which messages changed since the last save. It now remembers the version it last saved for each, and passes that as `previous`.
+The runner already tracks which messages changed since the last save. It now remembers the version it last saved for each, and passes that as `previous`. When a save fails, the messages it did not write keep that saved version as `previous`, so the next save rewrites everything that changed since.
 
 Closing a message moves its parts back. In one transaction, `update` writes the whole array to `message.parts` with `completed_at`, then deletes the message's `message_part` rows. That is one write of the turn's size, once per turn. The FTS trigger fires on that `UPDATE OF parts`, as it does today, so search keeps indexing completed messages and needs no change.
 

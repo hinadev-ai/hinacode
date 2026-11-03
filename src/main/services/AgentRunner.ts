@@ -436,9 +436,16 @@ const make = Effect.gen(function* () {
       })
       dirty.clear()
       persistedAt = Date.now()
-      return Effect.forEach(changed, ({ message, previous }) => messages.update(message, previous), {
-        discard: true,
-      }).pipe(Effect.ensuring(Effect.sync(() => (persistMs = Date.now() - persistedAt))))
+      const unsaved = new Map(changed.map(({ message, previous }) => [message.id, previous]))
+      return Effect.forEach(
+        changed,
+        ({ message, previous }) =>
+          messages.update(message, previous).pipe(Effect.tap(() => Effect.sync(() => unsaved.delete(message.id)))),
+        { discard: true },
+      ).pipe(
+        Effect.tapError(() => Effect.sync(() => unsaved.forEach((previous, id) => dirty.set(id, previous)))),
+        Effect.ensuring(Effect.sync(() => (persistMs = Date.now() - persistedAt))),
+      )
     })
 
     const setTurnMessages = (next: ReadonlyArray<Message>) => {
