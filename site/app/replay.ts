@@ -113,5 +113,6 @@ export async function replayBridge(params: URLSearchParams): Promise<HinacodeBri
     },
     pathForFile: (file) => file.name,
     liquidGlass: false,
+    runtime: "desktop",
   }
 }

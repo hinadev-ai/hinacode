@@ -1,6 +1,7 @@
 packages:
   - relay
   - site
+  - apps/web
   - packages/*
 
 allowBuilds:

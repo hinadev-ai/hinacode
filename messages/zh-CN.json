@@ -2524,5 +2524,29 @@
         "countPlural=other": "使用技能 {skills}"
       }
     }
-  ]
+  ],
+  "web_sign_in_title": "登录你的 relay",
+  "web_sign_in_body": "粘贴你在桌面版“设置 > 环境”中使用的所有者令牌。",
+  "web_owner_token": "所有者令牌",
+  "web_relay_url": "Relay",
+  "web_use_other_relay": "使用其他 relay",
+  "web_sign_in": "登录",
+  "web_relay_unreachable": "无法连接 relay。请检查地址和网络连接。",
+  "web_relay_refused": "relay 拒绝了这个令牌。请从桌面版复制当前的令牌。",
+  "web_relay_bad_status": "relay 返回了 {status}。",
+  "web_relay_bad_answer": "relay 返回了此页面无法解析的内容。",
+  "web_pick_machine_title": "选择一台机器",
+  "web_pick_machine_body": "HinaCode 会在你选择的机器上运行，其他机器会作为环境显示。",
+  "web_no_machines": "relay 上还没有任何机器。请先在机器上开启 relay，再刷新此页面。",
+  "web_reconnecting": "正在重新连接到 {machine}…",
+  "web_machine_refused": "{machine} 拒绝了此页面的连接。",
+  "web_switch_machine": "切换机器",
+  "web_transport_not_sent": "未发送。这台机器已经一分钟无法连接。",
+  "web_transport_may_have_run": "这台机器已经一分钟无法连接，但操作可能已经执行。",
+  "web_transport_lost_reply": "连接在机器响应前中断，操作可能已经执行。",
+  "web_transport_disconnected": "已与机器断开连接。",
+  "web_transport_not_connected": "尚未连接到机器。",
+  "web_transport_token_rotated": "机器的令牌已更换。请刷新此页面，从 relay 获取新的令牌。",
+  "web_transport_token_refused": "机器拒绝了令牌。等它把新令牌发布到 relay 后，再刷新此页面。",
+  "web_transport_protocol_mismatch": "这台机器使用远程协议 {machine}，此页面使用 {app}。请更新较旧的一方。"
 }

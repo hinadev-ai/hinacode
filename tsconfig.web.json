@@ -7,7 +7,7 @@
     "allowJs": true,
     "paths": { "@/*": ["./src/renderer/*"] }
   },
-  "include": ["src/renderer/**/*", "src/shared/**/*", "src/preload/*.d.ts", "site/app/**/*", "packages/icons/src/**/*"],
+  "include": ["src/renderer/**/*", "src/shared/**/*", "src/preload/*.d.ts", "site/app/**/*", "apps/web/src/**/*", "packages/icons/src/**/*"],
   "exclude": [
     "src/renderer/**/*.test.ts",
     "src/renderer/**/*.test.tsx",

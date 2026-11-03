@@ -2542,5 +2542,29 @@
         "countPlural=other": "Use skills {skills}"
       }
     }
-  ]
+  ],
+  "web_sign_in_title": "Sign in to your relay",
+  "web_sign_in_body": "Paste the owner token you use in Settings, Environments on the desktop.",
+  "web_owner_token": "Owner token",
+  "web_relay_url": "Relay",
+  "web_use_other_relay": "Use another relay",
+  "web_sign_in": "Sign in",
+  "web_relay_unreachable": "Could not reach the relay. Check the address and your connection.",
+  "web_relay_refused": "The relay refused this token. Copy the current one from the desktop.",
+  "web_relay_bad_status": "The relay answered {status}.",
+  "web_relay_bad_answer": "The relay sent an answer this page cannot read.",
+  "web_pick_machine_title": "Pick a machine",
+  "web_pick_machine_body": "HinaCode runs on the machine you pick. The others appear as environments.",
+  "web_no_machines": "The relay shows no machines yet. Turn on the relay on a machine, then reload this page.",
+  "web_reconnecting": "Reconnecting to {machine}…",
+  "web_machine_refused": "{machine} refused this page.",
+  "web_switch_machine": "Switch machine",
+  "web_transport_not_sent": "Not sent. The machine was unreachable for a minute.",
+  "web_transport_may_have_run": "The machine was unreachable for a minute. The action may still have run.",
+  "web_transport_lost_reply": "The connection dropped before the machine answered. The action may still have run.",
+  "web_transport_disconnected": "Disconnected from the machine.",
+  "web_transport_not_connected": "Not connected to the machine.",
+  "web_transport_token_rotated": "The machine's token was rotated. Reload this page to pick up the new one from the relay.",
+  "web_transport_token_refused": "The machine refused its token. Reload this page after it publishes a new one to the relay.",
+  "web_transport_protocol_mismatch": "The machine speaks remote protocol {machine}, this page speaks {app}. Update the older one."
 }
