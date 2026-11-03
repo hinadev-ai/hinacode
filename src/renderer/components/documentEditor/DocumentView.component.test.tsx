@@ -28,6 +28,8 @@ const version = 1
 
 let documentId = "plan-0"
 let title = "Release plan"
+let renames: Array<string> = []
+let finishRename: () => void = () => {}
 
 const documentAt = (version: number, revision = version): Artifact => ({
   id: documentId,
@@ -59,6 +61,10 @@ const bridge: HinacodeBridge = {
       return { result: { type: "saved", version: stored.version, revision: stored.revision } }
     }
     if (method === "artifacts.rename") {
+      renames.push((payload as { title: string }).title)
+      await new Promise<void>((resolve) => {
+        finishRename = resolve
+      })
       title = (payload as { title: string }).title
       const renamed = documentAt(stored.version, stored.revision)
       push({ type: "artifact.updated", artifact: renamed })
@@ -87,6 +93,7 @@ const push = (event: typeof PushEvent.Encoded) => {
 beforeEach(({ task }) => {
   documentId = `plan-${task.id}`
   title = "Release plan"
+  renames = []
   stored = { version: 1, revision: 1, markdown: AGENT_MARKDOWN }
   nextSave = undefined
   saves = []
@@ -249,13 +256,19 @@ test("links the selected text with Cmd+K", async () => {
     .toContain("Ship the **editor** [first.](https://hinacode.dev)")
 })
 
-test("renames the document from the panel header", async () => {
+test("renames the document from the panel header once, showing the new name while it saves", async () => {
   await openDocument()
 
   await page.getByRole("button", { name: "Release plan", exact: true }).click()
   await page.getByRole("textbox", { name: "New name for Release plan" }).fill("Launch plan")
   await userEvent.keyboard("{Enter}")
 
-  await expect.element(page.getByRole("button", { name: "Launch plan", exact: true })).toBeInTheDocument()
-  expect(title).toBe("Launch plan")
+  const renamed = page.getByRole("button", { name: "Launch plan", exact: true })
+  await expect.element(renamed).toBeInTheDocument()
+  await expect.element(page.getByRole("textbox", { name: "New name for Release plan" })).not.toBeInTheDocument()
+  await page.getByRole("textbox", { name: "Release plan" }).click()
+  finishRename()
+
+  await expect.element(renamed).toBeInTheDocument()
+  expect(renames).toEqual(["Launch plan"])
 })
