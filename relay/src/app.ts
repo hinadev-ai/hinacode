@@ -104,7 +104,10 @@ export const makeApp = (deps: Deps) => {
   }
 
   app.use("/v1/*", (c, next) =>
-    cors({ origin: c.env.WEB_ORIGINS.split(","), allowMethods: ["GET"], maxAge: 600 })(c, next),
+    cors({ origin: c.env.WEB_ORIGINS.split(","), allowMethods: ["GET", "POST", "PATCH", "DELETE"], maxAge: 600 })(
+      c,
+      next,
+    ),
   )
 
   app.onError((error, c) => {
