@@ -58,6 +58,7 @@ import { ContextRing } from "./ContextRing.tsx"
 import { PendingLineComment } from "./LineComment.tsx"
 import { ActivityIndicator } from "./ActivityIndicator.tsx"
 import { QueueBar } from "./QueueBar.tsx"
+import { ScheduleButton, ScheduledBar } from "./ScheduledMessages.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 import { useModifierHeld } from "../lib/useModifierHeld.ts"
@@ -258,6 +259,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
         <ComposerRoot className="mx-auto flex min-h-0 max-w-3xl flex-col [--composer-edge:color-mix(in_oklab,var(--border)_60%,transparent)] has-[[data-slot=composer-bar]:focus-within]:[--composer-edge:var(--ring)]">
           <ActivityIndicator thread={thread}>
             <QueueBar thread={thread} onEdit={() => inputRef.current?.focus()} onError={setError} />
+            <ScheduledBar thread={thread} onEdit={() => inputRef.current?.focus()} onError={setError} />
           </ActivityIndicator>
           <ComposerBar
             {...dropZone}
@@ -317,6 +319,9 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
                 <ThreadPicker thread={thread} canSwitchAgent={!busy && !isSidechat} onError={setError} />
               </ComposerActions>
               <ContextRing threadId={thread.id} provider={thread.provider} />
+              {!isSidechat && (
+                <ScheduleButton thread={thread} unstarted={unstarted} disabled={!canSend} onError={setError} />
+              )}
               {(sendMode === "queue" || sendMode === "steer") && <StopButton onStop={stop} />}
               <SendButton mode={sendMode} canSend={canSend} onStop={stop} />
             </ComposerToolbar>

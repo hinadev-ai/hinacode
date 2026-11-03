@@ -99,7 +99,7 @@ export function QueueBar({
   )
 }
 
-function QueueAction({
+export function QueueAction({
   icon: Icon,
   label,
   action,

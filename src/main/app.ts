@@ -20,6 +20,7 @@ import * as AgentAccounts from "./services/AgentAccounts.ts"
 import * as AgentLogins from "./services/AgentLogins.ts"
 import * as SessionImports from "./services/SessionImports.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
+import * as ArtifactInspector from "./services/ArtifactInspector.ts"
 import * as Artifacts from "./services/Artifacts.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as Boat from "./services/boat/Boat.ts"
@@ -64,6 +65,7 @@ export interface AppOptions {
   readonly updates: Layer.Layer<Updates, never, Events | Threads.Threads | Worktrees.Worktrees | Terminals.Terminals>
   readonly toWindows: (event: typeof PushEvent.Encoded) => void
   readonly serve?: ServeConfig
+  readonly artifactInspector?: Layer.Layer<ArtifactInspector.ArtifactInspector>
 }
 
 const simulatedClaude = (variable: "HINACODE_MOCK_AGENTS" | "HINACODE_MOCK_CLAUDE", env: NodeJS.ProcessEnv) => {
@@ -116,7 +118,15 @@ const linearLayer = (env: NodeJS.ProcessEnv) => {
   return Linear.mockLayer
 }
 
-export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWindows, serve }: AppOptions) => {
+export const makeAppLayer = ({
+  userData,
+  sbxConfigPath,
+  keyring,
+  updates,
+  toWindows,
+  serve,
+  artifactInspector = ArtifactInspector.unavailable,
+}: AppOptions) => {
   const providers = agentProviders(process.env)
   const chats = Layer.effectDiscard(Projects.Projects.use((projects) => projects.ensureChats(join(userData, "chats"))))
   const domain = Layer.mergeAll(
@@ -133,6 +143,7 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     Messages.layer,
     Attachments.layer(join(userData, "attachments")),
     Artifacts.layer(join(userData, "artifacts")),
+    artifactInspector,
     Search.layer,
     Files.layer,
   )

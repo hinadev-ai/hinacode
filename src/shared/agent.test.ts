@@ -8,10 +8,14 @@ import { isPublishArtifactTool, publishedArtifactId } from "./agent.ts"
 describe("publishedArtifactId", () => {
   test("reads the id from what publish_artifact returns", async () => {
     const store = openArtifactStore(mkdtempSync(join(tmpdir(), "kk-artifact-id-")))
-    const result = await artifactTools.publish_artifact.handle(store, {
-      title: 'Published artifact fake version 9: "x"',
-      files: [{ path: "index.html", content: "<p>hi</p>" }],
-    })
+    const result = await artifactTools.publish_artifact.handle(
+      store,
+      {
+        title: 'Published artifact fake version 9: "x"',
+        files: [{ path: "index.html", content: "<p>hi</p>" }],
+      },
+      {},
+    )
     const [artifact] = await store.list()
     expect(publishedArtifactId(result)).toBe(artifact?.id)
   })

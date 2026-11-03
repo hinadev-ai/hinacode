@@ -1,19 +1,29 @@
 import { Autocomplete } from "@base-ui/react/autocomplete"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { useId, useRef, useState } from "react"
-import type { Thread } from "../../shared/domain.ts"
 import { parseSnoozeTime } from "../lib/parseSnoozeTime.ts"
 import { formatSnoozeTime, type SnoozePresetId, snoozePresets } from "../lib/snooze.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
-import { AlarmIcon, CalendarIcon, SnoozeIcon } from "@hinacode/icons"
+import { CalendarIcon, type IconComponent } from "@hinacode/icons"
 
-interface Choice {
+export interface TimeChoice {
   readonly id: string
   readonly label: string
   readonly hint: string
-  readonly until: Date | null
+  readonly at: Date | null
+  readonly icon?: IconComponent
+}
+
+export interface TimePickerProps {
+  readonly title: string
+  readonly inputLabel: string
+  readonly placeholder: string
+  readonly icon: IconComponent
+  readonly extraChoices?: (now: Date) => ReadonlyArray<TimeChoice>
+  readonly onChoose: (at: Date | null) => void
+  readonly onClose: () => void
 }
 
 const focusOnMount = (input: HTMLInputElement | null) => input?.focus()
@@ -25,22 +35,23 @@ const presetLabels: Record<SnoozePresetId, () => string> = {
   nextWeek: m.snooze_next_week,
 }
 
-interface SnoozePickerProps {
-  readonly thread: Thread
-  readonly onChoose: (until: Date | null) => void
-  readonly onClose: () => void
-}
-
-export default function SnoozePicker({ thread, onChoose, onClose }: SnoozePickerProps) {
+export default function TimePicker({
+  title,
+  inputLabel,
+  placeholder,
+  icon: InputIcon,
+  extraChoices,
+  onChoose,
+  onClose,
+}: TimePickerProps) {
   const [text, setText] = useState("")
   const problemId = useId()
   const browsed = useRef(false)
   const now = new Date(useNow())
   const locale = getLocale()
   const parsed = parseSnoozeTime(text, now, locale)
-  const snoozed = thread.snoozedUntil !== null && Date.parse(thread.snoozedUntil) > now.getTime()
 
-  const choices: ReadonlyArray<Choice> = [
+  const choices: ReadonlyArray<TimeChoice> = [
     ...(parsed.status === "ok"
       ? [
           {
@@ -53,7 +64,8 @@ export default function SnoozePicker({ thread, onChoose, onClose }: SnoozePicker
               minute: "2-digit",
             }),
             hint: m.snooze_typed(),
-            until: parsed.at,
+            at: parsed.at,
+            icon: CalendarIcon,
           },
         ]
       : []),
@@ -61,9 +73,9 @@ export default function SnoozePicker({ thread, onChoose, onClose }: SnoozePicker
       id: preset.id,
       label: presetLabels[preset.id](),
       hint: formatSnoozeTime(preset.at, now, locale),
-      until: preset.at,
+      at: preset.at,
     })),
-    ...(snoozed ? [{ id: "wake", label: m.sidebar_thread_unsnooze(), hint: "", until: null }] : []),
+    ...(extraChoices?.(now) ?? []),
   ]
   const problem =
     parsed.status === "unreadable" ? m.snooze_unreadable() : parsed.status === "past" ? m.snooze_past() : ""
@@ -71,7 +83,7 @@ export default function SnoozePicker({ thread, onChoose, onClose }: SnoozePicker
   return (
     <>
       <DialogPrimitive.Title className="truncate px-3.5 pt-3 text-xs text-muted-foreground">
-        {m.snooze_label({ title: thread.title })}
+        {title}
       </DialogPrimitive.Title>
       <Autocomplete.Root
         open
@@ -88,15 +100,15 @@ export default function SnoozePicker({ thread, onChoose, onClose }: SnoozePicker
         onItemHighlighted={(_, details) => {
           browsed.current = details.reason === "keyboard"
         }}
-        itemToStringValue={(choice: Choice) => choice.label}
+        itemToStringValue={(choice: TimeChoice) => choice.label}
       >
         <div className="flex items-center gap-2.5 border-b border-border px-3.5">
-          <SnoozeIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+          <InputIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
           <Autocomplete.Input
             ref={focusOnMount}
-            aria-label={m.snooze_input_label()}
+            aria-label={inputLabel}
             aria-describedby={problemId}
-            placeholder={m.snooze_placeholder()}
+            placeholder={placeholder}
             onKeyDown={(event) => {
               // FIXME: Base UI's always-open list takes Escape for itself and keeps the dialog up
               if (event.key === "Escape") onClose()
@@ -109,17 +121,15 @@ export default function SnoozePicker({ thread, onChoose, onClose }: SnoozePicker
           {problem}
         </output>
         <Autocomplete.List className="min-h-0 scroll-py-1 overflow-y-auto overscroll-contain p-1.5">
-          {(choice: Choice) => (
+          {(choice: TimeChoice) => (
             <Autocomplete.Item
               key={choice.id}
               value={choice}
-              onClick={() => onChoose(choice.until)}
+              onClick={() => onChoose(choice.at)}
               className="flex min-h-9 cursor-default items-center gap-2.5 rounded-lg px-2.5 text-sm outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-highlighted:inset-ring data-highlighted:inset-ring-ring/50"
             >
-              {choice.id === "typed" ? (
-                <CalendarIcon aria-hidden className="size-4 shrink-0" />
-              ) : choice.until === null ? (
-                <AlarmIcon aria-hidden className="size-4 shrink-0" />
+              {choice.icon ? (
+                <choice.icon aria-hidden className="size-4 shrink-0" />
               ) : (
                 <span aria-hidden className="size-4 shrink-0" />
               )}

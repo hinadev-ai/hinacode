@@ -33,6 +33,7 @@ const legacyThread: Omit<Thread, "userSkills"> = {
   pinnedAt: null,
   snoozedUntil: null,
   queue: [],
+  scheduled: [],
   createdBy: "user",
   createdAt: "2026-10-18T00:00:00.000Z",
   updatedAt: "2026-10-18T00:00:00.000Z",

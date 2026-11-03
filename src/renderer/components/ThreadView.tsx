@@ -73,7 +73,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
         ref={regionRef}
         className={cn(
           "relative flex min-h-0 flex-1 flex-col overflow-x-clip",
-          agent === undefined ? "[container:thread/size]" : "[container-type:size]",
+          agent === undefined ? "[container:thread/size]" : "@container-size",
         )}
       >
         <div className="flex min-h-0 flex-1 flex-col overflow-auto">

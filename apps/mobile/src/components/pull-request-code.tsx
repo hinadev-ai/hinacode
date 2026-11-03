@@ -54,7 +54,7 @@ const fileMark = (theme: Palette): Record<PullRequestFileStatus, { letter: strin
   added: { letter: "A", color: theme.running },
   removed: { letter: "D", color: theme.danger },
   modified: { letter: "M", color: theme.attention },
-  // As on the desktop: violet is kept for focus and the primary action.
+  // As on the desktop: the brand coral is kept for focus and the primary action.
   renamed: { letter: "R", color: theme.attention },
   copied: { letter: "C", color: theme.running },
 })
