@@ -34,7 +34,7 @@ import { FindPartContext, Highlighted } from "./FindHighlight.tsx"
 import { HighlightedCode } from "./HighlightedCode.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { MessageActions } from "./MessageActions.tsx"
-import { MessagePartView, PartThread, SkillLabels, ToolGroup, useFindDisclosure } from "./MessagePart.tsx"
+import { MessagePartView, PartMessage, SkillLabels, ToolGroup, useFindDisclosure } from "./MessagePart.tsx"
 import { PostedQuestionsCard } from "./QuestionCard.tsx"
 import { TurnChanges } from "./TurnChanges.tsx"
 import { ArrowDownIcon } from "@hinacode/icons"
@@ -292,9 +292,9 @@ function AssistantBody({ message, showElapsedTime }: { message: Message; showEla
           <EarlierActivity count={foldedCount} expanded={activityShown} onExpandedChange={setActivityShown} />
         )
       )}
-      <PartThread value={message.threadId}>
+      <PartMessage value={message}>
         <AssistantParts message={message} parts={shownParts} writingIndex={writingIndex} />
-      </PartThread>
+      </PartMessage>
       {streaming && (parts.length === 0 || writingIndex !== undefined) && (
         <p className="text-shimmer text-xs">
           {writingIndex !== undefined ? m.message_writing() : m.message_thinking()}
