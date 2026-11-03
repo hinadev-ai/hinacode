@@ -10,6 +10,7 @@ import { selectThread, useThreads } from "../stores/threads.ts"
 import { formatRelativeTime } from "./relativeTime.ts"
 import { type EnvironmentId, environmentsAtom, projectsAtom } from "./rpc.ts"
 import { useNow } from "./useNow.ts"
+import { thisMachineName } from "./runtime.ts"
 
 export type Cloud = Environments["clouds"][number]
 
@@ -34,9 +35,7 @@ export function useCloud(environment: EnvironmentId): Cloud | undefined {
 export const isStale = (cloud: Cloud | undefined) => cloud !== undefined && cloud.status !== "connected"
 
 export const environmentName = (environment: EnvironmentId, clouds: ReadonlyArray<Cloud>) =>
-  environment === null
-    ? m.environment_this_machine()
-    : (clouds.find((cloud) => cloud.id === environment)?.name ?? environment)
+  environment === null ? thisMachineName() : (clouds.find((cloud) => cloud.id === environment)?.name ?? environment)
 
 export const cloudAddress = (cloud: Pick<Cloud, "host" | "port">) => `${cloud.host}:${cloud.port}`
 

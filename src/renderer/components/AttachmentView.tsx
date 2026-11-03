@@ -7,11 +7,13 @@ import { deviceElementLabel, elementLabel } from "../lib/elementPicker.ts"
 import { useOpenThreadEnvironment } from "../lib/environments.ts"
 import { toastError } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
+import { inBrowser } from "../lib/runtime.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { Button } from "./ui/button.tsx"
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "./ui/dialog.tsx"
 import { CloseIcon, FileIcon } from "@hinacode/icons"
+import { resourceUrl } from "../lib/resourceUrl.ts"
 
 const format = (value: number, unit: string) =>
   new Intl.NumberFormat(getLocale(), { style: "unit", unit, maximumFractionDigits: 1 }).format(value)
@@ -30,6 +32,7 @@ export function AttachmentView({ attachment }: { attachment: Attachment }) {
 
 function FileAttachment({ attachment }: { attachment: Attachment }) {
   const [revealing, startRevealing] = useTransition()
+  if (inBrowser()) return <FileChip attachment={attachment} />
   return (
     <button
       type="button"
@@ -46,7 +49,8 @@ function FileAttachment({ attachment }: { attachment: Attachment }) {
 const pickedLabel = ({ element, deviceElement }: Attachment) =>
   element ? elementLabel(element) : deviceElement ? deviceElementLabel(deviceElement.element) : null
 
-const useAttachmentSrc = (attachment: Attachment) => attachmentUrl(attachment.path, useOpenThreadEnvironment())
+const useAttachmentSrc = (attachment: Attachment) =>
+  resourceUrl(attachmentUrl(attachment.path, useOpenThreadEnvironment()))
 
 function ImageAttachment({ attachment }: { attachment: Attachment }) {
   const { element, deviceElement } = attachment

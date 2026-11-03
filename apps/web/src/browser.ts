@@ -74,6 +74,7 @@ export const makeBrowserAnswers = (context: BrowserContext) => {
       return "shown"
     },
     "shell.openers": () => [],
+    "agents.updates": () => [],
     "environments.list": () => ({
       clouds: context.others.map((machine) => ({
         id: machine.environmentId,
@@ -103,6 +104,7 @@ export const makeBrowserAnswers = (context: BrowserContext) => {
       window.open(`${location.pathname}?${new URLSearchParams({ entry })}`, "_blank")
     },
     "windows.addLineComment": ({ threadId, comment }: { threadId: string; comment: unknown }) =>
+      // oxlint-disable-next-line unicorn/require-post-message-target-origin
       lineComments.postMessage({ type: "thread.lineComment", threadId, comment }),
   }
 

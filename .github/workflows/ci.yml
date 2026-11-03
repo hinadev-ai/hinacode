@@ -40,6 +40,7 @@ jobs:
             desktop:
               - *app
               - '!apps/mobile/**'
+              - '!apps/web/**'
               - '!tools/**'
               - '!scripts/**'
               - '!**/*.test.ts'
@@ -103,6 +104,8 @@ jobs:
         run: pnpm --dir relay test
       - if: needs.changes.outputs.relay == 'true'
         run: pnpm --dir relay deploy:dry-run
+      - if: needs.changes.outputs.app == 'true'
+        run: pnpm --dir apps/web deploy:dry-run
       - if: needs.changes.outputs.app == 'true'
         name: Install search test dependency
         run: sudo apt-get update && sudo apt-get install --yes ripgrep

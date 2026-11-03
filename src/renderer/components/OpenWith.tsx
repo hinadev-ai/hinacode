@@ -5,6 +5,7 @@ import type { Opener, Thread } from "../../shared/domain.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise, openersAtom, updateClientSettingsAtom } from "../lib/rpc.ts"
+import { inBrowser } from "../lib/runtime.ts"
 import { useClientSettings } from "../lib/settings.ts"
 import { useThreadRoot } from "../lib/threadRoot.ts"
 import { m } from "../paraglide/messages.js"
@@ -69,6 +70,7 @@ function OpenerItems({ path, target }: { path: string; target: Target }) {
 }
 
 export function OpenWithSubmenu({ path, target }: { path: string; target: Target }) {
+  if (inBrowser()) return null
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger>
@@ -84,7 +86,7 @@ export function OpenWithSubmenu({ path, target }: { path: string; target: Target
 
 export function ThreadOpenWith({ thread }: { thread: Thread }) {
   const root = useThreadRoot(thread)
-  const local = useThreadEnvironment(thread.id) === null
+  const local = useThreadEnvironment(thread.id) === null && !inBrowser()
   if (!local || root === undefined) return null
   return <OpenWithButton path={root.path} />
 }

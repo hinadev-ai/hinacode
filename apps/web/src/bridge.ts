@@ -107,6 +107,6 @@ export const connectMachines = ({
     },
     pathForFile: () => "",
     liquidGlass: false,
-    runtime: "web",
+    runtime: { kind: "web", machine: home.name },
   }
 }

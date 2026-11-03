@@ -6,6 +6,7 @@ import type { Thread, ThreadVm, VmControl, VmTemplate } from "../../../shared/do
 import { useThreadEnvironment } from "../../lib/environments.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { callPromise, threadVmAtom, vmHostAtom } from "../../lib/rpc.ts"
+import { inBrowser } from "../../lib/runtime.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import { useUi } from "../../stores/ui.ts"
@@ -325,6 +326,7 @@ interface VmActionButtonProps {
 }
 
 export function ScreenshotButton({ threadId, run }: VmActionButtonProps) {
+  if (inBrowser()) return null
   const save = () =>
     run(async () => {
       const attachment = await callPromise("vm.screenshot.save", { threadId })

@@ -23,6 +23,7 @@ import { useThreadEnvironment } from "../lib/environments.ts"
 import { toastError } from "../lib/errorMessage.ts"
 import { FILE_TREE_HEIGHT_BOUNDS } from "../lib/panelSize.ts"
 import { callPromise, onPushEvent } from "../lib/rpc.ts"
+import { inBrowser } from "../lib/runtime.ts"
 import { m } from "../paraglide/messages.js"
 import { useDrafts } from "../stores/drafts.ts"
 import {
@@ -127,7 +128,7 @@ interface FileExplorerProps {
 }
 
 export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
-  const canReveal = useThreadEnvironment(thread.id) === null
+  const canReveal = useThreadEnvironment(thread.id) === null && !inBrowser()
   const rootName = nameOf(root)
   const tree = useExplorer((state) => state.byRoot[root] ?? emptyTree)
   const load = useExplorer((state) => state.load)

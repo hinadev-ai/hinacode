@@ -16,7 +16,7 @@ const bridge: HinacodeBridge = {
   onEvent: () => () => {},
   pathForFile: () => "",
   liquidGlass: false,
-  runtime: "desktop",
+  runtime: { kind: "desktop" },
 }
 Object.defineProperty(window, "hinacode", { value: bridge })
 

@@ -29,6 +29,7 @@ import { LineCommentCard, LineCommentForm } from "./LineComment.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { Button } from "./ui/button.tsx"
 import { CloseIcon, CopyIcon, FileDiffIcon } from "@hinacode/icons"
+import { resourceUrl, servedSandbox } from "../lib/resourceUrl.ts"
 
 interface FileViewerProps {
   readonly threadId: string
@@ -140,7 +141,7 @@ function FilePreviewPane({ preview, root, path }: { preview: FilePreview; root: 
   )
 
   if (failed) return <Note text={m.viewer_preview_failed()} />
-  const src = `${projectFileUrl(root, path)}?v=${version}`
+  const src = resourceUrl(`${projectFileUrl(root, path)}?v=${version}`)
   const fail = () => setFailed(true)
 
   if (preview === "html") {
@@ -148,7 +149,7 @@ function FilePreviewPane({ preview, root, path }: { preview: FilePreview; root: 
       <iframe
         src={src}
         title={path}
-        sandbox="allow-scripts"
+        sandbox={servedSandbox()}
         referrerPolicy="no-referrer"
         className="min-h-0 flex-1 border-0 bg-white"
       />

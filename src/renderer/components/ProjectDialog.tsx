@@ -16,6 +16,7 @@ import {
 } from "../lib/rpc.ts"
 import { environmentName, environmentOf, useClouds } from "../lib/environments.ts"
 import { m } from "../paraglide/messages.js"
+import { inBrowser, thisMachineName } from "../lib/runtime.ts"
 import { Button } from "./ui/button.tsx"
 import {
   Dialog,
@@ -98,7 +99,7 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
   )
   const cloneParent = useDefaultCloneParent(environment)
   const defaultCloneTo = `${cloneParent}${separatorOf(cloneParent)}${repository?.name ?? ""}`
-  const canBrowse = environment === null
+  const canBrowse = environment === null && !inBrowser()
 
   const [error, submit, isPending] = useActionState(async (_: string | null, form: FormData) => {
     const setupScript = String(form.get("setupScript") ?? "").trim() || null
@@ -151,7 +152,7 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
       <FieldGroup>
-        <WhereField editable={!project} value={environment} onChange={setEnvironment} />
+        <WhereField editable={!project} value={environment} canBrowse={canBrowse} onChange={setEnvironment} />
         <Field>
           <FieldLabel htmlFor="project-root">{project ? m.project_root_label() : m.project_source_label()}</FieldLabel>
           <div className="flex gap-2">
@@ -343,10 +344,11 @@ const THIS_MACHINE = ""
 interface WhereFieldProps {
   readonly editable: boolean
   readonly value: EnvironmentId
+  readonly canBrowse: boolean
   readonly onChange: (environment: EnvironmentId) => void
 }
 
-function WhereField({ editable, value, onChange }: WhereFieldProps) {
+function WhereField({ editable, value, canBrowse, onChange }: WhereFieldProps) {
   const clouds = useClouds()
   if (clouds.length === 0 && value === null) return null
   if (!editable)
@@ -357,7 +359,7 @@ function WhereField({ editable, value, onChange }: WhereFieldProps) {
       </Field>
     )
   const items = [
-    { value: THIS_MACHINE, label: m.environment_this_machine() },
+    { value: THIS_MACHINE, label: thisMachineName() },
     ...clouds.map((cloud) => ({ value: cloud.id, label: cloud.name })),
   ]
   return (
@@ -381,7 +383,7 @@ function WhereField({ editable, value, onChange }: WhereFieldProps) {
           </SelectContent>
         </Select>
       </div>
-      {value !== null && <FieldDescription>{m.project_where_cloud_hint()}</FieldDescription>}
+      {!canBrowse && <FieldDescription>{m.project_where_cloud_hint()}</FieldDescription>}
     </Field>
   )
 }

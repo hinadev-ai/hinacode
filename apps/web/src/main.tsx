@@ -16,6 +16,7 @@ import {
 } from "./account.ts"
 import { connectMachines } from "./bridge.ts"
 import { readSettings } from "./browser.ts"
+import { serveResources } from "./resources.ts"
 import { describeFailure, Gate, type GateState } from "./Gate.tsx"
 import { HomeStatusBar, makeHomeStatus } from "./HomeStatusBar.tsx"
 
@@ -53,6 +54,7 @@ const start = async (account: RelayAccount, home: RelayMachine, machines: Readon
     signOut: leave,
   })
   Object.defineProperty(window, "hinacode", { value: bridge })
+  await serveResources(bridge)
   const bar = document.body.appendChild(document.createElement("div"))
   createRoot(bar).render(<HomeStatusBar store={homeStatus} machine={home.name} onSwitch={switchMachine} />)
   await import("@/main.tsx")

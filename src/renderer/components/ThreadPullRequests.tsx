@@ -77,6 +77,7 @@ import {
   UnlinkIcon,
 } from "@hinacode/icons"
 import { Textarea } from "./ui/textarea.tsx"
+import { resourceUrl } from "../lib/resourceUrl.ts"
 
 const PullRequestCode = lazy(() =>
   import("./PullRequestCode.tsx").then((module) => ({ default: module.PullRequestCode })),
@@ -622,7 +623,8 @@ function PullRequestHeader({
 
 function Avatar({ login }: { login: string }) {
   const [failed, setFailed] = useState(false)
-  const src = externalImageUrl(`https://github.com/${login}.png?size=48`)
+  const external = externalImageUrl(`https://github.com/${login}.png?size=48`)
+  const src = external === null ? null : resourceUrl(external)
   if (failed || src === null) {
     return (
       <span

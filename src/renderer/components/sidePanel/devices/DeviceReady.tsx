@@ -12,6 +12,7 @@ import {
 import { deviceElementLabel } from "../../../lib/elementPicker.ts"
 import { callPromise, onPushEvent } from "../../../lib/rpc.ts"
 import { m } from "../../../paraglide/messages.js"
+import { inBrowser } from "../../../lib/runtime.ts"
 import { useDrafts } from "../../../stores/drafts.ts"
 import { useUi } from "../../../stores/ui.ts"
 import { Button } from "../../ui/button.tsx"
@@ -202,6 +203,15 @@ export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen 
       await callPromise("shell.reveal", { path: attachment.path })
     })
 
+  const downloadScreenshot = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const link = document.createElement("a")
+    link.href = canvas.toDataURL("image/png")
+    link.download = `${device.name}.png`
+    link.click()
+  }
+
   const detach = () =>
     run(async () => {
       await callPromise("device.detach", { threadId, deviceId })
@@ -251,7 +261,7 @@ export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen 
           icon={CameraIcon}
           label={m.devices_screenshot_save()}
           disabled={shape === null || pending}
-          onClick={saveScreenshot}
+          onClick={inBrowser() ? downloadScreenshot : saveScreenshot}
         />
         <Tooltip>
           <TooltipTrigger
