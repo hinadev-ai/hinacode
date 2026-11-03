@@ -11,6 +11,7 @@ export const Artifact = Schema.Struct({
   files: Schema.Array(ArtifactFile),
   createdAt: Schema.String,
   updatedAt: Schema.String,
+  threadId: Schema.optionalKey(Schema.String),
   environmentId: Schema.optionalKey(Schema.String),
 })
 export type Artifact = typeof Artifact.Type

@@ -29,6 +29,7 @@ import { useSubagents } from "./stores/subagents.ts"
 import { useTerminals } from "./stores/terminals.ts"
 import { errorMessage } from "./lib/errorMessage.ts"
 import { openSidechat } from "./lib/sidechat.ts"
+import { useDeviceActivity } from "./stores/deviceActivity.ts"
 import { selectThread, useThreads } from "./stores/threads.ts"
 import { useUnseen } from "./stores/unseen.ts"
 import { useWorktrees } from "./stores/worktrees.ts"
@@ -41,7 +42,7 @@ function App() {
   const locale = useLocale((state) => state.locale)
   const { appearance } = useClientSettings()
   const theme = useTheme(appearance.theme)
-  useLayoutEffect(() => applyAppearance(appearance, theme.scheme), [appearance, theme.scheme])
+  useLayoutEffect(() => applyAppearance(appearance, theme.id), [appearance, theme.id])
   const nativeScheme = themes[appearance.theme].scheme
   useEffect(() => {
     void callPromise("app.setColorScheme", nativeScheme)
@@ -77,6 +78,8 @@ onPushEvent((event) => {
     case "message.created":
     case "message.updated":
       return useMessages.getState().receive(event)
+    case "device.agentAction":
+      return useDeviceActivity.getState().markUnseen(event.threadId)
     case "thread.event": {
       useMessages.getState().receive(event)
       recordUnseenOutcome(event.threadId, event.event)

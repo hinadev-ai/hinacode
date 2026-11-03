@@ -3,10 +3,12 @@ import { z } from "zod"
 import { isTextType } from "./artifact.ts"
 import { type ArtifactStore, ArtifactError, MAX_ARTIFACT_BYTES } from "./store.ts"
 
+export type ArtifactCaller = { threadId?: string }
+
 export type ArtifactTool<Input extends z.ZodObject = z.ZodObject> = {
   description: string
   input: Input
-  handle(store: ArtifactStore, input: z.infer<Input>): Promise<string>
+  handle(store: ArtifactStore, input: z.infer<Input>, caller: ArtifactCaller): Promise<string>
 }
 
 const tool = <Input extends z.ZodObject>(definition: ArtifactTool<Input>) => definition
@@ -53,19 +55,29 @@ export const artifactTools = {
         .min(1)
         .describe("Every file of this version. Files left out of an update are gone from the new version."),
     }),
-    handle: async (store, input) => {
-      const artifact = await store.publish(input)
+    handle: async (store, input, { threadId }) => {
+      const artifact = await store.publish({ ...input, ...(threadId === undefined ? {} : { threadId }) })
       return `Published artifact ${artifact.id} version ${artifact.version}: "${artifact.title}". Pass id "${artifact.id}" to publish_artifact to update it.`
     },
   }),
   list_artifacts: tool({
-    description: "List the published artifacts, newest first, with their ids, titles and versions.",
-    input: z.object({}),
-    handle: async (store) => {
-      const artifacts = await store.list()
-      if (artifacts.length === 0) return "No artifacts yet."
+    description:
+      "List the artifacts this conversation published, newest first, with their ids, titles and versions. Set all to list every conversation's artifacts.",
+    input: z.object({
+      all: z.boolean().optional().describe("List every conversation's artifacts, with the thread each came from."),
+    }),
+    handle: async (store, { all }, { threadId }) => {
+      const everyone = all === true || threadId === undefined
+      const artifacts = (await store.list()).filter((artifact) => everyone || artifact.threadId === threadId)
+      if (artifacts.length === 0) return everyone ? "No artifacts yet." : "This conversation has no artifacts yet."
       return JSON.stringify(
-        artifacts.map(({ id, title, version, updatedAt }) => ({ id, title, version, updatedAt })),
+        artifacts.map(({ id, title, version, updatedAt, threadId: thread }) => ({
+          id,
+          title,
+          version,
+          updatedAt,
+          ...(all === true && thread !== undefined ? { threadId: thread } : {}),
+        })),
         null,
         2,
       )
@@ -96,7 +108,7 @@ export const registerArtifactTools = (server: McpServer, store: ArtifactStore) =
       name,
       { description: definition.description, inputSchema: definition.input },
       async (input) => ({
-        content: [{ type: "text", text: await definition.handle(store, input) }],
+        content: [{ type: "text", text: await definition.handle(store, input, {}) }],
       }),
     )
   }

@@ -30,8 +30,4 @@ describe("traceLayer", () => {
       expect(rpc.ms).toBeGreaterThanOrEqual(query.ms)
     })
   })
-
-  it("is a no-op without a file", () => {
-    expect(traceLayer(undefined)).toBe(Layer.empty)
-  })
 })

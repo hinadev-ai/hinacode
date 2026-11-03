@@ -1,10 +1,9 @@
 import { writeFile } from "node:fs/promises"
 import { join } from "node:path"
-import { app, BrowserWindow, dialog, net } from "electron"
+import { app, type BrowserWindow, dialog, net } from "electron"
 import { artifactUrl } from "../shared/channels.ts"
 import type { ArtifactExportRequest } from "../shared/artifact.ts"
-
-const SETTLE_MS = 1000
+import { withArtifactPage } from "./artifactPage.ts"
 
 export const exportFileName = (title: string, format: "html" | "pdf") =>
   `${title.replace(/[\\/:*?"<>|\p{Cc}]+/gu, " ").trim() || "Artifact"}.${format}`
@@ -15,21 +14,7 @@ const renderHtml = async (url: string) => {
   return response.text()
 }
 
-const renderPdf = async (url: string) => {
-  const page = new BrowserWindow({
-    show: false,
-    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
-  })
-  try {
-    await page.loadURL(url)
-    await page.webContents.executeJavaScript(
-      `document.fonts.ready.then(() => new Promise((settle) => setTimeout(settle, ${SETTLE_MS})))`,
-    )
-    return await page.webContents.printToPDF({ printBackground: true })
-  } finally {
-    page.destroy()
-  }
-}
+const renderPdf = (url: string) => withArtifactPage({ url }, (page) => page.printToPDF({ printBackground: true }))
 
 export const exportArtifact = async (window: BrowserWindow | null, request: ArtifactExportRequest) => {
   const options: Electron.SaveDialogOptions = {

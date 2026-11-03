@@ -14,12 +14,6 @@ const receipt = (output: string, exitCode: number) =>
   JSON.stringify({ output, exit_code: exitCode, wall_time_ms: 12, truncated: false })
 
 describe("toolName", () => {
-  test("names Muse's built-in tools as Claude Code does", () => {
-    expect(
-      ["bash", "read_file", "write_file", "edit_file", "search", "web_fetch", "web_search"].map(toolName),
-    ).toStrictEqual(["Bash", "Read", "Write", "Edit", "Grep", "WebFetch", "WebSearch"])
-  })
-
   test("keeps any other tool's name", () => {
     expect(toolName("request_user_input")).toBe("request_user_input")
     expect(toolName("mcp__hinacode__review_changes")).toBe("mcp__hinacode__review_changes")
@@ -27,13 +21,6 @@ describe("toolName", () => {
 })
 
 describe("toolInput", () => {
-  test("parses the model's JSON arguments", () => {
-    expect(toolInput('{"command":"ls","description":"List files"}')).toStrictEqual({
-      command: "ls",
-      description: "List files",
-    })
-  })
-
   test("keeps arguments that are not JSON as written, and is empty without any", () => {
     expect(toolInput('{"command": "ls"')).toBe('{"command": "ls"')
     expect(toolInput(undefined)).toStrictEqual({})

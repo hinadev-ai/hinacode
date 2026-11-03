@@ -24,18 +24,19 @@ test("publishes, lists and reads back an artifact through the tool handlers", as
         { path: "dot.png", content: "iVBORw==", encoding: "base64" },
       ],
     }),
+    {},
   )
   const id = published.match(/^Published artifact ([a-z0-9]+) version 1:/)?.[1] ?? ""
 
-  expect(JSON.parse(await list_artifacts.handle(store, {}))).toEqual([
+  expect(JSON.parse(await list_artifacts.handle(store, {}, {}))).toEqual([
     { id, title: "Notes", version: 1, updatedAt: expect.any(String) },
   ])
-  expect(JSON.parse(await read_artifact.handle(store, { id }))).toMatchObject({ id, entry: "index.html" })
-  expect(await read_artifact.handle(store, { id, path: "index.html" })).toBe("<p>notes</p>")
-  await expect(read_artifact.handle(store, { id, path: "dot.png" })).rejects.toThrow(/binary \(image\/png\)/)
-  await expect(read_artifact.handle(store, { id: "gone" })).rejects.toThrow(/No artifact has the id "gone"/)
+  expect(JSON.parse(await read_artifact.handle(store, { id }, {}))).toMatchObject({ id, entry: "index.html" })
+  expect(await read_artifact.handle(store, { id, path: "index.html" }, {})).toBe("<p>notes</p>")
+  await expect(read_artifact.handle(store, { id, path: "dot.png" }, {})).rejects.toThrow(/binary \(image\/png\)/)
+  await expect(read_artifact.handle(store, { id: "gone" }, {})).rejects.toThrow(/No artifact has the id "gone"/)
 })
 
 test("lists nothing in an empty store", async () => {
-  expect(await artifactTools.list_artifacts.handle(openTemporaryStore(), {})).toBe("No artifacts yet.")
+  expect(await artifactTools.list_artifacts.handle(openTemporaryStore(), {}, {})).toBe("No artifacts yet.")
 })

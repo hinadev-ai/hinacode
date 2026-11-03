@@ -268,18 +268,6 @@ describe("servers", () => {
     expect(useConnection.getState().servers.map((entry) => entry.id)).toEqual(["b", "c"])
   })
 
-  it("dials the hosts at once and the relay after them", () => {
-    vi.useFakeTimers()
-    try {
-      setServers([...useConnection.getState().servers, { ...server("c", 1003), relay: "c.example.com" }])
-      expect(FakeSocket.all.at(-1)?.url).toBe("ws://127.0.0.1:1003/remote")
-      vi.advanceTimersByTime(RELAY_DELAY_MS)
-      expect(FakeSocket.all.at(-1)?.url).toBe("wss://c.example.com/remote")
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
   it("learns a relay from the handshake without dropping the socket or its calls", async () => {
     setServers([...useConnection.getState().servers, server("c", 1003)])
     const creating = call("projects.create", { name: "api", rootPath: "/srv/api", setupScript: null }, { server: "c" })

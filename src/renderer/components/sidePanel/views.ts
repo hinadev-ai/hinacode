@@ -9,6 +9,7 @@ import type { SidePanelViewId } from "../../stores/ui.ts"
 import { useRunningSubagentCount } from "../ThreadAgents.tsx"
 import { ArtifactsHeader, ArtifactsView } from "./ArtifactsView.tsx"
 import { BrowserTabStrip } from "./BrowserTabStrip.tsx"
+import { useUnseenDeviceActivityLabel } from "../../stores/deviceActivity.ts"
 import { DeviceTabStrip } from "./devices/DeviceTabStrip.tsx"
 import { DetailsView } from "./DetailsView.tsx"
 import { SidechatHeader, SidechatView } from "./SidechatView.tsx"
@@ -115,6 +116,7 @@ export const sidePanelViews: ReadonlyArray<SidePanelView> = [
     commandId: "view.devices",
     component: DevicesView,
     header: DeviceTabStrip,
+    dot: useUnseenDeviceActivityLabel,
     experiment: "devices",
   },
   {

@@ -452,13 +452,13 @@ function HitRow({ hit, query, onPress }: { hit: FileSearchHit; query: string; on
       <Text numberOfLines={1} ellipsizeMode="head" style={[styles.hitLocation, { color: theme.textMuted }]}>
         {location}
       </Text>
-      {/* The desktop's find highlight: a violet wash, since amber would read as needing attention. */}
+      {/* The desktop's find highlight: a wash of the brand coral, since amber would read as needing attention. */}
       <Text numberOfLines={2} style={[styles.hitText, { color: theme.text }]}>
         <Emphasized
           text={snippet.text}
           offset={0}
           hits={hits}
-          style={[styles.strong, { backgroundColor: theme.tokenBg }]}
+          style={[styles.strong, { backgroundColor: theme.findMatch }]}
         />
       </Text>
     </Pressable>

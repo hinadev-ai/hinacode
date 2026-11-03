@@ -27,7 +27,7 @@ export function ErrorNotice({
             {m.error_details()}
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <pre className="mt-1 font-mono text-2xs whitespace-pre-wrap text-muted-foreground select-text wrap-anywhere">
+            <pre className="mt-1 font-mono text-2xs wrap-anywhere whitespace-pre-wrap text-muted-foreground select-text">
               {detail}
             </pre>
           </CollapsibleContent>

@@ -38,7 +38,7 @@ export function Button({
   ...props
 }: ButtonProps & { label: string; icon?: IconName; variant?: Variant; busy?: boolean }) {
   const theme = useTheme()
-  const colors = buttonColors(theme)[variant]
+  const colors = buttonColors(theme, variant, disabled === true)
   const inactive = disabled === true || busy
   return (
     <PressableScale
@@ -47,11 +47,7 @@ export function Button({
       aria-disabled={inactive}
       aria-busy={busy}
       disabled={inactive}
-      style={[
-        styles.button,
-        { backgroundColor: colors.bg, borderColor: colors.border, opacity: inactive ? 0.5 : 1 },
-        style,
-      ]}
+      style={[styles.button, { backgroundColor: colors.bg, borderColor: colors.border }, style]}
       {...props}
     >
       {busy ? (
@@ -80,7 +76,7 @@ export function IconButton({
   busy?: boolean
 }) {
   const theme = useTheme()
-  const colors = buttonColors(theme)[variant]
+  const colors = buttonColors(theme, variant, disabled === true)
   const inactive = disabled === true || busy
   return (
     <PressableScale
@@ -88,11 +84,7 @@ export function IconButton({
       aria-disabled={inactive}
       aria-busy={busy}
       disabled={inactive}
-      style={[
-        styles.iconButton,
-        { backgroundColor: colors.bg, borderColor: colors.border, opacity: disabled === true ? 0.5 : 1 },
-        style,
-      ]}
+      style={[styles.iconButton, { backgroundColor: colors.bg, borderColor: colors.border }, style]}
       {...props}
     >
       {busy ? <Spinner size={18} color={colors.fg} /> : <Icon name={icon} size={20} color={colors.fg} />}
@@ -114,13 +106,18 @@ export function Toggle(props: Omit<SwitchProps, "trackColor" | "thumbColor">) {
   )
 }
 
-const buttonColors = (theme: Palette) => ({
-  primary: { bg: theme.primary, fg: theme.onPrimary, border: theme.primary },
-  secondary: { bg: theme.surface, fg: theme.text, border: theme.border },
-  danger: { bg: theme.dangerBg, fg: theme.danger, border: theme.dangerBg },
-  ghost: { bg: "transparent", fg: theme.text, border: "transparent" },
-  dangerGhost: { bg: "transparent", fg: theme.danger, border: "transparent" },
-})
+const buttonColors = (theme: Palette, variant: Variant, disabled: boolean) => {
+  const transparent = variant === "ghost" || variant === "dangerGhost"
+  if (disabled && transparent) return { bg: "transparent", fg: theme.textMuted, border: "transparent" }
+  if (disabled) return { bg: theme.disabled, fg: theme.textMuted, border: theme.disabled }
+  return {
+    primary: { bg: theme.primary, fg: theme.onPrimary, border: theme.primary },
+    secondary: { bg: theme.surface, fg: theme.text, border: theme.border },
+    danger: { bg: theme.dangerBg, fg: theme.danger, border: theme.dangerBg },
+    ghost: { bg: "transparent", fg: theme.text, border: "transparent" },
+    dangerGhost: { bg: "transparent", fg: theme.danger, border: "transparent" },
+  }[variant]
+}
 
 export type Tone = "neutral" | "attention" | "running" | "danger"
 
