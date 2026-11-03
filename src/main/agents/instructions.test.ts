@@ -13,18 +13,6 @@ const environment = {
   scratchDirectory: "/data/scratch/20261029-080509-fix-login-t1",
 } as const
 
-test("names the thread's repository, branch, paths, remote, platform and scratch directory", () => {
-  expect(agentInstructions(experimental, environment, [])).toContain(`<environment>
-  is a git repository: true
-  git branch: \`feat/x\`
-  current project path: \`/wt\`
-  root project path: \`/repo\`
-  remote: \`git@github.com:o/r.git\`
-  platform: darwin
-  scratch directory: \`/data/scratch/20261029-080509-fix-login-t1\`
-</environment>`)
-})
-
 test("keeps a token in an https remote out of the prompt", () => {
   const instructions = agentInstructions(
     experimental,

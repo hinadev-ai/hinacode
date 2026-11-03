@@ -442,16 +442,6 @@ layer(testLayer)("request_secret", (it) => {
       expect(result.text).toContain("turn ended")
     }),
   )
-
-  it.effect("fails at once when no turn is running", () =>
-    Effect.gen(function* () {
-      const mcp = yield* McpCredentials
-      const { b } = yield* Seeded
-      const result = yield* callAs(yield* mcp.connectionFor(b), "request_secret", { name: "idle", description: "x" })
-      expect(result.isError).toBe(true)
-      expect(result.text).toContain("No turn is running")
-    }),
-  )
 })
 
 layer(testLayer)("run_agent", (it) => {

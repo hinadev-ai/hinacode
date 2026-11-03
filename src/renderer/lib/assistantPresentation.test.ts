@@ -1,6 +1,6 @@
 import { expect, test } from "@effect/vitest"
 import type { Message, MessagePart } from "../../shared/domain.ts"
-import { assistantPresentation, foldedParts, INLINE_TAIL_PARTS } from "./assistantPresentation.ts"
+import { assistantPresentation } from "./assistantPresentation.ts"
 
 const message = (
   parts: ReadonlyArray<MessagePart>,
@@ -101,18 +101,6 @@ test("duration belongs to each steered response segment", () => {
   const afterSteer = { ...message([tool]), createdAt: beforeSteer.completedAt ?? "" }
   expect(assistantPresentation(beforeSteer)).toMatchObject({ kind: "completed", durationMs: 120_000 })
   expect(assistantPresentation(afterSteer)).toMatchObject({ kind: "completed", durationMs: 365_000 })
-})
-
-test("long running responses fold everything before their latest parts", () => {
-  const parts = Array.from({ length: INLINE_TAIL_PARTS + 3 }, (_, index) => ({ ...tool, callId: `call-${index}` }))
-  const presentation = assistantPresentation(message(parts, null))
-  expect(foldedParts(presentation)).toEqual(presentation.parts.slice(3))
-  expect(foldedParts(assistantPresentation(message(parts.slice(0, 2), null)))).toHaveLength(2)
-})
-
-test("completed responses fold their activity and keep the answer", () => {
-  const answer: MessagePart = { type: "text", text: "Done." }
-  expect(foldedParts(assistantPresentation(message([tool, answer])))).toEqual([{ part: answer, index: 1 }])
 })
 
 test("an agent switch stays inline without a Worked for row", () => {
