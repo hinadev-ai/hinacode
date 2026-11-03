@@ -2,10 +2,14 @@ import { m } from "../paraglide/messages.js"
 
 export const inBrowser = () => window.hinacode.runtime.kind === "web"
 
-const webMachineName = () => {
+const webMachine = () => {
   const { runtime } = window.hinacode
   return runtime.kind === "web" ? runtime.machine : null
 }
+
+const webMachineName = () => webMachine()?.name ?? null
+
+export const homeEnvironmentId = () => webMachine()?.id ?? null
 
 export const thisMachineName = () => webMachineName() ?? m.environment_this_machine()
 

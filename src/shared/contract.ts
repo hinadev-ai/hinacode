@@ -1027,5 +1027,7 @@ export interface HinacodeBridge {
   readonly onEvent: (listener: (event: typeof PushEvent.Encoded) => void) => () => void
   readonly pathForFile: (file: File) => string
   readonly liquidGlass: boolean
-  readonly runtime: { readonly kind: "desktop" } | { readonly kind: "web"; readonly machine: string }
+  readonly runtime:
+    | { readonly kind: "desktop" }
+    | { readonly kind: "web"; readonly machine: { readonly id: string; readonly name: string } }
 }

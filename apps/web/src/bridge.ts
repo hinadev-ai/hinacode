@@ -71,7 +71,12 @@ export const connectMachines = ({
     return { link, transport }
   }
 
-  const homeConnection = connect(home, (status, error) => onHomeStatus({ status, error }))
+  let homeWasConnected = false
+  const homeConnection = connect(home, (status, error) => {
+    onHomeStatus({ status, error })
+    if (status === "connected" && homeWasConnected) emit({ type: "environment.status", id: home.environmentId, status })
+    if (status === "connected") homeWasConnected = true
+  })
   const otherConnections = new Map<string, Connection>(
     others.map((machine) => [
       machine.environmentId,
@@ -107,6 +112,6 @@ export const connectMachines = ({
     },
     pathForFile: () => "",
     liquidGlass: false,
-    runtime: { kind: "web", machine: home.name },
+    runtime: { kind: "web", machine: { id: home.environmentId, name: home.name } },
   }
 }
