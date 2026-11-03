@@ -8,7 +8,7 @@ import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { CopyButton } from "./CopyButton.tsx"
 import { Button } from "./ui/button.tsx"
-import { ForkIcon } from "./icons/ForkIcon.tsx"
+import { ForkIcon } from "@hinacode/icons"
 
 const messageText = (message: Message) =>
   message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n\n")

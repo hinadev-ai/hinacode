@@ -1,8 +1,15 @@
 import { cn } from "cn"
 import { type KeyboardEvent, type PointerEvent, type RefObject, useEffect, useRef } from "react"
-import type { DeviceCommand, DeviceControl, DevicePlatform, DeviceScreen as Screen } from "../../../../shared/device.ts"
+import type {
+  AgentAction,
+  DeviceCommand,
+  DeviceControl,
+  DevicePlatform,
+  DeviceScreen as Screen,
+} from "../../../../shared/device.ts"
 import { m } from "../../../paraglide/messages.js"
 import { DeviceFrame } from "../../deviceFrame/DeviceFrame.tsx"
+import { AgentTouches, type ShownAgentAction } from "./AgentActivity.tsx"
 import type { DeviceSession, FrameShape } from "./deviceSession.ts"
 
 const fraction = (value: number) => Math.min(1, Math.max(0, value))
@@ -27,6 +34,8 @@ interface DeviceScreenProps {
   readonly stalled: boolean
   readonly picking: boolean
   readonly hintId: string
+  readonly agentAction: ShownAgentAction | null
+  readonly agentWaiting: AgentAction | null
   readonly onPick: (x: number, y: number) => void
   readonly onCancelPick: () => void
 }
@@ -44,6 +53,8 @@ export function DeviceScreen({
   stalled,
   picking,
   hintId,
+  agentAction,
+  agentWaiting,
   onPick,
   onCancelPick,
 }: DeviceScreenProps) {
@@ -161,6 +172,7 @@ export function DeviceScreen({
           onContextMenu={(event) => event.preventDefault()}
           className={cn("block size-full touch-none", picking && "cursor-crosshair")}
         />
+        <AgentTouches shown={agentAction} waiting={agentWaiting} />
         {stalled && (
           <output className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/60 text-xs text-white">
             {m.devices_reconnecting()}

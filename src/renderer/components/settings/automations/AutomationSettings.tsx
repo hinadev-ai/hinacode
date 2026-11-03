@@ -31,10 +31,7 @@ import { AutomationDetails, WebhookUrlField } from "./AutomationDetails.tsx"
 import { AutomationDialog, type AutomationDialogState } from "./AutomationForm.tsx"
 import { CopyField, formatTime, RunStatusBadge, triggerLabel } from "./shared.tsx"
 import { SkeletonList } from "../../ui/skeleton.tsx"
-import { ChevronDownIcon } from "../../icons/ChevronDownIcon.tsx"
-import { PencilIcon } from "../../icons/PencilIcon.tsx"
-import { PlusIcon } from "../../icons/PlusIcon.tsx"
-import { TrashIcon } from "../../icons/TrashIcon.tsx"
+import { ChevronDownIcon, PencilIcon, PlusIcon, TrashIcon } from "@hinacode/icons"
 
 const errorText = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))
 

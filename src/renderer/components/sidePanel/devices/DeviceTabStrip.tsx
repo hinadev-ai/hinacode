@@ -25,10 +25,7 @@ import {
 } from "../../../stores/deviceTabs.ts"
 import { Button } from "../../ui/button.tsx"
 import { DeleteDeviceDialog } from "./DeleteDeviceDialog.tsx"
-import { CloseIcon } from "../../icons/CloseIcon.tsx"
-import { PlusIcon } from "../../icons/PlusIcon.tsx"
-import { SpinnerIcon } from "../../icons/SpinnerIcon.tsx"
-import { WarningIcon } from "../../icons/WarningIcon.tsx"
+import { CloseIcon, PlusIcon, SpinnerIcon, WarningIcon } from "@hinacode/icons"
 
 const NO_DEVICES: ThreadDevices = []
 

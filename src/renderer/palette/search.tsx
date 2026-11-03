@@ -8,9 +8,7 @@ import { useUi } from "../stores/ui.ts"
 import { MAX_ITEMS_PER_GROUP, type RankedGroup, type RankedItem } from "./rank.ts"
 import { openFile } from "./sources.tsx"
 import type { PaletteContext, PaletteGroup, PaletteItem, PaletteSource } from "./types.ts"
-import { ChatIcon } from "../components/icons/ChatIcon.tsx"
-import { FileTextIcon } from "../components/icons/FileTextIcon.tsx"
-import { WarningIcon } from "../components/icons/WarningIcon.tsx"
+import { ChatIcon, FileTextIcon, WarningIcon } from "@hinacode/icons"
 
 const iconClass = "size-3.5 shrink-0 text-muted-foreground"
 

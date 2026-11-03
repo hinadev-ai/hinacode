@@ -1,5 +1,5 @@
 import { cn } from "../../lib/utils.ts"
-import { Icon, type IconProps } from "./Icon.tsx"
+import { Icon, type IconProps } from "@hinacode/icons"
 
 export type SendGlyphMode = "send" | "queue" | "steer" | "stop"
 

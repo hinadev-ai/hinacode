@@ -59,6 +59,39 @@ export type DeviceScreen = typeof DeviceScreen.Type
 export const PrepareStep = Schema.Literals(["creating", "slimming", "booting", "connecting"])
 export type PrepareStep = typeof PrepareStep.Type
 
+const Fraction = Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 }))
+const Delta = Schema.Number.check(Schema.isBetween({ minimum: -10000, maximum: 10000 }))
+
+export const DevicePosture = Schema.Literals(["closed", "halfOpen", "flat"])
+export type DevicePosture = typeof DevicePosture.Type
+
+export const DeviceButton = Schema.Literals(["home", "lock", "volumeUp", "volumeDown", "back", "recents"])
+export type DeviceButton = typeof DeviceButton.Type
+
+export const DeviceUrl = Schema.String.check(
+  Schema.isMaxLength(2048),
+  Schema.isPattern(/^[a-zA-Z][a-zA-Z0-9+.-]*:\S+$/),
+)
+
+export const DeviceApp = Schema.String.check(Schema.isMaxLength(300))
+
+export const AgentAction = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("tap"), x: Fraction, y: Fraction }),
+  Schema.Struct({
+    kind: Schema.Literal("swipe"),
+    x: Fraction,
+    y: Fraction,
+    toX: Fraction,
+    toY: Fraction,
+    durationMs: Schema.Int,
+  }),
+  Schema.Struct({ kind: Schema.Literal("type"), characters: Schema.Int }),
+  Schema.Struct({ kind: Schema.Literal("button"), button: DeviceButton }),
+  Schema.Struct({ kind: Schema.Literal("launch"), app: DeviceApp }),
+  Schema.Struct({ kind: Schema.Literal("openUrl"), url: DeviceUrl }),
+])
+export type AgentAction = typeof AgentAction.Type
+
 export const ThreadDevice = Schema.Union([
   Schema.Struct({
     phase: Schema.Literal("preparing"),
@@ -72,7 +105,7 @@ export const ThreadDevice = Schema.Union([
     device: Device,
     screen: DeviceScreen,
     control: DeviceControl,
-    agentWaiting: Schema.Boolean,
+    agentWaiting: Schema.NullOr(AgentAction),
   }),
   Schema.Struct({
     phase: Schema.Literal("failed"),
@@ -94,20 +127,6 @@ export const threadDeviceOwned = (entry: ThreadDevice) =>
 
 export const ThreadDevices = Schema.Array(ThreadDevice)
 export type ThreadDevices = typeof ThreadDevices.Type
-
-const Fraction = Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 }))
-const Delta = Schema.Number.check(Schema.isBetween({ minimum: -10000, maximum: 10000 }))
-
-export const DevicePosture = Schema.Literals(["closed", "halfOpen", "flat"])
-export type DevicePosture = typeof DevicePosture.Type
-
-export const DeviceButton = Schema.Literals(["home", "lock", "volumeUp", "volumeDown", "back", "recents"])
-export type DeviceButton = typeof DeviceButton.Type
-
-export const DeviceUrl = Schema.String.check(
-  Schema.isMaxLength(2048),
-  Schema.isPattern(/^[a-zA-Z][a-zA-Z0-9+.-]*:\S+$/),
-)
 
 export const DeviceCommand = Schema.Union([
   Schema.Struct({

@@ -1,11 +1,12 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { type ReactNode, useState } from "react"
+import { type ReactNode, useEffect, useState } from "react"
 import { devicePlatformOf, type PrepareStep, type ThreadDevice, type ThreadDevices } from "../../../../shared/device.ts"
 import type { Thread } from "../../../../shared/domain.ts"
 import { errorMessage } from "../../../lib/errorMessage.ts"
-import { callPromise, threadDevicesAtom } from "../../../lib/rpc.ts"
+import { callPromise, onPushEvent, threadDevicesAtom } from "../../../lib/rpc.ts"
 import { m } from "../../../paraglide/messages.js"
+import { useDeviceActivity } from "../../../stores/deviceActivity.ts"
 import { DEVICE_LIST_TAB, deviceTabKey, selectAfterClosing, useShownDeviceTab } from "../../../stores/deviceTabs.ts"
 import { Button } from "../../ui/button.tsx"
 import { useVmAction } from "../TinyVmView.tsx"
@@ -13,14 +14,19 @@ import { DeleteDeviceDialog } from "./DeleteDeviceDialog.tsx"
 import { DeviceList } from "./DeviceList.tsx"
 import { DeviceReady } from "./DeviceReady.tsx"
 import { devicePanelId, deviceTabId } from "./DeviceTabStrip.tsx"
-import { CheckIcon } from "../../icons/CheckIcon.tsx"
-import { CircleIcon } from "../../icons/CircleIcon.tsx"
-import { SpinnerIcon } from "../../icons/SpinnerIcon.tsx"
-import { WarningIcon } from "../../icons/WarningIcon.tsx"
+import { CheckIcon, CircleIcon, SpinnerIcon, WarningIcon } from "@hinacode/icons"
 
 export function DevicesView({ thread }: { thread: Thread }) {
   const devices = useAtomValue(threadDevicesAtom(thread.id))
   const refresh = useAtomRefresh(threadDevicesAtom(thread.id))
+  const threadId = thread.id
+  useEffect(() => {
+    const { markSeen } = useDeviceActivity.getState()
+    markSeen(threadId)
+    return onPushEvent((event) => {
+      if (event.type === "device.agentAction" && event.threadId === threadId) markSeen(threadId)
+    })
+  }, [threadId])
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {AsyncResult.builder(devices)

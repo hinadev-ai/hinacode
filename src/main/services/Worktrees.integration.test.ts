@@ -459,7 +459,7 @@ describe("worktree ownership", () => {
     ),
   )
 
-  it.live("archiving does not remove a checkout another open thread still uses", () =>
+  it.live("archiving leaves a checkout another open thread still uses, and the last thread removes it", () =>
     withRepo(({ projectId }) =>
       Effect.gen(function* () {
         const first = yield* createThread(projectId, "first", "kk/legacy")
@@ -469,9 +469,11 @@ describe("worktree ownership", () => {
         const worktree = yield* worktreeOf(first.worktreeId)
         writeFileSync(join(worktree.path, "sentinel"), "work in progress")
 
-        const error = yield* Effect.flip(archiveRemovingWorktree(first.id))
-        expect(error._tag).toBe("WorktreeBusyError")
+        expect((yield* archiveRemovingWorktree(first.id)).status).toBe("archived")
         expect(existsSync(join(worktree.path, "sentinel"))).toBe(true)
+
+        yield* archiveRemovingWorktree(second.id)
+        yield* waitUntilDeleted(worktree.path)
       }),
     ),
   )

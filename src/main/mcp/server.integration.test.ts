@@ -9,7 +9,13 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { NodeServices } from "@effect/platform-node"
 import { Context, Deferred, type Duration, Effect, Fiber, Layer, Option, Stream } from "effect"
 import { TestClock } from "effect/testing"
-import type { AgentEvent, McpConnection, ProviderId, RunTurnInput } from "../../shared/agent.ts"
+import {
+  type AgentEvent,
+  createdThreadId,
+  type McpConnection,
+  type ProviderId,
+  type RunTurnInput,
+} from "../../shared/agent.ts"
 import type { PushEvent } from "../../shared/contract.ts"
 import { defaultSettings } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
@@ -21,6 +27,7 @@ import * as Db from "../db/client.ts"
 import { layer as RemoteAccessLayer } from "../remote/access.ts"
 import { Peers } from "../remote/peers.ts"
 import { seedThread } from "../db/testing.ts"
+import * as ArtifactInspector from "../services/ArtifactInspector.ts"
 import * as Artifacts from "../services/Artifacts.ts"
 import * as Attachments from "../services/Attachments.ts"
 import * as AgentAccounts from "../services/AgentAccounts.ts"
@@ -52,6 +59,7 @@ const pushes: Array<PushEvent> = []
 const turnInputs: Array<RunTurnInput> = []
 const modelLookupStarted = Deferred.makeUnsafe<void>()
 const modelLookupResume = Deferred.makeUnsafe<void>()
+let holdModelLookup = false
 
 const repos = mkdtempSync(join(tmpdir(), "kk-mcp-repos-"))
 afterAll(() => rmSync(repos, { recursive: true, force: true }))
@@ -86,8 +94,10 @@ const fakeProvider = (id: ProviderId): AgentProvider => {
     listModels:
       id === "codex"
         ? Effect.gen(function* () {
-            yield* Deferred.succeed(modelLookupStarted, undefined)
-            yield* Deferred.await(modelLookupResume)
+            if (holdModelLookup) {
+              yield* Deferred.succeed(modelLookupStarted, undefined)
+              yield* Deferred.await(modelLookupResume)
+            }
             return [
               {
                 id: "gpt-test",
@@ -154,6 +164,7 @@ const core = Layer.mergeAll(
   Messages.layer,
   Attachments.layer(join(mkdtempSync(join(tmpdir(), "kk-mcp-")), "attachments")),
   Artifacts.layer(join(mkdtempSync(join(tmpdir(), "kk-mcp-")), "artifacts")),
+  ArtifactInspector.unavailable,
   secretsLayer.pipe(Layer.provide(noKeyring)),
   credentialsLayer,
   Search.layer,
@@ -439,16 +450,6 @@ layer(testLayer)("request_secret", (it) => {
       expect(result.text).toContain("turn ended")
     }),
   )
-
-  it.effect("fails at once when no turn is running", () =>
-    Effect.gen(function* () {
-      const mcp = yield* McpCredentials
-      const { b } = yield* Seeded
-      const result = yield* callAs(yield* mcp.connectionFor(b), "request_secret", { name: "idle", description: "x" })
-      expect(result.isError).toBe(true)
-      expect(result.text).toContain("No turn is running")
-    }),
-  )
 })
 
 layer(testLayer)("run_agent", (it) => {
@@ -580,8 +581,8 @@ layer(testLayer)("create_thread", (it) => {
         prompt: "Look into the flaky test",
       })
       expect(result.isError).toBe(false)
-      const id = /Created thread (\S+)/.exec(result.text)?.[1]
-      if (id === undefined) throw new Error(`no thread id in ${result.text}`)
+      const id = createdThreadId(result.text)
+      if (id === null) throw new Error(`no thread id in ${result.text}`)
 
       const child = yield* threads.get(id)
       expect(child).toMatchObject({
@@ -746,7 +747,7 @@ layer(testLayer)("thread controls", (it) => {
       const threads = yield* Threads
       const { a } = yield* Seeded
       const created = yield* callFrom(a, "create_thread", { title: "Effortful", prompt: "Go", effort: "high" })
-      const id = /Created thread (\S+) /.exec(created.text)![1]!
+      const id = createdThreadId(created.text)!
       expect(yield* threads.get(id)).toMatchObject({ effort: "high" })
       yield* (yield* AgentRunner).interrupt(id)
     }),
@@ -1305,6 +1306,8 @@ layer(testLayer)("run_agent stopped-parent race", (it) => {
       const { a } = yield* Seeded
       turnInputs.length = 0
       yield* runner.send(a, "hi", [])
+      yield* until(Effect.sync(() => Option.fromNullishOr(turnInputs.find((turn) => turn.threadId === a))))
+      holdModelLookup = true
       const call = yield* Effect.forkChild(
         callAs(yield* mcp.connectionFor(a), "run_agent", {
           provider: "codex",

@@ -49,14 +49,16 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover.tsx"
 import { Slider } from "./ui/slider.tsx"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
-import { BoltIcon } from "./icons/BoltIcon.tsx"
-import { BranchIcon } from "./icons/BranchIcon.tsx"
-import { ChatIcon } from "./icons/ChatIcon.tsx"
-import { CheckIcon } from "./icons/CheckIcon.tsx"
-import type { IconComponent } from "./icons/Icon.tsx"
-import { ShieldIcon } from "./icons/ShieldIcon.tsx"
-import { ShieldUserIcon } from "./icons/ShieldUserIcon.tsx"
-import { UnlockIcon } from "./icons/UnlockIcon.tsx"
+import {
+  BoltIcon,
+  BranchIcon,
+  ChatIcon,
+  CheckIcon,
+  type IconComponent,
+  ShieldIcon,
+  ShieldUserIcon,
+  UnlockIcon,
+} from "@hinacode/icons"
 
 interface ControlProps {
   readonly thread: Thread

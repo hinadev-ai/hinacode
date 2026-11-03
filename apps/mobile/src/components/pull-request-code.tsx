@@ -32,29 +32,29 @@ import { type CodeView, filesKey, usePullRequests } from "@/stores/pull-requests
 const FIRST_LINES = 300
 
 const categoryIcon: Record<GuideCategory, IconName> = {
-  ui: "RiLayoutMasonryLine",
-  api: "RiPlugLine",
-  core: "RiCodeSSlashLine",
-  data: "RiDatabase2Line",
-  cli: "RiTerminalBoxLine",
-  security: "RiShieldKeyholeLine",
-  tests: "RiFlaskLine",
-  docs: "RiBookOpenLine",
-  examples: "RiPlayCircleLine",
-  deps: "RiBox3Line",
-  build: "RiHammerLine",
-  scripts: "RiToolsLine",
-  config: "RiEqualizerLine",
-  i18n: "RiTranslate2",
-  assets: "RiImageLine",
-  other: "RiMoreLine",
+  ui: "Layout",
+  api: "Plug",
+  core: "Code",
+  data: "Database",
+  cli: "Terminal",
+  security: "ShieldKeyhole",
+  tests: "Flask",
+  docs: "Book",
+  examples: "Play",
+  deps: "Package",
+  build: "Hammer",
+  scripts: "Tools",
+  config: "Sliders",
+  i18n: "Translate",
+  assets: "Image",
+  other: "More",
 }
 
 const fileMark = (theme: Palette): Record<PullRequestFileStatus, { letter: string; color: string }> => ({
   added: { letter: "A", color: theme.running },
   removed: { letter: "D", color: theme.danger },
   modified: { letter: "M", color: theme.attention },
-  // As on the desktop: violet is kept for focus and the primary action.
+  // As on the desktop: the brand coral is kept for focus and the primary action.
   renamed: { letter: "R", color: theme.attention },
   copied: { letter: "C", color: theme.running },
 })
@@ -65,8 +65,8 @@ const noteKey = (note: GuideFileNote | GuideLineNote) =>
   "line" in note ? `${note.side}:${note.line}:${note.text}` : note.text
 
 const viewSegments = [
-  { value: "files", label: copy("mobile_pr_code_files"), icon: "RiFileTextLine" },
-  { value: "guide", label: copy("mobile_pr_code_guide"), icon: "RiGuideLine" },
+  { value: "files", label: copy("mobile_pr_code_files"), icon: "FileText" },
+  { value: "guide", label: copy("mobile_pr_code_guide"), icon: "Guide" },
 ] as const
 
 /** The Code tab: the pull request's changed files, listed by path or in the order its guide reads them. */
@@ -100,7 +100,7 @@ export function PullRequestCode({ detail }: { detail: PullRequestDetail }) {
           <Notice tone="danger" text={copy("mobile_pr_code_failed", { message: remote.message })} />
           <Button
             label={copy("mobile_pr_retry")}
-            icon="RiRefreshLine"
+            icon="Refresh"
             style={styles.start}
             onPress={() => void usePullRequests.getState().loadFiles(detail.url, detail.head, { force: true })}
           />
@@ -193,7 +193,7 @@ function FileRow({ entry }: { entry: GuideFile }) {
         style={styles.fileHeader}
       >
         <Rotate turned={open}>
-          <Icon name="RiArrowRightSLine" size={16} color={theme.textMuted} />
+          <Icon name="ChevronRight" size={16} color={theme.textMuted} />
         </Rotate>
         <Text style={[styles.mark, { color: mark.color }]}>{mark.letter}</Text>
         <View style={styles.fileName}>
@@ -212,7 +212,7 @@ function FileRow({ entry }: { entry: GuideFile }) {
             </Text>
           )}
         </View>
-        {critical && <Icon name="RiErrorWarningLine" size={16} color={theme.attention} />}
+        {critical && <Icon name="Warning" size={16} color={theme.attention} />}
         <LineCounts added={file.additions} removed={file.deletions} />
       </PressableScale>
       {notes.length > 0 && (
@@ -317,7 +317,7 @@ function NoteCard({ note, showLine = false }: { note: GuideFileNote | GuideLineN
       ]}
     >
       <Icon
-        name={critical ? "RiErrorWarningLine" : "RiGuideLine"}
+        name={critical ? "Warning" : "Guide"}
         size={14}
         color={critical ? theme.attention : theme.textMuted}
       />
@@ -349,7 +349,7 @@ function GuideView({ detail, files }: { detail: PullRequestDetail; files: readon
         <Notice tone="danger" text={remote.message} />
         <Button
           label={copy("mobile_pr_retry")}
-          icon="RiRefreshLine"
+          icon="Refresh"
           style={styles.start}
           onPress={() => void usePullRequests.getState().loadGuide(detail.url, { force: true })}
         />
@@ -401,7 +401,7 @@ function GuideGroup({ group }: { group: ResolvedGroup }) {
         </Text>
         {group.containsCritical && (
           <View accessible accessibilityLabel={copy("mobile_pr_guide_critical")}>
-            <Icon name="RiErrorWarningLine" size={16} color={theme.attention} />
+            <Icon name="Warning" size={16} color={theme.attention} />
           </View>
         )}
       </View>
@@ -512,7 +512,7 @@ function RetryGuide({ url }: { url: string }) {
     <View style={styles.stack}>
       <Button
         label={copy("mobile_pr_retry")}
-        icon="RiRefreshLine"
+        icon="Refresh"
         busy={busy}
         style={styles.start}
         onPress={() => void retry()}

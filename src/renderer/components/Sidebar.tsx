@@ -34,22 +34,24 @@ import { GroupNameDialog } from "./GroupNameDialog.tsx"
 import { ResizeHandle } from "./ResizeHandle.tsx"
 import { ProjectDialog } from "./ProjectDialog.tsx"
 import { ProjectIcon } from "./ProjectIcon.tsx"
-import { ArchiveIcon } from "./icons/ArchiveIcon.tsx"
-import { ArrowDownIcon } from "./icons/ArrowDownIcon.tsx"
-import { ArrowUpIcon } from "./icons/ArrowUpIcon.tsx"
-import { ChatIcon } from "./icons/ChatIcon.tsx"
-import { ChevronDownIcon } from "./icons/ChevronDownIcon.tsx"
-import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
-import { FilterFillIcon } from "./icons/FilterFillIcon.tsx"
-import { FilterIcon } from "./icons/FilterIcon.tsx"
-import { FolderAddIcon } from "./icons/FolderAddIcon.tsx"
-import { FolderIcon } from "./icons/FolderIcon.tsx"
-import { MoreIcon } from "./icons/MoreIcon.tsx"
-import { PencilIcon } from "./icons/PencilIcon.tsx"
-import { PlusIcon } from "./icons/PlusIcon.tsx"
-import { SearchIcon } from "./icons/SearchIcon.tsx"
-import { TrashIcon } from "./icons/TrashIcon.tsx"
-import type { IconComponent } from "./icons/Icon.tsx"
+import {
+  ArchiveIcon,
+  ArrowDownIcon,
+  ArrowUpIcon,
+  ChatIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  FilterFillIcon,
+  FilterIcon,
+  FolderAddIcon,
+  FolderIcon,
+  type IconComponent,
+  MoreIcon,
+  PencilIcon,
+  PlusIcon,
+  SearchIcon,
+  TrashIcon,
+} from "@hinacode/icons"
 import { ProjectMenu } from "./ProjectMenu.tsx"
 import { SidebarThreadList, sidebarListMotion } from "./SidebarThreadList.tsx"
 import { Button } from "./ui/button.tsx"

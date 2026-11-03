@@ -52,7 +52,7 @@ Loading the rows in main is unchanged, at 50 to 100 ms, because SQLite still ret
 
 ## Out of scope
 
-- Paging messages. The phone pages already; the desktop still loads every message.
+- Paging messages. The phone pages already; the desktop loads every message, and [measuring it](2026-11-03-desktop-transcript-paging.md) showed paging is not worth it.
 - Cutting outputs in SQL, which would also save the load in main.
 - Shrinking tool inputs, such as the Codex items stored whole.
 - Keeping a loaded full output after its call collapses.

@@ -11,6 +11,7 @@ import {
   chatFolder,
   isThreadBusy,
   QueuedMessage,
+  ScheduledMessage,
   Thread,
   type ThreadStatus,
   type CheckoutTarget,
@@ -53,6 +54,7 @@ const ThreadRow = Schema.Struct({
   usageLimit: Schema.NullOr(Schema.fromJsonString(UsageLimit)),
   forkedFrom: Schema.NullOr(Schema.fromJsonString(ForkPoint)),
   queue: Schema.fromJsonString(Schema.Array(QueuedMessage)),
+  scheduled: Schema.fromJsonString(Schema.Array(ScheduledMessage)),
 })
 
 export interface CreateThread {
@@ -85,6 +87,7 @@ export interface UpdateThread {
   readonly snoozedUntil?: string | null | undefined
   readonly providerSessionId?: string | undefined
   readonly queue?: ReadonlyArray<QueuedMessage> | undefined
+  readonly scheduled?: ReadonlyArray<ScheduledMessage> | undefined
 }
 
 const arranging = new Set(["id", "sortIndex", "pinned", "snoozedUntil"])
@@ -293,6 +296,7 @@ const make = Effect.gen(function* () {
         pinnedAt: null,
         snoozedUntil: null,
         queue: [],
+        scheduled: [],
         createdBy,
         createdAt: now,
         updatedAt: now,
@@ -379,6 +383,7 @@ const make = Effect.gen(function* () {
         pinnedAt: null,
         snoozedUntil: null,
         queue: [],
+        scheduled: [],
         createdBy: "user",
         createdAt: now,
         updatedAt: now,
@@ -421,6 +426,7 @@ const make = Effect.gen(function* () {
         pinnedAt: null,
         snoozedUntil: null,
         queue: [],
+        scheduled: [],
         createdBy: "user",
         createdAt: now,
         updatedAt: now,
@@ -518,6 +524,7 @@ const make = Effect.gen(function* () {
             ? null
             : current.forkedFrom,
         queue: input.queue ?? current.queue,
+        scheduled: input.scheduled ?? current.scheduled,
         updatedAt: arranges ? current.updatedAt : now,
       }
       yield* sql`
@@ -529,7 +536,7 @@ const make = Effect.gen(function* () {
             provider_session_id = ${next.providerSessionId},
             forked_from = ${next.forkedFrom === null ? null : JSON.stringify(next.forkedFrom)},
             updated_at = ${next.updatedAt}, usage_limit = ${next.usageLimit === null ? null : JSON.stringify(next.usageLimit)},
-            queue = ${JSON.stringify(next.queue)}
+            queue = ${JSON.stringify(next.queue)}, scheduled = ${JSON.stringify(next.scheduled)}
         WHERE id = ${next.id}
       `.pipe(Effect.mapError(persistence("threads.update")))
       return next
@@ -673,7 +680,12 @@ const make = Effect.gen(function* () {
         const thread = yield* get(id)
         if (isThreadBusy(thread.status)) return yield* new ThreadBusyError({ id })
         if ((yield* settings.get).archive.removeWorktree && thread.worktreeId) {
-          yield* worktrees.removeWhileExclusive(thread.worktreeId, "ifMerged", id)
+          yield* worktrees.removeWhileExclusive(thread.worktreeId, "ifMerged", id).pipe(
+            Effect.catchIf(
+              (error) => error._tag === "WorktreeBusyError" && error.reason === "shared",
+              () => Effect.void,
+            ),
+          )
         }
         yield* terminals.closeThread(id)
         yield* sql`

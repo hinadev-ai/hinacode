@@ -23,9 +23,9 @@ export interface BannerNotice {
 const visibleMs: Record<AlertKind, number> = { completed: 4_000, needsInput: 10_000, failed: 10_000 }
 
 const icons: Record<AlertKind, { name: IconName; color: keyof Palette }> = {
-  completed: { name: "RiCheckboxCircleLine", color: "running" },
-  needsInput: { name: "RiErrorWarningLine", color: "attention" },
-  failed: { name: "RiErrorWarningLine", color: "danger" },
+  completed: { name: "CheckCircle", color: "running" },
+  needsInput: { name: "Warning", color: "attention" },
+  failed: { name: "Warning", color: "danger" },
 }
 
 const RISE = 16
@@ -119,7 +119,7 @@ function Card({
         {...holdWhileFocused}
       />
       <IconButton
-        icon="RiCloseLine"
+        icon="Close"
         accessibilityLabel={copy("mobile_notify_dismiss")}
         onPress={onDismiss}
         {...holdWhileFocused}

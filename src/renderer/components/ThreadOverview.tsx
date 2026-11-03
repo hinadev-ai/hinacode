@@ -24,20 +24,22 @@ import { CloudMark } from "./CloudMark.tsx"
 import { ProjectDialog } from "./ProjectDialog.tsx"
 import { ProjectIcon } from "./ProjectIcon.tsx"
 import { LineCounts } from "./LineCounts.tsx"
-import { BranchIcon } from "./icons/BranchIcon.tsx"
-import { ComputerIcon } from "./icons/ComputerIcon.tsx"
-import { ChatNewIcon } from "./icons/ChatNewIcon.tsx"
-import { FileDiffIcon } from "./icons/FileDiffIcon.tsx"
-import { FileTextIcon } from "./icons/FileTextIcon.tsx"
-import { GlobeIcon } from "./icons/GlobeIcon.tsx"
-import type { IconComponent } from "./icons/Icon.tsx"
-import { LinkIcon } from "./icons/LinkIcon.tsx"
-import { MoreIcon } from "./icons/MoreIcon.tsx"
-import { PencilIcon } from "./icons/PencilIcon.tsx"
-import { PlayIcon } from "./icons/PlayIcon.tsx"
-import { PlusIcon } from "./icons/PlusIcon.tsx"
-import { RobotIcon } from "./icons/RobotIcon.tsx"
-import { UnlinkIcon } from "./icons/UnlinkIcon.tsx"
+import {
+  BranchIcon,
+  ChatNewIcon,
+  ComputerIcon,
+  FileDiffIcon,
+  FileTextIcon,
+  GlobeIcon,
+  type IconComponent,
+  LinkIcon,
+  MoreIcon,
+  PencilIcon,
+  PlayIcon,
+  PlusIcon,
+  RobotIcon,
+  UnlinkIcon,
+} from "@hinacode/icons"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import {
   checksIndicator,

@@ -16,8 +16,7 @@ import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useThreads } from "../stores/threads.ts"
 import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
-import { ImportIcon } from "./icons/ImportIcon.tsx"
-import { ArrowUpRightIcon } from "./icons/ArrowUpRightIcon.tsx"
+import { ArrowUpRightIcon, ImportIcon } from "@hinacode/icons"
 
 type Listing = RpcResponse<"sessions.listExternal">
 

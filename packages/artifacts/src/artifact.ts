@@ -15,6 +15,7 @@ export const ArtifactSchema = z.object({
   files: z.array(ArtifactFileSchema),
   createdAt: z.string(),
   updatedAt: z.string(),
+  threadId: z.string().optional(),
 })
 
 export type ArtifactFile = z.infer<typeof ArtifactFileSchema>

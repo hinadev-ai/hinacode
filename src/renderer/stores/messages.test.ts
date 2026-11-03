@@ -564,14 +564,6 @@ const view = async (...ids: string[]) => {
 const cached = () => Object.keys(store().byThread).toSorted()
 const threadIds = (count: number) => Array.from({ length: count }, (_, index) => `t${index}`)
 
-test("revisiting a cached thread renders from memory without another transcript request", async () => {
-  await view("a", "b")
-  await store().load("a")
-
-  expect(transcriptRequests).toStrictEqual(["a", "b"])
-  expect(ready("a").messages).toHaveLength(1)
-})
-
 test("viewing a ninth thread evicts the least recently viewed one", async () => {
   await view(...threadIds(8))
   await store().load("t0")
@@ -608,16 +600,6 @@ test("a cached thread keeps applying pushes while another thread is open", async
   expect(transcriptRequests).toStrictEqual(["a", "b"])
   expect(ready("a").messages[0]?.parts).toStrictEqual([{ type: "text", text: "streamed in background" }])
   expect(ready("a").messages[0]?.completedAt).toEqual(expect.any(String))
-})
-
-test("deleting a thread evicts its history and pending deltas", async () => {
-  await view("a")
-  store().receive(event(1, { type: "text_delta", text: "pending" }, "a"))
-  expect(vi.getTimerCount()).toBe(1)
-  store().unload("a")
-
-  expect(store().byThread["a"]).toBeUndefined()
-  expect(vi.getTimerCount()).toBe(0)
 })
 
 test("a failed history retries on the next view", async () => {

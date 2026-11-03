@@ -1,9 +1,20 @@
 // oxlint-disable unicorn/prefer-add-event-listener -- MCP transports take callbacks, not event listeners
 import type { McpSdkServerConfigWithInstance } from "@anthropic-ai/claude-agent-sdk"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
-import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js"
+import type { FetchLike, Transport } from "@modelcontextprotocol/sdk/shared/transport.js"
 import { isJSONRPCRequest, type JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js"
+import { Agent, fetch } from "undici"
 import type { McpConnection } from "../../../shared/agent.ts"
+import { MCP_TOOL_TIMEOUT_SECONDS } from "../provider.ts"
+
+const longToolCalls = new Agent({
+  headersTimeout: MCP_TOOL_TIMEOUT_SECONDS * 1000,
+  bodyTimeout: MCP_TOOL_TIMEOUT_SECONDS * 1000,
+})
+
+// FIXME: HinaCode's MCP server answers a tool call only when it ends, and Node's fetch gives up on headers after 300 seconds
+const fetchLongToolCalls: FetchLike = (url, init) =>
+  fetch(url, { ...init, dispatcher: longToolCalls } as Parameters<typeof fetch>[1]) as unknown as Promise<Response>
 
 const relay = async (cli: Transport, http: Transport) => {
   const toCli = (message: JSONRPCMessage) => cli.send(message).catch(() => undefined)
@@ -28,7 +39,10 @@ export const hinacodeMcpServer = (connection: McpConnection): McpSdkServerConfig
     connect: (cli: Transport) =>
       relay(
         cli,
-        new StreamableHTTPClientTransport(new URL(connection.url), { requestInit: { headers: connection.headers } }),
+        new StreamableHTTPClientTransport(new URL(connection.url), {
+          requestInit: { headers: connection.headers },
+          fetch: fetchLongToolCalls,
+        }),
       ),
   } as unknown as McpSdkServerConfigWithInstance["instance"],
 })

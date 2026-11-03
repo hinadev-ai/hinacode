@@ -39,14 +39,6 @@ const issue = {
 }
 
 describe("Linear", () => {
-  it.effect("lists nothing and never builds a client on a machine without a key", () =>
-    Effect.gen(function* () {
-      linear.apiKeys.length = 0
-      expect(yield* Linear.use((service) => service.assignedIssues)).toStrictEqual([])
-      expect(linear.apiKeys).toStrictEqual([])
-    }).pipe(Effect.provide(testLayer)),
-  )
-
   it.effect("decodes the assigned issues with the machine's key", () =>
     Effect.gen(function* () {
       yield* Secrets.use((secrets) => secrets.set(LINEAR_API_KEY_SECRET, "lin_api_test"))

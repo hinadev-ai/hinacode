@@ -4,9 +4,13 @@
     "lib": ["DOM", "ES2022"],
     "strict": true,
     "allowImportingTsExtensions": true,
+    "moduleSuffixes": [".native", ""],
     "paths": {
       "@/*": ["./src/*"],
-      "@shared/*": ["../../src/shared/*"]
+      "@shared/*": ["../../src/shared/*"],
+      "@hinacode/icons": ["../../packages/icons/src/index.ts"],
+      "react-native": ["./node_modules/react-native/types_generated/index.d.ts"],
+      "react-native-svg": ["./node_modules/react-native-svg/lib/typescript/index.d.ts"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"],

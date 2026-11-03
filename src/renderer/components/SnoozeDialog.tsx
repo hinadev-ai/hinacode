@@ -1,5 +1,3 @@
-import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
-import { lazy, Suspense } from "react"
 import { toast } from "sonner"
 import type { Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -8,10 +6,9 @@ import { formatSnoozeTime } from "../lib/snooze.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useThreads } from "../stores/threads.ts"
-import { returnFocus, useUi } from "../stores/ui.ts"
-import { Dialog, DialogOverlay, DialogPortal } from "./ui/dialog.tsx"
-
-const SnoozePicker = lazy(() => import("./SnoozePicker.tsx"))
+import { useUi } from "../stores/ui.ts"
+import { AlarmIcon, SnoozeIcon } from "@hinacode/icons"
+import { TimePickerDialog } from "./TimePickerDialog.tsx"
 
 export async function snoozeThread(thread: Thread, until: Date | null) {
   const { upsert } = useThreads.getState()
@@ -45,30 +42,23 @@ export function SnoozeDialog() {
   const thread = useThreads((state) => (threadId === null ? undefined : state.byId[threadId]))
 
   return (
-    <Dialog open={thread !== undefined} onOpenChange={(open) => (open ? undefined : close())}>
-      <DialogPortal>
-        <DialogOverlay />
-        <DialogPrimitive.Viewport className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[12dvh]">
-          <DialogPrimitive.Popup
-            finalFocus={returnFocus}
-            className="flex max-h-[min(24rem,76dvh)] w-full max-w-md flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/10 transition-[opacity,scale] duration-150 ease-out outline-none data-starting-style:scale-98 data-starting-style:opacity-0"
-          >
-            {thread && (
-              <Suspense>
-                <SnoozePicker
-                  key={thread.id}
-                  thread={thread}
-                  onClose={close}
-                  onChoose={(until) => {
-                    close()
-                    void snoozeThread(thread, until).then(() => requestAnimationFrame(keepFocus))
-                  }}
-                />
-              </Suspense>
-            )}
-          </DialogPrimitive.Popup>
-        </DialogPrimitive.Viewport>
-      </DialogPortal>
-    </Dialog>
+    <TimePickerDialog
+      open={thread !== undefined}
+      title={m.snooze_label({ title: thread?.title ?? "" })}
+      inputLabel={m.snooze_input_label()}
+      placeholder={m.snooze_placeholder()}
+      icon={SnoozeIcon}
+      extraChoices={(now) =>
+        thread?.snoozedUntil != null && Date.parse(thread.snoozedUntil) > now.getTime()
+          ? [{ id: "wake", label: m.sidebar_thread_unsnooze(), hint: "", at: null, icon: AlarmIcon }]
+          : []
+      }
+      onClose={close}
+      onChoose={(until) => {
+        if (thread === undefined) return
+        close()
+        void snoozeThread(thread, until).then(() => requestAnimationFrame(keepFocus))
+      }}
+    />
   )
 }

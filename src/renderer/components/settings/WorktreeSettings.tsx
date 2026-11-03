@@ -24,8 +24,7 @@ import {
 } from "../ui/alert-dialog.tsx"
 import { ArchiveSettings } from "./ArchiveSettings.tsx"
 import { SettingsSection, settingsGroupClass } from "./SettingsSection.tsx"
-import { ChatIcon } from "../icons/ChatIcon.tsx"
-import { TrashIcon } from "../icons/TrashIcon.tsx"
+import { ChatIcon, TrashIcon } from "@hinacode/icons"
 import { WorktreeRootField } from "./WorktreeRootField.tsx"
 
 type Blocker = "setup" | "turn"
