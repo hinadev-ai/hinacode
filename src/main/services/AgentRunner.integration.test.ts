@@ -7,7 +7,7 @@ import { expect, it } from "@effect/vitest"
 import { Context, Deferred, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
 import { SqlClient } from "effect/sql"
 import { vi } from "vitest"
-import type { AgentEvent, ApprovalDecision, ProviderId, RunTurnInput } from "../../shared/agent.ts"
+import type { AgentEvent, ApprovalDecision, BackgroundTask, ProviderId, RunTurnInput } from "../../shared/agent.ts"
 import { RpcMethods, type TranscriptPush } from "../../shared/contract.ts"
 import type { Message, Thread } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
@@ -55,6 +55,8 @@ interface Probe {
   readonly decisions: Array<{ readonly requestId: string; readonly decision: ApprovalDecision; readonly note?: string }>
   readonly steers: Array<{ readonly text: string; readonly priority: SteerPriority }>
   readonly calls: Array<{ readonly provider: ProviderId; readonly call: "closeSession" | "interrupt" }>
+  readonly stops: Array<string>
+  readonly setBackgroundTasks: (tasks: ReadonlyArray<BackgroundTask>) => void
   readonly transcript: Array<TranscriptPush>
   readonly wake: (agent: ProviderId, sessionId: string) => Promise<void>
   readonly failClose: () => void
@@ -114,6 +116,10 @@ const withPreparingThread = async (
   const resolutions = Effect.runSync(Queue.unbounded<AgentEvent>())
   const interruptions = Effect.runSync(Queue.unbounded<AgentEvent>())
   const calls: Probe["calls"] = []
+  const stops: Probe["stops"] = []
+  const backgroundTaskChanges = Effect.runSync(
+    Queue.unbounded<{ readonly threadId: string; readonly tasks: ReadonlyArray<BackgroundTask> }>(),
+  )
   const transcript: Probe["transcript"] = []
   let closeFails = false
   const wakes = {
@@ -179,6 +185,24 @@ const withPreparingThread = async (
           )
         }
         if (input.prompt === "waits for Stop") return Stream.fromQueue(interruptions)
+        if (input.prompt === "spawns a sub-agent, then waits for Stop") {
+          const subagent: AgentEvent = {
+            type: "subagent_updated",
+            subagent: {
+              id: "native-1",
+              label: "Survey",
+              callId: "spawn",
+              status: "running",
+              summary: null,
+              lastTool: null,
+              toolUses: 0,
+              tokens: null,
+              startedAt: "2026-11-03T00:00:00.000Z",
+              endedAt: null,
+            },
+          }
+          return Stream.concat(Stream.make(subagent), Stream.fromQueue(interruptions))
+        }
         if (input.prompt === "calls a tool, then waits") {
           return Stream.fromIterable<AgentEvent>([
             { type: "tool_call_started", callId: "call-1", name: "Bash", input: { command: "ls" } },
@@ -237,6 +261,13 @@ const withPreparingThread = async (
       }),
     warm: (input) => Effect.sync(() => void warms.push(input)),
     wakes: Stream.fromQueue(wakes[id]),
+    ...(id === "claude" && {
+      backgroundTasks: {
+        changes: Stream.fromQueue(backgroundTaskChanges),
+        stop: (_threadId: string, taskId: string) => Effect.sync(() => void stops.push(`task:${taskId}`)),
+      },
+    }),
+    stopSubagent: (_threadId, subagentId) => Effect.sync(() => void stops.push(`subagent:${subagentId}`)),
     closeSession: () =>
       closeFails
         ? Effect.fail(new AgentError({ provider: id, message: "The session did not leave" }))
@@ -395,6 +426,8 @@ const withPreparingThread = async (
         decisions,
         steers,
         calls,
+        stops,
+        setBackgroundTasks: (tasks) => Queue.offerUnsafe(backgroundTaskChanges, { threadId: thread.id, tasks }),
         transcript,
         wake: (agent, sessionId) => {
           const discarded = Promise.withResolvers<void>()
@@ -1031,6 +1064,47 @@ it("retires the agent a thread leaves and turns away its wakes, even after switc
     await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running"))
     await Effect.runPromise(runner.interrupt(thread.id))
     expect(calls.at(-1)).toStrictEqual({ provider: "claude", call: "interrupt" })
+  })
+})
+
+it("stops the thread's sub-agents and background tasks with the turn, and keeps its session", async () => {
+  await withPreparingThread(async ({ runner, thread, release, calls, stops, setBackgroundTasks }) => {
+    release()
+    setBackgroundTasks([{ id: "shell-1", kind: "shell", label: "sleep 600", startedAt: "2026-11-03T00:00:00.000Z" }])
+    await Effect.runPromise(runner.send(thread.id, "spawns a sub-agent, then waits for Stop", []))
+    await vi.waitFor(async () => expect(await Effect.runPromise(runner.subagents(thread.id))).toHaveLength(1))
+
+    await Effect.runPromise(runner.interrupt(thread.id))
+
+    expect(stops).toStrictEqual(["subagent:native-1", "task:shell-1"])
+    expect(calls).toStrictEqual([{ provider: "claude", call: "interrupt" }])
+  })
+})
+
+it("closes the session after Stop when a wakeup is pending, so the wakeup never fires", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, calls, stops, setBackgroundTasks }) => {
+    release()
+    setBackgroundTasks([
+      {
+        id: "wakeup",
+        kind: "wakeup",
+        label: "Check CI",
+        startedAt: "2026-11-03T00:00:00.000Z",
+        firesAt: "2026-11-03T00:20:00.000Z",
+      },
+    ])
+    await vi.waitFor(async () => expect(await Effect.runPromise(runner.backgroundTasks(thread.id))).toHaveLength(1))
+    await Effect.runPromise(runner.send(thread.id, "waits for Stop", []))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running"))
+
+    await Effect.runPromise(runner.interrupt(thread.id))
+
+    await vi.waitFor(() => expect(calls).toContainEqual({ provider: "claude", call: "closeSession" }))
+    expect(calls).toStrictEqual([
+      { provider: "claude", call: "interrupt" },
+      { provider: "claude", call: "closeSession" },
+    ])
+    expect(stops).toStrictEqual([])
   })
 })
 
