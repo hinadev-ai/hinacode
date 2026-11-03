@@ -594,6 +594,7 @@ flowchart LR
     create["create_thread, list_machines"]
     run["run_agent"]
     control["list_threads, read_thread,<br/>send_to_thread, stop_thread"]
+    terms["list_terminals, read_terminal"]
   end
   review --> ws["makeActiveWorkspace → git diff"]
   prs --> db[("pull_request_link")] --> push["push thread.pullRequests"]
@@ -603,9 +604,10 @@ flowchart LR
   create -- "machine: id" --> peers["Peers: threads.create + threads.steer<br/>on that machine's project of the same repository"]
   run --> agentRun["AgentRunner.runAgent<br/>provider.runTurn in the caller's workspace<br/>row in the caller's Agents tab"]
   control --> scope["same project as the caller<br/>AgentRunner.transcript / steer / send / interrupt"]
+  terms --> scrollback["Terminals.list / attach<br/>the caller's terminals only, terminalText"]
 ```
 
-`request_secret` blocks until the user answers the card or the turn ends; the value goes renderer → main → `Secrets` and never into an event, a message or the tool result. `create_thread` makes an ordinary thread of the same project, or with `machine` of the project with the same GitHub repository on that machine: `created_by` records where it came from, nothing else ties it to its creator. The thread controls reach any thread of the caller's project, not only the ones it created; `send_to_thread` and `stop_thread` refuse the caller itself. `read_thread` and `search_threads` also reach threads of every other project on this machine. `run_agent` runs one turn of any provider as a sub-agent of the caller's running turn and returns its last text; see [the feature doc](features/2026-10-30-run-agent.md). Codex gets `tool_timeout_sec = 3600` for this server so a user has time to answer and a sub-agent has time to finish.
+`request_secret` blocks until the user answers the card or the turn ends; the value goes renderer → main → `Secrets` and never into an event, a message or the tool result. `create_thread` makes an ordinary thread of the same project, or with `machine` of the project with the same GitHub repository on that machine: `created_by` records where it came from, nothing else ties it to its creator. The thread controls reach any thread of the caller's project, not only the ones it created; `send_to_thread` and `stop_thread` refuse the caller itself. `read_thread` and `search_threads` also reach threads of every other project on this machine. `run_agent` runs one turn of any provider as a sub-agent of the caller's running turn and returns its last text; see [the feature doc](features/2026-10-30-run-agent.md). `read_terminal` reads the 256 KB scrollback `Terminals` keeps per session and turns it into plain text; it refuses a terminal of another thread. See [the feature doc](features/2026-11-04-terminal-mentions.md). Codex gets `tool_timeout_sec = 3600` for this server so a user has time to answer and a sub-agent has time to finish.
 
 Each tool's parameters are an Effect Schema. The same schema produces the JSON Schema shown to the agent and decodes its input.
 
