@@ -11,7 +11,21 @@ import type {
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Cache, Cause, Clock, Context, Duration, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect"
+import {
+  Cache,
+  Cause,
+  Clock,
+  Context,
+  Duration,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Queue,
+  Schema,
+  Semaphore,
+  Stream,
+} from "effect"
 import {
   type AccountHome,
   type AgentAccount,
@@ -31,6 +45,7 @@ import {
   AgentError,
   type AgentProvider,
   type BackgroundTasksChange,
+  type SessionInput,
   type SteerPriority,
   type Wake,
 } from "../provider.ts"
@@ -348,6 +363,7 @@ export const layer = Layer.effect(
     const layerScope = yield* Effect.scope
     const sessions = new Map<string, Session>()
     const resumable = new Map<string, Resumable>()
+    const sessionLocks = new Map<string, Semaphore.Semaphore>()
     const wakes = yield* Queue.unbounded<Wake>()
     const backgroundTaskChanges = yield* Queue.unbounded<BackgroundTasksChange>()
     const probedCommands = yield* Cache.make({
@@ -356,7 +372,7 @@ export const layer = Layer.effect(
       timeToLive: Duration.minutes(1),
     })
 
-    const skillOverrides = (input: RunTurnInput) =>
+    const skillOverrides = (input: SessionInput) =>
       input.userSkills
         ? Effect.succeed(null)
         : Cache.get(probedCommands, commandsKey(input.cwd, input.home)).pipe(Effect.map(hideUserCommands))
@@ -580,7 +596,7 @@ export const layer = Layer.effect(
           )
         : Effect.succeed(permissionMode(accessMode, false))
 
-    const startSession = (input: RunTurnInput, mode: PermissionMode) =>
+    const startSession = (input: SessionInput, mode: PermissionMode) =>
       Effect.gen(function* () {
         const prompts = yield* Queue.unbounded<SDKUserMessage>()
         const abort = new AbortController()
@@ -678,7 +694,15 @@ export const layer = Layer.effect(
         return session
       })
 
-    const acquireSession = (input: RunTurnInput, mode: PermissionMode) =>
+    const lockedSession =
+      (threadId: string) =>
+      <A, E>(effect: Effect.Effect<A, E>) => {
+        let lock = sessionLocks.get(threadId)
+        if (lock === undefined) sessionLocks.set(threadId, (lock = Semaphore.makeUnsafe(1)))
+        return Semaphore.withPermit(lock, effect)
+      }
+
+    const reuseOrStartSession = (input: SessionInput, mode: PermissionMode) =>
       Effect.gen(function* () {
         const existing = sessions.get(input.threadId)
         if (existing !== undefined) {
@@ -693,6 +717,18 @@ export const layer = Layer.effect(
         }
         return yield* startSession(input, mode)
       })
+
+    const acquireSession = (input: SessionInput, mode: PermissionMode) =>
+      reuseOrStartSession(input, mode).pipe(lockedSession(input.threadId))
+
+    const warm = (input: SessionInput) =>
+      Effect.flatMap(permissionModeFor(input.accessMode, input.model), (mode) =>
+        Effect.suspend(() => {
+          const existing = sessions.get(input.threadId)
+          if (existing !== undefined && (!isIdle(existing) || existing.wakeup !== null)) return Effect.void
+          return Effect.acquireUseRelease(reuseOrStartSession(input, mode), () => Effect.void, release)
+        }).pipe(lockedSession(input.threadId)),
+      )
 
     const interruptQuery = (session: Session) =>
       Effect.suspend(() => {
@@ -889,6 +925,7 @@ export const layer = Layer.effect(
       readSession,
       listCommands,
       runTurn,
+      warm,
       wakes: Stream.fromQueue(wakes),
       backgroundTasks: {
         changes: Stream.fromQueue(backgroundTaskChanges),

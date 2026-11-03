@@ -796,6 +796,60 @@ describe("Claude idle sessions", () => {
   )
 })
 
+const warm = (input: RunTurnInput = turnInput()) =>
+  Effect.gen(function* () {
+    const provider = yield* ClaudeProvider
+    yield* provider.warm!(input)
+  })
+
+describe("Claude warm sessions", () => {
+  it.effect("sends the next prompt to the CLI a warm started", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        yield* warm()
+        expect(sdk.clis).toHaveLength(1)
+        expect(latestCli().prompts).toHaveLength(0)
+
+        const events = yield* runTurn()
+        expect(sdk.clis).toHaveLength(1)
+        expect(latestCli().prompts).toHaveLength(1)
+        expect(events.at(-1)?.type).toBe("turn_completed")
+      }),
+    ),
+  )
+
+  it.effect("starts one CLI when a warm and a turn race on the same thread", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const commands = Promise.withResolvers<Array<SlashCommand>>()
+        sdk.supportedCommands = () => commands.promise
+        const input = turnInput({ userSkills: false })
+        const warming = yield* warm(input).pipe(Effect.forkChild)
+        const turn = yield* startTurn(input)
+        yield* until(() => sdk.clis.length === 1)
+        yield* settle
+
+        commands.resolve([])
+        yield* Fiber.join(warming)
+        yield* Fiber.join(turn.fiber)
+        expect(sdk.clis.filter((cli) => cli.options.mcpServers !== undefined)).toHaveLength(1)
+        expect(turn.events.at(-1)?.type).toBe("turn_completed")
+      }),
+    ),
+  )
+
+  it.effect("closes a warmed CLI that no prompt reaches within 60 seconds", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        yield* warm()
+        yield* TestClock.adjust(TTL)
+        yield* settle
+        expect(latestCli().close).toHaveBeenCalledOnce()
+      }),
+    ),
+  )
+})
+
 describe("Claude sub-agents", () => {
   it.effect("stops one sub-agent through the CLI by its task id", () =>
     lifecycle(
@@ -931,6 +985,30 @@ describe("Claude background tasks", () => {
           expect(latestCli().options.resume).toBeUndefined()
         }),
       ),
+  )
+
+  it.effect("keeps a scheduled wakeup when a warm brings a different context", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        sdk.respond = (cli) =>
+          cli.push(
+            init("session-1"),
+            ...scheduleWakeup({ delaySeconds: 600, reason: "Poll", prompt: "Poll" }, { scheduledFor: 600_000 }),
+            succeeded,
+          )
+        yield* runTurn()
+
+        yield* warm(turnInput({ instructions: "Work in hinacode on feat/renamed", cwd: "/repo-renamed" }))
+        expect(sdk.clis).toHaveLength(1)
+        expect(latestCli().close).not.toHaveBeenCalled()
+
+        yield* TestClock.adjust("10 minutes")
+        const wake = yield* Stream.runHead(provider.wakes ?? Stream.empty).pipe(Effect.forkChild)
+        latestCli().push(sessionState("running"))
+        expect(Option.isSome(yield* Fiber.join(wake))).toBe(true)
+      }),
+    ),
   )
 
   it.effect("closes an idle CLI 60 seconds after a wakeup that never fires", () =>

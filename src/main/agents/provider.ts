@@ -50,6 +50,8 @@ export interface SessionHistory {
 
 export const LISTED_SESSIONS = 50
 
+export type SessionInput = Omit<RunTurnInput, "prompt" | "attachments">
+
 export interface AgentProvider {
   readonly id: ProviderId
   readonly listModels: Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
@@ -76,6 +78,7 @@ export interface AgentProvider {
     readonly home: AccountHome | null
   }) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError>
   readonly runTurn: (input: RunTurnInput) => Stream.Stream<AgentEvent, AgentError>
+  readonly warm?: (input: SessionInput) => Effect.Effect<void, AgentError>
   readonly wakes?: Stream.Stream<Wake>
   readonly steer?: (
     threadId: string,
