@@ -184,7 +184,10 @@ const withPreparingThread = async (
             Stream.concat(Stream.never),
           )
         }
-        if (input.prompt === "waits for Stop") return Stream.fromQueue(interruptions)
+        const untilStopped = Stream.fromQueue(interruptions).pipe(
+          Stream.takeUntil(({ type }) => type === "turn_failed"),
+        )
+        if (input.prompt === "waits for Stop") return untilStopped
         if (input.prompt === "spawns a sub-agent, then waits for Stop") {
           const subagent: AgentEvent = {
             type: "subagent_updated",
@@ -201,7 +204,7 @@ const withPreparingThread = async (
               endedAt: null,
             },
           }
-          return Stream.concat(Stream.make(subagent), Stream.fromQueue(interruptions))
+          return Stream.concat(Stream.make(subagent), untilStopped)
         }
         if (input.prompt === "calls a tool, then waits") {
           return Stream.fromIterable<AgentEvent>([

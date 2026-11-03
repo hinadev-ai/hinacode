@@ -1,6 +1,6 @@
 # Stop ends the thread's background work
 
-Status: Building
+Status: Shipped
 Date: 2026-11-03
 
 ## Problem
