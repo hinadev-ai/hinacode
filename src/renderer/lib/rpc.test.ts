@@ -86,6 +86,26 @@ test("a throwing listener does not stop the others", () => {
   stopReceiving()
 })
 
+test("a transcript push that fails to decode asks for a resync and keeps the listener alive", () => {
+  const reportError = vi.fn()
+  vi.stubGlobal("reportError", reportError)
+  const received: Array<unknown> = []
+  const stop = onPushEvent((event) => received.push(event))
+
+  push({ type: "thread.event", seq: 4, threadId: "t1", event: { type: "not an agent event" } })
+  push({ type: "message.updated", seq: 5, message: { threadId: "t2" } })
+  push({ type: "not a push event" })
+  push({ type: "environments.changed" })
+
+  expect(received).toStrictEqual([
+    { type: "transcript.lost", threadId: "t1" },
+    { type: "transcript.lost", threadId: "t2" },
+    { type: "environments.changed" },
+  ])
+  expect(reportError).toHaveBeenCalledTimes(3)
+  stop()
+})
+
 test("pull request polling resumes after the window hides across a refresh and returns before it is stale", async () => {
   vi.useFakeTimers({ now: 40_000 })
   const page = Object.assign(new EventTarget(), { hidden: false, visibilityState: "visible" })

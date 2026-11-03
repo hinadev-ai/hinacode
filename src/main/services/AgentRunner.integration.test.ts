@@ -917,6 +917,36 @@ it("forks a side chat from the last finished turn and hands it the running one",
   )
 })
 
+it("numbers each thread's transcript pushes on its own", async () => {
+  await withPreparingThread(
+    async ({ runner, threads, thread, release, idle, transcript }) => {
+      release()
+      await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+      await idle
+      const side = await Effect.runPromise(threads.sidechat(thread.id))
+      await Effect.runPromise(runner.send(side.id, "accepted input", []))
+      const seqsOf = (threadId: string) =>
+        transcript
+          .filter((push) => (push.type === "thread.event" ? push.threadId : push.message.threadId) === threadId)
+          .map((push) => push.seq)
+      await vi.waitFor(() =>
+        expect(
+          transcript.some(
+            (push) => push.type === "thread.event" && push.threadId === side.id && push.event.type === "turn_completed",
+          ),
+        ).toBe(true),
+      )
+
+      for (const id of [thread.id, side.id]) {
+        const seqs = seqsOf(id)
+        expect(seqs).toEqual(seqs.map((_, index) => index + 1))
+        expect((await Effect.runPromise(runner.transcript(id))).seq).toBe(seqs.length)
+      }
+    },
+    { forkable: true },
+  )
+})
+
 it("refuses to switch agents while a turn runs", async () => {
   await withPreparingThread(async ({ runner, threads, thread, release }) => {
     release()

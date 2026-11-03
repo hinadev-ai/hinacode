@@ -629,3 +629,40 @@ test("a failed history retries on the next view", async () => {
   expect(transcriptRequests).toStrictEqual([threadId, threadId])
   expect(ready().messages).toHaveLength(1)
 })
+
+test("a push after a lost one reloads the snapshot instead of applying it", async () => {
+  await loadReady()
+  store().receive(event(1, { type: "text_delta", text: "kept " }))
+  transcriptResponse = Promise.withResolvers()
+  store().receive(event(3, { type: "text_delta", text: "after the lost push" }))
+  expect(transcriptRequests).toStrictEqual([threadId, threadId])
+
+  vi.useRealTimers()
+  transcriptResponse.resolve(transcript("kept lost after the lost push", 3))
+  await vi.waitFor(() =>
+    expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "kept lost after the lost push" }]),
+  )
+  store().receive(event(4, { type: "turn_completed" }))
+  expect(ready().messages[0]?.completedAt).toEqual(expect.any(String))
+  expect(transcriptRequests).toHaveLength(2)
+})
+
+test("deltas waiting for the 100 ms flush count as received", async () => {
+  await loadReady()
+  store().receive(event(1, { type: "text_delta", text: "a" }))
+  store().receive(event(2, { type: "text_delta", text: "b" }))
+  store().receive(event(3, { type: "tool_call_started", callId: "c1", name: "shell", input: "ls" }))
+
+  expect(transcriptRequests).toStrictEqual([threadId])
+  expect(ready().messages[0]?.parts[0]).toStrictEqual({ type: "text", text: "ab" })
+})
+
+test("a gap among pushes buffered while loading reloads once the snapshot lands", async () => {
+  const loading = store().load(threadId)
+  store().receive(event(3, { type: "text_delta", text: "after snapshot" }))
+  store().receive(event(5, { type: "text_delta", text: "after the lost push" }))
+  transcriptResponse.resolve(transcript("snapshot", 2))
+  await loading
+
+  expect(transcriptRequests).toStrictEqual([threadId, threadId])
+})
