@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, onTestFinished, test } from "vitest"
 import { ArtifactSchema, normalizeArtifactPath } from "./artifact.ts"
-import { ArtifactError, MAX_ARTIFACT_BYTES, openArtifactStore } from "./store.ts"
+import { ArtifactConflictError, ArtifactError, MAX_ARTIFACT_BYTES, openArtifactStore } from "./store.ts"
 
 const minutes = () => {
   let minute = 0
@@ -55,9 +55,12 @@ describe("openArtifactStore", () => {
 
     expect(artifact).toEqual({
       id: expect.stringMatching(/^[a-z0-9]{12}$/),
+      kind: "page",
       title: "Report",
       entry: "index.html",
       version: 1,
+      revision: 1,
+      author: "agent",
       files: [{ path: "index.html", type: "text/html; charset=utf-8", size: 26 }],
       createdAt: "2026-11-02T09:00:00.000Z",
       updatedAt: "2026-11-02T09:00:00.000Z",
@@ -237,7 +240,13 @@ describe("openArtifactStore", () => {
       ],
     })
 
-    expect(await store.file(artifact.id, "pixel.png")).toEqual({ bytes: pixel, type: "image/png" })
+    expect(await store.file(artifact.id, "pixel.png")).toEqual({
+      bytes: pixel,
+      type: "image/png",
+      version: 1,
+      revision: 1,
+      kind: "page",
+    })
   })
 
   test("refuses invalid input with a message for the agent", async () => {
@@ -283,6 +292,102 @@ describe("openArtifactStore", () => {
     expect(await store.file(artifact.id, "artifact.json")).toBeNull()
     expect(await store.file(artifact.id, "../artifact.json")).toBeNull()
     expect(await store.file("../escape", "index.html")).toBeNull()
+  })
+
+  test("publishes a document as one Markdown file", async () => {
+    const store = openTemporaryStore()
+    const document = await store.publish({ kind: "document", title: "Plan", markdown: "# Plan\n\n- [ ] Ship\n" })
+
+    expect(document).toMatchObject({
+      kind: "document",
+      title: "Plan",
+      entry: "document.md",
+      version: 1,
+      files: [{ path: "document.md", type: "text/markdown; charset=utf-8", size: 19 }],
+    })
+    const file = await store.file(document.id, "document.md")
+    expect(new TextDecoder().decode(file?.bytes)).toBe("# Plan\n\n- [ ] Ship\n")
+  })
+
+  test("reads manifests written before kinds and revisions existed as an agent's page", async () => {
+    const store = openTemporaryStore()
+    const artifact = await store.publish({ title: "Old", files: [page("old")] })
+    const { kind: _kind, revision: _revision, author: _author, ...legacy } = artifact
+    writeFileSync(join(store.root, artifact.id, "artifact.json"), JSON.stringify(legacy))
+
+    expect(await store.get(artifact.id)).toEqual({ ...artifact, revision: 0 })
+  })
+
+  test("keeps an artifact's kind across updates", async () => {
+    const store = openTemporaryStore()
+    const page_ = await store.publish({ title: "Page", files: [page("p")] })
+    const document = await store.publish({ kind: "document", title: "Doc", markdown: "" })
+
+    await expect(store.publish({ kind: "document", id: page_.id, title: "Page", markdown: "x" })).rejects.toThrow(
+      /is a page/,
+    )
+    await expect(store.publish({ id: document.id, title: "Doc", files: [page("p")] })).rejects.toThrow(/is a document/)
+  })
+
+  test("keeps the developer's consecutive saves in one version and starts a new one when the author changes", async () => {
+    const store = openTemporaryStore()
+    const edit = (id: string, baseRevision: number, markdown: string) =>
+      store.publish({ kind: "document", id, title: "Notes", markdown, baseRevision, author: "developer" })
+    const read = async (id: string) => new TextDecoder().decode((await store.file(id, "document.md"))?.bytes)
+
+    const agent = await store.publish({ kind: "document", title: "Notes", markdown: "agent" })
+    const first = await edit(agent.id, 1, "one")
+    const second = await edit(agent.id, 2, "two")
+    const third = await edit(agent.id, 3, "three")
+
+    expect([first, second, third].map(({ version, revision, author }) => ({ version, revision, author }))).toEqual([
+      { version: 2, revision: 2, author: "developer" },
+      { version: 2, revision: 3, author: "developer" },
+      { version: 2, revision: 4, author: "developer" },
+    ])
+    expect(await read(agent.id)).toBe("three")
+    expect(
+      readdirSync(join(store.root, agent.id))
+        .filter((name) => /^\d+$/.test(name))
+        .toSorted(),
+    ).toEqual(["1", "2"])
+
+    const again = await store.publish({ kind: "document", id: agent.id, title: "Notes", markdown: "agent two" })
+    expect(again).toMatchObject({ version: 3, revision: 5, author: "agent" })
+    expect(await edit(agent.id, 5, "mine")).toMatchObject({ version: 4, revision: 6, author: "developer" })
+  })
+
+  test("refuses an update based on a revision that is no longer current", async () => {
+    const store = openTemporaryStore()
+    const first = await store.publish({ kind: "document", title: "Notes", markdown: "one" })
+    const second = await store.publish({
+      kind: "document",
+      id: first.id,
+      title: "Notes",
+      markdown: "two",
+      baseRevision: 1,
+      author: "developer",
+    })
+
+    const stale = store.publish({ kind: "document", id: first.id, title: "Notes", markdown: "three", baseRevision: 1 })
+    await expect(stale).rejects.toBeInstanceOf(ArtifactConflictError)
+    await expect(stale).rejects.toMatchObject({ current: { revision: second.revision } })
+    expect((await store.get(first.id))?.revision).toBe(2)
+  })
+
+  test("renames an artifact without a new revision, and later updates keep the name", async () => {
+    const store = openTemporaryStore()
+    const published = await store.publish({ kind: "document", title: "Notes", markdown: "one" })
+
+    const renamed = await store.rename(published.id, "  Launch notes ")
+    expect(renamed).toMatchObject({ title: "Launch notes", version: 1, revision: 1 })
+    expect(renamed.updatedAt > published.updatedAt).toBe(true)
+
+    const updated = await store.publish({ kind: "document", id: published.id, markdown: "two", baseRevision: 1 })
+    expect(updated).toMatchObject({ title: "Launch notes", revision: 2 })
+    await expect(store.rename(published.id, " ")).rejects.toThrow(/needs a title/)
+    await expect(store.rename("gone", "Name")).rejects.toThrow(/No artifact has the id "gone"/)
+    await expect(store.publish({ kind: "document", markdown: "new" })).rejects.toThrow(/needs a title/)
   })
 
   test("removes an artifact and refuses ids it does not hold", async () => {

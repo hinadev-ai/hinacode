@@ -1,5 +1,5 @@
 import { Schema, Struct } from "effect"
-import { Artifact, ArtifactExportRequest } from "./artifact.ts"
+import { Artifact, ArtifactExportRequest, DocumentContent, DocumentSaveResult } from "./artifact.ts"
 import { ArtifactTheme } from "./artifactTheme.ts"
 import {
   AccountLimits,
@@ -605,6 +605,13 @@ export const RpcMethods = {
   ),
   "artifacts.export": rpc(ArtifactExportRequest, Schema.NullOr(Schema.String)),
   "artifacts.delete": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
+  "artifacts.readDocument": rpc(Schema.Struct({ id: Schema.String }), DocumentContent),
+  "artifacts.saveDocument": rpc(
+    Schema.Struct({ id: Schema.String, baseRevision: Schema.Number, markdown: Schema.String }),
+    DocumentSaveResult,
+  ),
+  "artifacts.createDocument": rpc(Schema.Struct({ threadId: Schema.String, title: Schema.String }), Artifact),
+  "artifacts.rename": rpc(Schema.Struct({ id: Schema.String, title: Schema.String }), Artifact),
   "artifacts.setTheme": rpc(ArtifactTheme, Schema.Void),
   "automations.create": rpc(
     AutomationInput,
@@ -823,6 +830,10 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "artifacts.file": "read",
   "artifacts.export": "mutation",
   "artifacts.delete": "mutation",
+  "artifacts.readDocument": "read",
+  "artifacts.saveDocument": "mutation",
+  "artifacts.createDocument": "mutation",
+  "artifacts.rename": "mutation",
   "artifacts.setTheme": "mutation",
   "automations.create": "mutation",
   "automations.update": "mutation",

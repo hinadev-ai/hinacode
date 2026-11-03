@@ -321,11 +321,18 @@ export const isRunAgentTool = (name: string) => name === RUN_AGENT_TOOL || name 
 
 export const PUBLISH_ARTIFACT_TOOL = "publish_artifact"
 
-export const isPublishArtifactTool = (name: string) =>
-  name === PUBLISH_ARTIFACT_TOOL || name === `mcp__hinacode__${PUBLISH_ARTIFACT_TOOL}`
+export const PUBLISH_DOCUMENT_TOOL = "publish_document"
+
+const publishTools = new Set(
+  [PUBLISH_ARTIFACT_TOOL, PUBLISH_DOCUMENT_TOOL].flatMap((name) => [name, `mcp__hinacode__${name}`]),
+)
+
+export const isPublishArtifactTool = (name: string) => publishTools.has(name)
+
+export const isPublishDocumentTool = (name: string) => name.endsWith(PUBLISH_DOCUMENT_TOOL) && publishTools.has(name)
 
 export const publishedArtifactId = (result: string) =>
-  /^Published artifact ([a-z0-9][a-z0-9-]*) version \d+/.exec(result)?.[1] ?? null
+  /^Published (?:artifact|document) ([a-z0-9][a-z0-9-]*) version \d+/.exec(result)?.[1] ?? null
 
 export const CREATE_THREAD_TOOL = "create_thread"
 

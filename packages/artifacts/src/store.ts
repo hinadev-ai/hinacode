@@ -3,7 +3,16 @@ import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promise
 import { dirname, join } from "node:path"
 import { setTimeout as delay } from "node:timers/promises"
 import { lock } from "proper-lockfile"
-import { type Artifact, ArtifactSchema, contentType, isArtifactId, normalizeArtifactPath } from "./artifact.ts"
+import {
+  type Artifact,
+  type ArtifactAuthor,
+  type ArtifactKind,
+  ArtifactSchema,
+  contentType,
+  DOCUMENT_ENTRY,
+  isArtifactId,
+  normalizeArtifactPath,
+} from "./artifact.ts"
 
 export const MAX_ARTIFACT_BYTES = 16 * 1024 * 1024
 
@@ -11,12 +20,40 @@ export class ArtifactError extends Error {
   override name = "ArtifactError"
 }
 
-export type PublishInput = {
+export class ArtifactConflictError extends ArtifactError {
+  override name = "ArtifactConflictError"
+  readonly current: Artifact
+  constructor(current: Artifact) {
+    super(`Artifact ${current.id} is at version ${current.version}.`)
+    this.current = current
+  }
+}
+
+type FileInput = { path: string; content: string; encoding?: "utf8" | "base64" }
+
+type PublishCommon = {
   id?: string
-  title: string
-  entry?: string
+  title?: string
   threadId?: string
-  files: Array<{ path: string; content: string; encoding?: "utf8" | "base64" }>
+  baseRevision?: number
+  author?: ArtifactAuthor
+}
+
+export type PublishInput =
+  | (PublishCommon & { kind?: "page"; entry?: string; files: FileInput[] })
+  | (PublishCommon & { kind: "document"; markdown: string })
+
+const contentOf = (input: PublishInput) =>
+  input.kind === "document"
+    ? { kind: "document" as const, entry: DOCUMENT_ENTRY, files: [{ path: DOCUMENT_ENTRY, content: input.markdown }] }
+    : { kind: "page" as const, entry: input.entry ?? "index.html", files: input.files }
+
+export type ArtifactFileContent = {
+  bytes: Uint8Array<ArrayBuffer>
+  type: string
+  version: number
+  revision: number
+  kind: ArtifactKind
 }
 
 export type ArtifactStore = {
@@ -24,15 +61,16 @@ export type ArtifactStore = {
   publish(input: PublishInput): Promise<Artifact>
   get(id: string): Promise<Artifact | null>
   list(): Promise<Artifact[]>
-  file(id: string, path: string): Promise<{ bytes: Uint8Array<ArrayBuffer>; type: string } | null>
+  file(id: string, path: string): Promise<ArtifactFileContent | null>
   remove(id: string): Promise<boolean>
+  rename(id: string, title: string): Promise<Artifact>
 }
 
 const ID_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz"
 
 const newId = () => Array.from(randomBytes(12), (byte) => ID_ALPHABET[byte % ID_ALPHABET.length]).join("")
 
-const decodeFiles = (files: PublishInput["files"]) => {
+const decodeFiles = (files: FileInput[]) => {
   if (files.length === 0) throw new ArtifactError("An artifact needs at least one file, such as index.html.")
   const decoded = new Map<string, Buffer>()
   let total = 0
@@ -82,6 +120,14 @@ const lockArtifact = async (directory: string, onCompromised: (error: Error) => 
   }
 }
 
+const titleOf = (title: string | undefined) => {
+  const trimmed = title?.trim() ?? ""
+  if (trimmed === "") throw new ArtifactError("An artifact needs a title.")
+  return trimmed
+}
+
+const missing = (id: string) => new ArtifactError(`No artifact has the id "${id}". Omit id to publish a new artifact.`)
+
 export const openArtifactStore = (root: string, options: { now?: () => Date } = {}): ArtifactStore => {
   const now = options.now ?? (() => new Date())
 
@@ -120,14 +166,22 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
     return artifacts.filter((artifact) => artifact !== null).toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   }
 
+  const writeManifest = async (artifact: Artifact, assertLocked: () => void) => {
+    const directory = join(root, artifact.id)
+    const temporary = join(directory, `artifact.json.${randomUUID()}.tmp`)
+    await writeFile(temporary, `${JSON.stringify(artifact, null, 2)}\n`)
+    assertLocked()
+    await rename(temporary, join(directory, "artifact.json"))
+  }
+
   const publish = async (input: PublishInput): Promise<Artifact> => {
-    const title = input.title.trim()
-    if (title === "") throw new ArtifactError("An artifact needs a title.")
-    const files = decodeFiles(input.files)
-    const entry = normalizeArtifactPath(input.entry ?? "index.html")
+    if (input.id === undefined) titleOf(input.title)
+    const content = contentOf(input)
+    const files = decodeFiles(content.files)
+    const entry = normalizeArtifactPath(content.entry)
     if (entry === null || !files.has(entry)) {
       throw new ArtifactError(
-        `The entry "${input.entry ?? "index.html"}" is not one of the files. Include it, or set entry to a file you publish.`,
+        `The entry "${content.entry}" is not one of the files. Include it, or set entry to a file you publish.`,
       )
     }
     if (input.id !== undefined && !isArtifactId(input.id)) {
@@ -136,37 +190,49 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
     const id = input.id ?? newId()
     return withLock(id, async (assertLocked) => {
       const previous = input.id === undefined ? null : await get(id)
-      if (input.id !== undefined && previous === null) {
-        throw new ArtifactError(`No artifact has the id "${id}". Omit id to publish a new artifact.`)
+      if (input.id !== undefined && previous === null) throw missing(id)
+      const title = titleOf(input.title ?? previous?.title)
+      if (previous !== null && previous.kind !== content.kind) {
+        throw new ArtifactError(
+          `Artifact ${id} is a ${previous.kind}. Update it with ${previous.kind === "document" ? "publish_document" : "publish_artifact"}.`,
+        )
+      }
+      if (previous !== null && input.baseRevision !== undefined && previous.revision !== input.baseRevision) {
+        throw new ArtifactConflictError(previous)
       }
 
+      const author = input.author ?? "agent"
+      const inPlace = previous !== null && author === "developer" && previous.author === "developer"
       const directory = join(root, id)
       await mkdir(directory, { recursive: true })
-      const version = await claimVersion(directory, (previous?.version ?? 0) + 1)
+      const version = inPlace ? previous.version : await claimVersion(directory, (previous?.version ?? 0) + 1)
       const versionDirectory = join(directory, String(version))
       for (const [path, bytes] of files) {
         assertLocked()
         const target = join(versionDirectory, path)
         await mkdir(dirname(target), { recursive: true })
-        await writeFile(target, bytes)
+        const temporary = `${target}.${randomUUID()}.tmp`
+        await writeFile(temporary, bytes)
+        await rename(temporary, target)
       }
 
       const timestamp = now().toISOString()
       const threadId = previous?.threadId ?? input.threadId
       const artifact: Artifact = {
         id,
+        kind: content.kind,
         title,
         entry,
         version,
+        revision: (previous?.revision ?? 0) + 1,
+        author,
         files: Array.from(files, ([path, bytes]) => ({ path, type: contentType(path), size: bytes.byteLength })),
         createdAt: previous?.createdAt ?? timestamp,
         updatedAt: timestamp,
         ...(threadId === undefined ? {} : { threadId }),
       }
-      const temporary = join(directory, `artifact.json.${randomUUID()}.tmp`)
-      await writeFile(temporary, `${JSON.stringify(artifact, null, 2)}\n`)
-      assertLocked()
-      await rename(temporary, join(directory, "artifact.json"))
+      await writeManifest(artifact, assertLocked)
+      if (inPlace) return artifact
 
       const stale = (await readdir(directory)).filter(
         (name) => /^\d+$/.test(name) && Number(name) !== version && Number(name) !== previous?.version,
@@ -186,7 +252,8 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
       const listed = artifact?.files.find((candidate) => candidate.path === normalized)
       if (!artifact || !listed || artifact.version === missingVersion) return null
       try {
-        return { bytes: await readFile(join(root, id, String(artifact.version), listed.path)), type: listed.type }
+        const bytes = await readFile(join(root, id, String(artifact.version), listed.path))
+        return { bytes, type: listed.type, version: artifact.version, revision: artifact.revision, kind: artifact.kind }
       } catch (error) {
         if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") return null
         missingVersion = artifact.version
@@ -204,5 +271,17 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
     })
   }
 
-  return { root, publish, get, list, file, remove }
+  const renameArtifact = async (id: string, title: string) => {
+    const name = titleOf(title)
+    if (!isArtifactId(id)) throw missing(id)
+    return withLock(id, async (assertLocked) => {
+      const previous = await get(id)
+      if (previous === null) throw missing(id)
+      const artifact = { ...previous, title: name, updatedAt: now().toISOString() }
+      await writeManifest(artifact, assertLocked)
+      return artifact
+    })
+  }
+
+  return { root, publish, get, list, file, remove, rename: renameArtifact }
 }

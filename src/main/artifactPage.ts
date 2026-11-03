@@ -18,6 +18,8 @@ export const withArtifactPage = async <T>(
     ...(size === undefined ? {} : { width: size.width, height: size.height, useContentSize: true }),
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
   })
+  page.webContents.setWindowOpenHandler(() => ({ action: "deny" }))
+  page.webContents.on("will-navigate", (event) => event.preventDefault())
   const settled = async () => {
     if (onProblem !== undefined) {
       await page.loadURL("about:blank")

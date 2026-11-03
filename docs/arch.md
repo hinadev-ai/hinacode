@@ -651,6 +651,7 @@ flowchart TB
   main -- "hinacode-file: known roots only,<br/>CSP sandbox allow-scripts" --> preview["File preview iframe<br/>opaque origin"]
   main -- "hinacode-artifact: store or owning cloud,<br/>CSP sandbox allow-scripts, no-store" --> artifact["Artifact iframe<br/>opaque origin"]
   main -- "publish check: hidden sandboxed window,<br/>DevTools events schema-decoded" --> check["Artifact check page<br/>opaque origin"]
+  main -- "document Markdown: parsed into the editor schema,<br/>no agent HTML runs" --> renderer
   main -- "hinacode-github-asset: gh token stays in main" --> renderer
 ```
 

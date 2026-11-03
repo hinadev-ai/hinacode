@@ -33,6 +33,7 @@ Use the mock Claude to see any transcript state in the real app without spending
 | `/mock-long-turn`       | 400 steps, then text that streams until Stop.                                                                                                                                                                                 |
 | `/mock-subagents`       | Six sub-agents in every status, updating every two seconds.                                                                                                                                                                   |
 | `/mock-artifacts`       | Publishes an artifact named after the prompt through the real MCP server.                                                                                                                                                     |
+| `/mock-documents`       | Publishes a document named after the prompt through the real MCP server. The next message updates it from the revision it last saw, so an edit in between shows the conflict the agent gets.                                  |
 
 Stop ends every scenario as Interrupted, not only `/mock-stop`.
 

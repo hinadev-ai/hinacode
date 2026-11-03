@@ -7,17 +7,28 @@ export const ArtifactFileSchema = z.object({
   size: z.number().int().nonnegative(),
 })
 
+export const ArtifactKindSchema = z.enum(["page", "document"])
+
+export const ArtifactAuthorSchema = z.enum(["agent", "developer"])
+
+export const DOCUMENT_ENTRY = "document.md"
+
 export const ArtifactSchema = z.object({
   id: z.string(),
+  kind: ArtifactKindSchema.default("page"),
   title: z.string(),
   entry: z.string(),
   version: z.number().int().positive(),
+  revision: z.number().int().nonnegative().default(0),
+  author: ArtifactAuthorSchema.default("agent"),
   files: z.array(ArtifactFileSchema),
   createdAt: z.string(),
   updatedAt: z.string(),
   threadId: z.string().optional(),
 })
 
+export type ArtifactKind = z.infer<typeof ArtifactKindSchema>
+export type ArtifactAuthor = z.infer<typeof ArtifactAuthorSchema>
 export type ArtifactFile = z.infer<typeof ArtifactFileSchema>
 export type Artifact = z.infer<typeof ArtifactSchema>
 

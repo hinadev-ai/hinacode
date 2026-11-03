@@ -5,6 +5,7 @@ import {
   type AgentEvent,
   type McpConnection,
   PUBLISH_ARTIFACT_TOOL,
+  PUBLISH_DOCUMENT_TOOL,
   publishedArtifactId,
 } from "../../../../shared/agent.ts"
 
@@ -63,6 +64,91 @@ export const artifactTurn = (
       return [
         { type: "tool_call_finished", callId, output, isError },
         { type: "text_delta", text: isError ? "Publishing failed." : "Published the artifact." },
+        { type: "turn_completed" },
+      ]
+    }),
+  )
+  return { started, finished }
+}
+
+const DOCUMENT = `## Goal
+
+Let the developer edit what the agent writes.
+
+## Steps
+
+- [x] Define the data shape
+- [ ] Build the editor
+- [ ] Verify in the real app
+
+| Part | Owner |
+| --- | --- |
+| Store | Agent |
+| Editor | Developer |
+
+\`\`\`ts
+type ArtifactKind = "page" | "document"
+\`\`\`
+
+\`\`\`chart
+{
+  "type": "bar",
+  "title": "Daily sales peaked at ¥63,900 on 10/17",
+  "notes": "Total ¥283,675 from 10/15 to 10/19",
+  "x": "day",
+  "series": [
+    { "key": "chat", "label": "Chat" },
+    { "key": "drama", "label": "Drama" },
+    { "key": "replay", "label": "Replay" }
+  ],
+  "unit": { "prefix": "¥" },
+  "rows": [
+    { "day": "10-15", "chat": 25875, "drama": 18700, "replay": 60 },
+    { "day": "10-16", "chat": 31900, "drama": 18000, "replay": 0 },
+    { "day": "10-17", "chat": 54800, "drama": 9100, "replay": 0 },
+    { "day": "10-18", "chat": 52300, "drama": 9200, "replay": 0 },
+    { "day": "10-19", "chat": 45700, "drama": 8000, "replay": 40 }
+  ]
+}
+\`\`\`
+`
+
+export type MockDocument = {
+  readonly id: string
+  readonly title: string
+  readonly revision: number
+  readonly markdown: string
+}
+
+const publishedRevision = (output: string) => Number(/revision (\d+) to publish_document/.exec(output)?.[1])
+
+export const documentTurn = (
+  callId: string,
+  prompt: string,
+  connection: McpConnection,
+  previous: MockDocument | undefined,
+  published: (document: MockDocument) => void,
+) => {
+  const markdown =
+    previous === undefined ? `# ${prompt}\n\n${DOCUMENT}` : `${previous.markdown}\nThe agent added: ${prompt}\n`
+  const input = {
+    ...(previous !== undefined && { id: previous.id, revision: previous.revision }),
+    title: previous?.title ?? prompt,
+    markdown,
+  }
+  const started: AgentEvent = {
+    type: "tool_call_started",
+    callId,
+    name: `mcp__hinacode__${PUBLISH_DOCUMENT_TOOL}`,
+    input,
+  }
+  const finished = Effect.promise(() => callTool(connection, PUBLISH_DOCUMENT_TOOL, input)).pipe(
+    Effect.map(({ output, isError }): ReadonlyArray<AgentEvent> => {
+      const id = publishedArtifactId(output)
+      if (id !== null) published({ id, title: input.title, revision: publishedRevision(output), markdown })
+      return [
+        { type: "tool_call_finished", callId, output, isError },
+        { type: "text_delta", text: isError ? "The developer edited the document first." : "Published the document." },
         { type: "turn_completed" },
       ]
     }),
