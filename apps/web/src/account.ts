@@ -1,4 +1,5 @@
 import { Option, Schema } from "effect"
+import { m } from "@/paraglide/messages.js"
 import { type RelayMachine, RelayMachineList } from "../../../src/shared/relayMachines.ts"
 
 export const DEFAULT_RELAY_URL = import.meta.env.VITE_RELAY_URL ?? "https://relay.hinacode.app"
@@ -35,4 +36,17 @@ export const fetchMachines = async (account: RelayAccount): Promise<MachinesAnsw
   if (!response.ok) return { _tag: "badStatus", status: response.status }
   const list = Option.getOrNull(decodeList(await response.json().catch(() => null)))
   return list === null ? { _tag: "badAnswer" } : { _tag: "machines", machines: list.machines }
+}
+
+export const describeFailure = (answer: Exclude<MachinesAnswer, { _tag: "machines" }>) => {
+  switch (answer._tag) {
+    case "unauthorized":
+      return m.web_relay_refused()
+    case "unreachable":
+      return m.web_relay_unreachable()
+    case "badStatus":
+      return m.web_relay_bad_status({ status: String(answer.status) })
+    case "badAnswer":
+      return m.web_relay_bad_answer()
+  }
 }

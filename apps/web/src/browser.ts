@@ -126,7 +126,7 @@ export const makeBrowserAnswers = (context: BrowserContext) => {
     },
     "windows.openPullRequest": ({ threadId, url }: { threadId: string; url: string }) => {
       const entry = `/thread/${encodeURIComponent(threadId)}/pull-request?${new URLSearchParams({ url })}`
-      window.open(`${location.pathname}?${new URLSearchParams({ entry })}`, "_blank")
+      window.open(`${location.pathname}?${new URLSearchParams({ entry })}`, "_blank", "noopener")
     },
     "windows.addLineComment": ({ threadId, comment }: { threadId: string; comment: unknown }) =>
       // oxlint-disable-next-line unicorn/require-post-message-target-origin

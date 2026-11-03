@@ -5,10 +5,10 @@ import { m } from "@/paraglide/messages.js"
 import { useLocale } from "@/stores/locale.ts"
 import type { RelayMachine } from "../../../src/shared/relayMachines.ts"
 import type { TransportMessages } from "../../../src/shared/transport.ts"
-import { fetchMachines, type RelayAccount, signOut, storedAccount } from "./account.ts"
+import { describeFailure, fetchMachines, type RelayAccount, signOut, storedAccount } from "./account.ts"
 import { connectMachines } from "./bridge.ts"
 import { readSettings } from "./browser.ts"
-import { describeFailure, Gate } from "./Gate.tsx"
+import { Gate } from "./Gate.tsx"
 import { serveResources } from "./resources.ts"
 
 const transportMessages: TransportMessages = {

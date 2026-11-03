@@ -3,20 +3,7 @@ import { Button } from "@/components/ui/button.tsx"
 import { Input } from "@/components/ui/input.tsx"
 import { m } from "@/paraglide/messages.js"
 import type { RelayMachine } from "../../../src/shared/relayMachines.ts"
-import { DEFAULT_RELAY_URL, fetchMachines, type MachinesAnswer, type RelayAccount, saveAccount } from "./account.ts"
-
-export const describeFailure = (answer: Exclude<MachinesAnswer, { _tag: "machines" }>) => {
-  switch (answer._tag) {
-    case "unauthorized":
-      return m.web_relay_refused()
-    case "unreachable":
-      return m.web_relay_unreachable()
-    case "badStatus":
-      return m.web_relay_bad_status({ status: String(answer.status) })
-    case "badAnswer":
-      return m.web_relay_bad_answer()
-  }
-}
+import { DEFAULT_RELAY_URL, describeFailure, fetchMachines, type RelayAccount, saveAccount } from "./account.ts"
 
 export function Gate({
   error,

@@ -89,6 +89,7 @@ export const resolveResource = async (
   const dataUrl = desktop === null ? null : await dataUrlOf(bridge, desktop)
   if (desktop === null || dataUrl === null) return notFound
   const file = await fetch(dataUrl)
+  if (!file.ok) return notFound
   const type = file.headers.get("content-type") ?? "application/octet-stream"
   const framed = destination === "iframe" && type.startsWith("text/html")
   const html = framed ? await inlineLinkedFiles(bridge, desktop, await file.text()) : null
