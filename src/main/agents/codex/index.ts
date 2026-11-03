@@ -39,6 +39,7 @@ import {
   LISTED_SESSIONS,
   MCP_TOOL_TIMEOUT_SECONDS,
   type SessionHistory,
+  type SubagentChange,
   tmpEnv,
 } from "../provider.ts"
 import { perHome } from "../usage.ts"
@@ -46,7 +47,7 @@ import { threadAccess, turnAccess } from "./access.ts"
 import { type CodexClient, type Incoming, makeCodexClient } from "./client.ts"
 import { codexHome, copyRollouts, makeRolloutUsage } from "./rollouts.ts"
 import { attachmentContext } from "../elementContext.ts"
-import { applyChildNotification, applyParentItem, type Subagents } from "./subagents.ts"
+import { applyChildNotification, applyChildTurn, applyParentItem, type Subagents } from "./subagents.ts"
 import { skillInputs, toCommand } from "./skills.ts"
 import { toolInput, toolName, toolResult, toPostedQuestion } from "./items.ts"
 import { toImportedHistory, toNativeSessions } from "./sessions.ts"
@@ -195,6 +196,7 @@ const make = Effect.gen(function* () {
           Effect.onError(() => Scope.close(scope, Exit.void)),
         )
         clients.set(key, { client, scope })
+        yield* client.subscribe(reportSubagentsOfIdleThreads(client)).pipe(Scope.provide(scope))
         return client
       }),
     )
@@ -207,9 +209,34 @@ const make = Effect.gen(function* () {
   const runs = new Map<string, Run>()
   const subagentsByThread = new Map<string, Subagents>()
   const subagentTurns = new Map<string, string>()
+  const subagentClients = new Map<string, CodexClient>()
+  const threadsInTurn = new Set<string>()
+  const subagentChanges = yield* Queue.unbounded<SubagentChange>()
   const loadedCompactLimits = new Map<string, number | null>()
   const terminalsByThread = new Map<string, Terminals>()
   const backgroundTaskChanges = yield* Queue.unbounded<BackgroundTasksChange>()
+
+  const parentOf = (childThreadId: string) => {
+    for (const [threadId, subagents] of subagentsByThread) {
+      if (subagents.has(childThreadId)) return { threadId, subagents }
+    }
+    return undefined
+  }
+
+  const reportSubagentsOfIdleThreads = (client: CodexClient) => (message: Incoming) => {
+    if (message.kind !== "notification") return
+    const childThreadId = (message.params as { threadId?: string } | undefined)?.threadId
+    const parent = childThreadId === undefined ? undefined : parentOf(childThreadId)
+    if (childThreadId === undefined || parent === undefined || threadsInTurn.has(parent.threadId)) return
+    subagentClients.set(childThreadId, client)
+    const childScope = message.params as { turnId?: string; turn?: { id: string } }
+    const childTurnId = childScope.turnId ?? childScope.turn?.id
+    if (childTurnId !== undefined) subagentTurns.set(childThreadId, childTurnId)
+    const changed =
+      applyChildTurn(parent.subagents, childThreadId, message.method, message.params, new Date().toISOString()) ??
+      applyChildNotification(parent.subagents, childThreadId, message.method, message.params, toolName)
+    if (changed) Queue.offerUnsafe(subagentChanges, { threadId: parent.threadId, subagent: changed })
+  }
 
   const listTerminals = (terminals: Terminals) =>
     Effect.gen(function* () {
@@ -286,6 +313,7 @@ const make = Effect.gen(function* () {
       for (const [childThreadId, subagent] of subagents) {
         const turnId = subagentTurns.get(childThreadId)
         subagentTurns.delete(childThreadId)
+        subagentClients.delete(childThreadId)
         if (client === undefined || turnId === undefined || subagent.status !== "running") continue
         yield* interruptTurn(client, { threadId: childThreadId, turnId }).pipe(Effect.ignore)
       }
@@ -455,6 +483,10 @@ const make = Effect.gen(function* () {
 
           const inbox = yield* Queue.unbounded<Incoming>()
           yield* client.subscribe((message) => Queue.offerUnsafe(inbox, message))
+          yield* Effect.acquireRelease(
+            Effect.sync(() => threadsInTurn.add(input.threadId)),
+            () => Effect.sync(() => threadsInTurn.delete(input.threadId)),
+          )
 
           const hiddenSkills = input.userSkills
             ? null
@@ -546,7 +578,15 @@ const make = Effect.gen(function* () {
           let subagents = subagentsByThread.get(input.threadId)
           if (subagents === undefined) subagentsByThread.set(input.threadId, (subagents = new Map()))
           const emitSubagents = (changed: ReadonlyArray<Subagent>) =>
-            Effect.forEach(changed, (subagent) => emit({ type: "subagent_updated", subagent }), { discard: true })
+            Effect.forEach(
+              changed,
+              (subagent) =>
+                Effect.andThen(
+                  Effect.sync(() => subagentClients.set(subagent.id, client)),
+                  emit({ type: "subagent_updated", subagent }),
+                ),
+              { discard: true },
+            )
           let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 }
           let lastError: string | undefined
           let planRevision = 0
@@ -902,7 +942,7 @@ const make = Effect.gen(function* () {
 
   const stopSubagent = (threadId: string, subagentId: string) =>
     Effect.suspend(() => {
-      const client = runs.get(threadId)?.client
+      const client = runs.get(threadId)?.client ?? subagentClients.get(subagentId)
       const turnId = subagentTurns.get(subagentId)
       if (client === undefined || turnId === undefined || !subagentsByThread.get(threadId)?.has(subagentId))
         return Effect.fail(new AgentError({ provider: "codex", message: "The sub-agent has no active turn to stop" }))
@@ -952,6 +992,7 @@ const make = Effect.gen(function* () {
     steer,
     interrupt,
     closeSession,
+    subagentChanges: Stream.fromQueue(subagentChanges),
     stopSubagent,
     respondApproval,
     respondQuestion,

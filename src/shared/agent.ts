@@ -317,6 +317,8 @@ export interface McpConnection {
 
 export const RUN_AGENT_TOOL = "run_agent"
 
+export const WAIT_AGENT_TOOL = "wait_agent"
+
 export const isRunAgentTool = (name: string) => name === RUN_AGENT_TOOL || name === `mcp__hinacode__${RUN_AGENT_TOOL}`
 
 export const PUBLISH_ARTIFACT_TOOL = "publish_artifact"

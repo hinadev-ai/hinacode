@@ -1,5 +1,5 @@
 import type { Subagent, SubagentStatus } from "../../../shared/agent.ts"
-import type { CollabAgentStatus, ServerNotificationParams, ThreadItem } from "./protocol.ts"
+import type { CollabAgentStatus, ServerNotificationParams, ThreadItem, TurnStatus } from "./protocol.ts"
 
 export type Subagents = Map<string, Subagent>
 
@@ -98,6 +98,38 @@ export function applyChildNotification(
     case "thread/tokenUsage/updated": {
       const { tokenUsage } = params as ServerNotificationParams["thread/tokenUsage/updated"]
       return update(subagents, childThreadId, { tokens: tokenUsage.total.totalTokens })
+    }
+    default:
+      return undefined
+  }
+}
+
+const turnEndStatus: Record<TurnStatus, SubagentStatus> = {
+  completed: "completed",
+  interrupted: "stopped",
+  failed: "failed",
+  inProgress: "running",
+}
+
+export function applyChildTurn(
+  subagents: Subagents,
+  childThreadId: string,
+  method: string,
+  params: unknown,
+  now: string,
+): Subagent | undefined {
+  const current = subagents.get(childThreadId)
+  if (current === undefined) return undefined
+  switch (method) {
+    case "turn/started":
+      return current.status === "running"
+        ? undefined
+        : update(subagents, childThreadId, { status: "running", endedAt: null })
+    case "turn/completed": {
+      const { turn } = params as ServerNotificationParams["turn/completed"]
+      const status = turnEndStatus[turn.status]
+      if (status === current.status) return undefined
+      return update(subagents, childThreadId, { status, endedAt: status === "running" ? null : now })
     }
     default:
       return undefined
