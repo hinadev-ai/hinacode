@@ -1,16 +1,17 @@
 import { execFileSync } from "node:child_process"
-import { mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { describe, expect, it } from "@effect/vitest"
 import { Effect, FileSystem, Layer } from "effect"
+import { SpanLedger, traceLayer } from "../trace.ts"
 import * as Git from "./Git.ts"
 import { diffWorkingTree, snapshotWorkingTree } from "./workingTree.ts"
 
 const git = (cwd: string, ...args: Array<string>) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" })
 
-const withRepo = <A, E>(f: (root: string) => Effect.Effect<A, E, Git.Git | FileSystem.FileSystem>) =>
+const withRepo = <A, E>(f: (root: string) => Effect.Effect<A, E, Git.Git | FileSystem.FileSystem>, trace?: string) =>
   Effect.acquireRelease(
     Effect.sync(() => mkdtempSync(join(tmpdir(), "kk-working-tree-test-"))),
     (path) => Effect.sync(() => rmSync(path, { recursive: true, force: true })),
@@ -19,7 +20,12 @@ const withRepo = <A, E>(f: (root: string) => Effect.Effect<A, E, Git.Git | FileS
       execFileSync("git", ["init", "-q", "-b", "main", root])
       return f(root)
     }),
-    Effect.provide(Git.layer.pipe(Layer.provideMerge(NodeServices.layer))),
+    Effect.provide(
+      Git.layer.pipe(
+        Layer.provideMerge(NodeServices.layer),
+        Layer.provideMerge(traceLayer(trace, new SpanLedger(200))),
+      ),
+    ),
   )
 
 const commitAll = (root: string) => {
@@ -119,4 +125,38 @@ describe("diffWorkingTree", () => {
       }),
     ),
   )
+
+  it.live("runs one snapshot for concurrent diffs of the same working tree", () => {
+    const traceDir = mkdtempSync(join(tmpdir(), "kk-working-tree-trace-"))
+    const trace = join(traceDir, "trace.jsonl")
+    return withRepo(
+      (root) =>
+        Effect.gen(function* () {
+          writeFileSync(join(root, "kept.txt"), "before\n")
+          commitAll(root)
+          const base = yield* snapshotWorkingTree(root)
+          writeFileSync(join(root, "kept.txt"), "after\n")
+          writeFileSync(trace, "")
+
+          const [first, second] = yield* Effect.all(
+            [diffWorkingTree(root, Effect.succeed(base)), diffWorkingTree(root, Effect.succeed(base))],
+            { concurrency: "unbounded" },
+          )
+          const later = yield* diffWorkingTree(root, Effect.succeed(base))
+          yield* Effect.sleep("50 millis")
+
+          expect(second).toStrictEqual(first)
+          expect(later).toStrictEqual(first)
+          const commands = readFileSync(trace, "utf8")
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line) as { command?: string })
+            .flatMap((span) => (span.command === undefined ? [] : [span.command]))
+          expect(commands.filter((command) => command.endsWith(" add -A"))).toHaveLength(2)
+          expect(commands.filter((command) => command.endsWith(" write-tree"))).toHaveLength(2)
+          expect(commands.filter((command) => command.includes(" diff "))).toHaveLength(3)
+        }),
+      trace,
+    ).pipe(Effect.ensuring(Effect.sync(() => rmSync(traceDir, { recursive: true, force: true }))))
+  })
 })
