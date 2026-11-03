@@ -1145,9 +1145,11 @@ it("queues a scheduled message that comes due during a turn", async () => {
 
     await Effect.runPromise(runner.sendDueSchedules)
 
-    const current = await Effect.runPromise(threads.get(thread.id))
-    expect(current.scheduled).toStrictEqual([])
-    expect(current.queue.map((message) => message.text)).toEqual(["next"])
+    await vi.waitFor(async () => {
+      const current = await Effect.runPromise(threads.get(thread.id))
+      expect(current.scheduled).toStrictEqual([])
+      expect(current.queue.map((message) => message.text)).toEqual(["next"])
+    })
     await Effect.runPromise(runner.interrupt(thread.id))
   })
 })
@@ -1163,10 +1165,14 @@ it("keeps a scheduled message that failed to send, with the reason, until it is 
     await Effect.runPromise(runner.schedule({ threadId: thread.id, text: "lost", attachments: [], sendAt: overdue }))
 
     await Effect.runPromise(runner.sendDueSchedules)
-    await Effect.runPromise(runner.sendDueSchedules)
 
+    await vi.waitFor(async () =>
+      expect((await Effect.runPromise(threads.get(thread.id))).scheduled).toMatchObject([
+        { text: "lost", sendAt: overdue, failure: expect.any(String) },
+      ]),
+    )
+    await Effect.runPromise(runner.sendDueSchedules)
     const [failed] = (await Effect.runPromise(threads.get(thread.id))).scheduled
-    expect(failed).toMatchObject({ text: "lost", sendAt: overdue, failure: expect.any(String) })
     expect(turns).toStrictEqual([])
 
     await Effect.runPromise(runner.reschedule(thread.id, failed!.id, later))
