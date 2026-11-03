@@ -100,6 +100,35 @@ Deferring transcript updates with `useDeferredValue` was measured and left out. 
 because what still blocks a key then is commit work: LegendList measuring rows, the Markdown mount when the reply
 finishes, and mermaid layout.
 
+## Time to first response
+
+`first-response.ts` times one send from the Enter key to the reply on screen, through the real composer and real
+agent accounts. It reloads the renderer on the thread, types the prompt one key every 50 ms (`KEY_INTERVAL_MS`),
+presses Enter, and records push events and DOM changes against the keydown. Each send appends a line to
+`.context/perf/first-response/<label>.jsonl`.
+
+```sh
+S=.agents/skills/verify-hinacode/scripts
+$S/launch.sh 9481 /tmp/kk-ffr && $S/seed-repo.sh /tmp/kk-ffr/repo
+$S/rpc.ts 9481 projects.create '{"name":"demo","rootPath":"/tmp/kk-ffr/repo","setupScript":null}'
+node scripts/perf/first-response.ts suite 9481 before <projectId> 5 claude,codex
+node scripts/perf/first-response.ts summary before after   # medians per provider and case
+```
+
+`suite` opens a new draft per run and sends a cold first message (`cold-new`), then a second one two seconds later
+(`warm`). After 70 seconds, when Claude has closed its idle CLIs, it sends to each thread again (`cold-idle`). Set
+`PROMPT` to change the prompt. It costs real tokens, so keep it short.
+
+| Milestone              | Meaning                                                         |
+| ---------------------- | --------------------------------------------------------------- |
+| user message on screen | The sent message renders, after admission in `AgentRunner`      |
+| provider bound         | `session_bound`, the provider's first event: the CLI has booted |
+| first text delta       | The first reply text reaches the renderer                       |
+| reply text on screen   | The reply's text is visible, which `ReplyText` holds until done |
+
+Model time to first token moves by about a second between runs, so judge a change to session startup by
+`provider bound` first.
+
 ## Measure startup, thread loads and background work in main
 
 `main.ts` launches the built app itself, so it can time a cold start, and reads a span trace the main process

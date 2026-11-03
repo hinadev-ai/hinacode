@@ -78,6 +78,8 @@ onPushEvent((event) => {
     case "message.created":
     case "message.updated":
       return useMessages.getState().receive(event)
+    case "transcript.lost":
+      return void useMessages.getState().reload(event.threadId)
     case "device.agentAction":
       return useDeviceActivity.getState().markUnseen(event.threadId)
     case "thread.event": {

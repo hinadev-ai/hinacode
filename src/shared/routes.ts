@@ -162,6 +162,7 @@ export const routes: Record<RpcMethod, Route> = {
   "threads.reschedule": thread,
   "threads.unschedule": thread,
   "threads.interrupt": thread,
+  "threads.warm": thread,
   "threads.reveal": thread,
   "threads.usage": thread,
   "threads.contextBreakdown": thread,

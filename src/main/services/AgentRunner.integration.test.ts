@@ -4,17 +4,17 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { expect, it } from "@effect/vitest"
-import { Context, Deferred, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, Queue, Stream } from "effect"
+import { Context, Deferred, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
 import { SqlClient } from "effect/sql"
 import { vi } from "vitest"
 import type { AgentEvent, ApprovalDecision, ProviderId, RunTurnInput } from "../../shared/agent.ts"
-import type { TranscriptPush } from "../../shared/contract.ts"
+import { RpcMethods, type TranscriptPush } from "../../shared/contract.ts"
 import type { Message, Thread } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
-import { AgentError, type AgentProvider, type SteerPriority, type Wake } from "../agents/provider.ts"
+import { AgentError, type AgentProvider, type SessionInput, type SteerPriority, type Wake } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
 import * as AgentAccounts from "./AgentAccounts.ts"
@@ -50,6 +50,7 @@ interface Probe {
   readonly idle: Promise<void>
   readonly streamed: Promise<void>
   readonly turns: Array<{ readonly provider: ProviderId; readonly input: RunTurnInput }>
+  readonly warms: Array<SessionInput>
   readonly decisions: Array<{ readonly requestId: string; readonly decision: ApprovalDecision; readonly note?: string }>
   readonly steers: Array<{ readonly text: string; readonly priority: SteerPriority }>
   readonly calls: Array<{ readonly provider: ProviderId; readonly call: "closeSession" | "interrupt" }>
@@ -105,6 +106,7 @@ const withPreparingThread = async (
   let holdInsertion = options.pauseInsertion ?? false
   let holdSnapshot = options.pauseSnapshot ?? false
   const turns: Probe["turns"] = []
+  const warms: Probe["warms"] = []
   const decisions: Probe["decisions"] = []
   const steers: Probe["steers"] = []
   const resolutions = Effect.runSync(Queue.unbounded<AgentEvent>())
@@ -229,6 +231,7 @@ const withPreparingThread = async (
           ? Stream.concat(Stream.make(approval("approval-1")), Stream.fromQueue(resolutions))
           : Stream.make(approval("approval-1"))
       }),
+    warm: (input) => Effect.sync(() => void warms.push(input)),
     wakes: Stream.fromQueue(wakes[id]),
     closeSession: () =>
       closeFails
@@ -383,6 +386,7 @@ const withPreparingThread = async (
         idle: idle.promise,
         streamed: streamed.promise,
         turns,
+        warms,
         decisions,
         steers,
         calls,
@@ -673,6 +677,24 @@ it("tells the agent the branch and paths it works in", async () => {
   })
 })
 
+it("warms the session with the same input the next send runs its turn with", async () => {
+  await withPreparingThread(async ({ runner, thread, turns, warms, idle, release }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+    await idle
+
+    await vi.waitFor(async () => {
+      await Effect.runPromise(runner.warm(thread.id))
+      expect(warms).toHaveLength(1)
+    })
+    await vi.waitFor(() => Effect.runPromise(runner.send(thread.id, "accepted input", [])))
+    await vi.waitFor(() => expect(turns).toHaveLength(2))
+
+    const { prompt: _prompt, attachments: _attachments, ...sent } = turns[1]!.input
+    expect(warms).toStrictEqual([sent])
+  })
+})
+
 const scratchDirectoryOf = (input: RunTurnInput | undefined) =>
   /scratch directory: `([^`]+)`/.exec(input?.instructions ?? "")?.[1]
 
@@ -926,6 +948,41 @@ it("forks a side chat from the last finished turn and hands it the running one",
       expect(turns[2]!.input.prompt).toMatch(/<\/side_chat>\n\nwhy\?$/)
       expect((await Effect.runPromise(threads.get(thread.id))).status).not.toBe("idle")
       expect((await Effect.runPromise(threads.get(side.id))).title).toBe(thread.title)
+    },
+    { forkable: true },
+  )
+})
+
+it("numbers each thread's transcript pushes on its own", async () => {
+  await withPreparingThread(
+    async ({ runner, threads, thread, release, idle, transcript }) => {
+      release()
+      await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+      await idle
+      const side = await Effect.runPromise(threads.sidechat(thread.id))
+      await Effect.runPromise(runner.send(side.id, "accepted input", []))
+      const seqsOf = (threadId: string) =>
+        transcript
+          .filter((push) => (push.type === "thread.event" ? push.threadId : push.message.threadId) === threadId)
+          .map((push) => push.seq)
+      await vi.waitFor(() =>
+        expect(
+          transcript.some(
+            (push) => push.type === "thread.event" && push.threadId === side.id && push.event.type === "turn_completed",
+          ),
+        ).toBe(true),
+      )
+
+      for (const id of [thread.id, side.id]) {
+        const seqs = seqsOf(id)
+        expect(seqs).toEqual(seqs.map((_, index) => index + 1))
+        expect((await Effect.runPromise(runner.transcript(id))).seq).toBe(seqs.length)
+      }
+      const snapshot = await Effect.runPromise(runner.transcript(thread.id))
+      expect(snapshot.sequenceScope).toBe("thread")
+      const { sequenceScope: _, ...legacySnapshot } = snapshot
+      const decodeSnapshot = Schema.decodeUnknownSync(RpcMethods["threads.transcript"].response)
+      expect(decodeSnapshot(legacySnapshot).sequenceScope).toBeUndefined()
     },
     { forkable: true },
   )

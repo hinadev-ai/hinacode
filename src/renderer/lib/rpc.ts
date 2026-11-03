@@ -1,7 +1,14 @@
-import { Duration, Effect, Schedule, Schema, Stream } from "effect"
+import { Duration, Effect, Option, Schedule, Schema, Stream } from "effect"
 import { AsyncResult, Atom } from "effect/reactivity"
 import type { AgentCommand, ProviderId } from "../../shared/agent.ts"
-import { PushEvent, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../../shared/contract.ts"
+import {
+  PushEvent,
+  type RpcMethod,
+  RpcMethods,
+  type RpcRequest,
+  type RpcResponse,
+  transcriptThreadId,
+} from "../../shared/contract.ts"
 import type { Thread } from "../../shared/domain.ts"
 import { PULL_REQUEST_REFRESH } from "../../shared/github.ts"
 import { msUntilNextReset } from "../../shared/planLimits.ts"
@@ -42,12 +49,34 @@ export const callPromise = <M extends RpcMethod>(method: M, payload: RpcRequest<
   Effect.runPromise(call(method, payload, options))
 
 const decodePushEvent = Schema.decodeUnknownSync(PushEvent)
+const decodeTranscriptAddress = Schema.decodeUnknownOption(
+  Schema.Union([
+    Schema.Struct({ type: Schema.Literal("thread.event"), threadId: Schema.String }),
+    Schema.Struct({
+      type: Schema.Literals(["message.created", "message.updated"]),
+      message: Schema.Struct({ threadId: Schema.String }),
+    }),
+  ]),
+)
 
-let pushListeners: ReadonlyArray<(event: PushEvent) => void> = []
+export type RendererPushEvent = PushEvent | { readonly type: "transcript.lost"; readonly threadId: string }
+
+let pushListeners: ReadonlyArray<(event: RendererPushEvent) => void> = []
 let stopBridgeEvents: (() => void) | undefined
 
+const decodeOrReportLoss = (raw: unknown): RendererPushEvent | undefined => {
+  try {
+    return decodePushEvent(raw)
+  } catch (error) {
+    reportError(error)
+    const address = decodeTranscriptAddress(raw)
+    return Option.isSome(address) ? { type: "transcript.lost", threadId: transcriptThreadId(address.value) } : undefined
+  }
+}
+
 const broadcastPushEvent = (raw: typeof PushEvent.Encoded) => {
-  const event = decodePushEvent(raw)
+  const event = decodeOrReportLoss(raw)
+  if (event === undefined) return
   for (const listener of pushListeners) {
     try {
       listener(event)
@@ -57,7 +86,7 @@ const broadcastPushEvent = (raw: typeof PushEvent.Encoded) => {
   }
 }
 
-export const onPushEvent = (listener: (event: PushEvent) => void) => {
+export const onPushEvent = (listener: (event: RendererPushEvent) => void) => {
   pushListeners = [...pushListeners, listener]
   stopBridgeEvents ??= window.hinacode.onEvent(broadcastPushEvent)
   return () => {
@@ -485,7 +514,7 @@ export const threadPortsAtom = Atom.family((threadId: string) =>
 )
 
 const pushFirst =
-  <A>(extract: (event: PushEvent) => A | undefined, fetch: Effect.Effect<A, RpcError>) =>
+  <A>(extract: (event: RendererPushEvent) => A | undefined, fetch: Effect.Effect<A, RpcError>) =>
   (get: {
     addFinalizer: (finalizer: () => void) => void
     setSelf: (result: AsyncResult.AsyncResult<A, RpcError>) => void

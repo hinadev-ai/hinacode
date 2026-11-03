@@ -169,6 +169,7 @@ classDiagram
   }
   class ClaudeProvider {
     one query() per active thread, expires after 60 seconds idle
+    warm() starts it when the user starts typing
     canUseTool → approvals, AskUserQuestion → questions
     permissionMode from the thread's access mode
     loads user, project and local settings
@@ -198,7 +199,7 @@ An account is an agent home: `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, holding the lo
 
 Each provider translates its native protocol into one `AgentEvent` union (`src/shared/agent.ts`): `session_bound`, `text_delta`, `reasoning_delta`, `tool_call_started`, `tool_call_finished`, `file_changed`, `approval_requested`, `approval_resolved`, `question_requested`, `question_resolved`, `questions_posted`, `turn_completed`, `turn_failed` and `turn_limited`. Everything after the provider is agent-agnostic. A `question_requested` blocks the turn until `questions.respond` answers it; `questions_posted` (Codex's `request_user_input_async`) only adds a `questions` part to the transcript, and the user answers it with their next message. Two more events, `secret_requested` and `secret_resolved`, come from the MCP server's `request_secret` tool rather than the provider; the runner folds them into the running turn the same way.
 
-A Claude turn ends when the CLI reports `session_state_changed: idle`, not at its first result: a background sub-agent can outlive Claude's reply, and when it finishes Claude replies to its report in a response that answers no prompt. The idle event waits for both, so their progress, approvals and Claude's reply land in the same turn. CLIs that do not report state still end the turn at its result. The CLI can also start work after it went idle, for example when a background shell finishes and it resumes the sub-agent that started it. When it reports running with no turn open, the provider opens one and hands it to the runner through `AgentProvider.wakes`, and the runner shows it as a reply with no user message before it. Claude keeps a live CLI for immediate follow-ups, then closes it after 60 idle seconds. Starting a turn cancels expiry before changing model or permission settings. Active turns, approval waits, control requests, and unfinished non-ambient background tasks keep the process alive. The countdown restarts when that work finishes. A small resume record retains the provider session ID and session-scoped grants for the same workspace, account, and instructions. The next turn starts a new CLI with that session ID. Transcript data remains in SQLite and the provider's session files. The memory workload and comparison commands live in [`scripts/perf/README.md`](../scripts/perf/README.md#measure-retained-memory).
+A Claude turn ends when the CLI reports `session_state_changed: idle`, not at its first result: a background sub-agent can outlive Claude's reply, and when it finishes Claude replies to its report in a response that answers no prompt. The idle event waits for both, so their progress, approvals and Claude's reply land in the same turn. CLIs that do not report state still end the turn at its result. The CLI can also start work after it went idle, for example when a background shell finishes and it resumes the sub-agent that started it. When it reports running with no turn open, the provider opens one and hands it to the runner through `AgentProvider.wakes`, and the runner shows it as a reply with no user message before it. Claude keeps a live CLI for immediate follow-ups, then closes it after 60 idle seconds. The first keystroke in an empty composer calls `threads.warm`, which starts the CLI the next send will use, so it boots while the user types (see [`features/2026-11-03-warm-claude-session.md`](features/2026-11-03-warm-claude-session.md)). Starting a turn cancels expiry before changing model or permission settings. Active turns, approval waits, control requests, and unfinished non-ambient background tasks keep the process alive. The countdown restarts when that work finishes. A small resume record retains the provider session ID and session-scoped grants for the same workspace, account, and instructions. The next turn starts a new CLI with that session ID. Transcript data remains in SQLite and the provider's session files. The memory workload and comparison commands live in [`scripts/perf/README.md`](../scripts/perf/README.md#measure-retained-memory).
 
 Adding a backend touches, besides its `AgentProvider` in `src/main/agents/`:
 
@@ -298,7 +299,7 @@ A first send waiting for setup keeps its private send claim and cancellation sig
 
 ## Renderer sync: snapshot plus pushes
 
-The database lags a running turn by up to 500 ms, or ten times the last persist time once a write takes longer than 50 ms, so `threads.transcript` overlays the in-memory turn on top of persisted rows and returns the current `seq`.
+The database lags a running turn by up to 500 ms, or ten times the last persist time once a write takes longer than 50 ms, so `threads.transcript` overlays the in-memory turn on top of persisted rows and returns the thread's current `seq`. The runner numbers transcript pushes per thread, so each thread's pushes count 1, 2, 3 with no holes. The snapshot says so with `sequenceScope: "thread"`.
 
 ```mermaid
 sequenceDiagram
@@ -309,10 +310,17 @@ sequenceDiagram
   M-->>S: { messages, approvals, secretRequests, seq }
   S->>S: apply snapshot
   S->>S: replay pending pushes where push.seq > seq
-  M-->>S: later pushes apply where push.seq > seq
+  M-->>S: later pushes apply where push.seq = last + 1
+  M--xS: a push is lost
+  M-->>S: push.seq > last + 1
+  S->>M: rpc threads.transcript again
 ```
 
-Electron IPC can deliver the reply before pushes sent earlier, so a push the snapshot already holds can still arrive after it. The store drops it by `seq`, and drops a reply whose load was superseded by its load token. `specs/TranscriptSync.tla` checks both.
+Electron IPC can deliver the reply before pushes sent earlier, so a push the snapshot already holds can still arrive after it. The store drops it by `seq`, and drops a reply whose load was superseded by its load token.
+
+A push can also go missing, for example when it fails to decode. The store never folds past a hole. When a ready thread receives `push.seq > last + 1`, or the pushes buffered during a load skip a number, it fetches the snapshot again. `last` is the last seq received, including deltas still waiting for the 100 ms flush. A push that fails to decode is reported, and if `rpc.ts` can still read its thread id, it broadcasts `transcript.lost` so the store reloads that thread right away instead of waiting for the next push. `specs/TranscriptSync.tla` checks all of this over a channel that loses pushes. Only a silent loss of a thread's last push stays unnoticed until the next push or reload.
+
+An older cloud daemon speaks the same remote protocol version but numbers pushes across all threads, so its snapshots carry no `sequenceScope`. For those threads the store only drops pushes at or below `last` and never treats a skipped number as a loss, because the skipped numbers belong to other threads.
 
 Neither the snapshot nor the pushes carry long tool outputs. `previewMessage` and `previewPush` (`shared/compactTranscript.ts`) replace a string output longer than 4,096 characters with its last whole lines and set `fullOutputBytes` on the part or `tool_call_finished` event. The runner applies them only where a transcript leaves for a client: the `threads.transcript` reply and `publishTranscript`. The database and the runner's in-memory turn keep the full output. The expanded tool view fetches it with `threads.toolOutput`, which reads the running turn first and then the one part from SQLite. See `features/2026-10-31-lazy-tool-output.md`.
 

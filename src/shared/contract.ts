@@ -432,6 +432,7 @@ export const RpcMethods = {
       questions: Schema.Array(QuestionRequest),
       secretRequests: Schema.Array(SecretRequest),
       seq: Schema.Number,
+      sequenceScope: Schema.optional(Schema.Literal("thread")),
     }),
   ),
   "threads.toolOutput": rpc(
@@ -448,6 +449,7 @@ export const RpcMethods = {
     Schema.Void,
   ),
   "threads.interrupt": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
+  "threads.warm": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "threads.reveal": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "approvals.respond": rpc(
     Schema.Struct({
@@ -756,6 +758,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "threads.reschedule": "mutation",
   "threads.unschedule": "mutation",
   "threads.interrupt": "mutation",
+  "threads.warm": "mutation",
   "threads.reveal": "mutation",
   "approvals.respond": "mutation",
   "questions.respond": "mutation",
@@ -912,6 +915,10 @@ export const TranscriptPush = Schema.Union([
   Schema.Struct({ type: Schema.Literal("message.updated"), seq: Schema.Number, message: Message }),
 ])
 export type TranscriptPush = typeof TranscriptPush.Type
+
+export const transcriptThreadId = (
+  push: { readonly threadId: string } | { readonly message: { readonly threadId: string } },
+) => ("threadId" in push ? push.threadId : push.message.threadId)
 
 export const MenuCommand = Schema.Literals([
   "thread.new",

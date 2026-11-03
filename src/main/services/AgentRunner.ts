@@ -15,7 +15,7 @@ import {
   Semaphore,
   Stream,
 } from "effect"
-import type { RpcResponse, TranscriptPush } from "../../shared/contract.ts"
+import { type RpcResponse, type TranscriptPush, transcriptThreadId } from "../../shared/contract.ts"
 import type {
   AccountHome,
   AccountLimits,
@@ -58,7 +58,7 @@ import { providerInfo } from "../../shared/providers.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
-import { AgentError, type AgentProvider, type SteerPriority, type Wake } from "../agents/provider.ts"
+import { AgentError, type AgentProvider, type SessionInput, type SteerPriority, type Wake } from "../agents/provider.ts"
 import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
 import { makeDeltaCoalescer } from "./coalesceDeltas.ts"
@@ -176,6 +176,7 @@ export class AgentRunner extends Context.Service<
       readonly when: Effect.Effect<boolean, PersistenceError>
     }) => Effect.Effect<boolean, SendError>
     readonly interrupt: (threadId: string) => Effect.Effect<void>
+    readonly warm: (threadId: string) => Effect.Effect<void>
     readonly resumeAtReset: (
       threadId: string,
       enabled: boolean,
@@ -367,7 +368,7 @@ const make = Effect.gen(function* () {
   const subagents = new Map<string, Map<string, Subagent>>()
   const agentRuns = new Map<string, { readonly threadId: string; readonly stop: Effect.Effect<void> }>()
   const backgroundTasks = new Map<string, ReadonlyArray<BackgroundTask>>()
-  let seq = 0
+  const transcriptSeqs = new Map<string, number>()
 
   yield* messages.closeInterrupted
   yield* threads.resetInterrupted
@@ -439,7 +440,10 @@ const make = Effect.gen(function* () {
     )
 
   const publishTranscript = (event: DistributiveOmit<TranscriptPush, "seq">, { whole = false } = {}) => {
-    const numbered = { ...event, seq: ++seq }
+    const threadId = transcriptThreadId(event)
+    const seq = (transcriptSeqs.get(threadId) ?? 0) + 1
+    transcriptSeqs.set(threadId, seq)
+    const numbered = { ...event, seq }
     return push.publish(whole ? numbered : previewPush(numbered))
   }
 
@@ -468,6 +472,36 @@ const make = Effect.gen(function* () {
         scratchDirectory,
       })),
     )
+
+  const sessionInput = (
+    thread: Thread,
+    provider: AgentProvider,
+    cwd: string,
+    home: AccountHome | null,
+    environment: AgentEnvironment,
+  ) =>
+    Effect.gen(function* () {
+      const [mcpServer, { experimental, autoCompactTokens }] = yield* Effect.all([
+        mcp.connectionFor(thread.id),
+        settings.get,
+      ])
+      const input: SessionInput = {
+        threadId: thread.id,
+        cwd,
+        model: thread.model,
+        effort: thread.effort,
+        fastMode: thread.fastMode,
+        autoCompactTokens: autoCompactTokens[provider.id],
+        userSkills: thread.userSkills,
+        accessMode: thread.accessMode,
+        resumeSessionId: thread.providerSessionId ?? thread.forkedFrom?.sessionId ?? null,
+        forkAt: thread.providerSessionId === null ? (thread.forkedFrom?.checkpoint ?? null) : null,
+        home,
+        mcpServer,
+        instructions: yield* subagentInstructions(experimental, environment),
+      }
+      return input
+    })
 
   const insertMessage = (message: Message) =>
     messages.insert(message).pipe(Effect.andThen(publishTranscript({ type: "message.created", message })))
@@ -676,31 +710,11 @@ const make = Effect.gen(function* () {
       follow(
         Stream.unwrap(
           Effect.gen(function* () {
-            const [mcpServer, { experimental, autoCompactTokens }] = yield* Effect.all([
-              mcp.connectionFor(thread.id),
-              settings.get,
-            ])
-            const instructions = yield* subagentInstructions(experimental, environment)
+            const input = yield* sessionInput(thread, provider, cwd, home, environment)
             if (yield* Deferred.isDone(stop)) {
               return Stream.succeed<AgentEvent>({ type: "turn_failed", message: "Turn interrupted" })
             }
-            return provider.runTurn({
-              threadId: thread.id,
-              prompt,
-              attachments,
-              cwd,
-              model: thread.model,
-              effort: thread.effort,
-              fastMode: thread.fastMode,
-              autoCompactTokens: autoCompactTokens[provider.id],
-              userSkills: thread.userSkills,
-              accessMode: thread.accessMode,
-              resumeSessionId: thread.providerSessionId ?? thread.forkedFrom?.sessionId ?? null,
-              forkAt: thread.providerSessionId === null ? (thread.forkedFrom?.checkpoint ?? null) : null,
-              home,
-              mcpServer,
-              instructions,
-            })
+            return provider.runTurn({ ...input, prompt, attachments })
           }),
         ),
       )
@@ -1423,6 +1437,20 @@ const make = Effect.gen(function* () {
       yield* Deferred.succeed(pending.answer, path)
     })
 
+  const warm = (threadId: string) =>
+    Effect.gen(function* () {
+      if (busyThreads.has(threadId) || activeTurns.has(threadId) || pendingSends.has(threadId)) return
+      const thread = yield* threads.get(threadId)
+      if (thread.status === "archived") return
+      if (thread.sideOf !== null && !(yield* threads.started(threadId))) return
+      const provider = yield* providerFor(thread.provider)
+      if (provider.warm === undefined) return
+      const home = yield* accounts.home(thread.accountId)
+      const workspace = yield* activeWorkspace(threadId)
+      const environment = yield* readEnvironment(thread, workspace)
+      yield* provider.warm(yield* sessionInput(thread, provider, workspace.cwd, home, environment))
+    }).pipe(Effect.catchCause((cause) => Effect.logWarning("failed to warm the agent session", cause)))
+
   return AgentRunner.of({
     send,
     queue,
@@ -1444,6 +1472,7 @@ const make = Effect.gen(function* () {
         const pending = pendingSends.get(threadId)
         return pending === undefined ? Effect.void : Deferred.succeed(pending, undefined).pipe(Effect.asVoid)
       }),
+    warm,
     setAccessMode: (threadId, accessMode) =>
       Effect.gen(function* () {
         const turn = activeTurns.get(threadId)
@@ -1472,7 +1501,8 @@ const make = Effect.gen(function* () {
           secretRequests: [...secretRequests.values()]
             .map(({ request }) => request)
             .filter((request) => request.threadId === threadId),
-          seq,
+          seq: transcriptSeqs.get(threadId) ?? 0,
+          sequenceScope: "thread" as const,
         }
       }).pipe(exclusive(threadId)),
     toolOutput: (call) => {
