@@ -1,4 +1,4 @@
-import { readdir, readFile, stat } from "node:fs/promises"
+import { readdir, readFile, realpath, stat } from "node:fs/promises"
 import { join } from "node:path"
 import type { SessionStore } from "@anthropic-ai/claude-agent-sdk"
 import { Option, Schema } from "effect"
@@ -54,11 +54,14 @@ const shorten = (text: string, length: number) => {
   return flat.length > length ? `${flat.slice(0, length - 1)}…` : flat
 }
 
+const recordedCwd = (cwd: string) => realpath(cwd).catch(() => cwd)
+
 export const listClaudeSessions = async (home: string, cwd: string): Promise<ReadonlyArray<NativeSession>> => {
   const { listSessions } = await import("@anthropic-ai/claude-agent-sdk")
-  const sessions = await listSessions({ dir: cwd, sessionStore: homeStore(home), limit: LISTED_SESSIONS })
+  const folder = await recordedCwd(cwd)
+  const sessions = await listSessions({ dir: folder, sessionStore: homeStore(home), limit: LISTED_SESSIONS })
   return sessions
-    .filter((session) => session.cwd === undefined || session.cwd === cwd)
+    .filter((session) => session.cwd === undefined || session.cwd === folder)
     .map((session) => ({
       sessionId: session.sessionId,
       title: shorten(session.summary, 120),
@@ -243,11 +246,12 @@ export const toImportedHistory = (sessionId: string, entries: ReadonlyArray<Entr
 
 const findTranscript = async (home: string, cwd: string, sessionId: string) => {
   const projects = join(home, "projects")
+  const folder = await recordedCwd(cwd)
   for (const dir of await readdir(projects).catch(() => [])) {
     const text = await readFile(join(projects, dir, `${sessionId}.jsonl`), "utf8").catch(() => null)
     if (text === null) continue
     const entries = parseEntries(text)
-    if (entries.some((entry) => entry.cwd === cwd)) return entries
+    if (entries.some((entry) => entry.cwd === folder)) return entries
   }
   return null
 }
