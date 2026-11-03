@@ -2544,7 +2544,7 @@
     }
   ],
   "web_sign_in_title": "Sign in to your relay",
-  "web_sign_in_body": "Paste the owner token you use in Settings, Environments on the desktop.",
+  "web_sign_in_body": "Paste the owner token you use in Settings, Connections on the desktop.",
   "web_owner_token": "Owner token",
   "web_relay_url": "Relay",
   "web_use_other_relay": "Use another relay",

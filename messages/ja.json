@@ -2444,7 +2444,7 @@
   "tool_kind_skill": "{count} 件のスキルを使用",
   "tool_skill_used": "スキル {skills} を使用",
   "web_sign_in_title": "relay にサインイン",
-  "web_sign_in_body": "デスクトップ版の「設定 > 環境」で使うオーナートークンを貼り付けてください。",
+  "web_sign_in_body": "デスクトップ版の「設定 > 接続」で使うオーナートークンを貼り付けてください。",
   "web_owner_token": "オーナートークン",
   "web_relay_url": "Relay",
   "web_use_other_relay": "別の relay を使う",

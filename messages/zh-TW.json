@@ -2480,7 +2480,7 @@
     }
   ],
   "web_sign_in_title": "登入你的 relay",
-  "web_sign_in_body": "貼上你在桌面版「設定 > 環境」中使用的擁有者權杖。",
+  "web_sign_in_body": "貼上你在桌面版「設定 > 連線」中使用的擁有者權杖。",
   "web_owner_token": "擁有者權杖",
   "web_relay_url": "Relay",
   "web_use_other_relay": "使用其他 relay",
