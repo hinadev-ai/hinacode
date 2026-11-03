@@ -229,6 +229,19 @@ describe("worktree cleanup across threads", () => {
   layer(testLayer)((it) => {
     const cleanupOn = Settings.use((settings) => settings.set({ archive: { whenMerged: true, removeWorktree: true } }))
 
+    it.effect("counts a branch as gone once git pruned its folder", () =>
+      Effect.gen(function* () {
+        const root = join(base, "pruned-folder")
+        execFileSync("git", ["init", "-q", "-b", "main", root])
+        git(root, "commit", "-q", "--allow-empty", "-m", "init")
+        git(root, "branch", "kk/pruned")
+        git(root, "branch", "-D", "kk/pruned")
+
+        expect(existsSync(join(root, ".git", "refs", "heads", "kk"))).toBe(false)
+        yield* waitUntilBranchGone(root, "kk/pruned")
+      }),
+    )
+
     it.effect("removes a worktree and its squash-merged branch once its pull request merges", () =>
       Effect.gen(function* () {
         yield* cleanupOn
