@@ -162,6 +162,17 @@ describe("Projects.create", () => {
       expect(error._tag).toBe("ProjectRootInvalidError")
     }),
   )
+
+  it.live("sends a folder inside WSL to a cloud running in WSL", () =>
+    Effect.gen(function* () {
+      for (const rootPath of ["\\\\wsl.localhost\\Ubuntu\\home\\me\\app", "\\\\WSL$\\Debian\\srv\\app"]) {
+        const error = yield* provided(
+          Projects.use((projects) => projects.create({ name: "app", rootPath, setupScript: null })),
+        ).pipe(Effect.flip)
+        expect(error._tag).toBe("ProjectInWslError")
+      }
+    }),
+  )
 })
 
 const withGitHub = (createRepository: GitHub.GitHub["Service"]["createRepository"]) =>
