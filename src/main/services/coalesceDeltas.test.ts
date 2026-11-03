@@ -22,41 +22,60 @@ const reasoning = (value: string): AgentEvent => ({ type: "reasoning_delta", tex
 const toolCall: AgentEvent = { type: "tool_call_started", callId: "call-1", name: "Bash", input: {} }
 
 describe("makeDeltaCoalescer", () => {
-  it.effect("publishes many deltas inside one window as one joined delta", () =>
+  it.effect("publishes the first delta at once and the rest of its window as one joined delta", () =>
     Effect.gen(function* () {
       const { applied, offer } = yield* makeProbe
       const chunks = Array.from({ length: 300 }, (_, index) => `w${index} `)
       for (const chunk of chunks) yield* offer(text(chunk))
-      expect(applied).toEqual([])
+      expect(applied).toEqual([text("w0 ")])
 
       yield* TestClock.adjust(DELTA_WINDOW)
-      expect(applied).toEqual([text(chunks.join(""))])
+      expect(applied).toEqual([text("w0 "), text(chunks.slice(1).join(""))])
     }).pipe(Effect.scoped),
   )
 
-  it.effect("starts a new window for deltas after a flush", () =>
+  it.effect("publishes at most once per window while text keeps streaming", () =>
+    Effect.gen(function* () {
+      const { applied, offer } = yield* makeProbe
+      for (let tick = 0; tick < 20; tick++) {
+        yield* offer(text(`${tick} `))
+        yield* TestClock.adjust("10 millis")
+      }
+      expect(applied).toEqual([
+        text("0 "),
+        text("1 2 3 4 "),
+        text("5 6 7 8 9 "),
+        text("10 11 12 13 14 "),
+        text("15 16 17 18 19 "),
+      ])
+    }).pipe(Effect.scoped),
+  )
+
+  it.effect("publishes the first delta after a quiet window at once", () =>
     Effect.gen(function* () {
       const { applied, offer } = yield* makeProbe
       yield* offer(text("one "))
       yield* TestClock.adjust(DELTA_WINDOW)
       yield* offer(text("two "))
       yield* offer(text("three"))
+      expect(applied).toEqual([text("one "), text("two ")])
+
       yield* TestClock.adjust(DELTA_WINDOW)
-      expect(applied).toEqual([text("one "), text("two three")])
+      expect(applied).toEqual([text("one "), text("two "), text("three")])
     }).pipe(Effect.scoped),
   )
 
-  it.effect("publishes pending text before any other event", () =>
+  it.effect("publishes held text before any other event, and the first delta after it at once", () =>
     Effect.gen(function* () {
       const { applied, offer } = yield* makeProbe
       yield* offer(text("Let me "))
       yield* offer(text("check."))
       yield* offer(toolCall)
       yield* offer(text("Done."))
-      expect(applied).toEqual([text("Let me check."), toolCall])
+      expect(applied).toEqual([text("Let me "), text("check."), toolCall, text("Done.")])
 
       yield* TestClock.adjust(DELTA_WINDOW)
-      expect(applied).toEqual([text("Let me check."), toolCall, text("Done.")])
+      expect(applied).toEqual([text("Let me "), text("check."), toolCall, text("Done.")])
     }).pipe(Effect.scoped),
   )
 
@@ -68,20 +87,21 @@ describe("makeDeltaCoalescer", () => {
       yield* offer(text("answer"))
       yield* offer(reasoning("again"))
       yield* TestClock.adjust(DELTA_WINDOW)
-      expect(applied).toEqual([reasoning("think more"), text("answer"), reasoning("again")])
+      expect(applied).toEqual([reasoning("think "), reasoning("more"), text("answer"), reasoning("again")])
     }).pipe(Effect.scoped),
   )
 
-  it.effect("publishes a flushed batch once even when its window ends later", () =>
+  it.effect("publishes held text once even when its window ends later", () =>
     Effect.gen(function* () {
       const { applied, offer, flush } = yield* makeProbe
-      yield* offer(text("before steer"))
+      yield* offer(text("before "))
+      yield* offer(text("steer"))
       yield* flush
       yield* flush
-      expect(applied).toEqual([text("before steer")])
+      expect(applied).toEqual([text("before "), text("steer")])
 
       yield* TestClock.adjust(DELTA_WINDOW)
-      expect(applied).toEqual([text("before steer")])
+      expect(applied).toEqual([text("before "), text("steer")])
     }).pipe(Effect.scoped),
   )
 })

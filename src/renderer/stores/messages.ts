@@ -30,16 +30,13 @@ interface MessagesState {
 }
 
 export const useMessages = create<MessagesState>()((set, get) => {
-  const pendingDeltas = new Map<
-    string,
-    { pushes: [TranscriptPush, ...TranscriptPush[]]; timer: ReturnType<typeof setTimeout> }
-  >()
-  const takePending = (threadId: string) => {
-    const pending = pendingDeltas.get(threadId)
-    if (pending === undefined) return []
-    clearTimeout(pending.timer)
-    pendingDeltas.delete(threadId)
-    return pending.pushes
+  const streamWindows = new Map<string, StreamWindow>()
+  const takeHeld = (threadId: string) => {
+    const stream = streamWindows.get(threadId)
+    if (stream === undefined) return []
+    clearTimeout(stream.timer)
+    streamWindows.delete(threadId)
+    return stream.held
   }
   const receivedSeqs = new Map<string, number>()
   const setHistory = (threadId: string, update: (history: ThreadHistory | undefined) => ThreadHistory | undefined) =>
@@ -49,11 +46,26 @@ export const useMessages = create<MessagesState>()((set, get) => {
       return next === undefined || next === history ? state : { byThread: { ...state.byThread, [threadId]: next } }
     })
 
+  const openStreamWindow = (threadId: string, type: DeltaType) => {
+    const publishOrClose = () => {
+      const pushes = stream.held
+      if (pushes.length === 0) {
+        streamWindows.delete(threadId)
+        return
+      }
+      stream.held = []
+      stream.timer = setTimeout(publishOrClose, STREAM_PUBLICATION_INTERVAL_MS)
+      setHistory(threadId, (history) => (history?.status === "ready" ? pushes.reduce(applyPush, history) : history))
+    }
+    const stream: StreamWindow = { type, held: [], timer: setTimeout(publishOrClose, STREAM_PUBLICATION_INTERVAL_MS) }
+    streamWindows.set(threadId, stream)
+  }
+
   const leastRecentlyViewedFirst: string[] = []
   const forget = (threadIds: ReadonlyArray<string>) => {
     if (threadIds.length === 0) return
     for (const threadId of threadIds) {
-      takePending(threadId)
+      takeHeld(threadId)
       receivedSeqs.delete(threadId)
       const index = leastRecentlyViewedFirst.indexOf(threadId)
       if (index !== -1) leastRecentlyViewedFirst.splice(index, 1)
@@ -71,7 +83,7 @@ export const useMessages = create<MessagesState>()((set, get) => {
     forget(leastRecentlyViewedFirst.slice(0, -CACHED_HISTORY_LIMIT))
   }
   const fetchHistory = async (threadId: string): Promise<void> => {
-    takePending(threadId)
+    takeHeld(threadId)
     receivedSeqs.delete(threadId)
     const loadId = Symbol(threadId)
     setHistory(threadId, () => ({ status: "loading", loadId, pending: [] }))
@@ -118,27 +130,13 @@ export const useMessages = create<MessagesState>()((set, get) => {
         if (push.seq !== lastSeq + 1) return void fetchHistory(threadId)
         receivedSeqs.set(threadId, push.seq)
       }
-      const type = deltaType(push)
-      const pending = pendingDeltas.get(threadId)
-      if (current?.status === "ready" && type !== undefined) {
-        if (pending !== undefined && deltaType(pending.pushes[0]) === type) {
-          pending.pushes.push(push)
-          return
-        }
-        if (pending === undefined) {
-          pendingDeltas.set(threadId, {
-            pushes: [push],
-            timer: setTimeout(() => {
-              const pushes = takePending(threadId)
-              setHistory(threadId, (history) =>
-                history?.status === "ready" ? pushes.reduce(applyPush, history) : history,
-              )
-            }, STREAM_PUBLICATION_INTERVAL_MS),
-          })
-          return
-        }
+      const type = current?.status === "ready" ? deltaType(push) : undefined
+      const stream = streamWindows.get(threadId)
+      if (type !== undefined && stream?.type === type) {
+        stream.held.push(push)
+        return
       }
-      const pushes = takePending(threadId)
+      const pushes = takeHeld(threadId)
       setHistory(threadId, (history) => {
         switch (history?.status) {
           case "loading":
@@ -149,6 +147,7 @@ export const useMessages = create<MessagesState>()((set, get) => {
             return history
         }
       })
+      if (type !== undefined) openStreamWindow(threadId, type)
     },
   }
 })
@@ -163,7 +162,9 @@ function replayAfterSnapshot(
   return { ready: replay.reduce(applyPush, snapshot), lastSeq: replay.at(-1)?.seq ?? snapshotSeq }
 }
 
-const deltaType = (push: TranscriptPush) =>
+type DeltaType = "text_delta" | "reasoning_delta"
+type StreamWindow = { readonly type: DeltaType; held: TranscriptPush[]; timer: ReturnType<typeof setTimeout> }
+const deltaType = (push: TranscriptPush): DeltaType | undefined =>
   push.type === "thread.event" && (push.event.type === "text_delta" || push.event.type === "reasoning_delta")
     ? push.event.type
     : undefined

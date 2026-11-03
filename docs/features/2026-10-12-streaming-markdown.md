@@ -6,7 +6,7 @@ The measured production Electron workload sends 20,000 characters in 160 deltas 
 
 ## Data and ordering
 
-A ready thread may have one pending group of adjacent text or reasoning deltas and one timer. The 100 ms timer starts with the first delta and never resets when more arrive. A different delta kind or another transcript event flushes the group before applying its own state change. Loading histories continue buffering raw pushes until the snapshot sequence filter runs. Unloading cancels pending work.
+A ready thread may have one open window of adjacent text or reasoning deltas and one timer. The first delta of a burst is applied at once and opens the window. Deltas that arrive while it is open are held until its 100 ms timer fires, which applies them in one update and opens the next window; the timer never resets when more arrive. A window that ends with nothing held closes, so the first delta after a quiet stretch or a tool call is not delayed. A different delta kind or another transcript event flushes the group before applying its own state change. Loading histories continue buffering raw pushes until the snapshot sequence filter runs. Unloading cancels pending work.
 
 Approval, terminal, tool, file-change and message-replacement events remain synchronous. Text separated by a tool or reasoning part remains in separate Markdown documents. Every published string and the final string use the existing whole-document renderer.
 
