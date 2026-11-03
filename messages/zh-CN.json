@@ -341,6 +341,7 @@
   "terminal_ended": "进程已结束",
   "attachment_add": "添加附件",
   "attachment_add_hint": "添加附件。也可以粘贴图片，或将文件拖到这里。",
+  "attachment_drop_hint": "松开以附加文件",
   "attachment_pending_label": "待发送的附件",
   "attachment_remove": "移除 {name}",
   "attachment_open_image": "打开 {name}",

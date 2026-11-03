@@ -350,6 +350,7 @@
   "terminal_ended": "プロセスが終了しました",
   "attachment_add": "ファイルを添付",
   "attachment_add_hint": "ファイルを添付します。画像の貼り付けやドラッグ＆ドロップにも対応しています。",
+  "attachment_drop_hint": "ドロップしてファイルを添付",
   "attachment_pending_label": "送信予定の添付ファイル",
   "attachment_remove": "{name} を削除",
   "attachment_open_image": "{name} を開く",

@@ -350,6 +350,7 @@
   "terminal_ended": "程序已結束",
   "attachment_add": "附加檔案",
   "attachment_add_hint": "附加檔案。也可以貼上圖片，或把檔案拖曳到這裡。",
+  "attachment_drop_hint": "放開以附加檔案",
   "attachment_pending_label": "待傳送的附件",
   "attachment_remove": "移除 {name}",
   "attachment_open_image": "開啟 {name}",

@@ -350,6 +350,7 @@
   "terminal_ended": "Process ended",
   "attachment_add": "Attach files",
   "attachment_add_hint": "Attach files. You can also paste images or drop files here.",
+  "attachment_drop_hint": "Drop files to attach",
   "attachment_pending_label": "Attachments to send",
   "attachment_remove": "Remove {name}",
   "attachment_open_image": "Open {name}",
