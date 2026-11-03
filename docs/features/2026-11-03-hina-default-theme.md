@@ -47,6 +47,9 @@ On the phone a card is lighter than the page in dark mode, but Hina Dark's `--su
 | link, token                                     | `#a73920`             | `#f48f70`             | new, coral deepened or lifted to 4.5:1 on cards                                         |
 | tokenBg                                         | coral at 12%          | coral at 16%          | `--primary`                                                                             |
 | halo A to D, core, ink                          |                       |                       | the desktop's Hina send halo: `--primary`, hue +45, hue -35, ink `--primary-foreground` |
+| disabled                                        | `#d0d0c6`             | `#425b5b`             | `--input`                                                                               |
+| findMatch                                       | link at 22%           | link at 30%           | `--color-find-match`                                                                    |
+| scrim                                           | unchanged             | unchanged             | ink-neutral, works on any palette                                                       |
 | prOpen, prMerged                                | unchanged             | unchanged             | GitHub                                                                                  |
 
 The worst ratios among the new keys: `textMuted` on `sheetRaised` 4.81 (dark), `running` on `runningBg` 4.61 (dark), `controlOff` on `surface` 3.18 (light), and the halo ink on its lightest stop 3.18 (light). The GitHub syntax colors keep their roles; two move to clear 4.5:1 on the new code background, the light keyword (`#c11e2b`, 4.89) and the dark comment (`#9ea7b3`, 5.16). The splash screen and the Android adaptive icon background change from near-black to paper.
