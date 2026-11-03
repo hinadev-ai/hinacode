@@ -55,7 +55,7 @@ const start = async (account: RelayAccount, home: RelayMachine, machines: Readon
     switchMachine,
   })
   Object.defineProperty(window, "hinacode", { value: bridge })
-  await serveResources(bridge)
+  await serveResources(bridge).catch((cause: unknown) => console.error("Attachments and previews will not load", cause))
   const bar = document.body.appendChild(document.createElement("div"))
   createRoot(bar).render(<HomeStatusBar store={homeStatus} machine={home.name} onSwitch={switchMachine} />)
   await import("@/main.tsx")
