@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs"
+import { warnings } from "../.size-limit.ts"
 
 type Check = { name: string; size: number; sizeLimit?: number; passed?: boolean }
 
@@ -28,6 +29,24 @@ const change = (before: number, after: number) => {
   return `${sign}${format(Math.abs(diff))} (${sign}${((Math.abs(diff) / before) * 100).toFixed(1)}%)`
 }
 
+const UNITS: Record<string, number> = { B: 1, kB: 1e3, MB: 1e6, GB: 1e9 }
+
+const parseSize = (text: string) => {
+  const [amount = "", unit = ""] = text.split(" ")
+  const multiplier = UNITS[unit]
+  if (multiplier === undefined) throw new Error(`Unknown size unit in "${text}".`)
+  return Number(amount) * multiplier
+}
+
+const budgetCell = (name: string, size: number, sizeLimit: number | undefined, passed: boolean | undefined) => {
+  const warning = warnings[name]
+  if (warning !== undefined) {
+    const limit = parseSize(warning)
+    return `${size > limit ? "⚠️" : "✅"} ${format(limit)} (warning)`
+  }
+  return sizeLimit === undefined ? "" : `${passed ? "✅" : "❌"} ${format(sizeLimit)}`
+}
+
 const GZIP = " (gzip)"
 const base = new Map(read(basePath).map((check) => [check.name, check.size]))
 const head = read(headPath)
@@ -43,7 +62,7 @@ const rows = head
   .map(({ name, size, sizeLimit, passed }) => {
     const gzip = headSizes.get(name + GZIP)
     const [, gzipSize, gzipChange] = gzip === undefined ? [] : compare(name + GZIP, gzip)
-    const budget = sizeLimit === undefined ? "" : `${passed ? "✅" : "❌"} ${format(sizeLimit)}`
+    const budget = budgetCell(name, size, sizeLimit, passed)
     return `| ${[name, ...compare(name, size), gzipSize ?? "", gzipChange ?? "", budget].join(" | ")} |`
   })
 
@@ -54,4 +73,4 @@ console.log(`<!-- bundle-size -->
 | --- | --: | --: | --: | --: | --: | --: |
 ${rows.join("\n")}
 
-Measured from Linux builds of ${baseSha.slice(0, 7)} (base) and ${headSha.slice(0, 7)} (this PR). Budgets apply to the raw size and live in \`.size-limit.ts\`.`)
+Measured from Linux builds of ${baseSha.slice(0, 7)} (base) and ${headSha.slice(0, 7)} (this PR). Budgets apply to the raw size and live in \`.size-limit.ts\`. A ⚠️ budget only warns; a ❌ one fails the job.`)

@@ -23,7 +23,13 @@ test("the stdio MCP server publishes into $HINACODE_ARTIFACTS", async () => {
   )
 
   const { tools } = await client.listTools()
-  expect(tools.map((tool) => tool.name).toSorted()).toEqual(["list_artifacts", "publish_artifact", "read_artifact"])
+  expect(tools.map((tool) => tool.name).toSorted()).toEqual([
+    "document_chart_guide",
+    "list_artifacts",
+    "publish_artifact",
+    "publish_document",
+    "read_artifact",
+  ])
 
   await client.callTool({
     name: "publish_artifact",

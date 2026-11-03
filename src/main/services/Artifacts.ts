@@ -1,8 +1,14 @@
 import { watch } from "node:fs"
 import { mkdir } from "node:fs/promises"
-import { type ArtifactStore, isArtifactId, openArtifactStore } from "@hinacode/artifacts"
+import {
+  ArtifactConflictError,
+  type ArtifactStore,
+  DOCUMENT_ENTRY,
+  isArtifactId,
+  openArtifactStore,
+} from "@hinacode/artifacts"
 import { Context, Effect, Layer } from "effect"
-import type { Artifact } from "../../shared/artifact.ts"
+import type { Artifact, DocumentContent, DocumentSaveResult } from "../../shared/artifact.ts"
 import { NotFoundError } from "./errors.ts"
 import { Events } from "./Events.ts"
 
@@ -19,6 +25,14 @@ export class Artifacts extends Context.Service<
     readonly file: (id: string, path: string) => Effect.Effect<ArtifactFileBytes | null>
     readonly preview: (id: string, path: string) => Effect.Effect<{ readonly dataUrl: string }, NotFoundError>
     readonly remove: (id: string) => Effect.Effect<void, NotFoundError>
+    readonly readDocument: (id: string) => Effect.Effect<DocumentContent, NotFoundError>
+    readonly saveDocument: (input: {
+      readonly id: string
+      readonly baseRevision: number
+      readonly markdown: string
+    }) => Effect.Effect<DocumentSaveResult, NotFoundError>
+    readonly createDocument: (input: { readonly threadId: string; readonly title: string }) => Effect.Effect<Artifact>
+    readonly rename: (id: string, title: string) => Effect.Effect<Artifact, NotFoundError>
   }
 >()("hinacode/Artifacts") {}
 
@@ -102,7 +116,66 @@ const make = (root: string) =>
           removed ? Effect.sync(() => forget(id)) : Effect.fail(new NotFoundError({ entity: "artifact", id })),
       )
 
-    return Artifacts.of({ store, list: Effect.promise(() => store.list()), file, preview, remove })
+    const readDocument = (id: string) =>
+      Effect.flatMap(
+        Effect.promise(() => store.file(id, DOCUMENT_ENTRY)),
+        (found) =>
+          found === null || found.kind !== "document"
+            ? Effect.fail(new NotFoundError({ entity: "document", id }))
+            : Effect.succeed({
+                version: found.version,
+                revision: found.revision,
+                markdown: new TextDecoder().decode(found.bytes),
+              }),
+      )
+
+    const saveDocument = ({ id, baseRevision, markdown }: { id: string; baseRevision: number; markdown: string }) =>
+      Effect.gen(function* () {
+        const current = yield* Effect.promise(() => store.get(id))
+        if (current === null || current.kind !== "document") return yield* new NotFoundError({ entity: "document", id })
+        const saved = yield* Effect.tryPromise({
+          try: () => store.publish({ kind: "document", id, markdown, baseRevision, author: "developer" }),
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.map(({ version, revision }): DocumentSaveResult => ({ type: "saved", version, revision })),
+          Effect.catch((cause) =>
+            cause instanceof ArtifactConflictError
+              ? Effect.map(readDocument(id), (latest): DocumentSaveResult => ({ type: "conflict", ...latest }))
+              : Effect.die(cause),
+          ),
+        )
+        return saved
+      })
+
+    const createDocument = ({ threadId, title }: { threadId: string; title: string }) =>
+      Effect.tap(
+        Effect.promise(() => store.publish({ kind: "document", title, markdown: "", threadId, author: "developer" })),
+        (created) => Effect.promise(() => announce(created.id)),
+      )
+
+    const rename = (id: string, title: string) =>
+      Effect.flatMap(
+        Effect.promise(() => store.get(id)),
+        (found) =>
+          found === null
+            ? Effect.fail(new NotFoundError({ entity: "artifact", id }))
+            : Effect.tap(
+                Effect.promise(() => store.rename(id, title)),
+                () => Effect.promise(() => announce(id)),
+              ),
+      )
+
+    return Artifacts.of({
+      store,
+      list: Effect.promise(() => store.list()),
+      file,
+      preview,
+      remove,
+      readDocument,
+      saveDocument,
+      createDocument,
+      rename,
+    })
   })
 
 export const layer = (root: string) => Layer.effect(Artifacts, make(root))

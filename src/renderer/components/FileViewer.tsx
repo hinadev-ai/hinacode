@@ -244,6 +244,8 @@ type CommentForm =
 
 type Annotation = { readonly kind: "comment"; readonly comment: LineComment } | Extract<CommentForm, { kind: "new" }>
 
+const MAX_HIGHLIGHT_CHARS = 256 * 1024
+
 // FIXME: the editor hides ANSI codes but still counts them, so the caret lands off and such a log stays read-only
 const isAnsiLog = (path: string, text: string) => path.endsWith(".log") && text.includes("\x1b[")
 
@@ -271,6 +273,7 @@ function FileContent({
   const [form, setForm] = useState<CommentForm | null>(null)
   const [saved, setSaved] = useState<{ over: string; text: string } | null>(null)
   const [isSaving, startSaving] = useTransition()
+  const [editingOver, setEditingOver] = useState<string | null>(null)
   const editorRef = useRef<Editor<"file", Annotation> | null>(null)
 
   useEffect(
@@ -307,9 +310,14 @@ function FileContent({
 
   const shown = base ?? (saved?.over === disk ? saved.text : disk)
   const ansi = isAnsiLog(path, shown)
+  const plain = shown.length > MAX_HIGHLIGHT_CHARS
   const editable = !truncated && !ansi
+  const editing = editable && (base !== undefined || editingOver === disk)
   const changedOnDisk = base !== undefined && base !== disk
-  const currentText = () => editorRef.current?.getText() ?? shown
+  const currentText = () => (editing ? editorRef.current?.getText() : undefined) ?? shown
+  const startEditing = () => {
+    if (editable && !editing) setEditingOver(disk)
+  }
 
   const save = (expected: string | null) => {
     const text = currentText()
@@ -425,6 +433,7 @@ function FileContent({
         )}
       </ViewerHeader>
       {truncated && <Note text={m.viewer_truncated()} />}
+      {plain && !truncated && <Note text={m.viewer_plain_text()} />}
       {changedOnDisk && (
         <div role="alert" className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-xs">
           <span className="min-w-0 flex-1">{m.viewer_changed_on_disk()}</span>
@@ -436,35 +445,37 @@ function FileContent({
           </Button>
         </div>
       )}
-      <Virtualizer className="min-h-0 flex-1 overflow-auto" contentClassName="text-xs">
-        <File
-          file={{ name: path, contents: shown, lang: ansi ? "ansi" : undefined }}
-          edit={editable}
-          editStateKey={JSON.stringify([root, path])}
-          editorOptions={{
-            onAttach: (editor) => {
-              editorRef.current = editor
-            },
-          }}
-          onEditChange={(event) => {
-            const edited = event.file.contents !== shown
-            if (edited !== (base !== undefined)) setUnsaved(root, path, edited ? shown : null)
-          }}
-          lineAnnotations={annotations}
-          selectedLines={form?.kind === "new" ? { start: form.startLine, end: form.endLine } : null}
-          renderAnnotation={renderAnnotation}
-          options={{
-            theme: theme.codeTheme,
-            themeType: theme.scheme,
-            overflow: "scroll",
-            disableFileHeader: true,
-            enableGutterUtility: true,
-            onGutterUtilityClick: ({ start, end }) => {
-              setForm({ kind: "new", startLine: Math.min(start, end), endLine: Math.max(start, end) })
-            },
-          }}
-        />
-      </Virtualizer>
+      <div onPointerEnter={startEditing} onFocus={startEditing} className="flex min-h-0 flex-1 flex-col">
+        <Virtualizer className="min-h-0 flex-1 overflow-auto" contentClassName="text-xs">
+          <File
+            file={{ name: path, contents: shown, lang: ansi ? "ansi" : plain ? "text" : undefined }}
+            edit={editing}
+            editStateKey={JSON.stringify([root, path])}
+            editorOptions={{
+              onAttach: (editor) => {
+                editorRef.current = editor
+              },
+            }}
+            onEditChange={(event) => {
+              const edited = event.file.contents !== shown
+              if (edited !== (base !== undefined)) setUnsaved(root, path, edited ? shown : null)
+            }}
+            lineAnnotations={annotations}
+            selectedLines={form?.kind === "new" ? { start: form.startLine, end: form.endLine } : null}
+            renderAnnotation={renderAnnotation}
+            options={{
+              theme: theme.codeTheme,
+              themeType: theme.scheme,
+              overflow: "scroll",
+              disableFileHeader: true,
+              enableGutterUtility: true,
+              onGutterUtilityClick: ({ start, end }) => {
+                setForm({ kind: "new", startLine: Math.min(start, end), endLine: Math.max(start, end) })
+              },
+            }}
+          />
+        </Virtualizer>
+      </div>
     </div>
   )
 }

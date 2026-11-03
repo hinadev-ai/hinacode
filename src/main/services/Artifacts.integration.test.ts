@@ -86,4 +86,23 @@ describe("Artifacts", () => {
       expect(missing._tag).toBe("NotFoundError")
     }),
   )
+
+  it.live("keeps a document the developer created in one version while they edit it", () =>
+    Effect.gen(function* () {
+      const root = mkdtempSync(join(tmpdir(), "kk-artifacts-"))
+      const saved = yield* withArtifacts(root, () =>
+        Artifacts.use((artifacts) =>
+          Effect.gen(function* () {
+            const created = yield* artifacts.createDocument({ threadId: "t-1", title: "Untitled" })
+            return yield* artifacts.saveDocument({
+              id: created.id,
+              baseRevision: created.revision ?? 0,
+              markdown: "Hi",
+            })
+          }),
+        ),
+      )
+      expect(saved).toEqual({ type: "saved", version: 1, revision: 2 })
+    }),
+  )
 })

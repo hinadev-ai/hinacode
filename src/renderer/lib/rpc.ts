@@ -671,6 +671,10 @@ export const artifactsAtom = Atom.make((get) => {
   )
 })
 
+export const documentAtom = familyOf((environment: EnvironmentId, id: string) =>
+  Atom.make(call("artifacts.readDocument", { id }, { environment })),
+)
+
 export const automationRunsAtom = Atom.family((automationId: string) =>
   Atom.make((get) => {
     get.addFinalizer(onAutomationRun((id) => id === automationId && get.refreshSelf()))

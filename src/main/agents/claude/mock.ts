@@ -16,7 +16,7 @@ import {
   usageLimitSessionId,
   orgSpendLimitMessage,
 } from "./fixtures/usageLimit.ts"
-import { artifactTurn, publishArtifact } from "./fixtures/artifacts.ts"
+import { artifactTurn, documentTurn, type MockDocument, publishArtifact } from "./fixtures/artifacts.ts"
 import { mockModel } from "./fixtures/sdk.ts"
 import {
   approvals,
@@ -53,6 +53,7 @@ export const mockScenarioDescriptions = {
   "long-turn": "Replay 400 steps, then stream until Stop.",
   subagents: "Run six sub-agents that report progress every two seconds.",
   artifacts: "Publish an artifact named after the prompt.",
+  documents: "Publish a document named after the prompt. The next message updates it from the version it last saw.",
 } as const satisfies Record<string, string>
 export type MockScenario = keyof typeof mockScenarioDescriptions
 export const mockScenarios = Object.keys(mockScenarioDescriptions) as ReadonlyArray<MockScenario>
@@ -252,6 +253,7 @@ export const usageLimitLayer = (defaultScenario: MockScenario = "usage-limit", r
     Effect.gen(function* () {
       const attempted = new Set<string>()
       const artifacts = new Map<string, string>()
+      const documents = new Map<string, MockDocument>()
       const shells = new Map<string, ReadonlyArray<BackgroundTask>>()
       const shellChanges = yield* Queue.unbounded<BackgroundTasksChange>()
       const stopped = new Map<string, Deferred.Deferred<void>>()
@@ -370,6 +372,17 @@ export const usageLimitLayer = (defaultScenario: MockScenario = "usage-limit", r
               (id) => artifacts.set(input.threadId, id),
             )
             const bound: AgentEvent = { type: "session_bound", providerSessionId: `mock-artifacts-${input.threadId}` }
+            return Stream.concat(Stream.make(bound, started), Stream.fromIterableEffect(published))
+          }
+          case "documents": {
+            const { started, finished: published } = documentTurn(
+              `mock-document-${++artifactCalls}`,
+              input.prompt,
+              input.mcpServer,
+              documents.get(input.threadId),
+              (document) => documents.set(input.threadId, document),
+            )
+            const bound: AgentEvent = { type: "session_bound", providerSessionId: `mock-documents-${input.threadId}` }
             return Stream.concat(Stream.make(bound, started), Stream.fromIterableEffect(published))
           }
           case "markdown":

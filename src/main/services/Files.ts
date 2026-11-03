@@ -1,5 +1,16 @@
 import { type Dirent, watch as watchFs } from "node:fs"
-import { open, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises"
+import {
+  lstat,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  realpath,
+  rename as renameFs,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
 import { Context, Effect, Layer, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
@@ -23,6 +34,7 @@ const reasons = {
   unreadable: "cannot be read in",
   unwritable: "cannot be written in",
   tooLarge: "is too large to preview from",
+  exists: "already exists in",
 } as const
 
 const MAX_PREVIEW_BYTES = 6 * 1024 * 1024
@@ -30,7 +42,7 @@ const MAX_PREVIEW_BYTES = 6 * 1024 * 1024
 export class FsAccessError extends Schema.TaggedError<FsAccessError>()("FsAccessError", {
   root: Schema.String,
   path: Schema.String,
-  reason: Schema.Literals(["unknownRoot", "outsideRoot", "unreadable", "unwritable", "tooLarge"]),
+  reason: Schema.Literals(["unknownRoot", "outsideRoot", "unreadable", "unwritable", "tooLarge", "exists"]),
 }) {
   override get message(): string {
     return this.reason === "unknownRoot"
@@ -73,6 +85,20 @@ export class Files extends Context.Service<
       content: string,
       expected: string | null,
     ) => Effect.Effect<void, FsAccessError | FolderMissingError | FsWriteConflict | PersistenceError>
+    readonly create: (
+      root: string,
+      path: string,
+      kind: "file" | "dir",
+    ) => Effect.Effect<void, FsAccessError | FolderMissingError | PersistenceError>
+    readonly rename: (
+      root: string,
+      from: string,
+      to: string,
+    ) => Effect.Effect<void, FsAccessError | FolderMissingError | PersistenceError>
+    readonly remove: (
+      root: string,
+      path: string,
+    ) => Effect.Effect<void, FsAccessError | FolderMissingError | PersistenceError>
     readonly watch: (
       root: string,
       paths: ReadonlyArray<string>,
@@ -142,12 +168,16 @@ const isIgnored = (path: string, ignored: ReadonlyArray<string>) =>
     (ignoredPath) => ignoredPath === path || (ignoredPath.endsWith("/") && `${path}/`.startsWith(ignoredPath)),
   )
 
+const relativeSegments = (root: string, path: string) => {
+  const segments = path === "" ? [] : path.split("/")
+  return isAbsolute(path) || segments.some((segment) => segment === "" || segment === "." || segment === "..")
+    ? Effect.fail(new FsAccessError({ root, path, reason: "outsideRoot" }))
+    : Effect.succeed(segments)
+}
+
 const resolveInside = (root: string, path: string) =>
   Effect.gen(function* () {
-    const segments = path === "" ? [] : path.split("/")
-    if (isAbsolute(path) || segments.some((segment) => segment === "" || segment === "." || segment === "..")) {
-      return yield* new FsAccessError({ root, path, reason: "outsideRoot" })
-    }
+    const segments = yield* relativeSegments(root, path)
     const [realRoot, target] = yield* Effect.tryPromise({
       try: () => Promise.all([realpath(root), realpath(join(root, ...segments))]),
       catch: () => new FsAccessError({ root, path, reason: "unreadable" }),
@@ -155,6 +185,23 @@ const resolveInside = (root: string, path: string) =>
     if (!isInside(realRoot, target)) return yield* new FsAccessError({ root, path, reason: "outsideRoot" })
     return target
   })
+
+const failureReason = (error: unknown): FsAccessError["reason"] => {
+  const code = (error as NodeJS.ErrnoException).code
+  if (code === "EEXIST") return "exists"
+  return code === "ENOENT" ? "unreadable" : "unwritable"
+}
+
+const mutate = (root: string, path: string, operation: () => Promise<unknown>) =>
+  Effect.tryPromise({
+    try: operation,
+    catch: (error) => new FsAccessError({ root, path, reason: failureReason(error) }),
+  }).pipe(Effect.asVoid)
+
+const sameEntry = async (a: string, b: string) => {
+  const [first, second] = await Promise.all([lstat(a), lstat(b).catch(() => null)])
+  return second === null ? null : first.ino === second.ino && first.dev === second.dev
+}
 
 const readEntries = (root: string, path: string, dir: string) =>
   Effect.tryPromise({
@@ -325,6 +372,42 @@ const make = Effect.gen(function* () {
       })
     })
 
+  const resolveEntry = (root: string, path: string) =>
+    Effect.gen(function* () {
+      const segments = yield* relativeSegments(root, path)
+      const name = segments.at(-1)
+      if (name === undefined || segments.includes(".git")) {
+        return yield* new FsAccessError({ root, path, reason: "outsideRoot" })
+      }
+      yield* knownRoot(root)
+      const parent = yield* resolveInside(root, segments.slice(0, -1).join("/"))
+      return join(parent, name)
+    })
+
+  const create = (root: string, path: string, kind: "file" | "dir") =>
+    Effect.gen(function* () {
+      const entry = yield* resolveEntry(root, path)
+      yield* mutate(root, path, () => (kind === "dir" ? mkdir(entry) : writeFile(entry, "", { flag: "wx" })))
+    })
+
+  const rename = (root: string, from: string, to: string) =>
+    Effect.gen(function* () {
+      const source = yield* resolveEntry(root, from)
+      const target = yield* resolveEntry(root, to)
+      const same = yield* Effect.tryPromise({
+        try: () => sameEntry(source, target),
+        catch: () => new FsAccessError({ root, path: from, reason: "unreadable" }),
+      })
+      if (same === false) return yield* new FsAccessError({ root, path: to, reason: "exists" })
+      yield* mutate(root, from, () => renameFs(source, target))
+    })
+
+  const remove = (root: string, path: string) =>
+    Effect.gen(function* () {
+      const entry = yield* resolveEntry(root, path)
+      yield* mutate(root, path, () => rm(entry, { recursive: true }))
+    })
+
   const watchers = new Map<string, Map<string, () => void>>()
 
   const watchDir = (root: string, path: string, dir: string) =>
@@ -376,7 +459,7 @@ const make = Effect.gen(function* () {
 
   yield* Effect.addFinalizer(() => Effect.sync(() => [...watchers.keys()].forEach(closeAll)))
 
-  return Files.of({ list, resolve, read, preview, write, watch })
+  return Files.of({ list, resolve, read, preview, write, create, rename, remove, watch })
 })
 
 export const layer = Layer.effect(Files, make)
