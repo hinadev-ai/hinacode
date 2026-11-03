@@ -5,6 +5,7 @@ import { AsyncResult } from "effect/reactivity"
 import {
   type DragEvent as ReactDragEvent,
   type FormEvent,
+  type ReactElement,
   type ReactNode,
   type RefObject,
   lazy,
@@ -61,7 +62,10 @@ import { ScheduleButton, ScheduledBar } from "./ScheduledMessages.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 import { useModifierHeld } from "../lib/useModifierHeld.ts"
-import type { SendGlyphMode } from "./icons/SendGlyph.tsx"
+import { SendGlyph, type SendGlyphMode } from "./icons/SendGlyph.tsx"
+import { UploadIcon } from "./icons/UploadIcon.tsx"
+import { ChordKeys } from "./ChordKeys.tsx"
+import { useKeymap } from "../keybindings/useKeybindings.ts"
 
 const readAsDataUrl = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -71,9 +75,7 @@ const readAsDataUrl = (file: File) =>
     reader.readAsDataURL(file)
   })
 
-const onDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
-  if (event.dataTransfer.types.includes("Files")) event.preventDefault()
-}
+const carriesFiles = (event: ReactDragEvent) => event.dataTransfer.types.includes("Files")
 
 type StageSource = RpcRequest<"attachments.stage">["source"]
 
@@ -209,11 +211,23 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
     stage(images.map(sourceOf))
   }
 
-  const onDrop = (event: DragEvent) => {
-    const dropped = [...(event.dataTransfer?.files ?? [])]
-    if (dropped.length === 0) return
-    event.preventDefault()
-    stage(dropped.map(sourceOf))
+  const [dragging, setDragging] = useState(false)
+  const dropZone = {
+    onDragOver: (event: ReactDragEvent<HTMLDivElement>) => {
+      if (!carriesFiles(event)) return
+      event.preventDefault()
+      if (!dragging) setDragging(true)
+    },
+    onDragLeave: (event: ReactDragEvent<HTMLDivElement>) => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false)
+    },
+    onDropCapture: (event: ReactDragEvent<HTMLDivElement>) => {
+      setDragging(false)
+      const dropped = [...event.dataTransfer.files]
+      if (dropped.length === 0) return
+      event.preventDefault()
+      stage(dropped.map(sourceOf))
+    },
   }
 
   const stop = () => {
@@ -247,7 +261,12 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
             <QueueBar thread={thread} onEdit={() => inputRef.current?.focus()} onError={setError} />
             <ScheduledBar thread={thread} onEdit={() => inputRef.current?.focus()} onError={setError} />
           </ActivityIndicator>
-          <ComposerBar className="composer-edge min-h-0 has-[[role=listbox]]:z-20">
+          <ComposerBar
+            {...dropZone}
+            dragActive={dragging}
+            className="composer-edge min-h-0 has-[[role=listbox]]:z-20 data-drag-active:[--composer-edge:var(--ring)]"
+          >
+            {dragging && <DropHint />}
             {comments.length > 0 && (
               <ul
                 aria-label={m.comment_pending_label()}
@@ -291,8 +310,6 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
                 projectId={thread.projectId}
                 onEnter={(event) => send(steers ? deliveryOf(event) : "queue")}
                 onPaste={onPaste}
-                onDragOver={onDragOver}
-                onDrop={onDrop}
                 focusOnMount={focusWhenReady}
               />
             </Suspense>
@@ -305,6 +322,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
               {!isSidechat && (
                 <ScheduleButton thread={thread} unstarted={unstarted} disabled={!canSend} onError={setError} />
               )}
+              {(sendMode === "queue" || sendMode === "steer") && <StopButton onStop={stop} />}
               <SendButton mode={sendMode} canSend={canSend} onStop={stop} />
             </ComposerToolbar>
           </ComposerBar>
@@ -390,27 +408,63 @@ function AttachButton({ onClick, disabled }: { onClick: () => void; disabled: bo
   )
 }
 
+function DropHint() {
+  return (
+    <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center gap-2 rounded-[inherit] bg-background/90 text-sm transition-opacity duration-150 ease-out motion-reduce:transition-none starting:opacity-0">
+      <UploadIcon aria-hidden className="size-4 text-muted-foreground" />
+      {m.attachment_drop_hint()}
+    </div>
+  )
+}
+
+function StopTooltip({ children }: { children: ReactElement }) {
+  const chord = useKeymap()["turn.interrupt"]
+  return (
+    <Tooltip>
+      <TooltipTrigger render={children} />
+      <TooltipContent>
+        {m.thread_composer_stop()}
+        {chord && <ChordKeys chord={chord} />}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+function StopButton({ onStop }: { onStop: () => void }) {
+  return (
+    <StopTooltip>
+      <button
+        type="button"
+        onClick={onStop}
+        aria-label={m.thread_composer_stop()}
+        className="grid size-8 shrink-0 place-items-center rounded-full bg-foreground/6 text-muted-foreground inset-ring inset-ring-border transition-[background-color,color,scale,opacity] duration-150 ease-out hover:bg-foreground/10 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none motion-reduce:transition-none dark:bg-foreground/9 starting:scale-75 starting:opacity-0 forced-colors:border"
+      >
+        <SendGlyph mode="stop" className="size-4" />
+      </button>
+    </StopTooltip>
+  )
+}
+
 function SendButton({ mode, canSend, onStop }: { mode: SendGlyphMode; canSend: boolean; onStop: () => void }) {
+  const button = (label: string) => (
+    <ComposerSend
+      type={mode === "stop" ? "button" : "submit"}
+      onClick={mode === "stop" ? onStop : undefined}
+      mode={mode}
+      idle={!canSend}
+      disabled={mode !== "stop" && !canSend}
+      aria-label={label}
+    />
+  )
+  if (mode === "stop") return <StopTooltip>{button(m.thread_composer_stop())}</StopTooltip>
   const label = {
     send: m.thread_composer_send(),
     queue: m.thread_composer_queue(),
     steer: m.thread_composer_steer(),
-    stop: m.thread_composer_stop(),
   }[mode]
   return (
     <Tooltip>
-      <TooltipTrigger
-        render={
-          <ComposerSend
-            type={mode === "stop" ? "button" : "submit"}
-            onClick={mode === "stop" ? onStop : undefined}
-            mode={mode}
-            idle={!canSend}
-            disabled={mode !== "stop" && !canSend}
-            aria-label={label}
-          />
-        }
-      />
+      <TooltipTrigger render={button(label)} />
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
   )

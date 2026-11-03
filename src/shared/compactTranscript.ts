@@ -20,7 +20,7 @@ function compactInput(name: string, input: unknown) {
   return summary === null ? {} : { [summary.key]: summary.line }
 }
 
-function compactPart(part: MessagePart): MessagePart {
+export function compactPart(part: MessagePart): MessagePart {
   switch (part.type) {
     case "tool_call": {
       const { output, fullOutputBytes: _fullOutputBytes, input, ...rest } = part

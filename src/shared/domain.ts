@@ -4,6 +4,7 @@ import {
   AgentProfileName,
   Compaction,
   ForkPoint,
+  isCreateThreadTool,
   isPublishArtifactTool,
   isRunAgentTool,
   ProviderId,
@@ -475,6 +476,9 @@ export const spawnsSubagent = (call: { readonly name: string }) =>
 
 export const publishesArtifact = (call: { readonly name: string; readonly status: ToolCallStatus }) =>
   isPublishArtifactTool(call.name) && call.status !== "error"
+
+export const createsThread = (call: { readonly name: string; readonly status: ToolCallStatus }) =>
+  isCreateThreadTool(call.name) && call.status !== "error"
 
 export const MessageRole = Schema.Literals(["user", "assistant"])
 export type MessageRole = typeof MessageRole.Type

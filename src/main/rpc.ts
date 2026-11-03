@@ -3,6 +3,7 @@ import { Cause, Effect, Option, Schema } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
 import { availableUpdates, installUpdate } from "./agents/updates.ts"
 import { compactMessage, previewMessage, transcriptPage } from "../shared/compactTranscript.ts"
+import { compactSubagentWork } from "../shared/subagents.ts"
 import type {
   NotificationPermission,
   Opener,
@@ -416,6 +417,10 @@ const handlers: Handlers = {
   "subagents.list": ({ threadId }) => AgentRunner.use((runner) => runner.subagents(threadId)),
   "subagents.stop": ({ threadId, subagentId }) =>
     AgentRunner.use((runner) => runner.stopSubagent(threadId, subagentId)),
+  "subagents.transcript": ({ threadId, callId }) =>
+    AgentRunner.use((runner) => runner.transcript(threadId)).pipe(
+      Effect.map(({ messages }) => compactSubagentWork(messages, callId)),
+    ),
   "backgroundTasks.list": ({ threadId }) => AgentRunner.use((runner) => runner.backgroundTasks(threadId)),
   "backgroundTasks.stop": ({ threadId, taskId }) =>
     AgentRunner.use((runner) => runner.stopBackgroundTask(threadId, taskId)),

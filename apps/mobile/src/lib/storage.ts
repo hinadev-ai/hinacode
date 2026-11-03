@@ -43,8 +43,16 @@ export async function loadAnswers(serverId: string): Promise<RememberedAnswers |
   }
 }
 
-export const saveAnswers = async (serverId: string, answers: RememberedAnswers) =>
-  answersFile(serverId).write(JSON.stringify(answers))
+const answerWrites = new Map<string, Promise<void>>()
+
+/** Queues writes per server, because two writes that both find no file race to create it and one is rejected. */
+export function saveAnswers(serverId: string, answers: RememberedAnswers) {
+  const write = (answerWrites.get(serverId) ?? Promise.resolve())
+    .then(() => answersFile(serverId).write(JSON.stringify(answers)))
+    .catch(() => {})
+  answerWrites.set(serverId, write)
+  return write
+}
 
 export async function clearAnswers(serverId: string) {
   const file = answersFile(serverId)
