@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Context, Effect, FileSystem, Layer } from "effect"
@@ -8,7 +8,7 @@ import { slugifyBranch } from "./automations/template.ts"
 
 const MAX_SLUG_LENGTH = 40
 const REMOVING_SUFFIX = ".removing"
-const TMP_PREFIX = "hc-"
+const TMP_ROOT_HASH_LENGTH = 6
 const TMP_ID_LENGTH = 8
 
 // FIXME: Electron's fs reads `.asar` files as folders, so a recursive delete of a checkout with Electron installed fails
@@ -30,7 +30,7 @@ export class Scratch extends Context.Service<
   Scratch,
   {
     readonly ensure: (thread: Thread) => Effect.Effect<string, PersistenceError>
-    readonly ensureTmp: (threadId: string) => Effect.Effect<string, PersistenceError>
+    readonly ensureTmp: (threadId: string) => Effect.Effect<string | null>
     readonly writeSecret: (thread: Thread, name: string, value: string) => Effect.Effect<string, PersistenceError>
     readonly remove: (threadId: string) => Effect.Effect<void, PersistenceError>
   }
@@ -39,7 +39,7 @@ export class Scratch extends Context.Service<
 export const layer = (
   root: string,
   {
-    tmpRoot = tmpdir(),
+    tmpRoot = join(tmpdir(), `hc-${createHash("sha256").update(root).digest("hex").slice(0, TMP_ROOT_HASH_LENGTH)}`),
     deleteFolder = deleteTree,
   }: {
     readonly tmpRoot?: string
@@ -58,7 +58,14 @@ export const layer = (
       const find = (threadId: string) =>
         names.pipe(Effect.map((all) => all.find((name) => name.endsWith(`-${threadId}`))))
 
-      const tmpFolder = (threadId: string) => join(tmpRoot, `${TMP_PREFIX}${threadId.slice(0, TMP_ID_LENGTH)}`)
+      const tmpFolder = (threadId: string) => join(tmpRoot, threadId.slice(0, TMP_ID_LENGTH))
+
+      const ownsTmpRoot = Effect.gen(function* () {
+        yield* fs.makeDirectory(tmpRoot, { recursive: true, mode: 0o700 })
+        const stats = yield* Effect.tryPromise(() => fsWithoutAsar.promises.lstat(tmpRoot))
+        if (!stats.isDirectory()) return false
+        return process.platform === "win32" || (stats.uid === process.getuid?.() && (stats.mode & 0o022) === 0)
+      }).pipe(Effect.orElseSucceed(() => false))
 
       const deleteInBackground = (path: string) =>
         Effect.forkDetach(
@@ -75,11 +82,11 @@ export const layer = (
           yield* deleteInBackground(removing)
         })
 
-      const deleteLeftovers = (folder: string, belongsToUs: (name: string) => boolean) =>
+      const deleteLeftovers = (folder: string) =>
         namesIn(folder).pipe(
           Effect.flatMap((all) =>
             Effect.forEach(
-              all.filter((name) => belongsToUs(name) && name.endsWith(REMOVING_SUFFIX)),
+              all.filter((name) => name.endsWith(REMOVING_SUFFIX)),
               (name) => deleteInBackground(join(folder, name)),
               { discard: true },
             ),
@@ -87,8 +94,8 @@ export const layer = (
           Effect.ignore,
         )
 
-      yield* deleteLeftovers(root, () => true)
-      yield* deleteLeftovers(tmpRoot, (name) => name.startsWith(TMP_PREFIX))
+      yield* deleteLeftovers(root)
+      if (yield* ownsTmpRoot) yield* deleteLeftovers(tmpRoot)
 
       const ensure = (thread: Thread) =>
         Effect.gen(function* () {
@@ -101,10 +108,21 @@ export const layer = (
 
       const ensureTmp = (threadId: string) =>
         Effect.gen(function* () {
+          if (!(yield* ownsTmpRoot)) {
+            yield* Effect.logWarning(
+              "thread tmp folder skipped: its root is not a private folder of this user",
+              tmpRoot,
+            )
+            return null
+          }
           const folder = tmpFolder(threadId)
-          yield* fs.makeDirectory(folder, { recursive: true, mode: 0o700 })
+          yield* fs.makeDirectory(folder, { recursive: true })
           return folder
-        }).pipe(Effect.mapError(persistence("scratch.ensureTmp")))
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("thread tmp folder creation failed", tmpRoot, cause).pipe(Effect.as(null)),
+          ),
+        )
 
       const writeSecret = (thread: Thread, name: string, value: string) =>
         Effect.gen(function* () {
@@ -119,7 +137,7 @@ export const layer = (
         Effect.gen(function* () {
           const name = yield* find(threadId)
           if (name !== undefined) yield* moveAsideAndDelete(join(root, name))
-          yield* moveAsideAndDelete(tmpFolder(threadId))
+          if (yield* ownsTmpRoot) yield* moveAsideAndDelete(tmpFolder(threadId))
         }).pipe(Effect.mapError(persistence("scratch.remove")))
 
       return Scratch.of({ ensure, ensureTmp, writeSecret, remove })

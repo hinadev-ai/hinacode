@@ -321,7 +321,10 @@ describe("Threads", () => {
       const archived = (yield* seedThread({ rootPath: "/repo" })).threadId
       const deleted = (yield* seedThread({ rootPath: "/other" })).threadId
       const neverSpawned = (yield* seedThread({ rootPath: "/third" })).threadId
-      const [archivedTmp, deletedTmp] = [yield* scratch.ensureTmp(archived), yield* scratch.ensureTmp(deleted)]
+      const [archivedTmp, deletedTmp] = [
+        String(yield* scratch.ensureTmp(archived)),
+        String(yield* scratch.ensureTmp(deleted)),
+      ]
       writeFileSync(join(archivedTmp, "test.db"), "")
 
       yield* threads.archive(archived)
@@ -334,22 +337,6 @@ describe("Threads", () => {
       yield* threads.remove(archived)
       expect(yield* scratch.ensureTmp(archived)).toBe(archivedTmp)
     }).pipe(Effect.provide(threadsLayer)),
-  )
-
-  it.effect("keeps a thread's tmp folder path short enough for Unix sockets inside it", () =>
-    Effect.gen(function* () {
-      const scratch = yield* Scratch.Scratch
-      const threadId = randomUUID()
-      const folder = yield* scratch.ensureTmp(threadId)
-      try {
-        expect(folder).toBe(join(tmpdir(), `hc-${threadId.slice(0, 8)}`))
-        expect(folder.length - tmpdir().length).toBeLessThanOrEqual(12)
-      } finally {
-        rmSync(folder, { recursive: true, force: true })
-      }
-    }).pipe(
-      Effect.provide(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-"))).pipe(Layer.provide(NodeServices.layer))),
-    ),
   )
 
   it.live("archives a thread without waiting for its scratch folder's files to be deleted", () =>

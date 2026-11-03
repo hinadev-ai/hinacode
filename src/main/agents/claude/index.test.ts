@@ -271,6 +271,15 @@ describe("Claude idle sessions", () => {
     ),
   )
 
+  it.effect("spawns the CLI with the inherited temp directory when the thread has no tmp folder", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        yield* runTurn(turnInput({ tmpDirectory: null }))
+        expect(latestCli().options.env?.["TMPDIR"]).toBe(process.env["TMPDIR"])
+      }),
+    ),
+  )
+
   it.effect("resumes in a new CLI with the auto-compact window the settings changed to", () =>
     lifecycle(
       Effect.gen(function* () {

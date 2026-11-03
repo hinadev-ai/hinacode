@@ -101,4 +101,5 @@ export interface AgentProvider {
 
 export const MCP_TOOL_TIMEOUT_SECONDS = 3600
 
-export const tmpEnv = (tmpDirectory: string) => ({ TMPDIR: tmpDirectory, TMP: tmpDirectory, TEMP: tmpDirectory })
+export const tmpEnv = (tmpDirectory: string | null) =>
+  tmpDirectory === null ? {} : { TMPDIR: tmpDirectory, TMP: tmpDirectory, TEMP: tmpDirectory }
