@@ -63,10 +63,13 @@ const loadReady = async (
   id = threadId,
   messages = [{ ...assistant(""), threadId: id }],
   approvals: ApprovalRequest[] = [],
+  seq = 0,
 ) => {
   transcriptResponse = Promise.withResolvers()
   const loading = store().load(id)
-  transcriptResponse.resolve({ result: { messages, approvals, questions: [], secretRequests: [], seq: 0 } })
+  transcriptResponse.resolve({
+    result: { messages, approvals, questions: [], secretRequests: [], seq, sequenceScope: "thread" },
+  })
   await loading
   vi.useFakeTimers()
 }
@@ -488,7 +491,7 @@ test("unload cancels held deltas and reload uses the authoritative snapshot", as
   expect(vi.getTimerCount()).toBe(0)
   expect(store().byThread[threadId]).toBeUndefined()
   store().receive(event(3, { type: "text_delta", text: "unloaded" }))
-  await loadReady(threadId, [assistant("snapshot")])
+  await loadReady(threadId, [assistant("snapshot")], [], 3)
   store().receive(event(4, { type: "text_delta", text: " fresh" }))
   expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "snapshot fresh" }])
   store().receive(event(5, { type: "reasoning_delta", text: "thought" }))
@@ -527,7 +530,14 @@ test("clears pending questions immediately when a turn reaches a usage limit", a
 })
 
 const transcript = (text: string, seq: number) => ({
-  result: { messages: [assistant(text)], approvals: [], questions: [], secretRequests: [], seq },
+  result: {
+    messages: [assistant(text)],
+    approvals: [],
+    questions: [],
+    secretRequests: [],
+    seq,
+    sequenceScope: "thread",
+  },
 })
 
 const reloadAfterUnload = () => {
@@ -626,4 +636,85 @@ test("a failed history retries on the next view", async () => {
   await loadReady()
   expect(transcriptRequests).toStrictEqual([threadId, threadId])
   expect(ready().messages).toHaveLength(1)
+})
+
+test("a push after a lost one reloads the snapshot instead of applying it", async () => {
+  await loadReady()
+  store().receive(event(1, { type: "text_delta", text: "kept " }))
+  transcriptResponse = Promise.withResolvers()
+  store().receive(event(3, { type: "text_delta", text: "after the lost push" }))
+  expect(transcriptRequests).toStrictEqual([threadId, threadId])
+
+  vi.useRealTimers()
+  transcriptResponse.resolve(transcript("kept lost after the lost push", 3))
+  await vi.waitFor(() =>
+    expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "kept lost after the lost push" }]),
+  )
+  store().receive(event(4, { type: "turn_completed" }))
+  expect(ready().messages[0]?.completedAt).toEqual(expect.any(String))
+  expect(transcriptRequests).toHaveLength(2)
+})
+
+test("deltas waiting for the 100 ms flush count as received", async () => {
+  await loadReady()
+  store().receive(event(1, { type: "text_delta", text: "a" }))
+  store().receive(event(2, { type: "text_delta", text: "b" }))
+  store().receive(event(3, { type: "tool_call_started", callId: "c1", name: "shell", input: "ls" }))
+
+  expect(transcriptRequests).toStrictEqual([threadId])
+  expect(ready().messages[0]?.parts[0]).toStrictEqual({ type: "text", text: "ab" })
+})
+
+test("a gap among pushes buffered while loading reloads once the snapshot lands", async () => {
+  const loading = store().load(threadId)
+  store().receive(event(3, { type: "text_delta", text: "after snapshot" }))
+  store().receive(event(5, { type: "text_delta", text: "after the lost push" }))
+  transcriptResponse.resolve(transcript("snapshot", 2))
+  await loading
+
+  expect(transcriptRequests).toStrictEqual([threadId, threadId])
+})
+
+test("a snapshot without a sequence scope accepts globally numbered pushes interleaved with other threads", async () => {
+  const loading = store().load(threadId)
+  store().receive(event(11, { type: "text_delta", text: " during" }))
+  store().receive(event(12, { type: "text_delta", text: "elsewhere" }, "other"))
+  store().receive(event(13, { type: "text_delta", text: " load" }))
+  transcriptResponse.resolve({
+    result: { messages: [assistant("snapshot")], approvals: [], questions: [], secretRequests: [], seq: 10 },
+  })
+  await loading
+  expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "snapshot during load" }])
+
+  store().receive(event(15, { type: "tool_call_started", callId: "c1", name: "shell", input: "ls" }))
+  store().receive(event(16, { type: "text_delta", text: "elsewhere" }, "other"))
+  store().receive(event(18, { type: "turn_completed" }))
+  store().receive(event(18, { type: "text_delta", text: "duplicate" }))
+
+  expect(transcriptRequests).toStrictEqual([threadId])
+  expect(ready().messages[0]?.parts).toStrictEqual([
+    { type: "text", text: "snapshot during load" },
+    expect.objectContaining({ type: "tool_call", callId: "c1" }),
+  ])
+  expect(ready().messages[0]?.completedAt).toEqual(expect.any(String))
+})
+
+test("a duplicate is dropped and a gap behind a held delta reloads", async () => {
+  await loadReady()
+  store().receive(event(1, { type: "text_delta", text: "a" }))
+  store().receive(event(2, { type: "text_delta", text: "b" }))
+  store().receive(event(2, { type: "text_delta", text: "b" }))
+  vi.advanceTimersByTime(100)
+  expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "ab" }])
+  store().receive(event(3, { type: "text_delta", text: "c" }))
+  transcriptResponse = Promise.withResolvers()
+  store().receive(event(5, { type: "text_delta", text: "e" }))
+  expect(transcriptRequests).toStrictEqual([threadId, threadId])
+  expect(vi.getTimerCount()).toBe(0)
+
+  vi.useRealTimers()
+  transcriptResponse.resolve(transcript("abcde", 5))
+  await vi.waitFor(() => expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "abcde" }]))
+  store().receive(event(6, { type: "text_delta", text: "f" }))
+  expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "abcdef" }])
 })

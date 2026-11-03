@@ -1,6 +1,6 @@
 import { create } from "zustand"
 import type { AgentEvent, ApprovalRequest, QuestionRequest, SecretRequest } from "../../shared/agent.ts"
-import type { TranscriptPush } from "../../shared/contract.ts"
+import { type TranscriptPush, transcriptThreadId } from "../../shared/contract.ts"
 import type { Message } from "../../shared/domain.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { callPromise } from "../lib/rpc.ts"
@@ -10,11 +10,11 @@ const CACHED_HISTORY_LIMIT = 8
 
 type ReadyHistory = {
   readonly status: "ready"
-  readonly snapshotSeq: number
   readonly messages: ReadonlyArray<Message>
   readonly approvals: ReadonlyArray<ApprovalRequest>
   readonly questions: ReadonlyArray<QuestionRequest>
   readonly secretRequests: ReadonlyArray<SecretRequest>
+  readonly sequenceScope?: "thread"
 }
 
 export type ThreadHistory =
@@ -39,6 +39,7 @@ export const useMessages = create<MessagesState>()((set, get) => {
     streamWindows.delete(threadId)
     return stream.held
   }
+  const receivedSeqs = new Map<string, number>()
   const setHistory = (threadId: string, update: (history: ThreadHistory | undefined) => ThreadHistory | undefined) =>
     set((state) => {
       const history = state.byThread[threadId]
@@ -66,6 +67,7 @@ export const useMessages = create<MessagesState>()((set, get) => {
     if (threadIds.length === 0) return
     for (const threadId of threadIds) {
       takeHeld(threadId)
+      receivedSeqs.delete(threadId)
       const index = leastRecentlyViewedFirst.indexOf(threadId)
       if (index !== -1) leastRecentlyViewedFirst.splice(index, 1)
     }
@@ -81,23 +83,26 @@ export const useMessages = create<MessagesState>()((set, get) => {
     leastRecentlyViewedFirst.push(threadId)
     forget(leastRecentlyViewedFirst.slice(0, -CACHED_HISTORY_LIMIT))
   }
-  const fetchHistory = async (threadId: string) => {
+  const fetchHistory = async (threadId: string): Promise<void> => {
     takeHeld(threadId)
+    receivedSeqs.delete(threadId)
     const loadId = Symbol(threadId)
     setHistory(threadId, () => ({ status: "loading", loadId, pending: [] }))
-    const settle = (update: (pending: ReadonlyArray<TranscriptPush>) => ThreadHistory) =>
-      setHistory(threadId, (history) =>
-        history?.status === "loading" && history.loadId === loadId ? update(history.pending) : history,
-      )
+    const stillLoading = () => {
+      const history = get().byThread[threadId]
+      return history?.status === "loading" && history.loadId === loadId ? history : undefined
+    }
     try {
       const { seq, ...snapshot } = await callPromise("threads.transcript", { threadId })
-      settle((pending) =>
-        pending
-          .filter((push) => push.seq > seq)
-          .reduce<ReadyHistory>(applyPush, { status: "ready", snapshotSeq: seq, ...snapshot }),
-      )
+      const loading = stillLoading()
+      if (loading === undefined) return
+      const settled = replayAfterSnapshot({ status: "ready", ...snapshot }, seq, loading.pending)
+      if (settled === undefined) return await fetchHistory(threadId)
+      receivedSeqs.set(threadId, settled.lastSeq)
+      setHistory(threadId, () => settled.ready)
     } catch (cause) {
-      settle(() => ({ status: "error", message: cause instanceof Error ? cause.message : String(cause) }))
+      if (stillLoading() === undefined) return
+      setHistory(threadId, () => ({ status: "error", message: cause instanceof Error ? cause.message : String(cause) }))
     }
   }
 
@@ -118,9 +123,14 @@ export const useMessages = create<MessagesState>()((set, get) => {
     unload: (threadId) => forget([threadId]),
 
     receive: (push) => {
-      const threadId = pushThreadId(push)
+      const threadId = transcriptThreadId(push)
       const current = get().byThread[threadId]
-      if (current?.status === "ready" && push.seq <= current.snapshotSeq) return
+      if (current?.status === "ready") {
+        const lastSeq = receivedSeqs.get(threadId) ?? 0
+        if (push.seq <= lastSeq) return
+        if (current.sequenceScope === "thread" && push.seq !== lastSeq + 1) return void fetchHistory(threadId)
+        receivedSeqs.set(threadId, push.seq)
+      }
       const type = current?.status === "ready" ? deltaType(push) : undefined
       const stream = streamWindows.get(threadId)
       if (type !== undefined && stream?.type === type) {
@@ -143,7 +153,17 @@ export const useMessages = create<MessagesState>()((set, get) => {
   }
 })
 
-const pushThreadId = (push: TranscriptPush) => (push.type === "thread.event" ? push.threadId : push.message.threadId)
+function replayAfterSnapshot(
+  snapshot: ReadyHistory,
+  snapshotSeq: number,
+  pending: ReadonlyArray<TranscriptPush>,
+): { readonly ready: ReadyHistory; readonly lastSeq: number } | undefined {
+  const replay = pending.filter((push) => push.seq > snapshotSeq)
+  if (snapshot.sequenceScope === "thread" && replay.some((push, index) => push.seq !== snapshotSeq + index + 1))
+    return undefined
+  return { ready: replay.reduce(applyPush, snapshot), lastSeq: replay.at(-1)?.seq ?? snapshotSeq }
+}
+
 type DeltaType = "text_delta" | "reasoning_delta"
 type StreamWindow = { readonly type: DeltaType; held: TranscriptPush[]; timer: ReturnType<typeof setTimeout> }
 const deltaType = (push: TranscriptPush): DeltaType | undefined =>

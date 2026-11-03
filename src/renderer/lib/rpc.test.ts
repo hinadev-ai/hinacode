@@ -1,7 +1,12 @@
 import { AtomRegistry } from "effect/reactivity"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
-import type { PushEvent } from "../../shared/contract.ts"
-import { branchPullRequestAtom, onPushEvent, pullRequestDetailAtom, pullRequestStatusAtom } from "./rpc.ts"
+import {
+  branchPullRequestAtom,
+  onPushEvent,
+  pullRequestDetailAtom,
+  pullRequestStatusAtom,
+  type RendererPushEvent,
+} from "./rpc.ts"
 
 let bridgeListeners: ReadonlyArray<(event: unknown) => void> = []
 const push = (event: unknown) => {
@@ -40,7 +45,7 @@ afterEach(() => {
 })
 
 test("listens on the bridge once and hands every listener the same decoded event", () => {
-  const received: Array<PushEvent> = []
+  const received: Array<RendererPushEvent> = []
   const unsubscribes = [1, 2, 3].map(() => onPushEvent((event) => received.push(event)))
   expect(bridgeListeners.length).toBe(1)
 
@@ -73,7 +78,7 @@ test("a throwing listener does not stop the others", () => {
   const reportError = vi.fn()
   vi.stubGlobal("reportError", reportError)
   const failure = new Error("listener failed")
-  const received: Array<PushEvent> = []
+  const received: Array<RendererPushEvent> = []
   const stopFailing = onPushEvent(() => {
     throw failure
   })
@@ -84,6 +89,26 @@ test("a throwing listener does not stop the others", () => {
   expect(reportError).toHaveBeenCalledWith(failure)
   stopFailing()
   stopReceiving()
+})
+
+test("a transcript push that fails to decode asks for a resync and keeps the listener alive", () => {
+  const reportError = vi.fn()
+  vi.stubGlobal("reportError", reportError)
+  const received: Array<unknown> = []
+  const stop = onPushEvent((event) => received.push(event))
+
+  push({ type: "thread.event", seq: 4, threadId: "t1", event: { type: "not an agent event" } })
+  push({ type: "message.updated", seq: 5, message: { threadId: "t2" } })
+  push({ type: "not a push event" })
+  push({ type: "environments.changed" })
+
+  expect(received).toStrictEqual([
+    { type: "transcript.lost", threadId: "t1" },
+    { type: "transcript.lost", threadId: "t2" },
+    { type: "environments.changed" },
+  ])
+  expect(reportError).toHaveBeenCalledTimes(3)
+  stop()
 })
 
 test("pull request polling resumes after the window hides across a refresh and returns before it is stale", async () => {

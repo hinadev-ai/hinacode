@@ -15,7 +15,7 @@ import {
   Semaphore,
   Stream,
 } from "effect"
-import type { RpcResponse, TranscriptPush } from "../../shared/contract.ts"
+import { type RpcResponse, type TranscriptPush, transcriptThreadId } from "../../shared/contract.ts"
 import type {
   AccountHome,
   AccountLimits,
@@ -367,7 +367,7 @@ const make = Effect.gen(function* () {
   const subagents = new Map<string, Map<string, Subagent>>()
   const agentRuns = new Map<string, { readonly threadId: string; readonly stop: Effect.Effect<void> }>()
   const backgroundTasks = new Map<string, ReadonlyArray<BackgroundTask>>()
-  let seq = 0
+  const transcriptSeqs = new Map<string, number>()
 
   yield* messages.closeInterrupted
   yield* threads.resetInterrupted
@@ -439,7 +439,10 @@ const make = Effect.gen(function* () {
     )
 
   const publishTranscript = (event: DistributiveOmit<TranscriptPush, "seq">, { whole = false } = {}) => {
-    const numbered = { ...event, seq: ++seq }
+    const threadId = transcriptThreadId(event)
+    const seq = (transcriptSeqs.get(threadId) ?? 0) + 1
+    transcriptSeqs.set(threadId, seq)
+    const numbered = { ...event, seq }
     return push.publish(whole ? numbered : previewPush(numbered))
   }
 
@@ -1462,7 +1465,8 @@ const make = Effect.gen(function* () {
           secretRequests: [...secretRequests.values()]
             .map(({ request }) => request)
             .filter((request) => request.threadId === threadId),
-          seq,
+          seq: transcriptSeqs.get(threadId) ?? 0,
+          sequenceScope: "thread" as const,
         }
       }).pipe(exclusive(threadId)),
     toolOutput: (call) => {

@@ -432,6 +432,7 @@ export const RpcMethods = {
       questions: Schema.Array(QuestionRequest),
       secretRequests: Schema.Array(SecretRequest),
       seq: Schema.Number,
+      sequenceScope: Schema.optional(Schema.Literal("thread")),
     }),
   ),
   "threads.toolOutput": rpc(
@@ -912,6 +913,10 @@ export const TranscriptPush = Schema.Union([
   Schema.Struct({ type: Schema.Literal("message.updated"), seq: Schema.Number, message: Message }),
 ])
 export type TranscriptPush = typeof TranscriptPush.Type
+
+export const transcriptThreadId = (
+  push: { readonly threadId: string } | { readonly message: { readonly threadId: string } },
+) => ("threadId" in push ? push.threadId : push.message.threadId)
 
 export const MenuCommand = Schema.Literals([
   "thread.new",

@@ -4,11 +4,11 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { expect, it } from "@effect/vitest"
-import { Context, Deferred, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, Queue, Stream } from "effect"
+import { Context, Deferred, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
 import { SqlClient } from "effect/sql"
 import { vi } from "vitest"
 import type { AgentEvent, ApprovalDecision, ProviderId, RunTurnInput } from "../../shared/agent.ts"
-import type { TranscriptPush } from "../../shared/contract.ts"
+import { RpcMethods, type TranscriptPush } from "../../shared/contract.ts"
 import type { Message, Thread } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
@@ -917,6 +917,41 @@ it("forks a side chat from the last finished turn and hands it the running one",
       expect(turns[2]!.input.prompt).toMatch(/<\/side_chat>\n\nwhy\?$/)
       expect((await Effect.runPromise(threads.get(thread.id))).status).not.toBe("idle")
       expect((await Effect.runPromise(threads.get(side.id))).title).toBe(thread.title)
+    },
+    { forkable: true },
+  )
+})
+
+it("numbers each thread's transcript pushes on its own", async () => {
+  await withPreparingThread(
+    async ({ runner, threads, thread, release, idle, transcript }) => {
+      release()
+      await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+      await idle
+      const side = await Effect.runPromise(threads.sidechat(thread.id))
+      await Effect.runPromise(runner.send(side.id, "accepted input", []))
+      const seqsOf = (threadId: string) =>
+        transcript
+          .filter((push) => (push.type === "thread.event" ? push.threadId : push.message.threadId) === threadId)
+          .map((push) => push.seq)
+      await vi.waitFor(() =>
+        expect(
+          transcript.some(
+            (push) => push.type === "thread.event" && push.threadId === side.id && push.event.type === "turn_completed",
+          ),
+        ).toBe(true),
+      )
+
+      for (const id of [thread.id, side.id]) {
+        const seqs = seqsOf(id)
+        expect(seqs).toEqual(seqs.map((_, index) => index + 1))
+        expect((await Effect.runPromise(runner.transcript(id))).seq).toBe(seqs.length)
+      }
+      const snapshot = await Effect.runPromise(runner.transcript(thread.id))
+      expect(snapshot.sequenceScope).toBe("thread")
+      const { sequenceScope: _, ...legacySnapshot } = snapshot
+      const decodeSnapshot = Schema.decodeUnknownSync(RpcMethods["threads.transcript"].response)
+      expect(decodeSnapshot(legacySnapshot).sequenceScope).toBeUndefined()
     },
     { forkable: true },
   )
