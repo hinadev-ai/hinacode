@@ -1,5 +1,6 @@
 import { Option, Schema } from "effect"
 import { Hono, type Context } from "hono"
+import { cors } from "hono/cors"
 import { CloudflareError, makeCloudflare, type Fetch } from "./cloudflare"
 import { linkPage } from "./page"
 import { type Host, type Link, runStore } from "./store"
@@ -101,6 +102,10 @@ export const makeApp = (deps: Deps) => {
     if (host.tunnelId) await api.deleteTunnel(host.tunnelId)
     await runStore(env.DB, (store) => store.deleteHost(host.id))
   }
+
+  app.use("/v1/*", (c, next) =>
+    cors({ origin: c.env.WEB_ORIGINS.split(","), allowMethods: ["GET"], maxAge: 600 })(c, next),
+  )
 
   app.onError((error, c) => {
     if (error instanceof CloudflareError) return c.json({ error: error.message }, 502)

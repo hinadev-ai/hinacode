@@ -314,6 +314,39 @@ const machines = async (session = "alice-session") => {
 const setEnabled = (id: string | undefined, enabled: boolean, session = "alice-session") =>
   call("PATCH", `/v1/hosts/${id}`, { bearer: session, body: { enabled } })
 
+describe("the web app", () => {
+  const preflight = (origin: string) =>
+    app.request(
+      "https://relay.test/v1/machines",
+      {
+        method: "OPTIONS",
+        headers: {
+          Origin: origin,
+          "Access-Control-Request-Method": "GET",
+          "Access-Control-Request-Headers": "authorization",
+        },
+      },
+      env,
+    )
+
+  it("lets the web app's origin list the machines with the owner token", async () => {
+    const response = await preflight("https://code.test")
+    expect(response.status).toBe(204)
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://code.test")
+    expect(response.headers.get("Access-Control-Allow-Headers")?.toLowerCase()).toContain("authorization")
+    const listed = await app.request(
+      "https://relay.test/v1/machines",
+      { headers: { Origin: "https://code.test", Authorization: "Bearer alice-session" } },
+      env,
+    )
+    expect(listed.headers.get("Access-Control-Allow-Origin")).toBe("https://code.test")
+  })
+
+  it("gives any other origin no CORS grant", async () => {
+    expect((await preflight("https://evil.test")).headers.get("Access-Control-Allow-Origin")).toBeNull()
+  })
+})
+
 describe("the machines the owner's devices see", () => {
   it("lists a published machine with its relay hostname, uncached", async () => {
     expect((await publish(await linkMachine())).status).toBe(204)
