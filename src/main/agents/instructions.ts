@@ -1,7 +1,7 @@
 import type { ExperimentalSettings } from "../../shared/domain.ts"
 import type { ModelInfo } from "../../shared/agent.ts"
 import { providerInfo } from "../../shared/providers.ts"
-import { threadMention } from "../../shared/threadMention.ts"
+import { threadMention } from "../../shared/mentions.ts"
 import type { SubagentChoice } from "./runAgent.ts"
 
 // FIXME: Claude Code defers MCP tools, so agents see only their names until they load one

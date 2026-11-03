@@ -1,7 +1,7 @@
 import { describe, expect, test } from "@effect/vitest"
 import { completionAt, suggestionsFor } from "./composerSyntax.ts"
 import type { Project, Thread } from "./domain.ts"
-import { mentionableThreads } from "./threadMention.ts"
+import { MENTION, mentionableThreads, parseMention, terminalMention, threadMention } from "./mentions.ts"
 
 const thread = (id: string, patch: Partial<Thread>): Thread => ({
   id,
@@ -89,4 +89,19 @@ test("suggests same-machine threads before other machines' threads, even when a 
     "@thread:desktop-login",
     "@thread:cloud-login",
   ])
+})
+
+describe("parseMention", () => {
+  test("reads the kind and id of a whole thread or terminal token", () => {
+    expect(parseMention(threadMention("t-1"))).toStrictEqual({ kind: "thread", id: "t-1" })
+    const terminalId = "0f6c2b4e-9a51-4c7e-8d3f-2b1a0e9c7d55"
+    expect(parseMention(terminalMention(terminalId))).toStrictEqual({ kind: "terminal", id: terminalId })
+    expect(parseMention("@src/main.ts")).toBeNull()
+    expect(parseMention("@terminal:t-1.")).toBeNull()
+  })
+
+  test("MENTION finds both kinds in running text", () => {
+    const text = "compare @thread:t-1 with @terminal:abc-2."
+    expect([...text.matchAll(MENTION)].map((match) => match[0])).toStrictEqual(["@thread:t-1", "@terminal:abc-2"])
+  })
 })

@@ -1,6 +1,6 @@
 import type { AgentCommand } from "./agent.ts"
 import type { PullRequestMatch, Thread } from "./domain.ts"
-import { type MentionableThreads, mentionedThreadId, threadMention } from "./threadMention.ts"
+import { type MentionableThreads, parseMention, threadMention } from "./mentions.ts"
 
 export type SyntaxKind = "text" | "bullet" | "code" | "strong" | "rule" | "command" | "mention"
 
@@ -53,8 +53,9 @@ const classify = (token: string, known: KnownTokens): { kind: SyntaxKind; text: 
   if (token.startsWith("**")) return { kind: "strong", text: token }
   if (token.startsWith("@")) {
     const mention = token.replace(TRAILING_PUNCTUATION, "")
-    const threadId = mentionedThreadId(mention)
-    const isKnown = threadId === null ? known.files.has(mention.slice(1)) : known.threads.has(threadId)
+    const parsed = parseMention(mention)
+    const isKnown =
+      parsed === null ? known.files.has(mention.slice(1)) : parsed.kind === "thread" && known.threads.has(parsed.id)
     return isKnown ? { kind: "mention", text: mention } : null
   }
   return known.commands.has(token) ? { kind: "command", text: token } : null

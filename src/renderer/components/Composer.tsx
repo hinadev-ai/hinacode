@@ -22,7 +22,7 @@ import type { AgentCommand } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import { isThreadBusy, type Project, type Thread, toCheckoutTarget } from "../../shared/domain.ts"
 import { providerInfo } from "../../shared/providers.ts"
-import { mentionableThreads } from "../../shared/threadMention.ts"
+import { mentionableThreads } from "../../shared/mentions.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { promptWithComments } from "../lib/lineComments.ts"
 import {

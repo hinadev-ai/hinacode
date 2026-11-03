@@ -14,7 +14,7 @@ import {
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { Message, MessagePart } from "../../shared/domain.ts"
 import { fenceCode, highlight, isUnorderedBullet, type KnownTokens, type Segment } from "../../shared/composerSyntax.ts"
-import { THREAD_MENTION } from "../../shared/threadMention.ts"
+import { MENTION } from "../../shared/mentions.ts"
 import {
   assistantPresentation,
   foldedParts,
@@ -143,8 +143,8 @@ function WithThreadMentions({ text }: { text: string }) {
   const threadsById = useThreads((state) => state.byId)
   const nodes: Array<ReactElement> = []
   let end = 0
-  for (const match of text.matchAll(THREAD_MENTION)) {
-    const thread = threadsById[match[1] ?? ""]
+  for (const match of text.matchAll(MENTION)) {
+    const thread = match[1] === "thread" ? threadsById[match[2] ?? ""] : undefined
     if (thread === undefined) continue
     nodes.push(<Highlighted key={`text-${end}`} text={text.slice(end, match.index)} />)
     nodes.push(

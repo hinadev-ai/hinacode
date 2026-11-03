@@ -5,7 +5,7 @@ import { EditorView, keymap, type ViewUpdate } from "@codemirror/view"
 import { type Ref, useEffect, useEffectEvent, useId, useImperativeHandle, useRef, useState } from "react"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
-import type { MentionableThreads } from "../../shared/threadMention.ts"
+import type { MentionableThreads } from "../../shared/mentions.ts"
 import {
   completionAt,
   type CompletionQuery,
