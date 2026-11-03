@@ -55,6 +55,7 @@ export const routes: Record<RpcMethod, Route> = {
   "artifacts.readDocument": owner("artifact", "id"),
   "artifacts.saveDocument": owner("artifact", "id"),
   "artifacts.createDocument": thread,
+  "artifacts.rename": owner("artifact", "id"),
   "shell.reveal": client,
   "shell.openers": client,
   "shell.openWith": client,

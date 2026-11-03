@@ -611,6 +611,7 @@ export const RpcMethods = {
     DocumentSaveResult,
   ),
   "artifacts.createDocument": rpc(Schema.Struct({ threadId: Schema.String, title: Schema.String }), Artifact),
+  "artifacts.rename": rpc(Schema.Struct({ id: Schema.String, title: Schema.String }), Artifact),
   "artifacts.setTheme": rpc(ArtifactTheme, Schema.Void),
   "automations.create": rpc(
     AutomationInput,
@@ -832,6 +833,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "artifacts.readDocument": "read",
   "artifacts.saveDocument": "mutation",
   "artifacts.createDocument": "mutation",
+  "artifacts.rename": "mutation",
   "artifacts.setTheme": "mutation",
   "automations.create": "mutation",
   "automations.update": "mutation",

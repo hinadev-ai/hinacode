@@ -375,6 +375,21 @@ describe("openArtifactStore", () => {
     expect((await store.get(first.id))?.revision).toBe(2)
   })
 
+  test("renames an artifact without a new revision, and later updates keep the name", async () => {
+    const store = openTemporaryStore()
+    const published = await store.publish({ kind: "document", title: "Notes", markdown: "one" })
+
+    const renamed = await store.rename(published.id, "  Launch notes ")
+    expect(renamed).toMatchObject({ title: "Launch notes", version: 1, revision: 1 })
+    expect(renamed.updatedAt > published.updatedAt).toBe(true)
+
+    const updated = await store.publish({ kind: "document", id: published.id, markdown: "two", baseRevision: 1 })
+    expect(updated).toMatchObject({ title: "Launch notes", revision: 2 })
+    await expect(store.rename(published.id, " ")).rejects.toThrow(/needs a title/)
+    await expect(store.rename("gone", "Name")).rejects.toThrow(/No artifact has the id "gone"/)
+    await expect(store.publish({ kind: "document", markdown: "new" })).rejects.toThrow(/needs a title/)
+  })
+
   test("removes an artifact and refuses ids it does not hold", async () => {
     const store = openTemporaryStore()
     const kept = await store.publish({ title: "Kept", files: [page("")] })

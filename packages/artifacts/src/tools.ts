@@ -37,36 +37,44 @@ const currentMarkdown = async (store: ArtifactStore, id: string) => {
   return file === null ? "" : new TextDecoder().decode(file.bytes)
 }
 
+const newNeedsTitle = { message: "Give a new artifact a title.", path: ["title"] }
+
 export const artifactTools = {
   publish_artifact: tool({
     description: PUBLISH_GUIDE,
-    input: z.object({
-      id: z
-        .string()
-        .optional()
-        .describe("The id of an artifact to update in place. Omit it to publish a new artifact."),
-      title: z
-        .string()
-        .min(1)
-        .describe(
-          'The artifact\'s name, two to four words specific to this page, such as "Q3 Latency Report". No explanation after a dash or colon. Keep it when you update.',
-        ),
-      entry: z
-        .string()
-        .regex(/\.html$/i, "The entry must be an .html file.")
-        .optional()
-        .describe('The HTML file the preview opens. Defaults to "index.html".'),
-      files: z
-        .array(
-          z.object({
-            path: z.string().describe('A relative path, such as "index.html" or "assets/chart.js".'),
-            content: z.string().describe("The file content, as text or base64."),
-            encoding: z.enum(["utf8", "base64"]).optional().describe('"base64" for binary files. Defaults to "utf8".'),
-          }),
-        )
-        .min(1)
-        .describe("Every file of this version. Files left out of an update are gone from the new version."),
-    }),
+    input: z
+      .object({
+        id: z
+          .string()
+          .optional()
+          .describe("The id of an artifact to update in place. Omit it to publish a new artifact."),
+        title: z
+          .string()
+          .min(1)
+          .optional()
+          .describe(
+            'The artifact\'s name, two to four words specific to this page, such as "Q3 Latency Report". No explanation after a dash or colon. Required for a new artifact. Omit it when you update, to keep the name the developer may have changed.',
+          ),
+        entry: z
+          .string()
+          .regex(/\.html$/i, "The entry must be an .html file.")
+          .optional()
+          .describe('The HTML file the preview opens. Defaults to "index.html".'),
+        files: z
+          .array(
+            z.object({
+              path: z.string().describe('A relative path, such as "index.html" or "assets/chart.js".'),
+              content: z.string().describe("The file content, as text or base64."),
+              encoding: z
+                .enum(["utf8", "base64"])
+                .optional()
+                .describe('"base64" for binary files. Defaults to "utf8".'),
+            }),
+          )
+          .min(1)
+          .describe("Every file of this version. Files left out of an update are gone from the new version."),
+      })
+      .refine((input) => input.id !== undefined || input.title !== undefined, newNeedsTitle),
     handle: async (store, input, { threadId }) => {
       const artifact = await store.publish({ ...input, ...(threadId === undefined ? {} : { threadId }) })
       return `Published artifact ${artifact.id} version ${artifact.version}: "${artifact.title}". Pass id "${artifact.id}" to publish_artifact to update it.`
@@ -86,19 +94,23 @@ export const artifactTools = {
         title: z
           .string()
           .min(1)
-          .describe('The document\'s name, two to four words, such as "Release Plan". Keep it when you update.'),
+          .optional()
+          .describe(
+            'The document\'s name, two to four words, such as "Release Plan". Required for a new document. Omit it when you update, to keep the name the developer may have changed.',
+          ),
         markdown: z.string().describe("The whole document as Markdown."),
       })
       .refine((input) => input.id === undefined || input.revision !== undefined, {
         message: "Pass the revision you last published or read together with id.",
         path: ["revision"],
-      }),
+      })
+      .refine((input) => input.id !== undefined || input.title !== undefined, newNeedsTitle),
     handle: async (store, { id, revision, title, markdown }, { threadId }) => {
       try {
         const document = await store.publish({
           kind: "document",
-          title,
           markdown,
+          ...(title === undefined ? {} : { title }),
           ...(id === undefined ? {} : { id }),
           ...(revision === undefined ? {} : { baseRevision: revision }),
           ...(threadId === undefined ? {} : { threadId }),
@@ -108,7 +120,7 @@ export const artifactTools = {
         if (!(error instanceof ArtifactConflictError)) throw error
         const { current } = error
         throw new ArtifactError(
-          `The developer edited document ${current.id} after your revision ${revision}. It is now at revision ${current.revision}. Merge your change into their text below and publish again with revision ${current.revision}.\n\n${await currentMarkdown(store, current.id)}`,
+          `The developer edited document ${current.id} after your revision ${revision}. It is now at revision ${current.revision}, titled "${current.title}". Merge your change into their text below and publish again with revision ${current.revision}.\n\n${await currentMarkdown(store, current.id)}`,
         )
       }
     },

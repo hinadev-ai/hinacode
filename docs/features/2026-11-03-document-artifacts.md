@@ -42,8 +42,8 @@ type Artifact = {
 }
 
 type PublishInput =
-  | { kind?: "page"; id?; title; threadId?; baseRevision?; author?; entry?; files }
-  | { kind: "document"; id?; title; threadId?; baseRevision?; author?; markdown }
+  | { kind?: "page"; id?; title?; threadId?; baseRevision?; author?; entry?; files }
+  | { kind: "document"; id?; title?; threadId?; baseRevision?; author?; markdown }
 ```
 
 - `kind` defaults to `page` when a manifest predates it, so old artifacts read unchanged.
@@ -52,6 +52,7 @@ type PublishInput =
 - An agent's publish always starts a new version. The developer's first save after it starts one more, and their later saves rewrite that version in place, with `author: "developer"`. So every handoff between agent and developer keeps the other side's text as the previous version, and the store keeps the current and previous version as before.
 - `baseRevision` is optimistic concurrency. Under the artifact's lock, a publish whose `baseRevision` is not the current revision fails with `ArtifactConflictError`, which carries the current manifest. The editor and `publish_document` both send it, so neither side overwrites edits it has not seen, even edits made in place. The agent's `revision` is required with `id` for that reason.
 - Manifests written before these fields read as `revision: 0` and `author: "agent"`.
+- The title is a name, not content. The developer renames an artifact by clicking its title in the panel header, and `store.rename` rewrites only the manifest's `title` and `updatedAt`, so a rename neither bumps the revision nor conflicts with an edit in flight. An update without `title` keeps the current one, and both publish tools tell the agent to omit it, so a stale title from the agent does not undo the rename. A new artifact still needs one.
 
 The persisted format is Markdown, not the editor's JSON. Agents read and write Markdown well, the file is readable and diffable on disk, and export is the file itself. The editor's schema becomes a view of the file rather than the format. The cost is that Markdown the editor cannot represent, such as raw HTML, is dropped the first time the developer saves. The tool description says so.
 
@@ -102,8 +103,9 @@ Pages are hostile HTML and stay in the sandboxed frame. A document is not HTML. 
 - `artifacts.readDocument({ id })` answers `{ version, revision, markdown }`, read together so the content and revision match.
 - `artifacts.saveDocument({ id, baseRevision, markdown })` answers `{ type: "saved", version, revision }` or `{ type: "conflict", version, revision, markdown }`.
 - `artifacts.createDocument({ threadId, title })` publishes an empty document owned by the thread.
+- `artifacts.rename({ id, title })` renames a page or a document and answers its manifest.
 
-The first two route by the artifact's owner and the third by the thread's, so a document on a cloud machine edits the same way.
+`createDocument` routes by the thread's owner and the others by the artifact's, so a document on a cloud machine edits the same way.
 
 ## Out of scope
 
@@ -112,7 +114,6 @@ The first two route by the artifact's owner and the third by the thread's, so a 
 - Exports other than Markdown and PDF.
 - Uploading images into a document.
 - Starting a new thread from a document.
-- Renaming a document from the UI. The agent sets the title.
 - Pie, area and scatter charts, chart colors chosen by the agent, and charts in transcript Markdown.
 
 ## Verification

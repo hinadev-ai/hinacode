@@ -516,6 +516,7 @@ const handlers: Handlers = {
   "artifacts.readDocument": ({ id }) => Artifacts.use((artifacts) => artifacts.readDocument(id)),
   "artifacts.saveDocument": (input) => Artifacts.use((artifacts) => artifacts.saveDocument(input)),
   "artifacts.createDocument": (input) => Artifacts.use((artifacts) => artifacts.createDocument(input)),
+  "artifacts.rename": ({ id, title }) => Artifacts.use((artifacts) => artifacts.rename(id, title)),
   "artifacts.setTheme": (theme) => ArtifactInspector.use((inspector) => inspector.setTheme(theme)),
   "artifacts.export": (request, desktop) => desktop?.exportArtifact(request) ?? Effect.succeed(null),
   "automations.create": (input) => Automations.use((automations) => automations.create(input)),

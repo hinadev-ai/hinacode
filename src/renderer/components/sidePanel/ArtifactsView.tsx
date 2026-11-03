@@ -1,7 +1,7 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { useNavigate } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
-import { lazy, useEffect, useRef, useState } from "react"
+import { type KeyboardEvent, lazy, startTransition, useEffect, useOptimistic, useRef, useState } from "react"
 import { RiDownload2Line } from "react-icons/ri"
 import { toast } from "sonner"
 import { type Artifact, type ArtifactExportRequest, isDocument } from "../../../shared/artifact.ts"
@@ -59,13 +59,82 @@ export function ArtifactsHeader({ thread }: { thread: Thread }) {
       >
         <ArrowLeftIcon aria-hidden />
       </Button>
-      <h2 className="min-w-0 truncate text-sm font-medium">{selected.title}</h2>
+      <ArtifactTitle key={`${selected.environmentId ?? ""}:${selected.id}`} artifact={selected} />
       <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
         {m.artifacts_version({ version: selected.version })}
       </span>
       <span className="flex-1" />
       <ExportMenu artifact={selected} />
     </div>
+  )
+}
+
+function ArtifactTitle({ artifact }: { artifact: Artifact }) {
+  const [editing, setEditing] = useState(false)
+  const [title, showTitle] = useOptimistic(artifact.title)
+
+  const rename = (next: string) =>
+    startTransition(async () => {
+      setEditing(false)
+      const trimmed = next.trim()
+      if (trimmed === "" || trimmed === artifact.title) return
+      showTitle(trimmed)
+      await callPromise(
+        "artifacts.rename",
+        { id: artifact.id, title: trimmed },
+        { environment: artifact.environmentId },
+      ).catch((cause: unknown) => toast.error(m.artifacts_rename_failed({ message: errorMessage(cause) })))
+    })
+
+  if (editing)
+    return <TitleInput title={title} onRename={rename} onCancel={() => startTransition(() => setEditing(false))} />
+  return (
+    <h2 className="min-w-0">
+      <button
+        type="button"
+        title={m.artifacts_rename()}
+        onClick={() => startTransition(() => setEditing(true))}
+        className="block max-w-full cursor-text truncate rounded-md px-1.5 py-0.5 text-sm font-medium outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        {title}
+      </button>
+    </h2>
+  )
+}
+
+const selectOnMount = (input: HTMLInputElement | null) => input?.select()
+
+function TitleInput({
+  title,
+  onRename,
+  onCancel,
+}: {
+  title: string
+  onRename: (title: string) => void
+  onCancel: () => void
+}) {
+  const [draft, setDraft] = useState(title)
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault()
+      onRename(draft)
+    }
+    if (event.key === "Escape") {
+      event.preventDefault()
+      event.stopPropagation()
+      onCancel()
+    }
+  }
+  return (
+    <input
+      ref={selectOnMount}
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onKeyDown={onKeyDown}
+      onBlur={() => onRename(draft)}
+      aria-label={m.artifacts_rename_label({ title })}
+      className="field-sizing-content h-6 max-w-full min-w-24 rounded-md border border-input bg-transparent px-1.5 text-sm font-medium outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+    />
   )
 }
 

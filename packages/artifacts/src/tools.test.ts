@@ -69,3 +69,19 @@ test("publishes a document and refuses an update that would drop the developer's
   expect(await read_artifact.handle(store, { id, path: "document.md" }, {})).toBe("# Release plan\n\nEdited.\n")
   expect(publish_document.input.safeParse({ id, title: "Release plan", markdown: "" }).success).toBe(false)
 })
+
+test("keeps a document's name, which the developer may have changed, when the agent updates without a title", async () => {
+  const store = openTemporaryStore()
+  const { publish_document } = artifactTools
+  const published = await store.publish({ kind: "document", title: "Notes", markdown: "one" })
+  await store.rename(published.id, "Launch notes")
+
+  const reply = await publish_document.handle(
+    store,
+    publish_document.input.parse({ id: published.id, revision: 1, markdown: "two" }),
+    {},
+  )
+
+  expect(reply).toContain('"Launch notes"')
+  expect(publish_document.input.safeParse({ markdown: "new" }).success).toBe(false)
+})

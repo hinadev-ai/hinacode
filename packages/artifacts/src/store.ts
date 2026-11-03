@@ -33,7 +33,7 @@ type FileInput = { path: string; content: string; encoding?: "utf8" | "base64" }
 
 type PublishCommon = {
   id?: string
-  title: string
+  title?: string
   threadId?: string
   baseRevision?: number
   author?: ArtifactAuthor
@@ -63,6 +63,7 @@ export type ArtifactStore = {
   list(): Promise<Artifact[]>
   file(id: string, path: string): Promise<ArtifactFileContent | null>
   remove(id: string): Promise<boolean>
+  rename(id: string, title: string): Promise<Artifact>
 }
 
 const ID_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz"
@@ -119,6 +120,14 @@ const lockArtifact = async (directory: string, onCompromised: (error: Error) => 
   }
 }
 
+const titleOf = (title: string | undefined) => {
+  const trimmed = title?.trim() ?? ""
+  if (trimmed === "") throw new ArtifactError("An artifact needs a title.")
+  return trimmed
+}
+
+const missing = (id: string) => new ArtifactError(`No artifact has the id "${id}". Omit id to publish a new artifact.`)
+
 export const openArtifactStore = (root: string, options: { now?: () => Date } = {}): ArtifactStore => {
   const now = options.now ?? (() => new Date())
 
@@ -157,9 +166,16 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
     return artifacts.filter((artifact) => artifact !== null).toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   }
 
+  const writeManifest = async (artifact: Artifact, assertLocked: () => void) => {
+    const directory = join(root, artifact.id)
+    const temporary = join(directory, `artifact.json.${randomUUID()}.tmp`)
+    await writeFile(temporary, `${JSON.stringify(artifact, null, 2)}\n`)
+    assertLocked()
+    await rename(temporary, join(directory, "artifact.json"))
+  }
+
   const publish = async (input: PublishInput): Promise<Artifact> => {
-    const title = input.title.trim()
-    if (title === "") throw new ArtifactError("An artifact needs a title.")
+    if (input.id === undefined) titleOf(input.title)
     const content = contentOf(input)
     const files = decodeFiles(content.files)
     const entry = normalizeArtifactPath(content.entry)
@@ -174,9 +190,8 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
     const id = input.id ?? newId()
     return withLock(id, async (assertLocked) => {
       const previous = input.id === undefined ? null : await get(id)
-      if (input.id !== undefined && previous === null) {
-        throw new ArtifactError(`No artifact has the id "${id}". Omit id to publish a new artifact.`)
-      }
+      if (input.id !== undefined && previous === null) throw missing(id)
+      const title = titleOf(input.title ?? previous?.title)
       if (previous !== null && previous.kind !== content.kind) {
         throw new ArtifactError(
           `Artifact ${id} is a ${previous.kind}. Update it with ${previous.kind === "document" ? "publish_document" : "publish_artifact"}.`,
@@ -216,10 +231,7 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
         updatedAt: timestamp,
         ...(threadId === undefined ? {} : { threadId }),
       }
-      const temporary = join(directory, `artifact.json.${randomUUID()}.tmp`)
-      await writeFile(temporary, `${JSON.stringify(artifact, null, 2)}\n`)
-      assertLocked()
-      await rename(temporary, join(directory, "artifact.json"))
+      await writeManifest(artifact, assertLocked)
       if (inPlace) return artifact
 
       const stale = (await readdir(directory)).filter(
@@ -259,5 +271,17 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
     })
   }
 
-  return { root, publish, get, list, file, remove }
+  const renameArtifact = async (id: string, title: string) => {
+    const name = titleOf(title)
+    if (!isArtifactId(id)) throw missing(id)
+    return withLock(id, async (assertLocked) => {
+      const previous = await get(id)
+      if (previous === null) throw missing(id)
+      const artifact = { ...previous, title: name, updatedAt: now().toISOString() }
+      await writeManifest(artifact, assertLocked)
+      return artifact
+    })
+  }
+
+  return { root, publish, get, list, file, remove, rename: renameArtifact }
 }

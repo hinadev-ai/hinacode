@@ -32,6 +32,7 @@ export class Artifacts extends Context.Service<
       readonly markdown: string
     }) => Effect.Effect<DocumentSaveResult, NotFoundError>
     readonly createDocument: (input: { readonly threadId: string; readonly title: string }) => Effect.Effect<Artifact>
+    readonly rename: (id: string, title: string) => Effect.Effect<Artifact, NotFoundError>
   }
 >()("hinacode/Artifacts") {}
 
@@ -150,6 +151,18 @@ const make = (root: string) =>
     const createDocument = ({ threadId, title }: { threadId: string; title: string }) =>
       Effect.promise(() => store.publish({ kind: "document", title, markdown: "", threadId }))
 
+    const rename = (id: string, title: string) =>
+      Effect.flatMap(
+        Effect.promise(() => store.get(id)),
+        (found) =>
+          found === null
+            ? Effect.fail(new NotFoundError({ entity: "artifact", id }))
+            : Effect.tap(
+                Effect.promise(() => store.rename(id, title)),
+                () => Effect.promise(() => announce(id)),
+              ),
+      )
+
     return Artifacts.of({
       store,
       list: Effect.promise(() => store.list()),
@@ -159,6 +172,7 @@ const make = (root: string) =>
       readDocument,
       saveDocument,
       createDocument,
+      rename,
     })
   })
 

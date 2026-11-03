@@ -27,11 +27,12 @@ const version = 1
 `
 
 let documentId = "plan-0"
+let title = "Release plan"
 
 const documentAt = (version: number, revision = version): Artifact => ({
   id: documentId,
   kind: "document",
-  title: "Release plan",
+  title,
   entry: "document.md",
   version,
   revision,
@@ -57,6 +58,12 @@ const bridge: HinacodeBridge = {
       stored = { version: 2, revision: stored.revision + 1, markdown: save.markdown }
       return { result: { type: "saved", version: stored.version, revision: stored.revision } }
     }
+    if (method === "artifacts.rename") {
+      title = (payload as { title: string }).title
+      const renamed = documentAt(stored.version, stored.revision)
+      push({ type: "artifact.updated", artifact: renamed })
+      return { result: renamed }
+    }
     if (method === "environments.list") return { result: { clouds: [] } }
     if (method === "clientSettings.get")
       return { result: Schema.encodeSync(RpcMethods["clientSettings.get"].response)(defaultClientSettings) }
@@ -79,6 +86,7 @@ const push = (event: typeof PushEvent.Encoded) => {
 
 beforeEach(({ task }) => {
   documentId = `plan-${task.id}`
+  title = "Release plan"
   stored = { version: 1, revision: 1, markdown: AGENT_MARKDOWN }
   nextSave = undefined
   saves = []
@@ -239,4 +247,15 @@ test("links the selected text with Cmd+K", async () => {
   await expect
     .poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 })
     .toContain("Ship the **editor** [first.](https://hinacode.dev)")
+})
+
+test("renames the document from the panel header", async () => {
+  await openDocument()
+
+  await page.getByRole("button", { name: "Release plan", exact: true }).click()
+  await page.getByRole("textbox", { name: "New name for Release plan" }).fill("Launch plan")
+  await userEvent.keyboard("{Enter}")
+
+  await expect.element(page.getByRole("button", { name: "Launch plan", exact: true })).toBeInTheDocument()
+  expect(title).toBe("Launch plan")
 })
