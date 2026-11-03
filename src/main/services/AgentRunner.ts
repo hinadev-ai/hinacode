@@ -34,6 +34,7 @@ import type {
   SecretRequest,
   ThreadUsage,
 } from "../../shared/agent.ts"
+import { WAIT_AGENT_TOOL } from "../../shared/agent.ts"
 import type {
   AccessMode,
   Attachment,
@@ -86,6 +87,7 @@ import { AgentAccounts } from "./AgentAccounts.ts"
 import { type ActiveWorkspace, makeActiveWorkspace } from "./workspace.ts"
 
 const PERSIST_INTERVAL_MS = 500
+const RUN_AGENT_WAIT = Duration.minutes(4)
 const PERSIST_BYTES_PER_SECOND = 256 * 1024
 const interruptedSend = () => new AgentError({ provider: "hinacode", message: "Message send interrupted" })
 
@@ -225,6 +227,10 @@ export class AgentRunner extends Context.Service<
       threadId: string,
       request: AgentRequest,
     ) => Effect.Effect<string, AgentError | PersistenceError | NotFoundError | FolderMissingError>
+    readonly waitForAgent: (
+      threadId: string,
+      agentId: string,
+    ) => Effect.Effect<string, AgentError | PersistenceError | NotFoundError>
     readonly stopSubagent: (
       threadId: string,
       subagentId: string,
@@ -373,7 +379,14 @@ const make = Effect.gen(function* () {
   >()
   const threadLocks = new Map<string, Semaphore.Semaphore>()
   const subagents = new Map<string, Map<string, Subagent>>()
-  const agentRuns = new Map<string, { readonly threadId: string; readonly stop: Effect.Effect<void> }>()
+  const agentRuns = new Map<
+    string,
+    {
+      readonly threadId: string
+      readonly stop: Effect.Effect<void>
+      readonly reply: Deferred.Deferred<string, AgentError | PersistenceError | NotFoundError>
+    }
+  >()
   const backgroundTasks = new Map<string, ReadonlyArray<BackgroundTask>>()
   const transcriptSeqs = new Map<string, number>()
 
@@ -441,10 +454,33 @@ const make = Effect.gen(function* () {
 
   const stopAgentRuns = (threadId: string) =>
     Effect.forEach(
-      [...agentRuns.values()].filter((run) => run.threadId === threadId),
-      (run) => run.stop,
+      [...agentRuns].filter(([, run]) => run.threadId === threadId),
+      ([id, run]) =>
+        Effect.andThen(
+          Effect.sync(() => agentRuns.delete(id)),
+          Effect.flatMap(Deferred.isDone(run.reply), (done) => (done ? Effect.void : run.stop)),
+        ),
       { discard: true },
     )
+
+  const waitForAgent = (threadId: string, agentId: string) =>
+    Effect.suspend(() => {
+      const run = agentRuns.get(agentId)
+      if (run?.threadId !== threadId) {
+        return Effect.fail(
+          new AgentError({ provider: "hinacode", message: `No agent ${agentId} runs in this thread's turn.` }),
+        )
+      }
+      return Deferred.await(run.reply).pipe(
+        Effect.timeoutOption(RUN_AGENT_WAIT),
+        Effect.map(
+          Option.getOrElse(
+            () =>
+              `The agent is still running. Call ${WAIT_AGENT_TOOL} with agentId "${agentId}" to keep waiting for its reply.`,
+          ),
+        ),
+      )
+    })
 
   const publishTranscript = (event: DistributiveOmit<TranscriptPush, "seq">, { whole = false } = {}) => {
     const threadId = transcriptThreadId(event)
@@ -812,12 +848,14 @@ const make = Effect.gen(function* () {
           message: "This thread's turn ended before the agent started.",
         })
       }
+      const finalReply = Deferred.makeUnsafe<string, AgentError | PersistenceError | NotFoundError>()
       agentRuns.set(id, {
         threadId,
         stop: Effect.suspend(() => {
           stopped = true
           return provider.interrupt(sessionId)
         }),
+        reply: finalReply,
       })
       yield* update({})
 
@@ -856,7 +894,7 @@ const make = Effect.gen(function* () {
         }
       }
 
-      yield* provider
+      const execution = provider
         .runTurn({
           threadId: sessionId,
           prompt: request.prompt,
@@ -882,17 +920,28 @@ const make = Effect.gen(function* () {
           ),
           Effect.ensuring(
             Effect.gen(function* () {
-              agentRuns.delete(id)
               const status = stopped ? "stopped" : failure === null ? "completed" : "failed"
               yield* update({ status, summary: failure ?? (reply.trim() || null), endedAt: yield* nowIso })
               yield* provider.closeSession?.(sessionId, home).pipe(Effect.ignore) ?? Effect.void
             }),
           ),
+          Effect.andThen(
+            Effect.suspend(() => {
+              if (stopped) {
+                return Effect.fail(
+                  new AgentError({ provider: request.provider, message: "The user stopped this agent." }),
+                )
+              }
+              if (failure !== null) return Effect.fail(new AgentError({ provider: request.provider, message: failure }))
+              return Effect.succeed(reply.trim())
+            }),
+          ),
         )
-
-      if (stopped) return yield* new AgentError({ provider: request.provider, message: "The user stopped this agent." })
-      if (failure !== null) return yield* new AgentError({ provider: request.provider, message: failure })
-      return reply.trim()
+      yield* Effect.forkIn(
+        Effect.flatMap(Effect.exit(execution), (exit) => Deferred.done(finalReply, exit)),
+        scope,
+      )
+      return yield* waitForAgent(threadId, id)
     })
 
   const liveMessages = (threadId: string) =>
@@ -1622,6 +1671,7 @@ const make = Effect.gen(function* () {
       }),
     subagents: (threadId) => Effect.sync(() => listSubagents(threadId)),
     runAgent,
+    waitForAgent,
     stopSubagent,
     backgroundTasks: (threadId) => Effect.sync(() => backgroundTasks.get(threadId) ?? []),
     stopBackgroundTask,
