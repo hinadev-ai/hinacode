@@ -196,6 +196,77 @@ describe("Messages.toolOutput", () => {
   )
 })
 
+describe("Messages.toolOutput with a repeated call id", () => {
+  const callWith = (output: string): MessagePart => ({ ...runningCall, status: "done", output })
+
+  it.effect("reads only the requested message, open or closed", () =>
+    withMessages(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient
+        const messages = yield* Messages.Messages
+        const first = yield* openTurn([callWith("first")])
+        const second: Message = { ...first, id: `${first.threadId}-second`, parts: [callWith("second")] }
+        yield* messages.insert(second)
+        const toolOutput = (messageId: string) =>
+          messages.toolOutput({ threadId: first.threadId, messageId, callId: "c1" })
+
+        expect(yield* toolOutput(first.id)).toStrictEqual(Option.some("first"))
+        expect(yield* toolOutput(second.id)).toStrictEqual(Option.some("second"))
+        expect(yield* toolOutput(`${first.threadId}-missing`)).toStrictEqual(Option.none())
+
+        yield* messages.update({ ...first, completedAt: "2026-11-03T00:00:01.000Z" }, first)
+        expect(yield* toolOutput(first.id)).toStrictEqual(Option.some("first"))
+        expect(yield* toolOutput(second.id)).toStrictEqual(Option.some("second"))
+        expect(yield* toolOutput(`${first.threadId}-missing`)).toStrictEqual(Option.none())
+        expect(yield* sql`SELECT 1 FROM message_part WHERE message_id = ${first.id}`).toStrictEqual([])
+      }),
+    ),
+  )
+
+  it.effect("never reads another thread's message", () =>
+    withMessages(
+      Effect.gen(function* () {
+        const messages = yield* Messages.Messages
+        const open = yield* openTurn([callWith("open")])
+        const closed = yield* threadWithTurn("idle", "2026-10-31T00:00:00.000Z")
+        const { threadId: other } = yield* seedThread({ rootPath: `/repo/${crypto.randomUUID()}` })
+
+        expect(yield* messages.toolOutput({ threadId: other, messageId: open.id, callId: "c1" })).toStrictEqual(
+          Option.none(),
+        )
+        expect(yield* messages.toolOutput({ threadId: other, callId: "c1" })).toStrictEqual(Option.none())
+        expect(
+          yield* messages.toolOutput({ threadId: closed, messageId: `${closed}-turn`, callId: "c1" }),
+        ).toStrictEqual(Option.none())
+      }),
+    ),
+  )
+
+  it.effect("searches the whole thread when a client sends no message id", () =>
+    withMessages(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient
+        const messages = yield* Messages.Messages
+        const open = yield* openTurn([callWith("open")])
+        yield* sql`INSERT INTO message ${sql.insert({
+          id: `${open.threadId}-closed`,
+          threadId: open.threadId,
+          role: "assistant",
+          parts: JSON.stringify([{ ...runningCall, callId: "c2", status: "done", output: "closed" }]),
+          createdAt: "2026-11-02T00:00:00.000Z",
+          completedAt: "2026-11-02T00:00:01.000Z",
+        })}`
+
+        expect(yield* messages.toolOutput({ threadId: open.threadId, callId: "c1" })).toStrictEqual(Option.some("open"))
+        expect(yield* messages.toolOutput({ threadId: open.threadId, callId: "c2" })).toStrictEqual(
+          Option.some("closed"),
+        )
+        expect(yield* messages.toolOutput({ threadId: open.threadId, callId: "c3" })).toStrictEqual(Option.none())
+      }),
+    ),
+  )
+})
+
 describe("message_part", () => {
   it.effect("goes away with its thread", () =>
     withMessages(

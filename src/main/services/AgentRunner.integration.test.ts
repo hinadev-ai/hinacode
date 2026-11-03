@@ -173,6 +173,15 @@ const withPreparingThread = async (
           )
         }
         if (input.prompt === "waits for Stop") return Stream.fromQueue(interruptions)
+        if (input.prompt === "calls a tool, then waits") {
+          return Stream.fromIterable<AgentEvent>([
+            { type: "tool_call_started", callId: "call-1", name: "Bash", input: { command: "ls" } },
+            { type: "tool_call_finished", callId: "call-1", output: "README.md", isError: false },
+          ]).pipe(
+            Stream.concat(Stream.fromEffect(Effect.sync(() => streamed.resolve())).pipe(Stream.drain)),
+            Stream.concat(Stream.never),
+          )
+        }
         if (input.prompt === "streams a reply") {
           return Stream.fromIterable<AgentEvent>([
             ...streamedWords.map((text): AgentEvent => ({ type: "text_delta", text })),
@@ -1109,6 +1118,26 @@ it("keeps the text streamed before a steer in the reply the steer closes", async
       ["user", [{ type: "text", text: "change course" }]],
       ["assistant", []],
     ])
+    await Effect.runPromise(runner.interrupt(thread.id))
+  })
+})
+
+it("reads a running tool call's output only from the message that holds it", async () => {
+  await withPreparingThread(async ({ runner, thread, release, streamed }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "calls a tool, then waits", []))
+    await streamed
+    await Effect.runPromise(runner.steer(thread.id, "change course", []))
+    const { messages } = await Effect.runPromise(runner.transcript(thread.id))
+    const [, calling, , reply] = messages
+    const toolOutput = (messageId: string | undefined) =>
+      Effect.runPromise(
+        runner.toolOutput({ threadId: thread.id, callId: "call-1", ...(messageId && { messageId }) }).pipe(Effect.exit),
+      )
+
+    expect(await toolOutput(calling?.id)).toStrictEqual(Exit.succeed("README.md"))
+    expect(await toolOutput(undefined)).toStrictEqual(Exit.succeed("README.md"))
+    expect(Exit.isFailure(await toolOutput(reply?.id))).toBe(true)
     await Effect.runPromise(runner.interrupt(thread.id))
   })
 })
