@@ -5,6 +5,7 @@ import {
   type AgentEvent,
   type McpConnection,
   PUBLISH_ARTIFACT_TOOL,
+  PUBLISH_DOCUMENT_TOOL,
   publishedArtifactId,
 } from "../../../../shared/agent.ts"
 
@@ -63,6 +64,69 @@ export const artifactTurn = (
       return [
         { type: "tool_call_finished", callId, output, isError },
         { type: "text_delta", text: isError ? "Publishing failed." : "Published the artifact." },
+        { type: "turn_completed" },
+      ]
+    }),
+  )
+  return { started, finished }
+}
+
+const DOCUMENT = `## Goal
+
+Let the developer edit what the agent writes.
+
+## Steps
+
+- [x] Define the data shape
+- [ ] Build the editor
+- [ ] Verify in the real app
+
+| Part | Owner |
+| --- | --- |
+| Store | Agent |
+| Editor | Developer |
+
+\`\`\`ts
+type ArtifactKind = "page" | "document"
+\`\`\`
+`
+
+export type MockDocument = {
+  readonly id: string
+  readonly title: string
+  readonly revision: number
+  readonly markdown: string
+}
+
+const publishedRevision = (output: string) => Number(/revision (\d+) to publish_document/.exec(output)?.[1])
+
+export const documentTurn = (
+  callId: string,
+  prompt: string,
+  connection: McpConnection,
+  previous: MockDocument | undefined,
+  published: (document: MockDocument) => void,
+) => {
+  const markdown =
+    previous === undefined ? `# ${prompt}\n\n${DOCUMENT}` : `${previous.markdown}\nThe agent added: ${prompt}\n`
+  const input = {
+    ...(previous !== undefined && { id: previous.id, revision: previous.revision }),
+    title: previous?.title ?? prompt,
+    markdown,
+  }
+  const started: AgentEvent = {
+    type: "tool_call_started",
+    callId,
+    name: `mcp__hinacode__${PUBLISH_DOCUMENT_TOOL}`,
+    input,
+  }
+  const finished = Effect.promise(() => callTool(connection, PUBLISH_DOCUMENT_TOOL, input)).pipe(
+    Effect.map(({ output, isError }): ReadonlyArray<AgentEvent> => {
+      const id = publishedArtifactId(output)
+      if (id !== null) published({ id, title: input.title, revision: publishedRevision(output), markdown })
+      return [
+        { type: "tool_call_finished", callId, output, isError },
+        { type: "text_delta", text: isError ? "The developer edited the document first." : "Published the document." },
         { type: "turn_completed" },
       ]
     }),

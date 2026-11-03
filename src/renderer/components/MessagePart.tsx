@@ -6,6 +6,7 @@ import {
   type Compaction,
   createdThreadId,
   type ProviderId,
+  isPublishDocumentTool,
   publishedArtifactId,
   toolArgument,
 } from "../../shared/agent.ts"
@@ -278,7 +279,11 @@ function ArtifactCallPart({ part }: { part: ToolCall }) {
       aria-label={m.artifact_open({ title })}
       className="my-2 flex w-full max-w-sm min-w-0 items-center gap-3 rounded-lg border border-border bg-background/50 px-3 py-2.5 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <LayoutIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+      {isPublishDocumentTool(part.name) ? (
+        <FileTextIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+      ) : (
+        <LayoutIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+      )}
       <span className="min-w-0 flex-1 truncate text-sm">
         <Highlighted text={title} />
       </span>

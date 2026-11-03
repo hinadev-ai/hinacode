@@ -112,6 +112,10 @@ Right-clicking an artifact in the list offers Delete. `artifacts.delete` routes 
 
 The trust boundary is the frame. Artifact HTML is agent output and is treated as hostile: no same origin, no `rpc`, no navigation of the app.
 
+### Documents
+
+An artifact has a `kind`. Everything above describes a `page`. A `document` is Markdown the developer edits beside the thread. See [document artifacts](2026-11-03-document-artifacts.md).
+
 ## Out of scope
 
 - Publishing the package to npm. The bin is TypeScript, which Node refuses to run under `node_modules`, so it needs a build first. Until then the package is private and harnesses run it from the checkout.

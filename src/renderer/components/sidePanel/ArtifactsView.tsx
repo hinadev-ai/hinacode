@@ -1,10 +1,10 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { useNavigate } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
-import { useEffect, useRef, useState } from "react"
+import { lazy, useEffect, useRef, useState } from "react"
 import { RiDownload2Line } from "react-icons/ri"
 import { toast } from "sonner"
-import type { Artifact } from "../../../shared/artifact.ts"
+import { type Artifact, isDocument } from "../../../shared/artifact.ts"
 import { addArtifactProblem, artifactProblemMessage } from "../../../shared/artifactProblems.ts"
 import { artifactUrl } from "../../../shared/channels.ts"
 import type { Thread } from "../../../shared/domain.ts"
@@ -17,7 +17,15 @@ import { useNow } from "../../lib/useNow.ts"
 import { m } from "../../paraglide/messages.js"
 import { getLocale } from "../../paraglide/runtime.js"
 import { useArtifacts } from "../../stores/artifacts.ts"
-import { ArrowLeftIcon, ArrowRightIcon, TrashIcon, WarningIcon } from "@hinacode/icons"
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  FileTextIcon,
+  LayoutIcon,
+  PlusIcon,
+  TrashIcon,
+  WarningIcon,
+} from "@hinacode/icons"
 import { useDrafts } from "../../stores/drafts.ts"
 import { useThreads } from "../../stores/threads.ts"
 import { Button } from "../ui/button.tsx"
@@ -25,6 +33,8 @@ import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../ui/conte
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu.tsx"
 import { SkeletonList } from "../ui/skeleton.tsx"
 import { Section, ViewBody } from "./Section.tsx"
+
+const DocumentView = lazy(() => import("./DocumentView.tsx").then((module) => ({ default: module.DocumentView })))
 
 const noArtifacts: ReadonlyArray<Artifact> = []
 
@@ -61,7 +71,7 @@ export function ArtifactsHeader({ thread }: { thread: Thread }) {
 
 function ExportMenu({ artifact }: { artifact: Artifact }) {
   const theme = useArtifactTheme()
-  const save = (format: "html" | "pdf") =>
+  const save = (format: "html" | "pdf" | "markdown") =>
     callPromise("artifacts.export", { id: artifact.id, entry: artifact.entry, title: artifact.title, format, theme })
       .then((path) => {
         if (path !== null) toast(m.artifacts_exported({ path }))
@@ -77,8 +87,14 @@ function ExportMenu({ artifact }: { artifact: Artifact }) {
         <RiDownload2Line aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => void save("html")}>{m.artifacts_export_html()}</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => void save("pdf")}>{m.artifacts_export_pdf()}</DropdownMenuItem>
+        {isDocument(artifact) ? (
+          <DropdownMenuItem onClick={() => void save("markdown")}>{m.artifacts_export_markdown()}</DropdownMenuItem>
+        ) : (
+          <>
+            <DropdownMenuItem onClick={() => void save("html")}>{m.artifacts_export_html()}</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void save("pdf")}>{m.artifacts_export_pdf()}</DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -87,6 +103,11 @@ function ExportMenu({ artifact }: { artifact: Artifact }) {
 export function ArtifactsView({ thread }: { thread: Thread }) {
   const selected = useSelectedArtifact(thread.id)
   const theme = useArtifactTheme()
+  if (selected !== undefined && isDocument(selected)) {
+    return (
+      <DocumentView key={`${selected.environmentId ?? ""}:${selected.id}`} threadId={thread.id} artifact={selected} />
+    )
+  }
   if (selected !== undefined) {
     return (
       <ArtifactFrame
@@ -196,12 +217,11 @@ function ArtifactList({ threadId }: { threadId: string }) {
   return AsyncResult.builder(artifacts)
     .onInitial(() => <SkeletonList label={m.artifacts_loading()} rows={3} rowClassName="h-9" />)
     .onSuccess((list) => {
-      if (list.length === 0) return <p className="text-xs text-muted-foreground">{m.artifacts_empty()}</p>
       const mine = list.filter((artifact) => artifact.threadId === threadId)
       const others = list.filter((artifact) => artifact.threadId !== threadId)
       return (
         <>
-          <Section title={m.artifacts_this_thread()}>
+          <Section title={m.artifacts_this_thread()} action={<NewDocumentButton threadId={threadId} />}>
             {mine.length === 0 ? (
               <p className="text-xs text-muted-foreground">{m.artifacts_this_thread_empty()}</p>
             ) : (
@@ -218,6 +238,22 @@ function ArtifactList({ threadId }: { threadId: string }) {
     })
     .onError((error) => failed(errorMessage(error)))
     .orElse(() => failed(""))
+}
+
+function NewDocumentButton({ threadId }: { threadId: string }) {
+  const select = useArtifacts((state) => state.select)
+  const create = () =>
+    callPromise("artifacts.createDocument", { threadId, title: m.documents_untitled() })
+      .then((document) => select(threadId, document.id))
+      .catch((cause: unknown) => {
+        toast.error(m.documents_create_failed({ message: errorMessage(cause) }))
+      })
+  return (
+    <Button variant="ghost" size="xs" action={create}>
+      <PlusIcon aria-hidden />
+      {m.documents_new()}
+    </Button>
+  )
 }
 
 function ArtifactRows({ threadId, artifacts }: { threadId: string; artifacts: ReadonlyArray<Artifact> }) {
@@ -251,14 +287,21 @@ function ArtifactRow({ threadId, artifact }: { threadId: string; artifact: Artif
         <button
           type="button"
           onClick={() => select(threadId, artifact.id)}
-          className="flex w-full min-w-0 flex-col gap-0.5 rounded-md px-2 py-1.5 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex w-full min-w-0 items-start gap-2 rounded-md px-2 py-1.5 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <span className="truncate text-sm">{artifact.title}</span>
-          <span className="truncate text-xs text-muted-foreground">
-            {origin === undefined ? null : `${origin.title} · `}
-            {artifact.environmentId === undefined
-              ? updated
-              : m.artifacts_updated_on({ time: updated, machine: environmentName(artifact.environmentId, clouds) })}
+          {isDocument(artifact) ? (
+            <FileTextIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          ) : (
+            <LayoutIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          )}
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="truncate text-sm">{artifact.title}</span>
+            <span className="truncate text-xs text-muted-foreground">
+              {origin === undefined ? null : `${origin.title} · `}
+              {artifact.environmentId === undefined
+                ? updated
+                : m.artifacts_updated_on({ time: updated, machine: environmentName(artifact.environmentId, clouds) })}
+            </span>
           </span>
         </button>
       </ContextMenuTrigger>

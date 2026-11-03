@@ -1132,3 +1132,60 @@
     transition: opacity 200ms var(--ease-out) !important;
   }
 }
+
+.hina-document {
+  & ul[data-type="taskList"] {
+    padding-inline-start: 0;
+    list-style: none;
+  }
+
+  & ul[data-type="taskList"] > li {
+    display: flex;
+    gap: 0.5em;
+    align-items: baseline;
+    padding-inline-start: 0;
+
+    & > label {
+      flex: none;
+      user-select: none;
+    }
+
+    & > div {
+      flex: 1;
+      min-width: 0;
+    }
+
+    & > div > p {
+      margin-block: 0;
+    }
+  }
+
+  & td,
+  & th {
+    position: relative;
+
+    & > p {
+      margin-block: 0;
+    }
+  }
+
+  & .selectedCell::after {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    content: "";
+    background: color-mix(in oklab, var(--primary) 15%, transparent);
+  }
+
+  & img {
+    max-width: 100%;
+  }
+
+  & p.is-editor-empty:first-child::before {
+    float: inline-start;
+    height: 0;
+    color: var(--muted-foreground);
+    pointer-events: none;
+    content: attr(data-placeholder);
+  }
+}
