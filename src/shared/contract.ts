@@ -873,6 +873,10 @@ export const TranscriptPush = Schema.Union([
 ])
 export type TranscriptPush = typeof TranscriptPush.Type
 
+export const transcriptThreadId = (
+  push: { readonly threadId: string } | { readonly message: { readonly threadId: string } },
+) => ("threadId" in push ? push.threadId : push.message.threadId)
+
 export const MenuCommand = Schema.Literals([
   "thread.new",
   "project.add",

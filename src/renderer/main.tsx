@@ -77,6 +77,8 @@ onPushEvent((event) => {
     case "message.created":
     case "message.updated":
       return useMessages.getState().receive(event)
+    case "transcript.lost":
+      return void useMessages.getState().reload(event.threadId)
     case "thread.event": {
       useMessages.getState().receive(event)
       recordUnseenOutcome(event.threadId, event.event)

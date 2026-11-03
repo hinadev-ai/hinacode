@@ -298,7 +298,7 @@ A first send waiting for setup keeps its private send claim and cancellation sig
 
 ## Renderer sync: snapshot plus pushes
 
-The database lags a running turn by up to 500 ms, or ten times the last persist time once a write takes longer than 50 ms, so `threads.transcript` overlays the in-memory turn on top of persisted rows and returns the current `seq`.
+The database lags a running turn by up to 500 ms, or ten times the last persist time once a write takes longer than 50 ms, so `threads.transcript` overlays the in-memory turn on top of persisted rows and returns the thread's current `seq`. The runner numbers transcript pushes per thread, so each thread's pushes count 1, 2, 3 with no holes.
 
 ```mermaid
 sequenceDiagram
@@ -309,10 +309,15 @@ sequenceDiagram
   M-->>S: { messages, approvals, secretRequests, seq }
   S->>S: apply snapshot
   S->>S: replay pending pushes where push.seq > seq
-  M-->>S: later pushes apply where push.seq > seq
+  M-->>S: later pushes apply where push.seq = last + 1
+  M--xS: a push is lost
+  M-->>S: push.seq > last + 1
+  S->>M: rpc threads.transcript again
 ```
 
-Electron IPC can deliver the reply before pushes sent earlier, so a push the snapshot already holds can still arrive after it. The store drops it by `seq`, and drops a reply whose load was superseded by its load token. `specs/TranscriptSync.tla` checks both.
+Electron IPC can deliver the reply before pushes sent earlier, so a push the snapshot already holds can still arrive after it. The store drops it by `seq`, and drops a reply whose load was superseded by its load token.
+
+A push can also go missing, for example when it fails to decode. The store never folds past a hole. When a ready thread receives `push.seq > last + 1`, or the pushes buffered during a load skip a number, it fetches the snapshot again. `last` is the last seq received, including deltas still waiting for the 100 ms flush. A push that fails to decode is reported, and if `rpc.ts` can still read its thread id, it broadcasts `transcript.lost` so the store reloads that thread right away instead of waiting for the next push. `specs/TranscriptSync.tla` checks all of this over a channel that loses pushes. Only a silent loss of a thread's last push stays unnoticed until the next push or reload.
 
 Neither the snapshot nor the pushes carry long tool outputs. `previewMessage` and `previewPush` (`shared/compactTranscript.ts`) replace a string output longer than 4,096 characters with its last whole lines and set `fullOutputBytes` on the part or `tool_call_finished` event. The runner applies them only where a transcript leaves for a client: the `threads.transcript` reply and `publishTranscript`. The database and the runner's in-memory turn keep the full output. The expanded tool view fetches it with `threads.toolOutput`, which reads the running turn first and then the one part from SQLite. See `features/2026-10-31-lazy-tool-output.md`.
 

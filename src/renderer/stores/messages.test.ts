@@ -63,10 +63,11 @@ const loadReady = async (
   id = threadId,
   messages = [{ ...assistant(""), threadId: id }],
   approvals: ApprovalRequest[] = [],
+  seq = 0,
 ) => {
   transcriptResponse = Promise.withResolvers()
   const loading = store().load(id)
-  transcriptResponse.resolve({ result: { messages, approvals, questions: [], secretRequests: [], seq: 0 } })
+  transcriptResponse.resolve({ result: { messages, approvals, questions: [], secretRequests: [], seq } })
   await loading
   vi.useFakeTimers()
 }
@@ -470,7 +471,7 @@ test("unload cancels pending deltas and reload uses the authoritative snapshot",
   expect(vi.getTimerCount()).toBe(0)
   expect(store().byThread[threadId]).toBeUndefined()
   store().receive(event(2, { type: "text_delta", text: "unloaded" }))
-  await loadReady(threadId, [assistant("snapshot")])
+  await loadReady(threadId, [assistant("snapshot")], [], 2)
   store().receive(event(3, { type: "text_delta", text: " fresh" }))
   vi.advanceTimersByTime(70)
   expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "snapshot" }])
