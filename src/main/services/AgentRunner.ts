@@ -1093,10 +1093,14 @@ const make = Effect.gen(function* () {
       yield* updateThread({ id: threadId, scheduled: bySendAt([...thread.scheduled, message]) })
     }).pipe(exclusive(threadId))
 
+  const sending = new Set<string>()
+
+  const withoutScheduled = (thread: Thread, id: string) => thread.scheduled.filter((message) => message.id !== id)
+
   const reschedule = (threadId: string, id: string, sendAt: string) =>
     Effect.gen(function* () {
       const thread = yield* threads.get(threadId)
-      if (!thread.scheduled.some((message) => message.id === id)) return
+      if (sending.has(id) || !thread.scheduled.some((message) => message.id === id)) return
       const moved = thread.scheduled.map((message) => {
         if (message.id !== id) return message
         const { failure, ...retried } = message
@@ -1109,39 +1113,66 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const thread = yield* threads.get(threadId)
       const message = thread.scheduled.find((scheduled) => scheduled.id === id)
-      if (message === undefined) return null
-      yield* updateThread({ id: threadId, scheduled: thread.scheduled.filter((scheduled) => scheduled.id !== id) })
+      if (message === undefined || sending.has(id)) return null
+      yield* updateThread({ id: threadId, scheduled: withoutScheduled(thread, id) })
       return message
     }).pipe(exclusive(threadId))
 
-  const takeDue = (threadId: string, now: string) =>
+  const claimDue = (threadId: string, now: string) =>
     Effect.gen(function* () {
       const thread = yield* threads.get(threadId)
-      const message = thread.scheduled.find((scheduled) => isDue(scheduled, now))
-      if (message === undefined) return undefined
+      const message = thread.scheduled.find((scheduled) => isDue(scheduled, now) && !sending.has(scheduled.id))
+      if (message !== undefined) sending.add(message.id)
+      return message
+    }).pipe(exclusive(threadId))
+
+  const queueScheduled = (threadId: string, message: ScheduledMessage) =>
+    Effect.gen(function* () {
+      if (!busyThreads.has(threadId)) return false
+      const thread = yield* threads.get(threadId)
       yield* updateThread({
         id: threadId,
-        scheduled: thread.scheduled.filter((scheduled) => scheduled.id !== message.id),
+        queue: [...thread.queue, { id: randomUUID(), text: message.text, attachments: message.attachments }],
+        scheduled: withoutScheduled(thread, message.id),
       })
-      return message
+      return true
+    }).pipe(exclusive(threadId))
+
+  const dropScheduled = (threadId: string, id: string) =>
+    Effect.gen(function* () {
+      const thread = yield* threads.get(threadId)
+      if (thread.scheduled.some((message) => message.id === id)) {
+        yield* updateThread({ id: threadId, scheduled: withoutScheduled(thread, id) })
+      }
+    }).pipe(exclusive(threadId))
+
+  const markScheduledFailed = (threadId: string, id: string, failure: string) =>
+    Effect.gen(function* () {
+      const thread = yield* threads.get(threadId)
+      if (!thread.scheduled.some((message) => message.id === id)) return
+      const scheduled = thread.scheduled.map((message) => (message.id === id ? { ...message, failure } : message))
+      yield* updateThread({ id: threadId, scheduled })
     }).pipe(exclusive(threadId))
 
   const deliverScheduled = (threadId: string, message: ScheduledMessage) =>
     Effect.gen(function* () {
-      if ((yield* threads.get(threadId)).status === "archived") {
-        yield* push.publish({ type: "thread.updated", thread: yield* threads.unarchive(threadId) })
+      let thread = yield* threads.get(threadId)
+      if (thread.status === "archived") {
+        thread = yield* threads.unarchive(threadId)
+        yield* push.publish({ type: "thread.updated", thread })
       }
-      const workspace = (yield* threads.started(threadId)) ? undefined : message.workspace
-      yield* workspace === undefined
-        ? queue(threadId, message.text, message.attachments)
-        : send(threadId, message.text, message.attachments, { workspace })
+      const fresh = thread.worktreeId === null && !(yield* threads.started(threadId))
+      const workspace = fresh ? message.workspace : undefined
+      if (workspace === undefined && (yield* queueScheduled(threadId, message))) return
+      yield* send(threadId, message.text, message.attachments, workspace === undefined ? {} : { workspace })
+      yield* dropScheduled(threadId, message.id)
     })
 
   const sendDueSchedules = Effect.gen(function* () {
     const now = yield* nowIso
     const due = (yield* threads.list).filter((thread) => thread.scheduled.some((message) => isDue(message, now)))
     for (const candidate of due) {
-      const message = yield* takeDue(candidate.id, now).pipe(
+      const message = yield* claimDue(candidate.id, now).pipe(
         Effect.catch((error) =>
           Effect.logWarning("could not take a scheduled message", error).pipe(Effect.as(undefined)),
         ),
@@ -1149,16 +1180,12 @@ const make = Effect.gen(function* () {
       if (message === undefined) continue
       yield* deliverScheduled(candidate.id, message).pipe(
         Effect.catch((error) =>
-          Effect.gen(function* () {
-            yield* Effect.logWarning("scheduled message did not send", error)
-            const thread = yield* threads.get(candidate.id)
-            const failed = { ...message, failure: error.message }
-            yield* updateThread({ id: candidate.id, scheduled: bySendAt([...thread.scheduled, failed]) })
-          }).pipe(
-            exclusive(candidate.id),
-            Effect.catch((cause) => Effect.logError("failed to put back a scheduled message", cause)),
+          Effect.logWarning("scheduled message did not send", error).pipe(
+            Effect.andThen(markScheduledFailed(candidate.id, message.id, error.message)),
+            Effect.catch((cause) => Effect.logError("failed to mark a scheduled message as failed", cause)),
           ),
         ),
+        Effect.ensuring(Effect.sync(() => sending.delete(message.id))),
       )
     }
   })
