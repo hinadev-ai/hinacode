@@ -246,7 +246,7 @@ sequenceDiagram
     end
     AR-->>R: push thread.event (seq)
     AR->>AR: foldTranscript in memory
-    AR->>DB: persist dirty messages every 500 ms, or 10x the last persist time if longer
+    AR->>DB: persist the changed parts of dirty messages every 500 ms, or 10x the last persist time if longer
   end
   opt approval
     P-->>AR: approval_requested
@@ -400,6 +400,7 @@ erDiagram
   project ||--o{ automation : has
   worktree |o--o{ thread : "runs in"
   thread ||--o{ message : has
+  message ||--o{ message_part : "open turn"
   thread ||--o{ pull_request_link : links
   automation ||--o{ automation_run : records
   thread |o--o{ automation_run : "started by"
@@ -438,9 +439,14 @@ erDiagram
   message {
     text id PK
     text role "user|assistant"
-    text parts "JSON"
+    text parts "JSON, '[]' while open"
     text completed_at
     text usage "JSON"
+  }
+  message_part {
+    text message_id FK "CASCADE"
+    int idx
+    text part "JSON"
   }
   automation {
     text id PK

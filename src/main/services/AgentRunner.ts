@@ -525,14 +525,21 @@ const make = Effect.gen(function* () {
     let completed = false
     let persistedAt = Date.now()
     let persistedBytes = 0
-    const dirty = new Set<string>()
+    const dirty = new Map<string, Message>()
     const subagentCalls = new Set<string>()
 
     const persist = Effect.suspend(() => {
-      const changed = turnMessages.filter((message) => dirty.has(message.id))
+      const changed = turnMessages.flatMap((message) => {
+        const previous = dirty.get(message.id)
+        return previous === undefined ? [] : [{ message, previous }]
+      })
       dirty.clear()
       persistedAt = Date.now()
-      return Effect.forEach(changed, messages.update).pipe(
+      const unsaved = new Map(changed.map(({ message, previous }) => [message.id, previous]))
+      return Effect.forEach(changed, ({ message, previous }) =>
+        messages.update(message, previous).pipe(Effect.tap(() => Effect.sync(() => unsaved.delete(message.id)))),
+      ).pipe(
+        Effect.tapError(() => Effect.sync(() => unsaved.forEach((previous, id) => dirty.set(id, previous)))),
         Effect.map((writes) => {
           persistedBytes = writes.reduce((total, { bytes }) => total + bytes, 0)
         }),
@@ -540,7 +547,10 @@ const make = Effect.gen(function* () {
     })
 
     const setTurnMessages = (next: ReadonlyArray<Message>) => {
-      next.forEach((message, index) => message !== turnMessages[index] && dirty.add(message.id))
+      next.forEach((message, index) => {
+        const saved = turnMessages[index]
+        if (saved !== undefined && message !== saved && !dirty.has(message.id)) dirty.set(message.id, saved)
+      })
       turnMessages = next
     }
 
@@ -1512,6 +1522,7 @@ const make = Effect.gen(function* () {
       const live = activeTurns
         .get(call.threadId)
         ?.messages()
+        .filter((message) => call.messageId === undefined || message.id === call.messageId)
         .flatMap((message) => message.parts)
         .find((part) => part.type === "tool_call" && part.callId === call.callId)
       const persisted = messages.toolOutput(call).pipe(
