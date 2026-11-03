@@ -81,7 +81,7 @@ import { AgentAccounts } from "./AgentAccounts.ts"
 import { type ActiveWorkspace, makeActiveWorkspace } from "./workspace.ts"
 
 const PERSIST_INTERVAL_MS = 500
-const PERSIST_BACKOFF = 10
+const PERSIST_BYTES_PER_SECOND = 256 * 1024
 const interruptedSend = () => new AgentError({ provider: "hinacode", message: "Message send interrupted" })
 
 export interface AgentRequest {
@@ -425,7 +425,7 @@ const make = Effect.gen(function* () {
     let status: ThreadStatus = "running"
     let completed = false
     let persistedAt = Date.now()
-    let persistMs = 0
+    let persistedBytes = 0
     const dirty = new Set<string>()
     const subagentCalls = new Set<string>()
 
@@ -433,8 +433,10 @@ const make = Effect.gen(function* () {
       const changed = turnMessages.filter((message) => dirty.has(message.id))
       dirty.clear()
       persistedAt = Date.now()
-      return Effect.forEach(changed, messages.update, { discard: true }).pipe(
-        Effect.ensuring(Effect.sync(() => (persistMs = Date.now() - persistedAt))),
+      return Effect.forEach(changed, messages.update).pipe(
+        Effect.map((writes) => {
+          persistedBytes = writes.reduce((total, { bytes }) => total + bytes, 0)
+        }),
       )
     })
 
@@ -475,7 +477,7 @@ const make = Effect.gen(function* () {
         ) {
           yield* steerHeld
         }
-        const interval = Math.max(PERSIST_INTERVAL_MS, PERSIST_BACKOFF * persistMs)
+        const interval = Math.max(PERSIST_INTERVAL_MS, (persistedBytes / PERSIST_BYTES_PER_SECOND) * 1000)
         if (dirty.size > 0 && Date.now() - persistedAt >= interval) yield* persist
       })
 
