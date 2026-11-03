@@ -23,7 +23,7 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { usePanelLayout } from "../lib/panelLayout.ts"
 import { type EnvironmentId, settingsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
-import { inBrowser, thisMachineName } from "../lib/runtime.ts"
+import { inBrowser } from "../lib/runtime.ts"
 import { CloudIcon, LaptopIcon } from "@hinacode/icons"
 
 function ConnectionSettings() {
@@ -127,7 +127,7 @@ interface EnvironmentPickerProps {
 
 function EnvironmentPicker({ labelId, value, clouds, onChange }: EnvironmentPickerProps) {
   const items = [
-    { value: THIS_MACHINE, label: thisMachineName() },
+    ...(inBrowser() ? [] : [{ value: THIS_MACHINE, label: m.environment_this_machine() }]),
     ...clouds.map((cloud) => ({ value: cloud.id, label: cloud.name })),
   ]
   return (

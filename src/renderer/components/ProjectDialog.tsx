@@ -16,7 +16,7 @@ import {
 } from "../lib/rpc.ts"
 import { environmentName, environmentOf, useClouds } from "../lib/environments.ts"
 import { m } from "../paraglide/messages.js"
-import { inBrowser, thisMachineName } from "../lib/runtime.ts"
+import { inBrowser } from "../lib/runtime.ts"
 import { Button } from "./ui/button.tsx"
 import {
   Dialog,
@@ -94,8 +94,9 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
   const repository = project ? null : parseGitHubRepository(rootPath)
   const [cloneTo, setCloneTo] = useState<string | null>(null)
   const [newRepository, setNewRepository] = useState<RepositoryVisibility | null>(null)
+  const clouds = useClouds()
   const [environment, setEnvironment] = useState<EnvironmentId>(() =>
-    project ? environmentOf(project) : initialEnvironment,
+    project ? environmentOf(project) : (initialEnvironment ?? (inBrowser() ? (clouds[0]?.id ?? null) : null)),
   )
   const cloneParent = useDefaultCloneParent(environment)
   const defaultCloneTo = `${cloneParent}${separatorOf(cloneParent)}${repository?.name ?? ""}`
@@ -359,7 +360,7 @@ function WhereField({ editable, value, canBrowse, onChange }: WhereFieldProps) {
       </Field>
     )
   const items = [
-    { value: THIS_MACHINE, label: thisMachineName() },
+    ...(inBrowser() ? [] : [{ value: THIS_MACHINE, label: m.environment_this_machine() }]),
     ...clouds.map((cloud) => ({ value: cloud.id, label: cloud.name })),
   ]
   return (

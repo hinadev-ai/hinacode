@@ -4,7 +4,6 @@ import { type RelayMachine, RelayMachineList } from "../../../src/shared/relayMa
 export const DEFAULT_RELAY_URL = import.meta.env.VITE_RELAY_URL ?? "https://relay.hinacode.app"
 
 const ACCOUNT_KEY = "hinacode.relayAccount"
-const HOME_KEY = "hinacode.homeMachine"
 
 export const RelayAccount = Schema.Struct({ serviceUrl: Schema.String, ownerToken: Schema.String })
 export type RelayAccount = typeof RelayAccount.Type
@@ -16,16 +15,7 @@ export const storedAccount = (): RelayAccount | null =>
 
 export const saveAccount = (account: RelayAccount) => localStorage.setItem(ACCOUNT_KEY, JSON.stringify(account))
 
-export const storedHome = () => localStorage.getItem(HOME_KEY)
-
-export const saveHome = (environmentId: string) => localStorage.setItem(HOME_KEY, environmentId)
-
-export const forgetHome = () => localStorage.removeItem(HOME_KEY)
-
-export const signOut = () => {
-  localStorage.removeItem(ACCOUNT_KEY)
-  forgetHome()
-}
+export const signOut = () => localStorage.removeItem(ACCOUNT_KEY)
 
 export type MachinesAnswer =
   | { readonly _tag: "machines"; readonly machines: ReadonlyArray<RelayMachine> }

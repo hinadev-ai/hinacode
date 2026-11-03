@@ -29,7 +29,6 @@ import { groupProjects } from "../lib/projectGroups.ts"
 import { moveDraft } from "../lib/startThread.ts"
 import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
-import { thisMachineNameInline } from "../lib/runtime.ts"
 import { type Draft, useDrafts } from "../stores/drafts.ts"
 import { useThreads } from "../stores/threads.ts"
 import { type ComposerPicker, returnFocus, useUi } from "../stores/ui.ts"
@@ -879,7 +878,7 @@ export function ThreadEnvironmentSwitch({ thread }: { thread: Thread }) {
     projectId: project.id,
     label: environmentName(environmentOf(project), clouds),
   }))
-  const label = environment === null ? thisMachineNameInline() : environmentName(environment, clouds)
+  const label = environment === null ? m.environment_this_machine_inline() : environmentName(environment, clouds)
   return <ContextSwitch thread={thread} label={label} options={options} />
 }
 

@@ -21,83 +21,88 @@ const machine = (
   }
 }
 
-const setup = (otherStatus: EnvironmentStatus = "connected") => {
-  const home = machine("home", {
-    "threads.list": [{ id: "t-home" }],
-    "projects.list": [{ id: "p-home", rootPath: "/home/p" }],
-    "settings.get": { from: "home" },
-  })
-  const other = machine(
-    "other",
+const setup = (firstStatus: EnvironmentStatus = "connected") => {
+  const first = machine(
+    "first",
     {
-      "threads.list": [{ id: "t-other" }],
-      "projects.list": [{ id: "p-other", rootPath: "/other/p" }],
-      "threads.update": { id: "t-other" },
-      "fs.list": [],
-      "settings.get": { from: "other" },
+      "threads.list": [{ id: "t-first" }],
+      "projects.list": [{ id: "p-first", rootPath: "/first/p" }],
+      "threads.update": { id: "t-first" },
+      "settings.get": { from: "first" },
     },
-    otherStatus,
+    firstStatus,
   )
+  const second = machine("second", {
+    "threads.list": [{ id: "t-second" }],
+    "projects.list": [{ id: "p-second", rootPath: "/second/p" }],
+    "threads.update": { id: "t-second" },
+    "fs.list": [],
+    "settings.get": { from: "second" },
+  })
   const route = makeRoute({
-    home,
-    others: new Map([[other.id, other]]),
+    machines: new Map([
+      [first.id, first],
+      [second.id, second],
+    ]),
     browser: (method) => (method === "clientSettings.get" ? Promise.resolve({ result: "browser" }) : undefined),
   })
-  return { home, other, route }
+  return { first, second, route }
 }
 
 describe("routing a web call", () => {
   it("answers client methods in the browser", async () => {
-    const { home, route } = setup()
+    const { first, second, route } = setup()
     expect(await route.call("clientSettings.get", undefined)).toEqual({ result: "browser" })
-    expect(home.calls).toEqual([])
+    expect([...first.calls, ...second.calls]).toEqual([])
   })
 
-  it("lists from every machine and stamps the other machine's projects", async () => {
+  it("lists from every machine and stamps each machine's projects", async () => {
     const { route } = setup()
-    expect(await route.call("threads.list", {})).toEqual({ result: [{ id: "t-home" }, { id: "t-other" }] })
+    expect(await route.call("threads.list", {})).toEqual({ result: [{ id: "t-first" }, { id: "t-second" }] })
     expect(await route.call("projects.list", undefined)).toEqual({
       result: [
-        { id: "p-home", rootPath: "/home/p" },
-        { id: "p-other", rootPath: "/other/p", environmentId: "other" },
+        { id: "p-first", rootPath: "/first/p", environmentId: "first" },
+        { id: "p-second", rootPath: "/second/p", environmentId: "second" },
       ],
     })
   })
 
   it("sends a call about an entity to the machine that listed it", async () => {
-    const { home, other, route } = setup()
+    const { first, second, route } = setup()
     await route.call("threads.list", {})
     await route.call("projects.list", undefined)
-    await route.call("threads.update", { id: "t-other", title: "x" })
-    await route.call("fs.list", { root: "/other/p", path: "" })
-    expect(other.calls.map((call) => call.method)).toEqual([
+    await route.call("threads.update", { id: "t-second", title: "x" })
+    await route.call("fs.list", { root: "/second/p", path: "" })
+    expect(second.calls.map((call) => call.method)).toEqual([
       "threads.list",
       "projects.list",
       "threads.update",
       "fs.list",
     ])
-    await route.call("threads.update", { id: "t-home", title: "x" })
-    expect(home.calls.at(-1)).toEqual({ method: "threads.update", payload: { id: "t-home", title: "x" } })
+    await route.call("threads.update", { id: "t-first", title: "x" })
+    expect(first.calls.at(-1)).toEqual({ method: "threads.update", payload: { id: "t-first", title: "x" } })
   })
 
-  it("sends a named call to the machine it names, and to home without a name", async () => {
+  it("sends a named call to the machine it names", async () => {
     const { route } = setup()
-    expect(await route.call("settings.get", undefined, "other")).toEqual({ result: { from: "other" } })
-    expect(await route.call("settings.get", undefined)).toEqual({ result: { from: "home" } })
-    expect(await route.call("settings.get", undefined, "home")).toEqual({ result: { from: "home" } })
+    expect(await route.call("settings.get", undefined, "second")).toEqual({ result: { from: "second" } })
     expect(await route.call("settings.get", undefined, "gone")).toMatchObject({ error: { tag: "NotFoundError" } })
   })
 
-  it("lists an offline machine's last answer instead of waiting for it", async () => {
-    const { other, route } = setup("offline")
-    expect(await route.call("threads.list", {})).toEqual({ result: [{ id: "t-home" }] })
-    expect(other.calls).toEqual([])
+  it("sends a call that names no machine to the first connected one", async () => {
+    expect(await setup().route.call("settings.get", undefined)).toEqual({ result: { from: "first" } })
+    expect(await setup("offline").route.call("settings.get", undefined)).toEqual({ result: { from: "second" } })
   })
 
-  it("learns owners from the other machine's pushes and stamps its artifacts", () => {
+  it("lists an offline machine's last answer instead of waiting for it", async () => {
+    const { first, route } = setup("offline")
+    expect(await route.call("threads.list", {})).toEqual({ result: [{ id: "t-second" }] })
+    expect(first.calls).toEqual([])
+  })
+
+  it("learns owners from pushes and stamps artifacts with their machine", () => {
     const { route } = setup()
     const artifact = { type: "artifact.updated", artifact: { id: "a1" } } as never
-    expect(route.push("other", artifact)).toMatchObject({ artifact: { id: "a1", environmentId: "other" } })
-    expect(route.push("home", artifact)).toBe(artifact)
+    expect(route.push("second", artifact)).toMatchObject({ artifact: { id: "a1", environmentId: "second" } })
   })
 })

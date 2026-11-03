@@ -15,7 +15,6 @@ import { artifactsAtom, callPromise, clientSettingsAtom, onPushEvent, projectsAt
 import { terminalExited, writeTerminal } from "./lib/terminalScreens.ts"
 import { useClientSettings } from "./lib/settings.ts"
 import { windowEntry } from "./lib/windowEntry.ts"
-import { homeEnvironmentId } from "./lib/runtime.ts"
 import { notifyThreadEvent, recordUnseenOutcome } from "./lib/threadNotifications.ts"
 import { m } from "./paraglide/messages.js"
 import { router } from "./router.tsx"
@@ -154,9 +153,7 @@ onPushEvent((event) => {
 const isOnCloud = (environmentId: string) => {
   const projects = AsyncResult.getOrElse(registry.get(projectsAtom), () => [])
   const onCloud = new Set(
-    projects
-      .filter((project) => (project.environmentId ?? homeEnvironmentId()) === environmentId)
-      .map((project) => project.id),
+    projects.filter((project) => project.environmentId === environmentId).map((project) => project.id),
   )
   const threads = useThreads.getState()
   return (threadId: string) => onCloud.has(selectThread(threadId)(threads)?.projectId ?? "")

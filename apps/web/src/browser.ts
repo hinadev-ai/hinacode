@@ -26,8 +26,7 @@ const permission = (): NotificationPermission => {
 
 export interface BrowserContext {
   readonly account: RelayAccount
-  readonly home: RelayMachine
-  readonly others: ReadonlyArray<RelayMachine>
+  readonly machines: ReadonlyArray<RelayMachine>
   readonly statusOf: (environmentId: string) => EnvironmentStatus
   readonly reconnect: (environmentId: string) => void
   readonly emit: (event: typeof PushEvent.Encoded) => void
@@ -62,8 +61,8 @@ export const makeBrowserAnswers = (context: BrowserContext) => {
   const relayStatus = () => ({
     state: "signedIn" as const,
     serviceUrl: context.account.serviceUrl,
-    environmentId: context.home.environmentId,
-    machines: context.others.length + 1,
+    environmentId: "",
+    machines: context.machines.length,
     syncedAt: null,
     error: null,
   })
@@ -94,7 +93,7 @@ export const makeBrowserAnswers = (context: BrowserContext) => {
     "shell.openers": () => [],
     "agents.updates": () => [],
     "environments.list": () => ({
-      clouds: context.others.map((machine) => ({
+      clouds: context.machines.map((machine) => ({
         id: machine.environmentId,
         name: machine.name,
         host: machine.pairing.hosts[0],
@@ -122,9 +121,6 @@ export const makeBrowserAnswers = (context: BrowserContext) => {
       return hosts()
     },
     "relayAccount.removeMachine": async ({ id }: { id: string }) => {
-      const listed = await hosts()
-      if (listed.some((host) => host.id === id && host.environmentId === context.home.environmentId))
-        throw new Error(m.web_remove_home_machine({ machine: context.home.name }))
       await relay("DELETE", `/v1/hosts/${encodeURIComponent(id)}`)
       return hosts()
     },

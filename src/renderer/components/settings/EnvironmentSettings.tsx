@@ -53,7 +53,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../
 import { Input } from "../ui/input.tsx"
 import { Switch } from "../ui/switch.tsx"
 import { SettingsPageAction, SettingsSection, settingsGroupClass, settingsSurfaceClass } from "./SettingsSection.tsx"
-import { inBrowser, switchMachine } from "../../lib/runtime.ts"
+import { inBrowser } from "../../lib/runtime.ts"
 
 export function EnvironmentSettings() {
   const clouds = useClouds()
@@ -157,7 +157,6 @@ function RelaySignedIn({ status }: { status: Extract<RelayAccountStatus, { state
           >
             {syncing ? m.environment_relay_syncing() : m.environment_relay_sync_now()}
           </Button>
-          <SwitchMachineButton />
           <RelaySignOutButton />
         </div>
       </div>
@@ -282,16 +281,6 @@ function RemoveRelayMachineButton({ host }: { host: RelayHost }) {
         </AlertDialogContent>
       </AlertDialog>
     </>
-  )
-}
-
-function SwitchMachineButton() {
-  const switchTo = switchMachine()
-  if (switchTo === null) return null
-  return (
-    <Button variant="outline" size="sm" onClick={switchTo}>
-      {m.web_switch_machine()}
-    </Button>
   )
 }
 

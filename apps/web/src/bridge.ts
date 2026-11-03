@@ -14,29 +14,16 @@ const encodePush = Schema.encodeSync(PushEvent)
 export const dialsFor = (pairing: RelayMachine["pairing"], secure: boolean): NonEmptyReadonlyArray<Dial> =>
   secure ? [{ url: relayWebSocketUrl(pairing.relay), route: "relay", delayMs: 0 }] : dialPlan(pairing)
 
-export type HomeStatus = { readonly status: EnvironmentStatus; readonly error: string | null }
-
-interface Connection {
-  readonly link: MachineLink
-  readonly transport: Transport
-}
-
 export const connectMachines = ({
   account,
-  home,
-  others,
+  machines,
   messages,
-  onHomeStatus,
   signOut,
-  switchMachine,
 }: {
   readonly account: RelayAccount
-  readonly home: RelayMachine
-  readonly others: ReadonlyArray<RelayMachine>
+  readonly machines: ReadonlyArray<RelayMachine>
   readonly messages: TransportMessages
-  readonly onHomeStatus: (status: HomeStatus) => void
   readonly signOut: () => void
-  readonly switchMachine: () => void
 }): HinacodeBridge => {
   const listeners = new Set<(event: typeof PushEvent.Encoded) => void>()
   const emit = (event: typeof PushEvent.Encoded) => {
@@ -45,7 +32,7 @@ export const connectMachines = ({
   const statuses = new Map<string, EnvironmentStatus>()
   const secure = location.protocol === "https:"
 
-  const connect = (machine: RelayMachine, onStatus: (status: EnvironmentStatus, error: string | null) => void) => {
+  const connect = (machine: RelayMachine) => {
     const id = machine.environmentId
     statuses.set(id, "connecting")
     const transport = new Transport({
@@ -54,9 +41,9 @@ export const connectMachines = ({
       messages,
       compact: false,
       isMutation: (method) => mutations.has(method),
-      onStatus: (status, error) => {
+      onStatus: (status) => {
         statuses.set(id, status)
-        onStatus(status, error)
+        emit({ type: "environment.status", id, status })
       },
       onReady: () => {},
       onEvent: (event) => emit(encodePush(route.push(id, event))),
@@ -73,38 +60,24 @@ export const connectMachines = ({
     return { link, transport }
   }
 
-  let homeWasConnected = false
-  const homeConnection = connect(home, (status, error) => {
-    onHomeStatus({ status, error })
-    if (status === "connected" && homeWasConnected) emit({ type: "environment.status", id: home.environmentId, status })
-    if (status === "connected") homeWasConnected = true
-  })
-  const otherConnections = new Map<string, Connection>(
-    others.map((machine) => [
-      machine.environmentId,
-      connect(machine, (status) => emit({ type: "environment.status", id: machine.environmentId, status })),
-    ]),
-  )
-  const connections = [homeConnection, ...otherConnections.values()]
+  const connections = new Map(machines.map((machine) => [machine.environmentId, connect(machine)]))
 
   const route = makeRoute({
-    home: homeConnection.link,
-    others: new Map([...otherConnections].map(([id, connection]) => [id, connection.link])),
+    machines: new Map([...connections].map(([id, connection]) => [id, connection.link])),
     browser: makeBrowserAnswers({
       account,
-      home,
-      others,
+      machines,
       statusOf: (id) => statuses.get(id) ?? "offline",
-      reconnect: (id) => otherConnections.get(id)?.transport.reconnectNow(),
+      reconnect: (id) => connections.get(id)?.transport.reconnectNow(),
       emit,
       signOut,
     }),
   })
 
   window.addEventListener("online", () => {
-    for (const { transport } of connections) transport.networkChanged()
+    for (const { transport } of connections.values()) transport.networkChanged()
   })
-  for (const { transport } of connections) transport.start()
+  for (const { transport } of connections.values()) transport.start()
 
   return {
     rpc: (method, payload, environment) => route.call(method, payload, environment) as never,
@@ -114,6 +87,6 @@ export const connectMachines = ({
     },
     pathForFile: () => "",
     liquidGlass: false,
-    runtime: { kind: "web", machine: { id: home.environmentId, name: home.name }, switchMachine },
+    runtime: { kind: "web" },
   }
 }

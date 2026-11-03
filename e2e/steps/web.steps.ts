@@ -15,13 +15,16 @@ const signIn = async (page: Page, web: WebStack, ownerToken: string) => {
   await page.getByRole("button", { name: "Sign in", exact: true }).click()
 }
 
-const machineButton = (page: Page, web: WebStack) =>
-  page.getByRole("button", { name: new RegExp(`^${web.machine.name}`) })
-
-const expectRunningAgainst = async (page: Page, web: WebStack) => {
-  await expect(sidebar(page)).toBeVisible()
+const openMachineResources = async (page: Page) => {
   await page.getByRole("button", { name: "Machine resources", exact: true }).click()
-  await expect(page.getByRole("dialog").getByText(web.machine.name, { exact: true })).toBeVisible()
+  return page.getByRole("dialog")
+}
+
+const expectMachineListed = async (page: Page, web: WebStack) => {
+  await expect(sidebar(page)).toBeVisible()
+  const resources = await openMachineResources(page)
+  await expect(resources.getByText(web.machine.name, { exact: true })).toBeVisible()
+  await expect(resources.getByText("This machine", { exact: true })).toHaveCount(0)
   await page.keyboard.press("Escape")
 }
 
@@ -41,23 +44,13 @@ Then("the sign-in form says {string}", async ({ page }, message: string) => {
   await expect(page.getByRole("alert")).toHaveText(message)
 })
 
-Then("the machine picker lists my machine", async ({ page, web }) => {
-  await expect(page.getByRole("heading", { name: "Pick a machine", exact: true })).toBeVisible()
-  await expect(machineButton(page, web)).toBeVisible()
+Then("the app lists my machine as a remote machine", async ({ page, web }) => {
+  await expectMachineListed(page, web)
 })
 
-When("I pick my machine", async ({ page, web }) => {
-  await machineButton(page, web).click()
-})
-
-Then("the app runs against my machine", async ({ page, web }) => {
-  await expectRunningAgainst(page, web)
-})
-
-Given("I signed in to the web app and picked my machine", async ({ page, web }) => {
+Given("I signed in to the web app", async ({ page, web }) => {
   await page.goto(web.appUrl)
   await signIn(page, web, web.relay.ownerToken)
-  await machineButton(page, web).click()
   await expect(sidebar(page)).toBeVisible()
 })
 
@@ -65,20 +58,24 @@ When("I reload the web app", async ({ page }) => {
   await page.reload()
 })
 
-Then("the app runs against my machine without asking to sign in", async ({ page, web }) => {
-  await expectRunningAgainst(page, web)
+Then("the app lists my machine without asking to sign in", async ({ page, web }) => {
+  await expectMachineListed(page, web)
   await expect(page.getByRole("textbox", { name: "Owner token", exact: true })).toHaveCount(0)
-  await expect(page.getByRole("heading", { name: "Pick a machine", exact: true })).toHaveCount(0)
 })
 
 When("I open the Add project dialog on the web", async ({ page }) => {
   await page.getByRole("button", { name: "Add project", exact: true }).first().click()
 })
 
-Then("the dialog has no Browse button", async ({ page }) => {
+Then('the dialog adds to my machine, with no Browse button and no "This machine"', async ({ page, web }) => {
   const dialog = page.getByRole("dialog", { name: "Add project", exact: true })
   await expect(dialog.getByLabel("Folder or GitHub repository", { exact: true })).toBeVisible()
   await expect(dialog.getByRole("button", { name: "Browse…", exact: true })).toHaveCount(0)
+  const where = dialog.getByRole("combobox", { name: "Where", exact: true })
+  await expect(where).toHaveText(web.machine.name)
+  await where.click()
+  await expect(page.getByRole("option", { name: "This machine", exact: true })).toHaveCount(0)
+  await page.getByRole("option", { name: web.machine.name, exact: true }).click()
 })
 
 When(
@@ -138,17 +135,18 @@ When("the machine stops", async ({ web }) => {
   await web.machine.stop()
 })
 
-Then("the web app says it is reconnecting to my machine", async ({ page, web }) => {
-  await expect(page.getByRole("status").filter({ hasText: `Reconnecting to ${web.machine.name}…` })).toBeVisible()
+Then("Machine resources shows my machine offline", async ({ page }) => {
+  const resources = await openMachineResources(page)
+  await expect(resources.getByText(/^(Offline|Connecting)/)).toBeVisible({ timeout: 25_000 })
+  await page.keyboard.press("Escape")
 })
 
 When("the machine starts again", async ({ web }) => {
   await web.machine.start()
 })
 
-Then("the reconnecting bar goes away", async ({ page, web }) => {
-  await expect(page.getByRole("status").filter({ hasText: `Reconnecting to ${web.machine.name}…` })).toHaveCount(0, {
-    timeout: 25_000,
-  })
-  await expect(sidebar(page)).toBeVisible()
+Then("Machine resources shows my machine back online", async ({ page }) => {
+  const resources = await openMachineResources(page)
+  await expect(resources.getByText(/^(Offline|Connecting)/)).toHaveCount(0, { timeout: 25_000 })
+  await page.keyboard.press("Escape")
 })

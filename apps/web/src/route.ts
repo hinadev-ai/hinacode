@@ -33,20 +33,22 @@ const notFound = (id: string): RpcEnvelope<never> => ({
 const within = <A>(ms: number, promise: Promise<A>) =>
   Promise.race([promise, new Promise<undefined>((resolve) => setTimeout(resolve, ms))])
 
+const noMachine: RpcEnvelope<never> = {
+  error: { tag: "NotFoundError", message: "The relay lists no machines" },
+}
+
 export const makeRoute = ({
-  home,
-  others,
+  machines,
   browser,
 }: {
-  readonly home: MachineLink
-  readonly others: ReadonlyMap<string, MachineLink>
+  readonly machines: ReadonlyMap<string, MachineLink>
   readonly browser: BrowserAnswer
 }) => {
   const owners = makeOwners()
   const remembered = new Map<string, { readonly payload: string; readonly result: unknown }>()
 
   const forward = async (id: string, method: RpcMethod, payload: unknown): Promise<RpcEnvelope<unknown>> => {
-    const machine = others.get(id)
+    const machine = machines.get(id)
     if (machine === undefined) return notFound(id)
     const envelope = await machine.call(method, payload)
     if ("error" in envelope) return envelope
@@ -66,6 +68,11 @@ export const makeRoute = ({
     return last?.payload === JSON.stringify(payload ?? null) && Array.isArray(last.result) ? last.result : []
   }
 
+  const anyMachine = () => {
+    const all = [...machines.values()]
+    return all.find((machine) => machine.status() === "connected") ?? all[0]
+  }
+
   const call = async (method: RpcMethod, payload: unknown, environment?: string): Promise<RpcEnvelope<unknown>> => {
     const answered = browser(method, payload)
     if (answered !== undefined) return answered
@@ -77,21 +84,19 @@ export const makeRoute = ({
         : where.to === "owner" && owned !== undefined
           ? owners.owner(where.entity, owned)
           : undefined
-    if (target !== undefined && target !== home.id) return forward(target, method, payload)
-    if (where.to !== "all") return home.call(method, payload)
-    const [local, ...rest] = await Promise.all([
-      home.call(method, payload),
-      ...[...others.values()].map((machine) => gatherFrom(machine, method, payload)),
-    ])
-    if ("error" in local || !Array.isArray(local.result)) return local
-    return { result: [...local.result, ...rest.flat()] }
+    if (target !== undefined) return forward(target, method, payload)
+    if (where.to === "all") {
+      const lists = await Promise.all([...machines.values()].map((machine) => gatherFrom(machine, method, payload)))
+      return { result: lists.flat() }
+    }
+    const fallback = anyMachine()
+    return fallback === undefined ? noMachine : forward(fallback.id, method, payload)
   }
 
   const push = (machineId: string, event: PushEvent): PushEvent => {
-    if (machineId === home.id) return event
     learnFromPush(owners, machineId, event)
     return stampPush(event, machineId)
   }
 
-  return { call, push, forget: owners.forget }
+  return { call, push }
 }

@@ -5,10 +5,6 @@ import { m } from "@/paraglide/messages.js"
 import type { RelayMachine } from "../../../src/shared/relayMachines.ts"
 import { DEFAULT_RELAY_URL, fetchMachines, type MachinesAnswer, type RelayAccount, saveAccount } from "./account.ts"
 
-export type GateState =
-  | { readonly _tag: "signedOut"; readonly error: string | null }
-  | { readonly _tag: "picking"; readonly account: RelayAccount; readonly machines: ReadonlyArray<RelayMachine> }
-
 export const describeFailure = (answer: Exclude<MachinesAnswer, { _tag: "machines" }>) => {
   switch (answer._tag) {
     case "unauthorized":
@@ -23,32 +19,30 @@ export const describeFailure = (answer: Exclude<MachinesAnswer, { _tag: "machine
 }
 
 export function Gate({
-  initial,
-  onPick,
+  error,
+  onSignedIn,
 }: {
-  readonly initial: GateState
-  readonly onPick: (account: RelayAccount, home: RelayMachine, machines: ReadonlyArray<RelayMachine>) => void
+  readonly error: string | null
+  readonly onSignedIn: (account: RelayAccount, machines: ReadonlyArray<RelayMachine>) => void
 }) {
-  const [state, signIn, signingIn] = useActionState(async (_: GateState, form: FormData): Promise<GateState> => {
+  const [failure, signIn, signingIn] = useActionState(async (_: string | null, form: FormData) => {
     const account = {
       serviceUrl: String(form.get("serviceUrl") || DEFAULT_RELAY_URL),
       ownerToken: String(form.get("ownerToken")).trim(),
     }
     const answer = await fetchMachines(account)
-    if (answer._tag !== "machines") return { _tag: "signedOut", error: describeFailure(answer) }
+    if (answer._tag !== "machines") return describeFailure(answer)
+    if (answer.machines.length === 0) return m.web_no_machines()
     saveAccount(account)
-    return { _tag: "picking", account, machines: answer.machines }
-  }, initial)
+    onSignedIn(account, answer.machines)
+    return null
+  }, error)
 
   return (
     <main className="grid min-h-dvh place-items-center bg-background p-6 text-foreground">
       <div className="flex w-full max-w-sm flex-col gap-6">
         <h1 className="text-lg font-semibold">HinaCode</h1>
-        {state._tag === "signedOut" ? (
-          <SignIn error={state.error} signIn={signIn} signingIn={signingIn} />
-        ) : (
-          <MachinePicker machines={state.machines} onPick={(home) => onPick(state.account, home, state.machines)} />
-        )}
+        <SignIn error={failure} signIn={signIn} signingIn={signingIn} />
       </div>
     </main>
   )
@@ -97,38 +91,5 @@ function SignIn({
         {m.web_sign_in()}
       </Button>
     </form>
-  )
-}
-
-function MachinePicker({
-  machines,
-  onPick,
-}: {
-  readonly machines: ReadonlyArray<RelayMachine>
-  readonly onPick: (machine: RelayMachine) => void
-}) {
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1">
-        <h2 className="font-medium">{m.web_pick_machine_title()}</h2>
-        <p className="text-sm text-muted-foreground">
-          {machines.length === 0 ? m.web_no_machines() : m.web_pick_machine_body()}
-        </p>
-      </div>
-      <ul className="flex flex-col gap-1">
-        {machines.map((machine) => (
-          <li key={machine.environmentId}>
-            <button
-              type="button"
-              className="flex w-full flex-col items-start rounded-lg px-3 py-2 text-start hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
-              onClick={() => onPick(machine)}
-            >
-              <span className="text-sm font-medium">{machine.name}</span>
-              <span className="truncate text-xs text-muted-foreground">{machine.pairing.relay}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
   )
 }

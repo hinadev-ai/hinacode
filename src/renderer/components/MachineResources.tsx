@@ -14,7 +14,7 @@ import { type Cloud, environmentOf, useClouds, useCloudStateText } from "../lib/
 import { type EnvironmentId, machineResourcesAtom, projectsAtom, RpcError } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
-import { thisMachineName } from "../lib/runtime.ts"
+import { inBrowser } from "../lib/runtime.ts"
 import { getLocale } from "../paraglide/runtime.js"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
@@ -102,13 +102,15 @@ function MachineTable() {
           </tr>
         </thead>
         <tbody>
-          <MachineRow
-            environment={null}
-            name={thisMachineName()}
-            icon={<ComputerIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />}
-          >
-            <Readings environment={null} cloudName={null} />
-          </MachineRow>
+          {!inBrowser() && (
+            <MachineRow
+              environment={null}
+              name={m.environment_this_machine()}
+              icon={<ComputerIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />}
+            >
+              <Readings environment={null} cloudName={null} />
+            </MachineRow>
+          )}
           {clouds.map((cloud) => (
             <CloudRow key={cloud.id} cloud={cloud} />
           ))}

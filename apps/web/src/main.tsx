@@ -5,20 +5,11 @@ import { m } from "@/paraglide/messages.js"
 import { useLocale } from "@/stores/locale.ts"
 import type { RelayMachine } from "../../../src/shared/relayMachines.ts"
 import type { TransportMessages } from "../../../src/shared/transport.ts"
-import {
-  fetchMachines,
-  forgetHome,
-  type RelayAccount,
-  saveHome,
-  signOut,
-  storedAccount,
-  storedHome,
-} from "./account.ts"
+import { fetchMachines, type RelayAccount, signOut, storedAccount } from "./account.ts"
 import { connectMachines } from "./bridge.ts"
 import { readSettings } from "./browser.ts"
+import { describeFailure, Gate } from "./Gate.tsx"
 import { serveResources } from "./resources.ts"
-import { describeFailure, Gate, type GateState } from "./Gate.tsx"
-import { HomeStatusBar, makeHomeStatus } from "./HomeStatusBar.tsx"
 
 const transportMessages: TransportMessages = {
   notSent: m.web_transport_not_sent(),
@@ -32,60 +23,44 @@ const transportMessages: TransportMessages = {
     m.web_transport_protocol_mismatch({ machine: String(server), app: String(client) }),
 }
 
-const switchMachine = () => {
-  forgetHome()
-  location.reload()
-}
-
 const leave = () => {
   signOut()
   location.reload()
 }
 
-const start = async (account: RelayAccount, home: RelayMachine, machines: ReadonlyArray<RelayMachine>) => {
-  saveHome(home.environmentId)
-  const homeStatus = makeHomeStatus()
-  const bridge = connectMachines({
-    account,
-    home,
-    others: machines.filter((machine) => machine.environmentId !== home.environmentId),
-    messages: transportMessages,
-    onHomeStatus: homeStatus.set,
-    signOut: leave,
-    switchMachine,
-  })
+const start = async (account: RelayAccount, machines: ReadonlyArray<RelayMachine>) => {
+  const bridge = connectMachines({ account, machines, messages: transportMessages, signOut: leave })
   Object.defineProperty(window, "hinacode", { value: bridge })
   await serveResources(bridge).catch((cause: unknown) => console.error("Attachments and previews will not load", cause))
-  const bar = document.body.appendChild(document.createElement("div"))
-  createRoot(bar).render(<HomeStatusBar store={homeStatus} machine={home.name} onSwitch={switchMachine} />)
   await import("@/main.tsx")
 }
 
-const resume = async (): Promise<GateState | null> => {
+type Resumed = { readonly _tag: "started" } | { readonly _tag: "signIn"; readonly error: string | null }
+
+const resume = async (): Promise<Resumed> => {
   const account = storedAccount()
-  if (account === null) return { _tag: "signedOut", error: null }
+  if (account === null) return { _tag: "signIn", error: null }
   const answer = await fetchMachines(account)
-  if (answer._tag !== "machines") return { _tag: "signedOut", error: describeFailure(answer) }
-  const home = answer.machines.find((machine) => machine.environmentId === storedHome())
-  if (home === undefined) return { _tag: "picking", account, machines: answer.machines }
-  await start(account, home, answer.machines)
-  return null
+  if (answer._tag !== "machines") return { _tag: "signIn", error: describeFailure(answer) }
+  if (answer.machines.length === 0) return { _tag: "signIn", error: m.web_no_machines() }
+  await start(account, answer.machines)
+  return { _tag: "started" }
 }
 
 const settings = readSettings()
 await useLocale.getState().apply(settings.locale)
 applyAppearance(settings.appearance)
 
-const initial = await resume()
+const resumed = await resume()
 const rootElement = document.getElementById("root")
-if (initial !== null && rootElement !== null) {
+if (resumed._tag === "signIn" && rootElement !== null) {
   const gate = createRoot(rootElement)
   gate.render(
     <Gate
-      initial={initial}
-      onPick={(account, home, machines) => {
+      error={resumed.error}
+      onSignedIn={(account, machines) => {
         gate.unmount()
-        void start(account, home, machines)
+        void start(account, machines)
       }}
     />,
   )
