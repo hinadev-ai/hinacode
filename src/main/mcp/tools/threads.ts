@@ -98,7 +98,7 @@ const Effort = Schema.String.annotate({ description: "Reasoning effort, such as 
 export const ThreadTools = Toolkit.make(
   McpTool.make("create_thread", {
     description:
-      "Start another thread in this project and send it a first prompt. It appears in the user's sidebar at once and runs on its own; this call returns its id without waiting for it. Defaults to this thread's provider and model, and the model's default effort. Pass `worktree` to run it in a new git worktree, and `machine` to run it on another of the user's machines. Follow up with read_thread to check on it, send_to_thread to steer it, and stop_thread to interrupt it.",
+      "Start another thread in this project and send it a first prompt. It appears in the user's sidebar at once and runs on its own; this call returns its id without waiting for it. Defaults to this thread's provider and model, and the model's default effort. It shows nested under this thread in the sidebar unless `nested` is false. Pass `worktree` to run it in a new git worktree, and `machine` to run it on another of the user's machines. Follow up with read_thread to check on it, send_to_thread to steer it, and stop_thread to interrupt it.",
     parameters: Schema.Struct({
       title: Schema.String.annotate({ description: "Shown in the sidebar." }),
       prompt: Schema.String.annotate({ description: "The new thread's first user message." }),
@@ -115,6 +115,12 @@ export const ThreadTools = Toolkit.make(
         Schema.String.annotate({
           description:
             "Id of the machine to run it on, from list_machines. That machine needs a project for this GitHub repository. Defaults to this machine.",
+        }),
+      ),
+      nested: Schema.optionalKey(
+        Schema.Boolean.annotate({
+          description:
+            "Show the new thread under this one in the sidebar, for work this thread delegates. Pass false for unrelated work. Nesting is one level deep, so a thread created from a nested thread joins the same parent. Ignored on another machine. Defaults to true.",
         }),
       ),
     }),
@@ -282,7 +288,7 @@ export const threadToolsLayer = ThreadTools.toLayer(
       )
 
     return ThreadTools.of({
-      create_thread: ({ title, prompt, provider, model, effort, worktree, machine }) =>
+      create_thread: ({ title, prompt, provider, model, effort, worktree, machine, nested = true }) =>
         Effect.gen(function* () {
           const threadId = yield* McpTool.CallingThread
           const caller = yield* threads.get(threadId)
@@ -330,7 +336,11 @@ export const threadToolsLayer = ThreadTools.toLayer(
             )
             return `Created thread ${thread.id} "${thread.title}" on ${target.name} and sent it the prompt.`
           }
-          const thread = yield* threads.create({ projectId: caller.projectId, ...options })
+          const thread = yield* threads.create({
+            projectId: caller.projectId,
+            ...options,
+            parentId: nested ? threadId : undefined,
+          })
           yield* events.publish({ type: "thread.updated", thread })
           yield* runner.send(thread.id, prompt, []).pipe(
             Effect.mapError((error) => ({

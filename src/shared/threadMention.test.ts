@@ -18,6 +18,7 @@ const thread = (id: string, patch: Partial<Thread>): Thread => ({
   providerSessionId: null,
   forkedFrom: null,
   sideOf: null,
+  parentId: null,
   status: "idle",
   usageLimit: null,
   sortIndex: 0,

@@ -431,6 +431,7 @@ export const Thread = Schema.Struct({
   providerSessionId: Schema.NullOr(Schema.String),
   forkedFrom: Schema.NullOr(ForkPoint).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   sideOf: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  parentId: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   status: ThreadStatus,
   usageLimit: Schema.NullOr(UsageLimit),
   sortIndex: Schema.Number,
