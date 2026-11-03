@@ -1,7 +1,7 @@
 import { join } from "node:path"
-import { Deferred, Effect, type Exit, FileSystem, type PlatformError } from "effect"
+import { Effect, FileSystem } from "effect"
 import type { Changes } from "../../shared/domain.ts"
-import { type CommandError, Git, parseRawWithPatch, RAW_WITH_PATCH_ARGS } from "./Git.ts"
+import { Git, parseRawWithPatch, RAW_WITH_PATCH_ARGS } from "./Git.ts"
 
 const indexPaths = new Map<string, string>()
 
@@ -29,28 +29,10 @@ export const snapshotWorkingTree = (cwd: string) =>
     return (yield* git.run(cwd, ["write-tree"], { env })).trim()
   }).pipe(Effect.scoped)
 
-type SnapshotError = CommandError | PlatformError.PlatformError
-
-const snapshotsInFlight = new Map<string, Deferred.Deferred<string, SnapshotError>>()
-
-const joinSnapshotInFlight = (cwd: string) =>
-  Effect.gen(function* () {
-    const running = snapshotsInFlight.get(cwd)
-    if (running !== undefined) return yield* Deferred.await(running)
-    const snapshot = Deferred.makeUnsafe<string, SnapshotError>()
-    snapshotsInFlight.set(cwd, snapshot)
-    const settle = (exit: Exit.Exit<string, SnapshotError>) => {
-      snapshotsInFlight.delete(cwd)
-      return Deferred.done(snapshot, exit)
-    }
-    yield* snapshotWorkingTree(cwd).pipe(Effect.exit, Effect.flatMap(settle), Effect.forkDetach)
-    return yield* Deferred.await(snapshot)
-  })
-
 export const diffWorkingTree = <E, R>(cwd: string, base: Effect.Effect<string, E, R>) =>
   Effect.gen(function* () {
     const git = yield* Git
-    const [baseTree, tree] = yield* Effect.all([base, joinSnapshotInFlight(cwd)], { concurrency: "unbounded" })
+    const [baseTree, tree] = yield* Effect.all([base, snapshotWorkingTree(cwd)], { concurrency: "unbounded" })
     const output = yield* git.run(cwd, [
       "-c",
       "core.quotePath=false",
