@@ -52,7 +52,7 @@ interface ExplorerTree { …; unsaved: Readonly<Record<string, string>> }  // pa
 
 ### Editor
 
-`FileViewer` renders the same `File` component of `@pierre/diffs` with `edit` on, under an `EditProvider`. The library already ships the editor, so no second highlighter or editor framework enters the bundle. Truncated and binary files stay read-only.
+`FileViewer` renders the same `File` component of `@pierre/diffs` under an `EditProvider`, and turns `edit` on when the pointer enters the code or it gains focus (see `2026-11-04-explorer-file-operations.md`). The library already ships the editor, so no second highlighter or editor framework enters the bundle. Truncated and binary files stay read-only.
 
 - The `file` given to the component is the `unsaved` base while the file has edits, else the text on disk. The library replaces the document when its `file` changes, so this keeps an `fs.changed` reload from wiping the edits. The viewer compares the disk text with the base to show the changed-on-disk notice.
 - `onEditChange` compares the document with the base and sets or clears the path in `unsaved`.
