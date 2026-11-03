@@ -1197,3 +1197,76 @@ it("keeps a scheduled message stored until its turn starts, and sends it once", 
     await Effect.runPromise(runner.interrupt(thread.id))
   })
 })
+
+it("delivers another thread's newly due message while a worktree is still preparing", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, waiting, turns }) => {
+    await Effect.runPromise(
+      runner.schedule({ threadId: thread.id, text: "wait for setup", attachments: [], sendAt: overdue }),
+    )
+    try {
+      await waiting
+      const other = await Effect.runPromise(
+        threads.create({ projectId: thread.projectId, title: "Independent", provider: "claude", model: "test" }),
+      )
+      await Effect.runPromise(
+        runner.schedule({ threadId: other.id, text: "ready now", attachments: [], sendAt: overdue }),
+      )
+
+      await vi.waitFor(() => expect(turns.map((turn) => turn.input.prompt)).toEqual(["ready now"]), { timeout: 5000 })
+      expect((await Effect.runPromise(threads.get(thread.id))).scheduled.map((message) => message.text)).toEqual([
+        "wait for setup",
+      ])
+
+      release()
+      await vi.waitFor(() => expect(turns.map((turn) => turn.input.prompt)).toEqual(["ready now", "wait for setup"]), {
+        timeout: 5000,
+      })
+      await Effect.runPromise(runner.interrupt(other.id))
+    } finally {
+      release()
+      await Effect.runPromise(runner.interrupt(thread.id))
+    }
+  })
+})
+
+it("does not send a scheduled message again when a crash left it stored after its turn started", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, turns, storedMessages }) => {
+    release()
+    await Effect.runPromise(
+      runner.schedule({ threadId: thread.id, text: "waits for Stop", attachments: [], sendAt: overdue }),
+    )
+    const stored = (await Effect.runPromise(threads.get(thread.id))).scheduled
+
+    await Effect.runPromise(runner.sendDueSchedules)
+    await vi.waitFor(() => expect(turns.map((turn) => turn.input.prompt)).toEqual(["waits for Stop"]))
+    await Effect.runPromise(runner.interrupt(thread.id))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("idle"))
+
+    await Effect.runPromise(threads.update({ id: thread.id, scheduled: stored }))
+    await Effect.runPromise(runner.sendDueSchedules)
+
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).scheduled).toStrictEqual([]))
+    expect((await Effect.runPromise(threads.get(thread.id))).queue).toStrictEqual([])
+    expect(turns.map((turn) => turn.input.prompt)).toEqual(["waits for Stop"])
+    expect((await storedMessages(thread.id)).filter((message) => message.role === "user")).toHaveLength(1)
+  })
+})
+
+it("cancels a scheduled message that is waiting on its worktree", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, waiting, turns }) => {
+    await Effect.runPromise(
+      runner.schedule({ threadId: thread.id, text: "never mind", attachments: [], sendAt: overdue }),
+    )
+    void Effect.runPromise(runner.sendDueSchedules)
+    await waiting
+
+    const cancelled = await Effect.runPromise(
+      runner.unschedule(thread.id, (await Effect.runPromise(threads.get(thread.id))).scheduled[0]!.id),
+    )
+    release()
+
+    expect(cancelled).toMatchObject({ text: "never mind" })
+    expect((await Effect.runPromise(threads.get(thread.id))).scheduled).toStrictEqual([])
+    expect(turns).toStrictEqual([])
+  })
+})
