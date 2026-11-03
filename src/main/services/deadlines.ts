@@ -4,7 +4,7 @@ export type Deadline = number | undefined
 
 // FIXME: a timer does not count the time the machine spends suspended, so naps are capped and rechecked against the wall clock
 const longestNap = Duration.minutes(1)
-export const shortestGap = Duration.seconds(1)
+const shortestGap = Duration.seconds(1)
 
 const isSooner = (at: Deadline, than: Deadline) =>
   at !== undefined && Number.isFinite(at) && (than === undefined || at < than)

@@ -4,20 +4,7 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { expect, it } from "@effect/vitest"
-import {
-  Context,
-  Deferred,
-  Duration,
-  Effect,
-  Exit,
-  Fiber,
-  Layer,
-  ManagedRuntime,
-  Option,
-  Queue,
-  Schema,
-  Stream,
-} from "effect"
+import { Context, Deferred, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
 import { SqlClient } from "effect/sql"
 import { vi } from "vitest"
 import type { AgentEvent, ApprovalDecision, ProviderId, RunTurnInput } from "../../shared/agent.ts"
@@ -32,7 +19,6 @@ import * as Db from "../db/client.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
 import * as AgentAccounts from "./AgentAccounts.ts"
 import { AgentRunner, layer } from "./AgentRunner.ts"
-import { shortestGap } from "./deadlines.ts"
 import { Events } from "./Events.ts"
 import * as Git from "./Git.ts"
 import * as GitHub from "./GitHub.ts"
@@ -64,6 +50,7 @@ interface Probe {
   readonly idle: Promise<void>
   readonly streamed: Promise<void>
   readonly turns: Array<{ readonly provider: ProviderId; readonly input: RunTurnInput }>
+  readonly nextTurn: () => Promise<void>
   readonly warms: Array<SessionInput>
   readonly decisions: Array<{ readonly requestId: string; readonly decision: ApprovalDecision; readonly note?: string }>
   readonly steers: Array<{ readonly text: string; readonly priority: SteerPriority }>
@@ -120,6 +107,7 @@ const withPreparingThread = async (
   let holdInsertion = options.pauseInsertion ?? false
   let holdSnapshot = options.pauseSnapshot ?? false
   const turns: Probe["turns"] = []
+  let turnStarted = Promise.withResolvers<void>()
   const warms: Probe["warms"] = []
   const decisions: Probe["decisions"] = []
   const steers: Probe["steers"] = []
@@ -173,6 +161,8 @@ const withPreparingThread = async (
     runTurn: (input) =>
       Stream.suspend((): Stream.Stream<AgentEvent> => {
         turns.push({ provider: id, input })
+        turnStarted.resolve()
+        turnStarted = Promise.withResolvers<void>()
         const completed: AgentEvent = {
           type: "turn_completed",
           ...(options.forkable && { forkPoint: { sessionId: `${id}-session`, checkpoint: "turn-1" } }),
@@ -398,6 +388,7 @@ const withPreparingThread = async (
         inserting: inserting.promise,
         snapshotting: snapshotting.promise,
         idle: idle.promise,
+        nextTurn: () => turnStarted.promise,
         streamed: streamed.promise,
         turns,
         warms,
@@ -1215,7 +1206,6 @@ it("reads a running tool call's output only from the message that holds it", asy
 
 const overdue = "2020-01-01T09:00:00.000Z"
 const later = "2999-01-01T09:00:00.000Z"
-const pastDeadlineGap = { timeout: Duration.toMillis(shortestGap) + 1000 }
 
 it("sends an overdue scheduled message and keeps the later one", async () => {
   await withPreparingThread(async ({ runner, threads, thread, release, turns }) => {
@@ -1238,21 +1228,23 @@ it("sends an overdue scheduled message and keeps the later one", async () => {
 })
 
 it("sends a scheduled message on its own once it comes due", async () => {
-  await withPreparingThread(async ({ runner, thread, release, turns }) => {
+  await withPreparingThread(async ({ runner, thread, release, turns, nextTurn }) => {
     release()
+    const sent = nextTurn()
     await Effect.runPromise(runner.schedule({ threadId: thread.id, text: "now", attachments: [], sendAt: overdue }))
 
-    await vi.waitFor(() => expect(turns.map((turn) => turn.input.prompt)).toEqual(["now"]), pastDeadlineGap)
+    await sent
+    expect(turns.map((turn) => turn.input.prompt)).toEqual(["now"])
     await Effect.runPromise(runner.interrupt(thread.id))
   })
 })
 
 it("resumes a limited thread on its own once its reset passes", async () => {
-  await withPreparingThread(async ({ runner, threads, thread, release, turns }) => {
+  await withPreparingThread(async ({ runner, threads, thread, release, turns, nextTurn }) => {
     release()
     await Effect.runPromise(runner.send(thread.id, "streams a reply", []))
     await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("idle"))
-
+    const resumed = nextTurn()
     await Effect.runPromise(
       threads.update({
         id: thread.id,
@@ -1261,7 +1253,8 @@ it("resumes a limited thread on its own once its reset passes", async () => {
       }),
     )
 
-    await vi.waitFor(() => expect(turns).toHaveLength(2), pastDeadlineGap)
+    await resumed
+    expect(turns).toHaveLength(2)
     expect(turns[1]?.input.prompt).toMatch(/streams a reply$/)
     expect((await Effect.runPromise(threads.get(thread.id))).usageLimit?.reset?.autoResume).not.toBe(true)
   })
