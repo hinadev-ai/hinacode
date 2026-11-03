@@ -13,9 +13,13 @@ export const Colors = {
     surfaceStrong: "#e4e4e7",
     /** A switch's off track, 3:1 on `surface` and `background` so the control reads when it is off. */
     controlOff: "#8a8a93",
+    /** A filled control that cannot be pressed yet, under `textMuted`. A step above every surface it sits on. */
+    disabled: "#e4e4e7",
     /** A sheet over the scrim, and a selected or pressed row on it. Dark sheets sit a step above the page. */
     sheet: "#ffffff",
     sheetRaised: "#f4f4f5",
+    /** Dims the page under a sheet. The dark page is already near black, so it needs a heavier scrim to recede. */
+    scrim: "rgba(10, 10, 10, 0.5)",
     border: "#e4e4e7",
     primary: "#7c3aed",
     onPrimary: "#ffffff",
@@ -33,6 +37,8 @@ export const Colors = {
     /** Skills, commands and mentions in the composer, as the desktop's `--syntax-token`. */
     token: "#7c3aed",
     tokenBg: "rgba(124, 58, 237, 0.12)",
+    /** A search match in a line of code, the desktop's `--color-find-match`. */
+    findMatch: "rgba(124, 58, 237, 0.22)",
     /** The send button's holographic pearl, the desktop's `send-halo` in the default themes. */
     haloA: "#5ee7ff",
     haloB: "#ff7ae0",
@@ -49,8 +55,10 @@ export const Colors = {
     surface: "#18181b",
     surfaceStrong: "#27272a",
     controlOff: "#71717a",
+    disabled: "#3f3f46",
     sheet: "#18181b",
     sheetRaised: "#27272a",
+    scrim: "rgba(0, 0, 0, 0.72)",
     border: "#27272a",
     primary: "#7c3aed",
     onPrimary: "#ffffff",
@@ -66,6 +74,7 @@ export const Colors = {
     prMerged: "#a371f7",
     token: "#a78bfa",
     tokenBg: "rgba(167, 139, 250, 0.16)",
+    findMatch: "rgba(167, 139, 250, 0.3)",
     haloA: "#aef3ff",
     haloB: "#ffc6f5",
     haloC: "#fff3b0",

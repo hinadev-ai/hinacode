@@ -126,6 +126,24 @@ script clears every PR watch and disables every automation in the copy, so no au
 Each launch reopens the last route, so after the first run startup includes opening a thread. `PORT` picks the CDP
 port (default 9290) and `DISPLAY_FOR_PERF` the X display (default `:99`).
 
+## Measure many agents streaming at once
+
+`fanout.ts` copies a profile, opens its largest thread, and starts the `long-turn` simulation on the next `THREADS`
+(default 6) started threads, so they stream steadily in the background. Over `WINDOW_SECONDS` (default 15) it
+records CPU per process kind, renderer task time, the latency of a cheap rpc sent every 100 ms, and every
+`UPDATE message` the main process runs. Build each side in turn and give each its own label:
+
+```sh
+pnpm build
+sqlite3 ~/.hinacode/hinacode.sqlite ".backup /tmp/kk-perf-real/hinacode.sqlite"
+node scripts/perf/fanout.ts base /tmp/kk-perf-real/hinacode.sqlite
+node scripts/perf/fanout.ts after /tmp/kk-perf-real/hinacode.sqlite   # after rebuilding the change
+node scripts/perf/fanout.ts compare base after
+```
+
+Each of `RUNS` (default 3) launches gets a fresh copy, with PR watches cleared and automations disabled. CPU comes
+from `ps`, which Linux reports in whole seconds, so raise `WINDOW_SECONDS` there.
+
 ## Runtime budget in CI
 
 The `bundle-size` job builds the pull request and its base, then `budget.ts` launches each build in turn on the

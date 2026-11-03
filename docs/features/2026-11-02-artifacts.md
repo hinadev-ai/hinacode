@@ -79,6 +79,24 @@ A broken page used to sit at "Loading…" with no sign that anything failed, and
 - The protocol inserts a small reporter script into every HTML response, next to the theme. Inside a frame it posts `{ type: "hinacode-artifact-problem", message }` to the parent for uncaught errors, unhandled rejections, `console.error` and resources that fail to load. Outside a frame, as in an exported file, it does nothing. The panel accepts a message only from its own frame's window and decodes it with a schema. The page controls the text, so it is shown as plain text and nothing else.
 - Problems collect in a strip under the frame, deduplicated and capped at the first 20 messages of 500 characters each, so a page that logs a new error every frame cannot grow the app renderer without limit. "Ask agent to fix" adds the title, id and messages to the thread's draft, so the developer can send it with their own words.
 
+### Check on publish
+
+An agent that publishes a page cannot see it. In the first dogfood run a real turn ended with "I haven't opened it to check how it renders", and a page whose module import failed sat at "Loading…" with nobody told.
+
+So on the desktop, `publish_artifact` renders the new version before it answers. `ArtifactInspector` loads `hinacode-artifact://<id>/<entry>` in a hidden sandboxed window, 400 by 720, the panel's usual width, with the theme the renderer last shared through `artifacts.setTheme`. It attaches DevTools before navigation and keeps `Runtime.exceptionThrown`, `console.error` and `Log.entryAdded` errors, decoded with a schema because the page writes them. After fonts and one second of settling, it measures the page width in an isolated world, names the outermost elements past the edge, and captures the viewport.
+
+The result keeps its first line, so `publishedArtifactId` still reads the id, and adds:
+
+```
+Rendered at 400px, the side panel's usual width. Fix these and publish again:
+- Console errors:
+  - Uncaught ReferenceError: Chart is not defined (index.html:19)
+- The page is 663px wide and scrolls sideways in a 400px panel. Past the edge: table.
+The screenshot shows the top of the page as the developer first sees it.
+```
+
+followed by the screenshot as an MCP image. The PDF export shares the hidden-window code in `artifactPage.ts`. The check gives up after 15 seconds and answers with the plain result, and so does `hinacode serve`, which has no browser: its layer is `ArtifactInspector.unavailable`.
+
 ### Delete
 
 Right-clicking an artifact in the list offers Delete. `artifacts.delete` routes to the machine that owns the id and removes the artifact's directory. The service pushes `artifact.removed`, and so does its watcher when another harness deletes a directory, so every open list drops it. There is no undo.

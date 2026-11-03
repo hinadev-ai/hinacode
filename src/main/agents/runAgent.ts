@@ -1,5 +1,13 @@
-import { isRunAgentTool, toolArgument } from "../../shared/agent.ts"
+import {
+  isRunAgentTool,
+  presetModels,
+  ProviderId,
+  toolArgument,
+  unlistedModel,
+  type ModelInfo,
+} from "../../shared/agent.ts"
 import type { Message, MessagePart } from "../../shared/domain.ts"
+import { providerInfo } from "../../shared/providers.ts"
 
 type ToolCall = Extract<MessagePart, { type: "tool_call" }>
 
@@ -38,3 +46,24 @@ export const pickedSubagentModel = (input: {
     message: `${model} is not among the ${input.agent} models the user picked. Use one of: ${allowed.join(", ")}.`,
   }
 }
+
+export type SubagentChoice =
+  | { readonly kind: "models"; readonly provider: ProviderId; readonly models: ReadonlyArray<ModelInfo> }
+  | { readonly kind: "unpicked"; readonly provider: ProviderId }
+
+export const subagentChoices = (
+  listed: Readonly<Record<ProviderId, ReadonlyArray<ModelInfo> | null>>,
+  presets: Readonly<Record<ProviderId, ReadonlyArray<string>>>,
+): ReadonlyArray<SubagentChoice> =>
+  ProviderId.literals.flatMap((provider): ReadonlyArray<SubagentChoice> => {
+    const models = listed[provider]
+    const picked = presets[provider]
+    if (providerInfo[provider].subagentModels === "listed") {
+      return models === null || models.length === 0
+        ? []
+        : [{ kind: "models", provider, models: presetModels(models, picked, null) }]
+    }
+    if (picked.length === 0) return models === null ? [] : [{ kind: "unpicked", provider }]
+    const pickedModels = picked.map((id) => models?.find((model) => model.id === id) ?? unlistedModel(id, provider))
+    return [{ kind: "models", provider, models: pickedModels }]
+  })

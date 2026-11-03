@@ -5,7 +5,7 @@ export type Outcome = "completed" | "failed"
 
 export function outcomeOf(event: AgentEvent): Outcome | undefined {
   if (event.type === "turn_completed") return "completed"
-  if (event.type === "turn_failed") return "failed"
+  if (event.type === "turn_failed" && !event.stopped) return "failed"
   return undefined
 }
 

@@ -9,6 +9,7 @@ import {
   Layer,
   Option,
   Predicate,
+  Record,
   type Schema,
   Schedule,
   Semaphore,
@@ -35,6 +36,7 @@ import type {
 import type {
   AccessMode,
   Attachment,
+  ExperimentalSettings,
   Message,
   QueuedMessage,
   Thread,
@@ -50,7 +52,7 @@ import { CodexProvider } from "../agents/codex/index.ts"
 import { handoffPrompt } from "../agents/handoff.ts"
 import { latestForkPoint, sidechatPrompt, unseenSince } from "../agents/sidechat.ts"
 import { agentInstructions, type AgentEnvironment } from "../agents/instructions.ts"
-import { pickedSubagentModel, spawningCallId } from "../agents/runAgent.ts"
+import { pickedSubagentModel, spawningCallId, subagentChoices } from "../agents/runAgent.ts"
 import { providerInfo } from "../../shared/providers.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
@@ -81,7 +83,7 @@ import { AgentAccounts } from "./AgentAccounts.ts"
 import { type ActiveWorkspace, makeActiveWorkspace } from "./workspace.ts"
 
 const PERSIST_INTERVAL_MS = 500
-const PERSIST_BACKOFF = 10
+const PERSIST_BYTES_PER_SECOND = 256 * 1024
 const interruptedSend = () => new AgentError({ provider: "hinacode", message: "Message send interrupted" })
 
 export interface AgentRequest {
@@ -287,6 +289,21 @@ const make = Effect.gen(function* () {
     opencode: yield* OpencodeProvider,
   }
 
+  const listedModels = (provider: AgentProvider) =>
+    provider.listModels.pipe(
+      Effect.timeout(Duration.seconds(3)),
+      Effect.orElseSucceed(() => null),
+    )
+
+  const subagentInstructions = (experimental: ExperimentalSettings, environment: AgentEnvironment) =>
+    Effect.gen(function* () {
+      const [listed, { modelPresets }] = yield* Effect.all(
+        [Effect.all(Record.map(providers, listedModels), { concurrency: "unbounded" }), settings.get],
+        { concurrency: "unbounded" },
+      )
+      return agentInstructions(experimental, environment, subagentChoices(listed, modelPresets))
+    })
+
   type LimitsKey = Pick<AccountLimits, "provider" | "accountId">
   const cachedLimits = yield* Cache.make({
     lookup: (key: string) => {
@@ -425,7 +442,7 @@ const make = Effect.gen(function* () {
     let status: ThreadStatus = "running"
     let completed = false
     let persistedAt = Date.now()
-    let persistMs = 0
+    let persistedBytes = 0
     const dirty = new Set<string>()
     const subagentCalls = new Set<string>()
 
@@ -433,8 +450,10 @@ const make = Effect.gen(function* () {
       const changed = turnMessages.filter((message) => dirty.has(message.id))
       dirty.clear()
       persistedAt = Date.now()
-      return Effect.forEach(changed, messages.update, { discard: true }).pipe(
-        Effect.ensuring(Effect.sync(() => (persistMs = Date.now() - persistedAt))),
+      return Effect.forEach(changed, messages.update).pipe(
+        Effect.map((writes) => {
+          persistedBytes = writes.reduce((total, { bytes }) => total + bytes, 0)
+        }),
       )
     })
 
@@ -475,7 +494,7 @@ const make = Effect.gen(function* () {
         ) {
           yield* steerHeld
         }
-        const interval = Math.max(PERSIST_INTERVAL_MS, PERSIST_BACKOFF * persistMs)
+        const interval = Math.max(PERSIST_INTERVAL_MS, (persistedBytes / PERSIST_BYTES_PER_SECOND) * 1000)
         if (dirty.size > 0 && Date.now() - persistedAt >= interval) yield* persist
       })
 
@@ -491,7 +510,9 @@ const make = Effect.gen(function* () {
                   ...received,
                   forkPoint: { ...received.forkPoint, owner: { provider: provider.id, accountId: thread.accountId } },
                 }
-              : received
+              : received.type === "turn_failed" && (yield* Deferred.isDone(stop))
+                ? { ...received, stopped: true }
+                : received
         if (event.type === "subagent_updated") return yield* updateSubagent(thread.id, event.subagent)
         yield* deltas.offer(event)
       }).pipe(exclusive(thread.id))
@@ -607,6 +628,7 @@ const make = Effect.gen(function* () {
               mcp.connectionFor(thread.id),
               settings.get,
             ])
+            const instructions = yield* subagentInstructions(experimental, environment)
             if (yield* Deferred.isDone(stop)) {
               return Stream.succeed<AgentEvent>({ type: "turn_failed", message: "Turn interrupted" })
             }
@@ -625,7 +647,7 @@ const make = Effect.gen(function* () {
               forkAt: thread.providerSessionId === null ? (thread.forkedFrom?.checkpoint ?? null) : null,
               home,
               mcpServer,
-              instructions: agentInstructions(experimental, environment),
+              instructions,
             })
           }),
         ),
@@ -688,6 +710,7 @@ const make = Effect.gen(function* () {
         settings.get,
         nowIso,
       ])
+      const instructions = yield* subagentInstructions(experimental, environment)
 
       const id = randomUUID()
       const sessionId = `${threadId}:agent:${id}`
@@ -776,7 +799,7 @@ const make = Effect.gen(function* () {
           forkAt: null,
           home,
           mcpServer,
-          instructions: agentInstructions(experimental, environment),
+          instructions,
         })
         .pipe(
           Stream.runForEach(forward),

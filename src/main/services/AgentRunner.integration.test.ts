@@ -108,6 +108,7 @@ const withPreparingThread = async (
   const decisions: Probe["decisions"] = []
   const steers: Probe["steers"] = []
   const resolutions = Effect.runSync(Queue.unbounded<AgentEvent>())
+  const interruptions = Effect.runSync(Queue.unbounded<AgentEvent>())
   const calls: Probe["calls"] = []
   const transcript: Probe["transcript"] = []
   let closeFails = false
@@ -171,6 +172,7 @@ const withPreparingThread = async (
             Stream.concat(Stream.never),
           )
         }
+        if (input.prompt === "waits for Stop") return Stream.fromQueue(interruptions)
         if (input.prompt === "streams a reply") {
           return Stream.fromIterable<AgentEvent>([
             ...streamedWords.map((text): AgentEvent => ({ type: "text_delta", text })),
@@ -227,7 +229,10 @@ const withPreparingThread = async (
       steer: (_threadId: string, text: string, _attachments: unknown, priority: SteerPriority) =>
         Effect.sync(() => void steers.push({ text, priority })),
     }),
-    interrupt: () => Effect.sync(() => calls.push({ provider: id, call: "interrupt" })),
+    interrupt: () =>
+      Effect.sync(() => calls.push({ provider: id, call: "interrupt" })).pipe(
+        Effect.andThen(Queue.offer(interruptions, { type: "turn_failed", message: "Interrupted" })),
+      ),
     setAccessMode: () => Effect.void,
     respondApproval: (requestId, decision, note) =>
       Effect.sync(() => decisions.push({ requestId, decision, ...(note !== undefined && { note }) })).pipe(
@@ -1052,6 +1057,21 @@ it("publishes streamed text in fewer pushes, in order, with the same transcript"
     ])
     const transcriptSeqs = transcript.map((push) => push.seq)
     expect(transcriptSeqs).toEqual(transcriptSeqs.toSorted((a, b) => a - b))
+  })
+})
+
+it("ends a turn the user stopped without reporting an error", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, transcript }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "waits for Stop", []))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running"))
+    await Effect.runPromise(runner.interrupt(thread.id))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("idle"))
+
+    const ended = transcript.find((push) => push.type === "thread.event" && push.event.type === "turn_failed")
+    expect(ended).toMatchObject({ event: { type: "turn_failed", stopped: true } })
+    const { messages } = await Effect.runPromise(runner.transcript(thread.id))
+    expect(messages.at(-1)?.parts).toStrictEqual([])
   })
 })
 
