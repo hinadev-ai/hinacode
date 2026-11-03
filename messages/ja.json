@@ -359,6 +359,7 @@
   "terminal_failed": "ターミナルを起動できませんでした：{message}",
   "terminal_exited": "プロセスはコード {code} で終了しました",
   "terminal_ended": "プロセスが終了しました",
+  "terminal_mention_closed": "閉じたターミナル",
   "attachment_add": "ファイルを添付",
   "attachment_add_hint": "ファイルを添付します。画像の貼り付けやドラッグ＆ドロップにも対応しています。",
   "attachment_drop_hint": "ドロップしてファイルを添付",

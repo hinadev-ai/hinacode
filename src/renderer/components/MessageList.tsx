@@ -1,5 +1,4 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react"
-import { Link } from "@tanstack/react-router"
 import { cn } from "cn"
 import {
   createContext,
@@ -14,7 +13,6 @@ import {
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { Message, MessagePart } from "../../shared/domain.ts"
 import { fenceCode, highlight, isUnorderedBullet, type KnownTokens, type Segment } from "../../shared/composerSyntax.ts"
-import { MENTION } from "../../shared/mentions.ts"
 import {
   assistantPresentation,
   foldedParts,
@@ -26,13 +24,13 @@ import { faviconOrigins, linkify } from "../lib/linkify.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
 import { skillLabelsOf } from "../lib/toolCall.ts"
 import { m } from "../paraglide/messages.js"
-import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { AttachmentView } from "./AttachmentView.tsx"
 import { CommandChip } from "./CommandChip.tsx"
 import { FindPartContext, Highlighted } from "./FindHighlight.tsx"
 import { HighlightedCode } from "./HighlightedCode.tsx"
 import { Markdown } from "./Markdown.tsx"
+import { MentionThread, WithMentions } from "./Mention.tsx"
 import { MessageActions } from "./MessageActions.tsx"
 import { MessagePartView, PartMessage, SkillLabels, ToolGroup, useFindDisclosure } from "./MessagePart.tsx"
 import { PostedQuestionsCard } from "./QuestionCard.tsx"
@@ -133,34 +131,12 @@ export function MessageList({
 function MessageItem({ message }: { message: Message }) {
   const faviconSites = faviconOrigins(message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])))
   return (
-    <FaviconOrigins value={faviconSites}>
-      <MessageBody message={message} />
-    </FaviconOrigins>
+    <MentionThread value={message.threadId}>
+      <FaviconOrigins value={faviconSites}>
+        <MessageBody message={message} />
+      </FaviconOrigins>
+    </MentionThread>
   )
-}
-
-function WithThreadMentions({ text }: { text: string }) {
-  const threadsById = useThreads((state) => state.byId)
-  const nodes: Array<ReactElement> = []
-  let end = 0
-  for (const match of text.matchAll(MENTION)) {
-    const thread = match[1] === "thread" ? threadsById[match[2] ?? ""] : undefined
-    if (thread === undefined) continue
-    nodes.push(<Highlighted key={`text-${end}`} text={text.slice(end, match.index)} />)
-    nodes.push(
-      <Link
-        key={`thread-${match.index}`}
-        to="/thread/$threadId"
-        params={{ threadId: thread.id }}
-        className="text-syntax-token underline-offset-2 hover:underline"
-      >
-        <Highlighted text={`@${thread.title}`} />
-      </Link>,
-    )
-    end = match.index + match[0].length
-  }
-  nodes.push(<Highlighted key={`text-${end}`} text={text.slice(end)} />)
-  return nodes
 }
 
 const isBlock = (segment: Segment | undefined) => segment?.kind === "fence" || segment?.kind === "rule"
@@ -221,7 +197,7 @@ function SentText({ text, commands }: { text: string; commands: ReadonlyArray<Ag
           <Highlighted text={link.text} />
         </WebLink>
       ) : (
-        <WithThreadMentions key={`${index}:${linkIndex}`} text={link.text} />
+        <WithMentions key={`${index}:${linkIndex}`} text={link.text} />
       ),
     )
   })

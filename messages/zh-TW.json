@@ -359,6 +359,7 @@
   "terminal_failed": "無法啟動終端機：{message}",
   "terminal_exited": "程序已結束，結束代碼 {code}",
   "terminal_ended": "程序已結束",
+  "terminal_mention_closed": "已關閉的終端機",
   "attachment_add": "附加檔案",
   "attachment_add_hint": "附加檔案。也可以貼上圖片，或把檔案拖曳到這裡。",
   "attachment_drop_hint": "放開以附加檔案",
