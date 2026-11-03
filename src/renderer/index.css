@@ -99,10 +99,62 @@
   --animate-reveal: fade-in 200ms var(--ease-out) 150ms both;
   --animate-spin-late: spin 0.6s linear 150ms infinite;
   --animate-attention: attention 1s var(--ease-out) 3;
+  /* The marks for an agent's touches on a device screen. They end at opacity 0, so the element can stay until React removes it. */
+  --animate-touch: touch 1s var(--ease-out) both;
+  --animate-swipe: swipe var(--swipe-duration) linear both;
+  --animate-fade-out: fade-out 600ms var(--ease-out) both;
+  --animate-caption: caption 1.8s var(--ease-out) both;
 
   @keyframes fade-in {
     from {
       opacity: 0;
+    }
+  }
+
+  @keyframes touch {
+    from {
+      scale: 0.6;
+    }
+    20%,
+    55% {
+      scale: 1;
+      opacity: 1;
+    }
+    to {
+      scale: 1.4;
+      opacity: 0;
+    }
+  }
+
+  @keyframes fade-out {
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes swipe {
+    from {
+      left: var(--swipe-from-x);
+      top: var(--swipe-from-y);
+    }
+    80% {
+      opacity: 1;
+    }
+    to {
+      left: var(--swipe-to-x);
+      top: var(--swipe-to-y);
+      opacity: 0;
+    }
+  }
+
+  @keyframes caption {
+    from,
+    to {
+      opacity: 0;
+    }
+    10%,
+    75% {
+      opacity: 1;
     }
   }
 
