@@ -47,7 +47,7 @@ export function AppShell() {
   )
 
   return (
-    <div className="flex h-dvh flex-col text-foreground">
+    <div className="relative flex h-dvh flex-col overflow-clip text-foreground">
       {!docked && titleBar}
       <div className="flex min-h-0 flex-1">
         <div className="flex min-h-0 shrink-0 flex-col">

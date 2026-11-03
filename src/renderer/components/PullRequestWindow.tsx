@@ -58,7 +58,7 @@ function FilesChanged({
   const [diffStyle, setDiffStyle] = useState<DiffStyle>("split")
 
   return (
-    <div className="flex h-dvh flex-col bg-background text-foreground">
+    <div className="relative flex h-dvh flex-col overflow-clip bg-background text-foreground">
       <title>{`#${pullRequest.number} ${pullRequest.title}`}</title>
       <header
         className={cn(
