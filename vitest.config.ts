@@ -7,6 +7,7 @@ import { lazyLocales, paraglide } from "./vite.paraglide.ts"
 
 export default defineConfig({
   test: {
+    globalSetup: "./vitest.global-setup.ts",
     projects: [
       {
         resolve: { alias: { "@": fileURLToPath(new URL("./src/renderer", import.meta.url)) } },
