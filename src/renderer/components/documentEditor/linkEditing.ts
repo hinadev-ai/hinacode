@@ -67,7 +67,9 @@ export const LinkEditing = Extension.create({
             const meta: LinkRange | null | undefined = transaction.getMeta(linkEditKey)
             if (meta !== undefined) return meta
             if (range === null || !transaction.docChanged) return range
-            return { from: transaction.mapping.map(range.from, 1), to: transaction.mapping.map(range.to, -1) }
+            const from = transaction.mapping.mapResult(range.from, 1)
+            const to = transaction.mapping.mapResult(range.to, -1)
+            return from.deleted || to.deleted || from.pos > to.pos ? null : { from: from.pos, to: to.pos }
           },
         },
         props: {

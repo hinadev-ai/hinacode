@@ -13,7 +13,7 @@ export type SaveStatus =
 
 export type DocumentSync = ReturnType<typeof createDocumentSync>
 
-type Draft = { readonly revision: number; readonly markdown: string }
+type Draft = { readonly revision: number; readonly markdown: string; readonly saved?: Promise<number | null> }
 
 const unsavedDocuments = new Map<string, Draft>()
 
@@ -29,6 +29,8 @@ export function createDocumentSync(options: {
   const initial = restored ?? options.loaded
   let editor: Editor | null = null
   let base = initial.revision
+  let latest = initial.revision
+  let handoff = restored?.saved
   let edits = 0
   let savedEdits = 0
   let saving = false
@@ -38,7 +40,7 @@ export function createDocumentSync(options: {
   const markdown = () =>
     editor !== null && !editor.isDestroyed ? editor.getMarkdown() : (unsavedDocuments.get(key)?.markdown ?? "")
 
-  const clean = () => editor !== null && !saving && edits === savedEdits && theirs === null
+  const clean = () => editor !== null && !editor.isDestroyed && !saving && edits === savedEdits && theirs === null
 
   const settle = () => {
     savedEdits = edits
@@ -51,11 +53,23 @@ export function createDocumentSync(options: {
     settle()
   }
 
-  const save = async (): Promise<void> => {
+  let running: Promise<number | null> = Promise.resolve(null)
+
+  const save = (): Promise<number | null> => {
+    if (saving) return running
+    running = run()
+    return running
+  }
+
+  const run = async (): Promise<number | null> => {
     clearTimeout(timer)
     timer = undefined
-    if (saving || theirs !== null || editor === null || edits === savedEdits) return
+    if (theirs !== null || editor === null || edits === savedEdits) return null
     saving = true
+    if (handoff !== undefined) {
+      base = Math.max(base, (await handoff) ?? base)
+      handoff = undefined
+    }
     const edit = edits
     onStatus({ type: "saving" })
     const outcome = await callPromise(
@@ -66,16 +80,20 @@ export function createDocumentSync(options: {
     saving = false
     switch (outcome.type) {
       case "failed":
-        return onStatus(outcome)
+        onStatus(outcome)
+        return null
       case "conflict":
         theirs = outcome
-        return onStatus({ type: "conflict" })
+        onStatus({ type: "conflict" })
+        return null
       case "saved":
         base = outcome.revision
         savedEdits = edit
-        if (edits !== savedEdits) return save()
+        if (edits !== savedEdits) return run()
         settle()
-        return onStatus({ type: "saved" })
+        onStatus({ type: "saved" })
+        void catchUp()
+        return base
     }
   }
 
@@ -87,10 +105,18 @@ export function createDocumentSync(options: {
     timer = setTimeout(() => void save(), SAVE_DELAY_MS)
   }
 
-  const published = async (revision?: number) => {
-    if (!clean() || (revision !== undefined && revision <= base)) return
-    const latest = await callPromise("artifacts.readDocument", { id }, { environment }).catch(() => null)
-    if (latest !== null && clean() && latest.revision > base) load(latest)
+  const catchUp = async (always = false) => {
+    if (!clean() || (!always && latest <= base)) return
+    const current = await callPromise("artifacts.readDocument", { id }, { environment }).catch(() => null)
+    if (current === null) return
+    latest = Math.max(latest, current.revision)
+    if (clean() && current.revision > base) load(current)
+  }
+
+  const published = (revision?: number) => {
+    if (revision === undefined) return catchUp(true)
+    latest = Math.max(latest, revision)
+    return catchUp()
   }
 
   return {
@@ -100,26 +126,32 @@ export function createDocumentSync(options: {
       if (restored === undefined) void published()
       else edited()
     },
-    revision: () => base,
+    savedRevision: async () => {
+      await save()
+      return base
+    },
     edited,
     published,
-    retry: save,
+    retry: async () => {
+      await save()
+    },
     flush: () => {
       if (edits === savedEdits) return
-      unsavedDocuments.set(key, { revision: base, markdown: markdown() })
-      void save()
+      const draft = { revision: base, markdown: markdown() }
+      unsavedDocuments.set(key, { ...draft, saved: save() })
     },
-    keepMine: () => {
-      if (theirs === null) return Promise.resolve()
+    keepMine: async () => {
+      if (theirs === null) return
       base = theirs.revision
       theirs = null
-      return save()
+      await save()
     },
     useTheirs: () => {
       if (theirs === null) return
       load(theirs)
       theirs = null
       onStatus({ type: "saved" })
+      void catchUp()
     },
   }
 }
