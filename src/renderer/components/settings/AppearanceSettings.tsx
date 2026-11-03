@@ -3,7 +3,7 @@ import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { useId, useState } from "react"
 import { type Appearance, ThemeId } from "../../../shared/domain.ts"
-import { applyContrast, installedFontsAtom, themes, useTheme } from "../../lib/appearance.ts"
+import { applyContrast, installedFontsAtom, isNeutralTheme, themes, useTheme } from "../../lib/appearance.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { updateClientSettingsAtom } from "../../lib/rpc.ts"
 import { useClientSettings } from "../../lib/settings.ts"
@@ -112,10 +112,9 @@ function ThemePicker({ current, onPick }: { current: ThemeId; onPick: (theme: Th
 
 function ThemePreview({ id }: { id: ThemeId }) {
   const theme = useTheme(id)
-  const neutral = id === "default" || id === "system" || id === "light"
   return (
     <div
-      data-theme={neutral ? (theme.scheme === "light" ? "light" : undefined) : id}
+      data-theme={isNeutralTheme(theme.id) ? (theme.scheme === "light" ? "light" : undefined) : theme.id}
       aria-hidden
       className={cn(
         theme.scheme === "dark" && "dark",

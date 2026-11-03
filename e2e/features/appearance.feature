@@ -7,8 +7,10 @@ Feature: Appearance
     And I choose the theme "System"
     And the system appearance changes to "light"
     Then the app uses the "light" appearance
+    And the app paints the "hina-light" theme
     When the system appearance changes to "dark"
     Then the app uses the "dark" appearance
+    And the app paints the "hina-dark" theme
     When the system appearance changes to "light"
     Then the app uses the "light" appearance
 
@@ -24,9 +26,9 @@ Feature: Appearance
     And the theme "<id>" is saved
 
     Examples:
-      | theme | id      | scheme | opposite |
-      | Light | light   | light  | dark     |
-      | Dark  | default | dark   | light    |
+      | theme         | id      | scheme | opposite |
+      | Neutral Light | light   | light  | dark     |
+      | Neutral Dark  | default | dark   | light    |
 
   Scenario: Existing named themes and fonts are preserved
     Given an existing named theme and font preference
@@ -34,7 +36,7 @@ Feature: Appearance
     Then the app uses the "light" appearance
     And the existing named theme and font preference is preserved
 
-  Scenario Outline: Default appearances keep text and keyboard focus readable at every contrast
+  Scenario Outline: Hina and neutral themes keep text and keyboard focus readable at every contrast
     When I open settings
     And I open appearance settings
     And I choose the theme "<theme>"
@@ -42,18 +44,24 @@ Feature: Appearance
     Then text and keyboard focus meet contrast requirements
 
     Examples:
-      | theme | contrast |
-      | Light | Standard |
-      | Light | Lowest   |
-      | Light | Highest  |
-      | Dark  | Standard |
-      | Dark  | Lowest   |
-      | Dark  | Highest  |
+      | theme         | contrast |
+      | Hina Light    | Standard |
+      | Hina Light    | Lowest   |
+      | Hina Light    | Highest  |
+      | Hina Dark     | Standard |
+      | Hina Dark     | Lowest   |
+      | Hina Dark     | Highest  |
+      | Neutral Light | Standard |
+      | Neutral Light | Lowest   |
+      | Neutral Light | Highest  |
+      | Neutral Dark  | Standard |
+      | Neutral Dark  | Lowest   |
+      | Neutral Dark  | Highest  |
 
   Scenario: Higher contrast brightens text and survives restart
     When I open settings
     And I open appearance settings
-    And I choose the theme "Dark"
+    And I choose the theme "Neutral Dark"
     And I move the contrast slider to "Highest"
     Then text reads at higher contrast than the palette
     And the contrast 100 is saved

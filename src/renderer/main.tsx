@@ -41,7 +41,7 @@ function App() {
   const locale = useLocale((state) => state.locale)
   const { appearance } = useClientSettings()
   const theme = useTheme(appearance.theme)
-  useLayoutEffect(() => applyAppearance(appearance, theme.scheme), [appearance, theme.scheme])
+  useLayoutEffect(() => applyAppearance(appearance, theme.id), [appearance, theme.id])
   const nativeScheme = themes[appearance.theme].scheme
   useEffect(() => {
     void callPromise("app.setColorScheme", nativeScheme)
