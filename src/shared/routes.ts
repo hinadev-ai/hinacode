@@ -227,6 +227,7 @@ export const routes: Record<RpcMethod, Route> = {
   "fs.preview": root,
   "fs.write": root,
   "fs.watch": root,
+  "fs.completeDirectory": named,
 
   "artifacts.file": owner("artifact", "id"),
 

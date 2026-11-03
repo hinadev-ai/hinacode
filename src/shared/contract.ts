@@ -46,6 +46,7 @@ import {
   FileSearchHit,
   AutomationTrigger,
   FsEntry,
+  DirectorySuggestion,
   FsFileContent,
   CommitDiff,
   GitCommit,
@@ -412,6 +413,7 @@ export const RpcMethods = {
     Schema.Void,
   ),
   "fs.watch": rpc(Schema.Struct({ root: Schema.String, paths: Schema.Array(Schema.String) }), Schema.Void),
+  "fs.completeDirectory": rpc(Schema.Struct({ path: Schema.String }), Schema.Array(DirectorySuggestion)),
 
   "dialog.pickFolder": rpc(Schema.Void, Schema.NullOr(Schema.String)),
 
@@ -752,6 +754,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "fs.preview": "read",
   "fs.write": "mutation",
   "fs.watch": "mutation",
+  "fs.completeDirectory": "read",
   "dialog.pickFolder": "mutation",
   "updates.status": "read",
   "updates.check": "mutation",
