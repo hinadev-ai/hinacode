@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto"
+import { realpath } from "node:fs/promises"
 import {
   Context,
   Deferred,
@@ -353,6 +354,8 @@ const make = Effect.gen(function* () {
   const invalidResponse = (what: string) => () =>
     new AgentError({ provider: "codex", message: `Failed to ${what}: invalid response` })
 
+  const recordedCwd = (cwd: string) => Effect.promise(() => realpath(cwd).catch(() => cwd))
+
   const listSessions = (cwd: string, home: AccountHome | null) =>
     Effect.gen(function* () {
       const client = yield* getClient(home)
@@ -365,7 +368,7 @@ const make = Effect.gen(function* () {
       const response = yield* Schema.decodeUnknownEffect(ThreadListResponse)(raw).pipe(
         Effect.mapError(invalidResponse("list Codex sessions")),
       )
-      return toNativeSessions(response, cwd)
+      return toNativeSessions(response, yield* recordedCwd(cwd))
     })
 
   const listTurns = (client: CodexClient, threadId: string) =>
@@ -396,7 +399,7 @@ const make = Effect.gen(function* () {
           () => new AgentError({ provider: "codex", message: `Codex session ${sessionId} is no longer there` }),
         ),
       )
-      if (read.thread.cwd !== cwd) {
+      if (read.thread.cwd !== (yield* recordedCwd(cwd))) {
         return yield* new AgentError({ provider: "codex", message: `Codex session ${sessionId} ran in another folder` })
       }
       return yield* listTurns(client, sessionId).pipe(

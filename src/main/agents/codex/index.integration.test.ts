@@ -1,4 +1,14 @@
-import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, watch, writeFileSync } from "node:fs"
+import {
+  appendFileSync,
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  symlinkSync,
+  watch,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { beforeEach, describe, expect, it } from "@effect/vitest"
@@ -943,6 +953,32 @@ describe("Codex session import", () => {
         expect(gone.message).toContain("no longer there")
         const elsewhere = yield* Effect.flip(provider.readSession!(sessionId, "/work/other", null))
         expect(elsewhere.message).toContain("another folder")
+      }),
+    ),
+  )
+
+  it.live("finds a session recorded at the real path of a folder opened through a symlink", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        const root = mkdtempSync(join(tmpdir(), "kk-codex-symlink-"))
+        const folder = join(realpathSync(root), "fruit-shop")
+        const link = join(root, "linked-fruit-shop")
+        mkdirSync(folder)
+        symlinkSync(folder, link)
+        const atFolder = <T extends { cwd: string }>(thread: T) => ({ ...thread, cwd: folder })
+        setControl({
+          sessions: {
+            ...fruitShop,
+            list: { ...fruitShop.list, data: fruitShop.list.data.map(atFolder) },
+            read: { ...fruitShop.read, thread: atFolder(fruitShop.read.thread) },
+          },
+        })
+
+        const sessions = yield* provider.listSessions!(link, null)
+        expect(sessions.map((session) => session.sessionId)).toStrictEqual([sessionId])
+        const history = yield* provider.readSession!(sessionId, link, null)
+        expect(history.model).toBe("gpt-6.1-sol")
       }),
     ),
   )
