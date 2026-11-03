@@ -22,6 +22,11 @@ const withRepo = <A, E>(f: (root: string) => Effect.Effect<A, E, Git.Git | FileS
     Effect.provide(Git.layer.pipe(Layer.provideMerge(NodeServices.layer))),
   )
 
+const commitAll = (root: string) => {
+  git(root, "add", "-A")
+  git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "commit")
+}
+
 describe("diffWorkingTree", () => {
   it.live("reports edits, deletions and new files since a snapshot, but not ignored ones", () =>
     withRepo((root) =>
@@ -70,6 +75,47 @@ describe("diffWorkingTree", () => {
         const changes = yield* diffWorkingTree(root, Effect.succeed(base))
         expect(changes.files).toStrictEqual([{ path: "first.txt", status: "added" }])
         expect(git(root, "status", "--porcelain")).toBe("?? first.txt\n")
+      }),
+    ),
+  )
+
+  it.live("lists the same files and patch as separate name-status and patch diffs", () =>
+    withRepo((root) =>
+      Effect.gen(function* () {
+        writeFileSync(join(root, "kept.txt"), "before\n")
+        writeFileSync(join(root, "image.bin"), Buffer.from([0, 1, 2]))
+        commitAll(root)
+        const base = yield* snapshotWorkingTree(root)
+        writeFileSync(join(root, "kept.txt"), "after\n")
+        unlinkSync(join(root, "image.bin"))
+        writeFileSync(join(root, "tab\tname.txt"), "tab\n")
+        writeFileSync(join(root, "日本語.txt"), "kana\n")
+
+        const changes = yield* diffWorkingTree(root, Effect.succeed(base))
+        const tree = yield* snapshotWorkingTree(root)
+        const diff = (...args: Array<string>) =>
+          git(
+            root,
+            "-c",
+            "core.quotePath=false",
+            "diff",
+            "--no-renames",
+            "--no-color",
+            "--no-ext-diff",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
+            ...args,
+            base,
+            tree,
+          )
+        expect(changes.files).toStrictEqual(Git.parseNameStatus(diff("--name-status", "-z")))
+        expect(changes.files.map((file) => file.path)).toStrictEqual([
+          "image.bin",
+          "kept.txt",
+          "tab\tname.txt",
+          "日本語.txt",
+        ])
+        expect(changes.patch).toBe(diff())
       }),
     ),
   )
