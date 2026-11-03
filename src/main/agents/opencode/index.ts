@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from "effect"
 import { makeAcpProvider } from "../acp/index.ts"
-import type { AgentProvider } from "../provider.ts"
+import { type AgentProvider, MCP_TOOL_TIMEOUT_SECONDS } from "../provider.ts"
 
 export class OpencodeProvider extends Context.Service<OpencodeProvider, AgentProvider>()("hinacode/OpencodeProvider") {
   static readonly layer = Layer.effect(
@@ -8,7 +8,12 @@ export class OpencodeProvider extends Context.Service<OpencodeProvider, AgentPro
     makeAcpProvider({
       id: "opencode",
       args: ["acp"],
-      env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ permission: "ask" }) },
+      env: {
+        OPENCODE_CONFIG_CONTENT: JSON.stringify({
+          permission: "ask",
+          experimental: { mcp_timeout: MCP_TOOL_TIMEOUT_SECONDS * 1000 },
+        }),
+      },
       loginCommand: "opencode auth login",
       account: Effect.succeed({ type: "external", service: "opencode" }),
     }),
