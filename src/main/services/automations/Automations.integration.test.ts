@@ -193,7 +193,9 @@ describe("automation polling lifecycle", () => {
             yield* advanceTo(5_000)
             yield* advanceTo(65_000)
 
-            const runs = yield* automations.runs(automation.id, 10)
+            const runs = yield* automations
+              .runs(automation.id, 10)
+              .pipe(Effect.repeat({ until: (stored) => stored.length > 0 }))
             expect(runs).toHaveLength(1)
             expect(linear.filters[0]?.createdAt.gt.toISOString()).toBe(savedAt.toISOString())
             expect(runs[0]?.status).toBe("started")
@@ -205,7 +207,9 @@ describe("automation polling lifecycle", () => {
             const thread = yield* Threads.Threads.use((threads) => threads.get(threadId))
             expect(thread.createdBy).toBe(`automation:${automation.id}`)
             expect(thread.title).toBe("Investigate KAL-32: Just test issue")
-            const transcript = yield* AgentRunner.AgentRunner.use((runner) => runner.transcript(threadId))
+            const transcript = yield* AgentRunner.AgentRunner.use((runner) => runner.transcript(threadId)).pipe(
+              Effect.repeat({ until: (stored) => stored.messages.length > 0 }),
+            )
             expect(transcript.messages[0]?.parts).toStrictEqual([
               { type: "text", text: "Investigate KAL-32: Just test issue" },
             ])
