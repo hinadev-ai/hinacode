@@ -145,6 +145,7 @@ const turnInput = (overrides: Partial<RunTurnInput> = {}): RunTurnInput => ({
   prompt: "Hello",
   attachments: [],
   cwd: "/repo",
+  tmpDirectory: "/tmp/hc-thread-1",
   model: "claude-sonnet-5-5",
   effort: null,
   fastMode: false,
@@ -253,6 +254,28 @@ describe("Claude idle sessions", () => {
         expect(first.close).toHaveBeenCalled()
         expect(latestCli().options.resume).toBe("session-1")
         expect(latestCli().options.settings).toStrictEqual({ fastMode: false, skillOverrides: { "kalan-mode": "off" } })
+      }),
+    ),
+  )
+
+  it.effect("spawns the CLI with the thread's tmp folder as its temp directory", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        yield* runTurn()
+        expect(latestCli().options.env).toMatchObject({
+          TMPDIR: "/tmp/hc-thread-1",
+          TMP: "/tmp/hc-thread-1",
+          TEMP: "/tmp/hc-thread-1",
+        })
+      }),
+    ),
+  )
+
+  it.effect("spawns the CLI with the inherited temp directory when the thread has no tmp folder", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        yield* runTurn(turnInput({ tmpDirectory: null }))
+        expect(latestCli().options.env?.["TMPDIR"]).toBe(process.env["TMPDIR"])
       }),
     ),
   )

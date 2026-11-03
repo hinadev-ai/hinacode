@@ -88,6 +88,7 @@ export interface AgentEnvironment {
   readonly remote: string | null
   readonly platform: NodeJS.Platform
   readonly scratchDirectory: string
+  readonly tmpDirectory: string | null
 }
 
 const withoutCredentials = (url: string) => url.replace(/^(https?:\/\/)[^/@]*@/, "$1")

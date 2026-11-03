@@ -42,6 +42,7 @@ const input = (fields: Partial<RunTurnInput> = {}): RunTurnInput => ({
   prompt: "hello",
   attachments: [],
   cwd: tmpdir(),
+  tmpDirectory: tmpdir(),
   model: "fake/default",
   effort: null,
   fastMode: false,
