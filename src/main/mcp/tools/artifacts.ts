@@ -47,7 +47,9 @@ export const registerArtifactTools = Effect.gen(function* () {
           const input = tool.input.safeParse(payload ?? {})
           if (!input.success) return invalidInput(input.error.issues)
           return yield* Effect.tryPromise({ try: () => tool.handle(store, input.data), catch: (cause) => cause }).pipe(
-            Effect.flatMap((result) => (name === "publish_artifact" ? withInspection(result) : Effect.succeed(text(result)))),
+            Effect.flatMap((result) =>
+              name === "publish_artifact" ? withInspection(result) : Effect.succeed(text(result)),
+            ),
             Effect.catch((cause) =>
               cause instanceof ArtifactError
                 ? Effect.succeed(text(cause.message, true))

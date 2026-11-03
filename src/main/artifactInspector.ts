@@ -27,7 +27,10 @@ const decodeLayout = Schema.decodeUnknownSync(Layout)
 
 const Location = { url: Schema.optionalKey(Schema.String), lineNumber: Schema.optionalKey(Schema.Number) }
 
-const RemoteValue = Schema.Struct({ value: Schema.optionalKey(Schema.Unknown), description: Schema.optionalKey(Schema.String) })
+const RemoteValue = Schema.Struct({
+  value: Schema.optionalKey(Schema.Unknown),
+  description: Schema.optionalKey(Schema.String),
+})
 
 const Problem = Schema.Union([
   Schema.Struct({
@@ -46,7 +49,9 @@ const Problem = Schema.Union([
   }),
   Schema.Struct({
     method: Schema.Literal("Log.entryAdded"),
-    params: Schema.Struct({ entry: Schema.Struct({ level: Schema.Literal("error"), text: Schema.String, ...Location }) }),
+    params: Schema.Struct({
+      entry: Schema.Struct({ level: Schema.Literal("error"), text: Schema.String, ...Location }),
+    }),
   }),
 ])
 const decodeProblem = Schema.decodeUnknownOption(Problem)
