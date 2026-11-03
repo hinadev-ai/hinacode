@@ -592,6 +592,7 @@ layer(testLayer)("create_thread", (it) => {
         model: caller.model,
         status: "running",
         createdBy: `thread:${a}`,
+        parentId: a,
       })
       const announced = pushes.find((push) => push.type === "thread.updated" && push.thread.id === id)
       expect(announced).toBeDefined()
@@ -600,6 +601,19 @@ layer(testLayer)("create_thread", (it) => {
         role: "user",
         parts: [{ type: "text", text: "Look into the flaky test" }],
       })
+      yield* runner.interrupt(id)
+    }),
+  )
+
+  it.effect("starts an unrelated thread at the top level when nested is false", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const threads = yield* Threads
+      const { a } = yield* Seeded
+      const result = yield* callFrom(a, "create_thread", { title: "Unrelated", prompt: "p", nested: false })
+      const id = createdThreadId(result.text)
+      if (id === null) throw new Error(`no thread id in ${result.text}`)
+      expect((yield* threads.get(id)).parentId).toBeNull()
       yield* runner.interrupt(id)
     }),
   )
