@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { RiDownload2Line } from "react-icons/ri"
 import { toast } from "sonner"
 import type { Artifact } from "../../../shared/artifact.ts"
-import { artifactProblemMessage } from "../../../shared/artifactProblems.ts"
+import { addArtifactProblem, artifactProblemMessage } from "../../../shared/artifactProblems.ts"
 import { artifactUrl } from "../../../shared/channels.ts"
 import type { Thread } from "../../../shared/domain.ts"
 import { environmentName, useClouds } from "../../lib/environments.ts"
@@ -112,7 +112,7 @@ function ArtifactFrame({ threadId, artifact, theme }: { threadId: string; artifa
     const listener = (event: MessageEvent) => {
       if (event.source === null || event.source !== frame.current?.contentWindow) return
       const message = artifactProblemMessage(event.data)
-      if (message !== undefined) setProblems((current) => (current.includes(message) ? current : [...current, message]))
+      if (message !== undefined) setProblems((current) => addArtifactProblem(current, message))
     }
     window.addEventListener("message", listener)
     return () => window.removeEventListener("message", listener)

@@ -3,6 +3,7 @@ import { insertAtHeadStart } from "./artifactTheme.ts"
 
 const PROBLEM_TYPE = "hinacode-artifact-problem"
 const MAX_MESSAGE_LENGTH = 500
+const MAX_PROBLEMS = 20
 
 const ArtifactProblem = Schema.Struct({
   type: Schema.Literal(PROBLEM_TYPE),
@@ -14,9 +15,12 @@ const decodeProblem = Schema.decodeUnknownOption(ArtifactProblem)
 export const artifactProblemMessage = (data: unknown) =>
   Option.getOrUndefined(Option.map(decodeProblem(data), (problem) => problem.message.slice(0, MAX_MESSAGE_LENGTH)))
 
+export const addArtifactProblem = (problems: ReadonlyArray<string>, message: string) =>
+  problems.length >= MAX_PROBLEMS || problems.includes(message) ? problems : [...problems, message]
+
 const REPORTER = `(() => {
   if (window.parent === window) return
-  const send = (message) => window.parent.postMessage({ type: "${PROBLEM_TYPE}", message: String(message) }, "*")
+  const send = (message) => window.parent.postMessage({ type: "${PROBLEM_TYPE}", message: String(message).slice(0, ${MAX_MESSAGE_LENGTH}) }, "*")
   addEventListener("error", (event) => {
     const target = event.target
     if (target instanceof Element) {

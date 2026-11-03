@@ -77,7 +77,7 @@ A broken page used to sit at "Loading…" with no sign that anything failed, and
 - The header shows the version, such as `v3`, so an update is visible.
 - Until the frame fires `load`, a thin bar runs along the top of the panel. It fades in after a short delay, so a page that loads at once does not flash it.
 - The protocol inserts a small reporter script into every HTML response, next to the theme. Inside a frame it posts `{ type: "hinacode-artifact-problem", message }` to the parent for uncaught errors, unhandled rejections, `console.error` and resources that fail to load. Outside a frame, as in an exported file, it does nothing. The panel accepts a message only from its own frame's window and decodes it with a schema. The page controls the text, so it is shown as plain text and nothing else.
-- Problems collect in a strip under the frame. "Ask agent to fix" adds the title, id and messages to the thread's draft, so the developer can send it with their own words.
+- Problems collect in a strip under the frame, deduplicated and capped at the first 20 messages of 500 characters each, so a page that logs a new error every frame cannot grow the app renderer without limit. "Ask agent to fix" adds the title, id and messages to the thread's draft, so the developer can send it with their own words.
 
 ### Delete
 
