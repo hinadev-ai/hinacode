@@ -214,7 +214,9 @@ test("changes a code block's language after it was written", async () => {
   await page.getByRole("option", { name: "Python" }).click()
 
   await expect.element(picker).toHaveTextContent("Python")
-  await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).toContain("```python\nconst version = 1\n```")
+  await expect
+    .poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 })
+    .toContain("```python\nconst version = 1\n```")
 })
 
 test("shows a link's card on hover, not while the caret moves through it", async () => {
@@ -230,7 +232,9 @@ test("shows a link's card on hover, not while the caret moves through it", async
   await link.hover()
   await page.getByRole("button", { name: "Edit link" }).click()
   const text = page.getByRole("textbox", { name: "Text", exact: true })
-  await expect.element(page.getByRole("textbox", { name: "Link", exact: true })).toHaveValue("https://hinacode.dev/design")
+  await expect
+    .element(page.getByRole("textbox", { name: "Link", exact: true }))
+    .toHaveValue("https://hinacode.dev/design")
   await text.fill("the spec")
   await page.getByRole("textbox", { name: "Link", exact: true }).fill("hinacode.dev/spec")
   await userEvent.keyboard("{Enter}")

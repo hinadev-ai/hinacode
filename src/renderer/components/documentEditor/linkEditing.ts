@@ -76,7 +76,9 @@ export const LinkEditing = Extension.create({
           decorations: (state) => {
             const range = linkEditKey.getState(state)
             if (range === null || range === undefined || range.from >= range.to) return null
-            return DecorationSet.create(state.doc, [Decoration.inline(range.from, range.to, { "data-link-target": "" })])
+            return DecorationSet.create(state.doc, [
+              Decoration.inline(range.from, range.to, { "data-link-target": "" }),
+            ])
           },
           handleClick: (_view, _position, event) => {
             if (!(event.metaKey || event.ctrlKey) || !(event.target instanceof Element)) return false

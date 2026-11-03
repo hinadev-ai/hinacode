@@ -134,8 +134,7 @@ const make = (root: string) =>
         const current = yield* Effect.promise(() => store.get(id))
         if (current === null || current.kind !== "document") return yield* new NotFoundError({ entity: "document", id })
         const saved = yield* Effect.tryPromise({
-          try: () =>
-            store.publish({ kind: "document", id, markdown, baseRevision, author: "developer" }),
+          try: () => store.publish({ kind: "document", id, markdown, baseRevision, author: "developer" }),
           catch: (cause) => cause,
         }).pipe(
           Effect.map(({ version, revision }): DocumentSaveResult => ({ type: "saved", version, revision })),

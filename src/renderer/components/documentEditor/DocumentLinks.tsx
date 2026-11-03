@@ -4,15 +4,7 @@ import { type Editor, posToDOMRect } from "@tiptap/core"
 import { useEditorState } from "@tiptap/react"
 import { type RefObject, useEffect, useId, useRef, useState } from "react"
 import { linkHref } from "../../../shared/documentLink.ts"
-import {
-  editedLink,
-  editLink,
-  hrefIn,
-  type LinkRange,
-  linkOfElement,
-  openLink,
-  removeLink,
-} from "./linkEditing.ts"
+import { editedLink, editLink, hrefIn, type LinkRange, linkOfElement, openLink, removeLink } from "./linkEditing.ts"
 import { m } from "../../paraglide/messages.js"
 import { CopyButton } from "../CopyButton.tsx"
 import { Button } from "../ui/button.tsx"
@@ -176,7 +168,11 @@ export function LinkEditor({ editor }: { editor: Editor }) {
           sideOffset={6}
           className="isolate z-50"
         >
-          <Popover.Popup initialFocus={address} finalFocus={() => editor.view.dom} className={`${popupSurface} w-72 p-3`}>
+          <Popover.Popup
+            initialFocus={address}
+            finalFocus={() => editor.view.dom}
+            className={`${popupSurface} w-72 p-3`}
+          >
             {range !== null && (
               <LinkForm
                 key={`${range.from}:${range.to}`}
@@ -220,7 +216,10 @@ function LinkForm({
     const chain = editor.chain()
     if (label === original.text)
       chain.setTextSelection(range).setLink({ href: target }).setTextSelection(range.to).run()
-    else chain.insertContentAt(range, { type: "text", text: label, marks: [{ type: "link", attrs: { href: target } }] }).run()
+    else
+      chain
+        .insertContentAt(range, { type: "text", text: label, marks: [{ type: "link", attrs: { href: target } }] })
+        .run()
     onDone()
   }
 

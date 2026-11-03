@@ -94,7 +94,11 @@ describe("Artifacts", () => {
         Artifacts.use((artifacts) =>
           Effect.gen(function* () {
             const created = yield* artifacts.createDocument({ threadId: "t-1", title: "Untitled" })
-            return yield* artifacts.saveDocument({ id: created.id, baseRevision: created.revision ?? 0, markdown: "Hi" })
+            return yield* artifacts.saveDocument({
+              id: created.id,
+              baseRevision: created.revision ?? 0,
+              markdown: "Hi",
+            })
           }),
         ),
       )
