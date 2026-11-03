@@ -25,6 +25,8 @@ const seedLegacyProfile = async (legacy: string) => {
       const { threadId } = yield* seedThread({ rootPath: join(legacy, "chats") })
       const now = "2026-10-01T00:00:00.000Z"
       yield* sql`INSERT INTO message ${sql.insert({ id: "m1", threadId, role: "user", parts: JSON.stringify([{ type: "attachment", attachment }]), createdAt: now })}`
+      yield* sql`INSERT INTO message ${sql.insert({ id: "m2", threadId, role: "assistant", parts: "[]", createdAt: now })}`
+      yield* sql`INSERT INTO message_part ${sql.insert({ messageId: "m2", idx: 0, part: JSON.stringify({ type: "attachment", attachment }) })}`
       yield* sql`UPDATE thread SET queue = ${JSON.stringify([{ id: "q1", text: "next", attachments: [attachment] }])}`
       yield* sql`INSERT INTO agent_account ${sql.insert({ id: "a1", provider: "claude", name: "work", createdAt: now, configDir, binary: "claude" })}`
     }).pipe(Effect.provide(Db.layer(join(legacy, "hinacode.sqlite")))),
@@ -49,8 +51,10 @@ describe("moveLegacyProfile", () => {
 
     const db = new DatabaseSync(join(dataDir, "hinacode.sqlite"))
     const image = join(dataDir, "attachments", "t", "shot.png")
-    const [part] = JSON.parse(String(db.prepare("SELECT parts FROM message").get()?.["parts"]))
+    const [part] = JSON.parse(String(db.prepare("SELECT parts FROM message WHERE id = 'm1'").get()?.["parts"]))
     expect(part.attachment.path).toBe(image)
+    const openPart = JSON.parse(String(db.prepare("SELECT part FROM message_part").get()?.["part"]))
+    expect(openPart.attachment.path).toBe(image)
     const [queued] = JSON.parse(String(db.prepare("SELECT queue FROM thread").get()?.["queue"]))
     expect(queued.attachments[0].path).toBe(image)
     expect(db.prepare("SELECT config_dir FROM agent_account").get()?.["config_dir"]).toBe(
