@@ -10,6 +10,7 @@ import {
   toolArgument,
 } from "../../shared/agent.ts"
 import {
+  type Message,
   type MessagePart,
   createsThread,
   publishesArtifact,
@@ -166,7 +167,7 @@ const statusLabel = {
 
 export const SubagentLinks = createContext(true)
 
-export const PartThread = createContext("")
+export const PartMessage = createContext<Pick<Message, "id" | "threadId">>({ id: "", threadId: "" })
 
 export const SkillLabels = createContext<SkillLabelMap>(new Map())
 
@@ -222,11 +223,15 @@ function ToolCallDetails({
 }
 
 function useFullOutput(shipped: ToolCall) {
-  const threadId = use(PartThread)
+  const message = use(PartMessage)
   const [full, setFull] = useState<ToolCall | null>(null)
   const showFullOutput = async () => {
     try {
-      const output = await callPromise("threads.toolOutput", { threadId, callId: shipped.callId })
+      const output = await callPromise("threads.toolOutput", {
+        threadId: message.threadId,
+        messageId: message.id,
+        callId: shipped.callId,
+      })
       const { fullOutputBytes: _fullOutputBytes, ...call } = shipped
       setFull({ ...call, output })
     } catch (cause) {
@@ -262,7 +267,7 @@ function SubagentCallPart({ part }: { part: Extract<MessagePart, { type: "tool_c
 type ToolCall = Extract<MessagePart, { type: "tool_call" }>
 
 function ArtifactCallPart({ part }: { part: ToolCall }) {
-  const threadId = use(PartThread)
+  const { threadId } = use(PartMessage)
   const named = toolArgument(part.input, "title")
   const title = typeof named === "string" && named !== "" ? named : m.artifact_untitled()
   const id = part.output === undefined ? null : publishedArtifactId(formatOutput(part.output))
