@@ -2013,6 +2013,8 @@
   "devices_compiling_hint": "The first connection on a machine builds the screen helper, which takes about 10 seconds.",
   "panel_tab_sidechat": "Side chat",
   "command_view_sidechat": "Show side chat",
+  "conductor_label": "Conductor",
+  "conductor_clear_description": "Clear this conversation and start the conductor fresh",
   "sidechat_command_description": "Ask about this thread in a side chat while it keeps working",
   "sidechat_command_hint": "[question]",
   "sidechat_placeholder": "Ask about this thread without interrupting it",

@@ -35,6 +35,7 @@ import {
   projectsAtom,
   threadCommands,
 } from "../lib/rpc.ts"
+import { clearCommand, clearConversation, isClearCommand } from "../lib/conductor.ts"
 import { askSidechat, sidechatCommand, sidechatQuestion } from "../lib/sidechat.ts"
 import { useIsChat } from "../lib/useIsChat.ts"
 import { m } from "../paraglide/messages.js"
@@ -132,7 +133,11 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
     AsyncResult.getOrElse(commandsResult, (): ReadonlyArray<AgentCommand> => []),
     thread,
   )
-  const commands = isSidechat ? agentCommands : [sidechatCommand(), ...agentCommands]
+  const commands = isSidechat
+    ? agentCommands
+    : thread.conductor
+      ? [sidechatCommand(), clearCommand(), ...agentCommands.filter((command) => command.name !== "clear")]
+      : [sidechatCommand(), ...agentCommands]
   const commandsError = AsyncResult.isFailure(commandsResult)
     ? m.composer_commands_failed({ message: errorMessage(Cause.squash(commandsResult.cause)) })
     : null
@@ -167,10 +172,12 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
     const sent = useDrafts.getState().take(thread.id)
     const prompt = promptWithComments(sent.text, sent.comments)
     const question = isSidechat ? null : sidechatQuestion(prompt)
+    const clears = thread.conductor && isClearCommand(prompt)
     setError(null)
     startSending(async () => {
-      const delivered =
-        question === null
+      const delivered = clears
+        ? clearConversation(thread.id)
+        : question === null
           ? deliver(thread.id, prompt, sent, { busy, unstarted, delivery })
           : askSidechat(thread.id, question, sent.attachments)
       await delivered.catch((cause: unknown) => {

@@ -2,6 +2,7 @@ import { expect, test } from "@effect/vitest"
 import type { Thread } from "../../shared/domain.ts"
 import {
   selectAwakeThreads,
+  selectConductor,
   selectOpenableThread,
   selectInboxThreads,
   selectPinnedThreads,
@@ -88,6 +89,17 @@ test("awake threads are the active ones not snoozed, pinned or not, which the Do
     "pinnedLater",
     "woke",
   ])
+})
+
+test("the conductor stays out of every list but still opens and counts toward the badge", () => {
+  const conductor = thread("conductor", { conductor: true, pinnedAt: "2026-10-14T01:00:00.000Z" })
+  const withConductor = { byId: { ...state.byId, conductor } }
+  expect(selectConductor(withConductor)).toBe(conductor)
+  expect(selectOpenableThread("conductor")({ ...withConductor, drafts: {} })).toBe(conductor)
+  expect(ids(selectInboxThreads(now)(withConductor))).not.toContain("conductor")
+  expect(ids(selectPinnedThreads(withConductor))).not.toContain("conductor")
+  expect(ids(selectUnpinnedProjectThreads("p1")(withConductor))).not.toContain("conductor")
+  expect(ids(selectAwakeThreads(now)(withConductor))).toContain("conductor")
 })
 
 test("keeps side chats apart from the thread list and drops them with their parent", () => {

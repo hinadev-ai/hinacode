@@ -115,8 +115,13 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
 
 function ThreadBreadcrumb({ thread, agent }: { thread: Thread; agent: string | undefined }) {
   const project = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => []).find(
-    (candidate) => candidate.id === thread.projectId,
+    (candidate) => !thread.conductor && candidate.id === thread.projectId,
   )
+  const title = thread.conductor
+    ? m.conductor_label()
+    : thread.status === "draft"
+      ? m.thread_draft_title()
+      : thread.title
   return (
     <nav aria-label={m.thread_breadcrumb()} className="min-w-0 flex-1">
       <ol className="flex min-w-0 items-center gap-1.5 text-sm">
@@ -131,8 +136,8 @@ function ThreadBreadcrumb({ thread, agent }: { thread: Thread; agent: string | u
         )}
         <li className="flex min-w-0 items-center gap-1.5">
           {project && <Separator />}
-          <h1 dir="auto" className="truncate font-semibold" title={thread.title}>
-            {thread.status === "draft" ? m.thread_draft_title() : thread.title}
+          <h1 dir="auto" className="truncate font-semibold" title={title}>
+            {title}
           </h1>
         </li>
         {agent !== undefined && <SubagentCrumb threadId={thread.id} callId={agent} />}

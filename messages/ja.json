@@ -1949,6 +1949,8 @@
   "devices_compiling_hint": "マシンで初めて接続するときは画面ヘルパーをビルドするため、10 秒ほどかかります。",
   "panel_tab_sidechat": "サイドチャット",
   "command_view_sidechat": "サイドチャットを表示",
+  "conductor_label": "コンダクター",
+  "conductor_clear_description": "この会話を消去して、コンダクターを最初から始めます",
   "sidechat_command_description": "作業を止めずに、サイドチャットでこのスレッドについて質問します",
   "sidechat_command_hint": "[質問]",
   "sidechat_placeholder": "スレッドを止めずに質問",

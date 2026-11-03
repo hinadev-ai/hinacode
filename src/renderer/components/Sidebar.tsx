@@ -53,6 +53,7 @@ import {
   TrashIcon,
 } from "@hinacode/icons"
 import { ProjectMenu } from "./ProjectMenu.tsx"
+import { SidebarConductor } from "./SidebarConductor.tsx"
 import { SidebarThreadList, sidebarListMotion } from "./SidebarThreadList.tsx"
 import { Button } from "./ui/button.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
@@ -140,6 +141,7 @@ export function Sidebar({
             <SidebarTabTrigger value="threads" icon={ChatIcon} label={m.sidebar_tab_threads()} />
             <SidebarTabTrigger value="archived" icon={ArchiveIcon} label={m.sidebar_tab_archived()} />
           </TabsList>
+          <SidebarConductor />
         </div>
         <ScrollArea className="min-h-0 flex-1">
           <div className="flex flex-col gap-3 pb-3">

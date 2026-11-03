@@ -1996,6 +1996,8 @@
   "devices_compiling_hint": "在某台机器上首次连接时，会先构建屏幕辅助程序，大约需要 10 秒。",
   "panel_tab_sidechat": "侧边聊天",
   "command_view_sidechat": "显示侧边聊天",
+  "conductor_label": "指挥",
+  "conductor_clear_description": "清除这段对话，让指挥重新开始",
   "sidechat_command_description": "在侧边聊天里询问这个对话的内容，同时它继续工作",
   "sidechat_command_hint": "[问题]",
   "sidechat_placeholder": "询问这个对话的问题，不会打断它",
