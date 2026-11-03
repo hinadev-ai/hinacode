@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, utimesSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
@@ -72,7 +72,7 @@ const providers = (cliHome: string, options: { history?: SessionHistory } = {}) 
 }
 
 const writeSession = (home: string, cwd: string, mtime: Date) => {
-  const dir = join(home, "projects", cwd.replaceAll("/", "-"))
+  const dir = join(home, "projects", cwd.replaceAll(/[^a-zA-Z0-9]/g, "-"))
   mkdirSync(dir, { recursive: true })
   const file = join(dir, `${fixtureId}.jsonl`)
   writeFileSync(file, fixture.replaceAll(fixtureCwd, cwd))
@@ -106,7 +106,7 @@ const setup = (options: { history?: SessionHistory } = {}) => {
   const project = Projects.use((projects) =>
     projects.create({
       name: "fruit-shop",
-      rootPath: mkdtempSync(join(tmpdir(), "kk-import-project-")),
+      rootPath: realpathSync(mkdtempSync(join(tmpdir(), "kk-import-project-"))),
       setupScript: null,
     }),
   )

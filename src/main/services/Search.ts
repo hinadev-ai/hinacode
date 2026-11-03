@@ -21,11 +21,19 @@ const RIPGREP_TIMEOUT_MS = 3000
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
 export function snippetAround(text: string, query: string, width: number): string {
-  const flat = text.replace(/\s+/g, " ").trim()
-  const index = Math.max(0, flat.search(new RegExp(escapeRegExp(query), "iu")))
-  const start = Math.max(0, Math.min(index - Math.floor((width - query.length) / 2), flat.length - width))
-  const end = Math.min(flat.length, start + width)
-  return `${start > 0 ? "…" : ""}${flat.slice(start, end)}${end < flat.length ? "…" : ""}`
+  const pattern = new RegExp(escapeRegExp(query), "iu")
+  const found = Math.max(0, text.search(pattern))
+  const from = Math.max(0, found - 2 * width)
+  const to = Math.min(text.length, found + query.length + 2 * width)
+  const collapsed = text.slice(from, to).replace(/\s+/g, " ")
+  const flat = from === 0 ? collapsed.trimStart() : collapsed
+  const window = to === text.length ? flat.trimEnd() : flat
+  const index = Math.max(0, window.search(pattern))
+  const start = Math.max(0, Math.min(index - Math.floor((width - query.length) / 2), window.length - width))
+  const end = Math.min(window.length, start + width)
+  const cutBefore = start > 0 || from > 0
+  const cutAfter = end < window.length || to < text.length
+  return `${cutBefore ? "…" : ""}${window.slice(start, end)}${cutAfter ? "…" : ""}`
 }
 
 const likePattern = (query: string) =>
@@ -184,14 +192,17 @@ export const make = (ripgrep: () => string | undefined) =>
 
     const indexedFor = (query: string) => (matchKind(query) === "cjkGrams" ? indexStaleCjk : Effect.void)
 
+    // FIXME: message.parts sits before created_at, so reading created_at from the row walks every overflow page of parts
     const findMessages = SqlSchema.findAll({
       Request: Schema.Struct({ query: Schema.String, limit: Schema.Number }),
       Result: ThreadRow,
       execute: ({ query, limit }) =>
         sql`
-          SELECT m.thread_id, t.title AS thread_title, t.project_id, m.id AS message_id, f.body, m.created_at AS at
+          SELECT m.thread_id, t.title AS thread_title, t.project_id, m.id AS message_id, f.body, created.created_at AS at
           FROM message_fts f
           JOIN message m ON m.rowid = f.rowid
+          JOIN message created INDEXED BY message_thread_created
+            ON created.thread_id = m.thread_id AND created.rowid = m.rowid
           JOIN thread t ON t.id = m.thread_id
           WHERE ${matching(query)} AND t.side_of IS NULL
           ORDER BY f.rowid DESC
@@ -209,17 +220,21 @@ export const make = (ripgrep: () => string | undefined) =>
       execute: ({ query, limit, threadIds }) => {
         const inThreads = threadIds === undefined ? sql.literal("") : sql`AND ${sql.in("m.thread_id", threadIds)}`
         return sql`
-          SELECT thread_id, thread_title, project_id, message_id, body, at FROM (
-            SELECT m.thread_id, t.title AS thread_title, t.project_id, m.id AS message_id, f.body, m.created_at AS at,
-              f.rowid AS position,
-              ROW_NUMBER() OVER (PARTITION BY m.thread_id ORDER BY m.created_at DESC, f.rowid DESC) AS rank
-            FROM message_fts f
-            JOIN message m ON m.rowid = f.rowid
+          WITH ranked AS (
+            SELECT m.thread_id, m.created_at AS at, m.rowid AS position,
+              ROW_NUMBER() OVER (PARTITION BY m.thread_id ORDER BY m.created_at DESC, m.rowid DESC) AS newest
+            FROM message m INDEXED BY message_thread_created
             JOIN thread t ON t.id = m.thread_id
-            WHERE ${matching(query)} AND t.side_of IS NULL ${inThreads}
+            WHERE m.rowid IN (SELECT f.rowid FROM message_fts f WHERE ${matching(query)})
+              AND t.side_of IS NULL ${inThreads}
           )
-          WHERE rank = 1
-          ORDER BY at DESC, position DESC
+          SELECT r.thread_id, t.title AS thread_title, t.project_id, m.id AS message_id, f.body, r.at
+          FROM ranked r
+          JOIN thread t ON t.id = r.thread_id
+          JOIN message m ON m.rowid = r.position
+          JOIN message_fts f ON f.rowid = r.position
+          WHERE r.newest = 1
+          ORDER BY r.at DESC, r.position DESC
           LIMIT ${limit}
         `
       },
