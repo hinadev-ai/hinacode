@@ -112,9 +112,8 @@ function SuggestionItem({ suggestion }: { suggestion: DirectorySuggestion }) {
       ) : (
         <FolderIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
       )}
-      <span className="max-w-3/5 shrink-0 truncate">{suggestion.name}</span>
+      <span className="min-w-0 truncate">{suggestion.name}</span>
       {suggestion.repository && <span className="sr-only">{m.path_input_repository()}</span>}
-      <span className="min-w-0 truncate font-mono text-muted-foreground">{suggestion.path}</span>
     </Autocomplete.Item>
   )
 }
