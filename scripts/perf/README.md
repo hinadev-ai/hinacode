@@ -33,7 +33,7 @@ The first switch must open a transcript rather than time a click on an already o
 | ------------------------- | ------------------------------------------------------ | --------------------------------------------- |
 | `typing <threadId>`       | Types 91 characters into the composer, 50 ms apart     | Key to next paint p50 and p95, renders/key    |
 | `switch <threadId...>`    | Opens each thread from the sidebar, three rounds       | Open time, renders, long tasks                |
-| `reply <threadId>`        | Sends "go" and waits until the mock reply has finished | Frame gaps, renders, `MessageBody` renders    |
+| `reply <threadId>`        | Sends "go" and waits until the mock reply has finished | Frame gaps, renders, `toolToWriting`          |
 | `typing-reply <threadId>` | Sends "go", then types while the reply streams         | Key to next paint of keys that land mid-reply |
 
 To open a thread in the middle of a long turn, start the instance with `HINACODE_MOCK_CLAUDE=long-turn` and send the
@@ -41,7 +41,9 @@ thread any prompt. The mock streams 400 reasoning and Bash steps, then keeps str
 can time it while it runs.
 
 `reply` needs an instance started with `HINACODE_MOCK_CLAUDE=stream`. Its turn runs through the real main process:
-reasoning, six reads, then the Markdown fixture in 30-character deltas every 20 ms. No account is used. Both
+reasoning, six reads, then the Markdown fixture in 30-character deltas every 20 ms. No account is used.
+`toolToWriting` times the last read's result to the Writing line in three steps: to the first `text_delta` push
+(the mock's 20 ms plus main's delta coalescing), from that push to the frame that shows it, and the total. Both
 reply scenarios fail unless the fixture's text ends up on screen, so a failed turn cannot pass as a fast one.
 
 To compare renderer builds, save each build and let `suite.sh` alternate them on one instance, so they share the
@@ -487,12 +489,13 @@ renderer. The run waits another 1000 ms after emission, then checks completion a
 Visibility changes, unexpected thread events, missing deltas, and incomplete output fail the run.
 
 `<label>-stream.json` records the workload text and SHA-256, viewport, emission timings, raw idle
-and streaming gaps, long tasks, parser samples, received events, and final DOM HTML and text.
+and streaming gaps, `firstPaintMs` (first `text_delta` received to the first frame showing the
+Writing line, since reply text stays hidden until it is complete), long tasks, parser samples, received events, and final DOM HTML and text.
 Parser statistics measure the synchronous ReactMarkdown function, including processor creation,
 parse, transform, and element creation. They are not total React render time. `PARSE=1` fails if the
 loaded bundle has no matching instrumentation, no parse samples, or no parse of the final text.
 
-The instrumenter changes only the current built ReactMarkdown function. It saves the original
+The instrumenter changes only the current built ReactMarkdown function, matched in its minified shape. It saves the original
 bundle and hash metadata under `.context/perf/` and refuses an unknown function shape or duplicate
 instrumentation. Run `pnpm build` to restore `out/`; never add instrumentation to source files.
 
