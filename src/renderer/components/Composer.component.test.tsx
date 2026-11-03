@@ -43,6 +43,7 @@ const threadWith = (id: string, status: Thread["status"]): Thread => ({
   providerSessionId: null,
   forkedFrom: null,
   sideOf: null,
+  conductor: false,
   status,
   usageLimit: null,
   sortIndex: 0,

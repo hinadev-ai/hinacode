@@ -63,6 +63,7 @@ const ThreadRow = Schema.Struct({
   ...Thread.fields,
   fastMode: Schema.BooleanFromBit,
   userSkills: Schema.BooleanFromBit,
+  conductor: Schema.BooleanFromBit,
   usageLimit: Schema.NullOr(Schema.fromJsonString(UsageLimit)),
   forkedFrom: Schema.NullOr(Schema.fromJsonString(ForkPoint)),
   queue: Schema.fromJsonString(Schema.Array(QueuedMessage)),
@@ -139,6 +140,11 @@ export class Threads extends Context.Service<
       input: DraftThread,
     ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeTakenError>
     readonly promoteDraft: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
+    readonly conductor: Effect.Effect<Option.Option<Thread>, PersistenceError>
+    readonly ensureConductor: (
+      input: DraftThread,
+    ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeTakenError>
+    readonly clearConversation: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly prepareWorkspace: (
       id: string,
       choice: WorkspaceChoice,
@@ -223,6 +229,11 @@ const make = Effect.gen(function* () {
     execute: (projectId) =>
       sql`SELECT * FROM thread WHERE project_id = ${projectId} AND status = 'draft' AND created_by = 'user' ORDER BY created_at DESC LIMIT 1`,
   })
+  const findConductor = SqlSchema.findOneOption({
+    Request: Schema.Void,
+    Result: ThreadRow,
+    execute: () => sql`SELECT * FROM thread WHERE conductor = 1`,
+  })
   const findSidechat = SqlSchema.findOneOption({
     Request: Schema.String,
     Result: ThreadRow,
@@ -283,6 +294,7 @@ const make = Effect.gen(function* () {
   const insertThread = (
     { worktree: worktreeInput, createdBy = "user", effort = null, fastMode = false, ...input }: CreateThread,
     status: "draft" | "idle",
+    conductor = false,
   ) =>
     Effect.gen(function* () {
       const project = yield* projects.get(input.projectId)
@@ -304,6 +316,7 @@ const make = Effect.gen(function* () {
         providerSessionId: null,
         forkedFrom: null,
         sideOf: null,
+        conductor,
         status,
         usageLimit: null,
         sortIndex: next,
@@ -354,6 +367,34 @@ const make = Effect.gen(function* () {
       return { ...thread, status: "idle" as const, sortIndex: next, createdAt: now, updatedAt: now }
     }).pipe(drafting.withPermits(1))
 
+  const conductor = findConductor(undefined).pipe(Effect.mapError(persistence("threads.conductor")))
+
+  const ensureConductor = (input: DraftThread) =>
+    Effect.gen(function* () {
+      const existing = yield* conductor
+      if (Option.isSome(existing)) return existing.value
+      return yield* insertThread({ ...input, createdBy: "user" }, "idle", true)
+    }).pipe(drafting.withPermits(1))
+
+  const clearConversation = (id: string) =>
+    Effect.gen(function* () {
+      const thread = yield* get(id)
+      const updatedAt = yield* nowIso
+      yield* sql
+        .withTransaction(
+          Effect.gen(function* () {
+            yield* sql`DELETE FROM message WHERE thread_id = ${id}`
+            yield* sql`
+              UPDATE thread
+              SET provider_session_id = NULL, forked_from = NULL, turn_base_tree = NULL, updated_at = ${updatedAt}
+              WHERE id = ${id}
+            `
+          }),
+        )
+        .pipe(Effect.mapError(persistence("threads.clearConversation")))
+      return { ...thread, providerSessionId: null, forkedFrom: null, updatedAt }
+    })
+
   const forkWorktree = (source: Thread) =>
     Effect.gen(function* () {
       if (source.worktreeId === null) return null
@@ -391,6 +432,7 @@ const make = Effect.gen(function* () {
         providerSessionId: null,
         forkedFrom,
         sideOf: null,
+        conductor: false,
         status: "idle",
         usageLimit: null,
         sortIndex: next,
@@ -435,6 +477,7 @@ const make = Effect.gen(function* () {
         providerSessionId: null,
         forkedFrom: null,
         sideOf: parent.id,
+        conductor: false,
         status: "idle",
         usageLimit: null,
         pinnedAt: null,
@@ -693,6 +736,7 @@ const make = Effect.gen(function* () {
     worktrees.exclusive(
       Effect.gen(function* () {
         const thread = yield* get(id)
+        if (thread.conductor) return thread
         if (isThreadBusy(thread.status)) return yield* new ThreadBusyError({ id })
         if ((yield* settings.get).archive.removeWorktree && thread.worktreeId) {
           yield* worktrees.removeWhileExclusive(thread.worktreeId, "ifMerged", id).pipe(
@@ -741,6 +785,9 @@ const make = Effect.gen(function* () {
     started,
     draft,
     promoteDraft,
+    conductor,
+    ensureConductor,
+    clearConversation,
     prepareWorkspace,
     listFiles,
     changes,

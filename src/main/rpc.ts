@@ -22,7 +22,7 @@ import { ArtifactInspector } from "./services/ArtifactInspector.ts"
 import { Artifacts } from "./services/Artifacts.ts"
 import { Attachments } from "./services/Attachments.ts"
 import { Browser } from "./services/Browser.ts"
-import { UnknownRootError } from "./services/errors.ts"
+import { NotFoundError, UnknownRootError } from "./services/errors.ts"
 import { ClientSettings } from "./services/ClientSettings.ts"
 import { Environments } from "./services/Environments.ts"
 import { Events } from "./services/Events.ts"
@@ -290,6 +290,24 @@ const handlers: Handlers = {
       Effect.tap((thread) => Events.use((events) => events.publish({ type: "thread.updated", thread }))),
     ),
   "threads.sidechat": ({ threadId }) => Threads.use((threads) => threads.sidechat(threadId)),
+  "threads.conductor": () =>
+    Effect.gen(function* () {
+      const existing = yield* Threads.use((threads) => threads.conductor)
+      if (Option.isSome(existing)) return existing.value
+      const chats = (yield* Projects.use((projects) => projects.list)).find((project) => project.kind === "chats")
+      if (chats === undefined) return yield* new NotFoundError({ entity: "project", id: "chats" })
+      const { defaultProvider: provider } = yield* Settings.use((service) => service.get)
+      const options = yield* newThreadOptions(provider)
+      const thread = yield* Threads.use((threads) =>
+        threads.ensureConductor({ projectId: chats.id, title: "Conductor", provider, ...options }),
+      )
+      yield* Events.use((events) => events.publish({ type: "thread.updated", thread }))
+      return thread
+    }),
+  "threads.clear": ({ threadId }) =>
+    AgentRunner.use((runner) => runner.clear(threadId)).pipe(
+      Effect.tap((thread) => Events.use((events) => events.publish({ type: "thread.updated", thread }))),
+    ),
   "projects.currentBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.currentBranch(id)),
   "projects.defaultBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.defaultBranch(id)),
   "projects.branches": ({ id }) => Worktrees.use((worktrees) => worktrees.branches(id)),

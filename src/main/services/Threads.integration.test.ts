@@ -262,6 +262,28 @@ describe("Threads", () => {
     }).pipe(Effect.provide(threadsLayer)),
   )
 
+  it.effect("keeps one conductor in a chat folder of its own that archiving leaves alone", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const activeWorkspace = yield* makeActiveWorkspace
+      const chats = yield* Projects.Projects.use((projects) =>
+        projects.ensureChats(mkdtempSync(join(tmpdir(), "kk-chats-"))),
+      )
+      const ensure = () =>
+        threads.ensureConductor({ projectId: chats.id, title: "Conductor", provider: "claude", model: "m" })
+      const [first, second] = yield* Effect.all([ensure(), ensure()], { concurrency: "unbounded" })
+      expect(second.id).toBe(first.id)
+      expect(first.conductor).toBe(true)
+      const { cwd } = yield* activeWorkspace(first.id)
+      expect(existsSync(cwd)).toBe(true)
+
+      expect((yield* threads.archive(first.id)).status).toBe("idle")
+      expect(existsSync(cwd)).toBe(true)
+      const sidechat = yield* threads.sidechat(first.id)
+      expect(sidechat.conductor).toBe(false)
+    }).pipe(Effect.provide(threadsLayer)),
+  )
+
   it.effect("deletes a thread's scratch folder when it is archived or deleted", () =>
     Effect.gen(function* () {
       const threads = yield* Threads

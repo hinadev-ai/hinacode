@@ -37,6 +37,7 @@ import ftsToolTitles from "./migrations/0034_fts_tool_titles.ts"
 import threadScheduled from "./migrations/0036_thread_scheduled.ts"
 import ftsCjkGrams from "./migrations/0037_fts_cjk_grams.ts"
 import messagePart from "./migrations/0038_message_part.ts"
+import conductor from "./migrations/0039_conductor.ts"
 
 const run = Migrator.make({})
 
@@ -79,6 +80,7 @@ export const runMigrations = run({
     "36_thread_scheduled": threadScheduled,
     "37_fts_cjk_grams": ftsCjkGrams,
     "38_message_part": messagePart,
+    "39_conductor": conductor,
   }),
 }).pipe(
   Effect.tap((ran) =>

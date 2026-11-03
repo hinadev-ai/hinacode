@@ -193,6 +193,7 @@ export class AgentRunner extends Context.Service<
       options: { readonly resend: boolean },
     ) => Effect.Effect<Thread, SendError>
     readonly switchAgent: (input: UpdateThread & { readonly provider: ProviderId }) => Effect.Effect<Thread, SendError>
+    readonly clear: (threadId: string) => Effect.Effect<Thread, SendError>
     readonly setAccessMode: (threadId: string, accessMode: AccessMode) => Effect.Effect<void, AgentError>
     readonly respondApproval: (
       requestId: string,
@@ -335,13 +336,17 @@ const make = Effect.gen(function* () {
       Effect.orElseSucceed(() => null),
     )
 
-  const subagentInstructions = (experimental: ExperimentalSettings, environment: AgentEnvironment) =>
+  const subagentInstructions = (
+    experimental: ExperimentalSettings,
+    environment: AgentEnvironment,
+    options?: { readonly conductor: boolean },
+  ) =>
     Effect.gen(function* () {
       const [listed, { modelPresets }] = yield* Effect.all(
         [Effect.all(Record.map(providers, listedModels), { concurrency: "unbounded" }), settings.get],
         { concurrency: "unbounded" },
       )
-      return agentInstructions(experimental, environment, subagentChoices(listed, modelPresets))
+      return agentInstructions(experimental, environment, subagentChoices(listed, modelPresets), options)
     })
 
   type LimitsKey = Pick<AccountLimits, "provider" | "accountId">
@@ -504,7 +509,7 @@ const make = Effect.gen(function* () {
         forkAt: thread.providerSessionId === null ? (thread.forkedFrom?.checkpoint ?? null) : null,
         home,
         mcpServer,
-        instructions: yield* subagentInstructions(experimental, environment),
+        instructions: yield* subagentInstructions(experimental, environment, { conductor: thread.conductor }),
       }
       return input
     })
@@ -1021,6 +1026,7 @@ const make = Effect.gen(function* () {
           pending.first &&
           currentThread.createdBy === "user" &&
           currentThread.sideOf === null &&
+          !currentThread.conductor &&
           prompt.trim() !== ""
         )
           yield* Effect.forkDetach(nameThreadWithPullRequestScope(currentThread, prompt))
@@ -1324,6 +1330,17 @@ const make = Effect.gen(function* () {
       return switched.thread
     })
 
+  const clear: typeof AgentRunner.Service.clear = (threadId) =>
+    Effect.gen(function* () {
+      if (busyThreads.has(threadId)) {
+        return yield* new AgentError({ provider: "hinacode", message: "Wait for the turn to end to clear it" })
+      }
+      const current = yield* threads.get(threadId)
+      const closeSession = providers[current.provider].closeSession
+      if (closeSession !== undefined) yield* closeSession(current.id, yield* accounts.home(current.accountId))
+      return yield* threads.clearConversation(threadId)
+    })
+
   const switchAgent: typeof AgentRunner.Service.switchAgent = (input) =>
     Effect.gen(function* () {
       if (busyThreads.has(input.id)) {
@@ -1475,6 +1492,7 @@ const make = Effect.gen(function* () {
     resumeAtReset,
     switchAccount,
     switchAgent,
+    clear,
     steer: (threadId, text, attachments) =>
       steerWhen({ threadId, text, attachments, when: Effect.succeed(true) }).pipe(Effect.asVoid),
     steerWhen,

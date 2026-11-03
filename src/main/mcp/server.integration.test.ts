@@ -827,6 +827,110 @@ layer(testLayer)("thread controls", (it) => {
   )
 })
 
+const chatsRoot = join(repos, "chats")
+mkdirSync(chatsRoot)
+
+const seedConductor = Effect.gen(function* () {
+  const threads = yield* Threads
+  const existing = yield* threads.conductor
+  if (Option.isSome(existing)) return existing.value.id
+  const { projectId } = yield* seedThread({ rootPath: chatsRoot, kind: "chats" })
+  return (yield* threads.ensureConductor({ projectId, title: "Conductor", provider: "claude", model: "m" })).id
+})
+
+const idle = (threadId: string) =>
+  Effect.gen(function* () {
+    const threads = yield* Threads
+    return yield* until(
+      threads.get(threadId).pipe(
+        Effect.map((thread) => Option.liftPredicate(thread, (t) => t.status === "idle")),
+        Effect.orDie,
+      ),
+    )
+  })
+
+layer(testLayer)("conductor", (it) => {
+  it.effect("lists the projects and threads of every project", () =>
+    Effect.gen(function* () {
+      const { a, b } = yield* Seeded
+      const conductor = yield* seedConductor
+      const projects = JSON.parse((yield* callFrom(conductor, "list_projects")).text) as Array<{ path: string }>
+      expect(projects.map((project) => project.path).toSorted()).toEqual([repoA, repoB].toSorted())
+
+      const listed = JSON.parse((yield* callFrom(conductor, "list_threads")).text) as Array<{
+        id: string
+        project: string
+      }>
+      expect(listed.map((thread) => thread.id)).toEqual(expect.arrayContaining([a, b, conductor]))
+      expect(listed.find((thread) => thread.id === b)?.project).toBe(`demo (${repoB})`)
+    }),
+  )
+
+  it.effect("starts, steers and stops a thread in the project it names", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const { b } = yield* Seeded
+      const conductor = yield* seedConductor
+      const projectId = (yield* threads.get(b)).projectId
+
+      const unnamed = yield* callFrom(conductor, "create_thread", { title: "t", prompt: "p" })
+      expect(unnamed).toStrictEqual({ text: "Pass `project`, an id from list_projects.", isError: true, images: [] })
+
+      const created = yield* callFrom(conductor, "create_thread", { project: projectId, title: "Fix it", prompt: "Go" })
+      const child = /Created thread (\S+)/.exec(created.text)?.[1]
+      if (child === undefined) throw new Error(`no thread id in ${created.text}`)
+      expect(yield* threads.get(child)).toMatchObject({ projectId, createdBy: `thread:${conductor}` })
+      yield* callFrom(conductor, "stop_thread", { threadId: child })
+      yield* idle(child)
+
+      const sent = yield* callFrom(conductor, "send_to_thread", { threadId: b, prompt: "Also this" })
+      expect(sent.text).toBe(`Started a new turn on thread ${b}.`)
+      const stopped = yield* callFrom(conductor, "stop_thread", { threadId: b })
+      expect(stopped.text).toBe(`Interrupted thread ${b}.`)
+      yield* idle(b)
+    }),
+  )
+
+  it.effect("only the conductor starts a thread in another project", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const { a, b } = yield* Seeded
+      const result = yield* callFrom(a, "create_thread", {
+        project: (yield* threads.get(b)).projectId,
+        title: "t",
+        prompt: "p",
+      })
+      expect(result).toStrictEqual({
+        text: "Only the conductor can start a thread in another project.",
+        isError: true,
+        images: [],
+      })
+    }),
+  )
+
+  it.effect("clear forgets the conversation, so the next turn starts a new session without history", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const threads = yield* Threads
+      const conductor = yield* seedConductor
+      yield* runner.send(conductor, "Reply one", [])
+      yield* idle(conductor)
+      yield* threads.update({ id: conductor, providerSessionId: "session-1" })
+
+      const cleared = yield* runner.clear(conductor)
+      expect(cleared.providerSessionId).toBeNull()
+      expect((yield* runner.transcript(conductor)).messages).toEqual([])
+
+      yield* runner.send(conductor, "Reply two", [])
+      yield* idle(conductor)
+      const input = turnInputs.findLast((turn) => turn.threadId === conductor)
+      expect(input).toMatchObject({ prompt: "Reply two", resumeSessionId: null })
+      expect(input?.instructions).toContain("<conductor>")
+      expect((yield* threads.get(conductor)).title).toBe("Conductor")
+    }),
+  )
+})
+
 const setTinyVm = (on: boolean, tinyVmTemplate = "default", tinyVmProfile = false) =>
   Effect.gen(function* () {
     const settings = yield* Settings.Settings

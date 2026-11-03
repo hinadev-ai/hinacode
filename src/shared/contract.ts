@@ -291,6 +291,8 @@ export const RpcMethods = {
   "threads.undoTurn": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "threads.fork": rpc(Schema.Struct({ threadId: Schema.String, messageId: Schema.String }), Thread),
   "threads.sidechat": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
+  "threads.conductor": rpc(Schema.Void, Thread),
+  "threads.clear": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   "sessions.listExternal": rpc(
     Schema.Struct({ projectId: Schema.String }),
     Schema.Struct({
@@ -691,6 +693,8 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "threads.undoTurn": "mutation",
   "threads.fork": "mutation",
   "threads.sidechat": "mutation",
+  "threads.conductor": "mutation",
+  "threads.clear": "mutation",
   "sessions.listExternal": "read",
   "sessions.import": "mutation",
   "threads.archive": "mutation",

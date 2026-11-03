@@ -148,6 +148,8 @@ export const routes: Record<RpcMethod, Route> = {
   "threads.undoTurn": thread,
   "threads.fork": thread,
   "threads.sidechat": thread,
+  "threads.conductor": client,
+  "threads.clear": thread,
   "sessions.listExternal": owner("project", "projectId"),
   "sessions.import": owner("project", "projectId"),
   "threads.archive": thread,
