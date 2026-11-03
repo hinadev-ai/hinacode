@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { z } from "zod"
-import { isTextType } from "./artifact.ts"
-import { type ArtifactStore, ArtifactError, MAX_ARTIFACT_BYTES } from "./store.ts"
+import { DOCUMENT_ENTRY, isTextType } from "./artifact.ts"
+import { ArtifactConflictError, type ArtifactStore, ArtifactError, MAX_ARTIFACT_BYTES } from "./store.ts"
 
 export type ArtifactCaller = { threadId?: string }
 
@@ -24,6 +24,17 @@ const PUBLISH_GUIDE = `Publish an HTML page for the developer to look at: a repo
 The page runs in a sandboxed frame with no origin: storage, cookies, alert/confirm/prompt, form submission, popups, downloads and links that leave the page do nothing. Keep state in memory and show URLs as text. CDN files load when the network allows; pin exact versions. At most ${MAX_ARTIFACT_BYTES / 1024 / 1024} MB.
 
 The preview is a side panel, often 360 to 700px wide. Never scroll sideways: let rows wrap, give text-holding flex and grid children min-width: 0, and put wide tables and code in an overflow-x: auto box. No 100vh heroes. For icons, load https://cdn.jsdelivr.net/npm/remixicon@4.6.0/fonts/remixicon.css and write <i class="ri-git-branch-line"></i>; no emoji icons.`
+
+const DOCUMENT_GUIDE = `Publish a Markdown document that the developer reads and edits beside the thread: a plan, spec, design note, checklist or notes. Prefer it to publish_artifact when the content is prose the developer may want to change.
+
+Write GitHub-flavored Markdown: headings, paragraphs, emphasis, links, lists, task lists (- [ ] item), tables, quotes and fenced code blocks. Raw HTML is dropped.
+
+To change a document, pass its id, the revision you last published or read, and the full new Markdown. read_artifact without a path shows the current revision. The developer may have edited it in the meantime. Then the call fails with their current text and revision, so merge your change into that text and publish again with that revision.`
+
+const currentMarkdown = async (store: ArtifactStore, id: string) => {
+  const file = await store.file(id, DOCUMENT_ENTRY)
+  return file === null ? "" : new TextDecoder().decode(file.bytes)
+}
 
 export const artifactTools = {
   publish_artifact: tool({
@@ -60,6 +71,47 @@ export const artifactTools = {
       return `Published artifact ${artifact.id} version ${artifact.version}: "${artifact.title}". Pass id "${artifact.id}" to publish_artifact to update it.`
     },
   }),
+  publish_document: tool({
+    description: DOCUMENT_GUIDE,
+    input: z
+      .object({
+        id: z.string().optional().describe("The id of a document to update. Omit it to publish a new document."),
+        revision: z
+          .number()
+          .int()
+          .nonnegative()
+          .optional()
+          .describe("The revision you last published or read. Required with id."),
+        title: z
+          .string()
+          .min(1)
+          .describe('The document\'s name, two to four words, such as "Release Plan". Keep it when you update.'),
+        markdown: z.string().describe("The whole document as Markdown."),
+      })
+      .refine((input) => input.id === undefined || input.revision !== undefined, {
+        message: "Pass the revision you last published or read together with id.",
+        path: ["revision"],
+      }),
+    handle: async (store, { id, revision, title, markdown }, { threadId }) => {
+      try {
+        const document = await store.publish({
+          kind: "document",
+          title,
+          markdown,
+          ...(id === undefined ? {} : { id }),
+          ...(revision === undefined ? {} : { baseRevision: revision }),
+          ...(threadId === undefined ? {} : { threadId }),
+        })
+        return `Published document ${document.id} version ${document.version}: "${document.title}". To update it, pass id "${document.id}" and revision ${document.revision} to publish_document.`
+      } catch (error) {
+        if (!(error instanceof ArtifactConflictError)) throw error
+        const { current } = error
+        throw new ArtifactError(
+          `The developer edited document ${current.id} after your revision ${revision}. It is now at revision ${current.revision}. Merge your change into their text below and publish again with revision ${current.revision}.\n\n${await currentMarkdown(store, current.id)}`,
+        )
+      }
+    },
+  }),
   list_artifacts: tool({
     description:
       "List the artifacts this conversation published, newest first, with their ids, titles and versions. Set all to list every conversation's artifacts.",
@@ -71,8 +123,9 @@ export const artifactTools = {
       const artifacts = (await store.list()).filter((artifact) => everyone || artifact.threadId === threadId)
       if (artifacts.length === 0) return everyone ? "No artifacts yet." : "This conversation has no artifacts yet."
       return JSON.stringify(
-        artifacts.map(({ id, title, version, updatedAt, threadId: thread }) => ({
+        artifacts.map(({ id, kind, title, version, updatedAt, threadId: thread }) => ({
           id,
+          ...(kind === "document" ? { kind } : {}),
           title,
           version,
           updatedAt,
@@ -85,7 +138,7 @@ export const artifactTools = {
   }),
   read_artifact: tool({
     description:
-      "Read an artifact. Without a path, returns its manifest: title, entry, version and files. With a path, returns that text file's content.",
+      "Read an artifact. Without a path, returns its manifest: kind, title, entry, version, revision and files. With a path, returns that text file's content. A document's Markdown is document.md.",
     input: z.object({
       id: z.string().describe("The artifact id."),
       path: z.string().optional().describe("A text file in the artifact, such as index.html."),

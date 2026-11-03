@@ -40,3 +40,32 @@ test("publishes, lists and reads back an artifact through the tool handlers", as
 test("lists nothing in an empty store", async () => {
   expect(await artifactTools.list_artifacts.handle(openTemporaryStore(), {}, {})).toBe("No artifacts yet.")
 })
+
+test("publishes a document and refuses an update that would drop the developer's edits", async () => {
+  const store = openTemporaryStore()
+  const { publish_document, list_artifacts, read_artifact } = artifactTools
+
+  const published = await publish_document.handle(
+    store,
+    publish_document.input.parse({ title: "Release plan", markdown: "# Release plan\n" }),
+    { threadId: "thread-1" },
+  )
+  const id = published.match(/^Published document ([a-z0-9]+) version 1:/)?.[1] ?? ""
+  expect(published).toContain(`id "${id}" and revision 1`)
+  expect(JSON.parse(await list_artifacts.handle(store, {}, { threadId: "thread-1" }))).toEqual([
+    { id, kind: "document", title: "Release plan", version: 1, updatedAt: expect.any(String) },
+  ])
+
+  const developer = { kind: "document" as const, id, title: "Release plan", author: "developer" as const }
+  await store.publish({ ...developer, markdown: "# Release plan\n\nDraft.\n", baseRevision: 1 })
+  await store.publish({ ...developer, markdown: "# Release plan\n\nEdited.\n", baseRevision: 2 })
+  await expect(
+    publish_document.handle(
+      store,
+      publish_document.input.parse({ id, revision: 1, title: "Release plan", markdown: "# Release plan\n\nMine.\n" }),
+      { threadId: "thread-1" },
+    ),
+  ).rejects.toThrow(/edited document \w+ after your revision 1\. It is now at revision 3[\s\S]*Edited\./)
+  expect(await read_artifact.handle(store, { id, path: "document.md" }, {})).toBe("# Release plan\n\nEdited.\n")
+  expect(publish_document.input.safeParse({ id, title: "Release plan", markdown: "" }).success).toBe(false)
+})
