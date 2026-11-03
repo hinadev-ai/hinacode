@@ -182,9 +182,7 @@ function ArtifactRow({ threadId, artifact }: { threadId: string; artifact: Artif
       </ContextMenuTrigger>
       <ContextMenuContent>
         {origin !== undefined && (
-          <DropdownMenuItem
-            onClick={() => void navigate({ to: "/thread/$threadId", params: { threadId: origin.id } })}
-          >
+          <DropdownMenuItem onClick={() => void navigate({ to: "/thread/$threadId", params: { threadId: origin.id } })}>
             <ArrowRightIcon aria-hidden />
             {m.artifacts_go_to_thread()}
           </DropdownMenuItem>
