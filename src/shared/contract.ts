@@ -432,6 +432,7 @@ export const RpcMethods = {
       questions: Schema.Array(QuestionRequest),
       secretRequests: Schema.Array(SecretRequest),
       seq: Schema.Number,
+      sequenceScope: Schema.optional(Schema.Literal("thread")),
     }),
   ),
   "threads.toolOutput": rpc(Schema.Struct({ threadId: Schema.String, callId: Schema.String }), Schema.Unknown),

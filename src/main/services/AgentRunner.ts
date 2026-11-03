@@ -1466,6 +1466,7 @@ const make = Effect.gen(function* () {
             .map(({ request }) => request)
             .filter((request) => request.threadId === threadId),
           seq: transcriptSeqs.get(threadId) ?? 0,
+          sequenceScope: "thread" as const,
         }
       }).pipe(exclusive(threadId)),
     toolOutput: (threadId, callId) => {

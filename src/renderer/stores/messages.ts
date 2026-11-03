@@ -14,6 +14,7 @@ type ReadyHistory = {
   readonly approvals: ReadonlyArray<ApprovalRequest>
   readonly questions: ReadonlyArray<QuestionRequest>
   readonly secretRequests: ReadonlyArray<SecretRequest>
+  readonly sequenceScope?: "thread"
 }
 
 export type ThreadHistory =
@@ -115,7 +116,7 @@ export const useMessages = create<MessagesState>()((set, get) => {
       if (current?.status === "ready") {
         const lastSeq = receivedSeqs.get(threadId) ?? 0
         if (push.seq <= lastSeq) return
-        if (push.seq !== lastSeq + 1) return void fetchHistory(threadId)
+        if (current.sequenceScope === "thread" && push.seq !== lastSeq + 1) return void fetchHistory(threadId)
         receivedSeqs.set(threadId, push.seq)
       }
       const type = deltaType(push)
@@ -159,7 +160,8 @@ function replayAfterSnapshot(
   pending: ReadonlyArray<TranscriptPush>,
 ): { readonly ready: ReadyHistory; readonly lastSeq: number } | undefined {
   const replay = pending.filter((push) => push.seq > snapshotSeq)
-  if (replay.some((push, index) => push.seq !== snapshotSeq + index + 1)) return undefined
+  if (snapshot.sequenceScope === "thread" && replay.some((push, index) => push.seq !== snapshotSeq + index + 1))
+    return undefined
   return { ready: replay.reduce(applyPush, snapshot), lastSeq: replay.at(-1)?.seq ?? snapshotSeq }
 }
 

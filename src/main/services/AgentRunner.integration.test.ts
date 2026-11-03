@@ -4,11 +4,11 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { expect, it } from "@effect/vitest"
-import { Context, Deferred, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, Queue, Stream } from "effect"
+import { Context, Deferred, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
 import { SqlClient } from "effect/sql"
 import { vi } from "vitest"
 import type { AgentEvent, ApprovalDecision, ProviderId, RunTurnInput } from "../../shared/agent.ts"
-import type { TranscriptPush } from "../../shared/contract.ts"
+import { RpcMethods, type TranscriptPush } from "../../shared/contract.ts"
 import type { Message, Thread } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
@@ -947,6 +947,11 @@ it("numbers each thread's transcript pushes on its own", async () => {
         expect(seqs).toEqual(seqs.map((_, index) => index + 1))
         expect((await Effect.runPromise(runner.transcript(id))).seq).toBe(seqs.length)
       }
+      const snapshot = await Effect.runPromise(runner.transcript(thread.id))
+      expect(snapshot.sequenceScope).toBe("thread")
+      const { sequenceScope: _, ...legacySnapshot } = snapshot
+      const decodeSnapshot = Schema.decodeUnknownSync(RpcMethods["threads.transcript"].response)
+      expect(decodeSnapshot(legacySnapshot).sequenceScope).toBeUndefined()
     },
     { forkable: true },
   )

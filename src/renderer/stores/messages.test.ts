@@ -67,7 +67,9 @@ const loadReady = async (
 ) => {
   transcriptResponse = Promise.withResolvers()
   const loading = store().load(id)
-  transcriptResponse.resolve({ result: { messages, approvals, questions: [], secretRequests: [], seq } })
+  transcriptResponse.resolve({
+    result: { messages, approvals, questions: [], secretRequests: [], seq, sequenceScope: "thread" },
+  })
   await loading
   vi.useFakeTimers()
 }
@@ -512,7 +514,14 @@ test("clears pending questions immediately when a turn reaches a usage limit", a
 })
 
 const transcript = (text: string, seq: number) => ({
-  result: { messages: [assistant(text)], approvals: [], questions: [], secretRequests: [], seq },
+  result: {
+    messages: [assistant(text)],
+    approvals: [],
+    questions: [],
+    secretRequests: [],
+    seq,
+    sequenceScope: "thread",
+  },
 })
 
 const reloadAfterUnload = () => {
