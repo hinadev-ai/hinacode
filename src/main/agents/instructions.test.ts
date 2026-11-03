@@ -11,6 +11,7 @@ const environment = {
   remote: "git@github.com:o/r.git",
   platform: "darwin",
   scratchDirectory: "/data/scratch/20261029-080509-fix-login-t1",
+  tmpDirectory: "/tmp/hc-t1",
 } as const
 
 test("keeps a token in an https remote out of the prompt", () => {

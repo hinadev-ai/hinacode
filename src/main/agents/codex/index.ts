@@ -38,6 +38,7 @@ import {
   LISTED_SESSIONS,
   MCP_TOOL_TIMEOUT_SECONDS,
   type SessionHistory,
+  tmpEnv,
 } from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { threadAccess, turnAccess } from "./access.ts"
@@ -461,6 +462,7 @@ const make = Effect.gen(function* () {
             ...threadAccess(input.accessMode),
             config: {
               tools: { update_plan: { enabled: true } },
+              shell_environment_policy: { set: tmpEnv(input.tmpDirectory) },
               ...(input.autoCompactTokens !== null && { model_auto_compact_token_limit: input.autoCompactTokens }),
               ...(hiddenSkills !== null && {
                 skills: { config: hiddenSkills.map((skill) => ({ path: skill.path, enabled: false })) },

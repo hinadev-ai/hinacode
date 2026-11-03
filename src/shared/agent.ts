@@ -296,6 +296,7 @@ export interface RunTurnInput {
   readonly prompt: string
   readonly attachments: ReadonlyArray<Attachment>
   readonly cwd: string
+  readonly tmpDirectory: string
   readonly model: string
   readonly effort: string | null
   readonly fastMode: boolean

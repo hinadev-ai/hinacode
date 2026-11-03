@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Context, Effect, FileSystem, Layer } from "effect"
 import type { Thread } from "../../shared/domain.ts"
@@ -6,6 +8,8 @@ import { slugifyBranch } from "./automations/template.ts"
 
 const MAX_SLUG_LENGTH = 40
 const REMOVING_SUFFIX = ".removing"
+const TMP_PREFIX = "hc-"
+const TMP_ID_LENGTH = 8
 
 // FIXME: Electron's fs reads `.asar` files as folders, so a recursive delete of a checkout with Electron installed fails
 const fsWithoutAsar = (process.getBuiltinModule("original-fs") ??
@@ -26,41 +30,65 @@ export class Scratch extends Context.Service<
   Scratch,
   {
     readonly ensure: (thread: Thread) => Effect.Effect<string, PersistenceError>
+    readonly ensureTmp: (threadId: string) => Effect.Effect<string, PersistenceError>
     readonly writeSecret: (thread: Thread, name: string, value: string) => Effect.Effect<string, PersistenceError>
     readonly remove: (threadId: string) => Effect.Effect<void, PersistenceError>
   }
 >()("hinacode/Scratch") {}
 
-export const layer = (root: string, deleteFolder: (path: string) => Effect.Effect<void, unknown> = deleteTree) =>
+export const layer = (
+  root: string,
+  {
+    tmpRoot = tmpdir(),
+    deleteFolder = deleteTree,
+  }: {
+    readonly tmpRoot?: string
+    readonly deleteFolder?: (path: string) => Effect.Effect<void, unknown>
+  } = {},
+) =>
   Layer.effect(
     Scratch,
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
 
-      const names = fs
-        .exists(root)
-        .pipe(Effect.flatMap((exists) => (exists ? fs.readDirectory(root) : Effect.succeed([]))))
+      const namesIn = (folder: string) =>
+        fs.exists(folder).pipe(Effect.flatMap((exists) => (exists ? fs.readDirectory(folder) : Effect.succeed([]))))
+      const names = namesIn(root)
 
       const find = (threadId: string) =>
         names.pipe(Effect.map((all) => all.find((name) => name.endsWith(`-${threadId}`))))
 
-      const deleteInBackground = (name: string) =>
+      const tmpFolder = (threadId: string) => join(tmpRoot, `${TMP_PREFIX}${threadId.slice(0, TMP_ID_LENGTH)}`)
+
+      const deleteInBackground = (path: string) =>
         Effect.forkDetach(
-          deleteFolder(join(root, name)).pipe(
-            Effect.catchCause((cause) => Effect.logWarning("scratch folder deletion failed", name, cause)),
+          deleteFolder(path).pipe(
+            Effect.catchCause((cause) => Effect.logWarning("scratch folder deletion failed", path, cause)),
           ),
         )
 
-      yield* names.pipe(
-        Effect.flatMap((all) =>
-          Effect.forEach(
-            all.filter((name) => name.endsWith(REMOVING_SUFFIX)),
-            deleteInBackground,
-            { discard: true },
+      const moveAsideAndDelete = (path: string) =>
+        Effect.gen(function* () {
+          if (!(yield* fs.exists(path))) return
+          const removing = `${path}-${randomUUID()}${REMOVING_SUFFIX}`
+          yield* fs.rename(path, removing)
+          yield* deleteInBackground(removing)
+        })
+
+      const deleteLeftovers = (folder: string, belongsToUs: (name: string) => boolean) =>
+        namesIn(folder).pipe(
+          Effect.flatMap((all) =>
+            Effect.forEach(
+              all.filter((name) => belongsToUs(name) && name.endsWith(REMOVING_SUFFIX)),
+              (name) => deleteInBackground(join(folder, name)),
+              { discard: true },
+            ),
           ),
-        ),
-        Effect.ignore,
-      )
+          Effect.ignore,
+        )
+
+      yield* deleteLeftovers(root, () => true)
+      yield* deleteLeftovers(tmpRoot, (name) => name.startsWith(TMP_PREFIX))
 
       const ensure = (thread: Thread) =>
         Effect.gen(function* () {
@@ -70,6 +98,13 @@ export const layer = (root: string, deleteFolder: (path: string) => Effect.Effec
           yield* fs.makeDirectory(folder, { recursive: true })
           return folder
         }).pipe(Effect.mapError(persistence("scratch.ensure")))
+
+      const ensureTmp = (threadId: string) =>
+        Effect.gen(function* () {
+          const folder = tmpFolder(threadId)
+          yield* fs.makeDirectory(folder, { recursive: true, mode: 0o700 })
+          return folder
+        }).pipe(Effect.mapError(persistence("scratch.ensureTmp")))
 
       const writeSecret = (thread: Thread, name: string, value: string) =>
         Effect.gen(function* () {
@@ -83,12 +118,10 @@ export const layer = (root: string, deleteFolder: (path: string) => Effect.Effec
       const remove = (threadId: string) =>
         Effect.gen(function* () {
           const name = yield* find(threadId)
-          if (name === undefined) return
-          const removing = `${name}${REMOVING_SUFFIX}`
-          yield* fs.rename(join(root, name), join(root, removing))
-          yield* deleteInBackground(removing)
+          if (name !== undefined) yield* moveAsideAndDelete(join(root, name))
+          yield* moveAsideAndDelete(tmpFolder(threadId))
         }).pipe(Effect.mapError(persistence("scratch.remove")))
 
-      return Scratch.of({ ensure, writeSecret, remove })
+      return Scratch.of({ ensure, ensureTmp, writeSecret, remove })
     }),
   )

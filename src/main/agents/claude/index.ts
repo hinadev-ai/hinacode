@@ -48,6 +48,7 @@ import {
   type SessionInput,
   type SteerPriority,
   type Wake,
+  tmpEnv,
 } from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { permissionMode } from "./access.ts"
@@ -614,7 +615,7 @@ export const layer = Layer.effect(
               options: {
                 ...base,
                 // FIXME: session_state_changed idle is the CLI's only signal that background sub-agents are done
-                env: { ...base.env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" },
+                env: { ...base.env, ...tmpEnv(input.tmpDirectory), CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" },
                 cwd: input.cwd,
                 model: input.model,
                 ...(effort === null ? {} : { effort }),
