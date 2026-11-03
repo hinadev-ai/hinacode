@@ -27,6 +27,7 @@ import * as Db from "../db/client.ts"
 import { layer as RemoteAccessLayer } from "../remote/access.ts"
 import { Peers } from "../remote/peers.ts"
 import { seedThread } from "../db/testing.ts"
+import * as ArtifactInspector from "../services/ArtifactInspector.ts"
 import * as Artifacts from "../services/Artifacts.ts"
 import * as Attachments from "../services/Attachments.ts"
 import * as AgentAccounts from "../services/AgentAccounts.ts"
@@ -163,6 +164,7 @@ const core = Layer.mergeAll(
   Messages.layer,
   Attachments.layer(join(mkdtempSync(join(tmpdir(), "kk-mcp-")), "attachments")),
   Artifacts.layer(join(mkdtempSync(join(tmpdir(), "kk-mcp-")), "artifacts")),
+  ArtifactInspector.unavailable,
   secretsLayer.pipe(Layer.provide(noKeyring)),
   credentialsLayer,
   Search.layer,
