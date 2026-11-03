@@ -42,13 +42,11 @@ const idleSeconds = Number(process.env["IDLE_SECONDS"] ?? 120)
 const port = Number(process.env["PORT"] ?? 9290)
 const switchRounds = 3
 
-const readSpans = (file: string): Array<Span> =>
-  existsSync(file)
-    ? readFileSync(file, "utf8")
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => JSON.parse(line) as Span)
-    : []
+const readSpans = (file: string): Array<Span> => {
+  if (!existsSync(file)) return []
+  const finishedLines = readFileSync(file, "utf8").split("\n").slice(0, -1)
+  return finishedLines.filter(Boolean).map((line) => JSON.parse(line) as Span)
+}
 
 const underRpc = (spans: ReadonlyArray<Span>) => {
   const byId = new Map(spans.map((span) => [span.id, span]))
