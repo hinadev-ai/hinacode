@@ -19,7 +19,7 @@ export class Messages extends Context.Service<
     readonly list: (threadId: string) => Effect.Effect<ReadonlyArray<Message>, PersistenceError>
     readonly toolOutput: (threadId: string, callId: string) => Effect.Effect<Option.Option<unknown>, PersistenceError>
     readonly insert: (message: Message) => Effect.Effect<void, PersistenceError>
-    readonly update: (message: Message) => Effect.Effect<void, PersistenceError>
+    readonly update: (message: Message, previous: Message) => Effect.Effect<void, PersistenceError>
     readonly closeInterrupted: Effect.Effect<void, PersistenceError>
   }
 >()("hinacode/Messages") {}
@@ -27,11 +27,21 @@ export class Messages extends Context.Service<
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
   const encodeRow = Schema.encodeEffect(MessageRow)
+  const encodePart = Schema.encodeEffect(Schema.fromJsonString(MessagePart))
+
+  const messageColumns = sql.literal(`
+    message.id, message.thread_id, message.role, message.created_at, message.completed_at, message.usage, message.fork_point,
+    coalesce(
+      (SELECT '[' || group_concat(part, ',' ORDER BY idx) || ']' FROM message_part WHERE message_id = message.id),
+      message.parts
+    ) AS parts
+  `)
 
   const findByThread = SqlSchema.findAll({
     Request: Schema.String,
     Result: MessageRow,
-    execute: (threadId) => sql`SELECT * FROM message WHERE thread_id = ${threadId} ORDER BY created_at, rowid`,
+    execute: (threadId) =>
+      sql`SELECT ${messageColumns} FROM message WHERE thread_id = ${threadId} ORDER BY created_at, rowid`,
   })
 
   const findToolOutput = SqlSchema.findOneOption({
@@ -44,6 +54,13 @@ const make = Effect.gen(function* () {
         AND json_extract(part.value, '$.type') = 'tool_call'
         AND json_extract(part.value, '$.callId') = ${callId}
         AND part.value -> '$.output' IS NOT NULL
+      UNION ALL
+      SELECT message_part.part -> '$.output' AS output
+      FROM message JOIN message_part ON message_part.message_id = message.id
+      WHERE message.thread_id = ${threadId}
+        AND json_extract(message_part.part, '$.type') = 'tool_call'
+        AND json_extract(message_part.part, '$.callId') = ${callId}
+        AND message_part.part -> '$.output' IS NOT NULL
     `,
   })
 
@@ -51,7 +68,7 @@ const make = Effect.gen(function* () {
     Request: Schema.Void,
     Result: MessageRow,
     execute: () => sql`
-      SELECT * FROM message
+      SELECT ${messageColumns} FROM message
       WHERE role = 'assistant'
       AND thread_id IN (
         SELECT id FROM thread WHERE status IN ('running', 'awaiting_approval', 'limited')
@@ -66,18 +83,46 @@ const make = Effect.gen(function* () {
     `,
   })
 
-  const update = (message: Message) =>
+  const saveOpenParts = (message: Message, previous: Message) =>
+    Effect.gen(function* () {
+      const rows = yield* Effect.forEach(
+        message.parts.flatMap((part, idx) => (part === previous.parts[idx] ? [] : [{ part, idx }])),
+        ({ part, idx }) => encodePart(part).pipe(Effect.map((json) => ({ messageId: message.id, idx, part: json }))),
+      )
+      if (rows.length > 0) yield* sql`INSERT OR REPLACE INTO message_part ${sql.insert(rows)}`
+      if (message.parts.length < previous.parts.length) {
+        yield* sql`DELETE FROM message_part WHERE message_id = ${message.id} AND idx >= ${message.parts.length}`
+      }
+    })
+
+  const saveClosed = (message: Message) =>
     encodeRow(message).pipe(
-      Effect.flatMap(
-        (row) => sql`
+      Effect.flatMap((row) =>
+        sql`
           UPDATE message
           SET parts = ${row.parts}, completed_at = ${row.completedAt}, usage = ${row.usage}, fork_point = ${row.forkPoint}
           WHERE id = ${row.id}
-        `,
+        `.pipe(Effect.andThen(sql`DELETE FROM message_part WHERE message_id = ${row.id}`), sql.withTransaction),
       ),
+    )
+
+  const update = (message: Message, previous: Message) =>
+    (message.completedAt === null ? saveOpenParts(message, previous) : saveClosed(message)).pipe(
       Effect.asVoid,
       Effect.mapError(persistence("messages.update")),
     )
+
+  const insertOpen = (message: Message) => {
+    const empty = { ...message, parts: [] }
+    return encodeRow(empty).pipe(
+      Effect.flatMap((row) => sql`INSERT INTO message ${sql.insert(row)}`),
+      Effect.andThen(saveOpenParts(message, empty)),
+      sql.withTransaction,
+    )
+  }
+
+  const insertClosed = (message: Message) =>
+    encodeRow(message).pipe(Effect.flatMap((row) => sql`INSERT INTO message ${sql.insert(row)}`))
 
   const closeInterrupted = Effect.gen(function* () {
     const now = yield* nowIso
@@ -87,7 +132,10 @@ const make = Effect.gen(function* () {
     yield* Effect.forEach(
       interrupted,
       (message) =>
-        update({ ...message, parts: failRunningParts(message.parts), completedAt: message.completedAt ?? now }),
+        update(
+          { ...message, parts: failRunningParts(message.parts), completedAt: message.completedAt ?? now },
+          message,
+        ),
       { discard: true },
     )
   })
@@ -100,8 +148,7 @@ const make = Effect.gen(function* () {
         Effect.mapError(persistence("messages.toolOutput")),
       ),
     insert: (message) =>
-      encodeRow(message).pipe(
-        Effect.flatMap((row) => sql`INSERT INTO message ${sql.insert(row)}`),
+      (message.completedAt === null ? insertOpen(message) : insertClosed(message)).pipe(
         Effect.asVoid,
         Effect.mapError(persistence("messages.insert")),
       ),

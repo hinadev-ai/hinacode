@@ -426,20 +426,26 @@ const make = Effect.gen(function* () {
     let completed = false
     let persistedAt = Date.now()
     let persistMs = 0
-    const dirty = new Set<string>()
+    const dirty = new Map<string, Message>()
     const subagentCalls = new Set<string>()
 
     const persist = Effect.suspend(() => {
-      const changed = turnMessages.filter((message) => dirty.has(message.id))
+      const changed = turnMessages.flatMap((message) => {
+        const previous = dirty.get(message.id)
+        return previous === undefined ? [] : [{ message, previous }]
+      })
       dirty.clear()
       persistedAt = Date.now()
-      return Effect.forEach(changed, messages.update, { discard: true }).pipe(
-        Effect.ensuring(Effect.sync(() => (persistMs = Date.now() - persistedAt))),
-      )
+      return Effect.forEach(changed, ({ message, previous }) => messages.update(message, previous), {
+        discard: true,
+      }).pipe(Effect.ensuring(Effect.sync(() => (persistMs = Date.now() - persistedAt))))
     })
 
     const setTurnMessages = (next: ReadonlyArray<Message>) => {
-      next.forEach((message, index) => message !== turnMessages[index] && dirty.add(message.id))
+      next.forEach((message, index) => {
+        const saved = turnMessages[index]
+        if (saved !== undefined && message !== saved && !dirty.has(message.id)) dirty.set(message.id, saved)
+      })
       turnMessages = next
     }
 

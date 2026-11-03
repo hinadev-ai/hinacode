@@ -34,6 +34,7 @@ import threadDraft from "./migrations/0033_thread_draft.ts"
 import opencodeProvider from "./migrations/0035_opencode_provider.ts"
 import archiveSharedChats from "./migrations/0024_archive_shared_chats.ts"
 import ftsToolTitles from "./migrations/0034_fts_tool_titles.ts"
+import messagePart from "./migrations/0036_message_part.ts"
 
 const run = Migrator.make({})
 
@@ -73,6 +74,7 @@ export const runMigrations = run({
     "33_thread_draft": threadDraft,
     "34_fts_tool_titles": ftsToolTitles,
     "35_opencode_provider": opencodeProvider,
+    "36_message_part": messagePart,
   }),
 }).pipe(
   Effect.tap((ran) =>
