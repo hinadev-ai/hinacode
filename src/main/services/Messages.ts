@@ -15,7 +15,7 @@ const MessageRow = Schema.Struct({
 
 export interface ToolCallRef {
   readonly threadId: string
-  readonly messageId: string
+  readonly messageId?: string | undefined
   readonly callId: string
 }
 
@@ -54,13 +54,19 @@ const make = Effect.gen(function* () {
   })
 
   const findToolOutput = SqlSchema.findOneOption({
-    Request: Schema.Struct({ threadId: Schema.String, messageId: Schema.String, callId: Schema.String }),
+    Request: Schema.Struct({
+      threadId: Schema.String,
+      messageId: Schema.optional(Schema.String),
+      callId: Schema.String,
+    }),
     Result: Schema.Struct({ output: Schema.fromJsonString(Schema.Unknown) }),
-    execute: ({ threadId, messageId, callId }) => sql`
+    execute: ({ threadId, messageId, callId }) => {
+      const inMessage = messageId === undefined ? sql.literal("") : sql`AND message.id = ${messageId}`
+      return sql`
       SELECT part.value -> '$.output' AS output
       FROM message, json_each(message.parts) AS part
-      WHERE message.id = ${messageId}
-        AND message.thread_id = ${threadId}
+      WHERE message.thread_id = ${threadId}
+        ${inMessage}
         AND json_extract(part.value, '$.type') = 'tool_call'
         AND json_extract(part.value, '$.callId') = ${callId}
         AND part.value -> '$.output' IS NOT NULL
@@ -68,10 +74,12 @@ const make = Effect.gen(function* () {
       SELECT message_part.part -> '$.output' AS output
       FROM message JOIN message_part ON message_part.message_id = message.id
       WHERE message.thread_id = ${threadId}
+        ${inMessage}
         AND json_extract(message_part.part, '$.type') = 'tool_call'
         AND json_extract(message_part.part, '$.callId') = ${callId}
         AND message_part.part -> '$.output' IS NOT NULL
-    `,
+    `
+    },
   })
 
   const findInterrupted = SqlSchema.findAll({

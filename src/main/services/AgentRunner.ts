@@ -1479,6 +1479,7 @@ const make = Effect.gen(function* () {
       const live = activeTurns
         .get(call.threadId)
         ?.messages()
+        .filter((message) => call.messageId === undefined || message.id === call.messageId)
         .flatMap((message) => message.parts)
         .find((part) => part.type === "tool_call" && part.callId === call.callId)
       const persisted = messages.toolOutput(call).pipe(
