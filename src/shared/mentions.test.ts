@@ -84,6 +84,7 @@ test("suggests same-machine threads before other machines' threads, even when a 
     [],
     mentionableThreads(threads[0]!, threads, projects),
     [],
+    [],
   )
   expect(suggestions.map((suggestion) => suggestion.insert)).toStrictEqual([
     "@thread:desktop-login",

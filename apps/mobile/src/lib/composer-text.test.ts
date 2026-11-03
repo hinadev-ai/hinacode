@@ -10,6 +10,7 @@ const known = {
   commands: new Set(["/triage-issue", "/compact"]),
   files: new Set(["src/login.ts"]),
   threads: new Set<string>(),
+  terminals: new Set<string>(),
 }
 
 describe("composerSpans", () => {

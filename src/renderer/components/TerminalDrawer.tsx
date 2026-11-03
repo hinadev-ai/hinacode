@@ -1,6 +1,7 @@
 import { type KeyboardEvent, type PointerEvent, useEffect, useLayoutEffect, useRef } from "react"
 import type { TerminalSession } from "../../shared/domain.ts"
 import { TERMINAL_HEIGHT_BOUNDS } from "../lib/panelSize.ts"
+import { terminalLabel } from "../lib/terminalLabel.ts"
 import { attachTerminal, focusTerminal, showTerminal } from "../lib/terminalScreens.ts"
 import { m } from "../paraglide/messages.js"
 import { useTerminals } from "../stores/terminals.ts"
@@ -86,7 +87,7 @@ function OpenDrawer({ threadId, sessions, activeId }: OpenDrawerProps) {
               <SessionTab
                 key={session.id}
                 session={session}
-                name={session.title ?? m.terminal_tab({ index: index + 1 })}
+                name={terminalLabel(session, index)}
                 onClose={() => void terminals().close(threadId, session.id)}
               />
             ))}

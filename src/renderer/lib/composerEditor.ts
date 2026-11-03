@@ -11,6 +11,7 @@ export interface ComposerConfig {
   readonly commands: ReadonlyArray<AgentCommand>
   readonly files: ReadonlyArray<string>
   readonly threadIds: ReadonlyArray<string>
+  readonly terminalIds: ReadonlyArray<string>
   readonly placeholder: string
   readonly codeTheme: string | undefined
   readonly scheme: "dark" | "light"
@@ -26,6 +27,7 @@ const withKnown = (config: ComposerConfig): Config => ({
     commands: new Set(config.commands.map((command) => command.trigger + command.name)),
     files: new Set(config.files),
     threads: new Set(config.threadIds),
+    terminals: new Set(config.terminalIds),
   },
 })
 
@@ -35,6 +37,7 @@ const sameConfig = (a: ComposerConfig, b: ComposerConfig) =>
   a.codeTheme === b.codeTheme &&
   a.scheme === b.scheme &&
   a.threadIds.join("\n") === b.threadIds.join("\n") &&
+  a.terminalIds.join("\n") === b.terminalIds.join("\n") &&
   JSON.stringify(a.commands) === JSON.stringify(b.commands)
 
 const setConfig = StateEffect.define<ComposerConfig>()
@@ -42,7 +45,15 @@ const redraw = StateEffect.define<null>()
 
 const configField = StateField.define<Config>({
   create: () =>
-    withKnown({ commands: [], files: [], threadIds: [], placeholder: "", codeTheme: undefined, scheme: "dark" }),
+    withKnown({
+      commands: [],
+      files: [],
+      threadIds: [],
+      terminalIds: [],
+      placeholder: "",
+      codeTheme: undefined,
+      scheme: "dark",
+    }),
   update: (config, transaction) =>
     transaction.effects.reduce((next, effect) => (effect.is(setConfig) ? withKnown(effect.value) : next), config),
 })

@@ -25,6 +25,7 @@ import { providerInfo } from "../../shared/providers.ts"
 import { mentionableThreads } from "../../shared/mentions.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { promptWithComments } from "../lib/lineComments.ts"
+import { mentionableTerminals } from "../lib/terminalLabel.ts"
 import {
   callPromise,
   commandsAtom,
@@ -40,6 +41,7 @@ import { useIsChat } from "../lib/useIsChat.ts"
 import { m } from "../paraglide/messages.js"
 import { type Draft, emptyDraft, useDrafts } from "../stores/drafts.ts"
 import { useMessages } from "../stores/messages.ts"
+import { useTerminals } from "../stores/terminals.ts"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import {
@@ -142,6 +144,8 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   const threadsById = useThreads((state) => state.byId)
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => [])
   const mentionable = mentionableThreads(thread, Object.values(threadsById), projects)
+  const terminalSessions = useTerminals((state) => state.byThreadId[thread.id]?.sessions)
+  const terminals = mentionableTerminals(terminalSessions ?? [])
   const refreshCommands = useAtomRefresh(commandsAtom(key))
   const refreshRootBranch = useAtomRefresh(currentBranchAtom(thread.projectId))
   const busy = isThreadBusy(thread.status)
@@ -314,6 +318,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
                 commands={commands}
                 files={files}
                 threads={mentionable}
+                terminals={terminals}
                 projectId={thread.projectId}
                 onEnter={(event) => send(steers ? deliveryOf(event) : "queue")}
                 onPaste={onPaste}

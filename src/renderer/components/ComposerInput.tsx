@@ -13,6 +13,7 @@ import {
   endsWithClosedFence,
   indentList,
   listBackspace,
+  type MentionableTerminal,
   type Suggestion,
   suggestionsFor,
 } from "../../shared/composerSyntax.ts"
@@ -23,7 +24,7 @@ import { usePullRequestSearch } from "../lib/usePullRequestSearch.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { ProviderIcon } from "./ProviderIcon.tsx"
-import { FileIcon, SkillIcon, SlashIcon } from "@hinacode/icons"
+import { FileIcon, SkillIcon, SlashIcon, TerminalIcon } from "@hinacode/icons"
 import { StatusIcon } from "./ThreadPullRequests.tsx"
 
 const scrollIntoViewNearest = (option: HTMLElement | null) => option?.scrollIntoView({ block: "nearest" })
@@ -39,6 +40,7 @@ interface ComposerInputProps {
   readonly commands: ReadonlyArray<AgentCommand>
   readonly files: ReadonlyArray<string>
   readonly threads: MentionableThreads<Thread>
+  readonly terminals: ReadonlyArray<MentionableTerminal>
   readonly projectId: string
   readonly placeholder: string
   readonly "aria-label": string
@@ -54,6 +56,7 @@ export function ComposerInput({
   commands,
   files,
   threads,
+  terminals,
   projectId,
   placeholder,
   "aria-label": label,
@@ -73,7 +76,7 @@ export function ComposerInput({
   const completion = completionAt(value, caret)
   const active = completion && completion.start !== dismissedAt ? completion : null
   const pullRequests = usePullRequestSearch(projectId, active?.trigger === "#" ? active.query : null)
-  const suggestions = active ? suggestionsFor(active, commands, files, threads, pullRequests) : []
+  const suggestions = active ? suggestionsFor(active, commands, files, threads, terminals, pullRequests) : []
   const open = completion !== null && suggestions.length > 0
   const activeIndex = completion?.start === selected.start ? Math.min(selected.index, suggestions.length - 1) : 0
   const optionId = (index: number) => `${listId}-${index}`
@@ -221,6 +224,7 @@ export function ComposerInput({
       commands,
       files,
       threadIds: [...threads.sameMachine, ...threads.otherMachines].map((thread) => thread.id),
+      terminalIds: terminals.map((terminal) => terminal.session.id),
       placeholder,
       codeTheme,
       scheme,
@@ -288,6 +292,19 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
         </span>
         <span className="min-w-0 truncate">{thread.title}</span>
         <span className="shrink-0 font-mono text-xs text-muted-foreground">{thread.model}</span>
+      </>
+    )
+  }
+  if (suggestion.type === "terminal") {
+    const { session } = suggestion
+    return (
+      <>
+        <TerminalIcon aria-hidden className="size-3.5 shrink-0 self-center text-muted-foreground" />
+        <span className="shrink-0">{suggestion.label}</span>
+        <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">{session.cwd}</span>
+        {session.status === "exited" && (
+          <span className="ms-auto shrink-0 ps-2 text-xs text-muted-foreground">{m.terminal_tab_exited()}</span>
+        )}
       </>
     )
   }
