@@ -75,6 +75,20 @@ describe("Search.threads", () => {
     }).pipe(withSearch(Search.layer)),
   )
 
+  it.effect("snippets the occurrence that matched, deep inside a long message", () =>
+    Effect.gen(function* () {
+      const { threadId } = yield* seedThread({ rootPath: repo })
+      yield* insertMessage(threadId, [
+        text(`an agent\nStatus line${"\n  filler line".repeat(20_000)}\nthen the agent sets up the project\n\n\nend`),
+      ])
+      const search = yield* Search.Search
+
+      const [hit] = yield* search.threads("agent s")
+      expect(hit?.snippet).toMatch(/^….* then the agent sets up the project end$/)
+      expect(hit?.snippet.length).toBeLessThanOrEqual(81)
+    }).pipe(withSearch(Search.layer)),
+  )
+
   it.effect("perThread keeps an older thread that a busy thread would push past the limit", () =>
     Effect.gen(function* () {
       const quiet = (yield* seedThread({ rootPath: repo })).threadId
