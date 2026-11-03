@@ -57,6 +57,14 @@ const spawnSubagent = (threadId, turnId) => {
   childItem("item/completed", { item: { ...command, status: "completed", aggregatedOutput: null, exitCode: 0 } })
 }
 
+const finishSubagent = () => {
+  const child = "codex-child-thread"
+  const message = { type: "agentMessage", id: "child-reply", text: "218 lines" }
+  send({ method: "item/completed", params: { threadId: child, turnId: "child-turn", item: message } })
+  completeTurn(child, "child-turn", "completed")
+}
+
+let subagentFinished = false
 const held = []
 const terminals = new Map()
 let turns = 0
@@ -243,4 +251,8 @@ watch(process.env.FAKE_CODEX_CONTROL, () => {
     activeQuestion = null
   }
   if (held.length > 0 && control().release) held.splice(0).forEach(reply)
+  if (control().finishSubagent && !subagentFinished) {
+    subagentFinished = true
+    finishSubagent()
+  }
 })

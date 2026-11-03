@@ -2,7 +2,7 @@ import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, watch,
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { beforeEach, describe, expect, it } from "@effect/vitest"
-import { Effect, Fiber, PubSub, Queue, Stream } from "effect"
+import { Effect, Fiber, Option, PubSub, Queue, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import type { AccountHome, AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
 import { AGENT_INSTRUCTIONS } from "../instructions.ts"
@@ -28,6 +28,7 @@ type Control = {
   accountFromHome?: boolean
   subagent?: boolean
   subagentPending?: boolean
+  finishSubagent?: boolean
   plan?: boolean
   compaction?: boolean
   backgroundTerminal?: boolean
@@ -453,21 +454,53 @@ describe("Codex sub-agents", () => {
     ),
   )
 
-  it.live("reports when a sub-agent cannot be stopped after its parent turn ends", () =>
+  it.live("reports a sub-agent that finishes after its parent turn ends", () =>
     withProvider(
       Effect.gen(function* () {
         const provider = yield* CodexProvider
+        const changes = provider.subagentChanges ?? Stream.die("subagentChanges is missing")
         setControl({ subagent: true })
         const turn = yield* startTurn("subagent-thread")
         yield* finishesSoon(turn.fiber)
-
-        const result = yield* Effect.exit(
-          (provider.stopSubagent ?? (() => Effect.die("stopSubagent is missing")))(
-            "subagent-thread",
-            "codex-child-thread",
-          ),
+        const finished = yield* changes.pipe(
+          Stream.filter(({ subagent }) => subagent.status !== "running"),
+          Stream.runHead,
+          Effect.forkChild,
         )
-        expect(result._tag).toBe("Failure")
+
+        setControl({ subagent: true, finishSubagent: true })
+
+        expect(yield* Fiber.join(finished)).toMatchObject(
+          Option.some({
+            threadId: "subagent-thread",
+            subagent: { id: "codex-child-thread", status: "completed", summary: "218 lines" },
+          }),
+        )
+      }),
+    ),
+  )
+
+  it.live("stops a sub-agent that outlives its parent turn", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        const changes = provider.subagentChanges ?? Stream.die("subagentChanges is missing")
+        setControl({ subagent: true })
+        const turn = yield* startTurn("subagent-thread")
+        yield* finishesSoon(turn.fiber)
+        const stopped = yield* changes.pipe(Stream.runHead, Effect.forkChild)
+
+        yield* (provider.stopSubagent ?? (() => Effect.die("stopSubagent is missing")))(
+          "subagent-thread",
+          "codex-child-thread",
+        )
+
+        expect(received().filter((message) => message.method === "turn/interrupt")).toMatchObject([
+          { params: { threadId: "codex-child-thread", turnId: "child-turn" } },
+        ])
+        expect(yield* Fiber.join(stopped)).toMatchObject(
+          Option.some({ subagent: { id: "codex-child-thread", status: "stopped" } }),
+        )
       }),
     ),
   )
