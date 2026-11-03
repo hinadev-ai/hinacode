@@ -56,7 +56,8 @@ import { makeAndroidDriver } from "./services/devices/android.ts"
 import { devicesLayer } from "./services/devices/Devices.ts"
 import { makeIosDriver, simslimAvailable } from "./services/devices/ios.ts"
 import { simhelperSources } from "./services/devices/simhelperSources.ts"
-import { traceLayer } from "./trace.ts"
+import { SpanLedger, traceLayer } from "./trace.ts"
+import { STALL_MS, watchdogLayer } from "./watchdog.ts"
 
 export interface AppOptions {
   readonly userData: string
@@ -128,6 +129,7 @@ export const makeAppLayer = ({
   artifactInspector = ArtifactInspector.unavailable,
 }: AppOptions) => {
   const providers = agentProviders(process.env)
+  const spans = new SpanLedger(STALL_MS)
   const chats = Layer.effectDiscard(Projects.Projects.use((projects) => projects.ensureChats(join(userData, "chats"))))
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
@@ -203,6 +205,7 @@ export const makeAppLayer = ({
     Layer.provideMerge(makeEventsLayer(toWindows)),
     Layer.provide(Layer.mergeAll(Db.layer(join(userData, "hinacode.sqlite")), keyring)),
     Layer.provide(NodeServices.layer),
-    Layer.provideMerge(traceLayer(process.env["HINACODE_TRACE"])),
+    Layer.provideMerge(watchdogLayer(spans)),
+    Layer.provideMerge(traceLayer(process.env["HINACODE_TRACE"], spans)),
   )
 }
