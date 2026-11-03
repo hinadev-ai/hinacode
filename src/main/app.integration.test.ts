@@ -22,6 +22,7 @@ const resume = (threadId: string): RunTurnInput => ({
   prompt: "accepted input",
   attachments: [],
   cwd: dir,
+  tmpDirectory: dir,
   model: "gpt-5.5",
   effort: null,
   fastMode: false,

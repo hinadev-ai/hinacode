@@ -519,10 +519,11 @@ const make = Effect.gen(function* () {
         gitOutput(cwd, ["branch", "--show-current"]),
         gitOutput(cwd, ["remote", "get-url", "origin"]),
         scratch.ensure(thread),
+        scratch.ensureTmp(thread.id),
       ],
       { concurrency: "unbounded" },
     ).pipe(
-      Effect.map(([branch, remote, scratchDirectory]): AgentEnvironment => ({
+      Effect.map(([branch, remote, scratchDirectory, tmpDirectory]): AgentEnvironment => ({
         gitRepository: Option.isSome(branch),
         branch: Option.getOrNull(branch) || null,
         cwd,
@@ -530,6 +531,7 @@ const make = Effect.gen(function* () {
         remote: Option.getOrNull(remote) || null,
         platform: process.platform,
         scratchDirectory,
+        tmpDirectory,
       })),
     )
 
@@ -548,6 +550,7 @@ const make = Effect.gen(function* () {
       const input: SessionInput = {
         threadId: thread.id,
         cwd,
+        tmpDirectory: environment.tmpDirectory,
         model: thread.model,
         effort: thread.effort,
         fastMode: thread.fastMode,
@@ -917,6 +920,7 @@ const make = Effect.gen(function* () {
           prompt: request.prompt,
           attachments: [],
           cwd: workspace.cwd,
+          tmpDirectory: environment.tmpDirectory,
           model,
           effort: request.effort ?? null,
           fastMode: false,

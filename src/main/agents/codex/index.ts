@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto"
+import { realpath } from "node:fs/promises"
 import {
   Context,
   Deferred,
@@ -39,6 +40,7 @@ import {
   MCP_TOOL_TIMEOUT_SECONDS,
   type SessionHistory,
   type SubagentChange,
+  tmpEnv,
 } from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { threadAccess, turnAccess } from "./access.ts"
@@ -381,6 +383,8 @@ const make = Effect.gen(function* () {
   const invalidResponse = (what: string) => () =>
     new AgentError({ provider: "codex", message: `Failed to ${what}: invalid response` })
 
+  const recordedCwd = (cwd: string) => Effect.promise(() => realpath(cwd).catch(() => cwd))
+
   const listSessions = (cwd: string, home: AccountHome | null) =>
     Effect.gen(function* () {
       const client = yield* getClient(home)
@@ -393,7 +397,7 @@ const make = Effect.gen(function* () {
       const response = yield* Schema.decodeUnknownEffect(ThreadListResponse)(raw).pipe(
         Effect.mapError(invalidResponse("list Codex sessions")),
       )
-      return toNativeSessions(response, cwd)
+      return toNativeSessions(response, yield* recordedCwd(cwd))
     })
 
   const listTurns = (client: CodexClient, threadId: string) =>
@@ -424,7 +428,7 @@ const make = Effect.gen(function* () {
           () => new AgentError({ provider: "codex", message: `Codex session ${sessionId} is no longer there` }),
         ),
       )
-      if (read.thread.cwd !== cwd) {
+      if (read.thread.cwd !== (yield* recordedCwd(cwd))) {
         return yield* new AgentError({ provider: "codex", message: `Codex session ${sessionId} ran in another folder` })
       }
       return yield* listTurns(client, sessionId).pipe(
@@ -493,6 +497,7 @@ const make = Effect.gen(function* () {
             ...threadAccess(input.accessMode),
             config: {
               tools: { update_plan: { enabled: true } },
+              ...(input.tmpDirectory !== null && { shell_environment_policy: { set: tmpEnv(input.tmpDirectory) } }),
               ...(input.autoCompactTokens !== null && { model_auto_compact_token_limit: input.autoCompactTokens }),
               ...(hiddenSkills !== null && {
                 skills: { config: hiddenSkills.map((skill) => ({ path: skill.path, enabled: false })) },

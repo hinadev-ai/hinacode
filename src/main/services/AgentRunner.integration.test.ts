@@ -157,7 +157,7 @@ const withPreparingThread = async (
   }
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
-      Layer.provideMerge(Scratch.layer(join(dir, "scratch"))),
+      Layer.provideMerge(Scratch.layer(join(dir, "scratch"), { tmpRoot: join(dir, "tmp") })),
       Layer.provide(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
