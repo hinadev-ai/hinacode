@@ -41,11 +41,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
-import { MoreIcon } from "../icons/MoreIcon.tsx"
-import { PencilIcon } from "../icons/PencilIcon.tsx"
-import { PlusIcon } from "../icons/PlusIcon.tsx"
-import { RefreshIcon } from "../icons/RefreshIcon.tsx"
-import { TrashIcon } from "../icons/TrashIcon.tsx"
+import { MoreIcon, PencilIcon, PlusIcon, RefreshIcon, TrashIcon } from "@hinacode/icons"
 
 const signedOutHint = {
   claude: m.settings_account_signed_out_claude,

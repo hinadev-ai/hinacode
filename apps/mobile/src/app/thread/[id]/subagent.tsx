@@ -58,7 +58,7 @@ export default function SubagentScreen() {
       )}
       {thread === undefined ? (
         loaded ? (
-          <EmptyState icon="RiQuestionLine" title={copy("mobile_thread_missing")} />
+          <EmptyState icon="Question" title={copy("mobile_thread_missing")} />
         ) : (
           <Loading />
         )
@@ -118,7 +118,7 @@ function SubagentBody({
   const createdAt = work.startedAt ?? subagent?.startedAt
 
   if (status === undefined || createdAt === undefined)
-    return <EmptyState icon="RiQuestionLine" title={copy("mobile_subagent_missing")} />
+    return <EmptyState icon="Question" title={copy("mobile_subagent_missing")} />
 
   const failed = status === "failed"
   const reply: Message = {
@@ -194,7 +194,7 @@ function StopButton({ threadId, subagent }: { threadId: string; subagent: Subage
         testID="subagent-stop"
         label={copy("mobile_subagent_stop")}
         accessibilityHint={copy("mobile_subagent_stop_hint")}
-        icon="RiStopCircleLine"
+        icon="StopCircle"
         variant="danger"
         busy={busy}
         onPress={() => void stop()}

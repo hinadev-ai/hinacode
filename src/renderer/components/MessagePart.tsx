@@ -51,23 +51,25 @@ import { StatusIndicator, useThreadRowState } from "./SidebarThreadList.tsx"
 import { SubagentStatusIcon } from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
-import { BrainIcon } from "./icons/BrainIcon.tsx"
-import { ChatNewIcon } from "./icons/ChatNewIcon.tsx"
-import { CheckIcon } from "./icons/CheckIcon.tsx"
-import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
-import { CollapseIcon } from "./icons/CollapseIcon.tsx"
-import { FileDiffIcon } from "./icons/FileDiffIcon.tsx"
-import { FileTextIcon } from "./icons/FileTextIcon.tsx"
-import { GlobeIcon } from "./icons/GlobeIcon.tsx"
-import type { IconComponent } from "./icons/Icon.tsx"
-import { LayoutIcon } from "./icons/LayoutIcon.tsx"
-import { PencilIcon } from "./icons/PencilIcon.tsx"
-import { SearchIcon } from "./icons/SearchIcon.tsx"
-import { SkillIcon } from "./icons/SkillIcon.tsx"
-import { SpinnerIcon } from "./icons/SpinnerIcon.tsx"
-import { TerminalIcon } from "./icons/TerminalIcon.tsx"
-import { ToolsIcon } from "./icons/ToolsIcon.tsx"
-import { WarningIcon } from "./icons/WarningIcon.tsx"
+import {
+  BrainIcon,
+  ChatNewIcon,
+  CheckIcon,
+  ChevronRightIcon,
+  CollapseIcon,
+  FileDiffIcon,
+  FileTextIcon,
+  GlobeIcon,
+  type IconComponent,
+  LayoutIcon,
+  PencilIcon,
+  SearchIcon,
+  SkillIcon,
+  SpinnerIcon,
+  TerminalIcon,
+  ToolsIcon,
+  WarningIcon,
+} from "@hinacode/icons"
 
 export function MessagePartView({ part }: { part: MessagePart }) {
   switch (part.type) {

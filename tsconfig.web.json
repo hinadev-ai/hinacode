@@ -7,6 +7,11 @@
     "allowJs": true,
     "paths": { "@/*": ["./src/renderer/*"] }
   },
-  "include": ["src/renderer/**/*", "src/shared/**/*", "src/preload/*.d.ts", "site/app/**/*"],
-  "exclude": ["src/renderer/**/*.test.ts", "src/renderer/**/*.test.tsx"]
+  "include": ["src/renderer/**/*", "src/shared/**/*", "src/preload/*.d.ts", "site/app/**/*", "packages/icons/src/**/*"],
+  "exclude": [
+    "src/renderer/**/*.test.ts",
+    "src/renderer/**/*.test.tsx",
+    "packages/icons/src/*.native.tsx",
+    "packages/icons/src/*.web.tsx"
+  ]
 }

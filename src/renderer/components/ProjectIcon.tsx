@@ -2,7 +2,7 @@ import { useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { projectIconAtom } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
-import { FolderIcon } from "./icons/FolderIcon.tsx"
+import { FolderIcon } from "@hinacode/icons"
 
 export function ProjectIcon({ projectId, className = "size-4" }: { projectId: string; className?: string }) {
   const icon = AsyncResult.getOrElse(useAtomValue(projectIconAtom(projectId)), () => null)

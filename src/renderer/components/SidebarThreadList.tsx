@@ -59,20 +59,22 @@ import { Input } from "./ui/input.tsx"
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle } from "./ui/popover.tsx"
 import { ProjectIcon } from "./ProjectIcon.tsx"
 import { snoozeThread } from "./SnoozeDialog.tsx"
-import { AlarmIcon } from "./icons/AlarmIcon.tsx"
-import { ArchiveIcon } from "./icons/ArchiveIcon.tsx"
-import { CopyIcon } from "./icons/CopyIcon.tsx"
-import { EyeIcon } from "./icons/EyeIcon.tsx"
-import { EyeOffIcon } from "./icons/EyeOffIcon.tsx"
-import { GripIcon } from "./icons/GripIcon.tsx"
-import type { IconComponent } from "./icons/Icon.tsx"
-import { MoreIcon } from "./icons/MoreIcon.tsx"
-import { PencilIcon } from "./icons/PencilIcon.tsx"
-import { PinIcon } from "./icons/PinIcon.tsx"
-import { SnoozeIcon } from "./icons/SnoozeIcon.tsx"
-import { TrashIcon } from "./icons/TrashIcon.tsx"
-import { UnarchiveIcon } from "./icons/UnarchiveIcon.tsx"
-import { UnpinIcon } from "./icons/UnpinIcon.tsx"
+import {
+  AlarmIcon,
+  ArchiveIcon,
+  CopyIcon,
+  EyeIcon,
+  EyeOffIcon,
+  GripIcon,
+  type IconComponent,
+  MoreIcon,
+  PencilIcon,
+  PinIcon,
+  SnoozeIcon,
+  TrashIcon,
+  UnarchiveIcon,
+  UnpinIcon,
+} from "@hinacode/icons"
 
 type DragDropPlugins = NonNullable<ComponentProps<typeof DragDropProvider>["plugins"]>
 

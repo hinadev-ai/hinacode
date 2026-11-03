@@ -326,7 +326,7 @@ function AttachButton({ staging, onPress }: { staging: boolean; onPress: () => v
       {staging ? (
         <Spinner size={16} color={theme.textMuted} />
       ) : (
-        <Icon name="RiImageLine" size={16} color={theme.textMuted} />
+        <Icon name="Image" size={16} color={theme.textMuted} />
       )}
     </Pressable>
   )
@@ -350,7 +350,7 @@ function DraftImages({ images, onRemove }: { images: readonly DraftImage[]; onRe
             hitSlop={8}
             style={styles.removeImage}
           >
-            <Icon name="RiCloseCircleFill" size={20} color={theme.text} />
+            <Icon name="XCircleFill" size={20} color={theme.text} />
           </Pressable>
         </View>
       ))}
@@ -452,7 +452,7 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
       const slash = suggestion.path.lastIndexOf("/")
       return (
         <View style={styles.suggestionLine}>
-          <Icon name="RiFileLine" size={14} color={theme.textMuted} />
+          <Icon name="File" size={14} color={theme.textMuted} />
           <Text numberOfLines={1} style={[styles.suggestionFile, { color: theme.text }]}>
             {suggestion.path.slice(slash + 1)}
           </Text>
@@ -504,8 +504,8 @@ function SendButton({
       {halo && <SendHalo />}
       <IconSwap
         showSecond={stopping}
-        first={<Icon name="RiArrowUpLine" size={18} color={halo ? theme.haloInk : disabled ? theme.textMuted : theme.onPrimary} />}
-        second={<Icon name="RiStopFill" size={14} color={theme.danger} />}
+        first={<Icon name="ArrowUp" size={18} color={halo ? theme.haloInk : disabled ? theme.textMuted : theme.onPrimary} />}
+        second={<Icon name="Stop" size={14} color={theme.danger} />}
       />
     </motion.Pressable>
   )
@@ -579,9 +579,9 @@ const effortLabel = (effort: string) => effortLabels[effort] ?? effort
 const DEFAULT_EFFORT = "default"
 
 const accessModes: Record<AccessMode, { label: string; icon: IconName }> = {
-  supervised: { label: copy("mobile_settings_access_supervised"), icon: "RiShieldUserLine" },
-  auto: { label: copy("mobile_settings_access_auto"), icon: "RiShieldCheckLine" },
-  full: { label: copy("mobile_settings_access_full"), icon: "RiLockUnlockLine" },
+  supervised: { label: copy("mobile_settings_access_supervised"), icon: "ShieldUser" },
+  auto: { label: copy("mobile_settings_access_auto"), icon: "Shield" },
+  full: { label: copy("mobile_settings_access_full"), icon: "Unlock" },
 }
 
 /** What each mode lets through, which differs by agent and, for Claude's auto mode, by model. */
@@ -689,7 +689,7 @@ function SettingsChip({ thread, onError }: { thread: Thread; onError: OnError })
         <Text numberOfLines={1} style={[styles.chipLabel, { color: theme.text }]}>
           {modelLabel}
         </Text>
-        <Icon name="RiArrowDownSLine" size={12} color={theme.textMuted} />
+        <Icon name="ChevronDown" size={12} color={theme.textMuted} />
       </Pressable>
       <SettingsSheet thread={thread} open={open} onClose={() => setOpen(false)} onError={onError} />
     </>
@@ -809,7 +809,7 @@ function SettingsSheet({
           {current?.fastMode && (
             <Section title={copy("mobile_composer_speed")} role="group">
               <ToggleRow
-                icon="RiFlashlightLine"
+                icon="Bolt"
                 label={copy("mobile_composer_fast_mode")}
                 hint={copy("mobile_composer_fast_mode_hint")}
                 value={thread.fastMode}
@@ -820,7 +820,7 @@ function SettingsSheet({
           {hidesUserSkills[thread.provider] && (
             <Section title={copy("mobile_thread_conversation")} role="group">
               <ToggleRow
-                icon="RiChat1Line"
+                icon="Chat"
                 label={copy("mobile_thread_conversation_mode")}
                 hint={copy("mobile_thread_conversation_mode_hint")}
                 value={!thread.userSkills}

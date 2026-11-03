@@ -16,10 +16,7 @@ import { ProviderIcon } from "./ProviderIcon.tsx"
 import { useOpenSubagent } from "../lib/subagents.ts"
 import { Button } from "./ui/button.tsx"
 import { SkeletonList } from "./ui/skeleton.tsx"
-import { CheckIcon } from "./icons/CheckIcon.tsx"
-import { StopCircleIcon } from "./icons/StopCircleIcon.tsx"
-import { StopIcon } from "./icons/StopIcon.tsx"
-import { WarningIcon } from "./icons/WarningIcon.tsx"
+import { CheckIcon, StopCircleIcon, StopIcon, WarningIcon } from "@hinacode/icons"
 
 const NO_SUBAGENTS: ReadonlyArray<Subagent> = []
 

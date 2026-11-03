@@ -86,7 +86,7 @@ export function Sheet({
             <Text accessibilityRole="header" {...subheading} style={[styles.sheetTitle, { color: theme.text }]}>
               {title}
             </Text>
-            <IconButton icon="RiCloseLine" accessibilityLabel={copy("mobile_sheet_close")} onPress={onClose} />
+            <IconButton icon="Close" accessibilityLabel={copy("mobile_sheet_close")} onPress={onClose} />
           </View>
           {header}
           <ScrollView
@@ -169,7 +169,7 @@ export function OptionRow({
           </Text>
         )}
       </View>
-      {selected && <Icon name="RiCheckLine" size={18} color={theme.text} />}
+      {selected && <Icon name="Check" size={18} color={theme.text} />}
     </Pressable>
   )
 }

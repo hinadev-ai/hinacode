@@ -27,23 +27,25 @@ import { Button } from "./ui/button.tsx"
 import { OpenWithSubmenu } from "./OpenWith.tsx"
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "./ui/context-menu.tsx"
 import { DropdownMenuItem } from "./ui/dropdown-menu.tsx"
-import { AtIcon } from "./icons/AtIcon.tsx"
-import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
-import { CollapseIcon } from "./icons/CollapseIcon.tsx"
-import { CopyIcon } from "./icons/CopyIcon.tsx"
-import { FileCodeIcon } from "./icons/FileCodeIcon.tsx"
-import { FileDiffIcon } from "./icons/FileDiffIcon.tsx"
-import { FileIcon } from "./icons/FileIcon.tsx"
-import { FileMusicIcon } from "./icons/FileMusicIcon.tsx"
-import { FileTextIcon } from "./icons/FileTextIcon.tsx"
-import { FileVideoIcon } from "./icons/FileVideoIcon.tsx"
-import { FolderIcon } from "./icons/FolderIcon.tsx"
-import { FolderOpenIcon } from "./icons/FolderOpenIcon.tsx"
-import type { IconComponent } from "./icons/Icon.tsx"
-import { ImageIcon } from "./icons/ImageIcon.tsx"
-import { LinkIcon } from "./icons/LinkIcon.tsx"
-import { MarkdownIcon } from "./icons/MarkdownIcon.tsx"
-import { RefreshIcon } from "./icons/RefreshIcon.tsx"
+import {
+  AtIcon,
+  ChevronRightIcon,
+  CollapseIcon,
+  CopyIcon,
+  FileCodeIcon,
+  FileDiffIcon,
+  FileIcon,
+  FileMusicIcon,
+  FileTextIcon,
+  FileVideoIcon,
+  FolderIcon,
+  FolderOpenIcon,
+  type IconComponent,
+  ImageIcon,
+  LinkIcon,
+  MarkdownIcon,
+  RefreshIcon,
+} from "@hinacode/icons"
 
 const ROW_HEIGHT = 24
 const INDENT = 12

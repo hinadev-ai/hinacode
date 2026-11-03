@@ -9,12 +9,7 @@ import { useDrafts } from "../stores/drafts.ts"
 import { ActivityRow } from "./ActivityRow.tsx"
 import { Button } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
-import { ClockIcon } from "./icons/ClockIcon.tsx"
-import { ShieldIcon } from "./icons/ShieldIcon.tsx"
-import { CloseIcon } from "./icons/CloseIcon.tsx"
-import { SteerIcon } from "./icons/SteerIcon.tsx"
-import type { IconComponent } from "./icons/Icon.tsx"
-import { PencilIcon } from "./icons/PencilIcon.tsx"
+import { ClockIcon, CloseIcon, type IconComponent, PencilIcon, ShieldIcon, SteerIcon } from "@hinacode/icons"
 
 const summaryOf = (message: QueuedMessage) =>
   message.text.trim() || m.queue_attachments({ count: message.attachments.length })

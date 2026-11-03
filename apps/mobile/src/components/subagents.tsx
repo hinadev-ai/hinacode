@@ -25,9 +25,9 @@ export const subagentStatusLabel = {
 } satisfies Record<SubagentStatus, string>
 
 const statusIcon = {
-  completed: "RiCheckLine",
-  failed: "RiErrorWarningLine",
-  stopped: "RiStopCircleLine",
+  completed: "Check",
+  failed: "Warning",
+  stopped: "StopCircle",
 } satisfies Record<Exclude<SubagentStatus, "running">, IconName>
 
 const statusColor = (theme: Palette, status: SubagentStatus) =>
@@ -112,7 +112,7 @@ export function SubagentCall({ part, threadId }: { part: ToolCall; threadId: str
         {part.name}
         <Text style={{ color: theme.textMuted }}> {label}</Text>
       </Text>
-      <Icon name="RiArrowRightSLine" size={16} color={theme.textMuted} />
+      <Icon name="ChevronRight" size={16} color={theme.textMuted} />
     </Pressable>
   )
 }
@@ -152,7 +152,7 @@ function SubagentRow({ threadId, subagent, now }: { threadId: string; subagent: 
     >
       {body}
       <View style={styles.rowIcon}>
-        <Icon name="RiArrowRightSLine" size={16} color={theme.textMuted} />
+        <Icon name="ChevronRight" size={16} color={theme.textMuted} />
       </View>
     </Pressable>
   )
@@ -206,7 +206,7 @@ export function SubagentTray({ thread }: { thread: Thread }) {
         )}
         <View style={styles.chevron}>
           <Rotate turned={expanded}>
-            <Icon name="RiArrowRightSLine" size={16} color={theme.textMuted} />
+            <Icon name="ChevronRight" size={16} color={theme.textMuted} />
           </Rotate>
         </View>
       </Pressable>

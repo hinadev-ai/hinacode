@@ -33,13 +33,13 @@ describe("fileKind", () => {
 
 describe("entryIcon", () => {
   it("picks an icon by kind and extension", () => {
-    expect(entryIcon("src", "dir")).toBe("RiFolderLine")
-    expect(entryIcon("src/index.tsx", "file")).toBe("RiFileCodeLine")
-    expect(entryIcon("logo.svg", "file")).toBe("RiImageLine")
-    expect(entryIcon("README.md", "symlink")).toBe("RiMarkdownLine")
-    expect(entryIcon("notes.txt", "file")).toBe("RiFileTextLine")
-    expect(entryIcon("LICENSE", "file")).toBe("RiFileTextLine")
-    expect(entryIcon("data.bin", "file")).toBe("RiFileLine")
+    expect(entryIcon("src", "dir")).toBe("Folder")
+    expect(entryIcon("src/index.tsx", "file")).toBe("FileCode")
+    expect(entryIcon("logo.svg", "file")).toBe("Image")
+    expect(entryIcon("README.md", "symlink")).toBe("Markdown")
+    expect(entryIcon("notes.txt", "file")).toBe("FileText")
+    expect(entryIcon("LICENSE", "file")).toBe("FileText")
+    expect(entryIcon("data.bin", "file")).toBe("File")
   })
 })
 

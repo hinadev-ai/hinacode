@@ -12,18 +12,18 @@ export interface ThreadAction {
   readonly icon: IconName
 }
 
-const copyId: ThreadAction = { name: "copy-id", label: copy("mobile_thread_actions_copy_id"), icon: "RiFileCopyLine" }
+const copyId: ThreadAction = { name: "copy-id", label: copy("mobile_thread_actions_copy_id"), icon: "Copy" }
 
 /** What a thread offers on long press: an archived thread can only come back, an active one can be pinned. */
 export function threadActions(thread: Thread): readonly ThreadAction[] {
   if (thread.status === "archived")
-    return [copyId, { name: "unarchive", label: copy("mobile_thread_actions_unarchive"), icon: "RiInboxUnarchiveLine" }]
+    return [copyId, { name: "unarchive", label: copy("mobile_thread_actions_unarchive"), icon: "Unarchive" }]
   return [
     thread.pinnedAt === null
-      ? { name: "pin", label: copy("mobile_thread_actions_pin"), icon: "RiPushpinLine" }
-      : { name: "unpin", label: copy("mobile_thread_actions_unpin"), icon: "RiUnpinLine" },
+      ? { name: "pin", label: copy("mobile_thread_actions_pin"), icon: "Pin" }
+      : { name: "unpin", label: copy("mobile_thread_actions_unpin"), icon: "Unpin" },
     copyId,
-    { name: "archive", label: copy("mobile_thread_actions_archive"), icon: "RiArchiveLine" },
+    { name: "archive", label: copy("mobile_thread_actions_archive"), icon: "Archive" },
   ]
 }
 

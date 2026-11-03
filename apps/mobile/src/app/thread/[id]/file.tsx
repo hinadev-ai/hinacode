@@ -38,7 +38,7 @@ export default function FileScreen() {
           line={target !== null && Number.isFinite(target) && target > 0 ? target : null}
         />
       ) : loaded ? (
-        <EmptyState icon="RiQuestionLine" title={copy("mobile_files_thread_missing")} />
+        <EmptyState icon="Question" title={copy("mobile_files_thread_missing")} />
       ) : (
         <Loading label={copy("mobile_files_loading_thread")} />
       )}
@@ -124,9 +124,9 @@ function WithText({
   if (result === null) return <Loading label={copy("mobile_files_loading_file")} />
   if ("error" in result) return <Failure message={result.error} onRetry={retry} />
   if (result.value.binary) {
-    return <EmptyState icon="RiFileLine" title={copy("mobile_files_binary")} hint={copy("mobile_files_binary_hint")} />
+    return <EmptyState icon="File" title={copy("mobile_files_binary")} hint={copy("mobile_files_binary_hint")} />
   }
-  if (result.value.content === "") return <EmptyState icon="RiFileTextLine" title={copy("mobile_files_empty_file")} />
+  if (result.value.content === "") return <EmptyState icon="FileText" title={copy("mobile_files_empty_file")} />
   return children(result.value)
 }
 
@@ -369,7 +369,7 @@ function SvgFile({ root, path }: { root: string; path: string }) {
               width="100%"
               height="100%"
               onError={() => undefined}
-              fallback={<EmptyState icon="RiImageLine" title={copy("mobile_files_svg_failed")} />}
+              fallback={<EmptyState icon="Image" title={copy("mobile_files_svg_failed")} />}
             />
           </View>
         </ScrollView>

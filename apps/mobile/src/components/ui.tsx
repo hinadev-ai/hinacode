@@ -126,7 +126,7 @@ export function Pill({ label, tone, icon }: { label: string; tone: Tone; icon?: 
   const [fg, bg] = toneColors(theme)[tone]
   return (
     <View style={[styles.pill, { backgroundColor: bg }]}>
-      {icon === "RiLoader4Line" ? (
+      {icon === "Spinner" ? (
         <Spinner size={12} color={fg} />
       ) : (
         icon !== undefined && <Icon name={icon} size={12} color={fg} />
@@ -150,10 +150,10 @@ export const ThreadStatusPill = ({ status }: { status: ThreadStatus }) =>
   status === "idle" ? null : <Pill {...threadStatus[status]} />
 
 const connectionLabel: Record<ConnectionStatus, Status> = {
-  connected: { label: copy("mobile_connection_connected"), tone: "running", icon: "RiWifiLine" },
-  connecting: { label: copy("mobile_connection_connecting"), tone: "neutral", icon: "RiLoader4Line" },
-  offline: { label: copy("mobile_connection_offline"), tone: "attention", icon: "RiWifiOffLine" },
-  unauthorized: { label: copy("mobile_connection_unauthorized"), tone: "danger", icon: "RiLinkUnlinkM" },
+  connected: { label: copy("mobile_connection_connected"), tone: "running", icon: "Cloud" },
+  connecting: { label: copy("mobile_connection_connecting"), tone: "neutral", icon: "Spinner" },
+  offline: { label: copy("mobile_connection_offline"), tone: "attention", icon: "CloudOff" },
+  unauthorized: { label: copy("mobile_connection_unauthorized"), tone: "danger", icon: "Unlink" },
 }
 
 const fadeIn = { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: duration.fast } }
@@ -197,9 +197,9 @@ export function ProviderLabel({ provider, size = 13 }: { provider: ProviderId; s
 }
 
 const noticeIcon: Partial<Record<Tone, IconName>> = {
-  danger: "RiErrorWarningLine",
-  attention: "RiErrorWarningLine",
-  running: "RiCheckboxCircleLine",
+  danger: "Warning",
+  attention: "Warning",
+  running: "CheckCircle",
 }
 
 export function Notice({ text, tone = "neutral" }: { text: string; tone?: Tone }) {

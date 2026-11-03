@@ -11,8 +11,7 @@ import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { type Project, threadFolder, Thread } from "../../shared/domain.ts"
 import type { PaletteContext, PaletteItem, PaletteSource } from "./types.ts"
-import { FileTextIcon } from "../components/icons/FileTextIcon.tsx"
-import { PlusIcon } from "../components/icons/PlusIcon.tsx"
+import { FileTextIcon, PlusIcon } from "@hinacode/icons"
 
 const iconClass = "size-3.5 shrink-0 text-muted-foreground"
 

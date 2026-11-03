@@ -22,7 +22,7 @@ import { VmTemplateSelect } from "../sidePanel/TinyVmView.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { SecretField } from "./IntegrationSettings.tsx"
 import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
-import { CheckCircleFillIcon } from "../icons/CheckCircleFillIcon.tsx"
+import { CheckCircleFillIcon } from "@hinacode/icons"
 
 const BOAT_SIZES: ReadonlyArray<BoatVmSize> = ["small", "default", "large", "xlarge"]
 const isBoatSize = (value: string): value is BoatVmSize => BOAT_SIZES.some((size) => size === value)

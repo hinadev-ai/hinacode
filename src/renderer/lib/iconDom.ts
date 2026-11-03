@@ -1,5 +1,5 @@
 import { isValidElement, type ReactNode } from "react"
-import { iconAttributes } from "../components/icons/Icon.tsx"
+import { iconAttributes } from "@hinacode/icons"
 
 const SVG = "http://www.w3.org/2000/svg"
 

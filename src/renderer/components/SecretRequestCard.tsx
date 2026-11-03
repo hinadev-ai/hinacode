@@ -6,7 +6,7 @@ import { m } from "../paraglide/messages.js"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Input } from "./ui/input.tsx"
-import { KeyIcon } from "./icons/KeyIcon.tsx"
+import { KeyIcon } from "@hinacode/icons"
 
 export function SecretRequestCard({ request, providerLabel }: { request: SecretRequest; providerLabel: string }) {
   const inputId = useId()

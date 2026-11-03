@@ -63,7 +63,7 @@ import { FieldError } from "./ui/field.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 import { useModifierHeld } from "../lib/useModifierHeld.ts"
 import { SendGlyph, type SendGlyphMode } from "./icons/SendGlyph.tsx"
-import { UploadIcon } from "./icons/UploadIcon.tsx"
+import { UploadIcon } from "@hinacode/icons"
 import { ChordKeys } from "./ChordKeys.tsx"
 import { useKeymap } from "../keybindings/useKeybindings.ts"
 

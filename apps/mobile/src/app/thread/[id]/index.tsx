@@ -97,7 +97,7 @@ export default function ThreadScreen() {
           ) : (
             <IconButton
               testID="back-button"
-              icon="RiArrowLeftLine"
+              icon="ArrowLeft"
               accessibilityLabel={copy("mobile_thread_back")}
               onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
             />

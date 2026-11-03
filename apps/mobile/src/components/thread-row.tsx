@@ -161,7 +161,7 @@ export function ThreadRow({
           <ServerMark server={showProject ? server : undefined} />
           {branch !== null && (
             <View style={styles.branch}>
-              <Icon name="RiGitBranchLine" size={12} color={theme.textMuted} />
+              <Icon name="Branch" size={12} color={theme.textMuted} />
               <Text
                 numberOfLines={1}
                 style={[styles.meta, styles.mono, { color: theme.textMuted }, branch.removed && styles.removed]}
@@ -181,7 +181,7 @@ export function ThreadRow({
               />
             </View>
           )}
-          {watching && <Icon name="RiEyeLine" size={12} color={theme.textMuted} />}
+          {watching && <Icon name="Eye" size={12} color={theme.textMuted} />}
           <Text style={[styles.meta, styles.time, { color: theme.textMuted }]}>{time}</Text>
         </View>
       </Pressable>

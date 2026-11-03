@@ -14,11 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu.tsx"
-import { ComputerIcon } from "../icons/ComputerIcon.tsx"
-import { GlobeIcon } from "../icons/GlobeIcon.tsx"
-import { PhoneIcon } from "../icons/PhoneIcon.tsx"
-import { TabletIcon } from "../icons/TabletIcon.tsx"
-import { WarningIcon } from "../icons/WarningIcon.tsx"
+import { ComputerIcon, GlobeIcon, PhoneIcon, TabletIcon, WarningIcon } from "@hinacode/icons"
 
 export interface Device {
   readonly name: string

@@ -3,9 +3,7 @@
 import * as React from "react"
 import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { cn } from "cn"
-import { CheckIcon } from "../icons/CheckIcon.tsx"
-import { ChevronDownIcon } from "../icons/ChevronDownIcon.tsx"
-import { ChevronUpIcon } from "../icons/ChevronUpIcon.tsx"
+import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "@hinacode/icons"
 
 const Select = SelectPrimitive.Root
 

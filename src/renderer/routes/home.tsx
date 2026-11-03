@@ -8,8 +8,7 @@ import { projectsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { NEW_THREAD_PREFIX, usePalette } from "../palette/usePalette.ts"
 import { useUi } from "../stores/ui.ts"
-import { FolderAddIcon } from "../components/icons/FolderAddIcon.tsx"
-import { PlusIcon } from "../components/icons/PlusIcon.tsx"
+import { FolderAddIcon, PlusIcon } from "@hinacode/icons"
 
 const commandTitle = (id: "thread.new" | "project.add") => commands.find((command) => command.id === id)?.title() ?? ""
 

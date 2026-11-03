@@ -64,16 +64,18 @@ import {
 } from "./ui/dropdown-menu.tsx"
 import { SkeletonList } from "./ui/skeleton.tsx"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
-import { ChevronDownIcon } from "./icons/ChevronDownIcon.tsx"
-import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
-import { ExternalIcon } from "./icons/ExternalIcon.tsx"
-import { FileDiffIcon } from "./icons/FileDiffIcon.tsx"
-import { EyeFillIcon } from "./icons/EyeFillIcon.tsx"
-import { EyeIcon } from "./icons/EyeIcon.tsx"
-import type { IconComponent } from "./icons/Icon.tsx"
-import { MinusCircleIcon } from "./icons/MinusCircleIcon.tsx"
-import { MoreIcon } from "./icons/MoreIcon.tsx"
-import { UnlinkIcon } from "./icons/UnlinkIcon.tsx"
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  ExternalIcon,
+  EyeFillIcon,
+  EyeIcon,
+  FileDiffIcon,
+  type IconComponent,
+  MinusCircleIcon,
+  MoreIcon,
+  UnlinkIcon,
+} from "@hinacode/icons"
 import { Textarea } from "./ui/textarea.tsx"
 
 const PullRequestCode = lazy(() =>

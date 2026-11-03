@@ -76,7 +76,7 @@ export function SettingsRow({
         </Text>
       )}
       {children}
-      {onPress !== undefined && <Icon name="RiArrowRightSLine" size={18} color={theme.textMuted} />}
+      {onPress !== undefined && <Icon name="ChevronRight" size={18} color={theme.textMuted} />}
     </>
   )
   if (onPress === undefined) return <View style={styles.row}>{content}</View>

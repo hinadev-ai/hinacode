@@ -7,10 +7,7 @@ import { useTerminals } from "../stores/terminals.ts"
 import { useUi } from "../stores/ui.ts"
 import { Button } from "./ui/button.tsx"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.tsx"
-import { ChevronDownIcon } from "./icons/ChevronDownIcon.tsx"
-import { CloseIcon } from "./icons/CloseIcon.tsx"
-import { PlusIcon } from "./icons/PlusIcon.tsx"
-import { TerminalIcon } from "./icons/TerminalIcon.tsx"
+import { ChevronDownIcon, CloseIcon, PlusIcon, TerminalIcon } from "@hinacode/icons"
 
 const MIN_HEIGHT = TERMINAL_HEIGHT_BOUNDS.min
 const RESERVED_HEIGHT = 200

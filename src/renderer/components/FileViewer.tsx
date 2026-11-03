@@ -28,9 +28,7 @@ import { FilePath } from "./FilePatch.tsx"
 import { LineCommentCard, LineCommentForm } from "./LineComment.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { Button } from "./ui/button.tsx"
-import { CloseIcon } from "./icons/CloseIcon.tsx"
-import { CopyIcon } from "./icons/CopyIcon.tsx"
-import { FileDiffIcon } from "./icons/FileDiffIcon.tsx"
+import { CloseIcon, CopyIcon, FileDiffIcon } from "@hinacode/icons"
 
 interface FileViewerProps {
   readonly threadId: string
