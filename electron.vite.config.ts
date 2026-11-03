@@ -12,7 +12,7 @@ export default defineConfig({
   main: {
     plugins: [paraglide()],
     build: {
-      rollupOptions: { input: { index: "src/main/index.ts" } },
+      rollupOptions: { input: { index: "src/main/boot.ts", main: "src/main/index.ts" } },
       // FIXME: electron-vite bundles optional dependencies, which breaks these native modules' binding lookup
       externalizeDeps: {
         include: ["node-mac-permissions", "electron-liquid-glass"],
