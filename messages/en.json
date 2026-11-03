@@ -18,7 +18,7 @@
   "project_name_label": "Name",
   "project_name_placeholder": "my-app",
   "project_root_label": "Root path",
-  "project_root_placeholder": "/home/me/code/my-app",
+  "project_root_placeholder": "~/code/my-app",
   "project_root_browse": "Browse…",
   "project_setup_label": "Setup script",
   "project_setup_optional": "Optional",

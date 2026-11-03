@@ -29,6 +29,7 @@ import {
   type WorktreeCheckout,
   type WorktreeStatus,
 } from "../../shared/domain.ts"
+import { scriptShell } from "../scriptShell.ts"
 import { nowIso } from "./clock.ts"
 import {
   NotFoundError,
@@ -58,6 +59,8 @@ export type DeleteBranch = "keep" | "ifMerged" | "force"
 export const SETUP_TIMEOUT: Duration.Input = "60 seconds"
 export const FETCH_INTERVAL: Duration.Input = "5 minutes"
 const SETUP_OUTPUT_DRAIN_TIMEOUT: Duration.Input = "1 second"
+const GIT_BASH_MISSING =
+  "Setup scripts on Windows run in Git Bash, which comes with Git for Windows. Install it from https://git-scm.com, then try again."
 
 type Failure = PersistenceError | NotFoundError | CommandError
 
@@ -229,8 +232,13 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
 
   const runSetupScript = (worktree: Worktree, project: Project, script: string) =>
     Effect.gen(function* () {
+      const shell = yield* Effect.promise(scriptShell)
+      if (shell === undefined) {
+        yield* appendLog(worktree.id, `${GIT_BASH_MISSING}\n`)
+        return -1
+      }
       const handle = yield* spawner.spawn(
-        ChildProcess.make(process.env["SHELL"] || "/bin/sh", ["-lc", script], {
+        ChildProcess.make(shell, ["-lc", script], {
           cwd: worktree.path,
           env: {
             HINACODE_ROOT_PATH: project.rootPath,

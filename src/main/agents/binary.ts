@@ -1,20 +1,11 @@
-import { execFile } from "node:child_process"
-import { promisify } from "node:util"
 import { Effect } from "effect"
+import which from "which"
 import type { ProviderId } from "../../shared/agent.ts"
 import { providerInfo } from "../../shared/providers.ts"
 import { AgentError } from "./provider.ts"
 
-const execFileAsync = promisify(execFile)
-
-export const findBinary = async (name: string): Promise<string | undefined> => {
-  try {
-    const { stdout } = await execFileAsync("which", [name], { encoding: "utf8", timeout: 5000 })
-    return stdout.trim() || undefined
-  } catch {
-    return undefined
-  }
-}
+export const findBinary = async (name: string): Promise<string | undefined> =>
+  (await which(name, { nothrow: true })) ?? undefined
 
 const found = new Map<string, string>()
 

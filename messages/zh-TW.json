@@ -18,7 +18,7 @@
   "project_name_label": "名稱",
   "project_name_placeholder": "my-app",
   "project_root_label": "根目錄路徑",
-  "project_root_placeholder": "/home/me/code/my-app",
+  "project_root_placeholder": "~/code/my-app",
   "project_root_browse": "瀏覽…",
   "project_setup_label": "設定腳本",
   "project_setup_optional": "選填",

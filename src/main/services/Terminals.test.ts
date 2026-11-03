@@ -1,9 +1,9 @@
 import { describe, expect, it } from "@effect/vitest"
 import { terminalShell } from "./Terminals.ts"
 
-describe("terminalShell", () => {
-  const login = (file: string) => ({ file, args: ["-l"] })
+const login = (file: string) => ({ file, args: ["-l"] })
 
+describe("terminalShell", () => {
   it("prefers SHELL", () => {
     expect(terminalShell("darwin", { SHELL: "/usr/bin/fish" }, "/bin/bash")).toStrictEqual(login("/usr/bin/fish"))
   })

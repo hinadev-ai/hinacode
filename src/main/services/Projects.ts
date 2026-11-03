@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { homedir } from "node:os"
-import { extname, isAbsolute, join } from "node:path"
+import { extname, isAbsolute, join, resolve, sep } from "node:path"
 import { Cache, Context, Effect, FileSystem, Layer, Option, Schema } from "effect"
 import { SqlClient, SqlError, SqlSchema } from "effect/sql"
 import { Project, ProjectAction } from "../../shared/domain.ts"
@@ -62,9 +62,13 @@ export class Projects extends Context.Service<
   }
 >()("hinacode/Projects") {}
 
+const HOME_PREFIX = sep === "\\" ? /^~(?=$|[\\/])/ : /^~(?=$|\/)/
+
 const resolveRoot = (rootPath: string) => {
-  const resolved = rootPath.trim().replace(/^~(?=$|\/)/, homedir())
-  return isAbsolute(resolved) ? Effect.succeed(resolved) : Effect.fail(new ProjectRootInvalidError({ rootPath }))
+  const expanded = rootPath.trim().replace(HOME_PREFIX, homedir())
+  return isAbsolute(expanded)
+    ? Effect.succeed(resolve(expanded))
+    : Effect.fail(new ProjectRootInvalidError({ rootPath }))
 }
 
 const succeeds = <E>(effect: Effect.Effect<unknown, E>) =>

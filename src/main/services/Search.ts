@@ -1,8 +1,9 @@
-import { execFileSync, spawn } from "node:child_process"
+import { spawn } from "node:child_process"
 import { relative } from "node:path"
 import { createInterface } from "node:readline"
 import { Context, Effect, Layer, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
+import which from "which"
 import { FileSearchHit, ThreadSearchHit } from "../../shared/domain.ts"
 import { type FolderMissingError, type NotFoundError, type PersistenceError, persistence } from "./errors.ts"
 import { makeActiveWorkspace } from "./workspace.ts"
@@ -57,13 +58,7 @@ const cjkGrams = (text: string): string =>
 const matchKind = (query: string) =>
   [...query].length >= 3 ? "trigram" : CJK_ONLY.test(query) ? "cjkGrams" : "likeScan"
 
-function resolveRipgrep(): string | undefined {
-  try {
-    return execFileSync("which", ["rg"], { encoding: "utf8", timeout: 5000 }).trim() || undefined
-  } catch {
-    return undefined
-  }
-}
+const resolveRipgrep = (): string | undefined => which.sync("rg", { nothrow: true }) ?? undefined
 
 const RipgrepMatch = Schema.Struct({
   type: Schema.Literal("match"),

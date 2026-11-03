@@ -18,8 +18,10 @@ const FLUSH_INTERVAL_MS = 16
 const FLUSH_SIZE = 256 * 1024
 const SCROLLBACK_BYTES = 256 * 1024
 
-export const terminalShell = (env: NodeJS.ProcessEnv, accountShell: string | null) =>
-  env["SHELL"] || accountShell || "/bin/sh"
+export const terminalShell = (platform: NodeJS.Platform, env: NodeJS.ProcessEnv, accountShell: string | null) =>
+  platform === "win32"
+    ? { file: "powershell.exe", args: ["-NoLogo"] }
+    : { file: env["SHELL"] || accountShell || "/bin/sh", args: ["-l"] }
 
 const loginShell = () => {
   try {
@@ -40,10 +42,11 @@ interface Live {
   closing: boolean
 }
 
-const quoteForShell = (text: string) => `'${text.replaceAll("'", `'\\''`)}'`
+const quoteForShell = (shell: string, text: string) =>
+  shell === "powershell.exe" ? `'${text.replaceAll("'", "''")}'` : `'${text.replaceAll("'", `'\\''`)}'`
 
-export const typedLine = (shell: string, line: string) =>
-  line.includes("\n") ? `${shell} -c ${quoteForShell(line)}` : line
+const typedLine = (shell: string, line: string) =>
+  line.includes("\n") ? `${shell} -c ${quoteForShell(shell, line)}` : line
 
 export interface OpenTerminal {
   readonly threadId: string
@@ -106,10 +109,10 @@ const make = Effect.gen(function* () {
   const open = ({ threadId, cols, rows, command }: OpenTerminal) =>
     Effect.gen(function* () {
       const { cwd, rootPath, branch } = yield* activeWorkspace(threadId)
-      const shell = terminalShell(process.env, loginShell())
+      const shell = terminalShell(process.platform, process.env, loginShell())
       const proc = yield* Effect.try({
         try: () =>
-          pty.spawn(shell, ["-l"], {
+          pty.spawn(shell.file, shell.args, {
             name: "xterm-256color",
             cols,
             rows,
@@ -124,7 +127,7 @@ const make = Effect.gen(function* () {
               ...(branch === null ? {} : { HINACODE_BRANCH: branch }),
             },
           }),
-        catch: (cause) => new TerminalError({ message: `Could not start ${shell} in ${cwd}: ${String(cause)}` }),
+        catch: (cause) => new TerminalError({ message: `Could not start ${shell.file} in ${cwd}: ${String(cause)}` }),
       })
       const live: Live = {
         session: {
@@ -154,7 +157,7 @@ const make = Effect.gen(function* () {
         if (live.closing) sessions.delete(live.session.id)
         publish({ type: "terminal.exited", id: live.session.id, exitCode })
       })
-      if (command) proc.write(`${typedLine(shell, command.line)}\r`)
+      if (command) proc.write(`${typedLine(shell.file, command.line)}\r`)
       return live.session
     })
 

@@ -65,6 +65,7 @@ export function ProjectDialog({ open, onOpenChange, project, environment = null,
 }
 
 const parentOf = (path: string) => path.replace(/[\\/][^\\/]*[\\/]?$/, "")
+const separatorOf = (path: string) => (path.includes("\\") ? "\\" : "/")
 
 function useDefaultCloneParent(environment: EnvironmentId) {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => []).filter(
@@ -94,7 +95,8 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
   const [environment, setEnvironment] = useState<EnvironmentId>(() =>
     project ? environmentOf(project) : initialEnvironment,
   )
-  const defaultCloneTo = `${useDefaultCloneParent(environment)}/${repository?.name ?? ""}`
+  const cloneParent = useDefaultCloneParent(environment)
+  const defaultCloneTo = `${cloneParent}${separatorOf(cloneParent)}${repository?.name ?? ""}`
   const canBrowse = environment === null
 
   const [error, submit, isPending] = useActionState(async (_: string | null, form: FormData) => {

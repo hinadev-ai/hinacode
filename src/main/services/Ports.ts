@@ -99,12 +99,13 @@ const parentPids = exec("ps", ["-axo", "pid=,ppid="]).pipe(
 
 const attribute = (
   listeners: ReadonlyArray<Listener>,
+  parentsOf: Effect.Effect<ReadonlyMap<number, number>, PortsError>,
   cwds: (pids: ReadonlyArray<number>) => Effect.Effect<ReadonlyMap<number, string | null>, PortsError>,
   include: (process: ProcessInfo) => boolean,
 ) =>
   Effect.gen(function* () {
     if (listeners.length === 0) return []
-    const [parents, cwdOf] = yield* Effect.all([parentPids, cwds([...new Set(listeners.map(({ pid }) => pid))])], {
+    const [parents, cwdOf] = yield* Effect.all([parentsOf, cwds([...new Set(listeners.map(({ pid }) => pid))])], {
       concurrency: 2,
     })
     const ancestorsOf = ancestorsIn(parents)
@@ -134,7 +135,7 @@ const lsofCwds = (pids: ReadonlyArray<number>) =>
   )
 
 const findListeningPortsWithSs: ListeningScanner = (include) =>
-  exec("ss", ["-Hltnp"]).pipe(Effect.flatMap((text) => attribute(parseSs(text), procCwds, include)))
+  exec("ss", ["-Hltnp"]).pipe(Effect.flatMap((text) => attribute(parseSs(text), parentPids, procCwds, include)))
 
 const findListeningPortsWithLsof: ListeningScanner = (include) =>
   // FIXME: lsof cuts the command name to nine characters unless given +c 0
@@ -147,8 +148,61 @@ const findListeningPortsWithLsof: ListeningScanner = (include) =>
           .map((port) => ({ pid, command, port })),
       ),
     ),
-    Effect.flatMap((listeners) => attribute(listeners, lsofCwds, include)),
+    Effect.flatMap((listeners) => attribute(listeners, parentPids, lsofCwds, include)),
   )
+
+const LISTENING_REMOTE = /^(0\.0\.0\.0|\[::\]):0$/
+
+export const parseNetstat = (text: string): Array<{ pid: number; port: number }> =>
+  text.split("\n").flatMap((line) => {
+    const [protocol, local = "", remote = "", , owner] = line.trim().split(/\s+/)
+    const port = portOf(local)
+    const pid = Number(owner)
+    if (protocol !== "TCP" || !LISTENING_REMOTE.test(remote) || !Number.isInteger(port) || !Number.isInteger(pid)) {
+      return []
+    }
+    return [{ pid, port }]
+  })
+
+interface WindowsProcess {
+  readonly parent: number
+  readonly command: string
+}
+
+const WINDOWS_PROCESSES =
+  "Get-CimInstance Win32_Process | ForEach-Object { '{0} {1} {2}' -f $_.ProcessId, $_.ParentProcessId, $_.Name }"
+
+const windowsProcesses = exec("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", WINDOWS_PROCESSES]).pipe(
+  Effect.map(
+    (text) =>
+      new Map(
+        text.split("\n").flatMap((line): Array<[number, WindowsProcess]> => {
+          const [pid, parent, ...name] = line.trim().split(" ")
+          return pid && parent ? [[Number(pid), { parent: Number(parent), command: name.join(" ") }]] : []
+        }),
+      ),
+  ),
+)
+
+let processesForListeners: { readonly key: string; readonly table: ReadonlyMap<number, WindowsProcess> } | undefined
+
+const windowsProcessesFor = (listenerPids: ReadonlyArray<number>) => {
+  const key = [...new Set(listenerPids)].toSorted((a, b) => a - b).join(",")
+  if (processesForListeners?.key === key) return Effect.succeed(processesForListeners.table)
+  return windowsProcesses.pipe(Effect.tap((table) => Effect.sync(() => (processesForListeners = { key, table }))))
+}
+
+const noCwds = () => Effect.succeed(new Map<number, string | null>())
+
+const findListeningPortsWithNetstat: ListeningScanner = (include) =>
+  Effect.gen(function* () {
+    const sockets = parseNetstat(yield* exec("netstat", ["-ano"]))
+    if (sockets.length === 0) return []
+    const table = yield* windowsProcessesFor(sockets.map(({ pid }) => pid))
+    const listeners = sockets.map(({ pid, port }) => ({ pid, port, command: table.get(pid)?.command ?? "" }))
+    const parents = new Map([...table].map(([pid, { parent }]) => [pid, parent]))
+    return yield* attribute(listeners, Effect.succeed(parents), noCwds, include)
+  })
 
 const isInside = (path: string, root: string) =>
   path === root || path.startsWith(root.endsWith(sep) ? root : root + sep)
@@ -185,6 +239,7 @@ export const registerAgentPid = (threadId: string, pid: number): (() => void) =>
 const scanners: Partial<Record<NodeJS.Platform, ListeningScanner>> = {
   linux: findListeningPortsWithSs,
   darwin: findListeningPortsWithLsof,
+  win32: findListeningPortsWithNetstat,
 }
 const scanListening: ListeningScanner = scanners[process.platform] ?? (() => Effect.succeed([]))
 
