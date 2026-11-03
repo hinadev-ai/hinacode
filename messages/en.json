@@ -1904,6 +1904,7 @@
   "documents_load_failed": "Could not open the document: {message}",
   "documents_placeholder": "Start writing…",
   "documents_toolbar": "Formatting",
+  "documents_selection_toolbar": "Text formatting",
   "documents_heading_1": "Heading 1",
   "documents_heading_2": "Heading 2",
   "documents_heading_3": "Heading 3",

@@ -1896,6 +1896,7 @@
   "documents_load_failed": "无法打开文档：{message}",
   "documents_placeholder": "开始写作…",
   "documents_toolbar": "格式",
+  "documents_selection_toolbar": "文字格式",
   "documents_heading_1": "标题 1",
   "documents_heading_2": "标题 2",
   "documents_heading_3": "标题 3",

@@ -1868,6 +1868,7 @@
   "documents_load_failed": "無法開啟文件：{message}",
   "documents_placeholder": "開始撰寫…",
   "documents_toolbar": "格式",
+  "documents_selection_toolbar": "文字格式",
   "documents_heading_1": "標題 1",
   "documents_heading_2": "標題 2",
   "documents_heading_3": "標題 3",

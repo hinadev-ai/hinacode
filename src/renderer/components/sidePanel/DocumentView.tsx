@@ -1,5 +1,5 @@
 import { useAtomValue } from "@effect/atom-react"
-import { TrashIcon } from "@hinacode/icons"
+import { TrashIcon, WarningIcon } from "@hinacode/icons"
 import type { Editor } from "@tiptap/core"
 import { Image } from "@tiptap/extension-image"
 import { TaskItem, TaskList } from "@tiptap/extension-list"
@@ -7,6 +7,7 @@ import { TableKit } from "@tiptap/extension-table"
 import { Placeholder } from "@tiptap/extensions"
 import { Markdown } from "@tiptap/markdown"
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react"
+import { BubbleMenu } from "@tiptap/react/menus"
 import { StarterKit } from "@tiptap/starter-kit"
 import { AsyncResult } from "effect/reactivity"
 import { type ComponentType, useEffect, useState } from "react"
@@ -103,7 +104,7 @@ function DocumentEditor({
         "aria-multiline": "true",
         "aria-label": artifact.title,
         "data-document-id": artifact.id,
-        class: "hina-document prose-hina prose max-w-none min-h-full px-6 py-4 outline-none",
+        class: "hina-document prose-hina prose max-w-none min-h-full py-5 outline-none",
       },
     },
   })
@@ -124,8 +125,9 @@ function DocumentEditor({
   }, [editor, codeTheme, scheme])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col transition-[opacity,translate] duration-200 ease-out starting:opacity-0 motion-safe:starting:translate-x-2">
       <DocumentToolbar editor={editor} />
+      <SelectionMenu editor={editor} />
       {status.type === "conflict" && <ConflictBanner sync={sync} />}
       <ScrollArea className="min-h-0 flex-1">
         <EditorContent editor={editor} className="h-full" />
@@ -136,80 +138,61 @@ function DocumentEditor({
 }
 
 type Tool = {
+  readonly id: string
   readonly label: () => string
   readonly icon: ComponentType<{ "aria-hidden": boolean }>
   readonly active?: (editor: Editor) => boolean
   readonly run: (editor: Editor) => void
 }
 
-const formatting: ReadonlyArray<Tool> = [
+const heading = (level: 1 | 2 | 3, label: () => string, icon: Tool["icon"]): Tool => ({
+  id: `heading-${level}`,
+  label,
+  icon,
+  active: (editor) => editor.isActive("heading", { level }),
+  run: (editor) => editor.chain().focus().toggleHeading({ level }).run(),
+})
+
+const headings: ReadonlyArray<Tool> = [
+  heading(1, m.documents_heading_1, RiH1),
+  heading(2, m.documents_heading_2, RiH2),
+  heading(3, m.documents_heading_3, RiH3),
+]
+
+const lists: ReadonlyArray<Tool> = [
   {
-    label: m.documents_heading_1,
-    icon: RiH1,
-    active: (editor) => editor.isActive("heading", { level: 1 }),
-    run: (editor) => editor.chain().focus().toggleHeading({ level: 1 }).run(),
-  },
-  {
-    label: m.documents_heading_2,
-    icon: RiH2,
-    active: (editor) => editor.isActive("heading", { level: 2 }),
-    run: (editor) => editor.chain().focus().toggleHeading({ level: 2 }).run(),
-  },
-  {
-    label: m.documents_heading_3,
-    icon: RiH3,
-    active: (editor) => editor.isActive("heading", { level: 3 }),
-    run: (editor) => editor.chain().focus().toggleHeading({ level: 3 }).run(),
-  },
-  {
-    label: m.documents_bold,
-    icon: RiBold,
-    active: (editor) => editor.isActive("bold"),
-    run: (editor) => editor.chain().focus().toggleBold().run(),
-  },
-  {
-    label: m.documents_italic,
-    icon: RiItalic,
-    active: (editor) => editor.isActive("italic"),
-    run: (editor) => editor.chain().focus().toggleItalic().run(),
-  },
-  {
-    label: m.documents_strike,
-    icon: RiStrikethrough,
-    active: (editor) => editor.isActive("strike"),
-    run: (editor) => editor.chain().focus().toggleStrike().run(),
-  },
-  {
-    label: m.documents_code,
-    icon: RiCodeLine,
-    active: (editor) => editor.isActive("code"),
-    run: (editor) => editor.chain().focus().toggleCode().run(),
-  },
-  {
+    id: "bulletList",
     label: m.documents_bullet_list,
     icon: RiListUnordered,
     active: (editor) => editor.isActive("bulletList"),
     run: (editor) => editor.chain().focus().toggleBulletList().run(),
   },
   {
+    id: "orderedList",
     label: m.documents_ordered_list,
     icon: RiListOrdered,
     active: (editor) => editor.isActive("orderedList"),
     run: (editor) => editor.chain().focus().toggleOrderedList().run(),
   },
   {
+    id: "taskList",
     label: m.documents_task_list,
     icon: RiListCheck3,
     active: (editor) => editor.isActive("taskList"),
     run: (editor) => editor.chain().focus().toggleTaskList().run(),
   },
+]
+
+const blocks: ReadonlyArray<Tool> = [
   {
+    id: "blockquote",
     label: m.documents_quote,
     icon: RiDoubleQuotesL,
     active: (editor) => editor.isActive("blockquote"),
     run: (editor) => editor.chain().focus().toggleBlockquote().run(),
   },
   {
+    id: "codeBlock",
     label: m.documents_code_block,
     icon: RiCodeBoxLine,
     active: (editor) => editor.isActive("codeBlock"),
@@ -218,69 +201,169 @@ const formatting: ReadonlyArray<Tool> = [
 ]
 
 const insertTable: Tool = {
+  id: "insertTable",
   label: m.documents_insert_table,
   icon: RiTable2,
   run: (editor) => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
 }
 
 const tableTools: ReadonlyArray<Tool> = [
-  { label: m.documents_add_row, icon: RiInsertRowBottom, run: (editor) => editor.chain().focus().addRowAfter().run() },
   {
+    id: "addRow",
+    label: m.documents_add_row,
+    icon: RiInsertRowBottom,
+    run: (editor) => editor.chain().focus().addRowAfter().run(),
+  },
+  {
+    id: "addColumn",
     label: m.documents_add_column,
     icon: RiInsertColumnRight,
     run: (editor) => editor.chain().focus().addColumnAfter().run(),
   },
-  { label: m.documents_delete_table, icon: TrashIcon, run: (editor) => editor.chain().focus().deleteTable().run() },
+  {
+    id: "deleteTable",
+    label: m.documents_delete_table,
+    icon: TrashIcon,
+    run: (editor) => editor.chain().focus().deleteTable().run(),
+  },
 ]
 
-function DocumentToolbar({ editor }: { editor: Editor }) {
-  const state = useEditorState({
+const marks: ReadonlyArray<Tool> = [
+  {
+    id: "bold",
+    label: m.documents_bold,
+    icon: RiBold,
+    active: (editor) => editor.isActive("bold"),
+    run: (editor) => editor.chain().focus().toggleBold().run(),
+  },
+  {
+    id: "italic",
+    label: m.documents_italic,
+    icon: RiItalic,
+    active: (editor) => editor.isActive("italic"),
+    run: (editor) => editor.chain().focus().toggleItalic().run(),
+  },
+  {
+    id: "strike",
+    label: m.documents_strike,
+    icon: RiStrikethrough,
+    active: (editor) => editor.isActive("strike"),
+    run: (editor) => editor.chain().focus().toggleStrike().run(),
+  },
+  {
+    id: "code",
+    label: m.documents_code,
+    icon: RiCodeLine,
+    active: (editor) => editor.isActive("code"),
+    run: (editor) => editor.chain().focus().toggleCode().run(),
+  },
+]
+
+const allTools = [...headings, ...lists, ...blocks, ...marks]
+
+function useActiveTools(editor: Editor) {
+  return useEditorState({
     editor,
     selector: ({ editor: current }) => ({
-      active: formatting.map((tool) => tool.active?.(current) ?? false),
+      active: Object.fromEntries(allTools.map((tool) => [tool.id, tool.active?.(current) ?? false])),
       inTable: current.isActive("table"),
     }),
   })
-  const tools = state.inTable ? [...formatting, ...tableTools] : [...formatting, insertTable]
+}
+
+function ToolButton({ editor, tool, active }: { editor: Editor; tool: Tool; active: boolean | undefined }) {
+  const Icon = tool.icon
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      aria-label={tool.label()}
+      title={tool.label()}
+      aria-pressed={active}
+      className="aria-pressed:bg-muted aria-pressed:text-foreground"
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={() => tool.run(editor)}
+    >
+      <Icon aria-hidden />
+    </Button>
+  )
+}
+
+function ToolGroup({
+  editor,
+  tools,
+  active,
+}: {
+  editor: Editor
+  tools: ReadonlyArray<Tool>
+  active: Record<string, boolean>
+}) {
+  return (
+    <div className="flex items-center gap-0.5">
+      {tools.map((tool) => (
+        <ToolButton
+          key={tool.id}
+          editor={editor}
+          tool={tool}
+          active={tool.active === undefined ? undefined : (active[tool.id] ?? false)}
+        />
+      ))}
+    </div>
+  )
+}
+
+function DocumentToolbar({ editor }: { editor: Editor }) {
+  const { active, inTable } = useActiveTools(editor)
+  const groups = [headings, lists, inTable ? [...blocks, ...tableTools] : [...blocks, insertTable]]
   return (
     <div
       role="toolbar"
       aria-label={m.documents_toolbar()}
-      className="flex shrink-0 flex-wrap items-center gap-0.5 border-b border-border px-2 py-1"
+      className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-2 py-1"
     >
-      {tools.map((tool, index) => {
-        const Icon = tool.icon
-        const pressed = tool.active === undefined ? undefined : (state.active[index] ?? false)
-        return (
-          <Button
-            key={tool.label()}
-            variant="ghost"
-            size="icon-sm"
-            aria-label={tool.label()}
-            title={tool.label()}
-            aria-pressed={pressed}
-            className="aria-pressed:bg-muted aria-pressed:text-foreground"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => tool.run(editor)}
-          >
-            <Icon aria-hidden />
-          </Button>
-        )
-      })}
+      {groups.map((tools) => (
+        <ToolGroup key={tools[0]?.id} editor={editor} tools={tools} active={active} />
+      ))}
     </div>
+  )
+}
+
+function SelectionMenu({ editor }: { editor: Editor }) {
+  const { active } = useActiveTools(editor)
+  return (
+    <BubbleMenu
+      editor={editor}
+      shouldShow={({ editor: current, from, to }) =>
+        from !== to && current.isEditable && !current.isActive("codeBlock") && !current.state.selection.empty
+      }
+    >
+      <div
+        role="toolbar"
+        aria-label={m.documents_selection_toolbar()}
+        className="origin-bottom rounded-lg border border-border bg-popover p-0.5 shadow-md transition-[opacity,scale] duration-150 ease-out starting:opacity-0 motion-safe:starting:scale-96"
+      >
+        <ToolGroup editor={editor} tools={marks} active={active} />
+      </div>
+    </BubbleMenu>
   )
 }
 
 function ConflictBanner({ sync }: { sync: DocumentSync }) {
   return (
-    <div role="alert" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-muted px-3 py-2">
+    <div
+      role="alert"
+      className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-attention/30 bg-attention/5 px-3 py-2 transition-[opacity,translate] duration-200 ease-out starting:opacity-0 motion-safe:starting:-translate-y-1"
+    >
+      <WarningIcon aria-hidden className="size-4 shrink-0 text-attention" />
       <p className="min-w-0 flex-1 text-xs">{m.documents_conflict()}</p>
-      <Button variant="outline" size="xs" action={sync.useTheirs}>
-        {m.documents_use_theirs()}
-      </Button>
-      <Button size="xs" action={sync.keepMine}>
-        {m.documents_keep_mine()}
-      </Button>
+      <div className="flex shrink-0 gap-1.5">
+        <Button variant="outline" size="xs" action={sync.useTheirs}>
+          {m.documents_use_theirs()}
+        </Button>
+        <Button size="xs" action={sync.keepMine}>
+          {m.documents_keep_mine()}
+        </Button>
+      </div>
     </div>
   )
 }
