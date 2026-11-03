@@ -360,6 +360,8 @@
   "terminal_exited": "程序已結束，結束代碼 {code}",
   "terminal_ended": "程序已結束",
   "terminal_mention_closed": "已關閉的終端機",
+  "terminal_send_selection": "將選取內容傳送到對話串",
+  "terminal_mention": "在對話串中提及",
   "attachment_add": "附加檔案",
   "attachment_add_hint": "附加檔案。也可以貼上圖片，或把檔案拖曳到這裡。",
   "attachment_drop_hint": "放開以附加檔案",

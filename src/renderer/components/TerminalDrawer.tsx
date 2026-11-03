@@ -1,14 +1,18 @@
-import { type KeyboardEvent, type PointerEvent, useEffect, useLayoutEffect, useRef } from "react"
+import { type KeyboardEvent, type PointerEvent, useEffect, useLayoutEffect, useRef, useState } from "react"
 import type { TerminalSession } from "../../shared/domain.ts"
+import { terminalMention } from "../../shared/mentions.ts"
 import { TERMINAL_HEIGHT_BOUNDS } from "../lib/panelSize.ts"
 import { terminalLabel } from "../lib/terminalLabel.ts"
-import { attachTerminal, focusTerminal, showTerminal } from "../lib/terminalScreens.ts"
+import { attachTerminal, focusTerminal, showTerminal, terminalSelection } from "../lib/terminalScreens.ts"
 import { m } from "../paraglide/messages.js"
+import { useDrafts } from "../stores/drafts.ts"
 import { useTerminals } from "../stores/terminals.ts"
 import { useUi } from "../stores/ui.ts"
 import { Button } from "./ui/button.tsx"
+import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "./ui/context-menu.tsx"
+import { DropdownMenuItem } from "./ui/dropdown-menu.tsx"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.tsx"
-import { ChevronDownIcon, CloseIcon, PlusIcon, TerminalIcon } from "@hinacode/icons"
+import { AtIcon, ChatIcon, ChevronDownIcon, CloseIcon, CopyIcon, PlusIcon, TerminalIcon } from "@hinacode/icons"
 
 const MIN_HEIGHT = TERMINAL_HEIGHT_BOUNDS.min
 const RESERVED_HEIGHT = 200
@@ -119,7 +123,7 @@ function OpenDrawer({ threadId, sessions, activeId }: OpenDrawerProps) {
         )}
         {sessions.map((session) => (
           <TabsContent key={session.id} value={session.id} keepMounted className="min-h-0 data-hidden:hidden">
-            <TerminalScreen id={session.id} active={session.id === activeId} />
+            <TerminalScreen threadId={threadId} id={session.id} active={session.id === activeId} />
           </TabsContent>
         ))}
       </Tabs>
@@ -148,8 +152,16 @@ function SessionTab({ session, name, onClose }: { session: TerminalSession; name
   )
 }
 
-function TerminalScreen({ id, active }: { id: string; active: boolean }) {
+const fencedText = (text: string) => {
+  const longestRun = Math.max(2, ...Array.from(text.matchAll(/`+/g), (run) => run[0].length))
+  const fence = "`".repeat(longestRun + 1)
+  return `${fence}text\n${text.replace(/\n+$/, "")}\n${fence}`
+}
+
+function TerminalScreen({ threadId, id, active }: { threadId: string; id: string; active: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
+  const [selection, setSelection] = useState<string | null>(null)
+  const focusAfterClose = useRef<"terminal" | "composer">("terminal")
 
   useLayoutEffect(() => attachTerminal(id, ref.current!), [id])
 
@@ -158,11 +170,51 @@ function TerminalScreen({ id, active }: { id: string; active: boolean }) {
     if (active) focusTerminal(id)
   }, [id, active])
 
+  const toComposer = (append: (drafts: ReturnType<typeof useDrafts.getState>) => void) => {
+    append(useDrafts.getState())
+    focusAfterClose.current = "composer"
+  }
+
+  const restoreFocus = () => {
+    if (focusAfterClose.current === "composer") useUi.getState().requestComposerFocus()
+    else focusTerminal(id)
+    focusAfterClose.current = "terminal"
+  }
+
   return (
-    <div
-      ref={ref}
-      className="h-full focus-within:outline-1 focus-within:-outline-offset-1 focus-within:outline-ring/50"
-    />
+    <ContextMenu
+      onOpenChange={(open) => open && setSelection(terminalSelection(id))}
+      onOpenChangeComplete={(open) => !open && restoreFocus()}
+    >
+      <ContextMenuTrigger
+        render={
+          <div
+            ref={ref}
+            className="h-full focus-within:outline-1 focus-within:-outline-offset-1 focus-within:outline-ring/50"
+          />
+        }
+      />
+      <ContextMenuContent finalFocus={false}>
+        {selection !== null && (
+          <>
+            <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(selection)}>
+              <CopyIcon aria-hidden />
+              {m.context_menu_copy()}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => toComposer((drafts) => drafts.appendBlock(threadId, fencedText(selection)))}
+            >
+              <ChatIcon aria-hidden />
+              {m.terminal_send_selection()}
+            </DropdownMenuItem>
+          </>
+        )}
+        <DropdownMenuItem onClick={() => toComposer((drafts) => drafts.appendText(threadId, terminalMention(id)))}>
+          <AtIcon aria-hidden />
+          {m.terminal_mention()}
+        </DropdownMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 

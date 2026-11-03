@@ -360,6 +360,8 @@
   "terminal_exited": "Process exited with code {code}",
   "terminal_ended": "Process ended",
   "terminal_mention_closed": "closed terminal",
+  "terminal_send_selection": "Send selection to thread",
+  "terminal_mention": "Mention in thread",
   "attachment_add": "Attach files",
   "attachment_add_hint": "Attach files. You can also paste images or drop files here.",
   "attachment_drop_hint": "Drop files to attach",

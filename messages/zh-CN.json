@@ -351,6 +351,8 @@
   "terminal_exited": "进程已退出，退出码 {code}",
   "terminal_ended": "进程已结束",
   "terminal_mention_closed": "已关闭的终端",
+  "terminal_send_selection": "将所选内容发送到对话",
+  "terminal_mention": "在对话中提及",
   "attachment_add": "添加附件",
   "attachment_add_hint": "添加附件。也可以粘贴图片，或将文件拖到这里。",
   "attachment_drop_hint": "松开以附加文件",

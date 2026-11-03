@@ -16,6 +16,7 @@ interface DraftsState {
   readonly byThreadId: Readonly<Record<string, Draft>>
   readonly setText: (threadId: string, text: string) => void
   readonly appendText: (threadId: string, text: string) => void
+  readonly appendBlock: (threadId: string, block: string) => void
   readonly appendMention: (threadId: string, path: string) => void
   readonly addAttachments: (threadId: string, attachments: ReadonlyArray<Attachment>) => void
   readonly removeAttachment: (threadId: string, attachmentId: string) => void
@@ -49,6 +50,11 @@ export const useDrafts = create<DraftsState>()((set, get) => {
         ...draft,
         text: `${draft.text}${draft.text === "" || /\s$/.test(draft.text) ? "" : " "}${text} `,
       })),
+    appendBlock: (threadId, block) =>
+      update(threadId, (draft) => {
+        const before = draft.text.trimEnd()
+        return { ...draft, text: `${before}${before === "" ? "" : "\n"}${block}\n` }
+      }),
     appendMention: (threadId, path) => get().appendText(threadId, `@${path}`),
     addAttachments: (threadId, attachments) =>
       update(threadId, (draft) => ({ ...draft, attachments: [...draft.attachments, ...attachments] })),
