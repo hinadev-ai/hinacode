@@ -38,6 +38,7 @@ import {
   RelayAccountStatus,
   Attachment,
   QueuedMessage,
+  ScheduledMessage,
   Automation,
   Changes,
   ChangesScope,
@@ -559,6 +560,24 @@ export const RpcMethods = {
     Schema.Void,
   ),
   "threads.unqueue": rpc(Schema.Struct({ threadId: Schema.String, id: Schema.String }), Schema.NullOr(QueuedMessage)),
+  "threads.schedule": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      text: Schema.String,
+      attachments: Schema.optional(Schema.Array(Attachment)),
+      workspace: Schema.optional(WorkspaceChoice),
+      sendAt: Timestamp,
+    }),
+    Schema.Void,
+  ),
+  "threads.reschedule": rpc(
+    Schema.Struct({ threadId: Schema.String, id: Schema.String, sendAt: Timestamp }),
+    Schema.Void,
+  ),
+  "threads.unschedule": rpc(
+    Schema.Struct({ threadId: Schema.String, id: Schema.String }),
+    Schema.NullOr(ScheduledMessage),
+  ),
 
   "attachments.stage": rpc(
     Schema.Struct({
@@ -730,6 +749,9 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "threads.send": "mutation",
   "threads.queue": "mutation",
   "threads.unqueue": "mutation",
+  "threads.schedule": "mutation",
+  "threads.reschedule": "mutation",
+  "threads.unschedule": "mutation",
   "threads.interrupt": "mutation",
   "threads.reveal": "mutation",
   "approvals.respond": "mutation",

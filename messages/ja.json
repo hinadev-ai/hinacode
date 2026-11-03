@@ -74,6 +74,17 @@
   "queue_after_approval": "承認に答えた後に指示します",
   "queue_edit": "入力欄で編集",
   "queue_remove": "予約から削除",
+  "schedule_send": "送信を予約",
+  "schedule_title": "このメッセージを後で送信",
+  "schedule_input_label": "送信日時",
+  "schedule_placeholder": "今夜 23:00、明日 9:00、2 時間後",
+  "schedule_at_limit_reset": "利用上限のリセット時",
+  "scheduled_label": "予約済みのメッセージ",
+  "scheduled_sends_at": "{time} に送信",
+  "scheduled_failed": "送信できませんでした：{reason}",
+  "scheduled_change_time": "時刻を変更",
+  "scheduled_edit": "入力欄で編集",
+  "scheduled_cancel": "予約を取り消す",
   "queue_attachments": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],

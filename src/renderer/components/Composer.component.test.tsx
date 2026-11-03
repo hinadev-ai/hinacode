@@ -49,6 +49,7 @@ const threadWith = (id: string, status: Thread["status"]): Thread => ({
   pinnedAt: null,
   snoozedUntil: null,
   queue: [],
+  scheduled: [],
   createdBy: "user",
   createdAt: "2026-11-01T00:00:00.000Z",
   updatedAt: "2026-11-01T00:00:00.000Z",

@@ -406,6 +406,16 @@ export const QueuedMessage = Schema.Struct({
 })
 export type QueuedMessage = typeof QueuedMessage.Type
 
+export const ScheduledMessage = Schema.Struct({
+  id: Schema.String,
+  text: Schema.String,
+  attachments: Schema.Array(Attachment),
+  workspace: Schema.optionalKey(WorkspaceChoice),
+  sendAt: Timestamp,
+  failure: Schema.optionalKey(Schema.String),
+})
+export type ScheduledMessage = typeof ScheduledMessage.Type
+
 export const Thread = Schema.Struct({
   id: Schema.String,
   projectId: Schema.String,
@@ -427,6 +437,7 @@ export const Thread = Schema.Struct({
   pinnedAt: Schema.NullOr(Timestamp),
   snoozedUntil: Schema.NullOr(Timestamp).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   queue: Schema.Array(QueuedMessage),
+  scheduled: Schema.Array(ScheduledMessage).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
   createdBy: Schema.String,
   createdAt: Timestamp,
   updatedAt: Timestamp,

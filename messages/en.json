@@ -74,6 +74,17 @@
   "queue_after_approval": "Steers once you answer the approval",
   "queue_edit": "Edit in the composer",
   "queue_remove": "Remove from the queue",
+  "schedule_send": "Schedule send",
+  "schedule_title": "Send this message later",
+  "schedule_input_label": "Send at",
+  "schedule_placeholder": "Tonight 23:00, tomorrow 9:00, in 2 hours",
+  "schedule_at_limit_reset": "When the limit resets",
+  "scheduled_label": "Scheduled messages",
+  "scheduled_sends_at": "Sends {time}",
+  "scheduled_failed": "Didn't send: {reason}",
+  "scheduled_change_time": "Change time",
+  "scheduled_edit": "Edit in the composer",
+  "scheduled_cancel": "Cancel scheduled send",
   "queue_attachments": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
