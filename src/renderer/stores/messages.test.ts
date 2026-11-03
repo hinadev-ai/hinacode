@@ -649,3 +649,27 @@ test("a gap among pushes buffered while loading reloads once the snapshot lands"
 
   expect(transcriptRequests).toStrictEqual([threadId, threadId])
 })
+
+test("a snapshot without a sequence scope accepts globally numbered pushes interleaved with other threads", async () => {
+  const loading = store().load(threadId)
+  store().receive(event(11, { type: "text_delta", text: " during" }))
+  store().receive(event(12, { type: "text_delta", text: "elsewhere" }, "other"))
+  store().receive(event(13, { type: "text_delta", text: " load" }))
+  transcriptResponse.resolve({
+    result: { messages: [assistant("snapshot")], approvals: [], questions: [], secretRequests: [], seq: 10 },
+  })
+  await loading
+  expect(ready().messages[0]?.parts).toStrictEqual([{ type: "text", text: "snapshot during load" }])
+
+  store().receive(event(15, { type: "tool_call_started", callId: "c1", name: "shell", input: "ls" }))
+  store().receive(event(16, { type: "text_delta", text: "elsewhere" }, "other"))
+  store().receive(event(18, { type: "turn_completed" }))
+  store().receive(event(18, { type: "text_delta", text: "duplicate" }))
+
+  expect(transcriptRequests).toStrictEqual([threadId])
+  expect(ready().messages[0]?.parts).toStrictEqual([
+    { type: "text", text: "snapshot during load" },
+    expect.objectContaining({ type: "tool_call", callId: "c1" }),
+  ])
+  expect(ready().messages[0]?.completedAt).toEqual(expect.any(String))
+})
