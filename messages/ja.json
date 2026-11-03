@@ -62,7 +62,7 @@
   "thread_not_found": "このスレッドは存在しません。",
   "thread_draft_title": "新規スレッド",
   "thread_composer_label": "メッセージ",
-  "thread_composer_placeholder": "何でも質問してください。@ でファイルやスレッドを参照、/ でスキルを実行します。",
+  "thread_composer_placeholder": "何でも質問してください。@ でファイル、スレッド、ターミナルを参照、/ でスキルを実行します。",
   "thread_composer_send": "送信",
   "thread_composer_steer": "割り込み指示",
   "thread_composer_queue_placeholder": "次のメッセージを予約…Enter で予約、{steer} で今すぐ割り込み指示します。",

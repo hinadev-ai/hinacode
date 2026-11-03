@@ -1,7 +1,7 @@
 import { stripVTControlCharacters } from "node:util"
 
-const ERASE_TO_END = ""
-const ERASE_ROW = ""
+const ERASE_TO_END = "\uE000"
+const ERASE_ROW = "\uE001"
 
 // oxlint-disable-next-line no-control-regex -- removes the C0 controls stripVTControlCharacters leaves, such as BEL
 const CONTROL = /[\u0000-\u0007\u000B\u000C\u000E-\u001F\u007F]/g
@@ -9,7 +9,7 @@ const CONTROL = /[\u0000-\u0007\u000B\u000C\u000E-\u001F\u007F]/g
 const printable = (raw: string) =>
   stripVTControlCharacters(
     raw
-      .replaceAll(/[]/g, "")
+      .replaceAll(/[\uE000\uE001]/g, "")
       .replaceAll("\u001B[2K", ERASE_ROW)
       .replaceAll("\u001B[0K", ERASE_TO_END)
       .replaceAll("\u001B[K", ERASE_TO_END),

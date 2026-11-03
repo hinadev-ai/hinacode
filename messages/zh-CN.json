@@ -62,7 +62,7 @@
   "thread_not_found": "该对话已不存在。",
   "thread_draft_title": "新对话",
   "thread_composer_label": "消息",
-  "thread_composer_placeholder": "输入任何内容。输入 @ 可提及文件或对话，输入 / 可运行技能。",
+  "thread_composer_placeholder": "输入任何内容。输入 @ 可提及文件、对话或终端，输入 / 可运行技能。",
   "thread_composer_send": "发送",
   "thread_composer_steer": "引导",
   "thread_composer_queue_placeholder": "排队发送后续消息…按 Enter 加入队列，{steer} 立即引导智能体。",

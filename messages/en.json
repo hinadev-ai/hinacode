@@ -62,7 +62,7 @@
   "thread_not_found": "This thread no longer exists.",
   "thread_draft_title": "New thread",
   "thread_composer_label": "Message",
-  "thread_composer_placeholder": "Ask anything. Type @ to mention a file or thread, / to run a skill.",
+  "thread_composer_placeholder": "Ask anything. Type @ to mention a file, thread or terminal, / to run a skill.",
   "thread_composer_send": "Send",
   "thread_composer_steer": "Steer",
   "thread_composer_queue_placeholder": "Queue a follow-up… Enter queues it, {steer} steers the agent now.",
