@@ -204,6 +204,52 @@ describe("Search.threads", () => {
     }).pipe(withSearch(Search.layer)),
   )
 
+  it.effect("finds one and two character Chinese, Japanese and Korean words only where they are adjacent", () =>
+    Effect.gen(function* () {
+      const { threadId } = yield* seedThread({ rootPath: repo })
+      const chinese = yield* insertMessage(threadId, [text("先改資料庫，再跑 migration")])
+      const japanese = yield* insertMessage(threadId, [text("検索をテストする")])
+      const korean = yield* insertMessage(threadId, [text("검색 완료")])
+      const quoted = yield* insertMessage(threadId, [text('run "改a" now')])
+      const search = yield* Search.Search
+      const found = (query: string) =>
+        search.threads(query).pipe(Effect.map((hits) => hits.map((hit) => hit.messageId)))
+
+      expect(yield* found("改")).toStrictEqual([quoted, chinese])
+      expect(yield* found("資料")).toStrictEqual([chinese])
+      expect(yield* found("改再")).toStrictEqual([])
+      expect(yield* found("する")).toStrictEqual([japanese])
+      expect(yield* found("ト")).toStrictEqual([japanese])
+      expect(yield* found("검색")).toStrictEqual([korean])
+      expect(yield* found("改a")).toStrictEqual([quoted])
+      expect(yield* found('"改a"')).toStrictEqual([quoted])
+      expect((yield* search.perThread("庫", { limit: 3 })).map((hit) => hit.snippet)).toStrictEqual([
+        "先改資料庫，再跑 migration",
+      ])
+    }).pipe(withSearch(Search.layer)),
+  )
+
+  it.effect("keeps short CJK matches in step with message updates and deletes", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient
+      const { threadId } = yield* seedThread({ rootPath: repo })
+      const id = yield* insertMessage(threadId, [text("舊的回答")])
+      const search = yield* Search.Search
+      const found = (query: string) =>
+        search.threads(query).pipe(Effect.map((hits) => hits.map((hit) => hit.messageId)))
+
+      expect(yield* found("舊")).toStrictEqual([id])
+      yield* sql`UPDATE message SET parts = ${JSON.stringify([text("新的回答")])} WHERE id = ${id}`
+      expect(yield* found("舊")).toStrictEqual([])
+      expect(yield* found("新的")).toStrictEqual([id])
+      expect(yield* sql`SELECT rowid FROM message_cjk WHERE grams MATCH '新'`).toHaveLength(1)
+
+      yield* sql`DELETE FROM thread WHERE id = ${threadId}`
+      expect(yield* found("新的")).toStrictEqual([])
+      expect(yield* sql`SELECT rowid FROM message_cjk WHERE grams MATCH '新'`).toStrictEqual([])
+    }).pipe(withSearch(Search.layer)),
+  )
+
   it.effect("follows message updates and deletes", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient

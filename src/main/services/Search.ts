@@ -28,11 +28,26 @@ export function snippetAround(text: string, query: string, width: number): strin
   return `${start > 0 ? "…" : ""}${flat.slice(start, end)}${end < flat.length ? "…" : ""}`
 }
 
-// FIXME: a LIKE with ESCAPE cannot use SQLite's trigram index
 const likePattern = (query: string) =>
   /[\\%_]/.test(query)
     ? { pattern: `%${query.replace(/[\\%_]/g, "\\$&")}%`, escaped: true }
     : { pattern: `%${query}%`, escaped: false }
+
+const ftsPhrase = (query: string) => `"${query.replaceAll('"', '""')}"`
+
+const CJK_CHAR = String.raw`[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}ー]`
+const CJK_RUN = new RegExp(`${CJK_CHAR}+`, "gu")
+const CJK_ONLY = new RegExp(`^${CJK_CHAR}+$`, "u")
+
+const cjkGrams = (text: string): string =>
+  Array.from(text.matchAll(CJK_RUN), ([run]) => {
+    const chars = [...run]
+    const bigrams = chars.slice(1).map((char, index) => chars[index] + char)
+    return [...chars, ...bigrams].join(" ")
+  }).join(" ")
+
+const matchKind = (query: string) =>
+  [...query].length >= 3 ? "trigram" : CJK_ONLY.test(query) ? "cjkGrams" : "likeScan"
 
 function resolveRipgrep(): string | undefined {
   try {
@@ -139,21 +154,49 @@ export const make = (ripgrep: () => string | undefined) =>
     const activeWorkspace = yield* makeActiveWorkspace
     let rg: string | undefined | null = null
 
+    const matching = (query: string) => {
+      switch (matchKind(query)) {
+        case "trigram":
+          return sql`f.body MATCH ${ftsPhrase(query)}`
+        case "cjkGrams":
+          return sql`f.rowid IN (SELECT rowid FROM message_cjk WHERE grams MATCH ${ftsPhrase(query)})`
+        case "likeScan": {
+          const { pattern, escaped } = likePattern(query)
+          return sql`f.body LIKE ${pattern} ${sql.literal(escaped ? "ESCAPE '\\'" : "")}`
+        }
+      }
+    }
+
+    const indexStaleCjk = sql.withTransaction(
+      Effect.gen(function* () {
+        const stale = yield* sql<{ readonly rowid: number; readonly body: string | null }>`
+          SELECT s.rowid, f.body FROM message_cjk_stale s LEFT JOIN message_fts f ON f.rowid = s.rowid
+        `
+        if (stale.length === 0) return
+        yield* sql`DELETE FROM message_cjk WHERE rowid IN (SELECT rowid FROM message_cjk_stale)`
+        for (const { rowid, body } of stale) {
+          const grams = cjkGrams(body ?? "")
+          if (grams !== "") yield* sql`INSERT INTO message_cjk(rowid, grams) VALUES (${rowid}, ${grams})`
+        }
+        yield* sql`DELETE FROM message_cjk_stale`
+      }),
+    )
+
+    const indexedFor = (query: string) => (matchKind(query) === "cjkGrams" ? indexStaleCjk : Effect.void)
+
     const findMessages = SqlSchema.findAll({
       Request: Schema.Struct({ query: Schema.String, limit: Schema.Number }),
       Result: ThreadRow,
-      execute: ({ query, limit }) => {
-        const { pattern, escaped } = likePattern(query)
-        return sql`
+      execute: ({ query, limit }) =>
+        sql`
           SELECT m.thread_id, t.title AS thread_title, t.project_id, m.id AS message_id, f.body, m.created_at AS at
           FROM message_fts f
           JOIN message m ON m.rowid = f.rowid
           JOIN thread t ON t.id = m.thread_id
-          WHERE f.body LIKE ${pattern} ${sql.literal(escaped ? "ESCAPE '\\'" : "")} AND t.side_of IS NULL
+          WHERE ${matching(query)} AND t.side_of IS NULL
           ORDER BY f.rowid DESC
           LIMIT ${limit}
-        `
-      },
+        `,
     })
 
     const findNewestPerThread = SqlSchema.findAll({
@@ -164,7 +207,6 @@ export const make = (ripgrep: () => string | undefined) =>
       }),
       Result: ThreadRow,
       execute: ({ query, limit, threadIds }) => {
-        const { pattern, escaped } = likePattern(query)
         const inThreads = threadIds === undefined ? sql.literal("") : sql`AND ${sql.in("m.thread_id", threadIds)}`
         return sql`
           SELECT thread_id, thread_title, project_id, message_id, body, at FROM (
@@ -174,7 +216,7 @@ export const make = (ripgrep: () => string | undefined) =>
             FROM message_fts f
             JOIN message m ON m.rowid = f.rowid
             JOIN thread t ON t.id = m.thread_id
-            WHERE f.body LIKE ${pattern} ${sql.literal(escaped ? "ESCAPE '\\'" : "")} AND t.side_of IS NULL ${inThreads}
+            WHERE ${matching(query)} AND t.side_of IS NULL ${inThreads}
           )
           WHERE rank = 1
           ORDER BY at DESC, position DESC
@@ -189,7 +231,8 @@ export const make = (ripgrep: () => string | undefined) =>
     const threads = (query: string, limit = DEFAULT_LIMIT) =>
       query.trim() === ""
         ? Effect.succeed([])
-        : findMessages({ query, limit }).pipe(
+        : indexedFor(query).pipe(
+            Effect.andThen(findMessages({ query, limit })),
             Effect.map(withSnippet(query)),
             Effect.mapError(persistence("search.threads")),
           )
@@ -197,7 +240,8 @@ export const make = (ripgrep: () => string | undefined) =>
     const perThread = (query: string, options: PerThreadOptions) =>
       query.trim() === "" || options.threadIds?.length === 0
         ? Effect.succeed([])
-        : findNewestPerThread({ query, ...options }).pipe(
+        : indexedFor(query).pipe(
+            Effect.andThen(findNewestPerThread({ query, ...options })),
             Effect.map(withSnippet(query)),
             Effect.mapError(persistence("search.perThread")),
           )

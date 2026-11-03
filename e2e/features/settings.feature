@@ -83,3 +83,10 @@ Feature: Settings
     And I turn on the setting "Archive when its pull request merges or closes"
     And I turn on the setting "Remove the worktree when archiving"
     Then the archive settings are saved as both on
+
+  Scenario: Scrolling past the end of a settings page leaves the window in place
+    Given the pull request guide is turned on
+    When I open settings
+    And I open the settings section "Providers"
+    And I scroll the settings page past its end
+    Then the window has not scrolled
