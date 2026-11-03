@@ -155,7 +155,7 @@ const stubs = Layer.mergeAll(
 const core = Layer.mergeAll(
   threadsLayer.pipe(
     Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
-    Layer.provide(Terminals.layer),
+    Layer.provideMerge(Terminals.layer),
     Layer.provideMerge(Worktrees.layer),
     Layer.provideMerge(Projects.layer),
     Layer.provideMerge(AgentAccounts.layer),
@@ -645,6 +645,58 @@ const callFrom = (threadId: string, name: string, args: Record<string, unknown> 
     const mcp = yield* McpCredentials
     return yield* callAs(yield* mcp.connectionFor(threadId), name, args)
   })
+
+const outputOf = (id: string, expected: string) =>
+  Terminals.Terminals.use((terminals) =>
+    until(
+      Effect.map(terminals.attach(id, null), ({ data }) =>
+        data.includes(expected) ? Option.some(data) : Option.none(),
+      ).pipe(Effect.orDie),
+    ),
+  )
+
+layer(testLayer)("terminal tools", (it) => {
+  it.effect(
+    "list and read only the calling thread's terminals",
+    () =>
+      Effect.gen(function* () {
+        const terminals = yield* Terminals.Terminals
+        const { a, b } = yield* Seeded
+        const greeting = yield* terminals.open({
+          threadId: a,
+          cols: 80,
+          rows: 24,
+          command: { title: "greeting", line: "printf '\\033[32m%s\\033[0m %s\\n' hello terminal" },
+        })
+        const plain = yield* terminals.open({ threadId: a, cols: 80, rows: 24 })
+        const elsewhere = yield* terminals.open({ threadId: b, cols: 80, rows: 24 })
+        yield* outputOf(greeting.id, "\u001B[0m terminal")
+
+        const listed = yield* callFrom(a, "list_terminals")
+        expect(listed.isError).toBe(false)
+        expect(listed.text).toContain(`- greeting\n  id: ${greeting.id}\n  mention: @terminal:${greeting.id}`)
+        expect(listed.text).toContain(`- Terminal 2\n  id: ${plain.id}`)
+        expect(listed.text).toContain(`cwd: ${repoA}`)
+        expect(listed.text).not.toContain(elsewhere.id)
+
+        const read = yield* callFrom(a, "read_terminal", { id: greeting.id })
+        expect(read.isError).toBe(false)
+        expect(read.text).toMatch(new RegExp(`^greeting \\(running\\) in ${repoA}\n\n`))
+        expect(read.text).toMatch(/^hello terminal$/m)
+        expect(read.text).not.toContain("\u001B")
+
+        const refused = yield* callFrom(a, "read_terminal", { id: elsewhere.id })
+        expect(refused).toMatchObject({ isError: true })
+        expect(refused.text).toContain(`No open terminal of this thread has the id ${elsewhere.id}`)
+
+        const tooMany = yield* callFrom(a, "read_terminal", { id: greeting.id, lines: 5000 })
+        expect(tooMany.isError).toBe(true)
+
+        yield* Effect.forEach([greeting, plain, elsewhere], (session) => terminals.close(session.id))
+      }),
+    { timeout: 20_000 },
+  )
+})
 
 layer(testLayer)("thread controls", (it) => {
   it.effect("list_threads shows this project's threads and marks the caller", () =>
