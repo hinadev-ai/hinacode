@@ -1,9 +1,10 @@
+import { Schema } from "effect"
 import { beforeEach, expect, test } from "vitest"
 import { page, userEvent } from "vitest/browser"
 import { render } from "vitest-browser-react"
 import type { Artifact, DocumentSaveResult } from "../../../shared/artifact.ts"
-import type { HinacodeBridge, PushEvent } from "../../../shared/contract.ts"
-import type { Thread } from "../../../shared/domain.ts"
+import { type HinacodeBridge, type PushEvent, RpcMethods } from "../../../shared/contract.ts"
+import { defaultClientSettings, type Thread } from "../../../shared/domain.ts"
 import "../../index.css"
 import { useArtifacts } from "../../stores/artifacts.ts"
 import { useDrafts } from "../../stores/drafts.ts"
@@ -57,6 +58,8 @@ const bridge: HinacodeBridge = {
       return { result: { type: "saved", version: stored.version, revision: stored.revision } }
     }
     if (method === "environments.list") return { result: { clouds: [] } }
+    if (method === "clientSettings.get")
+      return { result: Schema.encodeSync(RpcMethods["clientSettings.get"].response)(defaultClientSettings) }
     return { error: { tag: "NotStubbed", message: method } }
   },
   onEvent: (listener) => {
@@ -151,4 +154,13 @@ test("asks the agent to read the edited document from the thread's draft", async
   await page.getByRole("button", { name: "Ask agent" }).click()
 
   expect(useDrafts.getState().byThreadId[thread.id]?.text).toContain(`"Release plan" (${documentId}, revision 1)`)
+})
+
+test("colors a code block in the language the Markdown names", async () => {
+  const editor = await openDocument()
+  const block = editor.element().querySelector("pre")!
+
+  await expect.poll(() => block.querySelectorAll("span[style*='color']").length, { timeout: 10_000 }).toBeGreaterThan(1)
+  expect(block.textContent).toBe("const version = 1")
+  expect(saves).toEqual([])
 })

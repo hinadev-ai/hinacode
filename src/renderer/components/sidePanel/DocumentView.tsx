@@ -28,9 +28,12 @@ import {
   RiTable2,
 } from "react-icons/ri"
 import type { Artifact, DocumentContent } from "../../../shared/artifact.ts"
+import { useTheme } from "../../lib/appearance.ts"
+import { CodeHighlight, codeHighlightKey, type CodeTheme } from "../../lib/documentCodeHighlight.ts"
 import { createDocumentSync, type DocumentSync, type SaveStatus } from "../../lib/documentSync.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { documentAtom, onPushEvent } from "../../lib/rpc.ts"
+import { useClientSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import { useDrafts } from "../../stores/drafts.ts"
 import { Button } from "../ui/button.tsx"
@@ -51,14 +54,19 @@ export function DocumentView({ threadId, artifact }: { threadId: string; artifac
     .orElse(() => loadFailed(""))
 }
 
-const extensions = (placeholder: string) => [
-  StarterKit.configure({ underline: false, link: { openOnClick: false } }),
+const extensions = (placeholder: string, theme: CodeTheme) => [
+  StarterKit.configure({
+    underline: false,
+    link: { openOnClick: false },
+    codeBlock: { HTMLAttributes: { spellcheck: "false" } },
+  }),
   TaskList,
   TaskItem.configure({ nested: true }),
   TableKit.configure({ table: { resizable: false } }),
   Image,
   Markdown,
   Placeholder.configure({ placeholder }),
+  CodeHighlight.configure({ theme }),
 ]
 
 function DocumentEditor({
@@ -71,6 +79,8 @@ function DocumentEditor({
   loaded: DocumentContent
 }) {
   const [status, setStatus] = useState<SaveStatus>({ type: "saved" })
+  const { codeTheme, scheme } = useTheme(useClientSettings().appearance.theme)
+  const [initialTheme] = useState<CodeTheme>({ codeTheme, scheme })
   const [sync] = useState(() =>
     createDocumentSync({
       id: artifact.id,
@@ -80,11 +90,13 @@ function DocumentEditor({
     }),
   )
   const editor = useEditor({
-    extensions: extensions(m.documents_placeholder()),
+    extensions: extensions(m.documents_placeholder(), initialTheme),
     content: sync.initial,
     contentType: "markdown",
     onCreate: ({ editor: created }) => sync.start(created),
-    onUpdate: () => sync.edited(),
+    onUpdate: ({ transaction }) => {
+      if (transaction.docChanged) sync.edited()
+    },
     editorProps: {
       attributes: {
         role: "textbox",
@@ -105,6 +117,10 @@ function DocumentEditor({
       sync.flush()
     }
   }, [artifact.id, sync])
+
+  useEffect(() => {
+    editor.view.dispatch(editor.state.tr.setMeta(codeHighlightKey, { theme: { codeTheme, scheme } }))
+  }, [editor, codeTheme, scheme])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
