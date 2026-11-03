@@ -1,7 +1,18 @@
-import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
+import { RegistryContext, useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { useNavigate } from "@tanstack/react-router"
-import { AsyncResult } from "effect/reactivity"
-import { type KeyboardEvent, lazy, useEffect, useOptimistic, useRef, useState, useTransition } from "react"
+import { Effect } from "effect"
+import { AsyncResult, AtomRegistry } from "effect/reactivity"
+import {
+  type KeyboardEvent,
+  lazy,
+  useContext,
+  useEffect,
+  useId,
+  useOptimistic,
+  useRef,
+  useState,
+  useTransition,
+} from "react"
 import { RiDownload2Line } from "react-icons/ri"
 import { toast } from "sonner"
 import { type Artifact, type ArtifactExportRequest, isDocument } from "../../../shared/artifact.ts"
@@ -32,9 +43,12 @@ import { Button } from "../ui/button.tsx"
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../ui/context-menu.tsx"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu.tsx"
 import { SkeletonList } from "../ui/skeleton.tsx"
+import { liveDocument, liveDocumentKey } from "../documentEditor/liveDocuments.ts"
 import { Section, ViewBody } from "./Section.tsx"
 
-const DocumentView = lazy(() => import("../documentEditor/DocumentView.tsx").then((module) => ({ default: module.DocumentView })))
+const DocumentView = lazy(() =>
+  import("../documentEditor/DocumentView.tsx").then((module) => ({ default: module.DocumentView })),
+)
 
 const noArtifacts: ReadonlyArray<Artifact> = []
 
@@ -69,37 +83,59 @@ export function ArtifactsHeader({ thread }: { thread: Thread }) {
   )
 }
 
+const refreshedArtifacts = (registry: AtomRegistry.AtomRegistry) => {
+  registry.refresh(artifactsAtom)
+  return Effect.runPromise(Effect.ignore(AtomRegistry.getResult(registry, artifactsAtom, { suspendOnWaiting: true })))
+}
+
+const focusOnMount = (element: HTMLElement | null) => element?.focus()
+
 function ArtifactTitle({ artifact }: { artifact: Artifact }) {
+  const registry = useContext(RegistryContext)
   const [editing, setEditing] = useState(false)
+  const [refocus, setRefocus] = useState(false)
   const [renaming, startRenaming] = useTransition()
   const [title, showTitle] = useOptimistic(artifact.title)
+  const hintId = useId()
 
-  const rename = (next: string) =>
+  const finish = (next: { readonly title: string; readonly keyboard: boolean } | null) =>
     startRenaming(async () => {
       setEditing(false)
-      const trimmed = next.trim()
+      setRefocus(next?.keyboard ?? true)
+      const trimmed = next?.title.trim() ?? ""
       if (trimmed === "" || trimmed === artifact.title) return
       showTitle(trimmed)
-      await callPromise(
-        "artifacts.rename",
-        { id: artifact.id, title: trimmed },
-        { environment: artifact.environmentId },
-      ).catch((cause: unknown) => toast.error(m.artifacts_rename_failed({ message: errorMessage(cause) })))
+      try {
+        await callPromise(
+          "artifacts.rename",
+          { id: artifact.id, title: trimmed },
+          { environment: artifact.environmentId },
+        )
+        await refreshedArtifacts(registry)
+      } catch (cause) {
+        toast.error(m.artifacts_rename_failed({ message: errorMessage(cause) }))
+      }
     })
 
-  if (editing && !renaming)
-    return <TitleInput title={title} onRename={rename} onCancel={() => startRenaming(() => setEditing(false))} />
+  if (editing && !renaming) return <TitleInput title={title} onDone={finish} />
   return (
     <h2 className="min-w-0">
       <button
+        ref={refocus ? focusOnMount : undefined}
         type="button"
         title={m.artifacts_rename()}
-        disabled={renaming}
-        onClick={() => startRenaming(() => setEditing(true))}
-        className="block max-w-full cursor-text truncate rounded-md px-1.5 py-0.5 text-sm font-medium outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-default hover:disabled:bg-transparent"
+        aria-describedby={hintId}
+        aria-disabled={renaming || undefined}
+        onClick={() => {
+          if (!renaming) startRenaming(() => setEditing(true))
+        }}
+        className="block max-w-full cursor-text truncate rounded-md px-1.5 py-0.5 text-sm font-medium outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
       >
         {title}
       </button>
+      <span id={hintId} hidden>
+        {m.artifacts_rename()}
+      </span>
     </h2>
   )
 }
@@ -108,23 +144,24 @@ const selectOnMount = (input: HTMLInputElement | null) => input?.select()
 
 function TitleInput({
   title,
-  onRename,
-  onCancel,
+  onDone,
 }: {
   title: string
-  onRename: (title: string) => void
-  onCancel: () => void
+  onDone: (next: { readonly title: string; readonly keyboard: boolean } | null) => void
 }) {
   const [draft, setDraft] = useState(title)
+  const byKeyboard = useRef(false)
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing) return
     if (event.key === "Enter") {
       event.preventDefault()
+      byKeyboard.current = true
       event.currentTarget.blur()
     }
     if (event.key === "Escape") {
       event.preventDefault()
       event.stopPropagation()
-      onCancel()
+      onDone(null)
     }
   }
   return (
@@ -133,7 +170,13 @@ function TitleInput({
       value={draft}
       onChange={(event) => setDraft(event.target.value)}
       onKeyDown={onKeyDown}
-      onBlur={() => onRename(draft)}
+      onBlur={() =>
+        onDone(
+          draft === title
+            ? { title: "", keyboard: byKeyboard.current }
+            : { title: draft, keyboard: byKeyboard.current },
+        )
+      }
       aria-label={m.artifacts_rename_label({ title })}
       className="field-sizing-content h-6 max-w-full min-w-24 rounded-md border border-input bg-transparent px-1.5 text-sm font-medium outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
     />
@@ -147,25 +190,15 @@ const exportArtifact = (request: ArtifactExportRequest) =>
     })
     .catch((cause: unknown) => toast.error(m.artifacts_export_failed({ message: errorMessage(cause) })))
 
-const renderedDocument = (id: string) => {
-  const editor = document.querySelector(`[data-document-id="${CSS.escape(id)}"]`)
-  if (editor === null) return undefined
-  const copy = editor.cloneNode(true) as Element
-  const copies = copy.querySelectorAll<HTMLInputElement>("input[type=checkbox]")
-  editor.querySelectorAll<HTMLInputElement>("input[type=checkbox]").forEach((box, index) => {
-    copies[index]?.toggleAttribute("checked", box.checked)
-  })
-  return copy.innerHTML
-}
-
 function ExportMenu({ artifact }: { artifact: Artifact }) {
   const theme = useArtifactTheme()
-  const save = (format: "html" | "pdf" | "markdown") =>
+  const save = (format: "html" | "pdf") =>
     exportArtifact({ format, id: artifact.id, entry: artifact.entry, title: artifact.title, theme })
-  const printDocument = () => {
-    const body = renderedDocument(artifact.id)
-    if (body === undefined) return toast.error(m.documents_export_not_ready())
-    return exportArtifact({ format: "document-pdf", title: artifact.title, theme, body })
+  const saveDocument = (format: "document-pdf" | "document-markdown") => {
+    const open = liveDocument(liveDocumentKey(artifact.environmentId, artifact.id))
+    if (open === undefined) return toast.error(m.documents_export_not_ready())
+    const body = format === "document-pdf" ? open.html() : open.markdown()
+    return exportArtifact({ format, title: artifact.title, theme, body })
   }
   return (
     <DropdownMenu>
@@ -179,8 +212,12 @@ function ExportMenu({ artifact }: { artifact: Artifact }) {
       <DropdownMenuContent align="end">
         {isDocument(artifact) ? (
           <>
-            <DropdownMenuItem onClick={() => void save("markdown")}>{m.artifacts_export_markdown()}</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void printDocument()}>{m.artifacts_export_pdf()}</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void saveDocument("document-markdown")}>
+              {m.artifacts_export_markdown()}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void saveDocument("document-pdf")}>
+              {m.artifacts_export_pdf()}
+            </DropdownMenuItem>
           </>
         ) : (
           <>
@@ -334,13 +371,17 @@ function ArtifactList({ threadId }: { threadId: string }) {
 }
 
 function NewDocumentButton({ threadId }: { threadId: string }) {
+  const registry = useContext(RegistryContext)
   const select = useArtifacts((state) => state.select)
-  const create = () =>
-    callPromise("artifacts.createDocument", { threadId, title: m.documents_untitled() })
-      .then((document) => select(threadId, document.id))
-      .catch((cause: unknown) => {
-        toast.error(m.documents_create_failed({ message: errorMessage(cause) }))
-      })
+  const create = async () => {
+    try {
+      const document = await callPromise("artifacts.createDocument", { threadId, title: m.documents_untitled() })
+      await refreshedArtifacts(registry)
+      select(threadId, document.id)
+    } catch (cause) {
+      toast.error(m.documents_create_failed({ message: errorMessage(cause) }))
+    }
+  }
   return (
     <Button variant="ghost" size="xs" action={create}>
       <PlusIcon aria-hidden />

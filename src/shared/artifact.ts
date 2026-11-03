@@ -23,14 +23,14 @@ export type Artifact = typeof Artifact.Type
 
 export const ArtifactExportRequest = Schema.Union([
   Schema.Struct({
-    format: Schema.Literals(["html", "pdf", "markdown"]),
+    format: Schema.Literals(["html", "pdf"]),
     id: Schema.String,
     entry: Schema.String,
     title: Schema.String,
     theme: Schema.String,
   }),
   Schema.Struct({
-    format: Schema.Literal("document-pdf"),
+    format: Schema.Literals(["document-pdf", "document-markdown"]),
     title: Schema.String,
     theme: Schema.String,
     body: Schema.String,

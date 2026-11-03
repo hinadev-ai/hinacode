@@ -24,6 +24,7 @@ import { ScrollArea } from "../ui/scroll-area.tsx"
 import { DocumentCodeBlock } from "./DocumentCodeBlock.tsx"
 import "./documentEditor.css"
 import { LinkEditor, LinkHoverCard } from "./DocumentLinks.tsx"
+import { liveDocumentKey, printableHtml, showLiveDocument } from "./liveDocuments.ts"
 import { DocumentToolbar, SelectionMenu, TableMenu } from "./DocumentToolbar.tsx"
 
 const loadFailed = (message: string) => (
@@ -91,7 +92,6 @@ function DocumentEditor({
         role: "textbox",
         "aria-multiline": "true",
         "aria-label": artifact.title,
-        "data-document-id": artifact.id,
         class: "hina-document prose-hina prose max-w-none min-h-full py-5 outline-none",
       },
     },
@@ -107,6 +107,15 @@ function DocumentEditor({
       sync.flush()
     }
   }, [artifact.id, sync])
+
+  useEffect(
+    () =>
+      showLiveDocument(liveDocumentKey(artifact.environmentId, artifact.id), {
+        html: () => printableHtml(editor.view.dom),
+        markdown: () => editor.getMarkdown(),
+      }),
+    [editor, artifact.environmentId, artifact.id],
+  )
 
   useEffect(() => {
     editor.view.dispatch(editor.state.tr.setMeta(codeHighlightKey, { theme: { codeTheme, scheme } }))
@@ -180,17 +189,17 @@ function DocumentFooter({
 }) {
   const draft = useDrafts((state) => state.byThreadId[threadId]?.text ?? "")
   const setText = useDrafts((state) => state.setText)
-  const askAgent = () => {
-    const prompt = m.documents_ask_prompt({ title: artifact.title, id: artifact.id, revision: sync.revision() })
+  const askAgent = async () => {
+    const revision = await sync.savedRevision()
+    const prompt = m.documents_ask_prompt({ title: artifact.title, id: artifact.id, revision })
     setText(threadId, draft.trim() === "" ? prompt : `${draft.trimEnd()}\n\n${prompt}`)
   }
   return (
     <div className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-1.5">
       <p
-        aria-live="polite"
         className={`min-w-0 flex-1 truncate text-xs ${status.type === "failed" ? "text-destructive" : "text-muted-foreground"}`}
       >
-        {statusText(status)}
+        {status.type === "failed" ? <span role="alert">{statusText(status)}</span> : statusText(status)}
       </p>
       {status.type === "failed" && (
         <Button variant="outline" size="xs" action={sync.retry}>

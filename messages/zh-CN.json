@@ -1923,7 +1923,7 @@
   "documents_code": "行内代码",
   "documents_bullet_list": "无序列表",
   "documents_ordered_list": "有序列表",
-  "documents_task_list": "清单",
+  "documents_task_list": "任务列表",
   "documents_quote": "引用",
   "documents_code_block": "代码块",
   "documents_insert_table": "插入表格",
