@@ -5,7 +5,7 @@ Date: 2026-11-03
 
 ## Problem
 
-Stop only interrupts the running turn. The turn's end stops `run_agent` runs, but the rest of what the turn started keeps going: background shells and workflows, a wakeup scheduled for a later turn, and sub-agents the agent spawned with its own tool. Those sub-agents show as stopped, because the turn's end marks them so without asking the provider, while a background Claude agent keeps working. The user presses Stop to make the thread quiet, then finds a dev shell still running, or a `/loop` that wakes the thread again ten minutes later. Each item has its own stop control in the Activity panel, except the wakeup, which has none.
+Stop only interrupts the running turn. The turn's end stops `run_agent` runs, but the rest of what the turn started keeps going: background shells and workflows, a wakeup scheduled for a later turn, and sub-agents the agent spawned with its own tool. Those sub-agents could show as stopped while they kept working, until [sub-agents that outlive their turn](2026-11-04-subagents-between-turns.md) let a row follow its provider. The user presses Stop to make the thread quiet, then finds a dev shell still running, or a `/loop` that wakes the thread again ten minutes later. Each item has its own stop control in the Activity panel, except the wakeup, which has none.
 
 ## User flow
 

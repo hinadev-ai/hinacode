@@ -56,11 +56,19 @@ import { handoffPrompt } from "../agents/handoff.ts"
 import { latestForkPoint, sidechatPrompt, unseenSince } from "../agents/sidechat.ts"
 import { agentInstructions, type AgentEnvironment } from "../agents/instructions.ts"
 import { pickedSubagentModel, spawningCallId, subagentChoices } from "../agents/runAgent.ts"
+import { subagentReport } from "../agents/subagentReport.ts"
 import { providerInfo } from "../../shared/providers.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
-import { AgentError, type AgentProvider, type SessionInput, type SteerPriority, type Wake } from "../agents/provider.ts"
+import {
+  AgentError,
+  type AgentProvider,
+  type SessionInput,
+  type SteerPriority,
+  type SubagentChange,
+  type Wake,
+} from "../agents/provider.ts"
 import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
 import { type Deadline, earliest, runAtDeadlines } from "./deadlines.ts"
@@ -444,13 +452,22 @@ const make = Effect.gen(function* () {
     return push.publish({ type: "thread.subagents", threadId, subagents: listSubagents(threadId) })
   }
 
-  const stopSubagents = (threadId: string, endedAt: string) => {
-    const byId = subagents.get(threadId)
-    const running = [...(byId?.values() ?? [])].filter((subagent) => subagent.status === "running")
-    if (byId === undefined || running.length === 0) return Effect.void
-    for (const subagent of running) byId.set(subagent.id, { ...subagent, status: "stopped", endedAt })
-    return push.publish({ type: "thread.subagents", threadId, subagents: listSubagents(threadId) })
-  }
+  const markSubagentsStopped = (threadId: string) =>
+    Effect.gen(function* () {
+      const byId = subagents.get(threadId)
+      const running = [...(byId?.values() ?? [])].filter((subagent) => subagent.status === "running")
+      if (byId === undefined || running.length === 0) return
+      const endedAt = yield* nowIso
+      for (const subagent of running) byId.set(subagent.id, { ...subagent, status: "stopped", endedAt })
+      yield* push.publish({ type: "thread.subagents", threadId, subagents: listSubagents(threadId) })
+    })
+
+  const closeProviderSession = (thread: Thread) =>
+    Effect.gen(function* () {
+      const close = providers[thread.provider].closeSession
+      if (close !== undefined) yield* close(thread.id, yield* accounts.home(thread.accountId))
+      yield* markSubagentsStopped(thread.id)
+    })
 
   const stopAgentRuns = (threadId: string) =>
     Effect.forEach(
@@ -716,7 +733,7 @@ const make = Effect.gen(function* () {
         )
       }
       yield* stopAgentRuns(thread.id)
-      yield* stopSubagents(thread.id, yield* nowIso)
+      if (provider.subagentChanges === undefined) yield* markSubagentsStopped(thread.id)
       const last = turnMessages.at(-1)!
       const closed: Message = last.completedAt === null ? { ...last, completedAt: yield* nowIso } : last
       setTurnMessages(replaceLast(turnMessages, closed))
@@ -1381,8 +1398,7 @@ const make = Effect.gen(function* () {
       }
       const current = yield* threads.get(input.id)
       if (input.provider === current.provider) return yield* threads.update(input)
-      const closeSession = providers[current.provider].closeSession
-      if (closeSession !== undefined) yield* closeSession(current.id, yield* accounts.home(current.accountId))
+      yield* closeProviderSession(current)
       const started = yield* threads.started(input.id)
       const thread = yield* threads.update(input)
       if (started) {
@@ -1453,6 +1469,37 @@ const make = Effect.gen(function* () {
     )
   }
 
+  const canReportSubagent = (threadId: string, provider: ProviderId) =>
+    threads.get(threadId).pipe(
+      Effect.map((thread) => thread.provider === provider && (thread.status === "idle" || thread.status === "running")),
+      Effect.catchTag("NotFoundError", () => Effect.succeed(false)),
+    )
+
+  const recordSubagentChange = (provider: ProviderId, { threadId, subagent }: SubagentChange) =>
+    Effect.gen(function* () {
+      const previous = subagents.get(threadId)?.get(subagent.id)
+      yield* updateSubagent(threadId, subagent)
+      const ended = subagent.status === "completed" || subagent.status === "failed"
+      if (previous?.status !== "running" || !ended) return
+      yield* steerWhen({
+        threadId,
+        text: subagentReport(subagent),
+        attachments: [],
+        when: canReportSubagent(threadId, provider),
+      }).pipe(
+        Effect.catchCause((cause) => Effect.logWarning("could not hand a sub-agent's reply to its thread", cause)),
+        Effect.forkIn(scope),
+      )
+    })
+
+  for (const provider of Object.values(providers)) {
+    if (provider.subagentChanges === undefined) continue
+    yield* Effect.forkIn(
+      Stream.runForEach(provider.subagentChanges, (change) => recordSubagentChange(provider.id, change)),
+      scope,
+    )
+  }
+
   for (const provider of Object.values(providers)) {
     if (provider.backgroundTasks === undefined) continue
     yield* Effect.forkIn(
@@ -1500,9 +1547,7 @@ const make = Effect.gen(function* () {
       if (Option.isSome(turn)) yield* Fiber.await(turn.value)
       yield* Effect.gen(function* () {
         if (busyThreads.has(threadId) || !hasPendingWakeup(threadId)) return
-        const thread = yield* threads.get(threadId)
-        const close = providers[thread.provider].closeSession
-        if (close !== undefined) yield* close(threadId, yield* accounts.home(thread.accountId))
+        yield* closeProviderSession(yield* threads.get(threadId))
       }).pipe(exclusive(threadId))
     }).pipe(Effect.catch((error) => Effect.logError("failed to retire the wakeup of a stopped thread", error)))
 
