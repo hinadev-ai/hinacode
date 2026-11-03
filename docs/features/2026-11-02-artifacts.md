@@ -70,6 +70,24 @@ Pages style themselves with the app's theme tokens (`--background`, `--primary`,
 
 The artifact header has an Export menu with HTML and PDF. `artifacts.export` is a desktop-only rpc: main asks where to save, then loads `hinacode-artifact://<id>/<entry>?theme=...`, so a cloud's artifact exports the same way a local one does. HTML is the entry with the current theme inserted, fetched with `net.fetch`. PDF renders the page in a hidden sandboxed window, waits for fonts and one second for scripts that draw, then calls `printToPDF`. Only the entry is exported; an artifact that links other files exports without them.
 
+### Check on publish
+
+An agent that publishes a page cannot see it. In the first dogfood run a real turn ended with "I haven't opened it to check how it renders", and a page whose module import failed sat at "Loading…" with nobody told.
+
+So on the desktop, `publish_artifact` renders the new version before it answers. `ArtifactInspector` loads `hinacode-artifact://<id>/<entry>` in a hidden sandboxed window, 400 by 720, the panel's usual width, with the theme the renderer last shared through `artifacts.setTheme`. It attaches DevTools before navigation and keeps `Runtime.exceptionThrown`, `console.error` and `Log.entryAdded` errors, decoded with a schema because the page writes them. After fonts and one second of settling, it measures the page width in an isolated world, names the outermost elements past the edge, and captures the viewport.
+
+The result keeps its first line, so `publishedArtifactId` still reads the id, and adds:
+
+```
+Rendered at 400px, the side panel's usual width. Fix these and publish again:
+- Console errors:
+  - Uncaught ReferenceError: Chart is not defined (index.html:19)
+- The page is 663px wide and scrolls sideways in a 400px panel. Past the edge: table.
+The screenshot shows the top of the page as the developer first sees it.
+```
+
+followed by the screenshot as an MCP image. The PDF export shares the hidden-window code in `artifactPage.ts`. The check gives up after 15 seconds and answers with the plain result, and so does `hinacode serve`, which has no browser: its layer is `ArtifactInspector.unavailable`.
+
 ### Delete
 
 Right-clicking an artifact in the list offers Delete. `artifacts.delete` routes to the machine that owns the id and removes the artifact's directory. The service pushes `artifact.removed`, and so does its watcher when another harness deletes a directory, so every open list drops it. There is no undo.

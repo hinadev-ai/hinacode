@@ -36,6 +36,7 @@ import {
   type AgentProvider,
   type BackgroundTasksChange,
   LISTED_SESSIONS,
+  MCP_TOOL_TIMEOUT_SECONDS,
   type SessionHistory,
 } from "../provider.ts"
 import { perHome } from "../usage.ts"
@@ -465,7 +466,11 @@ const make = Effect.gen(function* () {
                 skills: { config: hiddenSkills.map((skill) => ({ path: skill.path, enabled: false })) },
               }),
               mcp_servers: {
-                hinacode: { url: input.mcpServer.url, http_headers: input.mcpServer.headers, tool_timeout_sec: 3600 },
+                hinacode: {
+                  url: input.mcpServer.url,
+                  http_headers: input.mcpServer.headers,
+                  tool_timeout_sec: MCP_TOOL_TIMEOUT_SECONDS,
+                },
               },
             },
             developerInstructions: input.instructions,
