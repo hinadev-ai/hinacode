@@ -1899,6 +1899,7 @@
   "documents_new": "New document",
   "documents_untitled": "Untitled document",
   "documents_create_failed": "Could not create the document: {message}",
+  "documents_export_not_ready": "Wait for the document to open, then export again.",
   "documents_loading": "Loading document…",
   "documents_load_failed": "Could not open the document: {message}",
   "documents_placeholder": "Start writing…",

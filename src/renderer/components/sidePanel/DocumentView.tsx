@@ -102,6 +102,7 @@ function DocumentEditor({
         role: "textbox",
         "aria-multiline": "true",
         "aria-label": artifact.title,
+        "data-document-id": artifact.id,
         class: "hina-document prose-hina prose max-w-none min-h-full px-6 py-4 outline-none",
       },
     },

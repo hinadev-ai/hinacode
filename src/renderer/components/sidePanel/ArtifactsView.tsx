@@ -4,7 +4,7 @@ import { AsyncResult } from "effect/reactivity"
 import { lazy, useEffect, useRef, useState } from "react"
 import { RiDownload2Line } from "react-icons/ri"
 import { toast } from "sonner"
-import { type Artifact, isDocument } from "../../../shared/artifact.ts"
+import { type Artifact, type ArtifactExportRequest, isDocument } from "../../../shared/artifact.ts"
 import { addArtifactProblem, artifactProblemMessage } from "../../../shared/artifactProblems.ts"
 import { artifactUrl } from "../../../shared/channels.ts"
 import type { Thread } from "../../../shared/domain.ts"
@@ -69,14 +69,33 @@ export function ArtifactsHeader({ thread }: { thread: Thread }) {
   )
 }
 
+const exportArtifact = (request: ArtifactExportRequest) =>
+  callPromise("artifacts.export", request)
+    .then((path) => {
+      if (path !== null) toast(m.artifacts_exported({ path }))
+    })
+    .catch((cause: unknown) => toast.error(m.artifacts_export_failed({ message: errorMessage(cause) })))
+
+const renderedDocument = (id: string) => {
+  const editor = document.querySelector(`[data-document-id="${CSS.escape(id)}"]`)
+  if (editor === null) return undefined
+  const copy = editor.cloneNode(true) as Element
+  const copies = copy.querySelectorAll<HTMLInputElement>("input[type=checkbox]")
+  editor.querySelectorAll<HTMLInputElement>("input[type=checkbox]").forEach((box, index) => {
+    copies[index]?.toggleAttribute("checked", box.checked)
+  })
+  return copy.innerHTML
+}
+
 function ExportMenu({ artifact }: { artifact: Artifact }) {
   const theme = useArtifactTheme()
   const save = (format: "html" | "pdf" | "markdown") =>
-    callPromise("artifacts.export", { id: artifact.id, entry: artifact.entry, title: artifact.title, format, theme })
-      .then((path) => {
-        if (path !== null) toast(m.artifacts_exported({ path }))
-      })
-      .catch((cause: unknown) => toast.error(m.artifacts_export_failed({ message: errorMessage(cause) })))
+    exportArtifact({ format, id: artifact.id, entry: artifact.entry, title: artifact.title, theme })
+  const printDocument = () => {
+    const body = renderedDocument(artifact.id)
+    if (body === undefined) return toast.error(m.documents_export_not_ready())
+    return exportArtifact({ format: "document-pdf", title: artifact.title, theme, body })
+  }
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -88,7 +107,10 @@ function ExportMenu({ artifact }: { artifact: Artifact }) {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {isDocument(artifact) ? (
-          <DropdownMenuItem onClick={() => void save("markdown")}>{m.artifacts_export_markdown()}</DropdownMenuItem>
+          <>
+            <DropdownMenuItem onClick={() => void save("markdown")}>{m.artifacts_export_markdown()}</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void printDocument()}>{m.artifacts_export_pdf()}</DropdownMenuItem>
+          </>
         ) : (
           <>
             <DropdownMenuItem onClick={() => void save("html")}>{m.artifacts_export_html()}</DropdownMenuItem>

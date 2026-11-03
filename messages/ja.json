@@ -1845,6 +1845,7 @@
   "documents_new": "新規ドキュメント",
   "documents_untitled": "無題のドキュメント",
   "documents_create_failed": "ドキュメントを作成できませんでした: {message}",
+  "documents_export_not_ready": "ドキュメントが開いてから、もう一度書き出してください。",
   "documents_loading": "ドキュメントを読み込み中…",
   "documents_load_failed": "ドキュメントを開けませんでした: {message}",
   "documents_placeholder": "書き始めましょう…",

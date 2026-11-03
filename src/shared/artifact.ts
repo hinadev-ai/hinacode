@@ -21,13 +21,21 @@ export const Artifact = Schema.Struct({
 })
 export type Artifact = typeof Artifact.Type
 
-export const ArtifactExportRequest = Schema.Struct({
-  id: Schema.String,
-  entry: Schema.String,
-  title: Schema.String,
-  format: Schema.Literals(["html", "pdf", "markdown"]),
-  theme: Schema.String,
-})
+export const ArtifactExportRequest = Schema.Union([
+  Schema.Struct({
+    format: Schema.Literals(["html", "pdf", "markdown"]),
+    id: Schema.String,
+    entry: Schema.String,
+    title: Schema.String,
+    theme: Schema.String,
+  }),
+  Schema.Struct({
+    format: Schema.Literal("document-pdf"),
+    title: Schema.String,
+    theme: Schema.String,
+    body: Schema.String,
+  }),
+])
 export type ArtifactExportRequest = typeof ArtifactExportRequest.Type
 
 export const isDocument = (artifact: Artifact) => artifact.kind === "document"

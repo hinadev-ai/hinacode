@@ -16,7 +16,7 @@ Claude's documents show the shape that works: a document opens beside its conver
 3. The developer edits with a toolbar: headings, bold, italic, strikethrough, inline code, lists, task lists, quotes, code blocks, links and tables. The toolbar says Saving and then Saved.
 4. Ask agent puts a line in the thread's draft that names the document and its revision, so the agent reads the edits before acting.
 5. The agent calls `publish_document` again with the id and the revision it knows. If the developer saved since, the call fails and returns the developer's text and revision, so the agent merges and publishes again. The open editor loads the agent's version when it has no unsaved edits.
-6. Export saves the Markdown file.
+6. Export saves the Markdown file, or a PDF of the document as the editor shows it.
 
 ## Design
 
@@ -63,6 +63,10 @@ The editor follows a small state machine: `saved`, `dirty`, `saving`, `conflict`
 
 Closing the editor saves pending edits at once. If that save fails or conflicts, the edits and the revision they started from stay in memory, so reopening the document restores them and raises the conflict again. They do not survive quitting the app.
 
+### Export
+
+Markdown export writes the stored `document.md`. PDF export prints what the editor renders, so tables, checklists and highlighted code look the same on paper. The renderer copies the editor's DOM, with each checkbox's state written into its `checked` attribute, and sends it as `artifacts.export` with `format: "document-pdf"`. A page export carries an artifact id and entry instead, and the request is a union so neither can carry the other's fields. Main wraps the HTML in a print page (`src/shared/documentPrint.ts`) whose CSP allows no script and no network, adds the app theme, and prints it in the same hidden sandboxed window as a page's PDF. Page margins are padding repeated on every page, so the theme's background reaches the paper's edge.
+
 ### Trust boundary
 
 Pages are hostile HTML and stay in the sandboxed frame. A document is not HTML. Its Markdown goes through the editor's schema, which only creates the nodes the toolbar can make. Unknown HTML is dropped or kept as text, and nothing in it runs. Links never navigate: they do not open on click, and `javascript:` URLs are refused when the Markdown is parsed. Images load under the renderer's CSP, the same as in transcript Markdown. A plain remote URL does not load, but its node stays in the Markdown.
@@ -79,7 +83,7 @@ The first two route by the artifact's owner and the third by the thread's, so a 
 
 - Live collaboration, comments, sharing, public links and access control.
 - Version history in the UI.
-- Exports other than Markdown.
+- Exports other than Markdown and PDF.
 - Uploading images into a document.
 - Starting a new thread from a document.
 - Renaming a document from the UI. The agent sets the title.

@@ -1863,6 +1863,7 @@
   "documents_new": "新增文件",
   "documents_untitled": "未命名文件",
   "documents_create_failed": "無法建立文件：{message}",
+  "documents_export_not_ready": "請等文件開啟後再匯出。",
   "documents_loading": "正在載入文件…",
   "documents_load_failed": "無法開啟文件：{message}",
   "documents_placeholder": "開始撰寫…",
