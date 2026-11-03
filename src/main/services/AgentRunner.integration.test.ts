@@ -4,7 +4,20 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { expect, it } from "@effect/vitest"
-import { Context, Deferred, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
+import {
+  Context,
+  Deferred,
+  Duration,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  ManagedRuntime,
+  Option,
+  Queue,
+  Schema,
+  Stream,
+} from "effect"
 import { SqlClient } from "effect/sql"
 import { vi } from "vitest"
 import type { AgentEvent, ApprovalDecision, ProviderId, RunTurnInput } from "../../shared/agent.ts"
@@ -19,6 +32,7 @@ import * as Db from "../db/client.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
 import * as AgentAccounts from "./AgentAccounts.ts"
 import { AgentRunner, layer } from "./AgentRunner.ts"
+import { shortestGap } from "./deadlines.ts"
 import { Events } from "./Events.ts"
 import * as Git from "./Git.ts"
 import * as GitHub from "./GitHub.ts"
@@ -1201,6 +1215,7 @@ it("reads a running tool call's output only from the message that holds it", asy
 
 const overdue = "2020-01-01T09:00:00.000Z"
 const later = "2999-01-01T09:00:00.000Z"
+const pastDeadlineGap = { timeout: Duration.toMillis(shortestGap) + 1000 }
 
 it("sends an overdue scheduled message and keeps the later one", async () => {
   await withPreparingThread(async ({ runner, threads, thread, release, turns }) => {
@@ -1227,7 +1242,7 @@ it("sends a scheduled message on its own once it comes due", async () => {
     release()
     await Effect.runPromise(runner.schedule({ threadId: thread.id, text: "now", attachments: [], sendAt: overdue }))
 
-    await vi.waitFor(() => expect(turns.map((turn) => turn.input.prompt)).toEqual(["now"]))
+    await vi.waitFor(() => expect(turns.map((turn) => turn.input.prompt)).toEqual(["now"]), pastDeadlineGap)
     await Effect.runPromise(runner.interrupt(thread.id))
   })
 })
@@ -1246,7 +1261,7 @@ it("resumes a limited thread on its own once its reset passes", async () => {
       }),
     )
 
-    await vi.waitFor(() => expect(turns).toHaveLength(2))
+    await vi.waitFor(() => expect(turns).toHaveLength(2), pastDeadlineGap)
     expect(turns[1]?.input.prompt).toMatch(/streams a reply$/)
     expect((await Effect.runPromise(threads.get(thread.id))).usageLimit?.reset?.autoResume).not.toBe(true)
   })
