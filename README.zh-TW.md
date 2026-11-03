@@ -67,12 +67,12 @@ HinaCode **是一個令人愉悅的程式碼代理工作站**。它負責每個�
 
 安裝你想使用的每個 CLI，登入，並確保它在你的 `PATH` 中。HinaCode 絕不會夾在你和供應商之間。
 
-| 代理 | CLI | 登入 | 協定 |
-| --- | --- | --- | --- |
-| [Claude Code](https://claude.com/product/claude-code) | `claude` | `claude`（依登入流程操作） | Agent SDK |
-| [Codex](https://openai.com/codex/) | `codex` | `codex`（依登入流程操作） | App-server protocol |
-| Muse Code | `muse` | `muse login` | MSP |
-| [opencode](https://opencode.ai) | `opencode` | `opencode auth login` | Agent Client Protocol (ACP) |
+| 代理                                                  | CLI        | 登入                       | 協定                        |
+| ----------------------------------------------------- | ---------- | -------------------------- | --------------------------- |
+| [Claude Code](https://claude.com/product/claude-code) | `claude`   | `claude`（依登入流程操作） | Agent SDK                   |
+| [Codex](https://openai.com/codex/)                    | `codex`    | `codex`（依登入流程操作）  | App-server protocol         |
+| Muse Code                                             | `muse`     | `muse login`               | MSP                         |
+| [opencode](https://opencode.ai)                       | `opencode` | `opencode auth login`      | Agent Client Protocol (ACP) |
 
 新增一個後端只需在 `src/main/agents/` 中實作一個 `AgentProvider`，並在 runner 中註冊。參閱[代理供應商指南](docs/agent-providers.md)。
 
@@ -82,11 +82,11 @@ HinaCode **是一個令人愉悅的程式碼代理工作站**。它負責每個�
 
 從 [**Releases**](https://github.com/hinadev-ai/hinacode/releases/latest) 下載適用於你平台的最新版本：
 
-| 平台 | 格式 |
-| --- | --- |
-| macOS（Apple 晶片） | `.dmg` |
-| Windows | 安裝程式 |
-| Linux | AppImage |
+| 平台                | 格式     |
+| ------------------- | -------- |
+| macOS（Apple 晶片） | `.dmg`   |
+| Windows             | 安裝程式 |
+| Linux               | AppImage |
 
 無介面伺服器可在任何支援 Node 24 的地方執行（參閱[遠端與無介面執行](#遠端與無介面執行)）。
 
@@ -159,12 +159,12 @@ HINACODE_USER_DATA=/tmp/hinacode-test pnpm exec electron out/main/index.js
 <details>
 <summary><b>測試</b></summary>
 
-| 指令 | 執行內容 |
-| --- | --- |
-| `pnpm test:unit` | Vitest，行程內執行：純函式輔助工具、store、事件對應。檔名為 `*.test.ts`。 |
-| `pnpm test:integration` | Vitest，針對真實的 SQLite 檔案、git、子行程和 MCP HTTP 伺服器執行。檔名為 `*.integration.test.ts`。 |
-| `pnpm test` | 兩個 Vitest 專案。 |
-| `pnpm test:e2e` | Playwright 透過 `e2e/features` 中的 Gherkin 場景驅動建置好的 Electron 應用程式。需要顯示環境：`DISPLAY` 或 `Xvfb :99`，或在 `xvfb-run -a` 下執行。 |
+| 指令                    | 執行內容                                                                                                                                           |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm test:unit`        | Vitest，行程內執行：純函式輔助工具、store、事件對應。檔名為 `*.test.ts`。                                                                          |
+| `pnpm test:integration` | Vitest，針對真實的 SQLite 檔案、git、子行程和 MCP HTTP 伺服器執行。檔名為 `*.integration.test.ts`。                                                |
+| `pnpm test`             | 兩個 Vitest 專案。                                                                                                                                 |
+| `pnpm test:e2e`         | Playwright 透過 `e2e/features` 中的 Gherkin 場景驅動建置好的 Electron 應用程式。需要顯示環境：`DISPLAY` 或 `Xvfb :99`，或在 `xvfb-run -a` 下執行。 |
 
 Effect 程式碼使用 `@effect/vitest` 測試：`it.effect` 在測試時鐘下執行，`it.live` 使用真實時鐘，`layer(...)` 在同一個區塊內共享已建置的 layer。每個 e2e worker 都會在臨時 `HINACODE_USER_DATA` 上啟動自己的 HinaCode，透過 `window.hinacode.rpc` 或直接寫入 SQLite 來準備前置條件，並透過 UI 驅動待測行為。
 

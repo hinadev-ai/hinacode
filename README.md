@@ -67,12 +67,12 @@ HinaCode is a **delightful workstation for coding agents**. It handles the work 
 
 Install each CLI you want to use, sign in, and keep it on your `PATH`. HinaCode never sits between you and the provider.
 
-| Agent | CLI | Sign in | Protocol |
-| --- | --- | --- | --- |
-| [Claude Code](https://claude.com/product/claude-code) | `claude` | `claude` (follow the login flow) | Agent SDK |
-| [Codex](https://openai.com/codex/) | `codex` | `codex` (follow the login flow) | App-server protocol |
-| Muse Code | `muse` | `muse login` | MSP |
-| [opencode](https://opencode.ai) | `opencode` | `opencode auth login` | Agent Client Protocol (ACP) |
+| Agent                                                 | CLI        | Sign in                          | Protocol                    |
+| ----------------------------------------------------- | ---------- | -------------------------------- | --------------------------- |
+| [Claude Code](https://claude.com/product/claude-code) | `claude`   | `claude` (follow the login flow) | Agent SDK                   |
+| [Codex](https://openai.com/codex/)                    | `codex`    | `codex` (follow the login flow)  | App-server protocol         |
+| Muse Code                                             | `muse`     | `muse login`                     | MSP                         |
+| [opencode](https://opencode.ai)                       | `opencode` | `opencode auth login`            | Agent Client Protocol (ACP) |
 
 Adding a backend takes one `AgentProvider` implementation in `src/main/agents/` plus registration in the runner. See the [agent provider guide](docs/agent-providers.md).
 
@@ -82,11 +82,11 @@ Adding a backend takes one `AgentProvider` implementation in `src/main/agents/` 
 
 Download the latest build for your platform from [**Releases**](https://github.com/hinadev-ai/hinacode/releases/latest):
 
-| Platform | Format |
-| --- | --- |
-| macOS (Apple silicon) | `.dmg` |
-| Windows | Installer |
-| Linux | AppImage |
+| Platform              | Format    |
+| --------------------- | --------- |
+| macOS (Apple silicon) | `.dmg`    |
+| Windows               | Installer |
+| Linux                 | AppImage  |
 
 The headless server runs anywhere Node 24 does (see [Remote and headless](#remote-and-headless)).
 
@@ -159,12 +159,12 @@ Unpackaged runs (`pnpm dev`, e2e, and the command above) never touch the login K
 <details>
 <summary><b>Testing</b></summary>
 
-| Command | What runs |
-| --- | --- |
-| `pnpm test:unit` | Vitest, in-process: pure helpers, stores, event mapping. Files named `*.test.ts`. |
-| `pnpm test:integration` | Vitest against real SQLite files, git, child processes, and the MCP HTTP server. Files named `*.integration.test.ts`. |
-| `pnpm test` | Both Vitest projects. |
-| `pnpm test:e2e` | Playwright drives the built Electron app through Gherkin scenarios in `e2e/features`. Needs a display: `DISPLAY` or an `Xvfb :99`, or run under `xvfb-run -a`. |
+| Command                 | What runs                                                                                                                                                      |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm test:unit`        | Vitest, in-process: pure helpers, stores, event mapping. Files named `*.test.ts`.                                                                              |
+| `pnpm test:integration` | Vitest against real SQLite files, git, child processes, and the MCP HTTP server. Files named `*.integration.test.ts`.                                          |
+| `pnpm test`             | Both Vitest projects.                                                                                                                                          |
+| `pnpm test:e2e`         | Playwright drives the built Electron app through Gherkin scenarios in `e2e/features`. Needs a display: `DISPLAY` or an `Xvfb :99`, or run under `xvfb-run -a`. |
 
 Effect code is tested with `@effect/vitest`: `it.effect` runs under the test clock, `it.live` on the real one, and `layer(...)` shares a built layer across a block. Every e2e worker starts its own HinaCode on a throwaway `HINACODE_USER_DATA`, seeds preconditions through `window.hinacode.rpc` or straight into SQLite, and drives the behavior under test through the UI.
 
