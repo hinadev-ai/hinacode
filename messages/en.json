@@ -2567,5 +2567,8 @@
   "web_transport_token_rotated": "The machine's token was rotated. Reload this page to pick up the new one from the relay.",
   "web_transport_token_refused": "The machine refused its token. Reload this page after it publishes a new one to the relay.",
   "web_transport_protocol_mismatch": "The machine speaks remote protocol {machine}, this page speaks {app}. Update the older one.",
-  "web_remove_home_machine": "{machine} runs this page. Switch to another machine first, then remove it."
+  "web_remove_home_machine": "{machine} runs this page. Switch to another machine first, then remove it.",
+  "web_notifications_denied": "Your browser is blocking notifications",
+  "web_notifications_denied_hint": "Allow notifications for this site in your browser's site settings. Browsers only allow them on HTTPS pages.",
+  "web_notifications_not_determined_hint": "Your browser asks once you click Allow notifications."
 }

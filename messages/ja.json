@@ -2467,5 +2467,8 @@
   "web_transport_token_rotated": "マシンのトークンが更新されました。このページを再読み込みして relay から新しいトークンを取得してください。",
   "web_transport_token_refused": "マシンがトークンを拒否しました。新しいトークンが relay に公開されたら、このページを再読み込みしてください。",
   "web_transport_protocol_mismatch": "マシンはリモートプロトコル {machine}、このページは {app} を使っています。古いほうを更新してください。",
-  "web_remove_home_machine": "{machine} がこのページを動かしています。先に別のマシンに切り替えてから削除してください。"
+  "web_remove_home_machine": "{machine} がこのページを動かしています。先に別のマシンに切り替えてから削除してください。",
+  "web_notifications_denied": "ブラウザが通知をブロックしています",
+  "web_notifications_denied_hint": "ブラウザのサイト設定でこのサイトの通知を許可してください。通知は HTTPS のページでのみ使えます。",
+  "web_notifications_not_determined_hint": "「通知を許可する」を押すと、ブラウザが確認します。"
 }

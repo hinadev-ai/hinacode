@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { MachineSetup } from "./MachineSetup.tsx"
 import { SettingsGroup } from "./SettingsSection.tsx"
 import { errorMessage, toastError } from "../../lib/errorMessage.ts"
+import { inBrowser } from "../../lib/runtime.ts"
 
 const localeLabel = {
   en: m.locale_en,
@@ -59,7 +60,7 @@ export function GeneralSettings() {
             </SelectContent>
           </Select>
         </Field>
-        <VersionField />
+        {!inBrowser() && <VersionField />}
       </SettingsGroup>
     </div>
   )

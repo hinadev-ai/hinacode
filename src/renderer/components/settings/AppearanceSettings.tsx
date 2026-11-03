@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { SkeletonList } from "../ui/skeleton.tsx"
 import { Slider } from "../ui/slider.tsx"
 import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
+import { inBrowser } from "../../lib/runtime.ts"
 
 const fontSizes = [12, 13, 14, 15, 16, 17, 18, 20].map((size) => ({ value: size, label: `${size}px` }))
 
@@ -61,23 +62,27 @@ export function AppearanceSettings() {
             </SelectContent>
           </Select>
         </Field>
-        <FontField
-          id="settings-ui-font"
-          label={m.settings_ui_font()}
-          bundled="DM Sans"
-          kind="all"
-          current={appearance.uiFont}
-          onPick={(uiFont) => void save({ uiFont })}
-        />
-        <FontField
-          id="settings-mono-font"
-          label={m.settings_mono_font()}
-          description={m.settings_mono_font_hint()}
-          bundled="Geist Mono"
-          kind="monospace"
-          current={appearance.monoFont}
-          onPick={(monoFont) => void save({ monoFont })}
-        />
+        {!inBrowser() && (
+          <>
+            <FontField
+              id="settings-ui-font"
+              label={m.settings_ui_font()}
+              bundled="DM Sans"
+              kind="all"
+              current={appearance.uiFont}
+              onPick={(uiFont) => void save({ uiFont })}
+            />
+            <FontField
+              id="settings-mono-font"
+              label={m.settings_mono_font()}
+              description={m.settings_mono_font_hint()}
+              bundled="Geist Mono"
+              kind="monospace"
+              current={appearance.monoFont}
+              onPick={(monoFont) => void save({ monoFont })}
+            />
+          </>
+        )}
       </SettingsGroup>
       {error && <FieldError>{error}</FieldError>}
     </SettingsSection>
