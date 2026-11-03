@@ -9,6 +9,7 @@ import { SqlClient } from "effect/sql"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
 import * as AgentAccounts from "./AgentAccounts.ts"
+import type { PushEvent } from "../../shared/contract.ts"
 import { Events } from "./Events.ts"
 import * as Git from "./Git.ts"
 import * as GitHub from "./GitHub.ts"
@@ -21,7 +22,10 @@ import { makeActiveWorkspace } from "./workspace.ts"
 import * as Worktrees from "./Worktrees.ts"
 import * as Scratch from "./Scratch.ts"
 
-const makeThreadsLayer = (scratch: Layer.Layer<Scratch.Scratch, never, FileSystem.FileSystem>) =>
+const makeThreadsLayer = (
+  scratch: Layer.Layer<Scratch.Scratch, never, FileSystem.FileSystem>,
+  publish: (typeof Events.Service)["publish"] = () => Effect.void,
+) =>
   threadsLayerBase.pipe(
     Layer.provideMerge(scratch),
     Layer.provideMerge(Terminals.layer),
@@ -29,11 +33,7 @@ const makeThreadsLayer = (scratch: Layer.Layer<Scratch.Scratch, never, FileSyste
     Layer.provideMerge(Projects.layer),
     Layer.provideMerge(AgentAccounts.layer),
     Layer.provideMerge(Settings.layer(mkdtempSync(join(tmpdir(), "kk-threads-settings-")))),
-    Layer.provide(
-      Layer.mergeAll(Git.layer, GitHub.layer).pipe(
-        Layer.provideMerge(Layer.succeed(Events, { publish: () => Effect.void })),
-      ),
-    ),
+    Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer).pipe(Layer.provideMerge(Layer.succeed(Events, { publish })))),
     Layer.provideMerge(Db.layer(":memory:")),
     Layer.provideMerge(NodeServices.layer),
   )
@@ -223,6 +223,37 @@ describe("Threads", () => {
       expect(listed.map((thread) => thread.id)).toStrictEqual([threadId])
     }).pipe(Effect.provide(threadsLayer)),
   )
+
+  it.effect("nests a thread one level deep under the thread that created it", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const { projectId, threadId: parentId } = yield* seedThread({ rootPath: "/repo" })
+      const create = (parent?: string) =>
+        threads.create({ projectId, title: "t", provider: "claude", model: "m", parentId: parent })
+      const child = yield* create(parentId)
+      const grandchild = yield* create(child.id)
+      expect(child.parentId).toBe(parentId)
+      expect(grandchild.parentId).toBe(parentId)
+      expect((yield* create()).parentId).toBeNull()
+    }).pipe(Effect.provide(threadsLayer)),
+  )
+
+  it.effect("archiving a parent turns its children into top-level threads for good", () => {
+    const published: Array<PushEvent> = []
+    const recording = makeThreadsLayer(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-"))), (event) =>
+      Effect.sync(() => void published.push(event)),
+    )
+    return Effect.gen(function* () {
+      const threads = yield* Threads
+      const { projectId, threadId: parentId } = yield* seedThread({ rootPath: "/repo" })
+      const child = yield* threads.create({ projectId, title: "t", provider: "claude", model: "m", parentId })
+      yield* threads.archive(parentId)
+      expect((yield* threads.get(child.id)).parentId).toBeNull()
+      expect(published).toContainEqual({ type: "thread.updated", thread: { ...child, parentId: null } })
+      yield* threads.unarchive(parentId)
+      expect((yield* threads.get(child.id)).parentId).toBeNull()
+    }).pipe(Effect.provide(recording))
+  })
 
   it.effect("starts chats in conversation mode", () =>
     Effect.gen(function* () {

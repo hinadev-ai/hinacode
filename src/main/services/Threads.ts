@@ -44,6 +44,7 @@ import {
   type WorktreeTakenError,
 } from "./errors.ts"
 import { AgentAccounts } from "./AgentAccounts.ts"
+import { Events } from "./Events.ts"
 import { slugifyBranch } from "./automations/template.ts"
 import { type CommandError, Git } from "./Git.ts"
 import { GitHub, type GitHubError } from "./GitHub.ts"
@@ -78,9 +79,10 @@ export interface CreateThread {
   readonly fastMode?: boolean | undefined
   readonly worktree?: { readonly branch: string; readonly baseRef: string } | undefined
   readonly createdBy?: string | undefined
+  readonly parentId?: string | undefined
 }
 
-export type DraftThread = Omit<CreateThread, "worktree" | "createdBy">
+export type DraftThread = Omit<CreateThread, "worktree" | "createdBy" | "parentId">
 
 export interface UpdateThread {
   readonly id: string
@@ -199,6 +201,7 @@ const make = Effect.gen(function* () {
   const accounts = yield* AgentAccounts
   const terminals = yield* Terminals
   const scratch = yield* Scratch
+  const events = yield* Events
   const activeWorkspace = yield* makeActiveWorkspace
   const gitContext = yield* Effect.context<Git | FileSystem.FileSystem>()
   const fs = yield* FileSystem.FileSystem
@@ -227,6 +230,11 @@ const make = Effect.gen(function* () {
     Request: Schema.String,
     Result: ThreadRow,
     execute: (parentId) => sql`SELECT * FROM thread WHERE side_of = ${parentId}`,
+  })
+  const detachChildRows = SqlSchema.findAll({
+    Request: Schema.String,
+    Result: ThreadRow,
+    execute: (parentId) => sql`UPDATE thread SET parent_id = NULL WHERE parent_id = ${parentId} RETURNING *`,
   })
   const nextSortIndex = SqlSchema.findOne({
     Request: Schema.String,
@@ -281,11 +289,12 @@ const make = Effect.gen(function* () {
     )
 
   const insertThread = (
-    { worktree: worktreeInput, createdBy = "user", effort = null, fastMode = false, ...input }: CreateThread,
+    { worktree: worktreeInput, createdBy = "user", effort = null, fastMode = false, parentId, ...input }: CreateThread,
     status: "draft" | "idle",
   ) =>
     Effect.gen(function* () {
       const project = yield* projects.get(input.projectId)
+      const parent = parentId === undefined ? undefined : yield* get(parentId)
       const worktree = worktreeInput
         ? yield* worktrees.create({ projectId: input.projectId, ...worktreeInput })
         : undefined
@@ -304,6 +313,7 @@ const make = Effect.gen(function* () {
         providerSessionId: null,
         forkedFrom: null,
         sideOf: null,
+        parentId: parent === undefined ? null : (parent.parentId ?? parent.id),
         status,
         usageLimit: null,
         sortIndex: next,
@@ -391,6 +401,7 @@ const make = Effect.gen(function* () {
         providerSessionId: null,
         forkedFrom,
         sideOf: null,
+        parentId: null,
         status: "idle",
         usageLimit: null,
         sortIndex: next,
@@ -435,6 +446,7 @@ const make = Effect.gen(function* () {
         providerSessionId: null,
         forkedFrom: null,
         sideOf: parent.id,
+        parentId: null,
         status: "idle",
         usageLimit: null,
         pinnedAt: null,
@@ -686,6 +698,14 @@ const make = Effect.gen(function* () {
       Effect.asVoid,
     )
 
+  const detachChildren = (parentId: string) =>
+    Effect.gen(function* () {
+      const detached = yield* detachChildRows(parentId).pipe(Effect.mapError(persistence("threads.archive")))
+      yield* Effect.forEach(detached, (thread) => events.publish({ type: "thread.updated", thread }), {
+        discard: true,
+      })
+    })
+
   const removeOwnWorktree = (thread: Thread) =>
     thread.worktreeId ? worktrees.remove(thread.worktreeId, "ifMerged", thread.id) : Effect.void
 
@@ -706,6 +726,7 @@ const make = Effect.gen(function* () {
         yield* sql`
           UPDATE thread SET status = 'archived', usage_limit = NULL, updated_at = ${yield* nowIso} WHERE id = ${id}
         `.pipe(Effect.mapError(persistence("threads.archive")))
+        yield* detachChildren(id)
         yield* syncChatFolder(thread, false)
         yield* scratch.remove(id)
         return yield* get(id)

@@ -435,6 +435,7 @@ erDiagram
     text queue "JSON QueuedMessage[], oldest first"
     text turn_base_tree "git tree at latest turn start"
     text side_of FK "CASCADE, unique, set = side chat of that thread"
+    text parent_id FK "SET NULL, one level deep, cleared when the parent is archived"
   }
   message {
     text id PK
