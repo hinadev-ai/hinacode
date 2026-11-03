@@ -33,4 +33,4 @@ Terminals keep the shared `/tmp`. They are the user's shells, not the agent's.
 
 ## Verify
 
-Start a Claude thread in an isolated instance, ask it to print `os.tmpdir()` and create a file there, then archive the thread and check that `<os.tmpdir()>/hc-<id>` is gone.
+Start a Claude thread in an isolated instance, ask it to print `os.tmpdir()` and create a file there, then archive the thread and check that the thread's folder under `<os.tmpdir()>/hc-<hash>/` is gone.
