@@ -135,7 +135,7 @@ const make = (root: string) =>
         if (current === null || current.kind !== "document") return yield* new NotFoundError({ entity: "document", id })
         const saved = yield* Effect.tryPromise({
           try: () =>
-            store.publish({ kind: "document", id, title: current.title, markdown, baseRevision, author: "developer" }),
+            store.publish({ kind: "document", id, markdown, baseRevision, author: "developer" }),
           catch: (cause) => cause,
         }).pipe(
           Effect.map(({ version, revision }): DocumentSaveResult => ({ type: "saved", version, revision })),
@@ -149,7 +149,10 @@ const make = (root: string) =>
       })
 
     const createDocument = ({ threadId, title }: { threadId: string; title: string }) =>
-      Effect.promise(() => store.publish({ kind: "document", title, markdown: "", threadId }))
+      Effect.tap(
+        Effect.promise(() => store.publish({ kind: "document", title, markdown: "", threadId, author: "developer" })),
+        (created) => Effect.promise(() => announce(created.id)),
+      )
 
     const rename = (id: string, title: string) =>
       Effect.flatMap(

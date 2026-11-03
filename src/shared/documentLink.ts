@@ -1,5 +1,5 @@
-const ALLOWED_PROTOCOLS = new Set(["http:", "https:", "mailto:"])
-const SCHEME = /^[a-z][a-z\d+.-]*:/i
+const WEB_PROTOCOLS = new Set(["http:", "https:"])
+const SCHEME = /^[a-z][a-z\d+.-]*:\/\//i
 
 export const linkHref = (text: string): string | null => {
   const trimmed = text.trim()
@@ -7,9 +7,9 @@ export const linkHref = (text: string): string | null => {
   const candidate = SCHEME.test(trimmed) ? trimmed : `https://${trimmed}`
   try {
     const url = new URL(candidate)
-    if (!ALLOWED_PROTOCOLS.has(url.protocol)) return null
-    if (url.protocol !== "mailto:" && !url.hostname.includes(".") && url.hostname !== "localhost") return null
-    return SCHEME.test(trimmed) ? trimmed : candidate
+    if (!WEB_PROTOCOLS.has(url.protocol) || url.username !== "" || url.password !== "") return null
+    if (!url.hostname.includes(".") && url.hostname !== "localhost") return null
+    return candidate
   } catch {
     return null
   }
