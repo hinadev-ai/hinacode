@@ -1222,6 +1222,36 @@ it("sends an overdue scheduled message and keeps the later one", async () => {
   })
 })
 
+it("sends a scheduled message on its own once it comes due", async () => {
+  await withPreparingThread(async ({ runner, thread, release, turns }) => {
+    release()
+    await Effect.runPromise(runner.schedule({ threadId: thread.id, text: "now", attachments: [], sendAt: overdue }))
+
+    await vi.waitFor(() => expect(turns.map((turn) => turn.input.prompt)).toEqual(["now"]))
+    await Effect.runPromise(runner.interrupt(thread.id))
+  })
+})
+
+it("resumes a limited thread on its own once its reset passes", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, turns }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "streams a reply", []))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("idle"))
+
+    await Effect.runPromise(
+      threads.update({
+        id: thread.id,
+        status: "limited",
+        usageLimit: { kind: "usage", message: "limited", reset: { at: overdue, autoResume: true } },
+      }),
+    )
+
+    await vi.waitFor(() => expect(turns).toHaveLength(2))
+    expect(turns[1]?.input.prompt).toMatch(/streams a reply$/)
+    expect((await Effect.runPromise(threads.get(thread.id))).usageLimit?.reset?.autoResume).not.toBe(true)
+  })
+})
+
 it("queues a scheduled message that comes due during a turn", async () => {
   await withPreparingThread(async ({ runner, threads, thread, release, streamed }) => {
     release()

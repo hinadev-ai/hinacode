@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import {
   Cache,
+  Clock,
   Context,
   Deferred,
   Duration,
@@ -11,7 +12,6 @@ import {
   Predicate,
   Record,
   type Schema,
-  Schedule,
   Semaphore,
   Stream,
 } from "effect"
@@ -61,6 +61,7 @@ import { McpCredentials } from "../mcp/credentials.ts"
 import { AgentError, type AgentProvider, type SessionInput, type SteerPriority, type Wake } from "../agents/provider.ts"
 import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
+import { type Deadline, earliest, runAtDeadlines } from "./deadlines.ts"
 import { makeDeltaCoalescer } from "./coalesceDeltas.ts"
 import {
   type FolderMissingError,
@@ -114,15 +115,20 @@ type SendError =
   | PullRequestUrlInvalidError
   | RootBusyError
 
-const resumeIsDue = (thread: Thread, now: string) => {
+const resumeAt = (thread: Thread): Deadline => {
   const reset = thread.usageLimit?.reset
-  return (
-    thread.status === "limited" && reset?.autoResume === true && Date.parse(reset.at) + resumeGraceMs <= Date.parse(now)
-  )
+  if (thread.status !== "limited" || reset?.autoResume !== true) return undefined
+  return Date.parse(reset.at) + resumeGraceMs
 }
 
-const isDue = (message: ScheduledMessage, now: string) =>
-  message.failure === undefined && Date.parse(message.sendAt) <= Date.parse(now)
+const resumeIsDue = (thread: Thread, now: string) => (resumeAt(thread) ?? Infinity) <= Date.parse(now)
+
+const deliveryAt = (message: ScheduledMessage): Deadline =>
+  message.failure === undefined ? Date.parse(message.sendAt) : undefined
+
+const isDue = (message: ScheduledMessage, now: string) => (deliveryAt(message) ?? Infinity) <= Date.parse(now)
+
+const nextDeadline = (thread: Thread) => earliest([resumeAt(thread), ...thread.scheduled.map(deliveryAt)])
 
 const bySendAt = (messages: ReadonlyArray<ScheduledMessage>) =>
   messages.toSorted((a, b) => Date.parse(a.sendAt) - Date.parse(b.sendAt))
@@ -1142,16 +1148,16 @@ const make = Effect.gen(function* () {
       prompt.parts.flatMap((part) => (part.type === "attachment" ? [part.attachment] : [])),
     )
 
-  const resumeDue = Effect.gen(function* () {
-    const now = yield* nowIso
-    const due = (yield* threads.list).filter((thread) => resumeIsDue(thread, now))
-    for (const candidate of due) {
-      yield* Effect.gen(function* () {
-        const prompt = yield* consumeDueResume(candidate.id, now)
-        if (prompt !== undefined) yield* resend(candidate.id, prompt)
-      }).pipe(Effect.catch((error) => Effect.logWarning("automatic resume failed", error)))
-    }
-  })
+  const resumeDue = (list: ReadonlyArray<Thread>, now: string) =>
+    Effect.gen(function* () {
+      const due = list.filter((thread) => resumeIsDue(thread, now))
+      for (const candidate of due) {
+        yield* Effect.gen(function* () {
+          const prompt = yield* consumeDueResume(candidate.id, now)
+          if (prompt !== undefined) yield* resend(candidate.id, prompt)
+        }).pipe(Effect.catch((error) => Effect.logWarning("automatic resume failed", error)))
+      }
+    })
 
   const schedule = ({ threadId, text, attachments, workspace, sendAt }: ScheduleInput) =>
     Effect.gen(function* () {
@@ -1263,15 +1269,28 @@ const make = Effect.gen(function* () {
       )
     }).pipe(Effect.catch((error) => Effect.logWarning("could not deliver a scheduled message", error)))
 
-  const sendDueSchedules = Effect.gen(function* () {
-    const now = yield* nowIso
-    const due = (yield* threads.list).filter((thread) => thread.scheduled.some((message) => isDue(message, now)))
-    yield* Effect.forEach(
-      due,
+  const sendDue = (list: ReadonlyArray<Thread>, now: string) =>
+    Effect.forEach(
+      list.filter((thread) => thread.scheduled.some((message) => isDue(message, now))),
       (thread) => FiberMap.run(deliveries, thread.id, deliverDue(thread.id), { onlyIfMissing: true }),
       { discard: true },
     )
+
+  const sendDueSchedules = Effect.gen(function* () {
+    yield* sendDue(yield* threads.list, yield* nowIso)
   })
+
+  const runDue = Effect.gen(function* () {
+    const list = yield* threads.list
+    const now = yield* nowIso
+    yield* resumeDue(list, now)
+    yield* sendDue(list, now)
+    return earliest(list.map(nextDeadline))
+  }).pipe(
+    Effect.catch((error) =>
+      Effect.logWarning("deadline check failed", error).pipe(Effect.andThen(Clock.currentTimeMillis)),
+    ),
+  )
 
   const switchAccount: typeof AgentRunner.Service.switchAccount = (threadId, accountId, options) =>
     Effect.gen(function* () {
@@ -1332,14 +1351,8 @@ const make = Effect.gen(function* () {
       return thread
     }).pipe(exclusive(input.id))
 
-  yield* resumeDue.pipe(
-    Effect.catch((error) => Effect.logWarning("limit reset check failed", error)),
-    Effect.andThen(
-      sendDueSchedules.pipe(Effect.catch((error) => Effect.logWarning("scheduled message check failed", error))),
-    ),
-    Effect.repeat(Schedule.spaced("1 second")),
-    Effect.forkIn(scope),
-  )
+  const threadWrites = yield* threads.writes
+  yield* runAtDeadlines(runDue, Stream.map(threadWrites, nextDeadline)).pipe(Effect.forkIn(scope))
 
   const startWake = (source: AgentProvider, { threadId, sessionId, events, discard }: Wake) =>
     Effect.suspend(() => {
