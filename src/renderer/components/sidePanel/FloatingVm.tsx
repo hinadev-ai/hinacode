@@ -3,8 +3,6 @@ import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { Suspense, useRef, useState } from "react"
 import { callPromise, threadVmAtom } from "../../lib/rpc.ts"
-import { useThreadEnvironment } from "../../lib/environments.ts"
-import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import { useUi, VM_FLOATING_BOUNDS } from "../../stores/ui.ts"
 import { ResizeHandle } from "../ResizeHandle.tsx"
@@ -12,8 +10,6 @@ import {
   ControlButton,
   ControlStatus,
   IconAction,
-  PasskeyButton,
-  PasskeyNotice,
   type RunningVm,
   ScreenFallback,
   ScreenshotButton,
@@ -34,7 +30,6 @@ export default function FloatingVm({ threadId }: { threadId: string }) {
 function FloatingScreen({ threadId, vm }: { threadId: string; vm: RunningVm }) {
   const { pending, error, run } = useVmAction()
   const { dropping, onDropFiles } = useVmDrop(threadId, run)
-  const { experimental } = useSettings(useThreadEnvironment(threadId))
   const width = useUi((state) => state.vmFloatingWidth)
   const setWidth = useUi((state) => state.setVmFloatingWidth)
   const setPlacement = useUi((state) => state.setVmPlacement)
@@ -65,7 +60,6 @@ function FloatingScreen({ threadId, vm }: { threadId: string; vm: RunningVm }) {
           <ControlStatus vm={vm} />
           {control}
           <ScreenshotButton threadId={threadId} run={run} />
-          {experimental.tinyVmPasskeys && vm.provider === "sbx" && <PasskeyButton threadId={threadId} run={run} />}
           <IconAction icon={FullscreenIcon} label={m.vm_fullscreen()} onClick={() => showVmFullscreen(threadId)} />
           <IconAction icon={PipExitIcon} label={m.vm_dock()} onClick={() => setPlacement(threadId, "panel")} />
         </div>
@@ -74,7 +68,6 @@ function FloatingScreen({ threadId, vm }: { threadId: string; vm: RunningVm }) {
             {error}
           </p>
         )}
-        {experimental.tinyVmPasskeys && vm.provider === "sbx" && <PasskeyNotice threadId={threadId} run={run} />}
         <Suspense fallback={<ScreenFallback />}>
           <VmScreen
             key={`${vm.sandboxId}:${attempt}`}

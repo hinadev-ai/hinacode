@@ -1,10 +1,11 @@
 import { cn } from "cn"
-import { useState } from "react"
+import { useState, useTransition } from "react"
 import { attachmentUrl } from "../../shared/channels.ts"
 import type { PickedDeviceElement } from "../../shared/device.ts"
 import type { Attachment, PickedElement } from "../../shared/domain.ts"
 import { deviceElementLabel, elementLabel } from "../lib/elementPicker.ts"
 import { useOpenThreadEnvironment } from "../lib/environments.ts"
+import { toastError } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
@@ -25,10 +26,16 @@ export const formatBytes = (bytes: number) => {
 
 export function AttachmentView({ attachment }: { attachment: Attachment }) {
   if (attachment.kind === "image") return <ImageAttachment attachment={attachment} />
+  return <FileAttachment attachment={attachment} />
+}
+
+function FileAttachment({ attachment }: { attachment: Attachment }) {
+  const [revealing, startRevealing] = useTransition()
   return (
     <button
       type="button"
-      onClick={() => void callPromise("shell.reveal", { path: attachment.path })}
+      disabled={revealing}
+      onClick={() => startRevealing(() => callPromise("shell.reveal", { path: attachment.path }).catch(toastError))}
       title={m.attachment_reveal({ name: attachment.name })}
       className="rounded-lg pressable outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >

@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import type { ReactNode } from "react"
 import { RiGithubFill, RiSlackFill } from "react-icons/ri"
-import type { AgentAccount, ProviderId } from "../../../shared/agent.ts"
+import { type AgentAccount, ProviderId } from "../../../shared/agent.ts"
 import type { EnvironmentStatus, GitHubAuth } from "../../../shared/domain.ts"
 import { type Cloud, statusLabel, useCloudStateText, useClouds } from "../../lib/environments.ts"
 import { accountAtom, type EnvironmentId, gitHubAuthAtom, secretStoredAtom } from "../../lib/rpc.ts"
@@ -119,7 +119,7 @@ function SecretCell({ name, ...props }: CellProps & { name: string }) {
 }
 
 const rows: ReadonlyArray<Row> = [
-  ...(["claude", "codex", "muse"] as const).map((provider): Row => ({
+  ...ProviderId.literals.map((provider): Row => ({
     id: provider,
     label: providerLabel[provider],
     icon: <ProviderIcon provider={provider} className="size-4" />,

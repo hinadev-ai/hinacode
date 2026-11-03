@@ -13,9 +13,11 @@ import type {
   WorkspaceChoice,
 } from "../shared/domain.ts"
 import { type RpcEnvelope, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../shared/contract.ts"
+import type { ArtifactExportRequest } from "../shared/artifact.ts"
 import { AgentAccounts } from "./services/AgentAccounts.ts"
 import { AgentLogins } from "./services/AgentLogins.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
+import { Artifacts } from "./services/Artifacts.ts"
 import { Attachments } from "./services/Attachments.ts"
 import { Browser } from "./services/Browser.ts"
 import { UnknownRootError } from "./services/errors.ts"
@@ -45,7 +47,6 @@ import { Terminals } from "./services/Terminals.ts"
 import { Updates } from "./services/Updates.ts"
 import { SessionImports } from "./services/SessionImports.ts"
 import { randomName, Threads } from "./services/Threads.ts"
-import { VmPasskeyRelay } from "./services/tinyVm/passkey/PasskeyRelay.ts"
 import { type ScreenOwner, TinyVm, VmError } from "./services/tinyVm/TinyVm.ts"
 import { Devices } from "./services/devices/Devices.ts"
 import { Worktrees } from "./services/Worktrees.ts"
@@ -70,6 +71,7 @@ export type AppServices =
   | Ports
   | Terminals
   | Attachments
+  | Artifacts
   | Browser
   | Automations
   | Git
@@ -83,7 +85,6 @@ export type AppServices =
   | RelayAccount
   | Events
   | TinyVm
-  | VmPasskeyRelay
   | Devices
 
 export interface HandlerError {
@@ -103,6 +104,7 @@ export interface DesktopCalls {
   readonly openExternal: (url: string) => Effect.Effect<void>
   readonly pickFolder: Effect.Effect<string | null>
   readonly pickFiles: Effect.Effect<ReadonlyArray<string>>
+  readonly exportArtifact: (request: ArtifactExportRequest) => Effect.Effect<string | null, HandlerError>
   readonly notificationPermission: Effect.Effect<NotificationPermission>
   readonly askNotificationPermission: (title: string, body: string) => Effect.Effect<PermissionRequestOutcome>
   readonly screenOwner: ScreenOwner | null
@@ -396,6 +398,7 @@ const handlers: Handlers = {
     AgentRunner.use((runner) => runner.queue(threadId, text, attachments)),
   "threads.unqueue": ({ threadId, id }) => AgentRunner.use((runner) => runner.unqueue(threadId, id)),
   "threads.interrupt": ({ threadId }) => AgentRunner.use((runner) => runner.interrupt(threadId)),
+  "threads.reveal": ({ threadId }) => Events.use((events) => events.publish({ type: "thread.reveal", threadId })),
   "approvals.respond": ({ requestId, decision, note }) =>
     AgentRunner.use((runner) => runner.respondApproval(requestId, decision, note)),
   "questions.respond": ({ requestId, answers }) =>
@@ -460,6 +463,8 @@ const handlers: Handlers = {
   "device.control": ({ threadId, deviceId, control }) =>
     Devices.use((devices) => devices.control(threadId, deviceId, control)),
   "device.pick": (input) => Devices.use((devices) => devices.pick(input)),
+  "device.screenshot.save": ({ threadId, dataUrl, name }) =>
+    Attachments.use((attachments) => attachments.stage(threadId, { dataUrl, name })),
   "vm.get": ({ threadId }) => TinyVm.use((vm) => vm.get(threadId)),
   "vm.start": ({ threadId, template }) => TinyVm.use((vm) => vm.start(threadId, template)),
   "vm.stop": ({ threadId }) => TinyVm.use((vm) => vm.stop(threadId)),
@@ -486,15 +491,16 @@ const handlers: Handlers = {
         }),
       )
     }),
-  "vm.passkey.get": ({ threadId }) => VmPasskeyRelay.use((relay) => relay.get(threadId)),
-  "vm.passkey.prepare": ({ threadId }) => VmPasskeyRelay.use((relay) => relay.prepare(threadId)),
-  "vm.passkey.cancel": ({ threadId }) => VmPasskeyRelay.use((relay) => relay.cancel(threadId)),
 
   "attachments.stage": ({ threadId, source }) => Attachments.use((attachments) => attachments.stage(threadId, source)),
   "attachments.read": ({ path }) => Attachments.use((attachments) => attachments.read(path)),
   "dialog.pickFiles": (_, desktop) => desktop?.pickFiles ?? Effect.succeed([]),
 
   "automations.list": () => Automations.use((automations) => automations.list),
+  "artifacts.list": () => Artifacts.use((artifacts) => artifacts.list),
+  "artifacts.file": ({ id, path }) => Artifacts.use((artifacts) => artifacts.preview(id, path)),
+  "artifacts.delete": ({ id }) => Artifacts.use((artifacts) => artifacts.remove(id)),
+  "artifacts.export": (request, desktop) => desktop?.exportArtifact(request) ?? Effect.succeed(null),
   "automations.create": (input) => Automations.use((automations) => automations.create(input)),
   "automations.update": (input) => Automations.use((automations) => automations.update(input)),
   "automations.delete": ({ id }) => Automations.use((automations) => automations.remove(id)),

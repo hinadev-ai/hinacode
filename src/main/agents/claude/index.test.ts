@@ -410,7 +410,7 @@ describe("Claude idle sessions", () => {
         }
         const turn = yield* startTurn()
         yield* until(() => sdk.clis.at(-1)?.prompts.length === 1)
-        yield* provider.steer("thread-1", "Use pnpm instead", [])
+        yield* provider.steer!("thread-1", "Use pnpm instead", [], "now")
         yield* until(() => latestCli().prompts.length === 2)
         const [prompt, steer] = latestCli().prompts.map((message) => message.uuid)
         latestCli().push({ ...succeeded, terminal_reason: "aborted_streaming", user_message_uuids: [prompt] })
@@ -425,6 +425,23 @@ describe("Claude idle sessions", () => {
     ),
   )
 
+  it.effect("lets a steer wait for the running tool call instead of aborting it", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        sdk.respond = (cli) => {
+          if (cli.prompts.length === 1) cli.push(init("session-1"))
+        }
+        yield* startTurn()
+        yield* until(() => sdk.clis.at(-1)?.prompts.length === 1)
+        yield* provider.steer!("thread-1", "Use pnpm instead", [], "now")
+        yield* provider.steer!("thread-1", "Then run lint", [], "next")
+        yield* until(() => latestCli().prompts.length === 3)
+        expect(latestCli().prompts.map((message) => message.priority)).toStrictEqual([undefined, "now", "next"])
+      }),
+    ),
+  )
+
   it.effect("answers a steer sent while Claude finishes within the same turn", () =>
     lifecycle(
       Effect.gen(function* () {
@@ -434,7 +451,7 @@ describe("Claude idle sessions", () => {
         }
         const turn = yield* startTurn()
         yield* until(() => sdk.clis.at(-1)?.prompts.length === 1)
-        yield* provider.steer("thread-1", "Use pnpm instead", [])
+        yield* provider.steer!("thread-1", "Use pnpm instead", [], "now")
         yield* until(() => latestCli().prompts.length === 2)
         const [prompt, steer] = latestCli().prompts.map((message) => message.uuid)
         latestCli().push({ ...succeeded, user_message_uuids: [prompt] }, textDelta("Switching to pnpm", steer), {
@@ -460,13 +477,13 @@ describe("Claude idle sessions", () => {
         }
         const abandoned = yield* startTurn()
         yield* until(() => sdk.clis.at(-1)?.prompts.length === 1)
-        yield* provider.steer("thread-1", "Use pnpm instead", [])
+        yield* provider.steer!("thread-1", "Use pnpm instead", [], "now")
         yield* until(() => latestCli().prompts.length === 2)
         yield* Fiber.interrupt(abandoned.fiber)
 
         const turn = yield* startTurn(turnInput({ prompt: "Run the tests" }))
         yield* until(() => latestCli().prompts.length === 3)
-        yield* provider.steer("thread-1", "Only the unit tests", [])
+        yield* provider.steer!("thread-1", "Only the unit tests", [], "now")
         yield* until(() => latestCli().prompts.length === 4)
         const [first, abandonedSteer, prompt, steer] = latestCli().prompts.map((message) => message.uuid)
         const mixed = [abandonedSteer, steer]
@@ -1017,7 +1034,7 @@ describe("Claude background sub-agents", () => {
         }
         const turn = yield* startTurn()
         yield* until(() => turn.events.some((event) => event.type === "subagent_updated"))
-        yield* provider.steer("thread-1", "How is it going?", [])
+        yield* provider.steer!("thread-1", "How is it going?", [], "now")
         yield* until(() => latestCli().prompts.length === 2)
         const steer = latestCli().prompts[1]?.uuid
         latestCli().push(taskNotification("agent-1"), sessionState("idle"))

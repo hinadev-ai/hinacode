@@ -1,4 +1,5 @@
 import { Schema, Struct } from "effect"
+import { Artifact, ArtifactExportRequest } from "./artifact.ts"
 import {
   AccountLimits,
   AccountProviderId,
@@ -83,7 +84,6 @@ import {
   VmControl,
   VmDesktopUrl,
   VmHostStatus,
-  VmPasskey,
   Worktree,
   WorktreeCheckout,
   WorkspaceChoice,
@@ -162,6 +162,10 @@ export const RpcMethods = {
       y: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
     }),
     Schema.NullOr(PickedDeviceElement),
+  ),
+  "device.screenshot.save": rpc(
+    Schema.Struct({ threadId: Schema.String, dataUrl: Schema.String, name: Schema.String }),
+    Attachment,
   ),
   "app.ready": rpc(Schema.Void, Schema.Void),
   "app.focus": rpc(Schema.Void, Schema.Void),
@@ -438,6 +442,7 @@ export const RpcMethods = {
     Schema.Void,
   ),
   "threads.interrupt": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
+  "threads.reveal": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "approvals.respond": rpc(
     Schema.Struct({
       requestId: Schema.String,
@@ -525,9 +530,6 @@ export const RpcMethods = {
   ),
   "vm.profile.save": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "vm.screenshot.save": rpc(Schema.Struct({ threadId: Schema.String }), Attachment),
-  "vm.passkey.get": rpc(Schema.Struct({ threadId: Schema.String }), VmPasskey),
-  "vm.passkey.prepare": rpc(Schema.Struct({ threadId: Schema.String }), VmPasskey),
-  "vm.passkey.cancel": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
 
   "threads.steer": rpc(
     Schema.Struct({
@@ -562,6 +564,13 @@ export const RpcMethods = {
   "dialog.pickFiles": rpc(Schema.Void, Schema.Array(Schema.String)),
 
   "automations.list": rpc(Schema.Void, Schema.Array(Automation)),
+  "artifacts.list": rpc(Schema.Void, Schema.Array(Artifact)),
+  "artifacts.file": rpc(
+    Schema.Struct({ id: Schema.String, path: Schema.String }),
+    Schema.Struct({ dataUrl: Schema.String }),
+  ),
+  "artifacts.export": rpc(ArtifactExportRequest, Schema.NullOr(Schema.String)),
+  "artifacts.delete": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   "automations.create": rpc(
     AutomationInput,
     Schema.Struct({ automation: Automation, secret: Schema.NullOr(Schema.String) }),
@@ -616,6 +625,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "device.command": "mutation",
   "device.control": "mutation",
   "device.pick": "mutation",
+  "device.screenshot.save": "mutation",
   "app.ready": "mutation",
   "app.focus": "mutation",
   "windows.openPullRequest": "mutation",
@@ -710,6 +720,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "threads.queue": "mutation",
   "threads.unqueue": "mutation",
   "threads.interrupt": "mutation",
+  "threads.reveal": "mutation",
   "approvals.respond": "mutation",
   "questions.respond": "mutation",
   "secrets.has": "read",
@@ -763,14 +774,15 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "vm.files.drop": "mutation",
   "vm.profile.save": "mutation",
   "vm.screenshot.save": "mutation",
-  "vm.passkey.get": "read",
-  "vm.passkey.prepare": "mutation",
-  "vm.passkey.cancel": "mutation",
   "threads.steer": "mutation",
   "attachments.stage": "mutation",
   "attachments.read": "read",
   "dialog.pickFiles": "mutation",
   "automations.list": "read",
+  "artifacts.list": "read",
+  "artifacts.file": "read",
+  "artifacts.export": "mutation",
+  "artifacts.delete": "mutation",
   "automations.create": "mutation",
   "automations.update": "mutation",
   "automations.delete": "mutation",
@@ -793,6 +805,7 @@ export const mutations: ReadonlySet<string> = new Set(
 )
 
 export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
+  "device.screenshot.save",
   "app.ready",
   "app.focus",
   "windows.openPullRequest",
@@ -801,6 +814,7 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "app.setColorScheme",
   "dialog.pickFolder",
   "dialog.pickFiles",
+  "artifacts.export",
   "shell.reveal",
   "shell.openers",
   "shell.openWith",
@@ -809,7 +823,6 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "fs.watch",
   "vm.screen.open",
   "vm.files.drop",
-  "vm.passkey.prepare",
   "remote.pairing",
   "remote.rotateToken",
   "remote.setupRelay",
@@ -875,6 +888,7 @@ export const PushEvent = Schema.Union([
   ...TranscriptPush.members,
   Schema.Struct({ type: Schema.Literal("thread.updated"), thread: Thread }),
   Schema.Struct({ type: Schema.Literal("thread.removed"), id: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("thread.reveal"), threadId: Schema.String }),
   Schema.Struct({ type: Schema.Literal("worktree.updated"), worktree: Worktree }),
   Schema.Struct({ type: Schema.Literal("worktree.setupLog"), id: Schema.String, chunk: Schema.String }),
   Schema.Struct({
@@ -908,6 +922,8 @@ export const PushEvent = Schema.Union([
   }),
   Schema.Struct({ type: Schema.Literal("fs.changed"), root: Schema.String, path: Schema.String }),
   Schema.Struct({ type: Schema.Literal("automation.run"), run: AutomationRun }),
+  Schema.Struct({ type: Schema.Literal("artifact.updated"), artifact: Artifact }),
+  Schema.Struct({ type: Schema.Literal("artifact.removed"), id: Schema.String }),
   Schema.Struct({
     type: Schema.Literal("terminal.data"),
     id: Schema.String,
@@ -926,7 +942,6 @@ export const PushEvent = Schema.Union([
     deviceId: DeviceId,
     action: AgentAction,
   }),
-  Schema.Struct({ type: Schema.Literal("vm.passkey.updated"), threadId: Schema.String, passkey: VmPasskey }),
   Schema.Struct({ type: Schema.Literal("vm.screen.data"), streamId: Schema.String, data: Schema.Uint8Array }),
   Schema.Struct({ type: Schema.Literal("vm.screen.closed"), streamId: Schema.String }),
   Schema.Struct({ type: Schema.Literal("menu.command"), command: MenuCommand }),

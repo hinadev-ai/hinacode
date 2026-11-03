@@ -1,8 +1,14 @@
 import { useParams } from "@tanstack/react-router"
 import { createContext, type ReactNode, use, useState } from "react"
 import { toast } from "sonner"
-import type { AccountProviderId, Compaction, ProviderId } from "../../shared/agent.ts"
-import { type MessagePart, spawnsSubagent, type ToolCallStatus } from "../../shared/domain.ts"
+import {
+  type AccountProviderId,
+  type Compaction,
+  type ProviderId,
+  publishedArtifactId,
+  toolArgument,
+} from "../../shared/agent.ts"
+import { type MessagePart, publishesArtifact, spawnsSubagent, type ToolCallStatus } from "../../shared/domain.ts"
 import { ansiSegments } from "../lib/ansi.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
@@ -23,6 +29,7 @@ import { decodeUnicodeEscapes } from "../lib/unicodeEscapes.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
+import { openArtifact } from "../stores/artifacts.ts"
 import { useSubagentByCallId } from "../stores/subagents.ts"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
@@ -42,6 +49,7 @@ import { FileDiffIcon } from "./icons/FileDiffIcon.tsx"
 import { FileTextIcon } from "./icons/FileTextIcon.tsx"
 import { GlobeIcon } from "./icons/GlobeIcon.tsx"
 import type { IconComponent } from "./icons/Icon.tsx"
+import { LayoutIcon } from "./icons/LayoutIcon.tsx"
 import { PencilIcon } from "./icons/PencilIcon.tsx"
 import { SearchIcon } from "./icons/SearchIcon.tsx"
 import { SkillIcon } from "./icons/SkillIcon.tsx"
@@ -152,6 +160,7 @@ export const SkillLabels = createContext<SkillLabelMap>(new Map())
 function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call" }> }) {
   const linksSubagents = use(SubagentLinks)
   if (linksSubagents && spawnsSubagent(part)) return <SubagentCallPart part={part} />
+  if (publishesArtifact(part)) return <ArtifactCallPart part={part} />
   return (
     <div className="my-2">
       <ToolRow call={part} reveal={null} />
@@ -237,6 +246,27 @@ function SubagentCallPart({ part }: { part: Extract<MessagePart, { type: "tool_c
 }
 
 type ToolCall = Extract<MessagePart, { type: "tool_call" }>
+
+function ArtifactCallPart({ part }: { part: ToolCall }) {
+  const threadId = use(PartThread)
+  const named = toolArgument(part.input, "title")
+  const title = typeof named === "string" && named !== "" ? named : m.artifact_untitled()
+  const id = part.output === undefined ? null : publishedArtifactId(formatOutput(part.output))
+  return (
+    <button
+      type="button"
+      onClick={() => openArtifact(threadId, id)}
+      aria-label={m.artifact_open({ title })}
+      className="my-2 flex w-full max-w-sm min-w-0 items-center gap-3 rounded-lg border border-border bg-background/50 px-3 py-2.5 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <LayoutIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate text-sm">
+        <Highlighted text={title} />
+      </span>
+      {part.status === "running" ? statusIcon.running : <ChevronRightIcon aria-hidden className="size-3.5 shrink-0" />}
+    </button>
+  )
+}
 
 export function useFindDisclosure(request: FindRevealRequest | null) {
   const id = request?.id ?? null

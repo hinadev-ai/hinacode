@@ -1,6 +1,6 @@
 # Architecture
 
-hinacode is one Electron app with three processes: the renderer, the preload, and the main process. The main process runs the agents. It talks to Codex and Muse Code over child processes and to Claude through the Agent SDK. Everything durable is in one SQLite file. Why it is shaped this way: [`adr/`](adr/). The product design: [`features/2026-10-11-hinacode-foundation.md`](features/2026-10-11-hinacode-foundation.md).
+hinacode is one Electron app with three processes: the renderer, the preload, and the main process. The main process runs the agents. It talks to Codex, Muse Code and opencode over child processes and to Claude through the Agent SDK. Everything durable is in one SQLite file. Why it is shaped this way: [`adr/`](adr/). The product design: [`features/2026-10-11-hinacode-foundation.md`](features/2026-10-11-hinacode-foundation.md).
 
 ## System overview
 
@@ -74,7 +74,7 @@ Only the top-level app frame may send `rpc` (`isTrustedSender` in `security.ts`)
 
 Remote mode (`src/main/remote/`) is a second transport for the same contract. A phone opens a WebSocket on `settings.remote`, answers the server's `challenge` with `{ type: "auth", nonce, proof }`, a proof of the token rather than the token (`shared/proof.ts`, [ADR 0022](adr/0022-clients-prove-the-pairing-token.md)), and then `{ type: "call", id, method, payload }` frames go through the same `dispatch` (`rpc.ts`) as the Electron channel with no `DesktopCalls`, while every push is forwarded as `{ type: "event", event }`. The token lives in `Secrets`; `desktopOnlyMethods` in the contract lists what the phone cannot call. Thread create, update and delete push `thread.updated` and `thread.removed`, so the desktop window and a phone stay in step. See `features/2026-10-12-remote-mode.md`. `ready.features` negotiates application heartbeats and mutation call keys. The listener retains keyed mutation results in memory across sockets, while the desktop keeps pending cloud calls through reconnects and retries reads for a fresh snapshot. Calls expire after a total minute offline. The phone keeps its transcript and pending actions during reconnects, then atomically replaces loaded snapshots after `ready`. It reads transcripts with `compact`, which leaves out tool outputs and file diffs it never shows (see `features/2026-10-18-mobile-workbench.md`). A pairing URL carries every reachable host in order; the phone rotates after failed attempts and starts reconnects at its last successful host. Desktop environments probe every host at once, keep the earliest that answers, and wait at most a second for earlier hosts once a later one answered. See `features/2026-10-16-resilient-remote.md`.
 
-`hinacode serve` (`npx hinacode serve`) runs the same layer graph as a headless cloud in plain Node, with no Electron. It has its own build (`vite.server.config.ts`, entry `src/main/daemon.ts`, output `out/server/daemon.js`), separate from the desktop's electron-vite build. That build bundles every JavaScript dependency except the externals in `scripts/server-package.ts` (`node-pty` and `playwright-core`, which load files from their own packages at runtime). `pnpm stage:server` writes a publishable package into `dist-npm` whose manifest lists only those externals, and `pnpm verify:server` installs it away from the checkout and boots it. The repository root is private and never published. `app.ts` builds the graph for both entries; the daemon passes no keyring, an npm `Updates` (`cloudUpdater.ts`), no window sink, and forces the remote listener on at boot (`serve.ts`), then prints the pairing URLs to stdout. It takes its own `HINACODE_USER_DATA` (default `~/.hinacode-cloud`) and therefore its own database, projects and threads. Main-process code that the daemon loads must not import `electron`; the desktop-only pieces live in `index.ts`, `ipc.ts`, `updater.ts` and `notificationPermission.ts`. See `features/2026-10-14-remote-clouds.md`, `features/2026-10-28-server-npm-package.md` and [ADR 0016](adr/0016-cloud-daemon-and-dumb-relay.md).
+`hinacode serve` (`npx hinacode serve`) runs the same layer graph as a headless cloud in plain Node, with no Electron. It has its own build (`vite.server.config.ts`), separate from the desktop's electron-vite build. `bin/hinacode.mjs` runs `out/server/cli.js` (`src/cli/main.ts`), the `hinacode` CLI, which imports `out/server/daemon.js` only for `serve` and `pair`, so the other commands start without the app layer. That build bundles every JavaScript dependency except the externals in `scripts/server-package.ts` (`node-pty` and `playwright-core`, which load files from their own packages at runtime). `pnpm stage:server` writes a publishable package into `dist-npm` whose manifest lists only those externals, and `pnpm verify:server` installs it away from the checkout and boots it. The repository root is private and never published. `app.ts` builds the graph for both entries; the daemon passes no keyring, an npm `Updates` (`cloudUpdater.ts`), no window sink, and forces the remote listener on at boot (`serve.ts`), then prints the pairing URLs to stdout. It takes its own `HINACODE_USER_DATA` (default `~/.hinacode-cloud`) and therefore its own database, projects and threads. Main-process code that the daemon loads must not import `electron`; the desktop-only pieces live in `index.ts`, `ipc.ts`, `updater.ts` and `notificationPermission.ts`. See `features/2026-10-14-remote-clouds.md`, `features/2026-10-28-server-npm-package.md` and [ADR 0016](adr/0016-cloud-daemon-and-dumb-relay.md).
 
 ### Environments: routing a window call
 
@@ -123,7 +123,7 @@ Both receive a data directory as `userData`: `HINACODE_USER_DATA`, else `~/.hina
 flowchart BT
   node["NodeServices"]
   db["Db.layer<br/>SQLite + migrations"]
-  infra["ClaudeProvider, CodexProvider,<br/>MuseProvider, Git, Events"]
+  infra["ClaudeProvider, CodexProvider,<br/>MuseProvider, OpencodeProvider,<br/>Git, Events"]
   domain["Domain<br/>Threads ← Worktrees ← Projects,<br/>Threads ← Terminals,<br/>Settings, Messages, Attachments"]
   features["McpCredentials, Ports, RemoteAccess"]
   runner["AgentRunner"]
@@ -183,9 +183,15 @@ classDiagram
     sessions stay loaded in the host that opened them
     approval mode from the thread's access mode, set live
   }
+  class AcpProvider {
+    one opencode acp process per turn
+    one ACP session per thread, session/load to resume
+    hinacode answers session/request_permission from the access mode
+  }
   AgentProvider <|.. ClaudeProvider
   AgentProvider <|.. CodexProvider
   AgentProvider <|.. MuseProvider
+  AgentProvider <|.. AcpProvider
 ```
 
 An account is an agent home: `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, holding the login and the transcripts. A thread with `account_id` null runs on the CLI's own login; otherwise its turns get `home = { dir, binary }`, the config directory and CLI the user gave when adding the account. hinacode never signs in or out: the user runs the CLI's login in a terminal, and `AgentLogins` only probes who each home is signed in as. Token usage and plan limits are read from the same home, so `threads.usage` and `limits.list` follow the account. `threads.switchAccount` moves a started thread by copying its session files into the new home with `AgentProvider.copySession`, then resuming the same session id there. It is refused while a turn runs, because the transcript is still being written. `SessionImports` reads the other direction: it lists the sessions every home recorded in a project's folder, including ones a terminal started, and adopts one as a thread on the account whose home holds it, with its history replayed and a `session_import` rule after it. Muse Code has no home variable, so it runs on its CLI login only, and `AccountProviderId` leaves it out of added accounts. [`muse-integration-guide.md`](muse-integration-guide.md) explains how the Muse provider speaks MSP.
@@ -584,7 +590,7 @@ flowchart LR
   control --> scope["same project as the caller<br/>AgentRunner.transcript / steer / send / interrupt"]
 ```
 
-`request_secret` blocks until the user answers the card or the turn ends; the value goes renderer → main → `Secrets` and never into an event, a message or the tool result. `create_thread` makes an ordinary thread of the same project, or with `machine` of the project with the same GitHub repository on that machine: `created_by` records where it came from, nothing else ties it to its creator. The thread controls reach any thread of the caller's project, not only the ones it created; `send_to_thread` and `stop_thread` refuse the caller itself. `run_agent` runs one turn of any provider as a sub-agent of the caller's running turn and returns its last text; see [the feature doc](features/2026-10-30-run-agent.md). Codex gets `tool_timeout_sec = 3600` for this server so a user has time to answer and a sub-agent has time to finish.
+`request_secret` blocks until the user answers the card or the turn ends; the value goes renderer → main → `Secrets` and never into an event, a message or the tool result. `create_thread` makes an ordinary thread of the same project, or with `machine` of the project with the same GitHub repository on that machine: `created_by` records where it came from, nothing else ties it to its creator. The thread controls reach any thread of the caller's project, not only the ones it created; `send_to_thread` and `stop_thread` refuse the caller itself. `read_thread` and `search_threads` also reach threads of every other project on this machine. `run_agent` runs one turn of any provider as a sub-agent of the caller's running turn and returns its last text; see [the feature doc](features/2026-10-30-run-agent.md). Codex gets `tool_timeout_sec = 3600` for this server so a user has time to answer and a sub-agent has time to finish.
 
 Each tool's parameters are an Effect Schema. The same schema produces the JSON Schema shown to the agent and decodes its input.
 
@@ -593,6 +599,7 @@ How each agent gets its credential ([ADR 0007](adr/0007-per-thread-mcp-credentia
 - **Claude** connects through an in-process forwarder (`agents/claude/mcp.ts`), so the CLI never sees the credential.
 - **Codex** receives it as a header in its thread config over stdin. Codex asks before each MCP call with `mcpServer/elicitation/request`, which hinacode shows as an approval.
 - **Muse Code** receives it as a header in the session's `config.mcpServers` over stdin, which needs the `sessionMcp` capability. Muse treats the server as required and fails the turn if it cannot reach it.
+- **opencode** receives it as a header of the `http` entry in ACP `session/new` and `session/load`.
 
 ## Automations
 
@@ -627,6 +634,7 @@ flowchart TB
   page["In-app browser page<br/>webview: sandbox, no preload,<br/>persist:browser session"] -- "picked element,<br/>schema-decoded" --> renderer
   repo["Project repo config<br/>.claude settings, hooks, CLAUDE.md"] -- "loaded like the CLI: importing trusts it" --> agents
   main -- "hinacode-file: known roots only,<br/>CSP sandbox allow-scripts" --> preview["File preview iframe<br/>opaque origin"]
+  main -- "hinacode-artifact: store or owning cloud,<br/>CSP sandbox allow-scripts, no-store" --> artifact["Artifact iframe<br/>opaque origin"]
   main -- "hinacode-github-asset: gh token stays in main" --> renderer
 ```
 
@@ -653,4 +661,5 @@ Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md
 | Renderer state                            | `src/renderer/stores/`                                     |
 | Side panel views and activity bar         | `src/renderer/components/sidePanel/`                       |
 | File listing, reading, watching           | `src/main/services/Files.ts`                               |
+| Artifacts store, watcher and MCP tools    | `src/main/services/Artifacts.ts`, `packages/artifacts/`    |
 | Development resource monitor              | `src/main/resourceMonitor.ts`, `tools/resource-monitor/`   |

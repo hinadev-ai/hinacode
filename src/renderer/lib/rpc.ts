@@ -530,15 +530,6 @@ export const vmHostAtom = Atom.family((environment: EnvironmentId) =>
   Atom.make(call("vm.host", undefined, { environment })),
 )
 
-export const threadVmPasskeyAtom = Atom.family((threadId: string) =>
-  Atom.make(
-    pushFirst(
-      (event) => (event.type === "vm.passkey.updated" && event.threadId === threadId ? event.passkey : undefined),
-      call("vm.passkey.get", { threadId }),
-    ),
-  ),
-)
-
 const turnEnds = new Set(["turn_completed", "turn_failed", "turn_limited"])
 
 export const contextBreakdownAtom = Atom.family((threadId: string) =>
@@ -639,6 +630,22 @@ export const automationsAtom = Atom.family((environment: EnvironmentId) =>
     )
   }),
 )
+
+export const artifactsAtom = Atom.make((get) => {
+  get.addFinalizer(
+    onPushEvent(
+      (event) =>
+        (event.type === "artifact.updated" ||
+          event.type === "artifact.removed" ||
+          event.type === "environment.status" ||
+          event.type === "environments.changed") &&
+        get.refreshSelf(),
+    ),
+  )
+  return call("artifacts.list", undefined).pipe(
+    Effect.map((artifacts) => artifacts.toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt))),
+  )
+})
 
 export const automationRunsAtom = Atom.family((automationId: string) =>
   Atom.make((get) => {

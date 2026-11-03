@@ -98,6 +98,10 @@ onPushEvent((event) => {
       )
     case "thread.pullRequests":
       return usePullRequests.getState().replace(event.threadId, event.links)
+    case "thread.reveal":
+      if (windowEntry !== null) return
+      void router.navigate({ to: "/thread/$threadId", params: { threadId: event.threadId } })
+      return void callPromise("app.focus", undefined)
     case "thread.lineComment":
       return useDrafts.getState().addComment(event.threadId, event.comment)
     case "pullRequest.guide":

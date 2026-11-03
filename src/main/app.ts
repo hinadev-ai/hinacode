@@ -5,10 +5,12 @@ import * as ClaudeProvider from "./agents/claude/index.ts"
 import { mockScenarios, usageLimitLayer } from "./agents/claude/mock.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import { MuseProvider } from "./agents/muse/index.ts"
+import { OpencodeProvider } from "./agents/opencode/index.ts"
 import * as Db from "./db/client.ts"
 import { answerAsksLayer } from "./environments/route.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as RemoteAccess from "./remote/access.ts"
+import * as CliSocket from "./remote/cliSocket.ts"
 import * as Peers from "./remote/peers.ts"
 import * as Relay from "./remote/relay.ts"
 import * as RemoteServer from "./remote/server.ts"
@@ -18,6 +20,7 @@ import * as AgentAccounts from "./services/AgentAccounts.ts"
 import * as AgentLogins from "./services/AgentLogins.ts"
 import * as SessionImports from "./services/SessionImports.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
+import * as Artifacts from "./services/Artifacts.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as Boat from "./services/boat/Boat.ts"
 import * as AutoArchive from "./services/AutoArchive.ts"
@@ -45,7 +48,6 @@ import * as SystemResources from "./services/SystemResources.ts"
 import * as Terminals from "./services/Terminals.ts"
 import * as ThreadNaming from "./services/ThreadNaming.ts"
 import * as Threads from "./services/Threads.ts"
-import * as PasskeyRelay from "./services/tinyVm/passkey/PasskeyRelay.ts"
 import * as TinyVm from "./services/tinyVm/TinyVm.ts"
 import type { Updates } from "./services/Updates.ts"
 import * as Worktrees from "./services/Worktrees.ts"
@@ -90,12 +92,21 @@ export const agentProviders = (env: NodeJS.ProcessEnv) => {
           MuseProvider,
           ClaudeProvider.ClaudeProvider.useSync((claude) => ({ ...claude, id: "muse" })),
         ),
+        Layer.effect(
+          OpencodeProvider,
+          ClaudeProvider.ClaudeProvider.useSync((claude) => ({ ...claude, id: "opencode" })),
+        ),
       ).pipe(Layer.provideMerge(everyAgent)),
     }
   const claude = simulatedClaude("HINACODE_MOCK_CLAUDE", env)
   return {
     simulated: claude !== undefined,
-    layer: Layer.mergeAll(claude ?? ClaudeProvider.layer, CodexProvider.layer, MuseProvider.layer),
+    layer: Layer.mergeAll(
+      claude ?? ClaudeProvider.layer,
+      CodexProvider.layer,
+      MuseProvider.layer,
+      OpencodeProvider.layer,
+    ),
   }
 }
 
@@ -121,6 +132,7 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     ClientSettings.layer(userData),
     Messages.layer,
     Attachments.layer(join(userData, "attachments")),
+    Artifacts.layer(join(userData, "artifacts")),
     Search.layer,
     Files.layer,
   )
@@ -136,7 +148,6 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
   const tinyVm = TinyVm.layer({ configPath: sbxConfigPath, env: process.env }, join(userData, "tiny-vm"), {
     desktopRedirect: serve === undefined,
   }).pipe(Layer.provide(boat))
-  const passkeys = PasskeyRelay.layer(join(userData, "tiny-vm")).pipe(Layer.provide(tinyVm))
   const peers = Peers.layer.pipe(
     Layer.provideMerge(Environments.layer),
     Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)),
@@ -157,7 +168,6 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     remoteAccess,
     relay,
     tinyVm,
-    passkeys,
     peers,
     devices,
     linearLayer(process.env),
@@ -174,7 +184,7 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     SessionImports.layer,
     RelayAccount.layer({ serviceUrl: relayServiceUrl }).pipe(Layer.provide(Secrets.layer)),
   ).pipe(Layer.provideMerge(agents))
-  return Layer.mergeAll(RemoteServer.layer, answerAsksLayer).pipe(
+  return Layer.mergeAll(RemoteServer.layer, CliSocket.layer(userData), answerAsksLayer).pipe(
     Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),
     Layer.provideMerge(services),
     Layer.provide(providers.layer),

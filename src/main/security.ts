@@ -1,5 +1,7 @@
 import { isAbsolute, relative, sep } from "node:path"
+import { isArtifactId, normalizeArtifactPath } from "@hinacode/artifacts"
 import {
+  ARTIFACT_PROTOCOL,
   ATTACHMENT_PROTOCOL,
   EXTERNAL_IMAGE_PROTOCOL,
   GITHUB_ASSET_PROTOCOL,
@@ -20,8 +22,10 @@ export const isAppDocument = (url: string, appUrl: string): boolean => {
   return app.protocol !== "file:" || target.pathname === app.pathname
 }
 
+const FRAME_PROTOCOLS = new Set([`${PROJECT_FILE_PROTOCOL}:`, `${ARTIFACT_PROTOCOL}:`])
+
 export const isAllowedNavigation = (url: string, isMainFrame: boolean, appUrl: string): boolean =>
-  isMainFrame ? isAppDocument(url, appUrl) : URL.parse(url)?.protocol === `${PROJECT_FILE_PROTOCOL}:`
+  isMainFrame ? isAppDocument(url, appUrl) : FRAME_PROTOCOLS.has(URL.parse(url)?.protocol ?? "")
 
 export const isTrustedSender = (frame: { url: string; parent: unknown } | null, appUrl: string): boolean =>
   frame !== null && frame.parent === null && isAppDocument(frame.url, appUrl)
@@ -63,6 +67,18 @@ export const projectFileRequest = (url: string): { root: string; path: string } 
   const [root, ...segments] = parsed.pathname.slice(1).split("/")
   try {
     return root ? { root: decodeURIComponent(root), path: segments.map(decodeURIComponent).join("/") } : null
+  } catch {
+    return null
+  }
+}
+
+export const artifactRequest = (url: string): { id: string; path: string } | null => {
+  const parsed = URL.parse(url)
+  if (parsed?.protocol !== `${ARTIFACT_PROTOCOL}:` || !isArtifactId(parsed.host)) return null
+  try {
+    const decoded = parsed.pathname.slice(1).split("/").map(decodeURIComponent).join("/")
+    const path = decoded === "" ? "" : normalizeArtifactPath(decoded)
+    return path === null ? null : { id: parsed.host, path }
   } catch {
     return null
   }

@@ -50,14 +50,17 @@ import { CodexProvider } from "../agents/codex/index.ts"
 import { handoffPrompt } from "../agents/handoff.ts"
 import { latestForkPoint, sidechatPrompt, unseenSince } from "../agents/sidechat.ts"
 import { agentInstructions, type AgentEnvironment } from "../agents/instructions.ts"
-import { spawningCallId } from "../agents/runAgent.ts"
+import { pickedSubagentModel, spawningCallId } from "../agents/runAgent.ts"
+import { providerInfo } from "../../shared/providers.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
+import { OpencodeProvider } from "../agents/opencode/index.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
-import { AgentError, type AgentProvider, type Wake } from "../agents/provider.ts"
+import { AgentError, type AgentProvider, type SteerPriority, type Wake } from "../agents/provider.ts"
 import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
 import { makeDeltaCoalescer } from "./coalesceDeltas.ts"
 import {
+  type FolderMissingError,
   NotFoundError,
   type PersistenceError,
   type PullRequestElsewhereError,
@@ -95,6 +98,7 @@ export interface SendOptions {
 
 type SendError =
   | AgentError
+  | FolderMissingError
   | PersistenceError
   | NotFoundError
   | CommandError
@@ -183,7 +187,7 @@ export class AgentRunner extends Context.Service<
     readonly runAgent: (
       threadId: string,
       request: AgentRequest,
-    ) => Effect.Effect<string, AgentError | PersistenceError | NotFoundError>
+    ) => Effect.Effect<string, AgentError | PersistenceError | NotFoundError | FolderMissingError>
     readonly stopSubagent: (
       threadId: string,
       subagentId: string,
@@ -195,7 +199,7 @@ export class AgentRunner extends Context.Service<
     ) => Effect.Effect<void, AgentError | PersistenceError | NotFoundError>
     readonly listCommands: (
       threadId: string,
-    ) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError | PersistenceError | NotFoundError>
+    ) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError | PersistenceError | NotFoundError | FolderMissingError>
   }
 >()("hinacode/AgentRunner") {}
 
@@ -280,6 +284,7 @@ const make = Effect.gen(function* () {
     claude: yield* ClaudeProvider,
     codex: yield* CodexProvider,
     muse: yield* MuseProvider,
+    opencode: yield* OpencodeProvider,
   }
 
   type LimitsKey = Pick<AccountLimits, "provider" | "accountId">
@@ -341,10 +346,11 @@ const make = Effect.gen(function* () {
       return Effect.gen(function* () {
         const delivered = yield* providers[request.provider].respondApproval(requestId, decision, text)
         if (text === undefined || delivered) return
+        const steers = activeTurns.get(request.threadId)?.provider.steer !== undefined
         const { queue } = yield* threads.get(request.threadId)
         yield* updateThread({
           id: request.threadId,
-          queue: [{ id: randomUUID(), text, attachments: [], steer: true }, ...queue],
+          queue: [{ id: randomUUID(), text, attachments: [], ...(steers && { steer: true as const }) }, ...queue],
         })
       }).pipe(exclusive(request.threadId))
     })
@@ -491,10 +497,10 @@ const make = Effect.gen(function* () {
       }).pipe(exclusive(thread.id))
 
     const steerHeld: Effect.Effect<void> = Effect.gen(function* () {
-      if (waitsOnUser(thread.id)) return
+      if (provider.steer === undefined || waitsOnUser(thread.id)) return
       const held = (yield* threads.get(thread.id)).queue.filter((message) => message.steer)
       for (const message of held) {
-        yield* steerNow(message.text, message.attachments)
+        yield* steerTurn(message.text, message.attachments, "next")
         const { queue } = yield* threads.get(thread.id)
         yield* updateThread({ id: thread.id, queue: queue.filter((queued) => queued.id !== message.id) })
       }
@@ -506,9 +512,9 @@ const make = Effect.gen(function* () {
       when: Effect.Effect<boolean, PersistenceError>,
     ) =>
       Effect.gen(function* () {
-        if (!(yield* when)) return false
+        if (provider.steer === undefined || !(yield* when)) return false
         if (!waitsOnUser(thread.id)) {
-          yield* steerNow(text, attachments)
+          yield* steerTurn(text, attachments, "now")
           return true
         }
         const { queue } = yield* threads.get(thread.id)
@@ -516,10 +522,11 @@ const make = Effect.gen(function* () {
         return true
       }).pipe(exclusive(thread.id))
 
-    const steerNow = (text: string, attachments: ReadonlyArray<Attachment>) =>
+    const steerTurn = (text: string, attachments: ReadonlyArray<Attachment>, priority: SteerPriority) =>
       Effect.gen(function* () {
+        if (provider.steer === undefined) return
         yield* deltas.flush
-        yield* provider.steer(thread.id, text, attachments)
+        yield* provider.steer(thread.id, text, attachments, priority)
         const now = yield* nowIso
         const current = turnMessages.at(-1)!
         const closed: Message = { ...current, completedAt: now }
@@ -641,6 +648,28 @@ const make = Effect.gen(function* () {
     }
   }
 
+  const subagentModel = (request: AgentRequest, threadModel: string | null) =>
+    Effect.gen(function* () {
+      if (providerInfo[request.provider].subagentModels === "picked") {
+        const { modelPresets } = yield* settings.get
+        const resolved = pickedSubagentModel({
+          agent: providerInfo[request.provider].name,
+          requested: request.model,
+          threadModel,
+          picked: modelPresets[request.provider],
+        })
+        if (resolved.kind === "refused") {
+          return yield* new AgentError({ provider: request.provider, message: resolved.message })
+        }
+        return resolved.model
+      }
+      const model = request.model ?? threadModel ?? (yield* providers[request.provider].listModels)[0]?.id
+      if (model === undefined) {
+        return yield* new AgentError({ provider: request.provider, message: "This agent lists no models." })
+      }
+      return model
+    })
+
   const runAgent = (threadId: string, request: AgentRequest) =>
     Effect.gen(function* () {
       const turn = activeTurns.get(threadId)
@@ -650,10 +679,7 @@ const make = Effect.gen(function* () {
       const thread = yield* threads.get(threadId)
       const provider = providers[request.provider]
       const sameProvider = request.provider === thread.provider
-      const model = request.model ?? (sameProvider ? thread.model : (yield* provider.listModels)[0]?.id)
-      if (model === undefined) {
-        return yield* new AgentError({ provider: request.provider, message: "This agent lists no models." })
-      }
+      const model = yield* subagentModel(request, sameProvider ? thread.model : null)
       const workspace = yield* activeWorkspace(threadId)
       const [home, environment, mcpServer, { experimental, autoCompactTokens }, startedAt] = yield* Effect.all([
         accounts.home(sameProvider ? thread.accountId : null),
@@ -978,10 +1004,14 @@ const make = Effect.gen(function* () {
     )
 
   const steerWhen: typeof AgentRunner.Service.steerWhen = ({ threadId, text, attachments, when }) =>
-    Effect.suspend(
-      () =>
-        activeTurns.get(threadId)?.steer(text, attachments, when) ?? sendWhen(threadId, text, attachments, {}, when),
-    )
+    Effect.suspend(() => {
+      const turn = activeTurns.get(threadId)
+      if (turn === undefined) return sendWhen(threadId, text, attachments, {}, when)
+      if (turn.provider.steer !== undefined) return turn.steer(text, attachments, when)
+      return Effect.flatMap(when, (ready) =>
+        ready ? Effect.as(queue(threadId, text, attachments), true) : Effect.succeed(false),
+      )
+    })
 
   const resumeAtReset = (threadId: string, enabled: boolean) =>
     Effect.gen(function* () {

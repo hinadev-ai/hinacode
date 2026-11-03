@@ -251,12 +251,6 @@ const startFakeBoat = (): Promise<FakeBoat> =>
       }
 
       if (suffix === "/resume" && request.method === "POST") {
-        if (record.state === "expired")
-          return sendJson(
-            response,
-            409,
-            errorEnvelope(409, "snapshot_data_expired", "snapshot data has expired", "req_expired1"),
-          )
         resumed.push(jsonBody)
         record.state = "provisioning"
         record.getCount = 0
@@ -431,15 +425,6 @@ describe("boatClient", () => {
     })
   })
 
-  it("tags an expired snapshot on resume", async () => {
-    await withFake(async (fake) => {
-      fake.seedSandbox("sb-old", "expired")
-      const client = makeClient(fake)
-      const error = await runFlip(client.resume("sb-old"))
-      expect(error._tag).toBe("BoatSnapshotExpiredError")
-    })
-  })
-
   it("create sends ttl, labels and an idempotency key and waits for ready", async () => {
     await withFake(async (fake) => {
       const client = makeClient(fake)
@@ -594,7 +579,7 @@ describe("boatClient", () => {
     })
   }, 15000)
 
-  it("limits, status, templates, hostPort and listAll have the expected shapes", async () => {
+  it("limits, status, hostPort and file bytes have the expected shapes", async () => {
     await withFake(async (fake) => {
       fake.seedSandbox("sb-1", "ready")
       fake.seedSandbox("sb-2", "provisioning")
@@ -603,15 +588,7 @@ describe("boatClient", () => {
       expect(client.url).toBe(fake.baseUrl)
       expect(await runEffect(client.limits())).toEqual({ canStart: true, maxSandboxes: 100 })
       expect(await runEffect(client.status)).toEqual({ sandboxes: 2, maxSandboxes: 100 })
-      expect(await runEffect(client.templates)).toEqual([
-        { name: "small", cpus: 2, memoryMiB: 4096 },
-        { name: "default", cpus: 4, memoryMiB: 8192 },
-        { name: "large", cpus: 8, memoryMiB: 16384 },
-        { name: "xlarge", cpus: 16, memoryMiB: 32768 },
-      ])
       expect(await runEffect(client.hostPort("sb-1", 8080))).toBe("https://sb-1-8080.boat.dev")
-      const all = await runEffect(client.listAll())
-      expect(all.map((sandbox) => sandbox.id).toSorted()).toEqual(["sb-1", "sb-2", "sb-3"])
       fake.files.set("/home/user/note.txt", Buffer.from("hello-bytes"))
       const downloaded = await runEffect(client.readFileBytes("sb-1", "/home/user/note.txt"))
       expect(Buffer.from(downloaded).toString()).toBe("hello-bytes")

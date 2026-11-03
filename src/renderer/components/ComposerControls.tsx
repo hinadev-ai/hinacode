@@ -103,6 +103,7 @@ function usePickerModels(environment: EnvironmentId, provider: ProviderId, keep:
 const CLI_LOGIN = "cli"
 
 const effortLabels: Record<string, () => string> = {
+  none: m.effort_none,
   minimal: m.effort_minimal,
   low: m.effort_low,
   medium: m.effort_medium,
@@ -146,6 +147,7 @@ const supervisedHint = {
   claude: m.access_supervised_hint_claude,
   codex: m.access_supervised_hint_codex,
   muse: m.access_supervised_hint_muse,
+  opencode: m.access_supervised_hint_opencode,
 } satisfies Record<ProviderId, () => string>
 
 const autoHint = {
@@ -153,6 +155,7 @@ const autoHint = {
     model?.autoMode ? m.access_auto_hint_claude() : m.access_auto_hint_claude_edits(),
   codex: m.access_auto_hint_codex,
   muse: m.access_auto_hint_muse,
+  opencode: m.access_auto_hint_opencode,
 } satisfies Record<ProviderId, (model: ModelInfo | undefined) => string>
 
 const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | undefined) => {
@@ -166,7 +169,10 @@ const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | u
   }
 }
 
-const hidesUserSkills = { claude: true, codex: true, muse: false } satisfies Record<ProviderId, boolean>
+const hidesUserSkills = { claude: true, codex: true, muse: false, opencode: false } satisfies Record<
+  ProviderId,
+  boolean
+>
 
 interface AgentTab {
   readonly value: string
@@ -217,6 +223,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
   const [open, setOpen] = useState(false)
   const [tabValue, setTabValue] = useState(threadTab)
   const [focus, setFocus] = useState<ComposerPicker>("model")
+  const [picking, startPicking] = useTransition()
   const openedByShortcut = useRef(false)
   const closedWithEnter = useRef(false)
   const popupRef = useRef<HTMLDivElement>(null)
@@ -411,10 +418,10 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
               <li key={model.id}>
                 <button
                   type="button"
-                  disabled={tab.disabled}
+                  disabled={tab.disabled || picking}
                   aria-pressed={isSelected}
                   data-selected={isSelected}
-                  onClick={() => void pick(model)}
+                  onClick={() => startPicking(() => pick(model))}
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent disabled:opacity-50 aria-pressed:font-medium"
                 >
                   <span className="min-w-0 flex-1 truncate">{model.label}</span>

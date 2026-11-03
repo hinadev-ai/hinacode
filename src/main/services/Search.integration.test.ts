@@ -3,10 +3,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
-import { Effect, Layer } from "effect"
+import { NodeServices } from "@effect/platform-node"
+import { Effect, type FileSystem, Layer } from "effect"
 import { SqlClient } from "effect/sql"
 import type { MessagePart } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
+import ftsToolTitles from "../db/migrations/0034_fts_tool_titles.ts"
 import { seedThread } from "../db/testing.ts"
 import * as Search from "./Search.ts"
 
@@ -24,8 +26,8 @@ beforeAll(() => {
 
 afterAll(() => rmSync(repo, { recursive: true, force: true }))
 
-const withSearch = (layer: Layer.Layer<Search.Search, never, SqlClient.SqlClient>) =>
-  Effect.provide(layer.pipe(Layer.provideMerge(Db.layer(":memory:"))))
+const withSearch = (layer: Layer.Layer<Search.Search, never, SqlClient.SqlClient | FileSystem.FileSystem>) =>
+  Effect.provide(layer.pipe(Layer.provideMerge(Db.layer(":memory:")), Layer.provide(NodeServices.layer)))
 
 let clock = 0
 const insertMessage = (threadId: string, parts: ReadonlyArray<MessagePart>) =>
@@ -45,6 +47,13 @@ const insertMessage = (threadId: string, parts: ReadonlyArray<MessagePart>) =>
   })
 
 const text = (value: string): MessagePart => ({ type: "text", text: value })
+const call = (callId: string, name: string, input: unknown): MessagePart => ({
+  type: "tool_call",
+  callId,
+  name,
+  input,
+  status: "done",
+})
 
 describe("Search.threads", () => {
   it.effect("finds substrings case-insensitively, newest first, with a snippet around the match", () =>
@@ -63,6 +72,43 @@ describe("Search.threads", () => {
       expect(hits[0]?.snippet).toMatch(/^….*then the migration passed.*…$/)
       expect(hits[0]?.snippet.length).toBeLessThanOrEqual(82)
       expect(hits[1]?.snippet).toBe("Ran the MIGRATION for worktrees")
+    }).pipe(withSearch(Search.layer)),
+  )
+
+  it.effect("perThread keeps an older thread that a busy thread would push past the limit", () =>
+    Effect.gen(function* () {
+      const quiet = (yield* seedThread({ rootPath: repo })).threadId
+      const busy = (yield* seedThread({ rootPath: `${repo}-busy` })).threadId
+      const quietHit = yield* insertMessage(quiet, [text("the deploy failed once")])
+      for (let index = 0; index < 5; index++) yield* insertMessage(busy, [text(`deploy attempt ${index}`)])
+      const busyHit = yield* insertMessage(busy, [text("deploy attempt final")])
+      const search = yield* Search.Search
+
+      expect((yield* search.threads("deploy", 3)).map((hit) => hit.threadId)).toStrictEqual([busy, busy, busy])
+      const hits = yield* search.perThread("Deploy", { limit: 3 })
+      expect(hits.map((hit) => [hit.threadId, hit.messageId])).toStrictEqual([
+        [busy, busyHit],
+        [quiet, quietHit],
+      ])
+      expect(hits[0]?.snippet).toBe("deploy attempt final")
+      const onlyQuiet = yield* search.perThread("deploy", { limit: 3, threadIds: [quiet] })
+      expect(onlyQuiet.map((hit) => hit.messageId)).toStrictEqual([quietHit])
+      expect(yield* search.perThread("deploy", { limit: 3, threadIds: [] })).toStrictEqual([])
+      expect(yield* search.perThread(" ", { limit: 3 })).toStrictEqual([])
+    }).pipe(withSearch(Search.layer)),
+  )
+
+  it.effect("perThread ranks by when a message was written, not when it was stored", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient
+      const recent = (yield* seedThread({ rootPath: `${repo}-recent` })).threadId
+      const imported = (yield* seedThread({ rootPath: `${repo}-imported` })).threadId
+      yield* insertMessage(recent, [text("the invoice job ran")])
+      const old = yield* insertMessage(imported, [text("the invoice job ran last year")])
+      yield* sql`UPDATE message SET created_at = '2025-01-01T00:00:00.000Z' WHERE id = ${old}`
+      const search = yield* Search.Search
+
+      expect((yield* search.perThread("invoice", { limit: 1 })).map((hit) => hit.threadId)).toStrictEqual([recent])
     }).pipe(withSearch(Search.layer)),
   )
 
@@ -87,6 +133,46 @@ describe("Search.threads", () => {
       expect((yield* search.threads("messages_fts")).map((hit) => hit.messageId)).toStrictEqual([tool])
       expect(yield* search.threads("hidden")).toStrictEqual([])
       expect(yield* search.threads("secret")).toStrictEqual([])
+    }).pipe(withSearch(Search.layer)),
+  )
+
+  it.effect("shows a tool call the way the transcript titles it, not its raw input", () =>
+    Effect.gen(function* () {
+      const { threadId } = yield* seedThread({ rootPath: repo })
+      const message = yield* insertMessage(threadId, [
+        call("c1", "mcp__hinacode__create_thread", { prompt: "Retry failed payments", mode: "worktree" }),
+        call("c2", "WebFetch", { url: "https://docs.stripe.com/webhooks", prompt: "How are retries scheduled?" }),
+        call("c3", "search_issues", {
+          type: "mcpToolCall",
+          server: "linear",
+          tool: "search_issues",
+          arguments: { query: "stripe refunds" },
+        }),
+      ])
+      const search = yield* Search.Search
+
+      const [hit] = yield* search.threads("stripe")
+      expect(hit?.snippet).toContain("create_thread WebFetch https://docs.stripe.com/webhooks linear/search_issues")
+      expect(hit?.snippet).not.toMatch(/[{}"]/)
+      expect((yield* search.threads("linear/search_issues")).map(({ messageId }) => messageId)).toStrictEqual([message])
+      expect(yield* search.threads("worktree")).toStrictEqual([])
+    }).pipe(withSearch(Search.layer)),
+  )
+
+  it.effect("reindexes tool calls that an older index stored as raw input", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient
+      const { threadId } = yield* seedThread({ rootPath: repo })
+      const message = yield* insertMessage(threadId, [
+        { type: "tool_call", callId: "c1", name: "Grep", input: { pattern: "stripe", glob: "*.ts" }, status: "done" },
+      ])
+      yield* sql`UPDATE message_fts SET body = ${`Grep\n{"pattern":"stripe","glob":"*.ts"}`}`
+      yield* ftsToolTitles
+      const search = yield* Search.Search
+
+      expect((yield* search.threads("stripe")).map((hit) => [hit.messageId, hit.snippet])).toStrictEqual([
+        [message, "Grep stripe"],
+      ])
     }).pipe(withSearch(Search.layer)),
   )
 
@@ -192,6 +278,6 @@ describe("Search.files", () => {
       )
       expect(missing._tag).toBe("RipgrepMissingError")
       expect(notStarting._tag).toBe("RipgrepMissingError")
-    }).pipe(Effect.provide(Db.layer(":memory:"))),
+    }).pipe(Effect.provide(Layer.mergeAll(Db.layer(":memory:"), NodeServices.layer))),
   )
 })

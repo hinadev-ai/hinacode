@@ -1,16 +1,15 @@
 import { spawn } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { readFile } from "node:fs/promises"
-import {
-  type AccountInfo,
-  type EffortLevel,
-  type PermissionMode,
-  query,
-  type Options,
-  type Query,
-  type SDKControlGetContextUsageResponse,
-  type SDKMessage,
-  type SDKUserMessage,
+import type {
+  AccountInfo,
+  EffortLevel,
+  PermissionMode,
+  Options,
+  Query,
+  SDKControlGetContextUsageResponse,
+  SDKMessage,
+  SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk"
 import { Cache, Cause, Clock, Context, Duration, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect"
 import {
@@ -23,11 +22,18 @@ import {
   type ModelInfo,
   type RunTurnInput,
 } from "../../../shared/agent.ts"
+import { AGENT_IMAGE_MAX_BYTES, AGENT_IMAGE_TYPES } from "../../../shared/agentImages.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { nowIso } from "../../services/clock.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
 import { installedBinary } from "../binary.ts"
-import { AgentError, type AgentProvider, type BackgroundTasksChange, type Wake } from "../provider.ts"
+import {
+  AgentError,
+  type AgentProvider,
+  type BackgroundTasksChange,
+  type SteerPriority,
+  type Wake,
+} from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { permissionMode } from "./access.ts"
 import { type ApprovalSession, makeApprovals } from "./approvals.ts"
@@ -230,19 +236,16 @@ const copySession = (sessionId: string, from: AccountHome | null, to: AccountHom
     ),
   )
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024
-
 type ContentBlock = Exclude<SDKUserMessage["message"]["content"], string>[number]
 type ImageMediaType = Extract<Extract<ContentBlock, { type: "image" }>["source"], { type: "base64" }>["media_type"]
 
-const IMAGE_MEDIA_TYPES: ReadonlyArray<string> = ["image/png", "image/jpeg", "image/gif", "image/webp"]
-const isImageMediaType = (mime: string): mime is ImageMediaType => IMAGE_MEDIA_TYPES.includes(mime)
+const isImageMediaType = (mime: string): mime is ImageMediaType => AGENT_IMAGE_TYPES.includes(mime)
 
 const attachmentBlocks = (attachment: Attachment) =>
   Effect.gen(function* () {
     const fileBlock: ContentBlock = { type: "text", text: `Attached file: ${attachment.path}` }
     if (attachment.kind !== "image" || !isImageMediaType(attachment.mime)) return [fileBlock]
-    if (attachment.bytes > MAX_IMAGE_BYTES) {
+    if (attachment.bytes > AGENT_IMAGE_MAX_BYTES) {
       return yield* new AgentError({
         provider: "claude",
         message: `${attachment.name} is larger than 5 MB, the limit for images sent to Claude`,
@@ -297,6 +300,7 @@ const probe = <A>(
   Effect.gen(function* () {
     const prompts = yield* Queue.unbounded<SDKUserMessage>()
     const base = yield* baseOptions(home)
+    const { query } = yield* Effect.promise(() => import("@anthropic-ai/claude-agent-sdk"))
     const cli = query({
       prompt: Stream.toAsyncIterable(Stream.fromQueue(prompts)),
       options: { ...base, settingSources: [], persistSession: false, ...options },
@@ -586,6 +590,7 @@ export const layer = Layer.effect(
         const base = yield* baseOptions(input.home)
         const hidden = yield* skillOverrides(input)
         const effort = effortLevelOf(input.effort)
+        const { query } = yield* Effect.promise(() => import("@anthropic-ai/claude-agent-sdk"))
         const handle = yield* Effect.try({
           try: () =>
             query({
@@ -793,9 +798,9 @@ export const layer = Layer.effect(
         ),
       )
 
-    const steer = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>) =>
+    const steer = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>, priority: SteerPriority) =>
       Effect.gen(function* () {
-        const message = yield* userMessage(text, attachments, "now")
+        const message = yield* userMessage(text, attachments, priority)
         const session = sessions.get(threadId)
         if (session?.turn == null) {
           return yield* new AgentError({ provider: "claude", message: "No turn is running on this thread" })

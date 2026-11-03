@@ -19,6 +19,7 @@ export class NotFoundError extends Schema.TaggedError<NotFoundError>()("NotFound
     "account",
     "fork point",
     "tool call",
+    "artifact",
   ]),
   id: Schema.String,
 }) {
@@ -65,6 +66,14 @@ export class UnknownRootError extends Schema.TaggedError<UnknownRootError>()("Un
 }) {
   override get message(): string {
     return `${this.root} is not a project or worktree HinaCode knows`
+  }
+}
+
+export class FolderMissingError extends Schema.TaggedError<FolderMissingError>()("FolderMissingError", {
+  path: Schema.String,
+}) {
+  override get message(): string {
+    return `The folder ${this.path} is missing. It was moved or deleted.`
   }
 }
 

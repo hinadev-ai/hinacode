@@ -65,6 +65,7 @@ export const ServerFrame = Schema.Union([
     version: Schema.Int,
     environment: Schema.optionalKey(Schema.Struct({ id: Schema.String, name: Schema.String })),
     features: Schema.optionalKey(Schema.Array(Schema.String)),
+    hosts: Schema.optionalKey(Schema.NonEmptyArray(Schema.String)),
     relay: Schema.optionalKey(Schema.String),
     proof: Schema.optionalKey(Schema.String),
   }),
@@ -80,7 +81,7 @@ export const ServerFrame = Schema.Union([
 ])
 export type ServerFrame = typeof ServerFrame.Type
 
-const noticeEvents: ReadonlySet<string> = new Set([
+export const noticeEvents: ReadonlySet<string> = new Set([
   "turn_completed",
   "turn_failed",
   "turn_limited",

@@ -57,8 +57,8 @@ const renderComposer = () =>
 
 const type = (text: string) => cdp().send("Input.insertText", { text })
 
-const press = async (key: "Enter" | "Backspace", modifiers = 0) => {
-  const code = { Enter: 13, Backspace: 8 }[key]
+const press = async (key: "Enter" | "Backspace" | "Tab", modifiers = 0) => {
+  const code = { Enter: 13, Backspace: 8, Tab: 9 }[key]
   const event = { key, code: key, windowsVirtualKeyCode: code, modifiers }
   await cdp().send("Input.dispatchKeyEvent", { type: "rawKeyDown", ...event })
   await cdp().send("Input.dispatchKeyEvent", { type: "keyUp", ...event })
@@ -83,6 +83,21 @@ test("continues a list on shift+enter and leaves it on an empty item", async () 
 
   await press("Backspace")
   await expect.poll(() => value).toBe("1. first\n2. second\n- dot\n")
+})
+
+test("indents a list item on tab and keeps the focus in the composer", async () => {
+  await renderComposer()
+  await page.getByRole("combobox", { name: "Message" }).click()
+
+  await type("1. first")
+  await press("Enter", shift)
+  await type("second")
+  await press("Tab")
+  await expect.poll(() => value).toBe("1. first\n   1. second")
+  expect(document.activeElement).toBe(document.querySelector(".cm-content"))
+
+  await press("Tab", shift)
+  await expect.poll(() => value).toBe("1. first\n2. second")
 })
 
 test("ignores the separate char event a DevTools screencast sends after Enter", async () => {

@@ -1,8 +1,9 @@
 import { execFileSync } from "node:child_process"
 import { mkdtempSync, realpathSync, rmSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { tmpdir, userInfo } from "node:os"
 import { join } from "node:path"
 import { afterAll, describe, expect, layer } from "@effect/vitest"
+import { NodeServices } from "@effect/platform-node"
 import { Context, Effect, Layer, PubSub } from "effect"
 import type { PushEvent } from "../../shared/contract.ts"
 import * as Db from "../db/client.ts"
@@ -18,6 +19,7 @@ const testLayer = terminalsLayer.pipe(
   Layer.provide(Layer.succeed(Events, Events.of({ publish: (event) => Effect.asVoid(PubSub.publish(pushes, event)) }))),
   Layer.provideMerge(Db.layer(":memory:")),
   Layer.provideMerge(Layer.succeed(Pushes, pushes)),
+  Layer.provide(NodeServices.layer),
 )
 
 const base = realpathSync(mkdtempSync(join(tmpdir(), "kk-terminals-")))
@@ -89,6 +91,32 @@ describe("Terminals", () => {
           yield* terminals.close(session.id)
           expect(yield* terminals.list(threadId)).toStrictEqual([])
           expect(yield* Effect.flip(terminals.write(session.id, "ls\n"))).toMatchObject({ _tag: "NotFoundError" })
+        }).pipe(Effect.scoped),
+      30_000,
+    )
+
+    it.effect(
+      "starts the account's login shell when SHELL is unset",
+      () =>
+        Effect.gen(function* () {
+          yield* Effect.acquireRelease(
+            Effect.sync(() => {
+              const shell = process.env["SHELL"]
+              delete process.env["SHELL"]
+              return shell
+            }),
+            (shell) =>
+              Effect.sync(() => {
+                if (shell !== undefined) process.env["SHELL"] = shell
+              }),
+          )
+          const { threadId } = yield* seedThread({ rootPath: gitRepo("no-shell-env") })
+          const terminals = yield* Terminals
+          const session = yield* terminals.open({ threadId, cols: 100, rows: 30 })
+
+          const run = yield* outputUntil(session.id, `started:${userInfo().shell}`)
+          yield* run(terminals.write(session.id, "echo started:$0\n"))
+          yield* terminals.close(session.id)
         }).pipe(Effect.scoped),
       30_000,
     )

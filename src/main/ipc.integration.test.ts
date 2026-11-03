@@ -16,18 +16,27 @@ import type { PushEvent, RpcEnvelope, RpcMethod, RpcRequestEncoded, RpcResponseE
 import { TOOL_OUTPUT_PREVIEW_CHARS } from "../shared/compactTranscript.ts"
 import { clientProof, newNonce, serverProof } from "../shared/proof.ts"
 import { type ClientFrame, remoteWebSocketUrl, type ServerFrame } from "../shared/remote.ts"
-import { defaultSettings, type Message, type Project, type Thread, type Worktree } from "../shared/domain.ts"
+import {
+  defaultSettings,
+  type Message,
+  PRIVATE_NETWORKS,
+  type Project,
+  type Thread,
+  type Worktree,
+} from "../shared/domain.ts"
 import type { PlanLimits } from "../shared/limits.ts"
 import { ClaudeProvider } from "./agents/claude/index.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import { MuseProvider } from "./agents/muse/index.ts"
+import { OpencodeProvider } from "./agents/opencode/index.ts"
 import { AgentError, type AgentProvider, type Wake } from "./agents/provider.ts"
 import { registerIpc } from "./ipc.ts"
 import { makeTestAppLayer } from "./testing.ts"
 import { Events } from "./services/Events.ts"
 import * as Messages from "./services/Messages.ts"
+import { privateAddresses } from "./network.ts"
 import * as RemoteAccess from "./remote/access.ts"
-import { MAX_CALL_KEYS } from "./remote/server.ts"
+import { MAX_CALL_KEYS } from "./remote/session.ts"
 import { unusedLoopbackPort } from "./remote/testing.ts"
 import * as PullRequests from "./services/PullRequests.ts"
 import * as Settings from "./services/Settings.ts"
@@ -282,6 +291,7 @@ const providers = Layer.mergeAll(
   Layer.succeed(ClaudeProvider, scriptedProvider("claude")),
   Layer.succeed(CodexProvider, scriptedProvider("codex")),
   Layer.succeed(MuseProvider, scriptedProvider("muse")),
+  Layer.succeed(OpencodeProvider, scriptedProvider("opencode")),
 )
 
 const makeLayer = (dbPath: string) => makeTestAppLayer(dbPath, { providers })
@@ -1040,6 +1050,7 @@ describe("plan limits over rpc", () => {
       { provider: "codex", accountId: null, limits: null },
       { provider: "codex", accountId: work.id, limits: null },
       { provider: "muse", accountId: null, limits: null },
+      { provider: "opencode", accountId: null, limits: null },
     ])
   })
 })
@@ -2106,6 +2117,34 @@ describe("remote mode", () => {
     await back.send({ type: "auth", token: result(await invoke("remote.pairing", undefined)).token })
     await back.ready()
     back.socket.close()
+  })
+
+  test("listening on private networks pairs and reports every LAN and Tailscale address", async () => {
+    const privatePort = await unusedLoopbackPort()
+    const accepts = () =>
+      new Promise<boolean>((resolve) => {
+        const probe = createConnection({ host: "127.0.0.1", port: privatePort })
+        probe.once("error", () => resolve(false))
+        probe.once("connect", () => {
+          probe.destroy()
+          resolve(true)
+        })
+      })
+    try {
+      result(await invoke("settings.set", { remote: { enabled: true, bindHost: PRIVATE_NETWORKS, port: privatePort } }))
+      await vi.waitFor(async () => expect(await accepts()).toBe(true))
+      const pairing = result(await invoke("remote.pairing", undefined))
+      const hosts = privateAddresses()
+      expect(pairing.hosts).toEqual(hosts.length > 0 ? hosts : ["127.0.0.1"])
+
+      const local = phone(privatePort)
+      await local.send({ type: "auth", token: pairing.token })
+      expect((await local.ready()).hosts).toEqual(pairing.hosts)
+      local.socket.close()
+    } finally {
+      result(await invoke("settings.set", { remote: { enabled: true, bindHost: "127.0.0.1", port } }))
+      await vi.waitFor(async () => expect(result(await invoke("remote.status", undefined)).listening).toBe(true))
+    }
   })
 })
 

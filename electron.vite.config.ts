@@ -16,7 +16,7 @@ export default defineConfig({
       // FIXME: electron-vite bundles optional dependencies, which breaks these native modules' binding lookup
       externalizeDeps: {
         include: ["node-mac-permissions", "electron-liquid-glass"],
-        exclude: ["effect", "@effect/platform-node", "@effect/sql-sqlite-node"],
+        exclude: ["effect", "@effect/platform-node", "@effect/sql-sqlite-node", "@hinacode/artifacts"],
       },
     },
   },
@@ -29,6 +29,7 @@ export default defineConfig({
   renderer: {
     resolve: { alias: { "@": resolve(import.meta.dirname, "src/renderer") } },
     build: { minify: true },
+    worker: { format: "es" },
     esbuild: process.env.HINACODE_KEEP_NAMES ? { keepNames: true } : undefined,
     plugins: [
       react({

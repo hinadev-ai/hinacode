@@ -1,6 +1,6 @@
 # HinaCode
 
-HinaCode is a desktop UI for coding agents. It runs Claude Code (Agent SDK), Codex (app-server protocol) and Muse Code (MSP) side by side, so a developer can run many agents in parallel and still know what each one is doing, where it is working, and what it shipped.
+HinaCode is a desktop UI for coding agents. It runs Claude Code (Agent SDK), Codex (app-server protocol), Muse Code (MSP) and opencode (Agent Client Protocol) side by side, so a developer can run many agents in parallel and still know what each one is doing, where it is working, and what it shipped.
 
 We are building a harness, not a chat app. Our features help a developer manage the agent loop: a worktree per thread, inline approvals, steering a running turn, a built-in MCP server (`review_changes`, `link_pull_request`, Linear tools), PR links with merge state, a ports panel, and automations triggered by webhooks or by GitHub, Linear and Slack pollers. Read `README.md` for the full feature list.
 
@@ -30,7 +30,7 @@ Run `pnpm typecheck && pnpm lint && pnpm test` before you call work done. CI run
 
 ```
 src/main      Main process. One Effect layer graph (app.ts), run by Electron (index.ts) or as the Node cloud daemon (daemon.ts).
-  agents/     AgentProvider implementations: claude/, codex/. Registered in services/AgentRunner.ts.
+  agents/     AgentProvider implementations: claude/, codex/, muse/, and acp/, which opencode/ configures. Registered in services/AgentRunner.ts.
   services/   Effect services (Threads, Worktrees, Projects, Git, PullRequests, Secrets, automations/, ...)
   mcp/        HTTP MCP server on 127.0.0.1, one bearer credential per thread
   db/         SQLite client, migrations/NNNN_name, testing.ts seed helpers
@@ -51,7 +51,7 @@ messages/     Paraglide catalogs: en.json, zh-TW.json, zh-CN.json and ja.json
 ## Conventions
 
 - The renderer lints with the React Compiler rules (`react/purity`, `react/refs` and the rest) and the React Doctor rules listed in `.oxlintrc.json`. Code the compiler cannot optimize fails `pnpm lint`.
-- Our own rules live in `packages/oxlint-plugin-hinacode`. `no-manual-memo` bans `useMemo`, `useCallback` and `memo` because the compiler memoizes. `no-wall-clock-in-test` bans timers, `Date.now()` and `new Date()` in tests. `prefer-start-transition` warns when a click or submit handler sets state outside a transition. `no-responsive-padding-on-scroller` bans size-conditional padding (`@md:pe-8`, `md:px-4`) on a scroll container, because it moves the content and the scrollbar as the space changes; keep the scroller full width and move or hide what does not fit. `allergic-to-sparkling-icon` bans sparkling icons (`Sparkling`, `Sparkle`, `Sparkles`) from react-icons. Base components run their action props in one: Button `action`, Tabs `changeAction`.
+- Our own rules live in `packages/oxlint-plugin-hinacode`. `no-manual-memo` bans `useMemo`, `useCallback` and `memo` because the compiler memoizes. `no-wall-clock-in-test` bans timers, `Date.now()` and `new Date()` in tests. `prefer-start-transition` warns when a click or submit handler sets state outside a transition. `no-async-on-click` bans an `onClick` that starts async work (an async handler, `void promise()`, or a call to a local async function) without a pending state, so repeat clicks cannot run it twice; hand it to Button `action` or track it with useTransition. Menu items are exempt because the menu closes on select. `no-responsive-padding-on-scroller` bans size-conditional padding (`@md:pe-8`, `md:px-4`) on a scroll container, because it moves the content and the scrollbar as the space changes; keep the scroller full width and move or hide what does not fit. `allergic-to-sparkling-icon` bans sparkling icons (`Sparkling`, `Sparkle`, `Sparkles`) from react-icons. Base components run their action props in one: Button `action`, Tabs `changeAction`.
 - `oxlint-tailwindcss` checks class names against the theme in `src/renderer/index.css`. Run `pnpm lint --fix` to sort and canonicalize classes.
 - Size a component's layout to its parent, not the window. Mark the parent `@container` and use `@sm:`, `@md:` or `@max-md:`, because panels resize independently of the window. Keep viewport breakpoints (`md:`, `@media (width ...)`) for things that really follow the window, such as the root font size.
 - Effects only synchronize with systems outside React: subscriptions, DOM APIs, timers, IPC. Derive values during render, act in the event handler that caused the change, load data with an atom, and reset a component with `key`. `react/set-state-in-effect`, the react-doctor effect rules and `hinacode/no-promise-state-in-effect` enforce most of this. Keep calling `useEffect` directly rather than wrapping it in a `useMountEffect`, because those rules only recognize `useEffect`.

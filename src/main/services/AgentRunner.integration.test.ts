@@ -13,7 +13,8 @@ import type { Message, Thread } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
-import { AgentError, type AgentProvider, type Wake } from "../agents/provider.ts"
+import { OpencodeProvider } from "../agents/opencode/index.ts"
+import { AgentError, type AgentProvider, type SteerPriority, type Wake } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
 import * as AgentAccounts from "./AgentAccounts.ts"
@@ -50,7 +51,7 @@ interface Probe {
   readonly streamed: Promise<void>
   readonly turns: Array<{ readonly provider: ProviderId; readonly input: RunTurnInput }>
   readonly decisions: Array<{ readonly requestId: string; readonly decision: ApprovalDecision; readonly note?: string }>
-  readonly steers: Array<string>
+  readonly steers: Array<{ readonly text: string; readonly priority: SteerPriority }>
   readonly calls: Array<{ readonly provider: ProviderId; readonly call: "closeSession" | "interrupt" }>
   readonly transcript: Array<TranscriptPush>
   readonly wake: (agent: ProviderId, sessionId: string) => Promise<void>
@@ -110,7 +111,12 @@ const withPreparingThread = async (
   const calls: Probe["calls"] = []
   const transcript: Probe["transcript"] = []
   let closeFails = false
-  const wakes = { claude: wakeQueue(), codex: wakeQueue(), muse: wakeQueue() }
+  const wakes = {
+    claude: wakeQueue(),
+    codex: wakeQueue(),
+    muse: wakeQueue(),
+    opencode: wakeQueue(),
+  }
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
       Layer.provideMerge(Scratch.layer(join(dir, "scratch"))),
@@ -217,7 +223,10 @@ const withPreparingThread = async (
       closeFails
         ? Effect.fail(new AgentError({ provider: id, message: "The session did not leave" }))
         : Effect.sync(() => calls.push({ provider: id, call: "closeSession" })),
-    steer: (_threadId, text) => Effect.sync(() => steers.push(text)),
+    ...(id !== "opencode" && {
+      steer: (_threadId: string, text: string, _attachments: unknown, priority: SteerPriority) =>
+        Effect.sync(() => void steers.push({ text, priority })),
+    }),
     interrupt: () => Effect.sync(() => calls.push({ provider: id, call: "interrupt" })),
     setAccessMode: () => Effect.void,
     respondApproval: (requestId, decision, note) =>
@@ -267,6 +276,7 @@ const withPreparingThread = async (
             Layer.succeed(ClaudeProvider, provider("claude")),
             Layer.succeed(CodexProvider, provider("codex")),
             Layer.succeed(MuseProvider, provider("muse")),
+            Layer.succeed(OpencodeProvider, provider("opencode")),
             Layer.succeed(Secrets, {
               get: () => Effect.succeed(Option.none()),
               has: () => Effect.succeed(false),
@@ -339,6 +349,7 @@ const withPreparingThread = async (
           ),
         ),
         Layer.provideMerge(Layer.succeedContext(context)),
+        Layer.provide(NodeServices.layer),
       ),
     )
     try {
@@ -715,7 +726,7 @@ it("allows the approval a turn is waiting on when the thread switches to full ac
   })
 })
 
-it("holds a steer sent during an approval until the user decides", async () => {
+it("holds a steer sent during an approval and steers it after the allowed tool call", async () => {
   await withPreparingThread(async ({ runner, threads, thread, release, steers }) => {
     release()
     await Effect.runPromise(runner.send(thread.id, "needs approval", []))
@@ -727,7 +738,7 @@ it("holds a steer sent during an approval until the user decides", async () => {
     expect((await Effect.runPromise(threads.get(thread.id))).queue).toMatchObject([{ text: "use pnpm", steer: true }])
 
     await Effect.runPromise(runner.respondApproval("approval-1", "allow"))
-    await vi.waitFor(() => expect(steers).toStrictEqual(["use pnpm"]))
+    await vi.waitFor(() => expect(steers).toStrictEqual([{ text: "use pnpm", priority: "next" }]))
     expect((await Effect.runPromise(threads.get(thread.id))).queue).toStrictEqual([])
     const { messages } = await Effect.runPromise(runner.transcript(thread.id))
     expect(
@@ -746,7 +757,32 @@ it("steers a note the provider could not deliver ahead of the messages held duri
     await Effect.runPromise(runner.steer(thread.id, "held", []))
     await Effect.runPromise(runner.respondApproval("approval-1", "allow", "  then run lint  "))
     expect(decisions).toStrictEqual([{ requestId: "approval-1", decision: "allow", note: "then run lint" }])
-    await vi.waitFor(() => expect(steers).toStrictEqual(["then run lint", "held"]))
+    await vi.waitFor(() =>
+      expect(steers).toStrictEqual([
+        { text: "then run lint", priority: "next" },
+        { text: "held", priority: "next" },
+      ]),
+    )
+  })
+})
+
+it("queues a note for an agent that cannot steer, so it runs after the turn", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, decisions }) => {
+    release()
+    await Effect.runPromise(threads.update({ id: thread.id, provider: "opencode" }))
+    await Effect.runPromise(runner.send(thread.id, "needs approval", []))
+    await vi.waitFor(async () =>
+      expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toHaveLength(1),
+    )
+    await Effect.runPromise(runner.respondApproval("approval-1", "allow", "then run lint"))
+    expect(decisions).toStrictEqual([{ requestId: "approval-1", decision: "allow", note: "then run lint" }])
+    await vi.waitFor(async () =>
+      expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toHaveLength(0),
+    )
+    expect((await Effect.runPromise(threads.get(thread.id))).queue).toStrictEqual([
+      { id: expect.any(String), text: "then run lint", attachments: [] },
+    ])
+    await Effect.runPromise(runner.interrupt(thread.id))
   })
 })
 
@@ -1019,12 +1055,27 @@ it("publishes streamed text in fewer pushes, in order, with the same transcript"
   })
 })
 
+it("queues a steer for an agent that cannot steer a running turn", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, streamed }) => {
+    release()
+    await Effect.runPromise(threads.update({ id: thread.id, provider: "opencode" }))
+    await Effect.runPromise(runner.send(thread.id, "streams, then waits", []))
+    await streamed
+    await Effect.runPromise(runner.steer(thread.id, "change course", []))
+
+    const queued = await Effect.runPromise(threads.get(thread.id))
+    expect(queued.queue.map((message) => message.text)).toEqual(["change course"])
+    await Effect.runPromise(runner.interrupt(thread.id))
+  })
+})
+
 it("keeps the text streamed before a steer in the reply the steer closes", async () => {
-  await withPreparingThread(async ({ runner, thread, release, streamed, transcript }) => {
+  await withPreparingThread(async ({ runner, thread, release, streamed, transcript, steers }) => {
     release()
     await Effect.runPromise(runner.send(thread.id, "streams, then waits", []))
     await streamed
     await Effect.runPromise(runner.steer(thread.id, "change course", []))
+    expect(steers).toStrictEqual([{ text: "change course", priority: "now" }])
 
     const closed = transcript.findLast((push) => push.type === "message.updated")
     expect(closed).toMatchObject({

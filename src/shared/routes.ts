@@ -1,6 +1,15 @@
 import type { RpcMethod } from "./contract.ts"
 
-export type Entity = "thread" | "project" | "worktree" | "terminal" | "automation" | "request" | "root" | "stream"
+export type Entity =
+  | "thread"
+  | "project"
+  | "worktree"
+  | "terminal"
+  | "automation"
+  | "request"
+  | "root"
+  | "stream"
+  | "artifact"
 
 export type Route =
   | { readonly to: "client" }
@@ -31,6 +40,7 @@ export const routes: Record<RpcMethod, Route> = {
   "device.command": thread,
   "device.control": thread,
   "device.pick": thread,
+  "device.screenshot.save": client,
   "app.ready": client,
   "app.focus": client,
   "windows.openPullRequest": client,
@@ -39,6 +49,8 @@ export const routes: Record<RpcMethod, Route> = {
   "app.setColorScheme": client,
   "dialog.pickFolder": client,
   "dialog.pickFiles": client,
+  "artifacts.export": client,
+  "artifacts.delete": owner("artifact", "id"),
   "shell.reveal": client,
   "shell.openers": client,
   "shell.openWith": client,
@@ -75,6 +87,7 @@ export const routes: Record<RpcMethod, Route> = {
   "linear.issues": all,
   "limits.list": named,
   "search.threads": all,
+  "artifacts.list": all,
 
   "settings.get": named,
   "settings.set": named,
@@ -145,6 +158,7 @@ export const routes: Record<RpcMethod, Route> = {
   "threads.queue": thread,
   "threads.unqueue": thread,
   "threads.interrupt": thread,
+  "threads.reveal": thread,
   "threads.usage": thread,
   "threads.contextBreakdown": thread,
   "commands.list": thread,
@@ -172,9 +186,6 @@ export const routes: Record<RpcMethod, Route> = {
   "vm.files.drop": thread,
   "vm.profile.save": thread,
   "vm.screenshot.save": thread,
-  "vm.passkey.get": thread,
-  "vm.passkey.prepare": thread,
-  "vm.passkey.cancel": thread,
   "attachments.stage": thread,
   "attachments.read": named,
 
@@ -206,6 +217,8 @@ export const routes: Record<RpcMethod, Route> = {
   "fs.preview": root,
   "fs.write": root,
   "fs.watch": root,
+
+  "artifacts.file": owner("artifact", "id"),
 
   "vm.screen.send": owner("stream", "streamId"),
   "vm.screen.close": owner("stream", "streamId"),

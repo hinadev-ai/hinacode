@@ -93,10 +93,13 @@ export const indicatorGlyph = (theme: Palette, { icon, tone }: { icon: IconName;
   color: toneColor(theme)[tone],
 })
 
-/** Each agent's mark in its brand color, as in the desktop's `--provider-*` tokens. Codex takes the text color. */
+/**
+ * Each agent's mark in its brand color, as in the desktop's `--provider-*` tokens. Codex and opencode take the text
+ * color.
+ */
 export const ProviderColors = {
-  light: { claude: "#c15f3c", codex: Colors.light.text, muse: "#0064e0" },
-  dark: { claude: "#d97757", codex: Colors.dark.text, muse: "#0081fb" },
+  light: { claude: "#c15f3c", codex: Colors.light.text, muse: "#0064e0", opencode: Colors.light.text },
+  dark: { claude: "#d97757", codex: Colors.dark.text, muse: "#0081fb", opencode: Colors.dark.text },
 } as const
 
 /**

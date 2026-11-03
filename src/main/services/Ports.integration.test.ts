@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it, layer } from "@effect/vitest"
+import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer } from "effect"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
@@ -45,7 +46,7 @@ describe.skipIf(process.platform !== "linux" && process.platform !== "darwin")("
     await rm(base, { recursive: true, force: true })
   })
 
-  layer(portsLayer.pipe(Layer.provideMerge(Db.layer(":memory:"))))((shared) => {
+  layer(portsLayer.pipe(Layer.provideMerge(Db.layer(":memory:")), Layer.provide(NodeServices.layer)))((shared) => {
     shared.effect("lists a project-root listener after the thread's worktree was removed", () =>
       Effect.gen(function* () {
         const root = yield* Effect.promise(() => mkdtemp(join(base, "repo-")))

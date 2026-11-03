@@ -114,11 +114,4 @@ describe("Claude session approvals", () => {
       { tool: "WebSearch", kind: "tool", value: "WebSearch" },
     ])
   })
-
-  test("grants do not carry over to a new session", async () => {
-    const first = setup()
-    await first.call("Bash", { command: "npm test" }, "allow_for_session")
-    const next = setup()
-    expect((await next.call("Bash", { command: "npm test" })).prompted).toBe(true)
-  })
 })

@@ -22,6 +22,8 @@ export class AgentError extends Schema.TaggedError<AgentError>()("AgentError", {
   message: Schema.String,
 }) {}
 
+export type SteerPriority = "now" | "next"
+
 export interface Wake {
   readonly threadId: string
   readonly sessionId: string
@@ -75,10 +77,11 @@ export interface AgentProvider {
   }) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError>
   readonly runTurn: (input: RunTurnInput) => Stream.Stream<AgentEvent, AgentError>
   readonly wakes?: Stream.Stream<Wake>
-  readonly steer: (
+  readonly steer?: (
     threadId: string,
     text: string,
     attachments: ReadonlyArray<Attachment>,
+    priority: SteerPriority,
   ) => Effect.Effect<void, AgentError>
   readonly interrupt: (threadId: string) => Effect.Effect<void>
   readonly closeSession?: (threadId: string, home: AccountHome | null) => Effect.Effect<void, AgentError>

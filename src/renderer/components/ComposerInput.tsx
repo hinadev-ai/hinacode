@@ -20,6 +20,7 @@ import {
   type CompletionQuery,
   continueList,
   endsWithClosedFence,
+  indentList,
   listBackspace,
   type Suggestion,
   suggestionsFor,
@@ -134,7 +135,9 @@ export function ComposerInput({
         ? listBackspace(text, main.head)
         : event.key === "Enter" && event.shiftKey
           ? continueList(text, main.from, main.to)
-          : null
+          : event.key === "Tab" && !event.altKey && !event.ctrlKey && !event.metaKey
+            ? indentList(text, main.head, event.shiftKey ? -1 : 1)
+            : null
     if (listEdit !== null) {
       view.dispatch({ changes: listEdit, selection: { anchor: listEdit.anchor }, scrollIntoView: true })
       return true

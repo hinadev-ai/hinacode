@@ -1,3 +1,4 @@
+import { toast } from "sonner"
 import { m } from "../paraglide/messages.js"
 import { RpcError } from "./rpc.ts"
 
@@ -43,4 +44,8 @@ export function errorSummary(cause: unknown): ErrorSummary {
     return { message: m.error_command_summary({ command }), detail: cause.message }
   }
   return { message: errorMessage(cause), detail: null }
+}
+
+export function toastError(cause: unknown): void {
+  toast.error(errorMessage(cause))
 }

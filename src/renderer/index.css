@@ -189,6 +189,7 @@
   --color-provider-claude: var(--provider-claude);
   --color-provider-codex: var(--provider-codex);
   --color-provider-muse: var(--provider-muse);
+  --color-provider-opencode: var(--provider-opencode);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -378,8 +379,9 @@
   --accent-foreground: var(--foreground);
   --sidebar-foreground: var(--foreground);
   --sidebar-accent-foreground: var(--foreground);
-  /* OpenAI's mark is monochrome. */
+  /* OpenAI's and opencode's marks are monochrome. */
   --provider-codex: var(--foreground);
+  --provider-opencode: var(--foreground);
 }
 
 /*

@@ -7,6 +7,7 @@ import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import type { SidePanelViewId } from "../../stores/ui.ts"
 import { useRunningSubagentCount } from "../ThreadAgents.tsx"
+import { ArtifactsHeader, ArtifactsView } from "./ArtifactsView.tsx"
 import { BrowserTabStrip } from "./BrowserTabStrip.tsx"
 import { useUnseenDeviceActivityLabel } from "../../stores/deviceActivity.ts"
 import { DeviceTabStrip } from "./devices/DeviceTabStrip.tsx"
@@ -22,6 +23,7 @@ import { FilesIcon } from "../icons/FilesIcon.tsx"
 import { GlobeIcon } from "../icons/GlobeIcon.tsx"
 import type { IconComponent } from "../icons/Icon.tsx"
 import { InfoIcon } from "../icons/InfoIcon.tsx"
+import { LayoutIcon } from "../icons/LayoutIcon.tsx"
 import { PhoneIcon } from "../icons/PhoneIcon.tsx"
 import { RobotIcon } from "../icons/RobotIcon.tsx"
 
@@ -87,6 +89,14 @@ export const sidePanelViews: ReadonlyArray<SidePanelView> = [
     commandId: "view.browser",
     component: BrowserView,
     header: BrowserTabStrip,
+  },
+  {
+    id: "artifacts",
+    icon: LayoutIcon,
+    title: m.panel_tab_artifacts,
+    commandId: "view.artifacts",
+    component: ArtifactsView,
+    header: ArtifactsHeader,
   },
   {
     id: "tinyVm",

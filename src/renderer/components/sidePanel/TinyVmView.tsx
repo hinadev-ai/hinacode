@@ -2,10 +2,10 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { lazy, type ReactNode, Suspense, useState, useTransition } from "react"
-import type { Thread, ThreadVm, VmControl, VmPasskey, VmTemplate } from "../../../shared/domain.ts"
+import type { Thread, ThreadVm, VmControl, VmTemplate } from "../../../shared/domain.ts"
 import { useThreadEnvironment } from "../../lib/environments.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
-import { callPromise, threadVmAtom, threadVmPasskeyAtom, vmHostAtom } from "../../lib/rpc.ts"
+import { callPromise, threadVmAtom, vmHostAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import { useUi } from "../../stores/ui.ts"
@@ -16,7 +16,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip.tsx"
 import { CameraIcon } from "../icons/CameraIcon.tsx"
 import { ComputerIcon } from "../icons/ComputerIcon.tsx"
-import { FingerprintIcon } from "../icons/FingerprintIcon.tsx"
 import { FullscreenIcon } from "../icons/FullscreenIcon.tsx"
 import type { IconComponent } from "../icons/Icon.tsx"
 import { PipExitIcon } from "../icons/PipExitIcon.tsx"
@@ -110,14 +109,15 @@ interface VmTemplateSelectProps {
   readonly templates: ReadonlyArray<VmTemplate>
   readonly value: string
   readonly onChange: (name: string) => void
+  readonly className?: string
 }
 
-export function VmTemplateSelect({ id, templates, value, onChange }: VmTemplateSelectProps) {
+export function VmTemplateSelect({ id, templates, value, onChange, className }: VmTemplateSelectProps) {
   const listed = templates.map((template) => ({ value: template.name, label: templateLabel(template) }))
   const items = listed.some((item) => item.value === value) ? listed : [{ value, label: value }, ...listed]
   return (
     <Select items={items} value={value} onValueChange={(next) => typeof next === "string" && onChange(next)}>
-      <SelectTrigger id={id} className="w-full">
+      <SelectTrigger id={id} className={className}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -188,6 +188,7 @@ function NoVm({ threadId }: { threadId: string }) {
             templates={templates}
             value={template}
             onChange={setPicked}
+            className="w-full"
           />
         </div>
       )}
@@ -202,7 +203,6 @@ function NoVm({ threadId }: { threadId: string }) {
 function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
   const { pending, error, run } = useVmAction()
   const { dropping, onDropFiles } = useVmDrop(threadId, run)
-  const { experimental } = useSettings(useThreadEnvironment(threadId))
   const floating = useUi((state) => state.vmPlacements[threadId] === "floating")
   const setPlacement = useUi((state) => state.setVmPlacement)
   const [attempt, setAttempt] = useState(0)
@@ -220,7 +220,6 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
           />
         )}
         <ScreenshotButton threadId={threadId} run={run} />
-        {experimental.tinyVmPasskeys && vm.provider === "sbx" && <PasskeyButton threadId={threadId} run={run} />}
         {control}
         {!floating && (
           <>
@@ -243,7 +242,6 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
       {vm.provider === "boat" && (
         <p className="border-b border-border px-3 py-1.5 text-xs text-muted-foreground">{m.vm_boat_keeps_disk()}</p>
       )}
-      {experimental.tinyVmPasskeys && vm.provider === "sbx" && <PasskeyNotice threadId={threadId} run={run} />}
       {floating ? (
         <Centered>
           <PipIcon aria-hidden className="size-6 text-muted-foreground" />
@@ -331,49 +329,6 @@ export function ScreenshotButton({ threadId, run }: VmActionButtonProps) {
       await callPromise("shell.reveal", { path: attachment.path })
     })
   return <IconAction icon={CameraIcon} label={m.vm_screenshot_save()} onClick={save} />
-}
-
-export function PasskeyButton({ threadId, run }: VmActionButtonProps) {
-  const passkey = useAtomValue(threadVmPasskeyAtom(threadId))
-  if (!AsyncResult.isSuccess(passkey)) return null
-  const state: VmPasskey = passkey.value
-  const prepare = () => run(() => callPromise("vm.passkey.prepare", { threadId }))
-  switch (state.status) {
-    case "off":
-    case "failed":
-      return <IconAction icon={FingerprintIcon} label={m.vm_passkey_prepare()} onClick={prepare} />
-    case "ready":
-      return (
-        <IconAction icon={FingerprintIcon} label={m.vm_passkey_ready()} onClick={prepare} className="text-success" />
-      )
-    case "pending":
-      return <IconAction icon={FingerprintIcon} label={m.vm_passkey_pending({ origin: state.origin })} disabled />
-  }
-}
-
-export function PasskeyNotice({ threadId, run }: VmActionButtonProps) {
-  const passkey = useAtomValue(threadVmPasskeyAtom(threadId))
-  if (!AsyncResult.isSuccess(passkey)) return null
-  const state: VmPasskey = passkey.value
-  if (state.status === "failed") {
-    return (
-      <p role="alert" className="border-b border-border px-3 py-1.5 text-xs text-destructive">
-        {state.message}
-      </p>
-    )
-  }
-  if (state.status !== "pending") return null
-  return (
-    <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs">
-      <FingerprintIcon aria-hidden className="size-3.5 shrink-0" />
-      <p aria-live="polite" className="min-w-0 flex-1 truncate" title={m.vm_passkey_pending({ origin: state.origin })}>
-        {m.vm_passkey_pending({ origin: state.origin })}
-      </p>
-      <Button variant="outline" size="xs" onClick={() => run(() => callPromise("vm.passkey.cancel", { threadId }))}>
-        {m.vm_passkey_cancel()}
-      </Button>
-    </div>
-  )
 }
 
 interface IconActionProps {

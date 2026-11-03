@@ -4,6 +4,7 @@ import { Effect, Layer } from "effect"
 import type { ClaudeProvider } from "./agents/claude/index.ts"
 import type { CodexProvider } from "./agents/codex/index.ts"
 import type { MuseProvider } from "./agents/muse/index.ts"
+import type { OpencodeProvider } from "./agents/opencode/index.ts"
 import * as Db from "./db/client.ts"
 import { sendToWindows } from "./ipc.ts"
 import { answerAsksLayer } from "./environments/route.ts"
@@ -16,6 +17,7 @@ import * as AgentAccounts from "./services/AgentAccounts.ts"
 import * as AgentLogins from "./services/AgentLogins.ts"
 import * as SessionImports from "./services/SessionImports.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
+import * as Artifacts from "./services/Artifacts.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as Browser from "./services/Browser.ts"
 import { Automations } from "./services/automations/Automations.ts"
@@ -40,7 +42,6 @@ import * as Settings from "./services/Settings.ts"
 import * as Terminals from "./services/Terminals.ts"
 import * as Threads from "./services/Threads.ts"
 import { ThreadNaming } from "./services/ThreadNaming.ts"
-import * as PasskeyRelay from "./services/tinyVm/passkey/PasskeyRelay.ts"
 import * as TinyVm from "./services/tinyVm/TinyVm.ts"
 import { unavailableDevicesLayer } from "./services/devices/unavailable.ts"
 import { unsupported, Updates } from "./services/Updates.ts"
@@ -50,7 +51,7 @@ const automationsStub = Layer.succeed(Automations, {} as typeof Automations.Serv
 const updatesStub = Layer.succeed(Updates, unsupported("0.0.0"))
 
 export interface TestAppOptions {
-  readonly providers: Layer.Layer<ClaudeProvider | CodexProvider | MuseProvider>
+  readonly providers: Layer.Layer<ClaudeProvider | CodexProvider | MuseProvider | OpencodeProvider>
   readonly events?: Layer.Layer<Events | PushBroadcast | WindowPush>
 }
 
@@ -70,6 +71,7 @@ export const makeTestAppLayer = (
     ClientSettings.layer(dirname(dbPath)),
     Messages.layer,
     Attachments.layer(join(dirname(dbPath), "attachments")),
+    Artifacts.layer(join(dirname(dbPath), "artifacts")),
     Search.layer,
     Files.layer,
   )
@@ -79,7 +81,6 @@ export const makeTestAppLayer = (
     { configPath: join(dirname(dbPath), "sbx", "config.json"), env: {} },
     join(dirname(dbPath), "tiny-vm"),
   )
-  const passkeys = PasskeyRelay.layer(join(dirname(dbPath), "tiny-vm")).pipe(Layer.provide(tinyVm))
   const linear = Linear.layer.pipe(Layer.provide(Secrets.layer))
   const peers = Peers.layer.pipe(
     Layer.provideMerge(Environments.layer),
@@ -93,7 +94,6 @@ export const makeTestAppLayer = (
     remoteAccess,
     relay,
     tinyVm,
-    passkeys,
     linear,
     peers,
     unavailableDevicesLayer,
