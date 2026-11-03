@@ -20,6 +20,8 @@
   "project_root_label": "根目录路径",
   "project_root_placeholder": "~/code/my-app",
   "project_root_browse": "浏览…",
+  "path_input_suggestions": "文件夹建议",
+  "path_input_repository": "Git 仓库",
   "project_setup_label": "初始化脚本",
   "project_setup_optional": "可选",
   "project_setup_placeholder": "pnpm install",

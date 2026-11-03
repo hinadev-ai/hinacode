@@ -20,6 +20,8 @@
   "project_root_label": "Root path",
   "project_root_placeholder": "~/code/my-app",
   "project_root_browse": "Browse…",
+  "path_input_suggestions": "Folder suggestions",
+  "path_input_repository": "Git repository",
   "project_setup_label": "Setup script",
   "project_setup_optional": "Optional",
   "project_setup_placeholder": "pnpm install",

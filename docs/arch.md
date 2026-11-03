@@ -67,7 +67,7 @@ flowchart LR
 
 | Channel | Direction       | Carries                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | ------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rpc`   | renderer → main | `app.focus`, `app.setBadgeCount`, `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `questions.respond`, `secrets.respond`, `settings.*`, `notifications.*`, `secrets.*`, `ports.*`, `terminal.*`, `automations.*`, `models.list`, `agents.account`, `accounts.*`, `limits.list`, `commands.list`, `files.list`, `git.log`, `git.show`, `fs.list`, `fs.read`, `fs.write`, `fs.watch`, `attachments.stage`, dialogs |
+| `rpc`   | renderer → main | `app.focus`, `app.setBadgeCount`, `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `questions.respond`, `secrets.respond`, `settings.*`, `notifications.*`, `secrets.*`, `ports.*`, `terminal.*`, `automations.*`, `models.list`, `agents.account`, `accounts.*`, `limits.list`, `commands.list`, `files.list`, `git.log`, `git.show`, `fs.list`, `fs.read`, `fs.write`, `fs.watch`, `fs.completeDirectory`, `attachments.stage`, dialogs |
 | `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `pullRequest.guide`, `thread.subagents`, `automation.run`, `fs.changed`, `terminal.data` (pty output batched per 16 ms), `terminal.exited`                                                                                                                     |
 
 Only the top-level app frame may send `rpc` (`isTrustedSender` in `security.ts`).
@@ -339,6 +339,8 @@ flowchart LR
 ```
 
 The Files view reads the disk only through `Files` in main. `fs.list` lists one folder level with ignore and git status, `fs.read` returns up to 1 MB of one file, `fs.write` replaces the text of an existing file unless it changed on disk since the edit began, and `fs.watch` sets the folders that push `fs.changed`. All four accept only a known project root or live worktree as `root` and refuse any `path` whose realpath leaves it.
+
+`fs.completeDirectory` is the exception: it serves the add-project dialog, where no root exists yet. It lists the folders under any absolute or `~` path on the named environment, marks the ones with `.git`, and never reads a file. The renderer's `PathInput` shows them as the user types and Tab or a click drills into a folder.
 
 ```mermaid
 sequenceDiagram

@@ -20,6 +20,8 @@
   "project_root_label": "根目錄路徑",
   "project_root_placeholder": "~/code/my-app",
   "project_root_browse": "瀏覽…",
+  "path_input_suggestions": "資料夾建議",
+  "path_input_repository": "Git 儲存庫",
   "project_setup_label": "設定腳本",
   "project_setup_optional": "選填",
   "project_setup_placeholder": "pnpm install",
