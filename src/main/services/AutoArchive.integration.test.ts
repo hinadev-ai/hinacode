@@ -157,18 +157,27 @@ const git = (cwd: string, ...args: Array<string>) =>
 const localBranches = (root: string) =>
   git(root, "for-each-ref", "--format=%(refname:short)", "refs/heads").split("\n").filter(Boolean).toSorted()
 
+const watchUnlessMissing = (folder: string, listener: () => void) => {
+  try {
+    return watch(folder, listener)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
+    throw error
+  }
+}
+
 const waitUntilGone = (path: string) =>
   Effect.callback<void>((resume) => {
     let done = false
     const check = () => {
       if (done || existsSync(path)) return
       done = true
-      watcher.close()
+      watcher?.close()
       resume(Effect.void)
     }
-    const watcher = watch(dirname(path), check)
+    const watcher = watchUnlessMissing(dirname(path), check)
     check()
-    return Effect.sync(() => watcher.close())
+    return Effect.sync(() => watcher?.close())
   })
 
 const waitUntilBranchGone = (root: string, branch: string) => waitUntilGone(join(root, ".git", "refs", "heads", branch))
@@ -228,6 +237,19 @@ const expectBranchAt = (projectId: string, branch: string, tip: string) =>
 describe("worktree cleanup across threads", () => {
   layer(testLayer)((it) => {
     const cleanupOn = Settings.use((settings) => settings.set({ archive: { whenMerged: true, removeWorktree: true } }))
+
+    it.effect("counts a branch as gone once git pruned its folder", () =>
+      Effect.gen(function* () {
+        const root = join(base, "pruned-folder")
+        execFileSync("git", ["init", "-q", "-b", "main", root])
+        git(root, "commit", "-q", "--allow-empty", "-m", "init")
+        git(root, "branch", "kk/pruned")
+        git(root, "branch", "-D", "kk/pruned")
+
+        expect(existsSync(join(root, ".git", "refs", "heads", "kk"))).toBe(false)
+        yield* waitUntilBranchGone(root, "kk/pruned")
+      }),
+    )
 
     it.effect("removes a worktree and its squash-merged branch once its pull request merges", () =>
       Effect.gen(function* () {

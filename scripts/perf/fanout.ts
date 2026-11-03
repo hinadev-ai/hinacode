@@ -16,6 +16,7 @@ type Sample = {
   rpcMaxMs: number
   messageWrites: number
   messageWriteMs: number
+  mainWrittenMB: number
 }
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..", "..")
@@ -24,6 +25,7 @@ const runs = Number(process.env["RUNS"] ?? 3)
 const threadCount = Number(process.env["THREADS"] ?? 6)
 const windowSeconds = Number(process.env["WINDOW_SECONDS"] ?? 15)
 const port = Number(process.env["PORT"] ?? 9291)
+const dataRoot = process.env["DATA_ROOT"] ?? "/tmp"
 
 const processKind = (command: string) =>
   command.includes("(Renderer)") || command.includes("--type=renderer")
@@ -45,8 +47,13 @@ const cpuSecondsByKind = (pid: number) => {
   return totals
 }
 
+const isMessageWrite = (query: string | undefined) =>
+  query !== undefined && /^(INSERT|UPDATE|DELETE)\b[^(]*\bmessage(_part)?\b/.test(query)
+
+const bytesWritten = (pid: number) => Number(/write_bytes: (\d+)/.exec(readFileSync(`/proc/${pid}/io`, "utf8"))![1])
+
 const run = async (label: string, clean: string, attempt: number): Promise<Sample> => {
-  const data = `/tmp/kk-fanout-${label}-${attempt}`
+  const data = join(dataRoot, `kk-fanout-${label}-${attempt}`)
   rmSync(data, { recursive: true, force: true })
   mkdirSync(data)
   copyFileSync(clean, join(data, "hinacode.sqlite"))
@@ -80,6 +87,7 @@ const run = async (label: string, clean: string, attempt: number): Promise<Sampl
     }
     const taskBefore = await taskSeconds()
     const cpuBefore = cpuSecondsByKind(child.pid!)
+    const writtenBefore = bytesWritten(child.pid!)
     const startedAt = Date.now()
     const latencies = await page.evaluate<Array<number>>(`(async () => {
       const latencies = []
@@ -94,6 +102,7 @@ const run = async (label: string, clean: string, attempt: number): Promise<Sampl
     })()`)
     const elapsed = (Date.now() - startedAt) / 1000
     const cpuAfter = cpuSecondsByKind(child.pid!)
+    const writtenAfter = bytesWritten(child.pid!)
     const taskAfter = await taskSeconds()
     await Promise.all(streaming.map((threadId) => rpc("threads.interrupt", { threadId })))
     page.close()
@@ -102,7 +111,7 @@ const run = async (label: string, clean: string, attempt: number): Promise<Sampl
       .split("\n")
       .filter(Boolean)
       .map((line) => JSON.parse(line) as { startMs: number; ms: number; query?: string })
-      .filter((span) => span.query?.startsWith("UPDATE message") && span.startMs >= startedAt)
+      .filter((span) => isMessageWrite(span.query) && span.startMs >= startedAt)
     const sorted = latencies.toSorted((a, b) => a - b)
     const cpuPct = (kind: string) => round(((cpuAfter[kind]! - cpuBefore[kind]!) / elapsed) * 100)
     return {
@@ -115,6 +124,7 @@ const run = async (label: string, clean: string, attempt: number): Promise<Sampl
       rpcMaxMs: round(sorted.at(-1)!),
       messageWrites: writes.length,
       messageWriteMs: round(writes.reduce((total, span) => total + span.ms, 0)),
+      mainWrittenMB: round((writtenAfter - writtenBefore) / 1e6),
     }
   } finally {
     await stop(child)

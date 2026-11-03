@@ -161,8 +161,8 @@ port (default 9290) and `DISPLAY_FOR_PERF` the X display (default `:99`).
 
 `fanout.ts` copies a profile, opens its largest thread, and starts the `long-turn` simulation on the next `THREADS`
 (default 6) started threads, so they stream steadily in the background. Over `WINDOW_SECONDS` (default 15) it
-records CPU per process kind, renderer task time, the latency of a cheap rpc sent every 100 ms, and every
-`UPDATE message` the main process runs. Build each side in turn and give each its own label:
+records CPU per process kind, renderer task time, the latency of a cheap rpc sent every 100 ms, every write to
+`message` or `message_part` the main process runs, and the bytes the main process wrote to disk. Build each side in turn and give each its own label:
 
 ```sh
 pnpm build
@@ -173,7 +173,19 @@ node scripts/perf/fanout.ts compare base after
 ```
 
 Each of `RUNS` (default 3) launches gets a fresh copy, with PR watches cleared and automations disabled. CPU comes
-from `ps`, which Linux reports in whole seconds, so raise `WINDOW_SECONDS` there.
+from `ps`, which Linux reports in whole seconds, so raise `WINDOW_SECONDS` there. The copies go under `DATA_ROOT`
+(default `/tmp`). Bytes written come from `/proc/<pid>/io`, which counts nothing on tmpfs, so point `DATA_ROOT` at a
+real disk to measure them.
+
+## Check the open message parts migration
+
+`partsMigration.ts` migrates a copy of a database to `<copy>.migrated` and checks that every thread's messages read
+back identical through `Messages.list`.
+
+```sh
+sqlite3 -readonly ~/.hinacode/hinacode.sqlite ".backup /tmp/kk-perf-real/hinacode.sqlite"
+node scripts/perf/partsMigration.ts /tmp/kk-perf-real/hinacode.sqlite
+```
 
 ## Runtime budget in CI
 

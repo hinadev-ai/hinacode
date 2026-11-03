@@ -67,6 +67,20 @@ export const parseNameStatus = (output: string) => {
   return files
 }
 
+export const RAW_WITH_PATCH_ARGS = ["--raw", "-z", "--patch"]
+
+export const parseRawWithPatch = (output: string): CommitDiff => {
+  const rawEnd = output.indexOf("\0\0")
+  const raw = rawEnd === -1 ? output : output.slice(0, rawEnd)
+  const fields = raw.split("\0").filter(Boolean)
+  const files: Array<{ path: string; status: ChangedFileStatus }> = []
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    const status = fields[i]?.split(" ").at(-1)?.charAt(0) ?? ""
+    files.push({ path: fields[i + 1] ?? "", status: toChangedStatus(status) })
+  }
+  return { files, patch: rawEnd === -1 ? "" : output.slice(rawEnd + 2) }
+}
+
 const LOG_FIELDS = ["%H", "%P", "%an", "%ad", "%D", "%s"]
 export const LOG_FORMAT = LOG_FIELDS.join("%x00")
 
@@ -136,31 +150,22 @@ const make = Effect.gen(function* () {
       "--",
     ]).pipe(Effect.map(parseLog))
 
-  const show = (cwd: string, hash: string) => {
-    const diff = (args: ReadonlyArray<string>) =>
-      run(cwd, [
-        "-c",
-        "core.quotePath=false",
-        "show",
-        "--format=",
-        "--diff-merges=first-parent",
-        "--no-renames",
-        "--no-color",
-        "--no-ext-diff",
-        "--src-prefix=a/",
-        "--dst-prefix=b/",
-        ...args,
-        hash,
-        "--",
-      ])
-    return Effect.all(
-      {
-        patch: diff(["--patch"]),
-        files: diff(["--name-status", "-z"]).pipe(Effect.map(parseNameStatus)),
-      },
-      { concurrency: "unbounded" },
-    )
-  }
+  const show = (cwd: string, hash: string) =>
+    run(cwd, [
+      "-c",
+      "core.quotePath=false",
+      "show",
+      "--format=",
+      "--diff-merges=first-parent",
+      "--no-renames",
+      "--no-color",
+      "--no-ext-diff",
+      "--src-prefix=a/",
+      "--dst-prefix=b/",
+      ...RAW_WITH_PATCH_ARGS,
+      hash,
+      "--",
+    ]).pipe(Effect.map(parseRawWithPatch))
 
   return Git.of({ run, remote, log, show })
 })

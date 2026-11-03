@@ -1,7 +1,7 @@
 import { join } from "node:path"
 import { Effect, FileSystem } from "effect"
 import type { Changes } from "../../shared/domain.ts"
-import { Git, parseNameStatus } from "./Git.ts"
+import { Git, parseRawWithPatch, RAW_WITH_PATCH_ARGS } from "./Git.ts"
 
 const indexPaths = new Map<string, string>()
 
@@ -33,23 +33,18 @@ export const diffWorkingTree = <E, R>(cwd: string, base: Effect.Effect<string, E
   Effect.gen(function* () {
     const git = yield* Git
     const [baseTree, tree] = yield* Effect.all([base, snapshotWorkingTree(cwd)], { concurrency: "unbounded" })
-    const diff = (args: ReadonlyArray<string>) =>
-      git.run(cwd, [
-        "-c",
-        "core.quotePath=false",
-        "diff",
-        "--no-renames",
-        "--no-color",
-        "--no-ext-diff",
-        "--src-prefix=a/",
-        "--dst-prefix=b/",
-        ...args,
-        baseTree,
-        tree,
-      ])
-    const { files, patch } = yield* Effect.all(
-      { files: diff(["--name-status", "-z"]).pipe(Effect.map(parseNameStatus)), patch: diff([]) },
-      { concurrency: "unbounded" },
-    )
-    return { files, patch } satisfies Changes
+    const output = yield* git.run(cwd, [
+      "-c",
+      "core.quotePath=false",
+      "diff",
+      "--no-renames",
+      "--no-color",
+      "--no-ext-diff",
+      "--src-prefix=a/",
+      "--dst-prefix=b/",
+      ...RAW_WITH_PATCH_ARGS,
+      baseTree,
+      tree,
+    ])
+    return parseRawWithPatch(output) satisfies Changes
   })

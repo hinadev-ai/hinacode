@@ -48,6 +48,7 @@ const inJson = (path: string) => JSON.stringify(path).slice(1, -1)
 
 const PATH_COLUMNS = [
   ["message", "parts", inJson],
+  ["message_part", "part", inJson],
   ["thread", "queue", inJson],
   ["agent_account", "config_dir", asIs],
 ] as const
