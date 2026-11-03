@@ -170,3 +170,5 @@ export const parsePairingUrl = (text: string): PairingTarget | null => {
 }
 
 export const isPortInUse = (listenError: string) => listenError.includes("EADDRINUSE")
+
+export const isAddressNotUpYet = (listenError: string) => listenError.includes("EADDRNOTAVAIL")

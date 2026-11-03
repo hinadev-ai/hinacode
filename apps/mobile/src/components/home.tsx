@@ -1,7 +1,7 @@
 import type { Project, Thread } from "@shared/domain.ts"
 import { router, Stack } from "expo-router"
-import { type ReactNode, useState } from "react"
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
+import { type ReactNode, useEffect, useState } from "react"
+import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import Animated, { LayoutAnimationConfig } from "react-native-reanimated"
 import { liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
@@ -55,6 +55,7 @@ export function HomeActions({ onNewThread }: { onNewThread: () => void }) {
  * iOS keeps every action in the header and the search under the title.
  */
 export function HomeToolbars({ onNewThread }: { onNewThread: () => void }) {
+  const theme = useTheme()
   const overview = (
     <Stack.Toolbar.Button
       icon="square.grid.2x2"
@@ -99,6 +100,7 @@ export function HomeToolbars({ onNewThread }: { onNewThread: () => void }) {
         <Stack.Toolbar.Button
           icon="square.and.pencil"
           variant="prominent"
+          tintColor={theme.primary}
           accessibilityLabel={copy("mobile_home_new_thread")}
           onPress={onNewThread}
         >
@@ -131,6 +133,16 @@ export function HomeContent({
   const [ownQuery, setOwnQuery] = useState("")
   const query = search?.query ?? ownQuery
   const setQuery = search?.onChange ?? setOwnQuery
+
+  useEffect(() => {
+    if (query === "") return
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (router.canGoBack()) return false
+      setQuery("")
+      return true
+    })
+    return () => subscription.remove()
+  }, [query, setQuery])
 
   const loading = loadStatus === "loading" && !hasProjects
   const noProjects = loadStatus === "ready" && !hasProjects

@@ -2,16 +2,7 @@
 import { defaultKeymap, history, historyKeymap, insertNewline } from "@codemirror/commands"
 import { Compartment, EditorState, Prec } from "@codemirror/state"
 import { EditorView, keymap, type ViewUpdate } from "@codemirror/view"
-import {
-  type DragEvent as ReactDragEvent,
-  type Ref,
-  useEffect,
-  useEffectEvent,
-  useId,
-  useImperativeHandle,
-  useRef,
-  useState,
-} from "react"
+import { type Ref, useEffect, useEffectEvent, useId, useImperativeHandle, useRef, useState } from "react"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
 import type { MentionableThreads } from "../../shared/threadMention.ts"
@@ -55,9 +46,7 @@ interface ComposerInputProps {
   readonly "aria-label": string
   readonly onEnter: (event: KeyboardEvent) => void
   readonly onPaste?: (event: ClipboardEvent) => void
-  readonly onDrop?: (event: DragEvent) => void
   readonly focusOnMount?: boolean
-  readonly onDragOver?: (event: ReactDragEvent<HTMLDivElement>) => void
 }
 
 export function ComposerInput({
@@ -72,9 +61,7 @@ export function ComposerInput({
   "aria-label": label,
   onEnter,
   onPaste,
-  onDrop,
   focusOnMount,
-  onDragOver,
 }: ComposerInputProps) {
   const listId = useId()
   const parentRef = useRef<HTMLDivElement>(null)
@@ -167,7 +154,6 @@ export function ComposerInput({
     if (update.docChanged || update.selectionSet) setCaret(update.state.selection.main.head)
   })
   const pasted = useEffectEvent((event: ClipboardEvent) => onPaste?.(event))
-  const dropped = useEffectEvent((event: DragEvent) => onDrop?.(event))
   const initialText = useEffectEvent(() => value)
   const shouldFocusOnMount = useEffectEvent(() => focusOnMount === true)
 
@@ -194,10 +180,6 @@ export function ComposerInput({
               },
               paste: (event) => {
                 pasted(event)
-                return event.defaultPrevented
-              },
-              drop: (event) => {
-                dropped(event)
                 return event.defaultPrevented
               },
             }),
@@ -254,7 +236,7 @@ export function ComposerInput({
 
   return (
     <>
-      <div ref={parentRef} onDragOver={onDragOver} className="flex min-h-0 flex-col text-sm" />
+      <div ref={parentRef} className="flex min-h-0 flex-col text-sm" />
       {open && (
         <div
           id={listId}

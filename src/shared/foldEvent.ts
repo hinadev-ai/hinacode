@@ -68,7 +68,10 @@ export function foldEvent(message: Message, event: AgentEvent, now: string): Mes
     case "turn_failed":
       return {
         ...message,
-        parts: [...failRunningParts(message.parts), { type: "text", text: `**Error:** ${event.message}` }],
+        parts: [
+          ...failRunningParts(message.parts),
+          ...(event.stopped ? [] : [{ type: "text" as const, text: `**Error:** ${event.message}` }]),
+        ],
         completedAt: now,
       }
     case "turn_limited":

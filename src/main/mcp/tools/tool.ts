@@ -65,6 +65,7 @@ export const register = Effect.fnUntraced(function* <Tools extends Record<string
         name: tool.name,
         description: tool.description,
         inputSchema: Schema.decodeUnknownSync(McpSchema.ToolJson)(Tool.getJsonSchema(tool)),
+        annotations: { readOnlyHint: Context.get(tool.annotations, Tool.Readonly) },
       }),
       annotations,
       handle: (payload) =>

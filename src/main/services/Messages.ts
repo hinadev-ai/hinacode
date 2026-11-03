@@ -19,7 +19,7 @@ export class Messages extends Context.Service<
     readonly list: (threadId: string) => Effect.Effect<ReadonlyArray<Message>, PersistenceError>
     readonly toolOutput: (threadId: string, callId: string) => Effect.Effect<Option.Option<unknown>, PersistenceError>
     readonly insert: (message: Message) => Effect.Effect<void, PersistenceError>
-    readonly update: (message: Message) => Effect.Effect<void, PersistenceError>
+    readonly update: (message: Message) => Effect.Effect<{ readonly bytes: number }, PersistenceError>
     readonly closeInterrupted: Effect.Effect<void, PersistenceError>
   }
 >()("hinacode/Messages") {}
@@ -68,14 +68,13 @@ const make = Effect.gen(function* () {
 
   const update = (message: Message) =>
     encodeRow(message).pipe(
-      Effect.flatMap(
-        (row) => sql`
+      Effect.flatMap((row) =>
+        sql`
           UPDATE message
           SET parts = ${row.parts}, completed_at = ${row.completedAt}, usage = ${row.usage}, fork_point = ${row.forkPoint}
           WHERE id = ${row.id}
-        `,
+        `.pipe(Effect.as({ bytes: row.parts.length })),
       ),
-      Effect.asVoid,
       Effect.mapError(persistence("messages.update")),
     )
 

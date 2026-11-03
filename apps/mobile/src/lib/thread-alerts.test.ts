@@ -47,4 +47,8 @@ describe("threadAlert", () => {
   ])("raises nothing for $type", (event) => {
     expect(threadAlert(event)).toBeNull()
   })
+
+  it("raises nothing for a turn the user stopped", () => {
+    expect(threadAlert({ type: "turn_failed", message: "Interrupted", stopped: true } as AgentEvent)).toBeNull()
+  })
 })
