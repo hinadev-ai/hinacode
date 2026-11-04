@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { documentOutline, OUTLINE_MAX_BLOCKS } from "./documentOutline.ts"
+import { documentOutline, OUTLINE_HEADING_LENGTH, OUTLINE_MAX_BLOCKS } from "./documentOutline.ts"
 
 const designDoc = `# Artifact skills
 
@@ -127,6 +127,13 @@ describe("documentOutline", () => {
   test.each(["[a", "![a](", "<a "])("reads a huge paragraph of unclosed %s without scanning all of it", (opening) => {
     const { lede } = documentOutline(opening.repeat((256 * 1024) / opening.length))
     expect([...(lede ?? "")].length).toBeLessThanOrEqual(241)
+  })
+
+  test("cuts an enormous heading, so a huge one cannot inflate the outline", () => {
+    const { title, blocks } = documentOutline(`# ${"見".repeat(100_000)}\n\n## ${"long ".repeat(10_000)}`)
+    expect([...(title ?? "")].length).toBe(OUTLINE_HEADING_LENGTH + 1)
+    expect(blocks[1]).toMatchObject({ kind: "heading", level: 2 })
+    expect(JSON.stringify(blocks).length).toBeLessThan(2 * 3 * OUTLINE_HEADING_LENGTH)
   })
 
   test("stops after the block limit in a huge document", () => {

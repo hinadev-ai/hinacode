@@ -340,6 +340,18 @@ export const publishedArtifact = (result: string): { id: string; version: number
 
 export const publishedArtifactId = (result: string) => publishedArtifact(result)?.id ?? null
 
+const textOfBlock = (block: unknown) =>
+  typeof block === "object" && block !== null && Reflect.get(block, "type") === "text"
+    ? String(Reflect.get(block, "text"))
+    : ""
+
+export const outputText = (output: unknown): string =>
+  typeof output === "string"
+    ? output
+    : Array.isArray(output)
+      ? output.map(textOfBlock).filter(Boolean).join("\n")
+      : JSON.stringify(output)
+
 export const CREATE_THREAD_TOOL = "create_thread"
 
 export const isCreateThreadTool = (name: string) =>

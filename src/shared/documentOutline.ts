@@ -1,24 +1,29 @@
-export type CalloutTone = "note" | "tip" | "important" | "warning" | "caution"
+import { Schema } from "effect"
+import { CALLOUT_TONES, calloutTone } from "./documentCallout.ts"
 
-export type OutlineBlock =
-  | { readonly kind: "heading"; readonly level: 1 | 2 | 3; readonly text: string }
-  | { readonly kind: "text"; readonly length: number }
-  | { readonly kind: "list"; readonly items: number }
-  | { readonly kind: "tasks"; readonly done: number; readonly total: number }
-  | { readonly kind: "table"; readonly rows: number; readonly columns: number }
-  | { readonly kind: "code" }
-  | { readonly kind: "chart" }
-  | { readonly kind: "diagram" }
-  | { readonly kind: "callout"; readonly tone: CalloutTone }
+export const OutlineBlock = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("heading"), level: Schema.Literals([1, 2, 3]), text: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("text"), length: Schema.Number }),
+  Schema.Struct({ kind: Schema.Literal("list"), items: Schema.Number }),
+  Schema.Struct({ kind: Schema.Literal("tasks"), done: Schema.Number, total: Schema.Number }),
+  Schema.Struct({ kind: Schema.Literal("table"), rows: Schema.Number, columns: Schema.Number }),
+  Schema.Struct({ kind: Schema.Literal("code") }),
+  Schema.Struct({ kind: Schema.Literal("chart") }),
+  Schema.Struct({ kind: Schema.Literal("diagram") }),
+  Schema.Struct({ kind: Schema.Literal("callout"), tone: Schema.Literals(CALLOUT_TONES) }),
+])
+export type OutlineBlock = typeof OutlineBlock.Type
 
-export type DocumentOutline = {
-  readonly title: string | null
-  readonly lede: string | null
-  readonly blocks: ReadonlyArray<OutlineBlock>
-}
+export const DocumentOutline = Schema.Struct({
+  title: Schema.NullOr(Schema.String),
+  lede: Schema.NullOr(Schema.String),
+  blocks: Schema.Array(OutlineBlock),
+})
+export type DocumentOutline = typeof DocumentOutline.Type
 
 export const OUTLINE_MAX_BLOCKS = 40
 const LEDE_LENGTH = 240
+export const OUTLINE_HEADING_LENGTH = 120
 const SCANNED_INLINE_LENGTH = 2048
 
 const FENCE = /^ {0,3}(`{3,}|~{3,})\s*([^\s`]*)/
@@ -57,12 +62,12 @@ const plainText = (inline: string) =>
     .replace(/\s+/g, " ")
     .trim()
 
-const shorten = (text: string) => {
+export const shortenText = (text: string, length: number) => {
   const characters = [...text]
-  if (characters.length <= LEDE_LENGTH) return text
-  const cut = characters.slice(0, LEDE_LENGTH).join("")
+  if (characters.length <= length) return text
+  const cut = characters.slice(0, length).join("")
   const space = cut.lastIndexOf(" ")
-  const words = space > LEDE_LENGTH * 0.6 ? cut.slice(0, space) : cut
+  const words = space > length * 0.6 ? cut.slice(0, space) : cut
   return `${words.replace(/[\s,;:、，。]+$/, "")}…`
 }
 
@@ -78,7 +83,7 @@ const isTableStart = (lines: Lines, start: number) => {
 
 const headingBlock = (level: number, text: string): OutlineBlock =>
   level === 1 || level === 2 || level === 3
-    ? { kind: "heading", level, text: plainText(text) }
+    ? { kind: "heading", level, text: shortenText(plainText(text), OUTLINE_HEADING_LENGTH) }
     : { kind: "text", length: plainText(text).length }
 
 const fenceKind = (language: string): OutlineBlock => {
@@ -113,7 +118,7 @@ const readQuote = (lines: Lines, start: number): Read => {
   const alert = ALERT.exec((content[0] ?? "").trim())
   if (alert === null) return { block: { kind: "text", length: plainText(content.join(" ")).length }, prose: null, next }
   const body = plainText(content.slice(1).join(" "))
-  const tone = (alert[1] ?? "note").toLowerCase() as CalloutTone
+  const tone = calloutTone(alert[1]?.toLowerCase())
   return { block: { kind: "callout", tone }, prose: body === "" ? null : body, next }
 }
 
@@ -195,7 +200,7 @@ export const documentOutline = (markdown: string): DocumentOutline => {
     if (block === null) continue
     blocks.push(block)
     if (title === null && block.kind === "heading" && block.level === 1 && block.text !== "") title = block.text
-    if (lede === null && prose !== null) lede = shorten(prose)
+    if (lede === null && prose !== null) lede = shortenText(prose, LEDE_LENGTH)
   }
   return { title, lede, blocks }
 }
