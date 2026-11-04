@@ -422,6 +422,22 @@ describe("the machines the owner's devices see", () => {
   })
 })
 
+describe("approving one code from two accounts at once", () => {
+  it("gives the machine to the account told it won", async () => {
+    const link = await startLink()
+    const [alice, bob] = await Promise.all([
+      approve(link.userCode, "alice-session"),
+      approve(link.userCode, "bob-session"),
+    ])
+    expect([alice.status, bob.status].toSorted()).toEqual([204, 409])
+
+    await claim(link.deviceCode)
+    const winner = alice.status === 204 ? "user_alice" : "user_bob"
+    const owner = await env.DB.prepare("SELECT user_id FROM host").first<string>("user_id")
+    expect(owner).toBe(winner)
+  })
+})
+
 describe("GET /link", () => {
   it("refuses to be framed, so Approve cannot be clicked through an overlay", async () => {
     const response = await call("GET", "/link?code=ABCD-EFGH")
