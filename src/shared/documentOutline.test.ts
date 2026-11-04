@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { documentOutline, OUTLINE_HEADING_LENGTH, OUTLINE_MAX_BLOCKS } from "./documentOutline.ts"
+import { documentOutline, OUTLINE_HEADING_LENGTH, OUTLINE_MAX_BLOCKS, outlineSections } from "./documentOutline.ts"
 
 const designDoc = `# Artifact skills
 
@@ -139,5 +139,16 @@ describe("documentOutline", () => {
   test("stops after the block limit in a huge document", () => {
     const outline = documentOutline("## Part\n\nBody.\n\n".repeat(10_000))
     expect(outline.blocks.length).toBe(OUTLINE_MAX_BLOCKS)
+  })
+})
+
+describe("outlineSections", () => {
+  test("names the first sections and counts the rest", () => {
+    const { blocks } = documentOutline("# T\n\n## One\n\n### Deep\n\n## Two\n\n## Three\n\n## Four\n\n## Five")
+    expect(outlineSections(blocks)).toEqual({ shown: ["One", "Two", "Three"], more: 2 })
+  })
+
+  test("is empty without sections", () => {
+    expect(outlineSections(documentOutline("# T\n\nBody.").blocks)).toEqual({ shown: [], more: 0 })
   })
 })

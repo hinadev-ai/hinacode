@@ -1,6 +1,6 @@
 import { isPublishDocumentTool, publishedArtifact, toolArgument } from "../../shared/agent.ts"
 import type { MessagePart } from "../../shared/domain.ts"
-import { documentOutline, type OutlineBlock } from "../../shared/documentOutline.ts"
+import { documentOutline, type OutlineBlock, outlineSections } from "../../shared/documentOutline.ts"
 import {
   linePath,
   THUMBNAIL_HEIGHT,
@@ -15,8 +15,6 @@ import { getLocale } from "../paraglide/runtime.js"
 import { Highlighted } from "./FindHighlight.tsx"
 
 type ToolCall = Extract<MessagePart, { type: "tool_call" }>
-
-const SHOWN_SECTIONS = 3
 
 const inkColor = {
   ink: "currentColor",
@@ -94,16 +92,57 @@ function PagePreview({ blocks, publishing }: { blocks: ReadonlyArray<OutlineBloc
   )
 }
 
+const listFormats = new Map<string, Intl.ListFormat>()
+
+const listFormat = (locale: string) => {
+  const known = listFormats.get(locale)
+  if (known !== undefined) return known
+  const created = new Intl.ListFormat(locale, { type: "conjunction", style: "narrow" })
+  listFormats.set(locale, created)
+  return created
+}
+
 const sectionsLine = (blocks: ReadonlyArray<OutlineBlock>) => {
-  const sections = blocks.flatMap((block) =>
-    block.kind === "heading" && block.level === 2 && block.text !== "" ? [block.text] : [],
-  )
-  if (sections.length === 0) return null
-  const listed = new Intl.ListFormat(getLocale(), { type: "conjunction", style: "narrow" }).format(
-    sections.slice(0, SHOWN_SECTIONS),
-  )
-  const more = sections.length - SHOWN_SECTIONS
+  const { shown, more } = outlineSections(blocks)
+  if (shown.length === 0) return null
+  const listed = listFormat(getLocale()).format(shown)
   return more > 0 ? m.artifact_card_more_sections({ sections: listed, count: more }) : listed
+}
+
+const cardContent = (call: ToolCall, result: string | null) => {
+  const isDocument = isPublishDocumentTool(call.name)
+  const markdown = isDocument ? stringArgument(call.input, "markdown") : null
+  const outline = markdown === null ? null : documentOutline(markdown)
+  const untitled = isDocument ? m.documents_untitled() : m.artifact_untitled()
+  return {
+    isDocument,
+    blocks: isDocument ? (outline?.blocks ?? []) : null,
+    published: result === null ? null : publishedArtifact(result),
+    title: stringArgument(call.input, "title") ?? outline?.title ?? untitled,
+    summary: outline === null ? null : (outline.lede ?? sectionsLine(outline.blocks)),
+  }
+}
+
+function CardMeta({
+  isDocument,
+  publishing,
+  version,
+}: {
+  isDocument: boolean
+  publishing: boolean
+  version: number | null
+}) {
+  return (
+    <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+      <span>{isDocument ? m.artifact_card_document() : m.artifact_card_page()}</span>
+      {(publishing || version !== null) && <span aria-hidden>·</span>}
+      {publishing ? (
+        <span className="text-shimmer">{m.artifact_card_publishing()}</span>
+      ) : (
+        version !== null && <span className="tabular-nums">{m.artifacts_version({ version })}</span>
+      )}
+    </span>
+  )
 }
 
 export function ArtifactCard({
@@ -115,14 +154,8 @@ export function ArtifactCard({
   result: string | null
   onOpen: (id: string | null) => void
 }) {
-  const isDocument = isPublishDocumentTool(call.name)
-  const markdown = isDocument ? stringArgument(call.input, "markdown") : null
-  const outline = markdown === null ? null : documentOutline(markdown)
-  const published = result === null ? null : publishedArtifact(result)
-  const untitled = isDocument ? m.documents_untitled() : m.artifact_untitled()
-  const title = stringArgument(call.input, "title") ?? outline?.title ?? untitled
+  const { isDocument, blocks, published, title, summary } = cardContent(call, result)
   const publishing = call.status === "running"
-  const summary = outline === null ? null : (outline.lede ?? sectionsLine(outline.blocks))
 
   return (
     <button
@@ -131,19 +164,9 @@ export function ArtifactCard({
       aria-label={m.artifact_open({ title })}
       className="group/card my-2 flex w-full max-w-md min-w-0 items-center gap-3.5 rounded-xl bg-muted/50 p-2.5 pe-4 text-start pressable outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <PagePreview blocks={isDocument ? (outline?.blocks ?? []) : null} publishing={publishing} />
+      <PagePreview blocks={blocks} publishing={publishing} />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-          <span>{isDocument ? m.artifact_card_document() : m.artifact_card_page()}</span>
-          {(publishing || published !== null) && <span aria-hidden>·</span>}
-          {publishing ? (
-            <span className="text-shimmer">{m.artifact_card_publishing()}</span>
-          ) : (
-            published !== null && (
-              <span className="tabular-nums">{m.artifacts_version({ version: published.version })}</span>
-            )
-          )}
-        </span>
+        <CardMeta isDocument={isDocument} publishing={publishing} version={published?.version ?? null} />
         <span dir="auto" className="truncate text-sm font-medium" title={title}>
           <Highlighted text={title} />
         </span>

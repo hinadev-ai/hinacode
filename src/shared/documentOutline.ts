@@ -204,3 +204,15 @@ export const documentOutline = (markdown: string): DocumentOutline => {
   }
   return { title, lede, blocks }
 }
+
+export const OUTLINE_SHOWN_SECTIONS = 3
+
+export const outlineSections = (blocks: ReadonlyArray<OutlineBlock>) => {
+  const sections = blocks.flatMap((block) =>
+    block.kind === "heading" && block.level === 2 && block.text !== "" ? [block.text] : [],
+  )
+  return {
+    shown: sections.slice(0, OUTLINE_SHOWN_SECTIONS),
+    more: Math.max(0, sections.length - OUTLINE_SHOWN_SECTIONS),
+  }
+}
