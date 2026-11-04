@@ -60,6 +60,26 @@ export interface AccountHome {
   readonly binary: string
 }
 
+export const configDirVariable = { claude: "CLAUDE_CONFIG_DIR", codex: "CODEX_HOME" } satisfies Record<
+  AccountProviderId,
+  string
+>
+
+const loginArguments = { claude: ["auth", "login"], codex: ["login"] } satisfies Record<
+  AccountProviderId,
+  ReadonlyArray<string>
+>
+
+const shellQuote = (value: string) => (/^[\w./~-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`)
+
+export const loginCommand = (provider: AccountProviderId, home: AccountHome | null) =>
+  [
+    ...(home === null
+      ? [provider]
+      : [`${configDirVariable[provider]}=${shellQuote(home.dir)}`, shellQuote(home.binary)]),
+    ...loginArguments[provider],
+  ].join(" ")
+
 export const CLAUDE_EFFORT_LEVELS: ReadonlyArray<string> = ["low", "medium", "high", "xhigh", "max"]
 
 export const unlistedModel = (id: string, provider: ProviderId): ModelInfo => ({
@@ -286,6 +306,7 @@ export const AgentEvent = Schema.Union([
     type: Schema.Literal("turn_failed"),
     message: Schema.String,
     stopped: Schema.optional(Schema.Boolean),
+    loginCommand: Schema.optional(Schema.String),
   }),
   Schema.Struct({ type: Schema.Literal("turn_limited"), limit: UsageLimit }),
 ])

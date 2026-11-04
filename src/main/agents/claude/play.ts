@@ -41,8 +41,10 @@ export function play(steps: ReadonlyArray<MockStep>, controls: PlayControls): St
     pendingEdits: new Map(),
     subagents: new Map(),
     lastRequest: null,
+    home: null,
     limitMessage: null,
     limitResetAt: null,
+    signedOut: false,
   }
   const map = (message: SDKMessage) => mapMessage(message, state, new Date().toISOString())
   let requests = 0

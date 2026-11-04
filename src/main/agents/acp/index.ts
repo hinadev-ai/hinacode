@@ -109,10 +109,14 @@ export const makeAcpProvider = (config: AcpAgentConfig) =>
     const { name } = providerInfo[config.id]
     const agentError = (message: string) => new AgentError({ provider: config.id, message })
 
-    const signedOut = `${name} is not signed in. Run \`${config.loginCommand}\` in a terminal, then try again`
+    const signedOut = new AgentError({
+      provider: config.id,
+      message: `${name} is not signed in`,
+      loginCommand: config.loginCommand,
+    })
 
     const toAgentError = (failure: AcpFailure) => {
-      if (isAuthRequired(failure)) return agentError(signedOut)
+      if (isAuthRequired(failure)) return signedOut
       switch (failure._tag) {
         case "AcpCallError": {
           const detail = failure.detail === null || failure.detail === failure.message ? "" : ` (${failure.detail})`

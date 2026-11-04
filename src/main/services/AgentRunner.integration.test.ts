@@ -192,7 +192,7 @@ const withPreparingThread = async (
     usage: () => Effect.succeed(null),
     listCommands: () => Effect.succeed([]),
     runTurn: (input) =>
-      Stream.suspend((): Stream.Stream<AgentEvent> => {
+      Stream.suspend((): Stream.Stream<AgentEvent, AgentError> => {
         turns.push({ provider: id, input })
         turnStarted.resolve()
         turnStarted = Promise.withResolvers<void>()
@@ -224,6 +224,10 @@ const withPreparingThread = async (
             nativeSubagent("running"),
             completed,
           )
+        }
+        if (input.prompt === "is signed out") {
+          const loginCommand = "opencode auth login"
+          return Stream.fail(new AgentError({ provider: id, message: "opencode is not signed in", loginCommand }))
         }
         if (input.prompt === "calls a tool, then waits") {
           return Stream.fromIterable<AgentEvent>([
@@ -1243,6 +1247,17 @@ it("withdraws the requests a turn leaves unanswered when its stream ends without
         event: { type: "approval_resolved", requestId: "approval-1" },
       }),
     )
+  })
+})
+
+it("keeps the login command when the agent is signed out", async () => {
+  await withPreparingThread(async ({ runner, thread, release, idle, storedMessages }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "is signed out", []))
+    await idle
+    expect((await storedMessages(thread.id)).at(-1)?.parts).toEqual([
+      { type: "signed_out", message: "opencode is not signed in", loginCommand: "opencode auth login" },
+    ])
   })
 })
 

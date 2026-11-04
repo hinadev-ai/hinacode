@@ -470,6 +470,7 @@ export const MessagePart = Schema.Union([
   Schema.Struct({ type: Schema.Literal("questions"), text: Schema.String, questions: Schema.Array(Question) }),
   Schema.Struct({ type: Schema.Literal("compaction"), compaction: Compaction }),
   Schema.Struct({ type: Schema.Literal("agent_switch"), from: ProviderId, to: ProviderId }),
+  Schema.Struct({ type: Schema.Literal("signed_out"), message: Schema.String, loginCommand: Schema.String }),
   Schema.Struct({
     type: Schema.Literal("session_import"),
     provider: AccountProviderId,

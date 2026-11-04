@@ -1,5 +1,5 @@
 import { Link, useParams } from "@tanstack/react-router"
-import { createContext, type ReactNode, use, useState } from "react"
+import { createContext, type ReactNode, use, useId, useState } from "react"
 import { toast } from "sonner"
 import {
   type AccountProviderId,
@@ -45,6 +45,7 @@ import { useSubagentByCallId } from "../stores/subagents.ts"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { AttachmentView, formatBytes } from "./AttachmentView.tsx"
+import { CopyButton } from "./CopyButton.tsx"
 import { FindPartContext, FindPatternContext, Highlighted } from "./FindHighlight.tsx"
 import { HighlightedCode } from "./HighlightedCode.tsx"
 import { Markdown } from "./Markdown.tsx"
@@ -92,6 +93,8 @@ export function MessagePartView({ part }: { part: MessagePart }) {
       return <AgentSwitchPart from={part.from} to={part.to} />
     case "session_import":
       return <SessionImportPart provider={part.provider} history={part.history} />
+    case "signed_out":
+      return <SignedOutPart message={part.message} loginCommand={part.loginCommand} />
   }
 }
 
@@ -640,6 +643,27 @@ function AgentSwitchPart({ from, to }: { from: ProviderId; to: ProviderId }) {
       </span>
       <span aria-hidden className="h-px flex-1 bg-border" />
     </div>
+  )
+}
+
+function SignedOutPart({ message, loginCommand }: { message: string; loginCommand: string }) {
+  const titleId = useId()
+  return (
+    <section
+      aria-labelledby={titleId}
+      className="my-2 flex flex-col gap-2 rounded-lg border border-attention/30 bg-attention/10 p-3"
+    >
+      <h3 id={titleId} className="flex items-center gap-2 text-sm font-semibold text-attention">
+        <WarningIcon aria-hidden className="size-4 shrink-0" />
+        {m.message_signed_out_title()}
+      </h3>
+      <p className="text-sm wrap-break-word text-muted-foreground">{message}</p>
+      <p className="text-sm">{m.message_signed_out_hint()}</p>
+      <div className="flex min-w-0 items-center gap-1 rounded-md bg-muted py-1 ps-3 pe-1">
+        <code className="min-w-0 flex-1 font-mono text-xs break-all select-all">{loginCommand}</code>
+        <CopyButton value={loginCommand} label={m.message_copy_login_command()} />
+      </div>
+    </section>
   )
 }
 
