@@ -28,7 +28,7 @@ const shownPlaceholder = () => {
 
 let value = ""
 
-function Harness() {
+function Harness({ placeholder: shown = placeholder }: { placeholder?: string }) {
   const [text, setText] = useState("")
   return (
     <ComposerInput
@@ -41,7 +41,7 @@ function Harness() {
       files={[]}
       threads={{ sameMachine: [], otherMachines: [] }}
       projectId="project"
-      placeholder={placeholder}
+      placeholder={shown}
       aria-label="Message"
       onEnter={() => {}}
     />
@@ -111,6 +111,22 @@ test("ignores the separate char event a DevTools screencast sends after Enter", 
   await cdp().send("Input.dispatchKeyEvent", { type: "keyUp", ...enter })
   await type("456")
   await expect.poll(() => value).toBe("- 123\n- 456")
+})
+
+test("keeps a long placeholder on one line instead of scrolling", async () => {
+  await render(
+    <Suspense>
+      <div style={{ width: 240 }}>
+        <Harness placeholder="Ask anything. Type @ to mention a file or thread, / to run a skill." />
+      </div>
+    </Suspense>,
+  )
+  await page.getByRole("combobox", { name: "Message" }).click()
+  await expect.poll(shownPlaceholder).toContain("Ask anything")
+
+  const scroller = document.querySelector<HTMLElement>(".cm-scroller")!
+  expect(scroller.scrollHeight).toBe(scroller.clientHeight)
+  expect(scroller.scrollWidth).toBe(scroller.clientWidth)
 })
 
 test("hides the placeholder while an IME composes the first character", async () => {

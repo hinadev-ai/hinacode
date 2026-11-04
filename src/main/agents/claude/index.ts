@@ -944,6 +944,17 @@ export const layer = Layer.effect(
               }),
             )
           }),
+        moveCommand: (threadId, callId) =>
+          Effect.suspend(() => {
+            const session = sessions.get(threadId)
+            if (session === undefined) return Effect.succeed(false)
+            return lease(session, (leased) =>
+              Effect.tryPromise({
+                try: () => leased.query.backgroundTasks(callId),
+                catch: agentError("Failed to move the command to the background"),
+              }),
+            )
+          }),
       },
       steer,
       interrupt: (threadId) => {

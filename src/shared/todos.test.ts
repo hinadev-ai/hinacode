@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { Message, MessagePart } from "./domain.ts"
-import { latestTodos } from "./todos.ts"
+import { latestTodos, todosInCall, visibleTodos } from "./todos.ts"
 
 const tool = (name: string, input: unknown, output?: unknown, parentCallId?: string): MessagePart => ({
   type: "tool_call",
@@ -158,5 +158,67 @@ describe("latestTodos", () => {
     ]
     expect(latestTodos(messages)).toEqual([])
     expect(latestTodos([])).toEqual([])
+  })
+})
+
+describe("visibleTodos", () => {
+  const todoCall = (status: string): Message =>
+    ({
+      id: `assistant-${status}`,
+      threadId: "t",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool_call",
+          callId: status,
+          name: "TodoWrite",
+          input: { todos: [{ content: "Ship it", status, activeForm: "Shipping it" }] },
+          status: "done",
+        },
+      ],
+    }) as unknown as Message
+  const prompt = {
+    id: "user",
+    threadId: "t",
+    role: "user",
+    parts: [{ type: "text", text: "Next" }],
+  } as unknown as Message
+
+  it("shows a finished list until the turn that finished it ends", () => {
+    expect(visibleTodos([todoCall("completed")], true)).toHaveLength(1)
+    expect(visibleTodos([todoCall("completed")], false)).toEqual([])
+  })
+
+  it("drops a finished list once the next turn starts", () => {
+    expect(visibleTodos([todoCall("completed"), prompt], true)).toEqual([])
+  })
+
+  it("keeps an unfinished list across turns", () => {
+    expect(visibleTodos([todoCall("in_progress"), prompt], true)).toHaveLength(1)
+    expect(visibleTodos([todoCall("in_progress")], false)).toHaveLength(1)
+  })
+
+  it("shows the list a new turn writes", () => {
+    expect(visibleTodos([todoCall("completed"), prompt, todoCall("pending")], true)).toHaveLength(1)
+  })
+})
+
+describe("todosInCall", () => {
+  it("reads the checklist from a TodoWrite call", () => {
+    const input = { todos: [{ content: "Open a pull request", status: "in_progress", activeForm: "Opening" }] }
+    expect(todosInCall({ name: "TodoWrite", input })).toEqual([{ text: "Open a pull request", status: "in_progress" }])
+  })
+
+  it("reads one task from TaskCreate and TaskUpdate", () => {
+    expect(todosInCall({ name: "TaskCreate", input: { subject: "Add it" } })).toEqual([
+      { text: "Add it", status: "pending" },
+    ])
+    expect(todosInCall({ name: "TaskUpdate", input: { taskId: "3", status: "deleted" } })).toEqual([
+      { text: "#3", status: "cancelled" },
+    ])
+  })
+
+  it("leaves other tools alone", () => {
+    expect(todosInCall({ name: "Bash", input: { command: "ls" } })).toBeNull()
   })
 })

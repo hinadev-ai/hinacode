@@ -97,6 +97,7 @@ export interface AgentProvider {
   readonly backgroundTasks?: {
     readonly changes: Stream.Stream<BackgroundTasksChange>
     readonly stop: (threadId: string, taskId: string) => Effect.Effect<void, AgentError>
+    readonly moveCommand?: (threadId: string, callId: string) => Effect.Effect<boolean, AgentError>
   }
   readonly contextBreakdown?: (threadId: string) => Effect.Effect<ContextBreakdown | null, AgentError>
   readonly subagentChanges?: Stream.Stream<SubagentChange>

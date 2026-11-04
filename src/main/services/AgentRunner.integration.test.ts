@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
@@ -29,6 +29,7 @@ import { AgentRunner, layer } from "./AgentRunner.ts"
 import { Events } from "./Events.ts"
 import * as Git from "./Git.ts"
 import * as GitHub from "./GitHub.ts"
+import * as Attachments from "./Attachments.ts"
 import * as Messages from "./Messages.ts"
 import * as Projects from "./Projects.ts"
 import * as PullRequests from "./PullRequests.ts"
@@ -165,6 +166,7 @@ const withPreparingThread = async (
       Layer.provideMerge(Settings.layer(dir)),
     ),
     Messages.layer,
+    Attachments.layer(join(dir, "attachments")),
   ).pipe(
     Layer.provideMerge(
       Layer.mergeAll(Git.layer, GitHub.layer).pipe(
@@ -224,6 +226,18 @@ const withPreparingThread = async (
             nativeSubagent("running"),
             completed,
           )
+        }
+        if (input.prompt === "reads an image") {
+          return Stream.fromIterable<AgentEvent>([
+            { type: "tool_call_started", callId: "image-1", name: "Read", input: { file_path: "a.png" } },
+            {
+              type: "tool_call_finished",
+              callId: "image-1",
+              output: [{ type: "image", source: { type: "base64", media_type: "image/png", data: "aW1hZ2U=" } }],
+              isError: false,
+            },
+            completed,
+          ])
         }
         if (input.prompt === "calls a tool, then waits") {
           return Stream.fromIterable<AgentEvent>([
@@ -1091,16 +1105,19 @@ it("retires the agent a thread leaves and turns away its wakes, even after switc
   })
 })
 
-it("stops the thread's sub-agents and background tasks with the turn, and keeps its session", async () => {
+it("stops the thread's sub-agents and workflows with the turn, and keeps its shells and session", async () => {
   await withPreparingThread(async ({ runner, thread, release, calls, stops, setBackgroundTasks }) => {
     release()
-    setBackgroundTasks([{ id: "shell-1", kind: "shell", label: "sleep 600", startedAt: "2026-11-03T00:00:00.000Z" }])
+    setBackgroundTasks([
+      { id: "shell-1", kind: "shell", label: "pnpm dev", startedAt: "2026-11-03T00:00:00.000Z" },
+      { id: "workflow-1", kind: "workflow", label: "Review", startedAt: "2026-11-03T00:00:00.000Z" },
+    ])
     await Effect.runPromise(runner.send(thread.id, "spawns a sub-agent, then waits for Stop", []))
     await vi.waitFor(async () => expect(await Effect.runPromise(runner.subagents(thread.id))).toHaveLength(1))
 
     await Effect.runPromise(runner.interrupt(thread.id))
 
-    expect(stops).toStrictEqual(["subagent:native-1", "task:shell-1"])
+    expect(stops).toStrictEqual(["subagent:native-1", "task:workflow-1"])
     expect(calls).toStrictEqual([{ provider: "claude", call: "interrupt" }])
   })
 })
@@ -1215,6 +1232,22 @@ it("publishes the assistant message a turn closes when its stream ends without a
     expect(stored).toMatchObject({ role: "assistant", completedAt: expect.any(String) })
     const updated = transcript.findLast((push) => push.type === "message.updated")
     expect(updated).toMatchObject({ type: "message.updated", message: stored })
+  })
+})
+
+it("saves a tool's image as an attachment and keeps its bytes out of the transcript", async () => {
+  await withPreparingThread(async ({ runner, thread, release, idle, transcript }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "reads an image", []))
+    await idle
+
+    const finished = transcript.find((push) => push.type === "thread.event" && push.event.type === "tool_call_finished")
+    expect(JSON.stringify(finished)).not.toContain("aW1hZ2U=")
+    expect(finished).toMatchObject({
+      event: { output: [{ type: "image", mimeType: "image/png", attachment: { kind: "image", mime: "image/png" } }] },
+    })
+    const output = (finished as unknown as { event: { output: [{ attachment: { path: string } }] } }).event.output
+    expect(readFileSync(output[0].attachment.path, "utf8")).toBe("image")
   })
 })
 

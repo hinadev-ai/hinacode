@@ -28,6 +28,7 @@ import { skillLabelsOf } from "../lib/toolCall.ts"
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
+import { ShimmerText } from "./ShimmerText.tsx"
 import { AttachmentView } from "./AttachmentView.tsx"
 import { CommandChip } from "./CommandChip.tsx"
 import { FindPartContext, Highlighted } from "./FindHighlight.tsx"
@@ -245,7 +246,7 @@ function MessageBody({ message }: { message: Message }) {
           </div>
         )}
         {text !== "" && (
-          <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm leading-(--leading-message) wrap-break-word whitespace-pre-wrap text-secondary-foreground">
+          <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm leading-(--leading-message) wrap-break-word whitespace-pre-wrap text-chat-foreground">
             <FindPartContext value={message.parts.findIndex((part) => part.type === "text")}>
               <SentText text={text} commands={commands} />
             </FindPartContext>
@@ -296,9 +297,10 @@ function AssistantBody({ message, showElapsedTime }: { message: Message; showEla
         <AssistantParts message={message} parts={shownParts} writingIndex={writingIndex} />
       </PartMessage>
       {streaming && (parts.length === 0 || writingIndex !== undefined) && (
-        <p className="text-shimmer text-xs">
-          {writingIndex !== undefined ? m.message_writing() : m.message_thinking()}
-        </p>
+        <ShimmerText
+          className="text-xs"
+          text={writingIndex !== undefined ? m.message_writing() : m.message_thinking()}
+        />
       )}
       {!streaming && <LatestTurnChanges message={message} />}
       {!streaming && <MessageActions message={message} className="-ml-2" />}

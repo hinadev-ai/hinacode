@@ -111,7 +111,7 @@ const markClass = {
 }
 
 const placeholderBefore =
-  "before:pointer-events-none before:float-left before:h-0 before:text-muted-foreground before:content-[attr(data-placeholder)]"
+  "before:pointer-events-none before:float-left before:-mb-[1lh] before:h-lh before:w-full before:truncate before:text-muted-foreground before:content-[attr(data-placeholder)]"
 const placeholderAfter = "after:pointer-events-none after:text-muted-foreground after:content-[attr(data-placeholder)]"
 
 const highlighters = new Map<string, Loaded | null>()
@@ -229,7 +229,12 @@ const layout = EditorView.theme({
   "&": { maxHeight: "15rem", minHeight: "calc(1lh + 1rem)" },
   "&.cm-focused": { outline: "none" },
   ".cm-scroller": { fontFamily: "inherit", lineHeight: "inherit", scrollbarGutter: "stable" },
-  ".cm-content": { padding: "0.5rem 0.625rem", minHeight: "calc(1lh + 1rem)", caretColor: "currentColor" },
+  ".cm-content": {
+    padding: "0.5rem 0.625rem",
+    minWidth: "0",
+    minHeight: "calc(1lh + 1rem)",
+    caretColor: "currentColor",
+  },
   ".cm-line": { padding: "0" },
   ".cm-line.cm-fence-line": { margin: "0 -0.25rem", padding: "0 0.25rem" },
   "&[data-composing] [data-placeholder]::before, &[data-composing] [data-placeholder]::after": { content: "none" },

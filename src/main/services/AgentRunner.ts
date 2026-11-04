@@ -86,6 +86,7 @@ import { Git, type CommandError } from "./Git.ts"
 import type { GitHubError, PullRequestUrlInvalidError } from "./GitHub.ts"
 import { Messages, type ToolCallRef } from "./Messages.ts"
 import { PullRequests } from "./PullRequests.ts"
+import { Attachments } from "./Attachments.ts"
 import { Scratch } from "./Scratch.ts"
 import { Settings } from "./Settings.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
@@ -248,6 +249,10 @@ export class AgentRunner extends Context.Service<
       threadId: string,
       taskId: string,
     ) => Effect.Effect<void, AgentError | PersistenceError | NotFoundError>
+    readonly moveCommandToBackground: (
+      threadId: string,
+      callId: string,
+    ) => Effect.Effect<boolean, AgentError | PersistenceError | NotFoundError>
     readonly listCommands: (
       threadId: string,
     ) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError | PersistenceError | NotFoundError | FolderMissingError>
@@ -307,17 +312,30 @@ const openAssistantMessage = (threadId: string, now: string): Message => ({
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
 
-const withoutImageData = (value: unknown): unknown => {
-  if (Array.isArray(value)) return value.map(withoutImageData)
-  if (!Predicate.isObject(value)) return value
+const savedImage = (threadId: string, attachments: typeof Attachments.Service, record: Record<string, unknown>) => {
+  const source = Predicate.isObject(record["source"]) ? (record["source"] as Record<string, unknown>) : record
+  const mimeType = source["mimeType"] ?? source["media_type"]
+  const data = source["data"]
+  if (typeof mimeType !== "string" || typeof data !== "string") return Effect.succeed({ type: "image", mimeType })
+  const name = `image.${mimeType.split("/").at(-1) ?? "png"}`
+  return attachments.stage(threadId, { dataUrl: `data:${mimeType};base64,${data}`, name }).pipe(
+    Effect.map((attachment) => ({ type: "image", mimeType, attachment })),
+    Effect.orElseSucceed(() => ({ type: "image", mimeType })),
+  )
+}
+
+const withImagesSaved = (
+  threadId: string,
+  attachments: typeof Attachments.Service,
+  value: unknown,
+): Effect.Effect<unknown> => {
+  if (Array.isArray(value)) return Effect.forEach(value, (item) => withImagesSaved(threadId, attachments, item))
+  if (!Predicate.isObject(value)) return Effect.succeed(value)
   const record = value as Record<string, unknown>
-  if (record["type"] === "image") {
-    const source = record["source"]
-    const mimeType =
-      record["mimeType"] ?? (Predicate.isObject(source) ? (source as Record<string, unknown>)["media_type"] : undefined)
-    return { type: "image", mimeType }
-  }
-  return Object.fromEntries(Object.entries(record).map(([key, nested]) => [key, withoutImageData(nested)]))
+  if (record["type"] === "image") return savedImage(threadId, attachments, record)
+  return Effect.forEach(Object.entries(record), ([key, nested]) =>
+    Effect.map(withImagesSaved(threadId, attachments, nested), (saved) => [key, saved] as const),
+  ).pipe(Effect.map((entries) => Object.fromEntries(entries)))
 }
 
 const replaceLast = (messages: ReadonlyArray<Message>, message: Message) => [...messages.slice(0, -1), message]
@@ -327,6 +345,7 @@ const make = Effect.gen(function* () {
   const threads = yield* Threads
   const worktrees = yield* Worktrees
   const scratch = yield* Scratch
+  const attachments = yield* Attachments
   const git = yield* Git
   const pullRequests = yield* PullRequests
   const messages = yield* Messages
@@ -653,7 +672,7 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const event: AgentEvent =
           received.type === "tool_call_finished"
-            ? { ...received, output: withoutImageData(received.output) }
+            ? { ...received, output: yield* withImagesSaved(thread.id, attachments, received.output) }
             : received.type === "turn_completed" && received.forkPoint !== undefined
               ? {
                   ...received,
@@ -1542,6 +1561,16 @@ const make = Effect.gen(function* () {
       yield* tasks.stop(threadId, taskId)
     })
 
+  const moveCommandToBackground: AgentRunner["Service"]["moveCommandToBackground"] = (threadId, callId) =>
+    Effect.gen(function* () {
+      const { provider: id } = yield* threads.get(threadId)
+      const moveCommand = providers[id].backgroundTasks?.moveCommand
+      if (moveCommand === undefined) {
+        return yield* new AgentError({ provider: id, message: "This agent cannot move a command to the background" })
+      }
+      return yield* moveCommand(threadId, callId)
+    })
+
   const hasPendingWakeup = (threadId: string) =>
     (backgroundTasks.get(threadId) ?? []).some((task) => task.kind === "wakeup")
 
@@ -1561,7 +1590,9 @@ const make = Effect.gen(function* () {
       yield* Effect.forEach(running, (subagent) => stopSubagent(threadId, subagent.id).pipe(Effect.ignore), {
         discard: true,
       })
-      const tasks = (backgroundTasks.get(threadId) ?? []).filter((task) => task.kind !== "wakeup")
+      const tasks = (backgroundTasks.get(threadId) ?? []).filter(
+        (task) => task.kind !== "wakeup" && task.kind !== "shell",
+      )
       yield* Effect.forEach(tasks, (task) => stopBackgroundTask(threadId, task.id).pipe(Effect.ignore), {
         discard: true,
       })
@@ -1724,6 +1755,7 @@ const make = Effect.gen(function* () {
     stopSubagent,
     backgroundTasks: (threadId) => Effect.sync(() => backgroundTasks.get(threadId) ?? []),
     stopBackgroundTask,
+    moveCommandToBackground,
     listCommands: (threadId) =>
       Effect.gen(function* () {
         const thread = yield* threads.get(threadId)

@@ -224,6 +224,20 @@ export const toolStates = (): Array<MockStep> => [
     "MCP error -32603: Linear API returned 401 Unauthorized",
     { isError: true },
   ),
+  ...tool(
+    "mcp__hinacode__link_pull_request",
+    { url: "https://github.com/hinadev-ai/hinacode/pull/607" },
+    "Linked the pull request.",
+  ),
+  ...tool(
+    "mcp__hinacode__watch_pull_request",
+    { url: "https://github.com/hinadev-ai/hinacode/pull/607" },
+    "Watching the pull request.",
+  ),
+  ...tool("mcp__hinacode__list_artifacts", {}, "[]"),
+  ...tool("mcp__hinacode__publish_artifact", { title: "Tool Output Variants", files: [] }, "The page is too large.", {
+    isError: true,
+  }),
   ...say("The build log is long, so only its tail ships with the transcript.", 61_000),
 ]
 
