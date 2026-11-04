@@ -6,6 +6,7 @@ export interface ProviderInfo {
   readonly installUrl: string
   readonly steersRunningTurn: boolean
   readonly autoCompacts: boolean
+  readonly movesCommandsToBackground: boolean
   readonly subagentModels: "listed" | "picked"
 }
 
@@ -16,6 +17,7 @@ export const providerInfo: Record<ProviderId, ProviderInfo> = {
     installUrl: "https://code.claude.com/docs/en/setup",
     steersRunningTurn: true,
     autoCompacts: true,
+    movesCommandsToBackground: true,
     subagentModels: "listed",
   },
   codex: {
@@ -24,6 +26,7 @@ export const providerInfo: Record<ProviderId, ProviderInfo> = {
     installUrl: "https://learn.chatgpt.com/docs/codex/cli",
     steersRunningTurn: true,
     autoCompacts: true,
+    movesCommandsToBackground: false,
     subagentModels: "listed",
   },
   muse: {
@@ -32,6 +35,7 @@ export const providerInfo: Record<ProviderId, ProviderInfo> = {
     installUrl: "https://dev.meta.ai/docs/muse-code",
     steersRunningTurn: true,
     autoCompacts: true,
+    movesCommandsToBackground: false,
     subagentModels: "listed",
   },
   opencode: {
@@ -40,6 +44,7 @@ export const providerInfo: Record<ProviderId, ProviderInfo> = {
     installUrl: "https://opencode.ai/docs",
     steersRunningTurn: false,
     autoCompacts: false,
+    movesCommandsToBackground: false,
     subagentModels: "picked",
   },
 }

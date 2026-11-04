@@ -19,6 +19,7 @@ const sdk = vi.hoisted(() => {
     readonly setPermissionMode = vi.fn((_mode: string) => sdk.setPermissionMode())
     readonly interrupt = vi.fn(() => Promise.resolve())
     readonly stopTask = vi.fn((_taskId: string) => Promise.resolve())
+    readonly backgroundTasks = vi.fn((_toolUseId?: string) => Promise.resolve(true))
     readonly supportedCommands = vi.fn(() => sdk.supportedCommands())
     readonly supportedModels = vi.fn(() => sdk.supportedModels())
     private readonly buffer: Array<Message> = []
@@ -909,6 +910,23 @@ const scheduleWakeup = (input: Readonly<Record<string, unknown>>, result: Readon
 ]
 
 describe("Claude background tasks", () => {
+  it.effect("moves one running command to the background by its tool call id", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        const moveCommand = provider.backgroundTasks?.moveCommand
+        if (moveCommand === undefined) return yield* Effect.die("moveCommand is missing")
+        expect(yield* moveCommand("thread-1", "toolu-1")).toBe(false)
+
+        sdk.respond = (cli) => cli.push(init("session-1"), succeeded)
+        yield* runTurn()
+
+        expect(yield* moveCommand("thread-1", "toolu-1")).toBe(true)
+        expect(latestCli().backgroundTasks).toHaveBeenCalledWith("toolu-1")
+      }),
+    ),
+  )
+
   it.effect(
     "reports the shells it runs after the turn, stops one by its task id, and clears them when the CLI exits",
     () =>
