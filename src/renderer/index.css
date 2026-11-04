@@ -849,6 +849,32 @@
   }
 }
 
+/* The same band, faint, over a surface such as the page preview of a document the agent is still publishing. */
+@utility surface-shimmer {
+  position: relative;
+  overflow: clip;
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    left: 0;
+    width: 400%;
+    pointer-events: none;
+    background: linear-gradient(
+      90deg,
+      transparent 40%,
+      color-mix(in oklab, var(--foreground) 9%, transparent) 50%,
+      transparent 60%
+    );
+    animation: text-shimmer 2s linear infinite;
+
+    @media (prefers-reduced-motion: reduce) {
+      display: none;
+    }
+  }
+}
+
 /*
  * The send button: a conic gradient of the theme's --send-a to --send-d, under a layer of Perlin grain
  * (feTurbulence fractalNoise). The gradient turns while the pointer is over it.
