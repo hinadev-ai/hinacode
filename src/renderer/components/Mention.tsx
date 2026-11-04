@@ -1,13 +1,12 @@
 import { Link } from "@tanstack/react-router"
-import { createContext, type ReactElement, use } from "react"
+import { type ReactElement, use } from "react"
 import { MENTION, parseMention } from "../../shared/mentions.ts"
 import { terminalLabel } from "../lib/terminalLabel.ts"
 import { m } from "../paraglide/messages.js"
 import { useTerminals } from "../stores/terminals.ts"
 import { useThreads } from "../stores/threads.ts"
 import { Highlighted } from "./FindHighlight.tsx"
-
-export const MentionThread = createContext<string | null>(null)
+import { MentionThread } from "./MentionThread.ts"
 
 const mentionClass = "text-syntax-token underline-offset-2 hover:underline"
 
