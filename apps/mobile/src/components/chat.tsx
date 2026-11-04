@@ -571,6 +571,7 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
   const { busy, error, run } = useAction()
   const [picked, setPicked] = useState<Readonly<Record<string, readonly string[]>>>({})
   const [typed, setTyped] = useState<Readonly<Record<string, string>>>({})
+  const [step, setStep] = useState(0)
 
   const answers: QuestionAnswers = Object.fromEntries(
     request.questions
@@ -595,16 +596,37 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
       return { ...current, [question.id]: next }
     })
 
+  const total = request.questions.length
+  const single = total === 1
+  const last = step >= total - 1
+  const question = request.questions[step]
+
+  const pick = (question: Question, label: string) => {
+    toggle(question, label)
+    const typedNothing = (typed[question.id]?.trim() ?? "") === ""
+    if (!question.multiSelect && !last && typedNothing) setStep(step + 1)
+  }
+
   return (
     <ResolvableCard>
       <View
         testID="question-card"
         style={[styles.card, { borderColor: theme.attention, backgroundColor: theme.attentionBg }]}
       >
-        {request.questions.map((question) => (
-          <View key={question.id} style={styles.question}>
+        {question !== undefined && (
+          <FadeIn key={question.id} style={styles.question}>
+            {!single && (
+              <View style={styles.step}>
+                <Text style={[styles.cardNote, { color: theme.textMuted }]}>
+                  {copy("mobile_chat_question_step", { current: String(step + 1), total: String(total) })}
+                </Text>
+                {question.header !== "" && (
+                  <Text style={[styles.cardNote, styles.shrink, { color: theme.textMuted }]}>{question.header}</Text>
+                )}
+              </View>
+            )}
             <Text style={[styles.cardTitle, { color: theme.text }]}>
-              {question.header !== "" ? `${question.header}: ` : ""}
+              {single && question.header !== "" ? `${question.header}: ` : ""}
               {question.question}
             </Text>
             <View style={styles.options}>
@@ -617,7 +639,7 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
                     aria-checked={selected}
                     accessibilityLabel={option.label}
                     accessibilityHint={option.description}
-                    onPress={() => toggle(question, option.label)}
+                    onPress={() => pick(question, option.label)}
                     style={[
                       styles.option,
                       {
@@ -648,18 +670,38 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
                 style={[styles.answer, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
               />
             )}
-          </View>
-        ))}
+          </FadeIn>
+        )}
         <View style={styles.actions}>
-          <Button
-            testID="question-submit"
-            label={copy("mobile_chat_submit")}
-            variant="primary"
-            busy={busy}
-            disabled={Object.keys(answers).length === 0}
-            onPress={() => respond(answers)}
-            style={styles.cardButton}
-          />
+          {step > 0 && (
+            <Button
+              testID="question-back"
+              label={copy("mobile_chat_back")}
+              disabled={busy}
+              onPress={() => setStep(step - 1)}
+              style={styles.cardButton}
+            />
+          )}
+          {last ? (
+            <Button
+              testID="question-submit"
+              label={copy("mobile_chat_submit")}
+              variant="primary"
+              busy={busy}
+              disabled={Object.keys(answers).length === 0}
+              onPress={() => respond(answers)}
+              style={styles.cardButton}
+            />
+          ) : (
+            <Button
+              testID="question-next"
+              label={copy("mobile_chat_next")}
+              variant="primary"
+              disabled={busy}
+              onPress={() => setStep(step + 1)}
+              style={styles.cardButton}
+            />
+          )}
           <Button
             testID="question-skip"
             label={copy("mobile_chat_skip")}
@@ -732,6 +774,7 @@ const styles = StyleSheet.create({
   detail: { fontFamily: mono, fontSize: 12, padding: 8, borderRadius: radius.sm },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" },
   question: { gap: 8 },
+  step: { flexDirection: "row", gap: 8 },
   options: { gap: 6 },
   option: {
     minHeight: HIT,

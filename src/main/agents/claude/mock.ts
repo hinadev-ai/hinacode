@@ -37,12 +37,12 @@ import { mapMessage, type MapState } from "./mapMessage.ts"
 import { type ApprovalReply, type MockStep, play } from "./play.ts"
 
 export const mockScenarioDescriptions = {
-  everything: "Walk through every tool kind and state, thinking, compaction, approvals and a question.",
+  everything: "Walk through every tool kind and state, thinking, compaction, approvals and three questions.",
   tools: "Call every tool the transcript renders specially, a sub-agent and an artifact.",
   "tool-states": "End tools in each state: slow, long output, empty, failed, image and MCP error.",
   thinking: "Stream a thinking block, then a Markdown reply.",
   compaction: "Compact the context once, then fail a second compaction.",
-  approvals: "Ask four approvals and a question. Allow or deny each one.",
+  approvals: "Ask four approvals and three questions. Allow or deny each one.",
   error: "Fail the turn with an API error.",
   "signed-out": "Fail the turn because the Claude login expired.",
   stop: "Keep a command and a reply running until you press Stop.",
