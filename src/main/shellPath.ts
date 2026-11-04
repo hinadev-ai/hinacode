@@ -38,6 +38,11 @@ export interface PathHydration {
   readonly refreshed: Promise<void>
 }
 
+// FIXME: the AppImage launcher exports ARGV0, and zsh then runs every command under that name, so mise starts HinaCode
+export const dropAppImageArgv0 = (env: NodeJS.ProcessEnv) => {
+  if (env["APPIMAGE"] !== undefined) delete env["ARGV0"]
+}
+
 // FIXME: an app opened from the Dock or Finder gets launchd's PATH, without Homebrew, mise or nvm
 export const hydratePath = (env: NodeJS.ProcessEnv, cacheFile?: string): PathHydration => {
   if (process.platform === "win32") return { ready: Promise.resolve(), refreshed: Promise.resolve() }
