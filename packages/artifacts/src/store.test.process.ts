@@ -1,7 +1,6 @@
 import { join } from "node:path"
 import { lock } from "proper-lockfile"
-import { openArtifactStore } from "./store.ts"
-import { artifactTools } from "./tools.ts"
+import { openArtifactStore, type PublishInput } from "./store.ts"
 
 const [mode, root, id] = process.argv.slice(2)
 if (root === undefined || process.send === undefined) throw new Error("A store and an IPC channel are required.")
@@ -14,8 +13,7 @@ if (mode === "hold" && id !== undefined) {
   const store = openArtifactStore(root)
   process.on("message", async (message: unknown) => {
     try {
-      const input = artifactTools.publish_artifact.input.parse(message)
-      const artifact = await store.publish(input)
+      const artifact = await store.publish(message as PublishInput)
       process.send?.(artifact, () => process.disconnect())
     } catch (error) {
       process.send?.({ error: error instanceof Error ? error.message : String(error) }, () => process.disconnect())

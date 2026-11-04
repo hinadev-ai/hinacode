@@ -24,7 +24,7 @@ command = "node"
 args = ["/path/to/hinacode/packages/artifacts/src/cli.ts", "mcp"]
 ```
 
-The server has five tools: `publish_artifact`, `publish_document`, `document_chart_guide`, `list_artifacts` and `read_artifact`. Publishing again with the same id updates the artifact in place. `publish_document` also takes the revision the agent last saw, and refuses the update with the current text when someone else saved since. An update without `title` keeps the current one, which the developer may have changed with `store.rename`; renaming does not count as a revision.
+The server has five tools: `publish_artifact`, `publish_document`, `document_chart_guide`, `list_artifacts` and `read_artifact`. Publishing again with the same id updates the artifact in place. Both publish tools take the absolute `sourcePath` of a file on the server's machine in place of its content, so an agent that already wrote the file does not send it again. The file is copied when it publishes. `publish_document` also takes the revision the agent last saw, and refuses the update with the current text when someone else saved since. An update without `title` keeps the current one, which the developer may have changed with `store.rename`; renaming does not count as a revision.
 
 A document can hold bar and line charts as a fenced code block whose language is `chart` and whose body is JSON. The syntax lives in `CHART_GUIDE`, which `document_chart_guide` returns, so an agent reads it only when it is about to draw a chart.
 

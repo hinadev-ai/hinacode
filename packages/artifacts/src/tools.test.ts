@@ -1,8 +1,8 @@
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, onTestFinished, test } from "vitest"
-import { openArtifactStore } from "./store.ts"
+import { MAX_ARTIFACT_BYTES, openArtifactStore } from "./store.ts"
 import { artifactTools } from "./tools.ts"
 
 const openTemporaryStore = () => {
@@ -84,4 +84,82 @@ test("keeps a document's name, which the developer may have changed, when the ag
 
   expect(reply).toContain('"Launch notes"')
   expect(publish_document.input.safeParse({ markdown: "new" }).success).toBe(false)
+})
+
+const temporaryFile = (name: string, content: string | Uint8Array) => {
+  const directory = mkdtempSync(join(tmpdir(), "hinacode-artifact-source-"))
+  onTestFinished(() => rmSync(directory, { recursive: true, force: true }))
+  const path = join(directory, name)
+  writeFileSync(path, content)
+  return path
+}
+
+test("publishes a page's text and binary files from paths on disk", async () => {
+  const store = openTemporaryStore()
+  const { publish_artifact } = artifactTools
+  const pixel = new Uint8Array([0x89, 0x50, 0x00, 0xff])
+
+  const published = await publish_artifact.handle(
+    store,
+    publish_artifact.input.parse({
+      title: "Report",
+      files: [
+        { path: "index.html", sourcePath: temporaryFile("report.html", "<h1>日本語</h1>") },
+        { path: "dot.png", sourcePath: temporaryFile("dot.png", pixel) },
+        { path: "inline.txt", content: "inline" },
+      ],
+    }),
+    {},
+  )
+  const id = published.match(/^Published artifact ([a-z0-9]+) version 1:/)?.[1] ?? ""
+
+  const read = async (path: string) => (await store.file(id, path))?.bytes ?? new Uint8Array()
+  expect(new TextDecoder().decode(await read("index.html"))).toBe("<h1>日本語</h1>")
+  expect(new Uint8Array(await read("dot.png"))).toEqual(pixel)
+  expect(new TextDecoder().decode(await read("inline.txt"))).toBe("inline")
+})
+
+test("publishes a document from a path on disk and still refuses a stale revision", async () => {
+  const store = openTemporaryStore()
+  const { publish_document, read_artifact } = artifactTools
+  const sourcePath = temporaryFile("plan.md", "# Plan\n")
+
+  const published = await publish_document.handle(
+    store,
+    publish_document.input.parse({ title: "Plan", sourcePath }),
+    {},
+  )
+  const id = published.match(/^Published document ([a-z0-9]+) version 1:/)?.[1] ?? ""
+  expect(await read_artifact.handle(store, { id, path: "document.md" }, {})).toBe("# Plan\n")
+
+  await store.publish({ kind: "document", id, author: "developer", markdown: "# Edited\n", baseRevision: 1 })
+  await expect(
+    publish_document.handle(store, publish_document.input.parse({ id, revision: 1, sourcePath }), {}),
+  ).rejects.toThrow(/after your revision 1[\s\S]*# Edited/)
+})
+
+test("takes exactly one of the inline content and its sourcePath", () => {
+  const { publish_artifact, publish_document } = artifactTools
+  const page = (file: object) =>
+    publish_artifact.input.safeParse({ title: "Page", files: [{ path: "a.html", ...file }] })
+  const document = (input: object) => publish_document.input.safeParse({ title: "Doc", ...input })
+
+  expect(page({}).error?.issues[0]?.message).toBe("Pass either content or sourcePath.")
+  expect(page({ content: "", sourcePath: "/a" }).success).toBe(false)
+  expect(document({}).error?.issues[0]?.message).toBe("Pass either markdown or sourcePath.")
+  expect(document({ markdown: "", sourcePath: "/a" }).success).toBe(false)
+})
+
+test("explains a sourcePath it cannot read and writes nothing", async () => {
+  const store = openTemporaryStore()
+  const { publish_document } = artifactTools
+  const publish = (sourcePath: string) =>
+    publish_document.handle(store, publish_document.input.parse({ title: "Doc", sourcePath }), {})
+  const oversized = temporaryFile("big.md", new Uint8Array(MAX_ARTIFACT_BYTES + 1))
+
+  await expect(publish("plan.md")).rejects.toThrow('sourcePath must be absolute, but got "plan.md".')
+  await expect(publish("/no/such/file.md")).rejects.toThrow(/Cannot read sourcePath "\/no\/such\/file\.md": .*ENOENT/)
+  await expect(publish(tmpdir())).rejects.toThrow(/is not a file/)
+  await expect(publish(oversized)).rejects.toThrow(/A version holds at most/)
+  expect(await store.list()).toEqual([])
 })
