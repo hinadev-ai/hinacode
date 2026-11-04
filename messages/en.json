@@ -1044,7 +1044,7 @@
   "update_up_to_date": "HinaCode is up to date.",
   "update_downloading": "Downloading HinaCode {version}",
   "update_failed": "Couldn't check for updates: {message}",
-  "update_unsupported": "Development builds don't update.",
+  "update_unsupported": "This build can't update itself.",
   "agent_update_title": "Update available: {agent} v{version}",
   "agent_update_body": "Install the update now, or review the agent's settings.",
   "agent_update_settings": "Settings",
