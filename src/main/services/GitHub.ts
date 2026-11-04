@@ -638,6 +638,8 @@ export class GitHub extends Context.Service<
 >()("hinacode/GitHub") {}
 
 const SIGNED_OUT_EXIT_CODE = 4
+const GH_TIMEOUT = "1 minute"
+const GH_TRANSFER_TIMEOUT = "1 hour"
 
 const RATE_LIMITED = /rate limit/i
 const SECONDARY_PAUSE_MS = 60_000
@@ -655,8 +657,12 @@ const make = Effect.gen(function* () {
   const events = yield* Events
   const layerScope = yield* Effect.scope
 
-  const ghUnpaused = (cwd: string, args: ReadonlyArray<string>, options?: Pick<RunOptions, "okExitCodes">) =>
-    exec("gh", args, cwd, { ...options, env: { GH_PROMPT_DISABLED: "1", NO_COLOR: "1" } }).pipe(
+  const ghUnpaused = (
+    cwd: string,
+    args: ReadonlyArray<string>,
+    options?: Pick<RunOptions, "okExitCodes" | "timeout">,
+  ) =>
+    exec("gh", args, cwd, { timeout: GH_TIMEOUT, ...options, env: { GH_PROMPT_DISABLED: "1", NO_COLOR: "1" } }).pipe(
       Effect.mapError((error): GhError => {
         if (error.exitCode === -1) return new GitHubCliMissingError()
         if (error.exitCode === SIGNED_OUT_EXIT_CODE) return new GitHubSignedOutError()
@@ -718,10 +724,14 @@ const make = Effect.gen(function* () {
     now < pausedUntil ? Effect.fail(new GitHubRateLimitedError({ resetsAt: pausedUntil })) : Effect.void,
   )
 
-  const gh = (cwd: string, args: ReadonlyArray<string>): Effect.Effect<string, GhError> =>
+  const gh = (
+    cwd: string,
+    args: ReadonlyArray<string>,
+    options?: Pick<RunOptions, "timeout">,
+  ): Effect.Effect<string, GhError> =>
     Effect.gen(function* () {
       yield* failIfPaused
-      const stdout = yield* ghUnpaused(cwd, args).pipe(
+      const stdout = yield* ghUnpaused(cwd, args, options).pipe(
         Effect.catchIf(
           (error) => error._tag === "CommandError" && RATE_LIMITED.test(error.stderr),
           () => Effect.flatMap(pause, (resetsAt) => Effect.fail(new GitHubRateLimitedError({ resetsAt }))),
@@ -794,13 +804,15 @@ const make = Effect.gen(function* () {
     )
 
   const createRepository = (cwd: string, visibility: RepositoryVisibility) =>
-    gh(cwd, ["repo", "create", "--source", cwd, "--remote", "origin", `--${visibility}`, "--push"]).pipe(Effect.asVoid)
+    gh(cwd, ["repo", "create", "--source", cwd, "--remote", "origin", `--${visibility}`, "--push"], {
+      timeout: GH_TRANSFER_TIMEOUT,
+    }).pipe(Effect.asVoid)
 
   const clone = ({ owner, name }: GitHubRepository, dest: string) => {
     // FIXME: a full https URL keeps gh from switching to a configured ssh git_protocol
     const url = `https://github.com/${owner}/${name}.git`
     const gitClone = () => exec("git", [...REMOTE_GIT_ARGS, "clone", url, dest], dirname(dest), { env: REMOTE_GIT_ENV })
-    return gh(dirname(dest), ["repo", "clone", url, dest]).pipe(
+    return gh(dirname(dest), ["repo", "clone", url, dest], { timeout: GH_TRANSFER_TIMEOUT }).pipe(
       Effect.catchTags({
         GitHubCliMissingError: gitClone,
         GitHubSignedOutError: gitClone,
