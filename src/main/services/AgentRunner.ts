@@ -77,6 +77,7 @@ import { makeDeltaCoalescer } from "./coalesceDeltas.ts"
 import {
   type FolderMissingError,
   NotFoundError,
+  AccountInUseError,
   type PersistenceError,
   type PullRequestElsewhereError,
   type RootBusyError,
@@ -204,6 +205,7 @@ export class AgentRunner extends Context.Service<
       accountId: string | null,
       options: { readonly resend: boolean },
     ) => Effect.Effect<Thread, SendError>
+    readonly removeAccount: (accountId: string) => Effect.Effect<void, SendError | AccountInUseError>
     readonly switchAgent: (input: UpdateThread & { readonly provider: ProviderId }) => Effect.Effect<Thread, SendError>
     readonly setAccessMode: (threadId: string, accessMode: AccessMode) => Effect.Effect<void, AgentError>
     readonly respondApproval: (
@@ -1370,6 +1372,22 @@ const make = Effect.gen(function* () {
     ),
   )
 
+  const copySessionToAccount = (thread: Thread, accountId: string | null) =>
+    Effect.gen(function* () {
+      const sessionId = thread.providerSessionId ?? thread.forkedFrom?.sessionId ?? null
+      if (sessionId === null) return
+      const provider = providers[thread.provider]
+      if (provider.copySession === undefined) return yield* new ThreadStartedError({ id: thread.id })
+      yield* provider.copySession(sessionId, yield* accounts.home(thread.accountId), yield* accounts.home(accountId))
+    })
+
+  const moveToAccount = (thread: Thread, accountId: string | null) =>
+    updateThread({
+      id: thread.id,
+      accountId,
+      ...(thread.status === "limited" && { status: "idle" }),
+    })
+
   const switchAccount: typeof AgentRunner.Service.switchAccount = (threadId, accountId, options) =>
     Effect.gen(function* () {
       const switched = yield* Effect.gen(function* () {
@@ -1381,25 +1399,35 @@ const make = Effect.gen(function* () {
         if (accountId !== null && (yield* accounts.get(accountId)).provider !== current.provider) {
           return yield* new NotFoundError({ entity: "account", id: accountId })
         }
-        const sessionId = current.providerSessionId ?? current.forkedFrom?.sessionId ?? null
-        if (sessionId !== null) {
-          const provider = providers[current.provider]
-          if (provider.copySession === undefined) return yield* new ThreadStartedError({ id: threadId })
-          yield* provider.copySession(
-            sessionId,
-            yield* accounts.home(current.accountId),
-            yield* accounts.home(accountId),
-          )
-        }
-        const thread = yield* updateThread({
-          id: threadId,
-          accountId,
-          ...(current.status === "limited" && { status: "idle" }),
-        })
+        yield* copySessionToAccount(current, accountId)
+        const thread = yield* moveToAccount(current, accountId)
         return { thread, prompt: options.resend ? yield* lastPrompt(threadId) : undefined }
       }).pipe(exclusive(threadId))
       if (switched.prompt !== undefined) yield* resend(threadId, switched.prompt)
       return switched.thread
+    })
+
+  const removeAccount: typeof AgentRunner.Service.removeAccount = (accountId) =>
+    Effect.gen(function* () {
+      const { provider } = yield* accounts.get(accountId)
+      const onAccount = yield* threads.onAccount(accountId)
+      const running = onAccount.filter((thread) => busyThreads.has(thread.id)).length
+      if (running > 0) return yield* new AccountInUseError({ id: accountId, threads: running })
+      const { defaultAccount } = yield* settings.get
+      const successor = defaultAccount[provider] === accountId ? null : defaultAccount[provider]
+      yield* Effect.forEach(onAccount, ({ id }) =>
+        Effect.gen(function* () {
+          if (busyThreads.has(id)) return yield* new AccountInUseError({ id: accountId, threads: 1 })
+          const thread = yield* threads.get(id)
+          yield* copySessionToAccount(thread, successor).pipe(
+            Effect.catchTag("AgentError", (error) =>
+              Effect.logWarning("Moved a thread off a removed account without its transcript", error),
+            ),
+          )
+          yield* moveToAccount(thread, successor)
+        }).pipe(exclusive(id)),
+      )
+      yield* accounts.remove(accountId)
     })
 
   const switchAgent: typeof AgentRunner.Service.switchAgent = (input) =>
@@ -1644,6 +1672,7 @@ const make = Effect.gen(function* () {
     sendDueSchedules,
     resumeAtReset,
     switchAccount,
+    removeAccount,
     switchAgent,
     steer: (threadId, text, attachments) =>
       steerWhen({ threadId, text, attachments, when: Effect.succeed(true) }).pipe(Effect.asVoid),
