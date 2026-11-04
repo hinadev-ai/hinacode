@@ -249,6 +249,10 @@ export class AgentRunner extends Context.Service<
       threadId: string,
       taskId: string,
     ) => Effect.Effect<void, AgentError | PersistenceError | NotFoundError>
+    readonly moveCommandToBackground: (
+      threadId: string,
+      callId: string,
+    ) => Effect.Effect<boolean, AgentError | PersistenceError | NotFoundError>
     readonly listCommands: (
       threadId: string,
     ) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError | PersistenceError | NotFoundError | FolderMissingError>
@@ -1545,6 +1549,16 @@ const make = Effect.gen(function* () {
       yield* tasks.stop(threadId, taskId)
     })
 
+  const moveCommandToBackground: AgentRunner["Service"]["moveCommandToBackground"] = (threadId, callId) =>
+    Effect.gen(function* () {
+      const { provider: id } = yield* threads.get(threadId)
+      const moveCommand = providers[id].backgroundTasks?.moveCommand
+      if (moveCommand === undefined) {
+        return yield* new AgentError({ provider: id, message: "This agent cannot move a command to the background" })
+      }
+      return yield* moveCommand(threadId, callId)
+    })
+
   const hasPendingWakeup = (threadId: string) =>
     (backgroundTasks.get(threadId) ?? []).some((task) => task.kind === "wakeup")
 
@@ -1727,6 +1741,7 @@ const make = Effect.gen(function* () {
     stopSubagent,
     backgroundTasks: (threadId) => Effect.sync(() => backgroundTasks.get(threadId) ?? []),
     stopBackgroundTask,
+    moveCommandToBackground,
     listCommands: (threadId) =>
       Effect.gen(function* () {
         const thread = yield* threads.get(threadId)
