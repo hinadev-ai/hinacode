@@ -9,24 +9,31 @@ import type {
 import { collapsedParts } from "@shared/activityFold.ts"
 import { toolSummary } from "@shared/compactTranscript.ts"
 import { formatWorkDuration } from "@shared/workDuration.ts"
-import { type Message, type MessagePart, spawnsSubagent, type Thread, type ToolCallStatus } from "@shared/domain.ts"
+import {
+  type Message,
+  type MessagePart,
+  publishesArtifact,
+  spawnsSubagent,
+  type Thread,
+  type ToolCallStatus,
+} from "@shared/domain.ts"
 import { isOwnPart } from "@shared/subagents.ts"
 import type { UsageLimit } from "@shared/limits.ts"
 import { useFocusEffect } from "expo-router"
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react"
 import { ActivityIndicator, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
-import Animated, { useReducedMotion } from "react-native-reanimated"
+import { ArtifactCard } from "@/components/artifact-card"
 import { Composer } from "@/components/composer"
 import { liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
 import { Markdown } from "@/components/markdown"
-import { FadeIn, Rotate, Spinner } from "@/components/motion"
+import { FadeIn, Pulse, Rotate, Spinner } from "@/components/motion"
 import { SubagentCall, SubagentTray } from "@/components/subagents"
 import { TodoTray } from "@/components/todo-tray"
 import { Button, Notice, Pill } from "@/components/ui"
-import { cssEase, duration, rise } from "@/constants/motion"
-import { Colors, HIT, mono, radius, subheading } from "@/constants/theme"
-import { useScheme, useTheme } from "@/hooks/use-theme"
+import { duration, rise } from "@/constants/motion"
+import { HIT, mono, radius, subheading } from "@/constants/theme"
+import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
 import { copy, locale } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
@@ -206,7 +213,10 @@ export function AssistantMessage({
         return activityShown ? <FadeIn key={index}>{view}</FadeIn> : null
       })}
       {streaming && (parts.length === 0 || writingIndex !== undefined) && (
-        <Pulse text={copy(writingIndex !== undefined ? "mobile_chat_writing" : "mobile_chat_thinking")} />
+        <Pulse
+          text={copy(writingIndex !== undefined ? "mobile_chat_writing" : "mobile_chat_thinking")}
+          style={styles.pulse}
+        />
       )}
     </View>
   )
@@ -233,34 +243,6 @@ function ReplyText({
     <FadeIn enabled={finishedOnScreen}>
       <Markdown text={text} root={root} threadId={threadId} gutter={TRANSCRIPT_PADDING} />
     </FadeIn>
-  )
-}
-
-const pulse = {
-  light: { "50%": { color: Colors.light.text } },
-  dark: { "50%": { color: Colors.dark.text } },
-}
-
-/** The desktop's `animate-pulse` line under a streaming reply. Reduce motion holds it still. */
-function Pulse({ text }: { text: string }) {
-  const theme = useTheme()
-  const scheme = useScheme()
-  const reduced = useReducedMotion()
-  return (
-    <Animated.Text
-      style={[
-        styles.pulse,
-        { color: theme.textMuted },
-        !reduced && {
-          animationName: pulse[scheme],
-          animationDuration: 2000,
-          animationIterationCount: "infinite",
-          animationTimingFunction: cssEase.pulse,
-        },
-      ]}
-    >
-      {text}
-    </Animated.Text>
   )
 }
 
@@ -310,6 +292,7 @@ function PartView({ part, threadId }: { part: MessagePart; threadId: string }) {
       return <Reasoning text={part.text} />
     case "tool_call": {
       if (spawnsSubagent(part)) return <SubagentCall part={part} threadId={threadId} />
+      if (publishesArtifact(part)) return <ArtifactCard part={part} threadId={threadId} />
       const summary = toolSummary(part.input)?.line
       return (
         <View style={[styles.tool, { borderColor: theme.border }]}>
