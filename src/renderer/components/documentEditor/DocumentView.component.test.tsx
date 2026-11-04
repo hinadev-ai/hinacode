@@ -5,10 +5,12 @@ import { render } from "vitest-browser-react"
 import type { Artifact, DocumentSaveResult } from "../../../shared/artifact.ts"
 import { type HinacodeBridge, type PushEvent, RpcMethods } from "../../../shared/contract.ts"
 import { defaultClientSettings, type Thread } from "../../../shared/domain.ts"
+import { documentPrintHtml } from "../../../shared/documentPrint.ts"
 import "../../index.css"
 import { useArtifacts } from "../../stores/artifacts.ts"
 import { useDrafts } from "../../stores/drafts.ts"
 import { ArtifactsHeader, ArtifactsView } from "../sidePanel/ArtifactsView.tsx"
+import { liveDocument, liveDocumentKey } from "./liveDocuments.ts"
 
 const AGENT_MARKDOWN = `# Release plan
 
@@ -392,7 +394,9 @@ const FLOWCHART =
 test("draws a mermaid block as a diagram and saves its fence unchanged", async () => {
   const { editor, saved } = await savedAfterEdit(FLOWCHART)
 
-  await expect.poll(() => editor.element().querySelector("[data-diagram-svg] > svg"), { timeout: 10_000 }).not.toBeNull()
+  await expect
+    .poll(() => editor.element().querySelector("[data-diagram-svg] > svg"), { timeout: 10_000 })
+    .not.toBeNull()
   expect(editor.element().querySelector("[data-diagram-svg] > svg")?.textContent).toContain("Developer edits")
   await expect.element(page.getByRole("combobox", { name: "Code language" })).not.toBeInTheDocument()
   expect(saved).toContain(FLOWCHART)
@@ -409,4 +413,36 @@ test("shows the error and the source of a diagram that cannot be drawn", async (
   await expect.element(editor.getByRole("code")).toBeVisible()
   expect(editor.getByRole("code").element().textContent).toBe("flowchart TD\n  A -->")
   await expect.element(editor.getByRole("button", { name: "Source" })).toHaveAttribute("aria-pressed", "true")
+})
+
+const printed = async (html: string) => {
+  const frame = document.createElement("iframe")
+  frame.style.width = "800px"
+  frame.srcdoc = documentPrintHtml("Release plan", html)
+  const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }))
+  document.body.append(frame)
+  onTestFinished(() => frame.remove())
+  await loaded
+  return frame.contentDocument!
+}
+
+const shown = (element: Element | null | undefined) => element?.checkVisibility() ?? false
+
+test("prints a callout's label and a diagram, without their controls or source", async () => {
+  stored = { ...stored, markdown: `# Release plan\n\n> [!WARNING]\n> Saves race.\n\n${FLOWCHART}\n` }
+  const editor = await openDocument()
+  await expect
+    .poll(() => editor.element().querySelector("[data-diagram-svg] > svg"), { timeout: 10_000 })
+    .not.toBeNull()
+
+  const print = await printed(liveDocument(liveDocumentKey(undefined, documentId))!.html())
+  const label = print.querySelector("[data-callout-label]")
+
+  expect(shown(label)).toBe(true)
+  expect(label?.textContent).toBe("Warning")
+  expect(shown(label?.querySelector("[data-print-hidden]"))).toBe(false)
+  expect(shown(print.querySelector("[data-callout] p"))).toBe(true)
+  expect(shown(print.querySelector("[data-diagram-svg] > svg"))).toBe(true)
+  expect(shown(print.querySelector("[data-diagram] pre"))).toBe(false)
+  expect(shown(print.querySelector("[data-diagram] button"))).toBe(false)
 })
