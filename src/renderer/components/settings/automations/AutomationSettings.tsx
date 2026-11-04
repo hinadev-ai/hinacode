@@ -3,7 +3,7 @@ import { cn } from "cn"
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, useState, useTransition } from "react"
-import type { Automation, Project } from "../../../../shared/domain.ts"
+import { type Automation, isPolledTrigger, type Project } from "../../../../shared/domain.ts"
 import { automationsAtom, callPromise, projectsAtom, updateSettingsAtom } from "../../../lib/rpc.ts"
 import { useSettings } from "../../../lib/settings.ts"
 import { environmentOf, useSettingsEnvironment } from "../../../lib/environments.ts"
@@ -192,7 +192,7 @@ function AutomationItem({ automation, projectName, onEdit }: AutomationItemProps
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const detailsId = `automation-details-${automation.id}`
-  const polling = automation.trigger.type !== "webhook"
+  const polling = isPolledTrigger(automation.trigger)
 
   const run = (action: () => Promise<unknown>) =>
     startTransition(async () => {
