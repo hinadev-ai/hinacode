@@ -5,6 +5,7 @@ import { render } from "vitest-browser-react"
 import type { HinacodeBridge } from "../../shared/contract.ts"
 import type { DirectorySuggestion } from "../../shared/domain.ts"
 import "../index.css"
+import type { EnvironmentId } from "../lib/rpc.ts"
 import { PathInput } from "./PathInput.tsx"
 
 const tree: Record<string, ReadonlyArray<DirectorySuggestion>> = {
@@ -25,11 +26,13 @@ const completions = (path: string) => {
 }
 
 const requested: Array<unknown> = []
+const otherMachine = Promise.withResolvers<ReadonlyArray<DirectorySuggestion>>()
 
 const bridge: HinacodeBridge = {
-  rpc: async (method, payload) => {
+  rpc: async (method, payload, environment) => {
     if (method === "fs.completeDirectory") {
       requested.push(payload)
+      if (environment === "other-machine") return { result: await otherMachine.promise }
       return { result: completions((payload as { path: string }).path) }
     }
     return { error: { tag: "NotStubbed", message: method } }
@@ -40,12 +43,12 @@ const bridge: HinacodeBridge = {
 }
 Object.defineProperty(window, "hinacode", { value: bridge })
 
-function Harness() {
+function Harness({ environment = null }: { environment?: EnvironmentId }) {
   const [value, setValue] = useState("")
   return (
     <>
       <label htmlFor="path">Folder</label>
-      <PathInput id="path" value={value} onChange={setValue} environment={null} />
+      <PathInput id="path" value={value} onChange={setValue} environment={environment} />
     </>
   )
 }
@@ -102,4 +105,16 @@ test("a GitHub owner/repo never asks for suggestions", async () => {
 
   expect(requested).toEqual([])
   await expect.element(page.getByRole("listbox")).not.toBeInTheDocument()
+})
+
+test("switching machines drops the previous machine's folders", async () => {
+  const screen = await render(<Harness />)
+  await input().fill("~/")
+  await expect.element(option("code")).toBeVisible()
+
+  await screen.rerender(<Harness environment="other-machine" />)
+  await expect.element(option("code")).not.toBeInTheDocument()
+
+  otherMachine.resolve([{ path: "~/projects", name: "projects", repository: false }])
+  await expect.element(option("projects")).toBeVisible()
 })
