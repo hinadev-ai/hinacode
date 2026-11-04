@@ -172,7 +172,8 @@ export const makeApp = (deps: Deps) => {
     if (others >= MAX_HOSTS) {
       return fail(c, 409, `Your account already has ${MAX_HOSTS} machines. Remove one to link ${link.name}.`)
     }
-    await runStore(c.env.DB, (store) => store.approveLink(link.deviceCodeHash, userId))
+    const approved = await runStore(c.env.DB, (store) => store.approveLink(link.deviceCodeHash, userId))
+    if (!approved) return fail(c, 409, "Another account already approved this machine.")
     return c.body(null, 204)
   })
 

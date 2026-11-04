@@ -43,7 +43,11 @@ const makeStore = Effect.gen(function* () {
       execute: ({ userCode, now }) => sql`SELECT * FROM link WHERE user_code = ${userCode} AND expires_at > ${now}`,
     }),
     approveLink: (deviceCodeHash: string, userId: string) =>
-      sql`UPDATE link SET user_id = ${userId} WHERE device_code_hash = ${deviceCodeHash}`.pipe(Effect.asVoid),
+      sql`
+        UPDATE link SET user_id = ${userId}
+        WHERE device_code_hash = ${deviceCodeHash} AND (user_id IS NULL OR user_id = ${userId})
+        RETURNING device_code_hash
+      `.pipe(Effect.map((rows) => rows.length > 0)),
     deleteLink: (deviceCodeHash: string) =>
       sql`DELETE FROM link WHERE device_code_hash = ${deviceCodeHash} RETURNING device_code_hash`.pipe(
         Effect.map((rows) => rows.length > 0),
