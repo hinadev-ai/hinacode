@@ -14,7 +14,7 @@ A linked machine publishes the pairing its QR code carries with `PUT /v1/host/pa
 4. Create an API token with two permissions: Account, Cloudflare Tunnel, Edit, and Zone, DNS, Edit on the tunnel zone. Store it with `pnpm exec wrangler secret put CLOUDFLARE_API_TOKEN`.
 5. Create a Clerk application with Google and GitHub sign-in. Store its keys with `pnpm exec wrangler secret put CLERK_PUBLISHABLE_KEY` and `pnpm exec wrangler secret put CLERK_SECRET_KEY`. A production instance needs its own Google and GitHub OAuth credentials and DNS records, both set in the Clerk dashboard.
 
-The link page signs in through Clerk. **New owner token** on the page creates the token the desktop and phone apps paste, one per account. Only a signed-in session can create one, and D1 keeps only its hash.
+The link page signs in through Clerk. The desktop and phone apps sign in the same way a machine links: they open the page, the person approves them, and they claim a credential of their own. D1 keeps only its hash. **Sign out all devices** on the page ends every credential on the account.
 
 The variables live in `vars` in `wrangler.jsonc`. The secrets never go in the config. `secrets.required` only names them, so `wrangler types` and `wrangler dev` know about them.
 
@@ -28,4 +28,4 @@ The variables live in `vars` in `wrangler.jsonc`. The secrets never go in the co
 
 ## Deploy
 
-Run `pnpm db:migrate` when `migrations/` changed, then `pnpm deploy`. Machines linked before Clerk belong to the user id `owner`. To keep them, sign in once and run `pnpm exec wrangler d1 execute DB --remote --command "UPDATE host SET user_id = '<clerk user id>' WHERE user_id = 'owner'"`. Then create a new owner token on the link page and paste it into each desktop and phone. `pnpm deploy:dry-run` builds the Worker without uploading it, as CI does.
+Run `pnpm db:migrate` when `migrations/` changed, then `pnpm deploy`. Machines linked before Clerk belong to the user id `owner`. To keep them, sign in once and run `pnpm exec wrangler d1 execute DB --remote --command "UPDATE host SET user_id = '<clerk user id>' WHERE user_id = 'owner'"`. Then choose Login on each desktop and phone. `pnpm deploy:dry-run` builds the Worker without uploading it, as CI does.

@@ -9,7 +9,9 @@ const Link = Schema.Struct({
   name: Schema.String,
   userId: Schema.NullOr(Schema.String),
   expiresAt: Schema.Number,
+  kind: Schema.Literals(["machine", "device"]),
 })
+export type Link = typeof Link.Type
 
 const Host = Schema.Struct({
   id: Schema.String,
@@ -97,16 +99,22 @@ const makeStore = Effect.gen(function* () {
       `.pipe(Effect.map((rows) => rows.length > 0)),
     deleteHost: (id: string) => sql`DELETE FROM host WHERE id = ${id}`.pipe(Effect.asVoid),
 
-    accountByTokenHash: SqlSchema.findOneOption({
+    deviceByCredential: SqlSchema.findOneOption({
       Request: Schema.String,
       Result: Schema.Struct({ userId: Schema.String }),
-      execute: (tokenHash) => sql`SELECT user_id FROM account_token WHERE token_hash = ${tokenHash}`,
+      execute: (credentialHash) => sql`SELECT user_id FROM device WHERE credential_hash = ${credentialHash}`,
     }),
-    setAccountToken: (userId: string, tokenHash: string) =>
-      sql`
-        INSERT INTO account_token ${sql.insert({ userId, tokenHash })}
-        ON CONFLICT (user_id) DO UPDATE SET token_hash = excluded.token_hash
-      `.pipe(Effect.asVoid),
+    addDevice: (device: { id: string; userId: string; name: string; credentialHash: string; createdAt: number }) =>
+      sql`INSERT INTO device ${sql.insert(device)}`.pipe(Effect.asVoid),
+    deleteDeviceByCredential: (credentialHash: string) =>
+      sql`DELETE FROM device WHERE credential_hash = ${credentialHash} RETURNING id`.pipe(
+        Effect.map((rows) => rows.length > 0),
+      ),
+    deleteDevicesOfUser: (userId: string) =>
+      sql.batch([
+        sql`DELETE FROM device WHERE user_id = ${userId}`,
+        sql`DELETE FROM link WHERE user_id = ${userId} AND kind = 'device'`,
+      ]),
   }
 })
 

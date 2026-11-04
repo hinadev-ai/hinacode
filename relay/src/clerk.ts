@@ -1,4 +1,4 @@
-import { verifyToken } from "@clerk/backend"
+import { createClerkClient, verifyToken } from "@clerk/backend"
 import { TokenVerificationError, TokenVerificationErrorReason } from "@clerk/backend/errors"
 import { bearer } from "./app"
 
@@ -31,3 +31,8 @@ export const makeVerifySession =
   }
 
 export const verifySession = makeVerifySession(verifyToken)
+
+export const accountProfile = async (userId: string, env: Env) => {
+  const user = await createClerkClient({ secretKey: env.CLERK_SECRET_KEY }).users.getUser(userId)
+  return { name: user.fullName ?? user.username, email: user.primaryEmailAddress?.emailAddress ?? null }
+}
