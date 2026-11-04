@@ -2,7 +2,7 @@ import { Autocomplete } from "@base-ui/react/autocomplete"
 import { useAtomValue } from "@effect/atom-react"
 import { FolderIcon } from "@hinacode/icons"
 import { AsyncResult } from "effect/reactivity"
-import { startTransition, useState } from "react"
+import { startTransition, useRef, useState } from "react"
 import { RiGitRepositoryLine } from "react-icons/ri"
 import { looksLikeDirectoryPath, separatorOf } from "../../shared/directoryPath.ts"
 import type { DirectorySuggestion } from "../../shared/domain.ts"
@@ -47,7 +47,7 @@ interface PathInputProps {
 export function PathInput({ id, value, onChange, environment, placeholder, required, className }: PathInputProps) {
   const suggestions = useDirectorySuggestions(environment, value)
   const [open, setOpen] = useState(false)
-  const [highlighted, setHighlighted] = useState<DirectorySuggestion | undefined>()
+  const highlighted = useRef<DirectorySuggestion | undefined>(undefined)
   const showing = open && suggestions.length > 0
 
   const accept = (suggestion: DirectorySuggestion) => {
@@ -70,7 +70,9 @@ export function PathInput({ id, value, onChange, environment, placeholder, requi
       onOpenChange={(next, details) => {
         if (details.reason !== "item-press") setOpen(next)
       }}
-      onItemHighlighted={(item) => startTransition(() => setHighlighted(item))}
+      onItemHighlighted={(item) => {
+        highlighted.current = item
+      }}
       openOnInputClick
       itemToStringValue={completionOf}
     >
@@ -83,7 +85,7 @@ export function PathInput({ id, value, onChange, environment, placeholder, requi
         onFocus={() => setOpen(true)}
         onKeyDown={(event) => {
           if (event.key !== "Tab" || event.shiftKey || !showing) return
-          const pick = suggestions.find((suggestion) => suggestion.path === highlighted?.path) ?? suggestions[0]
+          const pick = suggestions.find((suggestion) => suggestion.path === highlighted.current?.path) ?? suggestions[0]
           if (!pick || completionOf(pick) === value) return
           event.preventDefault()
           accept(pick)

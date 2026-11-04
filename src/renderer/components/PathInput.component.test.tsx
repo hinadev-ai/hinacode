@@ -97,6 +97,17 @@ test("Tab accepts the first suggestion like a shell", async () => {
   await expect.element(input()).toHaveFocus()
 })
 
+test("Tab accepts the suggestion the arrow keys highlighted", async () => {
+  await render(<Harness />)
+  await input().fill("~/")
+  await expect.element(option("Documents")).toBeVisible()
+  await userEvent.keyboard("{ArrowDown}{ArrowDown}")
+  await expect.element(option("Documents")).toHaveAttribute("data-highlighted")
+  await userEvent.keyboard("{Tab}")
+
+  await expect.element(input()).toHaveValue("~/Documents/")
+})
+
 test("a GitHub owner/repo never asks for suggestions", async () => {
   requested.length = 0
   await render(<Harness />)
