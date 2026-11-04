@@ -7,7 +7,7 @@ import { type Host, runStore } from "./store"
 export type { Fetch } from "./cloudflare"
 
 export interface Deps {
-  verifyUser(request: Request, env: Env): Promise<string | null>
+  verifySession(request: Request, env: Env): Promise<string | null>
   cloudflare: Fetch
   now(): number
   random(bytes: number): Uint8Array
@@ -72,6 +72,16 @@ export const makeApp = (deps: Deps) => {
       zoneId: env.TUNNEL_ZONE_ID,
     })
 
+  const accountOfToken = async (c: Context<App>) => {
+    const token = bearer(c.req.raw)
+    if (!token) return null
+    const tokenHash = await sha256(token)
+    const account = await runStore(c.env.DB, (store) => store.accountByTokenHash(tokenHash))
+    return Option.getOrNull(account)?.userId ?? null
+  }
+
+  const verifyUser = async (c: Context<App>) => (await accountOfToken(c)) ?? deps.verifySession(c.req.raw, c.env)
+
   const machine = async (c: Context<App>) => {
     const credential = bearer(c.req.raw)
     if (!credential) return Option.none()
@@ -118,7 +128,7 @@ export const makeApp = (deps: Deps) => {
   app.get("/link", (c) => {
     c.header("Content-Security-Policy", "frame-ancestors 'none'")
     c.header("X-Frame-Options", "DENY")
-    return c.html(linkPage)
+    return c.html(linkPage(c.env.CLERK_PUBLISHABLE_KEY))
   })
 
   app.post("/v1/links/claim", async (c) => {
@@ -151,7 +161,7 @@ export const makeApp = (deps: Deps) => {
   })
 
   app.get("/v1/links/:userCode", async (c) => {
-    if (!(await deps.verifyUser(c.req.raw, c.env))) return fail(c, 401, "Enter the owner token first.")
+    if (!(await verifyUser(c))) return fail(c, 401, "Sign in first.")
     const link = await pendingLink(c.env, c.req.param("userCode"))
     if (Option.isNone(link)) {
       return fail(c, 404, "This link code expired or does not exist. Start linking again in HinaCode.")
@@ -160,8 +170,8 @@ export const makeApp = (deps: Deps) => {
   })
 
   app.post("/v1/links/:userCode", async (c) => {
-    const userId = await deps.verifyUser(c.req.raw, c.env)
-    if (!userId) return fail(c, 401, "Enter the owner token first.")
+    const userId = await verifyUser(c)
+    if (!userId) return fail(c, 401, "Sign in first.")
     const found = await pendingLink(c.env, c.req.param("userCode"))
     if (Option.isNone(found)) {
       return fail(c, 404, "This link code expired or does not exist. Start linking again in HinaCode.")
@@ -224,8 +234,8 @@ export const makeApp = (deps: Deps) => {
   })
 
   app.get("/v1/machines", async (c) => {
-    const userId = await deps.verifyUser(c.req.raw, c.env)
-    if (!userId) return fail(c, 401, "Enter the owner token first.")
+    const userId = await verifyUser(c)
+    if (!userId) return fail(c, 401, "Sign in first.")
     const hosts = await runStore(c.env.DB, (store) => store.shownHostsOfUser(userId))
     const machines = hosts.flatMap((host) =>
       Option.match(Schema.decodeUnknownOption(StoredPairing)(host.pairing), {
@@ -244,8 +254,8 @@ export const makeApp = (deps: Deps) => {
   })
 
   app.get("/v1/hosts", async (c) => {
-    const userId = await deps.verifyUser(c.req.raw, c.env)
-    if (!userId) return fail(c, 401, "Enter the owner token first.")
+    const userId = await verifyUser(c)
+    if (!userId) return fail(c, 401, "Sign in first.")
     const hosts = await runStore(c.env.DB, (store) => store.hostsOfUser(userId))
     return c.json({
       hosts: hosts.map((host) => ({
@@ -261,8 +271,8 @@ export const makeApp = (deps: Deps) => {
   })
 
   app.patch("/v1/hosts/:id", async (c) => {
-    const userId = await deps.verifyUser(c.req.raw, c.env)
-    if (!userId) return fail(c, 401, "Enter the owner token first.")
+    const userId = await verifyUser(c)
+    if (!userId) return fail(c, 401, "Sign in first.")
     const input = await body(c, HostChange)
     if (Option.isNone(input)) return fail(c, 400, "Send enabled as true or false.")
     const host = { id: c.req.param("id"), userId }
@@ -272,19 +282,20 @@ export const makeApp = (deps: Deps) => {
   })
 
   app.delete("/v1/hosts/:id", async (c) => {
-    const userId = await deps.verifyUser(c.req.raw, c.env)
-    if (!userId) return fail(c, 401, "Enter the owner token first.")
+    const userId = await verifyUser(c)
+    if (!userId) return fail(c, 401, "Sign in first.")
     const host = await runStore(c.env.DB, (store) => store.hostOfUser({ id: c.req.param("id"), userId }))
     if (Option.isNone(host)) return fail(c, 404, "No machine with this id is linked to your account.")
     await removeHost(c.env, host.value)
     return c.body(null, 204)
   })
 
-  app.post("/v1/owner/token", async (c) => {
-    if (!(await deps.verifyUser(c.req.raw, c.env))) return fail(c, 401, "Enter the owner token first.")
+  app.post("/v1/account/token", async (c) => {
+    const userId = await deps.verifySession(c.req.raw, c.env)
+    if (!userId) return fail(c, 401, "Sign in first.")
     const token = toBase64Url(deps.random(32))
     const tokenHash = await sha256(token)
-    await runStore(c.env.DB, (store) => store.setOwnerTokenHash(tokenHash))
+    await runStore(c.env.DB, (store) => store.setAccountToken(userId, tokenHash))
     return c.json({ token })
   })
 

@@ -1,7 +1,6 @@
 import { env } from "cloudflare:workers"
 import { beforeEach, describe, expect, it } from "vitest"
 import { makeApp } from "../src/app"
-import { verifyOwner } from "../src/owner"
 import { FakeCloudflare } from "./fake-cloudflare"
 
 const SESSIONS: Record<string, string> = { "alice-session": "user_alice", "bob-session": "user_bob" }
@@ -15,12 +14,13 @@ beforeEach(async () => {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM link"),
     env.DB.prepare("DELETE FROM host"),
-    env.DB.prepare("DELETE FROM owner"),
+    env.DB.prepare("DELETE FROM account_token"),
   ])
   clock = Date.UTC(2026, 9, 24)
   cloudflare = new FakeCloudflare()
   app = makeApp({
-    verifyUser: async (request) => SESSIONS[request.headers.get("Authorization")?.replace("Bearer ", "") ?? ""] ?? null,
+    verifySession: async (request) =>
+      SESSIONS[request.headers.get("Authorization")?.replace("Bearer ", "") ?? ""] ?? null,
     cloudflare: cloudflare.fetch,
     now: () => clock,
     random: (bytes) => crypto.getRandomValues(new Uint8Array(bytes)),
@@ -444,39 +444,64 @@ describe("GET /link", () => {
     expect(response.headers.get("Content-Security-Policy")).toBe("frame-ancestors 'none'")
     expect(response.headers.get("X-Frame-Options")).toBe("DENY")
   })
+
+  it("loads Clerk from the instance the publishable key names", async () => {
+    const page = await (await call("GET", "/link")).text()
+    expect(page).toContain('data-clerk-publishable-key="pk_test_Y2xlcmsudGVzdCQ"')
+    expect(page).toContain('src="https://clerk.test/npm/@clerk/clerk-js@6/dist/clerk.browser.js"')
+    expect(page).not.toContain("sk_test_fake")
+  })
 })
 
-describe("POST /v1/owner/token", () => {
-  beforeEach(() => {
-    app = makeApp({
-      verifyUser: verifyOwner,
-      cloudflare: cloudflare.fetch,
-      now: () => clock,
-      random: (bytes) => crypto.getRandomValues(new Uint8Array(bytes)),
-    })
+const mint = async (session: string) => {
+  const response = await call("POST", "/v1/account/token", { bearer: session })
+  expect(response.status).toBe(200)
+  return ((await response.json()) as { token: string }).token
+}
+
+const countHosts = async (session: string) => {
+  const response = await call("GET", "/v1/hosts", { bearer: await mint(session) })
+  return ((await response.json()) as { hosts: unknown[] }).hosts.length
+}
+
+describe("POST /v1/account/token", () => {
+  it("lets the desktop and phone act as the account that minted the token", async () => {
+    const token = await mint("alice-session")
+    expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    expect((await call("GET", "/v1/hosts", { bearer: token })).status).toBe(200)
+    const stored = await env.DB.prepare("SELECT user_id, token_hash FROM account_token").first<{
+      user_id: string
+      token_hash: string
+    }>()
+    expect(stored?.user_id).toBe("user_alice")
+    expect(stored?.token_hash).not.toBe(token)
   })
 
-  it("replaces the owner token, so the old one stops working", async () => {
-    expect((await call("GET", "/v1/hosts", { bearer: env.OWNER_TOKEN })).status).toBe(200)
+  it("keeps each account's machines apart", async () => {
+    const link = await startLink()
+    await approve(link.userCode, "alice-session")
+    await claim(link.deviceCode)
+    expect(await countHosts("alice-session")).toBe(1)
+    expect(await countHosts("bob-session")).toBe(0)
+  })
 
-    const rotated = await call("POST", "/v1/owner/token", { bearer: env.OWNER_TOKEN })
-    expect(rotated.status).toBe(200)
-    const { token } = (await rotated.json()) as { token: string }
-    expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/)
-
-    expect((await call("GET", "/v1/hosts", { bearer: env.OWNER_TOKEN })).status).toBe(401)
-    expect((await call("GET", "/v1/hosts", { bearer: token })).status).toBe(200)
-    const stored = await env.DB.prepare("SELECT token_hash FROM owner").first<string>("token_hash")
-    expect(stored).not.toBe(token)
-
-    const again = await call("POST", "/v1/owner/token", { bearer: token })
-    const { token: next } = (await again.json()) as { token: string }
-    expect((await call("GET", "/v1/hosts", { bearer: token })).status).toBe(401)
+  it("replaces the account's token, so the old one stops working", async () => {
+    const first = await mint("alice-session")
+    const next = await mint("alice-session")
+    expect((await call("GET", "/v1/hosts", { bearer: first })).status).toBe(401)
     expect((await call("GET", "/v1/hosts", { bearer: next })).status).toBe(200)
   })
 
-  it("needs the current owner token", async () => {
-    expect((await call("POST", "/v1/owner/token")).status).toBe(401)
-    expect((await call("POST", "/v1/owner/token", { bearer: "guess" })).status).toBe(401)
+  it("leaves another account's token working", async () => {
+    const bobs = await mint("bob-session")
+    await mint("alice-session")
+    expect((await call("GET", "/v1/hosts", { bearer: bobs })).status).toBe(200)
+  })
+
+  it("needs a session, so a leaked token cannot lock its account out", async () => {
+    const token = await mint("alice-session")
+    expect((await call("POST", "/v1/account/token")).status).toBe(401)
+    expect((await call("POST", "/v1/account/token", { bearer: "guess" })).status).toBe(401)
+    expect((await call("POST", "/v1/account/token", { bearer: token })).status).toBe(401)
   })
 })

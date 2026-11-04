@@ -1,8 +1,8 @@
 import { makeApp } from "./app"
-import { verifyOwner } from "./owner"
+import { verifySession } from "./clerk"
 
 export default makeApp({
-  verifyUser: verifyOwner,
+  verifySession,
   cloudflare: (input, init) => fetch(input, init),
   now: () => Date.now(),
   random: (bytes) => crypto.getRandomValues(new Uint8Array(bytes)),

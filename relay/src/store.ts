@@ -97,15 +97,15 @@ const makeStore = Effect.gen(function* () {
       `.pipe(Effect.map((rows) => rows.length > 0)),
     deleteHost: (id: string) => sql`DELETE FROM host WHERE id = ${id}`.pipe(Effect.asVoid),
 
-    ownerTokenHash: SqlSchema.findOneOption({
-      Request: Schema.Void,
-      Result: Schema.Struct({ tokenHash: Schema.String }),
-      execute: () => sql`SELECT token_hash FROM owner WHERE id = 1`,
+    accountByTokenHash: SqlSchema.findOneOption({
+      Request: Schema.String,
+      Result: Schema.Struct({ userId: Schema.String }),
+      execute: (tokenHash) => sql`SELECT user_id FROM account_token WHERE token_hash = ${tokenHash}`,
     }),
-    setOwnerTokenHash: (tokenHash: string) =>
+    setAccountToken: (userId: string, tokenHash: string) =>
       sql`
-        INSERT INTO owner ${sql.insert({ id: 1, tokenHash })}
-        ON CONFLICT (id) DO UPDATE SET token_hash = excluded.token_hash
+        INSERT INTO account_token ${sql.insert({ userId, tokenHash })}
+        ON CONFLICT (user_id) DO UPDATE SET token_hash = excluded.token_hash
       `.pipe(Effect.asVoid),
   }
 })
