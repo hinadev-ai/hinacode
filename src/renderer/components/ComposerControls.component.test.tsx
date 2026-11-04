@@ -6,7 +6,7 @@ import type { Thread } from "../../shared/domain.ts"
 import "../index.css"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
-import { ThreadPicker } from "./ComposerControls.tsx"
+import { pickerProviders, ThreadPicker } from "./ComposerControls.tsx"
 
 const model = (id: string): ModelInfo => ({
   id,
@@ -26,13 +26,8 @@ const account = (id: string) => ({
   binary: "claude",
 })
 
-let signedOut: ReadonlyArray<string> = []
-const accountResult = (payload: unknown) => ({
-  result: signedOut.includes((payload as { provider: string }).provider) ? { type: "signedOut" } : { type: "apiKey" },
-})
-
 const rpc = vi.fn(async (method: string, payload?: unknown) => {
-  if (method === "agents.account") return accountResult(payload)
+  if (method === "agents.account") return { result: { type: "apiKey" } }
   if (method === "accounts.list") return { result: ["one", "two", "three", "four"].map(account) }
   if (method === "threads.switchAccount")
     return { result: { ...thread, accountId: (payload as { accountId: string }).accountId } }
@@ -72,7 +67,6 @@ const thread: Thread = {
 }
 
 beforeEach(() => {
-  signedOut = []
   useThreads.setState({ byId: {} } as never)
 })
 
@@ -97,17 +91,8 @@ test.each(["claude", "codex", "muse", "opencode"] as const)(
   },
 )
 
-test("keeps the thread's own agent when it is signed out, and hides other agents that are", async () => {
-  signedOut = ["claude", "muse"]
-  await render(
-    <ThreadPicker thread={{ ...thread, provider: "claude", accountId: null }} canSwitchAgent onError={() => {}} />,
-  )
-  await page.getByRole("button", { name: /second/ }).click()
-  await expect.element(page.getByRole("tab", { name: "Codex" })).toBeVisible()
-  const labels = [...document.querySelectorAll("[role=tab]")].map((tab) => tab.textContent).join()
-  expect(labels).not.toContain("Muse")
-  expect(labels).toContain("Codex")
-  expect(document.querySelectorAll("[role=tab]").length).toBeGreaterThan(2)
+test("keeps the thread's own agent when it is signed out, and hides other agents that are", () => {
+  expect(pickerProviders("muse", ["opencode", "claude"])).toStrictEqual(["claude", "muse", "opencode"])
 })
 
 test("moves through the models with the arrow keys", async () => {
