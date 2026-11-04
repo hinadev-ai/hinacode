@@ -38,7 +38,7 @@ Preconditions:
 
 ## Gotchas
 
-- The `Remote listener` starts unset on port 48081, so `Allow remote control` stays disabled until you pick an interface (each network address, or `This machine only (127.0.0.1)`; there is no `0.0.0.0`). Use loopback and a per-instance port.
+- The `Remote listener` starts on `Local network and Tailscale`, port 48081, so `Allow remote control` works at once. The other choices are each network address and `This machine only (127.0.0.1)`; there is no `0.0.0.0`. Use loopback and a per-instance port, because the default answers on the LAN and can collide with a daemon on the same port.
 - `Port` needs `Save`; the switch and the listener select apply at once.
 - `Turn on relay` downloads its own `cloudflared` but needs a real HinaCode account sign-in in a browser CDP cannot reach. Report `relay` as not driven unless the user asked for it.
 - The cloud uses its own `HINACODE_USER_DATA`; without it the daemon writes to `~/.hinacode-cloud`. `cleanup.sh` does not know about it, so kill it by pid and delete its dir yourself. The cloud's log still says `Settings > Environments > Add environment`; the page is now `Connections`.

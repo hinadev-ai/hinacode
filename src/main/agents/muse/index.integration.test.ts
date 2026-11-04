@@ -254,6 +254,23 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
   )
 
   it.live(
+    "tells the developer to sign in when Muse rejects the credential",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const turn = yield* startTurn("supervised", (marker) => endpoint.unauthorized(marker))
+          yield* Fiber.join(turn.fiber)
+          expect(turn.events.at(-1)).toStrictEqual({
+            type: "turn_failed",
+            message: expect.any(String),
+            loginCommand: "muse login",
+          })
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
     "ends limited when Muse gives up retrying a rate limit",
     () =>
       withProvider(

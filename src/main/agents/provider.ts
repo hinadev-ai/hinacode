@@ -9,6 +9,7 @@ import type {
   AgentEvent,
   ApprovalDecision,
   BackgroundTask,
+  Subagent,
   ContextBreakdown,
   ModelInfo,
   ProviderId,
@@ -20,6 +21,7 @@ import type {
 export class AgentError extends Schema.TaggedError<AgentError>()("AgentError", {
   provider: Schema.String,
   message: Schema.String,
+  loginCommand: Schema.optional(Schema.String),
 }) {}
 
 export type SteerPriority = "now" | "next"
@@ -34,6 +36,11 @@ export interface Wake {
 export interface BackgroundTasksChange {
   readonly threadId: string
   readonly tasks: ReadonlyArray<BackgroundTask>
+}
+
+export interface SubagentChange {
+  readonly threadId: string
+  readonly subagent: Subagent
 }
 
 export type NativeSession = Pick<ExternalSession, "sessionId" | "title" | "preview" | "branch" | "updatedAt">
@@ -93,6 +100,7 @@ export interface AgentProvider {
     readonly stop: (threadId: string, taskId: string) => Effect.Effect<void, AgentError>
   }
   readonly contextBreakdown?: (threadId: string) => Effect.Effect<ContextBreakdown | null, AgentError>
+  readonly subagentChanges?: Stream.Stream<SubagentChange>
   readonly stopSubagent?: (threadId: string, subagentId: string) => Effect.Effect<void, AgentError>
   readonly respondApproval: (requestId: string, decision: ApprovalDecision, note?: string) => Effect.Effect<boolean>
   readonly respondQuestion: (requestId: string, answers: QuestionAnswers) => Effect.Effect<void>

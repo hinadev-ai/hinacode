@@ -10,7 +10,7 @@ export const LOOPBACK = "127.0.0.1"
 interface BindHostSelectProps {
   readonly id: string
   readonly environment: EnvironmentId
-  readonly value: string | null
+  readonly value: string
   readonly onChange: (bindHost: string) => void
   readonly privateNetworks?: boolean
 }
@@ -22,13 +22,13 @@ export function BindHostSelect({ id, environment, value, onChange, privateNetwor
     ...addresses.map(({ name, address }) => ({ value: address, label: `${name} (${address})` })),
     { value: LOOPBACK, label: m.settings_bind_loopback() },
   ]
-  if (value !== null && !items.some((item) => item.value === value))
+  if (!items.some((item) => item.value === value))
     items.push({ value, label: m.settings_bind_address_gone({ address: value }) })
 
   return (
     <Select items={items} value={value} onValueChange={(next) => typeof next === "string" && onChange(next)}>
       <SelectTrigger id={id} className="w-full">
-        <SelectValue placeholder={m.settings_bind_placeholder()} />
+        <SelectValue />
       </SelectTrigger>
       <SelectContent>
         {items.map((item) => (

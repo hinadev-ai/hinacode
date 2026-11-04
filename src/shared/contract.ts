@@ -411,6 +411,12 @@ export const RpcMethods = {
     }),
     Schema.Void,
   ),
+  "fs.create": rpc(
+    Schema.Struct({ root: Schema.String, path: Schema.String, kind: Schema.Literals(["file", "dir"]) }),
+    Schema.Void,
+  ),
+  "fs.rename": rpc(Schema.Struct({ root: Schema.String, from: Schema.String, to: Schema.String }), Schema.Void),
+  "fs.delete": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), Schema.Void),
   "fs.watch": rpc(Schema.Struct({ root: Schema.String, paths: Schema.Array(Schema.String) }), Schema.Void),
 
   "dialog.pickFolder": rpc(Schema.Void, Schema.NullOr(Schema.String)),
@@ -751,6 +757,9 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "fs.read": "read",
   "fs.preview": "read",
   "fs.write": "mutation",
+  "fs.create": "mutation",
+  "fs.rename": "mutation",
+  "fs.delete": "mutation",
   "fs.watch": "mutation",
   "dialog.pickFolder": "mutation",
   "updates.status": "read",

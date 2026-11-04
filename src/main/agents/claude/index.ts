@@ -673,6 +673,7 @@ export const layer = Layer.effect(
           pendingEdits: new Map(),
           limitMessage: null,
           limitResetAt: null,
+          signedOut: false,
           subagents: new Map(),
           lastRequest: null,
           sessionId: resume ?? null,

@@ -463,6 +463,7 @@ export const MessagePart = Schema.Union([
   Schema.Struct({ type: Schema.Literal("questions"), text: Schema.String, questions: Schema.Array(Question) }),
   Schema.Struct({ type: Schema.Literal("compaction"), compaction: Compaction }),
   Schema.Struct({ type: Schema.Literal("agent_switch"), from: ProviderId, to: ProviderId }),
+  Schema.Struct({ type: Schema.Literal("signed_out"), message: Schema.String, loginCommand: Schema.String }),
   Schema.Struct({
     type: Schema.Literal("session_import"),
     provider: AccountProviderId,
@@ -656,10 +657,7 @@ export const Settings = Schema.Struct({
     Schema.withDecodingDefaultKey(Effect.succeed(eachProvider(null))),
   ),
   automations: Schema.Struct({ bindHost: BindHost, port: ListenPort }),
-  remote: Schema.Union([
-    Schema.Struct({ enabled: Schema.Literal(false), bindHost: Schema.NullOr(BindHost), port: ListenPort }),
-    Schema.Struct({ enabled: Schema.Literal(true), bindHost: BindHost, port: ListenPort }),
-  ]),
+  remote: Schema.Struct({ enabled: Schema.Boolean, bindHost: BindHost, port: ListenPort }),
   textGenerationModel: Schema.String,
   pullRequestGuide: Schema.Struct({
     enabled: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
@@ -685,7 +683,7 @@ export const defaultSettings: Settings = {
   defaultAccountName: eachProvider(null),
   autoCompactTokens: eachProvider(null),
   automations: { bindHost: "127.0.0.1", port: 48080 },
-  remote: { enabled: false, bindHost: null, port: 48081 },
+  remote: { enabled: false, bindHost: PRIVATE_NETWORKS, port: 48081 },
   textGenerationModel: "claude-sonnet-5-5",
   pullRequestGuide: { enabled: false, model: "claude-sonnet-5-5", effort: "high" },
   defaultAccessMode: "full",

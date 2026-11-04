@@ -39,6 +39,7 @@ interface ComposerInputProps {
   readonly onValueChange: (value: string) => void
   readonly commands: ReadonlyArray<AgentCommand>
   readonly files: ReadonlyArray<string>
+  readonly onMentionStart: () => void
   readonly threads: MentionableThreads<Thread>
   readonly terminals: ReadonlyArray<MentionableTerminal>
   readonly projectId: string
@@ -55,6 +56,7 @@ export function ComposerInput({
   onValueChange,
   commands,
   files,
+  onMentionStart,
   threads,
   terminals,
   projectId,
@@ -152,7 +154,11 @@ export function ComposerInput({
   const changed = useEffectEvent((update: ViewUpdate) => {
     const text = update.state.doc.toString()
     if (update.docChanged && text !== value) onValueChange(text)
-    if (update.docChanged || update.selectionSet) setCaret(update.state.selection.main.head)
+    if (!update.docChanged && !update.selectionSet) return
+    const { head } = update.state.selection.main
+    setCaret(head)
+    const next = completionAt(text, head)
+    if (next?.trigger === "@" && next.start !== completion?.start) onMentionStart()
   })
   const pasted = useEffectEvent((event: ClipboardEvent) => onPaste?.(event))
   const initialText = useEffectEvent(() => value)

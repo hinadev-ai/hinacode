@@ -317,6 +317,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
                 onValueChange={changeText}
                 commands={commands}
                 files={files}
+                onMentionStart={refreshFiles}
                 threads={mentionable}
                 terminals={terminals}
                 projectId={thread.projectId}

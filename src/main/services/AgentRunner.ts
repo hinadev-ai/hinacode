@@ -6,6 +6,7 @@ import {
   Deferred,
   Duration,
   Effect,
+  Fiber,
   FiberMap,
   Layer,
   Option,
@@ -33,6 +34,7 @@ import type {
   SecretRequest,
   ThreadUsage,
 } from "../../shared/agent.ts"
+import { WAIT_AGENT_TOOL } from "../../shared/agent.ts"
 import type {
   AccessMode,
   Attachment,
@@ -54,11 +56,19 @@ import { handoffPrompt } from "../agents/handoff.ts"
 import { latestForkPoint, sidechatPrompt, unseenSince } from "../agents/sidechat.ts"
 import { agentInstructions, type AgentEnvironment } from "../agents/instructions.ts"
 import { pickedSubagentModel, spawningCallId, subagentChoices } from "../agents/runAgent.ts"
+import { subagentReport } from "../agents/subagentReport.ts"
 import { providerInfo } from "../../shared/providers.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
-import { AgentError, type AgentProvider, type SessionInput, type SteerPriority, type Wake } from "../agents/provider.ts"
+import {
+  AgentError,
+  type AgentProvider,
+  type SessionInput,
+  type SteerPriority,
+  type SubagentChange,
+  type Wake,
+} from "../agents/provider.ts"
 import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
 import { type Deadline, earliest, runAtDeadlines } from "./deadlines.ts"
@@ -85,6 +95,7 @@ import { AgentAccounts } from "./AgentAccounts.ts"
 import { type ActiveWorkspace, makeActiveWorkspace } from "./workspace.ts"
 
 const PERSIST_INTERVAL_MS = 500
+const RUN_AGENT_WAIT = Duration.minutes(4)
 const PERSIST_BYTES_PER_SECOND = 256 * 1024
 const interruptedSend = () => new AgentError({ provider: "hinacode", message: "Message send interrupted" })
 
@@ -224,6 +235,10 @@ export class AgentRunner extends Context.Service<
       threadId: string,
       request: AgentRequest,
     ) => Effect.Effect<string, AgentError | PersistenceError | NotFoundError | FolderMissingError>
+    readonly waitForAgent: (
+      threadId: string,
+      agentId: string,
+    ) => Effect.Effect<string, AgentError | PersistenceError | NotFoundError>
     readonly stopSubagent: (
       threadId: string,
       subagentId: string,
@@ -372,7 +387,14 @@ const make = Effect.gen(function* () {
   >()
   const threadLocks = new Map<string, Semaphore.Semaphore>()
   const subagents = new Map<string, Map<string, Subagent>>()
-  const agentRuns = new Map<string, { readonly threadId: string; readonly stop: Effect.Effect<void> }>()
+  const agentRuns = new Map<
+    string,
+    {
+      readonly threadId: string
+      readonly stop: Effect.Effect<void>
+      readonly reply: Deferred.Deferred<string, AgentError | PersistenceError | NotFoundError>
+    }
+  >()
   const backgroundTasks = new Map<string, ReadonlyArray<BackgroundTask>>()
   const transcriptSeqs = new Map<string, number>()
 
@@ -430,20 +452,52 @@ const make = Effect.gen(function* () {
     return push.publish({ type: "thread.subagents", threadId, subagents: listSubagents(threadId) })
   }
 
-  const stopSubagents = (threadId: string, endedAt: string) => {
-    const byId = subagents.get(threadId)
-    const running = [...(byId?.values() ?? [])].filter((subagent) => subagent.status === "running")
-    if (byId === undefined || running.length === 0) return Effect.void
-    for (const subagent of running) byId.set(subagent.id, { ...subagent, status: "stopped", endedAt })
-    return push.publish({ type: "thread.subagents", threadId, subagents: listSubagents(threadId) })
-  }
+  const markSubagentsStopped = (threadId: string) =>
+    Effect.gen(function* () {
+      const byId = subagents.get(threadId)
+      const running = [...(byId?.values() ?? [])].filter((subagent) => subagent.status === "running")
+      if (byId === undefined || running.length === 0) return
+      const endedAt = yield* nowIso
+      for (const subagent of running) byId.set(subagent.id, { ...subagent, status: "stopped", endedAt })
+      yield* push.publish({ type: "thread.subagents", threadId, subagents: listSubagents(threadId) })
+    })
+
+  const closeProviderSession = (thread: Thread) =>
+    Effect.gen(function* () {
+      const close = providers[thread.provider].closeSession
+      if (close !== undefined) yield* close(thread.id, yield* accounts.home(thread.accountId))
+      yield* markSubagentsStopped(thread.id)
+    })
 
   const stopAgentRuns = (threadId: string) =>
     Effect.forEach(
-      [...agentRuns.values()].filter((run) => run.threadId === threadId),
-      (run) => run.stop,
+      [...agentRuns].filter(([, run]) => run.threadId === threadId),
+      ([id, run]) =>
+        Effect.andThen(
+          Effect.sync(() => agentRuns.delete(id)),
+          Effect.flatMap(Deferred.isDone(run.reply), (done) => (done ? Effect.void : run.stop)),
+        ),
       { discard: true },
     )
+
+  const waitForAgent = (threadId: string, agentId: string) =>
+    Effect.suspend(() => {
+      const run = agentRuns.get(agentId)
+      if (run?.threadId !== threadId) {
+        return Effect.fail(
+          new AgentError({ provider: "hinacode", message: `No agent ${agentId} runs in this thread's turn.` }),
+        )
+      }
+      return Deferred.await(run.reply).pipe(
+        Effect.timeoutOption(RUN_AGENT_WAIT),
+        Effect.map(
+          Option.getOrElse(
+            () =>
+              `The agent is still running. Call ${WAIT_AGENT_TOOL} with agentId "${agentId}" to keep waiting for its reply.`,
+          ),
+        ),
+      )
+    })
 
   const publishTranscript = (event: DistributiveOmit<TranscriptPush, "seq">, { whole = false } = {}) => {
     const threadId = transcriptThreadId(event)
@@ -682,7 +736,7 @@ const make = Effect.gen(function* () {
         )
       }
       yield* stopAgentRuns(thread.id)
-      yield* stopSubagents(thread.id, yield* nowIso)
+      if (provider.subagentChanges === undefined) yield* markSubagentsStopped(thread.id)
       const last = turnMessages.at(-1)!
       const closed: Message = last.completedAt === null ? { ...last, completedAt: yield* nowIso } : last
       setTurnMessages(replaceLast(turnMessages, closed))
@@ -710,7 +764,9 @@ const make = Effect.gen(function* () {
 
     const follow = (events: Stream.Stream<AgentEvent, AgentError | PersistenceError>) =>
       Stream.runForEach(events, handle).pipe(
-        Effect.catchTag("AgentError", (error) => handle({ type: "turn_failed", message: error.message })),
+        Effect.catchTag("AgentError", ({ message, loginCommand }) =>
+          handle({ type: "turn_failed", message, ...(loginCommand !== undefined && { loginCommand }) }),
+        ),
         Effect.catch((error) => Effect.logError("turn bookkeeping failed", error)),
         Effect.ensuring(finish),
       )
@@ -814,12 +870,14 @@ const make = Effect.gen(function* () {
           message: "This thread's turn ended before the agent started.",
         })
       }
+      const finalReply = Deferred.makeUnsafe<string, AgentError | PersistenceError | NotFoundError>()
       agentRuns.set(id, {
         threadId,
         stop: Effect.suspend(() => {
           stopped = true
           return provider.interrupt(sessionId)
         }),
+        reply: finalReply,
       })
       yield* update({})
 
@@ -858,7 +916,7 @@ const make = Effect.gen(function* () {
         }
       }
 
-      yield* provider
+      const execution = provider
         .runTurn({
           threadId: sessionId,
           prompt: request.prompt,
@@ -885,17 +943,28 @@ const make = Effect.gen(function* () {
           ),
           Effect.ensuring(
             Effect.gen(function* () {
-              agentRuns.delete(id)
               const status = stopped ? "stopped" : failure === null ? "completed" : "failed"
               yield* update({ status, summary: failure ?? (reply.trim() || null), endedAt: yield* nowIso })
               yield* provider.closeSession?.(sessionId, home).pipe(Effect.ignore) ?? Effect.void
             }),
           ),
+          Effect.andThen(
+            Effect.suspend(() => {
+              if (stopped) {
+                return Effect.fail(
+                  new AgentError({ provider: request.provider, message: "The user stopped this agent." }),
+                )
+              }
+              if (failure !== null) return Effect.fail(new AgentError({ provider: request.provider, message: failure }))
+              return Effect.succeed(reply.trim())
+            }),
+          ),
         )
-
-      if (stopped) return yield* new AgentError({ provider: request.provider, message: "The user stopped this agent." })
-      if (failure !== null) return yield* new AgentError({ provider: request.provider, message: failure })
-      return reply.trim()
+      yield* Effect.forkIn(
+        Effect.flatMap(Effect.exit(execution), (exit) => Deferred.done(finalReply, exit)),
+        scope,
+      )
+      return yield* waitForAgent(threadId, id)
     })
 
   const liveMessages = (threadId: string) =>
@@ -1335,8 +1404,7 @@ const make = Effect.gen(function* () {
       }
       const current = yield* threads.get(input.id)
       if (input.provider === current.provider) return yield* threads.update(input)
-      const closeSession = providers[current.provider].closeSession
-      if (closeSession !== undefined) yield* closeSession(current.id, yield* accounts.home(current.accountId))
+      yield* closeProviderSession(current)
       const started = yield* threads.started(input.id)
       const thread = yield* threads.update(input)
       if (started) {
@@ -1407,6 +1475,37 @@ const make = Effect.gen(function* () {
     )
   }
 
+  const canReportSubagent = (threadId: string, provider: ProviderId) =>
+    threads.get(threadId).pipe(
+      Effect.map((thread) => thread.provider === provider && (thread.status === "idle" || thread.status === "running")),
+      Effect.catchTag("NotFoundError", () => Effect.succeed(false)),
+    )
+
+  const recordSubagentChange = (provider: ProviderId, { threadId, subagent }: SubagentChange) =>
+    Effect.gen(function* () {
+      const previous = subagents.get(threadId)?.get(subagent.id)
+      yield* updateSubagent(threadId, subagent)
+      const ended = subagent.status === "completed" || subagent.status === "failed"
+      if (previous?.status !== "running" || !ended) return
+      yield* steerWhen({
+        threadId,
+        text: subagentReport(subagent),
+        attachments: [],
+        when: canReportSubagent(threadId, provider),
+      }).pipe(
+        Effect.catchCause((cause) => Effect.logWarning("could not hand a sub-agent's reply to its thread", cause)),
+        Effect.forkIn(scope),
+      )
+    })
+
+  for (const provider of Object.values(providers)) {
+    if (provider.subagentChanges === undefined) continue
+    yield* Effect.forkIn(
+      Stream.runForEach(provider.subagentChanges, (change) => recordSubagentChange(provider.id, change)),
+      scope,
+    )
+  }
+
   for (const provider of Object.values(providers)) {
     if (provider.backgroundTasks === undefined) continue
     yield* Effect.forkIn(
@@ -1418,6 +1517,58 @@ const make = Effect.gen(function* () {
       scope,
     )
   }
+
+  const stopSubagent: AgentRunner["Service"]["stopSubagent"] = (threadId, subagentId) =>
+    Effect.gen(function* () {
+      if (subagents.get(threadId)?.get(subagentId)?.status !== "running") return
+      const run = agentRuns.get(subagentId)
+      if (run !== undefined) return yield* run.stop
+      const { provider: id } = yield* threads.get(threadId)
+      const stop = providers[id].stopSubagent
+      if (stop === undefined) {
+        return yield* new AgentError({ provider: id, message: "This agent cannot stop a single sub-agent" })
+      }
+      yield* stop(threadId, subagentId)
+      const endedAt = yield* nowIso
+      const latest = subagents.get(threadId)?.get(subagentId)
+      if (latest?.status === "running") yield* updateSubagent(threadId, { ...latest, status: "stopped", endedAt })
+    })
+
+  const stopBackgroundTask: AgentRunner["Service"]["stopBackgroundTask"] = (threadId, taskId) =>
+    Effect.gen(function* () {
+      const { provider: id } = yield* threads.get(threadId)
+      const tasks = providers[id].backgroundTasks
+      if (tasks === undefined) {
+        return yield* new AgentError({ provider: id, message: "This agent cannot stop a background task" })
+      }
+      yield* tasks.stop(threadId, taskId)
+    })
+
+  const hasPendingWakeup = (threadId: string) =>
+    (backgroundTasks.get(threadId) ?? []).some((task) => task.kind === "wakeup")
+
+  const closeSessionAfterTurn = (threadId: string) =>
+    Effect.gen(function* () {
+      const turn = yield* FiberMap.get(turns, threadId)
+      if (Option.isSome(turn)) yield* Fiber.await(turn.value)
+      yield* Effect.gen(function* () {
+        if (busyThreads.has(threadId) || !hasPendingWakeup(threadId)) return
+        yield* closeProviderSession(yield* threads.get(threadId))
+      }).pipe(exclusive(threadId))
+    }).pipe(Effect.catch((error) => Effect.logError("failed to retire the wakeup of a stopped thread", error)))
+
+  const stopBackgroundWork = (threadId: string) =>
+    Effect.gen(function* () {
+      const running = listSubagents(threadId).filter((subagent) => subagent.status === "running")
+      yield* Effect.forEach(running, (subagent) => stopSubagent(threadId, subagent.id).pipe(Effect.ignore), {
+        discard: true,
+      })
+      const tasks = (backgroundTasks.get(threadId) ?? []).filter((task) => task.kind !== "wakeup")
+      yield* Effect.forEach(tasks, (task) => stopBackgroundTask(threadId, task.id).pipe(Effect.ignore), {
+        discard: true,
+      })
+      if (hasPendingWakeup(threadId)) yield* Effect.forkIn(closeSessionAfterTurn(threadId), scope)
+    })
 
   const requestSecret = (threadId: string, name: string, description: string) =>
     Effect.gen(function* () {
@@ -1483,12 +1634,16 @@ const make = Effect.gen(function* () {
       steerWhen({ threadId, text, attachments, when: Effect.succeed(true) }).pipe(Effect.asVoid),
     steerWhen,
     interrupt: (threadId) =>
-      Effect.suspend(() => {
-        const turn = activeTurns.get(threadId)
-        if (turn !== undefined) return turn.interrupt
-        const pending = pendingSends.get(threadId)
-        return pending === undefined ? Effect.void : Deferred.succeed(pending, undefined).pipe(Effect.asVoid)
-      }),
+      stopBackgroundWork(threadId).pipe(
+        Effect.andThen(
+          Effect.suspend(() => {
+            const turn = activeTurns.get(threadId)
+            if (turn !== undefined) return turn.interrupt
+            const pending = pendingSends.get(threadId)
+            return pending === undefined ? Effect.void : Deferred.succeed(pending, undefined).pipe(Effect.asVoid)
+          }),
+        ),
+      ),
     warm,
     setAccessMode: (threadId, accessMode) =>
       Effect.gen(function* () {
@@ -1567,31 +1722,10 @@ const make = Effect.gen(function* () {
       }),
     subagents: (threadId) => Effect.sync(() => listSubagents(threadId)),
     runAgent,
-    stopSubagent: (threadId, subagentId) =>
-      Effect.gen(function* () {
-        if (subagents.get(threadId)?.get(subagentId)?.status !== "running") return
-        const run = agentRuns.get(subagentId)
-        if (run !== undefined) return yield* run.stop
-        const { provider: id } = yield* threads.get(threadId)
-        const stop = providers[id].stopSubagent
-        if (stop === undefined) {
-          return yield* new AgentError({ provider: id, message: "This agent cannot stop a single sub-agent" })
-        }
-        yield* stop(threadId, subagentId)
-        const endedAt = yield* nowIso
-        const latest = subagents.get(threadId)?.get(subagentId)
-        if (latest?.status === "running") yield* updateSubagent(threadId, { ...latest, status: "stopped", endedAt })
-      }),
+    waitForAgent,
+    stopSubagent,
     backgroundTasks: (threadId) => Effect.sync(() => backgroundTasks.get(threadId) ?? []),
-    stopBackgroundTask: (threadId, taskId) =>
-      Effect.gen(function* () {
-        const { provider: id } = yield* threads.get(threadId)
-        const tasks = providers[id].backgroundTasks
-        if (tasks === undefined) {
-          return yield* new AgentError({ provider: id, message: "This agent cannot stop a background task" })
-        }
-        yield* tasks.stop(threadId, taskId)
-      }),
+    stopBackgroundTask,
     listCommands: (threadId) =>
       Effect.gen(function* () {
         const thread = yield* threads.get(threadId)

@@ -27,6 +27,7 @@ const shownPlaceholder = () => {
 }
 
 let value = ""
+let mentionStarts = 0
 
 const terminal = (id: string, title: string | null, status: TerminalSession["status"]): TerminalSession => ({
   id,
@@ -55,6 +56,9 @@ function Harness() {
       }}
       commands={[]}
       files={[]}
+      onMentionStart={() => {
+        mentionStarts += 1
+      }}
       threads={{ sameMachine: [], otherMachines: [] }}
       terminals={terminals}
       projectId="project"
@@ -81,6 +85,19 @@ const press = async (key: "Enter" | "Backspace" | "Tab", modifiers = 0) => {
   await cdp().send("Input.dispatchKeyEvent", { type: "keyUp", ...event })
 }
 const shift = 8
+
+test("reports a mention when it starts, not on each key typed in it", async () => {
+  mentionStarts = 0
+  await renderComposer()
+  await page.getByRole("combobox", { name: "Message" }).click()
+  await type("@")
+  await expect.poll(() => mentionStarts).toBe(1)
+  await type("r")
+  await type("e")
+  await expect.poll(() => value).toBe("@re")
+  await type(" @")
+  await expect.poll(() => mentionStarts).toBe(2)
+})
 
 test("continues a list on shift+enter and leaves it on an empty item", async () => {
   await renderComposer()

@@ -4,6 +4,7 @@ import { join } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer } from "effect"
+import { PRIVATE_NETWORKS } from "../shared/domain.ts"
 import * as Db from "./db/client.ts"
 import { RemoteAccess } from "./remote/access.ts"
 import * as RemoteAccessModule from "./remote/access.ts"
@@ -48,21 +49,13 @@ describe("serve mode boot", () => {
     }).pipe(Effect.provide(testLayer)),
   )
 
-  it.effect("without --host, listens on the Tailscale address and then keeps it", () =>
+  it.effect("without --host, listens on private networks and then keeps the address it was given", () =>
     Effect.gen(function* () {
-      yield* applyServeConfig({ rotateToken: false }, () => "100.64.0.2")
+      yield* applyServeConfig({ rotateToken: false })
+      expect((yield* Settings.use((service) => service.get)).remote.bindHost).toBe(PRIVATE_NETWORKS)
+      yield* applyServeConfig({ rotateToken: false, bindHost: "100.64.0.2" })
+      yield* applyServeConfig({ rotateToken: false })
       expect((yield* Settings.use((service) => service.get)).remote.bindHost).toBe("100.64.0.2")
-      yield* applyServeConfig({ rotateToken: false }, () => "100.64.0.9")
-      expect((yield* Settings.use((service) => service.get)).remote.bindHost).toBe("100.64.0.2")
-    }).pipe(Effect.provide(testLayer)),
-  )
-
-  it.effect("refuses to start without --host on a machine with no Tailscale address", () =>
-    Effect.gen(function* () {
-      const error = yield* applyServeConfig({ rotateToken: false }, () => null).pipe(Effect.flip)
-      expect(error._tag).toBe("ServeHostRequired")
-      expect(error.message).toContain("--host")
-      expect((yield* Settings.use((service) => service.get)).remote.enabled).toBe(false)
     }).pipe(Effect.provide(testLayer)),
   )
 })
