@@ -21,6 +21,7 @@ import { m } from "../../paraglide/messages.js"
 import { useDrafts } from "../../stores/drafts.ts"
 import { Button } from "../ui/button.tsx"
 import { ScrollArea } from "../ui/scroll-area.tsx"
+import { DocumentBlockquote, DocumentCallout } from "./DocumentCallout.tsx"
 import { DocumentCodeBlock } from "./DocumentCodeBlock.tsx"
 import "./documentEditor.css"
 import { LinkEditor, LinkHoverCard } from "./DocumentLinks.tsx"
@@ -47,8 +48,11 @@ const extensions = (placeholder: string, theme: CodeTheme) => [
     underline: false,
     link: { openOnClick: false },
     codeBlock: false,
+    blockquote: false,
   }),
+  DocumentBlockquote,
   DocumentCodeBlock,
+  DocumentCallout,
   TaskList,
   TaskItem.configure({ nested: true }),
   TableKit.configure({ table: { resizable: false } }),
