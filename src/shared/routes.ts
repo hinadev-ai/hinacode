@@ -226,6 +226,9 @@ export const routes: Record<RpcMethod, Route> = {
   "fs.read": root,
   "fs.preview": root,
   "fs.write": root,
+  "fs.create": root,
+  "fs.rename": root,
+  "fs.delete": root,
   "fs.watch": root,
   "fs.completeDirectory": named,
 

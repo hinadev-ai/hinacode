@@ -1,13 +1,13 @@
 import { Effect, Schema } from "effect"
 import { Tool, Toolkit } from "effect/ai"
-import { ProviderId, RUN_AGENT_TOOL } from "../../../shared/agent.ts"
+import { ProviderId, RUN_AGENT_TOOL, WAIT_AGENT_TOOL } from "../../../shared/agent.ts"
 import { AgentRunner } from "../../services/AgentRunner.ts"
 import * as McpTool from "./tool.ts"
 
 export const AgentTools = Toolkit.make(
   McpTool.make(RUN_AGENT_TOOL, {
     description:
-      "Run a sub-agent on any provider HinaCode supports, such as Codex from a Claude thread, through its SDK in this thread's workspace. Use it instead of running the `codex` or `claude` CLI in a shell. It shows in this thread's Agents tab, where the user can watch and stop it, and this call waits for it to finish and returns its final reply. The `<agents>` block in your instructions lists each provider with its model ids and efforts; pass them exactly. Defaults to that provider's first model, or this thread's model on the same provider. opencode runs only the models the user picked for it in Settings.",
+      "Run a sub-agent on any provider HinaCode supports, such as Codex from a Claude thread, through its SDK in this thread's workspace. Use it instead of running the `codex` or `claude` CLI in a shell. It shows in this thread's Agents tab, where the user can watch and stop it. The call returns the agent's final reply, or, if the agent is still working after a few minutes, its id: then call `wait_agent` with that id, as often as needed, to keep waiting. The agent stops when this thread's turn ends. The `<agents>` block in your instructions lists each provider with its model ids and efforts; pass them exactly. Defaults to that provider's first model, or this thread's model on the same provider. opencode runs only the models the user picked for it in Settings.",
     parameters: Schema.Struct({
       provider: ProviderId,
       description: Schema.String.annotate({ description: "A few words shown as the sub-agent's label." }),
@@ -20,6 +20,13 @@ export const AgentTools = Toolkit.make(
       ),
     }),
   }).annotate(Tool.Readonly, true),
+  McpTool.make(WAIT_AGENT_TOOL, {
+    description:
+      "Keep waiting for a sub-agent that `run_agent` handed back while it was still working. Returns its final reply, or says it is still running after a few minutes, so you can call this again.",
+    parameters: Schema.Struct({
+      agentId: Schema.String.annotate({ description: "The id `run_agent` or an earlier `wait_agent` returned." }),
+    }),
+  }).annotate(Tool.Readonly, true),
 )
 
 export const agentToolsLayer = AgentTools.toLayer(
@@ -30,6 +37,12 @@ export const agentToolsLayer = AgentTools.toLayer(
         Effect.gen(function* () {
           const threadId = yield* McpTool.CallingThread
           const reply = yield* runner.runAgent(threadId, request)
+          return reply === "" ? "The agent finished without a reply." : reply
+        }).pipe(Effect.mapError((error) => ({ message: error.message }))),
+      [WAIT_AGENT_TOOL]: ({ agentId }) =>
+        Effect.gen(function* () {
+          const threadId = yield* McpTool.CallingThread
+          const reply = yield* runner.waitForAgent(threadId, agentId)
           return reply === "" ? "The agent finished without a reply." : reply
         }).pipe(Effect.mapError((error) => ({ message: error.message }))),
     })

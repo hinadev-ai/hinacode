@@ -19,7 +19,7 @@ Use the `pnpm` scripts rather than `npx expo run:*`, because they set the enviro
 
 `pnpm install` lets that library's postinstall run (`allowBuilds` in `pnpm-workspace.yaml`), because it downloads the tree-sitter grammars the native build compiles for code highlighting. If the download fails, `pnpm install` fails too (`patches/react-native-enriched-markdown@1.1.1.patch`). If the error says `fetch failed`, your Node has no CA bundle, which is common with a Nix Node. Run `NODE_EXTRA_CA_CERTS=/etc/ssl/cert.pem pnpm install`.
 
-The phone must reach the desktop directly. Tailscale on both devices is the simplest way: open the dev server through the desktop's Tailscale name, and set Settings > Connections > Remote listener to the desktop's Tailscale address.
+The phone must reach the desktop directly. On the same Wi-Fi, the default **Local network and Tailscale** listener is enough. Away from home, use Tailscale on both devices and open the dev server through the desktop's Tailscale name.
 
 ### Run on an iOS simulator with Xcode 27
 

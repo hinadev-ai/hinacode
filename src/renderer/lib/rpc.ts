@@ -1,6 +1,6 @@
 import { Duration, Effect, Option, Schedule, Schema, Stream } from "effect"
 import { AsyncResult, Atom } from "effect/reactivity"
-import type { AgentCommand, ProviderId } from "../../shared/agent.ts"
+import { type AgentCommand, ProviderId } from "../../shared/agent.ts"
 import {
   PushEvent,
   type RpcMethod,
@@ -218,6 +218,13 @@ export const modelsAtom = familyOf((environment: EnvironmentId, provider: Provid
 
 export const accountAtom = familyOf((environment: EnvironmentId, provider: ProviderId, accountId: string | null) =>
   Atom.make(call("agents.account", { provider, accountId }, { environment })),
+)
+
+const isSetUp = (account: AsyncResult.AsyncResult<RpcResponse<"agents.account">, RpcError>) =>
+  AsyncResult.isInitial(account) || (AsyncResult.isSuccess(account) && account.value.type !== "signedOut")
+
+export const setUpProvidersAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.make((get) => ProviderId.literals.filter((provider) => isSetUp(get(accountAtom(environment, provider, null))))),
 )
 
 export const refreshAccountAtom = Atom.fn(

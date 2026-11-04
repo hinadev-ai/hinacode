@@ -22,6 +22,7 @@ const interfaces = {
   podman0: [ipv4("10.88.0.1")],
   vboxnet0: [ipv4("198.51.100.2")],
   vmnet8: [ipv4("198.51.100.3")],
+  bridge100: [ipv4("192.168.252.1")],
   cni0: [ipv4("10.42.0.1")],
   "flannel.1": [ipv4("10.42.0.0")],
 }
