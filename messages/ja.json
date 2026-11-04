@@ -20,6 +20,8 @@
   "project_root_label": "ルートパス",
   "project_root_placeholder": "~/code/my-app",
   "project_root_browse": "参照…",
+  "path_input_suggestions": "フォルダの候補",
+  "path_input_repository": "Git リポジトリ",
   "project_setup_label": "セットアップスクリプト",
   "project_setup_optional": "任意",
   "project_setup_placeholder": "pnpm install",

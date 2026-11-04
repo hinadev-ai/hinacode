@@ -99,6 +99,13 @@ export const FsEntry = Schema.Struct({
 })
 export type FsEntry = typeof FsEntry.Type
 
+export const DirectorySuggestion = Schema.Struct({
+  path: Schema.String,
+  name: Schema.String,
+  repository: Schema.Boolean,
+})
+export type DirectorySuggestion = typeof DirectorySuggestion.Type
+
 export const FsFileContent = Schema.Struct({
   content: Schema.String,
   truncated: Schema.Boolean,
