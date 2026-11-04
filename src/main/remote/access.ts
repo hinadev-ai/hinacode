@@ -26,8 +26,8 @@ export const CLOSE_MALFORMED_FRAME = 4005
 
 export const LOOPBACK = "127.0.0.1"
 
-export const advertisedHosts = (bindHost: string | null): NonEmptyReadonlyArray<string> => {
-  if (bindHost !== PRIVATE_NETWORKS) return [bindHost ?? LOOPBACK]
+export const advertisedHosts = (bindHost: string): NonEmptyReadonlyArray<string> => {
+  if (bindHost !== PRIVATE_NETWORKS) return [bindHost]
   const hosts = privateAddresses()
   return isReadonlyArrayNonEmpty(hosts) ? hosts : [LOOPBACK]
 }

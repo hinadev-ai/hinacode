@@ -41,7 +41,7 @@ const PUBLISH_EVERY = Duration.minutes(10)
 const CLOUDFLARED_ARGS = ["tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:0", "run"]
 
 export const relayOrigin = ({ bindHost, port }: Pick<SettingsValue["remote"], "bindHost" | "port">) => {
-  const host = bindHost === null || bindHost === PRIVATE_NETWORKS ? LOOPBACK : bindHost
+  const host = bindHost === PRIVATE_NETWORKS ? LOOPBACK : bindHost
   return `http://${host.includes(":") ? `[${host}]` : host}:${port}`
 }
 

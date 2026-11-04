@@ -42,17 +42,15 @@ describe("listeners that bound every interface", () => {
     }),
   )
 
-  it.effect(
-    "without Tailscale, turn remote control off until an interface is picked, and webhooks fall back to loopback",
-    () =>
-      Effect.gen(function* () {
-        const { dir } = yield* migrated(wildcards, null)
-        const { remote, automations } = yield* Settings.use((settings) => settings.get).pipe(
-          Effect.provide(SettingsModule.layer(dir)),
-        )
-        expect(remote).toStrictEqual({ enabled: false, bindHost: null, port: 48081 })
-        expect(automations).toStrictEqual({ bindHost: "127.0.0.1", port: 48080 })
-      }),
+  it.effect("without Tailscale, turn remote control off, and webhooks fall back to loopback", () =>
+    Effect.gen(function* () {
+      const { dir } = yield* migrated(wildcards, null)
+      const { remote, automations } = yield* Settings.use((settings) => settings.get).pipe(
+        Effect.provide(SettingsModule.layer(dir)),
+      )
+      expect(remote).toStrictEqual({ enabled: false, bindHost: "private", port: 48081 })
+      expect(automations).toStrictEqual({ bindHost: "127.0.0.1", port: 48080 })
+    }),
   )
 
   it.effect("leave a picked address, and a file a hand edit broke, as they are", () =>
@@ -65,7 +63,7 @@ describe("listeners that bound every interface", () => {
 })
 
 describe("remote settings", () => {
-  it.effect("start off with no interface picked, and read a hand-edited 0.0.0.0 the same way", () =>
+  it.effect("start off on private networks, and read a hand-edited 0.0.0.0 the same way", () =>
     Effect.gen(function* () {
       const fresh = mkdtempSync(join(tmpdir(), "kk-pick-interface-"))
       const edited = mkdtempSync(join(tmpdir(), "kk-pick-interface-"))
@@ -74,7 +72,7 @@ describe("remote settings", () => {
         const { remote } = yield* Settings.use((settings) => settings.get).pipe(
           Effect.provide(SettingsModule.layer(dir)),
         )
-        expect(remote).toStrictEqual({ enabled: false, bindHost: null, port: 48081 })
+        expect(remote).toStrictEqual({ enabled: false, bindHost: "private", port: 48081 })
       }
     }),
   )
