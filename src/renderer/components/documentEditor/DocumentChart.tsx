@@ -1,4 +1,4 @@
-import { NodeViewContent, NodeViewWrapper, type ReactNodeViewProps } from "@tiptap/react"
+import { NodeViewWrapper, type ReactNodeViewProps } from "@tiptap/react"
 import { lazy, Suspense, useDeferredValue, useState } from "react"
 import { type Chart, formatChartValue, parseChart } from "../../../shared/documentChart.ts"
 import { useDebouncedValue } from "../../lib/useDebouncedValue.ts"
@@ -6,7 +6,8 @@ import { m } from "../../paraglide/messages.js"
 import { getLocale } from "../../paraglide/runtime.js"
 import { Button } from "../ui/button.tsx"
 import { chartLane } from "./chartLanes.ts"
-import { CHART_LANGUAGE, CodeLanguagePicker } from "./CodeLanguagePicker.tsx"
+import { CHART_LANGUAGE } from "./CodeLanguagePicker.tsx"
+import { CodeSource } from "./CodeSource.tsx"
 
 const ChartPlot = lazy(() => import("./ChartPlot.tsx"))
 
@@ -66,16 +67,8 @@ export function ChartBlock({ node, updateAttributes }: ReactNodeViewProps) {
         {parsed.ok && <ChartBody chart={parsed.chart} />}
       </div>
       {parsed.ok && panel === "data" && <ChartData chart={parsed.chart} />}
-      <div hidden={parsed.ok && panel !== "source"} className="relative">
-        <pre
-          spellCheck={false}
-          className="m-0 border-t border-border bg-muted px-4 py-3 font-mono text-xs whitespace-pre-wrap"
-        >
-          <NodeViewContent<"code"> as="code" />
-        </pre>
-        <div contentEditable={false} data-node-control data-print-hidden className="absolute top-1.5 right-1.5">
-          <CodeLanguagePicker language={CHART_LANGUAGE} onChange={(next) => updateAttributes({ language: next })} />
-        </div>
+      <div hidden={parsed.ok && panel !== "source"}>
+        <CodeSource language={CHART_LANGUAGE} updateAttributes={updateAttributes} />
       </div>
     </NodeViewWrapper>
   )
