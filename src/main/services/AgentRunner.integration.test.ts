@@ -739,6 +739,21 @@ it("tells the agent the branch and paths it works in", async () => {
   })
 })
 
+it("hands the agent an artifact skill's instructions and keeps the message as typed", async () => {
+  await withPreparingThread(async (probe) => {
+    probe.release()
+    await Effect.runPromise(probe.runner.send(probe.thread.id, "/artifact:doc audit startup imports", []))
+    await vi.waitFor(() => expect(probe.turns).toHaveLength(1))
+
+    const prompt = probe.turns[0]?.input.prompt ?? ""
+    expect(prompt).toMatch(/^<hinacode-skill name="artifact:doc">\n/)
+    expect(prompt).toContain("<request>\naudit startup imports\n</request>")
+    const { messages } = await Effect.runPromise(probe.runner.transcript(probe.thread.id))
+    expect(messages[0]?.parts).toStrictEqual([{ type: "text", text: "/artifact:doc audit startup imports" }])
+    await Effect.runPromise(probe.runner.interrupt(probe.thread.id))
+  })
+})
+
 it("warms the session with the same input the next send runs its turn with", async () => {
   await withPreparingThread(async ({ runner, thread, turns, warms, idle, release }) => {
     release()
