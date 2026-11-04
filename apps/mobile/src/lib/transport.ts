@@ -281,7 +281,9 @@ export class Transport {
     this.cancelRace = race(
       round === "both"
         ? this.dials
-        : this.dials.filter((dial) => dial.route === round).map((dial) => ({ ...dial, delayMs: 0 })),
+        : this.dials
+            .filter((dial) => dial.route === round)
+            .map((dial) => (round === "relay" ? { ...dial, delayMs: 0 } : dial)),
       this.createSocket,
       (ws, dial) => this.adopt(ws, dial.route),
       () => this.noneOpened(),
