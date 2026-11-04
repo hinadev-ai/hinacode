@@ -143,11 +143,8 @@ describe("listener settings", () => {
     }
   })
 
-  it("let remote control turn on only with a picked interface", () => {
-    expect(() => setSettings({ remote: { enabled: true, bindHost: null, port: 48081 } })).toThrow()
-    expect(setSettings({ remote: { enabled: false, bindHost: null, port: 48081 } })).toStrictEqual({
-      remote: { enabled: false, bindHost: null, port: 48081 },
-    })
+  it("always name where remote control listens", () => {
+    expect(() => setSettings({ remote: { enabled: false, bindHost: null, port: 48081 } })).toThrow()
     expect(setSettings({ remote: { enabled: true, bindHost: "100.64.0.2", port: 48081 } }).remote?.bindHost).toBe(
       "100.64.0.2",
     )

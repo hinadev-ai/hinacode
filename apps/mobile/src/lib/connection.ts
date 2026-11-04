@@ -314,7 +314,8 @@ async function dispatch(method: RpcMethod, payload: unknown, named: string | und
   if (route.to === "all") return gather(method, payload)
   if (route.to === "owner" && servers.length > 1) {
     const id = payloadId(payload, route.key)
-    const owner = id === undefined ? null : await findOwner(route.entity, id)
+    const known = id === undefined ? undefined : owners.owner(route.entity, id)
+    const owner = known ?? named ?? (id === undefined ? null : await findOwner(route.entity, id))
     if (owner === null) throw new RpcError("NotFoundError", copy("mobile_connection_server_gone"))
     return send(owner, method, payload)
   }
@@ -327,7 +328,8 @@ async function dispatch(method: RpcMethod, payload: unknown, named: string | und
 
 /**
  * Calls the server that owns the call's ids, every server for a list, or `options.server` for a call that names
- * one (Add project, settings); unnamed, that is the first connected server. While a server's link is down the
+ * one (Add project, settings); unnamed, that is the first connected server. A call on an id no server has claimed yet,
+ * such as a transcript card's artifact after a restart, goes to the server it names. While a server's link is down the
  * call waits and is sent after its next handshake, so it runs once. Rejects with `RpcError` carrying the
  * handler's error tag, or `Timeout` after a minute offline.
  */

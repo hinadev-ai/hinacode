@@ -26,7 +26,13 @@ const account = (id: string) => ({
   binary: "claude",
 })
 
+let signedOut: ReadonlyArray<string> = []
+const accountResult = (payload: unknown) => ({
+  result: signedOut.includes((payload as { provider: string }).provider) ? { type: "signedOut" } : { type: "apiKey" },
+})
+
 const rpc = vi.fn(async (method: string, payload?: unknown) => {
+  if (method === "agents.account") return accountResult(payload)
   if (method === "accounts.list") return { result: ["one", "two", "three", "four"].map(account) }
   if (method === "threads.switchAccount")
     return { result: { ...thread, accountId: (payload as { accountId: string }).accountId } }
@@ -66,6 +72,7 @@ const thread: Thread = {
 }
 
 beforeEach(() => {
+  signedOut = []
   useThreads.setState({ byId: {} } as never)
 })
 
@@ -89,6 +96,19 @@ test.each(["claude", "codex", "muse", "opencode"] as const)(
     expect(others).toEqual(others.toSorted((a, b) => a - b))
   },
 )
+
+test("keeps the thread's own agent when it is signed out, and hides other agents that are", async () => {
+  signedOut = ["claude", "muse"]
+  await render(
+    <ThreadPicker thread={{ ...thread, provider: "claude", accountId: null }} canSwitchAgent onError={() => {}} />,
+  )
+  await page.getByRole("button", { name: /second/ }).click()
+  await expect.element(page.getByRole("tab", { name: "Codex" })).toBeVisible()
+  const labels = [...document.querySelectorAll("[role=tab]")].map((tab) => tab.textContent).join()
+  expect(labels).not.toContain("Muse")
+  expect(labels).toContain("Codex")
+  expect(document.querySelectorAll("[role=tab]").length).toBeGreaterThan(2)
+})
 
 test("moves through the models with the arrow keys", async () => {
   await openPicker()

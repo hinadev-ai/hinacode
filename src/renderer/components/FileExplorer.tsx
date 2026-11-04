@@ -3,6 +3,7 @@ import { LegendList, type LegendListRef } from "@legendapp/list/react"
 import { cn } from "cn"
 import {
   createElement,
+  type DragEvent,
   type FocusEvent,
   type KeyboardEvent,
   type PointerEvent,
@@ -15,6 +16,7 @@ import {
   useState,
   useTransition,
 } from "react"
+import { toast } from "sonner"
 import { type FsEntry, isThreadBusy, type Thread } from "../../shared/domain.ts"
 import { extensionOf, type FilePreview, previewOf } from "../lib/filePreview.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
@@ -23,7 +25,18 @@ import { FILE_TREE_HEIGHT_BOUNDS } from "../lib/panelSize.ts"
 import { callPromise, onPushEvent } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { useDrafts } from "../stores/drafts.ts"
-import { emptyTree, flattenTree, type NewEntryKind, parentOf, type TreeRow, useExplorer } from "../stores/explorer.ts"
+import {
+  canMoveInto,
+  dropFolderOf,
+  emptyTree,
+  flattenTree,
+  isWithin,
+  nameOf,
+  type NewEntryKind,
+  parentOf,
+  type TreeRow,
+  useExplorer,
+} from "../stores/explorer.ts"
 import { useUi } from "../stores/ui.ts"
 import { fileStatusMark } from "./FilePatch.tsx"
 import { FileViewer } from "./FileViewer.tsx"
@@ -62,6 +75,9 @@ const ROW_HEIGHT = 24
 const INDENT = 12
 const TYPEAHEAD_RESET_MS = 600
 const MIN_PANE_HEIGHT = FILE_TREE_HEIGHT_BOUNDS.min
+const SPRING_OPEN_MS = 600
+const ENTRY_DRAG_TYPE = "application/x-hinacode-entry"
+const ROOT_FOLDER = ""
 
 const iconsByPreview: Readonly<Record<FilePreview, IconComponent>> = {
   image: ImageIcon,
@@ -94,6 +110,16 @@ const fileIcon = (entry: FsEntry, expanded: boolean): IconComponent => {
 const foldersDownTo = (path: string) =>
   path === "" ? [""] : ["", ...path.split("/").map((_, index, parts) => parts.slice(0, index + 1).join("/"))]
 
+interface EntryDrag {
+  readonly source: string
+  readonly over: string | null
+}
+
+interface DropEdges {
+  readonly top: boolean
+  readonly bottom: boolean
+}
+
 interface FileExplorerProps {
   readonly thread: Thread
   readonly root: string
@@ -102,6 +128,7 @@ interface FileExplorerProps {
 
 export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
   const canReveal = useThreadEnvironment(thread.id) === null
+  const rootName = nameOf(root)
   const tree = useExplorer((state) => state.byRoot[root] ?? emptyTree)
   const load = useExplorer((state) => state.load)
   const refresh = useExplorer((state) => state.refresh)
@@ -115,6 +142,7 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
   const selectedIndex = rows.findIndex((row) => row.kind === "entry" && row.entry.path === tree.selected)
   const [announcement, setAnnouncement] = useState("")
   const [deleting, setDeleting] = useState<FsEntry | null>(null)
+  const [drag, setDrag] = useState<EntryDrag | null>(null)
   const treeRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<LegendListRef>(null)
   const typeahead = useRef({ text: "", at: 0 })
@@ -169,6 +197,15 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
     if (selectedIndex >= 0) void listRef.current?.scrollIndexIntoView({ index: selectedIndex, animated: false })
   }, [selectedIndex])
 
+  const dropFolder = drag?.over ?? null
+  const springFolder =
+    dropFolder !== null && dropFolder !== ROOT_FOLDER && !tree.expanded.has(dropFolder) ? dropFolder : null
+  useEffect(() => {
+    if (springFolder === null) return
+    const timer = setTimeout(() => expand(root, springFolder), SPRING_OPEN_MS)
+    return () => clearTimeout(timer)
+  }, [expand, root, springFolder])
+
   const selectedRow = rows[selectedIndex]
   const selectedEntry = selectedRow?.kind === "entry" ? selectedRow.entry : undefined
   const openedEntry =
@@ -215,6 +252,44 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
       .remove(root, entry.path)
       .catch(toastError)
       .then(() => treeRef.current?.focus())
+  }
+
+  const moveEntry = (path: string, folder: string) => {
+    const origin = parentOf(path)
+    const { move } = useExplorer.getState()
+    move(root, path, folder)
+      .then((moved) => {
+        treeRef.current?.focus()
+        toast(m.explorer_moved({ name: nameOf(moved), folder: folder === ROOT_FOLDER ? rootName : folder }), {
+          position: "bottom-right",
+          action: { label: m.common_undo(), onClick: () => void move(root, moved, origin).catch(toastError) },
+        })
+      })
+      .catch(toastError)
+  }
+
+  const dragOverFolder = (event: DragEvent, folder: string) => {
+    if (drag === null) return
+    event.stopPropagation()
+    const over = canMoveInto(drag.source, folder) ? folder : null
+    if (over !== null) {
+      event.preventDefault()
+      event.dataTransfer.dropEffect = "move"
+    }
+    if (over !== drag.over) setDrag({ ...drag, over })
+  }
+
+  const dropInFolder = (event: DragEvent, folder: string) => {
+    if (drag === null) return
+    event.preventDefault()
+    event.stopPropagation()
+    setDrag(null)
+    moveEntry(drag.source, folder)
+  }
+
+  const dragLeaveTree = (event: DragEvent<HTMLDivElement>) => {
+    if (drag === null || event.currentTarget.contains(event.relatedTarget as Node | null)) return
+    setDrag({ ...drag, over: null })
   }
 
   const moveTo = (index: number) => {
@@ -298,6 +373,9 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
     open(entry)
   }
 
+  const isInDropFolder = (row: TreeRow | undefined) =>
+    row?.kind === "entry" && dropFolder !== null && dropFolder !== ROOT_FOLDER && isWithin(row.entry.path, dropFolder)
+
   const siblingNames = (parent: string) => (tree.children[parent] ?? []).map((sibling) => sibling.name)
 
   const renderItem = ({ item, index }: { item: TreeRow; index: number }) => {
@@ -323,8 +401,22 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
         selected={index === selectedIndex}
         expanded={tree.expanded.has(entry.path)}
         unsaved={entry.path in tree.unsaved}
+        draggable={!renaming}
+        dragged={drag !== null && isWithin(entry.path, drag.source)}
+        dropEdges={
+          isInDropFolder(item)
+            ? { top: !isInDropFolder(rows[index - 1]), bottom: !isInDropFolder(rows[index + 1]) }
+            : null
+        }
         onClick={onRowClick}
         onContextMenu={(clicked) => select(root, clicked.path)}
+        onDragStart={(event) => {
+          event.dataTransfer.effectAllowed = "move"
+          event.dataTransfer.setData(ENTRY_DRAG_TYPE, entry.path)
+          setDrag({ source: entry.path, over: null })
+        }}
+        onDragOver={(event) => dragOverFolder(event, dropFolderOf(entry))}
+        onDrop={(event) => dropInFolder(event, dropFolderOf(entry))}
       >
         {renaming ? (
           <NameInput
@@ -340,7 +432,6 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
   }
 
   const listed = tree.children[""]
-  const rootName = root.slice(root.lastIndexOf("/") + 1)
 
   return (
     <div ref={containerRef} className="flex min-h-0 flex-1 flex-col">
@@ -384,7 +475,14 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
                   aria-activedescendant={selectedIndex >= 0 ? `${rowId}${selectedIndex}` : undefined}
                   onKeyDown={onKeyDown}
                   onFocus={onFocus}
-                  className="group/tree flex min-h-0 flex-1 flex-col py-1 outline-none"
+                  onDragOver={(event) => dragOverFolder(event, ROOT_FOLDER)}
+                  onDrop={(event) => dropInFolder(event, ROOT_FOLDER)}
+                  onDragLeave={dragLeaveTree}
+                  onDragEnd={() => setDrag(null)}
+                  className={cn(
+                    "group/tree flex min-h-0 flex-1 flex-col py-1 outline-none",
+                    dropFolder === ROOT_FOLDER && "bg-primary/10",
+                  )}
                 />
               }
             >
@@ -393,7 +491,7 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
                 data={rows}
                 keyExtractor={(row) => (row.kind === "entry" ? row.entry.path : `\0draft:${row.parent}`)}
                 renderItem={renderItem}
-                extraData={tree}
+                extraData={[tree, drag]}
                 estimatedItemSize={ROW_HEIGHT}
                 getFixedItemSize={() => ROW_HEIGHT}
                 className="min-h-0 flex-1"
@@ -538,12 +636,33 @@ interface TreeItemProps {
   readonly selected: boolean
   readonly expanded: boolean
   readonly unsaved: boolean
+  readonly draggable: boolean
+  readonly dragged: boolean
+  readonly dropEdges: DropEdges | null
   readonly onClick: (entry: FsEntry) => void
   readonly onContextMenu: (entry: FsEntry) => void
+  readonly onDragStart: (event: DragEvent) => void
+  readonly onDragOver: (event: DragEvent) => void
+  readonly onDrop: (event: DragEvent) => void
   readonly children?: ReactNode
 }
 
-function TreeItem({ row, id, selected, expanded, unsaved, onClick, onContextMenu, children }: TreeItemProps) {
+function TreeItem({
+  row,
+  id,
+  selected,
+  expanded,
+  unsaved,
+  draggable,
+  dragged,
+  dropEdges,
+  onClick,
+  onContextMenu,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  children,
+}: TreeItemProps) {
   const { entry, depth } = row
   const isDir = entry.kind === "dir"
   const mark = entry.gitStatus === null ? null : fileStatusMark[entry.gitStatus]
@@ -563,8 +682,18 @@ function TreeItem({ row, id, selected, expanded, unsaved, onClick, onContextMenu
       aria-describedby={description ? `${id}-status` : undefined}
       onClick={() => onClick(entry)}
       onContextMenu={() => onContextMenu(entry)}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
       style={{ height: ROW_HEIGHT, paddingLeft: 8 + depth * INDENT }}
-      className="relative mx-1 flex cursor-default items-center gap-1 rounded-md pr-2 text-[0.8125rem] select-none hover:bg-muted/60 aria-selected:bg-muted group-focus/tree:aria-selected:ring-1 group-focus/tree:aria-selected:ring-ring group-focus/tree:aria-selected:ring-inset"
+      className={cn(
+        "relative mx-1 flex cursor-default items-center gap-1 rounded-md pr-2 text-[0.8125rem] select-none hover:bg-muted/60 aria-selected:bg-muted group-focus/tree:aria-selected:ring-1 group-focus/tree:aria-selected:ring-ring group-focus/tree:aria-selected:ring-inset",
+        dragged && "opacity-50",
+        dropEdges && "rounded-none bg-primary/10 hover:bg-primary/10 aria-selected:bg-primary/10",
+        dropEdges?.top && "rounded-t-md",
+        dropEdges?.bottom && "rounded-b-md",
+      )}
     >
       <IndentGuides depth={depth} />
       <ChevronRightIcon

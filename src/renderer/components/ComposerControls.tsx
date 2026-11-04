@@ -22,6 +22,7 @@ import {
   modelsAtom,
   projectsAtom,
   pullRequestsAtom,
+  setUpProvidersAtom,
 } from "../lib/rpc.ts"
 import { environmentName, environmentOf, useClouds, useThreadEnvironment } from "../lib/environments.ts"
 import { groupProjects } from "../lib/projectGroups.ts"
@@ -186,6 +187,7 @@ interface AgentTab {
 }
 
 function useAgentTabs(thread: Thread, canSwitchAgent: boolean): ReadonlyArray<AgentTab> {
+  const setUpProviders = useAtomValue(setUpProvidersAtom(useThreadEnvironment(thread.id)))
   const accounts = useAccountOptions(thread).options
   const accountHint = useAccountHint()
   const turnRunning = thread.status === "running" || thread.status === "awaiting_approval"
@@ -207,11 +209,11 @@ function useAgentTabs(thread: Thread, canSwitchAgent: boolean): ReadonlyArray<Ag
           hint: accountHint(option),
           disabled: turnRunning && option.id !== thread.accountId,
         }))
-  return ProviderId.literals.flatMap((provider): ReadonlyArray<AgentTab> =>
-    provider === thread.provider
-      ? own
-      : [{ value: provider, provider, label: providerLabel[provider](), disabled: !canSwitchAgent }],
-  )
+  return ProviderId.literals.flatMap((provider): ReadonlyArray<AgentTab> => {
+    if (provider === thread.provider) return own
+    if (!setUpProviders.includes(provider)) return []
+    return [{ value: provider, provider, label: providerLabel[provider](), disabled: !canSwitchAgent }]
+  })
 }
 
 const modelRows = (popup: HTMLElement) => [...popup.querySelectorAll<HTMLButtonElement>("[data-model-row]")]

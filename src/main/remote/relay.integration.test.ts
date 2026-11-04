@@ -563,3 +563,9 @@ describe("Relay", () => {
     }).pipe(Effect.provide(base)),
   )
 })
+
+describe("relayOrigin", () => {
+  it("reaches a private-networks listener over loopback, because `private` is not a hostname", () => {
+    expect(RelayModule.relayOrigin({ bindHost: "private", port: PORT })).toBe(ORIGIN)
+  })
+})

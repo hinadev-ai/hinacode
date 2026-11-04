@@ -51,18 +51,6 @@ export function subagentReport(text: string): string {
     .trim()
 }
 
-const textOfBlock = (block: unknown) =>
-  typeof block === "object" && block !== null && Reflect.get(block, "type") === "text"
-    ? String(Reflect.get(block, "text"))
-    : ""
-
-export const outputText = (output: unknown): string =>
-  typeof output === "string"
-    ? output
-    : Array.isArray(output)
-      ? output.map(textOfBlock).filter(Boolean).join("\n")
-      : JSON.stringify(output)
-
 export function inFlight(subagents: ReadonlyArray<Subagent>) {
   const running = subagents.filter((subagent) => subagent.status === "running")
   if (running.length === 0) return []

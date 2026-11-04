@@ -25,6 +25,8 @@ export function searchableText(part: MessagePart, skillLabels: SkillLabels): str
     case "text":
     case "questions":
       return part.text
+    case "signed_out":
+      return `${part.message}\n${part.loginCommand}`
     case "tool_call": {
       const skills = skillsUsed(part)
       if (skills !== null) return skillUseText(skills, skillLabels)

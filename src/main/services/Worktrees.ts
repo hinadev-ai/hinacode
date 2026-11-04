@@ -40,7 +40,7 @@ import {
   WorktreeTakenError,
 } from "./errors.ts"
 import { Events } from "./Events.ts"
-import { type CommandError, Git } from "./Git.ts"
+import { type CommandError, Git, LONG_TIMEOUT } from "./Git.ts"
 import { GitHub, type GitHubError, type PullRequestHead } from "./GitHub.ts"
 import { Projects } from "./Projects.ts"
 import { Settings } from "./Settings.ts"
@@ -364,9 +364,11 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
       const path = checkout._tag === "orphan" ? checkout.path : checkoutPath(checkouts, branch, id)
       if (checkout._tag !== "orphan") {
         const startPoint = checkout._tag === "taken" ? input.branch : input.startPoint
-        yield* git.run(rootPath, yield* worktreeAddArgs(rootPath, path, { ...input, branch, startPoint }))
+        yield* git.run(rootPath, yield* worktreeAddArgs(rootPath, path, { ...input, branch, startPoint }), {
+          timeout: LONG_TIMEOUT,
+        })
         if (input.workingTree !== undefined) {
-          yield* git.run(path, ["read-tree", "-m", "-u", "HEAD", input.workingTree])
+          yield* git.run(path, ["read-tree", "-m", "-u", "HEAD", input.workingTree], { timeout: LONG_TIMEOUT })
           yield* git.run(path, ["reset", "--quiet"])
         }
       }
@@ -409,7 +411,7 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
       if (users.some((thread) => thread.id !== owner && isThreadBusy(thread.status))) {
         return yield* new RootBusyError({ path: rootPath })
       }
-      yield* git.run(rootPath, ["switch", ...args])
+      yield* git.run(rootPath, ["switch", ...args], { timeout: LONG_TIMEOUT })
     }).pipe(exclusive)
 
   const checkout = (projectId: string, ref: string, owner: string) =>
@@ -495,7 +497,7 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
     Effect.gen(function* () {
       if ((yield* registeredCheckouts(rootPath)).some((registered) => registered.path === worktree.path)) {
         // FIXME: only a second `--force` removes a locked checkout
-        yield* git.run(rootPath, ["worktree", "remove", "--force", "--force", worktree.path])
+        yield* git.run(rootPath, ["worktree", "remove", "--force", "--force", worktree.path], { timeout: LONG_TIMEOUT })
       }
       yield* git.run(rootPath, ["worktree", "prune"])
 

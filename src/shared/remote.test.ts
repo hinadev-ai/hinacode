@@ -8,6 +8,7 @@ import {
   dialPlan,
   RELAY_DELAY_MS,
   remoteWebSocketUrl,
+  TAILSCALE_DELAY_MS,
   ServerFrame,
 } from "./remote.ts"
 
@@ -150,9 +151,16 @@ describe("pairing URLs", () => {
 
   it("dials the direct addresses at once and the relay a moment later", () => {
     expect(dialPlan({ hosts: ["100.64.0.2", "mac.local"], port: 47821, relay: "r.example.com" })).toEqual([
-      { url: "ws://100.64.0.2:47821/remote", route: "direct", delayMs: 0 },
+      { url: "ws://100.64.0.2:47821/remote", route: "direct", delayMs: TAILSCALE_DELAY_MS },
       { url: "ws://mac.local:47821/remote", route: "direct", delayMs: 0 },
       { url: "wss://r.example.com/remote", route: "relay", delayMs: RELAY_DELAY_MS },
+    ])
+    expect(dialPlan({ hosts: ["100.64.0.2"], port: 47821, relay: null })).toEqual([
+      { url: "ws://100.64.0.2:47821/remote", route: "direct", delayMs: 0 },
+    ])
+    expect(dialPlan({ hosts: ["100.20.0.2", "100.example.com"], port: 47821, relay: null })).toEqual([
+      { url: "ws://100.20.0.2:47821/remote", route: "direct", delayMs: 0 },
+      { url: "ws://100.example.com:47821/remote", route: "direct", delayMs: 0 },
     ])
     expect(dialPlan({ hosts: ["mac.local"], port: 47821, relay: null })).toEqual([
       { url: "ws://mac.local:47821/remote", route: "direct", delayMs: 0 },

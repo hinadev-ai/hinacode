@@ -16,7 +16,7 @@ Internal statuses stay `draft`, `running`, `idle` and `archived`, plus `thread.s
 1. **Drafts** come first. See `2026-11-04-listed-drafts.md`.
 2. **Ready** holds questions, usage limits, failures, finished turns, pull request problems and read threads, newest activity first. Read threads recede, so what needs the developer stands out without moving. The Inbox tab's badge counts only what has not been read and has not settled.
 3. **Working** holds agents running and background work. Its heading folds it, and the choice persists. The pulse button in its heading swaps each row's third line for the agent's latest tool call.
-4. **Settled** stays at the bottom of the sidebar, outside the scrolling list, and opens upward with its own scroll. It renders 30 rows and adds 30 more as the scroll nears the end, so opening stays fast with thousands of threads. The sentinel is keyed by the revealed count because an observer only reports when it starts and when the state changes, and a tall viewport can still hold it after a reveal. Settling from a row or the row menu moves a thread there, with Undo. A settled thread keeps its workspace, terminals and scratch folder. **Reopen** or a new message brings it back.
+4. **Settled** stays at the bottom of the sidebar, outside the scrolling list, and opens upward with its own scroll. It renders 50 rows and adds 50 more as the scroll nears the end, so opening stays fast with thousands of threads. Settling from a row or the row menu moves a thread there, with Undo. A settled thread keeps its workspace, terminals and scratch folder. **Reopen** or a new message brings it back.
 5. A thread settles by itself when its own pull request merges and no work started after the merge. A pinned thread does not. A pull request closed without merging stays in Ready for the developer to decide. If **Remove the worktree when archiving** is on, the merge sweep removes the merged worktree too.
 6. A read thread with no open pull request and no activity for 7 days shows under Settled, without changing its row or touching its worktree. Any activity or Reopen brings it back.
 7. **Archived** sits below Settled. Archiving closes the workspace: terminals, chat folder and scratch folder, and the worktree when the setting is on.
@@ -25,9 +25,9 @@ Internal statuses stay `draft`, `running`, `idle` and `archived`, plus `thread.s
 ## Design
 
 - `inboxGroup` in `shared/threadStatus.ts` computes the group from `rowState` and `settledAt`. A settled thread that starts work leaves Settled because `Threads.write` clears `settled_at` whenever `startsWork` is true.
-- `thread.settled_at` (migration 0041) is separate from `archived` because settling is cheap and reversible and archiving releases resources.
+- `thread.settled_at` (migration 0042) is separate from `archived` because settling is cheap and reversible and archiving releases resources.
 - `Archive when merged` is now on by default. Worktree removal stays a separate setting, off by default.
-- `thread.work_started_at` (migration 0040) is stamped when a thread goes from idle to running and when it is unarchived. `AutoArchive` wraps up only for a merge later than it, using `mergedAt` from `gh`. A turn that merges its own pull request still settles, and a reopened thread does not settle again for an old merge.
+- `thread.work_started_at` (migration 0041) is stamped when a thread goes from idle to running and when it is unarchived. `AutoArchive` wraps up only for a merge later than it, using `mergedAt` from `gh`. A turn that merges its own pull request still settles, and a reopened thread does not settle again for an old merge.
 - `Archive when merged` now settles. Its key stays `archive.whenMerged`, so saved settings keep working.
 - A settled thread does not hold a shared worktree, so a fork can still clean it up.
 - The 7-day rule stays in the renderer because the main process doesn't know what has been read, and because a timer must not remove a worktree that holds unmerged work.

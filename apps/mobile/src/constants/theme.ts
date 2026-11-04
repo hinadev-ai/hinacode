@@ -1,3 +1,4 @@
+import type { CalloutTone } from "@shared/documentCallout.ts"
 import type { IndicatorTone } from "@shared/threadStatus.ts"
 import { Platform } from "react-native"
 import type { IconName } from "@/components/icon"
@@ -140,6 +141,28 @@ export const SyntaxColors = {
     function: "#d2a8ff",
   },
 } as const
+
+/**
+ * A document's callout tones: `ink` is the desktop's `--graph-lane-1`, `--graph-lane-2`, `--callout-important`,
+ * `--attention` and `--destructive` in the Hina themes. `tint` is the tone over `background`, at 8% in light and 16%
+ * in dark. `label` mixes the tone 28% toward `text`, as the desktop does, and reads at 4.5:1 or more on `tint`.
+ */
+export const CalloutColors = {
+  light: {
+    note: { ink: "#2a75ba", tint: "#e7edee", label: "#296393" },
+    tip: { ink: "#008971", tint: "#e7eee7", label: "#1b7160" },
+    important: { ink: "#794db6", tint: "#ece9ee", label: "#604991" },
+    warning: { ink: "#973c00", tint: "#f1e8df", label: "#783e1f" },
+    caution: { ink: "#bd1f3d", tint: "#f5e7e3", label: "#93333d" },
+  },
+  dark: {
+    note: { ink: "#61a3e6", tint: "#263f48", label: "#8cbbeb" },
+    tip: { ink: "#57b9a1", tint: "#25423f", label: "#89cbb7" },
+    important: { ink: "#b897f0", tint: "#333e49", label: "#c9b2f2" },
+    warning: { ink: "#ffb900", tint: "#3d4334", label: "#fecc6e" },
+    caution: { ink: "#f4839a", tint: "#3e3c3e", label: "#f8a5b2" },
+  },
+} as const satisfies Record<"light" | "dark", Record<CalloutTone, { ink: string; tint: string; label: string }>>
 
 export const mono = Platform.select({ ios: "Menlo", android: "monospace", default: "ui-monospace, Menlo, monospace" })
 

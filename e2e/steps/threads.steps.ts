@@ -112,6 +112,14 @@ When("I expand the {word} threads", async ({ app }, shelf: string) => {
     .click()
 })
 
+When("I scroll to the end of the sidebar", async ({ app }) => {
+  await sidebar(app.page).getByRole("link").last().scrollIntoViewIfNeeded()
+})
+
+Then("the sidebar lists {int} thread(s)", async ({ app }, count: number) => {
+  await expect(sidebar(app.page).getByRole("link")).toHaveCount(count)
+})
+
 When("I undo from the toast", async ({ app }) => {
   await app.page.getByRole("button", { name: "Undo", exact: true }).click()
 })

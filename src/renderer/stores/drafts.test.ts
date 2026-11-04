@@ -42,6 +42,15 @@ describe("useDrafts", () => {
     expect(hasContent({ ...emptyDraft, comments: [comment("x")] })).toBe(true)
   })
 
+  test("appendBlock puts the block on its own lines after the draft", () => {
+    const { setText, appendBlock } = useDrafts.getState()
+    appendBlock("a", "```text\nok\n```")
+    expect(draftOf("a").text).toBe("```text\nok\n```\n")
+    setText("b", "why did this fail? ")
+    appendBlock("b", "```text\nexit 1\n```")
+    expect(draftOf("b").text).toBe("why did this fail?\n```text\nexit 1\n```\n")
+  })
+
   test("take empties the draft and returns what was in it", () => {
     const { setText, addAttachments, take } = useDrafts.getState()
     setText("a", "hello")

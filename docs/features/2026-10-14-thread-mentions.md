@@ -16,7 +16,7 @@ A developer running several threads often wants one agent to build on another's 
 
 ## Design
 
-The token is `@thread:<id>`, defined once in `src/shared/threadMention.ts` and used by the composer, the message view and the agent instructions. A full id needs no lookup or disambiguation in main.
+The token is `@thread:<id>`, defined once in `src/shared/mentions.ts` and used by the composer, the message view and the agent instructions. A full id needs no lookup or disambiguation in main.
 
 Renderer:
 

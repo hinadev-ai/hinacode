@@ -58,10 +58,8 @@ export function RemoteSettings() {
             <Switch
               id="remote-enabled"
               checked={remote.enabled}
-              disabled={pending || remote.bindHost === null}
-              onCheckedChange={(enabled) =>
-                remote.bindHost !== null && save({ ...remote, enabled, bindHost: remote.bindHost })
-              }
+              disabled={pending}
+              onCheckedChange={(enabled) => save({ ...remote, enabled })}
             />
           </Field>
           <RemoteStatusLine remote={remote} />
@@ -175,13 +173,11 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
         </form>
       </div>
       <FieldDescription>
-        {remote.bindHost === null
-          ? m.remote_bind_required_hint()
-          : remote.bindHost === LOOPBACK
-            ? m.remote_bind_loopback_hint()
-            : remote.bindHost === PRIVATE_NETWORKS
-              ? m.remote_bind_private_hint()
-              : m.remote_bind_address_hint({ address: remote.bindHost })}
+        {remote.bindHost === LOOPBACK
+          ? m.remote_bind_loopback_hint()
+          : remote.bindHost === PRIVATE_NETWORKS
+            ? m.remote_bind_private_hint()
+            : m.remote_bind_address_hint({ address: remote.bindHost })}
       </FieldDescription>
       <FieldDescription>{m.remote_network_note()}</FieldDescription>
     </div>

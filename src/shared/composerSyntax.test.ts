@@ -14,11 +14,13 @@ import {
   suggestionsFor,
   type TextEdit,
 } from "./composerSyntax.ts"
+import type { TerminalSession } from "./domain.ts"
 
 const known = {
   commands: new Set(["/kalan-mode", "$verify-hinacode"]),
   files: new Set(["src/main/ipc.ts"]),
   threads: new Set(["t-1"]),
+  terminals: new Set(["term-1"]),
 }
 
 const typeShiftEnter = (text: string, caret = text.length) => {
@@ -190,6 +192,14 @@ describe("highlight", () => {
     ).toStrictEqual([{ kind: "mention", text: "@thread:t-1" }])
   })
 
+  test("marks mentions of known terminals only, and keeps the kinds apart", () => {
+    expect(
+      highlight("see @terminal:term-1, @terminal:gone and @thread:term-1", known).filter(
+        (segment) => segment.kind !== "text",
+      ),
+    ).toStrictEqual([{ kind: "mention", text: "@terminal:term-1" }])
+  })
+
   test("leaves an unclosed backtick as text", () => {
     expect(highlight("a `b", known)).toStrictEqual([{ kind: "text", text: "a `b" }])
   })
@@ -291,15 +301,45 @@ describe("matchThreads", () => {
   })
 })
 
+const session = (id: string, title: string | null): TerminalSession => ({
+  id,
+  threadId: "t-1",
+  cwd: "/repo",
+  cols: 80,
+  rows: 24,
+  status: "running",
+  exitCode: null,
+  title,
+})
+
 describe("suggestionsFor", () => {
   test("lists a command once when the agent reports it from several places", () => {
     const commands = [command("$", "animate"), command("$", "animation-vocabulary"), command("$", "animate")]
     const completion = { trigger: "$" as const, query: "anim", start: 0, end: 5 }
     expect(
-      suggestionsFor(completion, commands, [], { sameMachine: [], otherMachines: [] }, []).map(
+      suggestionsFor(completion, commands, [], { sameMachine: [], otherMachines: [] }, [], []).map(
         (suggestion) => suggestion.insert,
       ),
     ).toStrictEqual(["$animate", "$animation-vocabulary"])
+  })
+
+  test("lists the thread's terminals by label after threads and before files", () => {
+    const terminals = [
+      { session: session("term-1", null), label: "Terminal 1" },
+      { session: session("term-2", "pnpm dev"), label: "pnpm dev" },
+    ]
+    const suggest = (text: string) =>
+      suggestionsFor(
+        completionAt(text, text.length)!,
+        [],
+        ["src/terminal.ts"],
+        { sameMachine: [], otherMachines: [] },
+        terminals,
+        [],
+      ).map((suggestion) => suggestion.insert)
+    expect(suggest("@term")).toStrictEqual(["@terminal:term-1", "@src/terminal.ts"])
+    expect(suggest("@dev")).toStrictEqual(["@terminal:term-2"])
+    expect(suggest("@")).toStrictEqual(["@terminal:term-1", "@terminal:term-2", "@src/terminal.ts"])
   })
 })
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, test } from "@effect/vitest"
-import { Effect, Layer, Sink, Stream } from "effect"
+import { Effect, Fiber, Layer, Sink, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import { ChildProcessSpawner } from "effect/process"
 import {
@@ -207,6 +207,7 @@ interface GhReply {
   readonly stdout?: string
   readonly stderr?: string
   readonly exitCode?: number
+  readonly neverExits?: boolean
 }
 
 const fakeGh = (reply: (args: ReadonlyArray<string>) => GhReply) => {
@@ -216,11 +217,11 @@ const fakeGh = (reply: (args: ReadonlyArray<string>) => GhReply) => {
   const spawner = ChildProcessSpawner.make((command) => {
     const args = command._tag === "StandardCommand" ? command.args : []
     runs.push(args)
-    const { stdout = "", stderr = "", exitCode = 0 } = reply(args)
+    const { stdout = "", stderr = "", exitCode = 0, neverExits = false } = reply(args)
     return Effect.succeed(
       ChildProcessSpawner.makeHandle({
         pid: ChildProcessSpawner.ProcessId(1),
-        exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(exitCode)),
+        exitCode: neverExits ? Effect.never : Effect.succeed(ChildProcessSpawner.ExitCode(exitCode)),
         isRunning: Effect.succeed(false),
         kill: () => Effect.void,
         stdin: Sink.drain,
@@ -244,6 +245,36 @@ const fakeGh = (reply: (args: ReadonlyArray<string>) => GhReply) => {
 }
 
 const ghFails = (stderr: string) => fakeGh(() => ({ stderr, exitCode: 1 })).layer
+
+const neverExits = () => fakeGh(() => ({ neverExits: true })).layer
+
+describe("a gh that never exits", () => {
+  it.effect("fails a read after a minute", () =>
+    Effect.gen(function* () {
+      const github = yield* GitHub
+      const auth = yield* Effect.forkChild(Effect.flip(github.auth))
+      yield* TestClock.adjust("59 seconds")
+      expect(auth.pollUnsafe()).toBeUndefined()
+
+      yield* TestClock.adjust("1 second")
+      const error = yield* Fiber.join(auth)
+      expect(error).toMatchObject({ _tag: "CommandError", exitCode: 124 })
+      expect(error.message).toContain("timed out after 1m")
+    }).pipe(Effect.provide(neverExits())),
+  )
+
+  it.effect("gives a clone an hour", () =>
+    Effect.gen(function* () {
+      const github = yield* GitHub
+      const clone = yield* Effect.forkChild(Effect.flip(github.clone({ owner: "o", name: "r" }, "/tmp/r")))
+      yield* TestClock.adjust("59 minutes")
+      expect(clone.pollUnsafe()).toBeUndefined()
+
+      yield* TestClock.adjust("1 minute")
+      expect(yield* Fiber.join(clone)).toMatchObject({ _tag: "CommandError", exitCode: 124 })
+    }).pipe(Effect.provide(neverExits())),
+  )
+})
 
 describe("pull request actions", () => {
   const ghMustNotRun = Layer.succeed(

@@ -284,6 +284,7 @@
   --graph-lane-3: oklch(0.58 0.14 55);
   --graph-lane-4: oklch(0.55 0.15 350);
   --graph-lane-5: oklch(0.56 0.12 130);
+  --callout-important: oklch(0.52 0.16 300);
   --secondary: oklch(0.97 0 0);
   --muted: oklch(0.97 0 0);
   --palette-muted-foreground: oklch(0.54 0 0);
@@ -330,6 +331,7 @@
   --graph-lane-3: oklch(0.75 0.12 65);
   --graph-lane-4: oklch(0.7 0.13 350);
   --graph-lane-5: oklch(0.74 0.12 130);
+  --callout-important: oklch(0.74 0.13 300);
   --syntax-token: oklch(0.709 0.159 293.541);
   --secondary: oklch(0.269 0 0);
   --muted: oklch(0.269 0 0);
@@ -912,6 +914,32 @@
   }
   to {
     background-position: 0% 0;
+  }
+}
+
+/* The same band, faint, over a surface such as the page preview of a document the agent is still publishing. */
+@utility surface-shimmer {
+  position: relative;
+  overflow: clip;
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    left: 0;
+    width: 400%;
+    pointer-events: none;
+    background: linear-gradient(
+      90deg,
+      transparent 40%,
+      color-mix(in oklab, var(--foreground) 9%, transparent) 50%,
+      transparent 60%
+    );
+    animation: text-shimmer 2s linear infinite;
+
+    @media (prefers-reduced-motion: reduce) {
+      display: none;
+    }
   }
 }
 

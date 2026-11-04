@@ -14,20 +14,34 @@ import "./markdown.css"
 const HEADING_SIZES = [22, 20, 18, 16, 15, 15] as const
 const BLOCK_GAP = 10
 
-function markdownStyle(theme: Palette, syntax: (typeof SyntaxColors)[Scheme], gutter: number): MarkdownStyle {
+/** A document is read rather than skimmed: larger text with more room, and space above each section. */
+const MEASURES = {
+  reply: { text: 15, line: 22, gap: BLOCK_GAP, headings: HEADING_SIZES, headingGaps: [0, 0, 0, 0, 0, 0] },
+  document: { text: 16, line: 25, gap: 14, headings: [26, 21, 18, 16, 16, 16], headingGaps: [0, 18, 14, 10, 10, 10] },
+} as const
+
+export type MarkdownMeasure = keyof typeof MEASURES
+
+function markdownStyle(
+  theme: Palette,
+  syntax: (typeof SyntaxColors)[Scheme],
+  gutter: number,
+  measure: MarkdownMeasure,
+): MarkdownStyle {
+  const { text, line, gap, headings, headingGaps } = MEASURES[measure]
   const heading = (depth: number) => {
-    const size = HEADING_SIZES[depth - 1]
+    const size = headings[depth - 1]
     return {
       fontSize: size,
       lineHeight: Math.round(size * 1.35),
       fontWeight: depth <= 2 ? "700" : "600",
       color: theme.text,
-      marginTop: 0,
-      marginBottom: BLOCK_GAP,
+      marginTop: headingGaps[depth - 1],
+      marginBottom: measure === "document" && depth <= 2 ? gap - 4 : BLOCK_GAP,
     }
   }
   return {
-    paragraph: { fontSize: 15, lineHeight: 22, color: theme.text, marginTop: 0, marginBottom: BLOCK_GAP },
+    paragraph: { fontSize: text, lineHeight: line, color: theme.text, marginTop: 0, marginBottom: gap },
     h1: heading(1),
     h2: heading(2),
     h3: heading(3),
@@ -48,7 +62,7 @@ function markdownStyle(theme: Palette, syntax: (typeof SyntaxColors)[Scheme], gu
       borderWidth: StyleSheet.hairlineWidth,
       borderRadius: radius.md,
       padding: 12,
-      marginBottom: BLOCK_GAP,
+      marginBottom: gap,
       syntaxColors: {
         keyword: syntax.keyword,
         operator: syntax.operator,
@@ -66,16 +80,16 @@ function markdownStyle(theme: Palette, syntax: (typeof SyntaxColors)[Scheme], gu
       borderColor: theme.border,
       borderWidth: 3,
       gapWidth: 12,
-      marginBottom: BLOCK_GAP,
+      marginBottom: gap,
     },
     list: {
-      fontSize: 15,
-      lineHeight: 22,
+      fontSize: text,
+      lineHeight: line,
       color: theme.text,
       bulletColor: theme.textMuted,
       markerColor: theme.textMuted,
       itemSpacing: 4,
-      marginBottom: BLOCK_GAP,
+      marginBottom: gap,
     },
     table: {
       fontSize: 14,
@@ -89,7 +103,7 @@ function markdownStyle(theme: Palette, syntax: (typeof SyntaxColors)[Scheme], gu
       borderWidth: StyleSheet.hairlineWidth,
       borderRadius: radius.sm,
       horizontalOverflow: gutter,
-      marginBottom: BLOCK_GAP,
+      marginBottom: gap,
     },
     taskList: {
       checkedColor: theme.primary,
@@ -97,20 +111,20 @@ function markdownStyle(theme: Palette, syntax: (typeof SyntaxColors)[Scheme], gu
       checkmarkColor: theme.onPrimary,
       checkedTextColor: theme.textMuted,
     },
-    thematicBreak: { color: theme.border, height: StyleSheet.hairlineWidth, marginTop: 4, marginBottom: BLOCK_GAP + 4 },
+    thematicBreak: { color: theme.border, height: StyleSheet.hairlineWidth, marginTop: 4, marginBottom: gap + 4 },
     // A fixed box: on Android 1.1.1 a `maxHeight` box draws taller than the layout reserves, cutting off the reply's end.
-    image: { borderRadius: radius.md, height: 240, resizeMode: "contain", marginBottom: BLOCK_GAP },
+    image: { borderRadius: radius.md, height: 240, resizeMode: "contain", marginBottom: gap },
   }
 }
 
-// One object per scheme and gutter, so the native view does not receive a new style on every render.
+// One object per scheme, gutter and measure, so the native view does not receive a new style on every render.
 const STYLES = new Map<string, MarkdownStyle>()
 
-function stylesFor(scheme: Scheme, gutter: number) {
-  const key = `${scheme}:${gutter}`
+function stylesFor(scheme: Scheme, gutter: number, measure: MarkdownMeasure) {
+  const key = `${scheme}:${gutter}:${measure}`
   const cached = STYLES.get(key)
   if (cached !== undefined) return cached
-  const style = markdownStyle(Colors[scheme], SyntaxColors[scheme], gutter)
+  const style = markdownStyle(Colors[scheme], SyntaxColors[scheme], gutter, measure)
   STYLES.set(key, style)
   return style
 }
@@ -132,6 +146,7 @@ export function Markdown({
   folder,
   threadId,
   gutter = 0,
+  measure = "reply",
 }: {
   text: string
   root: string | null
@@ -143,6 +158,7 @@ export function Markdown({
    * column reads as scrollable. Leave it 0 inside a card.
    */
   gutter?: number
+  measure?: MarkdownMeasure
 }) {
   const scheme = useScheme()
   const markdown = useWorkspaceImages(text, root, folder)
@@ -160,7 +176,7 @@ export function Markdown({
       <EnrichedMarkdownText
         markdown={rewriteMarkdownExtras(markdown)}
         flavor="github"
-        markdownStyle={stylesFor(scheme, gutter)}
+        markdownStyle={stylesFor(scheme, gutter, measure)}
         md4cFlags={FLAGS}
         containerStyle={CONTAINER}
         enableTaskListItemToggle={false}

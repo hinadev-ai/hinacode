@@ -81,7 +81,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx"
-import { RevealSentinel } from "./RevealSentinel.tsx"
 import { ScrollArea } from "./ui/scroll-area.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.tsx"
@@ -473,7 +472,7 @@ function useInboxGroups(threads: ReadonlyArray<Thread>, now: number) {
 
 const newestActivityFirst = (a: Thread, b: Thread) => lastActivity(b).localeCompare(lastActivity(a))
 
-const SHELF_PAGE_SIZE = 30
+const SHELF_PAGE_SIZE = 50
 
 function InboxShelves({ query }: { query: Query }) {
   const now = useNow()
@@ -535,20 +534,16 @@ function Shelf({
 }
 
 function ShelfRows({ group, threads }: { group: string; threads: ReadonlyArray<Thread> }) {
-  const [rowLimit, setRowLimit] = useState(SHELF_PAGE_SIZE)
   return (
     <ScrollArea viewportClassName="max-h-[45dvh] data-has-overflow-y:pe-0" scrollbarClassName={quietScrollbar}>
       <SidebarThreadList
         group={group}
         threads={threads}
-        rowLimit={rowLimit}
         reorderable={false}
         showProject
+        pageSize={SHELF_PAGE_SIZE}
         className="px-2"
       />
-      {rowLimit < threads.length && (
-        <RevealSentinel key={rowLimit} onReveal={() => setRowLimit(rowLimit + SHELF_PAGE_SIZE)} />
-      )}
     </ScrollArea>
   )
 }

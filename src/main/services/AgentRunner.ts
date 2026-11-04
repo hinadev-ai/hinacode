@@ -50,6 +50,7 @@ import { isThreadBusy, spawnsSubagent } from "../../shared/domain.ts"
 import { previewPush } from "../../shared/compactTranscript.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { resumeGraceMs } from "../../shared/limits.ts"
+import { expandArtifactSkill } from "../agents/artifactSkills.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { handoffPrompt } from "../agents/handoff.ts"
@@ -715,7 +716,7 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         if (provider.steer === undefined) return
         yield* deltas.flush
-        yield* provider.steer(thread.id, text, attachments, priority)
+        yield* provider.steer(thread.id, expandArtifactSkill(text), attachments, priority)
         const now = yield* nowIso
         const current = turnMessages.at(-1)!
         const closed: Message = { ...current, completedAt: now }
@@ -783,7 +784,9 @@ const make = Effect.gen(function* () {
 
     const follow = (events: Stream.Stream<AgentEvent, AgentError | PersistenceError>) =>
       Stream.runForEach(events, handle).pipe(
-        Effect.catchTag("AgentError", (error) => handle({ type: "turn_failed", message: error.message })),
+        Effect.catchTag("AgentError", ({ message, loginCommand }) =>
+          handle({ type: "turn_failed", message, ...(loginCommand !== undefined && { loginCommand }) }),
+        ),
         Effect.catch((error) => Effect.logError("turn bookkeeping failed", error)),
         Effect.ensuring(finish),
       )
@@ -1091,7 +1094,7 @@ const make = Effect.gen(function* () {
             yield* checkStopped
             if (!(yield* when)) return null
             yield* threads.recordTurnBase({ threadId, tree })
-            const agentPrompt = yield* promptForSession(thread, prompt)
+            const agentPrompt = yield* promptForSession(thread, expandArtifactSkill(prompt))
             const now = yield* nowIso
             const assistant = openAssistantMessage(threadId, now)
             yield* insertMessage(userMessage(threadId, prompt, attachments, now, options.scheduledId))

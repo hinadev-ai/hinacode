@@ -21,7 +21,10 @@ import {
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
+  startTransition,
   useActionState,
+  useEffect,
+  useEffectEvent,
   useId,
   useRef,
   useState,
@@ -148,10 +151,10 @@ interface SidebarThreadListProps {
   readonly showProject?: boolean
   readonly showActivity?: boolean
   readonly flat?: boolean
-  readonly rowLimit?: number
   readonly showEmptyHint?: boolean
   readonly newThreadButtonRef?: RefObject<HTMLButtonElement | null>
   readonly className?: string
+  readonly pageSize?: number
 }
 
 export const sidebarListMotion = listMotionPausedWhile(() => useUi.getState().sidebarQuery !== "")
@@ -163,10 +166,10 @@ export function SidebarThreadList({
   showProject = false,
   showActivity = false,
   flat = false,
-  rowLimit = Number.POSITIVE_INFINITY,
   showEmptyHint = false,
   newThreadButtonRef,
   className = "",
+  pageSize = Number.POSITIVE_INFINITY,
 }: SidebarThreadListProps) {
   const firstRowRef = useRef<HTMLAnchorElement>(null)
   const focusAfterRemoval = () => firstRowRef.current ?? newThreadButtonRef?.current ?? null
@@ -174,6 +177,8 @@ export function SidebarThreadList({
   const DROP_ANIMATION_MS = 300
   const [reorderError, setReorderError] = useState<string | null>(null)
   const entries = flat ? threads.map((thread) => ({ thread, nested: false })) : nestChildren(threads)
+  const [shownCount, setShownCount] = useState(pageSize)
+  const shownEntries = entries.slice(0, shownCount)
 
   const save = async (ordered: ReadonlyArray<Thread>) => {
     const moved = ordered.flatMap((thread, index) =>
@@ -215,7 +220,7 @@ export function SidebarThreadList({
           {threads.length === 0 && showEmptyHint && (
             <li className="px-1.5 py-1 text-xs text-muted-foreground">{m.sidebar_no_threads()}</li>
           )}
-          {entries.slice(0, rowLimit).map(({ thread, nested }, index) => (
+          {shownEntries.map(({ thread, nested }, index) => (
             <ThreadRow
               key={thread.id}
               thread={thread}
@@ -231,6 +236,12 @@ export function SidebarThreadList({
           ))}
         </ul>
       </DragDropProvider>
+      {shownCount < entries.length && (
+        <NextPageSentinel
+          key={shownCount}
+          onReached={() => startTransition(() => setShownCount((count) => count + pageSize))}
+        />
+      )}
       {reorderError && (
         <p role="alert" className="px-1.5 py-1 text-xs text-destructive">
           {m.sidebar_reorder_failed({ message: reorderError })}
@@ -238,6 +249,25 @@ export function SidebarThreadList({
       )}
     </>
   )
+}
+
+const NEXT_PAGE_MARGIN = "400px"
+
+function NextPageSentinel({ onReached }: { readonly onReached: () => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const handleReached = useEffectEvent(onReached)
+  useEffect(() => {
+    if (!ref.current) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) handleReached()
+      },
+      { rootMargin: NEXT_PAGE_MARGIN, scrollMargin: NEXT_PAGE_MARGIN },
+    )
+    observer.observe(ref.current)
+    return () => observer.disconnect()
+  }, [])
+  return <div ref={ref} aria-hidden className="h-px" />
 }
 
 export interface TurnSection {

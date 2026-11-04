@@ -21,6 +21,7 @@ import type {
 export class AgentError extends Schema.TaggedError<AgentError>()("AgentError", {
   provider: Schema.String,
   message: Schema.String,
+  loginCommand: Schema.optional(Schema.String),
 }) {}
 
 export type SteerPriority = "now" | "next"

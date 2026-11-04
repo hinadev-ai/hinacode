@@ -131,6 +131,8 @@ export interface Dial {
   readonly delayMs: number
 }
 
+export const TAILSCALE_DELAY_MS = 150
+
 export const RELAY_DELAY_MS = 500
 
 export const DIRECT_CHECK_INTERVAL_MS = 60_000
@@ -139,11 +141,17 @@ export const DIRECT_CHECK_TIMEOUT_MS = 2_000
 
 export const CHALLENGE_WAIT_MS = 1_000
 
+const isTailscaleHost = (host: string) => {
+  const [first, second] = host.split(".")
+  return first === "100" && Number(second) >= 64 && Number(second) <= 127
+}
+
 export const dialPlan = (target: Omit<PairingTarget, "token">): NonEmptyReadonlyArray<Dial> => {
+  const hasLan = !target.hosts.every(isTailscaleHost)
   const direct = Arr.map(target.hosts, (host): Dial => ({
     url: remoteWebSocketUrl({ host, port: target.port }),
     route: "direct",
-    delayMs: 0,
+    delayMs: hasLan && isTailscaleHost(host) ? TAILSCALE_DELAY_MS : 0,
   }))
   return target.relay === null
     ? direct

@@ -46,6 +46,7 @@ import {
   FileSearchHit,
   AutomationTrigger,
   FsEntry,
+  DirectorySuggestion,
   FsFileContent,
   CommitDiff,
   GitCommit,
@@ -420,6 +421,7 @@ export const RpcMethods = {
   "fs.rename": rpc(Schema.Struct({ root: Schema.String, from: Schema.String, to: Schema.String }), Schema.Void),
   "fs.delete": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), Schema.Void),
   "fs.watch": rpc(Schema.Struct({ root: Schema.String, paths: Schema.Array(Schema.String) }), Schema.Void),
+  "fs.completeDirectory": rpc(Schema.Struct({ path: Schema.String }), Schema.Array(DirectorySuggestion)),
 
   "dialog.pickFolder": rpc(Schema.Void, Schema.NullOr(Schema.String)),
 
@@ -766,6 +768,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "fs.rename": "mutation",
   "fs.delete": "mutation",
   "fs.watch": "mutation",
+  "fs.completeDirectory": "read",
   "dialog.pickFolder": "mutation",
   "updates.status": "read",
   "updates.check": "mutation",
@@ -996,6 +999,7 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("automation.run"), run: AutomationRun }),
   Schema.Struct({ type: Schema.Literal("artifact.updated"), artifact: Artifact }),
   Schema.Struct({ type: Schema.Literal("artifact.removed"), id: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("artifact.opened"), threadId: Schema.String, id: Schema.String }),
   Schema.Struct({
     type: Schema.Literal("terminal.data"),
     id: Schema.String,
