@@ -101,9 +101,9 @@ beforeEach(({ task }) => {
   push({ type: "artifact.updated", artifact: documentAt(1) })
 })
 
-const openDocument = async () => {
+const openDocument = async (width?: number) => {
   await render(
-    <div style={{ height: 600, display: "flex", flexDirection: "column" }}>
+    <div style={{ width, height: 600, display: "flex", flexDirection: "column" }}>
       <ArtifactsHeader thread={thread} />
       <ArtifactsView thread={thread} />
     </div>,
@@ -285,3 +285,36 @@ test("renames the document from the panel header once, showing the new name whil
   await expect.element(renamed).toBeInTheDocument()
   expect(renames).toEqual(["Launch plan"])
 })
+
+const intersects = (a: DOMRect, b: DOMRect) =>
+  a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+
+const firstLineRects = (element: Element) => {
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+  const rects: Array<DOMRect> = []
+  for (let text = walker.nextNode(); text !== null; text = walker.nextNode()) {
+    const range = document.createRange()
+    range.selectNodeContents(text)
+    rects.push(...range.getClientRects())
+  }
+  const top = rects[0]?.top ?? 0
+  return rects.filter((rect) => Math.abs(rect.top - top) < 2)
+}
+
+for (const width of [360, 700]) {
+  test(`keeps the language picker off the first line of code in a ${width}px panel`, async () => {
+    stored = {
+      ...stored,
+      markdown:
+        '# Release plan\n\n```ts\ntype ArtifactKind = "page" | "document" | "chart" | "diagram" | "callout" | "table"\n```\n',
+    }
+    const editor = await openDocument(width)
+    const picker = page.getByRole("combobox", { name: "Code language" })
+    await expect.element(picker).toBeVisible()
+
+    const box = picker.element().getBoundingClientRect()
+    const line = firstLineRects(editor.element().querySelector("pre code")!)
+    expect(line.length).toBeGreaterThan(0)
+    expect(line.filter((rect) => intersects(rect, box))).toEqual([])
+  })
+}
