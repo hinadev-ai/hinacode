@@ -23,7 +23,7 @@ async function renderLink() {
   }
   const device = link.kind === "device"
   say("link-title", device ? "Sign in to HinaCode on " + link.name + "?" : "Link " + link.name + " to your HinaCode account?")
-  say("link-status", "Code " + code + ". Approve only a " + (device ? "device" : "machine") + " you recognise.")
+  say("link-status", "Approve only a " + (device ? "device" : "machine") + " you are setting up right now.")
   show("approve", true)
   $("approve").onclick = async () => {
     $("approve").disabled = true
@@ -31,7 +31,7 @@ async function renderLink() {
       await api("POST", "/v1/links/" + encodeURIComponent(code))
       show("approve", false)
       say("link-title", device ? link.name + " is signed in." : link.name + " is linked.")
-      say("link-status", "Return to HinaCode. It connects on its own.")
+      say("link-status", "You can close this tab. HinaCode connects on its own.")
     } catch (error) {
       $("approve").disabled = false
       say("link-status", error.message)
