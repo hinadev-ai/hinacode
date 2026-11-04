@@ -13,6 +13,7 @@ const loginShellPath = async (shell: string): Promise<string | undefined> => {
     const run = execFileAsync(shell, ["-ilc", `printf '%s' ${START}; printenv PATH; printf '%s' ${END}`], {
       encoding: "utf8",
       timeout: 5000,
+      killSignal: "SIGKILL",
     })
     // FIXME: an rc file that reads stdin holds startup until the timeout
     run.child.stdin?.end()

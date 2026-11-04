@@ -76,7 +76,9 @@ export const listOpeners: Effect.Effect<ReadonlyArray<Opener>> = Effect.promise(
 const launch = (location: string, path: string) =>
   new Promise<void>((resolve, reject) => {
     if (process.platform === "darwin") {
-      execFile("open", ["-a", location, path], (error) => (error ? reject(error) : resolve()))
+      execFile("open", ["-a", location, path], { timeout: 10_000, killSignal: "SIGKILL" }, (error) =>
+        error ? reject(error) : resolve(),
+      )
       return
     }
     const env = { ...process.env, HINACODE_INSTANCE: undefined }
