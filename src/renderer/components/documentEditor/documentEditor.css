@@ -75,8 +75,7 @@
     overflow-x: auto;
   }
 
-  & td,
-  & th {
+  & :is(td, th):not(.not-prose *) {
     position: relative;
     padding: 0.5em 0.75em;
 

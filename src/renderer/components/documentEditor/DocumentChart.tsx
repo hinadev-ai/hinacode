@@ -8,6 +8,7 @@ import { Button } from "../ui/button.tsx"
 import { chartLane } from "./chartLanes.ts"
 import { CHART_LANGUAGE } from "./CodeLanguagePicker.tsx"
 import { CodeSource } from "./CodeSource.tsx"
+import { surfaceControl } from "./surfaceControl.ts"
 
 const ChartPlot = lazy(() => import("./ChartPlot.tsx"))
 
@@ -21,12 +22,12 @@ export function ChartBlock({ node, updateAttributes }: ReactNodeViewProps) {
   const parsed = parseChart(source)
   const toggle = (next: Panel) => setPanel((current) => (current === next ? "none" : next))
   return (
-    <NodeViewWrapper data-chart className="not-prose my-5 overflow-hidden rounded-xl border border-border">
+    <NodeViewWrapper data-chart className="not-prose my-6 overflow-hidden rounded-[10px] bg-muted">
       <div contentEditable={false} data-node-control className="flex flex-col gap-3 p-4">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
             {parsed.ok && parsed.chart.spec.title !== undefined && (
-              <p data-chart-title className="text-sm font-semibold text-pretty text-foreground">
+              <p data-chart-title className="text-sm font-semibold text-balance text-foreground">
                 {parsed.chart.spec.title}
               </p>
             )}
@@ -46,7 +47,7 @@ export function ChartBlock({ node, updateAttributes }: ReactNodeViewProps) {
               <Button
                 variant="ghost"
                 size="xs"
-                className="aria-pressed:bg-muted aria-pressed:text-foreground"
+                className={surfaceControl}
                 aria-pressed={panel === "data"}
                 action={() => toggle("data")}
               >
@@ -56,7 +57,7 @@ export function ChartBlock({ node, updateAttributes }: ReactNodeViewProps) {
             <Button
               variant="ghost"
               size="xs"
-              className="aria-pressed:bg-muted aria-pressed:text-foreground"
+              className={surfaceControl}
               aria-pressed={panel === "source"}
               action={() => toggle("source")}
             >
@@ -89,7 +90,7 @@ function ChartBody({ chart }: { chart: Chart }) {
         fallback={
           <output
             aria-label={m.documents_chart_loading()}
-            className="block h-60 animate-pulse rounded-md bg-muted motion-reduce:animate-none"
+            className="block h-60 animate-pulse rounded-md bg-foreground/5 motion-reduce:animate-none"
           />
         }
       >
@@ -105,11 +106,11 @@ function ChartData({ chart }: { chart: Chart }) {
     <div
       contentEditable={false}
       data-node-control
-      className="border-t border-border transition-opacity duration-150 ease-out starting:opacity-0"
+      className="transition-opacity duration-150 ease-out starting:opacity-0"
     >
       <div className="max-h-64 overflow-auto">
         <table className="w-full text-xs tabular-nums">
-          <thead className="sticky top-0 bg-background text-muted-foreground">
+          <thead className="sticky top-0 bg-muted text-muted-foreground">
             <tr>
               <th className="px-4 py-2 text-start font-medium">{spec.x}</th>
               {spec.series.map((series) => (
@@ -121,7 +122,7 @@ function ChartData({ chart }: { chart: Chart }) {
           </thead>
           <tbody>
             {spec.rows.map((row, index) => (
-              <tr key={`${index}:${String(row[spec.x])}`} className="border-t border-border">
+              <tr key={`${index}:${String(row[spec.x])}`} className="border-t border-foreground/8">
                 <td className="px-4 py-1.5">{String(row[spec.x] ?? "")}</td>
                 {spec.series.map((series) => {
                   const value = row[series.key]
@@ -136,7 +137,7 @@ function ChartData({ chart }: { chart: Chart }) {
           </tbody>
         </table>
       </div>
-      <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
+      <p className="px-4 pt-2 pb-3 text-xs text-muted-foreground">
         {m.documents_chart_rows({ count: spec.rows.length })}
       </p>
     </div>
