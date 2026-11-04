@@ -1,7 +1,9 @@
 import { CodeBlock } from "@tiptap/extension-code-block"
-import { NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, type ReactNodeViewProps } from "@tiptap/react"
-import { CHART_LANGUAGE, CodeLanguagePicker } from "./CodeLanguagePicker.tsx"
+import { NodeViewWrapper, ReactNodeViewRenderer, type ReactNodeViewProps } from "@tiptap/react"
+import { CHART_LANGUAGE, DIAGRAM_LANGUAGE } from "./CodeLanguagePicker.tsx"
+import { CodeSource } from "./CodeSource.tsx"
 import { ChartBlock } from "./DocumentChart.tsx"
+import { DiagramBlock } from "./DocumentDiagram.tsx"
 
 export const languageOf = (attributes: Record<string, unknown>) =>
   typeof attributes["language"] === "string" ? attributes["language"] : ""
@@ -18,14 +20,10 @@ export const DocumentCodeBlock = CodeBlock.extend({
 function CodeBlockView(props: ReactNodeViewProps) {
   const language = languageOf(props.node.attrs)
   if (language === CHART_LANGUAGE) return <ChartBlock {...props} />
+  if (language === DIAGRAM_LANGUAGE) return <DiagramBlock {...props} />
   return (
-    <NodeViewWrapper className="relative">
-      <pre spellCheck={false}>
-        <NodeViewContent<"code"> as="code" className={language === "" ? undefined : `language-${language}`} />
-      </pre>
-      <div contentEditable={false} data-node-control data-print-hidden className="absolute top-1.5 right-1.5">
-        <CodeLanguagePicker language={language} onChange={(next) => props.updateAttributes({ language: next })} />
-      </div>
+    <NodeViewWrapper data-code-block>
+      <CodeSource language={language} updateAttributes={props.updateAttributes} />
     </NodeViewWrapper>
   )
 }

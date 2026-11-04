@@ -1,5 +1,8 @@
-import { type Message, type MessagePart, spawnsSubagent } from "./domain.ts"
+import { Option, Schema } from "effect"
+import { isPublishArtifactTool, isPublishDocumentTool, outputText, publishedArtifact, toolArgument } from "./agent.ts"
 import type { PushEvent, TranscriptPush } from "./contract.ts"
+import { DocumentOutline, documentOutline, shortenText } from "./documentOutline.ts"
+import { type Message, type MessagePart, spawnsSubagent } from "./domain.ts"
 import { createdTaskId, isTodoTool } from "./todos.ts"
 
 const SUMMARY_KEYS = ["command", "file_path", "path", "pattern", "url", "description"]
@@ -14,8 +17,36 @@ export function toolSummary(input: unknown): { readonly key: string; readonly li
   return null
 }
 
+const PUBLISH_TITLE_LENGTH = 200
+const PUBLISHED_LINE_LENGTH = 512
+
+function compactPublishInput(name: string, input: unknown) {
+  const title = toolArgument(input, "title")
+  const markdown = isPublishDocumentTool(name) ? toolArgument(input, "markdown") : undefined
+  return {
+    ...(typeof title === "string" && { title: shortenText(title, PUBLISH_TITLE_LENGTH) }),
+    ...(typeof markdown === "string" && { outline: documentOutline(markdown) }),
+  }
+}
+
+const decodeOutline = Schema.decodeUnknownOption(DocumentOutline)
+
+export function publishPreview(input: unknown) {
+  const title = toolArgument(input, "title")
+  return {
+    title: typeof title === "string" && title !== "" ? title : null,
+    outline: Option.getOrNull(decodeOutline(toolArgument(input, "outline"))),
+  }
+}
+
+function firstLineOfPublished(output: unknown) {
+  const text = outputText(output)
+  return publishedArtifact(text) === null ? null : text.split("\n", 1)[0]!.slice(0, PUBLISHED_LINE_LENGTH)
+}
+
 function compactInput(name: string, input: unknown) {
   if (isTodoTool(name)) return input
+  if (isPublishArtifactTool(name)) return compactPublishInput(name, input)
   const summary = toolSummary(input)
   return summary === null ? {} : { [summary.key]: summary.line }
 }
@@ -25,7 +56,9 @@ export function compactPart(part: MessagePart): MessagePart {
     case "tool_call": {
       const { output, fullOutputBytes: _fullOutputBytes, input, ...rest } = part
       const compacted = { ...rest, input: compactInput(part.name, input) }
-      return isTodoTool(part.name) ? { ...compacted, output } : compacted
+      if (isTodoTool(part.name)) return { ...compacted, output }
+      const published = isPublishArtifactTool(part.name) && part.status === "done" ? firstLineOfPublished(output) : null
+      return published === null ? compacted : { ...compacted, output: published }
     }
     case "file_change":
       return part.diff === "" ? part : { ...part, diff: "" }
@@ -52,7 +85,8 @@ export function compactPush(push: typeof PushEvent.Encoded): typeof PushEvent.En
       return { ...push, event: { ...event, input: compactInput(event.name, event.input) } }
     case "tool_call_finished": {
       const { fullOutputBytes: _fullOutputBytes, ...rest } = event
-      return { ...push, event: createdTaskId(event.output) === null ? { ...rest, output: "" } : rest }
+      if (createdTaskId(event.output) !== null) return { ...push, event: rest }
+      return { ...push, event: { ...rest, output: (!event.isError && firstLineOfPublished(event.output)) || "" } }
     }
     case "file_changed":
       return { ...push, event: { ...event, diff: "" } }

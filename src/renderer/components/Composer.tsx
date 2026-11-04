@@ -35,6 +35,7 @@ import {
   projectsAtom,
   threadCommands,
 } from "../lib/rpc.ts"
+import { artifactSkillCommands } from "../lib/artifactSkills.ts"
 import { askSidechat, sidechatCommand, sidechatQuestion } from "../lib/sidechat.ts"
 import { useIsChat } from "../lib/useIsChat.ts"
 import { m } from "../paraglide/messages.js"
@@ -132,7 +133,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
     AsyncResult.getOrElse(commandsResult, (): ReadonlyArray<AgentCommand> => []),
     thread,
   )
-  const commands = isSidechat ? agentCommands : [sidechatCommand(), ...agentCommands]
+  const commands = [...(isSidechat ? [] : [sidechatCommand()]), ...artifactSkillCommands(), ...agentCommands]
   const commandsError = AsyncResult.isFailure(commandsResult)
     ? m.composer_commands_failed({ message: errorMessage(Cause.squash(commandsResult.cause)) })
     : null
