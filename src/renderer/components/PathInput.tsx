@@ -24,12 +24,14 @@ function useDirectorySuggestions(environment: EnvironmentId, query: string): Rea
   const settled = useDebouncedValue(query, DEBOUNCE_MS)
   const result = useAtomValue(directorySuggestionsAtom(environment, settled))
   const answer = AsyncResult.isSuccess(result) ? result.value : null
-  const [last, setLast] = useState(none)
-  if (answer !== null && answer !== last) setLast(answer)
+  const [last, setLast] = useState({ environment, suggestions: none })
+  if (answer !== null && (answer !== last.suggestions || environment !== last.environment))
+    setLast({ environment, suggestions: answer })
   if (!looksLikeDirectoryPath(query)) return none
   if (settled === query && answer !== null) return answer
+  const previous = last.environment === environment ? last.suggestions : none
   const needle = query.toLowerCase()
-  return last.filter((suggestion) => suggestion.path.toLowerCase().startsWith(needle))
+  return previous.filter((suggestion) => suggestion.path.toLowerCase().startsWith(needle))
 }
 
 interface PathInputProps {
