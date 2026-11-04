@@ -1,5 +1,5 @@
 import { expect } from "@playwright/test"
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { Given, Then, When } from "../support/fixtures.ts"
 
@@ -73,4 +73,46 @@ Then(
 
 When("I click {string} in the file viewer", async ({ app }, button: string) => {
   await app.page.getByRole("button", { name: button, exact: true }).click()
+})
+
+const treeRow = (page: import("@playwright/test").Page, name: string) =>
+  fileTree(page).getByRole("treeitem", { name, exact: true })
+
+const pressOn = async (page: import("@playwright/test").Page, source: string) => {
+  await treeRow(page, source).hover()
+  await page.mouse.down()
+}
+
+// FIXME: over CDP Chromium fires dragover only on a move within the element a previous move entered, and the row's name is a child element
+const dragOver = async (page: import("@playwright/test").Page, name: string) => {
+  for (const x of [40, 44, 46, 48]) await treeRow(page, name).hover({ position: { x, y: 12 } })
+}
+
+When(
+  "I drag {string} onto {string} in the file tree and hold until it opens",
+  async ({ app }, source: string, folder: string) => {
+    await pressOn(app.page, source)
+    await dragOver(app.page, folder)
+    await expect(treeRow(app.page, folder)).toHaveAttribute("aria-expanded", "true")
+  },
+)
+
+When("I drop on {string} in the file tree", async ({ app }, folder: string) => {
+  await dragOver(app.page, folder)
+  await app.page.mouse.up()
+})
+
+When("I drag {string} onto {string} in the file tree", async ({ app }, source: string, folder: string) => {
+  await pressOn(app.page, source)
+  await dragOver(app.page, folder)
+  await app.page.mouse.up()
+})
+
+Then("the file {string} contains {string} on disk", async ({ repo }, path: string, text: string) => {
+  const file = join(repo, path)
+  await expect.poll(() => (existsSync(file) ? readFileSync(file, "utf8") : null)).toBe(`${text}\n`)
+})
+
+Then("I see the toast {string}", async ({ app }, text: string) => {
+  await expect(app.page.getByRole("region", { name: /Notifications/ })).toContainText(text)
 })

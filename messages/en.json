@@ -442,6 +442,8 @@
   "explorer_new_folder": "New folder",
   "explorer_new_file_name": "New file name",
   "explorer_new_folder_name": "New folder name",
+  "explorer_moved": "Moved {name} to {folder}.",
+  "explorer_move_unsaved": "Save your changes to {name} before moving it.",
   "explorer_rename": "Rename",
   "explorer_rename_label": "New name for {name}",
   "explorer_delete": "Delete…",
