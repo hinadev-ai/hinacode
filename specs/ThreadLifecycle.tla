@@ -31,16 +31,16 @@ Phase ==
   CASE status = "deleted" -> "deleted"
     [] status = "archived" -> "archived"
     [] status = "draft" -> "draft"
-    [] status = "running" -> "working"
     [] status = "awaiting_approval" -> "ready"
     [] snoozed -> "snoozed"
+    [] status = "running" -> "working"
     [] settled \/ Quiet -> "settled"
     [] OTHER -> "ready"
 
 \* The diagram. FlowIsLegal checks that no step leaves this set, and every edge is reached in the state graph.
 Edges ==
   { <<"draft", "working">>, <<"draft", "deleted">>,
-    <<"working", "ready">>,
+    <<"working", "ready">>, <<"working", "snoozed">>,
     <<"ready", "working">>, <<"ready", "snoozed">>, <<"ready", "settled">>, <<"ready", "archived">>, <<"ready", "deleted">>,
     <<"snoozed", "ready">>, <<"snoozed", "working">>, <<"snoozed", "settled">>, <<"snoozed", "archived">>, <<"snoozed", "deleted">>,
     <<"settled", "ready">>, <<"settled", "working">>, <<"settled", "archived">>, <<"settled", "deleted">>,
@@ -76,18 +76,18 @@ Delete ==
 
 TurnEnds ==
   /\ status = "running"
-  /\ status' = "idle" /\ seen' \in BOOLEAN
-  /\ UNCHANGED <<settled, snoozed, pinned, quiet, pr, mergeIsNewer, sweepPc, sweepSaw, keptOpen>>
+  /\ status' = "idle" /\ seen' \in BOOLEAN /\ snoozed' = FALSE
+  /\ UNCHANGED <<settled, pinned, quiet, pr, mergeIsNewer, sweepPc, sweepSaw, keptOpen>>
 
 TurnLimited ==
   /\ Busy
-  /\ status' = "limited"
-  /\ UNCHANGED <<settled, snoozed, pinned, seen, quiet, pr, mergeIsNewer, sweepPc, sweepSaw, keptOpen>>
+  /\ status' = "limited" /\ snoozed' = FALSE
+  /\ UNCHANGED <<settled, pinned, seen, quiet, pr, mergeIsNewer, sweepPc, sweepSaw, keptOpen>>
 
 AskApproval ==
   /\ status = "running"
-  /\ status' = "awaiting_approval"
-  /\ UNCHANGED <<settled, snoozed, pinned, seen, quiet, pr, mergeIsNewer, sweepPc, sweepSaw, keptOpen>>
+  /\ status' = "awaiting_approval" /\ snoozed' = FALSE
+  /\ UNCHANGED <<settled, pinned, seen, quiet, pr, mergeIsNewer, sweepPc, sweepSaw, keptOpen>>
 
 ResolveApproval ==
   /\ status = "awaiting_approval"
@@ -123,16 +123,23 @@ Unarchive ==
   /\ status' = "idle" /\ settled' = FALSE /\ snoozed' = FALSE /\ quiet' = FALSE /\ mergeIsNewer' = FALSE
   /\ UNCHANGED <<pinned, seen, pr, sweepPc, sweepSaw, keptOpen>>
 
+\* The row's Snooze stays enabled during a turn. Threads.write clears snoozed_until on the next status change.
 Snooze ==
-  /\ Phase = "ready" /\ status \in {"idle", "limited"}
+  /\ Phase \in {"ready", "working"} /\ status \in {"idle", "limited", "running"}
   /\ snoozed' = TRUE
   /\ UNCHANGED <<status, settled, pinned, seen, quiet, pr, mergeIsNewer, sweepPc, sweepSaw, keptOpen>>
 
-\* The timer or the row's wake item. lastActivity is at least snoozedUntil, so the quiet clock restarts.
+\* The timer. lastActivity becomes snoozedUntil, so the quiet clock restarts.
 Wake ==
   /\ snoozed
   /\ snoozed' = FALSE /\ quiet' = FALSE
   /\ UNCHANGED <<status, settled, pinned, seen, pr, mergeIsNewer, sweepPc, sweepSaw, keptOpen>>
+
+\* The row's Unsnooze clears the time without touching updated_at, so a quiet thread stays quiet.
+Unsnooze ==
+  /\ snoozed
+  /\ snoozed' = FALSE
+  /\ UNCHANGED <<status, settled, pinned, seen, quiet, pr, mergeIsNewer, sweepPc, sweepSaw, keptOpen>>
 
 \* Threads.write: pinning a settled thread brings it back.
 Pin ==
@@ -170,7 +177,8 @@ SweepAsks ==
   /\ UNCHANGED <<status, settled, snoozed, pinned, seen, quiet, pr, mergeIsNewer, keptOpen>>
 
 \* AutoSettle.ts settleIfDone: mergedSince and the second canAutoSettle read the row after GitHub answered.
-\* node:sqlite is synchronous, so the reads and the write are one action. Threads.settleMerged writes it.
+\* Threads.settleMerged rechecks under the worktree lock and again after removing the worktree, right before
+\* its synchronous write, so the check and the write are one action. Reopen and Pin take no lock.
 SweepDecides ==
   /\ sweepPc = "asking"
   /\ sweepPc' = "idle" /\ sweepSaw' = FALSE
@@ -183,7 +191,7 @@ Next ==
   \/ Send \/ SendToArchived \/ Delete
   \/ TurnEnds \/ TurnLimited \/ AskApproval \/ ResolveApproval \/ Read
   \/ SettleByHand \/ Reopen \/ Archive \/ Unarchive
-  \/ Snooze \/ Wake \/ Pin \/ Unpin \/ TimePasses
+  \/ Snooze \/ Wake \/ Unsnooze \/ Pin \/ Unpin \/ TimePasses
   \/ OpenPullRequest \/ Merge \/ SweepAsks \/ SweepDecides
 
 Spec == Init /\ [][Next]_vars
@@ -204,8 +212,8 @@ TypeOK ==
   /\ sweepPc \in {"idle", "asking"}
   /\ Phase \in Phases
 
-\* A running or asking agent never sits on a shelf the developer has folded away.
-BusyIsNeverParked == Busy => ~settled /\ ~snoozed
+\* A working thread is never Settled, and a question ends any snooze.
+BusyIsNeverParked == (Busy => ~settled) /\ (status = "awaiting_approval" => ~snoozed)
 
 \* A question and a usage limit stay in Ready unless the developer settled the limited thread by hand.
 QuestionsStayVisible == status = "awaiting_approval" => Phase = "ready"

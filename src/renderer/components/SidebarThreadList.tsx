@@ -447,7 +447,7 @@ function ThreadRow({
   const { archive: archiveSettings } = useSettings(environment)
   const busy = isThreadBusy(thread.status)
   const archived = thread.status === "archived"
-  const settled = group === SETTLED_GROUP
+  const settled = group === SETTLED_GROUP || thread.settledAt !== null
   const reopenable = archived || settled
   const state = useThreadRowState(thread)
   const dimmed = showProject && rowEmphasis[state] === "resting"
@@ -669,7 +669,7 @@ function ThreadRow({
                     {pinned ? m.sidebar_thread_unpin() : m.sidebar_thread_pin()}
                   </DropdownMenuItem>
                 )}
-                {!archived && (
+                {!reopenable && (
                   <DropdownMenuItem onClick={() => useUi.getState().setSnoozeThreadId(thread.id)}>
                     <SnoozeIcon aria-hidden />
                     {m.sidebar_thread_snooze()}

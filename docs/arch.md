@@ -535,6 +535,7 @@ stateDiagram-v2
   Working --> Ready: turn ends, asks, limited
   Ready --> Working: send, approve
   Ready --> Snoozed: snooze
+  Working --> Snoozed: snooze
   Snoozed --> Ready: wake
   Snoozed --> Working: send
   Ready --> Settled: settle, merge, quiet week

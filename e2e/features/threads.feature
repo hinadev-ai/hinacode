@@ -106,11 +106,11 @@ Feature: Threads
     And I open the sidebar tab "Inbox"
     And I expand the Archived threads
     Then the sidebar lists 50 threads
-    And the sidebar lists the thread "Old 1"
-    And the sidebar does not list the thread "Old 51"
+    And the sidebar lists the thread "Old 120"
+    And the sidebar does not list the thread "Old 40"
     When I scroll to the end of the sidebar
     Then the sidebar lists 100 threads
-    And the sidebar lists the thread "Old 51"
+    And the sidebar lists the thread "Old 40"
     When I scroll to the end of the sidebar
     Then the sidebar lists 120 threads
 

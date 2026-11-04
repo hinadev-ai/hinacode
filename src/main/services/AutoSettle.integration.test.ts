@@ -155,6 +155,28 @@ describe("AutoSettle", () => {
       }),
     )
 
+    for (const [name, act] of [
+      ["pin", (id: string) => Threads.use((threads) => threads.update({ id, pinned: true }))],
+      ["reopen", (id: string) => Threads.use((threads) => threads.unsettle(id))],
+    ] as const) {
+      it.effect(`does not undo a ${name} that landed while GitHub was answering`, () =>
+        Effect.gen(function* () {
+          yield* Settings.use((settings) => settings.set({ archive: { whenMerged: true, removeWorktree: false } }))
+          const title = `raced-${name}`
+          const threadId = yield* threadWithPullRequests(title, ["merged"])
+          mergedAts.set(pullRequestUrl(title), new Date(0).toISOString())
+          const hold = { asked: yield* Deferred.make<void>(), release: yield* Deferred.make<void>() }
+          held.set(pullRequestUrl(title), hold)
+          const sweep = yield* AutoSettle.use((autoSettle) => autoSettle.sweep).pipe(Effect.forkChild)
+          yield* Deferred.await(hold.asked)
+          yield* act(threadId)
+          yield* Deferred.succeed(hold.release, undefined)
+          yield* Fiber.join(sweep)
+          expect(yield* isSettled(threadId)).toBe(false)
+        }),
+      )
+    }
+
     it.effect("settles a thread whose pull request merged during its turn", () =>
       Effect.gen(function* () {
         yield* Settings.use((settings) => settings.set({ archive: { whenMerged: true, removeWorktree: false } }))

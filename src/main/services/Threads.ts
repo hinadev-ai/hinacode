@@ -180,7 +180,8 @@ export class Threads extends Context.Service<
     readonly settle: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError | ThreadBusyError>
     readonly settleMerged: (
       id: string,
-    ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeBusyError | ThreadBusyError>
+      stillDue: (thread: Thread, workStartedAt: string | null) => boolean,
+    ) => Effect.Effect<Option.Option<Thread>, PersistenceError | NotFoundError | CommandError | WorktreeBusyError>
     readonly unsettle: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly workStartedAt: (id: string) => Effect.Effect<string | null, PersistenceError>
     readonly remove: (
@@ -804,13 +805,19 @@ const make = Effect.gen(function* () {
       return yield* write(thread, { id, settled: true })
     })
 
-  const settleMerged = (id: string) =>
+  const settleMerged = (id: string, stillDue: (thread: Thread, workStartedAt: string | null) => boolean) =>
     worktrees.exclusive(
       Effect.gen(function* () {
-        const thread = yield* get(id)
-        if (isThreadBusy(thread.status)) return yield* new ThreadBusyError({ id })
-        yield* removeWorktreeIfSet(thread)
-        return yield* write(yield* get(id), { id, settled: true })
+        const isDue = Effect.gen(function* () {
+          const thread = yield* get(id)
+          return stillDue(thread, yield* workStartedAt(id)) ? Option.some(thread) : Option.none()
+        })
+        const before = yield* isDue
+        if (Option.isNone(before)) return Option.none<Thread>()
+        yield* removeWorktreeIfSet(before.value)
+        const after = yield* isDue
+        if (Option.isNone(after)) return Option.none<Thread>()
+        return Option.some(yield* write(after.value, { id, settled: true }))
       }),
     )
 

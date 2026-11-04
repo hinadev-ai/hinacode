@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Schedule } from "effect"
+import { Context, Effect, Layer, Option, Schedule } from "effect"
 import { isThreadBusy, type PullRequest, type PullRequestLink, type Thread } from "../../shared/domain.ts"
 import { Events } from "./Events.ts"
 import { GitHub } from "./GitHub.ts"
@@ -48,14 +48,16 @@ const make = Effect.gen(function* () {
       const found = yield* Effect.forEach(links, (link) => github.pullRequest(link.url), { concurrency: 4 })
       const isOwn = (pullRequest: PullRequest) =>
         branch === null || branch === pullRequest.headRefName || branch === forkPullRequestBranch(pullRequest.number)
-      const workStartedAt = yield* threads.workStartedAt(threadId)
-      const done =
+      const isDone = (workStartedAt: string | null) =>
         found.some((pullRequest) => isOwn(pullRequest) && mergedSince(pullRequest, workStartedAt)) &&
         found.every(
           (pullRequest, index) => isFinished(pullRequest) || (!isOwn(pullRequest) && links[index]!.watch === null),
         )
-      if (!done || !canAutoSettle(yield* threads.get(threadId))) return
-      yield* events.publish({ type: "thread.updated", thread: yield* threads.settleMerged(threadId) })
+      const settled = yield* threads.settleMerged(
+        threadId,
+        (latest, workStartedAt) => canAutoSettle(latest) && isDone(workStartedAt),
+      )
+      if (Option.isSome(settled)) yield* events.publish({ type: "thread.updated", thread: settled.value })
     }).pipe(Effect.catchCause((cause) => Effect.logWarning("auto settle skipped a thread", threadId, cause)))
 
   const sweep = Effect.gen(function* () {
