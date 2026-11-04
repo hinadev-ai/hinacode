@@ -73,12 +73,23 @@ Two additions, both plain GitHub Markdown, so the file still reads well on GitHu
 
 The card reads everything from the tool call's input and output, so it needs no rpc. `src/shared/documentOutline.ts` turns Markdown into an outline of blocks (headings, paragraphs, lists, tasks, tables, code, charts, diagrams, callouts) plus the opening line. The card draws the outline as a small page, with the kind, version, title and opening line beside it. A page artifact gets the same card with a page outline instead.
 
+### On the phone
+
+- **Commands.** The composer lists `/artifact:doc` and `/artifact:writing` in front of the agent's commands, from `apps/mobile/src/lib/artifact-skills.ts`, so they show while `commands.list` fails or has not answered. The server expands them as it does for the desktop.
+- **Compact preview.** The phone reads a compact transcript, so `compactInput` keeps a publish call's title and, for a document, its outline. It never keeps the Markdown or a page's files. A successful publish keeps the first line of its result, which names the id and version. A failed one keeps nothing, because a conflict's error carries the developer's whole document. A 1 MB document compacts to about 2 KB, and an older phone ignores the extra keys.
+- **Card.** The card draws the same marks as the desktop from `src/shared/documentThumbnail.ts`. Only a published document opens. A page, a running call and a call from an older server have no screen to open, so they are plain views with no chevron.
+- **Reading.** `thread/[id]/document` is read-only. It reads `artifacts.readDocument` and reads again on `artifact.updated` and after a reconnect. The thread's server answers for an artifact no server has claimed yet, such as a card's after a restart.
+- **Format.** `src/lib/document-segments.ts` splits callouts out of the Markdown into tinted views. A valid chart becomes its title, notes and a table of its rows, because the phone has no chart renderer. Mermaid stays as source, because a diagram renderer means Pele in a WebView.
+- **`auto_open`.** It does not navigate. A phone has no side panel, and pushing a screen while someone types would take over the app.
+
 ## Out of scope
 
+- Editing a document, thumbnails of a page's real content, and opening a page on the phone.
+- Drawing charts and diagrams on the phone.
+- Reference-style links defined in another segment of a document on the phone, which render as written.
 - A template picker in the Artifacts panel. Developers ask the agent for documents; an empty template is rarely what they want.
 - Live collaboration and block-level edits, see `2026-11-03-document-artifacts.md`.
 - Callouts with custom titles, which GitHub does not render.
-- Thumbnails of page artifacts.
 
 ## Verification
 
@@ -86,3 +97,5 @@ The card reads everything from the tool call's input and output, so it needs no 
 - `src/main/mcp/server.integration.test.ts`: `auto_open` publishes `artifact.opened` once, and an update without it publishes nothing.
 - `DocumentView.component.test.tsx`: callouts and mermaid blocks round-trip through Markdown.
 - The real app with `verify-hinacode` and `HINACODE_MOCK_CLAUDE=documents`: send `/artifact:doc`, see the panel open by itself, the preview card, a callout and a diagram, then reload and see that nothing reopens.
+- `src/shared/compactTranscript.test.ts`, `src/shared/documentThumbnail.test.ts` and `apps/mobile/src/lib/document-segments.test.ts`: the preview's bounds, the marks and the segments.
+- The phone's web build at 402x874 with `HINACODE_MOCK_AGENTS=documents`: list the commands, send `/artifact:doc`, open the card, publish an update from a second turn and see the open screen reload, stop the server and see the banner keep the document. Native rendering still needs a development build.
