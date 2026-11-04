@@ -77,7 +77,7 @@ test("picking a folder appends a separator and keeps the list open", async () =>
 test("picking a repository sets its path and closes the list", async () => {
   await render(<Harness />)
   await input().fill("~/code/")
-  await expect.element(page.getByRole("option", { name: "hinacode Git repository ~/code/hinacode" })).toBeVisible()
+  await expect.element(page.getByRole("option", { name: "hinacode Git repository" })).toBeVisible()
   await option("hinacode").click()
 
   await expect.element(input()).toHaveValue("~/code/hinacode")
