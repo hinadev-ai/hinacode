@@ -356,6 +356,20 @@ test("reads GitHub alerts as callouts and writes them back in GitHub's form", as
   expect(saved).toContain(CALLOUTS.replace("[!tip]", "[!TIP]"))
 })
 
+test("colors a callout's label and icon by its tone", async () => {
+  const { editor } = await savedAfterEdit(CALLOUTS)
+
+  const callouts = Array.from(editor.element().querySelectorAll("[data-callout]"))
+  const inks = callouts.map((callout) => {
+    const label = callout.querySelector("[data-callout-label]")!
+    const icon = callout.querySelector("[data-callout-icon]")!
+    expect(getComputedStyle(icon).color).toBe(getComputedStyle(label).color)
+    return getComputedStyle(label).color
+  })
+  expect(new Set(inks).size).toBe(callouts.length)
+  expect(inks).not.toContain(getComputedStyle(editor.element()).color)
+})
+
 test("keeps a plain quote, and a marker with text after it, as quotes", async () => {
   const { editor, saved } = await savedAfterEdit("> Just a quote.\n\n> [!NOTE] Not on its own line.")
 

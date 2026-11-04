@@ -131,3 +131,13 @@
     content: attr(data-placeholder);
   }
 }
+
+[data-callout-label],
+[data-callout-icon] {
+  color: color-mix(in oklab, var(--callout-tone) 72%, var(--foreground));
+}
+
+[data-callout-label]:hover,
+[data-callout-label][aria-expanded="true"] {
+  background: color-mix(in oklab, var(--callout-tone) 12%, transparent);
+}

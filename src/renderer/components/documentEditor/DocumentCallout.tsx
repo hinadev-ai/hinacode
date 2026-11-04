@@ -159,7 +159,7 @@ function TonePicker({
       <DropdownMenuTrigger
         aria-label={m.documents_callout_type({ type: TONES[tone].label() })}
         data-callout-label
-        className="-ms-1.5 flex h-6 items-center gap-1.5 rounded-md px-1.5 text-xs font-medium text-[color-mix(in_oklab,var(--callout-tone)_72%,var(--foreground))] outline-none hover:bg-[color-mix(in_oklab,var(--callout-tone)_12%,transparent)] focus-visible:ring-2 focus-visible:ring-ring/50 aria-expanded:bg-[color-mix(in_oklab,var(--callout-tone)_12%,transparent)]"
+        className="-ms-1.5 flex h-6 items-center gap-1.5 rounded-md px-1.5 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
       >
         <ToneLabel tone={tone} />
         <ChevronDownIcon
@@ -199,10 +199,7 @@ function ToneLabel({ tone }: { tone: CalloutTone }) {
   const Icon = TONES[tone].icon
   return (
     <>
-      <Icon
-        aria-hidden
-        className="size-3.5 shrink-0 text-[color-mix(in_oklab,var(--callout-tone)_72%,var(--foreground))]"
-      />
+      <Icon aria-hidden data-callout-icon className="size-3.5 shrink-0" />
       {TONES[tone].label()}
     </>
   )
