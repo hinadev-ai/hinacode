@@ -1920,6 +1920,8 @@
   "documents_code_language": "コードの言語",
   "documents_code_plain": "プレーンテキスト",
   "documents_code_chart": "グラフ",
+  "documents_code_diagram": "図",
+  "documents_diagram_invalid": "この図は描画できません：{message}",
   "documents_conflict": "編集中にエージェントがこのドキュメントを変更しました。",
   "documents_use_theirs": "エージェントの版を使う",
   "documents_keep_mine": "自分の版を残す",

@@ -113,6 +113,15 @@ graph LR
   Agent --> Store --> Editor
 \`\`\`
 
+## Flow
+
+\`\`\`mermaid
+flowchart TD
+  Agent[Agent publishes] --> Store[(document.md)]
+  Store --> Editor[Developer edits]
+  Editor -->|Ask agent| Agent
+\`\`\`
+
 \`\`\`ts
 type ArtifactKind = "page" | "document"
 \`\`\`

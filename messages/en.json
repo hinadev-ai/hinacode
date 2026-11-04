@@ -1974,6 +1974,8 @@
   "documents_code_language": "Code language",
   "documents_code_plain": "Plain text",
   "documents_code_chart": "Chart",
+  "documents_code_diagram": "Diagram",
+  "documents_diagram_invalid": "This diagram cannot be drawn: {message}",
   "documents_conflict": "The agent changed this document while you were editing.",
   "documents_use_theirs": "Use theirs",
   "documents_keep_mine": "Keep mine",

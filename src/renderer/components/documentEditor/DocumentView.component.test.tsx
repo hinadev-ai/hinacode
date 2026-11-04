@@ -385,3 +385,28 @@ test("wraps a paragraph in a callout from the toolbar, then changes its type and
   expect(saves.at(-1)?.markdown).toContain("# Release plan\n\n> Ship the **editor** first.")
   await expect.element(editor.getByRole("blockquote")).toHaveTextContent("Ship the editor first.")
 })
+
+const FLOWCHART =
+  "```mermaid\nflowchart TD\n  Agent[Agent publishes] --> Editor[Developer edits]\n  Editor --> Agent\n```"
+
+test("draws a mermaid block as a diagram and saves its fence unchanged", async () => {
+  const { editor, saved } = await savedAfterEdit(FLOWCHART)
+
+  await expect.poll(() => editor.element().querySelector("[data-diagram-svg] > svg"), { timeout: 10_000 }).not.toBeNull()
+  expect(editor.element().querySelector("[data-diagram-svg] > svg")?.textContent).toContain("Developer edits")
+  await expect.element(page.getByRole("combobox", { name: "Code language" })).not.toBeInTheDocument()
+  expect(saved).toContain(FLOWCHART)
+})
+
+test("shows the error and the source of a diagram that cannot be drawn", async () => {
+  stored = { ...stored, markdown: "# Release plan\n\n```mermaid\nflowchart TD\n  A -->\n```\n" }
+  const editor = await openDocument()
+
+  await expect
+    .poll(() => editor.element().querySelector("[role=alert]")?.textContent ?? "", { timeout: 10_000 })
+    .toMatch(/^This diagram cannot be drawn: \S/)
+  await expect.element(page.getByRole("combobox", { name: "Code language" })).toHaveTextContent("Diagram")
+  await expect.element(editor.getByRole("code")).toBeVisible()
+  expect(editor.getByRole("code").element().textContent).toBe("flowchart TD\n  A -->")
+  await expect.element(editor.getByRole("button", { name: "Source" })).toHaveAttribute("aria-pressed", "true")
+})

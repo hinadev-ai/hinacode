@@ -1966,6 +1966,8 @@
   "documents_code_language": "代码语言",
   "documents_code_plain": "纯文本",
   "documents_code_chart": "图表",
+  "documents_code_diagram": "图示",
+  "documents_diagram_invalid": "无法绘制这个图示：{message}",
   "documents_conflict": "你编辑时，智能体修改了这份文档。",
   "documents_use_theirs": "使用智能体的版本",
   "documents_keep_mine": "保留我的版本",

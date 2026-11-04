@@ -1938,6 +1938,8 @@
   "documents_code_language": "程式語言",
   "documents_code_plain": "純文字",
   "documents_code_chart": "圖表",
+  "documents_code_diagram": "圖示",
+  "documents_diagram_invalid": "無法繪製這個圖示：{message}",
   "documents_conflict": "你編輯時，代理修改了這份文件。",
   "documents_use_theirs": "使用代理的版本",
   "documents_keep_mine": "保留我的版本",

@@ -35,6 +35,9 @@ img { max-width: 100%; }
 [data-node-view-content] > div > :last-child { margin-bottom: 0; }
 [data-callout-label] { all: unset; display: flex; align-items: center; gap: 0.4em; margin-bottom: 0.3em; font-size: 0.8em; font-weight: 500; color: var(--callout-tone); }
 [data-callout-label] svg { width: 1.15em; height: 1.15em; }
+[data-diagram] { margin: 0 0 1.2em; padding: 1em; border-radius: 10px; background: var(--muted); break-inside: avoid; }
+[data-diagram] pre, [data-diagram] [hidden] { display: none; }
+[data-diagram] svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
 [data-chart] { margin: 0 0 1.2em; border-radius: 10px; background: var(--muted); overflow: hidden; break-inside: avoid; }
 [data-chart] > div:first-child { padding: 0.9em 1em; }
 [data-chart] p { margin: 0; }
