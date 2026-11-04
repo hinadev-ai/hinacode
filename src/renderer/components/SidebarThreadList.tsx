@@ -27,27 +27,38 @@ import {
   useState,
 } from "react"
 import { flushSync } from "react-dom"
+import { RiGitMergeLine } from "react-icons/ri"
 import { toast } from "sonner"
-import { isThreadBusy, type PullRequestLink, type Thread } from "../../shared/domain.ts"
+import { isThreadBusy, type PullRequestLink, type Thread, type Worktree } from "../../shared/domain.ts"
 import { type RowState, rowEmphasis, rowState, rowStatusIndicator } from "../../shared/threadStatus.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { toIcon } from "../lib/indicators.ts"
-import { formatRelativeTime } from "../lib/relativeTime.ts"
+import { formatElapsed } from "../lib/relativeTime.ts"
 import { formatSnoozeTime } from "../lib/snooze.ts"
 import { nestChildren } from "../lib/threadTree.ts"
-import { callPromise, type EnvironmentId, projectsAtom, pullRequestAttentionAtom } from "../lib/rpc.ts"
+import { pullRequestDetail, type RowDetail, rowDetail } from "../lib/rowDetail.ts"
+import {
+  callPromise,
+  currentBranchAtom,
+  type EnvironmentId,
+  projectsAtom,
+  pullRequestAttentionAtom,
+} from "../lib/rpc.ts"
 import { type Cloud, isStale, useCloud, useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
+import { cn } from "../lib/utils.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useBackgroundTasks } from "../stores/backgroundTasks.ts"
-import { useDrafts } from "../stores/drafts.ts"
+import { useActivity } from "../stores/activity.ts"
+import { hasContent, useDrafts } from "../stores/drafts.ts"
 import { usePullRequests } from "../stores/pullRequests.ts"
 import { lastActivity, useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import { listMotionPausedWhile } from "../lib/listMotion.ts"
 import { useUnseen } from "../stores/unseen.ts"
+import { ProjectIcon } from "./ProjectIcon.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { SidebarPullRequests } from "./SidebarPullRequests.tsx"
 import { ArchiveDialog, useActiveWorktree } from "./ArchiveDialog.tsx"
@@ -58,23 +69,31 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Field, FieldLabel } from "./ui/field.tsx"
 import { Input } from "./ui/input.tsx"
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle } from "./ui/popover.tsx"
-import { ProjectIcon } from "./ProjectIcon.tsx"
 import { snoozeThread } from "./SnoozeDialog.tsx"
 import {
   AlarmIcon,
   ArchiveIcon,
+  CheckIcon,
   CopyIcon,
   EyeIcon,
   EyeOffIcon,
   GripIcon,
   type IconComponent,
   MoreIcon,
+  BranchIcon,
+  CloseIcon,
   PencilIcon,
   PinIcon,
   SnoozeIcon,
   TrashIcon,
   UnarchiveIcon,
   UnpinIcon,
+  CheckCircleIcon,
+  FeedbackIcon,
+  HourglassIcon,
+  QuestionIcon,
+  WarningIcon,
+  XCircleIcon,
 } from "@hinacode/icons"
 
 type DragDropPlugins = NonNullable<ComponentProps<typeof DragDropProvider>["plugins"]>
@@ -127,6 +146,9 @@ interface SidebarThreadListProps {
   readonly threads: ReadonlyArray<Thread>
   readonly reorderable: boolean
   readonly showProject?: boolean
+  readonly showActivity?: boolean
+  readonly flat?: boolean
+  readonly rowLimit?: number
   readonly showEmptyHint?: boolean
   readonly newThreadButtonRef?: RefObject<HTMLButtonElement | null>
   readonly className?: string
@@ -139,6 +161,9 @@ export function SidebarThreadList({
   threads,
   reorderable,
   showProject = false,
+  showActivity = false,
+  flat = false,
+  rowLimit = Number.POSITIVE_INFINITY,
   showEmptyHint = false,
   newThreadButtonRef,
   className = "",
@@ -148,7 +173,7 @@ export function SidebarThreadList({
   const [listRef, setAnimate] = useAutoAnimate<HTMLUListElement>(sidebarListMotion)
   const DROP_ANIMATION_MS = 300
   const [reorderError, setReorderError] = useState<string | null>(null)
-  const entries = nestChildren(threads)
+  const entries = flat ? threads.map((thread) => ({ thread, nested: false })) : nestChildren(threads)
 
   const save = async (ordered: ReadonlyArray<Thread>) => {
     const moved = ordered.flatMap((thread, index) =>
@@ -186,11 +211,11 @@ export function SidebarThreadList({
           setTimeout(() => setAnimate(true), DROP_ANIMATION_MS)
         }}
       >
-        <ul ref={listRef} className={`flex flex-col gap-0.5 py-0.5 ${className}`}>
+        <ul ref={listRef} className={`flex flex-col gap-1 ${className}`}>
           {threads.length === 0 && showEmptyHint && (
             <li className="px-1.5 py-1 text-xs text-muted-foreground">{m.sidebar_no_threads()}</li>
           )}
-          {entries.map(({ thread, nested }, index) => (
+          {entries.slice(0, rowLimit).map(({ thread, nested }, index) => (
             <ThreadRow
               key={thread.id}
               thread={thread}
@@ -199,6 +224,7 @@ export function SidebarThreadList({
               group={group}
               reorderable={reorderable && !nested}
               showProject={showProject}
+              showActivity={showActivity}
               linkRef={index === 0 ? firstRowRef : undefined}
               focusAfterRemoval={focusAfterRemoval}
             />
@@ -214,6 +240,147 @@ export function SidebarThreadList({
   )
 }
 
+export interface TurnSection {
+  readonly key: string
+  readonly group: string
+  readonly heading: ReactNode
+  readonly headingClassName?: string
+  readonly threads: ReadonlyArray<Thread>
+  readonly flat?: boolean
+  readonly showActivity?: boolean
+  readonly empty?: ReactNode
+}
+
+export function TurnList({ sections, className }: { sections: ReadonlyArray<TurnSection>; className: string }) {
+  const firstRowRef = useRef<HTMLAnchorElement>(null)
+  const [listRef] = useAutoAnimate<HTMLUListElement>(sidebarListMotion)
+  const entriesOf = (section: TurnSection) =>
+    section.flat ? section.threads.map((thread) => ({ thread, nested: false })) : nestChildren(section.threads)
+  const firstThread = sections.flatMap((section) => entriesOf(section))[0]?.thread
+  return (
+    <DragDropProvider>
+      <ul ref={listRef} className={`flex flex-col gap-1 ${className}`}>
+        {sections.flatMap((section) => [
+          <li key={`heading-${section.key}`} className={cn("-mx-2", section.headingClassName)}>
+            {section.heading}
+          </li>,
+          ...(section.threads.length === 0 && section.empty !== undefined
+            ? [
+                <li key={`empty-${section.key}`} className="px-2.5 pb-1 text-xs text-sidebar-meta">
+                  {section.empty}
+                </li>,
+              ]
+            : []),
+          ...entriesOf(section).map(({ thread, nested }, index) => (
+            <ThreadRow
+              key={thread.id}
+              thread={thread}
+              nested={nested}
+              index={index}
+              group={section.group}
+              reorderable={false}
+              showProject
+              showActivity={section.showActivity ?? false}
+              linkRef={thread === firstThread ? firstRowRef : undefined}
+              focusAfterRemoval={() => firstRowRef.current}
+            />
+          )),
+        ])}
+      </ul>
+    </DragDropProvider>
+  )
+}
+
+export const READY_GROUP = "ready"
+export const SETTLED_GROUP = "settled"
+export const ARCHIVED_GROUP = "archived"
+
+const rowClassName =
+  "group/thread relative rounded-lg text-sidebar-title transition-colors duration-100 hover:bg-sidebar-row-hover hover:text-sidebar-foreground hover:[--sidebar-meta:var(--sidebar-meta-raised)] has-[a[data-status=active]]:bg-sidebar-row-selected has-[a[data-status=active]]:text-sidebar-foreground has-[a[data-status=active]]:[--sidebar-meta:var(--sidebar-meta-raised)] data-[dimmed=true]:not-hover:not-has-[a[data-status=active]]:text-sidebar-title-read data-[dragging=true]:bg-sidebar-row-selected data-[dragging=true]:opacity-80 data-[emphasis=working]:not-hover:not-has-[a[data-status=active]]:text-sidebar-meta data-[emphasis=working]:not-has-[a[data-status=active]]:not-hover:not-focus-within:opacity-60 data-[nested=true]:ms-3.5 data-[stale=true]:data-[emphasis=resting]:text-sidebar-meta motion-reduce:transition-none"
+const rowLinkClassName =
+  "flex items-center gap-2 rounded-lg px-2.5 pt-1.75 pb-1.5 outline-none [grid-area:1/1] group-data-[show-project=true]/thread:pt-1 after:absolute after:inset-0 after:rounded-lg focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
+const rowActionsClassName =
+  "relative mr-1.5 flex items-center gap-0.5 self-center justify-self-end rounded-md bg-sidebar-row-hover opacity-0 [grid-area:1/1] group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 group-has-[a[data-status=active]]/thread:bg-sidebar-row-selected group-data-[menu-open=true]/thread:opacity-100 before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-linear-to-l before:from-sidebar-row-hover group-has-[a[data-status=active]]/thread:before:from-sidebar-row-selected focus-within:opacity-100 has-[[data-popup-open]]:opacity-100 [@media(hover:none)]:pointer-events-none"
+
+interface DraftRowsProps {
+  readonly drafts: ReadonlyArray<{ readonly thread: Thread; readonly title: string }>
+  readonly projectNames?: ReadonlyMap<string, string>
+  readonly className: string
+}
+
+export function DraftRows({ drafts, projectNames, className }: DraftRowsProps) {
+  return (
+    <ul className={`flex flex-col gap-1 ${className}`}>
+      {drafts.map(({ thread, title }) => (
+        <DraftRow key={thread.id} thread={thread} title={title} project={projectNames?.get(thread.projectId) ?? null} />
+      ))}
+    </ul>
+  )
+}
+
+function ProjectLine({ project, projectId, trailing }: { project: string; projectId: string; trailing: ReactNode }) {
+  return (
+    <div className="flex min-w-0 items-center gap-1.5 px-2.5 pt-1.5 text-xs text-sidebar-meta">
+      <ProjectIcon projectId={projectId} letterOf={project} className="size-3.5" />
+      <span className="min-w-0 truncate" title={project}>
+        {project}
+      </span>
+      <span className="ms-auto shrink-0 ps-2">{trailing}</span>
+    </div>
+  )
+}
+
+function DraftRow({ thread, title, project }: { thread: Thread; title: string; project: string | null }) {
+  const discard = () => {
+    const discarded = useDrafts.getState().take(thread.id)
+    toast(m.sidebar_unsent_discarded(), {
+      action: { label: m.common_undo(), onClick: () => useDrafts.getState().restore(thread.id, discarded) },
+    })
+  }
+
+  return (
+    <li data-emphasis="resting" data-meta={false} data-show-project={project !== null} className={rowClassName}>
+      {project !== null && (
+        <ProjectLine
+          project={project}
+          projectId={thread.projectId}
+          trailing={<ProviderIcon provider={thread.provider} className="size-3" />}
+        />
+      )}
+      <div className="grid grid-cols-1">
+        <Link
+          to="/thread/$threadId"
+          params={{ threadId: thread.id }}
+          draggable={false}
+          aria-description={m.sidebar_thread_draft()}
+          className={rowLinkClassName}
+        >
+          <span dir="auto" className="min-w-0 flex-1 truncate text-left text-sm" title={title}>
+            {title}
+          </span>
+          {project === null && (
+            <span aria-hidden className="flex shrink-0 items-center gap-2 text-xs text-sidebar-meta">
+              {m.sidebar_thread_draft()}
+              <ProviderIcon provider={thread.provider} className="size-3" />
+            </span>
+          )}
+        </Link>
+        <div data-row-actions className={rowActionsClassName}>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={m.sidebar_unsent_discard_label({ title })}
+            title={m.sidebar_unsent_discard()}
+            onClick={discard}
+          >
+            <CloseIcon aria-hidden />
+          </Button>
+        </div>
+      </div>
+    </li>
+  )
+}
+
 type RowMode = "idle" | "renaming" | "archive" | "delete"
 
 interface ThreadRowProps {
@@ -223,6 +390,7 @@ interface ThreadRowProps {
   readonly group: string
   readonly reorderable: boolean
   readonly showProject: boolean
+  readonly showActivity: boolean
   readonly linkRef: RefObject<HTMLAnchorElement | null> | undefined
   readonly focusAfterRemoval: () => HTMLElement | null
 }
@@ -234,6 +402,7 @@ function ThreadRow({
   group,
   reorderable,
   showProject,
+  showActivity,
   linkRef,
   focusAfterRemoval,
 }: ThreadRowProps) {
@@ -248,9 +417,19 @@ function ThreadRow({
   const { archive: archiveSettings } = useSettings(environment)
   const busy = isThreadBusy(thread.status)
   const archived = thread.status === "archived"
-  const meta = useThreadMeta(thread, showProject)
-  const hasMeta = cloud !== undefined || meta.links.length > 0
+  const settled = group === SETTLED_GROUP
+  const reopenable = archived || settled
   const state = useThreadRowState(thread)
+  const dimmed = showProject && rowEmphasis[state] === "resting"
+  const meta = useThreadMeta(thread, showProject)
+  const hasMeta = meta.project !== null || cloud !== undefined || meta.links.length > 0
+  const detail = useRowDetail(thread, state, showActivity, showProject)
+  const branch = useThreadBranch(thread, worktree)
+  const drafted = useDrafts((drafts) => {
+    const draft = drafts.byThreadId[thread.id]
+    return draft !== undefined && hasContent(draft)
+  })
+  const when = drafted ? m.sidebar_thread_draft() : <ActivityTime {...meta} />
 
   const moveOut = (updated: Thread) => {
     flushSync(() => useThreads.getState().upsert(updated))
@@ -284,6 +463,25 @@ function ThreadRow({
       toast.error(m.sidebar_unarchive_failed({ message: errorMessage(cause) }))
     }
   }
+  const settle = async () => {
+    try {
+      const updated = await callPromise("threads.settle", { threadId: thread.id })
+      moveOut(updated)
+      toast(m.sidebar_thread_settled({ title: updated.title }), {
+        action: { label: m.common_undo(), onClick: () => void unsettle() },
+      })
+    } catch (cause) {
+      toast.error(m.sidebar_settle_failed({ message: errorMessage(cause) }))
+    }
+  }
+  const unsettle = async () => {
+    try {
+      moveOut(await callPromise("threads.unsettle", { threadId: thread.id }))
+    } catch (cause) {
+      toast.error(m.sidebar_unarchive_failed({ message: errorMessage(cause) }))
+    }
+  }
+  const reopen = archived ? unarchive : unsettle
   const pinned = thread.pinnedAt !== null
   const togglePin = async () => {
     try {
@@ -317,23 +515,17 @@ function ThreadRow({
       data-dragging={isDragSource}
       data-menu-open={menuOpen || mode === "delete"}
       data-emphasis={rowEmphasis[state]}
+      data-dimmed={dimmed}
+      data-show-project={meta.project !== null}
       data-archived={archived}
       data-nested={nested}
       data-stale={isStale(cloud)}
-      data-show-project={meta.project !== null}
       data-meta={hasMeta}
       onPointerEnter={(event) => scrollTitle(event.currentTarget)}
       onPointerLeave={(event) => stopTitle(event.currentTarget)}
-      className="group/thread relative rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=working]:text-muted-foreground data-[emphasis=working]:not-has-[a[data-status=active]]:not-hover:not-focus-within:opacity-60 data-[nested=true]:ms-3.5 data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
+      className={rowClassName}
     >
-      {meta.project !== null && (
-        <div className="flex min-w-0 items-center gap-1 pt-1.5 pr-2 pl-1.5 text-xs text-muted-foreground">
-          <ProjectIcon projectId={thread.projectId} className="size-3 text-current" />
-          <span className="truncate" title={meta.project}>
-            {meta.project}
-          </span>
-        </div>
-      )}
+      {meta.project !== null && <ProjectLine project={meta.project} projectId={thread.projectId} trailing={when} />}
       {mode === "renaming" ? (
         <RenameInput thread={thread} onDone={finishRename} />
       ) : (
@@ -343,16 +535,17 @@ function ThreadRow({
             to="/thread/$threadId"
             params={{ threadId: thread.id }}
             draggable={false}
+            aria-description={drafted ? m.sidebar_thread_draft() : undefined}
             onContextMenu={(event) => {
               event.preventDefault()
               setMenuOpen(true)
             }}
             data-reorderable={reorderable}
-            className="flex items-center gap-2 rounded-md pt-1.5 pr-2 pb-0.5 pl-1.5 outline-none [grid-area:1/1] group-data-[meta=false]/thread:pb-1.5 group-data-[show-project=true]/thread:pt-0.5 after:absolute after:inset-0 after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
+            className={rowLinkClassName}
           >
             <span
               dir="auto"
-              className="min-w-0 flex-1 truncate text-left text-[0.9375rem] group-hover/thread:text-clip"
+              className="min-w-0 flex-1 truncate text-left text-sm group-hover/thread:text-clip group-data-[emphasis=attention]/thread:font-medium"
               title={thread.title}
             >
               <span data-title-text className="group-hover/thread:inline-block">
@@ -360,22 +553,21 @@ function ThreadRow({
               </span>
             </span>
             <StatusIndicator state={state} />
-            <span aria-hidden className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-              <ActivityTime {...meta} />
-              <ProviderIcon provider={meta.provider} className="size-3" />
-            </span>
+            {meta.project === null && (
+              <span aria-hidden className="flex shrink-0 items-center gap-2 text-xs text-sidebar-meta">
+                <span className="min-w-8 text-end cjk:min-w-10 [&:lang(zh-CN)]:min-w-10">{when}</span>
+                <ProviderIcon provider={meta.provider} className="size-3" />
+              </span>
+            )}
           </Link>
-          <div
-            data-row-actions
-            className="relative mr-1 flex items-center gap-0.5 self-center justify-self-end rounded-md bg-sidebar-accent opacity-0 [grid-area:1/1] group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 group-data-[menu-open=true]/thread:opacity-100 before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-linear-to-l before:from-sidebar-accent focus-within:opacity-100 has-[[data-popup-open]]:opacity-100 [@media(hover:none)]:pointer-events-none"
-          >
-            {archived ? (
+          <div data-row-actions className={rowActionsClassName}>
+            {reopenable ? (
               <Button
                 variant="ghost"
                 size="icon-xs"
                 aria-label={m.sidebar_thread_unarchive_label({ title: thread.title })}
                 title={m.sidebar_thread_unarchive()}
-                action={unarchive}
+                action={reopen}
               >
                 <UnarchiveIcon aria-hidden />
               </Button>
@@ -406,12 +598,12 @@ function ThreadRow({
                 <Button
                   variant="ghost"
                   size="icon-xs"
-                  aria-label={m.sidebar_thread_archive_label({ title: thread.title })}
-                  title={m.sidebar_thread_archive()}
+                  aria-label={m.sidebar_thread_settle_label({ title: thread.title })}
+                  title={m.sidebar_thread_settle()}
                   disabled={busy}
-                  action={archive}
+                  action={settle}
                 >
-                  <ArchiveIcon aria-hidden className="size-4" />
+                  <CheckIcon aria-hidden className="size-4" />
                 </Button>
               </>
             )}
@@ -478,12 +670,18 @@ function ThreadRow({
                   <CopyIcon aria-hidden />
                   {m.sidebar_thread_copy_id()}
                 </DropdownMenuItem>
-                {archived ? (
-                  <DropdownMenuItem onClick={() => void unarchive()}>
+                {reopenable ? (
+                  <DropdownMenuItem onClick={() => void reopen()}>
                     <UnarchiveIcon aria-hidden />
                     {m.sidebar_thread_unarchive()}
                   </DropdownMenuItem>
                 ) : (
+                  <DropdownMenuItem disabled={busy} onClick={() => void settle()}>
+                    <CheckIcon aria-hidden />
+                    {m.sidebar_thread_settle()}
+                  </DropdownMenuItem>
+                )}
+                {!archived && (
                   <DropdownMenuItem disabled={busy} onClick={() => void archive()}>
                     <ArchiveIcon aria-hidden />
                     {m.sidebar_thread_archive()}
@@ -498,7 +696,16 @@ function ThreadRow({
           </div>
         </div>
       )}
-      {hasMeta && <ThreadMeta links={meta.links} threadId={thread.id} cloud={cloud} environment={environment} />}
+      {hasMeta && (
+        <ThreadMeta
+          links={meta.links}
+          threadId={thread.id}
+          cloud={cloud}
+          environment={environment}
+          detail={detail}
+          ledger={meta.project === null ? null : { provider: meta.provider, branch }}
+        />
+      )}
       <DeleteThreadPopover
         thread={thread}
         cloud={cloud}
@@ -551,7 +758,7 @@ function RenameInput({ thread, onDone }: { thread: Thread; onDone: () => void })
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2 pt-1.5 pr-2 pb-0.5 pl-1.5 group-data-[show-project=true]/thread:pt-0.5">
+      <div className="flex items-center gap-2 px-2.5 pt-1.75 pb-1.5 group-data-[show-project=true]/thread:pt-1">
         <span className="flex min-w-0 flex-1 flex-col">
           <Input
             ref={focusOnMount}
@@ -663,34 +870,69 @@ const statusIcons: Partial<Record<RowState, { label: () => string; Icon: IconCom
   background: { label: m.thread_status_background, ...toIcon(rowStatusIndicator.background) },
   awaiting_approval: {
     label: m.thread_status_awaiting_approval,
-    Icon: awaiting.Icon,
+    Icon: QuestionIcon,
     className: `${awaiting.className} after:absolute after:inset-0.5 after:animate-attention after:rounded-full after:border after:border-current after:[animation-fill-mode:forwards] motion-reduce:after:hidden`,
   },
-  limited: { label: m.thread_status_limited, ...toIcon(rowStatusIndicator.limited) },
-  unseen_completed: { label: m.thread_status_unseen_completed, ...toIcon(rowStatusIndicator.unseen_completed) },
-  unseen_failed: { label: m.thread_status_unseen_failed, ...toIcon(rowStatusIndicator.unseen_failed) },
-  pr_conflicting: { label: m.thread_status_pr_conflicting, ...toIcon(rowStatusIndicator.pr_conflicting) },
-  pr_checksFailing: { label: m.thread_status_pr_checks_failing, ...toIcon(rowStatusIndicator.pr_checksFailing) },
+  limited: { label: m.thread_status_limited, ...toIcon(rowStatusIndicator.limited), Icon: HourglassIcon },
+  unseen_completed: {
+    label: m.thread_status_unseen_completed,
+    ...toIcon(rowStatusIndicator.unseen_completed),
+    Icon: CheckCircleIcon,
+  },
+  unseen_failed: {
+    label: m.thread_status_unseen_failed,
+    ...toIcon(rowStatusIndicator.unseen_failed),
+    Icon: WarningIcon,
+  },
+  pr_conflicting: {
+    label: m.thread_status_pr_conflicting,
+    ...toIcon(rowStatusIndicator.pr_conflicting),
+    Icon: RiGitMergeLine,
+  },
+  pr_checksFailing: {
+    label: m.thread_status_pr_checks_failing,
+    ...toIcon(rowStatusIndicator.pr_checksFailing),
+    Icon: XCircleIcon,
+  },
   pr_changesRequested: {
     label: m.thread_status_pr_changes_requested,
     ...toIcon(rowStatusIndicator.pr_changesRequested),
+    Icon: FeedbackIcon,
   },
 }
 
-export function useThreadRowState(thread: Thread): RowState {
+const usePullRequestAttention = (thread: Thread) => {
   const environment = useThreadEnvironment(thread.id)
   const links = usePullRequests((state) => state.byThreadId[thread.id]) ?? noLinks
+  return useAtomValue(
+    pullRequestAttentionAtom(
+      environment,
+      links.map((link) => link.url),
+    ),
+  )
+}
+
+export function useThreadRowState(thread: Thread): RowState {
   return rowState(
     thread.status,
     useBackgroundTasks((state) => (state.byThreadId[thread.id]?.length ?? 0) > 0),
     useUnseen((unseen) => unseen.byThreadId[thread.id]),
-    useAtomValue(
-      pullRequestAttentionAtom(
-        environment,
-        links.map((link) => link.url),
-      ),
-    ),
+    usePullRequestAttention(thread),
   )
+}
+
+const useRowDetail = (thread: Thread, state: RowState, showActivity: boolean, inLedger: boolean) => {
+  const attention = usePullRequestAttention(thread)
+  const line = useActivity((activity) => activity.byThreadId[thread.id])
+  const now = useNow()
+  if (!inLedger) return pullRequestDetail(attention)
+  return rowDetail({ state, line, limit: thread.usageLimit, attention, showActivity, now, locale: getLocale() })
+}
+
+const useThreadBranch = (thread: Thread, worktree: Worktree | undefined) => {
+  const root = AsyncResult.getOrElse(useAtomValue(currentBranchAtom(thread.projectId)), () => "")
+  const worksInRoot = thread.worktreeId === null && thread.status !== "archived"
+  return worksInRoot ? root : (worktree?.branch ?? "")
 }
 
 export function StatusIndicator({ state }: { state: RowState }): ReactNode {
@@ -731,21 +973,50 @@ function ThreadMeta({
   threadId,
   cloud,
   environment,
+  detail,
+  ledger,
 }: {
   links: ReadonlyArray<PullRequestLink>
   threadId: string
   cloud: Cloud | undefined
   environment: EnvironmentId
+  detail: RowDetail | null
+  ledger: { readonly provider: Thread["provider"]; readonly branch: string } | null
 }) {
   const watching = links.some((link) => link.watch !== null)
   return (
-    <div className="flex min-w-0 items-center gap-2 pr-2 pb-1.5 pl-1.5 text-xs text-muted-foreground">
-      {cloud && <CloudMark cloud={cloud} className="size-3" />}
+    <div className="flex min-h-5.75 min-w-0 items-center gap-2 px-2.5 pb-1.5 text-xs text-sidebar-meta">
+      {cloud && ledger === null && <CloudMark cloud={cloud} className="size-3" />}
       {links.length > 0 && <SidebarPullRequests threadId={threadId} links={links} environment={environment} />}
       {watching && (
         <span title={m.sidebar_watching()} className="flex shrink-0">
           <EyeIcon aria-hidden className="size-3" />
           <span className="sr-only">{m.sidebar_watching()}</span>
+        </span>
+      )}
+      {detail ? (
+        <span title={detail.text} className={cn("min-w-0 truncate", detail.code && "font-mono")}>
+          {detail.text}
+        </span>
+      ) : (
+        ledger &&
+        links.length === 0 &&
+        ledger.branch !== "" && (
+          <span title={ledger.branch} className="flex min-w-0 items-center gap-1.5">
+            <BranchIcon aria-hidden className="size-3.5 shrink-0" />
+            <span className="truncate">{ledger.branch}</span>
+          </span>
+        )
+      )}
+      {ledger && (
+        <span className="ms-auto flex min-w-0 shrink-0 items-center gap-2 ps-2">
+          {cloud && (
+            <span className="flex max-w-20 min-w-0 items-center gap-1" title={cloud.name}>
+              <CloudMark cloud={cloud} className="size-3" />
+              <span className="truncate">{cloud.name}</span>
+            </span>
+          )}
+          <ProviderIcon provider={ledger.provider} className="size-3" />
         </span>
       )}
     </div>
@@ -798,7 +1069,7 @@ function LastActive({ updatedAt }: { updatedAt: string }) {
       title={new Date(updatedAt).toLocaleString(locale, { dateStyle: "long", timeStyle: "short" })}
       className="tabular-nums"
     >
-      {formatRelativeTime(updatedAt, now, locale)}
+      {formatElapsed(updatedAt, now, locale)}
     </time>
   )
 }

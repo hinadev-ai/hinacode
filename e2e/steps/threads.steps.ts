@@ -27,6 +27,20 @@ Then("the sidebar does not list the open draft", async ({ app }) => {
   await expect(sidebar(app.page).getByRole("link", { name: draft?.title ?? "", exact: true })).toHaveCount(0)
 })
 
+Then("the sidebar lists the unsent thread {string}", async ({ app }, title: string) => {
+  await expect(sidebar(app.page).getByRole("link", { name: title, exact: true })).toHaveAccessibleDescription("Draft")
+})
+
+When("I discard the unsent thread {string}", async ({ app }, title: string) => {
+  await sidebar(app.page)
+    .getByRole("button", { name: `Discard ${title}`, exact: true })
+    .click()
+})
+
+Then("the thread {string} is marked as unsent", async ({ app, names }, title: string) => {
+  await expect(sidebar(app.page).getByRole("link", { name: names.of(title) })).toHaveAccessibleDescription("Draft")
+})
+
 When("I type {string} into the composer", async ({ app }, text: string) => {
   await composer(app.page).pressSequentially(text)
 })
@@ -79,8 +93,8 @@ When("I scroll the sidebar to the thread {string}", async ({ app, names }, title
     .scrollIntoViewIfNeeded()
 })
 
-When("I archive the thread {string} from its row", async ({ app, names }, title: string) => {
-  await clickRowButton(sidebar(app.page), `Archive ${names.of(title)}`)
+When("I settle the thread {string} from its row", async ({ app, names }, title: string) => {
+  await clickRowButton(sidebar(app.page), `Settle ${names.of(title)}`)
 })
 
 Then("the thread {string} is in view in the sidebar", async ({ app, names }, title: string) => {
@@ -92,12 +106,18 @@ When("I open the sidebar tab {string}", async ({ app }, tab: string) => {
   await expect(openTab(app.page)).toHaveCount(1)
 })
 
+When("I expand the {word} threads", async ({ app }, shelf: string) => {
+  await sidebar(app.page)
+    .getByRole("button", { name: new RegExp(`^${shelf}`) })
+    .click()
+})
+
 When("I undo from the toast", async ({ app }) => {
   await app.page.getByRole("button", { name: "Undo", exact: true }).click()
 })
 
 When("I unarchive the thread {string}", async ({ app, names }, title: string) => {
-  await clickRowButton(sidebar(app.page), `Unarchive ${names.of(title)}`)
+  await clickRowButton(sidebar(app.page), `Reopen ${names.of(title)}`)
 })
 
 const sidebarFilter = (page: Page) => sidebar(page).getByRole("searchbox", { name: "Filter threads and projects" })

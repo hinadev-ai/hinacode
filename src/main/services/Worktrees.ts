@@ -171,8 +171,13 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
   })
   const findUsers = SqlSchema.findAll({
     Request: Schema.String,
-    Result: Schema.Struct({ id: Schema.String, status: ThreadStatus, sideOf: Schema.NullOr(Schema.String) }),
-    execute: (worktreeId) => sql`SELECT id, status, side_of FROM thread WHERE worktree_id = ${worktreeId}`,
+    Result: Schema.Struct({
+      id: Schema.String,
+      status: ThreadStatus,
+      sideOf: Schema.NullOr(Schema.String),
+      settledAt: Schema.NullOr(Schema.String),
+    }),
+    execute: (worktreeId) => sql`SELECT id, status, side_of, settled_at FROM thread WHERE worktree_id = ${worktreeId}`,
   })
 
   yield* sql`
@@ -444,7 +449,8 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
         return yield* new WorktreeBusyError({ path: worktree.path, reason: "turn" })
       }
       const othersOpen = users.some(
-        (thread) => thread.id !== owner && thread.sideOf !== owner && thread.status !== "archived",
+        (thread) =>
+          thread.id !== owner && thread.sideOf !== owner && thread.status !== "archived" && thread.settledAt === null,
       )
       if (owner !== undefined && othersOpen) {
         return yield* new WorktreeBusyError({ path: worktree.path, reason: "shared" })

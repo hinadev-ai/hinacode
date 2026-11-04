@@ -99,12 +99,29 @@ export interface UpdateThread {
   readonly sortIndex?: number | undefined
   readonly pinned?: boolean | undefined
   readonly snoozedUntil?: string | null | undefined
+  readonly settled?: boolean | undefined
   readonly providerSessionId?: string | undefined
   readonly queue?: ReadonlyArray<QueuedMessage> | undefined
   readonly scheduled?: ReadonlyArray<ScheduledMessage> | undefined
 }
 
-const arranging = new Set(["id", "sortIndex", "pinned", "snoozedUntil"])
+const arranging = new Set([
+  "id",
+  "sortIndex",
+  "pinned",
+  "snoozedUntil",
+  "settled",
+  "provider",
+  "accountId",
+  "model",
+  "effort",
+  "fastMode",
+  "userSkills",
+  "accessMode",
+])
+
+const startsWork = (from: ThreadStatus, to: ThreadStatus) =>
+  ((from === "idle" || from === "limited") && to === "running") || (from === "archived" && to !== "archived")
 
 const onlyArranges = (input: UpdateThread) =>
   Object.entries(input).every(([key, value]) => arranging.has(key) || value === undefined)
@@ -160,6 +177,12 @@ export class Threads extends Context.Service<
       id: string,
     ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeBusyError | ThreadBusyError>
     readonly unarchive: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
+    readonly settle: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError | ThreadBusyError>
+    readonly settleMerged: (
+      id: string,
+    ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeBusyError | ThreadBusyError>
+    readonly unsettle: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
+    readonly workStartedAt: (id: string) => Effect.Effect<string | null, PersistenceError>
     readonly remove: (
       id: string,
       options?: { readonly removeWorktree?: boolean | undefined },
@@ -319,6 +342,7 @@ const make = Effect.gen(function* () {
         sortIndex: next,
         pinnedAt: null,
         snoozedUntil: null,
+        settledAt: null,
         queue: [],
         scheduled: [],
         createdBy,
@@ -407,6 +431,7 @@ const make = Effect.gen(function* () {
         sortIndex: next,
         pinnedAt: null,
         snoozedUntil: null,
+        settledAt: null,
         queue: [],
         scheduled: [],
         createdBy: "user",
@@ -451,6 +476,7 @@ const make = Effect.gen(function* () {
         usageLimit: null,
         pinnedAt: null,
         snoozedUntil: null,
+        settledAt: null,
         queue: [],
         scheduled: [],
         createdBy: "user",
@@ -521,6 +547,8 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const now = yield* nowIso
       const arranges = onlyArranges(input)
+      const settling = input.settled === true
+      const reopening = input.settled === false
       const next: Thread = {
         ...current,
         title: input.title ?? current.title,
@@ -539,8 +567,27 @@ const make = Effect.gen(function* () {
               ? current.usageLimit
               : input.usageLimit,
         sortIndex: input.sortIndex ?? current.sortIndex,
-        pinnedAt: input.pinned === undefined ? current.pinnedAt : input.pinned ? (current.pinnedAt ?? now) : null,
-        snoozedUntil: input.snoozedUntil !== undefined ? input.snoozedUntil : arranges ? current.snoozedUntil : null,
+        pinnedAt: settling
+          ? null
+          : input.pinned === undefined
+            ? current.pinnedAt
+            : input.pinned
+              ? (current.pinnedAt ?? now)
+              : null,
+        snoozedUntil: settling
+          ? null
+          : input.snoozedUntil !== undefined
+            ? input.snoozedUntil
+            : arranges
+              ? current.snoozedUntil
+              : null,
+        settledAt: settling
+          ? now
+          : reopening ||
+              input.pinned === true ||
+              (input.status !== undefined && startsWork(current.status, input.status))
+            ? null
+            : current.settledAt,
         providerSessionId:
           input.provider !== undefined && input.provider !== current.provider
             ? null
@@ -551,20 +598,25 @@ const make = Effect.gen(function* () {
             : current.forkedFrom,
         queue: input.queue ?? current.queue,
         scheduled: input.scheduled ?? current.scheduled,
-        updatedAt: arranges ? current.updatedAt : now,
+        updatedAt: arranges && !reopening ? current.updatedAt : now,
       }
       yield* sql`
         UPDATE thread
         SET title = ${next.title}, provider = ${next.provider}, account_id = ${next.accountId}, model = ${next.model},
             effort = ${next.effort}, fast_mode = ${next.fastMode ? 1 : 0}, user_skills = ${next.userSkills ? 1 : 0},
             access_mode = ${next.accessMode}, status = ${next.status},
-            sort_index = ${next.sortIndex}, pinned_at = ${next.pinnedAt}, snoozed_until = ${next.snoozedUntil},
+            sort_index = ${next.sortIndex}, pinned_at = ${next.pinnedAt}, snoozed_until = ${next.snoozedUntil}, settled_at = ${next.settledAt},
             provider_session_id = ${next.providerSessionId},
             forked_from = ${next.forkedFrom === null ? null : JSON.stringify(next.forkedFrom)},
             updated_at = ${next.updatedAt}, usage_limit = ${next.usageLimit === null ? null : JSON.stringify(next.usageLimit)},
             queue = ${JSON.stringify(next.queue)}, scheduled = ${JSON.stringify(next.scheduled)}
         WHERE id = ${next.id}
       `.pipe(Effect.mapError(persistence("threads.update")))
+      if (startsWork(current.status, next.status) || reopening) {
+        yield* sql`UPDATE thread SET work_started_at = ${now} WHERE id = ${next.id}`.pipe(
+          Effect.mapError(persistence("threads.update")),
+        )
+      }
       yield* PubSub.publish(written, next)
       return next
     })
@@ -709,19 +761,23 @@ const make = Effect.gen(function* () {
   const removeOwnWorktree = (thread: Thread) =>
     thread.worktreeId ? worktrees.remove(thread.worktreeId, "ifMerged", thread.id) : Effect.void
 
+  const removeWorktreeIfSet = (thread: Thread) =>
+    Effect.gen(function* () {
+      if (!(yield* settings.get).archive.removeWorktree || !thread.worktreeId) return
+      yield* worktrees.removeWhileExclusive(thread.worktreeId, "ifMerged", thread.id).pipe(
+        Effect.catchIf(
+          (error) => error._tag === "WorktreeBusyError" && error.reason === "shared",
+          () => Effect.void,
+        ),
+      )
+    })
+
   const archive = (id: string) =>
     worktrees.exclusive(
       Effect.gen(function* () {
         const thread = yield* get(id)
         if (isThreadBusy(thread.status)) return yield* new ThreadBusyError({ id })
-        if ((yield* settings.get).archive.removeWorktree && thread.worktreeId) {
-          yield* worktrees.removeWhileExclusive(thread.worktreeId, "ifMerged", id).pipe(
-            Effect.catchIf(
-              (error) => error._tag === "WorktreeBusyError" && error.reason === "shared",
-              () => Effect.void,
-            ),
-          )
-        }
+        yield* removeWorktreeIfSet(thread)
         yield* terminals.closeThread(id)
         yield* sql`
           UPDATE thread SET status = 'archived', usage_limit = NULL, updated_at = ${yield* nowIso} WHERE id = ${id}
@@ -739,6 +795,35 @@ const make = Effect.gen(function* () {
       yield* syncChatFolder(thread, true)
       return yield* write(thread, { id, status: "idle" })
     })
+
+  const settle = (id: string) =>
+    Effect.gen(function* () {
+      const thread = yield* get(id)
+      if (isThreadBusy(thread.status)) return yield* new ThreadBusyError({ id })
+      if (thread.status === "archived") return thread
+      return yield* write(thread, { id, settled: true })
+    })
+
+  const settleMerged = (id: string) =>
+    worktrees.exclusive(
+      Effect.gen(function* () {
+        const thread = yield* get(id)
+        if (isThreadBusy(thread.status)) return yield* new ThreadBusyError({ id })
+        yield* removeWorktreeIfSet(thread)
+        return yield* write(yield* get(id), { id, settled: true })
+      }),
+    )
+
+  const unsettle = (id: string) =>
+    Effect.gen(function* () {
+      return yield* write(yield* get(id), { id, settled: false })
+    })
+
+  const workStartedAt = (id: string) =>
+    sql<{ readonly startedAt: string | null }>`SELECT work_started_at AS startedAt FROM thread WHERE id = ${id}`.pipe(
+      Effect.map((rows) => rows[0]?.startedAt ?? null),
+      Effect.mapError(persistence("threads.workStartedAt")),
+    )
 
   const remove = (id: string, options?: { readonly removeWorktree?: boolean | undefined }) =>
     Effect.gen(function* () {
@@ -770,6 +855,10 @@ const make = Effect.gen(function* () {
     recordTurnBase,
     archive,
     unarchive,
+    settle,
+    settleMerged,
+    unsettle,
+    workStartedAt,
     remove,
     resetInterrupted: sql`
       UPDATE thread SET status = 'idle' WHERE status IN ('running', 'awaiting_approval')

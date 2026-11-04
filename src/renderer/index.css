@@ -178,6 +178,14 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-artifact-title: var(--artifact-title);
+  --color-chat-foreground: var(--chat-foreground);
+  --color-ignored-foreground: var(--ignored-foreground);
+  --color-sidebar-title: var(--sidebar-title);
+  --color-sidebar-meta: var(--sidebar-meta);
+  --color-sidebar-title-read: var(--sidebar-title-read);
+  --color-sidebar-row-hover: var(--sidebar-row-hover);
+  --color-sidebar-row-selected: var(--sidebar-row-selected);
   --color-sidebar: var(--sidebar);
   --color-ring: var(--ring);
   --color-input: var(--input);
@@ -377,8 +385,22 @@
   --popover-foreground: var(--foreground);
   --secondary-foreground: var(--foreground);
   --accent-foreground: var(--foreground);
+  --artifact-title: color-mix(in oklab, var(--foreground), var(--contrast-ink) calc((1 - var(--contrast-lower)) * 15%));
+  --chat-ink: 32%;
+  --chat-foreground: color-mix(
+    in oklab,
+    var(--foreground),
+    var(--contrast-ink) calc((1 - var(--contrast-lower)) * var(--chat-ink))
+  );
+  --ignored-foreground: color-mix(in oklab, var(--foreground) 35%, var(--muted-foreground));
   --sidebar-foreground: var(--foreground);
   --sidebar-accent-foreground: var(--foreground);
+  --sidebar-title: var(--sidebar-foreground);
+  --sidebar-meta: var(--muted-foreground);
+  --sidebar-meta-raised: var(--muted-foreground);
+  --sidebar-title-read: color-mix(in oklab, var(--sidebar-title) 60%, var(--sidebar-meta));
+  --sidebar-row-hover: color-mix(in oklab, var(--sidebar-foreground) 4%, var(--sidebar));
+  --sidebar-row-selected: color-mix(in oklab, var(--sidebar-foreground) 7%, var(--sidebar));
   /* OpenAI's and opencode's marks are monochrome. */
   --provider-codex: var(--foreground);
   --provider-opencode: var(--foreground);
@@ -584,7 +606,56 @@
   --destructive: oklch(0.52 0.19 18);
 }
 
+/* A list of short titles reads thinner than prose in the same ink, so light sidebars deepen it. Lower contrast undoes this. */
+:root:not(.dark, [data-theme]),
+[data-theme="light"],
+[data-theme="hina-light"],
+[data-theme="catppuccin-latte"],
+[data-theme="github-light"],
+[data-theme="pinky"] {
+  --sidebar-foreground: color-mix(
+    in oklab,
+    var(--foreground),
+    var(--contrast-ink) calc((1 - var(--contrast-lower)) * 40%)
+  );
+  --sidebar-meta-raised: color-mix(
+    in oklab,
+    var(--muted-foreground),
+    var(--contrast-ink) calc((1 - var(--contrast-lower)) * 15%)
+  );
+  --chat-foreground: var(--sidebar-foreground);
+}
+
+.dark:not([data-theme]) {
+  --chat-ink: 0%;
+}
+
+/* These sidebars sit below the chat background, so chat ink has to climb further to stay above the title. */
+[data-theme="gruvbox-dark"],
+[data-theme="github-dark"] {
+  --chat-ink: 55%;
+}
+
+/* Even white chat text cannot clear a full-strength title on these sidebars. */
+[data-theme="dracula"],
+[data-theme="material-theme"] {
+  --chat-ink: 60%;
+  --sidebar-title: color-mix(in oklab, var(--sidebar-foreground) 96%, var(--sidebar));
+}
+
+[data-theme="hina-light"] {
+  --sidebar-title: color-mix(in oklab, var(--sidebar-foreground) 90%, var(--sidebar));
+  --sidebar-meta: color-mix(in oklab, var(--muted-foreground) 87%, var(--sidebar));
+  --sidebar-title-read: color-mix(in oklab, var(--sidebar-title) 2%, var(--sidebar-meta));
+  --sidebar-row-hover: color-mix(in oklab, var(--sidebar-foreground) 5%, var(--sidebar));
+}
+
 [data-theme="hina-dark"] {
+  /* Even white chat text cannot clear a full-strength title on this sidebar. A hovered or open row steps back up. */
+  --chat-ink: 73%;
+  --sidebar-title: color-mix(in oklab, var(--sidebar-foreground) 95%, var(--sidebar));
+  --sidebar-meta: color-mix(in oklab, var(--muted-foreground) 84%, var(--sidebar));
+  --sidebar-row-selected: color-mix(in oklab, var(--sidebar-foreground) 11%, var(--sidebar));
   --background: oklch(0.32 0.026 195.945);
   --palette-foreground: oklch(0.975 0.007 106.521);
   --surface: oklch(0.285 0.024 196);
@@ -667,29 +738,21 @@
    * shifts with their contents, so winning on order alone is not reliable.
    */
   &.prose {
-    /*
-     * Body text a shade under bold. Any contrast setting closes the gap: higher contrast reaches full ink, and lower
-     * contrast already moved --foreground toward muted text, so fading it further would drop below 4.5:1.
-     */
-    --tw-prose-body: color-mix(
-      in oklab,
-      var(--foreground) calc(90% + (var(--contrast-higher) + var(--contrast-lower)) * 10%),
-      transparent
-    );
-    --tw-prose-headings: var(--foreground);
+    --tw-prose-body: var(--chat-foreground);
+    --tw-prose-headings: var(--chat-foreground);
     --tw-prose-lead: var(--muted-foreground);
     --tw-prose-links: var(--primary);
-    --tw-prose-bold: var(--foreground);
+    --tw-prose-bold: var(--chat-foreground);
     --tw-prose-counters: var(--muted-foreground);
     --tw-prose-bullets: var(--primary);
     --tw-prose-hr: var(--color-border);
-    --tw-prose-quotes: var(--foreground);
+    --tw-prose-quotes: var(--chat-foreground);
     --tw-prose-quote-borders: var(--primary);
     --tw-prose-captions: var(--muted-foreground);
     --tw-prose-kbd: var(--foreground);
     --tw-prose-kbd-shadows: color-mix(in oklab, var(--foreground) 10%, transparent);
-    --tw-prose-code: var(--foreground);
-    --tw-prose-pre-code: var(--foreground);
+    --tw-prose-code: var(--chat-foreground);
+    --tw-prose-pre-code: var(--chat-foreground);
     --tw-prose-pre-bg: var(--muted);
     --tw-prose-th-borders: var(--color-border);
     --tw-prose-td-borders: var(--color-border);
@@ -699,7 +762,7 @@
     }
 
     & :where(code):not(:where(pre code)) {
-      @apply rounded-[0.25em] bg-foreground/10 px-[0.35em] py-[0.1em] text-[0.85em] font-normal text-foreground box-decoration-clone wrap-anywhere;
+      @apply rounded-[0.25em] bg-foreground/10 px-[0.35em] py-[0.1em] text-[0.85em] font-normal text-chat-foreground box-decoration-clone wrap-anywhere;
     }
 
     & :where(code):not(:where(pre code))::before,
@@ -817,24 +880,24 @@
   }
 }
 
-/* A bright band sweeps across muted text. Unlike a pulse, the text never drops below its resting contrast. The band
-   layer is four times the text wide, so the band crosses the text in a third of each cycle and rests off it for the
-   rest. */
+/* A bright band sweeps across muted text. Unlike a pulse, the text never drops below its resting contrast. ::before
+   repeats the text from data-text and clips the band to its glyphs, so ShimmerText keeps the two in step. The band is
+   four times the text wide, so it crosses the text in a third of each cycle and rests off it for the rest. */
 @utility text-shimmer {
   position: relative;
-  overflow: clip;
+  width: fit-content;
   color: var(--muted-foreground);
-  -webkit-mask-image: linear-gradient(#000, #000);
-  -webkit-mask-clip: text;
 
   &::before {
-    content: "";
+    content: attr(data-text) / "";
     position: absolute;
-    inset-block: 0;
-    left: 0;
-    width: 400%;
+    inset: 0;
     pointer-events: none;
-    background: linear-gradient(90deg, transparent 40%, var(--foreground) 50%, transparent 60%);
+    background-image: linear-gradient(90deg, transparent 40%, var(--foreground) 50%, transparent 60%);
+    background-size: 400% 100%;
+    background-repeat: no-repeat;
+    background-clip: text;
+    color: transparent;
     animation: text-shimmer 2s linear infinite;
 
     @media (prefers-reduced-motion: reduce) {
@@ -845,7 +908,10 @@
 
 @keyframes text-shimmer {
   from {
-    translate: -75% 0;
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
   }
 }
 
@@ -908,6 +974,24 @@
   );
   animation: scroll-fade-y linear both;
   animation-timeline: scroll(self);
+}
+
+@utility reveal-when-slow {
+  animation: reveal-when-slow 160ms var(--ease-out) 3s both;
+  @media (prefers-reduced-motion: reduce) {
+    animation-duration: 1ms;
+  }
+}
+
+@keyframes reveal-when-slow {
+  from {
+    opacity: 0;
+    visibility: hidden;
+  }
+  to {
+    opacity: 1;
+    visibility: visible;
+  }
 }
 
 /* The activity tray sits under the composer bar so its blur never picks up the bar's fill.

@@ -59,9 +59,11 @@ function SidechatTranscript({ sidechat }: { sidechat: Thread }) {
           )}
         </ThreadFolder>
       </ThreadRepository>
-      <Composer thread={sidechat}>
-        <PendingRequests thread={sidechat} />
-      </Composer>
+      <div data-sidechat className="contents">
+        <Composer thread={sidechat}>
+          <PendingRequests thread={sidechat} />
+        </Composer>
+      </div>
     </div>
   )
 }

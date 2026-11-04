@@ -10,7 +10,7 @@ import type { PushEvent } from "../../shared/contract.ts"
 import type { PullRequest, PullRequestDetail, PullRequestStatus, ThreadStatus } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
-import { AutoArchive, layer as autoArchiveLayer } from "./AutoArchive.ts"
+import { AutoSettle, layer as autoSettleLayer } from "./AutoSettle.ts"
 import * as AgentAccounts from "./AgentAccounts.ts"
 import { Events } from "./Events.ts"
 import * as Git from "./Git.ts"
@@ -28,6 +28,7 @@ const statuses = new Map<string, PullRequestStatus>()
 const heads = new Map<string, string>()
 const headOids = new Map<string, string>()
 
+const mergedAts = new Map<string, string>()
 const held = new Map<string, { readonly asked: Deferred.Deferred<void>; readonly release: Deferred.Deferred<void> }>()
 
 const gitHub = Layer.mock(GitHub, {
@@ -39,7 +40,13 @@ const gitHub = Layer.mock(GitHub, {
         yield* Deferred.await(hold.release)
       }
       const number = Number(url.split("/").at(-1))
-      return { url, number, status: statuses.get(url) ?? "open", headRefName: heads.get(url) ?? "" } as PullRequest
+      return {
+        url,
+        number,
+        status: statuses.get(url) ?? "open",
+        headRefName: heads.get(url) ?? "",
+        mergedAt: mergedAts.get(url),
+      } as PullRequest
     }),
   branchPullRequest: (_cwd, branch) => {
     const url = [...heads].findLast(([, head]) => head === branch)?.[0]
@@ -57,9 +64,9 @@ const domain = threadsLayer.pipe(
   Layer.provideMerge(Worktrees.layer),
   Layer.provideMerge(Projects.layer),
   Layer.provide(AgentAccounts.layer),
-  Layer.provideMerge(settingsLayer(mkdtempSync(join(tmpdir(), "kk-auto-archive-settings-")))),
+  Layer.provideMerge(settingsLayer(mkdtempSync(join(tmpdir(), "kk-auto-settle-settings-")))),
 )
-const testLayer = autoArchiveLayer.pipe(
+const testLayer = autoSettleLayer.pipe(
   Layer.provideMerge(pullRequestsLayer),
   Layer.provideMerge(domain),
   Layer.provide(Layer.mergeAll(Git.layer, gitHub)),
@@ -85,18 +92,21 @@ const threadWithPullRequests = (name: string, prStatuses: ReadonlyArray<PullRequ
   })
 
 const statusOf = (id: string) => Threads.use((threads) => threads.get(id)).pipe(Effect.map((thread) => thread.status))
+const isSettled = (id: string) =>
+  Threads.use((threads) => threads.get(id)).pipe(Effect.map((thread) => thread.settledAt !== null))
 
-describe("AutoArchive", () => {
+describe("AutoSettle", () => {
   layer(testLayer)((it) => {
     it.effect("leaves every thread alone while the setting is off", () =>
       Effect.gen(function* () {
+        yield* Settings.use((settings) => settings.set({ archive: { whenMerged: false, removeWorktree: false } }))
         const merged = yield* threadWithPullRequests("off", ["merged"])
-        yield* AutoArchive.use((autoArchive) => autoArchive.sweep)
-        expect(yield* statusOf(merged)).toBe("idle")
+        yield* AutoSettle.use((autoSettle) => autoSettle.sweep)
+        expect(yield* isSettled(merged)).toBe(false)
       }),
     )
 
-    it.effect("archives only threads whose linked pull requests have all merged or closed", () =>
+    it.effect("settles a thread once its pull request merges, not when one only closes", () =>
       Effect.gen(function* () {
         yield* Settings.use((settings) => settings.set({ archive: { whenMerged: true, removeWorktree: false } }))
         const allMerged = yield* threadWithPullRequests("all", ["merged", "closed"])
@@ -105,16 +115,56 @@ describe("AutoArchive", () => {
         const running = yield* threadWithPullRequests("running", ["merged"], "running")
         const unlinked = (yield* seedThread({ rootPath: "/unlinked" })).threadId
 
-        yield* AutoArchive.use((autoArchive) => autoArchive.sweep)
+        yield* AutoSettle.use((autoSettle) => autoSettle.sweep)
 
-        expect(yield* statusOf(allMerged)).toBe("archived")
-        expect(yield* statusOf(oneOpen)).toBe("idle")
-        expect(yield* statusOf(closed)).toBe("archived")
+        expect(yield* statusOf(allMerged)).toBe("idle")
+        expect(yield* isSettled(allMerged)).toBe(true)
+        expect(yield* isSettled(oneOpen)).toBe(false)
+        expect(yield* isSettled(closed)).toBe(false)
         expect(yield* statusOf(running)).toBe("running")
-        expect(yield* statusOf(unlinked)).toBe("idle")
+        expect(yield* isSettled(running)).toBe(false)
+        expect(yield* isSettled(unlinked)).toBe(false)
         expect(pushes).toContainEqual(
           expect.objectContaining({ type: "thread.updated", thread: expect.objectContaining({ id: allMerged }) }),
         )
+      }),
+    )
+
+    it.effect("does not settle a thread again for a merge from before its latest work", () =>
+      Effect.gen(function* () {
+        yield* Settings.use((settings) => settings.set({ archive: { whenMerged: true, removeWorktree: false } }))
+        const threadId = yield* threadWithPullRequests("reopened", ["merged"])
+        yield* AutoSettle.use((autoSettle) => autoSettle.sweep)
+        expect(yield* isSettled(threadId)).toBe(true)
+
+        yield* Threads.use((threads) => threads.unsettle(threadId))
+        const reopenedAt = yield* Threads.use((threads) => threads.workStartedAt(threadId))
+        mergedAts.set(pullRequestUrl("reopened"), new Date(Date.parse(reopenedAt ?? "") - 1000).toISOString())
+        yield* AutoSettle.use((autoSettle) => autoSettle.sweep)
+        expect(yield* isSettled(threadId)).toBe(false)
+      }),
+    )
+
+    it.effect("keeps a pinned thread out of Settled", () =>
+      Effect.gen(function* () {
+        yield* Settings.use((settings) => settings.set({ archive: { whenMerged: true, removeWorktree: false } }))
+        const threadId = yield* threadWithPullRequests("pinned", ["merged"])
+        yield* Threads.use((threads) => threads.update({ id: threadId, pinned: true }))
+        yield* AutoSettle.use((autoSettle) => autoSettle.sweep)
+        expect(yield* isSettled(threadId)).toBe(false)
+      }),
+    )
+
+    it.effect("settles a thread whose pull request merged during its turn", () =>
+      Effect.gen(function* () {
+        yield* Settings.use((settings) => settings.set({ archive: { whenMerged: true, removeWorktree: false } }))
+        const threadId = yield* threadWithPullRequests("merged-in-turn", ["merged"])
+        yield* Threads.use((threads) => threads.update({ id: threadId, status: "running" }))
+        const startedAt = yield* Threads.use((threads) => threads.workStartedAt(threadId))
+        mergedAts.set(pullRequestUrl("merged-in-turn"), new Date(Date.parse(startedAt ?? "") + 1000).toISOString())
+        yield* Threads.use((threads) => threads.update({ id: threadId, status: "idle" }))
+        yield* AutoSettle.use((autoSettle) => autoSettle.sweep)
+        expect(yield* isSettled(threadId)).toBe(true)
       }),
     )
 
@@ -130,7 +180,7 @@ describe("AutoArchive", () => {
             terminals.open({ threadId, cols: 80, rows: 24 }),
           )
 
-          const sweep = yield* AutoArchive.use((autoArchive) => autoArchive.sweep).pipe(Effect.forkChild)
+          const sweep = yield* AutoSettle.use((autoSettle) => autoSettle.sweep).pipe(Effect.forkChild)
           yield* Deferred.await(hold.asked)
           yield* Threads.use((threads) => threads.update({ id: threadId, status }))
           yield* Deferred.succeed(hold.release, undefined)
@@ -138,12 +188,7 @@ describe("AutoArchive", () => {
 
           expect(yield* statusOf(threadId)).toBe(status)
           expect(yield* Terminals.Terminals.use((terminals) => terminals.list(threadId))).toStrictEqual([terminal])
-          expect(pushes).not.toContainEqual(
-            expect.objectContaining({
-              type: "thread.updated",
-              thread: expect.objectContaining({ id: threadId, status: "archived" }),
-            }),
-          )
+          expect(yield* isSettled(threadId)).toBe(false)
           yield* Terminals.Terminals.use((terminals) => terminals.close(terminal.id))
         }),
       )
@@ -222,7 +267,7 @@ const linkPullRequest = (
 
 const setStatus = (url: string, status: PullRequestStatus) => Effect.sync(() => void statuses.set(url, status))
 
-const sweep = AutoArchive.use((autoArchive) => autoArchive.sweep)
+const sweep = AutoSettle.use((autoSettle) => autoSettle.sweep)
 
 const expectBranchAt = (projectId: string, branch: string, tip: string) =>
   Effect.gen(function* () {
@@ -260,7 +305,7 @@ describe("worktree cleanup across threads", () => {
 
         yield* sweep
 
-        expect(yield* statusOf(child.threadId)).toBe("archived")
+        expect(yield* isSettled(child.threadId)).toBe(true)
         yield* waitUntilGone(child.path)
         yield* waitUntilBranchGone(root, "kk/child")
         expect(localBranches(root)).toStrictEqual(["main"])
@@ -276,7 +321,7 @@ describe("worktree cleanup across threads", () => {
 
         yield* sweep
 
-        expect(yield* statusOf(fork.threadId)).toBe("archived")
+        expect(yield* isSettled(fork.threadId)).toBe(true)
         yield* waitUntilGone(fork.path)
       }),
     )
@@ -292,7 +337,7 @@ describe("worktree cleanup across threads", () => {
 
         yield* sweep
 
-        expect(yield* statusOf(child.threadId)).toBe("archived")
+        expect(yield* isSettled(child.threadId)).toBe(true)
         yield* waitUntilGone(child.path)
         yield* expectBranchAt(projectId, "kk/after-merge", tip)
       }),
@@ -309,13 +354,13 @@ describe("worktree cleanup across threads", () => {
 
         yield* sweep
 
-        expect(yield* statusOf(child.threadId)).toBe("archived")
+        expect(yield* isSettled(child.threadId)).toBe(true)
         yield* waitUntilGone(child.path)
         yield* expectBranchAt(projectId, "kk/reused", tip)
       }),
     )
 
-    it.effect("removes the worktree of a closed pull request and keeps its unmerged branch", () =>
+    it.effect("leaves a closed pull request to the developer, and archiving keeps its unmerged branch", () =>
       Effect.gen(function* () {
         yield* cleanupOn
         const { root, projectId } = yield* project("closed-pr")
@@ -323,7 +368,9 @@ describe("worktree cleanup across threads", () => {
         yield* linkPullRequest(child, "kk/abandoned", "closed")
 
         yield* sweep
+        expect(yield* statusOf(child.threadId)).toBe("idle")
 
+        yield* Threads.use((threads) => threads.archive(child.threadId))
         expect(yield* statusOf(child.threadId)).toBe("archived")
         yield* waitUntilGone(child.path)
         expect(localBranches(root)).toStrictEqual(["kk/abandoned", "main"])
@@ -342,7 +389,7 @@ describe("worktree cleanup across threads", () => {
 
         yield* sweep
 
-        expect(yield* statusOf(conductor.threadId)).toBe("archived")
+        expect(yield* isSettled(conductor.threadId)).toBe(true)
         expect(yield* statusOf(child.threadId)).toBe("idle")
         yield* waitUntilGone(conductor.path)
         expect(existsSync(child.path)).toBe(true)
@@ -350,7 +397,7 @@ describe("worktree cleanup across threads", () => {
         yield* setStatus(childUrl, "merged")
         yield* sweep
 
-        expect(yield* statusOf(child.threadId)).toBe("archived")
+        expect(yield* isSettled(child.threadId)).toBe(true)
         yield* waitUntilGone(child.path)
         yield* waitUntilBranchGone(root, "kk/conductor")
         yield* waitUntilBranchGone(root, "kk/worker")
@@ -358,7 +405,7 @@ describe("worktree cleanup across threads", () => {
       }),
     )
 
-    it.effect("archives a finished thread whose worktree an open fork still uses, and the fork removes it later", () =>
+    it.effect("settles a finished thread whose worktree an open fork still uses, and the fork removes it later", () =>
       Effect.gen(function* () {
         yield* cleanupOn
         const { projectId } = yield* project("shared")
@@ -372,13 +419,13 @@ describe("worktree cleanup across threads", () => {
 
         yield* sweep
 
-        expect(yield* statusOf(source.threadId)).toBe("archived")
+        expect(yield* isSettled(source.threadId)).toBe(true)
         expect(existsSync(source.path)).toBe(true)
 
         yield* PullRequests.use((pullRequests) => pullRequests.link(fork.id, url))
         yield* sweep
 
-        expect(yield* statusOf(fork.id)).toBe("archived")
+        expect(yield* isSettled(fork.id)).toBe(true)
         yield* waitUntilGone(source.path)
       }),
     )
@@ -431,7 +478,7 @@ describe("worktree cleanup across threads", () => {
           yield* sweep
           yield* sweep
 
-          expect(yield* statusOf(threads[second].threadId)).toBe("archived")
+          expect(yield* isSettled(threads[second].threadId)).toBe(true)
           yield* waitUntilGone(threads[second].path)
           yield* waitUntilBranchGone(root, "kk/parent")
           yield* waitUntilBranchGone(root, "kk/stacked")

@@ -58,6 +58,8 @@ export const learnFromAnswer = (
     case "threads.update":
     case "threads.archive":
     case "threads.unarchive":
+    case "threads.settle":
+    case "threads.unsettle":
     case "threads.sidechat":
       return each(result, learnId(teach, "thread"))
     case "worktrees.list":

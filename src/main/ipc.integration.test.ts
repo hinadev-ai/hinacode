@@ -717,6 +717,19 @@ describe("projects, threads and settings over rpc", () => {
     expect(woken.snoozedUntil).toBeNull()
   })
 
+  test("composer settings keep a thread's place and its snooze", async () => {
+    const project = result(await invoke("projects.list", undefined))[0]!
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    const until = "2026-11-02T08:00:00.000Z"
+    result(await invoke("threads.update", { id: thread.id, snoozedUntil: until }))
+
+    const updated = result(
+      await invoke("threads.update", { id: thread.id, effort: "high", fastMode: true, accessMode: "auto" }),
+    )
+
+    expect(updated).toMatchObject({ accessMode: "auto", snoozedUntil: until, updatedAt: thread.updatedAt })
+  })
+
   test("lists the files a thread can mention: tracked and untracked, but not ignored", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))

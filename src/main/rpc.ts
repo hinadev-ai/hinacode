@@ -280,6 +280,8 @@ const handlers: Handlers = {
   "threads.undoTurn": ({ threadId }) => Threads.use((threads) => threads.undoTurn(threadId)),
   "threads.archive": ({ threadId }) => Threads.use((threads) => threads.archive(threadId)),
   "threads.unarchive": ({ threadId }) => Threads.use((threads) => threads.unarchive(threadId)),
+  "threads.settle": ({ threadId }) => Threads.use((threads) => threads.settle(threadId)),
+  "threads.unsettle": ({ threadId }) => Threads.use((threads) => threads.unsettle(threadId)),
   "threads.fork": ({ threadId, messageId }) =>
     Threads.use((threads) => threads.fork(threadId, messageId)).pipe(
       Effect.tap((thread) => Events.use((events) => events.publish({ type: "thread.updated", thread }))),
@@ -430,6 +432,8 @@ const handlers: Handlers = {
   "backgroundTasks.list": ({ threadId }) => AgentRunner.use((runner) => runner.backgroundTasks(threadId)),
   "backgroundTasks.stop": ({ threadId, taskId }) =>
     AgentRunner.use((runner) => runner.stopBackgroundTask(threadId, taskId)),
+  "backgroundTasks.moveCommand": ({ threadId, callId }) =>
+    AgentRunner.use((runner) => runner.moveCommandToBackground(threadId, callId)),
   "threads.usage": ({ threadId }) => AgentRunner.use((runner) => runner.usage(threadId)),
   "threads.contextBreakdown": ({ threadId }) => AgentRunner.use((runner) => runner.contextBreakdown(threadId)),
   "pullRequests.list": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.list(threadId)),

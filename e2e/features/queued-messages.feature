@@ -3,7 +3,8 @@ Feature: Queued messages
   Scenario: A failed steer restores the queued message beside the current draft
     Given a project "demo" for my repository
     And the project "demo" has an archived thread "Queued" with a queued message and attachment
-    When I open the sidebar tab "Archived"
+    When I open the sidebar tab "Inbox"
+    And I expand the Archived threads
     And I open the thread "Queued" from the sidebar
     And I compose the draft "Keep this draft"
     And I paste 1 images into the message

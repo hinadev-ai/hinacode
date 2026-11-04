@@ -4,7 +4,7 @@ import { useRouter, useNavigate } from "@tanstack/react-router"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react"
-import { RiInbox2Line } from "react-icons/ri"
+import { RiInbox2Line, RiPulseLine } from "react-icons/ri"
 import { useShallow } from "zustand/react/shallow"
 import type { Project, SidebarGroup, Thread } from "../../shared/domain.ts"
 import { environmentOf, isStale, useCloud, useClouds } from "../lib/environments.ts"
@@ -12,13 +12,20 @@ import { groupProjects, type ProjectGroup as Group } from "../lib/projectGroups.
 import { projectsAtom } from "../lib/rpc.ts"
 import { arrangeRows, deleteGroup, moveGroup, renameGroup, setGroupCollapsed } from "../lib/sidebarGroups.ts"
 import { useSidebarGroups } from "../lib/useSidebarGroups.ts"
-import { loadAllPullRequestsAtom } from "../stores/pullRequests.ts"
+import { type InboxGroup, inboxGroup, rowState } from "../../shared/threadStatus.ts"
+import { openPullRequestsAtom, pullRequestAttentionsAtom } from "../lib/rpc.ts"
+import { useBackgroundTasks } from "../stores/backgroundTasks.ts"
+import { type Draft, hasContent, useDrafts } from "../stores/drafts.ts"
+import { useUnseen } from "../stores/unseen.ts"
+import { loadAllPullRequestsAtom, usePullRequests } from "../stores/pullRequests.ts"
 import { SIDEBAR_BOUNDS, SIDEBAR_DEFAULT_WIDTH } from "../lib/panelSize.ts"
 import { startThread } from "../lib/startThread.ts"
 import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
+import { useKeymap } from "../keybindings/useKeybindings.ts"
 import { NEW_THREAD_PREFIX, usePalette } from "../palette/usePalette.ts"
 import {
+  lastActivity,
   selectArchivedThreads,
   selectInboxThreads,
   selectPinnedThreads,
@@ -35,7 +42,6 @@ import { ResizeHandle } from "./ResizeHandle.tsx"
 import { ProjectDialog } from "./ProjectDialog.tsx"
 import { ProjectIcon } from "./ProjectIcon.tsx"
 import {
-  ArchiveIcon,
   ArrowDownIcon,
   ArrowUpIcon,
   ChatIcon,
@@ -53,7 +59,17 @@ import {
   TrashIcon,
 } from "@hinacode/icons"
 import { ProjectMenu } from "./ProjectMenu.tsx"
-import { SidebarThreadList, sidebarListMotion } from "./SidebarThreadList.tsx"
+import { ChordKeys } from "./ChordKeys.tsx"
+import { useAttentionCount } from "./DockBadge.tsx"
+import {
+  DraftRows,
+  ARCHIVED_GROUP,
+  READY_GROUP,
+  SETTLED_GROUP,
+  SidebarThreadList,
+  sidebarListMotion,
+  TurnList,
+} from "./SidebarThreadList.tsx"
 import { Button } from "./ui/button.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
 import { Dialog, DialogPortal, DialogTitle } from "./ui/dialog.tsx"
@@ -65,7 +81,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx"
+import { RevealSentinel } from "./RevealSentinel.tsx"
 import { ScrollArea } from "./ui/scroll-area.tsx"
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.tsx"
 
 export function Sidebar({
@@ -108,41 +126,37 @@ export function Sidebar({
           : "relative flex min-h-0 flex-1 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground glass:bg-sidebar/80"
       }
     >
-      <Tabs
-        value={tab}
-        onValueChange={(value: SidebarTab) => setTab(value)}
-        orientation="vertical"
-        className="min-h-0 flex-1 flex-col gap-3"
-      >
-        <div className="flex flex-col gap-px px-2 pt-2">
-          <NavRow
-            icon={PlusIcon}
-            label={m.command_thread_new()}
-            onClick={() => usePalette.getState().show(NEW_THREAD_PREFIX)}
-          />
-          <div className="group/search flex h-8 items-center gap-2 rounded-md ps-2 pe-1 text-sidebar-foreground focus-within:bg-sidebar-accent hover:bg-sidebar-accent">
-            <SearchIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              aria-label={m.sidebar_filter_label()}
-              placeholder={m.sidebar_search_placeholder()}
-              className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-sidebar-foreground [&::-webkit-search-cancel-button]:hidden"
-            />
-            <ProjectFilterMenu />
+      <Tabs value={tab} onValueChange={(value: SidebarTab) => setTab(value)} className="min-h-0 flex-1 flex-col gap-2">
+        <div className="flex flex-col gap-1 px-2 pt-1">
+          <div className="flex items-center gap-0.5">
+            <div className="group/search flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md ps-2.5 pe-1 text-sidebar-foreground focus-within:bg-sidebar-row-hover hover:bg-sidebar-row-hover">
+              <SearchIcon aria-hidden className="size-4 shrink-0 text-sidebar-meta" />
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                aria-label={m.sidebar_filter_label()}
+                placeholder={m.sidebar_search_placeholder()}
+                className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-sidebar-meta [&::-webkit-search-cancel-button]:hidden"
+              />
+              <ProjectFilterMenu />
+            </div>
+            <ComposeButton />
           </div>
           <TabsList
             aria-label={m.sidebar_views()}
-            className="w-full items-stretch gap-px bg-transparent p-0 *:data-[slot=tabs-indicator]:hidden"
+            className="h-8 w-full items-stretch gap-1 bg-transparent p-0 *:data-[slot=tabs-indicator]:hidden"
           >
-            <SidebarTabTrigger value="inbox" icon={RiInbox2Line} label={m.sidebar_tab_inbox()} />
+            <InboxTabTrigger />
             <SidebarTabTrigger value="threads" icon={ChatIcon} label={m.sidebar_tab_threads()} />
-            <SidebarTabTrigger value="archived" icon={ArchiveIcon} label={m.sidebar_tab_archived()} />
           </TabsList>
         </div>
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="flex flex-col gap-3 pb-3">
+        <ScrollArea
+          className="min-h-0 flex-1"
+          viewportClassName={tab === "inbox" ? "animate-none! data-has-overflow-y:pe-0" : "data-has-overflow-y:pe-0"}
+          scrollbarClassName={quietScrollbar}
+        >
+          <div className="flex flex-col gap-4 pb-3">
             <PinnedThreads query={query.trim().toLocaleLowerCase()} />
             <TabsContent value="inbox" className="flex flex-col">
               <InboxList query={query.trim().toLocaleLowerCase()} />
@@ -168,11 +182,9 @@ export function Sidebar({
                 focusAfterDelete={addProjectButtonRef}
               />
             </TabsContent>
-            <TabsContent value="archived" className="flex flex-col">
-              <ArchivedList query={query.trim().toLocaleLowerCase()} />
-            </TabsContent>
           </div>
         </ScrollArea>
+        {tab === "inbox" && <InboxShelves query={query.trim().toLocaleLowerCase()} />}
       </Tabs>
 
       <ProjectDialog
@@ -240,13 +252,21 @@ function PinnedThreads({ query }: { query: Query }) {
   const [open, setOpen] = useState(true)
   if (threads.length === 0) return null
   return (
-    <Collapsible open={open} onOpenChange={setOpen} render={<section aria-label={m.sidebar_pinned()} />}>
-      <CollapsibleTrigger className="group/heading mx-2 flex h-7 items-center gap-0.5 rounded-md px-2 text-xs font-medium text-muted-foreground outline-none hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring">
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className="flex flex-col"
+      render={<section aria-label={m.sidebar_pinned()} />}
+    >
+      <CollapsibleTrigger className="group/heading mx-2 flex h-7 items-center gap-0.5 rounded-md px-2.5 text-xs font-medium text-sidebar-meta outline-none hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring">
         <h2>{m.sidebar_pinned()}</h2>
         <ChevronDownIcon
           aria-hidden
           className="size-4 -rotate-90 transition-transform group-data-panel-open/heading:rotate-0 motion-reduce:transition-none cjk:translate-y-[-0.04em]"
         />
+        <span aria-hidden className="ms-auto font-normal tabular-nums">
+          {threads.length}
+        </span>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <SidebarThreadList group="pinned" threads={threads} reorderable={false} showProject className="px-2" />
@@ -255,37 +275,281 @@ function PinnedThreads({ query }: { query: Query }) {
   )
 }
 
-function SectionHeading({ title, action }: { title: string; action?: ReactNode }) {
+function SectionHeading({
+  title,
+  count,
+  action,
+  emphasized = false,
+  folded,
+  onFoldedChange,
+  className = "",
+}: {
+  title: string
+  count?: number
+  action?: ReactNode
+  emphasized?: boolean
+  folded?: boolean
+  onFoldedChange?: (folded: boolean) => void
+  className?: string
+}) {
+  const label = (
+    <h2 className={`text-xs ${emphasized ? "font-semibold text-sidebar-title" : "font-medium text-sidebar-meta"}`}>
+      {title}
+    </h2>
+  )
   return (
-    <div className="mx-2 flex h-7 items-center justify-between gap-2 ps-2 pe-1">
-      <h2 className="text-xs font-medium text-muted-foreground">{title}</h2>
-      {action}
+    <div className={`mx-2 flex h-7 items-center gap-1.5 px-2.5 ${className}`}>
+      {onFoldedChange === undefined ? (
+        label
+      ) : (
+        <button
+          type="button"
+          aria-expanded={!folded}
+          onClick={() => onFoldedChange(!folded)}
+          className="flex items-center gap-0.5 rounded-sm text-sidebar-meta outline-none hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+        >
+          {label}
+          <ChevronDownIcon
+            aria-hidden
+            className={`size-4 transition-transform motion-reduce:transition-none cjk:translate-y-[-0.04em] ${folded ? "-rotate-90" : ""}`}
+          />
+        </button>
+      )}
+      {(action !== undefined || count !== undefined) && (
+        <span className="ms-auto flex items-center gap-1.5">
+          {action}
+          {count !== undefined && <span className="text-xs text-sidebar-meta tabular-nums">{count}</span>}
+        </span>
+      )}
     </div>
   )
 }
 
-function NavRow({ icon: Icon, label, onClick }: { icon: IconComponent; label: string; onClick: () => void }) {
+const quietScrollbar = "opacity-0 transition-opacity data-hovering:opacity-100 data-scrolling:opacity-100"
+
+function ComposeButton() {
+  const chord = useKeymap()["thread.new"]
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex h-8 items-center gap-2 rounded-md px-2 text-left text-sm text-sidebar-foreground outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-    >
-      <Icon aria-hidden className="size-4 shrink-0" />
-      {label}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={m.command_thread_new()}
+            className="me-1"
+            onClick={() => usePalette.getState().show(NEW_THREAD_PREFIX)}
+          />
+        }
+      >
+        <PlusIcon aria-hidden />
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        {m.command_thread_new()}
+        {chord && <ChordKeys chord={chord} />}
+      </TooltipContent>
+    </Tooltip>
   )
 }
 
-function SidebarTabTrigger({ value, icon: Icon, label }: { value: SidebarTab; icon: IconComponent; label: string }) {
+function InboxTabTrigger() {
+  const count = useAttentionCount()
+  return <SidebarTabTrigger value="inbox" icon={RiInbox2Line} label={m.sidebar_tab_inbox()} count={count} />
+}
+
+function SidebarTabTrigger({
+  value,
+  icon: Icon,
+  label,
+  count = 0,
+}: {
+  value: SidebarTab
+  icon: IconComponent
+  label: string
+  count?: number
+}) {
   return (
     <TabsTrigger
       value={value}
-      className="h-8 flex-none justify-start gap-2 rounded-md border-0 px-2 text-sm font-normal text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring dark:text-muted-foreground data-active:font-medium data-active:text-sidebar-foreground dark:data-active:text-sidebar-foreground"
+      className="h-8 min-w-0 flex-1 justify-start gap-2 rounded-md border-0 px-2.5 text-sm font-normal text-sidebar-meta hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring dark:text-sidebar-meta data-active:bg-sidebar-row-selected data-active:font-medium data-active:text-sidebar-foreground dark:data-active:text-sidebar-foreground"
     >
       <Icon aria-hidden />
       {label}
+      {count > 0 && (
+        <span aria-hidden className="ms-auto text-xs font-medium tabular-nums">
+          {count}
+        </span>
+      )}
     </TabsTrigger>
+  )
+}
+
+const draftTitle = (draft: Draft) =>
+  draft.text
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line !== "") ?? m.thread_draft_title()
+
+const useDraftTitles = (): Readonly<Record<string, string>> =>
+  useDrafts(
+    useShallow((state) =>
+      Object.fromEntries(
+        Object.entries(state.byThreadId).flatMap(([threadId, draft]) =>
+          hasContent(draft) ? [[threadId, draftTitle(draft)]] : [],
+        ),
+      ),
+    ),
+  )
+
+const writtenDrafts = (
+  threads: ThreadsState["drafts"],
+  titles: Readonly<Record<string, string>>,
+  projects: ReadonlyArray<Project>,
+  query: Query,
+) =>
+  Object.values(threads)
+    .flatMap((thread) => {
+      const title = titles[thread.id]
+      const project = projects.find((candidate) => candidate.id === thread.projectId)
+      if (title === undefined || project === undefined) return []
+      return includes(project.name, query) || includes(title, query) ? [{ thread, title }] : []
+    })
+    .toSorted((a, b) => b.thread.createdAt.localeCompare(a.thread.createdAt))
+
+function useWrittenDrafts(projects: ReadonlyArray<Project>, query: Query) {
+  const titles = useDraftTitles()
+  const threads = useThreads((state) => state.drafts)
+  return writtenDrafts(threads, titles, projects, query)
+}
+
+function InboxDrafts({ query }: { query: Query }) {
+  const projects = useFilteredProjects(AsyncResult.getOrElse(useAtomValue(projectsAtom), () => []))
+  const drafts = useWrittenDrafts(projects, query)
+  if (drafts.length === 0) return null
+  return (
+    <section aria-label={m.sidebar_drafts()} className="pb-4">
+      <SectionHeading title={m.sidebar_drafts()} count={drafts.length} />
+      <DraftRows
+        drafts={drafts}
+        projectNames={new Map(projects.map((project) => [project.id, project.name]))}
+        className="px-2"
+      />
+    </section>
+  )
+}
+
+function useInboxGroups(threads: ReadonlyArray<Thread>, now: number) {
+  const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
+  const unseen = useUnseen((state) => state.byThreadId)
+  const background = useBackgroundTasks((state) => state.byThreadId)
+  const links = usePullRequests((state) => state.byThreadId)
+  const lookups = threads.map((thread) => {
+    const project = projects.find((candidate) => candidate.id === thread.projectId)
+    return [environmentOf(project), (links[thread.id] ?? []).map((link) => link.url)] as const
+  })
+  const attentions = useAtomValue(pullRequestAttentionsAtom(lookups))
+  const open = useAtomValue(openPullRequestsAtom(lookups))
+  const entries = threads.map((thread, index) => {
+    const state = rowState(
+      thread.status,
+      (background[thread.id]?.length ?? 0) > 0,
+      unseen[thread.id],
+      attentions[index],
+    )
+    return {
+      thread,
+      state,
+      lastActivity: lastActivity(thread),
+      group: inboxGroup(state, thread.settledAt, lastActivity(thread), open[index] ?? false, now),
+    }
+  })
+  const threadsIn = (group: InboxGroup) => entries.filter((entry) => entry.group === group).map((entry) => entry.thread)
+  return {
+    ready: threadsIn("ready").toSorted(newestActivityFirst),
+    working: threadsIn("working").toSorted((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    settled: threadsIn("settled"),
+  }
+}
+
+const newestActivityFirst = (a: Thread, b: Thread) => lastActivity(b).localeCompare(lastActivity(a))
+
+const SHELF_PAGE_SIZE = 30
+
+function InboxShelves({ query }: { query: Query }) {
+  const now = useNow()
+  const threads = useMatchingThreads(selectInboxThreads(now), query)
+  const archived = useMatchingThreads(selectArchivedThreads, query)
+  const { settled } = useInboxGroups(threads, now)
+  if (settled.length === 0 && archived.length === 0) return null
+  return (
+    <div className="flex shrink-0 flex-col border-t border-sidebar-border py-1">
+      <Shelf
+        title={m.sidebar_settled()}
+        group={SETTLED_GROUP}
+        threads={settled.toSorted(newestActivityFirst)}
+        query={query}
+      />
+      <Shelf
+        title={m.sidebar_archived()}
+        group={ARCHIVED_GROUP}
+        threads={archived.toSorted(newestActivityFirst)}
+        query={query}
+      />
+    </div>
+  )
+}
+
+function Shelf({
+  title,
+  group,
+  threads,
+  query,
+}: {
+  title: string
+  group: string
+  threads: ReadonlyArray<Thread>
+  query: Query
+}) {
+  const [open, setOpen] = useState(false)
+  if (threads.length === 0) return null
+  return (
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className="flex flex-col-reverse"
+      render={<section aria-label={title} />}
+    >
+      <CollapsibleTrigger className="group/heading mx-2 flex h-7 items-center gap-0.5 rounded-md px-2.5 text-xs font-medium text-sidebar-meta outline-none hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring">
+        <h2>{title}</h2>
+        <ChevronDownIcon
+          aria-hidden
+          className="size-4 rotate-180 transition-transform group-data-panel-open/heading:rotate-0 motion-reduce:transition-none cjk:translate-y-[-0.04em]"
+        />
+        <span className="ms-auto font-normal tabular-nums">{threads.length}</span>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="h-(--collapsible-panel-height) overflow-clip transition-[height] duration-200 ease-out data-ending-style:h-0 data-starting-style:h-0 motion-reduce:transition-none">
+        <ShelfRows key={query} group={group} threads={threads} />
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+function ShelfRows({ group, threads }: { group: string; threads: ReadonlyArray<Thread> }) {
+  const [rowLimit, setRowLimit] = useState(SHELF_PAGE_SIZE)
+  return (
+    <ScrollArea viewportClassName="max-h-[45dvh] data-has-overflow-y:pe-0" scrollbarClassName={quietScrollbar}>
+      <SidebarThreadList
+        group={group}
+        threads={threads}
+        rowLimit={rowLimit}
+        reorderable={false}
+        showProject
+        className="px-2"
+      />
+      {rowLimit < threads.length && (
+        <RevealSentinel key={rowLimit} onReveal={() => setRowLimit(rowLimit + SHELF_PAGE_SIZE)} />
+      )}
+    </ScrollArea>
   )
 }
 
@@ -293,37 +557,66 @@ function InboxList({ query }: { query: Query }) {
   const now = useNow()
   const threads = useMatchingThreads(selectInboxThreads(now), query)
   const snoozed = useMatchingThreads(selectSnoozedThreads(now), query)
+  const { ready, working } = useInboxGroups(threads, now)
+  const showActivity = useUi((state) => state.inboxActivityShown)
+  const setShowActivity = useUi((state) => state.setInboxActivityShown)
+  const workingFolded = useUi((state) => state.inboxWorkingFolded)
+  const setWorkingFolded = useUi((state) => state.setInboxWorkingFolded)
   return (
     <>
-      <SectionHeading title={m.sidebar_tab_inbox()} />
-      {threads.length === 0 ? (
-        <p className="px-4 py-1 text-xs text-muted-foreground">
-          {query === "" ? m.sidebar_no_inbox() : m.sidebar_no_matches()}
-        </p>
-      ) : (
-        <SidebarThreadList group="inbox" threads={threads} reorderable={false} showProject className="px-2" />
-      )}
+      <InboxDrafts query={query} />
+      <TurnList
+        className="px-2"
+        sections={[
+          {
+            key: READY_GROUP,
+            group: READY_GROUP,
+            headingClassName: "sticky top-0 z-20 bg-sidebar",
+            heading: <SectionHeading title={m.sidebar_ready()} count={ready.length} emphasized />,
+            threads: ready,
+            flat: true,
+            empty: query === "" ? m.sidebar_nothing_ready() : m.sidebar_no_matches(),
+          },
+          ...(working.length === 0
+            ? []
+            : [
+                {
+                  key: "working",
+                  group: "working",
+                  headingClassName:
+                    "sticky top-0 bottom-0 z-20 mt-4 bg-sidebar before:pointer-events-none before:absolute before:inset-x-0 before:bottom-full before:h-4 before:bg-linear-to-t before:from-sidebar",
+                  heading: (
+                    <SectionHeading
+                      title={m.sidebar_working()}
+                      count={working.length}
+                      folded={workingFolded}
+                      onFoldedChange={setWorkingFolded}
+                      action={
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          aria-label={m.sidebar_agents_show_activity()}
+                          title={m.sidebar_agents_show_activity()}
+                          aria-pressed={showActivity}
+                          className="aria-pressed:bg-sidebar-row-selected aria-pressed:text-sidebar-foreground"
+                          onClick={() => setShowActivity(!showActivity)}
+                        >
+                          <RiPulseLine aria-hidden />
+                        </Button>
+                      }
+                    />
+                  ),
+                  threads: workingFolded ? [] : working,
+                  showActivity,
+                },
+              ]),
+        ]}
+      />
       {snoozed.length > 0 && (
-        <section aria-label={m.sidebar_snoozed()} className="pt-3">
-          <SectionHeading title={m.sidebar_snoozed()} />
+        <section aria-label={m.sidebar_snoozed()} className="pt-4">
+          <SectionHeading title={m.sidebar_snoozed()} count={snoozed.length} />
           <SidebarThreadList group="snoozed" threads={snoozed} reorderable={false} showProject className="px-2" />
         </section>
-      )}
-    </>
-  )
-}
-
-function ArchivedList({ query }: { query: Query }) {
-  const threads = useMatchingThreads(selectArchivedThreads, query)
-  return (
-    <>
-      <SectionHeading title={m.sidebar_tab_archived()} />
-      {threads.length === 0 ? (
-        <p className="px-4 py-1 text-xs text-muted-foreground">
-          {query === "" ? m.sidebar_no_archived() : m.sidebar_no_matches()}
-        </p>
-      ) : (
-        <SidebarThreadList group="archived" threads={threads} reorderable={false} showProject className="px-2" />
       )}
     </>
   )
@@ -397,10 +690,16 @@ function ProjectList({ query, onAddProject, focusAfterDelete }: ProjectListProps
   const refresh = useAtomRefresh(projectsAtom)
   const [listRef] = useAutoAnimate<HTMLUListElement>(sidebarListMotion)
   const groups = groupProjects(useFilteredProjects(AsyncResult.getOrElse(projects, () => [])))
+  const draftTitles = useDraftTitles()
   const shownKeys = useThreads(
     useShallow((state) =>
       groups
-        .filter((group) => isFullList(query) || projectThreads(state, group.projects, query).length > 0)
+        .filter(
+          (group) =>
+            isFullList(query) ||
+            projectThreads(state, group.projects, query).length > 0 ||
+            writtenDrafts(state.drafts, draftTitles, group.projects, query).length > 0,
+        )
         .map((group) => group.key),
     ),
   )
@@ -591,6 +890,7 @@ function ProjectGroup({ group, query, nested, focusAfterDelete }: ProjectGroupPr
   const hasActiveThreads = useThreads(
     (state) => selectProjectThreads(...projects.map((project) => project.id))(state).length > 0,
   )
+  const drafts = useWrittenDrafts(projects, query)
   const cloud = useCloud(environmentOf(first))
   const cloudMarkId = useId()
 
@@ -643,10 +943,11 @@ function ProjectGroup({ group, query, nested, focusAfterDelete }: ProjectGroupPr
             group={group.key}
             threads={threads}
             reorderable={isFullList(query)}
-            showEmptyHint={isFullList(query) && !hasActiveThreads}
+            showEmptyHint={isFullList(query) && !hasActiveThreads && drafts.length === 0}
             newThreadButtonRef={newThreadButtonRef}
             className="pl-5.5"
           />
+          {drafts.length > 0 && <DraftRows drafts={drafts} className="pl-5.5" />}
         </CollapsibleContent>
       </Collapsible>
     </li>

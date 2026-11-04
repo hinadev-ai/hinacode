@@ -20,6 +20,7 @@ import { m } from "./paraglide/messages.js"
 import { router } from "./router.tsx"
 import { pullRequestWindowRouter } from "./pullRequestWindowRouter.ts"
 import { useBackgroundTasks } from "./stores/backgroundTasks.ts"
+import { useActivity } from "./stores/activity.ts"
 import { useDrafts } from "./stores/drafts.ts"
 import { useLocale } from "./stores/locale.ts"
 import { useMessages } from "./stores/messages.ts"
@@ -71,10 +72,15 @@ onPushEvent((event) => {
   switch (event.type) {
     case "thread.updated":
       return useThreads.getState().upsert(event.thread)
-    case "thread.removed":
+    case "thread.removed": {
+      const sidechat = useThreads.getState().sidechats[event.id]
+      if (sidechat !== undefined) useDrafts.getState().discard(sidechat.id)
+      useDrafts.getState().discard(event.id)
+      useActivity.getState().forget(event.id)
       useUnseen.getState().clear(event.id)
       useMessages.getState().unload(event.id)
       return useThreads.getState().remove(event.id)
+    }
     case "message.created":
     case "message.updated":
       return useMessages.getState().receive(event)
@@ -83,6 +89,7 @@ onPushEvent((event) => {
     case "device.agentAction":
       return useDeviceActivity.getState().markUnseen(event.threadId)
     case "thread.event": {
+      useActivity.getState().receive(event.threadId, event.event)
       useMessages.getState().receive(event)
       recordUnseenOutcome(event.threadId, event.event)
       const settings = AsyncResult.getOrElse(registry.get(clientSettingsAtom), () => null)

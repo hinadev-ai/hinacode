@@ -583,7 +583,7 @@ function TreeItem({ row, id, selected, expanded, unsaved, onClick, onContextMenu
         <span
           className={cn(
             "min-w-0 flex-1 truncate",
-            entry.ignored && "text-muted-foreground",
+            entry.ignored && "text-ignored-foreground",
             mark?.className,
             entry.kind === "symlink" && "italic",
           )}

@@ -38,6 +38,8 @@ import threadScheduled from "./migrations/0036_thread_scheduled.ts"
 import ftsCjkGrams from "./migrations/0037_fts_cjk_grams.ts"
 import messagePart from "./migrations/0038_message_part.ts"
 import threadParent from "./migrations/0039_thread_parent.ts"
+import threadWorkStarted from "./migrations/0040_thread_work_started.ts"
+import threadSettled from "./migrations/0041_thread_settled.ts"
 
 const run = Migrator.make({})
 
@@ -81,6 +83,8 @@ export const runMigrations = run({
     "37_fts_cjk_grams": ftsCjkGrams,
     "38_message_part": messagePart,
     "39_thread_parent": threadParent,
+    "40_thread_work_started": threadWorkStarted,
+    "41_thread_settled": threadSettled,
   }),
 }).pipe(
   Effect.tap((ran) =>

@@ -32,6 +32,7 @@ const legacyThread: Omit<Thread, "userSkills"> = {
   usageLimit: null,
   sortIndex: 0,
   pinnedAt: null,
+  settledAt: null,
   snoozedUntil: null,
   queue: [],
   scheduled: [],
