@@ -990,6 +990,7 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("automation.run"), run: AutomationRun }),
   Schema.Struct({ type: Schema.Literal("artifact.updated"), artifact: Artifact }),
   Schema.Struct({ type: Schema.Literal("artifact.removed"), id: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("artifact.opened"), threadId: Schema.String, id: Schema.String }),
   Schema.Struct({
     type: Schema.Literal("terminal.data"),
     id: Schema.String,

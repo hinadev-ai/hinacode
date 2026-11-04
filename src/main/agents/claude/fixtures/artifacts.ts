@@ -129,11 +129,12 @@ export const documentTurn = (
   previous: MockDocument | undefined,
   published: (document: MockDocument) => void,
 ) => {
+  const request = /<request>\n([\s\S]*?)\n<\/request>/.exec(prompt)?.[1] ?? prompt
   const markdown =
-    previous === undefined ? `# ${prompt}\n\n${DOCUMENT}` : `${previous.markdown}\nThe agent added: ${prompt}\n`
+    previous === undefined ? `# ${request}\n\n${DOCUMENT}` : `${previous.markdown}\nThe agent added: ${request}\n`
   const input = {
-    ...(previous !== undefined && { id: previous.id, revision: previous.revision }),
-    title: previous?.title ?? prompt,
+    ...(previous === undefined ? { auto_open: true } : { id: previous.id, revision: previous.revision }),
+    title: previous?.title ?? request,
     markdown,
   }
   const started: AgentEvent = {
