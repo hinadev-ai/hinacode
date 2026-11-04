@@ -10,8 +10,8 @@ A developer with a home server, an agent VM and two workstations links each one 
 ## User flow
 
 1. Each machine is linked to the relay once, as in `2026-10-24-relay.md`. A desktop signed in to the relay approves its own Turn on relay without a browser, and approves the code `hinacode serve --relay on` prints on another machine from Settings > Environments, after naming the machine. The web page still approves links for a machine when no desktop is signed in. From then on each machine publishes its own pairing (direct addresses, port, token) to the relay, and again whenever one of them changes.
-2. Settings > Environments on a signed-in desktop lists every linked machine with **Show on my devices**, on by default, and **Remove**, which deletes its tunnel. This desktop's own row has no Remove; Remove relay in Settings > Remote unlinks it. The web page keeps only link approval and owner token rotation.
-3. On a device, sign in to the relay with the owner token once: Settings > Environments on the desktop; on the phone, the connect screen or Settings > Relay. Every machine shown appears, named, and connects through its relay hostname or its direct addresses.
+2. Settings > Environments on a signed-in desktop lists every linked machine with **Show on my devices**, on by default, and **Remove**, which deletes its tunnel. This desktop's own row has no Remove; Remove relay in Settings > Remote unlinks it. The web page keeps only link approval and **Sign out all devices**.
+3. On a device, sign in to the relay once: the account button in the title bar or Settings > Connections on the desktop; on the phone, the connect screen or Settings > Relay. Either opens the relay page in the browser, where the person approves that device. Every machine shown appears, named, and connects through its relay hostname or its direct addresses.
 4. Turning **Show on my devices** off, or removing the machine, drops it from every signed-in device at its next sync. A machine paired by QR code stays, whatever the relay says.
 5. A machine that rotates its token publishes the new one, and signed-in devices pick it up at their next sync.
 
@@ -44,9 +44,9 @@ ALTER TABLE host ADD COLUMN pairing TEXT; -- JSON { hosts, port, token } the mac
 ALTER TABLE host ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1; -- Show on my devices
 ```
 
-Desktop SQLite (migration `0023_environment_source`): `environment.source TEXT NOT NULL DEFAULT 'pairing'`. The owner token is the secret `relay.ownerToken`; the service URL is the machine's relay service, `HINACODE_RELAY_URL` or `https://relay.hinacode.app`.
+Desktop SQLite (migration `0023_environment_source`): `environment.source TEXT NOT NULL DEFAULT 'pairing'`. The device's credential is the secret `relay.deviceCredential`; the service URL is the machine's relay service, `HINACODE_RELAY_URL` or `https://relay.hinacode.app`.
 
-Phone: `StoredServer.source`, absent in older entries and read as `pairing`. The account is `{ serviceUrl, ownerToken }` in SecureStore under `hinacode.relayAccount`.
+Phone: `StoredServer.source`, absent in older entries and read as `pairing`. The account is `{ serviceUrl, credential }` in SecureStore under `hinacode.relayAccount`.
 
 ### Relay service
 
@@ -67,14 +67,14 @@ A hidden machine's pairing never leaves the relay. Its tunnel keeps running, so 
 
 `planRelaySync(entries, machines, selfId)` in `src/shared/relayMachines.ts` decides for both clients: every listed machine except this one, with a usable pairing, is added or refreshed, and a `relay` entry the list no longer has is dropped. A `pairing` entry for a listed machine gets the fresher address, port, relay and token, and keeps its name and its source.
 
-- **Desktop.** `RelayAccount` service (`src/main/services/RelayAccount.ts`) with `relayAccount.status`, `relayAccount.signIn({ ownerToken })`, `relayAccount.signOut` and `relayAccount.sync`, all routed to the client and desktop-only, each answering `RelayAccountStatus`. It hands the list to `Environments.syncRelay`, which writes rows without probing, since the relay already named the machine. Signing out drops the `relay` rows. `relayAccount.machines`, `setShown`, `removeMachine`, `pendingLink` and `approveLink` manage the linked machines, and `remote.setupRelay` approves this desktop's own link with the owner token before it falls back to opening the browser.
+- **Desktop.** `RelayAccount` service (`src/main/services/RelayAccount.ts`) with `relayAccount.status`, `relayAccount.signIn`, `relayAccount.signOut` and `relayAccount.sync`, all routed to the client and desktop-only, each answering `RelayAccountStatus`. It hands the list to `Environments.syncRelay`, which writes rows without probing, since the relay already named the machine. Signing out drops the `relay` rows. `relayAccount.machines`, `setShown`, `removeMachine`, `pendingLink` and `approveLink` manage the linked machines, and `remote.setupRelay` approves this desktop's own link with its device credential before it falls back to opening the browser.
 - **Phone.** `apps/mobile/src/lib/relay-account.ts` fetches the list and applies the plan to the stored servers. The Relay section (`components/relay-account.tsx`) shows on the connect screen and in Settings, because a phone that never paired cannot open Settings, and one whose relay lists no machines is back on the connect screen.
 
-A 401 from `GET /v1/machines` (the owner token was rotated) keeps every entry and asks the developer to sign in again.
+A 401 from `GET /v1/machines` (this device was signed out) keeps every entry and asks the developer to sign in again.
 
 ## Out of scope
 
-- Per-device credentials and revoking one device. Every signed-in device holds the owner token, so a lost device means rotating it and signing the others in again. The token is now per account, created from a Clerk session on the relay page. Per-device credentials come before anyone else uses the relay.
+- Revoking one lost device. Each device holds its own credential, but the relay page only offers **Sign out all devices**.
 - Minting short-lived credentials on each machine, as T3 Code does, so the relay never holds a pairing token. ADR 0021 says when to switch.
 - Hiding a machine from one device only.
 - Turning a hidden machine's tunnel off.
