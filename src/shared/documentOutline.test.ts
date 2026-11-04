@@ -124,6 +124,11 @@ describe("documentOutline", () => {
     expect(documentOutline("#### Detail").blocks).toEqual([{ kind: "text", length: 6 }])
   })
 
+  test.each(["[a", "![a](", "<a "])("reads a huge paragraph of unclosed %s without scanning all of it", (opening) => {
+    const { lede } = documentOutline(opening.repeat((256 * 1024) / opening.length))
+    expect([...(lede ?? "")].length).toBeLessThanOrEqual(241)
+  })
+
   test("stops after the block limit in a huge document", () => {
     const outline = documentOutline("## Part\n\nBody.\n\n".repeat(10_000))
     expect(outline.blocks.length).toBe(OUTLINE_MAX_BLOCKS)
