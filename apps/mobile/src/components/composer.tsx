@@ -12,7 +12,7 @@ import type { RpcRequest } from "@shared/contract.ts"
 import { AccessMode, isThreadBusy, type Settings, type Thread, toCheckoutTarget } from "@shared/domain.ts"
 import { type AccountOption, accountOptions, formatResetIn } from "@shared/planLimits.ts"
 import { providerInfo } from "@shared/providers.ts"
-import { mentionableThreads } from "@shared/threadMention.ts"
+import { mentionableThreads } from "@shared/mentions.ts"
 import { useEffect, useRef, useState } from "react"
 import {
   Image,
@@ -154,6 +154,7 @@ export function Composer({ thread }: { thread: Thread }) {
     commands: new Set(commands.map((command) => command.trigger + command.name)),
     files: new Set(files),
     threads: new Set([...threads.sameMachine, ...threads.otherMachines].map((other) => other.id)),
+    terminals: new Set<string>(),
   }
   const hasDraft = text.trim() !== "" || images.length > 0
 
@@ -377,7 +378,7 @@ function Suggestions({
   // The selection can arrive before the text it belongs to.
   const completion = completionAt(text, Math.min(caret, text.length))
   if (completion === null) return null
-  const suggestions = suggestionsFor(completion, completions.commands, completions.files, completions.threads, [])
+  const suggestions = suggestionsFor(completion, completions.commands, completions.files, completions.threads, [], [])
   if (suggestions.length === 0) return null
 
   const pick = (suggestion: Suggestion) => {

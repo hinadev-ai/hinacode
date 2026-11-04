@@ -1,10 +1,24 @@
 import type { Project, Thread } from "./domain.ts"
 
+export type MentionKind = "thread" | "terminal"
+
+export interface Mention {
+  readonly kind: MentionKind
+  readonly id: string
+}
+
 export const threadMention = (threadId: string) => `@thread:${threadId}`
 
-export const THREAD_MENTION = /@thread:([\w-]+)/g
+export const terminalMention = (terminalId: string) => `@terminal:${terminalId}`
 
-export const mentionedThreadId = (token: string): string | null => /^@thread:([\w-]+)$/.exec(token)?.[1] ?? null
+export const MENTION = /@(thread|terminal):([\w-]+)/g
+
+const WHOLE_MENTION = /^@(thread|terminal):([\w-]+)$/
+
+export const parseMention = (token: string): Mention | null => {
+  const match = WHOLE_MENTION.exec(token)
+  return match === null ? null : { kind: match[1] as MentionKind, id: match[2]! }
+}
 
 type MentionThread = Pick<Thread, "id" | "projectId" | "status" | "sortIndex">
 

@@ -123,6 +123,8 @@ export function focusTerminal(id: string) {
   else if (screen) screen.wantsFocus = true
 }
 
+export const terminalSelection = (id: string) => screens.get(id)?.term?.getSelectionText() || null
+
 export function writeTerminal(id: string, data: string, offset?: number) {
   if (!disposed.has(id)) screenFor(id).stream.data(data, offset)
 }

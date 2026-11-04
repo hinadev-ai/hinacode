@@ -14,6 +14,7 @@ import { ThreadRepository } from "../lib/threadRepository.ts"
 import { ThreadFolder, useThreadRoot } from "../lib/threadRoot.ts"
 import { m } from "../paraglide/messages.js"
 import { useMessages } from "../stores/messages.ts"
+import { useTerminals } from "../stores/terminals.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { useUi } from "../stores/ui.ts"
 import { ApprovalCard } from "./ApprovalCard.tsx"
@@ -47,6 +48,12 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
   const regionRef = useRef<HTMLDivElement>(null)
   const dockRef = useRef<HTMLDivElement>(null)
   useDockHeight(regionRef, dockRef)
+  useEffect(() => {
+    useTerminals
+      .getState()
+      .load(thread.id)
+      .catch(() => undefined)
+  }, [thread.id])
   const findOpen = useUi((state) => state.findThreadId === thread.id)
   const loaded = useMessages((state) => state.byThread[thread.id]?.status === "ready")
   const centered = useMessages((state) => {

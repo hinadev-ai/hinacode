@@ -12,6 +12,7 @@ const known = {
   commands: new Set(["/triage-issue", "/compact"]),
   files: new Set(["src/login.ts"]),
   threads: new Set<string>(),
+  terminals: new Set<string>(),
 }
 
 describe("composerSpans", () => {
@@ -63,7 +64,12 @@ describe("artifact skills", () => {
   })
 
   it("tints one at the start of a message and removes it whole", () => {
-    const noTokens = { commands: new Set<string>(), files: new Set<string>(), threads: new Set<string>() }
+    const noTokens = {
+      commands: new Set<string>(),
+      files: new Set<string>(),
+      threads: new Set<string>(),
+      terminals: new Set<string>(),
+    }
     expect(composerSpans("/artifact:doc Release plan", artifactSkillCommands, noTokens)[0]).toEqual({
       kind: "skill",
       text: "/artifact:doc",
