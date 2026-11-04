@@ -181,6 +181,7 @@ const PullRequestDetailFields = Schema.Struct({
   ...PullRequestFields.fields,
   body: Schema.String,
   headRefOid: Schema.String,
+  createdAt: Schema.String,
   changedFiles: Schema.Number,
   comments: Schema.Array(PullRequestComment),
 })
@@ -190,7 +191,7 @@ type PullRequestDetailFields = typeof PullRequestDetailFields.Type
 const PULL_REQUEST_FRAGMENTS = `fragment PullRequestFields on PullRequest {
   url number title state isDraft reviewDecision mergeable
   author { login }
-  headRefName baseRefName headRefOid additions deletions changedFiles body
+  headRefName baseRefName headRefOid createdAt additions deletions changedFiles body
   commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
     ... on CheckRun { __typename name status conclusion detailsUrl checkSuite { workflowRun { workflow { name } } } }
     ... on StatusContext { __typename context state targetUrl }
@@ -593,6 +594,9 @@ export class GitHub extends Context.Service<
     readonly pullRequest: (
       url: string,
     ) => Effect.Effect<PullRequest, GitHubError | PullRequestUrlInvalidError | Schema.SchemaError>
+    readonly pullRequestOpenedAt: (
+      url: string,
+    ) => Effect.Effect<string, GitHubError | PullRequestUrlInvalidError | Schema.SchemaError>
     readonly pullRequestDetail: (
       url: string,
       options?: { readonly fresh?: boolean | undefined },
@@ -949,6 +953,7 @@ const make = Effect.gen(function* () {
     ),
     run: gh,
     pullRequest: (raw) => Effect.map(read(raw), toPullRequest),
+    pullRequestOpenedAt: (raw) => Effect.map(read(raw), (json) => json.createdAt),
     pullRequestDetail: (raw, options) => Effect.map(read(raw, options?.fresh), toPullRequestDetail),
     pullRequestDiff: (raw) =>
       ghByUrl(raw, (url) => ["pr", "diff", url, "--color=never"]).pipe(

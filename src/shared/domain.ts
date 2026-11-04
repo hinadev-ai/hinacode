@@ -898,6 +898,9 @@ export const TerminalAttachment = Schema.Struct({
 })
 export type TerminalAttachment = typeof TerminalAttachment.Type
 
+export const PullRequestTopic = Schema.Literals(["pullRequest.opened", "pullRequest.merged", "pullRequest.closed"])
+export type PullRequestTopic = typeof PullRequestTopic.Type
+
 export const AutomationTrigger = Schema.Union([
   Schema.Struct({ type: Schema.Literal("webhook") }),
   Schema.Struct({
