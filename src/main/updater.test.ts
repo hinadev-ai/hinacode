@@ -13,6 +13,7 @@ vi.mock("electron-updater", () => ({
   default: {
     autoUpdater: Object.assign(new EventEmitter(), {
       autoDownload: false,
+      isUpdaterActive: () => true,
       checkForUpdates: () => Promise.resolve(null),
       quitAndInstall: () => {},
     }),
@@ -47,5 +48,14 @@ it.effect("clears a rejected update and tells the renderer to refresh the status
       const rejected = yield* Queue.take(pushes)
       expect([downloaded, rejected]).toEqual([{ type: "update.changed" }, { type: "update.changed" }])
     }).pipe(Effect.provide(layer.pipe(Layer.provide(events))))
+  }),
+)
+
+it.effect("reports unsupported when the updater cannot replace the running build", () =>
+  Effect.gen(function* () {
+    vi.spyOn(updater.autoUpdater, "isUpdaterActive").mockReturnValueOnce(false)
+    const events = Layer.succeed(Events, { publish: () => Effect.void })
+    const updates = yield* Updates.pipe(Effect.provide(layer.pipe(Layer.provide(events))))
+    expect(yield* updates.status).toEqual({ current: "0.1.0", state: { type: "unsupported" } })
   }),
 )
