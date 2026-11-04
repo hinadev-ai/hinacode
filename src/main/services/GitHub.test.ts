@@ -239,9 +239,9 @@ const fakeGh = (reply: (args: ReadonlyArray<string>) => GhReply) => {
 
 const ghFails = (stderr: string) => fakeGh(() => ({ stderr, exitCode: 1 })).layer
 
-describe("a gh that never exits", () => {
-  const neverExits = () => fakeGh(() => ({ neverExits: true })).layer
+const neverExits = () => fakeGh(() => ({ neverExits: true })).layer
 
+describe("a gh that never exits", () => {
   it.effect("fails a read after a minute", () =>
     Effect.gen(function* () {
       const github = yield* GitHub

@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { Context, Duration, Effect, Layer, Schema, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import type { ChangedFileStatus, CommitDiff, GitCommit } from "../../shared/domain.ts"
 
@@ -17,12 +17,29 @@ export class CommandError extends Schema.TaggedError<CommandError>()("CommandErr
 export interface RunOptions {
   readonly okExitCodes?: ReadonlyArray<number>
   readonly env?: Record<string, string>
+  readonly timeout?: Duration.Input
 }
+
+const TIMED_OUT_EXIT_CODE = 124
 
 // FIXME: authenticate through gh, since macOS's osxkeychain helper opens a Keychain dialog over the app
 export const REMOTE_GIT_ARGS = ["-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential"]
 export const REMOTE_GIT_ENV = { GIT_TERMINAL_PROMPT: "0" }
 export const NO_OPTIONAL_LOCKS_ENV = { GIT_OPTIONAL_LOCKS: "0" }
+
+const failAfter = (timeout: Duration.Input, command: string, args: ReadonlyArray<string>) =>
+  Effect.timeoutOrElse({
+    duration: timeout,
+    orElse: () =>
+      Effect.fail(
+        new CommandError({
+          command,
+          args,
+          exitCode: TIMED_OUT_EXIT_CODE,
+          stderr: `timed out after ${Duration.format(Duration.fromInputUnsafe(timeout))}`,
+        }),
+      ),
+  })
 
 export const makeExec =
   (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) =>
@@ -45,6 +62,7 @@ export const makeExec =
       return stdout
     }).pipe(
       Effect.scoped,
+      options?.timeout === undefined ? (run) => run : failAfter(options.timeout, command, args),
       Effect.catchTag("PlatformError", (cause) =>
         Effect.fail(new CommandError({ command, args, exitCode: -1, stderr: cause.message })),
       ),
