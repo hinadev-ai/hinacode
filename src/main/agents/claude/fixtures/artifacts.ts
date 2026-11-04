@@ -71,7 +71,10 @@ export const artifactTurn = (
   return { started, finished }
 }
 
-const DOCUMENT = `## Goal
+const DOCUMENT = `> [!NOTE]
+> The agent drafts, the developer edits, and the next publish merges both. Ship it behind a flag on Friday.
+
+## Goal
 
 Let the developer edit what the agent writes.
 
@@ -85,6 +88,13 @@ Let the developer edit what the agent writes.
 | --- | --- |
 | Store | Agent |
 | Editor | Developer |
+
+## Flow
+
+\`\`\`mermaid
+graph LR
+  Agent --> Store --> Editor
+\`\`\`
 
 \`\`\`ts
 type ArtifactKind = "page" | "document"
