@@ -21,6 +21,8 @@ export interface RunOptions {
 }
 
 const TIMED_OUT_EXIT_CODE = 124
+const DEFAULT_TIMEOUT = "5 minutes"
+export const LONG_TIMEOUT = "1 hour"
 
 // FIXME: authenticate through gh, since macOS's osxkeychain helper opens a Keychain dialog over the app
 export const REMOTE_GIT_ARGS = ["-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential"]
@@ -46,7 +48,13 @@ export const makeExec =
   (command: string, args: ReadonlyArray<string>, cwd: string, options?: RunOptions) =>
     Effect.gen(function* () {
       const handle = yield* spawner.spawn(
-        ChildProcess.make(command, args, { cwd, stdin: "ignore", env: options?.env, extendEnv: true }),
+        ChildProcess.make(command, args, {
+          cwd,
+          stdin: "ignore",
+          env: options?.env,
+          extendEnv: true,
+          forceKillAfter: "3 seconds",
+        }),
       )
       const [stdout, stderr, exitCode] = yield* Effect.all(
         [
@@ -62,7 +70,7 @@ export const makeExec =
       return stdout
     }).pipe(
       Effect.scoped,
-      options?.timeout === undefined ? (run) => run : failAfter(options.timeout, command, args),
+      failAfter(options?.timeout ?? DEFAULT_TIMEOUT, command, args),
       Effect.catchTag("PlatformError", (cause) =>
         Effect.fail(new CommandError({ command, args, exitCode: -1, stderr: cause.message })),
       ),
@@ -144,7 +152,7 @@ const make = Effect.gen(function* () {
   const run = (cwd: string, args: ReadonlyArray<string>, options?: RunOptions) =>
     exec("git", ["-C", cwd, ...args], cwd, { ...options, env: { ...NO_OPTIONAL_LOCKS_ENV, ...options?.env } })
   const remote = (cwd: string, args: ReadonlyArray<string>) =>
-    run(cwd, [...REMOTE_GIT_ARGS, ...args], { env: REMOTE_GIT_ENV })
+    run(cwd, [...REMOTE_GIT_ARGS, ...args], { env: REMOTE_GIT_ENV, timeout: LONG_TIMEOUT })
 
   // FIXME: `--all` also walks the stash and tool-private refs such as editor checkpoints
   const log = (cwd: string, limit: number) =>

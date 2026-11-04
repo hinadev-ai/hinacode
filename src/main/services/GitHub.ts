@@ -44,7 +44,7 @@ import {
   type RepositoryVisibility,
 } from "../../shared/github.ts"
 import { Events } from "./Events.ts"
-import { CommandError, makeExec, REMOTE_GIT_ARGS, REMOTE_GIT_ENV, type RunOptions } from "./Git.ts"
+import { CommandError, LONG_TIMEOUT, makeExec, REMOTE_GIT_ARGS, REMOTE_GIT_ENV, type RunOptions } from "./Git.ts"
 
 export class GitHubCliMissingError extends Schema.TaggedError<GitHubCliMissingError>()("GitHubCliMissingError", {}) {
   override get message(): string {
@@ -639,7 +639,6 @@ export class GitHub extends Context.Service<
 
 const SIGNED_OUT_EXIT_CODE = 4
 const GH_TIMEOUT = "1 minute"
-const GH_TRANSFER_TIMEOUT = "1 hour"
 
 const RATE_LIMITED = /rate limit/i
 const SECONDARY_PAUSE_MS = 60_000
@@ -805,14 +804,18 @@ const make = Effect.gen(function* () {
 
   const createRepository = (cwd: string, visibility: RepositoryVisibility) =>
     gh(cwd, ["repo", "create", "--source", cwd, "--remote", "origin", `--${visibility}`, "--push"], {
-      timeout: GH_TRANSFER_TIMEOUT,
+      timeout: LONG_TIMEOUT,
     }).pipe(Effect.asVoid)
 
   const clone = ({ owner, name }: GitHubRepository, dest: string) => {
     // FIXME: a full https URL keeps gh from switching to a configured ssh git_protocol
     const url = `https://github.com/${owner}/${name}.git`
-    const gitClone = () => exec("git", [...REMOTE_GIT_ARGS, "clone", url, dest], dirname(dest), { env: REMOTE_GIT_ENV })
-    return gh(dirname(dest), ["repo", "clone", url, dest], { timeout: GH_TRANSFER_TIMEOUT }).pipe(
+    const gitClone = () =>
+      exec("git", [...REMOTE_GIT_ARGS, "clone", url, dest], dirname(dest), {
+        env: REMOTE_GIT_ENV,
+        timeout: LONG_TIMEOUT,
+      })
+    return gh(dirname(dest), ["repo", "clone", url, dest], { timeout: LONG_TIMEOUT }).pipe(
       Effect.catchTags({
         GitHubCliMissingError: gitClone,
         GitHubSignedOutError: gitClone,

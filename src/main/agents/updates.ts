@@ -31,7 +31,7 @@ const installedVersion = (provider: UpdatableProviderId) =>
   Effect.gen(function* () {
     const path = yield* installedBinary(provider, provider)
     const { stdout } = yield* Effect.tryPromise({
-      try: () => execFileAsync(path, ["--version"], { encoding: "utf8", timeout: 10_000 }),
+      try: () => execFileAsync(path, ["--version"], { encoding: "utf8", timeout: 10_000, killSignal: "SIGKILL" }),
       catch: () => new AgentError({ provider, message: `Could not read the version of ${path}` }),
     })
     const version = parseVersion(stdout)
@@ -69,7 +69,8 @@ export const installUpdate = (provider: UpdatableProviderId) =>
   Effect.gen(function* () {
     const path = yield* installedBinary(provider, provider)
     yield* Effect.tryPromise({
-      try: () => execFileAsync(path, ["update"], { encoding: "utf8", timeout: UPDATE_TIMEOUT_MS }),
+      try: () =>
+        execFileAsync(path, ["update"], { encoding: "utf8", timeout: UPDATE_TIMEOUT_MS, killSignal: "SIGKILL" }),
       catch: (cause) =>
         new AgentError({
           provider,

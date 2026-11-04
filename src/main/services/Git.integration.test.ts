@@ -32,3 +32,17 @@ it.live("a timeout kills the process and every process it started", () =>
     }
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 )
+
+it.live("a process that ignores SIGTERM is killed anyway", () =>
+  Effect.gen(function* () {
+    const dir = mkdtempSync(join(tmpdir(), "hinacode-exec-"))
+    yield* Effect.addFinalizer(() => Effect.sync(() => rmSync(dir, { recursive: true, force: true })))
+    const exec = makeExec(yield* ChildProcessSpawner.ChildProcessSpawner)
+
+    yield* Effect.flip(
+      exec("sh", ["-c", "trap '' TERM; echo $$ > pid; while :; do sleep 1; done"], dir, { timeout: "500 millis" }),
+    )
+
+    expect(isRunning(Number(readFileSync(join(dir, "pid"), "utf8")))).toBe(false)
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+)
