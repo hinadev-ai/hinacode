@@ -66,3 +66,13 @@ Feature: File explorer
     Then I see the toast "already exists"
     And the file "docs/same.txt" contains "in docs" on disk
     And the file "same.txt" contains "at the root" on disk
+
+  Scenario: A new file can be mentioned while the draft already has a mention
+    Given a project "fx" for my repository
+    When I start a new thread in "fx"
+    And I open Files in the activity bar
+    And I type "@" into the composer
+    Then the mentions list is open
+    When I create the file "fresh.txt" from the file tree
+    And I type " @fresh" into the composer
+    Then the mentions list offers "fresh.txt"

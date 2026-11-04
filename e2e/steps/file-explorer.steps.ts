@@ -116,3 +116,20 @@ Then("the file {string} contains {string} on disk", async ({ repo }, path: strin
 Then("I see the toast {string}", async ({ app }, text: string) => {
   await expect(app.page.getByRole("region", { name: /Notifications/ })).toContainText(text)
 })
+
+When("I create the file {string} from the file tree", async ({ app }, name: string) => {
+  await app.page.getByRole("button", { name: "New file", exact: true }).click()
+  await app.page.getByRole("textbox", { name: "New file name", exact: true }).fill(name)
+  await app.page.keyboard.press("Enter")
+  await expect(treeRow(app.page, name)).toBeVisible()
+})
+
+const mentions = (page: import("@playwright/test").Page) => page.getByRole("listbox", { name: "Mentions", exact: true })
+
+Then("the mentions list is open", async ({ app }) => {
+  await expect(mentions(app.page)).toBeVisible()
+})
+
+Then("the mentions list offers {string}", async ({ app }, path: string) => {
+  await expect(mentions(app.page).getByRole("option").filter({ hasText: path })).toBeVisible()
+})
