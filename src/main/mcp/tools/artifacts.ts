@@ -1,10 +1,11 @@
 import { ArtifactError, type ArtifactTool, artifactTools } from "@hinacode/artifacts"
 import { Context, Effect, Option, Schema } from "effect"
 import { McpSchema, McpServer } from "effect/ai"
-import { publishedArtifactId } from "../../../shared/agent.ts"
+import { publishedArtifactId, toolArgument } from "../../../shared/agent.ts"
 import { ARTIFACT_THEME_GUIDE } from "../../../shared/artifactTheme.ts"
 import { ArtifactInspector, describeInspection } from "../../services/ArtifactInspector.ts"
 import { Artifacts } from "../../services/Artifacts.ts"
+import { Events } from "../../services/Events.ts"
 import { McpCredentials } from "../credentials.ts"
 import { callingThreadId, invalidCredential, text } from "./tool.ts"
 
@@ -18,6 +19,14 @@ export const registerArtifactTools = Effect.gen(function* () {
   const credentials = yield* McpCredentials
   const { store } = yield* Artifacts
   const inspector = yield* ArtifactInspector
+  const events = yield* Events
+
+  const openWhenAsked = (input: unknown, result: string, threadId: string) => {
+    const id = publishedArtifactId(result)
+    return toolArgument(input, "auto_open") === true && id !== null
+      ? events.publish({ type: "artifact.opened", threadId, id })
+      : Effect.void
+  }
 
   const withInspection = (result: string) =>
     Effect.gen(function* () {
@@ -51,6 +60,7 @@ export const registerArtifactTools = Effect.gen(function* () {
             try: () => tool.handle(store, input.data, { threadId: threadId.value }),
             catch: (cause) => cause,
           }).pipe(
+            Effect.tap((result) => openWhenAsked(input.data, result, threadId.value)),
             Effect.flatMap((result) =>
               name === "publish_artifact" ? withInspection(result) : Effect.succeed(text(result)),
             ),
