@@ -74,7 +74,7 @@ A 401 from `GET /v1/machines` (the owner token was rotated) keeps every entry an
 
 ## Out of scope
 
-- Per-device credentials and revoking one device. Every signed-in device holds the owner token, so a lost device means rotating it and signing the others in again. Clerk sign-in replaces this before anyone else uses the relay.
+- Per-device credentials and revoking one device. Every signed-in device holds the owner token, so a lost device means rotating it and signing the others in again. The token is now per account, created from a Clerk session on the relay page. Per-device credentials come before anyone else uses the relay.
 - Minting short-lived credentials on each machine, as T3 Code does, so the relay never holds a pairing token. ADR 0021 says when to switch.
 - Hiding a machine from one device only.
 - Turning a hidden machine's tunnel off.

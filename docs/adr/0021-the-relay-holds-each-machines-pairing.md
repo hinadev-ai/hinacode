@@ -18,5 +18,5 @@ Each linked machine publishes its pairing (direct addresses, port and token) to 
 - Signing a device in once replaces a QR scan per machine, and a rotated token reaches every signed-in device at its next sync.
 - No new protocol on the remote listener, and no channel from the relay to the machines.
 - D1 holds every shown machine's pairing token in plaintext. Reading D1 or stealing the owner token is enough to reach those machines. Both already required access that could do the same through the tunnel, so the owner loses little, but a D1 export is now as sensitive as the owner token.
-- Every signed-in device holds the owner token, which can also rotate itself and change what the relay shows. Losing a device means rotating it.
+- Every signed-in device holds the account's owner token, which can change what the relay shows but cannot replace itself. Losing a device means signing in on the relay page and creating a new token.
 - Revisit before a second person uses the relay: per-device sign-in through Clerk, and credentials minted by each machine as T3 Code does, so the relay stops holding tokens.
