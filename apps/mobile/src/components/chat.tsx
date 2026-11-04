@@ -360,6 +360,18 @@ function PartView({ part, threadId }: { part: MessagePart; threadId: string }) {
           })}
         </Text>
       )
+    case "signed_out":
+      return (
+        <View style={[styles.card, { borderColor: theme.attention, backgroundColor: theme.attentionBg }]}>
+          <Text selectable style={[styles.cardBody, { color: theme.text }]}>
+            {part.message}
+          </Text>
+          <Text style={[styles.cardNote, { color: theme.textMuted }]}>{copy("mobile_chat_signed_out_hint")}</Text>
+          <Text selectable style={[styles.detail, { color: theme.text, backgroundColor: theme.surface }]}>
+            {part.loginCommand}
+          </Text>
+        </View>
+      )
   }
 }
 

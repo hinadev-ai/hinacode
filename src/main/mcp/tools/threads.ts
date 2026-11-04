@@ -35,6 +35,8 @@ const renderPart = (part: Message["parts"][number]): string | null => {
       return `[context compaction: ${part.compaction.status}]`
     case "agent_switch":
       return `[agent switched: ${part.from} → ${part.to}]`
+    case "signed_out":
+      return `**Error:** ${part.message}. Sign in with \`${part.loginCommand}\``
     case "session_import":
       return part.history === "replayed"
         ? `[imported ${part.provider} session]`

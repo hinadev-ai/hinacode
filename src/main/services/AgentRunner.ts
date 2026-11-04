@@ -764,7 +764,9 @@ const make = Effect.gen(function* () {
 
     const follow = (events: Stream.Stream<AgentEvent, AgentError | PersistenceError>) =>
       Stream.runForEach(events, handle).pipe(
-        Effect.catchTag("AgentError", (error) => handle({ type: "turn_failed", message: error.message })),
+        Effect.catchTag("AgentError", ({ message, loginCommand }) =>
+          handle({ type: "turn_failed", message, ...(loginCommand !== undefined && { loginCommand }) }),
+        ),
         Effect.catch((error) => Effect.logError("turn bookkeeping failed", error)),
         Effect.ensuring(finish),
       )

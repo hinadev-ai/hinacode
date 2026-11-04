@@ -352,6 +352,16 @@ export const failure = (): Array<MockStep> => [
   sdk(executionError('API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}')),
 ]
 
+export const signedOutMessage = "Failed to authenticate: OAuth session expired and could not be refreshed"
+
+export const signedOut = (): Array<MockStep> => [
+  sdk({
+    ...assistant([{ type: "text", text: signedOutMessage, citations: null }], { contextTokens: 0 }),
+    error: "authentication_failed" as const,
+  }),
+  sdk({ ...success(), is_error: true, result: signedOutMessage }),
+]
+
 export const stoppable = (): Array<MockStep> => {
   const watch = nextCallId()
   return [
