@@ -24,7 +24,7 @@ export const CLOSE_LISTENER_STOPPED = 4003
 export const CLOSE_AUTH_TIMEOUT = 4004
 export const CLOSE_MALFORMED_FRAME = 4005
 
-const LOOPBACK = "127.0.0.1"
+export const LOOPBACK = "127.0.0.1"
 
 export const advertisedHosts = (bindHost: string | null): NonEmptyReadonlyArray<string> => {
   if (bindHost !== PRIVATE_NETWORKS) return [bindHost ?? LOOPBACK]
