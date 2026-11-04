@@ -996,7 +996,7 @@ export type FileSearchHit = typeof FileSearchHit.Type
 
 export const RelayStatus = Schema.Union([
   Schema.Struct({ state: Schema.Literal("off") }),
-  Schema.Struct({ state: Schema.Literal("linking"), url: Schema.String, userCode: Schema.String }),
+  Schema.Struct({ state: Schema.Literal("linking"), url: Schema.String }),
   Schema.Struct({ state: Schema.Literals(["paused", "connected"]), hostname: Schema.String }),
   Schema.Struct({ state: Schema.Literal("connecting"), hostname: Schema.String, error: Schema.NullOr(Schema.String) }),
 ])

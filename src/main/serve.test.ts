@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@effect/vitest"
-import { autoUpdate, restartCommand, serveConfig } from "./serve.ts"
+import { autoUpdate, browserCommand, linkInstructions, restartCommand, serveConfig } from "./serve.ts"
 
 const none = { rotateToken: false }
 
@@ -92,4 +92,40 @@ describe("restartCommand", () => {
     expect(args).not.toContain("--rotate-token")
     expect(env).toStrictEqual({ PATH: "/usr/bin", HINACODE_USER_DATA: "/srv/cloud" })
   })
+})
+
+describe("browserCommand", () => {
+  const url = "https://relay.test/link?code=abc"
+
+  test("opens the browser on a machine with a display", () => {
+    expect(browserCommand(url, "darwin", {})).toStrictEqual({ file: "open", args: [url] })
+    expect(browserCommand(url, "linux", { DISPLAY: ":0" })).toStrictEqual({ file: "xdg-open", args: [url] })
+    expect(browserCommand(url, "linux", { WAYLAND_DISPLAY: "wayland-0" })).toStrictEqual({
+      file: "xdg-open",
+      args: [url],
+    })
+    expect(browserCommand(url, "win32", {})?.file).toBe("rundll32")
+  })
+
+  test("leaves it to the person on a headless machine or over SSH", () => {
+    expect(browserCommand(url, "linux", {})).toBeNull()
+    expect(browserCommand(url, "linux", { DISPLAY: ":0", SSH_CONNECTION: "1 2 3 4" })).toBeNull()
+    expect(browserCommand(url, "darwin", { SSH_TTY: "/dev/ttys001" })).toBeNull()
+  })
+
+  test("opens nothing but a web page, whatever the relay answers", () => {
+    expect(browserCommand("file:///etc/passwd", "darwin", {})).toBeNull()
+    expect(browserCommand("not a url", "darwin", {})).toBeNull()
+  })
+
+  test("passes the normalized URL, so a stray byte cannot make spawning throw", () => {
+    const args = browserCommand("https://relay.test/link?code=a\0b", "darwin", {})?.args ?? []
+    expect(args).toStrictEqual(["https://relay.test/link?code=a%00b"])
+  })
+})
+
+test("linkInstructions puts the URL on its own line, so it can be clicked or copied", () => {
+  expect(linkInstructions("https://relay.test/link?code=abc").split("\n")).toContain(
+    "  https://relay.test/link?code=abc",
+  )
 })

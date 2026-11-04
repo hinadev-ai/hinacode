@@ -1,6 +1,6 @@
 import { Clock, Context, Duration, Effect, Exit, Fiber, FiberHandle, Layer, Option, Schedule, Semaphore } from "effect"
 import type { RelayAccountStatus } from "../../shared/domain.ts"
-import type { PendingLink, RelayHost, RelayMachine } from "../../shared/relayMachines.ts"
+import type { RelayHost, RelayMachine } from "../../shared/relayMachines.ts"
 import { RemoteAccess } from "../remote/access.ts"
 import { type Fetch, Link, RelayError, type RelayLink, relayService } from "../remote/relayService.ts"
 import { nowIso } from "./clock.ts"
@@ -11,8 +11,6 @@ import { Secrets } from "./Secrets.ts"
 export const DEVICE_CREDENTIAL_SECRET = "relay.deviceCredential"
 
 const SYNC_INTERVAL = "5 minutes"
-const PUBLISH_POLL = "1 second"
-const PUBLISH_WAIT = "1 minute"
 const SIGN_IN_EXPIRED = "The sign-in expired. Try again."
 
 export class RelayAccount extends Context.Service<
@@ -32,8 +30,6 @@ export class RelayAccount extends Context.Service<
     readonly removeMachine: (input: {
       readonly id: string
     }) => Effect.Effect<ReadonlyArray<RelayHost>, RelayError | PersistenceError>
-    readonly pendingLink: (userCode: string) => Effect.Effect<PendingLink, RelayError | PersistenceError>
-    readonly approveLink: (userCode: string) => Effect.Effect<ReadonlyArray<RelayHost>, RelayError | PersistenceError>
     readonly approveOwnLink: (userCode: string) => Effect.Effect<boolean>
   }
 >()("hinacode/RelayAccount") {}
@@ -189,25 +185,6 @@ const make = ({ serviceUrl, fetch = globalThis.fetch }: RelayAccountOptions) =>
         }),
       )
 
-    const pendingLink = (userCode: string) =>
-      Effect.flatMap(storedCredential, (token) => service.pendingLink(token, userCode))
-
-    const approveLink = (userCode: string) =>
-      Effect.gen(function* () {
-        const token = yield* storedCredential
-        const { environmentId } = yield* service.pendingLink(token, userCode)
-        yield* service.approveLink(token, userCode)
-        yield* service.hosts(token).pipe(
-          Effect.repeat({
-            schedule: Schedule.spaced(PUBLISH_POLL),
-            until: (hosts) => hosts.some((host) => host.environmentId === environmentId && host.published),
-          }),
-          Effect.timeoutOption(PUBLISH_WAIT),
-        )
-        yield* sync
-        return yield* service.hosts(token)
-      })
-
     const approveOwnLink = (userCode: string) =>
       secrets.get(DEVICE_CREDENTIAL_SECRET).pipe(
         Effect.flatMap(
@@ -231,8 +208,6 @@ const make = ({ serviceUrl, fetch = globalThis.fetch }: RelayAccountOptions) =>
       machines,
       setShown,
       removeMachine,
-      pendingLink,
-      approveLink,
       approveOwnLink,
     })
   })

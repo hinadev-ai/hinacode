@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect"
 import { BindHost } from "../shared/domain.ts"
 import { RemoteAccess } from "./remote/access.ts"
 import { Relay } from "./remote/relay.ts"
-import type { RelayError, RelayLink } from "./remote/relayService.ts"
+import { EXPIRED, type RelayError, type RelayLink } from "./remote/relayService.ts"
 import type { PersistenceError } from "./services/errors.ts"
 import { Settings } from "./services/Settings.ts"
 
@@ -104,5 +104,29 @@ export const applyServeRelay = (
     const service = yield* Relay
     if (relay === "off") return yield* service.remove
     if ("hostname" in (yield* service.status)) return
-    yield* service.setup({ onLink })
+    yield* service.setup({ onLink }).pipe(Effect.retry({ while: (error) => error.message === EXPIRED }))
   })
+
+export const browserCommand = (
+  url: string,
+  platform: NodeJS.Platform,
+  env: NodeJS.ProcessEnv,
+): { readonly file: string; readonly args: ReadonlyArray<string> } | null => {
+  const parsed = URL.parse(url)
+  if (parsed === null || (parsed.protocol !== "https:" && parsed.protocol !== "http:")) return null
+  if (env["SSH_CONNECTION"] !== undefined || env["SSH_TTY"] !== undefined) return null
+  if (platform === "darwin") return { file: "open", args: [parsed.href] }
+  if (platform === "win32") return { file: "rundll32", args: ["url.dll,FileProtocolHandler", parsed.href] }
+  return env["DISPLAY"] || env["WAYLAND_DISPLAY"] ? { file: "xdg-open", args: [parsed.href] } : null
+}
+
+export const linkInstructions = (url: string) =>
+  [
+    "Link this machine to your HinaCode account.",
+    "Open this URL in any browser, on this machine or another:",
+    "",
+    `  ${url}`,
+    "",
+    "Waiting for you to approve it…",
+    "",
+  ].join("\n")

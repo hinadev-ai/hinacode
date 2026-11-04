@@ -39,10 +39,9 @@ const serve = Command.make(
       Flag.withDefault(false),
       Flag.withDescription("Replace the token, which unpairs every client, or HINACODE_SERVE_ROTATE_TOKEN=1."),
     ),
-    relay: Flag.Literals("relay", ["on", "off"]).pipe(
-      Flag.withMetavar("on|off"),
+    relay: Flag.Boolean("relay").pipe(
       Flag.withDescription(
-        "Reach the cloud from any network through the HinaCode relay, or HINACODE_SERVE_RELAY. on links it to your HinaCode account once, and needs cloudflared on PATH. off unlinks it.",
+        "Reach the cloud from any network through the HinaCode relay, or HINACODE_SERVE_RELAY. --relay prints a URL to sign in and link it to your HinaCode account. --no-relay removes it.",
       ),
       Flag.optional,
     ),
@@ -54,7 +53,7 @@ const serve = Command.make(
           {
             port: Option.getOrUndefined(flags.port),
             host: Option.getOrUndefined(flags.host),
-            relay: Option.getOrUndefined(flags.relay),
+            relay: Option.getOrUndefined(Option.map(flags.relay, (on) => (on ? "on" : "off"))),
             rotateToken: flags.rotateToken,
           },
           userData,

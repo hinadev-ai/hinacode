@@ -340,8 +340,6 @@ const handlers: Handlers = {
   "relayAccount.machines": () => RelayAccount.use((account) => account.machines),
   "relayAccount.setShown": (input) => RelayAccount.use((account) => account.setShown(input)),
   "relayAccount.removeMachine": (input) => RelayAccount.use((account) => account.removeMachine(input)),
-  "relayAccount.pendingLink": ({ userCode }) => RelayAccount.use((account) => account.pendingLink(userCode)),
-  "relayAccount.approveLink": ({ userCode }) => RelayAccount.use((account) => account.approveLink(userCode)),
   "notifications.permission": (_, desktop) => desktop?.notificationPermission ?? Effect.succeed("unknown" as const),
   "notifications.askPermission": ({ title, body }, desktop) =>
     desktop?.askNotificationPermission(title, body) ?? Effect.succeed("noAnswer" as const),

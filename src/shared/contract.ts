@@ -95,7 +95,7 @@ import {
   PullRequestMatch,
 } from "./domain.ts"
 import { GitHubRepository, GitRefName, RepositoryPath, RepositoryVisibility } from "./github.ts"
-import { PendingLink, RelayHost } from "./relayMachines.ts"
+import { RelayHost } from "./relayMachines.ts"
 import { BrowserCommand, BrowserSession, BrowserSnapshot, BrowserUrl, BrowserViewport } from "./browser.ts"
 import {
   AgentAction,
@@ -359,8 +359,6 @@ export const RpcMethods = {
   "relayAccount.machines": rpc(Schema.Void, Schema.Array(RelayHost)),
   "relayAccount.setShown": rpc(Schema.Struct({ id: Schema.String, enabled: Schema.Boolean }), Schema.Array(RelayHost)),
   "relayAccount.removeMachine": rpc(Schema.Struct({ id: Schema.String }), Schema.Array(RelayHost)),
-  "relayAccount.pendingLink": rpc(Schema.Struct({ userCode: Schema.String }), PendingLink),
-  "relayAccount.approveLink": rpc(Schema.Struct({ userCode: Schema.String }), Schema.Array(RelayHost)),
 
   "models.list": rpc(Schema.Struct({ provider: ProviderId }), Schema.Array(ModelInfo)),
   "agents.account": rpc(
@@ -740,8 +738,6 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "relayAccount.machines": "read",
   "relayAccount.setShown": "mutation",
   "relayAccount.removeMachine": "mutation",
-  "relayAccount.pendingLink": "read",
-  "relayAccount.approveLink": "mutation",
   "models.list": "read",
   "agents.account": "read",
   "agents.updates": "read",
@@ -905,8 +901,6 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "relayAccount.machines",
   "relayAccount.setShown",
   "relayAccount.removeMachine",
-  "relayAccount.pendingLink",
-  "relayAccount.approveLink",
   "agents.update",
 ])
 export const desktopOnlyPushes: ReadonlySet<PushEvent["type"]> = new Set<PushEvent["type"]>([
