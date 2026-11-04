@@ -88,7 +88,7 @@ A bar chart stacks its series and a line chart draws one line per series. The hi
 
 In the editor, a code block whose language is `chart` becomes a card with the title, notes, legend and plot, plus Data (the rows as a table) and Source (the JSON, editable, redrawing as you type). Every other code block keeps a plain view.
 
-Two things load only when needed. Observable Plot, which draws the SVG, is a lazy chunk imported when a document contains a chart. The chart syntax is about 450 tokens that agents need only when drawing one, so it is not in the thread instructions or the `publish_document` description. That description says charts exist and points at `document_chart_guide`, which returns `CHART_GUIDE`. A test parses the guide's example with the renderer's parser, so the guide cannot teach a chart that does not draw.
+Two things load only when needed. Observable Plot, which draws the SVG, is a lazy chunk imported when a document contains a chart. The chart syntax is about 450 tokens that agents need only when drawing one, so it is not in the thread instructions or the `publish_document` description. The developer asks for it with `/document <what to write>`. `AgentRunner` lists that command for every provider and swaps it for `CHART_GUIDE` plus the request just before the prompt or steer reaches the provider. The transcript keeps what the developer typed, and a resend expands again. A provider's own `/document` skill is hidden, because the prompt expands to the guide either way. An agent never sent `/document` does not know the syntax, and the thread instructions point it at `publish_artifact` for charts. A test parses the guide's example with the renderer's parser, so the guide cannot teach a chart that does not draw.
 
 ### Export
 
