@@ -1,6 +1,6 @@
-import type { Subagent, SubagentStatus } from "@shared/agent.ts"
+import { outputText, type Subagent, type SubagentStatus } from "@shared/agent.ts"
 import type { Message, MessagePart, Thread } from "@shared/domain.ts"
-import { inputField, outputText, statusOfCall, subagentReport } from "@shared/subagents.ts"
+import { inputField, statusOfCall, subagentReport } from "@shared/subagents.ts"
 import { Stack, useLocalSearchParams } from "expo-router"
 import { useEffect, useRef, useState } from "react"
 import { ActivityIndicator, Pressable, ScrollView, type ScrollViewInstance, StyleSheet, Text, View } from "react-native"

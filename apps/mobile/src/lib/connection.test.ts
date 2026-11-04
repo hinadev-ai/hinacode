@@ -229,6 +229,44 @@ describe("call", () => {
     ])
   })
 
+  it("reads an artifact on the thread's server before any server has claimed it", async () => {
+    unanswered(call("artifacts.readDocument", { id: "doc-1" }, { server: "b" }))
+    await flush()
+    expect(socketOf(1001).calls("artifacts.readDocument")).toHaveLength(0)
+    expect(socketOf(1002).calls("artifacts.readDocument")).toHaveLength(1)
+  })
+
+  it("prefers the server that claimed an artifact over the one a call names", async () => {
+    const listing = call("artifacts.list", undefined)
+    socketOf(1001).answer("artifacts.list", [
+      {
+        id: "doc-1",
+        title: "Plan",
+        entry: "document.md",
+        version: 1,
+        files: [],
+        createdAt: "2026-10-24T00:00:00.000Z",
+        updatedAt: "2026-10-24T00:00:00.000Z",
+      },
+    ])
+    socketOf(1002).answer("artifacts.list", [])
+    await listing
+
+    unanswered(call("artifacts.readDocument", { id: "doc-1" }, { server: "b" }))
+    await flush()
+    expect(socketOf(1001).calls("artifacts.readDocument")).toHaveLength(1)
+    expect(socketOf(1002).calls("artifacts.readDocument")).toHaveLength(0)
+  })
+
+  it("still refuses an unclaimed artifact when no server is named", async () => {
+    const listing = call("threads.list", undefined)
+    socketOf(1001).answer("threads.list", [])
+    socketOf(1002).answer("threads.list", [])
+    await listing
+
+    await expect(call("artifacts.readDocument", { id: "doc-1" })).rejects.toMatchObject({ tag: "NotFoundError" })
+  })
+
   it("sends a named call to the server it names", async () => {
     unanswered(call("projects.create", { name: "api", rootPath: "/srv/api", setupScript: null }, { server: "b" }))
     await flush()

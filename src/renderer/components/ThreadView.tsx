@@ -8,6 +8,7 @@ import type { Thread } from "../../shared/domain.ts"
 import { findPattern } from "../lib/find.ts"
 import { useDebouncedValue } from "../lib/useDebouncedValue.ts"
 import { useIsChat } from "../lib/useIsChat.ts"
+import { artifactSkillCommands } from "../lib/artifactSkills.ts"
 import { commandsAtom, completionKey, projectsAtom, repositoryAtom, threadCommands } from "../lib/rpc.ts"
 import { ThreadRepository } from "../lib/threadRepository.ts"
 import { ThreadFolder, useThreadRoot } from "../lib/threadRoot.ts"
@@ -171,10 +172,13 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   const load = useMessages((state) => state.load)
   const label = providerLabel[thread.provider]()
-  const commands = threadCommands(
-    AsyncResult.getOrElse(useAtomValue(commandsAtom(completionKey(thread))), (): ReadonlyArray<AgentCommand> => []),
-    thread,
-  )
+  const commands = [
+    ...artifactSkillCommands(),
+    ...threadCommands(
+      AsyncResult.getOrElse(useAtomValue(commandsAtom(completionKey(thread))), (): ReadonlyArray<AgentCommand> => []),
+      thread,
+    ),
+  ]
   const isChat = useIsChat(thread.projectId)
   const findOpen = useUi((state) => state.findThreadId === thread.id)
   const findQuery = useDebouncedValue(

@@ -39,6 +39,7 @@ import { useNow } from "@/hooks/use-now"
 import { useThreadServer } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
+import { artifactSkillCommands } from "@/lib/artifact-skills"
 import { keepSkillWhole } from "@/lib/composer-text"
 import { copy, locale } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
@@ -90,8 +91,8 @@ function useUnstarted(thread: Thread) {
 }
 
 /**
- * What the composer completes: the agent's `/commands` and `$skills`, the workspace's files and the project's
- * other threads. Commands are listed again when the agent, account or worktree changes, and after a turn. The file
+ * What the composer completes: HinaCode's artifact skills, the agent's `/commands` and `$skills`, the workspace's files
+ * and the project's other threads. Commands are listed again when the agent, account or worktree changes, and after a turn. The file
  * list can run to megabytes in a large repository, so it is fetched only once an `@` asks for it, and again at the
  * next `@` after the workspace changed or a turn ran.
  */
@@ -126,7 +127,7 @@ function useCompletions(thread: Thread, busy: boolean, wantsFiles: boolean, onEr
     }
   }, [connected, wantsFiles, filesFresh, filesKey, thread.id, onError])
   const threads = mentionableThreads(thread, Object.values(byId), projects)
-  return { commands, files: files?.paths ?? [], threads }
+  return { commands: [...artifactSkillCommands, ...commands], files: files?.paths ?? [], threads }
 }
 
 export function Composer({ thread }: { thread: Thread }) {

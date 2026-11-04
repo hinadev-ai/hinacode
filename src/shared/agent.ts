@@ -354,8 +354,24 @@ export const isPublishArtifactTool = (name: string) => publishTools.has(name)
 
 export const isPublishDocumentTool = (name: string) => name.endsWith(PUBLISH_DOCUMENT_TOOL) && publishTools.has(name)
 
-export const publishedArtifactId = (result: string) =>
-  /^Published (?:artifact|document) ([a-z0-9][a-z0-9-]*) version \d+/.exec(result)?.[1] ?? null
+export const publishedArtifact = (result: string): { id: string; version: number } | null => {
+  const [, id, version] = /^Published (?:artifact|document) ([a-z0-9][a-z0-9-]*) version (\d+)/.exec(result) ?? []
+  return id === undefined ? null : { id, version: Number(version) }
+}
+
+export const publishedArtifactId = (result: string) => publishedArtifact(result)?.id ?? null
+
+const textOfBlock = (block: unknown) =>
+  typeof block === "object" && block !== null && Reflect.get(block, "type") === "text"
+    ? String(Reflect.get(block, "text"))
+    : ""
+
+export const outputText = (output: unknown): string =>
+  typeof output === "string"
+    ? output
+    : Array.isArray(output)
+      ? output.map(textOfBlock).filter(Boolean).join("\n")
+      : JSON.stringify(output)
 
 export const CREATE_THREAD_TOOL = "create_thread"
 

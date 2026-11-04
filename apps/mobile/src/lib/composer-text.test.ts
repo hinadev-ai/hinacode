@@ -1,5 +1,7 @@
 import type { AgentCommand } from "@shared/agent.ts"
+import { matchCommands } from "@shared/composerSyntax.ts"
 import { describe, expect, it } from "vitest"
+import { artifactSkillCommands } from "./artifact-skills"
 import { composerSpans, keepSkillWhole } from "./composer-text"
 
 const commands: AgentCommand[] = [
@@ -49,5 +51,26 @@ describe("keepSkillWhole", () => {
     expect(keepSkillWhole(before, "/triage-issuex the login test", commands)).toBe("/triage-issuex the login test")
     expect(keepSkillWhole("/compact now", "/compac now", commands)).toBe("/compac now")
     expect(keepSkillWhole(before, "", commands)).toBe("")
+  })
+})
+
+describe("artifact skills", () => {
+  it("lists both with their hints without any command from the agent", () => {
+    const listed = matchCommands(artifactSkillCommands, { trigger: "/", query: "art", start: 0, end: 4 })
+    expect(listed.map(({ name, argumentHint }) => [name, argumentHint])).toEqual([
+      ["artifact:doc", "[what to document]"],
+      ["artifact:writing", "[what to write]"],
+    ])
+  })
+
+  it("tints one at the start of a message and removes it whole", () => {
+    const noTokens = { commands: new Set<string>(), files: new Set<string>(), threads: new Set<string>() }
+    expect(composerSpans("/artifact:doc Release plan", artifactSkillCommands, noTokens)[0]).toEqual({
+      kind: "skill",
+      text: "/artifact:doc",
+    })
+    expect(keepSkillWhole("/artifact:doc Release plan", "/artifact:do Release plan", artifactSkillCommands)).toBe(
+      "Release plan",
+    )
   })
 })

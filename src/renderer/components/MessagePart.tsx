@@ -6,8 +6,6 @@ import {
   type Compaction,
   createdThreadId,
   type ProviderId,
-  isPublishDocumentTool,
-  publishedArtifactId,
   toolArgument,
 } from "../../shared/agent.ts"
 import {
@@ -44,6 +42,7 @@ import { openArtifact } from "../stores/artifacts.ts"
 import { useSubagentByCallId } from "../stores/subagents.ts"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
+import { ArtifactCard } from "./ArtifactCard.tsx"
 import { AttachmentView, formatBytes } from "./AttachmentView.tsx"
 import { CopyButton } from "./CopyButton.tsx"
 import { FindPartContext, FindPatternContext, Highlighted } from "./FindHighlight.tsx"
@@ -64,7 +63,6 @@ import {
   FileTextIcon,
   GlobeIcon,
   type IconComponent,
-  LayoutIcon,
   PencilIcon,
   SearchIcon,
   SkillIcon,
@@ -272,26 +270,12 @@ type ToolCall = Extract<MessagePart, { type: "tool_call" }>
 
 function ArtifactCallPart({ part }: { part: ToolCall }) {
   const { threadId } = use(PartMessage)
-  const named = toolArgument(part.input, "title")
-  const title = typeof named === "string" && named !== "" ? named : m.artifact_untitled()
-  const id = part.output === undefined ? null : publishedArtifactId(formatOutput(part.output))
   return (
-    <button
-      type="button"
-      onClick={() => openArtifact(threadId, id)}
-      aria-label={m.artifact_open({ title })}
-      className="my-2 flex w-full max-w-sm min-w-0 items-center gap-3 rounded-lg border border-border bg-background/50 px-3 py-2.5 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      {isPublishDocumentTool(part.name) ? (
-        <FileTextIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-      ) : (
-        <LayoutIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-      )}
-      <span className="min-w-0 flex-1 truncate text-sm">
-        <Highlighted text={title} />
-      </span>
-      {part.status === "running" ? statusIcon.running : <ChevronRightIcon aria-hidden className="size-3.5 shrink-0" />}
-    </button>
+    <ArtifactCard
+      call={part}
+      result={part.output === undefined ? null : formatOutput(part.output)}
+      onOpen={(id) => openArtifact(threadId, id)}
+    />
   )
 }
 

@@ -376,6 +376,33 @@ layer(testLayer)("artifact tools", (it) => {
     }),
   )
 
+  it.effect("auto_open opens the published artifact beside the caller's thread, and only then", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      const connection = yield* mcp.connectionFor(a)
+      const opened = () => pushes.filter((push) => push.type === "artifact.opened")
+      pushes.length = 0
+
+      const published = yield* callAs(connection, "publish_document", {
+        title: "Startup audit",
+        markdown: "# Startup audit\n",
+        auto_open: true,
+      })
+      const id = /^Published document ([a-z0-9-]+) version 1:/.exec(published.text)?.[1]
+      expect(opened()).toEqual([{ type: "artifact.opened", threadId: a, id }])
+
+      yield* callAs(connection, "publish_document", { id, revision: 1, markdown: "# Startup audit\n\nDone.\n" })
+      yield* callAs(connection, "publish_document", { id, revision: 0, markdown: "# Stale\n", auto_open: true })
+      yield* callAs(connection, "publish_artifact", {
+        title: "Chart",
+        files: [{ path: "index.html", content: "<h1>Chart</h1>" }],
+        auto_open: false,
+      })
+      expect(opened()).toHaveLength(1)
+    }),
+  )
+
   it.effect("store errors and invalid input come back as error results", () =>
     Effect.gen(function* () {
       const mcp = yield* McpCredentials

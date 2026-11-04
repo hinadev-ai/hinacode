@@ -71,9 +71,15 @@ export const artifactTurn = (
   return { started, finished }
 }
 
-const DOCUMENT = `## Goal
+const DOCUMENT = `> [!NOTE]
+> The agent drafts, the developer edits, and the next publish merges both. Ship it behind a flag on Friday.
+
+## Goal
 
 Let the developer edit what the agent writes.
+
+> [!NOTE]
+> The document is plain Markdown, so the file still reads well on GitHub and in any editor.
 
 ## Steps
 
@@ -81,10 +87,33 @@ Let the developer edit what the agent writes.
 - [ ] Build the editor
 - [ ] Verify in the real app
 
+> [!TIP]
+> Press **Ask agent** to hand your edits back without copying text.
+
+> [!IMPORTANT]
+> The agent sends the revision it last read.
+>
+> A stale revision fails, and the response carries the developer's text so the agent can merge it.
+
+> [!WARNING]
+> Raw HTML is dropped the first time the developer saves.
+
+> [!CAUTION]
+> Deleting a document removes every version.
+
 | Part | Owner |
 | --- | --- |
 | Store | Agent |
 | Editor | Developer |
+
+## Flow
+
+\`\`\`mermaid
+flowchart TD
+  Agent[Agent publishes] --> Store[(document.md)]
+  Store --> Editor[Developer edits]
+  Editor -->|Ask agent| Agent
+\`\`\`
 
 \`\`\`ts
 type ArtifactKind = "page" | "document"
@@ -129,11 +158,12 @@ export const documentTurn = (
   previous: MockDocument | undefined,
   published: (document: MockDocument) => void,
 ) => {
+  const request = /<request>\n([\s\S]*?)\n<\/request>/.exec(prompt)?.[1] ?? prompt
   const markdown =
-    previous === undefined ? `# ${prompt}\n\n${DOCUMENT}` : `${previous.markdown}\nThe agent added: ${prompt}\n`
+    previous === undefined ? `# ${request}\n\n${DOCUMENT}` : `${previous.markdown}\nThe agent added: ${request}\n`
   const input = {
-    ...(previous !== undefined && { id: previous.id, revision: previous.revision }),
-    title: previous?.title ?? prompt,
+    ...(previous === undefined ? { auto_open: true } : { id: previous.id, revision: previous.revision }),
+    title: previous?.title ?? request,
     markdown,
   }
   const started: AgentEvent = {
