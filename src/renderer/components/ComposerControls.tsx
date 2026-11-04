@@ -22,6 +22,7 @@ import {
   modelsAtom,
   projectsAtom,
   pullRequestsAtom,
+  setUpProvidersAtom,
 } from "../lib/rpc.ts"
 import { environmentName, environmentOf, useClouds, useThreadEnvironment } from "../lib/environments.ts"
 import { groupProjects } from "../lib/projectGroups.ts"
@@ -186,6 +187,7 @@ interface AgentTab {
 }
 
 function useAgentTabs(thread: Thread, canSwitchAgent: boolean): ReadonlyArray<AgentTab> {
+  const setUpProviders = useAtomValue(setUpProvidersAtom(useThreadEnvironment(thread.id)))
   const accounts = useAccountOptions(thread).options
   const accountHint = useAccountHint()
   const turnRunning = thread.status === "running" || thread.status === "awaiting_approval"
@@ -207,7 +209,7 @@ function useAgentTabs(thread: Thread, canSwitchAgent: boolean): ReadonlyArray<Ag
           hint: accountHint(option),
           disabled: turnRunning && option.id !== thread.accountId,
         }))
-  const others = ProviderId.literals
+  const others = setUpProviders
     .filter((provider) => provider !== thread.provider)
     .map((provider) => ({ value: provider, provider, label: providerLabel[provider](), disabled: !canSwitchAgent }))
   return [...own, ...others]

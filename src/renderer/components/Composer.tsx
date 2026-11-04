@@ -313,6 +313,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
                 onValueChange={changeText}
                 commands={commands}
                 files={files}
+                onMentionStart={refreshFiles}
                 threads={mentionable}
                 projectId={thread.projectId}
                 onEnter={(event) => send(steers ? deliveryOf(event) : "queue")}

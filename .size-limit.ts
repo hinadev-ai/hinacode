@@ -19,7 +19,7 @@ export default [
   { name: "Renderer startup CSS", path: startupStyles, brotli: false, limit: "205 kB" },
   { name: "Renderer startup CSS (gzip)", path: startupStyles, gzip: true },
   { name: "Renderer CSS, all", path: "out/renderer/assets/*.css", brotli: false, limit: "520 kB" },
-  { name: "Main process JS", path: "out/main", brotli: false, limit: "2.65 MB" },
+  { name: "Main process JS", path: "out/main", brotli: false, limit: "2.7 MB" },
   { name: "Main process JS (gzip)", path: "out/main", gzip: true },
   { name: "app.asar", path: "dist/linux-unpacked/resources/app.asar", brotli: false, limit: "100 MB" },
   { name: "Linux app, installed", path: "dist/linux-unpacked", brotli: false, limit: "430 MB" },

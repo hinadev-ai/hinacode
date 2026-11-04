@@ -12,14 +12,14 @@ npx hinacode serve
 
 From a checkout, `pnpm serve` builds and runs the same daemon.
 
-The daemon keeps its data in `HINACODE_USER_DATA`, default `~/.hinacode-cloud`, and prints the pairing block: a phone URL for its address and a QR code to scan in the mobile app, then the URL to add under Settings > Connections on the desktop. It listens on one address, never every interface: `--host`, else the one it used last, else its Tailscale address. A machine without Tailscale needs `--host`, such as a LAN address, or `--host 127.0.0.1 --relay on` to be reached only through the relay. `0.0.0.0` and `::` are refused. `hinacode pair` prints the same block again, whether the daemon runs or not. The data directory holds `hinacode.sqlite`, attachments, and the pairing token inside the database. A desktop app and a cloud refuse to share one directory, and so do two clouds. The daemon spots a desktop by the `SingletonLock` in the directory's `chromium/`.
+The daemon keeps its data in `HINACODE_USER_DATA`, default `~/.hinacode-cloud`, and prints the pairing block: a phone URL for its address and a QR code to scan in the mobile app, then the URL to add under Settings > Connections on the desktop. It listens on `--host`, else the address it used last, else `private`. `private` answers on the LAN and Tailscale and closes any connection with a public address on either end, so a phone at home connects with no flags. Anyone on the same network can reach the port, and only the pairing token keeps them out. Pass one address, such as a Tailscale address, to keep other networks out entirely, or `--host 127.0.0.1 --relay on` to be reached only through the relay. A machine that already stored an address keeps it until you pass `--host private`. `0.0.0.0` and `::` are refused. `hinacode pair` prints the same block again, whether the daemon runs or not. The data directory holds `hinacode.sqlite`, attachments, and the pairing token inside the database. A desktop app and a cloud refuse to share one directory, and so do two clouds. The daemon spots a desktop by the `SingletonLock` in the directory's `chromium/`.
 
 Options, flags first, then environment, then stored settings:
 
 | Flag              | Environment                     | Meaning                                                       |
 | ----------------- | ------------------------------- | ------------------------------------------------------------- |
 | `--port <n>`      | `HINACODE_SERVE_PORT`           | Listener port, default 48081                                  |
-| `--host <host>`   | `HINACODE_SERVE_HOST`           | Bind address, default the Tailscale address                   |
+| `--host <host>`   | `HINACODE_SERVE_HOST`           | One bind address or `private`, the default                    |
 | `--rotate-token`  | `HINACODE_SERVE_ROTATE_TOKEN=1` | Replace the pairing token at boot and disconnect every client |
 | `--relay on\|off` | `HINACODE_SERVE_RELAY`          | Link the cloud to the HinaCode relay, or unlink it            |
 |                   | `HINACODE_SERVE_AUTO_UPDATE=0`  | Do not install new releases on its own when idle              |

@@ -6,7 +6,9 @@ import {
   DIRECT_CHECK_INTERVAL_MS,
   DIRECT_CHECK_TIMEOUT_MS,
   type Dial,
+  dialPlan,
   RELAY_DELAY_MS,
+  TAILSCALE_DELAY_MS,
 } from "@shared/remote.ts"
 import {
   CLOSE_TOKEN_ROTATED,
@@ -684,6 +686,30 @@ describe("Transport", () => {
       expect(urls()).toEqual([TAILSCALE, LAN])
       await vi.advanceTimersByTimeAsync(1)
       expect(urls()).toEqual([TAILSCALE, LAN, RELAY])
+    })
+
+    it("dials the LAN, then Tailscale, then the relay", async () => {
+      setup(dialPlan({ hosts: ["100.64.0.2", "192.168.1.5"], port: 47821, relay: "mac.example.com" }))
+      expect(urls()).toEqual([LAN])
+      await vi.advanceTimersByTimeAsync(TAILSCALE_DELAY_MS)
+      expect(urls()).toEqual([LAN, TAILSCALE])
+      await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS - TAILSCALE_DELAY_MS)
+      expect(urls()).toEqual([LAN, TAILSCALE, RELAY])
+    })
+
+    it("still dials the LAN first when a direct check moves the link off the relay", async () => {
+      setup(dialPlan({ hosts: ["100.64.0.2", "192.168.1.5"], port: 47821, relay: "mac.example.com" }))
+      await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
+      socketAt(RELAY).open()
+      socketAt(RELAY).challenge()
+      socketAt(RELAY).ready(["call-keys"])
+      await vi.advanceTimersByTimeAsync(DIRECT_CHECK_INTERVAL_MS)
+      const dialedBefore = sockets.length
+      socketAt(LAN).open()
+      const directRound = () => urls().slice(dialedBefore)
+      expect(directRound()).toEqual([LAN])
+      await vi.advanceTimersByTimeAsync(TAILSCALE_DELAY_MS)
+      expect(directRound()).toEqual([LAN, TAILSCALE])
     })
 
     it("answers only the first socket that opens and closes the rest unused", async () => {
