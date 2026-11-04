@@ -78,7 +78,8 @@ Feature: Threads
 
   Scenario: The Archived tab opens one page of a long history and loads more while scrolling
     Given the project "demo" has 120 archived threads named "Old"
-    When I open the sidebar tab "Archived"
+    When I show only the project "demo" in the sidebar
+    And I open the sidebar tab "Archived"
     Then the sidebar lists 50 threads
     And the sidebar lists the thread "Old 1"
     And the sidebar does not list the thread "Old 51"
@@ -90,7 +91,8 @@ Feature: Threads
 
   Scenario: Filtering the Archived tab finds threads past the first page
     Given the project "demo" has 120 archived threads named "Old"
-    When I open the sidebar tab "Archived"
+    When I show only the project "demo" in the sidebar
+    And I open the sidebar tab "Archived"
     And I filter the sidebar by "Old 120"
     Then the sidebar lists 1 thread
     And the sidebar lists the thread "Old 120"
