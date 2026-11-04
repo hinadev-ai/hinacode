@@ -75,6 +75,28 @@
     overflow-x: auto;
   }
 
+  & [data-callout] {
+    background: color-mix(in oklab, var(--callout-tone) 8%, transparent);
+
+    :where(.dark) & {
+      background: color-mix(in oklab, var(--callout-tone) 13%, transparent);
+    }
+  }
+
+  & [data-callout] > [data-node-view-content] > div {
+    & > * {
+      margin-block: 0.75em;
+    }
+
+    & > :first-child {
+      margin-top: 0;
+    }
+
+    & > :last-child {
+      margin-bottom: 0;
+    }
+  }
+
   & :is(td, th):not(.not-prose *) {
     position: relative;
     padding: 0.5em 0.75em;

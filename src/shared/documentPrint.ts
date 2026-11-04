@@ -30,6 +30,11 @@ th, td { padding: 0.4em 0.6em; border-bottom: 1px solid var(--border); text-alig
 th > p, td > p { margin: 0; }
 img { max-width: 100%; }
 .ProseMirror-separator, [data-print-hidden], pre[hidden] { display: none; }
+[data-callout] { margin: 0 0 0.9em; padding: 0.7em 1em 0.8em; border-radius: 10px; background: color-mix(in oklab, var(--callout-tone) 8%, transparent); break-inside: avoid; }
+[data-node-view-content] > div > :first-child { margin-top: 0; }
+[data-node-view-content] > div > :last-child { margin-bottom: 0; }
+[data-callout-label] { all: unset; display: flex; align-items: center; gap: 0.4em; margin-bottom: 0.3em; font-size: 0.8em; font-weight: 500; color: var(--callout-tone); }
+[data-callout-label] svg { width: 1.15em; height: 1.15em; }
 [data-chart] { margin: 0 0 1.2em; border-radius: 10px; background: var(--muted); overflow: hidden; break-inside: avoid; }
 [data-chart] > div:first-child { padding: 0.9em 1em; }
 [data-chart] p { margin: 0; }

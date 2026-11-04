@@ -13,7 +13,7 @@ Claude's documents show the shape that works: a document opens beside its conver
 
 1. The agent calls `publish_document` with a title and Markdown. The transcript shows a document card, and clicking it opens the document in the Artifacts side panel.
 2. The developer can also press New document in the Artifacts panel. An empty Untitled document opens, owned by the thread.
-3. The developer edits with a toolbar: headings, bold, italic, strikethrough, inline code, lists, task lists, quotes, code blocks, links and tables. The toolbar says Saving and then Saved.
+3. The developer edits with a toolbar: headings, bold, italic, strikethrough, inline code, lists, task lists, quotes, callouts, code blocks, links and tables. The toolbar says Saving and then Saved.
 4. Ask agent puts a line in the thread's draft that names the document and its revision, so the agent reads the edits before acting.
 5. The agent calls `publish_document` again with the id and the revision it knows. If the developer saved since, the call fails and returns the developer's text and revision, so the agent merges and publishes again. The open editor loads the agent's version when it has no unsaved edits.
 6. Export saves the Markdown file, or a PDF of the document as the editor shows it.

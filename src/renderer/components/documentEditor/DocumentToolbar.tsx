@@ -2,7 +2,7 @@ import type { Editor } from "@tiptap/core"
 import { CellSelection } from "@tiptap/pm/tables"
 import { useEditorState } from "@tiptap/react"
 import { BubbleMenu } from "@tiptap/react/menus"
-import { TrashIcon } from "@hinacode/icons"
+import { InfoIcon, TrashIcon } from "@hinacode/icons"
 import type { ComponentType } from "react"
 import {
   RiBold,
@@ -81,6 +81,13 @@ const blocks: ReadonlyArray<Tool> = [
     icon: RiDoubleQuotesL,
     active: (editor) => editor.isActive("blockquote"),
     run: (editor) => editor.chain().focus().toggleBlockquote().run(),
+  },
+  {
+    id: "callout",
+    label: m.documents_callout,
+    icon: InfoIcon,
+    active: (editor) => editor.isActive("callout"),
+    run: (editor) => editor.chain().focus().toggleWrap("callout", { tone: "note" }).run(),
   },
   {
     id: "codeBlock",

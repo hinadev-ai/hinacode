@@ -318,3 +318,70 @@ for (const width of [360, 700]) {
     expect(line.filter((rect) => intersects(rect, box))).toEqual([])
   })
 }
+
+const CALLOUTS = `> [!NOTE]
+> First paragraph.
+>
+> Second paragraph.
+
+> [!tip]
+> Prefer the smaller change.
+
+> [!IMPORTANT]
+> Read the **design** first.
+
+> [!WARNING]
+> - The store rewrites the file
+> - Saves race
+
+> [!CAUTION]
+> Deleting a document cannot be undone.`
+
+const savedAfterEdit = async (markdown: string) => {
+  stored = { ...stored, markdown: `# Release plan\n\nShip the **editor** first.\n\n${markdown}\n` }
+  const editor = await openDocument()
+  await typeAtEnd(" Then the panel.")
+  await expect.poll(() => saves.length, { timeout: 3000 }).toBe(1)
+  return { editor, saved: saves[0]?.markdown ?? "" }
+}
+
+test("reads GitHub alerts as callouts and writes them back in GitHub's form", async () => {
+  const { editor, saved } = await savedAfterEdit(CALLOUTS)
+
+  const labels = Array.from(editor.element().querySelectorAll("[data-callout-label]"), (label) => label.textContent)
+  expect(labels).toEqual(["Note", "Tip", "Important", "Warning", "Caution"])
+  expect(editor.element().querySelector("blockquote")).toBeNull()
+  expect(saved).toContain(CALLOUTS.replace("[!tip]", "[!TIP]"))
+})
+
+test("keeps a plain quote, and a marker with text after it, as quotes", async () => {
+  const { editor, saved } = await savedAfterEdit("> Just a quote.\n\n> [!NOTE] Not on its own line.")
+
+  expect(editor.element().querySelectorAll("blockquote")).toHaveLength(2)
+  expect(editor.element().querySelector("[data-callout]")).toBeNull()
+  expect(saved).toMatch(/> Just a quote\.\n\n> \\?\[!NOTE\\?\] Not on its own line\./)
+})
+
+test("wraps a paragraph in a callout from the toolbar, then changes its type and turns it back into a quote", async () => {
+  const editor = await openDocument()
+  await page.getByText(/^Ship the/).click()
+  await page.getByRole("button", { name: "Callout", exact: true }).click()
+
+  const picker = editor.getByRole("button", { name: "Callout type: Note" })
+  await expect.element(picker).toBeVisible()
+  await expect
+    .poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 })
+    .toContain("> [!NOTE]\n> Ship the **editor** first.")
+
+  await picker.click()
+  await page.getByRole("menuitemradio", { name: "Warning" }).click()
+  await expect.element(page.getByRole("menu")).not.toBeInTheDocument()
+  await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).toContain("> [!WARNING]\n> Ship the")
+
+  await editor.getByRole("button", { name: "Callout type: Warning" }).click()
+  await page.getByRole("menuitem", { name: "Quote" }).click()
+  await expect.element(editor.getByRole("button", { name: /^Callout type/ })).not.toBeInTheDocument()
+  await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).not.toContain("[!")
+  expect(saves.at(-1)?.markdown).toContain("# Release plan\n\n> Ship the **editor** first.")
+  await expect.element(editor.getByRole("blockquote")).toHaveTextContent("Ship the editor first.")
+})

@@ -78,11 +78,28 @@ const DOCUMENT = `> [!NOTE]
 
 Let the developer edit what the agent writes.
 
+> [!NOTE]
+> The document is plain Markdown, so the file still reads well on GitHub and in any editor.
+
 ## Steps
 
 - [x] Define the data shape
 - [ ] Build the editor
 - [ ] Verify in the real app
+
+> [!TIP]
+> Press **Ask agent** to hand your edits back without copying text.
+
+> [!IMPORTANT]
+> The agent sends the revision it last read.
+>
+> A stale revision fails, and the response carries the developer's text so the agent can merge it.
+
+> [!WARNING]
+> Raw HTML is dropped the first time the developer saves.
+
+> [!CAUTION]
+> Deleting a document removes every version.
 
 | Part | Owner |
 | --- | --- |
