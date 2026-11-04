@@ -6,7 +6,8 @@ type Interfaces = ReturnType<typeof networkInterfaces>
 
 const isTailscale = (address: string) => address.startsWith("100.")
 
-const isVirtualBridge = (name: string) => /^(docker|br-|veth|virbr|cni|flannel|podman|vboxnet|vmnet)/.test(name)
+const isVirtualBridge = (name: string) =>
+  /^(docker|br-|veth|virbr|cni|flannel|podman|vboxnet|vmnet|bridge[1-9]\d\d)/.test(name)
 
 export const networkAddresses = (interfaces: Interfaces = networkInterfaces()): ReadonlyArray<NetworkAddress> => {
   const addresses = Object.entries(interfaces)
