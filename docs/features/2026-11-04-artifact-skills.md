@@ -97,5 +97,6 @@ The card reads everything from the tool call's input and output, so it needs no 
 - `src/main/mcp/server.integration.test.ts`: `auto_open` publishes `artifact.opened` once, and an update without it publishes nothing.
 - `DocumentView.component.test.tsx`: callouts and mermaid blocks round-trip through Markdown.
 - The real app with `verify-hinacode` and `HINACODE_MOCK_CLAUDE=documents`: send `/artifact:doc`, see the panel open by itself, the preview card, a callout and a diagram, then reload and see that nothing reopens.
+- The phone through Expo web against the same mock: `/art` lists both commands, the card opens the document, callouts, a chart table and mermaid source render, and a second turn reloads the open screen. No iOS or Android runtime ran this, so the `react-native-svg` thumbnail, `EnrichedMarkdownText` inside a callout and the iPad split still need a look on a device.
 - `src/shared/compactTranscript.test.ts`, `src/shared/documentThumbnail.test.ts` and `apps/mobile/src/lib/document-segments.test.ts`: the preview's bounds, the marks and the segments.
 - The phone's web build at 402x874 with `HINACODE_MOCK_AGENTS=documents`: list the commands, send `/artifact:doc`, open the card, publish an update from a second turn and see the open screen reload, stop the server and see the banner keep the document. Native rendering still needs a development build.
