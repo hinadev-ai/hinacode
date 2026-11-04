@@ -76,6 +76,25 @@ Feature: Threads
     Then the sidebar does not list the thread "Task 40"
     And the thread "Task 39" is in view in the sidebar
 
+  Scenario: The Archived tab opens one page of a long history and loads more while scrolling
+    Given the project "demo" has 120 archived threads named "Old"
+    When I open the sidebar tab "Archived"
+    Then the sidebar lists 50 threads
+    And the sidebar lists the thread "Old 1"
+    And the sidebar does not list the thread "Old 51"
+    When I scroll to the end of the sidebar
+    Then the sidebar lists 100 threads
+    And the sidebar lists the thread "Old 51"
+    When I scroll to the end of the sidebar
+    Then the sidebar lists 120 threads
+
+  Scenario: Filtering the Archived tab finds threads past the first page
+    Given the project "demo" has 120 archived threads named "Old"
+    When I open the sidebar tab "Archived"
+    And I filter the sidebar by "Old 120"
+    Then the sidebar lists 1 thread
+    And the sidebar lists the thread "Old 120"
+
   Scenario: The Inbox lists every project's threads, most recently updated first
     Given the project "demo" has a thread "Fix login"
     And another project "tools" has a thread "Bump deps"

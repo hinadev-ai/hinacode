@@ -313,6 +313,8 @@ function InboxList({ query }: { query: Query }) {
   )
 }
 
+const ARCHIVED_PAGE_SIZE = 50
+
 function ArchivedList({ query }: { query: Query }) {
   const threads = useMatchingThreads(selectArchivedThreads, query)
   return (
@@ -323,7 +325,14 @@ function ArchivedList({ query }: { query: Query }) {
           {query === "" ? m.sidebar_no_archived() : m.sidebar_no_matches()}
         </p>
       ) : (
-        <SidebarThreadList group="archived" threads={threads} reorderable={false} showProject className="px-2" />
+        <SidebarThreadList
+          group="archived"
+          threads={threads}
+          reorderable={false}
+          showProject
+          pageSize={ARCHIVED_PAGE_SIZE}
+          className="px-2"
+        />
       )}
     </>
   )
