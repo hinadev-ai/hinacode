@@ -79,7 +79,7 @@
     background: color-mix(in oklab, var(--callout-tone) 8%, transparent);
 
     :where(.dark) & {
-      background: color-mix(in oklab, var(--callout-tone) 13%, transparent);
+      background: color-mix(in oklab, var(--callout-tone) 16%, transparent);
     }
   }
 

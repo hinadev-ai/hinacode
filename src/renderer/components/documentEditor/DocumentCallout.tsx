@@ -33,7 +33,7 @@ const TONES: Record<
 > = {
   note: { color: "--graph-lane-1", label: m.documents_callout_note, icon: InfoIcon },
   tip: { color: "--graph-lane-2", label: m.documents_callout_tip, icon: RiLightbulbLine },
-  important: { color: "--graph-lane-4", label: m.documents_callout_important, icon: RiFeedbackLine },
+  important: { color: "--callout-important", label: m.documents_callout_important, icon: RiFeedbackLine },
   warning: { color: "--attention", label: m.documents_callout_warning, icon: AlertIcon },
   caution: { color: "--destructive", label: m.documents_callout_caution, icon: RiSpam2Line },
 }
@@ -159,7 +159,7 @@ function TonePicker({
       <DropdownMenuTrigger
         aria-label={m.documents_callout_type({ type: TONES[tone].label() })}
         data-callout-label
-        className="-ms-1.5 flex h-6 items-center gap-1.5 rounded-md px-1.5 text-xs font-medium text-(--callout-tone) outline-none hover:bg-[color-mix(in_oklab,var(--callout-tone)_12%,transparent)] focus-visible:ring-2 focus-visible:ring-ring/50 aria-expanded:bg-[color-mix(in_oklab,var(--callout-tone)_12%,transparent)]"
+        className="-ms-1.5 flex h-6 items-center gap-1.5 rounded-md px-1.5 text-xs font-medium text-[color-mix(in_oklab,var(--callout-tone)_72%,var(--foreground))] outline-none hover:bg-[color-mix(in_oklab,var(--callout-tone)_12%,transparent)] focus-visible:ring-2 focus-visible:ring-ring/50 aria-expanded:bg-[color-mix(in_oklab,var(--callout-tone)_12%,transparent)]"
       >
         <ToneLabel tone={tone} />
         <ChevronDownIcon
@@ -199,7 +199,10 @@ function ToneLabel({ tone }: { tone: CalloutTone }) {
   const Icon = TONES[tone].icon
   return (
     <>
-      <Icon aria-hidden className="size-3.5 shrink-0 text-(--callout-tone)" />
+      <Icon
+        aria-hidden
+        className="size-3.5 shrink-0 text-[color-mix(in_oklab,var(--callout-tone)_72%,var(--foreground))]"
+      />
       {TONES[tone].label()}
     </>
   )

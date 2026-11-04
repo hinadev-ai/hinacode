@@ -109,13 +109,6 @@ Let the developer edit what the agent writes.
 ## Flow
 
 \`\`\`mermaid
-graph LR
-  Agent --> Store --> Editor
-\`\`\`
-
-## Flow
-
-\`\`\`mermaid
 flowchart TD
   Agent[Agent publishes] --> Store[(document.md)]
   Store --> Editor[Developer edits]

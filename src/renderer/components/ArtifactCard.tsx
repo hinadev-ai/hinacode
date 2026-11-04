@@ -22,7 +22,7 @@ const GAP = 3
 const toneColor = {
   note: "var(--graph-lane-1)",
   tip: "var(--graph-lane-2)",
-  important: "var(--graph-lane-4)",
+  important: "var(--callout-important)",
   warning: "var(--attention)",
   caution: "var(--destructive)",
 } satisfies Record<CalloutTone, string>
@@ -326,7 +326,7 @@ export function ArtifactCard({
       type="button"
       onClick={() => onOpen(published?.id ?? null)}
       aria-label={m.artifact_open({ title })}
-      className="group/card my-2 flex w-full max-w-md min-w-0 items-center gap-3.5 rounded-xl border border-border bg-muted/40 p-2.5 pe-4 text-start pressable outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+      className="group/card my-2 flex w-full max-w-md min-w-0 items-center gap-3.5 rounded-xl bg-muted/50 p-2.5 pe-4 text-start pressable outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
     >
       <PagePreview blocks={isDocument ? (outline?.blocks ?? []) : null} publishing={publishing} />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
