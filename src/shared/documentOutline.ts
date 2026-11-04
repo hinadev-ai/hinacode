@@ -19,6 +19,7 @@ export type DocumentOutline = {
 
 export const OUTLINE_MAX_BLOCKS = 40
 const LEDE_LENGTH = 240
+const SCANNED_INLINE_LENGTH = 2048
 
 const FENCE = /^ {0,3}(`{3,}|~{3,})\s*([^\s`]*)/
 const HEADING = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/
@@ -43,6 +44,7 @@ const isBlank = (line: string) => line.trim() === ""
 
 const plainText = (inline: string) =>
   inline
+    .slice(0, SCANNED_INLINE_LENGTH)
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/\[([^\]]*)\]\[[^\]]*\]/g, "$1")
