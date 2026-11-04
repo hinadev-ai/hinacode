@@ -321,7 +321,7 @@ describe("makeAcpProvider", () => {
       const { provider: make } = setup({ FAKE_ACP_AUTH: "required" })
       const provider = yield* make
       const error = yield* runToEnd(provider, input()).pipe(Effect.flip)
-      expect(error.message).toBe("opencode is not signed in. Run `fake login` in a terminal, then try again")
+      expect(error).toMatchObject({ message: "opencode is not signed in", loginCommand: "fake login" })
     }).pipe(Effect.scoped),
   )
 

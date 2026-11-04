@@ -14,18 +14,19 @@ import {
   Semaphore,
   Stream,
 } from "effect"
-import type {
-  AccountHome,
-  AgentAccount,
-  AgentEvent,
-  ApprovalDecision,
-  BackgroundTask,
-  ModelInfo,
-  Question,
-  QuestionAnswers,
-  RunTurnInput,
-  Subagent,
-  TokenUsage,
+import {
+  type AccountHome,
+  type AgentAccount,
+  type AgentEvent,
+  type ApprovalDecision,
+  type BackgroundTask,
+  loginCommand,
+  type ModelInfo,
+  type Question,
+  type QuestionAnswers,
+  type RunTurnInput,
+  type Subagent,
+  type TokenUsage,
 } from "../../../shared/agent.ts"
 import type { Attachment } from "../../../shared/domain.ts"
 import type { LimitWindow, PlanLimits } from "../../../shared/limits.ts"
@@ -79,6 +80,7 @@ import type {
   ThreadResumeParams,
   ThreadStartParams,
   ThreadStartResponse,
+  TurnError,
   TurnInterruptParams,
   TurnStartParams,
   TurnStartResponse,
@@ -588,7 +590,7 @@ const make = Effect.gen(function* () {
               { discard: true },
             )
           let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 }
-          let lastError: string | undefined
+          let lastError: TurnError | undefined
           let planRevision = 0
 
           yield* Effect.addFinalizer(() =>
@@ -876,12 +878,13 @@ const make = Effect.gen(function* () {
                 }
                 case "error": {
                   const params = message.params as ServerNotificationParams[typeof method]
-                  if (!params.willRetry) lastError = params.error.message
+                  if (!params.willRetry) lastError = params.error
                   return false
                 }
                 case "turn/completed": {
                   const params = message.params as ServerNotificationParams[typeof method]
-                  const { status, error } = params.turn
+                  const { status } = params.turn
+                  const error = params.turn.error ?? lastError
                   // FIXME: an interrupted turn completes without item/completed for the tools it cut off
                   for (const callId of openTools) {
                     const isError = status !== "completed" || !backgroundable.has(callId)
@@ -893,7 +896,13 @@ const make = Effect.gen(function* () {
                   yield* emit(
                     status === "completed"
                       ? { type: "turn_completed", usage, forkPoint: { sessionId: thread.id, checkpoint: turn.turnId } }
-                      : { type: "turn_failed", message: error?.message ?? lastError ?? `Turn ${status}` },
+                      : {
+                          type: "turn_failed",
+                          message: error?.message ?? `Turn ${status}`,
+                          ...(error?.codexErrorInfo === "unauthorized" && {
+                            loginCommand: loginCommand("codex", input.home),
+                          }),
+                        },
                   )
                   return true
                 }

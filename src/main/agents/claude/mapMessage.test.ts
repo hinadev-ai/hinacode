@@ -3,13 +3,16 @@ import { describe, expect, test } from "@effect/vitest"
 import type { AgentEvent } from "../../../shared/agent.ts"
 import { backgroundTasksOf, isTerminal, mapMessage, resetTurnLimits, type MapState } from "./mapMessage.ts"
 import { orgSpendLimitMessage, usageLimitAssistant, rejectedRateLimit } from "./fixtures/usageLimit.ts"
+import { signedOut, signedOutMessage } from "./fixtures/transcript.ts"
 
 const newState = (): MapState => ({
   pendingEdits: new Map(),
   subagents: new Map(),
   lastRequest: null,
+  home: null,
   limitMessage: null,
   limitResetAt: null,
+  signedOut: false,
 })
 
 const limitResult: SDKResultSuccess = {
@@ -41,6 +44,35 @@ const limitResult: SDKResultSuccess = {
   uuid: "8f571b36-b6a9-4e80-a63c-d04254c94f29",
   session_id: "limit-session",
 }
+
+describe("mapMessage sign-in failures", () => {
+  const now = "2026-11-04T10:00:00.000Z"
+  const sdkMessages = signedOut().flatMap((step) => (step.type === "sdk" ? [step.message] : []))
+  const terminal = (state: MapState) => sdkMessages.flatMap((message) => mapMessage(message, state, now)).at(-1)
+
+  test("tells the developer which command signs the CLI back in", () => {
+    expect(terminal(newState())).toEqual({
+      type: "turn_failed",
+      message: signedOutMessage,
+      loginCommand: "claude auth login",
+    })
+  })
+
+  test("signs in to the thread's own account", () => {
+    const home = { dir: "/Users/me/Claude Work", binary: "/opt/claude" }
+    expect(terminal({ ...newState(), home })).toMatchObject({
+      loginCommand: "CLAUDE_CONFIG_DIR='/Users/me/Claude Work' /opt/claude auth login",
+    })
+  })
+
+  test("forgets the sign-in failure once the turn ends", () => {
+    const state = newState()
+    terminal(state)
+    expect(mapMessage({ ...limitResult, result: "Server overloaded" }, state, now)).toEqual([
+      { type: "turn_failed", message: "Server overloaded" },
+    ])
+  })
+})
 
 describe("mapMessage usage limits", () => {
   test("reports an exhausted account as limited and preserves its explanation", () => {
