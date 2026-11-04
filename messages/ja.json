@@ -442,6 +442,8 @@
   "explorer_new_folder": "新しいフォルダ",
   "explorer_new_file_name": "新しいファイルの名前",
   "explorer_new_folder_name": "新しいフォルダの名前",
+  "explorer_moved": "{name} を {folder} に移動しました。",
+  "explorer_move_unsaved": "移動する前に {name} の変更を保存してください。",
   "explorer_rename": "名前を変更",
   "explorer_rename_label": "{name} の新しい名前",
   "explorer_delete": "削除…",

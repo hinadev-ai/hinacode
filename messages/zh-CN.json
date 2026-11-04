@@ -433,6 +433,8 @@
   "explorer_new_folder": "新建文件夹",
   "explorer_new_file_name": "新文件名",
   "explorer_new_folder_name": "新文件夹名",
+  "explorer_moved": "已将 {name} 移到 {folder}。",
+  "explorer_move_unsaved": "移动前请先保存 {name} 的更改。",
   "explorer_rename": "重命名",
   "explorer_rename_label": "{name} 的新名称",
   "explorer_delete": "删除…",

@@ -2,6 +2,7 @@ import { create } from "zustand"
 import type { FsEntry, FsEntryKind } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
+import { m } from "../paraglide/messages.js"
 
 export type NewEntryKind = Exclude<FsEntryKind, "symlink">
 
@@ -59,7 +60,9 @@ export const parentOf = (path: string) => path.slice(0, Math.max(path.lastIndexO
 
 export const childPath = (parent: string, name: string) => (parent === "" ? name : `${parent}/${name}`)
 
-const isWithin = (path: string, folder: string) => path === folder || path.startsWith(`${folder}/`)
+export const nameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1)
+
+export const isWithin = (path: string, folder: string) => path === folder || path.startsWith(`${folder}/`)
 
 const moved = (path: string, from: string, to: string) => (isWithin(path, from) ? to + path.slice(from.length) : path)
 
@@ -85,6 +88,20 @@ export const afterDelete = (tree: ExplorerTree, path: string): ExplorerTree => (
   opened: tree.opened !== null && isWithin(tree.opened, path) ? null : tree.opened,
 })
 
+export const afterMove = (tree: ExplorerTree, from: string, to: string): ExplorerTree => {
+  const renamed = afterRename(tree, from, to)
+  const folder = parentOf(to)
+  return {
+    ...renamed,
+    selected: to,
+    expanded: folder === "" ? renamed.expanded : new Set(renamed.expanded).add(folder),
+  }
+}
+
+export const dropFolderOf = (entry: FsEntry) => (entry.kind === "dir" ? entry.path : parentOf(entry.path))
+
+export const canMoveInto = (source: string, folder: string) => folder !== parentOf(source) && !isWithin(folder, source)
+
 const forget = (tree: ExplorerTree, path: string) => {
   const expanded = new Set(tree.expanded)
   expanded.delete(path)
@@ -106,6 +123,7 @@ interface ExplorerState {
   readonly startNaming: (root: string, naming: Naming | null) => void
   readonly create: (root: string, parent: string, kind: NewEntryKind, name: string) => Promise<void>
   readonly rename: (root: string, path: string, name: string) => Promise<void>
+  readonly move: (root: string, path: string, folder: string) => Promise<string>
   readonly remove: (root: string, path: string) => Promise<void>
 }
 
@@ -174,6 +192,21 @@ export const useExplorer = create<ExplorerState>()((set, get) => {
       await callPromise("fs.rename", { root, from: path, to })
       update(root, (tree) => afterRename(tree, path, to))
       await get().refresh(root)
+    },
+    move: async (root, path, folder) => {
+      const { unsaved } = get().byRoot[root] ?? emptyTree
+      if (Object.keys(unsaved).some((edited) => isWithin(edited, path))) {
+        throw new Error(m.explorer_move_unsaved({ name: nameOf(path) }))
+      }
+      const to = childPath(folder, nameOf(path))
+      await get().load(root, folder)
+      if (get().byRoot[root]?.children[folder]?.some((sibling) => sibling.path === to)) {
+        throw new Error(m.explorer_name_exists({ name: nameOf(path) }))
+      }
+      await callPromise("fs.rename", { root, from: path, to })
+      update(root, (tree) => afterMove(tree, path, to))
+      await get().refresh(root)
+      return to
     },
     remove: async (root, path) => {
       await callPromise("fs.delete", { root, path })
