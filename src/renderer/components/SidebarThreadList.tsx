@@ -12,7 +12,6 @@ import { isSortable } from "@dnd-kit/dom/sortable"
 import { move } from "@dnd-kit/helpers"
 import { DragDropProvider } from "@dnd-kit/react"
 import { useSortable } from "@dnd-kit/react/sortable"
-import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { useAtomValue } from "@effect/atom-react"
 import { Link, useRouter } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
@@ -59,7 +58,7 @@ import { hasContent, useDrafts } from "../stores/drafts.ts"
 import { usePullRequests } from "../stores/pullRequests.ts"
 import { lastActivity, useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
-import { listMotionPausedWhile } from "../lib/listMotion.ts"
+import { SidebarRow, SidebarRowPresence } from "./SidebarRowMotion.tsx"
 import { useUnseen } from "../stores/unseen.ts"
 import { ProjectIcon } from "./ProjectIcon.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
@@ -157,8 +156,6 @@ interface SidebarThreadListProps {
   readonly pageSize?: number
 }
 
-export const sidebarListMotion = listMotionPausedWhile(() => useUi.getState().sidebarQuery !== "")
-
 export function SidebarThreadList({
   group,
   threads,
@@ -173,7 +170,8 @@ export function SidebarThreadList({
 }: SidebarThreadListProps) {
   const firstRowRef = useRef<HTMLAnchorElement>(null)
   const focusAfterRemoval = () => firstRowRef.current ?? newThreadButtonRef?.current ?? null
-  const [listRef, setAnimate] = useAutoAnimate<HTMLUListElement>(sidebarListMotion)
+  const filtering = useUi((state) => state.sidebarQuery !== "")
+  const [dragging, setDragging] = useState(false)
   const DROP_ANIMATION_MS = 300
   const [reorderError, setReorderError] = useState<string | null>(null)
   const entries = flat ? threads.map((thread) => ({ thread, nested: false })) : nestChildren(threads)
@@ -203,7 +201,7 @@ export function SidebarThreadList({
       <DragDropProvider
         plugins={plugins}
         sensors={sensors}
-        onDragStart={() => setAnimate(false)}
+        onDragStart={() => setDragging(true)}
         onDragEnd={(event) => {
           if (!event.canceled)
             void save(
@@ -212,28 +210,30 @@ export function SidebarThreadList({
                 event,
               ),
             )
-          // FIXME: dnd-kit still plays its drop animation here, and auto-animate on top slides the row twice
-          setTimeout(() => setAnimate(true), DROP_ANIMATION_MS)
+          // FIXME: dnd-kit still plays its drop animation here, and a layout glide on top slides the row twice
+          setTimeout(() => setDragging(false), DROP_ANIMATION_MS)
         }}
       >
-        <ul ref={listRef} className={`flex flex-col gap-1 ${className}`}>
+        <ul className={`flex flex-col gap-1 ${className}`}>
           {threads.length === 0 && showEmptyHint && (
             <li className="px-1.5 py-1 text-xs text-muted-foreground">{m.sidebar_no_threads()}</li>
           )}
-          {shownEntries.map(({ thread, nested }, index) => (
-            <ThreadRow
-              key={thread.id}
-              thread={thread}
-              nested={nested}
-              index={index}
-              group={group}
-              reorderable={reorderable && !nested}
-              showProject={showProject}
-              showActivity={showActivity}
-              linkRef={index === 0 ? firstRowRef : undefined}
-              focusAfterRemoval={focusAfterRemoval}
-            />
-          ))}
+          <SidebarRowPresence placements={placementsOf("", shownEntries)} still={filtering || dragging}>
+            {shownEntries.map(({ thread, nested }, index) => (
+              <ThreadRow
+                key={thread.id}
+                thread={thread}
+                nested={nested}
+                index={index}
+                group={group}
+                reorderable={reorderable && !nested}
+                showProject={showProject}
+                showActivity={showActivity}
+                linkRef={index === 0 ? firstRowRef : undefined}
+                focusAfterRemoval={focusAfterRemoval}
+              />
+            ))}
+          </SidebarRowPresence>
         </ul>
       </DragDropProvider>
       {shownCount < entries.length && (
@@ -279,47 +279,73 @@ export interface TurnSection {
   readonly flat?: boolean
   readonly showActivity?: boolean
   readonly empty?: ReactNode
+  readonly spaced?: boolean
+  readonly drafts?: ReadonlyArray<{ readonly thread: Thread; readonly title: string }>
+  readonly projectNames?: ReadonlyMap<string, string>
 }
 
 export function TurnList({ sections, className }: { sections: ReadonlyArray<TurnSection>; className: string }) {
   const firstRowRef = useRef<HTMLAnchorElement>(null)
-  const [listRef] = useAutoAnimate<HTMLUListElement>(sidebarListMotion)
+  const filtering = useUi((state) => state.sidebarQuery !== "")
   const entriesOf = (section: TurnSection) =>
     section.flat ? section.threads.map((thread) => ({ thread, nested: false })) : nestChildren(section.threads)
   const firstThread = sections.flatMap((section) => entriesOf(section))[0]?.thread
   return (
     <DragDropProvider>
-      <ul ref={listRef} className={`flex flex-col gap-1 ${className}`}>
-        {sections.flatMap((section) => [
-          <li key={`heading-${section.key}`} className={cn("-mx-2", section.headingClassName)}>
-            {section.heading}
-          </li>,
-          ...(section.threads.length === 0 && section.empty !== undefined
-            ? [
-                <li key={`empty-${section.key}`} className="px-2.5 pb-1 text-xs text-sidebar-meta">
-                  {section.empty}
-                </li>,
-              ]
-            : []),
-          ...entriesOf(section).map(({ thread, nested }, index) => (
-            <ThreadRow
-              key={thread.id}
-              thread={thread}
-              nested={nested}
-              index={index}
-              group={section.group}
-              reorderable={false}
-              showProject
-              showActivity={section.showActivity ?? false}
-              linkRef={thread === firstThread ? firstRowRef : undefined}
-              focusAfterRemoval={() => firstRowRef.current}
-            />
-          )),
-        ])}
+      <ul className={`flex flex-col gap-1 ${className}`}>
+        <SidebarRowPresence
+          placements={sections.flatMap((section) => placementsOf(section.key, entriesOf(section)))}
+          still={filtering}
+        >
+          {sections.flatMap((section) => [
+            ...(section.spaced
+              ? [
+                  <SidebarRow key={`space-${section.key}`} aria-hidden>
+                    <div className="h-3" />
+                  </SidebarRow>,
+                ]
+              : []),
+            <SidebarRow key={`heading-${section.key}`} className={cn("-mx-2", section.headingClassName)}>
+              {section.heading}
+            </SidebarRow>,
+            ...(section.threads.length === 0 && section.empty !== undefined
+              ? [
+                  <SidebarRow key={`empty-${section.key}`} className="px-2.5 pb-1 text-xs text-sidebar-meta">
+                    {section.empty}
+                  </SidebarRow>,
+                ]
+              : []),
+            ...(section.drafts ?? []).map(({ thread, title }) => (
+              <DraftRow
+                key={`draft-${thread.id}`}
+                thread={thread}
+                title={title}
+                project={section.projectNames?.get(thread.projectId) ?? null}
+              />
+            )),
+            ...entriesOf(section).map(({ thread, nested }, index) => (
+              <ThreadRow
+                key={thread.id}
+                thread={thread}
+                nested={nested}
+                index={index}
+                group={section.group}
+                reorderable={false}
+                showProject
+                showActivity={section.showActivity ?? false}
+                linkRef={thread === firstThread ? firstRowRef : undefined}
+                focusAfterRemoval={() => firstRowRef.current}
+              />
+            )),
+          ])}
+        </SidebarRowPresence>
       </ul>
     </DragDropProvider>
   )
 }
+
+const placementsOf = (section: string, entries: ReadonlyArray<{ readonly thread: Thread }>) =>
+  entries.map((entry) => ({ id: entry.thread.id, section }))
 
 export const READY_GROUP = "ready"
 export const SETTLED_GROUP = "settled"
@@ -369,7 +395,7 @@ function DraftRow({ thread, title, project }: { thread: Thread; title: string; p
   }
 
   return (
-    <li data-emphasis="resting" data-meta={false} data-show-project={project !== null} className={rowClassName}>
+    <SidebarRow data-emphasis="resting" data-meta={false} data-show-project={project !== null} className={rowClassName}>
       {project !== null && (
         <ProjectLine
           project={project}
@@ -407,7 +433,7 @@ function DraftRow({ thread, title, project }: { thread: Thread; title: string; p
           </Button>
         </div>
       </div>
-    </li>
+    </SidebarRow>
   )
 }
 
@@ -539,7 +565,7 @@ function ThreadRow({
   }
 
   return (
-    <li
+    <SidebarRow
       // FIXME: dnd-kit marks a handleless row as a button, which reads as disabled without a handle
       ref={reorderable ? ref : undefined}
       data-dragging={isDragSource}
@@ -753,7 +779,7 @@ function ThreadRow({
           onArchived={moveOutArchived}
         />
       )}
-    </li>
+    </SidebarRow>
   )
 }
 
