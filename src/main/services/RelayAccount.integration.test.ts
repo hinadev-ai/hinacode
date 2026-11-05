@@ -3,7 +3,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { describe, expect, it } from "@effect/vitest"
-import { Effect, Layer, Option } from "effect"
+import { Effect, Layer, Option, Fiber } from "effect"
 import type { PendingLink, RelayHost, RelayMachine } from "../../shared/relayMachines.ts"
 import * as Db from "../db/client.ts"
 import * as RemoteAccess from "../remote/access.ts"
@@ -15,7 +15,7 @@ import * as Secrets from "./Secrets.ts"
 import * as Settings from "./Settings.ts"
 
 const SERVICE_URL = "https://relay.test"
-const OWNER_TOKEN = "owner-token"
+const CREDENTIAL = "device-credential"
 
 const homeServer: RelayMachine = {
   environmentId: "home-server",
@@ -34,7 +34,11 @@ const homeServerHost: RelayHost = {
 }
 
 interface StandInRelay {
-  ownerToken: string
+  credential: string
+  issuedCredential: string
+  pendingClaims: number
+  expiresAt: number
+  profile: { name: string | null; email: string | null }
   machines: ReadonlyArray<RelayMachine>
   hosts: Array<RelayHost>
   readonly links: Map<string, PendingLink>
@@ -45,9 +49,14 @@ interface StandInRelay {
   readonly fetch: Fetch
 }
 
+const FAR_FUTURE = 4_000_000_000_000
+const LINK_URL = `${SERVICE_URL}/link?code=WXYZ-2345`
+
 const standInRelay = () => {
   const hostById = (id: string) => relay.hosts.find((host) => host.id === id)
   const route = async (method: string, path: string, init: RequestInit): Promise<Response> => {
+    if (method === "GET" && path === "/v1/account") return Response.json(relay.profile)
+    if (method === "DELETE" && path === "/v1/device") return new Response(null, { status: 204 })
     if (method === "GET" && path === "/v1/machines") {
       const shown = (machine: RelayMachine) =>
         relay.hosts.find((host) => host.environmentId === machine.environmentId)?.enabled !== false
@@ -87,7 +96,11 @@ const standInRelay = () => {
     return new Response(null, { status: 404 })
   }
   const relay: StandInRelay = {
-    ownerToken: OWNER_TOKEN,
+    credential: CREDENTIAL,
+    issuedCredential: CREDENTIAL,
+    pendingClaims: 0,
+    expiresAt: FAR_FUTURE,
+    profile: { name: "Kalan", email: "kalan@example.com" },
     machines: [homeServer],
     hosts: [homeServerHost],
     links: new Map(),
@@ -99,7 +112,18 @@ const standInRelay = () => {
       const method = init.method ?? "GET"
       relay.calls.push(`${method} ${url.pathname}`)
       if (url.origin !== SERVICE_URL) return new Response(null, { status: 404 })
-      if (new Headers(init.headers).get("Authorization") !== `Bearer ${relay.ownerToken}`) {
+      if (method === "POST" && url.pathname === "/v1/sign-ins") {
+        const expiresAt = relay.expiresAt
+        return Response.json({ deviceCode: "device", userCode: "WXYZ-2345", url: LINK_URL, interval: 0, expiresAt })
+      }
+      if (method === "POST" && url.pathname === "/v1/links/claim") {
+        if (relay.pendingClaims > 0) {
+          relay.pendingClaims--
+          return Response.json({ pending: true }, { status: 202 })
+        }
+        return Response.json({ credential: relay.issuedCredential })
+      }
+      if (new Headers(init.headers).get("Authorization") !== `Bearer ${relay.credential}`) {
         return Response.json({ error: "unauthorized" }, { status: 401 })
       }
       return route(method, url.pathname, init)
@@ -138,73 +162,161 @@ const account = RelayAccount.RelayAccount
 const listed = Environments.Environments.use((environments) => environments.list).pipe(
   Effect.map(({ clouds }) => clouds.map(({ id, source }) => ({ id, source }))),
 )
-const storedOwnerToken = Secrets.Secrets.use((secrets) => secrets.get("relay.ownerToken")).pipe(
+const signIn = account.use((relayAccount) => relayAccount.signIn({ onLink: () => Effect.void }))
+const storedCredential = Secrets.Secrets.use((secrets) => secrets.get("relay.deviceCredential")).pipe(
   Effect.map(Option.getOrNull),
 )
 
 describe("RelayAccount", () => {
-  it.live("signing in with the owner token keeps it and adds every machine the relay lists", () => {
+  it.live("signing in opens the page, waits for approval, and adds every machine the relay lists", () => {
     const relay = standInRelay()
+    relay.pendingClaims = 2
     return withAccount(
       relay,
       Effect.gen(function* () {
-        const status = yield* account.use((relayAccount) => relayAccount.signIn(OWNER_TOKEN))
+        const opened: Array<string> = []
+        const status = yield* account.use((relayAccount) =>
+          relayAccount.signIn({ onLink: ({ url }) => Effect.sync(() => void opened.push(url)) }),
+        )
+
+        expect(opened).toStrictEqual([LINK_URL])
+        expect(relay.pendingClaims).toBe(0)
 
         expect(status).toStrictEqual({
           state: "signedIn",
           serviceUrl: SERVICE_URL,
           environmentId: (yield* RemoteAccess.RemoteAccess).identity.id,
+          name: "Kalan",
+          email: "kalan@example.com",
           machines: 1,
           syncedAt: expect.any(String),
           error: null,
         })
-        expect(yield* storedOwnerToken).toBe(OWNER_TOKEN)
+        expect(yield* storedCredential).toBe(CREDENTIAL)
         expect(yield* listed).toStrictEqual([{ id: "home-server", source: "relay" }])
       }),
     )
   })
 
-  it.live("a refused owner token at sign-in keeps nothing and says where the current one is", () => {
+  it.live("a first sync that fails keeps the issued credential and says why", () => {
     const relay = standInRelay()
+    relay.issuedCredential = "stale"
     return withAccount(
       relay,
       Effect.gen(function* () {
-        const error = yield* account.use((relayAccount) => relayAccount.signIn("stale")).pipe(Effect.flip)
+        const status = yield* signIn
 
-        expect(error.message).toMatch(/owner token.*relay page/)
-        expect(yield* storedOwnerToken).toBeNull()
-        expect(yield* listed).toStrictEqual([])
-        expect(yield* account.use((relayAccount) => relayAccount.status)).toStrictEqual({ state: "signedOut" })
+        expect(status).toMatchObject({ state: "signedIn", error: expect.stringMatching(/no longer accepts/) })
+        expect(yield* storedCredential).toBe("stale")
       }),
     )
   })
 
-  it.live("a refused owner token at sync keeps every machine and says why", () => {
+  it.live("logging out while the sign-in page is still opening ends the sign-in", () => {
     const relay = standInRelay()
     return withAccount(
       relay,
       Effect.gen(function* () {
-        yield* account.use((relayAccount) => relayAccount.signIn(OWNER_TOKEN))
-        relay.ownerToken = "rotated"
+        const links: Array<string> = []
+        const signingIn = yield* account
+          .use((relayAccount) =>
+            relayAccount.signIn({
+              onLink: ({ url }) =>
+                Effect.andThen(
+                  Effect.sync(() => void links.push(url)),
+                  Effect.never,
+                ),
+            }),
+          )
+          .pipe(Effect.forkChild)
+        yield* Effect.yieldNow.pipe(Effect.repeat({ until: () => links.length === 1 }))
+
+        yield* account.use((relayAccount) => relayAccount.signOut)
+
+        expect(yield* Fiber.join(signingIn)).toStrictEqual({ state: "signedOut" })
+        expect(yield* storedCredential).toBeNull()
+        expect(relay.calls).not.toContain("POST /v1/links/claim")
+      }),
+    )
+  })
+
+  it.live("a sign-in nobody approves in time keeps nothing and says so", () => {
+    const relay = standInRelay()
+    relay.pendingClaims = 1
+    relay.expiresAt = 0
+    return withAccount(
+      relay,
+      Effect.gen(function* () {
+        const error = yield* Effect.flip(signIn)
+
+        expect(error.message).toMatch(/expired/)
+        expect(yield* storedCredential).toBeNull()
+      }),
+    )
+  })
+
+  it.live("a second sign-in replaces the first, which ends signed out", () => {
+    const relay = standInRelay()
+    relay.pendingClaims = Number.MAX_SAFE_INTEGER
+    return withAccount(
+      relay,
+      Effect.gen(function* () {
+        const links: Array<string> = []
+        const first = yield* account
+          .use((relayAccount) => relayAccount.signIn({ onLink: ({ url }) => Effect.sync(() => void links.push(url)) }))
+          .pipe(Effect.forkChild)
+        yield* Effect.yieldNow.pipe(Effect.repeat({ until: () => links.length === 1 }))
+        relay.pendingClaims = 0
+
+        const second = yield* signIn
+        expect(second).toMatchObject({ state: "signedIn" })
+        expect(yield* Fiber.join(first)).toMatchObject({ state: "signedOut" })
+      }),
+    )
+  })
+
+  it.live("a profile the relay cannot read does not fail the sign-in", () => {
+    const relay = standInRelay()
+    relay.profile = "broken" as never
+    return withAccount(
+      relay,
+      Effect.gen(function* () {
+        expect(yield* signIn).toMatchObject({ state: "signedIn", name: null, email: null, machines: 1 })
+      }),
+    )
+  })
+
+  it.live("a refused credential at sync keeps every machine and says why", () => {
+    const relay = standInRelay()
+    return withAccount(
+      relay,
+      Effect.gen(function* () {
+        yield* signIn
+        relay.credential = "rotated"
         relay.machines = []
 
         const status = yield* account.use((relayAccount) => relayAccount.sync)
 
-        expect(status).toMatchObject({ state: "signedIn", machines: 1, error: expect.stringMatching(/owner token/) })
+        expect(status).toMatchObject({
+          state: "signedIn",
+          machines: 1,
+          error: expect.stringMatching(/no longer accepts/),
+        })
         expect(yield* listed).toStrictEqual([{ id: "home-server", source: "relay" }])
       }),
     )
   })
 
-  it.live("signing out drops the relay's machines and forgets the owner token", () => {
+  it.live("signing out drops the relay's machines and forgets the credential", () => {
     const relay = standInRelay()
     return withAccount(
       relay,
       Effect.gen(function* () {
-        yield* account.use((relayAccount) => relayAccount.signIn(OWNER_TOKEN))
+        yield* signIn
 
         expect(yield* account.use((relayAccount) => relayAccount.signOut)).toStrictEqual({ state: "signedOut" })
-        expect(yield* storedOwnerToken).toBeNull()
+        expect(relay.calls).toContain("DELETE /v1/device")
+        expect(yield* storedCredential).toBeNull()
         expect(yield* listed).toStrictEqual([])
       }),
     )
@@ -215,7 +327,7 @@ describe("RelayAccount", () => {
     return withAccount(
       relay,
       Effect.gen(function* () {
-        yield* account.use((relayAccount) => relayAccount.signIn(OWNER_TOKEN))
+        yield* signIn
 
         expect(yield* account.use((relayAccount) => relayAccount.machines)).toStrictEqual([homeServerHost])
       }),
@@ -240,7 +352,7 @@ describe("RelayAccount", () => {
     return withAccount(
       relay,
       Effect.gen(function* () {
-        yield* account.use((relayAccount) => relayAccount.signIn(OWNER_TOKEN))
+        yield* signIn
 
         const hosts = yield* account.use((relayAccount) => relayAccount.setShown({ id: "host-1", enabled: false }))
 
@@ -256,7 +368,7 @@ describe("RelayAccount", () => {
     return withAccount(
       relay,
       Effect.gen(function* () {
-        yield* account.use((relayAccount) => relayAccount.signIn(OWNER_TOKEN))
+        yield* signIn
 
         const hosts = yield* account.use((relayAccount) => relayAccount.removeMachine({ id: "host-1" }))
 
@@ -274,7 +386,7 @@ describe("RelayAccount", () => {
       Effect.gen(function* () {
         const self = (yield* RemoteAccess.RemoteAccess).identity
         relay.hosts = [...relay.hosts, { ...homeServerHost, id: "host-self", environmentId: self.id, name: self.name }]
-        yield* account.use((relayAccount) => relayAccount.signIn(OWNER_TOKEN))
+        yield* signIn
 
         const error = yield* account
           .use((relayAccount) => relayAccount.removeMachine({ id: "host-self" }))
@@ -302,7 +414,7 @@ describe("RelayAccount", () => {
     return withAccount(
       relay,
       Effect.gen(function* () {
-        yield* account.use((relayAccount) => relayAccount.signIn(OWNER_TOKEN))
+        yield* signIn
 
         expect(yield* account.use((relayAccount) => relayAccount.pendingLink("ABCD-EFGH"))).toStrictEqual({
           name: "agent-vm",
@@ -323,7 +435,7 @@ describe("RelayAccount", () => {
     return withAccount(
       relay,
       Effect.gen(function* () {
-        yield* account.use((relayAccount) => relayAccount.signIn(OWNER_TOKEN))
+        yield* signIn
 
         expect(yield* account.use((relayAccount) => relayAccount.approveOwnLink("SELF-CODE"))).toBe(true)
         expect(relay.approved).toStrictEqual(["SELF-CODE"])
@@ -343,14 +455,14 @@ describe("RelayAccount", () => {
     )
   })
 
-  it.live("a refused owner token on any machine call says to sign in again", () => {
+  it.live("a refused credential on any machine call says to sign in again", () => {
     const relay = standInRelay()
     relay.links.set("ABCD-EFGH", { name: "agent-vm", environmentId: "agent-vm" })
     return withAccount(
       relay,
       Effect.gen(function* () {
-        yield* account.use((relayAccount) => relayAccount.signIn(OWNER_TOKEN))
-        relay.ownerToken = "rotated"
+        yield* signIn
+        relay.credential = "rotated"
 
         const calls: Array<Effect.Effect<unknown, { readonly message: string }, RelayAccount.RelayAccount>> = [
           account.use((relayAccount) => relayAccount.machines),
@@ -360,7 +472,7 @@ describe("RelayAccount", () => {
           account.use((relayAccount) => relayAccount.approveLink("ABCD-EFGH")),
         ]
         for (const call of calls) {
-          expect((yield* Effect.flip(call)).message).toMatch(/refused the owner token/)
+          expect((yield* Effect.flip(call)).message).toMatch(/no longer accepts this device/)
         }
         expect(yield* account.use((relayAccount) => relayAccount.approveOwnLink("ABCD-EFGH"))).toBe(false)
         expect(relay.approved).toStrictEqual([])

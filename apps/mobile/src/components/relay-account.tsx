@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { StyleSheet, Text, TextInput, View } from "react-native"
+import { Linking, Platform, StyleSheet, Text, TextInput, View } from "react-native"
 import { Spinner } from "@/components/motion"
 import { SettingsGroup, SettingsRow } from "@/components/settings-rows"
 import { Button, Notice } from "@/components/ui"
@@ -12,7 +12,7 @@ import { DEFAULT_RELAY_URL } from "@/lib/relay-account"
 import { relativeTime } from "@/lib/relative-time"
 import { useRelayAccount } from "@/stores/relay-account"
 
-/** Signs in to the relay with the owner token, so every machine shown on the relay page appears here. */
+/** Signs in to the relay in the browser, so every machine shown on the account appears here. */
 export function RelayAccountSection() {
   const serviceUrl = useRelayAccount((state) => state.serviceUrl)
   const unauthorized = useRelayAccount((state) => state.unauthorized)
@@ -86,23 +86,26 @@ function RelayStatus({ serviceUrl }: { serviceUrl: string }) {
   )
 }
 
-/** Saves the account only once the relay accepts the owner token. */
+const deviceName = Platform.OS === "ios" ? "iPhone" : Platform.OS === "android" ? "Android" : "Phone"
+
+/** Saves the account only once the signed-in person approves this phone in the browser. */
 function RelaySignIn({ initialUrl }: { initialUrl: string }) {
   const theme = useTheme()
   const signIn = useRelayAccount((state) => state.signIn)
   const [serviceUrl, setServiceUrl] = useState(initialUrl)
-  const [ownerToken, setOwnerToken] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const submit = async () => {
-    if (serviceUrl.trim() === "" || ownerToken.trim() === "") {
-      setError(copy("mobile_relay_fields_required"))
+    if (serviceUrl.trim() === "") {
+      setError(copy("mobile_relay_service_required"))
       return
     }
     setBusy(true)
     setError(null)
     try {
-      setError(await signIn({ serviceUrl: serviceUrl.trim(), ownerToken: ownerToken.trim() }))
+      setError(
+        await signIn({ serviceUrl: serviceUrl.trim(), deviceName, openUrl: (url) => Linking.openURL(url) }),
+      )
     } finally {
       setBusy(false)
     }
@@ -120,16 +123,7 @@ function RelaySignIn({ initialUrl }: { initialUrl: string }) {
         keyboardType="url"
         style={inputStyle}
       />
-      <Text style={[styles.fieldLabel, { color: theme.text }]}>{copy("mobile_relay_owner_token")}</Text>
-      <TextInput
-        accessibilityLabel={copy("mobile_relay_owner_token")}
-        value={ownerToken}
-        onChangeText={setOwnerToken}
-        autoCapitalize="none"
-        autoCorrect={false}
-        secureTextEntry
-        style={inputStyle}
-      />
+      {busy && <Notice text={copy("mobile_relay_waiting")} />}
       {error !== null && <Notice tone="danger" text={error} />}
       <Button
         icon="ShieldKeyhole"
