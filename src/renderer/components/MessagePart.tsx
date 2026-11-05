@@ -32,7 +32,6 @@ import {
   countToolKinds,
   describeCommand,
   describeToolCall,
-  editsFile,
   ownToolName,
   toolOutputImages,
   type SkillLabels as SkillLabelMap,
@@ -106,7 +105,7 @@ export function MessagePartView({ part }: { part: MessagePart }) {
 }
 
 const disclosureTrigger =
-  "group/trigger flex w-fit max-w-full min-w-0 items-center gap-2 rounded-sm py-0.5 text-left text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-panel-open:text-foreground"
+  "group/trigger flex w-fit max-w-full min-w-0 items-center gap-2 rounded-sm py-0.5 text-left text-sm text-receding-foreground outline-none hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
 
 function Chevron() {
   return (
@@ -286,7 +285,11 @@ function SubagentCallPart({ part }: { part: Extract<MessagePart, { type: "tool_c
 
   return (
     <button type="button" onClick={() => open(part.callId)} className={`my-2 ${disclosureTrigger}`}>
-      {provider ? <ProviderIcon provider={provider} muted /> : <ToolsIcon aria-hidden className="size-4 shrink-0" />}
+      {provider ? (
+        <ProviderIcon provider={provider} muted className="text-current" />
+      ) : (
+        <ToolsIcon aria-hidden className="size-4 shrink-0" />
+      )}
       <span className="shrink-0">
         <Highlighted text={name} />
       </span>
@@ -530,7 +533,7 @@ function CommandLabel({ call, truncate }: { call: ToolCall; truncate: string }) 
   return (
     <>
       {distinctLabel !== null && (
-        <span className={cn("max-w-3/4 min-w-0 shrink-0 text-foreground", truncate)} title={distinctLabel}>
+        <span className={cn("max-w-3/4 min-w-0 shrink-0", truncate)} title={distinctLabel}>
           <Highlighted text={distinctLabel} />
         </span>
       )}
@@ -543,13 +546,12 @@ function CommandLabel({ call, truncate }: { call: ToolCall; truncate: string }) 
 
 function ToolLabel({ call, truncate }: { call: ToolCall; truncate: string }) {
   const { name, summary } = describeToolCall(call)
-  const emphasis = editsFile(call.name) ? "text-foreground" : undefined
   return (
     <>
-      <span className={cn("shrink-0", emphasis)}>
+      <span className="shrink-0">
         <Highlighted text={name} />
       </span>
-      <span className={cn("min-w-0", truncate, emphasis)} title={summary}>
+      <span className={cn("min-w-0", truncate)} title={summary}>
         <Highlighted text={summary} />
       </span>
     </>
@@ -629,13 +631,14 @@ function FileChangePart({ path, diff }: { path: string; diff: string }) {
   const row = (
     <>
       <FileDiffIcon aria-hidden className="size-4 shrink-0" />
-      <span className="shrink-0 text-foreground">{m.file_change_label()}</span>
-      <span className="min-w-0 truncate text-foreground" title={path}>
+      <span className="shrink-0">{m.file_change_label()}</span>
+      <span className="min-w-0 truncate" title={path}>
         <Highlighted text={path} />
       </span>
     </>
   )
-  if (diff === "") return <div className="my-2 flex items-center gap-2 py-0.5 text-sm text-muted-foreground">{row}</div>
+  if (diff === "")
+    return <div className="my-2 flex items-center gap-2 py-0.5 text-sm text-receding-foreground">{row}</div>
   return (
     <Collapsible className="my-2">
       <CollapsibleTrigger className={disclosureTrigger}>

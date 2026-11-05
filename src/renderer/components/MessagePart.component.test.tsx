@@ -106,7 +106,7 @@ test("shows the thinking inside an opened tool group", async () => {
   await expect.element(page.getByRole("button", { name: /Thinking/ })).toBeVisible()
 })
 
-test("gives a file edit the same contrast as a command's description", async () => {
+test("keeps a file edit as receding as every other tool row", async () => {
   await renderCommand("claude", {
     type: "tool_call",
     callId: "e",
@@ -115,9 +115,11 @@ test("gives a file edit the same contrast as a command's description", async () 
     status: "done",
   })
   const name = page.getByText("Edit", { exact: true }).element()
-  const root = getComputedStyle(document.documentElement).getPropertyValue("--foreground")
-  expect(name.className).toContain("text-foreground")
-  expect(root).not.toBe("")
+  const muted = document.createElement("span")
+  muted.className = "text-receding-foreground"
+  document.body.append(muted)
+  expect(getComputedStyle(name).color).toBe(getComputedStyle(muted).color)
+  muted.remove()
 })
 
 test("shows a TodoWrite call as a checklist, not its raw JSON", async () => {
