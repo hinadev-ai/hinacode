@@ -17,5 +17,5 @@
     "TUNNEL_ZONE_ID": "ef8f9d3e89546eb63bfda9d19191f642",
     "TUNNEL_ZONE_NAME": "hinacode.app",
   },
-  "secrets": { "required": ["CLOUDFLARE_API_TOKEN", "OWNER_TOKEN"] },
+  "secrets": { "required": ["CLOUDFLARE_API_TOKEN", "CLERK_PUBLISHABLE_KEY", "CLERK_SECRET_KEY"] },
 }

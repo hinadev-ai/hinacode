@@ -15,6 +15,7 @@ import {
 import type { Environment, RelayAccountStatus } from "../../../shared/domain.ts"
 import type { PendingLink, RelayHost } from "../../../shared/relayMachines.ts"
 import { errorMessage, toastError } from "../../lib/errorMessage.ts"
+import { RelaySignOutDialog } from "./RelaySignOutDialog.tsx"
 import { type Cloud, cloudAddress, incompatibleText, useClouds } from "../../lib/environments.ts"
 import { formatRelativeTime } from "../../lib/relativeTime.ts"
 import {
@@ -30,7 +31,6 @@ import {
   removeRelayMachineAtom,
   setRelayMachineShownAtom,
   signInRelayAtom,
-  signOutRelayAtom,
   syncRelayAtom,
   updateStatusAtom,
 } from "../../lib/rpc.ts"
@@ -87,53 +87,33 @@ function RelayAccountSection() {
 
 function RelaySignInForm() {
   const signIn = useAtomSet(signInRelayAtom, { mode: "promise" })
-  const [ownerToken, setOwnerToken] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [pending, startSignIn] = useTransition()
 
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    startSignIn(async () => {
-      setError(null)
-      try {
-        await signIn(ownerToken.trim())
-      } catch (cause) {
-        setError(errorMessage(cause))
-      }
-    })
-  }
-
   return (
-    <form
-      onSubmit={onSubmit}
-      aria-labelledby="environment-relay-title"
-      className={cn(settingsSurfaceClass, "flex flex-col gap-4 p-4")}
-    >
-      <h3 id="environment-relay-title" className="text-sm font-medium">
-        {m.environment_relay_title()}
-      </h3>
-      <Field>
-        <FieldLabel htmlFor="environment-relay-owner-token">{m.environment_relay_owner_token_label()}</FieldLabel>
-        <div className="flex flex-wrap gap-2">
-          <Input
-            id="environment-relay-owner-token"
-            type="password"
-            required
-            value={ownerToken}
-            onChange={(event) => setOwnerToken(event.target.value)}
-            spellCheck={false}
-            autoComplete="off"
-            aria-invalid={error !== null}
-            className="min-w-48 flex-1 font-mono"
-          />
-          <Button type="submit" className="shrink-0" disabled={pending || ownerToken.trim() === ""}>
-            {pending ? m.environment_relay_signing_in() : m.environment_relay_sign_in()}
-          </Button>
-        </div>
-        <FieldDescription>{m.environment_relay_description()}</FieldDescription>
-        {error && <FieldError>{error}</FieldError>}
-      </Field>
-    </form>
+    <section aria-labelledby="environment-relay-title" className={cn(settingsSurfaceClass, "flex flex-col gap-2 p-4")}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 id="environment-relay-title" className="text-sm font-medium">
+          {m.environment_relay_title()}
+        </h3>
+        <Button
+          disabled={pending}
+          onClick={() =>
+            startSignIn(async () => {
+              setError(null)
+              try {
+                await signIn()
+              } catch (cause) {
+                setError(errorMessage(cause))
+              }
+            })
+          }
+        >
+          {pending ? m.environment_relay_signing_in() : m.environment_relay_sign_in()}
+        </Button>
+      </div>
+      {error && <FieldError>{error}</FieldError>}
+    </section>
   )
 }
 
@@ -392,42 +372,13 @@ function ApproveRelayLinkForm() {
 }
 
 function RelaySignOutButton() {
-  const signOut = useAtomSet(signOutRelayAtom, { mode: "promise" })
   const [open, setOpen] = useState(false)
-  const [error, run, isPending] = useActionState<string | null>(async () => {
-    try {
-      await signOut()
-    } catch (cause) {
-      return errorMessage(cause)
-    }
-    setOpen(false)
-    return null
-  }, null)
-
   return (
     <>
       <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
         {m.environment_relay_sign_out()}
       </Button>
-      <AlertDialog open={open} onOpenChange={setOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{m.environment_relay_sign_out_title()}</AlertDialogTitle>
-            <AlertDialogDescription>{m.environment_relay_sign_out_body()}</AlertDialogDescription>
-          </AlertDialogHeader>
-          {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          )}
-          <AlertDialogFooter>
-            <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" disabled={isPending} action={run}>
-              {m.environment_relay_sign_out()}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <RelaySignOutDialog open={open} onOpenChange={setOpen} />
     </>
   )
 }

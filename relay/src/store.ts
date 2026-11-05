@@ -9,7 +9,9 @@ const Link = Schema.Struct({
   name: Schema.String,
   userId: Schema.NullOr(Schema.String),
   expiresAt: Schema.Number,
+  kind: Schema.Literals(["machine", "device"]),
 })
+export type Link = typeof Link.Type
 
 const Host = Schema.Struct({
   id: Schema.String,
@@ -43,7 +45,11 @@ const makeStore = Effect.gen(function* () {
       execute: ({ userCode, now }) => sql`SELECT * FROM link WHERE user_code = ${userCode} AND expires_at > ${now}`,
     }),
     approveLink: (deviceCodeHash: string, userId: string) =>
-      sql`UPDATE link SET user_id = ${userId} WHERE device_code_hash = ${deviceCodeHash}`.pipe(Effect.asVoid),
+      sql`
+        UPDATE link SET user_id = ${userId}
+        WHERE device_code_hash = ${deviceCodeHash} AND (user_id IS NULL OR user_id = ${userId})
+        RETURNING device_code_hash
+      `.pipe(Effect.map((rows) => rows.length > 0)),
     deleteLink: (deviceCodeHash: string) =>
       sql`DELETE FROM link WHERE device_code_hash = ${deviceCodeHash} RETURNING device_code_hash`.pipe(
         Effect.map((rows) => rows.length > 0),
@@ -93,16 +99,22 @@ const makeStore = Effect.gen(function* () {
       `.pipe(Effect.map((rows) => rows.length > 0)),
     deleteHost: (id: string) => sql`DELETE FROM host WHERE id = ${id}`.pipe(Effect.asVoid),
 
-    ownerTokenHash: SqlSchema.findOneOption({
-      Request: Schema.Void,
-      Result: Schema.Struct({ tokenHash: Schema.String }),
-      execute: () => sql`SELECT token_hash FROM owner WHERE id = 1`,
+    deviceByCredential: SqlSchema.findOneOption({
+      Request: Schema.String,
+      Result: Schema.Struct({ userId: Schema.String }),
+      execute: (credentialHash) => sql`SELECT user_id FROM device WHERE credential_hash = ${credentialHash}`,
     }),
-    setOwnerTokenHash: (tokenHash: string) =>
-      sql`
-        INSERT INTO owner ${sql.insert({ id: 1, tokenHash })}
-        ON CONFLICT (id) DO UPDATE SET token_hash = excluded.token_hash
-      `.pipe(Effect.asVoid),
+    addDevice: (device: { id: string; userId: string; name: string; credentialHash: string; createdAt: number }) =>
+      sql`INSERT INTO device ${sql.insert(device)}`.pipe(Effect.asVoid),
+    deleteDeviceByCredential: (credentialHash: string) =>
+      sql`DELETE FROM device WHERE credential_hash = ${credentialHash} RETURNING id`.pipe(
+        Effect.map((rows) => rows.length > 0),
+      ),
+    deleteDevicesOfUser: (userId: string) =>
+      sql.batch([
+        sql`DELETE FROM device WHERE user_id = ${userId}`,
+        sql`DELETE FROM link WHERE user_id = ${userId} AND kind = 'device'`,
+      ]),
   }
 })
 
