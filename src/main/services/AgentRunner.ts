@@ -1417,8 +1417,9 @@ const make = Effect.gen(function* () {
       const successor = defaultAccount[provider] === accountId ? null : defaultAccount[provider]
       yield* Effect.forEach(onAccount, ({ id }) =>
         Effect.gen(function* () {
-          if (busyThreads.has(id)) return yield* new AccountInUseError({ id: accountId, threads: 1 })
           const thread = yield* threads.get(id)
+          if (thread.accountId !== accountId) return
+          if (busyThreads.has(id)) return yield* new AccountInUseError({ id: accountId, threads: 1 })
           yield* copySessionToAccount(thread, successor).pipe(
             Effect.catchTag("AgentError", (error) =>
               Effect.logWarning("Moved a thread off a removed account without its transcript", error),
