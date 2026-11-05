@@ -43,7 +43,7 @@ import * as Files from "./services/Files.ts"
 import * as GitHub from "./services/GitHub.ts"
 import { Keyring } from "./services/Secrets.ts"
 import { startResourceMonitor } from "./resourceMonitor.ts"
-import { hydratePath } from "./shellPath.ts"
+import { dropAppImageArgv0, hydratePath } from "./shellPath.ts"
 import { liquidGlass } from "./liquidGlass.ts"
 import * as Updater from "./updater.ts"
 import devIcon from "../../assets/icon-dev.png?asset"
@@ -73,6 +73,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 if (!app.isPackaged) startResourceMonitor(dataDir)
 const icon = app.isPackaged ? releaseIcon : devIcon
+dropAppImageArgv0(process.env)
 const shellPath = hydratePath(process.env, join(dataDir, "shell-path"))
 protocol.registerSchemesAsPrivileged([
   { scheme: ATTACHMENT_PROTOCOL, privileges: { standard: true, secure: true } },

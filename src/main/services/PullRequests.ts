@@ -5,7 +5,7 @@ import { allWatchEventKinds, PullRequestLink, PullRequestWatch, type WatchEventK
 import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
 import { type NotFoundError, type PersistenceError, persistence } from "./errors.ts"
-import { type CommandError, Git } from "./Git.ts"
+import { type CommandError, Git, LONG_TIMEOUT } from "./Git.ts"
 import { GitHub, type GitHubError, type PullRequestUrlInvalidError, requirePullRequestUrl } from "./GitHub.ts"
 import { parseGitHubPullRequestUrl } from "../../shared/github.ts"
 import { Threads } from "./Threads.ts"
@@ -177,7 +177,7 @@ const make = Effect.gen(function* () {
       if (worktreeId === null) return yield* new NoBranchError({ threadId })
       const worktree = yield* worktrees.get(worktreeId)
       if (worktree.status !== "ready") return yield* new NoBranchError({ threadId })
-      yield* git.run(worktree.path, ["push", "--set-upstream", "origin", worktree.branch])
+      yield* git.run(worktree.path, ["push", "--set-upstream", "origin", worktree.branch], { timeout: LONG_TIMEOUT })
       const url = yield* github.createPullRequest(worktree.path, {
         head: worktree.branch,
         base: worktree.baseRef.replace(/^origin\//, ""),
