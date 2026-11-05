@@ -3,7 +3,13 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, startTransition, useActionState, useState } from "react"
 import { ProviderId } from "../../../../shared/agent.ts"
-import type { Automation, AutomationTrigger, AutomationTriggerType, Project } from "../../../../shared/domain.ts"
+import {
+  type Automation,
+  type AutomationTrigger,
+  type AutomationTriggerType,
+  type Project,
+  PullRequestTopic,
+} from "../../../../shared/domain.ts"
 import { automationsAtom, callPromise, modelsAtom } from "../../../lib/rpc.ts"
 import { useSettings } from "../../../lib/settings.ts"
 import { useSettingsEnvironment } from "../../../lib/environments.ts"
@@ -19,23 +25,54 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../../ui/dialog.tsx"
-import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../../ui/field.tsx"
+import { Checkbox } from "../../ui/checkbox.tsx"
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "../../ui/field.tsx"
 import { Input } from "../../ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../ui/select.tsx"
 import { Switch } from "../../ui/switch.tsx"
 import { Textarea } from "../../ui/textarea.tsx"
 import { triggerLabel } from "./shared.tsx"
 
-const triggerTypes: ReadonlyArray<AutomationTriggerType> = ["webhook", "github.issue", "linear.issue", "slack.mention"]
+const triggerTypes: ReadonlyArray<AutomationTriggerType> = [
+  "webhook",
+  "github.issue",
+  "github.pullRequest",
+  "linear.issue",
+  "slack.mention",
+]
 const isProviderId = (value: unknown): value is ProviderId => ProviderId.literals.some((id) => id === value)
 const isTriggerType = (value: unknown): value is AutomationTriggerType => triggerTypes.some((type) => type === value)
 
 const placeholderHints = {
   webhook: ["{{body.*}}", "{{headers.*}}"],
   "github.issue": ["{{issue.title}}", "{{issue.body}}", "{{issue.url}}", "{{issue.number}}", "{{issue.author}}"],
+  "github.pullRequest": [
+    "{{pullRequest.title}}",
+    "{{pullRequest.url}}",
+    "{{pullRequest.number}}",
+    "{{pullRequest.author}}",
+    "{{pullRequest.headRefName}}",
+    "{{pullRequest.baseRefName}}",
+    "{{topic}}",
+  ],
   "linear.issue": ["{{issue.identifier}}", "{{issue.title}}", "{{issue.body}}", "{{issue.url}}"],
   "slack.mention": ["{{message.text}}", "{{message.permalink}}", "{{message.channel}}", "{{message.user}}"],
 } satisfies Record<AutomationTriggerType, ReadonlyArray<string>>
+
+const topicLabel = {
+  "pullRequest.opened": m.automations_topic_opened,
+  "pullRequest.merged": m.automations_topic_merged,
+  "pullRequest.closed": m.automations_topic_closed,
+} satisfies Record<PullRequestTopic, () => string>
 
 interface Draft {
   readonly name: string
@@ -44,6 +81,7 @@ interface Draft {
   readonly triggerType: AutomationTriggerType
   readonly repo: string
   readonly labels: string
+  readonly topics: ReadonlyArray<PullRequestTopic>
   readonly teamKey: string
   readonly stateName: string
   readonly label: string
@@ -63,6 +101,7 @@ const emptyDraft = (projectId: string, model: string): Draft => ({
   triggerType: "webhook",
   repo: "",
   labels: "",
+  topics: ["pullRequest.merged"],
   teamKey: "",
   stateName: "",
   label: "",
@@ -84,6 +123,7 @@ const draftFrom = (automation: Automation): Draft => {
     triggerType: trigger.type,
     repo: trigger.type === "github.issue" ? trigger.repo : "",
     labels: trigger.type === "github.issue" ? (trigger.labels ?? []).join(", ") : "",
+    ...(trigger.type === "github.pullRequest" ? { topics: trigger.topics } : {}),
     teamKey: trigger.type === "linear.issue" ? trigger.teamKey : "",
     stateName: trigger.type === "linear.issue" ? (trigger.stateName ?? "") : "",
     label: trigger.type === "linear.issue" ? (trigger.label ?? "") : "",
@@ -107,6 +147,8 @@ const triggerFrom = (draft: Draft): AutomationTrigger => {
         .filter((label) => label !== "")
       return { type: "github.issue", repo: draft.repo.trim(), ...(labels.length > 0 ? { labels } : {}) }
     }
+    case "github.pullRequest":
+      return { type: "github.pullRequest", topics: draft.topics }
     case "linear.issue":
       return {
         type: "linear.issue",
@@ -376,6 +418,29 @@ function TriggerFields({ draft, patch }: TriggerFieldsProps) {
             hint={m.automations_labels_hint()}
           />
         </>
+      )
+    case "github.pullRequest":
+      return (
+        <FieldSet className="gap-2">
+          <FieldLegend variant="label">{m.automations_topics_label()}</FieldLegend>
+          <FieldDescription>{m.automations_topics_hint()}</FieldDescription>
+          {PullRequestTopic.literals.map((topic) => (
+            <Field key={topic} orientation="horizontal">
+              <Checkbox
+                id={`automation-topic-${topic}`}
+                checked={draft.topics.includes(topic)}
+                onCheckedChange={(checked) =>
+                  patch({
+                    topics: PullRequestTopic.literals.filter((candidate) =>
+                      candidate === topic ? checked : draft.topics.includes(candidate),
+                    ),
+                  })
+                }
+              />
+              <FieldLabel htmlFor={`automation-topic-${topic}`}>{topicLabel[topic]()}</FieldLabel>
+            </Field>
+          ))}
+        </FieldSet>
       )
     case "linear.issue":
       return (

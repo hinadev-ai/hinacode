@@ -669,6 +669,24 @@ flowchart LR
 - Pollers keep a `cursor` per automation. The first poll starts from now and doesn't replay history.
 - A repeated poll error is recorded once, not once per poll.
 
+## Event bus
+
+`EventBus` is a typed `PubSub.sliding(256)` for reactions inside the main process, separate from `Events`, which pushes to windows and remote clients. `Conductor` is its one subscriber, and its `switch` lists what happens for each topic. Design in `docs/features/2026-11-04-event-bus.md`.
+
+```mermaid
+flowchart LR
+  link["PullRequests.link<br/>row inserted"] -- "pullRequest.linked" --> bus["EventBus"]
+  sweep["PullRequestLifecycle.sweep<br/>every 3 minutes"] -- "pullRequest.merged, closed" --> bus
+  bus --> conductor["Conductor"]
+  conductor -- "linked" --> announce["PullRequestLifecycle.announce"]
+  announce -- "pullRequest.opened" --> bus
+  conductor -- "opened, merged, closed" --> fire["Automations.firePullRequest"]
+  fire --> thread["new automation thread"]
+```
+
+- `pull_request_link.observed_status` is what makes a transition a fact. Its first value is recorded silently, and only `merged` is never read again, because a closed pull request can reopen.
+- Threads started by an automation never fire automations, so a prompt that opens a pull request cannot loop.
+
 ## Security boundaries
 
 ```mermaid

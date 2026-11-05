@@ -9,12 +9,14 @@ import {
   AutomationRun,
   AutomationTrigger,
   type AutomationRunStatus,
+  isPolledTrigger,
   type Settings as SettingsValue,
   Timestamp,
 } from "../../../shared/domain.ts"
 import { AgentRunner } from "../AgentRunner.ts"
 import { nowIso } from "../clock.ts"
 import { NotFoundError, type PersistenceError, persistence } from "../errors.ts"
+import type { PullRequestEvent } from "../EventBus.ts"
 import { Events } from "../Events.ts"
 import { GitHub } from "../GitHub.ts"
 import { Linear } from "../Linear.ts"
@@ -70,6 +72,7 @@ export class Automations extends Context.Service<
     readonly runNow: (id: string, payload: unknown) => Effect.Effect<AutomationRun, PersistenceError | NotFoundError>
     readonly runs: (id: string, limit: number) => Effect.Effect<ReadonlyArray<AutomationRun>, PersistenceError>
     readonly webhookUrl: (id: string) => Effect.Effect<{ url: string; listenError: string | null }, Failure>
+    readonly firePullRequest: (event: PullRequestEvent) => Effect.Effect<void>
   }
 >()("hinacode/Automations") {}
 
@@ -106,6 +109,8 @@ const describeCause = (cause: Cause.Cause<unknown>) => describeError(Cause.squas
 
 const REPO = /^[\w.-]+\/[\w.-]+$/
 
+const AUTOMATION_CREATOR_PREFIX = "automation:"
+
 const validate = (input: Pick<AutomationInput, "name" | "model" | "trigger" | "promptTemplate">) => {
   if (input.name.trim() === "") return Effect.fail(new AutomationError({ reason: "Name is required" }))
   if (input.model.trim() === "") return Effect.fail(new AutomationError({ reason: "Model is required" }))
@@ -113,6 +118,9 @@ const validate = (input: Pick<AutomationInput, "name" | "model" | "trigger" | "p
     return Effect.fail(new AutomationError({ reason: "Prompt template is required" }))
   }
   const { trigger } = input
+  if (trigger.type === "github.pullRequest" && trigger.topics.length === 0) {
+    return Effect.fail(new AutomationError({ reason: "Pick at least one pull request event" }))
+  }
   if (trigger.type === "github.issue" && !REPO.test(trigger.repo)) {
     return Effect.fail(new AutomationError({ reason: `Repository must be owner/name, got "${trigger.repo}"` }))
   }
@@ -254,7 +262,7 @@ const make = Effect.gen(function* () {
         provider: automation.provider,
         model: automation.model,
         worktree,
-        createdBy: `automation:${automation.id}`,
+        createdBy: `${AUTOMATION_CREATOR_PREFIX}${automation.id}`,
       })
       yield* events.publish({ type: "thread.updated", thread })
       yield* sql`UPDATE automation_run SET thread_id = ${thread.id} WHERE id = ${runId}`
@@ -286,7 +294,8 @@ const make = Effect.gen(function* () {
     const { trigger } = automation
     switch (trigger.type) {
       case "webhook":
-        return Effect.fail(new PollError({ reason: "Webhook automations are not polled" }))
+      case "github.pullRequest":
+        return Effect.fail(new PollError({ reason: `${trigger.type} automations are not polled` }))
       case "github.issue":
         return Effect.flatMap(projects.get(automation.projectId), (project) =>
           pollGithubIssues((args) => github.run(project.rootPath, args), trigger, cursor),
@@ -354,7 +363,7 @@ const make = Effect.gen(function* () {
   const pollers = yield* FiberMap.make<string>()
 
   const supervise = (automation: AutomationRow) =>
-    automation.enabled && automation.trigger.type !== "webhook"
+    automation.enabled && isPolledTrigger(automation.trigger)
       ? Effect.asVoid(FiberMap.run(pollers, automation.id, pollLoop(automation.id)))
       : FiberMap.remove(pollers, automation.id)
 
@@ -426,7 +435,7 @@ const make = Effect.gen(function* () {
         name: input.name.trim(),
         model: input.model.trim(),
         id: randomUUID(),
-        cursor: input.enabled && input.trigger.type !== "webhook" ? initialCursor(input.trigger, new Date(now)) : null,
+        cursor: input.enabled && isPolledTrigger(input.trigger) ? initialCursor(input.trigger, new Date(now)) : null,
         polledAt: null,
         createdAt: now,
         updatedAt: now,
@@ -454,7 +463,7 @@ const make = Effect.gen(function* () {
         ...definedPatch,
         updatedAt: now,
         cursor:
-          !current.enabled && patch.enabled === true && current.cursor === null && current.trigger.type !== "webhook"
+          !current.enabled && patch.enabled === true && current.cursor === null && isPolledTrigger(current.trigger)
             ? initialCursor(current.trigger, new Date(now))
             : current.cursor,
       }
@@ -493,7 +502,26 @@ const make = Effect.gen(function* () {
       return { url: url.toString(), listenError }
     })
 
+  const firePullRequest = (event: PullRequestEvent) =>
+    Effect.gen(function* () {
+      const source = yield* threads.get(event.threadId)
+      if (source.createdBy.startsWith(AUTOMATION_CREATOR_PREFIX)) return
+      const listening = (yield* findRows(undefined)).filter(
+        ({ enabled, projectId, trigger }) =>
+          enabled &&
+          projectId === source.projectId &&
+          trigger.type === "github.pullRequest" &&
+          trigger.topics.includes(event.topic),
+      )
+      yield* Effect.forEach(
+        listening,
+        (automation) => startRun(automation, `${event.topic}:${event.pullRequest.url}`, event),
+        { discard: true },
+      )
+    }).pipe(Effect.catchCause((cause) => Effect.logWarning("pull request automations failed", event.topic, cause)))
+
   return Automations.of({
+    firePullRequest,
     list,
     get,
     create,

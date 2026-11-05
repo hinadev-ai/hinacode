@@ -63,6 +63,18 @@ const samplePayloads = {
       url: "https://github.com/owner/repo/issues/1",
     },
   },
+  "github.pullRequest": {
+    topic: "pullRequest.merged",
+    threadId: "",
+    pullRequest: {
+      number: 1,
+      title: "Example pull request",
+      url: "https://github.com/owner/repo/pull/1",
+      author: "octocat",
+      headRefName: "feat/example",
+      baseRefName: "main",
+    },
+  },
   "linear.issue": {
     issue: {
       identifier: "ENG-1",

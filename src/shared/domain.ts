@@ -907,8 +907,12 @@ export const TerminalAttachment = Schema.Struct({
 })
 export type TerminalAttachment = typeof TerminalAttachment.Type
 
+export const PullRequestTopic = Schema.Literals(["pullRequest.opened", "pullRequest.merged", "pullRequest.closed"])
+export type PullRequestTopic = typeof PullRequestTopic.Type
+
 export const AutomationTrigger = Schema.Union([
   Schema.Struct({ type: Schema.Literal("webhook") }),
+  Schema.Struct({ type: Schema.Literal("github.pullRequest"), topics: Schema.Array(PullRequestTopic) }),
   Schema.Struct({
     type: Schema.Literal("github.issue"),
     repo: Schema.String,
@@ -928,6 +932,8 @@ export const AutomationTrigger = Schema.Union([
 ])
 export type AutomationTrigger = typeof AutomationTrigger.Type
 export type AutomationTriggerType = AutomationTrigger["type"]
+
+export const isPolledTrigger = ({ type }: AutomationTrigger) => type !== "webhook" && type !== "github.pullRequest"
 
 export const AutomationRunStatus = Schema.Literals(["started", "skipped", "failed"])
 export type AutomationRunStatus = typeof AutomationRunStatus.Type
