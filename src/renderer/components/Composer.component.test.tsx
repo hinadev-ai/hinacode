@@ -48,6 +48,7 @@ const threadWith = (id: string, status: Thread["status"]): Thread => ({
   usageLimit: null,
   sortIndex: 0,
   pinnedAt: null,
+  settledAt: null,
   snoozedUntil: null,
   queue: [],
   scheduled: [],
@@ -62,17 +63,30 @@ const dragFile = (type: "dragover" | "drop", target: Element) => {
   target.dispatchEvent(new DragEvent(type, { dataTransfer: transfer, bubbles: true, cancelable: true }))
 }
 
-test("keeps Stop next to Queue while a turn runs and the draft has text", async () => {
+test("swaps Stop for Queue while a turn runs and the draft has text", async () => {
   const thread = threadWith("running", "running")
   await render(<Composer thread={thread} />)
-  await expect.element(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "Stop", exact: true }).click()
+  expect(calls).toContainEqual({ method: "threads.interrupt", payload: { threadId: thread.id } })
 
   useDrafts.getState().setText(thread.id, "actually, use the other file")
   await expect.element(page.getByRole("button", { name: "Queue", exact: true })).toBeVisible()
-  await page.getByRole("button", { name: "Stop", exact: true }).click()
+  await expect.element(page.getByRole("button", { name: "Stop", exact: true })).not.toBeInTheDocument()
+})
 
-  expect(calls).toContainEqual({ method: "threads.interrupt", payload: { threadId: thread.id } })
-  expect(useDrafts.getState().byThreadId[thread.id]?.text).toBe("actually, use the other file")
+test("truncates a long model name instead of running under the toolbar buttons", async () => {
+  const thread = { ...threadWith("idle", "idle"), model: "console-openrouter/deepseek/deepseek-v4.1-flash-1017" }
+  await render(
+    <div style={{ width: 320 }}>
+      <Composer thread={thread} />
+    </div>,
+  )
+  const send = page.getByRole("button", { name: "Send", exact: true })
+  await expect.element(send).toBeVisible()
+
+  const trigger = document.querySelector("[data-slot=composer-actions] [aria-haspopup]")!
+  const actions = document.querySelector("[data-slot=composer-actions]")!
+  expect(trigger.getBoundingClientRect().right).toBeLessThanOrEqual(actions.getBoundingClientRect().right)
 })
 
 test("accepts files dropped on the toolbar, not only on the text line", async () => {

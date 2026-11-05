@@ -24,6 +24,7 @@ const thread = (id: string, patch: Partial<Thread> = {}): Thread => ({
   usageLimit: null,
   sortIndex: 0,
   pinnedAt: null,
+  settledAt: null,
   snoozedUntil: null,
   queue: [],
   scheduled: [],

@@ -158,7 +158,7 @@ const RollupEntry = Schema.Struct({
 type RollupEntry = typeof RollupEntry.Type
 
 export const PULL_REQUEST_FIELDS =
-  "url,number,title,state,isDraft,reviewDecision,statusCheckRollup,mergeable,author,headRefName,baseRefName,additions,deletions"
+  "url,number,title,state,isDraft,reviewDecision,statusCheckRollup,mergeable,author,headRefName,baseRefName,additions,deletions,mergedAt"
 
 const PullRequestFields = Schema.Struct({
   url: Schema.String,
@@ -174,6 +174,7 @@ const PullRequestFields = Schema.Struct({
   baseRefName: Schema.String,
   additions: Schema.Number,
   deletions: Schema.Number,
+  mergedAt: Schema.optional(Schema.NullOr(Schema.String)),
 })
 const PullRequestJson = Schema.fromJsonString(PullRequestFields)
 
@@ -190,7 +191,7 @@ type PullRequestDetailFields = typeof PullRequestDetailFields.Type
 const PULL_REQUEST_FRAGMENTS = `fragment PullRequestFields on PullRequest {
   url number title state isDraft reviewDecision mergeable
   author { login }
-  headRefName baseRefName headRefOid additions deletions changedFiles body
+  headRefName baseRefName headRefOid additions deletions changedFiles body mergedAt
   commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
     ... on CheckRun { __typename name status conclusion detailsUrl checkSuite { workflowRun { workflow { name } } } }
     ... on StatusContext { __typename context state targetUrl }
@@ -406,6 +407,7 @@ export const toPullRequest = (json: typeof PullRequestJson.Type): PullRequest =>
     baseRefName: json.baseRefName,
     additions: json.additions,
     deletions: json.deletions,
+    mergedAt: json.mergedAt ?? null,
   }
 }
 

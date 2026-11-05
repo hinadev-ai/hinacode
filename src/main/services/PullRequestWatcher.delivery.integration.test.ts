@@ -13,6 +13,7 @@ import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
 import * as McpCredentials from "../mcp/credentials.ts"
+import * as Attachments from "./Attachments.ts"
 import * as AgentAccounts from "./AgentAccounts.ts"
 import { AgentRunner, layer as runnerLayer } from "./AgentRunner.ts"
 import { Events } from "./Events.ts"
@@ -137,7 +138,12 @@ const domain = threadsLayer.pipe(
   Layer.provideMerge(AgentAccounts.layer),
   Layer.provideMerge(settingsLayer(mkdtempSync(join(tmpdir(), "kk-delivery-settings-")))),
 )
-const core = Layer.mergeAll(observedMessages, pullRequestsLayer.pipe(Layer.provideMerge(domain)), McpCredentials.layer)
+const core = Layer.mergeAll(
+  observedMessages,
+  Attachments.layer(join(base, "attachments")),
+  pullRequestsLayer.pipe(Layer.provideMerge(domain)),
+  McpCredentials.layer,
+)
 const agents = runnerLayer.pipe(
   Layer.provideMerge(core),
   Layer.provide(

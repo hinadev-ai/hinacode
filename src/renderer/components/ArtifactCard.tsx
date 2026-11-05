@@ -167,7 +167,7 @@ export function ArtifactCard({
       <PagePreview blocks={blocks} publishing={publishing} />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <CardMeta isDocument={isDocument} publishing={publishing} version={published?.version ?? null} />
-        <span dir="auto" className="truncate text-sm font-medium" title={title}>
+        <span dir="auto" className="truncate text-sm font-medium text-artifact-title" title={title}>
           <Highlighted text={title} />
         </span>
         {summary !== null && (

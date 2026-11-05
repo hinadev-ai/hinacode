@@ -129,7 +129,7 @@ function ArtifactTitle({ artifact }: { artifact: Artifact }) {
         onClick={() => {
           if (!renaming) startRenaming(() => setEditing(true))
         }}
-        className="block max-w-full cursor-text truncate rounded-md px-1.5 py-0.5 text-sm font-medium outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
+        className="block max-w-full cursor-text truncate rounded-md px-1.5 py-0.5 text-sm font-medium text-artifact-title outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 aria-disabled:cursor-default aria-disabled:hover:bg-transparent"
       >
         {title}
       </button>
@@ -178,7 +178,7 @@ function TitleInput({
         )
       }
       aria-label={m.artifacts_rename_label({ title })}
-      className="field-sizing-content h-6 max-w-full min-w-24 rounded-md border border-input bg-transparent px-1.5 text-sm font-medium outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+      className="field-sizing-content h-6 max-w-full min-w-24 rounded-md border border-input bg-transparent px-1.5 text-sm font-medium text-artifact-title outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
     />
   )
 }
@@ -429,7 +429,7 @@ function ArtifactRow({ threadId, artifact }: { threadId: string; artifact: Artif
             <LayoutIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           )}
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="truncate text-sm">{artifact.title}</span>
+            <span className="truncate text-sm text-artifact-title">{artifact.title}</span>
             <span className="truncate text-xs text-muted-foreground">
               {origin === undefined ? null : `${origin.title} · `}
               {artifact.environmentId === undefined

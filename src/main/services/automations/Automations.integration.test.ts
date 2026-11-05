@@ -24,6 +24,7 @@ import * as AgentRunner from "../AgentRunner.ts"
 import { Events } from "../Events.ts"
 import * as Git from "../Git.ts"
 import * as GitHub from "../GitHub.ts"
+import * as Attachments from "../Attachments.ts"
 import * as Messages from "../Messages.ts"
 import * as Projects from "../Projects.ts"
 import * as PullRequests from "../PullRequests.ts"
@@ -93,6 +94,7 @@ const makeLayer = (pushes: Array<PushEvent>, port: number) => {
       Layer.provideMerge(Settings.layer(dataDir)),
     ),
     Messages.layer,
+    Attachments.layer(join(dataDir, "attachments")),
     secrets,
     Linear.layer.pipe(Layer.provide(secrets)),
     credentialsLayer,

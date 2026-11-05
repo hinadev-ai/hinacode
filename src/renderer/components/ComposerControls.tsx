@@ -186,6 +186,9 @@ interface AgentTab {
   readonly disabled: boolean
 }
 
+export const pickerProviders = (own: ProviderId, setUp: ReadonlyArray<ProviderId>) =>
+  ProviderId.literals.filter((provider) => provider === own || setUp.includes(provider))
+
 function useAgentTabs(thread: Thread, canSwitchAgent: boolean): ReadonlyArray<AgentTab> {
   const setUpProviders = useAtomValue(setUpProvidersAtom(useThreadEnvironment(thread.id)))
   const accounts = useAccountOptions(thread).options
@@ -209,11 +212,14 @@ function useAgentTabs(thread: Thread, canSwitchAgent: boolean): ReadonlyArray<Ag
           hint: accountHint(option),
           disabled: turnRunning && option.id !== thread.accountId,
         }))
-  const others = setUpProviders
-    .filter((provider) => provider !== thread.provider)
-    .map((provider) => ({ value: provider, provider, label: providerLabel[provider](), disabled: !canSwitchAgent }))
-  return [...own, ...others]
+  return pickerProviders(thread.provider, setUpProviders).flatMap((provider): ReadonlyArray<AgentTab> =>
+    provider === thread.provider
+      ? own
+      : [{ value: provider, provider, label: providerLabel[provider](), disabled: !canSwitchAgent }],
+  )
 }
+
+const modelRows = (popup: HTMLElement) => [...popup.querySelectorAll<HTMLButtonElement>("[data-model-row]")]
 
 const isThreadTab = (tab: AgentTab, thread: Thread) =>
   tab.provider === thread.provider && (tab.accountId === undefined || tab.accountId === thread.accountId)
@@ -229,10 +235,12 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
   const [focus, setFocus] = useState<ComposerPicker>("model")
   const [picking, startPicking] = useTransition()
   const openedByShortcut = useRef(false)
+  const movedTabByKey = useRef(false)
   const closedWithEnter = useRef(false)
   const popupRef = useRef<HTMLDivElement>(null)
   const tab = tabs.find((candidate) => candidate.value === tabValue) ?? tabs[0]!
   const models = usePickerModels(environment, tab.provider, tab.provider === thread.provider ? thread.model : null)
+  const ownModels = usePickerModels(environment, thread.provider, null)
   const set = (patch: Omit<RpcRequest<"threads.update">, "id">) => void update({ ...patch, id: thread.id }, onError)
 
   const show = (picker: ComposerPicker) => {
@@ -243,33 +251,35 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
   }
 
   const isSidechat = thread.sideOf !== null
-  useEffect(() => {
-    if (isSidechat) return
-    return useUi.subscribe((state, previous) => {
-      const request = state.pickerRequest
-      if (request === previous.pickerRequest || request === null) return
-      openedByShortcut.current = true
-      closedWithEnter.current = false
-      setFocus(request.picker)
-      setTabValue(threadTab)
-      setOpen(true)
-    })
-  }, [threadTab, isSidechat])
+  useEffect(
+    () =>
+      useUi.subscribe((state, previous) => {
+        const request = state.pickerRequest
+        if (request === previous.pickerRequest || request === null || request.inSidechat !== isSidechat) return
+        openedByShortcut.current = true
+        closedWithEnter.current = false
+        setFocus(request.picker)
+        setTabValue(threadTab)
+        setOpen(true)
+      }),
+    [threadTab, isSidechat],
+  )
 
-  const pick = async (next: ModelInfo) => {
-    if (tab.provider !== thread.provider) {
+  const pick = async (next: ModelInfo, target: AgentTab = tab) => {
+    if (target.provider !== thread.provider) {
       await update({ id: thread.id, provider: next.provider, model: next.id }, onError)
       return
     }
-    if (tab.accountId !== undefined && tab.accountId !== thread.accountId) {
+    const latest = useThreads.getState().byId[thread.id] ?? thread
+    if (target.accountId !== undefined && target.accountId !== latest.accountId) {
       try {
-        await switchAccount(thread.id, tab.accountId)
+        await switchAccount(thread.id, target.accountId)
       } catch (cause) {
         onError(errorMessage(cause))
         return
       }
     }
-    if (sameModel(next, selected)) return
+    if (next.id === latest.model) return
     await update(
       {
         id: thread.id,
@@ -281,15 +291,51 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
     )
   }
 
+  const accountSwitches = useRef(Promise.resolve())
+  const openTab = (value: string) => {
+    setTabValue(value)
+    const target = tabs.find((candidate) => candidate.value === value)
+    const firstOwnModel = ownModels[0]
+    if (target?.accountId === undefined || target.provider !== thread.provider || firstOwnModel === undefined) return
+    if (target.accountId === (useThreads.getState().byId[thread.id] ?? thread).accountId) return
+    startPicking(() => {
+      accountSwitches.current = accountSwitches.current.then(() => pick(firstOwnModel, target))
+      return accountSwitches.current
+    })
+  }
+
   const moveTab = (step: number) => {
     const enabled = tabs.filter((candidate) => !candidate.disabled)
     const next = enabled[(enabled.indexOf(tab) + step + enabled.length) % enabled.length]
     if (next === undefined) return
-    popupRef.current?.focus()
-    setTabValue(next.value)
-    popupRef.current
-      ?.querySelectorAll("[data-slot=tabs-trigger]")
-      [tabs.indexOf(next)]?.scrollIntoView({ block: "nearest", inline: "nearest" })
+    movedTabByKey.current = true
+    popupRef.current?.focus({ preventScroll: true })
+    openTab(next.value)
+  }
+  useEffect(() => {
+    const popup = popupRef.current
+    if (!movedTabByKey.current || picking || popup === null || models.length === 0) return
+    movedTabByKey.current = false
+    const rows = modelRows(popup)
+    const row = rows.find((candidate) => candidate.dataset["selected"] === "true") ?? rows[0]
+    row?.focus({ preventScroll: true })
+    const nearest = { block: "nearest", inline: "nearest" } as const
+    row?.scrollIntoView(nearest)
+    popup.querySelector("[role=tab][aria-selected=true]")?.scrollIntoView(nearest)
+  })
+  const moveModel = (step: number) => {
+    const popup = popupRef.current
+    if (popup === null) return
+    const rows = modelRows(popup)
+    const at = rows.indexOf(document.activeElement as HTMLButtonElement)
+    const next =
+      at === -1
+        ? Math.max(
+            0,
+            rows.findIndex((row) => row.dataset["selected"] === "true"),
+          )
+        : at + step
+    rows[(next + rows.length) % rows.length]?.focus()
   }
   const efforts = current === undefined || current.efforts.length === 0 ? [] : [DEFAULT_EFFORT, ...current.efforts]
   const stepThrough = <V,>(values: ReadonlyArray<V>, value: V, step: number) =>
@@ -318,6 +364,23 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
   }
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.metaKey || event.ctrlKey || event.altKey) return
+    const target = event.target as HTMLElement
+    const row = target.closest<HTMLButtonElement>("[data-model-row]")
+    if (event.key === "Enter" && row !== null) {
+      event.preventDefault()
+      closedWithEnter.current = true
+      row.click()
+      setOpen(false)
+      return
+    }
+    if (
+      (event.key === "ArrowDown" || event.key === "ArrowUp") &&
+      (target === popupRef.current || row !== null || target.closest("[role=tab]") !== null)
+    ) {
+      event.preventDefault()
+      moveModel(event.key === "ArrowDown" ? 1 : -1)
+      return
+    }
     const digit = Number(event.key)
     const model = !event.shiftKey && digit >= 1 && digit <= 9 && !tab.disabled ? models[digit - 1] : undefined
     const action = model ? () => void pick(model) : keys[event.key.toLowerCase()]
@@ -352,7 +415,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
             variant="ghost"
             size="sm"
             aria-label={m.thread_option_value({ name: m.thread_model_picker(), value: summary.join(", ") })}
-            className={cn("min-w-0 [&_svg]:-translate-y-px", triggerClass)}
+            className={cn("max-w-full min-w-0 shrink [&_svg]:-translate-y-px", triggerClass)}
           />
         }
       >
@@ -384,7 +447,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
       >
         <Tabs
           value={tab.value}
-          changeAction={(value) => setTabValue(String(value))}
+          changeAction={(value) => openTab(String(value))}
           className="-mx-2 gap-1 border-b border-border px-2 pb-2"
         >
           <div className="flex items-center gap-2">
@@ -422,11 +485,15 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
               <li key={model.id}>
                 <button
                   type="button"
-                  disabled={tab.disabled || picking}
+                  disabled={tab.disabled}
+                  aria-disabled={picking}
                   aria-pressed={isSelected}
+                  data-model-row
                   data-selected={isSelected}
-                  onClick={() => startPicking(() => pick(model))}
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent disabled:opacity-50 aria-pressed:font-medium"
+                  onClick={() => {
+                    if (!picking) startPicking(() => pick(model))
+                  }}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent disabled:opacity-50 aria-disabled:opacity-50 aria-pressed:font-medium"
                 >
                   <span className="min-w-0 flex-1 truncate">{model.label}</span>
                   {index < 9 && <Kbd aria-hidden>{index + 1}</Kbd>}

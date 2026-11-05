@@ -154,6 +154,8 @@ export const routes: Record<RpcMethod, Route> = {
   "sessions.import": owner("project", "projectId"),
   "threads.archive": thread,
   "threads.unarchive": thread,
+  "threads.settle": thread,
+  "threads.unsettle": thread,
   "threads.transcript": thread,
   "threads.toolOutput": thread,
   "threads.send": thread,

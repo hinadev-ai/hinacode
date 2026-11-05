@@ -88,6 +88,7 @@ export const Colors = {
 export type Palette = { readonly [K in keyof typeof Colors.light]: string }
 
 const toneColor = (theme: Palette): Record<IndicatorTone, string> => ({
+  foreground: theme.text,
   muted: theme.textMuted,
   attention: theme.attention,
   // The desktop's `--success` is the phone's `running`.

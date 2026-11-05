@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from "@effect/vitest"
 import type { Attachment } from "../../shared/domain.ts"
-import { emptyDraft, type LineComment, useDrafts } from "./drafts.ts"
+import { emptyDraft, hasContent, type LineComment, useDrafts } from "./drafts.ts"
 
 const attachment = (id: string): Attachment => ({
   id,
@@ -31,6 +31,15 @@ describe("useDrafts", () => {
     addAttachments("a", [attachment("x")])
     expect(draftOf("a")).toStrictEqual({ text: "hello", attachments: [attachment("x")], workspace: null, comments: [] })
     expect(draftOf("b")).toStrictEqual(emptyDraft)
+  })
+
+  test("a draft has content once it holds something to send", () => {
+    expect(hasContent(emptyDraft)).toBe(false)
+    expect(hasContent({ ...emptyDraft, text: "  \n" })).toBe(false)
+    expect(hasContent({ ...emptyDraft, workspace: { mode: "worktree", ref: "main" } })).toBe(false)
+    expect(hasContent({ ...emptyDraft, text: "hello" })).toBe(true)
+    expect(hasContent({ ...emptyDraft, attachments: [attachment("x")] })).toBe(true)
+    expect(hasContent({ ...emptyDraft, comments: [comment("x")] })).toBe(true)
   })
 
   test("appendBlock puts the block on its own lines after the draft", () => {

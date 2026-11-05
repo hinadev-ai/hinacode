@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@effect/vitest"
-import { formatRelativeTime } from "./relativeTime.ts"
+import { formatElapsed, formatRelativeTime } from "./relativeTime.ts"
 
 const now = Date.parse("2026-10-12T12:00:00.000Z")
 const ago = (seconds: number) => new Date(now - seconds * 1000).toISOString()
@@ -35,5 +35,15 @@ describe("formatRelativeTime", () => {
   test("uses the locale's wording", () => {
     expect(formatRelativeTime(ago(5 * minute), now, "zh-TW")).toBe("5 分鐘前")
     expect(formatRelativeTime(ago(10), now, "zh-TW")).toBe("現在")
+  })
+})
+
+describe("formatElapsed", () => {
+  const noon = Date.parse("2026-11-04T12:00:00.000Z")
+
+  test("names the elapsed time without saying ago", () => {
+    expect(formatElapsed("2026-11-04T11:56:00.000Z", noon, "en")).toBe("4m")
+    expect(formatElapsed("2026-11-04T09:00:00.000Z", noon, "en")).toBe("3h")
+    expect(formatElapsed("2026-10-21T12:00:00.000Z", noon, "en")).toBe("2w")
   })
 })

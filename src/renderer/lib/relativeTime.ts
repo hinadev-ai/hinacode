@@ -32,3 +32,12 @@ export function formatRelativeTime(iso: string, now: number, locale: string): st
   const { unit, size } = units.find(({ below }) => elapsed < below)!
   return formatFor(locale, "always").format(-Math.floor(elapsed / size), unit)
 }
+
+export function formatElapsed(iso: string, now: number, locale: string): string {
+  const elapsed = now - Date.parse(iso)
+  if (elapsed < minute) return formatFor(locale, "auto").format(0, "second")
+  const { unit, size } = units.find(({ below }) => elapsed < below)!
+  return new Intl.NumberFormat(locale, { style: "unit", unit, unitDisplay: "narrow" }).format(
+    Math.floor(elapsed / size),
+  )
+}

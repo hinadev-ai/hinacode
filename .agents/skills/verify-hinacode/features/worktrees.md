@@ -23,7 +23,7 @@ A thread can run in its own git worktree. hinacode creates the branch and checko
 - `Add project` dialog, `Setup script` field.
 - `New thread in <project>`, then tick `Worktree` under the composer and edit `Branch or pull request` (prefilled with the default branch once `Worktree` is ticked, `origin/main` on a clone; unticked it shows the root's current branch) before the first send. It takes a branch, a PR number such as `#98`, or a PR URL, and suggests open PRs and branches.
 - Side panel (`Mod+.` toggles it), tab `Details` (`Mod+Shift+O`): `Workspace`, `Setup log`, `Ports`, `Stop setup`. `Changes` is its own view (`Mod+Shift+D`) with `Refresh diff`.
-- Archive from the row's `Archive <title>` button or menu `Archive` once Settings > Worktrees `Remove the worktree when archiving` is on. A dirty worktree asks first (`Archive and delete worktree`). Deleting a thread removes its worktree unless `Also remove its worktree, and its branch if merged` is unticked.
+- Archive from the row menu `Archive` once Settings > Worktrees `Remove the worktree when archiving` is on. A dirty worktree asks first (`Archive and delete worktree`). Deleting a thread removes its worktree unless `Also remove its worktree, and its branch if merged` is unticked.
 
 ## Driving it with agent-browser
 

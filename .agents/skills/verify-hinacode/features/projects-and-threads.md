@@ -37,7 +37,7 @@ A user adds a local repository (or clones one from GitHub) as a project, edits, 
 - Thread row: the row is a link that opens the thread; beside it are buttons `Reorder <title>` (the drag handle), `Snooze <title>`, `Archive <title>` and `Actions for <title>`, whose menu (also on right-click) has `Rename`, `Pin` or `Unpin`, `Snooze…`, `Unsnooze` while snoozed, `Stop watching` (disabled when nothing is watched), `Copy thread ID`, `Archive` or `Unarchive`, and `Delete…`. Archive asks first (`Archive and delete worktree`) only when the worktree is dirty, and its toast offers `Undo`.
 - Project row (folder projects only): `Actions for <project>`, or right-click, opens `Move to group`, `Edit…`, `New thread`, `Import session…`, `Open with`, `Delete…`.
 - `Show or hide threads in <project>` collapses a project group.
-- Sidebar tabs `Inbox`, `Threads` and `Archived`, the `Pinned` region above them, the `Filter threads and projects` search field and the `Filter by project` menu. Archived rows have an `Unarchive <title>` button.
+- Sidebar tabs `Inbox` and `Threads`, with settled and archived threads in folds fixed at the bottom of the Inbox, the `Pinned` region above them, the `Filter threads and projects` search field and the `Filter by project` menu. Archived rows have an `Unarchive <title>` button.
 
 ## Driving it with agent-browser
 

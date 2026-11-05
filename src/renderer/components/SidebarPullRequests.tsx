@@ -1,7 +1,6 @@
 import { useAtomValue } from "@effect/atom-react"
 import { startTransition, useState, useTransition } from "react"
 import type { MergeMethod, PullRequest, PullRequestLink } from "../../shared/domain.ts"
-import { openChecks } from "../../shared/threadStatus.ts"
 import { usePullRequestHref } from "../lib/environments.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { parsePullRequestUrl } from "../lib/pullRequestRefs.ts"
@@ -110,7 +109,6 @@ function SinglePullRequest({
   const pullRequestRef = parsePullRequestUrl(url)
   const href = usePullRequestHref(threadId, url)
   const status = pullRequest?.status
-  const checks = openChecks(pullRequest)
   return (
     <HoverCard>
       <HoverCardTrigger
@@ -126,7 +124,6 @@ function SinglePullRequest({
       >
         <StatusIcon status={status} className="size-3" />#{number}
       </HoverCardTrigger>
-      {checks && <ChecksIndicator checks={checks} className="-ml-1 size-3" />}
       {pullRequestRef && (
         <HoverCardContent align="start" className="flex w-80 flex-col gap-2">
           <PullRequestCard pullRequest={pullRequestRef} href={href} environment={environment} />

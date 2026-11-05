@@ -46,6 +46,46 @@ const sidechatRepos = mkdtempSync(join(tmpdir(), "kk-sidechat-"))
 afterAll(() => rmSync(sidechatRepos, { recursive: true, force: true }))
 
 describe("Threads", () => {
+  it.effect("settling keeps the workspace and clears the pin and the snooze", () =>
+    Effect.gen(function* () {
+      const { threadId } = yield* seedThread({ rootPath: "/settle-keeps" })
+      yield* Threads.use((threads) => threads.update({ id: threadId, pinned: true }))
+      const settled = yield* Threads.use((threads) => threads.settle(threadId))
+      expect(settled.status).toBe("idle")
+      expect(settled.settledAt).not.toBeNull()
+      expect(settled.pinnedAt).toBeNull()
+      expect(settled.snoozedUntil).toBeNull()
+    }).pipe(Effect.provide(threadsLayer)),
+  )
+
+  it.effect("refuses to settle a busy thread", () =>
+    Effect.gen(function* () {
+      const { threadId } = yield* seedThread({ rootPath: "/settle-busy" })
+      yield* Threads.use((threads) => threads.update({ id: threadId, status: "running" }))
+      const error = yield* Threads.use((threads) => threads.settle(threadId)).pipe(Effect.flip)
+      expect(error._tag).toBe("ThreadBusyError")
+    }).pipe(Effect.provide(threadsLayer)),
+  )
+
+  it.effect("a new turn and reopening both end the settled state", () =>
+    Effect.gen(function* () {
+      const { threadId } = yield* seedThread({ rootPath: "/settle-return" })
+      yield* Threads.use((threads) => threads.settle(threadId))
+      const running = yield* Threads.use((threads) => threads.update({ id: threadId, status: "running" }))
+      expect(running.settledAt).toBeNull()
+
+      yield* Threads.use((threads) => threads.update({ id: threadId, status: "idle" }))
+      const settled = yield* Threads.use((threads) => threads.settle(threadId))
+      const before = yield* Threads.use((threads) => threads.workStartedAt(threadId))
+      const reopened = yield* Threads.use((threads) => threads.unsettle(threadId))
+      expect(reopened.settledAt).toBeNull()
+      expect(Date.parse(reopened.updatedAt)).toBeGreaterThanOrEqual(Date.parse(settled.updatedAt))
+      expect(
+        Date.parse((yield* Threads.use((threads) => threads.workStartedAt(threadId))) ?? ""),
+      ).toBeGreaterThanOrEqual(Date.parse(before ?? ""))
+    }).pipe(Effect.provide(threadsLayer)),
+  )
+
   it.effect("forks a thread with the transcript up to the chosen turn", () =>
     Effect.gen(function* () {
       const threads = yield* Threads

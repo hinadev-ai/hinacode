@@ -40,7 +40,7 @@ import { artifactSkillCommands } from "../lib/artifactSkills.ts"
 import { askSidechat, sidechatCommand, sidechatQuestion } from "../lib/sidechat.ts"
 import { useIsChat } from "../lib/useIsChat.ts"
 import { m } from "../paraglide/messages.js"
-import { type Draft, emptyDraft, useDrafts } from "../stores/drafts.ts"
+import { type Draft, emptyDraft, hasContent, useDrafts } from "../stores/drafts.ts"
 import { useMessages } from "../stores/messages.ts"
 import { useTerminals } from "../stores/terminals.ts"
 import { useThreads } from "../stores/threads.ts"
@@ -65,7 +65,7 @@ import { ScheduleButton, ScheduledBar } from "./ScheduledMessages.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 import { useModifierHeld } from "../lib/useModifierHeld.ts"
-import { SendGlyph, type SendGlyphMode } from "./icons/SendGlyph.tsx"
+import type { SendGlyphMode } from "./icons/SendGlyph.tsx"
 import { UploadIcon } from "@hinacode/icons"
 import { ChordKeys } from "./ChordKeys.tsx"
 import { useKeymap } from "../keybindings/useKeybindings.ts"
@@ -118,7 +118,8 @@ const sourceOf = async (file: File): Promise<StageSource> => {
 }
 
 export function Composer({ thread, children }: { thread: Thread; children?: ReactNode }) {
-  const { text, attachments, workspace, comments } = useDrafts((state) => state.byThreadId[thread.id] ?? emptyDraft)
+  const draft = useDrafts((state) => state.byThreadId[thread.id] ?? emptyDraft)
+  const { text, attachments, workspace, comments } = draft
   const isSidechat = thread.sideOf !== null
   const unstarted = useMessages((state) => {
     const history = state.byThread[thread.id]
@@ -150,7 +151,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   const refreshCommands = useAtomRefresh(commandsAtom(key))
   const refreshRootBranch = useAtomRefresh(currentBranchAtom(thread.projectId))
   const busy = isThreadBusy(thread.status)
-  const hasDraft = text.trim() !== "" || attachments.length > 0 || comments.length > 0
+  const hasDraft = hasContent(draft)
   const canSend = hasDraft && !isSending && !isStaging
   const steers = providerInfo[thread.provider].steersRunningTurn
   const placeholder =
@@ -336,7 +337,6 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
               {!isSidechat && (
                 <ScheduleButton thread={thread} unstarted={unstarted} disabled={!canSend} onError={setError} />
               )}
-              {(sendMode === "queue" || sendMode === "steer") && <StopButton onStop={stop} />}
               <SendButton mode={sendMode} canSend={canSend} onStop={stop} />
             </ComposerToolbar>
           </ComposerBar>
@@ -396,7 +396,7 @@ function DraftPreview({ text, placeholder }: { text: string; placeholder: string
     <p
       className={cn(
         "max-h-60 min-h-[calc(1lh+1rem)] overflow-hidden px-2.5 py-2 text-sm whitespace-pre-wrap",
-        text === "" && "text-muted-foreground",
+        text === "" && "truncate text-muted-foreground",
       )}
     >
       {text === "" ? placeholder : text}
@@ -441,21 +441,6 @@ function StopTooltip({ children }: { children: ReactElement }) {
         {chord && <ChordKeys chord={chord} />}
       </TooltipContent>
     </Tooltip>
-  )
-}
-
-function StopButton({ onStop }: { onStop: () => void }) {
-  return (
-    <StopTooltip>
-      <button
-        type="button"
-        onClick={onStop}
-        aria-label={m.thread_composer_stop()}
-        className="grid size-8 shrink-0 place-items-center rounded-full bg-foreground/6 text-muted-foreground inset-ring inset-ring-border transition-[background-color,color,scale,opacity] duration-150 ease-out hover:bg-foreground/10 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none motion-reduce:transition-none dark:bg-foreground/9 starting:scale-75 starting:opacity-0 forced-colors:border"
-      >
-        <SendGlyph mode="stop" className="size-4" />
-      </button>
-    </StopTooltip>
   )
 }
 

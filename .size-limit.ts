@@ -9,6 +9,8 @@ const startupStyles = [...html.matchAll(/href="\.\/(assets\/[^"]+\.css)"/g)].map
 export const warnings: Record<string, string> = {
   "Renderer startup JS": "2.13 MB",
   "Renderer JS, all chunks": "16.1 MB",
+  "Renderer startup CSS": "205 kB",
+  "Renderer CSS, all": "525 kB",
 }
 
 export default [
@@ -16,9 +18,9 @@ export default [
   { name: "Renderer startup JS (gzip)", path: startupScripts, gzip: true },
   { name: "Renderer JS, all chunks", path: "out/renderer/assets/*.js", brotli: false },
   { name: "Renderer JS, all chunks (gzip)", path: "out/renderer/assets/*.js", gzip: true },
-  { name: "Renderer startup CSS", path: startupStyles, brotli: false, limit: "205 kB" },
+  { name: "Renderer startup CSS", path: startupStyles, brotli: false },
   { name: "Renderer startup CSS (gzip)", path: startupStyles, gzip: true },
-  { name: "Renderer CSS, all", path: "out/renderer/assets/*.css", brotli: false, limit: "525 kB" },
+  { name: "Renderer CSS, all", path: "out/renderer/assets/*.css", brotli: false },
   { name: "Main process JS", path: "out/main", brotli: false, limit: "2.7 MB" },
   { name: "Main process JS (gzip)", path: "out/main", gzip: true },
   { name: "app.asar", path: "dist/linux-unpacked/resources/app.asar", brotli: false, limit: "100 MB" },

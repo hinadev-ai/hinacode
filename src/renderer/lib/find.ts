@@ -57,7 +57,7 @@ export function commandFindText(call: ToolCall): CommandFindText {
 }
 
 export const commandSearchText = ({ distinctLabel, command }: CommandFindText) =>
-  distinctLabel === null ? command : `${command}\n${distinctLabel}`
+  distinctLabel === null ? command : `${distinctLabel}\n${command}`
 
 export function findMatches(
   messages: ReadonlyArray<Message>,

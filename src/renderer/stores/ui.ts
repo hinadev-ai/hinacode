@@ -28,7 +28,7 @@ export type SidePanelViewId =
   | "devices"
   | "sidechat"
   | "artifacts"
-const sidebarTabs = ["inbox", "threads", "archived"] as const
+const sidebarTabs = ["inbox", "threads"] as const
 export type SidebarTab = (typeof sidebarTabs)[number]
 
 export const pullRequestTabs = ["info", "files", "guide"] as const
@@ -62,6 +62,9 @@ function loadStrings(key: string): ReadonlyArray<string> {
   }
 }
 
+const INBOX_ACTIVITY_KEY = "hinacode.inboxActivityShown"
+const WORKING_FOLDED_KEY = "hinacode.inboxWorkingFolded"
+
 const loadSidebarTab = (): SidebarTab =>
   sidebarTabs.find((tab) => tab === localStorage.getItem(SIDEBAR_TAB_KEY)) ?? "threads"
 
@@ -80,6 +83,8 @@ interface UiState {
   readonly sidebarOverlayOpen: boolean
   readonly sidePanelOverlayOpen: boolean
   readonly sidebarTab: SidebarTab
+  readonly inboxActivityShown: boolean
+  readonly inboxWorkingFolded: boolean
   readonly pickedPullRequests: Readonly<Record<string, string>>
   readonly pickPullRequest: (threadId: string, url: string) => void
   readonly pullRequestTab: PullRequestTab
@@ -105,7 +110,7 @@ interface UiState {
   readonly setGitGraphSplit: (split: number) => void
   readonly composerFocusRequest: number
   readonly interruptRequest: number
-  readonly pickerRequest: { readonly picker: ComposerPicker } | null
+  readonly pickerRequest: { readonly picker: ComposerPicker; readonly inSidechat: boolean } | null
   readonly addProjectOpen: boolean
   readonly resourcesOpen: boolean
   readonly snoozeThreadId: string | null
@@ -122,6 +127,8 @@ interface UiState {
   readonly setSidebarOverlayOpen: (open: boolean) => void
   readonly setSidePanelOverlayOpen: (open: boolean) => void
   readonly setSidebarTab: (tab: SidebarTab) => void
+  readonly setInboxActivityShown: (shown: boolean) => void
+  readonly setInboxWorkingFolded: (folded: boolean) => void
   readonly setPullRequestTab: (tab: PullRequestTab) => void
   readonly setLinkedPullRequestsOpen: (open: boolean) => void
   readonly setSidebarQuery: (query: string) => void
@@ -189,6 +196,8 @@ export const useUi = create<UiState>()((set, get) => ({
   sidebarOverlayOpen: false,
   sidePanelOverlayOpen: false,
   sidebarTab: loadSidebarTab(),
+  inboxActivityShown: localStorage.getItem(INBOX_ACTIVITY_KEY) === "true",
+  inboxWorkingFolded: localStorage.getItem(WORKING_FOLDED_KEY) === "true",
   pickedPullRequests: {},
   pickPullRequest: (threadId, url) =>
     set((state) => ({ pickedPullRequests: { ...state.pickedPullRequests, [threadId]: url } })),
@@ -255,6 +264,14 @@ export const useUi = create<UiState>()((set, get) => ({
     set((state) => ({ sidebarOverlayOpen: open, sidePanelOverlayOpen: open ? false : state.sidePanelOverlayOpen })),
   setSidePanelOverlayOpen: (open) =>
     set((state) => ({ sidePanelOverlayOpen: open, sidebarOverlayOpen: open ? false : state.sidebarOverlayOpen })),
+  setInboxActivityShown: (inboxActivityShown) => {
+    localStorage.setItem(INBOX_ACTIVITY_KEY, String(inboxActivityShown))
+    set({ inboxActivityShown })
+  },
+  setInboxWorkingFolded: (inboxWorkingFolded) => {
+    localStorage.setItem(WORKING_FOLDED_KEY, String(inboxWorkingFolded))
+    set({ inboxWorkingFolded })
+  },
   setSidebarTab: (sidebarTab) => {
     localStorage.setItem(SIDEBAR_TAB_KEY, sidebarTab)
     set({ sidebarTab })
@@ -293,7 +310,7 @@ export const useUi = create<UiState>()((set, get) => ({
   requestInterrupt: () => set((state) => ({ interruptRequest: state.interruptRequest + 1 })),
   requestPicker: (picker) => {
     rememberOpener()
-    set({ pickerRequest: { picker } })
+    set({ pickerRequest: { picker, inSidechat: document.activeElement?.closest("[data-sidechat]") != null } })
   },
   setAddProjectOpen: (addProjectOpen, environment = null) => {
     if (addProjectOpen) rememberOpener()

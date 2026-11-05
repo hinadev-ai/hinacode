@@ -158,7 +158,7 @@ Then("the secret {string} is not stored", async ({ app }, name: string) => {
 
 When("I turn on the setting {string}", async ({ app }, label: string) => {
   const toggle = app.page.getByRole("switch", { name: label, exact: true })
-  await toggle.click()
+  await toggle.setChecked(true)
   await expect(toggle).toBeChecked()
 })
 

@@ -35,6 +35,7 @@ const icons = {
 } satisfies Record<string, IconComponent>
 
 const toneClassName = {
+  foreground: "text-foreground",
   muted: "text-muted-foreground",
   attention: "text-attention",
   success: "text-success",

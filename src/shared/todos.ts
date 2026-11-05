@@ -51,6 +51,43 @@ export const createdTaskId = (output: unknown): string | null => {
   return null
 }
 
+export function todosInCall(part: { readonly name: string; readonly input: unknown }): ReadonlyArray<Todo> | null {
+  if (!isRecord(part.input)) return null
+  switch (part.name) {
+    case "write_todos":
+      return readList(part.input["todos"], "text")
+    case "TodoWrite":
+      return readList(part.input["todos"], "content")
+    case "update_plan":
+      return readList(part.input["plan"], "step")
+    case "TaskCreate":
+      return typeof part.input["subject"] === "string" ? [{ text: part.input["subject"], status: "pending" }] : null
+    case "TaskUpdate": {
+      const subject = part.input["subject"]
+      const text = typeof subject === "string" && subject !== "" ? subject : `#${String(part.input["taskId"])}`
+      const status = part.input["status"] === "deleted" ? "cancelled" : asStatus(part.input["status"])
+      return [{ text, status }]
+    }
+    default:
+      return null
+  }
+}
+
+export const isSettled = (todo: Todo) => todo.status === "completed" || todo.status === "cancelled"
+
+const newerTurnStarted = (messages: ReadonlyArray<Message>) => {
+  const lastTodoCall = messages.findLastIndex(
+    (message) =>
+      message.role === "assistant" && message.parts.some((part) => part.type === "tool_call" && isTodoTool(part.name)),
+  )
+  return messages.slice(lastTodoCall + 1).some((message) => message.role === "user")
+}
+
+export function visibleTodos(messages: ReadonlyArray<Message>, busy: boolean): ReadonlyArray<Todo> {
+  const todos = latestTodos(messages)
+  return todos.every(isSettled) && (!busy || newerTurnStarted(messages)) ? [] : todos
+}
+
 export function latestTodos(messages: ReadonlyArray<Message>): ReadonlyArray<Todo> {
   let todos: Array<Todo> = []
   let taskIds: Array<string> = []

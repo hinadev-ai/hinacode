@@ -9,7 +9,7 @@ The sidebar groups threads by project, in an order the user drags by hand. With 
 
 ## User flow
 
-1. The **Inbox** tab lists every active thread from every project in one list, most recently updated first. A thread that is created, starts a turn, finishes or waits for approval moves to the top. Each row names its project. The sidebar reopens on the last tab picked.
+1. The **Inbox** tab lists every active thread from every project, grouped by `2026-11-04-inbox-groups.md`. This list was most recently updated first until then. A thread that is created, starts a turn, finishes or waits for approval moves to the top. Writing in the composer or changing its settings does not move it (see `2026-11-04-listed-drafts.md`). Each row names its project. The sidebar reopens on the last tab picked.
 2. **Threads** and **Archived** are unchanged.
 3. From a row's menu, **Pin** moves the thread into a Pinned list above the tabs, in the order it was pinned. **Unpin** puts it back. A pinned thread is not repeated in the tabs below, except under Archived when it is archived.
 4. ⌘N opens the palette on a project picker. The open thread's project comes first, so ⌘N Enter keeps the old behavior. Typing filters the projects. ⌘1 to ⌘9 start a thread in a project by its place in the project list, and Backspace over the `+` returns to quick open. The home page's New thread button opens the same picker.

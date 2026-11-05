@@ -9,7 +9,7 @@ A Claude Code agent waits on each foreground `Bash` call. If a command hangs or 
 
 ## User flow
 
-A running `Bash` row shows "Move to background". Pressing it hands the agent a "running in the background" result, so the turn continues. The command keeps running and shows up in the background activity list, where it can be stopped.
+A `Bash` row that has run for 3 seconds shows "Move to background", so quick commands never flash the button. Pressing it hands the agent a "running in the background" result, so the turn continues. The command keeps running and shows up in the background activity list, where it can be stopped.
 
 ## Design
 
