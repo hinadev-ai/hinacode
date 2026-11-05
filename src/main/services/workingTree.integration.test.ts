@@ -132,7 +132,14 @@ describe("diffWorkingTree", () => {
         writeFileSync(join(root, "kept.txt"), "during\n")
 
         const first = yield* Effect.forkChild(diffWorkingTree(root, Effect.succeed(base)))
-        while (!existsSync(started)) yield* Effect.sleep("10 millis")
+        yield* Effect.gen(function* () {
+          while (!existsSync(started)) yield* Effect.sleep("10 millis")
+        }).pipe(
+          Effect.timeoutOrElse({
+            duration: "10 seconds",
+            orElse: () => Effect.die(new Error("the slow clean filter never ran, so the two diffs never overlapped")),
+          }),
+        )
         writeFileSync(join(root, "late.txt"), "late\n")
         const second = yield* diffWorkingTree(root, Effect.succeed(base))
         yield* Fiber.join(first)
