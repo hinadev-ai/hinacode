@@ -154,6 +154,16 @@ const turnPrompts: Array<string> = []
 const openedWindows: Array<{ readonly threadId: string; readonly url: string }> = []
 
 let copySessionFails = false
+let copySessionPause: {
+  readonly reached: PromiseWithResolvers<string>
+  readonly resume: PromiseWithResolvers<void>
+} | null = null
+const waitForCopySessionPause = async (sessionId: string) => {
+  const pause = copySessionPause
+  copySessionPause = null
+  pause?.reached.resolve(sessionId)
+  await pause?.resume.promise
+}
 const copiedSessions: Array<{
   readonly sessionId: string
   readonly from: AccountHome | null
@@ -175,9 +185,13 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
       : Effect.fail(new AgentError({ provider: id, message: "app-server is not installed" })),
   usage: (sessionId) => Effect.succeed(sessionId === boundSession ? sessionUsage : null),
   copySession: (sessionId, from, to) =>
-    copySessionFails
-      ? Effect.fail(new AgentError({ provider: "claude", message: "No transcript" }))
-      : Effect.sync(() => void copiedSessions.push({ sessionId, from, to })),
+    Effect.promise(() => waitForCopySessionPause(sessionId)).pipe(
+      Effect.andThen(
+        copySessionFails
+          ? Effect.fail(new AgentError({ provider: "claude", message: "No transcript" }))
+          : Effect.sync(() => void copiedSessions.push({ sessionId, from, to })),
+      ),
+    ),
   listCommands: () => Effect.succeed([]),
   runTurn: (input) =>
     Stream.suspend(() => {
@@ -1075,6 +1089,31 @@ const newClaudeThread = async () => {
   return result(await invoke("threads.update", { id: thread.id, provider: "claude" }))
 }
 
+const claudeThreadWithSession = async (accountId: string, prompt: string) => {
+  const thread = await newClaudeThread()
+  result(await invoke("threads.send", { threadId: thread.id, prompt }))
+  await pushedEventually(
+    (event) => event.type === "thread.updated" && event.thread.id === thread.id && event.thread.status === "idle",
+  )
+  await acceptedOnceSettled(() => invoke("threads.switchAccount", { id: thread.id, accountId }))
+  return thread
+}
+
+const removalHeldOnItsFirstCopy = async () => {
+  const removed = result(await invoke("accounts.create", newAccount("claude", "Leaving mid-copy")))
+  const chosen = result(await invoke("accounts.create", newAccount("claude", "Chosen meanwhile")))
+  const onBoundSession = await claudeThreadWithSession(removed.id, "simulate a session")
+  const onSourceSession = await claudeThreadWithSession(removed.id, "simulate a forkable turn")
+  const pause = { reached: Promise.withResolvers<string>(), resume: Promise.withResolvers<void>() }
+  copySessionPause = pause
+  const removal = invoke("accounts.delete", { id: removed.id })
+  const [held, waiting] =
+    (await pause.reached.promise) === boundSession
+      ? [onBoundSession, onSourceSession]
+      : [onSourceSession, onBoundSession]
+  return { chosen, held, waiting, removal, resume: () => pause.resume.resolve() }
+}
+
 const cachedLogin = (label: string) => existsSync(join(dir, "cache", `${label}.json`))
 
 const history = () => join(dir, "history")
@@ -1711,6 +1750,41 @@ describe("agent accounts over rpc", () => {
     )
     await acceptedOnceSettled(() => invoke("accounts.delete", { id: removed.id }))
     result(await invoke("threads.delete", { id: thread.id }))
+  })
+
+  test("keeps an account chosen for a thread while that account's removal is copying another", async () => {
+    const { chosen, held, waiting, removal, resume } = await removalHeldOnItsFirstCopy()
+
+    result(await invoke("threads.switchAccount", { id: waiting.id, accountId: chosen.id }))
+    resume()
+    result(await removal)
+
+    const threads = result(await invoke("threads.list", undefined))
+    expect(threads.find(({ id }) => id === waiting.id)?.accountId).toBe(chosen.id)
+    expect(threads.find(({ id }) => id === held.id)?.accountId).toBeNull()
+    result(await invoke("threads.delete", { id: waiting.id }))
+    result(await invoke("threads.delete", { id: held.id }))
+    result(await invoke("accounts.delete", { id: chosen.id }))
+  })
+
+  test("removes an account when a thread that left it during removal runs a turn", async () => {
+    const { chosen, held, waiting, removal, resume } = await removalHeldOnItsFirstCopy()
+
+    result(await invoke("threads.switchAccount", { id: waiting.id, accountId: chosen.id }))
+    heldTurn = Promise.withResolvers()
+    result(await invoke("threads.send", { threadId: waiting.id, prompt: "simulate a held turn" }))
+    resume()
+    result(await removal)
+
+    const threads = result(await invoke("threads.list", undefined))
+    expect(threads.find(({ id }) => id === waiting.id)?.accountId).toBe(chosen.id)
+    heldTurn.resolve()
+    await pushedEventually(
+      (event) => event.type === "thread.updated" && event.thread.id === waiting.id && event.thread.status === "idle",
+    )
+    await acceptedOnceSettled(() => invoke("threads.delete", { id: waiting.id }))
+    result(await invoke("threads.delete", { id: held.id }))
+    await acceptedOnceSettled(() => invoke("accounts.delete", { id: chosen.id }))
   })
 
   test("drops an account's cached sign-in when it is renamed or removed", async () => {
