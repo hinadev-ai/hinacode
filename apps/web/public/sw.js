@@ -3,6 +3,9 @@ const PAGE_TIMEOUT_MS = 30_000
 
 self.addEventListener("install", () => self.skipWaiting())
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()))
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "hinacode.claim") event.waitUntil(self.clients.claim())
+})
 
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url)

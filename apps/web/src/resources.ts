@@ -119,7 +119,11 @@ export const serveResources = async (bridge: HinacodeBridge) => {
     },
   )
   await navigator.serviceWorker.register("/sw.js")
-  await navigator.serviceWorker.ready
+  const worker = await navigator.serviceWorker.ready
   if (navigator.serviceWorker.controller !== null) return
-  await new Promise((resolve) => navigator.serviceWorker.addEventListener("controllerchange", resolve, { once: true }))
+  const controlled = new Promise((resolve) =>
+    navigator.serviceWorker.addEventListener("controllerchange", resolve, { once: true }),
+  )
+  worker.active?.postMessage({ type: "hinacode.claim" })
+  await controlled
 }
