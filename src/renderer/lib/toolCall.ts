@@ -234,8 +234,6 @@ const toolKinds: Record<string, ToolKind> = {
   Grep: "search",
 }
 
-export const editsFile = (name: string) => toolKinds[name] === "edit"
-
 export function countToolKinds(calls: ReadonlyArray<ToolCall>): Array<{ kind: ToolKind; count: number }> {
   const counts = new Map<ToolKind, number>(
     (["command", "read", "edit", "search", "skill", "other"] as const).map((kind) => [kind, 0]),

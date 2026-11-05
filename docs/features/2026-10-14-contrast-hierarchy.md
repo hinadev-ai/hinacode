@@ -27,7 +27,7 @@ Color carries status on top of the tiers, as `AGENTS.md` describes: amber needs 
 
 - Text never goes below 4.5:1 against its surface, in either theme. The light palette's `muted-foreground` is already at 4.64:1 on `accent`, so there is no room for a fourth, fainter tier.
 - Dim with a color token, never with `opacity` on a row. Opacity also fades the muted text inside it, which drops to 2.9:1 in dark and 2.3:1 in light at 60% opacity. It also fades the status dot, which is the one part of a working row that should stay visible.
-- Expanding something is asking for it. A tool call's trigger brightens to `foreground` on hover, on keyboard focus and while it is open, and the output inside it keeps its normal contrast.
+- A tool call's trigger brightens to `foreground` on hover and on keyboard focus. An open trigger stays Receding, so an expanded group never reads as loud as the reply below it. The output inside keeps its normal contrast.
 
 ### Dark mode
 
@@ -46,7 +46,7 @@ Color carries status on top of the tiers, as `AGENTS.md` describes: amber needs 
 
 ## Where it applies
 
-**Transcript.** User messages and replies are Read. Tool calls, command groups, reasoning, sub-agent calls and file edits are Receding, with the tool name in medium weight so the row still scans. The per-call green check is gone. A failed call keeps its red icon. The todo bar above the composer is a trigger like a tool row. Its current step is Receding until hovered, focused or expanded, and the list inside reads at normal contrast.
+**Transcript.** User messages and replies are Read. Tool calls, command groups, reasoning, sub-agent calls and file edits are Receding, in `receding-foreground`. It equals `muted-foreground` except in Hina Dark, where muted text sits only 2:1 below chat text, so tool rows mix 17% toward the background: 2.6:1 below chat text and 4.7:1 on the background. Expanded output keeps `muted-foreground`, because its lighter surface leaves no room to dim. Every tool row uses the same token: an edit, a changed file or a command description does not step up to `foreground`. The per-call green check is gone. A failed call keeps its red icon. The todo bar above the composer is a trigger like a tool row. Its current step is Receding until hovered, focused or expanded, and the list inside reads at normal contrast.
 
 **Sidebar.** A row's tier comes from its thread's status:
 

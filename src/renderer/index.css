@@ -201,6 +201,7 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
+  --color-receding-foreground: var(--receding-foreground);
   --color-muted: var(--muted);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
@@ -395,6 +396,7 @@
     var(--contrast-ink) calc((1 - var(--contrast-lower)) * var(--chat-ink))
   );
   --ignored-foreground: color-mix(in oklab, var(--foreground) 35%, var(--muted-foreground));
+  --receding-foreground: var(--muted-foreground);
   --sidebar-foreground: var(--foreground);
   --sidebar-accent-foreground: var(--foreground);
   --sidebar-title: var(--sidebar-foreground);
@@ -655,6 +657,8 @@
 [data-theme="hina-dark"] {
   /* Even white chat text cannot clear a full-strength title on this sidebar. A hovered or open row steps back up. */
   --chat-ink: 73%;
+  /* Muted text sits only 2:1 below chat text here. Tool rows on the background drop to 2.6:1 below it and keep 4.7:1. */
+  --receding-foreground: color-mix(in oklab, var(--muted-foreground) 83%, var(--background));
   --sidebar-title: color-mix(in oklab, var(--sidebar-foreground) 95%, var(--sidebar));
   --sidebar-meta: color-mix(in oklab, var(--muted-foreground) 84%, var(--sidebar));
   --sidebar-row-selected: color-mix(in oklab, var(--sidebar-foreground) 11%, var(--sidebar));
