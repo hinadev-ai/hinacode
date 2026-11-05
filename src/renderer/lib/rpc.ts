@@ -185,9 +185,7 @@ const relayAccountAction = <A>(effect: Effect.Effect<A, RpcError>) =>
     Effect.tap(() => Atom.refresh(environmentsAtom)),
   )
 
-export const signInRelayAtom = Atom.fn((ownerToken: string) =>
-  relayAccountAction(call("relayAccount.signIn", { ownerToken })),
-)
+export const signInRelayAtom = Atom.fn(() => relayAccountAction(call("relayAccount.signIn", undefined)))
 
 export const signOutRelayAtom = Atom.fn(() => relayAccountAction(call("relayAccount.signOut", undefined)))
 

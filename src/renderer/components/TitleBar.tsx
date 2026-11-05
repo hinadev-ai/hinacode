@@ -5,6 +5,7 @@ import { useKeymap } from "../keybindings/useKeybindings.ts"
 import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
 import { cn } from "../lib/utils.ts"
+import { AccountMenu } from "./AccountMenu.tsx"
 import { ChordKeys } from "./ChordKeys.tsx"
 import { MachineResourcesButton } from "./MachineResources.tsx"
 import { Button } from "./ui/button.tsx"
@@ -65,6 +66,7 @@ export function TitleBar({
         <SettingsIcon aria-hidden />
       </Button>
       <MachineResourcesButton />
+      <AccountMenu />
     </header>
   )
 }

@@ -53,6 +53,7 @@ import { resumeGraceMs } from "../../shared/limits.ts"
 import { expandArtifactSkill } from "../agents/artifactSkills.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
+import { expandDocumentCommand, withDocumentCommand } from "../agents/document.ts"
 import { handoffPrompt } from "../agents/handoff.ts"
 import { latestForkPoint, sidechatPrompt, unseenSince } from "../agents/sidechat.ts"
 import { agentInstructions, type AgentEnvironment } from "../agents/instructions.ts"
@@ -716,7 +717,7 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         if (provider.steer === undefined) return
         yield* deltas.flush
-        yield* provider.steer(thread.id, expandArtifactSkill(text), attachments, priority)
+        yield* provider.steer(thread.id, expandDocumentCommand(expandArtifactSkill(text)), attachments, priority)
         const now = yield* nowIso
         const current = turnMessages.at(-1)!
         const closed: Message = { ...current, completedAt: now }
@@ -1094,7 +1095,7 @@ const make = Effect.gen(function* () {
             yield* checkStopped
             if (!(yield* when)) return null
             yield* threads.recordTurnBase({ threadId, tree })
-            const agentPrompt = yield* promptForSession(thread, expandArtifactSkill(prompt))
+            const agentPrompt = yield* promptForSession(thread, expandDocumentCommand(expandArtifactSkill(prompt)))
             const now = yield* nowIso
             const assistant = openAssistantMessage(threadId, now)
             yield* insertMessage(userMessage(threadId, prompt, attachments, now, options.scheduledId))
@@ -1764,7 +1765,7 @@ const make = Effect.gen(function* () {
         const thread = yield* threads.get(threadId)
         const { cwd } = yield* activeWorkspace(threadId)
         const home = yield* accounts.home(thread.accountId)
-        return yield* providers[thread.provider].listCommands({ threadId, cwd, home })
+        return withDocumentCommand(yield* providers[thread.provider].listCommands({ threadId, cwd, home }))
       }),
   })
 })

@@ -10,4 +10,5 @@ dist/
 dist-npm/
 .env
 .env.*
+!.env.example
 project.inlang/cache/

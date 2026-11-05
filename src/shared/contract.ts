@@ -355,7 +355,7 @@ export const RpcMethods = {
   "environments.remove": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   "environments.reconnect": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   "relayAccount.status": rpc(Schema.Void, RelayAccountStatus),
-  "relayAccount.signIn": rpc(Schema.Struct({ ownerToken: Schema.String }), RelayAccountStatus),
+  "relayAccount.signIn": rpc(Schema.Void, RelayAccountStatus),
   "relayAccount.signOut": rpc(Schema.Void, RelayAccountStatus),
   "relayAccount.sync": rpc(Schema.Void, RelayAccountStatus),
   "relayAccount.machines": rpc(Schema.Void, Schema.Array(RelayHost)),

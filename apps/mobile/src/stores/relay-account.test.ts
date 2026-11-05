@@ -5,6 +5,7 @@ import type { ConnectionStatus, Server } from "@/lib/connection"
 import type { StoredServer } from "@/lib/stored-target"
 
 const connection = vi.hoisted(() => ({ store: null as unknown }))
+const saved = vi.hoisted((): unknown[] => [])
 vi.mock("@/lib/connection", () => {
   const useConnection = create<{ servers: readonly Server[] }>()(() => ({ servers: [] }))
   connection.store = useConnection
@@ -17,7 +18,7 @@ vi.mock("@/lib/connection", () => {
 })
 vi.mock("@/lib/storage", () => ({
   loadRelayAccount: async () => null,
-  saveRelayAccount: async () => {},
+  saveRelayAccount: async (account: unknown) => void saved.push(account),
   clearRelayAccount: async () => {},
 }))
 vi.mock("@/stores/threads", () => ({ useThreads: { getState: () => ({ load: async () => {} }) } }))
@@ -26,6 +27,9 @@ vi.mock("react-native", () => ({ AppState: { currentState: "active" } }))
 
 const { useRelayAccount } = await import("./relay-account")
 const useConnection = connection.store as typeof import("@/lib/connection").useConnection
+
+const signInAnswer = { deviceCode: "code", url: "https://relay.example.com/link", interval: 0, expiresAt: 4_000_000_000_000 }
+const signInInput = { serviceUrl: "https://relay.example.com", deviceName: "iPhone", openUrl: async () => {} }
 
 let token: string
 let syncs: number
@@ -45,11 +49,25 @@ beforeEach(async () => {
   vi.useFakeTimers()
   token = "first"
   syncs = 0
-  vi.stubGlobal("fetch", async () => {
+  vi.stubGlobal("fetch", async (url: string) => {
+    if (url.endsWith("/v1/sign-ins")) {
+      const signIn = { deviceCode: "code", url: "https://relay.example.com/link", interval: 0, expiresAt: 4_000_000_000_000 }
+      return new Response(JSON.stringify(signIn), { status: 200 })
+    }
+    if (url.endsWith("/v1/links/claim")) return new Response(JSON.stringify({ credential: "device" }), { status: 200 })
+    if (url.endsWith("/v1/device")) return new Response(null, { status: 204 })
     syncs++
     return new Response(JSON.stringify({ machines: [machine()] }), { status: 200 })
   })
-  await useRelayAccount.getState().signIn({ serviceUrl: "https://relay.example.com", ownerToken: "owner" })
+  const opened: string[] = []
+  const signingIn = useRelayAccount.getState().signIn({
+    serviceUrl: "https://relay.example.com",
+    deviceName: "iPhone",
+    openUrl: async (url) => opened.push(url),
+  })
+  await vi.advanceTimersByTimeAsync(1)
+  expect(await signingIn).toBeNull()
+  expect(opened).toEqual(["https://relay.example.com/link"])
   syncs = 0
 })
 
@@ -58,6 +76,48 @@ afterEach(async () => {
   useConnection.setState({ servers: [] })
   vi.unstubAllGlobals()
   vi.useRealTimers()
+})
+
+it("keeps the credential when the first sync fails, and says why", async () => {
+  await useRelayAccount.getState().signOut()
+  saved.length = 0
+  vi.stubGlobal("fetch", async (url: string) => {
+    if (url.endsWith("/v1/sign-ins")) return new Response(JSON.stringify(signInAnswer), { status: 200 })
+    if (url.endsWith("/v1/links/claim")) return new Response(JSON.stringify({ credential: "device" }), { status: 200 })
+    return new Response(null, { status: 503 })
+  })
+  const signingIn = useRelayAccount.getState().signIn(signInInput)
+  await vi.advanceTimersByTimeAsync(1)
+  await signingIn
+  expect(saved).toEqual([{ serviceUrl: "https://relay.example.com", credential: "device" }])
+  expect(useRelayAccount.getState().serviceUrl).toBe("https://relay.example.com")
+  expect(useRelayAccount.getState().error).not.toBeNull()
+})
+
+it("revokes the credential and stays signed out when logout beats the claim", async () => {
+  await useRelayAccount.getState().signOut()
+  saved.length = 0
+  let approve = (_: Response) => {}
+  const revoked: string[] = []
+  vi.stubGlobal("fetch", async (url: string) => {
+    if (url.endsWith("/v1/sign-ins")) return new Response(JSON.stringify(signInAnswer), { status: 200 })
+    if (url.endsWith("/v1/links/claim")) return new Promise<Response>((resolve) => (approve = resolve))
+    if (url.endsWith("/v1/device")) {
+      revoked.push(url)
+      return new Response(null, { status: 204 })
+    }
+    return new Response(JSON.stringify({ machines: [machine()] }), { status: 200 })
+  })
+  const signingIn = useRelayAccount.getState().signIn(signInInput)
+  await vi.advanceTimersByTimeAsync(1)
+
+  await useRelayAccount.getState().signOut()
+  approve(new Response(JSON.stringify({ credential: "device" }), { status: 200 }))
+  await signingIn
+
+  expect(useRelayAccount.getState().serviceUrl).toBeNull()
+  expect(saved).toEqual([])
+  expect(revoked).toHaveLength(1)
 })
 
 it("syncs while a relay server refuses its token, until the sync brings a new one", async () => {

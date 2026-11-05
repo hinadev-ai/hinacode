@@ -117,12 +117,7 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
     label: m.settings_connections,
     description: m.environments_description,
     icon: ServerIcon,
-    keywords: [
-      m.environment_relay_owner_token_label,
-      m.environment_pairing_url_label,
-      m.settings_remote,
-      m.remote_enable_label,
-    ],
+    keywords: [m.environment_relay_title, m.environment_pairing_url_label, m.settings_remote, m.remote_enable_label],
   },
   {
     id: "experimental",
