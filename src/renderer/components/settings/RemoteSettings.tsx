@@ -237,9 +237,7 @@ function Relay() {
           </Button>
         </div>
       )}
-      {relay.state === "linking" && (
-        <RelayLinking url={relay.url} userCode={relay.userCode} onCancel={onCancel} onCancelled={onChanged} />
-      )}
+      {relay.state === "linking" && <RelayLinking url={relay.url} onCancel={onCancel} onCancelled={onChanged} />}
       {relay.state !== "off" && relay.state !== "linking" && (
         <>
           <RelayStatusLine relay={relay} />
@@ -253,12 +251,11 @@ function Relay() {
 
 interface RelayLinkingProps {
   readonly url: string
-  readonly userCode: string
   readonly onCancel: () => void
   readonly onCancelled: () => void
 }
 
-function RelayLinking({ url, userCode, onCancel, onCancelled }: RelayLinkingProps) {
+function RelayLinking({ url, onCancel, onCancelled }: RelayLinkingProps) {
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
@@ -276,12 +273,7 @@ function RelayLinking({ url, userCode, onCancel, onCancelled }: RelayLinkingProp
 
   return (
     <div aria-live="polite" className="flex flex-col items-start gap-3 text-sm">
-      <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        {m.relay_linking()}
-        <code className="rounded-md border border-border bg-muted/40 px-2 py-0.5 font-mono tracking-wider">
-          {userCode}
-        </code>
-      </p>
+      <p>{m.relay_linking()}</p>
       <ExternalLink href={url}>{m.relay_linking_reopen()}</ExternalLink>
       <Button variant="outline" disabled={pending} onClick={cancel}>
         {m.common_cancel()}

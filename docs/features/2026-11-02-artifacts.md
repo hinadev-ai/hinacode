@@ -112,6 +112,17 @@ Right-clicking an artifact in the list offers Delete. `artifacts.delete` routes 
 
 The trust boundary is the frame. Artifact HTML is agent output and is treated as hostile: no same origin, no `rpc`, no navigation of the app.
 
+### Publishing a file from disk
+
+An agent that wrote a page to disk used to resend the whole file in the tool call, so the same text was charged twice and landed in the transcript twice. It grew again with every small update.
+
+Each entry of `publish_artifact`'s `files` now takes `sourcePath`, and `publish_document` does too, instead of `content` or `markdown`. Exactly one is allowed. The path must be absolute, because the MCP server's working directory is not the thread's. The MCP server listens on loopback, so it shares a filesystem with the agent.
+
+- The tool layer reads the file, and `store.publish` still takes bytes. So the store has no new input, and the bytes are copied, which means the artifact survives the scratch directory and a later edit needs another publish.
+- The schema is flat, with two optional fields and a refinement, rather than a union. Harnesses convert MCP schemas in their own ways, and a flat object does not depend on how each one handles `anyOf`.
+- There is no restriction on which path. The agent already runs as this user, and the path is part of the tool call the harness shows and approves.
+- A file over the 16 MB cap is refused from its size before it is read.
+
 ### Documents
 
 An artifact has a `kind`. Everything above describes a `page`. A `document` is Markdown the developer edits beside the thread. See [document artifacts](2026-11-03-document-artifacts.md).

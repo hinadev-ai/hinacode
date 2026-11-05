@@ -403,6 +403,33 @@ layer(testLayer)("artifact tools", (it) => {
     }),
   )
 
+  it.effect("a thread publishes a file from disk without sending its content", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      const connection = yield* mcp.connectionFor(a)
+      const directory = mkdtempSync(join(tmpdir(), "hinacode-artifact-source-"))
+      const sourcePath = join(directory, "report.html")
+      writeFileSync(sourcePath, "<h1>From disk</h1>")
+
+      const published = yield* callAs(connection, "publish_artifact", {
+        title: "From disk",
+        files: [{ path: "index.html", sourcePath }],
+      })
+      expect(published.isError).toBe(false)
+      const id = /^Published artifact ([a-z0-9-]+) version 1:/.exec(published.text)?.[1]
+      const read = yield* callAs(connection, "read_artifact", { id, path: "index.html" })
+      expect(read).toMatchObject({ isError: false, text: "<h1>From disk</h1>" })
+
+      const neither = yield* callAs(connection, "publish_artifact", {
+        title: "Neither",
+        files: [{ path: "index.html" }],
+      })
+      expect(neither).toMatchObject({ isError: true, text: "files.0: Pass either content or sourcePath." })
+      rmSync(directory, { recursive: true, force: true })
+    }),
+  )
+
   it.effect("store errors and invalid input come back as error results", () =>
     Effect.gen(function* () {
       const mcp = yield* McpCredentials

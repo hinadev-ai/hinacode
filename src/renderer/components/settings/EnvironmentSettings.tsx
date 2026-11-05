@@ -13,18 +13,16 @@ import {
   useTransition,
 } from "react"
 import type { Environment, RelayAccountStatus } from "../../../shared/domain.ts"
-import type { PendingLink, RelayHost } from "../../../shared/relayMachines.ts"
+import type { RelayHost } from "../../../shared/relayMachines.ts"
 import { errorMessage, toastError } from "../../lib/errorMessage.ts"
 import { RelaySignOutDialog } from "./RelaySignOutDialog.tsx"
 import { type Cloud, cloudAddress, incompatibleText, useClouds } from "../../lib/environments.ts"
 import { formatRelativeTime } from "../../lib/relativeTime.ts"
 import {
   addEnvironmentAtom,
-  approveRelayLinkAtom,
   callPromise,
   cloudUpdatesAtom,
   installUpdatesAtom,
-  pendingRelayLinkAtom,
   relayAccountAtom,
   relayMachinesAtom,
   removeEnvironmentAtom,
@@ -163,7 +161,6 @@ function RelaySignedIn({ status }: { status: Extract<RelayAccountStatus, { state
       </div>
       {status.error !== null && <FieldError>{status.error}</FieldError>}
       <RelayMachines selfId={status.environmentId} />
-      <ApproveRelayLinkForm />
     </section>
   )
 }
@@ -283,91 +280,6 @@ function RemoveRelayMachineButton({ host }: { host: RelayHost }) {
         </AlertDialogContent>
       </AlertDialog>
     </>
-  )
-}
-
-function ApproveRelayLinkForm() {
-  const findLink = useAtomSet(pendingRelayLinkAtom, { mode: "promise" })
-  const approveLink = useAtomSet(approveRelayLinkAtom, { mode: "promise" })
-  const [userCode, setUserCode] = useState("")
-  const [pendingLink, setPendingLink] = useState<PendingLink | null>(null)
-  const [approved, setApproved] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [busy, startBusy] = useTransition()
-  const inputId = useId()
-
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    startBusy(async () => {
-      setError(null)
-      setApproved(null)
-      try {
-        if (pendingLink === null) {
-          setPendingLink(await findLink(userCode.trim()))
-          return
-        }
-        await approveLink(userCode.trim())
-        setApproved(pendingLink.name)
-        setPendingLink(null)
-        setUserCode("")
-      } catch (cause) {
-        setError(errorMessage(cause))
-      }
-    })
-  }
-
-  const cancel = () => {
-    setPendingLink(null)
-    setError(null)
-  }
-
-  return (
-    <form onSubmit={onSubmit} className="mt-3">
-      <Field>
-        <FieldLabel htmlFor={inputId}>{m.environment_relay_link_code_label()}</FieldLabel>
-        <div className="flex flex-wrap gap-2">
-          <Input
-            id={inputId}
-            required
-            value={userCode}
-            onChange={(event) => {
-              setUserCode(event.target.value)
-              setPendingLink(null)
-            }}
-            placeholder="ABCD-EFGH"
-            spellCheck={false}
-            autoComplete="off"
-            aria-invalid={error !== null}
-            className="min-w-48 flex-1 font-mono uppercase"
-          />
-          {pendingLink === null && (
-            <Button type="submit" variant="outline" className="shrink-0" disabled={busy || userCode.trim() === ""}>
-              {busy ? m.environment_relay_link_checking() : m.environment_relay_link_continue()}
-            </Button>
-          )}
-        </div>
-        {pendingLink === null && <FieldDescription>{m.environment_relay_link_code_hint()}</FieldDescription>}
-        {pendingLink !== null && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <p className="min-w-48 flex-1 text-sm">{m.environment_relay_link_confirm({ name: pendingLink.name })}</p>
-            <div className="flex shrink-0 gap-2">
-              <Button type="submit" disabled={busy}>
-                {busy ? m.environment_relay_approving() : m.environment_relay_approve()}
-              </Button>
-              <Button type="button" variant="ghost" onClick={cancel}>
-                {m.common_cancel()}
-              </Button>
-            </div>
-          </div>
-        )}
-        {approved !== null && (
-          <output className="text-sm text-muted-foreground">
-            {m.environment_relay_link_approved({ name: approved })}
-          </output>
-        )}
-        {error && <FieldError>{error}</FieldError>}
-      </Field>
-    </form>
   )
 }
 

@@ -1,3 +1,5 @@
+import { readFile, stat } from "node:fs/promises"
+import { isAbsolute } from "node:path"
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { z } from "zod"
 import { DOCUMENT_ENTRY, isTextType } from "./artifact.ts"
@@ -19,7 +21,7 @@ const existing = async (store: ArtifactStore, id: string) => {
   return artifact
 }
 
-const PUBLISH_GUIDE = `Publish an HTML page for the developer to look at: a report, chart, diagram or prototype. Write one self-contained index.html with inline <style> and <script type="module">, so names like top or name do not clash with window globals. To change it, publish again with the same id and every file.
+const PUBLISH_GUIDE = `Publish an HTML page for the developer to look at: a report, chart, diagram or prototype. Write one self-contained index.html with inline <style> and <script type="module">, so names like top or name do not clash with window globals. To change it, publish again with the same id and every file. A file already on disk takes its sourcePath instead of its content, so you never send the same text twice.
 
 The page runs in a sandboxed frame with no origin: storage, cookies, alert/confirm/prompt, form submission, popups, downloads and links that leave the page do nothing. Keep state in memory and show URLs as text. CDN files load when the network allows; pin exact versions. At most ${MAX_ARTIFACT_BYTES / 1024 / 1024} MB.
 
@@ -29,11 +31,31 @@ const DOCUMENT_GUIDE = `Publish a Markdown document that the developer reads and
 
 Write GitHub-flavored Markdown: headings, paragraphs, emphasis, links, lists, task lists (- [ ] item), tables, quotes and fenced code blocks. Raw HTML is dropped.
 
-To change a document, pass its id, the revision you last published or read, and the full new Markdown. read_artifact without a path shows the current revision. The developer may have edited it in the meantime. Then the call fails with their current text and revision, so merge your change into that text and publish again with that revision.`
+To change a document, pass its id, the revision you last published or read, and the full new Markdown, or the sourcePath of a file that holds it. read_artifact without a path shows the current revision. The developer may have edited it in the meantime. Then the call fails with their current text and revision, so merge your change into that text and publish again with that revision.`
 
 const currentMarkdown = async (store: ArtifactStore, id: string) => {
   const file = await store.file(id, DOCUMENT_ENTRY)
   return file === null ? "" : new TextDecoder().decode(file.bytes)
+}
+
+const describeSourcePath = (holds: string) =>
+  `The absolute path of a file on this machine that holds ${holds}. It is copied when you publish, so publish again after you change it.`
+
+const readSource = async (sourcePath: string) => {
+  if (!isAbsolute(sourcePath)) throw new ArtifactError(`sourcePath must be absolute, but got "${sourcePath}".`)
+  try {
+    const source = await stat(sourcePath)
+    if (!source.isFile()) throw new ArtifactError(`sourcePath "${sourcePath}" is not a file.`)
+    if (source.size > MAX_ARTIFACT_BYTES) {
+      throw new ArtifactError(
+        `"${sourcePath}" is ${source.size} bytes. A version holds at most ${MAX_ARTIFACT_BYTES} bytes.`,
+      )
+    }
+    return await readFile(sourcePath)
+  } catch (error) {
+    if (error instanceof ArtifactError) throw error
+    throw new ArtifactError(`Cannot read sourcePath "${sourcePath}": ${String(error)}`)
+  }
 }
 
 const newNeedsTitle = { message: "Give a new artifact a title.", path: ["title"] }
@@ -68,14 +90,22 @@ export const artifactTools = {
           .describe('The HTML file the preview opens. Defaults to "index.html".'),
         files: z
           .array(
-            z.object({
-              path: z.string().describe('A relative path, such as "index.html" or "assets/chart.js".'),
-              content: z.string().describe("The file content, as text or base64."),
-              encoding: z
-                .enum(["utf8", "base64"])
-                .optional()
-                .describe('"base64" for binary files. Defaults to "utf8".'),
-            }),
+            z
+              .object({
+                path: z.string().describe('A relative path, such as "index.html" or "assets/chart.js".'),
+                content: z.string().optional().describe("The file content, as text or base64."),
+                encoding: z
+                  .enum(["utf8", "base64"])
+                  .optional()
+                  .describe('"base64" for binary content. Defaults to "utf8".'),
+                sourcePath: z
+                  .string()
+                  .optional()
+                  .describe(`Instead of content. ${describeSourcePath("this file")}`),
+              })
+              .refine((file) => (file.content === undefined) !== (file.sourcePath === undefined), {
+                message: "Pass either content or sourcePath.",
+              }),
           )
           .min(1)
           .describe("Every file of this version. Files left out of an update are gone from the new version."),
@@ -83,7 +113,18 @@ export const artifactTools = {
       })
       .refine((input) => input.id !== undefined || input.title !== undefined, newNeedsTitle),
     handle: async (store, { auto_open: _autoOpen, ...input }, { threadId }) => {
-      const artifact = await store.publish({ ...input, ...(threadId === undefined ? {} : { threadId }) })
+      const files = await Promise.all(
+        input.files.map(async ({ sourcePath, ...file }) =>
+          sourcePath === undefined
+            ? { ...file, content: file.content ?? "" }
+            : {
+                path: file.path,
+                content: (await readSource(sourcePath)).toString("base64"),
+                encoding: "base64" as const,
+              },
+        ),
+      )
+      const artifact = await store.publish({ ...input, files, ...(threadId === undefined ? {} : { threadId }) })
       return `Published artifact ${artifact.id} version ${artifact.version}: "${artifact.title}". Pass id "${artifact.id}" to publish_artifact to update it.`
     },
   }),
@@ -105,19 +146,28 @@ export const artifactTools = {
           .describe(
             'The document\'s name, two to four words, such as "Release Plan". Required for a new document. Omit it when you update, to keep the name the developer may have changed.',
           ),
-        markdown: z.string().describe("The whole document as Markdown."),
+        markdown: z.string().optional().describe("The whole document as Markdown."),
+        sourcePath: z
+          .string()
+          .optional()
+          .describe(`Instead of markdown. ${describeSourcePath("the whole document")}`),
         auto_open: autoOpen,
+      })
+      .refine((input) => (input.markdown === undefined) !== (input.sourcePath === undefined), {
+        message: "Pass either markdown or sourcePath.",
+        path: ["markdown"],
       })
       .refine((input) => input.id === undefined || input.revision !== undefined, {
         message: "Pass the revision you last published or read together with id.",
         path: ["revision"],
       })
       .refine((input) => input.id !== undefined || input.title !== undefined, newNeedsTitle),
-    handle: async (store, { id, revision, title, markdown }, { threadId }) => {
+    handle: async (store, { id, revision, title, markdown, sourcePath }, { threadId }) => {
+      const contents = sourcePath === undefined ? (markdown ?? "") : (await readSource(sourcePath)).toString("utf8")
       try {
         const document = await store.publish({
           kind: "document",
-          markdown,
+          markdown: contents,
           ...(title === undefined ? {} : { title }),
           ...(id === undefined ? {} : { id }),
           ...(revision === undefined ? {} : { baseRevision: revision }),
