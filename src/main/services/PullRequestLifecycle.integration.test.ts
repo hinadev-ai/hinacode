@@ -4,6 +4,7 @@ import { join } from "node:path"
 import { afterAll, describe, expect, layer } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, PubSub } from "effect"
+import { SqlClient } from "effect/sql"
 import type { PullRequest, PullRequestStatus } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
@@ -82,6 +83,14 @@ const announce = (linked: PullRequestLinkedEvent) => PullRequestLifecycle.use((l
 const sweep = PullRequestLifecycle.use((lifecycle) => lifecycle.sweep)
 const drain = (subscription: PubSub.Subscription<BusEvent>) => PubSub.takeUpTo(subscription, Number.MAX_SAFE_INTEGER)
 const topics = (events: ReadonlyArray<BusEvent>) => events.map((event) => event.topic)
+const observedStatus = (linkId: string) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    const rows = yield* sql<{ readonly observedStatus: string | null }>`
+      SELECT observed_status FROM pull_request_link WHERE id = ${linkId}
+    `
+    return rows[0]?.observedStatus
+  })
 
 describe("PullRequestLifecycle", () => {
   layer(testLayer)((it) => {
@@ -146,6 +155,61 @@ describe("PullRequestLifecycle", () => {
         github.statuses.set(url, "closed")
         yield* sweep
         expect(topics(yield* drain(subscription))).toEqual(["pullRequest.closed"])
+      }),
+    )
+
+    it.effect("publishes a merge after a closed pull request reopens, and closed only once", () =>
+      Effect.gen(function* () {
+        const { linked, subscription, url } = yield* linkPullRequest({ openedAt: longAgo })
+        yield* announce(linked)
+
+        const expectAfterSweep = (status: PullRequestStatus, expectedTopics: ReadonlyArray<BusEvent["topic"]>) =>
+          Effect.gen(function* () {
+            github.statuses.set(url, status)
+            yield* sweep
+            expect(yield* observedStatus(linked.linkId)).toBe(status)
+            expect(topics(yield* drain(subscription))).toEqual(expectedTopics)
+          })
+
+        yield* expectAfterSweep("closed", ["pullRequest.closed"])
+        yield* expectAfterSweep("closed", [])
+        yield* expectAfterSweep("open", [])
+        yield* expectAfterSweep("merged", ["pullRequest.merged"])
+
+        github.reads.length = 0
+        yield* sweep
+        expect(github.reads).not.toContain(url)
+        expect(yield* observedStatus(linked.linkId)).toBe("merged")
+        expect(topics(yield* drain(subscription))).toEqual([])
+      }),
+    )
+
+    it.effect("follows a closed pull request reopened as a draft through to its merge", () =>
+      Effect.gen(function* () {
+        const { linked, subscription, url } = yield* linkPullRequest({ openedAt: longAgo })
+        yield* announce(linked)
+        github.statuses.set(url, "closed")
+        yield* sweep
+        github.statuses.set(url, "draft")
+        yield* sweep
+        expect(yield* observedStatus(linked.linkId)).toBe("draft")
+        github.statuses.set(url, "merged")
+        yield* sweep
+        expect(yield* observedStatus(linked.linkId)).toBe("merged")
+        expect(topics(yield* drain(subscription))).toEqual(["pullRequest.closed", "pullRequest.merged"])
+      }),
+    )
+
+    it.effect("publishes a merge when the reopen happened between two sweeps", () =>
+      Effect.gen(function* () {
+        const { linked, subscription, url } = yield* linkPullRequest({ openedAt: longAgo })
+        yield* announce(linked)
+        github.statuses.set(url, "closed")
+        yield* sweep
+        github.statuses.set(url, "merged")
+        yield* sweep
+        expect(yield* observedStatus(linked.linkId)).toBe("merged")
+        expect(topics(yield* drain(subscription))).toEqual(["pullRequest.closed", "pullRequest.merged"])
       }),
     )
 
