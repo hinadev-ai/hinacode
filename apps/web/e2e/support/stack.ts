@@ -1,6 +1,7 @@
 import { type ChildProcess, execFileSync, spawn } from "node:child_process"
 import { once } from "node:events"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { randomBytes } from "node:crypto"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import { type AddressInfo, createServer as createTcpServer } from "node:net"
 import { tmpdir } from "node:os"
@@ -125,35 +126,93 @@ export const createRepo = (path: string) => {
 
 export interface Relay {
   readonly url: string
-  readonly ownerToken: string
+  readonly deviceName: (credential: string) => string | undefined
+  readonly signOutEveryDevice: () => void
   readonly close: () => Promise<void>
 }
 
-const json = (response: ServerResponse, status: number, body: unknown) => {
-  response.writeHead(status, { "content-type": "application/json" })
-  response.end(JSON.stringify(body))
+interface PendingSignIn {
+  readonly userCode: string
+  readonly name: string
+  approved: boolean
 }
 
-const answerRelay =
-  (machines: ReadonlyArray<RelayMachine>, ownerToken: string) =>
-  (request: IncomingMessage, response: ServerResponse) => {
+const SIGN_IN_POLL_INTERVAL_S = 0.2
+const SIGN_IN_NEVER_EXPIRES = Number.MAX_SAFE_INTEGER
+
+const json = (response: ServerResponse, status: number, body?: unknown) => {
+  response.writeHead(status, { "content-type": "application/json" })
+  response.end(body === undefined ? undefined : JSON.stringify(body))
+}
+
+const readJson = async (request: IncomingMessage): Promise<Record<string, unknown>> => {
+  const chunks: Array<Buffer> = []
+  for await (const chunk of request) chunks.push(chunk as Buffer)
+  return JSON.parse(Buffer.concat(chunks).toString() || "{}") as Record<string, unknown>
+}
+
+const bearer = (request: IncomingMessage) => /^Bearer (\S+)$/.exec(request.headers.authorization ?? "")?.[1]
+
+export const startRelay = async (machines: ReadonlyArray<RelayMachine>): Promise<Relay> => {
+  const signIns = new Map<string, PendingSignIn>()
+  const devices = new Map<string, string>()
+  const signedIn = (request: IncomingMessage) => devices.has(bearer(request) ?? "")
+
+  const server = createServer(async (request, response) => {
     response.setHeader("access-control-allow-origin", request.headers.origin ?? "*")
-    response.setHeader("access-control-allow-headers", "authorization")
+    response.setHeader("access-control-allow-headers", "authorization, content-type")
+    response.setHeader("access-control-allow-methods", "GET, POST, PATCH, DELETE")
     response.setHeader("vary", "origin")
     if (request.method === "OPTIONS") return void response.writeHead(204).end()
-    if (request.method !== "GET" || request.url !== "/v1/machines") return json(response, 404, { error: "not found" })
-    if (request.headers.authorization !== `Bearer ${ownerToken}`) return json(response, 401, { error: "unauthorized" })
-    json(response, 200, { machines })
-  }
+    const url = new URL(request.url ?? "/", "http://relay")
+    const route = `${request.method} ${url.pathname}`
 
-export const startRelay = async (machines: ReadonlyArray<RelayMachine>, ownerToken: string): Promise<Relay> => {
-  const server = createServer(answerRelay(machines, ownerToken))
+    if (route === "POST /v1/sign-ins") {
+      const { name } = await readJson(request)
+      const deviceCode = randomBytes(16).toString("hex")
+      const userCode = randomBytes(4).toString("hex").toUpperCase()
+      signIns.set(deviceCode, { userCode, name: String(name), approved: false })
+      const link = new URL(`/link?code=${userCode}`, `http://${request.headers.host}`)
+      return json(response, 200, {
+        deviceCode,
+        userCode,
+        url: link.href,
+        interval: SIGN_IN_POLL_INTERVAL_S,
+        expiresAt: SIGN_IN_NEVER_EXPIRES,
+      })
+    }
+    if (route === "GET /link") {
+      const pending = [...signIns.values()].find((signIn) => signIn.userCode === url.searchParams.get("code"))
+      if (pending !== undefined) pending.approved = true
+      response.writeHead(pending === undefined ? 404 : 200, { "content-type": "text/html" })
+      return void response.end(pending === undefined ? "<p>Unknown code</p>" : `<p>Approved ${pending.name}</p>`)
+    }
+    if (route === "POST /v1/links/claim") {
+      const deviceCode = String((await readJson(request)).deviceCode)
+      const pending = signIns.get(deviceCode)
+      if (pending === undefined) return json(response, 410, { error: "expired" })
+      if (!pending.approved) return json(response, 202, { pending: true })
+      signIns.delete(deviceCode)
+      const credential = randomBytes(16).toString("hex")
+      devices.set(credential, pending.name)
+      return json(response, 200, { credential })
+    }
+    if (!signedIn(request)) return json(response, 401, { error: "Sign in first." })
+    if (route === "GET /v1/machines") return json(response, 200, { machines })
+    if (route === "GET /v1/account") return json(response, 200, { name: "Web E2E", email: "web-e2e@hinacode.test" })
+    if (route === "DELETE /v1/device") {
+      devices.delete(bearer(request) ?? "")
+      return void response.writeHead(204).end()
+    }
+    json(response, 404, { error: "not found" })
+  })
   server.listen(0, "127.0.0.1")
   await once(server, "listening")
   const { port } = server.address() as AddressInfo
   return {
     url: `http://127.0.0.1:${port}`,
-    ownerToken,
+    deviceName: (credential) => devices.get(credential),
+    signOutEveryDevice: () => devices.clear(),
     close: () => new Promise((done) => server.close(() => done())),
   }
 }

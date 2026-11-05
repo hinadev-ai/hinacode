@@ -3,13 +3,17 @@ import type { WebStack } from "./fixtures.ts"
 
 export const sidebar = (page: Page) => page.getByRole("navigation", { name: "Projects and threads" })
 
-export const signIn = async (page: Page, web: WebStack, ownerToken = web.relay.ownerToken) => {
+export const signIn = async (page: Page, web: WebStack) => {
   const relayField = page.getByRole("textbox", { name: "Relay", exact: true })
   if (!(await relayField.isVisible()))
     await page.getByRole("button", { name: "Use another relay", exact: true }).click()
   await relayField.fill(web.relay.url)
-  await page.getByRole("textbox", { name: "Owner token", exact: true }).fill(ownerToken)
   await page.getByRole("button", { name: "Sign in", exact: true }).click()
+  const relayPage = page.waitForEvent("popup")
+  await page.getByRole("link", { name: "Open the sign-in page", exact: true }).click()
+  const approval = await relayPage
+  await expect(approval.getByText(/^Approved /)).toBeVisible()
+  await approval.close()
 }
 
 export const openSignedIn = async (page: Page, web: WebStack) => {

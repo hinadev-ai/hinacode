@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test"
 import { writeFileSync } from "node:fs"
 import { join } from "node:path"
 import {
@@ -12,17 +13,41 @@ import {
 } from "./support/app.ts"
 import { expect, test } from "./support/fixtures.ts"
 
+const browserCredential = (page: Page) =>
+  page.evaluate(
+    () => (JSON.parse(localStorage.getItem("hinacode.relayAccount") ?? "{}") as { credential: string }).credential,
+  )
+
 const ONE_PIXEL_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
 
-test("signing in loads the app with the relay's machines", async ({ page, web }) => {
+test("signing in through the relay's page loads the app with the relay's machines", async ({ page, web }) => {
   await page.goto(web.appUrl)
-  await signIn(page, web, "not-the-token")
-  await expect(page.getByRole("alert")).toHaveText(
-    "The relay refused this token. Copy the current one from the desktop.",
-  )
+  await expect(page.getByRole("textbox", { name: "Owner token" })).toHaveCount(0)
   await signIn(page, web)
   const resources = await openMachineResources(page)
   await expect(resources.getByText(web.machine.name, { exact: true })).toBeVisible()
+  expect(web.relay.deviceName(await browserCredential(page))).toBe("HinaCode in a browser")
+})
+
+test("logging out ends this browser's sign-in on the relay", async ({ page, web }) => {
+  await openSignedIn(page, web)
+  const credential = await browserCredential(page)
+  await page.getByRole("button", { name: "Account", exact: true }).click()
+  await expect(page.getByText("Web E2E", { exact: true })).toBeVisible()
+  await page.getByRole("menuitem", { name: "Logout", exact: true }).click()
+  await page.getByRole("alertdialog").getByRole("button", { name: "Sign out", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible()
+  expect(web.relay.deviceName(credential)).toBeUndefined()
+})
+
+test("a browser the relay signed out goes back to sign in", async ({ page, web }) => {
+  await openSignedIn(page, web)
+  web.relay.signOutEveryDevice()
+  await page.reload()
+  await expect(page.getByRole("alert")).toHaveText("This browser was signed out. Sign in again.")
+  await page.reload()
+  await expect(page.getByRole("alert")).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible()
 })
 
 test("reloading goes straight back to the app", async ({ page, web }) => {

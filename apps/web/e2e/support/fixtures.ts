@@ -34,7 +34,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   stack: [
     async ({}, use) => {
       const machine = await startMachine("Web E2E Machine")
-      const relay = await startRelay([relayListing(machine)], randomBytes(16).toString("hex"))
+      const relay = await startRelay([relayListing(machine)])
       const webApp = await serveWebApp()
       try {
         await use({ appUrl: webApp.url, relay, machine })
