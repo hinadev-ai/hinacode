@@ -1,3 +1,4 @@
+import { CHART_GUIDE } from "@hinacode/artifacts"
 import { describe, expect, test } from "vitest"
 import { expandArtifactSkill } from "./artifactSkills.ts"
 import { DOCUMENT_TEMPLATES } from "./documentTemplates.ts"
@@ -35,6 +36,19 @@ describe("expandArtifactSkill", () => {
       expect(doc).toContain(`(\`${id}\`)`)
       expect(writing).not.toContain(`(\`${id}\`)`)
     }
+  })
+})
+
+describe("chart syntax in skills", () => {
+  test("gives the document skill the chart guide and no tool to fetch it", () => {
+    const doc = expandArtifactSkill("/artifact:doc x")
+    expect(doc).toContain(CHART_GUIDE)
+    expect(doc).not.toContain("document_chart_guide")
+  })
+
+  test("costs other prompts nothing", () => {
+    expect(expandArtifactSkill("fix the build")).not.toContain(CHART_GUIDE)
+    expect(expandArtifactSkill("/artifact:writing x")).not.toContain(CHART_GUIDE)
   })
 })
 

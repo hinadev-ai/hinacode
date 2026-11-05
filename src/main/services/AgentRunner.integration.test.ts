@@ -6,6 +6,7 @@ import { NodeServices } from "@effect/platform-node"
 import { expect, it } from "@effect/vitest"
 import { Context, Deferred, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
 import { SqlClient } from "effect/sql"
+import { CHART_GUIDE } from "@hinacode/artifacts"
 import { vi } from "vitest"
 import type {
   AgentEvent,
@@ -19,6 +20,7 @@ import { RpcMethods, type TranscriptPush } from "../../shared/contract.ts"
 import type { Message, Thread } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
+import { DOCUMENT_COMMAND, expandDocumentCommand } from "../agents/document.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
 import { AgentError, type AgentProvider, type SessionInput, type SteerPriority, type Wake } from "../agents/provider.ts"
@@ -1341,6 +1343,30 @@ it("queues a steer for an agent that cannot steer a running turn", async () => {
     const queued = await Effect.runPromise(threads.get(thread.id))
     expect(queued.queue.map((message) => message.text)).toEqual(["change course"])
     await Effect.runPromise(runner.interrupt(thread.id))
+  })
+})
+
+it("sends the agent the document guide while the transcript keeps the typed command", async () => {
+  await withPreparingThread(async ({ runner, thread, release, idle, turns, storedMessages }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "/document accepted input", []))
+    await idle
+    expect(turns.map((turn) => turn.input.prompt)).toStrictEqual([expandDocumentCommand("/document accepted input")])
+    expect(turns[0]?.input.prompt).toContain(CHART_GUIDE)
+    expect((await storedMessages(thread.id)).find((message) => message.role === "user")).toMatchObject({
+      parts: [{ type: "text", text: "/document accepted input" }],
+    })
+    expect(await Effect.runPromise(runner.listCommands(thread.id))).toContainEqual(DOCUMENT_COMMAND)
+  })
+})
+
+it("expands the document command in a steer", async () => {
+  await withPreparingThread(async ({ runner, thread, release, streamed, steers }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "streams, then waits", []))
+    await streamed
+    await Effect.runPromise(runner.steer(thread.id, "/document the result", []))
+    expect(steers).toStrictEqual([{ text: expandDocumentCommand("/document the result"), priority: "now" }])
   })
 })
 
