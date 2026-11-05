@@ -38,8 +38,8 @@ import threadScheduled from "./migrations/0036_thread_scheduled.ts"
 import ftsCjkGrams from "./migrations/0037_fts_cjk_grams.ts"
 import messagePart from "./migrations/0038_message_part.ts"
 import threadParent from "./migrations/0039_thread_parent.ts"
-import pullRequestObservedStatus from "./migrations/0040_pull_request_observed_status.ts"
 import remotePrivateNetworks from "./migrations/0040_remote_private_networks.ts"
+import pullRequestObservedStatus from "./migrations/0043_pull_request_observed_status.ts"
 
 const run = Migrator.make({})
 
@@ -83,8 +83,8 @@ export const runMigrations = run({
     "37_fts_cjk_grams": ftsCjkGrams,
     "38_message_part": messagePart,
     "39_thread_parent": threadParent,
-    "40_pull_request_observed_status": pullRequestObservedStatus,
     "40_remote_private_networks": remotePrivateNetworks,
+    "43_pull_request_observed_status": pullRequestObservedStatus,
   }),
 }).pipe(
   Effect.tap((ran) =>
