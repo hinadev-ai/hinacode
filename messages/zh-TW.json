@@ -2487,6 +2487,8 @@
   "web_sign_in_expired": "登入頁面已過期，請重新登入。",
   "web_signed_out": "這個瀏覽器已被登出，請重新登入。",
   "web_device_name": "瀏覽器中的 HinaCode",
+  "web_machine_refused_token": "{name} 拒絕了它的權杖。等它把新的權杖發布到 relay 後，請重新載入此頁面。",
+  "web_reload": "重新載入",
   "web_relay_url": "Relay",
   "web_use_other_relay": "使用其他 relay",
   "web_sign_in": "登入",

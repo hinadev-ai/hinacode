@@ -2533,6 +2533,8 @@
   "web_sign_in_expired": "登录页面已过期，请重新登录。",
   "web_signed_out": "这个浏览器已被登出，请重新登录。",
   "web_device_name": "浏览器中的 HinaCode",
+  "web_machine_refused_token": "{name} 拒绝了它的令牌。等它把新的令牌发布到 relay 后，请重新加载此页面。",
+  "web_reload": "重新加载",
   "web_relay_url": "Relay",
   "web_use_other_relay": "使用其他 relay",
   "web_sign_in": "登录",

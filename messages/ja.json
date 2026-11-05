@@ -2451,6 +2451,8 @@
   "web_sign_in_expired": "サインインページの有効期限が切れました。もう一度サインインしてください。",
   "web_signed_out": "このブラウザはサインアウトされました。もう一度サインインしてください。",
   "web_device_name": "ブラウザの HinaCode",
+  "web_machine_refused_token": "{name} がトークンを拒否しました。新しいトークンが relay に公開されたら、このページを再読み込みしてください。",
+  "web_reload": "再読み込み",
   "web_relay_url": "Relay",
   "web_use_other_relay": "別の relay を使う",
   "web_sign_in": "サインイン",
