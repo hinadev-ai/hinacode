@@ -56,6 +56,27 @@ test("an image in the project previews through the service worker", async ({ pag
   expect((await served).headers()["content-security-policy"]).toBe("sandbox allow-scripts")
 })
 
+test("an HTML preview stays sandboxed after it navigates", async ({ page, web, repo, uniqueName }) => {
+  const project = uniqueName("html")
+  const elsewhere = "https://elsewhere.example/"
+  await page.route(elsewhere, (route) => route.fulfill({ contentType: "text/html", body: "<p>Elsewhere</p>" }))
+  writeFileSync(join(repo, "pixel.png"), Buffer.from(ONE_PIXEL_PNG, "base64"))
+  writeFileSync(
+    join(repo, "page.html"),
+    `<img src="pixel.png" alt="pixel"><button onclick="location.href = '${elsewhere}'">Leave</button>`,
+  )
+  await openSignedIn(page, web)
+  await addProject(page, repo, project)
+  await startThread(page, web, project)
+  await openFile(page, "page.html")
+  const preview = page.frameLocator('iframe[title="page.html"]')
+  await expect(preview.getByRole("img", { name: "pixel" })).toHaveJSProperty("naturalWidth", 1)
+  expect(await preview.locator("body").evaluate(() => origin)).toBe("null")
+  await preview.getByRole("button", { name: "Leave" }).click()
+  await expect(preview.getByText("Elsewhere")).toBeVisible()
+  expect(await preview.locator("body").evaluate(() => window.open("about:blank") !== null)).toBe(false)
+})
+
 test("the app shows when the machine drops and comes back", async ({ page, web }) => {
   await openSignedIn(page, web)
   await web.machine.stop()
