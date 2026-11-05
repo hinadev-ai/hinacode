@@ -1,7 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { z } from "zod"
 import { DOCUMENT_ENTRY, isTextType } from "./artifact.ts"
-import { CHART_GUIDE } from "./chartGuide.ts"
 import { ArtifactConflictError, type ArtifactStore, ArtifactError, MAX_ARTIFACT_BYTES } from "./store.ts"
 
 export type ArtifactCaller = { threadId?: string }
@@ -28,7 +27,7 @@ The preview is a side panel, often 360 to 700px wide. Never scroll sideways: let
 
 const DOCUMENT_GUIDE = `Publish a Markdown document that the developer reads and edits beside the thread: a plan, spec, design note, checklist or notes. Prefer it to publish_artifact when the content is prose the developer may want to change.
 
-Write GitHub-flavored Markdown: headings, paragraphs, emphasis, links, lists, task lists (- [ ] item), tables, quotes and fenced code blocks. Raw HTML is dropped. A document can also hold bar and line charts; call document_chart_guide before you write one.
+Write GitHub-flavored Markdown: headings, paragraphs, emphasis, links, lists, task lists (- [ ] item), tables, quotes and fenced code blocks. Raw HTML is dropped.
 
 To change a document, pass its id, the revision you last published or read, and the full new Markdown. read_artifact without a path shows the current revision. The developer may have edited it in the meantime. Then the call fails with their current text and revision, so merge your change into that text and publish again with that revision.`
 
@@ -133,11 +132,6 @@ export const artifactTools = {
         )
       }
     },
-  }),
-  document_chart_guide: tool({
-    description: "Explain how to put a bar or line chart in a document. Call it before you write a chart.",
-    input: z.object({}),
-    handle: async () => CHART_GUIDE,
   }),
   list_artifacts: tool({
     description:
