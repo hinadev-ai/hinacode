@@ -1038,7 +1038,7 @@
   "update_up_to_date": "HinaCode は最新です。",
   "update_downloading": "HinaCode {version} をダウンロードしています",
   "update_failed": "アップデートを確認できませんでした: {message}",
-  "update_unsupported": "開発ビルドはアップデートされません。",
+  "update_unsupported": "このビルドは自動でアップデートできません。",
   "agent_update_title": "アップデートがあります: {agent} v{version}",
   "agent_update_body": "今すぐ更新するか、エージェントの設定を確認してください。",
   "agent_update_settings": "設定",
