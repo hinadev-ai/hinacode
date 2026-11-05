@@ -1,11 +1,10 @@
 import { describe, expect, test } from "@effect/vitest"
 import type { PullRequestDetail } from "./domain.ts"
-import { fixChecksPrompt, resolveConflictsPrompt } from "./pullRequestPrompts.ts"
+import { fixChecksPrompt } from "./pullRequestPrompts.ts"
 
 const pullRequest = {
   url: "https://github.com/acme/app/pull/7",
   headRef: "fix/login",
-  baseRef: "main",
   checkRuns: [
     { name: "lint", status: "passing", url: null },
     { name: "test", status: "failing", url: "https://github.com/acme/app/actions/runs/1" },
@@ -27,10 +26,3 @@ describe("fixChecksPrompt", () => {
   })
 })
 
-describe("resolveConflictsPrompt", () => {
-  test("names the pull request and both branches", () => {
-    expect(resolveConflictsPrompt(pullRequest)).toBe(
-      "https://github.com/acme/app/pull/7 has merge conflicts with main. Fetch origin, merge origin/main into fix/login, and resolve the conflicts so both sides keep their intent. Run the project's checks, then push.",
-    )
-  })
-})

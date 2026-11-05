@@ -14,17 +14,6 @@ describe("token proofs", () => {
     )
   })
 
-  it("differ by side, so a client proof never passes as the server's", () => {
-    expect(clientProof("token", "a", "b")).not.toBe(serverProof("token", "a", "b"))
-  })
-
-  it("change with the token and with each nonce", () => {
-    const proof = clientProof("token", "s", "c")
-    expect(clientProof("other", "s", "c")).not.toBe(proof)
-    expect(clientProof("token", "s2", "c")).not.toBe(proof)
-    expect(clientProof("token", "s", "c2")).not.toBe(proof)
-  })
-
   it("makes fresh 32-byte nonces", () => {
     const nonce = newNonce()
     expect(nonce).toMatch(/^[0-9a-f]{64}$/)

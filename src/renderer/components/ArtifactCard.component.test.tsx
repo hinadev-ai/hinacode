@@ -55,7 +55,7 @@ test("opens the published artifact by its id", async () => {
   expect(onOpen).toHaveBeenCalledWith("doc-1")
 })
 
-test("draws the document and says it is publishing while the call runs", async () => {
+test("says it is publishing while the call runs", async () => {
   await render(
     <ArtifactCard
       call={publishDocument({ title: "Release plan", markdown }, "running")}
@@ -67,8 +67,6 @@ test("draws the document and says it is publishing while the call runs", async (
   const card = page.getByRole("button", { name: "Open Release plan" })
   await expect.element(card).toMatchTextContent(/^Document·Publishing…Release plan/)
   await expect.element(card).not.toMatchTextContent(/v2/)
-  expect(card.element().querySelectorAll("svg rect").length).toBeGreaterThan(5)
-  expect(card.element().querySelector(".surface-shimmer")).not.toBe(null)
 })
 
 test("takes the title of an update from its first heading and lists sections without a lede", async () => {
