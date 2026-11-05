@@ -2,7 +2,10 @@ import { describe, expect, test } from "@effect/vitest"
 import type { FsEntry } from "../../shared/domain.ts"
 import {
   afterDelete,
+  afterMove,
   afterRename,
+  canMoveInto,
+  dropFolderOf,
   emptyTree,
   type ExplorerTree,
   flattenTree,
@@ -123,6 +126,56 @@ describe("afterRename", () => {
     const tree = afterRename(opened, "src", "lib")
     expect(Object.keys(tree.children)).toStrictEqual(["", "docs"])
     expect(tree.unsaved).toStrictEqual({ "README.md": "base" })
+  })
+})
+
+describe("afterMove", () => {
+  test("selects the moved entry and opens the folder it landed in", () => {
+    const tree = afterMove(opened, "README.md", "docs/README.md")
+    expect(tree.selected).toBe("docs/README.md")
+    expect(tree.expanded.has("docs")).toBe(true)
+  })
+
+  test("keeps an expanded folder expanded and its open file open at the new path", () => {
+    const tree = afterMove(opened, "src", "docs/src")
+    expect([...tree.expanded]).toStrictEqual(["docs/src", "docs/src/main", "srcs", "docs"])
+    expect(tree.opened).toBe("docs/src/main/app.ts")
+  })
+
+  test("does not expand the root", () => {
+    expect(afterMove(opened, "src/main/app.ts", "app.ts").expanded.has("")).toBe(false)
+  })
+})
+
+const entry = (kind: FsEntry["kind"], path: string): FsEntry => ({ ...dir(path), kind })
+
+describe("dropFolderOf", () => {
+  test("targets a folder itself", () => {
+    expect(dropFolderOf(entry("dir", "src/main"))).toBe("src/main")
+  })
+
+  test("targets the folder that holds a file or a symlink", () => {
+    expect(dropFolderOf(entry("file", "src/app.ts"))).toBe("src")
+    expect(dropFolderOf(entry("symlink", "src/link"))).toBe("src")
+    expect(dropFolderOf(entry("file", "README.md"))).toBe("")
+  })
+})
+
+describe("canMoveInto", () => {
+  test("allows another folder, a sibling that shares a prefix, and the root", () => {
+    expect(canMoveInto("src/app.ts", "docs")).toBe(true)
+    expect(canMoveInto("src", "srcs")).toBe(true)
+    expect(canMoveInto("src/app.ts", "")).toBe(true)
+  })
+
+  test("refuses the folder the entry is already in", () => {
+    expect(canMoveInto("src/app.ts", "src")).toBe(false)
+    expect(canMoveInto("README.md", "")).toBe(false)
+  })
+
+  test("refuses the entry itself and anything inside it", () => {
+    expect(canMoveInto("src", "src")).toBe(false)
+    expect(canMoveInto("src", "src/main")).toBe(false)
   })
 })
 

@@ -129,7 +129,12 @@ const reply = ({ id, method, params }) => {
     case "turn/start": {
       const turnId = `turn-${++turns}`
       send({ id, result: { turn: { id: turnId } } })
-      const { question, postedQuestions } = control()
+      const { question, postedQuestions, unauthorized } = control()
+      if (unauthorized) {
+        const error = { message: "Your access token could not be refreshed", codexErrorInfo: "unauthorized" }
+        send({ method: "error", params: { threadId: params.threadId, turnId, willRetry: false, error } })
+        return completeTurn(params.threadId, turnId, "failed")
+      }
       if (question) {
         activeQuestion = { id: 900 + turns, threadId: params.threadId, turnId }
         return send({

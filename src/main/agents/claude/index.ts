@@ -673,6 +673,7 @@ export const layer = Layer.effect(
           pendingEdits: new Map(),
           limitMessage: null,
           limitResetAt: null,
+          signedOut: false,
           subagents: new Map(),
           lastRequest: null,
           sessionId: resume ?? null,
@@ -941,6 +942,17 @@ export const layer = Layer.effect(
               Effect.tryPromise({
                 try: () => leased.query.stopTask(taskId),
                 catch: agentError("Failed to stop the background task"),
+              }),
+            )
+          }),
+        moveCommand: (threadId, callId) =>
+          Effect.suspend(() => {
+            const session = sessions.get(threadId)
+            if (session === undefined) return Effect.succeed(false)
+            return lease(session, (leased) =>
+              Effect.tryPromise({
+                try: () => leased.query.backgroundTasks(callId),
+                catch: agentError("Failed to move the command to the background"),
               }),
             )
           }),

@@ -437,6 +437,31 @@ describe("fs.rename", () => {
     }),
   )
 
+  it.effect("moves a file and a folder into another folder", () =>
+    Effect.gen(function* () {
+      const path = scratch("move")
+      write(join(repo, path, "file.txt"), "text\n")
+      write(join(repo, path, "folder/inside.txt"), "inside\n")
+      mkdirSync(join(repo, path, "target"))
+      yield* rename(repo, `${path}/file.txt`, `${path}/target/file.txt`)
+      yield* rename(repo, `${path}/folder`, `${path}/target/folder`)
+      expect(readFileSync(join(repo, path, "target/file.txt"), "utf8")).toBe("text\n")
+      expect(readFileSync(join(repo, path, "target/folder/inside.txt"), "utf8")).toBe("inside\n")
+      expect(existsSync(join(repo, path, "file.txt"))).toBe(false)
+      expect(existsSync(join(repo, path, "folder"))).toBe(false)
+    }),
+  )
+
+  it.effect("refuses to move a folder into itself", () =>
+    Effect.gen(function* () {
+      const path = scratch("move-into-self")
+      write(join(repo, path, "folder/nested/inside.txt"), "inside\n")
+      const error = yield* rename(repo, `${path}/folder`, `${path}/folder/nested/folder`).pipe(Effect.flip)
+      expect(error).toMatchObject({ _tag: "FsAccessError", reason: "unwritable" })
+      expect(readFileSync(join(repo, path, "folder/nested/inside.txt"), "utf8")).toBe("inside\n")
+    }),
+  )
+
   it.effect("refuses to overwrite an existing entry", () =>
     Effect.gen(function* () {
       const path = scratch("rename-exists")

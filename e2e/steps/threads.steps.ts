@@ -92,6 +92,14 @@ When("I open the sidebar tab {string}", async ({ app }, tab: string) => {
   await expect(openTab(app.page)).toHaveCount(1)
 })
 
+When("I scroll to the end of the sidebar", async ({ app }) => {
+  await sidebar(app.page).getByRole("link").last().scrollIntoViewIfNeeded()
+})
+
+Then("the sidebar lists {int} thread(s)", async ({ app }, count: number) => {
+  await expect(sidebar(app.page).getByRole("link")).toHaveCount(count)
+})
+
 When("I undo from the toast", async ({ app }) => {
   await app.page.getByRole("button", { name: "Undo", exact: true }).click()
 })

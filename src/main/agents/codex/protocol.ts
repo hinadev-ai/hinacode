@@ -63,7 +63,11 @@ export type TurnStartParams = {
 }
 
 export type TurnStatus = "completed" | "interrupted" | "failed" | "inProgress"
-export type TurnError = { message: string; additionalDetails: string | null }
+export type TurnError = {
+  message: string
+  codexErrorInfo?: string | Record<string, unknown> | null
+  additionalDetails: string | null
+}
 export type Turn = { id: string; status: TurnStatus; error: TurnError | null }
 export type TurnStartResponse = { turn: Turn }
 export type TurnInterruptParams = { threadId: string; turnId: string }

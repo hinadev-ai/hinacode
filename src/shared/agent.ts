@@ -60,6 +60,26 @@ export interface AccountHome {
   readonly binary: string
 }
 
+export const configDirVariable = { claude: "CLAUDE_CONFIG_DIR", codex: "CODEX_HOME" } satisfies Record<
+  AccountProviderId,
+  string
+>
+
+const loginArguments = { claude: ["auth", "login"], codex: ["login"] } satisfies Record<
+  AccountProviderId,
+  ReadonlyArray<string>
+>
+
+const shellQuote = (value: string) => (/^[\w./~-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`)
+
+export const loginCommand = (provider: AccountProviderId, home: AccountHome | null) =>
+  [
+    ...(home === null
+      ? [provider]
+      : [`${configDirVariable[provider]}=${shellQuote(home.dir)}`, shellQuote(home.binary)]),
+    ...loginArguments[provider],
+  ].join(" ")
+
 export const CLAUDE_EFFORT_LEVELS: ReadonlyArray<string> = ["low", "medium", "high", "xhigh", "max"]
 
 export const unlistedModel = (id: string, provider: ProviderId): ModelInfo => ({
@@ -286,6 +306,7 @@ export const AgentEvent = Schema.Union([
     type: Schema.Literal("turn_failed"),
     message: Schema.String,
     stopped: Schema.optional(Schema.Boolean),
+    loginCommand: Schema.optional(Schema.String),
   }),
   Schema.Struct({ type: Schema.Literal("turn_limited"), limit: UsageLimit }),
 ])
@@ -333,8 +354,24 @@ export const isPublishArtifactTool = (name: string) => publishTools.has(name)
 
 export const isPublishDocumentTool = (name: string) => name.endsWith(PUBLISH_DOCUMENT_TOOL) && publishTools.has(name)
 
-export const publishedArtifactId = (result: string) =>
-  /^Published (?:artifact|document) ([a-z0-9][a-z0-9-]*) version \d+/.exec(result)?.[1] ?? null
+export const publishedArtifact = (result: string): { id: string; version: number } | null => {
+  const [, id, version] = /^Published (?:artifact|document) ([a-z0-9][a-z0-9-]*) version (\d+)/.exec(result) ?? []
+  return id === undefined ? null : { id, version: Number(version) }
+}
+
+export const publishedArtifactId = (result: string) => publishedArtifact(result)?.id ?? null
+
+const textOfBlock = (block: unknown) =>
+  typeof block === "object" && block !== null && Reflect.get(block, "type") === "text"
+    ? String(Reflect.get(block, "text"))
+    : ""
+
+export const outputText = (output: unknown): string =>
+  typeof output === "string"
+    ? output
+    : Array.isArray(output)
+      ? output.map(textOfBlock).filter(Boolean).join("\n")
+      : JSON.stringify(output)
 
 export const CREATE_THREAD_TOOL = "create_thread"
 

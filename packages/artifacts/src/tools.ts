@@ -61,6 +61,13 @@ const readSource = async (sourcePath: string) => {
 
 const newNeedsTitle = { message: "Give a new artifact a title.", path: ["title"] }
 
+const autoOpen = z
+  .boolean()
+  .optional()
+  .describe(
+    "Open it beside the thread as soon as it is published. Set it on the first publish of what the developer asked for. Leave it off for updates and side results, which the thread shows as a card the developer can click.",
+  )
+
 export const artifactTools = {
   publish_artifact: tool({
     description: PUBLISH_GUIDE,
@@ -103,9 +110,10 @@ export const artifactTools = {
           )
           .min(1)
           .describe("Every file of this version. Files left out of an update are gone from the new version."),
+        auto_open: autoOpen,
       })
       .refine((input) => input.id !== undefined || input.title !== undefined, newNeedsTitle),
-    handle: async (store, input, { threadId }) => {
+    handle: async (store, { auto_open: _autoOpen, ...input }, { threadId }) => {
       const files = await Promise.all(
         input.files.map(async ({ sourcePath, ...file }) =>
           sourcePath === undefined
@@ -144,6 +152,7 @@ export const artifactTools = {
           .string()
           .optional()
           .describe(`Instead of markdown. ${describeSourcePath("the whole document")}`),
+        auto_open: autoOpen,
       })
       .refine((input) => (input.markdown === undefined) !== (input.sourcePath === undefined), {
         message: "Pass either markdown or sourcePath.",

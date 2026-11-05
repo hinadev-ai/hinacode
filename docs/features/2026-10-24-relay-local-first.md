@@ -13,7 +13,7 @@ Nothing to do. At home the phone, the iPad and every desktop connect to a machin
 
 ## Design
 
-`dialPlan(target)` in `src/shared/remote.ts` replaces `remoteSocketUrls`. It lists every direct address at delay 0 and the relay at `RELAY_DELAY_MS` (500 ms).
+`dialPlan(target)` in `src/shared/remote.ts` replaces `remoteSocketUrls`. It lists LAN addresses at delay 0, Tailscale addresses at `TAILSCALE_DELAY_MS` (150 ms) and the relay at `RELAY_DELAY_MS` (500 ms). A machine with only Tailscale addresses dials them at once. The LAN goes first because a phone at home with Tailscale on would otherwise settle on whichever answered first, and only a network change or a move off the relay races the addresses again.
 
 - **Race.** Each connection round opens a socket per dial after its delay. The first socket to open wins, and every other socket closes without receiving a frame, so the pairing token goes to the winner only. No socket open within the connect timeout is a lost link with the usual backoff. This replaces the sticky last-worked index on both clients.
 - **Move back.** While connected over the relay, a client opens the direct dials every `DIRECT_CHECK_INTERVAL_MS` (one minute) without authenticating, waits up to `DIRECT_CHECK_TIMEOUT_MS`, and when one opens it ends the relay session and dials the direct address at once. The phone checks only in the foreground and once on returning to it, and it already races again on every network change.

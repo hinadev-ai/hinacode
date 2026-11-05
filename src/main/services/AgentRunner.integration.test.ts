@@ -192,7 +192,7 @@ const withPreparingThread = async (
     usage: () => Effect.succeed(null),
     listCommands: () => Effect.succeed([]),
     runTurn: (input) =>
-      Stream.suspend((): Stream.Stream<AgentEvent> => {
+      Stream.suspend((): Stream.Stream<AgentEvent, AgentError> => {
         turns.push({ provider: id, input })
         turnStarted.resolve()
         turnStarted = Promise.withResolvers<void>()
@@ -224,6 +224,10 @@ const withPreparingThread = async (
             nativeSubagent("running"),
             completed,
           )
+        }
+        if (input.prompt === "is signed out") {
+          const loginCommand = "opencode auth login"
+          return Stream.fail(new AgentError({ provider: id, message: "opencode is not signed in", loginCommand }))
         }
         if (input.prompt === "calls a tool, then waits") {
           return Stream.fromIterable<AgentEvent>([
@@ -739,6 +743,21 @@ it("tells the agent the branch and paths it works in", async () => {
   })
 })
 
+it("hands the agent an artifact skill's instructions and keeps the message as typed", async () => {
+  await withPreparingThread(async (probe) => {
+    probe.release()
+    await Effect.runPromise(probe.runner.send(probe.thread.id, "/artifact:doc audit startup imports", []))
+    await vi.waitFor(() => expect(probe.turns).toHaveLength(1))
+
+    const prompt = probe.turns[0]?.input.prompt ?? ""
+    expect(prompt).toMatch(/^<hinacode-skill name="artifact:doc">\n/)
+    expect(prompt).toContain("<request>\naudit startup imports\n</request>")
+    const { messages } = await Effect.runPromise(probe.runner.transcript(probe.thread.id))
+    expect(messages[0]?.parts).toStrictEqual([{ type: "text", text: "/artifact:doc audit startup imports" }])
+    await Effect.runPromise(probe.runner.interrupt(probe.thread.id))
+  })
+})
+
 it("warms the session with the same input the next send runs its turn with", async () => {
   await withPreparingThread(async ({ runner, thread, turns, warms, idle, release }) => {
     release()
@@ -1243,6 +1262,17 @@ it("withdraws the requests a turn leaves unanswered when its stream ends without
         event: { type: "approval_resolved", requestId: "approval-1" },
       }),
     )
+  })
+})
+
+it("keeps the login command when the agent is signed out", async () => {
+  await withPreparingThread(async ({ runner, thread, release, idle, storedMessages }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "is signed out", []))
+    await idle
+    expect((await storedMessages(thread.id)).at(-1)?.parts).toEqual([
+      { type: "signed_out", message: "opencode is not signed in", loginCommand: "opencode auth login" },
+    ])
   })
 })
 
