@@ -41,7 +41,16 @@ interface VmScreenProps {
   readonly dropping: boolean
 }
 
+function DesktopOnlyVmScreen() {
+  return (
+    <div className="flex aspect-video w-full items-center justify-center rounded-md bg-muted p-6 text-center">
+      <p className="max-w-80 text-sm text-muted-foreground">{m.web_vm_screen_desktop_only()}</p>
+    </div>
+  )
+}
+
 export function VmScreen({ vm, ...rest }: VmScreenProps) {
+  if (vm.provider !== "boat" && inBrowser()) return <DesktopOnlyVmScreen />
   return vm.provider === "boat" ? (
     <BoatVmScreen control={vm.control} sandboxId={vm.sandboxId} {...rest} />
   ) : (

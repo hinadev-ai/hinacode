@@ -2445,6 +2445,7 @@
   "tool_skill_used": "スキル {skills} を使用",
   "web_sign_in_title": "relay にサインイン",
   "web_sign_in_body": "デスクトップ版の「設定 > 接続」で使うオーナートークンを貼り付けてください。",
+  "web_vm_screen_desktop_only": "Tiny VM の画面はデスクトップアプリでのみ開けます。",
   "web_owner_token": "オーナートークン",
   "web_relay_url": "Relay",
   "web_use_other_relay": "別の relay を使う",
