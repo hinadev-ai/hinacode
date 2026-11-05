@@ -11,4 +11,4 @@ export const resourceSrcSet = (srcSet: string) =>
         .join(", ")
     : srcSet
 
-export const servedSandbox = () => (inBrowser() ? undefined : "allow-scripts")
+export const servedSandbox = () => (inBrowser() ? "allow-scripts allow-same-origin" : "allow-scripts")
