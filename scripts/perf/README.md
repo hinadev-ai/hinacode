@@ -187,11 +187,11 @@ sqlite3 -readonly ~/.hinacode/hinacode.sqlite ".backup /tmp/kk-perf-real/hinacod
 node scripts/perf/partsMigration.ts /tmp/kk-perf-real/hinacode.sqlite
 ```
 
-## Runtime budget in CI
+## Runtime budget
 
-The `bundle-size` job builds the pull request and its base, then `budget.ts` launches each build in turn on the
-same seeded profile and posts the medians under the size table. The JS bundle loads from disk, so its size says
-little about how fast the app feels; these say more.
+`budget.ts` launches two builds, such as a pull request and its base, in turn on the same seeded profile and
+compares the medians. The JS bundle loads from disk, so its size says little about how fast the app feels; these
+say more.
 
 ```sh
 pnpm build                                                    # in both checkouts
