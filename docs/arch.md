@@ -654,7 +654,7 @@ flowchart LR
   fire --> thread["new automation thread"]
 ```
 
-- `pull_request_link.observed_status` is what makes a transition a fact. Its first value is recorded silently, and `merged` and `closed` are never read again.
+- `pull_request_link.observed_status` is what makes a transition a fact. Its first value is recorded silently, and only `merged` is never read again, because a closed pull request can reopen.
 - Threads started by an automation never fire automations, so a prompt that opens a pull request cannot loop.
 
 ## Security boundaries

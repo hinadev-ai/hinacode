@@ -108,7 +108,7 @@ const make = Effect.gen(function* () {
     Result: UnsettledLink,
     execute: () => sql`
       SELECT id, thread_id, url FROM pull_request_link
-      WHERE observed_status IS NULL OR observed_status NOT IN ('merged', 'closed')
+      WHERE observed_status IS NULL OR observed_status != 'merged'
     `,
   })
   const findObservedStatus = SqlSchema.findOneOption({
@@ -124,7 +124,7 @@ const make = Effect.gen(function* () {
           const current = yield* findObservedStatus(linkId)
           if (current._tag === "None") return null
           const previous = current.value.observedStatus
-          if (previous === status || previous === "merged" || previous === "closed") return null
+          if (previous === status || previous === "merged") return null
           yield* sql`UPDATE pull_request_link SET observed_status = ${status} WHERE id = ${linkId}`
           return { previous }
         }),
