@@ -1,5 +1,5 @@
 import { Duration, Effect, Option, Predicate, Schema } from "effect"
-import { PendingLink, RelayHostList, RelayMachineList } from "../../shared/relayMachines.ts"
+import { RelayHostList, RelayMachineList } from "../../shared/relayMachines.ts"
 
 export const EXPIRED = "The sign-in link expired. Turn on the relay again."
 
@@ -155,10 +155,6 @@ export const relayService = (fetch: Fetch, serviceUrl: string) => {
     removeHost: (credential: string, id: string) =>
       asAccount("remove the machine", "DELETE", `/v1/hosts/${encodeURIComponent(id)}`, credential).pipe(
         Effect.flatMap(succeeded("remove the machine")),
-      ),
-    pendingLink: (credential: string, userCode: string) =>
-      asAccount("find that link code", "GET", linkPath(userCode), credential).pipe(
-        Effect.flatMap((answer) => decode("find that link code", PendingLink, answer)),
       ),
     approveLink: (credential: string, userCode: string) =>
       asAccount("approve the link", "POST", linkPath(userCode), credential).pipe(

@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { describe, expect, it } from "@effect/vitest"
 import { Effect, Layer, Option, Fiber } from "effect"
-import type { PendingLink, RelayHost, RelayMachine } from "../../shared/relayMachines.ts"
+import type { RelayHost, RelayMachine } from "../../shared/relayMachines.ts"
 import * as Db from "../db/client.ts"
 import * as RemoteAccess from "../remote/access.ts"
 import type { Fetch } from "../remote/relayService.ts"
@@ -41,7 +41,7 @@ interface StandInRelay {
   profile: { name: string | null; email: string | null }
   machines: ReadonlyArray<RelayMachine>
   hosts: Array<RelayHost>
-  readonly links: Map<string, PendingLink>
+  readonly links: Map<string, { name: string; environmentId: string }>
   readonly approved: Array<string>
   onApprove: () => void
   onHostsListed: () => void
@@ -399,36 +399,6 @@ describe("RelayAccount", () => {
     )
   })
 
-  it.live("approves a link code, waits for the machine to publish, and adds it at once", () => {
-    const relay = standInRelay()
-    relay.links.set("ABCD-EFGH", { name: "agent-vm", environmentId: "agent-vm" })
-    const agentVm: RelayMachine = { ...homeServer, environmentId: "agent-vm", name: "agent-vm" }
-    relay.onApprove = () => {
-      let polls = 0
-      relay.onHostsListed = () => {
-        if (++polls !== 2) return
-        relay.hosts.push({ ...homeServerHost, id: "host-2", environmentId: "agent-vm", name: "agent-vm" })
-        relay.machines = [...relay.machines, agentVm]
-      }
-    }
-    return withAccount(
-      relay,
-      Effect.gen(function* () {
-        yield* signIn
-
-        expect(yield* account.use((relayAccount) => relayAccount.pendingLink("ABCD-EFGH"))).toStrictEqual({
-          name: "agent-vm",
-          environmentId: "agent-vm",
-        })
-        const hosts = yield* account.use((relayAccount) => relayAccount.approveLink("ABCD-EFGH"))
-
-        expect(relay.approved).toStrictEqual(["ABCD-EFGH"])
-        expect(hosts.map((host) => host.environmentId)).toStrictEqual(["home-server", "agent-vm"])
-        expect((yield* listed).map((environment) => environment.id)).toContain("agent-vm")
-      }),
-    )
-  })
-
   it.live("approves this desktop's own link while signed in", () => {
     const relay = standInRelay()
     relay.links.set("SELF-CODE", { name: "this-desktop", environmentId: "this-desktop" })
@@ -457,7 +427,6 @@ describe("RelayAccount", () => {
 
   it.live("a refused credential on any machine call says to sign in again", () => {
     const relay = standInRelay()
-    relay.links.set("ABCD-EFGH", { name: "agent-vm", environmentId: "agent-vm" })
     return withAccount(
       relay,
       Effect.gen(function* () {
@@ -468,8 +437,6 @@ describe("RelayAccount", () => {
           account.use((relayAccount) => relayAccount.machines),
           account.use((relayAccount) => relayAccount.setShown({ id: "host-1", enabled: false })),
           account.use((relayAccount) => relayAccount.removeMachine({ id: "host-1" })),
-          account.use((relayAccount) => relayAccount.pendingLink("ABCD-EFGH")),
-          account.use((relayAccount) => relayAccount.approveLink("ABCD-EFGH")),
         ]
         for (const call of calls) {
           expect((yield* Effect.flip(call)).message).toMatch(/no longer accepts this device/)

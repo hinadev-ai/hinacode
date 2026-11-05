@@ -82,7 +82,7 @@ const hostRow = (environmentId = "env-1") =>
 describe("linking", () => {
   it("is pending until approved, then hands out a credential once", async () => {
     const link = await startLink()
-    expect(link.userCode).toMatch(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/)
+    expect(link.userCode).toMatch(/^[A-Za-z0-9_-]{22}$/)
     expect(link.url).toBe(`https://relay.test/link?code=${link.userCode}`)
     expect(link.interval).toBe(5)
     expect(link.expiresAt).toBe(clock + 10 * 60 * 1000)
@@ -93,7 +93,7 @@ describe("linking", () => {
     expect(await (await claim(link.deviceCode)).json()).toEqual({ pending: true })
     expect((await claim(link.deviceCode)).status).toBe(202)
 
-    const prompt = await call("GET", `/v1/links/${link.userCode.toLowerCase()}`, { bearer: "alice-session" })
+    const prompt = await call("GET", `/v1/links/${link.userCode}`, { bearer: "alice-session" })
     expect(await prompt.json()).toEqual({ kind: "machine", name: "home-mac", environmentId: "env-1" })
     expect((await approve(link.userCode)).status).toBe(204)
 
@@ -420,6 +420,23 @@ describe("the machines the owner's devices see", () => {
     expect(JSON.parse(row!.pairing)).toEqual(PAIRING)
     expect(row?.enabled).toBe(0)
     expect((await publish(second)).status).toBe(204)
+  })
+})
+
+describe("the code in a link", () => {
+  it("is too long to guess, and only the exact code finds the link", async () => {
+    const link = await startLink()
+    expect(link.userCode).toMatch(/^[A-Za-z0-9_-]{22}$/)
+    const flipped = link.userCode.replace(/[A-Za-z]/, (letter) =>
+      letter === letter.toLowerCase() ? letter.toUpperCase() : letter.toLowerCase(),
+    )
+    expect((await call("GET", `/v1/links/${flipped}`, { bearer: "alice-session" })).status).toBe(404)
+  })
+
+  it("does not approve anything by being read after signing in", async () => {
+    const link = await startLink()
+    expect((await call("GET", `/v1/links/${link.userCode}`, { bearer: "alice-session" })).status).toBe(200)
+    expect((await claim(link.deviceCode)).status).toBe(202)
   })
 })
 

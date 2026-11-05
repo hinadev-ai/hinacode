@@ -29,6 +29,3 @@ export const RelayHost = Schema.Struct({
 export type RelayHost = typeof RelayHost.Type
 
 export const RelayHostList = Schema.Struct({ hosts: Schema.Array(RelayHost) })
-
-export const PendingLink = Schema.Struct({ name: Schema.String, environmentId: Schema.String })
-export type PendingLink = typeof PendingLink.Type

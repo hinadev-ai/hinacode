@@ -20,7 +20,6 @@ const LINK_TTL_MS = 10 * 60 * 1000
 const POLL_INTERVAL_S = 5
 const MAX_HOSTS = 5
 const DEVICE_LINK_NEEDS_SESSION = "Approve this sign-in on the relay page in your browser."
-const USER_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 const Label = Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(64))
 const NewLink = Schema.Struct({
@@ -52,11 +51,6 @@ const toBase64Url = (bytes: Uint8Array) =>
 
 export const sha256 = async (value: string) =>
   toHex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))))
-
-const normalizeUserCode = (code: string) => {
-  const plain = code.toUpperCase().replace(/[^A-Z0-9]/g, "")
-  return `${plain.slice(0, 4)}-${plain.slice(4)}`
-}
 
 const hostnameOf = (env: Env, host: Pick<Host, "id">) => `${host.id}.${env.TUNNEL_ZONE_NAME}`
 
@@ -96,7 +90,7 @@ export const makeApp = (deps: Deps) => {
   }
 
   const pendingLink = (env: Env, userCode: string) =>
-    runStore(env.DB, (store) => store.unexpiredLink({ userCode: normalizeUserCode(userCode), now: deps.now() }))
+    runStore(env.DB, (store) => store.unexpiredLink({ userCode: userCode, now: deps.now() }))
 
   const removeHost = async (env: Env, host: Host) => {
     const api = cloudflare(env)
@@ -117,8 +111,7 @@ export const makeApp = (deps: Deps) => {
   const startLink = async (c: Context<App>, link: Pick<Link, "kind" | "environmentId" | "name">) => {
     const now = deps.now()
     const deviceCode = toBase64Url(deps.random(32))
-    const letters = Array.from(deps.random(8), (byte) => USER_CODE_ALPHABET[byte % USER_CODE_ALPHABET.length])
-    const userCode = normalizeUserCode(letters.join(""))
+    const userCode = toBase64Url(deps.random(16))
     const expiresAt = now + LINK_TTL_MS
     const deviceCodeHash = await sha256(deviceCode)
     await runStore(c.env.DB, (store) => store.createLink({ deviceCodeHash, userCode, ...link, expiresAt }, now))
@@ -155,13 +148,13 @@ export const makeApp = (deps: Deps) => {
     const now = deps.now()
     if (Option.isNone(found) || found.value.expiresAt <= now) {
       await runStore(c.env.DB, (store) => store.deleteLink(deviceCodeHash))
-      return fail(c, 410, "The link code expired. Start linking again.")
+      return fail(c, 410, "The link expired. Start linking again.")
     }
     const { userId, environmentId, name, kind } = found.value
     if (!userId) return c.json({ pending: true }, 202)
 
     const taken = await runStore(c.env.DB, (store) => store.deleteLink(deviceCodeHash))
-    if (!taken) return fail(c, 410, "The link code was already used. Start linking again.")
+    if (!taken) return fail(c, 410, "The link was already used. Start linking again.")
 
     const credential = toBase64Url(deps.random(32))
     if (kind === "device") {
@@ -191,7 +184,7 @@ export const makeApp = (deps: Deps) => {
     if (!(await verifyUser(c))) return fail(c, 401, "Sign in first.")
     const link = await pendingLink(c.env, c.req.param("userCode"))
     if (Option.isNone(link)) {
-      return fail(c, 404, "This link code expired or does not exist. Start linking again in HinaCode.")
+      return fail(c, 404, "This link expired or does not exist. Start linking again in HinaCode.")
     }
     if (await refusesDeviceLink(c, link.value)) return fail(c, 403, DEVICE_LINK_NEEDS_SESSION)
     return c.json({ kind: link.value.kind, name: link.value.name, environmentId: link.value.environmentId })
@@ -202,7 +195,7 @@ export const makeApp = (deps: Deps) => {
     if (!userId) return fail(c, 401, "Sign in first.")
     const found = await pendingLink(c.env, c.req.param("userCode"))
     if (Option.isNone(found)) {
-      return fail(c, 404, "This link code expired or does not exist. Start linking again in HinaCode.")
+      return fail(c, 404, "This link expired or does not exist. Start linking again in HinaCode.")
     }
     const link = found.value
     if (link.userId && link.userId !== userId) return fail(c, 409, "Another account already approved this machine.")

@@ -204,12 +204,6 @@ export const removeRelayMachineAtom = Atom.fn((id: string) =>
   relayMachinesAction(call("relayAccount.removeMachine", { id })),
 )
 
-export const pendingRelayLinkAtom = Atom.fn((userCode: string) => call("relayAccount.pendingLink", { userCode }))
-
-export const approveRelayLinkAtom = Atom.fn((userCode: string) =>
-  relayMachinesAction(call("relayAccount.approveLink", { userCode })),
-)
-
 export const modelsAtom = familyOf((environment: EnvironmentId, provider: ProviderId) =>
   Atom.make(call("models.list", { provider }, { environment })).pipe(Atom.keepAlive),
 )

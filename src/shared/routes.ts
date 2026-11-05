@@ -75,8 +75,6 @@ export const routes: Record<RpcMethod, Route> = {
   "relayAccount.machines": client,
   "relayAccount.setShown": client,
   "relayAccount.removeMachine": client,
-  "relayAccount.pendingLink": client,
-  "relayAccount.approveLink": client,
   "updates.status": named,
   "updates.check": named,
   "updates.install": named,

@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { createRequire } from "node:module"
 import { homedir } from "node:os"
@@ -13,8 +14,15 @@ import { chromiumDir, desktopPid, isAlive } from "./dataDir.ts"
 import * as Db from "./db/client.ts"
 import { layer as RemoteAccessLayer, RemoteAccess } from "./remote/access.ts"
 import { storedTunnel } from "./remote/relay.ts"
-import type { RelayLink } from "./remote/relayService.ts"
-import { applyServeRelay, autoUpdate, restartCommand, serveConfig, type ServeFlags } from "./serve.ts"
+import {
+  applyServeRelay,
+  autoUpdate,
+  browserCommand,
+  linkInstructions,
+  restartCommand,
+  serveConfig,
+  type ServeFlags,
+} from "./serve.ts"
 import { layer as SecretsLayer, noKeyring } from "./services/Secrets.ts"
 import { layer as SettingsLayer, Settings } from "./services/Settings.ts"
 import { hydratePath } from "./shellPath.ts"
@@ -71,10 +79,17 @@ const pairingText = async (userData: string, pairing: RemotePairing) => {
   ].join("\n")
 }
 
-const printLink = ({ url, userCode }: RelayLink) =>
-  Effect.sync(() =>
-    process.stdout.write(`Open ${url} to link this cloud to your HinaCode account. The code is ${userCode}.\n`),
-  )
+const openInBrowser = (url: string) => {
+  const command = process.stdout.isTTY ? browserCommand(url, process.platform, process.env) : null
+  if (command === null) return
+  try {
+    const browser = spawn(command.file, [...command.args], { detached: true, stdio: "ignore" })
+    browser.on("error", () => {})
+    browser.unref()
+  } catch (cause) {
+    console.warn("could not open a browser", cause)
+  }
+}
 
 const listening = async (runtime: ManagedRuntime.ManagedRuntime<RemoteAccess | Settings, unknown>) => {
   const deadline = Date.now() + LISTEN_TIMEOUT_MS
@@ -134,7 +149,17 @@ export const serve = async (flags: ServeFlags, userData: string) => {
   await runtime.runPromise(Effect.void)
   await listening(runtime)
   try {
-    await runtime.runPromise(applyServeRelay(config.relay, printLink))
+    let linking = false
+    await runtime.runPromise(
+      applyServeRelay(config.relay, ({ url }) =>
+        Effect.sync(() => {
+          linking = true
+          process.stdout.write(linkInstructions(url))
+          openInBrowser(url)
+        }),
+      ),
+    )
+    if (linking) process.stdout.write("Linked.\n")
   } catch (error) {
     await runtime.dispose()
     throw error
