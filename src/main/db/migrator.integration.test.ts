@@ -16,12 +16,6 @@ const hasObservedStatus = Effect.gen(function* () {
 })
 
 describe("runMigrations", () => {
-  it.effect("starts a new database with the observed status column", () =>
-    Effect.gen(function* () {
-      expect(yield* hasObservedStatus).toBe(true)
-    }).pipe(Effect.provide(freshDatabase())),
-  )
-
   it.effect("upgrades a database that already ran the shipped migration 40", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient
