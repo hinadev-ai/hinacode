@@ -357,6 +357,7 @@ describe("Relay", () => {
           expect(yield* until((status) => status.state === "linking")).toStrictEqual({
             state: "linking",
             url: LINK_URL,
+            userCode: "WXYZ-2345",
           })
           expect(service.calls[0]).toMatchObject({
             call: "POST /v1/links",

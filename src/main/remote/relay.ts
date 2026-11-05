@@ -284,7 +284,7 @@ const make = ({
             const credential = yield* secrets.get(CREDENTIAL_SECRET)
             if (Option.isSome(credential)) return yield* Effect.as(linked(credential.value), null)
             const link = yield* service.createLink(access.identity.id, access.identity.name)
-            yield* publish({ state: "linking", url: link.url })
+            yield* publish({ state: "linking", url: link.url, userCode: link.userCode })
             yield* onLink({ url: link.url, userCode: link.userCode })
             return yield* FiberHandle.run(linking, claimUntilApproved(link))
           }),
