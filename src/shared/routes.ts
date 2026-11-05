@@ -178,6 +178,7 @@ export const routes: Record<RpcMethod, Route> = {
   "subagents.transcript": thread,
   "backgroundTasks.list": thread,
   "backgroundTasks.stop": thread,
+  "backgroundTasks.moveCommand": thread,
   "pullRequests.list": thread,
   "pullRequests.unlink": thread,
   "pullRequests.create": thread,

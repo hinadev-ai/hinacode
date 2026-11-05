@@ -91,7 +91,7 @@ const make = ({ current, packageRoot, registry, restart, autoInstall }: CloudUpd
               "--allow-scripts=node-pty",
               `hinacode@${version}`,
             ],
-            { env: npmEnv, encoding: "utf8", timeout: INSTALL_TIMEOUT_MS },
+            { env: npmEnv, encoding: "utf8", timeout: INSTALL_TIMEOUT_MS, killSignal: "SIGKILL" },
           ),
         catch: (cause) =>
           new Error((cause as { stderr?: string }).stderr?.trim().split("\n").slice(-3).join("\n") || String(cause)),
