@@ -85,7 +85,11 @@ const pressOn = async (page: import("@playwright/test").Page, source: string) =>
 
 // FIXME: over CDP Chromium fires dragover only on a move within the element a previous move entered, and the row's name is a child element
 const dragOver = async (page: import("@playwright/test").Page, name: string) => {
-  for (const x of [40, 44, 46, 48]) await treeRow(page, name).hover({ position: { x, y: 12 } })
+  const row = treeRow(page, name)
+  await expect(async () => {
+    for (const x of [40, 44, 46, 48]) await row.hover({ position: { x, y: 12 } })
+    await expect(row).toHaveAttribute("data-drop-target", "true", { timeout: 500 })
+  }).toPass()
 }
 
 When(

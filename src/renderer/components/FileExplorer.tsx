@@ -674,6 +674,7 @@ function TreeItem({
     <div
       id={id}
       role="treeitem"
+      data-drop-target={dropEdges !== null}
       aria-level={depth + 1}
       aria-setsize={row.setSize}
       aria-posinset={row.posInSet}
