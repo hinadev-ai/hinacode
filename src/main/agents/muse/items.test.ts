@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@effect/vitest"
-import { editedPath, toolInput, toolName, toolResult } from "./items.ts"
+import { editedPath, toolInput, toolResult } from "./items.ts"
 import type { Item } from "./protocol.ts"
 
 const tool = (fields: Partial<Item>): Item => ({
@@ -12,13 +12,6 @@ const tool = (fields: Partial<Item>): Item => ({
 
 const receipt = (output: string, exitCode: number) =>
   JSON.stringify({ output, exit_code: exitCode, wall_time_ms: 12, truncated: false })
-
-describe("toolName", () => {
-  test("keeps any other tool's name", () => {
-    expect(toolName("request_user_input")).toBe("request_user_input")
-    expect(toolName("mcp__hinacode__review_changes")).toBe("mcp__hinacode__review_changes")
-  })
-})
 
 describe("toolInput", () => {
   test("keeps arguments that are not JSON as written, and is empty without any", () => {

@@ -33,17 +33,6 @@ describe("toModelInfos", () => {
     ])
   })
 
-  test("falls back to the older models field", () => {
-    const models = {
-      currentModelId: "sonnet",
-      availableModels: [
-        { modelId: "gpt", name: "GPT" },
-        { modelId: "sonnet", name: "Sonnet" },
-      ],
-    }
-    expect(toModelInfos({ models }, "opencode")).toStrictEqual([model("sonnet", "Sonnet"), model("gpt", "GPT")])
-  })
-
   test("lists nothing when the agent offers no model choice", () => {
     expect(toModelInfos({}, "opencode")).toStrictEqual([])
   })

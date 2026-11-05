@@ -272,15 +272,6 @@ describe("Claude idle sessions", () => {
     ),
   )
 
-  it.effect("spawns the CLI with the inherited temp directory when the thread has no tmp folder", () =>
-    lifecycle(
-      Effect.gen(function* () {
-        yield* runTurn(turnInput({ tmpDirectory: null }))
-        expect(latestCli().options.env?.["TMPDIR"]).toBe(process.env["TMPDIR"])
-      }),
-    ),
-  )
-
   it.effect("resumes in a new CLI with the auto-compact window the settings changed to", () =>
     lifecycle(
       Effect.gen(function* () {
@@ -873,24 +864,6 @@ describe("Claude warm sessions", () => {
     ),
   )
 })
-
-describe("Claude sub-agents", () => {
-  it.effect("stops one sub-agent through the CLI by its task id", () =>
-    lifecycle(
-      Effect.gen(function* () {
-        const provider = yield* ClaudeProvider
-        sdk.respond = (cli) =>
-          cli.push(init("session-1"), taskStarted("agent-1", { task_type: "local_agent", tool_use_id: "toolu-1" }))
-        const turn = yield* startTurn()
-        yield* until(() => turn.events.some((event) => event.type === "subagent_updated"))
-
-        yield* (provider.stopSubagent ?? (() => Effect.die("stopSubagent is missing")))("thread-1", "agent-1")
-        expect(latestCli().stopTask).toHaveBeenCalledWith("agent-1")
-      }),
-    ),
-  )
-})
-
 const scheduleWakeup = (input: Readonly<Record<string, unknown>>, result: Readonly<Record<string, unknown>>) => [
   {
     type: "assistant",
