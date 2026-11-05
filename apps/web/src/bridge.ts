@@ -30,6 +30,11 @@ export const connectMachines = ({
     for (const listener of listeners) listener(event)
   }
   const statuses = new Map<string, EnvironmentStatus>()
+  const waitingToConnect = new Map<string, Array<() => void>>()
+  const connected = (id: string) =>
+    statuses.get(id) === "connected"
+      ? Promise.resolve()
+      : new Promise<void>((resolve) => waitingToConnect.set(id, [...(waitingToConnect.get(id) ?? []), resolve]))
   const secure = location.protocol === "https:"
 
   const connect = (machine: RelayMachine) => {
@@ -44,6 +49,9 @@ export const connectMachines = ({
       onStatus: (status) => {
         statuses.set(id, status)
         emit({ type: "environment.status", id, status })
+        if (status !== "connected") return
+        for (const resume of waitingToConnect.get(id) ?? []) resume()
+        waitingToConnect.delete(id)
       },
       onReady: () => {},
       onEvent: (event) => emit(encodePush(route.push(id, event))),
@@ -52,6 +60,7 @@ export const connectMachines = ({
       id,
       name: machine.name,
       status: () => statuses.get(id) ?? "offline",
+      connected: () => connected(id),
       call: (method, payload) =>
         transport.call(method, payload).catch((error: Error) => ({
           error: { tag: error instanceof RpcError ? error.tag : "Offline", message: error.message },

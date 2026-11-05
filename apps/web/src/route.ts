@@ -9,11 +9,13 @@ import {
   stampPush,
 } from "../../../src/shared/owners.ts"
 import { routes } from "../../../src/shared/routes.ts"
+import { OFFLINE_LIMIT_MS } from "../../../src/shared/transport.ts"
 
 export interface MachineLink {
   readonly id: string
   readonly name: string
   readonly status: () => EnvironmentStatus
+  readonly connected: () => Promise<void>
   readonly call: (method: RpcMethod, payload: unknown) => Promise<RpcEnvelope<unknown>>
 }
 
@@ -34,11 +36,17 @@ const desktopOnly = (method: RpcMethod): RpcEnvelope<never> => ({
   error: { tag: "DesktopOnly", message: `${method} is only available in the desktop app` },
 })
 
-const within = <A>(ms: number, promise: Promise<A>) =>
-  Promise.race([promise, new Promise<undefined>((resolve) => setTimeout(resolve, ms))])
+const within = <A>(ms: number, promise: Promise<A>) => {
+  let cancel: (() => void) | undefined
+  const timeout = new Promise<undefined>((resolve) => {
+    const timer = setTimeout(resolve, ms)
+    cancel = () => clearTimeout(timer)
+  })
+  return Promise.race([promise, timeout]).finally(() => cancel?.())
+}
 
 const noMachine: RpcEnvelope<never> = {
-  error: { tag: "NotFoundError", message: "The relay lists no machines" },
+  error: { tag: "Offline", message: "No machine is online" },
 }
 
 export const makeRoute = ({
@@ -72,9 +80,11 @@ export const makeRoute = ({
     return last?.payload === JSON.stringify(payload ?? null) && Array.isArray(last.result) ? last.result : []
   }
 
-  const anyMachine = () => {
+  const firstConnected = async () => {
     const all = [...machines.values()]
-    return all.find((machine) => machine.status() === "connected") ?? all[0]
+    const online = all.find((machine) => machine.status() === "connected")
+    if (online !== undefined || all.length === 0) return online
+    return within(OFFLINE_LIMIT_MS, Promise.race(all.map((machine) => machine.connected().then(() => machine))))
   }
 
   const call = async (method: RpcMethod, payload: unknown, environment?: string): Promise<RpcEnvelope<unknown>> => {
@@ -94,7 +104,7 @@ export const makeRoute = ({
       const lists = await Promise.all([...machines.values()].map((machine) => gatherFrom(machine, method, payload)))
       return { result: lists.flat() }
     }
-    const fallback = anyMachine()
+    const fallback = await firstConnected()
     return fallback === undefined ? noMachine : forward(fallback.id, method, payload)
   }
 
