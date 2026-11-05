@@ -16,6 +16,7 @@ import { useSidebarGroups } from "../lib/useSidebarGroups.ts"
 import { type InboxGroup, inboxGroup, rowState } from "../../shared/threadStatus.ts"
 import { openPullRequestsAtom, pullRequestAttentionsAtom } from "../lib/rpc.ts"
 import { useBackgroundTasks } from "../stores/backgroundTasks.ts"
+import { useSending } from "../stores/sending.ts"
 import { type Draft, hasContent, useDrafts } from "../stores/drafts.ts"
 import { useUnseen } from "../stores/unseen.ts"
 import { loadAllPullRequestsAtom, usePullRequests } from "../stores/pullRequests.ts"
@@ -425,6 +426,7 @@ function useInboxGroups(threads: ReadonlyArray<Thread>, now: number) {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
   const unseen = useUnseen((state) => state.byThreadId)
   const background = useBackgroundTasks((state) => state.byThreadId)
+  const sending = useSending((state) => state.threadIds)
   const links = usePullRequests((state) => state.byThreadId)
   const lookups = threads.map((thread) => {
     const project = projects.find((candidate) => candidate.id === thread.projectId)
@@ -435,7 +437,7 @@ function useInboxGroups(threads: ReadonlyArray<Thread>, now: number) {
   const entries = threads.map((thread, index) => {
     const state = rowState(
       thread.status,
-      (background[thread.id]?.length ?? 0) > 0,
+      (background[thread.id]?.length ?? 0) > 0 || sending.has(thread.id),
       unseen[thread.id],
       attentions[index],
     )
