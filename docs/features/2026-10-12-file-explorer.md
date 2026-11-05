@@ -12,7 +12,7 @@ The side panel also outgrew its tabs. Details carried the workspace, setup log, 
 ## User flow
 
 1. Open a thread. The right edge shows the activity bar: Details, Files, Changes, Git, Pull requests and Agents, top to bottom. Agents carries a badge with the number of running subagents.
-2. Click an icon or press its shortcut to show that view to the left of the bar, with focus inside it. Clicking the shown view's icon or pressing its shortcut again hides the panel. `mod+.` still shows and hides the panel. Each thread remembers its view; a thread opened for the first time shows the view picked last.
+2. Click an icon or press its shortcut to show that view to the left of the bar, with focus inside it. Clicking the shown view's icon or pressing its shortcut again hides the panel. `mod+.` still shows and hides the panel. Each thread remembers its view; a thread opened for the first time shows the view picked last, other than Browser, whose pages belong to one thread.
 3. In the bar, Up and Down move between icons, Home and End jump, Enter or Space shows one. The tooltip names the view and its shortcut.
 4. Files shows the thread's working directory: its worktree, or the project root. Folders come first, then files, sorted case-insensitively. `.git` is hidden.
 5. Changed entries are colored and carry a letter: amber M modified, emerald A added or U untracked, red C conflict. A folder takes the color of what changed inside it. Gitignored entries are dimmed.
