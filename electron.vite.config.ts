@@ -11,7 +11,9 @@ process.env.ELECTRON_EXEC_PATH ??= createRequire(import.meta.url)("electron")
 export default defineConfig({
   main: {
     plugins: [paraglide()],
+    esbuild: { minifyIdentifiers: false, minifySyntax: false },
     build: {
+      minify: "esbuild",
       rollupOptions: { input: { index: "src/main/boot.ts", main: "src/main/index.ts" } },
       // FIXME: electron-vite bundles optional dependencies, which breaks these native modules' binding lookup
       externalizeDeps: {
