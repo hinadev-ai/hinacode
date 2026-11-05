@@ -32,6 +32,13 @@ test("reloading goes straight back to the app", async ({ page, web }) => {
   await expect(page.getByRole("textbox", { name: "Owner token", exact: true })).toHaveCount(0)
 })
 
+test("a hard reload, which skips the service worker, still loads the app", async ({ page, web }) => {
+  await openSignedIn(page, web)
+  const devtools = await page.context().newCDPSession(page)
+  await devtools.send("Page.reload", { ignoreCache: true })
+  await expect(sidebar(page)).toBeVisible()
+})
+
 test("a project added by path talks to the agent on the machine", async ({ page, web, repo, uniqueName }) => {
   const project = uniqueName("web")
   await openSignedIn(page, web)
