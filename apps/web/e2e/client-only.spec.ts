@@ -24,6 +24,14 @@ const recordLocalLoads = (page: Page) => {
   return urls
 }
 
+const recordPolicyViolations = (page: Page) => {
+  const violations: Array<string> = []
+  page.on("console", (message) => {
+    if (message.text().includes("Content Security Policy")) violations.push(message.text())
+  })
+  return violations
+}
+
 const LOCAL_MACHINE_CONTROLS = [/^This machine$/, /^Browse…$/, /^Reveal in /, /^Open with/, /^Export/]
 
 const expectNoLocalMachineControls = async (page: Page) => {
@@ -56,6 +64,7 @@ test.describe("the web app is a client of remote machines", () => {
     writeFileSync(join(repo, "notes.md"), "# Notes\n")
     const methods = recordMachineCalls(page)
     const localLoads = recordLocalLoads(page)
+    const violations = recordPolicyViolations(page)
 
     await openSignedIn(page, web)
     await addProject(page, repo, project)
@@ -69,6 +78,7 @@ test.describe("the web app is a client of remote machines", () => {
     expect(methods).toContain("projects.create" satisfies RpcMethod)
     expect([...methods].filter((method) => desktopOnlyMethods.has(method as RpcMethod))).toEqual([])
     expect(localLoads).toEqual([])
+    expect(violations).toEqual([])
   })
 
   test("it offers no local machine and no local files", async ({ page, web, repo, uniqueName }) => {
