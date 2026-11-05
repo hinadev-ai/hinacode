@@ -1,6 +1,6 @@
 import type { AgentCommand } from "./agent.ts"
-import type { PullRequestMatch, Thread } from "./domain.ts"
-import { type MentionableThreads, mentionedThreadId, threadMention } from "./threadMention.ts"
+import type { PullRequestMatch, TerminalSession, Thread } from "./domain.ts"
+import { type MentionableThreads, parseMention, terminalMention, threadMention } from "./mentions.ts"
 
 export type SyntaxKind = "text" | "bullet" | "code" | "strong" | "rule" | "command" | "mention"
 
@@ -8,6 +8,7 @@ export interface KnownTokens {
   readonly commands: ReadonlySet<string>
   readonly files: ReadonlySet<string>
   readonly threads: ReadonlySet<string>
+  readonly terminals: ReadonlySet<string>
 }
 
 export interface Span {
@@ -53,8 +54,11 @@ const classify = (token: string, known: KnownTokens): { kind: SyntaxKind; text: 
   if (token.startsWith("**")) return { kind: "strong", text: token }
   if (token.startsWith("@")) {
     const mention = token.replace(TRAILING_PUNCTUATION, "")
-    const threadId = mentionedThreadId(mention)
-    const isKnown = threadId === null ? known.files.has(mention.slice(1)) : known.threads.has(threadId)
+    const parsed = parseMention(mention)
+    const isKnown =
+      parsed === null
+        ? known.files.has(mention.slice(1))
+        : (parsed.kind === "thread" ? known.threads : known.terminals).has(parsed.id)
     return isKnown ? { kind: "mention", text: mention } : null
   }
   return known.commands.has(token) ? { kind: "command", text: token } : null
@@ -407,6 +411,16 @@ export function matchThreads<T extends Pick<Thread, "title">>(threads: ReadonlyA
   return [...titleStarts, ...titleContains]
 }
 
+export interface MentionableTerminal {
+  readonly session: TerminalSession
+  readonly label: string
+}
+
+export function matchTerminals(terminals: ReadonlyArray<MentionableTerminal>, query: string) {
+  const needle = query.toLowerCase()
+  return terminals.filter((terminal) => terminal.label.toLowerCase().includes(needle))
+}
+
 export function matchPullRequests<T extends Pick<PullRequestMatch, "number" | "title">>(
   pullRequests: ReadonlyArray<T>,
   query: string,
@@ -423,6 +437,12 @@ export type Suggestion =
   | { readonly type: "command"; readonly insert: string; readonly command: AgentCommand }
   | { readonly type: "file"; readonly insert: string; readonly path: string }
   | { readonly type: "thread"; readonly insert: string; readonly thread: Thread }
+  | {
+      readonly type: "terminal"
+      readonly insert: string
+      readonly session: TerminalSession
+      readonly label: string
+    }
   | { readonly type: "pullRequest"; readonly insert: string; readonly pullRequest: PullRequestMatch }
 
 export const suggestionsFor = (
@@ -430,6 +450,7 @@ export const suggestionsFor = (
   commands: ReadonlyArray<AgentCommand>,
   files: ReadonlyArray<string>,
   threads: MentionableThreads<Thread>,
+  terminals: ReadonlyArray<MentionableTerminal>,
   matchedPullRequests: ReadonlyArray<PullRequestMatch>,
 ): ReadonlyArray<Suggestion> => {
   const { trigger } = completion
@@ -447,6 +468,12 @@ export const suggestionsFor = (
             type: "thread",
             insert: threadMention(thread.id),
             thread,
+          })),
+          ...matchTerminals(terminals, completion.query).map(({ session, label }): Suggestion => ({
+            type: "terminal",
+            insert: terminalMention(session.id),
+            session,
+            label,
           })),
           ...matchFiles(files, completion.query).map((path): Suggestion => ({
             type: "file",

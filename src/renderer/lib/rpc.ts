@@ -1,6 +1,6 @@
 import { Duration, Effect, Option, Schedule, Schema, Stream } from "effect"
 import { AsyncResult, Atom } from "effect/reactivity"
-import type { AgentCommand, ProviderId } from "../../shared/agent.ts"
+import { type AgentCommand, ProviderId } from "../../shared/agent.ts"
 import {
   PushEvent,
   type RpcMethod,
@@ -9,6 +9,7 @@ import {
   type RpcResponse,
   transcriptThreadId,
 } from "../../shared/contract.ts"
+import { looksLikeDirectoryPath } from "../../shared/directoryPath.ts"
 import type { Thread } from "../../shared/domain.ts"
 import { PULL_REQUEST_REFRESH } from "../../shared/github.ts"
 import { msUntilNextReset } from "../../shared/planLimits.ts"
@@ -219,6 +220,13 @@ export const accountAtom = familyOf((environment: EnvironmentId, provider: Provi
   Atom.make(call("agents.account", { provider, accountId }, { environment })),
 )
 
+const isSetUp = (account: AsyncResult.AsyncResult<RpcResponse<"agents.account">, RpcError>) =>
+  AsyncResult.isInitial(account) || (AsyncResult.isSuccess(account) && account.value.type !== "signedOut")
+
+export const setUpProvidersAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.make((get) => ProviderId.literals.filter((provider) => isSetUp(get(accountAtom(environment, provider, null))))),
+)
+
 export const refreshAccountAtom = Atom.fn(
   ({
     environment,
@@ -309,6 +317,12 @@ export const pullRequestSearchAtom = familyOf((projectId: string, query: string 
   Atom.make(query === null ? Effect.succeed([]) : call("projects.searchPullRequests", { id: projectId, query })).pipe(
     Atom.setIdleTTL("1 minute"),
   ),
+)
+
+export const directorySuggestionsAtom = familyOf((environment: EnvironmentId, path: string) =>
+  Atom.make(
+    looksLikeDirectoryPath(path) ? call("fs.completeDirectory", { path }, { environment }) : Effect.succeed([]),
+  ).pipe(Atom.setIdleTTL("10 seconds")),
 )
 
 export const defaultBranchAtom = Atom.family((projectId: string) =>

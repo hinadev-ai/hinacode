@@ -1,21 +1,8 @@
-import { useAtomSuspense } from "@effect/atom-react"
 import { cn } from "cn"
-import { Effect } from "effect"
-import { AsyncResult, Atom } from "effect/reactivity"
-import {
-  createContext,
-  isValidElement,
-  type ComponentProps,
-  type ReactNode,
-  Suspense,
-  use,
-  useDeferredValue,
-  useState,
-} from "react"
+import { createContext, isValidElement, type ComponentProps, type ReactNode, Suspense, use, useState } from "react"
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { externalImageUrl, githubAssetUrl } from "../../shared/channels.ts"
-import type { Appearance } from "../../shared/domain.ts"
 import { useTheme } from "../lib/appearance.ts"
 import { useOpenThreadEnvironment } from "../lib/environments.ts"
 import { imageSource, imageSrcSet } from "../lib/imageSource.ts"
@@ -28,16 +15,18 @@ import {
   type ServiceBadge,
 } from "../lib/htmlInMarkdown.ts"
 import { remarkKbd } from "../lib/remarkKbd.ts"
+import { remarkMentions } from "../lib/remarkMentions.ts"
 import { remarkPullRequests } from "../lib/remarkPullRequests.ts"
-import { familyOf } from "../lib/rpc.ts"
 import { useClientSettings } from "../lib/settings.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
-import { useDebouncedValue } from "../lib/useDebouncedValue.ts"
 import { ThreadFolder } from "../lib/threadRoot.ts"
 import { m } from "../paraglide/messages.js"
 import { CopyButton } from "./CopyButton.tsx"
 import { FindPartContext, rehypeFindMarks, useFindPattern } from "./FindHighlight.tsx"
 import { HighlightedCode } from "./HighlightedCode.tsx"
+import { Mention } from "./Mention.tsx"
+import { MentionThread } from "./MentionThread.ts"
+import { type DiagramFailure, MermaidDiagram } from "./MermaidDiagram.tsx"
 import { isWebUrl, WebLink } from "./WebLink.tsx"
 
 const bareGitHubAsset = (paragraph: ExtraProps["node"]) => {
@@ -153,13 +142,17 @@ const components: Components = {
     if (!isValidElement<{ className?: string; children?: ReactNode }>(children)) return <pre>{children}</pre>
     const language = /language-(\S+)/.exec(children.props.className ?? "")?.[1]
     const code = String(children.props.children ?? "").replace(/\n$/, "")
-    return language === "mermaid" ? <MermaidDiagram code={code} /> : <CodeBlock language={language} code={code} />
+    return language === "mermaid" ? <MermaidFigure code={code} /> : <CodeBlock language={language} code={code} />
   },
   table: ({ children }) => (
     <div className="my-[2em] overflow-x-auto [&>table]:my-0">
       <table>{children}</table>
     </div>
   ),
+  span: ({ node: _node, ...props }) => {
+    const mention = props["data-mention" as keyof typeof props]
+    return typeof mention === "string" ? <Mention token={mention} /> : <span {...props} />
+  },
   td: ({ children, style }) => (
     <td style={style} className={isShortCell(children) ? "whitespace-nowrap" : undefined}>
       {children}
@@ -271,9 +264,14 @@ export function Markdown({
   const part = use(FindPartContext)
   const findPlugins = pattern === null ? [] : [rehypeFindMarks(pattern, part)]
   const repository = useThreadRepository()
-  const remarkPlugins = repository
-    ? [remarkGfm, remarkKbd, remarkUnknownTagsAsText, remarkPullRequests(repository)]
-    : [remarkGfm, remarkKbd, remarkUnknownTagsAsText]
+  const inTranscript = use(MentionThread) !== null
+  const remarkPlugins = [
+    remarkGfm,
+    remarkKbd,
+    remarkUnknownTagsAsText,
+    ...(repository ? [remarkPullRequests(repository)] : []),
+    ...(inTranscript ? [remarkMentions] : []),
+  ]
   const segments = segmentServiceBlocks(text)
   const needsEmbeddedHtml = segments.some(
     (segment) => segment.type === "markdown" && mayContainEmbeddedHtml(segment.text),
@@ -336,62 +334,19 @@ function CodeBlock({ language, code }: { language: string | undefined; code: str
   )
 }
 
-// FIXME: Pele measures labels in this font to size nodes
-const diagramFont = (uiFont: Appearance["uiFont"]) =>
-  uiFont === null
-    ? getComputedStyle(document.documentElement).getPropertyValue("--app-font-sans")
-    : JSON.stringify(uiFont)
-
-const RENDER_DELAY_MS = 250
-
-const diagramAtom = familyOf((code: string, uiFont: Appearance["uiFont"]) =>
-  Atom.make(
-    Effect.tryPromise(() =>
-      import("pele/lazy").then(({ renderAsync }) =>
-        renderAsync(code, { fontFamily: diagramFont(uiFont), fontSize: 12, links: false, images: false }),
-      ),
-    ),
-  ),
+const failedInTranscript: DiagramFailure = (_message, code) => (
+  <>
+    <p className="px-3 pt-2 text-xs text-muted-foreground">{m.markdown_diagram_failed()}</p>
+    <pre className="overflow-x-auto p-3 font-mono text-xs">
+      <code>{code}</code>
+    </pre>
+  </>
 )
 
-function MermaidDiagram({ code }: { code: string }) {
-  const { uiFont } = useClientSettings().appearance
-  const settled = useDeferredValue(useDebouncedValue(code, RENDER_DELAY_MS))
-
+function MermaidFigure({ code }: { code: string }) {
   return (
     <CodeFigure label="mermaid" code={code}>
-      <Suspense
-        fallback={
-          <output
-            aria-label={m.markdown_diagram_rendering()}
-            className="m-3 block h-32 animate-pulse rounded-md bg-muted motion-reduce:animate-none"
-          />
-        }
-      >
-        <RenderedDiagram code={settled} uiFont={uiFont} />
-      </Suspense>
+      <MermaidDiagram code={code} className="p-3" failed={failedInTranscript} />
     </CodeFigure>
-  )
-}
-
-function RenderedDiagram({ code, uiFont }: { code: string; uiFont: Appearance["uiFont"] }) {
-  const diagram = useAtomSuspense(diagramAtom(code, uiFont), { includeFailure: true })
-  if (AsyncResult.isFailure(diagram)) {
-    return (
-      <>
-        <p className="px-3 pt-2 text-xs text-muted-foreground">{m.markdown_diagram_failed()}</p>
-        <pre className="overflow-x-auto p-3 font-mono text-xs">
-          <code>{code}</code>
-        </pre>
-      </>
-    )
-  }
-  return (
-    // oxlint-disable-next-line hinacode/no-comments
-    // Pele escapes diagram text and filters links and styles: https://pele.run/security
-    <div
-      className="overflow-x-auto p-3 transition-opacity duration-200 ease-out starting:opacity-0 [&_svg]:mx-auto"
-      dangerouslySetInnerHTML={{ __html: diagram.value.svg }}
-    />
   )
 }

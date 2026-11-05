@@ -5,6 +5,8 @@ const PLAIN = "plain"
 
 export const CHART_LANGUAGE = "chart"
 
+export const DIAGRAM_LANGUAGE = "mermaid"
+
 const LANGUAGES: ReadonlyArray<readonly [value: string, label: string]> = [
   ["bash", "Bash"],
   ["c", "C"],
@@ -50,6 +52,7 @@ const languageOptions = (current: string) => {
     { value: PLAIN, label: m.documents_code_plain() },
     ...LANGUAGES.map(([value, label]) => ({ value: value === canonical ? current : value, label })),
     { value: CHART_LANGUAGE, label: m.documents_code_chart() },
+    { value: DIAGRAM_LANGUAGE, label: m.documents_code_diagram() },
   ]
   return current === "" || known.some((option) => option.value === current)
     ? known

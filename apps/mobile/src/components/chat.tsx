@@ -9,24 +9,31 @@ import type {
 import { collapsedParts } from "@shared/activityFold.ts"
 import { toolSummary } from "@shared/compactTranscript.ts"
 import { formatWorkDuration } from "@shared/workDuration.ts"
-import { type Message, type MessagePart, spawnsSubagent, type Thread, type ToolCallStatus } from "@shared/domain.ts"
+import {
+  type Message,
+  type MessagePart,
+  publishesArtifact,
+  spawnsSubagent,
+  type Thread,
+  type ToolCallStatus,
+} from "@shared/domain.ts"
 import { isOwnPart } from "@shared/subagents.ts"
 import type { UsageLimit } from "@shared/limits.ts"
 import { useFocusEffect } from "expo-router"
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react"
 import { ActivityIndicator, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
-import Animated, { useReducedMotion } from "react-native-reanimated"
+import { ArtifactCard } from "@/components/artifact-card"
 import { Composer } from "@/components/composer"
 import { liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
 import { Markdown } from "@/components/markdown"
-import { FadeIn, Rotate, Spinner } from "@/components/motion"
+import { FadeIn, Pulse, Rotate, Spinner } from "@/components/motion"
 import { SubagentCall, SubagentTray } from "@/components/subagents"
 import { TodoTray } from "@/components/todo-tray"
 import { Button, Notice, Pill } from "@/components/ui"
-import { cssEase, duration, rise } from "@/constants/motion"
-import { Colors, HIT, mono, radius, subheading } from "@/constants/theme"
-import { useScheme, useTheme } from "@/hooks/use-theme"
+import { duration, rise } from "@/constants/motion"
+import { HIT, mono, radius, subheading } from "@/constants/theme"
+import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
 import { copy, locale } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
@@ -206,7 +213,10 @@ export function AssistantMessage({
         return activityShown ? <FadeIn key={index}>{view}</FadeIn> : null
       })}
       {streaming && (parts.length === 0 || writingIndex !== undefined) && (
-        <Pulse text={copy(writingIndex !== undefined ? "mobile_chat_writing" : "mobile_chat_thinking")} />
+        <Pulse
+          text={copy(writingIndex !== undefined ? "mobile_chat_writing" : "mobile_chat_thinking")}
+          style={styles.pulse}
+        />
       )}
     </View>
   )
@@ -233,34 +243,6 @@ function ReplyText({
     <FadeIn enabled={finishedOnScreen}>
       <Markdown text={text} root={root} threadId={threadId} gutter={TRANSCRIPT_PADDING} />
     </FadeIn>
-  )
-}
-
-const pulse = {
-  light: { "50%": { color: Colors.light.text } },
-  dark: { "50%": { color: Colors.dark.text } },
-}
-
-/** The desktop's `animate-pulse` line under a streaming reply. Reduce motion holds it still. */
-function Pulse({ text }: { text: string }) {
-  const theme = useTheme()
-  const scheme = useScheme()
-  const reduced = useReducedMotion()
-  return (
-    <Animated.Text
-      style={[
-        styles.pulse,
-        { color: theme.textMuted },
-        !reduced && {
-          animationName: pulse[scheme],
-          animationDuration: 2000,
-          animationIterationCount: "infinite",
-          animationTimingFunction: cssEase.pulse,
-        },
-      ]}
-    >
-      {text}
-    </Animated.Text>
   )
 }
 
@@ -310,6 +292,7 @@ function PartView({ part, threadId }: { part: MessagePart; threadId: string }) {
       return <Reasoning text={part.text} />
     case "tool_call": {
       if (spawnsSubagent(part)) return <SubagentCall part={part} threadId={threadId} />
+      if (publishesArtifact(part)) return <ArtifactCard part={part} threadId={threadId} />
       const summary = toolSummary(part.input)?.line
       return (
         <View style={[styles.tool, { borderColor: theme.border }]}>
@@ -359,6 +342,18 @@ function PartView({ part, threadId }: { part: MessagePart; threadId: string }) {
             agent: copy(`mobile_provider_${part.provider}`),
           })}
         </Text>
+      )
+    case "signed_out":
+      return (
+        <View style={[styles.card, { borderColor: theme.attention, backgroundColor: theme.attentionBg }]}>
+          <Text selectable style={[styles.cardBody, { color: theme.text }]}>
+            {part.message}
+          </Text>
+          <Text style={[styles.cardNote, { color: theme.textMuted }]}>{copy("mobile_chat_signed_out_hint")}</Text>
+          <Text selectable style={[styles.detail, { color: theme.text, backgroundColor: theme.surface }]}>
+            {part.loginCommand}
+          </Text>
+        </View>
       )
   }
 }
@@ -576,6 +571,7 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
   const { busy, error, run } = useAction()
   const [picked, setPicked] = useState<Readonly<Record<string, readonly string[]>>>({})
   const [typed, setTyped] = useState<Readonly<Record<string, string>>>({})
+  const [step, setStep] = useState(0)
 
   const answers: QuestionAnswers = Object.fromEntries(
     request.questions
@@ -600,16 +596,37 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
       return { ...current, [question.id]: next }
     })
 
+  const total = request.questions.length
+  const single = total === 1
+  const last = step >= total - 1
+  const question = request.questions[step]
+
+  const pick = (question: Question, label: string) => {
+    toggle(question, label)
+    const typedNothing = (typed[question.id]?.trim() ?? "") === ""
+    if (!question.multiSelect && !last && typedNothing) setStep(step + 1)
+  }
+
   return (
     <ResolvableCard>
       <View
         testID="question-card"
         style={[styles.card, { borderColor: theme.attention, backgroundColor: theme.attentionBg }]}
       >
-        {request.questions.map((question) => (
-          <View key={question.id} style={styles.question}>
+        {question !== undefined && (
+          <FadeIn key={question.id} style={styles.question}>
+            {!single && (
+              <View style={styles.step}>
+                <Text style={[styles.cardNote, { color: theme.textMuted }]}>
+                  {copy("mobile_chat_question_step", { current: String(step + 1), total: String(total) })}
+                </Text>
+                {question.header !== "" && (
+                  <Text style={[styles.cardNote, styles.shrink, { color: theme.textMuted }]}>{question.header}</Text>
+                )}
+              </View>
+            )}
             <Text style={[styles.cardTitle, { color: theme.text }]}>
-              {question.header !== "" ? `${question.header}: ` : ""}
+              {single && question.header !== "" ? `${question.header}: ` : ""}
               {question.question}
             </Text>
             <View style={styles.options}>
@@ -622,7 +639,7 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
                     aria-checked={selected}
                     accessibilityLabel={option.label}
                     accessibilityHint={option.description}
-                    onPress={() => toggle(question, option.label)}
+                    onPress={() => pick(question, option.label)}
                     style={[
                       styles.option,
                       {
@@ -653,18 +670,38 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
                 style={[styles.answer, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
               />
             )}
-          </View>
-        ))}
+          </FadeIn>
+        )}
         <View style={styles.actions}>
-          <Button
-            testID="question-submit"
-            label={copy("mobile_chat_submit")}
-            variant="primary"
-            busy={busy}
-            disabled={Object.keys(answers).length === 0}
-            onPress={() => respond(answers)}
-            style={styles.cardButton}
-          />
+          {step > 0 && (
+            <Button
+              testID="question-back"
+              label={copy("mobile_chat_back")}
+              disabled={busy}
+              onPress={() => setStep(step - 1)}
+              style={styles.cardButton}
+            />
+          )}
+          {last ? (
+            <Button
+              testID="question-submit"
+              label={copy("mobile_chat_submit")}
+              variant="primary"
+              busy={busy}
+              disabled={Object.keys(answers).length === 0}
+              onPress={() => respond(answers)}
+              style={styles.cardButton}
+            />
+          ) : (
+            <Button
+              testID="question-next"
+              label={copy("mobile_chat_next")}
+              variant="primary"
+              disabled={busy}
+              onPress={() => setStep(step + 1)}
+              style={styles.cardButton}
+            />
+          )}
           <Button
             testID="question-skip"
             label={copy("mobile_chat_skip")}
@@ -737,6 +774,7 @@ const styles = StyleSheet.create({
   detail: { fontFamily: mono, fontSize: 12, padding: 8, borderRadius: radius.sm },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" },
   question: { gap: 8 },
+  step: { flexDirection: "row", gap: 8 },
   options: { gap: 6 },
   option: {
     minHeight: HIT,

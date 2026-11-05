@@ -4,7 +4,7 @@ import { expect, test } from "vitest"
 import { cdp, page } from "vitest/browser"
 import { render } from "vitest-browser-react"
 import { type HinacodeBridge, RpcMethods } from "../../shared/contract.ts"
-import { defaultClientSettings } from "../../shared/domain.ts"
+import { defaultClientSettings, type TerminalSession } from "../../shared/domain.ts"
 import "../index.css"
 import { ComposerInput } from "./ComposerInput.tsx"
 
@@ -27,6 +27,23 @@ const shownPlaceholder = () => {
 }
 
 let value = ""
+let mentionStarts = 0
+
+const terminal = (id: string, title: string | null, status: TerminalSession["status"]): TerminalSession => ({
+  id,
+  threadId: "thread",
+  cwd: `/work/${id}`,
+  cols: 80,
+  rows: 24,
+  status,
+  exitCode: status === "exited" ? 1 : null,
+  title,
+})
+
+const terminals = [
+  { session: terminal("term-a", null, "running"), label: "Terminal 1" },
+  { session: terminal("term-b", "pnpm dev", "exited"), label: "pnpm dev" },
+]
 
 function Harness() {
   const [text, setText] = useState("")
@@ -39,7 +56,11 @@ function Harness() {
       }}
       commands={[]}
       files={[]}
+      onMentionStart={() => {
+        mentionStarts += 1
+      }}
       threads={{ sameMachine: [], otherMachines: [] }}
+      terminals={terminals}
       projectId="project"
       placeholder={placeholder}
       aria-label="Message"
@@ -64,6 +85,19 @@ const press = async (key: "Enter" | "Backspace" | "Tab", modifiers = 0) => {
   await cdp().send("Input.dispatchKeyEvent", { type: "keyUp", ...event })
 }
 const shift = 8
+
+test("reports a mention when it starts, not on each key typed in it", async () => {
+  mentionStarts = 0
+  await renderComposer()
+  await page.getByRole("combobox", { name: "Message" }).click()
+  await type("@")
+  await expect.poll(() => mentionStarts).toBe(1)
+  await type("r")
+  await type("e")
+  await expect.poll(() => value).toBe("@re")
+  await type(" @")
+  await expect.poll(() => mentionStarts).toBe(2)
+})
 
 test("continues a list on shift+enter and leaves it on an empty item", async () => {
   await renderComposer()
@@ -120,4 +154,22 @@ test("hides the placeholder while an IME composes the first character", async ()
 
   await cdp().send("Input.imeSetComposition", { text: "に", selectionStart: 1, selectionEnd: 1 })
   await expect.poll(shownPlaceholder).toBe("none")
+})
+
+test("suggests the thread's terminals for @ and inserts the picked one as a mention", async () => {
+  await renderComposer()
+  await page.getByRole("combobox", { name: "Message" }).click()
+
+  await type("look at @")
+  const mentions = page.getByRole("listbox", { name: "Mentions" })
+  await expect.element(mentions.getByRole("option").nth(0)).toHaveTextContent("Terminal 1/work/term-a")
+  await expect.element(mentions.getByRole("option").nth(1)).toHaveTextContent("pnpm dev/work/term-bexited")
+
+  await type("dev")
+  await expect.element(mentions.getByRole("option")).toHaveTextContent("pnpm dev/work/term-bexited")
+  await press("Enter")
+  await expect.poll(() => value).toBe("look at @terminal:term-b ")
+  await expect
+    .poll(() => [...document.querySelectorAll(".cm-line .text-syntax-token")].map((mark) => mark.textContent))
+    .toStrictEqual(["@terminal:term-b"])
 })

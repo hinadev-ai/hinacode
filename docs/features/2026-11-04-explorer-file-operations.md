@@ -35,7 +35,7 @@ Highlighting uses the worker pool that `@pierre/diffs` ships. `HighlightWorkerPo
 ## Out of scope
 
 - Moving to the trash. The daemon has no trash, and a confirmed delete is what agents already do with `rm`. Git keeps tracked files recoverable.
-- Drag and drop, cut, copy, paste, multi-select and creating nested paths such as `a/b/c.ts` in one step.
+- Cut, copy, paste, multi-select and creating nested paths such as `a/b/c.ts` in one step.
 - A worker pool for the Changes diff and pull request views. They use the same library, but this change covers only the viewer.
 
 ## Verification

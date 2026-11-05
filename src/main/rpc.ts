@@ -27,6 +27,7 @@ import { ClientSettings } from "./services/ClientSettings.ts"
 import { Environments } from "./services/Environments.ts"
 import { Events } from "./services/Events.ts"
 import { Files } from "./services/Files.ts"
+import { completeDirectory } from "./services/directoryCompletion.ts"
 import { Git } from "./services/Git.ts"
 import { Favicons } from "./services/Favicons.ts"
 import { GitHub, pullRequestFiles } from "./services/GitHub.ts"
@@ -372,6 +373,7 @@ const handlers: Handlers = {
   "fs.rename": ({ root, from, to }) => Files.use((files) => files.rename(root, from, to)),
   "fs.delete": ({ root, path }) => Files.use((files) => files.remove(root, path)),
   "fs.watch": ({ root, paths }) => Files.use((files) => files.watch(root, paths)),
+  "fs.completeDirectory": ({ path }) => completeDirectory(path),
   "dialog.pickFolder": (_, desktop) => desktop?.pickFolder ?? Effect.succeed(null),
 
   "updates.status": () => Updates.use((updates) => updates.status),
@@ -430,6 +432,8 @@ const handlers: Handlers = {
   "backgroundTasks.list": ({ threadId }) => AgentRunner.use((runner) => runner.backgroundTasks(threadId)),
   "backgroundTasks.stop": ({ threadId, taskId }) =>
     AgentRunner.use((runner) => runner.stopBackgroundTask(threadId, taskId)),
+  "backgroundTasks.moveCommand": ({ threadId, callId }) =>
+    AgentRunner.use((runner) => runner.moveCommandToBackground(threadId, callId)),
   "threads.usage": ({ threadId }) => AgentRunner.use((runner) => runner.usage(threadId)),
   "threads.contextBreakdown": ({ threadId }) => AgentRunner.use((runner) => runner.contextBreakdown(threadId)),
   "pullRequests.list": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.list(threadId)),

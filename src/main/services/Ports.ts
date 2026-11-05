@@ -50,7 +50,7 @@ const uniqueByPortAndPid = (entries: ReadonlyArray<ListeningProcess>) =>
 // FIXME: lsof exits 1 when it cannot read one of the requested pids, and still prints the rest
 const exec = (file: string, args: ReadonlyArray<string>) =>
   Effect.callback<string, PortsError>((resume) => {
-    execFile(file, args, (error, stdout) =>
+    execFile(file, args, { timeout: 10_000, killSignal: "SIGKILL" }, (error, stdout) =>
       resume(
         error && typeof error.code !== "number"
           ? Effect.fail(new PortsError({ message: `Could not run ${file}: ${error.message}` }))

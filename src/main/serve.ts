@@ -1,6 +1,5 @@
 import { Effect, Schema } from "effect"
 import { BindHost } from "../shared/domain.ts"
-import { tailscaleAddress } from "./network.ts"
 import { RemoteAccess } from "./remote/access.ts"
 import { Relay } from "./remote/relay.ts"
 import type { RelayError, RelayLink } from "./remote/relayService.ts"
@@ -70,7 +69,9 @@ export const serveConfig = (flags: ServeFlags, env: NodeJS.ProcessEnv): ServeCon
   const bindHost = flags.host ?? env["HINACODE_SERVE_HOST"]
   if (bindHost !== undefined && bindHost.trim() === "") throw new Error("serve host must not be empty")
   if (bindHost !== undefined && !Schema.is(BindHost)(bindHost)) {
-    throw new Error(`--host ${bindHost} would listen on every network this machine joins. Pass one address.`)
+    throw new Error(
+      `--host ${bindHost} would listen on every network this machine joins. Pass one address, or private.`,
+    )
   }
   const relay = flags.relay ?? relayFromEnv(env)
 
@@ -82,24 +83,11 @@ export const serveConfig = (flags: ServeFlags, env: NodeJS.ProcessEnv): ServeCon
   }
 }
 
-export class ServeHostRequired extends Schema.TaggedError<ServeHostRequired>()("ServeHostRequired", {
-  message: Schema.String,
-}) {}
-
-export const applyServeConfig = (
-  config: ServeConfig,
-  tailscale: () => string | null = tailscaleAddress,
-): Effect.Effect<void, PersistenceError | ServeHostRequired, Settings | RemoteAccess> =>
+export const applyServeConfig = (config: ServeConfig): Effect.Effect<void, PersistenceError, Settings | RemoteAccess> =>
   Effect.gen(function* () {
     const settings = yield* Settings
     const current = (yield* settings.get).remote
-    const bindHost = config.bindHost ?? current.bindHost ?? tailscale()
-    if (bindHost === null) {
-      return yield* new ServeHostRequired({
-        message:
-          "this machine has no Tailscale address to listen on. Pass --host <address>, or --host 127.0.0.1 --relay on to reach it only through the relay.",
-      })
-    }
+    const bindHost = config.bindHost ?? current.bindHost
     const next = { enabled: true as const, bindHost, port: config.port ?? current.port }
     if (next.enabled !== current.enabled || next.bindHost !== current.bindHost || next.port !== current.port) {
       yield* settings.set({ remote: next })

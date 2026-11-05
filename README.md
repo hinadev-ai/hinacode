@@ -54,7 +54,7 @@ HinaCode is a **delightful workstation for coding agents**. It handles the work 
 - **Inline approvals and questions.** Allow, deny with a note, or answer without leaving the thread.
 - **Steer or queue.** Change the agent's course mid-turn, or queue the next task behind it.
 - **Diffs per turn.** Comment on a line and the agent gets the exact spot.
-- **Browser, terminal, and ports.** Open the dev server, a shell, and the ports an agent left open beside the thread.
+- **Browser, terminal, and ports.** Open the dev server, a shell, and the ports an agent left open beside the thread. Mention a terminal with `@` or send its selected output to the thread, and the agent reads it.
 - **Linked pull requests.** See checks and review state next to the thread. HinaCode tells the agent when checks fail or a review lands.
 - **Merge and clean up.** Squash and merge from the thread, and HinaCode removes the worktree.
 - **Automations.** Start a thread from a webhook, a GitHub issue, a Linear ticket, or a Slack mention.

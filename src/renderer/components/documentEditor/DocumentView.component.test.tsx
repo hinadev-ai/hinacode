@@ -5,10 +5,12 @@ import { render } from "vitest-browser-react"
 import type { Artifact, DocumentSaveResult } from "../../../shared/artifact.ts"
 import { type HinacodeBridge, type PushEvent, RpcMethods } from "../../../shared/contract.ts"
 import { defaultClientSettings, type Thread } from "../../../shared/domain.ts"
+import { documentPrintHtml } from "../../../shared/documentPrint.ts"
 import "../../index.css"
 import { useArtifacts } from "../../stores/artifacts.ts"
 import { useDrafts } from "../../stores/drafts.ts"
 import { ArtifactsHeader, ArtifactsView } from "../sidePanel/ArtifactsView.tsx"
+import { liveDocument, liveDocumentKey } from "./liveDocuments.ts"
 
 const AGENT_MARKDOWN = `# Release plan
 
@@ -101,9 +103,9 @@ beforeEach(({ task }) => {
   push({ type: "artifact.updated", artifact: documentAt(1) })
 })
 
-const openDocument = async () => {
+const openDocument = async (width?: number) => {
   await render(
-    <div style={{ height: 600, display: "flex", flexDirection: "column" }}>
+    <div style={{ width, height: 600, display: "flex", flexDirection: "column" }}>
       <ArtifactsHeader thread={thread} />
       <ArtifactsView thread={thread} />
     </div>,
@@ -284,4 +286,177 @@ test("renames the document from the panel header once, showing the new name whil
 
   await expect.element(renamed).toBeInTheDocument()
   expect(renames).toEqual(["Launch plan"])
+})
+
+const intersects = (a: DOMRect, b: DOMRect) =>
+  a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+
+const firstLineRects = (element: Element) => {
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+  const rects: Array<DOMRect> = []
+  for (let text = walker.nextNode(); text !== null; text = walker.nextNode()) {
+    const range = document.createRange()
+    range.selectNodeContents(text)
+    rects.push(...range.getClientRects())
+  }
+  const top = rects[0]?.top ?? 0
+  return rects.filter((rect) => Math.abs(rect.top - top) < 2)
+}
+
+for (const width of [360, 700]) {
+  test(`keeps the language picker off the first line of code in a ${width}px panel`, async () => {
+    stored = {
+      ...stored,
+      markdown:
+        '# Release plan\n\n```ts\ntype ArtifactKind = "page" | "document" | "chart" | "diagram" | "callout" | "table"\n```\n',
+    }
+    const editor = await openDocument(width)
+    const picker = page.getByRole("combobox", { name: "Code language" })
+    await expect.element(picker).toBeVisible()
+
+    const box = picker.element().getBoundingClientRect()
+    const line = firstLineRects(editor.element().querySelector("pre code")!)
+    expect(line.length).toBeGreaterThan(0)
+    expect(line.filter((rect) => intersects(rect, box))).toEqual([])
+  })
+}
+
+const CALLOUTS = `> [!NOTE]
+> First paragraph.
+>
+> Second paragraph.
+
+> [!tip]
+> Prefer the smaller change.
+
+> [!IMPORTANT]
+> Read the **design** first.
+
+> [!WARNING]
+> - The store rewrites the file
+> - Saves race
+
+> [!CAUTION]
+> Deleting a document cannot be undone.`
+
+const savedAfterEdit = async (markdown: string) => {
+  stored = { ...stored, markdown: `# Release plan\n\nShip the **editor** first.\n\n${markdown}\n` }
+  const editor = await openDocument()
+  await typeAtEnd(" Then the panel.")
+  await expect.poll(() => saves.length, { timeout: 3000 }).toBe(1)
+  return { editor, saved: saves[0]?.markdown ?? "" }
+}
+
+test("reads GitHub alerts as callouts and writes them back in GitHub's form", async () => {
+  const { editor, saved } = await savedAfterEdit(CALLOUTS)
+
+  const labels = Array.from(editor.element().querySelectorAll("[data-callout-label]"), (label) => label.textContent)
+  expect(labels).toEqual(["Note", "Tip", "Important", "Warning", "Caution"])
+  expect(editor.element().querySelector("blockquote")).toBeNull()
+  expect(saved).toContain(CALLOUTS.replace("[!tip]", "[!TIP]"))
+})
+
+test("colors a callout's label and icon by its tone", async () => {
+  const { editor } = await savedAfterEdit(CALLOUTS)
+
+  const callouts = Array.from(editor.element().querySelectorAll("[data-callout]"))
+  const inks = callouts.map((callout) => {
+    const label = callout.querySelector("[data-callout-label]")!
+    const icon = callout.querySelector("[data-callout-icon]")!
+    expect(getComputedStyle(icon).color).toBe(getComputedStyle(label).color)
+    return getComputedStyle(label).color
+  })
+  expect(new Set(inks).size).toBe(callouts.length)
+  expect(inks).not.toContain(getComputedStyle(editor.element()).color)
+})
+
+test("keeps a plain quote, and a marker with text after it, as quotes", async () => {
+  const { editor, saved } = await savedAfterEdit("> Just a quote.\n\n> [!NOTE] Not on its own line.")
+
+  expect(editor.element().querySelectorAll("blockquote")).toHaveLength(2)
+  expect(editor.element().querySelector("[data-callout]")).toBeNull()
+  expect(saved).toMatch(/> Just a quote\.\n\n> \\?\[!NOTE\\?\] Not on its own line\./)
+})
+
+test("wraps a paragraph in a callout from the toolbar, then changes its type and turns it back into a quote", async () => {
+  const editor = await openDocument()
+  await page.getByText(/^Ship the/).click()
+  await page.getByRole("button", { name: "Callout", exact: true }).click()
+
+  const picker = editor.getByRole("button", { name: "Callout type: Note" })
+  await expect.element(picker).toBeVisible()
+  await expect
+    .poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 })
+    .toContain("> [!NOTE]\n> Ship the **editor** first.")
+
+  await picker.click()
+  await page.getByRole("menuitemradio", { name: "Warning" }).click()
+  await expect.element(page.getByRole("menu")).not.toBeInTheDocument()
+  await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).toContain("> [!WARNING]\n> Ship the")
+
+  await editor.getByRole("button", { name: "Callout type: Warning" }).click()
+  await page.getByRole("menuitem", { name: "Quote" }).click()
+  await expect.element(editor.getByRole("button", { name: /^Callout type/ })).not.toBeInTheDocument()
+  await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).not.toContain("[!")
+  expect(saves.at(-1)?.markdown).toContain("# Release plan\n\n> Ship the **editor** first.")
+  await expect.element(editor.getByRole("blockquote")).toHaveTextContent("Ship the editor first.")
+})
+
+const FLOWCHART =
+  "```mermaid\nflowchart TD\n  Agent[Agent publishes] --> Editor[Developer edits]\n  Editor --> Agent\n```"
+
+test("draws a mermaid block as a diagram and saves its fence unchanged", async () => {
+  const { editor, saved } = await savedAfterEdit(FLOWCHART)
+
+  await expect
+    .poll(() => editor.element().querySelector("[data-diagram-svg] > svg"), { timeout: 10_000 })
+    .not.toBeNull()
+  expect(editor.element().querySelector("[data-diagram-svg] > svg")?.textContent).toContain("Developer edits")
+  await expect.element(page.getByRole("combobox", { name: "Code language" })).not.toBeInTheDocument()
+  expect(saved).toContain(FLOWCHART)
+})
+
+test("shows the error and the source of a diagram that cannot be drawn", async () => {
+  stored = { ...stored, markdown: "# Release plan\n\n```mermaid\nflowchart TD\n  A -->\n```\n" }
+  const editor = await openDocument()
+
+  await expect
+    .poll(() => editor.element().querySelector("[role=alert]")?.textContent ?? "", { timeout: 10_000 })
+    .toMatch(/^This diagram cannot be drawn: \S/)
+  await expect.element(page.getByRole("combobox", { name: "Code language" })).toHaveTextContent("Diagram")
+  await expect.element(editor.getByRole("code")).toBeVisible()
+  expect(editor.getByRole("code").element().textContent).toBe("flowchart TD\n  A -->")
+  await expect.element(editor.getByRole("button", { name: "Source" })).toHaveAttribute("aria-pressed", "true")
+})
+
+const printed = async (html: string) => {
+  const frame = document.createElement("iframe")
+  frame.style.width = "800px"
+  frame.srcdoc = documentPrintHtml("Release plan", html)
+  const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }))
+  document.body.append(frame)
+  onTestFinished(() => frame.remove())
+  await loaded
+  return frame.contentDocument!
+}
+
+const shown = (element: Element | null | undefined) => element?.checkVisibility() ?? false
+
+test("prints a callout's label and a diagram, without their controls or source", async () => {
+  stored = { ...stored, markdown: `# Release plan\n\n> [!WARNING]\n> Saves race.\n\n${FLOWCHART}\n` }
+  const editor = await openDocument()
+  await expect
+    .poll(() => editor.element().querySelector("[data-diagram-svg] > svg"), { timeout: 10_000 })
+    .not.toBeNull()
+
+  const print = await printed(liveDocument(liveDocumentKey(undefined, documentId))!.html())
+  const label = print.querySelector("[data-callout-label]")
+
+  expect(shown(label)).toBe(true)
+  expect(label?.textContent).toBe("Warning")
+  expect(shown(label?.querySelector("[data-print-hidden]"))).toBe(false)
+  expect(shown(print.querySelector("[data-callout] p"))).toBe(true)
+  expect(shown(print.querySelector("[data-diagram-svg] > svg"))).toBe(true)
+  expect(shown(print.querySelector("[data-diagram] pre"))).toBe(false)
+  expect(shown(print.querySelector("[data-diagram] button"))).toBe(false)
 })

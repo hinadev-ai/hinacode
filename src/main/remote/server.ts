@@ -96,7 +96,7 @@ const make = Effect.gen(function* () {
     send(socket, { type: "challenge", nonce: challenge })
   }
 
-  const listen = (address: Extract<SettingsValue["remote"], { enabled: true }>) =>
+  const listen = (address: SettingsValue["remote"]) =>
     listenWebSockets({
       listen: (server, listening) => {
         const everyInterface = address.bindHost === PRIVATE_NETWORKS

@@ -39,6 +39,7 @@ import ftsCjkGrams from "./migrations/0037_fts_cjk_grams.ts"
 import messagePart from "./migrations/0038_message_part.ts"
 import threadParent from "./migrations/0039_thread_parent.ts"
 import pullRequestObservedStatus from "./migrations/0040_pull_request_observed_status.ts"
+import remotePrivateNetworks from "./migrations/0040_remote_private_networks.ts"
 
 const run = Migrator.make({})
 
@@ -83,6 +84,7 @@ export const runMigrations = run({
     "38_message_part": messagePart,
     "39_thread_parent": threadParent,
     "40_pull_request_observed_status": pullRequestObservedStatus,
+    "40_remote_private_networks": remotePrivateNetworks,
   }),
 }).pipe(
   Effect.tap((ran) =>
