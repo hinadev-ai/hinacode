@@ -2,17 +2,20 @@ import { cn } from "cn"
 import { RiClaudeFill, RiMetaFill, RiOpenaiFill } from "react-icons/ri"
 import type { ProviderId } from "../../shared/agent.ts"
 import { m } from "../paraglide/messages.js"
+import { OpencodeLogoIcon } from "./icons/OpencodeLogoIcon.tsx"
 
 const icons = {
   claude: { Icon: RiClaudeFill, color: "text-provider-claude" },
   codex: { Icon: RiOpenaiFill, color: "text-provider-codex" },
   muse: { Icon: RiMetaFill, color: "text-provider-muse" },
+  opencode: { Icon: OpencodeLogoIcon, color: "text-provider-opencode" },
 } satisfies Record<ProviderId, unknown>
 
 export const providerLabel = {
   claude: m.provider_claude,
   codex: m.provider_codex,
   muse: m.provider_muse,
+  opencode: m.provider_opencode,
 } satisfies Record<ProviderId, () => string>
 
 export function ProviderIcon({

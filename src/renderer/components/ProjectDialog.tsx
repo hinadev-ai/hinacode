@@ -1,9 +1,11 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
+import { useNavigate } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { type ComponentProps, type FormEvent, startTransition, useActionState, useState } from "react"
-import { RiFolderOpenLine, RiGithubFill } from "react-icons/ri"
+import { RiGithubFill } from "react-icons/ri"
+import { separatorOf } from "../../shared/directoryPath.ts"
 import type { Project } from "../../shared/domain.ts"
-import { type GitHubRepository, parseGitHubRepository } from "../../shared/github.ts"
+import { type GitHubRepository, parseGitHubRepository, type RepositoryVisibility } from "../../shared/github.ts"
 import {
   callPromise,
   cloneProjectAtom,
@@ -29,8 +31,11 @@ import { Input } from "./ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
 import { Switch } from "./ui/switch.tsx"
 import { Textarea } from "./ui/textarea.tsx"
-import { errorMessage } from "../lib/errorMessage.ts"
+import { errorMessage, toastError } from "../lib/errorMessage.ts"
 import { suggestProjectName } from "../lib/projectName.ts"
+import { startThread } from "../lib/startThread.ts"
+import { FolderOpenIcon } from "@hinacode/icons"
+import { PathInput } from "./PathInput.tsx"
 
 interface ProjectDialogProps {
   readonly open: boolean
@@ -41,16 +46,21 @@ interface ProjectDialogProps {
 }
 
 export function ProjectDialog({ open, onOpenChange, project, environment = null, finalFocus }: ProjectDialogProps) {
+  const navigate = useNavigate()
+  const onSaved = (saved: Project) => {
+    onOpenChange(false)
+    if (!project) void startThread(saved, navigate)
+  }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg" finalFocus={finalFocus}>
+      <DialogContent className="max-w-lg" finalFocus={finalFocus}>
         <DialogHeader>
           <DialogTitle>{project ? m.project_edit_title() : m.project_dialog_title()}</DialogTitle>
           <DialogDescription>
             {project ? m.project_edit_description({ project: project.name }) : m.project_dialog_description()}
           </DialogDescription>
         </DialogHeader>
-        <ProjectForm project={project} initialEnvironment={environment} onSaved={() => onOpenChange(false)} />
+        <ProjectForm project={project} initialEnvironment={environment} onSaved={onSaved} />
       </DialogContent>
     </Dialog>
   )
@@ -69,7 +79,7 @@ function useDefaultCloneParent(environment: EnvironmentId) {
 interface ProjectFormProps {
   readonly project: Project | undefined
   readonly initialEnvironment: EnvironmentId
-  readonly onSaved: () => void
+  readonly onSaved: (project: Project) => void
 }
 
 function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps) {
@@ -82,30 +92,46 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
   const [linearReview, setLinearReview] = useState(project?.linearReview ?? false)
   const repository = project ? null : parseGitHubRepository(rootPath)
   const [cloneTo, setCloneTo] = useState<string | null>(null)
+  const [newRepository, setNewRepository] = useState<RepositoryVisibility | null>(null)
   const [environment, setEnvironment] = useState<EnvironmentId>(() =>
     project ? environmentOf(project) : initialEnvironment,
   )
-  const defaultCloneTo = `${useDefaultCloneParent(environment)}/${repository?.name ?? ""}`
+  const cloneParent = useDefaultCloneParent(environment)
+  const defaultCloneTo = `${cloneParent}${separatorOf(cloneParent)}${repository?.name ?? ""}`
   const canBrowse = environment === null
 
   const [error, submit, isPending] = useActionState(async (_: string | null, form: FormData) => {
     const setupScript = String(form.get("setupScript") ?? "").trim() || null
-    try {
+    const save = () => {
       if (project)
-        await updateProject({ id: project.id, name: name.trim(), rootPath: rootPath.trim(), setupScript, linearReview })
-      else if (repository)
-        await cloneProject({
+        return updateProject({
+          id: project.id,
+          name: name.trim(),
+          rootPath: rootPath.trim(),
+          setupScript,
+          linearReview,
+        })
+      if (repository)
+        return cloneProject({
           environment,
           repository,
           rootPath: (cloneTo ?? defaultCloneTo).trim(),
           name: name.trim() || repository.name,
           setupScript,
         })
-      else await createProject({ environment, name: name.trim(), rootPath: rootPath.trim(), setupScript })
+      return createProject({
+        environment,
+        name: name.trim(),
+        rootPath: rootPath.trim(),
+        setupScript,
+        ...(newRepository ? { createRepository: newRepository } : {}),
+      })
+    }
+    try {
+      onSaved(await save())
     } catch (cause) {
       return errorMessage(cause)
     }
-    onSaved()
     return null
   }, null)
 
@@ -129,17 +155,17 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
         <Field>
           <FieldLabel htmlFor="project-root">{project ? m.project_root_label() : m.project_source_label()}</FieldLabel>
           <div className="flex gap-2">
-            <Input
+            <PathInput
               id="project-root"
               required
               value={rootPath}
-              onChange={(event) => setRootPath(event.target.value)}
+              onChange={setRootPath}
+              environment={environment}
               placeholder={m.project_root_placeholder()}
-              spellCheck={false}
             />
             {canBrowse && (
-              <Button type="button" variant="outline" onClick={browse}>
-                <RiFolderOpenLine aria-hidden />
+              <Button type="button" variant="outline" action={() => browse().catch(toastError)}>
+                <FolderOpenIcon aria-hidden />
                 {m.project_root_browse()}
               </Button>
             )}
@@ -151,6 +177,7 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
             repository={repository}
             value={cloneTo ?? defaultCloneTo}
             canBrowse={canBrowse}
+            environment={environment}
             onChange={setCloneTo}
           />
         )}
@@ -191,6 +218,7 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
             </span>
           </FieldDescription>
         </Field>
+        {!project && !repository && <NewRepositoryField value={newRepository} onChange={setNewRepository} />}
         {project && (
           <Field orientation="horizontal">
             <FieldContent>
@@ -207,14 +235,60 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
         <Button type="submit" disabled={isPending}>
           {project
             ? m.project_save()
-            : !repository
-              ? m.project_submit()
-              : isPending
+            : repository
+              ? isPending
                 ? m.project_cloning()
-                : m.project_clone_submit()}
+                : m.project_clone_submit()
+              : isPending && newRepository
+                ? m.project_creating_repository()
+                : m.project_submit()}
         </Button>
       </DialogFooter>
     </form>
+  )
+}
+
+function NewRepositoryField({
+  value,
+  onChange,
+}: {
+  value: RepositoryVisibility | null
+  onChange: (visibility: RepositoryVisibility | null) => void
+}) {
+  const visibilities = [
+    { value: "private", label: m.project_repository_private() },
+    { value: "public", label: m.project_repository_public() },
+  ] as const
+  return (
+    <Field orientation="horizontal">
+      <FieldLabel htmlFor="project-create-repository" className="flex-1">
+        <RiGithubFill aria-hidden className="size-4 shrink-0" />
+        {m.project_create_repository()}
+      </FieldLabel>
+      {value !== null && (
+        <Select
+          items={visibilities}
+          value={value}
+          onValueChange={(next) => (next === "private" || next === "public") && onChange(next)}
+        >
+          <SelectTrigger size="sm" className="w-28" aria-label={m.project_create_repository()}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {visibilities.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+      <Switch
+        id="project-create-repository"
+        checked={value !== null}
+        onCheckedChange={(checked) => onChange(checked ? "private" : null)}
+      />
+    </Field>
   )
 }
 
@@ -231,10 +305,11 @@ interface CloneTargetProps {
   readonly repository: GitHubRepository
   readonly value: string
   readonly canBrowse: boolean
+  readonly environment: EnvironmentId
   readonly onChange: (path: string) => void
 }
 
-function CloneTarget({ repository, value, canBrowse, onChange }: CloneTargetProps) {
+function CloneTarget({ repository, value, canBrowse, environment, onChange }: CloneTargetProps) {
   const browse = async () => {
     const parent = await callPromise("dialog.pickFolder", undefined)
     if (parent) onChange(`${parent}/${repository.name}`)
@@ -244,17 +319,17 @@ function CloneTarget({ repository, value, canBrowse, onChange }: CloneTargetProp
     <Field>
       <FieldLabel htmlFor="project-clone-to">{m.project_clone_to_label()}</FieldLabel>
       <div className="flex gap-2">
-        <Input
+        <PathInput
           id="project-clone-to"
           required
           value={value}
-          onChange={(event) => onChange(event.target.value)}
-          spellCheck={false}
+          onChange={onChange}
+          environment={environment}
           className="font-mono"
         />
         {canBrowse && (
-          <Button type="button" variant="outline" onClick={browse}>
-            <RiFolderOpenLine aria-hidden />
+          <Button type="button" variant="outline" action={() => browse().catch(toastError)}>
+            <FolderOpenIcon aria-hidden />
             {m.project_root_browse()}
           </Button>
         )}

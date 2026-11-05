@@ -1,3 +1,4 @@
+import { RiGitPullRequestLine } from "react-icons/ri"
 import { Autocomplete } from "@base-ui/react/autocomplete"
 import { Toggle } from "@base-ui/react/toggle"
 import { ToggleGroup } from "@base-ui/react/toggle-group"
@@ -7,17 +8,6 @@ import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { toast } from "sonner"
 import { type KeyboardEvent, useEffect, useId, useRef, useState, useTransition } from "react"
-import type { IconType } from "react-icons"
-import {
-  RiChat3Line,
-  RiCheckLine,
-  RiFlashlightLine,
-  RiGitBranchLine,
-  RiGitPullRequestLine,
-  RiLockUnlockLine,
-  RiShieldCheckLine,
-  RiShieldUserLine,
-} from "react-icons/ri"
 import { type ModelInfo, presetModels, ProviderId, unlistedModel } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import { AccessMode, type OpenPullRequest, type Project, type Thread } from "../../shared/domain.ts"
@@ -32,10 +22,11 @@ import {
   modelsAtom,
   projectsAtom,
   pullRequestsAtom,
+  setUpProvidersAtom,
 } from "../lib/rpc.ts"
 import { environmentName, environmentOf, useClouds, useThreadEnvironment } from "../lib/environments.ts"
 import { groupProjects } from "../lib/projectGroups.ts"
-import { moveUnstartedThread } from "../lib/startThread.ts"
+import { moveDraft } from "../lib/startThread.ts"
 import { useSettings } from "../lib/settings.ts"
 import { m } from "../paraglide/messages.js"
 import { type Draft, useDrafts } from "../stores/drafts.ts"
@@ -59,6 +50,16 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover.tsx"
 import { Slider } from "./ui/slider.tsx"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
+import {
+  BoltIcon,
+  BranchIcon,
+  ChatIcon,
+  CheckIcon,
+  type IconComponent,
+  ShieldIcon,
+  ShieldUserIcon,
+  UnlockIcon,
+} from "@hinacode/icons"
 
 interface ControlProps {
   readonly thread: Thread
@@ -105,6 +106,7 @@ function usePickerModels(environment: EnvironmentId, provider: ProviderId, keep:
 const CLI_LOGIN = "cli"
 
 const effortLabels: Record<string, () => string> = {
+  none: m.effort_none,
   minimal: m.effort_minimal,
   low: m.effort_low,
   medium: m.effort_medium,
@@ -129,10 +131,10 @@ const effortShare = (model: ModelInfo | undefined, effort: string | null) => {
   return (model.efforts.indexOf(effort) + 1) / model.efforts.length
 }
 
-export const accessModes: Record<AccessMode, { readonly icon: IconType; readonly label: () => string }> = {
-  supervised: { icon: RiShieldUserLine, label: m.access_supervised },
-  auto: { icon: RiShieldCheckLine, label: m.access_auto },
-  full: { icon: RiLockUnlockLine, label: m.access_full },
+export const accessModes: Record<AccessMode, { readonly icon: IconComponent; readonly label: () => string }> = {
+  supervised: { icon: ShieldUserIcon, label: m.access_supervised },
+  auto: { icon: ShieldIcon, label: m.access_auto },
+  full: { icon: UnlockIcon, label: m.access_full },
 }
 
 const museAccessLabels: Record<AccessMode, () => string> = {
@@ -148,6 +150,7 @@ const supervisedHint = {
   claude: m.access_supervised_hint_claude,
   codex: m.access_supervised_hint_codex,
   muse: m.access_supervised_hint_muse,
+  opencode: m.access_supervised_hint_opencode,
 } satisfies Record<ProviderId, () => string>
 
 const autoHint = {
@@ -155,6 +158,7 @@ const autoHint = {
     model?.autoMode ? m.access_auto_hint_claude() : m.access_auto_hint_claude_edits(),
   codex: m.access_auto_hint_codex,
   muse: m.access_auto_hint_muse,
+  opencode: m.access_auto_hint_opencode,
 } satisfies Record<ProviderId, (model: ModelInfo | undefined) => string>
 
 const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | undefined) => {
@@ -168,7 +172,10 @@ const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | u
   }
 }
 
-const hidesUserSkills = { claude: true, codex: true, muse: false } satisfies Record<ProviderId, boolean>
+const hidesUserSkills = { claude: true, codex: true, muse: false, opencode: false } satisfies Record<
+  ProviderId,
+  boolean
+>
 
 interface AgentTab {
   readonly value: string
@@ -180,6 +187,7 @@ interface AgentTab {
 }
 
 function useAgentTabs(thread: Thread, canSwitchAgent: boolean): ReadonlyArray<AgentTab> {
+  const setUpProviders = useAtomValue(setUpProvidersAtom(useThreadEnvironment(thread.id)))
   const accounts = useAccountOptions(thread).options
   const accountHint = useAccountHint()
   const turnRunning = thread.status === "running" || thread.status === "awaiting_approval"
@@ -201,7 +209,7 @@ function useAgentTabs(thread: Thread, canSwitchAgent: boolean): ReadonlyArray<Ag
           hint: accountHint(option),
           disabled: turnRunning && option.id !== thread.accountId,
         }))
-  const others = ProviderId.literals
+  const others = setUpProviders
     .filter((provider) => provider !== thread.provider)
     .map((provider) => ({ value: provider, provider, label: providerLabel[provider](), disabled: !canSwitchAgent }))
   return [...own, ...others]
@@ -219,6 +227,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
   const [open, setOpen] = useState(false)
   const [tabValue, setTabValue] = useState(threadTab)
   const [focus, setFocus] = useState<ComposerPicker>("model")
+  const [picking, startPicking] = useTransition()
   const openedByShortcut = useRef(false)
   const closedWithEnter = useRef(false)
   const popupRef = useRef<HTMLDivElement>(null)
@@ -233,19 +242,19 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
     setOpen(true)
   }
 
-  useEffect(
-    () =>
-      useUi.subscribe((state, previous) => {
-        const request = state.pickerRequest
-        if (request === previous.pickerRequest || request === null) return
-        openedByShortcut.current = true
-        closedWithEnter.current = false
-        setFocus(request.picker)
-        setTabValue(threadTab)
-        setOpen(true)
-      }),
-    [threadTab],
-  )
+  const isSidechat = thread.sideOf !== null
+  useEffect(() => {
+    if (isSidechat) return
+    return useUi.subscribe((state, previous) => {
+      const request = state.pickerRequest
+      if (request === previous.pickerRequest || request === null) return
+      openedByShortcut.current = true
+      closedWithEnter.current = false
+      setFocus(request.picker)
+      setTabValue(threadTab)
+      setOpen(true)
+    })
+  }, [threadTab, isSidechat])
 
   const pick = async (next: ModelInfo) => {
     if (tab.provider !== thread.provider) {
@@ -350,7 +359,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
         <ProviderIcon provider={thread.provider} />
         <span className="min-w-0 truncate text-foreground">{selected.label}</span>
         {effort !== null && <span className="shrink-0">{effortLabel(effort)}</span>}
-        {thread.fastMode && <RiFlashlightLine aria-hidden className="shrink-0" />}
+        {thread.fastMode && <BoltIcon aria-hidden className="shrink-0" />}
         {thread.accessMode === "full" && <AccessIcon aria-hidden className="shrink-0 text-destructive" />}
       </PopoverTrigger>
       <PopoverContent
@@ -379,7 +388,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
           className="-mx-2 gap-1 border-b border-border px-2 pb-2"
         >
           <div className="flex items-center gap-2">
-            <TabsList className="min-w-0 justify-start overflow-x-auto bg-transparent p-0 [scrollbar-width:none] motion-safe:scroll-smooth">
+            <TabsList className="min-w-0 scrollbar-none justify-start overflow-x-auto bg-transparent p-0 motion-safe:scroll-smooth">
               {tabs.map((candidate) => (
                 <Tooltip key={candidate.value}>
                   <TooltipTrigger
@@ -405,7 +414,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
         </Tabs>
         <ul
           aria-label={m.thread_model_picker()}
-          className="scroll-fade-y flex max-h-72 min-h-0 flex-col gap-0.5 overflow-y-auto"
+          className="flex max-h-72 min-h-0 scroll-fade-y flex-col gap-0.5 overflow-y-auto"
         >
           {models.map((model, index) => {
             const isSelected = isThreadTab(tab, thread) && sameModel(model, selected)
@@ -413,15 +422,15 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
               <li key={model.id}>
                 <button
                   type="button"
-                  disabled={tab.disabled}
+                  disabled={tab.disabled || picking}
                   aria-pressed={isSelected}
                   data-selected={isSelected}
-                  onClick={() => void pick(model)}
+                  onClick={() => startPicking(() => pick(model))}
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent disabled:opacity-50 aria-pressed:font-medium"
                 >
                   <span className="min-w-0 flex-1 truncate">{model.label}</span>
                   {index < 9 && <Kbd aria-hidden>{index + 1}</Kbd>}
-                  <RiCheckLine aria-hidden className={cn("size-4 shrink-0", !isSelected && "invisible")} />
+                  <CheckIcon aria-hidden className={cn("size-4 shrink-0", !isSelected && "invisible")} />
                 </button>
               </li>
             )
@@ -439,7 +448,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
           <div className="flex flex-wrap items-center justify-end gap-1.5 empty:hidden">
             {toggleFast && (
               <ModeToggle
-                icon={RiFlashlightLine}
+                icon={BoltIcon}
                 label={m.thread_fast_mode()}
                 hint={m.thread_fast_mode_hint()}
                 shortcut="F"
@@ -449,7 +458,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
             )}
             {toggleConversation && (
               <ModeToggle
-                icon={RiChat3Line}
+                icon={ChatIcon}
                 label={m.thread_conversation_mode()}
                 hint={m.thread_conversation_mode_hint()}
                 shortcut="C"
@@ -520,7 +529,7 @@ function EffortSlider({ model, value, onCommit }: EffortSliderProps) {
 }
 
 interface ModeToggleProps {
-  readonly icon: IconType
+  readonly icon: IconComponent
   readonly label: string
   readonly hint: string
   readonly shortcut: string
@@ -645,7 +654,7 @@ function RefSuggestionItem({ suggestion }: { suggestion: RefSuggestion }) {
   return (
     <Autocomplete.Item
       value={suggestion}
-      className="flex h-7 cursor-default items-center gap-2 rounded-md px-2 text-xs outline-none select-none [scroll-margin-block:0.25rem] data-highlighted:bg-accent data-highlighted:text-accent-foreground"
+      className="flex h-7 cursor-default [scroll-margin-block:0.25rem] items-center gap-2 rounded-sm px-2 text-xs outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground"
     >
       {suggestion.kind === "pullRequest" ? (
         <>
@@ -658,7 +667,7 @@ function RefSuggestionItem({ suggestion }: { suggestion: RefSuggestion }) {
         </>
       ) : (
         <>
-          <RiGitBranchLine aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+          <BranchIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="min-w-0 truncate font-mono">{suggestion.ref}</span>
         </>
       )}
@@ -702,12 +711,12 @@ function RefInput({
           if (event.key === "Enter") event.preventDefault()
         }}
         render={
-          <Input className="field-sizing-content h-6 max-w-96 min-w-16 rounded-sm border-0 px-1 font-mono text-xs text-foreground shadow-none focus-visible:ring-2 md:text-xs dark:bg-transparent" />
+          <Input className="field-sizing-content h-6 max-w-96 min-w-16 rounded-sm border-0 px-1 font-mono text-xs text-foreground shadow-none focus-visible:ring-2 dark:bg-transparent" />
         }
       />
       <Autocomplete.Portal>
         <Autocomplete.Positioner side="top" align="start" sideOffset={6} collisionPadding={8} className="isolate z-50">
-          <Autocomplete.Popup className="max-h-[min(20rem,var(--available-height))] w-96 max-w-(--available-width) origin-(--transform-origin) overflow-y-auto overscroll-contain rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 transition-[opacity,scale] duration-150 ease-(--ease-out) data-ending-style:scale-97 data-ending-style:opacity-0 data-ending-style:duration-100 data-starting-style:scale-97 data-starting-style:opacity-0 motion-reduce:transition-none">
+          <Autocomplete.Popup className="max-h-[min(20rem,var(--available-height))] w-96 max-w-(--available-width) origin-(--transform-origin) overflow-y-auto overscroll-contain rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 transition-[opacity,scale] duration-150 ease-out data-ending-style:scale-97 data-ending-style:opacity-0 data-ending-style:duration-100 data-starting-style:scale-97 data-starting-style:opacity-0 motion-reduce:transition-none">
             <Autocomplete.List className="scroll-py-1">
               {(group: (typeof groups)[number]) => (
                 <Autocomplete.Group key={group.label} items={group.items} className="not-last:mb-1">
@@ -750,7 +759,7 @@ function ContextSwitch({
   const move = (projectId: string) =>
     startMoving(async () => {
       try {
-        await moveUnstartedThread(thread, projectId, navigate)
+        await moveDraft(thread, projectId, navigate)
       } catch (cause) {
         toast.error(errorMessage(cause))
       }
@@ -812,7 +821,7 @@ export function WorkspacePicker({ thread, workspace }: { thread: Thread; workspa
   const setWorkspace = (next: Draft["workspace"]) => useDrafts.getState().setWorkspace(thread.id, next)
   const mode = workspace?.mode ?? "local"
   const ref = workspace?.ref ?? currentBranch
-  const RefIcon = parsePullRequestSelector(ref) ? RiGitPullRequestLine : RiGitBranchLine
+  const RefIcon = parsePullRequestSelector(ref) ? RiGitPullRequestLine : BranchIcon
 
   return (
     <div className="mx-auto mt-1 flex w-full max-w-3xl items-center gap-1 px-1">

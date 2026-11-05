@@ -5,34 +5,45 @@ import { Effect } from "effect"
 import { AsyncResult, AtomRegistry } from "effect/reactivity"
 import { StrictMode, useEffect, useLayoutEffect } from "react"
 import { createRoot } from "react-dom/client"
+import { toast } from "sonner"
 import { DockBadge } from "./components/DockBadge.tsx"
 import { Toaster } from "./components/ui/sonner.tsx"
 import { TooltipProvider } from "./components/ui/tooltip.tsx"
 import { applyAppearance, themes, useTheme } from "./lib/appearance.ts"
 import { registry } from "./lib/registry.ts"
-import { callPromise, clientSettingsAtom, onPushEvent, projectsAtom, settingsAtom } from "./lib/rpc.ts"
+import { artifactsAtom, callPromise, clientSettingsAtom, onPushEvent, projectsAtom, settingsAtom } from "./lib/rpc.ts"
 import { terminalExited, writeTerminal } from "./lib/terminalScreens.ts"
 import { useClientSettings } from "./lib/settings.ts"
+import { windowEntry } from "./lib/windowEntry.ts"
 import { notifyThreadEvent, recordUnseenOutcome } from "./lib/threadNotifications.ts"
+import { m } from "./paraglide/messages.js"
 import { router } from "./router.tsx"
+import { pullRequestWindowRouter } from "./pullRequestWindowRouter.ts"
+import { openArtifact, useArtifacts } from "./stores/artifacts.ts"
 import { useBackgroundTasks } from "./stores/backgroundTasks.ts"
+import { useDrafts } from "./stores/drafts.ts"
 import { useLocale } from "./stores/locale.ts"
 import { useMessages } from "./stores/messages.ts"
 import { usePullRequestGuides } from "./stores/pullRequestGuides.ts"
 import { loadAllPullRequestsAtom, usePullRequests } from "./stores/pullRequests.ts"
 import { useSubagents } from "./stores/subagents.ts"
 import { useTerminals } from "./stores/terminals.ts"
-import { useThreads } from "./stores/threads.ts"
+import { errorMessage } from "./lib/errorMessage.ts"
+import { openSidechat } from "./lib/sidechat.ts"
+import { useDeviceActivity } from "./stores/deviceActivity.ts"
+import { selectThread, useThreads } from "./stores/threads.ts"
 import { useUnseen } from "./stores/unseen.ts"
 import { useWorktrees } from "./stores/worktrees.ts"
 
 if (window.hinacode.liquidGlass) document.documentElement.dataset.glass = ""
 
+const activeRouter = windowEntry === null ? router : pullRequestWindowRouter(windowEntry)
+
 function App() {
   const locale = useLocale((state) => state.locale)
   const { appearance } = useClientSettings()
   const theme = useTheme(appearance.theme)
-  useLayoutEffect(() => applyAppearance(appearance, theme.scheme), [appearance, theme.scheme])
+  useLayoutEffect(() => applyAppearance(appearance, theme.id), [appearance, theme.id])
   const nativeScheme = themes[appearance.theme].scheme
   useEffect(() => {
     void callPromise("app.setColorScheme", nativeScheme)
@@ -43,8 +54,8 @@ function App() {
   // FIXME: Paraglide messages read the locale when called, so the tree remounts on locale change
   return (
     <TooltipProvider key={locale}>
-      <RouterProvider router={router} />
-      <DockBadge />
+      <RouterProvider router={activeRouter} />
+      {windowEntry === null && <DockBadge />}
       <Toaster position="top-right" offset={{ top: "3.5rem", right: "3.5rem" }} theme={theme.scheme} />
     </TooltipProvider>
   )
@@ -57,16 +68,30 @@ async function loadLists() {
   ])
 }
 
+async function revealArtifact(threadId: string, id: string) {
+  if (windowEntry !== null) return
+  registry.refresh(artifactsAtom)
+  await Effect.runPromise(Effect.ignore(AtomRegistry.getResult(registry, artifactsAtom, { suspendOnWaiting: true })))
+  const onScreen = router.matchRoute({ to: "/thread/$threadId", params: { threadId } }) !== false
+  if (onScreen) openArtifact(threadId, id)
+  else useArtifacts.getState().select(threadId, id)
+}
+
 onPushEvent((event) => {
   switch (event.type) {
     case "thread.updated":
       return useThreads.getState().upsert(event.thread)
     case "thread.removed":
       useUnseen.getState().clear(event.id)
+      useMessages.getState().unload(event.id)
       return useThreads.getState().remove(event.id)
     case "message.created":
     case "message.updated":
       return useMessages.getState().receive(event)
+    case "transcript.lost":
+      return void useMessages.getState().reload(event.threadId)
+    case "device.agentAction":
+      return useDeviceActivity.getState().markUnseen(event.threadId)
     case "thread.event": {
       useMessages.getState().receive(event)
       recordUnseenOutcome(event.threadId, event.event)
@@ -77,8 +102,22 @@ onPushEvent((event) => {
       return useWorktrees.getState().upsert(event.worktree)
     case "worktree.setupLog":
       return useWorktrees.getState().appendSetupLog(event.id, event.chunk)
+    case "worktree.setupNotice":
+      return toast.warning(
+        event.notice === "timedOut"
+          ? m.panel_setup_timed_out({ branch: event.branch })
+          : m.panel_setup_background_output({ branch: event.branch }),
+      )
     case "thread.pullRequests":
       return usePullRequests.getState().replace(event.threadId, event.links)
+    case "thread.reveal":
+      if (windowEntry !== null) return
+      void router.navigate({ to: "/thread/$threadId", params: { threadId: event.threadId } })
+      return void callPromise("app.focus", undefined)
+    case "artifact.opened":
+      return void revealArtifact(event.threadId, event.id)
+    case "thread.lineComment":
+      return useDrafts.getState().addComment(event.threadId, event.comment)
     case "pullRequest.guide":
       return usePullRequestGuides.getState().replace(event.url, event.state)
     case "thread.subagents":
@@ -95,6 +134,7 @@ onPushEvent((event) => {
       registry.refresh(projectsAtom)
       registry.refresh(loadAllPullRequestsAtom)
       reloadTranscripts(event.id)
+      refreshSidechats(event.id)
       reattachTerminals(event.id)
       return void loadLists()
     case "environments.changed":
@@ -108,17 +148,25 @@ const isOnCloud = (environmentId: string) => {
   const onCloud = new Set(
     projects.filter((project) => project.environmentId === environmentId).map((project) => project.id),
   )
-  const threads = useThreads.getState().byId
-  return (threadId: string) => onCloud.has(threads[threadId]?.projectId ?? "")
+  const threads = useThreads.getState()
+  return (threadId: string) => onCloud.has(selectThread(threadId)(threads)?.projectId ?? "")
 }
 
 const reloadTranscripts = (environmentId: string) => {
   const onCloud = isOnCloud(environmentId)
-  const { byThread, unload, load } = useMessages.getState()
+  const { byThread, reload } = useMessages.getState()
   for (const threadId of Object.keys(byThread)) {
-    if (!onCloud(threadId)) continue
-    unload(threadId)
-    void load(threadId)
+    if (onCloud(threadId)) void reload(threadId)
+  }
+}
+
+const refreshSidechats = (environmentId: string) => {
+  const onCloud = isOnCloud(environmentId)
+  for (const parentId of Object.keys(useThreads.getState().sidechats)) {
+    if (onCloud(parentId))
+      openSidechat(parentId).catch((cause: unknown) =>
+        console.error(`Could not refresh a side chat: ${errorMessage(cause)}`),
+      )
   }
 }
 
@@ -135,7 +183,7 @@ const [settings] = await Promise.all([
   loadLists(),
   Effect.runPromise(Effect.ignore(AtomRegistry.getResult(registry, settingsAtom(null)))),
 ])
-useLocale.getState().apply(settings.locale)
+await useLocale.getState().apply(settings.locale)
 applyAppearance(settings.appearance)
 const root = document.getElementById("root")
 if (!root) throw new Error("#root is missing from index.html")

@@ -3,10 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it, layer } from "@effect/vitest"
+import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer } from "effect"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
-import { belongsToWorkspace, findListeningPorts, Ports, type ProcFs, layer as portsLayer } from "./Ports.ts"
+import { belongsToWorkspace, parseNetstat, parseSs, Ports, layer as portsLayer } from "./Ports.ts"
 
 const listenerPids: Array<number> = []
 
@@ -45,7 +46,7 @@ describe.skipIf(process.platform !== "linux" && process.platform !== "darwin")("
     await rm(base, { recursive: true, force: true })
   })
 
-  layer(portsLayer.pipe(Layer.provideMerge(Db.layer(":memory:"))))((shared) => {
+  layer(portsLayer.pipe(Layer.provideMerge(Db.layer(":memory:")), Layer.provide(NodeServices.layer)))((shared) => {
     shared.effect("lists a project-root listener after the thread's worktree was removed", () =>
       Effect.gen(function* () {
         const root = yield* Effect.promise(() => mkdtemp(join(base, "repo-")))
@@ -74,75 +75,67 @@ describe.skipIf(process.platform !== "linux" && process.platform !== "darwin")("
   })
 })
 
-interface FakeProcess {
-  readonly parent: number
-  readonly cwd?: string
-  readonly fds?: Record<string, string>
-  readonly exited?: boolean
-}
-
-const TCP = `  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
-   0: 0100007F:0BB8 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 111 1
-   1: 0100007F:0FA0 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 222 1
-   2: 0100007F:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 333 1
+const SS = `LISTEN 0      4096   127.0.0.53%lo:53      0.0.0.0:*
+LISTEN 0      511        127.0.0.1:5173    0.0.0.0:* users:(("node",pid=30,fd=21))
+LISTEN 0      511             [::]:8080       [::]:* users:(("claude",pid=21,fd=40),("my (dev) srv",pid=22,fd=12))
+LISTEN 0      128                *:4000          *:* users:(("python3",pid=40,fd=3))
 `
 
-const missing = (path: string) => Promise.reject(Object.assign(new Error(path), { code: "ENOENT" }))
+describe("parseSs", () => {
+  it("reads every process holding each listening socket, across address families", () => {
+    expect(parseSs(SS)).toStrictEqual([
+      { pid: 30, command: "node", port: 5173 },
+      { pid: 21, command: "claude", port: 8080 },
+      { pid: 22, command: "my (dev) srv", port: 8080 },
+      { pid: 40, command: "python3", port: 4000 },
+    ])
+  })
+})
 
-const fakeProc = (processes: Record<number, FakeProcess>) => {
-  const fdReads: Array<number> = []
-  const fs: ProcFs = {
-    readFile: (path) => {
-      if (path === "/proc/net/tcp") return Promise.resolve(TCP)
-      const pid = Number(path.split("/")[2])
-      const proc = processes[pid]
-      if (!proc || proc.exited || !path.endsWith("/stat")) return missing(path)
-      return Promise.resolve(`${pid} (cmd ${pid}) S ${proc.parent} 1 1`)
-    },
-    readdir: (path) => {
-      if (path === "/proc") return Promise.resolve(Object.keys(processes))
-      const pid = Number(path.split("/")[2])
-      fdReads.push(pid)
-      const fds = processes[pid]?.fds
-      return fds ? Promise.resolve(Object.keys(fds)) : Promise.reject(new Error("EACCES"))
-    },
-    readlink: (path) => {
-      const [, , pid, kind, fd] = path.split("/")
-      const proc = processes[Number(pid)]
-      const target = kind === "cwd" ? proc?.cwd : proc?.fds?.[fd ?? ""]
-      return target === undefined ? missing(path) : Promise.resolve(target)
-    },
-  }
-  return { fs, fdReads }
-}
+const NETSTAT = `
+使用中連線
 
-describe("findListeningPorts", () => {
+  協定   本機位址               外部位址               狀態            PID
+  TCP    0.0.0.0:22             0.0.0.0:0              LISTENING       3120
+  TCP    127.0.0.1:5173         0.0.0.0:0              ABHÖREN         7788
+  TCP    10.10.10.50:22         10.10.10.1:50122       ESTABLISHED     3120
+  TCP    [::]:8080              [::]:0                 LISTENING       4412
+  TCP    [::1]:9235             [::]:0                 LISTENING       4412
+`
+
+describe("parseNetstat", () => {
+  it("reads listening sockets in any display language, across address families", () => {
+    expect(parseNetstat(NETSTAT)).toStrictEqual([
+      { pid: 3120, port: 22 },
+      { pid: 7788, port: 5173 },
+      { pid: 4412, port: 8080 },
+      { pid: 4412, port: 9235 },
+    ])
+  })
+})
+
+describe("belongsToWorkspace", () => {
   const SELF = 10
   const AGENT = 20
-  const { fs, fdReads } = fakeProc({
-    [SELF]: { parent: 1, cwd: "/ws", fds: { 0: "socket:[999]" } },
-    11: { parent: SELF, cwd: "/ws", fds: { 3: "socket:[111]" } },
-    [AGENT]: { parent: SELF, cwd: "/ws", fds: { 3: "socket:[111]" } },
-    21: { parent: AGENT, cwd: "/tmp", fds: {} },
-    22: { parent: 21, cwd: "/tmp", fds: { 4: "socket:[222]", 5: "/dev/null" } },
-    30: { parent: 1, cwd: "/ws/app", fds: { 3: "socket:[333]", 4: "socket:[333]" } },
-    31: { parent: 1, cwd: "/ws/denied" },
-    32: { parent: 1, cwd: "/ws/exited", fds: { 3: "socket:[111]" }, exited: true },
-    40: { parent: 1, cwd: "/elsewhere", fds: { 3: "socket:[111]" } },
-    41: { parent: 1, cwd: "/ws-sibling", fds: { 3: "socket:[111]" } },
+  const include = belongsToWorkspace({ workspacePath: "/ws", agentPids: new Set([AGENT]), selfPid: SELF })
+  const proc = (pid: number, cwd: string | null, ancestors: ReadonlyArray<number>) => ({
+    pid,
+    command: `cmd ${pid}`,
+    cwd,
+    ancestors,
   })
 
-  it.effect("attributes by cwd and agent ancestry and reads only candidates' descriptors", () =>
-    Effect.gen(function* () {
-      const found = yield* findListeningPorts(
-        fs,
-        belongsToWorkspace({ workspacePath: "/ws", agentPids: new Set([AGENT]), selfPid: SELF }),
-      )
-      expect(found).toStrictEqual([
-        { pid: 22, command: "cmd 22", cwd: "/tmp", ancestors: [21, AGENT, SELF], port: 4000 },
-        { pid: 30, command: "cmd 30", cwd: "/ws/app", ancestors: [], port: 8080 },
-      ])
-      expect(fdReads.toSorted()).toStrictEqual([21, 22, 30, 31])
-    }),
-  )
+  it("keeps the agent's descendants wherever they run, and processes started inside the workspace", () => {
+    expect(include(proc(22, "/tmp", [21, AGENT, SELF]))).toBe(true)
+    expect(include(proc(30, "/ws/app", []))).toBe(true)
+  })
+
+  it("leaves out HinaCode, the agent itself, HinaCode's other children and processes outside the workspace", () => {
+    expect(include(proc(SELF, "/ws", []))).toBe(false)
+    expect(include(proc(AGENT, "/ws", [SELF]))).toBe(false)
+    expect(include(proc(11, "/ws", [SELF]))).toBe(false)
+    expect(include(proc(40, "/elsewhere", []))).toBe(false)
+    expect(include(proc(41, "/ws-sibling", []))).toBe(false)
+    expect(include(proc(42, null, []))).toBe(false)
+  })
 })

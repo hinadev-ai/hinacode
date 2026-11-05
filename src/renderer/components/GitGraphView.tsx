@@ -16,10 +16,8 @@ import {
   useRef,
   useState,
 } from "react"
-import { RiPriceTag3Line, RiRefreshLine } from "react-icons/ri"
 import type { GitCommit, Thread } from "../../shared/domain.ts"
 import { useTheme } from "../lib/appearance.ts"
-import { errorMessage } from "../lib/errorMessage.ts"
 import { chipRefs, type GraphEdge, type GraphRow, laneCount, layoutGraph } from "../lib/gitGraph.ts"
 import { commitDiffAtom, commitKey, currentBranchAtom, gitLogAtom, gitLogLimitAtom, projectsAtom } from "../lib/rpc.ts"
 import { GIT_GRAPH_SPLIT_BOUNDS } from "../lib/panelSize.ts"
@@ -28,9 +26,11 @@ import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
+import { ErrorNotice } from "./ErrorNotice.tsx"
 import { Badge } from "./ui/badge.tsx"
 import { Button } from "./ui/button.tsx"
 import { ScrollArea } from "./ui/scroll-area.tsx"
+import { RefreshIcon, TagIcon } from "@hinacode/icons"
 
 const ROW_HEIGHT = 28
 const LANE_INSET = 8
@@ -85,7 +85,7 @@ function GitGraph({ root, branch, threadStatus }: { root: string; branch?: strin
           title={m.git_graph_refresh()}
           onClick={refresh}
         >
-          <RiRefreshLine
+          <RefreshIcon
             aria-hidden
             className={log.waiting ? "animate-spin-late motion-reduce:animate-none" : undefined}
           />
@@ -100,21 +100,16 @@ function GitGraph({ root, branch, threadStatus }: { root: string; branch?: strin
             <GraphWithDiff root={root} branch={branch} commits={loaded} onEndReached={loadMore} />
           ),
         )
-        .onError((error) => <Notice alert>{m.git_graph_failed({ message: errorMessage(error) })}</Notice>)
+        .onError((error) => (
+          <ErrorNotice cause={error} describe={(message) => m.git_graph_failed({ message })} className="p-3" />
+        ))
         .orElse(() => null)}
     </div>
   )
 }
 
-function Notice({ children, alert = false, className }: { children: string; alert?: boolean; className?: string }) {
-  return (
-    <p
-      role={alert ? "alert" : undefined}
-      className={cn("p-3 text-xs", alert ? "text-destructive" : "text-muted-foreground", className)}
-    >
-      {children}
-    </p>
-  )
+function Notice({ children, className }: { children: string; className?: string }) {
+  return <p className={cn("p-3 text-xs text-muted-foreground", className)}>{children}</p>
 }
 
 interface GraphWithDiffProps {
@@ -178,10 +173,6 @@ function GraphWithDiff({ root, branch, commits, onEndReached }: GraphWithDiffPro
   )
 
   const showDiff = diffOpen && selectedCommit !== undefined
-  useEffect(() => {
-    useUi.getState().setSidePanelWide(showDiff)
-    return () => useUi.getState().setSidePanelWide(false)
-  }, [showDiff])
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div
@@ -320,7 +311,7 @@ function RefChips({ refs, branch }: { refs: ReadonlyArray<string>; branch: strin
           emphasized ? "border-working/50 bg-working/10 text-working" : "text-muted-foreground",
         )}
       >
-        {tag !== undefined && <RiPriceTag3Line aria-hidden />}
+        {tag !== undefined && <TagIcon aria-hidden />}
         <span className="truncate">{tag ?? first}</span>
       </Badge>
       {shown.length > 1 && (
@@ -402,7 +393,7 @@ function CommitDiffPane({ root, commit }: { root: string; commit: GitCommit }) {
   return (
     <section
       aria-label={m.git_graph_diff_label({ hash: commit.hash.slice(0, 7) })}
-      className="flex min-h-0 flex-1 animate-fade-in flex-col motion-reduce:animate-none"
+      className="flex min-h-0 flex-1 animate-fade-in flex-col"
     >
       <div className="flex shrink-0 items-baseline gap-2 px-3 py-2 text-xs">
         <code className="shrink-0 font-mono text-muted-foreground">{commit.hash.slice(0, 7)}</code>
@@ -427,7 +418,13 @@ function CommitFiles({ root, hash }: { root: string; hash: string }) {
   const patch = AsyncResult.isSuccess(diff) ? diff.value.patch : ""
   const files = parsePatchFiles(patch, `commit-${hash}`).flatMap((parsed) => parsed.files)
   if (AsyncResult.isFailure(diff)) {
-    return <Notice alert>{m.git_graph_diff_failed({ message: errorMessage(Cause.squash(diff.cause)) })}</Notice>
+    return (
+      <ErrorNotice
+        cause={Cause.squash(diff.cause)}
+        describe={(message) => m.git_graph_diff_failed({ message })}
+        className="p-3"
+      />
+    )
   }
   if (files.length === 0) return <Notice>{m.git_graph_diff_empty()}</Notice>
   return (

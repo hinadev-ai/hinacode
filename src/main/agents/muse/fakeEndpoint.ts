@@ -20,6 +20,7 @@ export interface FakeEndpoint {
   script: (call: ScriptedCall) => void
   hold: (when: string) => void
   rateLimit: (when: string, resetsAt?: number) => void
+  unauthorized: (when: string) => void
   holdSummaries: () => () => void
   requested: (when: string) => Promise<void>
   close: () => Promise<void>
@@ -122,6 +123,7 @@ export const startFakeEndpoint = async (root: string, replyText: string): Promis
   const scripts: Array<ScriptedCall> = []
   const holds: Array<string> = []
   const rateLimits: Array<{ readonly when: string; readonly resetsAt?: number }> = []
+  const unauthorized: Array<string> = []
   let heldSummaries: Array<() => void> | undefined
   const waiting = new Set<{ readonly when: string; readonly resolve: () => void }>()
   let scripted = 0
@@ -141,6 +143,11 @@ export const startFakeEndpoint = async (root: string, replyText: string): Promis
         if (!body.includes(waiter.when)) continue
         waiting.delete(waiter)
         waiter.resolve()
+      }
+      if (unauthorized.some((when) => body.includes(when))) {
+        response.writeHead(401, { "content-type": "application/json" })
+        response.end(JSON.stringify({ error: { message: "Invalid API key", code: "invalid_api_key" } }))
+        return
       }
       const limit = rateLimits.find(({ when }) => body.includes(when))
       if (limit !== undefined) {
@@ -195,6 +202,7 @@ export const startFakeEndpoint = async (root: string, replyText: string): Promis
     script: (call) => scripts.push(call),
     hold: (when) => holds.push(when),
     rateLimit: (when, resetsAt) => rateLimits.push({ when, resetsAt }),
+    unauthorized: (when) => unauthorized.push(when),
     holdSummaries: () => {
       const held: Array<() => void> = []
       heldSummaries = held

@@ -3,6 +3,7 @@ import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, useRef, useState, useTransition } from "react"
 import { CLAUDE_EFFORT_LEVELS, type ModelInfo, ProviderId, unlistedModel } from "../../../shared/agent.ts"
 import { AccessMode, AUTO_COMPACT_RANGE } from "../../../shared/domain.ts"
+import { providerInfo } from "../../../shared/providers.ts"
 import { modelsAtom, updateSettingsAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { useSettingsEnvironment } from "../../lib/environments.ts"
@@ -11,6 +12,7 @@ import { accessModes, effortLabel } from "../ComposerControls.tsx"
 import { ProviderIcon, providerLabel } from "../ProviderIcon.tsx"
 import { Button } from "../ui/button.tsx"
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
+import { Switch } from "../ui/switch.tsx"
 import { Input } from "../ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { AccountList, DefaultAccountField } from "./AccountSettings.tsx"
@@ -50,7 +52,7 @@ function ProviderModels({ provider }: { provider: ProviderId }) {
         {AsyncResult.isSuccess(models) && models.value.length > 0 && (
           <ModelPresetField provider={provider} models={models.value} />
         )}
-        <AutoCompactField provider={provider} />
+        {providerInfo[provider].autoCompacts && <AutoCompactField provider={provider} />}
       </SettingsGroup>
     </fieldset>
   )
@@ -154,7 +156,7 @@ function ModelPresetField({ provider, models }: { provider: ProviderId; models: 
           </SelectContent>
         </Select>
         {selected.length > 0 && (
-          <Button variant="ghost" size="sm" onClick={() => void save([])}>
+          <Button variant="ghost" size="sm" action={() => save([])}>
             {m.settings_model_preset_clear()}
           </Button>
         )}
@@ -356,40 +358,56 @@ function PullRequestGuideField() {
 
   const saveModel = async (model: string | null) => {
     if (model === null) return
-    await save({ model, effort: effortKeptOrDefaultFor(model) })
+    await save({ ...pullRequestGuide, model, effort: effortKeptOrDefaultFor(model) })
   }
 
   return (
-    <Field>
-      <FieldLabel htmlFor={inputId}>{m.settings_guide_model()}</FieldLabel>
-      <div className="flex flex-wrap items-center gap-2">
-        <ModelSelect
-          inputId={inputId}
-          models={items}
-          current={pullRequestGuide.model}
-          onSave={saveModel}
-          clearable={false}
+    <>
+      <Field orientation="horizontal">
+        <FieldContent>
+          <FieldLabel htmlFor="pull-request-guide-enabled">{m.settings_guide_model()}</FieldLabel>
+          <FieldDescription>{m.settings_guide_model_hint()}</FieldDescription>
+        </FieldContent>
+        <Switch
+          id="pull-request-guide-enabled"
+          checked={pullRequestGuide.enabled}
+          onCheckedChange={(enabled) => void save({ ...pullRequestGuide, enabled })}
         />
-        <Select
-          items={effortItems}
-          value={pullRequestGuide.effort}
-          onValueChange={(effort) => effort !== null && void save({ ...pullRequestGuide, effort })}
-        >
-          <SelectTrigger aria-label={m.thread_effort_picker()} className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {effortItems.map((item) => (
-              <SelectItem key={item.value} value={item.value}>
-                {item.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <FieldDescription>{m.settings_guide_model_hint()}</FieldDescription>
+      </Field>
+      {pullRequestGuide.enabled && (
+        <Field>
+          <FieldLabel htmlFor={inputId} className="sr-only">
+            {m.settings_guide_model_picker()}
+          </FieldLabel>
+          <div className="flex flex-wrap items-center gap-2">
+            <ModelSelect
+              inputId={inputId}
+              models={items}
+              current={pullRequestGuide.model}
+              onSave={saveModel}
+              clearable={false}
+            />
+            <Select
+              items={effortItems}
+              value={pullRequestGuide.effort}
+              onValueChange={(effort) => effort !== null && void save({ ...pullRequestGuide, effort })}
+            >
+              <SelectTrigger aria-label={m.thread_effort_picker()} className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {effortItems.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </Field>
+      )}
       {error && <FieldError>{error}</FieldError>}
-    </Field>
+    </>
   )
 }
 
@@ -422,7 +440,7 @@ function ModelSelect({
         </SelectContent>
       </Select>
       {clearable && current !== null && (
-        <Button variant="ghost" size="sm" onClick={() => void onSave(null)}>
+        <Button variant="ghost" size="sm" action={() => onSave(null)}>
           {m.settings_models_clear()}
         </Button>
       )}

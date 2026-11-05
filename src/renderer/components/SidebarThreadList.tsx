@@ -21,28 +21,15 @@ import {
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
+  startTransition,
   useActionState,
+  useEffect,
+  useEffectEvent,
   useId,
   useRef,
   useState,
 } from "react"
 import { flushSync } from "react-dom"
-import {
-  RiAlarmLine,
-  RiAlarmSnoozeLine,
-  RiArchiveLine,
-  RiDeleteBinLine,
-  RiDraggable,
-  RiEyeLine,
-  RiEyeOffLine,
-  RiFileCopyLine,
-  RiInboxUnarchiveLine,
-  RiMoreFill,
-  RiPencilLine,
-  RiPushpinLine,
-  RiUnpinLine,
-} from "react-icons/ri"
-import type { IconType } from "react-icons"
 import { toast } from "sonner"
 import { isThreadBusy, type PullRequestLink, type Thread } from "../../shared/domain.ts"
 import { type RowState, rowEmphasis, rowState, rowStatusIndicator } from "../../shared/threadStatus.ts"
@@ -50,6 +37,7 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { toIcon } from "../lib/indicators.ts"
 import { formatRelativeTime } from "../lib/relativeTime.ts"
 import { formatSnoozeTime } from "../lib/snooze.ts"
+import { nestChildren } from "../lib/threadTree.ts"
 import { callPromise, type EnvironmentId, projectsAtom, pullRequestAttentionAtom } from "../lib/rpc.ts"
 import { type Cloud, isStale, useCloud, useThreadEnvironment } from "../lib/environments.ts"
 import { useSettings } from "../lib/settings.ts"
@@ -61,6 +49,7 @@ import { useDrafts } from "../stores/drafts.ts"
 import { usePullRequests } from "../stores/pullRequests.ts"
 import { lastActivity, useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
+import { listMotionPausedWhile } from "../lib/listMotion.ts"
 import { useUnseen } from "../stores/unseen.ts"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { SidebarPullRequests } from "./SidebarPullRequests.tsx"
@@ -71,16 +60,25 @@ import { Checkbox } from "./ui/checkbox.tsx"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu.tsx"
 import { Field, FieldLabel } from "./ui/field.tsx"
 import { Input } from "./ui/input.tsx"
-import {
-  Popover,
-  PopoverContent,
-  PopoverDescription,
-  PopoverHeader,
-  PopoverTitle,
-  PopoverTrigger,
-} from "./ui/popover.tsx"
+import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle } from "./ui/popover.tsx"
 import { ProjectIcon } from "./ProjectIcon.tsx"
 import { snoozeThread } from "./SnoozeDialog.tsx"
+import {
+  AlarmIcon,
+  ArchiveIcon,
+  CopyIcon,
+  EyeIcon,
+  EyeOffIcon,
+  GripIcon,
+  type IconComponent,
+  MoreIcon,
+  PencilIcon,
+  PinIcon,
+  SnoozeIcon,
+  TrashIcon,
+  UnarchiveIcon,
+  UnpinIcon,
+} from "@hinacode/icons"
 
 type DragDropPlugins = NonNullable<ComponentProps<typeof DragDropProvider>["plugins"]>
 
@@ -135,7 +133,10 @@ interface SidebarThreadListProps {
   readonly showEmptyHint?: boolean
   readonly newThreadButtonRef?: RefObject<HTMLButtonElement | null>
   readonly className?: string
+  readonly pageSize?: number
 }
+
+export const sidebarListMotion = listMotionPausedWhile(() => useUi.getState().sidebarQuery !== "")
 
 export function SidebarThreadList({
   group,
@@ -145,12 +146,16 @@ export function SidebarThreadList({
   showEmptyHint = false,
   newThreadButtonRef,
   className = "",
+  pageSize = Number.POSITIVE_INFINITY,
 }: SidebarThreadListProps) {
   const firstRowRef = useRef<HTMLAnchorElement>(null)
   const focusAfterRemoval = () => firstRowRef.current ?? newThreadButtonRef?.current ?? null
-  const [listRef, setAnimate] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
+  const [listRef, setAnimate] = useAutoAnimate<HTMLUListElement>(sidebarListMotion)
   const DROP_ANIMATION_MS = 300
   const [reorderError, setReorderError] = useState<string | null>(null)
+  const entries = nestChildren(threads)
+  const [shownCount, setShownCount] = useState(pageSize)
+  const shownEntries = entries.slice(0, shownCount)
 
   const save = async (ordered: ReadonlyArray<Thread>) => {
     const moved = ordered.flatMap((thread, index) =>
@@ -177,7 +182,13 @@ export function SidebarThreadList({
         sensors={sensors}
         onDragStart={() => setAnimate(false)}
         onDragEnd={(event) => {
-          if (!event.canceled) void save(move([...threads], event))
+          if (!event.canceled)
+            void save(
+              move(
+                entries.map((entry) => entry.thread),
+                event,
+              ),
+            )
           // FIXME: dnd-kit still plays its drop animation here, and auto-animate on top slides the row twice
           setTimeout(() => setAnimate(true), DROP_ANIMATION_MS)
         }}
@@ -186,13 +197,14 @@ export function SidebarThreadList({
           {threads.length === 0 && showEmptyHint && (
             <li className="px-1.5 py-1 text-xs text-muted-foreground">{m.sidebar_no_threads()}</li>
           )}
-          {threads.map((thread, index) => (
+          {shownEntries.map(({ thread, nested }, index) => (
             <ThreadRow
               key={thread.id}
               thread={thread}
+              nested={nested}
               index={index}
               group={group}
-              reorderable={reorderable}
+              reorderable={reorderable && !nested}
               showProject={showProject}
               linkRef={index === 0 ? firstRowRef : undefined}
               focusAfterRemoval={focusAfterRemoval}
@@ -200,6 +212,12 @@ export function SidebarThreadList({
           ))}
         </ul>
       </DragDropProvider>
+      {shownCount < entries.length && (
+        <NextPageSentinel
+          key={shownCount}
+          onReached={() => startTransition(() => setShownCount((count) => count + pageSize))}
+        />
+      )}
       {reorderError && (
         <p role="alert" className="px-1.5 py-1 text-xs text-destructive">
           {m.sidebar_reorder_failed({ message: reorderError })}
@@ -209,10 +227,30 @@ export function SidebarThreadList({
   )
 }
 
+const NEXT_PAGE_MARGIN = "400px"
+
+function NextPageSentinel({ onReached }: { readonly onReached: () => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const handleReached = useEffectEvent(onReached)
+  useEffect(() => {
+    if (!ref.current) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) handleReached()
+      },
+      { rootMargin: NEXT_PAGE_MARGIN, scrollMargin: NEXT_PAGE_MARGIN },
+    )
+    observer.observe(ref.current)
+    return () => observer.disconnect()
+  }, [])
+  return <div ref={ref} aria-hidden className="h-px" />
+}
+
 type RowMode = "idle" | "renaming" | "archive" | "delete"
 
 interface ThreadRowProps {
   readonly thread: Thread
+  readonly nested: boolean
   readonly index: number
   readonly group: string
   readonly reorderable: boolean
@@ -221,7 +259,16 @@ interface ThreadRowProps {
   readonly focusAfterRemoval: () => HTMLElement | null
 }
 
-function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, focusAfterRemoval }: ThreadRowProps) {
+function ThreadRow({
+  thread,
+  nested,
+  index,
+  group,
+  reorderable,
+  showProject,
+  linkRef,
+  focusAfterRemoval,
+}: ThreadRowProps) {
   const { ref, handleRef, isDragSource } = useSortable({ id: thread.id, index, group, disabled: !reorderable })
   const [menuOpen, setMenuOpen] = useState(false)
   const [mode, setMode] = useState<RowMode>("idle")
@@ -233,7 +280,6 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
   const { archive: archiveSettings } = useSettings(environment)
   const busy = isThreadBusy(thread.status)
   const archived = thread.status === "archived"
-  const archiveDeletes = archiveSettings.removeWorktree && worktree !== undefined
   const meta = useThreadMeta(thread, showProject)
   const hasMeta = cloud !== undefined || meta.links.length > 0
   const state = useThreadRowState(thread)
@@ -244,10 +290,24 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
   }
   const archive = async () => {
     try {
-      moveOut(await callPromise("threads.archive", { threadId: thread.id }))
+      if (
+        archiveSettings.removeWorktree &&
+        worktree &&
+        (await callPromise("worktrees.checkoutState", { id: worktree.id })) === "dirty"
+      ) {
+        setMode("archive")
+        return
+      }
+      moveOutArchived(await callPromise("threads.archive", { threadId: thread.id }))
     } catch (cause) {
       toast.error(m.sidebar_archive_failed({ message: errorMessage(cause) }))
     }
+  }
+  const moveOutArchived = (updated: Thread) => {
+    moveOut(updated)
+    toast(m.sidebar_thread_archived({ title: updated.title }), {
+      action: { label: m.common_undo(), onClick: () => void unarchive() },
+    })
   }
   const unarchive = async () => {
     try {
@@ -287,15 +347,16 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
       // FIXME: dnd-kit marks a handleless row as a button, which reads as disabled without a handle
       ref={reorderable ? ref : undefined}
       data-dragging={isDragSource}
-      data-menu-open={menuOpen}
+      data-menu-open={menuOpen || mode === "delete"}
       data-emphasis={rowEmphasis[state]}
       data-archived={archived}
+      data-nested={nested}
       data-stale={isStale(cloud)}
       data-show-project={meta.project !== null}
       data-meta={hasMeta}
       onPointerEnter={(event) => scrollTitle(event.currentTarget)}
       onPointerLeave={(event) => stopTitle(event.currentTarget)}
-      className="group/thread relative rounded-md [--row-actions:--spacing(20)] has-[[data-reorder-handle]:focus-visible]:[--row-actions:--spacing(26)] text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=working]:text-muted-foreground data-[emphasis=working]:not-hover:not-focus-within:not-has-[a[data-status=active]]:opacity-60 data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
+      className="group/thread relative rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground has-[a[data-status=active]]:bg-sidebar-accent has-[a[data-status=active]]:text-sidebar-accent-foreground data-[dragging=true]:bg-sidebar-accent data-[dragging=true]:opacity-80 data-[emphasis=working]:text-muted-foreground data-[emphasis=working]:not-has-[a[data-status=active]]:not-hover:not-focus-within:opacity-60 data-[nested=true]:ms-3.5 data-[stale=true]:data-[emphasis=resting]:text-muted-foreground"
     >
       {meta.project !== null && (
         <div className="flex min-w-0 items-center gap-1 pt-1.5 pr-2 pl-1.5 text-xs text-muted-foreground">
@@ -308,172 +369,183 @@ function ThreadRow({ thread, index, group, reorderable, showProject, linkRef, fo
       {mode === "renaming" ? (
         <RenameInput thread={thread} onDone={finishRename} />
       ) : (
-        <Link
-          ref={linkRef}
-          to="/thread/$threadId"
-          params={{ threadId: thread.id }}
-          draggable={false}
-          onContextMenu={(event) => {
-            event.preventDefault()
-            setMenuOpen(true)
-          }}
-          data-reorderable={reorderable}
-          className="flex items-center gap-2 rounded-md pt-1.5 pr-2 group-data-[show-project=true]/thread:pt-0.5 pb-0.5 group-data-[meta=false]/thread:pb-1.5 pl-1.5 outline-none after:absolute after:inset-0 after:rounded-md group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions) focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
-        >
-          <span
-            dir="auto"
-            className="min-w-0 flex-1 truncate text-left text-[0.9375rem] group-hover/thread:text-clip"
-            title={thread.title}
+        <div className="grid grid-cols-1">
+          <Link
+            ref={linkRef}
+            to="/thread/$threadId"
+            params={{ threadId: thread.id }}
+            draggable={false}
+            onContextMenu={(event) => {
+              event.preventDefault()
+              setMenuOpen(true)
+            }}
+            data-reorderable={reorderable}
+            className="flex items-center gap-2 rounded-md pt-1.5 pr-2 pb-0.5 pl-1.5 outline-none [grid-area:1/1] group-data-[meta=false]/thread:pb-1.5 group-data-[show-project=true]/thread:pt-0.5 after:absolute after:inset-0 after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-sidebar-ring data-[reorderable=true]:cursor-grab"
           >
-            <span data-title-text className="group-hover/thread:inline-block">
-              {thread.title}
-            </span>
-          </span>
-          <StatusIndicator state={state} />
-          <span
-            aria-hidden
-            className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground group-hover/thread:hidden group-has-[a:focus-visible,button:focus]/thread:hidden group-data-[menu-open=true]/thread:hidden"
-          >
-            <ActivityTime {...meta} />
-            <ProviderIcon provider={meta.provider} className="size-3" />
-          </span>
-        </Link>
-      )}
-      {hasMeta && <ThreadMeta links={meta.links} threadId={thread.id} cloud={cloud} environment={environment} />}
-
-      {mode !== "renaming" && (
-        <div className="absolute inset-y-0 right-1 flex items-center gap-0.5 opacity-0 group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 focus-within:opacity-100 group-data-[menu-open=true]/thread:opacity-100 has-[[data-popup-open]]:opacity-100">
-          {archived ? (
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label={m.sidebar_thread_unarchive_label({ title: thread.title })}
-              title={m.sidebar_thread_unarchive()}
-              onClick={() => void unarchive()}
+            <span
+              dir="auto"
+              className="min-w-0 flex-1 truncate text-left text-[0.9375rem] group-hover/thread:text-clip"
+              title={thread.title}
             >
-              <RiInboxUnarchiveLine aria-hidden />
-            </Button>
-          ) : (
-            <>
-              {reorderable && (
-                <Button
-                  ref={handleRef}
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={m.sidebar_thread_reorder({ title: thread.title })}
-                  aria-roledescription={m.sidebar_thread_reorder_role()}
-                  data-reorder-handle
-                  className="sr-only cursor-grab focus-visible:not-sr-only"
-                >
-                  <RiDraggable aria-hidden />
-                </Button>
-              )}
+              <span data-title-text className="group-hover/thread:inline-block">
+                {thread.title}
+              </span>
+            </span>
+            <StatusIndicator state={state} />
+            <span aria-hidden className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+              <ActivityTime {...meta} />
+              <ProviderIcon provider={meta.provider} className="size-3" />
+            </span>
+          </Link>
+          <div
+            data-row-actions
+            className="relative mr-1 flex items-center gap-0.5 self-center justify-self-end rounded-md bg-sidebar-accent opacity-0 [grid-area:1/1] group-hover/thread:opacity-100 group-has-[a:focus-visible]/thread:opacity-100 group-data-[menu-open=true]/thread:opacity-100 before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-linear-to-l before:from-sidebar-accent focus-within:opacity-100 has-[[data-popup-open]]:opacity-100 [@media(hover:none)]:pointer-events-none"
+          >
+            {archived ? (
               <Button
                 variant="ghost"
                 size="icon-xs"
-                aria-label={m.sidebar_thread_archive_label({ title: thread.title })}
-                title={m.sidebar_thread_archive()}
-                disabled={busy}
-                onClick={archiveDeletes ? () => setMode("archive") : () => void archive()}
+                aria-label={m.sidebar_thread_unarchive_label({ title: thread.title })}
+                title={m.sidebar_thread_unarchive()}
+                action={unarchive}
               >
-                <RiArchiveLine aria-hidden />
+                <UnarchiveIcon aria-hidden />
               </Button>
-            </>
-          )}
-          <DeleteThreadPopover
-            thread={thread}
-            cloud={cloud}
-            disabled={busy || isStale(cloud)}
-            open={mode === "delete"}
-            onOpenChange={(open) => setMode(open ? "delete" : "idle")}
-            focusAfterDelete={focusAfterRemoval}
-          />
-          <DropdownMenu
-            open={menuOpen}
-            onOpenChange={setMenuOpen}
-            onOpenChangeComplete={(open) => {
-              if (open || !queued) return
-              setMode(queued)
-              setQueued(null)
-            }}
-          >
-            <DropdownMenuTrigger
-              ref={menuTriggerRef}
-              render={
-                <Button variant="ghost" size="icon-xs" aria-label={m.sidebar_thread_actions({ title: thread.title })} />
-              }
+            ) : (
+              <>
+                {reorderable && (
+                  <Button
+                    ref={handleRef}
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={m.sidebar_thread_reorder({ title: thread.title })}
+                    aria-roledescription={m.sidebar_thread_reorder_role()}
+                    data-reorder-handle
+                    className="cursor-grab not-focus-visible:sr-only"
+                  >
+                    <GripIcon aria-hidden />
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={m.snooze_label({ title: thread.title })}
+                  title={m.sidebar_thread_snooze()}
+                  onClick={() => useUi.getState().setSnoozeThreadId(thread.id)}
+                >
+                  <SnoozeIcon aria-hidden className="size-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={m.sidebar_thread_archive_label({ title: thread.title })}
+                  title={m.sidebar_thread_archive()}
+                  disabled={busy}
+                  action={archive}
+                >
+                  <ArchiveIcon aria-hidden className="size-4" />
+                </Button>
+              </>
+            )}
+            <DropdownMenu
+              open={menuOpen}
+              onOpenChange={setMenuOpen}
+              onOpenChangeComplete={(open) => {
+                if (open || !queued) return
+                setMode(queued)
+                setQueued(null)
+              }}
             >
-              <RiMoreFill aria-hidden />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuItem onClick={queue("renaming")}>
-                <RiPencilLine aria-hidden />
-                {m.sidebar_thread_rename()}
-              </DropdownMenuItem>
-              {!archived && (
-                <DropdownMenuItem onClick={() => void togglePin()}>
-                  {pinned ? <RiUnpinLine aria-hidden /> : <RiPushpinLine aria-hidden />}
-                  {pinned ? m.sidebar_thread_unpin() : m.sidebar_thread_pin()}
+              <DropdownMenuTrigger
+                ref={menuTriggerRef}
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={m.sidebar_thread_actions({ title: thread.title })}
+                  />
+                }
+              >
+                <MoreIcon aria-hidden />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem onClick={queue("renaming")}>
+                  <PencilIcon aria-hidden />
+                  {m.sidebar_thread_rename()}
                 </DropdownMenuItem>
-              )}
-              {!archived && (
-                <DropdownMenuItem onClick={() => useUi.getState().setSnoozeThreadId(thread.id)}>
-                  <RiAlarmSnoozeLine aria-hidden />
-                  {m.sidebar_thread_snooze()}
-                </DropdownMenuItem>
-              )}
-              {!archived && meta.snoozedUntil !== null && (
-                <DropdownMenuItem onClick={() => void snoozeThread(thread, null)}>
-                  <RiAlarmLine aria-hidden />
-                  {m.sidebar_thread_unsnooze()}
-                </DropdownMenuItem>
-              )}
-              {watched.length === 0 ? (
-                <DropdownMenuItem disabled>
-                  <RiEyeOffLine aria-hidden />
-                  {m.sidebar_thread_unwatch()}
-                </DropdownMenuItem>
-              ) : (
-                watched.map((link) => (
-                  <DropdownMenuItem key={link.id} onClick={() => void unwatch(link.url)}>
-                    <RiEyeOffLine aria-hidden />
-                    {watched.length > 1
-                      ? m.pr_watch_stop({ name: `#${pullRequestNumber(link.url)}` })
-                      : m.sidebar_thread_unwatch()}
+                {!archived && (
+                  <DropdownMenuItem onClick={() => void togglePin()}>
+                    {pinned ? <UnpinIcon aria-hidden /> : <PinIcon aria-hidden />}
+                    {pinned ? m.sidebar_thread_unpin() : m.sidebar_thread_pin()}
                   </DropdownMenuItem>
-                ))
-              )}
-              <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(thread.id)}>
-                <RiFileCopyLine aria-hidden />
-                {m.sidebar_thread_copy_id()}
-              </DropdownMenuItem>
-              {archived ? (
-                <DropdownMenuItem onClick={() => void unarchive()}>
-                  <RiInboxUnarchiveLine aria-hidden />
-                  {m.sidebar_thread_unarchive()}
+                )}
+                {!archived && (
+                  <DropdownMenuItem onClick={() => useUi.getState().setSnoozeThreadId(thread.id)}>
+                    <SnoozeIcon aria-hidden />
+                    {m.sidebar_thread_snooze()}
+                  </DropdownMenuItem>
+                )}
+                {!archived && meta.snoozedUntil !== null && (
+                  <DropdownMenuItem onClick={() => void snoozeThread(thread, null)}>
+                    <AlarmIcon aria-hidden />
+                    {m.sidebar_thread_unsnooze()}
+                  </DropdownMenuItem>
+                )}
+                {watched.length === 0 ? (
+                  <DropdownMenuItem disabled>
+                    <EyeOffIcon aria-hidden />
+                    {m.sidebar_thread_unwatch()}
+                  </DropdownMenuItem>
+                ) : (
+                  watched.map((link) => (
+                    <DropdownMenuItem key={link.id} onClick={() => void unwatch(link.url)}>
+                      <EyeOffIcon aria-hidden />
+                      {watched.length > 1
+                        ? m.pr_watch_stop({ name: `#${pullRequestNumber(link.url)}` })
+                        : m.sidebar_thread_unwatch()}
+                    </DropdownMenuItem>
+                  ))
+                )}
+                <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(thread.id)}>
+                  <CopyIcon aria-hidden />
+                  {m.sidebar_thread_copy_id()}
                 </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem disabled={busy} onClick={archiveDeletes ? queue("archive") : () => void archive()}>
-                  <RiArchiveLine aria-hidden />
-                  {archiveDeletes ? m.sidebar_thread_archive_confirm() : m.sidebar_thread_archive()}
+                {archived ? (
+                  <DropdownMenuItem onClick={() => void unarchive()}>
+                    <UnarchiveIcon aria-hidden />
+                    {m.sidebar_thread_unarchive()}
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem disabled={busy} onClick={() => void archive()}>
+                    <ArchiveIcon aria-hidden />
+                    {m.sidebar_thread_archive()}
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem variant="destructive" disabled={busy || isStale(cloud)} onClick={queue("delete")}>
+                  <TrashIcon aria-hidden />
+                  {m.sidebar_thread_delete()}
                 </DropdownMenuItem>
-              )}
-              <DropdownMenuItem variant="destructive" disabled={busy || isStale(cloud)} onClick={queue("delete")}>
-                <RiDeleteBinLine aria-hidden />
-                {m.sidebar_thread_delete()}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       )}
-
+      {hasMeta && <ThreadMeta links={meta.links} threadId={thread.id} cloud={cloud} environment={environment} />}
+      <DeleteThreadPopover
+        thread={thread}
+        cloud={cloud}
+        anchor={menuTriggerRef}
+        open={mode === "delete"}
+        onOpenChange={(open) => setMode(open ? "delete" : "idle")}
+        focusAfterDelete={focusAfterRemoval}
+      />
       {worktree && (
         <ArchiveDialog
           thread={thread}
           worktree={worktree}
           open={mode === "archive"}
           onOpenChange={closeDialog}
-          onArchived={moveOut}
+          onArchived={moveOutArchived}
         />
       )}
     </li>
@@ -539,7 +611,7 @@ function RenameInput({ thread, onDone }: { thread: Thread; onDone: () => void })
 interface DeleteThreadPopoverProps {
   readonly thread: Thread
   readonly cloud: Cloud | undefined
-  readonly disabled: boolean
+  readonly anchor: RefObject<HTMLElement | null>
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
   readonly focusAfterDelete: () => HTMLElement | null
@@ -548,7 +620,7 @@ interface DeleteThreadPopoverProps {
 function DeleteThreadPopover({
   thread,
   cloud,
-  disabled,
+  anchor,
   open,
   onOpenChange,
   focusAfterDelete,
@@ -575,24 +647,12 @@ function DeleteThreadPopover({
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger
-        disabled={disabled}
-        render={
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label={m.sidebar_thread_delete_label({ title: thread.title })}
-            title={m.sidebar_thread_delete()}
-          />
-        }
-      >
-        <RiDeleteBinLine aria-hidden />
-      </PopoverTrigger>
       <PopoverContent
         side="right"
         align="start"
+        anchor={anchor}
         className="w-64"
-        finalFocus={() => (useThreads.getState().byId[thread.id] ? true : focusAfterDelete())}
+        finalFocus={() => (useThreads.getState().byId[thread.id] ? anchor.current : focusAfterDelete())}
       >
         <PopoverHeader>
           <PopoverTitle>{m.delete_dialog_title()}</PopoverTitle>
@@ -630,7 +690,7 @@ function DeleteThreadPopover({
 
 const awaiting = toIcon(rowStatusIndicator.awaiting_approval)
 
-const statusIcons: Partial<Record<RowState, { label: () => string; Icon: IconType; className: string }>> = {
+const statusIcons: Partial<Record<RowState, { label: () => string; Icon: IconComponent; className: string }>> = {
   running: { label: m.thread_status_running, ...toIcon(rowStatusIndicator.running) },
   background: { label: m.thread_status_background, ...toIcon(rowStatusIndicator.background) },
   awaiting_approval: {
@@ -711,12 +771,12 @@ function ThreadMeta({
 }) {
   const watching = links.some((link) => link.watch !== null)
   return (
-    <div className="flex min-w-0 items-center gap-2 pr-2 pb-1.5 pl-1.5 text-xs text-muted-foreground group-hover/thread:pr-(--row-actions) group-has-[a:focus-visible,button:focus]/thread:pr-(--row-actions) group-data-[menu-open=true]/thread:pr-(--row-actions)">
+    <div className="flex min-w-0 items-center gap-2 pr-2 pb-1.5 pl-1.5 text-xs text-muted-foreground">
       {cloud && <CloudMark cloud={cloud} className="size-3" />}
       {links.length > 0 && <SidebarPullRequests threadId={threadId} links={links} environment={environment} />}
       {watching && (
         <span title={m.sidebar_watching()} className="flex shrink-0">
-          <RiEyeLine aria-hidden className="size-3" />
+          <EyeIcon aria-hidden className="size-3" />
           <span className="sr-only">{m.sidebar_watching()}</span>
         </span>
       )}
@@ -735,7 +795,7 @@ function scrollTitle(row: HTMLElement) {
     const text = titleText(row)
     const box = text?.parentElement
     if (!text || !box || !row.matches(":hover")) return
-    const overflow = text.offsetWidth - box.clientWidth
+    const overflow = text.offsetWidth - box.clientWidth + coveredByActions(row, box)
     if (overflow <= 0) return
     const distance = getComputedStyle(box).direction === "rtl" ? overflow : -overflow
     text.animate([{ transform: "translateX(0)" }, { transform: `translateX(${distance}px)` }], {
@@ -745,6 +805,12 @@ function scrollTitle(row: HTMLElement) {
       fill: "forwards",
     })
   })
+}
+
+function coveredByActions(row: HTMLElement, box: HTMLElement) {
+  const actions = row.querySelector("[data-row-actions]")
+  if (!actions) return 0
+  return Math.max(0, box.getBoundingClientRect().right - actions.getBoundingClientRect().left)
 }
 
 function stopTitle(row: HTMLElement) {
@@ -779,7 +845,7 @@ function WakeTime({ snoozedUntil }: { snoozedUntil: string }) {
       title={m.sidebar_snoozed_until({ time })}
       className="flex items-center gap-1 tabular-nums"
     >
-      <RiAlarmSnoozeLine aria-hidden className="size-3" />
+      <SnoozeIcon aria-hidden className="size-3" />
       <span className="sr-only">{m.sidebar_snoozed_until({ time })}</span>
       <span aria-hidden>{time}</span>
     </time>

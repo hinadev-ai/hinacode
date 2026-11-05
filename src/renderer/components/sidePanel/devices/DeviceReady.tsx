@@ -1,26 +1,6 @@
 import { cn } from "cn"
 import { Schema } from "effect"
-import { type FormEvent, useEffect, useId, useRef, useState } from "react"
-import type { IconType } from "react-icons"
-import {
-  RiArrowGoBackLine,
-  RiBookOpenLine,
-  RiCursorLine,
-  RiErrorWarningLine,
-  RiHome5Line,
-  RiKeyboardBoxLine,
-  RiLinkM,
-  RiLockLine,
-  RiMoonLine,
-  RiMore2Line,
-  RiSmartphoneLine,
-  RiStackLine,
-  RiSunLine,
-  RiTabletLine,
-  RiVolumeDownLine,
-  RiVolumeUpLine,
-  RiAnticlockwise2Line,
-} from "react-icons/ri"
+import { type FormEvent, startTransition, useEffect, useEffectEvent, useId, useRef, useState } from "react"
 import {
   DeviceCommand,
   type DeviceButton,
@@ -30,7 +10,7 @@ import {
   type ThreadDevice,
 } from "../../../../shared/device.ts"
 import { deviceElementLabel } from "../../../lib/elementPicker.ts"
-import { callPromise } from "../../../lib/rpc.ts"
+import { callPromise, onPushEvent } from "../../../lib/rpc.ts"
 import { m } from "../../../paraglide/messages.js"
 import { useDrafts } from "../../../stores/drafts.ts"
 import { useUi } from "../../../stores/ui.ts"
@@ -40,9 +20,31 @@ import { Input } from "../../ui/input.tsx"
 import { Popover, PopoverContent, PopoverDescription, PopoverTrigger } from "../../ui/popover.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip.tsx"
 import { IconAction, useVmAction } from "../TinyVmView.tsx"
+import { AgentCaption, type ShownAgentAction } from "./AgentActivity.tsx"
 import { DeleteDeviceDialog, deleteDeviceLabel } from "./DeleteDeviceDialog.tsx"
 import { DeviceSession, type FrameShape } from "./deviceSession.ts"
 import { DeviceScreen } from "./DeviceScreen.tsx"
+import {
+  BookIcon,
+  CameraIcon,
+  CursorIcon,
+  HomeIcon,
+  type IconComponent,
+  KeyboardIcon,
+  LinkIcon,
+  LockIcon,
+  MoonIcon,
+  MoreVerticalIcon,
+  PhoneIcon,
+  RotateIcon,
+  StackIcon,
+  SunIcon,
+  TabletIcon,
+  UndoIcon,
+  VolumeDownIcon,
+  VolumeUpIcon,
+  WarningIcon,
+} from "@hinacode/icons"
 
 type ReadyDevice = Extract<ThreadDevice, { phase: "ready" }>
 type Appearance = "light" | "dark"
@@ -80,9 +82,10 @@ interface DeviceReadyProps {
   readonly threadId: string
   readonly device: ReadyDevice
   readonly onDetach: () => void
+  readonly bootedOnScreen: boolean
 }
 
-export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyProps) {
+export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen }: DeviceReadyProps) {
   const { device, screen, control, agentWaiting } = ready
   const { pending, error, run } = useVmAction()
   const [commandError, setCommandError] = useState<string | null>(null)
@@ -92,13 +95,13 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
   const [picking, setPicking] = useState(false)
   const [announcement, setAnnouncement] = useState("")
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [agentAction, setAgentAction] = useState<ShownAgentAction | null>(null)
   const [appearance, setAppearance] = useState<Appearance>(() =>
     localStorage.getItem(appearanceKey(device.id)) === "dark" ? "dark" : "light",
   )
   const [hardwareKeyboard, setHardwareKeyboard] = useState(() => localStorage.getItem(hardwareKeyboardKey) === "on")
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const sessionRef = useRef<DeviceSession | null>(null)
-  const controlRef = useRef(control)
   const hintId = useId()
   const owned = device.ownerThreadId === threadId
   const deviceId = device.id
@@ -122,17 +125,23 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
     }
   }, [threadId, deviceId])
 
-  useEffect(() => {
-    controlRef.current = control
-  }, [control])
+  useEffect(
+    () =>
+      onPushEvent((event) => {
+        if (event.type !== "device.agentAction" || event.threadId !== threadId || event.deviceId !== deviceId) return
+        setAgentAction((previous) => ({ id: (previous?.id ?? 0) + 1, action: event.action }))
+      }),
+    [threadId, deviceId],
+  )
 
+  const handBack = useEffectEvent(() => {
+    if (control === "user") void callPromise("device.control", { threadId, deviceId, control: "agent" }).catch(() => {})
+  })
   useEffect(
     () => () => {
-      if (controlRef.current === "user") {
-        void callPromise("device.control", { threadId, deviceId, control: "agent" }).catch(() => {})
-      }
+      handBack()
     },
-    [threadId, deviceId],
+    [],
   )
 
   const onCanvas = (canvas: HTMLCanvasElement | null) => {
@@ -181,6 +190,18 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
       }
     })
 
+  const saveScreenshot = () =>
+    run(async () => {
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const attachment = await callPromise("device.screenshot.save", {
+        threadId,
+        dataUrl: canvas.toDataURL("image/png"),
+        name: `${device.name}.png`,
+      })
+      await callPromise("shell.reveal", { path: attachment.path })
+    })
+
   const detach = () =>
     run(async () => {
       await callPromise("device.detach", { threadId, deviceId })
@@ -191,7 +212,7 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
       await callPromise(owned ? "device.detach" : "device.delete", { threadId, deviceId })
       onDetach()
     })
-  const waiting = control === "user" && agentWaiting
+  const waiting = control === "user" ? agentWaiting : null
   const status = waiting
     ? m.devices_agent_waiting()
     : control === "user"
@@ -200,32 +221,38 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
   const shownError = error ?? commandError ?? frameError
 
   return (
-    <div className="flex min-h-0 flex-1 animate-fade-in flex-col motion-reduce:animate-none">
+    <div className={cn("flex min-h-0 flex-1 flex-col", bootedOnScreen && "animate-fade-in")}>
       <div
         role="toolbar"
         aria-label={m.devices_toolbar({ name: device.name })}
         className="flex min-h-10 shrink-0 flex-wrap items-center gap-0.5 border-b border-border px-2 py-1.5"
       >
-        <IconAction icon={RiHome5Line} label={m.devices_home()} onClick={() => press("home")} />
-        <IconAction icon={RiLockLine} label={m.devices_lock()} onClick={() => press("lock")} />
-        <IconAction icon={RiVolumeDownLine} label={m.devices_volume_down()} onClick={() => press("volumeDown")} />
-        <IconAction icon={RiVolumeUpLine} label={m.devices_volume_up()} onClick={() => press("volumeUp")} />
-        <IconAction icon={RiAnticlockwise2Line} label={m.devices_rotate()} onClick={() => send({ kind: "rotate" })} />
+        <IconAction icon={HomeIcon} label={m.devices_home()} onClick={() => press("home")} />
+        <IconAction icon={LockIcon} label={m.devices_lock()} onClick={() => press("lock")} />
+        <IconAction icon={VolumeDownIcon} label={m.devices_volume_down()} onClick={() => press("volumeDown")} />
+        <IconAction icon={VolumeUpIcon} label={m.devices_volume_up()} onClick={() => press("volumeUp")} />
+        <IconAction icon={RotateIcon} label={m.devices_rotate()} onClick={() => send({ kind: "rotate" })} />
         {shape?.posture && (
           <PostureButtons current={shape.posture} onPick={(posture) => send({ kind: "posture", posture })} />
         )}
         {device.platform === "android" && (
           <>
-            <IconAction icon={RiArrowGoBackLine} label={m.devices_back()} onClick={() => press("back")} />
-            <IconAction icon={RiStackLine} label={m.devices_recents()} onClick={() => press("recents")} />
+            <IconAction icon={UndoIcon} label={m.devices_back()} onClick={() => press("back")} />
+            <IconAction icon={StackIcon} label={m.devices_recents()} onClick={() => press("recents")} />
           </>
         )}
         <IconAction
-          icon={appearance === "dark" ? RiSunLine : RiMoonLine}
+          icon={appearance === "dark" ? SunIcon : MoonIcon}
           label={appearance === "dark" ? m.devices_appearance_light() : m.devices_appearance_dark()}
           onClick={toggleAppearance}
         />
         <OpenLink onOpen={(url) => send({ kind: "openUrl", url })} />
+        <IconAction
+          icon={CameraIcon}
+          label={m.devices_screenshot_save()}
+          disabled={shape === null || pending}
+          onClick={saveScreenshot}
+        />
         <Tooltip>
           <TooltipTrigger
             render={
@@ -240,7 +267,7 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
               />
             }
           >
-            <RiCursorLine aria-hidden />
+            <CursorIcon aria-hidden />
           </TooltipTrigger>
           <TooltipContent>{picking ? m.devices_pick_cancel() : m.devices_pick()}</TooltipContent>
         </Tooltip>
@@ -257,7 +284,7 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
               />
             }
           >
-            <RiKeyboardBoxLine aria-hidden />
+            <KeyboardIcon aria-hidden />
           </TooltipTrigger>
           <TooltipContent>{m.devices_hardware_keyboard_hint()}</TooltipContent>
         </Tooltip>
@@ -269,7 +296,7 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
                 <DropdownMenuTrigger
                   render={<Button variant="ghost" size="icon-xs" aria-label={m.devices_more()} disabled={pending} />}
                 >
-                  <RiMore2Line aria-hidden />
+                  <MoreVerticalIcon aria-hidden />
                 </DropdownMenuTrigger>
               }
             />
@@ -302,13 +329,21 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
           stalled={stalled}
           picking={picking}
           hintId={hintId}
+          agentAction={agentAction}
+          agentWaiting={waiting}
           onPick={pick}
           onCancelPick={() => setPicking(false)}
         />
-        {picking && (
+        {picking ? (
           <output className="pointer-events-none absolute inset-x-3 bottom-3 rounded-lg border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
             {m.devices_pick_hint()}
           </output>
+        ) : (
+          <AgentCaption
+            shown={agentAction}
+            waiting={waiting}
+            onDone={() => startTransition(() => setAgentAction(null))}
+          />
         )}
       </div>
       <div className="flex min-h-10 shrink-0 items-center gap-2 border-t border-border px-3 py-1.5">
@@ -320,7 +355,7 @@ export function DeviceReady({ threadId, device: ready, onDetach }: DeviceReadyPr
             waiting ? "font-medium text-attention" : control === "user" ? "text-foreground" : "text-muted-foreground",
           )}
         >
-          {waiting && <RiErrorWarningLine aria-hidden className="size-3.5 shrink-0" />}
+          {waiting && <WarningIcon aria-hidden className="size-3.5 shrink-0" />}
           <span className="truncate">{status}</span>
         </p>
         {control === "user" && (
@@ -375,7 +410,7 @@ function OpenLink({ onOpen }: { onOpen: (url: string) => void }) {
         <TooltipTrigger
           render={
             <PopoverTrigger render={<Button variant="ghost" size="icon-xs" aria-label={m.devices_open_link()} />}>
-              <RiLinkM aria-hidden />
+              <LinkIcon aria-hidden />
             </PopoverTrigger>
           }
         />
@@ -396,7 +431,7 @@ function OpenLink({ onOpen }: { onOpen: (url: string) => void }) {
             spellCheck={false}
             autoCapitalize="off"
             autoCorrect="off"
-            className="h-7 font-mono text-xs md:text-xs"
+            className="h-7 font-mono text-xs"
           />
           {invalid ? (
             <p id={errorId} role="alert" className="text-xs text-destructive">
@@ -411,11 +446,12 @@ function OpenLink({ onOpen }: { onOpen: (url: string) => void }) {
   )
 }
 
-const postures: ReadonlyArray<{ posture: DevicePosture; icon: IconType; label: () => string; turned?: boolean }> = [
-  { posture: "closed", icon: RiSmartphoneLine, label: m.devices_posture_closed },
-  { posture: "halfOpen", icon: RiBookOpenLine, label: m.devices_posture_half_open },
-  { posture: "flat", icon: RiTabletLine, label: m.devices_posture_flat, turned: true },
-]
+const postures: ReadonlyArray<{ posture: DevicePosture; icon: IconComponent; label: () => string; turned?: boolean }> =
+  [
+    { posture: "closed", icon: PhoneIcon, label: m.devices_posture_closed },
+    { posture: "halfOpen", icon: BookIcon, label: m.devices_posture_half_open },
+    { posture: "flat", icon: TabletIcon, label: m.devices_posture_flat, turned: true },
+  ]
 
 function PostureButtons({ current, onPick }: { current: DevicePosture; onPick: (posture: DevicePosture) => void }) {
   return postures.map(({ posture, icon: Icon, label, turned }) => (

@@ -1,5 +1,16 @@
 import { Effect, Schema } from "effect"
-import { AgentProfileName, Compaction, ForkPoint, ProviderId, Question, TokenUsage } from "./agent.ts"
+import {
+  AccountProviderId,
+  AgentProfileName,
+  Compaction,
+  ForkPoint,
+  isCreateThreadTool,
+  isPublishArtifactTool,
+  isRunAgentTool,
+  ProviderId,
+  Question,
+  TokenUsage,
+} from "./agent.ts"
 import { PickedDeviceElement } from "./device.ts"
 import { parsePullRequestSelector, PullRequestSelector } from "./github.ts"
 import { UsageLimit } from "./limits.ts"
@@ -10,6 +21,9 @@ export type Timestamp = typeof Timestamp.Type
 
 export const ProjectKind = Schema.Literals(["folder", "chats"])
 export type ProjectKind = typeof ProjectKind.Type
+
+export const ProjectAction = Schema.Struct({ name: Schema.String, command: Schema.String })
+export type ProjectAction = typeof ProjectAction.Type
 
 export const Project = Schema.Struct({
   id: Schema.String,
@@ -22,6 +36,7 @@ export const Project = Schema.Struct({
   repository: Schema.optionalKey(Schema.String),
   linearReview: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
   kind: ProjectKind.pipe(Schema.withDecodingDefaultKey(Effect.succeed("folder" as const))),
+  actions: Schema.Array(ProjectAction).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 })
 export type Project = typeof Project.Type
 
@@ -33,6 +48,9 @@ export const threadFolder = (project: Pick<Project, "kind" | "rootPath">, thread
 
 export const WorktreeStatus = Schema.Literals(["preparing", "ready", "failed", "removed"])
 export type WorktreeStatus = typeof WorktreeStatus.Type
+
+export const SetupNotice = Schema.Literals(["backgroundOutput", "timedOut"])
+export type SetupNotice = typeof SetupNotice.Type
 
 export const Worktree = Schema.Struct({
   id: Schema.String,
@@ -48,6 +66,11 @@ export type Worktree = typeof Worktree.Type
 
 export const CheckoutState = Schema.Literals(["clean", "dirty", "missing"])
 export type CheckoutState = typeof CheckoutState.Type
+
+export type WorkspaceStatus = WorktreeStatus | "missing"
+
+export const workspaceStatus = (status: WorktreeStatus, checkout: CheckoutState | null): WorkspaceStatus =>
+  status === "ready" && checkout === "missing" ? "missing" : status
 
 export const WorktreeCheckout = Schema.Struct({ id: Schema.String, state: CheckoutState })
 export type WorktreeCheckout = typeof WorktreeCheckout.Type
@@ -75,6 +98,13 @@ export const FsEntry = Schema.Struct({
   gitStatus: Schema.NullOr(ChangedFileStatus),
 })
 export type FsEntry = typeof FsEntry.Type
+
+export const DirectorySuggestion = Schema.Struct({
+  path: Schema.String,
+  name: Schema.String,
+  repository: Schema.Boolean,
+})
+export type DirectorySuggestion = typeof DirectorySuggestion.Type
 
 export const FsFileContent = Schema.Struct({
   content: Schema.String,
@@ -167,6 +197,9 @@ export const CheckRun = Schema.Struct({
 })
 export type CheckRun = typeof CheckRun.Type
 
+export const DiffSide = Schema.Literals(["LEFT", "RIGHT"])
+export type DiffSide = typeof DiffSide.Type
+
 export const CommentAuthorKind = Schema.Literals(["you", "human", "bot"])
 export type CommentAuthorKind = typeof CommentAuthorKind.Type
 
@@ -177,9 +210,31 @@ export const PullRequestComment = Schema.Struct({
   body: Schema.String,
   createdAt: Schema.String,
   url: Schema.String,
-  location: Schema.NullOr(Schema.Struct({ path: Schema.String, line: Schema.NullOr(Schema.Number) })),
+  location: Schema.NullOr(
+    Schema.Struct({ path: Schema.String, line: Schema.NullOr(Schema.Number), side: Schema.optional(DiffSide) }),
+  ),
 })
 export type PullRequestComment = typeof PullRequestComment.Type
+
+export const ReviewLineComment = Schema.Struct({
+  body: Schema.String.check(Schema.isNonEmpty()),
+  commit: Schema.String,
+  path: Schema.String,
+  side: DiffSide,
+  startLine: Schema.Int,
+  endLine: Schema.Int,
+})
+export type ReviewLineComment = typeof ReviewLineComment.Type
+
+export const LineComment = Schema.Struct({
+  id: Schema.String,
+  path: Schema.String,
+  startLine: Schema.Int,
+  endLine: Schema.Int,
+  code: Schema.String,
+  body: Schema.String,
+})
+export type LineComment = typeof LineComment.Type
 
 export const PullRequestDetail = Schema.Struct({
   ...PullRequest.fields,
@@ -318,7 +373,7 @@ export const PullRequestMatch = Schema.Struct({
 })
 export type PullRequestMatch = typeof PullRequestMatch.Type
 
-export const ThreadStatus = Schema.Literals(["idle", "running", "awaiting_approval", "limited", "archived"])
+export const ThreadStatus = Schema.Literals(["draft", "idle", "running", "awaiting_approval", "limited", "archived"])
 export type ThreadStatus = typeof ThreadStatus.Type
 
 export const isThreadBusy = (status: ThreadStatus) => status === "running" || status === "awaiting_approval"
@@ -354,8 +409,19 @@ export const QueuedMessage = Schema.Struct({
   id: Schema.String,
   text: Schema.String,
   attachments: Schema.Array(Attachment),
+  steer: Schema.optionalKey(Schema.Literal(true)),
 })
 export type QueuedMessage = typeof QueuedMessage.Type
+
+export const ScheduledMessage = Schema.Struct({
+  id: Schema.String,
+  text: Schema.String,
+  attachments: Schema.Array(Attachment),
+  workspace: Schema.optionalKey(WorkspaceChoice),
+  sendAt: Timestamp,
+  failure: Schema.optionalKey(Schema.String),
+})
+export type ScheduledMessage = typeof ScheduledMessage.Type
 
 export const Thread = Schema.Struct({
   id: Schema.String,
@@ -371,12 +437,15 @@ export const Thread = Schema.Struct({
   accountId: Schema.NullOr(Schema.String),
   providerSessionId: Schema.NullOr(Schema.String),
   forkedFrom: Schema.NullOr(ForkPoint).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  sideOf: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  parentId: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   status: ThreadStatus,
   usageLimit: Schema.NullOr(UsageLimit),
   sortIndex: Schema.Number,
   pinnedAt: Schema.NullOr(Timestamp),
   snoozedUntil: Schema.NullOr(Timestamp).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   queue: Schema.Array(QueuedMessage),
+  scheduled: Schema.Array(ScheduledMessage).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
   createdBy: Schema.String,
   createdAt: Timestamp,
   updatedAt: Timestamp,
@@ -392,6 +461,7 @@ export const MessagePart = Schema.Union([
     name: Schema.String,
     input: Schema.Unknown,
     output: Schema.optional(Schema.Unknown),
+    fullOutputBytes: Schema.optional(Schema.Number),
     status: ToolCallStatus,
     parentCallId: Schema.optional(Schema.String),
   }),
@@ -400,8 +470,24 @@ export const MessagePart = Schema.Union([
   Schema.Struct({ type: Schema.Literal("questions"), text: Schema.String, questions: Schema.Array(Question) }),
   Schema.Struct({ type: Schema.Literal("compaction"), compaction: Compaction }),
   Schema.Struct({ type: Schema.Literal("agent_switch"), from: ProviderId, to: ProviderId }),
+  Schema.Struct({ type: Schema.Literal("signed_out"), message: Schema.String, loginCommand: Schema.String }),
+  Schema.Struct({
+    type: Schema.Literal("session_import"),
+    provider: AccountProviderId,
+    history: Schema.Literals(["replayed", "unavailable"]),
+  }),
 ])
 export type MessagePart = typeof MessagePart.Type
+
+// FIXME: Claude Code named its sub-agent tool Task before it became Agent
+export const spawnsSubagent = (call: { readonly name: string }) =>
+  call.name === "Agent" || call.name === "Task" || isRunAgentTool(call.name)
+
+export const publishesArtifact = (call: { readonly name: string; readonly status: ToolCallStatus }) =>
+  isPublishArtifactTool(call.name) && call.status !== "error"
+
+export const createsThread = (call: { readonly name: string; readonly status: ToolCallStatus }) =>
+  isCreateThreadTool(call.name) && call.status !== "error"
 
 export const MessageRole = Schema.Literals(["user", "assistant"])
 export type MessageRole = typeof MessageRole.Type
@@ -418,7 +504,7 @@ export const Message = Schema.Struct({
 })
 export type Message = typeof Message.Type
 
-export const Locale = Schema.Literals(["en", "zh-TW", "ja"])
+export const Locale = Schema.Literals(["en", "zh-TW", "zh-CN", "ja"])
 export type Locale = typeof Locale.Type
 
 export const ThemeId = Schema.Literals([
@@ -436,6 +522,8 @@ export const ThemeId = Schema.Literals([
   "dracula",
   "material-theme",
   "pinky",
+  "hina-light",
+  "hina-dark",
 ])
 export type ThemeId = typeof ThemeId.Type
 
@@ -483,7 +571,6 @@ export const ExperimentalSettings = Schema.Struct({
   tinyVmBoatSize: BoatVmSize.pipe(Schema.withDecodingDefaultKey(Effect.succeed("default" as const))),
   tinyVmTemplate: Schema.String,
   tinyVmProfile: Schema.Boolean,
-  tinyVmPasskeys: Schema.Boolean,
   tinyVmEnv: Schema.Record(Schema.String, Schema.String),
   tinyVmSetupScript: Schema.String,
   devices: Schema.Boolean,
@@ -544,72 +631,68 @@ export const defaultClientSettings: ClientSettings = {
 export const AUTO_COMPACT_RANGE = { minimum: 100_000, maximum: 1_000_000 } as const
 const AutoCompactTokens = Schema.Int.check(Schema.isBetween(AUTO_COMPACT_RANGE))
 
+export const PRIVATE_NETWORKS = "private"
+
 export const BindHost = Schema.String.check(Schema.isPattern(/^(?!(?:0\.0\.0\.0|::|::0|\[::\])$)\S+$/))
 
 const ListenPort = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 }))
 
+const perProvider = <S extends Schema.Top>(value: S, fallback: S["Encoded"]) => {
+  const field = value.pipe(Schema.withDecodingDefaultKey(Effect.succeed(fallback)))
+  return Schema.Struct({ claude: field, codex: field, muse: field, opencode: field })
+}
+
+const eachProvider = <A>(value: A): Record<ProviderId, A> => ({
+  claude: value,
+  codex: value,
+  muse: value,
+  opencode: value,
+})
+
 export const Settings = Schema.Struct({
   defaultProvider: ProviderId,
-  defaultModel: Schema.Struct({
-    claude: Schema.NullOr(Schema.String),
-    codex: Schema.NullOr(Schema.String),
-    muse: Schema.NullOr(Schema.String),
-  }),
-  defaultEffort: Schema.Struct({
-    claude: Schema.NullOr(Schema.String),
-    codex: Schema.NullOr(Schema.String),
-    muse: Schema.NullOr(Schema.String),
-  }),
-  defaultFastMode: Schema.Struct({ claude: Schema.Boolean, codex: Schema.Boolean, muse: Schema.Boolean }),
+  defaultModel: perProvider(Schema.NullOr(Schema.String), null),
+  defaultEffort: perProvider(Schema.NullOr(Schema.String), null),
+  defaultFastMode: perProvider(Schema.Boolean, false),
   defaultWorkspaceMode: WorkspaceChoice.fields.mode,
-  modelPresets: Schema.Struct({
-    claude: Schema.Array(Schema.String),
-    codex: Schema.Array(Schema.String),
-    muse: Schema.Array(Schema.String),
-  }),
-  defaultAccount: Schema.Struct({
-    claude: Schema.NullOr(Schema.String),
-    codex: Schema.NullOr(Schema.String),
-    muse: Schema.NullOr(Schema.String),
-  }),
-  defaultAccountName: Schema.Struct({
-    claude: Schema.NullOr(AgentProfileName),
-    codex: Schema.NullOr(AgentProfileName),
-    muse: Schema.NullOr(AgentProfileName),
-  }).pipe(Schema.withDecodingDefaultKey(Effect.succeed({ claude: null, codex: null, muse: null }))),
-  autoCompactTokens: Schema.Struct({
-    claude: Schema.NullOr(AutoCompactTokens),
-    codex: Schema.NullOr(AutoCompactTokens),
-    muse: Schema.NullOr(AutoCompactTokens),
-  }).pipe(Schema.withDecodingDefaultKey(Effect.succeed({ claude: null, codex: null, muse: null }))),
+  modelPresets: perProvider(Schema.Array(Schema.String), []),
+  defaultAccount: perProvider(Schema.NullOr(Schema.String), null),
+  defaultAccountName: perProvider(Schema.NullOr(AgentProfileName), null).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(eachProvider(null))),
+  ),
+  autoCompactTokens: perProvider(Schema.NullOr(AutoCompactTokens), null).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(eachProvider(null))),
+  ),
   automations: Schema.Struct({ bindHost: BindHost, port: ListenPort }),
-  remote: Schema.Union([
-    Schema.Struct({ enabled: Schema.Literal(false), bindHost: Schema.NullOr(BindHost), port: ListenPort }),
-    Schema.Struct({ enabled: Schema.Literal(true), bindHost: BindHost, port: ListenPort }),
-  ]),
+  remote: Schema.Struct({ enabled: Schema.Boolean, bindHost: BindHost, port: ListenPort }),
   textGenerationModel: Schema.String,
-  pullRequestGuide: Schema.Struct({ model: Schema.String, effort: Schema.String }),
+  pullRequestGuide: Schema.Struct({
+    enabled: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+    model: Schema.String,
+    effort: Schema.String,
+  }),
   defaultAccessMode: AccessMode,
   archive: ArchiveSettings,
   experimental: ExperimentalSettings,
   worktreeRoot: Schema.NullOr(Schema.String.check(Schema.isPattern(/^\//))),
+  actions: Schema.Array(ProjectAction).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 })
 export type Settings = typeof Settings.Type
 
 export const defaultSettings: Settings = {
   defaultProvider: "claude",
-  defaultModel: { claude: null, codex: null, muse: null },
-  defaultEffort: { claude: null, codex: null, muse: null },
-  defaultFastMode: { claude: false, codex: false, muse: false },
+  defaultModel: eachProvider(null),
+  defaultEffort: eachProvider(null),
+  defaultFastMode: eachProvider(false),
   defaultWorkspaceMode: "local",
-  modelPresets: { claude: [], codex: [], muse: [] },
-  defaultAccount: { claude: null, codex: null, muse: null },
-  defaultAccountName: { claude: null, codex: null, muse: null },
-  autoCompactTokens: { claude: null, codex: null, muse: null },
+  modelPresets: eachProvider([]),
+  defaultAccount: eachProvider(null),
+  defaultAccountName: eachProvider(null),
+  autoCompactTokens: eachProvider(null),
   automations: { bindHost: "127.0.0.1", port: 48080 },
-  remote: { enabled: false, bindHost: null, port: 48081 },
+  remote: { enabled: false, bindHost: PRIVATE_NETWORKS, port: 48081 },
   textGenerationModel: "claude-sonnet-5-5",
-  pullRequestGuide: { model: "claude-sonnet-5-5", effort: "high" },
+  pullRequestGuide: { enabled: false, model: "claude-sonnet-5-5", effort: "high" },
   defaultAccessMode: "full",
   archive: { whenMerged: false, removeWorktree: false },
   experimental: {
@@ -618,12 +701,12 @@ export const defaultSettings: Settings = {
     tinyVmBoatSize: "default",
     tinyVmTemplate: "default",
     tinyVmProfile: false,
-    tinyVmPasskeys: false,
     devices: false,
     tinyVmEnv: {},
     tinyVmSetupScript: "",
   },
   worktreeRoot: null,
+  actions: [],
 }
 
 export const Machine = Schema.Struct({
@@ -731,22 +814,6 @@ export type VmHostStatus = typeof VmHostStatus.Type
 export const VmDesktopUrl = Schema.Struct({ url: Schema.String })
 export type VmDesktopUrl = typeof VmDesktopUrl.Type
 
-export const VmPasskeyKind = Schema.Literals(["get", "create"])
-export type VmPasskeyKind = typeof VmPasskeyKind.Type
-
-export const VmPasskey = Schema.Union([
-  Schema.Struct({ status: Schema.Literal("off") }),
-  Schema.Struct({ status: Schema.Literal("ready") }),
-  Schema.Struct({
-    status: Schema.Literal("pending"),
-    kind: VmPasskeyKind,
-    origin: Schema.String,
-    rpId: Schema.String,
-  }),
-  Schema.Struct({ status: Schema.Literal("failed"), message: Schema.String }),
-])
-export type VmPasskey = typeof VmPasskey.Type
-
 export const WatchEventKind = Schema.Literals([
   "checksFailed",
   "checksPassed",
@@ -823,6 +890,7 @@ export const TerminalSession = Schema.Struct({
   rows: Schema.Number,
   status: Schema.Literals(["running", "exited"]),
   exitCode: Schema.NullOr(Schema.Number),
+  title: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
 })
 export type TerminalSession = typeof TerminalSession.Type
 
@@ -889,6 +957,22 @@ export const Automation = Schema.Struct({
   updatedAt: Timestamp,
 })
 export type Automation = typeof Automation.Type
+
+export const NativeSessionId = Schema.String.check(
+  Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+)
+
+export const ExternalSession = Schema.Struct({
+  provider: AccountProviderId,
+  sessionId: NativeSessionId,
+  accountId: Schema.NullOr(Schema.String),
+  title: Schema.String,
+  preview: Schema.String,
+  branch: Schema.NullOr(Schema.String),
+  updatedAt: Timestamp,
+  threadId: Schema.NullOr(Schema.String),
+})
+export type ExternalSession = typeof ExternalSession.Type
 
 export const ThreadSearchHit = Schema.Struct({
   threadId: Schema.String,

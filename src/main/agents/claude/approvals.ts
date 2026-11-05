@@ -13,7 +13,7 @@ export interface ApprovalSession {
 interface PendingApproval {
   readonly session: ApprovalSession
   readonly scope: SessionScope
-  readonly deferred: Deferred.Deferred<ApprovalDecision>
+  readonly deferred: Deferred.Deferred<{ readonly decision: ApprovalDecision; readonly note?: string }>
 }
 
 function approvalKind(toolName: string): ApprovalKind {
@@ -56,9 +56,9 @@ export function makeApprovals<S extends ApprovalSession>(emit: (session: S, even
     if (session.turn === null) return { behavior: "deny", message: "No active turn to approve this tool call" }
 
     const requestId = randomUUID()
-    const deferred = Deferred.makeUnsafe<ApprovalDecision>()
+    const deferred: PendingApproval["deferred"] = Deferred.makeUnsafe()
     pending.set(requestId, { session, scope, deferred })
-    const onAbort = () => Deferred.doneUnsafe(deferred, Effect.succeed("deny"))
+    const onAbort = () => Deferred.doneUnsafe(deferred, Effect.succeed({ decision: "deny" }))
     options.signal.addEventListener("abort", onAbort, { once: true })
     emit(session, {
       type: "approval_requested",
@@ -74,21 +74,27 @@ export function makeApprovals<S extends ApprovalSession>(emit: (session: S, even
       },
     })
 
-    const decision = await Effect.runPromise(Deferred.await(deferred))
+    const { decision, note } = await Effect.runPromise(Deferred.await(deferred))
     options.signal.removeEventListener("abort", onAbort)
     pending.delete(requestId)
     emit(session, { type: "approval_resolved", requestId })
-    return decision === "deny"
-      ? { behavior: "deny", message: "The user denied this tool call" }
-      : { behavior: "allow", updatedInput: input }
+    if (decision !== "deny") return { behavior: "allow", updatedInput: input }
+    return {
+      behavior: "deny",
+      message:
+        note === undefined ? "The user denied this tool call" : `The user denied this tool call and said: ${note}`,
+    }
   }
 
-  const respond = (requestId: string, decision: ApprovalDecision) =>
+  const respond = (requestId: string, decision: ApprovalDecision, note?: string) =>
     Effect.suspend(() => {
       const approval = pending.get(requestId)
-      if (approval === undefined) return Effect.void
+      if (approval === undefined) return Effect.succeed(false)
       if (decision === "allow_for_session") approval.session.sessionGrants.add(grantKey(approval.scope))
-      return Deferred.succeed(approval.deferred, decision)
+      const delivered = decision === "deny" && note !== undefined
+      return Deferred.succeed(approval.deferred, delivered ? { decision, note } : { decision }).pipe(
+        Effect.as(delivered),
+      )
     })
 
   return { ask, respond }

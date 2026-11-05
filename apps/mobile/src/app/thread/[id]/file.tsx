@@ -2,7 +2,7 @@ import type { RpcResponse } from "@shared/contract.ts"
 import type { FsFileContent, Thread } from "@shared/domain.ts"
 import { Stack, useLocalSearchParams } from "expo-router"
 import { type ReactNode, useEffect, useRef, useState } from "react"
-import { FlatList, Image, Platform, ScrollView, StyleSheet, Text, View } from "react-native"
+import { FlatList, Image, Platform, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native"
 import Animated, { useReducedMotion } from "react-native-reanimated"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { SvgXml } from "react-native-svg"
@@ -38,7 +38,7 @@ export default function FileScreen() {
           line={target !== null && Number.isFinite(target) && target > 0 ? target : null}
         />
       ) : loaded ? (
-        <EmptyState icon="RiQuestionLine" title={copy("mobile_files_thread_missing")} />
+        <EmptyState icon="Question" title={copy("mobile_files_thread_missing")} />
       ) : (
         <Loading label={copy("mobile_files_loading_thread")} />
       )}
@@ -48,10 +48,16 @@ export default function FileScreen() {
 
 function FileTitle({ path }: { path: string }) {
   const theme = useTheme()
+  const { width } = useWindowDimensions()
   const folder = dirname(path)
   return (
-    <View style={styles.title}>
-      <Text accessibilityRole="header" numberOfLines={1} style={[styles.titleName, { color: theme.text }]}>
+    <View style={[styles.title, { maxWidth: width - TITLE_INSET }]}>
+      <Text
+        accessibilityRole="header"
+        numberOfLines={1}
+        ellipsizeMode="middle"
+        style={[styles.titleName, { color: theme.text }]}
+      >
         {basename(path)}
       </Text>
       {folder !== "" && (
@@ -118,9 +124,9 @@ function WithText({
   if (result === null) return <Loading label={copy("mobile_files_loading_file")} />
   if ("error" in result) return <Failure message={result.error} onRetry={retry} />
   if (result.value.binary) {
-    return <EmptyState icon="RiFileLine" title={copy("mobile_files_binary")} hint={copy("mobile_files_binary_hint")} />
+    return <EmptyState icon="File" title={copy("mobile_files_binary")} hint={copy("mobile_files_binary_hint")} />
   }
-  if (result.value.content === "") return <EmptyState icon="RiFileTextLine" title={copy("mobile_files_empty_file")} />
+  if (result.value.content === "") return <EmptyState icon="FileText" title={copy("mobile_files_empty_file")} />
   return children(result.value)
 }
 
@@ -135,7 +141,7 @@ function TextFile({ root, path, line }: { root: string; path: string; line: numb
   return (
     <WithText root={root} path={path}>
       {(file) => (
-        <CodeView content={file.content} line={line} truncated={file.truncated} />
+        <CodeView path={path} content={file.content} line={line} truncated={file.truncated} />
       )}
     </WithText>
   )
@@ -174,10 +180,10 @@ function MarkdownFile({
           {view === "preview" ? (
             <ScrollView contentContainerStyle={styles.markdown}>
               <TruncatedNotice truncated={file.truncated} />
-              <Markdown text={file.content} root={root} folder={dirname(path)} threadId={threadId} />
+              <Markdown text={file.content} root={root} folder={dirname(path)} threadId={threadId} gutter={PAGE_PADDING} />
             </ScrollView>
           ) : (
-            <CodeView content={file.content} line={line} truncated={file.truncated} />
+            <CodeView path={path} content={file.content} line={line} truncated={file.truncated} />
           )}
         </View>
       )}
@@ -187,8 +193,11 @@ function MarkdownFile({
 
 /** Highlighting a whole megabyte would stall the phone, so only the start is colored. */
 const HIGHLIGHT_LIMIT = 300_000
+const PAGE_PADDING = 16
 const LINE_HEIGHT = 18
 const DIGIT_WIDTH = 7.4
+const TITLE_INSET = 120
+const JUMP_STEPS = 80
 
 function highlightable(content: string) {
   if (content.length <= HIGHLIGHT_LIMIT) return content
@@ -196,10 +205,20 @@ function highlightable(content: string) {
   return content.slice(0, cut === -1 ? HIGHLIGHT_LIMIT : cut)
 }
 
-function CodeView({ content, line, truncated }: { content: string; line: number | null; truncated: boolean }) {
+function CodeView({
+  path,
+  content,
+  line,
+  truncated,
+}: {
+  path: string
+  content: string
+  line: number | null
+  truncated: boolean
+}) {
   const theme = useTheme()
   const colors = SyntaxColors[useScheme()]
-  const { spans } = useHighlight(highlightable(content))
+  const { spans } = useHighlight(path, highlightable(content))
   const lines = codeLines(content, spans)
   const target = line === null ? null : Math.min(line, lines.length) - 1
   const list = useRef<FlatList<CodeLine>>(null)
@@ -224,11 +243,11 @@ function CodeView({ content, line, truncated }: { content: string; line: number 
       maxToRenderPerBatch={60}
       windowSize={15}
       contentContainerStyle={styles.code}
-      onScrollToIndexFailed={({ index, averageItemLength }) => {
-        if (attempts.current >= 5) return
+      onScrollToIndexFailed={({ index, highestMeasuredFrameIndex }) => {
+        if (attempts.current >= JUMP_STEPS) return
         attempts.current += 1
-        list.current?.scrollToOffset({ offset: index * averageItemLength, animated: false })
-        setTimeout(() => list.current?.scrollToIndex({ index, viewPosition: 0.3, animated: false }), 100)
+        list.current?.scrollToIndex({ index: highestMeasuredFrameIndex, animated: false })
+        setTimeout(() => list.current?.scrollToIndex({ index, viewPosition: 0.3, animated: false }), 50)
       }}
       renderItem={({ item, index }) => (
         <View style={styles.codeRow}>
@@ -350,7 +369,7 @@ function SvgFile({ root, path }: { root: string; path: string }) {
               width="100%"
               height="100%"
               onError={() => undefined}
-              fallback={<EmptyState icon="RiImageLine" title={copy("mobile_files_svg_failed")} />}
+              fallback={<EmptyState icon="Image" title={copy("mobile_files_svg_failed")} />}
             />
           </View>
         </ScrollView>
@@ -362,12 +381,12 @@ function SvgFile({ root, path }: { root: string; path: string }) {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   // iOS centers the title, Android puts it after the back button.
-  title: { maxWidth: 260, alignItems: Platform.OS === "ios" ? "center" : "flex-start" },
+  title: { alignItems: Platform.OS === "ios" ? "center" : "flex-start" },
   titleName: { fontSize: 16, fontWeight: "600" },
   titleFolder: { fontSize: 12, fontFamily: mono },
   notice: { paddingHorizontal: 12, paddingVertical: 8 },
   segments: { margin: 12 },
-  markdown: { width: "100%", maxWidth: READABLE_WIDTH, alignSelf: "center", padding: 16, gap: 12 },
+  markdown: { width: "100%", maxWidth: READABLE_WIDTH, alignSelf: "center", padding: PAGE_PADDING, gap: 12 },
   code: { paddingVertical: 8 },
   codeRow: { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: 12 },
   flash: { ...StyleSheet.absoluteFill, pointerEvents: "none" },

@@ -3,21 +3,51 @@ import type { Thread } from "../../shared/domain.ts"
 
 export interface ThreadsState {
   readonly byId: Readonly<Record<string, Thread>>
+  readonly drafts: Readonly<Record<string, Thread>>
+  readonly sidechats: Readonly<Record<string, Thread>>
   readonly replaceAll: (threads: ReadonlyArray<Thread>) => void
   readonly upsert: (thread: Thread) => void
   readonly remove: (id: string) => void
 }
 
+const byIdOf = (threads: ReadonlyArray<Thread>) => Object.fromEntries(threads.map((thread) => [thread.id, thread]))
+
+const without = (threads: Readonly<Record<string, Thread>>, id: string) => {
+  const { [id]: _removed, ...rest } = threads
+  return rest
+}
+
 export const useThreads = create<ThreadsState>()((set) => ({
   byId: {},
-  replaceAll: (threads) => set({ byId: Object.fromEntries(threads.map((thread) => [thread.id, thread])) }),
-  upsert: (thread) => set((state) => ({ byId: { ...state.byId, [thread.id]: thread } })),
-  remove: (id) =>
-    set((state) => {
-      const { [id]: _removed, ...rest } = state.byId
-      return { byId: rest }
+  drafts: {},
+  sidechats: {},
+  replaceAll: (threads) =>
+    set({
+      byId: byIdOf(threads.filter((thread) => thread.status !== "draft")),
+      drafts: byIdOf(threads.filter((thread) => thread.status === "draft")),
     }),
+  upsert: (thread) =>
+    set((state) => {
+      if (thread.sideOf !== null) return { sidechats: { ...state.sidechats, [thread.sideOf]: thread } }
+      return thread.status === "draft"
+        ? { byId: without(state.byId, thread.id), drafts: { ...state.drafts, [thread.id]: thread } }
+        : { byId: { ...state.byId, [thread.id]: thread }, drafts: without(state.drafts, thread.id) }
+    }),
+  remove: (id) =>
+    set((state) => ({
+      byId: without(state.byId, id),
+      drafts: without(state.drafts, id),
+      sidechats: Object.fromEntries(
+        Object.entries(state.sidechats).filter(([parentId, sidechat]) => parentId !== id && sidechat.id !== id),
+      ),
+    })),
 }))
+
+export const selectOpenableThread = (id: string) => (state: Pick<ThreadsState, "byId" | "drafts">) =>
+  state.byId[id] ?? state.drafts[id]
+
+export const selectThread = (id: string) => (state: Pick<ThreadsState, "byId" | "drafts" | "sidechats">) =>
+  selectOpenableThread(id)(state) ?? Object.values(state.sidechats).find((sidechat) => sidechat.id === id)
 
 const inProjects = (state: Pick<ThreadsState, "byId">, projectIds: ReadonlyArray<string>) => {
   const ids = new Set(projectIds)

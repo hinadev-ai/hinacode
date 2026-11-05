@@ -1,0 +1,62 @@
+---
+import { RefreshIcon } from "../icons.ts"
+import { translator, type Locale } from "../i18n.ts"
+
+interface Props {
+  locale: Locale
+}
+
+const { locale } = Astro.props
+const t = translator(locale)
+---
+
+<div data-app-window>
+  <div class="mx-2 mb-4 flex items-start justify-between gap-4 sm:mx-0">
+    <p class="flex max-w-[44rem] items-start gap-2.5 text-sm text-ink-soft">
+      <span aria-hidden="true" class="mt-[0.4rem] size-2 shrink-0 rounded-full bg-coral"></span>
+      {t("site_demo_hint")}
+    </p>
+    <button
+      type="button"
+      data-app-restart
+      class="pressable inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium text-ink-soft hover:bg-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2"
+    >
+      <RefreshIcon aria-hidden="true" className="size-3.5" />
+      {t("site_demo_restart")}
+    </button>
+  </div>
+  <div class="relative overflow-hidden rounded-2xl bg-paper shadow-window">
+    <span aria-hidden="true" class="pointer-events-none absolute start-5 top-3.5 z-10 hidden gap-2 sm:flex">
+      <span class="size-3 rounded-full bg-[#ff5f57]"></span>
+      <span class="size-3 rounded-full bg-[#febc2e]"></span>
+      <span class="size-3 rounded-full bg-[#28c840]"></span>
+    </span>
+    <iframe
+      src={`/app/?locale=${locale}`}
+      title={t("site_demo_label")}
+      class="block h-[40rem] w-full sm:h-[47rem]"></iframe>
+  </div>
+</div>
+
+<script>
+  const PLAY = "hinacode-demo:play"
+
+  for (const root of document.querySelectorAll<HTMLElement>("[data-app-window]")) {
+    const frame = root.querySelector("iframe")!
+    let visible = false
+    const play = () => {
+      if (visible) frame.contentWindow?.postMessage(PLAY, location.origin)
+    }
+    new IntersectionObserver(
+      ([entry]) => {
+        visible = entry?.isIntersecting ?? false
+        play()
+      },
+      { threshold: 0.4 },
+    ).observe(frame)
+    frame.addEventListener("load", () => setTimeout(play, 600))
+    root.querySelector("[data-app-restart]")?.addEventListener("click", () => {
+      frame.contentWindow?.location.reload()
+    })
+  }
+</script>

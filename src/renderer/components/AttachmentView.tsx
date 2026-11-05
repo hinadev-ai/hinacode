@@ -1,34 +1,42 @@
 import { cn } from "cn"
-import { useState } from "react"
-import { RiCloseLine, RiFileLine } from "react-icons/ri"
+import { useState, useTransition } from "react"
 import { attachmentUrl } from "../../shared/channels.ts"
 import type { PickedDeviceElement } from "../../shared/device.ts"
 import type { Attachment, PickedElement } from "../../shared/domain.ts"
 import { deviceElementLabel, elementLabel } from "../lib/elementPicker.ts"
 import { useOpenThreadEnvironment } from "../lib/environments.ts"
+import { toastError } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { Button } from "./ui/button.tsx"
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "./ui/dialog.tsx"
+import { CloseIcon, FileIcon } from "@hinacode/icons"
 
 const format = (value: number, unit: string) =>
   new Intl.NumberFormat(getLocale(), { style: "unit", unit, maximumFractionDigits: 1 }).format(value)
 
-const formatBytes = (bytes: number) => {
-  if (bytes >= 1024 * 1024) return format(bytes / 1024 / 1024, "megabyte")
+export const formatBytes = (bytes: number) => {
+  if (bytes >= 1024 ** 3) return format(bytes / 1024 ** 3, "gigabyte")
+  if (bytes >= 1024 ** 2) return format(bytes / 1024 ** 2, "megabyte")
   if (bytes >= 1024) return format(bytes / 1024, "kilobyte")
   return format(bytes, "byte")
 }
 
 export function AttachmentView({ attachment }: { attachment: Attachment }) {
   if (attachment.kind === "image") return <ImageAttachment attachment={attachment} />
+  return <FileAttachment attachment={attachment} />
+}
+
+function FileAttachment({ attachment }: { attachment: Attachment }) {
+  const [revealing, startRevealing] = useTransition()
   return (
     <button
       type="button"
-      onClick={() => void callPromise("shell.reveal", { path: attachment.path })}
+      disabled={revealing}
+      onClick={() => startRevealing(() => callPromise("shell.reveal", { path: attachment.path }).catch(toastError))}
       title={m.attachment_reveal({ name: attachment.name })}
-      className="pressable rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="rounded-lg pressable outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <FileChip attachment={attachment} />
     </button>
@@ -46,16 +54,16 @@ function ImageAttachment({ attachment }: { attachment: Attachment }) {
   const [missing, setMissing] = useState(false)
   const picked = pickedLabel(attachment)
   const title = picked ?? attachment.name
-  if (missing) return <FileChip attachment={attachment} />
+  if (missing) return <FileChip attachment={attachment} gone />
   return (
     <Dialog>
       <DialogTrigger
         title={m.attachment_open_image({ name: title })}
-        className="pressable rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="rounded-lg pressable outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <Preview attachment={attachment} onError={() => setMissing(true)} />
       </DialogTrigger>
-      <DialogContent className="max-h-[90vh] sm:max-w-4xl">
+      <DialogContent className="max-h-[90vh] max-w-4xl">
         <DialogTitle className={cn("truncate pr-8", picked !== null && "font-mono text-sm")}>{title}</DialogTitle>
         <img
           src={src}
@@ -116,7 +124,7 @@ export function PendingAttachment({ attachment, onRemove }: { attachment: Attach
         })}
         className="absolute -top-1.5 -right-1.5 rounded-full border border-border"
       >
-        <RiCloseLine aria-hidden />
+        <CloseIcon aria-hidden />
       </Button>
     </div>
   )
@@ -134,15 +142,18 @@ function Thumbnail({ attachment, onError }: { attachment: Attachment; onError?: 
   )
 }
 
-function FileChip({ attachment }: { attachment: Attachment }) {
+export function FileChip({ attachment, gone = false }: { attachment: Attachment; gone?: boolean }) {
   return (
-    <span className="flex h-16 max-w-56 items-center gap-2 rounded-lg border border-border bg-background/50 px-3 text-left text-xs">
-      <RiFileLine aria-hidden className="size-5 shrink-0 text-muted-foreground" />
+    <span
+      data-gone={gone}
+      className="flex h-16 max-w-56 items-center gap-2 rounded-lg border border-border bg-background/50 px-3 text-left text-xs data-[gone=true]:border-dashed data-[gone=true]:bg-transparent data-[gone=true]:text-muted-foreground"
+    >
+      <FileIcon aria-hidden className="size-5 shrink-0 text-muted-foreground" />
       <span className="flex min-w-0 flex-col">
         <span className="truncate font-medium" title={attachment.name}>
           {attachment.name}
         </span>
-        <span className="text-muted-foreground">{formatBytes(attachment.bytes)}</span>
+        <span className="text-muted-foreground">{gone ? m.attachment_gone() : formatBytes(attachment.bytes)}</span>
       </span>
     </span>
   )

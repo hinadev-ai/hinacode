@@ -4,8 +4,10 @@ out/
 src/renderer/paraglide/
 e2e/.features-gen/
 e2e/test-results/
+.vitest/
 e2e/playwright-report/
 dist/
 dist-npm/
 .env
 .env.*
+project.inlang/cache/

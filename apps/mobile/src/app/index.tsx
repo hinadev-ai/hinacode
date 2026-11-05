@@ -39,11 +39,11 @@ export default function HomeScreen() {
         )}
         <View style={styles.center}>
           <EmptyState
-            icon="RiChat1Line"
+            icon="Chat"
             title={copy("mobile_home_no_selection")}
             action={
               !sidebar.open && (
-                <Button label={copy("mobile_home_show_list")} icon="RiSideBarLine" onPress={sidebar.toggle} />
+                <Button label={copy("mobile_home_show_list")} icon="Sidebar" onPress={sidebar.toggle} />
               )
             }
           />
@@ -58,14 +58,21 @@ export default function HomeScreen() {
           headerShown: true,
           title: copy("mobile_home_title"),
           headerLeft:
-            connection === "connected"
-              ? undefined
-              : () => (
+            isIOS && connection !== "connected"
+              ? () => (
                   <View style={styles.headerLeft}>
                     <ConnectionBadge status={connection} />
                   </View>
-                ),
-          headerRight: isIOS ? undefined : () => <HomeActions onNewThread={() => setNewThreadOpen(true)} />,
+                )
+              : undefined,
+          headerRight: isIOS
+            ? undefined
+            : () => (
+                <View style={styles.headerRight}>
+                  {connection !== "connected" && <ConnectionBadge status={connection} />}
+                  <HomeActions onNewThread={() => setNewThreadOpen(true)} />
+                </View>
+              ),
         }}
       />
       {isIOS && (
@@ -89,4 +96,5 @@ const styles = StyleSheet.create({
   header: { padding: 4 },
   center: { flex: 1, justifyContent: "center" },
   headerLeft: { paddingHorizontal: 4 },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 4 },
 })

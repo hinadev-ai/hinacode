@@ -1,4 +1,6 @@
-import { Schema } from "effect"
+import { Duration, Schema } from "effect"
+
+export const PULL_REQUEST_REFRESH = Duration.minutes(1)
 
 const OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/
 const NAME = /^(?!\.{1,2}$)[A-Za-z0-9._-]+$/
@@ -8,6 +10,9 @@ export const GitHubRepository = Schema.Struct({
   name: Schema.String.check(Schema.isPattern(NAME)),
 })
 export type GitHubRepository = typeof GitHubRepository.Type
+
+export const RepositoryVisibility = Schema.Literals(["private", "public"])
+export type RepositoryVisibility = typeof RepositoryVisibility.Type
 
 const CLONE_COMMAND = /^(?:git\s+clone|gh\s+repo\s+clone)\s+/
 const URL_FORMS = [
@@ -53,3 +58,13 @@ export const PullRequestSelector = Schema.String.check(
 const GITHUB_PULL_REQUEST = /^https:\/\/github\.com\/(?=[^/]+\/[^/]+\/pull\/\d+)/i
 
 export const linearReviewUrl = (url: string) => url.replace(GITHUB_PULL_REQUEST, "https://linear.review/")
+
+const isPathSegment = (segment: string) => segment !== "" && segment !== "." && segment !== ".."
+
+export const RepositoryPath = Schema.String.check(
+  Schema.makeFilter((path) => path.split("/").every(isPathSegment) || "a path inside the repository"),
+)
+
+export const GitRefName = Schema.String.check(
+  Schema.makeFilter((ref) => (/^[\w./-]+$/.test(ref) && ref.split("/").every(isPathSegment)) || "a git ref"),
+)

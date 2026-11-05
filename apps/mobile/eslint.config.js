@@ -9,6 +9,12 @@ module.exports = defineConfig([
   },
   {
     // effect only declares `exports`, which eslint-plugin-import's resolver does not read. tsc checks these imports.
-    rules: { "import/no-unresolved": ["error", { ignore: ["^effect"] }] },
+    rules: {
+      "import/no-unresolved": ["error", { ignore: ["^effect"] }],
+      "no-restricted-imports": [
+        "error",
+        { patterns: [{ group: ["lucide", "lucide-*", "@lucide/*"], message: "No Lucide icons. Add a Remix path to icon.tsx." }] },
+      ],
+    },
   },
 ])

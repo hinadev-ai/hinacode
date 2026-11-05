@@ -33,11 +33,17 @@ The first switch must open a transcript rather than time a click on an already o
 | ------------------------- | ------------------------------------------------------ | --------------------------------------------- |
 | `typing <threadId>`       | Types 91 characters into the composer, 50 ms apart     | Key to next paint p50 and p95, renders/key    |
 | `switch <threadId...>`    | Opens each thread from the sidebar, three rounds       | Open time, renders, long tasks                |
-| `reply <threadId>`        | Sends "go" and waits until the mock reply has finished | Frame gaps, renders, `MessageBody` renders    |
+| `reply <threadId>`        | Sends "go" and waits until the mock reply has finished | Frame gaps, renders, `toolToWriting`          |
 | `typing-reply <threadId>` | Sends "go", then types while the reply streams         | Key to next paint of keys that land mid-reply |
 
+To open a thread in the middle of a long turn, start the instance with `HINACODE_MOCK_CLAUDE=long-turn` and send the
+thread any prompt. The mock streams 400 reasoning and Bash steps, then keeps streaming text until Stop, so `switch`
+can time it while it runs.
+
 `reply` needs an instance started with `HINACODE_MOCK_CLAUDE=stream`. Its turn runs through the real main process:
-reasoning, six reads, then the Markdown fixture in 30-character deltas every 20 ms. No account is used. Both
+reasoning, six reads, then the Markdown fixture in 30-character deltas every 20 ms. No account is used.
+`toolToWriting` times the last read's result to the Writing line in three steps: to the first `text_delta` push
+(the mock's 20 ms plus main's delta coalescing), from that push to the frame that shows it, and the total. Both
 reply scenarios fail unless the fixture's text ends up on screen, so a failed turn cannot pass as a fast one.
 
 To compare renderer builds, save each build and let `suite.sh` alternate them on one instance, so they share the
@@ -93,6 +99,119 @@ warm switch from 49 to 45 ms. Raw captures use the `before3` and `after3` labels
 Deferring transcript updates with `useDeferredValue` was measured and left out. It did not move typing mid-reply,
 because what still blocks a key then is commit work: LegendList measuring rows, the Markdown mount when the reply
 finishes, and mermaid layout.
+
+## Time to first response
+
+`first-response.ts` times one send from the Enter key to the reply on screen, through the real composer and real
+agent accounts. It reloads the renderer on the thread, types the prompt one key every 50 ms (`KEY_INTERVAL_MS`),
+presses Enter, and records push events and DOM changes against the keydown. Each send appends a line to
+`.context/perf/first-response/<label>.jsonl`.
+
+```sh
+S=.agents/skills/verify-hinacode/scripts
+$S/launch.sh 9481 /tmp/kk-ffr && $S/seed-repo.sh /tmp/kk-ffr/repo
+$S/rpc.ts 9481 projects.create '{"name":"demo","rootPath":"/tmp/kk-ffr/repo","setupScript":null}'
+node scripts/perf/first-response.ts suite 9481 before <projectId> 5 claude,codex
+node scripts/perf/first-response.ts summary before after   # medians per provider and case
+```
+
+`suite` opens a new draft per run and sends a cold first message (`cold-new`), then a second one two seconds later
+(`warm`). After 70 seconds, when Claude has closed its idle CLIs, it sends to each thread again (`cold-idle`). Set
+`PROMPT` to change the prompt. It costs real tokens, so keep it short.
+
+| Milestone              | Meaning                                                         |
+| ---------------------- | --------------------------------------------------------------- |
+| user message on screen | The sent message renders, after admission in `AgentRunner`      |
+| provider bound         | `session_bound`, the provider's first event: the CLI has booted |
+| first text delta       | The first reply text reaches the renderer                       |
+| reply text on screen   | The reply's text is visible, which `ReplyText` holds until done |
+
+Model time to first token moves by about a second between runs, so judge a change to session startup by
+`provider bound` first.
+
+## Measure startup, thread loads and background work in main
+
+`main.ts` launches the built app itself, so it can time a cold start, and reads a span trace the main process
+writes when `HINACODE_TRACE=<file>` is set: one line per rpc call, SQL query and spawned `git` or `gh` process,
+with its parent span. Queries and processes are attributed to the rpc call that caused them, so background loops
+don't blur the numbers for a thread open.
+
+```sh
+pnpm build
+mkdir -p /tmp/kk-perf-real && sqlite3 ~/path/to/hinacode.sqlite ".backup /tmp/kk-perf-real/hinacode.sqlite"
+node scripts/perf/main.ts base /tmp/kk-perf-real            # on the base build
+node scripts/perf/main.ts after /tmp/kk-perf-real           # on the change, same profile
+node scripts/perf/main.ts compare base after
+```
+
+It launches `RUNS` times (default 5) and reports the median time until the renderer page is up, rpc answers and
+the sidebar shows a thread, with the SQL queries, SQL time and `git` and `gh` processes until then. On the last
+launch it opens the two largest non-archived threads and the smallest one from the sidebar three times each
+(cold, then switching back) and idles for `IDLE_SECONDS` (default 120) to count background queries and processes
+per hour. Pass thread ids after the data dir to pick other threads. Results land in `.context/perf/<label>-main.json`.
+
+The profile must live under `/tmp/kk-`. The instance runs with `HINACODE_MOCK_AGENTS=stream`, which serves Claude,
+Codex and Muse from the simulation and turns off pull request guides, so a due auto-resume or queued message in the
+copy streams a simulated reply instead of starting a real agent in the original checkout. Before each benchmark the
+script clears every PR watch and disables every automation in the copy, so no automation creates a worktree there.
+Each launch reopens the last route, so after the first run startup includes opening a thread. `PORT` picks the CDP
+port (default 9290) and `DISPLAY_FOR_PERF` the X display (default `:99`).
+
+## Measure many agents streaming at once
+
+`fanout.ts` copies a profile, opens its largest thread, and starts the `long-turn` simulation on the next `THREADS`
+(default 6) started threads, so they stream steadily in the background. Over `WINDOW_SECONDS` (default 15) it
+records CPU per process kind, renderer task time, the latency of a cheap rpc sent every 100 ms, every write to
+`message` or `message_part` the main process runs, and the bytes the main process wrote to disk. Build each side in turn and give each its own label:
+
+```sh
+pnpm build
+sqlite3 ~/.hinacode/hinacode.sqlite ".backup /tmp/kk-perf-real/hinacode.sqlite"
+node scripts/perf/fanout.ts base /tmp/kk-perf-real/hinacode.sqlite
+node scripts/perf/fanout.ts after /tmp/kk-perf-real/hinacode.sqlite   # after rebuilding the change
+node scripts/perf/fanout.ts compare base after
+```
+
+Each of `RUNS` (default 3) launches gets a fresh copy, with PR watches cleared and automations disabled. CPU comes
+from `ps`, which Linux reports in whole seconds, so raise `WINDOW_SECONDS` there. The copies go under `DATA_ROOT`
+(default `/tmp`). Bytes written come from `/proc/<pid>/io`, which counts nothing on tmpfs, so point `DATA_ROOT` at a
+real disk to measure them.
+
+## Check the open message parts migration
+
+`partsMigration.ts` migrates a copy of a database to `<copy>.migrated` and checks that every thread's messages read
+back identical through `Messages.list`.
+
+```sh
+sqlite3 -readonly ~/.hinacode/hinacode.sqlite ".backup /tmp/kk-perf-real/hinacode.sqlite"
+node scripts/perf/partsMigration.ts /tmp/kk-perf-real/hinacode.sqlite
+```
+
+## Runtime budget in CI
+
+The `bundle-size` job builds the pull request and its base, then `budget.ts` launches each build in turn on the
+same seeded profile and posts the medians under the size table. The JS bundle loads from disk, so its size says
+little about how fast the app feels; these say more.
+
+```sh
+pnpm build                                                    # in both checkouts
+node scripts/perf/budget.ts run <base-checkout> <head-checkout> .context/perf/runtime.json
+node scripts/perf/budget.ts report .context/perf/runtime.json  # exits 1 over budget
+```
+
+| Measurement                 | How it is taken                                                                          |
+| --------------------------- | ---------------------------------------------------------------------------------------- |
+| Launch to restored thread   | Spawn until the sidebar lists threads and the restored 200-turn transcript stops growing |
+| CPU time until then         | User and system time of the Electron process tree, from `/proc`                          |
+| Open a 40-turn thread       | Sidebar click until that transcript stops growing                                        |
+| Idle CPU                    | CPU time of the process tree over `IDLE_SECONDS` (30) after a 5 s settle                 |
+| Memory, all processes (PSS) | Sum of `Pss` in `/proc/<pid>/smaps_rollup` across the tree, after idle                   |
+| Renderer JS heap            | `JSHeapUsedSize` after a forced GC                                                       |
+
+Each build gets one warm-up launch, then `RUNS` (5) measured launches, alternating which build goes first. A
+measurement fails only when the pull request's median exceeds the base by both the percentage and the absolute
+amount in `budget.ts`, because a shared runner moves single launches by more than either alone. Comparing a build
+with itself on one machine is the way to check that the limits still leave room for that noise. It is Linux only.
 
 ## Measure remote payload and transcript costs
 
@@ -235,7 +354,7 @@ app went to the background.
 ```sh
 DATA=/tmp/kk-battery PORT=48190
 HINACODE_USER_DATA=$DATA HINACODE_MOCK_CLAUDE=stream HINACODE_SERVE_RELAY=off HINACODE_SERVE_AUTO_UPDATE=0 \
-  node out/main/daemon.js serve --host 127.0.0.1 --port $PORT   # prints the token in its pairing URL
+  node bin/hinacode.mjs serve --host 127.0.0.1 --port $PORT   # prints the token in its pairing URL
 
 export BATTERY_DAEMON_PORT=$PORT BATTERY_TOKEN=<token>
 BATTERY_PLATFORM=android BATTERY_SERIAL=emulator-5580 node scripts/perf/battery.ts run android-base-1
@@ -399,12 +518,13 @@ renderer. The run waits another 1000 ms after emission, then checks completion a
 Visibility changes, unexpected thread events, missing deltas, and incomplete output fail the run.
 
 `<label>-stream.json` records the workload text and SHA-256, viewport, emission timings, raw idle
-and streaming gaps, long tasks, parser samples, received events, and final DOM HTML and text.
+and streaming gaps, `firstPaintMs` (first `text_delta` received to the first frame showing the
+Writing line, since reply text stays hidden until it is complete), long tasks, parser samples, received events, and final DOM HTML and text.
 Parser statistics measure the synchronous ReactMarkdown function, including processor creation,
 parse, transform, and element creation. They are not total React render time. `PARSE=1` fails if the
 loaded bundle has no matching instrumentation, no parse samples, or no parse of the final text.
 
-The instrumenter changes only the current built ReactMarkdown function. It saves the original
+The instrumenter changes only the current built ReactMarkdown function, matched in its minified shape. It saves the original
 bundle and hash metadata under `.context/perf/` and refuses an unknown function shape or duplicate
 instrumentation. Run `pnpm build` to restore `out/`; never add instrumentation to source files.
 

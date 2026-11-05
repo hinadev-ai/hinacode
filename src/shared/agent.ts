@@ -1,8 +1,8 @@
-import { Schema } from "effect"
+import { Predicate, Schema } from "effect"
 import type { AccessMode, Attachment } from "./domain.ts"
 import { PlanLimits, UsageLimit } from "./limits.ts"
 
-export const ProviderId = Schema.Literals(["claude", "codex", "muse"])
+export const ProviderId = Schema.Literals(["claude", "codex", "muse", "opencode"])
 export type ProviderId = typeof ProviderId.Type
 
 export const AccountProviderId = Schema.Literals(["claude", "codex"])
@@ -60,6 +60,26 @@ export interface AccountHome {
   readonly binary: string
 }
 
+export const configDirVariable = { claude: "CLAUDE_CONFIG_DIR", codex: "CODEX_HOME" } satisfies Record<
+  AccountProviderId,
+  string
+>
+
+const loginArguments = { claude: ["auth", "login"], codex: ["login"] } satisfies Record<
+  AccountProviderId,
+  ReadonlyArray<string>
+>
+
+const shellQuote = (value: string) => (/^[\w./~-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`)
+
+export const loginCommand = (provider: AccountProviderId, home: AccountHome | null) =>
+  [
+    ...(home === null
+      ? [provider]
+      : [`${configDirVariable[provider]}=${shellQuote(home.dir)}`, shellQuote(home.binary)]),
+    ...loginArguments[provider],
+  ].join(" ")
+
 export const CLAUDE_EFFORT_LEVELS: ReadonlyArray<string> = ["low", "medium", "high", "xhigh", "max"]
 
 export const unlistedModel = (id: string, provider: ProviderId): ModelInfo => ({
@@ -84,6 +104,7 @@ export const presetModels = (
 export const AgentCommand = Schema.Struct({
   trigger: Schema.Literals(["/", "$"]),
   name: Schema.String,
+  label: Schema.optionalKey(Schema.String),
   description: Schema.String,
   argumentHint: Schema.String,
   builtin: Schema.optionalKey(Schema.Boolean),
@@ -200,6 +221,7 @@ export type SubagentStatus = typeof SubagentStatus.Type
 
 export const Subagent = Schema.Struct({
   id: Schema.String,
+  provider: Schema.optionalKey(ProviderId),
   label: Schema.String,
   callId: Schema.NullOr(Schema.String),
   status: SubagentStatus,
@@ -258,6 +280,7 @@ export const AgentEvent = Schema.Union([
     type: Schema.Literal("tool_call_finished"),
     callId: Schema.String,
     output: Schema.Unknown,
+    fullOutputBytes: Schema.optional(Schema.Number),
     isError: Schema.Boolean,
   }),
   Schema.Struct({
@@ -279,7 +302,12 @@ export const AgentEvent = Schema.Union([
     usage: Schema.optional(TokenUsage),
     forkPoint: Schema.optional(ForkPoint),
   }),
-  Schema.Struct({ type: Schema.Literal("turn_failed"), message: Schema.String }),
+  Schema.Struct({
+    type: Schema.Literal("turn_failed"),
+    message: Schema.String,
+    stopped: Schema.optional(Schema.Boolean),
+    loginCommand: Schema.optional(Schema.String),
+  }),
   Schema.Struct({ type: Schema.Literal("turn_limited"), limit: UsageLimit }),
 ])
 export type AgentEvent = typeof AgentEvent.Type
@@ -289,6 +317,7 @@ export interface RunTurnInput {
   readonly prompt: string
   readonly attachments: ReadonlyArray<Attachment>
   readonly cwd: string
+  readonly tmpDirectory: string | null
   readonly model: string
   readonly effort: string | null
   readonly fastMode: boolean
@@ -305,4 +334,54 @@ export interface RunTurnInput {
 export interface McpConnection {
   readonly url: string
   readonly headers: { readonly authorization: string }
+}
+
+export const RUN_AGENT_TOOL = "run_agent"
+
+export const WAIT_AGENT_TOOL = "wait_agent"
+
+export const isRunAgentTool = (name: string) => name === RUN_AGENT_TOOL || name === `mcp__hinacode__${RUN_AGENT_TOOL}`
+
+export const PUBLISH_ARTIFACT_TOOL = "publish_artifact"
+
+export const PUBLISH_DOCUMENT_TOOL = "publish_document"
+
+const publishTools = new Set(
+  [PUBLISH_ARTIFACT_TOOL, PUBLISH_DOCUMENT_TOOL].flatMap((name) => [name, `mcp__hinacode__${name}`]),
+)
+
+export const isPublishArtifactTool = (name: string) => publishTools.has(name)
+
+export const isPublishDocumentTool = (name: string) => name.endsWith(PUBLISH_DOCUMENT_TOOL) && publishTools.has(name)
+
+export const publishedArtifact = (result: string): { id: string; version: number } | null => {
+  const [, id, version] = /^Published (?:artifact|document) ([a-z0-9][a-z0-9-]*) version (\d+)/.exec(result) ?? []
+  return id === undefined ? null : { id, version: Number(version) }
+}
+
+export const publishedArtifactId = (result: string) => publishedArtifact(result)?.id ?? null
+
+const textOfBlock = (block: unknown) =>
+  typeof block === "object" && block !== null && Reflect.get(block, "type") === "text"
+    ? String(Reflect.get(block, "text"))
+    : ""
+
+export const outputText = (output: unknown): string =>
+  typeof output === "string"
+    ? output
+    : Array.isArray(output)
+      ? output.map(textOfBlock).filter(Boolean).join("\n")
+      : JSON.stringify(output)
+
+export const CREATE_THREAD_TOOL = "create_thread"
+
+export const isCreateThreadTool = (name: string) =>
+  name === CREATE_THREAD_TOOL || name === `mcp__hinacode__${CREATE_THREAD_TOOL}`
+
+export const createdThreadId = (result: string) => /^Created thread ([\w-]+)/.exec(result)?.[1] ?? null
+
+export const toolArgument = (input: unknown, key: string): unknown => {
+  if (!Predicate.isObject(input)) return undefined
+  const record = input as Record<string, unknown>
+  return key in record ? record[key] : toolArgument(record["arguments"], key)
 }

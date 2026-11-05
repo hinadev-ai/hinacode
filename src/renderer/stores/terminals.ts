@@ -3,7 +3,12 @@ import type { TerminalSession } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { loadSize, saveSize, TERMINAL_HEIGHT_BOUNDS } from "../lib/panelSize.ts"
 import { callPromise } from "../lib/rpc.ts"
-import { attachTerminalOutput, disposeTerminal } from "../lib/terminalScreens.ts"
+import { attachTerminalOutput, disposeTerminal, focusTerminal } from "../lib/terminalScreens.ts"
+
+export interface TerminalCommand {
+  readonly title: string
+  readonly line: string
+}
 
 interface ThreadTerminals {
   readonly sessions: ReadonlyArray<TerminalSession>
@@ -17,8 +22,10 @@ interface TerminalsState {
   readonly error: string | null
   readonly setHeight: (height: number) => void
   readonly setActive: (threadId: string, id: string) => void
+  readonly load: (threadId: string) => Promise<void>
+  readonly show: (threadId: string, id: string) => void
   readonly toggle: (threadId: string) => Promise<void>
-  readonly openSession: (threadId: string) => Promise<void>
+  readonly openSession: (threadId: string, command?: TerminalCommand) => Promise<void>
   readonly close: (threadId: string, id: string) => Promise<void>
   readonly attach: (id: string) => Promise<void>
   readonly markExited: (id: string, exitCode: number | null) => void
@@ -62,9 +69,32 @@ export const useTerminals = create<TerminalsState>()((set, get) => {
     if (session?.status === "exited") markExited(id, session.exitCode)
   }
 
-  const openSession = async (threadId: string) => {
+  const loads = new Map<string, Promise<void>>()
+
+  const fetchSessions = async (threadId: string) => {
+    const running = await callPromise("terminal.list", { threadId })
+    const listed = new Set(running.map((session) => session.id))
+    update(threadId, (current) => {
+      const sessions = [...running, ...current.sessions.filter((session) => !listed.has(session.id))]
+      return { sessions, activeId: current.activeId ?? sessions.at(-1)?.id ?? null }
+    })
+    for (const session of running) void attach(session.id)
+  }
+
+  const load = (threadId: string) => {
+    const loading =
+      loads.get(threadId) ??
+      fetchSessions(threadId).catch((error: unknown) => {
+        loads.delete(threadId)
+        throw error
+      })
+    loads.set(threadId, loading)
+    return loading
+  }
+
+  const openSession = async (threadId: string, command?: TerminalCommand) => {
     try {
-      const session = await callPromise("terminal.open", { threadId, ...INITIAL_SIZE })
+      const session = await callPromise("terminal.open", { threadId, ...INITIAL_SIZE, command })
       set({ error: null })
       update(threadId, (current) => ({ sessions: [...current.sessions, session], activeId: session.id, open: true }))
       void attach(session.id)
@@ -82,15 +112,17 @@ export const useTerminals = create<TerminalsState>()((set, get) => {
       set({ height })
     },
     setActive: (threadId, id) => update(threadId, () => ({ activeId: id })),
+    load,
+    show: (threadId, id) => {
+      update(threadId, () => ({ activeId: id, open: true }))
+      focusTerminal(id)
+    },
     toggle: async (threadId) => {
-      const current = get().byThreadId[threadId] ?? EMPTY
-      if (current.open) return update(threadId, () => ({ open: false }))
-      if (current.sessions.length > 0) return update(threadId, () => ({ open: true }))
+      if (get().byThreadId[threadId]?.open) return update(threadId, () => ({ open: false }))
       try {
-        const running = await callPromise("terminal.list", { threadId })
-        if (running.length === 0) return await openSession(threadId)
-        update(threadId, () => ({ sessions: running, activeId: running.at(-1)?.id ?? null, open: true }))
-        for (const session of running) void attach(session.id)
+        await load(threadId)
+        if ((get().byThreadId[threadId] ?? EMPTY).sessions.length === 0) return await openSession(threadId)
+        update(threadId, () => ({ open: true }))
       } catch (error) {
         fail(threadId, error)
       }

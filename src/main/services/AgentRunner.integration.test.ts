@@ -4,15 +4,24 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { expect, it } from "@effect/vitest"
-import { Context, Deferred, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, Queue, Stream } from "effect"
+import { Context, Deferred, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
 import { SqlClient } from "effect/sql"
 import { vi } from "vitest"
-import type { AgentEvent, ApprovalDecision, ProviderId, RunTurnInput } from "../../shared/agent.ts"
+import type {
+  AgentEvent,
+  ApprovalDecision,
+  BackgroundTask,
+  ProviderId,
+  RunTurnInput,
+  Subagent,
+} from "../../shared/agent.ts"
+import { RpcMethods, type TranscriptPush } from "../../shared/contract.ts"
 import type { Message, Thread } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
-import { AgentError, type AgentProvider, type Wake } from "../agents/provider.ts"
+import { OpencodeProvider } from "../agents/opencode/index.ts"
+import { AgentError, type AgentProvider, type SessionInput, type SteerPriority, type Wake } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
 import * as AgentAccounts from "./AgentAccounts.ts"
@@ -46,10 +55,18 @@ interface Probe {
   readonly inserting: Promise<void>
   readonly snapshotting: Promise<void>
   readonly idle: Promise<void>
+  readonly streamed: Promise<void>
   readonly turns: Array<{ readonly provider: ProviderId; readonly input: RunTurnInput }>
-  readonly decisions: Array<{ readonly requestId: string; readonly decision: ApprovalDecision }>
+  readonly nextTurn: () => Promise<void>
+  readonly warms: Array<SessionInput>
+  readonly decisions: Array<{ readonly requestId: string; readonly decision: ApprovalDecision; readonly note?: string }>
+  readonly steers: Array<{ readonly text: string; readonly priority: SteerPriority }>
   readonly calls: Array<{ readonly provider: ProviderId; readonly call: "closeSession" | "interrupt" }>
-  readonly wake: (agent: ProviderId, sessionId: string) => Promise<void>
+  readonly stops: Array<string>
+  readonly setBackgroundTasks: (tasks: ReadonlyArray<BackgroundTask>) => void
+  readonly reportSubagent: (subagent: Subagent) => void
+  readonly transcript: Array<TranscriptPush>
+  readonly wake: (agent: ProviderId, sessionId: string, events?: ReadonlyArray<AgentEvent>) => Promise<void>
   readonly failClose: () => void
   readonly release: () => void
   readonly deliver: () => void
@@ -58,6 +75,28 @@ interface Probe {
   readonly turnBase: () => Promise<string | null>
   readonly storedMessages: (threadId: string) => Promise<ReadonlyArray<Message>>
 }
+
+const streamedWords = Array.from({ length: 400 }, (_, index) => `word${index} `)
+
+const subagentReport = `REPORT_START\n${"finding\n".repeat(1000)}REPORT_END`
+
+const survey = (status: Subagent["status"]): Subagent => ({
+  id: "native-1",
+  label: "Survey",
+  callId: "spawn",
+  status,
+  summary: status === "running" ? null : "Surveyed 12 files.",
+  lastTool: null,
+  toolUses: 0,
+  tokens: null,
+  startedAt: "2026-11-03T00:00:00.000Z",
+  endedAt: status === "running" ? null : "2026-11-03T00:05:00.000Z",
+})
+
+const nativeSubagent = (status: Subagent["status"]): AgentEvent => ({
+  type: "subagent_updated",
+  subagent: survey(status),
+})
 
 const wakeQueue = () => Effect.runSync(Queue.unbounded<Wake>())
 
@@ -90,18 +129,35 @@ const withPreparingThread = async (
   const snapshotting = Promise.withResolvers<void>()
   const snapshotReady = Promise.withResolvers<void>()
   const idle = Promise.withResolvers<void>()
+  const streamed = Promise.withResolvers<void>()
   const deliver = () => inserted.resolve()
   const snapshot = () => snapshotReady.resolve()
   let holdInsertion = options.pauseInsertion ?? false
   let holdSnapshot = options.pauseSnapshot ?? false
   const turns: Probe["turns"] = []
+  let turnStarted = Promise.withResolvers<void>()
+  const warms: Probe["warms"] = []
   const decisions: Probe["decisions"] = []
+  const steers: Probe["steers"] = []
+  const resolutions = Effect.runSync(Queue.unbounded<AgentEvent>())
+  const interruptions = Effect.runSync(Queue.unbounded<AgentEvent>())
   const calls: Probe["calls"] = []
+  const stops: Probe["stops"] = []
+  const subagentChanges = Effect.runSync(Queue.unbounded<{ readonly threadId: string; readonly subagent: Subagent }>())
+  const backgroundTaskChanges = Effect.runSync(
+    Queue.unbounded<{ readonly threadId: string; readonly tasks: ReadonlyArray<BackgroundTask> }>(),
+  )
+  const transcript: Probe["transcript"] = []
   let closeFails = false
-  const wakes = { claude: wakeQueue(), codex: wakeQueue(), muse: wakeQueue() }
+  const wakes = {
+    claude: wakeQueue(),
+    codex: wakeQueue(),
+    muse: wakeQueue(),
+    opencode: wakeQueue(),
+  }
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
-      Layer.provideMerge(Scratch.layer(join(dir, "scratch"))),
+      Layer.provideMerge(Scratch.layer(join(dir, "scratch"), { tmpRoot: join(dir, "tmp") })),
       Layer.provide(Terminals.layer),
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
@@ -118,6 +174,7 @@ const withPreparingThread = async (
               Effect.sync(() => {
                 if (event.type === "worktree.setupLog" && event.chunk.includes("setup started")) started.resolve()
                 if (event.type === "thread.updated" && event.thread.status === "idle") idle.resolve()
+                if ("seq" in event) transcript.push(event)
               }),
           }),
         ),
@@ -135,8 +192,10 @@ const withPreparingThread = async (
     usage: () => Effect.succeed(null),
     listCommands: () => Effect.succeed([]),
     runTurn: (input) =>
-      Stream.suspend((): Stream.Stream<AgentEvent> => {
+      Stream.suspend((): Stream.Stream<AgentEvent, AgentError> => {
         turns.push({ provider: id, input })
+        turnStarted.resolve()
+        turnStarted = Promise.withResolvers<void>()
         const completed: AgentEvent = {
           type: "turn_completed",
           ...(options.forkable && { forkPoint: { sessionId: `${id}-session`, checkpoint: "turn-1" } }),
@@ -144,11 +203,70 @@ const withPreparingThread = async (
         if (input.prompt.endsWith("accepted input")) {
           return Stream.make({ type: "session_bound", providerSessionId: `${id}-session-${turns.length}` }, completed)
         }
-        if (input.prompt !== "needs approval") return Stream.never
-        const requested: AgentEvent = {
+        if (input.prompt === "streams, then waits") {
+          return Stream.fromIterable<AgentEvent>(
+            streamedWords.map((text): AgentEvent => ({ type: "text_delta", text })),
+          ).pipe(
+            Stream.concat(Stream.fromEffect(Effect.sync(() => streamed.resolve())).pipe(Stream.drain)),
+            Stream.concat(Stream.never),
+          )
+        }
+        const untilStopped = Stream.fromQueue(interruptions).pipe(
+          Stream.takeUntil(({ type }) => type === "turn_failed"),
+        )
+        if (input.prompt === "waits for Stop") return untilStopped
+        if (input.prompt === "spawns a sub-agent, then waits for Stop") {
+          return Stream.concat(Stream.make(nativeSubagent("running")), untilStopped)
+        }
+        if (input.prompt === "spawns a background sub-agent, then ends") {
+          return Stream.make(
+            { type: "session_bound", providerSessionId: `${id}-session-${turns.length}` },
+            nativeSubagent("running"),
+            completed,
+          )
+        }
+        if (input.prompt === "is signed out") {
+          const loginCommand = "opencode auth login"
+          return Stream.fail(new AgentError({ provider: id, message: "opencode is not signed in", loginCommand }))
+        }
+        if (input.prompt === "calls a tool, then waits") {
+          return Stream.fromIterable<AgentEvent>([
+            { type: "tool_call_started", callId: "call-1", name: "Bash", input: { command: "ls" } },
+            { type: "tool_call_finished", callId: "call-1", output: "README.md", isError: false },
+          ]).pipe(
+            Stream.concat(Stream.fromEffect(Effect.sync(() => streamed.resolve())).pipe(Stream.drain)),
+            Stream.concat(Stream.never),
+          )
+        }
+        if (input.prompt === "streams a reply") {
+          return Stream.fromIterable<AgentEvent>([
+            ...streamedWords.map((text): AgentEvent => ({ type: "text_delta", text })),
+            { type: "tool_call_started", callId: "call-1", name: "Bash", input: { command: "ls" } },
+            { type: "tool_call_finished", callId: "call-1", output: "README.md", isError: false },
+            ...streamedWords.map((text): AgentEvent => ({ type: "reasoning_delta", text })),
+            completed,
+          ])
+        }
+        if (input.prompt === "delegates") {
+          return Stream.make(
+            { type: "tool_call_started", callId: "spawn", name: "Agent", input: { description: "Survey" } },
+            { type: "tool_call_finished", callId: "spawn", output: subagentReport, isError: false },
+            completed,
+          )
+        }
+        if (input.prompt === "ends silently") {
+          return Stream.make({ type: "session_bound", providerSessionId: `${id}-session-${turns.length}` })
+        }
+        if (
+          input.prompt !== "needs approval" &&
+          input.prompt !== "needs two approvals" &&
+          input.prompt !== "needs approval, then ends silently"
+        )
+          return Stream.never
+        const approval = (requestId: string): AgentEvent => ({
           type: "approval_requested",
           request: {
-            id: "approval-1",
+            id: requestId,
             threadId: input.threadId,
             provider: id,
             kind: "command",
@@ -157,18 +275,44 @@ const withPreparingThread = async (
             input: { command: "echo hi" },
             sessionScope: { tool: "Bash", kind: "command", value: "echo hi" },
           },
-        }
-        return Stream.concat(Stream.make(requested), Stream.never)
+        })
+        if (input.prompt === "needs two approvals")
+          return Stream.concat(
+            Stream.make(approval("approval-1"), approval("approval-2")),
+            Stream.fromQueue(resolutions),
+          )
+        return input.prompt === "needs approval"
+          ? Stream.concat(Stream.make(approval("approval-1")), Stream.fromQueue(resolutions))
+          : Stream.make(approval("approval-1"))
       }),
+    warm: (input) => Effect.sync(() => void warms.push(input)),
     wakes: Stream.fromQueue(wakes[id]),
+    ...(id === "claude" && {
+      subagentChanges: Stream.fromQueue(subagentChanges),
+      backgroundTasks: {
+        changes: Stream.fromQueue(backgroundTaskChanges),
+        stop: (_threadId: string, taskId: string) => Effect.sync(() => void stops.push(`task:${taskId}`)),
+      },
+    }),
+    stopSubagent: (_threadId, subagentId) => Effect.sync(() => void stops.push(`subagent:${subagentId}`)),
     closeSession: () =>
       closeFails
         ? Effect.fail(new AgentError({ provider: id, message: "The session did not leave" }))
         : Effect.sync(() => calls.push({ provider: id, call: "closeSession" })),
-    steer: () => Effect.void,
-    interrupt: () => Effect.sync(() => calls.push({ provider: id, call: "interrupt" })),
+    ...(id !== "opencode" && {
+      steer: (_threadId: string, text: string, _attachments: unknown, priority: SteerPriority) =>
+        Effect.sync(() => void steers.push({ text, priority })),
+    }),
+    interrupt: () =>
+      Effect.sync(() => calls.push({ provider: id, call: "interrupt" })).pipe(
+        Effect.andThen(Queue.offer(interruptions, { type: "turn_failed", message: "Interrupted" })),
+      ),
     setAccessMode: () => Effect.void,
-    respondApproval: (requestId, decision) => Effect.sync(() => decisions.push({ requestId, decision })),
+    respondApproval: (requestId, decision, note) =>
+      Effect.sync(() => decisions.push({ requestId, decision, ...(note !== undefined && { note }) })).pipe(
+        Effect.andThen(Queue.offer(resolutions, { type: "approval_resolved", requestId })),
+        Effect.as(decision === "deny" && note !== undefined),
+      ),
     respondQuestion: () => Effect.void,
   })
   try {
@@ -211,6 +355,7 @@ const withPreparingThread = async (
             Layer.succeed(ClaudeProvider, provider("claude")),
             Layer.succeed(CodexProvider, provider("codex")),
             Layer.succeed(MuseProvider, provider("muse")),
+            Layer.succeed(OpencodeProvider, provider("opencode")),
             Layer.succeed(Secrets, {
               get: () => Effect.succeed(Option.none()),
               has: () => Effect.succeed(false),
@@ -283,6 +428,7 @@ const withPreparingThread = async (
           ),
         ),
         Layer.provideMerge(Layer.succeedContext(context)),
+        Layer.provide(NodeServices.layer),
       ),
     )
     try {
@@ -300,15 +446,23 @@ const withPreparingThread = async (
         inserting: inserting.promise,
         snapshotting: snapshotting.promise,
         idle: idle.promise,
+        nextTurn: () => turnStarted.promise,
+        streamed: streamed.promise,
         turns,
+        warms,
         decisions,
+        steers,
         calls,
-        wake: (agent, sessionId) => {
+        stops,
+        setBackgroundTasks: (tasks) => Queue.offerUnsafe(backgroundTaskChanges, { threadId: thread.id, tasks }),
+        reportSubagent: (subagent) => Queue.offerUnsafe(subagentChanges, { threadId: thread.id, subagent }),
+        transcript,
+        wake: (agent, sessionId, events) => {
           const discarded = Promise.withResolvers<void>()
           Queue.offerUnsafe(wakes[agent], {
             threadId: thread.id,
             sessionId,
-            events: Stream.never,
+            events: events === undefined ? Stream.never : Stream.fromIterable(events),
             discard: Effect.sync(() => discarded.resolve()),
           })
           return discarded.promise
@@ -589,6 +743,39 @@ it("tells the agent the branch and paths it works in", async () => {
   })
 })
 
+it("hands the agent an artifact skill's instructions and keeps the message as typed", async () => {
+  await withPreparingThread(async (probe) => {
+    probe.release()
+    await Effect.runPromise(probe.runner.send(probe.thread.id, "/artifact:doc audit startup imports", []))
+    await vi.waitFor(() => expect(probe.turns).toHaveLength(1))
+
+    const prompt = probe.turns[0]?.input.prompt ?? ""
+    expect(prompt).toMatch(/^<hinacode-skill name="artifact:doc">\n/)
+    expect(prompt).toContain("<request>\naudit startup imports\n</request>")
+    const { messages } = await Effect.runPromise(probe.runner.transcript(probe.thread.id))
+    expect(messages[0]?.parts).toStrictEqual([{ type: "text", text: "/artifact:doc audit startup imports" }])
+    await Effect.runPromise(probe.runner.interrupt(probe.thread.id))
+  })
+})
+
+it("warms the session with the same input the next send runs its turn with", async () => {
+  await withPreparingThread(async ({ runner, thread, turns, warms, idle, release }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+    await idle
+
+    await vi.waitFor(async () => {
+      await Effect.runPromise(runner.warm(thread.id))
+      expect(warms).toHaveLength(1)
+    })
+    await vi.waitFor(() => Effect.runPromise(runner.send(thread.id, "accepted input", [])))
+    await vi.waitFor(() => expect(turns).toHaveLength(2))
+
+    const { prompt: _prompt, attachments: _attachments, ...sent } = turns[1]!.input
+    expect(warms).toStrictEqual([sent])
+  })
+})
+
 const scratchDirectoryOf = (input: RunTurnInput | undefined) =>
   /scratch directory: `([^`]+)`/.exec(input?.instructions ?? "")?.[1]
 
@@ -653,6 +840,99 @@ it("allows the approval a turn is waiting on when the thread switches to full ac
     )
     await Effect.runPromise(runner.setAccessMode(thread.id, "full"))
     expect(decisions).toStrictEqual([{ requestId: "approval-1", decision: "allow" }])
+  })
+})
+
+it("holds a steer sent during an approval and steers it after the allowed tool call", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, steers }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "needs approval", []))
+    await vi.waitFor(async () =>
+      expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toHaveLength(1),
+    )
+    await Effect.runPromise(runner.steer(thread.id, "use pnpm", []))
+    expect(steers).toStrictEqual([])
+    expect((await Effect.runPromise(threads.get(thread.id))).queue).toMatchObject([{ text: "use pnpm", steer: true }])
+
+    await Effect.runPromise(runner.respondApproval("approval-1", "allow"))
+    await vi.waitFor(() => expect(steers).toStrictEqual([{ text: "use pnpm", priority: "next" }]))
+    expect((await Effect.runPromise(threads.get(thread.id))).queue).toStrictEqual([])
+    const { messages } = await Effect.runPromise(runner.transcript(thread.id))
+    expect(
+      messages.some((message) => message.role === "user" && JSON.stringify(message.parts).includes("use pnpm")),
+    ).toBe(true)
+  })
+})
+
+it("steers a note the provider could not deliver ahead of the messages held during the approval", async () => {
+  await withPreparingThread(async ({ runner, thread, release, steers, decisions }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "needs approval", []))
+    await vi.waitFor(async () =>
+      expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toHaveLength(1),
+    )
+    await Effect.runPromise(runner.steer(thread.id, "held", []))
+    await Effect.runPromise(runner.respondApproval("approval-1", "allow", "  then run lint  "))
+    expect(decisions).toStrictEqual([{ requestId: "approval-1", decision: "allow", note: "then run lint" }])
+    await vi.waitFor(() =>
+      expect(steers).toStrictEqual([
+        { text: "then run lint", priority: "next" },
+        { text: "held", priority: "next" },
+      ]),
+    )
+  })
+})
+
+it("queues a note for an agent that cannot steer, so it runs after the turn", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, decisions }) => {
+    release()
+    await Effect.runPromise(threads.update({ id: thread.id, provider: "opencode" }))
+    await Effect.runPromise(runner.send(thread.id, "needs approval", []))
+    await vi.waitFor(async () =>
+      expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toHaveLength(1),
+    )
+    await Effect.runPromise(runner.respondApproval("approval-1", "allow", "then run lint"))
+    expect(decisions).toStrictEqual([{ requestId: "approval-1", decision: "allow", note: "then run lint" }])
+    await vi.waitFor(async () =>
+      expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toHaveLength(0),
+    )
+    expect((await Effect.runPromise(threads.get(thread.id))).queue).toStrictEqual([
+      { id: expect.any(String), text: "then run lint", attachments: [] },
+    ])
+    await Effect.runPromise(runner.interrupt(thread.id))
+  })
+})
+
+it("does not steer a note the provider delivered with the denial", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, steers, decisions }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "needs approval", []))
+    await vi.waitFor(async () =>
+      expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toHaveLength(1),
+    )
+    await Effect.runPromise(runner.respondApproval("approval-1", "deny", "edit b.ts instead"))
+    expect(decisions).toStrictEqual([{ requestId: "approval-1", decision: "deny", note: "edit b.ts instead" }])
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running"))
+    expect(steers).toStrictEqual([])
+    expect((await Effect.runPromise(threads.get(thread.id))).queue).toStrictEqual([])
+  })
+})
+
+it("stays awaiting approval until the last open request is answered", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "needs two approvals", []))
+    await vi.waitFor(async () =>
+      expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toHaveLength(2),
+    )
+    await Effect.runPromise(runner.respondApproval("approval-1", "allow"))
+    await vi.waitFor(async () =>
+      expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toHaveLength(1),
+    )
+    expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("awaiting_approval")
+
+    await Effect.runPromise(runner.respondApproval("approval-2", "allow"))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running"))
   })
 })
 
@@ -725,6 +1005,70 @@ it("keeps a native fork's first prompt explicit while preserving its session che
   )
 })
 
+it("forks a side chat from the last finished turn and hands it the running one", async () => {
+  await withPreparingThread(
+    async ({ runner, threads, thread, release, idle, turns }) => {
+      release()
+      await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+      await idle
+      await Effect.runPromise(runner.send(thread.id, "needs approval", []))
+      await vi.waitFor(async () =>
+        expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toHaveLength(1),
+      )
+
+      const side = await Effect.runPromise(threads.sidechat(thread.id))
+      await Effect.runPromise(runner.send(side.id, "why?", []))
+      await vi.waitFor(() => expect(turns).toHaveLength(3))
+
+      expect(turns[2]).toMatchObject({
+        provider: "claude",
+        input: { threadId: side.id, resumeSessionId: "claude-session", forkAt: "turn-1", accessMode: "supervised" },
+      })
+      expect(turns[2]!.input.prompt).toMatch(/^<side_chat>\n/)
+      expect(turns[2]!.input.prompt).toContain("## user\nneeds approval")
+      expect(turns[2]!.input.prompt).toMatch(/<\/side_chat>\n\nwhy\?$/)
+      expect((await Effect.runPromise(threads.get(thread.id))).status).not.toBe("idle")
+      expect((await Effect.runPromise(threads.get(side.id))).title).toBe(thread.title)
+    },
+    { forkable: true },
+  )
+})
+
+it("numbers each thread's transcript pushes on its own", async () => {
+  await withPreparingThread(
+    async ({ runner, threads, thread, release, idle, transcript }) => {
+      release()
+      await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+      await idle
+      const side = await Effect.runPromise(threads.sidechat(thread.id))
+      await Effect.runPromise(runner.send(side.id, "accepted input", []))
+      const seqsOf = (threadId: string) =>
+        transcript
+          .filter((push) => (push.type === "thread.event" ? push.threadId : push.message.threadId) === threadId)
+          .map((push) => push.seq)
+      await vi.waitFor(() =>
+        expect(
+          transcript.some(
+            (push) => push.type === "thread.event" && push.threadId === side.id && push.event.type === "turn_completed",
+          ),
+        ).toBe(true),
+      )
+
+      for (const id of [thread.id, side.id]) {
+        const seqs = seqsOf(id)
+        expect(seqs).toEqual(seqs.map((_, index) => index + 1))
+        expect((await Effect.runPromise(runner.transcript(id))).seq).toBe(seqs.length)
+      }
+      const snapshot = await Effect.runPromise(runner.transcript(thread.id))
+      expect(snapshot.sequenceScope).toBe("thread")
+      const { sequenceScope: _, ...legacySnapshot } = snapshot
+      const decodeSnapshot = Schema.decodeUnknownSync(RpcMethods["threads.transcript"].response)
+      expect(decodeSnapshot(legacySnapshot).sequenceScope).toBeUndefined()
+    },
+    { forkable: true },
+  )
+})
+
 it("refuses to switch agents while a turn runs", async () => {
   await withPreparingThread(async ({ runner, threads, thread, release }) => {
     release()
@@ -766,6 +1110,103 @@ it("retires the agent a thread leaves and turns away its wakes, even after switc
   })
 })
 
+it("stops the thread's sub-agents and background tasks with the turn, and keeps its session", async () => {
+  await withPreparingThread(async ({ runner, thread, release, calls, stops, setBackgroundTasks }) => {
+    release()
+    setBackgroundTasks([{ id: "shell-1", kind: "shell", label: "sleep 600", startedAt: "2026-11-03T00:00:00.000Z" }])
+    await Effect.runPromise(runner.send(thread.id, "spawns a sub-agent, then waits for Stop", []))
+    await vi.waitFor(async () => expect(await Effect.runPromise(runner.subagents(thread.id))).toHaveLength(1))
+
+    await Effect.runPromise(runner.interrupt(thread.id))
+
+    expect(stops).toStrictEqual(["subagent:native-1", "task:shell-1"])
+    expect(calls).toStrictEqual([{ provider: "claude", call: "interrupt" }])
+  })
+})
+
+it("closes the session after Stop when a wakeup is pending, so the wakeup never fires", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, calls, stops, setBackgroundTasks }) => {
+    release()
+    setBackgroundTasks([
+      {
+        id: "wakeup",
+        kind: "wakeup",
+        label: "Check CI",
+        startedAt: "2026-11-03T00:00:00.000Z",
+        firesAt: "2026-11-03T00:20:00.000Z",
+      },
+    ])
+    await vi.waitFor(async () => expect(await Effect.runPromise(runner.backgroundTasks(thread.id))).toHaveLength(1))
+    await Effect.runPromise(runner.send(thread.id, "waits for Stop", []))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running"))
+
+    await Effect.runPromise(runner.interrupt(thread.id))
+
+    await vi.waitFor(() => expect(calls).toContainEqual({ provider: "claude", call: "closeSession" }))
+    expect(calls).toStrictEqual([
+      { provider: "claude", call: "interrupt" },
+      { provider: "claude", call: "closeSession" },
+    ])
+    expect(stops).toStrictEqual([])
+  })
+})
+
+it("keeps a sub-agent running past its turn, then hands its reply to the idle thread", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, turns, reportSubagent }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "spawns a background sub-agent, then ends", []))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("idle"))
+    expect(await Effect.runPromise(runner.subagents(thread.id))).toMatchObject([{ id: "native-1", status: "running" }])
+
+    reportSubagent(survey("completed"))
+
+    await vi.waitFor(() => expect(turns).toHaveLength(2))
+    expect(await Effect.runPromise(runner.subagents(thread.id))).toMatchObject([
+      { id: "native-1", status: "completed", summary: "Surveyed 12 files." },
+    ])
+    expect(turns[1]?.input.prompt).toContain("Survey")
+    expect(turns[1]?.input.prompt).toContain("Surveyed 12 files.")
+  })
+})
+
+it("does not wake the thread for a sub-agent the user stopped", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, turns, reportSubagent }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "spawns a background sub-agent, then ends", []))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("idle"))
+
+    reportSubagent(survey("stopped"))
+
+    await vi.waitFor(async () =>
+      expect(await Effect.runPromise(runner.subagents(thread.id))).toMatchObject([{ status: "stopped" }]),
+    )
+    expect(turns).toHaveLength(1)
+  })
+})
+
+it("still marks sub-agents stopped at the end of a turn when their agent cannot report them later", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release }) => {
+    release()
+    await Effect.runPromise(threads.update({ id: thread.id, provider: "opencode", model: "m" }))
+    await Effect.runPromise(runner.send(thread.id, "spawns a background sub-agent, then ends", []))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("idle"))
+
+    expect(await Effect.runPromise(runner.subagents(thread.id))).toMatchObject([{ id: "native-1", status: "stopped" }])
+  })
+})
+
+it("marks sub-agents stopped when the thread leaves the agent that ran them", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "spawns a background sub-agent, then ends", []))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("idle"))
+
+    await Effect.runPromise(runner.switchAgent({ id: thread.id, provider: "codex", model: "codex-model" }))
+
+    expect(await Effect.runPromise(runner.subagents(thread.id))).toMatchObject([{ id: "native-1", status: "stopped" }])
+  })
+})
+
 it("keeps a thread on its agent when that agent's session does not close", async () => {
   await withPreparingThread(async ({ runner, threads, thread, release, idle, failClose }) => {
     release()
@@ -780,5 +1221,366 @@ it("keeps a thread on its agent when that agent's session does not close", async
     })
     const { messages } = await Effect.runPromise(runner.transcript(thread.id))
     expect(messages.flatMap((message) => message.parts).some((part) => part.type === "agent_switch")).toBe(false)
+  })
+})
+
+it("publishes the assistant message a turn closes when its stream ends without a terminal event", async () => {
+  await withPreparingThread(async ({ runner, thread, release, idle, transcript, storedMessages }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "ends silently", []))
+    await idle
+
+    const stored = (await storedMessages(thread.id)).at(-1)!
+    expect(stored).toMatchObject({ role: "assistant", completedAt: expect.any(String) })
+    const updated = transcript.findLast((push) => push.type === "message.updated")
+    expect(updated).toMatchObject({ type: "message.updated", message: stored })
+  })
+})
+
+it("publishes a sub-agent's whole report", async () => {
+  await withPreparingThread(async ({ runner, thread, release, idle, transcript }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "delegates", []))
+    await idle
+
+    const finished = transcript.find((push) => push.type === "thread.event" && push.event.type === "tool_call_finished")
+    expect(finished).toMatchObject({ event: { output: subagentReport } })
+  })
+})
+
+it("withdraws the requests a turn leaves unanswered when its stream ends without a terminal event", async () => {
+  await withPreparingThread(async ({ runner, thread, release, idle, transcript }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "needs approval, then ends silently", []))
+    await idle
+
+    expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toEqual([])
+    expect(transcript).toContainEqual(
+      expect.objectContaining({
+        type: "thread.event",
+        threadId: thread.id,
+        event: { type: "approval_resolved", requestId: "approval-1" },
+      }),
+    )
+  })
+})
+
+it("keeps the login command when the agent is signed out", async () => {
+  await withPreparingThread(async ({ runner, thread, release, idle, storedMessages }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "is signed out", []))
+    await idle
+    expect((await storedMessages(thread.id)).at(-1)?.parts).toEqual([
+      { type: "signed_out", message: "opencode is not signed in", loginCommand: "opencode auth login" },
+    ])
+  })
+})
+
+it("publishes streamed text in fewer pushes, in order, with the same transcript", async () => {
+  await withPreparingThread(async ({ runner, thread, release, idle, transcript, storedMessages }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "streams a reply", []))
+    await idle
+
+    const events = transcript.flatMap((push) => (push.type === "thread.event" ? [push.event] : []))
+    const kinds = events.map((event) => event.type).filter((type, index, all) => type !== all[index - 1])
+    expect(kinds).toEqual([
+      "text_delta",
+      "tool_call_started",
+      "tool_call_finished",
+      "reasoning_delta",
+      "turn_completed",
+    ])
+    expect(events.length).toBeLessThan(streamedWords.length)
+    const streamed = (type: AgentEvent["type"]) =>
+      events.flatMap((event) => (event.type === type && "text" in event ? [event.text] : [])).join("")
+    expect(streamed("text_delta")).toBe(streamedWords.join(""))
+    expect(streamed("reasoning_delta")).toBe(streamedWords.join(""))
+
+    const stored = (await storedMessages(thread.id)).at(-1)!
+    expect(stored.parts).toEqual([
+      { type: "text", text: streamedWords.join("") },
+      {
+        type: "tool_call",
+        callId: "call-1",
+        name: "Bash",
+        input: { command: "ls" },
+        status: "done",
+        output: "README.md",
+      },
+      { type: "reasoning", text: streamedWords.join("") },
+    ])
+    const transcriptSeqs = transcript.map((push) => push.seq)
+    expect(transcriptSeqs).toEqual(transcriptSeqs.toSorted((a, b) => a - b))
+  })
+})
+
+it("ends a turn the user stopped without reporting an error", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, transcript }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "waits for Stop", []))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running"))
+    await Effect.runPromise(runner.interrupt(thread.id))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("idle"))
+
+    const ended = transcript.find((push) => push.type === "thread.event" && push.event.type === "turn_failed")
+    expect(ended).toMatchObject({ event: { type: "turn_failed", stopped: true } })
+    const { messages } = await Effect.runPromise(runner.transcript(thread.id))
+    expect(messages.at(-1)?.parts).toStrictEqual([])
+  })
+})
+
+it("queues a steer for an agent that cannot steer a running turn", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, streamed }) => {
+    release()
+    await Effect.runPromise(threads.update({ id: thread.id, provider: "opencode" }))
+    await Effect.runPromise(runner.send(thread.id, "streams, then waits", []))
+    await streamed
+    await Effect.runPromise(runner.steer(thread.id, "change course", []))
+
+    const queued = await Effect.runPromise(threads.get(thread.id))
+    expect(queued.queue.map((message) => message.text)).toEqual(["change course"])
+    await Effect.runPromise(runner.interrupt(thread.id))
+  })
+})
+
+it("keeps the text streamed before a steer in the reply the steer closes", async () => {
+  await withPreparingThread(async ({ runner, thread, release, streamed, transcript, steers }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "streams, then waits", []))
+    await streamed
+    await Effect.runPromise(runner.steer(thread.id, "change course", []))
+    expect(steers).toStrictEqual([{ text: "change course", priority: "now" }])
+
+    const closed = transcript.findLast((push) => push.type === "message.updated")
+    expect(closed).toMatchObject({
+      type: "message.updated",
+      message: { role: "assistant", parts: [{ type: "text", text: streamedWords.join("") }] },
+    })
+    const { messages } = await Effect.runPromise(runner.transcript(thread.id))
+    expect(messages.map((message) => [message.role, message.parts])).toEqual([
+      ["user", [{ type: "text", text: "streams, then waits" }]],
+      ["assistant", [{ type: "text", text: streamedWords.join("") }]],
+      ["user", [{ type: "text", text: "change course" }]],
+      ["assistant", []],
+    ])
+    await Effect.runPromise(runner.interrupt(thread.id))
+  })
+})
+
+it("reads a running tool call's output only from the message that holds it", async () => {
+  await withPreparingThread(async ({ runner, thread, release, streamed }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "calls a tool, then waits", []))
+    await streamed
+    await Effect.runPromise(runner.steer(thread.id, "change course", []))
+    const { messages } = await Effect.runPromise(runner.transcript(thread.id))
+    const [, calling, , reply] = messages
+    const toolOutput = (messageId: string | undefined) =>
+      Effect.runPromise(
+        runner.toolOutput({ threadId: thread.id, callId: "call-1", ...(messageId && { messageId }) }).pipe(Effect.exit),
+      )
+
+    expect(await toolOutput(calling?.id)).toStrictEqual(Exit.succeed("README.md"))
+    expect(await toolOutput(undefined)).toStrictEqual(Exit.succeed("README.md"))
+    expect(Exit.isFailure(await toolOutput(reply?.id))).toBe(true)
+    await Effect.runPromise(runner.interrupt(thread.id))
+  })
+})
+
+const overdue = "2020-01-01T09:00:00.000Z"
+const later = "2999-01-01T09:00:00.000Z"
+
+it("sends an overdue scheduled message and keeps the later one", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, turns }) => {
+    release()
+    await Effect.runPromise(runner.schedule({ threadId: thread.id, text: "tomorrow", attachments: [], sendAt: later }))
+    await Effect.runPromise(runner.schedule({ threadId: thread.id, text: "now", attachments: [], sendAt: overdue }))
+    expect((await Effect.runPromise(threads.get(thread.id))).scheduled.map((message) => message.text)).toEqual([
+      "now",
+      "tomorrow",
+    ])
+
+    await Effect.runPromise(runner.sendDueSchedules)
+
+    await vi.waitFor(() => expect(turns.map((turn) => turn.input.prompt)).toEqual(["now"]))
+    expect((await Effect.runPromise(threads.get(thread.id))).scheduled).toStrictEqual([
+      { id: expect.any(String), text: "tomorrow", attachments: [], sendAt: later },
+    ])
+    await Effect.runPromise(runner.interrupt(thread.id))
+  })
+})
+
+it("sends a scheduled message on its own once it comes due", async () => {
+  await withPreparingThread(async ({ runner, thread, release, turns, nextTurn }) => {
+    release()
+    const sent = nextTurn()
+    await Effect.runPromise(runner.schedule({ threadId: thread.id, text: "now", attachments: [], sendAt: overdue }))
+
+    await sent
+    expect(turns.map((turn) => turn.input.prompt)).toEqual(["now"])
+    await Effect.runPromise(runner.interrupt(thread.id))
+  })
+})
+
+it("resumes a limited thread on its own once its reset passes", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, turns, nextTurn }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "streams a reply", []))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("idle"))
+    const resumed = nextTurn()
+    await Effect.runPromise(
+      threads.update({
+        id: thread.id,
+        status: "limited",
+        usageLimit: { kind: "usage", message: "limited", reset: { at: overdue, autoResume: true } },
+      }),
+    )
+
+    await resumed
+    expect(turns).toHaveLength(2)
+    expect(turns[1]?.input.prompt).toMatch(/streams a reply$/)
+    expect((await Effect.runPromise(threads.get(thread.id))).usageLimit?.reset?.autoResume).not.toBe(true)
+  })
+})
+
+it("queues a scheduled message that comes due during a turn", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, streamed }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "streams, then waits", []))
+    await streamed
+    await Effect.runPromise(runner.schedule({ threadId: thread.id, text: "next", attachments: [], sendAt: overdue }))
+
+    await Effect.runPromise(runner.sendDueSchedules)
+
+    await vi.waitFor(async () => {
+      const current = await Effect.runPromise(threads.get(thread.id))
+      expect(current.scheduled).toStrictEqual([])
+      expect(current.queue.map((message) => message.text)).toEqual(["next"])
+    })
+    await Effect.runPromise(runner.interrupt(thread.id))
+  })
+})
+
+it("keeps a scheduled message that failed to send, with the reason, until it is rescheduled", async () => {
+  await withPreparingThread(async ({ runner, threads, worktrees, thread, release, turns }) => {
+    release()
+    await vi.waitFor(async () =>
+      expect((await Effect.runPromise(worktrees.get(thread.worktreeId!))).status).toBe("ready"),
+    )
+    const { path } = await Effect.runPromise(worktrees.get(thread.worktreeId!))
+    rmSync(path, { recursive: true, force: true })
+    await Effect.runPromise(runner.schedule({ threadId: thread.id, text: "lost", attachments: [], sendAt: overdue }))
+
+    await Effect.runPromise(runner.sendDueSchedules)
+
+    await vi.waitFor(async () =>
+      expect((await Effect.runPromise(threads.get(thread.id))).scheduled).toMatchObject([
+        { text: "lost", sendAt: overdue, failure: expect.any(String) },
+      ]),
+    )
+    await Effect.runPromise(runner.sendDueSchedules)
+    const [failed] = (await Effect.runPromise(threads.get(thread.id))).scheduled
+    expect(turns).toStrictEqual([])
+
+    await Effect.runPromise(runner.reschedule(thread.id, failed!.id, later))
+    expect((await Effect.runPromise(threads.get(thread.id))).scheduled).toStrictEqual([
+      { id: failed!.id, text: "lost", attachments: [], sendAt: later },
+    ])
+    expect(await Effect.runPromise(runner.unschedule(thread.id, failed!.id))).toMatchObject({ text: "lost" })
+    expect((await Effect.runPromise(threads.get(thread.id))).scheduled).toStrictEqual([])
+  })
+})
+
+it("keeps a scheduled message stored until its turn starts, and sends it once", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, waiting, turns }) => {
+    await Effect.runPromise(
+      runner.schedule({ threadId: thread.id, text: "keep this", attachments: [], sendAt: overdue }),
+    )
+    const delivery = Effect.runPromise(runner.sendDueSchedules)
+    await waiting
+
+    expect((await Effect.runPromise(threads.get(thread.id))).scheduled.map((message) => message.text)).toEqual([
+      "keep this",
+    ])
+
+    release()
+    await delivery
+    await vi.waitFor(() => expect(turns.map((turn) => turn.input.prompt)).toEqual(["keep this"]))
+    expect((await Effect.runPromise(threads.get(thread.id))).scheduled).toStrictEqual([])
+    await Effect.runPromise(runner.interrupt(thread.id))
+  })
+})
+
+it("delivers another thread's newly due message while a worktree is still preparing", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, waiting, turns }) => {
+    await Effect.runPromise(
+      runner.schedule({ threadId: thread.id, text: "wait for setup", attachments: [], sendAt: overdue }),
+    )
+    try {
+      await waiting
+      const other = await Effect.runPromise(
+        threads.create({ projectId: thread.projectId, title: "Independent", provider: "claude", model: "test" }),
+      )
+      await Effect.runPromise(
+        runner.schedule({ threadId: other.id, text: "ready now", attachments: [], sendAt: overdue }),
+      )
+
+      await vi.waitFor(() => expect(turns.map((turn) => turn.input.prompt)).toEqual(["ready now"]), { timeout: 5000 })
+      expect((await Effect.runPromise(threads.get(thread.id))).scheduled.map((message) => message.text)).toEqual([
+        "wait for setup",
+      ])
+
+      release()
+      await vi.waitFor(() => expect(turns.map((turn) => turn.input.prompt)).toEqual(["ready now", "wait for setup"]), {
+        timeout: 5000,
+      })
+      await Effect.runPromise(runner.interrupt(other.id))
+    } finally {
+      release()
+      await Effect.runPromise(runner.interrupt(thread.id))
+    }
+  })
+})
+
+it("does not send a scheduled message again when a crash left it stored after its turn started", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, turns, storedMessages }) => {
+    release()
+    await Effect.runPromise(
+      runner.schedule({ threadId: thread.id, text: "waits for Stop", attachments: [], sendAt: overdue }),
+    )
+    const stored = (await Effect.runPromise(threads.get(thread.id))).scheduled
+
+    await Effect.runPromise(runner.sendDueSchedules)
+    await vi.waitFor(() => expect(turns.map((turn) => turn.input.prompt)).toEqual(["waits for Stop"]))
+    await Effect.runPromise(runner.interrupt(thread.id))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("idle"))
+
+    await Effect.runPromise(threads.update({ id: thread.id, scheduled: stored }))
+    await Effect.runPromise(runner.sendDueSchedules)
+
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).scheduled).toStrictEqual([]))
+    expect((await Effect.runPromise(threads.get(thread.id))).queue).toStrictEqual([])
+    expect(turns.map((turn) => turn.input.prompt)).toEqual(["waits for Stop"])
+    expect((await storedMessages(thread.id)).filter((message) => message.role === "user")).toHaveLength(1)
+  })
+})
+
+it("cancels a scheduled message that is waiting on its worktree", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, waiting, turns }) => {
+    await Effect.runPromise(
+      runner.schedule({ threadId: thread.id, text: "never mind", attachments: [], sendAt: overdue }),
+    )
+    void Effect.runPromise(runner.sendDueSchedules)
+    await waiting
+
+    const cancelled = await Effect.runPromise(
+      runner.unschedule(thread.id, (await Effect.runPromise(threads.get(thread.id))).scheduled[0]!.id),
+    )
+    release()
+
+    expect(cancelled).toMatchObject({ text: "never mind" })
+    expect((await Effect.runPromise(threads.get(thread.id))).scheduled).toStrictEqual([])
+    expect(turns).toStrictEqual([])
   })
 })

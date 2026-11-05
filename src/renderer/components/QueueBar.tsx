@@ -1,7 +1,7 @@
 import { useAutoAnimate } from "@formkit/auto-animate/react"
-import type { IconType } from "react-icons"
-import { RiCloseLine, RiCornerDownRightLine, RiPencilLine, RiTimeLine } from "react-icons/ri"
+import { listMotion } from "../lib/listMotion.ts"
 import type { QueuedMessage, Thread } from "../../shared/domain.ts"
+import { providerInfo } from "../../shared/providers.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
@@ -9,9 +9,10 @@ import { useDrafts } from "../stores/drafts.ts"
 import { ActivityRow } from "./ActivityRow.tsx"
 import { Button } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
+import { ClockIcon, CloseIcon, type IconComponent, PencilIcon, ShieldIcon, SteerIcon } from "@hinacode/icons"
 
 const summaryOf = (message: QueuedMessage) =>
-  message.text.trim() || m.queue_attachments({ count: String(message.attachments.length) })
+  message.text.trim() || m.queue_attachments({ count: message.attachments.length })
 
 export function QueueBar({
   thread,
@@ -22,7 +23,7 @@ export function QueueBar({
   onEdit: () => void
   onError: (message: string) => void
 }) {
-  const [listRef] = useAutoAnimate<HTMLUListElement>({ duration: 150 })
+  const [listRef] = useAutoAnimate<HTMLUListElement>(listMotion)
   if (thread.queue.length === 0) return null
 
   const take = (id: string) => callPromise("threads.unqueue", { threadId: thread.id, id })
@@ -59,7 +60,13 @@ export function QueueBar({
     }
   }
 
-  const remove = (id: string) => take(id).catch((cause: unknown) => onError(errorMessage(cause)))
+  const remove = async (id: string) => {
+    try {
+      await take(id)
+    } catch (cause) {
+      onError(errorMessage(cause))
+    }
+  }
 
   return (
     <ul ref={listRef} aria-label={m.queue_label()}>
@@ -68,20 +75,23 @@ export function QueueBar({
           <ActivityRow
             actions={
               <>
-                <QueueAction
-                  icon={RiCornerDownRightLine}
-                  label={m.queue_steer_now()}
-                  onClick={() => steerNow(message.id)}
-                />
-                <QueueAction icon={RiPencilLine} label={m.queue_edit()} onClick={() => edit(message.id)} />
-                <QueueAction icon={RiCloseLine} label={m.queue_remove()} onClick={() => remove(message.id)} />
+                {providerInfo[thread.provider].steersRunningTurn && (
+                  <QueueAction icon={SteerIcon} label={m.queue_steer_now()} action={() => steerNow(message.id)} />
+                )}
+                <QueueAction icon={PencilIcon} label={m.queue_edit()} action={() => edit(message.id)} />
+                <QueueAction icon={CloseIcon} label={m.queue_remove()} action={() => remove(message.id)} />
               </>
             }
           >
-            <RiTimeLine aria-hidden className="size-3.5 shrink-0" />
+            {message.steer ? (
+              <ShieldIcon aria-hidden className="size-3.5 shrink-0" />
+            ) : (
+              <ClockIcon aria-hidden className="size-3.5 shrink-0" />
+            )}
             <span className="truncate text-foreground" title={summaryOf(message)}>
               {summaryOf(message)}
             </span>
+            {message.steer && <span className="shrink-0 text-muted-foreground">{m.queue_after_approval()}</span>}
           </ActivityRow>
         </li>
       ))}
@@ -89,7 +99,15 @@ export function QueueBar({
   )
 }
 
-function QueueAction({ icon: Icon, label, onClick }: { icon: IconType; label: string; onClick: () => void }) {
+export function QueueAction({
+  icon: Icon,
+  label,
+  action,
+}: {
+  icon: IconComponent
+  label: string
+  action: () => Promise<void>
+}) {
   return (
     <Tooltip>
       <TooltipTrigger
@@ -99,7 +117,7 @@ function QueueAction({ icon: Icon, label, onClick }: { icon: IconType; label: st
             variant="ghost"
             size="icon-xs"
             aria-label={label}
-            onClick={onClick}
+            action={action}
             className="text-muted-foreground"
           />
         }

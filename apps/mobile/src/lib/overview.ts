@@ -1,5 +1,13 @@
 import type { LinearIssue, PullRequest, PullRequestLink, Thread } from "@shared/domain.ts"
-import type { Remote } from "@/stores/pull-requests"
+import { parseGitHubRepository } from "@shared/github.ts"
+import { pullRequestNumber, type Remote } from "@/stores/pull-requests"
+
+/** `owner/repo #123`, read from the URL, so a row can name its pull request before or without GitHub's answer. */
+export function pullRequestReference(url: string) {
+  const repository = parseGitHubRepository(url)
+  const number = `#${pullRequestNumber(url) ?? "?"}`
+  return repository === null ? number : `${repository.owner}/${repository.name} ${number}`
+}
 
 /** Why an open pull request waits on the developer. */
 export type PullRequestNeed = "checks" | "changes" | "conflicts"
@@ -19,6 +27,8 @@ export interface PullRequestOverview {
   readonly attention: readonly OverviewPullRequest[]
   readonly open: readonly OverviewPullRequest[]
   readonly merged: readonly OverviewPullRequest[]
+  /** GitHub could not answer and no watch snapshot knows the state, so the row claims none. */
+  readonly unknown: readonly OverviewPullRequest[]
   /** Every pull request worth reading from GitHub: the ones linked to a thread that is not archived. */
   readonly urls: readonly string[]
 }
@@ -39,8 +49,8 @@ export function pullRequestOverview(
     newest.set(link.url, link)
   }
 
-  const overview = { attention: [], open: [], merged: [] } as {
-    [K in "attention" | "open" | "merged"]: OverviewPullRequest[]
+  const overview = { attention: [], open: [], merged: [], unknown: [] } as {
+    [K in "attention" | "open" | "merged" | "unknown"]: OverviewPullRequest[]
   }
   for (const link of newest.values()) {
     const remote = pullRequests[link.url]
@@ -65,7 +75,8 @@ export function pullRequestOverview(
       error: remote?.status === "error" ? remote.message : null,
       needs,
     }
-    if (status === "merged") overview.merged.push(row)
+    if (status === undefined && row.error !== null) overview.unknown.push(row)
+    else if (status === "merged") overview.merged.push(row)
     else if (needs.length > 0) overview.attention.push(row)
     else overview.open.push(row)
   }

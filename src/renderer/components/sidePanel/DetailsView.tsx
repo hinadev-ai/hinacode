@@ -1,17 +1,27 @@
+import { RiGitPullRequestLine } from "react-icons/ri"
 import { useAtomValue } from "@effect/atom-react"
 import { useAutoAnimate } from "@formkit/auto-animate/react"
+import { listMotion } from "../../lib/listMotion.ts"
 import { useParams } from "@tanstack/react-router"
-import { AsyncResult } from "effect/reactivity"
-import { RiCloudLine, RiFolderOpenLine, RiGitBranchLine, RiGitPullRequestLine } from "react-icons/ri"
+import { AsyncResult, Atom } from "effect/reactivity"
 import {
+  type CheckoutState,
   type PullRequest,
   type Thread,
   threadFolder,
+  type WorkspaceStatus,
+  workspaceStatus,
   type Worktree,
-  type WorktreeStatus,
 } from "../../../shared/domain.ts"
 import { environmentName, useClouds, usePullRequestHref, useThreadEnvironment } from "../../lib/environments.ts"
-import { branchPullRequestAtom, callPromise, projectsAtom } from "../../lib/rpc.ts"
+import { toastError } from "../../lib/errorMessage.ts"
+import {
+  branchPullRequestAtom,
+  callPromise,
+  projectsAtom,
+  type RpcError,
+  worktreeCheckoutStateAtom,
+} from "../../lib/rpc.ts"
 import { m } from "../../paraglide/messages.js"
 import { useWorktrees } from "../../stores/worktrees.ts"
 import { ThreadPorts } from "../ThreadPorts.tsx"
@@ -21,10 +31,11 @@ import { Badge } from "../ui/badge.tsx"
 import { Button } from "../ui/button.tsx"
 import { ScrollArea } from "../ui/scroll-area.tsx"
 import { Section } from "./Section.tsx"
+import { BranchIcon, CloudIcon, FolderOpenIcon } from "@hinacode/icons"
 
 export function DetailsView({ thread }: { thread: Thread }) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
-  const [sectionsRef] = useAutoAnimate<HTMLDivElement>({ duration: 150 })
+  const [sectionsRef] = useAutoAnimate<HTMLDivElement>(listMotion)
   const environment = useThreadEnvironment(thread.id)
   const clouds = useClouds()
   const local = environment === null
@@ -35,7 +46,7 @@ export function DetailsView({ thread }: { thread: Thread }) {
         <Section title={m.panel_workspace()}>
           {!local && (
             <p className="flex items-center gap-1.5 text-sm">
-              <RiCloudLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+              <CloudIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
               {m.environment_on({ environment: environmentName(environment, clouds) })}
             </p>
           )}
@@ -45,7 +56,7 @@ export function DetailsView({ thread }: { thread: Thread }) {
             <RootWorkspace thread={thread} canReveal={local} />
           )}
         </Section>
-        {worktree && (
+        {worktree && worktree.status !== "removed" && (
           <Section title={m.panel_setup_log()}>
             <WorktreeSetupLog worktree={worktree} />
           </Section>
@@ -65,9 +76,9 @@ function RevealButton({ path, disabled }: { path: string; disabled?: boolean }) 
       size="xs"
       className="self-start"
       disabled={disabled}
-      onClick={() => void callPromise("shell.reveal", { path })}
+      action={() => callPromise("shell.reveal", { path }).catch(toastError)}
     >
-      <RiFolderOpenLine aria-hidden />
+      <FolderOpenIcon aria-hidden />
       {m.panel_reveal()}
     </Button>
   )
@@ -96,34 +107,52 @@ const statusLabel = {
   ready: m.worktree_status_ready,
   failed: m.worktree_status_failed,
   removed: m.worktree_status_removed,
-} satisfies Record<WorktreeStatus, () => string>
+  missing: m.worktree_status_missing,
+} satisfies Record<WorkspaceStatus, () => string>
 
 const statusVariant = {
   preparing: "outline",
   ready: "secondary",
   failed: "destructive",
   removed: "ghost",
-} as const satisfies Record<WorktreeStatus, string>
+  missing: "outline",
+} as const satisfies Record<WorkspaceStatus, string>
+
+const unknownCheckout = Atom.make(AsyncResult.initial<CheckoutState, RpcError>())
+
+const useCheckoutState = (worktree: Worktree, local: boolean) =>
+  AsyncResult.getOrElse(
+    useAtomValue(local && worktree.status === "ready" ? worktreeCheckoutStateAtom(worktree.id) : unknownCheckout),
+    () => null,
+  )
 
 function WorktreeWorkspace({ worktree, canReveal }: { worktree: Worktree; canReveal: boolean }) {
-  const removed = worktree.status === "removed"
+  const status = workspaceStatus(worktree.status, useCheckoutState(worktree, canReveal))
+  const removed = status === "removed"
+  const gone = removed || status === "missing"
   const pullRequest = useBranchPullRequest(removed ? undefined : worktree.id)
   return (
     <div className="flex flex-col gap-2">
       <div className="flex min-w-0 items-center gap-2">
-        <RiGitBranchLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+        <BranchIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
         <span className="truncate font-mono text-sm" title={worktree.branch}>
           {worktree.branch}
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-1.5">
           {pullRequest && <PullRequestBadge pullRequest={pullRequest} />}
-          <Badge variant={statusVariant[worktree.status]}>{statusLabel[worktree.status]()}</Badge>
+          <Badge
+            variant={statusVariant[status]}
+            className={status === "missing" ? "border-attention/30 text-attention" : undefined}
+          >
+            {statusLabel[status]()}
+          </Badge>
         </span>
       </div>
       <p className="font-mono text-xs break-all text-muted-foreground">{worktree.path}</p>
       {removed && <p className="text-xs text-muted-foreground">{m.panel_removed_hint()}</p>}
+      {status === "missing" && <p className="text-xs text-muted-foreground">{m.panel_missing_hint()}</p>}
       {pullRequest?.status === "merged" && <p className="text-xs text-muted-foreground">{m.panel_pr_merged_hint()}</p>}
-      {canReveal && <RevealButton path={worktree.path} disabled={removed} />}
+      {canReveal && <RevealButton path={worktree.path} disabled={gone} />}
     </div>
   )
 }

@@ -1,6 +1,6 @@
-import { RiArrowRightSLine } from "react-icons/ri"
-import { formatWorkDuration } from "../lib/assistantPresentation.ts"
+import { formatWorkDuration } from "../../shared/workDuration.ts"
 import { m } from "../paraglide/messages.js"
+import { ChevronRightIcon } from "@hinacode/icons"
 
 const rowClassName =
   "mb-2 flex min-h-8 w-full items-center gap-1.5 border-b border-border text-xs text-muted-foreground tabular-nums"
@@ -14,6 +14,7 @@ export function WorkedFor({
   expanded?: boolean
   onExpandedChange?: (expanded: boolean) => void
 }) {
+  if (onExpandedChange === undefined && durationMs < 1000) return null
   const label = m.message_worked_for({ duration: formatWorkDuration(durationMs) })
   if (onExpandedChange === undefined) {
     return (
@@ -22,17 +23,50 @@ export function WorkedFor({
       </div>
     )
   }
+  return <ActivityToggle slot="worked-for" label={label} expanded={expanded} onExpandedChange={onExpandedChange} />
+}
+
+export function EarlierActivity({
+  count,
+  expanded,
+  onExpandedChange,
+}: {
+  count: number
+  expanded: boolean
+  onExpandedChange: (expanded: boolean) => void
+}) {
+  return (
+    <ActivityToggle
+      slot="earlier-activity"
+      label={m.message_earlier_activity({ count })}
+      expanded={expanded}
+      onExpandedChange={onExpandedChange}
+    />
+  )
+}
+
+function ActivityToggle({
+  slot,
+  label,
+  expanded,
+  onExpandedChange,
+}: {
+  slot: string
+  label: string
+  expanded: boolean
+  onExpandedChange: (expanded: boolean) => void
+}) {
   return (
     <button
       type="button"
-      data-slot="worked-for"
+      data-slot={slot}
       aria-expanded={expanded}
       title={expanded ? m.message_hide_activity() : m.message_show_activity()}
       onClick={() => onExpandedChange(!expanded)}
       className={`${rowClassName} group/trigger text-left outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring`}
     >
       {label}
-      <RiArrowRightSLine
+      <ChevronRightIcon
         aria-hidden
         className="size-3.5 shrink-0 transition-transform group-aria-expanded/trigger:rotate-90 motion-reduce:transition-none"
       />

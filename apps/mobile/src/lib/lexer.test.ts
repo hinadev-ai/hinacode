@@ -14,8 +14,8 @@ function expectCovers(code: string, spans: readonly SyntaxSpan[]) {
 }
 
 /** Each span's text with its class, leaving out plain text. */
-const labeled = (code: string) =>
-  lex(code)
+const labeled = (code: string, path = "snippet.ts") =>
+  lex(code, path)
     .filter((span) => span.type !== "plain")
     .map((span) => [span.type, code.slice(span.start, span.end)])
 
@@ -32,7 +32,7 @@ describe("lex", () => {
       "0x1F 1_000 3.14e-10 10n 2.5f .5",
       "日本語 identifiers 🎉 (and emoji)",
     ]
-    for (const code of samples) expectCovers(code, lex(code))
+    for (const code of samples) expectCovers(code, lex(code, "snippet.ts"))
   })
 
   it("labels a TypeScript snippet", () => {
@@ -41,7 +41,7 @@ describe("lex", () => {
   const user = await fetchUser(id, { retries: 3 })
   return user ?? null
 }`
-    expectCovers(code, lex(code))
+    expectCovers(code, lex(code, "snippet.ts"))
     expect(labeled(code)).toEqual([
       ["keyword", "export"],
       ["keyword", "async"],
@@ -72,7 +72,7 @@ describe("lex", () => {
     # build the tag
     return "#" + name  # trailing
 MAX_SIZE = None`
-    expect(labeled(code)).toEqual([
+    expect(labeled(code, "tag.py")).toEqual([
       ["keyword", "def"],
       ["function", "tag"],
       ["operator", ":"],
@@ -87,9 +87,35 @@ MAX_SIZE = None`
     ])
   })
 
+  it("reads # as a comment only in languages where it starts one", () => {
+    expect(labeled("class Counter {\n  #count = 0\n}", "counter.ts")).toEqual([
+      ["keyword", "class"],
+      ["type", "Counter"],
+      ["operator", "="],
+      ["number", "0"],
+    ])
+    expect(labeled("#include <stdio.h>", "main.c")).toEqual([
+      ["operator", "<"],
+      ["operator", ">"],
+    ])
+    expect(labeled("#[derive(Debug)]", "lib.rs")).toEqual([
+      ["function", "derive"],
+      ["type", "Debug"],
+    ])
+    expect(labeled("# build\nall: app", "Makefile")).toEqual([
+      ["comment", "# build"],
+      ["operator", ":"],
+    ])
+    expect(labeled("port = 1 # default", "config.toml")).toEqual([
+      ["operator", "="],
+      ["number", "1"],
+      ["comment", "# default"],
+    ])
+  })
+
   it("reads --flag in a shell line as an operator, not a comment", () => {
     const code = "pnpm test --filter mobile -- --watch # run it"
-    expect(labeled(code)).toEqual([
+    expect(labeled(code, "run.sh")).toEqual([
       ["operator", "--"],
       ["comment", "-- --watch # run it"],
     ])
@@ -102,7 +128,7 @@ MAX_SIZE = None`
 
   it("labels JSON", () => {
     const code = `{"name": "hinacode", "port": 47821, "debug": false, "tags": [null]}`
-    expectCovers(code, lex(code))
+    expectCovers(code, lex(code, "snippet.ts"))
     expect(labeled(code)).toEqual([
       ["string", '"name"'],
       ["operator", ":"],
@@ -146,9 +172,9 @@ MAX_SIZE = None`
 }
 `
     const code = chunk.repeat(Math.ceil(200_000 / chunk.length))
-    lex(code)
+    lex(code, "snippet.ts")
     const started = performance.now()
-    const spans = lex(code)
+    const spans = lex(code, "snippet.ts")
     const elapsed = performance.now() - started
     expectCovers(code, spans)
     expect(elapsed).toBeLessThan(100)
@@ -157,7 +183,7 @@ MAX_SIZE = None`
   it("stays linear on a line of stray quotes", () => {
     const code = "'\\".repeat(100_000)
     const started = performance.now()
-    const spans = lex(code)
+    const spans = lex(code, "snippet.ts")
     expect(performance.now() - started).toBeLessThan(100)
     expectCovers(code, spans)
   })

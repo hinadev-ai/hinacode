@@ -140,6 +140,23 @@ describe("PullRequestWatcher", () => {
       }),
     )
 
+    it.effect("writes and pushes nothing when a poll finds the pull request unchanged", () =>
+      Effect.gen(function* () {
+        const { threadId } = yield* watchedThread("unchanged", (u) => detailFor(u))
+        yield* sweep
+        const before = yield* linkOf(threadId)
+        const pushed = pushes.length
+
+        yield* sweep
+        yield* sweep
+
+        expect(
+          pushes.slice(pushed).filter((push) => push.type === "thread.pullRequests" && push.threadId === threadId),
+        ).toStrictEqual([])
+        expect(yield* linkOf(threadId)).toStrictEqual(before)
+      }),
+    )
+
     it.effect("defers the wake while the thread waits on an approval", () =>
       Effect.gen(function* () {
         const { threadId } = yield* watchedThread("deferred", (u) => failing(u), "awaiting_approval")
@@ -153,16 +170,28 @@ describe("PullRequestWatcher", () => {
       }),
     )
 
-    it.effect("reports a merge and ends the watch", () =>
+    it.effect("ends the watch on a merge without waking the thread", () =>
       Effect.gen(function* () {
         const { threadId, url } = yield* watchedThread("merged", (u) => detailFor(u))
         yield* sweep
         details.set(url, detailFor(url, { status: "merged", checks: "passing" }))
         yield* sweep
 
+        expect(wakesFor(threadId)).toStrictEqual([])
+        expect((yield* linkOf(threadId))?.watch).toBeNull()
+      }),
+    )
+
+    it.effect("reports a close and ends the watch", () =>
+      Effect.gen(function* () {
+        const { threadId, url } = yield* watchedThread("closed", (u) => detailFor(u))
+        yield* sweep
+        details.set(url, detailFor(url, { status: "closed" }))
+        yield* sweep
+
         const sent = wakesFor(threadId)
         expect(sent).toHaveLength(1)
-        expect(sent[0]?.text).toContain("merged")
+        expect(sent[0]?.text).toContain("closed")
         expect((yield* linkOf(threadId))?.watch).toBeNull()
       }),
     )

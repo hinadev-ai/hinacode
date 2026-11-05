@@ -8,6 +8,7 @@ set -uo pipefail
 port=${1:?cdp port}
 data=${2:?user data dir}
 session=${3:-}
+source "$(dirname "$0")/proc.sh"
 
 if [[ -n "$session" ]]; then agent-browser --session "$session" close >/dev/null 2>&1 || true; fi
 
@@ -18,5 +19,7 @@ case "$data" in
   *) echo "not deleting $data: cleanup only removes /tmp/kk-* directories" >&2 ;;
 esac
 
-if ss -ltnH "sport = :$port" | grep -q .; then echo "warning: port $port is still in use" >&2; exit 1; fi
+# Muse Code runs in a session of its own and holds a copy of the CDP socket until it notices Electron is gone.
+for _ in $(seq 1 50); do port_in_use "$port" || break; sleep 0.1; done
+if port_in_use "$port"; then echo "warning: port $port is still in use" >&2; exit 1; fi
 echo "cleaned: cdp=$port data=$data"

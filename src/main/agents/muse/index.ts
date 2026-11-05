@@ -26,12 +26,13 @@ import type {
   RunTurnInput,
   SessionScope,
 } from "../../../shared/agent.ts"
+import { AGENT_IMAGE_MAX_BYTES, AGENT_IMAGE_TYPES } from "../../../shared/agentImages.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { installedBinary } from "../binary.ts"
 import { attachmentContext } from "../elementContext.ts"
 import { COMPACT_COMMAND, isCompactCommand } from "../compact.ts"
 import { AgentError, type AgentProvider, type BackgroundTasksChange, type Wake } from "../provider.ts"
-import { choiceFor, sessionScope, toApprovalRequest } from "./approvals.ts"
+import { choiceFor, sessionScope, takesNote, toApprovalRequest } from "./approvals.ts"
 import { backgroundTasksAfter, isBackgrounded } from "./backgroundTasks.ts"
 import { toAccount, toModelInfo } from "./catalog.ts"
 import { type Incoming, makeMuseHost, type MuseHost, REQUEST_TIMEOUT, toAgentError } from "./host.ts"
@@ -80,9 +81,6 @@ const permissionProfiles: Record<AccessMode, string> = {
   full: ":unrestricted",
 }
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024
-const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
-
 const museError = (message: string) => new AgentError({ provider: "muse", message })
 
 const interruptedEvent: AgentEvent = { type: "turn_failed", message: "Turn interrupted" }
@@ -124,6 +122,7 @@ interface Approval {
   readonly id: string
   params: ApprovalRequestParams
   decision: ApprovalDecision | undefined
+  note: string | undefined
   presented: boolean
   answered: number | undefined
 }
@@ -134,7 +133,11 @@ const textPart = (text: string): TurnInputPart => ({ type: "text", text })
 
 const userInput = (text: string, attachments: ReadonlyArray<Attachment>) =>
   Effect.forEach(attachments, (attachment) => {
-    if (attachment.kind !== "image" || !IMAGE_TYPES.has(attachment.mime) || attachment.bytes > MAX_IMAGE_BYTES) {
+    if (
+      attachment.kind !== "image" ||
+      !AGENT_IMAGE_TYPES.includes(attachment.mime) ||
+      attachment.bytes > AGENT_IMAGE_MAX_BYTES
+    ) {
       return Effect.succeed([textPart(`Attached file: ${attachment.path}`)])
     }
     return Effect.tryPromise({
@@ -334,7 +337,10 @@ const make = Effect.gen(function* () {
 
   const getHost = (home: AccountHome | null) => getEntry(home).pipe(Effect.map((entry) => entry.host))
 
-  const approvals = new Map<string, Deferred.Deferred<ApprovalDecision>>()
+  const approvals = new Map<
+    string,
+    { readonly approval: Approval; readonly deferred: Deferred.Deferred<ApprovalDecision> }
+  >()
   const questions = new Map<string, Deferred.Deferred<QuestionAnswers>>()
   const threadSessions = new Map<string, string>()
   const subagentsByThread = new Map<string, Subagents>()
@@ -584,6 +590,7 @@ const make = Effect.gen(function* () {
               approvalId: approval.params.approvalId,
               requirementId: approval.params.currentRequirementId,
               choiceId: choice.choiceId,
+              ...(choice.acceptsFeedback && approval.note !== undefined && { feedback: approval.note }),
             })
             .pipe(Effect.catch((error) => Effect.logWarning("approval/decide failed", error.message)))
         })
@@ -612,6 +619,7 @@ const make = Effect.gen(function* () {
             id: randomUUID(),
             params,
             decision: undefined,
+            note: undefined,
             presented: false,
             answered: undefined,
           }
@@ -622,7 +630,7 @@ const make = Effect.gen(function* () {
           }
           approval.presented = true
           const deferred = yield* Deferred.make<ApprovalDecision>()
-          approvals.set(approval.id, deferred)
+          approvals.set(approval.id, { approval, deferred })
           yield* emit({
             type: "approval_requested",
             request: toApprovalRequest(params, approval.id, threadId),
@@ -833,6 +841,7 @@ const make = Effect.gen(function* () {
           yield* emit({
             type: "turn_failed",
             message: params.error?.message ?? params.reason ?? `Turn ${params.terminal}`,
+            ...(params.error?.kind === "authRequired" && { loginCommand: "muse login" }),
           })
         })
 
@@ -1077,11 +1086,14 @@ const make = Effect.gen(function* () {
       yield* current.host.command("subagent/stop", { sessionId, subagentId }).pipe(Effect.mapError(toAgentError))
     })
 
-  const respondApproval = (requestId: string, decision: ApprovalDecision) =>
+  const respondApproval = (requestId: string, decision: ApprovalDecision, note?: string) =>
     Effect.suspend(() => {
-      const deferred = approvals.get(requestId)
-      return deferred ? Deferred.succeed(deferred, decision) : Effect.void
-    }).pipe(Effect.asVoid)
+      const pending = approvals.get(requestId)
+      if (pending === undefined) return Effect.succeed(false)
+      const delivered = note !== undefined && takesNote(decision, pending.approval.params.availableChoices)
+      if (delivered) pending.approval.note = note
+      return Deferred.succeed(pending.deferred, decision).pipe(Effect.as(delivered))
+    })
 
   const respondQuestion = (requestId: string, answers: QuestionAnswers) =>
     Effect.suspend(() => {

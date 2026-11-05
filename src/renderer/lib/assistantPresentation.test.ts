@@ -1,6 +1,6 @@
 import { expect, test } from "@effect/vitest"
 import type { Message, MessagePart } from "../../shared/domain.ts"
-import { assistantPresentation, formatWorkDuration } from "./assistantPresentation.ts"
+import { assistantPresentation } from "./assistantPresentation.ts"
 
 const message = (
   parts: ReadonlyArray<MessagePart>,
@@ -101,23 +101,6 @@ test("duration belongs to each steered response segment", () => {
   const afterSteer = { ...message([tool]), createdAt: beforeSteer.completedAt ?? "" }
   expect(assistantPresentation(beforeSteer)).toMatchObject({ kind: "completed", durationMs: 120_000 })
   expect(assistantPresentation(afterSteer)).toMatchObject({ kind: "completed", durationMs: 365_000 })
-})
-
-test("formats whole elapsed seconds as mm:ss or h:mm:ss", () => {
-  for (const [ms, expected] of [
-    [0, "00:00"],
-    [999, "00:00"],
-    [1_999, "00:01"],
-    [59_000, "00:59"],
-    [60_000, "01:00"],
-    [485_000, "08:05"],
-    [3_599_999, "59:59"],
-    [3_600_000, "1:00:00"],
-    [3_723_000, "1:02:03"],
-    [-1_000, "00:00"],
-  ] as const) {
-    expect(formatWorkDuration(ms)).toBe(expected)
-  }
 })
 
 test("an agent switch stays inline without a Worked for row", () => {

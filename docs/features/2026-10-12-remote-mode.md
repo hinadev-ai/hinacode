@@ -9,7 +9,7 @@ A developer leaves the desk with agents still running. From the sofa or the trai
 
 ## User flow
 
-1. Settings > Remote. Pick the interface phones reach this machine on, its Tailscale address listed first, then turn **Allow remote control** on. hinacode generates an access token, starts listening on that address and port, and shows a QR code plus the pairing URL. It never listens on every interface, so joining a café's Wi-Fi does not expose it.
+1. Settings > Remote. Turn **Allow remote control** on. **Local network and Tailscale** is selected already, and you can pick one address instead. hinacode generates an access token, starts listening on that address and port, and shows a QR code plus the pairing URL. **Local network and Tailscale** listens on every interface but serves only connections whose local and remote addresses are both private (loopback, RFC 1918, `100.64.0.0/10`), so a phone at home connects without Tailscale. Both ends must be private because a router's port forward or a cloud VM hands a public client to a private local address. A single address, such as the Tailscale one, keeps a café's Wi-Fi out entirely.
 2. On the phone, open the hinacode app. Scan the QR code, or paste the pairing URL. The app connects, stores the connection in the secure store, and lands on the thread list.
 3. The thread list is the desktop sidebar on a phone: threads grouped by project, with the status pill (running, waiting, failed, done) and the threads that need a human sorted to the top. Pull to refresh is never needed; pushes keep it live.
 4. Tap a thread. The transcript streams as on the desktop. An approval shows Allow, Allow for session and Deny. A question shows its options. The composer sends a prompt, steers a running turn, or stops it.
@@ -32,8 +32,8 @@ Settings gains a section:
 
 ```ts
 remote: {
-  enabled: boolean // default false; true only with a bindHost
-  bindHost: string | null // default null until the user picks one; never 0.0.0.0 or ::
+  enabled: boolean // default false
+  bindHost: string // default "private", every private address; never 0.0.0.0 or ::
   port: number // default 48081
 }
 ```
@@ -80,6 +80,8 @@ Pairing URL: `hinacode://connect?host=<host>&port=<port>&token=<token>`, with `h
 ### Trust boundary
 
 The listener is reachable from the network when `bindHost` is not loopback. The boundary is the token: 32 random bytes, compared with `timingSafeEqual`, held by whoever scanned the QR code. Frames are decoded with `ClientFrame` before anything is dispatched, and dispatch runs the same request schema as the Electron channel. The transport is plain `ws`; over Tailscale that is encrypted end to end by WireGuard, and on a LAN it is as exposed as the automation webhook already is. TLS is out of scope for this slice and the settings copy says so.
+
+The pairing and every `ready` frame carry `hosts`, the addresses the listener answers on now. A phone stores the ones a `ready` reports and swaps its dial plan without dropping the socket. Connected through the relay, it checks a new direct address at once, so a phone paired over Tailscale or the relay moves to the LAN as soon as the desktop reports a LAN address.
 
 ## Out of scope
 

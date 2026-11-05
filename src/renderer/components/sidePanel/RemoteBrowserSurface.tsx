@@ -170,7 +170,7 @@ export function RemoteBrowserSurface({
       role="application"
       aria-label={m.browser_remote_page()}
       aria-describedby={hintId}
-      className="relative h-full w-full focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-ring"
+      className="relative size-full focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-ring"
     >
       <canvas
         ref={canvasRef}
@@ -187,7 +187,7 @@ export function RemoteBrowserSurface({
         }}
         onPointerCancel={() => sessionRef.current?.command({ kind: "release" })}
         onContextMenu={(event) => event.preventDefault()}
-        className="block h-full w-full touch-none bg-white focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+        className="block size-full touch-none bg-white focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
       />
       <textarea
         ref={inputRef}
@@ -223,7 +223,7 @@ export function RemoteBrowserSurface({
           event.currentTarget.value = ""
           sessionRef.current?.command({ kind: "release" })
         }}
-        className="pointer-events-none absolute top-0 left-0 h-px w-px resize-none overflow-hidden opacity-0"
+        className="pointer-events-none absolute top-0 left-0 size-px resize-none overflow-hidden opacity-0"
       />
     </div>
   )

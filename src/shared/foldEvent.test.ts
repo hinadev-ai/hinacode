@@ -46,6 +46,28 @@ describe("foldEvent", () => {
     expect(failed.parts[0]).toMatchObject({ status: "error" })
   })
 
+  test("a finished call keeps the full size of an output it only received a preview of", () => {
+    const started = foldEvent(
+      assistant("m1"),
+      { type: "tool_call_started", callId: "c1", name: "Bash", input: {} },
+      now,
+    )
+    const finished = foldEvent(
+      started,
+      { type: "tool_call_finished", callId: "c1", output: "tail", fullOutputBytes: 9000, isError: false },
+      now,
+    )
+    expect(finished.parts[0]).toStrictEqual({
+      type: "tool_call",
+      callId: "c1",
+      name: "Bash",
+      input: {},
+      output: "tail",
+      fullOutputBytes: 9000,
+      status: "done",
+    })
+  })
+
   test("turn_completed closes the message and fails tools still running", () => {
     const running = assistant("m1", [{ type: "tool_call", callId: "c1", name: "Bash", input: {}, status: "running" }])
     const done = foldEvent(running, { type: "turn_completed", usage: { inputTokens: 1, outputTokens: 2 } }, now)
@@ -58,6 +80,17 @@ describe("foldEvent", () => {
     const failed = foldEvent(assistant("m1"), { type: "turn_failed", message: "Interrupted" }, now)
     expect(failed.parts).toStrictEqual([{ type: "text", text: "**Error:** Interrupted" }])
     expect(failed.completedAt).toBe(now)
+  })
+
+  test("a failed sign-in keeps the command that signs back in", () => {
+    const failed = foldEvent(
+      assistant("m1"),
+      { type: "turn_failed", message: "OAuth session expired", loginCommand: "claude auth login" },
+      now,
+    )
+    expect(failed.parts).toStrictEqual([
+      { type: "signed_out", message: "OAuth session expired", loginCommand: "claude auth login" },
+    ])
   })
 
   test("a limit ends every outstanding tool and retains the provider explanation", () => {

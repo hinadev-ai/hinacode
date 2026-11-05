@@ -75,7 +75,7 @@ export function PullRequestMark({
   const checks = openChecks(summary ?? undefined)
   return (
     <View style={styles.mark}>
-      {stacked && <Icon name="RiStackLine" size={size} color={status.color} />}
+      {stacked && <Icon name="Stack" size={size} color={status.color} />}
       <Icon name={status.name} size={size} color={status.color} />
       <Text style={[textStyle, { color: status.color }]}>#{number}</Text>
       {checks !== null && (

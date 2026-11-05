@@ -1,3 +1,4 @@
+import { toast } from "sonner"
 import { m } from "../paraglide/messages.js"
 import { RpcError } from "./rpc.ts"
 
@@ -7,6 +8,7 @@ const byTag: Readonly<Record<string, (detail: string) => string>> = {
   PersistenceError: () => m.error_persistence(),
   ProjectPathTakenError: () => m.error_project_path_taken(),
   ProjectRootInvalidError: () => m.error_project_root_invalid(),
+  ProjectInWslError: () => m.error_project_in_wsl(),
   ProjectFolderNotEmptyError: () => m.error_project_folder_not_empty(),
   PullRequestUrlInvalidError: () => m.error_pull_request_url_invalid(),
   PullRequestDiffTooLargeError: () => m.error_pull_request_diff_too_large(),
@@ -28,4 +30,23 @@ const byTag: Readonly<Record<string, (detail: string) => string>> = {
 export function errorMessage(cause: unknown): string {
   if (cause instanceof RpcError) return byTag[cause.tag]?.(cause.message) ?? cause.message
   return cause instanceof Error ? cause.message : String(cause)
+}
+
+const commandTags = new Set(["CommandError", "GitCommandError"])
+
+export interface ErrorSummary {
+  readonly message: string
+  readonly detail: string | null
+}
+
+export function errorSummary(cause: unknown): ErrorSummary {
+  if (cause instanceof RpcError && commandTags.has(cause.tag)) {
+    const [command = ""] = cause.message.split(" ", 1)
+    return { message: m.error_command_summary({ command }), detail: cause.message }
+  }
+  return { message: errorMessage(cause), detail: null }
+}
+
+export function toastError(cause: unknown): void {
+  toast.error(errorMessage(cause))
 }

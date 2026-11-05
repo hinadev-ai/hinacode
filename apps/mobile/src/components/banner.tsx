@@ -23,9 +23,9 @@ export interface BannerNotice {
 const visibleMs: Record<AlertKind, number> = { completed: 4_000, needsInput: 10_000, failed: 10_000 }
 
 const icons: Record<AlertKind, { name: IconName; color: keyof Palette }> = {
-  completed: { name: "RiCheckboxCircleLine", color: "running" },
-  needsInput: { name: "RiErrorWarningLine", color: "attention" },
-  failed: { name: "RiErrorWarningLine", color: "danger" },
+  completed: { name: "CheckCircle", color: "running" },
+  needsInput: { name: "Warning", color: "attention" },
+  failed: { name: "Warning", color: "danger" },
 }
 
 const RISE = 16
@@ -63,7 +63,10 @@ function Card({
   onDismiss: () => void
 }) {
   const theme = useTheme()
-  const [held, setHeld] = useState(false)
+  const [pressed, setPressed] = useState(false)
+  const [focused, setFocused] = useState(false)
+  const held = pressed || focused
+  const holdWhileFocused = { onFocus: () => setFocused(true), onBlur: () => setFocused(false) }
   const { kind, title, body, threadId } = notice
   const icon = icons[kind]
 
@@ -93,8 +96,9 @@ function Card({
         accessibilityRole="button"
         accessibilityLabel={`${title}. ${body}`}
         onPress={open}
-        onPressIn={() => setHeld(true)}
-        onPressOut={() => setHeld(false)}
+        onPressIn={() => setPressed(true)}
+        onPressOut={() => setPressed(false)}
+        {...holdWhileFocused}
         style={styles.content}
       >
         <Icon name={icon.name} size={20} color={theme[icon.color]} />
@@ -107,8 +111,19 @@ function Card({
           </Text>
         </View>
       </Pressable>
-      <Button label={copy("mobile_notify_open")} onPress={open} hitSlop={4} style={styles.open} />
-      <IconButton icon="RiCloseLine" accessibilityLabel={copy("mobile_notify_dismiss")} onPress={onDismiss} />
+      <Button
+        label={copy("mobile_notify_open")}
+        onPress={open}
+        hitSlop={4}
+        style={styles.open}
+        {...holdWhileFocused}
+      />
+      <IconButton
+        icon="Close"
+        accessibilityLabel={copy("mobile_notify_dismiss")}
+        onPress={onDismiss}
+        {...holdWhileFocused}
+      />
     </motion.View>
   )
 }

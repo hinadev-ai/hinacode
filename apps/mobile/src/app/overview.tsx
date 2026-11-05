@@ -1,5 +1,4 @@
 import type { LinearIssue } from "@shared/domain.ts"
-import { parseGitHubRepository } from "@shared/github.ts"
 import { router, useFocusEffect } from "expo-router"
 import { useCallback, useState } from "react"
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
@@ -13,10 +12,16 @@ import { useTheme } from "@/hooks/use-theme"
 import { useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { openWebUrl } from "@/lib/open-url"
-import { issueDraft, type OverviewPullRequest, type PullRequestNeed, pullRequestOverview } from "@/lib/overview"
+import {
+  issueDraft,
+  type OverviewPullRequest,
+  type PullRequestNeed,
+  pullRequestOverview,
+  pullRequestReference,
+} from "@/lib/overview"
 import { checksIcon, checksLabel, reviewLabel, statusGlyph, statusLabel } from "@/lib/pull-request-labels"
 import { useLinear } from "@/stores/linear"
-import { pullRequestNumber, usePullRequests } from "@/stores/pull-requests"
+import { usePullRequests } from "@/stores/pull-requests"
 import { useThreads } from "@/stores/threads"
 
 /** Each read runs `gh` on the desktop, so the overview keeps only a few of them going at once. */
@@ -75,6 +80,7 @@ export default function OverviewScreen() {
     { label: copy("mobile_overview_needs_you"), rows: overview.attention },
     { label: copy("mobile_overview_open"), rows: overview.open },
     { label: copy("mobile_overview_merged"), rows: overview.merged },
+    { label: copy("mobile_overview_unknown"), rows: overview.unknown },
   ].filter((group) => group.rows.length > 0)
 
   return (
@@ -146,13 +152,13 @@ function PullRequestRow({ row }: { row: OverviewPullRequest }) {
   const theme = useTheme()
   const thread = useThreads((state) => state.byId[row.threadId])
   const { pullRequest } = row
-  const repository = parseGitHubRepository(row.url)
-  const number = pullRequest?.number ?? pullRequestNumber(row.url) ?? "?"
-  const reference = `${repository === null ? "" : `${repository.owner}/${repository.name} `}#${number}`
+  const reference = pullRequestReference(row.url)
   const glyph =
-    pullRequest === null
-      ? { name: "RiGitPullRequestLine" as const, color: theme.textMuted }
-      : statusGlyph(theme)[pullRequest.status]
+    pullRequest !== null
+      ? statusGlyph(theme)[pullRequest.status]
+      : row.error !== null
+        ? { name: "Warning" as const, color: theme.danger }
+        : { name: "RiGitPullRequestLine" as const, color: theme.textMuted }
   const checks = pullRequest !== null && pullRequest.status !== "merged" ? pullRequest.checks : null
 
   const label = [
@@ -161,6 +167,7 @@ function PullRequestRow({ row }: { row: OverviewPullRequest }) {
     pullRequest !== null && statusLabel(pullRequest.status),
     checks !== null && checksLabel(checks),
     ...row.needs.filter((need) => need !== "checks").map((need) => needs[need].label()),
+    row.error !== null && copy("mobile_pr_card_failed", { message: row.error }),
     thread?.title,
   ]
     .filter((part) => typeof part === "string")
@@ -199,7 +206,7 @@ function PullRequestRow({ row }: { row: OverviewPullRequest }) {
           )}
           {thread !== undefined && (
             <View style={styles.thread}>
-              <Icon name="RiChat1Line" size={13} color={theme.textMuted} />
+              <Icon name="Chat" size={13} color={theme.textMuted} />
               <Text numberOfLines={1} style={[styles.metaText, styles.threadTitle, { color: theme.textMuted }]}>
                 {thread.title}
               </Text>
@@ -214,8 +221,8 @@ function PullRequestRow({ row }: { row: OverviewPullRequest }) {
           </View>
         )}
         {row.error !== null && (
-          <Text numberOfLines={2} style={[styles.metaText, { color: theme.danger }]}>
-            {copy("mobile_pr_card_failed", { message: row.error })}
+          <Text numberOfLines={1} style={[styles.metaText, { color: theme.textMuted }]}>
+            {copy("mobile_pr_lookup_failed")}
           </Text>
         )}
       </View>
@@ -244,7 +251,7 @@ function LinearIssues({ connected, onPick }: { connected: boolean; onPick: (issu
         {connected && (
           <Button
             label={copy("mobile_home_retry")}
-            icon="RiRefreshLine"
+            icon="Refresh"
             style={styles.retry}
             onPress={() => void useLinear.getState().load({ force: true })}
           />
@@ -270,8 +277,8 @@ function LinearIssues({ connected, onPick }: { connected: boolean; onPick: (issu
 
 const stateGlyph = (theme: Palette, type: string): { name: IconName; color: string } => {
   if (type === "started") return { name: "RiProgress4Line", color: theme.attention }
-  if (type === "unstarted") return { name: "RiCircleLine", color: theme.text }
-  return { name: "RiCircleLine", color: theme.textMuted }
+  if (type === "unstarted") return { name: "Circle", color: theme.text }
+  return { name: "Circle", color: theme.textMuted }
 }
 
 const priorityLabel = (priority: number) =>
@@ -318,7 +325,7 @@ function IssueHeader({ issue }: { issue: LinearIssue }) {
       <Button
         testID="open-in-linear"
         label={copy("mobile_overview_open_linear")}
-        icon="RiExternalLinkLine"
+        icon="External"
         style={styles.openLinear}
         onPress={() => openWebUrl(issue.url)}
       />
@@ -346,7 +353,7 @@ const styles = StyleSheet.create({
   loading: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 24 },
   failed: { gap: 8, paddingHorizontal: 8 },
   retry: { alignSelf: "flex-start" },
-  issueHeader: { gap: 10, paddingHorizontal: 16, paddingBottom: 8 },
+  issueHeader: { gap: 10, paddingHorizontal: 12, paddingBottom: 8 },
   issueTitle: { fontSize: 16, lineHeight: 22 },
   openLinear: { alignSelf: "flex-start" },
   startLabel: { fontSize: 13, fontWeight: "500", paddingTop: 6 },

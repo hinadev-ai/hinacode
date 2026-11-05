@@ -57,6 +57,14 @@ const spawnSubagent = (threadId, turnId) => {
   childItem("item/completed", { item: { ...command, status: "completed", aggregatedOutput: null, exitCode: 0 } })
 }
 
+const finishSubagent = () => {
+  const child = "codex-child-thread"
+  const message = { type: "agentMessage", id: "child-reply", text: "218 lines" }
+  send({ method: "item/completed", params: { threadId: child, turnId: "child-turn", item: message } })
+  completeTurn(child, "child-turn", "completed")
+}
+
+let subagentFinished = false
 const held = []
 const terminals = new Map()
 let turns = 0
@@ -100,6 +108,19 @@ const reply = ({ id, method, params }) => {
       })
     case "skills/list":
       return send({ id, result: { data: control().skills ?? [] } })
+    case "thread/list":
+      return send({ id, result: control().sessions?.list ?? { data: [], nextCursor: null } })
+    case "thread/read": {
+      const read = control().sessions?.read
+      return read?.thread.id === params.threadId
+        ? send({ id, result: read })
+        : send({ id, error: { code: -32600, message: `thread not loaded: ${params.threadId}` } })
+    }
+    case "thread/turns/list": {
+      const pages = control().sessions?.turnPages ?? []
+      const index = params.cursor ? pages.findIndex((page) => page.nextCursor === params.cursor) + 1 : 0
+      return send({ id, result: pages[index] ?? { data: [], nextCursor: null } })
+    }
     case "thread/start":
     case "thread/resume":
       return send({ id, result: { thread: { id: "codex-thread" }, sandbox: sandboxPolicy(params.sandbox) } })
@@ -108,7 +129,12 @@ const reply = ({ id, method, params }) => {
     case "turn/start": {
       const turnId = `turn-${++turns}`
       send({ id, result: { turn: { id: turnId } } })
-      const { question, postedQuestions } = control()
+      const { question, postedQuestions, unauthorized } = control()
+      if (unauthorized) {
+        const error = { message: "Your access token could not be refreshed", codexErrorInfo: "unauthorized" }
+        send({ method: "error", params: { threadId: params.threadId, turnId, willRetry: false, error } })
+        return completeTurn(params.threadId, turnId, "failed")
+      }
       if (question) {
         activeQuestion = { id: 900 + turns, threadId: params.threadId, turnId }
         return send({
@@ -230,4 +256,8 @@ watch(process.env.FAKE_CODEX_CONTROL, () => {
     activeQuestion = null
   }
   if (held.length > 0 && control().release) held.splice(0).forEach(reply)
+  if (control().finishSubagent && !subagentFinished) {
+    subagentFinished = true
+    finishSubagent()
+  }
 })

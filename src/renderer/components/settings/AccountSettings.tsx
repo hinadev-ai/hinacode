@@ -2,8 +2,14 @@ import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { Schema } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, type ReactNode, useId, useState, useTransition } from "react"
-import { RiAddLine, RiDeleteBinLine, RiMoreFill, RiPencilLine, RiRefreshLine } from "react-icons/ri"
-import { AccountProviderId, type AgentAccount, type AgentProfile, type ProviderId } from "../../../shared/agent.ts"
+import {
+  AccountProviderId,
+  type AgentAccount,
+  type AgentProfile,
+  configDirVariable,
+  loginCommand,
+  type ProviderId,
+} from "../../../shared/agent.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import {
   accountAtom,
@@ -42,28 +48,16 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Input } from "../ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
+import { MoreIcon, PencilIcon, PlusIcon, RefreshIcon, TrashIcon } from "@hinacode/icons"
 
 const signedOutHint = {
   claude: m.settings_account_signed_out_claude,
   codex: m.settings_account_signed_out_codex,
   muse: m.settings_account_signed_out_muse,
+  opencode: m.settings_account_signed_out_opencode,
 } satisfies Record<ProviderId, () => string>
 
 const addsAccounts = Schema.is(AccountProviderId)
-
-const configDirVariable = { claude: "CLAUDE_CONFIG_DIR", codex: "CODEX_HOME" } satisfies Record<
-  AccountProviderId,
-  string
->
-
-const shellQuote = (value: string) => (/^[\w./~-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`)
-
-const loginCommand = (account: AgentProfile) =>
-  [
-    `${configDirVariable[account.provider]}=${shellQuote(account.configDir)}`,
-    shellQuote(account.binary),
-    ...(account.provider === "claude" ? ["auth", "login"] : ["login"]),
-  ].join(" ")
 
 export function AccountList({ provider }: { provider: ProviderId }) {
   const environment = useSettingsEnvironment()
@@ -81,7 +75,7 @@ export function AccountList({ provider }: { provider: ProviderId }) {
         <>
           <div>
             <Button variant="ghost" size="sm" className="-ml-2.5" onClick={() => setAdding(true)}>
-              <RiAddLine aria-hidden />
+              <PlusIcon aria-hidden />
               {m.settings_account_add()}
             </Button>
           </div>
@@ -125,7 +119,7 @@ function AccountActions({
       <DropdownMenuTrigger
         render={<Button variant="ghost" size="icon-sm" aria-label={m.settings_account_actions({ name })} />}
       >
-        <RiMoreFill aria-hidden />
+        <MoreIcon aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
         {children}
@@ -137,7 +131,7 @@ function AccountActions({
 function RenameItem({ onClick }: { onClick: () => void }) {
   return (
     <DropdownMenuItem onClick={onClick}>
-      <RiPencilLine aria-hidden />
+      <PencilIcon aria-hidden />
       {m.settings_account_rename()}
     </DropdownMenuItem>
   )
@@ -187,7 +181,7 @@ function AccountRow({ account }: { account: AgentProfile }) {
         <AccountActions name={account.name} onMenuOpenChangeComplete={onMenuOpenChangeComplete}>
           <RenameItem onClick={() => queue("rename")} />
           <DropdownMenuItem variant="destructive" onClick={() => queue("remove")}>
-            <RiDeleteBinLine aria-hidden />
+            <TrashIcon aria-hidden />
             {m.settings_account_remove()}
           </DropdownMenuItem>
         </AccountActions>
@@ -198,7 +192,7 @@ function AccountRow({ account }: { account: AgentProfile }) {
           <div className="flex min-w-0 flex-col items-start gap-1 text-xs">
             <span className="text-muted-foreground">{m.settings_account_sign_in_terminal()}</span>
             <code className="max-w-full rounded-md bg-muted px-2 py-1 font-mono break-all select-all">
-              {loginCommand(account)}
+              {loginCommand(account.provider, { dir: account.configDir, binary: account.binary })}
             </code>
             <Button variant="ghost" size="xs" className="-ml-2" onClick={refreshStatus}>
               {m.settings_account_check_again()}
@@ -263,7 +257,7 @@ function AccountStatus({ provider, account }: { provider: ProviderId; account: A
         title={m.settings_account_refresh({ name })}
         action={refresh}
       >
-        <RiRefreshLine aria-hidden className="group-aria-busy/button:animate-spin" />
+        <RefreshIcon aria-hidden className="group-aria-busy/button:animate-spin motion-reduce:animate-none" />
       </Button>
     </>
   )
@@ -359,7 +353,7 @@ interface AddAccountDialogProps {
 function AddAccountDialog({ provider, open, onOpenChange }: AddAccountDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-w-md">
         <AddAccountForm provider={provider} onCreated={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
@@ -459,7 +453,7 @@ interface RenameAccountDialogProps {
 function RenameAccountDialog({ name, onRename, open, onOpenChange }: RenameAccountDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-w-md">
         <RenameForm name={name} onRename={onRename} onSaved={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>

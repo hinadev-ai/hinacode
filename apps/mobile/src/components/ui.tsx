@@ -17,7 +17,7 @@ import Animated, { useReducedMotion } from "react-native-reanimated"
 import { Icon, type IconName } from "@/components/icon"
 import { PressableScale, Spinner } from "@/components/motion"
 import { cssEase, duration } from "@/constants/motion"
-import { HIT, type Palette, ProviderColors, radius } from "@/constants/theme"
+import { HIT, type Palette, PILL_HEIGHT, ProviderColors, radius } from "@/constants/theme"
 import { threadStatus } from "@/constants/thread-status"
 import { useScheme, useTheme } from "@/hooks/use-theme"
 import type { ConnectionStatus } from "@/lib/connection"
@@ -38,19 +38,16 @@ export function Button({
   ...props
 }: ButtonProps & { label: string; icon?: IconName; variant?: Variant; busy?: boolean }) {
   const theme = useTheme()
-  const colors = buttonColors(theme)[variant]
+  const colors = buttonColors(theme, variant, disabled === true)
   const inactive = disabled === true || busy
   return (
     <PressableScale
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled: inactive, busy }}
+      aria-disabled={inactive}
+      aria-busy={busy}
       disabled={inactive}
-      style={[
-        styles.button,
-        { backgroundColor: colors.bg, borderColor: colors.border, opacity: inactive ? 0.5 : 1 },
-        style,
-      ]}
+      style={[styles.button, { backgroundColor: colors.bg, borderColor: colors.border }, style]}
       {...props}
     >
       {busy ? (
@@ -79,18 +76,15 @@ export function IconButton({
   busy?: boolean
 }) {
   const theme = useTheme()
-  const colors = buttonColors(theme)[variant]
+  const colors = buttonColors(theme, variant, disabled === true)
   const inactive = disabled === true || busy
   return (
     <PressableScale
       accessibilityRole="button"
-      accessibilityState={{ disabled: inactive, busy }}
+      aria-disabled={inactive}
+      aria-busy={busy}
       disabled={inactive}
-      style={[
-        styles.iconButton,
-        { backgroundColor: colors.bg, borderColor: colors.border, opacity: disabled === true ? 0.5 : 1 },
-        style,
-      ]}
+      style={[styles.iconButton, { backgroundColor: colors.bg, borderColor: colors.border }, style]}
       {...props}
     >
       {busy ? <Spinner size={18} color={colors.fg} /> : <Icon name={icon} size={20} color={colors.fg} />}
@@ -106,19 +100,24 @@ export function Toggle(props: Omit<SwitchProps, "trackColor" | "thumbColor">) {
     <Switch
       {...props}
       {...webThumb}
-      trackColor={{ true: theme.primary, false: theme.surfaceStrong }}
+      trackColor={{ true: theme.primary, false: theme.controlOff }}
       thumbColor="#ffffff"
     />
   )
 }
 
-const buttonColors = (theme: Palette) => ({
-  primary: { bg: theme.primary, fg: theme.onPrimary, border: theme.primary },
-  secondary: { bg: theme.surface, fg: theme.text, border: theme.border },
-  danger: { bg: theme.dangerBg, fg: theme.danger, border: theme.dangerBg },
-  ghost: { bg: "transparent", fg: theme.text, border: "transparent" },
-  dangerGhost: { bg: "transparent", fg: theme.danger, border: "transparent" },
-})
+const buttonColors = (theme: Palette, variant: Variant, disabled: boolean) => {
+  const transparent = variant === "ghost" || variant === "dangerGhost"
+  if (disabled && transparent) return { bg: "transparent", fg: theme.textMuted, border: "transparent" }
+  if (disabled) return { bg: theme.disabled, fg: theme.textMuted, border: theme.disabled }
+  return {
+    primary: { bg: theme.primary, fg: theme.onPrimary, border: theme.primary },
+    secondary: { bg: theme.surface, fg: theme.text, border: theme.border },
+    danger: { bg: theme.dangerBg, fg: theme.danger, border: theme.dangerBg },
+    ghost: { bg: "transparent", fg: theme.text, border: "transparent" },
+    dangerGhost: { bg: "transparent", fg: theme.danger, border: "transparent" },
+  }[variant]
+}
 
 export type Tone = "neutral" | "attention" | "running" | "danger"
 
@@ -127,7 +126,7 @@ export function Pill({ label, tone, icon }: { label: string; tone: Tone; icon?: 
   const [fg, bg] = toneColors(theme)[tone]
   return (
     <View style={[styles.pill, { backgroundColor: bg }]}>
-      {icon === "RiLoader4Line" ? (
+      {icon === "Spinner" ? (
         <Spinner size={12} color={fg} />
       ) : (
         icon !== undefined && <Icon name={icon} size={12} color={fg} />
@@ -146,13 +145,15 @@ const toneColors = (theme: Palette): Record<Tone, [string, string]> => ({
 
 type Status = { label: string; tone: Tone; icon?: IconName }
 
-export const ThreadStatusPill = ({ status }: { status: ThreadStatus }) => <Pill {...threadStatus[status]} />
+/** Nothing while the thread is idle, since a quiet thread needs nobody. */
+export const ThreadStatusPill = ({ status }: { status: ThreadStatus }) =>
+  status === "idle" ? null : <Pill {...threadStatus[status]} />
 
 const connectionLabel: Record<ConnectionStatus, Status> = {
-  connected: { label: copy("mobile_connection_connected"), tone: "running", icon: "RiWifiLine" },
-  connecting: { label: copy("mobile_connection_connecting"), tone: "neutral", icon: "RiLoader4Line" },
-  offline: { label: copy("mobile_connection_offline"), tone: "attention", icon: "RiWifiOffLine" },
-  unauthorized: { label: copy("mobile_connection_unauthorized"), tone: "danger", icon: "RiLinkUnlinkM" },
+  connected: { label: copy("mobile_connection_connected"), tone: "running", icon: "Cloud" },
+  connecting: { label: copy("mobile_connection_connecting"), tone: "neutral", icon: "Spinner" },
+  offline: { label: copy("mobile_connection_offline"), tone: "attention", icon: "CloudOff" },
+  unauthorized: { label: copy("mobile_connection_unauthorized"), tone: "danger", icon: "Unlink" },
 }
 
 const fadeIn = { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: duration.fast } }
@@ -174,12 +175,14 @@ const providerMark: Record<ProviderId, IconName> = {
   claude: "RiClaudeFill",
   codex: "RiOpenaiFill",
   muse: "RiMetaFill",
+  opencode: "OpencodeMark",
 }
 
 const providerName: Record<ProviderId, string> = {
   claude: copy("mobile_provider_claude"),
   codex: copy("mobile_provider_codex"),
   muse: copy("mobile_provider_muse"),
+  opencode: copy("mobile_provider_opencode"),
 }
 
 /** The provider's logo and name, muted, for meta rows. */
@@ -194,9 +197,9 @@ export function ProviderLabel({ provider, size = 13 }: { provider: ProviderId; s
 }
 
 const noticeIcon: Partial<Record<Tone, IconName>> = {
-  danger: "RiErrorWarningLine",
-  attention: "RiErrorWarningLine",
-  running: "RiCheckboxCircleLine",
+  danger: "Warning",
+  attention: "Warning",
+  running: "CheckCircle",
 }
 
 export function Notice({ text, tone = "neutral" }: { text: string; tone?: Tone }) {
@@ -226,8 +229,14 @@ export function EmptyState({
   return (
     <View style={styles.empty}>
       <Icon name={icon} size={28} color={theme.textMuted} />
-      <Text style={[styles.emptyTitle, { color: theme.text }]}>{title}</Text>
-      {hint !== undefined && <Text style={[styles.emptyHint, { color: theme.textMuted }]}>{hint}</Text>}
+      <Text textBreakStrategy="balanced" style={[styles.emptyTitle, { color: theme.text }]}>
+        {title}
+      </Text>
+      {hint !== undefined && (
+        <Text textBreakStrategy="balanced" style={[styles.emptyHint, { color: theme.textMuted }]}>
+          {hint}
+        </Text>
+      )}
       {action}
     </View>
   )
@@ -295,7 +304,7 @@ export function SegmentedControl<T extends string>({
             testID={`tab-${segment.value}`}
             accessibilityRole="tab"
             accessibilityLabel={segment.label}
-            accessibilityState={{ selected }}
+            aria-selected={selected}
             onPress={() => onChange(segment.value)}
             style={styles.segment}
           >
@@ -349,7 +358,7 @@ export function UnderlineTabs<T extends string>({
             testID={`tab-${tab.value}`}
             accessibilityRole="tab"
             accessibilityLabel={tab.label}
-            accessibilityState={{ selected }}
+            aria-selected={selected}
             onLayout={(event) => {
               const { x, width } = event.nativeEvent.layout
               setLayouts((current) => ({ ...current, [tab.value]: { x, width } }))
@@ -375,9 +384,8 @@ export function UnderlineTabs<T extends string>({
             styles.underline,
             {
               backgroundColor: theme.text,
-              width: active.width,
-              transform: [{ translateX: active.x }],
-              transitionProperty: ["transform", "width"] as ["transform", "width"],
+              transform: [{ translateX: active.x }, { scaleX: active.width }],
+              transitionProperty: "transform",
               ...transition,
             },
           ]}
@@ -396,7 +404,7 @@ const styles = StyleSheet.create({
   lineTabs: { flexDirection: "row" },
   lineTab: { minHeight: HIT, justifyContent: "center", paddingHorizontal: 10 },
   lineTabLabel: { fontSize: 15, fontWeight: "500" },
-  underline: { position: "absolute", left: 0, bottom: 0, height: 2, borderRadius: 1 },
+  underline: { position: "absolute", left: 0, bottom: 0, width: 1, height: 2, transformOrigin: "left" },
   segments: { flexDirection: "row", padding: SEGMENT_GAP, gap: SEGMENT_GAP, borderRadius: radius.md + SEGMENT_GAP },
   thumb: {
     position: "absolute",
@@ -442,10 +450,10 @@ const styles = StyleSheet.create({
     gap: 4,
     borderRadius: radius.full,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    height: PILL_HEIGHT,
     alignSelf: "flex-start",
   },
-  pillLabel: { fontSize: 12, fontWeight: "600" },
+  pillLabel: { fontSize: 12, lineHeight: 16, fontWeight: "600" },
   provider: { flexDirection: "row", alignItems: "center", gap: 4 },
   notice: { flexDirection: "row", alignItems: "flex-start", gap: 8, borderRadius: 8, padding: 12 },
   noticeText: { flex: 1, fontSize: 14, lineHeight: 18 },

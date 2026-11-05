@@ -1,4 +1,6 @@
 import { Schema, Struct } from "effect"
+import { Artifact, ArtifactExportRequest, DocumentContent, DocumentSaveResult } from "./artifact.ts"
+import { ArtifactTheme } from "./artifactTheme.ts"
 import {
   AccountLimits,
   AccountProviderId,
@@ -24,7 +26,11 @@ import {
   UpdatableProviderId,
 } from "./agent.ts"
 import {
+  LineComment,
+  ReviewLineComment,
   AccessMode,
+  CheckoutState,
+  SetupNotice,
   ClientSettings,
   Environment,
   Environments,
@@ -32,6 +38,7 @@ import {
   RelayAccountStatus,
   Attachment,
   QueuedMessage,
+  ScheduledMessage,
   Automation,
   Changes,
   ChangesScope,
@@ -39,6 +46,7 @@ import {
   FileSearchHit,
   AutomationTrigger,
   FsEntry,
+  DirectorySuggestion,
   FsFileContent,
   CommitDiff,
   GitCommit,
@@ -47,10 +55,12 @@ import {
   NotificationPermission,
   PermissionRequestOutcome,
   Message,
+  MessagePart,
   OpenPort,
   Opener,
   OpenerId,
   Project,
+  ProjectAction,
   GitHubAuth,
   GitHubRateLimit,
   PullRequest,
@@ -67,6 +77,8 @@ import {
   TerminalAttachment,
   TerminalOffset,
   TerminalSession,
+  ExternalSession,
+  NativeSessionId,
   Thread,
   Timestamp,
   ThreadSearchHit,
@@ -76,17 +88,17 @@ import {
   VmControl,
   VmDesktopUrl,
   VmHostStatus,
-  VmPasskey,
   Worktree,
   WorktreeCheckout,
   WorkspaceChoice,
   OpenPullRequest,
   PullRequestMatch,
 } from "./domain.ts"
-import { GitHubRepository } from "./github.ts"
+import { GitHubRepository, GitRefName, RepositoryPath, RepositoryVisibility } from "./github.ts"
 import { PendingLink, RelayHost } from "./relayMachines.ts"
 import { BrowserCommand, BrowserSession, BrowserSnapshot, BrowserUrl, BrowserViewport } from "./browser.ts"
 import {
+  AgentAction,
   DeviceCommand,
   SimulatorModelId,
   DeviceControl,
@@ -155,8 +167,14 @@ export const RpcMethods = {
     }),
     Schema.NullOr(PickedDeviceElement),
   ),
+  "device.screenshot.save": rpc(
+    Schema.Struct({ threadId: Schema.String, dataUrl: Schema.String, name: Schema.String }),
+    Attachment,
+  ),
   "app.ready": rpc(Schema.Void, Schema.Void),
   "app.focus": rpc(Schema.Void, Schema.Void),
+  "windows.openPullRequest": rpc(Schema.Struct({ threadId: Schema.String, url: Schema.String }), Schema.Void),
+  "windows.addLineComment": rpc(Schema.Struct({ threadId: Schema.String, comment: LineComment }), Schema.Void),
   "app.setBadgeCount": rpc(Schema.Struct({ count: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)) }), Schema.Void),
   "app.setColorScheme": rpc(Schema.Literals(["dark", "light", "system"]), Schema.Void),
   "browser.open": rpc(
@@ -185,6 +203,7 @@ export const RpcMethods = {
       name: Schema.String,
       rootPath: Schema.String,
       setupScript: Schema.NullOr(Schema.String),
+      createRepository: Schema.optional(RepositoryVisibility),
     }),
     Project,
   ),
@@ -204,6 +223,7 @@ export const RpcMethods = {
       rootPath: Schema.optional(Schema.String),
       setupScript: Schema.optional(Schema.NullOr(Schema.String)),
       linearReview: Schema.optional(Schema.Boolean),
+      actions: Schema.optional(Schema.Array(ProjectAction)),
     }),
     Project,
   ),
@@ -222,6 +242,7 @@ export const RpcMethods = {
     }),
     Thread,
   ),
+  "threads.draft": rpc(Schema.Struct({ projectId: Schema.String }), Thread),
   "threads.update": rpc(
     Schema.Struct({
       id: Schema.String,
@@ -263,11 +284,32 @@ export const RpcMethods = {
     Worktree,
   ),
   "worktrees.checkouts": rpc(Schema.Void, Schema.Array(WorktreeCheckout)),
+  "worktrees.checkoutState": rpc(Schema.Struct({ id: Schema.String }), CheckoutState),
   "worktrees.setupLog": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
   "worktrees.stopSetup": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
   "worktrees.pullRequest": rpc(Schema.Struct({ id: Schema.String }), Schema.NullOr(PullRequest)),
   "threads.changes": rpc(Schema.Struct({ threadId: Schema.String, scope: ChangesScope }), Schema.NullOr(Changes)),
+  "threads.undoTurn": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "threads.fork": rpc(Schema.Struct({ threadId: Schema.String, messageId: Schema.String }), Thread),
+  "threads.sidechat": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
+  "sessions.listExternal": rpc(
+    Schema.Struct({ projectId: Schema.String }),
+    Schema.Struct({
+      sessions: Schema.Array(ExternalSession),
+      failures: Schema.Array(
+        Schema.Struct({ provider: AccountProviderId, accountId: Schema.NullOr(Schema.String), message: Schema.String }),
+      ),
+    }),
+  ),
+  "sessions.import": rpc(
+    Schema.Struct({
+      projectId: Schema.String,
+      provider: AccountProviderId,
+      sessionId: NativeSessionId,
+      accountId: Schema.NullOr(Schema.String),
+    }),
+    Thread,
+  ),
   "threads.archive": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   "threads.unarchive": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   "projects.currentBranch": rpc(Schema.Struct({ id: Schema.String }), Schema.String),
@@ -278,7 +320,7 @@ export const RpcMethods = {
     Schema.Struct({ id: Schema.String, query: Schema.String }),
     Schema.Array(PullRequestMatch),
   ),
-  "projects.fetch": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
+  "projects.fetch": rpc(Schema.Struct({ id: Schema.String }), Schema.Number),
   "projects.icon": rpc(Schema.Struct({ id: Schema.String }), Schema.NullOr(Schema.String)),
   "git.log": rpc(
     Schema.Struct({
@@ -370,7 +412,14 @@ export const RpcMethods = {
     }),
     Schema.Void,
   ),
+  "fs.create": rpc(
+    Schema.Struct({ root: Schema.String, path: Schema.String, kind: Schema.Literals(["file", "dir"]) }),
+    Schema.Void,
+  ),
+  "fs.rename": rpc(Schema.Struct({ root: Schema.String, from: Schema.String, to: Schema.String }), Schema.Void),
+  "fs.delete": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), Schema.Void),
   "fs.watch": rpc(Schema.Struct({ root: Schema.String, paths: Schema.Array(Schema.String) }), Schema.Void),
+  "fs.completeDirectory": rpc(Schema.Struct({ path: Schema.String }), Schema.Array(DirectorySuggestion)),
 
   "dialog.pickFolder": rpc(Schema.Void, Schema.NullOr(Schema.String)),
 
@@ -391,7 +440,12 @@ export const RpcMethods = {
       questions: Schema.Array(QuestionRequest),
       secretRequests: Schema.Array(SecretRequest),
       seq: Schema.Number,
+      sequenceScope: Schema.optional(Schema.Literal("thread")),
     }),
+  ),
+  "threads.toolOutput": rpc(
+    Schema.Struct({ threadId: Schema.String, messageId: Schema.optional(Schema.String), callId: Schema.String }),
+    Schema.Unknown,
   ),
   "threads.send": rpc(
     Schema.Struct({
@@ -403,15 +457,33 @@ export const RpcMethods = {
     Schema.Void,
   ),
   "threads.interrupt": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
-  "approvals.respond": rpc(Schema.Struct({ requestId: Schema.String, decision: ApprovalDecision }), Schema.Void),
+  "threads.warm": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
+  "threads.reveal": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
+  "approvals.respond": rpc(
+    Schema.Struct({
+      requestId: Schema.String,
+      decision: ApprovalDecision,
+      note: Schema.optionalKey(Schema.String),
+    }),
+    Schema.Void,
+  ),
   "questions.respond": rpc(Schema.Struct({ requestId: Schema.String, answers: QuestionAnswers }), Schema.Void),
   "secrets.has": rpc(Schema.Struct({ name: Schema.String }), Schema.Boolean),
   "secrets.set": rpc(Schema.Struct({ name: Schema.String, value: Schema.String }), Schema.Void),
   "secrets.clear": rpc(Schema.Struct({ name: Schema.String }), Schema.Void),
   "subagents.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(Subagent)),
   "subagents.stop": rpc(Schema.Struct({ threadId: Schema.String, subagentId: Schema.String }), Schema.Void),
+  "subagents.transcript": rpc(
+    Schema.Struct({ threadId: Schema.String, callId: Schema.String }),
+    Schema.Struct({
+      spawn: Schema.NullOr(MessagePart),
+      calls: Schema.Array(MessagePart),
+      startedAt: Schema.NullOr(Schema.String),
+    }),
+  ),
   "backgroundTasks.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(BackgroundTask)),
   "backgroundTasks.stop": rpc(Schema.Struct({ threadId: Schema.String, taskId: Schema.String }), Schema.Void),
+  "backgroundTasks.moveCommand": rpc(Schema.Struct({ threadId: Schema.String, callId: Schema.String }), Schema.Boolean),
   "threads.usage": rpc(Schema.Struct({ threadId: Schema.String }), Schema.NullOr(ThreadUsage)),
   "threads.contextBreakdown": rpc(Schema.Struct({ threadId: Schema.String }), Schema.NullOr(ContextBreakdown)),
   "secrets.respond": rpc(Schema.Struct({ requestId: Schema.String, value: Schema.NullOr(Schema.String) }), Schema.Void),
@@ -424,11 +496,19 @@ export const RpcMethods = {
 
   "github.auth": rpc(Schema.Void, GitHubAuth),
   "github.pullRequest": rpc(Schema.Struct({ url: Schema.String }), PullRequest),
-  "github.pullRequestDetail": rpc(Schema.Struct({ url: Schema.String }), PullRequestDetail),
+  "github.pullRequestDetail": rpc(
+    Schema.Struct({ url: Schema.String, fresh: Schema.optionalKey(Schema.Boolean) }),
+    PullRequestDetail,
+  ),
   "github.pullRequestFiles": rpc(Schema.Struct({ url: Schema.String }), Schema.Array(PullRequestFile)),
   "github.merge": rpc(Schema.Struct({ url: Schema.String, method: MergeMethod }), Schema.Void),
   "github.close": rpc(Schema.Struct({ url: Schema.String }), Schema.Void),
   "github.comment": rpc(Schema.Struct({ url: Schema.String, body: Schema.String }), Schema.Void),
+  "github.fileContent": rpc(
+    Schema.Struct({ url: Schema.String, ref: GitRefName, path: RepositoryPath }),
+    Schema.NullOr(Schema.String),
+  ),
+  "github.reviewComment": rpc(Schema.Struct({ url: Schema.String, comment: ReviewLineComment }), Schema.Void),
   "pullRequestGuides.get": rpc(Schema.Struct({ url: Schema.String }), PullRequestGuideState),
   "pullRequestGuides.retry": rpc(Schema.Struct({ url: Schema.String }), Schema.Void),
   "linear.issues": rpc(Schema.Void, Schema.Array(LinearIssue)),
@@ -443,7 +523,12 @@ export const RpcMethods = {
   "ports.kill": rpc(Schema.Struct({ pid: Schema.Number }), Schema.Void),
 
   "terminal.open": rpc(
-    Schema.Struct({ threadId: Schema.String, cols: TerminalSize, rows: TerminalSize }),
+    Schema.Struct({
+      threadId: Schema.String,
+      cols: TerminalSize,
+      rows: TerminalSize,
+      command: Schema.optional(Schema.Struct({ title: Schema.String, line: Schema.String })),
+    }),
     TerminalSession,
   ),
   "terminal.write": rpc(Schema.Struct({ id: Schema.String, data: Schema.String }), Schema.Void),
@@ -470,9 +555,6 @@ export const RpcMethods = {
   ),
   "vm.profile.save": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
   "vm.screenshot.save": rpc(Schema.Struct({ threadId: Schema.String }), Attachment),
-  "vm.passkey.get": rpc(Schema.Struct({ threadId: Schema.String }), VmPasskey),
-  "vm.passkey.prepare": rpc(Schema.Struct({ threadId: Schema.String }), VmPasskey),
-  "vm.passkey.cancel": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
 
   "threads.steer": rpc(
     Schema.Struct({
@@ -492,6 +574,24 @@ export const RpcMethods = {
     Schema.Void,
   ),
   "threads.unqueue": rpc(Schema.Struct({ threadId: Schema.String, id: Schema.String }), Schema.NullOr(QueuedMessage)),
+  "threads.schedule": rpc(
+    Schema.Struct({
+      threadId: Schema.String,
+      text: Schema.String,
+      attachments: Schema.optional(Schema.Array(Attachment)),
+      workspace: Schema.optional(WorkspaceChoice),
+      sendAt: Timestamp,
+    }),
+    Schema.Void,
+  ),
+  "threads.reschedule": rpc(
+    Schema.Struct({ threadId: Schema.String, id: Schema.String, sendAt: Timestamp }),
+    Schema.Void,
+  ),
+  "threads.unschedule": rpc(
+    Schema.Struct({ threadId: Schema.String, id: Schema.String }),
+    Schema.NullOr(ScheduledMessage),
+  ),
 
   "attachments.stage": rpc(
     Schema.Struct({
@@ -507,6 +607,21 @@ export const RpcMethods = {
   "dialog.pickFiles": rpc(Schema.Void, Schema.Array(Schema.String)),
 
   "automations.list": rpc(Schema.Void, Schema.Array(Automation)),
+  "artifacts.list": rpc(Schema.Void, Schema.Array(Artifact)),
+  "artifacts.file": rpc(
+    Schema.Struct({ id: Schema.String, path: Schema.String }),
+    Schema.Struct({ dataUrl: Schema.String }),
+  ),
+  "artifacts.export": rpc(ArtifactExportRequest, Schema.NullOr(Schema.String)),
+  "artifacts.delete": rpc(Schema.Struct({ id: Schema.String }), Schema.Void),
+  "artifacts.readDocument": rpc(Schema.Struct({ id: Schema.String }), DocumentContent),
+  "artifacts.saveDocument": rpc(
+    Schema.Struct({ id: Schema.String, baseRevision: Schema.Number, markdown: Schema.String }),
+    DocumentSaveResult,
+  ),
+  "artifacts.createDocument": rpc(Schema.Struct({ threadId: Schema.String, title: Schema.String }), Artifact),
+  "artifacts.rename": rpc(Schema.Struct({ id: Schema.String, title: Schema.String }), Artifact),
+  "artifacts.setTheme": rpc(ArtifactTheme, Schema.Void),
   "automations.create": rpc(
     AutomationInput,
     Schema.Struct({ automation: Automation, secret: Schema.NullOr(Schema.String) }),
@@ -561,8 +676,11 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "device.command": "mutation",
   "device.control": "mutation",
   "device.pick": "mutation",
+  "device.screenshot.save": "mutation",
   "app.ready": "mutation",
   "app.focus": "mutation",
+  "windows.openPullRequest": "mutation",
+  "windows.addLineComment": "mutation",
   "app.setBadgeCount": "mutation",
   "app.setColorScheme": "mutation",
   "projects.list": "read",
@@ -572,6 +690,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "projects.delete": "mutation",
   "threads.list": "read",
   "threads.create": "mutation",
+  "threads.draft": "mutation",
   "threads.update": "mutation",
   "threads.delete": "mutation",
   "threads.resumeAtReset": "mutation",
@@ -580,11 +699,16 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "worktrees.create": "mutation",
   "worktrees.remove": "mutation",
   "worktrees.checkouts": "read",
+  "worktrees.checkoutState": "read",
   "worktrees.setupLog": "read",
   "worktrees.stopSetup": "mutation",
   "worktrees.pullRequest": "read",
   "threads.changes": "read",
+  "threads.undoTurn": "mutation",
   "threads.fork": "mutation",
+  "threads.sidechat": "mutation",
+  "sessions.listExternal": "read",
+  "sessions.import": "mutation",
   "threads.archive": "mutation",
   "threads.unarchive": "mutation",
   "projects.currentBranch": "read",
@@ -636,16 +760,26 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "fs.read": "read",
   "fs.preview": "read",
   "fs.write": "mutation",
+  "fs.create": "mutation",
+  "fs.rename": "mutation",
+  "fs.delete": "mutation",
   "fs.watch": "mutation",
+  "fs.completeDirectory": "read",
   "dialog.pickFolder": "mutation",
   "updates.status": "read",
   "updates.check": "mutation",
   "updates.install": "mutation",
   "threads.transcript": "read",
+  "threads.toolOutput": "read",
   "threads.send": "mutation",
   "threads.queue": "mutation",
   "threads.unqueue": "mutation",
+  "threads.schedule": "mutation",
+  "threads.reschedule": "mutation",
+  "threads.unschedule": "mutation",
   "threads.interrupt": "mutation",
+  "threads.warm": "mutation",
+  "threads.reveal": "mutation",
   "approvals.respond": "mutation",
   "questions.respond": "mutation",
   "secrets.has": "read",
@@ -653,8 +787,10 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "secrets.clear": "mutation",
   "subagents.list": "read",
   "subagents.stop": "mutation",
+  "subagents.transcript": "read",
   "backgroundTasks.list": "read",
   "backgroundTasks.stop": "mutation",
+  "backgroundTasks.moveCommand": "mutation",
   "threads.usage": "read",
   "threads.contextBreakdown": "read",
   "secrets.respond": "mutation",
@@ -671,6 +807,8 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "github.merge": "mutation",
   "github.close": "mutation",
   "github.comment": "mutation",
+  "github.fileContent": "read",
+  "github.reviewComment": "mutation",
   "pullRequestGuides.get": "read",
   "pullRequestGuides.retry": "mutation",
   "github.repository": "read",
@@ -697,14 +835,20 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "vm.files.drop": "mutation",
   "vm.profile.save": "mutation",
   "vm.screenshot.save": "mutation",
-  "vm.passkey.get": "read",
-  "vm.passkey.prepare": "mutation",
-  "vm.passkey.cancel": "mutation",
   "threads.steer": "mutation",
   "attachments.stage": "mutation",
   "attachments.read": "read",
   "dialog.pickFiles": "mutation",
   "automations.list": "read",
+  "artifacts.list": "read",
+  "artifacts.file": "read",
+  "artifacts.export": "mutation",
+  "artifacts.delete": "mutation",
+  "artifacts.readDocument": "read",
+  "artifacts.saveDocument": "mutation",
+  "artifacts.createDocument": "mutation",
+  "artifacts.rename": "mutation",
+  "artifacts.setTheme": "mutation",
   "automations.create": "mutation",
   "automations.update": "mutation",
   "automations.delete": "mutation",
@@ -727,12 +871,17 @@ export const mutations: ReadonlySet<string> = new Set(
 )
 
 export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
+  "device.screenshot.save",
   "app.ready",
   "app.focus",
+  "windows.openPullRequest",
+  "windows.addLineComment",
   "app.setBadgeCount",
   "app.setColorScheme",
   "dialog.pickFolder",
   "dialog.pickFiles",
+  "artifacts.export",
+  "artifacts.setTheme",
   "shell.reveal",
   "shell.openers",
   "shell.openWith",
@@ -741,7 +890,6 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "fs.watch",
   "vm.screen.open",
   "vm.files.drop",
-  "vm.passkey.prepare",
   "remote.pairing",
   "remote.rotateToken",
   "remote.setupRelay",
@@ -793,6 +941,10 @@ export const TranscriptPush = Schema.Union([
 ])
 export type TranscriptPush = typeof TranscriptPush.Type
 
+export const transcriptThreadId = (
+  push: { readonly threadId: string } | { readonly message: { readonly threadId: string } },
+) => ("threadId" in push ? push.threadId : push.message.threadId)
+
 export const MenuCommand = Schema.Literals([
   "thread.new",
   "project.add",
@@ -807,14 +959,23 @@ export const PushEvent = Schema.Union([
   ...TranscriptPush.members,
   Schema.Struct({ type: Schema.Literal("thread.updated"), thread: Thread }),
   Schema.Struct({ type: Schema.Literal("thread.removed"), id: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("thread.reveal"), threadId: Schema.String }),
   Schema.Struct({ type: Schema.Literal("worktree.updated"), worktree: Worktree }),
   Schema.Struct({ type: Schema.Literal("worktree.setupLog"), id: Schema.String, chunk: Schema.String }),
+  Schema.Struct({
+    type: Schema.Literal("worktree.setupNotice"),
+    id: Schema.String,
+    branch: Schema.String,
+    notice: SetupNotice,
+  }),
   Schema.Struct({
     type: Schema.Literal("thread.pullRequests"),
     threadId: Schema.String,
     links: Schema.Array(PullRequestLink),
   }),
   Schema.Struct({ type: Schema.Literal("pullRequest.guide"), url: Schema.String, state: PullRequestGuideState }),
+  Schema.Struct({ type: Schema.Literal("github.pullRequest"), url: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("thread.lineComment"), threadId: Schema.String, comment: LineComment }),
   Schema.Struct({
     type: Schema.Literal("github.rateLimit"),
     level: Schema.Literals(["low", "exhausted"]),
@@ -832,6 +993,9 @@ export const PushEvent = Schema.Union([
   }),
   Schema.Struct({ type: Schema.Literal("fs.changed"), root: Schema.String, path: Schema.String }),
   Schema.Struct({ type: Schema.Literal("automation.run"), run: AutomationRun }),
+  Schema.Struct({ type: Schema.Literal("artifact.updated"), artifact: Artifact }),
+  Schema.Struct({ type: Schema.Literal("artifact.removed"), id: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("artifact.opened"), threadId: Schema.String, id: Schema.String }),
   Schema.Struct({
     type: Schema.Literal("terminal.data"),
     id: Schema.String,
@@ -844,7 +1008,12 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("environments.changed") }),
   Schema.Struct({ type: Schema.Literal("vm.updated"), threadId: Schema.String, vm: ThreadVm }),
   Schema.Struct({ type: Schema.Literal("device.updated"), threadId: Schema.String, devices: ThreadDevices }),
-  Schema.Struct({ type: Schema.Literal("vm.passkey.updated"), threadId: Schema.String, passkey: VmPasskey }),
+  Schema.Struct({
+    type: Schema.Literal("device.agentAction"),
+    threadId: Schema.String,
+    deviceId: DeviceId,
+    action: AgentAction,
+  }),
   Schema.Struct({ type: Schema.Literal("vm.screen.data"), streamId: Schema.String, data: Schema.Uint8Array }),
   Schema.Struct({ type: Schema.Literal("vm.screen.closed"), streamId: Schema.String }),
   Schema.Struct({ type: Schema.Literal("menu.command"), command: MenuCommand }),

@@ -2,6 +2,7 @@ import { Context, Effect, Layer, Schedule, Schema, Stream } from "effect"
 import { SqlClient } from "effect/sql"
 import type { RpcRequest } from "../../../shared/contract.ts"
 import {
+  type AgentAction,
   devicePlatformOf,
   type Device,
   type DeviceCommand,
@@ -28,6 +29,12 @@ export type AgentInput = "done" | "handedBack"
 
 export type ReadyDevice = Extract<ThreadDevice, { phase: "ready" }>
 
+export interface AgentSteps {
+  readonly steps: ReadonlyArray<ReadonlyArray<DeviceCommand>>
+  readonly gapMs?: number
+  readonly release?: ReadonlyArray<DeviceCommand>
+}
+
 export class Devices extends Context.Service<
   Devices,
   {
@@ -49,7 +56,8 @@ export class Devices extends Context.Service<
     readonly act: (
       threadId: string,
       device: string | undefined,
-      commands: ReadonlyArray<DeviceCommand>,
+      action: AgentAction,
+      input: AgentSteps,
     ) => Effect.Effect<AgentInput, DevicesError>
     readonly screenshot: (
       threadId: string,
@@ -59,7 +67,11 @@ export class Devices extends Context.Service<
       threadId: string,
       device: string | undefined,
     ) => Effect.Effect<ReadonlyArray<DeviceElement>, DevicesError>
-    readonly launch: (threadId: string, device: string | undefined, app: string) => Effect.Effect<void, DevicesError>
+    readonly launch: (
+      threadId: string,
+      device: string | undefined,
+      app: string,
+    ) => Effect.Effect<AgentInput, DevicesError>
   }
 >()("hinacode/Devices") {}
 
@@ -114,7 +126,7 @@ const make = (options: DevicesOptions) =>
     let frameSequence = 0
     const preparing = new Map<string, Promise<ThreadDevice>>()
     const handBacks = new Map<string, Set<() => void>>()
-    const waiting = new Map<string, number>()
+    const waiting = new Map<string, ReadonlyArray<AgentAction>>()
     const userControl = new Map<DeviceId, string>()
     const deleting = new Set<DeviceId>()
     const attaching = new Map<DeviceId, number>()
@@ -180,7 +192,14 @@ const make = (options: DevicesOptions) =>
     const controlOf = (deviceId: DeviceId): DeviceControl => (userControl.has(deviceId) ? "user" : "agent")
 
     const waitingOn = (deviceId: DeviceId) =>
-      [...states.keys()].some((threadId) => (waiting.get(keyOf(threadId, deviceId)) ?? 0) > 0)
+      [...states.keys()].flatMap((threadId) => waiting.get(keyOf(threadId, deviceId)) ?? []).at(-1) ?? null
+
+    const announce = (deviceId: DeviceId, action: AgentAction) => {
+      for (const [threadId, entries] of states) {
+        if (entries.get(deviceId)?.phase !== "ready") continue
+        runFork(events.publish({ type: "device.agentAction", threadId, deviceId, action }))
+      }
+    }
 
     const findDevice = async (deviceId: DeviceId): Promise<Device> => {
       const device = (await driverOf(deviceId).list()).find((candidate) => candidate.id === deviceId)
@@ -443,7 +462,7 @@ const make = (options: DevicesOptions) =>
       }
       if (control === "user") userControl.set(deviceId, threadId)
       else userControl.delete(deviceId)
-      const agentWaiting = control === "user" && waitingOn(deviceId)
+      const agentWaiting = control === "user" ? waitingOn(deviceId) : null
       for (const [other, entries] of states) {
         const entry = entries.get(deviceId)
         if (entry?.phase !== "ready" || (entry.control === control && entry.agentWaiting === agentWaiting)) continue
@@ -462,9 +481,9 @@ const make = (options: DevicesOptions) =>
       }
     }
 
-    const waitForHandBack = async (threadId: string, deviceId: DeviceId, signal: AbortSignal) => {
+    const waitForHandBack = async (threadId: string, deviceId: DeviceId, action: AgentAction, signal: AbortSignal) => {
       const key = keyOf(threadId, deviceId)
-      waiting.set(key, (waiting.get(key) ?? 0) + 1)
+      waiting.set(key, [...(waiting.get(key) ?? []), action])
       refreshWaiting(deviceId)
       try {
         await new Promise<void>((resolve, reject) => {
@@ -482,9 +501,9 @@ const make = (options: DevicesOptions) =>
           )
         })
       } finally {
-        const count = (waiting.get(key) ?? 1) - 1
-        if (count === 0) waiting.delete(key)
-        else waiting.set(key, count)
+        const rest = (waiting.get(key) ?? []).filter((each) => each !== action)
+        if (rest.length === 0) waiting.delete(key)
+        else waiting.set(key, rest)
         refreshWaiting(deviceId)
       }
     }
@@ -554,15 +573,36 @@ const make = (options: DevicesOptions) =>
         ),
       )
 
-    const act = (threadId: string, device: string | undefined, commands: ReadonlyArray<DeviceCommand>) =>
+    const actOnce = (
+      threadId: string,
+      device: string | undefined,
+      action: AgentAction,
+      commands: ReadonlyArray<DeviceCommand>,
+      first: boolean,
+    ) =>
       attempt(async (signal): Promise<AgentInput> => {
         const { state, live } = await chosen(threadId, device)
         if (state.control === "user") {
-          await waitForHandBack(threadId, state.device.id, signal)
+          await waitForHandBack(threadId, state.device.id, action, signal)
           return "handedBack"
         }
+        if (first) announce(state.device.id, action)
         await (await live.link).send(commands)
         return "done"
+      })
+
+    const act = (threadId: string, device: string | undefined, action: AgentAction, input: AgentSteps) =>
+      Effect.gen(function* () {
+        const { steps, gapMs = 0, release = [] } = input
+        for (const [index, commands] of steps.entries()) {
+          if (index > 0 && gapMs > 0) yield* Effect.sleep(gapMs)
+          const outcome = yield* actOnce(threadId, device, action, commands, index === 0)
+          if (outcome === "handedBack") {
+            if (index > 0 && release.length > 0) yield* actOnce(threadId, device, action, release, false)
+            return outcome
+          }
+        }
+        return "done" as const
       })
 
     const screenshot = (threadId: string, device: string | undefined) =>
@@ -607,6 +647,7 @@ const make = (options: DevicesOptions) =>
       Effect.catchCause((cause) => Effect.logWarning("device cleanup failed", cause)),
     )
     yield* Effect.all([expireLeases, releaseArchived]).pipe(
+      Effect.when(Effect.sync(() => enabled)),
       Effect.schedule(Schedule.spaced(5000)),
       Effect.forkIn(scope),
     )
@@ -699,13 +740,16 @@ const make = (options: DevicesOptions) =>
           return driverOf(state.device.id).describe(state.device.id)
         }),
       launch: (threadId, device, app) =>
-        attempt(async (signal) => {
+        attempt(async (signal): Promise<AgentInput> => {
           const { state } = await chosen(threadId, device)
+          const action: AgentAction = { kind: "launch", app }
           if (state.control === "user") {
-            await waitForHandBack(threadId, state.device.id, signal)
-            return
+            await waitForHandBack(threadId, state.device.id, action, signal)
+            return "handedBack"
           }
+          announce(state.device.id, action)
           await driverOf(state.device.id).launch(state.device.id, app)
+          return "done"
         }),
     })
   })

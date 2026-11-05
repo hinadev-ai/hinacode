@@ -45,6 +45,7 @@ it("ignores a merged or closed pull request", () => {
 it("marks a finished or failed turn, not a limited one", () => {
   expect(outcomeOf({ type: "turn_completed" } as AgentEvent)).toBe("completed")
   expect(outcomeOf({ type: "turn_failed", message: "boom" } as AgentEvent)).toBe("failed")
+  expect(outcomeOf({ type: "turn_failed", message: "Interrupted", stopped: true } as AgentEvent)).toBeUndefined()
   expect(outcomeOf({ type: "turn_limited" } as AgentEvent)).toBeUndefined()
   expect(outcomeOf({ type: "text_delta", text: "hi" } as AgentEvent)).toBeUndefined()
 })

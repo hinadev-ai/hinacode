@@ -31,6 +31,10 @@ Then("the app uses the {string} appearance", async ({ app }, scheme: string) => 
     .toBe(scheme)
 })
 
+Then("the app paints the {string} theme", async ({ app }, theme: string) => {
+  await expect(app.page.locator("html")).toHaveAttribute("data-theme", theme)
+})
+
 Then("the theme {string} is saved", async ({ app }, theme: string) => {
   await expect.poll(async () => (await rpc(app.page, "clientSettings.get", undefined)).appearance.theme).toBe(theme)
 })

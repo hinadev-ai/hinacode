@@ -81,7 +81,11 @@ export const installCloudflared = (
       try {
         if (asset.archive === "tgz") {
           await writeFile(join(staging, "release.tgz"), bytes)
-          await promisify(execFile)("tar", ["-xzf", "release.tgz", executable], { cwd: staging })
+          await promisify(execFile)("tar", ["-xzf", "release.tgz", executable], {
+            cwd: staging,
+            timeout: 60_000,
+            killSignal: "SIGKILL",
+          })
           await rm(join(staging, "release.tgz"))
         } else {
           await writeFile(join(staging, executable), bytes)

@@ -1,7 +1,22 @@
 import { homedir } from "node:os"
+import { isDeepStrictEqual } from "node:util"
 import { dirname } from "node:path"
 import { parsePatch } from "@pulls.review/core/patch-parser"
-import { Cache, Clock, Context, Effect, Exit, Layer, Schema, Semaphore, Struct } from "effect"
+import {
+  type Array as Arr,
+  Cache,
+  Clock,
+  Context,
+  Duration,
+  Effect,
+  Exit,
+  Layer,
+  Request,
+  RequestResolver,
+  Schema,
+  Semaphore,
+  Struct,
+} from "effect"
 import { ChildProcessSpawner } from "effect/process"
 import type {
   CheckRun,
@@ -15,14 +30,21 @@ import type {
   PullRequestDetail,
   PullRequestFile,
   PullRequestStatus,
+  ReviewLineComment,
   ReviewStatus,
   OpenPullRequest,
   PullRequestMatch,
 } from "../../shared/domain.ts"
-import { PullRequestComment } from "../../shared/domain.ts"
-import { type GitHubRepository, parseGitHubPullRequestUrl, parseGitHubRepository } from "../../shared/github.ts"
+import { DiffSide, PullRequestComment } from "../../shared/domain.ts"
+import {
+  type GitHubRepository,
+  parseGitHubPullRequestUrl,
+  parseGitHubRepository,
+  PULL_REQUEST_REFRESH,
+  type RepositoryVisibility,
+} from "../../shared/github.ts"
 import { Events } from "./Events.ts"
-import { CommandError, makeExec, REMOTE_GIT_ARGS, REMOTE_GIT_ENV, type RunOptions } from "./Git.ts"
+import { CommandError, LONG_TIMEOUT, makeExec, REMOTE_GIT_ARGS, REMOTE_GIT_ENV, type RunOptions } from "./Git.ts"
 
 export class GitHubCliMissingError extends Schema.TaggedError<GitHubCliMissingError>()("GitHubCliMissingError", {}) {
   override get message(): string {
@@ -76,6 +98,32 @@ export class PullRequestDiffTooLargeError extends Schema.TaggedError<PullRequest
 export const requirePullRequestUrl = (raw: string): Effect.Effect<string, PullRequestUrlInvalidError> => {
   const url = parseGitHubPullRequestUrl(raw.trim())
   return url === undefined ? Effect.fail(new PullRequestUrlInvalidError({ url: raw })) : Effect.succeed(url)
+}
+
+export const reviewCommentArgs = (url: string, comment: ReviewLineComment) => {
+  const { pathname } = new URL(url)
+  const [, owner, repo, , number] = pathname.split("/")
+  const range =
+    comment.startLine === comment.endLine
+      ? []
+      : ["-F", `start_line=${comment.startLine}`, "-f", `start_side=${comment.side}`]
+  return [
+    "api",
+    "--method",
+    "POST",
+    `repos/${owner}/${repo}/pulls/${number}/comments`,
+    "-f",
+    `body=${comment.body}`,
+    "-f",
+    `commit_id=${comment.commit}`,
+    "-f",
+    `path=${comment.path}`,
+    "-F",
+    `line=${comment.endLine}`,
+    "-f",
+    `side=${comment.side}`,
+    ...range,
+  ]
 }
 
 const AuthStatusJson = Schema.fromJsonString(
@@ -139,26 +187,32 @@ const PullRequestDetailFields = Schema.Struct({
 type PullRequestDetailFields = typeof PullRequestDetailFields.Type
 
 // FIXME: `gh pr view` hides GitHub's rate limit headers, so this asks `gh api graphql` instead
-const PULL_REQUEST_QUERY = `query PullRequest($owner: String!, $name: String!, $number: Int!) {
-  repository(owner: $owner, name: $name) {
-    pullRequest(number: $number) {
-      url number title state isDraft reviewDecision mergeable
-      author { login }
-      headRefName baseRefName headRefOid additions deletions changedFiles body
-      commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
-        ... on CheckRun { __typename name status conclusion detailsUrl checkSuite { workflowRun { workflow { name } } } }
-        ... on StatusContext { __typename context state targetUrl }
-      } } } } } }
-      comments(last: 50) { nodes { ...Comment url } }
-      reviews(last: 50) { nodes { ...Comment url } }
-      reviewThreads(last: 50) { nodes { isResolved comments(first: 20) { nodes { ...Comment url path line } } } }
-    }
-  }
+const PULL_REQUEST_FRAGMENTS = `fragment PullRequestFields on PullRequest {
+  url number title state isDraft reviewDecision mergeable
+  author { login }
+  headRefName baseRefName headRefOid additions deletions changedFiles body
+  commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
+    ... on CheckRun { __typename name status conclusion detailsUrl checkSuite { workflowRun { workflow { name } } } }
+    ... on StatusContext { __typename context state targetUrl }
+  } } } } } }
+  comments(last: 50) { nodes { ...Comment url } }
+  reviews(last: 50) { nodes { ...Comment url } }
+  reviewThreads(last: 50) { nodes { isResolved diffSide comments(first: 20) { nodes { ...Comment url path line } } } }
 }
 
 fragment Comment on Comment {
   id body createdAt viewerDidAuthor author { __typename login }
 }`
+
+export const pullRequestsQuery = (count: number) => {
+  const aliases = Array.from({ length: count }, (_, index) => index)
+  const variables = aliases.map((index) => `$owner${index}: String!, $name${index}: String!, $number${index}: Int!`)
+  const reads = aliases.map(
+    (index) =>
+      `  pr${index}: repository(owner: $owner${index}, name: $name${index}) { pullRequest(number: $number${index}) { ...PullRequestFields } }`,
+  )
+  return `query PullRequests(${variables.join(", ")}) {\n${reads.join("\n")}\n}\n\n${PULL_REQUEST_FRAGMENTS}`
+}
 
 const GraphQLCheck = Schema.Union([
   Schema.Struct({
@@ -209,6 +263,7 @@ const GraphQLPullRequest = Schema.Struct({
     nodes: Schema.Array(
       Schema.Struct({
         isResolved: Schema.Boolean,
+        diffSide: DiffSide,
         comments: Schema.Struct({ nodes: Schema.Array(GraphQLReviewComment) }),
       }),
     ),
@@ -226,11 +281,25 @@ const GraphQLPullRequest = Schema.Struct({
   }),
 })
 
-const decodePullRequestResponse = Schema.decodeUnknownEffect(
+const decodePullRequestsResponse = Schema.decodeUnknownEffect(
   Schema.fromJsonString(
-    Schema.Struct({ data: Schema.Struct({ repository: Schema.Struct({ pullRequest: GraphQLPullRequest }) }) }),
+    Schema.Struct({
+      data: Schema.NullOr(
+        Schema.Record(Schema.String, Schema.NullOr(Schema.Struct({ pullRequest: Schema.NullOr(Schema.Unknown) }))),
+      ),
+    }),
   ),
 )
+const decodeGraphQLPullRequest = Schema.decodeUnknownEffect(GraphQLPullRequest)
+
+class PullRequestRead extends Request.Class<
+  { readonly url: string },
+  PullRequestDetailFields,
+  GitHubError | Schema.SchemaError
+> {}
+
+const PULL_REQUESTS_PER_QUERY = 10
+const BATCH_WINDOW_MS = 20
 
 const toRollupEntry = (check: typeof GraphQLCheck.Type): RollupEntry => {
   if (check.__typename === "StatusContext") {
@@ -270,7 +339,9 @@ const toComments = ({
     ...reviewThreads.nodes
       .filter((thread) => !thread.isResolved)
       .flatMap((thread) =>
-        thread.comments.nodes.map((comment) => toComment(comment, { path: comment.path, line: comment.line })),
+        thread.comments.nodes.map((comment) =>
+          toComment(comment, { path: comment.path, line: comment.line, side: thread.diffSide }),
+        ),
       ),
   ].toSorted((a, b) => a.createdAt.localeCompare(b.createdAt))
 
@@ -450,9 +521,16 @@ const budgetLevel = ({ limit, remaining }: GitHubRateLimit): BudgetLevel =>
 const ApiErrorBody = Schema.Struct({
   message: Schema.optionalKey(Schema.String),
   errors: Schema.optionalKey(
-    Schema.Array(Schema.Struct({ type: Schema.optionalKey(Schema.String), message: Schema.String })),
+    Schema.Array(
+      Schema.Struct({
+        type: Schema.optionalKey(Schema.String),
+        message: Schema.String,
+        path: Schema.optionalKey(Schema.Array(Schema.Union([Schema.String, Schema.Number]))),
+      }),
+    ),
   ),
 })
+type ApiErrorBody = typeof ApiErrorBody.Type
 const decodeApiErrorBody = Schema.decodeUnknownOption(Schema.fromJsonString(ApiErrorBody))
 
 const decodeAuthStatus = Schema.decodeUnknownEffect(AuthStatusJson)
@@ -466,6 +544,16 @@ const PullRequestHead = Schema.Struct({
   isCrossRepository: Schema.Boolean,
 })
 export type PullRequestHead = typeof PullRequestHead.Type
+const decodeContents = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(Schema.Struct({ encoding: Schema.String, content: Schema.String })),
+)
+
+export const contentsPath = (url: string, ref: string, path: string) => {
+  const [, owner, repo] = new URL(url).pathname.split("/")
+  const file = path.split("/").map(encodeURIComponent).join("/")
+  return `repos/${owner}/${repo}/contents/${file}?ref=${encodeURIComponent(ref)}`
+}
+
 const decodePullRequestHead = Schema.decodeUnknownEffect(Schema.fromJsonString(PullRequestHead))
 
 const decodeOpenPullRequests = Schema.decodeUnknownEffect(
@@ -507,13 +595,23 @@ export class GitHub extends Context.Service<
     ) => Effect.Effect<PullRequest, GitHubError | PullRequestUrlInvalidError | Schema.SchemaError>
     readonly pullRequestDetail: (
       url: string,
+      options?: { readonly fresh?: boolean | undefined },
     ) => Effect.Effect<PullRequestDetail, GitHubError | PullRequestUrlInvalidError | Schema.SchemaError>
     readonly pullRequestDiff: (
       url: string,
     ) => Effect.Effect<string, GitHubError | PullRequestUrlInvalidError | PullRequestDiffTooLargeError>
+    readonly fileContent: (
+      url: string,
+      ref: string,
+      path: string,
+    ) => Effect.Effect<string | null, GitHubError | PullRequestUrlInvalidError | Schema.SchemaError>
     readonly merge: (url: string, method: MergeMethod) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
     readonly close: (url: string) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
     readonly comment: (url: string, body: string) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
+    readonly reviewComment: (
+      url: string,
+      comment: ReviewLineComment,
+    ) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
     readonly branchPullRequest: (
       cwd: string,
       branch: string,
@@ -534,26 +632,36 @@ export class GitHub extends Context.Service<
       branches: { readonly head: string; readonly base: string },
     ) => Effect.Effect<string, GitHubError>
     readonly clone: (repository: GitHubRepository, dest: string) => Effect.Effect<void, CommandError>
+    readonly createRepository: (cwd: string, visibility: RepositoryVisibility) => Effect.Effect<void, GitHubError>
     readonly repository: (cwd: string) => Effect.Effect<GitHubRepository | null>
   }
 >()("hinacode/GitHub") {}
 
 const SIGNED_OUT_EXIT_CODE = 4
+const GH_TIMEOUT = "1 minute"
 
 const RATE_LIMITED = /rate limit/i
 const SECONDARY_PAUSE_MS = 60_000
 const MAX_SECONDARY_PAUSE_MS = 15 * 60_000
 
-const OPEN_PULL_REQUEST_TTL = "30 seconds"
+const OPEN_PULL_REQUEST_TTL = Duration.subtract(PULL_REQUEST_REFRESH, Duration.seconds(10))
 const LOW_BUDGET_PULL_REQUEST_TTL = "5 minutes"
-const FINISHED_PULL_REQUEST_TTL = "10 minutes"
+const FINISHED_PULL_REQUEST_TTL = "1 hour"
+const FRESH_READ_WINDOW = "10 seconds"
+const MERGEABLE_RECHECK = "2 seconds"
+const MERGEABLE_RECHECKS = 5
 
 const make = Effect.gen(function* () {
   const exec = makeExec(yield* ChildProcessSpawner.ChildProcessSpawner)
   const events = yield* Events
+  const layerScope = yield* Effect.scope
 
-  const ghUnpaused = (cwd: string, args: ReadonlyArray<string>, options?: Pick<RunOptions, "okExitCodes">) =>
-    exec("gh", args, cwd, { ...options, env: { GH_PROMPT_DISABLED: "1", NO_COLOR: "1" } }).pipe(
+  const ghUnpaused = (
+    cwd: string,
+    args: ReadonlyArray<string>,
+    options?: Pick<RunOptions, "okExitCodes" | "timeout">,
+  ) =>
+    exec("gh", args, cwd, { timeout: GH_TIMEOUT, ...options, env: { GH_PROMPT_DISABLED: "1", NO_COLOR: "1" } }).pipe(
       Effect.mapError((error): GhError => {
         if (error.exitCode === -1) return new GitHubCliMissingError()
         if (error.exitCode === SIGNED_OUT_EXIT_CODE) return new GitHubSignedOutError()
@@ -615,10 +723,14 @@ const make = Effect.gen(function* () {
     now < pausedUntil ? Effect.fail(new GitHubRateLimitedError({ resetsAt: pausedUntil })) : Effect.void,
   )
 
-  const gh = (cwd: string, args: ReadonlyArray<string>): Effect.Effect<string, GhError> =>
+  const gh = (
+    cwd: string,
+    args: ReadonlyArray<string>,
+    options?: Pick<RunOptions, "timeout">,
+  ): Effect.Effect<string, GhError> =>
     Effect.gen(function* () {
       yield* failIfPaused
-      const stdout = yield* ghUnpaused(cwd, args).pipe(
+      const stdout = yield* ghUnpaused(cwd, args, options).pipe(
         Effect.catchIf(
           (error) => error._tag === "CommandError" && RATE_LIMITED.test(error.stderr),
           () => Effect.flatMap(pause, (resetsAt) => Effect.fail(new GitHubRateLimitedError({ resetsAt }))),
@@ -628,7 +740,9 @@ const make = Effect.gen(function* () {
       return stdout
     })
 
-  const ghApi = (args: ReadonlyArray<string>): Effect.Effect<string, GitHubError> =>
+  const ghApi = (
+    args: ReadonlyArray<string>,
+  ): Effect.Effect<{ readonly body: string; readonly errors: NonNullable<ApiErrorBody["errors"]> }, GitHubError> =>
     Effect.gen(function* () {
       yield* failIfPaused
       // FIXME: gh exits 1 for any error response; the status line and body say which
@@ -651,13 +765,13 @@ const make = Effect.gen(function* () {
           now < pausedUntil ? pausedUntil : pauseFor(now, Number.isFinite(retryAfter) ? retryAfter : undefined)
         return yield* new GitHubRateLimitedError({ resetsAt })
       }
-      if (response.status >= 400 || errors.length > 0) {
+      if (response.status >= 400) {
         return yield* new GitHubApiError({
           detail: errors.map((entry) => entry.message).join("\n") || message || `HTTP ${response.status}`,
         })
       }
       secondaryHits = 0
-      return response.body
+      return { body: response.body, errors }
     })
 
   const auth = gh(homedir(), ["auth", "status", "--json", "hosts"]).pipe(
@@ -688,11 +802,20 @@ const make = Effect.gen(function* () {
       Effect.map((stdout) => stdout.trim().split("\n").at(-1) ?? ""),
     )
 
+  const createRepository = (cwd: string, visibility: RepositoryVisibility) =>
+    gh(cwd, ["repo", "create", "--source", cwd, "--remote", "origin", `--${visibility}`, "--push"], {
+      timeout: LONG_TIMEOUT,
+    }).pipe(Effect.asVoid)
+
   const clone = ({ owner, name }: GitHubRepository, dest: string) => {
     // FIXME: a full https URL keeps gh from switching to a configured ssh git_protocol
     const url = `https://github.com/${owner}/${name}.git`
-    const gitClone = () => exec("git", [...REMOTE_GIT_ARGS, "clone", url, dest], dirname(dest), { env: REMOTE_GIT_ENV })
-    return gh(dirname(dest), ["repo", "clone", url, dest]).pipe(
+    const gitClone = () =>
+      exec("git", [...REMOTE_GIT_ARGS, "clone", url, dest], dirname(dest), {
+        env: REMOTE_GIT_ENV,
+        timeout: LONG_TIMEOUT,
+      })
+    return gh(dirname(dest), ["repo", "clone", url, dest], { timeout: LONG_TIMEOUT }).pipe(
       Effect.catchTags({
         GitHubCliMissingError: gitClone,
         GitHubSignedOutError: gitClone,
@@ -707,29 +830,75 @@ const make = Effect.gen(function* () {
     Effect.flatMap(requirePullRequestUrl(raw), (url) => gh(homedir(), args(url)))
 
   const lastRead = new Map<string, PullRequestDetailFields>()
+  const mergeableRechecks = new Map<string, number>()
 
-  const fetchPullRequest = (url: string) => {
-    const [owner = "", name = "", , number = ""] = new URL(url).pathname.slice(1).split("/")
-    return ghApi([
-      "graphql",
-      "-f",
-      `query=${PULL_REQUEST_QUERY}`,
-      "-f",
-      `owner=${owner}`,
-      "-f",
-      `name=${name}`,
-      "-F",
-      `number=${number}`,
-    ]).pipe(
-      Effect.flatMap(decodePullRequestResponse),
-      Effect.map(({ data }) => fromGraphQL(data.repository.pullRequest)),
+  const fetchPullRequests = (entries: Arr.NonEmptyArray<Request.Entry<PullRequestRead>>) =>
+    Effect.gen(function* () {
+      const variables = entries.flatMap(({ request }, index) => {
+        const [owner = "", name = "", , number = ""] = new URL(request.url).pathname.slice(1).split("/")
+        return ["-f", `owner${index}=${owner}`, "-f", `name${index}=${name}`, "-F", `number${index}=${number}`]
+      })
+      const { body, errors } = yield* ghApi([
+        "graphql",
+        "-f",
+        `query=${pullRequestsQuery(entries.length)}`,
+        ...variables,
+      ])
+      const { data } = yield* decodePullRequestsResponse(body)
+      yield* Effect.forEach(
+        entries,
+        (entry, index) => {
+          const alias = `pr${index}`
+          const pullRequest = data?.[alias]?.pullRequest
+          const detail = errors
+            .filter((error) => error.path === undefined || error.path[0] === alias)
+            .map((error) => error.message)
+            .join("\n")
+          const read: Effect.Effect<PullRequestDetailFields, GitHubApiError | Schema.SchemaError> =
+            pullRequest === undefined || pullRequest === null
+              ? Effect.fail(new GitHubApiError({ detail: detail || "GitHub did not return this pull request" }))
+              : Effect.map(decodeGraphQLPullRequest(pullRequest), fromGraphQL)
+          return Effect.map(Effect.exit(read), (exit) => entry.completeUnsafe(exit))
+        },
+        { discard: true },
+      )
+    })
+
+  const pullRequestReads = RequestResolver.make(fetchPullRequests).pipe(
+    RequestResolver.setDelayEffect(
+      Effect.promise(() => new Promise((resolve) => setTimeout(resolve, BATCH_WINDOW_MS))),
+    ),
+    RequestResolver.batchN(PULL_REQUESTS_PER_QUERY),
+  )
+
+  const announceChange = (url: string, json: PullRequestDetailFields) => {
+    const previous = lastRead.get(url)
+    lastRead.set(url, json)
+    return previous === undefined || isDeepStrictEqual(previous, json)
+      ? Effect.void
+      : events.publish({ type: "github.pullRequest", url })
+  }
+
+  const recheckMergeable = (url: string, json: PullRequestDetailFields) => {
+    if (json.state !== "OPEN" || json.mergeable !== "UNKNOWN") {
+      mergeableRechecks.delete(url)
+      return Effect.void
+    }
+    const rechecks = mergeableRechecks.get(url) ?? 0
+    if (rechecks >= MERGEABLE_RECHECKS) return Effect.void
+    mergeableRechecks.set(url, rechecks + 1)
+    return Effect.sleep(MERGEABLE_RECHECK).pipe(
+      Effect.andThen(reread(url)),
+      Effect.ignore,
+      Effect.forkIn(layerScope),
+      Effect.asVoid,
     )
   }
 
   const reads = yield* Cache.makeWith(
     (url: string) =>
-      fetchPullRequest(url).pipe(
-        Effect.tap((json) => Effect.sync(() => lastRead.set(url, json))),
+      Effect.request(new PullRequestRead({ url }), pullRequestReads).pipe(
+        Effect.tap((json) => Effect.andThen(announceChange(url, json), recheckMergeable(url, json))),
         Effect.catchTag("GitHubRateLimitedError", (error) => {
           const last = lastRead.get(url)
           return last === undefined ? Effect.fail(error) : Effect.succeed(last)
@@ -745,11 +914,41 @@ const make = Effect.gen(function* () {
     },
   )
 
-  const read = (raw: string) => Effect.flatMap(requirePullRequestUrl(raw), (url) => Cache.get(reads, url))
+  function reread(url: string): Effect.Effect<PullRequestDetailFields, GitHubError | Schema.SchemaError> {
+    return Cache.invalidate(reads, url).pipe(Effect.andThen(Cache.get(reads, url)))
+  }
 
-  const ghWrite = (raw: string, args: (url: string) => ReadonlyArray<string>) =>
+  const freshReads = yield* Cache.makeWith((url: string) => Effect.asVoid(reread(url)), {
+    capacity: 1000,
+    timeToLive: (exit) => (Exit.isFailure(exit) ? 0 : FRESH_READ_WINDOW),
+  })
+
+  const read = (raw: string, fresh = false) =>
     Effect.flatMap(requirePullRequestUrl(raw), (url) =>
-      gh(homedir(), args(url)).pipe(Effect.andThen(Cache.invalidate(reads, url)), Effect.asVoid),
+      fresh ? Effect.andThen(Cache.get(freshReads, url), Cache.get(reads, url)) : Cache.get(reads, url),
+    )
+
+  const openInRepository = (url: string) =>
+    Effect.map(Cache.keys(reads), (keys) => {
+      const repository = url.slice(0, url.lastIndexOf("/") + 1)
+      const open = [...keys].filter((key) => key.startsWith(repository) && lastRead.get(key)?.state === "OPEN")
+      return [...new Set([url, ...open])]
+    })
+
+  const ghWrite = (
+    raw: string,
+    args: (url: string) => ReadonlyArray<string>,
+    affected: (url: string) => Effect.Effect<ReadonlyArray<string>> = (url) => Effect.succeed([url]),
+  ) =>
+    Effect.flatMap(requirePullRequestUrl(raw), (url) =>
+      gh(homedir(), args(url)).pipe(
+        Effect.onExit((exit) =>
+          Effect.flatMap(Exit.isSuccess(exit) ? affected(url) : Effect.succeed([url]), (urls) =>
+            Effect.forEach(urls, (each) => Effect.ignore(reread(each)), { concurrency: "unbounded", discard: true }),
+          ),
+        ),
+        Effect.asVoid,
+      ),
     )
 
   const repository = (cwd: string) =>
@@ -765,7 +964,7 @@ const make = Effect.gen(function* () {
     ),
     run: gh,
     pullRequest: (raw) => Effect.map(read(raw), toPullRequest),
-    pullRequestDetail: (raw) => Effect.map(read(raw), toPullRequestDetail),
+    pullRequestDetail: (raw, options) => Effect.map(read(raw, options?.fresh), toPullRequestDetail),
     pullRequestDiff: (raw) =>
       ghByUrl(raw, (url) => ["pr", "diff", url, "--color=never"]).pipe(
         Effect.catchIf(
@@ -773,9 +972,15 @@ const make = Effect.gen(function* () {
           () => Effect.fail(new PullRequestDiffTooLargeError()),
         ),
       ),
-    merge: (raw, method) => ghWrite(raw, (url) => ["pr", "merge", url, `--${method}`]),
+    fileContent: (raw, ref, path) =>
+      ghByUrl(raw, (url) => ["api", contentsPath(url, ref, path)]).pipe(
+        Effect.flatMap(decodeContents),
+        Effect.map(({ encoding, content }) => (encoding === "base64" ? content.replaceAll("\n", "") : null)),
+      ),
+    merge: (raw, method) => ghWrite(raw, (url) => ["pr", "merge", url, `--${method}`], openInRepository),
     close: (raw) => ghWrite(raw, (url) => ["pr", "close", url]),
     comment: (raw, body) => ghWrite(raw, (url) => ["pr", "comment", url, "--body", body]),
+    reviewComment: (raw, comment) => ghWrite(raw, (url) => reviewCommentArgs(url, comment)),
     branchPullRequest,
     pullRequestHead: (cwd, selector) =>
       gh(cwd, ["pr", "view", selector, "--json", "url,number,headRefName,baseRefName,isCrossRepository"]).pipe(
@@ -821,6 +1026,7 @@ const make = Effect.gen(function* () {
       ),
     createPullRequest,
     clone,
+    createRepository,
     repository,
   })
 })

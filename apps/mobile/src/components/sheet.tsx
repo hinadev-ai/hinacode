@@ -1,18 +1,27 @@
 import type { ReactNode } from "react"
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native"
-import Animated, { SlideInDown } from "react-native-reanimated"
+import {
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  type StyleProp,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+  type ViewStyle,
+} from "react-native"
+import Animated from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon, type IconName } from "@/components/icon"
 import { IconButton } from "@/components/ui"
-import { duration, ease } from "@/constants/motion"
-import { Colors, HIT, mono, radius } from "@/constants/theme"
+import { sheetEntering } from "@/constants/motion"
+import { HIT, mono, radius, subheading } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 
 const SHEET_PADDING = 8
 const SHEET_MAX_WIDTH = 640
-
-const rise = SlideInDown.duration(duration.sheet).easing(ease.drawer)
 
 /**
  * A sheet with a title and a close button, full height by default or as tall as its content with `fit`. The scrim
@@ -56,11 +65,11 @@ export function Sheet({
           accessibilityRole="button"
           accessibilityLabel={copy("mobile_sheet_close")}
           onPress={onClose}
-          style={[StyleSheet.absoluteFill, styles.backdrop]}
+          style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim }]}
         />
         {!fullScreen && <View pointerEvents="none" style={fit ? styles.fill : { height: insets.top + 12 }} />}
         <Animated.View
-          entering={rise}
+          entering={sheetEntering}
           accessibilityViewIsModal
           style={[
             styles.sheet,
@@ -68,16 +77,16 @@ export function Sheet({
             fullScreen && { ...styles.fullScreen, paddingTop: insets.top },
             {
               paddingBottom: SHEET_PADDING + insets.bottom,
-              backgroundColor: theme.background,
+              backgroundColor: theme.sheet,
               borderColor: theme.border,
             },
           ]}
         >
           <View style={styles.sheetHeader}>
-            <Text accessibilityRole="header" style={[styles.sheetTitle, { color: theme.text }]}>
+            <Text accessibilityRole="header" {...subheading} style={[styles.sheetTitle, { color: theme.text }]}>
               {title}
             </Text>
-            <IconButton icon="RiCloseLine" accessibilityLabel={copy("mobile_sheet_close")} onPress={onClose} />
+            <IconButton icon="Close" accessibilityLabel={copy("mobile_sheet_close")} onPress={onClose} />
           </View>
           {header}
           <ScrollView
@@ -93,10 +102,19 @@ export function Sheet({
   )
 }
 
-export function Section({ title, children }: { title: string; children: ReactNode }) {
+export function Section({
+  title,
+  role = "radiogroup",
+  children,
+}: {
+  title: string
+  /** `group` for a section of switches, which are not one choice among several. */
+  role?: "radiogroup" | "group"
+  children: ReactNode
+}) {
   const theme = useTheme()
   return (
-    <View accessibilityRole="radiogroup" accessibilityLabel={title} style={styles.section}>
+    <View role={role} accessibilityLabel={title} style={styles.section}>
       <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>{title}</Text>
       {children}
     </View>
@@ -111,6 +129,7 @@ export function OptionRow({
   monospace = false,
   selected,
   disabled = false,
+  style,
   onPress,
 }: {
   label: string
@@ -120,6 +139,7 @@ export function OptionRow({
   monospace?: boolean
   selected: boolean
   disabled?: boolean
+  style?: StyleProp<ViewStyle>
   onPress: () => void
 }) {
   const theme = useTheme()
@@ -129,10 +149,11 @@ export function OptionRow({
       accessibilityRole="radio"
       accessibilityLabel={label}
       accessibilityHint={hint}
-      accessibilityState={{ checked: selected, disabled }}
+      aria-checked={selected}
+      aria-disabled={disabled}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.option, (pressed || selected) && { backgroundColor: theme.surface }]}
+      style={({ pressed }) => [styles.option, style, (pressed || selected) && { backgroundColor: theme.sheetRaised }]}
     >
       {icon !== undefined && <Icon name={icon} size={18} color={foreground} />}
       <View style={styles.optionText}>
@@ -148,7 +169,7 @@ export function OptionRow({
           </Text>
         )}
       </View>
-      {selected && <Icon name="RiCheckLine" size={18} color={theme.text} />}
+      {selected && <Icon name="Check" size={18} color={theme.text} />}
     </Pressable>
   )
 }
@@ -171,8 +192,6 @@ export const sheetStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   ...sheetStyles,
-  // The scrim is dark in both themes, so it borrows the dark palette's background.
-  backdrop: { backgroundColor: Colors.dark.background, opacity: 0.5 },
   fill: { flex: 1 },
   fitSheet: { maxHeight: "85%" },
   fitScroll: { flexGrow: 0 },

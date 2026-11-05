@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from "electro
 import { Effect, type ManagedRuntime } from "effect"
 import { EVENT_CHANNEL, RPC_CHANNEL } from "../shared/channels.ts"
 import type { PushEvent, RpcEnvelope } from "../shared/contract.ts"
+import { exportArtifact } from "./artifactExport.ts"
 import { route } from "./environments/route.ts"
 import { askNotificationPermission, notificationPermission } from "./notificationPermission.ts"
 import type { AppServices, DesktopCalls } from "./rpc.ts"
@@ -19,11 +20,14 @@ export const bringToFront = (window: BrowserWindow) => {
 const showOpenDialog = (window: BrowserWindow | null, options: Electron.OpenDialogOptions) =>
   Effect.promise(() => (window ? dialog.showOpenDialog(window, options) : dialog.showOpenDialog(options)))
 
-const desktopCalls = (window: BrowserWindow | null): DesktopCalls => ({
+export type OpenPullRequestWindow = (threadId: string, url: string) => void
+
+const desktopCalls = (window: BrowserWindow | null, openPullRequestWindow: OpenPullRequestWindow): DesktopCalls => ({
   show: Effect.sync(() => window?.show()),
   focus: Effect.sync(() => {
     if (window) bringToFront(window)
   }),
+  openPullRequestWindow: (threadId, url) => Effect.sync(() => openPullRequestWindow(threadId, url)),
   setBadgeCount: (count) => Effect.sync(() => app.setBadgeCount(count)),
   setColorScheme: (scheme) =>
     Effect.sync(() => {
@@ -46,6 +50,11 @@ const desktopCalls = (window: BrowserWindow | null): DesktopCalls => ({
   pickFiles: Effect.map(showOpenDialog(window, { properties: ["openFile", "multiSelections"] }), (result) =>
     result.canceled ? [] : result.filePaths,
   ),
+  exportArtifact: (request) =>
+    Effect.tryPromise({
+      try: () => exportArtifact(window, request),
+      catch: (cause) => ({ _tag: "ExportFailed", message: cause instanceof Error ? cause.message : String(cause) }),
+    }),
   notificationPermission,
   askNotificationPermission,
   screenOwner: window?.webContents ?? null,
@@ -55,10 +64,14 @@ const untrustedSender: RpcEnvelope<never> = {
   error: { tag: "UntrustedSender", message: "RPC is only available to the HinaCode window" },
 }
 
-export const registerIpc = (runtime: ManagedRuntime.ManagedRuntime<AppServices, unknown>, appUrl: string) => {
+export const registerIpc = (
+  runtime: ManagedRuntime.ManagedRuntime<AppServices, unknown>,
+  appUrl: string,
+  openPullRequestWindow: OpenPullRequestWindow,
+) => {
   ipcMain.handle(RPC_CHANNEL, (event, raw: unknown) =>
     isTrustedSender(event.senderFrame, appUrl)
-      ? runtime.runPromise(route(raw, desktopCalls(BrowserWindow.fromWebContents(event.sender))))
+      ? runtime.runPromise(route(raw, desktopCalls(BrowserWindow.fromWebContents(event.sender), openPullRequestWindow)))
       : Promise.resolve(untrustedSender),
   )
 }

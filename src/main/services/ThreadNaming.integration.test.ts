@@ -12,6 +12,7 @@ import type { CheckoutTarget } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
+import { OpencodeProvider } from "../agents/opencode/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { McpCredentials, layer as credentialsLayer } from "../mcp/credentials.ts"
@@ -59,7 +60,7 @@ const provider = (id: AgentProvider["id"]): AgentProvider => ({
   runTurn: () => Stream.fromIterable<AgentEvent>([{ type: "turn_completed" }]),
   steer: () => Effect.void,
   interrupt: () => Effect.void,
-  respondApproval: () => Effect.void,
+  respondApproval: () => Effect.succeed(false),
   respondQuestion: () => Effect.void,
   setAccessMode: () => Effect.void,
 })
@@ -130,6 +131,7 @@ const makeLayer = (dbPath: string, pushes: PubSub.PubSub<PushEvent>, named: Defe
         Layer.succeed(ClaudeProvider, provider("claude")),
         Layer.succeed(CodexProvider, provider("codex")),
         Layer.succeed(MuseProvider, provider("muse")),
+        Layer.succeed(OpencodeProvider, provider("opencode")),
         Layer.succeed(Events, { publish: (event) => Effect.asVoid(PubSub.publish(pushes, event)) }),
       ),
     ),

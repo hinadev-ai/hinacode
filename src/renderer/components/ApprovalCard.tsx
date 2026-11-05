@@ -1,16 +1,23 @@
-import { startTransition, useActionState } from "react"
-import { RiShieldCheckLine } from "react-icons/ri"
+import { type KeyboardEvent, startTransition, useActionState, useState } from "react"
 import type { ApprovalDecision, ApprovalRequest, SessionScope } from "../../shared/agent.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
+import { Input } from "./ui/input.tsx"
 import { errorMessage } from "../lib/errorMessage.ts"
+import { ShieldIcon } from "@hinacode/icons"
 
 export function ApprovalCard({ request, providerLabel }: { request: ApprovalRequest; providerLabel: string }) {
+  const [note, setNote] = useState("")
   const [error, respond, isPending] = useActionState(async (_: string | null, decision: ApprovalDecision) => {
     try {
-      await callPromise("approvals.respond", { requestId: request.id, decision })
+      const trimmed = note.trim()
+      await callPromise("approvals.respond", {
+        requestId: request.id,
+        decision,
+        ...(trimmed !== "" && { note: trimmed }),
+      })
       return null
     } catch (cause) {
       return errorMessage(cause)
@@ -18,13 +25,19 @@ export function ApprovalCard({ request, providerLabel }: { request: ApprovalRequ
   }, null)
   const choose = (decision: ApprovalDecision) => () => startTransition(() => respond(decision))
 
+  const onNoteKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== "Enter" || event.nativeEvent.isComposing || note.trim() === "") return
+    event.preventDefault()
+    choose("deny")()
+  }
+
   return (
     <section
       aria-labelledby={`approval-${request.id}`}
       className="mx-auto mb-2 flex w-full max-w-3xl flex-col gap-2 rounded-xl border border-attention/40 bg-attention/5 p-3 transition-[opacity,translate] duration-200 ease-out starting:opacity-0 motion-safe:starting:translate-y-1"
     >
       <h2 id={`approval-${request.id}`} className="flex items-center gap-2 text-sm font-semibold">
-        <RiShieldCheckLine aria-hidden className="size-4 text-attention" />
+        <ShieldIcon aria-hidden className="size-4 text-attention" />
         {m.approval_title({ provider: providerLabel })}
       </h2>
       <p className="text-sm">{request.title}</p>
@@ -32,6 +45,15 @@ export function ApprovalCard({ request, providerLabel }: { request: ApprovalRequ
         {request.detail}
       </pre>
       {request.sessionScope && <SessionScopeNote scope={request.sessionScope} />}
+      <Input
+        aria-label={m.approval_note_label()}
+        placeholder={m.approval_note_placeholder()}
+        value={note}
+        onChange={(event) => setNote(event.target.value)}
+        onKeyDown={onNoteKeyDown}
+        disabled={isPending}
+        autoComplete="off"
+      />
       <div className="flex flex-wrap gap-2">
         <Button size="sm" disabled={isPending} onClick={choose("allow")}>
           {m.approval_allow()}

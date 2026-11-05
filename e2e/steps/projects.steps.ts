@@ -51,6 +51,19 @@ Given(
 )
 
 Given(
+  "the project {string} has {int} archived threads named {string}",
+  async ({ app, seed, names, projectIds, threadIds }, project: string, count: number, prefix: string) => {
+    const projectId = projectIds.get(project)
+    if (!projectId) throw new Error(`no seeded project named ${project}`)
+    for (let n = 1; n <= count; n++) {
+      const title = `${prefix} ${n}`
+      threadIds.set(title, seed.thread({ projectId, title: names.of(title), status: "archived" }))
+    }
+    await app.reload()
+  },
+)
+
+Given(
   "another project {string} has a thread {string}",
   async ({ app, seed, names, projectIds, threadIds }, project: string, title: string) => {
     const rootPath = join(app.userData, "repos", names.of(project))

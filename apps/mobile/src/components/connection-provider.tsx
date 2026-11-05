@@ -20,6 +20,7 @@ import { isTranscriptPush, useMessages } from "@/stores/messages"
 import { usePreferences } from "@/stores/preferences"
 import { usePullRequests } from "@/stores/pull-requests"
 import { useRelayAccount } from "@/stores/relay-account"
+import { useSubagents } from "@/stores/subagents"
 import { useThreads } from "@/stores/threads"
 
 /** Adds a server, or updates the one this pairing reaches again. Returns its id. */
@@ -110,10 +111,12 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     () =>
       onEvent((event) => {
         if (isTranscriptPush(event)) useMessages.getState().receive(event)
-        else if (event.type === "thread.updated") useThreads.getState().upsert(event.thread)
+        else if (event.type === "thread.updated" && event.thread.sideOf === null)
+          useThreads.getState().upsert(event.thread)
         else if (event.type === "thread.removed") useThreads.getState().remove(event.id)
         else if (event.type === "worktree.updated") useThreads.getState().upsertWorktree(event.worktree)
         else if (event.type === "thread.pullRequests") usePullRequests.getState().replace(event.threadId, event.links)
+        else if (event.type === "thread.subagents") useSubagents.getState().replace(event.threadId, event.subagents)
       }),
     [],
   )
@@ -123,9 +126,16 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     void useThreads.getState().load()
     void usePullRequests.getState().load()
     useMessages.getState().reload()
+    useSubagents.getState().reload()
   }, [generation])
 
-  useEffect(() => () => useMessages.getState().reset(), [paired])
+  useEffect(
+    () => () => {
+      useMessages.getState().reset()
+      useSubagents.getState().reset()
+    },
+    [paired],
+  )
 
   return restored ? children : null
 }

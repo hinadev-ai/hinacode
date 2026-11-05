@@ -1,18 +1,31 @@
 import { spawn } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { readFile } from "node:fs/promises"
-import {
-  type AccountInfo,
-  type EffortLevel,
-  type PermissionMode,
-  query,
-  type Options,
-  type Query,
-  type SDKControlGetContextUsageResponse,
-  type SDKMessage,
-  type SDKUserMessage,
+import type {
+  AccountInfo,
+  EffortLevel,
+  PermissionMode,
+  Options,
+  Query,
+  SDKControlGetContextUsageResponse,
+  SDKMessage,
+  SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk"
-import { Cache, Cause, Clock, Context, Duration, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect"
+import {
+  Cache,
+  Cause,
+  Clock,
+  Context,
+  Duration,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Queue,
+  Schema,
+  Semaphore,
+  Stream,
+} from "effect"
 import {
   type AccountHome,
   type AgentAccount,
@@ -23,11 +36,20 @@ import {
   type ModelInfo,
   type RunTurnInput,
 } from "../../../shared/agent.ts"
+import { AGENT_IMAGE_MAX_BYTES, AGENT_IMAGE_TYPES } from "../../../shared/agentImages.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { nowIso } from "../../services/clock.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
 import { installedBinary } from "../binary.ts"
-import { AgentError, type AgentProvider, type BackgroundTasksChange, type Wake } from "../provider.ts"
+import {
+  AgentError,
+  type AgentProvider,
+  type BackgroundTasksChange,
+  type SessionInput,
+  type SteerPriority,
+  type Wake,
+  tmpEnv,
+} from "../provider.ts"
 import { perHome } from "../usage.ts"
 import { permissionMode } from "./access.ts"
 import { type ApprovalSession, makeApprovals } from "./approvals.ts"
@@ -47,6 +69,7 @@ import { hinacodeMcpServer } from "./mcp.ts"
 import { attachmentContext } from "../elementContext.ts"
 import { makeQuestions, QUESTION_TOOL } from "./questions.ts"
 import { claudeHome, copyTranscripts, makeTranscriptUsage } from "./transcripts.ts"
+import { listClaudeSessions, readClaudeSession } from "./sessions.ts"
 
 export class ClaudeProvider extends Context.Service<ClaudeProvider, AgentProvider>()(
   "hinacode/agents/ClaudeProvider",
@@ -229,19 +252,16 @@ const copySession = (sessionId: string, from: AccountHome | null, to: AccountHom
     ),
   )
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024
-
 type ContentBlock = Exclude<SDKUserMessage["message"]["content"], string>[number]
 type ImageMediaType = Extract<Extract<ContentBlock, { type: "image" }>["source"], { type: "base64" }>["media_type"]
 
-const IMAGE_MEDIA_TYPES: ReadonlyArray<string> = ["image/png", "image/jpeg", "image/gif", "image/webp"]
-const isImageMediaType = (mime: string): mime is ImageMediaType => IMAGE_MEDIA_TYPES.includes(mime)
+const isImageMediaType = (mime: string): mime is ImageMediaType => AGENT_IMAGE_TYPES.includes(mime)
 
 const attachmentBlocks = (attachment: Attachment) =>
   Effect.gen(function* () {
     const fileBlock: ContentBlock = { type: "text", text: `Attached file: ${attachment.path}` }
     if (attachment.kind !== "image" || !isImageMediaType(attachment.mime)) return [fileBlock]
-    if (attachment.bytes > MAX_IMAGE_BYTES) {
+    if (attachment.bytes > AGENT_IMAGE_MAX_BYTES) {
       return yield* new AgentError({
         provider: "claude",
         message: `${attachment.name} is larger than 5 MB, the limit for images sent to Claude`,
@@ -296,6 +316,7 @@ const probe = <A>(
   Effect.gen(function* () {
     const prompts = yield* Queue.unbounded<SDKUserMessage>()
     const base = yield* baseOptions(home)
+    const { query } = yield* Effect.promise(() => import("@anthropic-ai/claude-agent-sdk"))
     const cli = query({
       prompt: Stream.toAsyncIterable(Stream.fromQueue(prompts)),
       options: { ...base, settingSources: [], persistSession: false, ...options },
@@ -343,6 +364,7 @@ export const layer = Layer.effect(
     const layerScope = yield* Effect.scope
     const sessions = new Map<string, Session>()
     const resumable = new Map<string, Resumable>()
+    const sessionLocks = new Map<string, Semaphore.Semaphore>()
     const wakes = yield* Queue.unbounded<Wake>()
     const backgroundTaskChanges = yield* Queue.unbounded<BackgroundTasksChange>()
     const probedCommands = yield* Cache.make({
@@ -351,7 +373,7 @@ export const layer = Layer.effect(
       timeToLive: Duration.minutes(1),
     })
 
-    const skillOverrides = (input: RunTurnInput) =>
+    const skillOverrides = (input: SessionInput) =>
       input.userSkills
         ? Effect.succeed(null)
         : Cache.get(probedCommands, commandsKey(input.cwd, input.home)).pipe(Effect.map(hideUserCommands))
@@ -575,7 +597,7 @@ export const layer = Layer.effect(
           )
         : Effect.succeed(permissionMode(accessMode, false))
 
-    const startSession = (input: RunTurnInput, mode: PermissionMode) =>
+    const startSession = (input: SessionInput, mode: PermissionMode) =>
       Effect.gen(function* () {
         const prompts = yield* Queue.unbounded<SDKUserMessage>()
         const abort = new AbortController()
@@ -585,6 +607,7 @@ export const layer = Layer.effect(
         const base = yield* baseOptions(input.home)
         const hidden = yield* skillOverrides(input)
         const effort = effortLevelOf(input.effort)
+        const { query } = yield* Effect.promise(() => import("@anthropic-ai/claude-agent-sdk"))
         const handle = yield* Effect.try({
           try: () =>
             query({
@@ -592,7 +615,7 @@ export const layer = Layer.effect(
               options: {
                 ...base,
                 // FIXME: session_state_changed idle is the CLI's only signal that background sub-agents are done
-                env: { ...base.env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" },
+                env: { ...base.env, ...tmpEnv(input.tmpDirectory), CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" },
                 cwd: input.cwd,
                 model: input.model,
                 ...(effort === null ? {} : { effort }),
@@ -621,7 +644,10 @@ export const layer = Layer.effect(
                 // FIXME: the SDK never reads stderr from a custom spawn, and an unread pipe would block the CLI
                 spawnClaudeCodeProcess: ({ command, args, cwd, env, signal }) => {
                   const child = spawn(command, args, { cwd, env, signal, stdio: ["pipe", "pipe", "ignore"] })
-                  if (child.pid !== undefined) child.once("exit", registerAgentPid(input.threadId, child.pid))
+                  child.once(
+                    "exit",
+                    registerAgentPid(input.threadId, () => child.pid),
+                  )
                   return child
                 },
               },
@@ -647,6 +673,7 @@ export const layer = Layer.effect(
           pendingEdits: new Map(),
           limitMessage: null,
           limitResetAt: null,
+          signedOut: false,
           subagents: new Map(),
           lastRequest: null,
           sessionId: resume ?? null,
@@ -672,7 +699,15 @@ export const layer = Layer.effect(
         return session
       })
 
-    const acquireSession = (input: RunTurnInput, mode: PermissionMode) =>
+    const lockedSession =
+      (threadId: string) =>
+      <A, E>(effect: Effect.Effect<A, E>) => {
+        let lock = sessionLocks.get(threadId)
+        if (lock === undefined) sessionLocks.set(threadId, (lock = Semaphore.makeUnsafe(1)))
+        return Semaphore.withPermit(lock, effect)
+      }
+
+    const reuseOrStartSession = (input: SessionInput, mode: PermissionMode) =>
       Effect.gen(function* () {
         const existing = sessions.get(input.threadId)
         if (existing !== undefined) {
@@ -687,6 +722,18 @@ export const layer = Layer.effect(
         }
         return yield* startSession(input, mode)
       })
+
+    const acquireSession = (input: SessionInput, mode: PermissionMode) =>
+      reuseOrStartSession(input, mode).pipe(lockedSession(input.threadId))
+
+    const warm = (input: SessionInput) =>
+      Effect.flatMap(permissionModeFor(input.accessMode, input.model), (mode) =>
+        Effect.suspend(() => {
+          const existing = sessions.get(input.threadId)
+          if (existing !== undefined && (!isIdle(existing) || existing.wakeup !== null)) return Effect.void
+          return Effect.acquireUseRelease(reuseOrStartSession(input, mode), () => Effect.void, release)
+        }).pipe(lockedSession(input.threadId)),
+      )
 
     const interruptQuery = (session: Session) =>
       Effect.suspend(() => {
@@ -792,9 +839,9 @@ export const layer = Layer.effect(
         ),
       )
 
-    const steer = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>) =>
+    const steer = (threadId: string, text: string, attachments: ReadonlyArray<Attachment>, priority: SteerPriority) =>
       Effect.gen(function* () {
-        const message = yield* userMessage(text, attachments, "now")
+        const message = yield* userMessage(text, attachments, priority)
         const session = sessions.get(threadId)
         if (session?.turn == null) {
           return yield* new AgentError({ provider: "claude", message: "No turn is running on this thread" })
@@ -837,6 +884,18 @@ export const layer = Layer.effect(
         catch: agentError("Failed to read Claude transcripts"),
       })
 
+    const listSessions = (cwd: string, home: AccountHome | null) =>
+      Effect.tryPromise({
+        try: () => listClaudeSessions(home?.dir ?? claudeHome(), cwd),
+        catch: agentError("Failed to list Claude sessions"),
+      })
+
+    const readSession = (sessionId: string, cwd: string, home: AccountHome | null) =>
+      Effect.tryPromise({
+        try: () => readClaudeSession(home?.dir ?? claudeHome(), cwd, sessionId),
+        catch: agentError("Failed to read the Claude session"),
+      })
+
     const listCommands = ({
       threadId,
       cwd,
@@ -867,8 +926,11 @@ export const layer = Layer.effect(
       planLimits,
       usage,
       copySession,
+      listSessions,
+      readSession,
       listCommands,
       runTurn,
+      warm,
       wakes: Stream.fromQueue(wakes),
       backgroundTasks: {
         changes: Stream.fromQueue(backgroundTaskChanges),
@@ -880,6 +942,17 @@ export const layer = Layer.effect(
               Effect.tryPromise({
                 try: () => leased.query.stopTask(taskId),
                 catch: agentError("Failed to stop the background task"),
+              }),
+            )
+          }),
+        moveCommand: (threadId, callId) =>
+          Effect.suspend(() => {
+            const session = sessions.get(threadId)
+            if (session === undefined) return Effect.succeed(false)
+            return lease(session, (leased) =>
+              Effect.tryPromise({
+                try: () => leased.query.backgroundTasks(callId),
+                catch: agentError("Failed to move the command to the background"),
               }),
             )
           }),

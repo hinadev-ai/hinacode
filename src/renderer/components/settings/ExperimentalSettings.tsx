@@ -1,7 +1,6 @@
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { useEffect, useState } from "react"
-import { RiCheckboxCircleFill } from "react-icons/ri"
 import type {
   BoatVmSize,
   ExperimentalSettings as ExperimentalSettingsValue,
@@ -23,6 +22,7 @@ import { VmTemplateSelect } from "../sidePanel/TinyVmView.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { SecretField } from "./IntegrationSettings.tsx"
 import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
+import { CheckCircleFillIcon } from "@hinacode/icons"
 
 const BOAT_SIZES: ReadonlyArray<BoatVmSize> = ["small", "default", "large", "xlarge"]
 const isBoatSize = (value: string): value is BoatVmSize => BOAT_SIZES.some((size) => size === value)
@@ -141,13 +141,6 @@ function SbxVmFields({
         checked={experimental.tinyVmProfile}
         onCheckedChange={(checked) => void setExperimental({ tinyVmProfile: checked })}
       />
-      <VmSwitchField
-        id="settings-experimental-tiny-vm-passkeys"
-        label={m.settings_tiny_vm_passkeys()}
-        hint={m.settings_tiny_vm_passkeys_hint()}
-        checked={experimental.tinyVmPasskeys}
-        onCheckedChange={(checked) => void setExperimental({ tinyVmPasskeys: checked })}
-      />
     </>
   )
 }
@@ -221,7 +214,7 @@ function VmProviderField({ value, onChange }: { value: VmProvider; onChange: (pr
         value={value}
         onValueChange={(next) => typeof next === "string" && isVmProvider(next) && onChange(next)}
       >
-        <SelectTrigger id="settings-experimental-tiny-vm-provider" className="w-full">
+        <SelectTrigger id="settings-experimental-tiny-vm-provider">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -378,7 +371,7 @@ function HostStatus({ status }: { status: VmHostStatus }) {
     case "connected":
       return (
         <>
-          <RiCheckboxCircleFill aria-hidden className="size-4 text-success" />
+          <CheckCircleFillIcon aria-hidden className="size-4 text-success" />
           {status.provider === "boat"
             ? m.settings_tiny_vm_boat_connected({
                 sandboxes: String(status.sandboxes),

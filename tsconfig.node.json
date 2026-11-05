@@ -8,8 +8,11 @@
   "include": [
     "electron.vite.config.ts",
     "vite.server.config.ts",
+    "vite.paraglide.ts",
+    "vitest.global-setup.ts",
     "src/main/**/*",
     "src/preload/**/*",
-    "src/shared/**/*"
+    "src/shared/**/*",
+    "src/cli/**/*"
   ]
 }

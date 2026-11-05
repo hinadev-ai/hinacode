@@ -3,7 +3,7 @@ import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { type KeyboardEvent, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
-import { RiAddLine, RiAndroidLine, RiAppleLine, RiCloseLine, RiErrorWarningLine, RiLoader4Line } from "react-icons/ri"
+import { RiAndroidLine, RiAppleLine } from "react-icons/ri"
 import {
   devicePlatformOf,
   type ThreadDevice,
@@ -25,6 +25,7 @@ import {
 } from "../../../stores/deviceTabs.ts"
 import { Button } from "../../ui/button.tsx"
 import { DeleteDeviceDialog } from "./DeleteDeviceDialog.tsx"
+import { CloseIcon, PlusIcon, SpinnerIcon, WarningIcon } from "@hinacode/icons"
 
 const NO_DEVICES: ThreadDevices = []
 
@@ -97,7 +98,7 @@ export function DeviceTabStrip({ thread }: { thread: Thread }) {
           role="tablist"
           aria-label={m.devices_tabs()}
           onKeyDown={onKeyDown}
-          className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]"
+          className="flex min-w-0 scrollbar-none items-center gap-1 overflow-x-auto"
         >
           {devices.map((entry, index) => (
             <DeviceTab
@@ -120,7 +121,7 @@ export function DeviceTabStrip({ thread }: { thread: Thread }) {
         title={m.devices_add()}
         onClick={() => select(DEVICE_LIST_TAB)}
       >
-        <RiAddLine aria-hidden />
+        <PlusIcon aria-hidden />
       </Button>
       <DeleteDeviceDialog
         device={deleting && { name: threadDeviceName(deleting), platform: platformOf(deleting), owned: true }}
@@ -168,12 +169,12 @@ function DeviceTab({ threadId, entry, selected, focusable, onSelect, onClose }: 
         onAuxClick={(event) => {
           if (event.button === 1) onClose()
         }}
-        className="pressable flex h-full min-w-0 flex-1 items-center gap-2 rounded-md pr-7 pl-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md pr-7 pl-2.5 text-sm pressable outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
       >
         {entry.phase === "preparing" ? (
-          <RiLoader4Line aria-hidden className="size-4 shrink-0 animate-spin motion-reduce:animate-none" />
+          <SpinnerIcon aria-hidden className="size-4 shrink-0 animate-spin motion-reduce:animate-none" />
         ) : entry.phase === "failed" ? (
-          <RiErrorWarningLine aria-hidden className="size-4 shrink-0 text-destructive" />
+          <WarningIcon aria-hidden className="size-4 shrink-0 text-destructive" />
         ) : (
           <PlatformIcon aria-hidden className="size-4 shrink-0" />
         )}
@@ -190,7 +191,7 @@ function DeviceTab({ threadId, entry, selected, focusable, onSelect, onClose }: 
           !selected && "invisible group-hover:visible",
         )}
       >
-        <RiCloseLine aria-hidden className="size-3.5" />
+        <CloseIcon aria-hidden className="size-3.5" />
       </button>
     </div>
   )

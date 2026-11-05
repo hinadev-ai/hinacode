@@ -1,23 +1,31 @@
 ---
-import { messages, type Locale } from "../i18n"
+import { RiArrowDownLine } from "react-icons/ri"
+import { translator, type Locale } from "../i18n.ts"
+import { RELEASES_URL } from "../links.ts"
+
 interface Props {
   locale: Locale
+  size?: "sm" | "lg"
+  class?: string
 }
-const { locale } = Astro.props
-const t = messages(locale)
+
+const { locale, size = "lg", class: className } = Astro.props
+const t = translator(locale)
 ---
 
-<a class="btn btn-primary" href="https://github.com/hinadev-ai/hinacode/releases/latest" data-download>
-  <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <path
-      d="M8 2.5v8m0 0L4.75 7.25M8 10.5l3.25-3.25M3 13.5h10"
-      stroke="currentColor"
-      stroke-width="1.5"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    />
-  </svg>
-  <span data-download-label data-linux-label={t.site_download_linux}>
-    {t.site_download_macos}
-  </span>
+<a
+  href={RELEASES_URL}
+  data-download={size === "lg" ? "platform" : "generic"}
+  data-mac={t("site_download_macos")}
+  data-windows={t("site_download_windows")}
+  data-linux={t("site_download_linux")}
+  data-other={t("site_download")}
+  class:list={[
+    "pressable inline-flex items-center justify-center gap-2 rounded-full bg-coral-deep font-medium whitespace-nowrap text-paper shadow-[inset_0_1px_0_oklch(1_0_0/0.18),0_1px_2px_oklch(0.4_0.1_34/0.3)] hover:bg-coral-deeper focus-visible:outline-2 focus-visible:outline-offset-2",
+    size === "lg" ? "h-11 ps-4.5 pe-5 text-[15px]" : "h-8 px-3.5 text-[13px]",
+    className,
+  ]}
+>
+  {size === "lg" && <RiArrowDownLine aria-hidden="true" className="size-4" />}
+  <span data-download-label>{size === "lg" ? t("site_download_macos") : t("site_download")}</span>
 </a>

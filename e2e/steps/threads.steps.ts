@@ -1,24 +1,38 @@
 import { expect, type Locator, type Page } from "@playwright/test"
 import { type Names, Then, When } from "../support/fixtures.ts"
 import { rpc } from "../support/rpc.ts"
-import { sidebar, threadMenu } from "../support/ui.ts"
+import { clickRowButton, composerText, sidebar, threadMenu } from "../support/ui.ts"
 
 When("I start a new thread in {string}", async ({ app, names }, project: string) => {
   await app.page.getByRole("button", { name: `New thread in ${names.of(project)}`, exact: true }).click()
 })
 
-const placeholderTitle = /^thread-[0-9a-f]{5}$/
+const composer = (page: Page) => page.getByRole("combobox", { name: "Message", exact: true })
+
+const openThread = async (page: Page) => {
+  const location = await page.evaluate(() => localStorage.getItem("hinacode.location"))
+  const id = location?.match(/^\/thread\/([^/?]+)/)?.[1]
+  const threads = await rpc(page, "threads.list", undefined)
+  return threads.find((thread) => thread.id === id)
+}
 
 Then("a new thread is open with the composer focused", async ({ app }) => {
-  await expect(app.page.getByRole("heading", { level: 1, name: placeholderTitle })).toBeVisible()
-  await expect(app.page.getByLabel("Message", { exact: true })).toBeFocused()
+  await expect(app.page.getByRole("heading", { level: 1, name: "New thread", exact: true })).toBeVisible()
+  await expect(composer(app.page)).toBeFocused()
 })
 
-Then("the sidebar lists the open thread", async ({ app }) => {
-  const title = await app.page.getByRole("heading", { level: 1, name: placeholderTitle }).textContent()
-  await expect(
-    app.page.getByRole("navigation", { name: "Projects and threads" }).getByRole("link", { name: title ?? "" }),
-  ).toBeVisible()
+Then("the sidebar does not list the open draft", async ({ app }) => {
+  const draft = await openThread(app.page)
+  expect(draft?.status).toBe("draft")
+  await expect(sidebar(app.page).getByRole("link", { name: draft?.title ?? "", exact: true })).toHaveCount(0)
+})
+
+When("I type {string} into the composer", async ({ app }, text: string) => {
+  await composer(app.page).pressSequentially(text)
+})
+
+Then("the composer holds {string}", async ({ app }, text: string) => {
+  await expect.poll(() => composerText(composer(app.page))).toBe(text)
 })
 
 When("I open the thread {string} from the sidebar", async ({ app, names }, title: string) => {
@@ -66,9 +80,7 @@ When("I scroll the sidebar to the thread {string}", async ({ app, names }, title
 })
 
 When("I archive the thread {string} from its row", async ({ app, names }, title: string) => {
-  const archive = sidebar(app.page).getByRole("button", { name: `Archive ${names.of(title)}`, exact: true })
-  await archive.locator("xpath=ancestor::li[1]").hover()
-  await archive.click()
+  await clickRowButton(sidebar(app.page), `Archive ${names.of(title)}`)
 })
 
 Then("the thread {string} is in view in the sidebar", async ({ app, names }, title: string) => {
@@ -80,10 +92,20 @@ When("I open the sidebar tab {string}", async ({ app }, tab: string) => {
   await expect(openTab(app.page)).toHaveCount(1)
 })
 
+When("I scroll to the end of the sidebar", async ({ app }) => {
+  await sidebar(app.page).getByRole("link").last().scrollIntoViewIfNeeded()
+})
+
+Then("the sidebar lists {int} thread(s)", async ({ app }, count: number) => {
+  await expect(sidebar(app.page).getByRole("link")).toHaveCount(count)
+})
+
+When("I undo from the toast", async ({ app }) => {
+  await app.page.getByRole("button", { name: "Undo", exact: true }).click()
+})
+
 When("I unarchive the thread {string}", async ({ app, names }, title: string) => {
-  await sidebar(app.page)
-    .getByRole("button", { name: `Unarchive ${names.of(title)}`, exact: true })
-    .click()
+  await clickRowButton(sidebar(app.page), `Unarchive ${names.of(title)}`)
 })
 
 const sidebarFilter = (page: Page) => sidebar(page).getByRole("searchbox", { name: "Filter threads and projects" })
@@ -102,10 +124,8 @@ When("I show only the project {string} in the sidebar", async ({ app, names }, p
   await app.page.keyboard.press("Escape")
 })
 
-When("I delete the thread {string} from its row", async ({ app, names }, title: string) => {
-  const remove = sidebar(app.page).getByRole("button", { name: `Delete ${names.of(title)}`, exact: true })
-  await remove.locator("xpath=ancestor::li[1]").hover()
-  await remove.click()
+When("I delete the thread {string} from its menu", async ({ app, names }, title: string) => {
+  await threadMenu(app.page, names.of(title), "Delete…")
   const dialog = app.page.getByRole("dialog")
   await expect(dialog).toContainText(`"${names.of(title)}"`)
   await dialog.getByRole("button", { name: "Delete thread", exact: true }).click()
@@ -192,9 +212,7 @@ Then("the open tab lists the thread {string}", async ({ app, names }, title: str
 })
 
 const openTabMenu = async (page: Page, title: string, item: string) => {
-  await openTab(page)
-    .getByRole("button", { name: `Actions for ${title}`, exact: true })
-    .click()
+  await clickRowButton(openTab(page), `Actions for ${title}`)
   await page.getByRole("menuitem", { name: item, exact: true }).click()
 }
 
@@ -206,6 +224,20 @@ When(
     await app.page.keyboard.press("Enter")
   },
 )
+
+When(
+  "I click the menu button of the thread {string} with the pointer resting elsewhere",
+  async ({ app, names }, title: string) => {
+    await app.page.mouse.move(0, 0)
+    await openTab(app.page)
+      .getByRole("button", { name: `Actions for ${names.of(title)}`, exact: true })
+      .click()
+  },
+)
+
+Then("the thread menu offers {string}", async ({ app }, item: string) => {
+  await expect(app.page.getByRole("menuitem", { name: item, exact: true })).toBeVisible()
+})
 
 const snoozePicker = (page: Page) => page.getByRole("dialog", { name: /^Snooze / })
 
@@ -237,11 +269,7 @@ Then("the open tab does not list the thread {string}", async ({ app, names }, ti
   await expect(openTab(app.page).getByRole("link", { name: names.of(title) })).toBeHidden()
 })
 
-const openThreadProjectId = async (page: Page) => {
-  const title = await page.getByRole("heading", { level: 1 }).textContent()
-  const threads = await rpc(page, "threads.list", undefined)
-  return threads.find((thread) => thread.title === title)?.projectId
-}
+const openThreadProjectId = async (page: Page) => (await openThread(page))?.projectId
 
 Then("the open thread belongs to the project {string}", async ({ app, projectIds }, project: string) => {
   expect(await openThreadProjectId(app.page)).toBe(projectIds.get(project))
@@ -273,6 +301,6 @@ Then("the row of the thread {string} keeps its height when hovered", async ({ ap
   const heightOf = async () => (await row.boundingBox())?.height
   await app.page.mouse.move(0, 0)
   const resting = await heightOf()
-  await link.hover()
+  await row.hover()
   await expect.poll(heightOf).toBe(resting)
 })

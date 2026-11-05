@@ -1,26 +1,32 @@
 import { randomUUID } from "node:crypto"
 import { homedir } from "node:os"
-import { extname, isAbsolute, join } from "node:path"
-import { Context, Effect, FileSystem, Layer, Option, Schema } from "effect"
+import { extname, isAbsolute, join, resolve, sep } from "node:path"
+import { Cache, Context, Effect, FileSystem, Layer, Option, Schema } from "effect"
 import { SqlClient, SqlError, SqlSchema } from "effect/sql"
-import { Project } from "../../shared/domain.ts"
-import { type GitHubRepository, parseGitHubRepository } from "../../shared/github.ts"
+import { Project, ProjectAction } from "../../shared/domain.ts"
+import { type GitHubRepository, parseGitHubRepository, type RepositoryVisibility } from "../../shared/github.ts"
 import { nowIso } from "./clock.ts"
 import {
   NotFoundError,
   type PersistenceError,
   ProjectFolderNotEmptyError,
+  ProjectOriginTakenError,
   ProjectPathTakenError,
+  ProjectInWslError,
   ProjectRootInvalidError,
   persistence,
 } from "./errors.ts"
-import { type CommandError, Git } from "./Git.ts"
-import { GitHub } from "./GitHub.ts"
+import { type CommandError, Git, LONG_TIMEOUT } from "./Git.ts"
+import { GitHub, type GitHubError } from "./GitHub.ts"
 
 export interface CreateProject {
   readonly name: string
   readonly rootPath: string
   readonly setupScript: string | null
+}
+
+export interface CreateFolderProject extends CreateProject {
+  readonly createRepository?: RepositoryVisibility | undefined
 }
 
 export interface CloneProject extends CreateProject {
@@ -33,9 +39,10 @@ export interface UpdateProject {
   readonly rootPath?: string | undefined
   readonly setupScript?: string | null | undefined
   readonly linearReview?: boolean | undefined
+  readonly actions?: ReadonlyArray<ProjectAction> | undefined
 }
 
-type WriteError = PersistenceError | ProjectPathTakenError | ProjectRootInvalidError
+type WriteError = PersistenceError | ProjectPathTakenError | ProjectRootInvalidError | ProjectInWslError
 
 export class Projects extends Context.Service<
   Projects,
@@ -43,7 +50,9 @@ export class Projects extends Context.Service<
     readonly list: Effect.Effect<ReadonlyArray<Project>, PersistenceError>
     readonly listWithRepositories: Effect.Effect<ReadonlyArray<Project>, PersistenceError>
     readonly get: (id: string) => Effect.Effect<Project, PersistenceError | NotFoundError>
-    readonly create: (input: CreateProject) => Effect.Effect<Project, WriteError>
+    readonly create: (
+      input: CreateFolderProject,
+    ) => Effect.Effect<Project, WriteError | CommandError | GitHubError | ProjectOriginTakenError>
     readonly clone: (
       input: CloneProject,
     ) => Effect.Effect<Project, WriteError | ProjectFolderNotEmptyError | CommandError>
@@ -54,10 +63,23 @@ export class Projects extends Context.Service<
   }
 >()("hinacode/Projects") {}
 
+const HOME_PREFIX = sep === "\\" ? /^~(?=$|[\\/])/ : /^~(?=$|\/)/
+
+const WSL_SHARE = /^\\\\wsl(?:\.localhost|\$)\\/i
+
 const resolveRoot = (rootPath: string) => {
-  const resolved = rootPath.trim().replace(/^~(?=$|\/)/, homedir())
-  return isAbsolute(resolved) ? Effect.succeed(resolved) : Effect.fail(new ProjectRootInvalidError({ rootPath }))
+  const expanded = rootPath.trim().replace(HOME_PREFIX, homedir())
+  if (WSL_SHARE.test(expanded)) return Effect.fail(new ProjectInWslError({ rootPath }))
+  return isAbsolute(expanded)
+    ? Effect.succeed(resolve(expanded))
+    : Effect.fail(new ProjectRootInvalidError({ rootPath }))
 }
+
+const succeeds = <E>(effect: Effect.Effect<unknown, E>) =>
+  effect.pipe(
+    Effect.as(true),
+    Effect.orElseSucceed(() => false),
+  )
 
 const mapWriteError = (operation: string, rootPath: string) => (cause: unknown) =>
   SqlError.isSqlError(cause) && cause.reason._tag === "UniqueViolation"
@@ -70,7 +92,11 @@ const ICON_DIRS = ["", "public", "static", "app", "src/app", "assets", "apps/web
 const ICON_PATHS = ICON_DIRS.flatMap((dir) => ICON_NAMES.map((name) => join(dir, name)))
 const ICON_LIMIT_BYTES = 100 * 1024
 
-const ProjectRow = Schema.Struct({ ...Project.fields, linearReview: Schema.BooleanFromBit })
+const ProjectRow = Schema.Struct({
+  ...Project.fields,
+  linearReview: Schema.BooleanFromBit,
+  actions: Schema.fromJsonString(Schema.Array(ProjectAction)),
+})
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
@@ -100,6 +126,21 @@ const make = Effect.gen(function* () {
       ),
     )
 
+  const repositoryOf = (rootPath: string) =>
+    Effect.all({
+      url: git.run(rootPath, ["remote", "get-url", "origin"]),
+      prefix: git.run(rootPath, ["rev-parse", "--show-prefix"]),
+    }).pipe(
+      Effect.map(({ url, prefix }) => {
+        const origin = parseGitHubRepository(url)
+        if (origin === null) return undefined
+        const folder = prefix.trim().replace(/\/$/, "")
+        return [origin.owner, origin.name, folder].filter(Boolean).join("/").toLowerCase()
+      }),
+      Effect.orElseSucceed(() => undefined),
+    )
+  const repositories = yield* Cache.make({ lookup: repositoryOf, capacity: 256 })
+
   const ensureDirectory = (rootPath: string) =>
     fs.stat(rootPath).pipe(
       Effect.filterOrFail(
@@ -118,24 +159,42 @@ const make = Effect.gen(function* () {
   const insert = (input: CreateProject) =>
     Effect.gen(function* () {
       const now = yield* nowIso
-      const { linearReview, ...row }: Project = {
+      const { linearReview, actions, ...row }: Project = {
         id: randomUUID(),
         ...input,
         linearReview: false,
         kind: "folder",
+        actions: [],
         createdAt: now,
         updatedAt: now,
       }
       yield* sql`INSERT INTO project ${sql.insert(row)}`.pipe(
         Effect.mapError(mapWriteError("projects.create", input.rootPath)),
       )
-      return { ...row, linearReview }
+      yield* Cache.invalidate(repositories, input.rootPath)
+      return { ...row, linearReview, actions }
     })
 
-  const create = (input: CreateProject) =>
+  const publish = (rootPath: string, visibility: RepositoryVisibility) =>
+    Effect.gen(function* () {
+      if (!(yield* succeeds(git.run(rootPath, ["rev-parse", "--is-inside-work-tree"])))) {
+        yield* git.run(rootPath, ["init"])
+      } else if (yield* succeeds(git.run(rootPath, ["remote", "get-url", "origin"]))) {
+        return yield* new ProjectOriginTakenError({ rootPath })
+      }
+      if (!(yield* succeeds(git.run(rootPath, ["rev-parse", "--verify", "HEAD"])))) {
+        yield* git.run(rootPath, ["commit", "--only", "--allow-empty", "-m", "Initial commit"], {
+          timeout: LONG_TIMEOUT,
+        })
+      }
+      yield* github.createRepository(rootPath, visibility)
+    })
+
+  const create = ({ createRepository, ...input }: CreateFolderProject) =>
     Effect.gen(function* () {
       const rootPath = yield* resolveRoot(input.rootPath)
       yield* makeDirectory(rootPath)
+      if (createRepository !== undefined) yield* publish(rootPath, createRepository)
       return yield* insert({ ...input, rootPath })
     })
 
@@ -148,20 +207,6 @@ const make = Effect.gen(function* () {
       Effect.orElseSucceed(() => false),
     )
 
-  const repositoryOf = (rootPath: string) =>
-    Effect.all({
-      url: git.run(rootPath, ["remote", "get-url", "origin"]),
-      prefix: git.run(rootPath, ["rev-parse", "--show-prefix"]),
-    }).pipe(
-      Effect.map(({ url, prefix }) => {
-        const origin = parseGitHubRepository(url)
-        if (origin === null) return undefined
-        const folder = prefix.trim().replace(/\/$/, "")
-        return [origin.owner, origin.name, folder].filter(Boolean).join("/").toLowerCase()
-      }),
-      Effect.orElseSucceed(() => undefined),
-    )
-
   const list = findAll(undefined).pipe(Effect.mapError(persistence("projects.list")))
 
   const listWithRepositories = list.pipe(
@@ -169,7 +214,7 @@ const make = Effect.gen(function* () {
       Effect.forEach(
         projects,
         (project) =>
-          repositoryOf(project.rootPath).pipe(
+          Cache.get(repositories, project.rootPath).pipe(
             Effect.map((repository) => (repository === undefined ? project : { ...project, repository })),
           ),
         { concurrency: "unbounded" },
@@ -229,14 +274,18 @@ const make = Effect.gen(function* () {
         rootPath: input.rootPath ?? current.rootPath,
         setupScript: input.setupScript === undefined ? current.setupScript : input.setupScript,
         linearReview: input.linearReview ?? current.linearReview,
+        actions: input.actions ?? current.actions,
         updatedAt: yield* nowIso,
       }
       yield* sql`
         UPDATE project
         SET name = ${next.name}, root_path = ${next.rootPath}, setup_script = ${next.setupScript},
-            linear_review = ${next.linearReview ? 1 : 0}, updated_at = ${next.updatedAt}
+            linear_review = ${next.linearReview ? 1 : 0}, actions = ${JSON.stringify(next.actions)},
+            updated_at = ${next.updatedAt}
         WHERE id = ${next.id}
       `.pipe(Effect.mapError(mapWriteError("projects.update", next.rootPath)))
+      yield* Cache.invalidate(repositories, current.rootPath)
+      yield* Cache.invalidate(repositories, next.rootPath)
       return next
     })
 

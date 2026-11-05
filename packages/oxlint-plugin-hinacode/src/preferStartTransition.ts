@@ -1,7 +1,6 @@
 import { defineRule, type Context, type ESTree, type Variable } from "@oxlint/plugins"
-import { type Identifier, isCallee, reactReferences } from "./react.ts"
+import { type Identifier, isCallee, isFunction, reactReferences, secondBinding, STATE_HOOKS } from "./react.ts"
 
-const STATE_HOOKS = new Set(["useState", "useReducer", "useActionState", "useOptimistic"])
 const URGENT_HANDLER =
   /^on(Change|Input|BeforeInput|Select|Key|Pointer|Mouse|Touch|Drag|Drop|Scroll|Wheel|Focus|Blur|Composition|Resize|Error|Load|Animation|Transition|ContextMenu|LostPointerCapture|GotPointerCapture|OpenChange|CheckedChange)/
 const ACTION_PROP = /^(action|.+Action)$/
@@ -49,14 +48,6 @@ export const preferStartTransition = defineRule({
   },
 })
 
-function secondBinding(sourceCode: Context["sourceCode"], call: ESTree.Node): Variable | undefined {
-  const declarator = call.parent
-  if (declarator?.type !== "VariableDeclarator" || declarator.id.type !== "ArrayPattern") return undefined
-  const element = declarator.id.elements[1]
-  if (element?.type !== "Identifier") return undefined
-  return sourceCode.getDeclaredVariables(declarator).find((variable) => variable.name === element.name)
-}
-
 function enclosingHandler(
   sourceCode: Context["sourceCode"],
   setter: Identifier,
@@ -94,12 +85,6 @@ function propOf(node: ESTree.Node): ESTree.JSXAttribute | null {
   return container?.type === "JSXExpressionContainer" && container.parent.type === "JSXAttribute"
     ? container.parent
     : null
-}
-
-function isFunction(node: ESTree.Node): node is ESTree.Function | ESTree.ArrowFunctionExpression {
-  return (
-    node.type === "ArrowFunctionExpression" || node.type === "FunctionExpression" || node.type === "FunctionDeclaration"
-  )
 }
 
 function functionBinding(

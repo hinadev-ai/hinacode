@@ -57,7 +57,7 @@ test("searches what the collapsed transcript shows and skips what sits behind a 
     ]),
   ]
   expect(findMatches(messages, "migrate")).toEqual([
-    { messageId: "m1", partIndex: 1, offset: 10 },
+    { messageId: "m1", partIndex: 1, offset: 5 },
     { messageId: "m1", partIndex: 2, offset: 7 },
   ])
 })
@@ -124,4 +124,19 @@ test("searches every call folded into a run, by its command or by its tool name 
     { messageId: "m", partIndex: 0, offset: 4 },
     { messageId: "m", partIndex: 1, offset: 5 },
   ])
+})
+
+test("finds a skill by the name its row shows", () => {
+  const skill: MessagePart = {
+    type: "tool_call",
+    callId: "s",
+    name: "Skill",
+    input: { skill: "create-pr" },
+    status: "done",
+  }
+  const labels = new Map([["create-pr", "Create PR"]])
+  expect(findMatches([message("m", [skill])], "Create PR", labels)).toEqual([
+    { messageId: "m", partIndex: 0, offset: 11 },
+  ])
+  expect(findMatches([message("m", [skill])], "create-pr", labels)).toEqual([])
 })

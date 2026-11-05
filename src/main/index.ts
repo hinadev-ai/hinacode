@@ -2,16 +2,22 @@ import { existsSync, mkdirSync, renameSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
+import { ARTIFACT_HEADERS } from "@hinacode/artifacts"
 import { app, BrowserWindow, dialog, net, powerMonitor, protocol, safeStorage, session, shell } from "electron"
 import { Effect, Layer, ManagedRuntime, Option, Schema } from "effect"
 import { makeAppLayer } from "./app.ts"
+import { electronArtifactInspector } from "./artifactInspector.ts"
 import { handleContextMenu } from "./contextMenu.ts"
 import { chromiumDir, moveLegacyProfile } from "./dataDir.ts"
 import { keepAppMenu } from "./appMenu.ts"
 import { bringToFront, registerIpc, sendToWindows } from "./ipc.ts"
+import { pullRequestWindows } from "./pullRequestWindows.ts"
 import {
+  artifactRequest,
   attachmentRequest,
   BROWSER_PARTITION,
+  externalImageRequest,
+  externalImageTarget,
   externalUrl,
   githubAssetId,
   isAllowedNavigation,
@@ -20,19 +26,24 @@ import {
   projectFileRequest,
 } from "./security.ts"
 import {
+  ARTIFACT_PROTOCOL,
   ATTACHMENT_PROTOCOL,
+  EXTERNAL_IMAGE_PROTOCOL,
   GITHUB_ASSET_PROTOCOL,
   LIQUID_GLASS_ARGUMENT,
   PROJECT_FILE_PROTOCOL,
 } from "../shared/channels.ts"
+import { injectProblemReporter } from "../shared/artifactProblems.ts"
+import { injectArtifactTheme, parseArtifactTheme } from "../shared/artifactTheme.ts"
 import { RpcMethods } from "../shared/contract.ts"
+import * as Artifacts from "./services/Artifacts.ts"
 import * as ClientSettings from "./services/ClientSettings.ts"
 import * as Environments from "./services/Environments.ts"
 import * as Files from "./services/Files.ts"
 import * as GitHub from "./services/GitHub.ts"
 import { Keyring } from "./services/Secrets.ts"
 import { startResourceMonitor } from "./resourceMonitor.ts"
-import { hydratePath } from "./shellPath.ts"
+import { dropAppImageArgv0, hydratePath } from "./shellPath.ts"
 import { liquidGlass } from "./liquidGlass.ts"
 import * as Updater from "./updater.ts"
 import devIcon from "../../assets/icon-dev.png?asset"
@@ -62,16 +73,19 @@ if (!app.requestSingleInstanceLock()) {
 }
 if (!app.isPackaged) startResourceMonitor(dataDir)
 const icon = app.isPackaged ? releaseIcon : devIcon
-const pathHydrated = hydratePath(process.env)
+dropAppImageArgv0(process.env)
+const shellPath = hydratePath(process.env, join(dataDir, "shell-path"))
 protocol.registerSchemesAsPrivileged([
   { scheme: ATTACHMENT_PROTOCOL, privileges: { standard: true, secure: true } },
   // FIXME: Electron needs `stream` for <video> and <audio> to seek with Range requests
   { scheme: GITHUB_ASSET_PROTOCOL, privileges: { standard: true, secure: true, stream: true } },
   { scheme: PROJECT_FILE_PROTOCOL, privileges: { standard: true, secure: true, stream: true } },
+  { scheme: EXTERNAL_IMAGE_PROTOCOL, privileges: { standard: true, secure: true } },
+  { scheme: ARTIFACT_PROTOCOL, privileges: { standard: true, secure: true, corsEnabled: true, supportFetchAPI: true } },
 ])
 
 type AppRuntime = ManagedRuntime.ManagedRuntime<
-  GitHub.GitHub | Files.Files | Environments.Environments | ClientSettings.ClientSettings,
+  GitHub.GitHub | Files.Files | Environments.Environments | ClientSettings.ClientSettings | Artifacts.Artifacts,
   unknown
 >
 
@@ -85,10 +99,23 @@ const fetchFromCloud = async (runtime: AppRuntime, environment: string, call: En
   return file === undefined ? new Response(null, { status: 404 }) : fetch(file.dataUrl)
 }
 
-const sandboxed = (response: Response) => {
+const withHeaders = (response: Response, extra: Record<string, string>) => {
   const headers = new Headers(response.headers)
-  headers.set("content-security-policy", "sandbox allow-scripts")
+  for (const [name, value] of Object.entries(extra)) headers.set(name, value)
   return new Response(response.body, { status: response.status, headers })
+}
+
+const sandboxed = (response: Response) => withHeaders(response, { "content-security-policy": "sandbox allow-scripts" })
+
+const artifactResponse = (response: Response) => withHeaders(response, ARTIFACT_HEADERS)
+
+const themedArtifact = async (request: Request, response: Response) => {
+  const type = response.headers.get("content-type") ?? ""
+  if (!type.startsWith("text/html")) return artifactResponse(response)
+  const theme = parseArtifactTheme(new URL(request.url).searchParams.get("theme"))
+  if (theme === undefined) return artifactResponse(response)
+  const html = injectArtifactTheme(injectProblemReporter(await response.text()), theme)
+  return artifactResponse(new Response(html, { status: response.status, headers: { "content-type": type } }))
 }
 
 const serveAttachments = (runtime: AppRuntime, attachmentsRoot: string) =>
@@ -123,6 +150,44 @@ const serveGitHubAssets = (runtime: AppRuntime) =>
     return net.fetch(signed, rangeOf(request))
   })
 
+const MAX_IMAGE_REDIRECTS = 5
+const IMAGE_FETCH_TIMEOUT_MS = 15_000
+
+const fetchExternalImage = async (start: string) => {
+  let url = start
+  for (let hop = 0; hop <= MAX_IMAGE_REDIRECTS; hop++) {
+    const response = await fetch(url, {
+      redirect: "manual",
+      credentials: "omit",
+      headers: { accept: "image/*" },
+      signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS),
+    }).catch(() => null)
+    if (response === null) return new Response(null, { status: 502 })
+    if (response.status >= 300 && response.status < 400) {
+      await response.body?.cancel()
+      const location = response.headers.get("location")
+      const next = location === null ? null : externalImageTarget(new URL(location, url).href)
+      if (next === null) return new Response(null, { status: 502 })
+      url = next
+      continue
+    }
+    const type = response.headers.get("content-type") ?? ""
+    if (!response.ok) return new Response(null, { status: response.status })
+    if (!type.startsWith("image/")) return new Response(null, { status: 415 })
+    return new Response(response.body, {
+      status: 200,
+      headers: { "content-type": type, "cache-control": "private, max-age=3600" },
+    })
+  }
+  return new Response(null, { status: 502 })
+}
+
+const serveExternalImages = () =>
+  protocol.handle(EXTERNAL_IMAGE_PROTOCOL, async (request) => {
+    const target = externalImageRequest(request.url)
+    return target === null ? new Response(null, { status: 404 }) : fetchExternalImage(target)
+  })
+
 const serveProjectFiles = (runtime: AppRuntime) =>
   protocol.handle(PROJECT_FILE_PROTOCOL, async (request) => {
     const target = projectFileRequest(request.url)
@@ -137,6 +202,25 @@ const serveProjectFiles = (runtime: AppRuntime) =>
       .catch(() => null)
     if (file === null) return new Response(null, { status: 403 })
     return sandboxed(await net.fetch(pathToFileURL(file).toString(), rangeOf(request)))
+  })
+
+const serveArtifacts = (runtime: AppRuntime) =>
+  protocol.handle(ARTIFACT_PROTOCOL, async (request) => {
+    const target = artifactRequest(request.url)
+    if (target === null) return artifactResponse(new Response(null, { status: 404 }))
+    const cloud = await runtime.runPromise(
+      Effect.map(Environments.Environments, (environments) => environments.owner("artifact", target.id)),
+    )
+    if (cloud !== undefined)
+      return themedArtifact(
+        request,
+        await fetchFromCloud(runtime, cloud, { method: "artifacts.file", payload: target }),
+      )
+    const file = await runtime.runPromise(
+      Artifacts.Artifacts.use((artifacts) => artifacts.file(target.id, target.path)),
+    )
+    if (file === null) return artifactResponse(new Response(null, { status: 404 }))
+    return themedArtifact(request, new Response(file.bytes, { headers: { "content-type": file.type } }))
   })
 
 const safeStorageKeyring = Layer.succeed(
@@ -174,10 +258,10 @@ const limitBrowserPermissions = () => {
   browser.setPermissionCheckHandler((_page, permission) => permission === "clipboard-sanitized-write")
 }
 
-const createWindow = (runtime: AppRuntime) => {
+const createWindow = (runtime: AppRuntime, entry?: string) => {
   const window = new BrowserWindow({
-    width: 1280,
-    height: 820,
+    width: entry ? 1200 : 1280,
+    height: entry ? 880 : 820,
     minWidth: 720,
     minHeight: 480,
     show: false,
@@ -210,11 +294,24 @@ const createWindow = (runtime: AppRuntime) => {
   window.webContents.on("did-attach-webview", (_event, page) => keepOnTheWeb(page))
   handleContextMenu(window, runtime, appUrl)
 
-  void window.loadURL(appUrl)
+  void window.loadURL(entry ? `${appUrl}?${new URLSearchParams({ entry })}` : appUrl)
+  return window
 }
 
+const openPullRequestWindow = (runtime: AppRuntime) =>
+  pullRequestWindows({
+    open: (threadId, url) => {
+      const window = createWindow(
+        runtime,
+        `/thread/${encodeURIComponent(threadId)}/pull-request?${new URLSearchParams({ url })}`,
+      )
+      window.removeMenu()
+      return window
+    },
+    focus: bringToFront,
+  })
+
 app.whenReady().then(async () => {
-  await pathHydrated
   const sbxConfigPath = join(app.getPath("appData"), "sbx", "config.json")
   const dbPath = join(dataDir, "hinacode.sqlite")
   if (!existsSync(dbPath)) {
@@ -230,9 +327,9 @@ app.whenReady().then(async () => {
       keyring: safeStorageKeyring,
       updates: Updater.layer,
       toWindows: sendToWindows,
-    }),
+      artifactInspector: electronArtifactInspector,
+    }).pipe(Layer.provide(Layer.effectDiscard(Effect.promise(() => shellPath.ready)))),
   )
-  await runtime.runPromise(Effect.void)
   let disposed = false
   app.on("before-quit", (event) => {
     if (disposed) return
@@ -242,15 +339,16 @@ app.whenReady().then(async () => {
     const timeout = new Promise((resolve) => setTimeout(resolve, QUIT_TIMEOUT_MS))
     void Promise.race([disposal, timeout]).then(() => app.quit())
   })
-  registerIpc(runtime, appUrl)
+  registerIpc(runtime, appUrl, openPullRequestWindow(runtime))
   powerMonitor.on("resume", () =>
     runtime.runFork(Effect.flatMap(Environments.Environments, (environments) => environments.reconnectAll)),
   )
   app.dock?.setIcon(icon)
-  runtime.runFork(keepAppMenu)
   serveAttachments(runtime, join(dataDir, "attachments"))
   serveGitHubAssets(runtime)
   serveProjectFiles(runtime)
+  serveArtifacts(runtime)
+  serveExternalImages()
   limitBrowserPermissions()
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow(runtime)
@@ -261,6 +359,8 @@ app.whenReady().then(async () => {
     else createWindow(runtime)
   })
   createWindow(runtime)
+  runtime.runFork(keepAppMenu)
+  await runtime.runPromise(Effect.void)
 })
 
 app.on("window-all-closed", () => {

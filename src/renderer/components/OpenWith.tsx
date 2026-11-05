@@ -1,6 +1,5 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { RiArrowDownSLine, RiExternalLinkLine, RiFolderOpenLine } from "react-icons/ri"
 import { toast } from "sonner"
 import type { Opener, Thread } from "../../shared/domain.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
@@ -20,6 +19,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx"
+import { ChevronDownIcon, ExternalIcon, FolderOpenIcon } from "@hinacode/icons"
 
 type Target = "folder" | "file"
 
@@ -30,17 +30,21 @@ const useOpeners = (target: Target) => {
 
 const useOpenWith = () => {
   const save = useAtomSet(updateClientSettingsAtom, { mode: "promise" })
-  return (path: string, opener: Opener) =>
-    callPromise("shell.openWith", { path, opener: opener.id })
-      .then(() => save({ openWith: opener.id }))
-      .catch((cause: unknown) => toast.error(m.open_with_failed({ app: opener.name, message: errorMessage(cause) })))
+  return async (path: string, opener: Opener) => {
+    try {
+      await callPromise("shell.openWith", { path, opener: opener.id })
+      await save({ openWith: opener.id })
+    } catch (cause) {
+      toast.error(m.open_with_failed({ app: opener.name, message: errorMessage(cause) }))
+    }
+  }
 }
 
 function OpenerIcon({ opener }: { opener: Opener }) {
   return opener.icon ? (
     <img src={opener.icon} alt="" aria-hidden className="size-4 shrink-0" />
   ) : (
-    <RiExternalLinkLine aria-hidden />
+    <ExternalIcon aria-hidden />
   )
 }
 
@@ -57,7 +61,7 @@ function OpenerItems({ path, target }: { path: string; target: Target }) {
       ))}
       {openers.length > 0 && <DropdownMenuSeparator />}
       <DropdownMenuItem onClick={() => void callPromise("shell.reveal", { path })}>
-        <RiFolderOpenLine aria-hidden />
+        <FolderOpenIcon aria-hidden />
         {m.panel_reveal()}
       </DropdownMenuItem>
     </>
@@ -68,7 +72,7 @@ export function OpenWithSubmenu({ path, target }: { path: string; target: Target
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger>
-        <RiExternalLinkLine aria-hidden />
+        <ExternalIcon aria-hidden />
         {m.open_with()}
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent>
@@ -99,7 +103,7 @@ function OpenWithButton({ path }: { path: string }) {
           size="icon-sm"
           aria-label={m.open_in({ app: preferred.name })}
           title={m.open_in({ app: preferred.name })}
-          onClick={() => void open(path, preferred)}
+          action={() => open(path, preferred)}
         >
           <OpenerIcon opener={preferred} />
         </Button>
@@ -115,7 +119,7 @@ function OpenWithButton({ path }: { path: string }) {
             />
           }
         >
-          {preferred ? <RiArrowDownSLine aria-hidden /> : <RiExternalLinkLine aria-hidden />}
+          {preferred ? <ChevronDownIcon aria-hidden /> : <ExternalIcon aria-hidden />}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
           <OpenerItems path={path} target="folder" />

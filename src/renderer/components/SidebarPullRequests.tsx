@@ -1,13 +1,11 @@
 import { useAtomValue } from "@effect/atom-react"
 import { startTransition, useState, useTransition } from "react"
-import { RiStackLine } from "react-icons/ri"
 import type { MergeMethod, PullRequest, PullRequestLink } from "../../shared/domain.ts"
 import { openChecks } from "../../shared/threadStatus.ts"
 import { usePullRequestHref } from "../lib/environments.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { parsePullRequestUrl } from "../lib/pullRequestRefs.ts"
-import { registry } from "../lib/registry.ts"
-import { callPromise, type EnvironmentId, pullRequestStatusAtom, pullRequestStatusesAtom } from "../lib/rpc.ts"
+import { callPromise, type EnvironmentId, pullRequestStatusesAtom } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { PullRequestCard } from "./PullRequestLink.tsx"
@@ -25,6 +23,7 @@ import {
 import { Button } from "./ui/button.tsx"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
+import { StackIcon } from "@hinacode/icons"
 
 const mergeMethods = ["squash", "merge", "rebase"] as const
 const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? ""
@@ -70,7 +69,7 @@ export function SidebarPullRequests({
             delay={300}
             className={cn(aboveRowLinkTrigger, "text-muted-foreground hover:text-foreground")}
           >
-            <RiStackLine aria-hidden className="size-3" />+{links.length}
+            <StackIcon aria-hidden className="size-3" />+{links.length}
           </HoverCardTrigger>
           <HoverCardContent align="start" className="flex w-80 flex-col gap-2">
             <p className="text-xs text-muted-foreground">
@@ -210,8 +209,6 @@ function MergeDialog({
         } catch (cause) {
           setError(m.sidebar_pr_merge_failed({ number: pullRequest.number, message: errorMessage(cause) }))
           return
-        } finally {
-          registry.refresh(pullRequestStatusAtom(environment, pullRequest.url))
         }
       }
       onOpenChange(false)

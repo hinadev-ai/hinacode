@@ -6,6 +6,7 @@ import type { TranscriptPush } from "../../src/shared/contract.ts"
 import { type Message, Thread } from "../../src/shared/domain.ts"
 import type { HinacodeApp } from "../support/app.ts"
 import { Then, When } from "../support/fixtures.ts"
+import { composerText } from "../support/ui.ts"
 import { rpc } from "../support/rpc.ts"
 
 interface Stream {
@@ -136,11 +137,6 @@ Then("the code block contains {string}", async ({ app }, text: string) => {
   await expect(article(app.page).locator("pre code")).toHaveText(text)
 })
 
-Then("there is no Markdown table yet", async ({ app }) => {
-  await expect(article(app.page)).toContainText("| Name | Value |")
-  await expect(article(app.page).getByRole("table")).toHaveCount(0)
-})
-
 Then("the Markdown table has a row {string} with value {string}", async ({ app }, name: string, value: string) => {
   const table = article(app.page).getByRole("table")
   await expect(table.getByRole("columnheader")).toHaveText(["Name", "Value"])
@@ -253,7 +249,7 @@ Then("the tool result is inspectable and the approval disappears", async ({ app 
   const rendered = article(app.page)
   await expect(app.page.getByRole("button", { name: "Allow", exact: true })).toHaveCount(0)
   await rendered.getByRole("button", { name: /^Worked for / }).click()
-  await rendered.getByRole("button", { name: /Read.*README\.md.*Done/ }).click()
+  await rendered.getByRole("button", { name: /^Read\s*README\.md$/ }).click()
   await expect(rendered.getByRole("heading", { name: "Output", exact: true })).toBeVisible()
   await expect(rendered.locator("pre").last()).toHaveText("Repository instructions")
   await expect(rendered).toHaveAttribute("aria-busy", "false")
@@ -281,8 +277,8 @@ Then("the first completed rendering contains its final text and {word}", async (
   const text = await stream.firstBoundary()
   expect(text).toMatch(
     ending === "completes"
-      ? /^Worked for \d{2}:\d{2}Final queued text\.$/
-      : /^Worked for \d{2}:\d{2}Final queued text\.Error: Interrupted locally$/,
+      ? /^(?:Worked for \S+)?Final queued text\.$/
+      : /^(?:Worked for \S+)?Final queued text\.Error: Interrupted locally$/,
   )
   await expect(article(app.page).locator("strong")).toHaveText(
     ending === "completes" ? ["queued"] : ["queued", "Error:"],
@@ -320,7 +316,7 @@ When("I type, scroll and resize while the agent streams many Markdown blocks", a
     await composer.pressSequentially("Keep this draft")
     await expect(article(app.page)).not.toContainText("Live 0:")
     await composer.pressSequentially(" while output arrives")
-    await expect(composer).toHaveValue("Keep this draft while output arrives")
+    await expect.poll(() => composerText(composer)).toBe("Keep this draft while output arrives")
     await expect
       .poll(() => viewport.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop))
       .toBeLessThan(5)
@@ -344,7 +340,9 @@ When("I type, scroll and resize while the agent streams many Markdown blocks", a
 Then("my draft and reading position survive the continuing stream", async ({ app }) => {
   const stream = streamOf(app)
   if (stream.readingPosition === undefined) throw new Error("reading position was not recorded")
-  await expect(app.page.getByLabel("Message", { exact: true })).toHaveValue("Keep this draft while output arrives")
+  await expect
+    .poll(() => composerText(app.page.getByLabel("Message", { exact: true })))
+    .toBe("Keep this draft while output arrives")
   await expect.poll(() => scrollContainer(app.page).evaluate((node) => node.scrollTop)).toBe(stream.readingPosition)
   await expect(article(app.page)).toHaveAttribute("aria-busy", "true")
   await app.pushEvents([eventPush(stream, { type: "turn_completed" })])

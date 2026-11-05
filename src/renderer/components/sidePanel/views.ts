@@ -1,16 +1,5 @@
+import { RiGitPullRequestLine } from "react-icons/ri"
 import { type ComponentType, lazy } from "react"
-import type { IconType } from "react-icons"
-import {
-  RiFileCopy2Line,
-  RiGitBranchLine,
-  RiGitPullRequestLine,
-  RiInformationLine,
-  RiRobot2Line,
-  RiFileEditLine,
-  RiGlobalLine,
-  RiComputerLine,
-  RiSmartphoneLine,
-} from "react-icons/ri"
 import type { ExperimentalSettings, Thread } from "../../../shared/domain.ts"
 import type { CommandId } from "../../keybindings/commands.ts"
 import type { EnvironmentId } from "../../lib/rpc.ts"
@@ -18,10 +7,27 @@ import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import type { SidePanelViewId } from "../../stores/ui.ts"
 import { useRunningSubagentCount } from "../ThreadAgents.tsx"
+import { ArtifactsHeader, ArtifactsView } from "./ArtifactsView.tsx"
 import { BrowserTabStrip } from "./BrowserTabStrip.tsx"
+import { useUnseenDeviceActivityLabel } from "../../stores/deviceActivity.ts"
 import { DeviceTabStrip } from "./devices/DeviceTabStrip.tsx"
 import { DetailsView } from "./DetailsView.tsx"
+import { SidechatHeader, SidechatView } from "./SidechatView.tsx"
 import { AgentsView, PullRequestsView } from "./SimpleViews.tsx"
+import { PullRequestsHeader, useLinkedPullRequestsLabel } from "../ThreadPullRequests.tsx"
+import {
+  BranchIcon,
+  ChatsIcon,
+  ComputerIcon,
+  FileDiffIcon,
+  FilesIcon,
+  GlobeIcon,
+  type IconComponent,
+  InfoIcon,
+  LayoutIcon,
+  PhoneIcon,
+  RobotIcon,
+} from "@hinacode/icons"
 
 const FilesView = lazy(() => import("./FilesView.tsx").then((module) => ({ default: module.FilesView })))
 const ChangesView = lazy(() => import("./ChangesView.tsx").then((module) => ({ default: module.ChangesView })))
@@ -32,52 +38,71 @@ const DevicesView = lazy(() => import("./devices/DevicesView.tsx").then((module)
 
 export interface SidePanelView {
   readonly id: SidePanelViewId
-  readonly icon: IconType
+  readonly icon: IconComponent
   readonly title: () => string
   readonly commandId: CommandId
   readonly component: ComponentType<{ thread: Thread }>
   readonly header?: ComponentType<{ thread: Thread }>
   readonly badge?: (threadId: string) => number
+  readonly dot?: (threadId: string) => string | null
   readonly experiment?: keyof ExperimentalSettings
 }
 
 export const sidePanelViews: ReadonlyArray<SidePanelView> = [
   {
     id: "details",
-    icon: RiInformationLine,
+    icon: InfoIcon,
     title: m.panel_tab_details,
     commandId: "view.details",
     component: DetailsView,
   },
-  { id: "files", icon: RiFileCopy2Line, title: m.panel_tab_files, commandId: "view.files", component: FilesView },
-  { id: "changes", icon: RiFileEditLine, title: m.panel_changes, commandId: "view.changes", component: ChangesView },
-  { id: "git", icon: RiGitBranchLine, title: m.panel_tab_git, commandId: "view.git", component: GitGraphView },
+  { id: "files", icon: FilesIcon, title: m.panel_tab_files, commandId: "view.files", component: FilesView },
+  { id: "changes", icon: FileDiffIcon, title: m.panel_changes, commandId: "view.changes", component: ChangesView },
+  { id: "git", icon: BranchIcon, title: m.panel_tab_git, commandId: "view.git", component: GitGraphView },
   {
     id: "pullRequests",
     icon: RiGitPullRequestLine,
     title: m.pr_links_title,
     commandId: "view.pullRequests",
     component: PullRequestsView,
+    header: PullRequestsHeader,
+    dot: useLinkedPullRequestsLabel,
   },
   {
     id: "agents",
-    icon: RiRobot2Line,
+    icon: RobotIcon,
     title: m.panel_tab_agents,
     commandId: "view.agents",
     component: AgentsView,
     badge: useRunningSubagentCount,
   },
   {
+    id: "sidechat",
+    icon: ChatsIcon,
+    title: m.panel_tab_sidechat,
+    commandId: "view.sidechat",
+    component: SidechatView,
+    header: SidechatHeader,
+  },
+  {
     id: "browser",
-    icon: RiGlobalLine,
+    icon: GlobeIcon,
     title: m.panel_tab_browser,
     commandId: "view.browser",
     component: BrowserView,
     header: BrowserTabStrip,
   },
   {
+    id: "artifacts",
+    icon: LayoutIcon,
+    title: m.panel_tab_artifacts,
+    commandId: "view.artifacts",
+    component: ArtifactsView,
+    header: ArtifactsHeader,
+  },
+  {
     id: "tinyVm",
-    icon: RiComputerLine,
+    icon: ComputerIcon,
     title: m.panel_tab_tiny_vm,
     commandId: "view.tinyVm",
     component: TinyVmView,
@@ -85,11 +110,12 @@ export const sidePanelViews: ReadonlyArray<SidePanelView> = [
   },
   {
     id: "devices",
-    icon: RiSmartphoneLine,
+    icon: PhoneIcon,
     title: m.panel_tab_devices,
     commandId: "view.devices",
     component: DevicesView,
     header: DeviceTabStrip,
+    dot: useUnseenDeviceActivityLabel,
     experiment: "devices",
   },
 ]

@@ -10,7 +10,18 @@ export class PersistenceError extends Schema.TaggedError<PersistenceError>()("Pe
 }
 
 export class NotFoundError extends Schema.TaggedError<NotFoundError>()("NotFoundError", {
-  entity: Schema.Literals(["project", "thread", "worktree", "automation", "terminal", "account", "fork point"]),
+  entity: Schema.Literals([
+    "project",
+    "thread",
+    "worktree",
+    "automation",
+    "terminal",
+    "account",
+    "fork point",
+    "tool call",
+    "artifact",
+    "document",
+  ]),
   id: Schema.String,
 }) {
   override get message(): string {
@@ -34,6 +45,22 @@ export class ProjectRootInvalidError extends Schema.TaggedError<ProjectRootInval
   }
 }
 
+export class ProjectInWslError extends Schema.TaggedError<ProjectInWslError>()("ProjectInWslError", {
+  rootPath: Schema.String,
+}) {
+  override get message(): string {
+    return `${this.rootPath} is inside WSL. Run hinacode serve in WSL and add the project on that machine`
+  }
+}
+
+export class ProjectOriginTakenError extends Schema.TaggedError<ProjectOriginTakenError>()("ProjectOriginTakenError", {
+  rootPath: Schema.String,
+}) {
+  override get message(): string {
+    return `${this.rootPath} already has an origin remote, so it cannot be published as a new GitHub repository`
+  }
+}
+
 export class ProjectFolderNotEmptyError extends Schema.TaggedError<ProjectFolderNotEmptyError>()(
   "ProjectFolderNotEmptyError",
   { rootPath: Schema.String },
@@ -48,6 +75,14 @@ export class UnknownRootError extends Schema.TaggedError<UnknownRootError>()("Un
 }) {
   override get message(): string {
     return `${this.root} is not a project or worktree HinaCode knows`
+  }
+}
+
+export class FolderMissingError extends Schema.TaggedError<FolderMissingError>()("FolderMissingError", {
+  path: Schema.String,
+}) {
+  override get message(): string {
+    return `The folder ${this.path} is missing. It was moved or deleted.`
   }
 }
 
@@ -98,7 +133,7 @@ export class ThreadBusyError extends Schema.TaggedError<ThreadBusyError>()("Thre
   id: Schema.String,
 }) {
   override get message(): string {
-    return "This thread is still running. Stop it or wait for it to finish before archiving."
+    return "This thread is still running. Stop it or wait for it to finish."
   }
 }
 

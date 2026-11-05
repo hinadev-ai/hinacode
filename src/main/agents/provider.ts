@@ -1,5 +1,6 @@
+import type { AttachmentSource } from "../services/Attachments.ts"
 import { type Effect, Schema, type Stream } from "effect"
-import type { AccessMode, Attachment } from "../../shared/domain.ts"
+import type { AccessMode, Attachment, ExternalSession, Message } from "../../shared/domain.ts"
 import type { PlanLimits } from "../../shared/limits.ts"
 import type {
   AccountHome,
@@ -8,6 +9,7 @@ import type {
   AgentEvent,
   ApprovalDecision,
   BackgroundTask,
+  Subagent,
   ContextBreakdown,
   ModelInfo,
   ProviderId,
@@ -19,7 +21,10 @@ import type {
 export class AgentError extends Schema.TaggedError<AgentError>()("AgentError", {
   provider: Schema.String,
   message: Schema.String,
+  loginCommand: Schema.optional(Schema.String),
 }) {}
+
+export type SteerPriority = "now" | "next"
 
 export interface Wake {
   readonly threadId: string
@@ -33,6 +38,27 @@ export interface BackgroundTasksChange {
   readonly tasks: ReadonlyArray<BackgroundTask>
 }
 
+export interface SubagentChange {
+  readonly threadId: string
+  readonly subagent: Subagent
+}
+
+export type NativeSession = Pick<ExternalSession, "sessionId" | "title" | "preview" | "branch" | "updatedAt">
+
+export type ImportedMessage = Pick<Message, "role" | "parts" | "createdAt" | "completedAt" | "forkPoint"> & {
+  readonly images?: ReadonlyArray<AttachmentSource>
+}
+
+export interface SessionHistory {
+  readonly title: string | null
+  readonly model: string | null
+  readonly messages: ReadonlyArray<ImportedMessage> | null
+}
+
+export const LISTED_SESSIONS = 50
+
+export type SessionInput = Omit<RunTurnInput, "prompt" | "attachments">
+
 export interface AgentProvider {
   readonly id: ProviderId
   readonly listModels: Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
@@ -44,27 +70,45 @@ export interface AgentProvider {
     from: AccountHome | null,
     to: AccountHome | null,
   ) => Effect.Effect<void, AgentError>
+  readonly listSessions?: (
+    cwd: string,
+    home: AccountHome | null,
+  ) => Effect.Effect<ReadonlyArray<NativeSession>, AgentError>
+  readonly readSession?: (
+    sessionId: string,
+    cwd: string,
+    home: AccountHome | null,
+  ) => Effect.Effect<SessionHistory, AgentError>
   readonly listCommands: (input: {
     readonly threadId: string
     readonly cwd: string
     readonly home: AccountHome | null
   }) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError>
   readonly runTurn: (input: RunTurnInput) => Stream.Stream<AgentEvent, AgentError>
+  readonly warm?: (input: SessionInput) => Effect.Effect<void, AgentError>
   readonly wakes?: Stream.Stream<Wake>
-  readonly steer: (
+  readonly steer?: (
     threadId: string,
     text: string,
     attachments: ReadonlyArray<Attachment>,
+    priority: SteerPriority,
   ) => Effect.Effect<void, AgentError>
   readonly interrupt: (threadId: string) => Effect.Effect<void>
   readonly closeSession?: (threadId: string, home: AccountHome | null) => Effect.Effect<void, AgentError>
   readonly backgroundTasks?: {
     readonly changes: Stream.Stream<BackgroundTasksChange>
     readonly stop: (threadId: string, taskId: string) => Effect.Effect<void, AgentError>
+    readonly moveCommand?: (threadId: string, callId: string) => Effect.Effect<boolean, AgentError>
   }
   readonly contextBreakdown?: (threadId: string) => Effect.Effect<ContextBreakdown | null, AgentError>
+  readonly subagentChanges?: Stream.Stream<SubagentChange>
   readonly stopSubagent?: (threadId: string, subagentId: string) => Effect.Effect<void, AgentError>
-  readonly respondApproval: (requestId: string, decision: ApprovalDecision) => Effect.Effect<void>
+  readonly respondApproval: (requestId: string, decision: ApprovalDecision, note?: string) => Effect.Effect<boolean>
   readonly respondQuestion: (requestId: string, answers: QuestionAnswers) => Effect.Effect<void>
   readonly setAccessMode: (threadId: string, accessMode: AccessMode) => Effect.Effect<void, AgentError>
 }
+
+export const MCP_TOOL_TIMEOUT_SECONDS = 3600
+
+export const tmpEnv = (tmpDirectory: string | null) =>
+  tmpDirectory === null ? {} : { TMPDIR: tmpDirectory, TMP: tmpDirectory, TEMP: tmpDirectory }

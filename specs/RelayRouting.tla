@@ -2,8 +2,8 @@
 (* One client's link to one machine that runs a relay, as both clients keep it: the desktop in
    src/main/services/Environments.ts (maintain) and the phone in apps/mobile/src/lib/transport.ts.
    Each round races the machine's direct address against the relay, and while on the relay the
-   client checks the direct address. A refusal on the direct address sends the rest of the link to
-   the relay alone, and after the check finds the direct address, the next round dials it alone.
+   client checks the direct address. A direct session that ends before ready sends the rest of the
+   link to the relay alone, and after the check finds the direct address, the next round dials it alone.
    A token the machine rotates reaches the client through the relay service: the machine publishes
    it, and the client syncs it, again and again while the relay refuses the old one.
 
@@ -26,6 +26,7 @@ VARIABLES
   peer,         \* who answers on it: "none", "machine" or "stranger"
   net,          \* "home" is the machine's network
   strangerHere, \* away, a stranger's HinaCode answers at the machine's direct address
+  directBroken, \* after a network change, the direct address opens but never answers ready
   machineToken, \* versions of the pairing token: the machine's,
   relayToken,   \* the one the relay service holds,
   clientToken,  \* and the client's
@@ -34,7 +35,7 @@ VARIABLES
   directOnly,   \* the direct check found the direct address, so this round dials it alone
   rotations, moves
 
-world == <<net, strangerHere, moves>>
+world == <<net, strangerHere, directBroken, moves>>
 tokens == <<machineToken, relayToken, clientToken, rotations>>
 dialing == <<suspect, directOnly>>
 vars == <<link, route, peer, leaked, dialing, world, tokens>>
@@ -47,6 +48,7 @@ TypeOK ==
   /\ peer \in {"none", "machine", "stranger"}
   /\ net \in {"home", "away"}
   /\ strangerHere \in BOOLEAN
+  /\ directBroken \in BOOLEAN
   /\ leaked \in BOOLEAN
   /\ suspect \in BOOLEAN /\ directOnly \in BOOLEAN
 
@@ -59,7 +61,7 @@ Closed == route' = "none" /\ peer' = "none"
 Init ==
   /\ link = "offline"
   /\ route = "none" /\ peer = "none"
-  /\ net = "home" /\ strangerHere = FALSE
+  /\ net = "home" /\ strangerHere = FALSE /\ directBroken = FALSE
   /\ machineToken = 0 /\ relayToken = 0 /\ clientToken = 0
   /\ leaked = FALSE
   /\ suspect = FALSE /\ directOnly = FALSE
@@ -97,15 +99,17 @@ DirectGone ==
 Accept ==
   /\ Trans("authing", "connected")
   /\ peer = "machine" /\ clientToken = machineToken
+  /\ route = "direct" => ~directBroken
   /\ UNCHANGED <<route, peer, leaked, dialing, world, tokens>>
 
 Refused == peer = "stranger" \/ clientToken # machineToken
 
-\* Environments.ts:581, transport.ts:299: a refusal on the direct address before ready may come from a
-\* stranger, so the link stops dialing it and races the relay alone.
-RefuseDirect ==
+\* Environments.ts maintain, transport.ts triedRelayInstead: a direct session that ends before ready,
+\* refused by a stranger or broken by a network change, would win the next race again, so the link
+\* stops dialing it and races the relay alone.
+DirectFails ==
   /\ Trans("authing", "racing")
-  /\ route = "direct" /\ Refused
+  /\ route = "direct" /\ (Refused \/ directBroken)
   /\ suspect' = TRUE
   /\ Closed
   /\ UNCHANGED <<leaked, directOnly, world, tokens>>
@@ -158,6 +162,7 @@ Move ==
   /\ moves' = moves + 1
   /\ net' \in {"home", "away"}
   /\ strangerHere' \in IF net' = "away" THEN BOOLEAN ELSE {FALSE}
+  /\ directBroken' \in BOOLEAN
   /\ IF link \in {"racing", "authing", "connected"}
        THEN link' = "offline" /\ Closed
        ELSE UNCHANGED <<link, route, peer>>
@@ -167,7 +172,7 @@ Next ==
   \/ Dial
   \/ Win("relay") \/ Win("direct")
   \/ DirectGone
-  \/ Accept \/ RefuseDirect \/ RefuseRelay
+  \/ Accept \/ DirectFails \/ RefuseRelay
   \/ MoveToDirect
   \/ Rotate \/ Publish \/ Sync
   \/ Move
@@ -180,7 +185,7 @@ SyncAfterRefusal == link = "unauthorized" /\ Sync
 \* which nothing forces.
 Fairness ==
   /\ WF_vars(Dial) /\ WF_vars(Win("relay")) /\ WF_vars(Win("direct")) /\ WF_vars(DirectGone)
-  /\ WF_vars(Accept) /\ WF_vars(RefuseDirect) /\ WF_vars(RefuseRelay)
+  /\ WF_vars(Accept) /\ WF_vars(DirectFails) /\ WF_vars(RefuseRelay)
   /\ WF_vars(MoveToDirect) /\ WF_vars(Publish)
   /\ WF_vars(SyncAfterRefusal)
   /\ PeriodicSync => WF_vars(Sync)
@@ -196,5 +201,5 @@ GivesUpOnlyOnStaleToken == link = "unauthorized" => clientToken # machineToken
 \* Once the client stops moving and the machine stops rotating, the link ends up connected,
 \* and at home it ends up on the direct address.
 Recovers == <>[](link = "connected")
-LocalAtHome == <>[](link = "connected" /\ (net = "home" => route = "direct"))
+LocalAtHome == <>[](link = "connected" /\ (net = "home" /\ ~directBroken => route = "direct"))
 =============================================================================

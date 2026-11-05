@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, wri
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
-import { afterAll, describe, expect, it } from "@effect/vitest"
+import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import { Effect, Layer } from "effect"
 import * as Db from "../db/client.ts"
 import * as Git from "./Git.ts"
@@ -92,6 +92,38 @@ describe("Projects.listWithRepositories", () => {
     }),
   )
 
+  it.live("remembers each root's repository until the project is edited", () =>
+    Effect.gen(function* () {
+      const projects = yield* Projects
+      const root = withOrigin("git@github.com:acme/old.git")
+      const project = yield* projects.create({ name: "repo", rootPath: root, setupScript: null })
+      const repository = Effect.map(projects.listWithRepositories, ([listed]) => listed?.repository)
+      expect(yield* repository).toBe("acme/old")
+
+      execFileSync("git", ["-C", root, "remote", "set-url", "origin", "git@github.com:acme/new.git"])
+      expect(yield* repository).toBe("acme/old")
+
+      yield* projects.update({ id: project.id, name: "renamed" })
+      expect(yield* repository).toBe("acme/new")
+    }).pipe(Effect.provide(projectsLayer)),
+  )
+
+  it.live("keeps a project's actions across edits that leave them out", () =>
+    Effect.gen(function* () {
+      const projects = yield* Projects
+      const project = yield* projects.create({ name: "repo", rootPath: withOrigin(null), setupScript: null })
+      expect(project.actions).toStrictEqual([])
+
+      const actions = [
+        { name: "Dev server", command: "pnpm dev" },
+        { name: "Test", command: "pnpm test" },
+      ]
+      yield* projects.update({ id: project.id, actions })
+      yield* projects.update({ id: project.id, name: "renamed" })
+      expect((yield* projects.get(project.id)).actions).toStrictEqual(actions)
+    }).pipe(Effect.provide(projectsLayer)),
+  )
+
   it.live("leaves the key out without a GitHub origin", () =>
     Effect.gen(function* () {
       expect(yield* listedAt(withOrigin(null))).not.toHaveProperty("repository")
@@ -128,6 +160,90 @@ describe("Projects.create", () => {
         Projects.use((projects) => projects.create({ name: "notes", rootPath, setupScript: null })),
       ).pipe(Effect.flip)
       expect(error._tag).toBe("ProjectRootInvalidError")
+    }),
+  )
+
+  it.live("sends a folder inside WSL to a cloud running in WSL", () =>
+    Effect.gen(function* () {
+      for (const rootPath of ["\\\\wsl.localhost\\Ubuntu\\home\\me\\app", "\\\\WSL$\\Debian\\srv\\app"]) {
+        const error = yield* provided(
+          Projects.use((projects) => projects.create({ name: "app", rootPath, setupScript: null })),
+        ).pipe(Effect.flip)
+        expect(error._tag).toBe("ProjectInWslError")
+      }
+    }),
+  )
+})
+
+const withGitHub = (createRepository: GitHub.GitHub["Service"]["createRepository"]) =>
+  layer.pipe(
+    Layer.provide(Layer.mergeAll(Git.layer, Layer.mock(GitHub.GitHub, { createRepository }), Db.layer(":memory:"))),
+    Layer.provide(NodeServices.layer),
+  )
+
+describe("Projects.create with a new GitHub repository", () => {
+  const identity = {
+    GIT_AUTHOR_NAME: "t",
+    GIT_AUTHOR_EMAIL: "t@t",
+    GIT_COMMITTER_NAME: "t",
+    GIT_COMMITTER_EMAIL: "t@t",
+  }
+  beforeAll(() => {
+    Object.assign(process.env, identity)
+    return () => Object.keys(identity).forEach((key) => delete process.env[key])
+  })
+
+  it.live("starts the folder's history and publishes it with the chosen visibility", () =>
+    Effect.gen(function* () {
+      const rootPath = join(emptyDir(), "new-app")
+      const published: Array<[string, string]> = []
+      const project = yield* Projects.use((projects) =>
+        projects.create({ name: "new-app", rootPath, setupScript: null, createRepository: "private" }),
+      ).pipe(Effect.provide(withGitHub((cwd, visibility) => Effect.sync(() => void published.push([cwd, visibility])))))
+      expect(project.rootPath).toBe(rootPath)
+      expect(published).toStrictEqual([[rootPath, "private"]])
+      expect(execFileSync("git", ["-C", rootPath, "rev-list", "--count", "HEAD"], { encoding: "utf8" }).trim()).toBe(
+        "1",
+      )
+    }),
+  )
+
+  it.live("keeps already staged files out of the published initial commit", () =>
+    Effect.gen(function* () {
+      const rootPath = repoWith({ ".env": "SECRET=1" })
+      execFileSync("git", ["-C", rootPath, "add", ".env"])
+      yield* Projects.use((projects) =>
+        projects.create({ name: "staged", rootPath, setupScript: null, createRepository: "public" }),
+      ).pipe(Effect.provide(withGitHub(() => Effect.void)))
+      const git = (...args: Array<string>) =>
+        execFileSync("git", ["-C", rootPath, ...args], { encoding: "utf8" }).trim()
+      expect(git("ls-tree", "-r", "--name-only", "HEAD")).toBe("")
+      expect(git("diff", "--cached", "--name-only")).toBe(".env")
+    }),
+  )
+
+  it.live("refuses a folder that already has an origin before creating anything on GitHub", () =>
+    Effect.gen(function* () {
+      const rootPath = withOrigin("https://github.com/octocat/elsewhere.git")
+      const published: Array<string> = []
+      const error = yield* Projects.use((projects) =>
+        projects.create({ name: "elsewhere", rootPath, setupScript: null, createRepository: "private" }),
+      ).pipe(Effect.flip, Effect.provide(withGitHub((cwd) => Effect.sync(() => void published.push(cwd)))))
+      expect(error._tag).toBe("ProjectOriginTakenError")
+      expect(published).toStrictEqual([])
+    }),
+  )
+
+  it.live("adds no project when GitHub refuses the repository", () =>
+    Effect.gen(function* () {
+      const rootPath = join(emptyDir(), "taken")
+      const refused = new Git.CommandError({ command: "gh", args: [], exitCode: 1, stderr: "name already exists" })
+      const listed = yield* Projects.use((projects) =>
+        projects
+          .create({ name: "taken", rootPath, setupScript: null, createRepository: "private" })
+          .pipe(Effect.flip, Effect.andThen(projects.list)),
+      ).pipe(Effect.provide(withGitHub(() => Effect.fail(refused))))
+      expect(listed).toStrictEqual([])
     }),
   )
 })

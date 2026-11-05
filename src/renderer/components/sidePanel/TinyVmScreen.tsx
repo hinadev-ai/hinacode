@@ -2,12 +2,13 @@ import RFB from "@novnc/novnc"
 import { matchesKeyboardEvent } from "@tanstack/react-hotkeys"
 import { cn } from "cn"
 import { type DragEvent, type KeyboardEvent, type ReactNode, useEffect, useEffectEvent, useRef, useState } from "react"
-import { RiFullscreenExitLine, RiUpload2Line } from "react-icons/ri"
 import type { VmControl } from "../../../shared/domain.ts"
+import { toastError } from "../../lib/errorMessage.ts"
 import { VncChannel } from "../../lib/vncChannel.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
 import { HAND_BACK_CHORD, Spinner, vmScreenId } from "./TinyVmView.tsx"
+import { FullscreenExitIcon, UploadIcon } from "@hinacode/icons"
 
 type Connection = "connecting" | "connected" | "lost"
 
@@ -127,24 +128,24 @@ export default function TinyVmScreen({
       onDragOver={onFileDragOver}
       onDrop={onDrop}
       className={cn(
-        "relative aspect-[16/10] w-full overflow-hidden bg-muted [&:fullscreen]:rounded-none",
+        "relative aspect-16/10 w-full overflow-hidden bg-muted [&:fullscreen]:rounded-none",
         !bare && "rounded-md",
         !bare && control === "user" && "outline-2 outline-offset-2 outline-working",
       )}
     >
       <div ref={targetRef} className="absolute inset-0" />
       {fullscreen && (
-        <div className="absolute top-3 right-3 flex items-center gap-2 rounded-lg bg-background/90 p-1 shadow-md">
+        <div className="absolute top-3 right-3 flex items-center gap-2 rounded-[12px] bg-background/90 p-1 shadow-md">
           {fullscreenControls}
-          <Button variant="ghost" size="xs" onClick={() => void document.exitFullscreen()}>
-            <RiFullscreenExitLine aria-hidden />
+          <Button variant="ghost" size="xs" action={() => document.exitFullscreen().catch(toastError)}>
+            <FullscreenExitIcon aria-hidden />
             {m.vm_exit_fullscreen()}
           </Button>
         </div>
       )}
       {fileDrag && (
-        <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-background/80 p-6 text-center outline-2 -outline-offset-8 outline-dashed outline-working">
-          <RiUpload2Line aria-hidden className="size-6" />
+        <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-background/80 p-6 text-center outline-2 -outline-offset-8 outline-working outline-dashed">
+          <UploadIcon aria-hidden className="size-6" />
           <p className="text-sm">{m.vm_drop_hint()}</p>
         </div>
       )}

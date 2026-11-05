@@ -1,11 +1,13 @@
 import { Outlet, useMatchRoute, useRouter } from "@tanstack/react-router"
 import { useEffect, useRef } from "react"
 import { useKeybindings } from "../keybindings/useKeybindings.ts"
+import { useShareArtifactTheme } from "../lib/artifactTheme.ts"
 import { usePanelLayout } from "../lib/panelLayout.ts"
 import { useUi } from "../stores/ui.ts"
 import { useAgentUpdateNotices } from "./AgentUpdateNotices.tsx"
 import { useGitHubRateLimitNotices } from "./GitHubRateLimitNotices.tsx"
 import { CommandPalette } from "./CommandPalette.tsx"
+import { ImportSessionDialog } from "./ImportSessionDialog.tsx"
 import { SnoozeDialog } from "./SnoozeDialog.tsx"
 import { SettingsNav } from "./settings/SettingsNav.tsx"
 import { Sidebar } from "./Sidebar.tsx"
@@ -29,16 +31,23 @@ export function AppShell() {
   useMouseHistoryButtons()
   useAgentUpdateNotices()
   useGitHubRateLimitNotices()
+  useShareArtifactTheme()
   const compact = usePanelLayout() === "compact"
   const sidebarOpen = useUi((state) => state.sidebarOpen)
   const sidebarButtonRef = useRef<HTMLButtonElement>(null)
   const onSettings = useMatchRoute()({ to: "/settings" }) !== false
 
   const docked = !compact && sidebarOpen
-  const titleBar = <TitleBar compact={compact} sidebarButtonRef={sidebarButtonRef} />
+  const titleBar = (
+    <TitleBar
+      compact={compact}
+      sidebarButtonRef={sidebarButtonRef}
+      className={docked ? "border-r border-sidebar-border" : undefined}
+    />
+  )
 
   return (
-    <div className="flex h-dvh flex-col text-foreground">
+    <div className="relative flex h-dvh flex-col overflow-clip text-foreground">
       {!docked && titleBar}
       <div className="flex min-h-0 flex-1">
         <div className="flex min-h-0 shrink-0 flex-col">
@@ -53,6 +62,7 @@ export function AppShell() {
       <CommandPalette />
       <ThreadSwitcher />
       <SnoozeDialog />
+      <ImportSessionDialog />
     </div>
   )
 }

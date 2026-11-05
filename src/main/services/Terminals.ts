@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto"
+import { userInfo } from "node:os"
 import * as pty from "node-pty"
 import { Context, Effect, Layer, Schema } from "effect"
 import type { PushEvent } from "../../shared/contract.ts"
 import type { TerminalAttachment, TerminalSession } from "../../shared/domain.ts"
-import { NotFoundError, type PersistenceError } from "./errors.ts"
+import { type FolderMissingError, NotFoundError, type PersistenceError } from "./errors.ts"
 import { Events } from "./Events.ts"
 import { registerAgentPid } from "./Ports.ts"
 import { TerminalScrollback } from "./terminalScrollback.ts"
@@ -17,6 +18,19 @@ const FLUSH_INTERVAL_MS = 16
 const FLUSH_SIZE = 256 * 1024
 const SCROLLBACK_BYTES = 256 * 1024
 
+export const terminalShell = (platform: NodeJS.Platform, env: NodeJS.ProcessEnv, accountShell: string | null) =>
+  platform === "win32"
+    ? { file: "powershell.exe", args: ["-NoLogo"] }
+    : { file: env["SHELL"] || accountShell || "/bin/sh", args: ["-l"] }
+
+const loginShell = () => {
+  try {
+    return userInfo().shell
+  } catch {
+    return null
+  }
+}
+
 interface Live {
   session: TerminalSession
   readonly pty: pty.IPty
@@ -28,14 +42,25 @@ interface Live {
   closing: boolean
 }
 
+const quoteForShell = (shell: string, text: string) =>
+  shell === "powershell.exe" ? `'${text.replaceAll("'", "''")}'` : `'${text.replaceAll("'", `'\\''`)}'`
+
+const typedLine = (shell: string, line: string) =>
+  line.includes("\n") ? `${shell} -c ${quoteForShell(shell, line)}` : line
+
+export interface OpenTerminal {
+  readonly threadId: string
+  readonly cols: number
+  readonly rows: number
+  readonly command?: { readonly title: string; readonly line: string } | undefined
+}
+
 export class Terminals extends Context.Service<
   Terminals,
   {
-    readonly open: (input: {
-      readonly threadId: string
-      readonly cols: number
-      readonly rows: number
-    }) => Effect.Effect<TerminalSession, PersistenceError | NotFoundError | TerminalError>
+    readonly open: (
+      input: OpenTerminal,
+    ) => Effect.Effect<TerminalSession, PersistenceError | NotFoundError | FolderMissingError | TerminalError>
     readonly write: (id: string, data: string) => Effect.Effect<void, NotFoundError>
     readonly resize: (id: string, cols: number, rows: number) => Effect.Effect<void, NotFoundError>
     readonly attach: (id: string, since: number | null) => Effect.Effect<TerminalAttachment, NotFoundError>
@@ -81,25 +106,42 @@ const make = Effect.gen(function* () {
     return live && !live.closing ? Effect.succeed(live) : Effect.fail(new NotFoundError({ entity: "terminal", id }))
   }
 
-  const open = ({ threadId, cols, rows }: { threadId: string; cols: number; rows: number }) =>
+  const open = ({ threadId, cols, rows, command }: OpenTerminal) =>
     Effect.gen(function* () {
-      const { cwd } = yield* activeWorkspace(threadId)
-      const shell = process.env["SHELL"] || "/bin/zsh"
+      const { cwd, rootPath, branch } = yield* activeWorkspace(threadId)
+      const shell = terminalShell(process.platform, process.env, loginShell())
       const proc = yield* Effect.try({
         try: () =>
-          pty.spawn(shell, ["-l"], {
+          pty.spawn(shell.file, shell.args, {
             name: "xterm-256color",
             cols,
             rows,
             cwd,
-            env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor", TERM_PROGRAM: "hinacode" },
+            env: {
+              ...process.env,
+              TERM: "xterm-256color",
+              COLORTERM: "truecolor",
+              TERM_PROGRAM: "hinacode",
+              HINACODE_ROOT_PATH: rootPath,
+              HINACODE_WORKTREE_PATH: cwd,
+              ...(branch === null ? {} : { HINACODE_BRANCH: branch }),
+            },
           }),
-        catch: (cause) => new TerminalError({ message: `Could not start ${shell} in ${cwd}: ${String(cause)}` }),
+        catch: (cause) => new TerminalError({ message: `Could not start ${shell.file} in ${cwd}: ${String(cause)}` }),
       })
       const live: Live = {
-        session: { id: randomUUID(), threadId, cwd, cols, rows, status: "running", exitCode: null },
+        session: {
+          id: randomUUID(),
+          threadId,
+          cwd,
+          cols,
+          rows,
+          status: "running",
+          exitCode: null,
+          title: command?.title ?? null,
+        },
         pty: proc,
-        unregisterPid: registerAgentPid(threadId, proc.pid),
+        unregisterPid: registerAgentPid(threadId, () => proc.pid),
         scrollback: new TerminalScrollback(SCROLLBACK_BYTES),
         pending: [],
         pendingSize: 0,
@@ -115,6 +157,7 @@ const make = Effect.gen(function* () {
         if (live.closing) sessions.delete(live.session.id)
         publish({ type: "terminal.exited", id: live.session.id, exitCode })
       })
+      if (command) proc.write(`${typedLine(shell.file, command.line)}\r`)
       return live.session
     })
 

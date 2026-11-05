@@ -1,6 +1,8 @@
-import type { Context, ESTree } from "@oxlint/plugins"
+import type { Context, ESTree, Variable } from "@oxlint/plugins"
 
 export type Identifier = Extract<ESTree.Node, { type: "Identifier" }>
+
+export const STATE_HOOKS = new Set(["useState", "useReducer", "useActionState", "useOptimistic"])
 
 type Reference = { api: string; node: Identifier | ESTree.MemberExpression }
 
@@ -26,4 +28,18 @@ function exportName(node: ESTree.Node): string {
   if (node.type === "Identifier") return node.name
   if (node.type === "Literal") return String(node.value)
   return ""
+}
+
+export function secondBinding(sourceCode: Context["sourceCode"], call: ESTree.Node): Variable | undefined {
+  const declarator = call.parent
+  if (declarator?.type !== "VariableDeclarator" || declarator.id.type !== "ArrayPattern") return undefined
+  const element = declarator.id.elements[1]
+  if (element?.type !== "Identifier") return undefined
+  return sourceCode.getDeclaredVariables(declarator).find((variable) => variable.name === element.name)
+}
+
+export function isFunction(node: ESTree.Node): node is ESTree.Function | ESTree.ArrowFunctionExpression {
+  return (
+    node.type === "ArrowFunctionExpression" || node.type === "FunctionExpression" || node.type === "FunctionDeclaration"
+  )
 }

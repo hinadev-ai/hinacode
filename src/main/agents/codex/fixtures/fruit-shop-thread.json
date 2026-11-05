@@ -1,0 +1,226 @@
+{
+  "list": {
+    "data": [
+      {
+        "id": "01a18d88-c287-74d1-9674-8568245133ae",
+        "environments": null,
+        "extra": null,
+        "sessionId": "01a18d88-c287-74d1-9674-8568245133ae",
+        "forkedFromId": null,
+        "parentThreadId": null,
+        "preview": "Append the line 'papaya' to stock.txt using a shell command, then reply with just: added",
+        "ephemeral": false,
+        "section": null,
+        "sectionEnteredAt": null,
+        "projectId": null,
+        "historyMode": "paginated",
+        "modelProvider": "openai",
+        "model": "gpt-6.1-sol",
+        "reasoningEffort": null,
+        "createdAt": 1793375912,
+        "updatedAt": 1793376728,
+        "recencyAt": 1793376723,
+        "status": {
+          "type": "notLoaded"
+        },
+        "path": "/home/dev/.codex/sessions/2026/10/31/rollout-2026-10-31T00-58-32-01a18d88-c287-74d1-9674-8568245133ae.jsonl",
+        "cwd": "/work/fruit-shop",
+        "cliVersion": "0.161.0",
+        "originator": "codex_exec",
+        "source": "exec",
+        "canAcceptDirectInput": null,
+        "threadSource": null,
+        "agentNickname": null,
+        "agentRole": null,
+        "gitInfo": {
+          "sha": "52e132c645bd9f60c0d4d748c4370f04ffa2e0e5",
+          "branch": "main",
+          "originUrl": null
+        },
+        "name": null,
+        "daybreakEnabled": null,
+        "turns": []
+      }
+    ],
+    "nextCursor": null,
+    "backwardsCursor": "2026-10-30T16:12:08.528Z"
+  },
+  "read": {
+    "thread": {
+      "id": "01a18d88-c287-74d1-9674-8568245133ae",
+      "environments": null,
+      "extra": null,
+      "sessionId": "01a18d88-c287-74d1-9674-8568245133ae",
+      "forkedFromId": null,
+      "parentThreadId": null,
+      "preview": "Append the line 'papaya' to stock.txt using a shell command, then reply with just: added",
+      "ephemeral": false,
+      "section": null,
+      "sectionEnteredAt": null,
+      "projectId": null,
+      "historyMode": "paginated",
+      "modelProvider": "openai",
+      "model": "gpt-6.1-sol",
+      "reasoningEffort": null,
+      "createdAt": 1793375912,
+      "updatedAt": 1793376728,
+      "recencyAt": 1793376723,
+      "status": {
+        "type": "notLoaded"
+      },
+      "path": "/home/dev/.codex/sessions/2026/10/31/rollout-2026-10-31T00-58-32-01a18d88-c287-74d1-9674-8568245133ae.jsonl",
+      "cwd": "/work/fruit-shop",
+      "cliVersion": "0.161.0",
+      "originator": "codex_exec",
+      "source": "exec",
+      "canAcceptDirectInput": null,
+      "threadSource": "user",
+      "agentNickname": null,
+      "agentRole": null,
+      "gitInfo": {
+        "sha": "52e132c645bd9f60c0d4d748c4370f04ffa2e0e5",
+        "branch": "main",
+        "originUrl": null
+      },
+      "name": null,
+      "daybreakEnabled": null,
+      "turns": []
+    }
+  },
+  "turnPages": [
+    {
+      "data": [
+        {
+          "id": "01a18d88-c317-76f3-8fdd-f4e898bf9134",
+          "items": [
+            {
+              "type": "userMessage",
+              "id": "01a18d88-cafb-7b90-8a55-3c72a9b411c3",
+              "clientId": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Append the line 'papaya' to stock.txt using a shell command, then reply with just: added",
+                  "text_elements": []
+                }
+              ]
+            },
+            {
+              "type": "agentMessage",
+              "id": "msg_017a634ded9d5b12016ae4beac327081919d6f873dbb0b0547",
+              "text": "I’ll append the line to stock.txt.",
+              "phase": "commentary",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            },
+            {
+              "type": "commandExecution",
+              "id": "exec-1cef4e15-823a-4132-b9e4-e8c5509d0a4f",
+              "pluginId": null,
+              "scriptPath": null,
+              "command": "/usr/bin/bash -lc \"printf '%s\\\\n' 'papaya' >> stock.txt\"",
+              "cwd": "/work/fruit-shop",
+              "processId": "11193",
+              "source": "unifiedExecStartup",
+              "status": "completed",
+              "commandActions": [
+                {
+                  "type": "unknown",
+                  "command": "printf '%s\\n' 'papaya' >> stock.txt"
+                }
+              ],
+              "aggregatedOutput": null,
+              "exitCode": 0,
+              "durationMs": 0
+            },
+            {
+              "type": "agentMessage",
+              "id": "msg_017a634ded9d5b12016ae4beae2e948191b5902c4dcaa880d7",
+              "text": "added",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            }
+          ],
+          "itemsView": "full",
+          "status": "completed",
+          "error": null,
+          "startedAt": 1793375912,
+          "completedAt": 1793375918,
+          "durationMs": 5571
+        }
+      ],
+      "nextCursor": "{\"requestedThreadId\":\"01a18d88-c287-74d1-9674-8568245133ae\",\"rolloutOrdinal\":1,\"includeAnchor\":false,\"scope\":{\"kind\":\"turns\"}}",
+      "backwardsCursor": "{\"requestedThreadId\":\"01a18d88-c287-74d1-9674-8568245133ae\",\"rolloutOrdinal\":1,\"includeAnchor\":true,\"scope\":{\"kind\":\"turns\"}}"
+    },
+    {
+      "data": [
+        {
+          "id": "01a18d95-23cd-75f0-b3b8-bc3f26aa09cf",
+          "items": [
+            {
+              "type": "userMessage",
+              "id": "01a18d95-2aa6-7b21-b440-fcb4887d97b9",
+              "clientId": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "How many lines does stock.txt have now? Check with wc -l and answer with just the number.",
+                  "text_elements": []
+                }
+              ]
+            },
+            {
+              "type": "agentMessage",
+              "id": "msg_04751c611f9f26f8016ae4c1d6b96c819181e76942015c966e",
+              "text": "I’ll check with wc -l.",
+              "phase": "commentary",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            },
+            {
+              "type": "commandExecution",
+              "id": "exec-54f0ced8-7ec5-4740-be5d-974a35ad8f92",
+              "pluginId": null,
+              "scriptPath": null,
+              "command": "/usr/bin/bash -lc 'wc -l < stock.txt'",
+              "cwd": "/work/fruit-shop",
+              "processId": "43529",
+              "source": "unifiedExecStartup",
+              "status": "completed",
+              "commandActions": [
+                {
+                  "type": "unknown",
+                  "command": "wc -l < stock.txt"
+                }
+              ],
+              "aggregatedOutput": "4\n",
+              "exitCode": 0,
+              "durationMs": 0
+            },
+            {
+              "type": "agentMessage",
+              "id": "msg_04751c611f9f26f8016ae4c1d876c88191a9bede7469cc8cda",
+              "text": "4",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            }
+          ],
+          "itemsView": "full",
+          "status": "completed",
+          "error": null,
+          "startedAt": 1793376723,
+          "completedAt": 1793376728,
+          "durationMs": 4598
+        }
+      ],
+      "nextCursor": null,
+      "backwardsCursor": "{\"requestedThreadId\":\"01a18d88-c287-74d1-9674-8568245133ae\",\"rolloutOrdinal\":24,\"includeAnchor\":true,\"scope\":{\"kind\":\"turns\"}}"
+    }
+  ]
+}

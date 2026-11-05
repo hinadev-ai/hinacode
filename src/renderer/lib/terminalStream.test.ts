@@ -10,6 +10,7 @@ const session: TerminalSession = {
   rows: 24,
   status: "running",
   exitCode: null,
+  title: null,
 }
 
 const setup = () => {

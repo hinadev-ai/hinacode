@@ -2,7 +2,6 @@ import { Autocomplete } from "@base-ui/react/autocomplete"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { normalizeHotkey, useHotkeys } from "@tanstack/react-hotkeys"
 import { useDeferredValue, useEffect, useRef, useState } from "react"
-import { RiSearchLine } from "react-icons/ri"
 import { useCommandContext, useKeymap } from "../keybindings/useKeybindings.ts"
 import { type RankedItem, rankPalette } from "../palette/rank.ts"
 import { groupLabels, modeOf } from "../palette/modes.ts"
@@ -15,6 +14,7 @@ import { returnFocus } from "../stores/ui.ts"
 import { ChordKeys } from "./ChordKeys.tsx"
 import { CloudMark } from "./CloudMark.tsx"
 import { Dialog, DialogOverlay, DialogPortal } from "./ui/dialog.tsx"
+import { SearchIcon } from "@hinacode/icons"
 
 type SourceResult = ReturnType<PaletteSource["items"]>
 
@@ -28,6 +28,7 @@ function useSourceItems(sources: ReadonlyArray<PaletteSource>, query: string, ct
       if (!(result instanceof Promise)) continue
       void result.then((items) => {
         if (!current) return
+        // oxlint-disable-next-line hinacode/no-promise-state-in-effect -- sync sources show at once and async ones join as they settle; Suspense would hold every keystroke for the slowest source.
         setSettled((previous) =>
           previous.has(result)
             ? previous
@@ -72,7 +73,7 @@ function PaletteResult({ entry, onChoose }: { entry: RankedItem; onChoose: (item
     <Autocomplete.Item
       value={entry}
       onClick={() => onChoose(item)}
-      className="flex min-h-9 cursor-default items-center gap-2.5 rounded-lg px-2.5 text-sm outline-none select-none [scroll-margin-block:0.25rem] data-highlighted:bg-accent data-highlighted:text-accent-foreground data-highlighted:inset-ring data-highlighted:inset-ring-ring/50"
+      className="flex min-h-9 cursor-default [scroll-margin-block:0.25rem] items-center gap-2.5 rounded-lg px-2.5 text-sm outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-highlighted:inset-ring data-highlighted:inset-ring-ring/50"
     >
       <span className="flex size-4 shrink-0 items-center justify-center">{item.icon}</span>
       <span className="flex min-w-0 flex-1 items-baseline gap-2">
@@ -134,7 +135,7 @@ function PaletteBody({ onChoose }: { onChoose: (item: PaletteItem, remember: boo
       itemToStringValue={(entry: RankedItem) => entry.item.title}
     >
       <div className="flex items-center gap-2.5 border-b border-border px-3.5">
-        <RiSearchLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+        <SearchIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
         {/* FIXME: Base UI Dialog focuses a frame late, which would drop an Enter pressed right after opening */}
         <Autocomplete.Input
           ref={focusOnMount}
@@ -197,7 +198,7 @@ export function CommandPalette() {
           <DialogPrimitive.Popup
             aria-label={m.palette_label()}
             finalFocus={returnFocus}
-            className="flex max-h-[min(30rem,76dvh)] w-full max-w-xl flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/10 outline-none transition-[opacity,scale] duration-150 ease-(--ease-out) data-starting-style:scale-98 data-starting-style:opacity-0"
+            className="flex max-h-[min(30rem,76dvh)] w-full max-w-xl flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/10 transition-[opacity,scale] duration-150 ease-out outline-none data-starting-style:scale-98 data-starting-style:opacity-0"
           >
             <PaletteBody key={openRequest} onChoose={choose} />
           </DialogPrimitive.Popup>

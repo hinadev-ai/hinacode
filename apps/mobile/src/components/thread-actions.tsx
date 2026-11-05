@@ -2,13 +2,13 @@ import type { Thread } from "@shared/domain.ts"
 import { setStringAsync } from "expo-clipboard"
 import { useEffect, useEffectEvent, useState } from "react"
 import { AccessibilityInfo, Modal, Pressable, StyleSheet, Text, View } from "react-native"
-import Animated, { SlideInDown } from "react-native-reanimated"
+import Animated from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon } from "@/components/icon"
 import { IconSwap, Spinner } from "@/components/motion"
 import { Notice } from "@/components/ui"
-import { duration, ease } from "@/constants/motion"
-import { Colors, HIT, radius } from "@/constants/theme"
+import { sheetEntering } from "@/constants/motion"
+import { HIT, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
@@ -40,7 +40,6 @@ export function useThreadActions(thread: Thread) {
   return { actions: threadActions(thread), running, error, run, clearError: () => setError(null) }
 }
 
-const rise = SlideInDown.duration(duration.sheet).easing(ease.drawer)
 const COPIED_MS = 800
 
 /** A short action list that rises from the bottom over a scrim, with the thread's title on top. */
@@ -86,14 +85,14 @@ export function ThreadActionsSheet({
         accessibilityRole="button"
         accessibilityLabel={copy("mobile_thread_actions_cancel")}
         onPress={close}
-        style={styles.scrim}
+        style={[styles.scrim, { backgroundColor: theme.scrim }]}
       />
       <Animated.View
-        entering={rise}
+        entering={sheetEntering}
         accessibilityViewIsModal
         style={[
           styles.sheet,
-          { paddingBottom: 8 + insets.bottom, backgroundColor: theme.background },
+          { paddingBottom: 8 + insets.bottom, backgroundColor: theme.sheet },
         ]}
       >
         <Text accessibilityRole="header" numberOfLines={2} style={[styles.title, { color: theme.textMuted }]}>
@@ -109,7 +108,8 @@ export function ThreadActionsSheet({
                 testID={`thread-action-${action.name}`}
                 accessibilityRole="button"
                 accessibilityLabel={label}
-                accessibilityState={{ busy: state.running === action.name, disabled: busy }}
+                aria-busy={state.running === action.name}
+                aria-disabled={busy}
                 disabled={busy}
                 onPress={() => void run(action.name)}
                 style={({ pressed }) => [
@@ -124,7 +124,7 @@ export function ThreadActionsSheet({
                   <IconSwap
                     showSecond={done}
                     first={<Icon name={action.icon} size={18} color={theme.text} />}
-                    second={<Icon name="RiCheckLine" size={18} color={theme.running} />}
+                    second={<Icon name="Check" size={18} color={theme.running} />}
                   />
                 )}
                 <Text style={[styles.actionLabel, { color: theme.text }]}>{label}</Text>
@@ -152,8 +152,7 @@ export function ThreadActionsSheet({
 }
 
 const styles = StyleSheet.create({
-  // The scrim is dark in both themes, so it borrows the dark palette's background.
-  scrim: { flex: 1, backgroundColor: Colors.dark.background, opacity: 0.5 },
+  scrim: { flex: 1 },
   sheet: {
     gap: 8,
     paddingHorizontal: 8,

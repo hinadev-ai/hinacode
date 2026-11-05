@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util"
 import { Context, Effect, Layer, Schedule, Semaphore } from "effect"
 import type { PullRequestLink, PullRequestWatch } from "../../shared/domain.ts"
 import { AgentRunner } from "./AgentRunner.ts"
@@ -35,8 +36,12 @@ const make = Effect.gen(function* () {
       Effect.catchTag("NotFoundError", () => Effect.succeed(false)),
     )
 
-  const record = (link: PullRequestLink, watch: PullRequestWatch, patch: Partial<PullRequestWatch>) =>
-    pullRequests.updateWatch(link.id, watch.generation, { ...watch, ...patch })
+  const record = (link: PullRequestLink, watch: PullRequestWatch, patch: Partial<PullRequestWatch>) => {
+    const next = { ...watch, ...patch }
+    return isDeepStrictEqual({ ...next, lastPolledAt: watch.lastPolledAt }, watch)
+      ? Effect.succeed(false)
+      : pullRequests.updateWatch(link.id, watch.generation, next)
+  }
 
   const wake = (link: PullRequestLink, generation: PullRequestWatch["generation"], text: string) =>
     runner

@@ -1,5 +1,16 @@
 import { type Dirent, watch as watchFs } from "node:fs"
-import { open, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises"
+import {
+  lstat,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  realpath,
+  rename as renameFs,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
 import { Context, Effect, Layer, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
@@ -11,11 +22,11 @@ import {
   type FsFileContent,
 } from "../../shared/domain.ts"
 import { mimeOf } from "../../shared/media.ts"
-import { SLOW_CONSUMER_BYTES } from "../../shared/remote.ts"
 import { isInside } from "../security.ts"
-import { type PersistenceError, persistence } from "./errors.ts"
+import { type FolderMissingError, type PersistenceError, persistence } from "./errors.ts"
 import { Events } from "./Events.ts"
 import { Git, parseNameStatus } from "./Git.ts"
+import { makeRequireFolder } from "./workspace.ts"
 
 const reasons = {
   unknownRoot: "is not a project root, worktree or chat folder",
@@ -23,14 +34,15 @@ const reasons = {
   unreadable: "cannot be read in",
   unwritable: "cannot be written in",
   tooLarge: "is too large to preview from",
+  exists: "already exists in",
 } as const
 
-const MAX_PREVIEW_BYTES = (SLOW_CONSUMER_BYTES / 4) * 3
+const MAX_PREVIEW_BYTES = 6 * 1024 * 1024
 
 export class FsAccessError extends Schema.TaggedError<FsAccessError>()("FsAccessError", {
   root: Schema.String,
   path: Schema.String,
-  reason: Schema.Literals(["unknownRoot", "outsideRoot", "unreadable", "unwritable", "tooLarge"]),
+  reason: Schema.Literals(["unknownRoot", "outsideRoot", "unreadable", "unwritable", "tooLarge", "exists"]),
 }) {
   override get message(): string {
     return this.reason === "unknownRoot"
@@ -54,23 +66,43 @@ export class Files extends Context.Service<
     readonly list: (
       root: string,
       path: string,
-    ) => Effect.Effect<ReadonlyArray<FsEntry>, FsAccessError | PersistenceError>
-    readonly resolve: (root: string, path: string) => Effect.Effect<string, FsAccessError | PersistenceError>
-    readonly read: (root: string, path: string) => Effect.Effect<FsFileContent, FsAccessError | PersistenceError>
+    ) => Effect.Effect<ReadonlyArray<FsEntry>, FsAccessError | FolderMissingError | PersistenceError>
+    readonly resolve: (
+      root: string,
+      path: string,
+    ) => Effect.Effect<string, FsAccessError | FolderMissingError | PersistenceError>
+    readonly read: (
+      root: string,
+      path: string,
+    ) => Effect.Effect<FsFileContent, FsAccessError | FolderMissingError | PersistenceError>
     readonly preview: (
       root: string,
       path: string,
-    ) => Effect.Effect<{ readonly dataUrl: string }, FsAccessError | PersistenceError>
+    ) => Effect.Effect<{ readonly dataUrl: string }, FsAccessError | FolderMissingError | PersistenceError>
     readonly write: (
       root: string,
       path: string,
       content: string,
       expected: string | null,
-    ) => Effect.Effect<void, FsAccessError | FsWriteConflict | PersistenceError>
+    ) => Effect.Effect<void, FsAccessError | FolderMissingError | FsWriteConflict | PersistenceError>
+    readonly create: (
+      root: string,
+      path: string,
+      kind: "file" | "dir",
+    ) => Effect.Effect<void, FsAccessError | FolderMissingError | PersistenceError>
+    readonly rename: (
+      root: string,
+      from: string,
+      to: string,
+    ) => Effect.Effect<void, FsAccessError | FolderMissingError | PersistenceError>
+    readonly remove: (
+      root: string,
+      path: string,
+    ) => Effect.Effect<void, FsAccessError | FolderMissingError | PersistenceError>
     readonly watch: (
       root: string,
       paths: ReadonlyArray<string>,
-    ) => Effect.Effect<void, FsAccessError | PersistenceError>
+    ) => Effect.Effect<void, FsAccessError | FolderMissingError | PersistenceError>
   }
 >()("hinacode/Files") {}
 
@@ -131,12 +163,21 @@ const statusOf = (path: string, changed: ReadonlyMap<string, ChangedFileStatus>)
   return summarize(statuses)
 }
 
+const isIgnored = (path: string, ignored: ReadonlyArray<string>) =>
+  ignored.some(
+    (ignoredPath) => ignoredPath === path || (ignoredPath.endsWith("/") && `${path}/`.startsWith(ignoredPath)),
+  )
+
+const relativeSegments = (root: string, path: string) => {
+  const segments = path === "" ? [] : path.split("/")
+  return isAbsolute(path) || segments.some((segment) => segment === "" || segment === "." || segment === "..")
+    ? Effect.fail(new FsAccessError({ root, path, reason: "outsideRoot" }))
+    : Effect.succeed(segments)
+}
+
 const resolveInside = (root: string, path: string) =>
   Effect.gen(function* () {
-    const segments = path === "" ? [] : path.split("/")
-    if (isAbsolute(path) || segments.some((segment) => segment === "" || segment === "." || segment === "..")) {
-      return yield* new FsAccessError({ root, path, reason: "outsideRoot" })
-    }
+    const segments = yield* relativeSegments(root, path)
     const [realRoot, target] = yield* Effect.tryPromise({
       try: () => Promise.all([realpath(root), realpath(join(root, ...segments))]),
       catch: () => new FsAccessError({ root, path, reason: "unreadable" }),
@@ -144,6 +185,23 @@ const resolveInside = (root: string, path: string) =>
     if (!isInside(realRoot, target)) return yield* new FsAccessError({ root, path, reason: "outsideRoot" })
     return target
   })
+
+const failureReason = (error: unknown): FsAccessError["reason"] => {
+  const code = (error as NodeJS.ErrnoException).code
+  if (code === "EEXIST") return "exists"
+  return code === "ENOENT" ? "unreadable" : "unwritable"
+}
+
+const mutate = (root: string, path: string, operation: () => Promise<unknown>) =>
+  Effect.tryPromise({
+    try: operation,
+    catch: (error) => new FsAccessError({ root, path, reason: failureReason(error) }),
+  }).pipe(Effect.asVoid)
+
+const sameEntry = async (a: string, b: string) => {
+  const [first, second] = await Promise.all([lstat(a), lstat(b).catch(() => null)])
+  return second === null ? null : first.ino === second.ino && first.dev === second.dev
+}
 
 const readEntries = (root: string, path: string, dir: string) =>
   Effect.tryPromise({
@@ -167,6 +225,7 @@ const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
   const git = yield* Git
   const events = yield* Events
+  const requireFolder = yield* makeRequireFolder
 
   const findRoot = SqlSchema.findAll({
     Request: Schema.String,
@@ -189,95 +248,86 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const rows = yield* findRoot(root).pipe(Effect.mapError(persistence("files.root")))
       if (rows.length === 0) return yield* new FsAccessError({ root, path: "", reason: "unknownRoot" })
+      yield* requireFolder(root)
       return rows.find((row) => row.baseRef !== null)?.baseRef ?? null
     })
 
-  const ignoredIn = (root: string, path: string) =>
-    Effect.all(
-      [
-        path === ""
-          ? Effect.succeed(false)
-          : git.run(root, ["check-ignore", "--", path], { okExitCodes: [1] }).pipe(
-              Effect.map((output) => output.trim() !== ""),
-              Effect.orElseSucceed(() => false),
-            ),
-        git
-          .run(root, [
-            "ls-files",
-            "--others",
-            "--ignored",
-            "--exclude-standard",
-            "--directory",
-            "-z",
-            "--",
-            path || ".",
-          ])
-          .pipe(
-            Effect.map((output) => new Set(output.split("\0").map((ignored) => ignored.replace(/\/$/, "")))),
-            Effect.orElseSucceed(() => new Set<string>()),
-          ),
-      ],
-      { concurrency: "unbounded" },
-    ).pipe(
-      Effect.map(
-        ([folderIgnored, ignored]) =>
-          (entryPath: string) =>
-            folderIgnored || ignored.has(entryPath),
-      ),
-    )
+  const prefixes = new Map<string, string>()
+
+  const prefixOf = (root: string) =>
+    Effect.gen(function* () {
+      const cached = prefixes.get(root)
+      if (cached !== undefined) return cached
+      const prefix = (yield* git.run(root, ["rev-parse", "--show-prefix"])).trim()
+      prefixes.set(root, prefix)
+      return prefix
+    })
 
   const committed = (root: string, pathspec: string, baseRef: string | null) =>
     baseRef === null
       ? Effect.succeed([])
-      : git.run(root, ["merge-base", baseRef, "HEAD"]).pipe(
-          Effect.flatMap((mergeBase) =>
-            git.run(root, [
-              "diff",
-              "--name-status",
-              "-z",
-              "--no-renames",
-              "--relative",
-              mergeBase.trim(),
-              "--",
-              pathspec,
-            ]),
-          ),
-          Effect.map(parseNameStatus),
-          Effect.orElseSucceed(() => []),
-        )
+      : git
+          .run(root, [
+            "diff",
+            "--name-status",
+            "-z",
+            "--no-renames",
+            "--relative",
+            "--merge-base",
+            baseRef,
+            "--",
+            pathspec,
+          ])
+          .pipe(
+            Effect.map(parseNameStatus),
+            Effect.orElseSucceed(() => []),
+          )
 
-  const changedPaths = (root: string, path: string, baseRef: string | null) =>
+  const gitState = (root: string, path: string, baseRef: string | null) =>
     Effect.gen(function* () {
       const pathspec = path === "" ? "." : path
       const [prefix, porcelain, fromBase] = yield* Effect.all(
         [
-          git.run(root, ["rev-parse", "--show-prefix"]),
-          git.run(root, ["status", "--porcelain", "-z", "--no-renames", "--untracked-files=normal", "--", pathspec]),
+          prefixOf(root),
+          git.run(root, [
+            "status",
+            "--porcelain",
+            "-z",
+            "--no-renames",
+            "--untracked-files=normal",
+            "--ignored=matching",
+            "--",
+            pathspec,
+          ]),
           committed(root, pathspec, baseRef),
         ],
         { concurrency: "unbounded" },
       )
       const changed = new Map(fromBase.map((file) => [file.path, file.status]))
-      const repoPrefix = prefix.trim()
+      const ignored: Array<string> = []
       for (const record of porcelain.split("\0")) {
         const repoPath = record.slice(3)
-        if (record.length < 4 || !repoPath.startsWith(repoPrefix)) continue
-        const status = porcelainStatus(record.slice(0, 2))
-        const relativePath = repoPath.slice(repoPrefix.length)
-        if (status === "conflict" || !changed.has(relativePath)) changed.set(relativePath, status)
+        if (record.length < 4 || !repoPath.startsWith(prefix)) continue
+        const code = record.slice(0, 2)
+        const relativePath = repoPath.slice(prefix.length)
+        const status = porcelainStatus(code)
+        if (code === "!!") ignored.push(relativePath)
+        else if (status === "conflict" || !changed.has(relativePath)) changed.set(relativePath, status)
       }
-      return changed
-    }).pipe(Effect.orElseSucceed(() => new Map<string, ChangedFileStatus>()))
+      return { changed, ignored }
+    }).pipe(Effect.orElseSucceed(() => ({ changed: new Map<string, ChangedFileStatus>(), ignored: [] })))
 
   const list = (root: string, path: string) =>
     Effect.gen(function* () {
       const baseRef = yield* knownRoot(root)
       const entries = yield* readEntries(root, path, yield* resolveInside(root, path))
-      const [isIgnored, changed] = yield* Effect.all([ignoredIn(root, path), changedPaths(root, path, baseRef)], {
-        concurrency: "unbounded",
-      })
+      const { changed, ignored } = yield* gitState(root, path, baseRef)
       return entries
-        .map((entry) => ({ ...entry, ignored: isIgnored(entry.path), gitStatus: statusOf(entry.path, changed) }))
+        .map((entry) => ({
+          ...entry,
+          ignored: isIgnored(entry.path, ignored),
+          gitStatus: statusOf(entry.path, changed),
+        }))
         .toSorted(byKindThenName)
     })
 
@@ -320,6 +370,42 @@ const make = Effect.gen(function* () {
         try: () => writeFile(file, content),
         catch: () => new FsAccessError({ root, path, reason: "unwritable" }),
       })
+    })
+
+  const resolveEntry = (root: string, path: string) =>
+    Effect.gen(function* () {
+      const segments = yield* relativeSegments(root, path)
+      const name = segments.at(-1)
+      if (name === undefined || segments.includes(".git")) {
+        return yield* new FsAccessError({ root, path, reason: "outsideRoot" })
+      }
+      yield* knownRoot(root)
+      const parent = yield* resolveInside(root, segments.slice(0, -1).join("/"))
+      return join(parent, name)
+    })
+
+  const create = (root: string, path: string, kind: "file" | "dir") =>
+    Effect.gen(function* () {
+      const entry = yield* resolveEntry(root, path)
+      yield* mutate(root, path, () => (kind === "dir" ? mkdir(entry) : writeFile(entry, "", { flag: "wx" })))
+    })
+
+  const rename = (root: string, from: string, to: string) =>
+    Effect.gen(function* () {
+      const source = yield* resolveEntry(root, from)
+      const target = yield* resolveEntry(root, to)
+      const same = yield* Effect.tryPromise({
+        try: () => sameEntry(source, target),
+        catch: () => new FsAccessError({ root, path: from, reason: "unreadable" }),
+      })
+      if (same === false) return yield* new FsAccessError({ root, path: to, reason: "exists" })
+      yield* mutate(root, from, () => renameFs(source, target))
+    })
+
+  const remove = (root: string, path: string) =>
+    Effect.gen(function* () {
+      const entry = yield* resolveEntry(root, path)
+      yield* mutate(root, path, () => rm(entry, { recursive: true }))
     })
 
   const watchers = new Map<string, Map<string, () => void>>()
@@ -373,7 +459,7 @@ const make = Effect.gen(function* () {
 
   yield* Effect.addFinalizer(() => Effect.sync(() => [...watchers.keys()].forEach(closeAll)))
 
-  return Files.of({ list, resolve, read, preview, write, watch })
+  return Files.of({ list, resolve, read, preview, write, create, rename, remove, watch })
 })
 
 export const layer = Layer.effect(Files, make)

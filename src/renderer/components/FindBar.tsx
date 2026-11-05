@@ -1,12 +1,14 @@
 import type { LegendListRef } from "@legendapp/list/react"
 import { type KeyboardEvent, type RefObject, useEffect, useEffectEvent, useRef, useState } from "react"
-import { RiArrowDownSLine, RiArrowUpSLine, RiCloseLine, RiSearchLine } from "react-icons/ri"
+import type { AgentCommand } from "../../shared/agent.ts"
 import type { Message } from "../../shared/domain.ts"
 import { type FindMatch, findMatches } from "../lib/find.ts"
+import { skillLabelsOf } from "../lib/toolCall.ts"
 import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
 import { partMatchSelector } from "./FindHighlight.tsx"
 import { Button } from "./ui/button.tsx"
+import { ChevronDownIcon, ChevronUpIcon, CloseIcon, SearchIcon } from "@hinacode/icons"
 
 const MOUNT_WAIT_FRAMES = 10
 
@@ -37,10 +39,12 @@ const ordinalInPart = (matches: ReadonlyArray<FindMatch>, current: number) => {
 
 export function FindBar({
   messages,
+  commands,
   query,
   listRef,
 }: {
   messages: ReadonlyArray<Message>
+  commands: ReadonlyArray<AgentCommand>
   query: string
   listRef: RefObject<LegendListRef | null>
 }) {
@@ -55,7 +59,7 @@ export function FindBar({
   const revealToken = useRef(0)
 
   const startMessageId = useUi((state) => state.findMessageId)
-  const matches = findMatches(messages, query)
+  const matches = findMatches(messages, query, skillLabelsOf(commands))
   const inMessage = matches.findLastIndex((match) => match.messageId === startMessageId)
   const start = inMessage === -1 ? matches.length - 1 : inMessage
   const [selected, setSelected] = useState<{ query: string; index: number } | null>(null)
@@ -137,7 +141,7 @@ export function FindBar({
       aria-label={m.find_label()}
       className="flex h-10 shrink-0 animate-fade-in items-center gap-1 border-b border-border px-3"
     >
-      <RiSearchLine aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+      <SearchIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
       <input
         ref={inputRef}
         type="text"
@@ -164,7 +168,7 @@ export function FindBar({
         disabled={matches.length === 0}
         onClick={() => step(-1)}
       >
-        <RiArrowUpSLine aria-hidden />
+        <ChevronUpIcon aria-hidden />
       </Button>
       <Button
         variant="ghost"
@@ -174,10 +178,10 @@ export function FindBar({
         disabled={matches.length === 0}
         onClick={() => step(1)}
       >
-        <RiArrowDownSLine aria-hidden />
+        <ChevronDownIcon aria-hidden />
       </Button>
       <Button variant="ghost" size="icon-sm" aria-label={m.find_close()} title={m.find_close()} onClick={close}>
-        <RiCloseLine aria-hidden />
+        <CloseIcon aria-hidden />
       </Button>
     </search>
   )

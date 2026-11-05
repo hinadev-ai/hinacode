@@ -2,10 +2,7 @@ import { useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { Suspense, useRef, useState } from "react"
-import { RiFullscreenLine, RiPictureInPictureExitLine } from "react-icons/ri"
 import { callPromise, threadVmAtom } from "../../lib/rpc.ts"
-import { useThreadEnvironment } from "../../lib/environments.ts"
-import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import { useUi, VM_FLOATING_BOUNDS } from "../../stores/ui.ts"
 import { ResizeHandle } from "../ResizeHandle.tsx"
@@ -13,8 +10,6 @@ import {
   ControlButton,
   ControlStatus,
   IconAction,
-  PasskeyButton,
-  PasskeyNotice,
   type RunningVm,
   ScreenFallback,
   ScreenshotButton,
@@ -23,6 +18,7 @@ import {
   VmScreen,
   useVmDrop,
 } from "./TinyVmView.tsx"
+import { FullscreenIcon, PipExitIcon } from "@hinacode/icons"
 
 export default function FloatingVm({ threadId }: { threadId: string }) {
   const vm = useAtomValue(threadVmAtom(threadId))
@@ -33,22 +29,16 @@ export default function FloatingVm({ threadId }: { threadId: string }) {
 function FloatingScreen({ threadId, vm }: { threadId: string; vm: RunningVm }) {
   const { pending, error, run } = useVmAction()
   const { dropping, onDropFiles } = useVmDrop(threadId, run)
-  const { experimental } = useSettings(useThreadEnvironment(threadId))
   const width = useUi((state) => state.vmFloatingWidth)
   const setWidth = useUi((state) => state.setVmFloatingWidth)
   const setPlacement = useUi((state) => state.setVmPlacement)
-  const findOpen = useUi((state) => state.findThreadId === threadId)
   const ref = useRef<HTMLDivElement>(null)
   const [attempt, setAttempt] = useState(0)
   const waiting = vm.control === "user" && vm.agentWaiting
   const control = <ControlButton threadId={threadId} vm={vm} pending={pending} run={run} />
 
   return (
-    <div
-      ref={ref}
-      style={{ width }}
-      className={cn("absolute right-4 z-10 max-w-[calc(100%-2rem)]", findOpen ? "top-13" : "top-3")}
-    >
+    <div ref={ref} style={{ width }} className="relative max-w-full shrink-0">
       <ResizeHandle
         label={m.vm_floating_resize()}
         edge="left"
@@ -69,20 +59,14 @@ function FloatingScreen({ threadId, vm }: { threadId: string; vm: RunningVm }) {
           <ControlStatus vm={vm} />
           {control}
           <ScreenshotButton threadId={threadId} run={run} />
-          {experimental.tinyVmPasskeys && vm.provider === "sbx" && <PasskeyButton threadId={threadId} run={run} />}
-          <IconAction icon={RiFullscreenLine} label={m.vm_fullscreen()} onClick={() => showVmFullscreen(threadId)} />
-          <IconAction
-            icon={RiPictureInPictureExitLine}
-            label={m.vm_dock()}
-            onClick={() => setPlacement(threadId, "panel")}
-          />
+          <IconAction icon={FullscreenIcon} label={m.vm_fullscreen()} onClick={() => showVmFullscreen(threadId)} />
+          <IconAction icon={PipExitIcon} label={m.vm_dock()} onClick={() => setPlacement(threadId, "panel")} />
         </div>
         {error && (
           <p role="alert" className="border-b border-border px-2.5 py-1 text-xs text-destructive">
             {error}
           </p>
         )}
-        {experimental.tinyVmPasskeys && vm.provider === "sbx" && <PasskeyNotice threadId={threadId} run={run} />}
         <Suspense fallback={<ScreenFallback />}>
           <VmScreen
             key={`${vm.sandboxId}:${attempt}`}

@@ -6,7 +6,7 @@ import { linearReviewUrl } from "../../shared/github.ts"
 import { REMOTE_PROTOCOL_VERSION } from "../../shared/remote.ts"
 import { m } from "../paraglide/messages.js"
 import { useLocale } from "../stores/locale.ts"
-import { useThreads } from "../stores/threads.ts"
+import { selectThread, useThreads } from "../stores/threads.ts"
 import { formatRelativeTime } from "./relativeTime.ts"
 import { type EnvironmentId, environmentsAtom, projectsAtom } from "./rpc.ts"
 import { useNow } from "./useNow.ts"
@@ -22,7 +22,7 @@ export const environmentOf = (project: Pick<Project, "environmentId"> | undefine
   project?.environmentId ?? null
 
 export function useThreadEnvironment(threadId: string | null | undefined): EnvironmentId {
-  const projectId = useThreads((state) => (threadId ? state.byId[threadId]?.projectId : undefined))
+  const projectId = useThreads((state) => (threadId ? selectThread(threadId)(state)?.projectId : undefined))
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => [])
   return environmentOf(projects.find((project) => project.id === projectId))
 }
@@ -92,7 +92,7 @@ export function useCloudStateText(cloud: Cloud): string | null {
 }
 
 export function usePullRequestHref(threadId: string | null | undefined, url: string): string {
-  const projectId = useThreads((state) => (threadId ? state.byId[threadId]?.projectId : undefined))
+  const projectId = useThreads((state) => (threadId ? selectThread(threadId)(state)?.projectId : undefined))
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => [])
   const linearReview = projects.find((project) => project.id === projectId)?.linearReview ?? false
   return linearReview ? linearReviewUrl(url) : url

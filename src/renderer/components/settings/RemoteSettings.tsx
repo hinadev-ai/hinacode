@@ -1,9 +1,10 @@
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
-import { AsyncResult } from "effect/reactivity"
+import { Effect } from "effect"
+import { AsyncResult, Atom } from "effect/reactivity"
 import QRCode from "qrcode"
-import { type FormEvent, useEffect, useId, useRef, useState, useTransition } from "react"
-import type { RelayStatus, RemotePairing } from "../../../shared/domain.ts"
+import { type FormEvent, useId, useRef, useState, useTransition } from "react"
+import { PRIVATE_NETWORKS, type RelayStatus, type RemotePairing } from "../../../shared/domain.ts"
 import { isPortInUse, pairingUrl } from "../../../shared/remote.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { callPromise, remotePairingAtom, remoteStatusAtom, updateSettingsAtom } from "../../lib/rpc.ts"
@@ -57,10 +58,8 @@ export function RemoteSettings() {
             <Switch
               id="remote-enabled"
               checked={remote.enabled}
-              disabled={pending || remote.bindHost === null}
-              onCheckedChange={(enabled) =>
-                remote.bindHost !== null && save({ ...remote, enabled, bindHost: remote.bindHost })
-              }
+              disabled={pending}
+              onCheckedChange={(enabled) => save({ ...remote, enabled })}
             />
           </Field>
           <RemoteStatusLine remote={remote} />
@@ -115,7 +114,9 @@ function ListenerStatus({ remote }: { remote: RemoteSettingsValue }) {
         <>
           <span className="flex items-center gap-2">
             <StatusDot className="bg-success" />
-            {m.remote_status_listening({ address: `${remote.bindHost}:${remote.port}` })}
+            {remote.bindHost === PRIVATE_NETWORKS
+              ? m.remote_status_listening_private({ port: remote.port })
+              : m.remote_status_listening({ address: `${remote.bindHost}:${remote.port}` })}
           </span>
           <span className="text-muted-foreground tabular-nums">{m.remote_status_connected({ count: connected })}</span>
         </>
@@ -149,6 +150,7 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
             environment={null}
             value={remote.bindHost}
             onChange={(bindHost) => onSave({ ...remote, bindHost })}
+            privateNetworks
           />
         </Field>
         <form onSubmit={onSubmit} className="flex items-end gap-2">
@@ -171,10 +173,10 @@ function ListenerSettings({ remote, pending, onSave }: ListenerSettingsProps) {
         </form>
       </div>
       <FieldDescription>
-        {remote.bindHost === null
-          ? m.remote_bind_required_hint()
-          : remote.bindHost === LOOPBACK
-            ? m.remote_bind_loopback_hint()
+        {remote.bindHost === LOOPBACK
+          ? m.remote_bind_loopback_hint()
+          : remote.bindHost === PRIVATE_NETWORKS
+            ? m.remote_bind_private_hint()
             : m.remote_bind_address_hint({ address: remote.bindHost })}
       </FieldDescription>
       <FieldDescription>{m.remote_network_note()}</FieldDescription>
@@ -447,22 +449,22 @@ function PairingDetails({ pairing, onRotated }: PairingDetailsProps) {
   )
 }
 
-function PairingQrCode({ url }: { url: string }) {
-  const [src, setSrc] = useState<string | null>(null)
+const qrCodeAtom = Atom.family((url: string) =>
+  Atom.make(Effect.promise(() => QRCode.toString(url, { type: "svg", margin: 1 }))),
+)
 
-  useEffect(() => {
-    let current = true
-    void QRCode.toString(url, { type: "svg", margin: 1 }).then(
-      (svg) => current && setSrc(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`),
-    )
-    return () => {
-      current = false
-    }
-  }, [url])
+function PairingQrCode({ url }: { url: string }) {
+  const svg = AsyncResult.getOrElse(useAtomValue(qrCodeAtom(url)), () => null)
 
   return (
     <div className="size-48 rounded-md bg-white p-2">
-      {src && <img src={src} alt={m.remote_pair_qr_label()} className="size-full" />}
+      {svg && (
+        <img
+          src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`}
+          alt={m.remote_pair_qr_label()}
+          className="size-full"
+        />
+      )}
     </div>
   )
 }

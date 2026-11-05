@@ -1,6 +1,15 @@
 import type { RpcMethod } from "./contract.ts"
 
-export type Entity = "thread" | "project" | "worktree" | "terminal" | "automation" | "request" | "root" | "stream"
+export type Entity =
+  | "thread"
+  | "project"
+  | "worktree"
+  | "terminal"
+  | "automation"
+  | "request"
+  | "root"
+  | "stream"
+  | "artifact"
 
 export type Route =
   | { readonly to: "client" }
@@ -31,12 +40,22 @@ export const routes: Record<RpcMethod, Route> = {
   "device.command": thread,
   "device.control": thread,
   "device.pick": thread,
+  "device.screenshot.save": client,
   "app.ready": client,
   "app.focus": client,
+  "windows.openPullRequest": client,
+  "windows.addLineComment": client,
   "app.setBadgeCount": client,
   "app.setColorScheme": client,
   "dialog.pickFolder": client,
   "dialog.pickFiles": client,
+  "artifacts.export": client,
+  "artifacts.setTheme": client,
+  "artifacts.delete": owner("artifact", "id"),
+  "artifacts.readDocument": owner("artifact", "id"),
+  "artifacts.saveDocument": owner("artifact", "id"),
+  "artifacts.createDocument": thread,
+  "artifacts.rename": owner("artifact", "id"),
   "shell.reveal": client,
   "shell.openers": client,
   "shell.openWith": client,
@@ -73,6 +92,7 @@ export const routes: Record<RpcMethod, Route> = {
   "linear.issues": all,
   "limits.list": named,
   "search.threads": all,
+  "artifacts.list": all,
 
   "settings.get": named,
   "settings.set": named,
@@ -94,6 +114,8 @@ export const routes: Record<RpcMethod, Route> = {
   "github.merge": named,
   "github.close": named,
   "github.comment": named,
+  "github.fileContent": named,
+  "github.reviewComment": named,
   "vm.host": named,
   "network.addresses": named,
   "system.resources": named,
@@ -117,6 +139,7 @@ export const routes: Record<RpcMethod, Route> = {
   "projects.fetch": project,
   "projects.icon": project,
   "threads.create": owner("project", "projectId"),
+  "threads.draft": owner("project", "projectId"),
   "worktrees.create": owner("project", "projectId"),
   "automations.create": owner("project", "projectId"),
   "github.repository": owner("project", "projectId"),
@@ -126,15 +149,25 @@ export const routes: Record<RpcMethod, Route> = {
   "threads.resumeAtReset": owner("thread", "id"),
   "threads.switchAccount": owner("thread", "id"),
   "threads.changes": thread,
+  "threads.undoTurn": thread,
   "threads.fork": thread,
+  "threads.sidechat": thread,
+  "sessions.listExternal": owner("project", "projectId"),
+  "sessions.import": owner("project", "projectId"),
   "threads.archive": thread,
   "threads.unarchive": thread,
   "threads.transcript": thread,
+  "threads.toolOutput": thread,
   "threads.send": thread,
   "threads.steer": thread,
   "threads.queue": thread,
   "threads.unqueue": thread,
+  "threads.schedule": thread,
+  "threads.reschedule": thread,
+  "threads.unschedule": thread,
   "threads.interrupt": thread,
+  "threads.warm": thread,
+  "threads.reveal": thread,
   "threads.usage": thread,
   "threads.contextBreakdown": thread,
   "commands.list": thread,
@@ -142,8 +175,10 @@ export const routes: Record<RpcMethod, Route> = {
   "search.files": thread,
   "subagents.list": thread,
   "subagents.stop": thread,
+  "subagents.transcript": thread,
   "backgroundTasks.list": thread,
   "backgroundTasks.stop": thread,
+  "backgroundTasks.moveCommand": thread,
   "pullRequests.list": thread,
   "pullRequests.unlink": thread,
   "pullRequests.create": thread,
@@ -162,13 +197,11 @@ export const routes: Record<RpcMethod, Route> = {
   "vm.files.drop": thread,
   "vm.profile.save": thread,
   "vm.screenshot.save": thread,
-  "vm.passkey.get": thread,
-  "vm.passkey.prepare": thread,
-  "vm.passkey.cancel": thread,
   "attachments.stage": thread,
   "attachments.read": named,
 
   "worktrees.remove": owner("worktree", "id"),
+  "worktrees.checkoutState": owner("worktree", "id"),
   "worktrees.setupLog": owner("worktree", "id"),
   "worktrees.stopSetup": owner("worktree", "id"),
   "worktrees.pullRequest": owner("worktree", "id"),
@@ -194,7 +227,13 @@ export const routes: Record<RpcMethod, Route> = {
   "fs.read": root,
   "fs.preview": root,
   "fs.write": root,
+  "fs.create": root,
+  "fs.rename": root,
+  "fs.delete": root,
   "fs.watch": root,
+  "fs.completeDirectory": named,
+
+  "artifacts.file": owner("artifact", "id"),
 
   "vm.screen.send": owner("stream", "streamId"),
   "vm.screen.close": owner("stream", "streamId"),

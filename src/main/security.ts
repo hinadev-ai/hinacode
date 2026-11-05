@@ -1,5 +1,12 @@
 import { isAbsolute, relative, sep } from "node:path"
-import { ATTACHMENT_PROTOCOL, GITHUB_ASSET_PROTOCOL, PROJECT_FILE_PROTOCOL } from "../shared/channels.ts"
+import { isArtifactId, normalizeArtifactPath } from "@hinacode/artifacts"
+import {
+  ARTIFACT_PROTOCOL,
+  ATTACHMENT_PROTOCOL,
+  EXTERNAL_IMAGE_PROTOCOL,
+  GITHUB_ASSET_PROTOCOL,
+  PROJECT_FILE_PROTOCOL,
+} from "../shared/channels.ts"
 
 const EXTERNAL_PROTOCOLS = new Set(["https:", "http:"])
 
@@ -15,8 +22,10 @@ export const isAppDocument = (url: string, appUrl: string): boolean => {
   return app.protocol !== "file:" || target.pathname === app.pathname
 }
 
+const FRAME_PROTOCOLS = new Set([`${PROJECT_FILE_PROTOCOL}:`, `${ARTIFACT_PROTOCOL}:`])
+
 export const isAllowedNavigation = (url: string, isMainFrame: boolean, appUrl: string): boolean =>
-  isMainFrame ? isAppDocument(url, appUrl) : URL.parse(url)?.protocol === `${PROJECT_FILE_PROTOCOL}:`
+  isMainFrame ? isAppDocument(url, appUrl) : FRAME_PROTOCOLS.has(URL.parse(url)?.protocol ?? "")
 
 export const isTrustedSender = (frame: { url: string; parent: unknown } | null, appUrl: string): boolean =>
   frame !== null && frame.parent === null && isAppDocument(frame.url, appUrl)
@@ -58,6 +67,70 @@ export const projectFileRequest = (url: string): { root: string; path: string } 
   const [root, ...segments] = parsed.pathname.slice(1).split("/")
   try {
     return root ? { root: decodeURIComponent(root), path: segments.map(decodeURIComponent).join("/") } : null
+  } catch {
+    return null
+  }
+}
+
+export const artifactRequest = (url: string): { id: string; path: string } | null => {
+  const parsed = URL.parse(url)
+  if (parsed?.protocol !== `${ARTIFACT_PROTOCOL}:` || !isArtifactId(parsed.host)) return null
+  try {
+    const decoded = parsed.pathname.slice(1).split("/").map(decodeURIComponent).join("/")
+    const path = decoded === "" ? "" : normalizeArtifactPath(decoded)
+    return path === null ? null : { id: parsed.host, path }
+  } catch {
+    return null
+  }
+}
+
+const isLocalHost = (hostname: string): boolean => {
+  const host = hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/\.$/, "")
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal"))
+    return true
+  if (host.includes(":")) {
+    if (host === "::1" || host.startsWith("fe80:") || host.startsWith("fc") || host.startsWith("fd")) return true
+    if (!host.startsWith("::ffff:")) return false
+    const mapped = host.slice("::ffff:".length)
+    if (isLocalHost(mapped)) return true
+    const groups = mapped.split(":").map((group) => Number.parseInt(group, 16))
+    if (groups.length !== 2 || groups.some((group) => !Number.isInteger(group) || group < 0 || group > 0xffff))
+      return false
+    const [high = 0, low = 0] = groups
+    return isLocalHost(`${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`)
+  }
+  const octets = host.split(".").map((part) => (/^\d+$/.test(part) ? Number(part) : Number.NaN))
+  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet > 255)) return false
+  const [a = Number.NaN, b = Number.NaN] = octets
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    a >= 224 ||
+    (a === 100 && b >= 64 && b < 128) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b < 32) ||
+    (a === 192 && b === 168)
+  )
+}
+
+export const externalImageTarget = (url: string): string | null => {
+  const parsed = URL.parse(url)
+  if (!parsed || !EXTERNAL_PROTOCOLS.has(parsed.protocol) || isLocalHost(parsed.hostname)) return null
+  parsed.hash = ""
+  parsed.username = ""
+  parsed.password = ""
+  return parsed.href
+}
+
+export const externalImageRequest = (url: string): string | null => {
+  const parsed = URL.parse(url)
+  if (parsed?.protocol !== `${EXTERNAL_IMAGE_PROTOCOL}:` || parsed.host !== "image") return null
+  try {
+    return externalImageTarget(decodeURIComponent(parsed.pathname.slice(1)))
   } catch {
     return null
   }

@@ -5,10 +5,12 @@ import * as ClaudeProvider from "./agents/claude/index.ts"
 import { mockScenarios, usageLimitLayer } from "./agents/claude/mock.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import { MuseProvider } from "./agents/muse/index.ts"
+import { OpencodeProvider } from "./agents/opencode/index.ts"
 import * as Db from "./db/client.ts"
 import { answerAsksLayer } from "./environments/route.ts"
 import * as Mcp from "./mcp/index.ts"
 import * as RemoteAccess from "./remote/access.ts"
+import * as CliSocket from "./remote/cliSocket.ts"
 import * as Peers from "./remote/peers.ts"
 import * as Relay from "./remote/relay.ts"
 import * as RemoteServer from "./remote/server.ts"
@@ -16,7 +18,10 @@ import { applyServeConfig, type ServeConfig } from "./serve.ts"
 import type { PushEvent } from "../shared/contract.ts"
 import * as AgentAccounts from "./services/AgentAccounts.ts"
 import * as AgentLogins from "./services/AgentLogins.ts"
+import * as SessionImports from "./services/SessionImports.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
+import * as ArtifactInspector from "./services/ArtifactInspector.ts"
+import * as Artifacts from "./services/Artifacts.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as Boat from "./services/boat/Boat.ts"
 import * as AutoArchive from "./services/AutoArchive.ts"
@@ -44,7 +49,6 @@ import * as SystemResources from "./services/SystemResources.ts"
 import * as Terminals from "./services/Terminals.ts"
 import * as ThreadNaming from "./services/ThreadNaming.ts"
 import * as Threads from "./services/Threads.ts"
-import * as PasskeyRelay from "./services/tinyVm/passkey/PasskeyRelay.ts"
 import * as TinyVm from "./services/tinyVm/TinyVm.ts"
 import type { Updates } from "./services/Updates.ts"
 import * as Worktrees from "./services/Worktrees.ts"
@@ -52,6 +56,8 @@ import { makeAndroidDriver } from "./services/devices/android.ts"
 import { devicesLayer } from "./services/devices/Devices.ts"
 import { makeIosDriver, simslimAvailable } from "./services/devices/ios.ts"
 import { simhelperSources } from "./services/devices/simhelperSources.ts"
+import { SpanLedger, traceLayer } from "./trace.ts"
+import { STALL_MS, watchdogLayer } from "./watchdog.ts"
 
 export interface AppOptions {
   readonly userData: string
@@ -60,18 +66,51 @@ export interface AppOptions {
   readonly updates: Layer.Layer<Updates, never, Events | Threads.Threads | Worktrees.Worktrees | Terminals.Terminals>
   readonly toWindows: (event: typeof PushEvent.Encoded) => void
   readonly serve?: ServeConfig
+  readonly artifactInspector?: Layer.Layer<ArtifactInspector.ArtifactInspector>
 }
 
-const simulatedClaude = (env: NodeJS.ProcessEnv) => {
-  const mode = env["HINACODE_MOCK_CLAUDE"]
+const simulatedClaude = (variable: "HINACODE_MOCK_AGENTS" | "HINACODE_MOCK_CLAUDE", env: NodeJS.ProcessEnv) => {
+  const mode = env[variable]
   if (mode === undefined) return undefined
   const scenario = mockScenarios.find((candidate) => candidate === mode)
-  if (scenario === undefined) throw new Error(`HINACODE_MOCK_CLAUDE must be one of ${mockScenarios.join(", ")}`)
+  if (scenario === undefined) throw new Error(`${variable} must be one of ${mockScenarios.join(", ")}`)
   if (!env["HINACODE_USER_DATA"]) throw new Error("Claude simulation requires HINACODE_USER_DATA")
   const resetMs = Number(env["HINACODE_MOCK_RESET_MS"] ?? 60000)
   if (!Number.isFinite(resetMs) || Math.abs(resetMs) > 3600000)
     throw new Error("HINACODE_MOCK_RESET_MS must be between -3600000 and 3600000")
   return usageLimitLayer(scenario, resetMs)
+}
+
+export const agentProviders = (env: NodeJS.ProcessEnv) => {
+  const everyAgent = simulatedClaude("HINACODE_MOCK_AGENTS", env)
+  if (everyAgent !== undefined)
+    return {
+      simulated: true,
+      layer: Layer.mergeAll(
+        Layer.effect(
+          CodexProvider,
+          ClaudeProvider.ClaudeProvider.useSync((claude) => ({ ...claude, id: "codex" })),
+        ),
+        Layer.effect(
+          MuseProvider,
+          ClaudeProvider.ClaudeProvider.useSync((claude) => ({ ...claude, id: "muse" })),
+        ),
+        Layer.effect(
+          OpencodeProvider,
+          ClaudeProvider.ClaudeProvider.useSync((claude) => ({ ...claude, id: "opencode" })),
+        ),
+      ).pipe(Layer.provideMerge(everyAgent)),
+    }
+  const claude = simulatedClaude("HINACODE_MOCK_CLAUDE", env)
+  return {
+    simulated: claude !== undefined,
+    layer: Layer.mergeAll(
+      claude ?? ClaudeProvider.layer,
+      CodexProvider.layer,
+      MuseProvider.layer,
+      OpencodeProvider.layer,
+    ),
+  }
 }
 
 const linearLayer = (env: NodeJS.ProcessEnv) => {
@@ -80,8 +119,17 @@ const linearLayer = (env: NodeJS.ProcessEnv) => {
   return Linear.mockLayer
 }
 
-export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWindows, serve }: AppOptions) => {
-  const mockClaude = simulatedClaude(process.env)
+export const makeAppLayer = ({
+  userData,
+  sbxConfigPath,
+  keyring,
+  updates,
+  toWindows,
+  serve,
+  artifactInspector = ArtifactInspector.unavailable,
+}: AppOptions) => {
+  const providers = agentProviders(process.env)
+  const spans = new SpanLedger(STALL_MS)
   const chats = Layer.effectDiscard(Projects.Projects.use((projects) => projects.ensureChats(join(userData, "chats"))))
   const domain = Layer.mergeAll(
     Threads.layer.pipe(
@@ -96,14 +144,14 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     ClientSettings.layer(userData),
     Messages.layer,
     Attachments.layer(join(userData, "attachments")),
+    Artifacts.layer(join(userData, "artifacts")),
+    artifactInspector,
     Search.layer,
     Files.layer,
   )
-  const naming =
-    mockClaude === undefined
-      ? ThreadNaming.layer
-      : Layer.succeed(ThreadNaming.ThreadNaming, { nameFromPrompt: () => Effect.void })
-  const claude = mockClaude ?? ClaudeProvider.layer
+  const naming = providers.simulated
+    ? Layer.succeed(ThreadNaming.ThreadNaming, { nameFromPrompt: () => Effect.void })
+    : ThreadNaming.layer
   const remoteAccess = RemoteAccess.layer.pipe(Layer.provide(Secrets.layer))
   const relayServiceUrl = process.env["HINACODE_RELAY_URL"] ?? Relay.DEFAULT_RELAY_SERVICE_URL
   const relay = Relay.layer({ serviceUrl: relayServiceUrl, cloudflaredDir: join(userData, "cloudflared") }).pipe(
@@ -113,7 +161,6 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
   const tinyVm = TinyVm.layer({ configPath: sbxConfigPath, env: process.env }, join(userData, "tiny-vm"), {
     desktopRedirect: serve === undefined,
   }).pipe(Layer.provide(boat))
-  const passkeys = PasskeyRelay.layer(join(userData, "tiny-vm")).pipe(Layer.provide(tinyVm))
   const peers = Peers.layer.pipe(
     Layer.provideMerge(Environments.layer),
     Layer.provide(Layer.mergeAll(remoteAccess, Secrets.layer)),
@@ -134,7 +181,6 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     remoteAccess,
     relay,
     tinyVm,
-    passkeys,
     peers,
     devices,
     linearLayer(process.env),
@@ -144,19 +190,22 @@ export const makeAppLayer = ({ userData, sbxConfigPath, keyring, updates, toWind
     Automations.layer,
     AutoArchive.layer,
     PullRequestWatcher.layer,
-    mockClaude === undefined ? PullRequestGuides.layer : PullRequestGuides.idleLayer,
+    providers.simulated ? PullRequestGuides.idleLayer : PullRequestGuides.layer,
     updates,
     Mcp.serverLayer,
     AgentLogins.layer(join(userData, "cache")),
+    SessionImports.layer,
     RelayAccount.layer({ serviceUrl: relayServiceUrl }).pipe(Layer.provide(Secrets.layer)),
   ).pipe(Layer.provideMerge(agents))
-  return Layer.mergeAll(RemoteServer.layer, answerAsksLayer).pipe(
+  return Layer.mergeAll(RemoteServer.layer, CliSocket.layer(userData), answerAsksLayer).pipe(
     Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),
     Layer.provideMerge(services),
-    Layer.provide(Layer.mergeAll(claude, CodexProvider.layer, MuseProvider.layer)),
+    Layer.provide(providers.layer),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
     Layer.provideMerge(makeEventsLayer(toWindows)),
     Layer.provide(Layer.mergeAll(Db.layer(join(userData, "hinacode.sqlite")), keyring)),
     Layer.provide(NodeServices.layer),
+    Layer.provideMerge(watchdogLayer(spans)),
+    Layer.provideMerge(traceLayer(process.env["HINACODE_TRACE"], spans)),
   )
 }

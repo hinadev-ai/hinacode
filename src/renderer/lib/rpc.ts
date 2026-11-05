@@ -1,8 +1,18 @@
-import { Effect, Schedule, Schema, Stream } from "effect"
+import { Duration, Effect, Option, Schedule, Schema, Stream } from "effect"
 import { AsyncResult, Atom } from "effect/reactivity"
-import type { ProviderId } from "../../shared/agent.ts"
-import { PushEvent, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../../shared/contract.ts"
+import { type AgentCommand, ProviderId } from "../../shared/agent.ts"
+import {
+  PushEvent,
+  type RpcMethod,
+  RpcMethods,
+  type RpcRequest,
+  type RpcResponse,
+  transcriptThreadId,
+} from "../../shared/contract.ts"
+import { looksLikeDirectoryPath } from "../../shared/directoryPath.ts"
 import type { Thread } from "../../shared/domain.ts"
+import { PULL_REQUEST_REFRESH } from "../../shared/github.ts"
+import { msUntilNextReset } from "../../shared/planLimits.ts"
 import { pullRequestAttention } from "../../shared/threadStatus.ts"
 import { m } from "../paraglide/messages.js"
 
@@ -40,9 +50,53 @@ export const callPromise = <M extends RpcMethod>(method: M, payload: RpcRequest<
   Effect.runPromise(call(method, payload, options))
 
 const decodePushEvent = Schema.decodeUnknownSync(PushEvent)
+const decodeTranscriptAddress = Schema.decodeUnknownOption(
+  Schema.Union([
+    Schema.Struct({ type: Schema.Literal("thread.event"), threadId: Schema.String }),
+    Schema.Struct({
+      type: Schema.Literals(["message.created", "message.updated"]),
+      message: Schema.Struct({ threadId: Schema.String }),
+    }),
+  ]),
+)
 
-export const onPushEvent = (listener: (event: PushEvent) => void) =>
-  window.hinacode.onEvent((raw) => listener(decodePushEvent(raw)))
+export type RendererPushEvent = PushEvent | { readonly type: "transcript.lost"; readonly threadId: string }
+
+let pushListeners: ReadonlyArray<(event: RendererPushEvent) => void> = []
+let stopBridgeEvents: (() => void) | undefined
+
+const decodeOrReportLoss = (raw: unknown): RendererPushEvent | undefined => {
+  try {
+    return decodePushEvent(raw)
+  } catch (error) {
+    reportError(error)
+    const address = decodeTranscriptAddress(raw)
+    return Option.isSome(address) ? { type: "transcript.lost", threadId: transcriptThreadId(address.value) } : undefined
+  }
+}
+
+const broadcastPushEvent = (raw: typeof PushEvent.Encoded) => {
+  const event = decodeOrReportLoss(raw)
+  if (event === undefined) return
+  for (const listener of pushListeners) {
+    try {
+      listener(event)
+    } catch (error) {
+      reportError(error)
+    }
+  }
+}
+
+export const onPushEvent = (listener: (event: RendererPushEvent) => void) => {
+  pushListeners = [...pushListeners, listener]
+  stopBridgeEvents ??= window.hinacode.onEvent(broadcastPushEvent)
+  return () => {
+    pushListeners = pushListeners.filter((other) => other !== listener)
+    if (pushListeners.length > 0) return
+    stopBridgeEvents?.()
+    stopBridgeEvents = undefined
+  }
+}
 
 export const familyOf = <Args extends ReadonlyArray<unknown>, A extends object>(make: (...args: Args) => A) => {
   const family = Atom.family((key: string) => make(...(JSON.parse(key) as Args)))
@@ -95,6 +149,10 @@ export const worktreeCheckoutsAtom = Atom.make(
   call("worktrees.checkouts", undefined).pipe(
     Effect.map((checkouts) => new Map(checkouts.map((checkout) => [checkout.id, checkout.state]))),
   ),
+)
+
+export const worktreeCheckoutStateAtom = Atom.family((id: string) =>
+  Atom.make(call("worktrees.checkoutState", { id })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
 )
 
 export const environmentsAtom = Atom.make((get) => {
@@ -162,6 +220,13 @@ export const accountAtom = familyOf((environment: EnvironmentId, provider: Provi
   Atom.make(call("agents.account", { provider, accountId }, { environment })),
 )
 
+const isSetUp = (account: AsyncResult.AsyncResult<RpcResponse<"agents.account">, RpcError>) =>
+  AsyncResult.isInitial(account) || (AsyncResult.isSuccess(account) && account.value.type !== "signedOut")
+
+export const setUpProvidersAtom = Atom.family((environment: EnvironmentId) =>
+  Atom.make((get) => ProviderId.literals.filter((provider) => isSetUp(get(accountAtom(environment, provider, null))))),
+)
+
 export const refreshAccountAtom = Atom.fn(
   ({
     environment,
@@ -210,7 +275,16 @@ export const commandsAtom = Atom.family((key: string) =>
   Atom.make(call("commands.list", { threadId: threadIdOf(key) })),
 )
 
+export const threadCommands = (commands: ReadonlyArray<AgentCommand>, thread: Pick<Thread, "userSkills">) =>
+  commands.filter((command) => thread.userSkills || command.scope !== "user")
+
+export const externalSessionsAtom = Atom.family((projectId: string) =>
+  Atom.make(call("sessions.listExternal", { projectId })),
+)
+
 export const filesAtom = Atom.family((key: string) => Atom.make(call("files.list", { threadId: threadIdOf(key) })))
+
+export const noFilesAtom = Atom.make(Effect.succeed<ReadonlyArray<string>>([]))
 
 export const projectIconAtom = Atom.family((projectId: string) =>
   Atom.make(call("projects.icon", { id: projectId })).pipe(Atom.keepAlive),
@@ -224,9 +298,13 @@ const remoteFetchAtom = Atom.family((projectId: string) =>
   Atom.make(call("projects.fetch", { id: projectId })).pipe(Atom.makeRefreshOnSignal(windowReturnSignal)),
 )
 
+const remoteFetchedAtAtom = Atom.family((projectId: string) =>
+  Atom.make((get) => AsyncResult.getOrElse(get(remoteFetchAtom(projectId)), () => null)),
+)
+
 export const branchesAtom = Atom.family((projectId: string) =>
   Atom.make((get) => {
-    get(remoteFetchAtom(projectId))
+    get(remoteFetchedAtAtom(projectId))
     return call("projects.branches", { id: projectId })
   }),
 )
@@ -241,9 +319,15 @@ export const pullRequestSearchAtom = familyOf((projectId: string, query: string 
   ),
 )
 
+export const directorySuggestionsAtom = familyOf((environment: EnvironmentId, path: string) =>
+  Atom.make(
+    looksLikeDirectoryPath(path) ? call("fs.completeDirectory", { path }, { environment }) : Effect.succeed([]),
+  ).pipe(Atom.setIdleTTL("10 seconds")),
+)
+
 export const defaultBranchAtom = Atom.family((projectId: string) =>
   Atom.make((get) => {
-    get(remoteFetchAtom(projectId))
+    get(remoteFetchedAtAtom(projectId))
     return call("projects.defaultBranch", { id: projectId })
   }),
 )
@@ -259,6 +343,12 @@ export const threadChangesAtom = Atom.family((key: string) => {
     Atom.makeRefreshOnSignal(windowReturnSignal),
   )
 })
+
+export const turnChangesAtom = Atom.family((messageKey: string) => {
+  const [threadId = ""] = messageKey.split("\n")
+  return Atom.make(call("threads.changes", { threadId, scope: "turn" }))
+})
+export const turnChangesKey = (threadId: string, messageId: string) => `${threadId}\n${messageId}`
 
 export const gitLogLimitAtom = Atom.family((_root: string) => Atom.make(200))
 
@@ -279,38 +369,86 @@ export const commitKey = (root: string, hash: string) => `${root}\n${hash}`
 
 const windowReturnSignal = Atom.readable((get) => {
   let count = 0
-  const bump = () => {
-    if (document.visibilityState === "visible") get.setSelf(++count)
+  let away = false
+  const leave = () => {
+    away = true
   }
-  window.addEventListener("focus", bump)
-  document.addEventListener("visibilitychange", bump)
+  const comeBack = () => {
+    if (!away || document.visibilityState !== "visible") return
+    away = false
+    get.setSelf(++count)
+  }
+  const onVisibilityChange = () => (document.visibilityState === "visible" ? comeBack() : leave())
+  window.addEventListener("blur", leave)
+  window.addEventListener("focus", comeBack)
+  document.addEventListener("visibilitychange", onVisibilityChange)
   get.addFinalizer(() => {
-    window.removeEventListener("focus", bump)
-    document.removeEventListener("visibilitychange", bump)
+    window.removeEventListener("blur", leave)
+    window.removeEventListener("focus", comeBack)
+    document.removeEventListener("visibilitychange", onVisibilityChange)
   })
   return count
 })
 
+const refreshInStepWhileVisible =
+  (interval: Duration.Duration) =>
+  <A>(self: Atom.Atom<A>) => {
+    const millis = Duration.toMillis(interval)
+    return Atom.transform(self, (get) => {
+      let timer: ReturnType<typeof setTimeout>
+      const scheduleNextRefresh = () => {
+        timer = setTimeout(
+          () => {
+            scheduleNextRefresh()
+            if (!document.hidden) get.refresh(self)
+          },
+          millis - (Date.now() % millis),
+        )
+      }
+      scheduleNextRefresh()
+      get.addFinalizer(() => clearTimeout(timer))
+      return get(self)
+    })
+  }
+
 const gitHubLookup = <Args extends ReadonlyArray<unknown>, A>(
-  lookup: (...args: Args) => Effect.Effect<A, RpcError>,
+  lookup: (...args: Args) => (get: Atom.AtomContext) => Effect.Effect<A, RpcError>,
+  { revalidateOnFocus = true }: { readonly revalidateOnFocus?: boolean } = {},
 ) => {
   // FIXME: an atom family holds its atoms weakly, and the wrapper below is dropped on unmount
   const cached = familyOf((...args: Args) => Atom.make(lookup(...args)).pipe(Atom.setIdleTTL("10 minutes")))
   return familyOf((...args: Args) =>
     cached(...args).pipe(
-      Atom.swr({ staleTime: "30 seconds", revalidateOnFocus: true, focusSignal: windowReturnSignal }),
-      Atom.withRefresh("60 seconds"),
+      Atom.swr({ staleTime: "30 seconds", revalidateOnFocus, focusSignal: windowReturnSignal }),
+      refreshInStepWhileVisible(PULL_REQUEST_REFRESH),
     ),
   )
 }
 
-export const branchPullRequestAtom = gitHubLookup((worktreeId: string | null) =>
-  worktreeId ? call("worktrees.pullRequest", { id: worktreeId }) : Effect.succeed(null),
+const refreshWhenPullRequestChanges = (get: Atom.AtomContext, url: string) =>
+  get.addFinalizer(
+    onPushEvent((event) => {
+      if (event.type === "github.pullRequest" && event.url === url) get.refreshSelf()
+    }),
+  )
+
+export const branchPullRequestAtom = gitHubLookup(
+  (worktreeId: string | null) => (get) =>
+    worktreeId
+      ? call("worktrees.pullRequest", { id: worktreeId }).pipe(
+          Effect.tap((pullRequest) =>
+            Effect.sync(() => {
+              if (pullRequest !== null) refreshWhenPullRequestChanges(get, pullRequest.url)
+            }),
+          ),
+        )
+      : Effect.succeed(null),
 )
 
-export const pullRequestStatusAtom = gitHubLookup((environment: EnvironmentId, url: string) =>
-  call("github.pullRequest", { url }, { environment }),
-)
+export const pullRequestStatusAtom = gitHubLookup((environment: EnvironmentId, url: string) => (get) => {
+  refreshWhenPullRequestChanges(get, url)
+  return call("github.pullRequest", { url }, { environment })
+})
 
 export const pullRequestStatusesAtom = familyOf((environment: EnvironmentId, urls: ReadonlyArray<string>) =>
   Atom.make((get) =>
@@ -330,12 +468,36 @@ export const pullRequestAttentionsAtom = familyOf(
     Atom.make((get) => threads.map(([environment, urls]) => get(pullRequestAttentionAtom(environment, urls)))),
 )
 
-export const pullRequestDetailAtom = gitHubLookup((environment: EnvironmentId, url: string) =>
-  call("github.pullRequestDetail", { url }, { environment }),
+const pullRequestDetailLookup = gitHubLookup(
+  (environment: EnvironmentId, url: string) => (get) => {
+    refreshWhenPullRequestChanges(get, url)
+    return call("github.pullRequestDetail", { url }, { environment })
+  },
+  { revalidateOnFocus: false },
+)
+
+const readFreshOnWindowReturn =
+  (environment: EnvironmentId, url: string) =>
+  <A>(self: Atom.Atom<A>) =>
+    Atom.transform(self, (get) => {
+      get.once(windowReturnSignal)
+      get.subscribe(windowReturnSignal, () =>
+        Effect.runFork(Effect.ignore(call("github.pullRequestDetail", { url, fresh: true }, { environment }))),
+      )
+      return get(self)
+    })
+
+export const pullRequestDetailAtom = familyOf((environment: EnvironmentId, url: string) =>
+  pullRequestDetailLookup(environment, url).pipe(readFreshOnWindowReturn(environment, url)),
 )
 
 export const pullRequestFilesAtom = familyOf((environment: EnvironmentId, url: string, _forHead: string) =>
   Atom.make(call("github.pullRequestFiles", { url }, { environment })).pipe(Atom.setIdleTTL("10 minutes")),
+)
+
+export const pullRequestFileContentAtom = familyOf(
+  (environment: EnvironmentId, url: string, ref: string, path: string) =>
+    Atom.make(call("github.fileContent", { url, ref, path }, { environment })).pipe(Atom.setIdleTTL("10 minutes")),
 )
 
 export const gitHubAuthAtom = Atom.family((environment: EnvironmentId) =>
@@ -366,7 +528,7 @@ export const threadPortsAtom = Atom.family((threadId: string) =>
 )
 
 const pushFirst =
-  <A>(extract: (event: PushEvent) => A | undefined, fetch: Effect.Effect<A, RpcError>) =>
+  <A>(extract: (event: RendererPushEvent) => A | undefined, fetch: Effect.Effect<A, RpcError>) =>
   (get: {
     addFinalizer: (finalizer: () => void) => void
     setSelf: (result: AsyncResult.AsyncResult<A, RpcError>) => void
@@ -401,19 +563,14 @@ export const threadDevicesAtom = Atom.family((threadId: string) =>
   ),
 )
 
+export const vmDesktopUrlAtom = familyOf((threadId: string, _sandboxId: string) =>
+  Atom.make(call("vm.desktop.url", { threadId })),
+)
+
 export const deviceHostAtom = Atom.family((threadId: string) => Atom.make(call("devices.list", { threadId })))
 
 export const vmHostAtom = Atom.family((environment: EnvironmentId) =>
   Atom.make(call("vm.host", undefined, { environment })),
-)
-
-export const threadVmPasskeyAtom = Atom.family((threadId: string) =>
-  Atom.make(
-    pushFirst(
-      (event) => (event.type === "vm.passkey.updated" && event.threadId === threadId ? event.passkey : undefined),
-      call("vm.passkey.get", { threadId }),
-    ),
-  ),
 )
 
 const turnEnds = new Set(["turn_completed", "turn_failed", "turn_limited"])
@@ -431,23 +588,32 @@ export const contextBreakdownAtom = Atom.family((threadId: string) =>
   }),
 )
 
+const longestTimeoutMs = 2 ** 31 - 1
+
 export const accountLimitsAtom = Atom.make((get) => {
   get.addFinalizer(
     onPushEvent((event) => {
       if (event.type === "thread.event" && turnEnds.has(event.event.type)) get.refreshSelf()
     }),
   )
-  return Stream.fromEffectSchedule(call("limits.list", undefined), Schedule.spaced("2 minutes"))
-})
+  return call("limits.list", undefined).pipe(
+    Effect.tap((limits) =>
+      Effect.sync(() => {
+        const resetIn = msUntilNextReset(limits, Date.now())
+        if (resetIn === undefined) return
+        const timer = setTimeout(() => get.refreshSelf(), Math.min(resetIn, longestTimeoutMs))
+        get.addFinalizer(() => clearTimeout(timer))
+      }),
+    ),
+  )
+}).pipe(Atom.swr({ staleTime: "5 minutes", revalidateOnFocus: true, focusSignal: windowReturnSignal }))
 
-export const remoteStatusAtom = Atom.make(
-  Stream.fromEffectSchedule(call("remote.status", undefined), Schedule.spaced("2 seconds")),
+export const remoteStatusAtom = Atom.make(call("remote.status", undefined)).pipe(
+  refreshInStepWhileVisible(Duration.seconds(2)),
 )
 
 export const machineResourcesAtom = Atom.family((environment: EnvironmentId) =>
-  Atom.make(
-    Stream.fromEffectSchedule(call("system.resources", undefined, { environment }), Schedule.spaced("5 seconds")),
-  ),
+  Atom.make(call("system.resources", undefined, { environment })).pipe(refreshInStepWhileVisible(Duration.seconds(5))),
 )
 
 export const remotePairingAtom = Atom.make((get) => {
@@ -499,11 +665,28 @@ const onAutomationRun = (listener: (automationId: string) => void) =>
 export const automationsAtom = Atom.family((environment: EnvironmentId) =>
   Atom.make((get) => {
     get.addFinalizer(onAutomationRun(() => get.refreshSelf()))
-    return Stream.fromEffectSchedule(
-      call("automations.list", undefined, { environment }),
-      Schedule.spaced("15 seconds"),
-    )
-  }),
+    return call("automations.list", undefined, { environment })
+  }).pipe(refreshInStepWhileVisible(Duration.seconds(15))),
+)
+
+export const artifactsAtom = Atom.make((get) => {
+  get.addFinalizer(
+    onPushEvent(
+      (event) =>
+        (event.type === "artifact.updated" ||
+          event.type === "artifact.removed" ||
+          event.type === "environment.status" ||
+          event.type === "environments.changed") &&
+        get.refreshSelf(),
+    ),
+  )
+  return call("artifacts.list", undefined).pipe(
+    Effect.map((artifacts) => artifacts.toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt))),
+  )
+})
+
+export const documentAtom = familyOf((environment: EnvironmentId, id: string) =>
+  Atom.make(call("artifacts.readDocument", { id }, { environment })),
 )
 
 export const automationRunsAtom = Atom.family((automationId: string) =>

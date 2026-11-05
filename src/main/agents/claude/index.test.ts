@@ -19,6 +19,7 @@ const sdk = vi.hoisted(() => {
     readonly setPermissionMode = vi.fn((_mode: string) => sdk.setPermissionMode())
     readonly interrupt = vi.fn(() => Promise.resolve())
     readonly stopTask = vi.fn((_taskId: string) => Promise.resolve())
+    readonly backgroundTasks = vi.fn((_toolUseId?: string) => Promise.resolve(true))
     readonly supportedCommands = vi.fn(() => sdk.supportedCommands())
     readonly supportedModels = vi.fn(() => sdk.supportedModels())
     private readonly buffer: Array<Message> = []
@@ -145,6 +146,7 @@ const turnInput = (overrides: Partial<RunTurnInput> = {}): RunTurnInput => ({
   prompt: "Hello",
   attachments: [],
   cwd: "/repo",
+  tmpDirectory: "/tmp/hc-thread-1",
   model: "claude-sonnet-5-5",
   effort: null,
   fastMode: false,
@@ -253,6 +255,28 @@ describe("Claude idle sessions", () => {
         expect(first.close).toHaveBeenCalled()
         expect(latestCli().options.resume).toBe("session-1")
         expect(latestCli().options.settings).toStrictEqual({ fastMode: false, skillOverrides: { "kalan-mode": "off" } })
+      }),
+    ),
+  )
+
+  it.effect("spawns the CLI with the thread's tmp folder as its temp directory", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        yield* runTurn()
+        expect(latestCli().options.env).toMatchObject({
+          TMPDIR: "/tmp/hc-thread-1",
+          TMP: "/tmp/hc-thread-1",
+          TEMP: "/tmp/hc-thread-1",
+        })
+      }),
+    ),
+  )
+
+  it.effect("spawns the CLI with the inherited temp directory when the thread has no tmp folder", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        yield* runTurn(turnInput({ tmpDirectory: null }))
+        expect(latestCli().options.env?.["TMPDIR"]).toBe(process.env["TMPDIR"])
       }),
     ),
   )
@@ -410,7 +434,7 @@ describe("Claude idle sessions", () => {
         }
         const turn = yield* startTurn()
         yield* until(() => sdk.clis.at(-1)?.prompts.length === 1)
-        yield* provider.steer("thread-1", "Use pnpm instead", [])
+        yield* provider.steer!("thread-1", "Use pnpm instead", [], "now")
         yield* until(() => latestCli().prompts.length === 2)
         const [prompt, steer] = latestCli().prompts.map((message) => message.uuid)
         latestCli().push({ ...succeeded, terminal_reason: "aborted_streaming", user_message_uuids: [prompt] })
@@ -425,6 +449,23 @@ describe("Claude idle sessions", () => {
     ),
   )
 
+  it.effect("lets a steer wait for the running tool call instead of aborting it", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        sdk.respond = (cli) => {
+          if (cli.prompts.length === 1) cli.push(init("session-1"))
+        }
+        yield* startTurn()
+        yield* until(() => sdk.clis.at(-1)?.prompts.length === 1)
+        yield* provider.steer!("thread-1", "Use pnpm instead", [], "now")
+        yield* provider.steer!("thread-1", "Then run lint", [], "next")
+        yield* until(() => latestCli().prompts.length === 3)
+        expect(latestCli().prompts.map((message) => message.priority)).toStrictEqual([undefined, "now", "next"])
+      }),
+    ),
+  )
+
   it.effect("answers a steer sent while Claude finishes within the same turn", () =>
     lifecycle(
       Effect.gen(function* () {
@@ -434,7 +475,7 @@ describe("Claude idle sessions", () => {
         }
         const turn = yield* startTurn()
         yield* until(() => sdk.clis.at(-1)?.prompts.length === 1)
-        yield* provider.steer("thread-1", "Use pnpm instead", [])
+        yield* provider.steer!("thread-1", "Use pnpm instead", [], "now")
         yield* until(() => latestCli().prompts.length === 2)
         const [prompt, steer] = latestCli().prompts.map((message) => message.uuid)
         latestCli().push({ ...succeeded, user_message_uuids: [prompt] }, textDelta("Switching to pnpm", steer), {
@@ -460,13 +501,13 @@ describe("Claude idle sessions", () => {
         }
         const abandoned = yield* startTurn()
         yield* until(() => sdk.clis.at(-1)?.prompts.length === 1)
-        yield* provider.steer("thread-1", "Use pnpm instead", [])
+        yield* provider.steer!("thread-1", "Use pnpm instead", [], "now")
         yield* until(() => latestCli().prompts.length === 2)
         yield* Fiber.interrupt(abandoned.fiber)
 
         const turn = yield* startTurn(turnInput({ prompt: "Run the tests" }))
         yield* until(() => latestCli().prompts.length === 3)
-        yield* provider.steer("thread-1", "Only the unit tests", [])
+        yield* provider.steer!("thread-1", "Only the unit tests", [], "now")
         yield* until(() => latestCli().prompts.length === 4)
         const [first, abandonedSteer, prompt, steer] = latestCli().prompts.map((message) => message.uuid)
         const mixed = [abandonedSteer, steer]
@@ -779,6 +820,60 @@ describe("Claude idle sessions", () => {
   )
 })
 
+const warm = (input: RunTurnInput = turnInput()) =>
+  Effect.gen(function* () {
+    const provider = yield* ClaudeProvider
+    yield* provider.warm!(input)
+  })
+
+describe("Claude warm sessions", () => {
+  it.effect("sends the next prompt to the CLI a warm started", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        yield* warm()
+        expect(sdk.clis).toHaveLength(1)
+        expect(latestCli().prompts).toHaveLength(0)
+
+        const events = yield* runTurn()
+        expect(sdk.clis).toHaveLength(1)
+        expect(latestCli().prompts).toHaveLength(1)
+        expect(events.at(-1)?.type).toBe("turn_completed")
+      }),
+    ),
+  )
+
+  it.effect("starts one CLI when a warm and a turn race on the same thread", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const commands = Promise.withResolvers<Array<SlashCommand>>()
+        sdk.supportedCommands = () => commands.promise
+        const input = turnInput({ userSkills: false })
+        const warming = yield* warm(input).pipe(Effect.forkChild)
+        const turn = yield* startTurn(input)
+        yield* until(() => sdk.clis.length === 1)
+        yield* settle
+
+        commands.resolve([])
+        yield* Fiber.join(warming)
+        yield* Fiber.join(turn.fiber)
+        expect(sdk.clis.filter((cli) => cli.options.mcpServers !== undefined)).toHaveLength(1)
+        expect(turn.events.at(-1)?.type).toBe("turn_completed")
+      }),
+    ),
+  )
+
+  it.effect("closes a warmed CLI that no prompt reaches within 60 seconds", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        yield* warm()
+        yield* TestClock.adjust(TTL)
+        yield* settle
+        expect(latestCli().close).toHaveBeenCalledOnce()
+      }),
+    ),
+  )
+})
+
 describe("Claude sub-agents", () => {
   it.effect("stops one sub-agent through the CLI by its task id", () =>
     lifecycle(
@@ -815,6 +910,23 @@ const scheduleWakeup = (input: Readonly<Record<string, unknown>>, result: Readon
 ]
 
 describe("Claude background tasks", () => {
+  it.effect("moves one running command to the background by its tool call id", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        const moveCommand = provider.backgroundTasks?.moveCommand
+        if (moveCommand === undefined) return yield* Effect.die("moveCommand is missing")
+        expect(yield* moveCommand("thread-1", "toolu-1")).toBe(false)
+
+        sdk.respond = (cli) => cli.push(init("session-1"), succeeded)
+        yield* runTurn()
+
+        expect(yield* moveCommand("thread-1", "toolu-1")).toBe(true)
+        expect(latestCli().backgroundTasks).toHaveBeenCalledWith("toolu-1")
+      }),
+    ),
+  )
+
   it.effect(
     "reports the shells it runs after the turn, stops one by its task id, and clears them when the CLI exits",
     () =>
@@ -914,6 +1026,30 @@ describe("Claude background tasks", () => {
           expect(latestCli().options.resume).toBeUndefined()
         }),
       ),
+  )
+
+  it.effect("keeps a scheduled wakeup when a warm brings a different context", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        sdk.respond = (cli) =>
+          cli.push(
+            init("session-1"),
+            ...scheduleWakeup({ delaySeconds: 600, reason: "Poll", prompt: "Poll" }, { scheduledFor: 600_000 }),
+            succeeded,
+          )
+        yield* runTurn()
+
+        yield* warm(turnInput({ instructions: "Work in hinacode on feat/renamed", cwd: "/repo-renamed" }))
+        expect(sdk.clis).toHaveLength(1)
+        expect(latestCli().close).not.toHaveBeenCalled()
+
+        yield* TestClock.adjust("10 minutes")
+        const wake = yield* Stream.runHead(provider.wakes ?? Stream.empty).pipe(Effect.forkChild)
+        latestCli().push(sessionState("running"))
+        expect(Option.isSome(yield* Fiber.join(wake))).toBe(true)
+      }),
+    ),
   )
 
   it.effect("closes an idle CLI 60 seconds after a wakeup that never fires", () =>
@@ -1017,7 +1153,7 @@ describe("Claude background sub-agents", () => {
         }
         const turn = yield* startTurn()
         yield* until(() => turn.events.some((event) => event.type === "subagent_updated"))
-        yield* provider.steer("thread-1", "How is it going?", [])
+        yield* provider.steer!("thread-1", "How is it going?", [], "now")
         yield* until(() => latestCli().prompts.length === 2)
         const steer = latestCli().prompts[1]?.uuid
         latestCli().push(taskNotification("agent-1"), sessionState("idle"))

@@ -1,9 +1,16 @@
 import { m } from "../paraglide/messages.js"
 import { rankPalette } from "./rank.ts"
 import { fileSearchSource, rankLiteral, threadSearchSource } from "./search.tsx"
-import { commandsSource, filesSource, newThreadSource, projectsSource, threadsSource } from "./sources.tsx"
+import {
+  commandsSource,
+  filesSource,
+  importSessionSource,
+  newThreadSource,
+  projectsSource,
+  threadsSource,
+} from "./sources.tsx"
 import type { PaletteGroup, PaletteMode } from "./types.ts"
-import { COMMAND_PREFIX, NEW_THREAD_PREFIX, SEARCH_PREFIX } from "./usePalette.ts"
+import { COMMAND_PREFIX, IMPORT_SESSION_PREFIX, NEW_THREAD_PREFIX, SEARCH_PREFIX } from "./usePalette.ts"
 
 const goTo: PaletteMode = {
   id: "goto",
@@ -28,6 +35,13 @@ export const paletteModes: ReadonlyArray<PaletteMode> = [
     sources: [newThreadSource],
     rank: (items, query) => rankPalette(items, query, []),
     runsChords: true,
+  },
+  {
+    id: "importSession",
+    prefix: IMPORT_SESSION_PREFIX,
+    placeholder: m.palette_import_session_placeholder,
+    sources: [importSessionSource],
+    rank: (items, query) => rankPalette(items, query, []),
   },
   goTo,
 ]

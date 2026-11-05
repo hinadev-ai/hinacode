@@ -1,5 +1,9 @@
-import type { Message, MessagePart } from "./domain.ts"
-import type { PushEvent } from "./contract.ts"
+import { Option, Schema } from "effect"
+import { isPublishArtifactTool, isPublishDocumentTool, outputText, publishedArtifact, toolArgument } from "./agent.ts"
+import type { PushEvent, TranscriptPush } from "./contract.ts"
+import { DocumentOutline, documentOutline, shortenText } from "./documentOutline.ts"
+import { type Message, type MessagePart, spawnsSubagent } from "./domain.ts"
+import { createdTaskId, isTodoTool } from "./todos.ts"
 
 const SUMMARY_KEYS = ["command", "file_path", "path", "pattern", "url", "description"]
 
@@ -13,16 +17,48 @@ export function toolSummary(input: unknown): { readonly key: string; readonly li
   return null
 }
 
-function compactInput(input: unknown) {
+const PUBLISH_TITLE_LENGTH = 200
+const PUBLISHED_LINE_LENGTH = 512
+
+function compactPublishInput(name: string, input: unknown) {
+  const title = toolArgument(input, "title")
+  const markdown = isPublishDocumentTool(name) ? toolArgument(input, "markdown") : undefined
+  return {
+    ...(typeof title === "string" && { title: shortenText(title, PUBLISH_TITLE_LENGTH) }),
+    ...(typeof markdown === "string" && { outline: documentOutline(markdown) }),
+  }
+}
+
+const decodeOutline = Schema.decodeUnknownOption(DocumentOutline)
+
+export function publishPreview(input: unknown) {
+  const title = toolArgument(input, "title")
+  return {
+    title: typeof title === "string" && title !== "" ? title : null,
+    outline: Option.getOrNull(decodeOutline(toolArgument(input, "outline"))),
+  }
+}
+
+function firstLineOfPublished(output: unknown) {
+  const text = outputText(output)
+  return publishedArtifact(text) === null ? null : text.split("\n", 1)[0]!.slice(0, PUBLISHED_LINE_LENGTH)
+}
+
+function compactInput(name: string, input: unknown) {
+  if (isTodoTool(name)) return input
+  if (isPublishArtifactTool(name)) return compactPublishInput(name, input)
   const summary = toolSummary(input)
   return summary === null ? {} : { [summary.key]: summary.line }
 }
 
-function compactPart(part: MessagePart): MessagePart {
+export function compactPart(part: MessagePart): MessagePart {
   switch (part.type) {
     case "tool_call": {
-      const { output: _output, input, ...rest } = part
-      return { ...rest, input: compactInput(input) }
+      const { output, fullOutputBytes: _fullOutputBytes, input, ...rest } = part
+      const compacted = { ...rest, input: compactInput(part.name, input) }
+      if (isTodoTool(part.name)) return { ...compacted, output }
+      const published = isPublishArtifactTool(part.name) && part.status === "done" ? firstLineOfPublished(output) : null
+      return published === null ? compacted : { ...compacted, output: published }
     }
     case "file_change":
       return part.diff === "" ? part : { ...part, diff: "" }
@@ -46,9 +82,12 @@ export function compactPush(push: typeof PushEvent.Encoded): typeof PushEvent.En
   const { event } = push
   switch (event.type) {
     case "tool_call_started":
-      return { ...push, event: { ...event, input: compactInput(event.input) } }
-    case "tool_call_finished":
-      return { ...push, event: { ...event, output: "" } }
+      return { ...push, event: { ...event, input: compactInput(event.name, event.input) } }
+    case "tool_call_finished": {
+      const { fullOutputBytes: _fullOutputBytes, ...rest } = event
+      if (createdTaskId(event.output) !== null) return { ...push, event: rest }
+      return { ...push, event: { ...rest, output: (!event.isError && firstLineOfPublished(event.output)) || "" } }
+    }
     case "file_changed":
       return { ...push, event: { ...event, diff: "" } }
     default:
@@ -59,6 +98,34 @@ export function compactPush(push: typeof PushEvent.Encoded): typeof PushEvent.En
 export const TRANSCRIPT_PAGE_BYTES = 64 * 1024
 
 const encoder = new TextEncoder()
+
+export const TOOL_OUTPUT_PREVIEW_CHARS = 4096
+
+function outputPreview(output: unknown) {
+  if (typeof output !== "string" || output.length <= TOOL_OUTPUT_PREVIEW_CHARS) return undefined
+  const tail = output.slice(-TOOL_OUTPUT_PREVIEW_CHARS)
+  const firstLineEnd = tail.indexOf("\n")
+  const fromWholeLine = firstLineEnd !== -1 && firstLineEnd < TOOL_OUTPUT_PREVIEW_CHARS / 2
+  return {
+    output: fromWholeLine ? tail.slice(firstLineEnd + 1) : tail,
+    fullOutputBytes: encoder.encode(output).length,
+  }
+}
+
+const previewPart = (part: MessagePart): MessagePart => {
+  if (part.type !== "tool_call" || spawnsSubagent(part)) return part
+  const preview = outputPreview(part.output)
+  return preview === undefined ? part : { ...part, ...preview }
+}
+
+export const previewMessage = (message: Message): Message => ({ ...message, parts: message.parts.map(previewPart) })
+
+export function previewPush(push: TranscriptPush): TranscriptPush {
+  if (push.type !== "thread.event") return { ...push, message: previewMessage(push.message) }
+  if (push.event.type !== "tool_call_finished") return push
+  const preview = outputPreview(push.event.output)
+  return preview === undefined ? push : { ...push, event: { ...push.event, ...preview } }
+}
 const utf8Bytes = (message: Message) => encoder.encode(JSON.stringify(message)).length
 
 export function transcriptPage(

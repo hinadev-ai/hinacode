@@ -6,7 +6,9 @@ import {
   DIRECT_CHECK_INTERVAL_MS,
   DIRECT_CHECK_TIMEOUT_MS,
   type Dial,
+  dialPlan,
   RELAY_DELAY_MS,
+  TAILSCALE_DELAY_MS,
 } from "@shared/remote.ts"
 import {
   CLOSE_TOKEN_ROTATED,
@@ -686,6 +688,30 @@ describe("Transport", () => {
       expect(urls()).toEqual([TAILSCALE, LAN, RELAY])
     })
 
+    it("dials the LAN, then Tailscale, then the relay", async () => {
+      setup(dialPlan({ hosts: ["100.64.0.2", "192.168.1.5"], port: 47821, relay: "mac.example.com" }))
+      expect(urls()).toEqual([LAN])
+      await vi.advanceTimersByTimeAsync(TAILSCALE_DELAY_MS)
+      expect(urls()).toEqual([LAN, TAILSCALE])
+      await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS - TAILSCALE_DELAY_MS)
+      expect(urls()).toEqual([LAN, TAILSCALE, RELAY])
+    })
+
+    it("still dials the LAN first when a direct check moves the link off the relay", async () => {
+      setup(dialPlan({ hosts: ["100.64.0.2", "192.168.1.5"], port: 47821, relay: "mac.example.com" }))
+      await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
+      socketAt(RELAY).open()
+      socketAt(RELAY).challenge()
+      socketAt(RELAY).ready(["call-keys"])
+      await vi.advanceTimersByTimeAsync(DIRECT_CHECK_INTERVAL_MS)
+      const dialedBefore = sockets.length
+      socketAt(LAN).open()
+      const directRound = () => urls().slice(dialedBefore)
+      expect(directRound()).toEqual([LAN])
+      await vi.advanceTimersByTimeAsync(TAILSCALE_DELAY_MS)
+      expect(directRound()).toEqual([LAN, TAILSCALE])
+    })
+
     it("answers only the first socket that opens and closes the rest unused", async () => {
       setup([direct(TAILSCALE), direct(LAN), relay(RELAY)])
       await vi.advanceTimersByTimeAsync(RELAY_DELAY_MS)
@@ -841,6 +867,28 @@ describe("Transport", () => {
 
       transport.networkChanged()
       expect(urls()).toEqual([LAN, RELAY, LAN])
+    })
+
+    it("races the relay alone when a direct address drops before ready after the network changes", async () => {
+      const transport = await connectOverRelay()
+      transport.networkChanged()
+      latest().open()
+      latest().challenge()
+      latest().drop()
+      expect(urls()).toEqual([LAN, RELAY, LAN, RELAY])
+      handshake(["call-keys"])
+      expect(statuses.at(-1)).toBe("connected")
+    })
+
+    it("races the relay alone when a direct address never says ready", async () => {
+      setup([direct(LAN), relay(RELAY)])
+      socketAt(LAN).open()
+      socketAt(LAN).challenge()
+      await vi.advanceTimersByTimeAsync(CONNECT_TIMEOUT_MS)
+      expect(socketAt(LAN).closed).toBe(true)
+      expect(urls()).toEqual([LAN, RELAY])
+      handshake(["call-keys"])
+      expect(statuses.at(-1)).toBe("connected")
     })
 
     it("stops when the relay refuses the token", async () => {

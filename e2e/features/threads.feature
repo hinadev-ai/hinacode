@@ -5,10 +5,19 @@ Feature: Threads
   Background:
     Given a project "demo" for my repository
 
-  Scenario: Starting a thread opens it at once, ready for the first message
+  Scenario: Starting a thread opens a draft, ready for the first message and kept out of the sidebar
     When I start a new thread in "demo"
     Then a new thread is open with the composer focused
-    And the sidebar lists the open thread
+    And the sidebar does not list the open draft
+
+  Scenario: Starting a thread again in a project brings back its draft as it was left
+    Given the project "demo" has a thread "One"
+    When I start a new thread in "demo"
+    And I type "half a thought" into the composer
+    And I open the thread "One" from the sidebar
+    And I start a new thread in "demo"
+    Then a new thread is open with the composer focused
+    And the composer holds "half a thought"
 
   Scenario: Switching between threads replaces the open thread instead of stacking it
     Given the project "demo" has a thread "One"
@@ -52,12 +61,41 @@ Feature: Threads
     Then the sidebar lists the thread "Done"
     And the thread "Done" is stored as "idle"
 
+  Scenario: An archived thread comes back with Undo on the toast
+    Given the project "demo" has a thread "Oops"
+    When I archive the thread "Oops" from its row
+    Then the sidebar does not list the thread "Oops"
+    When I undo from the toast
+    Then the sidebar lists the thread "Oops"
+    And the thread "Oops" is stored as "idle"
+
   Scenario: Archiving a thread far down the sidebar keeps the sidebar scrolled there
     Given the project "demo" has 40 threads named "Task"
     When I scroll the sidebar to the thread "Task 40"
     And I archive the thread "Task 40" from its row
     Then the sidebar does not list the thread "Task 40"
     And the thread "Task 39" is in view in the sidebar
+
+  Scenario: The Archived tab opens one page of a long history and loads more while scrolling
+    Given the project "demo" has 120 archived threads named "Old"
+    When I show only the project "demo" in the sidebar
+    And I open the sidebar tab "Archived"
+    Then the sidebar lists 50 threads
+    And the sidebar lists the thread "Old 1"
+    And the sidebar does not list the thread "Old 51"
+    When I scroll to the end of the sidebar
+    Then the sidebar lists 100 threads
+    And the sidebar lists the thread "Old 51"
+    When I scroll to the end of the sidebar
+    Then the sidebar lists 120 threads
+
+  Scenario: Filtering the Archived tab finds threads past the first page
+    Given the project "demo" has 120 archived threads named "Old"
+    When I show only the project "demo" in the sidebar
+    And I open the sidebar tab "Archived"
+    And I filter the sidebar by "Old 120"
+    Then the sidebar lists 1 thread
+    And the sidebar lists the thread "Old 120"
 
   Scenario: The Inbox lists every project's threads, most recently updated first
     Given the project "demo" has a thread "Fix login"
@@ -90,6 +128,12 @@ Feature: Threads
     When I unsnooze the thread "Later" from its menu
     Then no thread is snoozed
     And the open tab lists the thread "Later"
+
+  Scenario: A row's menu opens from a click that lands before the row registers the pointer
+    Given the project "demo" has a thread "Moved"
+    And I open the sidebar tab "Inbox"
+    When I click the menu button of the thread "Moved" with the pointer resting elsewhere
+    Then the thread menu offers "Snooze…"
 
   Scenario Outline: Enter on a time the picker can't use keeps it open, until a preset is picked with the keyboard
     Given the project "demo" has a thread "Later"
@@ -138,5 +182,5 @@ Feature: Threads
 
   Scenario: A thread is deleted after confirmation
     Given the project "demo" has a thread "Gone"
-    When I delete the thread "Gone" from its row
+    When I delete the thread "Gone" from its menu
     Then the thread "Gone" no longer exists

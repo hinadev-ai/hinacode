@@ -2,7 +2,6 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { useState } from "react"
-import { RiAddLine, RiArrowDownSLine, RiDeleteBinLine, RiRefreshLine } from "react-icons/ri"
 import {
   type Device,
   type DeviceHost,
@@ -31,6 +30,7 @@ import {
 import { SkeletonList } from "../../ui/skeleton.tsx"
 import { IconAction, useVmAction } from "../TinyVmView.tsx"
 import { DeleteDeviceDialog } from "./DeleteDeviceDialog.tsx"
+import { ChevronDownIcon, PlusIcon, RefreshIcon, TrashIcon } from "@hinacode/icons"
 
 const SIMSLIM_INSTALL = "brew install mobai-app/tap/simslim"
 
@@ -77,13 +77,13 @@ export function DeviceList({ thread }: { thread: Thread }) {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 animate-fade-in flex-col overflow-y-auto motion-reduce:animate-none">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="flex min-h-11 shrink-0 items-center gap-2 border-b border-border px-3 py-2">
         {iosReady && loaded.models.length > 0 && (
           <NewSimulatorMenu models={loaded.models} disabled={pending} onCreate={create} />
         )}
         <div className="flex-1" />
-        <IconAction icon={RiRefreshLine} label={m.devices_refresh()} onClick={refresh} disabled={host.waiting} />
+        <IconAction icon={RefreshIcon} label={m.devices_refresh()} onClick={refresh} disabled={host.waiting} />
       </div>
       {error && (
         <p role="alert" className="border-b border-border px-3 py-1.5 text-xs text-destructive">
@@ -153,9 +153,9 @@ function NewSimulatorMenu({
       <DropdownMenuTrigger
         render={
           <Button size="sm" disabled={disabled}>
-            <RiAddLine aria-hidden />
+            <PlusIcon aria-hidden />
             {m.devices_new_simulator()}
-            <RiArrowDownSLine aria-hidden />
+            <ChevronDownIcon aria-hidden />
           </Button>
         }
       />
@@ -331,7 +331,7 @@ function DeviceRow({ device, threadId, attached, pending, onAttach, onDelete }: 
         {attached ? m.devices_show() : m.devices_attach()}
       </Button>
       <IconAction
-        icon={RiDeleteBinLine}
+        icon={TrashIcon}
         label={m.devices_delete_tab({ name: device.name })}
         onClick={onDelete}
         disabled={pending || anotherThreads}

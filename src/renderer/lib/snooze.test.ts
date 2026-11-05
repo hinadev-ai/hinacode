@@ -47,12 +47,14 @@ describe("parseSnoozeTime", () => {
     expect(parseSnoozeTime(text, now, "en")).toStrictEqual({ status: "ok", at: expected })
   })
 
-  test("reads Japanese and Traditional Chinese, and English in either", () => {
+  test("reads Japanese, Traditional and Simplified Chinese, and English in each", () => {
     expect(parseSnoozeTime("月曜日 8:00", now, "ja")).toStrictEqual({ status: "ok", at: local(2 + 31, 8) })
     expect(parseSnoozeTime("明天 上午9點", now, "zh-TW")).toStrictEqual({ status: "ok", at: local(27, 9) })
     expect(parseSnoozeTime("tomorrow 10:00", now, "ja")).toStrictEqual({ status: "ok", at: local(27, 10) })
     expect(parseSnoozeTime("明日 14:30", now, "ja")).toStrictEqual({ status: "ok", at: local(27, 14, 30) })
     expect(parseSnoozeTime("兩小時後", now, "zh-TW")).toStrictEqual({ status: "ok", at: local(26, 17) })
+    expect(parseSnoozeTime("明天 上午9点", now, "zh-CN")).toStrictEqual({ status: "ok", at: local(27, 9) })
+    expect(parseSnoozeTime("两小时后", now, "zh-CN")).toStrictEqual({ status: "ok", at: local(26, 17) })
   })
 
   test("a bare weekday that is today and past 9:00 means next week's", () => {

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url"
 import { Effect, Layer, ManagedRuntime, References } from "effect"
 import QRCode from "qrcode"
 import type { RemotePairing } from "../shared/domain.ts"
-import { isPortInUse, pairingUrl } from "../shared/remote.ts"
+import { isAddressNotUpYet, isPortInUse, pairingUrl } from "../shared/remote.ts"
 import { makeAppLayer } from "./app.ts"
 import * as CloudUpdater from "./cloudUpdater.ts"
 import { chromiumDir, desktopPid, isAlive } from "./dataDir.ts"
@@ -14,7 +14,7 @@ import * as Db from "./db/client.ts"
 import { layer as RemoteAccessLayer, RemoteAccess } from "./remote/access.ts"
 import { storedTunnel } from "./remote/relay.ts"
 import type { RelayLink } from "./remote/relayService.ts"
-import { applyServeRelay, autoUpdate, parseCommand, restartCommand, serveConfig, USAGE, UsageError } from "./serve.ts"
+import { applyServeRelay, autoUpdate, restartCommand, serveConfig, type ServeFlags } from "./serve.ts"
 import { layer as SecretsLayer, noKeyring } from "./services/Secrets.ts"
 import { layer as SettingsLayer, Settings } from "./services/Settings.ts"
 import { hydratePath } from "./shellPath.ts"
@@ -64,7 +64,7 @@ const pairingText = async (userData: string, pairing: RemotePairing) => {
     `  ${phoneUrl}`,
     qr,
     ...(pairing.relay === null ? [] : [`Reachable from any network through ${pairing.relay}.`, ""]),
-    "Pair a desktop: Settings > Environments > Add environment, with one of:",
+    "Pair a desktop: Settings > Connections > Add environment, with one of:",
     ...pairing.hosts.map((host) => `  ${pairingUrl({ ...pairing, hosts: [host] })}`),
     "Keep the token in these URLs private. Run `hinacode pair` to print them again.",
     "",
@@ -81,6 +81,7 @@ const listening = async (runtime: ManagedRuntime.ManagedRuntime<RemoteAccess | S
   for (;;) {
     const status = await runtime.runPromise(RemoteAccess.use((remote) => remote.status))
     if (status.listening) break
+    if (status.listenError !== null && isAddressNotUpYet(status.listenError)) break
     if (status.listenError !== null && isPortInUse(status.listenError)) {
       const { port } = (await runtime.runPromise(Settings.use((settings) => settings.get))).remote
       throw new Error(
@@ -93,11 +94,11 @@ const listening = async (runtime: ManagedRuntime.ManagedRuntime<RemoteAccess | S
   }
 }
 
-const serve = async (argv: ReadonlyArray<string>, userData: string) => {
-  const config = serveConfig(argv, process.env)
+export const serve = async (flags: ServeFlags, userData: string) => {
+  const config = serveConfig(flags, process.env)
   mkdirSync(userData, { recursive: true, mode: 0o700 })
   lockDataDir(userData)
-  await hydratePath(process.env)
+  await hydratePath(process.env).ready
 
   const runtime = ManagedRuntime.make(
     makeAppLayer({
@@ -142,7 +143,7 @@ const serve = async (argv: ReadonlyArray<string>, userData: string) => {
   process.stdout.write(await pairingText(userData, pairing))
 }
 
-const pair = async (userData: string) => {
+export const pair = async (userData: string) => {
   const database = join(userData, "hinacode.sqlite")
   const noCloud = () => {
     process.stderr.write(`No cloud in ${userData} yet. Start one with \`hinacode serve\`.\n`)
@@ -166,20 +167,3 @@ const pair = async (userData: string) => {
     await runtime.dispose()
   }
 }
-
-const main = async (argv: ReadonlyArray<string>) => {
-  const command = parseCommand(argv)
-  if (command === "help") return void process.stdout.write(`${USAGE}\n`)
-  if (command === "version") return void process.stdout.write(`${version}\n`)
-  const userData = process.env["HINACODE_USER_DATA"] || join(homedir(), ".hinacode-cloud")
-  return command === "serve" ? serve(argv, userData) : pair(userData)
-}
-
-main(process.argv.slice(2)).catch((error: unknown) => {
-  if (error instanceof UsageError) {
-    process.stderr.write(`hinacode: ${error.message}\n\n${USAGE}\n`)
-  } else {
-    console.error(`hinacode ${process.argv[2]}: ${error instanceof Error ? error.message : String(error)}`)
-  }
-  process.exit(1)
-})

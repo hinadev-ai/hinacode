@@ -5,12 +5,13 @@ import { FloatingTinyVm } from "../components/FloatingTinyVm.tsx"
 import { ThreadOpenWith } from "../components/OpenWith.tsx"
 import { TerminalDrawer, TerminalToggle } from "../components/TerminalDrawer.tsx"
 import { PanelToggle, ThreadSidePanel } from "../components/ThreadSidePanel.tsx"
+import { ActionsMenu, ThreadOverview } from "../components/ThreadOverview.tsx"
 import { ThreadView } from "../components/ThreadView.tsx"
 import { Dialog, DialogPortal, DialogTitle } from "../components/ui/dialog.tsx"
 import { usePanelLayout } from "../lib/panelLayout.ts"
 import { m } from "../paraglide/messages.js"
-import { useThreads } from "../stores/threads.ts"
-import { useUi } from "../stores/ui.ts"
+import { selectOpenableThread, useThreads } from "../stores/threads.ts"
+import { useSidePanelExpanded, useUi } from "../stores/ui.ts"
 import { useUnseen } from "../stores/unseen.ts"
 
 const route = getRouteApi("/thread/$threadId")
@@ -31,11 +32,13 @@ function useVisit(threadId: string) {
 export function ThreadRoute() {
   const { threadId } = route.useParams()
   const { agent } = route.useSearch()
-  const thread = useThreads((state) => state.byId[threadId])
+  const thread = useThreads(selectOpenableThread(threadId))
   const togglePanel = useUi((state) => state.toggleSidePanel)
   const overlayOpen = useUi((state) => state.sidePanelOverlayOpen)
+  const dockedOpen = useUi((state) => state.sidePanelOpen)
   const setOverlayOpen = useUi((state) => state.setSidePanelOverlayOpen)
   const docked = usePanelLayout() === "wide"
+  const expanded = useSidePanelExpanded()
   const toggleRef = useRef<HTMLButtonElement>(null)
   useMarkSeen(threadId)
   useVisit(threadId)
@@ -45,17 +48,24 @@ export function ThreadRoute() {
   }
   return (
     <div className="flex min-h-0 flex-1">
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div hidden={expanded} className="flex min-w-0 flex-1 flex-col">
         <ThreadView
           key={thread.id}
           thread={thread}
           agent={agent}
-          overlay={<FloatingTinyVm threadId={thread.id} />}
+          overlay={
+            <>
+              {agent === undefined && <ThreadOverview thread={thread} />}
+              <FloatingTinyVm threadId={thread.id} />
+            </>
+          }
           actions={
             <>
               <ThreadOpenWith thread={thread} />
+              <ActionsMenu thread={thread} />
               <TerminalToggle threadId={thread.id} />
               {!docked && <PanelToggle buttonRef={toggleRef} expanded={overlayOpen} onToggle={togglePanel} />}
+              {docked && !dockedOpen && <PanelToggle expanded={false} onToggle={togglePanel} className="-me-1" />}
             </>
           }
         />

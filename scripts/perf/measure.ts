@@ -181,8 +181,8 @@ const longTaskMs = async (since: number) => {
 }
 const TYPED_TEXT = "Profile the composer so that every keystroke paints within one frame, even on long threads."
 const KEY_INTERVAL_MS = 50
-const COMPOSER = `document.querySelector('main textarea[role="combobox"]')`
-const STATUS = `document.querySelector("main header [data-status]").dataset.status`
+const COMPOSER = `document.querySelector('main [role="combobox"][contenteditable]')`
+const REPLYING = `document.querySelector('main article[aria-busy="true"]') !== null`
 const typeText = async (text: string) => {
   for (const char of text) {
     await send("Input.dispatchKeyEvent", { type: "keyDown", key: char, text: char, unmodifiedText: char })
@@ -191,7 +191,7 @@ const typeText = async (text: string) => {
   }
 }
 const clearComposer = async () => {
-  const typed = await evaluate(`${COMPOSER}.value`)
+  const typed = await evaluate(`${COMPOSER}.textContent`)
   if (typed !== TYPED_TEXT) throw new Error(`composer holds ${JSON.stringify(typed)}`)
   const CTRL = 2
   await press("a", "KeyA", 65, CTRL)
@@ -278,17 +278,34 @@ await evaluate(`(() => {
       frames = null
       return gaps
     },
+    watchToolToWriting() {
+      const marks = { toolDoneAt: null, textAt: null, paintAt: null }
+      const off = window.hinacode.onEvent((push) => {
+        if (push.event?.type === "tool_call_finished" && push.event.callId === "stream-read-5") marks.toolDoneAt = performance.now()
+        if (push.event?.type === "text_delta") marks.textAt ??= performance.now()
+      })
+      const writing = () => [...document.querySelectorAll("main article")].at(-1)?.querySelector(".text-shimmer")?.textContent === "Writing…"
+      const loop = (now) => {
+        if (marks.textAt !== null && writing()) marks.paintAt = now
+        if (marks.paintAt === null) requestAnimationFrame(loop)
+        else off()
+      }
+      requestAnimationFrame(loop)
+      this.toolToWriting = marks
+    },
     async openThread(id) {
       const link = document.querySelector('a[href="/thread/' + id + '"]')
       if (!link) throw new Error("no sidebar link for " + id)
       const t0 = performance.now()
       link.click()
-      // painted = the transcript exists and two frames passed with the same article count
+      // painted = the transcript is visible (LegendList holds it at opacity 0 until its first layout) and two frames kept the same article count
       let last = -1, stable = 0
       while (stable < 2) {
         await frame()
-        const n = document.querySelectorAll("main article").length
-        if (n > 0 && n === last) stable++; else stable = 0
+        const articles = document.querySelectorAll("main article")
+        const n = articles.length
+        const shown = n > 0 && articles[n - 1].checkVisibility({ opacityProperty: true })
+        if (shown && n === last) stable++; else stable = 0
         last = n
         if (performance.now() - t0 > 20000) throw new Error("timeout opening " + id + ": " + JSON.stringify({ articles: n, shown: document.querySelector("main")?.innerText.slice(0, 200) }))
       }
@@ -452,10 +469,10 @@ if (scenario === "switch") {
   const since = await evaluate<number>("performance.now()")
   const { result: keys, work } = await record("typing-reply", async () => {
     await press("Enter", "Enter", 13)
-    await waitFor(`${STATUS} === "running"`)
+    await waitFor(REPLYING)
     const typingSince = await evaluate<number>("performance.now()")
     await typeText(TYPED_TEXT)
-    await waitFor(`${STATUS} === "idle"`, 60000)
+    await waitFor(`!(${REPLYING})`, 60000)
     await sleep(300)
     return evaluate<Key[]>(`window.__perf.takeKeys(${typingSince})`)
   })
@@ -481,13 +498,21 @@ if (scenario === "switch") {
     renders,
   } = await record("reply", async () => {
     await evaluate("window.__perf.startFrames()")
+    await evaluate("window.__perf.watchToolToWriting()")
     await press("Enter", "Enter", 13)
-    await waitFor(`${STATUS} === "running"`)
-    await waitFor(`${STATUS} === "idle"`, 60000)
+    await waitFor(REPLYING)
+    await waitFor(`!(${REPLYING})`, 60000)
     await sleep(500)
     return evaluate<number[]>("window.__perf.stopFrames()")
   })
   await assertReplied()
+  const marks = await evaluate<{ toolDoneAt: number; textAt: number; paintAt: number }>("window.__perf.toolToWriting")
+  if (marks.paintAt === null) throw new Error("the Writing line never appeared after the last tool")
+  results.toolToWriting = {
+    toNextPush: +(marks.textAt - marks.toolDoneAt).toFixed(1),
+    pushToPaint: +(marks.paintAt - marks.textAt).toFixed(1),
+    toPaint: +(marks.paintAt - marks.toolDoneAt).toFixed(1),
+  }
   const frames = percentiles(gaps)
   results.frames = {
     ...frames,

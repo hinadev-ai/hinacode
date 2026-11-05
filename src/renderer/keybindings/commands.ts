@@ -6,7 +6,13 @@ import type { RpcRequest } from "../../shared/contract.ts"
 import { type ClientSettings, type ExperimentalSettings, Locale, type Project } from "../../shared/domain.ts"
 import { registry } from "../lib/registry.ts"
 import { projectsAtom } from "../lib/rpc.ts"
-import { COMMAND_PREFIX, NEW_THREAD_PREFIX, SEARCH_PREFIX, usePalette } from "../palette/usePalette.ts"
+import {
+  COMMAND_PREFIX,
+  IMPORT_SESSION_PREFIX,
+  NEW_THREAD_PREFIX,
+  SEARCH_PREFIX,
+  usePalette,
+} from "../palette/usePalette.ts"
 import { m } from "../paraglide/messages.js"
 import { useBrowserTabs } from "../stores/browserTabs.ts"
 import { useLocale } from "../stores/locale.ts"
@@ -106,6 +112,12 @@ export const commands = [
     when: "!terminalFocus",
   },
   {
+    id: "session.import",
+    defaultKeys: "",
+    title: m.command_session_import,
+    run: () => usePalette.getState().show(IMPORT_SESSION_PREFIX),
+  },
+  {
     id: "project.add",
     defaultKeys: "mod+shift+n",
     title: m.command_project_add,
@@ -182,10 +194,22 @@ export const commands = [
     when: "!terminalFocus",
   },
   {
+    id: "view.sidechat",
+    defaultKeys: "",
+    title: m.command_view_sidechat,
+    run: (ctx) => showView(ctx, "sidechat"),
+  },
+  {
     id: "view.browser",
     defaultKeys: "mod+shift+b",
     title: m.command_view_browser,
     run: (ctx) => showView(ctx, "browser"),
+  },
+  {
+    id: "view.artifacts",
+    defaultKeys: "",
+    title: m.command_view_artifacts,
+    run: (ctx) => showView(ctx, "artifacts"),
   },
   {
     id: "browser.newTab",

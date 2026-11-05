@@ -1,8 +1,11 @@
 import { describe, expect, test } from "@effect/vitest"
-import { attachmentUrl, githubAssetUrl, projectFileUrl } from "../shared/channels.ts"
+import { artifactUrl, attachmentUrl, externalImageUrl, githubAssetUrl, projectFileUrl } from "../shared/channels.ts"
 import {
+  artifactRequest,
   attachmentRequest,
   BROWSER_PARTITION,
+  externalImageRequest,
+  externalImageTarget,
   externalUrl,
   githubAssetId,
   isAllowedNavigation,
@@ -187,6 +190,41 @@ describe("projectFileRequest", () => {
   })
 })
 
+describe("artifactRequest", () => {
+  test("round-trips an id and a path with spaces and non-ASCII names, and an empty path for the entry", () => {
+    expect(artifactRequest(artifactUrl("report-1", "assets/報告 #1.png"))).toEqual({
+      id: "report-1",
+      path: "assets/報告 #1.png",
+    })
+    expect(artifactRequest(artifactUrl("report-1"))).toEqual({ id: "report-1", path: "" })
+  })
+
+  test("resolves a relative link from the entry to a sibling in the same artifact", () => {
+    expect(artifactRequest(new URL("app.js?v=2", artifactUrl("report-1", "pages/index.html")).href)).toEqual({
+      id: "report-1",
+      path: "pages/app.js",
+    })
+  })
+
+  test("never leaves the artifact through dot segments, encoded or not", () => {
+    expect(artifactRequest(new URL("../../etc/passwd", artifactUrl("report-1", "index.html")).href)).toEqual({
+      id: "report-1",
+      path: "etc/passwd",
+    })
+    expect(artifactRequest("hinacode-artifact://report-1/..%2F..%2Fetc%2Fpasswd")).toBe(null)
+    expect(artifactRequest("hinacode-artifact://report-1/a/%2E%2E%2F..%2Fsecret")).toBe(null)
+  })
+
+  test("refuses hosts that are not artifact ids, other schemes and malformed escapes", () => {
+    expect(artifactRequest("hinacode-artifact://Report/index.html")).toBe(null)
+    expect(artifactRequest("hinacode-artifact://-report/index.html")).toBe(null)
+    expect(artifactRequest("hinacode-artifact:///index.html")).toBe(null)
+    expect(artifactRequest("hinacode-file://report-1/index.html")).toBe(null)
+    expect(artifactRequest("hinacode-artifact://report-1/%E0%A4%A")).toBe(null)
+    expect(artifactRequest("hinacode-artifact://report-1/a//b")).toBe(null)
+  })
+})
+
 describe("attachmentRequest", () => {
   test("round-trips a path with spaces and non-ASCII names, on this machine or a cloud", () => {
     const path = "/Users/me/Library/Application Support/kkcode/attachments/t/画面 #1.png"
@@ -201,6 +239,49 @@ describe("attachmentRequest", () => {
   })
 })
 
+describe("externalImageRequest", () => {
+  test("round-trips an https image link, including its query", () => {
+    const target = "https://assets.example/bad ges/view.svg?theme=dark&size=2"
+    const url = externalImageUrl(target)
+    expect(url === null ? null : externalImageRequest(url)).toBe(
+      "https://assets.example/bad%20ges/view.svg?theme=dark&size=2",
+    )
+    expect(externalImageRequest(externalImageUrl("//assets.example/a.png") ?? "")).toBe("https://assets.example/a.png")
+  })
+
+  test("refuses non-web targets and strips credentials and fragments", () => {
+    expect(externalImageTarget("file:///etc/passwd")).toBe(null)
+    expect(externalImageTarget("data:image/png;base64,AA==")).toBe(null)
+    expect(externalImageTarget("javascript:alert(1)")).toBe(null)
+    expect(externalImageTarget("https://user:pass@assets.example/a.png#frag")).toBe("https://assets.example/a.png")
+    expect(externalImageRequest("hinacode-image://other/https%3A%2F%2Fassets.example%2Fa.png")).toBe(null)
+    expect(externalImageRequest("hinacode-image://image/%E0%A4%A")).toBe(null)
+    expect(externalImageRequest("https://assets.example/a.png")).toBe(null)
+  })
+
+  test("refuses local hosts so a comment cannot probe the network around the user", () => {
+    for (const target of [
+      "http://localhost:8080/a.png",
+      "http://router.local/a.png",
+      "http://127.0.0.1/a.png",
+      "http://2130706433/a.png",
+      "http://10.0.0.5/a.png",
+      "http://172.16.4.2/a.png",
+      "http://192.168.1.6/a.png",
+      "http://100.72.105.4/a.png",
+      "http://169.254.169.254/latest/meta-data",
+      "http://[::1]/a.png",
+      "http://[::ffff:127.0.0.1]/a.png",
+      "http://[fd00::1]/a.png",
+    ]) {
+      expect(externalImageTarget(target)).toBe(null)
+    }
+    expect(externalImageTarget("https://172.15.0.1/a.png")).toBe("https://172.15.0.1/a.png")
+    expect(externalImageTarget("https://100.63.0.1/a.png")).toBe("https://100.63.0.1/a.png")
+    expect(externalImageTarget("http://[::ffff:8.8.8.8]/a.png")).not.toBe(null)
+  })
+})
+
 describe("isAllowedNavigation", () => {
   const preview = projectFileUrl("/repo", "site/index.html")
 
@@ -210,8 +291,10 @@ describe("isAllowedNavigation", () => {
     expect(isAllowedNavigation("https://example.com", true, packagedDocument)).toBe(false)
   })
 
-  test("lets a subframe load project files only", () => {
+  test("lets a subframe load project files and artifacts only", () => {
     expect(isAllowedNavigation(preview, false, packagedDocument)).toBe(true)
+    expect(isAllowedNavigation(artifactUrl("report-1"), false, packagedDocument)).toBe(true)
+    expect(isAllowedNavigation(artifactUrl("report-1"), true, packagedDocument)).toBe(false)
     expect(isAllowedNavigation(packagedDocument, false, packagedDocument)).toBe(false)
     expect(isAllowedNavigation("https://example.com", false, packagedDocument)).toBe(false)
     expect(isAllowedNavigation("file:///etc/passwd", false, packagedDocument)).toBe(false)

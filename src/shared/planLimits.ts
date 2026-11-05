@@ -20,6 +20,14 @@ export function formatMinutes(total: number, locale: string): string {
 export const formatResetIn = (resetsAt: string, now: number, locale: string) =>
   formatMinutes(Math.max(0, Math.floor((Date.parse(resetsAt) - now) / minuteMs)), locale)
 
+export const msUntilNextReset = (limits: ReadonlyArray<AccountLimits>, now: number): number | undefined => {
+  const ahead = limits
+    .flatMap((entry) => entry.limits?.windows ?? [])
+    .flatMap((window) => (window.resetsAt === null ? [] : [Date.parse(window.resetsAt) - now]))
+    .filter((ms) => ms > 0)
+  return ahead.length === 0 ? undefined : Math.min(...ahead)
+}
+
 export const mostUsed = (windows: ReadonlyArray<LimitWindow>) =>
   windows.reduce<LimitWindow | undefined>(
     (top, window) => (top === undefined || window.usedPercent > top.usedPercent ? window : top),

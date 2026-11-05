@@ -8,11 +8,15 @@
     "scheme": "hinacode",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "appleTeamId": "ZY99H6ZA58",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "HinaCode connects to your desktop directly when both are on the same network."
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0a0a0a",
+        "backgroundColor": "#f7f7f2",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -29,9 +33,12 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#0a0a0a",
+          "backgroundColor": "#f7f7f2",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 100
+          "imageWidth": 100,
+          "dark": {
+            "backgroundColor": "#1c2e2e"
+          }
         }
       ],
       "expo-secure-store",
@@ -45,13 +52,22 @@
         }
       ],
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "HinaCode attaches the photos you pick to your message.",
+          "cameraPermission": "HinaCode uses the camera to scan the pairing QR code shown in desktop Settings.",
+          "microphonePermission": false
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "android": {
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true,

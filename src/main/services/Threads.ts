@@ -1,5 +1,18 @@
 import { randomUUID } from "node:crypto"
-import { Context, Effect, FileSystem, Layer, Option, type PlatformError, Schema } from "effect"
+import { join } from "node:path"
+import {
+  Context,
+  Effect,
+  FileSystem,
+  Layer,
+  Option,
+  type PlatformError,
+  PubSub,
+  Schema,
+  type Scope,
+  Semaphore,
+  Stream,
+} from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { ForkPoint, ProviderId } from "../../shared/agent.ts"
 import { UsageLimit } from "../../shared/limits.ts"
@@ -10,6 +23,7 @@ import {
   chatFolder,
   isThreadBusy,
   QueuedMessage,
+  ScheduledMessage,
   Thread,
   type ThreadStatus,
   type CheckoutTarget,
@@ -18,6 +32,7 @@ import {
 import { parseGitHubRepository } from "../../shared/github.ts"
 import { nowIso } from "./clock.ts"
 import {
+  type FolderMissingError,
   NotFoundError,
   type PersistenceError,
   persistence,
@@ -29,6 +44,7 @@ import {
   type WorktreeTakenError,
 } from "./errors.ts"
 import { AgentAccounts } from "./AgentAccounts.ts"
+import { Events } from "./Events.ts"
 import { slugifyBranch } from "./automations/template.ts"
 import { type CommandError, Git } from "./Git.ts"
 import { GitHub, type GitHubError } from "./GitHub.ts"
@@ -51,6 +67,7 @@ const ThreadRow = Schema.Struct({
   usageLimit: Schema.NullOr(Schema.fromJsonString(UsageLimit)),
   forkedFrom: Schema.NullOr(Schema.fromJsonString(ForkPoint)),
   queue: Schema.fromJsonString(Schema.Array(QueuedMessage)),
+  scheduled: Schema.fromJsonString(Schema.Array(ScheduledMessage)),
 })
 
 export interface CreateThread {
@@ -62,7 +79,10 @@ export interface CreateThread {
   readonly fastMode?: boolean | undefined
   readonly worktree?: { readonly branch: string; readonly baseRef: string } | undefined
   readonly createdBy?: string | undefined
+  readonly parentId?: string | undefined
 }
+
+export type DraftThread = Omit<CreateThread, "worktree" | "createdBy" | "parentId">
 
 export interface UpdateThread {
   readonly id: string
@@ -81,6 +101,7 @@ export interface UpdateThread {
   readonly snoozedUntil?: string | null | undefined
   readonly providerSessionId?: string | undefined
   readonly queue?: ReadonlyArray<QueuedMessage> | undefined
+  readonly scheduled?: ReadonlyArray<ScheduledMessage> | undefined
 }
 
 const arranging = new Set(["id", "sortIndex", "pinned", "snoozedUntil"])
@@ -97,11 +118,29 @@ export class Threads extends Context.Service<
       input: CreateThread,
     ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeTakenError>
     readonly update: (input: UpdateThread) => Effect.Effect<Thread, PersistenceError | NotFoundError>
-    readonly fork: (threadId: string, messageId: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
+    readonly writes: Effect.Effect<Stream.Stream<Thread>, never, Scope.Scope>
+    readonly fork: (
+      threadId: string,
+      messageId: string,
+    ) => Effect.Effect<
+      Thread,
+      PersistenceError | NotFoundError | CommandError | WorktreeTakenError | PlatformError.PlatformError
+    >
+    readonly sidechat: (threadId: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
+    readonly sidechatOf: (threadId: string) => Effect.Effect<Option.Option<Thread>, PersistenceError>
+    readonly rebaseSidechat: (
+      id: string,
+      parent: Thread,
+      forkPoint: ForkPoint | null,
+    ) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly listFiles: (
       id: string,
-    ) => Effect.Effect<ReadonlyArray<string>, PersistenceError | NotFoundError | CommandError>
+    ) => Effect.Effect<ReadonlyArray<string>, PersistenceError | NotFoundError | FolderMissingError | CommandError>
     readonly started: (id: string) => Effect.Effect<boolean, PersistenceError>
+    readonly draft: (
+      input: DraftThread,
+    ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeTakenError>
+    readonly promoteDraft: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly prepareWorkspace: (
       id: string,
       choice: WorkspaceChoice,
@@ -128,7 +167,21 @@ export class Threads extends Context.Service<
     readonly changes: (
       id: string,
       scope: ChangesScope,
-    ) => Effect.Effect<Changes | null, PersistenceError | NotFoundError | CommandError | PlatformError.PlatformError>
+    ) => Effect.Effect<
+      Changes | null,
+      PersistenceError | NotFoundError | FolderMissingError | CommandError | PlatformError.PlatformError
+    >
+    readonly undoTurn: (
+      id: string,
+    ) => Effect.Effect<
+      void,
+      | PersistenceError
+      | NotFoundError
+      | FolderMissingError
+      | CommandError
+      | PlatformError.PlatformError
+      | ThreadBusyError
+    >
     readonly captureTurnBase: (cwd: string) => Effect.Effect<string | null>
     readonly recordTurnBase: (input: {
       readonly threadId: string
@@ -148,22 +201,40 @@ const make = Effect.gen(function* () {
   const accounts = yield* AgentAccounts
   const terminals = yield* Terminals
   const scratch = yield* Scratch
+  const events = yield* Events
   const activeWorkspace = yield* makeActiveWorkspace
   const gitContext = yield* Effect.context<Git | FileSystem.FileSystem>()
   const fs = yield* FileSystem.FileSystem
 
   const encodeRow = Schema.encodeEffect(ThreadRow)
+  const written = yield* PubSub.unbounded<Thread>()
 
   const findAll = SqlSchema.findAll({
     Request: Schema.Void,
     Result: ThreadRow,
     execute: () =>
-      sql`SELECT * FROM thread WHERE ${sql.in("provider", [...ProviderId.literals])} ORDER BY project_id, sort_index`,
+      sql`SELECT * FROM thread WHERE side_of IS NULL AND ${sql.in("provider", [...ProviderId.literals])} ORDER BY project_id, sort_index`,
   })
   const findById = SqlSchema.findOneOption({
     Request: Schema.String,
     Result: ThreadRow,
     execute: (id) => sql`SELECT * FROM thread WHERE id = ${id}`,
+  })
+  const findDraft = SqlSchema.findOneOption({
+    Request: Schema.String,
+    Result: ThreadRow,
+    execute: (projectId) =>
+      sql`SELECT * FROM thread WHERE project_id = ${projectId} AND status = 'draft' AND created_by = 'user' ORDER BY created_at DESC LIMIT 1`,
+  })
+  const findSidechat = SqlSchema.findOneOption({
+    Request: Schema.String,
+    Result: ThreadRow,
+    execute: (parentId) => sql`SELECT * FROM thread WHERE side_of = ${parentId}`,
+  })
+  const detachChildRows = SqlSchema.findAll({
+    Request: Schema.String,
+    Result: ThreadRow,
+    execute: (parentId) => sql`UPDATE thread SET parent_id = NULL WHERE parent_id = ${parentId} RETURNING *`,
   })
   const nextSortIndex = SqlSchema.findOne({
     Request: Schema.String,
@@ -217,15 +288,13 @@ const make = Effect.gen(function* () {
       ),
     )
 
-  const create = ({
-    worktree: worktreeInput,
-    createdBy = "user",
-    effort = null,
-    fastMode = false,
-    ...input
-  }: CreateThread) =>
+  const insertThread = (
+    { worktree: worktreeInput, createdBy = "user", effort = null, fastMode = false, parentId, ...input }: CreateThread,
+    status: "draft" | "idle",
+  ) =>
     Effect.gen(function* () {
       const project = yield* projects.get(input.projectId)
+      const parent = parentId === undefined ? undefined : yield* get(parentId)
       const worktree = worktreeInput
         ? yield* worktrees.create({ projectId: input.projectId, ...worktreeInput })
         : undefined
@@ -243,12 +312,15 @@ const make = Effect.gen(function* () {
         accountId: defaultAccount[input.provider],
         providerSessionId: null,
         forkedFrom: null,
-        status: "idle",
+        sideOf: null,
+        parentId: parent === undefined ? null : (parent.parentId ?? parent.id),
+        status,
         usageLimit: null,
         sortIndex: next,
         pinnedAt: null,
         snoozedUntil: null,
         queue: [],
+        scheduled: [],
         createdBy,
         createdAt: now,
         updatedAt: now,
@@ -257,6 +329,55 @@ const make = Effect.gen(function* () {
       yield* sql`INSERT INTO thread ${sql.insert(row)}`.pipe(Effect.mapError(persistence("threads.create")))
       yield* syncChatFolder(thread, true)
       return thread
+    })
+
+  const create = (input: CreateThread) => insertThread(input, "idle")
+
+  const drafting = Semaphore.makeUnsafe(1)
+
+  const draft = (input: DraftThread) =>
+    Effect.gen(function* () {
+      const existing = yield* findDraft(input.projectId).pipe(Effect.mapError(persistence("threads.draft")))
+      if (Option.isNone(existing)) return yield* insertThread({ ...input, createdBy: "user" }, "draft")
+      const { defaultAccessMode, defaultAccount } = yield* settings.get
+      return yield* write(existing.value, {
+        id: existing.value.id,
+        provider: input.provider,
+        model: input.model,
+        effort: input.effort ?? null,
+        fastMode: input.fastMode ?? false,
+        accessMode: defaultAccessMode,
+        accountId: defaultAccount[input.provider],
+      })
+    }).pipe(drafting.withPermits(1))
+
+  const promoteDraft = (id: string) =>
+    Effect.gen(function* () {
+      const thread = yield* get(id)
+      if (thread.status !== "draft") return thread
+      const { next } = yield* nextSortIndex(thread.projectId).pipe(Effect.mapError(persistence("threads.promoteDraft")))
+      const now = yield* nowIso
+      yield* sql`
+        UPDATE thread SET status = 'idle', sort_index = ${next}, created_at = ${now}, updated_at = ${now}
+        WHERE id = ${thread.id}
+      `.pipe(Effect.mapError(persistence("threads.promoteDraft")))
+      return { ...thread, status: "idle" as const, sortIndex: next, createdAt: now, updatedAt: now }
+    }).pipe(drafting.withPermits(1))
+
+  const forkWorktree = (source: Thread) =>
+    Effect.gen(function* () {
+      if (source.worktreeId === null) return null
+      const worktree = yield* worktrees.get(source.worktreeId)
+      if (worktree.status === "removed") return worktree.id
+      const workingTree = yield* snapshotWorkingTree(worktree.path).pipe(Effect.provideContext(gitContext))
+      const forked = yield* worktrees.create({
+        projectId: source.projectId,
+        branch: `${worktree.branch}-fork-${randomUUID().slice(0, 5)}`,
+        baseRef: worktree.baseRef,
+        startPoint: worktree.branch,
+        workingTree,
+      })
+      return forked.id
     })
 
   const fork = (threadId: string, messageId: string) =>
@@ -269,20 +390,25 @@ const make = Effect.gen(function* () {
       if (provider !== source.provider) return yield* new NotFoundError({ entity: "fork point", id: messageId })
       if (accountId !== null) yield* accounts.get(accountId)
       const { next } = yield* nextSortIndex(source.projectId).pipe(Effect.mapError(persistence("threads.fork")))
+      const worktreeId = yield* forkWorktree(source)
       const now = yield* nowIso
       const thread: Thread = {
         ...source,
         id: randomUUID(),
         title: `${source.title} (fork)`,
+        worktreeId,
         accountId,
         providerSessionId: null,
         forkedFrom,
+        sideOf: null,
+        parentId: null,
         status: "idle",
         usageLimit: null,
         sortIndex: next,
         pinnedAt: null,
         snoozedUntil: null,
         queue: [],
+        scheduled: [],
         createdBy: "user",
         createdAt: now,
         updatedAt: now,
@@ -305,6 +431,65 @@ const make = Effect.gen(function* () {
         .pipe(Effect.mapError(persistence("threads.fork")))
       yield* syncChatFolder(thread, true)
       return thread
+    })
+
+  const sidechat = (parentId: string) =>
+    Effect.gen(function* () {
+      const existing = yield* findSidechat(parentId).pipe(Effect.mapError(persistence("threads.sidechat")))
+      if (Option.isSome(existing)) return existing.value
+      const parent = yield* get(parentId)
+      const now = yield* nowIso
+      const thread: Thread = {
+        ...parent,
+        id: randomUUID(),
+        accessMode: "supervised",
+        providerSessionId: null,
+        forkedFrom: null,
+        sideOf: parent.id,
+        parentId: null,
+        status: "idle",
+        usageLimit: null,
+        pinnedAt: null,
+        snoozedUntil: null,
+        queue: [],
+        scheduled: [],
+        createdBy: "user",
+        createdAt: now,
+        updatedAt: now,
+      }
+      const row = yield* encodeRow(thread).pipe(Effect.mapError(persistence("threads.sidechat")))
+      yield* sql`INSERT INTO thread ${sql.insert(row)} ON CONFLICT (side_of) DO NOTHING`.pipe(
+        Effect.mapError(persistence("threads.sidechat")),
+      )
+      const created = yield* findSidechat(parentId).pipe(Effect.mapError(persistence("threads.sidechat")))
+      return Option.getOrElse(created, () => thread)
+    })
+
+  const rebaseSidechat = (id: string, parent: Thread, forkPoint: ForkPoint | null) =>
+    Effect.gen(function* () {
+      const current = yield* get(id)
+      const next: Thread = {
+        ...current,
+        ...(current.provider !== parent.provider && {
+          provider: parent.provider,
+          model: parent.model,
+          effort: parent.effort,
+          fastMode: parent.fastMode,
+        }),
+        worktreeId: parent.worktreeId,
+        userSkills: parent.userSkills,
+        accountId: forkPoint?.owner?.accountId ?? parent.accountId,
+        forkedFrom: forkPoint === null ? null : { sessionId: forkPoint.sessionId, checkpoint: forkPoint.checkpoint },
+        updatedAt: yield* nowIso,
+      }
+      yield* sql`
+        UPDATE thread
+        SET worktree_id = ${next.worktreeId}, provider = ${next.provider}, model = ${next.model}, effort = ${next.effort},
+            fast_mode = ${next.fastMode ? 1 : 0}, user_skills = ${next.userSkills ? 1 : 0}, account_id = ${next.accountId},
+            forked_from = ${next.forkedFrom === null ? null : JSON.stringify(next.forkedFrom)}, updated_at = ${next.updatedAt}
+        WHERE id = ${id}
+      `.pipe(Effect.mapError(persistence("threads.rebaseSidechat")))
+      return next
     })
 
   const update = (input: UpdateThread) =>
@@ -365,6 +550,7 @@ const make = Effect.gen(function* () {
             ? null
             : current.forkedFrom,
         queue: input.queue ?? current.queue,
+        scheduled: input.scheduled ?? current.scheduled,
         updatedAt: arranges ? current.updatedAt : now,
       }
       yield* sql`
@@ -376,9 +562,10 @@ const make = Effect.gen(function* () {
             provider_session_id = ${next.providerSessionId},
             forked_from = ${next.forkedFrom === null ? null : JSON.stringify(next.forkedFrom)},
             updated_at = ${next.updatedAt}, usage_limit = ${next.usageLimit === null ? null : JSON.stringify(next.usageLimit)},
-            queue = ${JSON.stringify(next.queue)}
+            queue = ${JSON.stringify(next.queue)}, scheduled = ${JSON.stringify(next.scheduled)}
         WHERE id = ${next.id}
       `.pipe(Effect.mapError(persistence("threads.update")))
+      yield* PubSub.publish(written, next)
       return next
     })
 
@@ -461,12 +648,42 @@ const make = Effect.gen(function* () {
         const { worktreeId } = yield* get(id)
         return worktreeId === null ? null : yield* worktrees.changes(worktreeId)
       }
+      const base = yield* turnBase(id)
+      return base === null ? null : yield* turnChanges(base)
+    })
+
+  const turnBase = (id: string) =>
+    Effect.gen(function* () {
       const row = yield* findTurnBase(id).pipe(Effect.mapError(persistence("threads.turnBase")))
       if (Option.isNone(row)) return yield* new NotFoundError({ entity: "thread", id })
       const { turnBaseTree } = row.value
       if (turnBaseTree === null) return null
       const { cwd } = yield* activeWorkspace(id)
-      return yield* diffWorkingTree(cwd, turnBaseTree).pipe(Effect.provideContext(gitContext))
+      return { tree: turnBaseTree, cwd }
+    })
+
+  const turnChanges = ({ tree, cwd }: { tree: string; cwd: string }) =>
+    diffWorkingTree(cwd, Effect.succeed(tree)).pipe(Effect.provideContext(gitContext))
+
+  const undoTurn = (id: string) =>
+    Effect.gen(function* () {
+      const thread = yield* get(id)
+      if (isThreadBusy(thread.status)) return yield* new ThreadBusyError({ id })
+      const base = yield* turnBase(id)
+      if (base === null) return
+      const { files } = yield* turnChanges(base)
+      const root = (yield* git.run(base.cwd, ["rev-parse", "--show-toplevel"])).trim()
+      yield* Effect.forEach(
+        files.filter((file) => file.status === "added"),
+        (file) => fs.remove(join(root, file.path), { force: true }),
+        { discard: true },
+      )
+      const restored = files.filter((file) => file.status !== "added").map((file) => file.path)
+      if (restored.length > 0) {
+        yield* git.run(root, ["restore", `--source=${base.tree}`, "--worktree", "--", ...restored], {
+          env: { GIT_LITERAL_PATHSPECS: "1" },
+        })
+      }
     })
 
   const captureTurnBase = (cwd: string) =>
@@ -481,6 +698,14 @@ const make = Effect.gen(function* () {
       Effect.asVoid,
     )
 
+  const detachChildren = (parentId: string) =>
+    Effect.gen(function* () {
+      const detached = yield* detachChildRows(parentId).pipe(Effect.mapError(persistence("threads.archive")))
+      yield* Effect.forEach(detached, (thread) => events.publish({ type: "thread.updated", thread }), {
+        discard: true,
+      })
+    })
+
   const removeOwnWorktree = (thread: Thread) =>
     thread.worktreeId ? worktrees.remove(thread.worktreeId, "ifMerged", thread.id) : Effect.void
 
@@ -490,12 +715,18 @@ const make = Effect.gen(function* () {
         const thread = yield* get(id)
         if (isThreadBusy(thread.status)) return yield* new ThreadBusyError({ id })
         if ((yield* settings.get).archive.removeWorktree && thread.worktreeId) {
-          yield* worktrees.removeWhileExclusive(thread.worktreeId, "ifMerged", id)
+          yield* worktrees.removeWhileExclusive(thread.worktreeId, "ifMerged", id).pipe(
+            Effect.catchIf(
+              (error) => error._tag === "WorktreeBusyError" && error.reason === "shared",
+              () => Effect.void,
+            ),
+          )
         }
         yield* terminals.closeThread(id)
         yield* sql`
           UPDATE thread SET status = 'archived', usage_limit = NULL, updated_at = ${yield* nowIso} WHERE id = ${id}
         `.pipe(Effect.mapError(persistence("threads.archive")))
+        yield* detachChildren(id)
         yield* syncChatFolder(thread, false)
         yield* scratch.remove(id)
         return yield* get(id)
@@ -523,11 +754,18 @@ const make = Effect.gen(function* () {
     get,
     create,
     update,
+    writes: Effect.map(PubSub.subscribe(written), Stream.fromSubscription),
     fork,
+    sidechat,
+    sidechatOf: (parentId: string) => findSidechat(parentId).pipe(Effect.mapError(persistence("threads.sidechatOf"))),
+    rebaseSidechat,
     started,
+    draft,
+    promoteDraft,
     prepareWorkspace,
     listFiles,
     changes,
+    undoTurn,
     captureTurnBase,
     recordTurnBase,
     archive,

@@ -2,16 +2,8 @@ import { useAtomValue } from "@effect/atom-react"
 import { useNavigate } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import type { ReactNode } from "react"
-import {
-  RiCheckLine,
-  RiCloudLine,
-  RiErrorWarningFill,
-  RiGithubFill,
-  RiMacbookLine,
-  RiSlackFill,
-  RiSubtractLine,
-} from "react-icons/ri"
-import type { AgentAccount, ProviderId } from "../../../shared/agent.ts"
+import { RiGithubFill, RiSlackFill } from "react-icons/ri"
+import { type AgentAccount, ProviderId } from "../../../shared/agent.ts"
 import type { EnvironmentStatus, GitHubAuth } from "../../../shared/domain.ts"
 import { type Cloud, statusLabel, useCloudStateText, useClouds } from "../../lib/environments.ts"
 import { accountAtom, type EnvironmentId, gitHubAuthAtom, secretStoredAtom } from "../../lib/rpc.ts"
@@ -22,6 +14,7 @@ import { ProviderIcon, providerLabel } from "../ProviderIcon.tsx"
 import { Button } from "../ui/button.tsx"
 import { Skeleton } from "../ui/skeleton.tsx"
 import { SettingsSection, settingsSurfaceClass } from "./SettingsSection.tsx"
+import { CheckIcon, CloudIcon, LaptopIcon, MinusIcon, WarningFillIcon } from "@hinacode/icons"
 
 type Tone = "ready" | "attention" | "off" | "loading"
 
@@ -122,7 +115,7 @@ function SecretCell({ name, ...props }: CellProps & { name: string }) {
 }
 
 const rows: ReadonlyArray<Row> = [
-  ...(["claude", "codex", "muse"] as const).map((provider): Row => ({
+  ...ProviderId.literals.map((provider): Row => ({
     id: provider,
     label: providerLabel[provider],
     icon: <ProviderIcon provider={provider} className="size-4" />,
@@ -153,9 +146,9 @@ const rows: ReadonlyArray<Row> = [
 ]
 
 const toneIcon: Record<Tone, ReactNode> = {
-  ready: <RiCheckLine aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />,
-  attention: <RiErrorWarningFill aria-hidden className="size-3.5 shrink-0 text-attention" />,
-  off: <RiSubtractLine aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />,
+  ready: <CheckIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />,
+  attention: <WarningFillIcon aria-hidden className="size-3.5 shrink-0 text-attention" />,
+  off: <MinusIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />,
   loading: null,
 }
 
@@ -177,14 +170,16 @@ function SetupButton({ item, machine, onOpen, check }: CellProps & { check: Chec
         machine: machine.name,
         state: check.tone === "loading" ? m.settings_account_loading() : check.text,
       })}
-      className="pressable flex w-full min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-left outline-none [--press-scale:0.98] hover:bg-foreground/6 focus-visible:ring-2 focus-visible:ring-ring"
+      className="flex w-full min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-left pressable outline-none hover:bg-foreground/6 focus-visible:ring-2 focus-visible:ring-ring"
     >
       {check.tone === "loading" ? (
         <Skeleton className="h-3.5 w-24 bg-foreground/10" />
       ) : (
         <>
           {toneIcon[check.tone]}
-          <span className={cn("truncate", check.tone === "off" && "text-muted-foreground")}>{check.text}</span>
+          <span className={cn("truncate", check.tone === "off" && "text-muted-foreground")} title={check.text}>
+            {check.text}
+          </span>
         </>
       )}
     </button>
@@ -233,11 +228,13 @@ export function MachineSetup() {
                 <th key={machine.id ?? ""} scope="col" className="px-2.5 pt-2 pb-2.5 text-left align-top font-medium">
                   <span className="flex min-w-0 items-center gap-1.5">
                     {machine.id === null ? (
-                      <RiMacbookLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                      <LaptopIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
                     ) : (
-                      <RiCloudLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                      <CloudIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
                     )}
-                    <span className="truncate">{machine.name}</span>
+                    <span className="truncate" title={machine.name}>
+                      {machine.name}
+                    </span>
                   </span>
                   {machine.cloud !== null && machine.cloud.status !== "connected" && (
                     <span
@@ -246,7 +243,7 @@ export function MachineSetup() {
                         linkTone[machine.cloud.status],
                       )}
                     >
-                      <RiErrorWarningFill aria-hidden className="size-3.5 shrink-0" />
+                      <WarningFillIcon aria-hidden className="size-3.5 shrink-0" />
                       {statusLabel[machine.cloud.status]()}
                     </span>
                   )}

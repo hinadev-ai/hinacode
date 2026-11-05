@@ -1,7 +1,6 @@
 import { detectPlatform } from "@tanstack/react-hotkeys"
 import { Link } from "@tanstack/react-router"
 import type { RefObject } from "react"
-import { RiSettings3Line, RiSideBarFill, RiSideBarLine } from "react-icons/ri"
 import { useKeymap } from "../keybindings/useKeybindings.ts"
 import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
@@ -10,15 +9,18 @@ import { ChordKeys } from "./ChordKeys.tsx"
 import { MachineResourcesButton } from "./MachineResources.tsx"
 import { Button } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
+import { SettingsIcon, SidebarFillIcon, SidebarIcon } from "@hinacode/icons"
 
 const besideTrafficLights = detectPlatform() === "mac"
 
 export function TitleBar({
   compact,
   sidebarButtonRef,
+  className,
 }: {
   compact: boolean
   sidebarButtonRef: RefObject<HTMLButtonElement | null>
+  className?: string
 }) {
   const sidebarShown = useUi((state) => (compact ? state.sidebarOverlayOpen : state.sidebarOpen))
   const toggleSidebar = useUi((state) => state.toggleSidebar)
@@ -28,8 +30,9 @@ export function TitleBar({
   return (
     <header
       className={cn(
-        "window-drag flex h-titlebar shrink-0 items-center gap-0.5 bg-sidebar glass:bg-sidebar/80 pr-2 text-sidebar-foreground select-none",
+        "flex h-titlebar shrink-0 items-center gap-0.5 bg-sidebar pr-2 text-sidebar-foreground select-none window-drag glass:bg-sidebar/80",
         besideTrafficLights ? "pl-22" : "pl-3",
+        className,
       )}
     >
       <span className="mr-3 font-heading text-sm font-semibold">{m.app_name()}</span>
@@ -45,7 +48,7 @@ export function TitleBar({
             />
           }
         >
-          {sidebarShown ? <RiSideBarFill aria-hidden /> : <RiSideBarLine aria-hidden />}
+          {sidebarShown ? <SidebarFillIcon aria-hidden /> : <SidebarIcon aria-hidden />}
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {sidebarLabel}
@@ -59,7 +62,7 @@ export function TitleBar({
         aria-label={m.sidebar_settings()}
         className="data-[status=active]:bg-sidebar-accent data-[status=active]:text-sidebar-accent-foreground"
       >
-        <RiSettings3Line aria-hidden />
+        <SettingsIcon aria-hidden />
       </Button>
       <MachineResourcesButton />
     </header>

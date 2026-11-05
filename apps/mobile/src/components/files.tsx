@@ -23,7 +23,7 @@ import { call, RpcError } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { basename, dirname, entryIcon } from "@/lib/file-kinds"
-import { matchPaths, type PathMatch } from "@/lib/path-match"
+import { lineSnippet, matchPaths, type PathMatch } from "@/lib/path-match"
 import { useThreadRoot } from "@/stores/threads"
 
 type GitStatus = NonNullable<FsEntry["gitStatus"]>
@@ -168,7 +168,7 @@ function FolderBrowser({ root, threadId }: { root: string; threadId: string }) {
             data={shown.value}
             keyExtractor={(entry) => entry.path}
             renderItem={({ item }) => <EntryRow entry={item} onPress={() => open(item)} />}
-            ListEmptyComponent={<EmptyState icon="RiFolderOpenLine" title={copy("mobile_files_empty_folder")} />}
+            ListEmptyComponent={<EmptyState icon="FolderOpen" title={copy("mobile_files_empty_folder")} />}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={reload} tintColor={theme.textMuted} />}
             contentContainerStyle={styles.listContent}
             keyboardShouldPersistTaps="handled"
@@ -207,7 +207,7 @@ function Breadcrumbs({
         const name = depth === 0 ? rootName : basename(path)
         return (
           <View key={path} style={styles.crumbItem}>
-            {depth > 0 && <Icon name="RiArrowRightSLine" size={14} color={theme.textMuted} />}
+            {depth > 0 && <Icon name="ChevronRight" size={14} color={theme.textMuted} />}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={name}
@@ -249,7 +249,7 @@ function EntryRow({ entry, onPress }: { entry: FsEntry; onPress: () => void }) {
       style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.surface }]}
     >
       <Icon name={entryIcon(entry.path, entry.kind)} size={18} color={theme.textMuted} />
-      <Text numberOfLines={1} style={[styles.rowName, { color: nameColor }]}>
+      <Text numberOfLines={1} ellipsizeMode="middle" style={[styles.rowName, { color: nameColor }]}>
         {entry.name}
       </Text>
       {entry.gitStatus !== null && (
@@ -257,7 +257,7 @@ function EntryRow({ entry, onPress }: { entry: FsEntry; onPress: () => void }) {
           {statusLetter[entry.gitStatus]}
         </Text>
       )}
-      {folder && <Icon name="RiArrowRightSLine" size={18} color={theme.textMuted} />}
+      {folder && <Icon name="ChevronRight" size={18} color={theme.textMuted} />}
     </Pressable>
   )
 }
@@ -304,7 +304,7 @@ function PathSearch({
             onPress={onSearchContents}
             style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.surface }]}
           >
-            <Icon name="RiSearchLine" size={18} color={theme.link} />
+            <Icon name="Search" size={18} color={theme.link} />
             <Text numberOfLines={1} style={[styles.rowName, { color: theme.link }]}>
               {copy("mobile_files_search_contents", { query })}
             </Text>
@@ -439,8 +439,9 @@ function ContentSearch({ threadId, query }: { threadId: string; query: string })
 function HitRow({ hit, query, onPress }: { hit: FileSearchHit; query: string; onPress: () => void }) {
   const theme = useTheme()
   const location = `${hit.path}:${hit.line}`
-  const at = hit.text.toLowerCase().indexOf(query.toLowerCase())
-  const hits = new Set(at === -1 ? [] : Array.from({ length: query.length }, (_, index) => at + index))
+  const snippet = lineSnippet(hit.text, query)
+  const { match } = snippet
+  const hits = new Set(match === null ? [] : Array.from({ length: match.end - match.start }, (_, i) => match.start + i))
   return (
     <Pressable
       accessibilityRole="button"
@@ -451,13 +452,13 @@ function HitRow({ hit, query, onPress }: { hit: FileSearchHit; query: string; on
       <Text numberOfLines={1} ellipsizeMode="head" style={[styles.hitLocation, { color: theme.textMuted }]}>
         {location}
       </Text>
-      {/* The desktop's find highlight: a violet wash, since amber would read as needing attention. */}
+      {/* The desktop's find highlight: a wash of the brand coral, since amber would read as needing attention. */}
       <Text numberOfLines={2} style={[styles.hitText, { color: theme.text }]}>
         <Emphasized
-          text={hit.text}
+          text={snippet.text}
           offset={0}
           hits={hits}
-          style={[styles.strong, { backgroundColor: theme.tokenBg }]}
+          style={[styles.strong, { backgroundColor: theme.findMatch }]}
         />
       </Text>
     </Pressable>
@@ -481,7 +482,7 @@ export function Failure({ message, onRetry }: { message: string; onRetry: () => 
   return (
     <View style={[styles.padded, styles.failure]}>
       <Notice text={message} tone="danger" />
-      <Button label={copy("mobile_files_retry")} icon="RiRefreshLine" onPress={onRetry} style={styles.retry} />
+      <Button label={copy("mobile_files_retry")} icon="Refresh" onPress={onRetry} style={styles.retry} />
     </View>
   )
 }

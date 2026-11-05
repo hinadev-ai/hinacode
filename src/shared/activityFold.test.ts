@@ -42,6 +42,30 @@ test("collapsed responses hide the progress notes written between tool calls and
   expect(collapsedParts(indexed)).toEqual([indexed[4], indexed[7], indexed[8]])
 })
 
+test("a collapsed response keeps a published artifact and folds a failed publish", () => {
+  const publish = { ...tool, name: "mcp__hinacode__publish_artifact", input: { title: "Report" } }
+  const parts = [
+    tool,
+    publish,
+    { ...publish, status: "error" },
+    { type: "text", text: "Published the report." },
+  ] satisfies ReadonlyArray<MessagePart>
+  const indexed = parts.map((part, index) => ({ part, index }))
+  expect(collapsedParts(indexed)).toEqual([indexed[1], indexed[3]])
+})
+
+test("a collapsed response keeps a thread the agent started and folds a failed start", () => {
+  const create = { ...tool, name: "mcp__hinacode__create_thread", input: { title: "Follow-up" } }
+  const parts = [
+    tool,
+    create,
+    { ...create, status: "error" },
+    { type: "text", text: "Started a thread for the follow-up." },
+  ] satisfies ReadonlyArray<MessagePart>
+  const indexed = parts.map((part, index) => ({ part, index }))
+  expect(collapsedParts(indexed)).toEqual([indexed[1], indexed[3]])
+})
+
 test("a collapsed response cut off by a steer keeps the last thing the agent said", () => {
   const parts = [
     { type: "text", text: "Checks passed. Merging the rest of the stack." },

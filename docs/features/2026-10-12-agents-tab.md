@@ -26,7 +26,7 @@ The tabs follow the Base UI tabs keyboard model: arrow keys move between them.
 - Codex (`agents/codex/subagents.ts`): `subAgentActivity` items start and end a row, keyed by the sub-agent's Codex thread id. Notifications from that child thread give tool calls, token usage and its final answer. `agentsStates` on collab tool calls update status and message.
 - Muse (`agents/muse/subagents.ts`): `subagent` items on the parent session carry the objective, transitive tokens and the result. The item stays `inProgress` after the child finishes, so `resultReady` ends the row, and a cancelled result means stopped. The child's own session sends no frames on the parent connection, so its view shows no tool calls.
 - `AgentRunner` keeps the latest sub-agent per id per thread in memory, pushes `thread.subagents` with the whole list on every change, and answers `subagents.list`. `subagent_updated` never reaches the transcript.
-- A sub-agent's tool calls do reach the transcript, tagged with `parentCallId`. `Subagent.callId` is the value they carry: the spawning `Agent` call on Claude, the child thread id on Codex. The thread route's `agent` search param holds it, and `lib/subagents.ts` collects the sub-agent's calls from the transcript, so a Claude sub-agent's view survives a restart.
+- A sub-agent's tool calls do reach the transcript, tagged with `parentCallId`. `Subagent.callId` is the value they carry: the spawning `Agent` call on Claude, the child thread id on Codex. The thread route's `agent` search param holds it, and `src/shared/subagents.ts` collects the sub-agent's calls from the transcript, so a Claude sub-agent's view survives a restart.
 - The renderer's `stores/subagents.ts` loads through the rpc and replaces on each push, like pull request links.
 - `subagents.stop` calls the provider's `stopSubagent`: `query.stopTask(taskId)` on Claude, `turn/interrupt` on the sub-agent's own thread and turn on Codex. The runner marks the row stopped once the provider accepts, since the provider's own report can arrive with no turn left to carry it.
 - Running is a still dot in the `--working` token (brand violet), never a spinner: a batch of ten would be ten spinners. Completed and stopped stay muted, failed is red. The transcript's `Agent` call shows the sub-agent's status, since a background sub-agent's call returns as soon as it launches.
@@ -35,7 +35,7 @@ The tabs follow the Base UI tabs keyboard model: arrow keys move between them.
 
 - Persistence. Sub-agents last until the app restarts. History is in the transcript's `Agent` tool calls.
 - A sub-agent's own text between tool calls. Its view shows the prompt, the calls and the final result.
-- Steering a single sub-agent. The composer in a sub-agent's view still steers the thread's agent.
+- Steering a single sub-agent. A sub-agent's view has no composer. The stop button in its header stops that sub-agent.
 - Codex sub-agent approvals. Requests from a child thread are still not routed to the approval UI.
 
 ## Verification

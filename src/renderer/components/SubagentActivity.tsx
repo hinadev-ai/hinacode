@@ -1,5 +1,6 @@
 import type { Subagent, SubagentStatus } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
+import { inFlight } from "../../shared/subagents.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { useUi } from "../stores/ui.ts"
@@ -14,13 +15,6 @@ const segmentColor = {
   failed: "bg-destructive",
   stopped: "bg-muted-foreground/30",
 } satisfies Record<SubagentStatus, string>
-
-function inFlight(subagents: ReadonlyArray<Subagent>) {
-  const running = subagents.filter((subagent) => subagent.status === "running")
-  if (running.length === 0) return []
-  const since = Math.min(...running.map((subagent) => Date.parse(subagent.startedAt)))
-  return subagents.filter((subagent) => subagent.endedAt === null || Date.parse(subagent.endedAt) >= since).toReversed()
-}
 
 export function SubagentActivity({ thread }: { thread: Thread }) {
   const subagents = inFlight(useThreadSubagents(thread.id).subagents ?? NO_SUBAGENTS)
@@ -51,7 +45,7 @@ export function SubagentActivity({ thread }: { thread: Thread }) {
             {newest.label}
           </span>
           {detail && (
-            <span className="shrink-[4] truncate" title={newest.summary ?? undefined}>
+            <span className="shrink-4 truncate" title={newest.summary ?? undefined}>
               {detail}
             </span>
           )}

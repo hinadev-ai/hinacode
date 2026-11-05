@@ -1,8 +1,9 @@
 import { homedir } from "node:os"
-import { Cause, Effect, Schema } from "effect"
+import { Cause, Effect, Option, Schema } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
 import { availableUpdates, installUpdate } from "./agents/updates.ts"
-import { compactMessage, transcriptPage } from "../shared/compactTranscript.ts"
+import { compactMessage, previewMessage, transcriptPage } from "../shared/compactTranscript.ts"
+import { compactSubagentWork } from "../shared/subagents.ts"
 import type {
   NotificationPermission,
   Opener,
@@ -13,9 +14,12 @@ import type {
   WorkspaceChoice,
 } from "../shared/domain.ts"
 import { type RpcEnvelope, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../shared/contract.ts"
+import type { ArtifactExportRequest } from "../shared/artifact.ts"
 import { AgentAccounts } from "./services/AgentAccounts.ts"
 import { AgentLogins } from "./services/AgentLogins.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
+import { ArtifactInspector } from "./services/ArtifactInspector.ts"
+import { Artifacts } from "./services/Artifacts.ts"
 import { Attachments } from "./services/Attachments.ts"
 import { Browser } from "./services/Browser.ts"
 import { UnknownRootError } from "./services/errors.ts"
@@ -23,6 +27,7 @@ import { ClientSettings } from "./services/ClientSettings.ts"
 import { Environments } from "./services/Environments.ts"
 import { Events } from "./services/Events.ts"
 import { Files } from "./services/Files.ts"
+import { completeDirectory } from "./services/directoryCompletion.ts"
 import { Git } from "./services/Git.ts"
 import { Favicons } from "./services/Favicons.ts"
 import { GitHub, pullRequestFiles } from "./services/GitHub.ts"
@@ -43,8 +48,8 @@ import { Settings } from "./services/Settings.ts"
 import { SystemResources } from "./services/SystemResources.ts"
 import { Terminals } from "./services/Terminals.ts"
 import { Updates } from "./services/Updates.ts"
+import { SessionImports } from "./services/SessionImports.ts"
 import { randomName, Threads } from "./services/Threads.ts"
-import { VmPasskeyRelay } from "./services/tinyVm/passkey/PasskeyRelay.ts"
 import { type ScreenOwner, TinyVm, VmError } from "./services/tinyVm/TinyVm.ts"
 import { Devices } from "./services/devices/Devices.ts"
 import { Worktrees } from "./services/Worktrees.ts"
@@ -52,6 +57,7 @@ import { Worktrees } from "./services/Worktrees.ts"
 export type AppServices =
   | AgentAccounts
   | AgentLogins
+  | SessionImports
   | Projects
   | Threads
   | Worktrees
@@ -68,6 +74,8 @@ export type AppServices =
   | Ports
   | Terminals
   | Attachments
+  | Artifacts
+  | ArtifactInspector
   | Browser
   | Automations
   | Git
@@ -81,7 +89,6 @@ export type AppServices =
   | RelayAccount
   | Events
   | TinyVm
-  | VmPasskeyRelay
   | Devices
 
 export interface HandlerError {
@@ -92,6 +99,7 @@ export interface HandlerError {
 export interface DesktopCalls {
   readonly show: Effect.Effect<void>
   readonly focus: Effect.Effect<void>
+  readonly openPullRequestWindow: (threadId: string, url: string) => Effect.Effect<void>
   readonly setBadgeCount: (count: number) => Effect.Effect<void>
   readonly setColorScheme: (scheme: "dark" | "light" | "system") => Effect.Effect<void>
   readonly reveal: (path: string) => Effect.Effect<void>
@@ -100,6 +108,7 @@ export interface DesktopCalls {
   readonly openExternal: (url: string) => Effect.Effect<void>
   readonly pickFolder: Effect.Effect<string | null>
   readonly pickFiles: Effect.Effect<ReadonlyArray<string>>
+  readonly exportArtifact: (request: ArtifactExportRequest) => Effect.Effect<string | null, HandlerError>
   readonly notificationPermission: Effect.Effect<NotificationPermission>
   readonly askNotificationPermission: (title: string, body: string) => Effect.Effect<PermissionRequestOutcome>
   readonly screenOwner: ScreenOwner | null
@@ -169,6 +178,10 @@ const handlers: Handlers = {
   "browser.close": (input) => Browser.use((browser) => browser.close(input)),
   "app.ready": (_, desktop) => desktop?.show ?? Effect.void,
   "app.focus": (_, desktop) => desktop?.focus ?? Effect.void,
+  "windows.openPullRequest": ({ threadId, url }, desktop) =>
+    desktop?.openPullRequestWindow(threadId, url) ?? Effect.void,
+  "windows.addLineComment": ({ threadId, comment }) =>
+    Events.use((events) => events.publish({ type: "thread.lineComment", threadId, comment })),
   "app.setBadgeCount": ({ count }, desktop) => desktop?.setBadgeCount(count) ?? Effect.void,
   "app.setColorScheme": (scheme, desktop) => desktop?.setColorScheme(scheme) ?? Effect.void,
   "projects.list": () => Projects.use((projects) => projects.listWithRepositories),
@@ -177,12 +190,12 @@ const handlers: Handlers = {
   "projects.update": (input) => Projects.use((projects) => projects.update(input)),
   "projects.delete": ({ id }) =>
     Effect.gen(function* () {
-      const threads = yield* Threads.use((service) => service.list)
-      yield* Effect.forEach(
-        threads.filter((thread) => thread.projectId === id),
-        (thread) => closeTerminals(thread.id),
-      )
+      const threads = (yield* Threads.use((service) => service.list)).filter((thread) => thread.projectId === id)
+      yield* Effect.forEach(threads, (thread) => closeTerminals(thread.id))
       yield* Projects.use((projects) => projects.remove(id))
+      yield* Effect.forEach(threads, (thread) =>
+        Events.use((events) => events.publish({ type: "thread.removed", id: thread.id })),
+      )
     }),
 
   "threads.list": () => Threads.use((threads) => threads.list),
@@ -202,6 +215,16 @@ const handlers: Handlers = {
           worktree,
           createdBy,
         }),
+      )
+      yield* Events.use((events) => events.publish({ type: "thread.updated", thread }))
+      return thread
+    }),
+  "threads.draft": ({ projectId }) =>
+    Effect.gen(function* () {
+      const { defaultProvider: provider } = yield* Settings.use((service) => service.get)
+      const options = yield* newThreadOptions(provider)
+      const thread = yield* Threads.use((threads) =>
+        threads.draft({ projectId, title: randomName(), provider, ...options }),
       )
       yield* Events.use((events) => events.publish({ type: "thread.updated", thread }))
       return thread
@@ -228,7 +251,14 @@ const handlers: Handlers = {
       return thread
     }),
   "threads.delete": ({ id, removeWorktree }) =>
-    closeTerminals(id).pipe(
+    Threads.use((threads) => threads.sidechatOf(id)).pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.void,
+          onSome: (sidechat) => AgentRunner.use((runner) => runner.interrupt(sidechat.id)),
+        }),
+      ),
+      Effect.andThen(closeTerminals(id)),
       Effect.andThen(Threads.use((threads) => threads.remove(id, { removeWorktree }))),
       Effect.andThen(Events.use((events) => events.publish({ type: "thread.removed", id }))),
     ),
@@ -243,16 +273,24 @@ const handlers: Handlers = {
   "worktrees.create": (input) => Worktrees.use((worktrees) => worktrees.create(input)),
   "worktrees.remove": ({ id, deleteBranch }) => Worktrees.use((worktrees) => worktrees.remove(id, deleteBranch)),
   "worktrees.checkouts": () => Worktrees.use((worktrees) => worktrees.checkouts),
+  "worktrees.checkoutState": ({ id }) => Worktrees.use((worktrees) => worktrees.checkoutState(id)),
   "worktrees.setupLog": ({ id }) => Worktrees.use((worktrees) => Effect.map(worktrees.get(id), (w) => w.setupLog)),
   "worktrees.stopSetup": ({ id }) => Worktrees.use((worktrees) => worktrees.stopSetup(id)),
   "worktrees.pullRequest": ({ id }) => Worktrees.use((worktrees) => worktrees.pullRequest(id)),
   "threads.changes": ({ threadId, scope }) => Threads.use((threads) => threads.changes(threadId, scope)),
+  "threads.undoTurn": ({ threadId }) => Threads.use((threads) => threads.undoTurn(threadId)),
   "threads.archive": ({ threadId }) => Threads.use((threads) => threads.archive(threadId)),
   "threads.unarchive": ({ threadId }) => Threads.use((threads) => threads.unarchive(threadId)),
   "threads.fork": ({ threadId, messageId }) =>
     Threads.use((threads) => threads.fork(threadId, messageId)).pipe(
       Effect.tap((thread) => Events.use((events) => events.publish({ type: "thread.updated", thread }))),
     ),
+  "sessions.listExternal": ({ projectId }) => SessionImports.use((imports) => imports.list(projectId)),
+  "sessions.import": (input) =>
+    SessionImports.use((imports) => imports.import(input)).pipe(
+      Effect.tap((thread) => Events.use((events) => events.publish({ type: "thread.updated", thread }))),
+    ),
+  "threads.sidechat": ({ threadId }) => Threads.use((threads) => threads.sidechat(threadId)),
   "projects.currentBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.currentBranch(id)),
   "projects.defaultBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.defaultBranch(id)),
   "projects.branches": ({ id }) => Worktrees.use((worktrees) => worktrees.branches(id)),
@@ -331,7 +369,11 @@ const handlers: Handlers = {
   "fs.read": ({ root, path }) => Files.use((files) => files.read(root, path)),
   "fs.preview": ({ root, path }) => Files.use((files) => files.preview(root, path)),
   "fs.write": ({ root, path, content, expected }) => Files.use((files) => files.write(root, path, content, expected)),
+  "fs.create": ({ root, path, kind }) => Files.use((files) => files.create(root, path, kind)),
+  "fs.rename": ({ root, from, to }) => Files.use((files) => files.rename(root, from, to)),
+  "fs.delete": ({ root, path }) => Files.use((files) => files.remove(root, path)),
   "fs.watch": ({ root, paths }) => Files.use((files) => files.watch(root, paths)),
+  "fs.completeDirectory": ({ path }) => completeDirectory(path),
   "dialog.pickFolder": (_, desktop) => desktop?.pickFolder ?? Effect.succeed(null),
 
   "updates.status": () => Updates.use((updates) => updates.status),
@@ -341,15 +383,20 @@ const handlers: Handlers = {
   "threads.transcript": ({ threadId, compact = false, page }) =>
     AgentRunner.use((runner) => runner.transcript(threadId)).pipe(
       Effect.map((transcript) => {
-        const messages = compact ? transcript.messages.map(compactMessage) : transcript.messages
+        const messages = transcript.messages.map(compact ? compactMessage : previewMessage)
         return page === undefined
           ? { ...transcript, messages }
           : { ...transcript, ...transcriptPage(messages, page.before) }
       }),
     ),
+  "threads.toolOutput": (input) => AgentRunner.use((runner) => runner.toolOutput(input)),
   "threads.send": ({ threadId, prompt, attachments = [], workspace }) =>
     Effect.gen(function* () {
       const remember = yield* rememberWorkspaceMode(threadId, workspace?.mode ?? "local")
+      if ((yield* Threads.use((threads) => threads.get(threadId))).status === "archived") {
+        const thread = yield* Threads.use((threads) => threads.unarchive(threadId))
+        yield* Events.use((events) => events.publish({ type: "thread.updated", thread }))
+      }
       yield* AgentRunner.use((runner) => runner.send(threadId, prompt, attachments, { workspace }))
       yield* remember
     }),
@@ -358,9 +405,16 @@ const handlers: Handlers = {
   "threads.queue": ({ threadId, text, attachments = [] }) =>
     AgentRunner.use((runner) => runner.queue(threadId, text, attachments)),
   "threads.unqueue": ({ threadId, id }) => AgentRunner.use((runner) => runner.unqueue(threadId, id)),
+  "threads.schedule": ({ threadId, text, attachments = [], workspace, sendAt }) =>
+    AgentRunner.use((runner) => runner.schedule({ threadId, text, attachments, workspace, sendAt })),
+  "threads.reschedule": ({ threadId, id, sendAt }) =>
+    AgentRunner.use((runner) => runner.reschedule(threadId, id, sendAt)),
+  "threads.unschedule": ({ threadId, id }) => AgentRunner.use((runner) => runner.unschedule(threadId, id)),
   "threads.interrupt": ({ threadId }) => AgentRunner.use((runner) => runner.interrupt(threadId)),
-  "approvals.respond": ({ requestId, decision }) =>
-    AgentRunner.use((runner) => runner.respondApproval(requestId, decision)),
+  "threads.warm": ({ threadId }) => AgentRunner.use((runner) => runner.warm(threadId)),
+  "threads.reveal": ({ threadId }) => Events.use((events) => events.publish({ type: "thread.reveal", threadId })),
+  "approvals.respond": ({ requestId, decision, note }) =>
+    AgentRunner.use((runner) => runner.respondApproval(requestId, decision, note)),
   "questions.respond": ({ requestId, answers }) =>
     AgentRunner.use((runner) => runner.respondQuestion(requestId, answers)),
   "secrets.respond": ({ requestId, value }) => AgentRunner.use((runner) => runner.respondSecret(requestId, value)),
@@ -371,9 +425,15 @@ const handlers: Handlers = {
   "subagents.list": ({ threadId }) => AgentRunner.use((runner) => runner.subagents(threadId)),
   "subagents.stop": ({ threadId, subagentId }) =>
     AgentRunner.use((runner) => runner.stopSubagent(threadId, subagentId)),
+  "subagents.transcript": ({ threadId, callId }) =>
+    AgentRunner.use((runner) => runner.transcript(threadId)).pipe(
+      Effect.map(({ messages }) => compactSubagentWork(messages, callId)),
+    ),
   "backgroundTasks.list": ({ threadId }) => AgentRunner.use((runner) => runner.backgroundTasks(threadId)),
   "backgroundTasks.stop": ({ threadId, taskId }) =>
     AgentRunner.use((runner) => runner.stopBackgroundTask(threadId, taskId)),
+  "backgroundTasks.moveCommand": ({ threadId, callId }) =>
+    AgentRunner.use((runner) => runner.moveCommandToBackground(threadId, callId)),
   "threads.usage": ({ threadId }) => AgentRunner.use((runner) => runner.usage(threadId)),
   "threads.contextBreakdown": ({ threadId }) => AgentRunner.use((runner) => runner.contextBreakdown(threadId)),
   "pullRequests.list": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.list(threadId)),
@@ -385,8 +445,8 @@ const handlers: Handlers = {
     PullRequests.use((pullRequests) => pullRequests.unwatch(threadId, url)),
   "github.auth": () => GitHub.use((github) => github.auth),
   "github.pullRequest": ({ url }) => GitHub.use((github) => github.pullRequest(url)),
-  "github.pullRequestDetail": ({ url }) =>
-    GitHub.use((github) => github.pullRequestDetail(url)).pipe(Effect.tap(startGuideForHead)),
+  "github.pullRequestDetail": ({ url, fresh }) =>
+    GitHub.use((github) => github.pullRequestDetail(url, { fresh })).pipe(Effect.tap(startGuideForHead)),
   "github.pullRequestFiles": ({ url }) =>
     GitHub.use((github) => github.pullRequestDiff(url)).pipe(Effect.flatMap(pullRequestFiles)),
   "pullRequestGuides.get": ({ url }) => PullRequestGuides.use((guides) => guides.get(url)),
@@ -394,6 +454,8 @@ const handlers: Handlers = {
   "github.merge": ({ url, method }) => GitHub.use((github) => github.merge(url, method)),
   "github.close": ({ url }) => GitHub.use((github) => github.close(url)),
   "github.comment": ({ url, body }) => GitHub.use((github) => github.comment(url, body)),
+  "github.fileContent": ({ url, ref, path }) => GitHub.use((github) => github.fileContent(url, ref, path)),
+  "github.reviewComment": ({ url, comment }) => GitHub.use((github) => github.reviewComment(url, comment)),
   "linear.issues": () => Linear.use((linear) => linear.assignedIssues),
   "github.repository": ({ projectId }) =>
     Projects.use((projects) => projects.get(projectId)).pipe(
@@ -421,6 +483,8 @@ const handlers: Handlers = {
   "device.control": ({ threadId, deviceId, control }) =>
     Devices.use((devices) => devices.control(threadId, deviceId, control)),
   "device.pick": (input) => Devices.use((devices) => devices.pick(input)),
+  "device.screenshot.save": ({ threadId, dataUrl, name }) =>
+    Attachments.use((attachments) => attachments.stage(threadId, { dataUrl, name })),
   "vm.get": ({ threadId }) => TinyVm.use((vm) => vm.get(threadId)),
   "vm.start": ({ threadId, template }) => TinyVm.use((vm) => vm.start(threadId, template)),
   "vm.stop": ({ threadId }) => TinyVm.use((vm) => vm.stop(threadId)),
@@ -447,15 +511,21 @@ const handlers: Handlers = {
         }),
       )
     }),
-  "vm.passkey.get": ({ threadId }) => VmPasskeyRelay.use((relay) => relay.get(threadId)),
-  "vm.passkey.prepare": ({ threadId }) => VmPasskeyRelay.use((relay) => relay.prepare(threadId)),
-  "vm.passkey.cancel": ({ threadId }) => VmPasskeyRelay.use((relay) => relay.cancel(threadId)),
 
   "attachments.stage": ({ threadId, source }) => Attachments.use((attachments) => attachments.stage(threadId, source)),
   "attachments.read": ({ path }) => Attachments.use((attachments) => attachments.read(path)),
   "dialog.pickFiles": (_, desktop) => desktop?.pickFiles ?? Effect.succeed([]),
 
   "automations.list": () => Automations.use((automations) => automations.list),
+  "artifacts.list": () => Artifacts.use((artifacts) => artifacts.list),
+  "artifacts.file": ({ id, path }) => Artifacts.use((artifacts) => artifacts.preview(id, path)),
+  "artifacts.delete": ({ id }) => Artifacts.use((artifacts) => artifacts.remove(id)),
+  "artifacts.readDocument": ({ id }) => Artifacts.use((artifacts) => artifacts.readDocument(id)),
+  "artifacts.saveDocument": (input) => Artifacts.use((artifacts) => artifacts.saveDocument(input)),
+  "artifacts.createDocument": (input) => Artifacts.use((artifacts) => artifacts.createDocument(input)),
+  "artifacts.rename": ({ id, title }) => Artifacts.use((artifacts) => artifacts.rename(id, title)),
+  "artifacts.setTheme": (theme) => ArtifactInspector.use((inspector) => inspector.setTheme(theme)),
+  "artifacts.export": (request, desktop) => desktop?.exportArtifact(request) ?? Effect.succeed(null),
   "automations.create": (input) => Automations.use((automations) => automations.create(input)),
   "automations.update": (input) => Automations.use((automations) => automations.update(input)),
   "automations.delete": ({ id }) => Automations.use((automations) => automations.remove(id)),
@@ -508,6 +578,7 @@ const call = <M extends RpcMethod>(method: M, payload: unknown, desktop: Desktop
   return Schema.decodeUnknownEffect(spec.request)(payload).pipe(
     Effect.flatMap((request) => handler(request, desktop)),
     Effect.flatMap(Schema.encodeEffect(spec.response)),
+    Effect.withSpan(`rpc ${method}`),
   )
 }
 

@@ -14,7 +14,7 @@ import {
 } from "react"
 import type { Environment, RelayAccountStatus } from "../../../shared/domain.ts"
 import type { PendingLink, RelayHost } from "../../../shared/relayMachines.ts"
-import { errorMessage } from "../../lib/errorMessage.ts"
+import { errorMessage, toastError } from "../../lib/errorMessage.ts"
 import { type Cloud, cloudAddress, incompatibleText, useClouds } from "../../lib/environments.ts"
 import { formatRelativeTime } from "../../lib/relativeTime.ts"
 import {
@@ -238,9 +238,13 @@ function RelayMachineRow({ host, self }: { host: RelayHost; self: boolean }) {
     <li className="flex flex-col gap-1 py-2">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex min-w-48 flex-1 flex-col gap-0.5">
-          <span className="truncate text-sm font-medium">{host.name}</span>
+          <span className="truncate text-sm font-medium" title={host.name}>
+            {host.name}
+          </span>
           <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-            <span className="min-w-0 truncate font-mono">{host.hostname}</span>
+            <span className="min-w-0 truncate font-mono" title={host.hostname}>
+              {host.hostname}
+            </span>
             {self && <span className="whitespace-nowrap">{m.environment_relay_this_machine()}</span>}
           </span>
         </div>
@@ -446,10 +450,18 @@ function EnvironmentRow({ cloud }: { cloud: Cloud }) {
     <li className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex min-w-48 flex-1 flex-col gap-0.5">
-          <span className="truncate text-sm font-medium">{cloud.name}</span>
+          <span className="truncate text-sm font-medium" title={cloud.name}>
+            {cloud.name}
+          </span>
           <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-            {cloud.relay !== null && <span className="min-w-0 truncate font-mono">{cloud.relay}</span>}
-            <span className="min-w-0 truncate font-mono">{cloudAddress(cloud)}</span>
+            {cloud.relay !== null && (
+              <span className="min-w-0 truncate font-mono" title={cloud.relay}>
+                {cloud.relay}
+              </span>
+            )}
+            <span className="min-w-0 truncate font-mono" title={cloudAddress(cloud)}>
+              {cloudAddress(cloud)}
+            </span>
             {fromRelay && <span className="whitespace-nowrap">{m.environment_relay_source()}</span>}
             <EnvironmentStatusText status={cloud.status} />
             {cloud.status === "connected" && <CloudVersion cloud={cloud} />}
@@ -496,15 +508,14 @@ interface PairAgainFormProps {
   readonly onPaired: () => void
 }
 
+const focusOnMount = (input: HTMLInputElement | null) => input?.focus()
+
 function PairAgainForm({ id, cloud, onCancel, onPaired }: PairAgainFormProps) {
   const addEnvironment = useAtomSet(addEnvironmentAtom, { mode: "promise" })
   const [pairingUrl, setPairingUrl] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [pending, startPair] = useTransition()
   const inputId = useId()
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => inputRef.current?.focus(), [])
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -531,7 +542,7 @@ function PairAgainForm({ id, cloud, onCancel, onPaired }: PairAgainFormProps) {
         <FieldLabel htmlFor={inputId}>{m.environment_new_pairing_url_label()}</FieldLabel>
         <div className="flex flex-wrap gap-2">
           <Input
-            ref={inputRef}
+            ref={focusOnMount}
             id={inputId}
             required
             value={pairingUrl}
@@ -603,7 +614,7 @@ function CloudUpdateButton({ cloud }: { cloud: Cloud }) {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => void callPromise("updates.check", undefined, { environment: cloud.id })}
+          action={() => callPromise("updates.check", undefined, { environment: cloud.id }).catch(toastError)}
         >
           {m.update_check()}
         </Button>

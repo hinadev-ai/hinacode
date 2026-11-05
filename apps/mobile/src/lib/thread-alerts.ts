@@ -21,6 +21,7 @@ export function threadAlert(event: AgentEvent): ThreadAlert | null {
     case "secret_requested":
       return { kind: "needsInput", body: copy("mobile_notify_secret") }
     case "turn_failed":
+      if (event.stopped) return null
       return { kind: "failed", body: copy("mobile_notify_failed", { message: event.message.split("\n")[0] ?? "" }) }
     case "turn_limited":
       return { kind: "failed", body: copy("mobile_notify_limited") }

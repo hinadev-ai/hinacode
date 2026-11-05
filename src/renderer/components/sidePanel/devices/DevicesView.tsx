@@ -1,12 +1,12 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
-import { type ReactNode, useState } from "react"
-import { RiCheckLine, RiCircleLine, RiErrorWarningLine, RiLoader4Line } from "react-icons/ri"
+import { type ReactNode, useEffect, useState } from "react"
 import { devicePlatformOf, type PrepareStep, type ThreadDevice, type ThreadDevices } from "../../../../shared/device.ts"
 import type { Thread } from "../../../../shared/domain.ts"
 import { errorMessage } from "../../../lib/errorMessage.ts"
-import { callPromise, threadDevicesAtom } from "../../../lib/rpc.ts"
+import { callPromise, onPushEvent, threadDevicesAtom } from "../../../lib/rpc.ts"
 import { m } from "../../../paraglide/messages.js"
+import { useDeviceActivity } from "../../../stores/deviceActivity.ts"
 import { DEVICE_LIST_TAB, deviceTabKey, selectAfterClosing, useShownDeviceTab } from "../../../stores/deviceTabs.ts"
 import { Button } from "../../ui/button.tsx"
 import { useVmAction } from "../TinyVmView.tsx"
@@ -14,10 +14,19 @@ import { DeleteDeviceDialog } from "./DeleteDeviceDialog.tsx"
 import { DeviceList } from "./DeviceList.tsx"
 import { DeviceReady } from "./DeviceReady.tsx"
 import { devicePanelId, deviceTabId } from "./DeviceTabStrip.tsx"
+import { CheckIcon, CircleIcon, SpinnerIcon, WarningIcon } from "@hinacode/icons"
 
 export function DevicesView({ thread }: { thread: Thread }) {
   const devices = useAtomValue(threadDevicesAtom(thread.id))
   const refresh = useAtomRefresh(threadDevicesAtom(thread.id))
+  const threadId = thread.id
+  useEffect(() => {
+    const { markSeen } = useDeviceActivity.getState()
+    markSeen(threadId)
+    return onPushEvent((event) => {
+      if (event.type === "device.agentAction" && event.threadId === threadId) markSeen(threadId)
+    })
+  }, [threadId])
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {AsyncResult.builder(devices)
@@ -63,11 +72,12 @@ interface DeviceStateProps {
 }
 
 function DeviceState({ threadId, device, onDetach }: DeviceStateProps) {
+  const [preparedOnScreen] = useState(device.phase === "preparing")
   switch (device.phase) {
     case "preparing":
       return <Preparing step={device.step} />
     case "ready":
-      return <DeviceReady threadId={threadId} device={device} onDetach={onDetach} />
+      return <DeviceReady threadId={threadId} device={device} onDetach={onDetach} bootedOnScreen={preparedOnScreen} />
     case "failed":
       return <Failed threadId={threadId} device={device} onDetach={onDetach} />
   }
@@ -85,9 +95,9 @@ const stepLabel: Record<PrepareStep, () => string> = {
 type StepState = "done" | "running" | "pending"
 
 const stepIcon: Record<StepState, ReactNode> = {
-  done: <RiCheckLine aria-hidden className="size-4 shrink-0 text-success" />,
-  running: <RiLoader4Line aria-hidden className="size-4 shrink-0 animate-spin motion-reduce:animate-none" />,
-  pending: <RiCircleLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />,
+  done: <CheckIcon aria-hidden className="size-4 shrink-0 text-success" />,
+  running: <SpinnerIcon aria-hidden className="size-4 shrink-0 animate-spin motion-reduce:animate-none" />,
+  pending: <CircleIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />,
 }
 
 function Preparing({ step }: { step: PrepareStep }) {
@@ -179,10 +189,10 @@ function Failed({ threadId, device, onDetach }: FailedProps) {
 function Failure({ title, message, children }: { title?: string; message: string; children: ReactNode }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
-      <RiErrorWarningLine aria-hidden className="size-6 text-destructive" />
+      <WarningIcon aria-hidden className="size-6 text-destructive" />
       <div role="alert" className="flex flex-col gap-1">
         {title && <h3 className="text-sm font-medium">{title}</h3>}
-        <p className="max-w-80 font-mono text-xs break-words text-muted-foreground">{message}</p>
+        <p className="max-w-80 font-mono text-xs wrap-break-word text-muted-foreground">{message}</p>
       </div>
       {children}
     </div>

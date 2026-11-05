@@ -1,6 +1,6 @@
 # Architecture
 
-hinacode is one Electron app with three processes: the renderer, the preload, and the main process. The main process runs the agents. It talks to Codex and Muse Code over child processes and to Claude through the Agent SDK. Everything durable is in one SQLite file. Why it is shaped this way: [`adr/`](adr/). The product design: [`features/2026-10-11-hinacode-foundation.md`](features/2026-10-11-hinacode-foundation.md).
+hinacode is one Electron app with three processes: the renderer, the preload, and the main process. The main process runs the agents. It talks to Codex, Muse Code and opencode over child processes and to Claude through the Agent SDK. Everything durable is in one SQLite file. Why it is shaped this way: [`adr/`](adr/). The product design: [`features/2026-10-11-hinacode-foundation.md`](features/2026-10-11-hinacode-foundation.md).
 
 ## System overview
 
@@ -65,16 +65,16 @@ flowchart LR
   mainHandle -- "channel: event" --> rendererCall
 ```
 
-| Channel | Direction       | Carries                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| ------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rpc`   | renderer → main | `app.focus`, `app.setBadgeCount`, `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `questions.respond`, `secrets.respond`, `settings.*`, `notifications.*`, `secrets.*`, `ports.*`, `terminal.*`, `automations.*`, `models.list`, `agents.account`, `accounts.*`, `limits.list`, `commands.list`, `files.list`, `git.log`, `git.show`, `fs.list`, `fs.read`, `fs.write`, `fs.watch`, `attachments.stage`, dialogs |
-| `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `pullRequest.guide`, `thread.subagents`, `automation.run`, `fs.changed`, `terminal.data` (pty output batched per 16 ms), `terminal.exited`                                                                                                                     |
+| Channel | Direction       | Carries                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rpc`   | renderer → main | `app.focus`, `app.setBadgeCount`, `projects.*`, `threads.*`, `worktrees.*`, `approvals.respond`, `questions.respond`, `secrets.respond`, `settings.*`, `notifications.*`, `secrets.*`, `ports.*`, `terminal.*`, `automations.*`, `models.list`, `agents.account`, `accounts.*`, `limits.list`, `commands.list`, `files.list`, `git.log`, `git.show`, `fs.list`, `fs.read`, `fs.write`, `fs.watch`, `fs.completeDirectory`, `attachments.stage`, dialogs |
+| `event` | main → renderer | `thread.event`, `message.created`, `message.updated` (these carry `seq`), plus `thread.updated`, `worktree.updated`, `worktree.setupLog`, `thread.pullRequests`, `pullRequest.guide`, `thread.subagents`, `automation.run`, `fs.changed`, `terminal.data` (pty output batched per 16 ms), `terminal.exited`                                                                                                                                             |
 
 Only the top-level app frame may send `rpc` (`isTrustedSender` in `security.ts`).
 
 Remote mode (`src/main/remote/`) is a second transport for the same contract. A phone opens a WebSocket on `settings.remote`, answers the server's `challenge` with `{ type: "auth", nonce, proof }`, a proof of the token rather than the token (`shared/proof.ts`, [ADR 0022](adr/0022-clients-prove-the-pairing-token.md)), and then `{ type: "call", id, method, payload }` frames go through the same `dispatch` (`rpc.ts`) as the Electron channel with no `DesktopCalls`, while every push is forwarded as `{ type: "event", event }`. The token lives in `Secrets`; `desktopOnlyMethods` in the contract lists what the phone cannot call. Thread create, update and delete push `thread.updated` and `thread.removed`, so the desktop window and a phone stay in step. See `features/2026-10-12-remote-mode.md`. `ready.features` negotiates application heartbeats and mutation call keys. The listener retains keyed mutation results in memory across sockets, while the desktop keeps pending cloud calls through reconnects and retries reads for a fresh snapshot. Calls expire after a total minute offline. The phone keeps its transcript and pending actions during reconnects, then atomically replaces loaded snapshots after `ready`. It reads transcripts with `compact`, which leaves out tool outputs and file diffs it never shows (see `features/2026-10-18-mobile-workbench.md`). A pairing URL carries every reachable host in order; the phone rotates after failed attempts and starts reconnects at its last successful host. Desktop environments probe every host at once, keep the earliest that answers, and wait at most a second for earlier hosts once a later one answered. See `features/2026-10-16-resilient-remote.md`.
 
-`hinacode serve` (`npx hinacode serve`) runs the same layer graph as a headless cloud in plain Node, with no Electron. It has its own build (`vite.server.config.ts`, entry `src/main/daemon.ts`, output `out/server/daemon.js`), separate from the desktop's electron-vite build. That build bundles every JavaScript dependency except the externals in `scripts/server-package.ts` (`node-pty` and `playwright-core`, which load files from their own packages at runtime). `pnpm stage:server` writes a publishable package into `dist-npm` whose manifest lists only those externals, and `pnpm verify:server` installs it away from the checkout and boots it. The repository root is private and never published. `app.ts` builds the graph for both entries; the daemon passes no keyring, an npm `Updates` (`cloudUpdater.ts`), no window sink, and forces the remote listener on at boot (`serve.ts`), then prints the pairing URLs to stdout. It takes its own `HINACODE_USER_DATA` (default `~/.hinacode-cloud`) and therefore its own database, projects and threads. Main-process code that the daemon loads must not import `electron`; the desktop-only pieces live in `index.ts`, `ipc.ts`, `updater.ts` and `notificationPermission.ts`. See `features/2026-10-14-remote-clouds.md`, `features/2026-10-28-server-npm-package.md` and [ADR 0016](adr/0016-cloud-daemon-and-dumb-relay.md).
+`hinacode serve` (`npx hinacode serve`) runs the same layer graph as a headless cloud in plain Node, with no Electron. It has its own build (`vite.server.config.ts`), separate from the desktop's electron-vite build. `bin/hinacode.mjs` runs `out/server/cli.js` (`src/cli/main.ts`), the `hinacode` CLI, which imports `out/server/daemon.js` only for `serve` and `pair`, so the other commands start without the app layer. That build bundles every JavaScript dependency except the externals in `scripts/server-package.ts` (`node-pty` and `playwright-core`, which load files from their own packages at runtime). `pnpm stage:server` writes a publishable package into `dist-npm` whose manifest lists only those externals, and `pnpm verify:server` installs it away from the checkout and boots it. The repository root is private and never published. `app.ts` builds the graph for both entries; the daemon passes no keyring, an npm `Updates` (`cloudUpdater.ts`), no window sink, and forces the remote listener on at boot (`serve.ts`), then prints the pairing URLs to stdout. It takes its own `HINACODE_USER_DATA` (default `~/.hinacode-cloud`) and therefore its own database, projects and threads. Main-process code that the daemon loads must not import `electron`; the desktop-only pieces live in `index.ts`, `ipc.ts`, `updater.ts` and `notificationPermission.ts`. See `features/2026-10-14-remote-clouds.md`, `features/2026-10-28-server-npm-package.md` and [ADR 0016](adr/0016-cloud-daemon-and-dumb-relay.md).
 
 ### Environments: routing a window call
 
@@ -107,15 +107,15 @@ flowchart LR
 
 Any machine with remote control on can also run a relay (`src/main/remote/relay.ts`): a Cloudflare named tunnel that the relay service creates in HinaCode's account, served by a `cloudflared` child that points at the remote listener. Its hostname travels as `relay` in the pairing URL and the `ready` frame, so clients paired before it existed learn it. Both clients dial with `dialPlan`: every direct address at once and the relay half a second later, and the first socket to open wins. Over the relay they check the direct addresses every minute and move over when one answers. The protocol over the tunnel is the same one. See `features/2026-10-24-relay.md` and [ADR 0020](adr/0020-cloudflare-tunnel-as-the-relay.md).
 
-The visible thread owns its renderer history. Leaving it unloads the transcript even while its agent runs; the main process owns ongoing turns and pending approvals. Reopening reads a fresh sequence-numbered snapshot. Each load has an identity so a response from an earlier visit cannot replace a newer snapshot.
+The renderer keeps the histories of the 8 most recently viewed threads, so reopening one renders from memory instead of fetching a snapshot. A cached history keeps folding pushes while its thread is off screen; the main process owns ongoing turns and pending approvals. That only stays correct because every change main makes to a transcript or its requests goes out as a push: `finish` publishes the message it closes and withdraws the requests it drops, and deleting a project sends `thread.removed` for each thread. The history viewed longest ago is evicted past the limit, a removed thread is evicted at once, and a cloud reconnect refetches the cached histories of that cloud. Each load has an identity so a response from an earlier load cannot replace a newer snapshot.
 
-Ready renderer histories publish adjacent text or reasoning deltas in fixed 100 ms groups. A different event flushes the pending group and applies its own change in one store update. Loading histories retain raw sequence-numbered pushes for snapshot reconciliation. Unloading cancels the pending timer and lets the next snapshot restore persisted content. The main process still publishes and folds every event individually; its existing batched persistence is unchanged.
+Ready renderer histories apply the first text or reasoning delta of a burst at once and open a 100 ms window. Adjacent deltas of the same kind wait for the window's end, which publishes them in one store update and opens the next window; a window that ends with nothing held closes. That keeps one store update per 100 ms while text streams, without making the first delta after a tool call wait. A different event flushes the held deltas and applies its own change in one store update. Loading histories retain raw sequence-numbered pushes for snapshot reconciliation. Evicting cancels the pending timer and lets the next snapshot restore persisted content. Before that, the main process joins adjacent deltas of one kind into a single `thread.event` (`coalesceDeltas.ts`), described under [A turn, end to end](#a-turn-end-to-end).
 
 The native window starts hidden. The renderer loads settings, applies appearance, and commits the first React view before calling `app.ready`. Main shows the requesting window after the existing sender and schema checks. System appearance is a renderer media-query subscription shared by the document and diffs; the selected theme remains in `client-settings.json`.
 
 ## Main-process layers
 
-The main process is one Effect layer graph, built by `src/main/app.ts` before the window can call in. The desktop (`index.ts`) and the cloud daemon (`daemon.ts`) build the same graph.
+The main process is one Effect layer graph, built by `src/main/app.ts`. The desktop (`index.ts`) and the cloud daemon (`daemon.ts`) build the same graph. The desktop's entry is `boot.ts`, which turns on Node's module compile cache and then imports `index.ts`, so warm launches reuse V8 code for the bundle and its external packages. The desktop opens its window while the graph builds, and `rpc` calls wait for it. The build waits for the login shell's PATH (`shellPath.ts`); the desktop starts from the PATH it saved in `<dataDir>/shell-path` on the last launch and refreshes it from `$SHELL -ilc` in the background, so only the first launch waits for the shell.
 
 Both receive a data directory as `userData`: `HINACODE_USER_DATA`, else `~/.hinacode` (`~/.hinacode-dev` unpackaged) for the desktop and `~/.hinacode-cloud` for the daemon. The database, `chats/`, `attachments/`, `accounts/`, `tiny-vm/` and `cloudflared/` sit at its top. The desktop points Electron's `userData` at `<dataDir>/chromium`, so Chromium's profile and its `SingletonLock` stay in there. On the first launch without the override, `dataDir.ts` moves the old `<appData>/kkcode` (or `kkcode-dev`) profile into this layout and rewrites the paths the database stored under it.
 
@@ -123,7 +123,7 @@ Both receive a data directory as `userData`: `HINACODE_USER_DATA`, else `~/.hina
 flowchart BT
   node["NodeServices"]
   db["Db.layer<br/>SQLite + migrations"]
-  infra["ClaudeProvider, CodexProvider,<br/>MuseProvider, Git, Events"]
+  infra["ClaudeProvider, CodexProvider,<br/>MuseProvider, OpencodeProvider,<br/>Git, Events"]
   domain["Domain<br/>Threads ← Worktrees ← Projects,<br/>Threads ← Terminals,<br/>Settings, Messages, Attachments"]
   features["McpCredentials, Ports, RemoteAccess"]
   runner["AgentRunner"]
@@ -158,6 +158,7 @@ classDiagram
     listModels: Effect~ModelInfo[]~
     account(home) / planLimits(home) / usage(sessionId, home)
     copySession?(sessionId, from, to)
+    listSessions?(cwd, home) / readSession?(sessionId, cwd, home)
     listCommands(threadId, cwd, home)
     runTurn(input) Stream~AgentEvent~
     steer(threadId, text, attachments)
@@ -168,6 +169,7 @@ classDiagram
   }
   class ClaudeProvider {
     one query() per active thread, expires after 60 seconds idle
+    warm() starts it when the user starts typing
     canUseTool → approvals, AskUserQuestion → questions
     permissionMode from the thread's access mode
     loads user, project and local settings
@@ -182,21 +184,27 @@ classDiagram
     sessions stay loaded in the host that opened them
     approval mode from the thread's access mode, set live
   }
+  class AcpProvider {
+    one opencode acp process per turn
+    one ACP session per thread, session/load to resume
+    hinacode answers session/request_permission from the access mode
+  }
   AgentProvider <|.. ClaudeProvider
   AgentProvider <|.. CodexProvider
   AgentProvider <|.. MuseProvider
+  AgentProvider <|.. AcpProvider
 ```
 
-An account is an agent home: `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, holding the login and the transcripts. A thread with `account_id` null runs on the CLI's own login; otherwise its turns get `home = { dir, binary }`, the config directory and CLI the user gave when adding the account. hinacode never signs in or out: the user runs the CLI's login in a terminal, and `AgentLogins` only probes who each home is signed in as. Token usage and plan limits are read from the same home, so `threads.usage` and `limits.list` follow the account. `threads.switchAccount` moves a started thread by copying its session files into the new home with `AgentProvider.copySession`, then resuming the same session id there. It is refused while a turn runs, because the transcript is still being written. Muse Code has no home variable, so it runs on its CLI login only, and `AccountProviderId` leaves it out of added accounts. [`muse-integration-guide.md`](muse-integration-guide.md) explains how the Muse provider speaks MSP.
+An account is an agent home: `CLAUDE_CONFIG_DIR` or `CODEX_HOME`, holding the login and the transcripts. A thread with `account_id` null runs on the CLI's own login; otherwise its turns get `home = { dir, binary }`, the config directory and CLI the user gave when adding the account. hinacode never signs in or out: the user runs the CLI's login in a terminal, and `AgentLogins` only probes who each home is signed in as. Token usage and plan limits are read from the same home, so `threads.usage` and `limits.list` follow the account. `threads.switchAccount` moves a started thread by copying its session files into the new home with `AgentProvider.copySession`, then resuming the same session id there. It is refused while a turn runs, because the transcript is still being written. `SessionImports` reads the other direction: it lists the sessions every home recorded in a project's folder, including ones a terminal started, and adopts one as a thread on the account whose home holds it, with its history replayed and a `session_import` rule after it. Muse Code has no home variable, so it runs on its CLI login only, and `AccountProviderId` leaves it out of added accounts. [`muse-integration-guide.md`](muse-integration-guide.md) explains how the Muse provider speaks MSP.
 
 Each provider translates its native protocol into one `AgentEvent` union (`src/shared/agent.ts`): `session_bound`, `text_delta`, `reasoning_delta`, `tool_call_started`, `tool_call_finished`, `file_changed`, `approval_requested`, `approval_resolved`, `question_requested`, `question_resolved`, `questions_posted`, `turn_completed`, `turn_failed` and `turn_limited`. Everything after the provider is agent-agnostic. A `question_requested` blocks the turn until `questions.respond` answers it; `questions_posted` (Codex's `request_user_input_async`) only adds a `questions` part to the transcript, and the user answers it with their next message. Two more events, `secret_requested` and `secret_resolved`, come from the MCP server's `request_secret` tool rather than the provider; the runner folds them into the running turn the same way.
 
-A Claude turn ends when the CLI reports `session_state_changed: idle`, not at its first result: a background sub-agent can outlive Claude's reply, and when it finishes Claude replies to its report in a response that answers no prompt. The idle event waits for both, so their progress, approvals and Claude's reply land in the same turn. CLIs that do not report state still end the turn at its result. The CLI can also start work after it went idle, for example when a background shell finishes and it resumes the sub-agent that started it. When it reports running with no turn open, the provider opens one and hands it to the runner through `AgentProvider.wakes`, and the runner shows it as a reply with no user message before it. Claude keeps a live CLI for immediate follow-ups, then closes it after 60 idle seconds. Starting a turn cancels expiry before changing model or permission settings. Active turns, approval waits, control requests, and unfinished non-ambient background tasks keep the process alive. The countdown restarts when that work finishes. A small resume record retains the provider session ID and session-scoped grants for the same workspace, account, and instructions. The next turn starts a new CLI with that session ID. Transcript data remains in SQLite and the provider's session files. The memory workload and comparison commands live in [`scripts/perf/README.md`](../scripts/perf/README.md#measure-retained-memory).
+A Claude turn ends when the CLI reports `session_state_changed: idle`, not at its first result: a background sub-agent can outlive Claude's reply, and when it finishes Claude replies to its report in a response that answers no prompt. The idle event waits for both, so their progress, approvals and Claude's reply land in the same turn. CLIs that do not report state still end the turn at its result. The CLI can also start work after it went idle, for example when a background shell finishes and it resumes the sub-agent that started it. When it reports running with no turn open, the provider opens one and hands it to the runner through `AgentProvider.wakes`, and the runner shows it as a reply with no user message before it. Claude keeps a live CLI for immediate follow-ups, then closes it after 60 idle seconds. The first keystroke in an empty composer calls `threads.warm`, which starts the CLI the next send will use, so it boots while the user types (see [`features/2026-11-03-warm-claude-session.md`](features/2026-11-03-warm-claude-session.md)). Starting a turn cancels expiry before changing model or permission settings. Active turns, approval waits, control requests, and unfinished non-ambient background tasks keep the process alive. The countdown restarts when that work finishes. A small resume record retains the provider session ID and session-scoped grants for the same workspace, account, and instructions. The next turn starts a new CLI with that session ID. Transcript data remains in SQLite and the provider's session files. The memory workload and comparison commands live in [`scripts/perf/README.md`](../scripts/perf/README.md#measure-retained-memory).
 
 Adding a backend touches, besides its `AgentProvider` in `src/main/agents/`:
 
 - `ProviderId`, and `AccountProviderId` if it can have added accounts.
-- The `providers` records in `AgentRunner.ts` and `AgentLogins.ts`, the layer in `src/main/app.ts`, and the fake providers of the integration tests that build those layers.
+- The `providers` records in `AgentRunner.ts`, `AgentLogins.ts` and, for an agent with a home, `SessionImports.ts`, the layer in `src/main/app.ts`, and the fake providers of the integration tests that build those layers.
 - A migration widening the `provider` CHECK on `thread` and `automation`, as `0011_muse_provider` does.
 - The per-agent keys of `Settings.defaultModel` and `defaultAccount`.
 - `ProviderIcon.tsx` for the icon and `providerLabel`, the access hints in `ComposerControls.tsx`, `signedOutHint` in `AccountSettings.tsx`, and their messages in both catalogs.
@@ -233,9 +241,12 @@ sequenceDiagram
   AR->>P: runTurn(cwd, model, resumeSessionId, mcpServer)
   loop each AgentEvent
     P-->>AR: event
+    opt text_delta or reasoning_delta
+      AR->>AR: publish the first delta of a burst at once, join the rest per 50 ms window
+    end
     AR-->>R: push thread.event (seq)
     AR->>AR: foldTranscript in memory
-    AR->>DB: persist dirty messages every 500 ms, or 10x the last persist time if longer
+    AR->>DB: persist the changed parts of dirty messages every 500 ms, or 10x the last persist time if longer
   end
   opt approval
     P-->>AR: approval_requested
@@ -278,8 +289,9 @@ sequenceDiagram
 ```
 
 - Each thread has a `Semaphore` (`exclusive`). Everything that changes a transcript runs under it, so a transcript read never sees a change before the push that announced it.
+- The first `text_delta` or `reasoning_delta` of a burst is published and folded at once and opens a 50 ms window. Adjacent deltas of the same kind are joined while it is open and published when it ends, which opens the next window; a window that ends with nothing joined closes, so the first delta after a tool call never waits. Any other event, a steer closing the reply, or the turn finishing publishes the joined text first. Providers emit a delta every few tokens, often dozens a second; joining them brings a streaming thread down to about twenty pushes, schema encodes and IPC sends a second, and the 50 ms window stays under the renderer's own 100 ms window. This follows Linux NAPI, which handles the first packet on its interrupt and polls in batches only while traffic continues. Unpublished text is not folded either, so a `threads.transcript` snapshot never holds text whose push has not gone out.
 - `subagent_updated` skips the transcript fold and the `thread.event` push. The runner keeps sub-agents in memory only and serves them through `subagents.list`. When a turn ends, `finish` marks any sub-agent still running as stopped, since nothing will report on it after that.
-- Provider errors become `turn_failed`, so `run` never fails and `finish` always runs.
+- Provider errors become `turn_failed`, so `run` never fails and `finish` always runs. A `turn_failed` that arrives after the user pressed Stop gets `stopped: true`, so the transcript, notifications and unread dots treat it as an ordinary end rather than a failure.
 - A turn the agent started (`wakes`) waits until the thread is free, then runs through the same `makeTurn`, so steering, stopping, queueing and `finish` work as for any turn. If the runner cannot adopt it, `Wake.discard` stops the provider turn without reading its stream.
 - On boot, `resetInterrupted` and `closeInterrupted` mark anything a killed app left running as over.
 
@@ -287,7 +299,7 @@ A first send waiting for setup keeps its private send claim and cancellation sig
 
 ## Renderer sync: snapshot plus pushes
 
-The database lags a running turn by up to 500 ms, or ten times the last persist time once a write takes longer than 50 ms, so `threads.transcript` overlays the in-memory turn on top of persisted rows and returns the current `seq`.
+The database lags a running turn by up to 500 ms, or ten times the last persist time once a write takes longer than 50 ms, so `threads.transcript` overlays the in-memory turn on top of persisted rows and returns the thread's current `seq`. The runner numbers transcript pushes per thread, so each thread's pushes count 1, 2, 3 with no holes. The snapshot says so with `sequenceScope: "thread"`.
 
 ```mermaid
 sequenceDiagram
@@ -298,10 +310,19 @@ sequenceDiagram
   M-->>S: { messages, approvals, secretRequests, seq }
   S->>S: apply snapshot
   S->>S: replay pending pushes where push.seq > seq
-  M-->>S: later pushes apply where push.seq > seq
+  M-->>S: later pushes apply where push.seq = last + 1
+  M--xS: a push is lost
+  M-->>S: push.seq > last + 1
+  S->>M: rpc threads.transcript again
 ```
 
-Electron IPC can deliver the reply before pushes sent earlier, so a push the snapshot already holds can still arrive after it. The store drops it by `seq`, and drops a reply whose load was superseded by its load token. `specs/TranscriptSync.tla` checks both.
+Electron IPC can deliver the reply before pushes sent earlier, so a push the snapshot already holds can still arrive after it. The store drops it by `seq`, and drops a reply whose load was superseded by its load token.
+
+A push can also go missing, for example when it fails to decode. The store never folds past a hole. When a ready thread receives `push.seq > last + 1`, or the pushes buffered during a load skip a number, it fetches the snapshot again. `last` is the last seq received, including deltas still waiting for the 100 ms flush. A push that fails to decode is reported, and if `rpc.ts` can still read its thread id, it broadcasts `transcript.lost` so the store reloads that thread right away instead of waiting for the next push. `specs/TranscriptSync.tla` checks all of this over a channel that loses pushes. Only a silent loss of a thread's last push stays unnoticed until the next push or reload.
+
+An older cloud daemon speaks the same remote protocol version but numbers pushes across all threads, so its snapshots carry no `sequenceScope`. For those threads the store only drops pushes at or below `last` and never treats a skipped number as a loss, because the skipped numbers belong to other threads.
+
+Neither the snapshot nor the pushes carry long tool outputs. `previewMessage` and `previewPush` (`shared/compactTranscript.ts`) replace a string output longer than 4,096 characters with its last whole lines and set `fullOutputBytes` on the part or `tool_call_finished` event. The runner applies them only where a transcript leaves for a client: the `threads.transcript` reply and `publishTranscript`. The database and the runner's in-memory turn keep the full output. The expanded tool view fetches it with `threads.toolOutput`, which reads the running turn first and then the one part from SQLite. See `features/2026-10-31-lazy-tool-output.md`.
 
 ## Thread side panel
 
@@ -318,6 +339,8 @@ flowchart LR
 ```
 
 The Files view reads the disk only through `Files` in main. `fs.list` lists one folder level with ignore and git status, `fs.read` returns up to 1 MB of one file, `fs.write` replaces the text of an existing file unless it changed on disk since the edit began, and `fs.watch` sets the folders that push `fs.changed`. All four accept only a known project root or live worktree as `root` and refuse any `path` whose realpath leaves it.
+
+`fs.completeDirectory` is the exception: it serves the add-project dialog, where no root exists yet. It lists the folders under any absolute or `~` path on the named environment, marks the ones with `.git`, and never reads a file. The renderer's `PathInput` shows them as the user types and Tab or a click drills into a folder.
 
 ```mermaid
 sequenceDiagram
@@ -379,6 +402,7 @@ erDiagram
   project ||--o{ automation : has
   worktree |o--o{ thread : "runs in"
   thread ||--o{ message : has
+  message ||--o{ message_part : "open turn"
   thread ||--o{ pull_request_link : links
   automation ||--o{ automation_run : records
   thread |o--o{ automation_run : "started by"
@@ -388,6 +412,7 @@ erDiagram
     text id PK
     text root_path UK
     text setup_script
+    text actions "JSON [{name, command}]"
     text kind "folder|chats"
   }
   worktree {
@@ -411,13 +436,20 @@ erDiagram
     text snoozed_until "out of the Inbox until then, null or past = not snoozed"
     text queue "JSON QueuedMessage[], oldest first"
     text turn_base_tree "git tree at latest turn start"
+    text side_of FK "CASCADE, unique, set = side chat of that thread"
+    text parent_id FK "SET NULL, one level deep, cleared when the parent is archived"
   }
   message {
     text id PK
     text role "user|assistant"
-    text parts "JSON"
+    text parts "JSON, '[]' while open"
     text completed_at
     text usage "JSON"
+  }
+  message_part {
+    text message_id FK "CASCADE"
+    int idx
+    text part "JSON"
   }
   automation {
     text id PK
@@ -473,7 +505,9 @@ erDiagram
 stateDiagram-v2
   direction LR
   state "Thread" as T {
-    [*] --> idle
+    [*] --> draft: New thread
+    [*] --> idle: agent, automation or import
+    draft --> idle: first send
     idle --> running: send
     running --> awaiting_approval: approval_requested / secret_requested
     awaiting_approval --> running: approval_resolved / secret_resolved
@@ -538,14 +572,14 @@ stateDiagram-v2
 
 <!-- thread-chart:end -->
 
-- **Setup scripts** run with `$HINACODE_ROOT_PATH`, `$HINACODE_WORKTREE_PATH` and `$HINACODE_BRANCH`. A row still `preparing` at boot becomes `failed`, never re-run, because re-running an arbitrary script unasked isn't safe. A script can hang, so the setup log has a Stop button (`worktrees.stopSetup`), and removing the worktree stops it too. Stopping kills the script's process group, with SIGKILL after 3 seconds, and the worktree ends `failed`, so a send waiting on it goes ahead.
+- **Setup scripts** run with `$HINACODE_ROOT_PATH`, `$HINACODE_WORKTREE_PATH` and `$HINACODE_BRANCH`. A row still `preparing` at boot becomes `failed`, never re-run, because re-running an arbitrary script unasked isn't safe. A script can hang, so the setup log has a Stop button (`worktrees.stopSetup`), and removing the worktree stops it too. Stopping kills the script's process group, with SIGKILL after 3 seconds, and the worktree ends `failed`, so a send waiting on it goes ahead. `worktrees.list` leaves out the setup log of a removed worktree, whose checkout is gone, so the startup list does not grow with every worktree ever made; `worktrees.setupLog` still reads it.
 - **Terminals** live in main memory until closed, with their thread, or with the app, and outlive a renderer reload. Each keeps its last 256 KiB of UTF-8 output, and every `terminal.data` carries `offset`, where its text starts in the session's output, in UTF-16 characters. A screen calls `terminal.attach` with the offset it has reached when its session opens, when the drawer first lists the sessions, when a cloud reconnects, and when a push skips ahead. The answer appends, or clears the screen when the scrollback no longer reaches that offset, and pushes that overlap it are trimmed (`lib/terminalStream.ts`). An exited session can be attached until it is closed.
-- **Archiving** a thread hides it in the sidebar's Archived tab, and unarchiving brings it back as `idle`. Archiving refuses a `running` or `awaiting_approval` thread with `ThreadBusyError`. It checks the status, removes the worktree, ends the thread's terminals and writes `archived` inside `Worktrees.exclusive`, where a turn also marks its thread running, so a turn cannot start halfway through an archive. With `settings.archive.removeWorktree` on, archiving also removes its worktree. The branch is deleted only when it is merged into the worktree's base ref. The row turns `removed` at once, and the files and branch are deleted on a detached fiber, so archiving a large tree returns immediately. Creating the same branch again waits for that deletion. An unarchived thread whose worktree is gone works in the project root.
+- **Archiving** a thread hides it in the sidebar's Archived tab, and unarchiving brings it back as `idle`. Archiving refuses a `running` or `awaiting_approval` thread with `ThreadBusyError`. It checks the status, removes the worktree, ends the thread's terminals and writes `archived` inside `Worktrees.exclusive`, where a turn also marks its thread running, so a turn cannot start halfway through an archive. With `settings.archive.removeWorktree` on, archiving also removes its worktree, unless another open thread still uses it, such as a fork made before forks got their own worktree. That thread keeps the worktree, and the last one archived removes it. The branch is deleted only when it is merged into the worktree's base ref. The row turns `removed` at once, and the files and branch are deleted on a detached fiber, so archiving a large tree returns immediately. Creating the same branch again waits for that deletion. An unarchived thread whose worktree is gone works in the project root.
 - **AutoArchive** sweeps every 3 minutes while `settings.archive.whenMerged` is on. It asks `gh` for each linked pull request of threads that are neither archived nor mid-turn, archives the threads that are done, and pushes `thread.updated`. A thread in a worktree is done once its own branch's pull request is merged or closed; other pull requests it linked hold it only while it watches them. Removing a worktree then deletes every removed worktree's merged branch in the project, merged locally or on GitHub, except branches a live worktree checks out or forks from.
 - **PullRequestWatcher** sweeps every minute over links whose `watch` JSON is set. It diffs a fresh `gh` detail read against the snapshot the thread was last told about (`services/pullRequestWatch.ts`), and wakes the thread through `AgentRunner.steerWhen` when checks fail or pass, the review changes, the branch conflicts, or the pull request merges or closes. Each watch start has a fresh UUID generation. The runner rechecks thread eligibility and generation inside the thread semaphore for active steering, or inside the worktree lock for an idle turn. Queued news cannot revive an archived thread or bypass a new approval or usage limit. Stopped watches cannot deliver unaccepted news, while accepted delivery can finish after a stop. Poll writes compare the generation in their SQL update, so they cannot overwrite a replacement watch. The snapshot only moves when its news was delivered or a poll found no news. A watch ends on merge or close, after 25 wakes, or after 15 unreadable polls in a row. See [the feature doc](features/2026-10-14-pull-request-watch.md).
 - **Removal is refused** (`WorktreeBusyError`) while a thread in the checkout is mid-turn, or while another open thread uses it. A branch has at most one live worktree (`WorktreeTakenError`). See [ADR 0006](adr/0006-worktree-ownership.md).
 - **PullRequestGuides** keeps one rule. When main learns a pull request's head, a guide for that head exists or is being written. It learns heads from a sweep every 3 minutes over the open pull requests linked to unarchived threads, and from every `github.pullRequestDetail` call. A guide is pulls.review's prompt (`@pulls.review/core`) run through the Claude Agent SDK with structured output, at the model and effort in `settings.pullRequestGuide`. One runs at a time, and a new head interrupts the one for the head it replaced. The newest finished guide is stored per url. Running and failed jobs live in memory, so a failed head is tried again only on Retry, a new head or a restart. See [the feature doc](features/2026-10-23-pull-request-guide.md).
-- A user's thread starts empty, titled `thread-xxxxx`. Its agent and workspace stay editable in the composer until its first message (`ThreadStartedError` after). That message can move it into a new worktree, and `ThreadNaming` then titles the thread and renames the branch in the background (only the title for a thread already linked to a pull request when naming starts, such as a pull request checkout, whose branch must keep its name), using the Claude model in `settings.textGenerationModel`. A title the user edited in the meantime is kept. Automation threads skip naming.
+- A user's thread starts as its project's draft, titled `thread-xxxxx` and kept out of every list until its first message (`docs/features/2026-11-01-draft-threads.md`). Its agent and workspace stay editable in the composer until its first message (`ThreadStartedError` after). That message can move it into a new worktree, and `ThreadNaming` then titles the thread and renames the branch in the background (only the title for a thread already linked to a pull request when naming starts, such as a pull request checkout, whose branch must keep its name), using the Claude model in `settings.textGenerationModel`. A title the user edited in the meantime is kept. Automation threads skip naming.
 
 ## Built-in MCP server
 
@@ -560,7 +594,9 @@ flowchart LR
     linear["linear_get_issue, linear_search_issues,<br/>linear_create_comment, linear_update_issue_state"]
     secret["request_secret"]
     create["create_thread, list_machines"]
+    run["run_agent, wait_agent"]
     control["list_threads, read_thread,<br/>send_to_thread, stop_thread"]
+    terms["list_terminals, read_terminal"]
   end
   review --> ws["makeActiveWorkspace → git diff"]
   prs --> db[("pull_request_link")] --> push["push thread.pullRequests"]
@@ -568,10 +604,12 @@ flowchart LR
   secret --> runner["AgentRunner.requestSecret<br/>card in the thread, value stored by Secrets"]
   create --> threads["Threads.create (created_by = thread:caller)<br/>+ AgentRunner.send"]
   create -- "machine: id" --> peers["Peers: threads.create + threads.steer<br/>on that machine's project of the same repository"]
+  run --> agentRun["AgentRunner.runAgent<br/>provider.runTurn in the caller's workspace<br/>row in the caller's Agents tab"]
   control --> scope["same project as the caller<br/>AgentRunner.transcript / steer / send / interrupt"]
+  terms --> scrollback["Terminals.list / attach<br/>the caller's terminals only, terminalText"]
 ```
 
-`request_secret` blocks until the user answers the card or the turn ends; the value goes renderer → main → `Secrets` and never into an event, a message or the tool result. `create_thread` makes an ordinary thread of the same project, or with `machine` of the project with the same GitHub repository on that machine: `created_by` records where it came from, nothing else ties it to its creator. The thread controls reach any thread of the caller's project, not only the ones it created; `send_to_thread` and `stop_thread` refuse the caller itself. Codex gets `tool_timeout_sec = 600` for this server so a user has time to answer.
+`request_secret` blocks until the user answers the card or the turn ends; the value goes renderer → main → `Secrets` and never into an event, a message or the tool result. `create_thread` makes an ordinary thread of the same project, or with `machine` of the project with the same GitHub repository on that machine: `created_by` records where it came from, nothing else ties it to its creator. The thread controls reach any thread of the caller's project, not only the ones it created; `send_to_thread` and `stop_thread` refuse the caller itself. `read_thread` and `search_threads` also reach threads of every other project on this machine. `run_agent` runs one turn of any provider as a sub-agent of the caller's running turn and returns its last text, or its id after four minutes for `wait_agent` to pick up, because Muse gives an MCP call 300 seconds; see [the feature doc](features/2026-10-30-run-agent.md). `read_terminal` reads the 256 KB scrollback `Terminals` keeps per session and turns it into plain text; it refuses a terminal of another thread. See [the feature doc](features/2026-11-04-terminal-mentions.md). Codex gets `tool_timeout_sec = 3600` and opencode `experimental.mcp_timeout` for this server so a user has time to answer.
 
 Each tool's parameters are an Effect Schema. The same schema produces the JSON Schema shown to the agent and decodes its input.
 
@@ -580,6 +618,7 @@ How each agent gets its credential ([ADR 0007](adr/0007-per-thread-mcp-credentia
 - **Claude** connects through an in-process forwarder (`agents/claude/mcp.ts`), so the CLI never sees the credential.
 - **Codex** receives it as a header in its thread config over stdin. Codex asks before each MCP call with `mcpServer/elicitation/request`, which hinacode shows as an approval.
 - **Muse Code** receives it as a header in the session's `config.mcpServers` over stdin, which needs the `sessionMcp` capability. Muse treats the server as required and fails the turn if it cannot reach it.
+- **opencode** receives it as a header of the `http` entry in ACP `session/new` and `session/load`.
 
 ## Automations
 
@@ -614,6 +653,9 @@ flowchart TB
   page["In-app browser page<br/>webview: sandbox, no preload,<br/>persist:browser session"] -- "picked element,<br/>schema-decoded" --> renderer
   repo["Project repo config<br/>.claude settings, hooks, CLAUDE.md"] -- "loaded like the CLI: importing trusts it" --> agents
   main -- "hinacode-file: known roots only,<br/>CSP sandbox allow-scripts" --> preview["File preview iframe<br/>opaque origin"]
+  main -- "hinacode-artifact: store or owning cloud,<br/>CSP sandbox allow-scripts, no-store" --> artifact["Artifact iframe<br/>opaque origin"]
+  main -- "publish check: hidden sandboxed window,<br/>DevTools events schema-decoded" --> check["Artifact check page<br/>opaque origin"]
+  main -- "document Markdown: parsed into the editor schema,<br/>no agent HTML runs" --> renderer
   main -- "hinacode-github-asset: gh token stays in main" --> renderer
 ```
 
@@ -624,6 +666,7 @@ Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md
 | Concern                                   | Path                                                       |
 | ----------------------------------------- | ---------------------------------------------------------- |
 | Layer graph                               | `src/main/app.ts`                                          |
+| Desktop entry, module compile cache       | `src/main/boot.ts`                                         |
 | Window, custom protocols                  | `src/main/index.ts`                                        |
 | Cloud daemon (`hinacode serve`)           | `src/main/daemon.ts`                                       |
 | rpc handlers                              | `src/main/rpc.ts`                                          |
@@ -640,4 +683,5 @@ Decisions behind these boundaries: [0007](adr/0007-per-thread-mcp-credentials.md
 | Renderer state                            | `src/renderer/stores/`                                     |
 | Side panel views and activity bar         | `src/renderer/components/sidePanel/`                       |
 | File listing, reading, watching           | `src/main/services/Files.ts`                               |
+| Artifacts store, watcher and MCP tools    | `src/main/services/Artifacts.ts`, `packages/artifacts/`    |
 | Development resource monitor              | `src/main/resourceMonitor.ts`, `tools/resource-monitor/`   |

@@ -7,6 +7,7 @@ const setup = Layer.effectDiscard(
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient
     yield* sql`PRAGMA foreign_keys = ON`
+    yield* sql`PRAGMA synchronous = NORMAL`
     yield* runMigrations
   }),
 )

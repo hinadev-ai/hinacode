@@ -1,4 +1,4 @@
-import { expect } from "@playwright/test"
+import { expect, type Page } from "@playwright/test"
 import { execFileSync } from "node:child_process"
 import { appendFileSync, existsSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
@@ -8,7 +8,7 @@ import { threadMenu, threadView } from "../support/ui.ts"
 
 const branchOf = (title: string) => `kk/${title.replace(/\s+/g, "-")}`
 
-const openWorktree = async (page: import("@playwright/test").Page) => {
+const openWorktree = async (page: Page) => {
   const title = await page.getByRole("heading", { level: 1 }).textContent()
   const thread = (await rpc(page, "threads.list", undefined)).find((candidate) => candidate.title === title)
   const worktree = (await rpc(page, "worktrees.list", undefined)).find(
@@ -58,12 +58,21 @@ Given("archiving removes worktrees", async ({ app }) => {
   await app.reload()
 })
 
-When("I archive the thread and delete its worktree", async ({ app }) => {
-  const title = await app.page.getByRole("heading", { level: 1 }).textContent()
+const openThreadTitle = async (page: Page) => {
+  const title = await page.getByRole("heading", { level: 1 }).textContent()
   if (!title) throw new Error("no open thread title")
-  await threadMenu(app.page, title, "Archive…")
+  return title
+}
+
+When("I archive the thread without a confirmation", async ({ app }) => {
+  await threadMenu(app.page, await openThreadTitle(app.page), "Archive")
+  await expect(app.page.getByRole("alertdialog")).toHaveCount(0)
+})
+
+When("I archive the thread after confirming its uncommitted changes", async ({ app }) => {
+  await threadMenu(app.page, await openThreadTitle(app.page), "Archive")
   const dialog = app.page.getByRole("alertdialog")
-  await expect(dialog).toContainText("Archive this thread?")
+  await expect(dialog).toContainText("This worktree has uncommitted changes.")
   await dialog.getByRole("button", { name: "Archive and delete worktree", exact: true }).click()
   await expect(dialog).toBeHidden()
 })
@@ -79,6 +88,11 @@ Then("the setup log ends with the branch of {string}", async ({ app, names }, ti
   await expect
     .poll(async () => (await log.textContent())?.trimEnd())
     .toMatch(new RegExp(`setup ok on ${branchOf(names.of(title))}$`))
+})
+
+When("I leave an uncommitted change in the worktree", async ({ app }) => {
+  const { path } = await openWorktree(app.page)
+  appendFileSync(join(path, "README.md"), "uncommitted\n")
 })
 
 When("I commit a change in the worktree", async ({ app }) => {

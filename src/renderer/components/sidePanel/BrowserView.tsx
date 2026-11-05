@@ -1,7 +1,6 @@
 import { cn } from "cn"
 import { Schema } from "effect"
 import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react"
-import { RiArrowLeftLine, RiArrowRightLine, RiCloseLine, RiCursorLine, RiRefreshLine } from "react-icons/ri"
 import type { Thread } from "../../../shared/domain.ts"
 import { browserUrl } from "../../lib/browserUrl.ts"
 import { useThreadEnvironment } from "../../lib/environments.ts"
@@ -22,6 +21,7 @@ import { Input } from "../ui/input.tsx"
 import { BrowserStart, type Device, type Failure, LoadFailure, ViewportMenu } from "./BrowserChrome.tsx"
 import { browserPanelId, browserTabId } from "./BrowserTabStrip.tsx"
 import { RemoteBrowserPage } from "./RemoteBrowserPage.tsx"
+import { ArrowLeftIcon, ArrowRightIcon, CloseIcon, CursorIcon, RefreshIcon } from "@hinacode/icons"
 
 const ALLOW_POPUPS: Record<string, string> = { allowpopups: "" }
 
@@ -35,11 +35,6 @@ export function BrowserView({ thread }: { thread: Thread }) {
   const { tabs, activeId } = useBrowserTabs(selectBrowserTabs(thread.id))
   const remote = useThreadEnvironment(thread.id) !== null
   const Page = remote ? RemoteBrowserPage : BrowserPage
-
-  useEffect(() => {
-    useUi.getState().setSidePanelWide(true)
-    return () => useUi.getState().setSidePanelWide(false)
-  }, [])
 
   return (
     <div className="relative min-h-0 flex-1">
@@ -199,7 +194,7 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
           disabled={!history.back}
           onClick={() => viewRef.current?.goBack()}
         >
-          <RiArrowLeftLine aria-hidden />
+          <ArrowLeftIcon aria-hidden />
         </Button>
         <Button
           variant="ghost"
@@ -209,7 +204,7 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
           disabled={!history.forward}
           onClick={() => viewRef.current?.goForward()}
         >
-          <RiArrowRightLine aria-hidden />
+          <ArrowRightIcon aria-hidden />
         </Button>
         <Button
           variant="ghost"
@@ -219,7 +214,7 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
           disabled={!ready}
           onClick={() => (loading ? viewRef.current?.stop() : viewRef.current?.reload())}
         >
-          {loading ? <RiCloseLine aria-hidden /> : <RiRefreshLine aria-hidden />}
+          {loading ? <CloseIcon aria-hidden /> : <RefreshIcon aria-hidden />}
         </Button>
         <form onSubmit={submit} className="mx-1 min-w-0 flex-1">
           <Input
@@ -236,7 +231,7 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
             spellCheck={false}
             autoCapitalize="off"
             autoCorrect="off"
-            className="h-7 font-mono text-xs md:text-xs"
+            className="h-7 font-mono text-xs"
           />
         </form>
         <ViewportMenu device={device} onChange={setDevice} />
@@ -251,7 +246,7 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
           onClick={() => (picking ? stopPick() : void startPick())}
           className={cn(picking && "text-primary")}
         >
-          <RiCursorLine aria-hidden />
+          <CursorIcon aria-hidden />
         </Button>
       </div>
       <div className="relative min-h-0 flex-1">
@@ -281,7 +276,7 @@ function BrowserPage({ threadId, tabId, initialUrl, active }: BrowserPageProps) 
         )}
         {failure && <LoadFailure failure={failure} onRetry={() => open(failure.url)} />}
         {picking && (
-          <output className="pointer-events-none absolute inset-x-3 bottom-3 rounded-lg border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md animate-fade-in motion-reduce:animate-none">
+          <output className="pointer-events-none absolute inset-x-3 bottom-3 animate-fade-in rounded-lg border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
             {m.browser_pick_hint()}
           </output>
         )}

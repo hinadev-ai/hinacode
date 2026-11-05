@@ -12,5 +12,6 @@
     ".agents/skills/*/scripts/*.ts",
     "apps/mobile/scripts/*.mts",
     "src/preload/index.d.ts"
-  ]
+  ],
+  "exclude": ["packages/icons/**"]
 }

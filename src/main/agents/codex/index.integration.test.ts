@@ -1,13 +1,24 @@
-import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, watch, writeFileSync } from "node:fs"
+import {
+  appendFileSync,
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  symlinkSync,
+  watch,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { beforeEach, describe, expect, it } from "@effect/vitest"
-import { Effect, Fiber, PubSub, Queue, Stream } from "effect"
+import { Effect, Fiber, Option, PubSub, Queue, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import type { AccountHome, AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
 import { AGENT_INSTRUCTIONS } from "../instructions.ts"
 import type { BackgroundTasksChange } from "../provider.ts"
 import { CodexProvider } from "./index.ts"
+import fruitShop from "./fixtures/fruit-shop-thread.json" with { type: "json" }
 
 const bin = mkdtempSync(join(tmpdir(), "kk-fake-codex-"))
 writeFileSync(join(bin, "codex"), `#!/bin/sh\nexec node ${join(import.meta.dirname, "fakeAppServer.mjs")} "$@"\n`)
@@ -25,11 +36,14 @@ type Control = {
   postedQuestions?: Array<import("./protocol.ts").AsyncUserInputQuestion>
   cancelQuestion?: boolean
   accountFromHome?: boolean
+  unauthorized?: boolean
   subagent?: boolean
   subagentPending?: boolean
+  finishSubagent?: boolean
   plan?: boolean
   compaction?: boolean
   backgroundTerminal?: boolean
+  sessions?: { list: unknown; read: unknown; turnPages: ReadonlyArray<unknown> }
   skills?: import("./protocol.ts").SkillsListResponse["data"]
 }
 type Received = {
@@ -37,7 +51,7 @@ type Received = {
   params?: {
     turnId?: string
     input?: Array<import("./protocol.ts").UserInput>
-    config?: { model_auto_compact_token_limit?: number }
+    config?: { model_auto_compact_token_limit?: number; shell_environment_policy?: unknown }
   }
   id?: number
   result?: import("./protocol.ts").ToolRequestUserInputResponse
@@ -86,6 +100,7 @@ const input = (threadId: string, home: AccountHome | null = null): RunTurnInput 
   prompt: "hello",
   attachments: [],
   cwd: tmpdir(),
+  tmpDirectory: tmpdir(),
   model: "fake-model",
   effort: null,
   fastMode: false,
@@ -170,6 +185,22 @@ describe("Codex fork", () => {
         })
         const completed = events.find((event) => event.type === "turn_completed")
         expect(completed?.type === "turn_completed" && completed.forkPoint?.sessionId).toBe("codex-fork")
+      }),
+    ),
+  )
+})
+
+describe("Codex temp directory", () => {
+  it.live("points the commands Codex runs for a thread at that thread's tmp folder", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({})
+        yield* provider.runTurn({ ...input("tmp"), tmpDirectory: "/tmp/hc-tmp" }).pipe(Stream.runCollect)
+        const started = received().find((message) => message.method === "thread/start")
+        expect(started?.params?.config?.shell_environment_policy).toStrictEqual({
+          set: { TMPDIR: "/tmp/hc-tmp", TMP: "/tmp/hc-tmp", TEMP: "/tmp/hc-tmp" },
+        })
       }),
     ),
   )
@@ -401,6 +432,23 @@ describe("Codex token usage", () => {
   )
 })
 
+describe("Codex sign-in", () => {
+  it.live("tells the developer which command signs the account back in", () =>
+    withProvider(
+      Effect.gen(function* () {
+        setControl({ unauthorized: true })
+        const turn = yield* startTurn("thread-a", { dir: "/tmp/codex work", binary: "codex" })
+        yield* finishesSoon(turn.fiber)
+        expect(turn.events.at(-1)).toStrictEqual({
+          type: "turn_failed",
+          message: "Your access token could not be refreshed",
+          loginCommand: "CODEX_HOME='/tmp/codex work' codex login",
+        })
+      }),
+    ),
+  )
+})
+
 describe("Codex plan", () => {
   it.live("stores a plan update as an update_plan tool call", () =>
     withProvider(
@@ -451,21 +499,53 @@ describe("Codex sub-agents", () => {
     ),
   )
 
-  it.live("reports when a sub-agent cannot be stopped after its parent turn ends", () =>
+  it.live("reports a sub-agent that finishes after its parent turn ends", () =>
     withProvider(
       Effect.gen(function* () {
         const provider = yield* CodexProvider
+        const changes = provider.subagentChanges ?? Stream.die("subagentChanges is missing")
         setControl({ subagent: true })
         const turn = yield* startTurn("subagent-thread")
         yield* finishesSoon(turn.fiber)
-
-        const result = yield* Effect.exit(
-          (provider.stopSubagent ?? (() => Effect.die("stopSubagent is missing")))(
-            "subagent-thread",
-            "codex-child-thread",
-          ),
+        const finished = yield* changes.pipe(
+          Stream.filter(({ subagent }) => subagent.status !== "running"),
+          Stream.runHead,
+          Effect.forkChild,
         )
-        expect(result._tag).toBe("Failure")
+
+        setControl({ subagent: true, finishSubagent: true })
+
+        expect(yield* Fiber.join(finished)).toMatchObject(
+          Option.some({
+            threadId: "subagent-thread",
+            subagent: { id: "codex-child-thread", status: "completed", summary: "218 lines" },
+          }),
+        )
+      }),
+    ),
+  )
+
+  it.live("stops a sub-agent that outlives its parent turn", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        const changes = provider.subagentChanges ?? Stream.die("subagentChanges is missing")
+        setControl({ subagent: true })
+        const turn = yield* startTurn("subagent-thread")
+        yield* finishesSoon(turn.fiber)
+        const stopped = yield* changes.pipe(Stream.runHead, Effect.forkChild)
+
+        yield* (provider.stopSubagent ?? (() => Effect.die("stopSubagent is missing")))(
+          "subagent-thread",
+          "codex-child-thread",
+        )
+
+        expect(received().filter((message) => message.method === "turn/interrupt")).toMatchObject([
+          { params: { threadId: "codex-child-thread", turnId: "child-turn" } },
+        ])
+        expect(yield* Fiber.join(stopped)).toMatchObject(
+          Option.some({ subagent: { id: "codex-child-thread", status: "stopped" } }),
+        )
       }),
     ),
   )
@@ -876,6 +956,110 @@ describe("Codex accounts", () => {
         yield* provider.interrupt("thread-personal")
         yield* finishesSoon(onPersonal.fiber)
         expect(countOf("turn/interrupt")).toBe(2)
+      }),
+    ),
+  )
+})
+
+describe("Codex session import", () => {
+  const sessionId = fruitShop.read.thread.id
+  const cwd = "/work/fruit-shop"
+
+  it.live("lists the sessions recorded in the folder, whoever started them", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({ sessions: fruitShop })
+        const sessions = yield* provider.listSessions!(cwd, null)
+        expect(sessions).toStrictEqual([
+          {
+            sessionId,
+            title: "Append the line 'papaya' to stock.txt using a shell command, then reply with just: added",
+            preview: "Append the line 'papaya' to stock.txt using a shell command, then reply with just: added",
+            branch: "main",
+            updatedAt: new Date(fruitShop.list.data[0]!.updatedAt * 1000).toISOString(),
+          },
+        ])
+        const listed = received().find((message) => message.method === "thread/list")
+        expect(listed?.params).toMatchObject({ cwd, sourceKinds: ["cli", "vscode", "exec", "appServer"] })
+        expect(yield* provider.listSessions!("/work/other", null)).toStrictEqual([])
+      }),
+    ),
+  )
+
+  it.live("reads every turn across pages, with tool calls and fork points", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({ sessions: fruitShop })
+        const history = yield* provider.readSession!(sessionId, cwd, null)
+        expect(countOf("thread/turns/list")).toBe(2)
+        expect(history.model).toBe("gpt-6.1-sol")
+        const messages = history.messages ?? []
+        expect(messages.map((message) => message.role)).toStrictEqual(["user", "assistant", "user", "assistant"])
+        expect(messages[0]?.parts).toStrictEqual([
+          {
+            type: "text",
+            text: "Append the line 'papaya' to stock.txt using a shell command, then reply with just: added",
+          },
+        ])
+        const reply = messages[1]!
+        expect(reply.parts.map((part) => part.type)).toStrictEqual(["text", "tool_call", "text"])
+        expect(reply.parts[1]).toMatchObject({ type: "tool_call", name: "Bash", status: "done" })
+        expect(reply.forkPoint).toStrictEqual({ sessionId, checkpoint: fruitShop.turnPages[0]!.data[0]!.id })
+        expect(messages[3]?.parts.at(-1)).toStrictEqual({ type: "text", text: "4" })
+      }),
+    ),
+  )
+
+  it.live("fails for a session that is gone or ran in another folder", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        setControl({ sessions: fruitShop })
+        const gone = yield* Effect.flip(provider.readSession!("00000000-0000-4000-8000-000000000000", cwd, null))
+        expect(gone.message).toContain("no longer there")
+        const elsewhere = yield* Effect.flip(provider.readSession!(sessionId, "/work/other", null))
+        expect(elsewhere.message).toContain("another folder")
+      }),
+    ),
+  )
+
+  it.live("finds a session recorded at the real path of a folder opened through a symlink", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        const root = mkdtempSync(join(tmpdir(), "kk-codex-symlink-"))
+        const folder = join(realpathSync(root), "fruit-shop")
+        const link = join(root, "linked-fruit-shop")
+        mkdirSync(folder)
+        symlinkSync(folder, link)
+        const atFolder = <T extends { cwd: string }>(thread: T) => ({ ...thread, cwd: folder })
+        setControl({
+          sessions: {
+            ...fruitShop,
+            list: { ...fruitShop.list, data: fruitShop.list.data.map(atFolder) },
+            read: { ...fruitShop.read, thread: atFolder(fruitShop.read.thread) },
+          },
+        })
+
+        const sessions = yield* provider.listSessions!(link, null)
+        expect(sessions.map((session) => session.sessionId)).toStrictEqual([sessionId])
+        const history = yield* provider.readSession!(sessionId, link, null)
+        expect(history.model).toBe("gpt-6.1-sol")
+      }),
+    ),
+  )
+
+  it.live("imports without history when a turn comes back without its full items", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        const page = fruitShop.turnPages[0]!
+        const summarized = { ...page, data: page.data.map((turn) => ({ ...turn, itemsView: "summary" })) }
+        setControl({ sessions: { ...fruitShop, turnPages: [summarized, fruitShop.turnPages[1]!] } })
+        const history = yield* provider.readSession!(sessionId, cwd, null)
+        expect(history).toStrictEqual({ title: null, model: "gpt-6.1-sol", messages: null })
       }),
     ),
   )

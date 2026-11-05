@@ -1,8 +1,8 @@
 import type { Project, Thread } from "@shared/domain.ts"
 import { router, Stack } from "expo-router"
-import { type ReactNode, useState } from "react"
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
-import Animated, { LayoutAnimationConfig, LinearTransition } from "react-native-reanimated"
+import { type ReactNode, useEffect, useState } from "react"
+import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
+import Animated, { LayoutAnimationConfig } from "react-native-reanimated"
 import { liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
 import { Reveal, Rotate, Spinner } from "@/components/motion"
@@ -11,7 +11,7 @@ import { ServerMark } from "@/components/server-mark"
 import { SectionLabel, ThreadRow } from "@/components/thread-row"
 import { SearchResults } from "@/components/thread-search"
 import { Button, EmptyState, IconButton, Notice, type Tab, UnderlineTabs } from "@/components/ui"
-import { duration } from "@/constants/motion"
+import { listEntering, listExiting, listLayout } from "@/constants/motion"
 import { radius } from "@/constants/theme"
 import { useProjectServer } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
@@ -21,7 +21,7 @@ import { openThread } from "@/lib/navigation"
 import type { HomeTab } from "@/lib/preferences"
 import { createThread } from "@/lib/start-thread"
 import { usePreferences } from "@/stores/preferences"
-import { archivedThreads, inboxThreads, pinnedThreads, sortThreads, useThreads } from "@/stores/threads"
+import { archivedThreads, inboxThreads, listedThreads, pinnedThreads, sortThreads, useThreads } from "@/stores/threads"
 
 /** Overview, New thread and Settings, in the home screen's header or the sidebar's. */
 export function HomeActions({ onNewThread }: { onNewThread: () => void }) {
@@ -29,19 +29,19 @@ export function HomeActions({ onNewThread }: { onNewThread: () => void }) {
     <View style={styles.actions}>
       <IconButton
         testID="overview-button"
-        icon="RiDashboardLine"
+        icon="Layout"
         accessibilityLabel={copy("mobile_home_overview")}
         onPress={() => router.push("/overview")}
       />
       <IconButton
         testID="new-thread-button"
-        icon="RiAddLine"
+        icon="Plus"
         accessibilityLabel={copy("mobile_home_new_thread")}
         onPress={onNewThread}
       />
       <IconButton
         testID="settings-button"
-        icon="RiSettings3Line"
+        icon="Settings"
         accessibilityLabel={copy("mobile_home_settings")}
         onPress={() => router.push("/settings")}
       />
@@ -55,6 +55,7 @@ export function HomeActions({ onNewThread }: { onNewThread: () => void }) {
  * iOS keeps every action in the header and the search under the title.
  */
 export function HomeToolbars({ onNewThread }: { onNewThread: () => void }) {
+  const theme = useTheme()
   const overview = (
     <Stack.Toolbar.Button
       icon="square.grid.2x2"
@@ -99,6 +100,7 @@ export function HomeToolbars({ onNewThread }: { onNewThread: () => void }) {
         <Stack.Toolbar.Button
           icon="square.and.pencil"
           variant="prominent"
+          tintColor={theme.primary}
           accessibilityLabel={copy("mobile_home_new_thread")}
           onPress={onNewThread}
         >
@@ -132,6 +134,16 @@ export function HomeContent({
   const query = search?.query ?? ownQuery
   const setQuery = search?.onChange ?? setOwnQuery
 
+  useEffect(() => {
+    if (query === "") return
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (router.canGoBack()) return false
+      setQuery("")
+      return true
+    })
+    return () => subscription.remove()
+  }, [query, setQuery])
+
   const loading = loadStatus === "loading" && !hasProjects
   const noProjects = loadStatus === "ready" && !hasProjects
   const status = loading ? (
@@ -141,14 +153,14 @@ export function HomeContent({
     </Reveal>
   ) : noProjects ? (
     <EmptyState
-      icon="RiFolderAddLine"
+      icon="FolderAdd"
       title={copy("mobile_home_no_projects")}
       hint={copy("mobile_home_no_projects_hint")}
       action={
         <Button
           testID="add-project-button"
           label={copy("mobile_home_add_project")}
-          icon="RiFolderAddLine"
+          icon="FolderAdd"
           variant="primary"
           onPress={() => router.push("/project/new")}
         />
@@ -160,7 +172,7 @@ export function HomeContent({
       <Notice text={loadError} tone="danger" />
       <Button
         label={copy("mobile_home_retry")}
-        icon="RiRefreshLine"
+        icon="Refresh"
         style={styles.retry}
         onPress={() => void useThreads.getState().load()}
       />
@@ -225,6 +237,9 @@ type HomeItem =
 const threadItems = (prefix: string, threads: readonly Thread[], showProject: boolean): HomeItem[] =>
   threads.map((thread) => ({ kind: "thread", key: `${prefix}:${thread.id}`, thread, showProject }))
 
+const threadIds = (items: readonly HomeItem[]): ReadonlySet<string> =>
+  new Set(items.flatMap((item) => (item.kind === "thread" ? [item.thread.id] : [])))
+
 function homeItems(
   tab: HomeTab,
   projects: readonly Project[],
@@ -256,7 +271,7 @@ function homeItems(
       items.push({
         kind: "empty",
         key: "empty:archived",
-        icon: "RiArchiveLine",
+        icon: "Archive",
         title: copy("mobile_home_archived_empty"),
       })
     items.push(...threadItems("thread", archived, true))
@@ -289,7 +304,9 @@ function HomeList({
   const projects = useThreads((state) => state.projects)
   const byId = useThreads((state) => state.byId)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())
-  const items = homeItems(tab, projects, Object.values(byId), collapsed)
+  const items = homeItems(tab, projects, listedThreads(byId), collapsed)
+  const [shown, setShown] = useState(() => ({ tab, threadIds: threadIds(items) }))
+  if (shown.tab !== tab) setShown({ tab, threadIds: threadIds(items) })
 
   const toggle = (projectId: string) => {
     const next = new Set(collapsed)
@@ -307,13 +324,19 @@ function HomeList({
         data={items}
         extraData={selectedId}
         keyExtractor={(item) => item.key}
-        itemLayoutAnimation={LinearTransition.duration(duration.fast)}
+        itemLayoutAnimation={listLayout}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         contentContainerStyle={styles.list}
         ListHeaderComponent={<>{header}</>}
         renderItem={({ item }) => (
-          <HomeRow item={item} tab={tab} selectedId={selectedId} onToggleProject={toggle} />
+          <HomeRow
+            item={item}
+            tab={tab}
+            selectedId={selectedId}
+            arrived={item.kind === "thread" && !shown.threadIds.has(item.thread.id)}
+            onToggleProject={toggle}
+          />
         )}
       />
     </LayoutAnimationConfig>
@@ -324,11 +347,13 @@ function HomeRow({
   item,
   tab,
   selectedId,
+  arrived,
   onToggleProject,
 }: {
   item: HomeItem
   tab: HomeTab
   selectedId?: string
+  arrived: boolean
   onToggleProject: (projectId: string) => void
 }) {
   const theme = useTheme()
@@ -346,7 +371,14 @@ function HomeRow({
         />
       )
     case "thread": {
-      const row = <ThreadRow thread={item.thread} showProject={item.showProject} />
+      const row = (
+        <ThreadRow
+          thread={item.thread}
+          showProject={item.showProject}
+          entering={arrived ? listEntering : undefined}
+          exiting={listExiting}
+        />
+      )
       return item.thread.id === selectedId ? (
         <View style={[styles.selected, { backgroundColor: theme.surface }]}>{row}</View>
       ) : (
@@ -393,14 +425,14 @@ function ProjectHeader({ project, open, onToggle }: { project: Project; open: bo
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={copy("mobile_home_toggle_project", { project: project.name })}
-          accessibilityState={{ expanded: open }}
+          aria-expanded={open}
           onPress={onToggle}
           style={({ pressed }) => [styles.projectToggle, pressed && { backgroundColor: theme.surface }]}
         >
           <Rotate turned={open}>
-            <Icon name="RiArrowRightSLine" size={16} color={theme.textMuted} />
+            <Icon name="ChevronRight" size={16} color={theme.textMuted} />
           </Rotate>
-          <Icon name="RiFolder3Line" size={16} color={theme.textMuted} />
+          <Icon name="Folder" size={16} color={theme.textMuted} />
           <Text numberOfLines={1} style={[styles.projectName, { color: theme.text }]}>
             {project.name}
           </Text>
@@ -408,7 +440,7 @@ function ProjectHeader({ project, open, onToggle }: { project: Project; open: bo
         </Pressable>
         <IconButton
           testID={`new-thread-in-${project.id}`}
-          icon="RiAddLine"
+          icon="Plus"
           accessibilityLabel={copy("mobile_home_new_in_project", { project: project.name })}
           busy={creating}
           onPress={() => void create()}

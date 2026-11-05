@@ -1,25 +1,34 @@
 import { EventEmitter } from "node:events"
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { readFile, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { expect, layer } from "@effect/vitest"
+import { afterAll, expect, layer } from "@effect/vitest"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { NodeServices } from "@effect/platform-node"
 import { Context, Deferred, type Duration, Effect, Fiber, Layer, Option, Stream } from "effect"
 import { TestClock } from "effect/testing"
-import type { AgentEvent, McpConnection, ProviderId, RunTurnInput } from "../../shared/agent.ts"
+import {
+  type AgentEvent,
+  createdThreadId,
+  type McpConnection,
+  type ProviderId,
+  type RunTurnInput,
+} from "../../shared/agent.ts"
 import type { PushEvent } from "../../shared/contract.ts"
 import { defaultSettings } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
+import { OpencodeProvider } from "../agents/opencode/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { layer as RemoteAccessLayer } from "../remote/access.ts"
 import { Peers } from "../remote/peers.ts"
 import { seedThread } from "../db/testing.ts"
+import * as ArtifactInspector from "../services/ArtifactInspector.ts"
+import * as Artifacts from "../services/Artifacts.ts"
 import * as Attachments from "../services/Attachments.ts"
 import * as AgentAccounts from "../services/AgentAccounts.ts"
 import { AgentRunner, layer as runnerLayer } from "../services/AgentRunner.ts"
@@ -44,26 +53,64 @@ import { McpCredentials, layer as credentialsLayer } from "./credentials.ts"
 import { layer as serverLayer } from "./server.ts"
 import { SETTLE_MS } from "./tools/tinyVm.ts"
 import * as Scratch from "../services/Scratch.ts"
+import * as Search from "../services/Search.ts"
 
 const pushes: Array<PushEvent> = []
 const turnInputs: Array<RunTurnInput> = []
+const modelLookupStarted = Deferred.makeUnsafe<void>()
+const modelLookupResume = Deferred.makeUnsafe<void>()
+let holdModelLookup = false
+
+const repos = mkdtempSync(join(tmpdir(), "kk-mcp-repos-"))
+afterAll(() => rmSync(repos, { recursive: true, force: true }))
+const repoA = join(repos, "repo-a")
+const repoB = join(repos, "repo-b")
+mkdirSync(repoA)
+mkdirSync(repoB)
 
 class Seeded extends Context.Service<Seeded, { readonly a: string; readonly b: string }>()("test/Seeded") {}
 
 const seeded = Layer.effect(
   Seeded,
   Effect.gen(function* () {
-    const a = (yield* seedThread({ rootPath: "/repo-a" })).threadId
-    const b = (yield* seedThread({ rootPath: "/repo-b" })).threadId
+    const a = (yield* seedThread({ rootPath: repoA })).threadId
+    const b = (yield* seedThread({ rootPath: repoB })).threadId
     return { a, b }
   }),
 )
+
+const scriptedAgentTurn = (reply: string): ReadonlyArray<AgentEvent> => [
+  { type: "text_delta", text: "Let me look." },
+  { type: "tool_call_started", callId: "agent-call-1", name: "Bash", input: { command: "git diff" } },
+  { type: "tool_call_finished", callId: "agent-call-1", output: "diff", isError: false },
+  { type: "text_delta", text: reply },
+  { type: "turn_completed", usage: { inputTokens: 100, outputTokens: 20 } },
+]
 
 const fakeProvider = (id: ProviderId): AgentProvider => {
   const turns = new Map<string, Deferred.Deferred<void>>()
   return {
     id,
-    listModels: Effect.succeed([]),
+    listModels:
+      id === "codex"
+        ? Effect.gen(function* () {
+            if (holdModelLookup) {
+              yield* Deferred.succeed(modelLookupStarted, undefined)
+              yield* Deferred.await(modelLookupResume)
+            }
+            return [
+              {
+                id: "gpt-test",
+                label: "Test",
+                provider: id,
+                efforts: [],
+                defaultEffort: null,
+                fastMode: false,
+                autoMode: false,
+              },
+            ]
+          })
+        : Effect.succeed([]),
     account: () => Effect.succeed({ type: "signedOut" }),
     planLimits: () => Effect.succeed(null),
     usage: () => Effect.succeed(null),
@@ -72,6 +119,16 @@ const fakeProvider = (id: ProviderId): AgentProvider => {
       Stream.unwrap(
         Effect.map(Deferred.make<void>(), (done) => {
           turnInputs.push(input)
+          const slow = /^Reply (.+) after (\d+) minutes$/.exec(input.prompt)
+          if (slow !== null) {
+            const [, text = "", minutes = "0"] = slow
+            return Stream.fromEffect(Effect.sleep(`${Number(minutes)} minutes`)).pipe(
+              Stream.drain,
+              Stream.concat(Stream.fromIterable(scriptedAgentTurn(text))),
+            )
+          }
+          const reply = /^Reply (.+)$/.exec(input.prompt)?.[1]
+          if (reply !== undefined) return Stream.fromIterable(scriptedAgentTurn(reply))
           turns.set(input.threadId, done)
           return Stream.fromEffect(Deferred.await(done)).pipe(Stream.as({ type: "turn_completed" } as AgentEvent))
         }),
@@ -81,7 +138,7 @@ const fakeProvider = (id: ProviderId): AgentProvider => {
       const done = turns.get(threadId)
       return done ? Effect.asVoid(Deferred.succeed(done, undefined)) : Effect.void
     },
-    respondApproval: () => Effect.void,
+    respondApproval: () => Effect.succeed(false),
     respondQuestion: () => Effect.void,
     setAccessMode: () => Effect.void,
   }
@@ -92,6 +149,7 @@ const stubs = Layer.mergeAll(
   Layer.succeed(ClaudeProvider, fakeProvider("claude")),
   Layer.succeed(CodexProvider, fakeProvider("codex")),
   Layer.succeed(MuseProvider, fakeProvider("muse")),
+  Layer.succeed(OpencodeProvider, fakeProvider("opencode")),
   Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) }),
   Layer.succeed(
     Peers,
@@ -105,7 +163,7 @@ const stubs = Layer.mergeAll(
 const core = Layer.mergeAll(
   threadsLayer.pipe(
     Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
-    Layer.provide(Terminals.layer),
+    Layer.provideMerge(Terminals.layer),
     Layer.provideMerge(Worktrees.layer),
     Layer.provideMerge(Projects.layer),
     Layer.provideMerge(AgentAccounts.layer),
@@ -113,8 +171,11 @@ const core = Layer.mergeAll(
   ),
   Messages.layer,
   Attachments.layer(join(mkdtempSync(join(tmpdir(), "kk-mcp-")), "attachments")),
+  Artifacts.layer(join(mkdtempSync(join(tmpdir(), "kk-mcp-")), "artifacts")),
+  ArtifactInspector.unavailable,
   secretsLayer.pipe(Layer.provide(noKeyring)),
   credentialsLayer,
+  Search.layer,
 )
 const vmProfileDir = mkdtempSync(join(tmpdir(), "kk-vm-profile-"))
 const tinyVm = Layer.unwrap(
@@ -186,6 +247,12 @@ const until = <A>(check: Effect.Effect<Option.Option<A>>): Effect.Effect<A> =>
 
 const advanceUntil = <A>(step: Duration.Input, check: Effect.Effect<Option.Option<A>>) =>
   until(Effect.andThen(TestClock.adjust(step), check))
+
+const settled = (call: Fiber.Fiber<ToolResult, unknown>) =>
+  advanceUntil(
+    "1 minute",
+    Effect.sync(() => Option.fromNullishOr(call.pollUnsafe())),
+  ).pipe(Effect.andThen(Fiber.join(call)))
 
 const secretPath = (threadId: string, name: string) =>
   Effect.gen(function* () {
@@ -288,6 +355,71 @@ layer(testLayer)("mcp server credentials", (it) => {
   )
 })
 
+layer(testLayer)("artifact tools", (it) => {
+  it.effect("a thread publishes an artifact, finds it in the list and reads it back", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      const connection = yield* mcp.connectionFor(a)
+
+      const published = yield* callAs(connection, "publish_artifact", {
+        title: "Report",
+        files: [{ path: "index.html", content: "<h1>Report</h1>" }],
+      })
+      expect(published.isError).toBe(false)
+      const id = /^Published artifact ([a-z0-9-]+) version 1:/.exec(published.text)?.[1]
+
+      const listed = yield* callAs(connection, "list_artifacts")
+      expect(JSON.parse(listed.text)).toEqual([{ id, title: "Report", version: 1, updatedAt: expect.any(String) }])
+      const read = yield* callAs(connection, "read_artifact", { id, path: "index.html" })
+      expect(read).toMatchObject({ isError: false, text: "<h1>Report</h1>" })
+    }),
+  )
+
+  it.effect("auto_open opens the published artifact beside the caller's thread, and only then", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      const connection = yield* mcp.connectionFor(a)
+      const opened = () => pushes.filter((push) => push.type === "artifact.opened")
+      pushes.length = 0
+
+      const published = yield* callAs(connection, "publish_document", {
+        title: "Startup audit",
+        markdown: "# Startup audit\n",
+        auto_open: true,
+      })
+      const id = /^Published document ([a-z0-9-]+) version 1:/.exec(published.text)?.[1]
+      expect(opened()).toEqual([{ type: "artifact.opened", threadId: a, id }])
+
+      yield* callAs(connection, "publish_document", { id, revision: 1, markdown: "# Startup audit\n\nDone.\n" })
+      yield* callAs(connection, "publish_document", { id, revision: 0, markdown: "# Stale\n", auto_open: true })
+      yield* callAs(connection, "publish_artifact", {
+        title: "Chart",
+        files: [{ path: "index.html", content: "<h1>Chart</h1>" }],
+        auto_open: false,
+      })
+      expect(opened()).toHaveLength(1)
+    }),
+  )
+
+  it.effect("store errors and invalid input come back as error results", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      const connection = yield* mcp.connectionFor(a)
+
+      const escaped = yield* callAs(connection, "publish_artifact", {
+        title: "Escape",
+        files: [{ path: "../x.html", content: "" }],
+      })
+      expect(escaped).toMatchObject({ isError: true, text: expect.stringContaining('Invalid file path "../x.html"') })
+      const incomplete = yield* callAs(connection, "publish_artifact", { title: "No files" })
+      expect(incomplete).toMatchObject({ isError: true, text: expect.stringMatching(/^files: /) })
+    }),
+  )
+})
+
 layer(testLayer)("request_secret", (it) => {
   const VALUE = "sk-live-never-in-the-transcript"
 
@@ -359,14 +491,154 @@ layer(testLayer)("request_secret", (it) => {
       expect(result.text).toContain("turn ended")
     }),
   )
+})
 
-  it.effect("fails at once when no turn is running", () =>
+layer(testLayer)("run_agent", (it) => {
+  it.effect("runs another provider in the caller's Agents tab and returns its reply", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      turnInputs.length = 0
+      yield* runner.send(a, "hi", [])
+      const result = yield* callAs(yield* mcp.connectionFor(a), "run_agent", {
+        provider: "codex",
+        description: "Second opinion",
+        prompt: "Reply Looks good.",
+        model: "gpt-test",
+      })
+      expect(result).toMatchObject({ isError: false, text: "Looks good." })
+      expect(turnInputs.at(-1)).toMatchObject({ prompt: "Reply Looks good.", model: "gpt-test", resumeSessionId: null })
+
+      const [subagent] = yield* runner.subagents(a)
+      expect(subagent).toMatchObject({
+        provider: "codex",
+        label: "Second opinion",
+        status: "completed",
+        summary: "Looks good.",
+        lastTool: "Bash",
+        toolUses: 1,
+        tokens: 120,
+      })
+      const parts = (yield* runner.transcript(a)).messages.flatMap((message) => message.parts)
+      expect(parts).toContainEqual(
+        expect.objectContaining({ type: "tool_call", callId: "agent-call-1", parentCallId: subagent?.callId }),
+      )
+      yield* runner.interrupt(a)
+    }),
+  )
+
+  it.effect("stopping it from the Agents tab interrupts only the sub-agent", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      yield* runner.send(a, "hi", [])
+      const call = yield* Effect.forkChild(
+        callAs(yield* mcp.connectionFor(a), "run_agent", {
+          provider: "codex",
+          description: "Long review",
+          prompt: "Review everything",
+          model: "gpt-test",
+        }),
+      )
+      const running = yield* until(
+        runner
+          .subagents(a)
+          .pipe(
+            Effect.map((subagents) => Option.fromNullishOr(subagents.find(({ label }) => label === "Long review"))),
+          ),
+      )
+      yield* runner.stopSubagent(a, running.id)
+      const result = yield* Fiber.join(call)
+      expect(result).toMatchObject({ isError: true, text: "The user stopped this agent." })
+      expect((yield* runner.subagents(a)).find((subagent) => subagent.id === running.id)?.status).toBe("stopped")
+      expect((yield* runner.transcript(a)).messages.at(-1)?.completedAt).toBeNull()
+      yield* runner.interrupt(a)
+    }),
+  )
+
+  it.effect("hands back a slow agent before the caller's client gives up, and wait_agent returns its reply", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      const connection = yield* mcp.connectionFor(a)
+      yield* runner.send(a, "hi", [])
+
+      const started = yield* settled(
+        yield* Effect.forkChild(
+          callAs(connection, "run_agent", {
+            provider: "codex",
+            description: "Slow review",
+            prompt: "Reply Looks good. after 6 minutes",
+            model: "gpt-test",
+          }),
+        ),
+      )
+      const [running] = yield* runner.subagents(a)
+      expect(running).toMatchObject({ label: "Slow review", status: "running" })
+      expect(started).toMatchObject({ isError: false })
+      expect(started.text).toContain(`wait_agent with agentId "${running?.id}"`)
+
+      const finished = yield* settled(
+        yield* Effect.forkChild(callAs(connection, "wait_agent", { agentId: running?.id })),
+      )
+      expect(finished).toMatchObject({ isError: false, text: "Looks good." })
+      expect(yield* callAs(connection, "wait_agent", { agentId: "not-an-agent" })).toMatchObject({
+        isError: true,
+        text: "No agent not-an-agent runs in this thread's turn.",
+      })
+      yield* runner.interrupt(a)
+    }),
+  )
+
+  it.effect("runs opencode only on a model the user picked, and names them when it refuses", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const mcp = yield* McpCredentials
+      const settings = yield* Settings.Settings
+      const { a } = yield* Seeded
+      const connection = yield* mcp.connectionFor(a)
+      const ask = (model?: string) =>
+        callAs(connection, "run_agent", {
+          provider: "opencode",
+          description: "Cheap pass",
+          prompt: "Reply Looks good.",
+          ...(model !== undefined && { model }),
+        })
+      yield* runner.send(a, "hi", [])
+
+      expect(yield* ask()).toMatchObject({
+        isError: true,
+        text: "The user has not picked any opencode models for sub-agents. Ask them to pick some in Settings, Providers, opencode, Models in the picker.",
+      })
+      yield* settings.set({
+        modelPresets: { ...defaultSettings.modelPresets, opencode: ["openrouter/a", "openrouter/b"] },
+      })
+      expect(yield* ask("openrouter/z")).toMatchObject({
+        isError: true,
+        text: "openrouter/z is not among the opencode models the user picked. Use one of: openrouter/a, openrouter/b.",
+      })
+      turnInputs.length = 0
+      expect(yield* ask()).toMatchObject({ isError: false })
+      expect(turnInputs.at(-1)).toMatchObject({ model: "openrouter/a" })
+      yield* settings.set({ modelPresets: defaultSettings.modelPresets })
+      yield* runner.interrupt(a)
+    }),
+  )
+
+  it.effect("refuses outside a turn", () =>
     Effect.gen(function* () {
       const mcp = yield* McpCredentials
       const { b } = yield* Seeded
-      const result = yield* callAs(yield* mcp.connectionFor(b), "request_secret", { name: "idle", description: "x" })
-      expect(result.isError).toBe(true)
-      expect(result.text).toContain("No turn is running")
+      const result = yield* callAs(yield* mcp.connectionFor(b), "run_agent", {
+        provider: "codex",
+        description: "x",
+        prompt: "Reply x",
+        model: "gpt-test",
+      })
+      expect(result).toMatchObject({ isError: true, text: "Agents run only during this thread's turn." })
     }),
   )
 })
@@ -385,8 +657,8 @@ layer(testLayer)("create_thread", (it) => {
         prompt: "Look into the flaky test",
       })
       expect(result.isError).toBe(false)
-      const id = /Created thread (\S+)/.exec(result.text)?.[1]
-      if (id === undefined) throw new Error(`no thread id in ${result.text}`)
+      const id = createdThreadId(result.text)
+      if (id === null) throw new Error(`no thread id in ${result.text}`)
 
       const child = yield* threads.get(id)
       expect(child).toMatchObject({
@@ -396,6 +668,7 @@ layer(testLayer)("create_thread", (it) => {
         model: caller.model,
         status: "running",
         createdBy: `thread:${a}`,
+        parentId: a,
       })
       const announced = pushes.find((push) => push.type === "thread.updated" && push.thread.id === id)
       expect(announced).toBeDefined()
@@ -404,6 +677,19 @@ layer(testLayer)("create_thread", (it) => {
         role: "user",
         parts: [{ type: "text", text: "Look into the flaky test" }],
       })
+      yield* runner.interrupt(id)
+    }),
+  )
+
+  it.effect("starts an unrelated thread at the top level when nested is false", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const threads = yield* Threads
+      const { a } = yield* Seeded
+      const result = yield* callFrom(a, "create_thread", { title: "Unrelated", prompt: "p", nested: false })
+      const id = createdThreadId(result.text)
+      if (id === null) throw new Error(`no thread id in ${result.text}`)
+      expect((yield* threads.get(id)).parentId).toBeNull()
       yield* runner.interrupt(id)
     }),
   )
@@ -435,6 +721,58 @@ const callFrom = (threadId: string, name: string, args: Record<string, unknown> 
     const mcp = yield* McpCredentials
     return yield* callAs(yield* mcp.connectionFor(threadId), name, args)
   })
+
+const outputOf = (id: string, expected: string) =>
+  Terminals.Terminals.use((terminals) =>
+    until(
+      Effect.map(terminals.attach(id, null), ({ data }) =>
+        data.includes(expected) ? Option.some(data) : Option.none(),
+      ).pipe(Effect.orDie),
+    ),
+  )
+
+layer(testLayer)("terminal tools", (it) => {
+  it.effect(
+    "list and read only the calling thread's terminals",
+    () =>
+      Effect.gen(function* () {
+        const terminals = yield* Terminals.Terminals
+        const { a, b } = yield* Seeded
+        const greeting = yield* terminals.open({
+          threadId: a,
+          cols: 80,
+          rows: 24,
+          command: { title: "greeting", line: "printf '\\033[32m%s\\033[0m %s\\n' hello terminal" },
+        })
+        const plain = yield* terminals.open({ threadId: a, cols: 80, rows: 24 })
+        const elsewhere = yield* terminals.open({ threadId: b, cols: 80, rows: 24 })
+        yield* outputOf(greeting.id, "\u001B[0m terminal")
+
+        const listed = yield* callFrom(a, "list_terminals")
+        expect(listed.isError).toBe(false)
+        expect(listed.text).toContain(`- greeting\n  id: ${greeting.id}\n  mention: @terminal:${greeting.id}`)
+        expect(listed.text).toContain(`- Terminal 2\n  id: ${plain.id}`)
+        expect(listed.text).toContain(`cwd: ${repoA}`)
+        expect(listed.text).not.toContain(elsewhere.id)
+
+        const read = yield* callFrom(a, "read_terminal", { id: greeting.id })
+        expect(read.isError).toBe(false)
+        expect(read.text).toMatch(new RegExp(`^greeting \\(running\\) in ${repoA}\n\n`))
+        expect(read.text).toMatch(/^hello terminal$/m)
+        expect(read.text).not.toContain("\u001B")
+
+        const refused = yield* callFrom(a, "read_terminal", { id: elsewhere.id })
+        expect(refused).toMatchObject({ isError: true })
+        expect(refused.text).toContain(`No open terminal of this thread has the id ${elsewhere.id}`)
+
+        const tooMany = yield* callFrom(a, "read_terminal", { id: greeting.id, lines: 5000 })
+        expect(tooMany.isError).toBe(true)
+
+        yield* Effect.forEach([greeting, plain, elsewhere], (session) => terminals.close(session.id))
+      }),
+    { timeout: 20_000 },
+  )
+})
 
 layer(testLayer)("thread controls", (it) => {
   it.effect("list_threads shows this project's threads and marks the caller", () =>
@@ -551,21 +889,71 @@ layer(testLayer)("thread controls", (it) => {
       const threads = yield* Threads
       const { a } = yield* Seeded
       const created = yield* callFrom(a, "create_thread", { title: "Effortful", prompt: "Go", effort: "high" })
-      const id = /Created thread (\S+) /.exec(created.text)![1]!
+      const id = createdThreadId(created.text)!
       expect(yield* threads.get(id)).toMatchObject({ effort: "high" })
       yield* (yield* AgentRunner).interrupt(id)
     }),
   )
 
-  it.effect("a thread of another project or a deleted one is out of reach", () =>
+  it.effect("search_threads marks the caller's own thread", () =>
+    Effect.gen(function* () {
+      const { a } = yield* Seeded
+      const self = yield* childOf(a, "Self finder")
+      const found = JSON.parse((yield* callFrom(self, "search_threads", { query: "self finder" })).text)
+      expect(found).toStrictEqual([expect.objectContaining({ id: self, self: true })])
+    }),
+  )
+
+  it.effect("read_thread reads a thread of another project and names its project", () =>
     Effect.gen(function* () {
       const { a, b } = yield* Seeded
-      for (const name of ["read_thread", "send_to_thread", "stop_thread"]) {
+      const result = yield* callFrom(a, "read_thread", { threadId: b })
+      expect(result.isError).toBe(false)
+      expect(result.text).toContain(`<environment>\nproject: demo (${repoB})\nworkspace: project root\n</environment>`)
+      const gone = yield* callFrom(a, "read_thread", { threadId: "thread-gone" })
+      expect(gone).toStrictEqual({ text: "Thread thread-gone no longer exists.", isError: true, images: [] })
+    }),
+  )
+
+  it.effect("send_to_thread and stop_thread refuse a thread of another project", () =>
+    Effect.gen(function* () {
+      const { a, b } = yield* Seeded
+      for (const name of ["send_to_thread", "stop_thread"]) {
         const result = yield* callFrom(a, name, { threadId: b, prompt: "x" })
         expect(result).toStrictEqual({ text: `Thread ${b} is not in this project.`, isError: true, images: [] })
       }
-      const gone = yield* callFrom(a, "read_thread", { threadId: "thread-gone" })
-      expect(gone).toStrictEqual({ text: "Thread thread-gone no longer exists.", isError: true, images: [] })
+    }),
+  )
+
+  it.effect("search_threads finds threads of every project by title or message", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const runner = yield* AgentRunner
+      const { a, b } = yield* Seeded
+      yield* threads.update({ id: b, title: "Revert pricing to 50pt" })
+      const other = yield* childOf(b, "Unrelated")
+      yield* runner.send(other, "Check the 50PT charges again", [])
+      yield* runner.interrupt(other)
+      const result = yield* callFrom(a, "search_threads", { query: "50pt" })
+      expect(result.isError).toBe(false)
+      const hits = JSON.parse(result.text) as Array<{ id: string; title: string; project: string; snippet?: string }>
+      expect(hits.map((hit) => hit.id)).toStrictEqual([b, other])
+      expect(hits[0]).toMatchObject({ title: "Revert pricing to 50pt", project: `demo (${repoB})` })
+      expect(hits[1]!.snippet).toContain("50PT charges")
+      const padded = JSON.parse((yield* callFrom(a, "search_threads", { query: "  50pt " })).text) as Array<{
+        id: string
+      }>
+      expect(padded.map((hit) => hit.id)).toStrictEqual([b, other])
+      expect(JSON.parse((yield* callFrom(a, "search_threads", { query: "nothing like this" })).text)).toStrictEqual([])
+      yield* runner.send(b, "Older note about 50pt", [])
+      yield* runner.interrupt(b)
+      yield* runner.send(other, "Newer 50pt charge", [])
+      yield* runner.interrupt(other)
+      const third = yield* childOf(b, "Third")
+      yield* runner.send(third, "Newest 50pt charge", [])
+      yield* runner.interrupt(third)
+      const first = JSON.parse((yield* callFrom(a, "search_threads", { query: "50pt", limit: 1 })).text)
+      expect(first).toStrictEqual([expect.objectContaining({ id: b, snippet: "Older note about 50pt" })])
     }),
   )
 
@@ -1048,6 +1436,43 @@ layer(testLayer)("agent instructions", (it) => {
       const on = yield* instructionsOfNextTurn(b)
       expect(on).toContain("<hinacode>")
       expect(on).toContain("<tiny-vm>")
+    }),
+  )
+})
+
+layer(testLayer)("run_agent stopped-parent race", (it) => {
+  it.effect("refuses a pending child after its parent stops during model lookup", () =>
+    Effect.gen(function* () {
+      const runner = yield* AgentRunner
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      turnInputs.length = 0
+      yield* runner.send(a, "hi", [])
+      yield* until(Effect.sync(() => Option.fromNullishOr(turnInputs.find((turn) => turn.threadId === a))))
+      holdModelLookup = true
+      const call = yield* Effect.forkChild(
+        callAs(yield* mcp.connectionFor(a), "run_agent", {
+          provider: "codex",
+          description: "Late child",
+          prompt: "Reply child started after stop",
+        }),
+      )
+      yield* Deferred.await(modelLookupStarted)
+      yield* runner.interrupt(a)
+      const threads = yield* Threads
+      yield* until(
+        threads.get(a).pipe(
+          Effect.orDie,
+          Effect.map((thread) => (thread.status === "idle" ? Option.some(thread) : Option.none())),
+        ),
+      )
+      yield* Effect.yieldNow
+      yield* Deferred.succeed(modelLookupResume, undefined)
+      const result = yield* Fiber.join(call)
+      expect({ result, childInputs: turnInputs.filter((input) => input.threadId.includes(":agent:")) }).toMatchObject({
+        result: { isError: true },
+        childInputs: [],
+      })
     }),
   )
 })

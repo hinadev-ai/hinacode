@@ -8,6 +8,7 @@ import type { AccountHome, AgentAccount } from "../../shared/agent.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
+import { OpencodeProvider } from "../agents/opencode/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { AgentAccounts, layer as accountsLayer } from "./AgentAccounts.ts"
@@ -32,7 +33,7 @@ const fakeClaude = () => {
     runTurn: () => Stream.empty,
     steer: () => Effect.void,
     interrupt: () => Effect.void,
-    respondApproval: () => Effect.void,
+    respondApproval: () => Effect.succeed(false),
     respondQuestion: () => Effect.void,
     setAccessMode: () => Effect.void,
   })
@@ -40,6 +41,7 @@ const fakeClaude = () => {
     Layer.succeed(ClaudeProvider, provider("claude")),
     Layer.succeed(CodexProvider, provider("codex")),
     Layer.succeed(MuseProvider, provider("muse")),
+    Layer.succeed(OpencodeProvider, provider("opencode")),
   )
   return { state, layer }
 }
@@ -84,7 +86,14 @@ describe("agent logins", () => {
     withLogins((cacheDir) =>
       Effect.gen(function* () {
         yield* Settings.use((settings) =>
-          settings.set({ defaultAccountName: { claude: "Mi cuenta personal!", codex: null, muse: null } }),
+          settings.set({
+            defaultAccountName: {
+              claude: "Mi cuenta personal!",
+              codex: null,
+              muse: null,
+              opencode: null,
+            },
+          }),
         )
         const account = yield* AgentAccounts.use((accounts) =>
           accounts.create({

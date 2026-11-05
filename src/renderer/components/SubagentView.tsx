@@ -1,17 +1,17 @@
 import { useEffect, useRef } from "react"
-import { RiArrowLeftLine } from "react-icons/ri"
 import type { Message, Thread } from "../../shared/domain.ts"
-import { findSubagentWork, inputField, statusOfCall, subagentReport, useOpenSubagent } from "../lib/subagents.ts"
+import { findSubagentWork, inputField, statusOfCall, subagentReport } from "../../shared/subagents.ts"
+import { useOpenSubagent } from "../lib/subagents.ts"
 import { m } from "../paraglide/messages.js"
 import { useMessages } from "../stores/messages.ts"
 import { useSubagentByCallId } from "../stores/subagents.ts"
 import { useUi } from "../stores/ui.ts"
-import { Markdown } from "./Markdown.tsx"
 import { MessageList } from "./MessageList.tsx"
 import { formatOutput } from "./MessagePart.tsx"
 import { ProviderIcon } from "./ProviderIcon.tsx"
 import { StopSubagentButton, SubagentStatusIcon, subagentStats, useNow } from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
+import { ArrowLeftIcon } from "@hinacode/icons"
 
 export function useSubagentLabel(threadId: string, callId: string) {
   const reported = useSubagentByCallId(threadId, callId)?.label
@@ -61,6 +61,20 @@ export function SubagentTranscript({
     createdAt === undefined
       ? []
       : [
+          ...(prompt
+            ? [
+                {
+                  id: `subagent:${callId}:prompt`,
+                  threadId: thread.id,
+                  role: "user" as const,
+                  parts: [{ type: "text" as const, text: prompt }],
+                  createdAt,
+                  completedAt: createdAt,
+                  usage: null,
+                  forkPoint: null,
+                },
+              ]
+            : []),
           {
             id: `subagent:${callId}`,
             threadId: thread.id,
@@ -81,10 +95,10 @@ export function SubagentTranscript({
   }
 
   const header = (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-1.5 px-4 pt-4">
+    <div className="mx-auto flex w-full max-w-3xl clear-overview flex-col gap-1.5 px-4 pt-4">
       <div className="flex min-w-0 items-center gap-2">
         {status && <SubagentStatusIcon status={status} />}
-        <ProviderIcon provider={thread.provider} />
+        <ProviderIcon provider={subagent?.provider ?? thread.provider} />
         <h2
           ref={headingRef}
           tabIndex={-1}
@@ -100,13 +114,12 @@ export function SubagentTranscript({
         )}
         {subagent?.status === "running" && <StopSubagentButton threadId={thread.id} subagent={subagent} />}
       </div>
-      {prompt && <Prompt prompt={prompt} />}
     </div>
   )
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mx-auto w-full max-w-3xl shrink-0 px-4 pt-3">
+      <div className="mx-auto w-full max-w-3xl shrink-0 clear-overview px-4 pt-3">
         <Button
           variant="ghost"
           size="xs"
@@ -114,14 +127,14 @@ export function SubagentTranscript({
           aria-label={m.agents_back({ name: parentLabel })}
           className="-ml-2 max-w-full text-muted-foreground"
         >
-          <RiArrowLeftLine aria-hidden />
+          <ArrowLeftIcon aria-hidden />
           <span className="truncate">{parentLabel}</span>
         </Button>
       </div>
       {transcript.length === 0 ? (
         <>
           {header}
-          <p className="m-auto px-4 text-sm text-muted-foreground">{m.agents_missing()}</p>
+          <p className="m-auto clear-overview px-4 text-sm text-muted-foreground">{m.agents_missing()}</p>
         </>
       ) : (
         <MessageList
@@ -133,16 +146,5 @@ export function SubagentTranscript({
         />
       )}
     </div>
-  )
-}
-
-function Prompt({ prompt }: { prompt: string }) {
-  return (
-    <section className="mt-1 text-sm">
-      <h3 className="mb-1 text-xs text-muted-foreground">{m.agents_prompt()}</h3>
-      <div className="border-l-2 border-border pl-3">
-        <Markdown text={prompt} />
-      </div>
-    </section>
   )
 }

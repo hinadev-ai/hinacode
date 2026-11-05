@@ -1,0 +1,61 @@
+---
+import "../styles/global.css"
+import Footer from "../components/Footer.astro"
+import Nav from "../components/Nav.astro"
+import { localizedPath, locales, translator, type Locale, type Page } from "../i18n.ts"
+
+interface Props {
+  locale: Locale
+  page: Page
+  title: string
+  description: string
+}
+
+const { locale, page, title, description } = Astro.props
+const t = translator(locale)
+const site = Astro.site
+const canonical = site ? new URL(localizedPath(locale, page), site).href : undefined
+---
+
+<!doctype html>
+<html lang={locale}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#f7f7f2" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:site_name" content="HinaCode" />
+    {site && <meta property="og:image" content={new URL("/og.png", site).href} />}
+    <meta name="twitter:card" content="summary_large_image" />
+    {canonical && <link rel="canonical" href={canonical} />}
+    {canonical && <meta property="og:url" content={canonical} />}
+    {
+      site &&
+        locales.map((alternate) => (
+          <link rel="alternate" hreflang={alternate} href={new URL(localizedPath(alternate, page), site).href} />
+        ))
+    }
+    {site && <link rel="alternate" hreflang="x-default" href={new URL(localizedPath("en", page), site).href} />}
+  </head>
+  <body class="min-h-dvh">
+    <a
+      href="#content"
+      class="sr-only rounded-full bg-ink px-4 py-2 text-sm font-medium text-paper focus:not-sr-only focus:fixed focus:start-4 focus:top-3 focus:z-50"
+    >
+      {t("site_skip")}
+    </a>
+    <Nav locale={locale} page={page} />
+    <main id="content">
+      <slot />
+    </main>
+    <Footer locale={locale} page={page} />
+    <script src="../scripts/download.ts"></script>
+    <script src="../scripts/menus.ts"></script>
+  </body>
+</html>

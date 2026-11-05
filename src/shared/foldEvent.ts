@@ -27,7 +27,12 @@ export function foldEvent(message: Message, event: AgentEvent, now: string): Mes
         ...message,
         parts: message.parts.map((part) =>
           part.type === "tool_call" && part.callId === event.callId
-            ? { ...part, output: event.output, status: event.isError ? "error" : "done" }
+            ? {
+                ...part,
+                output: event.output,
+                ...(event.fullOutputBytes !== undefined && { fullOutputBytes: event.fullOutputBytes }),
+                status: event.isError ? "error" : "done",
+              }
             : part,
         ),
       }
@@ -63,7 +68,7 @@ export function foldEvent(message: Message, event: AgentEvent, now: string): Mes
     case "turn_failed":
       return {
         ...message,
-        parts: [...failRunningParts(message.parts), { type: "text", text: `**Error:** ${event.message}` }],
+        parts: [...failRunningParts(message.parts), ...failurePart(event)],
         completedAt: now,
       }
     case "turn_limited":
@@ -75,6 +80,13 @@ export function foldEvent(message: Message, event: AgentEvent, now: string): Mes
     default:
       return message
   }
+}
+
+const failurePart = (event: Extract<AgentEvent, { type: "turn_failed" }>): ReadonlyArray<MessagePart> => {
+  if (event.stopped) return []
+  if (event.loginCommand !== undefined)
+    return [{ type: "signed_out", message: event.message, loginCommand: event.loginCommand }]
+  return [{ type: "text", text: `**Error:** ${event.message}` }]
 }
 
 export function foldTranscript(

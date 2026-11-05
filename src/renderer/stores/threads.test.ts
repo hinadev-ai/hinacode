@@ -2,10 +2,12 @@ import { expect, test } from "@effect/vitest"
 import type { Thread } from "../../shared/domain.ts"
 import {
   selectAwakeThreads,
+  selectOpenableThread,
   selectInboxThreads,
   selectPinnedThreads,
   selectSnoozedThreads,
   selectUnpinnedProjectThreads,
+  useThreads,
 } from "./threads.ts"
 
 const thread = (id: string, patch: Partial<Thread>): Thread => ({
@@ -22,12 +24,15 @@ const thread = (id: string, patch: Partial<Thread>): Thread => ({
   accountId: null,
   providerSessionId: null,
   forkedFrom: null,
+  sideOf: null,
+  parentId: null,
   status: "idle",
   usageLimit: null,
   sortIndex: 0,
   pinnedAt: null,
   snoozedUntil: null,
   queue: [],
+  scheduled: [],
   createdBy: "user",
   createdAt: "2026-10-14T00:00:00.000Z",
   updatedAt: "2026-10-14T00:00:00.000Z",
@@ -83,4 +88,35 @@ test("awake threads are the active ones not snoozed, pinned or not, which the Do
     "pinnedLater",
     "woke",
   ])
+})
+
+test("keeps side chats apart from the thread list and drops them with their parent", () => {
+  const parent = thread("parent", {})
+  const side = thread("side", { sideOf: "parent" })
+  useThreads.getState().replaceAll([parent])
+  useThreads.getState().upsert(side)
+  expect(Object.keys(useThreads.getState().byId)).toStrictEqual(["parent"])
+  expect(useThreads.getState().sidechats).toStrictEqual({ parent: side })
+
+  useThreads.getState().remove("side")
+  expect(useThreads.getState().sidechats).toStrictEqual({})
+  useThreads.getState().upsert(side)
+  useThreads.getState().remove("parent")
+  expect(useThreads.getState()).toMatchObject({ byId: {}, sidechats: {} })
+})
+
+test("keeps drafts out of every thread list until their first send lists them", () => {
+  const draft = thread("draft", { status: "draft" })
+  useThreads.getState().replaceAll([thread("listed", {}), draft])
+  expect(Object.keys(useThreads.getState().byId)).toStrictEqual(["listed"])
+  expect(selectOpenableThread("draft")(useThreads.getState())).toBe(draft)
+
+  const sent = { ...draft, status: "idle" as const }
+  useThreads.getState().upsert(sent)
+  expect(useThreads.getState().drafts).toStrictEqual({})
+  expect(selectOpenableThread("draft")(useThreads.getState())).toBe(sent)
+
+  useThreads.getState().upsert(draft)
+  useThreads.getState().remove("draft")
+  expect(useThreads.getState()).toMatchObject({ drafts: {}, byId: { listed: thread("listed", {}) } })
 })

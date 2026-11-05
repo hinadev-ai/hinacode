@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { type EffortLevel, query } from "@anthropic-ai/claude-agent-sdk"
+import type { EffortLevel } from "@anthropic-ai/claude-agent-sdk"
 import { analysisJsonSchema, buildAnalysisPrompt, buildCliAgentSystemPrompt } from "@pulls.review/core/llm"
 import { parsePatch } from "@pulls.review/core/patch-parser"
 import type { DiffsPayload } from "@pulls.review/core/types"
@@ -76,6 +76,7 @@ const analyze = (
       try: async (signal) => {
         const abortController = new AbortController()
         signal.addEventListener("abort", () => abortController.abort())
+        const { query } = await import("@anthropic-ai/claude-agent-sdk")
         const stream = query({
           prompt: buildAnalysisPrompt(payload, options.locale),
           options: {
@@ -192,6 +193,7 @@ const make = Effect.gen(function* () {
         return
       }
       if (diffTooLarge(detail)) return
+      if (!(yield* settings.get).pullRequestGuide.enabled) return
       const job = jobs.get(detail.url)
       if (job?.head === detail.head && (job.status === "running" || !retry)) return
       if ((yield* stored(detail.url))?.head === detail.head) return

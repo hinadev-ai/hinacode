@@ -2,7 +2,6 @@ import { useAtomValue } from "@effect/atom-react"
 import { Link } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { useActionState, useState } from "react"
-import { RiChat3Line, RiDeleteBinLine } from "react-icons/ri"
 import { useShallow } from "zustand/react/shallow"
 import { type CheckoutState, isThreadBusy, type Project, type Thread, type Worktree } from "../../../shared/domain.ts"
 import { environmentName, useClouds } from "../../lib/environments.ts"
@@ -25,6 +24,7 @@ import {
 } from "../ui/alert-dialog.tsx"
 import { ArchiveSettings } from "./ArchiveSettings.tsx"
 import { SettingsSection, settingsGroupClass } from "./SettingsSection.tsx"
+import { ChatIcon, TrashIcon } from "@hinacode/icons"
 import { WorktreeRootField } from "./WorktreeRootField.tsx"
 
 type Blocker = "setup" | "turn"
@@ -119,7 +119,9 @@ function ProjectWorktrees({ group }: { group: ProjectGroup }) {
   return (
     <div className="flex flex-col gap-2">
       <h3 className="flex min-w-0 items-baseline gap-2 px-1 text-sm font-medium">
-        <span className="truncate">{group.project?.name ?? m.settings_worktree_unknown_project()}</span>
+        <span className="truncate" title={group.project?.name}>
+          {group.project?.name ?? m.settings_worktree_unknown_project()}
+        </span>
         {clouds.length > 0 && (
           <span className="shrink-0 text-xs font-normal text-muted-foreground">
             {environmentName(environment, clouds)}
@@ -161,8 +163,10 @@ function WorktreeItem({ row }: { row: WorktreeRow }) {
                   params={{ threadId: thread.id }}
                   className="flex max-w-full min-w-0 items-center gap-1 text-foreground underline-offset-2 hover:underline"
                 >
-                  <RiChat3Line aria-hidden className="size-3 shrink-0 text-muted-foreground" />
-                  <span className="truncate">{thread.title}</span>
+                  <ChatIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+                  <span className="truncate" title={thread.title}>
+                    {thread.title}
+                  </span>
                 </Link>
               ))}
         </p>
@@ -175,7 +179,7 @@ function WorktreeItem({ row }: { row: WorktreeRow }) {
         aria-label={m.settings_worktree_remove({ branch: worktree.branch })}
         onClick={() => setRemoving(true)}
       >
-        <RiDeleteBinLine aria-hidden />
+        <TrashIcon aria-hidden />
       </Button>
       <RemoveWorktreeDialog row={row} open={removing} onOpenChange={setRemoving} />
     </li>
@@ -209,7 +213,7 @@ function RemoveWorktreeDialog({ row, open, onOpenChange }: RemoveWorktreeDialogP
           <AlertDialogTitle className="break-all">
             {m.worktree_remove_title({ branch: worktree.branch })}
           </AlertDialogTitle>
-          <AlertDialogDescription className="break-words">
+          <AlertDialogDescription className="wrap-break-word">
             {m.worktree_remove_body({ path: worktree.path })}
           </AlertDialogDescription>
           {checkout === "dirty" && (

@@ -1,5 +1,5 @@
 import { describe, expect, it, test } from "@effect/vitest"
-import { Effect, Layer, Sink, Stream } from "effect"
+import { Effect, Fiber, Layer, Sink, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import { ChildProcessSpawner } from "effect/process"
 import {
@@ -200,6 +200,7 @@ interface GhReply {
   readonly stdout?: string
   readonly stderr?: string
   readonly exitCode?: number
+  readonly neverExits?: boolean
 }
 
 const fakeGh = (reply: (args: ReadonlyArray<string>) => GhReply) => {
@@ -209,11 +210,11 @@ const fakeGh = (reply: (args: ReadonlyArray<string>) => GhReply) => {
   const spawner = ChildProcessSpawner.make((command) => {
     const args = command._tag === "StandardCommand" ? command.args : []
     runs.push(args)
-    const { stdout = "", stderr = "", exitCode = 0 } = reply(args)
+    const { stdout = "", stderr = "", exitCode = 0, neverExits = false } = reply(args)
     return Effect.succeed(
       ChildProcessSpawner.makeHandle({
         pid: ChildProcessSpawner.ProcessId(1),
-        exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(exitCode)),
+        exitCode: neverExits ? Effect.never : Effect.succeed(ChildProcessSpawner.ExitCode(exitCode)),
         isRunning: Effect.succeed(false),
         kill: () => Effect.void,
         stdin: Sink.drain,
@@ -237,6 +238,36 @@ const fakeGh = (reply: (args: ReadonlyArray<string>) => GhReply) => {
 }
 
 const ghFails = (stderr: string) => fakeGh(() => ({ stderr, exitCode: 1 })).layer
+
+const neverExits = () => fakeGh(() => ({ neverExits: true })).layer
+
+describe("a gh that never exits", () => {
+  it.effect("fails a read after a minute", () =>
+    Effect.gen(function* () {
+      const github = yield* GitHub
+      const auth = yield* Effect.forkChild(Effect.flip(github.auth))
+      yield* TestClock.adjust("59 seconds")
+      expect(auth.pollUnsafe()).toBeUndefined()
+
+      yield* TestClock.adjust("1 second")
+      const error = yield* Fiber.join(auth)
+      expect(error).toMatchObject({ _tag: "CommandError", exitCode: 124 })
+      expect(error.message).toContain("timed out after 1m")
+    }).pipe(Effect.provide(neverExits())),
+  )
+
+  it.effect("gives a clone an hour", () =>
+    Effect.gen(function* () {
+      const github = yield* GitHub
+      const clone = yield* Effect.forkChild(Effect.flip(github.clone({ owner: "o", name: "r" }, "/tmp/r")))
+      yield* TestClock.adjust("59 minutes")
+      expect(clone.pollUnsafe()).toBeUndefined()
+
+      yield* TestClock.adjust("1 minute")
+      expect(yield* Fiber.join(clone)).toMatchObject({ _tag: "CommandError", exitCode: 124 })
+    }).pipe(Effect.provide(neverExits())),
+  )
+})
 
 describe("pull request actions", () => {
   const ghMustNotRun = Layer.succeed(
@@ -385,10 +416,11 @@ describe("pullRequestFiles", () => {
 })
 
 const PR_URL = "https://github.com/o/r/pull/7"
+const urlOf = (number: number) => `https://github.com/o/r/pull/${number}`
 
 const graphqlPullRequest = (title: string, state = "OPEN") => ({
   data: {
-    repository: {
+    pr0: {
       pullRequest: {
         url: PR_URL,
         number: 7,
@@ -441,6 +473,7 @@ const graphqlPullRequest = (title: string, state = "OPEN") => ({
           nodes: [
             {
               isResolved: false,
+              diffSide: "LEFT",
               comments: {
                 nodes: [
                   {
@@ -458,6 +491,7 @@ const graphqlPullRequest = (title: string, state = "OPEN") => ({
             },
             {
               isResolved: true,
+              diffSide: "RIGHT",
               comments: {
                 nodes: [
                   {
@@ -587,7 +621,7 @@ describe("pull request reads", () => {
         comments.map(({ id, author, authorKind, location }) => ({ id, author, authorKind, location })),
       ).toStrictEqual([
         { id: "PRR_1", author: "copilot-pull-request-reviewer", authorKind: "bot", location: null },
-        { id: "PRRC_1", author: "ghost", authorKind: "human", location: { path: "src/a.ts", line: 12 } },
+        { id: "PRRC_1", author: "ghost", authorKind: "human", location: { path: "src/a.ts", line: 12, side: "LEFT" } },
         { id: "IC_2", author: "octocat", authorKind: "you", location: null },
       ])
     }).pipe(Effect.provide(gh.layer))
@@ -599,26 +633,109 @@ describe("pull request reads", () => {
       const github = yield* GitHub
       yield* github.pullRequestDetail(PR_URL)
       yield* github.comment(PR_URL, "--looks good")
-      expect(gh.runs.at(-1)).toStrictEqual(["pr", "comment", PR_URL, "--body", "--looks good"])
+      expect(gh.runs).toContainEqual(["pr", "comment", PR_URL, "--body", "--looks good"])
       yield* github.pullRequestDetail(PR_URL)
       expect(gh.runs.filter(isRead)).toHaveLength(2)
     }).pipe(Effect.provide(gh.layer))
   })
 
-  it.effect("everyone asking about the same pull request shares one gh run while it is fresh", () => {
+  it.effect("a line comment goes to GitHub on the pull request's head and shows on the next read", () => {
+    const gh = fakeGh(() => apiReply(graphqlPullRequest("LineComment")))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* github.pullRequestDetail(PR_URL)
+      yield* github.reviewComment(PR_URL, {
+        body: "@here why?",
+        commit: "abc",
+        path: "src/a.ts",
+        side: "LEFT",
+        startLine: 3,
+        endLine: 5,
+      })
+      expect(gh.runs).toContainEqual([
+        "api",
+        "--method",
+        "POST",
+        "repos/o/r/pulls/7/comments",
+        "-f",
+        "body=@here why?",
+        "-f",
+        "commit_id=abc",
+        "-f",
+        "path=src/a.ts",
+        "-F",
+        "line=5",
+        "-f",
+        "side=LEFT",
+        "-F",
+        "start_line=3",
+        "-f",
+        "start_side=LEFT",
+      ])
+      yield* github.pullRequestDetail(PR_URL)
+      expect(gh.runs.filter(isRead)).toHaveLength(2)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("reads a file's bytes at a ref of the pull request's repository", () => {
+    const gh = fakeGh(() => ({ stdout: JSON.stringify({ encoding: "base64", content: "aGk=\nIQ==\n" }) }))
+    return Effect.gen(function* () {
+      const content = yield* (yield* GitHub).fileContent(PR_URL, "feat/x", "assets/my logo.png")
+      expect(content).toBe("aGk=IQ==")
+      expect(gh.runs).toContainEqual(["api", "repos/o/r/contents/assets/my%20logo.png?ref=feat%2Fx"])
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("a file too large for the contents API has no preview", () => {
+    const gh = fakeGh(() => ({ stdout: JSON.stringify({ encoding: "none", content: "" }) }))
+    return Effect.gen(function* () {
+      expect(yield* (yield* GitHub).fileContent(PR_URL, "abc", "big.png")).toBeNull()
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("everyone asking about the same pull request shares one gh run until the app refreshes again", () => {
     const gh = fakeGh(() => apiReply(graphqlPullRequest("Shared")))
     return Effect.gen(function* () {
       const github = yield* GitHub
       yield* Effect.all([github.pullRequest(PR_URL), github.pullRequest(PR_URL), github.pullRequestDetail(PR_URL)], {
         concurrency: "unbounded",
       })
-      yield* TestClock.adjust("29 seconds")
+      yield* TestClock.adjust("49 seconds")
       yield* github.pullRequest(PR_URL)
       expect(gh.runs.filter(isRead)).toHaveLength(1)
 
       yield* TestClock.adjust("1 second")
       yield* github.pullRequest(PR_URL)
       expect(gh.runs.filter(isRead)).toHaveLength(2)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("pull requests asked for together share one gh run, and one GitHub cannot find fails alone", () => {
+    const gh = fakeGh((args) => {
+      const numbers = args.flatMap((arg) => /^number\d+=(\d+)$/.exec(arg)?.slice(1) ?? [])
+      const reads = numbers.map((number, index) => [
+        `pr${index}`,
+        number === "404"
+          ? null
+          : { pullRequest: { ...graphqlPullRequest(`#${number}`).data.pr0.pullRequest, url: urlOf(Number(number)) } },
+      ])
+      const missing = numbers.indexOf("404")
+      return apiReply({
+        data: Object.fromEntries(reads),
+        ...(missing === -1
+          ? {}
+          : { errors: [{ type: "NOT_FOUND", path: [`pr${missing}`], message: "Could not resolve to a PullRequest" }] }),
+      })
+    })
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      const [first, missing, second] = yield* Effect.all(
+        [github.pullRequest(urlOf(1)), Effect.flip(github.pullRequest(urlOf(404))), github.pullRequest(urlOf(2))],
+        { concurrency: "unbounded" },
+      )
+      expect(gh.runs.filter(isRead)).toHaveLength(1)
+      expect([first.title, second.title]).toStrictEqual(["#1", "#2"])
+      expect(missing.message).toContain("Could not resolve to a PullRequest")
     }).pipe(Effect.provide(gh.layer))
   })
 
@@ -635,7 +752,119 @@ describe("pull request reads", () => {
       expect((yield* github.pullRequest(PR_URL)).status).toBe("merged")
     }).pipe(Effect.provide(gh.layer))
   })
+
+  it.effect("tells every view when a read comes back different, and only then", () => {
+    let title = "Before"
+    const gh = fakeGh(() => apiReply(graphqlPullRequest(title)))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* github.pullRequest(PR_URL)
+      yield* TestClock.adjust("1 minute")
+      yield* github.pullRequest(PR_URL)
+      expect(gh.pushed.filter(isPullRequestPush)).toStrictEqual([])
+
+      title = "After"
+      yield* TestClock.adjust("1 minute")
+      yield* github.pullRequest(PR_URL)
+      expect(gh.pushed.filter(isPullRequestPush)).toStrictEqual([{ type: "github.pullRequest", url: PR_URL }])
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("reads again while GitHub is still working out whether the branch conflicts", () => {
+    let mergeable = "UNKNOWN"
+    const gh = fakeGh(() => apiReply(withMergeable(graphqlPullRequest("Conflict"), mergeable)))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      expect((yield* github.pullRequestDetail(PR_URL)).mergeable).toBe("unknown")
+
+      mergeable = "CONFLICTING"
+      yield* TestClock.adjust("2 seconds")
+      expect((yield* github.pullRequestDetail(PR_URL)).mergeable).toBe("conflicting")
+      expect(gh.pushed.filter(isPullRequestPush)).toStrictEqual([{ type: "github.pullRequest", url: PR_URL }])
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("gives up on a mergeability GitHub never works out after a few reads", () => {
+    const gh = fakeGh(() => apiReply(withMergeable(graphqlPullRequest("Stuck"), "UNKNOWN")))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* github.pullRequestDetail(PR_URL)
+      for (let tick = 0; tick < 10; tick++) {
+        yield* TestClock.adjust("2 seconds")
+        yield* github.pullRequestDetail(PR_URL)
+      }
+      expect(gh.runs.filter(isRead)).toHaveLength(6)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("a merge rereads the open pull requests of the same repository in one gh run", () => {
+    const merged = new Set<string>()
+    const gh = fakeGh((args) => {
+      if (args[1] === "merge") merged.add(String(args[2]))
+      const numbers = args.flatMap((arg) => /^number\d+=(\d+)$/.exec(arg)?.slice(1) ?? [])
+      const reads = numbers.map((number, index) => {
+        const url = urlOf(Number(number))
+        const pullRequest = graphqlPullRequest(`#${number}`, merged.has(url) ? "MERGED" : "OPEN").data.pr0.pullRequest
+        return [`pr${index}`, { pullRequest: { ...pullRequest, url } }]
+      })
+      return apiReply({ data: Object.fromEntries(reads) })
+    })
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* Effect.all([github.pullRequest(urlOf(1)), github.pullRequest(urlOf(2))], { concurrency: "unbounded" })
+      yield* github.merge(urlOf(1), "squash")
+      expect(gh.runs.filter(isRead)).toHaveLength(2)
+      expect(gh.pushed.filter(isPullRequestPush)).toStrictEqual([{ type: "github.pullRequest", url: urlOf(1) }])
+      expect((yield* github.pullRequest(urlOf(1))).status).toBe("merged")
+      expect(gh.runs.filter(isRead)).toHaveLength(2)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("a merge GitHub refuses rereads the pull request, so a conflict it missed shows", () => {
+    let mergeable = "MERGEABLE"
+    const gh = fakeGh((args) => {
+      if (args[1] === "merge") {
+        mergeable = "CONFLICTING"
+        return { stderr: "Pull request is not mergeable: the merge commit cannot be cleanly created.", exitCode: 1 }
+      }
+      return apiReply(withMergeable(graphqlPullRequest("Refused"), mergeable))
+    })
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* github.pullRequestDetail(PR_URL)
+      yield* Effect.flip(github.merge(PR_URL, "squash"))
+      expect(gh.pushed.filter(isPullRequestPush)).toStrictEqual([{ type: "github.pullRequest", url: PR_URL }])
+      expect((yield* github.pullRequestDetail(PR_URL)).mergeable).toBe("conflicting")
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("a fresh read skips the cache, and fresh reads close together share one gh run", () => {
+    let title = "Cached"
+    const gh = fakeGh(() => apiReply(graphqlPullRequest(title)))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* github.pullRequestDetail(PR_URL)
+      title = "Closed on GitHub"
+      const [first, second] = yield* Effect.all(
+        [github.pullRequestDetail(PR_URL, { fresh: true }), github.pullRequestDetail(PR_URL, { fresh: true })],
+        { concurrency: "unbounded" },
+      )
+      expect([first.title, second.title]).toStrictEqual(["Closed on GitHub", "Closed on GitHub"])
+      yield* github.pullRequestDetail(PR_URL, { fresh: true })
+      expect(gh.runs.filter(isRead)).toHaveLength(2)
+
+      yield* TestClock.adjust("10 seconds")
+      yield* github.pullRequestDetail(PR_URL, { fresh: true })
+      expect(gh.runs.filter(isRead)).toHaveLength(3)
+    }).pipe(Effect.provide(gh.layer))
+  })
 })
+
+const withMergeable = (reply: ReturnType<typeof graphqlPullRequest>, mergeable: string) => ({
+  data: { pr0: { pullRequest: { ...reply.data.pr0.pullRequest, mergeable } } },
+})
+
+const isPullRequestPush = (event: PushEvent) => event.type === "github.pullRequest"
 
 describe("rate limits", () => {
   it.effect("does not run gh again until a used-up rate limit resets", () => {

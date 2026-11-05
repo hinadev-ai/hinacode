@@ -1,15 +1,15 @@
 import type { ReactNode } from "react"
-import { RiCheckLine, RiCircleLine, RiLoader4Line } from "react-icons/ri"
 import type { Worktree } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
 import { WorktreeSetupLog } from "./WorktreeSetupLog.tsx"
+import { CheckIcon, CircleIcon, SpinnerIcon } from "@hinacode/icons"
 
 type StepState = "done" | "running" | "pending"
 
 const stepIcon: Record<StepState, ReactNode> = {
-  done: <RiCheckLine aria-hidden className="size-4 shrink-0 text-success" />,
-  running: <RiLoader4Line aria-hidden className="size-4 shrink-0 animate-spin motion-reduce:animate-none" />,
-  pending: <RiCircleLine aria-hidden className="size-4 shrink-0 text-muted-foreground" />,
+  done: <CheckIcon aria-hidden className="size-4 shrink-0 text-success" />,
+  running: <SpinnerIcon aria-hidden className="size-4 shrink-0 animate-spin motion-reduce:animate-none" />,
+  pending: <CircleIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />,
 }
 
 function Step({ state, label, children }: { state: StepState; label: string; children?: ReactNode }) {
@@ -26,7 +26,7 @@ function Step({ state, label, children }: { state: StepState; label: string; chi
 
 export function WorktreePreparation({ worktree }: { worktree: Worktree }) {
   return (
-    <output className="m-auto flex w-full max-w-lg flex-col gap-4 px-4">
+    <output className="m-auto flex w-full max-w-lg clear-overview flex-col gap-4 px-4">
       <div className="flex flex-col items-center gap-1 text-center">
         <h2 className="text-sm font-semibold">{m.worktree_preparation_title()}</h2>
         <p className="text-sm text-muted-foreground">{m.worktree_preparation_hint()}</p>

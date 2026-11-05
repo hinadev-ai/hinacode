@@ -1,11 +1,17 @@
 import { Schema } from "effect"
 import { describe, expect, it } from "vitest"
 import { RpcMethods } from "./contract.ts"
-import { chatFolder, defaultSettings, PullRequest, Settings, Thread } from "./domain.ts"
+import { chatFolder, defaultSettings, PullRequest, Settings, Thread, workspaceStatus } from "./domain.ts"
 
 const legacySettings = Object.fromEntries(
   Object.entries(defaultSettings).filter(([key]) => key !== "defaultAccountName"),
 )
+
+const withoutOpencode = (value: unknown) => {
+  if (typeof value !== "object" || value === null || !("claude" in value)) return value
+  const { opencode: _opencode, ...rest } = value as Record<string, unknown>
+  return rest
+}
 
 const legacyThread: Omit<Thread, "userSkills"> = {
   id: "older-cloud-thread",
@@ -20,12 +26,15 @@ const legacyThread: Omit<Thread, "userSkills"> = {
   accountId: null,
   providerSessionId: null,
   forkedFrom: null,
+  sideOf: null,
+  parentId: null,
   status: "idle",
   usageLimit: null,
   sortIndex: 0,
   pinnedAt: null,
   snoozedUntil: null,
   queue: [],
+  scheduled: [],
   createdBy: "user",
   createdAt: "2026-10-18T00:00:00.000Z",
   updatedAt: "2026-10-18T00:00:00.000Z",
@@ -37,7 +46,23 @@ describe("older cloud responses", () => {
       claude: null,
       codex: null,
       muse: null,
+      opencode: null,
     })
+  })
+
+  it("gives opencode empty defaults in settings saved before it existed", () => {
+    const beforeOpencode = Object.fromEntries(
+      Object.entries(defaultSettings).map(([key, value]) => [key, withoutOpencode(value)]),
+    )
+    const settings = Schema.decodeUnknownSync(Settings)(beforeOpencode)
+    expect(settings.defaultModel.opencode).toBeNull()
+    expect(settings.modelPresets.opencode).toStrictEqual([])
+    expect(settings.defaultFastMode.opencode).toBe(false)
+  })
+
+  it("has no global actions when settings predate them", () => {
+    const { actions: _actions, ...withoutActions } = defaultSettings
+    expect(Schema.decodeUnknownSync(Settings)(withoutActions).actions).toStrictEqual([])
   })
 
   it("keeps user skills enabled for threads from before conversation mode", () => {
@@ -95,6 +120,18 @@ describe("chatFolder", () => {
   })
 })
 
+describe("workspaceStatus", () => {
+  it("is missing when a ready worktree's folder is gone", () => {
+    expect(workspaceStatus("ready", "missing")).toBe("missing")
+  })
+
+  it("keeps the worktree status while the folder is there or unknown", () => {
+    expect(workspaceStatus("ready", "clean")).toBe("ready")
+    expect(workspaceStatus("ready", null)).toBe("ready")
+    expect(workspaceStatus("removed", "missing")).toBe("removed")
+  })
+})
+
 describe("listener settings", () => {
   const setSettings = Schema.decodeUnknownSync(RpcMethods["settings.set"].request)
 
@@ -105,11 +142,8 @@ describe("listener settings", () => {
     }
   })
 
-  it("let remote control turn on only with a picked interface", () => {
-    expect(() => setSettings({ remote: { enabled: true, bindHost: null, port: 48081 } })).toThrow()
-    expect(setSettings({ remote: { enabled: false, bindHost: null, port: 48081 } })).toStrictEqual({
-      remote: { enabled: false, bindHost: null, port: 48081 },
-    })
+  it("always name where remote control listens", () => {
+    expect(() => setSettings({ remote: { enabled: false, bindHost: null, port: 48081 } })).toThrow()
     expect(setSettings({ remote: { enabled: true, bindHost: "100.64.0.2", port: 48081 } }).remote?.bindHost).toBe(
       "100.64.0.2",
     )

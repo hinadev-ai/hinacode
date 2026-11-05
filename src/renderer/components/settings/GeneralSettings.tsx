@@ -10,9 +10,14 @@ import { Field, FieldContent, FieldDescription, FieldError, FieldLabel, FieldTit
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { MachineSetup } from "./MachineSetup.tsx"
 import { SettingsGroup } from "./SettingsSection.tsx"
-import { errorMessage } from "../../lib/errorMessage.ts"
+import { errorMessage, toastError } from "../../lib/errorMessage.ts"
 
-const localeLabel = { en: m.locale_en, "zh-TW": m.locale_zh_tw, ja: m.locale_ja } satisfies Record<Locale, () => string>
+const localeLabel = {
+  en: m.locale_en,
+  "zh-TW": m.locale_zh_tw,
+  "zh-CN": m.locale_zh_cn,
+  ja: m.locale_ja,
+} satisfies Record<Locale, () => string>
 const isLocale = (value: unknown): value is Locale => Locale.literals.some((locale) => locale === value)
 
 export function GeneralSettings() {
@@ -26,7 +31,7 @@ export function GeneralSettings() {
     if (!isLocale(next) || next === locale) return
     try {
       const saved = await updateClientSettings({ locale: next })
-      applyLocale(saved.locale)
+      await applyLocale(saved.locale)
     } catch (cause) {
       setError(errorMessage(cause))
     }
@@ -96,7 +101,7 @@ function VersionField() {
         )}
       </FieldContent>
       {state.type === "ready" ? (
-        <Button size="sm" onClick={() => void callPromise("updates.install", undefined)}>
+        <Button size="sm" action={() => callPromise("updates.install", undefined).catch(toastError)}>
           {m.update_restart()}
         </Button>
       ) : (
@@ -104,7 +109,7 @@ function VersionField() {
           variant="outline"
           size="sm"
           disabled={busy}
-          onClick={() => void callPromise("updates.check", undefined)}
+          action={() => callPromise("updates.check", undefined).catch(toastError)}
         >
           {m.update_check()}
         </Button>

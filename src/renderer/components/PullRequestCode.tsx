@@ -1,31 +1,14 @@
 import { useAtomValue } from "@effect/atom-react"
+import { useParams } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
-import { useEffect, useId, useState, useTransition } from "react"
-import type { IconType } from "react-icons"
-import {
-  RiBookOpenLine,
-  RiBox3Line,
-  RiCodeSSlashLine,
-  RiDatabase2Line,
-  RiEqualizerLine,
-  RiErrorWarningLine,
-  RiFlaskLine,
-  RiHammerLine,
-  RiImageLine,
-  RiLayoutMasonryLine,
-  RiMoreLine,
-  RiPlayCircleLine,
-  RiPlugLine,
-  RiShieldKeyholeLine,
-  RiSparkling2Line,
-  RiTerminalBoxLine,
-  RiToolsLine,
-  RiTranslate2,
-} from "react-icons/ri"
+import { create } from "zustand"
+import type { DiffLineAnnotation } from "@pierre/diffs"
+import { use, useId, useState, useTransition } from "react"
 import type {
   GuideCategory,
   GuideFileNote,
   GuideLineNote,
+  PullRequestComment,
   PullRequestFile,
   PullRequestGuideState,
   PullRequestStatus,
@@ -44,31 +27,67 @@ import { callPromise, type EnvironmentId, pullRequestDetailAtom, pullRequestFile
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { loadPullRequestGuideAtom, usePullRequestGuides } from "../stores/pullRequestGuides.ts"
-import { type PullRequestCodeView, useUi } from "../stores/ui.ts"
 import { FileDiffRow, pullRequestFileMark } from "./FilePatch.tsx"
+import {
+  BookIcon,
+  CodeIcon,
+  CollapseIcon,
+  DatabaseIcon,
+  ExpandIcon,
+  EyeIcon,
+  FlaskIcon,
+  FolderIcon,
+  GuideIcon,
+  HammerIcon,
+  type IconComponent,
+  ImageIcon,
+  LayoutIcon,
+  MoreIcon,
+  PackageIcon,
+  PipIcon,
+  PlayIcon,
+  PlugIcon,
+  ShieldKeyholeIcon,
+  SlidersIcon,
+  TerminalIcon,
+  ToolsIcon,
+  TranslateIcon,
+  WarningIcon,
+} from "@hinacode/icons"
 import { Markdown } from "./Markdown.tsx"
+import { FilePreview, previewKind } from "./PullRequestFilePreview.tsx"
+import {
+  annotationSide,
+  commentsOnLines,
+  type LineSelection,
+  lineSelection,
+  PullRequestReviewContext,
+  ReviewCommentForm,
+  ReviewCommentThread,
+} from "./PullRequestReview.tsx"
 import { Button } from "./ui/button.tsx"
+import { Checkbox } from "./ui/checkbox.tsx"
 import { SkeletonList } from "./ui/skeleton.tsx"
-import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
+import { LineCounts } from "./LineCounts.tsx"
 
 const categoryIcon = {
-  ui: RiLayoutMasonryLine,
-  api: RiPlugLine,
-  core: RiCodeSSlashLine,
-  data: RiDatabase2Line,
-  cli: RiTerminalBoxLine,
-  security: RiShieldKeyholeLine,
-  tests: RiFlaskLine,
-  docs: RiBookOpenLine,
-  examples: RiPlayCircleLine,
-  deps: RiBox3Line,
-  build: RiHammerLine,
-  scripts: RiToolsLine,
-  config: RiEqualizerLine,
-  i18n: RiTranslate2,
-  assets: RiImageLine,
-  other: RiMoreLine,
-} satisfies Record<GuideCategory, IconType>
+  ui: LayoutIcon,
+  api: PlugIcon,
+  core: CodeIcon,
+  data: DatabaseIcon,
+  cli: TerminalIcon,
+  security: ShieldKeyholeIcon,
+  tests: FlaskIcon,
+  docs: BookIcon,
+  examples: PlayIcon,
+  deps: PackageIcon,
+  build: HammerIcon,
+  scripts: ToolsIcon,
+  config: SlidersIcon,
+  i18n: TranslateIcon,
+  assets: ImageIcon,
+  other: MoreIcon,
+} satisfies Record<GuideCategory, IconComponent>
 
 const categoryLabel = {
   ui: m.guide_category_ui,
@@ -94,28 +113,14 @@ const shortCommit = (head: string) => head.slice(0, 7)
 const noteKey = (note: GuideFileNote | GuideLineNote) =>
   "line" in note ? `${note.side}:${note.line}:${note.text}` : note.text
 
-export function PullRequestCode({ url }: { url: string }) {
+export type PullRequestCodeView = "files" | "guide"
+
+export function PullRequestCode({ url, view }: { url: string; view: PullRequestCodeView }) {
   const environment = useOpenThreadEnvironment()
   const detail = useAtomValue(pullRequestDetailAtom(environment, url))
-  const view = useUi((state) => state.pullRequestCodeView)
-  const setView = useUi((state) => state.setPullRequestCodeView)
-
-  useEffect(() => {
-    useUi.getState().setSidePanelWide(true)
-    return () => useUi.getState().setSidePanelWide(false)
-  }, [])
 
   return (
     <div className="flex flex-col gap-3">
-      <Tabs value={view} onValueChange={(value: PullRequestCodeView) => setView(value)}>
-        <TabsList aria-label={m.pr_code_view_label()} className="w-full">
-          <TabsTrigger value="files">{m.pr_code_view_files()}</TabsTrigger>
-          <TabsTrigger value="guide">
-            <RiSparkling2Line aria-hidden />
-            {m.pr_code_view_guide()}
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
       {AsyncResult.builder(detail)
         .onSuccess((pullRequest) =>
           diffTooLarge(pullRequest) ? (
@@ -125,7 +130,9 @@ export function PullRequestCode({ url }: { url: string }) {
               environment={environment}
               url={url}
               head={pullRequest.head}
+              baseRef={pullRequest.baseRef}
               status={pullRequest.status}
+              comments={pullRequest.comments}
               view={view}
             />
           ),
@@ -146,11 +153,13 @@ interface ChangedFilesProps {
   readonly environment: EnvironmentId
   readonly url: string
   readonly head: string
+  readonly baseRef: string
   readonly status: PullRequestStatus
+  readonly comments: ReadonlyArray<PullRequestComment>
   readonly view: PullRequestCodeView
 }
 
-function ChangedFiles({ environment, url, head, status, view }: ChangedFilesProps) {
+function ChangedFiles({ environment, url, head, baseRef, status, comments, view }: ChangedFilesProps) {
   const diff = useAtomValue(pullRequestFilesAtom(environment, url, head))
 
   return AsyncResult.builder(diff)
@@ -158,18 +167,20 @@ function ChangedFiles({ environment, url, head, status, view }: ChangedFilesProp
       if (files.length === 0) return <p className="text-xs text-muted-foreground">{m.diff_empty()}</p>
       return (
         <>
-          <DiffSummary files={files} />
           {view === "files" ? (
-            <ul className="flex flex-col gap-0.5">
-              {files.map((file) => (
-                <PullRequestFileRow
-                  key={file.path}
-                  entry={{ file, fileNotes: [], lineNotesInHunks: [], lineNotesOutsideHunks: [] }}
-                />
-              ))}
-            </ul>
+            <ReviewedFiles
+              environment={environment}
+              url={url}
+              head={head}
+              baseRef={baseRef}
+              comments={comments}
+              files={files}
+            />
           ) : (
-            <GuideView environment={environment} url={url} currentHead={head} status={status} files={files} />
+            <>
+              <DiffSummary files={files} />
+              <GuideView environment={environment} url={url} currentHead={head} status={status} files={files} />
+            </>
           )}
         </>
       )
@@ -180,6 +191,152 @@ function ChangedFiles({ environment, url, head, status, view }: ChangedFilesProp
       </p>
     ))
     .orElse(() => <SkeletonList label={m.diff_loading()} rows={4} rowClassName="h-4" />)
+}
+
+const VIEWED_FILES_KEY = "hinacode.viewedPullRequestFiles"
+
+type ViewedFiles = Readonly<Record<string, { readonly head: string; readonly paths: ReadonlyArray<string> }>>
+
+const loadViewedFiles = (): ViewedFiles => {
+  try {
+    return JSON.parse(localStorage.getItem(VIEWED_FILES_KEY) ?? "{}") as ViewedFiles
+  } catch {
+    return {}
+  }
+}
+
+export const useViewedFiles = create<{
+  readonly byUrl: ViewedFiles
+  readonly setViewed: (url: string, head: string, path: string, viewed: boolean) => void
+}>()((set, get) => ({
+  byUrl: loadViewedFiles(),
+  setViewed: (url, head, path, viewed) => {
+    const current = get().byUrl[url]
+    const paths = (current?.head === head ? current.paths : []).filter((other) => other !== path)
+    const byUrl = { ...get().byUrl, [url]: { head, paths: viewed ? [...paths, path] : paths } }
+    localStorage.setItem(VIEWED_FILES_KEY, JSON.stringify(byUrl))
+    set({ byUrl })
+  },
+}))
+
+const NONE_VIEWED: ReadonlyArray<string> = []
+
+export const useViewedPaths = (url: string, head: string) =>
+  useViewedFiles((state) => {
+    const entry = state.byUrl[url]
+    return entry?.head === head ? entry.paths : NONE_VIEWED
+  })
+
+const directoryOf = (path: string) => path.slice(0, path.lastIndexOf("/") + 1)
+const nameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1)
+
+const byFolder = (files: ReadonlyArray<PullRequestFile>) => {
+  const folders = new Map<string, Array<PullRequestFile>>()
+  for (const file of files) folders.set(directoryOf(file.path), [...(folders.get(directoryOf(file.path)) ?? []), file])
+  return [...folders]
+}
+
+function ReviewedFiles({
+  environment,
+  url,
+  head,
+  baseRef,
+  comments,
+  files,
+}: {
+  environment: EnvironmentId
+  url: string
+  head: string
+  baseRef: string
+  comments: ReadonlyArray<PullRequestComment>
+  files: ReadonlyArray<PullRequestFile>
+}) {
+  const viewed = new Set(useViewedPaths(url, head))
+  const setViewed = useViewedFiles((state) => state.setViewed)
+  const { threadId } = useParams({ strict: false })
+  const [openPaths, setOpenPaths] = useState<ReadonlySet<string>>(() => new Set())
+  const [, startTransition] = useTransition()
+  const added = files.reduce((sum, file) => sum + file.additions, 0)
+  const removed = files.reduce((sum, file) => sum + file.deletions, 0)
+  const viewedCount = files.filter((file) => viewed.has(file.path)).length
+  const allOpen = files.length > 0 && files.every((file) => openPaths.has(file.path))
+
+  const withOpen = (path: string, open: boolean) => {
+    const next = new Set(openPaths)
+    if (open) next.add(path)
+    else next.delete(path)
+    return next
+  }
+
+  const toggle = (path: string) => startTransition(() => setOpenPaths(withOpen(path, !openPaths.has(path))))
+
+  const markViewed = (path: string, next: boolean) =>
+    startTransition(() => {
+      setViewed(url, head, path, next)
+      if (next) setOpenPaths(withOpen(path, false))
+    })
+
+  return (
+    <PullRequestReviewContext value={{ environment, url, head, baseRef, threadId, comments }}>
+      <div className="@container flex flex-col gap-2">
+        <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground tabular-nums">
+          <span>{m.pr_code_summary({ count: files.length })}</span>
+          <span aria-hidden>·</span>
+          <span>{m.pr_files_viewed({ viewed: viewedCount, total: files.length })}</span>
+          <LineCounts added={added} removed={removed} />
+          {threadId && (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="ms-auto"
+              aria-label={m.pr_open_in_window()}
+              title={m.pr_open_in_window()}
+              action={() => callPromise("windows.openPullRequest", { threadId, url })}
+            >
+              <PipIcon aria-hidden />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className={cn(!threadId && "ms-auto")}
+            aria-label={allOpen ? m.diff_collapse_all() : m.diff_expand_all()}
+            title={allOpen ? m.diff_collapse_all() : m.diff_expand_all()}
+            action={() => setOpenPaths(allOpen ? new Set() : new Set(files.map((file) => file.path)))}
+          >
+            {allOpen ? <CollapseIcon aria-hidden /> : <ExpandIcon aria-hidden />}
+          </Button>
+        </div>
+        <div className="flex flex-col gap-3">
+          {byFolder(files).map(([folder, inFolder]) => (
+            <section key={folder} aria-label={folder || "/"} className="flex flex-col gap-0.5">
+              <h3 className="flex min-w-0 items-center gap-1.5 px-1.5 font-mono text-xs text-muted-foreground">
+                <FolderIcon aria-hidden className="size-3.5 shrink-0" />
+                <span className="truncate" title={folder || "/"}>
+                  {folder || "/"}
+                </span>
+              </h3>
+              <ul className="ms-3.5 flex flex-col gap-0.5 border-s ps-1.5">
+                {inFolder.map((file) => (
+                  <PullRequestFileRow
+                    key={file.path}
+                    entry={{ file, fileNotes: [], lineNotesInHunks: [], lineNotesOutsideHunks: [] }}
+                    label={nameOf(file.path)}
+                    review={{
+                      open: openPaths.has(file.path),
+                      onToggle: () => toggle(file.path),
+                      viewed: viewed.has(file.path),
+                      onViewedChange: (next) => markViewed(file.path, next),
+                    }}
+                  />
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      </div>
+    </PullRequestReviewContext>
+  )
 }
 
 function DiffSummary({ files }: { files: ReadonlyArray<PullRequestFile> }) {
@@ -193,36 +350,103 @@ function DiffSummary({ files }: { files: ReadonlyArray<PullRequestFile> }) {
   )
 }
 
-function LineCounts({ added, removed }: { added: number; removed: number }) {
-  return (
-    <span className="font-mono tabular-nums" aria-label={m.diff_line_counts({ added, removed })}>
-      <span aria-hidden className="text-vcs-added">
-        +{added}
-      </span>{" "}
-      <span aria-hidden className="text-destructive">
-        −{removed}
-      </span>
-    </span>
-  )
+export interface FileReview {
+  readonly open: boolean
+  readonly onToggle: () => void
+  readonly viewed: boolean
+  readonly onViewedChange: (viewed: boolean) => void
 }
 
-function PullRequestFileRow({ entry }: { entry: GuideFile }) {
-  const [open, setOpen] = useState(false)
+type RowAnnotation =
+  | { readonly kind: "notes"; readonly notes: ReadonlyArray<GuideLineNote> }
+  | { readonly kind: "github"; readonly comments: ReadonlyArray<PullRequestComment> }
+  | { readonly kind: "draft"; readonly selection: LineSelection }
+
+export function PullRequestFileRow({
+  entry,
+  review,
+  label,
+  anchorId,
+}: {
+  entry: GuideFile
+  review?: FileReview
+  label?: string
+  anchorId?: string
+}) {
+  const [ownOpen, setOwnOpen] = useState(false)
+  const [draft, setDraft] = useState<LineSelection | null>(null)
+  const kind = previewKind(entry.file.path)
+  const [previewing, setPreviewing] = useState(kind !== null && entry.file.binary)
+  const [, startTransition] = useTransition()
+  const reviewing = use(PullRequestReviewContext)
+  const open = review ? review.open : ownOpen
   const { file } = entry
   const notes = [...entry.fileNotes, ...entry.lineNotesOutsideHunks]
   const critical = [...notes, ...entry.lineNotesInHunks].some((note) => note.critical === true)
+  const annotations: Array<DiffLineAnnotation<RowAnnotation>> = [
+    ...noteAnnotations(entry.lineNotesInHunks).map(({ side, lineNumber, metadata }) => ({
+      side,
+      lineNumber,
+      metadata: { kind: "notes" as const, notes: metadata },
+    })),
+    ...(reviewing ? commentsOnLines(reviewing.comments, file.path) : []).map(({ side, lineNumber, comments }) => ({
+      side,
+      lineNumber,
+      metadata: { kind: "github" as const, comments },
+    })),
+    ...(draft
+      ? [
+          {
+            side: annotationSide(draft.side),
+            lineNumber: draft.endLine,
+            metadata: { kind: "draft" as const, selection: draft },
+          },
+        ]
+      : []),
+  ]
 
   return (
-    <FileDiffRow<ReadonlyArray<GuideLineNote>>
-      path={file.path}
+    <FileDiffRow<RowAnnotation>
+      path={label ?? file.path}
+      anchorId={anchorId}
       title={file.previousPath === null ? file.path : `${file.previousPath} → ${file.path}`}
       mark={pullRequestFileMark[file.status]}
       added={file.additions}
       removed={file.deletions}
       patch={file.binary ? undefined : file.patch}
       open={open}
-      onToggle={() => setOpen(!open)}
+      onToggle={review ? review.onToggle : () => setOwnOpen(!ownOpen)}
       badge={critical && <CriticalMark />}
+      muted={review?.viewed}
+      preview={previewing && reviewing && kind && <FilePreview review={reviewing} file={file} kind={kind} />}
+      actions={
+        review && (
+          <>
+            {reviewing && kind && (
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-pressed={previewing}
+                aria-label={previewing ? m.pr_file_show_diff() : m.pr_file_preview()}
+                title={previewing ? m.pr_file_show_diff() : m.pr_file_preview()}
+                action={() => {
+                  setPreviewing(!previewing)
+                  if (!review.open) review.onToggle()
+                }}
+              >
+                {previewing ? <CodeIcon aria-hidden /> : <EyeIcon aria-hidden />}
+              </Button>
+            )}
+            <label className="flex shrink-0 cursor-pointer items-center gap-1.5 px-1.5 text-xs text-muted-foreground">
+              <Checkbox
+                checked={review.viewed}
+                onCheckedChange={(checked) => review.onViewedChange(checked === true)}
+              />
+              <span className="@max-md:sr-only">{m.pr_file_viewed()}</span>
+            </label>
+          </>
+        )
+      }
       notes={
         notes.length > 0 && (
           <ul className="flex flex-col gap-1 pl-6">
@@ -234,16 +458,32 @@ function PullRequestFileRow({ entry }: { entry: GuideFile }) {
           </ul>
         )
       }
-      lineAnnotations={noteAnnotations(entry.lineNotesInHunks)}
-      renderAnnotation={({ metadata }) => (
-        <ul className="flex flex-col gap-1 px-2 py-1.5 font-sans">
-          {metadata.map((note) => (
-            <li key={noteKey(note)}>
-              <NoteCard note={note} />
-            </li>
-          ))}
-        </ul>
-      )}
+      lineAnnotations={annotations}
+      selectedLines={draft && { start: draft.startLine, end: draft.endLine, side: annotationSide(draft.side) }}
+      onCommentLines={reviewing ? (range) => startTransition(() => setDraft(lineSelection(range))) : undefined}
+      renderAnnotation={({ metadata }) => {
+        if (metadata.kind === "github") return <ReviewCommentThread comments={metadata.comments} />
+        if (metadata.kind === "draft")
+          return (
+            reviewing && (
+              <ReviewCommentForm
+                review={reviewing}
+                file={file}
+                selection={metadata.selection}
+                onDone={() => startTransition(() => setDraft(null))}
+              />
+            )
+          )
+        return (
+          <ul className="flex flex-col gap-1 px-2 py-1.5 font-sans">
+            {metadata.notes.map((note) => (
+              <li key={noteKey(note)}>
+                <NoteCard note={note} />
+              </li>
+            ))}
+          </ul>
+        )
+      }}
     />
   )
 }
@@ -251,7 +491,7 @@ function PullRequestFileRow({ entry }: { entry: GuideFile }) {
 function CriticalMark({ className }: { className?: string }) {
   return (
     <span title={m.guide_critical()} className="flex shrink-0">
-      <RiErrorWarningLine aria-hidden className={cn("size-3.5 text-attention", className)} />
+      <WarningIcon aria-hidden className={cn("size-3.5 text-attention", className)} />
       <span className="sr-only">{m.guide_critical()}</span>
     </span>
   )
@@ -268,7 +508,7 @@ function NoteCard({ note, showLine = false }: { note: GuideFileNote | GuideLineN
       {note.critical ? (
         <CriticalMark className="mt-0.5" />
       ) : (
-        <RiSparkling2Line aria-hidden className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+        <GuideIcon aria-hidden className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
       )}
       <div className="min-w-0 flex-1">
         {showLine && "line" in note && (
@@ -428,7 +668,7 @@ function GuideJobNotice({ environment, url, currentHead, status, state }: GuideJ
   if (job?.status === "running") {
     return (
       <div className="flex flex-col gap-2">
-        <p className="text-xs text-shimmer">{m.guide_writing({ commit: shortCommit(currentHead) })}</p>
+        <p className="text-shimmer text-xs">{m.guide_writing({ commit: shortCommit(currentHead) })}</p>
         <p className="text-xs text-muted-foreground">{m.guide_writing_hint()}</p>
       </div>
     )
