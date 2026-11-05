@@ -2,12 +2,13 @@ import { Option, Schema } from "effect"
 import { Hono, type Context } from "hono"
 import { CloudflareError, makeCloudflare, type Fetch } from "./cloudflare"
 import { linkPage } from "./page"
-import { type Host, runStore } from "./store"
+import { type Host, type Link, runStore } from "./store"
 
 export type { Fetch } from "./cloudflare"
 
 export interface Deps {
-  verifyUser(request: Request, env: Env): Promise<string | null>
+  verifySession(request: Request, env: Env): Promise<string | null>
+  accountProfile(userId: string, env: Env): Promise<{ name: string | null; email: string | null }>
   cloudflare: Fetch
   now(): number
   random(bytes: number): Uint8Array
@@ -18,6 +19,7 @@ type App = { Bindings: Env }
 const LINK_TTL_MS = 10 * 60 * 1000
 const POLL_INTERVAL_S = 5
 const MAX_HOSTS = 5
+const DEVICE_LINK_NEEDS_SESSION = "Approve this sign-in on the relay page in your browser."
 const USER_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 const Label = Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(64))
@@ -25,6 +27,7 @@ const NewLink = Schema.Struct({
   environmentId: Label.check(Schema.isPattern(/^[A-Za-z0-9-]+$/)),
   name: Label,
 })
+const NewSignIn = Schema.Struct({ name: Label })
 const Claim = Schema.Struct({ deviceCode: Schema.String.check(Schema.isMaxLength(128)) })
 const Tunnel = Schema.Struct({ origin: Schema.String.check(Schema.isPattern(/^http:\/\/[^/?#\s]+:\d{1,5}$/)) })
 const Pairing = Schema.Struct({
@@ -57,7 +60,7 @@ const normalizeUserCode = (code: string) => {
 
 const hostnameOf = (env: Env, host: Pick<Host, "id">) => `${host.id}.${env.TUNNEL_ZONE_NAME}`
 
-const fail = (c: Context, status: 400 | 401 | 404 | 409 | 410, error: string) => c.json({ error }, status)
+const fail = (c: Context, status: 400 | 401 | 403 | 404 | 409 | 410, error: string) => c.json({ error }, status)
 
 const body = async <A>(c: Context, schema: Schema.Decoder<A>) =>
   Schema.decodeUnknownOption(schema)(await c.req.json().catch(() => undefined))
@@ -71,6 +74,19 @@ export const makeApp = (deps: Deps) => {
       accountId: env.CLOUDFLARE_ACCOUNT_ID,
       zoneId: env.TUNNEL_ZONE_ID,
     })
+
+  const userOfDevice = async (c: Context<App>) => {
+    const credential = bearer(c.req.raw)
+    if (!credential) return null
+    const credentialHash = await sha256(credential)
+    const device = await runStore(c.env.DB, (store) => store.deviceByCredential(credentialHash))
+    return Option.getOrNull(device)?.userId ?? null
+  }
+
+  const verifyUser = async (c: Context<App>) => (await userOfDevice(c)) ?? deps.verifySession(c.req.raw, c.env)
+
+  const refusesDeviceLink = async (c: Context<App>, link: Link) =>
+    link.kind === "device" && !(await deps.verifySession(c.req.raw, c.env))
 
   const machine = async (c: Context<App>) => {
     const credential = bearer(c.req.raw)
@@ -98,27 +114,37 @@ export const makeApp = (deps: Deps) => {
     return c.json({ error: "The relay failed. Try again." }, 500)
   })
 
-  app.post("/v1/links", async (c) => {
-    const input = await body(c, NewLink)
-    if (Option.isNone(input)) {
-      return fail(c, 400, "Send environmentId (letters, digits and dashes) and name, each 1 to 64 characters.")
-    }
+  const startLink = async (c: Context<App>, link: Pick<Link, "kind" | "environmentId" | "name">) => {
     const now = deps.now()
     const deviceCode = toBase64Url(deps.random(32))
     const letters = Array.from(deps.random(8), (byte) => USER_CODE_ALPHABET[byte % USER_CODE_ALPHABET.length])
     const userCode = normalizeUserCode(letters.join(""))
     const expiresAt = now + LINK_TTL_MS
     const deviceCodeHash = await sha256(deviceCode)
-    await runStore(c.env.DB, (store) => store.createLink({ deviceCodeHash, userCode, ...input.value, expiresAt }, now))
+    await runStore(c.env.DB, (store) => store.createLink({ deviceCodeHash, userCode, ...link, expiresAt }, now))
     const url = new URL("/link", c.req.url)
     url.searchParams.set("code", userCode)
     return c.json({ deviceCode, userCode, url: url.href, interval: POLL_INTERVAL_S, expiresAt })
+  }
+
+  app.post("/v1/links", async (c) => {
+    const input = await body(c, NewLink)
+    if (Option.isNone(input)) {
+      return fail(c, 400, "Send environmentId (letters, digits and dashes) and name, each 1 to 64 characters.")
+    }
+    return startLink(c, { kind: "machine", ...input.value })
+  })
+
+  app.post("/v1/sign-ins", async (c) => {
+    const input = await body(c, NewSignIn)
+    if (Option.isNone(input)) return fail(c, 400, "Send name, 1 to 64 characters.")
+    return startLink(c, { kind: "device", environmentId: "", name: input.value.name })
   })
 
   app.get("/link", (c) => {
     c.header("Content-Security-Policy", "frame-ancestors 'none'")
     c.header("X-Frame-Options", "DENY")
-    return c.html(linkPage)
+    return c.html(linkPage(c.env.CLERK_PUBLISHABLE_KEY))
   })
 
   app.post("/v1/links/claim", async (c) => {
@@ -131,13 +157,24 @@ export const makeApp = (deps: Deps) => {
       await runStore(c.env.DB, (store) => store.deleteLink(deviceCodeHash))
       return fail(c, 410, "The link code expired. Start linking again.")
     }
-    const { userId, environmentId, name } = found.value
+    const { userId, environmentId, name, kind } = found.value
     if (!userId) return c.json({ pending: true }, 202)
 
     const taken = await runStore(c.env.DB, (store) => store.deleteLink(deviceCodeHash))
     if (!taken) return fail(c, 410, "The link code was already used. Start linking again.")
 
     const credential = toBase64Url(deps.random(32))
+    if (kind === "device") {
+      const device = {
+        id: toHex(deps.random(8)),
+        userId,
+        name,
+        credentialHash: await sha256(credential),
+        createdAt: now,
+      }
+      await runStore(c.env.DB, (store) => store.addDevice(device))
+      return c.json({ credential })
+    }
     const host = {
       id: toHex(deps.random(8)),
       userId,
@@ -151,28 +188,33 @@ export const makeApp = (deps: Deps) => {
   })
 
   app.get("/v1/links/:userCode", async (c) => {
-    if (!(await deps.verifyUser(c.req.raw, c.env))) return fail(c, 401, "Enter the owner token first.")
+    if (!(await verifyUser(c))) return fail(c, 401, "Sign in first.")
     const link = await pendingLink(c.env, c.req.param("userCode"))
     if (Option.isNone(link)) {
       return fail(c, 404, "This link code expired or does not exist. Start linking again in HinaCode.")
     }
-    return c.json({ name: link.value.name, environmentId: link.value.environmentId })
+    if (await refusesDeviceLink(c, link.value)) return fail(c, 403, DEVICE_LINK_NEEDS_SESSION)
+    return c.json({ kind: link.value.kind, name: link.value.name, environmentId: link.value.environmentId })
   })
 
   app.post("/v1/links/:userCode", async (c) => {
-    const userId = await deps.verifyUser(c.req.raw, c.env)
-    if (!userId) return fail(c, 401, "Enter the owner token first.")
+    const userId = await verifyUser(c)
+    if (!userId) return fail(c, 401, "Sign in first.")
     const found = await pendingLink(c.env, c.req.param("userCode"))
     if (Option.isNone(found)) {
       return fail(c, 404, "This link code expired or does not exist. Start linking again in HinaCode.")
     }
     const link = found.value
     if (link.userId && link.userId !== userId) return fail(c, 409, "Another account already approved this machine.")
-    const others = await runStore(c.env.DB, (store) => store.countOtherHosts(userId, link.environmentId))
-    if (others >= MAX_HOSTS) {
-      return fail(c, 409, `Your account already has ${MAX_HOSTS} machines. Remove one to link ${link.name}.`)
+    if (await refusesDeviceLink(c, link)) return fail(c, 403, DEVICE_LINK_NEEDS_SESSION)
+    if (link.kind === "machine") {
+      const others = await runStore(c.env.DB, (store) => store.countOtherHosts(userId, link.environmentId))
+      if (others >= MAX_HOSTS) {
+        return fail(c, 409, `Your account already has ${MAX_HOSTS} machines. Remove one to link ${link.name}.`)
+      }
     }
-    await runStore(c.env.DB, (store) => store.approveLink(link.deviceCodeHash, userId))
+    const approved = await runStore(c.env.DB, (store) => store.approveLink(link.deviceCodeHash, userId))
+    if (!approved) return fail(c, 409, "Another account already approved this machine.")
     return c.body(null, 204)
   })
 
@@ -223,8 +265,8 @@ export const makeApp = (deps: Deps) => {
   })
 
   app.get("/v1/machines", async (c) => {
-    const userId = await deps.verifyUser(c.req.raw, c.env)
-    if (!userId) return fail(c, 401, "Enter the owner token first.")
+    const userId = await verifyUser(c)
+    if (!userId) return fail(c, 401, "Sign in first.")
     const hosts = await runStore(c.env.DB, (store) => store.shownHostsOfUser(userId))
     const machines = hosts.flatMap((host) =>
       Option.match(Schema.decodeUnknownOption(StoredPairing)(host.pairing), {
@@ -243,8 +285,8 @@ export const makeApp = (deps: Deps) => {
   })
 
   app.get("/v1/hosts", async (c) => {
-    const userId = await deps.verifyUser(c.req.raw, c.env)
-    if (!userId) return fail(c, 401, "Enter the owner token first.")
+    const userId = await verifyUser(c)
+    if (!userId) return fail(c, 401, "Sign in first.")
     const hosts = await runStore(c.env.DB, (store) => store.hostsOfUser(userId))
     return c.json({
       hosts: hosts.map((host) => ({
@@ -260,8 +302,8 @@ export const makeApp = (deps: Deps) => {
   })
 
   app.patch("/v1/hosts/:id", async (c) => {
-    const userId = await deps.verifyUser(c.req.raw, c.env)
-    if (!userId) return fail(c, 401, "Enter the owner token first.")
+    const userId = await verifyUser(c)
+    if (!userId) return fail(c, 401, "Sign in first.")
     const input = await body(c, HostChange)
     if (Option.isNone(input)) return fail(c, 400, "Send enabled as true or false.")
     const host = { id: c.req.param("id"), userId }
@@ -271,20 +313,33 @@ export const makeApp = (deps: Deps) => {
   })
 
   app.delete("/v1/hosts/:id", async (c) => {
-    const userId = await deps.verifyUser(c.req.raw, c.env)
-    if (!userId) return fail(c, 401, "Enter the owner token first.")
+    const userId = await verifyUser(c)
+    if (!userId) return fail(c, 401, "Sign in first.")
     const host = await runStore(c.env.DB, (store) => store.hostOfUser({ id: c.req.param("id"), userId }))
     if (Option.isNone(host)) return fail(c, 404, "No machine with this id is linked to your account.")
     await removeHost(c.env, host.value)
     return c.body(null, 204)
   })
 
-  app.post("/v1/owner/token", async (c) => {
-    if (!(await deps.verifyUser(c.req.raw, c.env))) return fail(c, 401, "Enter the owner token first.")
-    const token = toBase64Url(deps.random(32))
-    const tokenHash = await sha256(token)
-    await runStore(c.env.DB, (store) => store.setOwnerTokenHash(tokenHash))
-    return c.json({ token })
+  app.get("/v1/account", async (c) => {
+    const userId = await verifyUser(c)
+    if (!userId) return fail(c, 401, "Sign in first.")
+    return c.json(await deps.accountProfile(userId, c.env))
+  })
+
+  app.delete("/v1/device", async (c) => {
+    const credential = bearer(c.req.raw)
+    if (!credential) return fail(c, 401, "Sign in first.")
+    const credentialHash = await sha256(credential)
+    const deleted = await runStore(c.env.DB, (store) => store.deleteDeviceByCredential(credentialHash))
+    return deleted ? c.body(null, 204) : fail(c, 401, "Sign in first.")
+  })
+
+  app.delete("/v1/devices", async (c) => {
+    const userId = await deps.verifySession(c.req.raw, c.env)
+    if (!userId) return fail(c, 401, "Sign in first.")
+    await runStore(c.env.DB, (store) => store.deleteDevicesOfUser(userId))
+    return c.body(null, 204)
   })
 
   return app

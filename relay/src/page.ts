@@ -5,13 +5,10 @@ const $ = (id) => document.getElementById(id)
 const show = (id, visible) => { $(id).hidden = !visible }
 const say = (id, text) => { $(id).textContent = text }
 
-const TOKEN_KEY = "hinacode-relay-owner-token"
-
 async function api(method, path) {
-  const token = localStorage.getItem(TOKEN_KEY)
+  const token = await Clerk.session.getToken()
   const response = await fetch(path, { method, headers: { Authorization: "Bearer " + token } })
   const answer = response.status === 204 ? null : await response.json().catch(() => null)
-  if (response.status === 401) localStorage.removeItem(TOKEN_KEY)
   if (!response.ok) throw new Error(answer && answer.error ? answer.error : "The relay answered HTTP " + response.status + ".")
   return answer
 }
@@ -24,15 +21,16 @@ async function renderLink() {
   } catch (error) {
     return say("link-status", error.message)
   }
-  say("link-title", "Link " + link.name + " to your HinaCode account?")
-  say("link-status", "Code " + code + ". Approve only a machine you recognise.")
+  const device = link.kind === "device"
+  say("link-title", device ? "Sign in to HinaCode on " + link.name + "?" : "Link " + link.name + " to your HinaCode account?")
+  say("link-status", "Code " + code + ". Approve only a " + (device ? "device" : "machine") + " you recognise.")
   show("approve", true)
   $("approve").onclick = async () => {
     $("approve").disabled = true
     try {
       await api("POST", "/v1/links/" + encodeURIComponent(code))
       show("approve", false)
-      say("link-title", link.name + " is linked.")
+      say("link-title", device ? link.name + " is signed in." : link.name + " is linked.")
       say("link-status", "Return to HinaCode. It connects on its own.")
     } catch (error) {
       $("approve").disabled = false
@@ -41,49 +39,42 @@ async function renderLink() {
   }
 }
 
-async function rotateToken() {
-  if (!confirm("Replace the owner token? The current one stops working everywhere, including other browsers.")) return
-  $("rotate").disabled = true
+async function signOutDevices() {
+  if (!confirm("Sign out every desktop and phone on this account?")) return
+  $("sign-out-devices").disabled = true
   try {
-    const { token } = await api("POST", "/v1/owner/token")
-    localStorage.setItem(TOKEN_KEY, token)
-    $("new-token").value = token
-    show("new-token-field", true)
-    say("token-status", "This is the new owner token. Save it now; this page will not show it again.")
+    await api("DELETE", "/v1/devices")
+    say("devices-status", "Every device is signed out.")
   } catch (error) {
-    say("token-status", error.message)
+    say("devices-status", error.message)
   } finally {
-    $("rotate").disabled = false
+    $("sign-out-devices").disabled = false
   }
 }
 
 function start() {
   say("link-title", "Link a machine")
-  show("owner-token", true)
-  $("rotate").onclick = rotateToken
-  $("copy-token").onclick = () => navigator.clipboard.writeText($("new-token").value)
+  show("devices", true)
+  $("sign-out-devices").onclick = signOutDevices
   show("sign-out", true)
-  $("sign-out").onclick = (event) => {
+  $("sign-out").onclick = async (event) => {
     event.preventDefault()
-    localStorage.removeItem(TOKEN_KEY)
+    await Clerk.signOut()
     location.reload()
   }
   renderLink()
 }
 
-if (localStorage.getItem(TOKEN_KEY)) {
-  start()
-} else {
-  say("link-title", "Enter the owner token")
-  say("link-status", "This relay serves one account. Paste its OWNER_TOKEN.")
-  show("sign-in", true)
-  $("sign-in").onsubmit = (event) => {
-    event.preventDefault()
-    localStorage.setItem(TOKEN_KEY, $("token").value.trim())
-    show("sign-in", false)
-    start()
-  }
-}
+window.addEventListener("load", async () => {
+  await Clerk.load({ ui: { ClerkUI: window.__internal_ClerkUICtor } })
+  if (Clerk.isSignedIn) return start()
+  say("link-title", "Sign in to link a machine")
+  show("link-status", false)
+  Clerk.mountSignIn($("sign-in"), {
+    forceRedirectUrl: location.href,
+    signUpForceRedirectUrl: location.href,
+  })
+})
 `
 
 const style = `
@@ -93,19 +84,17 @@ main { width: 100%; max-width: 440px; display: grid; gap: 24px; }
 h1 { font-size: 1.375rem; margin: 0; text-wrap: balance; }
 h2 { font-size: 1rem; margin: 0 0 8px; }
 p { margin: 0; color: color-mix(in srgb, currentColor 70%, transparent); }
-input, button { font: inherit; }
-input { padding: 7px 10px; border-radius: 8px; border: 1px solid color-mix(in srgb, currentColor 25%, transparent); }
+button { font: inherit; }
 button { padding: 8px 16px; border-radius: 8px; border: 0; background: #e8618c; color: white; cursor: pointer; }
 button.secondary { background: transparent; color: inherit; border: 1px solid color-mix(in srgb, currentColor 25%, transparent); padding: 4px 12px; }
 [hidden] { display: none !important; }
 button:disabled { opacity: 0.5; cursor: default; }
-.row { display: flex; gap: 8px; margin: 8px 0; }
-.row input { flex: 1; min-width: 0; font-family: ui-monospace, monospace; }
-#rotate { margin-top: 8px; }
 a { color: inherit; font-size: 0.875rem; }
 `
 
-export const linkPage = `<!doctype html>
+const clerkFrontendHost = (publishableKey: string) => atob(publishableKey.split("_")[2] ?? "").replace(/\$$/, "")
+
+export const linkPage = (publishableKey: string) => `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -121,15 +110,15 @@ export const linkPage = `<!doctype html>
 <p id="link-status">Loading.</p>
 </section>
 <button id="approve" hidden>Approve</button>
-<form id="sign-in" hidden><input id="token" type="password" autocomplete="current-password" required> <button>Continue</button></form>
-<section id="owner-token" hidden>
-<h2>Owner token</h2>
-<p id="token-status">Replace it if it may have leaked.</p>
-<div id="new-token-field" class="row" hidden><input id="new-token" readonly aria-label="New owner token"> <button id="copy-token" class="secondary">Copy</button></div>
-<button id="rotate" class="secondary">Rotate owner token</button>
+<div id="sign-in"></div>
+<section id="devices" hidden>
+<p id="devices-status" role="status"></p>
+<button id="sign-out-devices" class="secondary">Sign out all devices</button>
 </section>
-<a id="sign-out" href="#" hidden>Forget the token</a>
+<a id="sign-out" href="#" hidden>Sign out</a>
 </main>
+<script defer crossorigin="anonymous" src="https://${clerkFrontendHost(publishableKey)}/npm/@clerk/ui@1/dist/ui.browser.js"></script>
+<script defer crossorigin="anonymous" data-clerk-publishable-key="${publishableKey}" src="https://${clerkFrontendHost(publishableKey)}/npm/@clerk/clerk-js@6/dist/clerk.browser.js"></script>
 <script>${script}</script>
 </body>
 </html>

@@ -1,7 +1,6 @@
 import { env } from "cloudflare:workers"
 import { beforeEach, describe, expect, it } from "vitest"
 import { makeApp } from "../src/app"
-import { verifyOwner } from "../src/owner"
 import { FakeCloudflare } from "./fake-cloudflare"
 
 const SESSIONS: Record<string, string> = { "alice-session": "user_alice", "bob-session": "user_bob" }
@@ -15,12 +14,14 @@ beforeEach(async () => {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM link"),
     env.DB.prepare("DELETE FROM host"),
-    env.DB.prepare("DELETE FROM owner"),
+    env.DB.prepare("DELETE FROM device"),
   ])
   clock = Date.UTC(2026, 9, 24)
   cloudflare = new FakeCloudflare()
   app = makeApp({
-    verifyUser: async (request) => SESSIONS[request.headers.get("Authorization")?.replace("Bearer ", "") ?? ""] ?? null,
+    verifySession: async (request) =>
+      SESSIONS[request.headers.get("Authorization")?.replace("Bearer ", "") ?? ""] ?? null,
+    accountProfile: async (userId) => ({ name: userId, email: `${userId}@example.com` }),
     cloudflare: cloudflare.fetch,
     now: () => clock,
     random: (bytes) => crypto.getRandomValues(new Uint8Array(bytes)),
@@ -93,7 +94,7 @@ describe("linking", () => {
     expect((await claim(link.deviceCode)).status).toBe(202)
 
     const prompt = await call("GET", `/v1/links/${link.userCode.toLowerCase()}`, { bearer: "alice-session" })
-    expect(await prompt.json()).toEqual({ name: "home-mac", environmentId: "env-1" })
+    expect(await prompt.json()).toEqual({ kind: "machine", name: "home-mac", environmentId: "env-1" })
     expect((await approve(link.userCode)).status).toBe(204)
 
     const claimed = await claim(link.deviceCode)
@@ -422,45 +423,153 @@ describe("the machines the owner's devices see", () => {
   })
 })
 
+describe("approving one code from two accounts at once", () => {
+  it("gives the machine to the account told it won", async () => {
+    const link = await startLink()
+    const [alice, bob] = await Promise.all([
+      approve(link.userCode, "alice-session"),
+      approve(link.userCode, "bob-session"),
+    ])
+    expect([alice.status, bob.status].toSorted()).toEqual([204, 409])
+
+    await claim(link.deviceCode)
+    const winner = alice.status === 204 ? "user_alice" : "user_bob"
+    const owner = await env.DB.prepare("SELECT user_id FROM host").first<string>("user_id")
+    expect(owner).toBe(winner)
+  })
+})
+
 describe("GET /link", () => {
   it("refuses to be framed, so Approve cannot be clicked through an overlay", async () => {
     const response = await call("GET", "/link?code=ABCD-EFGH")
     expect(response.headers.get("Content-Security-Policy")).toBe("frame-ancestors 'none'")
     expect(response.headers.get("X-Frame-Options")).toBe("DENY")
   })
+
+  it("loads Clerk from the instance the publishable key names", async () => {
+    const page = await (await call("GET", "/link")).text()
+    expect(page).toContain('data-clerk-publishable-key="pk_test_Y2xlcmsudGVzdCQ"')
+    expect(page).toContain('src="https://clerk.test/npm/@clerk/clerk-js@6/dist/clerk.browser.js"')
+    expect(page).not.toContain("sk_test_fake")
+  })
 })
 
-describe("POST /v1/owner/token", () => {
-  beforeEach(() => {
-    app = makeApp({
-      verifyUser: verifyOwner,
-      cloudflare: cloudflare.fetch,
-      now: () => clock,
-      random: (bytes) => crypto.getRandomValues(new Uint8Array(bytes)),
-    })
+const signIn = async (session: string, name = "laptop") => {
+  const started = await call("POST", "/v1/sign-ins", { body: { name } })
+  expect(started.status).toBe(200)
+  const { deviceCode, userCode } = (await started.json()) as Link
+  expect((await approve(userCode, session)).status).toBe(204)
+  const claimed = await claim(deviceCode)
+  expect(claimed.status).toBe(200)
+  return ((await claimed.json()) as { credential: string }).credential
+}
+
+const hostsSeenBy = (bearer: string) => call("GET", "/v1/hosts", { bearer })
+
+describe("signing in a device", () => {
+  it("stays pending until a session approves it, and claims once", async () => {
+    const started = (await (await call("POST", "/v1/sign-ins", { body: { name: "laptop" } })).json()) as Link
+    expect((await claim(started.deviceCode)).status).toBe(202)
+    const prompt = await call("GET", `/v1/links/${started.userCode}`, { bearer: "alice-session" })
+    expect(await prompt.json()).toMatchObject({ kind: "device", name: "laptop" })
+    await approve(started.userCode, "alice-session")
+    expect((await claim(started.deviceCode)).status).toBe(200)
+    expect((await claim(started.deviceCode)).status).toBe(410)
   })
 
-  it("replaces the owner token, so the old one stops working", async () => {
-    expect((await call("GET", "/v1/hosts", { bearer: env.OWNER_TOKEN })).status).toBe(200)
-
-    const rotated = await call("POST", "/v1/owner/token", { bearer: env.OWNER_TOKEN })
-    expect(rotated.status).toBe(200)
-    const { token } = (await rotated.json()) as { token: string }
-    expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/)
-
-    expect((await call("GET", "/v1/hosts", { bearer: env.OWNER_TOKEN })).status).toBe(401)
-    expect((await call("GET", "/v1/hosts", { bearer: token })).status).toBe(200)
-    const stored = await env.DB.prepare("SELECT token_hash FROM owner").first<string>("token_hash")
-    expect(stored).not.toBe(token)
-
-    const again = await call("POST", "/v1/owner/token", { bearer: token })
-    const { token: next } = (await again.json()) as { token: string }
-    expect((await call("GET", "/v1/hosts", { bearer: token })).status).toBe(401)
-    expect((await call("GET", "/v1/hosts", { bearer: next })).status).toBe(200)
+  it("lets a device act as the account that approved it, and stores only a hash", async () => {
+    const credential = await signIn("alice-session")
+    expect(credential).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    const profile = await call("GET", "/v1/account", { bearer: credential })
+    expect(await profile.json()).toEqual({ name: "user_alice", email: "user_alice@example.com" })
+    const stored = await env.DB.prepare("SELECT user_id, credential_hash FROM device").first<{
+      user_id: string
+      credential_hash: string
+    }>()
+    expect(stored?.user_id).toBe("user_alice")
+    expect(stored?.credential_hash).not.toBe(credential)
   })
 
-  it("needs the current owner token", async () => {
-    expect((await call("POST", "/v1/owner/token")).status).toBe(401)
-    expect((await call("POST", "/v1/owner/token", { bearer: "guess" })).status).toBe(401)
+  it("keeps a second device from signing out the first", async () => {
+    const laptop = await signIn("alice-session", "laptop")
+    const phone = await signIn("alice-session", "phone")
+    expect((await hostsSeenBy(laptop)).status).toBe(200)
+    expect((await hostsSeenBy(phone)).status).toBe(200)
+  })
+
+  it("keeps each account's machines apart", async () => {
+    const link = await startLink()
+    await approve(link.userCode, "alice-session")
+    await claim(link.deviceCode)
+    const count = async (session: string) => {
+      const response = await hostsSeenBy(await signIn(session))
+      return ((await response.json()) as { hosts: unknown[] }).hosts.length
+    }
+    expect(await count("alice-session")).toBe(1)
+    expect(await count("bob-session")).toBe(0)
+  })
+
+  it("does not count towards the machine limit or add a machine", async () => {
+    for (const index of [1, 2, 3, 4, 5, 6]) await signIn("alice-session", `device-${index}`)
+    const hosts = await env.DB.prepare("SELECT COUNT(*) AS count FROM host").first<number>("count")
+    expect(hosts).toBe(0)
+  })
+
+  it("needs a session, so a stolen credential cannot sign in more devices", async () => {
+    const credential = await signIn("alice-session")
+    const started = (await (await call("POST", "/v1/sign-ins", { body: { name: "thief" } })).json()) as Link
+    expect((await call("GET", `/v1/links/${started.userCode}`, { bearer: credential })).status).toBe(403)
+    expect((await approve(started.userCode, credential)).status).toBe(403)
+    expect((await claim(started.deviceCode)).status).toBe(202)
+  })
+
+  it("lets a device approve a machine link", async () => {
+    const credential = await signIn("alice-session")
+    const link = await startLink()
+    expect((await approve(link.userCode, credential)).status).toBe(204)
+  })
+})
+
+describe("signing out", () => {
+  it("ends only the device that asks", async () => {
+    const laptop = await signIn("alice-session", "laptop")
+    const phone = await signIn("alice-session", "phone")
+    expect((await call("DELETE", "/v1/device", { bearer: laptop })).status).toBe(204)
+    expect((await hostsSeenBy(laptop)).status).toBe(401)
+    expect((await hostsSeenBy(phone)).status).toBe(200)
+  })
+
+  it("ends every device of one account from a session", async () => {
+    const alices = await signIn("alice-session")
+    const bobs = await signIn("bob-session")
+    expect((await call("DELETE", "/v1/devices", { bearer: "alice-session" })).status).toBe(204)
+    expect((await hostsSeenBy(alices)).status).toBe(401)
+    expect((await hostsSeenBy(bobs)).status).toBe(200)
+  })
+
+  it("also ends a sign-in that was approved but not claimed yet", async () => {
+    const started = (await (await call("POST", "/v1/sign-ins", { body: { name: "phone" } })).json()) as Link
+    await approve(started.userCode, "alice-session")
+    expect((await call("DELETE", "/v1/devices", { bearer: "alice-session" })).status).toBe(204)
+    expect((await claim(started.deviceCode)).status).toBe(410)
+  })
+
+  it("leaves a machine link alone when ending every device", async () => {
+    const link = await startLink()
+    await approve(link.userCode, "alice-session")
+    expect((await call("DELETE", "/v1/devices", { bearer: "alice-session" })).status).toBe(204)
+    expect((await claim(link.deviceCode)).status).toBe(200)
+  })
+
+  it("refuses to end every device from a credential", async () => {
+    const credential = await signIn("alice-session")
+    expect((await call("DELETE", "/v1/devices", { bearer: credential })).status).toBe(401)
+    expect((await call("DELETE", "/v1/devices")).status).toBe(401)
+    expect((await hostsSeenBy(credential)).status).toBe(200)
+  })
+
+  it("refuses a device sign-out without a known credential", async () => {
+    expect((await call("DELETE", "/v1/device")).status).toBe(401)
+    expect((await call("DELETE", "/v1/device", { bearer: "guess" })).status).toBe(401)
   })
 })

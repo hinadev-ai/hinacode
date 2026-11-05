@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev --local-upstream localhost:8787",
+    "dev": "wrangler dev --local-upstream localhost:8787 --env-file ../.env",
     "check": "wrangler types --strict-vars=false && tsc",
     "test": "vitest run",
     "deploy": "wrangler deploy",
@@ -11,6 +11,7 @@
     "db:migrate": "wrangler d1 migrations apply DB --remote"
   },
   "dependencies": {
+    "@clerk/backend": "3.26.5",
     "@effect/sql-d1": "4.0.3",
     "effect": "4.0.3",
     "hono": "4.13.13"

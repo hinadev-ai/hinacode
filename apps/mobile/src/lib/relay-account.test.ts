@@ -65,7 +65,7 @@ describe("applyRelayMachines", () => {
 
 })
 
-const account = { serviceUrl: "https://relay.example.com/", ownerToken: "owner" }
+const account = { serviceUrl: "https://relay.example.com/", credential: "device" }
 
 const answering =
   (status: number, body: unknown): typeof fetch =>
@@ -73,17 +73,17 @@ const answering =
     new Response(JSON.stringify(body), { status })
 
 describe("fetchRelayMachines", () => {
-  it("lists the machines with the owner token", async () => {
+  it("lists the machines with the credential", async () => {
     let asked: { url: string; authorization: string | null } | null = null
     const fetch: typeof globalThis.fetch = async (url, init) => {
       asked = { url: String(url), authorization: new Headers(init?.headers).get("authorization") }
       return new Response(JSON.stringify({ machines: [machine()] }), { status: 200 })
     }
     expect(await fetchRelayMachines(account, fetch)).toEqual({ _tag: "machines", machines: [machine()] })
-    expect(asked).toEqual({ url: "https://relay.example.com/v1/machines", authorization: "Bearer owner" })
+    expect(asked).toEqual({ url: "https://relay.example.com/v1/machines", authorization: "Bearer device" })
   })
 
-  it("reports a refused owner token", async () => {
+  it("reports a refused credential", async () => {
     expect(await fetchRelayMachines(account, answering(401, { error: "unauthorized" }))).toEqual({
       _tag: "unauthorized",
     })

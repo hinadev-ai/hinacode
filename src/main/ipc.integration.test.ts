@@ -153,6 +153,17 @@ const turnResumes: Array<{ readonly resumeSessionId: string | null; readonly for
 const turnPrompts: Array<string> = []
 const openedWindows: Array<{ readonly threadId: string; readonly url: string }> = []
 
+let copySessionFails = false
+let copySessionPause: {
+  readonly reached: PromiseWithResolvers<string>
+  readonly resume: PromiseWithResolvers<void>
+} | null = null
+const waitForCopySessionPause = async (sessionId: string) => {
+  const pause = copySessionPause
+  copySessionPause = null
+  pause?.reached.resolve(sessionId)
+  await pause?.resume.promise
+}
 const copiedSessions: Array<{
   readonly sessionId: string
   readonly from: AccountHome | null
@@ -173,7 +184,14 @@ const scriptedProvider = (id: AgentProvider["id"]): AgentProvider => ({
       ? Effect.succeed(home === null ? claudeLimits : null)
       : Effect.fail(new AgentError({ provider: id, message: "app-server is not installed" })),
   usage: (sessionId) => Effect.succeed(sessionId === boundSession ? sessionUsage : null),
-  copySession: (sessionId, from, to) => Effect.sync(() => void copiedSessions.push({ sessionId, from, to })),
+  copySession: (sessionId, from, to) =>
+    Effect.promise(() => waitForCopySessionPause(sessionId)).pipe(
+      Effect.andThen(
+        copySessionFails
+          ? Effect.fail(new AgentError({ provider: "claude", message: "No transcript" }))
+          : Effect.sync(() => void copiedSessions.push({ sessionId, from, to })),
+      ),
+    ),
   listCommands: () => Effect.succeed([]),
   runTurn: (input) =>
     Stream.suspend(() => {
@@ -304,6 +322,9 @@ const invoke = <M extends RpcMethod>(method: M, payload: RpcRequestEncoded<M>, s
   electron.handlers.get(RPC_CHANNEL)!({ sender: {}, senderFrame }, { method, payload }) as Promise<
     RpcEnvelope<RpcResponseEncoded<M>>
   >
+
+const acceptedOnceSettled = (call: () => Promise<RpcEnvelope<unknown>>) =>
+  expect.poll(async () => "error" in (await call())).toBe(false)
 
 const result = <A>(envelope: RpcEnvelope<A>): A => {
   if ("error" in envelope) throw new Error(`${envelope.error.tag}: ${envelope.error.message}`)
@@ -1062,6 +1083,37 @@ const newAccount = (provider: "claude" | "codex", name: string) => ({
   binary: provider,
 })
 
+const newClaudeThread = async () => {
+  const project = result(await invoke("projects.list", undefined))[0]!
+  const thread = result(await invoke("threads.create", { projectId: project.id }))
+  return result(await invoke("threads.update", { id: thread.id, provider: "claude" }))
+}
+
+const claudeThreadWithSession = async (accountId: string, prompt: string) => {
+  const thread = await newClaudeThread()
+  result(await invoke("threads.send", { threadId: thread.id, prompt }))
+  await pushedEventually(
+    (event) => event.type === "thread.updated" && event.thread.id === thread.id && event.thread.status === "idle",
+  )
+  await acceptedOnceSettled(() => invoke("threads.switchAccount", { id: thread.id, accountId }))
+  return thread
+}
+
+const removalHeldOnItsFirstCopy = async () => {
+  const removed = result(await invoke("accounts.create", newAccount("claude", "Leaving mid-copy")))
+  const chosen = result(await invoke("accounts.create", newAccount("claude", "Chosen meanwhile")))
+  const onBoundSession = await claudeThreadWithSession(removed.id, "simulate a session")
+  const onSourceSession = await claudeThreadWithSession(removed.id, "simulate a forkable turn")
+  const pause = { reached: Promise.withResolvers<string>(), resume: Promise.withResolvers<void>() }
+  copySessionPause = pause
+  const removal = invoke("accounts.delete", { id: removed.id })
+  const [held, waiting] =
+    (await pause.reached.promise) === boundSession
+      ? [onBoundSession, onSourceSession]
+      : [onSourceSession, onBoundSession]
+  return { chosen, held, waiting, removal, resume: () => pause.resume.resolve() }
+}
+
 const cachedLogin = (label: string) => existsSync(join(dir, "cache", `${label}.json`))
 
 const history = () => join(dir, "history")
@@ -1607,7 +1659,7 @@ describe("agent accounts over rpc", () => {
     ).toBe("SchemaError")
   })
 
-  test("runs a thread on its account and refuses to remove the account while the thread exists", async () => {
+  test("runs a thread on its account and moves the thread to the CLI login when the account is removed", async () => {
     const account = result(await invoke("accounts.create", newAccount("codex", "Work")))
     expect(result(await invoke("accounts.rename", { id: account.id, name: "Client work" })).name).toBe("Client work")
     expect(result(await invoke("accounts.list", undefined))).toContainEqual({ ...account, name: "Client work" })
@@ -1627,12 +1679,112 @@ describe("agent accounts over rpc", () => {
     )
     expect(turnHomes).toStrictEqual([{ dir: join(dir, "homes", "work"), binary: "codex" }])
 
-    expect(failure(await invoke("accounts.delete", { id: account.id }))).toMatchObject({ tag: "AccountInUseError" })
-    result(await invoke("threads.delete", { id: thread.id }))
-    result(await invoke("accounts.delete", { id: account.id }))
+    await acceptedOnceSettled(() => invoke("accounts.delete", { id: account.id }))
     expect(result(await invoke("accounts.list", undefined))).not.toContainEqual(
       expect.objectContaining({ id: account.id }),
     )
+    expect(result(await invoke("threads.list", undefined)).find(({ id }) => id === thread.id)?.accountId).toBeNull()
+    result(await invoke("threads.delete", { id: thread.id }))
+  })
+
+  test("moves a removed account's threads and their sessions to the default account", async () => {
+    const removed = result(await invoke("accounts.create", newAccount("claude", "Leaving")))
+    const kept = result(await invoke("accounts.create", newAccount("claude", "Staying")))
+    const settings = result(await invoke("settings.get", undefined))
+    result(await invoke("settings.set", { defaultAccount: { ...settings.defaultAccount, claude: kept.id } }))
+    const thread = await newClaudeThread()
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a session" }))
+    await pushedEventually(
+      (event) => event.type === "thread.updated" && event.thread.id === thread.id && event.thread.status === "idle",
+    )
+    await acceptedOnceSettled(() => invoke("threads.switchAccount", { id: thread.id, accountId: removed.id }))
+    copiedSessions.length = 0
+
+    result(await invoke("accounts.delete", { id: removed.id }))
+
+    expect(result(await invoke("threads.list", undefined)).find(({ id }) => id === thread.id)?.accountId).toBe(kept.id)
+    expect(copiedSessions).toStrictEqual([
+      {
+        sessionId: boundSession,
+        from: { dir: removed.configDir, binary: removed.binary },
+        to: { dir: kept.configDir, binary: kept.binary },
+      },
+    ])
+    result(await invoke("settings.set", { defaultAccount: settings.defaultAccount }))
+    result(await invoke("threads.delete", { id: thread.id }))
+    result(await invoke("accounts.delete", { id: kept.id }))
+  })
+
+  test("still removes an account when a thread's transcript cannot be copied", async () => {
+    const removed = result(await invoke("accounts.create", newAccount("claude", "Lost transcript")))
+    const thread = await newClaudeThread()
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a session" }))
+    await pushedEventually(
+      (event) => event.type === "thread.updated" && event.thread.id === thread.id && event.thread.status === "idle",
+    )
+    await acceptedOnceSettled(() => invoke("threads.switchAccount", { id: thread.id, accountId: removed.id }))
+
+    copySessionFails = true
+    try {
+      result(await invoke("accounts.delete", { id: removed.id }))
+    } finally {
+      copySessionFails = false
+    }
+
+    expect(result(await invoke("threads.list", undefined)).find(({ id }) => id === thread.id)?.accountId).toBeNull()
+    result(await invoke("threads.delete", { id: thread.id }))
+  })
+
+  test("refuses to remove an account while a thread on it runs a turn", async () => {
+    const removed = result(await invoke("accounts.create", newAccount("claude", "Busy removal")))
+    const thread = await newClaudeThread()
+    result(await invoke("threads.switchAccount", { id: thread.id, accountId: removed.id }))
+    heldTurn = Promise.withResolvers()
+    result(await invoke("threads.send", { threadId: thread.id, prompt: "simulate a held turn" }))
+
+    expect(failure(await invoke("accounts.delete", { id: removed.id }))).toMatchObject({ tag: "AccountInUseError" })
+
+    heldTurn.resolve()
+    await pushedEventually(
+      (event) => event.type === "thread.updated" && event.thread.id === thread.id && event.thread.status === "idle",
+    )
+    await acceptedOnceSettled(() => invoke("accounts.delete", { id: removed.id }))
+    result(await invoke("threads.delete", { id: thread.id }))
+  })
+
+  test("keeps an account chosen for a thread while that account's removal is copying another", async () => {
+    const { chosen, held, waiting, removal, resume } = await removalHeldOnItsFirstCopy()
+
+    result(await invoke("threads.switchAccount", { id: waiting.id, accountId: chosen.id }))
+    resume()
+    result(await removal)
+
+    const threads = result(await invoke("threads.list", undefined))
+    expect(threads.find(({ id }) => id === waiting.id)?.accountId).toBe(chosen.id)
+    expect(threads.find(({ id }) => id === held.id)?.accountId).toBeNull()
+    result(await invoke("threads.delete", { id: waiting.id }))
+    result(await invoke("threads.delete", { id: held.id }))
+    result(await invoke("accounts.delete", { id: chosen.id }))
+  })
+
+  test("removes an account when a thread that left it during removal runs a turn", async () => {
+    const { chosen, held, waiting, removal, resume } = await removalHeldOnItsFirstCopy()
+
+    result(await invoke("threads.switchAccount", { id: waiting.id, accountId: chosen.id }))
+    heldTurn = Promise.withResolvers()
+    result(await invoke("threads.send", { threadId: waiting.id, prompt: "simulate a held turn" }))
+    resume()
+    result(await removal)
+
+    const threads = result(await invoke("threads.list", undefined))
+    expect(threads.find(({ id }) => id === waiting.id)?.accountId).toBe(chosen.id)
+    heldTurn.resolve()
+    await pushedEventually(
+      (event) => event.type === "thread.updated" && event.thread.id === waiting.id && event.thread.status === "idle",
+    )
+    await acceptedOnceSettled(() => invoke("threads.delete", { id: waiting.id }))
+    result(await invoke("threads.delete", { id: held.id }))
+    await acceptedOnceSettled(() => invoke("accounts.delete", { id: chosen.id }))
   })
 
   test("drops an account's cached sign-in when it is renamed or removed", async () => {

@@ -333,7 +333,8 @@ const handlers: Handlers = {
   "environments.remove": ({ id }) => Environments.use((environments) => environments.remove(id)),
   "environments.reconnect": ({ id }) => Environments.use((environments) => environments.reconnect(id)),
   "relayAccount.status": () => RelayAccount.use((account) => account.status),
-  "relayAccount.signIn": ({ ownerToken }) => RelayAccount.use((account) => account.signIn(ownerToken)),
+  "relayAccount.signIn": (_, desktop) =>
+    RelayAccount.use((account) => account.signIn({ onLink: (link) => desktop?.openExternal(link.url) ?? Effect.void })),
   "relayAccount.signOut": () => RelayAccount.use((account) => account.signOut),
   "relayAccount.sync": () => RelayAccount.use((account) => account.sync),
   "relayAccount.machines": () => RelayAccount.use((account) => account.machines),
@@ -358,7 +359,7 @@ const handlers: Handlers = {
       Effect.tap(() => AgentLogins.use((logins) => logins.forget(id))),
     ),
   "accounts.delete": ({ id }) =>
-    AgentAccounts.use((accounts) => accounts.remove(id)).pipe(
+    AgentRunner.use((runner) => runner.removeAccount(id)).pipe(
       Effect.tap(() => AgentLogins.use((logins) => logins.forget(id))),
     ),
   "commands.list": ({ threadId }) => AgentRunner.use((runner) => runner.listCommands(threadId)),

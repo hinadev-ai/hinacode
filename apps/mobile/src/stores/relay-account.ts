@@ -3,7 +3,14 @@ import { AppState } from "react-native"
 import { create } from "zustand"
 import { setServers, storedServers, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
-import { applyRelayMachines, fetchRelayMachines, type RelayAccount } from "@/lib/relay-account"
+import {
+  applyRelayMachines,
+  claimRelaySignIn,
+  fetchRelayMachines,
+  type RelayAccount,
+  signOutRelayDevice,
+  startRelaySignIn,
+} from "@/lib/relay-account"
 import { clearRelayAccount, loadRelayAccount, saveRelayAccount } from "@/lib/storage"
 import { newServerId } from "@/lib/stored-target"
 import { usePullRequests } from "@/stores/pull-requests"
@@ -17,13 +24,17 @@ interface RelayAccountState {
   readonly machines: number | null
   /** Why the last sync failed. */
   readonly error: string | null
-  /** The relay refused the owner token, so it was rotated and the phone has to sign in again. */
+  /** The relay refused the credential, so this phone was signed out and has to sign in again. */
   readonly unauthorized: boolean
   readonly syncing: boolean
   /** Reads the saved account once at launch and syncs with it. */
   readonly restore: () => Promise<void>
-  /** Saves the account only when the relay accepts it. Returns why it did not, or null. */
-  readonly signIn: (account: RelayAccount) => Promise<string | null>
+  /** Opens the approval page and waits for it, saving the account only once approved. Returns why it failed, or null. */
+  readonly signIn: (input: {
+    readonly serviceUrl: string
+    readonly deviceName: string
+    readonly openUrl: (url: string) => Promise<unknown>
+  }) => Promise<string | null>
   readonly sync: () => Promise<void>
   /** Forgets the account and the servers it added. */
   readonly signOut: () => Promise<void>
@@ -33,9 +44,10 @@ const REFUSED_SYNC_INTERVAL_MS = 15_000
 
 const signedOut = { serviceUrl: null, syncedAt: null, machines: null, error: null, unauthorized: false }
 
-// Outside the store, so no screen ever renders the owner token.
+// Outside the store, so no screen ever renders the credential.
 let account: RelayAccount | null = null
 let inFlight: Promise<void> | null = null
+let signInAttempt = 0
 let refusedSyncTimer: ReturnType<typeof setInterval> | undefined
 
 function applyMachines(machines: readonly RelayMachine[]) {
@@ -68,7 +80,7 @@ export const useRelayAccount = create<RelayAccountState>()((set, get) => {
           })
           return
         case "unauthorized":
-          set({ error: copy("mobile_relay_token_rotated"), unauthorized: true })
+          set({ error: copy("mobile_relay_signed_out_elsewhere"), unauthorized: true })
           return
         case "failed":
           set({ error: copy("mobile_relay_sync_failed", { message: result.message }) })
@@ -87,21 +99,31 @@ export const useRelayAccount = create<RelayAccountState>()((set, get) => {
       set({ serviceUrl: account.serviceUrl })
       await get().sync()
     },
-    signIn: async (next) => {
-      const result = await fetchRelayMachines(next, fetch)
-      if (result._tag === "unauthorized") return copy("mobile_relay_token_refused")
-      if (result._tag === "failed") return result.message
-      account = next
-      await saveRelayAccount(next)
-      applyMachines(result.machines)
-      set({
-        serviceUrl: next.serviceUrl,
-        syncedAt: new Date().toISOString(),
-        machines: result.machines.length,
-        error: null,
-        unauthorized: false,
-      })
-      return null
+    signIn: async ({ serviceUrl, deviceName, openUrl }) => {
+      signInAttempt++
+      const attempt = signInAttempt
+      const started = await startRelaySignIn(serviceUrl, deviceName, fetch)
+      if (started._tag === "failed") return started.message
+      const { deviceCode, url, interval, expiresAt } = started.signIn
+      await openUrl(url)
+      for (;;) {
+        await new Promise((resolve) => setTimeout(resolve, interval * 1000))
+        if (attempt !== signInAttempt) return null
+        if (Date.now() >= expiresAt) return copy("mobile_relay_sign_in_expired")
+        const claim = await claimRelaySignIn(serviceUrl, deviceCode, fetch)
+        if (claim._tag === "expired") return attempt === signInAttempt ? copy("mobile_relay_sign_in_expired") : null
+        if (claim._tag === "pending") continue
+        const next = { serviceUrl, credential: claim.credential }
+        if (attempt !== signInAttempt) {
+          void signOutRelayDevice(next, fetch)
+          return null
+        }
+        account = next
+        set({ serviceUrl })
+        await saveRelayAccount(next)
+        if (account === next) await get().sync()
+        return null
+      }
     },
     sync: () => {
       if (account === null) return Promise.resolve()
@@ -111,6 +133,8 @@ export const useRelayAccount = create<RelayAccountState>()((set, get) => {
       return inFlight
     },
     signOut: async () => {
+      signInAttempt++
+      if (account !== null) void signOutRelayDevice(account, fetch)
       account = null
       set(signedOut)
       applyMachines([])

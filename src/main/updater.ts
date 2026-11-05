@@ -13,6 +13,8 @@ const make = Effect.gen(function* () {
 
   // FIXME: electron-updater is CommonJS, so Node exposes the `autoUpdater` getter only on the default export
   const { autoUpdater } = updater
+  if (!autoUpdater.isUpdaterActive()) return unsupported(current)
+
   const events = yield* Events
   let state: UpdateState = { type: "idle" }
   const set = (next: UpdateState) => {
