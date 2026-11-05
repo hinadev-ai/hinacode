@@ -522,6 +522,10 @@ interface AccountDialogBaseProps {
 function RemoveAccountDialog({ account, open, onOpenChange }: AccountDialogBaseProps) {
   const environment = useSettingsEnvironment()
   const deleteAccount = useAtomSet(deleteAccountAtom(environment), { mode: "promise" })
+  const siblings = useProviderAccounts(environment, account.provider)
+  const { defaultAccount } = useSettings(environment)
+  const defaultAccountName = useDefaultAccountName(environment, account.provider)
+  const target = siblings.find(({ id }) => id === defaultAccount[account.provider] && id !== account.id)?.name
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
@@ -541,7 +545,9 @@ function RemoveAccountDialog({ account, open, onOpenChange }: AccountDialogBaseP
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{m.account_remove_title({ name: account.name })}</AlertDialogTitle>
-          <AlertDialogDescription>{m.account_remove_body()}</AlertDialogDescription>
+          <AlertDialogDescription>
+            {m.account_remove_body({ target: target ?? defaultAccountName })}
+          </AlertDialogDescription>
         </AlertDialogHeader>
         {error && (
           <p role="alert" className="text-sm text-destructive">

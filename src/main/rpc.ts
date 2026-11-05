@@ -357,7 +357,7 @@ const handlers: Handlers = {
       Effect.tap(() => AgentLogins.use((logins) => logins.forget(id))),
     ),
   "accounts.delete": ({ id }) =>
-    AgentAccounts.use((accounts) => accounts.remove(id)).pipe(
+    AgentRunner.use((runner) => runner.removeAccount(id)).pipe(
       Effect.tap(() => AgentLogins.use((logins) => logins.forget(id))),
     ),
   "commands.list": ({ threadId }) => AgentRunner.use((runner) => runner.listCommands(threadId)),
