@@ -1,3 +1,6 @@
+import { todosInCall } from "../../shared/todos.ts"
+import { TodoRow } from "./TodoActivity.tsx"
+import { RiGitPullRequestLine, RiSendToBack } from "react-icons/ri"
 import { Link, useParams } from "@tanstack/react-router"
 import { createContext, type ReactNode, use, useId, useState } from "react"
 import { toast } from "sonner"
@@ -29,6 +32,9 @@ import {
   countToolKinds,
   describeCommand,
   describeToolCall,
+  editsFile,
+  ownToolName,
+  toolOutputImages,
   type SkillLabels as SkillLabelMap,
   skillsUsed,
   skillUseText,
@@ -58,10 +64,12 @@ import {
   BrainIcon,
   ChatNewIcon,
   CheckIcon,
+  CheckCircleIcon,
   ChevronRightIcon,
   CollapseIcon,
   FileDiffIcon,
   FileTextIcon,
+  LayoutIcon,
   GlobeIcon,
   type IconComponent,
   PencilIcon,
@@ -109,9 +117,9 @@ function Chevron() {
   )
 }
 
-function ReasoningPart({ text }: { text: string }) {
+function ReasoningPart({ text, className = "my-2" }: { text: string; className?: string }) {
   return (
-    <Collapsible className="my-2">
+    <Collapsible className={className}>
       <CollapsibleTrigger className={disclosureTrigger}>
         <BrainIcon aria-hidden className="size-4 shrink-0" />
         {m.message_thinking()}
@@ -135,6 +143,20 @@ const toolIcons: Record<string, IconComponent> = {
   Grep: SearchIcon,
   WebFetch: GlobeIcon,
   WebSearch: GlobeIcon,
+  TodoWrite: CheckCircleIcon,
+  write_todos: CheckCircleIcon,
+  update_plan: CheckCircleIcon,
+  TaskCreate: CheckCircleIcon,
+  TaskUpdate: CheckCircleIcon,
+  link_pull_request: RiGitPullRequestLine,
+  list_thread_pull_requests: RiGitPullRequestLine,
+  unlink_pull_request: RiGitPullRequestLine,
+  watch_pull_request: RiGitPullRequestLine,
+  unwatch_pull_request: RiGitPullRequestLine,
+  publish_artifact: LayoutIcon,
+  list_artifacts: LayoutIcon,
+  read_artifact: LayoutIcon,
+  publish_document: FileTextIcon,
 }
 
 const field = (value: unknown, key: string): unknown =>
@@ -196,6 +218,16 @@ function ToolCallDetails({
   inGroup?: boolean
 }) {
   const [call, showFullOutput] = useFullOutput(shipped)
+  const todos = todosInCall(call)
+  if (todos !== null) {
+    return (
+      <ul className="flex flex-col gap-1 pl-6">
+        {todos.map((todo, index) => (
+          <TodoRow key={`${index}-${todo.text}`} todo={todo} />
+        ))}
+      </ul>
+    )
+  }
   const fullOutputButton = call.fullOutputBytes !== undefined && (
     <Button variant="link" size="xs" action={showFullOutput} className="-ml-2 font-sans text-muted-foreground">
       {m.tool_output_show_full({ size: formatBytes(call.fullOutputBytes) })}
@@ -371,17 +403,23 @@ export function ToolGroup({
       : null
   const [open, setOpen] = useFindDisclosure(revealHere)
 
-  const [onlyCall] = calls
-  if (calls.length === 1 && onlyCall) {
-    return (
-      <FindPartContext value={index + parts.indexOf(onlyCall)}>
-        <div className="my-2">
-          <ToolRow call={onlyCall} reveal={revealHere} />
-        </div>
-      </FindPartContext>
-    )
-  }
-  const Icon = toolIcons[calls[0]?.name ?? ""] ?? ToolsIcon
+  const rows = (
+    <ul className="flex flex-col gap-1">
+      {parts.map((part, position) => (
+        <li key={part.type === "tool_call" ? part.callId : position}>
+          <FindPartContext value={index + position}>
+            {part.type === "tool_call" ? (
+              <ToolRow call={part} reveal={revealHere?.match.partIndex === index + position ? revealHere : null} />
+            ) : (
+              <ReasoningPart text={part.text} className="" />
+            )}
+          </FindPartContext>
+        </li>
+      ))}
+    </ul>
+  )
+  if (calls.length === 1) return <div className="my-2">{rows}</div>
+  const Icon = toolIcons[ownToolName(calls[0]?.name ?? "")] ?? ToolsIcon
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="my-2">
@@ -402,23 +440,7 @@ export function ToolGroup({
         {running && <span className="shrink-0">{statusIcon.running}</span>}
         <Chevron />
       </CollapsibleTrigger>
-      <CollapsibleContent>
-        <ul className="mt-1 flex flex-col gap-1">
-          {parts.map(
-            (part, position) =>
-              part.type === "tool_call" && (
-                <li key={part.callId}>
-                  <FindPartContext value={index + position}>
-                    <ToolRow
-                      call={part}
-                      reveal={revealHere?.match.partIndex === index + position ? revealHere : null}
-                    />
-                  </FindPartContext>
-                </li>
-              ),
-          )}
-        </ul>
-      </CollapsibleContent>
+      <CollapsibleContent className="mt-1">{rows}</CollapsibleContent>
     </Collapsible>
   )
 }
@@ -427,10 +449,11 @@ function ToolRow({ call, reveal }: { call: ToolCall; reveal: FindRevealRequest |
   const truncate = reveal === null ? "truncate" : "wrap-anywhere"
   const { summary } = describeToolCall(call)
   const skills = skillsUsed(call)
-  const Icon = skills === null ? (toolIcons[call.name] ?? ToolsIcon) : SkillIcon
+  const Icon = skills === null ? (toolIcons[ownToolName(call.name)] ?? ToolsIcon) : SkillIcon
+  const images = toolOutputImages(call.output)
   return (
     <Collapsible>
-      <div className="flex items-center gap-1">
+      <div className="@container flex items-center gap-1">
         <CollapsibleTrigger className={cn(disclosureTrigger, "min-w-0 flex-1")}>
           <Icon aria-hidden className="size-4 shrink-0" />
           {skills !== null ? (
@@ -450,6 +473,15 @@ function ToolRow({ call, reveal }: { call: ToolCall; reveal: FindRevealRequest |
         </CollapsibleTrigger>
         {call.name === "Bash" && call.status === "running" && <MoveToBackgroundButton callId={call.callId} />}
       </div>
+      {images.length > 0 && (
+        <ul className="mt-1 mb-2 flex flex-wrap gap-2 pl-6">
+          {images.map((image) => (
+            <li key={image.id}>
+              <AttachmentView attachment={image} />
+            </li>
+          ))}
+        </ul>
+      )}
       <CollapsibleContent className="mt-1 mb-2 text-xs">
         <ToolCallDetails call={call} summary={summary} inGroup />
       </CollapsibleContent>
@@ -470,8 +502,16 @@ function MoveToBackgroundButton({ callId }: { callId: string }) {
     }
   }
   return (
-    <Button variant="ghost" size="xs" action={move} className="shrink-0 text-muted-foreground">
-      {m.tool_command_move_to_background()}
+    <Button
+      variant="ghost"
+      size="xs"
+      action={move}
+      aria-label={m.tool_command_move_to_background()}
+      title={m.tool_command_move_to_background()}
+      className="shrink-0 reveal-when-slow rounded-full border-border font-normal text-muted-foreground"
+    >
+      <RiSendToBack aria-hidden />
+      <span className="@max-sm:hidden">{m.tool_command_move_to_background()}</span>
     </Button>
   )
 }
@@ -489,26 +529,27 @@ function CommandLabel({ call, truncate }: { call: ToolCall; truncate: string }) 
   const { distinctLabel, command } = commandFindText(call)
   return (
     <>
-      <span className={cn("min-w-0", truncate)} title={command}>
-        <Highlighted text={command} />
-      </span>
       {distinctLabel !== null && (
-        <span className={cn("max-w-1/2 min-w-0 shrink-0", truncate)} title={distinctLabel}>
+        <span className={cn("max-w-3/4 min-w-0 shrink-0 text-foreground", truncate)} title={distinctLabel}>
           <Highlighted text={distinctLabel} />
         </span>
       )}
+      <span className={cn("min-w-0", truncate)} title={command}>
+        <Highlighted text={command} />
+      </span>
     </>
   )
 }
 
 function ToolLabel({ call, truncate }: { call: ToolCall; truncate: string }) {
   const { name, summary } = describeToolCall(call)
+  const emphasis = editsFile(call.name) ? "text-foreground" : undefined
   return (
     <>
-      <span className="shrink-0">
+      <span className={cn("shrink-0", emphasis)}>
         <Highlighted text={name} />
       </span>
-      <span className={cn("min-w-0", truncate)} title={summary}>
+      <span className={cn("min-w-0", truncate, emphasis)} title={summary}>
         <Highlighted text={summary} />
       </span>
     </>
@@ -588,8 +629,8 @@ function FileChangePart({ path, diff }: { path: string; diff: string }) {
   const row = (
     <>
       <FileDiffIcon aria-hidden className="size-4 shrink-0" />
-      <span className="shrink-0">{m.file_change_label()}</span>
-      <span className="min-w-0 truncate" title={path}>
+      <span className="shrink-0 text-foreground">{m.file_change_label()}</span>
+      <span className="min-w-0 truncate text-foreground" title={path}>
         <Highlighted text={path} />
       </span>
     </>

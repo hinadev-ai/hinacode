@@ -80,7 +80,7 @@ Feature: Settings
   Scenario: Archive settings are saved
     When I open settings
     And I open the settings section "Worktrees"
-    And I turn on the setting "Archive when its pull request merges or closes"
+    And I turn on the setting "Settle when its pull request merges"
     And I turn on the setting "Remove the worktree when archiving"
     Then the archive settings are saved as both on
 

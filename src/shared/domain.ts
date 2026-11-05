@@ -184,6 +184,7 @@ export const PullRequest = Schema.Struct({
   baseRefName: Schema.String,
   additions: Schema.Number,
   deletions: Schema.Number,
+  mergedAt: Schema.optional(Schema.NullOr(Schema.String)),
 })
 export type PullRequest = typeof PullRequest.Type
 
@@ -444,6 +445,7 @@ export const Thread = Schema.Struct({
   sortIndex: Schema.Number,
   pinnedAt: Schema.NullOr(Timestamp),
   snoozedUntil: Schema.NullOr(Timestamp).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  settledAt: Schema.NullOr(Timestamp).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   queue: Schema.Array(QueuedMessage),
   scheduled: Schema.Array(ScheduledMessage).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
   createdBy: Schema.String,
@@ -694,7 +696,7 @@ export const defaultSettings: Settings = {
   textGenerationModel: "claude-sonnet-5-5",
   pullRequestGuide: { enabled: false, model: "claude-sonnet-5-5", effort: "high" },
   defaultAccessMode: "full",
-  archive: { whenMerged: false, removeWorktree: false },
+  archive: { whenMerged: true, removeWorktree: false },
   experimental: {
     tinyVm: false,
     tinyVmProvider: "boat",

@@ -27,6 +27,7 @@ import { callPromise, type EnvironmentId, pullRequestDetailAtom, pullRequestFile
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { loadPullRequestGuideAtom, usePullRequestGuides } from "../stores/pullRequestGuides.ts"
+import { ShimmerText } from "./ShimmerText.tsx"
 import { FileDiffRow, pullRequestFileMark } from "./FilePatch.tsx"
 import {
   BookIcon,
@@ -661,14 +662,14 @@ function GuideJobNotice({ environment, url, currentHead, status, state }: GuideJ
     return (
       <div className="flex flex-col gap-1 rounded-md border border-attention/30 bg-attention/10 p-2.5 text-xs">
         <p>{m.guide_outdated({ commit: shortCommit(state.guide.head) })}</p>
-        {job?.status === "running" && <p className="text-shimmer">{m.guide_outdated_writing()}</p>}
+        {job?.status === "running" && <ShimmerText text={m.guide_outdated_writing()} />}
       </div>
     )
   }
   if (job?.status === "running") {
     return (
       <div className="flex flex-col gap-2">
-        <p className="text-shimmer text-xs">{m.guide_writing({ commit: shortCommit(currentHead) })}</p>
+        <ShimmerText className="text-xs" text={m.guide_writing({ commit: shortCommit(currentHead) })} />
         <p className="text-xs text-muted-foreground">{m.guide_writing_hint()}</p>
       </div>
     )

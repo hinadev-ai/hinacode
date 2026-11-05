@@ -281,6 +281,8 @@ const handlers: Handlers = {
   "threads.undoTurn": ({ threadId }) => Threads.use((threads) => threads.undoTurn(threadId)),
   "threads.archive": ({ threadId }) => Threads.use((threads) => threads.archive(threadId)),
   "threads.unarchive": ({ threadId }) => Threads.use((threads) => threads.unarchive(threadId)),
+  "threads.settle": ({ threadId }) => Threads.use((threads) => threads.settle(threadId)),
+  "threads.unsettle": ({ threadId }) => Threads.use((threads) => threads.unsettle(threadId)),
   "threads.fork": ({ threadId, messageId }) =>
     Threads.use((threads) => threads.fork(threadId, messageId)).pipe(
       Effect.tap((thread) => Events.use((events) => events.publish({ type: "thread.updated", thread }))),

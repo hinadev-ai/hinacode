@@ -13,7 +13,7 @@ import { looksLikeDirectoryPath } from "../../shared/directoryPath.ts"
 import type { Thread } from "../../shared/domain.ts"
 import { PULL_REQUEST_REFRESH } from "../../shared/github.ts"
 import { msUntilNextReset } from "../../shared/planLimits.ts"
-import { pullRequestAttention } from "../../shared/threadStatus.ts"
+import { isOpen, pullRequestAttention } from "../../shared/threadStatus.ts"
 import { m } from "../paraglide/messages.js"
 
 export class RpcError extends Schema.TaggedError<RpcError>()("RpcError", {
@@ -464,6 +464,17 @@ export const pullRequestAttentionAtom = familyOf((environment: EnvironmentId, ur
 export const pullRequestAttentionsAtom = familyOf(
   (threads: ReadonlyArray<readonly [EnvironmentId, ReadonlyArray<string>]>) =>
     Atom.make((get) => threads.map(([environment, urls]) => get(pullRequestAttentionAtom(environment, urls)))),
+)
+
+export const openPullRequestsAtom = familyOf(
+  (threads: ReadonlyArray<readonly [EnvironmentId, ReadonlyArray<string>]>) =>
+    Atom.make((get) =>
+      threads.map(([environment, urls]) =>
+        get(pullRequestStatusesAtom(environment, urls)).some(
+          (pullRequest) => pullRequest === undefined || isOpen(pullRequest.status),
+        ),
+      ),
+    ),
 )
 
 const pullRequestDetailLookup = gitHubLookup(

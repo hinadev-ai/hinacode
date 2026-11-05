@@ -1,6 +1,13 @@
 import { describe, expect, test } from "@effect/vitest"
 import type { MessagePart } from "../../shared/domain.ts"
-import { countToolKinds, describeCommand, groupToolCalls, skillsUsed } from "./toolCall.ts"
+import {
+  countToolKinds,
+  describeCommand,
+  describeToolCall,
+  groupToolCalls,
+  skillsUsed,
+  toolOutputImages,
+} from "./toolCall.ts"
 
 const bash = (callId: string, input: object = { command: `echo ${callId}` }): MessagePart => ({
   type: "tool_call",
@@ -121,4 +128,50 @@ describe("skillsUsed", () => {
       { kind: "skill", count: 3 },
     ])
   })
+})
+
+test("labels every tool the HinaCode MCP server registers", () => {
+  const sources = import.meta.glob(
+    ["../../main/mcp/tools/*.ts", "!**/*.test.ts", "../../../packages/artifacts/src/tools.ts"],
+    {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    },
+  )
+  const names = Object.entries(sources).flatMap(([path, source]) =>
+    [
+      ...String(source).matchAll(
+        path.endsWith("artifacts/src/tools.ts") ? /^ {2}([a-z_]+): tool\(/gm : /make\(\s*"([a-z_]+)"/g,
+      ),
+    ].map((match) => match[1]!),
+  )
+  expect(names.length).toBeGreaterThan(30)
+  for (const name of names)
+    expect(describeToolCall({ name: `mcp__hinacode__${name}`, input: {} }).name).not.toContain("_")
+})
+
+const savedImage = {
+  id: "image-1",
+  name: "image.png",
+  path: "/data/attachments/t/image.png",
+  mime: "image/png",
+  kind: "image",
+  bytes: 1,
+}
+
+test.each([
+  ["a block list", [{ type: "image", mimeType: "image/png", attachment: savedImage }]],
+  ["Codex's MCP wrapper", { content: [{ type: "image", mimeType: "image/png", attachment: savedImage }] }],
+])("finds the image saved in %s", (_shape, output) => {
+  expect(toolOutputImages(output)).toEqual([savedImage])
+})
+
+test.each([
+  ["no output", undefined],
+  ["text", "done"],
+  ["an image saved before previews existed", [{ type: "image", mimeType: "image/png" }]],
+  ["a malformed attachment", [{ type: "image", attachment: { path: "/etc/passwd" } }]],
+])("finds no image in %s", (_shape, output) => {
+  expect(toolOutputImages(output)).toEqual([])
 })

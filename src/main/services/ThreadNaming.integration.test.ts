@@ -21,6 +21,7 @@ import * as AgentRunner from "./AgentRunner.ts"
 import { Events } from "./Events.ts"
 import * as Git from "./Git.ts"
 import * as GitHub from "./GitHub.ts"
+import * as Attachments from "./Attachments.ts"
 import * as Messages from "./Messages.ts"
 import * as Projects from "./Projects.ts"
 import * as PullRequests from "./PullRequests.ts"
@@ -117,6 +118,7 @@ const makeLayer = (dbPath: string, pushes: PubSub.PubSub<PushEvent>, named: Defe
       Layer.provideMerge(Settings.layer(dirname(dbPath))),
     ),
     Messages.layer,
+    Attachments.layer(join(dirname(dbPath), "attachments")),
     Secrets.layer.pipe(Layer.provide(Secrets.noKeyring)),
     credentialsLayer,
   )
