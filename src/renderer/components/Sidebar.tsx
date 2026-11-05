@@ -1,4 +1,5 @@
 import { useAutoAnimate } from "@formkit/auto-animate/react"
+import { listMotionPausedWhile } from "../lib/listMotion.ts"
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { useRouter, useNavigate } from "@tanstack/react-router"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
@@ -15,6 +16,7 @@ import { useSidebarGroups } from "../lib/useSidebarGroups.ts"
 import { type InboxGroup, inboxGroup, rowState } from "../../shared/threadStatus.ts"
 import { openPullRequestsAtom, pullRequestAttentionsAtom } from "../lib/rpc.ts"
 import { useBackgroundTasks } from "../stores/backgroundTasks.ts"
+import { useSending } from "../stores/sending.ts"
 import { type Draft, hasContent, useDrafts } from "../stores/drafts.ts"
 import { useUnseen } from "../stores/unseen.ts"
 import { loadAllPullRequestsAtom, usePullRequests } from "../stores/pullRequests.ts"
@@ -67,7 +69,6 @@ import {
   READY_GROUP,
   SETTLED_GROUP,
   SidebarThreadList,
-  sidebarListMotion,
   TurnList,
 } from "./SidebarThreadList.tsx"
 import { Button } from "./ui/button.tsx"
@@ -421,26 +422,11 @@ function useWrittenDrafts(projects: ReadonlyArray<Project>, query: Query) {
   return writtenDrafts(threads, titles, projects, query)
 }
 
-function InboxDrafts({ query }: { query: Query }) {
-  const projects = useFilteredProjects(AsyncResult.getOrElse(useAtomValue(projectsAtom), () => []))
-  const drafts = useWrittenDrafts(projects, query)
-  if (drafts.length === 0) return null
-  return (
-    <section aria-label={m.sidebar_drafts()} className="pb-4">
-      <SectionHeading title={m.sidebar_drafts()} count={drafts.length} />
-      <DraftRows
-        drafts={drafts}
-        projectNames={new Map(projects.map((project) => [project.id, project.name]))}
-        className="px-2"
-      />
-    </section>
-  )
-}
-
 function useInboxGroups(threads: ReadonlyArray<Thread>, now: number) {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
   const unseen = useUnseen((state) => state.byThreadId)
   const background = useBackgroundTasks((state) => state.byThreadId)
+  const sending = useSending((state) => state.threadIds)
   const links = usePullRequests((state) => state.byThreadId)
   const lookups = threads.map((thread) => {
     const project = projects.find((candidate) => candidate.id === thread.projectId)
@@ -451,7 +437,7 @@ function useInboxGroups(threads: ReadonlyArray<Thread>, now: number) {
   const entries = threads.map((thread, index) => {
     const state = rowState(
       thread.status,
-      (background[thread.id]?.length ?? 0) > 0,
+      (background[thread.id]?.length ?? 0) > 0 || sending.has(thread.id),
       unseen[thread.id],
       attentions[index],
     )
@@ -553,18 +539,32 @@ function InboxList({ query }: { query: Query }) {
   const threads = useMatchingThreads(selectInboxThreads(now), query)
   const snoozed = useMatchingThreads(selectSnoozedThreads(now), query)
   const { ready, working } = useInboxGroups(threads, now)
+  const projects = useFilteredProjects(AsyncResult.getOrElse(useAtomValue(projectsAtom), () => []))
+  const drafts = useWrittenDrafts(projects, query)
   const showActivity = useUi((state) => state.inboxActivityShown)
   const setShowActivity = useUi((state) => state.setInboxActivityShown)
   const workingFolded = useUi((state) => state.inboxWorkingFolded)
   const setWorkingFolded = useUi((state) => state.setInboxWorkingFolded)
   return (
     <>
-      <InboxDrafts query={query} />
       <TurnList
         className="px-2"
         sections={[
+          ...(drafts.length === 0
+            ? []
+            : [
+                {
+                  key: "drafts",
+                  group: "drafts",
+                  heading: <SectionHeading title={m.sidebar_drafts()} count={drafts.length} />,
+                  threads: [],
+                  drafts,
+                  projectNames: new Map(projects.map((project) => [project.id, project.name])),
+                },
+              ]),
           {
             key: READY_GROUP,
+            spaced: drafts.length > 0,
             group: READY_GROUP,
             headingClassName: "sticky top-0 z-20 bg-sidebar",
             heading: <SectionHeading title={m.sidebar_ready()} count={ready.length} emphasized />,
@@ -578,8 +578,9 @@ function InboxList({ query }: { query: Query }) {
                 {
                   key: "working",
                   group: "working",
+                  spaced: true,
                   headingClassName:
-                    "sticky top-0 bottom-0 z-20 mt-4 bg-sidebar before:pointer-events-none before:absolute before:inset-x-0 before:bottom-full before:h-4 before:bg-linear-to-t before:from-sidebar",
+                    "sticky top-0 bottom-0 z-20 bg-sidebar before:pointer-events-none before:absolute before:inset-x-0 before:bottom-full before:h-4 before:bg-linear-to-t before:from-sidebar",
                   heading: (
                     <SectionHeading
                       title={m.sidebar_working()}
@@ -680,10 +681,12 @@ interface ProjectListProps {
   readonly focusAfterDelete: RefObject<HTMLElement | null>
 }
 
+const projectListMotion = listMotionPausedWhile(() => useUi.getState().sidebarQuery !== "")
+
 function ProjectList({ query, onAddProject, focusAfterDelete }: ProjectListProps) {
   const projects = useAtomValue(projectsAtom)
   const refresh = useAtomRefresh(projectsAtom)
-  const [listRef] = useAutoAnimate<HTMLUListElement>(sidebarListMotion)
+  const [listRef] = useAutoAnimate<HTMLUListElement>(projectListMotion)
   const groups = groupProjects(useFilteredProjects(AsyncResult.getOrElse(projects, () => [])))
   const draftTitles = useDraftTitles()
   const shownKeys = useThreads(

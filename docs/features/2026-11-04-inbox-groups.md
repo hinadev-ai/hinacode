@@ -38,7 +38,7 @@ Internal statuses stay `draft`, `running`, `idle` and `archived`, plus `thread.s
 - Brightness carries attention. A title that needs the developer reads at `--sidebar-title`, a read one at `--sidebar-meta`, and a hovered or open row steps up to full strength. In Hina Dark these tokens sit lower than the palette's foreground, so a resting list stays quiet. Every line clears 4.5:1 on its row's background, except the dimmed **Working** rows, which stay at 60% opacity until hovered.
 - Only finished and usage-limited threads keep a color. Every other icon uses the foreground or a muted tone, and ages drop "ago".
 - Text starts on one left edge and ends on one right edge, from the title bar down. Counts in headings share the right edge with ages.
-- **Ready** and **Working** are one list, so a row glides between them when the turn passes. A row that lands off screen skips the glide. Their headings stay pinned while the list scrolls, and **Working** also pins to the bottom edge while its rows are below the fold.
+- **Drafts**, **Ready** and **Working** are one list, so a row glides between them when the turn passes. A row that arrives or leaves opens or closes its space instead, and only a change of order or section glides. A thread the composer is sending counts as Working until its status says it started, so a sent draft never passes through Ready. Their headings stay pinned while the list scrolls, and **Working** also pins to the bottom edge while its rows are below the fold.
 
 ## Out of scope
 

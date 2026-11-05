@@ -41,6 +41,7 @@ import { askSidechat, sidechatCommand, sidechatQuestion } from "../lib/sidechat.
 import { useIsChat } from "../lib/useIsChat.ts"
 import { m } from "../paraglide/messages.js"
 import { type Draft, emptyDraft, hasContent, useDrafts } from "../stores/drafts.ts"
+import { trackSend } from "../stores/sending.ts"
 import { useMessages } from "../stores/messages.ts"
 import { useTerminals } from "../stores/terminals.ts"
 import { useThreads } from "../stores/threads.ts"
@@ -108,7 +109,9 @@ const deliver = (
     unstarted && sent.workspace
       ? { mode: sent.workspace.mode, target: toCheckoutTarget(sent.workspace.ref) }
       : undefined
-  return callPromise("threads.send", { threadId, prompt, attachments: sent.attachments, workspace })
+  return trackSend(threadId, () =>
+    callPromise("threads.send", { threadId, prompt, attachments: sent.attachments, workspace }),
+  )
 }
 
 const sourceOf = async (file: File): Promise<StageSource> => {
