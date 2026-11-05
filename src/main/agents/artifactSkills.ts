@@ -1,3 +1,4 @@
+import { CHART_GUIDE } from "@hinacode/artifacts"
 import { type ArtifactSkill, parseArtifactSkill } from "../../shared/artifactSkills.ts"
 import { DOCUMENT_TEMPLATES } from "./documentTemplates.ts"
 
@@ -48,10 +49,14 @@ Format:
 - Cite code as \`path/to/file.ts:42\` in inline code.
 - Label evidence. **Verified** when you ran or read it, **inferred** when you reasoned it out, **not measured** when it is an estimate worth checking.
 - Write a \`mermaid\` fence for architecture, flows and state machines when a picture is clearer than a paragraph. Keep a diagram under about 12 nodes.
-- Write a \`chart\` fence for numbers over a series. Call \`document_chart_guide\` before the first one.
+- Write a \`chart\` fence for numbers over a series, in the syntax under Charts.
 - Each finding or item stands on its own. The developer should be able to quote one bullet into a new thread and act on it.
 
 ${WRITING_RULES}
+
+## Charts
+
+${CHART_GUIDE}
 
 ## Templates
 
