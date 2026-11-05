@@ -1011,7 +1011,7 @@
   "update_up_to_date": "HinaCode 已是最新版本。",
   "update_downloading": "正在下載 HinaCode {version}",
   "update_failed": "無法檢查更新：{message}",
-  "update_unsupported": "開發版本不會更新。",
+  "update_unsupported": "此版本無法自行更新。",
   "agent_update_title": "有可用的更新：{agent} v{version}",
   "agent_update_body": "立即更新，或檢視代理的設定。",
   "agent_update_settings": "設定",
