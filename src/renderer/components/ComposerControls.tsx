@@ -388,7 +388,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
           className="-mx-2 gap-1 border-b border-border px-2 pb-2"
         >
           <div className="flex items-center gap-2">
-            <TabsList className="min-w-0 scrollbar-none justify-start overflow-x-auto bg-transparent p-0 motion-safe:scroll-smooth">
+            <TabsList className="-m-0.75 min-w-0 scrollbar-none justify-start overflow-x-auto bg-transparent p-0.75 motion-safe:scroll-smooth">
               {tabs.map((candidate) => (
                 <Tooltip key={candidate.value}>
                   <TooltipTrigger
