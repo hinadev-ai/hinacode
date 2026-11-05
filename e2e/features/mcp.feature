@@ -27,10 +27,11 @@ Feature: Built-in MCP server
     When the agent links the pull request "https://example.com/not-a-pr"
     Then the tool fails with "not a GitHub pull request URL"
 
-  Scenario: Linear tools explain what is missing without an API key
-    When the agent calls "linear_get_issue" with '{"key":"ENG-1"}'
-    Then the tool fails with "No Linear API key is configured"
+  Scenario Outline: A tool that cannot run says why
+    When the agent calls "<tool>" with '<arguments>'
+    Then the tool fails with "<reason>"
 
-  Scenario: A secret request outside a running turn fails without showing a card
-    When the agent calls "request_secret" with '{"name":"demo.token","description":"Verification token"}'
-    Then the tool fails with "No turn is running on this thread."
+    Examples:
+      | tool             | arguments                                                 | reason                             |
+      | linear_get_issue | {"key":"ENG-1"}                                           | No Linear API key is configured    |
+      | request_secret   | {"name":"demo.token","description":"Verification token"} | No turn is running on this thread. |

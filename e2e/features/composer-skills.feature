@@ -25,12 +25,8 @@ Feature: Skill chips in the composer
     When I send the message with its skill
     Then my sent message shows the chips "/triage-issue", "/code-review" and "/triage-issue"
 
-  Scenario: Backspace after a chip removes it
-    When I type "/triage-issue the login test" in the message
-    Then the message starts with the skill chip "triage-issue"
+  Scenario: Claude Code's own commands are chips too, and Backspace after a chip removes it
+    When I type "/compact the login test" in the message
+    Then the message shows the chip "/compact"
     When I press Backspace right after the chip
     Then the message has no skill chip and reads "the login test"
-
-  Scenario: Claude Code's own commands are chips too
-    When I type "/compact keep the plan" in the message
-    Then the message shows the chip "/compact"

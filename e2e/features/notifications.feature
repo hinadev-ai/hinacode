@@ -45,20 +45,16 @@ Feature: Notifications
     And I open the toast for "Background"
     Then the thread "Background" is open
 
-  Scenario: A kind turned off in settings stays quiet
+  Scenario Outline: A kind turned off in settings stays quiet
     Given the window does not have focus
     When I open settings
     And I open the settings section "Notifications"
-    And I turn off the setting "Finished turns"
-    And the agent in "Background" emits "turn_completed"
+    And I turn off the setting "<setting>"
+    And the agent in "Background" emits "<event>"
     And the agent in "Background" emits "turn_failed"
     Then the only notification is for "Background" and reads "Failed: Turn interrupted"
 
-  Scenario: Questions respect the needs-input notification setting
-    Given the window does not have focus
-    When I open settings
-    And I open the settings section "Notifications"
-    And I turn off the setting "Needs your input"
-    And the agent in "Background" emits "question_requested"
-    And the agent in "Background" emits "turn_failed"
-    Then the only notification is for "Background" and reads "Failed: Turn interrupted"
+    Examples:
+      | setting          | event              |
+      | Finished turns   | turn_completed     |
+      | Needs your input | question_requested |

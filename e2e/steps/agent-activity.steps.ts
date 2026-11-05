@@ -66,6 +66,11 @@ When("I type {string} in the activity thread's message", async ({ activityApp: a
   await app.page.getByRole("combobox", { name: "Message", exact: true }).pressSequentially(text)
 })
 
+When("I clear the activity thread's message", async ({ activityApp: app }) => {
+  await app.page.getByRole("combobox", { name: "Message", exact: true }).clear()
+  await expect(app.page.getByRole("listbox", { name: "Commands", exact: true })).toBeHidden()
+})
+
 Then("the commands list covers the activity tray", async ({ activityApp: app }) => {
   const list = app.page.getByRole("listbox", { name: "Commands", exact: true })
   const box = await list.boundingBox()
