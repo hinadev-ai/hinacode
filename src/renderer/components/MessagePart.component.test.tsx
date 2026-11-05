@@ -114,7 +114,9 @@ test("keeps a file edit as receding as every other tool row", async () => {
     input: { file_path: "a.ts" },
     status: "done",
   })
-  const name = page.getByText("Edit", { exact: true }).element()
+  const label = page.getByText("Edit", { exact: true })
+  await label.unhover()
+  const name = label.element()
   const muted = document.createElement("span")
   muted.className = "text-receding-foreground"
   document.body.append(muted)
