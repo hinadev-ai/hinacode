@@ -130,6 +130,7 @@ export class Threads extends Context.Service<
   Threads,
   {
     readonly list: Effect.Effect<ReadonlyArray<Thread>, PersistenceError>
+    readonly onAccount: (accountId: string) => Effect.Effect<ReadonlyArray<Thread>, PersistenceError>
     readonly get: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly create: (
       input: CreateThread,
@@ -238,6 +239,11 @@ const make = Effect.gen(function* () {
     Result: ThreadRow,
     execute: () =>
       sql`SELECT * FROM thread WHERE side_of IS NULL AND ${sql.in("provider", [...ProviderId.literals])} ORDER BY project_id, sort_index`,
+  })
+  const findOnAccount = SqlSchema.findAll({
+    Request: Schema.String,
+    Result: ThreadRow,
+    execute: (accountId) => sql`SELECT * FROM thread WHERE account_id = ${accountId}`,
   })
   const findById = SqlSchema.findOneOption({
     Request: Schema.String,
@@ -843,6 +849,7 @@ const make = Effect.gen(function* () {
 
   return Threads.of({
     list: findAll(undefined).pipe(Effect.mapError(persistence("threads.list"))),
+    onAccount: (accountId) => findOnAccount(accountId).pipe(Effect.mapError(persistence("threads.onAccount"))),
     get,
     create,
     update,
