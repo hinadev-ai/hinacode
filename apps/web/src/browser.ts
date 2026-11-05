@@ -8,7 +8,7 @@ import {
 } from "../../../src/shared/domain.ts"
 import type { RelayHost, RelayMachine } from "../../../src/shared/relayMachines.ts"
 import { m } from "@/paraglide/messages.js"
-import type { RelayAccount } from "./account.ts"
+import { type RelayAccount, relayEndpoint, signOutDevice } from "./account.ts"
 
 const CLIENT_SETTINGS_KEY = "hinacode.clientSettings"
 const LINE_COMMENTS = "hinacode.lineComments"
@@ -30,7 +30,7 @@ export interface BrowserContext {
   readonly statusOf: (environmentId: string) => EnvironmentStatus
   readonly reconnect: (environmentId: string) => void
   readonly emit: (event: typeof PushEvent.Encoded) => void
-  readonly signOut: () => void
+  readonly signedOut: () => void
 }
 
 const pageTitle = document.title
@@ -42,10 +42,10 @@ export const makeBrowserAnswers = (context: BrowserContext) => {
   )
 
   const relay = async (method: string, path: string, body?: unknown): Promise<unknown> => {
-    const response = await fetch(`${context.account.serviceUrl.replace(/\/+$/, "")}${path}`, {
+    const response = await fetch(relayEndpoint(context.account.serviceUrl, path), {
       method,
       headers: {
-        Authorization: `Bearer ${context.account.ownerToken}`,
+        Authorization: `Bearer ${context.account.credential}`,
         ...(body === undefined ? {} : { "Content-Type": "application/json" }),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -58,10 +58,23 @@ export const makeBrowserAnswers = (context: BrowserContext) => {
 
   const hosts = async () => ((await relay("GET", "/v1/hosts")) as { hosts: ReadonlyArray<RelayHost> }).hosts
 
-  const relayStatus = () => ({
+  let profile: Promise<{ name: string | null; email: string | null }> | undefined
+  const accountProfile = () => {
+    profile ??= relay("GET", "/v1/account").then(
+      (answer) => {
+        const { name = null, email = null } = (answer ?? {}) as { name?: string | null; email?: string | null }
+        return { name, email }
+      },
+      () => ({ name: null, email: null }),
+    )
+    return profile
+  }
+
+  const relayStatus = async () => ({
     state: "signedIn" as const,
     serviceUrl: context.account.serviceUrl,
     environmentId: "",
+    ...(await accountProfile()),
     machines: context.machines.length,
     syncedAt: null,
     error: null,
@@ -111,8 +124,9 @@ export const makeBrowserAnswers = (context: BrowserContext) => {
       location.reload()
       return relayStatus()
     },
-    "relayAccount.signOut": () => {
-      context.signOut()
+    "relayAccount.signOut": async () => {
+      await signOutDevice(context.account)
+      context.signedOut()
       return { state: "signedOut" }
     },
     "relayAccount.machines": hosts,

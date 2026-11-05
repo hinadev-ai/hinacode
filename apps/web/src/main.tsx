@@ -5,7 +5,7 @@ import { m } from "@/paraglide/messages.js"
 import { useLocale } from "@/stores/locale.ts"
 import type { RelayMachine } from "../../../src/shared/relayMachines.ts"
 import type { TransportMessages } from "../../../src/shared/transport.ts"
-import { describeFailure, fetchMachines, type RelayAccount, signOut, storedAccount } from "./account.ts"
+import { describeFailure, fetchMachines, forgetAccount, type RelayAccount, storedAccount } from "./account.ts"
 import { connectMachines } from "./bridge.ts"
 import { readSettings } from "./browser.ts"
 import { Gate } from "./Gate.tsx"
@@ -23,13 +23,8 @@ const transportMessages: TransportMessages = {
     m.web_transport_protocol_mismatch({ machine: String(server), app: String(client) }),
 }
 
-const leave = () => {
-  signOut()
-  location.reload()
-}
-
 const start = async (account: RelayAccount, machines: ReadonlyArray<RelayMachine>) => {
-  const bridge = connectMachines({ account, machines, messages: transportMessages, signOut: leave })
+  const bridge = connectMachines({ account, machines, messages: transportMessages, signedOut: () => location.reload() })
   Object.defineProperty(window, "hinacode", { value: bridge })
   await serveResources(bridge).catch((cause: unknown) => console.error("Attachments and previews will not load", cause))
   await import("@/main.tsx")
@@ -41,6 +36,7 @@ const resume = async (): Promise<Resumed> => {
   const account = storedAccount()
   if (account === null) return { _tag: "signIn", error: null }
   const answer = await fetchMachines(account)
+  if (answer._tag === "unauthorized") forgetAccount()
   if (answer._tag !== "machines") return { _tag: "signIn", error: describeFailure(answer) }
   if (answer.machines.length === 0) return { _tag: "signIn", error: m.web_no_machines() }
   await start(account, answer.machines)

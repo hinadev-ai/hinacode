@@ -18,12 +18,12 @@ export const connectMachines = ({
   account,
   machines,
   messages,
-  signOut,
+  signedOut,
 }: {
   readonly account: RelayAccount
   readonly machines: ReadonlyArray<RelayMachine>
   readonly messages: TransportMessages
-  readonly signOut: () => void
+  readonly signedOut: () => void
 }): HinacodeBridge => {
   const listeners = new Set<(event: typeof PushEvent.Encoded) => void>()
   const emit = (event: typeof PushEvent.Encoded) => {
@@ -79,7 +79,7 @@ export const connectMachines = ({
       statusOf: (id) => statuses.get(id) ?? "offline",
       reconnect: (id) => connections.get(id)?.transport.reconnectNow(),
       emit,
-      signOut,
+      signedOut,
     }),
   })
 
