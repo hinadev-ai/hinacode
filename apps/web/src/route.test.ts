@@ -56,6 +56,15 @@ describe("routing a web call", () => {
     expect([...first.calls, ...second.calls]).toEqual([])
   })
 
+  it("refuses a desktop-only call in the browser instead of sending it to a machine", async () => {
+    const { first, second, route } = setup()
+    expect(await route.call("fs.watch", { root: "/first/p", paths: [""] })).toMatchObject({
+      error: { tag: "DesktopOnly" },
+    })
+    expect(await route.call("dialog.pickFolder", undefined)).toMatchObject({ error: { tag: "DesktopOnly" } })
+    expect([...first.calls, ...second.calls]).toEqual([])
+  })
+
   it("lists from every machine and stamps each machine's projects", async () => {
     const { route } = setup()
     expect(await route.call("threads.list", {})).toEqual({ result: [{ id: "t-first" }, { id: "t-second" }] })

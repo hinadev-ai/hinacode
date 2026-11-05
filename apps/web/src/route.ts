@@ -1,4 +1,4 @@
-import type { PushEvent, RpcEnvelope, RpcMethod } from "../../../src/shared/contract.ts"
+import { desktopOnlyMethods, type PushEvent, type RpcEnvelope, type RpcMethod } from "../../../src/shared/contract.ts"
 import type { EnvironmentStatus } from "../../../src/shared/domain.ts"
 import {
   learnFromAnswer,
@@ -28,6 +28,10 @@ const payloadId = (payload: unknown, key: string) => {
 
 const notFound = (id: string): RpcEnvelope<never> => ({
   error: { tag: "NotFoundError", message: `No environment with id ${id}` },
+})
+
+const desktopOnly = (method: RpcMethod): RpcEnvelope<never> => ({
+  error: { tag: "DesktopOnly", message: `${method} is only available in the desktop app` },
 })
 
 const within = <A>(ms: number, promise: Promise<A>) =>
@@ -76,6 +80,7 @@ export const makeRoute = ({
   const call = async (method: RpcMethod, payload: unknown, environment?: string): Promise<RpcEnvelope<unknown>> => {
     const answered = browser(method, payload)
     if (answered !== undefined) return answered
+    if (desktopOnlyMethods.has(method)) return desktopOnly(method)
     const where = routes[method]
     const owned = where.to === "owner" ? payloadId(payload, where.key) : undefined
     const target =
