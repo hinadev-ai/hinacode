@@ -11,6 +11,7 @@ import { Button } from "../ui/button.tsx"
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Switch } from "../ui/switch.tsx"
 import { SettingsGroup, SettingsPageAction, SettingsSection } from "./SettingsSection.tsx"
+import { inBrowser } from "../../lib/runtime.ts"
 
 type Notifications = ClientSettings["notifications"]
 
@@ -113,13 +114,17 @@ function PermissionNotice() {
   }, [blocked, refresh])
 
   if (permission === "denied" || (permission === "notDetermined" && askRefused)) {
-    return <Notice title={m.settings_notifications_denied()} body={m.settings_notifications_denied_hint()} />
+    return inBrowser() ? (
+      <Notice title={m.web_notifications_denied()} body={m.web_notifications_denied_hint()} />
+    ) : (
+      <Notice title={m.settings_notifications_denied()} body={m.settings_notifications_denied_hint()} />
+    )
   }
   if (permission === "notDetermined") {
     return (
       <Notice
         title={m.settings_notifications_not_determined()}
-        body={m.settings_notifications_not_determined_hint()}
+        body={inBrowser() ? m.web_notifications_not_determined_hint() : m.settings_notifications_not_determined_hint()}
         action={
           <Button variant="outline" size="sm" action={() => ask().catch(toastError)}>
             {m.settings_notifications_allow()}

@@ -104,6 +104,8 @@ jobs:
       - if: needs.changes.outputs.relay == 'true'
         run: pnpm --dir relay deploy:dry-run
       - if: needs.changes.outputs.app == 'true'
+        run: pnpm --dir apps/web deploy:dry-run
+      - if: needs.changes.outputs.app == 'true'
         name: Install search test dependency
         run: sudo apt-get update && sudo apt-get install --yes ripgrep
       - if: needs.changes.outputs.app == 'true'
@@ -179,6 +181,30 @@ jobs:
           path: |
             e2e/playwright-report
             e2e/test-results
+
+  e2e-web:
+    name: e2e (web)
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e:web
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-report-web
+          path: |
+            apps/web/e2e/playwright-report
+            apps/web/e2e/test-results
 
   resource-monitor-linux:
     name: resource monitor (linux)

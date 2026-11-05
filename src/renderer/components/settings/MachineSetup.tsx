@@ -9,6 +9,7 @@ import { type Cloud, statusLabel, useCloudStateText, useClouds } from "../../lib
 import { accountAtom, type EnvironmentId, gitHubAuthAtom, secretStoredAtom } from "../../lib/rpc.ts"
 import { cn } from "../../lib/utils.ts"
 import { m } from "../../paraglide/messages.js"
+import { inBrowser } from "../../lib/runtime.ts"
 import { LinearIcon } from "../icons/LinearIcon.tsx"
 import { ProviderIcon, providerLabel } from "../ProviderIcon.tsx"
 import { Button } from "../ui/button.tsx"
@@ -204,7 +205,7 @@ function UnreachableCell({ cloud, span, onOpen }: { cloud: Cloud; span: number; 
 export function MachineSetup() {
   const clouds = useClouds()
   const machines: ReadonlyArray<Machine> = [
-    { id: null, name: m.environment_this_machine(), cloud: null },
+    ...(inBrowser() ? [] : [{ id: null, name: m.environment_this_machine(), cloud: null }]),
     ...clouds.map((cloud) => ({ id: cloud.id, name: cloud.name, cloud })),
   ]
   const navigate = useNavigate()

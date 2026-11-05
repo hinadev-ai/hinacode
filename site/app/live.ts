@@ -55,6 +55,7 @@ export function liveBridge(address: string, token: string): { bridge: HinacodeBr
     },
     pathForFile: (file) => file.name,
     liquidGlass: false,
+    runtime: { kind: "desktop" },
   }
   return { bridge, recording: () => ({ recordedAt: startedAt, entries }) }
 }

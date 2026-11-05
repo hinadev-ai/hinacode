@@ -6,6 +6,8 @@ e2e/.features-gen/
 e2e/test-results/
 .vitest/
 e2e/playwright-report/
+apps/web/e2e/test-results/
+apps/web/e2e/playwright-report/
 dist/
 dist-npm/
 .env

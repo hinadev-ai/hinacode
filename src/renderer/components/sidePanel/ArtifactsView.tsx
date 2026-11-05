@@ -45,6 +45,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { SkeletonList } from "../ui/skeleton.tsx"
 import { liveDocument, liveDocumentKey } from "../documentEditor/liveDocuments.ts"
 import { Section, ViewBody } from "./Section.tsx"
+import { resourceUrl, servedSandbox } from "../../lib/resourceUrl.ts"
+import { inBrowser } from "../../lib/runtime.ts"
 
 const DocumentView = lazy(() =>
   import("../documentEditor/DocumentView.tsx").then((module) => ({ default: module.DocumentView })),
@@ -78,7 +80,7 @@ export function ArtifactsHeader({ thread }: { thread: Thread }) {
         {m.artifacts_version({ version: selected.version })}
       </span>
       <span className="flex-1" />
-      <ExportMenu artifact={selected} />
+      {!inBrowser() && <ExportMenu artifact={selected} />}
     </div>
   )
 }
@@ -277,9 +279,11 @@ function ArtifactFrame({ threadId, artifact, theme }: { threadId: string; artifa
       )}
       <iframe
         ref={frame}
-        src={`${artifactUrl(artifact.id, artifact.entry)}?v=${artifact.version}&theme=${encodeURIComponent(theme)}`}
+        src={resourceUrl(
+          `${artifactUrl(artifact.id, artifact.entry)}?v=${artifact.version}&theme=${encodeURIComponent(theme)}`,
+        )}
         title={artifact.title}
-        sandbox="allow-scripts"
+        sandbox={servedSandbox()}
         referrerPolicy="no-referrer"
         onLoad={() => setLoaded(true)}
         className="min-h-0 flex-1 border-0 bg-background"

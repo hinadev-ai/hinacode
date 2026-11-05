@@ -1,0 +1,15 @@
+{
+  "name": "hinacode-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "vite build && wrangler deploy",
+    "deploy:dry-run": "vite build && wrangler deploy --dry-run"
+  },
+  "devDependencies": {
+    "wrangler": "4.151.0"
+  }
+}

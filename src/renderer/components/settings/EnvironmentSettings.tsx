@@ -53,6 +53,8 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../
 import { Input } from "../ui/input.tsx"
 import { Switch } from "../ui/switch.tsx"
 import { SettingsPageAction, SettingsSection, settingsGroupClass, settingsSurfaceClass } from "./SettingsSection.tsx"
+import { inBrowser } from "../../lib/runtime.ts"
+import { ReloadPageButton } from "../ReloadPageButton.tsx"
 
 export function EnvironmentSettings() {
   const clouds = useClouds()
@@ -72,7 +74,7 @@ export function EnvironmentSettings() {
           ))}
         </ul>
       )}
-      <AddEnvironmentForm />
+      {!inBrowser() && <AddEnvironmentForm />}
     </SettingsSection>
   )
 }
@@ -236,7 +238,7 @@ function RelayMachineRow({ host, self }: { host: RelayHost; self: boolean }) {
         </div>
       </div>
       {!host.published && <FieldDescription>{m.environment_relay_not_published()}</FieldDescription>}
-      {self && <FieldDescription>{m.environment_relay_this_machine_hint()}</FieldDescription>}
+      {self && !inBrowser() && <FieldDescription>{m.environment_relay_this_machine_hint()}</FieldDescription>}
       {error && <FieldError>{error}</FieldError>}
     </li>
   )
@@ -337,7 +339,8 @@ function EnvironmentRow({ cloud }: { cloud: Cloud }) {
         </div>
         <div className="flex max-w-full flex-wrap items-center gap-2">
           {cloud.status === "connected" && <CloudUpdateButton cloud={cloud} />}
-          {unauthorized && (
+          {unauthorized && inBrowser() && <ReloadPageButton />}
+          {unauthorized && !inBrowser() && (
             <Button
               ref={pairAgainRef}
               variant="outline"
@@ -354,7 +357,11 @@ function EnvironmentRow({ cloud }: { cloud: Cloud }) {
         </div>
       </div>
       {fromRelay && <FieldDescription>{m.environment_relay_row_hint()}</FieldDescription>}
-      {unauthorized && <FieldDescription>{m.environment_unauthorized_hint()}</FieldDescription>}
+      {unauthorized && (
+        <FieldDescription>
+          {inBrowser() ? m.web_transport_token_refused() : m.environment_unauthorized_hint()}
+        </FieldDescription>
+      )}
       {cloud.status === "connected" && <CloudUpdateHint cloud={cloud} />}
       {unauthorized && pairing && (
         <PairAgainForm id={pairFormId} cloud={cloud} onCancel={cancelPairing} onPaired={() => setPairing(false)} />

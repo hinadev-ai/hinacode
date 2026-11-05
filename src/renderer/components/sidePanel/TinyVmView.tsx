@@ -6,6 +6,7 @@ import type { Thread, ThreadVm, VmControl, VmTemplate } from "../../../shared/do
 import { useThreadEnvironment } from "../../lib/environments.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { callPromise, threadVmAtom, vmHostAtom } from "../../lib/rpc.ts"
+import { inBrowser } from "../../lib/runtime.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import { useUi } from "../../stores/ui.ts"
@@ -40,7 +41,16 @@ interface VmScreenProps {
   readonly dropping: boolean
 }
 
+function DesktopOnlyVmScreen() {
+  return (
+    <div className="flex aspect-video w-full items-center justify-center rounded-md bg-muted p-6 text-center">
+      <p className="max-w-80 text-sm text-muted-foreground">{m.web_vm_screen_desktop_only()}</p>
+    </div>
+  )
+}
+
 export function VmScreen({ vm, ...rest }: VmScreenProps) {
+  if (vm.provider !== "boat" && inBrowser()) return <DesktopOnlyVmScreen />
   return vm.provider === "boat" ? (
     <BoatVmScreen control={vm.control} sandboxId={vm.sandboxId} {...rest} />
   ) : (
@@ -325,6 +335,7 @@ interface VmActionButtonProps {
 }
 
 export function ScreenshotButton({ threadId, run }: VmActionButtonProps) {
+  if (inBrowser()) return null
   const save = () =>
     run(async () => {
       const attachment = await callPromise("vm.screenshot.save", { threadId })

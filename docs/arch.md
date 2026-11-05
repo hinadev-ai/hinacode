@@ -21,6 +21,7 @@ flowchart LR
     relay["Relay<br/>cloudflared child"]
   end
   phone["Phone app<br/>apps/mobile (Expo)"]
+  web["Web app<br/>apps/web at code.hinacode.app"]
   edge["Cloudflare edge<br/>wss://relay hostname/remote"]
   db[("hinacode.sqlite")]
   claude["Claude Code CLI<br/>via Agent SDK query()"]
@@ -34,6 +35,7 @@ flowchart LR
   ipc -- "event (push)" --> preload --> stores
   phone -- "auth, then the same calls and pushes" <--> remote --> ipc
   phone -. "from any network" .-> edge
+  web -- "the renderer over the phone's transport, wss only" --> edge
   relay -- "dials out" --> edge
   relay --> remote
   ipc --> services & runner
@@ -81,6 +83,8 @@ Remote mode (`src/main/remote/`) is a second transport for the same contract. A 
 A desktop pairs with clouds (`environments.add`) and keeps one live WebSocket to each, speaking the phone's protocol (`services/Environments.ts`). The window has no active environment. `registerIpc` routes every call through `route` in `environments/route.ts` by `routes[method]` in `src/shared/routes.ts`; the remote listener keeps plain local `dispatch`. See `features/2026-10-15-desktop-environments.md`.
 
 The phone does the same with no local machine: it pairs with each server directly, keeps one `Transport` per server, and `call` in `apps/mobile/src/lib/connection.ts` routes by the same table and owner index. An id no server has claimed waits until every server has listed its threads, and a named call without a server goes to the first connected one. See `features/2026-10-24-mobile-servers.md`.
+
+The web app (`apps/web`) runs the desktop renderer in a browser tab against relay machines. Its `window.hinacode` keeps one shared `Transport` (`shared/transport.ts`) per machine and routes with `apps/web/src/route.ts`, which is `environments/route.ts` with no local machine: every relay machine is an environment, and a call that names none goes to the first connected one. A service worker serves the custom-scheme resources through the page. See `features/2026-11-04-web-app.md`.
 
 Phones negotiate `watch` to limit pushes. The focused chat tab watches its transcript; other cached histories
 refresh when reopened. Backgrounding closes the sockets and stops client heartbeats, direct-address probes, and

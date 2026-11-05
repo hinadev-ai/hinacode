@@ -11,6 +11,7 @@ const bridge: HinacodeBridge = {
   },
   pathForFile: (file) => webUtils.getPathForFile(file),
   liquidGlass: process.argv.includes(LIQUID_GLASS_ARGUMENT),
+  runtime: { kind: "desktop" },
 }
 
 contextBridge.exposeInMainWorld("hinacode", bridge)

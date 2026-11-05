@@ -6,6 +6,8 @@ A Cloudflare Worker at `relay.hinacode.app`. It links machines to Clerk accounts
 
 A linked machine publishes the pairing its QR code carries with `PUT /v1/host/pairing`. `GET /v1/machines` hands an account's devices every machine that published one and is shown, so they can add it without scanning. The desktop's **Show on my devices** switch calls `PATCH /v1/hosts/:id` with `{ enabled }`; a hidden machine's pairing never leaves the relay, and its tunnel keeps running. The design is in `docs/features/2026-10-24-relay-machines.md`.
 
+The web app at `code.hinacode.app` calls the owner routes from the browser, as a signed-in desktop does. `WEB_ORIGINS` lists the origins allowed to call `/v1/*` with CORS, separated by commas.
+
 ## One-time setup
 
 1. Create the database with `pnpm exec wrangler d1 create hinacode-relay`. Put its id in `database_id` in `wrangler.jsonc`, then run `pnpm db:migrate`.

@@ -28,6 +28,7 @@ import { Mention } from "./Mention.tsx"
 import { MentionThread } from "./MentionThread.ts"
 import { type DiagramFailure, MermaidDiagram } from "./MermaidDiagram.tsx"
 import { isWebUrl, WebLink } from "./WebLink.tsx"
+import { resourceSrcSet, resourceUrl } from "../lib/resourceUrl.ts"
 
 const bareGitHubAsset = (paragraph: ExtraProps["node"]) => {
   const [link, ...rest] = paragraph?.children ?? []
@@ -66,8 +67,8 @@ function MarkdownImage({
   const styledHeight = styledWidth === undefined ? pixelSize(height) : undefined
   return (
     <img
-      src={src === undefined ? undefined : imageSource(src, context)}
-      srcSet={srcSet === undefined ? undefined : imageSrcSet(srcSet, context)}
+      src={src === undefined ? undefined : resourceUrl(imageSource(src, context))}
+      srcSet={srcSet === undefined ? undefined : resourceSrcSet(imageSrcSet(srcSet, context))}
       alt={alt}
       loading="lazy"
       width={styledWidth}
@@ -92,7 +93,7 @@ function ThemedSource({ media, srcSet, sizes }: { media?: string; srcSet?: strin
   return (
     <source
       media={media}
-      srcSet={srcSet === undefined ? undefined : imageSrcSet(srcSet, { environment, baseUrl, root })}
+      srcSet={srcSet === undefined ? undefined : resourceSrcSet(imageSrcSet(srcSet, { environment, baseUrl, root }))}
       sizes={sizes}
     />
   )
@@ -103,7 +104,7 @@ const isShortCell = (children: ReactNode) => typeof children === "string" && chi
 const components: Components = {
   p: ({ children, node }) => {
     const asset = bareGitHubAsset(node)
-    return asset ? <GitHubAttachment src={asset} /> : <p>{children}</p>
+    return asset ? <GitHubAttachment src={resourceUrl(asset)} /> : <p>{children}</p>
   },
   img: ({ src, srcSet, alt, width, height }) => (
     <MarkdownImage
@@ -167,7 +168,7 @@ function ServiceBadgeLink({ badge }: { badge: ServiceBadge }) {
   return (
     <a href={badge.href} target="_blank" rel="noreferrer" className="inline-block shrink-0">
       <img
-        src={externalImageUrl(src) ?? src}
+        src={resourceUrl(externalImageUrl(src) ?? src)}
         alt={badge.alt}
         loading="lazy"
         width={badge.width ?? undefined}

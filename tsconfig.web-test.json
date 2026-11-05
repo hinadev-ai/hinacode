@@ -3,6 +3,11 @@
   "compilerOptions": {
     "types": ["vite/client", "node", "@vitest/browser-playwright"]
   },
-  "include": ["src/renderer/**/*.test.ts", "src/renderer/**/*.test.tsx", "src/preload/*.d.ts"],
+  "include": [
+    "src/renderer/**/*.test.ts",
+    "src/renderer/**/*.test.tsx",
+    "src/renderer/**/*.d.ts",
+    "src/preload/*.d.ts"
+  ],
   "exclude": []
 }

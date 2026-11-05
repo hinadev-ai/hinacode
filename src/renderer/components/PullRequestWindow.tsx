@@ -10,6 +10,7 @@ import { type FileTreeFolder, fileTree } from "../lib/fileTree.ts"
 import { type EnvironmentId, pullRequestDetailAtom, pullRequestFilesAtom } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
+import { inBrowser } from "../lib/runtime.ts"
 import { DiffStyleContext, type DiffStyle } from "./FilePatch.tsx"
 import { PullRequestFileRow, useViewedFiles, useViewedPaths } from "./PullRequestCode.tsx"
 import { PullRequestReviewContext } from "./PullRequestReview.tsx"
@@ -19,7 +20,7 @@ import { Input } from "./ui/input.tsx"
 import { SkeletonList } from "./ui/skeleton.tsx"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
 
-const besideTrafficLights = detectPlatform() === "mac"
+const besideTrafficLights = () => detectPlatform() === "mac" && !inBrowser()
 
 export function PullRequestWindow() {
   const { threadId } = useParams({ strict: false })
@@ -63,7 +64,7 @@ function FilesChanged({
       <header
         className={cn(
           "flex h-titlebar shrink-0 items-center gap-2.5 border-b pe-3 text-sm select-none window-drag",
-          besideTrafficLights ? "ps-22" : "ps-4",
+          besideTrafficLights() ? "ps-22" : "ps-4",
         )}
       >
         <span

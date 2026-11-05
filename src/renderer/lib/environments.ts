@@ -10,6 +10,7 @@ import { selectThread, useThreads } from "../stores/threads.ts"
 import { formatRelativeTime } from "./relativeTime.ts"
 import { type EnvironmentId, environmentsAtom, projectsAtom } from "./rpc.ts"
 import { useNow } from "./useNow.ts"
+import { inBrowser } from "./runtime.ts"
 
 export type Cloud = Environments["clouds"][number]
 
@@ -59,7 +60,8 @@ export const statusDot: Record<EnvironmentStatus, string> = {
 export function useSettingsEnvironment(): EnvironmentId {
   const { environment } = useSearch({ strict: false })
   const clouds = useClouds()
-  return clouds.some((cloud) => cloud.id === environment) ? (environment ?? null) : null
+  if (clouds.some((cloud) => cloud.id === environment)) return environment ?? null
+  return inBrowser() ? (clouds[0]?.id ?? null) : null
 }
 
 export function useOpenThreadEnvironment(): EnvironmentId {

@@ -2548,5 +2548,33 @@
         "countPlural=other": "Use skills {skills}"
       }
     }
-  ]
+  ],
+  "web_sign_in_title": "Sign in to your relay",
+  "web_sign_in_body": "Approve this browser on the relay's page with the account your machines are linked to.",
+  "web_vm_screen_desktop_only": "The Tiny VM screen opens only in the desktop app.",
+  "web_open_sign_in_page": "Open the sign-in page",
+  "web_waiting_for_approval": "Waiting for you to approve this browser…",
+  "web_sign_in_expired": "The sign-in page expired. Sign in again.",
+  "web_signed_out": "This browser was signed out. Sign in again.",
+  "web_device_name": "HinaCode in a browser",
+  "web_machine_refused_token": "{name} refused its token. Reload this page after it publishes a new one to the relay.",
+  "web_reload": "Reload",
+  "web_relay_url": "Relay",
+  "web_use_other_relay": "Use another relay",
+  "web_sign_in": "Sign in",
+  "web_relay_unreachable": "Could not reach the relay. Check the address and your connection.",
+  "web_relay_bad_status": "The relay answered {status}.",
+  "web_relay_bad_answer": "The relay sent an answer this page cannot read.",
+  "web_no_machines": "The relay shows no machines yet. Turn on the relay on a machine, then reload this page.",
+  "web_transport_not_sent": "Not sent. The machine was unreachable for a minute.",
+  "web_transport_may_have_run": "The machine was unreachable for a minute. The action may still have run.",
+  "web_transport_lost_reply": "The connection dropped before the machine answered. The action may still have run.",
+  "web_transport_disconnected": "Disconnected from the machine.",
+  "web_transport_not_connected": "Not connected to the machine.",
+  "web_transport_token_rotated": "The machine's token was rotated. Reload this page to pick up the new one from the relay.",
+  "web_transport_token_refused": "The machine refused its token. Reload this page after it publishes a new one to the relay.",
+  "web_transport_protocol_mismatch": "The machine speaks remote protocol {machine}, this page speaks {app}. Update the older one.",
+  "web_notifications_denied": "Your browser is blocking notifications",
+  "web_notifications_denied_hint": "Allow notifications for this site in your browser's site settings. Browsers only allow them on HTTPS pages.",
+  "web_notifications_not_determined_hint": "Your browser asks once you click Allow notifications."
 }

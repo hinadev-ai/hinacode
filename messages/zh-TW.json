@@ -2484,5 +2484,33 @@
         "countPlural=other": "使用技能 {skills}"
       }
     }
-  ]
+  ],
+  "web_sign_in_title": "登入你的 relay",
+  "web_sign_in_body": "用連結了你機器的帳號，在 relay 的頁面上核准這個瀏覽器。",
+  "web_vm_screen_desktop_only": "Tiny VM 畫面只能在桌面版 App 中開啟。",
+  "web_open_sign_in_page": "開啟登入頁面",
+  "web_waiting_for_approval": "正在等待你核准這個瀏覽器…",
+  "web_sign_in_expired": "登入頁面已過期，請重新登入。",
+  "web_signed_out": "這個瀏覽器已被登出，請重新登入。",
+  "web_device_name": "瀏覽器中的 HinaCode",
+  "web_machine_refused_token": "{name} 拒絕了它的權杖。等它把新的權杖發布到 relay 後，請重新載入此頁面。",
+  "web_reload": "重新載入",
+  "web_relay_url": "Relay",
+  "web_use_other_relay": "使用其他 relay",
+  "web_sign_in": "登入",
+  "web_relay_unreachable": "無法連上 relay。請檢查網址與網路連線。",
+  "web_relay_bad_status": "relay 回應了 {status}。",
+  "web_relay_bad_answer": "relay 回傳了此頁面無法解讀的內容。",
+  "web_no_machines": "relay 上還沒有任何機器。請先在機器上開啟 relay，再重新整理此頁面。",
+  "web_transport_not_sent": "未送出。這台機器已經一分鐘無法連線。",
+  "web_transport_may_have_run": "這台機器已經一分鐘無法連線，但動作可能已經執行。",
+  "web_transport_lost_reply": "連線在機器回應前中斷，動作可能已經執行。",
+  "web_transport_disconnected": "已與機器中斷連線。",
+  "web_transport_not_connected": "尚未連線到機器。",
+  "web_transport_token_rotated": "機器的權杖已更換。請重新整理此頁面，從 relay 取得新的權杖。",
+  "web_transport_token_refused": "機器拒絕了權杖。等它把新權杖發布到 relay 後，再重新整理此頁面。",
+  "web_transport_protocol_mismatch": "這台機器使用遠端協定 {machine}，此頁面使用 {app}。請更新較舊的一方。",
+  "web_notifications_denied": "你的瀏覽器封鎖了通知",
+  "web_notifications_denied_hint": "請在瀏覽器的網站設定中允許此網站的通知。瀏覽器只在 HTTPS 頁面允許通知。",
+  "web_notifications_not_determined_hint": "點選「允許通知」後，瀏覽器會詢問你。"
 }

@@ -15,6 +15,7 @@ import {
 } from "../../../shared/domain.ts"
 import { environmentName, useClouds, usePullRequestHref, useThreadEnvironment } from "../../lib/environments.ts"
 import { toastError } from "../../lib/errorMessage.ts"
+import { inBrowser } from "../../lib/runtime.ts"
 import {
   branchPullRequestAtom,
   callPromise,
@@ -70,6 +71,7 @@ export function DetailsView({ thread }: { thread: Thread }) {
 }
 
 function RevealButton({ path, disabled }: { path: string; disabled?: boolean }) {
+  if (inBrowser()) return null
   return (
     <Button
       variant="outline"

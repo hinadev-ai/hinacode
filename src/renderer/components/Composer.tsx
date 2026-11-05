@@ -3,6 +3,7 @@ import { formatForDisplay } from "@tanstack/react-hotkeys"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import {
+  type ChangeEvent,
   type DragEvent as ReactDragEvent,
   type FormEvent,
   type ReactElement,
@@ -26,6 +27,7 @@ import { mentionableThreads } from "../../shared/mentions.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { promptWithComments } from "../lib/lineComments.ts"
 import { mentionableTerminals } from "../lib/terminalLabel.ts"
+import { inBrowser } from "../lib/runtime.ts"
 import {
   callPromise,
   commandsAtom,
@@ -133,6 +135,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   const [isSending, startSending] = useTransition()
   const [isStaging, startStaging] = useTransition()
   const inputRef = useRef<ComposerInputHandle>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const key = completionKey(thread)
   const commandsResult = useAtomValue(commandsAtom(key))
   const agentCommands = threadCommands(
@@ -211,6 +214,17 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
     } catch (cause) {
       setError(errorMessage(cause))
     }
+  }
+
+  const attach = () => {
+    if (inBrowser()) fileInputRef.current?.click()
+    else startStaging(pickFiles)
+  }
+
+  const stagePicked = (event: ChangeEvent<HTMLInputElement>) => {
+    const picked = [...(event.target.files ?? [])]
+    event.target.value = ""
+    stage(picked.map(sourceOf))
   }
 
   const onPaste = (event: ClipboardEvent) => {
@@ -333,7 +347,8 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
             </Suspense>
             <ComposerToolbar className="relative shrink-0 gap-2">
               <ComposerActions className="min-w-0 flex-1">
-                <AttachButton onClick={() => startStaging(pickFiles)} disabled={isStaging} />
+                <AttachButton onClick={attach} disabled={isStaging} />
+                <input ref={fileInputRef} type="file" multiple hidden onChange={stagePicked} />
                 <ThreadPicker thread={thread} canSwitchAgent={!busy && !isSidechat} onError={setError} />
               </ComposerActions>
               <ContextRing threadId={thread.id} provider={thread.provider} />

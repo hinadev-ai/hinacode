@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { copy } from "./copy"
 import { errorText } from "./error-text"
-import { RpcError } from "./transport"
+import { RpcError } from "@shared/transport.ts"
 
 describe("errorText", () => {
   it("says the thread's folder is missing instead of the server's raw message", () => {

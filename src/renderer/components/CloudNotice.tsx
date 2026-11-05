@@ -6,6 +6,8 @@ import { useNow } from "../lib/useNow.ts"
 import { m } from "../paraglide/messages.js"
 import { useLocale } from "../stores/locale.ts"
 import { ReconnectButton } from "./ReconnectButton.tsx"
+import { ReloadPageButton } from "./ReloadPageButton.tsx"
+import { inBrowser } from "../lib/runtime.ts"
 import { Button } from "./ui/button.tsx"
 import { CloudOffIcon, WarningIcon } from "@hinacode/icons"
 
@@ -19,7 +21,7 @@ const noticeText = (cloud: Cloud, now: number, locale: string) => {
   const { name } = cloud
   switch (cloud.status) {
     case "unauthorized":
-      return m.thread_cloud_unauthorized({ name })
+      return inBrowser() ? m.web_machine_refused_token({ name }) : m.thread_cloud_unauthorized({ name })
     case "incompatible":
       return incompatibleText(cloud)
     default:
@@ -47,7 +49,9 @@ function CloudNoticeBody({ cloud }: { cloud: Cloud }) {
     >
       <Icon aria-hidden className="size-4 shrink-0" />
       <span className="min-w-0 flex-1 tabular-nums">{text}</span>
-      {cloud.status === "unauthorized" ? (
+      {cloud.status === "unauthorized" && inBrowser() ? (
+        <ReloadPageButton />
+      ) : cloud.status === "unauthorized" ? (
         <Button
           variant="outline"
           size="sm"

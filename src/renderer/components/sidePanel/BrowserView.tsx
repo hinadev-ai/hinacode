@@ -4,6 +4,7 @@ import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 
 import type { Thread } from "../../../shared/domain.ts"
 import { browserUrl } from "../../lib/browserUrl.ts"
 import { useThreadEnvironment } from "../../lib/environments.ts"
+import { inBrowser } from "../../lib/runtime.ts"
 import {
   attachPick,
   CANCEL_PICK_SCRIPT,
@@ -33,7 +34,7 @@ type FailLoadEvent = Event & { errorCode: number; errorDescription: string; vali
 
 export function BrowserView({ thread }: { thread: Thread }) {
   const { tabs, activeId } = useBrowserTabs(selectBrowserTabs(thread.id))
-  const remote = useThreadEnvironment(thread.id) !== null
+  const remote = useThreadEnvironment(thread.id) !== null || inBrowser()
   const Page = remote ? RemoteBrowserPage : BrowserPage
 
   return (
