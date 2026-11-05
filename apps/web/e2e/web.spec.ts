@@ -39,6 +39,21 @@ test("a hard reload, which skips the service worker, still loads the app", async
   await expect(sidebar(page)).toBeVisible()
 })
 
+test("markup injected into the page cannot run script", async ({ page, web }) => {
+  await openSignedIn(page, web)
+  const ran = await page.evaluate(async () => {
+    const host = document.createElement("div")
+    host.innerHTML = `<img src="data:," onerror="window.injected = true">`
+    const image = host.querySelector("img")!
+    const failed = new Promise((resolve) => image.addEventListener("error", resolve))
+    document.body.append(host)
+    await failed
+    host.remove()
+    return "injected" in window
+  })
+  expect(ran).toBe(false)
+})
+
 test("a project added by path talks to the agent on the machine", async ({ page, web, repo, uniqueName }) => {
   const project = uniqueName("web")
   await openSignedIn(page, web)
