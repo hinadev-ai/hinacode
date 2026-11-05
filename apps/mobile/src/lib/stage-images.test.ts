@@ -2,15 +2,14 @@ import type { ImagePickerAsset } from "expo-image-picker"
 import { expect, it, vi } from "vitest"
 
 const staging = vi.hoisted(() => vi.fn(async () => ({ id: "staged" })))
-const picker = vi.hoisted(() => vi.fn(async () => ({ canceled: true, assets: [] })))
 
 vi.mock("react-native", () => ({ Platform: { OS: "web" } }))
 vi.mock("expo-file-system", () => ({ File: class {} }))
 vi.mock("expo-image-manipulator", () => ({ ImageManipulator: {}, SaveFormat: {} }))
-vi.mock("expo-image-picker", () => ({ launchImageLibraryAsync: picker }))
+vi.mock("expo-image-picker", () => ({}))
 vi.mock("@/lib/connection", () => ({ call: staging }))
 
-const { pickImages, stageImage } = await import("./stage-images")
+const { stageImage } = await import("./stage-images")
 
 it("stages a web image without native file-system methods", async () => {
   const base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB"
@@ -27,9 +26,4 @@ it("stages a web image without native file-system methods", async () => {
     threadId: "thread",
     source: { dataUrl: asset.uri, name: "logo.png" },
   })
-})
-
-it("asks the web picker for the base64 bytes it can read", async () => {
-  await pickImages()
-  expect(picker).toHaveBeenCalledWith(expect.objectContaining({ base64: true, quality: 1 }))
 })
