@@ -38,6 +38,13 @@ const currentMarkdown = async (store: ArtifactStore, id: string) => {
 
 const newNeedsTitle = { message: "Give a new artifact a title.", path: ["title"] }
 
+const autoOpen = z
+  .boolean()
+  .optional()
+  .describe(
+    "Open it beside the thread as soon as it is published. Set it on the first publish of what the developer asked for. Leave it off for updates and side results, which the thread shows as a card the developer can click.",
+  )
+
 export const artifactTools = {
   publish_artifact: tool({
     description: PUBLISH_GUIDE,
@@ -72,9 +79,10 @@ export const artifactTools = {
           )
           .min(1)
           .describe("Every file of this version. Files left out of an update are gone from the new version."),
+        auto_open: autoOpen,
       })
       .refine((input) => input.id !== undefined || input.title !== undefined, newNeedsTitle),
-    handle: async (store, input, { threadId }) => {
+    handle: async (store, { auto_open: _autoOpen, ...input }, { threadId }) => {
       const artifact = await store.publish({ ...input, ...(threadId === undefined ? {} : { threadId }) })
       return `Published artifact ${artifact.id} version ${artifact.version}: "${artifact.title}". Pass id "${artifact.id}" to publish_artifact to update it.`
     },
@@ -98,6 +106,7 @@ export const artifactTools = {
             'The document\'s name, two to four words, such as "Release Plan". Required for a new document. Omit it when you update, to keep the name the developer may have changed.',
           ),
         markdown: z.string().describe("The whole document as Markdown."),
+        auto_open: autoOpen,
       })
       .refine((input) => input.id === undefined || input.revision !== undefined, {
         message: "Pass the revision you last published or read together with id.",

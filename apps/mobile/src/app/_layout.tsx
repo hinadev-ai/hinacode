@@ -75,6 +75,7 @@ function Routes() {
             <Stack.Screen name="thread/[id]/file" options={{ title: "" }} />
             <Stack.Screen name="thread/[id]/pull-request" options={{ title: "" }} />
             <Stack.Screen name="thread/[id]/subagent" options={{ title: "" }} />
+            <Stack.Screen name="thread/[id]/document" options={{ title: "" }} />
             <Stack.Screen
               name="overview"
               options={{ title: copy("mobile_overview_title"), ...largeTitle }}

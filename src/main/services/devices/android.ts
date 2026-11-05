@@ -82,7 +82,8 @@ const NO_GRPC = "This emulator was started without its gRPC endpoint. Close it a
 
 const execFileAsync = promisify(execFile)
 const run = async (file: string, args: ReadonlyArray<string>, timeout = 30_000) =>
-  (await execFileAsync(file, args, { timeout, maxBuffer: 32 * 1024 * 1024, encoding: "utf8" })).stdout
+  (await execFileAsync(file, args, { timeout, killSignal: "SIGKILL", maxBuffer: 32 * 1024 * 1024, encoding: "utf8" }))
+    .stdout
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 

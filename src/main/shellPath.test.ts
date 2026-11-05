@@ -2,7 +2,7 @@ import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
-import { hydratePath } from "./shellPath.ts"
+import { dropAppImageArgv0, hydratePath } from "./shellPath.ts"
 
 const fakeShell = (dir: string, path: string, gate?: string) => {
   const shell = join(dir, "shell")
@@ -39,5 +39,19 @@ describe.skipIf(process.platform === "win32")("hydratePath", () => {
     await refreshed
     expect(env.PATH).toBe("/new/nvm/bin:/usr/bin:/bin")
     expect(readFileSync(cache, "utf8")).toBe("/new/nvm/bin:/usr/bin")
+  })
+})
+
+describe("dropAppImageArgv0", () => {
+  it("removes the name the AppImage launcher exports, so zsh does not run every command under it", () => {
+    const env = { APPIMAGE: "/opt/HinaCode.AppImage", ARGV0: "/usr/local/bin/hinacode", PATH: "/usr/bin" }
+    dropAppImageArgv0(env)
+    expect(env).toStrictEqual({ APPIMAGE: "/opt/HinaCode.AppImage", PATH: "/usr/bin" })
+  })
+
+  it("leaves an ARGV0 the user set outside an AppImage", () => {
+    const env = { ARGV0: "emacs" }
+    dropAppImageArgv0(env)
+    expect(env).toStrictEqual({ ARGV0: "emacs" })
   })
 })

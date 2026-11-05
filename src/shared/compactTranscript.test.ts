@@ -1,15 +1,17 @@
 import { describe, expect, test } from "@effect/vitest"
-import type { Message } from "./domain.ts"
+import type { Message, MessagePart } from "./domain.ts"
 import {
   compactMessage,
   compactPush,
   previewMessage,
+  publishPreview,
   previewPush,
   TOOL_OUTPUT_PREVIEW_CHARS,
   TRANSCRIPT_PAGE_BYTES,
   toolSummary,
   transcriptPage,
 } from "./compactTranscript.ts"
+import { OUTLINE_MAX_BLOCKS } from "./documentOutline.ts"
 import { latestTodos } from "./todos.ts"
 
 const message = (parts: Message["parts"]): Message => ({
@@ -241,5 +243,142 @@ describe("previewPush", () => {
     })
     const delta = { type: "thread.event", seq: 2, threadId: "t", event: { type: "text_delta", text: long } } as const
     expect(previewPush(delta)).toBe(delta)
+  })
+})
+
+const compacted = (part: MessagePart) =>
+  compactMessage(message([part])).parts[0] as Extract<MessagePart, { type: "tool_call" }>
+const finished = (output: unknown, isError = false) =>
+  compactPush({
+    type: "thread.event",
+    seq: 1,
+    threadId: "t",
+    event: { type: "tool_call_finished", callId: "c", output, isError },
+  })
+
+describe("a publish call when compact", () => {
+  const document = `# Release plan\n\n> [!NOTE]\n> Ship on Friday.\n\n## Goal\n\n${"Words go here. ".repeat(70_000)}\n`
+  const publishedLine =
+    'Published document doc-1 version 3: "Release plan". To update it, pass id "doc-1" and revision 4.'
+  const publish = (overrides: Partial<Extract<MessagePart, { type: "tool_call" }>> = {}): MessagePart => ({
+    type: "tool_call",
+    callId: "c",
+    name: "mcp__hinacode__publish_document",
+    input: { title: "Release plan", markdown: document, auto_open: true },
+    output: publishedLine,
+    status: "done",
+    ...overrides,
+  })
+  test("keeps the title and outline and never the Markdown", () => {
+    const part = compacted(publish())
+    expect(part.input).toEqual({
+      title: "Release plan",
+      outline: {
+        title: "Release plan",
+        lede: "Ship on Friday.",
+        blocks: [
+          { kind: "heading", level: 1, text: "Release plan" },
+          { kind: "callout", tone: "note" },
+          { kind: "heading", level: 2, text: "Goal" },
+          { kind: "text", length: 2048 },
+        ],
+      },
+    })
+    expect(JSON.stringify(part).includes("Words go here")).toBe(false)
+  })
+
+  test("fits a page, however large the document", () => {
+    const heading = "## 見出し\n\n".repeat(OUTLINE_MAX_BLOCKS)
+    const part = compacted(
+      publish({ input: { title: "標".repeat(100_000), markdown: `${heading}${"x".repeat(1 << 20)}` } }),
+    )
+    expect(new TextEncoder().encode(JSON.stringify(part)).length).toBeLessThan(TRANSCRIPT_PAGE_BYTES / 8)
+  })
+
+  test("keeps a page's title and none of its files", () => {
+    const part = compacted(
+      publish({
+        name: "publish_artifact",
+        input: { id: "page-1", title: "Report", files: [{ path: "index.html", content: "<h1>Hi</h1>" }] },
+      }),
+    )
+    expect(part.input).toEqual({ title: "Report" })
+  })
+
+  test("keeps only the first line of a successful publish, also from structured output", () => {
+    const report = `${publishedLine}\n\nThe page's inspection report.`
+    const blocks = [
+      { type: "text", text: report },
+      { type: "image", data: "aaaa", mimeType: "image/png" },
+    ]
+    expect(compacted(publish({ output: report })).output).toBe(publishedLine)
+    expect(compacted(publish({ output: blocks })).output).toBe(publishedLine)
+    expect(finished(report)).toMatchObject({ event: { output: publishedLine } })
+    expect(finished(blocks)).toMatchObject({ event: { output: publishedLine } })
+  })
+
+  test("drops the document a conflict carries", () => {
+    const conflict = "The developer edited document doc-1 after your revision 3.\n\n# Their whole document"
+    expect(compacted(publish({ output: conflict, status: "error" })).output).toBeUndefined()
+    expect(finished(conflict, true)).toMatchObject({ event: { output: "" } })
+  })
+
+  test("drops a failed publish's output even when it reads like a success", () => {
+    expect(compacted(publish({ status: "error" })).output).toBeUndefined()
+    expect(finished(publishedLine, true)).toMatchObject({ event: { output: "" } })
+  })
+
+  test("sends a running publish no output", () => {
+    const { output: _output, ...running } = publish({ status: "running" }) as Extract<
+      MessagePart,
+      { type: "tool_call" }
+    >
+    expect(compacted(running).output).toBeUndefined()
+    const started = compactPush({
+      type: "thread.event",
+      seq: 1,
+      threadId: "t",
+      event: {
+        type: "tool_call_started",
+        callId: "c",
+        name: "mcp__hinacode__publish_document",
+        input: { title: "Release plan", markdown: document },
+      },
+    })
+    expect(JSON.stringify(started).includes("Words go here")).toBe(false)
+    expect(started).toMatchObject({ event: { input: { title: "Release plan", outline: { title: "Release plan" } } } })
+  })
+
+  test("reads what an older server sends as nothing, and an older phone sees no summary", () => {
+    expect(publishPreview({})).toEqual({ title: null, outline: null })
+    expect(publishPreview({ title: "Plan", outline: { blocks: "not an outline" } })).toEqual({
+      title: "Plan",
+      outline: null,
+    })
+    const { title, outline } = publishPreview(compacted(publish()).input)
+    expect(title).toBe("Release plan")
+    expect(outline?.lede).toBe("Ship on Friday.")
+    expect(toolSummary(compacted(publish()).input)).toBeNull()
+  })
+
+  test("leaves other tools as they were", () => {
+    const bash: MessagePart = {
+      type: "tool_call",
+      callId: "b",
+      name: "Bash",
+      input: { command: "cat a\nb", title: "Not a publish", markdown: "# Not a document" },
+      output: `${publishedLine}\nmore`,
+      fullOutputBytes: 9,
+      status: "done",
+    }
+    expect(compactMessage(message([bash])).parts).toEqual([
+      { type: "tool_call", callId: "b", name: "Bash", input: { command: "cat a" }, status: "done" },
+    ])
+    expect(finished("ordinary output")).toEqual({
+      type: "thread.event",
+      seq: 1,
+      threadId: "t",
+      event: { type: "tool_call_finished", callId: "c", output: "", isError: false },
+    })
   })
 })

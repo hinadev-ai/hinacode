@@ -3,7 +3,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { artifactTools, openArtifactStore } from "@hinacode/artifacts"
 import { describe, expect, test } from "vitest"
-import { isPublishArtifactTool, publishedArtifactId } from "./agent.ts"
+import { isPublishArtifactTool, publishedArtifact, publishedArtifactId } from "./agent.ts"
 
 describe("publishedArtifactId", () => {
   test("reads the id from what publish_artifact returns", async () => {
@@ -23,6 +23,21 @@ describe("publishedArtifactId", () => {
   test("finds nothing in an error or another tool's text", () => {
     expect(publishedArtifactId('Invalid file path "../x.html".')).toBe(null)
     expect(publishedArtifactId("")).toBe(null)
+  })
+})
+
+describe("publishedArtifact", () => {
+  test("reads the id and version from what publish_document returns", async () => {
+    const store = openArtifactStore(mkdtempSync(join(tmpdir(), "kk-artifact-version-")))
+    const first = await artifactTools.publish_document.handle(store, { title: "Plan", markdown: "# Plan" }, {})
+    const id = publishedArtifactId(first) ?? ""
+    const second = await artifactTools.publish_document.handle(store, { id, revision: 1, markdown: "# Plan v2" }, {})
+    expect(publishedArtifact(first)).toEqual({ id, version: 1 })
+    expect(publishedArtifact(second)).toEqual({ id, version: 2 })
+  })
+
+  test("finds nothing in a conflict", () => {
+    expect(publishedArtifact("The developer edited document abc after your revision 1.")).toBe(null)
   })
 })
 

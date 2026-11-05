@@ -11,7 +11,7 @@ import { Toaster } from "./components/ui/sonner.tsx"
 import { TooltipProvider } from "./components/ui/tooltip.tsx"
 import { applyAppearance, themes, useTheme } from "./lib/appearance.ts"
 import { registry } from "./lib/registry.ts"
-import { callPromise, clientSettingsAtom, onPushEvent, projectsAtom, settingsAtom } from "./lib/rpc.ts"
+import { artifactsAtom, callPromise, clientSettingsAtom, onPushEvent, projectsAtom, settingsAtom } from "./lib/rpc.ts"
 import { terminalExited, writeTerminal } from "./lib/terminalScreens.ts"
 import { useClientSettings } from "./lib/settings.ts"
 import { windowEntry } from "./lib/windowEntry.ts"
@@ -19,6 +19,7 @@ import { notifyThreadEvent, recordUnseenOutcome } from "./lib/threadNotification
 import { m } from "./paraglide/messages.js"
 import { router } from "./router.tsx"
 import { pullRequestWindowRouter } from "./pullRequestWindowRouter.ts"
+import { openArtifact, useArtifacts } from "./stores/artifacts.ts"
 import { useBackgroundTasks } from "./stores/backgroundTasks.ts"
 import { useDrafts } from "./stores/drafts.ts"
 import { useLocale } from "./stores/locale.ts"
@@ -67,6 +68,15 @@ async function loadLists() {
   ])
 }
 
+async function revealArtifact(threadId: string, id: string) {
+  if (windowEntry !== null) return
+  registry.refresh(artifactsAtom)
+  await Effect.runPromise(Effect.ignore(AtomRegistry.getResult(registry, artifactsAtom, { suspendOnWaiting: true })))
+  const onScreen = router.matchRoute({ to: "/thread/$threadId", params: { threadId } }) !== false
+  if (onScreen) openArtifact(threadId, id)
+  else useArtifacts.getState().select(threadId, id)
+}
+
 onPushEvent((event) => {
   switch (event.type) {
     case "thread.updated":
@@ -104,6 +114,8 @@ onPushEvent((event) => {
       if (windowEntry !== null) return
       void router.navigate({ to: "/thread/$threadId", params: { threadId: event.threadId } })
       return void callPromise("app.focus", undefined)
+    case "artifact.opened":
+      return void revealArtifact(event.threadId, event.id)
     case "thread.lineComment":
       return useDrafts.getState().addComment(event.threadId, event.comment)
     case "pullRequest.guide":

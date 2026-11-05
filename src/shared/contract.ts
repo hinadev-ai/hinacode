@@ -46,6 +46,7 @@ import {
   FileSearchHit,
   AutomationTrigger,
   FsEntry,
+  DirectorySuggestion,
   FsFileContent,
   CommitDiff,
   GitCommit,
@@ -418,6 +419,7 @@ export const RpcMethods = {
   "fs.rename": rpc(Schema.Struct({ root: Schema.String, from: Schema.String, to: Schema.String }), Schema.Void),
   "fs.delete": rpc(Schema.Struct({ root: Schema.String, path: Schema.String }), Schema.Void),
   "fs.watch": rpc(Schema.Struct({ root: Schema.String, paths: Schema.Array(Schema.String) }), Schema.Void),
+  "fs.completeDirectory": rpc(Schema.Struct({ path: Schema.String }), Schema.Array(DirectorySuggestion)),
 
   "dialog.pickFolder": rpc(Schema.Void, Schema.NullOr(Schema.String)),
 
@@ -481,6 +483,7 @@ export const RpcMethods = {
   ),
   "backgroundTasks.list": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Array(BackgroundTask)),
   "backgroundTasks.stop": rpc(Schema.Struct({ threadId: Schema.String, taskId: Schema.String }), Schema.Void),
+  "backgroundTasks.moveCommand": rpc(Schema.Struct({ threadId: Schema.String, callId: Schema.String }), Schema.Boolean),
   "threads.usage": rpc(Schema.Struct({ threadId: Schema.String }), Schema.NullOr(ThreadUsage)),
   "threads.contextBreakdown": rpc(Schema.Struct({ threadId: Schema.String }), Schema.NullOr(ContextBreakdown)),
   "secrets.respond": rpc(Schema.Struct({ requestId: Schema.String, value: Schema.NullOr(Schema.String) }), Schema.Void),
@@ -761,6 +764,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "fs.rename": "mutation",
   "fs.delete": "mutation",
   "fs.watch": "mutation",
+  "fs.completeDirectory": "read",
   "dialog.pickFolder": "mutation",
   "updates.status": "read",
   "updates.check": "mutation",
@@ -786,6 +790,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "subagents.transcript": "read",
   "backgroundTasks.list": "read",
   "backgroundTasks.stop": "mutation",
+  "backgroundTasks.moveCommand": "mutation",
   "threads.usage": "read",
   "threads.contextBreakdown": "read",
   "secrets.respond": "mutation",
@@ -990,6 +995,7 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("automation.run"), run: AutomationRun }),
   Schema.Struct({ type: Schema.Literal("artifact.updated"), artifact: Artifact }),
   Schema.Struct({ type: Schema.Literal("artifact.removed"), id: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("artifact.opened"), threadId: Schema.String, id: Schema.String }),
   Schema.Struct({
     type: Schema.Literal("terminal.data"),
     id: Schema.String,

@@ -9,6 +9,7 @@ import {
   type RpcResponse,
   transcriptThreadId,
 } from "../../shared/contract.ts"
+import { looksLikeDirectoryPath } from "../../shared/directoryPath.ts"
 import type { Thread } from "../../shared/domain.ts"
 import { PULL_REQUEST_REFRESH } from "../../shared/github.ts"
 import { msUntilNextReset } from "../../shared/planLimits.ts"
@@ -316,6 +317,12 @@ export const pullRequestSearchAtom = familyOf((projectId: string, query: string 
   Atom.make(query === null ? Effect.succeed([]) : call("projects.searchPullRequests", { id: projectId, query })).pipe(
     Atom.setIdleTTL("1 minute"),
   ),
+)
+
+export const directorySuggestionsAtom = familyOf((environment: EnvironmentId, path: string) =>
+  Atom.make(
+    looksLikeDirectoryPath(path) ? call("fs.completeDirectory", { path }, { environment }) : Effect.succeed([]),
+  ).pipe(Atom.setIdleTTL("10 seconds")),
 )
 
 export const defaultBranchAtom = Atom.family((projectId: string) =>

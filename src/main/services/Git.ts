@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { Context, Duration, Effect, Layer, Schema, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import type { ChangedFileStatus, CommitDiff, GitCommit } from "../../shared/domain.ts"
 
@@ -17,19 +17,44 @@ export class CommandError extends Schema.TaggedError<CommandError>()("CommandErr
 export interface RunOptions {
   readonly okExitCodes?: ReadonlyArray<number>
   readonly env?: Record<string, string>
+  readonly timeout?: Duration.Input
 }
+
+const TIMED_OUT_EXIT_CODE = 124
+const DEFAULT_TIMEOUT = "5 minutes"
+export const LONG_TIMEOUT = "1 hour"
 
 // FIXME: authenticate through gh, since macOS's osxkeychain helper opens a Keychain dialog over the app
 export const REMOTE_GIT_ARGS = ["-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential"]
 export const REMOTE_GIT_ENV = { GIT_TERMINAL_PROMPT: "0" }
 export const NO_OPTIONAL_LOCKS_ENV = { GIT_OPTIONAL_LOCKS: "0" }
 
+const failAfter = (timeout: Duration.Input, command: string, args: ReadonlyArray<string>) =>
+  Effect.timeoutOrElse({
+    duration: timeout,
+    orElse: () =>
+      Effect.fail(
+        new CommandError({
+          command,
+          args,
+          exitCode: TIMED_OUT_EXIT_CODE,
+          stderr: `timed out after ${Duration.format(Duration.fromInputUnsafe(timeout))}`,
+        }),
+      ),
+  })
+
 export const makeExec =
   (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) =>
   (command: string, args: ReadonlyArray<string>, cwd: string, options?: RunOptions) =>
     Effect.gen(function* () {
       const handle = yield* spawner.spawn(
-        ChildProcess.make(command, args, { cwd, stdin: "ignore", env: options?.env, extendEnv: true }),
+        ChildProcess.make(command, args, {
+          cwd,
+          stdin: "ignore",
+          env: options?.env,
+          extendEnv: true,
+          forceKillAfter: "3 seconds",
+        }),
       )
       const [stdout, stderr, exitCode] = yield* Effect.all(
         [
@@ -45,6 +70,7 @@ export const makeExec =
       return stdout
     }).pipe(
       Effect.scoped,
+      failAfter(options?.timeout ?? DEFAULT_TIMEOUT, command, args),
       Effect.catchTag("PlatformError", (cause) =>
         Effect.fail(new CommandError({ command, args, exitCode: -1, stderr: cause.message })),
       ),
@@ -126,7 +152,7 @@ const make = Effect.gen(function* () {
   const run = (cwd: string, args: ReadonlyArray<string>, options?: RunOptions) =>
     exec("git", ["-C", cwd, ...args], cwd, { ...options, env: { ...NO_OPTIONAL_LOCKS_ENV, ...options?.env } })
   const remote = (cwd: string, args: ReadonlyArray<string>) =>
-    run(cwd, [...REMOTE_GIT_ARGS, ...args], { env: REMOTE_GIT_ENV })
+    run(cwd, [...REMOTE_GIT_ARGS, ...args], { env: REMOTE_GIT_ENV, timeout: LONG_TIMEOUT })
 
   // FIXME: `--all` also walks the stash and tool-private refs such as editor checkpoints
   const log = (cwd: string, limit: number) =>

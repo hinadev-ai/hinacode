@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import { type ComponentProps, type FormEvent, startTransition, useActionState, useState } from "react"
 import { RiGithubFill } from "react-icons/ri"
+import { separatorOf } from "../../shared/directoryPath.ts"
 import type { Project } from "../../shared/domain.ts"
 import { type GitHubRepository, parseGitHubRepository, type RepositoryVisibility } from "../../shared/github.ts"
 import {
@@ -34,6 +35,7 @@ import { errorMessage, toastError } from "../lib/errorMessage.ts"
 import { suggestProjectName } from "../lib/projectName.ts"
 import { startThread } from "../lib/startThread.ts"
 import { FolderOpenIcon } from "@hinacode/icons"
+import { PathInput } from "./PathInput.tsx"
 
 interface ProjectDialogProps {
   readonly open: boolean
@@ -65,7 +67,6 @@ export function ProjectDialog({ open, onOpenChange, project, environment = null,
 }
 
 const parentOf = (path: string) => path.replace(/[\\/][^\\/]*[\\/]?$/, "")
-const separatorOf = (path: string) => (path.includes("\\") ? "\\" : "/")
 
 function useDefaultCloneParent(environment: EnvironmentId) {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => []).filter(
@@ -154,13 +155,13 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
         <Field>
           <FieldLabel htmlFor="project-root">{project ? m.project_root_label() : m.project_source_label()}</FieldLabel>
           <div className="flex gap-2">
-            <Input
+            <PathInput
               id="project-root"
               required
               value={rootPath}
-              onChange={(event) => setRootPath(event.target.value)}
+              onChange={setRootPath}
+              environment={environment}
               placeholder={m.project_root_placeholder()}
-              spellCheck={false}
             />
             {canBrowse && (
               <Button type="button" variant="outline" action={() => browse().catch(toastError)}>
@@ -176,6 +177,7 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
             repository={repository}
             value={cloneTo ?? defaultCloneTo}
             canBrowse={canBrowse}
+            environment={environment}
             onChange={setCloneTo}
           />
         )}
@@ -303,10 +305,11 @@ interface CloneTargetProps {
   readonly repository: GitHubRepository
   readonly value: string
   readonly canBrowse: boolean
+  readonly environment: EnvironmentId
   readonly onChange: (path: string) => void
 }
 
-function CloneTarget({ repository, value, canBrowse, onChange }: CloneTargetProps) {
+function CloneTarget({ repository, value, canBrowse, environment, onChange }: CloneTargetProps) {
   const browse = async () => {
     const parent = await callPromise("dialog.pickFolder", undefined)
     if (parent) onChange(`${parent}/${repository.name}`)
@@ -316,12 +319,12 @@ function CloneTarget({ repository, value, canBrowse, onChange }: CloneTargetProp
     <Field>
       <FieldLabel htmlFor="project-clone-to">{m.project_clone_to_label()}</FieldLabel>
       <div className="flex gap-2">
-        <Input
+        <PathInput
           id="project-clone-to"
           required
           value={value}
-          onChange={(event) => onChange(event.target.value)}
-          spellCheck={false}
+          onChange={onChange}
+          environment={environment}
           className="font-mono"
         />
         {canBrowse && (

@@ -6,8 +6,6 @@ import {
   type Compaction,
   createdThreadId,
   type ProviderId,
-  isPublishDocumentTool,
-  publishedArtifactId,
   toolArgument,
 } from "../../shared/agent.ts"
 import {
@@ -42,8 +40,10 @@ import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { openArtifact } from "../stores/artifacts.ts"
 import { useSubagentByCallId } from "../stores/subagents.ts"
+import { providerInfo } from "../../shared/providers.ts"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
+import { ArtifactCard } from "./ArtifactCard.tsx"
 import { AttachmentView, formatBytes } from "./AttachmentView.tsx"
 import { CopyButton } from "./CopyButton.tsx"
 import { FindPartContext, FindPatternContext, Highlighted } from "./FindHighlight.tsx"
@@ -64,7 +64,6 @@ import {
   FileTextIcon,
   GlobeIcon,
   type IconComponent,
-  LayoutIcon,
   PencilIcon,
   SearchIcon,
   SkillIcon,
@@ -272,26 +271,12 @@ type ToolCall = Extract<MessagePart, { type: "tool_call" }>
 
 function ArtifactCallPart({ part }: { part: ToolCall }) {
   const { threadId } = use(PartMessage)
-  const named = toolArgument(part.input, "title")
-  const title = typeof named === "string" && named !== "" ? named : m.artifact_untitled()
-  const id = part.output === undefined ? null : publishedArtifactId(formatOutput(part.output))
   return (
-    <button
-      type="button"
-      onClick={() => openArtifact(threadId, id)}
-      aria-label={m.artifact_open({ title })}
-      className="my-2 flex w-full max-w-sm min-w-0 items-center gap-3 rounded-lg border border-border bg-background/50 px-3 py-2.5 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      {isPublishDocumentTool(part.name) ? (
-        <FileTextIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-      ) : (
-        <LayoutIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-      )}
-      <span className="min-w-0 flex-1 truncate text-sm">
-        <Highlighted text={title} />
-      </span>
-      {part.status === "running" ? statusIcon.running : <ChevronRightIcon aria-hidden className="size-3.5 shrink-0" />}
-    </button>
+    <ArtifactCard
+      call={part}
+      result={part.output === undefined ? null : formatOutput(part.output)}
+      onOpen={(id) => openArtifact(threadId, id)}
+    />
   )
 }
 
@@ -445,27 +430,49 @@ function ToolRow({ call, reveal }: { call: ToolCall; reveal: FindRevealRequest |
   const Icon = skills === null ? (toolIcons[call.name] ?? ToolsIcon) : SkillIcon
   return (
     <Collapsible>
-      <CollapsibleTrigger className={disclosureTrigger}>
-        <Icon aria-hidden className="size-4 shrink-0" />
-        {skills !== null ? (
-          <SkillLabel skills={skills} truncate={truncate} />
-        ) : call.name === "Bash" ? (
-          <CommandLabel call={call} truncate={truncate} />
-        ) : (
-          <ToolLabel call={call} truncate={truncate} />
-        )}
-        {call.status !== "done" && (
-          <span className="shrink-0" title={statusLabel[call.status]()}>
-            {statusIcon[call.status]}
-            <span className="sr-only">{statusLabel[call.status]()}</span>
-          </span>
-        )}
-        <Chevron />
-      </CollapsibleTrigger>
+      <div className="flex items-center gap-1">
+        <CollapsibleTrigger className={cn(disclosureTrigger, "min-w-0 flex-1")}>
+          <Icon aria-hidden className="size-4 shrink-0" />
+          {skills !== null ? (
+            <SkillLabel skills={skills} truncate={truncate} />
+          ) : call.name === "Bash" ? (
+            <CommandLabel call={call} truncate={truncate} />
+          ) : (
+            <ToolLabel call={call} truncate={truncate} />
+          )}
+          {call.status !== "done" && (
+            <span className="shrink-0" title={statusLabel[call.status]()}>
+              {statusIcon[call.status]}
+              <span className="sr-only">{statusLabel[call.status]()}</span>
+            </span>
+          )}
+          <Chevron />
+        </CollapsibleTrigger>
+        {call.name === "Bash" && call.status === "running" && <MoveToBackgroundButton callId={call.callId} />}
+      </div>
       <CollapsibleContent className="mt-1 mb-2 text-xs">
         <ToolCallDetails call={call} summary={summary} inGroup />
       </CollapsibleContent>
     </Collapsible>
+  )
+}
+
+function MoveToBackgroundButton({ callId }: { callId: string }) {
+  const { threadId } = use(PartMessage)
+  const provider = useThreads((state) => state.byId[threadId]?.provider)
+  if (provider === undefined || !providerInfo[provider].movesCommandsToBackground) return null
+  const move = async () => {
+    try {
+      const moved = await callPromise("backgroundTasks.moveCommand", { threadId, callId })
+      if (!moved) toast(m.tool_command_already_finished())
+    } catch (cause) {
+      toast.error(m.tool_command_move_to_background_failed({ message: errorMessage(cause) }))
+    }
+  }
+  return (
+    <Button variant="ghost" size="xs" action={move} className="shrink-0 text-muted-foreground">
+      {m.tool_command_move_to_background()}
+    </Button>
   )
 }
 

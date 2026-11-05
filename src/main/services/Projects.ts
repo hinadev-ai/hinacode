@@ -16,7 +16,7 @@ import {
   ProjectRootInvalidError,
   persistence,
 } from "./errors.ts"
-import { type CommandError, Git } from "./Git.ts"
+import { type CommandError, Git, LONG_TIMEOUT } from "./Git.ts"
 import { GitHub, type GitHubError } from "./GitHub.ts"
 
 export interface CreateProject {
@@ -183,7 +183,9 @@ const make = Effect.gen(function* () {
         return yield* new ProjectOriginTakenError({ rootPath })
       }
       if (!(yield* succeeds(git.run(rootPath, ["rev-parse", "--verify", "HEAD"])))) {
-        yield* git.run(rootPath, ["commit", "--only", "--allow-empty", "-m", "Initial commit"])
+        yield* git.run(rootPath, ["commit", "--only", "--allow-empty", "-m", "Initial commit"], {
+          timeout: LONG_TIMEOUT,
+        })
       }
       yield* github.createRepository(rootPath, visibility)
     })

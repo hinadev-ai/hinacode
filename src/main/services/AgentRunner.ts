@@ -50,6 +50,7 @@ import { isThreadBusy, spawnsSubagent } from "../../shared/domain.ts"
 import { previewPush } from "../../shared/compactTranscript.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { resumeGraceMs } from "../../shared/limits.ts"
+import { expandArtifactSkill } from "../agents/artifactSkills.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { expandDocumentCommand, withDocumentCommand } from "../agents/document.ts"
@@ -249,6 +250,10 @@ export class AgentRunner extends Context.Service<
       threadId: string,
       taskId: string,
     ) => Effect.Effect<void, AgentError | PersistenceError | NotFoundError>
+    readonly moveCommandToBackground: (
+      threadId: string,
+      callId: string,
+    ) => Effect.Effect<boolean, AgentError | PersistenceError | NotFoundError>
     readonly listCommands: (
       threadId: string,
     ) => Effect.Effect<ReadonlyArray<AgentCommand>, AgentError | PersistenceError | NotFoundError | FolderMissingError>
@@ -697,7 +702,7 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         if (provider.steer === undefined) return
         yield* deltas.flush
-        yield* provider.steer(thread.id, expandDocumentCommand(text), attachments, priority)
+        yield* provider.steer(thread.id, expandDocumentCommand(expandArtifactSkill(text)), attachments, priority)
         const now = yield* nowIso
         const current = turnMessages.at(-1)!
         const closed: Message = { ...current, completedAt: now }
@@ -1075,7 +1080,7 @@ const make = Effect.gen(function* () {
             yield* checkStopped
             if (!(yield* when)) return null
             yield* threads.recordTurnBase({ threadId, tree })
-            const agentPrompt = yield* promptForSession(thread, expandDocumentCommand(prompt))
+            const agentPrompt = yield* promptForSession(thread, expandDocumentCommand(expandArtifactSkill(prompt)))
             const now = yield* nowIso
             const assistant = openAssistantMessage(threadId, now)
             yield* insertMessage(userMessage(threadId, prompt, attachments, now, options.scheduledId))
@@ -1545,6 +1550,16 @@ const make = Effect.gen(function* () {
       yield* tasks.stop(threadId, taskId)
     })
 
+  const moveCommandToBackground: AgentRunner["Service"]["moveCommandToBackground"] = (threadId, callId) =>
+    Effect.gen(function* () {
+      const { provider: id } = yield* threads.get(threadId)
+      const moveCommand = providers[id].backgroundTasks?.moveCommand
+      if (moveCommand === undefined) {
+        return yield* new AgentError({ provider: id, message: "This agent cannot move a command to the background" })
+      }
+      return yield* moveCommand(threadId, callId)
+    })
+
   const hasPendingWakeup = (threadId: string) =>
     (backgroundTasks.get(threadId) ?? []).some((task) => task.kind === "wakeup")
 
@@ -1727,6 +1742,7 @@ const make = Effect.gen(function* () {
     stopSubagent,
     backgroundTasks: (threadId) => Effect.sync(() => backgroundTasks.get(threadId) ?? []),
     stopBackgroundTask,
+    moveCommandToBackground,
     listCommands: (threadId) =>
       Effect.gen(function* () {
         const thread = yield* threads.get(threadId)

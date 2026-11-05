@@ -178,6 +178,7 @@ export const routes: Record<RpcMethod, Route> = {
   "subagents.transcript": thread,
   "backgroundTasks.list": thread,
   "backgroundTasks.stop": thread,
+  "backgroundTasks.moveCommand": thread,
   "pullRequests.list": thread,
   "pullRequests.unlink": thread,
   "pullRequests.create": thread,
@@ -230,6 +231,7 @@ export const routes: Record<RpcMethod, Route> = {
   "fs.rename": root,
   "fs.delete": root,
   "fs.watch": root,
+  "fs.completeDirectory": named,
 
   "artifacts.file": owner("artifact", "id"),
 

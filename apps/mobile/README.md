@@ -1,6 +1,6 @@
 # HinaCode mobile
 
-The phone app for HinaCode's remote mode: see which thread needs you, approve commands, answer questions, send or steer prompts with images from the photo library, and run a shell in a thread's worktree. It also adds projects, searches threads and messages, renders replies as native Markdown text with highlighted code and workspace images, browses and searches a thread's files, shows pull request checks and reviews, opens and stops a turn's sub-agents, gathers the pull requests that need you and your open Linear tickets in an overview, raises a banner or a local notification when a thread needs you, and keeps its own settings next to the desktop's defaults. It talks to the desktop over one WebSocket using the same `RpcMethods` and `PushEvent` schemas as the desktop renderer (`src/shared`). Design: `docs/features/2026-10-12-remote-mode.md`.
+The phone app for HinaCode's remote mode: see which thread needs you, approve commands, answer questions, send or steer prompts with images from the photo library, and run a shell in a thread's worktree. It also adds projects, searches threads and messages, renders replies as native Markdown text with highlighted code and workspace images, browses and searches a thread's files, shows pull request checks and reviews, opens and stops a turn's sub-agents, previews and reads the documents an agent publishes, gathers the pull requests that need you and your open Linear tickets in an overview, raises a banner or a local notification when a thread needs you, and keeps its own settings next to the desktop's defaults. It talks to the desktop over one WebSocket using the same `RpcMethods` and `PushEvent` schemas as the desktop renderer (`src/shared`). Design: `docs/features/2026-10-12-remote-mode.md`.
 
 This is an Expo app with its own `node_modules` and lockfile. It is not part of the root pnpm workspace, so Metro and electron-vite never see each other's dependencies. Metro watches `../../src/shared` and resolves `effect` from this app, so the bundle carries one copy. The root still needs `pnpm install` for `tsc`, since it resolves `effect` types for `src/shared` from the root.
 
@@ -40,7 +40,7 @@ To connect to an isolated local server, run this in another terminal from the re
 
 ```sh
 pnpm build:server
-HINACODE_USER_DATA=/tmp/kk-ios-local node out/server/daemon.js serve --host 127.0.0.1 --port 48082
+HINACODE_USER_DATA=/tmp/kk-ios-local node bin/hinacode.mjs serve --host 127.0.0.1 --port 48082
 ```
 
 Paste the server's pairing URL into the app. The simulator can reach the Mac at `127.0.0.1`. Keep both the server and Metro running while you check the app.
