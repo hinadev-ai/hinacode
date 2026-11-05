@@ -6,10 +6,10 @@ import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { afterAll, describe, expect, it } from "@effect/vitest"
 import { vi } from "vitest"
-import { Cause, Effect, Exit, Fiber, Layer, Option, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, Layer, Option, Schema, Stream } from "effect"
 import { SqlClient } from "effect/sql"
 import { TestClock } from "effect/testing"
-import type { RelayStatus } from "../../shared/domain.ts"
+import { RemoteStatus, type RelayStatus } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
 import * as SecretsModule from "../services/Secrets.ts"
 import { Secrets } from "../services/Secrets.ts"
@@ -28,6 +28,10 @@ const PORT = 48123
 const ORIGIN = `http://127.0.0.1:${PORT}`
 const SERVICE_URL = "https://relay.test"
 const LINK_URL = "https://relay.test/link?code=WXYZ-2345"
+
+const RemoteStatusDecodedByReleasedDesktops = Schema.Struct({
+  relay: Schema.Struct({ state: Schema.Literal("linking"), url: Schema.String, userCode: Schema.String }),
+})
 
 const tunnel: RelayTunnel = { hostname: HOSTNAME, origin: ORIGIN }
 
@@ -314,6 +318,26 @@ describe("Relay", () => {
             error: "Cannot install cloudflared: the download does not match its checksum.",
           })
           expect(readdirSync(dir)).toStrictEqual([])
+        }),
+      )
+    }).pipe(Effect.provide(base)),
+  )
+
+  it.effect("sends a linking status that released desktops can decode", () =>
+    Effect.gen(function* () {
+      yield* remoteOn
+      const service = fakeService({ pendingClaims: 2 })
+      yield* withRelay(
+        { serviceUrl: SERVICE_URL, fetch: service.fetch, cloudflared: connects().path },
+        Effect.gen(function* () {
+          const setup = yield* Relay.use((relay) => relay.setup({ onLink: noLink })).pipe(Effect.forkChild)
+          const relay = yield* until((status) => status.state === "linking")
+          const wire = Schema.encodeSync(RemoteStatus)({ listening: true, listenError: null, connected: 0, relay })
+
+          expect(Schema.decodeUnknownSync(RemoteStatusDecodedByReleasedDesktops)(wire)).toStrictEqual({
+            relay: { state: "linking", url: LINK_URL, userCode: "WXYZ-2345" },
+          })
+          yield* Fiber.interrupt(setup)
         }),
       )
     }).pipe(Effect.provide(base)),
