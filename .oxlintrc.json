@@ -142,7 +142,7 @@
       }
     },
     {
-      "files": ["src/**/*.test.ts", "src/**/fakeAppServer.mjs", "e2e/**"],
+      "files": ["src/**/*.test.ts", "src/**/fakeAppServer.mjs", "e2e/**", "apps/web/e2e/**"],
       "rules": {
         "hinacode/no-wall-clock-in-test": "error"
       }

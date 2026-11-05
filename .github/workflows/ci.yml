@@ -243,8 +243,6 @@ jobs:
       # Without a window manager, minimizing a window does nothing. Search runs ripgrep.
       - run: sudo apt-get update && sudo apt-get install --yes xvfb openbox ripgrep
       - run: pnpm install --frozen-lockfile
-      # The web app scenarios drive Playwright's own Chromium.
-      - run: pnpm exec playwright install chromium
       - run: pnpm exec bddgen -c e2e/playwright.config.ts
       # A shard runs every test of the projects its tests depend on, so desktop runs as its own pass instead.
       - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm exec playwright test -c e2e/playwright.config.ts --project parallel --shard ${{ matrix.shard }}/4'
@@ -256,6 +254,30 @@ jobs:
           path: |
             e2e/playwright-report
             e2e/test-results
+
+  e2e-web:
+    name: e2e (web)
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e:web
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-report-web
+          path: |
+            apps/web/e2e/playwright-report
+            apps/web/e2e/test-results
 
   resource-monitor-linux:
     name: resource monitor (linux)
