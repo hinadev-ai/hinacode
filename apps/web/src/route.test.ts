@@ -7,13 +7,21 @@ const machine = (
   id: string,
   answers: Partial<Record<RpcMethod, unknown>>,
   status: EnvironmentStatus = "connected",
-): MachineLink & { readonly calls: Array<{ method: RpcMethod; payload: unknown }> } => {
+): MachineLink & { readonly calls: Array<{ method: RpcMethod; payload: unknown }>; readonly connect: () => void } => {
   const calls: Array<{ method: RpcMethod; payload: unknown }> = []
+  let current = status
+  const connected = Promise.withResolvers<void>()
+  if (status === "connected") connected.resolve()
   return {
     id,
     name: `${id} name`,
     calls,
-    status: () => status,
+    status: () => current,
+    connected: () => connected.promise,
+    connect: () => {
+      current = "connected"
+      connected.resolve()
+    },
     call: async (method, payload): Promise<RpcEnvelope<unknown>> => {
       calls.push({ method, payload })
       return method in answers ? { result: answers[method] } : { error: { tag: "Missing", message: method } }
@@ -101,6 +109,22 @@ describe("routing a web call", () => {
   it("sends a call that names no machine to the first connected one", async () => {
     expect(await setup().route.call("settings.get", undefined)).toEqual({ result: { from: "first" } })
     expect(await setup("offline").route.call("settings.get", undefined)).toEqual({ result: { from: "second" } })
+  })
+
+  it("holds a call that names no machine until the first machine connects", async () => {
+    const first = machine("first", { "settings.get": { from: "first" } }, "connecting")
+    const second = machine("second", { "settings.get": { from: "second" } }, "connecting")
+    const route = makeRoute({
+      machines: new Map([
+        [first.id, first],
+        [second.id, second],
+      ]),
+      browser: () => undefined,
+    })
+    const answer = route.call("settings.get", undefined)
+    second.connect()
+    expect(await answer).toEqual({ result: { from: "second" } })
+    expect(first.calls).toEqual([])
   })
 
   it("lists an offline machine's last answer instead of waiting for it", async () => {
