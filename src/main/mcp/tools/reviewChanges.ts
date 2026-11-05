@@ -28,6 +28,8 @@ const git = (cwd: string, args: ReadonlyArray<string>) =>
           cwd,
           env: { ...process.env, ...NO_OPTIONAL_LOCKS_ENV },
           maxBuffer: 64 * 1024 * 1024,
+          timeout: 5 * 60_000,
+          killSignal: "SIGKILL",
         })
       ).stdout,
     catch: (cause) =>
