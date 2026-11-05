@@ -235,7 +235,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
   const [focus, setFocus] = useState<ComposerPicker>("model")
   const [picking, startPicking] = useTransition()
   const openedByShortcut = useRef(false)
-  const movedTabByKey = useRef(false)
+  const tabMovedToByKey = useRef<string | null>(null)
   const closedWithEnter = useRef(false)
   const popupRef = useRef<HTMLDivElement>(null)
   const tab = tabs.find((candidate) => candidate.value === tabValue) ?? tabs[0]!
@@ -308,14 +308,14 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
     const enabled = tabs.filter((candidate) => !candidate.disabled)
     const next = enabled[(enabled.indexOf(tab) + step + enabled.length) % enabled.length]
     if (next === undefined) return
-    movedTabByKey.current = true
+    tabMovedToByKey.current = next.value
     popupRef.current?.focus({ preventScroll: true })
     openTab(next.value)
   }
   useEffect(() => {
     const popup = popupRef.current
-    if (!movedTabByKey.current || picking || popup === null || models.length === 0) return
-    movedTabByKey.current = false
+    if (tabMovedToByKey.current !== tab.value || picking || popup === null || models.length === 0) return
+    tabMovedToByKey.current = null
     const rows = modelRows(popup)
     const row = rows.find((candidate) => candidate.dataset["selected"] === "true") ?? rows[0]
     row?.focus({ preventScroll: true })
