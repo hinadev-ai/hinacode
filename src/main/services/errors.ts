@@ -125,7 +125,7 @@ export class AccountInUseError extends Schema.TaggedError<AccountInUseError>()("
   threads: Schema.Number,
 }) {
   override get message(): string {
-    return `${this.threads} ${this.threads === 1 ? "thread uses" : "threads use"} this account. Delete them first.`
+    return `${this.threads} running ${this.threads === 1 ? "thread uses" : "threads use"} this account. Wait for them to finish.`
   }
 }
 
