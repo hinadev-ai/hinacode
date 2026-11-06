@@ -1,9 +1,11 @@
+import { createHash } from "node:crypto"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { describe, expect, it } from "@effect/vitest"
-import { Effect, Layer, Option, Fiber } from "effect"
+import { Duration, Effect, Fiber, Layer, Option } from "effect"
+import { TestClock } from "effect/testing"
 import type { RelayHost, RelayMachine } from "../../shared/relayMachines.ts"
 import * as Db from "../db/client.ts"
 import * as RemoteAccess from "../remote/access.ts"
@@ -36,8 +38,7 @@ const homeServerHost: RelayHost = {
 interface StandInRelay {
   credential: string
   issuedCredential: string
-  pendingClaims: number
-  expiresAt: number
+  readonly challenges: Map<string, string>
   profile: { name: string | null; email: string | null }
   machines: ReadonlyArray<RelayMachine>
   hosts: Array<RelayHost>
@@ -49,8 +50,7 @@ interface StandInRelay {
   readonly fetch: Fetch
 }
 
-const FAR_FUTURE = 4_000_000_000_000
-const LINK_URL = `${SERVICE_URL}/link?code=WXYZ-2345`
+const SIGN_IN_CODE = "sign-in-code"
 
 const standInRelay = () => {
   const hostById = (id: string) => relay.hosts.find((host) => host.id === id)
@@ -98,8 +98,7 @@ const standInRelay = () => {
   const relay: StandInRelay = {
     credential: CREDENTIAL,
     issuedCredential: CREDENTIAL,
-    pendingClaims: 0,
-    expiresAt: FAR_FUTURE,
+    challenges: new Map(),
     profile: { name: "Kalan", email: "kalan@example.com" },
     machines: [homeServer],
     hosts: [homeServerHost],
@@ -112,14 +111,12 @@ const standInRelay = () => {
       const method = init.method ?? "GET"
       relay.calls.push(`${method} ${url.pathname}`)
       if (url.origin !== SERVICE_URL) return new Response(null, { status: 404 })
-      if (method === "POST" && url.pathname === "/v1/sign-ins") {
-        const expiresAt = relay.expiresAt
-        return Response.json({ deviceCode: "device", userCode: "WXYZ-2345", url: LINK_URL, interval: 0, expiresAt })
-      }
-      if (method === "POST" && url.pathname === "/v1/links/claim") {
-        if (relay.pendingClaims > 0) {
-          relay.pendingClaims--
-          return Response.json({ pending: true }, { status: 202 })
+      if (method === "POST" && url.pathname === "/v1/sign-in-codes/exchange") {
+        const { code, codeVerifier } = JSON.parse(String(init.body)) as { code: string; codeVerifier: string }
+        const challenge = relay.challenges.get(code)
+        relay.challenges.delete(code)
+        if (challenge !== createHash("sha256").update(codeVerifier).digest("base64url")) {
+          return Response.json({ error: "That sign-in expired." }, { status: 410 })
         }
         return Response.json({ credential: relay.issuedCredential })
       }
@@ -162,30 +159,76 @@ const account = RelayAccount.RelayAccount
 const listed = Environments.Environments.use((environments) => environments.list).pipe(
   Effect.map(({ clouds }) => clouds.map(({ id, source }) => ({ id, source }))),
 )
-const signIn = account.use((relayAccount) => relayAccount.signIn({ onLink: () => Effect.void }))
+const signInPage = (url: string) => {
+  const page = new URL(url)
+  expect(`${page.origin}${page.pathname}`).toBe(`${SERVICE_URL}/sign-in`)
+  const redirectUri = page.searchParams.get("redirect_uri") ?? ""
+  expect(redirectUri).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/callback$/)
+  return {
+    redirectUri,
+    codeChallenge: page.searchParams.get("code_challenge") ?? "",
+    name: page.searchParams.get("name"),
+  }
+}
+
+const visit = (url: string) =>
+  Effect.promise(() =>
+    fetch(url, { redirect: "manual" }).then(
+      (answer) => ({ status: answer.status, location: answer.headers.get("location") }),
+      () => "refused" as const,
+    ),
+  )
+
+const approveInBrowser = (relay: StandInRelay) => (url: string) =>
+  Effect.gen(function* () {
+    const { redirectUri, codeChallenge } = signInPage(url)
+    relay.challenges.set(SIGN_IN_CODE, codeChallenge)
+    expect(yield* visit(`${redirectUri}?code=${SIGN_IN_CODE}`)).toStrictEqual({
+      status: 302,
+      location: `${SERVICE_URL}/signed-in`,
+    })
+  })
+
+const signInWith = (openUrl: (url: string) => Effect.Effect<void>) =>
+  account.use((relayAccount) => relayAccount.signIn({ openUrl }))
+
+const signIn = (relay: StandInRelay) => signInWith(approveInBrowser(relay))
+
+const openedPages = () => {
+  const pages: Array<string> = []
+  return {
+    pages,
+    openUrl: (url: string) => Effect.sync(() => void pages.push(url)),
+    opened: Effect.yieldNow.pipe(
+      Effect.repeat({ until: () => pages.length > 0 }),
+      Effect.map(() => signInPage(pages[0] ?? "")),
+    ),
+  }
+}
 const storedCredential = Secrets.Secrets.use((secrets) => secrets.get("relay.deviceCredential")).pipe(
   Effect.map(Option.getOrNull),
 )
 
 describe("RelayAccount", () => {
-  it.live("signing in opens the page, waits for approval, and adds every machine the relay lists", () => {
+  it.live("signing in follows the browser back to this app and adds every machine the relay lists", () => {
     const relay = standInRelay()
-    relay.pendingClaims = 2
     return withAccount(
       relay,
       Effect.gen(function* () {
         const opened: Array<string> = []
-        const status = yield* account.use((relayAccount) =>
-          relayAccount.signIn({ onLink: ({ url }) => Effect.sync(() => void opened.push(url)) }),
+        const status = yield* signInWith((url) =>
+          Effect.andThen(
+            Effect.sync(() => void opened.push(url)),
+            approveInBrowser(relay)(url),
+          ),
         )
 
-        expect(opened).toStrictEqual([LINK_URL])
-        expect(relay.pendingClaims).toBe(0)
-
+        const self = (yield* RemoteAccess.RemoteAccess).identity
+        expect(opened.map((url) => signInPage(url).name)).toStrictEqual([self.name])
         expect(status).toStrictEqual({
           state: "signedIn",
           serviceUrl: SERVICE_URL,
-          environmentId: (yield* RemoteAccess.RemoteAccess).identity.id,
+          environmentId: self.id,
           name: "Kalan",
           email: "kalan@example.com",
           machines: 1,
@@ -204,7 +247,7 @@ describe("RelayAccount", () => {
     return withAccount(
       relay,
       Effect.gen(function* () {
-        const status = yield* signIn
+        const status = yield* signIn(relay)
 
         expect(status).toMatchObject({ state: "signedIn", error: expect.stringMatching(/no longer accepts/) })
         expect(yield* storedCredential).toBe("stale")
@@ -212,44 +255,79 @@ describe("RelayAccount", () => {
     )
   })
 
-  it.live("logging out while the sign-in page is still opening ends the sign-in", () => {
+  it.live("the listener refuses other paths and callbacks without a code, and keeps waiting", () => {
     const relay = standInRelay()
     return withAccount(
       relay,
       Effect.gen(function* () {
-        const links: Array<string> = []
-        const signingIn = yield* account
-          .use((relayAccount) =>
-            relayAccount.signIn({
-              onLink: ({ url }) =>
-                Effect.andThen(
-                  Effect.sync(() => void links.push(url)),
-                  Effect.never,
-                ),
-            }),
-          )
-          .pipe(Effect.forkChild)
-        yield* Effect.yieldNow.pipe(Effect.repeat({ until: () => links.length === 1 }))
+        const browser = openedPages()
+        const signingIn = yield* signInWith(browser.openUrl).pipe(Effect.forkChild)
+        const { redirectUri } = yield* browser.opened
 
-        yield* account.use((relayAccount) => relayAccount.signOut)
+        expect(yield* visit(redirectUri.replace("/callback", "/other?code=x"))).toMatchObject({ status: 404 })
+        expect(yield* visit(redirectUri)).toMatchObject({ status: 404 })
+        expect(yield* visit(`${redirectUri}?code=`)).toMatchObject({ status: 404 })
+        expect(signingIn.pollUnsafe()).toBeUndefined()
 
-        expect(yield* Fiber.join(signingIn)).toStrictEqual({ state: "signedOut" })
-        expect(yield* storedCredential).toBeNull()
-        expect(relay.calls).not.toContain("POST /v1/links/claim")
+        yield* approveInBrowser(relay)(browser.pages[0] ?? "")
+        expect(yield* Fiber.join(signingIn)).toMatchObject({ state: "signedIn" })
+        expect(yield* storedCredential).toBe(CREDENTIAL)
       }),
     )
   })
 
-  it.live("a sign-in nobody approves in time keeps nothing and says so", () => {
+  it.live("logging out while the browser is open ends the sign-in and closes the listener", () => {
     const relay = standInRelay()
-    relay.pendingClaims = 1
-    relay.expiresAt = 0
     return withAccount(
       relay,
       Effect.gen(function* () {
-        const error = yield* Effect.flip(signIn)
+        const browser = openedPages()
+        const signingIn = yield* signInWith(browser.openUrl).pipe(Effect.forkChild)
+        const { redirectUri } = yield* browser.opened
 
-        expect(error.message).toMatch(/expired/)
+        yield* account.use((relayAccount) => relayAccount.signOut)
+
+        expect(yield* Fiber.join(signingIn)).toStrictEqual({ state: "signedOut" })
+        expect(yield* visit(`${redirectUri}?code=${SIGN_IN_CODE}`)).toBe("refused")
+        expect(yield* storedCredential).toBeNull()
+        expect(relay.calls).not.toContain("POST /v1/sign-in-codes/exchange")
+      }),
+    )
+  })
+
+  it.effect("a sign-in nobody finishes in ten minutes keeps nothing and says so", () => {
+    const relay = standInRelay()
+    return withAccount(
+      relay,
+      Effect.gen(function* () {
+        const browser = openedPages()
+        const signingIn = yield* signInWith(browser.openUrl).pipe(Effect.forkChild)
+        const { redirectUri } = yield* browser.opened
+
+        yield* TestClock.adjust(Duration.minutes(10))
+
+        expect((yield* Effect.flip(Fiber.join(signingIn))).message).toMatch(/expired/)
+        expect(yield* visit(`${redirectUri}?code=${SIGN_IN_CODE}`)).toBe("refused")
+        expect(yield* storedCredential).toBeNull()
+      }),
+    )
+  })
+
+  it.live("a code the relay will not exchange keeps nothing and says to sign in again", () => {
+    const relay = standInRelay()
+    return withAccount(
+      relay,
+      Effect.gen(function* () {
+        const error = yield* Effect.flip(
+          signInWith((url) =>
+            Effect.andThen(
+              approveInBrowser(relay)(url),
+              Effect.sync(() => relay.challenges.clear()),
+            ),
+          ),
+        )
+
+        expect(error.message).toBe("The sign-in expired or was already used. Sign in again.")
         expect(yield* storedCredential).toBeNull()
       }),
     )
@@ -257,20 +335,17 @@ describe("RelayAccount", () => {
 
   it.live("a second sign-in replaces the first, which ends signed out", () => {
     const relay = standInRelay()
-    relay.pendingClaims = Number.MAX_SAFE_INTEGER
     return withAccount(
       relay,
       Effect.gen(function* () {
-        const links: Array<string> = []
-        const first = yield* account
-          .use((relayAccount) => relayAccount.signIn({ onLink: ({ url }) => Effect.sync(() => void links.push(url)) }))
-          .pipe(Effect.forkChild)
-        yield* Effect.yieldNow.pipe(Effect.repeat({ until: () => links.length === 1 }))
-        relay.pendingClaims = 0
+        const browser = openedPages()
+        const first = yield* signInWith(browser.openUrl).pipe(Effect.forkChild)
+        const { redirectUri } = yield* browser.opened
 
-        const second = yield* signIn
+        const second = yield* signIn(relay)
         expect(second).toMatchObject({ state: "signedIn" })
         expect(yield* Fiber.join(first)).toMatchObject({ state: "signedOut" })
+        expect(yield* visit(`${redirectUri}?code=${SIGN_IN_CODE}`)).toBe("refused")
       }),
     )
   })
@@ -281,7 +356,7 @@ describe("RelayAccount", () => {
     return withAccount(
       relay,
       Effect.gen(function* () {
-        expect(yield* signIn).toMatchObject({ state: "signedIn", name: null, email: null, machines: 1 })
+        expect(yield* signIn(relay)).toMatchObject({ state: "signedIn", name: null, email: null, machines: 1 })
       }),
     )
   })
@@ -291,7 +366,7 @@ describe("RelayAccount", () => {
     return withAccount(
       relay,
       Effect.gen(function* () {
-        yield* signIn
+        yield* signIn(relay)
         relay.credential = "rotated"
         relay.machines = []
 
@@ -312,7 +387,7 @@ describe("RelayAccount", () => {
     return withAccount(
       relay,
       Effect.gen(function* () {
-        yield* signIn
+        yield* signIn(relay)
 
         expect(yield* account.use((relayAccount) => relayAccount.signOut)).toStrictEqual({ state: "signedOut" })
         expect(relay.calls).toContain("DELETE /v1/device")
@@ -327,7 +402,7 @@ describe("RelayAccount", () => {
     return withAccount(
       relay,
       Effect.gen(function* () {
-        yield* signIn
+        yield* signIn(relay)
 
         expect(yield* account.use((relayAccount) => relayAccount.machines)).toStrictEqual([homeServerHost])
       }),
@@ -352,7 +427,7 @@ describe("RelayAccount", () => {
     return withAccount(
       relay,
       Effect.gen(function* () {
-        yield* signIn
+        yield* signIn(relay)
 
         const hosts = yield* account.use((relayAccount) => relayAccount.setShown({ id: "host-1", enabled: false }))
 
@@ -368,7 +443,7 @@ describe("RelayAccount", () => {
     return withAccount(
       relay,
       Effect.gen(function* () {
-        yield* signIn
+        yield* signIn(relay)
 
         const hosts = yield* account.use((relayAccount) => relayAccount.removeMachine({ id: "host-1" }))
 
@@ -386,7 +461,7 @@ describe("RelayAccount", () => {
       Effect.gen(function* () {
         const self = (yield* RemoteAccess.RemoteAccess).identity
         relay.hosts = [...relay.hosts, { ...homeServerHost, id: "host-self", environmentId: self.id, name: self.name }]
-        yield* signIn
+        yield* signIn(relay)
 
         const error = yield* account
           .use((relayAccount) => relayAccount.removeMachine({ id: "host-self" }))
@@ -405,7 +480,7 @@ describe("RelayAccount", () => {
     return withAccount(
       relay,
       Effect.gen(function* () {
-        yield* signIn
+        yield* signIn(relay)
 
         expect(yield* account.use((relayAccount) => relayAccount.approveOwnLink("SELF-CODE"))).toBe(true)
         expect(relay.approved).toStrictEqual(["SELF-CODE"])
@@ -430,7 +505,7 @@ describe("RelayAccount", () => {
     return withAccount(
       relay,
       Effect.gen(function* () {
-        yield* signIn
+        yield* signIn(relay)
         relay.credential = "rotated"
 
         const calls: Array<Effect.Effect<unknown, { readonly message: string }, RelayAccount.RelayAccount>> = [

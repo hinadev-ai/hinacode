@@ -1,8 +1,11 @@
-import { Clock, Context, Duration, Effect, Exit, Fiber, FiberHandle, Layer, Option, Schedule, Semaphore } from "effect"
+import { createHash, randomBytes } from "node:crypto"
+import { createServer, type Server } from "node:http"
+import type { AddressInfo } from "node:net"
+import { Context, Duration, Effect, Exit, Fiber, FiberHandle, Layer, Option, Schedule, Semaphore } from "effect"
 import type { RelayAccountStatus } from "../../shared/domain.ts"
 import type { RelayHost, RelayMachine } from "../../shared/relayMachines.ts"
 import { RemoteAccess } from "../remote/access.ts"
-import { type Fetch, Link, RelayError, type RelayLink, relayService } from "../remote/relayService.ts"
+import { type Fetch, RelayError, relayService } from "../remote/relayService.ts"
 import { nowIso } from "./clock.ts"
 import { Environments } from "./Environments.ts"
 import type { PersistenceError } from "./errors.ts"
@@ -12,13 +15,14 @@ export const DEVICE_CREDENTIAL_SECRET = "relay.deviceCredential"
 
 const SYNC_INTERVAL = "5 minutes"
 const SIGN_IN_EXPIRED = "The sign-in expired. Try again."
+const SIGN_IN_TIMEOUT = Duration.minutes(10)
 
 export class RelayAccount extends Context.Service<
   RelayAccount,
   {
     readonly status: Effect.Effect<RelayAccountStatus, PersistenceError>
     readonly signIn: (input: {
-      readonly onLink: (link: RelayLink) => Effect.Effect<void>
+      readonly openUrl: (url: string) => Effect.Effect<void>
     }) => Effect.Effect<RelayAccountStatus, RelayError | PersistenceError>
     readonly signOut: Effect.Effect<RelayAccountStatus, PersistenceError>
     readonly sync: Effect.Effect<RelayAccountStatus>
@@ -40,6 +44,36 @@ export interface RelayAccountOptions {
 }
 
 type SignedIn = Extract<RelayAccountStatus, { state: "signedIn" }>
+
+const listenForSignInCode = (signedInPage: URL) =>
+  Effect.gen(function* () {
+    const received = Promise.withResolvers<string>()
+    let answered = false
+    const listening = yield* Effect.acquireRelease(
+      Effect.callback<Server, RelayError>((resume) => {
+        const server = createServer((request, response) => {
+          const url = new URL(request.url ?? "/", "http://127.0.0.1")
+          const code = url.searchParams.get("code")
+          if (answered || url.pathname !== "/callback" || !code) return void response.writeHead(404).end()
+          answered = true
+          response.writeHead(302, { Location: signedInPage.href }).end(() => received.resolve(code))
+        })
+        server.once("error", (cause) =>
+          resume(Effect.fail(new RelayError({ message: `Cannot wait for the sign-in: ${cause.message}` }))),
+        )
+        server.listen(0, "127.0.0.1", () => resume(Effect.succeed(server)))
+      }),
+      (stopping) =>
+        Effect.callback<void>((resume) => {
+          stopping.close(() => resume(Effect.void))
+          stopping.closeAllConnections()
+        }),
+    )
+    return {
+      redirectUri: `http://127.0.0.1:${(listening.address() as AddressInfo).port}/callback`,
+      code: Effect.promise(() => received.promise),
+    }
+  })
 
 const make = ({ serviceUrl, fetch = globalThis.fetch }: RelayAccountOptions) =>
   Effect.gen(function* () {
@@ -80,30 +114,36 @@ const make = ({ serviceUrl, fetch = globalThis.fetch }: RelayAccountOptions) =>
         Effect.catch((error) => Effect.logWarning("could not read the relay account", error)),
       )
 
-    const claimUntilApproved = (link: typeof Link.Type) =>
+    const receiveSignInCode = (openUrl: (url: string) => Effect.Effect<void>, codeChallenge: string) =>
       Effect.gen(function* () {
-        for (;;) {
-          yield* Effect.sleep(Duration.seconds(link.interval))
-          if ((yield* Clock.currentTimeMillis) >= link.expiresAt) {
-            return yield* new RelayError({ message: SIGN_IN_EXPIRED })
-          }
-          const claimed = yield* service.claim(link.deviceCode)
-          if (Option.isNone(claimed)) continue
-          yield* secrets.set(DEVICE_CREDENTIAL_SECRET, claimed.value).pipe(lock.withPermit, Effect.uninterruptible)
-          return yield* sync
-        }
+        const listener = yield* listenForSignInCode(new URL("/signed-in", serviceUrl))
+        const page = new URL("/sign-in", serviceUrl)
+        page.searchParams.set("redirect_uri", listener.redirectUri)
+        page.searchParams.set("code_challenge", codeChallenge)
+        page.searchParams.set("name", self.name)
+        yield* openUrl(page.href)
+        return yield* listener.code
+      }).pipe(
+        Effect.timeoutOrElse({
+          duration: SIGN_IN_TIMEOUT,
+          orElse: () => Effect.fail(new RelayError({ message: SIGN_IN_EXPIRED })),
+        }),
+        Effect.scoped,
+      )
+
+    const signInThroughBrowser = (openUrl: (url: string) => Effect.Effect<void>) =>
+      Effect.gen(function* () {
+        const codeVerifier = randomBytes(32).toString("base64url")
+        const codeChallenge = createHash("sha256").update(codeVerifier).digest("base64url")
+        const code = yield* receiveSignInCode(openUrl, codeChallenge)
+        const credential = yield* service.exchangeSignInCode(code, codeVerifier)
+        yield* secrets.set(DEVICE_CREDENTIAL_SECRET, credential).pipe(lock.withPermit, Effect.uninterruptible)
+        return yield* sync
       })
 
-    const signIn = ({ onLink }: { readonly onLink: (link: RelayLink) => Effect.Effect<void> }) =>
+    const signIn = ({ openUrl }: { readonly openUrl: (url: string) => Effect.Effect<void> }) =>
       Effect.gen(function* () {
-        const attempt = yield* FiberHandle.run(
-          signingIn,
-          Effect.gen(function* () {
-            const link = yield* service.createSignIn(self.name)
-            yield* onLink({ url: link.url, userCode: link.userCode })
-            return yield* claimUntilApproved(link)
-          }),
-        )
+        const attempt = yield* FiberHandle.run(signingIn, signInThroughBrowser(openUrl))
         const exit = yield* Fiber.await(attempt)
         return Exit.hasInterrupts(exit) ? yield* status : yield* exit
       })
