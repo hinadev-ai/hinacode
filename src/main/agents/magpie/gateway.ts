@@ -14,6 +14,7 @@ const GatewayModel = Schema.Struct({
   id: Schema.String,
   display_name: Schema.optionalKey(Schema.String),
   reasoning_levels: Schema.optionalKey(Schema.Array(Schema.String)),
+  service_tiers: Schema.optionalKey(Schema.Array(Schema.Struct({ id: Schema.String }))),
 })
 export type GatewayModel = typeof GatewayModel.Type
 const ModelList = Schema.Struct({ data: Schema.Array(GatewayModel) })
@@ -56,13 +57,17 @@ const CLAUDE_EFFORTS = new Set(CLAUDE_EFFORT_LEVELS)
 const claudeEfforts = (model: GatewayModel) =>
   (model.reasoning_levels ?? []).filter((effort) => CLAUDE_EFFORTS.has(effort))
 
+const FAST_TIER = "priority"
+
+const hasFastMode = (model: GatewayModel) => (model.service_tiers ?? []).some((tier) => tier.id === FAST_TIER)
+
 export const magpieModelInfo = (model: GatewayModel): ModelInfo => ({
   id: model.id,
   label: model.display_name ?? model.id,
   provider: "magpie",
   efforts: claudeEfforts(model),
   defaultEffort: null,
-  fastMode: false,
+  fastMode: hasFastMode(model),
   autoMode: false,
 })
 
@@ -102,7 +107,7 @@ const capabilities = (efforts: ReadonlyArray<string>) => [
   ...(efforts.includes("max") ? ["max_effort"] : []),
 ]
 
-export const claudeGatewayEnv = (origin: string, model: GatewayModel): Record<string, string> => {
+export const claudeGatewayEnv = (origin: string, model: GatewayModel, fast: boolean): Record<string, string> => {
   const efforts = claudeEfforts(model)
   return {
     ...Object.fromEntries(CLAUDE_BYPASS_VARIABLES.map((variable) => [variable, ""])),
@@ -112,5 +117,6 @@ export const claudeGatewayEnv = (origin: string, model: GatewayModel): Record<st
     ...(efforts.length > 0 && {
       CLAUDE_CODE_MODEL_CAPABILITIES: `${model.id.toLowerCase()}=${capabilities(efforts).join(",")}`,
     }),
+    ...(fast && hasFastMode(model) && { CLAUDE_CODE_EXTRA_BODY: JSON.stringify({ speed: "fast" }) }),
   }
 }

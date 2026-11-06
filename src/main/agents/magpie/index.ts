@@ -1,7 +1,7 @@
 import { Context, Effect, Layer } from "effect"
 import type { AgentAccount } from "../../../shared/agent.ts"
 import { makeClaudeHarness } from "../claude/index.ts"
-import { AgentError, type AgentProvider } from "../provider.ts"
+import { AgentError, type AgentProvider, type SessionInput } from "../provider.ts"
 import { claudeGatewayEnv, findGateway, gatewayModels, magpieModelInfos, modelsAt } from "./gateway.ts"
 
 export class MagpieProvider extends Context.Service<MagpieProvider, AgentProvider>()("hinacode/MagpieProvider") {
@@ -21,12 +21,12 @@ const notRunning = new AgentError({
 
 const listModels = Effect.map(gatewayModels(), magpieModelInfos)
 
-const launchEnv = (model: string) =>
+const launchEnv = ({ model, fastMode }: SessionInput) =>
   Effect.gen(function* () {
     const origin = yield* findGateway()
     if (origin === null) return yield* notRunning
     const listed = (yield* modelsAt(origin)).find((candidate) => candidate.id === model)
-    return claudeGatewayEnv(origin, listed ?? { id: model })
+    return claudeGatewayEnv(origin, listed ?? { id: model }, fastMode)
   })
 
 const account = () =>

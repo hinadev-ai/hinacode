@@ -395,7 +395,7 @@ const readSession = (sessionId: string, cwd: string, home: AccountHome | null) =
 export interface ClaudeHarness {
   readonly id: ProviderId
   readonly listModels: Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
-  readonly launchEnv: (model: string) => Effect.Effect<Readonly<Record<string, string>>, AgentError>
+  readonly launchEnv: (input: SessionInput) => Effect.Effect<Readonly<Record<string, string>>, AgentError>
 }
 
 type HarnessProvider = Omit<AgentProvider, "account" | "planLimits" | "copySession" | "listSessions" | "readSession">
@@ -755,7 +755,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
 
     const reuseOrStartSession = (input: SessionInput, mode: PermissionMode) =>
       Effect.gen(function* () {
-        const launch = yield* launchEnv(input.model)
+        const launch = yield* launchEnv(input)
         const existing = sessions.get(input.threadId)
         if (existing !== undefined) {
           // FIXME: the CLI reads its skills and auto-compact window once per process

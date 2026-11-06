@@ -5,6 +5,7 @@ import { Effect, Fiber, Option, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import type { AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
 import { usageLimitResult } from "./fixtures/usageLimit.ts"
+import type { GatewayModel } from "../magpie/gateway.ts"
 import { MagpieProvider } from "../magpie/index.ts"
 import { ClaudeProvider, layer } from "./index.ts"
 
@@ -107,11 +108,7 @@ vi.mock("../binary.ts", async () => {
 
 const gateway = vi.hoisted(() => ({
   origin: null as string | null,
-  models: new Array<{
-    readonly id: string
-    readonly display_name?: string
-    readonly reasoning_levels?: Array<string>
-  }>(),
+  models: new Array<GatewayModel>(),
 }))
 
 vi.mock("../magpie/gateway.ts", async (importOriginal) => {
@@ -1276,7 +1273,12 @@ const onMagpie = <A, E>(effect: Effect.Effect<A, E, MagpieProvider>) =>
     sdk.setModel = () => Promise.resolve()
     gateway.origin = "http://127.0.0.1:3425"
     gateway.models = [
-      { id: "openrouter/deepseek-v4", display_name: "DeepSeek V4", reasoning_levels: ["low", "high", "max"] },
+      {
+        id: "openrouter/deepseek-v4",
+        display_name: "DeepSeek V4",
+        reasoning_levels: ["low", "high", "max"],
+        service_tiers: [{ id: "priority" }],
+      },
       { id: "moonshot/kimi-k3" },
     ]
     return effect
@@ -1285,10 +1287,10 @@ const onMagpie = <A, E>(effect: Effect.Effect<A, E, MagpieProvider>) =>
 const flagEnv = (cli: InstanceType<typeof sdk.FakeQuery>) =>
   typeof cli.options.settings === "object" ? cli.options.settings.env : undefined
 
-const magpieTurn = (model: string) =>
+const magpieTurn = (model: string, fastMode = false) =>
   Effect.gen(function* () {
     const provider = yield* MagpieProvider
-    yield* provider.runTurn(turnInput({ model })).pipe(Stream.runCollect)
+    yield* provider.runTurn(turnInput({ model, fastMode })).pipe(Stream.runCollect)
     yield* settle
   })
 
@@ -1337,6 +1339,21 @@ describe("magpie", () => {
         expect(flagEnv(latestCli())).toMatchObject({
           CLAUDE_CODE_SUBAGENT_MODEL: "moonshot/kimi-k3",
         })
+      }),
+    ),
+  )
+
+  it.effect("resumes in a new CLI that asks for the fast speed when the thread turns fast mode on", () =>
+    onMagpie(
+      Effect.gen(function* () {
+        yield* magpieTurn("openrouter/deepseek-v4")
+        const first = latestCli()
+        expect(flagEnv(first)).not.toHaveProperty("CLAUDE_CODE_EXTRA_BODY")
+
+        yield* magpieTurn("openrouter/deepseek-v4", true)
+        expect(first.close).toHaveBeenCalled()
+        expect(latestCli().options.resume).toBe("session-1")
+        expect(flagEnv(latestCli())).toMatchObject({ CLAUDE_CODE_EXTRA_BODY: '{"speed":"fast"}' })
       }),
     ),
   )
