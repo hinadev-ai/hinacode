@@ -67,7 +67,14 @@ import { ArchiveDialog, useActiveWorktree } from "./ArchiveDialog.tsx"
 import { CloudMark } from "./CloudMark.tsx"
 import { Button } from "./ui/button.tsx"
 import { Checkbox } from "./ui/checkbox.tsx"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu.tsx"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu.tsx"
 import { Field, FieldLabel } from "./ui/field.tsx"
 import { Input } from "./ui/input.tsx"
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle } from "./ui/popover.tsx"
@@ -696,68 +703,77 @@ function ThreadRow({
                 <MoreIcon aria-hidden />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuItem onClick={queue("renaming")}>
-                  <PencilIcon aria-hidden />
-                  {m.sidebar_thread_rename()}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => void regenerateTitle()}>
-                  <RefreshIcon aria-hidden />
-                  {m.sidebar_thread_regenerate_title()}
-                </DropdownMenuItem>
-                {!archived && (
-                  <DropdownMenuItem onClick={() => void togglePin()}>
-                    {pinned ? <UnpinIcon aria-hidden /> : <PinIcon aria-hidden />}
-                    {pinned ? m.sidebar_thread_unpin() : m.sidebar_thread_pin()}
+                <DropdownMenuGroup>
+                  <DropdownMenuItem onClick={queue("renaming")}>
+                    <PencilIcon aria-hidden />
+                    {m.sidebar_thread_rename()}
                   </DropdownMenuItem>
-                )}
-                {!reopenable && (
-                  <DropdownMenuItem onClick={() => useUi.getState().setSnoozeThreadId(thread.id)}>
-                    <SnoozeIcon aria-hidden />
-                    {m.sidebar_thread_snooze()}
+                  <DropdownMenuItem onClick={() => void regenerateTitle()}>
+                    <RefreshIcon aria-hidden />
+                    {m.sidebar_thread_regenerate_title()}
                   </DropdownMenuItem>
-                )}
-                {!archived && meta.snoozedUntil !== null && (
-                  <DropdownMenuItem onClick={() => void snoozeThread(thread, null)}>
-                    <AlarmIcon aria-hidden />
-                    {m.sidebar_thread_unsnooze()}
+                  <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(thread.id)}>
+                    <CopyIcon aria-hidden />
+                    {m.sidebar_thread_copy_id()}
                   </DropdownMenuItem>
-                )}
-                {watched.length === 0 ? (
-                  <DropdownMenuItem disabled>
-                    <EyeOffIcon aria-hidden />
-                    {m.sidebar_thread_unwatch()}
-                  </DropdownMenuItem>
-                ) : (
-                  watched.map((link) => (
-                    <DropdownMenuItem key={link.id} onClick={() => void unwatch(link.url)}>
-                      <EyeOffIcon aria-hidden />
-                      {watched.length > 1
-                        ? m.pr_watch_stop({ name: `#${pullRequestNumber(link.url)}` })
-                        : m.sidebar_thread_unwatch()}
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  {!archived && (
+                    <DropdownMenuItem onClick={() => void togglePin()}>
+                      {pinned ? <UnpinIcon aria-hidden /> : <PinIcon aria-hidden />}
+                      {pinned ? m.sidebar_thread_unpin() : m.sidebar_thread_pin()}
                     </DropdownMenuItem>
-                  ))
-                )}
-                <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(thread.id)}>
-                  <CopyIcon aria-hidden />
-                  {m.sidebar_thread_copy_id()}
-                </DropdownMenuItem>
-                {reopenable ? (
-                  <DropdownMenuItem onClick={() => void reopen()}>
-                    <UnarchiveIcon aria-hidden />
-                    {m.sidebar_thread_unarchive()}
-                  </DropdownMenuItem>
-                ) : (
-                  <DropdownMenuItem disabled={busy} onClick={() => void settle()}>
-                    <CheckIcon aria-hidden />
-                    {m.sidebar_thread_settle()}
-                  </DropdownMenuItem>
-                )}
-                {!archived && (
-                  <DropdownMenuItem disabled={busy} onClick={() => void archive()}>
-                    <ArchiveIcon aria-hidden />
-                    {m.sidebar_thread_archive()}
-                  </DropdownMenuItem>
-                )}
+                  )}
+                  {!reopenable && (
+                    <DropdownMenuItem onClick={() => useUi.getState().setSnoozeThreadId(thread.id)}>
+                      <SnoozeIcon aria-hidden />
+                      {m.sidebar_thread_snooze()}
+                    </DropdownMenuItem>
+                  )}
+                  {!archived && meta.snoozedUntil !== null && (
+                    <DropdownMenuItem onClick={() => void snoozeThread(thread, null)}>
+                      <AlarmIcon aria-hidden />
+                      {m.sidebar_thread_unsnooze()}
+                    </DropdownMenuItem>
+                  )}
+                  {watched.length === 0 ? (
+                    <DropdownMenuItem disabled>
+                      <EyeOffIcon aria-hidden />
+                      {m.sidebar_thread_unwatch()}
+                    </DropdownMenuItem>
+                  ) : (
+                    watched.map((link) => (
+                      <DropdownMenuItem key={link.id} onClick={() => void unwatch(link.url)}>
+                        <EyeOffIcon aria-hidden />
+                        {watched.length > 1
+                          ? m.pr_watch_stop({ name: `#${pullRequestNumber(link.url)}` })
+                          : m.sidebar_thread_unwatch()}
+                      </DropdownMenuItem>
+                    ))
+                  )}
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  {reopenable ? (
+                    <DropdownMenuItem onClick={() => void reopen()}>
+                      <UnarchiveIcon aria-hidden />
+                      {m.sidebar_thread_unarchive()}
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem disabled={busy} onClick={() => void settle()}>
+                      <CheckIcon aria-hidden />
+                      {m.sidebar_thread_settle()}
+                    </DropdownMenuItem>
+                  )}
+                  {!archived && (
+                    <DropdownMenuItem disabled={busy} onClick={() => void archive()}>
+                      <ArchiveIcon aria-hidden />
+                      {m.sidebar_thread_archive()}
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem variant="destructive" disabled={busy || isStale(cloud)} onClick={queue("delete")}>
                   <TrashIcon aria-hidden />
                   {m.sidebar_thread_delete()}
