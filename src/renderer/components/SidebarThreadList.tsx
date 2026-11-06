@@ -31,6 +31,7 @@ import {
 import { flushSync } from "react-dom"
 import { RiGitMergeLine } from "react-icons/ri"
 import { toast } from "sonner"
+import type { ProviderId } from "../../shared/agent.ts"
 import { isThreadBusy, type PullRequestLink, type Thread, type Worktree } from "../../shared/domain.ts"
 import { type RowState, rowEmphasis, rowState, rowStatusIndicator } from "../../shared/threadStatus.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -448,6 +449,8 @@ function DraftRow({ thread, title, project }: { thread: Thread; title: string; p
 
 type RowMode = "idle" | "renaming" | "archive" | "delete"
 
+const forksSessions = { claude: true, codex: true, muse: false, opencode: false } satisfies Record<ProviderId, boolean>
+
 interface ThreadRowProps {
   readonly thread: Thread
   readonly nested: boolean
@@ -724,10 +727,12 @@ function ThreadRow({
                     <RefreshIcon aria-hidden />
                     {m.sidebar_thread_regenerate_title()}
                   </DropdownMenuItem>
-                  <DropdownMenuItem disabled={busy} onClick={() => void fork()}>
-                    <ForkIcon aria-hidden />
-                    {m.sidebar_thread_fork()}
-                  </DropdownMenuItem>
+                  {forksSessions[thread.provider] && (
+                    <DropdownMenuItem disabled={busy} onClick={() => void fork()}>
+                      <ForkIcon aria-hidden />
+                      {m.sidebar_thread_fork()}
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(thread.id)}>
                     <CopyIcon aria-hidden />
                     {m.sidebar_thread_copy_id()}
