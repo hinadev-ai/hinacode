@@ -123,7 +123,7 @@ export function Sidebar({
       className={
         compact
           ? "flex min-h-0 w-full flex-1 flex-col bg-sidebar text-sidebar-foreground"
-          : "relative flex min-h-0 flex-1 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground glass:bg-sidebar/80"
+          : "relative flex min-h-0 flex-1 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground glass:bg-sidebar/(--glass-chrome-alpha)"
       }
     >
       <Tabs value={tab} onValueChange={(value: SidebarTab) => setTab(value)} className="min-h-0 flex-1 flex-col gap-2">

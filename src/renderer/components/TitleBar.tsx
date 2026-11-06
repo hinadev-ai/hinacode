@@ -32,7 +32,7 @@ export function TitleBar({
   return (
     <header
       className={cn(
-        "flex h-titlebar shrink-0 items-center gap-0.5 bg-sidebar pr-2 text-sidebar-foreground select-none window-drag glass:bg-sidebar/80",
+        "flex h-titlebar shrink-0 items-center gap-0.5 bg-sidebar pr-2 text-sidebar-foreground select-none window-drag glass:bg-sidebar/(--glass-chrome-alpha)",
         besideTrafficLights() ? "pl-22" : "pl-4.5",
         className,
       )}

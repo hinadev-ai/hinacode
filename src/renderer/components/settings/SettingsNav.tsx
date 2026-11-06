@@ -182,7 +182,7 @@ export function SettingsNav() {
       hidden={!compact && !sidebarOpen}
       data-compact={compact}
       style={compact ? undefined : { width: sidebarWidth }}
-      className="relative flex min-h-0 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground data-[compact=false]:flex-1 data-[compact=true]:w-52 glass:bg-sidebar/80"
+      className="relative flex min-h-0 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground data-[compact=false]:flex-1 data-[compact=true]:w-52 glass:bg-sidebar/(--glass-chrome-alpha)"
     >
       <div className="flex flex-col gap-1 px-2 pt-2 pb-1">
         <Button variant="ghost" size="sm" onClick={onLeave} className="justify-start text-muted-foreground">

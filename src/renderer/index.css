@@ -366,9 +366,12 @@
 :root,
 [data-theme] {
   --contrast-ink: oklch(0 0 0);
+  --glass-chrome-alpha: 80%;
 }
+/* A light wallpaper behind dark glass lifts the chrome toward grey; at 88% muted text still clears 4.5:1 over white. */
 .dark {
   --contrast-ink: oklch(1 0 0);
+  --glass-chrome-alpha: 88%;
 }
 :root,
 [data-theme],
@@ -598,7 +601,7 @@
   --palette-foreground: oklch(0.32 0.026 195.945);
   --surface: oklch(0.955 0.009 106.5);
   --muted: oklch(0.93 0.011 106.5);
-  --palette-muted-foreground: oklch(0.5 0.022 196);
+  --palette-muted-foreground: oklch(0.48 0.022 196);
   --border: oklch(0.905 0.012 106.5);
   --input: oklch(0.855 0.014 106.5);
   --primary: oklch(0.56 0.16 34.263);
@@ -649,7 +652,6 @@
 
 [data-theme="hina-light"] {
   --sidebar-title: color-mix(in oklab, var(--sidebar-foreground) 90%, var(--sidebar));
-  --sidebar-meta: color-mix(in oklab, var(--muted-foreground) 87%, var(--sidebar));
   --sidebar-title-read: color-mix(in oklab, var(--sidebar-title) 2%, var(--sidebar-meta));
   --sidebar-row-hover: color-mix(in oklab, var(--sidebar-foreground) 5%, var(--sidebar));
 }
@@ -660,7 +662,6 @@
   /* Muted text sits only 2:1 below chat text here. Tool rows on the background drop to 2.6:1 below it and keep 4.7:1. */
   --receding-foreground: color-mix(in oklab, var(--muted-foreground) 83%, var(--background));
   --sidebar-title: color-mix(in oklab, var(--sidebar-foreground) 95%, var(--sidebar));
-  --sidebar-meta: color-mix(in oklab, var(--muted-foreground) 84%, var(--sidebar));
   --sidebar-row-selected: color-mix(in oklab, var(--sidebar-foreground) 11%, var(--sidebar));
   --background: oklch(0.32 0.026 195.945);
   --palette-foreground: oklch(0.975 0.007 106.521);
