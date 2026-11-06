@@ -72,14 +72,7 @@ import type { SendGlyphMode } from "./icons/SendGlyph.tsx"
 import { UploadIcon } from "@hinacode/icons"
 import { ChordKeys } from "./ChordKeys.tsx"
 import { useKeymap } from "../keybindings/useKeybindings.ts"
-
-const readAsDataUrl = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.addEventListener("load", () => resolve(String(reader.result)))
-    reader.addEventListener("error", () => reject(reader.error))
-    reader.readAsDataURL(file)
-  })
+import { readAsDataUrl } from "../lib/dataUrl.ts"
 
 const carriesFiles = (event: ReactDragEvent) => event.dataTransfer.types.includes("Files")
 

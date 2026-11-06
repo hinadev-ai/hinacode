@@ -2016,6 +2016,7 @@
   "documents_saving": "保存中…",
   "documents_not_saved": "未保存",
   "documents_save_failed": "保存できませんでした：{message}",
+  "documents_image_failed": "画像を追加できませんでした：{message}",
   "documents_ask_agent": "エージェントに伝える",
   "documents_ask_prompt": "ドキュメント「{title}」（{id}、リビジョン {revision}）を編集しました。続ける前に read_artifact で読んでください。",
   "artifact_untitled": "無題のアーティファクト",

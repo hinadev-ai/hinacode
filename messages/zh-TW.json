@@ -2034,6 +2034,7 @@
   "documents_saving": "正在儲存…",
   "documents_not_saved": "尚未儲存",
   "documents_save_failed": "尚未儲存：{message}",
+  "documents_image_failed": "無法加入圖片：{message}",
   "documents_ask_agent": "詢問代理",
   "documents_ask_prompt": "我編輯了文件「{title}」（{id}，修訂 {revision}）。繼續之前，請先用 read_artifact 讀取它。",
   "artifact_untitled": "未命名成品",

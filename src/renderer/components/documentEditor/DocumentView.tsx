@@ -1,6 +1,5 @@
 import { useAtomValue } from "@effect/atom-react"
 import { WarningIcon } from "@hinacode/icons"
-import { Image } from "@tiptap/extension-image"
 import { TaskItem, TaskList } from "@tiptap/extension-list"
 import { TableKit } from "@tiptap/extension-table"
 import { Placeholder } from "@tiptap/extensions"
@@ -8,6 +7,7 @@ import { Markdown } from "@tiptap/markdown"
 import { EditorContent, useEditor } from "@tiptap/react"
 import { StarterKit } from "@tiptap/starter-kit"
 import { AsyncResult } from "effect/reactivity"
+import { toast } from "sonner"
 import { useEffect, useState } from "react"
 import type { Artifact, DocumentContent } from "../../../shared/artifact.ts"
 import { useTheme } from "../../lib/appearance.ts"
@@ -15,7 +15,8 @@ import { CodeHighlight, codeHighlightKey, type CodeTheme } from "./codeHighlight
 import { LinkEditing } from "./linkEditing.ts"
 import { createDocumentSync, type DocumentSync, type SaveStatus } from "./documentSync.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
-import { documentAtom, onPushEvent } from "../../lib/rpc.ts"
+import { readAsDataUrl } from "../../lib/dataUrl.ts"
+import { callPromise, documentAtom, type EnvironmentId, onPushEvent } from "../../lib/rpc.ts"
 import { useClientSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import { useDrafts } from "../../stores/drafts.ts"
@@ -23,6 +24,8 @@ import { Button } from "../ui/button.tsx"
 import { ScrollArea } from "../ui/scroll-area.tsx"
 import { DocumentBlockquote, DocumentCallout } from "./DocumentCallout.tsx"
 import { DocumentCodeBlock } from "./DocumentCodeBlock.tsx"
+import { DocumentImage } from "./documentImage.ts"
+import { DocumentPaste } from "./documentPaste.ts"
 import "./documentEditor.css"
 import { LinkEditor, LinkHoverCard } from "./DocumentLinks.tsx"
 import { liveDocumentKey, printableHtml, showLiveDocument } from "./liveDocuments.ts"
@@ -43,7 +46,27 @@ export function DocumentView({ threadId, artifact }: { threadId: string; artifac
     .orElse(() => loadFailed(""))
 }
 
-const extensions = (placeholder: string, theme: CodeTheme) => [
+type DocumentTarget = { readonly id: string; readonly environment: EnvironmentId }
+
+const storeImage =
+  ({ id, environment }: DocumentTarget) =>
+  async (image: File) => {
+    const { path } = await callPromise(
+      "artifacts.addDocumentImage",
+      { id, dataUrl: await readAsDataUrl(image) },
+      { environment },
+    )
+    return path
+  }
+
+const imageDataUrl =
+  ({ id, environment }: DocumentTarget) =>
+  async (path: string) => {
+    const { dataUrl } = await callPromise("artifacts.file", { id, path }, { environment })
+    return dataUrl
+  }
+
+const extensions = (placeholder: string, theme: CodeTheme, target: DocumentTarget) => [
   StarterKit.configure({
     underline: false,
     link: { openOnClick: false },
@@ -56,7 +79,11 @@ const extensions = (placeholder: string, theme: CodeTheme) => [
   TaskList,
   TaskItem.configure({ nested: true }),
   TableKit.configure({ table: { resizable: false } }),
-  Image,
+  DocumentImage.configure({ artifactId: target.id }),
+  DocumentPaste.configure({
+    storeImage: storeImage(target),
+    imageFailed: (cause) => toast.error(m.documents_image_failed({ message: errorMessage(cause) })),
+  }),
   Markdown,
   Placeholder.configure({ placeholder }),
   LinkEditing,
@@ -75,16 +102,17 @@ function DocumentEditor({
   const [status, setStatus] = useState<SaveStatus>({ type: "saved" })
   const { codeTheme, scheme } = useTheme(useClientSettings().appearance.theme)
   const [initialTheme] = useState<CodeTheme>({ codeTheme, scheme })
+  const [target] = useState<DocumentTarget>({ id: artifact.id, environment: artifact.environmentId ?? null })
   const [sync] = useState(() =>
     createDocumentSync({
-      id: artifact.id,
-      environment: artifact.environmentId ?? null,
+      id: target.id,
+      environment: target.environment,
       loaded,
       onStatus: setStatus,
     }),
   )
   const editor = useEditor({
-    extensions: extensions(m.documents_placeholder(), initialTheme),
+    extensions: extensions(m.documents_placeholder(), initialTheme, target),
     content: sync.initial,
     contentType: "markdown",
     onCreate: ({ editor: created }) => sync.start(created),
@@ -115,10 +143,10 @@ function DocumentEditor({
   useEffect(
     () =>
       showLiveDocument(liveDocumentKey(artifact.environmentId, artifact.id), {
-        html: () => printableHtml(editor.view.dom),
+        html: () => printableHtml(editor.view.dom, imageDataUrl(target)),
         markdown: () => editor.getMarkdown(),
       }),
-    [editor, artifact.environmentId, artifact.id],
+    [editor, artifact.environmentId, artifact.id, target],
   )
 
   useEffect(() => {

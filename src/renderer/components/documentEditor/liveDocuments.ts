@@ -1,4 +1,4 @@
-export type LiveDocument = { readonly html: () => string; readonly markdown: () => string }
+export type LiveDocument = { readonly html: () => Promise<string>; readonly markdown: () => string }
 
 const live = new Map<string, LiveDocument>()
 
@@ -14,11 +14,16 @@ export const showLiveDocument = (key: string, document: LiveDocument) => {
 
 export const liveDocument = (key: string) => live.get(key)
 
-export const printableHtml = (editor: Element) => {
+export const printableHtml = async (editor: Element, imageDataUrl: (path: string) => Promise<string>) => {
   const copy = editor.cloneNode(true) as Element
   const copies = copy.querySelectorAll<HTMLInputElement>("input[type=checkbox]")
   editor.querySelectorAll<HTMLInputElement>("input[type=checkbox]").forEach((box, index) => {
     copies[index]?.toggleAttribute("checked", box.checked)
   })
+  await Promise.all(
+    [...copy.querySelectorAll<HTMLImageElement>("img[data-document-image]")].map(async (image) => {
+      image.src = await imageDataUrl(image.dataset["path"] ?? "").catch(() => "")
+    }),
+  )
   return copy.innerHTML
 }

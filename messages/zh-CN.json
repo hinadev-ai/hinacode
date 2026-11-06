@@ -2062,6 +2062,7 @@
   "documents_saving": "正在保存…",
   "documents_not_saved": "未保存",
   "documents_save_failed": "未保存：{message}",
+  "documents_image_failed": "无法添加图片：{message}",
   "documents_ask_agent": "询问智能体",
   "documents_ask_prompt": "我编辑了文档“{title}”（{id}，修订 {revision}）。继续之前，请先用 read_artifact 读取它。",
   "artifact_untitled": "未命名成品",
