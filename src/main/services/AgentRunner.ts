@@ -197,7 +197,7 @@ export class AgentRunner extends Context.Service<
       readonly when: Effect.Effect<boolean, PersistenceError>
     }) => Effect.Effect<boolean, SendError>
     readonly interrupt: (threadId: string) => Effect.Effect<void>
-    readonly release: (threadId: string) => Effect.Effect<void>
+    readonly release: (threadId: string) => Effect.Effect<boolean>
     readonly warm: (threadId: string) => Effect.Effect<void>
     readonly resumeAtReset: (
       threadId: string,
@@ -441,6 +441,9 @@ const make = Effect.gen(function* () {
     [...approvals.values(), ...questions.values(), ...[...secretRequests.values()].map(({ request }) => request)].some(
       (request) => request.threadId === threadId,
     )
+
+  const isBusy = (threadId: string) =>
+    busyThreads.has(threadId) || activeTurns.has(threadId) || pendingSends.has(threadId)
 
   const exclusive =
     (threadId: string) =>
@@ -1638,12 +1641,17 @@ const make = Effect.gen(function* () {
 
   const release = (threadId: string) =>
     Effect.gen(function* () {
+      if (isBusy(threadId)) return false
       yield* stopSubagentsAndTasks(threadId, () => true)
       yield* Effect.gen(function* () {
-        if (busyThreads.has(threadId)) return
+        if (isBusy(threadId)) return
         yield* closeProviderSession(yield* threads.get(threadId))
-      }).pipe(exclusive(threadId))
-    }).pipe(Effect.catch((error) => Effect.logWarning("failed to close the session of a settled thread", error)))
+      }).pipe(
+        exclusive(threadId),
+        Effect.catch((error) => Effect.logWarning("failed to close the session of a settled thread", error)),
+      )
+      return !isBusy(threadId)
+    })
 
   const requestSecret = (threadId: string, name: string, description: string) =>
     Effect.gen(function* () {
@@ -1682,7 +1690,7 @@ const make = Effect.gen(function* () {
 
   const warm = (threadId: string) =>
     Effect.gen(function* () {
-      if (busyThreads.has(threadId) || activeTurns.has(threadId) || pendingSends.has(threadId)) return
+      if (isBusy(threadId)) return
       const thread = yield* threads.get(threadId)
       if (thread.status === "archived") return
       if (thread.sideOf !== null && !(yield* threads.started(threadId))) return

@@ -61,12 +61,37 @@ const gitHub = Layer.mock(GitHub, {
 const backgroundTasks = new Map<string, ReadonlyArray<BackgroundTask>>()
 const subagents = new Map<string, ReadonlyArray<Subagent>>()
 const released: Array<string> = []
+const turnStarted = new Set<string>()
 
 const agentRunner = Layer.mock(AgentRunner, {
   backgroundTasks: (threadId) => Effect.succeed(backgroundTasks.get(threadId) ?? []),
   subagents: (threadId) => Effect.succeed(subagents.get(threadId) ?? []),
-  release: (threadId) => Effect.sync(() => void released.push(threadId)),
+  release: (threadId) =>
+    Effect.sync(() => {
+      released.push(threadId)
+      return !turnStarted.has(threadId)
+    }),
 })
+
+const portsClosedFor: Array<string> = []
+const failingScans = new Set<string>()
+
+const recordingPorts = Layer.effect(
+  Ports.Ports,
+  Ports.Ports.use((ports) =>
+    Effect.succeed(
+      Ports.Ports.of({
+        ...ports,
+        listForThread: (threadId) =>
+          failingScans.has(threadId)
+            ? Effect.fail(new Ports.PortsError({ message: "ss is not installed" }))
+            : ports.listForThread(threadId),
+        closeThread: (threadId) =>
+          Effect.sync(() => void portsClosedFor.push(threadId)).pipe(Effect.andThen(ports.closeThread(threadId))),
+      }),
+    ),
+  ),
+).pipe(Layer.provide(Ports.layer))
 
 const listenerPids: Array<number> = []
 
@@ -116,7 +141,7 @@ const domain = threadsLayer.pipe(
 const testLayer = settleLayer.pipe(
   Layer.provideMerge(pullRequestsLayer),
   Layer.provideMerge(domain),
-  Layer.provide(Layer.mergeAll(Git.layer, gitHub, agentRunner, Ports.layer)),
+  Layer.provide(Layer.mergeAll(Git.layer, gitHub, agentRunner, recordingPorts)),
   Layer.provide(Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) })),
   Layer.provideMerge(Db.layer(":memory:")),
   Layer.provide(NodeServices.layer),
@@ -289,6 +314,33 @@ describe("Settle", () => {
       }),
     )
 
+    it.effect("leaves the listener and terminals of a thread whose turn starts while it settles", () =>
+      Effect.gen(function* () {
+        const threadId = yield* threadWithPullRequests("manual-race", ["open"])
+        const listener = yield* listenIn(join(base, "manual-race"))
+        yield* Terminals.Terminals.use((terminals) => terminals.open({ threadId, cols: 80, rows: 24 }))
+        turnStarted.add(threadId)
+
+        const error = yield* Settle.use((settle) => settle.settle(threadId)).pipe(Effect.flip)
+
+        expect(error._tag).toBe("ThreadBusyError")
+        expect(yield* Terminals.Terminals.use((terminals) => terminals.list(threadId))).toHaveLength(1)
+        expect(isAlive(listener.pid)).toBe(true)
+      }),
+    )
+
+    it.effect("keeps a merged thread whose ports could not be listed out of Settled", () =>
+      Effect.gen(function* () {
+        yield* Settings.use((settings) => settings.set({ archive: { whenMerged: true, removeWorktree: false } }))
+        const threadId = yield* threadWithPullRequests("merged-unknown-ports", ["merged"])
+        failingScans.add(threadId)
+
+        yield* Settle.use((settle) => settle.sweep)
+
+        expect(yield* isSettled(threadId)).toBe(false)
+      }),
+    )
+
     it.effect("waits for a merged thread's background tasks, sub-agents and listeners before it settles", () =>
       Effect.gen(function* () {
         yield* Settings.use((settings) => settings.set({ archive: { whenMerged: true, removeWorktree: false } }))
@@ -408,6 +460,23 @@ const expectBranchAt = (projectId: string, branch: string, tip: string) =>
 describe("worktree cleanup across threads", () => {
   layer(testLayer)((it) => {
     const cleanupOn = Settings.use((settings) => settings.set({ archive: { whenMerged: true, removeWorktree: true } }))
+
+    it.effect("leaves a project root listener running when a merge removes a thread's worktree", () =>
+      Effect.gen(function* () {
+        yield* cleanupOn
+        const { root, projectId } = yield* project("root-listener")
+        const rootListener = yield* listenIn(root)
+        const child = yield* worktreeThread(projectId, "kk/root-listener")
+        yield* linkPullRequest(child, "kk/root-listener", "merged")
+
+        yield* sweep
+
+        expect(yield* isSettled(child.threadId)).toBe(true)
+        yield* waitUntilGone(child.path)
+        expect(portsClosedFor).not.toContain(child.threadId)
+        expect(isAlive(rootListener.pid)).toBe(true)
+      }),
+    )
 
     it.effect("counts a branch as gone once git pruned its folder", () =>
       Effect.gen(function* () {

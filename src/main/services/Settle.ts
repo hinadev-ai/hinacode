@@ -44,11 +44,18 @@ const make = Effect.gen(function* () {
   const terminals = yield* Terminals
   const ports = yield* Ports
 
+  const releaseAgentAndTerminals = (threadId: string) =>
+    Effect.gen(function* () {
+      if (!(yield* runner.release(threadId))) return false
+      yield* terminals.closeThread(threadId)
+      return true
+    })
+
   const release = (threadId: string) =>
     Effect.gen(function* () {
-      yield* runner.release(threadId)
-      yield* terminals.closeThread(threadId)
+      if (!(yield* releaseAgentAndTerminals(threadId))) return false
       yield* ports.closeThread(threadId)
+      return true
     })
 
   const hasAgentWork = (threadId: string) =>
@@ -61,13 +68,13 @@ const make = Effect.gen(function* () {
   const hasListeningPort = (threadId: string) =>
     ports.listForThread(threadId).pipe(
       Effect.map((open) => open.length > 0),
-      Effect.orElseSucceed(() => false),
+      Effect.catchTag("FolderMissingError", () => Effect.succeed(false)),
     )
 
   const settle = (threadId: string) =>
     Effect.gen(function* () {
-      if (isThreadBusy((yield* threads.get(threadId)).status)) return yield* new ThreadBusyError({ id: threadId })
-      yield* release(threadId)
+      const busy = isThreadBusy((yield* threads.get(threadId)).status) || !(yield* release(threadId))
+      if (busy) return yield* new ThreadBusyError({ id: threadId })
       return yield* threads.settle(threadId)
     })
 
@@ -98,7 +105,7 @@ const make = Effect.gen(function* () {
       )
       if (Option.isNone(settled)) return
       yield* events.publish({ type: "thread.updated", thread: settled.value })
-      yield* release(threadId)
+      yield* releaseAgentAndTerminals(threadId)
     }).pipe(Effect.catchCause((cause) => Effect.logWarning("auto settle skipped a thread", threadId, cause)))
 
   const sweep = Effect.gen(function* () {

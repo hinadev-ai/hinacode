@@ -28,7 +28,11 @@ A thread's leftover work, and what settling does with each:
 
 The `Settle` service, formerly `AutoSettle`, owns both paths and runs one `release` for each. `release` stops the agent's work first through `AgentRunner.release`, because `Ports` counts every descendant of the agent CLI as the thread's and the CLI's own MCP servers should exit with the CLI rather than be killed under a live session. Then it closes terminals, whose hangup ends most dev servers. Then `Ports.closeThread` stops whatever still listens. Each step is best effort, so a provider that cannot stop one task does not keep the thread from settling.
 
-`AgentRunner.release` closes the session only while no turn holds the thread, under the same per-thread lock that sends use. The next message resumes the session from its id.
+`AgentRunner.release` closes the session only while no turn holds the thread, under the same per-thread lock that sends use, and reports whether the thread is still idle. When a turn started meanwhile, `release` stops there and leaves the terminals and listeners to that turn, and a manual settle fails as busy. The next message resumes the session from its id. Closing a Codex session also unsubscribes its thread from the shared app-server, so an idle thread does not stay loaded there.
+
+A merge that removes the thread's worktree releases the agent and terminals but does not scan ports again. The sweep has just found no listener in the worktree, and once the worktree is removed `Ports` resolves the thread to the project root, where another thread or the developer may run a dev server.
+
+A port scan that fails, for example on a machine without `ss`, leaves the thread in Ready. An unknown listener state is not quiet. A project folder that no longer exists counts as having no listeners.
 
 The sweep checks the in-memory parts of "quiet" and the pull requests before it scans ports, so it runs `ss` or `lsof` only for a thread that is otherwise ready to settle.
 
@@ -40,4 +44,6 @@ The sweep checks the in-memory parts of "quiet" and the pull requests before it 
 ## Verification
 
 - `Settle.integration.test.ts`: manual settle stops a real listener in the thread's workspace, closes its terminals and releases the agent. The sweep leaves a merged thread alone while it has a background task, a running sub-agent or a listener, and settles and releases it once it is quiet.
+- `Settle.integration.test.ts` also covers a turn that starts while a thread settles, a merge that removes the worktree next to a project-root dev server, and a port scan that fails.
+- `codex/index.integration.test.ts`: closing an idle Codex session unsubscribes its thread once.
 - `AgentRunner.integration.test.ts`: `release` stops sub-agents and every task, shells included, and closes the session, and leaves a session that a turn holds open.
