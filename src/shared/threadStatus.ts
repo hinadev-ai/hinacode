@@ -65,7 +65,7 @@ export const rowEmphasis = {
 
 export const needsAttention = (state: RowState) => rowEmphasis[state] === "attention"
 
-export type InboxGroup = "ready" | "working" | "settled" | "archived"
+export type InboxGroup = "ready" | "settled" | "archived"
 
 const QUIET_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -77,7 +77,7 @@ export const inboxGroup = (
   now: number,
 ): InboxGroup => {
   if (state === "archived") return state
-  if (rowEmphasis[state] === "working") return "working"
+  if (rowEmphasis[state] === "working") return "ready"
   if (settledAt !== null) return "settled"
   const quiet = now - Date.parse(lastActivity) >= QUIET_MS
   return state === "idle" && !hasOpenPullRequest && quiet ? "settled" : "ready"

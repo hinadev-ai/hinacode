@@ -65,7 +65,6 @@ function loadStrings(key: string): ReadonlyArray<string> {
 }
 
 const INBOX_ACTIVITY_KEY = "hinacode.inboxActivityShown"
-const WORKING_FOLDED_KEY = "hinacode.inboxWorkingFolded"
 
 const loadSidebarTab = (): SidebarTab =>
   sidebarTabs.find((tab) => tab === localStorage.getItem(SIDEBAR_TAB_KEY)) ?? "threads"
@@ -86,7 +85,6 @@ interface UiState {
   readonly sidePanelOverlayOpen: boolean
   readonly sidebarTab: SidebarTab
   readonly inboxActivityShown: boolean
-  readonly inboxWorkingFolded: boolean
   readonly pickedPullRequests: Readonly<Record<string, string>>
   readonly pickPullRequest: (threadId: string, url: string) => void
   readonly pullRequestTab: PullRequestTab
@@ -131,7 +129,6 @@ interface UiState {
   readonly setSidePanelOverlayOpen: (open: boolean) => void
   readonly setSidebarTab: (tab: SidebarTab) => void
   readonly setInboxActivityShown: (shown: boolean) => void
-  readonly setInboxWorkingFolded: (folded: boolean) => void
   readonly setPullRequestTab: (tab: PullRequestTab) => void
   readonly setLinkedPullRequestsOpen: (open: boolean) => void
   readonly setSidebarQuery: (query: string) => void
@@ -201,7 +198,6 @@ export const useUi = create<UiState>()((set, get) => ({
   sidePanelOverlayOpen: false,
   sidebarTab: loadSidebarTab(),
   inboxActivityShown: localStorage.getItem(INBOX_ACTIVITY_KEY) === "true",
-  inboxWorkingFolded: localStorage.getItem(WORKING_FOLDED_KEY) === "true",
   pickedPullRequests: {},
   pickPullRequest: (threadId, url) =>
     set((state) => ({ pickedPullRequests: { ...state.pickedPullRequests, [threadId]: url } })),
@@ -272,10 +268,6 @@ export const useUi = create<UiState>()((set, get) => ({
   setInboxActivityShown: (inboxActivityShown) => {
     localStorage.setItem(INBOX_ACTIVITY_KEY, String(inboxActivityShown))
     set({ inboxActivityShown })
-  },
-  setInboxWorkingFolded: (inboxWorkingFolded) => {
-    localStorage.setItem(WORKING_FOLDED_KEY, String(inboxWorkingFolded))
-    set({ inboxWorkingFolded })
   },
   setSidebarTab: (sidebarTab) => {
     localStorage.setItem(SIDEBAR_TAB_KEY, sidebarTab)
