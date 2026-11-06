@@ -129,22 +129,23 @@ const make = Effect.gen(function* () {
       yield* release(thread.id)
     }).pipe(Effect.catchCause((cause) => Effect.logWarning("idle settle skipped a thread", thread.id, cause)))
 
-  const losesUncommittedWork = (thread: Thread, removeWorktree: boolean) =>
+  const losesUncommittedWork = (thread: Thread) =>
     Effect.gen(function* () {
-      if (!removeWorktree || thread.worktreeId === null) return false
+      if (!(yield* settings.get).archive.removeWorktree || thread.worktreeId === null) return false
       const worktree = yield* worktrees.get(thread.worktreeId)
       if (worktree.status === "removed") return false
       return (yield* worktrees.checkoutState(worktree.id)) === "dirty"
     })
 
-  const archiveIfSettledLong = (thread: Thread, days: number, removeWorktree: boolean, now: number) =>
+  const archiveIfSettledLong = (thread: Thread, days: number, now: number) =>
     Effect.gen(function* () {
-      if (!isSettledFor(thread, days, now)) return
-      const latest = yield* threads.get(thread.id)
-      if (!isSettledFor(latest, days, now) || (yield* losesUncommittedWork(latest, removeWorktree))) return
-      yield* release(thread.id)
-      const archived = yield* threads.archive(thread.id)
-      yield* events.publish({ type: "thread.updated", thread: archived })
+      if (!isSettledFor(thread, days, now) || !(yield* release(thread.id))) return
+      const archived = yield* threads.archiveIf(thread.id, (latest) =>
+        isSettledFor(latest, days, now)
+          ? Effect.map(losesUncommittedWork(latest), (loses) => !loses)
+          : Effect.succeed(false),
+      )
+      if (Option.isSome(archived)) yield* events.publish({ type: "thread.updated", thread: archived.value })
     }).pipe(Effect.catchCause((cause) => Effect.logWarning("auto archive skipped a thread", thread.id, cause)))
 
   const sweep = Effect.gen(function* () {
@@ -164,11 +165,9 @@ const make = Effect.gen(function* () {
       )
     }
     if (archiveAfterSettledDays !== null) {
-      yield* Effect.forEach(
-        all,
-        (thread) => archiveIfSettledLong(thread, archiveAfterSettledDays, archive.removeWorktree, now),
-        { discard: true },
-      )
+      yield* Effect.forEach(all, (thread) => archiveIfSettledLong(thread, archiveAfterSettledDays, now), {
+        discard: true,
+      })
     }
   }).pipe(Effect.catchCause((cause) => Effect.logWarning("auto settle sweep failed", cause)))
 

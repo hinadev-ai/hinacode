@@ -381,6 +381,23 @@ describe("Threads", () => {
     }).pipe(Effect.provide(threadsLayer)),
   )
 
+  it.effect("archiveIf leaves a thread and its scratch folder alone once the thread no longer qualifies", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const scratch = yield* Scratch.Scratch
+      const thread = yield* threads.get((yield* seedThread({ rootPath: "/repo" })).threadId)
+      const folder = yield* scratch.ensure(thread)
+      yield* threads.update({ id: thread.id, pinned: true })
+
+      const archived = yield* threads.archiveIf(thread.id, (latest) => Effect.succeed(latest.pinnedAt === null))
+
+      expect(archived._tag).toBe("None")
+      expect((yield* threads.get(thread.id)).status).toBe("idle")
+      expect(existsSync(folder)).toBe(true)
+      yield* threads.remove(thread.id)
+    }).pipe(Effect.provide(threadsLayer)),
+  )
+
   it.effect("deletes a thread's tmp folder when it is archived or deleted, and tolerates a missing one", () =>
     Effect.gen(function* () {
       const threads = yield* Threads

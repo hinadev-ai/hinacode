@@ -174,6 +174,13 @@ export class Threads extends Context.Service<
     readonly archive: (
       id: string,
     ) => Effect.Effect<Thread, PersistenceError | NotFoundError | CommandError | WorktreeBusyError | ThreadBusyError>
+    readonly archiveIf: <E>(
+      id: string,
+      stillDue: (thread: Thread) => Effect.Effect<boolean, E>,
+    ) => Effect.Effect<
+      Option.Option<Thread>,
+      E | PersistenceError | NotFoundError | CommandError | WorktreeBusyError | ThreadBusyError
+    >
     readonly unarchive: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly settle: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError | ThreadBusyError>
     readonly settleMerged: (
@@ -778,11 +785,12 @@ const make = Effect.gen(function* () {
       )
     })
 
-  const archive = (id: string) =>
+  const archiveIf = <E>(id: string, stillDue: (thread: Thread) => Effect.Effect<boolean, E>) =>
     worktrees.exclusive(
       Effect.gen(function* () {
         const thread = yield* get(id)
         if (isThreadBusy(thread.status)) return yield* new ThreadBusyError({ id })
+        if (!(yield* stillDue(thread))) return Option.none<Thread>()
         yield* removeWorktreeIfSet(thread)
         yield* terminals.closeThread(id)
         yield* sql`
@@ -791,9 +799,11 @@ const make = Effect.gen(function* () {
         yield* detachChildren(id)
         yield* syncChatFolder(thread, false)
         yield* scratch.remove(id)
-        return yield* get(id)
+        return Option.some(yield* get(id))
       }),
     )
+
+  const archive = (id: string) => archiveIf(id, () => Effect.succeed(true)).pipe(Effect.map(Option.getOrThrow))
 
   const unarchive = (id: string) =>
     Effect.gen(function* () {
@@ -867,6 +877,7 @@ const make = Effect.gen(function* () {
     captureTurnBase,
     recordTurnBase,
     archive,
+    archiveIf,
     unarchive,
     settle,
     settleMerged,
