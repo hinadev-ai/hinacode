@@ -18,6 +18,7 @@ export interface RunOptions {
   readonly okExitCodes?: ReadonlyArray<number>
   readonly env?: Record<string, string>
   readonly timeout?: Duration.Input
+  readonly onStderr?: (chunk: string) => Effect.Effect<void>
 }
 
 const TIMED_OUT_EXIT_CODE = 124
@@ -59,7 +60,11 @@ export const makeExec =
       const [stdout, stderr, exitCode] = yield* Effect.all(
         [
           Stream.mkString(Stream.decodeText(handle.stdout)),
-          Stream.mkString(Stream.decodeText(handle.stderr)),
+          Stream.mkString(
+            Stream.decodeText(handle.stderr).pipe(
+              Stream.tap((chunk) => options?.onStderr?.(chunk) ?? Effect.void),
+            ),
+          ),
           handle.exitCode,
         ],
         { concurrency: "unbounded" },
