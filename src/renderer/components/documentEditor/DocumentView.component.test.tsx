@@ -1,6 +1,7 @@
 import { Schema } from "effect"
 import { beforeEach, expect, onTestFinished, test } from "vitest"
 import { page, userEvent } from "vitest/browser"
+import { toast } from "sonner"
 import { render } from "vitest-browser-react"
 import type { Artifact, DocumentSaveResult } from "../../../shared/artifact.ts"
 import { type HinacodeBridge, type PushEvent, RpcMethods } from "../../../shared/contract.ts"
@@ -208,6 +209,26 @@ test("puts a pasted image where it was pasted, even if the selection changes whi
   await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).toContain("first.\n\n![](images/pasted.png)")
   expect(saves.at(-1)?.markdown).toMatch(/^# Release plan\n/)
   await expect.element(editor.getByRole("heading", { name: "Release plan" })).toBeInTheDocument()
+})
+
+test("keeps the selected text when a pasted image cannot be stored", async () => {
+  const editor = await openDocument()
+  imageStored = Promise.reject(new Error("disk full"))
+  imageStored.catch(() => {})
+
+  await editor.getByRole("heading", { name: "Release plan" }).click()
+  await userEvent.keyboard("{End}{Shift>}{Home}{/Shift}")
+  const clipboardData = new DataTransfer()
+  clipboardData.items.add(new File([PIXEL_PNG], "shot.png", { type: "image/png" }))
+  document
+    .querySelector(".hina-document")!
+    .dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }))
+
+  await expect
+    .poll(() => toast.getHistory().map((shown) => ("title" in shown ? String(shown.title) : "")))
+    .toContainEqual(expect.stringContaining("disk full"))
+  await expect.element(editor.getByRole("heading", { name: "Release plan" })).toBeInTheDocument()
+  expect(saves).toEqual([])
 })
 
 test("copies the bytes of an image pasted from another document", async () => {

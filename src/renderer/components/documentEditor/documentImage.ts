@@ -13,17 +13,6 @@ export const DocumentImage = Image.extend<DocumentImageOptions>({
     return { ...this.parent!(), artifactId: "" }
   },
 
-  addAttributes() {
-    return {
-      ...this.parent!(),
-      sourceArtifact: {
-        default: null,
-        parseHTML: (element) => element.getAttribute("data-artifact-id"),
-        renderHTML: () => ({}),
-      },
-    }
-  },
-
   renderHTML({ HTMLAttributes }) {
     const stored = isDocumentImagePath(String(HTMLAttributes["src"] ?? ""))
     return [
