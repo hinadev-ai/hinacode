@@ -56,6 +56,9 @@ const relay = (machines: () => Response) => async (url: string, init?: RequestIn
     return new Response(JSON.stringify({ credential: "device" }), { status: 200 })
   }
   if (url.endsWith("/v1/device")) return new Response(null, { status: 204 })
+  if (url.endsWith("/v1/account")) {
+    return new Response(JSON.stringify({ name: "Kalan", email: null, imageUrl: "https://img.example.com/k" }))
+  }
   syncs++
   return machines()
 }
@@ -92,7 +95,13 @@ it("signs in through the redirect, saves the account and syncs", async () => {
   expect(exchanged).toEqual([{ code: "abc", codeVerifier: verifier }])
   expect(saved).toEqual([{ serviceUrl, credential: "device" }])
   expect(syncs).toBe(1)
-  expect(useRelayAccount.getState()).toMatchObject({ serviceUrl, machines: 1, error: null })
+  expect(useRelayAccount.getState()).toMatchObject({
+    serviceUrl,
+    machines: 1,
+    error: null,
+    name: "Kalan",
+    avatarUrl: "https://img.example.com/k",
+  })
 })
 
 it("stays signed out without an error when the person closes the sign-in", async () => {

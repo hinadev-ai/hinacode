@@ -6,6 +6,7 @@ import {
   codeFromCallback,
   exchangeSignInCode,
   fetchRelayMachines,
+  fetchRelayProfile,
   pkcePair,
   signInUrl,
 } from "./relay-account"
@@ -187,5 +188,37 @@ describe("exchangeSignInCode", () => {
       _tag: "failed",
       message: copy(key, { status: "500" }),
     })
+  })
+})
+
+describe("fetchRelayProfile", () => {
+  it("reads the name and the avatar", async () => {
+    const fetch = answering(200, { name: "Kalan", email: "k@example.com", imageUrl: "https://img.example.com/k" })
+    expect(await fetchRelayProfile(account, fetch)).toEqual({ name: "Kalan", avatarUrl: "https://img.example.com/k" })
+  })
+
+  it("falls back to the email, and reads a relay that sends no image", async () => {
+    expect(await fetchRelayProfile(account, answering(200, { name: null, email: "k@example.com" }))).toEqual({
+      name: "k@example.com",
+      avatarUrl: null,
+    })
+  })
+
+  it("drops an avatar that is not https", async () => {
+    const fetch = answering(200, { name: "Kalan", email: null, imageUrl: "http://img.example.com/k" })
+    expect(await fetchRelayProfile(account, fetch)).toEqual({ name: "Kalan", avatarUrl: null })
+  })
+
+  it.each([
+    ["a refused credential", answering(401, { error: "unauthorized" })],
+    ["an answer of the wrong shape", answering(200, { name: 1 })],
+    [
+      "an unreachable relay",
+      async () => {
+        throw new TypeError("Network request failed")
+      },
+    ],
+  ])("gives nothing for %s", async (_, fetch) => {
+    expect(await fetchRelayProfile(account, fetch)).toBeNull()
   })
 })

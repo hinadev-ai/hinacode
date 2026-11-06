@@ -8,6 +8,7 @@ import {
   codeFromCallback,
   exchangeSignInCode,
   fetchRelayMachines,
+  fetchRelayProfile,
   pkcePair,
   type RelayAccount,
   signInUrl,
@@ -22,6 +23,9 @@ interface RelayAccountState {
   /** Null while signed out. */
   readonly serviceUrl: string | null
   readonly syncedAt: string | null
+  /** Who is signed in, once a sync has read it. */
+  readonly name: string | null
+  readonly avatarUrl: string | null
   /** How many machines the last sync listed. */
   readonly machines: number | null
   /** Why the last sync failed. */
@@ -49,7 +53,15 @@ interface RelayAccountState {
 const REFUSED_SYNC_INTERVAL_MS = 15_000
 const SIGN_IN_REDIRECT = "hinacode://signed-in"
 
-const signedOut = { serviceUrl: null, syncedAt: null, machines: null, error: null, unauthorized: false }
+const signedOut = {
+  serviceUrl: null,
+  syncedAt: null,
+  name: null,
+  avatarUrl: null,
+  machines: null,
+  error: null,
+  unauthorized: false,
+}
 
 // Outside the store, so no screen ever renders the credential.
 let account: RelayAccount | null = null
@@ -73,9 +85,13 @@ export const useRelayAccount = create<RelayAccountState>()((set, get) => {
   const run = async (current: RelayAccount) => {
     set({ syncing: true })
     try {
-      const result = await fetchRelayMachines(current, fetch)
+      const [result, profile] = await Promise.all([
+        fetchRelayMachines(current, fetch),
+        fetchRelayProfile(current, fetch),
+      ])
       // Signed out or in again while the list was on its way.
       if (account !== current) return
+      if (profile !== null) set(profile)
       switch (result._tag) {
         case "machines":
           applyMachines(result.machines)

@@ -49,6 +49,39 @@ export async function fetchRelayMachines(
   return { _tag: "machines", machines: list.machines }
 }
 
+const decodeProfile = Schema.decodeUnknownOption(
+  Schema.Struct({
+    name: Schema.NullOr(Schema.String),
+    email: Schema.NullOr(Schema.String),
+    imageUrl: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  }),
+)
+
+export interface RelayProfile {
+  /** The account's name, or its email when it has none. */
+  readonly name: string | null
+  readonly avatarUrl: string | null
+}
+
+/** Reads who is signed in. Best effort, because the machine list matters more than the name. */
+export async function fetchRelayProfile(
+  account: RelayAccount,
+  fetch: typeof globalThis.fetch,
+): Promise<RelayProfile | null> {
+  try {
+    const response = await fetch(endpoint(account.serviceUrl, "/v1/account"), {
+      headers: { Authorization: `Bearer ${account.credential}` },
+    })
+    if (!response.ok) return null
+    const profile = Option.getOrNull(decodeProfile(await response.json()))
+    if (profile === null) return null
+    const avatarUrl = profile.imageUrl ?? null
+    return { name: profile.name ?? profile.email, avatarUrl: avatarUrl?.startsWith("https://") ? avatarUrl : null }
+  } catch {
+    return null
+  }
+}
+
 const failed = (message: string): RelayMachinesResult => ({ _tag: "failed", message })
 
 const endpoint = (serviceUrl: string, path: string) => `${serviceUrl.replace(/\/+$/, "")}${path}`

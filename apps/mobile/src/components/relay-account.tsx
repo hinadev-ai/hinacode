@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { getRandomBytes } from "expo-crypto"
 import { openAuthSessionAsync } from "expo-web-browser"
-import { Platform, StyleSheet, Text, TextInput, View } from "react-native"
+import { Image, Platform, StyleSheet, Text, TextInput, View } from "react-native"
 import { Spinner } from "@/components/motion"
 import { SettingsGroup, SettingsRow } from "@/components/settings-rows"
 import { Button, Notice } from "@/components/ui"
@@ -45,6 +45,8 @@ function RelayStatus({ serviceUrl }: { serviceUrl: string }) {
   const syncedAt = useRelayAccount((state) => state.syncedAt)
   const machines = useRelayAccount((state) => state.machines)
   const error = useRelayAccount((state) => state.error)
+  const name = useRelayAccount((state) => state.name)
+  const avatarUrl = useRelayAccount((state) => state.avatarUrl)
   const syncing = useRelayAccount((state) => state.syncing)
   const sync = useRelayAccount((state) => state.sync)
   const signOut = useRelayAccount((state) => state.signOut)
@@ -52,6 +54,11 @@ function RelayStatus({ serviceUrl }: { serviceUrl: string }) {
     <>
       {error !== null && <Notice tone="danger" text={error} />}
       <SettingsGroup title={copy("mobile_relay_title")} footnote={copy("mobile_relay_signed_in_footnote")}>
+        {name !== null && (
+          <SettingsRow label={name}>
+            {avatarUrl !== null && <Image source={{ uri: avatarUrl }} accessibilityIgnoresInvertColors style={styles.avatar} />}
+          </SettingsRow>
+        )}
         <SettingsRow icon="Plug" label={copy("mobile_relay_service")} value={hostOf(serviceUrl)} />
         <SettingsRow
           icon="Computer"
@@ -142,6 +149,7 @@ function RelaySignIn({ initialUrl }: { initialUrl: string }) {
 
 const styles = StyleSheet.create({
   permission: { gap: 8, padding: 12 },
+  avatar: { width: 28, height: 28, borderRadius: 14 },
   fieldLabel: { fontSize: 14, fontWeight: "600" },
   input: {
     minHeight: 44,
