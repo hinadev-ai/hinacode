@@ -9,7 +9,7 @@ No e2e scenario drives Muse. `src/main/agents/muse/index.integration.test.ts` ru
 ## Sub-features
 
 - `agent-pick` switches a thread to Muse Code by picking a model on the `Muse Code` tab of the `Model: <summary>` picker, whenever no turn runs; the header and sidebar show the Meta logo. The Access buttons switch to Muse's labels only after a Muse model is picked.
-- `model-pick` lists the plan's live models, such as `Muse Wonder 1.0` and `Muse Wonder Full 1.0`, a second after the tab opens; `effort-pick` is the `Effort` slider, `Default (High)` then `Minimal` to `Max`. Muse has no `Fast` and no `Conversation`.
+- `model-pick` lists the plan's live models, such as `Muse Wonder 1.0` and `Muse Wonder Full 1.0`, a second after the tab opens; `effort-pick` is the `Effort` slider, `Default (High)` then `Minimal` to `Max`. Muse has no `Fast`.
 - `send` and `stream` as in `chat-claude.md`, with the provider label `Muse Code`.
 - `approval` under `Ask me`, a command that reaches a new network host asks; `Allow` runs it.
 - `deny` ends the command row in error, and the turn goes on.

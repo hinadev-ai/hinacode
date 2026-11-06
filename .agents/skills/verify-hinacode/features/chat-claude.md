@@ -16,7 +16,7 @@ For a manual simulation, launch with `HINACODE_MOCK_CLAUDE=usage-limit` and an i
 - `approval` under `Supervised` access shows `Claude Code needs your approval` with `Allow`, `Allow for session`, `Deny` for Bash and edits, a `Note for the agent` field (Enter denies with the note), and the sidebar status `Awaiting approval`.
 - `interrupt` stops a running turn from `Stop` or `Ctrl+Shift+C`.
 - `model-switch` changes the model for the next turn from the `Model: <summary>` picker (`Ctrl+Alt+M`).
-- `effort-fast` the picker's `Effort` slider (`input[type=range]`, `Default (<x>)` then the model's efforts) and `Fast` toggle (`aria-pressed`), shown only when the model supports them. The picker also has `Conversation`.
+- `effort-fast` the picker's `Effort` slider (`input[type=range]`, `Default (<x>)` then the model's efforts) and `Fast` toggle (`aria-pressed`), shown only when the model supports them.
 - `turn-changes` a turn that edits files ends with a card (`Created note.txt`) with `Undo` and `View changes`.
 - `completions` typing `/` lists Claude commands and skills (`Commands`, e2e), `@` lists files and threads (`Mentions`), `#` lists pull requests (`Pull requests`), in a listbox above the composer; ArrowUp/ArrowDown move, `Enter` or `Tab` inserts, `Escape` closes.
 - `restore` shows the full history after a relaunch.
