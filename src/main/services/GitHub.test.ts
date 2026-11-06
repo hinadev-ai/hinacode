@@ -276,7 +276,9 @@ describe("a gh that never exits", () => {
   it.effect("gives a clone an hour", () =>
     Effect.gen(function* () {
       const github = yield* GitHub
-      const clone = yield* Effect.forkChild(Effect.flip(github.clone({ owner: "o", name: "r" }, "/tmp/r", () => Effect.void)))
+      const clone = yield* Effect.forkChild(
+        Effect.flip(github.clone({ owner: "o", name: "r" }, "/tmp/r", () => Effect.void)),
+      )
       yield* TestClock.adjust("59 minutes")
       expect(clone.pollUnsafe()).toBeUndefined()
 

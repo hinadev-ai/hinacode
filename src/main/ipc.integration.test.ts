@@ -797,7 +797,13 @@ describe("projects, threads and settings over rpc", () => {
 
   test("refuses a clone target that is not an absolute path, and a repository that is not owner/name", async () => {
     const repository = { owner: "kjj6198", name: "myprofile" }
-    const relative = await invoke("projects.clone", { cloneId: "relative", repository, rootPath: "code/x", name: "x", setupScript: null })
+    const relative = await invoke("projects.clone", {
+      cloneId: "relative",
+      repository,
+      rootPath: "code/x",
+      name: "x",
+      setupScript: null,
+    })
     expect(failure(relative).tag).toBe("ProjectRootInvalidError")
     const flag = await invoke("projects.clone", {
       cloneId: "flag",

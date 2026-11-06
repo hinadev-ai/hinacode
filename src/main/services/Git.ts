@@ -61,9 +61,7 @@ export const makeExec =
         [
           Stream.mkString(Stream.decodeText(handle.stdout)),
           Stream.mkString(
-            Stream.decodeText(handle.stderr).pipe(
-              Stream.tap((chunk) => options?.onStderr?.(chunk) ?? Effect.void),
-            ),
+            Stream.decodeText(handle.stderr).pipe(Stream.tap((chunk) => options?.onStderr?.(chunk) ?? Effect.void)),
           ),
           handle.exitCode,
         ],
