@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fernwood Coffee · Checkout</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font:
+          15px/1.5 -apple-system,
+          "Segoe UI",
+          sans-serif;
+        color: #1f2421;
+        background: #f6f3ee;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 24px;
+        background: #fff;
+        border-bottom: 1px solid #e6e0d6;
+      }
+      .brand {
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        color: #3b5b45;
+      }
+      nav a {
+        margin-left: 18px;
+        color: #555;
+        text-decoration: none;
+      }
+      main {
+        max-width: 880px;
+        margin: 28px auto;
+        padding: 0 20px;
+        display: grid;
+        gap: 20px;
+        grid-template-columns: 1.4fr 1fr;
+      }
+      section {
+        background: #fff;
+        border: 1px solid #e6e0d6;
+        border-radius: 12px;
+        padding: 20px;
+      }
+      h1 {
+        font-size: 22px;
+        margin: 0 0 4px;
+      }
+      h2 {
+        font-size: 16px;
+        margin: 0 0 12px;
+      }
+      .muted {
+        color: #6b6f6a;
+        font-size: 13px;
+      }
+      .item {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        padding: 10px 0;
+        border-top: 1px solid #f0ebe3;
+      }
+      .thumb {
+        width: 48px;
+        height: 48px;
+        border-radius: 8px;
+        background: linear-gradient(135deg, #8a6a4f, #c9a27e);
+      }
+      .grow {
+        flex: 1;
+      }
+      label {
+        display: block;
+        font-size: 13px;
+        margin: 10px 0 4px;
+        color: #444;
+      }
+      input {
+        width: 100%;
+        padding: 9px 11px;
+        border: 1px solid #d8d1c4;
+        border-radius: 8px;
+        font: inherit;
+      }
+      button {
+        width: 100%;
+        margin-top: 16px;
+        padding: 11px;
+        border: 0;
+        border-radius: 8px;
+        background: #3b5b45;
+        color: #fff;
+        font: 600 15px/1 inherit;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        padding: 4px 0;
+      }
+      .total {
+        font-weight: 700;
+        border-top: 1px solid #e6e0d6;
+        margin-top: 8px;
+        padding-top: 10px;
+      }
+      @media (max-width: 640px) {
+        main {
+          grid-template-columns: 1fr;
+          margin-top: 16px;
+        }
+        nav {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="brand">Fernwood Coffee</span>
+      <nav><a href="#">Shop</a><a href="#">Subscriptions</a><a href="#">Cart (3)</a></nav>
+    </header>
+    <main>
+      <section>
+        <h1>Checkout</h1>
+        <p class="muted">Free shipping on orders over $40</p>
+        <div class="item">
+          <div class="thumb"></div>
+          <div class="grow">
+            Ethiopia Guji, 340 g
+            <div class="muted">Whole bean</div>
+          </div>
+          $19.00
+        </div>
+        <div class="item">
+          <div class="thumb"></div>
+          <div class="grow">
+            House Espresso, 1 kg
+            <div class="muted">Fine grind</div>
+          </div>
+          $38.00
+        </div>
+        <div class="item">
+          <div class="thumb"></div>
+          <div class="grow">
+            Paper filters, 100 pack
+            <div class="muted">Size 02</div>
+          </div>
+          $6.50
+        </div>
+      </section>
+      <section>
+        <h2>Payment</h2>
+        <label for="email">Email</label><input id="email" value="mika@fernwood.coffee" />
+        <label for="card">Card number</label><input id="card" value="4242 4242 4242 4242" />
+        <div class="row" style="margin-top: 14px"><span>Subtotal</span><span>$63.50</span></div>
+        <div class="row"><span>Shipping</span><span>Free</span></div>
+        <div class="row total"><span>Total</span><span>$63.50</span></div>
+        <button type="button">Pay $63.50</button>
+      </section>
+    </main>
+  </body>
+</html>

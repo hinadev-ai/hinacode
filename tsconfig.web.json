@@ -13,6 +13,8 @@
     "src/preload/*.d.ts",
     "site/app/**/*",
     "apps/web/src/**/*",
+    "scripts/ui-states/main.ts",
+    "scripts/ui-states/webview.ts",
     "packages/icons/src/**/*"
   ],
   "exclude": [
