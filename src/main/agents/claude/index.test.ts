@@ -5,6 +5,7 @@ import { Effect, Fiber, Option, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import type { AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
 import { usageLimitResult } from "./fixtures/usageLimit.ts"
+import { MagpieProvider } from "../magpie/index.ts"
 import { ClaudeProvider, layer } from "./index.ts"
 
 const sdk = vi.hoisted(() => {
@@ -104,17 +105,22 @@ vi.mock("../binary.ts", async () => {
   return { installedBinary: (_provider: string, name: string) => succeed(name) }
 })
 
-const magpie = vi.hoisted(() => ({
+const gateway = vi.hoisted(() => ({
   origin: null as string | null,
-  models: new Array<{ readonly id: string; readonly display_name?: string }>(),
+  models: new Array<{
+    readonly id: string
+    readonly display_name?: string
+    readonly reasoning_levels?: Array<string>
+  }>(),
 }))
 
-vi.mock("../magpie.ts", async (importOriginal) => {
+vi.mock("../magpie/gateway.ts", async (importOriginal) => {
   const { sync } = await import("effect/Effect")
   return {
-    ...(await importOriginal<typeof import("../magpie.ts")>()),
-    findGateway: () => sync(() => magpie.origin),
-    gatewayModels: () => sync(() => magpie.models),
+    ...(await importOriginal<typeof import("../magpie/gateway.ts")>()),
+    findGateway: () => sync(() => gateway.origin),
+    modelsAt: () => sync(() => gateway.models),
+    gatewayModels: () => sync(() => (gateway.origin === null ? [] : gateway.models)),
   }
 })
 
@@ -222,8 +228,6 @@ const lifecycle = <A, E>(effect: Effect.Effect<A, E, ClaudeProvider>) =>
     sdk.setPermissionMode = () => Promise.resolve()
     sdk.supportedCommands = () => Promise.resolve([])
     sdk.supportedModels = () => Promise.resolve([])
-    magpie.origin = null
-    magpie.models = []
     return effect
   }).pipe(Effect.provide(layer))
 
@@ -1265,52 +1269,87 @@ describe("Claude models", () => {
   )
 })
 
-describe("Claude on magpie models", () => {
-  it.effect("lists magpie's models after Claude Code's own", () =>
-    lifecycle(
+const onMagpie = <A, E>(effect: Effect.Effect<A, E, MagpieProvider>) =>
+  Effect.suspend(() => {
+    sdk.clis.length = 0
+    sdk.respond = completeWith(succeeded)
+    sdk.setModel = () => Promise.resolve()
+    gateway.origin = "http://127.0.0.1:3425"
+    gateway.models = [
+      { id: "openrouter/deepseek-v4", display_name: "DeepSeek V4", reasoning_levels: ["low", "high", "max"] },
+      { id: "moonshot/kimi-k3" },
+    ]
+    return effect
+  }).pipe(Effect.provide(MagpieProvider.layer))
+
+const flagEnv = (cli: InstanceType<typeof sdk.FakeQuery>) =>
+  typeof cli.options.settings === "object" ? cli.options.settings.env : undefined
+
+const magpieTurn = (model: string) =>
+  Effect.gen(function* () {
+    const provider = yield* MagpieProvider
+    yield* provider.runTurn(turnInput({ model })).pipe(Stream.runCollect)
+    yield* settle
+  })
+
+describe("magpie", () => {
+  it.effect("lists the gateway's models and reports the gateway as its account", () =>
+    onMagpie(
       Effect.gen(function* () {
-        sdk.supportedModels = () =>
-          Promise.resolve([{ value: "claude-next", displayName: "Claude Next", description: "" }])
-        magpie.models = [{ id: "openrouter/deepseek-v4", display_name: "DeepSeek V4" }]
-        const provider = yield* ClaudeProvider
-        expect((yield* provider.listModels).map((model) => model.id)).toEqual([
-          "claude-next",
-          "magpie/openrouter/deepseek-v4",
+        const provider = yield* MagpieProvider
+        expect((yield* provider.listModels).map((model) => [model.id, model.label, model.efforts])).toStrictEqual([
+          ["openrouter/deepseek-v4", "DeepSeek V4", ["low", "high", "max"]],
+          ["moonshot/kimi-k3", "moonshot/kimi-k3", []],
         ])
+        expect(yield* provider.account(null)).toStrictEqual({ type: "external", service: "magpie" })
+        gateway.origin = null
+        expect(yield* provider.account(null)).toStrictEqual({ type: "signedOut" })
       }),
     ),
   )
 
-  it.effect("runs a magpie model through the gateway and resumes in a new CLI when the thread moves back", () =>
-    lifecycle(
+  it.effect("starts Claude Code with the gateway in its flag settings, over the user's settings.json", () =>
+    onMagpie(
       Effect.gen(function* () {
-        magpie.origin = "http://127.0.0.1:3425"
-        yield* runTurn(turnInput({ model: "magpie/openrouter/deepseek-v4" }))
-        const routed = latestCli()
-        expect(routed.options.model).toBe("openrouter/deepseek-v4")
-        expect(routed.options.env).toMatchObject({
+        yield* magpieTurn("openrouter/deepseek-v4")
+        const { options } = latestCli()
+        expect(options.model).toBe("openrouter/deepseek-v4")
+        expect(flagEnv(latestCli())).toMatchObject({
           ANTHROPIC_BASE_URL: "http://127.0.0.1:3425",
+          ANTHROPIC_API_KEY: "",
           ANTHROPIC_SMALL_FAST_MODEL: "openrouter/deepseek-v4",
           CLAUDE_CODE_SUBAGENT_MODEL: "openrouter/deepseek-v4",
+          CLAUDE_CODE_MODEL_CAPABILITIES: "openrouter/deepseek-v4=effort,max_effort",
         })
+      }),
+    ),
+  )
 
-        yield* runTurn()
-        expect(routed.close).toHaveBeenCalled()
+  it.effect("resumes in a new CLI pinned to the next model when the thread changes model", () =>
+    onMagpie(
+      Effect.gen(function* () {
+        yield* magpieTurn("openrouter/deepseek-v4")
+        const first = latestCli()
+        yield* magpieTurn("moonshot/kimi-k3")
+        expect(first.close).toHaveBeenCalled()
+        expect(first.setModel).not.toHaveBeenCalled()
         expect(latestCli().options.resume).toBe("session-1")
-        expect(latestCli().options.model).toBe("claude-sonnet-5-5")
-        expect(latestCli().options.env?.["ANTHROPIC_BASE_URL"]).toBe(process.env["ANTHROPIC_BASE_URL"])
+        expect(flagEnv(latestCli())).toMatchObject({
+          CLAUDE_CODE_SUBAGENT_MODEL: "moonshot/kimi-k3",
+        })
       }),
     ),
   )
 
   it.effect("fails the turn before starting Claude Code when magpie is not running", () =>
-    lifecycle(
+    onMagpie(
       Effect.gen(function* () {
-        const provider = yield* ClaudeProvider
+        gateway.origin = null
+        const provider = yield* MagpieProvider
         const error = yield* provider
-          .runTurn(turnInput({ model: "magpie/openrouter/deepseek-v4" }))
+          .runTurn(turnInput({ model: "moonshot/kimi-k3" }))
           .pipe(Stream.runCollect, Effect.flip)
-        expect(error.message).toMatch(/magpie is not running/)
+        expect(error).toMatchObject({ provider: "magpie", message: expect.stringMatching(/magpie is not running/) })
         expect(sdk.clis).toHaveLength(0)
       }),
     ),

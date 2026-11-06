@@ -2,6 +2,7 @@ import { cn } from "cn"
 import { RiClaudeFill, RiMetaFill, RiOpenaiFill } from "react-icons/ri"
 import type { ProviderId } from "../../shared/agent.ts"
 import { m } from "../paraglide/messages.js"
+import { MagpieLogoIcon } from "./icons/MagpieLogoIcon.tsx"
 import { OpencodeLogoIcon } from "./icons/OpencodeLogoIcon.tsx"
 
 const icons = {
@@ -9,6 +10,7 @@ const icons = {
   codex: { Icon: RiOpenaiFill, color: "text-provider-codex" },
   muse: { Icon: RiMetaFill, color: "text-provider-muse" },
   opencode: { Icon: OpencodeLogoIcon, color: "text-provider-opencode" },
+  magpie: { Icon: MagpieLogoIcon, color: "text-provider-magpie" },
 } satisfies Record<ProviderId, unknown>
 
 export const providerLabel = {
@@ -16,6 +18,7 @@ export const providerLabel = {
   codex: m.provider_codex,
   muse: m.provider_muse,
   opencode: m.provider_opencode,
+  magpie: m.provider_magpie,
 } satisfies Record<ProviderId, () => string>
 
 export function ProviderIcon({

@@ -641,7 +641,7 @@ const ListenPort = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 6553
 
 const perProvider = <S extends Schema.Top>(value: S, fallback: S["Encoded"]) => {
   const field = value.pipe(Schema.withDecodingDefaultKey(Effect.succeed(fallback)))
-  return Schema.Struct({ claude: field, codex: field, muse: field, opencode: field })
+  return Schema.Struct({ claude: field, codex: field, muse: field, opencode: field, magpie: field })
 }
 
 const eachProvider = <A>(value: A): Record<ProviderId, A> => ({
@@ -649,6 +649,7 @@ const eachProvider = <A>(value: A): Record<ProviderId, A> => ({
   codex: value,
   muse: value,
   opencode: value,
+  magpie: value,
 })
 
 export const Settings = Schema.Struct({

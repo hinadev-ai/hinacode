@@ -48,6 +48,7 @@ describe("older cloud responses", () => {
       codex: null,
       muse: null,
       opencode: null,
+      magpie: null,
     })
   })
 

@@ -47,4 +47,13 @@ export const providerInfo: Record<ProviderId, ProviderInfo> = {
     movesCommandsToBackground: false,
     subagentModels: "picked",
   },
+  magpie: {
+    name: "magpie",
+    binary: "claude",
+    installUrl: "https://usemagpie.ai",
+    steersRunningTurn: true,
+    autoCompacts: true,
+    movesCommandsToBackground: true,
+    subagentModels: "picked",
+  },
 }

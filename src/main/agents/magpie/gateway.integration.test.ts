@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, test } from "@effect/vitest"
 import { Effect } from "effect"
-import { findGateway, gatewayModels } from "./magpie.ts"
+import { findGateway, gatewayModels } from "./gateway.ts"
 
 const servers: Array<Server> = []
 const configDirs: Array<string> = []
