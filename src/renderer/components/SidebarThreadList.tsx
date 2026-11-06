@@ -478,7 +478,8 @@ function ThreadRow({
   const state = useThreadRowState(thread)
   const dimmed = showProject && rowEmphasis[state] === "resting"
   const meta = useThreadMeta(thread, showProject)
-  const hasMeta = meta.project !== null || cloud !== undefined || meta.links.length > 0
+  const rowCloud = showProject ? cloud : undefined
+  const hasMeta = meta.project !== null || rowCloud !== undefined || meta.links.length > 0
   const detail = useRowDetail(thread, state, showActivity, showProject)
   const branch = useThreadBranch(thread, worktree)
   const drafted = useDrafts((drafts) => {
@@ -756,7 +757,7 @@ function ThreadRow({
         <ThreadMeta
           links={meta.links}
           threadId={thread.id}
-          cloud={cloud}
+          cloud={rowCloud}
           environment={environment}
           detail={detail}
           ledger={meta.project === null ? null : { provider: meta.provider, branch }}
