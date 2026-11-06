@@ -22,8 +22,8 @@ Then("a new thread is open with the composer focused", async ({ app }) => {
 })
 
 Then("the sidebar does not list the open draft", async ({ app }) => {
+  await expect.poll(async () => (await openThread(app.page))?.status).toBe("draft")
   const draft = await openThread(app.page)
-  expect(draft?.status).toBe("draft")
   await expect(sidebar(app.page).getByRole("link", { name: draft?.title ?? "", exact: true })).toHaveCount(0)
 })
 
