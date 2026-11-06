@@ -181,8 +181,9 @@ export const relayAccountAtom = Atom.make(call("relayAccount.status", undefined)
 
 const relayAccountAction = <A>(effect: Effect.Effect<A, RpcError>) =>
   effect.pipe(
-    Effect.tap(() => Atom.refresh(relayAccountAtom)),
-    Effect.tap(() => Atom.refresh(environmentsAtom)),
+    Effect.ensuring(Atom.refresh(relayAccountAtom)),
+    Effect.ensuring(Atom.refresh(environmentsAtom)),
+    Effect.ensuring(Atom.refresh(remotePairingAtom)),
   )
 
 export const signInRelayAtom = Atom.fn(() => relayAccountAction(call("relayAccount.signIn", undefined)))

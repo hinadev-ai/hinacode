@@ -398,7 +398,7 @@ describe("Relay", () => {
           yield* until((status) => status.state === "linking")
           yield* advanceUntil(() => service.claims() === 1)
           const failure = yield* Effect.flip(Fiber.join(setup))
-          expect(failure.message).toBe("The sign-in link expired. Turn on the relay again.")
+          expect(failure.message).toBe("The sign-in link expired. Link this machine again.")
           expect(yield* Relay.use((relay) => relay.status)).toStrictEqual({ state: "off" })
         }),
       )
@@ -416,7 +416,7 @@ describe("Relay", () => {
           yield* until((status) => status.state === "linking")
           yield* advanceUntil(() => setup.pollUnsafe() !== undefined)
           const failure = yield* Effect.flip(Fiber.join(setup))
-          expect(failure.message).toBe("The sign-in link expired. Turn on the relay again.")
+          expect(failure.message).toBe("The sign-in link expired. Link this machine again.")
           expect(service.claims()).toBe(0)
         }),
       )

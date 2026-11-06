@@ -336,8 +336,22 @@ const handlers: Handlers = {
   "environments.reconnect": ({ id }) => Environments.use((environments) => environments.reconnect(id)),
   "relayAccount.status": () => RelayAccount.use((account) => account.status),
   "relayAccount.signIn": (_, desktop) =>
-    RelayAccount.use((account) => account.signIn({ onLink: (link) => desktop?.openExternal(link.url) ?? Effect.void })),
-  "relayAccount.signOut": () => RelayAccount.use((account) => account.signOut),
+    Effect.gen(function* () {
+      const account = yield* RelayAccount
+      const relay = yield* Relay
+      const openInBrowser = (url: string) => desktop?.openExternal(url) ?? Effect.void
+      const status = yield* account.signIn({ onLink: (link) => openInBrowser(link.url) })
+      if (status.state !== "signedIn" || (yield* relay.status).state !== "off") return status
+      yield* relay.setup({
+        onLink: (link) =>
+          account
+            .approveOwnLink(link.userCode)
+            .pipe(Effect.flatMap((approved) => (approved ? Effect.void : openInBrowser(link.url)))),
+      })
+      return yield* account.sync
+    }),
+  "relayAccount.signOut": () =>
+    Relay.use((relay) => relay.remove).pipe(Effect.andThen(RelayAccount.use((account) => account.signOut))),
   "relayAccount.sync": () => RelayAccount.use((account) => account.sync),
   "relayAccount.machines": () => RelayAccount.use((account) => account.machines),
   "relayAccount.setShown": (input) => RelayAccount.use((account) => account.setShown(input)),
@@ -552,21 +566,6 @@ const handlers: Handlers = {
   "remote.status": () => RemoteAccess.use((remote) => remote.status),
   "remote.pairing": () => RemoteAccess.use((remote) => remote.pairing),
   "remote.rotateToken": () => RemoteAccess.use((remote) => remote.rotateToken),
-  "remote.setupRelay": (_, desktop) =>
-    Effect.gen(function* () {
-      const account = yield* RelayAccount
-      const relay = yield* Relay
-      yield* relay.setup({
-        onLink: (link) =>
-          account
-            .approveOwnLink(link.userCode)
-            .pipe(
-              Effect.flatMap((approved) => (approved ? Effect.void : (desktop?.openExternal(link.url) ?? Effect.void))),
-            ),
-      })
-    }).pipe(Effect.andThen(RemoteAccess.use((remote) => remote.pairing))),
-  "remote.removeRelay": () =>
-    Relay.use((relay) => relay.remove).pipe(Effect.andThen(RemoteAccess.use((remote) => remote.pairing))),
 }
 
 export const RpcCall = Schema.Struct({

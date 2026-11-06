@@ -392,7 +392,7 @@ describe("RelayAccount", () => {
           .use((relayAccount) => relayAccount.removeMachine({ id: "host-self" }))
           .pipe(Effect.flip)
 
-        expect(error.message).toBe("To unlink this machine, use Remove relay in Settings > Connections.")
+        expect(error.message).toBe("To unlink this machine, sign out.")
         expect(relay.calls).not.toContain("DELETE /v1/hosts/host-self")
         expect(relay.hosts.map((host) => host.id)).toStrictEqual(["host-1", "host-self"])
       }),

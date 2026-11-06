@@ -178,7 +178,7 @@ const make = ({ serviceUrl, fetch = globalThis.fetch }: RelayAccountOptions) =>
           const hosts = yield* service.hosts(token)
           if (hosts.some((host) => host.id === id && host.environmentId === self.id)) {
             return yield* new RelayError({
-              message: "To unlink this machine, use Remove relay in Settings > Connections.",
+              message: "To unlink this machine, sign out.",
             })
           }
           yield* service.removeHost(token, id)

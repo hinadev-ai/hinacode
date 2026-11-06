@@ -655,8 +655,6 @@ export const RpcMethods = {
   "remote.status": rpc(Schema.Void, RemoteStatus),
   "remote.pairing": rpc(Schema.Void, RemotePairing),
   "remote.rotateToken": rpc(Schema.Void, RemotePairing),
-  "remote.setupRelay": rpc(Schema.Void, RemotePairing),
-  "remote.removeRelay": rpc(Schema.Void, RemotePairing),
   "automations.webhookUrl": rpc(
     Schema.Struct({ id: Schema.String }),
     Schema.Struct({ url: Schema.String, listenError: Schema.NullOr(Schema.String) }),
@@ -864,8 +862,6 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "remote.status": "read",
   "remote.pairing": "read",
   "remote.rotateToken": "mutation",
-  "remote.setupRelay": "mutation",
-  "remote.removeRelay": "mutation",
   "automations.webhookUrl": "read",
 }
 
@@ -897,8 +893,6 @@ export const desktopOnlyMethods: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "vm.files.drop",
   "remote.pairing",
   "remote.rotateToken",
-  "remote.setupRelay",
-  "remote.removeRelay",
   "clientSettings.get",
   "clientSettings.set",
   "environments.list",
