@@ -92,6 +92,7 @@ function Tab({ threadId, tab, selected, closable }: TabProps) {
         role="tab"
         id={browserTabId(threadId, tab.id)}
         aria-selected={selected}
+        aria-keyshortcuts={closable ? "Delete" : undefined}
         aria-controls={browserPanelId(threadId, tab.id)}
         tabIndex={selected ? 0 : -1}
         title={label}
@@ -111,6 +112,7 @@ function Tab({ threadId, tab, selected, closable }: TabProps) {
         <button
           type="button"
           tabIndex={-1}
+          aria-hidden
           aria-label={m.browser_close_tab({ title: label })}
           title={m.browser_close_tab({ title: label })}
           onClick={close}
