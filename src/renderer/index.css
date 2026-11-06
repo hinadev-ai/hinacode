@@ -768,6 +768,10 @@
       font-size: 0.9375rem;
     }
 
+    & :where(p, li) {
+      text-wrap-style: pretty;
+    }
+
     & :where(code):not(:where(pre code)) {
       @apply rounded-[0.25em] bg-foreground/10 px-[0.35em] py-[0.1em] text-[0.85em] font-normal text-chat-foreground box-decoration-clone wrap-anywhere;
     }
