@@ -294,8 +294,6 @@ describe("Codex auto-compact", () => {
   )
 })
 
-describe("Codex conversation mode", () => {})
-
 describe("Codex Stop during startup", () => {
   for (const phase of ["initialize", "thread/start", "turn/start"]) {
     it.live(`ends the run while ${phase} is pending and leaves the thread usable`, () =>
