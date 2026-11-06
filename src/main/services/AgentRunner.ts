@@ -89,7 +89,7 @@ import { Git, type CommandError } from "./Git.ts"
 import type { GitHubError, PullRequestUrlInvalidError } from "./GitHub.ts"
 import { Messages, type ToolCallRef } from "./Messages.ts"
 import { PullRequests } from "./PullRequests.ts"
-import { Attachments } from "./Attachments.ts"
+import { Attachments, extensionOf } from "./Attachments.ts"
 import { Scratch } from "./Scratch.ts"
 import { Settings } from "./Settings.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
@@ -321,7 +321,7 @@ const savedImage = (threadId: string, attachments: typeof Attachments.Service, r
   const mimeType = source["mimeType"] ?? source["media_type"]
   const data = source["data"]
   if (typeof mimeType !== "string" || typeof data !== "string") return Effect.succeed({ type: "image", mimeType })
-  const name = `image.${mimeType.split("/").at(-1) ?? "png"}`
+  const name = `image${extensionOf(mimeType)}`
   return attachments.stage(threadId, { dataUrl: `data:${mimeType};base64,${data}`, name }).pipe(
     Effect.map((attachment) => ({ type: "image", mimeType, attachment })),
     Effect.orElseSucceed(() => ({ type: "image", mimeType })),
