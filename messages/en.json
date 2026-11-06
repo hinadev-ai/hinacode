@@ -1301,6 +1301,21 @@
   "settings_archive_when_merged_hint": "A closed, unmerged pull request stays in Ready.",
   "settings_archive_remove_worktree": "Remove the worktree when archiving",
   "settings_archive_remove_worktree_hint": "Uncommitted changes are lost.",
+  "settings_archive_settle_idle": "Settle a quiet thread after",
+  "settings_archive_settle_idle_hint": "Only when no pull request is open and nothing is running. Settling stops its processes.",
+  "settings_archive_after_settled": "Archive a settled thread after",
+  "settings_archive_after_settled_hint": "A worktree with uncommitted changes stays settled.",
+  "settings_archive_never": "Never",
+  "settings_archive_days": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} day",
+        "countPlural=other": "{count} days"
+      }
+    }
+  ],
   "tool_output_image": "[image]",
   "panel_tab_tiny_vm": "Tiny VM",
   "command_view_tiny_vm": "Show Tiny VM",

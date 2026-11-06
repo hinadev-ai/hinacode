@@ -1265,6 +1265,21 @@
   "settings_archive_when_merged_hint": "未合併就關閉的 pull request 會留在「待處理」。",
   "settings_archive_remove_worktree": "封存時移除 worktree",
   "settings_archive_remove_worktree_hint": "尚未提交的變更會遺失。",
+  "settings_archive_settle_idle": "閒置多久後收工",
+  "settings_archive_settle_idle_hint": "只在沒有開啟中的 pull request、也沒有東西在執行時收工。收工會停止它的程序。",
+  "settings_archive_after_settled": "收工多久後封存",
+  "settings_archive_after_settled_hint": "worktree 有未提交的變更時，會保持收工。",
+  "settings_archive_never": "永不",
+  "settings_archive_days": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 天",
+        "countPlural=other": "{count} 天"
+      }
+    }
+  ],
   "tool_output_image": "[圖片]",
   "panel_tab_tiny_vm": "Tiny VM",
   "command_view_tiny_vm": "顯示 Tiny VM",

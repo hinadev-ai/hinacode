@@ -93,6 +93,8 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
       m.settings_worktree_root,
       m.settings_archive,
       m.settings_archive_when_merged,
+      m.settings_archive_settle_idle,
+      m.settings_archive_after_settled,
       m.settings_archive_remove_worktree,
     ],
   },

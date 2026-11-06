@@ -1247,6 +1247,21 @@
   "settings_archive_when_merged_hint": "マージせずに閉じた pull request は「対応待ち」に残ります。",
   "settings_archive_remove_worktree": "アーカイブ時に worktree を削除",
   "settings_archive_remove_worktree_hint": "未コミットの変更は失われます。",
+  "settings_archive_settle_idle": "動きのないスレッドを完了にするまで",
+  "settings_archive_settle_idle_hint": "開いている pull request がなく、何も実行していないときだけ完了にします。完了にするとプロセスを停止します。",
+  "settings_archive_after_settled": "完了済みスレッドをアーカイブするまで",
+  "settings_archive_after_settled_hint": "worktree にコミットしていない変更があると、完了済みのまま残ります。",
+  "settings_archive_never": "しない",
+  "settings_archive_days": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 日",
+        "countPlural=other": "{count} 日"
+      }
+    }
+  ],
   "tool_output_image": "[画像]",
   "panel_tab_tiny_vm": "Tiny VM",
   "command_view_tiny_vm": "Tiny VM を表示",
