@@ -1,5 +1,7 @@
 import { useState } from "react"
-import { Linking, Platform, StyleSheet, Text, TextInput, View } from "react-native"
+import { getRandomBytes } from "expo-crypto"
+import { openAuthSessionAsync } from "expo-web-browser"
+import { Platform, StyleSheet, Text, TextInput, View } from "react-native"
 import { Spinner } from "@/components/motion"
 import { SettingsGroup, SettingsRow } from "@/components/settings-rows"
 import { Button, Notice } from "@/components/ui"
@@ -88,7 +90,12 @@ function RelayStatus({ serviceUrl }: { serviceUrl: string }) {
 
 const deviceName = Platform.OS === "ios" ? "iPhone" : Platform.OS === "android" ? "Android" : "Phone"
 
-/** Saves the account only once the signed-in person approves this phone in the browser. */
+const authenticate = async (url: string, redirectUri: string) => {
+  const result = await openAuthSessionAsync(url, redirectUri)
+  return result.type === "success" ? result.url : null
+}
+
+/** Signs in on the relay's page in the system auth sheet, which hands the code back to this phone. */
 function RelaySignIn({ initialUrl }: { initialUrl: string }) {
   const theme = useTheme()
   const signIn = useRelayAccount((state) => state.signIn)
@@ -103,9 +110,7 @@ function RelaySignIn({ initialUrl }: { initialUrl: string }) {
     setBusy(true)
     setError(null)
     try {
-      setError(
-        await signIn({ serviceUrl: serviceUrl.trim(), deviceName, openUrl: (url) => Linking.openURL(url) }),
-      )
+      setError(await signIn({ serviceUrl: serviceUrl.trim(), deviceName, random: getRandomBytes(32), authenticate }))
     } finally {
       setBusy(false)
     }
@@ -123,7 +128,6 @@ function RelaySignIn({ initialUrl }: { initialUrl: string }) {
         keyboardType="url"
         style={inputStyle}
       />
-      {busy && <Notice text={copy("mobile_relay_waiting")} />}
       {error !== null && <Notice tone="danger" text={error} />}
       <Button
         icon="ShieldKeyhole"

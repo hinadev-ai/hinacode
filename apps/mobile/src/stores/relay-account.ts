@@ -5,11 +5,13 @@ import { setServers, storedServers, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import {
   applyRelayMachines,
-  claimRelaySignIn,
+  codeFromCallback,
+  exchangeSignInCode,
   fetchRelayMachines,
+  pkcePair,
   type RelayAccount,
+  signInUrl,
   signOutRelayDevice,
-  startRelaySignIn,
 } from "@/lib/relay-account"
 import { clearRelayAccount, loadRelayAccount, saveRelayAccount } from "@/lib/storage"
 import { newServerId } from "@/lib/stored-target"
@@ -29,11 +31,15 @@ interface RelayAccountState {
   readonly syncing: boolean
   /** Reads the saved account once at launch and syncs with it. */
   readonly restore: () => Promise<void>
-  /** Opens the approval page and waits for it, saving the account only once approved. Returns why it failed, or null. */
+  /**
+   * Opens the relay's sign-in page through `authenticate`, which resolves with the URL the browser redirected to, or
+   * null when the person closed it. Returns why it failed, or null when it signed in or was cancelled.
+   */
   readonly signIn: (input: {
     readonly serviceUrl: string
     readonly deviceName: string
-    readonly openUrl: (url: string) => Promise<unknown>
+    readonly random: Uint8Array
+    readonly authenticate: (url: string, redirectUri: string) => Promise<string | null>
   }) => Promise<string | null>
   readonly sync: () => Promise<void>
   /** Forgets the account and the servers it added. */
@@ -41,6 +47,7 @@ interface RelayAccountState {
 }
 
 const REFUSED_SYNC_INTERVAL_MS = 15_000
+const SIGN_IN_REDIRECT = "hinacode://signed-in"
 
 const signedOut = { serviceUrl: null, syncedAt: null, machines: null, error: null, unauthorized: false }
 
@@ -99,31 +106,29 @@ export const useRelayAccount = create<RelayAccountState>()((set, get) => {
       set({ serviceUrl: account.serviceUrl })
       await get().sync()
     },
-    signIn: async ({ serviceUrl, deviceName, openUrl }) => {
+    signIn: async ({ serviceUrl, deviceName, random, authenticate }) => {
       signInAttempt++
       const attempt = signInAttempt
-      const started = await startRelaySignIn(serviceUrl, deviceName, fetch)
-      if (started._tag === "failed") return started.message
-      const { deviceCode, url, interval, expiresAt } = started.signIn
-      await openUrl(url)
-      for (;;) {
-        await new Promise((resolve) => setTimeout(resolve, interval * 1000))
-        if (attempt !== signInAttempt) return null
-        if (Date.now() >= expiresAt) return copy("mobile_relay_sign_in_expired")
-        const claim = await claimRelaySignIn(serviceUrl, deviceCode, fetch)
-        if (claim._tag === "expired") return attempt === signInAttempt ? copy("mobile_relay_sign_in_expired") : null
-        if (claim._tag === "pending") continue
-        const next = { serviceUrl, credential: claim.credential }
-        if (attempt !== signInAttempt) {
-          void signOutRelayDevice(next, fetch)
-          return null
-        }
-        account = next
-        set({ serviceUrl })
-        await saveRelayAccount(next)
-        if (account === next) await get().sync()
+      const { verifier, challenge } = pkcePair(random)
+      const callback = await authenticate(
+        signInUrl(serviceUrl, { redirectUri: SIGN_IN_REDIRECT, challenge, name: deviceName }),
+        SIGN_IN_REDIRECT,
+      )
+      if (callback === null || attempt !== signInAttempt) return null
+      const code = codeFromCallback(callback)
+      if (code === null) return copy("mobile_relay_bad_answer")
+      const result = await exchangeSignInCode(serviceUrl, code, verifier, fetch)
+      if (result._tag === "failed") return attempt === signInAttempt ? result.message : null
+      const next = { serviceUrl, credential: result.credential }
+      if (attempt !== signInAttempt) {
+        void signOutRelayDevice(next, fetch)
         return null
       }
+      account = next
+      set({ serviceUrl })
+      await saveRelayAccount(next)
+      if (account === next) await get().sync()
+      return null
     },
     sync: () => {
       if (account === null) return Promise.resolve()

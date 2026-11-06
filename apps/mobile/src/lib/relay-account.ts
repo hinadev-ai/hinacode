@@ -1,4 +1,7 @@
+import { sha256 } from "@noble/hashes/sha2.js"
+import { utf8ToBytes } from "@noble/hashes/utils.js"
 import { Option, Schema } from "effect"
+import { Base64Url } from "effect/encoding"
 import { type RelayMachine, RelayMachineList } from "@shared/relayMachines.ts"
 import { planRelaySync } from "@shared/relaySync.ts"
 import { copy } from "@/lib/copy"
@@ -50,75 +53,52 @@ const failed = (message: string): RelayMachinesResult => ({ _tag: "failed", mess
 
 const endpoint = (serviceUrl: string, path: string) => `${serviceUrl.replace(/\/+$/, "")}${path}`
 
-const decodeSignIn = Schema.decodeUnknownOption(
-  Schema.Struct({
-    deviceCode: Schema.String,
-    url: Schema.String,
-    interval: Schema.Number,
-    expiresAt: Schema.Number,
-  }),
-)
-
-export interface RelaySignIn {
-  readonly deviceCode: string
-  readonly url: string
-  readonly interval: number
-  readonly expiresAt: number
+/** The PKCE pair for one sign-in: the relay stores the challenge and hands out a code only the verifier redeems. */
+export const pkcePair = (random: Uint8Array) => {
+  const verifier = Base64Url.encode(random)
+  return { verifier, challenge: Base64Url.encode(sha256(utf8ToBytes(verifier))) }
 }
 
-export type RelaySignInStart =
-  | { readonly _tag: "started"; readonly signIn: RelaySignIn }
+export const signInUrl = (
+  serviceUrl: string,
+  { redirectUri, challenge, name }: { redirectUri: string; challenge: string; name: string },
+) =>
+  `${endpoint(serviceUrl, "/sign-in")}?${new URLSearchParams({ redirect_uri: redirectUri, code_challenge: challenge, name })}`
+
+export const codeFromCallback = (url: string): string | null => {
+  const parsed = URL.parse(url)
+  if (parsed === null || parsed.protocol !== "hinacode:" || parsed.host !== "signed-in") return null
+  return parsed.searchParams.get("code")
+}
+
+const decodeExchanged = Schema.decodeUnknownOption(Schema.Struct({ credential: Schema.String }))
+
+export type RelaySignInResult =
+  | { readonly _tag: "signedIn"; readonly credential: string }
   | { readonly _tag: "failed"; readonly message: string }
 
-/** Asks the relay for a page where the signed-in person approves this phone. */
-export async function startRelaySignIn(
+/** Redeems the code from the sign-in redirect for this phone's credential. The relay spends the code either way. */
+export async function exchangeSignInCode(
   serviceUrl: string,
-  name: string,
+  code: string,
+  codeVerifier: string,
   fetch: typeof globalThis.fetch,
-): Promise<RelaySignInStart> {
+): Promise<RelaySignInResult> {
   let response: Response
   try {
-    response = await fetch(endpoint(serviceUrl, "/v1/sign-ins"), {
+    response = await fetch(endpoint(serviceUrl, "/v1/sign-in-codes/exchange"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ code, codeVerifier }),
     })
   } catch {
     return { _tag: "failed", message: copy("mobile_relay_unreachable") }
   }
+  if (response.status === 410) return { _tag: "failed", message: copy("mobile_relay_sign_in_expired") }
   if (!response.ok) return { _tag: "failed", message: copy("mobile_relay_bad_status", { status: String(response.status) }) }
-  const signIn = Option.getOrNull(decodeSignIn(await response.json().catch(() => null)))
-  if (signIn === null) return { _tag: "failed", message: copy("mobile_relay_bad_answer") }
-  return { _tag: "started", signIn }
-}
-
-const decodeClaimed = Schema.decodeUnknownOption(Schema.Struct({ credential: Schema.String }))
-
-export type RelaySignInClaim =
-  | { readonly _tag: "pending" }
-  | { readonly _tag: "expired" }
-  | { readonly _tag: "claimed"; readonly credential: string }
-
-/** Asks whether the sign-in was approved. A network failure counts as pending, so the next poll tries again. */
-export async function claimRelaySignIn(
-  serviceUrl: string,
-  deviceCode: string,
-  fetch: typeof globalThis.fetch,
-): Promise<RelaySignInClaim> {
-  let response: Response
-  try {
-    response = await fetch(endpoint(serviceUrl, "/v1/links/claim"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ deviceCode }),
-    })
-  } catch {
-    return { _tag: "pending" }
-  }
-  if (response.status === 410) return { _tag: "expired" }
-  if (!response.ok || response.status === 202) return { _tag: "pending" }
-  const claimed = Option.getOrNull(decodeClaimed(await response.json().catch(() => null)))
-  return claimed === null ? { _tag: "pending" } : { _tag: "claimed", credential: claimed.credential }
+  const exchanged = Option.getOrNull(decodeExchanged(await response.json().catch(() => null)))
+  if (exchanged === null) return { _tag: "failed", message: copy("mobile_relay_bad_answer") }
+  return { _tag: "signedIn", credential: exchanged.credential }
 }
 
 /** Ends this phone's sign-in on the relay. Best effort, because signing out must work offline. */
