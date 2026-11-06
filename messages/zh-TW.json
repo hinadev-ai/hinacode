@@ -890,6 +890,8 @@
   "pr_detail_failed": "無法載入合併請求：{message}",
   "pr_conflicts": "這個分支與 {base} 有衝突。",
   "pr_resolve_conflicts": "請 agent 解決",
+  "pr_changes_requested": "審查者要求修改。",
+  "pr_address_review": "請代理處理",
   "pr_checks_failing_count": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],

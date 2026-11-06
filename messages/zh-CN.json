@@ -917,6 +917,8 @@
   "pr_detail_failed": "无法加载拉取请求：{message}",
   "pr_conflicts": "该分支与 {base} 存在冲突。",
   "pr_resolve_conflicts": "让智能体解决",
+  "pr_changes_requested": "审查者要求修改。",
+  "pr_address_review": "让代理处理",
   "pr_checks_failing_count": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],

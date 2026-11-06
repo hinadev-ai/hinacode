@@ -926,6 +926,8 @@
   "pr_detail_failed": "Could not load the pull request: {message}",
   "pr_conflicts": "This branch has conflicts with {base}.",
   "pr_resolve_conflicts": "Ask the agent to resolve",
+  "pr_changes_requested": "A reviewer requested changes.",
+  "pr_address_review": "Ask the agent to address them",
   "pr_checks_failing_count": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],

@@ -917,6 +917,8 @@
   "pr_detail_failed": "プルリクエストを読み込めませんでした：{message}",
   "pr_conflicts": "このブランチは {base} と競合しています。",
   "pr_resolve_conflicts": "エージェントにコンフリクト解消を依頼",
+  "pr_changes_requested": "レビュアーが修正を求めています。",
+  "pr_address_review": "エージェントに対応を依頼",
   "pr_checks_failing_count": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
