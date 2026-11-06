@@ -558,6 +558,8 @@
   "sidebar_thread_actions": "“{title}”的操作",
   "sidebar_thread_rename": "重命名",
   "sidebar_thread_regenerate_title": "重新生成标题",
+  "sidebar_thread_fork": "分支",
+  "sidebar_fork_failed": "无法分支：{message}",
   "sidebar_title_regenerating": "正在重新生成标题…",
   "sidebar_regenerate_title_failed": "无法重新生成标题：{message}",
   "sidebar_thread_copy_id": "复制对话 ID",

@@ -84,6 +84,7 @@ import {
   ArchiveIcon,
   CheckIcon,
   CopyIcon,
+  ForkIcon,
   EyeIcon,
   EyeOffIcon,
   GripIcon,
@@ -471,6 +472,7 @@ function ThreadRow({
   focusAfterRemoval,
 }: ThreadRowProps) {
   const { ref, handleRef, isDragSource } = useSortable({ id: thread.id, index, group, disabled: !reorderable })
+  const router = useRouter()
   const [menuOpen, setMenuOpen] = useState(false)
   const [mode, setMode] = useState<RowMode>("idle")
   const [queued, setQueued] = useState<RowMode | null>(null)
@@ -547,6 +549,16 @@ function ThreadRow({
     }
   }
   const reopen = archived ? unarchive : unsettle
+  const fork = async () => {
+    try {
+      const forked = await callPromise("threads.fork", { threadId: thread.id })
+      useThreads.getState().upsert(forked)
+      await router.navigate({ to: "/thread/$threadId", params: { threadId: forked.id } })
+      useUi.getState().requestComposerFocus()
+    } catch (cause) {
+      toast.error(m.sidebar_fork_failed({ message: errorMessage(cause) }))
+    }
+  }
   const regenerateTitle = async () => {
     const toastId = toast.loading(m.sidebar_title_regenerating())
     try {
@@ -711,6 +723,10 @@ function ThreadRow({
                   <DropdownMenuItem onClick={() => void regenerateTitle()}>
                     <RefreshIcon aria-hidden />
                     {m.sidebar_thread_regenerate_title()}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem disabled={busy} onClick={() => void fork()}>
+                    <ForkIcon aria-hidden />
+                    {m.sidebar_thread_fork()}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(thread.id)}>
                     <CopyIcon aria-hidden />

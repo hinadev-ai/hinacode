@@ -290,7 +290,7 @@ export const RpcMethods = {
   "worktrees.pullRequest": rpc(Schema.Struct({ id: Schema.String }), Schema.NullOr(PullRequest)),
   "threads.changes": rpc(Schema.Struct({ threadId: Schema.String, scope: ChangesScope }), Schema.NullOr(Changes)),
   "threads.undoTurn": rpc(Schema.Struct({ threadId: Schema.String }), Schema.Void),
-  "threads.fork": rpc(Schema.Struct({ threadId: Schema.String, messageId: Schema.String }), Thread),
+  "threads.fork": rpc(Schema.Struct({ threadId: Schema.String, messageId: Schema.optional(Schema.String) }), Thread),
   "threads.sidechat": rpc(Schema.Struct({ threadId: Schema.String }), Thread),
   "sessions.listExternal": rpc(
     Schema.Struct({ projectId: Schema.String }),

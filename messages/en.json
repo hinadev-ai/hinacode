@@ -567,6 +567,8 @@
   "sidebar_thread_actions": "Actions for {title}",
   "sidebar_thread_rename": "Rename",
   "sidebar_thread_regenerate_title": "Regenerate title",
+  "sidebar_thread_fork": "Fork",
+  "sidebar_fork_failed": "Could not fork: {message}",
   "sidebar_title_regenerating": "Regenerating title…",
   "sidebar_regenerate_title_failed": "Could not regenerate the title: {message}",
   "sidebar_thread_copy_id": "Copy thread ID",
