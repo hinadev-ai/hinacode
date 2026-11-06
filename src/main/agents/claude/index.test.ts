@@ -151,7 +151,6 @@ const turnInput = (overrides: Partial<RunTurnInput> = {}): RunTurnInput => ({
   effort: null,
   fastMode: false,
   autoCompactTokens: null,
-  userSkills: true,
   accessMode: "supervised",
   resumeSessionId: null,
   forkAt: null,
@@ -238,26 +237,6 @@ describe("Claude idle sessions", () => {
       ),
     )
   }
-
-  it.effect("resumes in a new CLI without the user's skills when conversation mode turns on", () =>
-    lifecycle(
-      Effect.gen(function* () {
-        sdk.supportedCommands = () =>
-          Promise.resolve([
-            { name: "kalan-mode", description: "Kalan's working mode. (user)", argumentHint: "" },
-            { name: "verify", description: "Drive the app. (project)", argumentHint: "" },
-          ])
-        yield* runTurn()
-        const first = latestCli()
-        expect(first.options.settings).toStrictEqual({ fastMode: false })
-
-        yield* runTurn(turnInput({ userSkills: false }))
-        expect(first.close).toHaveBeenCalled()
-        expect(latestCli().options.resume).toBe("session-1")
-        expect(latestCli().options.settings).toStrictEqual({ fastMode: false, skillOverrides: { "kalan-mode": "off" } })
-      }),
-    ),
-  )
 
   it.effect("spawns the CLI with the thread's tmp folder as its temp directory", () =>
     lifecycle(
@@ -769,26 +748,6 @@ describe("Claude idle sessions", () => {
     ),
   )
 
-  it.effect("keeps user commands available for completions after a conversation turn", () =>
-    lifecycle(
-      Effect.gen(function* () {
-        const provider = yield* ClaudeProvider
-        sdk.supportedCommands = () =>
-          Promise.resolve([
-            { name: "personal", description: "User skill. (user)", argumentHint: "" },
-            { name: "project", description: "Project skill. (project)", argumentHint: "" },
-          ])
-        yield* runTurn(turnInput({ userSkills: false }))
-        const live = latestCli()
-        live.supportedCommands.mockResolvedValue([
-          { name: "project", description: "Project skill. (project)", argumentHint: "" },
-        ])
-        const commands = yield* provider.listCommands({ threadId: "thread-1", cwd: "/repo", home: null })
-        expect(commands.map((command) => command.name)).toStrictEqual(["personal", "project"])
-      }),
-    ),
-  )
-
   it.effect("stops a turn whose auto mode check is pending without starting or stranding a CLI", () =>
     lifecycle(
       Effect.gen(function* () {
@@ -836,15 +795,12 @@ describe("Claude warm sessions", () => {
   it.effect("starts one CLI when a warm and a turn race on the same thread", () =>
     lifecycle(
       Effect.gen(function* () {
-        const commands = Promise.withResolvers<Array<SlashCommand>>()
-        sdk.supportedCommands = () => commands.promise
-        const input = turnInput({ userSkills: false })
+        const input = turnInput()
         const warming = yield* warm(input).pipe(Effect.forkChild)
         const turn = yield* startTurn(input)
         yield* until(() => sdk.clis.length === 1)
         yield* settle
 
-        commands.resolve([])
         yield* Fiber.join(warming)
         yield* Fiber.join(turn.fiber)
         expect(sdk.clis.filter((cli) => cli.options.mcpServers !== undefined)).toHaveLength(1)

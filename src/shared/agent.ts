@@ -322,7 +322,6 @@ export interface RunTurnInput {
   readonly effort: string | null
   readonly fastMode: boolean
   readonly autoCompactTokens: number | null
-  readonly userSkills: boolean
   readonly accessMode: AccessMode
   readonly resumeSessionId: string | null
   readonly forkAt: string | null

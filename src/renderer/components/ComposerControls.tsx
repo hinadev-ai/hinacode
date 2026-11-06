@@ -57,7 +57,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 import {
   BoltIcon,
   BranchIcon,
-  ChatIcon,
   CheckIcon,
   type IconComponent,
   ShieldIcon,
@@ -175,11 +174,6 @@ const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | u
       return thread.provider === "muse" ? m.access_full_hint_muse() : m.access_full_hint()
   }
 }
-
-const hidesUserSkills = { claude: true, codex: true, muse: false, opencode: false } satisfies Record<
-  ProviderId,
-  boolean
->
 
 interface AgentTab {
   readonly value: string
@@ -361,14 +355,12 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
           set({ effort: next === DEFAULT_EFFORT ? null : next })
         }
   const toggleFast = current?.fastMode ? () => set({ fastMode: !thread.fastMode }) : null
-  const toggleConversation = hidesUserSkills[thread.provider] ? () => set({ userSkills: !thread.userSkills }) : null
   const stepAccess = (step: number) => set({ accessMode: stepThrough(AccessMode.literals, thread.accessMode, step) })
   const altKeys: Record<string, ((step: number) => void) | null> = {
     KeyH: () => moveTab(-1),
     KeyL: () => moveTab(1),
     KeyE: stepEffort,
     KeyF: toggleFast,
-    KeyC: toggleConversation,
     KeyM: stepAccess,
   }
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
@@ -541,16 +533,6 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
                 shortcut="F"
                 on={thread.fastMode}
                 toggle={toggleFast}
-              />
-            )}
-            {toggleConversation && (
-              <ModeToggle
-                icon={ChatIcon}
-                label={m.thread_conversation_mode()}
-                hint={m.thread_conversation_mode_hint()}
-                shortcut="C"
-                on={!thread.userSkills}
-                toggle={toggleConversation}
               />
             )}
           </div>

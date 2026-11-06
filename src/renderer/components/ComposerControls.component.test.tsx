@@ -46,7 +46,6 @@ const thread: Thread = {
   model: "second",
   effort: null,
   fastMode: false,
-  userSkills: true,
   accessMode: "full",
   accountId: "one",
   providerSessionId: null,
