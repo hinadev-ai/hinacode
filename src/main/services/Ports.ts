@@ -266,8 +266,18 @@ export class Ports extends Context.Service<
       threadId: string,
     ) => Effect.Effect<ReadonlyArray<OpenPort>, PersistenceError | NotFoundError | FolderMissingError | PortsError>
     readonly kill: (pid: number) => Effect.Effect<void, PortsError>
+    readonly closeThread: (threadId: string) => Effect.Effect<void>
   }
 >()("hinacode/Ports") {}
+
+const terminate = (pid: number) =>
+  Effect.gen(function* () {
+    if (!signal(pid, "SIGTERM")) return yield* new PortsError({ message: `Could not stop process ${pid}` })
+    yield* Effect.sleep(KILL_GRACE).pipe(
+      Effect.andThen(Effect.sync(() => signal(pid, 0) && signal(pid, "SIGKILL"))),
+      Effect.forkDetach,
+    )
+  })
 
 const kill = (pid: number) =>
   Effect.gen(function* () {
@@ -275,11 +285,7 @@ const kill = (pid: number) =>
     if (listening.length === 0) {
       return yield* new PortsError({ message: `Process ${pid} is not listening on a port` })
     }
-    if (!signal(pid, "SIGTERM")) return yield* new PortsError({ message: `Could not stop process ${pid}` })
-    yield* Effect.sleep(KILL_GRACE).pipe(
-      Effect.andThen(Effect.sync(() => signal(pid, 0) && signal(pid, "SIGKILL"))),
-      Effect.forkDetach,
-    )
+    yield* terminate(pid)
   })
 
 const make = Effect.gen(function* () {
@@ -300,7 +306,17 @@ const make = Effect.gen(function* () {
       return listening.map(({ port, pid, command, cwd }): OpenPort => ({ port, pid, command, cwd }))
     })
 
-  return Ports.of({ listForThread, kill })
+  const closeThread = (threadId: string) =>
+    listForThread(threadId).pipe(
+      Effect.flatMap((ports) =>
+        Effect.forEach(new Set(ports.map((port) => port.pid)), (pid) => terminate(pid).pipe(Effect.ignore), {
+          discard: true,
+        }),
+      ),
+      Effect.catch((error) => Effect.logWarning("could not stop the ports of a thread", threadId, error)),
+    )
+
+  return Ports.of({ listForThread, kill, closeThread })
 })
 
 export const layer = Layer.effect(Ports, make)
