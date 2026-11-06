@@ -459,9 +459,14 @@ function ModelSheet({
   )
 }
 
-/** Every paired server with its status. Tap one to reconnect, pair it again or forget it. */
+/**
+ * Every paired server with its status. Tap one to reconnect, pair it again or forget it. With several, the lists
+ * can hide the offline ones.
+ */
 function ServerSettings() {
   const servers = useConnection((state) => state.servers)
+  const environmentFilter = usePreferences((state) => state.environmentFilter)
+  const set = usePreferences((state) => state.set)
   const [openId, setOpenId] = useState<string | null>(null)
   const open = servers.find((server) => server.id === openId)
   return (
@@ -483,6 +488,14 @@ function ServerSettings() {
           label={copy("mobile_settings_add_server")}
           onPress={() => router.push("/server/new")}
         />
+        {servers.length > 1 && (
+          <SwitchRow
+            icon="CloudOff"
+            label={copy("mobile_settings_hide_offline_servers")}
+            value={environmentFilter.hideOffline}
+            onChange={(hideOffline) => set({ environmentFilter: { ...environmentFilter, hideOffline } })}
+          />
+        )}
       </SettingsGroup>
       {open !== undefined && <ServerSheet server={open} onClose={() => setOpenId(null)} />}
     </>

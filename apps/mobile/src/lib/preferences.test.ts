@@ -12,6 +12,7 @@ describe("parsePreferences", () => {
       notifications: { completed: false, needsInput: true, failed: true },
       homeTab: "threads",
       sidebarHidden: true,
+      environmentFilter: { environmentIds: ["server-a"], hideOffline: true },
     }
     expect(parsePreferences(JSON.stringify(stored))).toEqual(stored)
   })

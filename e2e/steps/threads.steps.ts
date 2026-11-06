@@ -139,7 +139,7 @@ When("I filter the sidebar by the name of the project {string}", async ({ app, n
 })
 
 When("I show only the project {string} in the sidebar", async ({ app, names }, project: string) => {
-  await sidebar(app.page).getByRole("button", { name: "Filter by project", exact: true }).click()
+  await sidebar(app.page).getByRole("button", { name: "Filter threads", exact: true }).click()
   await app.page.getByRole("menuitemcheckbox", { name: names.of(project), exact: true }).click()
   await app.page.keyboard.press("Escape")
 })

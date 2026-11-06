@@ -1,3 +1,4 @@
+import { allEnvironments, EnvironmentFilter } from "@shared/environmentFilter.ts"
 import { Effect, Option, Schema } from "effect"
 
 export const PREFERENCES_KEY = "hinacode.preferences"
@@ -22,6 +23,8 @@ export interface Preferences {
   readonly homeTab: HomeTab
   /** Whether the thread list beside the open thread is hidden, in a landscape split. */
   readonly sidebarHidden: boolean
+  /** The servers the home list and search show, when several are paired. */
+  readonly environmentFilter: EnvironmentFilter
 }
 
 export const defaultPreferences: Preferences = {
@@ -29,6 +32,7 @@ export const defaultPreferences: Preferences = {
   notifications: { completed: true, needsInput: true, failed: true },
   homeTab: "inbox",
   sidebarHidden: false,
+  environmentFilter: allEnvironments,
 }
 
 const withDefault = <S extends Schema.Top>(schema: S, value: S["Encoded"]) =>
@@ -40,6 +44,7 @@ const Stored = Schema.Struct({
   notifications: withDefault(NotificationPreferences, defaultPreferences.notifications),
   homeTab: withDefault(HomeTabSchema, defaultPreferences.homeTab),
   sidebarHidden: withDefault(Schema.Boolean, defaultPreferences.sidebarHidden),
+  environmentFilter: withDefault(EnvironmentFilter, defaultPreferences.environmentFilter),
 })
 
 const decode = Schema.decodeUnknownOption(Schema.fromJsonString(Stored))
