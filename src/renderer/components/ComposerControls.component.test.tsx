@@ -167,7 +167,7 @@ test("Alt+L starts the next tab without the previous tab's highlight and keeps s
 test("an IME Enter keeps the picker open", async () => {
   await openPicker()
   const imeEnter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true })
-  Object.defineProperty(imeEnter, "which", { value: 229 })
+  Object.defineProperties(imeEnter, { keyCode: { value: 229 }, which: { value: 229 } })
   page.getByRole("combobox", { name: "Search models" }).element().dispatchEvent(imeEnter)
   await userEvent.keyboard("{ArrowDown}")
   await expect.poll(highlighted).toContain("third")

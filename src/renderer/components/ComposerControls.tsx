@@ -341,6 +341,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
     if (tabMovedToByKey.current !== tab.value) return
     tabMovedToByKey.current = null
     popupRef.current?.querySelector("[role=tab][aria-selected=true]")?.scrollIntoView(nearest)
+    searchRef.current?.focus({ preventScroll: true })
   })
 
   const efforts = current === undefined || current.efforts.length === 0 ? [] : [DEFAULT_EFFORT, ...current.efforts]
@@ -365,7 +366,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
     KeyM: stepAccess,
   }
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.nativeEvent.isComposing) return
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return
     if (event.altKey && !event.metaKey && !event.ctrlKey) {
       const action = altKeys[event.code]
       if (!action) return
@@ -470,6 +471,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
           {tab.hint && <p className="px-1 text-xs text-muted-foreground tabular-nums">{tab.hint}</p>}
         </Tabs>
         <Combobox.Root
+          key={tab.value}
           inline
           open
           autoHighlight
