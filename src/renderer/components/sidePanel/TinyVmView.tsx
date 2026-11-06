@@ -26,6 +26,8 @@ import {
   SpinnerIcon,
   WarningIcon,
 } from "@hinacode/icons"
+import { withCode } from "../withCode.tsx"
+import { Link } from "@tanstack/react-router"
 
 export const TinyVmScreen = lazy(() => import("./TinyVmScreen.tsx"))
 const BoatVmScreen = lazy(() => import("./BoatVmScreen.tsx"))
@@ -179,6 +181,16 @@ function NoVm({ threadId }: { threadId: string }) {
     host.value.provider === experimental.tinyVmProvider
       ? host.value.templates
       : []
+  const hostProblem =
+    AsyncResult.isSuccess(host) && host.value.provider === experimental.tinyVmProvider
+      ? host.value.status === "notConfigured"
+        ? host.value.provider === "boat"
+          ? withCode(m.settings_tiny_vm_boat_not_configured())
+          : withCode(m.settings_tiny_vm_not_configured())
+        : host.value.status === "unreachable"
+          ? m.settings_tiny_vm_unreachable({ url: host.value.url, message: host.value.message })
+          : null
+      : null
   const template =
     picked ?? (experimental.tinyVmProvider === "boat" ? experimental.tinyVmBoatSize : experimental.tinyVmTemplate)
   const start = () => run(() => callPromise("vm.start", { threadId, template }))
@@ -188,7 +200,13 @@ function NoVm({ threadId }: { threadId: string }) {
       <ComputerIcon aria-hidden className="size-6 text-muted-foreground" />
       <div className="flex flex-col gap-1">
         <h3 className="text-sm font-medium">{m.vm_empty_title()}</h3>
-        <p className="max-w-64 text-xs text-pretty text-muted-foreground">{m.vm_empty_body()}</p>
+        {hostProblem === null ? (
+          <p className="max-w-64 text-xs text-pretty text-muted-foreground">{m.vm_empty_body()}</p>
+        ) : (
+          <p role="alert" className="max-w-64 text-xs text-pretty wrap-anywhere text-attention">
+            {hostProblem}
+          </p>
+        )}
       </div>
       {templates.length > 1 && (
         <div className="flex w-56 flex-col gap-1.5 text-left">
@@ -204,9 +222,20 @@ function NoVm({ threadId }: { threadId: string }) {
           />
         </div>
       )}
-      <Button variant="outline" size="sm" disabled={pending} onClick={start}>
-        {m.vm_start()}
-      </Button>
+      {hostProblem === null ? (
+        <Button variant="outline" size="sm" disabled={pending} onClick={start}>
+          {m.vm_start()}
+        </Button>
+      ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          render={<Link to="/settings" search={{ page: "experimental" }} />}
+          nativeButton={false}
+        >
+          {m.vm_open_settings()}
+        </Button>
+      )}
       <ActionError error={error} />
     </Centered>
   )
@@ -222,8 +251,7 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
 
   return (
     <>
-      <div className="flex min-h-10 shrink-0 items-center gap-2 border-b border-border px-3 py-1.5">
-        <ControlStatus vm={vm} />
+      <div className="flex min-h-10 shrink-0 items-center justify-end gap-2 border-b border-border px-3 py-1.5">
         {vm.profile === "owner" && (
           <IconAction
             icon={SaveIcon}
@@ -232,7 +260,6 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
           />
         )}
         <ScreenshotButton threadId={threadId} run={run} />
-        {control}
         {!floating && (
           <>
             <IconAction icon={PipIcon} label={m.vm_float()} onClick={() => setPlacement(threadId, "floating")} />
@@ -279,6 +306,10 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
           </Suspense>
         </div>
       )}
+      <div className="flex min-h-10 shrink-0 items-center gap-2 border-t border-border px-3 py-1.5">
+        <ControlStatus vm={vm} />
+        {control}
+      </div>
     </>
   )
 }
@@ -359,7 +390,7 @@ export function IconAction({ icon: Icon, label, onClick, disabled = false, class
         render={
           <Button
             variant="ghost"
-            size="icon-xs"
+            size="icon-sm"
             aria-label={label}
             onClick={onClick}
             disabled={disabled}

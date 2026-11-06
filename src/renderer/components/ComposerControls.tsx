@@ -427,10 +427,11 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
       </PopoverTrigger>
       <PopoverContent
         ref={popupRef}
+        aria-label={m.thread_model_picker()}
         side="top"
         align="start"
         sideOffset={6}
-        className="max-h-(--available-height) w-80 max-w-[calc(100vw-1rem)] gap-3 p-2"
+        className="max-h-(--available-height) w-90 max-w-[calc(100vw-1rem)] gap-3 p-2"
         initialFocus={() =>
           (focus === "effort"
             ? popupRef.current?.querySelector<HTMLElement>("[data-slot=slider-thumb] input")
@@ -460,7 +461,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
                     }
                   >
                     <ProviderIcon provider={candidate.provider} />
-                    <span className={candidate.accountId === undefined ? "sr-only" : "max-w-28 truncate"}>
+                    <span className={candidate.accountId === undefined ? "sr-only" : "max-w-40 truncate"}>
                       {candidate.label}
                     </span>
                   </TooltipTrigger>

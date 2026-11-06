@@ -162,6 +162,7 @@ function DeviceTab({ threadId, entry, selected, focusable, onSelect, onClose }: 
         role="tab"
         id={deviceTabId(threadId, tab)}
         aria-selected={selected}
+        aria-keyshortcuts={"Delete"}
         aria-controls={devicePanelId(threadId, tab)}
         tabIndex={focusable ? 0 : -1}
         title={name}
@@ -183,6 +184,7 @@ function DeviceTab({ threadId, entry, selected, focusable, onSelect, onClose }: 
       <button
         type="button"
         tabIndex={-1}
+        aria-hidden
         aria-label={label}
         title={label}
         onClick={onClose}

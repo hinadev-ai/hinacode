@@ -14,7 +14,7 @@ import type {
   ReviewStatus,
   Thread,
 } from "../../shared/domain.ts"
-import { fixChecksPrompt, resolveConflictsPrompt } from "../../shared/pullRequestPrompts.ts"
+import { addressReviewPrompt, fixChecksPrompt, resolveConflictsPrompt } from "../../shared/pullRequestPrompts.ts"
 import { checksIndicator as sharedChecksIndicator, isOpen, pullRequestIndicator } from "../../shared/threadStatus.ts"
 import { toIcon } from "../lib/indicators.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -547,6 +547,7 @@ function PullRequestHeader({
       : pullRequest.mergeable === "conflicting"
         ? m.pr_merge_blocked_conflicts()
         : null
+  const cautioned = pullRequest.checks === "failing" || pullRequest.review === "changesRequested"
 
   return (
     <header className="flex flex-col gap-3">
@@ -605,6 +606,7 @@ function PullRequestHeader({
               method={method}
               onMethodChange={(next) => startTransition(() => setMethod(next))}
               disabled={!signedIn || blocker !== null}
+              cautioned={cautioned}
               onMerge={() => startTransition(() => setConfirming({ type: "merge", method }))}
             />
             <WatchButton threadId={threadId} url={pullRequest.url} watch={watch} />
@@ -765,7 +767,8 @@ function Attention({ pullRequest, threadId }: { pullRequest: PullRequestDetail; 
   if (!isOpen(pullRequest.status)) return null
   const failing = pullRequest.checkRuns.filter((run) => run.status === "failing")
   const conflicting = pullRequest.mergeable === "conflicting"
-  if (failing.length === 0 && !conflicting) return null
+  const changesRequested = pullRequest.review === "changesRequested"
+  if (failing.length === 0 && !conflicting && !changesRequested) return null
 
   return (
     <div className="flex flex-col gap-2">
@@ -781,6 +784,11 @@ function Attention({ pullRequest, threadId }: { pullRequest: PullRequestDetail; 
       {failing.length > 0 && (
         <Callout tone="danger" message={m.pr_checks_failing_count({ count: failing.length })}>
           <AskAgentButton threadId={threadId} prompt={fixChecksPrompt(pullRequest)} label={m.pr_fix_checks()} />
+        </Callout>
+      )}
+      {changesRequested && (
+        <Callout tone="warning" message={m.pr_changes_requested()}>
+          <AskAgentButton threadId={threadId} prompt={addressReviewPrompt(pullRequest)} label={m.pr_address_review()} />
         </Callout>
       )}
     </div>
@@ -849,17 +857,20 @@ function MergeSplitButton({
   method,
   onMethodChange,
   disabled,
+  cautioned,
   onMerge,
 }: {
   method: MergeMethod
   onMethodChange: (method: MergeMethod) => void
   disabled: boolean
+  cautioned: boolean
   onMerge: () => void
 }) {
   const MergeIcon = statusIndicator.merged.Icon
   return (
     <fieldset
       aria-label={mergeLabel[method]()}
+      data-cautioned={cautioned}
       className="merge-pill m-0 flex h-7 min-w-0 rounded-full border-0 p-0 text-xs font-medium"
     >
       <button
@@ -871,7 +882,10 @@ function MergeSplitButton({
         <MergeIcon aria-hidden className="size-3.5" />
         {mergeLabel[method]()}
       </button>
-      <span aria-hidden className={cn("my-1.5 w-px", disabled ? "bg-border" : "bg-primary-foreground/25")} />
+      <span
+        aria-hidden
+        className={cn("my-1.5 w-px", disabled || cautioned ? "bg-border" : "bg-primary-foreground/25")}
+      />
       <DropdownMenu>
         <DropdownMenuTrigger
           render={

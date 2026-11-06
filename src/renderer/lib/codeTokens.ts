@@ -12,7 +12,8 @@ export const highlighterFor = (theme: string | undefined, scheme: "dark" | "ligh
   const key = `${theme ?? scheme}\0${language}`
   let loaded = highlighters.get(key)
   if (loaded === undefined) {
-    loaded = import("@pierre/diffs")
+    loaded = import("./codeThemes.ts")
+      .then(() => import("@pierre/diffs"))
       .then(async ({ DEFAULT_THEMES, getSharedHighlighter }) => {
         const name = theme ?? DEFAULT_THEMES[scheme]
         return { highlighter: await getSharedHighlighter({ themes: [name], langs: [language] }), theme: name }

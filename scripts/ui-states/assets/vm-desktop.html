@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Tiny VM desktop</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        font: 12px/1.4 sans-serif;
+      }
+      body {
+        background: linear-gradient(160deg, #2c3e50, #4a6572);
+        display: flex;
+        flex-direction: column;
+      }
+      .bar {
+        height: 26px;
+        background: #1d252c;
+        color: #cfd8dc;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 0 10px;
+      }
+      .bar span:last-child {
+        margin-left: auto;
+      }
+      .window {
+        position: absolute;
+        inset: 44px 60px 40px 60px;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 12px 40px #0008;
+        display: flex;
+        flex-direction: column;
+        background: #fff;
+      }
+      .chrome {
+        height: 30px;
+        background: #eceff1;
+        display: flex;
+        align-items: center;
+        padding: 0 10px;
+        gap: 6px;
+      }
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #b0bec5;
+      }
+      .url {
+        margin-left: 12px;
+        flex: 1;
+        background: #fff;
+        border-radius: 4px;
+        padding: 3px 8px;
+        color: #546e7a;
+      }
+      iframe {
+        flex: 1;
+        border: 0;
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="bar"><span>Activities</span><span>Firefox</span><span>14:32</span></div>
+    <div class="window">
+      <div class="chrome">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span
+        ><span class="url">localhost:5173/checkout</span>
+      </div>
+      <iframe src="./shop.html" title="Checkout"></iframe>
+    </div>
+  </body>
+</html>

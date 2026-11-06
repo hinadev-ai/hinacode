@@ -400,7 +400,7 @@ function DraftRow({ thread, title, project }: { thread: Thread; title: string; p
         <ProjectLine
           project={project}
           projectId={thread.projectId}
-          trailing={<ProviderIcon provider={thread.provider} className="size-3" />}
+          trailing={<ProviderIcon provider={thread.provider} muted className="size-3" />}
         />
       )}
       <div className="grid grid-cols-1">
@@ -417,7 +417,7 @@ function DraftRow({ thread, title, project }: { thread: Thread; title: string; p
           {project === null && (
             <span aria-hidden className="flex shrink-0 items-center gap-2 text-xs text-sidebar-meta">
               {m.sidebar_thread_draft()}
-              <ProviderIcon provider={thread.provider} className="size-3" />
+              <ProviderIcon provider={thread.provider} muted className="size-3" />
             </span>
           )}
         </Link>
@@ -478,7 +478,8 @@ function ThreadRow({
   const state = useThreadRowState(thread)
   const dimmed = showProject && rowEmphasis[state] === "resting"
   const meta = useThreadMeta(thread, showProject)
-  const hasMeta = meta.project !== null || cloud !== undefined || meta.links.length > 0
+  const rowCloud = showProject ? cloud : undefined
+  const hasMeta = meta.project !== null || rowCloud !== undefined || meta.links.length > 0
   const detail = useRowDetail(thread, state, showActivity, showProject)
   const branch = useThreadBranch(thread, worktree)
   const drafted = useDrafts((drafts) => {
@@ -612,7 +613,7 @@ function ThreadRow({
             {meta.project === null && (
               <span aria-hidden className="flex shrink-0 items-center gap-2 text-xs text-sidebar-meta">
                 <span className="min-w-8 text-end cjk:min-w-10 [&:lang(zh-CN)]:min-w-10">{when}</span>
-                <ProviderIcon provider={meta.provider} className="size-3" />
+                <ProviderIcon provider={meta.provider} muted className="size-3" />
               </span>
             )}
           </Link>
@@ -756,7 +757,7 @@ function ThreadRow({
         <ThreadMeta
           links={meta.links}
           threadId={thread.id}
-          cloud={cloud}
+          cloud={rowCloud}
           environment={environment}
           detail={detail}
           ledger={meta.project === null ? null : { provider: meta.provider, branch }}
@@ -1072,7 +1073,7 @@ function ThreadMeta({
               <span className="truncate">{cloud.name}</span>
             </span>
           )}
-          <ProviderIcon provider={ledger.provider} className="size-3" />
+          <ProviderIcon provider={ledger.provider} muted className="size-3" />
         </span>
       )}
     </div>

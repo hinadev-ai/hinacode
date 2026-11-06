@@ -14,6 +14,7 @@ import {
   type MarkdownSegment,
   type ServiceBadge,
 } from "../lib/htmlInMarkdown.ts"
+import { remarkHeadingLevels } from "../lib/remarkHeadingLevels.ts"
 import { remarkKbd } from "../lib/remarkKbd.ts"
 import { remarkMentions } from "../lib/remarkMentions.ts"
 import { remarkPullRequests } from "../lib/remarkPullRequests.ts"
@@ -271,7 +272,7 @@ export function Markdown({
     remarkKbd,
     remarkUnknownTagsAsText,
     ...(repository ? [remarkPullRequests(repository)] : []),
-    ...(inTranscript ? [remarkMentions] : []),
+    ...(inTranscript ? [remarkMentions, remarkHeadingLevels] : []),
   ]
   const segments = segmentServiceBlocks(text)
   const needsEmbeddedHtml = segments.some(

@@ -17,11 +17,11 @@ Feature: Threads
   Scenario: An empty draft stays out of the sidebar, and one with content is listed, after a restart too, until it is emptied
     When I start a new thread in "demo"
     Then the sidebar does not list the open draft
-    When I type "half a thought" into the composer
-    Then the sidebar lists the unsent thread "half a thought"
+    When I type "a second thought" into the composer
+    Then the sidebar lists the unsent thread "a second thought"
     When the app restarts
-    Then the sidebar lists the unsent thread "half a thought"
-    When I discard the unsent thread "half a thought"
+    Then the sidebar lists the unsent thread "a second thought"
+    When I discard the unsent thread "a second thought"
     Then the sidebar does not list the open draft
 
   Scenario: Writing in a thread marks it as unsent and leaves it in place

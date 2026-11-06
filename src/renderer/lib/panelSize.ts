@@ -4,7 +4,7 @@ export interface SizeBounds {
 }
 
 export const SIDEBAR_BOUNDS: SizeBounds = { min: 200, max: 480 }
-export const SIDEBAR_DEFAULT_WIDTH = 256
+export const SIDEBAR_DEFAULT_WIDTH = 304
 export const SIDE_PANEL_BOUNDS: SizeBounds = { min: 280, max: 960 }
 export const TERMINAL_HEIGHT_BOUNDS: SizeBounds = { min: 120, max: Number.POSITIVE_INFINITY }
 export const FILE_TREE_HEIGHT_BOUNDS: SizeBounds = { min: 96, max: Number.POSITIVE_INFINITY }

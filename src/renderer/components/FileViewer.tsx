@@ -30,6 +30,7 @@ import { Markdown } from "./Markdown.tsx"
 import { Button } from "./ui/button.tsx"
 import { CloseIcon, CopyIcon, FileDiffIcon } from "@hinacode/icons"
 import { resourceUrl, servedSandbox } from "../lib/resourceUrl.ts"
+import "../lib/codeThemes.ts"
 
 interface FileViewerProps {
   readonly threadId: string

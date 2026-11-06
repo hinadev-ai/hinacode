@@ -12,6 +12,13 @@ export const fixChecksPrompt = (pullRequest: PullRequestDetail) => {
   ].join("\n")
 }
 
+export const addressReviewPrompt = (pullRequest: PullRequestDetail) =>
+  [
+    `A reviewer requested changes on ${pullRequest.url}.`,
+    `Read every review comment and inline thread (\`gh pr view ${pullRequest.url} --comments\`), address each one on ${pullRequest.headRef}, verify locally, and push.`,
+    "Then reply on each thread with what changed.",
+  ].join(" ")
+
 export const resolveConflictsPrompt = (pullRequest: PullRequestDetail) =>
   [
     `${pullRequest.url} has merge conflicts with ${pullRequest.baseRef}.`,

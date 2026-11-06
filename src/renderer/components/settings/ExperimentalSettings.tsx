@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { SecretField } from "./IntegrationSettings.tsx"
 import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
 import { CheckCircleFillIcon } from "@hinacode/icons"
+import { withCode } from "../withCode.tsx"
 
 const BOAT_SIZES: ReadonlyArray<BoatVmSize> = ["small", "default", "large", "xlarge"]
 const isBoatSize = (value: string): value is BoatVmSize => BOAT_SIZES.some((size) => size === value)
@@ -353,18 +354,6 @@ function VmHost({ provider }: { provider: VmProvider }) {
     </div>
   )
 }
-
-const withCode = (text: string) =>
-  text.split("`").map((part, index) =>
-    index % 2 === 1 ? (
-      // oxlint-disable-next-line react/no-array-index-key -- the parts of one fixed sentence never reorder.
-      <code key={index} className="font-mono text-[0.85em] text-foreground">
-        {part}
-      </code>
-    ) : (
-      part
-    ),
-  )
 
 function HostStatus({ status }: { status: VmHostStatus }) {
   switch (status.status) {
