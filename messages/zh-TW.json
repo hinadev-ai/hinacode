@@ -758,6 +758,8 @@
   "project_clone_to_label": "複製到",
   "project_clone_submit": "複製並加入",
   "project_cloning": "正在複製…",
+  "project_clone_starting": "正在開始複製…",
+  "project_clone_progress": "複製進度",
   "message_writing": "撰寫中…",
   "message_worked_for": "已工作 {duration}",
   "message_show_activity": "顯示工具活動",

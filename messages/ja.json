@@ -785,6 +785,8 @@
   "project_clone_to_label": "クローン先ディレクトリ",
   "project_clone_submit": "クローンして追加",
   "project_cloning": "クローン中…",
+  "project_clone_starting": "クローンを開始しています…",
+  "project_clone_progress": "クローンの進行状況",
   "message_writing": "回答を生成中…",
   "message_worked_for": "{duration} 処理しました",
   "message_show_activity": "ツールの実行内容を表示",

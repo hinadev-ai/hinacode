@@ -22,6 +22,7 @@ import type {
   CheckRun,
   CheckRunStatus,
   ChecksStatus,
+  CloneProgress,
   GitHubAuth,
   GitHubRateLimit,
   Mergeable,
@@ -93,6 +94,17 @@ export class PullRequestDiffTooLargeError extends Schema.TaggedError<PullRequest
   override get message(): string {
     return "GitHub does not serve diffs over 20,000 lines or 300 files."
   }
+}
+
+const CLONE_PROGRESS_LINE = /^(?:remote: )?(\S[^:]*):\s+(\d{1,3})%/
+
+export const parseCloneProgress = (chunk: string): CloneProgress | undefined => {
+  const lines = chunk.split(/[\r\n]/).toReversed()
+  for (const line of lines) {
+    const match = CLONE_PROGRESS_LINE.exec(line.trim())
+    if (match?.[1] && match[2]) return { phase: match[1], percent: Number(match[2]) }
+  }
+  return undefined
 }
 
 export const requirePullRequestUrl = (raw: string): Effect.Effect<string, PullRequestUrlInvalidError> => {
@@ -637,7 +649,11 @@ export class GitHub extends Context.Service<
       cwd: string,
       branches: { readonly head: string; readonly base: string },
     ) => Effect.Effect<string, GitHubError>
-    readonly clone: (repository: GitHubRepository, dest: string) => Effect.Effect<void, CommandError>
+    readonly clone: (
+      repository: GitHubRepository,
+      dest: string,
+      onProgress: (progress: CloneProgress) => Effect.Effect<void>,
+    ) => Effect.Effect<void, CommandError>
     readonly createRepository: (cwd: string, visibility: RepositoryVisibility) => Effect.Effect<void, GitHubError>
     readonly repository: (cwd: string) => Effect.Effect<GitHubRepository | null>
   }
@@ -665,7 +681,7 @@ const make = Effect.gen(function* () {
   const ghUnpaused = (
     cwd: string,
     args: ReadonlyArray<string>,
-    options?: Pick<RunOptions, "okExitCodes" | "timeout">,
+    options?: Pick<RunOptions, "okExitCodes" | "timeout" | "onStderr">,
   ) =>
     exec("gh", args, cwd, { timeout: GH_TIMEOUT, ...options, env: { GH_PROMPT_DISABLED: "1", NO_COLOR: "1" } }).pipe(
       Effect.mapError((error): GhError => {
@@ -732,7 +748,7 @@ const make = Effect.gen(function* () {
   const gh = (
     cwd: string,
     args: ReadonlyArray<string>,
-    options?: Pick<RunOptions, "timeout">,
+    options?: Pick<RunOptions, "timeout" | "onStderr">,
   ): Effect.Effect<string, GhError> =>
     Effect.gen(function* () {
       yield* failIfPaused
@@ -813,15 +829,30 @@ const make = Effect.gen(function* () {
       timeout: LONG_TIMEOUT,
     }).pipe(Effect.asVoid)
 
-  const clone = ({ owner, name }: GitHubRepository, dest: string) => {
+  const clone = (
+    { owner, name }: GitHubRepository,
+    dest: string,
+    onProgress: (progress: CloneProgress) => Effect.Effect<void>,
+  ) => {
     // FIXME: a full https URL keeps gh from switching to a configured ssh git_protocol
     const url = `https://github.com/${owner}/${name}.git`
+    let last: CloneProgress | undefined
+    const onStderr = (chunk: string) => {
+      const progress = parseCloneProgress(chunk)
+      if (progress === undefined || isDeepStrictEqual(progress, last)) return Effect.void
+      last = progress
+      return onProgress(progress)
+    }
     const gitClone = () =>
-      exec("git", [...REMOTE_GIT_ARGS, "clone", url, dest], dirname(dest), {
+      exec("git", [...REMOTE_GIT_ARGS, "clone", "--progress", url, dest], dirname(dest), {
         env: REMOTE_GIT_ENV,
         timeout: LONG_TIMEOUT,
+        onStderr,
       })
-    return gh(dirname(dest), ["repo", "clone", url, dest], { timeout: LONG_TIMEOUT }).pipe(
+    return gh(dirname(dest), ["repo", "clone", url, dest, "--", "--progress"], {
+      timeout: LONG_TIMEOUT,
+      onStderr,
+    }).pipe(
       Effect.catchTags({
         GitHubCliMissingError: gitClone,
         GitHubSignedOutError: gitClone,

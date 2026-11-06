@@ -187,6 +187,7 @@ const handlers: Handlers = {
   "projects.list": () => Projects.use((projects) => projects.listWithRepositories),
   "projects.create": (input) => Projects.use((projects) => projects.create(input)),
   "projects.clone": (input) => Projects.use((projects) => projects.clone(input)),
+  "projects.cancelClone": ({ cloneId }) => Projects.use((projects) => projects.cancelClone(cloneId)),
   "projects.update": (input) => Projects.use((projects) => projects.update(input)),
   "projects.delete": ({ id }) =>
     Effect.gen(function* () {

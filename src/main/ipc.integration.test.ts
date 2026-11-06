@@ -785,6 +785,7 @@ describe("projects, threads and settings over rpc", () => {
     execFileSync("git", ["-C", clone, "remote", "add", "origin", "git@github.com:kjj6198/myprofile.git"])
     const project = result(
       await invoke("projects.clone", {
+        cloneId: "existing",
         repository: { owner: "kjj6198", name: "myprofile" },
         rootPath: clone,
         name: "myprofile",
@@ -796,9 +797,10 @@ describe("projects, threads and settings over rpc", () => {
 
   test("refuses a clone target that is not an absolute path, and a repository that is not owner/name", async () => {
     const repository = { owner: "kjj6198", name: "myprofile" }
-    const relative = await invoke("projects.clone", { repository, rootPath: "code/x", name: "x", setupScript: null })
+    const relative = await invoke("projects.clone", { cloneId: "relative", repository, rootPath: "code/x", name: "x", setupScript: null })
     expect(failure(relative).tag).toBe("ProjectRootInvalidError")
     const flag = await invoke("projects.clone", {
+      cloneId: "flag",
       repository: { owner: "--upload-pack=x", name: "y" },
       rootPath: join(dir, "y"),
       name: "y",
