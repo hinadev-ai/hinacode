@@ -104,6 +104,20 @@ vi.mock("../binary.ts", async () => {
   return { installedBinary: (_provider: string, name: string) => succeed(name) }
 })
 
+const magpie = vi.hoisted(() => ({
+  origin: null as string | null,
+  models: new Array<{ readonly id: string; readonly display_name?: string }>(),
+}))
+
+vi.mock("../magpie.ts", async (importOriginal) => {
+  const { sync } = await import("effect/Effect")
+  return {
+    ...(await importOriginal<typeof import("../magpie.ts")>()),
+    findGateway: () => sync(() => magpie.origin),
+    gatewayModels: () => sync(() => magpie.models),
+  }
+})
+
 const TTL = "60 seconds"
 
 const init = (sessionId: string) => ({ type: "system", subtype: "init", session_id: sessionId })
@@ -208,6 +222,8 @@ const lifecycle = <A, E>(effect: Effect.Effect<A, E, ClaudeProvider>) =>
     sdk.setPermissionMode = () => Promise.resolve()
     sdk.supportedCommands = () => Promise.resolve([])
     sdk.supportedModels = () => Promise.resolve([])
+    magpie.origin = null
+    magpie.models = []
     return effect
   }).pipe(Effect.provide(layer))
 
@@ -1244,6 +1260,58 @@ describe("Claude models", () => {
         sdk.supportedModels = () =>
           Promise.resolve([{ value: "claude-next", displayName: "Claude Next", description: "" }])
         expect((yield* provider.listModels).map((model) => model.id)).toEqual(["claude-next"])
+      }),
+    ),
+  )
+})
+
+describe("Claude on magpie models", () => {
+  it.effect("lists magpie's models after Claude Code's own", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        sdk.supportedModels = () =>
+          Promise.resolve([{ value: "claude-next", displayName: "Claude Next", description: "" }])
+        magpie.models = [{ id: "openrouter/deepseek-v4", display_name: "DeepSeek V4" }]
+        const provider = yield* ClaudeProvider
+        expect((yield* provider.listModels).map((model) => model.id)).toEqual([
+          "claude-next",
+          "magpie/openrouter/deepseek-v4",
+        ])
+      }),
+    ),
+  )
+
+  it.effect("runs a magpie model through the gateway and resumes in a new CLI when the thread moves back", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        magpie.origin = "http://127.0.0.1:3425"
+        yield* runTurn(turnInput({ model: "magpie/openrouter/deepseek-v4" }))
+        const routed = latestCli()
+        expect(routed.options.model).toBe("openrouter/deepseek-v4")
+        expect(routed.options.env).toMatchObject({
+          ANTHROPIC_BASE_URL: "http://127.0.0.1:3425",
+          ANTHROPIC_SMALL_FAST_MODEL: "openrouter/deepseek-v4",
+          CLAUDE_CODE_SUBAGENT_MODEL: "openrouter/deepseek-v4",
+        })
+
+        yield* runTurn()
+        expect(routed.close).toHaveBeenCalled()
+        expect(latestCli().options.resume).toBe("session-1")
+        expect(latestCli().options.model).toBe("claude-sonnet-5-5")
+        expect(latestCli().options.env?.["ANTHROPIC_BASE_URL"]).toBe(process.env["ANTHROPIC_BASE_URL"])
+      }),
+    ),
+  )
+
+  it.effect("fails the turn before starting Claude Code when magpie is not running", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        const error = yield* provider
+          .runTurn(turnInput({ model: "magpie/openrouter/deepseek-v4" }))
+          .pipe(Stream.runCollect, Effect.flip)
+        expect(error.message).toMatch(/magpie is not running/)
+        expect(sdk.clis).toHaveLength(0)
       }),
     ),
   )

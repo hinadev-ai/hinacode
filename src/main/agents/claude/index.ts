@@ -37,10 +37,12 @@ import {
   type RunTurnInput,
 } from "../../../shared/agent.ts"
 import { AGENT_IMAGE_MAX_BYTES, AGENT_IMAGE_TYPES } from "../../../shared/agentImages.ts"
+import { gatewayModelOf } from "../../../shared/magpie.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { nowIso } from "../../services/clock.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
 import { installedBinary } from "../binary.ts"
+import { claudeGatewayEnv, findGateway, gatewayModels, magpieModelInfo } from "../magpie.ts"
 import {
   AgentError,
   type AgentProvider,
@@ -103,6 +105,23 @@ const effortLevelOf = (effort: string | null): EffortLevel | null =>
 
 const withUltrathink = (prompt: string, effort: string | null) =>
   effort === ULTRATHINK ? `${prompt}\n\n${ULTRATHINK}`.trimStart() : prompt
+
+const sharesProcess = (running: string, next: string) =>
+  running === next || (gatewayModelOf(running) === null && gatewayModelOf(next) === null)
+
+const launchEnv = (model: string) =>
+  Effect.gen(function* () {
+    const gatewayModel = gatewayModelOf(model)
+    if (gatewayModel === null) return {}
+    const origin = yield* findGateway()
+    if (origin === null) {
+      return yield* new AgentError({
+        provider: "claude",
+        message: "magpie is not running. Start the magpie app or `magpie serve`, then try again",
+      })
+    }
+    return claudeGatewayEnv(origin, gatewayModel)
+  })
 
 const effortsOf = (levels: ReadonlyArray<string>) =>
   levels.length === 0 ? [] : [...levels, ULTRATHINK, ...(levels.includes("xhigh") ? [ULTRACODE] : [])]
@@ -605,6 +624,7 @@ export const layer = Layer.effect(
         const resume = input.resumeSessionId ?? previous?.sessionId
         const keepsGrants = previous !== undefined && previous.sessionId === resume && sameContext(previous, input)
         const base = yield* baseOptions(input.home)
+        const gatewayEnv = yield* launchEnv(input.model)
         const hidden = yield* skillOverrides(input)
         const effort = effortLevelOf(input.effort)
         const { query } = yield* Effect.promise(() => import("@anthropic-ai/claude-agent-sdk"))
@@ -614,10 +634,15 @@ export const layer = Layer.effect(
               prompt: Stream.toAsyncIterable(Stream.fromQueue(prompts)),
               options: {
                 ...base,
-                // FIXME: session_state_changed idle is the CLI's only signal that background sub-agents are done
-                env: { ...base.env, ...tmpEnv(input.tmpDirectory), CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" },
+                env: {
+                  ...base.env,
+                  ...tmpEnv(input.tmpDirectory),
+                  ...gatewayEnv,
+                  // FIXME: session_state_changed idle is the CLI's only signal that background sub-agents are done
+                  CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
+                },
                 cwd: input.cwd,
-                model: input.model,
+                model: gatewayModelOf(input.model) ?? input.model,
                 ...(effort === null ? {} : { effort }),
                 settings: {
                   fastMode: input.fastMode,
@@ -714,6 +739,7 @@ export const layer = Layer.effect(
           // FIXME: the CLI reads its skills and auto-compact window once per process
           if (
             sameContext(existing, input) &&
+            sharesProcess(existing.model, input.model) &&
             existing.userSkills === input.userSkills &&
             existing.autoCompactTokens === input.autoCompactTokens
           )
@@ -875,7 +901,12 @@ export const layer = Layer.effect(
     const cachedModels = yield* Effect.cachedWithTTL(fetchModels, (exit) =>
       Exit.isSuccess(exit) ? Duration.minutes(10) : Duration.zero,
     )
-    const listModels = Effect.orElseSucceed(cachedModels, () => FALLBACK_MODELS)
+    const listModels = Effect.zipWith(
+      Effect.orElseSucceed(cachedModels, () => FALLBACK_MODELS),
+      gatewayModels(),
+      (own, routed) => [...own, ...routed.map((model) => magpieModelInfo(model, "claude", CLAUDE_EFFORT_LEVELS))],
+      { concurrent: true },
+    )
 
     const transcriptUsage = perHome(makeTranscriptUsage)
     const usage = (sessionId: string, home: AccountHome | null) =>
