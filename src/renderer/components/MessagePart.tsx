@@ -697,7 +697,7 @@ function AgentSwitchPart({ from, to }: { from: ProviderId; to: ProviderId }) {
   )
 }
 
-function SignedOutPart({ message, loginCommand }: { message: string; loginCommand: string }) {
+function SignedOutPart({ message, loginCommand }: { message: string; loginCommand: string | undefined }) {
   const titleId = useId()
   return (
     <section
@@ -709,11 +709,17 @@ function SignedOutPart({ message, loginCommand }: { message: string; loginComman
         {m.message_signed_out_title()}
       </h3>
       <p className="text-sm wrap-break-word text-muted-foreground">{message}</p>
-      <p className="text-sm">{m.message_signed_out_hint()}</p>
-      <div className="flex min-w-0 items-center gap-1 rounded-md bg-muted py-1 ps-3 pe-1">
-        <code className="min-w-0 flex-1 font-mono text-xs break-all select-all">{loginCommand}</code>
-        <CopyButton value={loginCommand} label={m.message_copy_login_command()} />
-      </div>
+      {loginCommand === undefined ? (
+        <p className="text-sm">{m.message_signed_out_docs_hint()}</p>
+      ) : (
+        <>
+          <p className="text-sm">{m.message_signed_out_hint()}</p>
+          <div className="flex min-w-0 items-center gap-1 rounded-md bg-muted py-1 ps-3 pe-1">
+            <code className="min-w-0 flex-1 font-mono text-xs break-all select-all">{loginCommand}</code>
+            <CopyButton value={loginCommand} label={m.message_copy_login_command()} />
+          </div>
+        </>
+      )}
     </section>
   )
 }

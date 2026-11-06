@@ -85,12 +85,21 @@ describe("foldEvent", () => {
   test("a failed sign-in keeps the command that signs back in", () => {
     const failed = foldEvent(
       assistant("m1"),
-      { type: "turn_failed", message: "OAuth session expired", loginCommand: "claude auth login" },
+      { type: "turn_failed", message: "OAuth session expired", signedOut: true, loginCommand: "claude auth login" },
       now,
     )
     expect(failed.parts).toStrictEqual([
       { type: "signed_out", message: "OAuth session expired", loginCommand: "claude auth login" },
     ])
+  })
+
+  test("a failed sign-in without a known command still asks to sign in", () => {
+    const failed = foldEvent(
+      assistant("m1"),
+      { type: "turn_failed", message: "403 subscription required", signedOut: true },
+      now,
+    )
+    expect(failed.parts).toStrictEqual([{ type: "signed_out", message: "403 subscription required" }])
   })
 
   test("a limit ends every outstanding tool and retains the provider explanation", () => {

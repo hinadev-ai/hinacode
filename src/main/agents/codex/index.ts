@@ -20,7 +20,7 @@ import {
   type AgentEvent,
   type ApprovalDecision,
   type BackgroundTask,
-  loginCommand,
+  signedOutFailure,
   type ModelInfo,
   type Question,
   type QuestionAnswers,
@@ -899,9 +899,8 @@ const make = Effect.gen(function* () {
                       : {
                           type: "turn_failed",
                           message: error?.message ?? `Turn ${status}`,
-                          ...(error?.codexErrorInfo === "unauthorized" && {
-                            loginCommand: loginCommand("codex", input.home),
-                          }),
+                          ...(error?.codexErrorInfo === "unauthorized" &&
+                            signedOutFailure("codex", input.home, input.model)),
                         },
                   )
                   return true

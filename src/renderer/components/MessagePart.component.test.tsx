@@ -145,3 +145,13 @@ test("shows a TodoWrite call as a checklist, not its raw JSON", async () => {
   expect(document.body.textContent).not.toContain("activeForm")
   expect(document.body.textContent).not.toContain("modified successfully")
 })
+
+test("points to the provider's docs when no login command is known", async () => {
+  await renderCommand("claude", {
+    type: "signed_out",
+    message: "Failed to authenticate. API Error: 403 OpenCode Go: An active OpenCode Go subscription is required",
+  })
+
+  await expect.element(page.getByText(/documentation/)).toBeVisible()
+  expect(page.getByRole("button", { name: "Copy command" }).query()).toBeNull()
+})
