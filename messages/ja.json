@@ -127,6 +127,7 @@
   "thread_context_breakdown_unavailable": "内訳はエージェントのセッションが開いている間だけ取得できます。メッセージを送ると表示されます。",
   "thread_context_breakdown_failed": "内訳を取得できませんでした: {error}",
   "thread_model_picker": "モデル",
+  "thread_model_picker_magpie": "magpie",
   "message_you": "あなた",
   "message_thinking": "思考中…",
   "markdown_attachment": "GitHub 添付ファイル",

@@ -118,6 +118,7 @@
   "thread_context_breakdown_unavailable": "只有在智能体会话打开时才会报告上下文占用情况。发送一条消息即可查看。",
   "thread_context_breakdown_failed": "无法读取占用明细：{error}",
   "thread_model_picker": "模型",
+  "thread_model_picker_magpie": "magpie",
   "message_you": "你",
   "message_thinking": "思考中…",
   "markdown_attachment": "GitHub 附件",

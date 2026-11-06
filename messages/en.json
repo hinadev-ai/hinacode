@@ -127,6 +127,7 @@
   "thread_context_breakdown_unavailable": "The agent reports what fills it while its session is open. Send a message to see it.",
   "thread_context_breakdown_failed": "Couldn't read the breakdown: {error}",
   "thread_model_picker": "Model",
+  "thread_model_picker_magpie": "magpie",
   "message_you": "You",
   "message_thinking": "Thinking…",
   "markdown_attachment": "GitHub attachment",

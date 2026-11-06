@@ -7,8 +7,9 @@ import { useNavigate } from "@tanstack/react-router"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { toast } from "sonner"
-import { type KeyboardEvent, useEffect, useId, useRef, useState, useTransition } from "react"
+import { Fragment, type KeyboardEvent, useEffect, useId, useRef, useState, useTransition } from "react"
 import { type ModelInfo, presetModels, ProviderId, unlistedModel } from "../../shared/agent.ts"
+import { magpieSourceOf } from "../../shared/magpie.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import { AccessMode, type OpenPullRequest, type Project, type Thread } from "../../shared/domain.ts"
 import { parsePullRequestSelector } from "../../shared/github.ts"
@@ -482,25 +483,39 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
         >
           {models.map((model, index) => {
             const isSelected = isThreadTab(tab, thread) && sameModel(model, selected)
+            const magpieSource = magpieSourceOf(model.id)
+            const previous = models[index - 1]
+            const startsMagpie =
+              magpieSource !== null && (previous === undefined || magpieSourceOf(previous.id) === null)
             return (
-              <li key={model.id}>
-                <button
-                  type="button"
-                  disabled={tab.disabled}
-                  aria-disabled={picking}
-                  aria-pressed={isSelected}
-                  data-model-row
-                  data-selected={isSelected}
-                  onClick={() => {
-                    if (!picking) startPicking(() => pick(model))
-                  }}
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent disabled:opacity-50 aria-disabled:opacity-50 aria-pressed:font-medium"
-                >
-                  <span className="min-w-0 flex-1 truncate">{model.label}</span>
-                  {index < 9 && <Kbd aria-hidden>{index + 1}</Kbd>}
-                  <CheckIcon aria-hidden className={cn("size-4 shrink-0", !isSelected && "invisible")} />
-                </button>
-              </li>
+              <Fragment key={model.id}>
+                {startsMagpie && (
+                  <li role="presentation" className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground">
+                    {m.thread_model_picker_magpie()}
+                  </li>
+                )}
+                <li>
+                  <button
+                    type="button"
+                    disabled={tab.disabled}
+                    aria-disabled={picking}
+                    aria-pressed={isSelected}
+                    data-model-row
+                    data-selected={isSelected}
+                    onClick={() => {
+                      if (!picking) startPicking(() => pick(model))
+                    }}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent disabled:opacity-50 aria-disabled:opacity-50 aria-pressed:font-medium"
+                  >
+                    <span className="min-w-0 flex-1 truncate">{model.label}</span>
+                    {magpieSource !== null && (
+                      <span className="max-w-32 shrink-0 truncate text-xs text-muted-foreground">{magpieSource}</span>
+                    )}
+                    {index < 9 && <Kbd aria-hidden>{index + 1}</Kbd>}
+                    <CheckIcon aria-hidden className={cn("size-4 shrink-0", !isSelected && "invisible")} />
+                  </button>
+                </li>
+              </Fragment>
             )
           })}
         </ul>
