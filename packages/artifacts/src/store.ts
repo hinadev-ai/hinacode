@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto"
+import { createHash, randomBytes, randomUUID } from "node:crypto"
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { setTimeout as delay } from "node:timers/promises"
@@ -64,6 +64,7 @@ export type ArtifactStore = {
   file(id: string, path: string): Promise<ArtifactFileContent | null>
   remove(id: string): Promise<boolean>
   rename(id: string, title: string): Promise<Artifact>
+  addDocumentImage(id: string, image: { bytes: Uint8Array; type: string }): Promise<string>
 }
 
 const ID_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz"
@@ -124,6 +125,34 @@ const titleOf = (title: string | undefined) => {
   const trimmed = title?.trim() ?? ""
   if (trimmed === "") throw new ArtifactError("An artifact needs a title.")
   return trimmed
+}
+
+const IMAGE_DIRECTORY = "images"
+
+const imageExtensions: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/gif": "gif",
+  "image/webp": "webp",
+}
+
+const isDocumentImagePath = (path: string) => {
+  const [directory, name, ...rest] = path.split("/")
+  return directory === IMAGE_DIRECTORY && name !== undefined && rest.length === 0
+}
+
+const imageName = ({ bytes, type }: { bytes: Uint8Array; type: string }) => {
+  const extension = imageExtensions[type]
+  if (extension === undefined) {
+    throw new ArtifactError(`A document image cannot be ${type}. Paste a PNG, JPEG, GIF or WebP image.`)
+  }
+  if (bytes.byteLength === 0) throw new ArtifactError("The image is empty. Paste an image with content.")
+  if (bytes.byteLength > MAX_ARTIFACT_BYTES) {
+    throw new ArtifactError(
+      `The image is ${bytes.byteLength} bytes. An image holds at most ${MAX_ARTIFACT_BYTES} bytes.`,
+    )
+  }
+  return `${createHash("sha256").update(bytes).digest("hex")}.${extension}`
 }
 
 const missing = (id: string) => new ArtifactError(`No artifact has the id "${id}". Omit id to publish a new artifact.`)
@@ -249,8 +278,11 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
     let missingVersion: number | undefined
     for (;;) {
       const artifact = await get(id)
-      const listed = artifact?.files.find((candidate) => candidate.path === normalized)
-      if (!artifact || !listed || artifact.version === missingVersion) return null
+      if (!artifact) return null
+      const listed = artifact.files.find((candidate) => candidate.path === normalized)
+      if (!listed)
+        return artifact.kind === "document" && isDocumentImagePath(normalized) ? image(artifact, normalized) : null
+      if (artifact.version === missingVersion) return null
       try {
         const bytes = await readFile(join(root, id, String(artifact.version), listed.path))
         return { bytes, type: listed.type, version: artifact.version, revision: artifact.revision, kind: artifact.kind }
@@ -259,6 +291,41 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
         missingVersion = artifact.version
       }
     }
+  }
+
+  const image = async (artifact: Artifact, path: string): Promise<ArtifactFileContent | null> => {
+    try {
+      const bytes = await readFile(join(root, artifact.id, path))
+      return {
+        bytes,
+        type: contentType(path),
+        version: artifact.version,
+        revision: artifact.revision,
+        kind: artifact.kind,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  const addDocumentImage = async (id: string, input: { bytes: Uint8Array; type: string }) => {
+    const name = imageName(input)
+    if (!isArtifactId(id)) throw missing(id)
+    return withLock(id, async (assertLocked) => {
+      const artifact = await get(id)
+      if (artifact === null) throw missing(id)
+      if (artifact.kind !== "document") {
+        throw new ArtifactError(`Artifact ${id} is a ${artifact.kind}. Only a document stores pasted images.`)
+      }
+      const path = `${IMAGE_DIRECTORY}/${name}`
+      const target = join(root, id, path)
+      await mkdir(dirname(target), { recursive: true })
+      const temporary = `${target}.${randomUUID()}.tmp`
+      await writeFile(temporary, input.bytes)
+      assertLocked()
+      await rename(temporary, target)
+      return path
+    })
   }
 
   const remove = async (id: string) => {
@@ -283,5 +350,5 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
     })
   }
 
-  return { root, publish, get, list, file, remove, rename: renameArtifact }
+  return { root, publish, get, list, file, remove, rename: renameArtifact, addDocumentImage }
 }

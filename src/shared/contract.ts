@@ -619,6 +619,10 @@ export const RpcMethods = {
     Schema.Struct({ id: Schema.String, baseRevision: Schema.Number, markdown: Schema.String }),
     DocumentSaveResult,
   ),
+  "artifacts.addDocumentImage": rpc(
+    Schema.Struct({ id: Schema.String, dataUrl: Schema.String }),
+    Schema.Struct({ path: Schema.String }),
+  ),
   "artifacts.createDocument": rpc(Schema.Struct({ threadId: Schema.String, title: Schema.String }), Artifact),
   "artifacts.rename": rpc(Schema.Struct({ id: Schema.String, title: Schema.String }), Artifact),
   "artifacts.setTheme": rpc(ArtifactTheme, Schema.Void),
@@ -846,6 +850,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "artifacts.delete": "mutation",
   "artifacts.readDocument": "read",
   "artifacts.saveDocument": "mutation",
+  "artifacts.addDocumentImage": "mutation",
   "artifacts.createDocument": "mutation",
   "artifacts.rename": "mutation",
   "artifacts.setTheme": "mutation",

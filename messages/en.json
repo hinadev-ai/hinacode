@@ -2070,6 +2070,7 @@
   "documents_saving": "Saving…",
   "documents_not_saved": "Not saved",
   "documents_save_failed": "Not saved: {message}",
+  "documents_image_failed": "Could not add the image: {message}",
   "documents_ask_agent": "Ask agent",
   "documents_ask_prompt": "I edited the document \"{title}\" ({id}, revision {revision}). Read it with read_artifact before you continue.",
   "artifact_untitled": "Untitled artifact",

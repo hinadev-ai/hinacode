@@ -196,10 +196,10 @@ function ExportMenu({ artifact }: { artifact: Artifact }) {
   const theme = useArtifactTheme()
   const save = (format: "html" | "pdf") =>
     exportArtifact({ format, id: artifact.id, entry: artifact.entry, title: artifact.title, theme })
-  const saveDocument = (format: "document-pdf" | "document-markdown") => {
+  const saveDocument = async (format: "document-pdf" | "document-markdown") => {
     const open = liveDocument(liveDocumentKey(artifact.environmentId, artifact.id))
     if (open === undefined) return toast.error(m.documents_export_not_ready())
-    const body = format === "document-pdf" ? open.html() : open.markdown()
+    const body = format === "document-pdf" ? await open.html() : open.markdown()
     return exportArtifact({ format, title: artifact.title, theme, body })
   }
   return (

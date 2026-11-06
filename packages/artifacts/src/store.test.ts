@@ -404,3 +404,89 @@ describe("openArtifactStore", () => {
     expect(existsSync(join(store.root, "stray"))).toBe(true)
   })
 })
+
+describe("addDocumentImage", () => {
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])
+
+  test("stores an image with its document and serves it", async () => {
+    const store = openTemporaryStore()
+    const document = await store.publish({ kind: "document", title: "Notes", markdown: "" })
+
+    const path = await store.addDocumentImage(document.id, { bytes: png, type: "image/png" })
+
+    expect(path).toMatch(/^images\/[0-9a-f]{64}\.png$/)
+    expect(await store.file(document.id, path)).toEqual({
+      bytes: Buffer.from(png),
+      type: "image/png",
+      version: 1,
+      revision: 1,
+      kind: "document",
+    })
+    expect(await store.get(document.id)).toEqual(document)
+    expect(await store.file(document.id, "images/missing.png")).toBeNull()
+  })
+
+  test("keeps the image when the developer or an agent publishes the document again", async () => {
+    const store = openTemporaryStore()
+    const document = await store.publish({ kind: "document", title: "Notes", markdown: "" })
+    const path = await store.addDocumentImage(document.id, { bytes: png, type: "image/png" })
+    const publish = (author: "agent" | "developer", markdown: string) =>
+      store.publish({ kind: "document", id: document.id, markdown, author })
+
+    await publish("developer", `![](${path})`)
+    await publish("agent", "one")
+    await publish("agent", "two")
+    await publish("developer", "three")
+
+    expect((await store.file(document.id, path))?.bytes).toEqual(Buffer.from(png))
+  })
+
+  test("stores the same bytes once under the same path", async () => {
+    const store = openTemporaryStore()
+    const document = await store.publish({ kind: "document", title: "Notes", markdown: "" })
+
+    const first = await store.addDocumentImage(document.id, { bytes: png, type: "image/png" })
+    const second = await store.addDocumentImage(document.id, { bytes: png, type: "image/png" })
+
+    expect(second).toBe(first)
+    expect(readdirSync(join(store.root, document.id, "images"))).toEqual([first.slice("images/".length)])
+  })
+
+  test("refuses what is not an image, an empty image, a page and an unknown id", async () => {
+    const store = openTemporaryStore()
+    const document = await store.publish({ kind: "document", title: "Notes", markdown: "" })
+    const page_ = await store.publish({ title: "Page", files: [page("")] })
+
+    await expect(store.addDocumentImage(document.id, { bytes: png, type: "image/svg+xml" })).rejects.toThrow(
+      /PNG, JPEG, GIF or WebP/,
+    )
+    await expect(store.addDocumentImage(document.id, { bytes: new Uint8Array(), type: "image/png" })).rejects.toThrow(
+      /empty/,
+    )
+    await expect(
+      store.addDocumentImage(document.id, { bytes: new Uint8Array(MAX_ARTIFACT_BYTES + 1), type: "image/png" }),
+    ).rejects.toThrow(/at most/)
+    await expect(store.addDocumentImage(page_.id, { bytes: png, type: "image/png" })).rejects.toThrow(/is a page/)
+    await expect(store.addDocumentImage("gone", { bytes: png, type: "image/png" })).rejects.toThrow(
+      /No artifact has the id "gone"/,
+    )
+    await expect(store.addDocumentImage("../escape", { bytes: png, type: "image/png" })).rejects.toBeInstanceOf(
+      ArtifactError,
+    )
+  })
+
+  test("serves only files directly inside images", async () => {
+    const store = openTemporaryStore()
+    const document = await store.publish({ kind: "document", title: "Notes", markdown: "secret" })
+    const page_ = await store.publish({ title: "Page", files: [page("")] })
+    mkdirSync(join(store.root, page_.id, "images"))
+    writeFileSync(join(store.root, page_.id, "images", "a.png"), png)
+    mkdirSync(join(store.root, document.id, "images", "nested"), { recursive: true })
+    writeFileSync(join(store.root, document.id, "images", "nested", "a.png"), png)
+
+    for (const path of ["images/../1/document.md", "images/../artifact.json", "images/nested/a.png", "images"]) {
+      expect(await store.file(document.id, path), path).toBeNull()
+    }
+    expect(await store.file(page_.id, "images/a.png")).toBeNull()
+  })
+})

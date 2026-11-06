@@ -1,10 +1,12 @@
 import { Schema } from "effect"
 import { beforeEach, expect, onTestFinished, test } from "vitest"
 import { page, userEvent } from "vitest/browser"
+import { toast } from "sonner"
 import { render } from "vitest-browser-react"
 import type { Artifact, DocumentSaveResult } from "../../../shared/artifact.ts"
 import { type HinacodeBridge, type PushEvent, RpcMethods } from "../../../shared/contract.ts"
 import { defaultClientSettings, type Thread } from "../../../shared/domain.ts"
+import { artifactUrl } from "../../../shared/channels.ts"
 import { documentPrintHtml } from "../../../shared/documentPrint.ts"
 import "../../index.css"
 import { useArtifacts } from "../../stores/artifacts.ts"
@@ -49,6 +51,9 @@ const documentAt = (version: number, revision = version): Artifact => ({
 let stored = { version: 1, revision: 1, markdown: AGENT_MARKDOWN }
 let nextSave: DocumentSaveResult | undefined
 let saves: Array<{ baseRevision: number; markdown: string }> = []
+let storedImages: Array<string> = []
+let fileReads: Array<{ id: string; path: string }> = []
+let imageStored: Promise<void> = Promise.resolve()
 const listeners = new Set<(event: typeof PushEvent.Encoded) => void>()
 
 const bridge: HinacodeBridge = {
@@ -71,6 +76,18 @@ const bridge: HinacodeBridge = {
       const renamed = documentAt(stored.version, stored.revision)
       push({ type: "artifact.updated", artifact: renamed })
       return { result: renamed }
+    }
+    if (method === "artifacts.addDocumentImage") {
+      storedImages.push((payload as { dataUrl: string }).dataUrl)
+      await imageStored
+      return { result: { path: "images/pasted.png" } }
+    }
+    if (method === "artifacts.file") {
+      const read = payload as { id: string; path: string }
+      fileReads.push(read)
+      return {
+        result: { dataUrl: read.id === documentId ? (storedImages.at(-1) ?? "") : "data:image/png;base64,b3RoZXI=" },
+      }
     }
     if (method === "environments.list") return { result: { clouds: [] } }
     if (method === "clientSettings.get")
@@ -100,6 +117,9 @@ beforeEach(({ task }) => {
   stored = { version: 1, revision: 1, markdown: AGENT_MARKDOWN }
   nextSave = undefined
   saves = []
+  storedImages = []
+  fileReads = []
+  imageStored = Promise.resolve()
   useArtifacts.getState().select(thread.id, documentId)
   push({ type: "artifact.updated", artifact: documentAt(1) })
 })
@@ -124,6 +144,142 @@ const typeAtEnd = async (text: string) => {
   await userEvent.keyboard("{End}")
   await userEvent.keyboard(text)
 }
+
+const PIXEL_PNG = Uint8Array.from(
+  atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="),
+  (char) => char.charCodeAt(0),
+)
+
+const pasteAtEnd = async (fill: (data: DataTransfer) => void) => {
+  await page.getByText(/^Ship the/).click()
+  await userEvent.keyboard("{End}")
+  const clipboardData = new DataTransfer()
+  fill(clipboardData)
+  document
+    .querySelector(".hina-document")!
+    .dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }))
+}
+
+test("renders pasted Markdown text as blocks", async () => {
+  const editor = await openDocument()
+
+  await pasteAtEnd((data) => data.setData("text/plain", "## Risks\n\n- Saves **race**"))
+
+  await expect.element(editor.getByRole("heading", { name: "Risks" })).toBeInTheDocument()
+  await expect.element(editor.getByRole("listitem").filter({ hasText: "Saves race" })).toBeInTheDocument()
+  await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).toMatch(/## Risks\n\n- Saves \*\*race\*\*/)
+})
+
+test("pastes text without Markdown syntax as written", async () => {
+  await openDocument()
+
+  await pasteAtEnd((data) => data.setData("text/plain", " a_b_c"))
+
+  await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).toContain("first. a\\_b\\_c")
+})
+
+test("stores a pasted image with the document and inlines it when printed", async () => {
+  const editor = await openDocument()
+
+  await pasteAtEnd((data) => data.items.add(new File([PIXEL_PNG], "shot.png", { type: "image/png" })))
+
+  await expect.poll(() => storedImages).toEqual([expect.stringMatching(/^data:image\/png;base64,/)])
+  await expect
+    .poll(() => editor.element().querySelector("img")?.getAttribute("src"))
+    .toBe(artifactUrl(documentId, "images/pasted.png"))
+  await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).toContain("![](images/pasted.png)")
+
+  const print = await printed(await liveDocument(liveDocumentKey(undefined, documentId))!.html())
+  expect(print.querySelector("img")?.getAttribute("src")).toBe(storedImages[0])
+})
+
+test("puts a pasted image where it was pasted, even if the selection changes while it is stored", async () => {
+  const editor = await openDocument()
+  let finishStoring = () => {}
+  imageStored = new Promise((resolve) => {
+    finishStoring = resolve
+  })
+
+  await pasteAtEnd((data) => data.items.add(new File([PIXEL_PNG], "shot.png", { type: "image/png" })))
+  await expect.poll(() => storedImages.length).toBe(1)
+  await editor.getByRole("heading", { name: "Release plan" }).click()
+  await userEvent.keyboard("{End}{Shift>}{Home}{/Shift}")
+  finishStoring()
+
+  await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).toContain("first.\n\n![](images/pasted.png)")
+  expect(saves.at(-1)?.markdown).toMatch(/^# Release plan\n/)
+  await expect.element(editor.getByRole("heading", { name: "Release plan" })).toBeInTheDocument()
+})
+
+test("keeps the selected text when a pasted image cannot be stored", async () => {
+  const editor = await openDocument()
+  imageStored = Promise.reject(new Error("disk full"))
+  imageStored.catch(() => {})
+
+  await editor.getByRole("heading", { name: "Release plan" }).click()
+  await userEvent.keyboard("{End}{Shift>}{Home}{/Shift}")
+  const clipboardData = new DataTransfer()
+  clipboardData.items.add(new File([PIXEL_PNG], "shot.png", { type: "image/png" }))
+  document
+    .querySelector(".hina-document")!
+    .dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }))
+
+  await expect
+    .poll(() => toast.getHistory().map((shown) => ("title" in shown ? String(shown.title) : "")))
+    .toContainEqual(expect.stringContaining("disk full"))
+  await expect.element(editor.getByRole("heading", { name: "Release plan" })).toBeInTheDocument()
+  expect(saves).toEqual([])
+})
+
+test("copies the bytes of an image pasted from another document", async () => {
+  await openDocument()
+
+  await pasteAtEnd((data) =>
+    data.setData(
+      "text/html",
+      '<p data-pm-slice="1 1 []"><img src="images/other.png" alt="" data-artifact-id="other-doc"></p>',
+    ),
+  )
+
+  await expect.poll(() => fileReads).toContainEqual({ id: "other-doc", path: "images/other.png" })
+  await expect.poll(() => storedImages).toEqual(["data:image/png;base64,b3RoZXI="])
+  await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).toContain("![](images/pasted.png)")
+})
+
+test("pastes the text of a copy from another document into a code block", async () => {
+  await openDocument()
+
+  await page.getByText("const version = 1").click()
+  await userEvent.keyboard("{End}")
+  const clipboardData = new DataTransfer()
+  clipboardData.setData("text/plain", " + 1")
+  clipboardData.setData(
+    "text/html",
+    '<p data-pm-slice="1 1 []">+ 1<img src="images/other.png" alt="" data-artifact-id="other-doc"></p>',
+  )
+  document
+    .querySelector(".hina-document")!
+    .dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }))
+
+  await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).toContain("const version = 1 + 1\n```")
+  expect(fileReads).toEqual([])
+})
+
+test("pastes Markdown syntax literally with Shift held", async () => {
+  const editor = await openDocument()
+
+  await page.getByText(/^Ship the/).click()
+  await userEvent.keyboard("{End}{Shift>}")
+  const clipboardData = new DataTransfer()
+  clipboardData.setData("text/plain", "## Keep this literal")
+  document
+    .querySelector(".hina-document")!
+    .dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }))
+  await userEvent.keyboard("{/Shift}")
+
+  await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).toContain("Keep this literal")
+  await expect.element(editor.getByRole("heading", { name: "Keep this literal" })).not.toBeInTheDocument()
+})
 
 test("edits an agent's document and saves Markdown that keeps every block the agent wrote", async () => {
   const editor = await openDocument()
@@ -450,7 +606,7 @@ test("prints a callout's label and a diagram, without their controls or source",
     .poll(() => editor.element().querySelector("[data-diagram-svg] > svg"), { timeout: 10_000 })
     .not.toBeNull()
 
-  const print = await printed(liveDocument(liveDocumentKey(undefined, documentId))!.html())
+  const print = await printed(await liveDocument(liveDocumentKey(undefined, documentId))!.html())
   const label = print.querySelector("[data-callout-label]")
 
   expect(shown(label)).toBe(true)

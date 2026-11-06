@@ -523,6 +523,7 @@ const handlers: Handlers = {
   "artifacts.delete": ({ id }) => Artifacts.use((artifacts) => artifacts.remove(id)),
   "artifacts.readDocument": ({ id }) => Artifacts.use((artifacts) => artifacts.readDocument(id)),
   "artifacts.saveDocument": (input) => Artifacts.use((artifacts) => artifacts.saveDocument(input)),
+  "artifacts.addDocumentImage": (input) => Artifacts.use((artifacts) => artifacts.addDocumentImage(input)),
   "artifacts.createDocument": (input) => Artifacts.use((artifacts) => artifacts.createDocument(input)),
   "artifacts.rename": ({ id, title }) => Artifacts.use((artifacts) => artifacts.rename(id, title)),
   "artifacts.setTheme": (theme) => ArtifactInspector.use((inspector) => inspector.setTheme(theme)),
