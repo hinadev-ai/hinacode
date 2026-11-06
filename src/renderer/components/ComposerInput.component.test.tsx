@@ -190,3 +190,51 @@ test("suggests the thread's terminals for @ and inserts the picked one as a ment
     .poll(() => [...document.querySelectorAll(".cm-line .text-syntax-token")].map((mark) => mark.textContent))
     .toStrictEqual(["@terminal:term-b"])
 })
+
+const paste = (data: Record<string, string>) => {
+  const clipboardData = new DataTransfer()
+  for (const [format, text] of Object.entries(data)) clipboardData.setData(format, text)
+  document
+    .querySelector(".cm-content")!
+    .dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }))
+}
+
+test("pastes a formatted web page as markdown", async () => {
+  await renderComposer()
+  await page.getByRole("combobox", { name: "Message" }).click()
+
+  paste({
+    "text/plain": "Setup\nRun the dev server.\nSee docs",
+    "text/html": `<meta charset="utf-8"><h2>Setup</h2><ul><li>Run <code>pnpm dev</code><ol start="3"><li>nested</li><li>again</li></ol></li></ul><p>See <a href="https://example.com/docs">docs</a></p><pre><code class="language-sh">pnpm build</code></pre>`,
+  })
+
+  await expect
+    .poll(() => value)
+    .toBe(
+      "## Setup\n\n- Run `pnpm dev`\n  3. nested\n  4. again\n\nSee [docs](https://example.com/docs)\n\n```sh\npnpm build\n```",
+    )
+})
+
+test("pastes styled editor text as it was typed", async () => {
+  await renderComposer()
+  await page.getByRole("combobox", { name: "Message" }).click()
+
+  paste({
+    "text/plain": "const a_b = 1 * 2",
+    "text/html": `<div style="color: #ccc"><div><span style="color: #569cd6">const</span><span> a_b = 1 * 2</span></div></div>`,
+  })
+
+  await expect.poll(() => value).toBe("const a_b = 1 * 2")
+})
+
+test("unwraps the bold wrapper Google Docs puts around a copy", async () => {
+  await renderComposer()
+  await page.getByRole("combobox", { name: "Message" }).click()
+
+  paste({
+    "text/plain": "Plan\nShip it",
+    "text/html": `<b style="font-weight:normal;" id="docs-internal-guid-1"><h1><span>Plan</span></h1><p><span>Ship </span><a href="https://example.com">it</a></p></b>`,
+  })
+
+  await expect.poll(() => value).toBe("# Plan\n\nShip [it](https://example.com)")
+})
