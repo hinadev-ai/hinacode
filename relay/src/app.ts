@@ -9,7 +9,10 @@ export type { Fetch } from "./cloudflare"
 
 export interface Deps {
   verifySession(request: Request, env: Env): Promise<string | null>
-  accountProfile(userId: string, env: Env): Promise<{ name: string | null; email: string | null }>
+  accountProfile(
+    userId: string,
+    env: Env,
+  ): Promise<{ name: string | null; email: string | null; imageUrl: string | null }>
   cloudflare: Fetch
   now(): number
   random(bytes: number): Uint8Array

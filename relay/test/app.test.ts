@@ -22,7 +22,11 @@ beforeEach(async () => {
   app = makeApp({
     verifySession: async (request) =>
       SESSIONS[request.headers.get("Authorization")?.replace("Bearer ", "") ?? ""] ?? null,
-    accountProfile: async (userId) => ({ name: userId, email: `${userId}@example.com` }),
+    accountProfile: async (userId) => ({
+      name: userId,
+      email: `${userId}@example.com`,
+      imageUrl: `https://img.example.com/${userId}`,
+    }),
     cloudflare: cloudflare.fetch,
     now: () => clock,
     random: (bytes) => crypto.getRandomValues(new Uint8Array(bytes)),
@@ -532,7 +536,11 @@ describe("signing in a device", () => {
     const credential = await signIn("alice-session")
     expect(credential).toMatch(/^[A-Za-z0-9_-]{43}$/)
     const profile = await call("GET", "/v1/account", { bearer: credential })
-    expect(await profile.json()).toEqual({ name: "user_alice", email: "user_alice@example.com" })
+    expect(await profile.json()).toEqual({
+      name: "user_alice",
+      email: "user_alice@example.com",
+      imageUrl: "https://img.example.com/user_alice",
+    })
     const stored = await env.DB.prepare("SELECT user_id, credential_hash FROM device").first<{
       user_id: string
       credential_hash: string
@@ -705,7 +713,11 @@ describe("signing in by redirect", () => {
     expect(response.status).toBe(200)
     const { credential } = (await response.json()) as { credential: string }
     const profile = await call("GET", "/v1/account", { bearer: credential })
-    expect(await profile.json()).toEqual({ name: "user_alice", email: "user_alice@example.com" })
+    expect(await profile.json()).toEqual({
+      name: "user_alice",
+      email: "user_alice@example.com",
+      imageUrl: "https://img.example.com/user_alice",
+    })
     expect(await env.DB.prepare("SELECT name FROM device").first("name")).toBe("laptop")
 
     const again = await exchange(code, verifier)
