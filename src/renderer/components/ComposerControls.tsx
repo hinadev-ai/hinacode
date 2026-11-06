@@ -10,6 +10,7 @@ import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { toast } from "sonner"
 import { type KeyboardEvent, useEffect, useId, useRef, useState, useTransition } from "react"
+import { flushSync } from "react-dom"
 import { type ModelInfo, presetModels, ProviderId, unlistedModel } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import { AccessMode, type OpenPullRequest, type Project, type Thread } from "../../shared/domain.ts"
@@ -256,6 +257,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
   const [tabValue, setTabValue] = useState(threadTab)
   const [focus, setFocus] = useState<ComposerPicker>("model")
   const [query, setQuery] = useState("")
+  const [clearingHighlight, setClearingHighlight] = useState(false)
   const [picking, startPicking] = useTransition()
   const openedByShortcut = useRef(false)
   const tabMovedToByKey = useRef<string | null>(null)
@@ -319,7 +321,12 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
 
   const accountSwitches = useRef(Promise.resolve())
   const openTab = (value: string) => {
-    setTabValue(value)
+    // FIXME: Base UI keeps an open inline combobox's highlight index when its items change and has no API to reset it. One commit with an empty list makes it drop the index without remounting the search box.
+    flushSync(() => {
+      setTabValue(value)
+      setClearingHighlight(true)
+    })
+    flushSync(() => setClearingHighlight(false))
     const target = tabs.find((candidate) => candidate.value === value)
     const firstOwnModel = ownModels[0]
     if (target?.accountId === undefined || target.provider !== thread.provider || firstOwnModel === undefined) return
@@ -341,7 +348,6 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
     if (tabMovedToByKey.current !== tab.value) return
     tabMovedToByKey.current = null
     popupRef.current?.querySelector("[role=tab][aria-selected=true]")?.scrollIntoView(nearest)
-    searchRef.current?.focus({ preventScroll: true })
   })
 
   const efforts = current === undefined || current.efforts.length === 0 ? [] : [DEFAULT_EFFORT, ...current.efforts]
@@ -471,9 +477,9 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
           {tab.hint && <p className="px-1 text-xs text-muted-foreground tabular-nums">{tab.hint}</p>}
         </Tabs>
         <Combobox.Root
-          key={tab.value}
           inline
           open
+          filteredItems={clearingHighlight ? [] : undefined}
           autoHighlight
           items={models}
           filter={modelMatches}

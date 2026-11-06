@@ -154,14 +154,16 @@ test("Alt+L moves to the next account and keeps its tab in view", async () => {
     .toBeLessThanOrEqual(2)
 })
 
-test("Alt+L starts the next tab without the previous tab's highlight and keeps search focused", async () => {
+test("Alt+L starts the next tab without the previous tab's highlight and keeps the same search box", async () => {
   await openPicker()
+  const search = page.getByRole("combobox", { name: "Search models" }).element()
   await userEvent.keyboard("{ArrowDown}")
   await expect.poll(highlighted).toContain("third")
   await userEvent.keyboard("{Alt>}l{/Alt}")
   await expect.poll(selectedTab).toContain("two")
   await expect.poll(highlighted).toBeUndefined()
-  await expect.element(page.getByRole("combobox", { name: "Search models" })).toHaveFocus()
+  expect(page.getByRole("combobox", { name: "Search models" }).element()).toBe(search)
+  expect(document.activeElement).toBe(search)
 })
 
 test("an IME Enter keeps the picker open", async () => {
