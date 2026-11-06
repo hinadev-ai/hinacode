@@ -145,7 +145,10 @@ const fakeProvider = (id: ProviderId): AgentProvider => {
 }
 
 const stubs = Layer.mergeAll(
-  Layer.succeed(ThreadNaming, ThreadNaming.of({ nameFromPrompt: () => Effect.void })),
+  Layer.succeed(
+    ThreadNaming,
+    ThreadNaming.of({ nameFromPrompt: () => Effect.void, regenerateTitle: () => Effect.die("unused") }),
+  ),
   Layer.succeed(ClaudeProvider, fakeProvider("claude")),
   Layer.succeed(CodexProvider, fakeProvider("codex")),
   Layer.succeed(MuseProvider, fakeProvider("muse")),

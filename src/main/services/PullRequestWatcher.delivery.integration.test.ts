@@ -153,7 +153,7 @@ const agents = runnerLayer.pipe(
       Layer.succeed(MuseProvider, provider("muse")),
       Layer.succeed(OpencodeProvider, provider("opencode")),
       Layer.mock(Secrets, {}),
-      Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }),
+      Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void, regenerateTitle: () => Effect.die("unused") }),
     ),
   ),
 )

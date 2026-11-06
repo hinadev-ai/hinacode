@@ -50,6 +50,7 @@ import { Terminals } from "./services/Terminals.ts"
 import { Updates } from "./services/Updates.ts"
 import { SessionImports } from "./services/SessionImports.ts"
 import { randomName, Threads } from "./services/Threads.ts"
+import { ThreadNaming } from "./services/ThreadNaming.ts"
 import { type ScreenOwner, TinyVm, VmError } from "./services/tinyVm/TinyVm.ts"
 import { Devices } from "./services/devices/Devices.ts"
 import { Worktrees } from "./services/Worktrees.ts"
@@ -60,6 +61,7 @@ export type AppServices =
   | SessionImports
   | Projects
   | Threads
+  | ThreadNaming
   | Worktrees
   | Settings
   | SystemResources
@@ -283,6 +285,7 @@ const handlers: Handlers = {
   "threads.unarchive": ({ threadId }) => Threads.use((threads) => threads.unarchive(threadId)),
   "threads.settle": ({ threadId }) => Threads.use((threads) => threads.settle(threadId)),
   "threads.unsettle": ({ threadId }) => Threads.use((threads) => threads.unsettle(threadId)),
+  "threads.regenerateTitle": ({ threadId }) => ThreadNaming.use((naming) => naming.regenerateTitle(threadId)),
   "threads.fork": ({ threadId, messageId }) =>
     Threads.use((threads) => threads.fork(threadId, messageId)).pipe(
       Effect.tap((thread) => Events.use((events) => events.publish({ type: "thread.updated", thread }))),

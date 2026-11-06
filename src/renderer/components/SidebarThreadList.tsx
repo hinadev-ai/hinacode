@@ -86,6 +86,7 @@ import {
   CloseIcon,
   PencilIcon,
   PinIcon,
+  RefreshIcon,
   SnoozeIcon,
   TrashIcon,
   UnarchiveIcon,
@@ -539,6 +540,15 @@ function ThreadRow({
     }
   }
   const reopen = archived ? unarchive : unsettle
+  const regenerateTitle = async () => {
+    const toastId = toast.loading(m.sidebar_title_regenerating())
+    try {
+      useThreads.getState().upsert(await callPromise("threads.regenerateTitle", { threadId: thread.id }))
+      toast.dismiss(toastId)
+    } catch (cause) {
+      toast.error(m.sidebar_regenerate_title_failed({ message: errorMessage(cause) }), { id: toastId })
+    }
+  }
   const pinned = thread.pinnedAt !== null
   const togglePin = async () => {
     try {
@@ -689,6 +699,10 @@ function ThreadRow({
                 <DropdownMenuItem onClick={queue("renaming")}>
                   <PencilIcon aria-hidden />
                   {m.sidebar_thread_rename()}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void regenerateTitle()}>
+                  <RefreshIcon aria-hidden />
+                  {m.sidebar_thread_regenerate_title()}
                 </DropdownMenuItem>
                 {!archived && (
                   <DropdownMenuItem onClick={() => void togglePin()}>
