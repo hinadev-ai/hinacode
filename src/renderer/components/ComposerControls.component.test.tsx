@@ -154,6 +154,25 @@ test("Alt+L moves to the next account and keeps its tab in view", async () => {
     .toBeLessThanOrEqual(2)
 })
 
+test("Alt+L starts the next tab without the previous tab's highlight and keeps search focused", async () => {
+  await openPicker()
+  await userEvent.keyboard("{ArrowDown}")
+  await expect.poll(highlighted).toContain("third")
+  await userEvent.keyboard("{Alt>}l{/Alt}")
+  await expect.poll(selectedTab).toContain("two")
+  await expect.poll(highlighted).toBeUndefined()
+  await expect.element(page.getByRole("combobox", { name: "Search models" })).toHaveFocus()
+})
+
+test("an IME Enter keeps the picker open", async () => {
+  await openPicker()
+  const imeEnter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true })
+  Object.defineProperty(imeEnter, "which", { value: 229 })
+  page.getByRole("combobox", { name: "Search models" }).element().dispatchEvent(imeEnter)
+  await userEvent.keyboard("{ArrowDown}")
+  await expect.poll(highlighted).toContain("third")
+})
+
 test("switching to another account selects its first model right away", async () => {
   rpc.mockClear()
   await openPicker()
