@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto"
 import { mkdtempSync } from "node:fs"
+import { request } from "node:http"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
@@ -179,6 +180,16 @@ const visit = (url: string) =>
     ),
   )
 
+const rawStatus = (port: string, path: string) =>
+  Effect.callback<number | undefined>((resume) => {
+    request({ host: "127.0.0.1", port, path }, (response) => {
+      response.resume()
+      resume(Effect.succeed(response.statusCode))
+    })
+      .on("error", () => resume(Effect.succeed(undefined)))
+      .end()
+  })
+
 const approveInBrowser = (relay: StandInRelay) => (url: string) =>
   Effect.gen(function* () {
     const { redirectUri, codeChallenge } = signInPage(url)
@@ -272,6 +283,24 @@ describe("RelayAccount", () => {
         yield* approveInBrowser(relay)(browser.pages[0] ?? "")
         expect(yield* Fiber.join(signingIn)).toMatchObject({ state: "signedIn" })
         expect(yield* storedCredential).toBe(CREDENTIAL)
+      }),
+    )
+  })
+
+  it.live("a request line the listener cannot parse gets 400 and the sign-in keeps waiting", () => {
+    const relay = standInRelay()
+    return withAccount(
+      relay,
+      Effect.gen(function* () {
+        const browser = openedPages()
+        const signingIn = yield* signInWith(browser.openUrl).pipe(Effect.forkChild)
+        const { redirectUri } = yield* browser.opened
+
+        expect(yield* rawStatus(new URL(redirectUri).port, "//[")).toBe(400)
+        expect(signingIn.pollUnsafe()).toBeUndefined()
+
+        yield* approveInBrowser(relay)(browser.pages[0] ?? "")
+        expect(yield* Fiber.join(signingIn)).toMatchObject({ state: "signedIn" })
       }),
     )
   })
