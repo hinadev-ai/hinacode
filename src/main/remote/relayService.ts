@@ -23,7 +23,11 @@ export const Link = Schema.Struct({
   expiresAt: Schema.Number,
 })
 const Claimed = Schema.Struct({ credential: Schema.String })
-const Profile = Schema.Struct({ name: Schema.NullOr(Schema.String), email: Schema.NullOr(Schema.String) })
+const Profile = Schema.Struct({
+  name: Schema.NullOr(Schema.String),
+  email: Schema.NullOr(Schema.String),
+  imageUrl: Schema.optionalKey(Schema.NullOr(Schema.String)),
+})
 const Tunnel = Schema.Struct({ hostname: Schema.String, connectorToken: Schema.String })
 const ServiceFailure = Schema.Struct({ error: Schema.String })
 
@@ -117,6 +121,7 @@ export const relayService = (fetch: Fetch, serviceUrl: string) => {
     profile: (credential: string) =>
       asAccount("read your account", "GET", "/v1/account", credential).pipe(
         Effect.flatMap((answer) => decode("read your account", Profile, answer)),
+        Effect.map((profile) => ({ ...profile, imageUrl: profile.imageUrl ?? null })),
       ),
     signOutDevice: (credential: string) =>
       call("sign out this device", "DELETE", "/v1/device", { credential }).pipe(

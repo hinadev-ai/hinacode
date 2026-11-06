@@ -58,6 +58,10 @@ CREATE TABLE sign_in_code (
 - The exchange deletes the row before it checks the verifier, so a code is spent on its first use either way.
 - The old `POST /v1/sign-ins` and the approval on `/link` stay for released apps and the web app. `hinacode serve` keeps linking machines through `/link`, because a headless machine has no browser to redirect to.
 
+### Avatar
+
+`GET /v1/account` also returns `imageUrl`, the Clerk avatar, or null when the account has only Clerk's generated one. The desktop downloads it in the main process and hands the renderer a `data:` URL in `RelayAccountStatus.avatar`, because the renderer's CSP allows no remote images. It downloads again only when the URL changes, and refuses anything that is not an https image under 256 KB. The web app and the phone load the URL directly. The account menu and the phone's Relay settings show it, and fall back to the initial or the name.
+
 ## Out of scope
 
 - Sending the person straight to Google or GitHub, skipping Clerk's chooser. One click, and the chooser also offers email.

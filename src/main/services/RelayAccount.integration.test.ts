@@ -40,7 +40,7 @@ interface StandInRelay {
   credential: string
   issuedCredential: string
   readonly challenges: Map<string, string>
-  profile: { name: string | null; email: string | null }
+  profile: { name: string | null; email: string | null; imageUrl?: string | null }
   machines: ReadonlyArray<RelayMachine>
   hosts: Array<RelayHost>
   readonly links: Map<string, { name: string; environmentId: string }>
@@ -112,6 +112,9 @@ const standInRelay = () => {
       const method = init.method ?? "GET"
       relay.calls.push(`${method} ${url.pathname}`)
       if (url.origin !== SERVICE_URL) return new Response(null, { status: 404 })
+      if (method === "GET" && url.pathname === "/avatar.png") {
+        return new Response(new Uint8Array([137, 80, 78, 71]), { headers: { "Content-Type": "image/png" } })
+      }
       if (method === "POST" && url.pathname === "/v1/sign-in-codes/exchange") {
         const { code, codeVerifier } = JSON.parse(String(init.body)) as { code: string; codeVerifier: string }
         const challenge = relay.challenges.get(code)
@@ -242,6 +245,7 @@ describe("RelayAccount", () => {
           environmentId: self.id,
           name: "Kalan",
           email: "kalan@example.com",
+          avatar: null,
           machines: 1,
           syncedAt: expect.any(String),
           error: null,
@@ -375,6 +379,33 @@ describe("RelayAccount", () => {
         expect(second).toMatchObject({ state: "signedIn" })
         expect(yield* Fiber.join(first)).toMatchObject({ state: "signedOut" })
         expect(yield* visit(`${redirectUri}?code=${SIGN_IN_CODE}`)).toBe("refused")
+      }),
+    )
+  })
+
+  it.live("shows the account's avatar as a data URL, downloaded once until it changes", () => {
+    const relay = standInRelay()
+    relay.profile = { ...relay.profile, imageUrl: `${SERVICE_URL}/avatar.png` }
+    return withAccount(
+      relay,
+      Effect.gen(function* () {
+        expect(yield* signIn(relay)).toMatchObject({ avatar: "data:image/png;base64,iVBORw==" })
+        yield* RelayAccount.RelayAccount.use((account) => account.sync)
+        expect(relay.calls.filter((call) => call === "GET /avatar.png")).toHaveLength(1)
+
+        relay.profile = { ...relay.profile, imageUrl: null }
+        expect(yield* RelayAccount.RelayAccount.use((account) => account.sync)).toMatchObject({ avatar: null })
+      }),
+    )
+  })
+
+  it.live("an avatar that is not an image leaves the initial and keeps the sign-in", () => {
+    const relay = standInRelay()
+    relay.profile = { ...relay.profile, imageUrl: `${SERVICE_URL}/v1/machines` }
+    return withAccount(
+      relay,
+      Effect.gen(function* () {
+        expect(yield* signIn(relay)).toMatchObject({ state: "signedIn", name: "Kalan", avatar: null })
       }),
     )
   })

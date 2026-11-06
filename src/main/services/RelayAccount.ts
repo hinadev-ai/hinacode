@@ -76,6 +76,28 @@ const listenForSignInCode = (signedInPage: URL) =>
     }
   })
 
+const AVATAR_MAX_BYTES = 256 * 1024
+
+const downloadAvatar = (fetch: Fetch, imageUrl: string) =>
+  Effect.gen(function* () {
+    const url = URL.parse(imageUrl)
+    if (url?.protocol !== "https:") return yield* new RelayError({ message: "The avatar is not an https URL." })
+    const response = yield* Effect.tryPromise({
+      try: (signal) => fetch(url, { signal }),
+      catch: () => new RelayError({ message: "Cannot download the avatar." }),
+    })
+    const type = response.headers.get("Content-Type") ?? ""
+    if (!response.ok || !type.startsWith("image/")) {
+      return yield* new RelayError({ message: `The avatar answered HTTP ${response.status} with ${type}.` })
+    }
+    const bytes = yield* Effect.tryPromise({
+      try: () => response.arrayBuffer(),
+      catch: () => new RelayError({ message: "Cannot download the avatar." }),
+    })
+    if (bytes.byteLength > AVATAR_MAX_BYTES) return yield* new RelayError({ message: "The avatar is too large." })
+    return `data:${type};base64,${Buffer.from(bytes).toString("base64")}`
+  }).pipe(Effect.timeout(Duration.seconds(30)))
+
 const make = ({ serviceUrl, fetch = globalThis.fetch }: RelayAccountOptions) =>
   Effect.gen(function* () {
     const service = relayService(fetch, serviceUrl)
@@ -87,11 +109,13 @@ const make = ({ serviceUrl, fetch = globalThis.fetch }: RelayAccountOptions) =>
     const nobody: Omit<SignedIn, "state" | "serviceUrl" | "environmentId"> = {
       name: null,
       email: null,
+      avatar: null,
       machines: 0,
       syncedAt: null,
       error: null,
     }
     let last = nobody
+    let avatarUrl: string | null = null
 
     const signedIn = (): SignedIn => ({ state: "signedIn", serviceUrl, environmentId: self.id, ...last })
     const signedOut: RelayAccountStatus = { state: "signedOut" }
@@ -105,6 +129,15 @@ const make = ({ serviceUrl, fetch = globalThis.fetch }: RelayAccountOptions) =>
         return signedIn()
       })
 
+    const refreshAvatar = (imageUrl: string | null) =>
+      imageUrl === avatarUrl
+        ? Effect.void
+        : Effect.gen(function* () {
+            const avatar = imageUrl === null ? null : yield* downloadAvatar(fetch, imageUrl)
+            last = { ...last, avatar }
+            avatarUrl = imageUrl
+          })
+
     const refreshProfile = (credential: string) =>
       service.profile(credential).pipe(
         Effect.tap(({ name, email }) =>
@@ -112,6 +145,7 @@ const make = ({ serviceUrl, fetch = globalThis.fetch }: RelayAccountOptions) =>
             last = { ...last, name, email }
           }),
         ),
+        Effect.flatMap(({ imageUrl }) => refreshAvatar(imageUrl)),
         Effect.catch((error) => Effect.logWarning("could not read the relay account", error)),
       )
 
@@ -164,6 +198,7 @@ const make = ({ serviceUrl, fetch = globalThis.fetch }: RelayAccountOptions) =>
       Effect.andThen(
         Effect.sync(() => {
           last = nobody
+          avatarUrl = null
           return signedOut
         }),
       ),
