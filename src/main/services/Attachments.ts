@@ -41,7 +41,7 @@ const safeName = (name: string) =>
 
 const mimeOf = (name: string) => MIME_BY_EXTENSION[extname(name).toLowerCase()] ?? "application/octet-stream"
 
-const decodeDataUrl = (dataUrl: string) => {
+export const decodeDataUrl = (dataUrl: string) => {
   const match = /^data:([^;,]+);base64,(.*)$/s.exec(dataUrl)
   if (match === null) return undefined
   return { mime: match[1]!, data: Buffer.from(match[2]!, "base64") }

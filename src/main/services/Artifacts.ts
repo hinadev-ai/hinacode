@@ -2,18 +2,24 @@ import { watch } from "node:fs"
 import { mkdir } from "node:fs/promises"
 import {
   ArtifactConflictError,
+  ArtifactError,
   type ArtifactStore,
   DOCUMENT_ENTRY,
   isArtifactId,
   openArtifactStore,
 } from "@hinacode/artifacts"
-import { Context, Effect, Layer } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
 import type { Artifact, DocumentContent, DocumentSaveResult } from "../../shared/artifact.ts"
+import { decodeDataUrl } from "./Attachments.ts"
 import { NotFoundError } from "./errors.ts"
 import { Events } from "./Events.ts"
 
 const MANIFEST = "artifact.json"
 const ANNOUNCE_DEBOUNCE_MS = 50
+
+export class DocumentImageError extends Schema.TaggedError<DocumentImageError>()("DocumentImageError", {
+  message: Schema.String,
+}) {}
 
 type ArtifactFileBytes = { readonly bytes: Uint8Array<ArrayBuffer>; readonly type: string }
 
@@ -33,6 +39,10 @@ export class Artifacts extends Context.Service<
     }) => Effect.Effect<DocumentSaveResult, NotFoundError>
     readonly createDocument: (input: { readonly threadId: string; readonly title: string }) => Effect.Effect<Artifact>
     readonly rename: (id: string, title: string) => Effect.Effect<Artifact, NotFoundError>
+    readonly addDocumentImage: (input: {
+      readonly id: string
+      readonly dataUrl: string
+    }) => Effect.Effect<{ readonly path: string }, NotFoundError | DocumentImageError>
   }
 >()("hinacode/Artifacts") {}
 
@@ -165,6 +175,27 @@ const make = (root: string) =>
               ),
       )
 
+    const addDocumentImage = ({ id, dataUrl }: { id: string; dataUrl: string }) =>
+      Effect.gen(function* () {
+        const decoded = decodeDataUrl(dataUrl)
+        if (decoded === undefined) {
+          return yield* new DocumentImageError({ message: "The pasted image is not a base64 data URL." })
+        }
+        const current = yield* Effect.promise(() => store.get(id))
+        if (current === null) return yield* new NotFoundError({ entity: "document", id })
+        const path = yield* Effect.tryPromise({
+          try: () => store.addDocumentImage(id, { bytes: decoded.data, type: decoded.mime }),
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.catch((cause) =>
+            cause instanceof ArtifactError
+              ? Effect.fail(new DocumentImageError({ message: cause.message }))
+              : Effect.die(cause),
+          ),
+        )
+        return { path }
+      })
+
     return Artifacts.of({
       store,
       list: Effect.promise(() => store.list()),
@@ -175,6 +206,7 @@ const make = (root: string) =>
       saveDocument,
       createDocument,
       rename,
+      addDocumentImage,
     })
   })
 

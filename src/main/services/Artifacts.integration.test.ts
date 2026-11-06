@@ -105,4 +105,29 @@ describe("Artifacts", () => {
       expect(saved).toEqual({ type: "saved", version: 1, revision: 2 })
     }),
   )
+
+  it.live("stores a pasted image from a data URL and serves it as a document file", () =>
+    Effect.gen(function* () {
+      const root = mkdtempSync(join(tmpdir(), "kk-artifacts-"))
+      const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])
+      const [served, invalid, unknown] = yield* withArtifacts(root, () =>
+        Artifacts.use((artifacts) =>
+          Effect.gen(function* () {
+            const { id } = yield* artifacts.createDocument({ threadId: "t-1", title: "Untitled" })
+            const dataUrl = `data:image/png;base64,${png.toString("base64")}`
+            const { path } = yield* artifacts.addDocumentImage({ id, dataUrl })
+            return [
+              yield* artifacts.file(id, path),
+              yield* Effect.flip(artifacts.addDocumentImage({ id, dataUrl: "not a data url" })),
+              yield* Effect.flip(artifacts.addDocumentImage({ id: "gone", dataUrl })),
+            ] as const
+          }),
+        ),
+      )
+      expect(served?.bytes).toEqual(png)
+      expect(served?.type).toBe("image/png")
+      expect(invalid._tag).toBe("DocumentImageError")
+      expect(unknown._tag).toBe("NotFoundError")
+    }),
+  )
 })
