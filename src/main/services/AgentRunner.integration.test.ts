@@ -235,7 +235,10 @@ const withPreparingThread = async (
             {
               type: "tool_call_finished",
               callId: "image-1",
-              output: [{ type: "image", source: { type: "base64", media_type: "image/png", data: "aW1hZ2U=" } }],
+              output: [
+                { type: "image", source: { type: "base64", media_type: "image/png", data: "aW1hZ2U=" } },
+                { type: "image", data: "PHN2Zy8+", mimeType: "image/svg+xml" },
+              ],
               isError: false,
             },
             completed,
@@ -1265,10 +1268,16 @@ it("saves a tool's image as an attachment and keeps its bytes out of the transcr
     const finished = transcript.find((push) => push.type === "thread.event" && push.event.type === "tool_call_finished")
     expect(JSON.stringify(finished)).not.toContain("aW1hZ2U=")
     expect(finished).toMatchObject({
-      event: { output: [{ type: "image", mimeType: "image/png", attachment: { kind: "image", mime: "image/png" } }] },
+      event: {
+        output: [
+          { type: "image", mimeType: "image/png", attachment: { kind: "image", mime: "image/png" } },
+          { type: "image", mimeType: "image/svg+xml", attachment: { kind: "image", mime: "image/svg+xml" } },
+        ],
+      },
     })
-    const output = (finished as unknown as { event: { output: [{ attachment: { path: string } }] } }).event.output
-    expect(readFileSync(output[0].attachment.path, "utf8")).toBe("image")
+    const output = (finished as unknown as { event: { output: Array<{ attachment: { path: string } }> } }).event.output
+    expect(readFileSync(output[0]!.attachment.path, "utf8")).toBe("image")
+    expect(output[1]!.attachment.path).toMatch(/\.svg$/)
   })
 })
 
