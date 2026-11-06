@@ -679,6 +679,9 @@ export const Settings = Schema.Struct({
   experimental: ExperimentalSettings,
   worktreeRoot: Schema.NullOr(Schema.String.check(Schema.isPattern(/^\//))),
   actions: Schema.Array(ProjectAction).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+  magpieEndpoint: Schema.NullOr(Schema.String.check(Schema.isPattern(/^https?:\/\/\S+$/))).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(null)),
+  ),
 })
 export type Settings = typeof Settings.Type
 
@@ -710,6 +713,7 @@ export const defaultSettings: Settings = {
   },
   worktreeRoot: null,
   actions: [],
+  magpieEndpoint: null,
 }
 
 export const Machine = Schema.Struct({

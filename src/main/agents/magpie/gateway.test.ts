@@ -48,6 +48,7 @@ describe("magpieModelInfos", () => {
 })
 
 describe("claudeGatewayEnv", () => {
+  const gateway = { origin: "http://127.0.0.1:1", key: MAGPIE_KEY }
   const routing = {
     ANTHROPIC_API_KEY: "",
     CLAUDE_CODE_USE_BEDROCK: "",
@@ -67,26 +68,26 @@ describe("claudeGatewayEnv", () => {
   }
 
   test("points Claude Code at the gateway, blanks every way around it and pins every tier to the model", () => {
-    expect(claudeGatewayEnv("http://127.0.0.1:1", { id: "OpenRouter/X" }, false)).toStrictEqual(routing)
+    expect(claudeGatewayEnv(gateway, { id: "OpenRouter/X" }, false)).toStrictEqual(routing)
   })
 
   test("declares the efforts the model takes, keyed by its lowercased id", () => {
     expect(
-      claudeGatewayEnv("http://127.0.0.1:1", { id: "OpenRouter/X", reasoning_levels: ["low", "xhigh", "max"] }, false),
+      claudeGatewayEnv(gateway, { id: "OpenRouter/X", reasoning_levels: ["low", "xhigh", "max"] }, false),
     ).toStrictEqual({ ...routing, CLAUDE_CODE_MODEL_CAPABILITIES: "openrouter/x=effort,xhigh_effort,max_effort" })
   })
 
   const priority = { id: "OpenRouter/X", service_tiers: [{ id: "priority" }] }
 
   test("asks for Claude's fast speed in every request body when the thread is fast and the model has a fast tier", () => {
-    expect(claudeGatewayEnv("http://127.0.0.1:1", priority, true)).toStrictEqual({
+    expect(claudeGatewayEnv(gateway, priority, true)).toStrictEqual({
       ...routing,
       CLAUDE_CODE_EXTRA_BODY: '{"speed":"fast"}',
     })
   })
 
   test("sends no speed when the thread is not fast or the model has no fast tier", () => {
-    expect(claudeGatewayEnv("http://127.0.0.1:1", priority, false)).toStrictEqual(routing)
-    expect(claudeGatewayEnv("http://127.0.0.1:1", { id: "OpenRouter/X" }, true)).toStrictEqual(routing)
+    expect(claudeGatewayEnv(gateway, priority, false)).toStrictEqual(routing)
+    expect(claudeGatewayEnv(gateway, { id: "OpenRouter/X" }, true)).toStrictEqual(routing)
   })
 })

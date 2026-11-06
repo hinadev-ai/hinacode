@@ -1,15 +1,15 @@
 import { readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
-import { Effect, Schema } from "effect"
+import { Data, Effect, Option, Schema } from "effect"
 import { CLAUDE_EFFORT_LEVELS, type ModelInfo } from "../../../shared/agent.ts"
 
 const DEFAULT_PORT = 3425
-const REQUEST_TIMEOUT_MS = 1500
+const REQUEST_TIMEOUT_MS = 3000
 export const MAGPIE_KEY = "magpie-hinacode"
 
 const Settings = Schema.Struct({ port: Schema.optionalKey(Schema.Number) })
-const Hello = Schema.Struct({ name: Schema.Literal("magpie") })
+const Hello = Schema.Struct({ name: Schema.Literal("magpie"), version: Schema.optionalKey(Schema.String) })
 const GatewayModel = Schema.Struct({
   id: Schema.String,
   display_name: Schema.optionalKey(Schema.String),
@@ -19,38 +19,97 @@ const GatewayModel = Schema.Struct({
 export type GatewayModel = typeof GatewayModel.Type
 const ModelList = Schema.Struct({ data: Schema.Array(GatewayModel) })
 
+export interface GatewayTarget {
+  readonly endpoint: string | null
+  readonly key: string | null
+}
+
+export const LOCAL_GATEWAY: GatewayTarget = { endpoint: null, key: null }
+
+export interface Connection {
+  readonly origin: string
+  readonly key: string
+  readonly version: string | null
+}
+
+export class GatewayError extends Data.TaggedError("GatewayError")<{ readonly message: string }> {}
+
 const settingsPath = (env: NodeJS.ProcessEnv) =>
   join(env["XDG_CONFIG_HOME"] || join(homedir(), ".config"), "magpie", "settings.json")
 
-const gatewayPort = async (env: NodeJS.ProcessEnv) => {
-  const text = await readFile(settingsPath(env), "utf8").catch(() => null)
-  if (text === null) return DEFAULT_PORT
-  return Schema.decodeUnknownSync(Settings)(JSON.parse(text)).port ?? DEFAULT_PORT
-}
+const localPort = (env: NodeJS.ProcessEnv) =>
+  Effect.promise(async () => {
+    const text = await readFile(settingsPath(env), "utf8").catch(() => null)
+    if (text === null) return DEFAULT_PORT
+    return Schema.decodeUnknownOption(Settings)(JSON.parse(text)).pipe(
+      Option.flatMapNullishOr((settings) => settings.port),
+      Option.getOrElse(() => DEFAULT_PORT),
+    )
+  }).pipe(Effect.orElseSucceed(() => DEFAULT_PORT))
 
-const getJson = async (url: string) => {
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${MAGPIE_KEY}` },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+export const endpointOrigin = (endpoint: string) => endpoint.trim().replace(/\/+$/, "").replace(/\/v1$/, "")
+
+const getJson = (origin: string, key: string, path: string) =>
+  Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch(`${origin}${path}`, {
+          headers: { Authorization: `Bearer ${key}` },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        }),
+      catch: () => new GatewayError({ message: `Nothing answered at ${origin}` }),
+    })
+    if (response.status === 401 || response.status === 403)
+      return yield* new GatewayError({
+        message: `${origin} refused the key. Use a gateway key from magpie's Gateway keys`,
+      })
+    if (!response.ok) return yield* new GatewayError({ message: `${origin} answered ${response.status}` })
+    return yield* Effect.tryPromise({
+      try: () => response.json() as Promise<unknown>,
+      catch: () => new GatewayError({ message: `${origin} is not a magpie gateway` }),
+    })
   })
-  if (!response.ok) throw new Error(`magpie answered ${response.status}`)
-  return response.json()
-}
 
-export const findGateway = (env: NodeJS.ProcessEnv = process.env) =>
-  Effect.tryPromise(async () => {
-    const origin = `http://127.0.0.1:${await gatewayPort(env)}`
-    Schema.decodeUnknownSync(Hello)(await getJson(`${origin}/api/hello`))
-    return origin
-  }).pipe(Effect.orElseSucceed(() => null))
+export const connect = (target: GatewayTarget, env: NodeJS.ProcessEnv = process.env) =>
+  Effect.gen(function* () {
+    const origin =
+      target.endpoint === null ? `http://127.0.0.1:${yield* localPort(env)}` : endpointOrigin(target.endpoint)
+    const key = target.key ?? MAGPIE_KEY
+    const hello = yield* getJson(origin, key, "/api/hello").pipe(
+      Effect.flatMap((body) =>
+        Schema.decodeUnknownEffect(Hello)(body).pipe(
+          Effect.mapError(() => new GatewayError({ message: `${origin} is not a magpie gateway` })),
+        ),
+      ),
+      Effect.mapError((error) =>
+        target.endpoint === null
+          ? new GatewayError({
+              message: "magpie is not running. Start the magpie app or `magpie serve`, then try again",
+            })
+          : error,
+      ),
+    )
+    return { origin, key, version: hello.version ?? null } satisfies Connection
+  })
 
-export const modelsAt = (origin: string) =>
-  Effect.tryPromise(async () => Schema.decodeUnknownSync(ModelList)(await getJson(`${origin}/v1/models`)).data).pipe(
-    Effect.orElseSucceed((): ReadonlyArray<GatewayModel> => []),
+export const modelsOf = (connection: Connection) =>
+  getJson(connection.origin, connection.key, "/v1/models").pipe(
+    Effect.flatMap((body) =>
+      Schema.decodeUnknownEffect(ModelList)(body).pipe(
+        Effect.mapError(
+          () => new GatewayError({ message: `${connection.origin} sent a model list HinaCode cannot read` }),
+        ),
+      ),
+    ),
+    Effect.map((list) => list.data),
   )
 
-export const gatewayModels = (env: NodeJS.ProcessEnv = process.env) =>
-  Effect.flatMap(findGateway(env), (origin) => (origin === null ? Effect.succeed([]) : modelsAt(origin)))
+export const probe = (target: GatewayTarget, env: NodeJS.ProcessEnv = process.env) =>
+  Effect.gen(function* () {
+    const connection = yield* connect(target, env)
+    const models = yield* modelsOf(connection)
+    return { version: connection.version, models: models.length }
+  })
 
 const CLAUDE_EFFORTS = new Set(CLAUDE_EFFORT_LEVELS)
 
@@ -107,12 +166,16 @@ const capabilities = (efforts: ReadonlyArray<string>) => [
   ...(efforts.includes("max") ? ["max_effort"] : []),
 ]
 
-export const claudeGatewayEnv = (origin: string, model: GatewayModel, fast: boolean): Record<string, string> => {
+export const claudeGatewayEnv = (
+  { origin, key }: Pick<Connection, "origin" | "key">,
+  model: GatewayModel,
+  fast: boolean,
+): Record<string, string> => {
   const efforts = claudeEfforts(model)
   return {
     ...Object.fromEntries(CLAUDE_BYPASS_VARIABLES.map((variable) => [variable, ""])),
     ANTHROPIC_BASE_URL: origin,
-    ANTHROPIC_AUTH_TOKEN: MAGPIE_KEY,
+    ANTHROPIC_AUTH_TOKEN: key,
     ...Object.fromEntries(CLAUDE_TIER_VARIABLES.map((variable) => [variable, model.id])),
     ...(efforts.length > 0 && {
       CLAUDE_CODE_MODEL_CAPABILITIES: `${model.id.toLowerCase()}=${capabilities(efforts).join(",")}`,

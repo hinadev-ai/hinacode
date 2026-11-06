@@ -372,6 +372,10 @@ export const RpcMethods = {
     AgentAccount,
   ),
   "agents.updates": rpc(Schema.Void, Schema.Array(AgentUpdate)),
+  "magpie.test": rpc(
+    Schema.Struct({ endpoint: Schema.NullOr(Schema.String), key: Schema.NullOr(Schema.String) }),
+    Schema.Struct({ version: Schema.NullOr(Schema.String), models: Schema.Number }),
+  ),
   "agents.update": rpc(Schema.Struct({ provider: UpdatableProviderId }), Schema.String),
   "limits.list": rpc(Schema.Void, Schema.Array(AccountLimits)),
   "accounts.list": rpc(Schema.Void, Schema.Array(AgentProfile)),
@@ -748,6 +752,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "models.list": "read",
   "agents.account": "read",
   "agents.updates": "read",
+  "magpie.test": "read",
   "agents.update": "mutation",
   "limits.list": "read",
   "accounts.list": "read",

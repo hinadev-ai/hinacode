@@ -1,12 +1,13 @@
 import type { ModelInfo, Options, PermissionResult, SDKUserMessage, SlashCommand } from "@anthropic-ai/claude-agent-sdk"
 import { describe, expect, it } from "@effect/vitest"
 import { vi } from "vitest"
-import { Effect, Fiber, Option, Stream } from "effect"
+import { Effect, Fiber, Layer, Option, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import type { AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
 import { usageLimitResult } from "./fixtures/usageLimit.ts"
-import type { GatewayModel } from "../magpie/gateway.ts"
+import type { GatewayModel, GatewayTarget } from "../magpie/gateway.ts"
 import { MagpieProvider } from "../magpie/index.ts"
+import { magpieDependencies } from "../magpie/testing.ts"
 import { ClaudeProvider, layer } from "./index.ts"
 
 const sdk = vi.hoisted(() => {
@@ -112,12 +113,15 @@ const gateway = vi.hoisted(() => ({
 }))
 
 vi.mock("../magpie/gateway.ts", async (importOriginal) => {
-  const { sync } = await import("effect/Effect")
+  const { fail, succeed, sync } = await import("effect/Effect")
+  const original = await importOriginal<typeof import("../magpie/gateway.ts")>()
   return {
-    ...(await importOriginal<typeof import("../magpie/gateway.ts")>()),
-    findGateway: () => sync(() => gateway.origin),
-    modelsAt: () => sync(() => gateway.models),
-    gatewayModels: () => sync(() => (gateway.origin === null ? [] : gateway.models)),
+    ...original,
+    connect: (target: GatewayTarget) =>
+      gateway.origin === null
+        ? fail(new original.GatewayError({ message: "magpie is not running" }))
+        : succeed({ origin: gateway.origin, key: target.key ?? original.MAGPIE_KEY, version: null }),
+    modelsOf: () => sync(() => gateway.models),
   }
 })
 
@@ -1282,7 +1286,7 @@ const onMagpie = <A, E>(effect: Effect.Effect<A, E, MagpieProvider>) =>
       { id: "moonshot/kimi-k3" },
     ]
     return effect
-  }).pipe(Effect.provide(MagpieProvider.layer))
+  }).pipe(Effect.provide(MagpieProvider.layer.pipe(Layer.provide(magpieDependencies()))))
 
 const flagEnv = (cli: InstanceType<typeof sdk.FakeQuery>) =>
   typeof cli.options.settings === "object" ? cli.options.settings.env : undefined

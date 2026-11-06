@@ -2,6 +2,9 @@ import { homedir } from "node:os"
 import { Cause, Effect, Option, Schema } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
 import { availableUpdates, installUpdate } from "./agents/updates.ts"
+import { probe } from "./agents/magpie/gateway.ts"
+import { MAGPIE_KEY_SECRET } from "../shared/providers.ts"
+import { AgentError } from "./agents/provider.ts"
 import { compactMessage, previewMessage, transcriptPage } from "../shared/compactTranscript.ts"
 import { compactSubagentWork } from "../shared/subagents.ts"
 import type {
@@ -365,6 +368,11 @@ const handlers: Handlers = {
     AgentLogins.use((logins) => logins.account(provider, accountId, { refresh })),
   "agents.updates": () => (process.env["HINACODE_SKIP_AGENT_UPDATES"] ? Effect.succeed([]) : availableUpdates),
   "agents.update": ({ provider }) => installUpdate(provider),
+  "magpie.test": ({ endpoint, key }) =>
+    Effect.gen(function* () {
+      const saved = key === null ? yield* Secrets.use((secrets) => secrets.get(MAGPIE_KEY_SECRET)) : Option.none()
+      return yield* probe({ endpoint, key: key ?? Option.getOrNull(saved) })
+    }).pipe(Effect.mapError((error) => new AgentError({ provider: "magpie", message: error.message }))),
   "limits.list": () => AgentRunner.use((runner) => runner.limits),
   "accounts.list": () => AgentAccounts.use((accounts) => accounts.list),
   "accounts.create": (input) => AgentAccounts.use((accounts) => accounts.create(input)),

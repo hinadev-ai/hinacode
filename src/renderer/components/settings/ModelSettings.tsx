@@ -16,6 +16,7 @@ import { Switch } from "../ui/switch.tsx"
 import { Input } from "../ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { AccountList, DefaultAccountField } from "./AccountSettings.tsx"
+import { MagpieConnectionField } from "./MagpieConnectionField.tsx"
 import { SettingsGroup, SettingsGroupTitle, SettingsSection } from "./SettingsSection.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { SkeletonList } from "../ui/skeleton.tsx"
@@ -47,6 +48,7 @@ function ProviderModels({ provider }: { provider: ProviderId }) {
       </SettingsGroupTitle>
       <SettingsGroup>
         <AccountList provider={provider} />
+        {provider === "magpie" && <MagpieConnectionField />}
         <DefaultAccountField provider={provider} />
         <DefaultModelField provider={provider} />
         {AsyncResult.isSuccess(models) && models.value.length > 0 && (

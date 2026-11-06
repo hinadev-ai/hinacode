@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, test } from "@effect/vitest"
 import { Effect } from "effect"
-import { findGateway, gatewayModels } from "./gateway.ts"
+import { connect, LOCAL_GATEWAY, MAGPIE_KEY, modelsOf, probe } from "./gateway.ts"
 
 const servers: Array<Server> = []
 const configDirs: Array<string> = []
@@ -32,15 +32,17 @@ const json =
   (_, response) =>
     response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(body))
 
-const serve = async (routes: Record<string, RequestListener>) => {
+const serve = async (routes: Record<string, RequestListener>, requiredKey?: string) => {
   const authorizations: Array<string | undefined> = []
   const { port } = await listen((request, response) => {
     authorizations.push(request.headers.authorization)
+    if (requiredKey !== undefined && request.headers.authorization !== `Bearer ${requiredKey}`)
+      return response.writeHead(401).end()
     const route = routes[request.url ?? ""]
     if (!route) return response.writeHead(404).end()
     route(request, response)
   })
-  return { port, authorizations }
+  return { port, origin: `http://127.0.0.1:${port}`, authorizations }
 }
 
 const configFor = async (port: number) => {
@@ -51,58 +53,79 @@ const configFor = async (port: number) => {
   return { XDG_CONFIG_HOME: dir }
 }
 
-const hello = json({ name: "magpie" })
-const kimi = { id: "opencode-go/kimi-k3", display_name: "Kimi K3", reasoning_levels: ["high"], owned_by: "opencode" }
+const failure = <A, E extends { readonly message: string }>(effect: Effect.Effect<A, E>) =>
+  Effect.runPromise(Effect.flip(effect)).then((error) => error.message)
 
-describe("findGateway and gatewayModels", () => {
-  test("reach the port from settings.json and send the HinaCode key on every request", async () => {
-    const { port, authorizations } = await serve({
-      "/api/hello": hello,
-      "/v1/models": json({ object: "list", data: [kimi, { id: "group/daily" }] }),
-    })
+const hello = json({ name: "magpie", version: "0.1.3173" })
+const kimi = { id: "opencode-go/kimi-k3", display_name: "Kimi K3", reasoning_levels: ["high"], owned_by: "opencode" }
+const models = json({ object: "list", data: [kimi, { id: "group/daily" }] })
+
+describe("the local gateway", () => {
+  test("is found at the port in magpie's settings.json, with HinaCode's key on every request", async () => {
+    const { port, authorizations } = await serve({ "/api/hello": hello, "/v1/models": models })
     const env = await configFor(port)
 
-    expect(await Effect.runPromise(findGateway(env))).toBe(`http://127.0.0.1:${port}`)
-    expect(await Effect.runPromise(gatewayModels(env))).toStrictEqual([
+    const connection = await Effect.runPromise(connect(LOCAL_GATEWAY, env))
+    expect(connection).toStrictEqual({ origin: `http://127.0.0.1:${port}`, key: MAGPIE_KEY, version: "0.1.3173" })
+    expect(await Effect.runPromise(modelsOf(connection))).toStrictEqual([
       { id: "opencode-go/kimi-k3", display_name: "Kimi K3", reasoning_levels: ["high"] },
       { id: "group/daily" },
     ])
-    expect(authorizations).toStrictEqual(Array(3).fill("Bearer magpie-hinacode"))
+    expect(authorizations).toStrictEqual([`Bearer ${MAGPIE_KEY}`, `Bearer ${MAGPIE_KEY}`])
   })
 
-  test("ignore a server on the port that is not magpie", async () => {
-    const { port } = await serve({
-      "/api/hello": json({ name: "something-else" }),
-      "/v1/models": json({ data: [kimi] }),
-    })
-    const env = await configFor(port)
+  test("is not running when nothing on the port answers as magpie", async () => {
+    const other = await serve({ "/api/hello": json({ name: "something-else" }) })
+    const { server, port: closed } = await listen(() => undefined)
+    await new Promise((resolve) => server.close(resolve))
 
-    expect(await Effect.runPromise(findGateway(env))).toBeNull()
-    expect(await Effect.runPromise(gatewayModels(env))).toStrictEqual([])
+    for (const port of [other.port, closed])
+      expect(await failure(connect(LOCAL_GATEWAY, await configFor(port)))).toMatch(/^magpie is not running/)
+  })
+})
+
+describe("a gateway at a saved endpoint", () => {
+  test("is reached with the saved key, whatever the local settings say", async () => {
+    const remote = await serve({ "/api/hello": hello, "/v1/models": models }, "sk-gateway-key")
+    const env = await configFor(1)
+
+    expect(
+      await Effect.runPromise(probe({ endpoint: `${remote.origin}/v1/`, key: "sk-gateway-key" }, env)),
+    ).toStrictEqual({ version: "0.1.3173", models: 2 })
+    expect(new Set(remote.authorizations)).toStrictEqual(new Set(["Bearer sk-gateway-key"]))
   })
 
-  test("ignore a server on the port that has no hello endpoint", async () => {
-    const { port } = await serve({ "/v1/models": json({ data: [kimi] }) })
-    const env = await configFor(port)
+  test("says the key was refused when magpie answers 401", async () => {
+    const remote = await serve({ "/api/hello": hello }, "sk-gateway-key")
 
-    expect(await Effect.runPromise(findGateway(env))).toBeNull()
-    expect(await Effect.runPromise(gatewayModels(env))).toStrictEqual([])
+    expect(await failure(probe({ endpoint: remote.origin, key: "sk-wrong" }))).toBe(
+      `${remote.origin} refused the key. Use a gateway key from magpie's Gateway keys`,
+    )
+    expect(await failure(probe({ endpoint: remote.origin, key: null }))).toMatch(/refused the key/)
   })
 
-  test("find nothing when nothing listens on the port", async () => {
+  test("says nothing answered at an address with no server", async () => {
     const { server, port } = await listen(() => undefined)
     await new Promise((resolve) => server.close(resolve))
-    const env = await configFor(port)
 
-    expect(await Effect.runPromise(findGateway(env))).toBeNull()
-    expect(await Effect.runPromise(gatewayModels(env))).toStrictEqual([])
+    expect(await failure(probe({ endpoint: `http://127.0.0.1:${port}`, key: "k" }))).toBe(
+      `Nothing answered at http://127.0.0.1:${port}`,
+    )
   })
 
-  test("list no models when the models body is malformed", async () => {
-    const { port } = await serve({ "/api/hello": hello, "/v1/models": json({ data: [{ name: "no id" }] }) })
-    const env = await configFor(port)
+  test("says a server that is not magpie is not a magpie gateway", async () => {
+    const remote = await serve({ "/api/hello": json({ name: "something-else" }) })
 
-    expect(await Effect.runPromise(findGateway(env))).toBe(`http://127.0.0.1:${port}`)
-    expect(await Effect.runPromise(gatewayModels(env))).toStrictEqual([])
+    expect(await failure(probe({ endpoint: remote.origin, key: null }))).toBe(
+      `${remote.origin} is not a magpie gateway`,
+    )
+  })
+
+  test("says it cannot read a malformed model list", async () => {
+    const remote = await serve({ "/api/hello": hello, "/v1/models": json({ data: [{ name: "no id" }] }) })
+
+    expect(await failure(probe({ endpoint: remote.origin, key: null }))).toBe(
+      `${remote.origin} sent a model list HinaCode cannot read`,
+    )
   })
 })

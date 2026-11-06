@@ -138,6 +138,7 @@ export const makeAppLayer = ({
   artifactInspector = ArtifactInspector.unavailable,
 }: AppOptions) => {
   const providers = agentProviders(process.env)
+  const settings = Settings.layer(userData)
   const spans = new SpanLedger(STALL_MS)
   const chats = Layer.effectDiscard(Projects.Projects.use((projects) => projects.ensureChats(join(userData, "chats"))))
   const domain = Layer.mergeAll(
@@ -148,7 +149,7 @@ export const makeAppLayer = ({
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
       Layer.provideMerge(AgentAccounts.layer),
-      Layer.provideMerge(Settings.layer(userData)),
+      Layer.provideMerge(settings),
     ),
     ClientSettings.layer(userData),
     Messages.layer,
@@ -210,7 +211,7 @@ export const makeAppLayer = ({
   return Layer.mergeAll(RemoteServer.layer, CliSocket.layer(userData), answerAsksLayer, Conductor.layer).pipe(
     Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),
     Layer.provideMerge(services),
-    Layer.provide(providers.layer),
+    Layer.provide(providers.layer.pipe(Layer.provide(Layer.mergeAll(settings, Secrets.layer)))),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer, EventBus.layer)),
     Layer.provideMerge(makeEventsLayer(toWindows)),
     Layer.provide(Layer.mergeAll(Db.layer(join(userData, "hinacode.sqlite")), keyring)),

@@ -7,6 +7,7 @@ import type { RunTurnInput } from "../shared/agent.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import { MuseProvider } from "./agents/muse/index.ts"
 import { agentProviders } from "./app.ts"
+import { magpieDependencies } from "./agents/magpie/testing.ts"
 
 const dir = mkdtempSync(join(tmpdir(), "kk-mock-agents-"))
 const spawned = join(dir, "spawned")
@@ -51,7 +52,11 @@ describe("agentProviders", () => {
       expect(endings).toEqual([{ type: "turn_completed" }, { type: "turn_completed" }])
     }).pipe(
       Effect.provide(
-        Layer.fresh(agentProviders({ HINACODE_MOCK_AGENTS: "usage-limit", HINACODE_USER_DATA: dir }).layer),
+        Layer.fresh(
+          agentProviders({ HINACODE_MOCK_AGENTS: "usage-limit", HINACODE_USER_DATA: dir }).layer.pipe(
+            Layer.provide(magpieDependencies()),
+          ),
+        ),
       ),
     ),
   )
