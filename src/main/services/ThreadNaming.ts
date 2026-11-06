@@ -24,6 +24,11 @@ const SYSTEM_PROMPT = `You name coding tasks in a developer's sidebar. Given the
 - branch: 2 to 5 lowercase English words joined by hyphens, with no prefix`
 
 const PROMPT_LIMIT = 4000
+const ELISION = "\n\n[…]\n\n"
+const HALF_LIMIT = Math.floor((PROMPT_LIMIT - ELISION.length) / 2)
+
+const firstAndLatest = (text: string) =>
+  text.length <= PROMPT_LIMIT ? text : `${text.slice(0, HALF_LIMIT)}${ELISION}${text.slice(-HALF_LIMIT)}`
 
 export type NamingScope = "title" | "titleAndBranch"
 
@@ -44,7 +49,7 @@ const suggest = (model: string, prompt: string) =>
         signal.addEventListener("abort", () => abortController.abort())
         const { query } = await import("@anthropic-ai/claude-agent-sdk")
         const stream = query({
-          prompt: prompt.slice(0, PROMPT_LIMIT),
+          prompt: firstAndLatest(prompt),
           options: {
             env: { ...process.env },
             pathToClaudeCodeExecutable,
@@ -112,12 +117,13 @@ const make = Effect.gen(function* () {
 
   const regenerateTitle = (threadId: string) =>
     Effect.gen(function* () {
-      const thread = yield* threads.get(threadId)
+      const before = yield* threads.get(threadId)
       const prompt = userText(yield* messages.list(threadId))
-      if (prompt === "") return thread
+      if (prompt === "") return before
       const { textGenerationModel } = yield* settings.get
       const title = (yield* suggest(textGenerationModel, prompt)).title.trim()
-      if (title === "" || title === thread.title) return thread
+      const current = yield* threads.get(threadId)
+      if (title === "" || title === current.title || current.title !== before.title) return current
       const renamed = yield* threads.update({ id: threadId, title })
       yield* events.publish({ type: "thread.updated", thread: renamed })
       return renamed

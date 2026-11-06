@@ -334,6 +334,17 @@ describe("regenerating a thread's title", () => {
     }),
   )
 
+  it.live("keeps the latest messages of a long thread in view", () =>
+    Effect.gen(function* () {
+      const result = yield* regenerate([
+        message("1", "user", "a".repeat(5000)),
+        message("2", "user", "Now review the pull request"),
+      ])
+      expect(result.prompts[0]?.startsWith("aaa")).toBe(true)
+      expect(result.prompts[0]?.endsWith("Now review the pull request")).toBe(true)
+    }),
+  )
+
   it.live("keeps the title of a thread with nothing sent yet", () =>
     Effect.gen(function* () {
       const result = yield* regenerate([])
