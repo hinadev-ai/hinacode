@@ -34,15 +34,14 @@ import {
   CLAUDE_EFFORT_LEVELS,
   type ContextBreakdown,
   type ModelInfo,
+  type ProviderId,
   type RunTurnInput,
 } from "../../../shared/agent.ts"
 import { AGENT_IMAGE_MAX_BYTES, AGENT_IMAGE_TYPES } from "../../../shared/agentImages.ts"
-import { gatewayModelOf } from "../../../shared/magpie.ts"
 import type { AccessMode, Attachment } from "../../../shared/domain.ts"
 import { nowIso } from "../../services/clock.ts"
 import { registerAgentPid } from "../../services/Ports.ts"
 import { installedBinary } from "../binary.ts"
-import { claudeGatewayEnv, findGateway, gatewayModels, magpieModelInfo } from "../magpie.ts"
 import {
   AgentError,
   type AgentProvider,
@@ -106,23 +105,6 @@ const effortLevelOf = (effort: string | null): EffortLevel | null =>
 const withUltrathink = (prompt: string, effort: string | null) =>
   effort === ULTRATHINK ? `${prompt}\n\n${ULTRATHINK}`.trimStart() : prompt
 
-const sharesProcess = (running: string, next: string) =>
-  running === next || (gatewayModelOf(running) === null && gatewayModelOf(next) === null)
-
-const launchEnv = (model: string) =>
-  Effect.gen(function* () {
-    const gatewayModel = gatewayModelOf(model)
-    if (gatewayModel === null) return {}
-    const origin = yield* findGateway()
-    if (origin === null) {
-      return yield* new AgentError({
-        provider: "claude",
-        message: "magpie is not running. Start the magpie app or `magpie serve`, then try again",
-      })
-    }
-    return claudeGatewayEnv(origin, gatewayModel)
-  })
-
 const effortsOf = (levels: ReadonlyArray<string>) =>
   levels.length === 0 ? [] : [...levels, ULTRATHINK, ...(levels.includes("xhigh") ? [ULTRACODE] : [])]
 
@@ -143,6 +125,7 @@ interface Session extends MapState, ApprovalSession {
   fastMode: boolean
   readonly userSkills: boolean
   readonly autoCompactTokens: number | null
+  readonly launch: Readonly<Record<string, string>>
   permissionMode: PermissionMode
   sessionId: string | null
   lastAssistantUuid: string | null
@@ -377,8 +360,50 @@ const probeCommands = (key: string) => {
   })
 }
 
-export const layer = Layer.effect(
-  ClaudeProvider,
+const fetchModels = Effect.gen(function* () {
+  const models = yield* probe((cli) => cli.supportedModels(), "Failed to list Claude models", null)
+  const byId = new Map<string, ModelInfo>()
+  for (const model of models) {
+    if (model.value === "default") continue
+    const id = model.resolvedModel ?? model.value
+    if (byId.has(id)) continue
+    byId.set(id, {
+      id,
+      label: model.displayName,
+      provider: "claude",
+      efforts: model.supportsEffort ? effortsOf(model.supportedEffortLevels ?? []) : [],
+      defaultEffort: null,
+      fastMode: model.supportsFastMode ?? false,
+      autoMode: model.supportsAutoMode ?? false,
+    })
+  }
+  return [...byId.values()]
+})
+
+const listSessions = (cwd: string, home: AccountHome | null) =>
+  Effect.tryPromise({
+    try: () => listClaudeSessions(home?.dir ?? claudeHome(), cwd),
+    catch: agentError("Failed to list Claude sessions"),
+  })
+
+const readSession = (sessionId: string, cwd: string, home: AccountHome | null) =>
+  Effect.tryPromise({
+    try: () => readClaudeSession(home?.dir ?? claudeHome(), cwd, sessionId),
+    catch: agentError("Failed to read the Claude session"),
+  })
+
+export interface ClaudeHarness {
+  readonly id: ProviderId
+  readonly listModels: Effect.Effect<ReadonlyArray<ModelInfo>, AgentError>
+  readonly launchEnv: (model: string) => Effect.Effect<Readonly<Record<string, string>>, AgentError>
+}
+
+type HarnessProvider = Omit<AgentProvider, "account" | "planLimits" | "copySession" | "listSessions" | "readSession">
+
+const sameLaunch = (a: Readonly<Record<string, string>>, b: Readonly<Record<string, string>>) =>
+  JSON.stringify(a) === JSON.stringify(b)
+
+export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) =>
   Effect.gen(function* () {
     const layerScope = yield* Effect.scope
     const sessions = new Map<string, Session>()
@@ -616,7 +641,7 @@ export const layer = Layer.effect(
           )
         : Effect.succeed(permissionMode(accessMode, false))
 
-    const startSession = (input: SessionInput, mode: PermissionMode) =>
+    const startSession = (input: SessionInput, mode: PermissionMode, launch: Readonly<Record<string, string>>) =>
       Effect.gen(function* () {
         const prompts = yield* Queue.unbounded<SDKUserMessage>()
         const abort = new AbortController()
@@ -624,7 +649,6 @@ export const layer = Layer.effect(
         const resume = input.resumeSessionId ?? previous?.sessionId
         const keepsGrants = previous !== undefined && previous.sessionId === resume && sameContext(previous, input)
         const base = yield* baseOptions(input.home)
-        const gatewayEnv = yield* launchEnv(input.model)
         const hidden = yield* skillOverrides(input)
         const effort = effortLevelOf(input.effort)
         const { query } = yield* Effect.promise(() => import("@anthropic-ai/claude-agent-sdk"))
@@ -634,17 +658,13 @@ export const layer = Layer.effect(
               prompt: Stream.toAsyncIterable(Stream.fromQueue(prompts)),
               options: {
                 ...base,
-                env: {
-                  ...base.env,
-                  ...tmpEnv(input.tmpDirectory),
-                  ...gatewayEnv,
-                  // FIXME: session_state_changed idle is the CLI's only signal that background sub-agents are done
-                  CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
-                },
+                // FIXME: session_state_changed idle is the CLI's only signal that background sub-agents are done
+                env: { ...base.env, ...tmpEnv(input.tmpDirectory), CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" },
                 cwd: input.cwd,
-                model: gatewayModelOf(input.model) ?? input.model,
+                model: input.model,
                 ...(effort === null ? {} : { effort }),
                 settings: {
+                  ...(Object.keys(launch).length > 0 && { env: { ...launch } }),
                   fastMode: input.fastMode,
                   ...(input.autoCompactTokens !== null && { autoCompactWindow: input.autoCompactTokens }),
                   ...(input.effort === ULTRACODE && { ultracode: true }),
@@ -689,6 +709,7 @@ export const layer = Layer.effect(
           fastMode: input.fastMode,
           userSkills: input.userSkills,
           autoCompactTokens: input.autoCompactTokens,
+          launch,
           permissionMode: mode,
           prompts,
           abort,
@@ -734,19 +755,20 @@ export const layer = Layer.effect(
 
     const reuseOrStartSession = (input: SessionInput, mode: PermissionMode) =>
       Effect.gen(function* () {
+        const launch = yield* launchEnv(input.model)
         const existing = sessions.get(input.threadId)
         if (existing !== undefined) {
           // FIXME: the CLI reads its skills and auto-compact window once per process
           if (
             sameContext(existing, input) &&
-            sharesProcess(existing.model, input.model) &&
+            sameLaunch(existing.launch, launch) &&
             existing.userSkills === input.userSkills &&
             existing.autoCompactTokens === input.autoCompactTokens
           )
             return claim(existing)
           yield* closeSession(existing)
         }
-        return yield* startSession(input, mode)
+        return yield* startSession(input, mode, launch)
       })
 
     const acquireSession = (input: SessionInput, mode: PermissionMode) =>
@@ -814,7 +836,7 @@ export const layer = Layer.effect(
       Effect.gen(function* () {
         if (session.turn !== null) {
           return yield* new AgentError({
-            provider: "claude",
+            provider: id,
             message: "A turn is already running on this thread",
           })
         }
@@ -842,7 +864,7 @@ export const layer = Layer.effect(
         const message = yield* userMessage(withUltrathink(input.prompt, input.effort), input.attachments)
         if (session.turn !== null) {
           return yield* new AgentError({
-            provider: "claude",
+            provider: id,
             message: "A turn is already running on this thread",
           })
         }
@@ -870,7 +892,7 @@ export const layer = Layer.effect(
         const message = yield* userMessage(text, attachments, priority)
         const session = sessions.get(threadId)
         if (session?.turn == null) {
-          return yield* new AgentError({ provider: "claude", message: "No turn is running on this thread" })
+          return yield* new AgentError({ provider: id, message: "No turn is running on this thread" })
         }
         session.turnPrompts.add(message.uuid)
         session.unanswered.add(message.uuid)
@@ -878,53 +900,11 @@ export const layer = Layer.effect(
         yield* Queue.offer(session.prompts, message)
       })
 
-    const fetchModels = Effect.gen(function* () {
-      const models = yield* probe((cli) => cli.supportedModels(), "Failed to list Claude models", null)
-      const byId = new Map<string, ModelInfo>()
-      for (const model of models) {
-        if (model.value === "default") continue
-        const id = model.resolvedModel ?? model.value
-        if (byId.has(id)) continue
-        byId.set(id, {
-          id,
-          label: model.displayName,
-          provider: "claude",
-          efforts: model.supportsEffort ? effortsOf(model.supportedEffortLevels ?? []) : [],
-          defaultEffort: null,
-          fastMode: model.supportsFastMode ?? false,
-          autoMode: model.supportsAutoMode ?? false,
-        })
-      }
-      return [...byId.values()]
-    })
-
-    const cachedModels = yield* Effect.cachedWithTTL(fetchModels, (exit) =>
-      Exit.isSuccess(exit) ? Duration.minutes(10) : Duration.zero,
-    )
-    const listModels = Effect.zipWith(
-      Effect.orElseSucceed(cachedModels, () => FALLBACK_MODELS),
-      gatewayModels(),
-      (own, routed) => [...own, ...routed.map((model) => magpieModelInfo(model, "claude", CLAUDE_EFFORT_LEVELS))],
-      { concurrent: true },
-    )
-
     const transcriptUsage = perHome(makeTranscriptUsage)
     const usage = (sessionId: string, home: AccountHome | null) =>
       Effect.tryPromise({
         try: () => transcriptUsage(home?.dir ?? claudeHome())(sessionId),
         catch: agentError("Failed to read Claude transcripts"),
-      })
-
-    const listSessions = (cwd: string, home: AccountHome | null) =>
-      Effect.tryPromise({
-        try: () => listClaudeSessions(home?.dir ?? claudeHome(), cwd),
-        catch: agentError("Failed to list Claude sessions"),
-      })
-
-    const readSession = (sessionId: string, cwd: string, home: AccountHome | null) =>
-      Effect.tryPromise({
-        try: () => readClaudeSession(home?.dir ?? claudeHome(), cwd, sessionId),
-        catch: agentError("Failed to read the Claude session"),
       })
 
     const listCommands = ({
@@ -950,15 +930,10 @@ export const layer = Layer.effect(
 
     yield* Effect.addFinalizer(() => Effect.forEach([...sessions.values()], closeSession, { discard: true }))
 
-    return ClaudeProvider.of({
-      id: "claude",
+    const provider: HarnessProvider = {
+      id,
       listModels,
-      account,
-      planLimits,
       usage,
-      copySession,
-      listSessions,
-      readSession,
       listCommands,
       runTurn,
       warm,
@@ -1031,6 +1006,21 @@ export const layer = Layer.effect(
           if (session.closed) return
           yield* lease(session, (leased) => switchPermissionMode(leased, mode))
         }),
+    }
+    return provider
+  })
+
+export const layer = Layer.effect(
+  ClaudeProvider,
+  Effect.gen(function* () {
+    const cachedModels = yield* Effect.cachedWithTTL(fetchModels, (exit) =>
+      Exit.isSuccess(exit) ? Duration.minutes(10) : Duration.zero,
+    )
+    const harness = yield* makeClaudeHarness({
+      id: "claude",
+      listModels: Effect.orElseSucceed(cachedModels, () => FALLBACK_MODELS),
+      launchEnv: () => Effect.succeed({}),
     })
+    return ClaudeProvider.of({ ...harness, account, planLimits, copySession, listSessions, readSession })
   }),
 )
