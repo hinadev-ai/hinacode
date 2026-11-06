@@ -162,11 +162,20 @@ When("I turn on the setting {string}", async ({ app }, label: string) => {
   await expect(toggle).toBeChecked()
 })
 
-Then("the archive settings are saved as both on", async ({ app }) => {
-  await expect
-    .poll(async () => (await rpc(app.page, "settings.get", undefined)).archive)
-    .toStrictEqual({ whenMerged: true, removeWorktree: true })
+When("I enter {int} days for {string}", async ({ app }, days: number, label: string) => {
+  const input = app.page.getByRole("spinbutton", { name: label, exact: true })
+  await input.fill(String(days))
+  await input.press("Enter")
 })
+
+Then(
+  "the archive settings are saved with both switches on and archiving after {int} days",
+  async ({ app }, days: number) => {
+    await expect
+      .poll(async () => (await rpc(app.page, "settings.get", undefined)).archive)
+      .toStrictEqual({ whenMerged: true, removeWorktree: true, settleAfterIdleDays: 7, archiveAfterSettledDays: days })
+  },
+)
 
 When("I scroll the settings page past its end", async ({ app }) => {
   await expect(app.page.getByRole("switch", { name: "Pull request guide", exact: true })).toBeChecked()
