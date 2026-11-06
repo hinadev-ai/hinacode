@@ -542,13 +542,13 @@ stateDiagram-v2
   Working --> Snoozed: snooze
   Snoozed --> Ready: wake
   Snoozed --> Working: send
-  Ready --> Settled: settle, merge, quiet week
+  Ready --> Settled: settle, merge, idle days
   Snoozed --> Settled: settle, merge
   Settled --> Ready: reopen, pin
   Settled --> Working: send
   Ready --> Archived: archive
   Snoozed --> Archived: archive
-  Settled --> Archived: archive
+  Settled --> Archived: archive, settled days
   Archived --> Ready: reopen
   Archived --> Working: send
   Ready --> Deleted: delete

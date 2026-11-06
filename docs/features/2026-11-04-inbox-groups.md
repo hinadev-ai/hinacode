@@ -16,11 +16,11 @@ Internal statuses stay `draft`, `running`, `idle` and `archived`, plus `thread.s
 1. **Drafts** come first. See `2026-11-04-listed-drafts.md`.
 2. **Ready** holds questions, usage limits, failures, finished turns, pull request problems, read threads and working agents, newest activity first. Read threads recede, so what needs the developer stands out without moving. The Inbox tab's badge counts only what has not been read and has not settled.
 3. A working thread stays in its place in Ready, dimmed, instead of moving to its own section. A section of its own made rows jump out of Ready when a turn started and back when it ended. The pulse button in the Ready heading swaps each working row's third line for the agent's latest tool call. Idle rows keep their line.
-4. **Settled** stays at the bottom of the sidebar, outside the scrolling list, and opens upward with its own scroll. It renders 50 rows and adds 50 more as the scroll nears the end, so opening stays fast with thousands of threads. Settling from a row or the row menu moves a thread there, with Undo. A settled thread keeps its workspace, terminals and scratch folder. **Reopen** or a new message brings it back.
+4. **Settled** stays at the bottom of the sidebar, outside the scrolling list, and opens upward with its own scroll. It renders 50 rows and adds 50 more as the scroll nears the end, so opening stays fast with thousands of threads. Settling from a row or the row menu moves a thread there, with Undo. Settling stops what the thread left running (terminals, background tasks, listening ports) and keeps its workspace and scratch folder. See `2026-11-06-settle-after-idle-and-auto-archive.md`. **Reopen** or a new message brings it back.
 5. A thread settles by itself when its own pull request merges and no work started after the merge. A pinned thread does not. A pull request closed without merging stays in Ready for the developer to decide. If **Remove the worktree when archiving** is on, the merge sweep removes the merged worktree too.
-6. A read thread with no open pull request and no activity for 7 days shows under Settled, without changing its row or touching its worktree. Any activity or Reopen brings it back.
+6. A read thread with no open pull request and no activity for the days set in Settings settles by itself, 7 by default. Any activity or Reopen brings it back.
 7. **Archived** sits below Settled. Archiving closes the workspace: terminals, chat folder and scratch folder, and the worktree when the setting is on.
-8. Reopening is sticky. It stamps `work_started_at` and bumps `updated_at`, so neither an old merge nor the quiet rule settles the thread again until something new happens.
+8. Reopening is sticky. It stamps `work_started_at` and bumps `updated_at`, so neither an old merge nor the idle rule settles the thread again until something new happens.
 
 ## Design
 

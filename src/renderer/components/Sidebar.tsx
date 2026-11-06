@@ -21,7 +21,7 @@ import { projectsAtom } from "../lib/rpc.ts"
 import { arrangeRows, deleteGroup, moveGroup, renameGroup, setGroupCollapsed } from "../lib/sidebarGroups.ts"
 import { useSidebarGroups } from "../lib/useSidebarGroups.ts"
 import { type InboxGroup, inboxGroup, rowState } from "../../shared/threadStatus.ts"
-import { openPullRequestsAtom, pullRequestAttentionsAtom } from "../lib/rpc.ts"
+import { pullRequestAttentionsAtom } from "../lib/rpc.ts"
 import { useBackgroundTasks } from "../stores/backgroundTasks.ts"
 import { useSending } from "../stores/sending.ts"
 import { type Draft, hasContent, useDrafts } from "../stores/drafts.ts"
@@ -412,7 +412,7 @@ function useWrittenDrafts(projects: ReadonlyArray<Project>, query: Query) {
   return writtenDrafts(threads, titles, projects, query)
 }
 
-function useInboxGroups(threads: ReadonlyArray<Thread>, now: number) {
+function useInboxGroups(threads: ReadonlyArray<Thread>) {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
   const unseen = useUnseen((state) => state.byThreadId)
   const background = useBackgroundTasks((state) => state.byThreadId)
@@ -423,7 +423,6 @@ function useInboxGroups(threads: ReadonlyArray<Thread>, now: number) {
     return [environmentOf(project), (links[thread.id] ?? []).map((link) => link.url)] as const
   })
   const attentions = useAtomValue(pullRequestAttentionsAtom(lookups))
-  const open = useAtomValue(openPullRequestsAtom(lookups))
   const entries = threads.map((thread, index) => {
     const state = rowState(
       thread.status,
@@ -431,12 +430,7 @@ function useInboxGroups(threads: ReadonlyArray<Thread>, now: number) {
       unseen[thread.id],
       attentions[index],
     )
-    return {
-      thread,
-      state,
-      lastActivity: lastActivity(thread),
-      group: inboxGroup(state, thread.settledAt, lastActivity(thread), open[index] ?? false, now),
-    }
+    return { thread, group: inboxGroup(state, thread.settledAt) }
   })
   const threadsIn = (group: InboxGroup) => entries.filter((entry) => entry.group === group).map((entry) => entry.thread)
   return {
@@ -453,7 +447,7 @@ function InboxShelves({ query }: { query: Query }) {
   const now = useNow()
   const threads = useMatchingThreads(selectInboxThreads(now), query)
   const archived = useMatchingThreads(selectArchivedThreads, query)
-  const { settled } = useInboxGroups(threads, now)
+  const { settled } = useInboxGroups(threads)
   if (settled.length === 0 && archived.length === 0) return null
   return (
     <div className="flex shrink-0 flex-col border-t border-sidebar-border py-1">
@@ -527,7 +521,7 @@ function InboxList({ query }: { query: Query }) {
   const now = useNow()
   const threads = useMatchingThreads(selectInboxThreads(now), query)
   const snoozed = useMatchingThreads(selectSnoozedThreads(now), query)
-  const { ready } = useInboxGroups(threads, now)
+  const { ready } = useInboxGroups(threads)
   const projects = useFilteredProjects(AsyncResult.getOrElse(useAtomValue(projectsAtom), () => []))
   const drafts = useWrittenDrafts(projects, query)
   const showActivity = useUi((state) => state.inboxActivityShown)
