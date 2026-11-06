@@ -223,7 +223,7 @@ function useAgentTabs(thread: Thread, canSwitchAgent: boolean): ReadonlyArray<Ag
   )
 }
 
-export const modelMatches = (model: ModelInfo, query: string) => {
+const modelMatches = (model: ModelInfo, query: string) => {
   const text = `${model.label} ${model.id}`.toLowerCase()
   return query
     .toLowerCase()
