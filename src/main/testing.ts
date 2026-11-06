@@ -40,6 +40,7 @@ import * as Scratch from "./services/Scratch.ts"
 import * as Search from "./services/Search.ts"
 import * as Secrets from "./services/Secrets.ts"
 import * as Settings from "./services/Settings.ts"
+import * as Settle from "./services/Settle.ts"
 import * as Terminals from "./services/Terminals.ts"
 import * as Threads from "./services/Threads.ts"
 import { ThreadNaming } from "./services/ThreadNaming.ts"
@@ -119,6 +120,7 @@ export const makeTestAppLayer = (
     imports,
     environments,
     PullRequestGuides.idleLayer,
+    Settle.layer.pipe(Layer.provide(agents)),
   )
   const app = Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base)))
   return Layer.mergeAll(RemoteServer.layer, answerAsksLayer).pipe(

@@ -1,0 +1,43 @@
+# Settle stops the thread's processes
+
+Status: Shipped
+Date: 2026-11-06
+
+## Problem
+
+Settle only moves a thread into the Settled group. Everything the thread started keeps running: the dev server on port 5173, a background shell, a workflow, a wakeup that starts a new turn tomorrow, the terminals in its drawer and the warm agent CLI. A developer who settles ten threads at the end of the day still has ten dev servers holding ports and memory. Auto-settle on merge has the same gap, and it also settles a thread while a background task is still working on it.
+
+## User flow
+
+1. **Manual.** The developer settles an idle thread from the sidebar. HinaCode stops the thread's sub-agents and background tasks, shells included, closes its agent session, closes its terminals and stops every process listening on a port in its workspace. Then the thread moves to Settled. Undo moves it back but does not restart anything.
+2. **On merge.** With "Settle when merged" on, the sweep settles a thread once its pull requests are finished and one of its own merged, as before. It now also waits until the thread is quiet: no turn running, no running sub-agent, no background task and no listening port. Then it settles the thread and cleans up the same way. A thread with a dev server still up stays in Ready until the developer stops it or settles it by hand.
+
+## Design
+
+A thread's leftover work, and what settling does with each:
+
+| Work                                     | Blocks auto-settle | On settle                                             |
+| ---------------------------------------- | ------------------ | ----------------------------------------------------- |
+| Turn running                             | yes                | manual settle refuses, as before                      |
+| Running sub-agent                        | yes                | `AgentRunner.stopSubagent`                            |
+| Background task (shell, workflow, other) | yes                | `AgentProvider.backgroundTasks.stop`                  |
+| Wakeup                                   | yes                | closed with the session                               |
+| Agent session                            | no                 | `AgentProvider.closeSession`                          |
+| Terminal                                 | no                 | `Terminals.closeThread`                               |
+| Listening port                           | yes                | `Ports.closeThread`: SIGTERM, SIGKILL after 3 seconds |
+
+The `Settle` service, formerly `AutoSettle`, owns both paths and runs one `release` for each. `release` stops the agent's work first through `AgentRunner.release`, because `Ports` counts every descendant of the agent CLI as the thread's and the CLI's own MCP servers should exit with the CLI rather than be killed under a live session. Then it closes terminals, whose hangup ends most dev servers. Then `Ports.closeThread` stops whatever still listens. Each step is best effort, so a provider that cannot stop one task does not keep the thread from settling.
+
+`AgentRunner.release` closes the session only while no turn holds the thread, under the same per-thread lock that sends use. The next message resumes the session from its id.
+
+The sweep checks the in-memory parts of "quiet" and the pull requests before it scans ports, so it runs `ss` or `lsof` only for a thread that is otherwise ready to settle.
+
+## Out of scope
+
+- **Processes that do not listen.** A file watcher started with `&` in the worktree has no port, so neither path finds it. Closing the terminals and the agent session ends the ones they own.
+- **Archive.** Archiving still only closes terminals. It can call the same `release` if that turns out to matter.
+
+## Verification
+
+- `Settle.integration.test.ts`: manual settle stops a real listener in the thread's workspace, closes its terminals and releases the agent. The sweep leaves a merged thread alone while it has a background task, a running sub-agent or a listener, and settles and releases it once it is quiet.
+- `AgentRunner.integration.test.ts`: `release` stops sub-agents and every task, shells included, and closes the session, and leaves a session that a turn holds open.
