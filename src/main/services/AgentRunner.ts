@@ -197,6 +197,7 @@ export class AgentRunner extends Context.Service<
       readonly when: Effect.Effect<boolean, PersistenceError>
     }) => Effect.Effect<boolean, SendError>
     readonly interrupt: (threadId: string) => Effect.Effect<void>
+    readonly release: (threadId: string) => Effect.Effect<void>
     readonly warm: (threadId: string) => Effect.Effect<void>
     readonly resumeAtReset: (
       threadId: string,
@@ -1617,20 +1618,32 @@ const make = Effect.gen(function* () {
       }).pipe(exclusive(threadId))
     }).pipe(Effect.catch((error) => Effect.logError("failed to retire the wakeup of a stopped thread", error)))
 
-  const stopBackgroundWork = (threadId: string) =>
+  const stopSubagentsAndTasks = (threadId: string, stops: (task: BackgroundTask) => boolean) =>
     Effect.gen(function* () {
       const running = listSubagents(threadId).filter((subagent) => subagent.status === "running")
       yield* Effect.forEach(running, (subagent) => stopSubagent(threadId, subagent.id).pipe(Effect.ignore), {
         discard: true,
       })
-      const tasks = (backgroundTasks.get(threadId) ?? []).filter(
-        (task) => task.kind !== "wakeup" && task.kind !== "shell",
-      )
+      const tasks = (backgroundTasks.get(threadId) ?? []).filter((task) => task.kind !== "wakeup" && stops(task))
       yield* Effect.forEach(tasks, (task) => stopBackgroundTask(threadId, task.id).pipe(Effect.ignore), {
         discard: true,
       })
+    })
+
+  const stopBackgroundWork = (threadId: string) =>
+    Effect.gen(function* () {
+      yield* stopSubagentsAndTasks(threadId, (task) => task.kind !== "shell")
       if (hasPendingWakeup(threadId)) yield* Effect.forkIn(closeSessionAfterTurn(threadId), scope)
     })
+
+  const release = (threadId: string) =>
+    Effect.gen(function* () {
+      yield* stopSubagentsAndTasks(threadId, () => true)
+      yield* Effect.gen(function* () {
+        if (busyThreads.has(threadId)) return
+        yield* closeProviderSession(yield* threads.get(threadId))
+      }).pipe(exclusive(threadId))
+    }).pipe(Effect.catch((error) => Effect.logWarning("failed to close the session of a settled thread", error)))
 
   const requestSecret = (threadId: string, name: string, description: string) =>
     Effect.gen(function* () {
@@ -1707,6 +1720,7 @@ const make = Effect.gen(function* () {
           }),
         ),
       ),
+    release,
     warm,
     setAccessMode: (threadId, accessMode) =>
       Effect.gen(function* () {

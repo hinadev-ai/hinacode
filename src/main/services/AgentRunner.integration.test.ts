@@ -1170,6 +1170,37 @@ it("closes the session after Stop when a wakeup is pending, so the wakeup never 
   })
 })
 
+it("releases an idle thread by stopping its sub-agents and every task, shells too, and closing its session", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, calls, stops, setBackgroundTasks }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "spawns a background sub-agent, then ends", []))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("idle"))
+    setBackgroundTasks([
+      { id: "shell-1", kind: "shell", label: "pnpm dev", startedAt: "2026-11-06T00:00:00.000Z" },
+      { id: "workflow-1", kind: "workflow", label: "Review", startedAt: "2026-11-06T00:00:00.000Z" },
+    ])
+    await vi.waitFor(async () => expect(await Effect.runPromise(runner.backgroundTasks(thread.id))).toHaveLength(2))
+
+    await Effect.runPromise(runner.release(thread.id))
+
+    expect(stops).toStrictEqual(["subagent:native-1", "task:shell-1", "task:workflow-1"])
+    expect(calls).toStrictEqual([{ provider: "claude", call: "closeSession" }])
+  })
+})
+
+it("keeps the session of a thread whose turn is running when it releases the thread", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, calls }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "waits for Stop", []))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running"))
+
+    await Effect.runPromise(runner.release(thread.id))
+
+    expect(calls).toStrictEqual([])
+    await Effect.runPromise(runner.interrupt(thread.id))
+  })
+})
+
 it("keeps a sub-agent running past its turn, then hands its reply to the idle thread", async () => {
   await withPreparingThread(async ({ runner, threads, thread, release, turns, reportSubagent }) => {
     release()
