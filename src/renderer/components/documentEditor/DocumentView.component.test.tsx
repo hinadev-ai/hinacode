@@ -51,6 +51,8 @@ let stored = { version: 1, revision: 1, markdown: AGENT_MARKDOWN }
 let nextSave: DocumentSaveResult | undefined
 let saves: Array<{ baseRevision: number; markdown: string }> = []
 let storedImages: Array<string> = []
+let fileReads: Array<{ id: string; path: string }> = []
+let imageStored: Promise<void> = Promise.resolve()
 const listeners = new Set<(event: typeof PushEvent.Encoded) => void>()
 
 const bridge: HinacodeBridge = {
@@ -76,9 +78,16 @@ const bridge: HinacodeBridge = {
     }
     if (method === "artifacts.addDocumentImage") {
       storedImages.push((payload as { dataUrl: string }).dataUrl)
+      await imageStored
       return { result: { path: "images/pasted.png" } }
     }
-    if (method === "artifacts.file") return { result: { dataUrl: storedImages.at(-1) ?? "" } }
+    if (method === "artifacts.file") {
+      const read = payload as { id: string; path: string }
+      fileReads.push(read)
+      return {
+        result: { dataUrl: read.id === documentId ? (storedImages.at(-1) ?? "") : "data:image/png;base64,b3RoZXI=" },
+      }
+    }
     if (method === "environments.list") return { result: { clouds: [] } }
     if (method === "clientSettings.get")
       return { result: Schema.encodeSync(RpcMethods["clientSettings.get"].response)(defaultClientSettings) }
@@ -108,6 +117,8 @@ beforeEach(({ task }) => {
   nextSave = undefined
   saves = []
   storedImages = []
+  fileReads = []
+  imageStored = Promise.resolve()
   useArtifacts.getState().select(thread.id, documentId)
   push({ type: "artifact.updated", artifact: documentAt(1) })
 })
@@ -179,6 +190,55 @@ test("stores a pasted image with the document and inlines it when printed", asyn
 
   const print = await printed(await liveDocument(liveDocumentKey(undefined, documentId))!.html())
   expect(print.querySelector("img")?.getAttribute("src")).toBe(storedImages[0])
+})
+
+test("puts a pasted image where it was pasted, even if the selection changes while it is stored", async () => {
+  const editor = await openDocument()
+  let finishStoring = () => {}
+  imageStored = new Promise((resolve) => {
+    finishStoring = resolve
+  })
+
+  await pasteAtEnd((data) => data.items.add(new File([PIXEL_PNG], "shot.png", { type: "image/png" })))
+  await expect.poll(() => storedImages.length).toBe(1)
+  await editor.getByRole("heading", { name: "Release plan" }).click()
+  await userEvent.keyboard("{End}{Shift>}{Home}{/Shift}")
+  finishStoring()
+
+  await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).toContain("first.![](images/pasted.png)")
+  expect(saves.at(-1)?.markdown).toMatch(/^# Release plan\n/)
+  await expect.element(editor.getByRole("heading", { name: "Release plan" })).toBeInTheDocument()
+})
+
+test("copies the bytes of an image pasted from another document", async () => {
+  await openDocument()
+
+  await pasteAtEnd((data) =>
+    data.setData(
+      "text/html",
+      '<p data-pm-slice="1 1 []"><img src="images/other.png" alt="" data-artifact-id="other-doc"></p>',
+    ),
+  )
+
+  await expect.poll(() => fileReads).toContainEqual({ id: "other-doc", path: "images/other.png" })
+  await expect.poll(() => storedImages).toEqual(["data:image/png;base64,b3RoZXI="])
+  await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).toContain("![](images/pasted.png)")
+})
+
+test("pastes Markdown syntax literally with Shift held", async () => {
+  const editor = await openDocument()
+
+  await page.getByText(/^Ship the/).click()
+  await userEvent.keyboard("{End}{Shift>}")
+  const clipboardData = new DataTransfer()
+  clipboardData.setData("text/plain", "## Keep this literal")
+  document
+    .querySelector(".hina-document")!
+    .dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }))
+  await userEvent.keyboard("{/Shift}")
+
+  await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).toContain("Keep this literal")
+  await expect.element(editor.getByRole("heading", { name: "Keep this literal" })).not.toBeInTheDocument()
 })
 
 test("edits an agent's document and saves Markdown that keeps every block the agent wrote", async () => {
