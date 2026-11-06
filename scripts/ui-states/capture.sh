@@ -33,7 +33,7 @@ ab set viewport 1600 1000 >/dev/null
 for scenario in $(curl -s "$origin/scenarios" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).join("\n")))' | grep -E "$only"); do
   for mode in light dark; do
     shot="$scenario-$mode"
-    ready="window.__uiState?.ready === true || window.__uiState?.error != null"
+    ready="window.__uiState?.error != null || (window.__uiState?.ready === true && document.body.innerText.trim().length > 40)"
     ab open "$origin/?scenario=$scenario&theme=hina-$mode" >/dev/null
     ab wait --fn "$ready" >/dev/null 2>&1 || { ab reload >/dev/null && ab wait --fn "$ready" >/dev/null; }
     error=$(ab eval "window.__uiState.error")
