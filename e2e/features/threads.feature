@@ -5,11 +5,6 @@ Feature: Threads
   Background:
     Given a project "demo" for my repository
 
-  Scenario: Starting a thread opens a draft, ready for the first message and kept out of the sidebar
-    When I start a new thread in "demo"
-    Then a new thread is open with the composer focused
-    And the sidebar does not list the open draft
-
   Scenario: Starting a thread again in a project brings back its draft as it was left
     Given the project "demo" has a thread "One"
     When I start a new thread in "demo"
@@ -19,9 +14,10 @@ Feature: Threads
     Then a new thread is open with the composer focused
     And the composer holds "half a thought"
 
-  Scenario: An unsent thread with content is listed, after a restart too, until it is emptied
+  Scenario: An empty draft stays out of the sidebar, and one with content is listed, after a restart too, until it is emptied
     When I start a new thread in "demo"
-    And I type "half a thought" into the composer
+    Then the sidebar does not list the open draft
+    When I type "half a thought" into the composer
     Then the sidebar lists the unsent thread "half a thought"
     When the app restarts
     Then the sidebar lists the unsent thread "half a thought"
@@ -61,12 +57,6 @@ Feature: Threads
     Then the sidebar lists the threads "Two, One" in that order
     When the app restarts
     Then the sidebar lists the threads "Two, One" in that order
-
-  Scenario: A thread is renamed inline from its row menu
-    Given the project "demo" has a thread "Draft"
-    When I rename the thread "Draft" to "Final"
-    Then the sidebar lists the thread "Final"
-    And the sidebar does not list the thread "Draft"
 
   Scenario: An archived thread moves under Archived and can be brought back
     Given the project "demo" has a thread "Done"

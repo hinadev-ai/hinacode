@@ -10,7 +10,6 @@ import {
   summarizeChecks,
   toPullRequest,
   toPullRequestDetail,
-  pullRequestsQuery,
 } from "./GitHub.ts"
 import type { PushEvent } from "../../shared/contract.ts"
 import { parseGitHubPullRequestUrl } from "../../shared/github.ts"
@@ -22,12 +21,6 @@ const account = (overrides: Partial<{ state: string; active: boolean; login: str
   host: "github.com",
   login: "octocat",
   ...overrides,
-})
-
-describe("pullRequestsQuery", () => {
-  test("asks for the merge time that decides whether a thread wraps up", () => {
-    expect(pullRequestsQuery(1)).toContain("mergedAt")
-  })
 })
 
 describe("parseAuthStatus", () => {

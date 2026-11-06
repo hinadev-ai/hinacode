@@ -1,9 +1,12 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import type { AddressInfo, Socket } from "node:net"
-import { Effect, Layer, Option, Redacted } from "effect"
+import { NodeServices } from "@effect/platform-node"
+import { Effect, Layer, Redacted } from "effect"
 import { describe, expect, it } from "vitest"
+import * as Db from "../../db/client.ts"
 import { Secrets } from "../Secrets.ts"
-import { Boat, boatClient, layer as boatLayer } from "./Boat.ts"
+import * as SecretsModule from "../Secrets.ts"
+import { Boat, BOAT_API_KEY_SECRET, boatClient, layer as boatLayer } from "./Boat.ts"
 
 const API_KEY = "test-key"
 
@@ -596,68 +599,48 @@ describe("boatClient", () => {
   })
 })
 
-describe("Boat service", () => {
-  const emptySecretsLayer = Layer.succeed(
-    Secrets,
-    Secrets.of({
-      get: () => Effect.succeed(Option.none()),
-      has: () => Effect.succeed(false),
-      set: () => Effect.void,
-      clear: () => Effect.void,
-    }),
+const withBoat = <A, E>(
+  env: Readonly<Record<string, string>>,
+  storedKey: string | null,
+  use: (boat: typeof Boat.Service) => Effect.Effect<A, E>,
+) =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      if (storedKey !== null) yield* Secrets.use((secrets) => secrets.set(BOAT_API_KEY_SECRET, storedKey))
+      return yield* Boat.use(use)
+    }).pipe(
+      Effect.provide(
+        boatLayer(env).pipe(
+          Layer.provideMerge(SecretsModule.layer),
+          Layer.provide(Db.layer(":memory:")),
+          Layer.provide(Layer.mergeAll(NodeServices.layer, SecretsModule.noKeyring)),
+        ),
+      ),
+    ),
   )
 
+describe("Boat service", () => {
   it("fails with BoatNotConfiguredError when neither env nor secret has a key", async () => {
-    const program = Effect.gen(function* () {
-      const boat = yield* Boat
-      const configured = yield* boat.configured
-      const error = yield* Effect.flip(boat.client)
-      return { configured, error }
-    })
-    const result = await Effect.runPromise(Effect.provide(program, Layer.provide(boatLayer({}), emptySecretsLayer)))
+    const result = await withBoat({}, null, (boat) =>
+      Effect.all({ configured: boat.configured, error: Effect.flip(boat.client) }),
+    )
     expect(result.configured).toBe(false)
     expect(result.error._tag).toBe("BoatNotConfiguredError")
     expect(result.error.message).toContain("BOAT_API_KEY")
   })
 
   it("env key wins and configured reports presence only", async () => {
-    const program = Effect.gen(function* () {
-      const boat = yield* Boat
-      const configured = yield* boat.configured
-      const client = yield* boat.client
-      return { configured, url: client.url }
-    })
-    const result = await Effect.runPromise(
-      Effect.provide(
-        program,
-        Layer.provide(
-          boatLayer({ BOAT_API_KEY: "env-key", BOAT_API_BASE: "http://127.0.0.1:9/api/v1/" }),
-          emptySecretsLayer,
-        ),
-      ),
+    const env = { BOAT_API_KEY: "env-key", BOAT_API_BASE: "http://127.0.0.1:9/api/v1/" }
+    const result = await withBoat(env, null, (boat) =>
+      Effect.all({ configured: boat.configured, url: Effect.map(boat.client, (client) => client.url) }),
     )
-    expect(result.configured).toBe(true)
-    expect(result.url).toBe("http://127.0.0.1:9/api/v1")
+    expect(result).toStrictEqual({ configured: true, url: "http://127.0.0.1:9/api/v1" })
   })
 
   it("reads the key from Secrets when the env has none", async () => {
-    const storedSecretsLayer = Layer.succeed(
-      Secrets,
-      Secrets.of({
-        get: (name) => Effect.succeed(name === "boat.apiKey" ? Option.some("stored-key") : Option.none()),
-        has: () => Effect.succeed(true),
-        set: () => Effect.void,
-        clear: () => Effect.void,
-      }),
+    const result = await withBoat({}, "stored-key", (boat) =>
+      Effect.all({ configured: boat.configured, url: Effect.map(boat.client, (client) => client.url) }),
     )
-    const program = Effect.gen(function* () {
-      const boat = yield* Boat
-      const configured = yield* boat.configured
-      const client = yield* boat.client
-      return { configured, url: client.url }
-    })
-    const result = await Effect.runPromise(Effect.provide(program, Layer.provide(boatLayer({}), storedSecretsLayer)))
-    expect(result.configured).toBe(true)
-    expect(result.url).toBe("https://boat.dev/api/v1")
+    expect(result).toStrictEqual({ configured: true, url: "https://boat.dev/api/v1" })
   })
 })

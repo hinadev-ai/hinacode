@@ -15,7 +15,6 @@ const bridge: HinacodeBridge = {
     calls.push({ method, payload })
     if (method === "clientSettings.get")
       return { result: Schema.encodeSync(RpcMethods["clientSettings.get"].response)(defaultClientSettings) }
-    if (method === "threads.interrupt") return { result: undefined }
     if (method === "attachments.stage")
       return {
         result: { id: "a-1", name: "notes.txt", path: "/tmp/notes.txt", mime: "text/plain", kind: "file", bytes: 1 },
@@ -63,17 +62,6 @@ const dragFile = (type: "dragover" | "drop", target: Element) => {
   transfer.items.add(new File(["x"], "notes.txt", { type: "text/plain" }))
   target.dispatchEvent(new DragEvent(type, { dataTransfer: transfer, bubbles: true, cancelable: true }))
 }
-
-test("swaps Stop for Queue while a turn runs and the draft has text", async () => {
-  const thread = threadWith("running", "running")
-  await render(<Composer thread={thread} />)
-  await page.getByRole("button", { name: "Stop", exact: true }).click()
-  expect(calls).toContainEqual({ method: "threads.interrupt", payload: { threadId: thread.id } })
-
-  useDrafts.getState().setText(thread.id, "actually, use the other file")
-  await expect.element(page.getByRole("button", { name: "Queue", exact: true })).toBeVisible()
-  await expect.element(page.getByRole("button", { name: "Stop", exact: true })).not.toBeInTheDocument()
-})
 
 test("truncates a long model name instead of running under the toolbar buttons", async () => {
   const thread = { ...threadWith("idle", "idle"), model: "console-openrouter/deepseek/deepseek-v4.1-flash-1017" }

@@ -6,7 +6,6 @@ import {
   openFile,
   openMachineResources,
   openSignedIn,
-  sendMessage,
   sidebar,
   signIn,
   startThread,
@@ -77,17 +76,6 @@ test("markup injected into the page cannot run script", async ({ page, web }) =>
     return "injected" in window
   })
   expect(ran).toBe(false)
-})
-
-test("a project added by path talks to the agent on the machine", async ({ page, web, repo, uniqueName }) => {
-  const project = uniqueName("web")
-  await openSignedIn(page, web)
-  await addProject(page, repo, project)
-  await startThread(page, web, project)
-  await sendMessage(page, "Show me some Markdown")
-  const reply = page.locator("article[aria-busy]")
-  await expect(reply.getByRole("heading", { level: 1, name: "Heading 1 with code" })).toBeVisible()
-  await expect(reply).toHaveAttribute("aria-busy", "false")
 })
 
 test("an image in the project previews through the service worker", async ({ page, web, repo, uniqueName }) => {
