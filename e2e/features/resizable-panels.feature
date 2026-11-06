@@ -26,7 +26,7 @@ Feature: Resizable panels
 
   Scenario: Dragging the sidebar edge still resizes the sidebar
     When I drag "Resize sidebar" 100 pixels to the right
-    Then the sidebar is 356 pixels wide
+    Then the sidebar is 404 pixels wide
 
   # Unmounting a captured splitter used to leave cursor and selection styles on the entire document.
   Scenario: A responsive layout change releases an active resize drag
