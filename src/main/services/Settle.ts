@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Option, Schedule } from "effect"
+import { Clock, Context, Effect, Layer, Option, Schedule } from "effect"
 import { isThreadBusy, type PullRequest, type PullRequestLink, type Thread } from "../../shared/domain.ts"
 import { AgentRunner } from "./AgentRunner.ts"
 import { ThreadBusyError, type NotFoundError, type PersistenceError } from "./errors.ts"
@@ -12,6 +12,7 @@ import { Threads } from "./Threads.ts"
 import { forkPullRequestBranch, Worktrees } from "./Worktrees.ts"
 
 const SWEEP_INTERVAL = "3 minutes"
+const DAY_MS = 24 * 60 * 60 * 1000
 
 export class Settle extends Context.Service<
   Settle,
@@ -32,6 +33,22 @@ const mergedSince = (pullRequest: PullRequest, workStartedAt: string | null) =>
 
 const canAutoSettle = (thread: Thread) =>
   thread.status !== "archived" && !isThreadBusy(thread.status) && thread.settledAt === null && thread.pinnedAt === null
+
+const lastActivity = (thread: Thread) =>
+  thread.snoozedUntil !== null && thread.snoozedUntil > thread.updatedAt ? thread.snoozedUntil : thread.updatedAt
+
+const olderThan = (timestamp: string, days: number, now: number) => now - Date.parse(timestamp) >= days * DAY_MS
+
+const isIdleFor = (thread: Thread, days: number, now: number) =>
+  canAutoSettle(thread) && thread.status === "idle" && olderThan(lastActivity(thread), days, now)
+
+const isSettledFor = (thread: Thread, days: number, now: number) =>
+  thread.status === "idle" &&
+  thread.pinnedAt === null &&
+  thread.settledAt !== null &&
+  olderThan(thread.settledAt, days, now)
+
+const isOpen = (pullRequest: PullRequest) => pullRequest.status === "open" || pullRequest.status === "draft"
 
 const make = Effect.gen(function* () {
   const settings = yield* Settings
@@ -100,10 +117,59 @@ const make = Effect.gen(function* () {
       yield* runner.release(threadId, terminals.closeThread(threadId))
     }).pipe(Effect.catchCause((cause) => Effect.logWarning("auto settle skipped a thread", threadId, cause)))
 
+  const settleIfIdle = (thread: Thread, links: ReadonlyArray<PullRequestLink>, days: number, now: number) =>
+    Effect.gen(function* () {
+      if (!isIdleFor(thread, days, now) || (yield* hasAgentWork(thread.id))) return
+      const found = yield* Effect.forEach(links, (link) => github.pullRequest(link.url), { concurrency: 4 })
+      if (found.some(isOpen) || (yield* hasListeningPort(thread.id))) return
+      const latest = yield* threads.get(thread.id)
+      if (latest.updatedAt !== thread.updatedAt || !isIdleFor(latest, days, now)) return
+      const settled = yield* threads.settle(thread.id)
+      yield* events.publish({ type: "thread.updated", thread: settled })
+      yield* release(thread.id)
+    }).pipe(Effect.catchCause((cause) => Effect.logWarning("idle settle skipped a thread", thread.id, cause)))
+
+  const losesUncommittedWork = (thread: Thread, removeWorktree: boolean) =>
+    Effect.gen(function* () {
+      if (!removeWorktree || thread.worktreeId === null) return false
+      const worktree = yield* worktrees.get(thread.worktreeId)
+      if (worktree.status === "removed") return false
+      return (yield* worktrees.checkoutState(worktree.id)) === "dirty"
+    })
+
+  const archiveIfSettledLong = (thread: Thread, days: number, removeWorktree: boolean, now: number) =>
+    Effect.gen(function* () {
+      if (!isSettledFor(thread, days, now)) return
+      const latest = yield* threads.get(thread.id)
+      if (!isSettledFor(latest, days, now) || (yield* losesUncommittedWork(latest, removeWorktree))) return
+      yield* release(thread.id)
+      const archived = yield* threads.archive(thread.id)
+      yield* events.publish({ type: "thread.updated", thread: archived })
+    }).pipe(Effect.catchCause((cause) => Effect.logWarning("auto archive skipped a thread", thread.id, cause)))
+
   const sweep = Effect.gen(function* () {
-    if (!(yield* settings.get).archive.whenMerged) return
+    const { archive } = yield* settings.get
+    const now = yield* Clock.currentTimeMillis
     const byThread = Map.groupBy(yield* pullRequests.listAll, (link) => link.threadId)
-    yield* Effect.forEach(byThread, ([threadId, links]) => settleIfDone(threadId, links), { discard: true })
+    if (archive.whenMerged) {
+      yield* Effect.forEach(byThread, ([threadId, links]) => settleIfDone(threadId, links), { discard: true })
+    }
+    const all = yield* threads.list
+    const { settleAfterIdleDays, archiveAfterSettledDays } = archive
+    if (settleAfterIdleDays !== null) {
+      yield* Effect.forEach(
+        all,
+        (thread) => settleIfIdle(thread, byThread.get(thread.id) ?? [], settleAfterIdleDays, now),
+        { discard: true },
+      )
+    }
+    if (archiveAfterSettledDays !== null) {
+      yield* Effect.forEach(
+        all,
+        (thread) => archiveIfSettledLong(thread, archiveAfterSettledDays, archive.removeWorktree, now),
+        { discard: true },
+      )
+    }
   }).pipe(Effect.catchCause((cause) => Effect.logWarning("auto settle sweep failed", cause)))
 
   yield* Effect.schedule(sweep, Schedule.spaced(SWEEP_INTERVAL)).pipe(Effect.forkScoped)

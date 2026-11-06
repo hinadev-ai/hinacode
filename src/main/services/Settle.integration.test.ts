@@ -1,15 +1,22 @@
 import { execFileSync, spawn } from "node:child_process"
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, watch } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, unlinkSync, watch, writeFileSync } from "node:fs"
 import { connect } from "node:net"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { afterAll, describe, expect, layer } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Deferred, Effect, Fiber, Layer } from "effect"
+import { TestClock } from "effect/testing"
 import { SqlClient } from "effect/sql"
 import type { PushEvent } from "../../shared/contract.ts"
 import type { BackgroundTask, Subagent } from "../../shared/agent.ts"
-import type { PullRequest, PullRequestDetail, PullRequestStatus, ThreadStatus } from "../../shared/domain.ts"
+import type {
+  ArchiveSettings,
+  PullRequest,
+  PullRequestDetail,
+  PullRequestStatus,
+  ThreadStatus,
+} from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
 import { Settle, layer as settleLayer } from "./Settle.ts"
@@ -164,6 +171,14 @@ const testLayer = settleLayer.pipe(
   Layer.provide(NodeServices.layer),
 )
 
+const archiveSettings = (patch: Partial<ArchiveSettings>): ArchiveSettings => ({
+  whenMerged: false,
+  removeWorktree: false,
+  settleAfterIdleDays: null,
+  archiveAfterSettledDays: null,
+  ...patch,
+})
+
 const pullRequestUrl = (name: string, index = 0) => `https://github.com/o/${name}/pull/${index + 1}`
 
 const threadWithPullRequests = (name: string, prStatuses: ReadonlyArray<PullRequestStatus>, status?: ThreadStatus) =>
@@ -188,7 +203,9 @@ describe("Settle", () => {
   layer(testLayer)((it) => {
     it.effect("leaves every thread alone while the setting is off", () =>
       Effect.gen(function* () {
-        yield* Settings.use((settings) => settings.set({ archive: { whenMerged: false, removeWorktree: false } }))
+        yield* Settings.use((settings) =>
+          settings.set({ archive: archiveSettings({ whenMerged: false, removeWorktree: false }) }),
+        )
         const merged = yield* threadWithPullRequests("off", ["merged"])
         yield* Settle.use((settle) => settle.sweep)
         expect(yield* isSettled(merged)).toBe(false)
@@ -197,7 +214,9 @@ describe("Settle", () => {
 
     it.effect("settles a thread once its pull request merges, not when one only closes", () =>
       Effect.gen(function* () {
-        yield* Settings.use((settings) => settings.set({ archive: { whenMerged: true, removeWorktree: false } }))
+        yield* Settings.use((settings) =>
+          settings.set({ archive: archiveSettings({ whenMerged: true, removeWorktree: false }) }),
+        )
         const allMerged = yield* threadWithPullRequests("all", ["merged", "closed"])
         const oneOpen = yield* threadWithPullRequests("some", ["merged", "open"])
         const closed = yield* threadWithPullRequests("closed", ["closed"])
@@ -221,7 +240,9 @@ describe("Settle", () => {
 
     it.effect("does not settle a thread again for a merge from before its latest work", () =>
       Effect.gen(function* () {
-        yield* Settings.use((settings) => settings.set({ archive: { whenMerged: true, removeWorktree: false } }))
+        yield* Settings.use((settings) =>
+          settings.set({ archive: archiveSettings({ whenMerged: true, removeWorktree: false }) }),
+        )
         const threadId = yield* threadWithPullRequests("reopened", ["merged"])
         yield* Settle.use((settle) => settle.sweep)
         expect(yield* isSettled(threadId)).toBe(true)
@@ -236,7 +257,9 @@ describe("Settle", () => {
 
     it.effect("keeps a pinned thread out of Settled", () =>
       Effect.gen(function* () {
-        yield* Settings.use((settings) => settings.set({ archive: { whenMerged: true, removeWorktree: false } }))
+        yield* Settings.use((settings) =>
+          settings.set({ archive: archiveSettings({ whenMerged: true, removeWorktree: false }) }),
+        )
         const threadId = yield* threadWithPullRequests("pinned", ["merged"])
         yield* Threads.use((threads) => threads.update({ id: threadId, pinned: true }))
         yield* Settle.use((settle) => settle.sweep)
@@ -250,7 +273,9 @@ describe("Settle", () => {
     ] as const) {
       it.effect(`does not undo a ${name} that landed while GitHub was answering`, () =>
         Effect.gen(function* () {
-          yield* Settings.use((settings) => settings.set({ archive: { whenMerged: true, removeWorktree: false } }))
+          yield* Settings.use((settings) =>
+            settings.set({ archive: archiveSettings({ whenMerged: true, removeWorktree: false }) }),
+          )
           const title = `raced-${name}`
           const threadId = yield* threadWithPullRequests(title, ["merged"])
           mergedAts.set(pullRequestUrl(title), new Date(0).toISOString())
@@ -268,7 +293,9 @@ describe("Settle", () => {
 
     it.effect("settles a thread whose pull request merged during its turn", () =>
       Effect.gen(function* () {
-        yield* Settings.use((settings) => settings.set({ archive: { whenMerged: true, removeWorktree: false } }))
+        yield* Settings.use((settings) =>
+          settings.set({ archive: archiveSettings({ whenMerged: true, removeWorktree: false }) }),
+        )
         const threadId = yield* threadWithPullRequests("merged-in-turn", ["merged"])
         yield* Threads.use((threads) => threads.update({ id: threadId, status: "running" }))
         const startedAt = yield* Threads.use((threads) => threads.workStartedAt(threadId))
@@ -282,7 +309,9 @@ describe("Settle", () => {
     for (const status of ["running", "awaiting_approval"] as const) {
       it.effect(`leaves a thread alone when it went ${status} while GitHub was answering`, () =>
         Effect.gen(function* () {
-          yield* Settings.use((settings) => settings.set({ archive: { whenMerged: true, removeWorktree: false } }))
+          yield* Settings.use((settings) =>
+            settings.set({ archive: archiveSettings({ whenMerged: true, removeWorktree: false }) }),
+          )
           const name = `raced-${status}`
           const threadId = yield* threadWithPullRequests(name, ["merged"])
           const hold = { asked: yield* Deferred.make<void>(), release: yield* Deferred.make<void>() }
@@ -348,7 +377,7 @@ describe("Settle", () => {
 
     it.effect("keeps a merged thread whose ports could not be listed out of Settled", () =>
       Effect.gen(function* () {
-        yield* Settings.use((settings) => settings.set({ archive: { whenMerged: true, removeWorktree: false } }))
+        yield* Settings.use((settings) => settings.set({ archive: archiveSettings({ whenMerged: true }) }))
         const threadId = yield* threadWithPullRequests("merged-unknown-ports", ["merged"])
         failingScans.add(threadId)
 
@@ -358,9 +387,47 @@ describe("Settle", () => {
       }),
     )
 
+    it.effect("settles a thread idle for the configured days, unless one of its pull requests is open", () =>
+      Effect.gen(function* () {
+        yield* Settings.use((settings) => settings.set({ archive: archiveSettings({ settleAfterIdleDays: 7 }) }))
+        const quiet = (yield* seedThread({ rootPath: "/idle-quiet" })).threadId
+        const reviewing = yield* threadWithPullRequests("idle-reviewing", ["open"])
+        yield* TestClock.setTime(Date.parse((yield* Threads.use((threads) => threads.get(reviewing))).updatedAt))
+
+        yield* TestClock.adjust("6 days")
+        yield* Settle.use((settle) => settle.sweep)
+        expect(yield* isSettled(quiet)).toBe(false)
+
+        yield* TestClock.adjust("1 day")
+        yield* Settle.use((settle) => settle.sweep)
+        expect(yield* isSettled(quiet)).toBe(true)
+        expect(released).toContain(quiet)
+        expect(yield* isSettled(reviewing)).toBe(false)
+      }),
+    )
+
+    it.effect("archives a thread once it has been settled for the configured days", () =>
+      Effect.gen(function* () {
+        const { threadId } = yield* seedThread({ rootPath: "/archive-later" })
+        yield* TestClock.setTime(Date.parse((yield* Threads.use((threads) => threads.get(threadId))).updatedAt))
+        yield* Settle.use((settle) => settle.settle(threadId))
+        yield* Settings.use((settings) => settings.set({ archive: archiveSettings({ archiveAfterSettledDays: 3 }) }))
+
+        yield* TestClock.adjust("2 days")
+        yield* Settle.use((settle) => settle.sweep)
+        expect(yield* statusOf(threadId)).toBe("idle")
+
+        yield* TestClock.adjust("1 day")
+        yield* Settle.use((settle) => settle.sweep)
+        expect(yield* statusOf(threadId)).toBe("archived")
+      }),
+    )
+
     it.effect("waits for a merged thread's background tasks, sub-agents and listeners before it settles", () =>
       Effect.gen(function* () {
-        yield* Settings.use((settings) => settings.set({ archive: { whenMerged: true, removeWorktree: false } }))
+        yield* Settings.use((settings) =>
+          settings.set({ archive: archiveSettings({ whenMerged: true, removeWorktree: false }) }),
+        )
         const threadId = yield* threadWithPullRequests("quiet", ["merged"])
         const staysReady = Effect.gen(function* () {
           yield* Settle.use((settle) => settle.sweep)
@@ -476,7 +543,31 @@ const expectBranchAt = (projectId: string, branch: string, tip: string) =>
 
 describe("worktree cleanup across threads", () => {
   layer(testLayer)((it) => {
-    const cleanupOn = Settings.use((settings) => settings.set({ archive: { whenMerged: true, removeWorktree: true } }))
+    const cleanupOn = Settings.use((settings) =>
+      settings.set({ archive: archiveSettings({ whenMerged: true, removeWorktree: true }) }),
+    )
+
+    it.effect("keeps a settled thread whose worktree has uncommitted changes out of auto archive", () =>
+      Effect.gen(function* () {
+        const { projectId } = yield* project("dirty-archive")
+        const thread = yield* worktreeThread(projectId, "kk/dirty-archive")
+        yield* Settle.use((settle) => settle.settle(thread.threadId))
+        yield* Settings.use((settings) =>
+          settings.set({ archive: archiveSettings({ removeWorktree: true, archiveAfterSettledDays: 1 }) }),
+        )
+        const scratchFile = join(thread.path, "notes.txt")
+        writeFileSync(scratchFile, "work in progress")
+
+        yield* TestClock.adjust("1 day")
+        yield* sweep
+        expect(yield* statusOf(thread.threadId)).toBe("idle")
+
+        unlinkSync(scratchFile)
+        yield* sweep
+        expect(yield* statusOf(thread.threadId)).toBe("archived")
+        yield* waitUntilGone(thread.path)
+      }),
+    )
 
     it.effect("leaves a project root listener running when a merge removes a thread's worktree", () =>
       Effect.gen(function* () {
