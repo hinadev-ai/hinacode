@@ -205,7 +205,7 @@ test("puts a pasted image where it was pasted, even if the selection changes whi
   await userEvent.keyboard("{End}{Shift>}{Home}{/Shift}")
   finishStoring()
 
-  await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).toContain("first.![](images/pasted.png)")
+  await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).toContain("first.\n\n![](images/pasted.png)")
   expect(saves.at(-1)?.markdown).toMatch(/^# Release plan\n/)
   await expect.element(editor.getByRole("heading", { name: "Release plan" })).toBeInTheDocument()
 })

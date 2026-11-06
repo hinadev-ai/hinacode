@@ -48,16 +48,12 @@ export function DocumentView({ threadId, artifact }: { threadId: string; artifac
 
 type DocumentTarget = { readonly id: string; readonly environment: EnvironmentId }
 
-const storeImage =
-  ({ id, environment }: DocumentTarget) =>
-  async (image: File) => {
-    const { path } = await callPromise(
-      "artifacts.addDocumentImage",
-      { id, dataUrl: await readAsDataUrl(image) },
-      { environment },
-    )
-    return path
-  }
+const storeDataUrl = async ({ id, environment }: DocumentTarget, dataUrl: string) => {
+  const { path } = await callPromise("artifacts.addDocumentImage", { id, dataUrl }, { environment })
+  return path
+}
+
+const storeImage = (target: DocumentTarget) => async (image: File) => storeDataUrl(target, await readAsDataUrl(image))
 
 const imageDataUrl =
   ({ id, environment }: DocumentTarget) =>
@@ -81,7 +77,10 @@ const extensions = (placeholder: string, theme: CodeTheme, target: DocumentTarge
   TableKit.configure({ table: { resizable: false } }),
   DocumentImage.configure({ artifactId: target.id }),
   DocumentPaste.configure({
+    artifactId: target.id,
     storeImage: storeImage(target),
+    copyImage: async (sourceArtifact, path) =>
+      storeDataUrl(target, await imageDataUrl({ id: sourceArtifact, environment: target.environment })(path)),
     imageFailed: (cause) => toast.error(m.documents_image_failed({ message: errorMessage(cause) })),
   }),
   Markdown,

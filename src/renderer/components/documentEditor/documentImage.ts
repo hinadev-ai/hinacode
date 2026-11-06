@@ -1,3 +1,4 @@
+import { mergeAttributes } from "@tiptap/core"
 import { Image, type ImageOptions } from "@tiptap/extension-image"
 import type { Node } from "@tiptap/pm/model"
 import { artifactUrl } from "../../../shared/channels.ts"
@@ -10,6 +11,29 @@ export const isDocumentImagePath = (src: string) => /^images\/[^/]+$/.test(src)
 export const DocumentImage = Image.extend<DocumentImageOptions>({
   addOptions() {
     return { ...this.parent!(), artifactId: "" }
+  },
+
+  addAttributes() {
+    return {
+      ...this.parent!(),
+      sourceArtifact: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-artifact-id"),
+        renderHTML: () => ({}),
+      },
+    }
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    const stored = isDocumentImagePath(String(HTMLAttributes["src"] ?? ""))
+    return [
+      "img",
+      mergeAttributes(
+        this.options.HTMLAttributes,
+        HTMLAttributes,
+        stored ? { "data-artifact-id": this.options.artifactId } : {},
+      ),
+    ]
   },
 
   addNodeView() {
