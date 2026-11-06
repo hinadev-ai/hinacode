@@ -427,6 +427,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
       </PopoverTrigger>
       <PopoverContent
         ref={popupRef}
+        aria-label={m.thread_model_picker()}
         side="top"
         align="start"
         sideOffset={6}
