@@ -5,6 +5,7 @@ import DiffsWorker from "@pierre/diffs/worker/worker.js?worker"
 import { type ReactNode, useEffect } from "react"
 import { useTheme } from "../lib/appearance.ts"
 import { useClientSettings } from "../lib/settings.ts"
+import "../lib/codeThemes.ts"
 
 const poolOptions = { workerFactory: () => new DiffsWorker(), poolSize: 1 }
 

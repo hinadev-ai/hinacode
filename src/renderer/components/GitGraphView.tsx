@@ -31,6 +31,7 @@ import { Badge } from "./ui/badge.tsx"
 import { Button } from "./ui/button.tsx"
 import { ScrollArea } from "./ui/scroll-area.tsx"
 import { RefreshIcon, TagIcon } from "@hinacode/icons"
+import "../lib/codeThemes.ts"
 
 const ROW_HEIGHT = 28
 const LANE_INSET = 8

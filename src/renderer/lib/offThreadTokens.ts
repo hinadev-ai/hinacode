@@ -36,6 +36,7 @@ const firstSend = <A>(key: string, value: A) => {
 const tokenize = async (code: string, language: string, theme: string | undefined, scheme: "dark" | "light") => {
   const target = tokenWorker()
   if (target === null) return null
+  await import("./codeThemes.ts")
   const diffs = await import("@pierre/diffs")
   const themeName = theme ?? diffs.DEFAULT_THEMES[scheme]
   const [resolvedLanguage, resolvedTheme] = await Promise.all([

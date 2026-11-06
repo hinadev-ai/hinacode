@@ -23,6 +23,7 @@ import {
   WarningIcon,
 } from "@hinacode/icons"
 import { Button } from "./ui/button.tsx"
+import "../lib/codeThemes.ts"
 
 export interface FileMark {
   readonly letter: string
