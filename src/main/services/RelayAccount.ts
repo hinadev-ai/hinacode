@@ -52,7 +52,8 @@ const listenForSignInCode = (signedInPage: URL) =>
     const listening = yield* Effect.acquireRelease(
       Effect.callback<Server, RelayError>((resume) => {
         const server = createServer((request, response) => {
-          const url = new URL(request.url ?? "/", "http://127.0.0.1")
+          const url = URL.parse(request.url ?? "/", "http://127.0.0.1")
+          if (url === null) return void response.writeHead(400).end()
           const code = url.searchParams.get("code")
           if (answered || url.pathname !== "/callback" || !code) return void response.writeHead(404).end()
           answered = true
