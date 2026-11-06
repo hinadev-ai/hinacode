@@ -197,6 +197,8 @@ export function ComposerInput({
       }),
     })
     viewRef.current = view
+    // FIXME: CodeMirror always sets aria-multiline, which a combobox may not carry, and its attribute facet cannot unset it. It only rewrites changed values, so removing it once sticks.
+    view.contentDOM.removeAttribute("aria-multiline")
     if (shouldFocusOnMount()) view.focus()
     return () => {
       view.destroy()
@@ -217,7 +219,7 @@ export function ComposerInput({
   const contentAttributes: Record<string, string> = {
     role: "combobox",
     "aria-label": label,
-    "aria-placeholder": placeholder,
+    "aria-description": placeholder,
     "aria-autocomplete": "list",
     "aria-expanded": String(open),
     ...(open ? { "aria-controls": listId, "aria-activedescendant": optionId(activeIndex) } : {}),
