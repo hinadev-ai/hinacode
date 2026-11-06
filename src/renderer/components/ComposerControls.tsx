@@ -430,7 +430,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
         align="start"
         sideOffset={6}
         collisionAvoidance={{ side: "none", fallbackAxisSide: "none" }}
-        className="h-[min(600px,var(--available-height))] w-90 max-w-[calc(100vw-1rem)] gap-3 p-2"
+        className="h-[min(520px,var(--available-height))] w-90 max-w-[calc(100vw-1rem)] gap-3 p-2"
         initialFocus={() =>
           (focus === "effort"
             ? popupRef.current?.querySelector<HTMLElement>("[data-slot=slider-thumb] input")

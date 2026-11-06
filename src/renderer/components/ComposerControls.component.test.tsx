@@ -96,7 +96,7 @@ test("keeps the thread's own agent when it is signed out, and hides other agents
   expect(pickerProviders("muse", ["opencode", "claude"])).toStrictEqual(["claude", "muse", "opencode"])
 })
 
-test("fills the space above the trigger up to 600px, whatever the model count", async () => {
+test("fills the space above the trigger up to 520px, whatever the model count", async () => {
   await render(
     <div className="pt-[60vh]">
       <ThreadPicker thread={thread} canSwitchAgent onError={() => {}} />
@@ -108,7 +108,7 @@ test("fills the space above the trigger up to 600px, whatever the model count", 
   const trigger = page.getByRole("button", { name: /second/ }).element()
   const available = Number.parseFloat(getComputedStyle(popup).getPropertyValue("--available-height"))
   expect(available).toBeGreaterThan(100)
-  expect(Math.abs(popup.offsetHeight - Math.min(600, available))).toBeLessThan(1)
+  expect(Math.abs(popup.offsetHeight - Math.min(520, available))).toBeLessThan(1)
   expect(popup.dataset["side"]).toBe("top")
   expect(trigger.getBoundingClientRect().top - popup.getBoundingClientRect().bottom).toBeGreaterThanOrEqual(0)
 })
