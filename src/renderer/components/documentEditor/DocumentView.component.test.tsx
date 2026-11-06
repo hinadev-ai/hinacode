@@ -246,6 +246,25 @@ test("copies the bytes of an image pasted from another document", async () => {
   await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).toContain("![](images/pasted.png)")
 })
 
+test("pastes the text of a copy from another document into a code block", async () => {
+  await openDocument()
+
+  await page.getByText("const version = 1").click()
+  await userEvent.keyboard("{End}")
+  const clipboardData = new DataTransfer()
+  clipboardData.setData("text/plain", " + 1")
+  clipboardData.setData(
+    "text/html",
+    '<p data-pm-slice="1 1 []">+ 1<img src="images/other.png" alt="" data-artifact-id="other-doc"></p>',
+  )
+  document
+    .querySelector(".hina-document")!
+    .dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }))
+
+  await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).toContain("const version = 1 + 1\n```")
+  expect(fileReads).toEqual([])
+})
+
 test("pastes Markdown syntax literally with Shift held", async () => {
   const editor = await openDocument()
 

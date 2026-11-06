@@ -121,12 +121,13 @@ export const DocumentPaste = Extension.create<DocumentPasteOptions>({
               void pasteImages(images)
               return true
             }
+            if (editor.isActive("codeBlock")) return false
             const foreign = foreignImagesIn(data, options.artifactId)
             if (foreign !== null) {
               void pasteCopyingImages(foreign)
               return true
             }
-            if (shiftHeld || editor.isActive("codeBlock")) return false
+            if (shiftHeld) return false
             if (copiedFromProseMirror(data) || hasMarkdownStructure(data)) return false
             const text = data.getData("text/plain")
             if (!MARKDOWN_SYNTAX.test(text)) return false
