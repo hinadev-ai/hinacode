@@ -159,7 +159,7 @@ const make = ({
         yield* putTunnel(
           yield* requireSecret(
             CREDENTIAL_SECRET,
-            "This machine's relay sign-in is gone, so the tunnel cannot follow the listener. Turn on the relay again.",
+            "This machine's relay sign-in is gone, so the tunnel cannot follow the listener. Link this machine again.",
           ),
         )
       })
@@ -172,7 +172,7 @@ const make = ({
       if (published === tunnel.published) return
       const credential = yield* requireSecret(
         CREDENTIAL_SECRET,
-        "This machine's relay sign-in is gone, so its pairing cannot be published. Turn on the relay again.",
+        "This machine's relay sign-in is gone, so its pairing cannot be published. Link this machine again.",
       )
       yield* service.publishPairing(credential, pairing)
       yield* save({ ...tunnel, published })
@@ -227,7 +227,7 @@ const make = ({
             yield* routed(tunnel ?? stored)
             const token = yield* requireSecret(
               CONNECTOR_TOKEN_SECRET,
-              "The tunnel's connector token is gone. Turn on the relay again.",
+              "The tunnel's connector token is gone. Link this machine again.",
             )
             const first = yield* runOnce(binary, hostname, token)
             if (first.type !== "missing" || binary !== cloudflared || cloudflaredDir === undefined) return first

@@ -1,7 +1,7 @@
 import { Duration, Effect, Option, Predicate, Schema } from "effect"
 import { RelayHostList, RelayMachineList } from "../../shared/relayMachines.ts"
 
-export const EXPIRED = "The sign-in link expired. Turn on the relay again."
+export const EXPIRED = "The sign-in link expired. Link this machine again."
 
 const CALL_TIMEOUT = Duration.seconds(30)
 
@@ -26,8 +26,7 @@ const Profile = Schema.Struct({ name: Schema.NullOr(Schema.String), email: Schem
 const Tunnel = Schema.Struct({ hostname: Schema.String, connectorToken: Schema.String })
 const ServiceFailure = Schema.Struct({ error: Schema.String })
 
-const forgotten = () =>
-  new RelayError({ message: "The relay service no longer knows this machine. Remove the relay and turn it on again." })
+const forgotten = () => new RelayError({ message: "The relay service no longer knows this machine. Link it again." })
 
 const refusedDevice = () =>
   new RelayError({
