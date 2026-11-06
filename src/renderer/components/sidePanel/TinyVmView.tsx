@@ -390,7 +390,7 @@ export function IconAction({ icon: Icon, label, onClick, disabled = false, class
         render={
           <Button
             variant="ghost"
-            size="icon-xs"
+            size="icon-sm"
             aria-label={label}
             onClick={onClick}
             disabled={disabled}

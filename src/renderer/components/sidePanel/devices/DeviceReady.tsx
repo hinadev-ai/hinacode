@@ -251,12 +251,14 @@ export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen 
             <IconAction icon={StackIcon} label={m.devices_recents()} onClick={() => press("recents")} />
           </>
         )}
+        <ToolbarDivider />
         <IconAction
           icon={appearance === "dark" ? SunIcon : MoonIcon}
           label={appearance === "dark" ? m.devices_appearance_light() : m.devices_appearance_dark()}
           onClick={toggleAppearance}
         />
         <OpenLink onOpen={(url) => send({ kind: "openUrl", url })} />
+        <ToolbarDivider />
         <IconAction
           icon={CameraIcon}
           label={m.devices_screenshot_save()}
@@ -268,7 +270,7 @@ export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen 
             render={
               <Button
                 variant={picking ? "secondary" : "ghost"}
-                size="icon-xs"
+                size="icon-sm"
                 aria-label={m.devices_pick()}
                 aria-pressed={picking}
                 disabled={shape === null || pending}
@@ -286,7 +288,7 @@ export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen 
             render={
               <Button
                 variant={hardwareKeyboard ? "secondary" : "ghost"}
-                size="icon-xs"
+                size="icon-sm"
                 aria-label={m.devices_hardware_keyboard()}
                 aria-pressed={hardwareKeyboard}
                 action={toggleHardwareKeyboard}
@@ -304,7 +306,7 @@ export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen 
             <TooltipTrigger
               render={
                 <DropdownMenuTrigger
-                  render={<Button variant="ghost" size="icon-xs" aria-label={m.devices_more()} disabled={pending} />}
+                  render={<Button variant="ghost" size="icon-sm" aria-label={m.devices_more()} disabled={pending} />}
                 >
                   <MoreVerticalIcon aria-hidden />
                 </DropdownMenuTrigger>
@@ -397,6 +399,10 @@ export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen 
   )
 }
 
+function ToolbarDivider() {
+  return <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-border" />
+}
+
 function OpenLink({ onOpen }: { onOpen: (url: string) => void }) {
   const [open, setOpen] = useState(false)
   const [url, setUrl] = useState("")
@@ -419,7 +425,7 @@ function OpenLink({ onOpen }: { onOpen: (url: string) => void }) {
       <Tooltip>
         <TooltipTrigger
           render={
-            <PopoverTrigger render={<Button variant="ghost" size="icon-xs" aria-label={m.devices_open_link()} />}>
+            <PopoverTrigger render={<Button variant="ghost" size="icon-sm" aria-label={m.devices_open_link()} />}>
               <LinkIcon aria-hidden />
             </PopoverTrigger>
           }
@@ -470,7 +476,7 @@ function PostureButtons({ current, onPick }: { current: DevicePosture; onPick: (
         render={
           <Button
             variant={current === posture ? "secondary" : "ghost"}
-            size="icon-xs"
+            size="icon-sm"
             aria-label={label()}
             aria-pressed={current === posture}
             action={() => onPick(posture)}
