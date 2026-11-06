@@ -9,7 +9,7 @@ import { cn } from "../lib/utils.ts"
 import { AccountMenu } from "./AccountMenu.tsx"
 import { ChordKeys } from "./ChordKeys.tsx"
 import { MachineResourcesButton } from "./MachineResources.tsx"
-import { Button } from "./ui/button.tsx"
+import { Button, buttonVariants } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 import { SettingsIcon, SidebarFillIcon, SidebarIcon } from "@hinacode/icons"
 
@@ -57,15 +57,16 @@ export function TitleBar({
           {chord && <ChordKeys chord={chord} />}
         </TooltipContent>
       </Tooltip>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        render={<Link to="/settings" />}
+      <Link
+        to="/settings"
         aria-label={m.sidebar_settings()}
-        className="data-[status=active]:bg-sidebar-accent data-[status=active]:text-sidebar-accent-foreground"
+        className={cn(
+          buttonVariants({ variant: "ghost", size: "icon-sm" }),
+          "data-[status=active]:bg-sidebar-accent data-[status=active]:text-sidebar-accent-foreground",
+        )}
       >
         <SettingsIcon aria-hidden />
-      </Button>
+      </Link>
       <MachineResourcesButton />
       <AccountMenu />
     </header>
