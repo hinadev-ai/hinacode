@@ -1305,16 +1305,7 @@
   "settings_archive_after_settled": "Archive a settled thread after",
   "settings_archive_after_settled_hint": "A worktree with uncommitted changes stays settled.",
   "settings_archive_never": "Never",
-  "settings_archive_days": [
-    {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
-      "match": {
-        "countPlural=one": "{count} day",
-        "countPlural=other": "{count} days"
-      }
-    }
-  ],
+  "settings_archive_days_unit": "days",
   "tool_output_image": "[image]",
   "panel_tab_tiny_vm": "Tiny VM",
   "command_view_tiny_vm": "Show Tiny VM",

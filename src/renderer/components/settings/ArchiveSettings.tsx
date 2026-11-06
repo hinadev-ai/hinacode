@@ -1,13 +1,13 @@
 import { useAtomSet } from "@effect/atom-react"
-import { useState } from "react"
-import type { ArchiveSettings as Archive } from "../../../shared/domain.ts"
+import { type FormEvent, useState } from "react"
+import { type ArchiveSettings as Archive, DAYS_RANGE } from "../../../shared/domain.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { updateSettingsAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { useSettingsEnvironment } from "../../lib/environments.ts"
 import { m } from "../../paraglide/messages.js"
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
+import { Input } from "../ui/input.tsx"
 import { Switch } from "../ui/switch.tsx"
 import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
 
@@ -48,17 +48,10 @@ const rows: ReadonlyArray<({ readonly kind: "switch" } & Row<SwitchKey>) | ({ re
     },
   ]
 
-const NEVER = "never"
-const DAY_CHOICES = [1, 3, 7, 14, 30]
-
-const dayItems = (current: number | null) => {
-  const days = current === null || DAY_CHOICES.includes(current) ? DAY_CHOICES : [...DAY_CHOICES, current]
-  return [
-    { value: NEVER, label: m.settings_archive_never() },
-    ...days
-      .toSorted((a, b) => a - b)
-      .map((count) => ({ value: String(count), label: m.settings_archive_days({ count }) })),
-  ]
+const parseDays = (draft: string): number | null | undefined => {
+  if (draft.trim() === "") return null
+  const days = Number(draft)
+  return Number.isInteger(days) && days >= DAYS_RANGE.minimum && days <= DAYS_RANGE.maximum ? days : undefined
 }
 
 export function ArchiveSettings() {
@@ -94,7 +87,12 @@ export function ArchiveSettings() {
                   onCheckedChange={(checked) => void save({ [row.key]: checked })}
                 />
               ) : (
-                <DaysSelect id={id} days={archive[row.key]} onPick={(days) => void save({ [row.key]: days })} />
+                <DaysInput
+                  key={archive[row.key]}
+                  id={id}
+                  days={archive[row.key]}
+                  onCommit={(days) => void save({ [row.key]: days })}
+                />
               )}
             </Field>
           )
@@ -105,24 +103,44 @@ export function ArchiveSettings() {
   )
 }
 
-function DaysSelect({ id, days, onPick }: { id: string; days: number | null; onPick: (days: number | null) => void }) {
-  const items = dayItems(days)
+function DaysInput({
+  id,
+  days,
+  onCommit,
+}: {
+  id: string
+  days: number | null
+  onCommit: (days: number | null) => void
+}) {
+  const [draft, setDraft] = useState(days === null ? "" : String(days))
+
+  const commit = () => {
+    const next = parseDays(draft)
+    if (next === undefined) setDraft(days === null ? "" : String(days))
+    else if (next !== days) onCommit(next)
+  }
+
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    commit()
+  }
+
   return (
-    <Select
-      items={items}
-      value={days === null ? NEVER : String(days)}
-      onValueChange={(value) => value !== null && onPick(value === NEVER ? null : Number(value))}
-    >
-      <SelectTrigger id={id} className="w-32">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {items.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
-            {item.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <form onSubmit={onSubmit} className="flex shrink-0 items-center gap-2">
+      <Input
+        id={id}
+        type="number"
+        inputMode="numeric"
+        min={DAYS_RANGE.minimum}
+        max={DAYS_RANGE.maximum}
+        step={1}
+        value={draft}
+        placeholder={m.settings_archive_never()}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        className="w-20 tabular-nums"
+      />
+      <span className="text-sm text-muted-foreground">{m.settings_archive_days_unit()}</span>
+    </form>
   )
 }

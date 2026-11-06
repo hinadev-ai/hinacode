@@ -9,7 +9,7 @@ A thread without a pull request never settles by itself. The renderer showed a r
 
 ## User flow
 
-1. In Settings, Finished threads, the developer picks **Settle a quiet thread after** (Never, 1, 3, 7, 14 or 30 days, default 7) and **Archive a settled thread after** (default Never).
+1. In Settings, Finished threads, the developer enters a number of days, 1 to 365, for **Settle a quiet thread after** (default 7) and **Archive a settled thread after** (default never). An empty field means never.
 2. A thread that has been idle that long, has no open or draft pull request, and has nothing running settles, and its processes stop, as a manual settle does.
 3. A thread that has stayed settled for the second number of days is archived. Archiving closes its terminals and removes its scratch folder, and its worktree when **Remove the worktree when archiving** is on.
 4. Pinning a thread keeps it out of both. Any new activity or Reopen restarts the count.
@@ -26,7 +26,6 @@ A thread without a pull request never settles by itself. The renderer showed a r
 ## Out of scope
 
 - Archive keeps the thread's attachments. They are part of the transcript, and Unarchive should restore it whole. Delete is the step that should remove them.
-- A free-form number of days. The presets cover the useful range, and a value saved from elsewhere still shows in the list.
 
 ## Verification
 

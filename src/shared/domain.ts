@@ -589,7 +589,8 @@ export type NotificationPermission = typeof NotificationPermission.Type
 export const PermissionRequestOutcome = Schema.Literals(["shown", "refused", "noAnswer"])
 export type PermissionRequestOutcome = typeof PermissionRequestOutcome.Type
 
-const Days = Schema.NullOr(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 365 })))
+export const DAYS_RANGE = { minimum: 1, maximum: 365 } as const
+const Days = Schema.NullOr(Schema.Int.check(Schema.isBetween(DAYS_RANGE)))
 
 export const ArchiveSettings = Schema.Struct({
   whenMerged: Schema.Boolean,

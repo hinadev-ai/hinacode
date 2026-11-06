@@ -1251,16 +1251,7 @@
   "settings_archive_after_settled": "完了済みスレッドをアーカイブするまで",
   "settings_archive_after_settled_hint": "worktree にコミットしていない変更があると、完了済みのまま残ります。",
   "settings_archive_never": "しない",
-  "settings_archive_days": [
-    {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
-      "match": {
-        "countPlural=one": "{count} 日",
-        "countPlural=other": "{count} 日"
-      }
-    }
-  ],
+  "settings_archive_days_unit": "日",
   "tool_output_image": "[画像]",
   "panel_tab_tiny_vm": "Tiny VM",
   "command_view_tiny_vm": "Tiny VM を表示",
