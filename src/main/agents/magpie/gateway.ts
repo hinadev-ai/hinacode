@@ -70,26 +70,34 @@ const getJson = (origin: string, key: string, path: string) =>
     })
   })
 
+const greet = (origin: string, key: string) =>
+  getJson(origin, key, "/api/hello").pipe(
+    Effect.flatMap((body) =>
+      Schema.decodeUnknownEffect(Hello)(body).pipe(
+        Effect.mapError(() => new GatewayError({ message: `${origin} is not a magpie gateway` })),
+      ),
+    ),
+  )
+
 export const connect = (target: GatewayTarget, env: NodeJS.ProcessEnv = process.env) =>
   Effect.gen(function* () {
-    const origin =
-      target.endpoint === null ? `http://127.0.0.1:${yield* localPort(env)}` : endpointOrigin(target.endpoint)
-    const key = target.key ?? MAGPIE_KEY
-    const hello = yield* getJson(origin, key, "/api/hello").pipe(
-      Effect.flatMap((body) =>
-        Schema.decodeUnknownEffect(Hello)(body).pipe(
-          Effect.mapError(() => new GatewayError({ message: `${origin} is not a magpie gateway` })),
-        ),
-      ),
-      Effect.mapError((error) =>
-        target.endpoint === null
-          ? new GatewayError({
-              message: "magpie is not running. Start the magpie app or `magpie serve`, then try again",
-            })
-          : error,
+    if (target.endpoint !== null) {
+      return {
+        origin: endpointOrigin(target.endpoint),
+        key: target.key ?? MAGPIE_KEY,
+        version: null,
+      } satisfies Connection
+    }
+    const origin = `http://127.0.0.1:${yield* localPort(env)}`
+    const hello = yield* greet(origin, MAGPIE_KEY).pipe(
+      Effect.mapError(
+        () =>
+          new GatewayError({
+            message: "magpie is not running. Start the magpie app or `magpie serve`, then try again",
+          }),
       ),
     )
-    return { origin, key, version: hello.version ?? null } satisfies Connection
+    return { origin, key: MAGPIE_KEY, version: hello.version ?? null } satisfies Connection
   })
 
 export const modelsOf = (connection: Connection) =>

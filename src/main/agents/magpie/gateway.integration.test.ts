@@ -85,18 +85,18 @@ describe("the local gateway", () => {
 })
 
 describe("a gateway at a saved endpoint", () => {
-  test("is reached with the saved key, whatever the local settings say", async () => {
-    const remote = await serve({ "/api/hello": hello, "/v1/models": models }, "sk-gateway-key")
+  test("is reached with the saved key on /v1/models alone, whatever the local settings say", async () => {
+    const remote = await serve({ "/v1/models": models }, "sk-gateway-key")
     const env = await configFor(1)
 
     expect(
       await Effect.runPromise(probe({ endpoint: `${remote.origin}/v1/`, key: "sk-gateway-key" }, env)),
-    ).toStrictEqual({ version: "0.1.3173", models: 2 })
+    ).toStrictEqual({ version: null, models: 2 })
     expect(new Set(remote.authorizations)).toStrictEqual(new Set(["Bearer sk-gateway-key"]))
   })
 
   test("says the key was refused when magpie answers 401", async () => {
-    const remote = await serve({ "/api/hello": hello }, "sk-gateway-key")
+    const remote = await serve({ "/v1/models": models }, "sk-gateway-key")
 
     expect(await failure(probe({ endpoint: remote.origin, key: "sk-wrong" }))).toBe(
       `${remote.origin} refused the key. Use a gateway key from magpie's Gateway keys`,
@@ -113,16 +113,8 @@ describe("a gateway at a saved endpoint", () => {
     )
   })
 
-  test("says a server that is not magpie is not a magpie gateway", async () => {
-    const remote = await serve({ "/api/hello": json({ name: "something-else" }) })
-
-    expect(await failure(probe({ endpoint: remote.origin, key: null }))).toBe(
-      `${remote.origin} is not a magpie gateway`,
-    )
-  })
-
   test("says it cannot read a malformed model list", async () => {
-    const remote = await serve({ "/api/hello": hello, "/v1/models": json({ data: [{ name: "no id" }] }) })
+    const remote = await serve({ "/v1/models": json({ data: [{ name: "no id" }] }) })
 
     expect(await failure(probe({ endpoint: remote.origin, key: null }))).toBe(
       `${remote.origin} sent a model list HinaCode cannot read`,
