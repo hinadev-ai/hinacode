@@ -8,7 +8,14 @@ import { type ReactNode, type RefObject, useEffect, useId, useRef, useState } fr
 import { RiInbox2Line, RiPulseLine } from "react-icons/ri"
 import { useShallow } from "zustand/react/shallow"
 import type { Project, SidebarGroup, Thread } from "../../shared/domain.ts"
-import { environmentOf, isStale, useCloud, useClouds } from "../lib/environments.ts"
+import { pickedEnvironmentIds, pickEnvironment } from "../../shared/environmentFilter.ts"
+import { environmentName, environmentOf, isStale, statusLabel, useCloud, useClouds } from "../lib/environments.ts"
+import {
+  filterSidebarProjects,
+  hiddenEnvironmentIds,
+  type SidebarEnvironment,
+  sidebarEnvironments,
+} from "../lib/sidebarFilter.ts"
 import { groupProjects, type ProjectGroup as Group } from "../lib/projectGroups.ts"
 import { projectsAtom } from "../lib/rpc.ts"
 import { arrangeRows, deleteGroup, moveGroup, renameGroup, setGroupCollapsed } from "../lib/sidebarGroups.ts"
@@ -49,11 +56,14 @@ import {
   ChatIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  CloudIcon,
+  CloudOffIcon,
   FilterFillIcon,
   FilterIcon,
   FolderAddIcon,
   FolderIcon,
   type IconComponent,
+  LaptopIcon,
   MoreIcon,
   PencilIcon,
   PlusIcon,
@@ -78,7 +88,9 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx"
@@ -139,7 +151,7 @@ export function Sidebar({
                 placeholder={m.sidebar_search_placeholder()}
                 className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-sidebar-meta [&::-webkit-search-cancel-button]:hidden"
               />
-              <ProjectFilterMenu />
+              <SidebarFilterMenu />
             </div>
             <ComposeButton />
           </div>
@@ -620,18 +632,29 @@ function InboxList({ query }: { query: Query }) {
 
 const isFullList = (query: Query) => query === ""
 
-function useFilteredProjects(projects: ReadonlyArray<Project>) {
-  const ids = useUi((state) => state.sidebarProjectIds)
-  const picked = projects.filter((project) => ids.includes(project.id))
-  return picked.length === 0 ? projects : picked
+function useHiddenEnvironments(projects: ReadonlyArray<Project>) {
+  const environments = sidebarEnvironments(projects, useClouds())
+  const filter = useUi((state) => state.sidebarEnvironmentFilter)
+  return { environments, hidden: hiddenEnvironmentIds(environments, filter) }
 }
 
-function ProjectFilterMenu() {
+function useFilteredProjects(projects: ReadonlyArray<Project>) {
+  const { hidden } = useHiddenEnvironments(projects)
+  const ids = useUi((state) => state.sidebarProjectIds)
+  return filterSidebarProjects(projects, hidden, ids)
+}
+
+function SidebarFilterMenu() {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
+  const { environments, hidden } = useHiddenEnvironments(projects)
   const ids = useUi((state) => state.sidebarProjectIds)
   const setIds = useUi((state) => state.setSidebarProjectIds)
   const picked = new Set(ids)
-  const active = projects.some((project) => picked.has(project.id))
+  const shownGroups = groupProjects(projects).filter((group) =>
+    group.projects.some((project) => !hidden.has(environmentOf(project))),
+  )
+  const projectsPicked = shownGroups.some((group) => group.projects.some((project) => picked.has(project.id)))
+  const active = hidden.size > 0 || projectsPicked
   const Icon = active ? FilterFillIcon : FilterIcon
 
   return (
@@ -641,7 +664,7 @@ function ProjectFilterMenu() {
           <Button
             variant="ghost"
             size="icon-xs"
-            aria-label={m.sidebar_filter_projects()}
+            aria-label={m.sidebar_filter_menu()}
             data-active={active}
             className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground"
           />
@@ -649,29 +672,75 @@ function ProjectFilterMenu() {
       >
         <Icon aria-hidden />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuItem disabled={!active} onClick={() => setIds([])}>
-          {m.sidebar_filter_all_projects()}
+      <DropdownMenuContent align="end" className="w-56">
+        {environments.length > 1 && <EnvironmentFilterItems environments={environments} />}
+        <DropdownMenuGroup>
+          {environments.length > 1 && <DropdownMenuLabel>{m.sidebar_projects()}</DropdownMenuLabel>}
+          <DropdownMenuItem disabled={!projectsPicked} onClick={() => setIds([])}>
+            {m.sidebar_filter_all_projects()}
+          </DropdownMenuItem>
+          {environments.length <= 1 && <DropdownMenuSeparator />}
+          {shownGroups.map((group) => {
+            const members = new Set(group.projects.map((project) => project.id))
+            return (
+              <DropdownMenuCheckboxItem
+                key={group.key}
+                checked={[...members].every((id) => picked.has(id))}
+                onCheckedChange={(checked) => {
+                  const others = ids.filter((id) => !members.has(id))
+                  setIds(checked ? [...others, ...members] : others)
+                }}
+              >
+                <ProjectIcon projectId={group.projects[0].id} />
+                <span className="truncate">{group.projects[0].name}</span>
+              </DropdownMenuCheckboxItem>
+            )
+          })}
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function EnvironmentFilterItems({ environments }: { environments: ReadonlyArray<SidebarEnvironment> }) {
+  const clouds = useClouds()
+  const filter = useUi((state) => state.sidebarEnvironmentFilter)
+  const setFilter = useUi((state) => state.setSidebarEnvironmentFilter)
+  const picked = pickedEnvironmentIds(filter, environments)
+  return (
+    <>
+      <DropdownMenuGroup>
+        <DropdownMenuLabel>{m.sidebar_filter_environments()}</DropdownMenuLabel>
+        <DropdownMenuItem disabled={picked.size === 0} onClick={() => setFilter({ ...filter, environmentIds: [] })}>
+          {m.sidebar_filter_all_environments()}
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        {groupProjects(projects).map((group) => {
-          const members = new Set(group.projects.map((project) => project.id))
+        {environments.map(({ id, cloud }) => {
+          const EnvironmentIcon =
+            cloud === undefined ? LaptopIcon : cloud.status === "connected" ? CloudIcon : CloudOffIcon
           return (
             <DropdownMenuCheckboxItem
-              key={group.key}
-              checked={[...members].every((id) => picked.has(id))}
-              onCheckedChange={(checked) => {
-                const others = ids.filter((id) => !members.has(id))
-                setIds(checked ? [...others, ...members] : others)
-              }}
+              key={id ?? ""}
+              checked={picked.has(id)}
+              onCheckedChange={(checked) => setFilter(pickEnvironment(filter, id, checked))}
             >
-              <ProjectIcon projectId={group.projects[0].id} />
-              <span className="truncate">{group.projects[0].name}</span>
+              <EnvironmentIcon aria-hidden className="text-muted-foreground" />
+              <span className="truncate">{environmentName(id, clouds)}</span>
+              {cloud !== undefined && cloud.status !== "connected" && (
+                <span className="ms-auto shrink-0 text-xs text-muted-foreground">{statusLabel[cloud.status]()}</span>
+              )}
             </DropdownMenuCheckboxItem>
           )
         })}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </DropdownMenuGroup>
+      <DropdownMenuSeparator />
+      <DropdownMenuCheckboxItem
+        checked={filter.hideOffline}
+        onCheckedChange={(hideOffline) => setFilter({ ...filter, hideOffline })}
+      >
+        {m.sidebar_filter_hide_offline()}
+      </DropdownMenuCheckboxItem>
+      <DropdownMenuSeparator />
+    </>
   )
 }
 

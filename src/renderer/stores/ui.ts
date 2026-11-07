@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import type { ChangesScope } from "../../shared/domain.ts"
+import { type EnvironmentFilter, parseEnvironmentFilter } from "../../shared/environmentFilter.ts"
 import type { FindMatch, FindRevealRequest } from "../lib/find.ts"
 import { getPanelLayout, usePanelLayout } from "../lib/panelLayout.ts"
 import type { EnvironmentId } from "../lib/rpc.ts"
@@ -43,6 +44,7 @@ let findRevealRequests = 0
 
 const SIDEBAR_WIDTH_KEY = "hinacode.sidebarWidth"
 const SIDEBAR_PROJECTS_KEY = "hinacode.sidebarProjects"
+const SIDEBAR_ENVIRONMENTS_KEY = "hinacode.sidebarEnvironments"
 const SIDEBAR_TAB_KEY = "hinacode.sidebarTab"
 const RECENT_THREADS_KEY = "hinacode.recentThreads"
 const PULL_REQUEST_TAB_KEY = "hinacode.pullRequestTab"
@@ -91,6 +93,7 @@ interface UiState {
   readonly linkedPullRequestsOpen: boolean
   readonly sidebarQuery: string
   readonly sidebarProjectIds: ReadonlyArray<string>
+  readonly sidebarEnvironmentFilter: EnvironmentFilter
   readonly collapsedPullRequestSections: ReadonlyArray<PullRequestSection>
   readonly sidePanelViews: Readonly<Record<string, SidePanelViewId>>
   readonly lastSidePanelView: SidePanelViewId
@@ -133,6 +136,7 @@ interface UiState {
   readonly setLinkedPullRequestsOpen: (open: boolean) => void
   readonly setSidebarQuery: (query: string) => void
   readonly setSidebarProjectIds: (ids: ReadonlyArray<string>) => void
+  readonly setSidebarEnvironmentFilter: (filter: EnvironmentFilter) => void
   readonly setPullRequestSectionOpen: (section: PullRequestSection, open: boolean) => void
   readonly showView: (threadId: string, view: SidePanelViewId, options?: { readonly focus?: boolean }) => void
   readonly toggleView: (threadId: string, view: SidePanelViewId, options?: { readonly focus?: boolean }) => void
@@ -205,6 +209,7 @@ export const useUi = create<UiState>()((set, get) => ({
   linkedPullRequestsOpen: false,
   sidebarQuery: "",
   sidebarProjectIds: loadStrings(SIDEBAR_PROJECTS_KEY),
+  sidebarEnvironmentFilter: parseEnvironmentFilter(localStorage.getItem(SIDEBAR_ENVIRONMENTS_KEY)),
   collapsedPullRequestSections: loadStrings(COLLAPSED_PULL_REQUEST_SECTIONS_KEY).filter(isPullRequestSection),
   sidePanelViews: {},
   lastSidePanelView: "details",
@@ -285,6 +290,10 @@ export const useUi = create<UiState>()((set, get) => ({
   setSidebarProjectIds: (sidebarProjectIds) => {
     localStorage.setItem(SIDEBAR_PROJECTS_KEY, JSON.stringify(sidebarProjectIds))
     set({ sidebarProjectIds })
+  },
+  setSidebarEnvironmentFilter: (sidebarEnvironmentFilter) => {
+    localStorage.setItem(SIDEBAR_ENVIRONMENTS_KEY, JSON.stringify(sidebarEnvironmentFilter))
+    set({ sidebarEnvironmentFilter })
   },
   setPullRequestSectionOpen: (section, open) => {
     const others = get().collapsedPullRequestSections.filter((collapsed) => collapsed !== section)
