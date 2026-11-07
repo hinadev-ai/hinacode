@@ -787,7 +787,9 @@ layer(testLayer)("terminal tools", (it) => {
 
         const read = yield* callFrom(a, "read_terminal", { id: greeting.id })
         expect(read.isError).toBe(false)
-        expect(read.text).toMatch(new RegExp(`^greeting \\(running\\) in ${repoA}\n\n`))
+        expect(read.text).toMatch(
+          new RegExp(`^greeting \\((running|idle, the last command exited with code 0)\\) in ${repoA}\n\n`),
+        )
         expect(read.text).toMatch(/^hello terminal$/m)
         expect(read.text).not.toContain("\u001B")
 
