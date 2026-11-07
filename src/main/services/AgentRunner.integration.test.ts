@@ -1201,6 +1201,35 @@ it("keeps the session of a thread whose turn is running when it releases the thr
   })
 })
 
+it("holds back a send that arrives while a release cleans up, so the cleanup cannot hit the new turn", async () => {
+  await withPreparingThread(async ({ runner, worktrees, thread, release, turns }) => {
+    release()
+    await Effect.runPromise(worktrees.whenPrepared(thread.worktreeId!))
+    const cleaning = Promise.withResolvers<void>()
+    const finish = Effect.runSync(Deferred.make<void>())
+    const cleanup = Effect.sync(() => cleaning.resolve()).pipe(
+      Effect.andThen(Deferred.await(finish)),
+      Effect.andThen(Effect.sync(() => turns.length)),
+    )
+    const released = Effect.runPromise(runner.release(thread.id, cleanup))
+    await Promise.race([cleaning.promise, released])
+
+    const sent = Effect.runPromise(runner.send(thread.id, "accepted input", []))
+    const startedDuringCleanup = await vi
+      .waitFor(() => expect(turns).not.toHaveLength(0), { timeout: 500 })
+      .then(
+        () => true,
+        () => false,
+      )
+    await Effect.runPromise(Deferred.succeed(finish, undefined))
+
+    expect(startedDuringCleanup).toBe(false)
+    expect(await released).toStrictEqual(Option.some(0))
+    await sent
+    expect(turns).toHaveLength(1)
+  })
+})
+
 it("keeps a sub-agent running past its turn, then hands its reply to the idle thread", async () => {
   await withPreparingThread(async ({ runner, threads, thread, release, turns, reportSubagent }) => {
     release()
