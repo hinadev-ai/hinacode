@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { afterAll, describe, expect, layer } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
-import { Deferred, Effect, Fiber, Layer } from "effect"
+import { Deferred, Effect, Fiber, Layer, Option } from "effect"
 import { TestClock } from "effect/testing"
 import { SqlClient } from "effect/sql"
 import type { PushEvent } from "../../shared/contract.ts"
@@ -70,14 +70,23 @@ const backgroundTasks = new Map<string, ReadonlyArray<BackgroundTask>>()
 const subagents = new Map<string, ReadonlyArray<Subagent>>()
 const released: Array<string> = []
 const turnStarted = new Set<string>()
+const heldReleases = new Map<
+  string,
+  { readonly asked: Deferred.Deferred<void>; readonly release: Deferred.Deferred<void> }
+>()
 
 const agentRunner = Layer.mock(AgentRunner, {
   backgroundTasks: (threadId) => Effect.succeed(backgroundTasks.get(threadId) ?? []),
   subagents: (threadId) => Effect.succeed(subagents.get(threadId) ?? []),
   release: (threadId, whileIdle) =>
-    Effect.suspend(() => {
+    Effect.gen(function* () {
       released.push(threadId)
-      return turnStarted.has(threadId) ? Effect.succeedNone : Effect.asSome(whileIdle)
+      const hold = heldReleases.get(threadId)
+      if (hold) {
+        yield* Deferred.succeed(hold.asked, undefined)
+        yield* Deferred.await(hold.release)
+      }
+      return turnStarted.has(threadId) ? Option.none() : Option.some(yield* whileIdle)
     }),
 })
 
@@ -423,6 +432,26 @@ describe("Settle", () => {
       }),
     )
 
+    it.effect("keeps a settled thread when auto archive is turned off while the sweep releases it", () =>
+      Effect.gen(function* () {
+        const { threadId } = yield* seedThread({ rootPath: "/archive-turned-off" })
+        yield* TestClock.setTime(Date.parse((yield* Threads.use((threads) => threads.get(threadId))).updatedAt))
+        yield* Settle.use((settle) => settle.settle(threadId))
+        yield* Settings.use((settings) => settings.set({ archive: archiveSettings({ archiveAfterSettledDays: 1 }) }))
+        yield* TestClock.adjust("1 day")
+        const hold = { asked: yield* Deferred.make<void>(), release: yield* Deferred.make<void>() }
+        heldReleases.set(threadId, hold)
+
+        const sweeping = yield* Settle.use((settle) => settle.sweep).pipe(Effect.forkChild)
+        yield* Deferred.await(hold.asked)
+        yield* Settings.use((settings) => settings.set({ archive: archiveSettings({ archiveAfterSettledDays: null }) }))
+        yield* Deferred.succeed(hold.release, undefined)
+        yield* Fiber.join(sweeping)
+
+        expect(yield* statusOf(threadId)).toBe("idle")
+      }),
+    )
+
     it.effect("waits for a merged thread's background tasks, sub-agents and listeners before it settles", () =>
       Effect.gen(function* () {
         yield* Settings.use((settings) =>
@@ -600,6 +629,30 @@ describe("worktree cleanup across threads", () => {
         expect(portsClosedFor).toContain(child.threadId)
         expect(yield* rootListener.answers).toBe(true)
       }),
+    )
+
+    it.effect(
+      "leaves a project root listener running when auto archive takes a thread whose merge removed its worktree",
+      () =>
+        Effect.gen(function* () {
+          yield* cleanupOn
+          const { root, projectId } = yield* project("archive-after-merge")
+          const rootListener = yield* listenIn(root)
+          const child = yield* worktreeThread(projectId, "kk/archive-after-merge")
+          yield* linkPullRequest(child, "kk/archive-after-merge", "merged")
+          yield* sweep
+          yield* waitUntilGone(child.path)
+
+          yield* Settings.use((settings) =>
+            settings.set({ archive: archiveSettings({ removeWorktree: true, archiveAfterSettledDays: 1 }) }),
+          )
+          yield* TestClock.adjust("1 day")
+          yield* sweep
+
+          expect(yield* statusOf(child.threadId)).toBe("archived")
+          expect(portsClosedFor).toContain(child.threadId)
+          expect(yield* rootListener.answers).toBe(true)
+        }),
     )
 
     it.effect("counts a branch as gone once git pruned its folder", () =>
