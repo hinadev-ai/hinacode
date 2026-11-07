@@ -436,6 +436,7 @@ function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }:
           linked={linked}
           onUnlinkFailed={onUnlinkFailed}
         />
+        <PullRequestMetadata pullRequest={pullRequest} />
         <Tabs value={tab} changeAction={(value: PullRequestTab) => setTab(value)}>
           <TabsList variant="line" aria-label={m.pr_view_label()} className="-ms-2 group-data-horizontal/tabs:h-7">
             <TabsTrigger value="info" className="flex-none px-2 text-xs">
@@ -454,7 +455,6 @@ function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }:
         {tab === "info" ? (
           <>
             <Attention pullRequest={pullRequest} threadId={threadId} />
-            <PullRequestMetadata pullRequest={pullRequest} />
             <ChecksSection pullRequest={pullRequest} />
             <Section id="description" title={m.pr_description()}>
               {pullRequest.body.trim() === "" ? (

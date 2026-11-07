@@ -9,7 +9,7 @@ An agent opens a pull request, and the developer reviews it in the PR tab. To as
 
 ## User flow
 
-1. The Info tab of a pull request shows three rows under the attention callouts: Reviewers, Assignees and Labels. A row with nothing in it reads None.
+1. Every pull request shows three rows between its header and the Info, Changes and Guide tabs: Reviewers, Assignees and Labels. They stay visible on every tab. A row with nothing in it reads None.
 2. Reviewers show their state. Awaiting review, approved, requested changes or commented.
 3. Clicking a row opens a picker with a search box that has focus. Typing filters, the arrow keys move, Enter toggles the highlighted entry, Escape closes.
 4. Each toggle applies at once. The row shows the change immediately and settles when GitHub's read comes back. A failure shows under the row and the row reverts.
