@@ -64,5 +64,5 @@ if (resumed._tag === "signIn" && rootElement !== null) {
     gate.unmount()
     void start(account, machines)
   }
-  gate.render(<Gate error={resumed.error} firstAttempt={openSignIn(chosenRelay(), signedIn)} onSignedIn={signedIn} />)
+  gate.render(<Gate error={resumed.error} initialAttempt={openSignIn(chosenRelay(), signedIn)} onSignedIn={signedIn} />)
 }

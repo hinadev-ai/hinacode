@@ -17,14 +17,14 @@ import type { Clerk, ClerkAppearance } from "./clerk.ts"
 
 export function Gate({
   error,
-  firstAttempt,
+  initialAttempt,
   onSignedIn,
 }: {
   readonly error: string | null
-  readonly firstAttempt: SignInAttempt
+  readonly initialAttempt: SignInAttempt
   readonly onSignedIn: OnSignedIn
 }) {
-  const [attempt, setAttempt] = useState(firstAttempt)
+  const [attempt, setAttempt] = useState(initialAttempt)
   const open = (serviceUrl: string) => setAttempt(openSignIn(serviceUrl, onSignedIn))
 
   return (
