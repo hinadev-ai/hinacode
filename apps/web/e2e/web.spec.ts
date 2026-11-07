@@ -62,6 +62,27 @@ test("a browser signed out of the relay and Clerk goes back to sign in", async (
   await expect(page.getByRole("alert")).toHaveCount(0)
 })
 
+test("retrying at the gate signs in again after the relay signed this browser out", async ({ page, web }) => {
+  await openSignedIn(page, web)
+  const machines = `${web.relay.url}/v1/machines`
+  await page.route(machines, (route) => route.abort())
+  await page.reload()
+  await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeVisible()
+  web.relay.signOutEveryDevice()
+  await page.unroute(machines)
+  await page.getByRole("button", { name: "Retry", exact: true }).click()
+  await expect(sidebar(page)).toBeVisible()
+  expect(web.relay.deviceName(await browserCredential(page))).toBe("HinaCode in a browser")
+})
+
+test("signing in from a pull request window's link returns to that window", async ({ page, web }) => {
+  const entry = "/thread/t1/pull-request?url=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Fpull%2F1"
+  await page.goto(`${web.appUrl}?${new URLSearchParams({ entry })}`)
+  await signIn(page, web)
+  await expect(page.getByRole("heading", { name: "Sign in to HinaCode", exact: true })).toBeHidden()
+  expect(new URL(page.url()).searchParams.get("entry")).toBe(entry)
+})
+
 test("reloading goes straight back to the app", async ({ page, web }) => {
   await openSignedIn(page, web)
   await page.reload()

@@ -1,6 +1,7 @@
 import { Suspense, startTransition, use, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button.tsx"
 import { Input } from "@/components/ui/input.tsx"
+import { windowEntry } from "@/lib/windowEntry.ts"
 import { m } from "@/paraglide/messages.js"
 import icon from "../../../assets/icon.svg"
 import {
@@ -143,10 +144,11 @@ function ClerkSignIn({ clerk }: { readonly clerk: Clerk }) {
   useEffect(() => {
     const element = target.current
     if (element === null) return
-    const returnUrl = location.origin + location.pathname
+    const returnUrl = new URL(location.pathname, location.origin)
+    if (windowEntry !== null) returnUrl.searchParams.set("entry", windowEntry)
     clerk.mountSignIn(element, {
-      forceRedirectUrl: returnUrl,
-      signUpForceRedirectUrl: returnUrl,
+      forceRedirectUrl: returnUrl.href,
+      signUpForceRedirectUrl: returnUrl.href,
       appearance: signInAppearance(element),
     })
     return () => clerk.unmountSignIn(element)
