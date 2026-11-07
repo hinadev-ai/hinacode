@@ -589,9 +589,14 @@ export type NotificationPermission = typeof NotificationPermission.Type
 export const PermissionRequestOutcome = Schema.Literals(["shown", "refused", "noAnswer"])
 export type PermissionRequestOutcome = typeof PermissionRequestOutcome.Type
 
+export const DAYS_RANGE = { minimum: 1, maximum: 365 } as const
+const Days = Schema.NullOr(Schema.Int.check(Schema.isBetween(DAYS_RANGE)))
+
 export const ArchiveSettings = Schema.Struct({
   whenMerged: Schema.Boolean,
   removeWorktree: Schema.Boolean,
+  settleAfterIdleDays: Days.pipe(Schema.withDecodingDefaultKey(Effect.succeed(7))),
+  archiveAfterSettledDays: Days.pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
 })
 export type ArchiveSettings = typeof ArchiveSettings.Type
 
@@ -730,7 +735,7 @@ export const defaultSettings: Settings = {
   textGenerationModel: "claude-sonnet-5-5",
   pullRequestGuide: { enabled: false, model: "claude-sonnet-5-5", effort: "high" },
   defaultAccessMode: "full",
-  archive: { whenMerged: true, removeWorktree: false },
+  archive: { whenMerged: true, removeWorktree: false, settleAfterIdleDays: 7, archiveAfterSettledDays: null },
   experimental: {
     tinyVm: false,
     tinyVmProvider: "boat",

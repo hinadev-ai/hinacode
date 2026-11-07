@@ -28,13 +28,13 @@ const rowVariants: Variants = {
     marginTop: 0,
     opacity: 1,
     transition: still ? instant : resize,
-    transitionEnd: { overflow: "visible" },
+    transitionEnd: { overflow: "visible", opacity: "" },
   }),
 }
 
 const fadeVariants: Variants = {
   hidden: (still: boolean) => ({ opacity: 0, transition: still ? instant : resize }),
-  shown: (still: boolean) => ({ opacity: 1, transition: still ? instant : resize }),
+  shown: (still: boolean) => ({ opacity: 1, transition: still ? instant : resize, transitionEnd: { opacity: "" } }),
 }
 
 export interface RowPlacement {

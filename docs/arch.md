@@ -528,7 +528,7 @@ stateDiagram-v2
 
 Limited threads persist a typed `usageLimit` in the thread row. A usage limit can carry a provider-confirmed reset time and an opt-in automatic resume flag. Organization spend limits carry no reset schedule. The runner checks due requests in its scoped fiber, consumes each request once, then resends the last user prompt and attachments through the normal send path. Manual sends and archiving clear the limit. Restart preserves limited threads and scheduled requests.
 
-A thread's place in the Inbox, as `specs/ThreadLifecycle.tla` models it. `FlowIsLegal` checks that no step leaves this chart.
+A thread's place in the Inbox, as `specs/ThreadLifecycle.tla` models it. `FlowIsLegal` checks that no step leaves this chart. The sidebar shows Working threads inside Ready, dimmed.
 
 ```mermaid
 stateDiagram-v2
@@ -542,13 +542,13 @@ stateDiagram-v2
   Working --> Snoozed: snooze
   Snoozed --> Ready: wake
   Snoozed --> Working: send
-  Ready --> Settled: settle, merge, quiet week
+  Ready --> Settled: settle, merge, idle days
   Snoozed --> Settled: settle, merge
   Settled --> Ready: reopen, pin
   Settled --> Working: send
   Ready --> Archived: archive
   Snoozed --> Archived: archive
-  Settled --> Archived: archive
+  Settled --> Archived: archive, settled days
   Archived --> Ready: reopen
   Archived --> Working: send
   Ready --> Deleted: delete

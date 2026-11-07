@@ -21,7 +21,7 @@ import { projectsAtom } from "../lib/rpc.ts"
 import { arrangeRows, deleteGroup, moveGroup, renameGroup, setGroupCollapsed } from "../lib/sidebarGroups.ts"
 import { useSidebarGroups } from "../lib/useSidebarGroups.ts"
 import { type InboxGroup, inboxGroup, rowState } from "../../shared/threadStatus.ts"
-import { openPullRequestsAtom, pullRequestAttentionsAtom } from "../lib/rpc.ts"
+import { pullRequestAttentionsAtom } from "../lib/rpc.ts"
 import { useBackgroundTasks } from "../stores/backgroundTasks.ts"
 import { useSending } from "../stores/sending.ts"
 import { type Draft, hasContent, useDrafts } from "../stores/drafts.ts"
@@ -292,41 +292,19 @@ function SectionHeading({
   count,
   action,
   emphasized = false,
-  folded,
-  onFoldedChange,
   className = "",
 }: {
   title: string
   count?: number
   action?: ReactNode
   emphasized?: boolean
-  folded?: boolean
-  onFoldedChange?: (folded: boolean) => void
   className?: string
 }) {
-  const label = (
-    <h2 className={`text-xs ${emphasized ? "font-semibold text-sidebar-title" : "font-medium text-sidebar-meta"}`}>
-      {title}
-    </h2>
-  )
   return (
     <div className={`mx-2 flex h-7 items-center gap-1.5 px-2.5 ${className}`}>
-      {onFoldedChange === undefined ? (
-        label
-      ) : (
-        <button
-          type="button"
-          aria-expanded={!folded}
-          onClick={() => onFoldedChange(!folded)}
-          className="flex items-center gap-0.5 rounded-sm text-sidebar-meta outline-none hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-        >
-          {label}
-          <ChevronDownIcon
-            aria-hidden
-            className={`size-4 transition-transform motion-reduce:transition-none cjk:translate-y-[-0.04em] ${folded ? "-rotate-90" : ""}`}
-          />
-        </button>
-      )}
+      <h2 className={`text-xs ${emphasized ? "font-semibold text-sidebar-title" : "font-medium text-sidebar-meta"}`}>
+        {title}
+      </h2>
       {(action !== undefined || count !== undefined) && (
         <span className="ms-auto flex items-center gap-1.5">
           {action}
@@ -434,7 +412,7 @@ function useWrittenDrafts(projects: ReadonlyArray<Project>, query: Query) {
   return writtenDrafts(threads, titles, projects, query)
 }
 
-function useInboxGroups(threads: ReadonlyArray<Thread>, now: number) {
+function useInboxGroups(threads: ReadonlyArray<Thread>) {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => [])
   const unseen = useUnseen((state) => state.byThreadId)
   const background = useBackgroundTasks((state) => state.byThreadId)
@@ -445,7 +423,6 @@ function useInboxGroups(threads: ReadonlyArray<Thread>, now: number) {
     return [environmentOf(project), (links[thread.id] ?? []).map((link) => link.url)] as const
   })
   const attentions = useAtomValue(pullRequestAttentionsAtom(lookups))
-  const open = useAtomValue(openPullRequestsAtom(lookups))
   const entries = threads.map((thread, index) => {
     const state = rowState(
       thread.status,
@@ -453,17 +430,11 @@ function useInboxGroups(threads: ReadonlyArray<Thread>, now: number) {
       unseen[thread.id],
       attentions[index],
     )
-    return {
-      thread,
-      state,
-      lastActivity: lastActivity(thread),
-      group: inboxGroup(state, thread.settledAt, lastActivity(thread), open[index] ?? false, now),
-    }
+    return { thread, group: inboxGroup(state, thread.settledAt) }
   })
   const threadsIn = (group: InboxGroup) => entries.filter((entry) => entry.group === group).map((entry) => entry.thread)
   return {
     ready: threadsIn("ready").toSorted(newestActivityFirst),
-    working: threadsIn("working").toSorted((a, b) => b.createdAt.localeCompare(a.createdAt)),
     settled: threadsIn("settled"),
   }
 }
@@ -476,7 +447,7 @@ function InboxShelves({ query }: { query: Query }) {
   const now = useNow()
   const threads = useMatchingThreads(selectInboxThreads(now), query)
   const archived = useMatchingThreads(selectArchivedThreads, query)
-  const { settled } = useInboxGroups(threads, now)
+  const { settled } = useInboxGroups(threads)
   if (settled.length === 0 && archived.length === 0) return null
   return (
     <div className="flex shrink-0 flex-col border-t border-sidebar-border py-1">
@@ -550,13 +521,11 @@ function InboxList({ query }: { query: Query }) {
   const now = useNow()
   const threads = useMatchingThreads(selectInboxThreads(now), query)
   const snoozed = useMatchingThreads(selectSnoozedThreads(now), query)
-  const { ready, working } = useInboxGroups(threads, now)
+  const { ready } = useInboxGroups(threads)
   const projects = useFilteredProjects(AsyncResult.getOrElse(useAtomValue(projectsAtom), () => []))
   const drafts = useWrittenDrafts(projects, query)
   const showActivity = useUi((state) => state.inboxActivityShown)
   const setShowActivity = useUi((state) => state.setInboxActivityShown)
-  const workingFolded = useUi((state) => state.inboxWorkingFolded)
-  const setWorkingFolded = useUi((state) => state.setInboxWorkingFolded)
   return (
     <>
       <TurnList
@@ -579,45 +548,31 @@ function InboxList({ query }: { query: Query }) {
             spaced: drafts.length > 0,
             group: READY_GROUP,
             headingClassName: "sticky top-0 z-20 bg-sidebar",
-            heading: <SectionHeading title={m.sidebar_ready()} count={ready.length} emphasized />,
+            heading: (
+              <SectionHeading
+                title={m.sidebar_ready()}
+                count={ready.length}
+                emphasized
+                action={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={m.sidebar_agents_show_activity()}
+                    title={m.sidebar_agents_show_activity()}
+                    aria-pressed={showActivity}
+                    className="aria-pressed:bg-sidebar-row-selected aria-pressed:text-sidebar-foreground"
+                    onClick={() => setShowActivity(!showActivity)}
+                  >
+                    <RiPulseLine aria-hidden />
+                  </Button>
+                }
+              />
+            ),
             threads: ready,
+            showActivity,
             flat: true,
             empty: query === "" ? m.sidebar_nothing_ready() : m.sidebar_no_matches(),
           },
-          ...(working.length === 0
-            ? []
-            : [
-                {
-                  key: "working",
-                  group: "working",
-                  spaced: true,
-                  headingClassName:
-                    "sticky top-0 bottom-0 z-20 bg-sidebar before:pointer-events-none before:absolute before:inset-x-0 before:bottom-full before:h-4 before:bg-linear-to-t before:from-sidebar",
-                  heading: (
-                    <SectionHeading
-                      title={m.sidebar_working()}
-                      count={working.length}
-                      folded={workingFolded}
-                      onFoldedChange={setWorkingFolded}
-                      action={
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          aria-label={m.sidebar_agents_show_activity()}
-                          title={m.sidebar_agents_show_activity()}
-                          aria-pressed={showActivity}
-                          className="aria-pressed:bg-sidebar-row-selected aria-pressed:text-sidebar-foreground"
-                          onClick={() => setShowActivity(!showActivity)}
-                        >
-                          <RiPulseLine aria-hidden />
-                        </Button>
-                      }
-                    />
-                  ),
-                  threads: workingFolded ? [] : working,
-                  showActivity,
-                },
-              ]),
         ]}
       />
       {snoozed.length > 0 && (

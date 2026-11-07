@@ -140,9 +140,11 @@ const createThread = (projectId: string, title: string, branch?: string) =>
   )
 
 const archiveRemovingWorktree = (threadId: string) =>
-  Settings.use((settings) => settings.set({ archive: { whenMerged: false, removeWorktree: true } })).pipe(
-    Effect.andThen(Threads.use((threads) => threads.archive(threadId))),
-  )
+  Settings.use((settings) =>
+    settings.set({
+      archive: { whenMerged: false, removeWorktree: true, settleAfterIdleDays: null, archiveAfterSettledDays: null },
+    }),
+  ).pipe(Effect.andThen(Threads.use((threads) => threads.archive(threadId))))
 
 const forkThread = (threadId: string) =>
   Effect.gen(function* () {
