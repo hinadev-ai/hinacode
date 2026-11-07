@@ -36,7 +36,7 @@ export function ProviderIcon({
 
 const upstreams: Record<string, ProviderId> = { claude: "claude", anthropic: "claude", codex: "codex", openai: "codex" }
 
-export const magpieUpstream = (model: string): ProviderId | null => upstreams[model.split("/")[0] ?? ""] ?? null
+const magpieUpstream = (model: string): ProviderId | null => upstreams[model.split("/")[0] ?? ""] ?? null
 
 export function ThreadProviderIcon({
   provider,

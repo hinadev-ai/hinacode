@@ -191,8 +191,8 @@ export const pickerProviders = (own: ProviderId, setUp: ReadonlyArray<ProviderId
 
 function useAgentTabs(thread: Thread, canSwitchAgent: boolean): ReadonlyArray<AgentTab> {
   const environment = useThreadEnvironment(thread.id)
-  const enabled = enabledProviders(useSettings(environment))
-  const setUpProviders = useAtomValue(setUpProvidersAtom(environment)).filter((provider) => enabled.includes(provider))
+  const enabled = new Set(enabledProviders(useSettings(environment)))
+  const setUpProviders = useAtomValue(setUpProvidersAtom(environment)).filter((provider) => enabled.has(provider))
   const accounts = useAccountOptions(thread).options
   const accountHint = useAccountHint()
   const turnRunning = thread.status === "running" || thread.status === "awaiting_approval"
