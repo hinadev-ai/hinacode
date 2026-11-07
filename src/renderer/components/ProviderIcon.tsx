@@ -33,3 +33,35 @@ export function ProviderIcon({
   const { Icon, color } = icons[provider]
   return <Icon aria-hidden className={cn("size-3.5 shrink-0", muted ? "text-muted-foreground" : color, className)} />
 }
+
+const upstreams: Record<string, ProviderId> = { claude: "claude", anthropic: "claude", codex: "codex", openai: "codex" }
+
+export const magpieUpstream = (model: string): ProviderId | null => upstreams[model.split("/")[0] ?? ""] ?? null
+
+export function ThreadProviderIcon({
+  provider,
+  model,
+  muted = false,
+  className,
+}: {
+  provider: ProviderId
+  model: string
+  muted?: boolean
+  className?: string
+}) {
+  const upstream = provider === "magpie" ? magpieUpstream(model) : null
+  if (upstream === null) return <ProviderIcon provider={provider} muted={muted} className={className} />
+  return (
+    <span className="flex shrink-0 items-center">
+      <ProviderIcon provider={provider} muted={muted} className={className} />
+      <ProviderIcon
+        provider={upstream}
+        muted={muted}
+        className={cn(
+          "-ms-1 transition-[margin] duration-150 ease-out group-hover/thread:ms-1 motion-reduce:transition-none",
+          className,
+        )}
+      />
+    </span>
+  )
+}
