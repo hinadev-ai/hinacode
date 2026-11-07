@@ -6,16 +6,18 @@ import { lazyLocales, paraglide } from "../../vite.paraglide.ts"
 
 const repo = resolve(import.meta.dirname, "../..")
 
+const CLERK_SCRIPT_SOURCES = "https://clerk.hinacode.app https://*.clerk.accounts.dev https://challenges.cloudflare.com"
+
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
-  "script-src 'self' 'wasm-unsafe-eval'",
+  `script-src 'self' 'wasm-unsafe-eval' ${CLERK_SCRIPT_SOURCES}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "media-src 'self' data: blob: https:",
   "font-src 'self' data:",
   "connect-src * data: blob:",
   "frame-src 'self' https:",
-  "worker-src 'self'",
+  "worker-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'none'",
 ].join("; ")

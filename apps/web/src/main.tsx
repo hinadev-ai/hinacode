@@ -5,7 +5,16 @@ import { m } from "@/paraglide/messages.js"
 import { useLocale } from "@/stores/locale.ts"
 import type { RelayMachine } from "../../../src/shared/relayMachines.ts"
 import type { TransportMessages } from "../../../src/shared/transport.ts"
-import { describeFailure, fetchMachines, forgetAccount, type RelayAccount, storedAccount } from "./account.ts"
+import {
+  chosenRelay,
+  describeFailure,
+  fetchMachines,
+  forgetAccount,
+  type OnSignedIn,
+  openSignIn,
+  type RelayAccount,
+  storedAccount,
+} from "./account.ts"
 import { connectMachines } from "./bridge.ts"
 import { readSettings } from "./browser.ts"
 import { Gate } from "./Gate.tsx"
@@ -51,13 +60,9 @@ const resumed = await resume()
 const rootElement = document.getElementById("root")
 if (resumed._tag === "signIn" && rootElement !== null) {
   const gate = createRoot(rootElement)
-  gate.render(
-    <Gate
-      error={resumed.error}
-      onSignedIn={(account, machines) => {
-        gate.unmount()
-        void start(account, machines)
-      }}
-    />,
-  )
+  const signedIn: OnSignedIn = (account, machines) => {
+    gate.unmount()
+    void start(account, machines)
+  }
+  gate.render(<Gate error={resumed.error} firstAttempt={openSignIn(chosenRelay(), signedIn)} onSignedIn={signedIn} />)
 }

@@ -11,6 +11,7 @@ import {
   startMachine,
   startRelay,
 } from "./stack.ts"
+import { stubClerk } from "./app.ts"
 
 export interface WebStack {
   readonly appUrl: string
@@ -46,6 +47,10 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     },
     { scope: "worker" },
   ],
+  page: async ({ page }, use) => {
+    await stubClerk(page)
+    await use(page)
+  },
   web: async ({ stack }, use) => {
     await stack.machine.start()
     await use(stack)

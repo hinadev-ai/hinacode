@@ -3,9 +3,9 @@ import { writeFileSync } from "node:fs"
 import { join } from "node:path"
 import {
   addProject,
+  endClerkSession,
   openFile,
   openMachineResources,
-  openRelaySignInPage,
   openSignedIn,
   sidebar,
   signIn,
@@ -20,7 +20,7 @@ const browserCredential = (page: Page) =>
 
 const ONE_PIXEL_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
 
-test("signing in through the relay's page loads the app with the relay's machines", async ({ page, web }) => {
+test("signing in with Clerk on the gate loads the app with the relay's machines", async ({ page, web }) => {
   await page.goto(web.appUrl)
   await expect(page.getByRole("textbox", { name: "Owner token" })).toHaveCount(0)
   await signIn(page, web)
@@ -29,35 +29,37 @@ test("signing in through the relay's page loads the app with the relay's machine
   expect(web.relay.deviceName(await browserCredential(page))).toBe("HinaCode in a browser")
 })
 
-test("a sign-in denied on the relay's page stops waiting and says so", async ({ page, web }) => {
-  web.relay.denyNextSignIn()
-  await page.goto(web.appUrl)
-  const denial = await openRelaySignInPage(page, web)
-  await expect(denial.getByText(/^Denied /)).toBeVisible()
-  await denial.close()
-  await expect(page.getByRole("alert")).toHaveText("The sign-in was denied. Sign in again.")
-  await expect(page.getByText("Waiting for you to approve this browser…", { exact: true })).toHaveCount(0)
-})
-
-test("logging out ends this browser's sign-in on the relay", async ({ page, web }) => {
+test("logging out ends this browser's sign-in on the relay and with Clerk", async ({ page, web }) => {
   await openSignedIn(page, web)
   const credential = await browserCredential(page)
   await page.getByRole("button", { name: "Account", exact: true }).click()
   await expect(page.getByText("Web E2E", { exact: true })).toBeVisible()
   await page.getByRole("menuitem", { name: "Logout", exact: true }).click()
   await page.getByRole("alertdialog").getByRole("button", { name: "Sign out", exact: true }).click()
-  await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Continue with GitHub", exact: true })).toBeVisible()
   expect(web.relay.deviceName(credential)).toBeUndefined()
 })
 
-test("a browser the relay signed out goes back to sign in", async ({ page, web }) => {
+test("a browser the relay signed out signs in again while its Clerk session lasts", async ({ page, web }) => {
+  await openSignedIn(page, web)
+  const credential = await browserCredential(page)
+  web.relay.signOutEveryDevice()
+  await page.reload()
+  await expect(sidebar(page)).toBeVisible()
+  const renewed = await browserCredential(page)
+  expect(renewed).not.toBe(credential)
+  expect(web.relay.deviceName(renewed)).toBe("HinaCode in a browser")
+})
+
+test("a browser signed out of the relay and Clerk goes back to sign in", async ({ page, web }) => {
   await openSignedIn(page, web)
   web.relay.signOutEveryDevice()
+  await endClerkSession(page)
   await page.reload()
   await expect(page.getByRole("alert")).toHaveText("This browser was signed out. Sign in again.")
   await page.reload()
+  await expect(page.getByRole("button", { name: "Continue with GitHub", exact: true })).toBeVisible()
   await expect(page.getByRole("alert")).toHaveCount(0)
-  await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible()
 })
 
 test("reloading goes straight back to the app", async ({ page, web }) => {

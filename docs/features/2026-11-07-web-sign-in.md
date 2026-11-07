@@ -38,6 +38,8 @@ sequenceDiagram
 - The desktop and phone keep the redirect sign-in from `docs/features/2026-11-06-sign-in-redirect.md`.
 - `hinacode serve` keeps the device-code flow. It runs on machines without a browser, often over SSH, where the person opens the printed URL in any browser. Nothing has to reach the machine, so it needs no callback and no pasted token.
 - **Sign out all devices** ends device credentials, not Clerk sessions. A web app whose Clerk session is still alive signs in again on the next visit.
+- Choosing another relay saves it for the tab and reloads the page, because clerk-js runs one Clerk instance per page.
+- The web app's CSP allows Clerk scripts only from `clerk.hinacode.app` and Clerk development hosts. Another relay whose Clerk production instance lives elsewhere needs its own build of the web app.
 
 ## Verify
 
