@@ -526,8 +526,12 @@ const graphqlPullRequest = (title: string, state = "OPEN") => ({
             { requestedReviewer: null },
           ],
         },
+        latestOpinionatedReviews: {
+          nodes: [{ state: "APPROVED", author: { login: "approver" } }],
+        },
         latestReviews: {
           nodes: [
+            { state: "COMMENTED", author: { login: "approver" } },
             { state: "APPROVED", author: { login: "reviewer" } },
             { state: "COMMENTED", author: { login: "rerequested" } },
             { state: "COMMENTED", author: { login: "octocat" } },
@@ -661,6 +665,7 @@ describe("pull request reads", () => {
       expect(reviewers).toStrictEqual([
         { login: "rerequested", state: "requested" },
         { login: "o/core", state: "requested" },
+        { login: "approver", state: "approved" },
         { login: "reviewer", state: "approved" },
       ])
     }).pipe(Effect.provide(gh.layer))
@@ -676,12 +681,31 @@ describe("pull request reads", () => {
         "pr",
         "edit",
         PR_URL,
-        "--add-reviewer=o/core",
-        "--add-reviewer=--hubot",
-        "--remove-reviewer=octocat",
+        '--add-reviewer="o/core"',
+        '--add-reviewer="--hubot"',
+        '--remove-reviewer="octocat"',
       ])
       yield* github.pullRequestDetail(PR_URL)
       expect(gh.runs.filter(isRead)).toHaveLength(2)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("label names with commas or quotes reach gh as one value each", () => {
+    const gh = fakeGh(() => apiReply(graphqlPullRequest("Labels")))
+    return Effect.gen(function* () {
+      yield* (yield* GitHub).editPullRequest(PR_URL, {
+        field: "labels",
+        add: ['needs "QA"', "a, b"],
+        remove: ["bug"],
+      })
+      expect(gh.runs).toContainEqual([
+        "pr",
+        "edit",
+        PR_URL,
+        '--add-label="needs ""QA"""',
+        '--add-label="a, b"',
+        '--remove-label="bug"',
+      ])
     }).pipe(Effect.provide(gh.layer))
   })
 
