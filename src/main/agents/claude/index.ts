@@ -54,7 +54,7 @@ import {
 import { perHome } from "../usage.ts"
 import { permissionMode } from "./access.ts"
 import { type ApprovalSession, makeApprovals } from "./approvals.ts"
-import { hideUserCommands, toCommand } from "./commands.ts"
+import { toCommand } from "./commands.ts"
 import {
   backgroundTasksOf,
   isTerminal,
@@ -123,7 +123,6 @@ interface Session extends MapState, ApprovalSession {
   model: string
   effort: string | null
   fastMode: boolean
-  readonly userSkills: boolean
   readonly autoCompactTokens: number | null
   readonly launch: Readonly<Record<string, string>>
   permissionMode: PermissionMode
@@ -417,11 +416,6 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
       timeToLive: Duration.minutes(1),
     })
 
-    const skillOverrides = (input: SessionInput) =>
-      input.userSkills
-        ? Effect.succeed(null)
-        : Cache.get(probedCommands, commandsKey(input.cwd, input.home)).pipe(Effect.map(hideUserCommands))
-
     const emit = (session: Session, event: AgentEvent) => {
       if (session.turn === null) return
       if ((event.type === "turn_failed" || event.type === "turn_limited") && session.interrupted)
@@ -649,7 +643,6 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
         const resume = input.resumeSessionId ?? previous?.sessionId
         const keepsGrants = previous !== undefined && previous.sessionId === resume && sameContext(previous, input)
         const base = yield* baseOptions(input.home)
-        const hidden = yield* skillOverrides(input)
         const effort = effortLevelOf(input.effort)
         const { query } = yield* Effect.promise(() => import("@anthropic-ai/claude-agent-sdk"))
         const handle = yield* Effect.try({
@@ -668,7 +661,6 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
                   fastMode: input.fastMode,
                   ...(input.autoCompactTokens !== null && { autoCompactWindow: input.autoCompactTokens }),
                   ...(input.effort === ULTRACODE && { ultracode: true }),
-                  ...(hidden !== null && { skillOverrides: hidden }),
                 },
                 ...(resume === undefined ? {} : { resume }),
                 ...(input.forkAt !== null && { forkSession: true, resumeSessionAt: input.forkAt }),
@@ -707,7 +699,6 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
           model: input.model,
           effort: input.effort,
           fastMode: input.fastMode,
-          userSkills: input.userSkills,
           autoCompactTokens: input.autoCompactTokens,
           launch,
           permissionMode: mode,
@@ -762,7 +753,6 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
           if (
             sameContext(existing, input) &&
             sameLaunch(existing.launch, launch) &&
-            existing.userSkills === input.userSkills &&
             existing.autoCompactTokens === input.autoCompactTokens
           )
             return claim(existing)
@@ -918,7 +908,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
     }) =>
       Effect.suspend(() => {
         const session = sessions.get(threadId)
-        return session !== undefined && session.userSkills && session.cwd === cwd && sameHome(session.home, home)
+        return session !== undefined && session.cwd === cwd && sameHome(session.home, home)
           ? lease(session, (leased) =>
               Effect.tryPromise({
                 try: () => leased.query.supportedCommands(),

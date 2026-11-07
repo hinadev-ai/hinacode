@@ -584,7 +584,6 @@ const make = Effect.gen(function* () {
         effort: thread.effort,
         fastMode: thread.fastMode,
         autoCompactTokens: autoCompactTokens[provider.id],
-        userSkills: thread.userSkills,
         accessMode: thread.accessMode,
         resumeSessionId: thread.providerSessionId ?? thread.forkedFrom?.sessionId ?? null,
         forkAt: thread.providerSessionId === null ? (thread.forkedFrom?.checkpoint ?? null) : null,
@@ -794,7 +793,11 @@ const make = Effect.gen(function* () {
     const follow = (events: Stream.Stream<AgentEvent, AgentError | PersistenceError>) =>
       Stream.runForEach(events, handle).pipe(
         Effect.catchTag("AgentError", ({ message, loginCommand }) =>
-          handle({ type: "turn_failed", message, ...(loginCommand !== undefined && { loginCommand }) }),
+          handle({
+            type: "turn_failed",
+            message,
+            ...(loginCommand !== undefined && { signedOut: true, loginCommand }),
+          }),
         ),
         Effect.catch((error) => Effect.logError("turn bookkeeping failed", error)),
         Effect.ensuring(finish),
@@ -964,7 +967,6 @@ const make = Effect.gen(function* () {
           effort: request.effort ?? null,
           fastMode: false,
           autoCompactTokens: autoCompactTokens[provider.id],
-          userSkills: thread.userSkills,
           accessMode: thread.accessMode,
           resumeSessionId: null,
           forkAt: null,

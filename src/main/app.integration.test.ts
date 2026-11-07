@@ -28,7 +28,6 @@ const resume = (threadId: string): RunTurnInput => ({
   effort: null,
   fastMode: false,
   autoCompactTokens: null,
-  userSkills: false,
   accessMode: "full",
   resumeSessionId: "session-1",
   forkAt: null,

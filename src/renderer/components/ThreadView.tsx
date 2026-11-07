@@ -9,7 +9,7 @@ import { findPattern } from "../lib/find.ts"
 import { useDebouncedValue } from "../lib/useDebouncedValue.ts"
 import { useIsChat } from "../lib/useIsChat.ts"
 import { artifactSkillCommands } from "../lib/artifactSkills.ts"
-import { commandsAtom, completionKey, projectsAtom, repositoryAtom, threadCommands } from "../lib/rpc.ts"
+import { commandsAtom, completionKey, projectsAtom, repositoryAtom } from "../lib/rpc.ts"
 import { ThreadRepository } from "../lib/threadRepository.ts"
 import { ThreadFolder, useThreadRoot } from "../lib/threadRoot.ts"
 import { m } from "../paraglide/messages.js"
@@ -174,10 +174,7 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
   const label = providerLabel[thread.provider]()
   const commands = [
     ...artifactSkillCommands(),
-    ...threadCommands(
-      AsyncResult.getOrElse(useAtomValue(commandsAtom(completionKey(thread))), (): ReadonlyArray<AgentCommand> => []),
-      thread,
-    ),
+    ...AsyncResult.getOrElse(useAtomValue(commandsAtom(completionKey(thread))), (): ReadonlyArray<AgentCommand> => []),
   ]
   const isChat = useIsChat(thread.projectId)
   const findOpen = useUi((state) => state.findThreadId === thread.id)

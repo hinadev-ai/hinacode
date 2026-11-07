@@ -144,7 +144,6 @@ const turn = (overrides: Partial<RunTurnInput>): RunTurnInput => ({
   effort: null,
   fastMode: false,
   autoCompactTokens: null,
-  userSkills: true,
   accessMode: "full",
   resumeSessionId: null,
   forkAt: null,

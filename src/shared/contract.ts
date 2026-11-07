@@ -251,7 +251,6 @@ export const RpcMethods = {
       model: Schema.optional(Schema.String),
       effort: Schema.optional(Schema.NullOr(Schema.String)),
       fastMode: Schema.optional(Schema.Boolean),
-      userSkills: Schema.optional(Schema.Boolean),
       accessMode: Schema.optional(AccessMode),
       status: Schema.optional(ThreadStatus),
       sortIndex: Schema.optional(Schema.Number),

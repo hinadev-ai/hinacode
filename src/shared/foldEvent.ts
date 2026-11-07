@@ -84,8 +84,14 @@ export function foldEvent(message: Message, event: AgentEvent, now: string): Mes
 
 const failurePart = (event: Extract<AgentEvent, { type: "turn_failed" }>): ReadonlyArray<MessagePart> => {
   if (event.stopped) return []
-  if (event.loginCommand !== undefined)
-    return [{ type: "signed_out", message: event.message, loginCommand: event.loginCommand }]
+  if (event.signedOut)
+    return [
+      {
+        type: "signed_out",
+        message: event.message,
+        ...(event.loginCommand !== undefined && { loginCommand: event.loginCommand }),
+      },
+    ]
   return [{ type: "text", text: `**Error:** ${event.message}` }]
 }
 

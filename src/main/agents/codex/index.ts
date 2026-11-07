@@ -20,7 +20,7 @@ import {
   type AgentEvent,
   type ApprovalDecision,
   type BackgroundTask,
-  loginCommand,
+  signedOutFailure,
   type ModelInfo,
   type Question,
   type QuestionAnswers,
@@ -490,9 +490,6 @@ const make = Effect.gen(function* () {
             () => Effect.sync(() => threadsInTurn.delete(input.threadId)),
           )
 
-          const hiddenSkills = input.userSkills
-            ? null
-            : (yield* listSkills(input.cwd, input.home)).filter((skill) => skill.scope === "user")
           const overrides = {
             cwd: input.cwd,
             model: input.model,
@@ -501,9 +498,6 @@ const make = Effect.gen(function* () {
               tools: { update_plan: { enabled: true } },
               ...(input.tmpDirectory !== null && { shell_environment_policy: { set: tmpEnv(input.tmpDirectory) } }),
               ...(input.autoCompactTokens !== null && { model_auto_compact_token_limit: input.autoCompactTokens }),
-              ...(hiddenSkills !== null && {
-                skills: { config: hiddenSkills.map((skill) => ({ path: skill.path, enabled: false })) },
-              }),
               mcp_servers: {
                 hinacode: {
                   url: input.mcpServer.url,
@@ -540,9 +534,7 @@ const make = Effect.gen(function* () {
 
           const compacting = isCompactCommand(input.prompt)
           const startTurn = Effect.gen(function* () {
-            const skills = input.prompt.includes("$")
-              ? (yield* listSkills(input.cwd, input.home)).filter((skill) => input.userSkills || skill.scope !== "user")
-              : []
+            const skills = input.prompt.includes("$") ? yield* listSkills(input.cwd, input.home) : []
             const turnStart: TurnStartParams = {
               threadId: thread.id,
               input: [...userInput(input.prompt, input.attachments), ...skillInputs(input.prompt, skills)],
@@ -899,9 +891,8 @@ const make = Effect.gen(function* () {
                       : {
                           type: "turn_failed",
                           message: error?.message ?? `Turn ${status}`,
-                          ...(error?.codexErrorInfo === "unauthorized" && {
-                            loginCommand: loginCommand("codex", input.home),
-                          }),
+                          ...(error?.codexErrorInfo === "unauthorized" &&
+                            signedOutFailure("codex", input.home, input.model)),
                         },
                   )
                   return true

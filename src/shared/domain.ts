@@ -433,7 +433,6 @@ export const Thread = Schema.Struct({
   model: Schema.String,
   effort: Schema.NullOr(Schema.String),
   fastMode: Schema.Boolean,
-  userSkills: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
   accessMode: AccessMode,
   accountId: Schema.NullOr(Schema.String),
   providerSessionId: Schema.NullOr(Schema.String),
@@ -472,7 +471,11 @@ export const MessagePart = Schema.Union([
   Schema.Struct({ type: Schema.Literal("questions"), text: Schema.String, questions: Schema.Array(Question) }),
   Schema.Struct({ type: Schema.Literal("compaction"), compaction: Compaction }),
   Schema.Struct({ type: Schema.Literal("agent_switch"), from: ProviderId, to: ProviderId }),
-  Schema.Struct({ type: Schema.Literal("signed_out"), message: Schema.String, loginCommand: Schema.String }),
+  Schema.Struct({
+    type: Schema.Literal("signed_out"),
+    message: Schema.String,
+    loginCommand: Schema.optional(Schema.String),
+  }),
   Schema.Struct({
     type: Schema.Literal("session_import"),
     provider: AccountProviderId,

@@ -36,7 +36,6 @@ import {
   filesAtom,
   noFilesAtom,
   projectsAtom,
-  threadCommands,
 } from "../lib/rpc.ts"
 import { artifactSkillCommands } from "../lib/artifactSkills.ts"
 import { askSidechat, sidechatCommand, sidechatQuestion } from "../lib/sidechat.ts"
@@ -131,10 +130,7 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   const fileInputRef = useRef<HTMLInputElement>(null)
   const key = completionKey(thread)
   const commandsResult = useAtomValue(commandsAtom(key))
-  const agentCommands = threadCommands(
-    AsyncResult.getOrElse(commandsResult, (): ReadonlyArray<AgentCommand> => []),
-    thread,
-  )
+  const agentCommands = AsyncResult.getOrElse(commandsResult, (): ReadonlyArray<AgentCommand> => [])
   const commands = [...(isSidechat ? [] : [sidechatCommand()]), ...artifactSkillCommands(), ...agentCommands]
   const commandsError = AsyncResult.isFailure(commandsResult)
     ? m.composer_commands_failed({ message: errorMessage(Cause.squash(commandsResult.cause)) })

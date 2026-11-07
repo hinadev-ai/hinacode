@@ -4,7 +4,7 @@ The same chat surface as Claude Code, backed by the Codex app-server. The thread
 
 ## Automated coverage
 
-No e2e scenario drives Codex. `src/main/agents/codex/index.integration.test.ts` runs the provider against a fake app-server (`fakeAppServer.mjs`): the app-server log, fork, auto-compact, conversation mode, Stop during startup and on a running turn, token usage, the plan, sub-agents, background terminals, questions, accounts and limits, and session import. The recipes below cover the UI.
+No e2e scenario drives Codex. `src/main/agents/codex/index.integration.test.ts` runs the provider against a fake app-server (`fakeAppServer.mjs`): the app-server log, fork, auto-compact, Stop during startup and on a running turn, token usage, the plan, sub-agents, background terminals, questions, accounts and limits, and session import. The recipes below cover the UI.
 
 ## Sub-features
 
@@ -30,7 +30,7 @@ Preconditions:
 - The `codex` CLI is logged in (`codex --version` works for this user).
 - `ab() { agent-browser --session kkv-$PORT-chat-codex --cdp $PORT "$@"; }`.
 
-- **Create.** `ab find role button click --name "New thread in demo" --exact`, `ab wait '[role=combobox][aria-label=Message]'`. Switch the agent: `ab click 'button[aria-label^="Model: "]'`, `ab wait 'ul[aria-label=Model]'`, `ab find role tab click --name "Codex" --exact`, `ab press 1` (the first Codex model), `ab find role button click --name "Full access" --exact`, `ab press Enter`. `ab get attr 'button[aria-label^="Model: "]' aria-label` reads `Model: <model>, <effort>, Full access`. Screenshot `chat-codex-01-new-thread.png`. After the first send `threads.list` shows `"provider": "codex"`.
+- **Create.** `ab find role button click --name "New thread in demo" --exact`, `ab wait '[role=combobox][aria-label=Message]'`. Switch the agent: `ab click 'button[aria-label^="Model: "]'`, `ab wait '[role=listbox][aria-label=Model]'`, `ab find role tab click --name "Codex" --exact`, `ab click '[role=option]'` (the first Codex model), `ab find role button click --name "Full access" --exact`, `ab press Enter`. `ab get attr 'button[aria-label^="Model: "]' aria-label` reads `Model: <model>, <effort>, Full access`. Screenshot `chat-codex-01-new-thread.png`. After the first send `threads.list` shows `"provider": "codex"`.
 - **Skills.** Type `$` into `Message` (`ab focus '[role=combobox][aria-label=Message]'`, `ab keyboard type '$'`). `ab wait '[role=listbox][aria-label=Commands]'`; it lists Codex skills. With no skills installed no listbox opens; report that. `Escape` closes it. Clear the box.
 - **Send and stream.** `ab find role combobox fill --name "Message" "Reply with only the number 6 times 7."`, `ab press Enter`, `ab wait 'button[aria-label="Stop"]'`, screenshot `chat-codex-02-streaming.png`; `ab wait --fn '!document.querySelector("button[aria-label=Stop]")' --timeout 120000`; the reply reads `42`. Screenshot `chat-codex-03-reply.png`.
 - **File change.** Send `Create a file hello.txt containing hi`. A file change row for `hello.txt` appears without an approval card, and `cat $DATA/repo/hello.txt` prints `hi`. Screenshot `chat-codex-04-file-change.png`.

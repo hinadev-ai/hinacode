@@ -19,7 +19,6 @@ const thread = (id: string, patch: Partial<Thread>): Thread => ({
   model: "m",
   effort: null,
   fastMode: false,
-  userSkills: true,
   accessMode: "auto",
   accountId: null,
   providerSessionId: null,

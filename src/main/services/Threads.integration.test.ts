@@ -297,19 +297,6 @@ describe("Threads", () => {
     }).pipe(Effect.provide(recording))
   })
 
-  it.effect("starts chats in conversation mode", () =>
-    Effect.gen(function* () {
-      const threads = yield* Threads
-      const chats = yield* Projects.Projects.use((projects) =>
-        projects.ensureChats(mkdtempSync(join(tmpdir(), "kk-chats-"))),
-      )
-      const { projectId } = yield* seedThread({ rootPath: "/repo" })
-      const create = (id: string) => threads.create({ projectId: id, title: "t", provider: "claude", model: "m" })
-      expect((yield* create(chats.id)).userSkills).toBe(false)
-      expect((yield* create(projectId)).userSkills).toBe(true)
-    }).pipe(Effect.provide(threadsLayer)),
-  )
-
   it.effect("gives each chat a folder of its own that lives until the chat is archived", () =>
     Effect.gen(function* () {
       const threads = yield* Threads

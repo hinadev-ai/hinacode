@@ -10,6 +10,7 @@ const newState = (): MapState => ({
   subagents: new Map(),
   lastRequest: null,
   home: null,
+  model: "claude-opus-5-5",
   limitMessage: null,
   limitResetAt: null,
   signedOut: false,
@@ -54,7 +55,16 @@ describe("mapMessage sign-in failures", () => {
     expect(terminal(newState())).toEqual({
       type: "turn_failed",
       message: signedOutMessage,
+      signedOut: true,
       loginCommand: "claude auth login",
+    })
+  })
+
+  test("leaves the sign-in to the docs when another provider serves the model", () => {
+    expect(terminal({ ...newState(), model: "kimi-k2.6" })).toEqual({
+      type: "turn_failed",
+      message: signedOutMessage,
+      signedOut: true,
     })
   })
 

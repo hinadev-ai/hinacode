@@ -37,7 +37,6 @@ const threadWith = (id: string, status: Thread["status"]): Thread => ({
   model: "claude-sonnet-5-5",
   effort: null,
   fastMode: false,
-  userSkills: true,
   accessMode: "full",
   accountId: null,
   providerSessionId: null,
