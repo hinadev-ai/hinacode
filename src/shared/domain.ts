@@ -237,6 +237,31 @@ export const LineComment = Schema.Struct({
 })
 export type LineComment = typeof LineComment.Type
 
+export const PullRequestLabel = Schema.Struct({ name: Schema.String, color: Schema.String })
+export type PullRequestLabel = typeof PullRequestLabel.Type
+
+export const ReviewerState = Schema.Literals(["requested", "approved", "changesRequested", "commented"])
+export type ReviewerState = typeof ReviewerState.Type
+
+export const PullRequestReviewer = Schema.Struct({ login: Schema.String, state: ReviewerState })
+export type PullRequestReviewer = typeof PullRequestReviewer.Type
+
+export const PullRequestEditField = Schema.Literals(["labels", "assignees", "reviewers"])
+export type PullRequestEditField = typeof PullRequestEditField.Type
+
+export const PullRequestEdit = Schema.Struct({
+  field: PullRequestEditField,
+  add: Schema.Array(Schema.String.check(Schema.isNonEmpty())),
+  remove: Schema.Array(Schema.String.check(Schema.isNonEmpty())),
+})
+export type PullRequestEdit = typeof PullRequestEdit.Type
+
+export const PullRequestCandidates = Schema.Struct({
+  labels: Schema.Array(PullRequestLabel),
+  users: Schema.Array(Schema.String),
+})
+export type PullRequestCandidates = typeof PullRequestCandidates.Type
+
 export const PullRequestDetail = Schema.Struct({
   ...PullRequest.fields,
   body: Schema.String,
@@ -246,6 +271,9 @@ export const PullRequestDetail = Schema.Struct({
   checkRuns: Schema.Array(CheckRun),
   changedFiles: Schema.Number.pipe(Schema.withDecodingDefaultKey(Effect.succeed(0))),
   comments: Schema.Array(PullRequestComment).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+  labels: Schema.Array(PullRequestLabel).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+  assignees: Schema.Array(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+  reviewers: Schema.Array(PullRequestReviewer).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 })
 export type PullRequestDetail = typeof PullRequestDetail.Type
 

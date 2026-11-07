@@ -27,15 +27,20 @@ import type {
   Mergeable,
   MergeMethod,
   PullRequest,
+  PullRequestCandidates,
   PullRequestDetail,
+  PullRequestEdit,
+  PullRequestEditField,
   PullRequestFile,
+  PullRequestReviewer,
   PullRequestStatus,
   ReviewLineComment,
+  ReviewerState,
   ReviewStatus,
   OpenPullRequest,
   PullRequestMatch,
 } from "../../shared/domain.ts"
-import { DiffSide, PullRequestComment } from "../../shared/domain.ts"
+import { DiffSide, PullRequestComment, PullRequestLabel, PullRequestReviewer as Reviewer } from "../../shared/domain.ts"
 import {
   type GitHubRepository,
   parseGitHubPullRequestUrl,
@@ -99,6 +104,20 @@ export const requirePullRequestUrl = (raw: string): Effect.Effect<string, PullRe
   const url = parseGitHubPullRequestUrl(raw.trim())
   return url === undefined ? Effect.fail(new PullRequestUrlInvalidError({ url: raw })) : Effect.succeed(url)
 }
+
+const EDIT_FLAGS = {
+  labels: { add: "--add-label", remove: "--remove-label" },
+  assignees: { add: "--add-assignee", remove: "--remove-assignee" },
+  reviewers: { add: "--add-reviewer", remove: "--remove-reviewer" },
+} satisfies Record<PullRequestEditField, { add: string; remove: string }>
+
+export const editPullRequestArgs = (url: string, { field, add, remove }: PullRequestEdit) => [
+  "pr",
+  "edit",
+  url,
+  ...add.map((value) => `${EDIT_FLAGS[field].add}=${value}`),
+  ...remove.map((value) => `${EDIT_FLAGS[field].remove}=${value}`),
+]
 
 export const reviewCommentArgs = (url: string, comment: ReviewLineComment) => {
   const { pathname } = new URL(url)
@@ -185,6 +204,9 @@ const PullRequestDetailFields = Schema.Struct({
   createdAt: Schema.String,
   changedFiles: Schema.Number,
   comments: Schema.Array(PullRequestComment),
+  labels: Schema.Array(PullRequestLabel),
+  assignees: Schema.Array(Schema.String),
+  reviewers: Schema.Array(Reviewer),
 })
 type PullRequestDetailFields = typeof PullRequestDetailFields.Type
 
@@ -200,6 +222,10 @@ const PULL_REQUEST_FRAGMENTS = `fragment PullRequestFields on PullRequest {
   comments(last: 50) { nodes { ...Comment url } }
   reviews(last: 50) { nodes { ...Comment url } }
   reviewThreads(last: 50) { nodes { isResolved diffSide comments(first: 20) { nodes { ...Comment url path line } } } }
+  labels(first: 50) { nodes { name color } }
+  assignees(first: 50) { nodes { login } }
+  reviewRequests(first: 50) { nodes { requestedReviewer { ... on Actor { login } ... on Team { combinedSlug } } } }
+  latestReviews(first: 50) { nodes { state author { login } } }
 }
 
 fragment Comment on Comment {
@@ -255,8 +281,21 @@ const GraphQLReviewComment = Schema.Struct({
 })
 
 const GraphQLPullRequest = Schema.Struct({
-  ...PullRequestDetailFields.mapFields(Struct.omit(["reviewDecision", "author", "statusCheckRollup", "comments"]))
-    .fields,
+  ...PullRequestDetailFields.mapFields(
+    Struct.omit(["reviewDecision", "author", "statusCheckRollup", "comments", "labels", "assignees", "reviewers"]),
+  ).fields,
+  labels: Schema.Struct({ nodes: Schema.Array(PullRequestLabel) }),
+  assignees: Schema.Struct({ nodes: Schema.Array(Schema.Struct({ login: Schema.String })) }),
+  reviewRequests: Schema.Struct({
+    nodes: Schema.Array(
+      Schema.Struct({
+        requestedReviewer: Schema.NullOr(
+          Schema.Struct({ login: Schema.optionalKey(Schema.String), combinedSlug: Schema.optionalKey(Schema.String) }),
+        ),
+      }),
+    ),
+  }),
+  latestReviews: Schema.Struct({ nodes: Schema.Array(Schema.Struct({ state: Schema.String, author: GraphQLAuthor })) }),
   reviewDecision: Schema.NullOr(Schema.String),
   author: GraphQLAuthor,
   comments: Schema.Struct({ nodes: Schema.Array(GraphQLComment) }),
@@ -347,6 +386,31 @@ const toComments = ({
       ),
   ].toSorted((a, b) => a.createdAt.localeCompare(b.createdAt))
 
+const REVIEWER_STATE: Partial<Record<string, ReviewerState>> = {
+  APPROVED: "approved",
+  CHANGES_REQUESTED: "changesRequested",
+  COMMENTED: "commented",
+}
+
+const toReviewers = (
+  { reviewRequests, latestReviews }: Pick<typeof GraphQLPullRequest.Type, "reviewRequests" | "latestReviews">,
+  author: string,
+): ReadonlyArray<PullRequestReviewer> => {
+  const requested = new Set(
+    reviewRequests.nodes.flatMap(({ requestedReviewer }) => {
+      const login = requestedReviewer?.login ?? requestedReviewer?.combinedSlug
+      return login === undefined ? [] : [login]
+    }),
+  )
+  const reviewed = latestReviews.nodes.flatMap(({ state, author: reviewer }) => {
+    const reviewerState = REVIEWER_STATE[state]
+    if (reviewer === null || reviewerState === undefined) return []
+    if (reviewer.login === author || requested.has(reviewer.login)) return []
+    return [{ login: reviewer.login, state: reviewerState }]
+  })
+  return [...[...requested].map((login) => ({ login, state: "requested" as const })), ...reviewed]
+}
+
 const fromGraphQL = ({
   commits,
   reviewDecision,
@@ -354,6 +418,10 @@ const fromGraphQL = ({
   comments,
   reviews,
   reviewThreads,
+  labels,
+  assignees,
+  reviewRequests,
+  latestReviews,
   ...fields
 }: typeof GraphQLPullRequest.Type): PullRequestDetailFields => ({
   ...fields,
@@ -361,6 +429,9 @@ const fromGraphQL = ({
   author: author ?? { login: "ghost" },
   statusCheckRollup: (commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes ?? []).map(toRollupEntry),
   comments: toComments({ comments, reviews, reviewThreads }),
+  labels: labels.nodes,
+  assignees: assignees.nodes.map(({ login }) => login),
+  reviewers: toReviewers({ reviewRequests, latestReviews }, author?.login ?? "ghost"),
 })
 
 const FAILED = new Set(["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"])
@@ -436,6 +507,9 @@ export const toPullRequestDetail = (json: PullRequestDetailFields): PullRequestD
   head: json.headRefOid,
   changedFiles: json.changedFiles,
   comments: json.comments,
+  labels: json.labels,
+  assignees: json.assignees,
+  reviewers: json.reviewers,
   checkRuns: json.statusCheckRollup
     .map(toCheckRun)
     .toSorted((a, b) => CHECK_RUN_ORDER[a.status] - CHECK_RUN_ORDER[b.status]),
@@ -557,6 +631,26 @@ export const contentsPath = (url: string, ref: string, path: string) => {
   return `repos/${owner}/${repo}/contents/${file}?ref=${encodeURIComponent(ref)}`
 }
 
+const CANDIDATES_QUERY = `query Candidates($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    labels(first: 100, orderBy: { field: NAME, direction: ASC }) { nodes { name color } }
+    assignableUsers(first: 100) { nodes { login } }
+  }
+}`
+
+const decodeCandidates = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(
+    Schema.Struct({
+      data: Schema.Struct({
+        repository: Schema.Struct({
+          labels: Schema.Struct({ nodes: Schema.Array(PullRequestLabel) }),
+          assignableUsers: Schema.Struct({ nodes: Schema.Array(Schema.Struct({ login: Schema.String })) }),
+        }),
+      }),
+    }),
+  ),
+)
+
 const decodePullRequestHead = Schema.decodeUnknownEffect(Schema.fromJsonString(PullRequestHead))
 
 const decodeOpenPullRequests = Schema.decodeUnknownEffect(
@@ -614,6 +708,13 @@ export class GitHub extends Context.Service<
     readonly merge: (url: string, method: MergeMethod) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
     readonly close: (url: string) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
     readonly comment: (url: string, body: string) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
+    readonly pullRequestCandidates: (
+      url: string,
+    ) => Effect.Effect<PullRequestCandidates, GitHubError | PullRequestUrlInvalidError | Schema.SchemaError>
+    readonly editPullRequest: (
+      url: string,
+      edit: PullRequestEdit,
+    ) => Effect.Effect<void, GitHubError | PullRequestUrlInvalidError>
     readonly reviewComment: (
       url: string,
       comment: ReviewLineComment,
@@ -987,6 +1088,22 @@ const make = Effect.gen(function* () {
     merge: (raw, method) => ghWrite(raw, (url) => ["pr", "merge", url, `--${method}`], openInRepository),
     close: (raw) => ghWrite(raw, (url) => ["pr", "close", url]),
     comment: (raw, body) => ghWrite(raw, (url) => ["pr", "comment", url, "--body", body]),
+    pullRequestCandidates: (raw) =>
+      Effect.gen(function* () {
+        const [, owner = "", name = ""] = new URL(yield* requirePullRequestUrl(raw)).pathname.split("/")
+        const { body } = yield* ghApi([
+          "graphql",
+          "-f",
+          `query=${CANDIDATES_QUERY}`,
+          "-f",
+          `owner=${owner}`,
+          "-f",
+          `name=${name}`,
+        ])
+        const { labels, assignableUsers } = (yield* decodeCandidates(body)).data.repository
+        return { labels: labels.nodes, users: assignableUsers.nodes.map(({ login }) => login) }
+      }),
+    editPullRequest: (raw, edit) => ghWrite(raw, (url) => editPullRequestArgs(url, edit)),
     reviewComment: (raw, comment) => ghWrite(raw, (url) => reviewCommentArgs(url, comment)),
     branchPullRequest,
     pullRequestHead: (cwd, selector) =>

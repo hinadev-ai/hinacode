@@ -38,8 +38,8 @@ import { getLocale } from "../paraglide/runtime.js"
 import { loadPullRequestsAtom, usePullRequests } from "../stores/pullRequests.ts"
 import { type PullRequestSection, type PullRequestTab, useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
-import { externalImageUrl } from "../../shared/channels.ts"
 import { Markdown } from "./Markdown.tsx"
+import { Avatar, PullRequestMetadata } from "./PullRequestMetadata.tsx"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -77,7 +77,6 @@ import {
   UnlinkIcon,
 } from "@hinacode/icons"
 import { Textarea } from "./ui/textarea.tsx"
-import { resourceUrl } from "../lib/resourceUrl.ts"
 
 const PullRequestCode = lazy(() =>
   import("./PullRequestCode.tsx").then((module) => ({ default: module.PullRequestCode })),
@@ -455,6 +454,7 @@ function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }:
         {tab === "info" ? (
           <>
             <Attention pullRequest={pullRequest} threadId={threadId} />
+            <PullRequestMetadata pullRequest={pullRequest} />
             <ChecksSection pullRequest={pullRequest} />
             <Section id="description" title={m.pr_description()}>
               {pullRequest.body.trim() === "" ? (
@@ -620,30 +620,6 @@ function PullRequestHeader({
         onOpenChange={(next) => !next && setConfirming(null)}
       />
     </header>
-  )
-}
-
-function Avatar({ login }: { login: string }) {
-  const [failed, setFailed] = useState(false)
-  const external = externalImageUrl(`https://github.com/${login}.png?size=48`)
-  const src = external === null ? null : resourceUrl(external)
-  if (failed || src === null) {
-    return (
-      <span
-        aria-hidden
-        className="flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-[0.5625rem] font-medium uppercase"
-      >
-        {login.slice(0, 1)}
-      </span>
-    )
-  }
-  return (
-    <img
-      src={src}
-      alt=""
-      className="size-4 shrink-0 rounded-full bg-muted outline-1 -outline-offset-1 outline-white/10"
-      onError={() => setFailed(true)}
-    />
   )
 }
 

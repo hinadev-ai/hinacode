@@ -469,6 +469,8 @@ const handlers: Handlers = {
   "github.merge": ({ url, method }) => GitHub.use((github) => github.merge(url, method)),
   "github.close": ({ url }) => GitHub.use((github) => github.close(url)),
   "github.comment": ({ url, body }) => GitHub.use((github) => github.comment(url, body)),
+  "github.pullRequestCandidates": ({ url }) => GitHub.use((github) => github.pullRequestCandidates(url)),
+  "github.editPullRequest": ({ url, edit }) => GitHub.use((github) => github.editPullRequest(url, edit)),
   "github.fileContent": ({ url, ref, path }) => GitHub.use((github) => github.fileContent(url, ref, path)),
   "github.reviewComment": ({ url, comment }) => GitHub.use((github) => github.reviewComment(url, comment)),
   "linear.issues": () => Linear.use((linear) => linear.assignedIssues),

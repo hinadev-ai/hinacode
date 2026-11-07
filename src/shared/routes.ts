@@ -113,6 +113,8 @@ export const routes: Record<RpcMethod, Route> = {
   "github.merge": named,
   "github.close": named,
   "github.comment": named,
+  "github.pullRequestCandidates": named,
+  "github.editPullRequest": named,
   "github.fileContent": named,
   "github.reviewComment": named,
   "vm.host": named,
