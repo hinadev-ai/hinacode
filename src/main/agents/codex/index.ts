@@ -28,6 +28,7 @@ import {
   type Subagent,
   type TokenUsage,
 } from "../../../shared/agent.ts"
+import { AGENT_IMAGE_TYPES } from "../../../shared/agentImages.ts"
 import type { Attachment } from "../../../shared/domain.ts"
 import type { LimitWindow, PlanLimits } from "../../../shared/limits.ts"
 import { nowIso } from "../../services/clock.ts"
@@ -123,7 +124,9 @@ const textInput = (text: string): UserInput => ({ type: "text", text, text_eleme
 const userInput = (text: string, attachments: ReadonlyArray<Attachment>): Array<UserInput> => [
   ...(text === "" ? [] : [textInput(text)]),
   ...attachments.flatMap((attachment): Array<UserInput> => {
-    if (attachment.kind !== "image") return [textInput(`Attached file: ${attachment.path}`)]
+    if (attachment.kind !== "image" || !AGENT_IMAGE_TYPES.includes(attachment.mime)) {
+      return [textInput(`Attached file: ${attachment.path}`)]
+    }
     const image: UserInput = { type: "localImage", path: attachment.path }
     const context = attachmentContext(attachment)
     return context === null ? [image] : [image, textInput(context)]

@@ -294,6 +294,36 @@ describe("Codex auto-compact", () => {
   )
 })
 
+describe("Codex attachments", () => {
+  it.live("sends only image types Codex accepts as local images", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        const image = (name: string, mime: string) => ({
+          id: name,
+          name,
+          path: `/attachments/${name}`,
+          mime,
+          kind: "image" as const,
+          bytes: 100,
+        })
+        yield* provider
+          .runTurn({
+            ...input("attachments"),
+            prompt: "",
+            attachments: [image("shot.png", "image/png"), image("logo.svg", "image/svg+xml")],
+          })
+          .pipe(Stream.runDrain)
+        const started = received().find((message) => message.method === "turn/start")
+        expect(started?.params?.input).toStrictEqual([
+          { type: "localImage", path: "/attachments/shot.png" },
+          { type: "text", text: "Attached file: /attachments/logo.svg", text_elements: [] },
+        ])
+      }),
+    ),
+  )
+})
+
 describe("Codex Stop during startup", () => {
   for (const phase of ["initialize", "thread/start", "turn/start"]) {
     it.live(`ends the run while ${phase} is pending and leaves the thread usable`, () =>

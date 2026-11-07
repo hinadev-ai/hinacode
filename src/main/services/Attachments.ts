@@ -13,6 +13,7 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   ".jpeg": "image/jpeg",
   ".gif": "image/gif",
   ".webp": "image/webp",
+  ".svg": "image/svg+xml",
   ".pdf": "application/pdf",
   ".txt": "text/plain",
   ".md": "text/markdown",
@@ -38,6 +39,9 @@ const safeName = (name: string) =>
   basename(name)
     .replace(/[^\w.-]+/g, "_")
     .slice(-100) || "file"
+
+export const extensionOf = (mime: string) =>
+  Object.entries(MIME_BY_EXTENSION).find(([, known]) => known === mime)?.[0] ?? ""
 
 const mimeOf = (name: string) => MIME_BY_EXTENSION[extname(name).toLowerCase()] ?? "application/octet-stream"
 

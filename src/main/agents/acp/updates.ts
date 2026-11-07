@@ -30,8 +30,13 @@ const TextContent = Schema.Struct({
   type: Schema.Literal("content"),
   content: Schema.Struct({ type: Schema.Literal("text"), text: Schema.String }),
 })
+const ImageContent = Schema.Struct({
+  type: Schema.Literal("content"),
+  content: Schema.Struct({ type: Schema.Literal("image"), data: Schema.String, mimeType: Schema.String }),
+})
 const DiffContent = Schema.Struct({ type: Schema.Literal("diff"), path: Schema.String })
 const decodeTextContent = Schema.decodeUnknownOption(TextContent)
+const decodeImageContent = Schema.decodeUnknownOption(ImageContent)
 const decodeDiffContent = Schema.decodeUnknownOption(DiffContent)
 
 export interface ToolState {
@@ -92,6 +97,10 @@ const toolOutput = (tool: ToolState): unknown => {
   const texts = tool.content.flatMap((block) =>
     Option.match(decodeTextContent(block), { onNone: () => [], onSome: ({ content }) => [content.text] }),
   )
+  const images = tool.content.flatMap((block) =>
+    Option.match(decodeImageContent(block), { onNone: () => [], onSome: ({ content }) => [content] }),
+  )
+  if (images.length > 0) return [...texts.map((text) => ({ type: "text", text })), ...images]
   if (texts.length > 0) return texts.join("\n")
   return stringField(tool.rawOutput, "output") ?? tool.rawOutput ?? ""
 }
