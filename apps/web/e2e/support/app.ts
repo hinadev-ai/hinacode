@@ -14,12 +14,12 @@ const clerkStub = `window.Clerk = {
   load: async () => {
     window.Clerk.isSignedIn = sessionStorage.getItem(${JSON.stringify(CLERK_SIGNED_IN)}) === "1"
   },
-  mountSignIn: (element) => {
+  mountSignIn: (element, options) => {
     const button = document.createElement("button")
     button.textContent = "Continue with GitHub"
     button.onclick = () => {
       sessionStorage.setItem(${JSON.stringify(CLERK_SIGNED_IN)}, "1")
-      location.reload()
+      location.assign(options.forceRedirectUrl)
     }
     element.replaceChildren(button)
   },
