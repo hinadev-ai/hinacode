@@ -533,6 +533,9 @@ const make = Effect.gen(function* () {
     })
 
   const update = (input: UpdateThread) =>
+    input.pinned === true ? worktrees.exclusive(updateNow(input)) : updateNow(input)
+
+  const updateNow = (input: UpdateThread) =>
     Effect.gen(function* () {
       const current = yield* get(input.id)
       const switchesAgent = input.provider !== undefined && input.provider !== current.provider
@@ -837,9 +840,11 @@ const make = Effect.gen(function* () {
     )
 
   const unsettle = (id: string) =>
-    Effect.gen(function* () {
-      return yield* write(yield* get(id), { id, settled: false })
-    })
+    worktrees.exclusive(
+      Effect.gen(function* () {
+        return yield* write(yield* get(id), { id, settled: false })
+      }),
+    )
 
   const workStartedAt = (id: string) =>
     sql<{ readonly startedAt: string | null }>`SELECT work_started_at AS startedAt FROM thread WHERE id = ${id}`.pipe(

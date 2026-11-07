@@ -140,13 +140,19 @@ const make = Effect.gen(function* () {
       return (yield* worktrees.checkoutState(worktree.id)) === "dirty"
     })
 
-  const archiveIfSettledLong = (thread: Thread, days: number, now: number) =>
+  const isArchiveDue = (thread: Thread, now: number) =>
+    Effect.map(settings.get, ({ archive: { archiveAfterSettledDays: days } }) =>
+      days === null ? false : isSettledFor(thread, days, now),
+    )
+
+  const archiveIfSettledLong = (thread: Thread, now: number) =>
     Effect.gen(function* () {
-      if (!isSettledFor(thread, days, now)) return
+      if (!(yield* isArchiveDue(thread, now))) return
       const archiveIfStillDue = threads.archiveIf(thread.id, (latest) =>
-        isSettledFor(latest, days, now)
-          ? Effect.map(losesUncommittedWork(latest), (loses) => !loses)
-          : Effect.succeed(false),
+        Effect.gen(function* () {
+          if (yield* losesUncommittedWork(latest)) return false
+          return yield* isArchiveDue(latest, now)
+        }),
       )
       const archived = Option.flatten(
         yield* runner.release(thread.id, stopProcesses(thread.id).pipe(Effect.andThen(archiveIfStillDue))),
@@ -162,7 +168,7 @@ const make = Effect.gen(function* () {
       yield* Effect.forEach(byThread, ([threadId, links]) => settleIfDone(threadId, links), { discard: true })
     }
     const all = yield* threads.list
-    const { settleAfterIdleDays, archiveAfterSettledDays } = archive
+    const { settleAfterIdleDays } = archive
     if (settleAfterIdleDays !== null) {
       yield* Effect.forEach(
         all,
@@ -170,10 +176,8 @@ const make = Effect.gen(function* () {
         { discard: true },
       )
     }
-    if (archiveAfterSettledDays !== null) {
-      yield* Effect.forEach(all, (thread) => archiveIfSettledLong(thread, archiveAfterSettledDays, now), {
-        discard: true,
-      })
+    if (archive.archiveAfterSettledDays !== null) {
+      yield* Effect.forEach(all, (thread) => archiveIfSettledLong(thread, now), { discard: true })
     }
   }).pipe(Effect.catchCause((cause) => Effect.logWarning("auto settle sweep failed", cause)))
 
