@@ -61,6 +61,9 @@ const make = Effect.gen(function* () {
   const terminals = yield* Terminals
   const ports = yield* Ports
 
+  const stopProcesses = (threadId: string) =>
+    terminals.closeThread(threadId).pipe(Effect.andThen(ports.closeThread(threadId)))
+
   const hasAgentWork = (threadId: string) =>
     Effect.gen(function* () {
       const tasks = yield* runner.backgroundTasks(threadId)
@@ -79,9 +82,7 @@ const make = Effect.gen(function* () {
       if (isThreadBusy((yield* threads.get(threadId)).status)) return yield* new ThreadBusyError({ id: threadId })
       const settled = yield* runner.release(
         threadId,
-        terminals
-          .closeThread(threadId)
-          .pipe(Effect.andThen(ports.closeThread(threadId)), Effect.andThen(threads.settle(threadId))),
+        stopProcesses(threadId).pipe(Effect.andThen(threads.settle(threadId))),
       )
       if (Option.isNone(settled)) return yield* new ThreadBusyError({ id: threadId })
       return settled.value
@@ -124,9 +125,11 @@ const make = Effect.gen(function* () {
       if (found.some(isOpen) || (yield* hasListeningPort(thread.id))) return
       const latest = yield* threads.get(thread.id)
       if (latest.updatedAt !== thread.updatedAt || !isIdleFor(latest, days, now)) return
-      const settled = yield* threads.settle(thread.id)
-      yield* events.publish({ type: "thread.updated", thread: settled })
-      yield* release(thread.id)
+      const settled = yield* runner.release(
+        thread.id,
+        stopProcesses(thread.id).pipe(Effect.andThen(threads.settle(thread.id))),
+      )
+      if (Option.isSome(settled)) yield* events.publish({ type: "thread.updated", thread: settled.value })
     }).pipe(Effect.catchCause((cause) => Effect.logWarning("idle settle skipped a thread", thread.id, cause)))
 
   const losesUncommittedWork = (thread: Thread) =>
@@ -139,11 +142,14 @@ const make = Effect.gen(function* () {
 
   const archiveIfSettledLong = (thread: Thread, days: number, now: number) =>
     Effect.gen(function* () {
-      if (!isSettledFor(thread, days, now) || !(yield* release(thread.id))) return
-      const archived = yield* threads.archiveIf(thread.id, (latest) =>
+      if (!isSettledFor(thread, days, now)) return
+      const archiveIfStillDue = threads.archiveIf(thread.id, (latest) =>
         isSettledFor(latest, days, now)
           ? Effect.map(losesUncommittedWork(latest), (loses) => !loses)
           : Effect.succeed(false),
+      )
+      const archived = Option.flatten(
+        yield* runner.release(thread.id, stopProcesses(thread.id).pipe(Effect.andThen(archiveIfStillDue))),
       )
       if (Option.isSome(archived)) yield* events.publish({ type: "thread.updated", thread: archived.value })
     }).pipe(Effect.catchCause((cause) => Effect.logWarning("auto archive skipped a thread", thread.id, cause)))
