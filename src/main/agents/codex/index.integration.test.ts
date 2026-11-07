@@ -101,7 +101,7 @@ const input = (threadId: string, home: AccountHome | null = null): RunTurnInput 
   attachments: [],
   cwd: tmpdir(),
   tmpDirectory: tmpdir(),
-  model: "fake-model",
+  model: "gpt-6-astra",
   effort: null,
   fastMode: false,
   autoCompactTokens: null,
@@ -401,6 +401,7 @@ describe("Codex sign-in", () => {
         expect(turn.events.at(-1)).toStrictEqual({
           type: "turn_failed",
           message: "Your access token could not be refreshed",
+          signedOut: true,
           loginCommand: "CODEX_HOME='/tmp/codex work' codex login",
         })
       }),

@@ -36,7 +36,9 @@ const renderPart = (part: Message["parts"][number]): string | null => {
     case "agent_switch":
       return `[agent switched: ${part.from} → ${part.to}]`
     case "signed_out":
-      return `**Error:** ${part.message}. Sign in with \`${part.loginCommand}\``
+      return part.loginCommand === undefined
+        ? `**Error:** ${part.message}. Sign in as the model provider's documentation describes.`
+        : `**Error:** ${part.message}. Sign in with \`${part.loginCommand}\``
     case "session_import":
       return part.history === "replayed"
         ? `[imported ${part.provider} session]`

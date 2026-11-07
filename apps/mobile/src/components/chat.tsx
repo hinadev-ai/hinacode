@@ -349,10 +349,14 @@ function PartView({ part, threadId }: { part: MessagePart; threadId: string }) {
           <Text selectable style={[styles.cardBody, { color: theme.text }]}>
             {part.message}
           </Text>
-          <Text style={[styles.cardNote, { color: theme.textMuted }]}>{copy("mobile_chat_signed_out_hint")}</Text>
-          <Text selectable style={[styles.detail, { color: theme.text, backgroundColor: theme.surface }]}>
-            {part.loginCommand}
+          <Text style={[styles.cardNote, { color: theme.textMuted }]}>
+            {copy(part.loginCommand === undefined ? "mobile_chat_signed_out_docs_hint" : "mobile_chat_signed_out_hint")}
           </Text>
+          {part.loginCommand !== undefined && (
+            <Text selectable style={[styles.detail, { color: theme.text, backgroundColor: theme.surface }]}>
+              {part.loginCommand}
+            </Text>
+          )}
         </View>
       )
   }

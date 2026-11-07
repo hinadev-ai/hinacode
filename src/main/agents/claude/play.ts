@@ -1,7 +1,7 @@
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Deferred, Effect, Stream } from "effect"
 import type { AgentEvent, ApprovalDecision, ApprovalRequest, Question, QuestionRequest } from "../../../shared/agent.ts"
-import { toolResult } from "./fixtures/sdk.ts"
+import { mockModel, toolResult } from "./fixtures/sdk.ts"
 import { mapMessage, type MapState } from "./mapMessage.ts"
 
 export type MockStep =
@@ -42,6 +42,7 @@ export function play(steps: ReadonlyArray<MockStep>, controls: PlayControls): St
     subagents: new Map(),
     lastRequest: null,
     home: null,
+    model: mockModel,
     limitMessage: null,
     limitResetAt: null,
     signedOut: false,

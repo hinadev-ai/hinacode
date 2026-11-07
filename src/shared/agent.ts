@@ -80,6 +80,16 @@ export const loginCommand = (provider: AccountProviderId, home: AccountHome | nu
     ...loginArguments[provider],
   ].join(" ")
 
+const ownModels = {
+  claude: /^(claude-|opus|sonnet|haiku|fable|default)/,
+  codex: /^(gpt-|o\d|codex-)/,
+} satisfies Record<AccountProviderId, RegExp>
+
+export const signedOutFailure = (provider: AccountProviderId, home: AccountHome | null, model: string) => ({
+  signedOut: true,
+  ...(ownModels[provider].test(model) && { loginCommand: loginCommand(provider, home) }),
+})
+
 export const CLAUDE_EFFORT_LEVELS: ReadonlyArray<string> = ["low", "medium", "high", "xhigh", "max"]
 
 export const unlistedModel = (id: string, provider: ProviderId): ModelInfo => ({
@@ -306,6 +316,7 @@ export const AgentEvent = Schema.Union([
     type: Schema.Literal("turn_failed"),
     message: Schema.String,
     stopped: Schema.optional(Schema.Boolean),
+    signedOut: Schema.optional(Schema.Boolean),
     loginCommand: Schema.optional(Schema.String),
   }),
   Schema.Struct({ type: Schema.Literal("turn_limited"), limit: UsageLimit }),
