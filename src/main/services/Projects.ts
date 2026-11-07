@@ -228,32 +228,30 @@ const make = Effect.gen(function* () {
     ),
   )
 
-  const cloneUntilCancelled = (cloneId: string, repository: GitHubRepository, rootPath: string) =>
+  const cloneInto = (cloneId: string, repository: GitHubRepository, rootPath: string) =>
     Effect.gen(function* () {
-      const cancel = yield* Deferred.make<void>()
-      cloneCancels.set(cloneId, cancel)
-      const cancelled = Deferred.await(cancel).pipe(
-        Effect.andThen(Effect.fail(new ProjectCloneCancelledError({ rootPath }))),
-      )
-      const clone = github.clone(repository, rootPath, (progress) =>
+      if (yield* holdsClone(rootPath, repository)) return
+      yield* makeDirectory(rootPath)
+      const entries = yield* fs
+        .readDirectory(rootPath)
+        .pipe(Effect.mapError(() => new ProjectRootInvalidError({ rootPath })))
+      if (entries.length > 0) return yield* new ProjectFolderNotEmptyError({ rootPath })
+      yield* github.clone(repository, rootPath, (progress) =>
         events.publish({ type: "project.cloneProgress", cloneId, progress }),
       )
-      yield* Effect.raceFirst(clone, cancelled)
-    }).pipe(Effect.ensuring(Effect.sync(() => cloneCancels.delete(cloneId))))
+    })
 
   const clone = ({ cloneId, repository, ...input }: CloneProject) =>
     Effect.gen(function* () {
+      const cancel = yield* Deferred.make<void>()
+      cloneCancels.set(cloneId, cancel)
       const rootPath = yield* resolveRoot(input.rootPath)
-      if (!(yield* holdsClone(rootPath, repository))) {
-        yield* makeDirectory(rootPath)
-        const entries = yield* fs
-          .readDirectory(rootPath)
-          .pipe(Effect.mapError(() => new ProjectRootInvalidError({ rootPath })))
-        if (entries.length > 0) return yield* new ProjectFolderNotEmptyError({ rootPath })
-        yield* cloneUntilCancelled(cloneId, repository, rootPath)
-      }
+      const cancelled = Deferred.await(cancel).pipe(
+        Effect.andThen(Effect.fail(new ProjectCloneCancelledError({ rootPath }))),
+      )
+      yield* Effect.raceFirst(cloneInto(cloneId, repository, rootPath), cancelled)
       return yield* insert({ ...input, rootPath })
-    })
+    }).pipe(Effect.ensuring(Effect.sync(() => cloneCancels.delete(cloneId))))
 
   const cancelClone = (cloneId: string) =>
     Effect.suspend(() => {
