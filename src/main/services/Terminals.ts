@@ -7,6 +7,8 @@ import type { TerminalAttachment, TerminalSession } from "../../shared/domain.ts
 import { type FolderMissingError, NotFoundError, type PersistenceError } from "./errors.ts"
 import { Events } from "./Events.ts"
 import { registerAgentPid } from "./Ports.ts"
+import { makeShellIntegration } from "./shellIntegration.ts"
+import { ShellMarks } from "./shellMarks.ts"
 import { TerminalScrollback } from "./terminalScrollback.ts"
 import { makeActiveWorkspace } from "./workspace.ts"
 
@@ -36,6 +38,7 @@ interface Live {
   readonly pty: pty.IPty
   readonly unregisterPid: () => void
   readonly scrollback: TerminalScrollback
+  readonly marks: ShellMarks
   pending: Array<string>
   pendingSize: number
   timer: ReturnType<typeof setTimeout> | undefined
@@ -74,6 +77,9 @@ const make = Effect.gen(function* () {
   const events = yield* Events
   const activeWorkspace = yield* makeActiveWorkspace
   const sessions = new Map<string, Live>()
+  const integration = yield* Effect.acquireRelease(Effect.sync(makeShellIntegration), (made) =>
+    Effect.sync(made.dispose),
+  )
 
   const publish = (event: PushEvent) => Effect.runFork(events.publish(event))
 
@@ -88,6 +94,10 @@ const make = Effect.gen(function* () {
   }
 
   const buffer = (live: Live, data: string) => {
+    if (live.marks.read(data)) {
+      live.session = { ...live.session, ...live.marks.state }
+      publish({ type: "terminal.updated", session: live.session })
+    }
     live.scrollback.append(data)
     live.pending.push(data)
     live.pendingSize += data.length
@@ -110,9 +120,10 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const { cwd, rootPath, branch } = yield* activeWorkspace(threadId)
       const shell = terminalShell(process.platform, process.env, loginShell())
+      const launch = integration.launch(shell, process.env)
       const proc = yield* Effect.try({
         try: () =>
-          pty.spawn(shell.file, shell.args, {
+          pty.spawn(launch.file, [...launch.args], {
             name: "xterm-256color",
             cols,
             rows,
@@ -125,6 +136,7 @@ const make = Effect.gen(function* () {
               HINACODE_ROOT_PATH: rootPath,
               HINACODE_WORKTREE_PATH: cwd,
               ...(branch === null ? {} : { HINACODE_BRANCH: branch }),
+              ...launch.env,
             },
           }),
         catch: (cause) => new TerminalError({ message: `Could not start ${shell.file} in ${cwd}: ${String(cause)}` }),
@@ -139,10 +151,13 @@ const make = Effect.gen(function* () {
           status: "running",
           exitCode: null,
           title: command?.title ?? null,
+          command: null,
+          lastExitCode: null,
         },
         pty: proc,
         unregisterPid: registerAgentPid(threadId, () => proc.pid),
         scrollback: new TerminalScrollback(SCROLLBACK_BYTES),
+        marks: new ShellMarks(cwd),
         pending: [],
         pendingSize: 0,
         timer: undefined,
@@ -153,7 +168,7 @@ const make = Effect.gen(function* () {
       proc.onExit(({ exitCode }) => {
         flush(live)
         live.unregisterPid()
-        live.session = { ...live.session, status: "exited", exitCode }
+        live.session = { ...live.session, status: "exited", exitCode, command: null }
         if (live.closing) sessions.delete(live.session.id)
         publish({ type: "terminal.exited", id: live.session.id, exitCode })
       })

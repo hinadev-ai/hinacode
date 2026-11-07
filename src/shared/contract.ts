@@ -1012,6 +1012,7 @@ export const PushEvent = Schema.Union([
     data: Schema.String,
   }),
   Schema.Struct({ type: Schema.Literal("terminal.exited"), id: Schema.String, exitCode: Schema.NullOr(Schema.Number) }),
+  Schema.Struct({ type: Schema.Literal("terminal.updated"), session: TerminalSession }),
   Schema.Struct({ type: Schema.Literal("update.changed") }),
   Schema.Struct({ type: Schema.Literal("environment.status"), id: Schema.String, status: EnvironmentStatus }),
   Schema.Struct({ type: Schema.Literal("environments.changed") }),

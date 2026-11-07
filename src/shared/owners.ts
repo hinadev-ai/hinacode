@@ -98,6 +98,8 @@ export const learnFromPush = (owners: Owners, environmentId: string, event: Push
     case "terminal.data":
     case "terminal.exited":
       return teach("terminal", event.id)
+    case "terminal.updated":
+      return teach("terminal", event.session.id)
     case "automation.run":
       teach("automation", event.run.automationId)
       return teach("thread", event.run.threadId)

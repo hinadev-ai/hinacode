@@ -8,6 +8,12 @@ describe("terminalText", () => {
     expect(terminalText(raw, 200, 80)).toBe("$ ls\nsrc  README.md\n$")
   })
 
+  test("drops the command marks the shell integration prints", () => {
+    const raw =
+      "\u001B]133;A\u0007$ ls -la\r\n\u001B]633;E;ls -la\u0007\u001B]133;C\u0007total 0\r\n\u001B]133;D;0\u0007"
+    expect(terminalText(raw, 200, 80)).toBe("$ ls -la\ntotal 0")
+  })
+
   test("keeps only the last state of a line redrawn with carriage returns", () => {
     const raw = "Downloading  10%\rDownloading  55%\rDownloading 100%\r\ndone\r\n"
     expect(terminalText(raw, 200, 80)).toBe("Downloading 100%\ndone")
