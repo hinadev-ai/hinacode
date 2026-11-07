@@ -47,7 +47,6 @@ const input = (fields: Partial<RunTurnInput> = {}): RunTurnInput => ({
   effort: null,
   fastMode: false,
   autoCompactTokens: null,
-  userSkills: true,
   accessMode: "supervised",
   resumeSessionId: null,
   forkAt: null,

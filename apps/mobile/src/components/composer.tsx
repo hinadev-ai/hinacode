@@ -613,9 +613,6 @@ const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | u
   }
 }
 
-/** Muse Code and opencode have no way to leave out the user's own skills. */
-const hidesUserSkills: Record<ProviderId, boolean> = { claude: true, codex: true, muse: false, opencode: false }
-
 interface ServerOptions {
   readonly profiles: readonly AgentProfile[]
   readonly limits: readonly AccountLimits[]
@@ -816,17 +813,6 @@ function SettingsSheet({
                 hint={copy("mobile_composer_fast_mode_hint")}
                 value={thread.fastMode}
                 onValueChange={(fastMode) => void update({ id: thread.id, fastMode }, onError)}
-              />
-            </Section>
-          )}
-          {hidesUserSkills[thread.provider] && (
-            <Section title={copy("mobile_thread_conversation")} role="group">
-              <ToggleRow
-                icon="Chat"
-                label={copy("mobile_thread_conversation_mode")}
-                hint={copy("mobile_thread_conversation_mode_hint")}
-                value={!thread.userSkills}
-                onValueChange={(on) => void update({ id: thread.id, userSkills: !on }, onError)}
               />
             </Section>
           )}

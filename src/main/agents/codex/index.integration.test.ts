@@ -105,7 +105,6 @@ const input = (threadId: string, home: AccountHome | null = null): RunTurnInput 
   effort: null,
   fastMode: false,
   autoCompactTokens: null,
-  userSkills: true,
   accessMode: "auto",
   resumeSessionId: null,
   forkAt: null,
@@ -290,46 +289,6 @@ describe("Codex auto-compact", () => {
         yield* provider.runTurn(input("default-compact")).pipe(Stream.runDrain)
         const started = received().find((message) => message.method === "thread/start")
         expect(started?.params?.config).not.toHaveProperty("model_auto_compact_token_limit")
-      }),
-    ),
-  )
-})
-
-describe("Codex conversation mode", () => {
-  it.live("does not explicitly load user skills named in a conversation prompt", () =>
-    withProvider(
-      Effect.gen(function* () {
-        const provider = yield* CodexProvider
-        setControl({
-          skills: [
-            {
-              cwd: tmpdir(),
-              skills: [
-                {
-                  name: "personal",
-                  description: "User skill",
-                  path: "/user/personal/SKILL.md",
-                  scope: "user",
-                  enabled: true,
-                },
-                {
-                  name: "project",
-                  description: "Project skill",
-                  path: "/repo/project/SKILL.md",
-                  scope: "repo",
-                  enabled: true,
-                },
-              ],
-            },
-          ],
-        })
-        yield* provider
-          .runTurn({ ...input("conversation"), userSkills: false, prompt: "$personal $project" })
-          .pipe(Stream.runDrain)
-        const started = received().find((message) => message.method === "turn/start")
-        expect(started?.params?.input?.filter((item) => item.type === "skill")).toStrictEqual([
-          { type: "skill", name: "project", path: "/repo/project/SKILL.md" },
-        ])
       }),
     ),
   )

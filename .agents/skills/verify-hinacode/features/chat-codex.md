@@ -4,7 +4,7 @@ The same chat surface as Claude Code, backed by the Codex app-server. The thread
 
 ## Automated coverage
 
-No e2e scenario drives Codex. `src/main/agents/codex/index.integration.test.ts` runs the provider against a fake app-server (`fakeAppServer.mjs`): the app-server log, fork, auto-compact, conversation mode, Stop during startup and on a running turn, token usage, the plan, sub-agents, background terminals, questions, accounts and limits, and session import. The recipes below cover the UI.
+No e2e scenario drives Codex. `src/main/agents/codex/index.integration.test.ts` runs the provider against a fake app-server (`fakeAppServer.mjs`): the app-server log, fork, auto-compact, Stop during startup and on a running turn, token usage, the plan, sub-agents, background terminals, questions, accounts and limits, and session import. The recipes below cover the UI.
 
 ## Sub-features
 

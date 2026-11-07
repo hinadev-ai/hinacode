@@ -433,7 +433,6 @@ export const Thread = Schema.Struct({
   model: Schema.String,
   effort: Schema.NullOr(Schema.String),
   fastMode: Schema.Boolean,
-  userSkills: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
   accessMode: AccessMode,
   accountId: Schema.NullOr(Schema.String),
   providerSessionId: Schema.NullOr(Schema.String),

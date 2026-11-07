@@ -1,6 +1,6 @@
 import { Duration, Effect, Option, Schedule, Schema, Stream } from "effect"
 import { AsyncResult, Atom } from "effect/reactivity"
-import { type AgentCommand, ProviderId } from "../../shared/agent.ts"
+import { ProviderId } from "../../shared/agent.ts"
 import {
   PushEvent,
   type RpcMethod,
@@ -267,9 +267,6 @@ const threadIdOf = (key: string) => key.split("\n")[0] ?? ""
 export const commandsAtom = Atom.family((key: string) =>
   Atom.make(call("commands.list", { threadId: threadIdOf(key) })),
 )
-
-export const threadCommands = (commands: ReadonlyArray<AgentCommand>, thread: Pick<Thread, "userSkills">) =>
-  commands.filter((command) => thread.userSkills || command.scope !== "user")
 
 export const externalSessionsAtom = Atom.family((projectId: string) =>
   Atom.make(call("sessions.listExternal", { projectId })),

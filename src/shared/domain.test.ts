@@ -13,7 +13,7 @@ const withoutOpencode = (value: unknown) => {
   return rest
 }
 
-const legacyThread: Omit<Thread, "userSkills"> = {
+const legacyThread: Thread = {
   id: "older-cloud-thread",
   projectId: "project",
   worktreeId: null,
@@ -66,10 +66,6 @@ describe("older cloud responses", () => {
     expect(Schema.decodeUnknownSync(Settings)(withoutActions).actions).toStrictEqual([])
   })
 
-  it("keeps user skills enabled for threads from before conversation mode", () => {
-    expect(Schema.decodeUnknownSync(Thread)(legacyThread).userSkills).toBe(true)
-  })
-
   it("reads mergeability as unknown from a pull request summary that omits it", () => {
     const legacyPullRequest: Omit<PullRequest, "mergeable"> = {
       url: "https://github.com/a/b/pull/1",
@@ -88,14 +84,12 @@ describe("older cloud responses", () => {
   })
 
   it("preserves explicit settings and rejects malformed values", () => {
-    expect(Schema.decodeUnknownSync(Thread)({ ...legacyThread, userSkills: false }).userSkills).toBe(false)
     expect(
       Schema.decodeUnknownSync(Settings)({
         ...legacySettings,
         defaultAccountName: { claude: "Work", codex: null, muse: null },
       }).defaultAccountName.claude,
     ).toBe("Work")
-    expect(() => Schema.decodeUnknownSync(Thread)({ ...legacyThread, userSkills: "false" })).toThrow()
     expect(() =>
       Schema.decodeUnknownSync(Settings)({
         ...legacySettings,
