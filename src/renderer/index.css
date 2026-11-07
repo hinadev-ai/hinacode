@@ -686,6 +686,9 @@
   * {
     @apply border-border outline-ring/50;
   }
+  :focus-visible {
+    scroll-margin: --spacing(2);
+  }
   /* Styled through the webkit pseudo-elements because the standard scrollbar-color makes Chromium draw arrow buttons that cut the track short. */
   ::-webkit-scrollbar {
     width: 10px;
