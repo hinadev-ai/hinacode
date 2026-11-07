@@ -123,6 +123,46 @@ describe("Threads", () => {
     }).pipe(Effect.provide(messagesLayer.pipe(Layer.provideMerge(threadsLayer)))),
   )
 
+  it.effect("forks at this agent's latest turn when no message is chosen", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const messages = yield* Messages
+      const { threadId } = yield* seedThread({ rootPath: "/repo" })
+      const reply = (createdAt: string, checkpoint: string, owner?: { provider: "codex"; accountId: null }) => ({
+        id: randomUUID(),
+        threadId,
+        role: "assistant" as const,
+        parts: [{ type: "text" as const, text: checkpoint }],
+        createdAt,
+        completedAt: createdAt,
+        usage: null,
+        forkPoint: { sessionId: "session-1", checkpoint, ...(owner && { owner }) },
+      })
+      const turns = [
+        reply("2026-01-01T00:00:01.000Z", "turn-1"),
+        reply("2026-01-01T00:00:02.000Z", "turn-2"),
+        reply("2026-01-01T00:00:03.000Z", "codex-turn", { provider: "codex", accountId: null }),
+      ]
+      yield* Effect.forEach(turns, messages.insert, { discard: true })
+
+      const fork = yield* threads.fork(threadId)
+
+      expect(fork.forkedFrom).toStrictEqual({ sessionId: "session-1", checkpoint: "turn-2" })
+      expect((yield* messages.list(fork.id)).map((copy) => copy.parts)).toStrictEqual(
+        turns.slice(0, 2).map((turn) => turn.parts),
+      )
+    }).pipe(Effect.provide(messagesLayer.pipe(Layer.provideMerge(threadsLayer)))),
+  )
+
+  it.effect("refuses to fork a thread with no finished turn", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const { threadId } = yield* seedThread({ rootPath: "/repo" })
+      const error = yield* threads.fork(threadId).pipe(Effect.flip)
+      expect(error._tag).toBe("NotFoundError")
+    }).pipe(Effect.provide(threadsLayer)),
+  )
+
   it.effect("refuses to fork at a message that ended no turn", () =>
     Effect.gen(function* () {
       const threads = yield* Threads
@@ -296,19 +336,6 @@ describe("Threads", () => {
       expect((yield* threads.get(child.id)).parentId).toBeNull()
     }).pipe(Effect.provide(recording))
   })
-
-  it.effect("starts chats in conversation mode", () =>
-    Effect.gen(function* () {
-      const threads = yield* Threads
-      const chats = yield* Projects.Projects.use((projects) =>
-        projects.ensureChats(mkdtempSync(join(tmpdir(), "kk-chats-"))),
-      )
-      const { projectId } = yield* seedThread({ rootPath: "/repo" })
-      const create = (id: string) => threads.create({ projectId: id, title: "t", provider: "claude", model: "m" })
-      expect((yield* create(chats.id)).userSkills).toBe(false)
-      expect((yield* create(projectId)).userSkills).toBe(true)
-    }).pipe(Effect.provide(threadsLayer)),
-  )
 
   it.effect("gives each chat a folder of its own that lives until the chat is archived", () =>
     Effect.gen(function* () {

@@ -1,6 +1,6 @@
 import { Duration, Effect, Option, Schedule, Schema, Stream } from "effect"
 import { AsyncResult, Atom } from "effect/reactivity"
-import { type AgentCommand, ProviderId } from "../../shared/agent.ts"
+import { ProviderId } from "../../shared/agent.ts"
 import {
   PushEvent,
   type RpcMethod,
@@ -268,9 +268,6 @@ export const commandsAtom = Atom.family((key: string) =>
   Atom.make(call("commands.list", { threadId: threadIdOf(key) })),
 )
 
-export const threadCommands = (commands: ReadonlyArray<AgentCommand>, thread: Pick<Thread, "userSkills">) =>
-  commands.filter((command) => thread.userSkills || command.scope !== "user")
-
 export const externalSessionsAtom = Atom.family((projectId: string) =>
   Atom.make(call("sessions.listExternal", { projectId })),
 )
@@ -497,6 +494,10 @@ export const pullRequestDetailAtom = familyOf((environment: EnvironmentId, url: 
 
 export const pullRequestFilesAtom = familyOf((environment: EnvironmentId, url: string, _forHead: string) =>
   Atom.make(call("github.pullRequestFiles", { url }, { environment })).pipe(Atom.setIdleTTL("10 minutes")),
+)
+
+export const pullRequestCandidatesAtom = familyOf((environment: EnvironmentId, url: string) =>
+  Atom.make(call("github.pullRequestCandidates", { url }, { environment })).pipe(Atom.setIdleTTL("10 minutes")),
 )
 
 export const pullRequestFileContentAtom = familyOf(

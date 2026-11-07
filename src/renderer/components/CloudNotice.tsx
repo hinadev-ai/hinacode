@@ -8,7 +8,7 @@ import { useLocale } from "../stores/locale.ts"
 import { ReconnectButton } from "./ReconnectButton.tsx"
 import { ReloadPageButton } from "./ReloadPageButton.tsx"
 import { inBrowser } from "../lib/runtime.ts"
-import { Button } from "./ui/button.tsx"
+import { buttonVariants } from "./ui/button.tsx"
 import { CloudOffIcon, WarningIcon } from "@hinacode/icons"
 
 export function CloudNotice({ threadId }: { threadId: string }) {
@@ -52,14 +52,13 @@ function CloudNoticeBody({ cloud }: { cloud: Cloud }) {
       {cloud.status === "unauthorized" && inBrowser() ? (
         <ReloadPageButton />
       ) : cloud.status === "unauthorized" ? (
-        <Button
-          variant="outline"
-          size="sm"
-          render={<Link to="/settings" search={{ page: "connections" }} />}
-          nativeButton={false}
+        <Link
+          to="/settings"
+          search={{ page: "connections" }}
+          className={buttonVariants({ variant: "outline", size: "sm" })}
         >
           {m.environment_pair_again()}
-        </Button>
+        </Link>
       ) : (
         cloud.status !== "incompatible" && <ReconnectButton cloud={cloud} />
       )}

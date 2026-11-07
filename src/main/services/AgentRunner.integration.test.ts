@@ -387,7 +387,10 @@ const withPreparingThread = async (
               authenticate: () => Option.none(),
               listening: () => Effect.void,
             }),
-            Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }),
+            Layer.succeed(ThreadNaming, {
+              nameFromPrompt: () => Effect.void,
+              regenerateTitle: () => Effect.die("unused"),
+            }),
             Layer.succeed(Threads.Threads, {
               ...threads,
               captureTurnBase: (cwd) =>
@@ -420,6 +423,9 @@ const withPreparingThread = async (
                   head: "abc1234",
                   mergeable: "mergeable",
                   changedFiles: 1,
+                  labels: [],
+                  assignees: [],
+                  reviewers: [],
                   comments: [],
                   checkRuns: [{ name: "CI / test", status: "failing", url: "https://ci.example/test" }],
                 }),

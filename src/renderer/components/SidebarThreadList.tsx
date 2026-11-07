@@ -31,6 +31,7 @@ import {
 import { flushSync } from "react-dom"
 import { RiGitMergeLine } from "react-icons/ri"
 import { toast } from "sonner"
+import type { ProviderId } from "../../shared/agent.ts"
 import { isThreadBusy, type PullRequestLink, type Thread, type Worktree } from "../../shared/domain.ts"
 import { type RowState, rowEmphasis, rowState, rowStatusIndicator } from "../../shared/threadStatus.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -67,7 +68,14 @@ import { ArchiveDialog, useActiveWorktree } from "./ArchiveDialog.tsx"
 import { CloudMark } from "./CloudMark.tsx"
 import { Button } from "./ui/button.tsx"
 import { Checkbox } from "./ui/checkbox.tsx"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu.tsx"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu.tsx"
 import { Field, FieldLabel } from "./ui/field.tsx"
 import { Input } from "./ui/input.tsx"
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle } from "./ui/popover.tsx"
@@ -77,6 +85,7 @@ import {
   ArchiveIcon,
   CheckIcon,
   CopyIcon,
+  ForkIcon,
   EyeIcon,
   EyeOffIcon,
   GripIcon,
@@ -86,6 +95,7 @@ import {
   CloseIcon,
   PencilIcon,
   PinIcon,
+  RefreshIcon,
   SnoozeIcon,
   TrashIcon,
   UnarchiveIcon,
@@ -439,6 +449,8 @@ function DraftRow({ thread, title, project }: { thread: Thread; title: string; p
 
 type RowMode = "idle" | "renaming" | "archive" | "delete"
 
+const forksSessions = { claude: true, codex: true, muse: false, opencode: false } satisfies Record<ProviderId, boolean>
+
 interface ThreadRowProps {
   readonly thread: Thread
   readonly nested: boolean
@@ -463,6 +475,7 @@ function ThreadRow({
   focusAfterRemoval,
 }: ThreadRowProps) {
   const { ref, handleRef, isDragSource } = useSortable({ id: thread.id, index, group, disabled: !reorderable })
+  const router = useRouter()
   const [menuOpen, setMenuOpen] = useState(false)
   const [mode, setMode] = useState<RowMode>("idle")
   const [queued, setQueued] = useState<RowMode | null>(null)
@@ -539,6 +552,25 @@ function ThreadRow({
     }
   }
   const reopen = archived ? unarchive : unsettle
+  const fork = async () => {
+    try {
+      const forked = await callPromise("threads.fork", { threadId: thread.id })
+      useThreads.getState().upsert(forked)
+      await router.navigate({ to: "/thread/$threadId", params: { threadId: forked.id } })
+      useUi.getState().requestComposerFocus()
+    } catch (cause) {
+      toast.error(m.sidebar_fork_failed({ message: errorMessage(cause) }))
+    }
+  }
+  const regenerateTitle = async () => {
+    const toastId = toast.loading(m.sidebar_title_regenerating())
+    try {
+      useThreads.getState().upsert(await callPromise("threads.regenerateTitle", { threadId: thread.id }))
+      toast.dismiss(toastId)
+    } catch (cause) {
+      toast.error(m.sidebar_regenerate_title_failed({ message: errorMessage(cause) }), { id: toastId })
+    }
+  }
   const pinned = thread.pinnedAt !== null
   const togglePin = async () => {
     try {
@@ -686,64 +718,83 @@ function ThreadRow({
                 <MoreIcon aria-hidden />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuItem onClick={queue("renaming")}>
-                  <PencilIcon aria-hidden />
-                  {m.sidebar_thread_rename()}
-                </DropdownMenuItem>
-                {!archived && (
-                  <DropdownMenuItem onClick={() => void togglePin()}>
-                    {pinned ? <UnpinIcon aria-hidden /> : <PinIcon aria-hidden />}
-                    {pinned ? m.sidebar_thread_unpin() : m.sidebar_thread_pin()}
+                <DropdownMenuGroup>
+                  <DropdownMenuItem onClick={queue("renaming")}>
+                    <PencilIcon aria-hidden />
+                    {m.sidebar_thread_rename()}
                   </DropdownMenuItem>
-                )}
-                {!reopenable && (
-                  <DropdownMenuItem onClick={() => useUi.getState().setSnoozeThreadId(thread.id)}>
-                    <SnoozeIcon aria-hidden />
-                    {m.sidebar_thread_snooze()}
+                  <DropdownMenuItem onClick={() => void regenerateTitle()}>
+                    <RefreshIcon aria-hidden />
+                    {m.sidebar_thread_regenerate_title()}
                   </DropdownMenuItem>
-                )}
-                {!archived && meta.snoozedUntil !== null && (
-                  <DropdownMenuItem onClick={() => void snoozeThread(thread, null)}>
-                    <AlarmIcon aria-hidden />
-                    {m.sidebar_thread_unsnooze()}
-                  </DropdownMenuItem>
-                )}
-                {watched.length === 0 ? (
-                  <DropdownMenuItem disabled>
-                    <EyeOffIcon aria-hidden />
-                    {m.sidebar_thread_unwatch()}
-                  </DropdownMenuItem>
-                ) : (
-                  watched.map((link) => (
-                    <DropdownMenuItem key={link.id} onClick={() => void unwatch(link.url)}>
-                      <EyeOffIcon aria-hidden />
-                      {watched.length > 1
-                        ? m.pr_watch_stop({ name: `#${pullRequestNumber(link.url)}` })
-                        : m.sidebar_thread_unwatch()}
+                  {forksSessions[thread.provider] && (
+                    <DropdownMenuItem disabled={busy} onClick={() => void fork()}>
+                      <ForkIcon aria-hidden />
+                      {m.sidebar_thread_fork()}
                     </DropdownMenuItem>
-                  ))
-                )}
-                <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(thread.id)}>
-                  <CopyIcon aria-hidden />
-                  {m.sidebar_thread_copy_id()}
-                </DropdownMenuItem>
-                {reopenable ? (
-                  <DropdownMenuItem onClick={() => void reopen()}>
-                    <UnarchiveIcon aria-hidden />
-                    {m.sidebar_thread_unarchive()}
+                  )}
+                  <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(thread.id)}>
+                    <CopyIcon aria-hidden />
+                    {m.sidebar_thread_copy_id()}
                   </DropdownMenuItem>
-                ) : (
-                  <DropdownMenuItem disabled={busy} onClick={() => void settle()}>
-                    <CheckIcon aria-hidden />
-                    {m.sidebar_thread_settle()}
-                  </DropdownMenuItem>
-                )}
-                {!archived && (
-                  <DropdownMenuItem disabled={busy} onClick={() => void archive()}>
-                    <ArchiveIcon aria-hidden />
-                    {m.sidebar_thread_archive()}
-                  </DropdownMenuItem>
-                )}
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  {!archived && (
+                    <DropdownMenuItem onClick={() => void togglePin()}>
+                      {pinned ? <UnpinIcon aria-hidden /> : <PinIcon aria-hidden />}
+                      {pinned ? m.sidebar_thread_unpin() : m.sidebar_thread_pin()}
+                    </DropdownMenuItem>
+                  )}
+                  {!reopenable && (
+                    <DropdownMenuItem onClick={() => useUi.getState().setSnoozeThreadId(thread.id)}>
+                      <SnoozeIcon aria-hidden />
+                      {m.sidebar_thread_snooze()}
+                    </DropdownMenuItem>
+                  )}
+                  {!archived && meta.snoozedUntil !== null && (
+                    <DropdownMenuItem onClick={() => void snoozeThread(thread, null)}>
+                      <AlarmIcon aria-hidden />
+                      {m.sidebar_thread_unsnooze()}
+                    </DropdownMenuItem>
+                  )}
+                  {watched.length === 0 ? (
+                    <DropdownMenuItem disabled>
+                      <EyeOffIcon aria-hidden />
+                      {m.sidebar_thread_unwatch()}
+                    </DropdownMenuItem>
+                  ) : (
+                    watched.map((link) => (
+                      <DropdownMenuItem key={link.id} onClick={() => void unwatch(link.url)}>
+                        <EyeOffIcon aria-hidden />
+                        {watched.length > 1
+                          ? m.pr_watch_stop({ name: `#${pullRequestNumber(link.url)}` })
+                          : m.sidebar_thread_unwatch()}
+                      </DropdownMenuItem>
+                    ))
+                  )}
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  {reopenable ? (
+                    <DropdownMenuItem onClick={() => void reopen()}>
+                      <UnarchiveIcon aria-hidden />
+                      {m.sidebar_thread_unarchive()}
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem disabled={busy} onClick={() => void settle()}>
+                      <CheckIcon aria-hidden />
+                      {m.sidebar_thread_settle()}
+                    </DropdownMenuItem>
+                  )}
+                  {!archived && (
+                    <DropdownMenuItem disabled={busy} onClick={() => void archive()}>
+                      <ArchiveIcon aria-hidden />
+                      {m.sidebar_thread_archive()}
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem variant="destructive" disabled={busy || isStale(cloud)} onClick={queue("delete")}>
                   <TrashIcon aria-hidden />
                   {m.sidebar_thread_delete()}

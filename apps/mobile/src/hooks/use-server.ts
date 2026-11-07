@@ -1,4 +1,6 @@
 import { type Server, useConnection } from "@/lib/connection"
+import { shownServers } from "@/lib/server-filter"
+import { usePreferences } from "@/stores/preferences"
 import { useThreads } from "@/stores/threads"
 
 /** The server a project lives on. Every project is stamped with its server's id as it is listed. */
@@ -25,3 +27,10 @@ export const serverName = (server: Pick<Server, "name" | "hosts">) => server.nam
 
 /** More than one server is paired, so lists name the server each thread and project lives on. */
 export const useSeveralServers = () => useConnection((state) => state.servers.length > 1)
+
+/** The servers the home list and search show by the developer's filter, or `null` when they show every one. */
+export function useShownServers(): ReadonlySet<string> | null {
+  const servers = useConnection((state) => state.servers)
+  const filter = usePreferences((state) => state.environmentFilter)
+  return shownServers(filter, servers)
+}

@@ -19,12 +19,16 @@ describe("runMigrations", () => {
   it.effect("upgrades a database that already ran the shipped migration 40", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient
+      yield* sql`ALTER TABLE thread ADD COLUMN user_skills INTEGER NOT NULL DEFAULT 1 CHECK (user_skills IN (0, 1))`
       yield* sql`ALTER TABLE pull_request_link DROP COLUMN observed_status`
-      yield* sql`DELETE FROM effect_sql_migrations WHERE name = 'pull_request_observed_status'`
+      yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id >= 43`
 
       const ran = yield* runMigrations
 
-      expect(ran).toStrictEqual([[43, "pull_request_observed_status"]])
+      expect(ran).toStrictEqual([
+        [43, "pull_request_observed_status"],
+        [44, "drop_thread_user_skills"],
+      ])
       expect(yield* hasObservedStatus).toBe(true)
       expect(yield* sql`SELECT name FROM effect_sql_migrations WHERE migration_id = 40`).toStrictEqual([
         { name: "remote_private_networks" },

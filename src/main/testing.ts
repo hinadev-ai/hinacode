@@ -101,7 +101,10 @@ export const makeTestAppLayer = (
     unavailableDevicesLayer,
   ).pipe(Layer.provide(domain))
   const agents = AgentRunner.layer.pipe(
-    Layer.provide(Layer.mergeAll(providers, Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }))),
+    Layer.provide(providers),
+    Layer.provideMerge(
+      Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void, regenerateTitle: () => Effect.die("unused") }),
+    ),
     Layer.provideMerge(Layer.mergeAll(domain, features)),
   )
   const logins = AgentLogins.layer(join(dirname(dbPath), "cache")).pipe(

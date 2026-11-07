@@ -43,7 +43,6 @@ const input = (accessMode: AccessMode, marker: string): RunTurnInput => {
     effort: null,
     fastMode: false,
     autoCompactTokens: null,
-    userSkills: true,
     accessMode,
     resumeSessionId: null,
     forkAt: null,
@@ -263,6 +262,7 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
           expect(turn.events.at(-1)).toStrictEqual({
             type: "turn_failed",
             message: expect.any(String),
+            signedOut: true,
             loginCommand: "muse login",
           })
         }),
@@ -827,7 +827,6 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
               effort: null,
               fastMode: false,
               autoCompactTokens: null,
-              userSkills: true,
               accessMode: "supervised",
               resumeSessionId: null,
               forkAt: null,

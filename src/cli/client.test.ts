@@ -86,9 +86,7 @@ describe("connect", () => {
   test("decodes a read's result and sends it without an idempotency key", async () => {
     const { socketPath, received } = await listen(ready, answerCalls)
     const threads = await run(Effect.flatMap(connect(socketPath), (client) => client.call("threads.list", undefined)))
-    expect(threads.map((thread) => [thread.title, thread.userSkills, thread.sideOf])).toStrictEqual([
-      ["fix-login", true, null],
-    ])
+    expect(threads.map((thread) => [thread.title, thread.sideOf])).toStrictEqual([["fix-login", null]])
     expect(received).toStrictEqual([{ type: "call", id: 1, method: "threads.list" }])
   })
 

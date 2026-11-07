@@ -11,7 +11,7 @@ import {
   type AgentEvent,
   type BackgroundTask,
   type BackgroundTaskKind,
-  loginCommand,
+  signedOutFailure,
   type Subagent,
   type TokenUsage,
 } from "../../../shared/agent.ts"
@@ -23,6 +23,7 @@ export interface MapState {
   readonly subagents: Map<string, Subagent>
   lastRequest: { readonly model: string; readonly usedTokens: number } | null
   readonly home: AccountHome | null
+  readonly model: string
   limitMessage: string | null
   limitResetAt: string | null
   signedOut: boolean
@@ -297,7 +298,7 @@ function mapResult(result: SDKResultMessage, state: MapState): AgentEvent {
     return {
       type: "turn_failed",
       message,
-      ...(state.signedOut && { loginCommand: loginCommand("claude", state.home) }),
+      ...(state.signedOut && signedOutFailure("claude", state.home, state.model)),
     }
   }
   return { type: "turn_completed", usage: toUsage(result, state) }

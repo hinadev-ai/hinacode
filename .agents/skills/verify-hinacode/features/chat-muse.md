@@ -9,7 +9,7 @@ No e2e scenario drives Muse. `src/main/agents/muse/index.integration.test.ts` ru
 ## Sub-features
 
 - `agent-pick` switches a thread to Muse Code by picking a model on the `Muse Code` tab of the `Model: <summary>` picker, whenever no turn runs; the header and sidebar show the Meta logo. The Access buttons switch to Muse's labels only after a Muse model is picked.
-- `model-pick` lists the plan's live models, such as `Muse Wonder 1.0` and `Muse Wonder Full 1.0`, a second after the tab opens; `effort-pick` is the `Effort` slider, `Default (High)` then `Minimal` to `Max`. Muse has no `Fast` and no `Conversation`.
+- `model-pick` lists the plan's live models, such as `Muse Wonder 1.0` and `Muse Wonder Full 1.0`, a second after the tab opens; `effort-pick` is the `Effort` slider, `Default (High)` then `Minimal` to `Max`. Muse has no `Fast`.
 - `send` and `stream` as in `chat-claude.md`, with the provider label `Muse Code`.
 - `approval` under `Ask me`, a command that reaches a new network host asks; `Allow` runs it.
 - `deny` ends the command row in error, and the turn goes on.
@@ -32,7 +32,7 @@ Preconditions:
 - `muse --version` works and `muse login` has been done for this user. `$S/rpc.ts $PORT agents.account '{"provider":"muse","accountId":null}'` answers `subscription`.
 - `ab() { agent-browser --session kkv-$PORT-chat-muse --cdp $PORT "$@"; }`.
 
-- **Create.** `ab find role button click --name "New thread in demo" --exact`. `ab click 'button[aria-label^="Model: "]'`, `ab wait 'ul[aria-label=Model]'`, `ab find role tab click --name "Muse Code" --exact`, `ab wait --text "Muse Wonder 1.0"`, `ab find role button click --name "Muse Wonder 1.0" --exact`. Then `ab focus 'input[type=range]'`, `ab press ArrowRight` twice; `ab get attr 'input[type=range]' aria-valuetext` reads `Low`. `ab press Enter`; the trigger reads `Model: Muse Wonder 1.0, Low, Unrestricted`. Screenshot `chat-muse-01-new-thread.png`.
+- **Create.** `ab find role button click --name "New thread in demo" --exact`. `ab click 'button[aria-label^="Model: "]'`, `ab wait '[role=listbox][aria-label=Model]'`, `ab find role tab click --name "Muse Code" --exact`, `ab wait --text "Muse Wonder 1.0"`, `ab find role option click --name "Muse Wonder 1.0" --exact`. Then `ab focus 'input[type=range]'`, `ab press ArrowRight` twice; `ab get attr 'input[type=range]' aria-valuetext` reads `Low`. `ab press Enter`; the trigger reads `Model: Muse Wonder 1.0, Low, Unrestricted`. Screenshot `chat-muse-01-new-thread.png`.
 - **Send and stream.** `ab find role combobox fill --name "Message" "Reply with only the number 6 times 7."`, `ab press Enter`, `ab wait 'button[aria-label="Stop"]'`, then `ab wait --fn '!document.querySelector("button[aria-label=Stop]")' --timeout 150000`. The reply reads `42`. Screenshot `chat-muse-02-reply.png`.
 - **Usage.** `$S/rpc.ts $PORT threads.usage '{"threadId":"<id>"}'` names the model and its tokens; `$S/rpc.ts $PORT limits.list` shows the `muse` entry. Save both to `chat-muse-03-usage.txt`.
 - **Approval.** In the picker click `Ask me`. Send `Run this exact shell command and nothing else: curl -sI https://example.org`. `ab wait --text "needs your approval"`; screenshot `chat-muse-04-approval.png`. Click `Allow`. The Bash row prints the response headers. Screenshot `chat-muse-05-approved.png`.

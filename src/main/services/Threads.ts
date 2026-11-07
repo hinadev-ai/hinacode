@@ -63,7 +63,6 @@ export const randomName = () => `thread-${randomUUID().slice(0, 5)}`
 const ThreadRow = Schema.Struct({
   ...Thread.fields,
   fastMode: Schema.BooleanFromBit,
-  userSkills: Schema.BooleanFromBit,
   usageLimit: Schema.NullOr(Schema.fromJsonString(UsageLimit)),
   forkedFrom: Schema.NullOr(Schema.fromJsonString(ForkPoint)),
   queue: Schema.fromJsonString(Schema.Array(QueuedMessage)),
@@ -92,7 +91,6 @@ export interface UpdateThread {
   readonly model?: string | undefined
   readonly effort?: string | null | undefined
   readonly fastMode?: boolean | undefined
-  readonly userSkills?: boolean | undefined
   readonly accessMode?: AccessMode | undefined
   readonly status?: ThreadStatus | undefined
   readonly usageLimit?: UsageLimit | null | undefined
@@ -116,7 +114,6 @@ const arranging = new Set([
   "model",
   "effort",
   "fastMode",
-  "userSkills",
   "accessMode",
 ])
 
@@ -139,7 +136,7 @@ export class Threads extends Context.Service<
     readonly writes: Effect.Effect<Stream.Stream<Thread>, never, Scope.Scope>
     readonly fork: (
       threadId: string,
-      messageId: string,
+      messageId?: string,
     ) => Effect.Effect<
       Thread,
       PersistenceError | NotFoundError | CommandError | WorktreeTakenError | PlatformError.PlatformError
@@ -273,11 +270,14 @@ const make = Effect.gen(function* () {
       sql`SELECT COALESCE(MAX(sort_index) + 1, 0) AS next FROM thread WHERE project_id = ${projectId}`,
   })
 
-  const findForkPoint = SqlSchema.findOneOption({
-    Request: Schema.Struct({ threadId: Schema.String, messageId: Schema.String }),
-    Result: Schema.Struct({ forkPoint: Schema.fromJsonString(ForkPoint) }),
-    execute: ({ threadId, messageId }) =>
-      sql`SELECT fork_point FROM message WHERE id = ${messageId} AND thread_id = ${threadId} AND fork_point IS NOT NULL`,
+  const findForkPoints = SqlSchema.findAll({
+    Request: Schema.Struct({ threadId: Schema.String, messageId: Schema.NullOr(Schema.String) }),
+    Result: Schema.Struct({ id: Schema.String, forkPoint: Schema.fromJsonString(ForkPoint) }),
+    execute: ({ threadId, messageId }) => sql`
+      SELECT id, fork_point FROM message
+      WHERE thread_id = ${threadId} AND fork_point IS NOT NULL AND (${messageId} IS NULL OR id = ${messageId})
+      ORDER BY created_at DESC, rowid DESC
+    `,
   })
 
   const findTurnBase = SqlSchema.findOneOption({
@@ -323,7 +323,7 @@ const make = Effect.gen(function* () {
     status: "draft" | "idle",
   ) =>
     Effect.gen(function* () {
-      const project = yield* projects.get(input.projectId)
+      yield* projects.get(input.projectId)
       const parent = parentId === undefined ? undefined : yield* get(parentId)
       const worktree = worktreeInput
         ? yield* worktrees.create({ projectId: input.projectId, ...worktreeInput })
@@ -337,7 +337,6 @@ const make = Effect.gen(function* () {
         worktreeId: worktree?.id ?? null,
         effort,
         fastMode,
-        userSkills: project.kind === "folder",
         accessMode: defaultAccessMode,
         accountId: defaultAccount[input.provider],
         providerSessionId: null,
@@ -411,14 +410,16 @@ const make = Effect.gen(function* () {
       return forked.id
     })
 
-  const fork = (threadId: string, messageId: string) =>
+  const fork = (threadId: string, messageId?: string) =>
     Effect.gen(function* () {
       const source = yield* get(threadId)
-      const found = yield* findForkPoint({ threadId, messageId }).pipe(Effect.mapError(persistence("threads.fork")))
-      if (Option.isNone(found)) return yield* new NotFoundError({ entity: "fork point", id: messageId })
-      const { owner, ...forkedFrom } = found.value.forkPoint
-      const { provider, accountId } = owner ?? source
-      if (provider !== source.provider) return yield* new NotFoundError({ entity: "fork point", id: messageId })
+      const points = yield* findForkPoints({ threadId, messageId: messageId ?? null }).pipe(
+        Effect.mapError(persistence("threads.fork")),
+      )
+      const found = points.find((point) => (point.forkPoint.owner?.provider ?? source.provider) === source.provider)
+      if (found === undefined) return yield* new NotFoundError({ entity: "fork point", id: messageId ?? threadId })
+      const { owner, ...forkedFrom } = found.forkPoint
+      const { accountId } = owner ?? source
       if (accountId !== null) yield* accounts.get(accountId)
       const { next } = yield* nextSortIndex(source.projectId).pipe(Effect.mapError(persistence("threads.fork")))
       const worktreeId = yield* forkWorktree(source)
@@ -455,7 +456,7 @@ const make = Effect.gen(function* () {
             SELECT lower(hex(randomblob(16))), ${thread.id}, role, parts, created_at, completed_at, usage, fork_point
             FROM message
             WHERE thread_id = ${threadId}
-              AND (created_at, rowid) <= (SELECT created_at, rowid FROM message WHERE id = ${messageId})
+              AND (created_at, rowid) <= (SELECT created_at, rowid FROM message WHERE id = ${found.id})
             ORDER BY created_at, rowid
           `
           }),
@@ -510,7 +511,6 @@ const make = Effect.gen(function* () {
           fastMode: parent.fastMode,
         }),
         worktreeId: parent.worktreeId,
-        userSkills: parent.userSkills,
         accountId: forkPoint?.owner?.accountId ?? parent.accountId,
         forkedFrom: forkPoint === null ? null : { sessionId: forkPoint.sessionId, checkpoint: forkPoint.checkpoint },
         updatedAt: yield* nowIso,
@@ -518,7 +518,7 @@ const make = Effect.gen(function* () {
       yield* sql`
         UPDATE thread
         SET worktree_id = ${next.worktreeId}, provider = ${next.provider}, model = ${next.model}, effort = ${next.effort},
-            fast_mode = ${next.fastMode ? 1 : 0}, user_skills = ${next.userSkills ? 1 : 0}, account_id = ${next.accountId},
+            fast_mode = ${next.fastMode ? 1 : 0}, account_id = ${next.accountId},
             forked_from = ${next.forkedFrom === null ? null : JSON.stringify(next.forkedFrom)}, updated_at = ${next.updatedAt}
         WHERE id = ${id}
       `.pipe(Effect.mapError(persistence("threads.rebaseSidechat")))
@@ -564,7 +564,6 @@ const make = Effect.gen(function* () {
         model: input.model ?? current.model,
         effort: input.effort === undefined ? current.effort : input.effort,
         fastMode: input.fastMode ?? current.fastMode,
-        userSkills: input.userSkills ?? current.userSkills,
         accessMode: input.accessMode ?? current.accessMode,
         status: input.status ?? current.status,
         usageLimit:
@@ -610,7 +609,7 @@ const make = Effect.gen(function* () {
       yield* sql`
         UPDATE thread
         SET title = ${next.title}, provider = ${next.provider}, account_id = ${next.accountId}, model = ${next.model},
-            effort = ${next.effort}, fast_mode = ${next.fastMode ? 1 : 0}, user_skills = ${next.userSkills ? 1 : 0},
+            effort = ${next.effort}, fast_mode = ${next.fastMode ? 1 : 0},
             access_mode = ${next.accessMode}, status = ${next.status},
             sort_index = ${next.sortIndex}, pinned_at = ${next.pinnedAt}, snoozed_until = ${next.snoozedUntil}, settled_at = ${next.settledAt},
             provider_session_id = ${next.providerSessionId},

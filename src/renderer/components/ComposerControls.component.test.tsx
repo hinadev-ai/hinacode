@@ -46,7 +46,6 @@ const thread: Thread = {
   model: "second",
   effort: null,
   fastMode: false,
-  userSkills: true,
   accessMode: "full",
   accountId: "one",
   providerSessionId: null,
@@ -73,10 +72,11 @@ beforeEach(() => {
 const openPicker = async () => {
   await render(<ThreadPicker thread={thread} canSwitchAgent onError={() => {}} />)
   await page.getByRole("button", { name: /second/ }).click()
-  await expect.element(page.getByRole("button", { name: "first" })).toBeVisible()
+  await expect.element(page.getByRole("option", { name: "first" })).toBeVisible()
 }
 
-const focused = () => document.activeElement?.textContent
+const highlighted = () => document.querySelector("[role=option][data-highlighted]")?.textContent
+const selectedTab = () => document.querySelector("[role=tab][aria-selected=true]")?.textContent
 
 test.each(["claude", "codex", "muse", "opencode"] as const)(
   "keeps the agents in a fixed order on a %s thread",
@@ -95,36 +95,89 @@ test("keeps the thread's own agent when it is signed out, and hides other agents
   expect(pickerProviders("muse", ["opencode", "claude"])).toStrictEqual(["claude", "muse", "opencode"])
 })
 
-test("moves through the models with the arrow keys", async () => {
-  await openPicker()
-  await userEvent.keyboard("{ArrowDown}")
-  expect(focused()).toContain("second")
-  await userEvent.keyboard("{ArrowDown}")
-  expect(focused()).toContain("third")
-  await userEvent.keyboard("{ArrowDown}")
-  expect(focused()).toContain("first")
-  await userEvent.keyboard("{ArrowUp}")
-  expect(focused()).toContain("third")
+test("fills the space above the trigger up to 520px, whatever the model count", async () => {
+  await render(
+    <div className="pt-[60vh]">
+      <ThreadPicker thread={thread} canSwitchAgent onError={() => {}} />
+    </div>,
+  )
+  await page.getByRole("button", { name: /second/ }).click()
+  await expect.element(page.getByRole("option", { name: "first" })).toBeVisible()
+  const popup = document.querySelector<HTMLElement>("[data-slot=popover-content]")!
+  const trigger = page.getByRole("button", { name: /second/ }).element()
+  const available = Number.parseFloat(getComputedStyle(popup).getPropertyValue("--available-height"))
+  expect(available).toBeGreaterThan(100)
+  expect(Math.abs(popup.offsetHeight - Math.min(520, available))).toBeLessThan(1)
+  expect(popup.dataset["side"]).toBe("top")
+  expect(trigger.getBoundingClientRect().top - popup.getBoundingClientRect().bottom).toBeGreaterThanOrEqual(0)
 })
 
-test("highlights the first model of the next account and keeps its tab in view", async () => {
+test("focuses the search box on the current model and moves through the models with the arrow keys", async () => {
   await openPicker()
-  const selectedTab = () => document.querySelector("[role=tab][aria-selected=true]")
+  await expect.element(page.getByRole("combobox", { name: "Search models" })).toHaveFocus()
+  await expect.poll(highlighted).toContain("second")
+  const check = page.getByRole("option", { name: "second" }).element().querySelector("svg")!
+  expect(getComputedStyle(check).visibility).toBe("visible")
+  await userEvent.keyboard("{ArrowDown}")
+  await expect.poll(highlighted).toContain("third")
+  await userEvent.keyboard("{ArrowUp}{ArrowUp}")
+  await expect.poll(highlighted).toContain("first")
+})
+
+test("typing filters the models instead of running shortcuts", async () => {
+  rpc.mockClear()
+  await openPicker()
+  await userEvent.keyboard("thi")
+  await expect.poll(() => document.querySelectorAll("[role=option]").length).toBe(1)
+  await expect.poll(highlighted).toContain("third")
+  await userEvent.keyboard("lz")
+  await expect.element(page.getByText("No matching models")).toBeVisible()
+  expect(selectedTab()).toContain("one")
+  expect(rpc.mock.calls.some(([method]) => method === "threads.update")).toBe(false)
+})
+
+test("Alt+L moves to the next account and keeps its tab in view", async () => {
+  await openPicker()
   for (const name of ["two", "three", "four"]) {
-    await userEvent.keyboard("l")
-    await expect.poll(() => selectedTab()?.textContent).toContain(name)
+    await userEvent.keyboard("{Alt>}l{/Alt}")
+    await expect.poll(selectedTab).toContain(name)
   }
-  await expect.poll(focused).toContain("first")
+  await expect.element(page.getByRole("combobox", { name: "Search models" })).toHaveValue("")
   const list = document.querySelector("[data-slot=tabs-list]")!
   await expect
-    .poll(() => selectedTab()!.getBoundingClientRect().right - list.getBoundingClientRect().right)
+    .poll(
+      () =>
+        document.querySelector("[role=tab][aria-selected=true]")!.getBoundingClientRect().right -
+        list.getBoundingClientRect().right,
+    )
     .toBeLessThanOrEqual(2)
+})
+
+test("Alt+L starts the next tab without the previous tab's highlight and keeps the same search box", async () => {
+  await openPicker()
+  const search = page.getByRole("combobox", { name: "Search models" }).element()
+  await userEvent.keyboard("{ArrowDown}")
+  await expect.poll(highlighted).toContain("third")
+  await userEvent.keyboard("{Alt>}l{/Alt}")
+  await expect.poll(selectedTab).toContain("two")
+  await expect.poll(highlighted).toBeUndefined()
+  expect(page.getByRole("combobox", { name: "Search models" }).element()).toBe(search)
+  expect(document.activeElement).toBe(search)
+})
+
+test("an IME Enter keeps the picker open", async () => {
+  await openPicker()
+  const imeEnter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true })
+  Object.defineProperties(imeEnter, { keyCode: { value: 229 }, which: { value: 229 } })
+  page.getByRole("combobox", { name: "Search models" }).element().dispatchEvent(imeEnter)
+  await userEvent.keyboard("{ArrowDown}")
+  await expect.poll(highlighted).toContain("third")
 })
 
 test("switching to another account selects its first model right away", async () => {
   rpc.mockClear()
   await openPicker()
-  await userEvent.keyboard("l")
+  await userEvent.keyboard("{Alt>}l{/Alt}")
   await expect
     .poll(() => rpc.mock.calls.find(([method]) => method === "threads.switchAccount")?.[1])
     .toMatchObject({ id: "thread-1", accountId: "two" })
@@ -139,21 +192,29 @@ test("skips a thread's unlisted model when it picks the first one", async () => 
     <ThreadPicker thread={{ ...thread, id: "thread-2", model: "retired" }} canSwitchAgent onError={() => {}} />,
   )
   await page.getByRole("button", { name: /retired/ }).click()
-  await expect.element(page.getByRole("button", { name: "first" })).toBeVisible()
-  await userEvent.keyboard("l")
+  await expect.element(page.getByRole("option", { name: "first" })).toBeVisible()
+  await userEvent.keyboard("{Alt>}l{/Alt}")
   await expect
     .poll(() => rpc.mock.calls.find(([method]) => method === "threads.update")?.[1])
     .toMatchObject({ model: "first" })
 })
 
-test("Enter switches to the highlighted model of the other account", async () => {
+test("Enter picks the highlighted model and closes", async () => {
   rpc.mockClear()
   await openPicker()
-  await userEvent.keyboard("l")
-  await expect.poll(focused).toContain("first")
+  await userEvent.keyboard("thi{Enter}")
+  await expect.element(page.getByRole("option", { name: "first" })).not.toBeInTheDocument()
+  await expect
+    .poll(() => rpc.mock.calls.find(([method]) => method === "threads.update")?.[1])
+    .toMatchObject({ id: "thread-1", model: "third" })
+})
+
+test("Enter right after opening keeps the current model", async () => {
+  rpc.mockClear()
+  await openPicker()
   await userEvent.keyboard("{Enter}")
-  await expect.element(page.getByRole("button", { name: "first" })).not.toBeInTheDocument()
-  await expect.poll(() => rpc.mock.calls.some(([method]) => method === "threads.switchAccount")).toBe(true)
+  await expect.element(page.getByRole("option", { name: "first" })).not.toBeInTheDocument()
+  expect(rpc.mock.calls.some(([method]) => method === "threads.update")).toBe(false)
 })
 
 test("opens only the side chat's picker when the shortcut fires from the side chat", async () => {
@@ -169,5 +230,5 @@ test("opens only the side chat's picker when the shortcut fires from the side ch
   await page.getByRole("textbox", { name: "Side input" }).click()
   useUi.getState().requestPicker("model")
   expect(useUi.getState().pickerRequest?.inSidechat).toBe(true)
-  await expect.poll(() => document.querySelectorAll("[data-model-row]").length).toBe(3)
+  await expect.poll(() => document.querySelectorAll("[role=option]").length).toBe(3)
 })

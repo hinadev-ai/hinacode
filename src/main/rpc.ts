@@ -50,6 +50,7 @@ import { Terminals } from "./services/Terminals.ts"
 import { Updates } from "./services/Updates.ts"
 import { SessionImports } from "./services/SessionImports.ts"
 import { randomName, Threads } from "./services/Threads.ts"
+import { ThreadNaming } from "./services/ThreadNaming.ts"
 import { type ScreenOwner, TinyVm, VmError } from "./services/tinyVm/TinyVm.ts"
 import { Devices } from "./services/devices/Devices.ts"
 import { Worktrees } from "./services/Worktrees.ts"
@@ -60,6 +61,7 @@ export type AppServices =
   | SessionImports
   | Projects
   | Threads
+  | ThreadNaming
   | Worktrees
   | Settings
   | SystemResources
@@ -283,6 +285,7 @@ const handlers: Handlers = {
   "threads.unarchive": ({ threadId }) => Threads.use((threads) => threads.unarchive(threadId)),
   "threads.settle": ({ threadId }) => Threads.use((threads) => threads.settle(threadId)),
   "threads.unsettle": ({ threadId }) => Threads.use((threads) => threads.unsettle(threadId)),
+  "threads.regenerateTitle": ({ threadId }) => ThreadNaming.use((naming) => naming.regenerateTitle(threadId)),
   "threads.fork": ({ threadId, messageId }) =>
     Threads.use((threads) => threads.fork(threadId, messageId)).pipe(
       Effect.tap((thread) => Events.use((events) => events.publish({ type: "thread.updated", thread }))),
@@ -469,6 +472,8 @@ const handlers: Handlers = {
   "github.merge": ({ url, method }) => GitHub.use((github) => github.merge(url, method)),
   "github.close": ({ url }) => GitHub.use((github) => github.close(url)),
   "github.comment": ({ url, body }) => GitHub.use((github) => github.comment(url, body)),
+  "github.pullRequestCandidates": ({ url }) => GitHub.use((github) => github.pullRequestCandidates(url)),
+  "github.editPullRequest": ({ url, edit }) => GitHub.use((github) => github.editPullRequest(url, edit)),
   "github.fileContent": ({ url, ref, path }) => GitHub.use((github) => github.fileContent(url, ref, path)),
   "github.reviewComment": ({ url, comment }) => GitHub.use((github) => github.reviewComment(url, comment)),
   "linear.issues": () => Linear.use((linear) => linear.assignedIssues),
