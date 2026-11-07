@@ -30,7 +30,7 @@ Run `pnpm typecheck && pnpm lint && pnpm test` before you call work done. CI run
 
 ```
 src/main      Main process. One Effect layer graph (app.ts), run by Electron (index.ts) or as the Node cloud daemon (daemon.ts).
-  agents/     AgentProvider implementations: claude/, codex/, muse/, and acp/, which opencode/ configures. Registered in services/AgentRunner.ts.
+  agents/     AgentProvider implementations: claude/, which magpie/ reuses, codex/, muse/, and acp/, which opencode/ configures. Registered in services/AgentRunner.ts.
   services/   Effect services (Threads, Worktrees, Projects, Git, PullRequests, Secrets, automations/, ...)
   mcp/        HTTP MCP server on 127.0.0.1, one bearer credential per thread
   db/         SQLite client, migrations/NNNN_name, testing.ts seed helpers

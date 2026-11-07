@@ -22,6 +22,7 @@ import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
+import { MagpieProvider } from "../agents/magpie/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { layer as RemoteAccessLayer } from "../remote/access.ts"
@@ -150,6 +151,7 @@ const stubs = Layer.mergeAll(
   Layer.succeed(CodexProvider, fakeProvider("codex")),
   Layer.succeed(MuseProvider, fakeProvider("muse")),
   Layer.succeed(OpencodeProvider, fakeProvider("opencode")),
+  Layer.succeed(MagpieProvider, fakeProvider("magpie")),
   Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) }),
   Layer.succeed(
     Peers,
@@ -620,7 +622,7 @@ layer(testLayer)("run_agent", (it) => {
     }),
   )
 
-  it.effect("runs opencode only on a model the user picked, and names them when it refuses", () =>
+  it.effect("runs opencode only on a listed or picked model, and names them when it refuses", () =>
     Effect.gen(function* () {
       const runner = yield* AgentRunner
       const mcp = yield* McpCredentials
@@ -638,7 +640,7 @@ layer(testLayer)("run_agent", (it) => {
 
       expect(yield* ask()).toMatchObject({
         isError: true,
-        text: "The user has not picked any opencode models for sub-agents. Ask them to pick some in Settings, Providers, opencode, Models in the picker.",
+        text: "opencode lists no models.",
       })
       yield* settings.set({
         modelPresets: { ...defaultSettings.modelPresets, opencode: ["openrouter/a", "openrouter/b"] },

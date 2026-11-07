@@ -9,6 +9,7 @@ import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
+import { MagpieProvider } from "../agents/magpie/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
@@ -152,6 +153,7 @@ const agents = runnerLayer.pipe(
       Layer.succeed(CodexProvider, provider("codex")),
       Layer.succeed(MuseProvider, provider("muse")),
       Layer.succeed(OpencodeProvider, provider("opencode")),
+      Layer.succeed(MagpieProvider, provider("magpie")),
       Layer.mock(Secrets, {}),
       Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }),
     ),

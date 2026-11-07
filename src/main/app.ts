@@ -5,6 +5,7 @@ import * as ClaudeProvider from "./agents/claude/index.ts"
 import { mockScenarios, usageLimitLayer } from "./agents/claude/mock.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import { MuseProvider } from "./agents/muse/index.ts"
+import { MagpieProvider } from "./agents/magpie/index.ts"
 import { OpencodeProvider } from "./agents/opencode/index.ts"
 import * as Db from "./db/client.ts"
 import { answerAsksLayer } from "./environments/route.ts"
@@ -102,6 +103,10 @@ export const agentProviders = (env: NodeJS.ProcessEnv) => {
           OpencodeProvider,
           ClaudeProvider.ClaudeProvider.useSync((claude) => ({ ...claude, id: "opencode" })),
         ),
+        Layer.effect(
+          MagpieProvider,
+          ClaudeProvider.ClaudeProvider.useSync((claude) => ({ ...claude, id: "magpie" })),
+        ),
       ).pipe(Layer.provideMerge(everyAgent)),
     }
   const claude = simulatedClaude("HINACODE_MOCK_CLAUDE", env)
@@ -112,6 +117,7 @@ export const agentProviders = (env: NodeJS.ProcessEnv) => {
       CodexProvider.layer,
       MuseProvider.layer,
       OpencodeProvider.layer,
+      MagpieProvider.layer,
     ),
   }
 }
@@ -132,6 +138,7 @@ export const makeAppLayer = ({
   artifactInspector = ArtifactInspector.unavailable,
 }: AppOptions) => {
   const providers = agentProviders(process.env)
+  const settings = Settings.layer(userData)
   const spans = new SpanLedger(STALL_MS)
   const chats = Layer.effectDiscard(Projects.Projects.use((projects) => projects.ensureChats(join(userData, "chats"))))
   const domain = Layer.mergeAll(
@@ -142,7 +149,7 @@ export const makeAppLayer = ({
       Layer.provideMerge(Worktrees.layer),
       Layer.provideMerge(Projects.layer),
       Layer.provideMerge(AgentAccounts.layer),
-      Layer.provideMerge(Settings.layer(userData)),
+      Layer.provideMerge(settings),
     ),
     ClientSettings.layer(userData),
     Messages.layer,
@@ -204,7 +211,7 @@ export const makeAppLayer = ({
   return Layer.mergeAll(RemoteServer.layer, CliSocket.layer(userData), answerAsksLayer, Conductor.layer).pipe(
     Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),
     Layer.provideMerge(services),
-    Layer.provide(providers.layer),
+    Layer.provide(providers.layer.pipe(Layer.provide(Layer.mergeAll(settings, Secrets.layer)))),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer, EventBus.layer)),
     Layer.provideMerge(makeEventsLayer(toWindows)),
     Layer.provide(Layer.mergeAll(Db.layer(join(userData, "hinacode.sqlite")), keyring)),

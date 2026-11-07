@@ -2,7 +2,7 @@ import { Predicate, Schema } from "effect"
 import type { AccessMode, Attachment } from "./domain.ts"
 import { PlanLimits, UsageLimit } from "./limits.ts"
 
-export const ProviderId = Schema.Literals(["claude", "codex", "muse", "opencode"])
+export const ProviderId = Schema.Literals(["claude", "codex", "muse", "opencode", "magpie"])
 export type ProviderId = typeof ProviderId.Type
 
 export const AccountProviderId = Schema.Literals(["claude", "codex"])

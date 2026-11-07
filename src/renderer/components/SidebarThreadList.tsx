@@ -61,7 +61,7 @@ import { useUi } from "../stores/ui.ts"
 import { SidebarRow, SidebarRowPresence } from "./SidebarRowMotion.tsx"
 import { useUnseen } from "../stores/unseen.ts"
 import { ProjectIcon } from "./ProjectIcon.tsx"
-import { ProviderIcon } from "./ProviderIcon.tsx"
+import { ThreadProviderIcon } from "./ProviderIcon.tsx"
 import { SidebarPullRequests } from "./SidebarPullRequests.tsx"
 import { ArchiveDialog, useActiveWorktree } from "./ArchiveDialog.tsx"
 import { CloudMark } from "./CloudMark.tsx"
@@ -400,7 +400,7 @@ function DraftRow({ thread, title, project }: { thread: Thread; title: string; p
         <ProjectLine
           project={project}
           projectId={thread.projectId}
-          trailing={<ProviderIcon provider={thread.provider} muted className="size-3" />}
+          trailing={<ThreadProviderIcon provider={thread.provider} model={thread.model} className="size-3" />}
         />
       )}
       <div className="grid grid-cols-1">
@@ -417,7 +417,7 @@ function DraftRow({ thread, title, project }: { thread: Thread; title: string; p
           {project === null && (
             <span aria-hidden className="flex shrink-0 items-center gap-2 text-xs text-sidebar-meta">
               {m.sidebar_thread_draft()}
-              <ProviderIcon provider={thread.provider} muted className="size-3" />
+              <ThreadProviderIcon provider={thread.provider} model={thread.model} className="size-3" />
             </span>
           )}
         </Link>
@@ -613,7 +613,7 @@ function ThreadRow({
             {meta.project === null && (
               <span aria-hidden className="flex shrink-0 items-center gap-2 text-xs text-sidebar-meta">
                 <span className="min-w-8 text-end cjk:min-w-10 [&:lang(zh-CN)]:min-w-10">{when}</span>
-                <ProviderIcon provider={meta.provider} muted className="size-3" />
+                <ThreadProviderIcon provider={meta.provider} model={meta.model} className="size-3" />
               </span>
             )}
           </Link>
@@ -760,7 +760,7 @@ function ThreadRow({
           cloud={rowCloud}
           environment={environment}
           detail={detail}
-          ledger={meta.project === null ? null : { provider: meta.provider, branch }}
+          ledger={meta.project === null ? null : { provider: meta.provider, model: meta.model, branch }}
         />
       )}
       <DeleteThreadPopover
@@ -1012,6 +1012,7 @@ function useThreadMeta(thread: Thread, showProject: boolean) {
     links,
     threadId: thread.id,
     provider: thread.provider,
+    model: thread.model,
     updatedAt: lastActivity(thread),
     snoozedUntil: useSnoozedUntil(thread),
   }
@@ -1038,7 +1039,7 @@ function ThreadMeta({
   cloud: Cloud | undefined
   environment: EnvironmentId
   detail: RowDetail | null
-  ledger: { readonly provider: Thread["provider"]; readonly branch: string } | null
+  ledger: { readonly provider: Thread["provider"]; readonly model: string; readonly branch: string } | null
 }) {
   const watching = links.some((link) => link.watch !== null)
   return (
@@ -1073,7 +1074,7 @@ function ThreadMeta({
               <span className="truncate">{cloud.name}</span>
             </span>
           )}
-          <ProviderIcon provider={ledger.provider} muted className="size-3" />
+          <ThreadProviderIcon provider={ledger.provider} model={ledger.model} className="size-3" />
         </span>
       )}
     </div>

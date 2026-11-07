@@ -564,6 +564,7 @@ const providers: Record<ProviderId, { label: string; icon: IconName }> = {
   codex: { label: copy("mobile_provider_codex"), icon: "RiOpenaiFill" },
   muse: { label: copy("mobile_provider_muse"), icon: "RiMetaFill" },
   opencode: { label: copy("mobile_provider_opencode"), icon: "OpencodeMark" },
+  magpie: { label: copy("mobile_provider_magpie"), icon: "MagpieMark" },
 }
 
 const effortLabels: Record<string, string> = {
@@ -592,6 +593,7 @@ const supervisedHints: Record<ProviderId, string> = {
   codex: copy("mobile_composer_access_supervised_codex"),
   muse: copy("mobile_composer_access_supervised_muse"),
   opencode: copy("mobile_composer_access_supervised_opencode"),
+  magpie: copy("mobile_settings_access_supervised_hint"),
 }
 
 const autoHints: Record<ProviderId, (model: ModelInfo | undefined) => string> = {
@@ -600,6 +602,7 @@ const autoHints: Record<ProviderId, (model: ModelInfo | undefined) => string> = 
   codex: () => copy("mobile_composer_access_auto_codex"),
   muse: () => copy("mobile_composer_access_auto_muse"),
   opencode: () => copy("mobile_composer_access_auto_opencode"),
+  magpie: () => copy("mobile_composer_access_auto_claude_edits"),
 }
 
 const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | undefined) => {
