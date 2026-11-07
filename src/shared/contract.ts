@@ -59,6 +59,7 @@ import {
   OpenPort,
   Opener,
   OpenerId,
+  CloneProgress,
   Project,
   ProjectAction,
   GitHubAuth,
@@ -211,6 +212,7 @@ export const RpcMethods = {
   ),
   "projects.clone": rpc(
     Schema.Struct({
+      cloneId: Schema.String,
       repository: GitHubRepository,
       rootPath: Schema.String,
       name: Schema.String,
@@ -218,6 +220,7 @@ export const RpcMethods = {
     }),
     Project,
   ),
+  "projects.cancelClone": rpc(Schema.Struct({ cloneId: Schema.String }), Schema.Void),
   "projects.update": rpc(
     Schema.Struct({
       id: Schema.String,
@@ -692,6 +695,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "projects.list": "read",
   "projects.create": "mutation",
   "projects.clone": "mutation",
+  "projects.cancelClone": "mutation",
   "projects.update": "mutation",
   "projects.delete": "mutation",
   "threads.list": "read",
@@ -966,6 +970,7 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("thread.reveal"), threadId: Schema.String }),
   Schema.Struct({ type: Schema.Literal("worktree.updated"), worktree: Worktree }),
   Schema.Struct({ type: Schema.Literal("worktree.setupLog"), id: Schema.String, chunk: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("project.cloneProgress"), cloneId: Schema.String, progress: CloneProgress }),
   Schema.Struct({
     type: Schema.Literal("worktree.setupNotice"),
     id: Schema.String,

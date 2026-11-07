@@ -6,6 +6,7 @@ import {
   GitHub,
   layer,
   parseAuthStatus,
+  parseCloneProgress,
   pullRequestFiles,
   summarizeChecks,
   toPullRequest,
@@ -21,6 +22,21 @@ const account = (overrides: Partial<{ state: string; active: boolean; login: str
   host: "github.com",
   login: "octocat",
   ...overrides,
+})
+
+describe("parseCloneProgress", () => {
+  test("reads the newest phase and percent from git's carriage-return updates", () => {
+    const chunk = "Receiving objects:  44% (440/1000), 1.2 MiB | 2 MiB/s\rReceiving objects:  45% (450/1000), 1.3 MiB"
+    expect(parseCloneProgress(chunk)).toStrictEqual({ phase: "Receiving objects", percent: 45 })
+  })
+
+  test("reads the server's phases and skips lines without a percent", () => {
+    expect(parseCloneProgress("remote: Counting objects:   7% (87/1229)        \r")).toStrictEqual({
+      phase: "Counting objects",
+      percent: 7,
+    })
+    expect(parseCloneProgress("Cloning into 'git'...\nremote: Enumerating objects: 423134, done.\n")).toBeUndefined()
+  })
 })
 
 describe("parseAuthStatus", () => {
@@ -266,7 +282,9 @@ describe("a gh that never exits", () => {
   it.effect("gives a clone an hour", () =>
     Effect.gen(function* () {
       const github = yield* GitHub
-      const clone = yield* Effect.forkChild(Effect.flip(github.clone({ owner: "o", name: "r" }, "/tmp/r")))
+      const clone = yield* Effect.forkChild(
+        Effect.flip(github.clone({ owner: "o", name: "r" }, "/tmp/r", () => Effect.void)),
+      )
       yield* TestClock.adjust("59 minutes")
       expect(clone.pollUnsafe()).toBeUndefined()
 

@@ -784,6 +784,8 @@
   "project_clone_to_label": "克隆到",
   "project_clone_submit": "克隆并添加",
   "project_cloning": "正在克隆…",
+  "project_clone_starting": "正在开始克隆…",
+  "project_clone_progress": "克隆进度",
   "message_writing": "正在生成…",
   "message_worked_for": "用时 {duration}",
   "message_show_activity": "显示工具活动",

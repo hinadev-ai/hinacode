@@ -125,6 +125,7 @@ export const routes: Record<RpcMethod, Route> = {
   "remote.rotateToken": named,
   "projects.create": named,
   "projects.clone": named,
+  "projects.cancelClone": named,
   "ports.kill": named,
   "automations.list": named,
 

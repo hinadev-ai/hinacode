@@ -1,16 +1,25 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
 import { useNavigate } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
-import { type ComponentProps, type FormEvent, startTransition, useActionState, useState } from "react"
+import {
+  type ComponentProps,
+  type FormEvent,
+  startTransition,
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+} from "react"
 import { RiGithubFill } from "react-icons/ri"
 import { separatorOf } from "../../shared/directoryPath.ts"
-import type { Project } from "../../shared/domain.ts"
+import type { CloneProgress, Project } from "../../shared/domain.ts"
 import { type GitHubRepository, parseGitHubRepository, type RepositoryVisibility } from "../../shared/github.ts"
 import {
   callPromise,
   cloneProjectAtom,
   createProjectAtom,
   type EnvironmentId,
+  onPushEvent,
   projectsAtom,
   updateProjectAtom,
 } from "../lib/rpc.ts"
@@ -101,6 +110,46 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
   const cloneParent = useDefaultCloneParent(environment)
   const defaultCloneTo = `${cloneParent}${separatorOf(cloneParent)}${repository?.name ?? ""}`
   const canBrowse = environment === null && !inBrowser()
+  const runningClone = useRef<{ readonly cloneId: string; readonly environment: EnvironmentId } | null>(null)
+  const [cloneProgress, setCloneProgress] = useState<CloneProgress | null>(null)
+
+  useEffect(
+    () =>
+      onPushEvent((event) => {
+        if (event.type === "project.cloneProgress" && event.cloneId === runningClone.current?.cloneId)
+          setCloneProgress(event.progress)
+      }),
+    [],
+  )
+
+  useEffect(
+    () => () => {
+      const running = runningClone.current
+      if (running)
+        callPromise("projects.cancelClone", { cloneId: running.cloneId }, { environment: running.environment }).catch(
+          toastError,
+        )
+    },
+    [],
+  )
+
+  const clone = async (source: GitHubRepository, setupScript: string | null) => {
+    const cloneId = crypto.randomUUID()
+    runningClone.current = { cloneId, environment }
+    setCloneProgress(null)
+    try {
+      return await cloneProject({
+        environment,
+        cloneId,
+        repository: source,
+        rootPath: (cloneTo ?? defaultCloneTo).trim(),
+        name: name.trim() || source.name,
+        setupScript,
+      })
+    } finally {
+      runningClone.current = null
+    }
+  }
 
   const [error, submit, isPending] = useActionState(async (_: string | null, form: FormData) => {
     const setupScript = String(form.get("setupScript") ?? "").trim() || null
@@ -113,14 +162,7 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
           setupScript,
           linearReview,
         })
-      if (repository)
-        return cloneProject({
-          environment,
-          repository,
-          rootPath: (cloneTo ?? defaultCloneTo).trim(),
-          name: name.trim() || repository.name,
-          setupScript,
-        })
+      if (repository) return clone(repository, setupScript)
       return createProject({
         environment,
         name: name.trim(),
@@ -231,6 +273,7 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
           </Field>
         )}
       </FieldGroup>
+      {repository && isPending && <CloneProgressBar progress={cloneProgress} />}
       {error && <FieldError>{error}</FieldError>}
       <DialogFooter>
         <DialogClose render={<Button type="button" variant="outline" />}>{m.common_cancel()}</DialogClose>
@@ -291,6 +334,23 @@ function NewRepositoryField({
         onCheckedChange={(checked) => onChange(checked ? "private" : null)}
       />
     </Field>
+  )
+}
+
+function CloneProgressBar({ progress }: { progress: CloneProgress | null }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex justify-between text-xs text-muted-foreground tabular-nums">
+        <span className="truncate">{progress?.phase ?? m.project_clone_starting()}</span>
+        {progress && <span>{progress.percent}%</span>}
+      </div>
+      <progress
+        aria-label={m.project_clone_progress()}
+        max={100}
+        value={progress?.percent}
+        className="h-1.5 w-full appearance-none overflow-hidden rounded-full bg-muted [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:bg-primary [&::-webkit-progress-value]:transition-[width] [&::-webkit-progress-value]:duration-200"
+      />
+    </div>
   )
 }
 

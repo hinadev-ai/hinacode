@@ -40,6 +40,9 @@ export const Project = Schema.Struct({
 })
 export type Project = typeof Project.Type
 
+export const CloneProgress = Schema.Struct({ phase: Schema.String, percent: Schema.Number })
+export type CloneProgress = typeof CloneProgress.Type
+
 export const chatFolder = (chatsRoot: string, threadId: string) =>
   `${chatsRoot.replace(/[\\/]+$/, "")}${chatsRoot.includes("\\") ? "\\" : "/"}${threadId}`
 

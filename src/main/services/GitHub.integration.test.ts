@@ -69,7 +69,7 @@ describe("GitHub.clone", () => {
     Object.assign(process.env, { GH_CONFIG_DIR: ghConfig, GH_TOKEN: ghToken, GIT_SSH_COMMAND: "false" })
     try {
       await Effect.runPromise(
-        GitHub.use((github) => github.clone({ owner: "octocat", name: "Hello-World" }, dest)).pipe(
+        GitHub.use((github) => github.clone({ owner: "octocat", name: "Hello-World" }, dest, () => Effect.void)).pipe(
           Effect.provide(layer.pipe(Layer.provide(NodeServices.layer), Layer.provide(noEvents))),
         ),
       )

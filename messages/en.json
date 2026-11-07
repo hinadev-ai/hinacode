@@ -793,6 +793,8 @@
   "project_clone_to_label": "Clone to",
   "project_clone_submit": "Clone and add",
   "project_cloning": "Cloning…",
+  "project_clone_starting": "Starting the clone…",
+  "project_clone_progress": "Clone progress",
   "message_writing": "Writing…",
   "message_worked_for": "Worked for {duration}",
   "message_show_activity": "Show tool activity",

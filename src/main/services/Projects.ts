@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { homedir } from "node:os"
 import { extname, isAbsolute, join, resolve, sep } from "node:path"
-import { Cache, Context, Effect, FileSystem, Layer, Option, Schema } from "effect"
+import { Cache, Context, Deferred, Effect, FileSystem, Layer, Option, Schema } from "effect"
 import { SqlClient, SqlError, SqlSchema } from "effect/sql"
 import { Project, ProjectAction } from "../../shared/domain.ts"
 import { type GitHubRepository, parseGitHubRepository, type RepositoryVisibility } from "../../shared/github.ts"
@@ -9,6 +9,7 @@ import { nowIso } from "./clock.ts"
 import {
   NotFoundError,
   type PersistenceError,
+  ProjectCloneCancelledError,
   ProjectFolderNotEmptyError,
   ProjectOriginTakenError,
   ProjectPathTakenError,
@@ -17,6 +18,7 @@ import {
   persistence,
 } from "./errors.ts"
 import { type CommandError, Git, LONG_TIMEOUT } from "./Git.ts"
+import { Events } from "./Events.ts"
 import { GitHub, type GitHubError } from "./GitHub.ts"
 
 export interface CreateProject {
@@ -30,6 +32,7 @@ export interface CreateFolderProject extends CreateProject {
 }
 
 export interface CloneProject extends CreateProject {
+  readonly cloneId: string
   readonly repository: GitHubRepository
 }
 
@@ -55,7 +58,8 @@ export class Projects extends Context.Service<
     ) => Effect.Effect<Project, WriteError | CommandError | GitHubError | ProjectOriginTakenError>
     readonly clone: (
       input: CloneProject,
-    ) => Effect.Effect<Project, WriteError | ProjectFolderNotEmptyError | CommandError>
+    ) => Effect.Effect<Project, WriteError | ProjectFolderNotEmptyError | ProjectCloneCancelledError | CommandError>
+    readonly cancelClone: (cloneId: string) => Effect.Effect<void>
     readonly update: (input: UpdateProject) => Effect.Effect<Project, WriteError | NotFoundError>
     readonly remove: (id: string) => Effect.Effect<void, PersistenceError>
     readonly ensureChats: (rootPath: string) => Effect.Effect<Project, PersistenceError | ProjectRootInvalidError>
@@ -103,6 +107,8 @@ const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   const git = yield* Git
   const github = yield* GitHub
+  const events = yield* Events
+  const cloneCancels = new Map<string, Deferred.Deferred<void>>()
 
   const findAll = SqlSchema.findAll({
     Request: Schema.Void,
@@ -222,19 +228,36 @@ const make = Effect.gen(function* () {
     ),
   )
 
-  const clone = ({ repository, ...input }: CloneProject) =>
+  const cloneInto = (cloneId: string, repository: GitHubRepository, rootPath: string) =>
     Effect.gen(function* () {
-      const rootPath = yield* resolveRoot(input.rootPath)
-      if (!(yield* holdsClone(rootPath, repository))) {
-        yield* makeDirectory(rootPath)
-        const entries = yield* fs
-          .readDirectory(rootPath)
-          .pipe(Effect.mapError(() => new ProjectRootInvalidError({ rootPath })))
-        if (entries.length > 0) return yield* new ProjectFolderNotEmptyError({ rootPath })
-        yield* github.clone(repository, rootPath)
-      }
-      return yield* insert({ ...input, rootPath })
+      if (yield* holdsClone(rootPath, repository)) return
+      yield* makeDirectory(rootPath)
+      const entries = yield* fs
+        .readDirectory(rootPath)
+        .pipe(Effect.mapError(() => new ProjectRootInvalidError({ rootPath })))
+      if (entries.length > 0) return yield* new ProjectFolderNotEmptyError({ rootPath })
+      yield* github.clone(repository, rootPath, (progress) =>
+        events.publish({ type: "project.cloneProgress", cloneId, progress }),
+      )
     })
+
+  const clone = ({ cloneId, repository, ...input }: CloneProject) =>
+    Effect.gen(function* () {
+      const cancel = yield* Deferred.make<void>()
+      cloneCancels.set(cloneId, cancel)
+      const rootPath = yield* resolveRoot(input.rootPath)
+      const cancelled = Deferred.await(cancel).pipe(
+        Effect.andThen(Effect.fail(new ProjectCloneCancelledError({ rootPath }))),
+      )
+      yield* Effect.raceFirst(cloneInto(cloneId, repository, rootPath), cancelled)
+      return yield* insert({ ...input, rootPath })
+    }).pipe(Effect.ensuring(Effect.sync(() => cloneCancels.delete(cloneId))))
+
+  const cancelClone = (cloneId: string) =>
+    Effect.suspend(() => {
+      const cancel = cloneCancels.get(cloneId)
+      return cancel === undefined ? Effect.void : Deferred.succeed(cancel, undefined)
+    }).pipe(Effect.asVoid)
 
   const findChats = SqlSchema.findOne({
     Request: Schema.Void,
@@ -313,6 +336,7 @@ const make = Effect.gen(function* () {
     get,
     create,
     clone,
+    cancelClone,
     update,
     icon,
     ensureChats,
