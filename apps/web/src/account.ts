@@ -87,8 +87,7 @@ export type Approval =
   | { readonly _tag: "signedIn"; readonly account: RelayAccount; readonly machines: ReadonlyArray<RelayMachine> }
   | { readonly _tag: "failed"; readonly message: string }
 
-const approve = async (account: RelayAccount): Promise<Approval> => {
-  const answer = await fetchMachines(account)
+const approveAnswer = (account: RelayAccount, answer: MachinesAnswer): Approval => {
   if (answer._tag !== "machines") return { _tag: "failed", message: describeFailure(answer) }
   if (answer.machines.length === 0) return { _tag: "failed", message: m.web_no_machines() }
   return { _tag: "signedIn", account, machines: answer.machines }
@@ -106,12 +105,16 @@ export const createDevice = async (serviceUrl: string, sessionToken: string): Pr
   if (device._tag === "failed") return device
   const account = { serviceUrl, credential: device.value.credential }
   saveAccount(account)
-  return approve(account)
+  return approveAnswer(account, await fetchMachines(account))
 }
 
 const signInWithClerk = async (serviceUrl: string, clerk: Clerk): Promise<Approval> => {
   const stored = storedAccount()
-  if (stored?.serviceUrl === serviceUrl) return approve(stored)
+  if (stored?.serviceUrl === serviceUrl) {
+    const answer = await fetchMachines(stored)
+    if (answer._tag !== "unauthorized") return approveAnswer(stored, answer)
+    forgetAccount()
+  }
   const sessionToken = await clerk.session?.getToken().catch(() => null)
   if (!sessionToken) return { _tag: "failed", message: m.web_sign_in_unavailable() }
   return createDevice(serviceUrl, sessionToken)
