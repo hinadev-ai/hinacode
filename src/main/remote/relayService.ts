@@ -3,6 +3,7 @@ import { RelayHostList, RelayMachineList } from "../../shared/relayMachines.ts"
 
 export const EXPIRED = "The sign-in link expired. Link this machine again."
 const SIGN_IN_USED = "The sign-in expired or was already used. Sign in again."
+export const DENIED = "The link was denied in the browser."
 
 const CALL_TIMEOUT = Duration.seconds(30)
 
@@ -132,6 +133,7 @@ export const relayService = (fetch: Fetch, serviceUrl: string) => {
         Effect.flatMap((answer) => {
           if (answer.status === 202) return Effect.succeedNone
           if (answer.status === 410) return Effect.fail(new RelayError({ message: EXPIRED }))
+          if (answer.status === 403) return Effect.fail(new RelayError({ message: DENIED }))
           return Effect.map(decode("finish linking", Claimed, answer), ({ credential }) => Option.some(credential))
         }),
       ),

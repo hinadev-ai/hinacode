@@ -2,7 +2,7 @@
 
 A Cloudflare Worker at `relay.hinacode.app`. It links machines to Clerk accounts with a device-code flow and creates one Cloudflare named tunnel per linked machine. The machine runs `cloudflared` with the connector token it gets back. The service never carries a frame. The design is in `docs/features/2026-10-24-relay.md` and `docs/adr/0020-cloudflare-tunnel-as-the-relay.md`.
 
-`src/app.ts` holds the handlers. `src/index.ts` wires them to Clerk (`src/clerk.ts`), `fetch` and the clock. `GET /link` serves the approval page from `src/page.ts`, with no build step. `expiresAt` and `createdAt` are milliseconds since the epoch.
+`src/app.ts` holds the handlers. `src/index.ts` wires them to Clerk (`src/clerk.ts`), `fetch` and the clock. `GET /link` serves the approval page from `src/page.ts`, with no build step. Its Deny button calls `DELETE /v1/links/:userCode`, which marks the link denied, so the machine's next claim gets 403 and stops waiting. `expiresAt` and `createdAt` are milliseconds since the epoch.
 
 A linked machine publishes the pairing its QR code carries with `PUT /v1/host/pairing`. `GET /v1/machines` hands an account's devices every machine that published one and is shown, so they can add it without scanning. The desktop's **Show on my devices** switch calls `PATCH /v1/hosts/:id` with `{ enabled }`; a hidden machine's pairing never leaves the relay, and its tunnel keeps running. The design is in `docs/features/2026-10-24-relay-machines.md`.
 

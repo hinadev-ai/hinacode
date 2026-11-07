@@ -120,6 +120,27 @@ describe("linking", () => {
     expect((await claim("never-issued")).status).toBe(410)
   })
 
+  it("tells the waiting machine it was denied, once", async () => {
+    const link = await startLink()
+    const deny = (session?: string) => call("DELETE", `/v1/links/${link.userCode}`, { bearer: session })
+    expect((await deny()).status).toBe(401)
+    expect((await deny("alice-session")).status).toBe(204)
+    expect((await deny("alice-session")).status).toBe(404)
+    expect((await approve(link.userCode)).status).toBe(404)
+    const refused = await claim(link.deviceCode)
+    expect(refused.status).toBe(403)
+    expect(await refused.json()).toEqual({ error: "The request was denied in the browser." })
+    expect((await claim(link.deviceCode)).status).toBe(410)
+  })
+
+  it("refuses to deny a link that was already approved", async () => {
+    const link = await startLink()
+    expect((await approve(link.userCode, "alice-session")).status).toBe(204)
+    expect((await call("DELETE", `/v1/links/${link.userCode}`, { bearer: "bob-session" })).status).toBe(409)
+    expect((await claim(link.deviceCode)).status).toBe(200)
+    expect((await call("DELETE", `/v1/links/${link.userCode}`, { bearer: "alice-session" })).status).toBe(404)
+  })
+
   it("needs the owner's bearer to read or approve a link", async () => {
     const link = await startLink()
     expect((await call("GET", `/v1/links/${link.userCode}`)).status).toBe(401)
