@@ -1,13 +1,16 @@
 import { RiGitPullRequestLine } from "react-icons/ri"
 import { Autocomplete } from "@base-ui/react/autocomplete"
+import { Combobox } from "@base-ui/react/combobox"
 import { Toggle } from "@base-ui/react/toggle"
 import { ToggleGroup } from "@base-ui/react/toggle-group"
 import { useAtomValue } from "@effect/atom-react"
+import { formatForDisplay } from "@tanstack/react-hotkeys"
 import { useNavigate } from "@tanstack/react-router"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { toast } from "sonner"
 import { type KeyboardEvent, useEffect, useId, useRef, useState, useTransition } from "react"
+import { flushSync } from "react-dom"
 import { type ModelInfo, presetModels, ProviderId, unlistedModel } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import { AccessMode, type OpenPullRequest, type Project, type Thread } from "../../shared/domain.ts"
@@ -28,6 +31,7 @@ import { environmentName, environmentOf, useClouds, useThreadEnvironment } from 
 import { groupProjects } from "../lib/projectGroups.ts"
 import { moveDraft } from "../lib/startThread.ts"
 import { useSettings } from "../lib/settings.ts"
+import { useAltHeld } from "../lib/useModifierHeld.ts"
 import { m } from "../paraglide/messages.js"
 import { type Draft, useDrafts } from "../stores/drafts.ts"
 import { useThreads } from "../stores/threads.ts"
@@ -219,10 +223,29 @@ function useAgentTabs(thread: Thread, canSwitchAgent: boolean): ReadonlyArray<Ag
   )
 }
 
-const modelRows = (popup: HTMLElement) => [...popup.querySelectorAll<HTMLButtonElement>("[data-model-row]")]
+const modelMatches = (model: ModelInfo, query: string) => {
+  const text = `${model.label} ${model.id}`.toLowerCase()
+  return query
+    .toLowerCase()
+    .split(/\s+/)
+    .every((word) => text.includes(word))
+}
+
+const nearest = { block: "nearest", inline: "nearest" } as const
 
 const isThreadTab = (tab: AgentTab, thread: Thread) =>
   tab.provider === thread.provider && (tab.accountId === undefined || tab.accountId === thread.accountId)
+
+const ALT = formatForDisplay("Alt")
+
+function AltKey({ children, className }: { children: string; className?: string }) {
+  const held = useAltHeld()
+  return (
+    <Kbd aria-hidden className={cn(className, !held && "invisible")}>
+      {children}
+    </Kbd>
+  )
+}
 
 export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps & { canSwitchAgent: boolean }) {
   const environment = useThreadEnvironment(thread.id)
@@ -233,11 +256,14 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
   const [open, setOpen] = useState(false)
   const [tabValue, setTabValue] = useState(threadTab)
   const [focus, setFocus] = useState<ComposerPicker>("model")
+  const [query, setQuery] = useState("")
+  const [clearingHighlight, setClearingHighlight] = useState(false)
   const [picking, startPicking] = useTransition()
   const openedByShortcut = useRef(false)
   const tabMovedToByKey = useRef<string | null>(null)
   const closedWithEnter = useRef(false)
   const popupRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
   const tab = tabs.find((candidate) => candidate.value === tabValue) ?? tabs[0]!
   const models = usePickerModels(environment, tab.provider, tab.provider === thread.provider ? thread.model : null)
   const ownModels = usePickerModels(environment, thread.provider, null)
@@ -247,6 +273,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
     closedWithEnter.current = false
     setFocus(picker)
     setTabValue(threadTab)
+    setQuery("")
     setOpen(true)
   }
 
@@ -260,6 +287,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
         closedWithEnter.current = false
         setFocus(request.picker)
         setTabValue(threadTab)
+        setQuery("")
         setOpen(true)
       }),
     [threadTab, isSidechat],
@@ -293,7 +321,12 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
 
   const accountSwitches = useRef(Promise.resolve())
   const openTab = (value: string) => {
-    setTabValue(value)
+    // FIXME: Base UI keeps an open inline combobox's highlight index when its items change and has no API to reset it. One commit with an empty list makes it drop the index without remounting the search box.
+    flushSync(() => {
+      setTabValue(value)
+      setClearingHighlight(true)
+    })
+    flushSync(() => setClearingHighlight(false))
     const target = tabs.find((candidate) => candidate.value === value)
     const firstOwnModel = ownModels[0]
     if (target?.accountId === undefined || target.provider !== thread.provider || firstOwnModel === undefined) return
@@ -309,34 +342,14 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
     const next = enabled[(enabled.indexOf(tab) + step + enabled.length) % enabled.length]
     if (next === undefined) return
     tabMovedToByKey.current = next.value
-    popupRef.current?.focus({ preventScroll: true })
     openTab(next.value)
   }
   useEffect(() => {
-    const popup = popupRef.current
-    if (tabMovedToByKey.current !== tab.value || picking || popup === null || models.length === 0) return
+    if (tabMovedToByKey.current !== tab.value) return
     tabMovedToByKey.current = null
-    const rows = modelRows(popup)
-    const row = rows.find((candidate) => candidate.dataset["selected"] === "true") ?? rows[0]
-    row?.focus({ preventScroll: true })
-    const nearest = { block: "nearest", inline: "nearest" } as const
-    row?.scrollIntoView(nearest)
-    popup.querySelector("[role=tab][aria-selected=true]")?.scrollIntoView(nearest)
+    popupRef.current?.querySelector("[role=tab][aria-selected=true]")?.scrollIntoView(nearest)
   })
-  const moveModel = (step: number) => {
-    const popup = popupRef.current
-    if (popup === null) return
-    const rows = modelRows(popup)
-    const at = rows.indexOf(document.activeElement as HTMLButtonElement)
-    const next =
-      at === -1
-        ? Math.max(
-            0,
-            rows.findIndex((row) => row.dataset["selected"] === "true"),
-          )
-        : at + step
-    rows[(next + rows.length) % rows.length]?.focus()
-  }
+
   const efforts = current === undefined || current.efforts.length === 0 ? [] : [DEFAULT_EFFORT, ...current.efforts]
   const stepThrough = <V,>(values: ReadonlyArray<V>, value: V, step: number) =>
     values[(values.indexOf(value) + step + values.length) % values.length]!
@@ -350,43 +363,28 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
   const toggleFast = current?.fastMode ? () => set({ fastMode: !thread.fastMode }) : null
   const toggleConversation = hidesUserSkills[thread.provider] ? () => set({ userSkills: !thread.userSkills }) : null
   const stepAccess = (step: number) => set({ accessMode: stepThrough(AccessMode.literals, thread.accessMode, step) })
-  const keys: Record<string, ((step: number) => void) | null> = {
-    h: () => moveTab(-1),
-    l: () => moveTab(1),
-    e: stepEffort,
-    f: toggleFast,
-    c: toggleConversation,
-    m: stepAccess,
-    enter: () => {
-      closedWithEnter.current = true
-      setOpen(false)
-    },
+  const altKeys: Record<string, ((step: number) => void) | null> = {
+    KeyH: () => moveTab(-1),
+    KeyL: () => moveTab(1),
+    KeyE: stepEffort,
+    KeyF: toggleFast,
+    KeyC: toggleConversation,
+    KeyM: stepAccess,
   }
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.metaKey || event.ctrlKey || event.altKey) return
-    const target = event.target as HTMLElement
-    const row = target.closest<HTMLButtonElement>("[data-model-row]")
-    if (event.key === "Enter" && row !== null) {
+  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return
+    if (event.altKey && !event.metaKey && !event.ctrlKey) {
+      const action = altKeys[event.code]
+      if (!action) return
       event.preventDefault()
-      closedWithEnter.current = true
-      row.click()
-      setOpen(false)
+      event.stopPropagation()
+      action(event.shiftKey ? -1 : 1)
       return
     }
-    if (
-      (event.key === "ArrowDown" || event.key === "ArrowUp") &&
-      (target === popupRef.current || row !== null || target.closest("[role=tab]") !== null)
-    ) {
-      event.preventDefault()
-      moveModel(event.key === "ArrowDown" ? 1 : -1)
-      return
-    }
-    const digit = Number(event.key)
-    const model = !event.shiftKey && digit >= 1 && digit <= 9 && !tab.disabled ? models[digit - 1] : undefined
-    const action = model ? () => void pick(model) : keys[event.key.toLowerCase()]
-    if (!action) return
+    if (event.key !== "Enter" || event.metaKey || event.ctrlKey || event.altKey) return
     event.preventDefault()
-    action(event.shiftKey ? -1 : 1)
+    closedWithEnter.current = true
+    setOpen(false)
   }
 
   const effort = thread.effort ?? current?.defaultEffort ?? null
@@ -431,11 +429,12 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
         side="top"
         align="start"
         sideOffset={6}
-        className="max-h-(--available-height) w-90 max-w-[calc(100vw-1rem)] gap-3 p-2"
+        collisionAvoidance={{ side: "none", fallbackAxisSide: "none" }}
+        className="h-[min(520px,var(--available-height))] w-90 max-w-[calc(100vw-1rem)] gap-3 p-2"
         initialFocus={() =>
           (focus === "effort"
             ? popupRef.current?.querySelector<HTMLElement>("[data-slot=slider-thumb] input")
-            : null) ??
+            : searchRef.current) ??
           popupRef.current ??
           true
         }
@@ -470,41 +469,61 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
               ))}
             </TabsList>
             <KbdGroup aria-hidden className="ml-auto">
+              <Kbd>{ALT}</Kbd>
               <Kbd>H</Kbd>
               <Kbd>L</Kbd>
             </KbdGroup>
           </div>
           {tab.hint && <p className="px-1 text-xs text-muted-foreground tabular-nums">{tab.hint}</p>}
         </Tabs>
-        <ul
-          aria-label={m.thread_model_picker()}
-          className="flex max-h-72 min-h-0 scroll-fade-y flex-col gap-0.5 overflow-y-auto"
+        <Combobox.Root
+          inline
+          open
+          filteredItems={clearingHighlight ? [] : undefined}
+          autoHighlight
+          items={models}
+          filter={modelMatches}
+          itemToStringLabel={(model: ModelInfo) => model.label}
+          isItemEqualToValue={sameModel}
+          value={isThreadTab(tab, thread) ? selected : null}
+          onValueChange={(model) => {
+            if (model !== null && !picking) startPicking(() => pick(model))
+          }}
+          inputValue={query}
+          onInputValueChange={(next, details) => {
+            if (details.reason !== "item-press") setQuery(next)
+          }}
+          disabled={tab.disabled}
         >
-          {models.map((model, index) => {
-            const isSelected = isThreadTab(tab, thread) && sameModel(model, selected)
-            return (
-              <li key={model.id}>
-                <button
-                  type="button"
-                  disabled={tab.disabled}
-                  aria-disabled={picking}
-                  aria-pressed={isSelected}
-                  data-model-row
-                  data-selected={isSelected}
-                  onClick={() => {
-                    if (!picking) startPicking(() => pick(model))
-                  }}
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent disabled:opacity-50 aria-disabled:opacity-50 aria-pressed:font-medium"
-                >
-                  <span className="min-w-0 flex-1 truncate">{model.label}</span>
-                  {index < 9 && <Kbd aria-hidden>{index + 1}</Kbd>}
-                  <CheckIcon aria-hidden className={cn("size-4 shrink-0", !isSelected && "invisible")} />
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-        <div className="flex flex-col gap-3 border-t border-border px-1 pt-3">
+          <Combobox.Input
+            ref={searchRef}
+            aria-label={m.thread_model_search()}
+            placeholder={m.thread_model_search()}
+            spellCheck={false}
+            onKeyDown={onKeyDown}
+            render={<Input className="shrink-0" />}
+          />
+          <Combobox.List
+            aria-label={m.thread_model_picker()}
+            className="flex min-h-0 flex-1 scroll-fade-y scroll-py-1 flex-col gap-0.5 overflow-y-auto"
+          >
+            {(model: ModelInfo) => (
+              <Combobox.Item
+                key={model.id}
+                value={model}
+                aria-disabled={picking}
+                className="group flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none select-none aria-disabled:opacity-50 aria-selected:font-medium data-highlighted:bg-accent data-disabled:opacity-50"
+              >
+                <span className="min-w-0 flex-1 truncate">{model.label}</span>
+                <CheckIcon aria-hidden className="invisible size-4 shrink-0 group-aria-selected:visible" />
+              </Combobox.Item>
+            )}
+          </Combobox.List>
+          <Combobox.Empty className="px-2 py-1.5 text-sm text-muted-foreground empty:hidden">
+            {models.length > 0 && m.thread_model_no_match()}
+          </Combobox.Empty>
+        </Combobox.Root>
+        <div className="flex shrink-0 flex-col gap-3 border-t border-border px-1 pt-3">
           {current !== undefined && current.efforts.length > 0 && (
             <EffortSlider
               key={`${current.id}:${thread.effort ?? DEFAULT_EFFORT}`}
@@ -577,9 +596,7 @@ function EffortSlider({ model, value, onCommit }: EffortSliderProps) {
           value={effortShare(model, step.value === DEFAULT_EFFORT ? (model.defaultEffort ?? null) : step.value)}
           className="size-4 shrink-0"
         />
-        <Kbd aria-hidden className="h-4 min-w-4">
-          E
-        </Kbd>
+        <AltKey className="h-4 min-w-4">E</AltKey>
       </div>
       <Slider
         aria-labelledby={labelId}
@@ -620,9 +637,7 @@ function ModeToggle({ icon: Icon, label, hint, shortcut, on, toggle }: ModeToggl
           >
             <Icon aria-hidden />
             {label}
-            <Kbd aria-hidden className="-mr-1 h-4 min-w-4">
-              {shortcut}
-            </Kbd>
+            <AltKey className="-mr-1 h-4 min-w-4">{shortcut}</AltKey>
           </Button>
         }
       />
@@ -670,7 +685,7 @@ function AccessSwitch({
         <p className="flex-1 text-xs text-pretty text-muted-foreground">
           {accessHint(thread.accessMode, thread, model)}
         </p>
-        <Kbd aria-hidden>M</Kbd>
+        <AltKey>M</AltKey>
       </div>
     </div>
   )

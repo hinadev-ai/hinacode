@@ -127,6 +127,8 @@
   "thread_context_breakdown_unavailable": "代理的工作階段開啟時才會回報內容組成。傳送訊息後即可查看。",
   "thread_context_breakdown_failed": "無法讀取內容組成：{error}",
   "thread_model_picker": "模型",
+  "thread_model_search": "搜尋模型",
+  "thread_model_no_match": "沒有符合的模型",
   "message_you": "你",
   "message_thinking": "思考中…",
   "markdown_attachment": "GitHub 附件",
