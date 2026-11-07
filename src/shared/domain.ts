@@ -654,6 +654,7 @@ const eachProvider = <A>(value: A): Record<ProviderId, A> => ({
 
 export const Settings = Schema.Struct({
   defaultProvider: ProviderId,
+  providerEnabled: perProvider(Schema.Boolean, true),
   defaultModel: perProvider(Schema.NullOr(Schema.String), null),
   defaultEffort: perProvider(Schema.NullOr(Schema.String), null),
   defaultFastMode: perProvider(Schema.Boolean, false),
@@ -685,8 +686,17 @@ export const Settings = Schema.Struct({
 })
 export type Settings = typeof Settings.Type
 
+export const enabledProviders = (settings: Pick<Settings, "providerEnabled">) =>
+  ProviderId.literals.filter((provider) => settings.providerEnabled[provider])
+
+export const startingProvider = (settings: Pick<Settings, "defaultProvider" | "providerEnabled">) =>
+  settings.providerEnabled[settings.defaultProvider]
+    ? settings.defaultProvider
+    : (enabledProviders(settings)[0] ?? settings.defaultProvider)
+
 export const defaultSettings: Settings = {
   defaultProvider: "claude",
+  providerEnabled: eachProvider(true),
   defaultModel: eachProvider(null),
   defaultEffort: eachProvider(null),
   defaultFastMode: eachProvider(false),

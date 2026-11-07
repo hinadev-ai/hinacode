@@ -370,6 +370,8 @@
   "settings_model_preset_clear": "すべて表示",
   "settings_model_preset_hint": "スレッドのモデル選択メニューに表示するモデルです。",
   "settings_auto_compact": "自動コンパクトのしきい値",
+  "settings_provider_enabled": "有効",
+  "settings_provider_enabled_hint": "モデルピッカーと新しいスレッドにこのエージェントを表示します。",
   "settings_auto_compact_unit": "K トークン",
   "settings_auto_compact_default": "エージェントのデフォルト",
   "settings_auto_compact_clear": "エージェントのデフォルトに戻す",

@@ -370,6 +370,8 @@
   "settings_model_preset_clear": "Show all",
   "settings_model_preset_hint": "Models listed in the thread model picker.",
   "settings_auto_compact": "Auto-compact at",
+  "settings_provider_enabled": "Enabled",
+  "settings_provider_enabled_hint": "Show this agent in the model picker and in new threads.",
   "settings_auto_compact_unit": "K tokens",
   "settings_auto_compact_default": "Agent default",
   "settings_auto_compact_clear": "Use agent default",

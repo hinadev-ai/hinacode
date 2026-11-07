@@ -361,6 +361,8 @@
   "settings_model_preset_clear": "显示全部",
   "settings_model_preset_hint": "对话模型选择器中列出的模型。",
   "settings_auto_compact": "自动压缩阈值",
+  "settings_provider_enabled": "启用",
+  "settings_provider_enabled_hint": "在模型选择器和新线程中显示此智能体。",
   "settings_auto_compact_unit": "K tokens",
   "settings_auto_compact_default": "智能体默认值",
   "settings_auto_compact_clear": "使用智能体默认值",

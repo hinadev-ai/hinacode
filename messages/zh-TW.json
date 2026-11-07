@@ -370,6 +370,8 @@
   "settings_model_preset_clear": "顯示全部",
   "settings_model_preset_hint": "對話串模型選單中列出的模型。",
   "settings_auto_compact": "自動壓縮門檻",
+  "settings_provider_enabled": "啟用",
+  "settings_provider_enabled_hint": "在模型選擇器和新執行緒中顯示此代理。",
   "settings_auto_compact_unit": "K tokens",
   "settings_auto_compact_default": "代理程式預設值",
   "settings_auto_compact_clear": "改用代理程式預設值",

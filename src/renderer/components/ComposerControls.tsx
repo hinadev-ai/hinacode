@@ -10,7 +10,7 @@ import { toast } from "sonner"
 import { type KeyboardEvent, useEffect, useId, useRef, useState, useTransition } from "react"
 import { type ModelInfo, presetModels, ProviderId, unlistedModel } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
-import { AccessMode, type OpenPullRequest, type Project, type Thread } from "../../shared/domain.ts"
+import { AccessMode, enabledProviders, type OpenPullRequest, type Project, type Thread } from "../../shared/domain.ts"
 import { parsePullRequestSelector } from "../../shared/github.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import {
@@ -192,7 +192,9 @@ export const pickerProviders = (own: ProviderId, setUp: ReadonlyArray<ProviderId
   ProviderId.literals.filter((provider) => provider === own || setUp.includes(provider))
 
 function useAgentTabs(thread: Thread, canSwitchAgent: boolean): ReadonlyArray<AgentTab> {
-  const setUpProviders = useAtomValue(setUpProvidersAtom(useThreadEnvironment(thread.id)))
+  const environment = useThreadEnvironment(thread.id)
+  const enabled = enabledProviders(useSettings(environment))
+  const setUpProviders = useAtomValue(setUpProvidersAtom(environment)).filter((provider) => enabled.includes(provider))
   const accounts = useAccountOptions(thread).options
   const accountHint = useAccountHint()
   const turnRunning = thread.status === "running" || thread.status === "awaiting_approval"
