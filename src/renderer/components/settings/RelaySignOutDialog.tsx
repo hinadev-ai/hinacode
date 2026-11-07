@@ -2,6 +2,7 @@ import { useAtomSet } from "@effect/atom-react"
 import { useActionState } from "react"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { signOutRelayAtom } from "../../lib/rpc.ts"
+import { inBrowser } from "../../lib/runtime.ts"
 import { m } from "../../paraglide/messages.js"
 import {
   AlertDialog,
@@ -31,7 +32,9 @@ export function RelaySignOutDialog({ open, onOpenChange }: { open: boolean; onOp
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{m.environment_relay_sign_out_title()}</AlertDialogTitle>
-          <AlertDialogDescription>{m.environment_relay_sign_out_body()}</AlertDialogDescription>
+          <AlertDialogDescription>
+            {inBrowser() ? m.environment_relay_sign_out_body_web() : m.environment_relay_sign_out_body()}
+          </AlertDialogDescription>
         </AlertDialogHeader>
         {error && (
           <p role="alert" className="text-sm text-destructive">

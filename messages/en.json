@@ -1414,6 +1414,7 @@
   "environment_relay_sign_out": "Sign out",
   "environment_relay_sign_out_title": "Sign out of the relay?",
   "environment_relay_sign_out_body": "This machine is unlinked and its relay address stops working. The relay's machines leave this list. Environments you added with a pairing URL stay.",
+  "environment_relay_sign_out_body_web": "The relay's machines leave this list.",
   "environment_relay_source": "From your relay",
   "environment_relay_row_hint": "To remove it, turn off Show on my devices for it under Your machines above.",
   "environment_relay_your_machines": "Your machines",

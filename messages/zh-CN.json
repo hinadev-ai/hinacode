@@ -1405,6 +1405,7 @@
   "environment_relay_sign_out": "退出登录",
   "environment_relay_sign_out_title": "要退出中继登录吗？",
   "environment_relay_sign_out_body": "本机会取消关联，其中继地址也会停止工作。中继中的机器会从此列表移除。用配对 URL 添加的环境会保留。",
+  "environment_relay_sign_out_body_web": "中继中的机器会从此列表移除。",
   "environment_relay_source": "来自你的中继",
   "environment_relay_row_hint": "如需移除，请在上方「你的机器」中关闭它的「在我的设备上显示」。",
   "environment_relay_your_machines": "你的机器",
