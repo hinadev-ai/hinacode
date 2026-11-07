@@ -111,12 +111,14 @@ const EDIT_FLAGS = {
   reviewers: { add: "--add-reviewer", remove: "--remove-reviewer" },
 } satisfies Record<PullRequestEditField, { add: string; remove: string }>
 
+const csvField = (value: string) => `"${value.replaceAll('"', '""')}"`
+
 export const editPullRequestArgs = (url: string, { field, add, remove }: PullRequestEdit) => [
   "pr",
   "edit",
   url,
-  ...add.map((value) => `${EDIT_FLAGS[field].add}=${value}`),
-  ...remove.map((value) => `${EDIT_FLAGS[field].remove}=${value}`),
+  ...add.map((value) => `${EDIT_FLAGS[field].add}=${csvField(value)}`),
+  ...remove.map((value) => `${EDIT_FLAGS[field].remove}=${csvField(value)}`),
 ]
 
 export const reviewCommentArgs = (url: string, comment: ReviewLineComment) => {
@@ -225,6 +227,7 @@ const PULL_REQUEST_FRAGMENTS = `fragment PullRequestFields on PullRequest {
   labels(first: 50) { nodes { name color } }
   assignees(first: 50) { nodes { login } }
   reviewRequests(first: 50) { nodes { requestedReviewer { ... on Actor { login } ... on Team { combinedSlug } } } }
+  latestOpinionatedReviews(first: 50) { nodes { state author { login } } }
   latestReviews(first: 50) { nodes { state author { login } } }
 }
 
@@ -280,6 +283,10 @@ const GraphQLReviewComment = Schema.Struct({
   line: Schema.NullOr(Schema.Number),
 })
 
+const GraphQLReviews = Schema.Struct({
+  nodes: Schema.Array(Schema.Struct({ state: Schema.String, author: GraphQLAuthor })),
+})
+
 const GraphQLPullRequest = Schema.Struct({
   ...PullRequestDetailFields.mapFields(
     Struct.omit(["reviewDecision", "author", "statusCheckRollup", "comments", "labels", "assignees", "reviewers"]),
@@ -295,7 +302,8 @@ const GraphQLPullRequest = Schema.Struct({
       }),
     ),
   }),
-  latestReviews: Schema.Struct({ nodes: Schema.Array(Schema.Struct({ state: Schema.String, author: GraphQLAuthor })) }),
+  latestOpinionatedReviews: GraphQLReviews,
+  latestReviews: GraphQLReviews,
   reviewDecision: Schema.NullOr(Schema.String),
   author: GraphQLAuthor,
   comments: Schema.Struct({ nodes: Schema.Array(GraphQLComment) }),
@@ -393,7 +401,11 @@ const REVIEWER_STATE: Partial<Record<string, ReviewerState>> = {
 }
 
 const toReviewers = (
-  { reviewRequests, latestReviews }: Pick<typeof GraphQLPullRequest.Type, "reviewRequests" | "latestReviews">,
+  {
+    reviewRequests,
+    latestOpinionatedReviews,
+    latestReviews,
+  }: Pick<typeof GraphQLPullRequest.Type, "reviewRequests" | "latestOpinionatedReviews" | "latestReviews">,
   author: string,
 ): ReadonlyArray<PullRequestReviewer> => {
   const requested = new Set(
@@ -402,13 +414,17 @@ const toReviewers = (
       return login === undefined ? [] : [login]
     }),
   )
-  const reviewed = latestReviews.nodes.flatMap(({ state, author: reviewer }) => {
+  const reviewed = new Map<string, ReviewerState>()
+  for (const { state, author: reviewer } of [...latestOpinionatedReviews.nodes, ...latestReviews.nodes]) {
     const reviewerState = REVIEWER_STATE[state]
-    if (reviewer === null || reviewerState === undefined) return []
-    if (reviewer.login === author || requested.has(reviewer.login)) return []
-    return [{ login: reviewer.login, state: reviewerState }]
-  })
-  return [...[...requested].map((login) => ({ login, state: "requested" as const })), ...reviewed]
+    if (reviewer === null || reviewerState === undefined) continue
+    if (reviewer.login === author || requested.has(reviewer.login) || reviewed.has(reviewer.login)) continue
+    reviewed.set(reviewer.login, reviewerState)
+  }
+  return [
+    ...[...requested].map((login) => ({ login, state: "requested" as const })),
+    ...[...reviewed].map(([login, state]) => ({ login, state })),
+  ]
 }
 
 const fromGraphQL = ({
@@ -421,6 +437,7 @@ const fromGraphQL = ({
   labels,
   assignees,
   reviewRequests,
+  latestOpinionatedReviews,
   latestReviews,
   ...fields
 }: typeof GraphQLPullRequest.Type): PullRequestDetailFields => ({
@@ -431,7 +448,7 @@ const fromGraphQL = ({
   comments: toComments({ comments, reviews, reviewThreads }),
   labels: labels.nodes,
   assignees: assignees.nodes.map(({ login }) => login),
-  reviewers: toReviewers({ reviewRequests, latestReviews }, author?.login ?? "ghost"),
+  reviewers: toReviewers({ reviewRequests, latestOpinionatedReviews, latestReviews }, author?.login ?? "ghost"),
 })
 
 const FAILED = new Set(["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"])

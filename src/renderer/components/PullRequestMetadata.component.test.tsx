@@ -12,9 +12,11 @@ const pendingEdits: Array<() => void> = []
 
 const bridge: HinacodeBridge = {
   rpc: async (method, payload) => {
-    if (method === "github.auth") return { result: { type: "signedIn", host: "github.com", login: "octocat" } }
+    if (method === "github.auth") {
+      return { result: { type: "signedIn", host: "github.com", login: "octocat" } } as never
+    }
     if (method === "github.pullRequestCandidates") {
-      return { result: { labels: [{ name: "bug", color: "d73a4a" }], users: ["octocat"] } }
+      return { result: { labels: [{ name: "bug", color: "d73a4a" }], users: ["octocat"] } } as never
     }
     if (method === "github.editPullRequest") {
       edits.push((payload as { edit: PullRequestEdit }).edit)
@@ -26,8 +28,8 @@ const bridge: HinacodeBridge = {
   onEvent: () => () => {},
   pathForFile: () => "",
   liquidGlass: false,
-  runtime: { kind: "desktop" },
-} as never
+  runtime: { kind: "web" },
+}
 Object.defineProperty(window, "hinacode", { value: bridge })
 
 const pullRequest = {

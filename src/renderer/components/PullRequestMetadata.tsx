@@ -2,7 +2,7 @@ import { Combobox } from "@base-ui/react/combobox"
 import { useAtomValue } from "@effect/atom-react"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { type ReactNode, useId, useOptimistic, useState, useTransition } from "react"
+import { type ReactNode, useId, useOptimistic, useRef, useState, useTransition } from "react"
 import type {
   PullRequestCandidates,
   PullRequestDetail,
@@ -21,6 +21,8 @@ import { Input } from "./ui/input.tsx"
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover.tsx"
 import { SkeletonList } from "./ui/skeleton.tsx"
 import { ChatIcon, CheckCircleIcon, CheckIcon, HourglassIcon, type IconComponent, XCircleIcon } from "@hinacode/icons"
+
+const NO_WRITES = Promise.resolve()
 
 const reviewerIndicator = {
   requested: { Icon: HourglassIcon, className: "text-muted-foreground", label: m.pr_reviewer_requested },
@@ -97,6 +99,7 @@ function MetadataRow({ url, field, title, selected, candidates, renderOption, re
   const [values, showValues] = useOptimistic(selected)
   const [, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  const writes = useRef<Promise<unknown>>(NO_WRITES)
   const titleId = useId()
   const valuesId = useId()
   const shown = renderValues(values)
@@ -105,12 +108,17 @@ function MetadataRow({ url, field, title, selected, candidates, renderOption, re
     startTransition(async () => {
       setError(null)
       showValues(next)
-      const before = new Set(selected)
+      const before = new Set(values)
       const after = new Set(next)
-      const add = next.filter((value) => !before.has(value))
-      const remove = selected.filter((value) => !after.has(value))
+      const edit = {
+        field,
+        add: next.filter((value) => !before.has(value)),
+        remove: values.filter((value) => !after.has(value)),
+      }
+      const write = writes.current.then(() => callPromise("github.editPullRequest", { url, edit }, { environment }))
+      writes.current = write.catch(() => {})
       try {
-        await callPromise("github.editPullRequest", { url, edit: { field, add, remove } }, { environment })
+        await write
       } catch (cause) {
         setError(m.pr_meta_save_failed({ message: errorMessage(cause) }))
       }
