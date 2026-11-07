@@ -1378,6 +1378,7 @@
   "environment_relay_sign_out": "登出",
   "environment_relay_sign_out_title": "要登出中繼嗎？",
   "environment_relay_sign_out_body": "這台電腦會解除連結，中繼位址也會停止運作。中繼的機器會從這個清單移除。用配對 URL 新增的環境會保留。",
+  "environment_relay_sign_out_body_web": "中繼的機器會從這個清單移除。",
   "environment_relay_source": "來自你的中繼",
   "environment_relay_row_hint": "若要移除，請在上方「我的機器」關閉這台機器的「在我的裝置上顯示」。",
   "environment_relay_your_machines": "我的機器",
