@@ -24,7 +24,7 @@ import * as ArtifactInspector from "./services/ArtifactInspector.ts"
 import * as Artifacts from "./services/Artifacts.ts"
 import * as Attachments from "./services/Attachments.ts"
 import * as Boat from "./services/boat/Boat.ts"
-import * as AutoSettle from "./services/AutoSettle.ts"
+import * as Settle from "./services/Settle.ts"
 import * as Browser from "./services/Browser.ts"
 import * as Automations from "./services/automations/Automations.ts"
 import * as ClientSettings from "./services/ClientSettings.ts"
@@ -197,7 +197,7 @@ export const makeAppLayer = ({
   const agents = AgentRunner.layer.pipe(Layer.provideMerge(Layer.mergeAll(domain, features)))
   const services = Layer.mergeAll(
     Automations.layer,
-    AutoSettle.layer,
+    Settle.layer,
     PullRequestWatcher.layer,
     PullRequestLifecycle.layer,
     providers.simulated ? PullRequestGuides.idleLayer : PullRequestGuides.layer,

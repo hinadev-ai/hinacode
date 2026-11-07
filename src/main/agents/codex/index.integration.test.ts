@@ -668,6 +668,26 @@ describe("Codex closed sessions", () => {
   )
 })
 
+describe("Codex closed idle sessions", () => {
+  it.live("unloads an idle session from the app-server once, even with no background work", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        const closeSession = provider.closeSession ?? (yield* Effect.die("closeSession is missing"))
+        const turn = yield* startTurn("idle-thread")
+        yield* finishesSoon(turn.fiber)
+
+        yield* closeSession("idle-thread", null)
+        yield* closeSession("idle-thread", null)
+
+        expect(received().filter((message) => message.method === "thread/unsubscribe")).toMatchObject([
+          { params: { threadId: "codex-thread" } },
+        ])
+      }),
+    ),
+  )
+})
+
 describe("Codex closed sessions, sub-agents", () => {
   it.live("interrupts a sub-agent turn that outlived its parent when the thread leaves the session", () =>
     withProvider(

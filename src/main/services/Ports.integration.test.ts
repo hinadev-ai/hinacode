@@ -138,4 +138,10 @@ describe("belongsToWorkspace", () => {
     expect(include(proc(41, "/ws-sibling", []))).toBe(false)
     expect(include(proc(42, null, []))).toBe(false)
   })
+
+  it("keeps only the agent's descendants when the thread has no workspace of its own", () => {
+    const agentOnly = belongsToWorkspace({ workspacePath: null, agentPids: new Set([AGENT]), selfPid: SELF })
+    expect(agentOnly(proc(22, "/tmp", [21, AGENT, SELF]))).toBe(true)
+    expect(agentOnly(proc(30, "/ws/app", []))).toBe(false)
+  })
 })

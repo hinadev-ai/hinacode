@@ -213,14 +213,14 @@ export const belongsToWorkspace =
     agentPids,
     selfPid,
   }: {
-    readonly workspacePath: string
+    readonly workspacePath: string | null
     readonly agentPids: ReadonlySet<number>
     readonly selfPid: number
   }) =>
   (proc: ProcessInfo): boolean => {
     if (proc.pid === selfPid || agentPids.has(proc.pid)) return false
     if (proc.ancestors.some((pid) => agentPids.has(pid))) return true
-    if (proc.ancestors.includes(selfPid)) return false
+    if (proc.ancestors.includes(selfPid) || workspacePath === null) return false
     return proc.cwd !== null && isInside(proc.cwd, workspacePath)
   }
 
@@ -266,15 +266,12 @@ export class Ports extends Context.Service<
       threadId: string,
     ) => Effect.Effect<ReadonlyArray<OpenPort>, PersistenceError | NotFoundError | FolderMissingError | PortsError>
     readonly kill: (pid: number) => Effect.Effect<void, PortsError>
+    readonly closeThread: (threadId: string) => Effect.Effect<void>
   }
 >()("hinacode/Ports") {}
 
-const kill = (pid: number) =>
+const terminate = (pid: number) =>
   Effect.gen(function* () {
-    const listening = yield* scanListening((proc) => proc.pid === pid)
-    if (listening.length === 0) {
-      return yield* new PortsError({ message: `Process ${pid} is not listening on a port` })
-    }
     if (!signal(pid, "SIGTERM")) return yield* new PortsError({ message: `Could not stop process ${pid}` })
     yield* Effect.sleep(KILL_GRACE).pipe(
       Effect.andThen(Effect.sync(() => signal(pid, 0) && signal(pid, "SIGKILL"))),
@@ -282,14 +279,23 @@ const kill = (pid: number) =>
     )
   })
 
+const kill = (pid: number) =>
+  Effect.gen(function* () {
+    const listening = yield* scanListening((proc) => proc.pid === pid)
+    if (listening.length === 0) {
+      return yield* new PortsError({ message: `Process ${pid} is not listening on a port` })
+    }
+    yield* terminate(pid)
+  })
+
 const make = Effect.gen(function* () {
   const activeWorkspace = yield* makeActiveWorkspace
 
-  const listForThread = (threadId: string) =>
+  const listListening = (threadId: string, workspaceCwd: string | null) =>
     Effect.gen(function* () {
-      const workspace = yield* activeWorkspace(threadId)
       // FIXME: process cwds are resolved paths, and macOS's /tmp is a symlink
-      const workspacePath = yield* Effect.promise(() => realpath(workspace.cwd).catch(() => workspace.cwd))
+      const workspacePath =
+        workspaceCwd === null ? null : yield* Effect.promise(() => realpath(workspaceCwd).catch(() => workspaceCwd))
       const listening = yield* scanListening(
         belongsToWorkspace({
           workspacePath,
@@ -300,7 +306,25 @@ const make = Effect.gen(function* () {
       return listening.map(({ port, pid, command, cwd }): OpenPort => ({ port, pid, command, cwd }))
     })
 
-  return Ports.of({ listForThread, kill })
+  const listForThread = (threadId: string) =>
+    activeWorkspace(threadId).pipe(Effect.flatMap((workspace) => listListening(threadId, workspace.cwd)))
+
+  const listOwnedByThread = (threadId: string) =>
+    activeWorkspace(threadId).pipe(
+      Effect.flatMap((workspace) => listListening(threadId, workspace.worktreeRemoved ? null : workspace.cwd)),
+    )
+
+  const closeThread = (threadId: string) =>
+    listOwnedByThread(threadId).pipe(
+      Effect.flatMap((ports) =>
+        Effect.forEach(new Set(ports.map((port) => port.pid)), (pid) => terminate(pid).pipe(Effect.ignore), {
+          discard: true,
+        }),
+      ),
+      Effect.catch((error) => Effect.logWarning("could not stop the ports of a thread", threadId, error)),
+    )
+
+  return Ports.of({ listForThread, kill, closeThread })
 })
 
 export const layer = Layer.effect(Ports, make)

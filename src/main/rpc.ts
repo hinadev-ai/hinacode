@@ -45,6 +45,7 @@ import { RelayAccount } from "./services/RelayAccount.ts"
 import { Search } from "./services/Search.ts"
 import { Secrets } from "./services/Secrets.ts"
 import { Settings } from "./services/Settings.ts"
+import { Settle } from "./services/Settle.ts"
 import { SystemResources } from "./services/SystemResources.ts"
 import { Terminals } from "./services/Terminals.ts"
 import { Updates } from "./services/Updates.ts"
@@ -64,6 +65,7 @@ export type AppServices =
   | ThreadNaming
   | Worktrees
   | Settings
+  | Settle
   | SystemResources
   | ClientSettings
   | Environments
@@ -284,7 +286,7 @@ const handlers: Handlers = {
   "threads.undoTurn": ({ threadId }) => Threads.use((threads) => threads.undoTurn(threadId)),
   "threads.archive": ({ threadId }) => Threads.use((threads) => threads.archive(threadId)),
   "threads.unarchive": ({ threadId }) => Threads.use((threads) => threads.unarchive(threadId)),
-  "threads.settle": ({ threadId }) => Threads.use((threads) => threads.settle(threadId)),
+  "threads.settle": ({ threadId }) => Settle.use((settle) => settle.settle(threadId)),
   "threads.unsettle": ({ threadId }) => Threads.use((threads) => threads.unsettle(threadId)),
   "threads.regenerateTitle": ({ threadId }) => ThreadNaming.use((naming) => naming.regenerateTitle(threadId)),
   "threads.fork": ({ threadId, messageId }) =>
