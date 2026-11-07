@@ -3,7 +3,7 @@ import type { WebStack } from "./fixtures.ts"
 
 export const sidebar = (page: Page) => page.getByRole("navigation", { name: "Projects and threads" })
 
-export const signIn = async (page: Page, web: WebStack) => {
+export const openRelaySignInPage = async (page: Page, web: WebStack) => {
   const relayField = page.getByRole("textbox", { name: "Relay", exact: true })
   if (!(await relayField.isVisible()))
     await page.getByRole("button", { name: "Use another relay", exact: true }).click()
@@ -11,7 +11,11 @@ export const signIn = async (page: Page, web: WebStack) => {
   await page.getByRole("button", { name: "Sign in", exact: true }).click()
   const relayPage = page.waitForEvent("popup")
   await page.getByRole("link", { name: "Open the sign-in page", exact: true }).click()
-  const approval = await relayPage
+  return relayPage
+}
+
+export const signIn = async (page: Page, web: WebStack) => {
+  const approval = await openRelaySignInPage(page, web)
   await expect(approval.getByText(/^Approved /)).toBeVisible()
   await approval.close()
 }

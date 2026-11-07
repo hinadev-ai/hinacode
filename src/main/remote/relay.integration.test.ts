@@ -600,6 +600,27 @@ describe("Relay", () => {
     }).pipe(Effect.provide(base)),
   )
 
+  it.effect("serve --relay stops when the link is denied instead of printing another", () =>
+    Effect.gen(function* () {
+      yield* remoteOn
+      const service = fakeService({ claimStatus: 403 })
+      const links: Array<RelayLink> = []
+      yield* withRelay(
+        { serviceUrl: SERVICE_URL, fetch: service.fetch, cloudflared: connects().path },
+        Effect.gen(function* () {
+          const serving = yield* applyServeRelay("on", (link) => Effect.sync(() => void links.push(link))).pipe(
+            Effect.forkChild,
+          )
+          yield* advanceUntil(() => service.claims() === 1)
+          const failure = yield* Effect.flip(Fiber.join(serving))
+          expect(failure.message).toBe("The link was denied in the browser.")
+          expect(links).toHaveLength(1)
+          expect(yield* Relay.use((relay) => relay.status)).toStrictEqual({ state: "off" })
+        }),
+      )
+    }).pipe(Effect.provide(base)),
+  )
+
   it.live("serve --relay on keeps a relay that has a hostname without calling the service", () =>
     Effect.gen(function* () {
       yield* seed()

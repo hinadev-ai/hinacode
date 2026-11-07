@@ -26,6 +26,7 @@ const POLL_INTERVAL_S = 5
 const MAX_HOSTS = 5
 const DEVICE_LINK_NEEDS_SESSION = "Approve this sign-in on the relay page in your browser."
 const SIGN_IN_CODE_GONE = "The sign-in expired or was already used. Sign in again."
+const ALREADY_DECIDED = "This request was already approved or denied."
 
 const Label = Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(64))
 const NewLink = Schema.Struct({
@@ -199,7 +200,11 @@ export const makeApp = (deps: Deps) => {
       await runStore(c.env.DB, (store) => store.deleteLink(deviceCodeHash))
       return fail(c, 410, "The link expired. Start linking again.")
     }
-    const { userId, environmentId, name, kind } = found.value
+    const { userId, environmentId, name, kind, denied } = found.value
+    if (denied) {
+      await runStore(c.env.DB, (store) => store.deleteLink(deviceCodeHash))
+      return fail(c, 403, "The request was denied in the browser.")
+    }
     if (!userId) return c.json({ pending: true }, 202)
 
     const taken = await runStore(c.env.DB, (store) => store.deleteLink(deviceCodeHash))
@@ -294,8 +299,21 @@ export const makeApp = (deps: Deps) => {
       }
     }
     const approved = await runStore(c.env.DB, (store) => store.approveLink(link.deviceCodeHash, userId))
-    if (!approved) return fail(c, 409, "Another account already approved this machine.")
+    if (!approved) return fail(c, 409, ALREADY_DECIDED)
     return c.body(null, 204)
+  })
+
+  app.delete("/v1/links/:userCode", async (c) => {
+    const userId = await verifyUser(c)
+    if (!userId) return fail(c, 401, "Sign in first.")
+    const found = await pendingLink(c.env, c.req.param("userCode"))
+    if (Option.isNone(found)) {
+      return fail(c, 404, "This link expired or does not exist. Start linking again in HinaCode.")
+    }
+    const link = found.value
+    if (await refusesDeviceLink(c, link)) return fail(c, 403, DEVICE_LINK_NEEDS_SESSION)
+    const denied = await runStore(c.env.DB, (store) => store.denyLink(link.deviceCodeHash))
+    return denied ? c.body(null, 204) : fail(c, 409, ALREADY_DECIDED)
   })
 
   app.put("/v1/tunnel", async (c) => {

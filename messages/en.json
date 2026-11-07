@@ -2585,6 +2585,7 @@
   "web_open_sign_in_page": "Open the sign-in page",
   "web_waiting_for_approval": "Waiting for you to approve this browser…",
   "web_sign_in_expired": "The sign-in page expired. Sign in again.",
+  "web_sign_in_denied": "The sign-in was denied. Sign in again.",
   "web_signed_out": "This browser was signed out. Sign in again.",
   "web_device_name": "HinaCode in a browser",
   "web_machine_refused_token": "{name} refused its token. Reload this page after it publishes a new one to the relay.",

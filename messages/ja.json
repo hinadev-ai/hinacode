@@ -2485,6 +2485,7 @@
   "web_open_sign_in_page": "サインインページを開く",
   "web_waiting_for_approval": "このブラウザの承認を待っています…",
   "web_sign_in_expired": "サインインページの有効期限が切れました。もう一度サインインしてください。",
+  "web_sign_in_denied": "サインインが拒否されました。もう一度サインインしてください。",
   "web_signed_out": "このブラウザはサインアウトされました。もう一度サインインしてください。",
   "web_device_name": "ブラウザの HinaCode",
   "web_machine_refused_token": "{name} がトークンを拒否しました。新しいトークンが relay に公開されたら、このページを再読み込みしてください。",

@@ -2521,6 +2521,7 @@
   "web_open_sign_in_page": "開啟登入頁面",
   "web_waiting_for_approval": "正在等待你核准這個瀏覽器…",
   "web_sign_in_expired": "登入頁面已過期，請重新登入。",
+  "web_sign_in_denied": "登入請求已被拒絕，請重新登入。",
   "web_signed_out": "這個瀏覽器已被登出，請重新登入。",
   "web_device_name": "瀏覽器中的 HinaCode",
   "web_machine_refused_token": "{name} 拒絕了它的權杖。等它把新的權杖發布到 relay 後，請重新載入此頁面。",

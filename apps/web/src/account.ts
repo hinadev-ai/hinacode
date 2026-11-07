@@ -91,6 +91,7 @@ export const waitForApproval = async (serviceUrl: string, signIn: SignIn): Promi
     await pause(signIn.interval)
     const response = await postJson(serviceUrl, "/v1/links/claim", { deviceCode: signIn.deviceCode }).catch(() => null)
     if (response?.status === 410) return { _tag: "failed", message: m.web_sign_in_expired() }
+    if (response?.status === 403) return { _tag: "failed", message: m.web_sign_in_denied() }
     if (response === null || !response.ok || response.status === 202) continue
     const claimed = Option.getOrNull(decodeClaimed(await response.json().catch(() => null)))
     if (claimed === null) continue
