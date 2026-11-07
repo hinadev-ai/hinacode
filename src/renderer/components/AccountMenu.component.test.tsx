@@ -1,3 +1,4 @@
+import { RegistryProvider } from "@effect/atom-react"
 import { RouterProvider, createMemoryHistory, createRootRoute, createRouter } from "@tanstack/react-router"
 import { expect, test } from "vitest"
 import { page } from "vitest/browser"
@@ -27,7 +28,11 @@ const renderMenu = async () => {
   const rootRoute = createRootRoute({ component: AccountMenu })
   const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory() })
   await router.load()
-  return render(<RouterProvider router={router} />)
+  return render(
+    <RegistryProvider>
+      <RouterProvider router={router} />
+    </RegistryProvider>,
+  )
 }
 
 const signedIn: RelayAccountStatus = {
@@ -36,6 +41,7 @@ const signedIn: RelayAccountStatus = {
   environmentId: "env",
   name: "Kalan",
   email: "kalan@example.com",
+  avatar: null,
   machines: 0,
   syncedAt: null,
   error: null,
@@ -66,4 +72,13 @@ test("signs in from the menu, then shows who is signed in and asks before loggin
   await page.getByRole("menuitem", { name: "Logout" }).click()
   await expect.element(page.getByRole("alertdialog")).toBeVisible()
   expect(called).not.toContain("relayAccount.signOut")
+})
+
+test("shows the account's avatar in place of its initial", async () => {
+  const avatar = "data:image/gif;base64,R0lGODlhAQABAAAAACw="
+  status = { ...signedIn, avatar }
+  await renderMenu()
+  const button = page.getByRole("button", { name: "Account" })
+  await expect.poll(() => button.element().querySelector("img")?.getAttribute("src")).toBe(avatar)
+  await expect.element(button).not.toHaveTextContent("K")
 })

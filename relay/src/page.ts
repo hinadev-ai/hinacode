@@ -1,4 +1,4 @@
-const script = `
+const linkScript = `
 const code = new URLSearchParams(location.search).get("code")
 const $ = (id) => document.getElementById(id)
 
@@ -92,20 +92,75 @@ button:disabled { opacity: 0.5; cursor: default; }
 a { color: inherit; font-size: 0.875rem; }
 `
 
+const signInScript = `
+const $ = (id) => document.getElementById(id)
+const say = (text) => { $("status").textContent = text }
+
+async function returnToApp() {
+  say("Returning to HinaCode.")
+  const query = new URLSearchParams(location.search)
+  try {
+    const response = await fetch("/v1/sign-in-codes", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + (await Clerk.session.getToken()), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        redirectUri: query.get("redirect_uri"),
+        codeChallenge: query.get("code_challenge"),
+        name: query.get("name"),
+      }),
+    })
+    const answer = await response.json().catch(() => null)
+    if (!response.ok) throw new Error(answer && answer.error ? answer.error : "The relay answered HTTP " + response.status + ".")
+    location.replace(answer.redirectUrl)
+  } catch (error) {
+    say(error.message)
+  }
+}
+
+window.addEventListener("load", async () => {
+  await Clerk.load({ ui: { ClerkUI: window.__internal_ClerkUICtor } })
+  if (Clerk.isSignedIn) return returnToApp()
+  $("status").hidden = true
+  Clerk.mountSignIn($("sign-in"), {
+    forceRedirectUrl: location.href,
+    signUpForceRedirectUrl: location.href,
+  })
+})
+`
+
 const clerkFrontendHost = (publishableKey: string) => atob(publishableKey.split("_")[2] ?? "").replace(/\$$/, "")
 
-export const linkPage = (publishableKey: string) => `<!doctype html>
+interface ClerkPage {
+  publishableKey: string
+  script: string
+}
+
+const clerkScripts = ({ publishableKey, script }: ClerkPage) => `
+<script defer crossorigin="anonymous" src="https://${clerkFrontendHost(publishableKey)}/npm/@clerk/ui@1/dist/ui.browser.js"></script>
+<script defer crossorigin="anonymous" data-clerk-publishable-key="${publishableKey}" src="https://${clerkFrontendHost(publishableKey)}/npm/@clerk/clerk-js@6/dist/clerk.browser.js"></script>
+<script>${script}</script>`
+
+const shell = (page: { title: string; main: string; clerk?: ClerkPage }) => `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>Link a machine to HinaCode</title>
+<title>${page.title}</title>
 <style>${style}</style>
 </head>
 <body>
 <main>
-<section>
+${page.main}
+</main>${page.clerk ? clerkScripts(page.clerk) : ""}
+</body>
+</html>
+`
+
+export const linkPage = (publishableKey: string) =>
+  shell({
+    title: "Link a machine to HinaCode",
+    main: `<section>
 <h1 id="link-title">Link a machine</h1>
 <p id="link-status">Loading.</p>
 </section>
@@ -115,11 +170,26 @@ export const linkPage = (publishableKey: string) => `<!doctype html>
 <p id="devices-status" role="status"></p>
 <button id="sign-out-devices" class="secondary">Sign out all devices</button>
 </section>
-<a id="sign-out" href="#" hidden>Sign out</a>
-</main>
-<script defer crossorigin="anonymous" src="https://${clerkFrontendHost(publishableKey)}/npm/@clerk/ui@1/dist/ui.browser.js"></script>
-<script defer crossorigin="anonymous" data-clerk-publishable-key="${publishableKey}" src="https://${clerkFrontendHost(publishableKey)}/npm/@clerk/clerk-js@6/dist/clerk.browser.js"></script>
-<script>${script}</script>
-</body>
-</html>
-`
+<a id="sign-out" href="#" hidden>Sign out</a>`,
+    clerk: { publishableKey, script: linkScript },
+  })
+
+export const signInPage = (publishableKey: string) =>
+  shell({
+    title: "Sign in to HinaCode",
+    main: `<section>
+<h1>Sign in to HinaCode</h1>
+<p id="status" role="status">Loading.</p>
+</section>
+<div id="sign-in"></div>`,
+    clerk: { publishableKey, script: signInScript },
+  })
+
+export const signedInPage = () =>
+  shell({
+    title: "You are signed in",
+    main: `<section>
+<h1>You are signed in</h1>
+<p>Return to HinaCode.</p>
+</section>`,
+  })

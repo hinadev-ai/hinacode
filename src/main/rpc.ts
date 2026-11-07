@@ -346,7 +346,8 @@ const handlers: Handlers = {
       const account = yield* RelayAccount
       const relay = yield* Relay
       const openInBrowser = (url: string) => desktop?.openExternal(url) ?? Effect.void
-      const status = yield* account.signIn({ onLink: (link) => openInBrowser(link.url) })
+      const status = yield* account.signIn({ openUrl: openInBrowser })
+      if (status.state === "signedIn") yield* desktop?.focus ?? Effect.void
       if (status.state !== "signedIn" || (yield* relay.status).state !== "off") return status
       yield* relay.setup({
         onLink: (link) =>

@@ -51,7 +51,9 @@ export function AccountMenu() {
             />
           }
         >
-          {identity ? (
+          {account?.avatar ? (
+            <img alt="" src={account.avatar} className="size-full rounded-full object-cover" />
+          ) : identity ? (
             <span aria-hidden className="text-xs font-medium uppercase">
               {identity.slice(0, 1)}
             </span>

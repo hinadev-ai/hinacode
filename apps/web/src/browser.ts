@@ -58,14 +58,18 @@ export const makeBrowserAnswers = (context: BrowserContext) => {
 
   const hosts = async () => ((await relay("GET", "/v1/hosts")) as { hosts: ReadonlyArray<RelayHost> }).hosts
 
-  let profile: Promise<{ name: string | null; email: string | null }> | undefined
+  let profile: Promise<{ name: string | null; email: string | null; avatar: string | null }> | undefined
   const accountProfile = () => {
     profile ??= relay("GET", "/v1/account").then(
       (answer) => {
-        const { name = null, email = null } = (answer ?? {}) as { name?: string | null; email?: string | null }
-        return { name, email }
+        const {
+          name = null,
+          email = null,
+          imageUrl = null,
+        } = (answer ?? {}) as { name?: string | null; email?: string | null; imageUrl?: string | null }
+        return { name, email, avatar: imageUrl }
       },
-      () => ({ name: null, email: null }),
+      () => ({ name: null, email: null, avatar: null }),
     )
     return profile
   }

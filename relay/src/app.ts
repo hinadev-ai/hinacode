@@ -2,14 +2,17 @@ import { Option, Schema } from "effect"
 import { Hono, type Context } from "hono"
 import { cors } from "hono/cors"
 import { CloudflareError, makeCloudflare, type Fetch } from "./cloudflare"
-import { linkPage } from "./page"
+import { linkPage, signedInPage, signInPage } from "./page"
 import { type Host, type Link, runStore } from "./store"
 
 export type { Fetch } from "./cloudflare"
 
 export interface Deps {
   verifySession(request: Request, env: Env): Promise<string | null>
-  accountProfile(userId: string, env: Env): Promise<{ name: string | null; email: string | null }>
+  accountProfile(
+    userId: string,
+    env: Env,
+  ): Promise<{ name: string | null; email: string | null; imageUrl: string | null }>
   cloudflare: Fetch
   now(): number
   random(bytes: number): Uint8Array
@@ -18,9 +21,11 @@ export interface Deps {
 type App = { Bindings: Env }
 
 const LINK_TTL_MS = 10 * 60 * 1000
+const SIGN_IN_CODE_TTL_MS = 2 * 60 * 1000
 const POLL_INTERVAL_S = 5
 const MAX_HOSTS = 5
 const DEVICE_LINK_NEEDS_SESSION = "Approve this sign-in on the relay page in your browser."
+const SIGN_IN_CODE_GONE = "The sign-in expired or was already used. Sign in again."
 
 const Label = Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(64))
 const NewLink = Schema.Struct({
@@ -29,6 +34,15 @@ const NewLink = Schema.Struct({
 })
 const NewSignIn = Schema.Struct({ name: Label })
 const Claim = Schema.Struct({ deviceCode: Schema.String.check(Schema.isMaxLength(128)) })
+const NewSignInCode = Schema.Struct({
+  redirectUri: Schema.String.check(Schema.isMaxLength(2048)),
+  codeChallenge: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{43}$/)),
+  name: Label,
+})
+const SignInCodeExchange = Schema.Struct({
+  code: Schema.String.check(Schema.isMaxLength(128)),
+  codeVerifier: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._~-]{43,128}$/)),
+})
 const Tunnel = Schema.Struct({ origin: Schema.String.check(Schema.isPattern(/^http:\/\/[^/?#\s]+:\d{1,5}$/)) })
 const Pairing = Schema.Struct({
   hosts: Schema.NonEmptyArray(
@@ -50,8 +64,26 @@ const toBase64Url = (bytes: Uint8Array) =>
     .replace(/\//g, "_")
     .replace(/=+$/, "")
 
-export const sha256 = async (value: string) =>
-  toHex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))))
+const digest = async (value: string) =>
+  new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))
+
+export const sha256 = async (value: string) => toHex(await digest(value))
+
+const s256Challenge = async (verifier: string) => toBase64Url(await digest(verifier))
+
+const appRedirect = (redirectUri: string) => {
+  if (!URL.canParse(redirectUri)) return null
+  const url = new URL(redirectUri)
+  if (url.search || url.hash) return null
+  const loopback = url.protocol === "http:" && url.hostname === "127.0.0.1" && url.port !== ""
+  return url.protocol === "hinacode:" || loopback ? url : null
+}
+
+const page = (c: Context, html: string) => {
+  c.header("Content-Security-Policy", "frame-ancestors 'none'")
+  c.header("X-Frame-Options", "DENY")
+  return c.html(html)
+}
 
 const hostnameOf = (env: Env, host: Pick<Host, "id">) => `${host.id}.${env.TUNNEL_ZONE_NAME}`
 
@@ -116,6 +148,19 @@ export const makeApp = (deps: Deps) => {
     return c.json({ error: "The relay failed. Try again." }, 500)
   })
 
+  const signInDevice = async (c: Context<App>, userId: string, name: string) => {
+    const credential = toBase64Url(deps.random(32))
+    const device = {
+      id: toHex(deps.random(8)),
+      userId,
+      name,
+      credentialHash: await sha256(credential),
+      createdAt: deps.now(),
+    }
+    await runStore(c.env.DB, (store) => store.addDevice(device))
+    return c.json({ credential })
+  }
+
   const startLink = async (c: Context<App>, link: Pick<Link, "kind" | "environmentId" | "name">) => {
     const now = deps.now()
     const deviceCode = toBase64Url(deps.random(32))
@@ -142,11 +187,7 @@ export const makeApp = (deps: Deps) => {
     return startLink(c, { kind: "device", environmentId: "", name: input.value.name })
   })
 
-  app.get("/link", (c) => {
-    c.header("Content-Security-Policy", "frame-ancestors 'none'")
-    c.header("X-Frame-Options", "DENY")
-    return c.html(linkPage(c.env.CLERK_PUBLISHABLE_KEY))
-  })
+  app.get("/link", (c) => page(c, linkPage(c.env.CLERK_PUBLISHABLE_KEY)))
 
   app.post("/v1/links/claim", async (c) => {
     const input = await body(c, Claim)
@@ -164,18 +205,8 @@ export const makeApp = (deps: Deps) => {
     const taken = await runStore(c.env.DB, (store) => store.deleteLink(deviceCodeHash))
     if (!taken) return fail(c, 410, "The link was already used. Start linking again.")
 
+    if (kind === "device") return signInDevice(c, userId, name)
     const credential = toBase64Url(deps.random(32))
-    if (kind === "device") {
-      const device = {
-        id: toHex(deps.random(8)),
-        userId,
-        name,
-        credentialHash: await sha256(credential),
-        createdAt: now,
-      }
-      await runStore(c.env.DB, (store) => store.addDevice(device))
-      return c.json({ credential })
-    }
     const host = {
       id: toHex(deps.random(8)),
       userId,
@@ -186,6 +217,54 @@ export const makeApp = (deps: Deps) => {
     }
     await runStore(c.env.DB, (store) => store.linkHost(host))
     return c.json({ credential })
+  })
+
+  app.get("/sign-in", (c) => page(c, signInPage(c.env.CLERK_PUBLISHABLE_KEY)))
+
+  app.get("/signed-in", (c) => page(c, signedInPage()))
+
+  app.post("/v1/sign-in-codes", async (c) => {
+    const userId = await deps.verifySession(c.req.raw, c.env)
+    if (!userId) return fail(c, 401, "Sign in first.")
+    const input = await body(c, NewSignInCode)
+    if (Option.isNone(input)) {
+      return fail(c, 400, "Send redirectUri, codeChallenge (43 base64url characters) and name (1 to 64 characters).")
+    }
+    const redirectUrl = appRedirect(input.value.redirectUri)
+    if (!redirectUrl) {
+      return fail(
+        c,
+        400,
+        "Send redirectUri as http://127.0.0.1:<port>/<path> or hinacode://<path>, with no query or fragment.",
+      )
+    }
+    const now = deps.now()
+    const code = toBase64Url(deps.random(32))
+    const signInCode = {
+      codeHash: await sha256(code),
+      codeChallenge: input.value.codeChallenge,
+      userId,
+      name: input.value.name,
+      expiresAt: now + SIGN_IN_CODE_TTL_MS,
+    }
+    await runStore(c.env.DB, (store) => store.createSignInCode(signInCode, now))
+    redirectUrl.searchParams.set("code", code)
+    return c.json({ redirectUrl: redirectUrl.href })
+  })
+
+  app.post("/v1/sign-in-codes/exchange", async (c) => {
+    const input = await body(c, SignInCodeExchange)
+    if (Option.isNone(input)) return fail(c, 400, "Send code and codeVerifier (43 to 128 characters).")
+    const codeHash = await sha256(input.value.code)
+    const taken = await runStore(c.env.DB, (store) => store.takeSignInCode(codeHash))
+    if (
+      Option.isNone(taken) ||
+      taken.value.expiresAt <= deps.now() ||
+      (await s256Challenge(input.value.codeVerifier)) !== taken.value.codeChallenge
+    ) {
+      return fail(c, 410, SIGN_IN_CODE_GONE)
+    }
+    return signInDevice(c, taken.value.userId, taken.value.name)
   })
 
   app.get("/v1/links/:userCode", async (c) => {

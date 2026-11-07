@@ -26,6 +26,15 @@ const Host = Schema.Struct({
 })
 export type Host = typeof Host.Type
 
+const SignInCode = Schema.Struct({
+  codeHash: Schema.String,
+  codeChallenge: Schema.String,
+  userId: Schema.String,
+  name: Schema.String,
+  expiresAt: Schema.Number,
+})
+export type SignInCode = typeof SignInCode.Type
+
 const HostOfUser = Schema.Struct({ id: Schema.String, userId: Schema.String })
 
 const makeStore = Effect.gen(function* () {
@@ -114,7 +123,19 @@ const makeStore = Effect.gen(function* () {
       sql.batch([
         sql`DELETE FROM device WHERE user_id = ${userId}`,
         sql`DELETE FROM link WHERE user_id = ${userId} AND kind = 'device'`,
+        sql`DELETE FROM sign_in_code WHERE user_id = ${userId}`,
       ]),
+
+    createSignInCode: (code: SignInCode, now: number) =>
+      sql.batch([
+        sql`DELETE FROM sign_in_code WHERE expires_at <= ${now}`,
+        sql`INSERT INTO sign_in_code ${sql.insert(code)}`,
+      ]),
+    takeSignInCode: SqlSchema.findOneOption({
+      Request: Schema.String,
+      Result: SignInCode,
+      execute: (codeHash) => sql`DELETE FROM sign_in_code WHERE code_hash = ${codeHash} RETURNING *`,
+    }),
   }
 })
 

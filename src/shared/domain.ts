@@ -776,6 +776,7 @@ export const RelayAccountStatus = Schema.Union([
     environmentId: Schema.String,
     name: Schema.NullOr(Schema.String),
     email: Schema.NullOr(Schema.String),
+    avatar: Schema.NullOr(Schema.String),
     machines: Schema.Int,
     syncedAt: Schema.NullOr(Timestamp),
     error: Schema.NullOr(Schema.String),
