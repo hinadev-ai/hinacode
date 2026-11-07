@@ -213,14 +213,14 @@ export const belongsToWorkspace =
     agentPids,
     selfPid,
   }: {
-    readonly workspacePath: string
+    readonly workspacePath: string | null
     readonly agentPids: ReadonlySet<number>
     readonly selfPid: number
   }) =>
   (proc: ProcessInfo): boolean => {
     if (proc.pid === selfPid || agentPids.has(proc.pid)) return false
     if (proc.ancestors.some((pid) => agentPids.has(pid))) return true
-    if (proc.ancestors.includes(selfPid)) return false
+    if (proc.ancestors.includes(selfPid) || workspacePath === null) return false
     return proc.cwd !== null && isInside(proc.cwd, workspacePath)
   }
 
@@ -291,11 +291,11 @@ const kill = (pid: number) =>
 const make = Effect.gen(function* () {
   const activeWorkspace = yield* makeActiveWorkspace
 
-  const listForThread = (threadId: string) =>
+  const listListening = (threadId: string, workspaceCwd: string | null) =>
     Effect.gen(function* () {
-      const workspace = yield* activeWorkspace(threadId)
       // FIXME: process cwds are resolved paths, and macOS's /tmp is a symlink
-      const workspacePath = yield* Effect.promise(() => realpath(workspace.cwd).catch(() => workspace.cwd))
+      const workspacePath =
+        workspaceCwd === null ? null : yield* Effect.promise(() => realpath(workspaceCwd).catch(() => workspaceCwd))
       const listening = yield* scanListening(
         belongsToWorkspace({
           workspacePath,
@@ -306,8 +306,16 @@ const make = Effect.gen(function* () {
       return listening.map(({ port, pid, command, cwd }): OpenPort => ({ port, pid, command, cwd }))
     })
 
+  const listForThread = (threadId: string) =>
+    activeWorkspace(threadId).pipe(Effect.flatMap((workspace) => listListening(threadId, workspace.cwd)))
+
+  const listOwnedByThread = (threadId: string) =>
+    activeWorkspace(threadId).pipe(
+      Effect.flatMap((workspace) => listListening(threadId, workspace.worktreeRemoved ? null : workspace.cwd)),
+    )
+
   const closeThread = (threadId: string) =>
-    listForThread(threadId).pipe(
+    listOwnedByThread(threadId).pipe(
       Effect.flatMap((ports) =>
         Effect.forEach(new Set(ports.map((port) => port.pid)), (pid) => terminate(pid).pipe(Effect.ignore), {
           discard: true,

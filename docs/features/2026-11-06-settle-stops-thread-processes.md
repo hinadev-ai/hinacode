@@ -30,7 +30,7 @@ The `Settle` service, formerly `AutoSettle`, owns both paths and runs one `relea
 
 `AgentRunner.release` closes the session only while no turn holds the thread, under the same per-thread lock that sends use, and reports whether the thread is still idle. When a turn started meanwhile, `release` stops there and leaves the terminals and listeners to that turn, and a manual settle fails as busy. The next message resumes the session from its id. Closing a Codex session also unsubscribes its thread from the shared app-server, so an idle thread does not stay loaded there.
 
-A merge that removes the thread's worktree releases the agent and terminals but does not scan ports again. The sweep has just found no listener in the worktree, and once the worktree is removed `Ports` resolves the thread to the project root, where another thread or the developer may run a dev server.
+A merge that removes the thread's worktree releases the agent and terminals but does not scan ports again, because the sweep has just found no listener in the worktree. Once a thread's worktree is removed, `Ports` resolves the thread to the project root, where another thread or the developer may run a dev server. So `Ports.closeThread` stops only the agent's descendants for such a thread and never matches by directory, whoever calls it.
 
 A port scan that fails, for example on a machine without `ss`, leaves the thread in Ready. An unknown listener state is not quiet. A project folder that no longer exists counts as having no listeners.
 
