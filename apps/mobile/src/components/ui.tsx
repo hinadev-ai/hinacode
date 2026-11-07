@@ -176,6 +176,7 @@ const providerMark: Record<ProviderId, IconName> = {
   codex: "RiOpenaiFill",
   muse: "RiMetaFill",
   opencode: "OpencodeMark",
+  magpie: "MagpieMark",
 }
 
 const providerName: Record<ProviderId, string> = {
@@ -183,6 +184,7 @@ const providerName: Record<ProviderId, string> = {
   codex: copy("mobile_provider_codex"),
   muse: copy("mobile_provider_muse"),
   opencode: copy("mobile_provider_opencode"),
+  magpie: copy("mobile_provider_magpie"),
 }
 
 /** The provider's logo and name, muted, for meta rows. */
