@@ -384,7 +384,10 @@ const withPreparingThread = async (
               authenticate: () => Option.none(),
               listening: () => Effect.void,
             }),
-            Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }),
+            Layer.succeed(ThreadNaming, {
+              nameFromPrompt: () => Effect.void,
+              regenerateTitle: () => Effect.die("unused"),
+            }),
             Layer.succeed(Threads.Threads, {
               ...threads,
               captureTurnBase: (cwd) =>

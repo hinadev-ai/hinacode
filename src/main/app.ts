@@ -153,7 +153,13 @@ export const makeAppLayer = ({
     Files.layer,
   )
   const naming = providers.simulated
-    ? Layer.succeed(ThreadNaming.ThreadNaming, { nameFromPrompt: () => Effect.void })
+    ? Layer.effect(
+        ThreadNaming.ThreadNaming,
+        Effect.map(Threads.Threads, (threads) => ({
+          nameFromPrompt: () => Effect.void,
+          regenerateTitle: (threadId: string) => threads.get(threadId),
+        })),
+      )
     : ThreadNaming.layer
   const remoteAccess = RemoteAccess.layer.pipe(Layer.provide(Secrets.layer))
   const relayServiceUrl = process.env["HINACODE_RELAY_URL"] ?? Relay.DEFAULT_RELAY_SERVICE_URL

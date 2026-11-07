@@ -157,6 +157,7 @@ export const routes: Record<RpcMethod, Route> = {
   "threads.unarchive": thread,
   "threads.settle": thread,
   "threads.unsettle": thread,
+  "threads.regenerateTitle": thread,
   "threads.transcript": thread,
   "threads.toolOutput": thread,
   "threads.send": thread,

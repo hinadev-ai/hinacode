@@ -136,7 +136,7 @@ export class Threads extends Context.Service<
     readonly writes: Effect.Effect<Stream.Stream<Thread>, never, Scope.Scope>
     readonly fork: (
       threadId: string,
-      messageId: string,
+      messageId?: string,
     ) => Effect.Effect<
       Thread,
       PersistenceError | NotFoundError | CommandError | WorktreeTakenError | PlatformError.PlatformError
@@ -270,11 +270,14 @@ const make = Effect.gen(function* () {
       sql`SELECT COALESCE(MAX(sort_index) + 1, 0) AS next FROM thread WHERE project_id = ${projectId}`,
   })
 
-  const findForkPoint = SqlSchema.findOneOption({
-    Request: Schema.Struct({ threadId: Schema.String, messageId: Schema.String }),
-    Result: Schema.Struct({ forkPoint: Schema.fromJsonString(ForkPoint) }),
-    execute: ({ threadId, messageId }) =>
-      sql`SELECT fork_point FROM message WHERE id = ${messageId} AND thread_id = ${threadId} AND fork_point IS NOT NULL`,
+  const findForkPoints = SqlSchema.findAll({
+    Request: Schema.Struct({ threadId: Schema.String, messageId: Schema.NullOr(Schema.String) }),
+    Result: Schema.Struct({ id: Schema.String, forkPoint: Schema.fromJsonString(ForkPoint) }),
+    execute: ({ threadId, messageId }) => sql`
+      SELECT id, fork_point FROM message
+      WHERE thread_id = ${threadId} AND fork_point IS NOT NULL AND (${messageId} IS NULL OR id = ${messageId})
+      ORDER BY created_at DESC, rowid DESC
+    `,
   })
 
   const findTurnBase = SqlSchema.findOneOption({
@@ -407,14 +410,16 @@ const make = Effect.gen(function* () {
       return forked.id
     })
 
-  const fork = (threadId: string, messageId: string) =>
+  const fork = (threadId: string, messageId?: string) =>
     Effect.gen(function* () {
       const source = yield* get(threadId)
-      const found = yield* findForkPoint({ threadId, messageId }).pipe(Effect.mapError(persistence("threads.fork")))
-      if (Option.isNone(found)) return yield* new NotFoundError({ entity: "fork point", id: messageId })
-      const { owner, ...forkedFrom } = found.value.forkPoint
-      const { provider, accountId } = owner ?? source
-      if (provider !== source.provider) return yield* new NotFoundError({ entity: "fork point", id: messageId })
+      const points = yield* findForkPoints({ threadId, messageId: messageId ?? null }).pipe(
+        Effect.mapError(persistence("threads.fork")),
+      )
+      const found = points.find((point) => (point.forkPoint.owner?.provider ?? source.provider) === source.provider)
+      if (found === undefined) return yield* new NotFoundError({ entity: "fork point", id: messageId ?? threadId })
+      const { owner, ...forkedFrom } = found.forkPoint
+      const { accountId } = owner ?? source
       if (accountId !== null) yield* accounts.get(accountId)
       const { next } = yield* nextSortIndex(source.projectId).pipe(Effect.mapError(persistence("threads.fork")))
       const worktreeId = yield* forkWorktree(source)
@@ -451,7 +456,7 @@ const make = Effect.gen(function* () {
             SELECT lower(hex(randomblob(16))), ${thread.id}, role, parts, created_at, completed_at, usage, fork_point
             FROM message
             WHERE thread_id = ${threadId}
-              AND (created_at, rowid) <= (SELECT created_at, rowid FROM message WHERE id = ${messageId})
+              AND (created_at, rowid) <= (SELECT created_at, rowid FROM message WHERE id = ${found.id})
             ORDER BY created_at, rowid
           `
           }),
