@@ -21,7 +21,7 @@ export const makeVerifySession =
     try {
       const session = await verify(token, {
         secretKey: env.CLERK_SECRET_KEY,
-        authorizedParties: [new URL(request.url).origin],
+        authorizedParties: [new URL(request.url).origin, ...env.WEB_ORIGINS.split(",")],
       })
       return session.sts === "pending" ? null : session.sub
     } catch (error) {

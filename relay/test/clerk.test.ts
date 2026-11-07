@@ -5,7 +5,7 @@ import { makeVerifySession } from "../src/clerk"
 const verifyToken = vi.fn()
 const verifySession = makeVerifySession(verifyToken)
 
-const fakeEnv = { CLERK_SECRET_KEY: "sk_test_fake" } as Env
+const fakeEnv = { CLERK_SECRET_KEY: "sk_test_fake", WEB_ORIGINS: "https://code.test,http://localhost:4420" } as Env
 const request = new Request("https://relay.test/v1/hosts", { headers: { Authorization: "Bearer session" } })
 const rejectedFor = (reason: string) => new TokenVerificationError({ message: reason, reason })
 
@@ -14,12 +14,12 @@ describe("verifySession", () => {
     verifyToken.mockReset()
   })
 
-  it("returns the user of an active session, checked against the page's origin", async () => {
+  it("returns the user of an active session, minted on the relay or on a web origin", async () => {
     verifyToken.mockResolvedValue({ sub: "user_alice", sts: "active" })
     expect(await verifySession(request, fakeEnv)).toBe("user_alice")
     expect(verifyToken).toHaveBeenCalledWith("session", {
       secretKey: "sk_test_fake",
-      authorizedParties: ["https://relay.test"],
+      authorizedParties: ["https://relay.test", "https://code.test", "http://localhost:4420"],
     })
   })
 

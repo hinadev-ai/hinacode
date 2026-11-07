@@ -433,6 +433,16 @@ export const makeApp = (deps: Deps) => {
     return deleted ? c.body(null, 204) : fail(c, 401, "Sign in first.")
   })
 
+  app.get("/v1/config", (c) => c.json({ clerkPublishableKey: c.env.CLERK_PUBLISHABLE_KEY }))
+
+  app.post("/v1/devices", async (c) => {
+    const userId = await deps.verifySession(c.req.raw, c.env)
+    if (!userId) return fail(c, 401, "Sign in first.")
+    const input = await body(c, NewSignIn)
+    if (Option.isNone(input)) return fail(c, 400, "Send name, 1 to 64 characters.")
+    return signInDevice(c, userId, input.value.name)
+  })
+
   app.delete("/v1/devices", async (c) => {
     const userId = await deps.verifySession(c.req.raw, c.env)
     if (!userId) return fail(c, 401, "Sign in first.")

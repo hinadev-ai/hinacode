@@ -6,6 +6,7 @@
 @import "@fontsource-variable/geist-mono";
 @import "@fontsource-variable/geist-mono/wght-italic.css";
 @import "@wterm/dom/css";
+@source "../../apps/web/src";
 @plugin "@tailwindcss/typography";
 
 @font-face {
