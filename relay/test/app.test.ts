@@ -542,6 +542,32 @@ const signIn = async (session: string, name = "laptop") => {
 
 const hostsSeenBy = (bearer: string) => call("GET", "/v1/hosts", { bearer })
 
+describe("signing in on the web app", () => {
+  it("hands the web app the Clerk key it signs in with", async () => {
+    const response = await call("GET", "/v1/config")
+    expect(await response.json()).toEqual({ clerkPublishableKey: env.CLERK_PUBLISHABLE_KEY })
+  })
+
+  it("trades a Clerk session for a device credential the browser keeps", async () => {
+    const response = await call("POST", "/v1/devices", {
+      bearer: "alice-session",
+      body: { name: "HinaCode in a browser" },
+    })
+    expect(response.status).toBe(200)
+    const { credential } = (await response.json()) as { credential: string }
+    expect((await call("GET", "/v1/hosts", { bearer: credential })).status).toBe(200)
+    expect((await call("DELETE", "/v1/device", { bearer: credential })).status).toBe(204)
+  })
+
+  it("refuses a device credential, so one device cannot mint another", async () => {
+    const first = await call("POST", "/v1/devices", { bearer: "alice-session", body: { name: "browser" } })
+    const { credential } = (await first.json()) as { credential: string }
+    expect((await call("POST", "/v1/devices", { bearer: credential, body: { name: "copy" } })).status).toBe(401)
+    expect((await call("POST", "/v1/devices", { body: { name: "copy" } })).status).toBe(401)
+    expect((await call("POST", "/v1/devices", { bearer: "alice-session", body: { name: "" } })).status).toBe(400)
+  })
+})
+
 describe("signing in a device", () => {
   it("stays pending until a session approves it, and claims once", async () => {
     const started = (await (await call("POST", "/v1/sign-ins", { body: { name: "laptop" } })).json()) as Link
