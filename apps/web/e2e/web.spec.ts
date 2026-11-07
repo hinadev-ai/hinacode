@@ -5,6 +5,7 @@ import {
   addProject,
   openFile,
   openMachineResources,
+  openRelaySignInPage,
   openSignedIn,
   sidebar,
   signIn,
@@ -26,6 +27,16 @@ test("signing in through the relay's page loads the app with the relay's machine
   const resources = await openMachineResources(page)
   await expect(resources.getByText(web.machine.name, { exact: true })).toBeVisible()
   expect(web.relay.deviceName(await browserCredential(page))).toBe("HinaCode in a browser")
+})
+
+test("a sign-in denied on the relay's page stops waiting and says so", async ({ page, web }) => {
+  web.relay.denyNextSignIn()
+  await page.goto(web.appUrl)
+  const denial = await openRelaySignInPage(page, web)
+  await expect(denial.getByText(/^Denied /)).toBeVisible()
+  await denial.close()
+  await expect(page.getByRole("alert")).toHaveText("The sign-in was denied. Sign in again.")
+  await expect(page.getByText("Waiting for you to approve this browser…", { exact: true })).toHaveCount(0)
 })
 
 test("logging out ends this browser's sign-in on the relay", async ({ page, web }) => {
