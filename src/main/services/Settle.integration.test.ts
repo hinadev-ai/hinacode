@@ -1,5 +1,6 @@
 import { execFileSync, spawn } from "node:child_process"
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, watch } from "node:fs"
+import { connect } from "node:net"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { afterAll, describe, expect, layer } from "@effect/vitest"
@@ -96,12 +97,28 @@ const recordingPorts = Layer.effect(
 const listenerPids: Array<number> = []
 
 const LISTENER =
-  "const s = require('net').createServer().listen(0, '127.0.0.1', () => console.log(process.pid, s.address().port))"
+  "const s = require('net').createServer((socket) => socket.end('alive')).listen(0, '127.0.0.1', () => console.log(process.pid, s.address().port))"
+
+const answersOn = (port: number) =>
+  Effect.promise(
+    () =>
+      new Promise<boolean>((resolve) => {
+        let reply = ""
+        const socket = connect(port, "127.0.0.1")
+        socket.on("data", (chunk) => (reply += String(chunk)))
+        socket.once("end", () => resolve(reply === "alive"))
+        socket.once("error", () => resolve(false))
+      }),
+  )
 
 const listenIn = (cwd: string) =>
   Effect.promise(
     () =>
-      new Promise<{ readonly pid: number; readonly exited: Effect.Effect<void> }>((resolve, reject) => {
+      new Promise<{
+        readonly pid: number
+        readonly exited: Effect.Effect<void>
+        readonly answers: Effect.Effect<boolean>
+      }>((resolve, reject) => {
         const shell = spawn("sh", ["-c", `"$0" -e "$1" &`, process.execPath, LISTENER], {
           cwd,
           stdio: ["ignore", "pipe", "inherit"],
@@ -109,9 +126,9 @@ const listenIn = (cwd: string) =>
         const closed = new Promise<void>((done) => shell.stdout.once("close", done))
         shell.once("error", reject)
         shell.stdout.once("data", (chunk) => {
-          const pid = Number(String(chunk).trim().split(" ")[0])
-          listenerPids.push(pid)
-          resolve({ pid, exited: Effect.promise(() => closed) })
+          const [pid, port] = String(chunk).trim().split(" ").map(Number)
+          listenerPids.push(pid!)
+          resolve({ pid: pid!, exited: Effect.promise(() => closed), answers: answersOn(port!) })
         })
       }),
   )
@@ -475,6 +492,22 @@ describe("worktree cleanup across threads", () => {
         yield* waitUntilGone(child.path)
         expect(portsClosedFor).not.toContain(child.threadId)
         expect(isAlive(rootListener.pid)).toBe(true)
+      }),
+    )
+
+    it.effect("leaves a project root listener running when the developer settles a thread whose worktree is gone", () =>
+      Effect.gen(function* () {
+        const { root, projectId } = yield* project("removed-worktree")
+        const rootListener = yield* listenIn(root)
+        const child = yield* worktreeThread(projectId, "kk/removed-worktree")
+        const { worktreeId } = yield* Threads.use((threads) => threads.get(child.threadId))
+        yield* Worktrees.Worktrees.use((worktrees) => worktrees.remove(worktreeId!, "keep"))
+
+        yield* Settle.use((settle) => settle.settle(child.threadId))
+
+        expect(yield* isSettled(child.threadId)).toBe(true)
+        expect(portsClosedFor).toContain(child.threadId)
+        expect(yield* rootListener.answers).toBe(true)
       }),
     )
 
