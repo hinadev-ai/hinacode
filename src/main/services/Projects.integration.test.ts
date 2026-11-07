@@ -308,6 +308,52 @@ describe("Projects.clone", () => {
       expect(listed).toStrictEqual([])
     }),
   )
+
+  it.live("honours a cancel that arrives while the folder is still being checked", () =>
+    Effect.gen(function* () {
+      const rootPath = join(emptyDir(), "Hello-World")
+      const checking = yield* Deferred.make<void>()
+      const resume = yield* Deferred.make<void>()
+      const pausedOriginCheck = Layer.mock(Git.Git, {
+        run: () =>
+          Deferred.succeed(checking, undefined).pipe(
+            Effect.andThen(Deferred.await(resume)),
+            Effect.andThen(Effect.fail(new Git.CommandError({ command: "git", args: [], exitCode: 2, stderr: "" }))),
+          ),
+      })
+      const cloned: Array<string> = []
+      const github = Layer.mock(GitHub.GitHub, {
+        clone: (_repository, dest) => Effect.sync(() => void cloned.push(dest)),
+      })
+      const [error, listed] = yield* Projects.use((projects) =>
+        Effect.gen(function* () {
+          const clone = yield* Effect.forkChild(
+            projects.clone({
+              cloneId: "c2",
+              repository: { owner: "octocat", name: "Hello-World" },
+              rootPath,
+              name: "x",
+              setupScript: null,
+            }),
+          )
+          yield* Deferred.await(checking)
+          yield* projects.cancelClone("c2")
+          yield* Deferred.succeed(resume, undefined)
+          return [yield* Effect.flip(Fiber.join(clone)), yield* projects.list] as const
+        }),
+      ).pipe(
+        Effect.provide(
+          layer.pipe(
+            Layer.provide(Layer.mergeAll(pausedOriginCheck, github, Db.layer(":memory:"), noEvents)),
+            Layer.provide(NodeServices.layer),
+          ),
+        ),
+      )
+      expect(error._tag).toBe("ProjectCloneCancelledError")
+      expect(cloned).toStrictEqual([])
+      expect(listed).toStrictEqual([])
+    }),
+  )
 })
 
 describe("Projects.ensureChats", () => {
