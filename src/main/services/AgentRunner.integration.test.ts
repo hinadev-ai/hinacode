@@ -1181,7 +1181,7 @@ it("releases an idle thread by stopping its sub-agents and every task, shells to
     ])
     await vi.waitFor(async () => expect(await Effect.runPromise(runner.backgroundTasks(thread.id))).toHaveLength(2))
 
-    await Effect.runPromise(runner.release(thread.id))
+    expect(await Effect.runPromise(runner.release(thread.id, Effect.void))).toStrictEqual(Option.some(undefined))
 
     expect(stops).toStrictEqual(["subagent:native-1", "task:shell-1", "task:workflow-1"])
     expect(calls).toStrictEqual([{ provider: "claude", call: "closeSession" }])
@@ -1194,7 +1194,7 @@ it("keeps the session of a thread whose turn is running when it releases the thr
     await Effect.runPromise(runner.send(thread.id, "waits for Stop", []))
     await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running"))
 
-    await Effect.runPromise(runner.release(thread.id))
+    expect(await Effect.runPromise(runner.release(thread.id, Effect.void))).toStrictEqual(Option.none())
 
     expect(calls).toStrictEqual([])
     await Effect.runPromise(runner.interrupt(thread.id))

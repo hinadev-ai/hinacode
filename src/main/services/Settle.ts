@@ -44,20 +44,6 @@ const make = Effect.gen(function* () {
   const terminals = yield* Terminals
   const ports = yield* Ports
 
-  const releaseAgentAndTerminals = (threadId: string) =>
-    Effect.gen(function* () {
-      if (!(yield* runner.release(threadId))) return false
-      yield* terminals.closeThread(threadId)
-      return true
-    })
-
-  const release = (threadId: string) =>
-    Effect.gen(function* () {
-      if (!(yield* releaseAgentAndTerminals(threadId))) return false
-      yield* ports.closeThread(threadId)
-      return true
-    })
-
   const hasAgentWork = (threadId: string) =>
     Effect.gen(function* () {
       const tasks = yield* runner.backgroundTasks(threadId)
@@ -73,9 +59,15 @@ const make = Effect.gen(function* () {
 
   const settle = (threadId: string) =>
     Effect.gen(function* () {
-      const busy = isThreadBusy((yield* threads.get(threadId)).status) || !(yield* release(threadId))
-      if (busy) return yield* new ThreadBusyError({ id: threadId })
-      return yield* threads.settle(threadId)
+      if (isThreadBusy((yield* threads.get(threadId)).status)) return yield* new ThreadBusyError({ id: threadId })
+      const settled = yield* runner.release(
+        threadId,
+        terminals
+          .closeThread(threadId)
+          .pipe(Effect.andThen(ports.closeThread(threadId)), Effect.andThen(threads.settle(threadId))),
+      )
+      if (Option.isNone(settled)) return yield* new ThreadBusyError({ id: threadId })
+      return settled.value
     })
 
   const ownBranch = (worktreeId: string | null) =>
@@ -105,7 +97,7 @@ const make = Effect.gen(function* () {
       )
       if (Option.isNone(settled)) return
       yield* events.publish({ type: "thread.updated", thread: settled.value })
-      yield* releaseAgentAndTerminals(threadId)
+      yield* runner.release(threadId, terminals.closeThread(threadId))
     }).pipe(Effect.catchCause((cause) => Effect.logWarning("auto settle skipped a thread", threadId, cause)))
 
   const sweep = Effect.gen(function* () {

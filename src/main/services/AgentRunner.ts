@@ -197,7 +197,7 @@ export class AgentRunner extends Context.Service<
       readonly when: Effect.Effect<boolean, PersistenceError>
     }) => Effect.Effect<boolean, SendError>
     readonly interrupt: (threadId: string) => Effect.Effect<void>
-    readonly release: (threadId: string) => Effect.Effect<boolean>
+    readonly release: <A, E>(threadId: string, whileIdle: Effect.Effect<A, E>) => Effect.Effect<Option.Option<A>, E>
     readonly warm: (threadId: string) => Effect.Effect<void>
     readonly resumeAtReset: (
       threadId: string,
@@ -1639,18 +1639,18 @@ const make = Effect.gen(function* () {
       if (hasPendingWakeup(threadId)) yield* Effect.forkIn(closeSessionAfterTurn(threadId), scope)
     })
 
-  const release = (threadId: string) =>
+  const release = <A, E>(threadId: string, whileIdle: Effect.Effect<A, E>) =>
     Effect.gen(function* () {
-      if (isBusy(threadId)) return false
+      if (isBusy(threadId)) return Option.none<A>()
       yield* stopSubagentsAndTasks(threadId, () => true)
-      yield* Effect.gen(function* () {
-        if (isBusy(threadId)) return
-        yield* closeProviderSession(yield* threads.get(threadId))
-      }).pipe(
-        exclusive(threadId),
-        Effect.catch((error) => Effect.logWarning("failed to close the session of a settled thread", error)),
-      )
-      return !isBusy(threadId)
+      return yield* Effect.gen(function* () {
+        if (isBusy(threadId)) return Option.none<A>()
+        yield* threads.get(threadId).pipe(
+          Effect.flatMap(closeProviderSession),
+          Effect.catch((error) => Effect.logWarning("failed to close the session of a settled thread", error)),
+        )
+        return Option.some(yield* whileIdle)
+      }).pipe(exclusive(threadId))
     })
 
   const requestSecret = (threadId: string, name: string, description: string) =>

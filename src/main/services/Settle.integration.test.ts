@@ -67,10 +67,10 @@ const turnStarted = new Set<string>()
 const agentRunner = Layer.mock(AgentRunner, {
   backgroundTasks: (threadId) => Effect.succeed(backgroundTasks.get(threadId) ?? []),
   subagents: (threadId) => Effect.succeed(subagents.get(threadId) ?? []),
-  release: (threadId) =>
-    Effect.sync(() => {
+  release: (threadId, whileIdle) =>
+    Effect.suspend(() => {
       released.push(threadId)
-      return !turnStarted.has(threadId)
+      return turnStarted.has(threadId) ? Effect.succeedNone : Effect.asSome(whileIdle)
     }),
 })
 
