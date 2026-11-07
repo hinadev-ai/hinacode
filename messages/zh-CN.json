@@ -2567,6 +2567,7 @@
   "web_open_sign_in_page": "打开登录页面",
   "web_waiting_for_approval": "正在等待你批准这个浏览器…",
   "web_sign_in_expired": "登录页面已过期，请重新登录。",
+  "web_sign_in_denied": "登录请求已被拒绝，请重新登录。",
   "web_signed_out": "这个浏览器已被登出，请重新登录。",
   "web_device_name": "浏览器中的 HinaCode",
   "web_machine_refused_token": "{name} 拒绝了它的令牌。等它把新的令牌发布到 relay 后，请重新加载此页面。",
