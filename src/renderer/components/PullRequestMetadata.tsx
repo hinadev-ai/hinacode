@@ -2,7 +2,7 @@ import { Combobox } from "@base-ui/react/combobox"
 import { useAtomValue } from "@effect/atom-react"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
-import { type ReactNode, useId, useOptimistic, useRef, useState, useTransition } from "react"
+import { type ReactNode, useOptimistic, useRef, useState, useTransition } from "react"
 import type {
   PullRequestCandidates,
   PullRequestDetail,
@@ -39,7 +39,7 @@ export function PullRequestMetadata({ pullRequest }: { pullRequest: PullRequestD
     candidates?.labels.find((label) => label.name === name) ?? knownLabels.get(name) ?? { name, color: "" }
 
   return (
-    <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-0.5 text-xs">
+    <div className="-mx-1.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-xs">
       <MetadataRow
         url={pullRequest.url}
         field="reviewers"
@@ -79,7 +79,7 @@ export function PullRequestMetadata({ pullRequest }: { pullRequest: PullRequestD
           ))
         }
       />
-    </dl>
+    </div>
   )
 }
 
@@ -100,8 +100,6 @@ function MetadataRow({ url, field, title, selected, candidates, renderOption, re
   const [, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const writes = useRef<Promise<unknown>>(NO_WRITES)
-  const titleId = useId()
-  const valuesId = useId()
   const shown = renderValues(values)
 
   const save = (next: ReadonlyArray<string>) =>
@@ -126,37 +124,30 @@ function MetadataRow({ url, field, title, selected, candidates, renderOption, re
 
   return (
     <>
-      <dt id={titleId} className="py-1 text-muted-foreground">
-        {title}
-      </dt>
-      <dd className="flex min-w-0 flex-col gap-1">
-        <Popover>
-          <PopoverTrigger
-            disabled={!signedIn}
-            aria-labelledby={`${titleId} ${valuesId}`}
-            className="-mx-1.5 flex min-h-6 min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-md px-1.5 py-1 text-start outline-none focus-visible:ring-2 focus-visible:ring-ring hover:enabled:bg-muted/50"
-          >
-            <span id={valuesId} className="contents">
-              {shown.length === 0 ? <span className="text-muted-foreground">{m.pr_meta_none()}</span> : shown}
-            </span>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-64 gap-1.5 p-1.5">
-            <MetadataPicker
-              url={url}
-              title={title}
-              values={values}
-              candidates={candidates}
-              renderOption={renderOption}
-              onChange={save}
-            />
-          </PopoverContent>
-        </Popover>
-        {error && (
-          <p role="alert" className="text-xs wrap-anywhere text-destructive">
-            {error}
-          </p>
-        )}
-      </dd>
+      <Popover>
+        <PopoverTrigger
+          disabled={!signedIn}
+          className="flex min-h-6 max-w-full min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 rounded-md px-1.5 py-1 text-start outline-none focus-visible:ring-2 focus-visible:ring-ring hover:enabled:bg-muted/50"
+        >
+          <span className="shrink-0 text-muted-foreground">{title}</span>
+          {shown.length === 0 ? <span className="text-muted-foreground/70">{m.pr_meta_none()}</span> : shown}
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-64 gap-1.5 p-1.5">
+          <MetadataPicker
+            url={url}
+            title={title}
+            values={values}
+            candidates={candidates}
+            renderOption={renderOption}
+            onChange={save}
+          />
+        </PopoverContent>
+      </Popover>
+      {error && (
+        <p role="alert" className="basis-full px-1.5 text-xs wrap-anywhere text-destructive">
+          {error}
+        </p>
+      )}
     </>
   )
 }
