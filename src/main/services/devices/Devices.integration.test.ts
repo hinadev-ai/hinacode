@@ -25,6 +25,7 @@ const CREATED_DEVICE: DeviceId = "ios:22222222-2222-2222-2222-222222222222"
 
 const removed: Array<DeviceId> = []
 let failingRemovals = 0
+let removalsOfMissing = 0
 let removalGate: Promise<void> | undefined
 let removalStarted = false
 const launched: Array<DeviceId> = []
@@ -63,6 +64,10 @@ const ios: DevicePlatformDriver = {
   remove: async (id) => {
     removalStarted = true
     await removalGate
+    if (!devices.has(id)) {
+      removalsOfMissing += 1
+      return Promise.reject(new Error(`simslim: no simulator with udid ${id}`))
+    }
     if (failingRemovals > 0) {
       failingRemovals -= 1
       return Promise.reject(new Error("simctl delete failed"))
@@ -147,6 +152,26 @@ describe("Devices", () => {
         yield* TestClock.adjust("6 seconds")
         yield* eventually(() => removed.length > 0)
         expect(removed).toEqual([CREATED_DEVICE])
+      }),
+    )
+
+    it.effect("forgets an archived thread's simulator that someone already deleted", () =>
+      Effect.gen(function* () {
+        const service = yield* Devices
+        const { threadId } = yield* seedThread({ rootPath: "/tmp/kk-devices-gone" })
+        expect((yield* service.create(threadId)).phase).toBe("ready")
+        devices.delete(CREATED_DEVICE)
+        yield* archive(threadId)
+
+        yield* TestClock.adjust("6 seconds")
+        yield* eventually(() => removalsOfMissing > 0)
+        yield* TestClock.adjust("6 seconds")
+        yield* TestClock.adjust("6 seconds")
+        expect(removalsOfMissing).toBe(1)
+        const rows = yield* SqlClient.SqlClient.use(
+          (sql) => sql`SELECT device_id FROM thread_device WHERE thread_id = ${threadId}`,
+        )
+        expect(rows).toEqual([])
       }),
     )
 

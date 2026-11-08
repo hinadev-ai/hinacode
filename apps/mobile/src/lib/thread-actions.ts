@@ -25,8 +25,8 @@ const remove: ThreadAction = {
   destructive: true,
 }
 
-/** Only Claude and Codex record the points a fork resumes from. */
-const forksSessions = { claude: true, codex: true, muse: false, opencode: false } satisfies Record<ProviderId, boolean>
+/** Claude, Codex and magpie, which runs on the Claude harness, record the points a fork resumes from. */
+const forksSessions = { claude: true, codex: true, muse: false, opencode: false, magpie: true } satisfies Record<ProviderId, boolean>
 
 /**
  * What a thread offers on long press: an archived thread can only come back or go, an active one can change.

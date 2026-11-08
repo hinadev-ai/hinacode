@@ -65,7 +65,8 @@ When("I choose the language {string}", async ({ app }, language: string) => {
 })
 
 When("I choose the last listed default model for {string}", async ({ app, chosenModel }, agent: string) => {
-  const picker = app.page.getByRole("group", { name: agent, exact: true }).getByLabel("Default model", { exact: true })
+  await app.page.getByRole("list", { name: "Agents", exact: true }).getByRole("button", { name: agent }).click()
+  const picker = app.page.getByRole("region", { name: agent, exact: true }).getByLabel("Default model", { exact: true })
   await expect(picker).toBeEnabled({ timeout: 30_000 })
   await picker.click()
   const option = app.page.getByRole("option").last()

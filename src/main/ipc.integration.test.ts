@@ -29,6 +29,7 @@ import { ClaudeProvider } from "./agents/claude/index.ts"
 import { CodexProvider } from "./agents/codex/index.ts"
 import { MuseProvider } from "./agents/muse/index.ts"
 import { OpencodeProvider } from "./agents/opencode/index.ts"
+import { MagpieProvider } from "./agents/magpie/index.ts"
 import { AgentError, type AgentProvider, type Wake } from "./agents/provider.ts"
 import { registerIpc } from "./ipc.ts"
 import { makeTestAppLayer } from "./testing.ts"
@@ -310,6 +311,7 @@ const providers = Layer.mergeAll(
   Layer.succeed(CodexProvider, scriptedProvider("codex")),
   Layer.succeed(MuseProvider, scriptedProvider("muse")),
   Layer.succeed(OpencodeProvider, scriptedProvider("opencode")),
+  Layer.succeed(MagpieProvider, scriptedProvider("magpie")),
 )
 
 const makeLayer = (dbPath: string) => makeTestAppLayer(dbPath, { providers })
@@ -1072,6 +1074,7 @@ describe("plan limits over rpc", () => {
       { provider: "codex", accountId: work.id, limits: null },
       { provider: "muse", accountId: null, limits: null },
       { provider: "opencode", accountId: null, limits: null },
+      { provider: "magpie", accountId: null, limits: null },
     ])
   })
 })

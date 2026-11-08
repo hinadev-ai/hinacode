@@ -28,6 +28,7 @@ describe("runMigrations", () => {
       expect(ran).toStrictEqual([
         [43, "pull_request_observed_status"],
         [44, "drop_thread_user_skills"],
+        [45, "magpie_provider"],
       ])
       expect(yield* hasObservedStatus).toBe(true)
       expect(yield* sql`SELECT name FROM effect_sql_migrations WHERE migration_id = 40`).toStrictEqual([

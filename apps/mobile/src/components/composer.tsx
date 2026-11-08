@@ -539,6 +539,7 @@ const providers: Record<ProviderId, { label: string; icon: IconName }> = {
   codex: { label: copy("mobile_provider_codex"), icon: "RiOpenaiFill" },
   muse: { label: copy("mobile_provider_muse"), icon: "RiMetaFill" },
   opencode: { label: copy("mobile_provider_opencode"), icon: "OpencodeMark" },
+  magpie: { label: copy("mobile_provider_magpie"), icon: "MagpieMark" },
 }
 
 const effortLabels: Record<string, string> = {

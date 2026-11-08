@@ -1,3 +1,4 @@
+import { cn } from "cn"
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { Schema } from "effect"
 import { AsyncResult } from "effect/reactivity"
@@ -34,6 +35,7 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog.tsx"
 import { providerLabel } from "../ProviderIcon.tsx"
+import { SettingsPanelSection } from "./SettingsSection.tsx"
 import { Button } from "../ui/button.tsx"
 import {
   Dialog,
@@ -55,36 +57,43 @@ const signedOutHint = {
   codex: m.settings_account_signed_out_codex,
   muse: m.settings_account_signed_out_muse,
   opencode: m.settings_account_signed_out_opencode,
+  magpie: m.settings_account_signed_out_magpie,
 } satisfies Record<ProviderId, () => string>
 
 const addsAccounts = Schema.is(AccountProviderId)
 
-export function AccountList({ provider }: { provider: ProviderId }) {
+export function AccountsSection({ provider }: { provider: ProviderId }) {
   const environment = useSettingsEnvironment()
   const accounts = useProviderAccounts(environment, provider)
   const [adding, setAdding] = useState(false)
   return (
-    <div className="flex flex-col gap-2">
-      <ul aria-label={m.settings_accounts_label({ provider: providerLabel[provider]() })} className="flex flex-col">
+    <SettingsPanelSection
+      title={m.settings_accounts()}
+      action={
+        addsAccounts(provider) && (
+          <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
+            <PlusIcon aria-hidden />
+            {m.settings_account_add()}
+          </Button>
+        )
+      }
+    >
+      <ul
+        aria-label={m.settings_accounts_label({ provider: providerLabel[provider]() })}
+        className="flex flex-col gap-1.5"
+      >
         <DefaultAccountRow provider={provider} />
         {accounts.map((account) => (
           <AccountRow key={account.id} account={account} />
         ))}
       </ul>
-      {addsAccounts(provider) && (
-        <>
-          <div>
-            <Button variant="ghost" size="sm" className="-ml-2.5" onClick={() => setAdding(true)}>
-              <PlusIcon aria-hidden />
-              {m.settings_account_add()}
-            </Button>
-          </div>
-          <AddAccountDialog provider={provider} open={adding} onOpenChange={setAdding} />
-        </>
-      )}
-    </div>
+      <DefaultAccountField provider={provider} />
+      {addsAccounts(provider) && <AddAccountDialog provider={provider} open={adding} onOpenChange={setAdding} />}
+    </SettingsPanelSection>
   )
 }
+
+const accountRowClass = "rounded-lg bg-background px-3 py-1.5"
 
 type RowDialog = "rename" | "remove"
 
@@ -150,7 +159,7 @@ function DefaultAccountRow({ provider }: { provider: ProviderId }) {
   }
 
   return (
-    <li className="flex min-h-8 items-center gap-x-3 pb-1">
+    <li className={cn(accountRowClass, "flex min-h-11 items-center gap-x-3")}>
       <span className="w-28 shrink-0 truncate text-sm font-medium" title={name}>
         {name}
       </span>
@@ -172,7 +181,7 @@ function AccountRow({ account }: { account: AgentProfile }) {
   const signedOut = AsyncResult.isSuccess(status) && status.value.type === "signedOut"
 
   return (
-    <li className="flex flex-col pb-1">
+    <li className={cn(accountRowClass, "flex flex-col")}>
       <div className="flex min-h-8 items-center gap-x-3">
         <span className="w-28 shrink-0 truncate text-sm font-medium" title={account.name}>
           {account.name}
@@ -186,7 +195,7 @@ function AccountRow({ account }: { account: AgentProfile }) {
           </DropdownMenuItem>
         </AccountActions>
       </div>
-      <div className="flex min-w-0 flex-col gap-1 pl-31">
+      <div className="flex min-w-0 flex-col gap-1 pb-1 pl-31">
         <p className="font-mono text-xs break-all text-muted-foreground">{account.configDir}</p>
         {signedOut && (
           <div className="flex min-w-0 flex-col items-start gap-1 text-xs">
@@ -567,7 +576,7 @@ function RemoveAccountDialog({ account, open, onOpenChange }: AccountDialogBaseP
 
 const CLI_LOGIN = "cli"
 
-export function DefaultAccountField({ provider }: { provider: ProviderId }) {
+function DefaultAccountField({ provider }: { provider: ProviderId }) {
   const environment = useSettingsEnvironment()
   const accounts = useProviderAccounts(environment, provider)
   const { defaultAccount } = useSettings(environment)
@@ -595,12 +604,11 @@ export function DefaultAccountField({ provider }: { provider: ProviderId }) {
     <Field orientation="horizontal">
       <FieldContent>
         <FieldLabel htmlFor={inputId}>{m.settings_default_account()}</FieldLabel>
-        <FieldDescription>{m.settings_default_account_hint()}</FieldDescription>
         {error && <FieldError>{error}</FieldError>}
       </FieldContent>
-      <div>
+      <div className="min-w-0 basis-56">
         <Select items={items} value={defaultAccount[provider] ?? CLI_LOGIN} onValueChange={(next) => void save(next)}>
-          <SelectTrigger id={inputId} className="w-72">
+          <SelectTrigger id={inputId} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

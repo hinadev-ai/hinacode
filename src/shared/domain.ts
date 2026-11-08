@@ -680,7 +680,7 @@ const ListenPort = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 6553
 
 const perProvider = <S extends Schema.Top>(value: S, fallback: S["Encoded"]) => {
   const field = value.pipe(Schema.withDecodingDefaultKey(Effect.succeed(fallback)))
-  return Schema.Struct({ claude: field, codex: field, muse: field, opencode: field })
+  return Schema.Struct({ claude: field, codex: field, muse: field, opencode: field, magpie: field })
 }
 
 const eachProvider = <A>(value: A): Record<ProviderId, A> => ({
@@ -688,10 +688,12 @@ const eachProvider = <A>(value: A): Record<ProviderId, A> => ({
   codex: value,
   muse: value,
   opencode: value,
+  magpie: value,
 })
 
 export const Settings = Schema.Struct({
   defaultProvider: ProviderId,
+  providerEnabled: perProvider(Schema.Boolean, true),
   defaultModel: perProvider(Schema.NullOr(Schema.String), null),
   defaultEffort: perProvider(Schema.NullOr(Schema.String), null),
   defaultFastMode: perProvider(Schema.Boolean, false),
@@ -717,11 +719,23 @@ export const Settings = Schema.Struct({
   experimental: ExperimentalSettings,
   worktreeRoot: Schema.NullOr(Schema.String.check(Schema.isPattern(/^\//))),
   actions: Schema.Array(ProjectAction).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+  magpieEndpoint: Schema.NullOr(Schema.String.check(Schema.isPattern(/^https?:\/\/\S+$/))).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(null)),
+  ),
 })
 export type Settings = typeof Settings.Type
 
+export const enabledProviders = (settings: Pick<Settings, "providerEnabled">) =>
+  ProviderId.literals.filter((provider) => settings.providerEnabled[provider])
+
+export const startingProvider = (settings: Pick<Settings, "defaultProvider" | "providerEnabled">) =>
+  settings.providerEnabled[settings.defaultProvider]
+    ? settings.defaultProvider
+    : (enabledProviders(settings)[0] ?? settings.defaultProvider)
+
 export const defaultSettings: Settings = {
   defaultProvider: "claude",
+  providerEnabled: eachProvider(true),
   defaultModel: eachProvider(null),
   defaultEffort: eachProvider(null),
   defaultFastMode: eachProvider(false),
@@ -748,6 +762,7 @@ export const defaultSettings: Settings = {
   },
   worktreeRoot: null,
   actions: [],
+  magpieEndpoint: null,
 }
 
 export const Machine = Schema.Struct({

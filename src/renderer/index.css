@@ -199,6 +199,7 @@
   --color-provider-codex: var(--provider-codex);
   --color-provider-muse: var(--provider-muse);
   --color-provider-opencode: var(--provider-opencode);
+  --color-provider-magpie: var(--provider-magpie);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -414,6 +415,7 @@
   /* OpenAI's and opencode's marks are monochrome. */
   --provider-codex: var(--foreground);
   --provider-opencode: var(--foreground);
+  --provider-magpie: var(--foreground);
 }
 
 /*
