@@ -1,5 +1,15 @@
 import { Schema, Struct } from "effect"
-import { Artifact, ArtifactExportRequest, DocumentContent, DocumentSaveResult } from "./artifact.ts"
+import {
+  Artifact,
+  ArtifactExportRequest,
+  ArtifactFeedback,
+  CommentAnchor,
+  DocumentContent,
+  DocumentSaveResult,
+  WhiteboardContent,
+  WhiteboardSaveResult,
+  WhiteboardScene,
+} from "./artifact.ts"
 import { ArtifactTheme } from "./artifactTheme.ts"
 import {
   AccountLimits,
@@ -639,6 +649,27 @@ export const RpcMethods = {
     Schema.Struct({ path: Schema.String }),
   ),
   "artifacts.createDocument": rpc(Schema.Struct({ threadId: Schema.String, title: Schema.String }), Artifact),
+  "artifacts.createWhiteboard": rpc(Schema.Struct({ threadId: Schema.String, title: Schema.String }), Artifact),
+  "artifacts.readWhiteboard": rpc(Schema.Struct({ id: Schema.String }), WhiteboardContent),
+  "artifacts.saveWhiteboard": rpc(
+    Schema.Struct({ id: Schema.String, baseRevision: Schema.Number, scene: WhiteboardScene }),
+    WhiteboardSaveResult,
+  ),
+  "artifacts.feedback": rpc(Schema.Struct({ id: Schema.String }), ArtifactFeedback),
+  "artifacts.comment": rpc(
+    Schema.Struct({
+      id: Schema.String,
+      comment: Schema.optionalKey(Schema.String),
+      anchor: Schema.optionalKey(CommentAnchor),
+      body: Schema.String,
+      attachments: Schema.optionalKey(Schema.Array(Attachment)),
+    }),
+    ArtifactFeedback,
+  ),
+  "artifacts.resolveComment": rpc(
+    Schema.Struct({ id: Schema.String, comment: Schema.String, resolved: Schema.Boolean }),
+    ArtifactFeedback,
+  ),
   "artifacts.rename": rpc(Schema.Struct({ id: Schema.String, title: Schema.String }), Artifact),
   "artifacts.setTheme": rpc(ArtifactTheme, Schema.Void),
   "automations.create": rpc(
@@ -871,6 +902,12 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "artifacts.saveDocument": "mutation",
   "artifacts.addDocumentImage": "mutation",
   "artifacts.createDocument": "mutation",
+  "artifacts.createWhiteboard": "mutation",
+  "artifacts.readWhiteboard": "read",
+  "artifacts.saveWhiteboard": "mutation",
+  "artifacts.feedback": "read",
+  "artifacts.comment": "mutation",
+  "artifacts.resolveComment": "mutation",
   "artifacts.rename": "mutation",
   "artifacts.setTheme": "mutation",
   "automations.create": "mutation",
@@ -1014,6 +1051,7 @@ export const PushEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("automation.run"), run: AutomationRun }),
   Schema.Struct({ type: Schema.Literal("artifact.updated"), artifact: Artifact }),
   Schema.Struct({ type: Schema.Literal("artifact.removed"), id: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("artifact.feedback"), id: Schema.String }),
   Schema.Struct({ type: Schema.Literal("artifact.opened"), threadId: Schema.String, id: Schema.String }),
   Schema.Struct({
     type: Schema.Literal("terminal.data"),

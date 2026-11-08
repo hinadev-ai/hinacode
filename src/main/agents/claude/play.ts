@@ -1,7 +1,7 @@
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk"
 import { Deferred, Effect, Stream } from "effect"
 import type { AgentEvent, ApprovalDecision, ApprovalRequest, Question, QuestionRequest } from "../../../shared/agent.ts"
-import { mockModel, toolResult } from "./fixtures/sdk.ts"
+import { mockModel, nextCallId, toolResult, toolUse } from "./fixtures/sdk.ts"
 import { mapMessage, type MapState } from "./mapMessage.ts"
 
 export type MockStep =
@@ -14,8 +14,18 @@ export type MockStep =
       readonly output: string
     }
   | { readonly type: "question"; readonly questions: ReadonlyArray<Question> }
-  | { readonly type: "publish_artifact"; readonly callId: string; readonly input: Record<string, unknown> }
+  | {
+      readonly type: "mcp"
+      readonly name: string
+      readonly input: Record<string, unknown>
+      readonly next?: (result: McpResult) => ReadonlyArray<MockStep>
+    }
   | { readonly type: "until_stopped" }
+
+export interface McpResult {
+  readonly output: string
+  readonly isError: boolean
+}
 
 export interface ApprovalReply {
   readonly decision: ApprovalDecision
@@ -28,9 +38,7 @@ export interface PlayControls {
   readonly sleep: (ms: number) => Effect.Effect<void>
   readonly approve: (request: ApprovalRequest) => Effect.Effect<ApprovalReply>
   readonly answer: (request: QuestionRequest) => Effect.Effect<void>
-  readonly publishArtifact: (
-    input: Record<string, unknown>,
-  ) => Effect.Effect<{ readonly output: string; readonly isError: boolean }>
+  readonly callTool: (name: string, input: Record<string, unknown>) => Effect.Effect<McpResult>
 }
 
 const deniedOutput = ({ note }: ApprovalReply) =>
@@ -89,12 +97,23 @@ export function play(steps: ReadonlyArray<MockStep>, controls: PlayControls): St
           ),
         )
       }
-      case "publish_artifact":
-        return Stream.fromIterableEffect(
-          controls
-            .publishArtifact(step.input)
-            .pipe(Effect.map(({ output, isError }) => map(toolResult(step.callId, output, { isError })))),
+      case "mcp": {
+        const callId = nextCallId()
+        const called = controls
+          .callTool(step.name, step.input)
+          .pipe(
+            Effect.map((result) =>
+              Stream.concat(
+                Stream.fromIterable(map(toolResult(callId, result.output, { isError: result.isError }))),
+                Stream.fromIterable(step.next?.(result) ?? []).pipe(Stream.flatMap(run)),
+              ),
+            ),
+          )
+        return Stream.concat(
+          Stream.fromIterable(map(toolUse(callId, `mcp__hinacode__${step.name}`, step.input))),
+          Stream.unwrap(called),
         )
+      }
       case "until_stopped":
         return Stream.fromEffectDrain(Deferred.await(controls.stopped))
     }

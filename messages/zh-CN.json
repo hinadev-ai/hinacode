@@ -172,6 +172,8 @@
   "tool_own_linear_update_issue_state": "更新 Linear 议题状态",
   "tool_own_publish_artifact": "发布成品",
   "tool_own_publish_document": "发布文档",
+  "tool_own_publish_whiteboard": "发布白板",
+  "tool_own_comment_on_artifact": "评论成品",
   "tool_own_document_chart_guide": "读取图表指南",
   "tool_own_list_artifacts": "列出成品",
   "tool_own_read_artifact": "读取成品",
@@ -2040,7 +2042,17 @@
   "artifacts_exported": "已保存到 {path}",
   "artifacts_export_failed": "无法导出成品：{message}",
   "artifacts_export_markdown": "导出为 Markdown",
-  "documents_new": "新建文档",
+  "whiteboard_loading": "正在加载白板…",
+  "whiteboard_load_failed": "无法打开白板：{message}",
+  "whiteboard_ask": "提问",
+  "whiteboard_ask_label": "针对选中的元素提问",
+  "whiteboard_ask_send": "发送",
+  "whiteboard_ask_failed": "无法发送问题：{message}",
+  "artifacts_new": "新建",
+  "artifacts_new_document": "文档",
+  "artifacts_new_whiteboard": "白板",
+  "whiteboard_untitled": "未命名白板",
+  "whiteboard_create_failed": "无法创建白板：{message}",
   "documents_untitled": "未命名文档",
   "documents_create_failed": "无法创建文档：{message}",
   "documents_export_not_ready": "请等文档打开后再导出。",
@@ -2117,6 +2129,47 @@
   "artifact_card_page": "页面",
   "artifact_card_publishing": "发布中…",
   "artifact_card_more_sections": "{sections} +{count}",
+  "comments_title": "评论",
+  "comments_add": "评论",
+  "comments_new": "新评论",
+  "comments_new_placeholder": "添加评论",
+  "comments_close": "关闭评论",
+  "comments_you": "你",
+  "comments_agent": "代理",
+  "comments_waiting_on_you": "等你回复",
+  "comments_resolve": "标为已解决",
+  "comments_reopen": "重新打开",
+  "comments_reply": "回复",
+  "comments_send": "发送",
+  "comments_send_failed": "无法发送评论：{message}",
+  "comments_resolve_failed": "无法更新评论：{message}",
+  "comments_load_failed": "无法加载评论：{message}",
+  "comments_elements": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 个元素",
+        "countPlural=other": "{count} 个元素"
+      }
+    }
+  ],
+  "comments_detached": "引用的文字已不存在",
+  "comments_show_quote": "在文档中显示",
+  "comments_show_elements": "在白板上显示",
+  "comments_thread": "评论：{excerpt}",
+  "comments_empty": "还没有评论",
+  "comments_resolved": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "已解决 {count} 条",
+        "countPlural=other": "已解决 {count} 条"
+      }
+    }
+  ],
+  "artifact_card_whiteboard": "白板",
   "thread_card_open": "打开对话“{title}”",
   "settings_devices": "设备",
   "settings_devices_hint": "将对话所在机器上的 iOS 模拟器和 Android 模拟器投射到侧边面板。智能体通过设备工具操控它们，你直接在屏幕上操作即可接管。",

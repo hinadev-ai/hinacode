@@ -23,7 +23,7 @@ const pause = (ms: number): MockStep => ({ type: "pause", ms })
 
 const chunksOf = (text: string, size: number) => text.match(new RegExp(`[\\s\\S]{1,${size}}`, "g")) ?? []
 
-const say = (text: string, contextTokens?: number): Array<MockStep> => [
+export const say = (text: string, contextTokens?: number): Array<MockStep> => [
   ...chunksOf(text, 12).flatMap((chunk) => [sdk(textDelta(chunk)), pause(25)]),
   sdk(assistant([{ type: "text", text, citations: [] }], { contextTokens })),
 ]
@@ -159,7 +159,7 @@ export const toolKinds = (): Array<MockStep> => [
     ),
   ),
   ...subagent(),
-  ...artifact("Open redirect fix summary"),
+  artifact("Open redirect fix summary"),
   ...say(
     "Fixed the open redirect in `src/auth/login.ts`.\n\n| Check | Result |\n| --- | --- |\n| Unit tests | 10 passed |\n| External `next` | Redirects to `/` |\n",
     142_000,
@@ -189,9 +189,10 @@ function subagent(): Array<MockStep> {
   ]
 }
 
-function artifact(title: string): Array<MockStep> {
-  const callId = nextCallId()
-  const input = {
+const artifact = (title: string): MockStep => ({
+  type: "mcp",
+  name: PUBLISH_ARTIFACT_TOOL,
+  input: {
     title,
     files: [
       {
@@ -199,12 +200,8 @@ function artifact(title: string): Array<MockStep> {
         content: `<!doctype html><html><body style="font: 16px/1.5 system-ui; margin: 32px"><h1>${title}</h1><p>External next URLs now redirect to /.</p></body></html>`,
       },
     ],
-  }
-  return [
-    sdk(toolUse(callId, `mcp__hinacode__${PUBLISH_ARTIFACT_TOOL}`, input)),
-    { type: "publish_artifact", callId, input },
-  ]
-}
+  },
+})
 
 export const toolStates = (): Array<MockStep> => [
   ...say("Each tool below ends in a different state.\n\n"),

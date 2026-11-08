@@ -181,6 +181,8 @@
   "tool_own_linear_update_issue_state": "更新 Linear 議題狀態",
   "tool_own_publish_artifact": "發布成品",
   "tool_own_publish_document": "發布文件",
+  "tool_own_publish_whiteboard": "發布白板",
+  "tool_own_comment_on_artifact": "留言於成品",
   "tool_own_document_chart_guide": "讀取圖表指南",
   "tool_own_list_artifacts": "列出成品",
   "tool_own_read_artifact": "讀取成品",
@@ -2012,7 +2014,17 @@
   "artifacts_exported": "已儲存到 {path}",
   "artifacts_export_failed": "無法匯出成品：{message}",
   "artifacts_export_markdown": "匯出為 Markdown",
-  "documents_new": "新增文件",
+  "whiteboard_loading": "正在載入白板…",
+  "whiteboard_load_failed": "無法開啟白板：{message}",
+  "whiteboard_ask": "提問",
+  "whiteboard_ask_label": "針對選取的元素提問",
+  "whiteboard_ask_send": "送出",
+  "whiteboard_ask_failed": "無法送出問題：{message}",
+  "artifacts_new": "新增",
+  "artifacts_new_document": "文件",
+  "artifacts_new_whiteboard": "白板",
+  "whiteboard_untitled": "未命名白板",
+  "whiteboard_create_failed": "無法建立白板：{message}",
   "documents_untitled": "未命名文件",
   "documents_create_failed": "無法建立文件：{message}",
   "documents_export_not_ready": "請等文件開啟後再匯出。",
@@ -2089,6 +2101,47 @@
   "artifact_card_page": "頁面",
   "artifact_card_publishing": "發布中…",
   "artifact_card_more_sections": "{sections} +{count}",
+  "comments_title": "留言",
+  "comments_add": "留言",
+  "comments_new": "新增留言",
+  "comments_new_placeholder": "新增留言",
+  "comments_close": "關閉留言",
+  "comments_you": "你",
+  "comments_agent": "代理",
+  "comments_waiting_on_you": "等你回覆",
+  "comments_resolve": "標為已解決",
+  "comments_reopen": "重新開啟",
+  "comments_reply": "回覆",
+  "comments_send": "送出",
+  "comments_send_failed": "無法送出留言：{message}",
+  "comments_resolve_failed": "無法更新留言：{message}",
+  "comments_load_failed": "無法載入留言：{message}",
+  "comments_elements": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 個元素",
+        "countPlural=other": "{count} 個元素"
+      }
+    }
+  ],
+  "comments_detached": "引用的文字已不存在",
+  "comments_show_quote": "在文件中顯示",
+  "comments_show_elements": "在白板上顯示",
+  "comments_thread": "留言：{excerpt}",
+  "comments_empty": "還沒有留言",
+  "comments_resolved": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "已解決 {count} 則",
+        "countPlural=other": "已解決 {count} 則"
+      }
+    }
+  ],
+  "artifact_card_whiteboard": "白板",
   "thread_card_open": "開啟對話串「{title}」",
   "settings_devices": "裝置",
   "settings_devices_hint": "把執行緒所在機器上的 iOS 模擬器和 Android 模擬器串流到側邊面板。代理用 device 工具操作它們，你直接操作畫面就能接手。",
