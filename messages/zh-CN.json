@@ -106,6 +106,7 @@
   "common_close": "关闭",
   "common_copied": "已复制",
   "thread_empty_title": "想在 {environment} 的 {project} 里做点什么？",
+  "thread_environment_create": "在{machine}创建",
   "thread_empty_chat_title": "想在 {environment} 里问点什么？",
   "thread_loading": "正在加载消息…",
   "thread_load_failed": "无法加载消息：{message}",
