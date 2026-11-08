@@ -121,7 +121,7 @@ function ThreadList() {
         <View style={styles.spacer} />
         <HomeActions onNewThread={() => setNewThreadOpen(true)} />
       </View>
-      <HomeContent selectedId={id} transparent={glass} />
+      <HomeContent selectedId={id} searchable transparent={glass} />
       <NewThreadSheet open={newThreadOpen} onClose={() => setNewThreadOpen(false)} />
     </SafeAreaView>
   )

@@ -51,7 +51,7 @@ function useReadOnFocus(connected: boolean, urls: string) {
 }
 
 /** Which pull requests need the developer, and which Linear tickets are theirs, read through the desktop. */
-export default function OverviewScreen() {
+export default function PullRequestsScreen() {
   const theme = useTheme()
   const connected = useConnection((state) => state.status === "connected")
   const linksByThread = usePullRequests((state) => state.linksByThread)
@@ -101,7 +101,6 @@ export default function OverviewScreen() {
       >
         <View style={styles.column}>
         {!connected && <Notice text={copy("mobile_overview_offline")} />}
-        <Heading label={copy("mobile_overview_pull_requests")} />
         {groups.length === 0 ? (
           <EmptyState
             icon="RiGitPullRequestLine"
