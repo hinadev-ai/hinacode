@@ -1805,6 +1805,7 @@
   "mobile_pr_detail_failed": "Could not load the pull request: {message}",
   "mobile_pr_retry": "Retry",
   "mobile_pr_conflicts": "This branch has conflicts with {base}.",
+  "mobile_pr_no_conflicts": "Merges into {base} without conflicts.",
   "mobile_pr_resolve": "Ask the agent to resolve",
   "mobile_pr_failing_count": "Failing checks: {count}",
   "mobile_pr_fix": "Ask the agent to fix",

@@ -1796,6 +1796,7 @@
   "mobile_pr_detail_failed": "无法加载拉取请求：{message}",
   "mobile_pr_retry": "重试",
   "mobile_pr_conflicts": "该分支与 {base} 存在冲突。",
+  "mobile_pr_no_conflicts": "可以无冲突地合并到 {base}。",
   "mobile_pr_resolve": "让智能体解决",
   "mobile_pr_failing_count": "失败的检查：{count}",
   "mobile_pr_fix": "让智能体修复",

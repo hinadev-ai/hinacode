@@ -41,6 +41,27 @@ describe("filePatches", () => {
     ])
   })
 
+  it("unquotes a path Git quoted, with C escapes and UTF-8 octal bytes", () => {
+    const quoted = [
+      'diff --git "a/src/a\\"b.ts" "b/src/a\\"b.ts"',
+      "@@ -1 +1 @@",
+      "-old",
+      "+new",
+      'diff --git "a/docs/tab\\there\\\\x.md" "b/docs/tab\\there\\\\x.md"',
+      "@@ -0,0 +1 @@",
+      "+hello",
+      'diff --git "a/\\346\\227\\245\\346\\234\\254 notes.md" "b/\\346\\227\\245\\346\\234\\254 notes.md"',
+      "@@ -0,0 +1 @@",
+      "+hello",
+    ].join("\n")
+    expect([...filePatches(quoted).keys()]).toEqual(['src/a"b.ts', "docs/tab\there\\x.md", "日本 notes.md"])
+    expect(filePatches(quoted).get('src/a"b.ts')).toMatchObject({ added: 1, removed: 1 })
+  })
+
+  it("keeps a path with spaces that looks like the other side", () => {
+    expect([...filePatches("diff --git a/x b/y b/x b/y\n@@ -0,0 +1 @@\n+a").keys()]).toEqual(["x b/y"])
+  })
+
   it("has nothing for an empty diff", () => {
     expect(filePatches("").size).toBe(0)
   })

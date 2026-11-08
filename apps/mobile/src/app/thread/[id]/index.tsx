@@ -22,7 +22,6 @@ import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 import { relativeTime } from "@/lib/relative-time"
 import type { Thread, ThreadStatus } from "@shared/domain.ts"
-import type { ThreadActionName } from "@/lib/thread-actions"
 import { useMessages } from "@/stores/messages"
 import { useThreads } from "@/stores/threads"
 import { useUnseen } from "@/stores/unseen"
@@ -144,13 +143,9 @@ export default function ThreadScreen() {
 
 /**
  * The thread's actions in the native iOS header menu, with the same behavior as the list's long-press sheet.
- * Archiving or deleting the open thread leaves it, as Mail leaves a message it archives.
  */
 function ThreadMenu({ thread }: { thread: Thread }) {
   const state = useThreadActions(thread)
-  const run = async (name: ThreadActionName) => {
-    if ((await state.run(name)) && leavesThread(name)) leave()
-  }
   return (
     <>
       <Stack.Toolbar placement="right">
@@ -161,7 +156,7 @@ function ThreadMenu({ thread }: { thread: Thread }) {
               icon={threadActionSymbols[action.name]}
               destructive={action.destructive}
               disabled={state.running !== null}
-              onPress={() => void run(action.name)}
+              onPress={() => void state.run(action.name)}
             >
               {action.label}
             </Stack.Toolbar.MenuAction>
@@ -179,18 +174,11 @@ function ThreadMenu({ thread }: { thread: Thread }) {
 
 const leave = () => (router.canGoBack() ? router.back() : router.replace("/"))
 
-const leavesThread = (name: ThreadActionName) => name === "archive" || name === "delete"
-
 /** Android's header button for the actions iOS shows as a native menu, with the same sheet the list opens. */
 function ThreadActionsButton({ thread }: { thread: Thread }) {
   const theme = useTheme()
   const state = useThreadActions(thread)
   const [open, setOpen] = useState(false)
-  const run = async (name: ThreadActionName) => {
-    const done = await state.run(name)
-    if (done && leavesThread(name)) leave()
-    return done
-  }
   return (
     <>
       <IconButton
@@ -200,7 +188,7 @@ function ThreadActionsButton({ thread }: { thread: Thread }) {
         onPress={() => setOpen(true)}
         style={roundButton(theme)}
       />
-      <ThreadActionsSheet thread={thread} open={open} onClose={() => setOpen(false)} state={{ ...state, run }} />
+      <ThreadActionsSheet thread={thread} open={open} onClose={() => setOpen(false)} state={state} />
     </>
   )
 }

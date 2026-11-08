@@ -8,3 +8,6 @@ export const openThread = (id: string) => {
   if (isSplitLayout() && router.canDismiss()) router.dismissAll()
   router.push({ pathname: "/thread/[id]", params: { id } })
 }
+
+/** Back to the list from a thread, past its file and pull request pages. */
+export const leaveThread = () => (router.canDismiss() ? router.dismissAll() : router.replace("/"))

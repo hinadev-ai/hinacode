@@ -457,7 +457,7 @@ function MergeState({ detail }: { detail: PullRequestDetail }) {
     <StatusRow
       icon={<Icon name="RiGitMergeLine" size={18} color={theme.running} />}
       title={copy("mobile_pr_mergeable")}
-      detail={copy("mobile_pr_ready_to_merge")}
+      detail={copy("mobile_pr_no_conflicts", { base: detail.baseRef })}
     />
   )
 }

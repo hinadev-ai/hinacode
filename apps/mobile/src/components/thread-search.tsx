@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import { GroupedCard, SectionHeading } from "@/components/grouped-card"
 import { Icon } from "@/components/icon"
 import { Reveal, Spinner } from "@/components/motion"
+import { ThreadActionsTarget } from "@/components/thread-actions"
 import { EmptyState, Notice } from "@/components/ui"
 import { HIT, type Palette, radius } from "@/constants/theme"
 import { threadStatusLabel } from "@/constants/thread-status"
@@ -199,29 +200,31 @@ function ThreadHitRow({ thread, query }: { thread: Thread; query: string }) {
       ? threadStatusLabel[thread.status]
       : relativeTime(thread.updatedAt, now)
   return (
-    <Pressable
+    <ThreadActionsTarget
+      thread={thread}
       testID={`thread-hit-${thread.id}`}
-      accessibilityRole="button"
       accessibilityLabel={[title, project, status].filter(Boolean).join(", ")}
-      onPress={() => openThread(thread.id)}
-      style={({ pressed }) => [styles.row, styles.threadRow, pressed && { backgroundColor: theme.surface }]}
     >
-      <View style={[styles.dot, { backgroundColor: dotColor(theme, thread.status) }]} />
-      <View style={styles.rowBody}>
-        <Text numberOfLines={2} style={[styles.title, { color: theme.text }]}>
-          <Highlighted text={title} query={query} />
-        </Text>
-        <Text numberOfLines={1} style={[styles.meta, { color: theme.textMuted }]}>
-          {project !== undefined && project !== "" && (
-            <>
-              <Highlighted text={project} query={query} />
-              {" · "}
-            </>
-          )}
-          {status}
-        </Text>
-      </View>
-    </Pressable>
+      {(pressed) => (
+        <View style={[styles.row, styles.threadRow, pressed && { backgroundColor: theme.surface }]}>
+          <View style={[styles.dot, { backgroundColor: dotColor(theme, thread.status) }]} />
+          <View style={styles.rowBody}>
+            <Text numberOfLines={2} style={[styles.title, { color: theme.text }]}>
+              <Highlighted text={title} query={query} />
+            </Text>
+            <Text numberOfLines={1} style={[styles.meta, { color: theme.textMuted }]}>
+              {project !== undefined && project !== "" && (
+                <>
+                  <Highlighted text={project} query={query} />
+                  {" · "}
+                </>
+              )}
+              {status}
+            </Text>
+          </View>
+        </View>
+      )}
+    </ThreadActionsTarget>
   )
 }
 

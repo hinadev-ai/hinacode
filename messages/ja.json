@@ -1751,6 +1751,7 @@
   "mobile_pr_detail_failed": "プルリクエストを読み込めませんでした：{message}",
   "mobile_pr_retry": "再試行",
   "mobile_pr_conflicts": "このブランチは {base} と競合しています。",
+  "mobile_pr_no_conflicts": "{base} に競合なしでマージできます。",
   "mobile_pr_resolve": "エージェントに解消を依頼",
   "mobile_pr_failing_count": "失敗したチェック：{count}",
   "mobile_pr_fix": "エージェントに修正を依頼",

@@ -1,8 +1,9 @@
 import type { Thread } from "@shared/domain.ts"
 import { setStringAsync } from "expo-clipboard"
-import { Link } from "expo-router"
-import { useEffect, useEffectEvent, useState } from "react"
+import { Link, useGlobalSearchParams } from "expo-router"
+import { type ReactNode, useEffect, useEffectEvent, useState } from "react"
 import { AccessibilityInfo, Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
+import { isIOS } from "@/components/glass"
 import { Icon } from "@/components/icon"
 import { IconSwap, Spinner } from "@/components/motion"
 import { GroupedCard } from "@/components/grouped-card"
@@ -13,10 +14,11 @@ import { useTheme } from "@/hooks/use-theme"
 import { call } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
-import { openThread } from "@/lib/navigation"
+import { leaveThread, openThread } from "@/lib/navigation"
 import {
   actionGroups,
   isServerAction,
+  leavesThread,
   requestThreadAction,
   type ThreadActionName,
   threadActions,
@@ -58,9 +60,11 @@ const confirmDelete = (thread: Thread) =>
 /**
  * Runs a thread action and keeps its progress and error, for the row's menu or sheet, its accessibility actions and
  * the thread screen's menu. `run` resolves to whether the action finished. Renaming on Android resolves false and
- * sets `renaming`, so the sheet stays open with a title field.
+ * sets `renaming`, so the sheet stays open with a title field. Archiving or deleting the open thread leaves it.
  */
 export function useThreadActions(thread: Thread) {
+  // Thread, file and pull request routes all carry the thread's id.
+  const { id: openId } = useGlobalSearchParams<{ id?: string }>()
   const [running, setRunning] = useState<ThreadActionName | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [renaming, setRenaming] = useState(false)
@@ -88,7 +92,13 @@ export function useThreadActions(thread: Thread) {
       setRenaming(false)
     })
 
-  const run = async (name: ThreadActionName): Promise<boolean> => {
+  const run = async (name: ThreadActionName) => {
+    const done = await perform(name)
+    if (done && leavesThread(name) && openId === thread.id) leaveThread()
+    return done
+  }
+
+  const perform = async (name: ThreadActionName): Promise<boolean> => {
     if (isServerAction(name)) {
       return attempt(name, async () => useThreads.getState().upsert(await requestThreadAction(thread, name)))
     }
@@ -156,7 +166,7 @@ export const threadActionSymbols = {
  * The iOS context menu a thread row lifts into on long press: Open, then the actions in their groups. Built by a
  * call rather than as a component, because `Link` finds its menu by the element's type.
  */
-export const threadContextMenu = (thread: Thread, state: ReturnType<typeof useThreadActions>) => (
+const threadContextMenu = (thread: Thread, state: ReturnType<typeof useThreadActions>) => (
   <Link.Menu>
     <Link.MenuAction icon="arrow.up.right" onPress={() => openThread(thread.id)}>
       {copy("mobile_thread_actions_open")}
@@ -178,6 +188,69 @@ export const threadContextMenu = (thread: Thread, state: ReturnType<typeof useTh
     ))}
   </Link.Menu>
 )
+
+/**
+ * A thread's row: tap opens it, long press lifts it into the native context menu on iOS and opens the actions sheet
+ * elsewhere, and assistive technology lists the actions. `Link` merges style objects onto its trigger and would drop
+ * a style function, so `children` draws the pressed look.
+ */
+export function ThreadActionsTarget({
+  thread,
+  testID,
+  accessibilityLabel,
+  children,
+}: {
+  thread: Thread
+  testID: string
+  accessibilityLabel: string
+  children: (pressed: boolean) => ReactNode
+}) {
+  const actions = useThreadActions(thread)
+  const [open, setOpen] = useState(false)
+
+  const runFromAccessibility = async (name: string) => {
+    const action = actions.actions.find((candidate) => candidate.name === name)
+    if (action !== undefined && !(await actions.run(action.name))) setOpen(true)
+  }
+
+  const row = (
+    <Pressable
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={copy("mobile_thread_actions_hint")}
+      accessibilityActions={actions.actions.map((action) => ({ name: action.name, label: action.label }))}
+      onAccessibilityAction={(event) => void runFromAccessibility(event.nativeEvent.actionName)}
+      onPress={isIOS ? undefined : () => openThread(thread.id)}
+      onLongPress={isIOS ? undefined : () => setOpen(true)}
+    >
+      {({ pressed }) => children(pressed)}
+    </Pressable>
+  )
+
+  return (
+    <>
+      {isIOS ? (
+        // The tap still goes through `openThread`, which keeps a split layout to one thread beside the list.
+        <Link
+          href={{ pathname: "/thread/[id]", params: { id: thread.id } }}
+          asChild
+          onPress={(event) => {
+            event.preventDefault()
+            openThread(thread.id)
+          }}
+        >
+          <Link.Trigger>{row}</Link.Trigger>
+          {threadContextMenu(thread, actions)}
+        </Link>
+      ) : (
+        row
+      )}
+      {isIOS && actions.error !== null && <Notice text={actions.error} tone="danger" />}
+      <ThreadActionsSheet thread={thread} open={open} onClose={() => setOpen(false)} state={actions} />
+    </>
+  )
+}
 
 const COPIED_MS = 800
 

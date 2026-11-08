@@ -1,5 +1,6 @@
-import type { ReactNode } from "react"
+import { type ReactNode, useEffect, useState } from "react"
 import {
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -11,11 +12,11 @@ import {
   View,
   type ViewStyle,
 } from "react-native"
-import Animated from "react-native-reanimated"
+import Animated, { useReducedMotion } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon, type IconName } from "@/components/icon"
 import { IconButton } from "@/components/ui"
-import { sheetEntering } from "@/constants/motion"
+import { cssEase, duration, sheetEntering } from "@/constants/motion"
 import { HIT, mono, radius, subheading } from "@/constants/theme"
 import { GroupedCard } from "@/components/grouped-card"
 import { useTheme } from "@/hooks/use-theme"
@@ -52,7 +53,7 @@ export function Sheet({
 }) {
   const theme = useTheme()
   const insets = useSafeAreaInsets()
-  const { width, height } = useWindowDimensions()
+  const { width } = useWindowDimensions()
   const fullScreen = Platform.OS === "android" && !fit && width < SHEET_MAX_WIDTH
   return (
     <Modal
@@ -63,9 +64,7 @@ export function Sheet({
       visible={open}
       onRequestClose={onClose}
     >
-      {/* Android lays a Modal out without the system bars first, then corrects it while the entering animation owns
-          the sheet's frame, which drops the correction. The window's size holds from the first frame. */}
-      <View style={{ height, paddingLeft: insets.left, paddingRight: insets.right }}>
+      <SheetFrame>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={copy("mobile_sheet_close")}
@@ -114,8 +113,48 @@ export function Sheet({
             {children}
           </ScrollView>
         </Animated.View>
-      </View>
+      </SheetFrame>
     </Modal>
+  )
+}
+
+const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow"
+const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide"
+
+/**
+ * The window under a sheet, which rises above the keyboard. A Modal draws edge to edge on Android, so its window does
+ * not shrink for the keyboard there. Mounted only while the Modal shows, so a closed sheet keeps no listeners.
+ */
+function SheetFrame({ children }: { children: ReactNode }) {
+  const insets = useSafeAreaInsets()
+  const { height } = useWindowDimensions()
+  const reduced = useReducedMotion()
+  const [keyboard, setKeyboard] = useState(0)
+  useEffect(() => {
+    const subscriptions = [
+      Keyboard.addListener(showEvent, (event) => setKeyboard(event.endCoordinates.height)),
+      Keyboard.addListener(hideEvent, () => setKeyboard(0)),
+    ]
+    return () => subscriptions.forEach((subscription) => subscription.remove())
+  }, [])
+  // The sheet already pads for the bottom inset, which iOS counts in the keyboard's height and Android does not.
+  const lift = Platform.OS === "ios" ? Math.max(0, keyboard - insets.bottom) : keyboard
+  return (
+    // Android lays a Modal out without the system bars first, then corrects it while the entering animation owns
+    // the sheet's frame, which drops the correction. The window's size holds from the first frame.
+    <Animated.View
+      style={{
+        height,
+        paddingLeft: insets.left,
+        paddingRight: insets.right,
+        paddingBottom: lift,
+        transitionProperty: "paddingBottom",
+        transitionDuration: reduced ? 0 : duration.base,
+        transitionTimingFunction: cssEase.out,
+      }}
+    >
+      {children}
+    </Animated.View>
   )
 }
 
