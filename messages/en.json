@@ -2112,6 +2112,62 @@
   "artifact_card_page": "Page",
   "artifact_card_publishing": "Publishing…",
   "artifact_card_more_sections": "{sections} +{count}",
+  "comments_title": "Comments",
+  "comments_add": "Comment",
+  "comments_new": "New comment",
+  "comments_new_placeholder": "Add a comment",
+  "comments_back": "Back to document",
+  "comments_close": "Close comments",
+  "comments_you": "You",
+  "comments_agent": "Agent",
+  "comments_waiting_on_you": "Waiting on you",
+  "comments_resolve": "Resolve",
+  "comments_reopen": "Reopen",
+  "comments_reply": "Reply",
+  "comments_send": "Send",
+  "comments_send_failed": "Could not send the comment: {message}",
+  "comments_resolve_failed": "Could not update the comment: {message}",
+  "comments_load_failed": "Could not load comments: {message}",
+  "comments_elements": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} element",
+        "countPlural=other": "{count} elements"
+      }
+    }
+  ],
+  "comments_detached": "The quoted text is gone",
+  "comments_show_quote": "Show in document",
+  "comments_thread": "Comment: {excerpt}",
+  "comments_empty": "No comments yet",
+  "comments_resolved": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} resolved",
+        "countPlural=other": "{count} resolved"
+      }
+    }
+  ],
+  "verify_expected": "Expected",
+  "verify_actual": "Actual",
+  "verify_pending": "Pending",
+  "verify_passed": "Passed",
+  "verify_rejected": "Rejected: {reason}",
+  "verify_pass": "Pass",
+  "verify_reject": "Reject",
+  "verify_reason": "Reason",
+  "verify_reason_placeholder": "What needs to change?",
+  "verify_loading": "Loading verification…",
+  "verify_load_failed": "Could not open the verification: {message}",
+  "verify_decide_failed": "Could not save the decision: {message}",
+  "verify_missing_artifact": "Artifact {id} is gone",
+  "verify_empty": "Nothing attached",
+  "artifact_card_whiteboard": "Whiteboard",
+  "artifact_card_verification": "Verification",
   "thread_card_open": "Open thread {title}",
   "settings_devices": "Devices",
   "settings_devices_hint": "Streams the thread machine's iOS simulators and Android emulators into the side panel. Agents drive them with the device tools, and you take over by using the screen.",

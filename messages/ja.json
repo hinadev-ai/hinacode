@@ -2058,6 +2058,62 @@
   "artifact_card_page": "ページ",
   "artifact_card_publishing": "公開中…",
   "artifact_card_more_sections": "{sections} +{count}",
+  "comments_title": "コメント",
+  "comments_add": "コメント",
+  "comments_new": "新しいコメント",
+  "comments_new_placeholder": "コメントを追加",
+  "comments_back": "ドキュメントに戻る",
+  "comments_close": "コメントを閉じる",
+  "comments_you": "あなた",
+  "comments_agent": "エージェント",
+  "comments_waiting_on_you": "あなたの返信待ち",
+  "comments_resolve": "解決",
+  "comments_reopen": "再開",
+  "comments_reply": "返信",
+  "comments_send": "送信",
+  "comments_send_failed": "コメントを送信できませんでした: {message}",
+  "comments_resolve_failed": "コメントを更新できませんでした: {message}",
+  "comments_load_failed": "コメントを読み込めませんでした: {message}",
+  "comments_elements": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 個の要素",
+        "countPlural=other": "{count} 個の要素"
+      }
+    }
+  ],
+  "comments_detached": "引用したテキストはもうありません",
+  "comments_show_quote": "ドキュメントで表示",
+  "comments_thread": "コメント: {excerpt}",
+  "comments_empty": "コメントはまだありません",
+  "comments_resolved": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "解決済み {count} 件",
+        "countPlural=other": "解決済み {count} 件"
+      }
+    }
+  ],
+  "verify_expected": "期待",
+  "verify_actual": "実際",
+  "verify_pending": "未判定",
+  "verify_passed": "合格",
+  "verify_rejected": "却下: {reason}",
+  "verify_pass": "合格にする",
+  "verify_reject": "却下",
+  "verify_reason": "理由",
+  "verify_reason_placeholder": "何を直す必要がありますか?",
+  "verify_loading": "検証を読み込み中…",
+  "verify_load_failed": "検証を開けませんでした: {message}",
+  "verify_decide_failed": "判定を保存できませんでした: {message}",
+  "verify_missing_artifact": "アーティファクト {id} はもうありません",
+  "verify_empty": "添付はありません",
+  "artifact_card_whiteboard": "ホワイトボード",
+  "artifact_card_verification": "検証",
   "thread_card_open": "スレッド「{title}」を開く",
   "settings_devices": "デバイス",
   "settings_devices_hint": "スレッドのマシン上にある iOS シミュレータと Android エミュレータをサイドパネルにストリーミングします。エージェントは device ツールで操作し、画面に触れるとユーザーが操作を引き継ぎます。",

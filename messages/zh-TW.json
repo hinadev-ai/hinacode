@@ -2076,6 +2076,62 @@
   "artifact_card_page": "頁面",
   "artifact_card_publishing": "發布中…",
   "artifact_card_more_sections": "{sections} +{count}",
+  "comments_title": "留言",
+  "comments_add": "留言",
+  "comments_new": "新增留言",
+  "comments_new_placeholder": "新增留言",
+  "comments_back": "返回文件",
+  "comments_close": "關閉留言",
+  "comments_you": "你",
+  "comments_agent": "代理",
+  "comments_waiting_on_you": "等你回覆",
+  "comments_resolve": "標為已解決",
+  "comments_reopen": "重新開啟",
+  "comments_reply": "回覆",
+  "comments_send": "送出",
+  "comments_send_failed": "無法送出留言：{message}",
+  "comments_resolve_failed": "無法更新留言：{message}",
+  "comments_load_failed": "無法載入留言：{message}",
+  "comments_elements": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} 個元素",
+        "countPlural=other": "{count} 個元素"
+      }
+    }
+  ],
+  "comments_detached": "引用的文字已不存在",
+  "comments_show_quote": "在文件中顯示",
+  "comments_thread": "留言：{excerpt}",
+  "comments_empty": "還沒有留言",
+  "comments_resolved": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "已解決 {count} 則",
+        "countPlural=other": "已解決 {count} 則"
+      }
+    }
+  ],
+  "verify_expected": "預期",
+  "verify_actual": "實際",
+  "verify_pending": "待確認",
+  "verify_passed": "已通過",
+  "verify_rejected": "已退回：{reason}",
+  "verify_pass": "通過",
+  "verify_reject": "退回",
+  "verify_reason": "原因",
+  "verify_reason_placeholder": "需要改什麼？",
+  "verify_loading": "正在載入驗收…",
+  "verify_load_failed": "無法開啟驗收：{message}",
+  "verify_decide_failed": "無法儲存判定：{message}",
+  "verify_missing_artifact": "成品 {id} 已不存在",
+  "verify_empty": "沒有附件",
+  "artifact_card_whiteboard": "白板",
+  "artifact_card_verification": "驗收",
   "thread_card_open": "開啟對話串「{title}」",
   "settings_devices": "裝置",
   "settings_devices_hint": "把執行緒所在機器上的 iOS 模擬器和 Android 模擬器串流到側邊面板。代理用 device 工具操作它們，你直接操作畫面就能接手。",
