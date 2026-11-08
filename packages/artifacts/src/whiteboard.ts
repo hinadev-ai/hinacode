@@ -48,8 +48,18 @@ export const mergeScene = (scene: WhiteboardScene, patch: WhiteboardPatch): Whit
   const present = new Set(kept.map((element) => element.id))
   return {
     ...scene,
-    elements: [...kept, ...patch.upsert.filter((element) => !present.has(element.id))],
+    elements: withoutMissingChildren([...kept, ...patch.upsert.filter((element) => !present.has(element.id))]),
   }
+}
+
+const withoutMissingChildren = <E extends WhiteboardElement>(elements: ReadonlyArray<E>): E[] => {
+  const ids = new Set(elements.map((element) => element.id))
+  return elements.map((element) => {
+    const children = element["children"]
+    if (!Array.isArray(children)) return element
+    const present = children.filter((child) => typeof child === "string" && ids.has(child))
+    return present.length === children.length ? element : { ...element, children: present }
+  })
 }
 
 const field = (value: unknown, key: string): unknown =>
