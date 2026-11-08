@@ -200,6 +200,7 @@ function DocumentEditor({
   const sendComment = async (sent: CommentDraft, body: string) => {
     await actions.comment({ body, anchor: sent.anchor })
     closeDraft()
+    editor.commands.setTextSelection(sent.range.to)
   }
   const showQuote = (comment: ArtifactComment) => {
     if (editorColumn.current?.checkVisibility() !== true)
@@ -212,7 +213,7 @@ function DocumentEditor({
       <div className="flex min-h-0 flex-1">
         <div ref={editorColumn} className={cn("flex min-w-0 flex-1 flex-col", comments.open && "@max-2xl:hidden")}>
           <DocumentToolbar editor={editor} />
-          <SelectionMenu editor={editor} onComment={startComment} />
+          {draft === null && <SelectionMenu editor={editor} onComment={startComment} />}
           <CommentComposer
             editor={editor}
             threadId={threadId}
