@@ -2,7 +2,6 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react"
 import { cn } from "cn"
 import {
-  createElement,
   type DragEvent,
   type FocusEvent,
   type KeyboardEvent,
@@ -18,7 +17,6 @@ import {
 } from "react"
 import { toast } from "sonner"
 import { type FsEntry, isThreadBusy, type Thread } from "../../shared/domain.ts"
-import { extensionOf, type FilePreview, previewOf } from "../lib/filePreview.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
 import { toastError } from "../lib/errorMessage.ts"
 import { FILE_TREE_HEIGHT_BOUNDS } from "../lib/panelSize.ts"
@@ -40,6 +38,7 @@ import {
 } from "../stores/explorer.ts"
 import { useUi } from "../stores/ui.ts"
 import { fileStatusMark } from "./FilePatch.tsx"
+import { FileTypeIcon } from "./FileTypeIcon.tsx"
 import { FileViewer } from "./FileViewer.tsx"
 import { HighlightWorkerPool } from "./HighlightWorkerPool.tsx"
 import { Button } from "./ui/button.tsx"
@@ -54,19 +53,12 @@ import {
   CollapseIcon,
   CopyIcon,
   FileAddIcon,
-  FileCodeIcon,
   FileDiffIcon,
   FileIcon,
-  FileMusicIcon,
-  FileTextIcon,
-  FileVideoIcon,
   FolderAddIcon,
   FolderIcon,
   FolderOpenIcon,
   type IconComponent,
-  ImageIcon,
-  LinkIcon,
-  MarkdownIcon,
   PencilIcon,
   RefreshIcon,
   TrashIcon,
@@ -79,34 +71,6 @@ const MIN_PANE_HEIGHT = FILE_TREE_HEIGHT_BOUNDS.min
 const SPRING_OPEN_MS = 600
 const ENTRY_DRAG_TYPE = "application/x-hinacode-entry"
 const ROOT_FOLDER = ""
-
-const iconsByPreview: Readonly<Record<FilePreview, IconComponent>> = {
-  image: ImageIcon,
-  svg: ImageIcon,
-  video: FileVideoIcon,
-  audio: FileMusicIcon,
-  html: FileCodeIcon,
-  markdown: MarkdownIcon,
-}
-
-const iconsByExtension: Readonly<Record<string, IconComponent>> = {
-  mdx: MarkdownIcon,
-  txt: FileTextIcon,
-  json: FileTextIcon,
-  yaml: FileTextIcon,
-  yml: FileTextIcon,
-  toml: FileTextIcon,
-}
-const CODE = /^(ts|tsx|js|jsx|mjs|cjs|css|html|py|rs|go|rb|java|kt|swift|c|h|cpp|sh|sql)$/
-
-const fileIcon = (entry: FsEntry, expanded: boolean): IconComponent => {
-  if (entry.kind === "dir") return expanded ? FolderOpenIcon : FolderIcon
-  if (entry.kind === "symlink") return LinkIcon
-  const preview = previewOf(entry.name)
-  if (preview !== null) return iconsByPreview[preview]
-  const extension = extensionOf(entry.name)
-  return iconsByExtension[extension] ?? (CODE.test(extension) ? FileCodeIcon : FileIcon)
-}
 
 const foldersDownTo = (path: string) =>
   path === "" ? [""] : ["", ...path.split("/").map((_, index, parts) => parts.slice(0, index + 1).join("/"))]
@@ -690,7 +654,7 @@ function TreeItem({
       onDrop={onDrop}
       style={{ height: ROW_HEIGHT, paddingLeft: 8 + depth * INDENT }}
       className={cn(
-        "relative mx-1 flex cursor-default items-center gap-1 rounded-md pr-2 text-[0.8125rem] select-none hover:bg-muted/60 aria-selected:bg-muted group-focus/tree:aria-selected:ring-1 group-focus/tree:aria-selected:ring-ring group-focus/tree:aria-selected:ring-inset",
+        "relative mx-1 flex cursor-default items-center gap-1.5 rounded-md pr-2 text-[0.8125rem] select-none hover:bg-muted/60 aria-selected:bg-muted group-focus/tree:aria-selected:ring-1 group-focus/tree:aria-selected:ring-ring group-focus/tree:aria-selected:ring-inset",
         dragged && "opacity-50",
         dropEdges && "rounded-none bg-primary/10 hover:bg-primary/10 aria-selected:bg-primary/10",
         dropEdges?.top && "rounded-t-md",
@@ -706,10 +670,7 @@ function TreeItem({
           expanded && "rotate-90",
         )}
       />
-      {createElement(fileIcon(entry, expanded), {
-        "aria-hidden": true,
-        className: "size-3.5 shrink-0 text-muted-foreground",
-      })}
+      <FileTypeIcon entry={entry} expanded={expanded} />
       {children ?? (
         <span
           className={cn(
@@ -756,11 +717,13 @@ function DraftItem({ depth, entryKind, children }: { depth: number; entryKind: N
       aria-level={depth + 1}
       aria-selected={false}
       style={{ height: ROW_HEIGHT, paddingLeft: 8 + depth * INDENT }}
-      className="relative mx-1 flex items-center gap-1 pr-2 text-[0.8125rem]"
+      className="relative mx-1 flex items-center gap-1.5 pr-2 text-[0.8125rem]"
     >
       <IndentGuides depth={depth} />
       <ChevronRightIcon aria-hidden className="invisible size-3.5 shrink-0" />
-      <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+      <span aria-hidden className="flex size-4 shrink-0 items-center justify-center">
+        <Icon className="size-3.5 text-muted-foreground" />
+      </span>
       {children}
     </div>
   )

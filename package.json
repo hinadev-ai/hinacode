@@ -57,6 +57,7 @@
     "@modelcontextprotocol/sdk": "1.32.1",
     "@muse-code/sdk": "1.4.13",
     "@noble/hashes": "2.4.0",
+    "catppuccin-vsc-icons": "github:catppuccin/vscode-icons#b6915da9f6889b683a110aa747de96c2820a537d",
     "effect": "4.0.3",
     "electron-updater": "6.8.9",
     "node-pty": "1.2.0-beta.15",

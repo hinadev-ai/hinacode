@@ -240,6 +240,9 @@ importers:
       '@noble/hashes':
         specifier: 2.4.0
         version: 2.4.0
+      catppuccin-vsc-icons:
+        specifier: github:catppuccin/vscode-icons#b6915da9f6889b683a110aa747de96c2820a537d
+        version: https://codeload.github.com/catppuccin/vscode-icons/tar.gz/b6915da9f6889b683a110aa747de96c2820a537d
       effect:
         specifier: 4.0.3
         version: 4.0.3
@@ -4046,6 +4049,11 @@ packages:
 
   caniuse-lite@1.0.30001815:
     resolution: {integrity: sha512-uDybUEyfgbyJJ93J1vikTylBX31AkdVYeVPeffMQpf8XN7hSfr0oZOn4VFOIMNvtU5+rHvC5Udg2TgtJKHm23Q==}
+
+  catppuccin-vsc-icons@https://codeload.github.com/catppuccin/vscode-icons/tar.gz/b6915da9f6889b683a110aa747de96c2820a537d:
+    resolution: {gitHosted: true, integrity: sha512-muvNp5UW/RPfd0Yory1A7LDUC2aWQL/igHOj1m85Q5FEM3NKfdytPc9NsE1gCOsmP0QRBT1kOEtQgO4MjwrQZg==, tarball: https://codeload.github.com/catppuccin/vscode-icons/tar.gz/b6915da9f6889b683a110aa747de96c2820a537d}
+    version: 1.26.0
+    engines: {node: '>=20.0.0', vscode: ^1.83.0}
 
   ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
@@ -11141,6 +11149,8 @@ snapshots:
   camelcase@5.3.1: {}
 
   caniuse-lite@1.0.30001815: {}
+
+  catppuccin-vsc-icons@https://codeload.github.com/catppuccin/vscode-icons/tar.gz/b6915da9f6889b683a110aa747de96c2820a537d: {}
 
   ccount@2.0.1: {}
 
