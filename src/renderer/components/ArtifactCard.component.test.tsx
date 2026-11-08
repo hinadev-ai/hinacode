@@ -99,6 +99,27 @@ test("falls back to an untitled page with a wireframe preview", async () => {
     .toHaveTextContent("Page·v5Untitled artifact")
 })
 
+test("titles an update that leaves out its title with the name it was published under", async () => {
+  const call: ToolCall = {
+    type: "tool_call",
+    callId: "call-3",
+    name: "mcp__hinacode__publish_whiteboard",
+    input: { id: "board-1", elements: [{ id: "note", type: "rectangle", x: 0, y: 0 }] },
+    status: "done",
+  }
+  await render(
+    <ArtifactCard
+      call={call}
+      result='Published whiteboard board-1 version 3: "Feedback Loop". Pass id "board-1" to publish_whiteboard to add, change or remove elements.'
+      onOpen={() => {}}
+    />,
+  )
+
+  await expect
+    .element(page.getByRole("button", { name: "Open Feedback Loop" }))
+    .toHaveTextContent("Whiteboard·v3Feedback Loop")
+})
+
 test("highlights a search match in the title", async () => {
   await render(
     <FindPatternContext value={/plan/giu}>
