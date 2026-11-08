@@ -41,8 +41,7 @@
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:e2e": "bddgen -c e2e/playwright.config.ts && playwright test -c e2e/playwright.config.ts",
-    "test:e2e:web": "playwright test -c apps/web/e2e/playwright.config.ts",
-    "build:site-app": "vite build --config vite.site-app.config.ts"
+    "test:e2e:web": "playwright test -c apps/web/e2e/playwright.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.296",

@@ -11,7 +11,6 @@
     "src/renderer/**/*",
     "src/shared/**/*",
     "src/preload/*.d.ts",
-    "site/app/**/*",
     "apps/web/src/**/*",
     "scripts/ui-states/main.ts",
     "scripts/ui-states/webview.ts",
