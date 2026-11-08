@@ -106,12 +106,13 @@ beforeEach(({ task }) => {
 })
 
 const openBoard = async () => {
-  await render(
+  const view = await render(
     <div style={{ width: 800, height: 600, display: "flex", flexDirection: "column" }}>
       <ArtifactsView thread={thread} />
     </div>,
   )
   await expect.poll(() => sceneOnCanvas().map((element) => element.id)).toEqual(expect.arrayContaining(["api", "db"]))
+  return view
 }
 
 const selectAll = async () => {
@@ -147,6 +148,19 @@ test("saves full elements with the revision it loaded after the developer moves 
   expect(api).toMatchObject({ x: 1, version: expect.any(Number), seed: expect.any(Number) })
   expect(save?.scene.elements.find((element) => element["containerId"] === "api")).toMatchObject({ text: "API" })
   await expect.element(page.getByText("Saved")).toBeInTheDocument()
+})
+
+test("closing the board saves the edit it was still waiting to save", async () => {
+  const view = await openBoard()
+  await selectAll()
+  await userEvent.keyboard("{ArrowRight}")
+
+  view.unmount()
+
+  await expect.poll(() => saves.length, { timeout: 3000 }).toBe(1)
+  const elements = saves[0]?.scene.elements ?? []
+  expect(elements.map((element) => element.id)).toEqual(expect.arrayContaining(["api", "db", "api-db"]))
+  expect(elements.find((element) => element.id === "api")).toMatchObject({ x: 1 })
 })
 
 test("adds an agent's patch next to the developer's unsaved edit", async () => {
