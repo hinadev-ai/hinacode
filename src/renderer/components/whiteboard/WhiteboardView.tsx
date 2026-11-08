@@ -1,4 +1,4 @@
-import { WHITEBOARD_FONT } from "./systemFonts.ts"
+import { WHITEBOARD_FONT } from "./whiteboardFonts.ts"
 import { CaptureUpdateAction, Excalidraw, exportToBlob } from "@excalidraw/excalidraw"
 import type { ExcalidrawImperativeAPI, UIOptions } from "@excalidraw/excalidraw/types"
 import "@excalidraw/excalidraw/index.css"

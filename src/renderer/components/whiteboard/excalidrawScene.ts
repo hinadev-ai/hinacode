@@ -4,7 +4,7 @@ import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/tran
 import type { ExcalidrawElement, OrderedExcalidrawElement } from "@excalidraw/excalidraw/element/types"
 import type { AppState } from "@excalidraw/excalidraw/types"
 import type { WhiteboardElement } from "../../../shared/artifact.ts"
-import { WHITEBOARD_FONT } from "./systemFonts.ts"
+import { WHITEBOARD_FONT } from "./whiteboardFonts.ts"
 import { isSkeleton, mergeRemote, planRemote, type Snapshot, stableLabelIds } from "./whiteboardScene.ts"
 
 const asBindingTarget = (element: WhiteboardElement, present: ReadonlySet<string>) => {
@@ -14,7 +14,7 @@ const asBindingTarget = (element: WhiteboardElement, present: ReadonlySet<string
   return Array.isArray(children) ? { ...element, children: children.filter((child) => present.has(child)) } : element
 }
 
-const withSystemFont = (element: WhiteboardElement) => {
+const withWhiteboardFont = (element: WhiteboardElement) => {
   if (element["type"] === "text") return { ...element, fontFamily: WHITEBOARD_FONT }
   const label = element["label"]
   return typeof label === "object" && label !== null
@@ -30,7 +30,7 @@ const completeSkeletons = (remote: ReadonlyArray<WhiteboardElement>, replaced: R
       : stableLabelIds(
           convertToExcalidrawElements(
             remote.map((element) =>
-              withSystemFont(asBindingTarget(element, present)),
+              withWhiteboardFont(asBindingTarget(element, present)),
             ) as unknown as ExcalidrawElementSkeleton[],
             { regenerateIds: false },
           ),

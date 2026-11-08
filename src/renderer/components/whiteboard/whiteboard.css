@@ -49,3 +49,7 @@
 [data-whiteboard] .excalidraw .default-sidebar {
   display: none;
 }
+
+[data-whiteboard] .excalidraw .excalidraw-wysiwyg {
+  font-family: var(--app-font-sans) !important;
+}

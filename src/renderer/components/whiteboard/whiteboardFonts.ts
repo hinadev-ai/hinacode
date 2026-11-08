@@ -16,3 +16,16 @@ window.FontFace = class extends FontFace {
 const addFontFace = document.fonts.add.bind(document.fonts)
 
 document.fonts.add = (face) => (isBundled(face.family) ? document.fonts : addFontFace(face))
+
+const appFont = () => getComputedStyle(document.documentElement).getPropertyValue("--app-font-sans").trim()
+
+const canvasFont = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, "font")!
+
+// FIXME: Excalidraw draws text with a fixed family list, so its canvas cannot follow the app font setting. Its whiteboard text is the only canvas text that names Helvetica.
+Object.defineProperty(CanvasRenderingContext2D.prototype, "font", {
+  ...canvasFont,
+  set(this: CanvasRenderingContext2D, font: string) {
+    const family = font.indexOf("Helvetica")
+    canvasFont.set!.call(this, family === -1 ? font : `${font.slice(0, family)}${appFont()}`)
+  },
+})

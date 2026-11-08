@@ -168,11 +168,14 @@ test("completes an agent's skeleton scene on the canvas without saving it", asyn
   expect(page.getByText("Saved")).toBeInTheDocument()
 })
 
-test("draws text in a system font and keeps Excalidraw's fonts off the page", async () => {
+test("draws text in the app font and keeps Excalidraw's fonts off the page", async () => {
   await openBoard()
 
   const labels = sceneOnCanvas().filter((element) => element.type === "text")
   expect(labels.map((label) => label.fontFamily)).toEqual([FONT_FAMILY.Helvetica, FONT_FAMILY.Helvetica])
+  const context = document.createElement("canvas").getContext("2d")!
+  context.font = "20px Helvetica, Xiaolai, Segoe UI Emoji"
+  expect(context.font).toContain("DM Sans Variable")
   const families = [...document.fonts].map((face) => face.family.replaceAll('"', ""))
   expect(families).not.toContain("Excalifont")
   expect(families).not.toContain("Xiaolai")
