@@ -63,9 +63,24 @@ export function createWhiteboardSync(options: {
     return next
   }
 
+  let handedOff: Draft | undefined
+
+  const settle = () => {
+    savedEdits = edits
+    const pending = unsavedWhiteboards.get(key)
+    if (pending === restored || pending === handedOff) unsavedWhiteboards.delete(key)
+  }
+
   if (restored !== undefined) {
+    const coveredEdits = edits
     void enqueue(async () => {
-      if ((await restored.saved) !== null) savedEdits = edits
+      const revision = await restored.saved
+      if (revision === null) return
+      savedEdits = Math.max(savedEdits, coveredEdits)
+      base = Math.max(base, revision)
+      latest = Math.max(latest, base)
+      snapshot = savedSnapshot(restored.elements.filter((element) => !element.isDeleted))
+      if (edits === savedEdits) settle()
     })
   }
 
@@ -94,11 +109,6 @@ export function createWhiteboardSync(options: {
     base = content.revision
     latest = Math.max(latest, content.revision)
     show(merged.elements, filesOf(content.scene))
-  }
-
-  const settle = () => {
-    savedEdits = edits
-    unsavedWhiteboards.delete(key)
   }
 
   const save = () =>
@@ -175,7 +185,8 @@ export function createWhiteboardSync(options: {
       api = null
       const current = shown
       if (current === null || edits === savedEdits) return
-      unsavedWhiteboards.set(key, { ...current, revision: base, snapshot, saved: save() })
+      handedOff = { ...current, revision: base, snapshot, saved: save() }
+      unsavedWhiteboards.set(key, handedOff)
     },
   }
 }
