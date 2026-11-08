@@ -46,7 +46,7 @@ import type {
   ThreadStatus,
   WorkspaceChoice,
 } from "../../shared/domain.ts"
-import { isThreadBusy, spawnsSubagent } from "../../shared/domain.ts"
+import { enabledProviders, isThreadBusy, spawnsSubagent } from "../../shared/domain.ts"
 import { previewPush } from "../../shared/compactTranscript.ts"
 import { foldTranscript } from "../../shared/foldEvent.ts"
 import { resumeGraceMs } from "../../shared/limits.ts"
@@ -61,6 +61,7 @@ import { pickedSubagentModel, spawningCallId, subagentChoices } from "../agents/
 import { subagentReport } from "../agents/subagentReport.ts"
 import { providerInfo } from "../../shared/providers.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
+import { MagpieProvider } from "../agents/magpie/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
 import { McpCredentials } from "../mcp/credentials.ts"
 import {
@@ -366,6 +367,7 @@ const make = Effect.gen(function* () {
     codex: yield* CodexProvider,
     muse: yield* MuseProvider,
     opencode: yield* OpencodeProvider,
+    magpie: yield* MagpieProvider,
   }
 
   const listedModels = (provider: AgentProvider) =>
@@ -376,11 +378,15 @@ const make = Effect.gen(function* () {
 
   const subagentInstructions = (experimental: ExperimentalSettings, environment: AgentEnvironment) =>
     Effect.gen(function* () {
-      const [listed, { modelPresets }] = yield* Effect.all(
+      const [listed, settingsValue] = yield* Effect.all(
         [Effect.all(Record.map(providers, listedModels), { concurrency: "unbounded" }), settings.get],
         { concurrency: "unbounded" },
       )
-      return agentInstructions(experimental, environment, subagentChoices(listed, modelPresets))
+      return agentInstructions(
+        experimental,
+        environment,
+        subagentChoices(listed, settingsValue.modelPresets, enabledProviders(settingsValue)),
+      )
     })
 
   type LimitsKey = Pick<AccountLimits, "provider" | "accountId">
@@ -833,13 +839,21 @@ const make = Effect.gen(function* () {
 
   const subagentModel = (request: AgentRequest, threadModel: string | null) =>
     Effect.gen(function* () {
+      const { modelPresets, providerEnabled } = yield* settings.get
+      if (!providerEnabled[request.provider]) {
+        return yield* new AgentError({
+          provider: request.provider,
+          message: `${providerInfo[request.provider].name} is disabled in Settings.`,
+        })
+      }
       if (providerInfo[request.provider].subagentModels === "picked") {
-        const { modelPresets } = yield* settings.get
+        const listed = yield* providers[request.provider].listModels.pipe(Effect.orElseSucceed(() => null))
         const resolved = pickedSubagentModel({
           agent: providerInfo[request.provider].name,
           requested: request.model,
           threadModel,
           picked: modelPresets[request.provider],
+          listed: (listed ?? []).map(({ id }) => id),
         })
         if (resolved.kind === "refused") {
           return yield* new AgentError({ provider: request.provider, message: resolved.message })

@@ -1,10 +1,13 @@
 import type { ModelInfo, Options, PermissionResult, SDKUserMessage, SlashCommand } from "@anthropic-ai/claude-agent-sdk"
 import { describe, expect, it } from "@effect/vitest"
 import { vi } from "vitest"
-import { Effect, Fiber, Option, Stream } from "effect"
+import { Effect, Fiber, Layer, Option, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import type { AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
 import { usageLimitResult } from "./fixtures/usageLimit.ts"
+import type { GatewayModel, GatewayTarget } from "../magpie/gateway.ts"
+import { MagpieProvider } from "../magpie/index.ts"
+import { magpieDependencies } from "../magpie/testing.ts"
 import { ClaudeProvider, layer } from "./index.ts"
 
 const sdk = vi.hoisted(() => {
@@ -102,6 +105,24 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 vi.mock("../binary.ts", async () => {
   const { succeed } = await import("effect/Effect")
   return { installedBinary: (_provider: string, name: string) => succeed(name) }
+})
+
+const gateway = vi.hoisted(() => ({
+  origin: null as string | null,
+  models: new Array<GatewayModel>(),
+}))
+
+vi.mock("../magpie/gateway.ts", async (importOriginal) => {
+  const { fail, succeed, sync } = await import("effect/Effect")
+  const original = await importOriginal<typeof import("../magpie/gateway.ts")>()
+  return {
+    ...original,
+    connect: (target: GatewayTarget) =>
+      gateway.origin === null
+        ? fail(new original.GatewayError({ message: "magpie is not running" }))
+        : succeed({ origin: gateway.origin, key: target.key ?? original.MAGPIE_KEY, version: null }),
+    modelsOf: () => sync(() => gateway.models),
+  }
 })
 
 const TTL = "60 seconds"
@@ -1200,6 +1221,113 @@ describe("Claude models", () => {
         sdk.supportedModels = () =>
           Promise.resolve([{ value: "claude-next", displayName: "Claude Next", description: "" }])
         expect((yield* provider.listModels).map((model) => model.id)).toEqual(["claude-next"])
+      }),
+    ),
+  )
+})
+
+const onMagpie = <A, E>(effect: Effect.Effect<A, E, MagpieProvider>) =>
+  Effect.suspend(() => {
+    sdk.clis.length = 0
+    sdk.respond = completeWith(succeeded)
+    sdk.setModel = () => Promise.resolve()
+    gateway.origin = "http://127.0.0.1:3425"
+    gateway.models = [
+      {
+        id: "openrouter/deepseek-v4",
+        display_name: "DeepSeek V4",
+        reasoning_levels: ["low", "high", "max"],
+        service_tiers: [{ id: "priority" }],
+      },
+      { id: "moonshot/kimi-k3" },
+    ]
+    return effect
+  }).pipe(Effect.provide(MagpieProvider.layer.pipe(Layer.provide(magpieDependencies()))))
+
+const flagEnv = (cli: InstanceType<typeof sdk.FakeQuery>) =>
+  typeof cli.options.settings === "object" ? cli.options.settings.env : undefined
+
+const magpieTurn = (model: string, fastMode = false) =>
+  Effect.gen(function* () {
+    const provider = yield* MagpieProvider
+    yield* provider.runTurn(turnInput({ model, fastMode })).pipe(Stream.runCollect)
+    yield* settle
+  })
+
+describe("magpie", () => {
+  it.effect("lists the gateway's models and reports the gateway as its account", () =>
+    onMagpie(
+      Effect.gen(function* () {
+        const provider = yield* MagpieProvider
+        expect((yield* provider.listModels).map((model) => [model.id, model.label, model.efforts])).toStrictEqual([
+          ["openrouter/deepseek-v4", "DeepSeek V4", ["low", "high", "max"]],
+          ["moonshot/kimi-k3", "moonshot/kimi-k3", []],
+        ])
+        expect(yield* provider.account(null)).toStrictEqual({ type: "external", service: "magpie" })
+        gateway.origin = null
+        expect(yield* provider.account(null)).toStrictEqual({ type: "signedOut" })
+      }),
+    ),
+  )
+
+  it.effect("starts Claude Code with the gateway in its flag settings, over the user's settings.json", () =>
+    onMagpie(
+      Effect.gen(function* () {
+        yield* magpieTurn("openrouter/deepseek-v4")
+        const { options } = latestCli()
+        expect(options.model).toBe("openrouter/deepseek-v4")
+        expect(flagEnv(latestCli())).toMatchObject({
+          ANTHROPIC_BASE_URL: "http://127.0.0.1:3425",
+          ANTHROPIC_API_KEY: "",
+          ANTHROPIC_SMALL_FAST_MODEL: "openrouter/deepseek-v4",
+          CLAUDE_CODE_SUBAGENT_MODEL: "openrouter/deepseek-v4",
+          CLAUDE_CODE_MODEL_CAPABILITIES: "openrouter/deepseek-v4=effort,max_effort",
+        })
+      }),
+    ),
+  )
+
+  it.effect("resumes in a new CLI pinned to the next model when the thread changes model", () =>
+    onMagpie(
+      Effect.gen(function* () {
+        yield* magpieTurn("openrouter/deepseek-v4")
+        const first = latestCli()
+        yield* magpieTurn("moonshot/kimi-k3")
+        expect(first.close).toHaveBeenCalled()
+        expect(first.setModel).not.toHaveBeenCalled()
+        expect(latestCli().options.resume).toBe("session-1")
+        expect(flagEnv(latestCli())).toMatchObject({
+          CLAUDE_CODE_SUBAGENT_MODEL: "moonshot/kimi-k3",
+        })
+      }),
+    ),
+  )
+
+  it.effect("resumes in a new CLI that asks for the fast speed when the thread turns fast mode on", () =>
+    onMagpie(
+      Effect.gen(function* () {
+        yield* magpieTurn("openrouter/deepseek-v4")
+        const first = latestCli()
+        expect(flagEnv(first)).not.toHaveProperty("CLAUDE_CODE_EXTRA_BODY")
+
+        yield* magpieTurn("openrouter/deepseek-v4", true)
+        expect(first.close).toHaveBeenCalled()
+        expect(latestCli().options.resume).toBe("session-1")
+        expect(flagEnv(latestCli())).toMatchObject({ CLAUDE_CODE_EXTRA_BODY: '{"speed":"fast"}' })
+      }),
+    ),
+  )
+
+  it.effect("fails the turn before starting Claude Code when magpie is not running", () =>
+    onMagpie(
+      Effect.gen(function* () {
+        gateway.origin = null
+        const provider = yield* MagpieProvider
+        const error = yield* provider
+          .runTurn(turnInput({ model: "moonshot/kimi-k3" }))
+          .pipe(Stream.runCollect, Effect.flip)
+        expect(error).toMatchObject({ provider: "magpie", message: expect.stringMatching(/magpie is not running/) })
+        expect(sdk.clis).toHaveLength(0)
       }),
     ),
   )

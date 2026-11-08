@@ -16,6 +16,7 @@ import { Switch } from "../ui/switch.tsx"
 import { Input } from "../ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { AccountList, DefaultAccountField } from "./AccountSettings.tsx"
+import { MagpieConnectionField } from "./MagpieConnectionField.tsx"
 import { SettingsGroup, SettingsGroupTitle, SettingsSection } from "./SettingsSection.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { SkeletonList } from "../ui/skeleton.tsx"
@@ -37,8 +38,10 @@ export function ModelSettings() {
 
 function ProviderModels({ provider }: { provider: ProviderId }) {
   const environment = useSettingsEnvironment()
-  const models = useAtomValue(modelsAtom(environment, provider))
   const headingId = `provider-models-${provider}`
+  const { providerEnabled } = useSettings(environment)
+  const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
+  const enabled = providerEnabled[provider]
   return (
     <fieldset aria-labelledby={headingId} className="mt-4 flex min-w-0 flex-col gap-4">
       <SettingsGroupTitle id={headingId} className="flex items-center gap-2">
@@ -46,15 +49,39 @@ function ProviderModels({ provider }: { provider: ProviderId }) {
         {providerLabel[provider]()}
       </SettingsGroupTitle>
       <SettingsGroup>
-        <AccountList provider={provider} />
-        <DefaultAccountField provider={provider} />
-        <DefaultModelField provider={provider} />
-        {AsyncResult.isSuccess(models) && models.value.length > 0 && (
-          <ModelPresetField provider={provider} models={models.value} />
-        )}
-        {providerInfo[provider].autoCompacts && <AutoCompactField provider={provider} />}
+        <Field orientation="horizontal">
+          <FieldContent>
+            <FieldLabel htmlFor={`provider-enabled-${provider}`}>{m.settings_provider_enabled()}</FieldLabel>
+            <FieldDescription>{m.settings_provider_enabled_hint()}</FieldDescription>
+          </FieldContent>
+          <Switch
+            id={`provider-enabled-${provider}`}
+            checked={enabled}
+            onCheckedChange={(next) =>
+              void updateSettings({ providerEnabled: { ...providerEnabled, [provider]: next } })
+            }
+          />
+        </Field>
+        {enabled && <ProviderFields provider={provider} />}
       </SettingsGroup>
     </fieldset>
+  )
+}
+
+function ProviderFields({ provider }: { provider: ProviderId }) {
+  const environment = useSettingsEnvironment()
+  const models = useAtomValue(modelsAtom(environment, provider))
+  return (
+    <>
+      <AccountList provider={provider} />
+      {provider === "magpie" && <MagpieConnectionField />}
+      <DefaultAccountField provider={provider} />
+      <DefaultModelField provider={provider} />
+      {AsyncResult.isSuccess(models) && models.value.length > 0 && (
+        <ModelPresetField provider={provider} models={models.value} />
+      )}
+      {providerInfo[provider].autoCompacts && <AutoCompactField provider={provider} />}
+    </>
   )
 }
 

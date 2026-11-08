@@ -13,6 +13,7 @@ import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
+import { MagpieProvider } from "../agents/magpie/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { McpCredentials, layer as credentialsLayer } from "../mcp/credentials.ts"
@@ -142,6 +143,7 @@ const makeLayer = (dbPath: string, pushes: PubSub.PubSub<PushEvent>, named: Defe
         Layer.succeed(CodexProvider, provider("codex")),
         Layer.succeed(MuseProvider, provider("muse")),
         Layer.succeed(OpencodeProvider, provider("opencode")),
+        Layer.succeed(MagpieProvider, provider("magpie")),
         Layer.succeed(Events, { publish: (event) => Effect.asVoid(PubSub.publish(pushes, event)) }),
       ),
     ),

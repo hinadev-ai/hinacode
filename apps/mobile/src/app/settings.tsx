@@ -188,6 +188,7 @@ const agents: readonly { provider: ProviderId; label: string; icon: IconName }[]
   { provider: "codex", label: copy("mobile_settings_agent_codex"), icon: "RiOpenaiFill" },
   { provider: "muse", label: copy("mobile_settings_agent_muse"), icon: "RiMetaFill" },
   { provider: "opencode", label: copy("mobile_settings_agent_opencode"), icon: "OpencodeMark" },
+  { provider: "magpie", label: copy("mobile_settings_agent_magpie"), icon: "MagpieMark" },
 ]
 
 /**

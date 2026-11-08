@@ -7,6 +7,7 @@ import {
   type Automation,
   type AutomationTrigger,
   type AutomationTriggerType,
+  enabledProviders,
   type Project,
   PullRequestTopic,
 } from "../../../../shared/domain.ts"
@@ -201,7 +202,8 @@ interface AutomationFormProps {
 
 function AutomationForm({ state, projects, onDone, onCreated }: AutomationFormProps) {
   const environment = useSettingsEnvironment()
-  const { defaultModel } = useSettings(environment)
+  const settings = useSettings(environment)
+  const { defaultModel } = settings
   const refreshList = useAtomRefresh(automationsAtom(environment))
   const editing = state.mode === "edit"
   const [draft, setDraft] = useState<Draft>(() =>
@@ -246,7 +248,7 @@ function AutomationForm({ state, projects, onDone, onCreated }: AutomationFormPr
 
   const projectItems = projects.map((project) => ({ value: project.id, label: project.name }))
   const triggerItems = triggerTypes.map((type) => ({ value: type, label: triggerLabel[type]() }))
-  const providerItems = ProviderId.literals.map((id) => ({ value: id, label: providerLabel[id]() }))
+  const providerItems = enabledProviders(settings).map((id) => ({ value: id, label: providerLabel[id]() }))
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
