@@ -8,7 +8,7 @@ import { FilesPanel } from "@/components/files"
 import { isIOS } from "@/components/glass"
 import { PullRequests } from "@/components/pull-requests"
 import { TerminalPanel } from "@/components/terminal"
-import { ThreadActionsSheet, useThreadActions } from "@/components/thread-actions"
+import { threadActionSymbols, ThreadActionsSheet, useThreadActions } from "@/components/thread-actions"
 import { ThreadControlBar, type ThreadTab, threadTabs } from "@/components/thread-control-bar"
 import { SidebarButton, SidebarToolbarButton } from "@/components/thread-sidebar"
 import { IconButton, Notice } from "@/components/ui"
@@ -142,22 +142,14 @@ export default function ThreadScreen() {
   )
 }
 
-const actionSymbols = {
-  pin: "pin",
-  unpin: "pin.slash",
-  "copy-id": "doc.on.doc",
-  archive: "archivebox",
-  unarchive: "tray.and.arrow.up",
-} as const satisfies Record<ThreadActionName, string>
-
 /**
  * The thread's actions in the native iOS header menu, with the same behavior as the list's long-press sheet.
- * Archiving the open thread leaves it, as Mail leaves a message it archives.
+ * Archiving or deleting the open thread leaves it, as Mail leaves a message it archives.
  */
 function ThreadMenu({ thread }: { thread: Thread }) {
   const state = useThreadActions(thread)
   const run = async (name: ThreadActionName) => {
-    if ((await state.run(name)) && name === "archive") leave()
+    if ((await state.run(name)) && leavesThread(name)) leave()
   }
   return (
     <>
@@ -166,7 +158,8 @@ function ThreadMenu({ thread }: { thread: Thread }) {
           {state.actions.map((action) => (
             <Stack.Toolbar.MenuAction
               key={action.name}
-              icon={actionSymbols[action.name]}
+              icon={threadActionSymbols[action.name]}
+              destructive={action.destructive}
               disabled={state.running !== null}
               onPress={() => void run(action.name)}
             >
@@ -186,6 +179,8 @@ function ThreadMenu({ thread }: { thread: Thread }) {
 
 const leave = () => (router.canGoBack() ? router.back() : router.replace("/"))
 
+const leavesThread = (name: ThreadActionName) => name === "archive" || name === "delete"
+
 /** Android's header button for the actions iOS shows as a native menu, with the same sheet the list opens. */
 function ThreadActionsButton({ thread }: { thread: Thread }) {
   const theme = useTheme()
@@ -193,7 +188,7 @@ function ThreadActionsButton({ thread }: { thread: Thread }) {
   const [open, setOpen] = useState(false)
   const run = async (name: ThreadActionName) => {
     const done = await state.run(name)
-    if (done && name === "archive") leave()
+    if (done && leavesThread(name)) leave()
     return done
   }
   return (

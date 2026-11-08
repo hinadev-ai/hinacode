@@ -44,8 +44,11 @@ const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | u
   }
 }
 
-/** The thread's access mode as a pill that opens a sheet of the modes, each with what it lets through. */
-export function AccessModePicker({ thread }: { thread: Thread }) {
+/**
+ * The thread's access mode as a pill that opens a sheet of the modes, each with what it lets through. `compact`
+ * drops the label, for when Stop shares the bar and a phone is too narrow for both.
+ */
+export function AccessModePicker({ thread, compact = false }: { thread: Thread; compact?: boolean }) {
   const theme = useTheme()
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -67,9 +70,11 @@ export function AccessModePicker({ thread }: { thread: Thread }) {
         style={[styles.pill, { backgroundColor: theme.surface }]}
       >
         <Icon name={mode.icon} size={16} color={color} />
-        <Text numberOfLines={1} style={[styles.label, { color }]}>
-          {mode.label}
-        </Text>
+        {!compact && (
+          <Text numberOfLines={1} style={[styles.label, { color }]}>
+            {mode.label}
+          </Text>
+        )}
         <Icon name="ChevronDown" size={12} color={theme.textMuted} />
       </PressableScale>
       <Sheet title={copy("mobile_composer_access")} open={open} onClose={close} fit>

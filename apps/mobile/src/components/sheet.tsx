@@ -17,22 +17,25 @@ import { Icon, type IconName } from "@/components/icon"
 import { IconButton } from "@/components/ui"
 import { sheetEntering } from "@/constants/motion"
 import { HIT, mono, radius, subheading } from "@/constants/theme"
+import { GroupedCard } from "@/components/grouped-card"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 
-const SHEET_PADDING = 8
+const SHEET_PADDING = 12
+const SHEET_RADIUS = 28
 const SHEET_MAX_WIDTH = 640
 
 /**
- * A sheet with a title and a close button, full height by default or as tall as its content with `fit`. The scrim
- * fades while the sheet rises; both fade out together, which is quicker than the way in. A full height sheet on an
- * Android phone covers the whole screen, as Material's full-screen dialog does.
+ * A sheet with a grabber, a round close button and a centred title, full height by default or as tall as its content
+ * with `fit`. The scrim fades while the sheet rises; both fade out together, which is quicker than the way in. A full
+ * height sheet on an Android phone covers the whole screen, as Material's full-screen dialog does.
  */
 export function Sheet({
   title,
   open,
   onClose,
   header,
+  action,
   fit = false,
   children,
 }: {
@@ -41,6 +44,8 @@ export function Sheet({
   onClose: () => void
   /** Shown under the title and above the scrolling content, such as a search field. */
   header?: ReactNode
+  /** A round button at the header's trailing edge, opposite the close button. */
+  action?: ReactNode
   /** Sizes the sheet to a short list instead of filling the screen. */
   fit?: boolean
   children: ReactNode
@@ -82,11 +87,23 @@ export function Sheet({
             },
           ]}
         >
+          {!fullScreen && <View style={[styles.grabber, { backgroundColor: theme.surfaceStrong }]} />}
           <View style={styles.sheetHeader}>
-            <Text accessibilityRole="header" {...subheading} style={[styles.sheetTitle, { color: theme.text }]}>
+            <IconButton
+              icon="Close"
+              accessibilityLabel={copy("mobile_sheet_close")}
+              onPress={onClose}
+              style={[styles.round, { backgroundColor: theme.card, borderColor: theme.border }]}
+            />
+            <Text
+              accessibilityRole="header"
+              {...subheading}
+              numberOfLines={1}
+              style={[styles.sheetTitle, { color: theme.text }]}
+            >
               {title}
             </Text>
-            <IconButton icon="Close" accessibilityLabel={copy("mobile_sheet_close")} onPress={onClose} />
+            {action ?? <View style={styles.headerSlot} />}
           </View>
           {header}
           <ScrollView
@@ -102,6 +119,7 @@ export function Sheet({
   )
 }
 
+/** Rows on one card, split by hairlines, as iOS groups a list of options. */
 export function Section({
   title,
   role = "radiogroup",
@@ -116,7 +134,7 @@ export function Section({
   return (
     <View role={role} accessibilityLabel={title} style={styles.section}>
       <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>{title}</Text>
-      {children}
+      <GroupedCard inset={16}>{children}</GroupedCard>
     </View>
   )
 }
@@ -153,7 +171,7 @@ export function OptionRow({
       aria-disabled={disabled}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.option, style, (pressed || selected) && { backgroundColor: theme.sheetRaised }]}
+      style={({ pressed }) => [styles.option, style, pressed && { backgroundColor: theme.sheetRaised }]}
     >
       {icon !== undefined && <Icon name={icon} size={18} color={foreground} />}
       <View style={styles.optionText}>
@@ -176,18 +194,18 @@ export function OptionRow({
 
 export const sheetStyles = StyleSheet.create({
   option: {
-    minHeight: HIT + 4,
+    minHeight: HIT + 8,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: radius.lg - SHEET_PADDING,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
   },
   optionText: { flex: 1, gap: 2 },
-  optionLabel: { fontSize: 15, fontWeight: "500" },
+  optionLabel: { fontSize: 16 },
   optionHint: { fontSize: 13 },
   mono: { fontFamily: mono, fontSize: 14 },
+  round: { borderRadius: radius.full, boxShadow: "0 2px 8px rgba(0, 0, 0, 0.08)" },
 })
 
 const styles = StyleSheet.create({
@@ -200,15 +218,19 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: SHEET_MAX_WIDTH,
     alignSelf: "center",
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
+    borderTopLeftRadius: SHEET_RADIUS,
+    borderTopRightRadius: SHEET_RADIUS,
     borderTopWidth: StyleSheet.hairlineWidth,
     padding: SHEET_PADDING,
+    paddingTop: 6,
+    gap: 8,
   },
   fullScreen: { borderTopLeftRadius: 0, borderTopRightRadius: 0, borderTopWidth: 0 },
-  sheetHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingLeft: 12 },
-  sheetTitle: { fontSize: 16, fontWeight: "600" },
+  grabber: { alignSelf: "center", width: 36, height: 5, borderRadius: radius.full },
+  sheetHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  headerSlot: { width: HIT },
+  sheetTitle: { flex: 1, fontSize: 17, fontWeight: "600", textAlign: "center" },
   sections: { gap: 16, paddingTop: 4 },
-  section: { gap: 2 },
-  sectionTitle: { fontSize: 13, fontWeight: "600", paddingHorizontal: 12, paddingVertical: 6 },
+  section: { gap: 6 },
+  sectionTitle: { fontSize: 13, fontWeight: "600", paddingHorizontal: 16 },
 })

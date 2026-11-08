@@ -11,8 +11,8 @@ import {
   pullRequestLabel,
   reviewLabel,
   reviewTone,
-  statusGlyph,
 } from "@/lib/pull-request-labels"
+import { LineCounts } from "@/components/pull-request-code"
 import { PullRequestState } from "@/components/pull-request-state"
 import { Button, EmptyState, Notice, Pill } from "@/components/ui"
 import { mono, radius } from "@/constants/theme"
@@ -188,7 +188,7 @@ function PullRequestCard({
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
-      style={[styles.card, { borderColor: theme.border, backgroundColor: theme.surface }]}
+      style={[styles.card, { borderColor: theme.border, backgroundColor: theme.card }]}
     >
       {pr === null ? (
         <View style={styles.titleRow}>
@@ -219,38 +219,28 @@ function PullRequestCard({
         </View>
       ) : (
         <>
-          <View style={styles.titleRow}>
-            <View style={styles.titleIcon}>
-              <Icon {...statusGlyph(theme)[pr.status]} size={18} />
-            </View>
-            <Text numberOfLines={3} style={[styles.title, { color: theme.text }]}>
-              {pr.title} <Text style={{ color: theme.textMuted, fontWeight: "400" }}>#{pr.number}</Text>
-            </Text>
+          <View style={styles.headline}>
+            <PullRequestState status={pr.status} />
+            <Text style={[styles.number, { color: theme.textMuted }]}>#{pr.number}</Text>
+            <LineCounts added={pr.additions} removed={pr.deletions} />
+            <View style={styles.spacer} />
             <Icon name="ChevronRight" size={18} color={theme.textMuted} />
           </View>
-          <View style={styles.meta}>
-            <Text numberOfLines={1} style={[styles.branches, { color: theme.textMuted }]}>
-              {pr.headRefName} → {pr.baseRefName}
-            </Text>
-            <Text
-              accessibilityLabel={copy("mobile_pr_size", {
-                additions: String(pr.additions),
-                deletions: String(pr.deletions),
-              })}
-              style={styles.size}
-            >
-              <Text style={{ color: theme.running }}>+{pr.additions}</Text>{" "}
-              <Text style={{ color: theme.danger }}>−{pr.deletions}</Text>
-            </Text>
-          </View>
-          <View style={styles.pills}>
-            <PullRequestState status={pr.status} />
-            {pr.checks !== null && (
-              <Pill label={checksLabel(pr.checks)} tone={checksTone[pr.checks]} icon={checksIcon[pr.checks]} />
-            )}
-            {review !== null && <Pill label={reviewLabel(review)} tone={reviewTone[review]} />}
-            {watching && <Pill label={copy("mobile_pr_watching")} tone="neutral" icon="Eye" />}
-          </View>
+          <Text numberOfLines={3} style={[styles.title, { color: theme.text }]}>
+            {pr.title}
+          </Text>
+          <Text numberOfLines={1} style={[styles.branches, { color: theme.textMuted }]}>
+            {pr.headRefName} → {pr.baseRefName}
+          </Text>
+          {(pr.checks !== null || review !== null || watching) && (
+            <View style={styles.pills}>
+              {pr.checks !== null && (
+                <Pill label={checksLabel(pr.checks)} tone={checksTone[pr.checks]} icon={checksIcon[pr.checks]} />
+              )}
+              {review !== null && <Pill label={reviewLabel(review)} tone={reviewTone[review]} />}
+              {watching && <Pill label={copy("mobile_pr_watching")} tone="neutral" icon="Eye" />}
+            </View>
+          )}
         </>
       )}
       {link === null && (
@@ -264,14 +254,15 @@ const styles = StyleSheet.create({
   // Capped and centered like the pull request screen, so cards keep a readable width on an iPad.
   list: { padding: 16, gap: 12, flexGrow: 1, width: "100%", maxWidth: 792, alignSelf: "center" },
   loading: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 24 },
-  card: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.md, padding: 14, gap: 8 },
+  card: { borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.xl, padding: 16, gap: 8 },
+  headline: { flexDirection: "row", alignItems: "center", gap: 10 },
+  number: { fontFamily: mono, fontSize: 13 },
+  spacer: { flex: 1 },
   titleRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
   titleIcon: { paddingTop: 2 },
-  title: { flex: 1, fontSize: 16, fontWeight: "600", lineHeight: 22 },
+  title: { flex: 1, fontSize: 17, fontWeight: "600", lineHeight: 23 },
   pending: { flex: 1, gap: 2 },
-  meta: { flexDirection: "row", alignItems: "center", gap: 12 },
-  branches: { flexShrink: 1, fontFamily: mono, fontSize: 12 },
-  size: { flexShrink: 0, fontFamily: mono, fontSize: 12 },
+  branches: { fontFamily: mono, fontSize: 12 },
   pills: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   note: { fontSize: 13, lineHeight: 18 },
 })

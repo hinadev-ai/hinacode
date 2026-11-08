@@ -86,7 +86,7 @@ export function ThreadControlBar({
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
         <View style={styles.spacer} />
         {isThreadBusy(thread.status) && <StopButton thread={thread} onError={setError} />}
-        <AccessModePicker thread={thread} />
+        <AccessModePicker thread={thread} compact={isThreadBusy(thread.status)} />
       </View>
       {error !== null && <Notice text={error} tone="danger" />}
     </View>
