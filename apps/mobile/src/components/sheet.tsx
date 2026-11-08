@@ -185,6 +185,7 @@ export function OptionRow({
   color,
   monospace = false,
   selected,
+  role = "radio",
   disabled = false,
   style,
   onPress,
@@ -195,6 +196,8 @@ export function OptionRow({
   color?: string
   monospace?: boolean
   selected: boolean
+  /** `checkbox` for a row in a `group` section, where several can be picked. */
+  role?: "radio" | "checkbox"
   disabled?: boolean
   style?: StyleProp<ViewStyle>
   onPress: () => void
@@ -203,7 +206,7 @@ export function OptionRow({
   const foreground = disabled ? theme.textMuted : (color ?? theme.text)
   return (
     <Pressable
-      accessibilityRole="radio"
+      accessibilityRole={role}
       accessibilityLabel={label}
       accessibilityHint={hint}
       aria-checked={selected}

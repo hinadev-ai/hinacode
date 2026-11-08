@@ -28,7 +28,7 @@ import {
   setUpProvidersAtom,
 } from "../lib/rpc.ts"
 import { environmentName, environmentOf, useClouds, useThreadEnvironment } from "../lib/environments.ts"
-import { groupProjects } from "../lib/projectGroups.ts"
+import { groupProjects } from "../../shared/projectGroups.ts"
 import { moveDraft } from "../lib/startThread.ts"
 import { useSettings } from "../lib/settings.ts"
 import { useAltHeld } from "../lib/useModifierHeld.ts"

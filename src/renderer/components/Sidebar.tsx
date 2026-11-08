@@ -16,7 +16,12 @@ import {
   type SidebarEnvironment,
   sidebarEnvironments,
 } from "../lib/sidebarFilter.ts"
-import { groupProjects, type ProjectGroup as Group } from "../lib/projectGroups.ts"
+import {
+  groupProjects,
+  isGroupPicked,
+  pickProjectGroup,
+  type ProjectGroup as Group,
+} from "../../shared/projectGroups.ts"
 import { projectsAtom } from "../lib/rpc.ts"
 import { arrangeRows, deleteGroup, moveGroup, renameGroup, setGroupCollapsed } from "../lib/sidebarGroups.ts"
 import { useSidebarGroups } from "../lib/useSidebarGroups.ts"
@@ -635,22 +640,16 @@ function SidebarFilterMenu() {
             {m.sidebar_filter_all_projects()}
           </DropdownMenuItem>
           {environments.length <= 1 && <DropdownMenuSeparator />}
-          {shownGroups.map((group) => {
-            const members = new Set(group.projects.map((project) => project.id))
-            return (
-              <DropdownMenuCheckboxItem
-                key={group.key}
-                checked={[...members].every((id) => picked.has(id))}
-                onCheckedChange={(checked) => {
-                  const others = ids.filter((id) => !members.has(id))
-                  setIds(checked ? [...others, ...members] : others)
-                }}
-              >
-                <ProjectIcon projectId={group.projects[0].id} />
-                <span className="truncate">{group.projects[0].name}</span>
-              </DropdownMenuCheckboxItem>
-            )
-          })}
+          {shownGroups.map((group) => (
+            <DropdownMenuCheckboxItem
+              key={group.key}
+              checked={isGroupPicked(group, ids)}
+              onCheckedChange={(checked) => setIds(pickProjectGroup(ids, group, checked))}
+            >
+              <ProjectIcon projectId={group.projects[0].id} />
+              <span className="truncate">{group.projects[0].name}</span>
+            </DropdownMenuCheckboxItem>
+          ))}
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>

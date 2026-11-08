@@ -2,11 +2,11 @@ import { StyleSheet, Text, View } from "react-native"
 import { RunningRail } from "@/components/running-rail"
 import { WaitingSection } from "@/components/waiting-ticket"
 import { useNow } from "@/hooks/use-now"
-import { useShownServers } from "@/hooks/use-server"
+import { useThreadFilter } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 import { homeSummary, threadsWithRequests } from "@/lib/home-summary"
-import { withinServers } from "@/lib/server-filter"
+import { withinFilter } from "@/lib/thread-filter"
 import { useMessages } from "@/stores/messages"
 import { listedThreads, useThreads } from "@/stores/threads"
 
@@ -15,9 +15,9 @@ export function HomeOverview() {
   const projects = useThreads((state) => state.projects)
   const byId = useThreads((state) => state.byId)
   const requesting = useMessages((state) => threadsWithRequests(state.byThread))
-  const servers = useShownServers()
+  const filter = useThreadFilter()
   const now = useNow()
-  const { threads } = withinServers(servers, projects, listedThreads(byId))
+  const { threads } = withinFilter(filter, projects, listedThreads(byId))
   const summary = homeSummary(threads, requesting, now)
   return (
     <>

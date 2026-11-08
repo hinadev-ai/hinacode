@@ -8,21 +8,21 @@ import { Icon, type IconName } from "@/components/icon"
 import { Reveal, Rotate, Spinner } from "@/components/motion"
 import { SearchField } from "@/components/search-field"
 import { HomeOverview } from "@/components/home-summary"
-import { ServerFilter } from "@/components/server-filter"
 import { ServerMark } from "@/components/server-mark"
 import { SectionLabel, ThreadRow } from "@/components/thread-row"
+import { resetThreadFilter, ThreadFilterPill } from "@/components/thread-filter"
 import { SearchResults } from "@/components/thread-search"
 import { Button, EmptyState, IconButton, Notice, type Tab, UnderlineTabs } from "@/components/ui"
 import { listEntering, listExiting, listLayout } from "@/constants/motion"
 import { radius } from "@/constants/theme"
-import { useProjectServer, useShownServers } from "@/hooks/use-server"
+import { useProjectServer, useThreadFilter } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { openThread } from "@/lib/navigation"
 import type { HomeTab } from "@/lib/preferences"
-import { withinServers } from "@/lib/server-filter"
 import { createThread } from "@/lib/start-thread"
+import { withinFilter } from "@/lib/thread-filter"
 import { usePreferences } from "@/stores/preferences"
 import { archivedThreads, inboxThreads, listedThreads, pinnedThreads, sortThreads, useThreads } from "@/stores/threads"
 
@@ -121,6 +121,12 @@ export function HomeContent({
     </View>
   )
 
+  const filterRow = (
+    <View style={styles.filter}>
+      <ThreadFilterPill />
+    </View>
+  )
+
   if (!searchable) {
     if (!hasProjects)
       return (
@@ -163,9 +169,9 @@ export function HomeContent({
             />
           </View>
           {query.trim() === "" ? (
-            <HomeList selectedId={selectedId} header={<ServerFilter />} />
+            <HomeList selectedId={selectedId} header={filterRow} />
           ) : (
-            <SearchResults query={query} header={<ServerFilter />} />
+            <SearchResults query={query} header={filterRow} />
           )}
         </>
       )}
@@ -185,6 +191,7 @@ type HomeItem =
       readonly icon: IconName
       readonly title: string
       readonly hint?: string
+      readonly resettable?: boolean
     }
 
 const threadItems = (prefix: string, threads: readonly Thread[], showProject: boolean): HomeItem[] =>
@@ -233,9 +240,9 @@ function homeItems(
       items.push({
         kind: "empty",
         key: "empty:filtered",
-        icon: "Computer",
+        icon: "Filter",
         title: copy("mobile_home_filter_empty"),
-        hint: copy("mobile_home_filter_empty_hint"),
+        resettable: true,
       })
     for (const project of projects) {
       const open = !collapsed.has(project.id)
@@ -265,8 +272,7 @@ function HomeList({
   const projects = useThreads((state) => state.projects)
   const byId = useThreads((state) => state.byId)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())
-  const servers = useShownServers()
-  const listed = withinServers(servers, projects, listedThreads(byId))
+  const listed = withinFilter(useThreadFilter(), projects, listedThreads(byId))
   const items = homeItems(tab, listed.projects, listed.threads, collapsed)
   const [shown, setShown] = useState(() => ({ tab, threadIds: threadIds(items) }))
   if (shown.tab !== tab) setShown({ tab, threadIds: threadIds(items) })
@@ -353,7 +359,22 @@ function HomeRow({
     case "note":
       return <Text style={[styles.note, { color: theme.textMuted }]}>{item.text}</Text>
     case "empty":
-      return <EmptyState icon={item.icon} title={item.title} hint={item.hint} />
+      return (
+        <EmptyState
+          icon={item.icon}
+          title={item.title}
+          hint={item.hint}
+          action={
+            item.resettable === true && (
+              <Button
+                testID="thread-filter-empty-reset"
+                label={copy("mobile_home_filter_reset")}
+                onPress={resetThreadFilter}
+              />
+            )
+          }
+        />
+      )
   }
 }
 
@@ -421,6 +442,7 @@ const styles = StyleSheet.create({
   retry: { alignSelf: "flex-start" },
   loading: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 32 },
   search: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 4 },
+  filter: { alignItems: "flex-start", paddingHorizontal: 8, paddingVertical: 6 },
   list: { paddingHorizontal: 8, paddingBottom: 32 },
   belowAccessory: { paddingBottom: 96 },
   tabs: { marginTop: 4, marginBottom: 6 },
