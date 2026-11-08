@@ -10,6 +10,7 @@ import {
   type SceneElement,
   savedSnapshot,
   type Snapshot,
+  stableLabelIds,
 } from "./whiteboardScene.ts"
 
 type Element = SceneElement & { readonly type?: string; readonly text?: string; readonly [key: string]: unknown }
@@ -88,7 +89,15 @@ describe("mergeRemote", () => {
       () => [full("api", 1), full("new-label", 1, { containerId: "api", text: "API v2" })],
     )
     expect(ids(elements).toSorted()).toEqual(["api", "mine", "new-label"])
-    expect(elements.find((element) => element.id === "api")?.version).toBe(1)
+    expect(elements.find((element) => element.id === "api")?.version).toBe(6)
+  })
+
+  test("a replaced element outranks the copy another canvas still holds", () => {
+    const known = savedSnapshot([full("api", 10)])
+    const first = merge(known, [full("api", 10)], [skeleton("api", { x: 400 })], () => [full("api", 1, { x: 400 })])
+    const saved = first.elements.find((element) => element.id === "api")!
+    const second = merge(known, [full("api", 10)], [saved], () => [])
+    expect(second.elements.find((element) => element.id === "api")).toMatchObject({ x: 400 })
   })
 
   test("an unchanged skeleton keeps the developer's unsaved edit", () => {
@@ -116,6 +125,21 @@ describe("mergeRemote", () => {
     const { snapshot } = merge(EMPTY_SNAPSHOT, [], remote, (id) => [full(id, 2), full("label", 1, { containerId: id })])
     expect(planRemote(snapshot, remote).replaced.size).toBe(0)
     expect(snapshot.versions.get("label")).toBe(1)
+  })
+})
+
+describe("stableLabelIds", () => {
+  test("names each generated label after its container, so every canvas agrees", () => {
+    const converted = [
+      full("api", 1, { boundElements: [{ id: "x7Kq", type: "text" }] }),
+      full("x7Kq", 1, { type: "text", containerId: "api", text: "API" }),
+      full("db", 1),
+    ]
+    expect(stableLabelIds(converted)).toEqual([
+      full("api", 1, { boundElements: [{ id: "api:label", type: "text" }] }),
+      full("api:label", 1, { type: "text", containerId: "api", text: "API" }),
+      full("db", 1),
+    ])
   })
 })
 
