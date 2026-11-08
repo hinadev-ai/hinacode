@@ -38,8 +38,34 @@ func parseCssColor(_ css: String) -> UIColor? {
 
 /// Paints chip pills behind the text and each chip's icon over its transparent trigger character.
 final class ChipLayoutManager: NSLayoutManager {
-  var icons: [String: [(path: UIBezierPath, fill: Bool)]] = [:]
-  var iconColor = UIColor.systemBlue
+  var icons: [String: [(path: UIBezierPath, fill: Bool)]] = [:] {
+    didSet { images.removeAll() }
+  }
+  var iconColor = UIColor.systemBlue {
+    didSet { images.removeAll() }
+  }
+  /// The caret blink redraws the text twice a second, so each icon is stroked once per size and drawn as an image.
+  private var images: [String: UIImage] = [:]
+
+  private func image(_ name: String, size: CGFloat) -> UIImage? {
+    let key = "\(name)@\(size)"
+    if let image = images[key] { return image }
+    guard let shapes = icons[name] else { return nil }
+    let image = UIGraphicsImageRenderer(size: CGSize(width: size, height: size)).image { renderer in
+      renderer.cgContext.scaleBy(x: size / 24, y: size / 24)
+      iconColor.setFill()
+      iconColor.setStroke()
+      for shape in shapes {
+        shape.path.lineWidth = 2.4
+        shape.path.lineCapStyle = .round
+        shape.path.lineJoinStyle = .round
+        if shape.fill { shape.path.fill() }
+        shape.path.stroke()
+      }
+    }
+    images[key] = image
+    return image
+  }
 
   override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
     super.drawBackground(forGlyphRange: glyphsToShow, at: origin)
@@ -60,12 +86,10 @@ final class ChipLayoutManager: NSLayoutManager {
 
   override func drawGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
     super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
-    guard let storage = textStorage, let container = textContainers.first,
-      let context = UIGraphicsGetCurrentContext()
-    else { return }
+    guard let storage = textStorage, let container = textContainers.first else { return }
     let characters = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
     storage.enumerateAttribute(.composerChipIcon, in: characters) { value, range, _ in
-      guard let name = value as? String, let shapes = icons[name],
+      guard let name = value as? String,
         let font = storage.attribute(.font, at: range.location, effectiveRange: nil) as? UIFont
       else { return }
       let glyphs = glyphRange(forCharacterRange: NSRange(location: range.location, length: 1), actualCharacterRange: nil)
@@ -74,19 +98,7 @@ final class ChipLayoutManager: NSLayoutManager {
       let line = lineFragmentRect(forGlyphAt: glyphs.location, effectiveRange: nil)
       let baseline = origin.y + line.minY + location(forGlyphAt: glyphs.location).y
       let centerY = baseline - (font.ascender + font.descender) / 2
-      context.saveGState()
-      context.translateBy(x: rect.minX, y: centerY - size / 2)
-      context.scaleBy(x: size / 24, y: size / 24)
-      iconColor.setFill()
-      iconColor.setStroke()
-      for shape in shapes {
-        shape.path.lineWidth = 2.4
-        shape.path.lineCapStyle = .round
-        shape.path.lineJoinStyle = .round
-        if shape.fill { shape.path.fill() }
-        shape.path.stroke()
-      }
-      context.restoreGState()
+      image(name, size: size)?.draw(at: CGPoint(x: rect.minX, y: centerY - size / 2))
     }
   }
 }
