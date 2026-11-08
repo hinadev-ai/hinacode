@@ -6,7 +6,7 @@
 
 **Run many agents. Know which one needs you.**
 
-A delightful workstation for running Claude Code, Codex, Muse Code, and opencode in parallel, each in its own worktree, each visible at a glance.
+A delightful workstation for running Claude Code, Codex, Muse Code, opencode, and magpie in parallel, each in its own worktree, each visible at a glance.
 
 [![CI](https://github.com/hinadev-ai/hinacode/actions/workflows/ci.yml/badge.svg)](https://github.com/hinadev-ai/hinacode/actions/workflows/ci.yml)
 [![Build](https://github.com/hinadev-ai/hinacode/actions/workflows/build.yml/badge.svg)](https://github.com/hinadev-ai/hinacode/actions/workflows/build.yml)
@@ -49,7 +49,7 @@ HinaCode is a **delightful workstation for coding agents**. It handles the work 
 ## Features
 
 - **A worktree per thread.** Branch from `main`, any branch, or an open pull request. Your setup script runs before the agent starts.
-- **Four agents, one sidebar.** Pick Claude Code, Codex, Muse Code, or opencode per thread, and switch mid-thread.
+- **Five agents, one sidebar.** Pick Claude Code, Codex, Muse Code, opencode, or magpie per thread, and switch mid-thread.
 - **Inbox.** Every active thread in one list, with approvals and questions marked.
 - **Inline approvals and questions.** Allow, deny with a note, or answer without leaving the thread.
 - **Steer or queue.** Change the agent's course mid-turn, or queue the next task behind it.
@@ -67,12 +67,13 @@ HinaCode is a **delightful workstation for coding agents**. It handles the work 
 
 Install each CLI you want to use, sign in, and keep it on your `PATH`. HinaCode never sits between you and the provider.
 
-| Agent                                                 | CLI        | Sign in                          | Protocol                    |
-| ----------------------------------------------------- | ---------- | -------------------------------- | --------------------------- |
-| [Claude Code](https://claude.com/product/claude-code) | `claude`   | `claude` (follow the login flow) | Agent SDK                   |
-| [Codex](https://openai.com/codex/)                    | `codex`    | `codex` (follow the login flow)  | App-server protocol         |
-| Muse Code                                             | `muse`     | `muse login`                     | MSP                         |
-| [opencode](https://opencode.ai)                       | `opencode` | `opencode auth login`            | Agent Client Protocol (ACP) |
+| Agent                                                 | CLI        | Sign in                          | Protocol                      |
+| ----------------------------------------------------- | ---------- | -------------------------------- | ----------------------------- |
+| [Claude Code](https://claude.com/product/claude-code) | `claude`   | `claude` (follow the login flow) | Agent SDK                     |
+| [Codex](https://openai.com/codex/)                    | `codex`    | `codex` (follow the login flow)  | App-server protocol           |
+| Muse Code                                             | `muse`     | `muse login`                     | MSP                           |
+| [opencode](https://opencode.ai)                       | `opencode` | `opencode auth login`            | Agent Client Protocol (ACP)   |
+| [magpie](https://usemagpie.ai)                        | `claude`   | run magpie                       | Agent SDK through the gateway |
 
 Adding a backend takes one `AgentProvider` implementation in `src/main/agents/` plus registration in the runner. See the [agent provider guide](docs/agent-providers.md).
 

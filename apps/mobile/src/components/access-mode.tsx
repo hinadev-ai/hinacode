@@ -24,6 +24,7 @@ const supervisedHints: Record<ProviderId, string> = {
   codex: copy("mobile_composer_access_supervised_codex"),
   muse: copy("mobile_composer_access_supervised_muse"),
   opencode: copy("mobile_composer_access_supervised_opencode"),
+  magpie: copy("mobile_settings_access_supervised_hint"),
 }
 
 const autoHints: Record<ProviderId, (model: ModelInfo | undefined) => string> = {
@@ -32,6 +33,7 @@ const autoHints: Record<ProviderId, (model: ModelInfo | undefined) => string> = 
   codex: () => copy("mobile_composer_access_auto_codex"),
   muse: () => copy("mobile_composer_access_auto_muse"),
   opencode: () => copy("mobile_composer_access_auto_opencode"),
+  magpie: () => copy("mobile_composer_access_auto_claude_edits"),
 }
 
 const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | undefined) => {
