@@ -336,3 +336,49 @@ test("scrolls a narrow board to a comment's elements after the comments make way
   await expect.poll(viewSettled, { timeout: 5000 }).toBe(true)
   expect(dbOnScreen()).toBe(true)
 })
+
+const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
+
+const drag = async (from: { x: number; y: number }, to: { x: number; y: number }) => {
+  const canvas = document.querySelector("canvas.interactive")!
+  const box = canvas.getBoundingClientRect()
+  const at = ({ x, y }: { x: number; y: number }, buttons: number) => ({
+    clientX: box.left + x,
+    clientY: box.top + y,
+    pointerId: 1,
+    pointerType: "mouse",
+    isPrimary: true,
+    button: 0,
+    buttons,
+    bubbles: true,
+  })
+  canvas.dispatchEvent(new PointerEvent("pointerdown", at(from, 1)))
+  await nextFrame()
+  canvas.dispatchEvent(new PointerEvent("pointermove", at(to, 1)))
+  await nextFrame()
+  window.dispatchEvent(new PointerEvent("pointerup", at(to, 0)))
+}
+
+test("opens an empty board at full size and saves the first drawing without moving the view", async () => {
+  stored = { version: 1, revision: 1, scene: { elements: [] } }
+  await render(
+    <div style={{ width: 800, height: 600, display: "flex", flexDirection: "column" }}>
+      <ArtifactsView thread={thread} />
+    </div>,
+  )
+  await expect.poll(() => editor()?.state.width ?? 0, { timeout: 15_000 }).toBeGreaterThan(0)
+  await expect.poll(viewSettled).toBe(true)
+  expect(editor()?.state.zoom.value).toBe(1)
+  const before = viewOf()
+
+  await userEvent.click(page.elementLocator(document.querySelector("canvas.interactive")!), {
+    position: { x: 100, y: 100 },
+  })
+  await userEvent.keyboard("r")
+  await drag({ x: 100, y: 100 }, { x: 260, y: 200 })
+
+  await expect.poll(() => saves.length, { timeout: 3000 }).toBe(1)
+  expect(saves[0]?.baseRevision).toBe(1)
+  expect(saves[0]?.scene.elements).toEqual([expect.objectContaining({ type: "rectangle", width: 160, height: 100 })])
+  expect(viewOf()).toBe(before)
+})
