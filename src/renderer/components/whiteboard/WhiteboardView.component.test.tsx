@@ -231,6 +231,34 @@ test("an edit made after reopening the board saves once the closing save lands",
   reopened.unmount()
 })
 
+test("a board reopened during its closing save keeps what that save merged from the agent", async () => {
+  let release = () => {}
+  heldSaves = new Promise((resolve) => {
+    release = resolve
+  })
+  const closing = await openBoard()
+  await selectAll()
+  await userEvent.keyboard("{ArrowRight}")
+  closing.unmount()
+  await expect.poll(() => saves.length, { timeout: 3000 }).toBe(1)
+  agentWrites = {
+    version: 2,
+    revision: 5,
+    scene: { elements: [...AGENT_SCENE, { id: "queue", type: "rectangle", x: 0, y: 300, width: 120, height: 60 }] },
+  }
+
+  const reopened = await openBoard()
+  release()
+  await expect.poll(() => saves.length, { timeout: 3000 }).toBe(2)
+  await expect.poll(() => sceneOnCanvas().map((element) => element.id)).toContain("queue")
+
+  await selectAll()
+  await userEvent.keyboard("{ArrowRight}")
+  await expect.poll(() => saves.length, { timeout: 3000 }).toBe(3)
+  expect(saves[2]?.scene.elements.map((element) => element.id)).toContain("queue")
+  reopened.unmount()
+})
+
 test("merges an agent's write that beat the save and saves again on its revision", async () => {
   await openBoard()
   agentWrites = {
