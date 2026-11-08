@@ -114,6 +114,7 @@ export function CommentInput({
       <textarea
         ref={textarea}
         value={body}
+        readOnly={sending}
         rows={1}
         role="combobox"
         aria-label={label}
