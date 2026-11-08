@@ -27,3 +27,10 @@
   --focus-highlight-color: var(--ring);
   --ui-font: var(--font-sans, inherit);
 }
+
+[data-whiteboard] .excalidraw .sidebar-triggers,
+[data-whiteboard] .excalidraw .sidebar-trigger,
+[data-whiteboard] .excalidraw .default-sidebar-trigger,
+[data-whiteboard] .excalidraw .default-sidebar {
+  display: none;
+}
