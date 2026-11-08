@@ -35,8 +35,8 @@ export function CommentsPane({
           variant="ghost"
           size="icon-sm"
           className="@2xl:hidden"
-          aria-label={m.comments_back()}
-          title={m.comments_back()}
+          aria-label={m.comments_close()}
+          title={m.comments_close()}
           action={onClose}
         >
           <ArrowLeftIcon aria-hidden />
