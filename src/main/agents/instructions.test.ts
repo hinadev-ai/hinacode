@@ -36,6 +36,14 @@ test("describes the boat desktop when boat is the tiny VM provider", () => {
   expect(instructions).toContain("cloud Ubuntu desktop (1920×1080) on boat.dev, size `large`")
   expect(instructions).not.toContain("sbx host")
   expect(instructions).not.toContain("sbx-windows")
+  expect(instructions).not.toContain("cua-driver")
+})
+
+test("teaches cua-driver on an sbx desktop", () => {
+  const instructions = agentInstructions({ ...experimental, tinyVm: true, tinyVmProvider: "sbx" }, environment, [])
+  expect(instructions).toContain("disposable Linux desktop")
+  expect(instructions).toContain('"session":"vm"')
+  expect(instructions).toContain('"delivery_mode":"foreground"')
 })
 
 test("says none for a detached HEAD and a repository without an origin", () => {
