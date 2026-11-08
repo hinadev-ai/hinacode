@@ -389,6 +389,11 @@ export const publishedArtifact = (result: string): { id: string; version: number
 
 export const publishedArtifactId = (result: string) => publishedArtifact(result)?.id ?? null
 
+export const publishedTitle = (result: string) =>
+  /^Published (?:artifact|document|whiteboard|verification) [a-z0-9][a-z0-9-]* version \d+: "(.*)"\./.exec(
+    result,
+  )?.[1] ?? null
+
 const textOfBlock = (block: unknown) =>
   typeof block === "object" && block !== null && Reflect.get(block, "type") === "text"
     ? String(Reflect.get(block, "text"))

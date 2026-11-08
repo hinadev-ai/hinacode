@@ -1,5 +1,5 @@
 import { CheckCircleIcon, FlowIcon } from "@hinacode/icons"
-import { publishedArtifact, publishedKind, toolArgument } from "../../shared/agent.ts"
+import { publishedArtifact, publishedKind, publishedTitle, toolArgument } from "../../shared/agent.ts"
 import type { ArtifactKind } from "../../shared/artifact.ts"
 import type { MessagePart } from "../../shared/domain.ts"
 import { documentOutline, type OutlineBlock, outlineSections } from "../../shared/documentOutline.ts"
@@ -143,7 +143,11 @@ const cardContent = (call: ToolCall, result: string | null) => {
     kind,
     blocks: isDocument ? (outline?.blocks ?? []) : null,
     published: result === null ? null : publishedArtifact(result),
-    title: stringArgument(call.input, "title") ?? outline?.title ?? untitled,
+    title:
+      stringArgument(call.input, "title") ??
+      outline?.title ??
+      (result === null ? null : publishedTitle(result)) ??
+      untitled,
     summary: outline === null ? null : (outline.lede ?? sectionsLine(outline.blocks)),
   }
 }

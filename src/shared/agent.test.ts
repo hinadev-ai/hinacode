@@ -3,7 +3,13 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { artifactTools, openArtifactStore } from "@hinacode/artifacts"
 import { describe, expect, test } from "vitest"
-import { isPublishArtifactTool, publishedArtifact, publishedArtifactId, publishedKind } from "./agent.ts"
+import {
+  isPublishArtifactTool,
+  publishedArtifact,
+  publishedArtifactId,
+  publishedKind,
+  publishedTitle,
+} from "./agent.ts"
 
 describe("publishedArtifactId", () => {
   test("reads the id from what publish_artifact returns", async () => {
@@ -55,6 +61,17 @@ describe("publishedArtifact", () => {
 
   test("finds nothing in a conflict", () => {
     expect(publishedArtifact("The developer edited document abc after your revision 1.")).toBe(null)
+  })
+})
+
+describe("publishedTitle", () => {
+  test("reads the stored title from an update that left it out", async () => {
+    const store = openArtifactStore(mkdtempSync(join(tmpdir(), "kk-artifact-title-")))
+    const first = await artifactTools.publish_whiteboard.handle(store, { title: 'Plan "v2". Draft', elements: [] }, {})
+    const id = publishedArtifactId(first) ?? ""
+    const update = await artifactTools.publish_whiteboard.handle(store, { id, elements: [] }, {})
+    expect(publishedTitle(update)).toBe('Plan "v2". Draft')
+    expect(publishedTitle("The developer edited document abc after your revision 1.")).toBe(null)
   })
 })
 
