@@ -365,7 +365,8 @@ export const isPublishArtifactTool = (name: string) => publishTools.has(name)
 export const isPublishDocumentTool = (name: string) => name.endsWith(PUBLISH_DOCUMENT_TOOL) && publishTools.has(name)
 
 export const publishedArtifact = (result: string): { id: string; version: number } | null => {
-  const [, id, version] = /^Published (?:artifact|document) ([a-z0-9][a-z0-9-]*) version (\d+)/.exec(result) ?? []
+  const [, id, version] =
+    /^Published (?:artifact|document|whiteboard|verification) ([a-z0-9][a-z0-9-]*) version (\d+)/.exec(result) ?? []
   return id === undefined ? null : { id, version: Number(version) }
 }
 
