@@ -74,6 +74,13 @@ describe("the local gateway", () => {
     expect(authorizations).toStrictEqual([`Bearer ${MAGPIE_KEY}`, `Bearer ${MAGPIE_KEY}`])
   })
 
+  test("falls back to the default port when magpie's settings.json is not JSON", async () => {
+    const env = await configFor(1)
+    await writeFile(join(env.XDG_CONFIG_HOME, "magpie", "settings.json"), "{ port:")
+
+    expect(await failure(connect(LOCAL_GATEWAY, env))).toMatch(/^magpie is not running/)
+  })
+
   test("is not running when nothing on the port answers as magpie", async () => {
     const other = await serve({ "/api/hello": json({ name: "something-else" }) })
     const { server, port: closed } = await listen(() => undefined)

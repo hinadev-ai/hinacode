@@ -86,6 +86,18 @@ describe("claudeGatewayEnv", () => {
     })
   })
 
+  test("keeps the fields of an inherited extra body and takes its speed out when the thread is not fast", () => {
+    const inherited = '{"speed":"fast","metadata":{"team":"a"}}'
+    expect(claudeGatewayEnv(gateway, priority, false, inherited)).toStrictEqual({
+      ...routing,
+      CLAUDE_CODE_EXTRA_BODY: '{"metadata":{"team":"a"}}',
+    })
+    expect(claudeGatewayEnv(gateway, priority, true, inherited)).toStrictEqual({
+      ...routing,
+      CLAUDE_CODE_EXTRA_BODY: '{"metadata":{"team":"a"},"speed":"fast"}',
+    })
+  })
+
   test("sends no speed when the thread is not fast or the model has no fast tier", () => {
     expect(claudeGatewayEnv(gateway, priority, false)).toStrictEqual(routing)
     expect(claudeGatewayEnv(gateway, { id: "OpenRouter/X" }, true)).toStrictEqual(routing)
