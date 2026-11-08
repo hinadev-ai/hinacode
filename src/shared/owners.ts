@@ -103,6 +103,8 @@ export const learnFromPush = (owners: Owners, environmentId: string, event: Push
       return teach("thread", event.run.threadId)
     case "artifact.updated":
       return teach("artifact", event.artifact.id)
+    case "artifact.feedback":
+      return teach("artifact", event.id)
     case "thread.event":
       teach("thread", event.threadId)
       if (

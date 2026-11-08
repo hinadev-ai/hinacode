@@ -7,14 +7,24 @@ import {
   DOCUMENT_ENTRY,
   isArtifactId,
   openArtifactStore,
+  parseScene,
+  WHITEBOARD_ENTRY,
 } from "@hinacode/artifacts"
 import { Context, Effect, Layer, Schema } from "effect"
-import type { Artifact, DocumentContent, DocumentSaveResult } from "../../shared/artifact.ts"
+import type {
+  Artifact,
+  DocumentContent,
+  DocumentSaveResult,
+  WhiteboardContent,
+  WhiteboardSaveResult,
+  WhiteboardScene,
+} from "../../shared/artifact.ts"
 import { decodeDataUrl } from "./Attachments.ts"
 import { NotFoundError } from "./errors.ts"
 import { Events } from "./Events.ts"
 
 const MANIFEST = "artifact.json"
+const FEEDBACK = "feedback.json"
 const ANNOUNCE_DEBOUNCE_MS = 50
 
 export class DocumentImageError extends Schema.TaggedError<DocumentImageError>()("DocumentImageError", {
@@ -38,6 +48,12 @@ export class Artifacts extends Context.Service<
       readonly markdown: string
     }) => Effect.Effect<DocumentSaveResult, NotFoundError>
     readonly createDocument: (input: { readonly threadId: string; readonly title: string }) => Effect.Effect<Artifact>
+    readonly readWhiteboard: (id: string) => Effect.Effect<WhiteboardContent, NotFoundError>
+    readonly saveWhiteboard: (input: {
+      readonly id: string
+      readonly baseRevision: number
+      readonly scene: WhiteboardScene
+    }) => Effect.Effect<WhiteboardSaveResult, NotFoundError>
     readonly rename: (id: string, title: string) => Effect.Effect<Artifact, NotFoundError>
     readonly addDocumentImage: (input: {
       readonly id: string
@@ -46,9 +62,9 @@ export class Artifacts extends Context.Service<
   }
 >()("hinacode/Artifacts") {}
 
-const manifestOwner = (name: string | null) => {
+const ownerOf = (name: string | null, expected: string) => {
   const [id = "", file, ...rest] = name?.split(/[\\/]/) ?? []
-  return file === MANIFEST && rest.length === 0 && isArtifactId(id) ? id : undefined
+  return file === expected && rest.length === 0 && isArtifactId(id) ? id : undefined
 }
 
 const make = (root: string) =>
@@ -70,13 +86,13 @@ const make = (root: string) =>
       Effect.runFork(events.publish({ type: "artifact.updated", artifact }))
     }
 
-    const schedule = (id: string) => {
-      clearTimeout(timers.get(id))
+    const schedule = (key: string, action: () => void) => {
+      clearTimeout(timers.get(key))
       timers.set(
-        id,
+        key,
         setTimeout(() => {
-          timers.delete(id)
-          void announce(id)
+          timers.delete(key)
+          action()
         }, ANNOUNCE_DEBOUNCE_MS),
       )
     }
@@ -85,8 +101,14 @@ const make = (root: string) =>
       await mkdir(root, { recursive: true })
       for (const artifact of await store.list()) announced.set(artifact.id, artifact.updatedAt)
       const watcher = watch(root, { recursive: true }, (_event, name) => {
-        const id = manifestOwner(name)
-        if (id !== undefined) schedule(id)
+        const manifest = ownerOf(name, MANIFEST)
+        if (manifest !== undefined) schedule(manifest, () => void announce(manifest))
+        const feedback = ownerOf(name, FEEDBACK)
+        if (feedback !== undefined) {
+          schedule(`${feedback}/${FEEDBACK}`, () =>
+            Effect.runFork(events.publish({ type: "artifact.feedback", id: feedback })),
+          )
+        }
       })
       watcher.on("error", (cause) => Effect.runFork(Effect.logWarning("stopped watching artifacts", root, cause)))
       return watcher
@@ -157,6 +179,51 @@ const make = (root: string) =>
         return saved
       })
 
+    const readWhiteboard = (id: string) =>
+      Effect.flatMap(
+        Effect.promise(() => store.file(id, WHITEBOARD_ENTRY)),
+        (found) => {
+          const scene = found?.kind === "whiteboard" ? parseScene(new TextDecoder().decode(found.bytes)) : null
+          return found === null || scene === null
+            ? Effect.fail(new NotFoundError({ entity: "whiteboard", id }))
+            : Effect.succeed({ version: found.version, revision: found.revision, scene })
+        },
+      )
+
+    const saveWhiteboard = ({
+      id,
+      baseRevision,
+      scene,
+    }: {
+      id: string
+      baseRevision: number
+      scene: WhiteboardScene
+    }) =>
+      Effect.gen(function* () {
+        const current = yield* Effect.promise(() => store.get(id))
+        if (current === null || current.kind !== "whiteboard") {
+          return yield* new NotFoundError({ entity: "whiteboard", id })
+        }
+        return yield* Effect.tryPromise({
+          try: () =>
+            store.publish({
+              kind: "whiteboard",
+              id,
+              scene: { ...scene, elements: [...scene.elements] },
+              baseRevision,
+              author: "developer",
+            }),
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.map(({ version, revision }): WhiteboardSaveResult => ({ type: "saved", version, revision })),
+          Effect.catch((cause) =>
+            cause instanceof ArtifactConflictError
+              ? Effect.map(readWhiteboard(id), (latest): WhiteboardSaveResult => ({ type: "conflict", ...latest }))
+              : Effect.die(cause),
+          ),
+        )
+      })
+
     const createDocument = ({ threadId, title }: { threadId: string; title: string }) =>
       Effect.tap(
         Effect.promise(() => store.publish({ kind: "document", title, markdown: "", threadId, author: "developer" })),
@@ -205,6 +272,8 @@ const make = (root: string) =>
       readDocument,
       saveDocument,
       createDocument,
+      readWhiteboard,
+      saveWhiteboard,
       rename,
       addDocumentImage,
     })

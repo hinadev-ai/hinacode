@@ -47,6 +47,76 @@ describe("Artifacts", () => {
     }),
   )
 
+  it.live("pushes artifact.feedback when anyone writes an artifact's feedback", () =>
+    Effect.gen(function* () {
+      const root = mkdtempSync(join(tmpdir(), "kk-artifacts-"))
+      const elsewhere = openArtifactStore(root)
+      const document = yield* Effect.promise(() => elsewhere.publish({ kind: "document", title: "Plan", markdown: "" }))
+
+      const pushed = yield* withArtifacts(root, (pushes) =>
+        Effect.gen(function* () {
+          yield* Effect.promise(() => elsewhere.comment(document.id, { author: { kind: "agent" }, body: "Ready?" }))
+          const first = yield* Queue.take(pushes)
+          yield* Effect.sleep("200 millis")
+          return [first, ...(yield* Queue.clear(pushes))]
+        }),
+      )
+
+      expect(pushed).toEqual([{ type: "artifact.feedback", id: document.id }])
+    }),
+  )
+
+  it.live("saves the developer's whiteboard and answers a stale save with the current scene", () =>
+    Effect.gen(function* () {
+      const root = mkdtempSync(join(tmpdir(), "kk-artifacts-"))
+      const board = yield* Effect.promise(() =>
+        openArtifactStore(root).publish({
+          kind: "whiteboard",
+          title: "Board",
+          patch: { upsert: [{ id: "api", type: "rectangle" }] },
+        }),
+      )
+      const [read, saved, stale, missing] = yield* withArtifacts(root, () =>
+        Artifacts.use((artifacts) =>
+          Effect.gen(function* () {
+            const current = yield* artifacts.readWhiteboard(board.id)
+            const scene = { elements: [...current.scene.elements, { id: "db", type: "ellipse" }] }
+            return [
+              current,
+              yield* artifacts.saveWhiteboard({ id: board.id, baseRevision: current.revision, scene }),
+              yield* artifacts.saveWhiteboard({
+                id: board.id,
+                baseRevision: current.revision,
+                scene: { elements: [] },
+              }),
+              yield* Effect.flip(artifacts.readWhiteboard("gone")),
+            ] as const
+          }),
+        ),
+      )
+
+      expect(read).toEqual({
+        version: 1,
+        revision: 1,
+        scene: { elements: [{ id: "api", type: "rectangle" }], files: {} },
+      })
+      expect(saved).toEqual({ type: "saved", version: 2, revision: 2 })
+      expect(stale).toEqual({
+        type: "conflict",
+        version: 2,
+        revision: 2,
+        scene: {
+          elements: [
+            { id: "api", type: "rectangle" },
+            { id: "db", type: "ellipse" },
+          ],
+          files: {},
+        },
+      })
+      expect(missing._tag).toBe("NotFoundError")
+    }),
+  )
+
   it.live("previews the entry for an empty path and fails for an unknown file", () =>
     Effect.gen(function* () {
       const root = mkdtempSync(join(tmpdir(), "kk-artifacts-"))

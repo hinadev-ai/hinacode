@@ -20,6 +20,7 @@ import * as AgentAccounts from "./services/AgentAccounts.ts"
 import * as AgentLogins from "./services/AgentLogins.ts"
 import * as SessionImports from "./services/SessionImports.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
+import * as ArtifactFeedback from "./services/ArtifactFeedback.ts"
 import * as ArtifactInspector from "./services/ArtifactInspector.ts"
 import * as Artifacts from "./services/Artifacts.ts"
 import * as Attachments from "./services/Attachments.ts"
@@ -198,6 +199,7 @@ export const makeAppLayer = ({
   const services = Layer.mergeAll(
     Automations.layer,
     Settle.layer,
+    ArtifactFeedback.layer,
     PullRequestWatcher.layer,
     PullRequestLifecycle.layer,
     providers.simulated ? PullRequestGuides.idleLayer : PullRequestGuides.layer,

@@ -17,6 +17,7 @@ import * as AgentAccounts from "./services/AgentAccounts.ts"
 import * as AgentLogins from "./services/AgentLogins.ts"
 import * as SessionImports from "./services/SessionImports.ts"
 import * as AgentRunner from "./services/AgentRunner.ts"
+import * as ArtifactFeedback from "./services/ArtifactFeedback.ts"
 import * as ArtifactInspector from "./services/ArtifactInspector.ts"
 import * as Artifacts from "./services/Artifacts.ts"
 import * as Attachments from "./services/Attachments.ts"
@@ -124,6 +125,7 @@ export const makeTestAppLayer = (
     environments,
     PullRequestGuides.idleLayer,
     Settle.layer.pipe(Layer.provide(agents)),
+    ArtifactFeedback.layer.pipe(Layer.provide(agents)),
   )
   const app = Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base)))
   return Layer.mergeAll(RemoteServer.layer, answerAsksLayer).pipe(

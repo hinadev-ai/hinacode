@@ -18,6 +18,7 @@ import type { ArtifactExportRequest } from "../shared/artifact.ts"
 import { AgentAccounts } from "./services/AgentAccounts.ts"
 import { AgentLogins } from "./services/AgentLogins.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
+import { ArtifactFeedback } from "./services/ArtifactFeedback.ts"
 import { ArtifactInspector } from "./services/ArtifactInspector.ts"
 import { Artifacts } from "./services/Artifacts.ts"
 import { Attachments } from "./services/Attachments.ts"
@@ -70,6 +71,7 @@ export type AppServices =
   | ClientSettings
   | Environments
   | AgentRunner
+  | ArtifactFeedback
   | McpCredentials
   | PullRequests
   | PullRequestGuides
@@ -548,6 +550,12 @@ const handlers: Handlers = {
   "artifacts.saveDocument": (input) => Artifacts.use((artifacts) => artifacts.saveDocument(input)),
   "artifacts.addDocumentImage": (input) => Artifacts.use((artifacts) => artifacts.addDocumentImage(input)),
   "artifacts.createDocument": (input) => Artifacts.use((artifacts) => artifacts.createDocument(input)),
+  "artifacts.readWhiteboard": ({ id }) => Artifacts.use((artifacts) => artifacts.readWhiteboard(id)),
+  "artifacts.saveWhiteboard": (input) => Artifacts.use((artifacts) => artifacts.saveWhiteboard(input)),
+  "artifacts.feedback": ({ id }) => ArtifactFeedback.use((feedback) => feedback.feedback(id)),
+  "artifacts.comment": (input) => ArtifactFeedback.use((feedback) => feedback.comment(input)),
+  "artifacts.resolveComment": (input) => ArtifactFeedback.use((feedback) => feedback.resolveComment(input)),
+  "artifacts.decide": (input) => ArtifactFeedback.use((feedback) => feedback.decide(input)),
   "artifacts.rename": ({ id, title }) => Artifacts.use((artifacts) => artifacts.rename(id, title)),
   "artifacts.setTheme": (theme) => ArtifactInspector.use((inspector) => inspector.setTheme(theme)),
   "artifacts.export": (request, desktop) => desktop?.exportArtifact(request) ?? Effect.succeed(null),
