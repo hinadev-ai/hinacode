@@ -25,6 +25,7 @@ let calls: Array<string> = []
 let saves: Array<Saved> = []
 let comments: Array<Comment> = []
 let staged: Array<Staged> = []
+let agentWrites: WhiteboardContent | undefined
 const listeners = new Set<(event: typeof PushEvent.Encoded) => void>()
 
 const boardAt = (revision: number): Artifact => ({
@@ -48,6 +49,11 @@ const bridge: HinacodeBridge = {
     if (method === "artifacts.saveWhiteboard") {
       const save = payload as Saved
       saves.push(save)
+      if (agentWrites !== undefined) {
+        stored = agentWrites
+        agentWrites = undefined
+        return { result: { type: "conflict", ...stored } }
+      }
       stored = { version: 2, revision: stored.revision + 1, scene: save.scene }
       return { result: { type: "saved", version: stored.version, revision: stored.revision } }
     }
@@ -101,6 +107,7 @@ beforeEach(({ task }) => {
   saves = []
   comments = []
   staged = []
+  agentWrites = undefined
   useArtifacts.getState().select(thread.id, boardId)
   push({ type: "artifact.updated", artifact: boardAt(1) })
 })
@@ -161,6 +168,24 @@ test("closing the board saves the edit it was still waiting to save", async () =
   const elements = saves[0]?.scene.elements ?? []
   expect(elements.map((element) => element.id)).toEqual(expect.arrayContaining(["api", "db", "api-db"]))
   expect(elements.find((element) => element.id === "api")).toMatchObject({ x: 1 })
+})
+
+test("merges an agent's write that beat the save and saves again on its revision", async () => {
+  await openBoard()
+  agentWrites = {
+    version: 2,
+    revision: 5,
+    scene: { elements: [...AGENT_SCENE, { id: "queue", type: "rectangle", x: 0, y: 300, width: 120, height: 60 }] },
+  }
+  await selectAll()
+  await userEvent.keyboard("{ArrowRight}")
+
+  await expect.poll(() => saves.length, { timeout: 3000 }).toBe(2)
+  expect(saves.map((save) => save.baseRevision)).toEqual([1, 5])
+  const elements = saves[1]?.scene.elements ?? []
+  expect(elements.find((element) => element.id === "api")).toMatchObject({ x: 1 })
+  expect(elements.find((element) => element.id === "queue")).toMatchObject({ y: 300, version: expect.any(Number) })
+  await expect.element(page.getByText("Saved")).toBeInTheDocument()
 })
 
 test("adds an agent's patch next to the developer's unsaved edit", async () => {
