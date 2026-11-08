@@ -69,6 +69,7 @@ function WhiteboardCanvas({
   const [status, setStatus] = useState<SaveStatus>({ type: "saved" })
   const [selection, setSelection] = useState<ReadonlyArray<string>>([])
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null)
+  const [fitted, setFitted] = useState(false)
   const { scheme } = useTheme(useClientSettings().appearance.theme)
   const [sync] = useState(() =>
     createWhiteboardSync({
@@ -95,12 +96,21 @@ function WhiteboardCanvas({
       <div ref={keepHandledKeys} className="relative min-h-0 flex-1">
         <div className="absolute inset-0">
           <Excalidraw
-            initialData={{ elements: sync.initial.elements, files: sync.initial.files, scrollToContent: true }}
+            initialData={{ elements: sync.initial.elements, files: sync.initial.files }}
             excalidrawAPI={(created) => {
               sync.attach(created)
               setApi(created)
             }}
             onChange={(elements, appState, files) => {
+              if (!fitted && api !== null && appState.width > 0) {
+                api.scrollToContent(elements, {
+                  fitToViewport: true,
+                  viewportZoomFactor: 0.9,
+                  maxZoom: 1,
+                  animate: false,
+                })
+                setFitted(true)
+              }
               sync.changed(elements, appState, files)
               const selected = Object.keys(appState.selectedElementIds)
               setSelection((current) => (sameIds(current, selected) ? current : selected))
