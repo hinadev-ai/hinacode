@@ -2,6 +2,8 @@ import { Duration, Effect, Option, Predicate, Schema } from "effect"
 import { RelayHostList, RelayMachineList } from "../../shared/relayMachines.ts"
 
 export const EXPIRED = "The sign-in link expired. Link this machine again."
+const SIGN_IN_USED = "The sign-in expired or was already used. Sign in again."
+export const DENIED = "The link was denied in the browser."
 
 const CALL_TIMEOUT = Duration.seconds(30)
 
@@ -22,7 +24,11 @@ export const Link = Schema.Struct({
   expiresAt: Schema.Number,
 })
 const Claimed = Schema.Struct({ credential: Schema.String })
-const Profile = Schema.Struct({ name: Schema.NullOr(Schema.String), email: Schema.NullOr(Schema.String) })
+const Profile = Schema.Struct({
+  name: Schema.NullOr(Schema.String),
+  email: Schema.NullOr(Schema.String),
+  imageUrl: Schema.optionalKey(Schema.NullOr(Schema.String)),
+})
 const Tunnel = Schema.Struct({ hostname: Schema.String, connectorToken: Schema.String })
 const ServiceFailure = Schema.Struct({ error: Schema.String })
 
@@ -104,13 +110,19 @@ export const relayService = (fetch: Fetch, serviceUrl: string) => {
       call("start linking", "POST", "/v1/links", { body: { environmentId, name } }).pipe(
         Effect.flatMap((answer) => decode("start linking", Link, answer)),
       ),
-    createSignIn: (name: string) =>
-      call("start signing in", "POST", "/v1/sign-ins", { body: { name } }).pipe(
-        Effect.flatMap((answer) => decode("start signing in", Link, answer)),
+    exchangeSignInCode: (code: string, codeVerifier: string) =>
+      call("finish signing in", "POST", "/v1/sign-in-codes/exchange", { body: { code, codeVerifier } }).pipe(
+        Effect.flatMap((answer) =>
+          answer.status === 410
+            ? Effect.fail(new RelayError({ message: SIGN_IN_USED }))
+            : decode("finish signing in", Claimed, answer),
+        ),
+        Effect.map(({ credential }) => credential),
       ),
     profile: (credential: string) =>
       asAccount("read your account", "GET", "/v1/account", credential).pipe(
         Effect.flatMap((answer) => decode("read your account", Profile, answer)),
+        Effect.map((profile) => ({ ...profile, imageUrl: profile.imageUrl ?? null })),
       ),
     signOutDevice: (credential: string) =>
       call("sign out this device", "DELETE", "/v1/device", { credential }).pipe(
@@ -121,6 +133,7 @@ export const relayService = (fetch: Fetch, serviceUrl: string) => {
         Effect.flatMap((answer) => {
           if (answer.status === 202) return Effect.succeedNone
           if (answer.status === 410) return Effect.fail(new RelayError({ message: EXPIRED }))
+          if (answer.status === 403) return Effect.fail(new RelayError({ message: DENIED }))
           return Effect.map(decode("finish linking", Claimed, answer), ({ credential }) => Option.some(credential))
         }),
       ),

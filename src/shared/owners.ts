@@ -60,6 +60,7 @@ export const learnFromAnswer = (
     case "threads.unarchive":
     case "threads.settle":
     case "threads.unsettle":
+    case "threads.regenerateTitle":
     case "threads.sidechat":
       return each(result, learnId(teach, "thread"))
     case "worktrees.list":

@@ -237,7 +237,10 @@ const withPreparingThread = async (
             {
               type: "tool_call_finished",
               callId: "image-1",
-              output: [{ type: "image", source: { type: "base64", media_type: "image/png", data: "aW1hZ2U=" } }],
+              output: [
+                { type: "image", source: { type: "base64", media_type: "image/png", data: "aW1hZ2U=" } },
+                { type: "image", data: "PHN2Zy8+", mimeType: "image/svg+xml" },
+              ],
               isError: false,
             },
             completed,
@@ -387,7 +390,10 @@ const withPreparingThread = async (
               authenticate: () => Option.none(),
               listening: () => Effect.void,
             }),
-            Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }),
+            Layer.succeed(ThreadNaming, {
+              nameFromPrompt: () => Effect.void,
+              regenerateTitle: () => Effect.die("unused"),
+            }),
             Layer.succeed(Threads.Threads, {
               ...threads,
               captureTurnBase: (cwd) =>
@@ -420,6 +426,9 @@ const withPreparingThread = async (
                   head: "abc1234",
                   mergeable: "mergeable",
                   changedFiles: 1,
+                  labels: [],
+                  assignees: [],
+                  reviewers: [],
                   comments: [],
                   checkRuns: [{ name: "CI / test", status: "failing", url: "https://ci.example/test" }],
                 }),
@@ -1173,6 +1182,66 @@ it("closes the session after Stop when a wakeup is pending, so the wakeup never 
   })
 })
 
+it("releases an idle thread by stopping its sub-agents and every task, shells too, and closing its session", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, calls, stops, setBackgroundTasks }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "spawns a background sub-agent, then ends", []))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("idle"))
+    setBackgroundTasks([
+      { id: "shell-1", kind: "shell", label: "pnpm dev", startedAt: "2026-11-06T00:00:00.000Z" },
+      { id: "workflow-1", kind: "workflow", label: "Review", startedAt: "2026-11-06T00:00:00.000Z" },
+    ])
+    await vi.waitFor(async () => expect(await Effect.runPromise(runner.backgroundTasks(thread.id))).toHaveLength(2))
+
+    expect(await Effect.runPromise(runner.release(thread.id, Effect.void))).toStrictEqual(Option.some(undefined))
+
+    expect(stops).toStrictEqual(["subagent:native-1", "task:shell-1", "task:workflow-1"])
+    expect(calls).toStrictEqual([{ provider: "claude", call: "closeSession" }])
+  })
+})
+
+it("keeps the session of a thread whose turn is running when it releases the thread", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, calls }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "waits for Stop", []))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running"))
+
+    expect(await Effect.runPromise(runner.release(thread.id, Effect.void))).toStrictEqual(Option.none())
+
+    expect(calls).toStrictEqual([])
+    await Effect.runPromise(runner.interrupt(thread.id))
+  })
+})
+
+it("holds back a send that arrives while a release cleans up, so the cleanup cannot hit the new turn", async () => {
+  await withPreparingThread(async ({ runner, worktrees, thread, release, turns }) => {
+    release()
+    await Effect.runPromise(worktrees.whenPrepared(thread.worktreeId!))
+    const cleaning = Promise.withResolvers<void>()
+    const finish = Effect.runSync(Deferred.make<void>())
+    const cleanup = Effect.sync(() => cleaning.resolve()).pipe(
+      Effect.andThen(Deferred.await(finish)),
+      Effect.andThen(Effect.sync(() => turns.length)),
+    )
+    const released = Effect.runPromise(runner.release(thread.id, cleanup))
+    await Promise.race([cleaning.promise, released])
+
+    const sent = Effect.runPromise(runner.send(thread.id, "accepted input", []))
+    const startedDuringCleanup = await vi
+      .waitFor(() => expect(turns).not.toHaveLength(0), { timeout: 500 })
+      .then(
+        () => true,
+        () => false,
+      )
+    await Effect.runPromise(Deferred.succeed(finish, undefined))
+
+    expect(startedDuringCleanup).toBe(false)
+    expect(await released).toStrictEqual(Option.some(0))
+    await sent
+    expect(turns).toHaveLength(1)
+  })
+})
+
 it("keeps a sub-agent running past its turn, then hands its reply to the idle thread", async () => {
   await withPreparingThread(async ({ runner, threads, thread, release, turns, reportSubagent }) => {
     release()
@@ -1268,10 +1337,16 @@ it("saves a tool's image as an attachment and keeps its bytes out of the transcr
     const finished = transcript.find((push) => push.type === "thread.event" && push.event.type === "tool_call_finished")
     expect(JSON.stringify(finished)).not.toContain("aW1hZ2U=")
     expect(finished).toMatchObject({
-      event: { output: [{ type: "image", mimeType: "image/png", attachment: { kind: "image", mime: "image/png" } }] },
+      event: {
+        output: [
+          { type: "image", mimeType: "image/png", attachment: { kind: "image", mime: "image/png" } },
+          { type: "image", mimeType: "image/svg+xml", attachment: { kind: "image", mime: "image/svg+xml" } },
+        ],
+      },
     })
-    const output = (finished as unknown as { event: { output: [{ attachment: { path: string } }] } }).event.output
-    expect(readFileSync(output[0].attachment.path, "utf8")).toBe("image")
+    const output = (finished as unknown as { event: { output: Array<{ attachment: { path: string } }> } }).event.output
+    expect(readFileSync(output[0]!.attachment.path, "utf8")).toBe("image")
+    expect(output[1]!.attachment.path).toMatch(/\.svg$/)
   })
 })
 

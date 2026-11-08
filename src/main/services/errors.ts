@@ -70,6 +70,15 @@ export class ProjectFolderNotEmptyError extends Schema.TaggedError<ProjectFolder
   }
 }
 
+export class ProjectCloneCancelledError extends Schema.TaggedError<ProjectCloneCancelledError>()(
+  "ProjectCloneCancelledError",
+  { rootPath: Schema.String },
+) {
+  override get message(): string {
+    return `Cancelled cloning into ${this.rootPath}`
+  }
+}
+
 export class UnknownRootError extends Schema.TaggedError<UnknownRootError>()("UnknownRootError", {
   root: Schema.String,
 }) {

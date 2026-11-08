@@ -15,13 +15,18 @@ beforeEach(async () => {
     env.DB.prepare("DELETE FROM link"),
     env.DB.prepare("DELETE FROM host"),
     env.DB.prepare("DELETE FROM device"),
+    env.DB.prepare("DELETE FROM sign_in_code"),
   ])
   clock = Date.UTC(2026, 9, 24)
   cloudflare = new FakeCloudflare()
   app = makeApp({
     verifySession: async (request) =>
       SESSIONS[request.headers.get("Authorization")?.replace("Bearer ", "") ?? ""] ?? null,
-    accountProfile: async (userId) => ({ name: userId, email: `${userId}@example.com` }),
+    accountProfile: async (userId) => ({
+      name: userId,
+      email: `${userId}@example.com`,
+      imageUrl: `https://img.example.com/${userId}`,
+    }),
     cloudflare: cloudflare.fetch,
     now: () => clock,
     random: (bytes) => crypto.getRandomValues(new Uint8Array(bytes)),
@@ -113,6 +118,27 @@ describe("linking", () => {
     expect((await approve(link.userCode)).status).toBe(404)
     expect((await claim(link.deviceCode)).status).toBe(410)
     expect((await claim("never-issued")).status).toBe(410)
+  })
+
+  it("tells the waiting machine it was denied, once", async () => {
+    const link = await startLink()
+    const deny = (session?: string) => call("DELETE", `/v1/links/${link.userCode}`, { bearer: session })
+    expect((await deny()).status).toBe(401)
+    expect((await deny("alice-session")).status).toBe(204)
+    expect((await deny("alice-session")).status).toBe(404)
+    expect((await approve(link.userCode)).status).toBe(404)
+    const refused = await claim(link.deviceCode)
+    expect(refused.status).toBe(403)
+    expect(await refused.json()).toEqual({ error: "The request was denied in the browser." })
+    expect((await claim(link.deviceCode)).status).toBe(410)
+  })
+
+  it("refuses to deny a link that was already approved", async () => {
+    const link = await startLink()
+    expect((await approve(link.userCode, "alice-session")).status).toBe(204)
+    expect((await call("DELETE", `/v1/links/${link.userCode}`, { bearer: "bob-session" })).status).toBe(409)
+    expect((await claim(link.deviceCode)).status).toBe(200)
+    expect((await call("DELETE", `/v1/links/${link.userCode}`, { bearer: "alice-session" })).status).toBe(404)
   })
 
   it("needs the owner's bearer to read or approve a link", async () => {
@@ -516,6 +542,32 @@ const signIn = async (session: string, name = "laptop") => {
 
 const hostsSeenBy = (bearer: string) => call("GET", "/v1/hosts", { bearer })
 
+describe("signing in on the web app", () => {
+  it("hands the web app the Clerk key it signs in with", async () => {
+    const response = await call("GET", "/v1/config")
+    expect(await response.json()).toEqual({ clerkPublishableKey: env.CLERK_PUBLISHABLE_KEY })
+  })
+
+  it("trades a Clerk session for a device credential the browser keeps", async () => {
+    const response = await call("POST", "/v1/devices", {
+      bearer: "alice-session",
+      body: { name: "HinaCode in a browser" },
+    })
+    expect(response.status).toBe(200)
+    const { credential } = (await response.json()) as { credential: string }
+    expect((await call("GET", "/v1/hosts", { bearer: credential })).status).toBe(200)
+    expect((await call("DELETE", "/v1/device", { bearer: credential })).status).toBe(204)
+  })
+
+  it("refuses a device credential, so one device cannot mint another", async () => {
+    const first = await call("POST", "/v1/devices", { bearer: "alice-session", body: { name: "browser" } })
+    const { credential } = (await first.json()) as { credential: string }
+    expect((await call("POST", "/v1/devices", { bearer: credential, body: { name: "copy" } })).status).toBe(401)
+    expect((await call("POST", "/v1/devices", { body: { name: "copy" } })).status).toBe(401)
+    expect((await call("POST", "/v1/devices", { bearer: "alice-session", body: { name: "" } })).status).toBe(400)
+  })
+})
+
 describe("signing in a device", () => {
   it("stays pending until a session approves it, and claims once", async () => {
     const started = (await (await call("POST", "/v1/sign-ins", { body: { name: "laptop" } })).json()) as Link
@@ -531,7 +583,11 @@ describe("signing in a device", () => {
     const credential = await signIn("alice-session")
     expect(credential).toMatch(/^[A-Za-z0-9_-]{43}$/)
     const profile = await call("GET", "/v1/account", { bearer: credential })
-    expect(await profile.json()).toEqual({ name: "user_alice", email: "user_alice@example.com" })
+    expect(await profile.json()).toEqual({
+      name: "user_alice",
+      email: "user_alice@example.com",
+      imageUrl: "https://img.example.com/user_alice",
+    })
     const stored = await env.DB.prepare("SELECT user_id, credential_hash FROM device").first<{
       user_id: string
       credential_hash: string
@@ -621,5 +677,128 @@ describe("signing out", () => {
   it("refuses a device sign-out without a known credential", async () => {
     expect((await call("DELETE", "/v1/device")).status).toBe(401)
     expect((await call("DELETE", "/v1/device", { bearer: "guess" })).status).toBe(401)
+  })
+})
+
+const base64Url = (bytes: Uint8Array) =>
+  btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "")
+
+const pkce = async () => {
+  const verifier = base64Url(crypto.getRandomValues(new Uint8Array(32)))
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))
+  return { verifier, challenge: base64Url(new Uint8Array(digest)) }
+}
+
+const LOOPBACK = "http://127.0.0.1:53123/callback"
+
+const requestCode = (
+  bearer: string | undefined,
+  redirectUri = LOOPBACK,
+  codeChallenge = "c".repeat(43),
+  name = "laptop",
+) => call("POST", "/v1/sign-in-codes", { bearer, body: { redirectUri, codeChallenge, name } })
+
+const issueCode = async (redirectUri = LOOPBACK) => {
+  const { verifier, challenge } = await pkce()
+  const response = await requestCode("alice-session", redirectUri, challenge)
+  expect(response.status).toBe(200)
+  const { redirectUrl } = (await response.json()) as { redirectUrl: string }
+  return { verifier, redirectUrl, code: new URL(redirectUrl).searchParams.get("code") ?? "" }
+}
+
+const exchange = (code: string, codeVerifier: string) =>
+  call("POST", "/v1/sign-in-codes/exchange", { body: { code, codeVerifier } })
+
+describe("signing in by redirect", () => {
+  it("needs a Clerk session and refuses a device credential", async () => {
+    expect((await requestCode(undefined)).status).toBe(401)
+    expect((await requestCode(await signIn("alice-session"))).status).toBe(401)
+    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM sign_in_code").first("count")).toBe(0)
+  })
+
+  it("redirects only to a loopback port or the app's scheme", async () => {
+    for (const redirectUri of [
+      "https://evil.example/cb",
+      "http://localhost:1234/cb",
+      "http://127.0.0.1/cb",
+      "hinacode://x?y=1",
+      "http://127.0.0.1:53123/cb#x",
+      "not a url",
+    ]) {
+      const response = await requestCode("alice-session", redirectUri)
+      expect(response.status, redirectUri).toBe(400)
+      expect(((await response.json()) as { error: string }).error).toContain("redirectUri")
+    }
+    for (const codeChallenge of ["short", "c".repeat(44), `${"c".repeat(42)}=`]) {
+      expect((await requestCode("alice-session", LOOPBACK, codeChallenge)).status).toBe(400)
+    }
+  })
+
+  it("puts the code in the redirect and stores only its hash", async () => {
+    for (const redirectUri of [LOOPBACK, "hinacode://signed-in"]) {
+      const { redirectUrl, code } = await issueCode(redirectUri)
+      expect(code).toMatch(/^[A-Za-z0-9_-]{43}$/)
+      expect(redirectUrl).toBe(`${redirectUri}?code=${code}`)
+    }
+    const stored = await env.DB.prepare("SELECT code_hash, expires_at FROM sign_in_code").all<{
+      code_hash: string
+      expires_at: number
+    }>()
+    expect(stored.results).toHaveLength(2)
+    for (const row of stored.results) {
+      expect(row.code_hash).toMatch(/^[0-9a-f]{64}$/)
+      expect(row.expires_at).toBe(clock + 2 * 60 * 1000)
+    }
+  })
+
+  it("exchanges the code once for a credential that acts as the account", async () => {
+    const { code, verifier } = await issueCode()
+    const response = await exchange(code, verifier)
+    expect(response.status).toBe(200)
+    const { credential } = (await response.json()) as { credential: string }
+    const profile = await call("GET", "/v1/account", { bearer: credential })
+    expect(await profile.json()).toEqual({
+      name: "user_alice",
+      email: "user_alice@example.com",
+      imageUrl: "https://img.example.com/user_alice",
+    })
+    expect(await env.DB.prepare("SELECT name FROM device").first("name")).toBe("laptop")
+
+    const again = await exchange(code, verifier)
+    expect(again.status).toBe(410)
+    expect(await again.json()).toEqual({ error: "The sign-in expired or was already used. Sign in again." })
+  })
+
+  it("spends the code on a wrong verifier", async () => {
+    const { code, verifier } = await issueCode()
+    expect((await exchange(code, (await pkce()).verifier)).status).toBe(410)
+    expect((await exchange(code, verifier)).status).toBe(410)
+    expect(await env.DB.prepare("SELECT COUNT(*) AS count FROM device").first("count")).toBe(0)
+  })
+
+  it("refuses an expired code", async () => {
+    const { code, verifier } = await issueCode()
+    clock += 2 * 60 * 1000
+    expect((await exchange(code, verifier)).status).toBe(410)
+  })
+
+  it("is ended by signing out every device", async () => {
+    const { code, verifier } = await issueCode()
+    expect((await call("DELETE", "/v1/devices", { bearer: "alice-session" })).status).toBe(204)
+    expect((await exchange(code, verifier)).status).toBe(410)
+  })
+
+  it("serves the sign-in and signed-in pages unframeable", async () => {
+    for (const path of ["/sign-in?redirect_uri=x", "/signed-in"]) {
+      const response = await call("GET", path)
+      expect(response.status).toBe(200)
+      expect(response.headers.get("Content-Type")).toContain("text/html")
+      expect(response.headers.get("X-Frame-Options")).toBe("DENY")
+    }
+    expect(await (await call("GET", "/sign-in")).text()).toContain("clerk.browser.js")
+    expect(await (await call("GET", "/signed-in")).text()).not.toContain("clerk")
   })
 })

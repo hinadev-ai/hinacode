@@ -1,19 +1,56 @@
 import { expect, type Page } from "@playwright/test"
 import type { WebStack } from "./fixtures.ts"
+import { CLERK_HOST, CLERK_SESSION_TOKEN } from "./stack.ts"
 
 export const sidebar = (page: Page) => page.getByRole("navigation", { name: "Projects and threads" })
 
+const CLERK_SIGNED_IN = "web-e2e.clerk.signedIn"
+
+const clerkUiStub = "window.__internal_ClerkUICtor = function () {}"
+
+const clerkStub = `window.Clerk = {
+  isSignedIn: false,
+  session: { getToken: async () => ${JSON.stringify(CLERK_SESSION_TOKEN)} },
+  load: async () => {
+    window.Clerk.isSignedIn = sessionStorage.getItem(${JSON.stringify(CLERK_SIGNED_IN)}) === "1"
+  },
+  mountSignIn: (element, options) => {
+    const button = document.createElement("button")
+    button.textContent = "Continue with GitHub"
+    button.onclick = () => {
+      sessionStorage.setItem(${JSON.stringify(CLERK_SIGNED_IN)}, "1")
+      location.assign(options.forceRedirectUrl)
+    }
+    element.replaceChildren(button)
+  },
+  unmountSignIn: (element) => element.replaceChildren(),
+  signOut: async () => {
+    sessionStorage.removeItem(${JSON.stringify(CLERK_SIGNED_IN)})
+    window.Clerk.isSignedIn = false
+  },
+}`
+
+export const stubClerk = async (page: Page) => {
+  await page.route("https://relay.hinacode.app/**", (route) => route.abort())
+  await page.route(`https://${CLERK_HOST}/**`, (route) =>
+    route.fulfill({
+      contentType: "text/javascript",
+      headers: { "access-control-allow-origin": "*" },
+      body: new URL(route.request().url()).pathname.endsWith("/ui.browser.js") ? clerkUiStub : clerkStub,
+    }),
+  )
+}
+
+export const endClerkSession = (page: Page) => page.evaluate((key) => sessionStorage.removeItem(key), CLERK_SIGNED_IN)
+
 export const signIn = async (page: Page, web: WebStack) => {
+  await expect(page.getByRole("heading", { name: "Sign in to HinaCode", exact: true })).toBeVisible()
   const relayField = page.getByRole("textbox", { name: "Relay", exact: true })
   if (!(await relayField.isVisible()))
     await page.getByRole("button", { name: "Use another relay", exact: true }).click()
   await relayField.fill(web.relay.url)
-  await page.getByRole("button", { name: "Sign in", exact: true }).click()
-  const relayPage = page.waitForEvent("popup")
-  await page.getByRole("link", { name: "Open the sign-in page", exact: true }).click()
-  const approval = await relayPage
-  await expect(approval.getByText(/^Approved /)).toBeVisible()
-  await approval.close()
+  await page.getByRole("button", { name: "Use this relay", exact: true }).click()
+  await page.getByRole("button", { name: "Continue with GitHub", exact: true }).click()
 }
 
 export const openSignedIn = async (page: Page, web: WebStack) => {

@@ -21,7 +21,7 @@ export const makeVerifySession =
     try {
       const session = await verify(token, {
         secretKey: env.CLERK_SECRET_KEY,
-        authorizedParties: [new URL(request.url).origin],
+        authorizedParties: [new URL(request.url).origin, ...env.WEB_ORIGINS.split(",")],
       })
       return session.sts === "pending" ? null : session.sub
     } catch (error) {
@@ -34,5 +34,9 @@ export const verifySession = makeVerifySession(verifyToken)
 
 export const accountProfile = async (userId: string, env: Env) => {
   const user = await createClerkClient({ secretKey: env.CLERK_SECRET_KEY }).users.getUser(userId)
-  return { name: user.fullName ?? user.username, email: user.primaryEmailAddress?.emailAddress ?? null }
+  return {
+    name: user.fullName ?? user.username,
+    email: user.primaryEmailAddress?.emailAddress ?? null,
+    imageUrl: user.hasImage ? user.imageUrl : null,
+  }
 }

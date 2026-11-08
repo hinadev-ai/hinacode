@@ -60,6 +60,7 @@ describe("activeWorkspace", () => {
         worktreeId: null,
         baseRef: null,
         branch: null,
+        worktreeRemoved: false,
       })
     }),
   )
@@ -73,6 +74,7 @@ describe("activeWorkspace", () => {
         worktreeId: expect.any(String),
         baseRef: "main",
         branch: "feature",
+        worktreeRemoved: false,
       })
     }),
   )
@@ -89,6 +91,7 @@ describe("activeWorkspace", () => {
         worktreeId: null,
         baseRef: null,
         branch: null,
+        worktreeRemoved: true,
       })
     }),
   )
@@ -105,6 +108,7 @@ describe("activeWorkspace", () => {
         worktreeId: null,
         baseRef: null,
         branch: null,
+        worktreeRemoved: false,
       })
     }),
   )

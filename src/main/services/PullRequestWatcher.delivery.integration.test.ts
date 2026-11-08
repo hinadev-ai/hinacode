@@ -155,7 +155,7 @@ const agents = runnerLayer.pipe(
       Layer.succeed(OpencodeProvider, provider("opencode")),
       Layer.succeed(MagpieProvider, provider("magpie")),
       Layer.mock(Secrets, {}),
-      Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }),
+      Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void, regenerateTitle: () => Effect.die("unused") }),
     ),
   ),
 )
@@ -184,6 +184,9 @@ const testLayer = watcherLayer.pipe(
             head: "abc1234",
             mergeable: "mergeable",
             changedFiles: 1,
+            labels: [],
+            assignees: [],
+            reviewers: [],
             comments: [],
             checkRuns: [{ name: "CI / test", status: "failing", url: "https://ci.example/test" }],
           }),

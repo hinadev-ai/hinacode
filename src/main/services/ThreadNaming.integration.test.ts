@@ -8,7 +8,7 @@ import { Deferred, Effect, Layer, PubSub, Stream } from "effect"
 import { vi } from "vitest"
 import type { AgentEvent } from "../../shared/agent.ts"
 import type { PushEvent } from "../../shared/contract.ts"
-import type { CheckoutTarget } from "../../shared/domain.ts"
+import type { CheckoutTarget, Message } from "../../shared/domain.ts"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
@@ -34,9 +34,16 @@ import * as ThreadNaming from "./ThreadNaming.ts"
 import * as Threads from "./Threads.ts"
 import * as Worktrees from "./Worktrees.ts"
 
+const prompts = vi.hoisted((): Array<string> => [])
+
 vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@anthropic-ai/claude-agent-sdk")>()),
-  query: async function* () {
+  query: async function* ({ prompt }: { prompt: string }) {
+    prompts.push(prompt)
+    if (prompt.startsWith("/")) {
+      yield { type: "result", subtype: "success", result: "Command completed", local_command: "code_review" }
+      return
+    }
     yield { type: "result", subtype: "success", structured_output: { title: "Review login", branch: "review-login" } }
   },
 }))
@@ -104,6 +111,7 @@ const observedNaming = (named: Deferred.Deferred<void>) =>
       return ThreadNaming.ThreadNaming.of({
         nameFromPrompt: (...args: Parameters<typeof naming.nameFromPrompt>) =>
           naming.nameFromPrompt(...args).pipe(Effect.ensuring(Deferred.succeed(named, undefined))),
+        regenerateTitle: naming.regenerateTitle,
       })
     }),
   ).pipe(Layer.provide(ThreadNaming.layer))
@@ -277,6 +285,83 @@ describe("naming a thread from its first message", () => {
         branch: "kk/review-login",
         recordedBranch: "kk/review-login",
       })
+    }),
+  )
+})
+
+const regenerate = (history: ReadonlyArray<Message>) =>
+  Effect.gen(function* () {
+    const dir = yield* Effect.acquireRelease(
+      Effect.sync(() => realpathSync(mkdtempSync(join(tmpdir(), "kk-regenerate-test-")))),
+      (path) => Effect.sync(() => rmSync(path, { recursive: true, force: true })),
+    )
+    const root = makeRepo(dir)
+    const pushes = yield* PubSub.unbounded<PushEvent>()
+    const named = yield* Deferred.make<void>()
+    return yield* Effect.gen(function* () {
+      const project = yield* Projects.Projects.use((projects) =>
+        projects.create({ name: "repo", rootPath: root, setupScript: null }),
+      )
+      const thread = yield* Threads.Threads.use((threads) =>
+        threads.create({ projectId: project.id, title: "t", provider: "claude", model: "claude-sonnet-5-5" }),
+      )
+      for (const message of history) {
+        yield* Messages.Messages.use((messages) => messages.insert({ ...message, threadId: thread.id }))
+      }
+      prompts.length = 0
+      const renamed = yield* ThreadNaming.ThreadNaming.use((naming) => naming.regenerateTitle(thread.id))
+      return { title: renamed.title, prompts: [...prompts] }
+    }).pipe(Effect.provide(makeLayer(join(dir, "hinacode.sqlite"), pushes, named)))
+  }).pipe(Effect.scoped)
+
+const message = (id: string, role: Message["role"], text: string): Message => ({
+  id,
+  threadId: "",
+  role,
+  parts: [{ type: "text", text }],
+  createdAt: `2026-11-06T00:00:0${id}.000Z`,
+  completedAt: null,
+  usage: null,
+  forkPoint: null,
+})
+
+describe("regenerating a thread's title", () => {
+  it.live("names the thread from every message the developer sent", () =>
+    Effect.gen(function* () {
+      const result = yield* regenerate([
+        message("1", "user", "Fix the login form"),
+        message("2", "assistant", "Done"),
+        message("3", "user", "Now review the pull request"),
+      ])
+      expect(result).toStrictEqual({
+        title: "Review login",
+        prompts: ["<messages>\nFix the login form\n\n---\n\nNow review the pull request\n</messages>"],
+      })
+    }),
+  )
+
+  it.live("keeps the latest messages of a long thread in view", () =>
+    Effect.gen(function* () {
+      const result = yield* regenerate([
+        message("1", "user", "a".repeat(5000)),
+        message("2", "user", "Now review the pull request"),
+      ])
+      expect(result.prompts[0]?.startsWith("<messages>\naaa")).toBe(true)
+      expect(result.prompts[0]?.endsWith("Now review the pull request\n</messages>")).toBe(true)
+    }),
+  )
+
+  it.live("names a thread that starts with a slash command instead of running the command", () =>
+    Effect.gen(function* () {
+      const result = yield* regenerate([message("1", "user", "/code-review look at PR 640")])
+      expect(result.title).toBe("Review login")
+    }),
+  )
+
+  it.live("keeps the title of a thread with nothing sent yet", () =>
+    Effect.gen(function* () {
+      const result = yield* regenerate([])
+      expect(result).toStrictEqual({ title: "t", prompts: [] })
     }),
   )
 })

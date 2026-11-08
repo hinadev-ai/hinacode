@@ -136,6 +136,31 @@ describe("makeUpdateMapper", () => {
     ])
   })
 
+  test("keeps the images an MCP tool returns next to its text", () => {
+    const mapper = makeUpdateMapper("turn")
+    expect(
+      mapper.apply({
+        sessionUpdate: "tool_call",
+        toolCallId: "call_4",
+        title: "hinacode_vm_screenshot",
+        kind: "other",
+        status: "completed",
+        content: [
+          { type: "content", content: { type: "text", text: "1280x800" } },
+          { type: "content", content: { type: "image", data: "iVBORw0K", mimeType: "image/png" } },
+        ],
+      }),
+    ).toContainEqual({
+      type: "tool_call_finished",
+      callId: "call_4",
+      output: [
+        { type: "text", text: "1280x800" },
+        { type: "image", data: "iVBORw0K", mimeType: "image/png" },
+      ],
+      isError: false,
+    })
+  })
+
   test("closes started calls once, and skips calls that never started", () => {
     const mapper = makeUpdateMapper("turn")
     mapper.apply({ sessionUpdate: "tool_call", toolCallId: "open", kind: "read", status: "in_progress", title: "read" })

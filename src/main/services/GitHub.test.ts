@@ -6,6 +6,7 @@ import {
   GitHub,
   layer,
   parseAuthStatus,
+  parseCloneProgress,
   pullRequestFiles,
   summarizeChecks,
   toPullRequest,
@@ -21,6 +22,21 @@ const account = (overrides: Partial<{ state: string; active: boolean; login: str
   host: "github.com",
   login: "octocat",
   ...overrides,
+})
+
+describe("parseCloneProgress", () => {
+  test("reads the newest phase and percent from git's carriage-return updates", () => {
+    const chunk = "Receiving objects:  44% (440/1000), 1.2 MiB | 2 MiB/s\rReceiving objects:  45% (450/1000), 1.3 MiB"
+    expect(parseCloneProgress(chunk)).toStrictEqual({ phase: "Receiving objects", percent: 45 })
+  })
+
+  test("reads the server's phases and skips lines without a percent", () => {
+    expect(parseCloneProgress("remote: Counting objects:   7% (87/1229)        \r")).toStrictEqual({
+      phase: "Counting objects",
+      percent: 7,
+    })
+    expect(parseCloneProgress("Cloning into 'git'...\nremote: Enumerating objects: 423134, done.\n")).toBeUndefined()
+  })
 })
 
 describe("parseAuthStatus", () => {
@@ -124,6 +140,9 @@ describe("toPullRequestDetail", () => {
     createdAt: "2026-10-12T03:00:00Z",
     changedFiles: 4,
     comments: [],
+    labels: [],
+    assignees: [],
+    reviewers: [],
     mergeable: "CONFLICTING",
     statusCheckRollup: [
       {
@@ -162,6 +181,9 @@ describe("toPullRequestDetail", () => {
       head: "abc1234",
       changedFiles: 4,
       comments: [],
+      labels: [],
+      assignees: [],
+      reviewers: [],
       checkRuns: [
         { name: "CI / test", status: "failing", url: "https://github.com/hinadev-ai/hinacode/actions/runs/1/job/2" },
         { name: "vercel", status: "pending", url: "https://vercel.com/hinadev-ai/hinacode/abc" },
@@ -260,7 +282,9 @@ describe("a gh that never exits", () => {
   it.effect("gives a clone an hour", () =>
     Effect.gen(function* () {
       const github = yield* GitHub
-      const clone = yield* Effect.forkChild(Effect.flip(github.clone({ owner: "o", name: "r" }, "/tmp/r")))
+      const clone = yield* Effect.forkChild(
+        Effect.flip(github.clone({ owner: "o", name: "r" }, "/tmp/r", () => Effect.void)),
+      )
       yield* TestClock.adjust("59 minutes")
       expect(clone.pollUnsafe()).toBeUndefined()
 
@@ -511,6 +535,27 @@ const graphqlPullRequest = (title: string, state = "OPEN") => ({
             },
           ],
         },
+        labels: { nodes: [{ name: "bug", color: "d73a4a" }] },
+        assignees: { nodes: [{ login: "octocat" }] },
+        reviewRequests: {
+          nodes: [
+            { requestedReviewer: { login: "rerequested" } },
+            { requestedReviewer: { combinedSlug: "o/core" } },
+            { requestedReviewer: null },
+          ],
+        },
+        latestOpinionatedReviews: {
+          nodes: [{ state: "APPROVED", author: { login: "approver" } }],
+        },
+        latestReviews: {
+          nodes: [
+            { state: "COMMENTED", author: { login: "approver" } },
+            { state: "APPROVED", author: { login: "reviewer" } },
+            { state: "COMMENTED", author: { login: "rerequested" } },
+            { state: "COMMENTED", author: { login: "octocat" } },
+            { state: "DISMISSED", author: { login: "dismissed" } },
+          ],
+        },
         commits: {
           nodes: [
             {
@@ -625,6 +670,59 @@ describe("pull request reads", () => {
         { id: "PRR_1", author: "copilot-pull-request-reviewer", authorKind: "bot", location: null },
         { id: "PRRC_1", author: "ghost", authorKind: "human", location: { path: "src/a.ts", line: 12, side: "LEFT" } },
         { id: "IC_2", author: "octocat", authorKind: "you", location: null },
+      ])
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("reads labels, assignees, and reviewers who are asked or have reviewed, but not the author", () => {
+    const gh = fakeGh(() => apiReply(graphqlPullRequest("Metadata")))
+    return Effect.gen(function* () {
+      const { labels, assignees, reviewers } = yield* (yield* GitHub).pullRequestDetail(PR_URL)
+      expect(labels).toStrictEqual([{ name: "bug", color: "d73a4a" }])
+      expect(assignees).toStrictEqual(["octocat"])
+      expect(reviewers).toStrictEqual([
+        { login: "rerequested", state: "requested" },
+        { login: "o/core", state: "requested" },
+        { login: "approver", state: "approved" },
+        { login: "reviewer", state: "approved" },
+      ])
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("an edit to labels, assignees or reviewers goes through gh pr edit and shows on the next read", () => {
+    const gh = fakeGh(() => apiReply(graphqlPullRequest("Editing")))
+    return Effect.gen(function* () {
+      const github = yield* GitHub
+      yield* github.pullRequestDetail(PR_URL)
+      yield* github.editPullRequest(PR_URL, { field: "reviewers", add: ["o/core", "--hubot"], remove: ["octocat"] })
+      expect(gh.runs).toContainEqual([
+        "pr",
+        "edit",
+        PR_URL,
+        '--add-reviewer="o/core"',
+        '--add-reviewer="--hubot"',
+        '--remove-reviewer="octocat"',
+      ])
+      yield* github.pullRequestDetail(PR_URL)
+      expect(gh.runs.filter(isRead)).toHaveLength(2)
+    }).pipe(Effect.provide(gh.layer))
+  })
+
+  it.effect("label names with commas or quotes reach gh as one value each", () => {
+    const gh = fakeGh(() => apiReply(graphqlPullRequest("Labels")))
+    return Effect.gen(function* () {
+      yield* (yield* GitHub).editPullRequest(PR_URL, {
+        field: "labels",
+        add: ['needs "QA"', "a, b"],
+        remove: ["bug"],
+      })
+      expect(gh.runs).toContainEqual([
+        "pr",
+        "edit",
+        PR_URL,
+        '--add-label="needs ""QA"""',
+        '--add-label="a, b"',
+        '--remove-label="bug"',
       ])
     }).pipe(Effect.provide(gh.layer))
   })

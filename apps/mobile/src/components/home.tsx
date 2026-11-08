@@ -7,18 +7,20 @@ import { liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
 import { Reveal, Rotate, Spinner } from "@/components/motion"
 import { SearchField } from "@/components/search-field"
+import { ServerFilter } from "@/components/server-filter"
 import { ServerMark } from "@/components/server-mark"
 import { SectionLabel, ThreadRow } from "@/components/thread-row"
 import { SearchResults } from "@/components/thread-search"
 import { Button, EmptyState, IconButton, Notice, type Tab, UnderlineTabs } from "@/components/ui"
 import { listEntering, listExiting, listLayout } from "@/constants/motion"
 import { radius } from "@/constants/theme"
-import { useProjectServer } from "@/hooks/use-server"
+import { useProjectServer, useShownServers } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { openThread } from "@/lib/navigation"
 import type { HomeTab } from "@/lib/preferences"
+import { withinServers } from "@/lib/server-filter"
 import { createThread } from "@/lib/start-thread"
 import { usePreferences } from "@/stores/preferences"
 import { archivedThreads, inboxThreads, listedThreads, pinnedThreads, sortThreads, useThreads } from "@/stores/threads"
@@ -191,10 +193,16 @@ export function HomeContent({
         </ScrollView>
       )
 
+    const header = (
+      <>
+        {notice}
+        <ServerFilter />
+      </>
+    )
     return query.trim() === "" ? (
-      <HomeList selectedId={selectedId} nativeHeader header={notice} />
+      <HomeList selectedId={selectedId} nativeHeader header={header} />
     ) : (
-      <SearchResults query={query} nativeHeader header={notice} />
+      <SearchResults query={query} nativeHeader header={header} />
     )
   }
 
@@ -213,7 +221,11 @@ export function HomeContent({
               clearLabel={copy("mobile_search_clear")}
             />
           </View>
-          {query.trim() === "" ? <HomeList selectedId={selectedId} /> : <SearchResults query={query} />}
+          {query.trim() === "" ? (
+            <HomeList selectedId={selectedId} header={<ServerFilter />} />
+          ) : (
+            <SearchResults query={query} header={<ServerFilter />} />
+          )}
         </>
       )}
     </View>
@@ -276,6 +288,14 @@ function homeItems(
       })
     items.push(...threadItems("thread", archived, true))
   } else {
+    if (projects.length === 0)
+      items.push({
+        kind: "empty",
+        key: "empty:filtered",
+        icon: "Computer",
+        title: copy("mobile_home_filter_empty"),
+        hint: copy("mobile_home_filter_empty_hint"),
+      })
     for (const project of projects) {
       const open = !collapsed.has(project.id)
       items.push({ kind: "project", key: `project:${project.id}`, project, open })
@@ -304,7 +324,9 @@ function HomeList({
   const projects = useThreads((state) => state.projects)
   const byId = useThreads((state) => state.byId)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())
-  const items = homeItems(tab, projects, listedThreads(byId), collapsed)
+  const servers = useShownServers()
+  const listed = withinServers(servers, projects, listedThreads(byId))
+  const items = homeItems(tab, listed.projects, listed.threads, collapsed)
   const [shown, setShown] = useState(() => ({ tab, threadIds: threadIds(items) }))
   if (shown.tab !== tab) setShown({ tab, threadIds: threadIds(items) })
 

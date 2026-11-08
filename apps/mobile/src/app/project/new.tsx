@@ -56,7 +56,13 @@ export default function AddProjectScreen() {
             )
           : await call(
               "projects.clone",
-              { repository, rootPath: cloneFolder.trim(), name: name.trim() || repository.name, setupScript: null },
+              {
+                cloneId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+                repository,
+                rootPath: cloneFolder.trim(),
+                name: name.trim() || repository.name,
+                setupScript: null,
+              },
               { server: server?.id },
             ))
       added.current = project

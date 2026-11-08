@@ -4,12 +4,13 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { afterAll, describe, expect, it } from "@effect/vitest"
-import { Effect, type FileSystem, Layer } from "effect"
+import { Deferred, Effect, Fiber, type FileSystem, Layer } from "effect"
 import { SqlClient } from "effect/sql"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
 import * as AgentAccounts from "./AgentAccounts.ts"
 import type { PushEvent } from "../../shared/contract.ts"
+import type { Thread } from "../../shared/domain.ts"
 import { Events } from "./Events.ts"
 import * as Git from "./Git.ts"
 import * as GitHub from "./GitHub.ts"
@@ -121,6 +122,46 @@ describe("Threads", () => {
       expect(copied.some((copy) => turns.some((turn) => turn.id === copy.id))).toBe(false)
       expect((yield* messages.list(threadId)).length).toBe(4)
     }).pipe(Effect.provide(messagesLayer.pipe(Layer.provideMerge(threadsLayer)))),
+  )
+
+  it.effect("forks at this agent's latest turn when no message is chosen", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const messages = yield* Messages
+      const { threadId } = yield* seedThread({ rootPath: "/repo" })
+      const reply = (createdAt: string, checkpoint: string, owner?: { provider: "codex"; accountId: null }) => ({
+        id: randomUUID(),
+        threadId,
+        role: "assistant" as const,
+        parts: [{ type: "text" as const, text: checkpoint }],
+        createdAt,
+        completedAt: createdAt,
+        usage: null,
+        forkPoint: { sessionId: "session-1", checkpoint, ...(owner && { owner }) },
+      })
+      const turns = [
+        reply("2026-01-01T00:00:01.000Z", "turn-1"),
+        reply("2026-01-01T00:00:02.000Z", "turn-2"),
+        reply("2026-01-01T00:00:03.000Z", "codex-turn", { provider: "codex", accountId: null }),
+      ]
+      yield* Effect.forEach(turns, messages.insert, { discard: true })
+
+      const fork = yield* threads.fork(threadId)
+
+      expect(fork.forkedFrom).toStrictEqual({ sessionId: "session-1", checkpoint: "turn-2" })
+      expect((yield* messages.list(fork.id)).map((copy) => copy.parts)).toStrictEqual(
+        turns.slice(0, 2).map((turn) => turn.parts),
+      )
+    }).pipe(Effect.provide(messagesLayer.pipe(Layer.provideMerge(threadsLayer)))),
+  )
+
+  it.effect("refuses to fork a thread with no finished turn", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const { threadId } = yield* seedThread({ rootPath: "/repo" })
+      const error = yield* threads.fork(threadId).pipe(Effect.flip)
+      expect(error._tag).toBe("NotFoundError")
+    }).pipe(Effect.provide(threadsLayer)),
   )
 
   it.effect("refuses to fork at a message that ended no turn", () =>
@@ -340,6 +381,53 @@ describe("Threads", () => {
       yield* threads.remove(archived.id)
     }).pipe(Effect.provide(threadsLayer)),
   )
+
+  it.effect("archiveIf leaves a thread and its scratch folder alone once the thread no longer qualifies", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const scratch = yield* Scratch.Scratch
+      const thread = yield* threads.get((yield* seedThread({ rootPath: "/repo" })).threadId)
+      const folder = yield* scratch.ensure(thread)
+      yield* threads.update({ id: thread.id, pinned: true })
+
+      const archived = yield* threads.archiveIf(thread.id, (latest) => Effect.succeed(latest.pinnedAt === null))
+
+      expect(archived._tag).toBe("None")
+      expect((yield* threads.get(thread.id)).status).toBe("idle")
+      expect(existsSync(folder)).toBe(true)
+      yield* threads.remove(thread.id)
+    }).pipe(Effect.provide(threadsLayer)),
+  )
+
+  for (const [name, act] of [
+    ["pin", (threads: Threads["Service"], id: string) => threads.update({ id, pinned: true })],
+    ["reopen", (threads: Threads["Service"], id: string) => threads.unsettle(id)],
+  ] as const) {
+    it.effect(`a ${name} waits for an archiveIf that is still checking the thread`, () =>
+      Effect.gen(function* () {
+        const threads = yield* Threads
+        const { threadId } = yield* seedThread({ rootPath: "/repo" })
+        yield* threads.settle(threadId)
+        const checking = yield* Deferred.make<void>()
+        const checked = yield* Deferred.make<void>()
+        const stillSettled = (latest: Thread) =>
+          Deferred.succeed(checking, undefined).pipe(
+            Effect.andThen(Deferred.await(checked)),
+            Effect.as(latest.pinnedAt === null && latest.settledAt !== null),
+          )
+
+        const archival = yield* threads.archiveIf(threadId, stillSettled).pipe(Effect.forkChild)
+        yield* Deferred.await(checking)
+        const acted = yield* act(threads, threadId).pipe(Effect.forkChild({ startImmediately: true }))
+        yield* Deferred.succeed(checked, undefined)
+        yield* Fiber.join(archival)
+        const actedOn = yield* Fiber.join(acted)
+
+        expect(yield* threads.get(threadId)).toStrictEqual(actedOn)
+        yield* threads.remove(threadId)
+      }).pipe(Effect.provide(threadsLayer)),
+    )
+  }
 
   it.effect("deletes a thread's tmp folder when it is archived or deleted, and tolerates a missing one", () =>
     Effect.gen(function* () {

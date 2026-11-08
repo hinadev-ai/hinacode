@@ -9,7 +9,16 @@ import { useNavigate } from "@tanstack/react-router"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { toast } from "sonner"
-import { type KeyboardEvent, useEffect, useId, useRef, useState, useTransition } from "react"
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  startTransition,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useTransition,
+} from "react"
 import { flushSync } from "react-dom"
 import { type ModelInfo, presetModels, ProviderId, unlistedModel } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
@@ -28,6 +37,8 @@ import {
   setUpProvidersAtom,
 } from "../lib/rpc.ts"
 import { environmentName, environmentOf, useClouds, useThreadEnvironment } from "../lib/environments.ts"
+import { inBrowser } from "../lib/runtime.ts"
+import { ProjectDialog } from "./ProjectDialog.tsx"
 import { groupProjects } from "../lib/projectGroups.ts"
 import { moveDraft } from "../lib/startThread.ts"
 import { useSettings } from "../lib/settings.ts"
@@ -44,8 +55,10 @@ import { Checkbox } from "./ui/checkbox.tsx"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx"
 import { Input } from "./ui/input.tsx"
@@ -447,7 +460,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
           className="-mx-2 gap-1 border-b border-border px-2 pb-2"
         >
           <div className="flex items-center gap-2">
-            <TabsList className="min-w-0 scrollbar-none justify-start overflow-x-auto bg-transparent p-0 motion-safe:scroll-smooth">
+            <TabsList className="-m-0.75 min-w-0 scrollbar-none justify-start overflow-x-auto bg-transparent p-0.75 motion-safe:scroll-smooth">
               {tabs.map((candidate) => (
                 <Tooltip key={candidate.value}>
                   <TooltipTrigger
@@ -817,14 +830,16 @@ function ContextSwitch({
   thread,
   label,
   options,
+  children,
 }: {
   thread: Thread
   label: string
   options: ReadonlyArray<ContextOption>
+  children?: ReactNode
 }) {
   const navigate = useNavigate()
   const [isMoving, startMoving] = useTransition()
-  if (options.length < 2) return <span className={contextWord}>{label}</span>
+  if (options.length < 2 && !children) return <span className={contextWord}>{label}</span>
   const move = (projectId: string) =>
     startMoving(async () => {
       try {
@@ -855,6 +870,7 @@ function ContextSwitch({
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>
+        {children}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -870,9 +886,12 @@ export function ThreadProjectSwitch({ thread }: { thread: Thread }) {
 }
 
 export function ThreadEnvironmentSwitch({ thread }: { thread: Thread }) {
+  const navigate = useNavigate()
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => [])
   const clouds = useClouds()
-  const environment = environmentOf(projects.find((project) => project.id === thread.projectId))
+  const [creatingOn, setCreatingOn] = useState<EnvironmentId | undefined>(undefined)
+  const current = projects.find((project) => project.id === thread.projectId)
+  const environment = environmentOf(current)
   const members =
     groupProjects(projects).find((group) => group.projects.some((project) => project.id === thread.projectId))
       ?.projects ?? []
@@ -880,8 +899,53 @@ export function ThreadEnvironmentSwitch({ thread }: { thread: Thread }) {
     projectId: project.id,
     label: environmentName(environmentOf(project), clouds),
   }))
-  const label = environment === null ? m.environment_this_machine_inline() : environmentName(environment, clouds)
-  return <ContextSwitch thread={thread} label={label} options={options} />
+  const cloneSource = clonableRepository(current)
+  const reachable: ReadonlyArray<EnvironmentId> = [
+    ...(inBrowser() ? [] : [null]),
+    ...clouds.filter((cloud) => cloud.status === "connected").map((cloud) => cloud.id),
+  ]
+  const missing =
+    cloneSource === null
+      ? []
+      : reachable.filter((candidate) => members.every((project) => environmentOf(project) !== candidate))
+  const inlineName = (id: EnvironmentId) =>
+    id === null ? m.environment_this_machine_inline() : environmentName(id, clouds)
+  return (
+    <>
+      <ContextSwitch thread={thread} label={inlineName(environment)} options={options}>
+        {missing.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            {missing.map((candidate) => (
+              <DropdownMenuItem
+                key={candidate ?? "local"}
+                onClick={() => startTransition(() => setCreatingOn(candidate))}
+              >
+                {m.thread_environment_create({ machine: inlineName(candidate) })}
+              </DropdownMenuItem>
+            ))}
+          </>
+        )}
+      </ContextSwitch>
+      {creatingOn !== undefined && cloneSource !== null && (
+        <ProjectDialog
+          open
+          onOpenChange={(open) => !open && setCreatingOn(undefined)}
+          environment={creatingOn}
+          source={cloneSource}
+          onCreated={(created) =>
+            moveDraft(thread, created.id, navigate).catch((cause: unknown) => toast.error(errorMessage(cause)))
+          }
+        />
+      )}
+    </>
+  )
+}
+
+function clonableRepository(project: Project | undefined) {
+  const [owner, name, ...folder] = project?.repository?.split("/") ?? []
+  if (project === undefined || owner === undefined || name === undefined || folder.length > 0) return null
+  return { rootPath: `https://github.com/${owner}/${name}`, name: project.name }
 }
 
 export function WorkspacePicker({ thread, workspace }: { thread: Thread; workspace: Draft["workspace"] }) {

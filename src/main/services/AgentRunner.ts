@@ -90,7 +90,7 @@ import { Git, type CommandError } from "./Git.ts"
 import type { GitHubError, PullRequestUrlInvalidError } from "./GitHub.ts"
 import { Messages, type ToolCallRef } from "./Messages.ts"
 import { PullRequests } from "./PullRequests.ts"
-import { Attachments } from "./Attachments.ts"
+import { Attachments, extensionOf } from "./Attachments.ts"
 import { Scratch } from "./Scratch.ts"
 import { Settings } from "./Settings.ts"
 import { ThreadNaming } from "./ThreadNaming.ts"
@@ -198,6 +198,7 @@ export class AgentRunner extends Context.Service<
       readonly when: Effect.Effect<boolean, PersistenceError>
     }) => Effect.Effect<boolean, SendError>
     readonly interrupt: (threadId: string) => Effect.Effect<void>
+    readonly release: <A, E>(threadId: string, whileIdle: Effect.Effect<A, E>) => Effect.Effect<Option.Option<A>, E>
     readonly warm: (threadId: string) => Effect.Effect<void>
     readonly resumeAtReset: (
       threadId: string,
@@ -322,7 +323,7 @@ const savedImage = (threadId: string, attachments: typeof Attachments.Service, r
   const mimeType = source["mimeType"] ?? source["media_type"]
   const data = source["data"]
   if (typeof mimeType !== "string" || typeof data !== "string") return Effect.succeed({ type: "image", mimeType })
-  const name = `image.${mimeType.split("/").at(-1) ?? "png"}`
+  const name = `image${extensionOf(mimeType)}`
   return attachments.stage(threadId, { dataUrl: `data:${mimeType};base64,${data}`, name }).pipe(
     Effect.map((attachment) => ({ type: "image", mimeType, attachment })),
     Effect.orElseSucceed(() => ({ type: "image", mimeType })),
@@ -446,6 +447,9 @@ const make = Effect.gen(function* () {
     [...approvals.values(), ...questions.values(), ...[...secretRequests.values()].map(({ request }) => request)].some(
       (request) => request.threadId === threadId,
     )
+
+  const isBusy = (threadId: string) =>
+    busyThreads.has(threadId) || activeTurns.has(threadId) || pendingSends.has(threadId)
 
   const exclusive =
     (threadId: string) =>
@@ -1633,19 +1637,36 @@ const make = Effect.gen(function* () {
       }).pipe(exclusive(threadId))
     }).pipe(Effect.catch((error) => Effect.logError("failed to retire the wakeup of a stopped thread", error)))
 
-  const stopBackgroundWork = (threadId: string) =>
+  const stopSubagentsAndTasks = (threadId: string, stops: (task: BackgroundTask) => boolean) =>
     Effect.gen(function* () {
       const running = listSubagents(threadId).filter((subagent) => subagent.status === "running")
       yield* Effect.forEach(running, (subagent) => stopSubagent(threadId, subagent.id).pipe(Effect.ignore), {
         discard: true,
       })
-      const tasks = (backgroundTasks.get(threadId) ?? []).filter(
-        (task) => task.kind !== "wakeup" && task.kind !== "shell",
-      )
+      const tasks = (backgroundTasks.get(threadId) ?? []).filter((task) => task.kind !== "wakeup" && stops(task))
       yield* Effect.forEach(tasks, (task) => stopBackgroundTask(threadId, task.id).pipe(Effect.ignore), {
         discard: true,
       })
+    })
+
+  const stopBackgroundWork = (threadId: string) =>
+    Effect.gen(function* () {
+      yield* stopSubagentsAndTasks(threadId, (task) => task.kind !== "shell")
       if (hasPendingWakeup(threadId)) yield* Effect.forkIn(closeSessionAfterTurn(threadId), scope)
+    })
+
+  const release = <A, E>(threadId: string, whileIdle: Effect.Effect<A, E>) =>
+    Effect.gen(function* () {
+      if (isBusy(threadId)) return Option.none<A>()
+      yield* stopSubagentsAndTasks(threadId, () => true)
+      return yield* Effect.gen(function* () {
+        if (isBusy(threadId)) return Option.none<A>()
+        yield* threads.get(threadId).pipe(
+          Effect.flatMap(closeProviderSession),
+          Effect.catch((error) => Effect.logWarning("failed to close the session of a settled thread", error)),
+        )
+        return Option.some(yield* whileIdle)
+      }).pipe(exclusive(threadId))
     })
 
   const requestSecret = (threadId: string, name: string, description: string) =>
@@ -1685,7 +1706,7 @@ const make = Effect.gen(function* () {
 
   const warm = (threadId: string) =>
     Effect.gen(function* () {
-      if (busyThreads.has(threadId) || activeTurns.has(threadId) || pendingSends.has(threadId)) return
+      if (isBusy(threadId)) return
       const thread = yield* threads.get(threadId)
       if (thread.status === "archived") return
       if (thread.sideOf !== null && !(yield* threads.started(threadId))) return
@@ -1723,6 +1744,7 @@ const make = Effect.gen(function* () {
           }),
         ),
       ),
+    release,
     warm,
     setAccessMode: (threadId, accessMode) =>
       Effect.gen(function* () {

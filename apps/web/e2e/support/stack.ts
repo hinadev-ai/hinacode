@@ -131,14 +131,9 @@ export interface Relay {
   readonly close: () => Promise<void>
 }
 
-interface PendingSignIn {
-  readonly userCode: string
-  readonly name: string
-  approved: boolean
-}
-
-const SIGN_IN_POLL_INTERVAL_S = 0.2
-const SIGN_IN_NEVER_EXPIRES = Number.MAX_SAFE_INTEGER
+export const CLERK_HOST = "web-e2e.clerk.accounts.dev"
+export const CLERK_SESSION_TOKEN = "web-e2e-clerk-session"
+const CLERK_PUBLISHABLE_KEY = `pk_test_${Buffer.from(`${CLERK_HOST}$`).toString("base64")}`
 
 const json = (response: ServerResponse, status: number, body?: unknown) => {
   response.writeHead(status, { "content-type": "application/json" })
@@ -154,7 +149,6 @@ const readJson = async (request: IncomingMessage): Promise<Record<string, unknow
 const bearer = (request: IncomingMessage) => /^Bearer (\S+)$/.exec(request.headers.authorization ?? "")?.[1]
 
 export const startRelay = async (machines: ReadonlyArray<RelayMachine>): Promise<Relay> => {
-  const signIns = new Map<string, PendingSignIn>()
   const devices = new Map<string, string>()
   const signedIn = (request: IncomingMessage) => devices.has(bearer(request) ?? "")
 
@@ -167,34 +161,12 @@ export const startRelay = async (machines: ReadonlyArray<RelayMachine>): Promise
     const url = new URL(request.url ?? "/", "http://relay")
     const route = `${request.method} ${url.pathname}`
 
-    if (route === "POST /v1/sign-ins") {
+    if (route === "GET /v1/config") return json(response, 200, { clerkPublishableKey: CLERK_PUBLISHABLE_KEY })
+    if (route === "POST /v1/devices") {
+      if (bearer(request) !== CLERK_SESSION_TOKEN) return json(response, 401, { error: "Sign in first." })
       const { name } = await readJson(request)
-      const deviceCode = randomBytes(16).toString("hex")
-      const userCode = randomBytes(4).toString("hex").toUpperCase()
-      signIns.set(deviceCode, { userCode, name: String(name), approved: false })
-      const link = new URL(`/link?code=${userCode}`, `http://${request.headers.host}`)
-      return json(response, 200, {
-        deviceCode,
-        userCode,
-        url: link.href,
-        interval: SIGN_IN_POLL_INTERVAL_S,
-        expiresAt: SIGN_IN_NEVER_EXPIRES,
-      })
-    }
-    if (route === "GET /link") {
-      const pending = [...signIns.values()].find((signIn) => signIn.userCode === url.searchParams.get("code"))
-      if (pending !== undefined) pending.approved = true
-      response.writeHead(pending === undefined ? 404 : 200, { "content-type": "text/html" })
-      return void response.end(pending === undefined ? "<p>Unknown code</p>" : `<p>Approved ${pending.name}</p>`)
-    }
-    if (route === "POST /v1/links/claim") {
-      const deviceCode = String((await readJson(request)).deviceCode)
-      const pending = signIns.get(deviceCode)
-      if (pending === undefined) return json(response, 410, { error: "expired" })
-      if (!pending.approved) return json(response, 202, { pending: true })
-      signIns.delete(deviceCode)
       const credential = randomBytes(16).toString("hex")
-      devices.set(credential, pending.name)
+      devices.set(credential, String(name))
       return json(response, 200, { credential })
     }
     if (!signedIn(request)) return json(response, 401, { error: "Sign in first." })

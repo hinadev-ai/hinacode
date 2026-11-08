@@ -555,8 +555,18 @@ const make = (options: DevicesOptions) =>
       const stillUsed = [...states.values()].some((entries) => entries.get(deviceId)?.phase === "ready")
       const live = links.get(deviceId)
       if (live && !stillUsed) closeLive(live)
-      if (row?.owned || remove) await driverOf(deviceId).remove(deviceId)
+      if (row?.owned || remove) await removeDevice(deviceId)
       await deleteRow(threadId, deviceId)
+    }
+
+    const removeDevice = async (deviceId: DeviceId) => {
+      const driver = driverOf(deviceId)
+      try {
+        await driver.remove(deviceId)
+      } catch (error) {
+        const stillThere = (await driver.list()).some((device) => device.id === deviceId)
+        if (stillThere) throw error
+      }
     }
 
     const releaseThread = (threadId: string) =>

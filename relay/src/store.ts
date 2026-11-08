@@ -10,6 +10,7 @@ const Link = Schema.Struct({
   userId: Schema.NullOr(Schema.String),
   expiresAt: Schema.Number,
   kind: Schema.Literals(["machine", "device"]),
+  denied: Schema.BooleanFromBit,
 })
 export type Link = typeof Link.Type
 
@@ -26,13 +27,22 @@ const Host = Schema.Struct({
 })
 export type Host = typeof Host.Type
 
+const SignInCode = Schema.Struct({
+  codeHash: Schema.String,
+  codeChallenge: Schema.String,
+  userId: Schema.String,
+  name: Schema.String,
+  expiresAt: Schema.Number,
+})
+export type SignInCode = typeof SignInCode.Type
+
 const HostOfUser = Schema.Struct({ id: Schema.String, userId: Schema.String })
 
 const makeStore = Effect.gen(function* () {
   const sql = yield* D1Client.D1Client
 
   return {
-    createLink: (link: Omit<typeof Link.Type, "userId">, now: number) =>
+    createLink: (link: Omit<typeof Link.Type, "userId" | "denied">, now: number) =>
       sql.batch([sql`DELETE FROM link WHERE expires_at <= ${now}`, sql`INSERT INTO link ${sql.insert(link)}`]),
     linkByDeviceCode: SqlSchema.findOneOption({
       Request: Schema.String,
@@ -42,12 +52,19 @@ const makeStore = Effect.gen(function* () {
     unexpiredLink: SqlSchema.findOneOption({
       Request: Schema.Struct({ userCode: Schema.String, now: Schema.Number }),
       Result: Link,
-      execute: ({ userCode, now }) => sql`SELECT * FROM link WHERE user_code = ${userCode} AND expires_at > ${now}`,
+      execute: ({ userCode, now }) =>
+        sql`SELECT * FROM link WHERE user_code = ${userCode} AND expires_at > ${now} AND denied = 0`,
     }),
     approveLink: (deviceCodeHash: string, userId: string) =>
       sql`
         UPDATE link SET user_id = ${userId}
-        WHERE device_code_hash = ${deviceCodeHash} AND (user_id IS NULL OR user_id = ${userId})
+        WHERE device_code_hash = ${deviceCodeHash} AND denied = 0 AND (user_id IS NULL OR user_id = ${userId})
+        RETURNING device_code_hash
+      `.pipe(Effect.map((rows) => rows.length > 0)),
+    denyLink: (deviceCodeHash: string) =>
+      sql`
+        UPDATE link SET denied = 1
+        WHERE device_code_hash = ${deviceCodeHash} AND user_id IS NULL
         RETURNING device_code_hash
       `.pipe(Effect.map((rows) => rows.length > 0)),
     deleteLink: (deviceCodeHash: string) =>
@@ -114,7 +131,19 @@ const makeStore = Effect.gen(function* () {
       sql.batch([
         sql`DELETE FROM device WHERE user_id = ${userId}`,
         sql`DELETE FROM link WHERE user_id = ${userId} AND kind = 'device'`,
+        sql`DELETE FROM sign_in_code WHERE user_id = ${userId}`,
       ]),
+
+    createSignInCode: (code: SignInCode, now: number) =>
+      sql.batch([
+        sql`DELETE FROM sign_in_code WHERE expires_at <= ${now}`,
+        sql`INSERT INTO sign_in_code ${sql.insert(code)}`,
+      ]),
+    takeSignInCode: SqlSchema.findOneOption({
+      Request: Schema.String,
+      Result: SignInCode,
+      execute: (codeHash) => sql`DELETE FROM sign_in_code WHERE code_hash = ${codeHash} RETURNING *`,
+    }),
   }
 })
 

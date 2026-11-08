@@ -40,6 +40,9 @@ export const Project = Schema.Struct({
 })
 export type Project = typeof Project.Type
 
+export const CloneProgress = Schema.Struct({ phase: Schema.String, percent: Schema.Number })
+export type CloneProgress = typeof CloneProgress.Type
+
 export const chatFolder = (chatsRoot: string, threadId: string) =>
   `${chatsRoot.replace(/[\\/]+$/, "")}${chatsRoot.includes("\\") ? "\\" : "/"}${threadId}`
 
@@ -237,6 +240,31 @@ export const LineComment = Schema.Struct({
 })
 export type LineComment = typeof LineComment.Type
 
+export const PullRequestLabel = Schema.Struct({ name: Schema.String, color: Schema.String })
+export type PullRequestLabel = typeof PullRequestLabel.Type
+
+export const ReviewerState = Schema.Literals(["requested", "approved", "changesRequested", "commented"])
+export type ReviewerState = typeof ReviewerState.Type
+
+export const PullRequestReviewer = Schema.Struct({ login: Schema.String, state: ReviewerState })
+export type PullRequestReviewer = typeof PullRequestReviewer.Type
+
+export const PullRequestEditField = Schema.Literals(["labels", "assignees", "reviewers"])
+export type PullRequestEditField = typeof PullRequestEditField.Type
+
+export const PullRequestEdit = Schema.Struct({
+  field: PullRequestEditField,
+  add: Schema.Array(Schema.String.check(Schema.isNonEmpty())),
+  remove: Schema.Array(Schema.String.check(Schema.isNonEmpty())),
+})
+export type PullRequestEdit = typeof PullRequestEdit.Type
+
+export const PullRequestCandidates = Schema.Struct({
+  labels: Schema.Array(PullRequestLabel),
+  users: Schema.Array(Schema.String),
+})
+export type PullRequestCandidates = typeof PullRequestCandidates.Type
+
 export const PullRequestDetail = Schema.Struct({
   ...PullRequest.fields,
   body: Schema.String,
@@ -246,6 +274,9 @@ export const PullRequestDetail = Schema.Struct({
   checkRuns: Schema.Array(CheckRun),
   changedFiles: Schema.Number.pipe(Schema.withDecodingDefaultKey(Effect.succeed(0))),
   comments: Schema.Array(PullRequestComment).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+  labels: Schema.Array(PullRequestLabel).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+  assignees: Schema.Array(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+  reviewers: Schema.Array(PullRequestReviewer).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 })
 export type PullRequestDetail = typeof PullRequestDetail.Type
 
@@ -558,9 +589,14 @@ export type NotificationPermission = typeof NotificationPermission.Type
 export const PermissionRequestOutcome = Schema.Literals(["shown", "refused", "noAnswer"])
 export type PermissionRequestOutcome = typeof PermissionRequestOutcome.Type
 
+export const DAYS_RANGE = { minimum: 1, maximum: 365 } as const
+const Days = Schema.NullOr(Schema.Int.check(Schema.isBetween(DAYS_RANGE)))
+
 export const ArchiveSettings = Schema.Struct({
   whenMerged: Schema.Boolean,
   removeWorktree: Schema.Boolean,
+  settleAfterIdleDays: Days.pipe(Schema.withDecodingDefaultKey(Effect.succeed(7))),
+  archiveAfterSettledDays: Days.pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
 })
 export type ArchiveSettings = typeof ArchiveSettings.Type
 
@@ -713,7 +749,7 @@ export const defaultSettings: Settings = {
   textGenerationModel: "claude-sonnet-5-5",
   pullRequestGuide: { enabled: false, model: "claude-sonnet-5-5", effort: "high" },
   defaultAccessMode: "full",
-  archive: { whenMerged: true, removeWorktree: false },
+  archive: { whenMerged: true, removeWorktree: false, settleAfterIdleDays: 7, archiveAfterSettledDays: null },
   experimental: {
     tinyVm: false,
     tinyVmProvider: "boat",
@@ -755,6 +791,7 @@ export const RelayAccountStatus = Schema.Union([
     environmentId: Schema.String,
     name: Schema.NullOr(Schema.String),
     email: Schema.NullOr(Schema.String),
+    avatar: Schema.NullOr(Schema.String),
     machines: Schema.Int,
     syncedAt: Schema.NullOr(Timestamp),
     error: Schema.NullOr(Schema.String),

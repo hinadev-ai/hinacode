@@ -2,7 +2,7 @@
 
 A Cloudflare Worker at `relay.hinacode.app`. It links machines to Clerk accounts with a device-code flow and creates one Cloudflare named tunnel per linked machine. The machine runs `cloudflared` with the connector token it gets back. The service never carries a frame. The design is in `docs/features/2026-10-24-relay.md` and `docs/adr/0020-cloudflare-tunnel-as-the-relay.md`.
 
-`src/app.ts` holds the handlers. `src/index.ts` wires them to Clerk (`src/clerk.ts`), `fetch` and the clock. `GET /link` serves the approval page from `src/page.ts`, with no build step. `expiresAt` and `createdAt` are milliseconds since the epoch.
+`src/app.ts` holds the handlers. `src/index.ts` wires them to Clerk (`src/clerk.ts`), `fetch` and the clock. `GET /link` serves the approval page from `src/page.ts`, with no build step. Its Deny button calls `DELETE /v1/links/:userCode`, which marks the link denied, so the machine's next claim gets 403 and stops waiting. `expiresAt` and `createdAt` are milliseconds since the epoch.
 
 A linked machine publishes the pairing its QR code carries with `PUT /v1/host/pairing`. `GET /v1/machines` hands an account's devices every machine that published one and is shown, so they can add it without scanning. The desktop's **Show on my devices** switch calls `PATCH /v1/hosts/:id` with `{ enabled }`; a hidden machine's pairing never leaves the relay, and its tunnel keeps running. The design is in `docs/features/2026-10-24-relay-machines.md`.
 
@@ -16,7 +16,7 @@ The web app at `code.hinacode.app` calls the owner routes from the browser, as a
 4. Create an API token with two permissions: Account, Cloudflare Tunnel, Edit, and Zone, DNS, Edit on the tunnel zone. Store it with `pnpm exec wrangler secret put CLOUDFLARE_API_TOKEN`.
 5. Create a Clerk application with Google and GitHub sign-in. Store its keys with `pnpm exec wrangler secret put CLERK_PUBLISHABLE_KEY` and `pnpm exec wrangler secret put CLERK_SECRET_KEY`. A production instance needs its own Google and GitHub OAuth credentials and DNS records, both set in the Clerk dashboard.
 
-The link page signs in through Clerk. The desktop and phone apps sign in the same way a machine links: they open the page, the person approves them, and they claim a credential of their own. D1 keeps only its hash. **Sign out all devices** on the page ends every credential on the account.
+The link page signs in through Clerk. The desktop and phone apps open `GET /sign-in`, which redirects back to them with a code they exchange, with their PKCE verifier, for a credential of their own (`docs/features/2026-11-06-sign-in-redirect.md`). The web app still approves itself on the link page. D1 keeps only the credential's hash. **Sign out all devices** on the page ends every credential on the account.
 
 The variables live in `vars` in `wrangler.jsonc`. The secrets never go in the config. `secrets.required` only names them, so `wrangler types` and `wrangler dev` know about them.
 

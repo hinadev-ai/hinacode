@@ -49,11 +49,13 @@ import { RelayAccount } from "./services/RelayAccount.ts"
 import { Search } from "./services/Search.ts"
 import { Secrets } from "./services/Secrets.ts"
 import { Settings } from "./services/Settings.ts"
+import { Settle } from "./services/Settle.ts"
 import { SystemResources } from "./services/SystemResources.ts"
 import { Terminals } from "./services/Terminals.ts"
 import { Updates } from "./services/Updates.ts"
 import { SessionImports } from "./services/SessionImports.ts"
 import { randomName, Threads } from "./services/Threads.ts"
+import { ThreadNaming } from "./services/ThreadNaming.ts"
 import { type ScreenOwner, TinyVm, VmError } from "./services/tinyVm/TinyVm.ts"
 import { Devices } from "./services/devices/Devices.ts"
 import { Worktrees } from "./services/Worktrees.ts"
@@ -64,8 +66,10 @@ export type AppServices =
   | SessionImports
   | Projects
   | Threads
+  | ThreadNaming
   | Worktrees
   | Settings
+  | Settle
   | SystemResources
   | ClientSettings
   | Environments
@@ -191,6 +195,7 @@ const handlers: Handlers = {
   "projects.list": () => Projects.use((projects) => projects.listWithRepositories),
   "projects.create": (input) => Projects.use((projects) => projects.create(input)),
   "projects.clone": (input) => Projects.use((projects) => projects.clone(input)),
+  "projects.cancelClone": ({ cloneId }) => Projects.use((projects) => projects.cancelClone(cloneId)),
   "projects.update": (input) => Projects.use((projects) => projects.update(input)),
   "projects.delete": ({ id }) =>
     Effect.gen(function* () {
@@ -285,8 +290,9 @@ const handlers: Handlers = {
   "threads.undoTurn": ({ threadId }) => Threads.use((threads) => threads.undoTurn(threadId)),
   "threads.archive": ({ threadId }) => Threads.use((threads) => threads.archive(threadId)),
   "threads.unarchive": ({ threadId }) => Threads.use((threads) => threads.unarchive(threadId)),
-  "threads.settle": ({ threadId }) => Threads.use((threads) => threads.settle(threadId)),
+  "threads.settle": ({ threadId }) => Settle.use((settle) => settle.settle(threadId)),
   "threads.unsettle": ({ threadId }) => Threads.use((threads) => threads.unsettle(threadId)),
+  "threads.regenerateTitle": ({ threadId }) => ThreadNaming.use((naming) => naming.regenerateTitle(threadId)),
   "threads.fork": ({ threadId, messageId }) =>
     Threads.use((threads) => threads.fork(threadId, messageId)).pipe(
       Effect.tap((thread) => Events.use((events) => events.publish({ type: "thread.updated", thread }))),
@@ -344,7 +350,8 @@ const handlers: Handlers = {
       const account = yield* RelayAccount
       const relay = yield* Relay
       const openInBrowser = (url: string) => desktop?.openExternal(url) ?? Effect.void
-      const status = yield* account.signIn({ onLink: (link) => openInBrowser(link.url) })
+      const status = yield* account.signIn({ openUrl: openInBrowser })
+      if (status.state === "signedIn") yield* desktop?.focus ?? Effect.void
       if (status.state !== "signedIn" || (yield* relay.status).state !== "off") return status
       yield* relay.setup({
         onLink: (link) =>
@@ -486,6 +493,8 @@ const handlers: Handlers = {
   "github.merge": ({ url, method }) => GitHub.use((github) => github.merge(url, method)),
   "github.close": ({ url }) => GitHub.use((github) => github.close(url)),
   "github.comment": ({ url, body }) => GitHub.use((github) => github.comment(url, body)),
+  "github.pullRequestCandidates": ({ url }) => GitHub.use((github) => github.pullRequestCandidates(url)),
+  "github.editPullRequest": ({ url, edit }) => GitHub.use((github) => github.editPullRequest(url, edit)),
   "github.fileContent": ({ url, ref, path }) => GitHub.use((github) => github.fileContent(url, ref, path)),
   "github.reviewComment": ({ url, comment }) => GitHub.use((github) => github.reviewComment(url, comment)),
   "linear.issues": () => Linear.use((linear) => linear.assignedIssues),

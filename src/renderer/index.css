@@ -6,6 +6,7 @@
 @import "@fontsource-variable/geist-mono";
 @import "@fontsource-variable/geist-mono/wght-italic.css";
 @import "@wterm/dom/css";
+@source "../../apps/web/src";
 @plugin "@tailwindcss/typography";
 
 @font-face {
@@ -687,6 +688,9 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+  }
+  :focus-visible {
+    scroll-margin: --spacing(2);
   }
   /* Styled through the webkit pseudo-elements because the standard scrollbar-color makes Chromium draw arrow buttons that cut the track short. */
   ::-webkit-scrollbar {

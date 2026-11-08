@@ -3,6 +3,7 @@ import { writeFileSync } from "node:fs"
 import { join } from "node:path"
 import {
   addProject,
+  endClerkSession,
   openFile,
   openMachineResources,
   openSignedIn,
@@ -19,7 +20,7 @@ const browserCredential = (page: Page) =>
 
 const ONE_PIXEL_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
 
-test("signing in through the relay's page loads the app with the relay's machines", async ({ page, web }) => {
+test("signing in with Clerk on the gate loads the app with the relay's machines", async ({ page, web }) => {
   await page.goto(web.appUrl)
   await expect(page.getByRole("textbox", { name: "Owner token" })).toHaveCount(0)
   await signIn(page, web)
@@ -28,25 +29,58 @@ test("signing in through the relay's page loads the app with the relay's machine
   expect(web.relay.deviceName(await browserCredential(page))).toBe("HinaCode in a browser")
 })
 
-test("logging out ends this browser's sign-in on the relay", async ({ page, web }) => {
+test("logging out ends this browser's sign-in on the relay and with Clerk", async ({ page, web }) => {
   await openSignedIn(page, web)
   const credential = await browserCredential(page)
   await page.getByRole("button", { name: "Account", exact: true }).click()
   await expect(page.getByText("Web E2E", { exact: true })).toBeVisible()
   await page.getByRole("menuitem", { name: "Logout", exact: true }).click()
   await page.getByRole("alertdialog").getByRole("button", { name: "Sign out", exact: true }).click()
-  await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Continue with GitHub", exact: true })).toBeVisible()
   expect(web.relay.deviceName(credential)).toBeUndefined()
 })
 
-test("a browser the relay signed out goes back to sign in", async ({ page, web }) => {
+test("a browser the relay signed out signs in again while its Clerk session lasts", async ({ page, web }) => {
+  await openSignedIn(page, web)
+  const credential = await browserCredential(page)
+  web.relay.signOutEveryDevice()
+  await page.reload()
+  await expect(sidebar(page)).toBeVisible()
+  const renewed = await browserCredential(page)
+  expect(renewed).not.toBe(credential)
+  expect(web.relay.deviceName(renewed)).toBe("HinaCode in a browser")
+})
+
+test("a browser signed out of the relay and Clerk goes back to sign in", async ({ page, web }) => {
   await openSignedIn(page, web)
   web.relay.signOutEveryDevice()
+  await endClerkSession(page)
   await page.reload()
   await expect(page.getByRole("alert")).toHaveText("This browser was signed out. Sign in again.")
   await page.reload()
+  await expect(page.getByRole("button", { name: "Continue with GitHub", exact: true })).toBeVisible()
   await expect(page.getByRole("alert")).toHaveCount(0)
-  await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible()
+})
+
+test("retrying at the gate signs in again after the relay signed this browser out", async ({ page, web }) => {
+  await openSignedIn(page, web)
+  const machines = `${web.relay.url}/v1/machines`
+  await page.route(machines, (route) => route.abort())
+  await page.reload()
+  await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeVisible()
+  web.relay.signOutEveryDevice()
+  await page.unroute(machines)
+  await page.getByRole("button", { name: "Retry", exact: true }).click()
+  await expect(sidebar(page)).toBeVisible()
+  expect(web.relay.deviceName(await browserCredential(page))).toBe("HinaCode in a browser")
+})
+
+test("signing in from a pull request window's link returns to that window", async ({ page, web }) => {
+  const entry = "/thread/t1/pull-request?url=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Fpull%2F1"
+  await page.goto(`${web.appUrl}?${new URLSearchParams({ entry })}`)
+  await signIn(page, web)
+  await expect(page.getByRole("heading", { name: "Sign in to HinaCode", exact: true })).toBeHidden()
+  expect(new URL(page.url()).searchParams.get("entry")).toBe(entry)
 })
 
 test("reloading goes straight back to the app", async ({ page, web }) => {

@@ -13,7 +13,7 @@ import { looksLikeDirectoryPath } from "../../shared/directoryPath.ts"
 import type { Thread } from "../../shared/domain.ts"
 import { PULL_REQUEST_REFRESH } from "../../shared/github.ts"
 import { msUntilNextReset } from "../../shared/planLimits.ts"
-import { isOpen, pullRequestAttention } from "../../shared/threadStatus.ts"
+import { pullRequestAttention } from "../../shared/threadStatus.ts"
 import { m } from "../paraglide/messages.js"
 
 export class RpcError extends Schema.TaggedError<RpcError>()("RpcError", {
@@ -458,17 +458,6 @@ export const pullRequestAttentionsAtom = familyOf(
     Atom.make((get) => threads.map(([environment, urls]) => get(pullRequestAttentionAtom(environment, urls)))),
 )
 
-export const openPullRequestsAtom = familyOf(
-  (threads: ReadonlyArray<readonly [EnvironmentId, ReadonlyArray<string>]>) =>
-    Atom.make((get) =>
-      threads.map(([environment, urls]) =>
-        get(pullRequestStatusesAtom(environment, urls)).some(
-          (pullRequest) => pullRequest === undefined || isOpen(pullRequest.status),
-        ),
-      ),
-    ),
-)
-
 const pullRequestDetailLookup = gitHubLookup(
   (environment: EnvironmentId, url: string) => (get) => {
     refreshWhenPullRequestChanges(get, url)
@@ -494,6 +483,10 @@ export const pullRequestDetailAtom = familyOf((environment: EnvironmentId, url: 
 
 export const pullRequestFilesAtom = familyOf((environment: EnvironmentId, url: string, _forHead: string) =>
   Atom.make(call("github.pullRequestFiles", { url }, { environment })).pipe(Atom.setIdleTTL("10 minutes")),
+)
+
+export const pullRequestCandidatesAtom = familyOf((environment: EnvironmentId, url: string) =>
+  Atom.make(call("github.pullRequestCandidates", { url }, { environment })).pipe(Atom.setIdleTTL("10 minutes")),
 )
 
 export const pullRequestFileContentAtom = familyOf(

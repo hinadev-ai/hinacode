@@ -28,6 +28,7 @@ import {
   type Subagent,
   type TokenUsage,
 } from "../../../shared/agent.ts"
+import { AGENT_IMAGE_TYPES } from "../../../shared/agentImages.ts"
 import type { Attachment } from "../../../shared/domain.ts"
 import type { LimitWindow, PlanLimits } from "../../../shared/limits.ts"
 import { nowIso } from "../../services/clock.ts"
@@ -123,7 +124,9 @@ const textInput = (text: string): UserInput => ({ type: "text", text, text_eleme
 const userInput = (text: string, attachments: ReadonlyArray<Attachment>): Array<UserInput> => [
   ...(text === "" ? [] : [textInput(text)]),
   ...attachments.flatMap((attachment): Array<UserInput> => {
-    if (attachment.kind !== "image") return [textInput(`Attached file: ${attachment.path}`)]
+    if (attachment.kind !== "image" || !AGENT_IMAGE_TYPES.includes(attachment.mime)) {
+      return [textInput(`Attached file: ${attachment.path}`)]
+    }
     const image: UserInput = { type: "localImage", path: attachment.path }
     const context = attachmentContext(attachment)
     return context === null ? [image] : [image, textInput(context)]
@@ -215,6 +218,7 @@ const make = Effect.gen(function* () {
   const threadsInTurn = new Set<string>()
   const subagentChanges = yield* Queue.unbounded<SubagentChange>()
   const loadedCompactLimits = new Map<string, number | null>()
+  const loadedSessions = new Map<string, { readonly client: CodexClient; readonly codexThreadId: string }>()
   const terminalsByThread = new Map<string, Terminals>()
   const backgroundTaskChanges = yield* Queue.unbounded<BackgroundTasksChange>()
 
@@ -321,9 +325,24 @@ const make = Effect.gen(function* () {
       }
     })
 
+  const unloadSession = (threadId: string) =>
+    Effect.suspend(() => {
+      const loaded = loadedSessions.get(threadId)
+      if (loaded === undefined) return Effect.void
+      loadedSessions.delete(threadId)
+      loadedCompactLimits.delete(loaded.codexThreadId)
+      return loaded.client.request("thread/unsubscribe", { threadId: loaded.codexThreadId }).pipe(Effect.ignore)
+    })
+
   const closeSession = (threadId: string, home: AccountHome | null) =>
     Effect.gen(function* () {
       yield* stopSubagents(threadId, home)
+      yield* stopBackgroundTerminals(threadId)
+      yield* unloadSession(threadId)
+    })
+
+  const stopBackgroundTerminals = (threadId: string) =>
+    Effect.gen(function* () {
       const terminals = terminalsByThread.get(threadId)
       if (terminals === undefined) return
       if (terminals.poll) yield* Fiber.interrupt(terminals.poll)
@@ -530,6 +549,7 @@ const make = Effect.gen(function* () {
                     excludeTurns: true,
                   } satisfies ThreadForkParams)
           loadedCompactLimits.set(thread.id, input.autoCompactTokens)
+          loadedSessions.set(input.threadId, { client, codexThreadId: thread.id })
           yield* emit({ type: "session_bound", providerSessionId: thread.id })
 
           const compacting = isCompactCommand(input.prompt)

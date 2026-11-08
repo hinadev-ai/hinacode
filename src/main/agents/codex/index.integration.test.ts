@@ -294,6 +294,36 @@ describe("Codex auto-compact", () => {
   )
 })
 
+describe("Codex attachments", () => {
+  it.live("sends only image types Codex accepts as local images", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        const image = (name: string, mime: string) => ({
+          id: name,
+          name,
+          path: `/attachments/${name}`,
+          mime,
+          kind: "image" as const,
+          bytes: 100,
+        })
+        yield* provider
+          .runTurn({
+            ...input("attachments"),
+            prompt: "",
+            attachments: [image("shot.png", "image/png"), image("logo.svg", "image/svg+xml")],
+          })
+          .pipe(Stream.runDrain)
+        const started = received().find((message) => message.method === "turn/start")
+        expect(started?.params?.input).toStrictEqual([
+          { type: "localImage", path: "/attachments/shot.png" },
+          { type: "text", text: "Attached file: /attachments/logo.svg", text_elements: [] },
+        ])
+      }),
+    ),
+  )
+})
+
 describe("Codex Stop during startup", () => {
   for (const phase of ["initialize", "thread/start", "turn/start"]) {
     it.live(`ends the run while ${phase} is pending and leaves the thread usable`, () =>
@@ -633,6 +663,26 @@ describe("Codex closed sessions", () => {
         expect(received().filter((message) => message.method === "thread/backgroundTerminals/terminate")).toHaveLength(
           1,
         )
+      }),
+    ),
+  )
+})
+
+describe("Codex closed idle sessions", () => {
+  it.live("unloads an idle session from the app-server once, even with no background work", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        const closeSession = provider.closeSession ?? (yield* Effect.die("closeSession is missing"))
+        const turn = yield* startTurn("idle-thread")
+        yield* finishesSoon(turn.fiber)
+
+        yield* closeSession("idle-thread", null)
+        yield* closeSession("idle-thread", null)
+
+        expect(received().filter((message) => message.method === "thread/unsubscribe")).toMatchObject([
+          { params: { threadId: "codex-thread" } },
+        ])
       }),
     ),
   )
