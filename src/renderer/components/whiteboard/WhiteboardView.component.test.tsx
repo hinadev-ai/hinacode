@@ -118,7 +118,9 @@ const openBoard = async () => {
       <ArtifactsView thread={thread} />
     </div>,
   )
-  await expect.poll(() => sceneOnCanvas().map((element) => element.id)).toEqual(expect.arrayContaining(["api", "db"]))
+  await expect
+    .poll(() => sceneOnCanvas().map((element) => element.id), { timeout: 15_000 })
+    .toEqual(expect.arrayContaining(["api", "db"]))
   return view
 }
 

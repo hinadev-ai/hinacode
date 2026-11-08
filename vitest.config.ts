@@ -38,7 +38,7 @@ export default defineConfig({
         resolve: { alias: { "@": fileURLToPath(new URL("./src/renderer", import.meta.url)) } },
         plugins: [react(), tailwindcss(), paraglide(), lazyLocales(), excalidrawFonts()],
         // FIXME: Vite finds lazily imported dependencies only when a test loads them, then re-optimizes and reloads mid-run
-        optimizeDeps: { include: ["pele/lazy", "shiki/core", "shiki/engine/javascript"] },
+        optimizeDeps: { include: ["pele/lazy", "shiki/core", "shiki/engine/javascript", "@excalidraw/excalidraw"] },
         test: {
           name: "component",
           include: ["src/renderer/**/*.component.test.tsx"],
