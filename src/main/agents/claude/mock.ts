@@ -16,7 +16,7 @@ import {
   usageLimitSessionId,
   orgSpendLimitMessage,
 } from "./fixtures/usageLimit.ts"
-import { artifactTurn, documentTurn, type MockDocument, publishArtifact } from "./fixtures/artifacts.ts"
+import { artifactTurn, callMcpTool, documentTurn, type MockDocument } from "./fixtures/artifacts.ts"
 import { mockModel } from "./fixtures/sdk.ts"
 import {
   approvals,
@@ -331,7 +331,7 @@ export const usageLimitLayer = (defaultScenario: MockScenario = "usage-limit", r
             sleep: (ms) => Effect.sleep(ms),
             approve: (request) => awaitReply(approvalReplies, request.id),
             answer: (request) => awaitReply(questionReplies, request.id),
-            publishArtifact: (args) => publishArtifact(input.mcpServer, args),
+            callTool: (name, args) => callMcpTool(input.mcpServer, name, args),
           })
         }
         switch (scenario) {

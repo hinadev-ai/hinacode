@@ -21,7 +21,7 @@ const controls = (overrides: Partial<PlayControls> = {}): PlayControls => ({
   sleep: () => Effect.void,
   approve: () => Effect.succeed({ decision: "allow" }),
   answer: () => Effect.void,
-  publishArtifact: () => Effect.succeed({ output: "Published artifact mock-1 version 1", isError: false }),
+  callTool: () => Effect.succeed({ output: "Published artifact mock-1 version 1", isError: false }),
   ...overrides,
 })
 
