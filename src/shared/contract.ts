@@ -641,6 +641,7 @@ export const RpcMethods = {
     Schema.Struct({ path: Schema.String }),
   ),
   "artifacts.createDocument": rpc(Schema.Struct({ threadId: Schema.String, title: Schema.String }), Artifact),
+  "artifacts.createWhiteboard": rpc(Schema.Struct({ threadId: Schema.String, title: Schema.String }), Artifact),
   "artifacts.readWhiteboard": rpc(Schema.Struct({ id: Schema.String }), WhiteboardContent),
   "artifacts.saveWhiteboard": rpc(
     Schema.Struct({ id: Schema.String, baseRevision: Schema.Number, scene: WhiteboardScene }),
@@ -891,6 +892,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "artifacts.saveDocument": "mutation",
   "artifacts.addDocumentImage": "mutation",
   "artifacts.createDocument": "mutation",
+  "artifacts.createWhiteboard": "mutation",
   "artifacts.readWhiteboard": "read",
   "artifacts.saveWhiteboard": "mutation",
   "artifacts.feedback": "read",

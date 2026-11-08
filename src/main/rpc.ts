@@ -550,6 +550,7 @@ const handlers: Handlers = {
   "artifacts.saveDocument": (input) => Artifacts.use((artifacts) => artifacts.saveDocument(input)),
   "artifacts.addDocumentImage": (input) => Artifacts.use((artifacts) => artifacts.addDocumentImage(input)),
   "artifacts.createDocument": (input) => Artifacts.use((artifacts) => artifacts.createDocument(input)),
+  "artifacts.createWhiteboard": (input) => Artifacts.use((artifacts) => artifacts.createWhiteboard(input)),
   "artifacts.readWhiteboard": ({ id }) => Artifacts.use((artifacts) => artifacts.readWhiteboard(id)),
   "artifacts.saveWhiteboard": (input) => Artifacts.use((artifacts) => artifacts.saveWhiteboard(input)),
   "artifacts.feedback": ({ id }) => ArtifactFeedback.use((feedback) => feedback.feedback(id)),

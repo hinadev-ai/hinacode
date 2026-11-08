@@ -176,6 +176,41 @@ describe("Artifacts", () => {
     }),
   )
 
+  it.live("creates an empty whiteboard for the developer, and the first drawing saves in the same version", () =>
+    Effect.gen(function* () {
+      const root = mkdtempSync(join(tmpdir(), "kk-artifacts-"))
+      const [created, pushed, empty, saved] = yield* withArtifacts(root, (pushes) =>
+        Artifacts.use((artifacts) =>
+          Effect.gen(function* () {
+            const board = yield* artifacts.createWhiteboard({ threadId: "t-1", title: "Untitled" })
+            const current = yield* artifacts.readWhiteboard(board.id)
+            return [
+              board,
+              yield* Queue.take(pushes),
+              current,
+              yield* artifacts.saveWhiteboard({
+                id: board.id,
+                baseRevision: current.revision,
+                scene: { elements: [{ id: "box", type: "rectangle" }] },
+              }),
+            ] as const
+          }),
+        ),
+      )
+
+      expect(created).toMatchObject({
+        kind: "whiteboard",
+        title: "Untitled",
+        author: "developer",
+        threadId: "t-1",
+        entry: "scene.excalidraw",
+      })
+      expect(pushed).toEqual({ type: "artifact.updated", artifact: created })
+      expect(empty).toEqual({ version: 1, revision: 1, scene: { elements: [], files: {} } })
+      expect(saved).toEqual({ type: "saved", version: 1, revision: 2 })
+    }),
+  )
+
   it.live("stores a pasted image from a data URL and serves it as a document file", () =>
     Effect.gen(function* () {
       const root = mkdtempSync(join(tmpdir(), "kk-artifacts-"))

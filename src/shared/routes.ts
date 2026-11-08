@@ -56,6 +56,7 @@ export const routes: Record<RpcMethod, Route> = {
   "artifacts.saveDocument": owner("artifact", "id"),
   "artifacts.addDocumentImage": owner("artifact", "id"),
   "artifacts.createDocument": thread,
+  "artifacts.createWhiteboard": thread,
   "artifacts.readWhiteboard": owner("artifact", "id"),
   "artifacts.saveWhiteboard": owner("artifact", "id"),
   "artifacts.feedback": owner("artifact", "id"),

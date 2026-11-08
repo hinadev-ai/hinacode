@@ -8,6 +8,7 @@ import {
   isArtifactId,
   openArtifactStore,
   parseScene,
+  type PublishInput,
   WHITEBOARD_ENTRY,
 } from "@hinacode/artifacts"
 import { Context, Effect, Layer, Schema } from "effect"
@@ -48,6 +49,7 @@ export class Artifacts extends Context.Service<
       readonly markdown: string
     }) => Effect.Effect<DocumentSaveResult, NotFoundError>
     readonly createDocument: (input: { readonly threadId: string; readonly title: string }) => Effect.Effect<Artifact>
+    readonly createWhiteboard: (input: { readonly threadId: string; readonly title: string }) => Effect.Effect<Artifact>
     readonly readWhiteboard: (id: string) => Effect.Effect<WhiteboardContent, NotFoundError>
     readonly saveWhiteboard: (input: {
       readonly id: string
@@ -224,11 +226,17 @@ const make = (root: string) =>
         )
       })
 
-    const createDocument = ({ threadId, title }: { threadId: string; title: string }) =>
+    const create = (input: PublishInput) =>
       Effect.tap(
-        Effect.promise(() => store.publish({ kind: "document", title, markdown: "", threadId, author: "developer" })),
+        Effect.promise(() => store.publish(input)),
         (created) => Effect.promise(() => announce(created.id)),
       )
+
+    const createDocument = ({ threadId, title }: { threadId: string; title: string }) =>
+      create({ kind: "document", title, markdown: "", threadId, author: "developer" })
+
+    const createWhiteboard = ({ threadId, title }: { threadId: string; title: string }) =>
+      create({ kind: "whiteboard", title, scene: { elements: [] }, threadId, author: "developer" })
 
     const rename = (id: string, title: string) =>
       Effect.flatMap(
@@ -272,6 +280,7 @@ const make = (root: string) =>
       readDocument,
       saveDocument,
       createDocument,
+      createWhiteboard,
       readWhiteboard,
       saveWhiteboard,
       rename,

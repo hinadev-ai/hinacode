@@ -24,7 +24,7 @@ And when the developer does answer, nothing tells the agent. "Ask agent" only fi
 
 ### Whiteboard
 
-1. The agent calls `publish_whiteboard` with shapes, text and arrows in Excalidraw's skeleton form. The Artifacts panel opens an Excalidraw canvas.
+1. The agent calls `publish_whiteboard` with shapes, text and arrows in Excalidraw's skeleton form. The Artifacts panel opens an Excalidraw canvas. The developer can also start an empty one from New, then Whiteboard, in the Artifacts panel.
 2. The developer draws on it. Edits save on their own, like a document.
 3. The developer selects what they drew and presses Ask. They type a question. The question, the selected elements' text and an image of the selection go to the thread.
 4. The agent calls `publish_whiteboard` again with only the elements it adds or changes, placed next to the selection, and replies on the comment.
@@ -107,7 +107,7 @@ Two canvases on the same board, such as the desktop and the web app, must comple
 ### rpc and events
 
 - `artifacts.feedback({ id })`, `artifacts.comment({ id, comment?, anchor?, body, attachments? })` and `artifacts.resolveComment({ id, comment, resolved })` route by the artifact's owner, like documents.
-- `artifacts.readWhiteboard` and `artifacts.saveWhiteboard` mirror the document pair.
+- `artifacts.createWhiteboard`, `artifacts.readWhiteboard` and `artifacts.saveWhiteboard` mirror the document trio. `createWhiteboard({ threadId, title })` publishes an empty scene by the developer, owned by the thread, and routes by the thread's owner.
 - The watcher sees `feedback.json` change and pushes `artifact.feedback`, whether the developer, an agent or another harness wrote it.
 
 ## Out of scope

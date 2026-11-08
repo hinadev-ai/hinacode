@@ -28,7 +28,15 @@ import { useNow } from "../../lib/useNow.ts"
 import { m } from "../../paraglide/messages.js"
 import { getLocale } from "../../paraglide/runtime.js"
 import { useArtifacts } from "../../stores/artifacts.ts"
-import { ArrowLeftIcon, ArrowRightIcon, PlusIcon, TrashIcon, WarningIcon } from "@hinacode/icons"
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  FileTextIcon,
+  FlowIcon,
+  PlusIcon,
+  TrashIcon,
+  WarningIcon,
+} from "@hinacode/icons"
 import { useDrafts } from "../../stores/drafts.ts"
 import { useThreads } from "../../stores/threads.ts"
 import { Button } from "../ui/button.tsx"
@@ -359,7 +367,7 @@ function ArtifactList({ threadId }: { threadId: string }) {
       const others = list.filter((artifact) => artifact.threadId !== threadId)
       return (
         <>
-          <Section title={m.artifacts_this_thread()} action={<NewDocumentButton threadId={threadId} />}>
+          <Section title={m.artifacts_this_thread()} action={<NewArtifactMenu threadId={threadId} />}>
             {mine.length === 0 ? (
               <p className="text-xs text-muted-foreground">{m.artifacts_this_thread_empty()}</p>
             ) : (
@@ -378,23 +386,45 @@ function ArtifactList({ threadId }: { threadId: string }) {
     .orElse(() => failed(""))
 }
 
-function NewDocumentButton({ threadId }: { threadId: string }) {
+function NewArtifactMenu({ threadId }: { threadId: string }) {
   const registry = useContext(RegistryContext)
   const select = useArtifacts((state) => state.select)
-  const create = async () => {
+  const create = async (created: Promise<Artifact>, failed: (input: { message: string }) => string) => {
     try {
-      const document = await callPromise("artifacts.createDocument", { threadId, title: m.documents_untitled() })
+      const artifact = await created
       await refreshedArtifacts(registry)
-      select(threadId, document.id)
+      select(threadId, artifact.id)
     } catch (cause) {
-      toast.error(m.documents_create_failed({ message: errorMessage(cause) }))
+      toast.error(failed({ message: errorMessage(cause) }))
     }
   }
+  const createDocument = () =>
+    create(
+      callPromise("artifacts.createDocument", { threadId, title: m.documents_untitled() }),
+      m.documents_create_failed,
+    )
+  const createWhiteboard = () =>
+    create(
+      callPromise("artifacts.createWhiteboard", { threadId, title: m.whiteboard_untitled() }),
+      m.whiteboard_create_failed,
+    )
   return (
-    <Button variant="ghost" size="xs" action={create}>
-      <PlusIcon aria-hidden />
-      {m.documents_new()}
-    </Button>
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button variant="ghost" size="xs" />}>
+        <PlusIcon aria-hidden />
+        {m.artifacts_new()}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => void createDocument()}>
+          <FileTextIcon aria-hidden />
+          {m.artifacts_new_document()}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => void createWhiteboard()}>
+          <FlowIcon aria-hidden />
+          {m.artifacts_new_whiteboard()}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

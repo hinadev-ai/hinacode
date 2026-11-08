@@ -75,6 +75,7 @@ export const learnFromAnswer = (
       return each(result, learnId(teach, "automation"))
     case "artifacts.list":
     case "artifacts.createDocument":
+    case "artifacts.createWhiteboard":
       return each(result, learnId(teach, "artifact"))
     case "threads.transcript":
       for (const name of ["approvals", "questions", "secretRequests"])
@@ -124,6 +125,7 @@ const stampedAnswers: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "projects.update",
   "artifacts.list",
   "artifacts.createDocument",
+  "artifacts.createWhiteboard",
 ])
 
 const stamp = (result: unknown, environmentId: string): unknown =>
