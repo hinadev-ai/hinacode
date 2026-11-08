@@ -130,14 +130,23 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
         onLayout={liquidGlass ? (event) => setDockHeight(event.nativeEvent.layout.height) : undefined}
       >
         {hasRequests && (
-          <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" style={styles.requests}>
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            style={styles.requests}
+            contentContainerStyle={styles.requestList}
+          >
             {thread.usageLimit !== null && (
               <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />
             )}
             {history?.status === "ready" &&
-              history.approvals.map((request) => <ApprovalCard key={request.id} request={request} />)}
+              history.approvals.map((request) => (
+                <ApprovalCard key={request.id} request={request} since={thread.updatedAt} />
+              ))}
             {history?.status === "ready" &&
-              history.questions.map((request) => <QuestionCard key={request.id} request={request} />)}
+              history.questions.map((request) => (
+                <QuestionCard key={request.id} request={request} since={thread.updatedAt} />
+              ))}
           </ScrollView>
         )}
         <SubagentTray thread={thread} />
@@ -251,8 +260,15 @@ function WorkedFor({
   const theme = useTheme()
   if (onToggle === undefined && durationMs < 1000) return null
   const label = copy("mobile_chat_worked_for", { duration: formatWorkDuration(durationMs) })
-  const row = [styles.workedFor, { borderColor: theme.border }]
-  const text = <Text style={[styles.workedForText, { color: theme.textMuted }]}>{label}</Text>
+  const row = styles.workedFor
+  const text = (
+    <>
+      <Icon name="Clock" size={14} color={theme.textMuted} />
+      <Text numberOfLines={1} style={[styles.workedForText, { color: theme.textMuted }]}>
+        {label}
+      </Text>
+    </>
+  )
   if (onToggle === undefined) return <View style={row}>{text}</View>
   return (
     <Pressable
@@ -415,15 +431,16 @@ const styles = StyleSheet.create({
   dock: { flexShrink: 1 },
   dockStack: { position: "absolute", left: 0, right: 0, bottom: 0, maxHeight: "100%" },
   requests: { flexGrow: 0, flexShrink: 1 },
+  requestList: { paddingHorizontal: 12, paddingBottom: 8, gap: 8 },
   earlier: { paddingVertical: 12 },
   empty: { textAlign: "center", padding: 24, fontSize: 15 },
   user: {
     alignSelf: "flex-end",
     maxWidth: "85%",
     gap: 6,
-    borderRadius: radius.lg,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    borderRadius: radius.xl,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   reply: { gap: 6 },
   text: { fontSize: 15, lineHeight: 22 },
@@ -433,9 +450,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  workedForText: { fontSize: 12, fontVariant: ["tabular-nums"] },
+  workedForText: { flexShrink: 1, fontSize: 14, fontVariant: ["tabular-nums"] },
   tool: {
     flexDirection: "row",
     alignItems: "center",

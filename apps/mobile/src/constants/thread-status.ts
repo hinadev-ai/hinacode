@@ -1,13 +1,12 @@
 import type { ThreadStatus } from "@shared/domain.ts"
-import type { Tone } from "@/components/ui"
 import { copy } from "@/lib/copy"
 
-/** The thread header's status, as on the desktop: a quiet label, colored only when a usage limit stops the thread. */
-export const threadStatus: Record<ThreadStatus, { label: string; tone: Tone }> = {
-  draft: { label: copy("mobile_status_draft"), tone: "neutral" },
-  idle: { label: copy("mobile_status_idle"), tone: "neutral" },
-  running: { label: copy("mobile_status_running"), tone: "neutral" },
-  awaiting_approval: { label: copy("mobile_status_awaiting"), tone: "neutral" },
-  limited: { label: copy("mobile_status_limited"), tone: "attention" },
-  archived: { label: copy("mobile_status_archived"), tone: "neutral" },
+/** The thread header's status label. */
+export const threadStatusLabel: Record<ThreadStatus, string> = {
+  draft: copy("mobile_status_draft"),
+  idle: copy("mobile_status_idle"),
+  running: copy("mobile_status_running"),
+  awaiting_approval: copy("mobile_status_awaiting"),
+  limited: copy("mobile_status_limited"),
+  archived: copy("mobile_status_archived"),
 }

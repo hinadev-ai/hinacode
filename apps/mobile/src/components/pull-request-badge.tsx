@@ -1,15 +1,14 @@
-import type { PullRequestLink, Thread } from "@shared/domain.ts"
+import type { PullRequestLink } from "@shared/domain.ts"
 import { checksIndicator, openChecks, type PullRequestAttention, pullRequestAttention } from "@shared/threadStatus.ts"
 import { useFocusEffect } from "expo-router"
 import { useCallback } from "react"
 import { type StyleProp, StyleSheet, Text, type TextStyle, View } from "react-native"
 import { Icon } from "@/components/icon"
-import { PressableScale } from "@/components/motion"
-import { HIT, indicatorGlyph, radius } from "@/constants/theme"
+import { indicatorGlyph } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { useConnection } from "@/lib/connection"
-import { pullRequestLabel, statusGlyph } from "@/lib/pull-request-labels"
-import { type PullRequestSummary, pullRequestNumber, usePullRequests } from "@/stores/pull-requests"
+import { statusGlyph } from "@/lib/pull-request-labels"
+import { type PullRequestSummary, usePullRequests } from "@/stores/pull-requests"
 
 /**
  * The state of the pull request at `url`, or null until GitHub answers. Checks and reviews change while the
@@ -87,44 +86,7 @@ export function PullRequestMark({
   )
 }
 
-const CHIP_HEIGHT = 26
-const chipSlop = (HIT - CHIP_HEIGHT) / 2
-
-/** The thread's newest pull request in the thread header. Pressing it opens the PRs tab. */
-export function ThreadPullRequestChip({ thread, onPress }: { thread: Thread; onPress: () => void }) {
-  const theme = useTheme()
-  const links = usePullRequests((state) => state.linksByThread[thread.id])
-  const url = links?.at(-1)?.url ?? null
-  const summary = usePullRequestSummary(url)
-  if (url === null || links === undefined) return null
-  const number = pullRequestNumber(url) ?? "?"
-  const more = links.length - 1
-  return (
-    <PressableScale
-      testID="thread-pull-request-chip"
-      accessibilityRole="button"
-      accessibilityLabel={pullRequestLabel(number, summary, more)}
-      hitSlop={{ top: chipSlop, bottom: chipSlop, left: 4, right: 4 }}
-      onPress={onPress}
-      style={[styles.chip, { borderColor: theme.border, backgroundColor: theme.surface }]}
-    >
-      <View style={styles.mark}>
-        <PullRequestMark number={number} summary={summary} size={13} textStyle={styles.number} />
-        {more > 0 && <Text style={[styles.number, { color: theme.textMuted }]}>+{more}</Text>}
-      </View>
-    </PressableScale>
-  )
-}
-
 const styles = StyleSheet.create({
   mark: { flexDirection: "row", alignItems: "center", gap: 2 },
   checks: { marginLeft: 2 },
-  number: { fontSize: 12, fontWeight: "600", fontVariant: ["tabular-nums"] },
-  chip: {
-    height: CHIP_HEIGHT,
-    justifyContent: "center",
-    paddingHorizontal: 8,
-    borderRadius: radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
 })
