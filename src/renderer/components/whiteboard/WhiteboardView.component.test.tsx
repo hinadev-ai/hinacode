@@ -281,7 +281,7 @@ test("selects the elements a comment is about when the developer shows them", as
   await openBoard()
 
   await page.getByRole("button", { name: "Comments 1" }).click()
-  await page.getByRole("button", { name: "Show on whiteboard" }).click()
+  await page.getByTitle("Show on whiteboard").click()
 
   await expect.poll(() => Object.keys(editor()?.state.selectedElementIds ?? {})).toEqual(["db"])
 })

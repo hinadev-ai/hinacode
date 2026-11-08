@@ -98,8 +98,20 @@ function Anchor({
   switch (anchor.kind) {
     case "artifact":
       return null
-    case "elements":
-      return <p className="text-xs text-muted-foreground">{m.comments_elements({ count: anchor.ids.length })}</p>
+    case "elements": {
+      const count = <p className="text-xs text-muted-foreground">{m.comments_elements({ count: anchor.ids.length })}</p>
+      if (onShow === undefined) return count
+      return (
+        <button
+          type="button"
+          title={m.comments_show_elements()}
+          onClick={onShow}
+          className="rounded-sm text-start outline-none hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {count}
+        </button>
+      )
+    }
     case "text": {
       const quote = (
         <blockquote className="line-clamp-3 border-s-2 border-attention/60 ps-2 text-start text-xs whitespace-pre-wrap text-muted-foreground">

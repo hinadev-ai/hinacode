@@ -2138,6 +2138,7 @@
   ],
   "comments_detached": "引用的文字已不存在",
   "comments_show_quote": "在文档中显示",
+  "comments_show_elements": "在白板上显示",
   "comments_thread": "评论：{excerpt}",
   "comments_empty": "还没有评论",
   "comments_resolved": [

@@ -2146,6 +2146,7 @@
   ],
   "comments_detached": "The quoted text is gone",
   "comments_show_quote": "Show in document",
+  "comments_show_elements": "Show on whiteboard",
   "comments_thread": "Comment: {excerpt}",
   "comments_empty": "No comments yet",
   "comments_resolved": [
