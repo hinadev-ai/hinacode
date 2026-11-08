@@ -1,5 +1,6 @@
 import { cn } from "cn"
 import { Schema } from "effect"
+import { RiUserLine } from "react-icons/ri"
 import { type FormEvent, startTransition, useEffect, useEffectEvent, useId, useRef, useState } from "react"
 import {
   DeviceCommand,
@@ -37,6 +38,7 @@ import {
   MoonIcon,
   MoreVerticalIcon,
   PhoneIcon,
+  RobotIcon,
   RotateIcon,
   StackIcon,
   SunIcon,
@@ -44,7 +46,6 @@ import {
   UndoIcon,
   VolumeDownIcon,
   VolumeUpIcon,
-  WarningIcon,
 } from "@hinacode/icons"
 
 type ReadyDevice = Extract<ThreadDevice, { phase: "ready" }>
@@ -223,15 +224,16 @@ export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen 
       onDetach()
     })
   const waiting = control === "user" ? agentWaiting : null
-  const status = waiting
-    ? m.devices_agent_waiting()
-    : control === "user"
-      ? m.devices_control_user()
-      : m.devices_control_agent()
   const shownError = error ?? commandError ?? frameError
 
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", bootedOnScreen && "animate-fade-in")}>
+      <ControlStrip
+        control={control}
+        waiting={waiting !== null}
+        pending={pending}
+        onHandBack={() => run(() => callPromise("device.control", { threadId, deviceId, control: "agent" }))}
+      />
       <div
         role="toolbar"
         aria-label={m.devices_toolbar({ name: device.name })}
@@ -358,29 +360,6 @@ export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen 
           />
         )}
       </div>
-      <div className="flex min-h-10 shrink-0 items-center gap-2 border-t border-border px-3 py-1.5">
-        <p
-          aria-live="polite"
-          title={status}
-          className={cn(
-            "flex min-w-0 flex-1 items-center gap-1.5 text-xs",
-            waiting ? "font-medium text-attention" : control === "user" ? "text-foreground" : "text-muted-foreground",
-          )}
-        >
-          {waiting && <WarningIcon aria-hidden className="size-3.5 shrink-0" />}
-          <span className="truncate">{status}</span>
-        </p>
-        {control === "user" && (
-          <Button
-            variant="outline"
-            size="xs"
-            disabled={pending}
-            onClick={() => run(() => callPromise("device.control", { threadId, deviceId, control: "agent" }))}
-          >
-            {m.devices_hand_back()}
-          </Button>
-        )}
-      </div>
       <p id={hintId} className="shrink-0 px-3 pb-1.5 text-2xs text-muted-foreground">
         {m.devices_screen_hint()}
       </p>
@@ -395,6 +374,36 @@ export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen 
           remove()
         }}
       />
+    </div>
+  )
+}
+
+interface ControlStripProps {
+  readonly control: ReadyDevice["control"]
+  readonly waiting: boolean
+  readonly pending: boolean
+  readonly onHandBack: () => void
+}
+
+function ControlStrip({ control, waiting, pending, onHandBack }: ControlStripProps) {
+  const user = control === "user"
+  const OwnerIcon = user ? RiUserLine : RobotIcon
+  return (
+    <div className="flex min-h-14 shrink-0 items-center gap-2.5 border-b border-border bg-popover px-2.5 py-2">
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted">
+        <OwnerIcon aria-hidden className={cn("size-4", user ? "text-foreground" : "text-muted-foreground")} />
+      </span>
+      <div aria-live="polite" className="flex min-w-0 flex-1 flex-col gap-px">
+        <p className={cn("truncate text-xs font-semibold", !user && "text-muted-foreground")}>
+          {user ? m.devices_control_user() : m.devices_control_agent()}
+        </p>
+        {waiting && <p className="truncate text-2xs text-attention">{m.devices_agent_waiting()}</p>}
+      </div>
+      {user && (
+        <Button size="sm" disabled={pending} onClick={onHandBack}>
+          {m.devices_hand_back()}
+        </Button>
+      )}
     </div>
   )
 }

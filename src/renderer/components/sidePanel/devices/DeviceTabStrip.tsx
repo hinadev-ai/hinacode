@@ -150,6 +150,7 @@ function DeviceTab({ threadId, entry, selected, focusable, onSelect, onClose }: 
   const id = threadDeviceId(entry)
   const PlatformIcon = id !== null && devicePlatformOf(id) === "android" ? RiAndroidLine : RiAppleLine
   const label = threadDeviceOwned(entry) ? m.devices_delete_tab({ name }) : m.devices_close_tab({ name })
+  const agentWaiting = entry.phase === "ready" && entry.control === "user" && entry.agentWaiting !== null
   return (
     <div
       className={cn(
@@ -172,6 +173,7 @@ function DeviceTab({ threadId, entry, selected, focusable, onSelect, onClose }: 
         }}
         className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md pr-7 pl-2.5 text-sm pressable outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
       >
+        {agentWaiting && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-attention" />}
         {entry.phase === "preparing" ? (
           <SpinnerIcon aria-hidden className="size-4 shrink-0 animate-spin motion-reduce:animate-none" />
         ) : entry.phase === "failed" ? (
@@ -180,6 +182,7 @@ function DeviceTab({ threadId, entry, selected, focusable, onSelect, onClose }: 
           <PlatformIcon aria-hidden className="size-4 shrink-0" />
         )}
         <span className="truncate">{name}</span>
+        {agentWaiting && <span className="sr-only">{m.devices_agent_waiting()}</span>}
       </button>
       <button
         type="button"
