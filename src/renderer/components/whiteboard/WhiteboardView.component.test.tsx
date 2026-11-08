@@ -2,7 +2,7 @@ import { Schema } from "effect"
 import { beforeEach, expect, test } from "vitest"
 import { cdp, page, userEvent } from "vitest/browser"
 import { render } from "vitest-browser-react"
-import type { Artifact, WhiteboardContent, WhiteboardElement } from "../../../shared/artifact.ts"
+import type { Artifact, ArtifactFeedback, WhiteboardContent, WhiteboardElement } from "../../../shared/artifact.ts"
 import { type HinacodeBridge, type PushEvent, RpcMethods } from "../../../shared/contract.ts"
 import { defaultClientSettings, type Thread } from "../../../shared/domain.ts"
 import "../../index.css"
@@ -25,6 +25,7 @@ let calls: Array<string> = []
 let saves: Array<Saved> = []
 let comments: Array<Comment> = []
 let staged: Array<Staged> = []
+let feedback: ArtifactFeedback = { comments: [], verdicts: [] }
 let agentWrites: WhiteboardContent | undefined
 let heldSaves: Promise<void> | undefined
 const listeners = new Set<(event: typeof PushEvent.Encoded) => void>()
@@ -76,6 +77,7 @@ const bridge: HinacodeBridge = {
       comments.push(payload as Comment)
       return { result: { comments: [], verdicts: [] } }
     }
+    if (method === "artifacts.feedback") return { result: feedback }
     if (method === "environments.list") return { result: { clouds: [] } }
     if (method === "clientSettings.get")
       return { result: Schema.encodeSync(RpcMethods["clientSettings.get"].response)(defaultClientSettings) }
@@ -99,8 +101,11 @@ const push = (event: typeof PushEvent.Encoded) => {
 
 type Scene = ReadonlyArray<{ id: string; type: string; containerId?: string | null; isDeleted?: boolean }>
 
-const sceneOnCanvas = () =>
-  ((window as unknown as { h?: { elements: Scene } }).h?.elements ?? []).filter((element) => !element.isDeleted)
+type Editor = { elements: Scene; state: { selectedElementIds: Record<string, true> } }
+
+const editor = () => (window as unknown as { h?: Editor }).h
+
+const sceneOnCanvas = () => (editor()?.elements ?? []).filter((element) => !element.isDeleted)
 
 beforeEach(({ task }) => {
   boardId = `board-${task.id}`
@@ -109,6 +114,7 @@ beforeEach(({ task }) => {
   saves = []
   comments = []
   staged = []
+  feedback = { comments: [], verdicts: [] }
   agentWrites = undefined
   heldSaves = undefined
   useArtifacts.getState().select(thread.id, boardId)
@@ -255,4 +261,27 @@ test("asks about the selected shapes by their container ids with an image of the
   ])
   expect(calls.indexOf("attachments.stage")).toBeLessThan(calls.indexOf("artifacts.comment"))
   await expect.element(page.getByRole("textbox", { name: "Ask about the selection" })).not.toBeInTheDocument()
+})
+
+test("selects the elements a comment is about when the developer shows them", async () => {
+  const at = "2026-11-08T09:00:00.000Z"
+  feedback = {
+    comments: [
+      {
+        id: "c_1",
+        anchor: { kind: "elements", ids: ["db"] },
+        resolved: false,
+        messages: [{ id: "m_1", author: { kind: "developer" }, body: "Is this the primary?", createdAt: at }],
+        createdAt: at,
+        updatedAt: at,
+      },
+    ],
+    verdicts: [],
+  }
+  await openBoard()
+
+  await page.getByRole("button", { name: "Comments 1" }).click()
+  await page.getByRole("button", { name: "Show on whiteboard" }).click()
+
+  await expect.poll(() => Object.keys(editor()?.state.selectedElementIds ?? {})).toEqual(["db"])
 })
