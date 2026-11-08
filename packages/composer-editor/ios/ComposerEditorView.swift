@@ -13,6 +13,7 @@ private struct Theme {
   var tokenBackground = UIColor.clear
   var codeBackground = UIColor.systemGray5
   var muted = UIColor.secondaryLabel
+  var link = UIColor.systemBlue
   var caret = UIColor.systemBlue
 }
 
@@ -70,7 +71,8 @@ final class ChipLayoutManager: NSLayoutManager {
       let glyphs = glyphRange(forCharacterRange: NSRange(location: range.location, length: 1), actualCharacterRange: nil)
       let rect = boundingRect(forGlyphRange: glyphs, in: container).offsetBy(dx: origin.x, dy: origin.y)
       let size = font.pointSize * 0.9
-      let baseline = rect.minY + location(forGlyphAt: glyphs.location).y
+      let line = lineFragmentRect(forGlyphAt: glyphs.location, effectiveRange: nil)
+      let baseline = origin.y + line.minY + location(forGlyphAt: glyphs.location).y
       let centerY = baseline - (font.ascender + font.descender) / 2
       context.saveGState()
       context.translateBy(x: rect.minX, y: centerY - size / 2)
@@ -95,6 +97,7 @@ class ComposerEditorView: ExpoView, UITextViewDelegate {
   let onEditorFocus = EventDispatcher()
   let onEditorBlur = EventDispatcher()
   let onEditorContentSize = EventDispatcher()
+  let onEditorFormat = EventDispatcher()
 
   private let layoutManager = ChipLayoutManager()
   let textView: UITextView
@@ -106,6 +109,8 @@ class ComposerEditorView: ExpoView, UITextViewDelegate {
   private var eventCount = 0
   private var applying = false
   private var contentHeight: CGFloat = -1
+  private var requestedSelection: NSRange?
+  private var formatActions: [(id: String, label: String)] = []
 
   required init(appContext: AppContext? = nil) {
     let storage = NSTextStorage()
@@ -145,6 +150,36 @@ class ComposerEditorView: ExpoView, UITextViewDelegate {
     guard next.eventCount >= eventCount else { return }
     if textView.text != value { withoutEvents { replaceChanged(with: value) } }
     applyDecorations()
+    let selection = (object["selection"] as? [String: Any]).map {
+      NSRange(location: $0["start"] as? Int ?? 0, length: ($0["end"] as? Int ?? 0) - ($0["start"] as? Int ?? 0))
+    }
+    if selection != requestedSelection {
+      requestedSelection = selection
+      if let selection { select(start: selection.location, end: selection.location + selection.length) }
+    }
+  }
+
+  func setFormatActions(_ json: String) {
+    let parsed = json.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [[String: Any]] }
+    formatActions = (parsed ?? []).compactMap { action in
+      guard let id = action["id"] as? String, let label = action["label"] as? String else { return nil }
+      return (id: id, label: label)
+    }
+  }
+
+  func textView(
+    _ textView: UITextView, editMenuForTextIn range: NSRange, suggestedActions: [UIMenuElement]
+  ) -> UIMenu? {
+    guard range.length > 0, !formatActions.isEmpty else { return nil }
+    let formats = formatActions.map { action in
+      UIAction(title: action.label) { [weak self] _ in self?.format(action.id) }
+    }
+    return UIMenu(children: suggestedActions + formats)
+  }
+
+  private func format(_ action: String) {
+    let selection = textView.selectedRange
+    onEditorFormat(["action": action, "start": selection.location, "end": selection.location + selection.length])
   }
 
   func setIcons(_ json: String) {
@@ -165,7 +200,7 @@ class ComposerEditorView: ExpoView, UITextViewDelegate {
       text: color("text", fallback.text), placeholder: color("placeholder", fallback.placeholder),
       token: color("token", fallback.token), tokenBackground: color("tokenBackground", fallback.tokenBackground),
       codeBackground: color("codeBackground", fallback.codeBackground), muted: color("muted", fallback.muted),
-      caret: color("caret", fallback.caret))
+      link: color("link", fallback.link), caret: color("caret", fallback.caret))
     textView.tintColor = theme.caret
     placeholderLabel.textColor = theme.placeholder
     layoutManager.iconColor = theme.token
@@ -304,6 +339,13 @@ class ComposerEditorView: ExpoView, UITextViewDelegate {
       storage.addAttribute(.foregroundColor, value: theme.muted, range: range)
     case "code":
       storage.addAttribute(.backgroundColor, value: theme.codeBackground, range: range)
+    case "strong":
+      addTrait(.traitBold, to: range, in: storage)
+    case "emphasis":
+      addTrait(.traitItalic, to: range, in: storage)
+    case "link":
+      storage.addAttributes(
+        [.foregroundColor: theme.link, .underlineStyle: NSUnderlineStyle.single.rawValue], range: range)
     case "chip":
       storage.addAttributes([.foregroundColor: theme.token, .composerChip: theme.tokenBackground], range: range)
       guard let icon = decoration["icon"] as? String, layoutManager.icons[icon] != nil else { return }
@@ -314,6 +356,15 @@ class ComposerEditorView: ExpoView, UITextViewDelegate {
         [.foregroundColor: UIColor.clear, .composerChipIcon: icon, .kern: advance - glyphWidth], range: trigger)
     default:
       break
+    }
+  }
+
+  private func addTrait(_ trait: UIFontDescriptor.SymbolicTraits, to range: NSRange, in storage: NSTextStorage) {
+    storage.enumerateAttribute(.font, in: range) { value, run, _ in
+      let current = value as? UIFont ?? font
+      guard let descriptor = current.fontDescriptor.withSymbolicTraits(current.fontDescriptor.symbolicTraits.union(trait))
+      else { return }
+      storage.addAttribute(.font, value: UIFont(descriptor: descriptor, size: current.pointSize), range: run)
     }
   }
 

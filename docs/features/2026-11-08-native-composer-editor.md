@@ -45,4 +45,4 @@ Tiptap with StarterKit, Link and Mention adds 426 KB minified (137 KB gzipped) o
 
 - `pnpm test` covers `composerDecorations` and `iconPaths`.
 - Build the Android app (`pnpm android`), open a thread and type `/` plus a skill: the chip shows the skill icon on a tinted pill. Paste a prompt with backticks, underscores and a code fence, send it, and check the transcript shows it unchanged.
-- The iOS view has not been built yet. Build it with `pnpm ios` on a Mac before shipping and check the same flow, including Japanese input.
+- Build the iOS app (`pnpm ios`) and check the same flow, plus Japanese input after a chip: the whole composition stays until it is committed. Select a word and pick Bold from the edit menu: it renders bold between muted `**` and stays selected.
