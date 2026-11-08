@@ -101,7 +101,15 @@ const push = (event: typeof PushEvent.Encoded) => {
 
 type Scene = ReadonlyArray<{ id: string; type: string; containerId?: string | null; isDeleted?: boolean }>
 
-type Editor = { elements: Scene; state: { selectedElementIds: Record<string, true> } }
+type ViewState = {
+  selectedElementIds: Record<string, true>
+  scrollX: number
+  scrollY: number
+  width: number
+  height: number
+  zoom: { value: number }
+}
+type Editor = { elements: Scene; state: ViewState; setState: (state: Partial<ViewState>) => void }
 
 const editor = () => (window as unknown as { h?: Editor }).h
 
@@ -121,9 +129,9 @@ beforeEach(({ task }) => {
   push({ type: "artifact.updated", artifact: boardAt(1) })
 })
 
-const openBoard = async () => {
+const openBoard = async (width = 800) => {
   const view = await render(
-    <div style={{ width: 800, height: 600, display: "flex", flexDirection: "column" }}>
+    <div style={{ width, height: 600, display: "flex", flexDirection: "column" }}>
       <ArtifactsView thread={thread} />
     </div>,
   )
@@ -263,9 +271,9 @@ test("asks about the selected shapes by their container ids with an image of the
   await expect.element(page.getByRole("textbox", { name: "Ask about the selection" })).not.toBeInTheDocument()
 })
 
-test("selects the elements a comment is about when the developer shows them", async () => {
+const commentOnDb = (): ArtifactFeedback => {
   const at = "2026-11-08T09:00:00.000Z"
-  feedback = {
+  return {
     comments: [
       {
         id: "c_1",
@@ -278,10 +286,54 @@ test("selects the elements a comment is about when the developer shows them", as
     ],
     verdicts: [],
   }
+}
+
+const dbOnScreen = () => {
+  const state = editor()?.state
+  if (state === undefined) return false
+  const zoom = state.zoom.value
+  const [left, top, right, bottom] = [320, 0, 480, 80]
+  return (
+    (left + state.scrollX) * zoom >= 0 &&
+    (right + state.scrollX) * zoom <= state.width &&
+    (top + state.scrollY) * zoom >= 0 &&
+    (bottom + state.scrollY) * zoom <= state.height
+  )
+}
+
+const viewOf = () => {
+  const state = editor()?.state
+  return JSON.stringify([state?.scrollX, state?.scrollY, state?.zoom.value])
+}
+
+const viewSettled = async () => {
+  const before = viewOf()
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  return viewOf() === before
+}
+
+test("selects the elements a comment is about when the developer shows them", async () => {
+  feedback = commentOnDb()
   await openBoard()
 
   await page.getByRole("button", { name: "Comments 1" }).click()
   await page.getByTitle("Show on whiteboard").click()
 
   await expect.poll(() => Object.keys(editor()?.state.selectedElementIds ?? {})).toEqual(["db"])
+})
+
+test("scrolls a narrow board to a comment's elements after the comments make way for it", async () => {
+  feedback = commentOnDb()
+  await openBoard(480)
+  editor()?.setState({ scrollX: 5000, scrollY: 5000 })
+  await expect.poll(dbOnScreen).toBe(false)
+
+  await page.getByRole("button", { name: "Comments 1" }).click()
+  await expect.poll(() => editor()?.state.width).toBe(0)
+  await page.getByTitle("Show on whiteboard").click()
+
+  await expect.element(page.getByRole("region", { name: "Comments" })).not.toBeInTheDocument()
+  await expect.poll(() => Object.keys(editor()?.state.selectedElementIds ?? {})).toEqual(["db"])
+  await expect.poll(viewSettled, { timeout: 5000 }).toBe(true)
+  expect(dbOnScreen()).toBe(true)
 })
