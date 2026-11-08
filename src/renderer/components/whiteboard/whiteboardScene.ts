@@ -46,6 +46,15 @@ export const mergeRemote = <E extends SceneElement>({
   readonly reconcile: (local: ReadonlyArray<E>, remote: ReadonlyArray<E>) => ReadonlyArray<E>
 }) => {
   const editedSince = (element: E) => element.version > (snapshot.versions.get(element.id) ?? 0)
+  const localVersions = new Map(local.map((element) => [element.id, element.version]))
+  const isReplaced = (element: E) =>
+    plan.replaced.has(element.id) || (element.containerId != null && plan.replaced.has(element.containerId))
+  const outranking = (element: E): E => {
+    if (!isReplaced(element)) return element
+    const known = Math.max(localVersions.get(element.id) ?? 0, snapshot.versions.get(element.id) ?? 0)
+    return element.version > known ? element : { ...element, version: known + 1 }
+  }
+  const lifted = completed.map(outranking)
   const dropped = new Set([
     ...plan.replaced,
     ...local.filter((element) => plan.removed.has(element.id) && !editedSince(element)).map((element) => element.id),
@@ -55,9 +64,9 @@ export const mergeRemote = <E extends SceneElement>({
   )
   const versions = new Map(snapshot.versions)
   for (const id of plan.removed) versions.delete(id)
-  for (const element of completed) versions.set(element.id, element.version)
+  for (const element of lifted) versions.set(element.id, element.version)
   return {
-    elements: linkBoundArrows(reconcile(kept, completed)),
+    elements: linkBoundArrows(reconcile(kept, lifted)),
     snapshot: {
       remote: new Map(remote.map((element) => [element.id, isSkeleton(element) ? JSON.stringify(element) : ""])),
       versions,
@@ -71,6 +80,24 @@ export const savedSnapshot = (elements: ReadonlyArray<SceneElement>): Snapshot =
 })
 
 type BoundElement = { readonly id: string; readonly type: string }
+
+export const labelId = (containerId: string) => `${containerId}:label`
+
+export const stableLabelIds = <E extends SceneElement>(elements: ReadonlyArray<E>): E[] => {
+  const renamed = new Map(
+    elements.flatMap((element) =>
+      element.containerId == null || field(element, "type") !== "text"
+        ? []
+        : [[element.id, labelId(element.containerId)] as const],
+    ),
+  )
+  return elements.map((element) => {
+    const id = renamed.get(element.id) ?? element.id
+    const bound = field(element, "boundElements") as ReadonlyArray<BoundElement> | null | undefined
+    const rebound = bound?.map((entry) => ({ ...entry, id: renamed.get(entry.id) ?? entry.id }))
+    return { ...element, id, ...(rebound === undefined || rebound === null ? {} : { boundElements: rebound }) }
+  })
+}
 
 const field = (element: object, key: string): unknown => (element as Record<string, unknown>)[key]
 

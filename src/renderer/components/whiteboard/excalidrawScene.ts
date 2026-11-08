@@ -4,7 +4,7 @@ import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/tran
 import type { ExcalidrawElement, OrderedExcalidrawElement } from "@excalidraw/excalidraw/element/types"
 import type { AppState } from "@excalidraw/excalidraw/types"
 import type { WhiteboardElement } from "../../../shared/artifact.ts"
-import { isSkeleton, mergeRemote, planRemote, type Snapshot } from "./whiteboardScene.ts"
+import { isSkeleton, mergeRemote, planRemote, type Snapshot, stableLabelIds } from "./whiteboardScene.ts"
 
 const asBindingTarget = (element: WhiteboardElement, present: ReadonlySet<string>) => {
   if (element["type"] !== "frame" && element["type"] !== "magicframe") return element
@@ -18,9 +18,11 @@ const completeSkeletons = (remote: ReadonlyArray<WhiteboardElement>, replaced: R
   const converted =
     replaced.size === 0
       ? []
-      : convertToExcalidrawElements(
-          remote.map((element) => asBindingTarget(element, present)) as unknown as ExcalidrawElementSkeleton[],
-          { regenerateIds: false },
+      : stableLabelIds(
+          convertToExcalidrawElements(
+            remote.map((element) => asBindingTarget(element, present)) as unknown as ExcalidrawElementSkeleton[],
+            { regenerateIds: false },
+          ),
         )
   const ordered = remote.flatMap((element): ReadonlyArray<unknown> => {
     if (replaced.has(element.id)) {
