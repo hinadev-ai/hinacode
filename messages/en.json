@@ -115,6 +115,7 @@
   "common_close": "Close",
   "common_copied": "Copied",
   "thread_empty_title": "What do you want to work on {project} in {environment}?",
+  "thread_environment_create": "Create on {machine}",
   "thread_empty_chat_title": "What do you want to ask in {environment}?",
   "thread_loading": "Loading messages…",
   "thread_load_failed": "Could not load messages: {message}",

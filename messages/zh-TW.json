@@ -115,6 +115,7 @@
   "common_close": "關閉",
   "common_copied": "已複製",
   "thread_empty_title": "想在 {environment} 的 {project} 做什麼？",
+  "thread_environment_create": "在{machine}建立",
   "thread_empty_chat_title": "想在 {environment} 問什麼？",
   "thread_loading": "正在載入訊息…",
   "thread_load_failed": "無法載入訊息：{message}",

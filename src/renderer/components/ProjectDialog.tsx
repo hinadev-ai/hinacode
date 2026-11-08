@@ -52,14 +52,26 @@ interface ProjectDialogProps {
   readonly onOpenChange: (open: boolean) => void
   readonly project?: Project
   readonly environment?: EnvironmentId
+  readonly source?: { readonly rootPath: string; readonly name: string }
+  readonly onCreated?: (project: Project) => void
   readonly finalFocus?: ComponentProps<typeof DialogContent>["finalFocus"]
 }
 
-export function ProjectDialog({ open, onOpenChange, project, environment = null, finalFocus }: ProjectDialogProps) {
+export function ProjectDialog({
+  open,
+  onOpenChange,
+  project,
+  environment = null,
+  source,
+  onCreated,
+  finalFocus,
+}: ProjectDialogProps) {
   const navigate = useNavigate()
   const onSaved = (saved: Project) => {
     onOpenChange(false)
-    if (!project) void startThread(saved, navigate)
+    if (project) return
+    if (onCreated) onCreated(saved)
+    else void startThread(saved, navigate)
   }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -70,7 +82,7 @@ export function ProjectDialog({ open, onOpenChange, project, environment = null,
             {project ? m.project_edit_description({ project: project.name }) : m.project_dialog_description()}
           </DialogDescription>
         </DialogHeader>
-        <ProjectForm project={project} initialEnvironment={environment} onSaved={onSaved} />
+        <ProjectForm project={project} initialEnvironment={environment} source={source} onSaved={onSaved} />
       </DialogContent>
     </Dialog>
   )
@@ -89,15 +101,16 @@ function useDefaultCloneParent(environment: EnvironmentId) {
 interface ProjectFormProps {
   readonly project: Project | undefined
   readonly initialEnvironment: EnvironmentId
+  readonly source: ProjectDialogProps["source"]
   readonly onSaved: (project: Project) => void
 }
 
-function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps) {
+function ProjectForm({ project, initialEnvironment, source: initial, onSaved }: ProjectFormProps) {
   const createProject = useAtomSet(createProjectAtom, { mode: "promise" })
   const cloneProject = useAtomSet(cloneProjectAtom, { mode: "promise" })
   const updateProject = useAtomSet(updateProjectAtom, { mode: "promise" })
-  const [rootPath, setRootPath] = useState(project?.rootPath ?? "")
-  const [typedName, setTypedName] = useState<string | null>(project?.name ?? null)
+  const [rootPath, setRootPath] = useState(project?.rootPath ?? initial?.rootPath ?? "")
+  const [typedName, setTypedName] = useState<string | null>(project?.name ?? initial?.name ?? null)
   const name = typedName ?? suggestProjectName(rootPath)
   const [linearReview, setLinearReview] = useState(project?.linearReview ?? false)
   const repository = project ? null : parseGitHubRepository(rootPath)
