@@ -28,15 +28,7 @@ import { useNow } from "../../lib/useNow.ts"
 import { m } from "../../paraglide/messages.js"
 import { getLocale } from "../../paraglide/runtime.js"
 import { useArtifacts } from "../../stores/artifacts.ts"
-import {
-  ArrowLeftIcon,
-  ArrowRightIcon,
-  FileTextIcon,
-  LayoutIcon,
-  PlusIcon,
-  TrashIcon,
-  WarningIcon,
-} from "@hinacode/icons"
+import { ArrowLeftIcon, ArrowRightIcon, PlusIcon, TrashIcon, WarningIcon } from "@hinacode/icons"
 import { useDrafts } from "../../stores/drafts.ts"
 import { useThreads } from "../../stores/threads.ts"
 import { Button } from "../ui/button.tsx"
@@ -45,6 +37,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { SkeletonList } from "../ui/skeleton.tsx"
 import { liveDocument, liveDocumentKey } from "../documentEditor/liveDocuments.ts"
 import { Section, ViewBody } from "./Section.tsx"
+import { ArtifactKindIcon } from "./ArtifactKindIcon.tsx"
+import { VerifyView } from "./VerifyView.tsx"
 import { resourceUrl, servedSandbox } from "../../lib/resourceUrl.ts"
 import { inBrowser } from "../../lib/runtime.ts"
 
@@ -80,7 +74,7 @@ export function ArtifactsHeader({ thread }: { thread: Thread }) {
         {m.artifacts_version({ version: selected.version })}
       </span>
       <span className="flex-1" />
-      {!inBrowser() && <ExportMenu artifact={selected} />}
+      {!inBrowser() && exportable(selected) && <ExportMenu artifact={selected} />}
     </div>
   )
 }
@@ -185,6 +179,9 @@ function TitleInput({
   )
 }
 
+const exportable = (artifact: Artifact) =>
+  artifact.kind === undefined || artifact.kind === "page" || artifact.kind === "document"
+
 const exportArtifact = (request: ArtifactExportRequest) =>
   callPromise("artifacts.export", request)
     .then((path) => {
@@ -238,6 +235,11 @@ export function ArtifactsView({ thread }: { thread: Thread }) {
   if (selected !== undefined && isDocument(selected)) {
     return (
       <DocumentView key={`${selected.environmentId ?? ""}:${selected.id}`} threadId={thread.id} artifact={selected} />
+    )
+  }
+  if (selected?.kind === "verify") {
+    return (
+      <VerifyView key={`${selected.environmentId ?? ""}:${selected.id}`} threadId={thread.id} artifact={selected} />
     )
   }
   if (selected !== undefined) {
@@ -427,11 +429,7 @@ function ArtifactRow({ threadId, artifact }: { threadId: string; artifact: Artif
           onClick={() => select(threadId, artifact.id)}
           className="flex w-full min-w-0 items-start gap-2 rounded-md px-2 py-1.5 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
         >
-          {isDocument(artifact) ? (
-            <FileTextIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          ) : (
-            <LayoutIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          )}
+          <ArtifactKindIcon artifact={artifact} className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="truncate text-sm text-artifact-title">{artifact.title}</span>
             <span className="truncate text-xs text-muted-foreground">
