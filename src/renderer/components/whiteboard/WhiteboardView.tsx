@@ -1,5 +1,5 @@
 import "./excalidrawAssets.ts"
-import { CaptureUpdateAction, Excalidraw, exportToBlob, MainMenu } from "@excalidraw/excalidraw"
+import { CaptureUpdateAction, Excalidraw, exportToBlob } from "@excalidraw/excalidraw"
 import type { ExcalidrawImperativeAPI, UIOptions } from "@excalidraw/excalidraw/types"
 import "@excalidraw/excalidraw/index.css"
 import "./whiteboard.css"
@@ -172,12 +172,7 @@ function WhiteboardCanvas({
               langCode={EXCALIDRAW_LANGUAGES[getLocale()] ?? "en"}
               UIOptions={UI_OPTIONS}
               aiEnabled={false}
-            >
-              <MainMenu>
-                <MainMenu.DefaultItems.SearchMenu />
-                <MainMenu.DefaultItems.Help />
-              </MainMenu>
-            </Excalidraw>
+            />
           </div>
         </div>
         {comments.open && (

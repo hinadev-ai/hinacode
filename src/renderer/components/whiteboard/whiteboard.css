@@ -29,6 +29,20 @@
   --ui-font: var(--font-sans, inherit);
 }
 
+[data-whiteboard] .excalidraw .ToolIcon:has([data-testid="toolbar-lock"]),
+[data-whiteboard] .excalidraw .ToolIcon:has([data-testid="toolbar-line"]),
+[data-whiteboard] .excalidraw .ToolIcon:has([data-testid="toolbar-freedraw"]),
+[data-whiteboard] .excalidraw .ToolIcon:has([data-testid="toolbar-eraser"]),
+[data-whiteboard] .excalidraw .disable-zen-mode,
+[data-whiteboard] .excalidraw .ToolIcon__keybinding,
+[data-whiteboard] .excalidraw .App-toolbar__divider,
+[data-whiteboard] .excalidraw .App-toolbar__extra-tools-trigger,
+[data-whiteboard] .excalidraw .main-menu-trigger,
+[data-whiteboard] .excalidraw .help-icon,
+[data-whiteboard] .excalidraw .HintViewer,
+[data-whiteboard] .excalidraw .App-menu__left,
+[data-whiteboard] .excalidraw .selected-shape-actions,
+[data-whiteboard] .excalidraw .properties-trigger,
 [data-whiteboard] .excalidraw .sidebar-triggers,
 [data-whiteboard] .excalidraw .sidebar-trigger,
 [data-whiteboard] .excalidraw .default-sidebar-trigger,
