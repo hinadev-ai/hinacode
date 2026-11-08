@@ -7,6 +7,7 @@ import { liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
 import { Reveal, Rotate, Spinner } from "@/components/motion"
 import { SearchField } from "@/components/search-field"
+import { HomeOverview } from "@/components/home-summary"
 import { ServerFilter } from "@/components/server-filter"
 import { ServerMark } from "@/components/server-mark"
 import { SectionLabel, ThreadRow } from "@/components/thread-row"
@@ -139,7 +140,7 @@ export function HomeContent({
         header={
           <>
             {notice}
-            <ServerFilter />
+            <HomeOverview />
           </>
         }
       />

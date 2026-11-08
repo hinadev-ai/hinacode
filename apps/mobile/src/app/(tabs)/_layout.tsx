@@ -19,6 +19,7 @@ export default function TabsLayout() {
         tintColor={theme.primary}
         backgroundColor={isIOS ? undefined : theme.background}
         indicatorColor={theme.surface}
+        labelVisibilityMode="labeled"
       >
         {liquidGlass && (
           <NativeTabs.BottomAccessory>

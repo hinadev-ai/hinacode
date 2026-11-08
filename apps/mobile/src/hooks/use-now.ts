@@ -1,25 +1,40 @@
 import { useEffect } from "react"
-import { create } from "zustand"
+import { createStore, useStore } from "zustand"
 
-const TICK_MS = 30_000
+const clocks = new Map<number, ReturnType<typeof createClock>>()
 
-const useClock = create(() => ({ now: Date.now() }))
-
-let watchers = 0
-let timer: ReturnType<typeof setInterval> | undefined
-
-/** The time, updated every 30 seconds by one timer shared by every component that shows a relative time. */
-export function useNow() {
-  useEffect(() => {
+function createClock(tickMs: number) {
+  const store = createStore(() => ({ now: Date.now() }))
+  let watchers = 0
+  let timer: ReturnType<typeof setInterval> | undefined
+  const watch = () => {
     watchers += 1
     if (watchers === 1) {
-      useClock.setState({ now: Date.now() })
-      timer = setInterval(() => useClock.setState({ now: Date.now() }), TICK_MS)
+      store.setState({ now: Date.now() })
+      timer = setInterval(() => store.setState({ now: Date.now() }), tickMs)
     }
     return () => {
       watchers -= 1
       if (watchers === 0) clearInterval(timer)
     }
-  }, [])
-  return useClock((state) => state.now)
+  }
+  return { store, watch }
+}
+
+function clock(tickMs: number) {
+  const existing = clocks.get(tickMs)
+  if (existing !== undefined) return existing
+  const created = createClock(tickMs)
+  clocks.set(tickMs, created)
+  return created
+}
+
+/**
+ * The time, updated every `tickMs` by one timer shared by every component that ticks at that rate. Relative times
+ * use the default 30 seconds; a stopwatch passes 1000.
+ */
+export function useNow(tickMs = 30_000) {
+  const { store, watch } = clock(tickMs)
+  useEffect(watch, [watch])
+  return useStore(store, (state) => state.now)
 }

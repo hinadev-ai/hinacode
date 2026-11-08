@@ -23,7 +23,7 @@ export function FloatingNewThreadAccessory({ onPress }: { onPress: () => void })
   const theme = useTheme()
   return (
     <SafeAreaView edges={["bottom"]} pointerEvents="box-none" style={styles.floating}>
-      <View style={[styles.surface, { backgroundColor: theme.background }]}>
+      <View style={[styles.surface, { backgroundColor: theme.card }]}>
         <AccessoryPill placement="floating" onPress={onPress} />
       </View>
     </SafeAreaView>

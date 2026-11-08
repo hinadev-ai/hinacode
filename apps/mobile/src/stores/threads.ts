@@ -171,3 +171,13 @@ export function threadBranch(
 
 export const useThreadRoot = (thread: Thread) =>
   useThreads((state) => threadRoot(thread, state.projects, state.worktrees))
+
+/** The name of the branch a thread works on, or undefined before it is known. */
+export const useThreadBranchName = (thread: Thread) =>
+  useThreads(
+    (state) =>
+      threadBranch(
+        thread.worktreeId === null ? undefined : state.worktrees[thread.worktreeId],
+        state.branches[thread.projectId],
+      )?.name,
+  )

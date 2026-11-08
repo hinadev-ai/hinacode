@@ -4,19 +4,18 @@ import { StyleSheet, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { isIOS, liquidGlass } from "@/components/glass"
 import { HomeContent } from "@/components/home"
+import { HomeHeaderButtons, HomeToolbar } from "@/components/home-header"
 import { FloatingNewThreadAccessory } from "@/components/new-thread-accessory"
 import { NewThreadSheet } from "@/components/new-thread-sheet"
 import { SidebarButton, SidebarToolbarButton } from "@/components/thread-sidebar"
-import { Button, ConnectionBadge, EmptyState } from "@/components/ui"
+import { Button, EmptyState } from "@/components/ui"
 import { useSidebar, useSplitLayout } from "@/hooks/use-split-layout"
 import { useTheme } from "@/hooks/use-theme"
-import { useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 
 export default function HomeScreen() {
   const theme = useTheme()
   const split = useSplitLayout()
-  const connection = useConnection((state) => state.status)
   const [newThreadOpen, setNewThreadOpen] = useState(false)
   const sidebar = useSidebar()
 
@@ -53,19 +52,8 @@ export default function HomeScreen() {
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          headerRight:
-            connection === "connected"
-              ? undefined
-              : () => (
-                  <View style={styles.headerRight}>
-                    <ConnectionBadge status={connection} />
-                  </View>
-                ),
-        }}
-      />
+      <Stack.Screen options={{ headerShown: true, headerRight: isIOS ? undefined : () => <HomeHeaderButtons /> }} />
+      {isIOS && <HomeToolbar />}
       <HomeContent />
       {!liquidGlass && (
         <>
@@ -82,5 +70,4 @@ const styles = StyleSheet.create({
   // Lined up with the thread header, so the sidebar button stays put when a thread opens.
   header: { padding: 4 },
   center: { flex: 1, justifyContent: "center" },
-  headerRight: { paddingHorizontal: 4 },
 })
