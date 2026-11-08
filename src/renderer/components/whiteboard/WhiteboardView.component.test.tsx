@@ -26,6 +26,7 @@ let saves: Array<Saved> = []
 let comments: Array<Comment> = []
 let staged: Array<Staged> = []
 let agentWrites: WhiteboardContent | undefined
+let heldSaves: Promise<void> | undefined
 const listeners = new Set<(event: typeof PushEvent.Encoded) => void>()
 
 const boardAt = (revision: number): Artifact => ({
@@ -49,6 +50,7 @@ const bridge: HinacodeBridge = {
     if (method === "artifacts.saveWhiteboard") {
       const save = payload as Saved
       saves.push(save)
+      await heldSaves
       if (agentWrites !== undefined) {
         stored = agentWrites
         agentWrites = undefined
@@ -108,6 +110,7 @@ beforeEach(({ task }) => {
   comments = []
   staged = []
   agentWrites = undefined
+  heldSaves = undefined
   useArtifacts.getState().select(thread.id, boardId)
   push({ type: "artifact.updated", artifact: boardAt(1) })
 })
@@ -170,6 +173,28 @@ test("closing the board saves the edit it was still waiting to save", async () =
   const elements = saves[0]?.scene.elements ?? []
   expect(elements.map((element) => element.id)).toEqual(expect.arrayContaining(["api", "db", "api-db"]))
   expect(elements.find((element) => element.id === "api")).toMatchObject({ x: 1 })
+})
+
+test("an edit made after reopening the board saves once the closing save lands", async () => {
+  let release = () => {}
+  heldSaves = new Promise((resolve) => {
+    release = resolve
+  })
+  const closing = await openBoard()
+  await selectAll()
+  await userEvent.keyboard("{ArrowRight}")
+  closing.unmount()
+  await expect.poll(() => saves.length, { timeout: 3000 }).toBe(1)
+
+  const reopened = await openBoard()
+  await selectAll()
+  await userEvent.keyboard("{ArrowRight}")
+  await new Promise((resolve) => setTimeout(resolve, 800))
+  release()
+
+  await expect.poll(() => saves.length, { timeout: 3000 }).toBe(2)
+  expect(saves[1]?.scene.elements.find((element) => element.id === "api")).toMatchObject({ x: 2 })
+  reopened.unmount()
 })
 
 test("merges an agent's write that beat the save and saves again on its revision", async () => {
