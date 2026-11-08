@@ -217,28 +217,15 @@ function ModelsSection({ provider }: { provider: ProviderId }) {
   )
 
   return (
-    <SettingsPanelSection
-      title={m.settings_models()}
-      action={
-        <>
-          {current !== null && (
-            <Button variant="ghost" size="sm" action={() => saveDefault(null)}>
-              {m.settings_models_clear()}
-            </Button>
-          )}
-          {AsyncResult.isSuccess(models) && models.value.length > 0 && (
-            <span aria-hidden className="pe-0.5 text-xs text-muted-foreground">
-              {m.settings_model_shown()}
-            </span>
-          )}
-        </>
-      }
-    >
+    <SettingsPanelSection title={m.settings_models()}>
       {AsyncResult.builder(models)
         .onInitial(() => <SkeletonList label={m.settings_models_loading()} rows={3} rowClassName="h-10 rounded-lg" />)
         .onSuccess((list) =>
           list.length > 0 ? (
-            <ModelList provider={provider} models={list} current={current} onMakeDefault={saveDefault} />
+            <>
+              <DefaultModelField provider={provider} models={list} current={current} onSave={saveDefault} />
+              <ModelList provider={provider} models={list} current={current} />
+            </>
           ) : (
             textFallback(m.settings_models_unlisted({ provider: label }))
           ),
@@ -254,10 +241,49 @@ interface ModelListProps {
   readonly provider: ProviderId
   readonly models: ReadonlyArray<ModelInfo>
   readonly current: string | null
-  readonly onMakeDefault: (model: string) => Promise<void>
 }
 
-function ModelList({ provider, models, current, onMakeDefault }: ModelListProps) {
+const AGENT_DEFAULT = ""
+
+function DefaultModelField({
+  provider,
+  models,
+  current,
+  onSave,
+}: ModelListProps & { onSave: (model: string | null) => Promise<void> }) {
+  const inputId = `default-model-${provider}`
+  const listed = current === null || models.some((model) => model.id === current)
+  const items = [
+    { value: AGENT_DEFAULT, label: m.settings_model_agent_default() },
+    ...(listed ? [] : [{ value: current, label: current }]),
+    ...models.map((model) => ({ value: model.id, label: model.label })),
+  ]
+  return (
+    <Field orientation="horizontal">
+      <FieldLabel htmlFor={inputId} className="self-center">
+        {m.settings_default_model()}
+      </FieldLabel>
+      <Select
+        items={items}
+        value={current ?? AGENT_DEFAULT}
+        onValueChange={(next) => next !== null && void onSave(next === AGENT_DEFAULT ? null : next)}
+      >
+        <SelectTrigger id={inputId} className="w-56 min-w-0 shrink">
+          <SelectValue className="min-w-0 truncate" />
+        </SelectTrigger>
+        <SelectContent>
+          {items.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </Field>
+  )
+}
+
+function ModelList({ provider, models, current }: ModelListProps) {
   const environment = useSettingsEnvironment()
   const { modelPresets } = useSettings(environment)
   const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
@@ -281,7 +307,10 @@ function ModelList({ provider, models, current, onMakeDefault }: ModelListProps)
   }
 
   return (
-    <div className="-mt-1 flex flex-col gap-1">
+    <div className="flex flex-col gap-1">
+      <p aria-hidden className="px-2.5 text-end text-xs text-muted-foreground">
+        {m.settings_model_shown()}
+      </p>
       <ul aria-label={m.settings_models_label({ provider: providerLabel[provider]() })} className="flex flex-col">
         {rows.map((model) => (
           <ModelRow
@@ -290,7 +319,6 @@ function ModelList({ provider, models, current, onMakeDefault }: ModelListProps)
             isDefault={model.id === current}
             shown={isListed.has(model.id) ? shown.has(model.id) : null}
             lastShown={shown.size === 1}
-            onMakeDefault={() => onMakeDefault(model.id)}
             onShownChange={(show) => void setShown(model.id, show)}
           />
         ))}
@@ -305,30 +333,16 @@ interface ModelRowProps {
   readonly isDefault: boolean
   readonly shown: boolean | null
   readonly lastShown: boolean
-  readonly onMakeDefault: () => Promise<void>
   readonly onShownChange: (shown: boolean) => void
 }
 
-function ModelRow({ model, isDefault, shown, lastShown, onMakeDefault, onShownChange }: ModelRowProps) {
-  const nameId = useId()
+function ModelRow({ model, isDefault, shown, lastShown, onShownChange }: ModelRowProps) {
   return (
-    <li className="group/model flex h-10 items-center gap-3 rounded-lg px-2.5 transition-colors focus-within:bg-foreground/5 hover:bg-foreground/5">
-      <span id={nameId} className="min-w-0 flex-1 truncate text-sm" title={model.id}>
+    <li className="flex h-10 items-center gap-3 rounded-lg px-2.5">
+      <span className="min-w-0 flex-1 truncate text-sm" title={model.id}>
         {model.label}
       </span>
-      {isDefault ? (
-        <Badge>{m.settings_model_default()}</Badge>
-      ) : (
-        <Button
-          variant="outline"
-          size="xs"
-          aria-describedby={nameId}
-          className="opacity-0 group-focus-within/model:opacity-100 group-hover/model:opacity-100"
-          action={onMakeDefault}
-        >
-          {m.settings_model_make_default()}
-        </Button>
-      )}
+      {isDefault && <Badge>{m.settings_model_default()}</Badge>}
       {shown === null ? (
         <span aria-hidden className="size-4 shrink-0" />
       ) : (
