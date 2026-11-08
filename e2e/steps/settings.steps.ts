@@ -65,12 +65,15 @@ When("I choose the language {string}", async ({ app }, language: string) => {
 })
 
 When("I choose the last listed default model for {string}", async ({ app, chosenModel }, agent: string) => {
-  const picker = app.page.getByRole("group", { name: agent, exact: true }).getByLabel("Default model", { exact: true })
-  await expect(picker).toBeEnabled({ timeout: 30_000 })
-  await picker.click()
-  const option = app.page.getByRole("option").last()
-  chosenModel.label = (await option.textContent())?.trim() ?? null
-  await option.click()
+  await app.page.getByRole("list", { name: "Agents", exact: true }).getByRole("button", { name: agent }).click()
+  const model = app.page
+    .getByRole("list", { name: `${agent} models`, exact: true })
+    .getByRole("listitem")
+    .last()
+  await expect(model).toBeVisible({ timeout: 30_000 })
+  chosenModel.label = (await model.locator("span").first().textContent())?.trim() ?? null
+  await model.hover()
+  await model.getByRole("button", { name: "Make default", exact: true }).click()
 })
 
 When("I record the shortcut {string} for {string}", async ({ app }, keys: string, command: string) => {

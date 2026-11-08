@@ -1,6 +1,7 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
+import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
-import { type FormEvent, useRef, useState, useTransition } from "react"
+import { type FormEvent, type Ref, startTransition, useId, useRef, useState, useTransition } from "react"
 import { CLAUDE_EFFORT_LEVELS, type ModelInfo, ProviderId, unlistedModel } from "../../../shared/agent.ts"
 import { AccessMode, AUTO_COMPACT_RANGE } from "../../../shared/domain.ts"
 import { providerInfo } from "../../../shared/providers.ts"
@@ -10,92 +11,163 @@ import { useSettingsEnvironment } from "../../lib/environments.ts"
 import { m } from "../../paraglide/messages.js"
 import { accessModes, effortLabel } from "../ComposerControls.tsx"
 import { ProviderIcon, providerLabel } from "../ProviderIcon.tsx"
+import { Badge } from "../ui/badge.tsx"
 import { Button } from "../ui/button.tsx"
+import { Checkbox } from "../ui/checkbox.tsx"
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Switch } from "../ui/switch.tsx"
 import { Input } from "../ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
-import { AccountList, DefaultAccountField } from "./AccountSettings.tsx"
+import { AccountsSection } from "./AccountSettings.tsx"
 import { MagpieConnectionField } from "./MagpieConnectionField.tsx"
-import { SettingsGroup, SettingsGroupTitle, SettingsSection } from "./SettingsSection.tsx"
+import { SETTINGS_FILL_WIDTH, SettingsGroup, SettingsPanelSection, settingsSurfaceClass } from "./SettingsSection.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { SkeletonList } from "../ui/skeleton.tsx"
 
 export function ModelSettings() {
+  const { defaultProvider } = useSettings(useSettingsEnvironment())
+  const [selected, setSelected] = useState<ProviderId>(defaultProvider)
+  const detailRef = useRef<HTMLElement>(null)
+
+  const select = (provider: ProviderId) => {
+    startTransition(() => setSelected(provider))
+    detailRef.current?.scrollIntoView({ block: "nearest" })
+  }
+
   return (
-    <SettingsSection>
-      {ProviderId.literals.map((provider) => (
-        <ProviderModels key={provider} provider={provider} />
-      ))}
+    <div className="@container flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 scrollbar-gutter-both overflow-y-auto @4xl:overflow-hidden">
+        <div
+          className={cn(
+            "mx-auto grid w-full gap-6 px-8 pb-8 @4xl:h-full @4xl:grid-cols-[20rem_minmax(0,1fr)] @4xl:grid-rows-[minmax(0,1fr)]",
+            SETTINGS_FILL_WIDTH,
+          )}
+        >
+          <div className="flex min-h-0 flex-col gap-6">
+            <NewThreadsGroup />
+            <AgentList selected={selected} onSelect={select} />
+          </div>
+          <AgentDetail key={selected} ref={detailRef} provider={selected} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function NewThreadsGroup() {
+  const headingId = useId()
+  return (
+    <section aria-labelledby={headingId} className="flex shrink-0 flex-col gap-2.5">
+      <h2 id={headingId} className="px-1 text-sm font-medium">
+        {m.settings_new_threads()}
+      </h2>
       <SettingsGroup>
         <DefaultAccessField />
         <TextGenerationModelField />
         <PullRequestGuideField />
       </SettingsGroup>
-    </SettingsSection>
+    </section>
   )
 }
 
-function ProviderModels({ provider }: { provider: ProviderId }) {
+function AgentList({ selected, onSelect }: { selected: ProviderId; onSelect: (provider: ProviderId) => void }) {
+  return (
+    <ul aria-label={m.settings_agents()} className="-m-1 flex min-h-0 flex-col gap-0.5 p-1 @4xl:overflow-y-auto">
+      {ProviderId.literals.map((provider) => (
+        <AgentRow
+          key={provider}
+          provider={provider}
+          selected={provider === selected}
+          onSelect={() => onSelect(provider)}
+        />
+      ))}
+    </ul>
+  )
+}
+
+function AgentRow({ provider, selected, onSelect }: { provider: ProviderId; selected: boolean; onSelect: () => void }) {
   const environment = useSettingsEnvironment()
-  const headingId = `provider-models-${provider}`
-  const { providerEnabled } = useSettings(environment)
+  const { providerEnabled, defaultModel } = useSettings(environment)
   const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
   const enabled = providerEnabled[provider]
+  const model = defaultModel[provider]
+  const label = providerLabel[provider]()
   return (
-    <fieldset aria-labelledby={headingId} className="mt-4 flex min-w-0 flex-col gap-4">
-      <SettingsGroupTitle id={headingId} className="flex items-center gap-2">
-        <ProviderIcon provider={provider} />
-        {providerLabel[provider]()}
-      </SettingsGroupTitle>
-      <SettingsGroup>
-        <Field orientation="horizontal">
-          <FieldContent>
-            <FieldLabel htmlFor={`provider-enabled-${provider}`}>{m.settings_provider_enabled()}</FieldLabel>
-            <FieldDescription>{m.settings_provider_enabled_hint()}</FieldDescription>
-          </FieldContent>
-          <Switch
-            id={`provider-enabled-${provider}`}
-            checked={enabled}
-            onCheckedChange={(next) =>
-              void updateSettings({ providerEnabled: { ...providerEnabled, [provider]: next } })
-            }
-          />
-        </Field>
-        {enabled && <ProviderFields provider={provider} />}
-      </SettingsGroup>
-    </fieldset>
-  )
-}
-
-function ProviderFields({ provider }: { provider: ProviderId }) {
-  const environment = useSettingsEnvironment()
-  const models = useAtomValue(modelsAtom(environment, provider))
-  return (
-    <>
-      <AccountList provider={provider} />
-      {provider === "magpie" && <MagpieConnectionField />}
-      <DefaultAccountField provider={provider} />
-      <DefaultModelField provider={provider} />
-      {AsyncResult.isSuccess(models) && models.value.length > 0 && (
-        <ModelPresetField provider={provider} models={models.value} />
+    <li
+      className={cn(
+        "relative flex h-14 shrink-0 items-center gap-3 rounded-xl px-2.5 transition-colors",
+        selected ? settingsSurfaceClass : "hover:bg-muted/60 dark:hover:bg-muted/30",
       )}
-      {providerInfo[provider].autoCompacts && <AutoCompactField provider={provider} />}
-    </>
+    >
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-background">
+        <ProviderIcon provider={provider} muted={!enabled} className="size-4" />
+      </span>
+      <button
+        type="button"
+        aria-current={selected || undefined}
+        onClick={onSelect}
+        className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-start outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-3 focus-visible:after:ring-ring/50"
+      >
+        <span className={cn("max-w-full truncate text-sm font-medium", !enabled && "text-muted-foreground")}>
+          {label}
+        </span>
+        <span className={cn("max-w-full truncate text-xs text-muted-foreground", model !== null && "font-mono")}>
+          {model ?? m.settings_model_agent_default()}
+        </span>
+      </button>
+      <Switch
+        aria-label={m.settings_provider_toggle({ provider: label })}
+        checked={enabled}
+        onCheckedChange={(next) => void updateSettings({ providerEnabled: { ...providerEnabled, [provider]: next } })}
+      />
+    </li>
   )
 }
 
-function DefaultModelField({ provider }: { provider: ProviderId }) {
+function AgentDetail({ provider, ref }: { provider: ProviderId; ref: Ref<HTMLElement> }) {
+  const { providerEnabled } = useSettings(useSettingsEnvironment())
+  const headingId = useId()
+  const label = providerLabel[provider]()
+  return (
+    <section
+      ref={ref}
+      aria-labelledby={headingId}
+      className={cn(settingsSurfaceClass, "flex min-h-0 flex-col self-start @4xl:max-h-full @4xl:overflow-y-auto")}
+    >
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-foreground/8 px-4">
+        <ProviderIcon provider={provider} className="size-5" />
+        <h2 id={headingId} className="min-w-0 truncate text-base font-semibold">
+          {label}
+        </h2>
+      </header>
+      {providerEnabled[provider] ? (
+        <div className="flex flex-col divide-y divide-foreground/8">
+          <AccountsSection provider={provider} />
+          {provider === "magpie" && (
+            <SettingsPanelSection title={m.settings_magpie_gateway()}>
+              <MagpieConnectionField />
+            </SettingsPanelSection>
+          )}
+          <ModelsSection provider={provider} />
+          {providerInfo[provider].autoCompacts && <AutoCompactField provider={provider} />}
+        </div>
+      ) : (
+        <p className="p-4 text-sm text-muted-foreground">{m.settings_provider_off({ provider: label })}</p>
+      )}
+    </section>
+  )
+}
+
+function ModelsSection({ provider }: { provider: ProviderId }) {
   const environment = useSettingsEnvironment()
   const models = useAtomValue(modelsAtom(environment, provider))
   const { defaultModel } = useSettings(environment)
   const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
   const [error, setError] = useState<string | null>(null)
   const current = defaultModel[provider]
-  const inputId = `default-model-${provider}`
   const label = providerLabel[provider]()
 
-  const save = async (model: string | null) => {
+  const saveDefault = async (model: string | null) => {
     setError(null)
     try {
       await updateSettings({ defaultModel: { ...defaultModel, [provider]: model } })
@@ -105,89 +177,171 @@ function DefaultModelField({ provider }: { provider: ProviderId }) {
   }
 
   const textFallback = (notice: string) => (
-    <div className="flex flex-col gap-1.5">
-      <ModelIdForm inputId={inputId} current={current} onSave={save} />
-      <FieldDescription>{notice}</FieldDescription>
-    </div>
+    <ModelIdField provider={provider} current={current} notice={notice} onSave={saveDefault} />
   )
 
   return (
-    <Field orientation="horizontal">
-      <FieldContent>
-        <FieldLabel htmlFor={inputId}>{m.settings_default_model()}</FieldLabel>
-        {error && <FieldError>{error}</FieldError>}
-      </FieldContent>
+    <SettingsPanelSection
+      title={m.settings_models()}
+      action={
+        <>
+          {current !== null && (
+            <Button variant="ghost" size="sm" action={() => saveDefault(null)}>
+              {m.settings_models_clear()}
+            </Button>
+          )}
+          {AsyncResult.isSuccess(models) && models.value.length > 0 && (
+            <span aria-hidden className="pe-0.5 text-xs text-muted-foreground">
+              {m.settings_model_shown()}
+            </span>
+          )}
+        </>
+      }
+    >
       {AsyncResult.builder(models)
-        .onInitial(() => (
-          <SkeletonList label={m.settings_models_loading()} rows={1} rowClassName="h-8 w-72 rounded-lg" />
-        ))
+        .onInitial(() => <SkeletonList label={m.settings_models_loading()} rows={3} rowClassName="h-10 rounded-lg" />)
         .onSuccess((list) =>
           list.length > 0 ? (
-            <ModelSelect inputId={inputId} models={list} current={current} onSave={save} />
+            <ModelList provider={provider} models={list} current={current} onMakeDefault={saveDefault} />
           ) : (
             textFallback(m.settings_models_unlisted({ provider: label }))
           ),
         )
         .onError((cause) => textFallback(m.settings_models_failed({ provider: label, message: errorMessage(cause) })))
         .orElse(() => textFallback(m.settings_models_unlisted({ provider: label })))}
-    </Field>
+      {error && <FieldError>{error}</FieldError>}
+    </SettingsPanelSection>
   )
 }
 
-function ModelPresetField({ provider, models }: { provider: ProviderId; models: ReadonlyArray<ModelInfo> }) {
+interface ModelListProps {
+  readonly provider: ProviderId
+  readonly models: ReadonlyArray<ModelInfo>
+  readonly current: string | null
+  readonly onMakeDefault: (model: string) => Promise<void>
+}
+
+function ModelList({ provider, models, current, onMakeDefault }: ModelListProps) {
   const environment = useSettingsEnvironment()
   const { modelPresets } = useSettings(environment)
   const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
   const [error, setError] = useState<string | null>(null)
-  const inputId = `model-preset-${provider}`
-  const items = models.map((model) => ({ value: model.id, label: model.label }))
-  const listed = new Set(items.map((item) => item.value))
-  const selected = modelPresets[provider].filter((id) => listed.has(id))
+  const listed = models.map((model) => model.id)
+  const preset = modelPresets[provider].filter((id) => listed.includes(id))
+  const shown = new Set(preset.length === 0 ? listed : preset)
+  const rows = current === null || listed.includes(current) ? models : [unlistedModel(current, provider), ...models]
 
-  const save = async (next: ReadonlyArray<string>) => {
+  const setShown = async (id: string, show: boolean) => {
+    const next = listed.filter((other) => (other === id ? show : shown.has(other)))
     setError(null)
     try {
-      await updateSettings({ modelPresets: { ...modelPresets, [provider]: next } })
+      await updateSettings({
+        modelPresets: { ...modelPresets, [provider]: next.length === listed.length ? [] : next },
+      })
     } catch (cause) {
       setError(errorMessage(cause))
     }
   }
 
   return (
-    <Field orientation="horizontal">
-      <FieldContent>
-        <FieldLabel htmlFor={inputId}>{m.settings_model_preset()}</FieldLabel>
-        <FieldDescription>{m.settings_model_preset_hint()}</FieldDescription>
-        {error && <FieldError>{error}</FieldError>}
-      </FieldContent>
-      <div className="flex shrink-0 flex-col items-end gap-1">
-        <Select items={items} multiple value={selected} onValueChange={(next) => void save(next)}>
-          <SelectTrigger id={inputId} className="w-72">
-            <SelectValue className="min-w-0 truncate">
-              {(value: ReadonlyArray<string>) =>
-                value.length === 0
-                  ? m.settings_model_preset_all()
-                  : items
-                      .filter((item) => value.includes(item.value))
-                      .map((item) => item.label)
-                      .join(", ")
-              }
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {items.map((item) => (
-              <SelectItem key={item.value} value={item.value}>
-                {item.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {selected.length > 0 && (
-          <Button variant="ghost" size="sm" action={() => save([])}>
-            {m.settings_model_preset_clear()}
-          </Button>
-        )}
-      </div>
+    <div className="-mt-1 flex flex-col gap-1">
+      <ul aria-label={m.settings_models_label({ provider: providerLabel[provider]() })} className="flex flex-col">
+        {rows.map((model) => (
+          <ModelRow
+            key={model.id}
+            model={model}
+            isDefault={model.id === current}
+            shown={listed.includes(model.id) ? shown.has(model.id) : null}
+            lastShown={shown.size === 1}
+            onMakeDefault={() => onMakeDefault(model.id)}
+            onShownChange={(show) => void setShown(model.id, show)}
+          />
+        ))}
+      </ul>
+      {error && <FieldError>{error}</FieldError>}
+    </div>
+  )
+}
+
+interface ModelRowProps {
+  readonly model: ModelInfo
+  readonly isDefault: boolean
+  readonly shown: boolean | null
+  readonly lastShown: boolean
+  readonly onMakeDefault: () => Promise<void>
+  readonly onShownChange: (shown: boolean) => void
+}
+
+function ModelRow({ model, isDefault, shown, lastShown, onMakeDefault, onShownChange }: ModelRowProps) {
+  const nameId = useId()
+  return (
+    <li className="group/model flex h-10 items-center gap-3 rounded-lg px-2.5 transition-colors focus-within:bg-foreground/5 hover:bg-foreground/5">
+      <span id={nameId} className="min-w-0 flex-1 truncate text-sm" title={model.id}>
+        {model.label}
+      </span>
+      {isDefault ? (
+        <Badge>{m.settings_model_default()}</Badge>
+      ) : (
+        <Button
+          variant="outline"
+          size="xs"
+          aria-describedby={nameId}
+          className="opacity-0 group-focus-within/model:opacity-100 group-hover/model:opacity-100"
+          action={onMakeDefault}
+        >
+          {m.settings_model_make_default()}
+        </Button>
+      )}
+      {shown === null ? (
+        <span aria-hidden className="size-4 shrink-0" />
+      ) : (
+        <Checkbox
+          aria-label={m.settings_model_show_in_picker({ model: model.label })}
+          checked={shown}
+          disabled={shown && lastShown}
+          onCheckedChange={onShownChange}
+        />
+      )}
+    </li>
+  )
+}
+
+interface ModelIdFieldProps {
+  readonly provider: ProviderId
+  readonly current: string | null
+  readonly notice: string
+  readonly onSave: (model: string | null) => Promise<void>
+}
+
+function ModelIdField({ provider, current, notice, onSave }: ModelIdFieldProps) {
+  const [draft, setDraft] = useState(current ?? "")
+  const [pending, startSaving] = useTransition()
+  const inputId = `default-model-${provider}`
+  const next = draft.trim()
+
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    startSaving(() => onSave(next === "" ? null : next))
+  }
+
+  return (
+    <Field>
+      <FieldLabel htmlFor={inputId}>{m.settings_default_model()}</FieldLabel>
+      <form onSubmit={onSubmit} className="flex items-center gap-2">
+        <Input
+          id={inputId}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder={m.thread_model_placeholder()}
+          spellCheck={false}
+          autoComplete="off"
+          className="min-w-0 flex-1 font-mono"
+        />
+        <Button type="submit" variant="outline" disabled={next === (current ?? "") || pending}>
+          {m.settings_save()}
+        </Button>
+      </form>
+      <FieldDescription>{notice}</FieldDescription>
     </Field>
   )
 }
@@ -197,7 +351,7 @@ function AutoCompactField({ provider }: { provider: ProviderId }) {
   const { autoCompactTokens } = useSettings(environment)
   const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
   const [error, setError] = useState<string | null>(null)
-  const [pending, startTransition] = useTransition()
+  const [pending, startSaving] = useTransition()
   const current = autoCompactTokens[provider]
   const [draft, setDraft] = useState(current === null ? "" : String(current / 1000))
   const inputId = `auto-compact-${provider}`
@@ -205,7 +359,7 @@ function AutoCompactField({ provider }: { provider: ProviderId }) {
   const next = draft.trim() === "" ? null : Number(draft) * 1000
 
   const save = (tokens: number | null) =>
-    startTransition(async () => {
+    startSaving(async () => {
       setError(null)
       try {
         await updateSettings({ autoCompactTokens: { ...autoCompactTokens, [provider]: tokens } })
@@ -226,10 +380,9 @@ function AutoCompactField({ provider }: { provider: ProviderId }) {
   }
 
   return (
-    <Field orientation="horizontal">
-      <FieldContent>
+    <Field orientation="horizontal" className="flex-wrap p-4">
+      <FieldContent className="self-center">
         <FieldLabel htmlFor={inputId}>{m.settings_auto_compact()}</FieldLabel>
-        <FieldDescription>{m.settings_auto_compact_hint()}</FieldDescription>
         {error && <FieldError>{error}</FieldError>}
       </FieldContent>
       <form onSubmit={onSubmit} className="flex flex-wrap items-center justify-end gap-2">
@@ -244,7 +397,7 @@ function AutoCompactField({ provider }: { provider: ProviderId }) {
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           placeholder={m.settings_auto_compact_default()}
-          className="w-36 shrink-0 tabular-nums"
+          className="w-32 shrink-0 tabular-nums"
         />
         <span className="text-sm whitespace-nowrap text-muted-foreground">{m.settings_auto_compact_unit()}</span>
         <Button type="submit" variant="outline" disabled={next === current || pending}>
@@ -259,6 +412,8 @@ function AutoCompactField({ provider }: { provider: ProviderId }) {
     </Field>
   )
 }
+
+const newThreadControlClass = "w-44 shrink-0"
 
 function DefaultAccessField() {
   const environment = useSettingsEnvironment()
@@ -281,14 +436,13 @@ function DefaultAccessField() {
 
   return (
     <Field orientation="horizontal">
-      <FieldContent>
+      <FieldContent className="self-center">
         <FieldLabel htmlFor={inputId}>{m.settings_default_access()}</FieldLabel>
-        <FieldDescription>{m.settings_default_access_hint()}</FieldDescription>
         {error && <FieldError>{error}</FieldError>}
       </FieldContent>
-      <div>
+      <div className={newThreadControlClass}>
         <Select items={items} value={defaultAccessMode} onValueChange={(next) => void save(next)}>
-          <SelectTrigger id={inputId} className="w-72">
+          <SelectTrigger id={inputId} className="w-full">
             <Icon aria-hidden />
             <SelectValue />
           </SelectTrigger>
@@ -334,12 +488,13 @@ function TextGenerationModelField() {
 
   return (
     <Field orientation="horizontal">
-      <FieldContent>
+      <FieldContent className="self-center">
         <FieldLabel htmlFor={inputId}>{m.settings_text_generation_model()}</FieldLabel>
-        <FieldDescription>{m.settings_text_generation_model_hint()}</FieldDescription>
         {error && <FieldError>{error}</FieldError>}
       </FieldContent>
-      <ModelSelect inputId={inputId} models={items} current={textGenerationModel} onSave={save} clearable={false} />
+      <div className={newThreadControlClass}>
+        <ModelSelect inputId={inputId} models={items} current={textGenerationModel} onSave={save} />
+      </div>
     </Field>
   )
 }
@@ -391,10 +546,7 @@ function PullRequestGuideField() {
   return (
     <>
       <Field orientation="horizontal">
-        <FieldContent>
-          <FieldLabel htmlFor="pull-request-guide-enabled">{m.settings_guide_model()}</FieldLabel>
-          <FieldDescription>{m.settings_guide_model_hint()}</FieldDescription>
-        </FieldContent>
+        <FieldLabel htmlFor="pull-request-guide-enabled">{m.settings_guide_model()}</FieldLabel>
         <Switch
           id="pull-request-guide-enabled"
           checked={pullRequestGuide.enabled}
@@ -407,19 +559,15 @@ function PullRequestGuideField() {
             {m.settings_guide_model_picker()}
           </FieldLabel>
           <div className="flex flex-wrap items-center gap-2">
-            <ModelSelect
-              inputId={inputId}
-              models={items}
-              current={pullRequestGuide.model}
-              onSave={saveModel}
-              clearable={false}
-            />
+            <div className="min-w-0 flex-1 basis-40">
+              <ModelSelect inputId={inputId} models={items} current={pullRequestGuide.model} onSave={saveModel} />
+            </div>
             <Select
               items={effortItems}
               value={pullRequestGuide.effort}
               onValueChange={(effort) => effort !== null && void save({ ...pullRequestGuide, effort })}
             >
-              <SelectTrigger aria-label={m.thread_effort_picker()} className="w-40">
+              <SelectTrigger aria-label={m.thread_effort_picker()} className="min-w-0 flex-1 basis-28">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -438,68 +586,27 @@ function PullRequestGuideField() {
   )
 }
 
-interface ModelInputProps {
+interface ModelSelectProps {
   readonly inputId: string
+  readonly models: ReadonlyArray<ModelInfo>
   readonly current: string | null
   readonly onSave: (model: string | null) => Promise<void>
 }
 
-function ModelSelect({
-  inputId,
-  models,
-  current,
-  onSave,
-  clearable = true,
-}: ModelInputProps & { models: ReadonlyArray<ModelInfo>; clearable?: boolean }) {
+function ModelSelect({ inputId, models, current, onSave }: ModelSelectProps) {
   const items = models.map((model) => ({ value: model.id, label: model.label }))
   return (
-    <div className="flex items-center gap-2">
-      <Select items={items} value={current} onValueChange={(next) => void onSave(next)}>
-        <SelectTrigger id={inputId} className="w-72">
-          <SelectValue placeholder={m.settings_models_pick()} />
-        </SelectTrigger>
-        <SelectContent>
-          {items.map((item) => (
-            <SelectItem key={item.value} value={item.value}>
-              {item.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {clearable && current !== null && (
-        <Button variant="ghost" size="sm" action={() => onSave(null)}>
-          {m.settings_models_clear()}
-        </Button>
-      )}
-    </div>
-  )
-}
-
-function ModelIdForm({ inputId, current, onSave }: ModelInputProps) {
-  const [draft, setDraft] = useState(current ?? "")
-  const [pending, startTransition] = useTransition()
-  const next = draft.trim()
-  const dirty = next !== (current ?? "")
-
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    startTransition(() => onSave(next === "" ? null : next))
-  }
-
-  return (
-    <form onSubmit={onSubmit} className="flex items-center gap-2">
-      <Input
-        id={inputId}
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        placeholder={m.thread_model_placeholder()}
-        spellCheck={false}
-        autoComplete="off"
-        className="w-72 font-mono"
-      />
-      <Button type="submit" variant="outline" disabled={!dirty || pending}>
-        {m.settings_save()}
-      </Button>
-    </form>
+    <Select items={items} value={current} onValueChange={(next) => void onSave(next)}>
+      <SelectTrigger id={inputId} className="w-full">
+        <SelectValue placeholder={m.settings_models_pick()} className="min-w-0 truncate" />
+      </SelectTrigger>
+      <SelectContent>
+        {items.map((item) => (
+          <SelectItem key={item.value} value={item.value}>
+            {item.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
