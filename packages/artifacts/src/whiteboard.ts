@@ -37,8 +37,13 @@ export const duplicateId = (ids: ReadonlyArray<string>) => ids.find((id, index) 
 export const mergeScene = (scene: WhiteboardScene, patch: WhiteboardPatch): WhiteboardScene => {
   const removed = new Set(patch.remove ?? [])
   const upserts = new Map(patch.upsert.map((element) => [element.id, element]))
+  const replaced = new Set([...removed, ...upserts.keys()])
+  const isStaleLabel = (element: WhiteboardElement) => {
+    const container = element["containerId"]
+    return typeof container === "string" && replaced.has(container) && !upserts.has(element.id)
+  }
   const kept = scene.elements
-    .filter((element) => !removed.has(element.id))
+    .filter((element) => !removed.has(element.id) && !isStaleLabel(element))
     .map((element) => upserts.get(element.id) ?? element)
   const present = new Set(kept.map((element) => element.id))
   return {
