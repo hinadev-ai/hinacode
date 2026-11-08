@@ -198,6 +198,7 @@ function DocumentEditor({
     startTransition(() => setDraft(null))
   }
   const sendComment = async (sent: CommentDraft, body: string) => {
+    if (!(await sync.saveEdits())) throw new Error(m.documents_not_saved())
     await actions.comment({ body, anchor: sent.anchor })
     closeDraft()
     editor.commands.setTextSelection(sent.range.to)
