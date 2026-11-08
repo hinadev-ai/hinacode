@@ -1,5 +1,6 @@
 import type { Thread } from "@shared/domain.ts"
-import { useEffect, useState } from "react"
+import { useFocusEffect } from "expo-router"
+import { useCallback, useEffect, useState } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 import { Icon } from "@/components/icon"
 import { Spinner } from "@/components/motion"
@@ -13,7 +14,6 @@ import { openRequests } from "@/lib/home-summary"
 import { openThread } from "@/lib/navigation"
 import { relativeTime } from "@/lib/relative-time"
 import { useMessages } from "@/stores/messages"
-import { usePreferences } from "@/stores/preferences"
 import { useThreadBranchName, useThreads } from "@/stores/threads"
 
 const MAX_TICKETS = 5
@@ -23,19 +23,20 @@ const TEAR_GAP = 7
 /** Every thread that waits on the developer as a ticket they can answer in place, newest first. */
 export function WaitingSection({ threads }: { threads: readonly Thread[] }) {
   const theme = useTheme()
+  const [expanded, setExpanded] = useState(false)
   return (
     <View style={styles.section}>
       <Text accessibilityRole="header" {...subheading} style={[styles.heading, { color: theme.text }]}>
         {copy("mobile_home_summary_waiting")}
       </Text>
-      {threads.slice(0, MAX_TICKETS).map((thread) => (
+      {(expanded ? threads : threads.slice(0, MAX_TICKETS)).map((thread) => (
         <WaitingTicket key={thread.id} thread={thread} />
       ))}
-      {threads.length > MAX_TICKETS && (
+      {!expanded && threads.length > MAX_TICKETS && (
         <Pressable
           testID="waiting-show-all"
           accessibilityRole="button"
-          onPress={() => usePreferences.getState().set({ homeTab: "inbox" })}
+          onPress={() => setExpanded(true)}
           style={({ pressed }) => [styles.showAll, pressed && { backgroundColor: theme.surface }]}
         >
           <Text style={[styles.showAllLabel, { color: theme.primary }]}>{copy("mobile_home_show_all")}</Text>
@@ -54,7 +55,8 @@ function WaitingTicket({ thread }: { thread: Thread }) {
   const theme = useTheme()
   const connected = useThreadConnection(thread.id) === "connected"
   const history = useMessages((state) => state.byThread[thread.id])
-  useEffect(() => useMessages.getState().watch(thread.id), [thread.id])
+  // NativeTabs keeps a hidden tab mounted, so the transcript is watched only while the Threads tab shows.
+  useFocusEffect(useCallback(() => useMessages.getState().watch(thread.id), [thread.id]))
   useEffect(() => {
     if (connected && history === undefined) void useMessages.getState().load(thread.id)
   }, [connected, history, thread.id])

@@ -52,7 +52,13 @@ export default function HomeScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ headerShown: true, headerRight: isIOS ? undefined : () => <HomeHeaderButtons /> }} />
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          title: copy("mobile_home_title"),
+          headerRight: isIOS ? undefined : () => <HomeHeaderButtons />,
+        }}
+      />
       {isIOS && <HomeToolbar />}
       <HomeContent />
       {!liquidGlass && (

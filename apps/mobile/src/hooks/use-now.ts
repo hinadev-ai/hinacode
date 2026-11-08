@@ -31,10 +31,10 @@ function clock(tickMs: number) {
 
 /**
  * The time, updated every `tickMs` by one timer shared by every component that ticks at that rate. Relative times
- * use the default 30 seconds; a stopwatch passes 1000.
+ * use the default 30 seconds; a stopwatch passes 1000. A `paused` clock keeps the last time it read.
  */
-export function useNow(tickMs = 30_000) {
+export function useNow(tickMs = 30_000, { paused = false }: { readonly paused?: boolean } = {}) {
   const { store, watch } = clock(tickMs)
-  useEffect(watch, [watch])
+  useEffect(() => (paused ? undefined : watch()), [paused, watch])
   return useStore(store, (state) => state.now)
 }

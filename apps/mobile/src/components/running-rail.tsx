@@ -1,4 +1,5 @@
 import type { Thread } from "@shared/domain.ts"
+import { useIsFocused } from "expo-router"
 import { ScrollView, StyleSheet, Text, View } from "react-native"
 import { PressableScale, Spinner } from "@/components/motion"
 import { mono, radius, subheading } from "@/constants/theme"
@@ -7,7 +8,7 @@ import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 import { stopwatch } from "@/lib/home-summary"
 import { openThread } from "@/lib/navigation"
-import { useThreadBranchName } from "@/stores/threads"
+import { useThreadBranchName, useThreads } from "@/stores/threads"
 
 const CARD_WIDTH = 200
 
@@ -34,16 +35,13 @@ export function RunningRail({ threads }: { threads: readonly Thread[] }) {
   )
 }
 
-/**
- * The thread records no turn start, so the stopwatch counts from its last update, which the turn starting is one
- * of.
- */
 function RunningCard({ thread }: { thread: Thread }) {
   const theme = useTheme()
-  const now = useNow(1000)
+  const now = useNow(1000, { paused: !useIsFocused() })
+  const since = useThreads((state) => state.runningSince[thread.id]) ?? thread.updatedAt
   const branch = useThreadBranchName(thread)
   const title = thread.title || copy("mobile_home_untitled")
-  const elapsed = stopwatch(now - Date.parse(thread.updatedAt))
+  const elapsed = stopwatch(now - Date.parse(since))
   return (
     <PressableScale
       testID="running-card"
