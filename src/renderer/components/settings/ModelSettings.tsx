@@ -263,9 +263,10 @@ function ModelList({ provider, models, current, onMakeDefault }: ModelListProps)
   const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
   const [error, setError] = useState<string | null>(null)
   const listed = models.map((model) => model.id)
-  const preset = modelPresets[provider].filter((id) => listed.includes(id))
+  const isListed = new Set(listed)
+  const preset = modelPresets[provider].filter((id) => isListed.has(id))
   const shown = new Set(preset.length === 0 ? listed : preset)
-  const rows = current === null || listed.includes(current) ? models : [unlistedModel(current, provider), ...models]
+  const rows = current === null || isListed.has(current) ? models : [unlistedModel(current, provider), ...models]
 
   const setShown = async (id: string, show: boolean) => {
     const next = listed.filter((other) => (other === id ? show : shown.has(other)))
@@ -287,7 +288,7 @@ function ModelList({ provider, models, current, onMakeDefault }: ModelListProps)
             key={model.id}
             model={model}
             isDefault={model.id === current}
-            shown={listed.includes(model.id) ? shown.has(model.id) : null}
+            shown={isListed.has(model.id) ? shown.has(model.id) : null}
             lastShown={shown.size === 1}
             onMakeDefault={() => onMakeDefault(model.id)}
             onShownChange={(show) => void setShown(model.id, show)}
