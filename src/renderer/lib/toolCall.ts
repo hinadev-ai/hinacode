@@ -40,7 +40,6 @@ const ownToolLabels = new Map<string, () => string>([
   ["publish_artifact", m.tool_own_publish_artifact],
   ["publish_document", m.tool_own_publish_document],
   ["publish_whiteboard", m.tool_own_publish_whiteboard],
-  ["request_verification", m.tool_own_request_verification],
   ["comment_on_artifact", m.tool_own_comment_on_artifact],
   ["document_chart_guide", m.tool_own_document_chart_guide],
   ["list_artifacts", m.tool_own_list_artifacts],

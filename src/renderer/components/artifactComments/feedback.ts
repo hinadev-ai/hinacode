@@ -1,7 +1,7 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react"
 import { Atom, AsyncResult } from "effect/reactivity"
 import { useContext } from "react"
-import type { Artifact, ArtifactFeedback, CommentAnchor, VerdictDecision } from "../../../shared/artifact.ts"
+import type { Artifact, ArtifactFeedback, CommentAnchor } from "../../../shared/artifact.ts"
 import { call, callPromise, type EnvironmentId, familyOf, onPushEvent } from "../../lib/rpc.ts"
 
 export const feedbackAtom = familyOf((environment: EnvironmentId, id: string) =>
@@ -15,7 +15,7 @@ export const feedbackAtom = familyOf((environment: EnvironmentId, id: string) =>
   }),
 )
 
-const noFeedback: ArtifactFeedback = { comments: [], verdicts: [] }
+const noFeedback: ArtifactFeedback = { comments: [] }
 
 const feedbackOf = (artifact: Artifact) => feedbackAtom(artifact.environmentId ?? null, artifact.id)
 
@@ -38,9 +38,5 @@ export function useFeedbackActions(artifact: Artifact) {
       refreshed(callPromise("artifacts.comment", { id: artifact.id, ...input }, options)),
     resolve: (comment: string, resolved: boolean) =>
       refreshed(callPromise("artifacts.resolveComment", { id: artifact.id, comment, resolved }, options)),
-    decide: (decision: VerdictDecision, reason: string) =>
-      refreshed(
-        callPromise("artifacts.decide", { id: artifact.id, version: artifact.version, decision, reason }, options),
-      ),
   }
 }

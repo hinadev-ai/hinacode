@@ -144,34 +144,4 @@ layer(makeTestAppLayer(join(base, "hinacode.sqlite"), { providers, events: quiet
       )
     }),
   )
-
-  it.effect("saves a verdict for the current version and tells the owner", () =>
-    Effect.gen(function* () {
-      const owner = yield* newThread
-      const { store } = yield* Artifacts
-      const verification = yield* Effect.promise(() =>
-        store.publish({
-          kind: "verify",
-          title: "Settings page",
-          threadId: owner,
-          spec: { expected: [], actual: [{ path: "actual/1.png" }] },
-          files: [{ path: "actual/1.png", content: "iVBORw==", encoding: "base64" }],
-        }),
-      )
-
-      const decided = yield* ArtifactFeedback.use((feedback) =>
-        feedback.decide({ id: verification.id, version: 1, decision: "reject", reason: "The spacing is off." }),
-      )
-
-      expect(decided.verdicts.map((verdict) => verdict.decision)).toEqual(["reject"])
-      expect(yield* Queue.take(delivered)).toEqual({
-        threadId: owner,
-        text: `Verification "Settings page" v1: rejected. The spacing is off.\n\nFix it, then call request_verification again with id "${verification.id}".`,
-      })
-      const stale = yield* ArtifactFeedback.use((feedback) =>
-        Effect.flip(feedback.decide({ id: verification.id, version: 2, decision: "pass", reason: "" })),
-      )
-      expect(stale.message).toMatch(/is at version 1, not 2/)
-    }),
-  )
 })

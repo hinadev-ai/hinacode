@@ -26,7 +26,6 @@ describe("artifactFeedbackPrompt", () => {
     )
     expect(
       artifactFeedbackPrompt({
-        type: "comment",
         artifact: { id: "k3n9", kind: "document", title: "Release Plan" },
         comment,
       }),
@@ -50,7 +49,6 @@ describe("artifactFeedbackPrompt", () => {
     )
     expect(
       artifactFeedbackPrompt({
-        type: "comment",
         artifact: { id: "k3n9", kind: "document", title: "Plan" },
         comment,
         mentioned: true,
@@ -71,7 +69,6 @@ describe("artifactFeedbackPrompt", () => {
   test("lists the selected elements of a whiteboard question", () => {
     expect(
       artifactFeedbackPrompt({
-        type: "comment",
         artifact: { id: "w1", kind: "whiteboard", title: "Architecture" },
         comment: commentOf({ kind: "elements", ids: ["api", "db"] }, message("Where does the cache go?")),
         elements: 'api rectangle "API" at 0,0 180x80\ndb ellipse "Postgres" at 300,0 120x80',
@@ -92,7 +89,6 @@ describe("artifactFeedbackPrompt", () => {
   test("comments on a whole artifact without an anchor", () => {
     expect(
       artifactFeedbackPrompt({
-        type: "comment",
         artifact: { id: "p1", title: "Q3 Report" },
         comment: commentOf({ kind: "artifact" }, message("Add last year.")),
       }),
@@ -104,23 +100,6 @@ describe("artifactFeedbackPrompt", () => {
         "Answer with comment_on_artifact.",
       ].join("\n"),
     )
-  })
-
-  test("reports a verdict", () => {
-    const artifact = { id: "v1", kind: "verify" as const, title: "Settings page" }
-    const verdict = { version: 3, decidedAt: "2026-11-08T09:00:00.000Z" }
-    expect(
-      artifactFeedbackPrompt({
-        type: "verdict",
-        artifact,
-        verdict: { ...verdict, decision: "reject", reason: "The spacing is off." },
-      }),
-    ).toBe(
-      'Verification "Settings page" v3: rejected. The spacing is off.\n\nFix it, then call request_verification again with id "v1".',
-    )
-    expect(
-      artifactFeedbackPrompt({ type: "verdict", artifact, verdict: { ...verdict, decision: "pass", reason: "" } }),
-    ).toBe('Verification "Settings page" v3: passed.')
   })
 })
 

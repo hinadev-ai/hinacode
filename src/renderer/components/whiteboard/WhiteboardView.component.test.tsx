@@ -25,7 +25,7 @@ let calls: Array<string> = []
 let saves: Array<Saved> = []
 let comments: Array<Comment> = []
 let staged: Array<Staged> = []
-let feedback: ArtifactFeedback = { comments: [], verdicts: [] }
+let feedback: ArtifactFeedback = { comments: [] }
 let agentWrites: WhiteboardContent | undefined
 let heldSaves: Promise<void> | undefined
 const listeners = new Set<(event: typeof PushEvent.Encoded) => void>()
@@ -75,7 +75,7 @@ const bridge: HinacodeBridge = {
     }
     if (method === "artifacts.comment") {
       comments.push(payload as Comment)
-      return { result: { comments: [], verdicts: [] } }
+      return { result: { comments: [] } }
     }
     if (method === "artifacts.feedback") return { result: feedback }
     if (method === "environments.list") return { result: { clouds: [] } }
@@ -122,7 +122,7 @@ beforeEach(({ task }) => {
   saves = []
   comments = []
   staged = []
-  feedback = { comments: [], verdicts: [] }
+  feedback = { comments: [] }
   agentWrites = undefined
   heldSaves = undefined
   useArtifacts.getState().select(thread.id, boardId)
@@ -284,7 +284,6 @@ const commentOnDb = (): ArtifactFeedback => {
         updatedAt: at,
       },
     ],
-    verdicts: [],
   }
 }
 

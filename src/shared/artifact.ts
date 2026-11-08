@@ -3,7 +3,7 @@ import { Schema } from "effect"
 export const ArtifactFile = Schema.Struct({ path: Schema.String, type: Schema.String, size: Schema.Number })
 export type ArtifactFile = typeof ArtifactFile.Type
 
-export const ArtifactKind = Schema.Literals(["page", "document", "whiteboard", "verify"])
+export const ArtifactKind = Schema.Literals(["page", "document", "whiteboard"])
 export type ArtifactKind = typeof ArtifactKind.Type
 
 export const Artifact = Schema.Struct({
@@ -87,19 +87,6 @@ export const WhiteboardSaveResult = Schema.Union([
 ])
 export type WhiteboardSaveResult = typeof WhiteboardSaveResult.Type
 
-export const VerifyPane = Schema.Union([
-  Schema.Struct({ label: Schema.optionalKey(Schema.String), artifactId: Schema.String }),
-  Schema.Struct({ label: Schema.optionalKey(Schema.String), path: Schema.String }),
-])
-export type VerifyPane = typeof VerifyPane.Type
-
-export const VerifySpec = Schema.Struct({
-  notes: Schema.optionalKey(Schema.String),
-  expected: Schema.Array(VerifyPane),
-  actual: Schema.Array(VerifyPane),
-})
-export type VerifySpec = typeof VerifySpec.Type
-
 export const CommentAuthor = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("developer") }),
   Schema.Struct({ kind: Schema.Literal("agent"), threadId: Schema.optionalKey(Schema.String) }),
@@ -136,25 +123,10 @@ export const ArtifactComment = Schema.Struct({
 })
 export type ArtifactComment = typeof ArtifactComment.Type
 
-export const VerdictDecision = Schema.Literals(["pass", "reject"])
-export type VerdictDecision = typeof VerdictDecision.Type
-
-export const Verdict = Schema.Struct({
-  version: Schema.Number,
-  decision: VerdictDecision,
-  reason: Schema.String,
-  decidedAt: Schema.String,
-})
-export type Verdict = typeof Verdict.Type
-
 export const ArtifactFeedback = Schema.Struct({
   comments: Schema.Array(ArtifactComment),
-  verdicts: Schema.Array(Verdict),
 })
 export type ArtifactFeedback = typeof ArtifactFeedback.Type
 
 export const waitingOnDeveloper = (comment: ArtifactComment) =>
   !comment.resolved && comment.messages.at(-1)?.author.kind === "agent"
-
-export const currentVerdict = (feedback: ArtifactFeedback, version: number): Verdict | null =>
-  feedback.verdicts.filter((verdict) => verdict.version === version).at(-1) ?? null

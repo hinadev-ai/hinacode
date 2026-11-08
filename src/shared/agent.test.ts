@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs"
+import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { artifactTools, openArtifactStore } from "@hinacode/artifacts"
@@ -42,21 +42,11 @@ describe("publishedArtifact", () => {
     expect(publishedArtifact(second)).toEqual({ id, version: 2 })
   })
 
-  test("reads the id and version from what publish_whiteboard and request_verification return", async () => {
+  test("reads the id and version from what publish_whiteboard returns", async () => {
     const store = openArtifactStore(mkdtempSync(join(tmpdir(), "kk-artifact-kinds-")))
     const board = await artifactTools.publish_whiteboard.handle(store, { title: "Board", elements: [] }, {})
-    const screenshot = join(mkdtempSync(join(tmpdir(), "kk-artifact-capture-")), "shot.png")
-    writeFileSync(screenshot, "png")
-    const check = await artifactTools.request_verification.handle(
-      store,
-      { title: "Check", expected: [], actual: [{ sourcePath: screenshot }] },
-      {},
-    )
     expect(publishedArtifact(board)).toEqual({ id: publishedArtifactId(board), version: 1 })
-    expect(publishedArtifact(check)).toEqual({ id: publishedArtifactId(check), version: 1 })
-    expect((await store.list()).map((artifact) => artifact.id).toSorted()).toEqual(
-      [publishedArtifactId(board), publishedArtifactId(check)].toSorted(),
-    )
+    expect((await store.list()).map((artifact) => artifact.id)).toEqual([publishedArtifactId(board)])
   })
 
   test("finds nothing in a conflict", () => {
@@ -85,7 +75,6 @@ describe("isPublishArtifactTool", () => {
   test("names the kind each publishing tool makes", () => {
     expect(publishedKind("mcp__hinacode__publish_document")).toBe("document")
     expect(publishedKind("publish_whiteboard")).toBe("whiteboard")
-    expect(publishedKind("mcp__hinacode__request_verification")).toBe("verify")
     expect(publishedKind("mcp__hinacode__comment_on_artifact")).toBe(null)
   })
 })

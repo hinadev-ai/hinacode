@@ -12,7 +12,6 @@ import {
   DOCUMENT_ENTRY,
   isArtifactId,
   normalizeArtifactPath,
-  VERIFY_ENTRY,
   WHITEBOARD_ENTRY,
 } from "./artifact.ts"
 import {
@@ -25,7 +24,6 @@ import {
   type CommentMessage,
   emptyFeedback,
 } from "./feedback.ts"
-import type { VerifyPane, VerifySpec } from "./verify.ts"
 import {
   duplicateId,
   EMPTY_SCENE,
@@ -65,7 +63,6 @@ type ContentInput =
   | { kind?: "page"; entry?: string; files: FileInput[] }
   | { kind: "document"; markdown: string }
   | { kind: "whiteboard"; scene: WhiteboardScene }
-  | { kind: "verify"; spec: VerifySpec; files: FileInput[] }
 
 export type PublishInput =
   | (PublishCommon & ContentInput)
@@ -87,12 +84,6 @@ const contentOf = (input: ContentInput): { kind: ArtifactKind; entry: string; fi
         entry: WHITEBOARD_ENTRY,
         files: [{ path: WHITEBOARD_ENTRY, content: sceneOf(input.scene) }],
       }
-    case "verify":
-      return {
-        kind: "verify",
-        entry: VERIFY_ENTRY,
-        files: [{ path: VERIFY_ENTRY, content: `${JSON.stringify(input.spec, null, 2)}\n` }, ...input.files],
-      }
     case "page":
     case undefined:
       return { kind: "page", entry: input.entry ?? "index.html", files: input.files }
@@ -103,7 +94,6 @@ const updateTool: Record<ArtifactKind, string> = {
   page: "publish_artifact",
   document: "publish_document",
   whiteboard: "publish_whiteboard",
-  verify: "request_verification",
 }
 
 const checkPatch = ({ upsert, remove = [] }: WhiteboardPatch) => {
@@ -113,16 +103,6 @@ const checkPatch = ({ upsert, remove = [] }: WhiteboardPatch) => {
   if (both !== undefined) throw new ArtifactError(`The element "${both.id}" is both added and removed. Pass it once.`)
 }
 
-const normalizePane = (pane: VerifyPane): VerifyPane => {
-  if ("artifactId" in pane) return pane
-  const path = normalizeArtifactPath(pane.path)
-  if (path === null)
-    throw new ArtifactError(`Invalid pane path "${pane.path}". Use a relative path to a file you publish.`)
-  return { ...pane, path }
-}
-
-const isMedia = (path: string) => /^(image|video)\//.test(contentType(path))
-
 export type CommentInput = {
   comment?: string
   anchor?: CommentAnchor
@@ -130,8 +110,6 @@ export type CommentInput = {
   body: string
   resolve?: boolean
 }
-
-export type DecisionInput = { version: number; decision: "pass" | "reject"; reason: string }
 
 export type ArtifactFileContent = {
   bytes: Uint8Array<ArrayBuffer>
@@ -153,7 +131,6 @@ export type ArtifactStore = {
   feedback(id: string): Promise<ArtifactFeedback | null>
   comment(id: string, input: CommentInput): Promise<{ feedback: ArtifactFeedback; comment: ArtifactComment }>
   resolveComment(id: string, comment: string, resolved: boolean): Promise<ArtifactFeedback>
-  decide(id: string, input: DecisionInput): Promise<ArtifactFeedback>
 }
 
 const ID_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz"
@@ -345,35 +322,8 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
     return scene
   }
 
-  const checkPanes = async (spec: VerifySpec, files: Map<string, Buffer>) => {
-    if (spec.actual.length === 0) throw new ArtifactError("A verification needs at least one actual pane.")
-    for (const pane of [...spec.expected, ...spec.actual]) {
-      if ("artifactId" in pane) {
-        if ((await get(pane.artifactId)) === null) throw unknown(pane.artifactId)
-        continue
-      }
-      if (pane.path === VERIFY_ENTRY || !files.has(pane.path)) {
-        throw new ArtifactError(`The pane "${pane.path}" is not one of the files. Include it.`)
-      }
-      if (!isMedia(pane.path)) {
-        throw new ArtifactError(`A pane shows an image or a video, but "${pane.path}" is ${contentType(pane.path)}.`)
-      }
-    }
-  }
-
-  const prepare = async (input: ContentInput) => {
-    const normalized =
-      input.kind === "verify"
-        ? {
-            ...input,
-            spec: {
-              ...input.spec,
-              expected: input.spec.expected.map(normalizePane),
-              actual: input.spec.actual.map(normalizePane),
-            },
-          }
-        : input
-    const content = contentOf(normalized)
+  const prepare = (input: ContentInput) => {
+    const content = contentOf(input)
     const files = decodeFiles(content.files)
     const entry = normalizeArtifactPath(content.entry)
     if (entry === null || !files.has(entry)) {
@@ -381,7 +331,6 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
         `The entry "${content.entry}" is not one of the files. Include it, or set entry to a file you publish.`,
       )
     }
-    if (normalized.kind === "verify") await checkPanes(normalized.spec, files)
     return { kind: content.kind, entry, files }
   }
 
@@ -389,7 +338,7 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
     if (input.id === undefined) titleOf(input.title)
     const patch = "patch" in input ? input.patch : undefined
     if (patch !== undefined) checkPatch(patch)
-    const prepared = "patch" in input ? null : await prepare(input)
+    const prepared = "patch" in input ? null : prepare(input)
     if (input.id !== undefined && !isArtifactId(input.id)) {
       throw new ArtifactError(
         `Invalid artifact id "${input.id}". Pass an id that ${updateTool[input.kind ?? "page"]} returned.`,
@@ -409,10 +358,10 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
       }
       const { entry, files } =
         prepared ??
-        (await prepare({
+        prepare({
           kind: "whiteboard",
           scene: mergeScene(await currentScene(previous), patch ?? { upsert: [] }),
-        }))
+        })
 
       const author = input.author ?? "agent"
       const inPlace = previous !== null && author === "developer" && previous.author === "developer"
@@ -608,23 +557,6 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
       return { feedback: updated, result: updated }
     })
 
-  const decide = (id: string, { version, decision, reason }: DecisionInput) =>
-    updateFeedback(id, (current, artifact, timestamp) => {
-      if (artifact.kind !== "verify") {
-        throw new ArtifactError(`Artifact ${id} is a ${artifact.kind}. Only a verification takes a verdict.`)
-      }
-      if (version !== artifact.version) {
-        throw new ArtifactError(`Verification ${id} is at version ${artifact.version}, not ${version}.`)
-      }
-      const trimmed = reason.trim()
-      if (decision === "reject" && trimmed === "") throw new ArtifactError("A rejection needs a reason.")
-      const updated = {
-        ...current,
-        verdicts: [...current.verdicts, { version, decision, reason: trimmed, decidedAt: timestamp }],
-      }
-      return { feedback: updated, result: updated }
-    })
-
   return {
     root,
     publish,
@@ -637,6 +569,5 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
     feedback,
     comment,
     resolveComment,
-    decide,
   }
 }

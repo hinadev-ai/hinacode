@@ -5,9 +5,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, onTestFinished, test } from "vitest"
 import { ArtifactSchema, normalizeArtifactPath } from "./artifact.ts"
-import { currentVerdict, waitingOnDeveloper } from "./feedback.ts"
+import { waitingOnDeveloper } from "./feedback.ts"
 import { ArtifactConflictError, ArtifactError, MAX_ARTIFACT_BYTES, openArtifactStore } from "./store.ts"
-import type { VerifySpec } from "./verify.ts"
 
 const minutes = () => {
   let minute = 0
@@ -500,7 +499,7 @@ describe("feedback", () => {
   test("starts a comment on a quote, takes replies and derives who it waits on", async () => {
     const store = openTemporaryStore()
     const document = await store.publish({ kind: "document", title: "Plan", markdown: "The migration runs first." })
-    expect(await store.feedback(document.id)).toEqual({ comments: [], verdicts: [] })
+    expect(await store.feedback(document.id)).toEqual({ comments: [] })
 
     const anchor = { kind: "text", quote: "migration runs", prefix: "The ", suffix: " first." } as const
     const started = await store.comment(document.id, { anchor, author: developer, body: " Should this be after? " })
@@ -631,47 +630,6 @@ describe("feedback", () => {
     const bodies = (await store.feedback(document.id))?.comments.map((comment) => comment.messages[0].body)
     expect(bodies?.toSorted()).toEqual(Array.from({ length: 8 }, (_, index) => `comment ${index}`))
   })
-
-  test("records a verdict per version of a verification, and a new version is pending", async () => {
-    const store = openTemporaryStore()
-    const shot = { path: "actual/1.png", content: "iVBORw==", encoding: "base64" as const }
-    const verify = await store.publish({
-      kind: "verify",
-      title: "Settings page",
-      spec: { expected: [], actual: [{ path: "actual/1.png" }] },
-      files: [shot],
-    })
-
-    const rejected = await store.decide(verify.id, { version: 1, decision: "reject", reason: " Spacing is off " })
-    expect(rejected.verdicts).toEqual([
-      { version: 1, decision: "reject", reason: "Spacing is off", decidedAt: "2026-11-02T09:01:00.000Z" },
-    ])
-    expect(currentVerdict(rejected, 1)?.decision).toBe("reject")
-
-    const again = await store.publish({
-      kind: "verify",
-      id: verify.id,
-      spec: { expected: [], actual: [{ path: "actual/1.png" }] },
-      files: [shot],
-    })
-    const pending = await store.feedback(verify.id)
-    expect(again.version).toBe(2)
-    expect(pending && currentVerdict(pending, 2)).toBeNull()
-    await expect(store.decide(verify.id, { version: 1, decision: "pass", reason: "" })).rejects.toThrow(
-      /is at version 2, not 1/,
-    )
-    await expect(store.decide(verify.id, { version: 2, decision: "reject", reason: " " })).rejects.toThrow(
-      /needs a reason/,
-    )
-    const passed = await store.decide(verify.id, { version: 2, decision: "pass", reason: "" })
-    expect(currentVerdict(passed, 2)).toMatchObject({ decision: "pass", reason: "" })
-    expect(passed.verdicts).toHaveLength(2)
-
-    const document = await store.publish({ kind: "document", title: "Plan", markdown: "" })
-    await expect(store.decide(document.id, { version: 1, decision: "pass", reason: "" })).rejects.toThrow(
-      /Only a verification takes a verdict/,
-    )
-  })
 })
 
 const scene = async (store: ReturnType<typeof openTemporaryStore>, id: string) =>
@@ -760,72 +718,5 @@ describe("whiteboard", () => {
     expect(await save(2, "c")).toMatchObject({ version: 2, revision: 3 })
     await expect(save(2, "d")).rejects.toBeInstanceOf(ArtifactConflictError)
     expect((await scene(store, board.id)).elements).toEqual([{ id: "c" }])
-  })
-})
-
-describe("verify", () => {
-  const png = { content: "iVBORw==", encoding: "base64" as const }
-
-  test("publishes the spec as verify.json beside its images and videos", async () => {
-    const store = openTemporaryStore()
-    const approved = await store.publish({ title: "Mockup", files: [page("")] })
-    const verify = await store.publish({
-      kind: "verify",
-      title: "Settings page",
-      spec: {
-        notes: "Compare the header.",
-        expected: [{ label: "Mockup", artifactId: approved.id }, { path: "./expected/1.png" }],
-        actual: [{ label: "Built", path: "actual/1.mp4" }],
-      },
-      files: [
-        { path: "expected/1.png", ...png },
-        { path: "actual/1.mp4", ...png },
-      ],
-    })
-
-    expect(verify).toMatchObject({ kind: "verify", entry: "verify.json" })
-    expect(verify.files.map((file) => [file.path, file.type])).toEqual([
-      ["verify.json", "application/json; charset=utf-8"],
-      ["expected/1.png", "image/png"],
-      ["actual/1.mp4", "video/mp4"],
-    ])
-    expect(JSON.parse(new TextDecoder().decode((await store.file(verify.id, "verify.json"))?.bytes))).toEqual({
-      notes: "Compare the header.",
-      expected: [{ label: "Mockup", artifactId: approved.id }, { path: "expected/1.png" }],
-      actual: [{ label: "Built", path: "actual/1.mp4" }],
-    })
-  })
-
-  test("refuses a pane that is not a published image or video, or an unknown artifact", async () => {
-    const store = openTemporaryStore()
-    const publish = (spec: VerifySpec, files: Array<{ path: string; content: string }>) =>
-      store.publish({ kind: "verify", title: "Check", spec, files })
-    const refusals = [
-      [() => publish({ expected: [], actual: [] }, []), /at least one actual pane/],
-      [
-        () => publish({ expected: [], actual: [{ path: "actual/1.png" }] }, []),
-        /"actual\/1.png" is not one of the files/,
-      ],
-      [() => publish({ expected: [], actual: [{ path: "verify.json" }] }, []), /"verify.json" is not one of the files/],
-      [() => publish({ expected: [], actual: [{ path: "../1.png" }] }, []), /Invalid pane path/],
-      [
-        () => publish({ expected: [], actual: [{ path: "notes.txt" }] }, [{ path: "notes.txt", content: "x" }]),
-        /image or a video, but "notes.txt" is text\/plain/,
-      ],
-      [
-        () => publish({ expected: [{ artifactId: "gone" }], actual: [{ path: "a.png" }] }, [{ path: "a.png", ...png }]),
-        /No artifact has the id "gone"/,
-      ],
-      [
-        () => publish({ expected: [], actual: [{ path: "a.png" }] }, [{ path: "verify.json", content: "{}" }]),
-        /more than once/,
-      ],
-    ] as const
-    for (const [refuse, message] of refusals) {
-      const refused = refuse()
-      await expect(refused).rejects.toBeInstanceOf(ArtifactError)
-      await expect(refused).rejects.toThrow(message)
-    }
-    expect(await store.list()).toEqual([])
   })
 })

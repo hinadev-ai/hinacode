@@ -30,7 +30,6 @@ test("the stdio MCP server publishes into $HINACODE_ARTIFACTS", async () => {
     "publish_document",
     "publish_whiteboard",
     "read_artifact",
-    "request_verification",
   ])
 
   await client.callTool({

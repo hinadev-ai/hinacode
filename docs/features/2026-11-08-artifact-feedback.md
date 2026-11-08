@@ -1,15 +1,14 @@
-# Artifact feedback: comments, whiteboards and verification
+# Artifact feedback: comments and whiteboards
 
 Status: Building
 Date: 2026-11-08
 
 ## Problem
 
-Artifacts flow one way. The agent publishes, the developer reads, and the only way back is typing into the composer. Three things the developer wants to say have no home:
+Artifacts flow one way. The agent publishes, the developer reads, and the only way back is typing into the composer. Two things the developer wants to say have no home:
 
 - "This sentence is wrong" about one line of a document. Today they copy the line into the composer and explain where it is.
 - "What about this?" about a box they sketched. There is nowhere to sketch, so architecture talk stays prose.
-- "Yes, ship it" or "No, the spacing is off" about built work. The agent says it is done, and the developer judges from a description.
 
 And when the developer does answer, nothing tells the agent. "Ask agent" only fills the draft.
 
@@ -30,13 +29,6 @@ And when the developer does answer, nothing tells the agent. "Ask agent" only fi
 3. The developer selects what they drew and presses Ask. They type a question. The question, the selected elements' text and an image of the selection go to the thread.
 4. The agent calls `publish_whiteboard` again with only the elements it adds or changes, placed next to the selection, and replies on the comment.
 5. The Comments button in the footer lists the questions and answers. Clicking one selects its elements and scrolls to them.
-
-### Verify
-
-1. After building something, the agent calls `request_verification` with what was approved (an earlier artifact, or images) and what was built (screenshots or a recording).
-2. The panel shows them side by side, or stacked in a narrow panel, with Pass and Reject.
-3. Reject asks for a reason. Either verdict goes to the owning thread at once.
-4. The agent fixes the work and publishes the verification again with the same id. The new version is pending until the developer decides on it.
 
 ## Design
 
@@ -67,19 +59,16 @@ type ArtifactComment = {
   updatedAt: string
 }
 
-type Verdict = { version: number; decision: "pass" | "reject"; reason: string; decidedAt: string }
-
-type ArtifactFeedback = { comments: ArtifactComment[]; verdicts: Verdict[] }
+type ArtifactFeedback = { comments: ArtifactComment[] }
 ```
 
 - A comment cannot exist without a message, so an empty thread is unrepresentable.
 - "Waiting on you" is derived: open, and the last message is the agent's. Nothing stores it, so it cannot go stale.
 - A text anchor is a quote with up to 32 characters of context on each side. Documents are Markdown, and the agent rewrites the whole file on every publish, so position or block ids would not survive an agent's edit. The quote does whenever the sentence does. When the quote is no longer in the document, the comment is detached, not deleted.
 - An elements anchor names Excalidraw element ids, which survive both sides' edits.
-- A verdict names the version it judged. The current verdict is the last one for the current version, so a new version is pending without anything resetting it.
-- The agent cannot edit or delete a developer's message, and only the developer passes or rejects.
+- The agent cannot edit or delete a developer's message.
 
-Artifact kinds grow to `"page" | "document" | "whiteboard" | "verify"`.
+Artifact kinds grow to `"page" | "document" | "whiteboard"`.
 
 ### Mentions
 
@@ -101,14 +90,13 @@ Should this be after? The deploy creates the table.
 Answer with comment_on_artifact, and change the document if needed.
 ```
 
-A whiteboard question adds the selected elements' text and an image attachment of the selection. A verdict reads `Verification "Settings page" v3: rejected. <reason>` or `passed`.
+A whiteboard question adds the selected elements' text and an image attachment of the selection.
 
 ### Tools
 
 - `comment_on_artifact({ id, comment?, quote?, elements?, body, resolve? })` replies to a comment, or starts one anchored on a quote or elements, or on the whole artifact. `resolve: true` resolves it after the reply.
-- `read_artifact` on an artifact with feedback appends its open comments and the current verdict, so an agent after compaction sees what is waiting.
+- `read_artifact` on an artifact with feedback appends its open comments, so an agent after compaction sees what is waiting.
 - `publish_whiteboard({ id?, title?, revision?, elements, remove?, auto_open? })` merges by element id: new ids are added, existing ids replaced, `remove` deletes. A merge cannot lose the developer's other elements, so it needs no conflict handling. `read_artifact` on a whiteboard summarizes the scene: each element's id, type, text and bounds, and arrows as `a -> b`.
-- `request_verification({ id?, title?, notes?, expected, actual, auto_open? })`. `expected` entries take an `artifactId` or a `sourcePath`. `actual` entries take a `sourcePath` to an image or video.
 
 ### Whiteboard storage
 
@@ -116,13 +104,9 @@ The entry is `scene.excalidraw`, Excalidraw's own file format. The agent writes 
 
 Two canvases on the same board, such as the desktop and the web app, must complete a skeleton the same way. A completed shape takes a version above any copy the canvas already held, so the agent's replacement wins on every canvas. Its label is named `<container>:label` rather than a random id, so two canvases do not save two labels.
 
-### Verify storage
-
-The entry is `verify.json`, `{ notes, expected: VerifyPane[], actual: VerifyPane[] }`, where a pane is `{ label?, artifactId }` or `{ label?, path }`. Files land under `expected/` and `actual/` in the version.
-
 ### rpc and events
 
-- `artifacts.feedback({ id })`, `artifacts.comment({ id, comment?, anchor?, body, attachments? })`, `artifacts.resolveComment({ id, comment, resolved })` and `artifacts.decide({ id, version, decision, reason })` route by the artifact's owner, like documents.
+- `artifacts.feedback({ id })`, `artifacts.comment({ id, comment?, anchor?, body, attachments? })` and `artifacts.resolveComment({ id, comment, resolved })` route by the artifact's owner, like documents.
 - `artifacts.readWhiteboard` and `artifacts.saveWhiteboard` mirror the document pair.
 - The watcher sees `feedback.json` change and pushes `artifact.feedback`, whether the developer, an agent or another harness wrote it.
 
@@ -132,12 +116,11 @@ The entry is `verify.json`, `{ notes, expected: VerifyPane[], actual: VerifyPane
 - Mentioning a thread on another machine.
 - Comments on pages. A page is hostile HTML in a sandboxed frame, and anchoring into it needs a script inside the frame.
 - Inline questions with options inside a document.
-- Trimming recordings and recording the screen for the agent.
 - The phone app.
 
 ## Verification
 
-- `packages/artifacts`: feedback store tests (anchors, replies, resolve, verdicts per version, other writers keep their comments), the whiteboard merge, the verify tool.
+- `packages/artifacts`: feedback store tests (anchors, replies, resolve, other writers keep their comments) and the whiteboard merge.
 - `src/shared/artifactFeedback.test.ts`: prompt text and delivery targets with and without mentions.
 - `mcp/server.integration.test.ts`: `comment_on_artifact` through the built-in server records the calling thread.
-- The real app with `verify-hinacode`: comment on a document and see the thread start a turn, reply from the mock, resolve. Draw on a whiteboard, ask about a selection. Pass and reject a verification, publish again and see it pending.
+- The real app with `verify-hinacode`: comment on a document and see the thread start a turn, reply from the mock, resolve. Draw on a whiteboard, ask about a selection.

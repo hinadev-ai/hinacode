@@ -17,7 +17,7 @@ import {
   orgSpendLimitMessage,
 } from "./fixtures/usageLimit.ts"
 import { artifactTurn, callMcpTool, documentTurn, type MockDocument } from "./fixtures/artifacts.ts"
-import { commentSteps, feedbackScenario, verifySteps, whiteboardSteps } from "./fixtures/feedback.ts"
+import { commentSteps, feedbackScenario, whiteboardSteps } from "./fixtures/feedback.ts"
 import { mockModel } from "./fixtures/sdk.ts"
 import {
   approvals,
@@ -59,7 +59,6 @@ export const mockScenarioDescriptions = {
   documents: "Publish a document named after the prompt. The next message updates it from the version it last saw.",
   comments: "Publish a document and ask about a quote in it. Answer each comment on the document.",
   whiteboard: "Draw a whiteboard. Answer a question about a selection with a note beside it.",
-  verify: "Ask to verify two screenshots against a mockup. A rejection publishes a fixed version.",
 } as const satisfies Record<string, string>
 export type MockScenario = keyof typeof mockScenarioDescriptions
 export const mockScenarios = Object.keys(mockScenarioDescriptions) as ReadonlyArray<MockScenario>
@@ -241,7 +240,6 @@ const playedSteps = {
   stop: stoppable,
   comments: (prompt: string) => [...commentSteps(prompt), finished()],
   whiteboard: (prompt: string) => [...whiteboardSteps(prompt), finished()],
-  verify: (prompt: string) => [...verifySteps(prompt), finished()],
 } satisfies Partial<Record<MockScenario, (prompt: string) => ReadonlyArray<MockStep>>>
 
 const awaitReply = <A>(replies: Map<string, Deferred.Deferred<A>>, id: string) => {

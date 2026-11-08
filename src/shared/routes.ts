@@ -61,7 +61,6 @@ export const routes: Record<RpcMethod, Route> = {
   "artifacts.feedback": owner("artifact", "id"),
   "artifacts.comment": owner("artifact", "id"),
   "artifacts.resolveComment": owner("artifact", "id"),
-  "artifacts.decide": owner("artifact", "id"),
   "artifacts.rename": owner("artifact", "id"),
   "shell.reveal": client,
   "shell.openers": client,

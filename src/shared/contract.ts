@@ -6,7 +6,6 @@ import {
   CommentAnchor,
   DocumentContent,
   DocumentSaveResult,
-  VerdictDecision,
   WhiteboardContent,
   WhiteboardSaveResult,
   WhiteboardScene,
@@ -662,10 +661,6 @@ export const RpcMethods = {
     Schema.Struct({ id: Schema.String, comment: Schema.String, resolved: Schema.Boolean }),
     ArtifactFeedback,
   ),
-  "artifacts.decide": rpc(
-    Schema.Struct({ id: Schema.String, version: Schema.Number, decision: VerdictDecision, reason: Schema.String }),
-    ArtifactFeedback,
-  ),
   "artifacts.rename": rpc(Schema.Struct({ id: Schema.String, title: Schema.String }), Artifact),
   "artifacts.setTheme": rpc(ArtifactTheme, Schema.Void),
   "automations.create": rpc(
@@ -901,7 +896,6 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "artifacts.feedback": "read",
   "artifacts.comment": "mutation",
   "artifacts.resolveComment": "mutation",
-  "artifacts.decide": "mutation",
   "artifacts.rename": "mutation",
   "artifacts.setTheme": "mutation",
   "automations.create": "mutation",

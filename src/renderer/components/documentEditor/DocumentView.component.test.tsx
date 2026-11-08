@@ -54,7 +54,7 @@ let saves: Array<{ baseRevision: number; markdown: string }> = []
 let storedImages: Array<string> = []
 let fileReads: Array<{ id: string; path: string }> = []
 let imageStored: Promise<void> = Promise.resolve()
-let feedback: ArtifactFeedback = { comments: [], verdicts: [] }
+let feedback: ArtifactFeedback = { comments: [] }
 let commented: Array<unknown> = []
 const listeners = new Set<(event: typeof PushEvent.Encoded) => void>()
 
@@ -154,7 +154,7 @@ beforeEach(({ task }) => {
   storedImages = []
   fileReads = []
   imageStored = Promise.resolve()
-  feedback = { comments: [], verdicts: [] }
+  feedback = { comments: [] }
   commented = []
   useArtifacts.getState().select(thread.id, documentId)
   push({ type: "artifact.updated", artifact: documentAt(1) })
@@ -398,7 +398,6 @@ test("highlights loaded comments without saving, and opens one from its highligh
       agentComment("c-editor", "editor", "Ship the ", "Which editor?"),
       agentComment("c-gone", "the toolbar", "", "Where did it go?"),
     ],
-    verdicts: [],
   }
   const editor = await openDocument()
 

@@ -1,23 +1,19 @@
-import type { ArtifactComment, ArtifactKind, Verdict } from "./artifact.ts"
+import type { ArtifactComment, ArtifactKind } from "./artifact.ts"
 import { MENTION } from "./mentions.ts"
 
 type ArtifactRef = { readonly id: string; readonly kind?: ArtifactKind; readonly title: string }
 
-export type FeedbackPromptInput =
-  | {
-      readonly type: "comment"
-      readonly artifact: ArtifactRef
-      readonly comment: ArtifactComment
-      readonly elements?: string
-      readonly mentioned?: boolean
-    }
-  | { readonly type: "verdict"; readonly artifact: ArtifactRef; readonly verdict: Verdict }
+export type FeedbackPromptInput = {
+  readonly artifact: ArtifactRef
+  readonly comment: ArtifactComment
+  readonly elements?: string
+  readonly mentioned?: boolean
+}
 
 const kindNames: Record<ArtifactKind, string> = {
   page: "page",
   document: "document",
   whiteboard: "whiteboard",
-  verify: "verification",
 }
 
 const quoted = (text: string) =>
@@ -47,26 +43,16 @@ const answerLine = (kind: ArtifactKind, comment: ArtifactComment) => {
   return "Answer with comment_on_artifact."
 }
 
-export const artifactFeedbackPrompt = (input: FeedbackPromptInput) => {
-  const { artifact } = input
+export const artifactFeedbackPrompt = ({ artifact, comment, elements, mentioned }: FeedbackPromptInput) => {
   const kind = artifact.kind ?? "page"
-  if (input.type === "verdict") {
-    const { verdict } = input
-    const reason = verdict.reason === "" ? "" : ` ${verdict.reason}`
-    const head = `Verification ${JSON.stringify(artifact.title)} v${verdict.version}: ${verdict.decision === "pass" ? "passed" : "rejected"}.${reason}`
-    return verdict.decision === "pass"
-      ? head
-      : `${head}\n\nFix it, then call request_verification again with id "${artifact.id}".`
-  }
-  const { comment } = input
   const latest = comment.messages.at(-1)
   const what = comment.messages.length > 1 ? "Reply" : "Comment"
   return [
     `${what} on ${kindNames[kind]} ${JSON.stringify(artifact.title)} (artifact ${artifact.id}, comment ${comment.id}):`,
-    ...anchorLines(comment, input.elements),
+    ...anchorLines(comment, elements),
     latest?.body ?? "",
     "",
-    ...(input.mentioned === true ? ["You were mentioned. Read the artifact with read_artifact first."] : []),
+    ...(mentioned === true ? ["You were mentioned. Read the artifact with read_artifact first."] : []),
     answerLine(kind, comment),
   ].join("\n")
 }

@@ -555,7 +555,6 @@ const handlers: Handlers = {
   "artifacts.feedback": ({ id }) => ArtifactFeedback.use((feedback) => feedback.feedback(id)),
   "artifacts.comment": (input) => ArtifactFeedback.use((feedback) => feedback.comment(input)),
   "artifacts.resolveComment": (input) => ArtifactFeedback.use((feedback) => feedback.resolveComment(input)),
-  "artifacts.decide": (input) => ArtifactFeedback.use((feedback) => feedback.decide(input)),
   "artifacts.rename": ({ id, title }) => Artifacts.use((artifacts) => artifacts.rename(id, title)),
   "artifacts.setTheme": (theme) => ArtifactInspector.use((inspector) => inspector.setTheme(theme)),
   "artifacts.export": (request, desktop) => desktop?.exportArtifact(request) ?? Effect.succeed(null),

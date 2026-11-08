@@ -7,15 +7,13 @@ export const ArtifactFileSchema = z.object({
   size: z.number().int().nonnegative(),
 })
 
-export const ArtifactKindSchema = z.enum(["page", "document", "whiteboard", "verify"])
+export const ArtifactKindSchema = z.enum(["page", "document", "whiteboard"])
 
 export const ArtifactAuthorSchema = z.enum(["agent", "developer"])
 
 export const DOCUMENT_ENTRY = "document.md"
 
 export const WHITEBOARD_ENTRY = "scene.excalidraw"
-
-export const VERIFY_ENTRY = "verify.json"
 
 export const ArtifactSchema = z.object({
   id: z.string(),
@@ -73,9 +71,6 @@ const binaryTypes: Record<string, string> = {
   ".webp": "image/webp",
   ".woff2": "font/woff2",
   ".wasm": "application/wasm",
-  ".mp4": "video/mp4",
-  ".webm": "video/webm",
-  ".mov": "video/quicktime",
 }
 
 export const contentType = (path: string) => {

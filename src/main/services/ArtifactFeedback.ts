@@ -7,7 +7,7 @@ import {
   WHITEBOARD_ENTRY,
 } from "@hinacode/artifacts"
 import { Context, Effect, Layer, Schema } from "effect"
-import type { ArtifactFeedback as Feedback, CommentAnchor, VerdictDecision } from "../../shared/artifact.ts"
+import type { ArtifactFeedback as Feedback, CommentAnchor } from "../../shared/artifact.ts"
 import { artifactFeedbackPrompt, feedbackTargets } from "../../shared/artifactFeedback.ts"
 import type { Attachment } from "../../shared/domain.ts"
 import { AgentRunner } from "./AgentRunner.ts"
@@ -38,12 +38,6 @@ export class ArtifactFeedback extends Context.Service<
       readonly id: string
       readonly comment: string
       readonly resolved: boolean
-    }) => Effect.Effect<Feedback, FeedbackError>
-    readonly decide: (input: {
-      readonly id: string
-      readonly version: number
-      readonly decision: VerdictDecision
-      readonly reason: string
     }) => Effect.Effect<Feedback, FeedbackError>
   }
 >()("hinacode/ArtifactFeedback") {}
@@ -138,7 +132,6 @@ const make = Effect.gen(function* () {
           deliver(
             threadId,
             artifactFeedbackPrompt({
-              type: "comment",
               artifact,
               comment: saved.comment,
               mentioned: threadId !== artifact.threadId,
@@ -157,28 +150,7 @@ const make = Effect.gen(function* () {
       attempt(() => store.resolveComment(id, commentId, resolved)),
     )
 
-  const decide = ({
-    id,
-    version,
-    decision,
-    reason,
-  }: {
-    id: string
-    version: number
-    decision: VerdictDecision
-    reason: string
-  }) =>
-    Effect.gen(function* () {
-      const artifact = yield* existing(id)
-      const decided = yield* attempt(() => store.decide(id, { version, decision, reason }))
-      const verdict = decided.verdicts.at(-1)
-      if (artifact.threadId !== undefined && verdict !== undefined) {
-        yield* deliver(artifact.threadId, artifactFeedbackPrompt({ type: "verdict", artifact, verdict }), [])
-      }
-      return decided
-    })
-
-  return ArtifactFeedback.of({ feedback, comment, resolveComment, decide })
+  return ArtifactFeedback.of({ feedback, comment, resolveComment })
 })
 
 export const layer = Layer.effect(ArtifactFeedback, make)

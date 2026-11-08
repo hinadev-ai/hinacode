@@ -1,11 +1,10 @@
 import { readFile, stat } from "node:fs/promises"
-import { extname, isAbsolute } from "node:path"
+import { isAbsolute } from "node:path"
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { z } from "zod"
 import { type Artifact, DOCUMENT_ENTRY, isTextType, WHITEBOARD_ENTRY } from "./artifact.ts"
-import { type ArtifactComment, type CommentAuthor, currentVerdict, waitingOnDeveloper } from "./feedback.ts"
+import { type ArtifactComment, type CommentAuthor, waitingOnDeveloper } from "./feedback.ts"
 import { ArtifactConflictError, type ArtifactStore, ArtifactError, MAX_ARTIFACT_BYTES } from "./store.ts"
-import type { VerifyPane } from "./verify.ts"
 import { describeScene, parseScene } from "./whiteboard.ts"
 
 export type ArtifactCaller = { threadId?: string }
@@ -45,10 +44,6 @@ Elements use Excalidraw's skeleton form. Give every element a stable, readable i
 Optional style: strokeColor, backgroundColor, fillStyle "solid", strokeStyle "dashed". Leave about 120px between shapes. Use a frame ({"id":"backend","type":"frame","name":"Backend","children":["api","db"]}) only to group a large region.
 
 The developer may draw too, so send only the elements you add or change; the rest stay. An element whose id exists is replaced whole, and remove deletes ids. read_artifact lists every element with its text and bounds. When you answer a question about some elements, place what you add next to them.`
-
-const VERIFY_GUIDE = `Ask the developer to check what you built against what they approved. Call it when visible work is done: expected shows what was approved, such as the id of an earlier artifact or a mockup image, and actual shows what you built, as screenshots or a screen recording you captured. The panel shows them side by side with Pass and Reject.
-
-Do not treat the work as accepted until the verdict arrives as a message; a rejection carries the developer's reason. After a fix, call it again with the same id and new captures. The new version waits for a new verdict. Panes take .png, .jpg, .gif, .webp, .svg, .mp4, .webm or .mov files.`
 
 const COMMENT_GUIDE = `Reply to a comment on an artifact, or start one. The developer's comments arrive as messages that name the artifact and the comment id. Answer each with this tool rather than in your reply text, and change the artifact too when the comment asks for it.
 
@@ -111,13 +106,7 @@ const describeComment = (comment: ArtifactComment) =>
 const describeFeedback = async (store: ArtifactStore, artifact: Artifact) => {
   const feedback = await store.feedback(artifact.id)
   const open = feedback?.comments.filter((comment) => !comment.resolved) ?? []
-  const verdict = feedback === null ? null : currentVerdict(feedback, artifact.version)
   const sections = open.length === 0 ? [] : [`Open comments:\n${open.map(describeComment).join("\n")}`]
-  if (artifact.kind === "verify") {
-    const decided =
-      verdict === null ? "pending" : verdict.decision === "pass" ? "passed" : `rejected. ${verdict.reason}`
-    sections.push(`Verdict on version ${artifact.version}: ${decided}`)
-  }
   if (artifact.kind === "whiteboard") {
     const file = await store.file(artifact.id, WHITEBOARD_ENTRY)
     const scene = file === null ? null : parseScene(new TextDecoder().decode(file.bytes))
@@ -125,21 +114,6 @@ const describeFeedback = async (store: ArtifactStore, artifact: Artifact) => {
   }
   return sections
 }
-
-const capturePath = (side: "expected" | "actual", index: number, sourcePath: string) =>
-  `${side}/${index + 1}${extname(sourcePath).toLowerCase()}`
-
-const copySource = async (side: "expected" | "actual", index: number, sourcePath: string) => ({
-  path: capturePath(side, index, sourcePath),
-  content: (await readSource(sourcePath)).toString("base64"),
-  encoding: "base64" as const,
-})
-
-const paneLabel = (label: string | undefined) => (label === undefined ? {} : { label })
-
-const capture = z
-  .string()
-  .describe(`The absolute path of an image or video on this machine. It is copied when you publish.`)
 
 const autoOpen = z
   .boolean()
@@ -290,7 +264,7 @@ export const artifactTools = {
   }),
   read_artifact: tool({
     description:
-      "Read an artifact. Without a path, returns its manifest: kind, title, entry, version, revision and files, then its open comments, a verification's verdict and a whiteboard's elements. With a path, returns that text file's content. A document's Markdown is document.md.",
+      "Read an artifact. Without a path, returns its manifest: kind, title, entry, version, revision and files, then its open comments and a whiteboard's elements. With a path, returns that text file's content. A document's Markdown is document.md.",
     input: z.object({
       id: z.string().describe("The artifact id."),
       path: z.string().optional().describe("A text file in the artifact, such as index.html."),
@@ -334,65 +308,6 @@ export const artifactTools = {
         ...(threadId === undefined ? {} : { threadId }),
       })
       return `Published whiteboard ${whiteboard.id} version ${whiteboard.version}: "${whiteboard.title}". Pass id "${whiteboard.id}" to publish_whiteboard to add, change or remove elements.`
-    },
-  }),
-  request_verification: tool({
-    description: VERIFY_GUIDE,
-    input: z
-      .object({
-        id: z.string().optional().describe("The id of a verification to publish again after a fix."),
-        title: z.string().min(1).optional().describe(describeTitle("Settings Page")),
-        notes: z.string().optional().describe("What to check, in a sentence or two."),
-        expected: z
-          .array(
-            z
-              .object({
-                label: z.string().optional().describe('A short caption, such as "Approved mockup".'),
-                artifactId: z.string().optional().describe("The id of an artifact the developer approved."),
-                sourcePath: capture.optional(),
-              })
-              .refine((pane) => (pane.artifactId === undefined) !== (pane.sourcePath === undefined), {
-                message: "Pass either artifactId or sourcePath.",
-              }),
-          )
-          .describe("What the developer approved. Empty when nothing was."),
-        actual: z
-          .array(
-            z.object({
-              label: z.string().optional().describe('A short caption, such as "Dark mode".'),
-              sourcePath: capture,
-            }),
-          )
-          .min(1)
-          .describe("What you built: screenshots or a recording."),
-        auto_open: autoOpen,
-      })
-      .refine((input) => input.id !== undefined || input.title !== undefined, newNeedsTitle),
-    handle: async (store, { id, title, notes, expected, actual }, { threadId }) => {
-      const files = await Promise.all([
-        ...expected.flatMap((pane, index) =>
-          pane.sourcePath === undefined ? [] : [copySource("expected", index, pane.sourcePath)],
-        ),
-        ...actual.map((pane, index) => copySource("actual", index, pane.sourcePath)),
-      ])
-      const expectedPanes = expected.map(({ label, artifactId, sourcePath }, index): VerifyPane =>
-        artifactId === undefined
-          ? { ...paneLabel(label), path: capturePath("expected", index, sourcePath ?? "") }
-          : { ...paneLabel(label), artifactId },
-      )
-      const actualPanes = actual.map(({ label, sourcePath }, index): VerifyPane => ({
-        ...paneLabel(label),
-        path: capturePath("actual", index, sourcePath),
-      }))
-      const verification = await store.publish({
-        kind: "verify",
-        spec: { ...(notes === undefined ? {} : { notes }), expected: expectedPanes, actual: actualPanes },
-        files,
-        ...(id === undefined ? {} : { id }),
-        ...(title === undefined ? {} : { title }),
-        ...(threadId === undefined ? {} : { threadId }),
-      })
-      return `Published verification ${verification.id} version ${verification.version}: "${verification.title}". The developer will pass or reject it, and the verdict arrives as a message. After a fix, pass id "${verification.id}" to request_verification.`
     },
   }),
   comment_on_artifact: tool({

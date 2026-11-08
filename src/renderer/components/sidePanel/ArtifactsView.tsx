@@ -38,7 +38,6 @@ import { SkeletonList } from "../ui/skeleton.tsx"
 import { liveDocument, liveDocumentKey } from "../documentEditor/liveDocuments.ts"
 import { Section, ViewBody } from "./Section.tsx"
 import { ArtifactKindIcon } from "./ArtifactKindIcon.tsx"
-import { VerifyView } from "./VerifyView.tsx"
 import { resourceUrl, servedSandbox } from "../../lib/resourceUrl.ts"
 import { inBrowser } from "../../lib/runtime.ts"
 
@@ -183,8 +182,7 @@ function TitleInput({
   )
 }
 
-const exportable = (artifact: Artifact) =>
-  artifact.kind === undefined || artifact.kind === "page" || artifact.kind === "document"
+const exportable = (artifact: Artifact) => artifact.kind !== "whiteboard"
 
 const exportArtifact = (request: ArtifactExportRequest) =>
   callPromise("artifacts.export", request)
@@ -244,11 +242,6 @@ export function ArtifactsView({ thread }: { thread: Thread }) {
   if (selected !== undefined && isDocument(selected)) {
     return (
       <DocumentView key={`${selected.environmentId ?? ""}:${selected.id}`} threadId={thread.id} artifact={selected} />
-    )
-  }
-  if (selected?.kind === "verify") {
-    return (
-      <VerifyView key={`${selected.environmentId ?? ""}:${selected.id}`} threadId={thread.id} artifact={selected} />
     )
   }
   if (selected !== undefined) {

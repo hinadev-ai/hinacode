@@ -1,4 +1,4 @@
-import { CheckCircleIcon, FlowIcon } from "@hinacode/icons"
+import { FlowIcon } from "@hinacode/icons"
 import { publishedArtifact, publishedKind, publishedTitle, toolArgument } from "../../shared/agent.ts"
 import type { ArtifactKind } from "../../shared/artifact.ts"
 import type { MessagePart } from "../../shared/domain.ts"
@@ -77,8 +77,6 @@ function ThumbnailMarkView({ mark }: { mark: ThumbnailMark }) {
   }
 }
 
-const kindIcons = { whiteboard: FlowIcon, verify: CheckCircleIcon }
-
 function PagePreview({
   kind,
   blocks,
@@ -88,7 +86,6 @@ function PagePreview({
   blocks: ReadonlyArray<OutlineBlock> | null
   publishing: boolean
 }) {
-  const KindIcon = kind === "whiteboard" || kind === "verify" ? kindIcons[kind] : null
   return (
     <span
       className={cn(
@@ -96,14 +93,14 @@ function PagePreview({
         publishing && "surface-shimmer",
       )}
     >
-      {KindIcon === null ? (
+      {kind !== "whiteboard" ? (
         <svg aria-hidden viewBox={`0 0 ${THUMBNAIL_WIDTH} ${THUMBNAIL_HEIGHT}`} className="size-full">
           {thumbnailMarks(blocks).map((mark, index) => (
             <ThumbnailMarkView key={index} mark={mark} />
           ))}
         </svg>
       ) : (
-        <KindIcon aria-hidden className="absolute inset-0 m-auto size-6 text-muted-foreground" />
+        <FlowIcon aria-hidden className="absolute inset-0 m-auto size-6 text-muted-foreground" />
       )}
     </span>
   )
@@ -130,7 +127,6 @@ const kindLabels = {
   page: m.artifact_card_page,
   document: m.artifact_card_document,
   whiteboard: m.artifact_card_whiteboard,
-  verify: m.artifact_card_verification,
 } satisfies Record<ArtifactKind, () => string>
 
 const cardContent = (call: ToolCall, result: string | null) => {

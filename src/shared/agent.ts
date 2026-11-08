@@ -359,15 +359,12 @@ export const PUBLISH_DOCUMENT_TOOL = "publish_document"
 
 export const PUBLISH_WHITEBOARD_TOOL = "publish_whiteboard"
 
-export const REQUEST_VERIFICATION_TOOL = "request_verification"
-
 const kindOfPublishTool = new Map<string, ArtifactKind>(
   (
     [
       [PUBLISH_ARTIFACT_TOOL, "page"],
       [PUBLISH_DOCUMENT_TOOL, "document"],
       [PUBLISH_WHITEBOARD_TOOL, "whiteboard"],
-      [REQUEST_VERIFICATION_TOOL, "verify"],
     ] as const
   ).flatMap(([name, kind]) => [
     [name, kind],
@@ -383,16 +380,14 @@ export const isPublishDocumentTool = (name: string) => publishedKind(name) === "
 
 export const publishedArtifact = (result: string): { id: string; version: number } | null => {
   const [, id, version] =
-    /^Published (?:artifact|document|whiteboard|verification) ([a-z0-9][a-z0-9-]*) version (\d+)/.exec(result) ?? []
+    /^Published (?:artifact|document|whiteboard) ([a-z0-9][a-z0-9-]*) version (\d+)/.exec(result) ?? []
   return id === undefined ? null : { id, version: Number(version) }
 }
 
 export const publishedArtifactId = (result: string) => publishedArtifact(result)?.id ?? null
 
 export const publishedTitle = (result: string) =>
-  /^Published (?:artifact|document|whiteboard|verification) [a-z0-9][a-z0-9-]* version \d+: "(.*)"\./.exec(
-    result,
-  )?.[1] ?? null
+  /^Published (?:artifact|document|whiteboard) [a-z0-9][a-z0-9-]* version \d+: "(.*)"\./.exec(result)?.[1] ?? null
 
 const textOfBlock = (block: unknown) =>
   typeof block === "object" && block !== null && Reflect.get(block, "type") === "text"

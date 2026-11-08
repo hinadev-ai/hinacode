@@ -36,9 +36,8 @@ Use the mock Claude to see any transcript state in the real app without spending
 | `/mock-documents`       | Publishes a document named after the prompt through the real MCP server. The next message updates it from the revision it last saw, so an edit in between shows the conflict the agent gets.                                  |
 | `/mock-comments`        | Publishes a document named after the prompt and asks about a quote in it with `comment_on_artifact`. A comment on any document gets an answer on its comment.                                                                 |
 | `/mock-whiteboard`      | Draws a whiteboard named after the prompt. A question about a selection gets a note beside it and an answer on the comment.                                                                                                   |
-| `/mock-verify`          | Publishes a mockup page and asks to verify two screenshots against it. A rejection publishes the same verification again, and a pass gets thanks.                                                                             |
 
-Comments, whiteboard questions and verdicts reach the scenario that answers them whatever the launch scenario is.
+Comments and whiteboard questions reach the scenario that answers them whatever the launch scenario is.
 
 Stop ends every scenario as Interrupted, not only `/mock-stop`.
 

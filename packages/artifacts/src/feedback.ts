@@ -32,29 +32,17 @@ export const ArtifactCommentSchema = z.object({
   updatedAt: z.string(),
 })
 
-export const VerdictSchema = z.object({
-  version: z.number().int().positive(),
-  decision: z.enum(["pass", "reject"]),
-  reason: z.string(),
-  decidedAt: z.string(),
-})
-
 export const ArtifactFeedbackSchema = z.object({
   comments: z.array(ArtifactCommentSchema).default([]),
-  verdicts: z.array(VerdictSchema).default([]),
 })
 
 export type CommentAuthor = z.infer<typeof CommentAuthorSchema>
 export type CommentMessage = z.infer<typeof CommentMessageSchema>
 export type CommentAnchor = z.infer<typeof CommentAnchorSchema>
 export type ArtifactComment = z.infer<typeof ArtifactCommentSchema>
-export type Verdict = z.infer<typeof VerdictSchema>
 export type ArtifactFeedback = z.infer<typeof ArtifactFeedbackSchema>
 
-export const emptyFeedback = (): ArtifactFeedback => ({ comments: [], verdicts: [] })
+export const emptyFeedback = (): ArtifactFeedback => ({ comments: [] })
 
 export const waitingOnDeveloper = (comment: ArtifactComment) =>
   !comment.resolved && comment.messages.at(-1)?.author.kind === "agent"
-
-export const currentVerdict = (feedback: ArtifactFeedback, version: number): Verdict | null =>
-  feedback.verdicts.findLast((verdict) => verdict.version === version) ?? null
