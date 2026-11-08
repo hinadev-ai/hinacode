@@ -204,6 +204,18 @@ describe("magpie provider against a gateway", () => {
   )
 
   it.effect.skipIf(!claudeInstalled)(
+    "sends no speed with Fast off even when Claude Code's own settings ask for it",
+    () =>
+      Effect.gen(function* () {
+        const claudeSettings = join(root, "claude", "settings.json")
+        writeFileSync(claudeSettings, JSON.stringify({ env: { CLAUDE_CODE_EXTRA_BODY: '{"speed":"fast"}' } }))
+        yield* Effect.addFinalizer(() => Effect.sync(() => rmSync(claudeSettings, { force: true })))
+        expect(yield* speedsOf(turn({ threadId: "thread-4", fastMode: false }))).toStrictEqual(new Set([null]))
+      }).pipe(Effect.scoped, Effect.provide(onMagpie())),
+    90_000,
+  )
+
+  it.effect.skipIf(!claudeInstalled)(
     "runs a turn on the gateway at the saved endpoint with the saved key",
     () =>
       Effect.gen(function* () {
