@@ -449,7 +449,10 @@ function DraftRow({ thread, title, project }: { thread: Thread; title: string; p
 
 type RowMode = "idle" | "renaming" | "archive" | "delete"
 
-const forksSessions = { claude: true, codex: true, muse: false, opencode: false } satisfies Record<ProviderId, boolean>
+const forksSessions = { claude: true, codex: true, muse: false, opencode: false, magpie: true } satisfies Record<
+  ProviderId,
+  boolean
+>
 
 interface ThreadRowProps {
   readonly thread: Thread
