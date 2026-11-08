@@ -9,6 +9,7 @@
   --input-hover-bg-color: var(--muted);
   --button-hover-bg: var(--muted);
   --button-bg: var(--popover);
+  --color-surface-lowest: var(--background);
   --color-surface-low: var(--popover);
   --color-surface-mid: var(--muted);
   --color-surface-high: var(--muted);
