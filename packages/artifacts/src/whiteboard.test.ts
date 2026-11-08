@@ -24,3 +24,15 @@ test("a label sent in the same patch stays", () => {
   const merged = mergeScene(loadedScene, { upsert: [{ id: "api", type: "rectangle" }, label] })
   expect(merged.elements).toEqual([{ id: "api", type: "rectangle" }, label, { id: "db", type: "rectangle" }])
 })
+
+test("removing an element drops it from the frames that list it", () => {
+  const scene = {
+    elements: [
+      { id: "api", type: "rectangle" },
+      { id: "db", type: "rectangle" },
+      { id: "backend", type: "frame", name: "Backend", children: ["api", "db"] },
+    ],
+  }
+  const merged = mergeScene(scene, { upsert: [], remove: ["api"] })
+  expect(merged.elements.find((element) => element.id === "backend")?.["children"]).toEqual(["db"])
+})
