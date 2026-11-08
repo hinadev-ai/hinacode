@@ -392,6 +392,19 @@ test("comments on the selected text with its quote and context, then highlights 
   expect(saves).toEqual([])
 })
 
+test("keeps a comment on an edit until the edit is saved", async () => {
+  await openDocument()
+  nextSave = { type: "conflict", version: 2, revision: 2, markdown: "# Release plan\n\nThe agent's version.\n" }
+  await typeAtEnd(" Mine.")
+  await userEvent.keyboard("{Shift>}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{/Shift}")
+  await page.getByRole("toolbar", { name: "Text formatting" }).getByRole("button", { name: "Comment" }).click()
+  await userEvent.keyboard("Is this right?{Enter}")
+
+  await expect.element(page.getByRole("alert").getByRole("button", { name: "Keep mine" })).toBeInTheDocument()
+  await expect.element(page.getByRole("combobox", { name: "New comment" })).toBeInTheDocument()
+  expect(commented).toEqual([])
+})
+
 test("highlights loaded comments without saving, and opens one from its highlight", async () => {
   feedback = {
     comments: [
