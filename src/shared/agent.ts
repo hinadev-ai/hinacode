@@ -1,4 +1,5 @@
 import { Predicate, Schema } from "effect"
+import type { ArtifactKind } from "./artifact.ts"
 import type { AccessMode, Attachment } from "./domain.ts"
 import { PlanLimits, UsageLimit } from "./limits.ts"
 
@@ -356,13 +357,29 @@ export const PUBLISH_ARTIFACT_TOOL = "publish_artifact"
 
 export const PUBLISH_DOCUMENT_TOOL = "publish_document"
 
-const publishTools = new Set(
-  [PUBLISH_ARTIFACT_TOOL, PUBLISH_DOCUMENT_TOOL].flatMap((name) => [name, `mcp__hinacode__${name}`]),
+export const PUBLISH_WHITEBOARD_TOOL = "publish_whiteboard"
+
+export const REQUEST_VERIFICATION_TOOL = "request_verification"
+
+const kindOfPublishTool = new Map<string, ArtifactKind>(
+  (
+    [
+      [PUBLISH_ARTIFACT_TOOL, "page"],
+      [PUBLISH_DOCUMENT_TOOL, "document"],
+      [PUBLISH_WHITEBOARD_TOOL, "whiteboard"],
+      [REQUEST_VERIFICATION_TOOL, "verify"],
+    ] as const
+  ).flatMap(([name, kind]) => [
+    [name, kind],
+    [`mcp__hinacode__${name}`, kind],
+  ]),
 )
 
-export const isPublishArtifactTool = (name: string) => publishTools.has(name)
+export const publishedKind = (name: string) => kindOfPublishTool.get(name) ?? null
 
-export const isPublishDocumentTool = (name: string) => name.endsWith(PUBLISH_DOCUMENT_TOOL) && publishTools.has(name)
+export const isPublishArtifactTool = (name: string) => kindOfPublishTool.has(name)
+
+export const isPublishDocumentTool = (name: string) => publishedKind(name) === "document"
 
 export const publishedArtifact = (result: string): { id: string; version: number } | null => {
   const [, id, version] =

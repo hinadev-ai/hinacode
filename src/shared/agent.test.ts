@@ -3,7 +3,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { artifactTools, openArtifactStore } from "@hinacode/artifacts"
 import { describe, expect, test } from "vitest"
-import { isPublishArtifactTool, publishedArtifact, publishedArtifactId } from "./agent.ts"
+import { isPublishArtifactTool, publishedArtifact, publishedArtifactId, publishedKind } from "./agent.ts"
 
 describe("publishedArtifactId", () => {
   test("reads the id from what publish_artifact returns", async () => {
@@ -63,5 +63,12 @@ describe("isPublishArtifactTool", () => {
     expect(isPublishArtifactTool("publish_artifact")).toBe(true)
     expect(isPublishArtifactTool("mcp__hinacode__publish_artifact")).toBe(true)
     expect(isPublishArtifactTool("mcp__hinacode__list_artifacts")).toBe(false)
+  })
+
+  test("names the kind each publishing tool makes", () => {
+    expect(publishedKind("mcp__hinacode__publish_document")).toBe("document")
+    expect(publishedKind("publish_whiteboard")).toBe("whiteboard")
+    expect(publishedKind("mcp__hinacode__request_verification")).toBe("verify")
+    expect(publishedKind("mcp__hinacode__comment_on_artifact")).toBe(null)
   })
 })
