@@ -1,18 +1,12 @@
 import type { ModelInfo, ProviderId } from "@shared/agent.ts"
 import { AccessMode, type Thread } from "@shared/domain.ts"
-import { useState } from "react"
-import { StyleSheet, Text, View } from "react-native"
-import { useThreadModels } from "@/components/composer"
-import { updateThread } from "@/stores/threads"
-import { Icon, type IconName } from "@/components/icon"
-import { PressableScale } from "@/components/motion"
-import { OptionRow, Sheet } from "@/components/sheet"
-import { Notice } from "@/components/ui"
-import { HIT, radius } from "@/constants/theme"
+import type { IconName } from "@/components/icon"
+import { OptionRow, Section } from "@/components/sheet"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
+import { updateThread } from "@/stores/threads"
 
-const accessModes: Record<AccessMode, { label: string; icon: IconName }> = {
+export const accessModes: Record<AccessMode, { label: string; icon: IconName }> = {
   supervised: { label: copy("mobile_settings_access_supervised"), icon: "ShieldUser" },
   auto: { label: copy("mobile_settings_access_auto"), icon: "Shield" },
   full: { label: copy("mobile_settings_access_full"), icon: "Unlock" },
@@ -45,70 +39,30 @@ const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | u
   }
 }
 
-/**
- * The thread's access mode as a pill that opens a sheet of the modes, each with what it lets through. `compact`
- * drops the label, for when Stop shares the bar and a phone is too narrow for both.
- */
-export function AccessModePicker({ thread, compact = false }: { thread: Thread; compact?: boolean }) {
+/** The access modes as one section of the composer's settings sheet, as the desktop keeps them in its model picker. */
+export function AccessModeSection({
+  thread,
+  model,
+  onError,
+}: {
+  thread: Thread
+  model: ModelInfo | undefined
+  onError: (message: string) => void
+}) {
   const theme = useTheme()
-  const [open, setOpen] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const { current } = useThreadModels(thread)
-  const mode = accessModes[thread.accessMode]
-  const color = thread.accessMode === "full" ? theme.danger : theme.text
-  const close = () => {
-    setError(null)
-    setOpen(false)
-  }
   return (
-    <>
-      <PressableScale
-        testID="thread-access-mode"
-        accessibilityRole="button"
-        accessibilityLabel={copy("mobile_composer_access")}
-        accessibilityValue={{ text: mode.label }}
-        onPress={() => setOpen(true)}
-        style={[styles.pill, { backgroundColor: theme.surface }]}
-      >
-        <Icon name={mode.icon} size={16} color={color} />
-        {!compact && (
-          <Text numberOfLines={1} style={[styles.label, { color }]}>
-            {mode.label}
-          </Text>
-        )}
-        <Icon name="ChevronDown" size={12} color={theme.textMuted} />
-      </PressableScale>
-      <Sheet title={copy("mobile_composer_access")} open={open} onClose={close} fit>
-        <View role="radiogroup" accessibilityLabel={copy("mobile_composer_access")}>
-          {AccessMode.literals.map((option) => (
-            <OptionRow
-              key={option}
-              label={accessModes[option].label}
-              icon={accessModes[option].icon}
-              hint={accessHint(option, thread, current)}
-              color={option === "full" ? theme.danger : undefined}
-              selected={option === thread.accessMode}
-              onPress={() =>
-                option !== thread.accessMode && void updateThread({ id: thread.id, accessMode: option }, setError)
-              }
-            />
-          ))}
-        </View>
-        {error !== null && <Notice text={error} tone="danger" />}
-      </Sheet>
-    </>
+    <Section title={copy("mobile_composer_access")}>
+      {AccessMode.literals.map((option) => (
+        <OptionRow
+          key={option}
+          label={accessModes[option].label}
+          icon={accessModes[option].icon}
+          hint={accessHint(option, thread, model)}
+          color={option === "full" ? theme.danger : undefined}
+          selected={option === thread.accessMode}
+          onPress={() => option !== thread.accessMode && void updateThread({ id: thread.id, accessMode: option }, onError)}
+        />
+      ))}
+    </Section>
   )
 }
-
-const styles = StyleSheet.create({
-  pill: {
-    height: HIT,
-    flexShrink: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 14,
-    borderRadius: radius.full,
-  },
-  label: { flexShrink: 1, fontSize: 15, fontWeight: "600" },
-})

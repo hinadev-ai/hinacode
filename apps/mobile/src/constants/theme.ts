@@ -18,6 +18,8 @@ export const Colors = {
     controlOff: "#738484",
     /** A filled control that cannot be pressed yet, under `textMuted`. A step above every surface it sits on. */
     disabled: "#d0d0c6",
+    /** A ghost button's press and the idle send button, the desktop's `bg-foreground/6`. */
+    inkWash: "rgba(35, 55, 55, 0.06)",
     /** A sheet over the scrim, and a selected or pressed row on it. Dark sheets sit a step above the page. */
     sheet: "#f7f7f2",
     sheetRaised: "#e8e8e0",
@@ -60,6 +62,7 @@ export const Colors = {
     surfaceStrong: "#324949",
     controlOff: "#758b8b",
     disabled: "#425b5b",
+    inkWash: "rgba(247, 247, 242, 0.09)",
     sheet: "#233737",
     sheetRaised: "#324949",
     scrim: "rgba(0, 0, 0, 0.72)",

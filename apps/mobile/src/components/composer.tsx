@@ -24,6 +24,7 @@ import {
   View,
 } from "react-native"
 import Animated, { useReducedMotion } from "react-native-reanimated"
+import { AccessModeSection, accessModes } from "@/components/access-mode"
 import { ComposerInput } from "@/components/composer-input"
 import { GlassFill, liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
@@ -201,7 +202,7 @@ export function Composer({ thread }: { thread: Thread }) {
     <View
       style={[
         styles.composer,
-        liquidGlass ? styles.dock : { backgroundColor: theme.card },
+        liquidGlass && styles.dock,
       ]}
     >
       <GlassFill />
@@ -230,7 +231,7 @@ export function Composer({ thread }: { thread: Thread }) {
         style={[
           styles.bar,
           {
-            backgroundColor: liquidGlass ? "transparent" : theme.card,
+            backgroundColor: liquidGlass ? "transparent" : theme.background,
             borderColor: focused ? theme.primary : liquidGlass ? "transparent" : theme.border,
           },
           !liquidGlass && styles.raised,
@@ -307,11 +308,10 @@ function AttachButton({ staging, onPress }: { staging: boolean; onPress: () => v
       hitSlop={(HIT - CHIP_HEIGHT) / 2}
       style={({ pressed }) => [
         styles.attach,
-        { backgroundColor: pressed ? theme.surfaceStrong : theme.surface },
-        pressed && styles.pressed,
+        pressed && [styles.pressed, { backgroundColor: theme.inkWash }],
       ]}
     >
-      {staging ? <Spinner size={18} color={theme.text} /> : <Icon name="Plus" size={20} color={theme.text} />}
+      {staging ? <Spinner size={18} color={theme.textMuted} /> : <Icon name="Plus" size={20} color={theme.textMuted} />}
     </Pressable>
   )
 }
@@ -466,7 +466,7 @@ function SendButton({
   const label = copy(`mobile_composer_${action}`)
   const disabled = !hasDraft
   const halo = action === "send" && hasDraft
-  const background = disabled ? theme.disabled : theme.primary
+  const background = disabled ? theme.inkWash : theme.primary
 
   return (
     <motion.Pressable
@@ -480,7 +480,7 @@ function SendButton({
       animate={{ backgroundColor: background }}
       whileTap={{ scale: PRESSED_SCALE }}
       transition={{ ...pressSpring, backgroundColor: { ease: ease.swap } }}
-      style={styles.send}
+      style={[styles.send, { borderColor: disabled ? theme.border : "transparent" }]}
     >
       {halo && <SendHalo />}
       <Icon name="ArrowUp" size={20} color={halo ? theme.haloInk : disabled ? theme.textMuted : theme.onPrimary} />
@@ -622,14 +622,14 @@ function SettingsChip({ thread, onError }: { thread: Thread; onError: OnError })
         hitSlop={{ top: (HIT - CHIP_HEIGHT) / 2, bottom: (HIT - CHIP_HEIGHT) / 2 }}
         style={({ pressed }) => [
           styles.chip,
-          { backgroundColor: pressed ? theme.surfaceStrong : theme.surface },
-          pressed && styles.pressed,
+          pressed && [styles.pressed, { backgroundColor: theme.inkWash }],
         ]}
       >
         <Icon name={providers[thread.provider].icon} size={14} color={theme.textMuted} />
         <Text numberOfLines={1} style={[styles.chipLabel, { color: theme.text }]}>
           {modelLabel}
         </Text>
+        {thread.accessMode === "full" && <Icon name={accessModes.full.icon} size={14} color={theme.danger} />}
         <Icon name="ChevronDown" size={12} color={theme.textMuted} />
       </Pressable>
       <SettingsSheet thread={thread} open={open} onClose={() => setOpen(false)} onError={onError} />
@@ -757,6 +757,7 @@ function SettingsSheet({
               />
             </Section>
           )}
+          <AccessModeSection thread={thread} model={current} onError={onError} />
     </Sheet>
   )
 }
@@ -841,6 +842,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth,
     overflow: "hidden",
   },
   // Wider than the button by √2, so its corners stay covered while it turns.
