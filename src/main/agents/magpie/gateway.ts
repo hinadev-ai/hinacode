@@ -38,7 +38,7 @@ const settingsPath = (env: NodeJS.ProcessEnv) =>
   join(env["XDG_CONFIG_HOME"] || join(homedir(), ".config"), "magpie", "settings.json")
 
 const localPort = (env: NodeJS.ProcessEnv) =>
-  Effect.promise(async () => {
+  Effect.tryPromise(async () => {
     const text = await readFile(settingsPath(env), "utf8").catch(() => null)
     if (text === null) return DEFAULT_PORT
     return Schema.decodeUnknownOption(Settings)(JSON.parse(text)).pipe(
@@ -174,10 +174,22 @@ const capabilities = (efforts: ReadonlyArray<string>) => [
   ...(efforts.includes("max") ? ["max_effort"] : []),
 ]
 
+const ExtraBody = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown))
+
+const extraBody = (inherited: string | undefined, fast: boolean): Record<string, string> => {
+  if (inherited === undefined && !fast) return {}
+  const { speed: _, ...fields }: Readonly<Record<string, unknown>> = Option.getOrElse(
+    Schema.decodeUnknownOption(ExtraBody)(inherited),
+    () => ({}),
+  )
+  return { CLAUDE_CODE_EXTRA_BODY: JSON.stringify(fast ? { ...fields, speed: "fast" } : fields) }
+}
+
 export const claudeGatewayEnv = (
   { origin, key }: Pick<Connection, "origin" | "key">,
   model: GatewayModel,
   fast: boolean,
+  inherited: string | undefined = process.env["CLAUDE_CODE_EXTRA_BODY"],
 ): Record<string, string> => {
   const efforts = claudeEfforts(model)
   return {
@@ -188,6 +200,6 @@ export const claudeGatewayEnv = (
     ...(efforts.length > 0 && {
       CLAUDE_CODE_MODEL_CAPABILITIES: `${model.id.toLowerCase()}=${capabilities(efforts).join(",")}`,
     }),
-    ...(fast && hasFastMode(model) && { CLAUDE_CODE_EXTRA_BODY: JSON.stringify({ speed: "fast" }) }),
+    ...extraBody(inherited, fast && hasFastMode(model)),
   }
 }
