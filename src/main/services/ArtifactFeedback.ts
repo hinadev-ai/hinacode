@@ -84,7 +84,11 @@ const make = Effect.gen(function* () {
 
   const deliver = (threadId: string, prompt: string, attachments: ReadonlyArray<Attachment>) =>
     threads.get(threadId).pipe(
-      Effect.andThen(runner.steer(threadId, prompt, attachments)),
+      Effect.andThen(
+        runner
+          .steer(threadId, prompt, attachments)
+          .pipe(Effect.catchTag("AgentError", () => runner.queue(threadId, prompt, attachments))),
+      ),
       Effect.catchTag("NotFoundError", () => Effect.void),
       Effect.catchCause((cause) => Effect.logWarning("artifact feedback did not reach a thread", threadId, cause)),
     )
