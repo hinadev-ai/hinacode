@@ -7,7 +7,6 @@ import {
   unlistedModel,
 } from "@shared/agent.ts"
 import { completionAt, type Suggestion, suggestionsFor } from "@shared/composerSyntax.ts"
-import type { RpcRequest } from "@shared/contract.ts"
 import { isThreadBusy, type Settings, type Thread, toCheckoutTarget } from "@shared/domain.ts"
 import { type AccountOption, accountOptions, formatResetIn } from "@shared/planLimits.ts"
 import { providerInfo } from "@shared/providers.ts"
