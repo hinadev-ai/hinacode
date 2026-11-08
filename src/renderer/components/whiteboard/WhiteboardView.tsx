@@ -66,6 +66,17 @@ const keepHandledKeys = (element: HTMLDivElement | null) => {
   return () => element?.removeEventListener("keydown", stopHandled)
 }
 
+const selectAndScrollTo = (api: ExcalidrawImperativeAPI, ids: ReadonlyArray<string>) => {
+  const wanted = new Set(ids)
+  const targets = api.getSceneElements().filter((element) => wanted.has(element.id))
+  if (targets.length === 0) return
+  api.updateScene({
+    appState: { selectedElementIds: Object.fromEntries(targets.map((element) => [element.id, true as const])) },
+    captureUpdate: CaptureUpdateAction.NEVER,
+  })
+  api.scrollToContent(targets, { fitToViewport: true, viewportZoomFactor: 0.6, maxZoom: 1, animate: true })
+}
+
 const sameIds = (left: ReadonlyArray<string>, right: ReadonlyArray<string>) =>
   left.length === right.length && left.every((id, index) => id === right[index])
 
@@ -84,6 +95,7 @@ function WhiteboardCanvas({
   const [fitted, setFitted] = useState(false)
   const [comments, setComments] = useState<{ open: boolean; focused: string | null }>({ open: false, focused: null })
   const canvasColumn = useRef<HTMLDivElement>(null)
+  const elementsToShow = useRef<ReadonlyArray<string> | null>(null)
   const feedback = useFeedback(artifact)
   const actions = useFeedbackActions(artifact)
   const openCount = loadedFeedback(feedback).comments.filter((comment) => !comment.resolved).length
@@ -110,16 +122,9 @@ function WhiteboardCanvas({
 
   const showElements = (comment: ArtifactComment) => {
     if (api === null || comment.anchor.kind !== "elements") return
-    const ids = new Set(comment.anchor.ids)
-    const targets = api.getSceneElements().filter((element) => ids.has(element.id))
-    if (targets.length === 0) return
-    if (canvasColumn.current?.checkVisibility() !== true)
-      startTransition(() => setComments({ open: false, focused: null }))
-    api.updateScene({
-      appState: { selectedElementIds: Object.fromEntries(targets.map((element) => [element.id, true as const])) },
-      captureUpdate: CaptureUpdateAction.NEVER,
-    })
-    api.scrollToContent(targets, { fitToViewport: true, viewportZoomFactor: 0.6, maxZoom: 1, animate: true })
+    if (canvasColumn.current?.checkVisibility() === true) return selectAndScrollTo(api, comment.anchor.ids)
+    elementsToShow.current = comment.anchor.ids
+    startTransition(() => setComments({ open: false, focused: null }))
   }
 
   return (
@@ -148,6 +153,11 @@ function WhiteboardCanvas({
                     animate: false,
                   })
                   setFitted(true)
+                }
+                const shown = elementsToShow.current
+                if (shown !== null && api !== null && appState.width > 0) {
+                  elementsToShow.current = null
+                  selectAndScrollTo(api, shown)
                 }
                 sync.changed(elements, appState, files)
                 const selected = Object.keys(appState.selectedElementIds)
