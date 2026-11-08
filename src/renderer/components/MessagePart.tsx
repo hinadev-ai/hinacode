@@ -24,6 +24,7 @@ import { ansiSegments } from "../lib/ansi.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
 import { statusOfCall } from "../../shared/subagents.ts"
+import { ownToolName } from "../../shared/toolNames.ts"
 import { useOpenSubagent } from "../lib/subagents.ts"
 import { callPromise } from "../lib/rpc.ts"
 import {
@@ -32,7 +33,6 @@ import {
   countToolKinds,
   describeCommand,
   describeToolCall,
-  ownToolName,
   toolOutputImages,
   type SkillLabels as SkillLabelMap,
   skillsUsed,
