@@ -82,6 +82,7 @@ class ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(co
       override fun onTextChanged(text: CharSequence?, start: Int, before: Int, count: Int) = Unit
 
       override fun afterTextChanged(editable: Editable) {
+        post { reportContentHeight() }
         if (applying) return
         eventCount++
         onEditorChange(
@@ -94,10 +95,7 @@ class ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(co
         )
       }
     })
-    viewTreeObserver.addOnPreDrawListener {
-      reportContentHeight()
-      true
-    }
+    addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> reportContentHeight() }
   }
 
   init {

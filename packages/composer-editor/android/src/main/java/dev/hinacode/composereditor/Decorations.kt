@@ -1,5 +1,6 @@
 package dev.hinacode.composereditor
 
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
@@ -30,8 +31,41 @@ internal class CodeBackgroundSpan(color: Int) : BackgroundColorSpan(color), Deco
 /** Spans a whole chip. The editor paints the pill behind it in `onDraw`, across line breaks too. */
 internal class ChipSpan(val background: Int) : Decoration
 
+/**
+ * An icon's paths, and the bitmaps they rasterize to. Stroked paths are rasterized again on every frame, and the
+ * caret redraws the field twice a second, so each chip draws a cached bitmap instead.
+ */
 class ChipIcon(paths: List<Pair<String, Boolean>>) {
-  internal val shapes: List<Pair<Path, Boolean>> = paths.map { (d, fill) -> PathParser.createPathFromPathData(d) to fill }
+  private val shapes: List<Pair<Path, Boolean>> = paths.map { (d, fill) -> PathParser.createPathFromPathData(d) to fill }
+  private val bitmaps = HashMap<Pair<Int, Int>, Bitmap>()
+
+  internal fun bitmap(sizePx: Int, color: Int): Bitmap =
+    bitmaps.getOrPut(sizePx to color) {
+      val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+      val canvas = Canvas(bitmap)
+      val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+        strokeWidth = ICON_STROKE
+        this.color = color
+      }
+      val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        this.color = color
+      }
+      canvas.scale(sizePx / ICON_GRID, sizePx / ICON_GRID)
+      for ((path, filled) in shapes) {
+        if (filled) canvas.drawPath(path, fill)
+        canvas.drawPath(path, stroke)
+      }
+      bitmap
+    }
+
+  private companion object {
+    const val ICON_GRID = 24f
+    const val ICON_STROKE = 2.4f
+  }
 }
 
 /**
@@ -39,13 +73,7 @@ class ChipIcon(paths: List<Pair<String, Boolean>>) {
  * The character stays in the text, so copying and sending see the token the user typed.
  */
 internal class ChipIconSpan(private val icon: ChipIcon, private val color: Int) : ReplacementSpan(), Decoration {
-  private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-    style = Paint.Style.STROKE
-    strokeCap = Paint.Cap.ROUND
-    strokeJoin = Paint.Join.ROUND
-    strokeWidth = ICON_STROKE
-  }
-  private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+  private val blit = Paint(Paint.FILTER_BITMAP_FLAG)
 
   private fun iconSize(paint: Paint) = paint.textSize * 0.9f
 
@@ -65,23 +93,9 @@ internal class ChipIconSpan(private val icon: ChipIcon, private val color: Int) 
     bottom: Int,
     paint: Paint,
   ) {
-    val size = iconSize(paint)
+    val size = iconSize(paint).toInt()
     val metrics = paint.fontMetrics
     val centerY = y + (metrics.ascent + metrics.descent) / 2
-    stroke.color = color
-    fill.color = color
-    canvas.save()
-    canvas.translate(x, centerY - size / 2)
-    canvas.scale(size / ICON_GRID, size / ICON_GRID)
-    for ((path, filled) in icon.shapes) {
-      if (filled) canvas.drawPath(path, fill)
-      canvas.drawPath(path, stroke)
-    }
-    canvas.restore()
-  }
-
-  private companion object {
-    const val ICON_GRID = 24f
-    const val ICON_STROKE = 2.4f
+    canvas.drawBitmap(icon.bitmap(size, color), x, centerY - size / 2f, blit)
   }
 }
