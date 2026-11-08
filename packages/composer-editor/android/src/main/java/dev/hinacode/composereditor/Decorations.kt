@@ -5,13 +5,25 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
+import android.graphics.Typeface
 import android.text.style.ReplacementSpan
+import android.text.style.StyleSpan
+import android.text.style.UnderlineSpan
 import androidx.core.graphics.PathParser
 
 /** Every span this editor adds carries this marker, so the next decoration pass removes exactly its own spans. */
 internal interface Decoration
 
 internal class TokenColorSpan(color: Int) : ForegroundColorSpan(color), Decoration
+
+internal class FontStyleSpan(style: Int) : StyleSpan(style), Decoration {
+  companion object {
+    val bold get() = FontStyleSpan(Typeface.BOLD)
+    val italic get() = FontStyleSpan(Typeface.ITALIC)
+  }
+}
+
+internal class LinkUnderlineSpan : UnderlineSpan(), Decoration
 
 internal class CodeBackgroundSpan(color: Int) : BackgroundColorSpan(color), Decoration
 

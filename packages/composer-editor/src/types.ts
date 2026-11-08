@@ -2,7 +2,11 @@ import type { StyleProp, ViewStyle } from "react-native"
 
 export type Decoration =
   | { readonly kind: "chip"; readonly start: number; readonly end: number; readonly icon: string }
-  | { readonly kind: "token" | "code" | "muted"; readonly start: number; readonly end: number }
+  | {
+      readonly kind: "token" | "code" | "muted" | "strong" | "emphasis" | "link"
+      readonly start: number
+      readonly end: number
+    }
 
 export interface IconPath {
   readonly d: string
@@ -16,7 +20,13 @@ export interface EditorTheme {
   readonly tokenBackground: string
   readonly codeBackground: string
   readonly muted: string
+  readonly link: string
   readonly caret: string
+}
+
+export interface FormatAction {
+  readonly id: string
+  readonly label: string
 }
 
 export interface Selection {
@@ -32,7 +42,6 @@ export interface ChangeEvent {
 export interface ComposerEditorHandle {
   focus(): void
   blur(): void
-  setSelection(selection: Selection): void
 }
 
 export interface ComposerEditorProps {
@@ -50,6 +59,9 @@ export interface ComposerEditorProps {
   readonly testID?: string
   readonly accessibilityLabel?: string
   readonly onChangeText: (event: ChangeEvent) => void
+  readonly selection?: Selection
+  readonly formatActions?: readonly FormatAction[]
+  readonly onFormat?: (action: string, selection: Selection) => void
   readonly onChangeSelection?: (selection: Selection) => void
   readonly onFocus?: () => void
   readonly onBlur?: () => void

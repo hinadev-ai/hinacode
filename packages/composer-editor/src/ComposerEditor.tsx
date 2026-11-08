@@ -21,6 +21,7 @@ interface NativeProps {
   readonly editable: boolean
   readonly paddingHorizontal: number
   readonly paddingVertical: number
+  readonly formatActions: string
   readonly style?: StyleProp<ViewStyle>
   readonly testID?: string
   readonly accessibilityLabel?: string
@@ -28,13 +29,13 @@ interface NativeProps {
   readonly onEditorSelection: (event: NativeSyntheticEvent<Selection>) => void
   readonly onEditorFocus: () => void
   readonly onEditorBlur: () => void
+  readonly onEditorFormat: (event: NativeSyntheticEvent<{ readonly action: string } & Selection>) => void
   readonly onEditorContentSize: (event: NativeSyntheticEvent<{ readonly height: number }>) => void
 }
 
 interface NativeHandle {
   focus(): Promise<void>
   blur(): Promise<void>
-  setSelection(start: number, end: number): Promise<void>
 }
 
 const NativeEditor = requireNativeView<NativeProps>("ComposerEditor")
@@ -49,6 +50,9 @@ export function ComposerEditor({
   fontSize = 16,
   lineHeight = 0,
   editable = true,
+  selection,
+  formatActions = [],
+  onFormat,
   paddingHorizontal = 0,
   paddingVertical = 0,
   style,
@@ -64,13 +68,12 @@ export function ComposerEditor({
   useImperativeHandle(ref, () => ({
     focus: () => void native.current?.focus(),
     blur: () => void native.current?.blur(),
-    setSelection: ({ start, end }) => void native.current?.setSelection(start, end),
   }))
   return (
     <NativeEditor
       ref={native}
       {...rest}
-      document={JSON.stringify({ value, decorations, eventCount })}
+      document={JSON.stringify({ value, decorations, eventCount, selection: selection ?? null })}
       icons={JSON.stringify(icons)}
       theme={JSON.stringify(theme)}
       placeholder={placeholder}
@@ -79,6 +82,7 @@ export function ComposerEditor({
       editable={editable}
       paddingHorizontal={paddingHorizontal}
       paddingVertical={paddingVertical}
+      formatActions={JSON.stringify(formatActions)}
       style={[{ height: contentHeight }, style]}
       onEditorChange={({ nativeEvent }) => {
         setEventCount(nativeEvent.eventCount)
@@ -87,6 +91,7 @@ export function ComposerEditor({
       onEditorSelection={({ nativeEvent }) => onChangeSelection?.(nativeEvent)}
       onEditorFocus={() => onFocus?.()}
       onEditorBlur={() => onBlur?.()}
+      onEditorFormat={({ nativeEvent: { action, start, end } }) => onFormat?.(action, { start, end })}
       onEditorContentSize={({ nativeEvent }) => setContentHeight(nativeEvent.height)}
     />
   )

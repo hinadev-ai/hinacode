@@ -28,6 +28,7 @@ private data class Theme(
   val tokenBackground: Int = Color.TRANSPARENT,
   val codeBackground: Int = Color.LTGRAY,
   val muted: Int = Color.GRAY,
+  val link: Int = Color.BLUE,
   val caret: Int = Color.BLACK,
 )
 
@@ -45,6 +46,8 @@ internal fun parseCssColor(css: String): Int? {
   return runCatching { Color.parseColor(css.trim()) }.getOrNull()
 }
 
+private const val FORMAT_ITEM = 0x4843
+
 @SuppressLint("ViewConstructor")
 class ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
   override val shouldUseAndroidLayout = true
@@ -54,6 +57,7 @@ class ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(co
   private val onEditorFocus by EventDispatcher()
   private val onEditorBlur by EventDispatcher()
   private val onEditorContentSize by EventDispatcher()
+  private val onEditorFormat by EventDispatcher()
 
   private var theme = Theme()
   private var icons: Map<String, ChipIcon> = emptyMap()
@@ -61,6 +65,8 @@ class ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(co
   private var eventCount = 0
   private var applying = false
   private var contentHeight = -1
+  private var requestedSelection: Pair<Int, Int>? = null
+  private var formatActions: List<Pair<String, String>> = emptyList()
 
   val editor: DecoratedEditText = DecoratedEditText(context).apply {
     background = null
@@ -114,6 +120,35 @@ class ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(co
     val editable = editor.text ?: return
     if (editable.toString() != value) withoutEvents { replaceChanged(editable, value) }
     applyDecorations()
+    val selection = next.optJSONObject("selection")?.let { it.optInt("start") to it.optInt("end") }
+    if (selection != requestedSelection) {
+      requestedSelection = selection
+      if (selection != null) select(selection.first, selection.second)
+    }
+  }
+
+  fun setFormatActions(json: String) {
+    val parsed = JSONArray(json)
+    formatActions = (0 until parsed.length()).map { parsed.getJSONObject(it).let { action -> action.getString("id") to action.getString("label") } }
+    editor.customSelectionActionModeCallback = if (formatActions.isEmpty()) null else formatMenu
+  }
+
+  private val formatMenu = object : android.view.ActionMode.Callback {
+    override fun onCreateActionMode(mode: android.view.ActionMode, menu: android.view.Menu): Boolean {
+      formatActions.forEachIndexed { index, (_, label) -> menu.add(android.view.Menu.NONE, FORMAT_ITEM + index, 100 + index, label) }
+      return true
+    }
+
+    override fun onPrepareActionMode(mode: android.view.ActionMode, menu: android.view.Menu) = false
+
+    override fun onActionItemClicked(mode: android.view.ActionMode, item: android.view.MenuItem): Boolean {
+      val action = formatActions.getOrNull(item.itemId - FORMAT_ITEM) ?: return false
+      onEditorFormat(mapOf("action" to action.first, "start" to editor.selectionStart, "end" to editor.selectionEnd))
+      withoutEvents { mode.finish() }
+      return true
+    }
+
+    override fun onDestroyActionMode(mode: android.view.ActionMode) = Unit
   }
 
   fun setIcons(json: String) {
@@ -135,6 +170,7 @@ class ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(co
       tokenBackground = parsed.color("tokenBackground", fallback.tokenBackground),
       codeBackground = parsed.color("codeBackground", fallback.codeBackground),
       muted = parsed.color("muted", fallback.muted),
+      link = parsed.color("link", fallback.link),
       caret = parsed.color("caret", fallback.caret),
     )
     editor.setTextColor(theme.text)
@@ -220,6 +256,12 @@ class ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(co
         editable.setSpan(TokenColorSpan(theme.token), start, end, flags)
         val icon = icons[decoration.optString("icon")]
         if (icon != null) editable.setSpan(ChipIconSpan(icon, theme.token), start, start + 1, flags)
+      }
+      "strong" -> editable.setSpan(FontStyleSpan.bold, start, end, flags)
+      "emphasis" -> editable.setSpan(FontStyleSpan.italic, start, end, flags)
+      "link" -> {
+        editable.setSpan(TokenColorSpan(theme.link), start, end, flags)
+        editable.setSpan(LinkUnderlineSpan(), start, end, flags)
       }
     }
   }

@@ -8,7 +8,14 @@ class ComposerEditorModule : Module() {
     Name("ComposerEditor")
 
     View(ComposerEditorView::class) {
-      Events("onEditorChange", "onEditorSelection", "onEditorFocus", "onEditorBlur", "onEditorContentSize")
+      Events(
+        "onEditorChange",
+        "onEditorSelection",
+        "onEditorFocus",
+        "onEditorBlur",
+        "onEditorContentSize",
+        "onEditorFormat",
+      )
 
       Prop("document") { view: ComposerEditorView, json: String -> view.setDocument(json) }
       Prop("icons") { view: ComposerEditorView, json: String -> view.setIcons(json) }
@@ -18,11 +25,11 @@ class ComposerEditorModule : Module() {
       Prop("lineHeight") { view: ComposerEditorView, height: Float -> view.setLineHeight(height) }
       Prop("paddingHorizontal") { view: ComposerEditorView, padding: Float -> view.setPadding(horizontal = padding) }
       Prop("paddingVertical") { view: ComposerEditorView, padding: Float -> view.setPadding(vertical = padding) }
+      Prop("formatActions") { view: ComposerEditorView, json: String -> view.setFormatActions(json) }
       Prop("editable") { view: ComposerEditorView, editable: Boolean -> view.setEditable(editable) }
 
       AsyncFunction("focus") { view: ComposerEditorView -> view.focus() }
       AsyncFunction("blur") { view: ComposerEditorView -> view.editor.clearFocus() }
-      AsyncFunction("setSelection") { view: ComposerEditorView, start: Int, end: Int -> view.select(start, end) }
     }
   }
 }
