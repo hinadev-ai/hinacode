@@ -77,9 +77,7 @@ export function createWhiteboardSync(options: {
       const revision = await restored.saved
       if (revision === null) return
       savedEdits = Math.max(savedEdits, coveredEdits)
-      base = Math.max(base, revision)
-      latest = Math.max(latest, base)
-      snapshot = savedSnapshot(restored.elements.filter((element) => !element.isDeleted))
+      latest = Math.max(latest, revision)
       if (edits === savedEdits) settle()
     })
   }
