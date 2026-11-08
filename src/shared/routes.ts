@@ -101,6 +101,7 @@ export const routes: Record<RpcMethod, Route> = {
   "accounts.delete": named,
   "agents.account": named,
   "magpie.test": named,
+  "magpie.saveKey": named,
   "models.list": named,
   "secrets.has": named,
   "secrets.set": named,

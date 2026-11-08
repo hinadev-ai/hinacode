@@ -5,7 +5,7 @@ import { Settings } from "../../services/Settings.ts"
 import { makeClaudeHarness } from "../claude/index.ts"
 import { AgentError, type AgentProvider, type SessionInput } from "../provider.ts"
 import { MAGPIE_KEY_SECRET } from "../../../shared/providers.ts"
-import { claudeGatewayEnv, connect, magpieModelInfos, modelsOf } from "./gateway.ts"
+import { claudeGatewayEnv, connect, keyFor, magpieModelInfos, modelsOf } from "./gateway.ts"
 
 export class MagpieProvider extends Context.Service<MagpieProvider, AgentProvider>()("hinacode/MagpieProvider") {
   static readonly layer = Layer.effect(
@@ -16,9 +16,9 @@ export class MagpieProvider extends Context.Service<MagpieProvider, AgentProvide
 
       const connection = Effect.all({
         endpoint: Effect.map(settings.get, (current) => current.magpieEndpoint),
-        key: Effect.map(secrets.get(MAGPIE_KEY_SECRET), Option.getOrNull),
+        saved: Effect.map(secrets.get(MAGPIE_KEY_SECRET), Option.getOrNull),
       }).pipe(
-        Effect.flatMap((target) => connect(target)),
+        Effect.flatMap(({ endpoint, saved }) => connect({ endpoint, key: keyFor(endpoint, saved) })),
         Effect.mapError((error) => new AgentError({ provider: "magpie", message: error.message })),
       )
 

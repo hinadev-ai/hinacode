@@ -2,7 +2,7 @@ import { homedir } from "node:os"
 import { Cause, Effect, Option, Schema } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
 import { availableUpdates, installUpdate } from "./agents/updates.ts"
-import { probe } from "./agents/magpie/gateway.ts"
+import { bindKey, keyFor, probe } from "./agents/magpie/gateway.ts"
 import { MAGPIE_KEY_SECRET } from "../shared/providers.ts"
 import { AgentError } from "./agents/provider.ts"
 import { compactMessage, previewMessage, transcriptPage } from "../shared/compactTranscript.ts"
@@ -372,8 +372,16 @@ const handlers: Handlers = {
   "magpie.test": ({ endpoint, key }) =>
     Effect.gen(function* () {
       const saved = key === null ? yield* Secrets.use((secrets) => secrets.get(MAGPIE_KEY_SECRET)) : Option.none()
-      return yield* probe({ endpoint, key: key ?? Option.getOrNull(saved) })
+      return yield* probe({ endpoint, key: key ?? keyFor(endpoint, Option.getOrNull(saved)) })
     }).pipe(Effect.mapError((error) => new AgentError({ provider: "magpie", message: error.message }))),
+  "magpie.saveKey": ({ endpoint, key }) =>
+    Secrets.use((secrets) =>
+      Effect.gen(function* () {
+        if (endpoint !== null && key !== null) return yield* secrets.set(MAGPIE_KEY_SECRET, bindKey(endpoint, key))
+        const saved = Option.getOrNull(yield* secrets.get(MAGPIE_KEY_SECRET))
+        if (keyFor(endpoint, saved) === null) yield* secrets.clear(MAGPIE_KEY_SECRET)
+      }),
+    ),
   "limits.list": () => AgentRunner.use((runner) => runner.limits),
   "accounts.list": () => AgentAccounts.use((accounts) => accounts.list),
   "accounts.create": (input) => AgentAccounts.use((accounts) => accounts.create(input)),

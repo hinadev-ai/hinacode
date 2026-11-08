@@ -76,10 +76,8 @@ function MagpieConnectionForm({ saved }: { saved: string | null }) {
     startSaving(async () => {
       setError(null)
       try {
+        await callPromise("magpie.saveKey", { endpoint: orNull(endpoint), key: orNull(key) }, { environment })
         await updateSettings({ magpieEndpoint: orNull(endpoint) })
-        const typedKey = orNull(key)
-        if (typedKey !== null)
-          await callPromise("secrets.set", { name: MAGPIE_KEY_SECRET, value: typedKey }, { environment })
         setKey("")
         await reconnect()
       } catch (cause) {

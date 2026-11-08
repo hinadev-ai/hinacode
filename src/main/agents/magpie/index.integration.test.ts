@@ -7,9 +7,10 @@ import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import { Effect, Layer, Stream } from "effect"
 import type { RunTurnInput } from "../../../shared/agent.ts"
+import { Secrets } from "../../services/Secrets.ts"
 import { Settings } from "../../services/Settings.ts"
 import { MAGPIE_KEY_SECRET } from "../../../shared/providers.ts"
-import { MAGPIE_KEY } from "./gateway.ts"
+import { bindKey, MAGPIE_KEY } from "./gateway.ts"
 import { MagpieProvider } from "./index.ts"
 import { magpieDependencies } from "./testing.ts"
 
@@ -206,15 +207,15 @@ describe("magpie provider against a gateway", () => {
     "runs a turn on the gateway at the saved endpoint with the saved key",
     () =>
       Effect.gen(function* () {
-        yield* Settings.use((settings) =>
-          settings.set({ magpieEndpoint: `http://127.0.0.1:${(remote.address() as AddressInfo).port}/v1` }),
-        )
+        const endpoint = `http://127.0.0.1:${(remote.address() as AddressInfo).port}/v1`
         const provider = yield* MagpieProvider
+        yield* Secrets.use((secrets) => secrets.set(MAGPIE_KEY_SECRET, bindKey(endpoint, REMOTE_KEY)))
+        yield* Settings.use((settings) => settings.set({ magpieEndpoint: endpoint }))
         expect(yield* provider.account(null)).toStrictEqual({ type: "external", service: "magpie" })
         expect(yield* speedsOf(turn({ threadId: "thread-3" }), { gateway: "remote", key: REMOTE_KEY })).toStrictEqual(
           new Set([null]),
         )
-      }).pipe(Effect.provide(onMagpie({ [MAGPIE_KEY_SECRET]: REMOTE_KEY }))),
+      }).pipe(Effect.provide(onMagpie())),
     90_000,
   )
 })

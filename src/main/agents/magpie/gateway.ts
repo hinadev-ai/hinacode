@@ -49,6 +49,18 @@ const localPort = (env: NodeJS.ProcessEnv) =>
 
 export const endpointOrigin = (endpoint: string) => endpoint.trim().replace(/\/+$/, "").replace(/\/v1$/, "")
 
+const BoundKey = Schema.fromJsonString(Schema.Struct({ origin: Schema.String, key: Schema.String }))
+
+export const bindKey = (endpoint: string, key: string) => JSON.stringify({ origin: endpointOrigin(endpoint), key })
+
+export const keyFor = (endpoint: string | null, saved: string | null): string | null => {
+  if (endpoint === null || saved === null) return null
+  return Option.match(Schema.decodeUnknownOption(BoundKey)(saved), {
+    onNone: () => null,
+    onSome: (bound) => (bound.origin === endpointOrigin(endpoint) ? bound.key : null),
+  })
+}
+
 const getJson = (origin: string, key: string, path: string) =>
   Effect.gen(function* () {
     const response = yield* Effect.tryPromise({

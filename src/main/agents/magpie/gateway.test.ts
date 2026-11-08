@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@effect/vitest"
-import { claudeGatewayEnv, MAGPIE_KEY, magpieModelInfo, magpieModelInfos } from "./gateway.ts"
+import { bindKey, claudeGatewayEnv, keyFor, MAGPIE_KEY, magpieModelInfo, magpieModelInfos } from "./gateway.ts"
 
 describe("magpieModelInfo", () => {
   test("uses the display name and keeps only the efforts Claude Code can send", () => {
@@ -101,5 +101,20 @@ describe("claudeGatewayEnv", () => {
   test("sends no speed when the thread is not fast or the model has no fast tier", () => {
     expect(claudeGatewayEnv(gateway, priority, false)).toStrictEqual(routing)
     expect(claudeGatewayEnv(gateway, { id: "OpenRouter/X" }, true)).toStrictEqual(routing)
+  })
+})
+
+describe("keyFor", () => {
+  const saved = bindKey("https://a.example/v1/", "sk-a")
+
+  test("gives the saved key only to the address it was saved for", () => {
+    expect(keyFor("https://a.example", saved)).toBe("sk-a")
+    expect(keyFor("https://b.example", saved)).toBeNull()
+    expect(keyFor(null, saved)).toBeNull()
+  })
+
+  test("gives no key when none is saved or it was saved without an address", () => {
+    expect(keyFor("https://a.example", null)).toBeNull()
+    expect(keyFor("https://a.example", "sk-a")).toBeNull()
   })
 })
