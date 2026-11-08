@@ -1,7 +1,16 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
-import { type FormEvent, type Ref, startTransition, useId, useRef, useState, useTransition } from "react"
+import {
+  type FormEvent,
+  type ReactNode,
+  type Ref,
+  startTransition,
+  useId,
+  useRef,
+  useState,
+  useTransition,
+} from "react"
 import { CLAUDE_EFFORT_LEVELS, type ModelInfo, ProviderId, unlistedModel } from "../../../shared/agent.ts"
 import { AccessMode, AUTO_COMPACT_RANGE } from "../../../shared/domain.ts"
 import { providerInfo } from "../../../shared/providers.ts"
@@ -20,7 +29,12 @@ import { Input } from "../ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { AccountsSection } from "./AccountSettings.tsx"
 import { MagpieConnectionField } from "./MagpieConnectionField.tsx"
-import { SETTINGS_FILL_WIDTH, SettingsGroup, SettingsPanelSection, settingsSurfaceClass } from "./SettingsSection.tsx"
+import {
+  SETTINGS_FILL_WIDTH,
+  SettingsPanelSection,
+  settingsRowsClass,
+  settingsSurfaceClass,
+} from "./SettingsSection.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { SkeletonList } from "../ui/skeleton.tsx"
 
@@ -54,34 +68,62 @@ export function ModelSettings() {
   )
 }
 
-function NewThreadsGroup() {
+interface PanelProps {
+  readonly title: string
+  readonly icon?: ReactNode
+  readonly className?: string
+  readonly ref?: Ref<HTMLElement>
+  readonly children: ReactNode
+}
+
+function Panel({ title, icon, className, ref, children }: PanelProps) {
   const headingId = useId()
   return (
-    <section aria-labelledby={headingId} className="flex shrink-0 flex-col gap-2.5">
-      <h2 id={headingId} className="px-1 text-sm font-medium">
-        {m.settings_new_threads()}
-      </h2>
-      <SettingsGroup>
+    <section
+      ref={ref}
+      aria-labelledby={headingId}
+      className={cn(settingsSurfaceClass, "flex min-h-0 flex-col", className)}
+    >
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-foreground/8 px-4">
+        {icon}
+        <h2 id={headingId} className="min-w-0 truncate text-sm font-semibold">
+          {title}
+        </h2>
+      </header>
+      {children}
+    </section>
+  )
+}
+
+function NewThreadsGroup() {
+  return (
+    <Panel title={m.settings_new_threads()} className="shrink-0">
+      <div className={settingsRowsClass}>
         <DefaultAccessField />
         <TextGenerationModelField />
         <PullRequestGuideField />
-      </SettingsGroup>
-    </section>
+      </div>
+    </Panel>
   )
 }
 
 function AgentList({ selected, onSelect }: { selected: ProviderId; onSelect: (provider: ProviderId) => void }) {
   return (
-    <ul aria-label={m.settings_agents()} className="-m-1 flex min-h-0 flex-col gap-0.5 p-1 @4xl:overflow-y-auto">
-      {ProviderId.literals.map((provider) => (
-        <AgentRow
-          key={provider}
-          provider={provider}
-          selected={provider === selected}
-          onSelect={() => onSelect(provider)}
-        />
-      ))}
-    </ul>
+    <Panel title={m.settings_agents()}>
+      <ul
+        aria-label={m.settings_agents()}
+        className="flex max-h-96 min-h-0 flex-col gap-0.5 overflow-y-auto p-1.5 @4xl:max-h-none"
+      >
+        {ProviderId.literals.map((provider) => (
+          <AgentRow
+            key={provider}
+            provider={provider}
+            selected={provider === selected}
+            onSelect={() => onSelect(provider)}
+          />
+        ))}
+      </ul>
+    </Panel>
   )
 }
 
@@ -95,8 +137,8 @@ function AgentRow({ provider, selected, onSelect }: { provider: ProviderId; sele
   return (
     <li
       className={cn(
-        "relative flex h-14 shrink-0 items-center gap-3 rounded-xl px-2.5 transition-colors",
-        selected ? settingsSurfaceClass : "hover:bg-muted/60 dark:hover:bg-muted/30",
+        "relative flex h-14 shrink-0 items-center gap-3 rounded-lg px-2.5 transition-colors",
+        selected ? "bg-foreground/7" : "hover:bg-foreground/4",
       )}
     >
       <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-background">
@@ -106,7 +148,7 @@ function AgentRow({ provider, selected, onSelect }: { provider: ProviderId; sele
         type="button"
         aria-current={selected || undefined}
         onClick={onSelect}
-        className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-start outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-3 focus-visible:after:ring-ring/50"
+        className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-start outline-none after:absolute after:inset-0 after:rounded-lg focus-visible:after:ring-3 focus-visible:after:ring-ring/50"
       >
         <span className={cn("max-w-full truncate text-sm font-medium", !enabled && "text-muted-foreground")}>
           {label}
@@ -126,22 +168,16 @@ function AgentRow({ provider, selected, onSelect }: { provider: ProviderId; sele
 
 function AgentDetail({ provider, ref }: { provider: ProviderId; ref: Ref<HTMLElement> }) {
   const { providerEnabled } = useSettings(useSettingsEnvironment())
-  const headingId = useId()
   const label = providerLabel[provider]()
   return (
-    <section
+    <Panel
       ref={ref}
-      aria-labelledby={headingId}
-      className={cn(settingsSurfaceClass, "flex min-h-0 flex-col self-start @4xl:max-h-full @4xl:overflow-y-auto")}
+      title={label}
+      icon={<ProviderIcon provider={provider} className="size-4" />}
+      className="self-start @4xl:max-h-full"
     >
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-foreground/8 px-4">
-        <ProviderIcon provider={provider} className="size-5" />
-        <h2 id={headingId} className="min-w-0 truncate text-base font-semibold">
-          {label}
-        </h2>
-      </header>
       {providerEnabled[provider] ? (
-        <div className="flex flex-col divide-y divide-foreground/8">
+        <div className="flex min-h-0 flex-col divide-y divide-foreground/8 @4xl:overflow-y-auto">
           <AccountsSection provider={provider} />
           {provider === "magpie" && (
             <SettingsPanelSection title={m.settings_magpie_gateway()}>
@@ -154,7 +190,7 @@ function AgentDetail({ provider, ref }: { provider: ProviderId; ref: Ref<HTMLEle
       ) : (
         <p className="p-4 text-sm text-muted-foreground">{m.settings_provider_off({ provider: label })}</p>
       )}
-    </section>
+    </Panel>
   )
 }
 

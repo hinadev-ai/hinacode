@@ -35,10 +35,9 @@ export const SETTINGS_FILL_WIDTH = "max-w-6xl"
 
 export const settingsSurfaceClass = "rounded-xl bg-muted dark:bg-muted/50"
 
-export const settingsGroupClass = cn(
-  settingsSurfaceClass,
-  "flex flex-col px-4 *:py-3 [&>*+*]:border-t [&>*+*]:border-foreground/8",
-)
+export const settingsRowsClass = "flex flex-col px-4 *:py-3 [&>*+*]:border-t [&>*+*]:border-foreground/8"
+
+export const settingsGroupClass = cn(settingsSurfaceClass, settingsRowsClass)
 
 export function SettingsGroup({ className, ...props }: ComponentProps<"div">) {
   return <div className={cn(settingsGroupClass, className)} {...props} />
