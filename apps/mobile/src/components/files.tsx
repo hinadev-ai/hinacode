@@ -15,7 +15,7 @@ import {
 } from "react-native"
 import { Icon } from "@/components/icon"
 import { FadeIn, Reveal, Rotate, Spinner } from "@/components/motion"
-import { FileBadge, LineCounts, Patch, splitPath } from "@/components/pull-request-code"
+import { FileBadge, LineCounts, Patch } from "@/components/pull-request-code"
 import { SearchField } from "@/components/search-field"
 import { Button, EmptyState, Notice } from "@/components/ui"
 import { HIT, type Palette, mono, radius } from "@/constants/theme"
@@ -26,7 +26,7 @@ import { errorText } from "@/lib/error-text"
 import { basename, dirname, entryIcon } from "@/lib/file-kinds"
 import { confirmDestructive } from "@/lib/confirm"
 import { type FilePatch, filePatches } from "@/lib/file-patches"
-import { lineSnippet, matchPaths, type PathMatch } from "@/lib/path-match"
+import { lineSnippet, matchPaths, type PathMatch, splitPath } from "@/lib/path-match"
 import { useThreadRoot, useThreads } from "@/stores/threads"
 
 type GitStatus = NonNullable<FsEntry["gitStatus"]>

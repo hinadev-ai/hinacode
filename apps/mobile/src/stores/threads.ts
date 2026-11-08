@@ -1,6 +1,8 @@
+import type { RpcRequest } from "@shared/contract.ts"
 import { create } from "zustand"
 import { isThreadBusy, type Project, type Thread, type Worktree } from "@shared/domain.ts"
 import { call } from "@/lib/connection"
+import { errorText } from "@/lib/error-text"
 
 interface ThreadsState {
   readonly projects: readonly Project[]
@@ -201,3 +203,12 @@ export const useThreadBranchName = (thread: Thread) =>
         state.branches[thread.projectId],
       )?.name,
   )
+
+/** Saves a change to a thread and shows the desktop's answer, or hands the error to `onError`. */
+export const updateThread = async (patch: RpcRequest<"threads.update">, onError: (message: string) => void) => {
+  try {
+    useThreads.getState().upsert(await call("threads.update", patch))
+  } catch (cause) {
+    onError(errorText(cause))
+  }
+}

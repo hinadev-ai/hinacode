@@ -22,6 +22,7 @@ import {
   requestThreadAction,
   type ThreadActionName,
   threadActions,
+  threadActionSymbols,
 } from "@/lib/thread-actions"
 import { useThreads } from "@/stores/threads"
 
@@ -148,19 +149,6 @@ export function useThreadActions(thread: Thread) {
     },
   }
 }
-
-/** Each action's SF Symbol in the native iOS menus. */
-export const threadActionSymbols = {
-  pin: "pin",
-  unpin: "pin.slash",
-  rename: "pencil",
-  fork: "arrow.triangle.branch",
-  "copy-id": "doc.on.doc",
-  reveal: "desktopcomputer",
-  archive: "archivebox",
-  unarchive: "tray.and.arrow.up",
-  delete: "trash",
-} as const satisfies Record<ThreadActionName, string>
 
 /**
  * The iOS context menu a thread row lifts into on long press: Open, then the actions in their groups. Built by a

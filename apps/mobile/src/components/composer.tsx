@@ -47,17 +47,9 @@ import { pickImages, stageImage } from "@/lib/stage-images"
 import { type DraftImage, useDrafts } from "@/stores/drafts"
 import { useMessages } from "@/stores/messages"
 import { modelsOn, useModels } from "@/stores/models"
-import { useThreads } from "@/stores/threads"
+import { updateThread, useThreads } from "@/stores/threads"
 
 type OnError = (message: string) => void
-
-export const updateThread = async (patch: RpcRequest<"threads.update">, onError: OnError) => {
-  try {
-    useThreads.getState().upsert(await call("threads.update", patch))
-  } catch (cause) {
-    onError(errorText(cause))
-  }
-}
 
 const LINE_HEIGHT = 20
 const INPUT_PADDING = 6

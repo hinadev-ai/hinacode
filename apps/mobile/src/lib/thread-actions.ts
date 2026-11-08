@@ -68,3 +68,16 @@ export const requestThreadAction = (thread: Thread, name: ServerThreadActionName
   if (name === "pin" || name === "unpin") return call("threads.update", { id: thread.id, pinned: name === "pin" })
   return call(name === "archive" ? "threads.archive" : "threads.unarchive", { threadId: thread.id })
 }
+
+/** Each action's SF Symbol in the native iOS menus. */
+export const threadActionSymbols = {
+  pin: "pin",
+  unpin: "pin.slash",
+  rename: "pencil",
+  fork: "arrow.triangle.branch",
+  "copy-id": "doc.on.doc",
+  reveal: "desktopcomputer",
+  archive: "archivebox",
+  unarchive: "tray.and.arrow.up",
+  delete: "trash",
+} as const satisfies Record<ThreadActionName, string>

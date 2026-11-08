@@ -27,6 +27,7 @@ import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { type PatchLine, patchLines } from "@/lib/patch-lines"
 import { type CodeView, filesKey, usePullRequests } from "@/stores/pull-requests"
+import { splitPath } from "@/lib/path-match"
 
 /** Lines a diff shows before it asks, so opening a generated file does not stall the screen. */
 const FIRST_LINES = 300
@@ -172,11 +173,6 @@ export function FileBadge({ letter, color }: { letter: string; color: string }) 
       <Text style={[styles.mark, { color }]}>{letter}</Text>
     </View>
   )
-}
-
-export const splitPath = (path: string) => {
-  const slash = path.lastIndexOf("/")
-  return slash === -1 ? { folder: "", name: path } : { folder: path.slice(0, slash + 1), name: path.slice(slash + 1) }
 }
 
 function FileRow({ entry }: { entry: GuideFile }) {
