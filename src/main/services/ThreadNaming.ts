@@ -19,7 +19,7 @@ const SUGGESTION_JSON_SCHEMA = {
   additionalProperties: false,
 }
 
-const SYSTEM_PROMPT = `You name coding tasks in a developer's sidebar. Given the developer's messages in a task, reply with:
+const SYSTEM_PROMPT = `You name coding tasks in a developer's sidebar. Given the developer's messages in a task, inside <messages>, reply with:
 - title: at most 50 characters, sentence case, no trailing period, in the language of the message
 - branch: 2 to 5 lowercase English words joined by hyphens, with no prefix`
 
@@ -49,7 +49,7 @@ const suggest = (model: string, prompt: string) =>
         signal.addEventListener("abort", () => abortController.abort())
         const { query } = await import("@anthropic-ai/claude-agent-sdk")
         const stream = query({
-          prompt: firstAndLatest(prompt),
+          prompt: `<messages>\n${firstAndLatest(prompt)}\n</messages>`,
           options: {
             env: { ...process.env },
             pathToClaudeCodeExecutable,

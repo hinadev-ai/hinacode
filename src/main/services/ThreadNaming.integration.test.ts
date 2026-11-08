@@ -333,7 +333,7 @@ describe("regenerating a thread's title", () => {
       ])
       expect(result).toStrictEqual({
         title: "Review login",
-        prompts: ["Fix the login form\n\n---\n\nNow review the pull request"],
+        prompts: ["<messages>\nFix the login form\n\n---\n\nNow review the pull request\n</messages>"],
       })
     }),
   )
@@ -344,8 +344,8 @@ describe("regenerating a thread's title", () => {
         message("1", "user", "a".repeat(5000)),
         message("2", "user", "Now review the pull request"),
       ])
-      expect(result.prompts[0]?.startsWith("aaa")).toBe(true)
-      expect(result.prompts[0]?.endsWith("Now review the pull request")).toBe(true)
+      expect(result.prompts[0]?.startsWith("<messages>\naaa")).toBe(true)
+      expect(result.prompts[0]?.endsWith("Now review the pull request\n</messages>")).toBe(true)
     }),
   )
 
