@@ -2,7 +2,7 @@ import type { AgentCommand } from "@shared/agent.ts"
 import { matchCommands } from "@shared/composerSyntax.ts"
 import { describe, expect, it } from "vitest"
 import { artifactSkillCommands } from "./artifact-skills"
-import { composerSpans, keepSkillWhole } from "./composer-text"
+import { composerDecorations, composerSpans, keepSkillWhole } from "./composer-text"
 
 const commands: AgentCommand[] = [
   { trigger: "/", name: "triage-issue", description: "", argumentHint: "", scope: "project" },
@@ -77,5 +77,17 @@ describe("artifact skills", () => {
     expect(keepSkillWhole("/artifact:doc Release plan", "/artifact:do Release plan", artifactSkillCommands)).toBe(
       "Release plan",
     )
+  })
+})
+
+describe("composerDecorations", () => {
+  it("draws commands and skills as chips with the desktop's icon, over the same offsets as the text", () => {
+    const text = "/triage-issue run /compact on @src/login.ts and `npm test`"
+    expect(composerDecorations(text, commands, known)).toEqual([
+      { kind: "chip", start: 0, end: 13, icon: "skill" },
+      { kind: "chip", start: 18, end: 26, icon: "slash" },
+      { kind: "token", start: 30, end: 43 },
+      { kind: "code", start: 48, end: 58 },
+    ])
   })
 })

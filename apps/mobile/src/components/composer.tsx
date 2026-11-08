@@ -22,11 +22,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  type TextInputInstance,
   View,
 } from "react-native"
 import Animated, { useReducedMotion } from "react-native-reanimated"
 import { ComposerInput } from "@/components/composer-input"
+import type { ComposerInputHandle } from "@/components/composer-input.types"
 import { GlassFill, liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
 import { IconSwap, Spinner } from "@/components/motion"
@@ -141,7 +141,7 @@ export function Composer({ thread }: { thread: Thread }) {
   const [caret, setCaret] = useState(0)
   /** Set only right after a pick, to put the caret after the inserted command; any edit or move hands it back. */
   const [placedCaret, setPlacedCaret] = useState<{ start: number } | undefined>()
-  const inputRef = useRef<TextInputInstance>(null)
+  const inputRef = useRef<ComposerInputHandle>(null)
   const [error, setError] = useState<string | null>(null)
   const unstarted = useUnstarted(thread)
   const server = useThreadServer(thread.id)?.id
@@ -269,9 +269,9 @@ export function Composer({ thread }: { thread: Thread }) {
             setCaret(position)
             useDrafts.getState().setText(thread.id, next)
           }}
-          onSelectionChange={(event) => {
-            setCaret(event.nativeEvent.selection.end)
-            if (event.nativeEvent.selection.end !== placedCaret?.start) setPlacedCaret(undefined)
+          onChangeSelection={(selection) => {
+            setCaret(selection.end)
+            if (selection.end !== placedCaret?.start) setPlacedCaret(undefined)
           }}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
@@ -280,9 +280,7 @@ export function Composer({ thread }: { thread: Thread }) {
               ? copy(steers ? "mobile_composer_steer_placeholder" : "mobile_composer_queue_placeholder")
               : copy("mobile_composer_placeholder")
           }
-          placeholderTextColor={theme.textMuted}
-          multiline
-          style={[styles.input, { color: theme.text }]}
+          style={styles.input}
         />
         <View style={styles.toolbar}>
           <View style={styles.chips}>

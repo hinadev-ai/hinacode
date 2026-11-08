@@ -1,27 +1,9 @@
-import type { AgentCommand } from "@shared/agent.ts"
-import type { KnownTokens } from "@shared/composerSyntax.ts"
-import { type Ref, useRef } from "react"
-import {
-  Platform,
-  StyleSheet,
-  Text,
-  type TextInputInstance,
-  type TextInputProps,
-  type TextInstance,
-  type TextStyle,
-  TextInput,
-  View,
-} from "react-native"
+import { useImperativeHandle, useRef } from "react"
+import { StyleSheet, Text, type TextInputInstance, type TextInstance, type TextStyle, TextInput, View } from "react-native"
+import type { ComposerInputProps } from "@/components/composer-input.types"
 import type { Palette } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { type ComposerSpan, composerSpans } from "@/lib/composer-text"
-
-interface ComposerInputProps extends Omit<TextInputProps, "value" | "children"> {
-  readonly ref?: Ref<TextInputInstance>
-  readonly value: string
-  readonly commands: readonly AgentCommand[]
-  readonly known: KnownTokens
-}
 
 /** A trailing newline only takes up a line in the textarea once something follows it. */
 const TRAILING_LINE = "​"
@@ -46,44 +28,58 @@ const spanStyle = (kind: ComposerSpan["kind"], theme: Palette): TextStyle => {
 }
 
 /**
- * The composer's TextInput with the desktop's highlighting: a skill that starts the message, known commands and
- * mentions, and code. Native inputs render the spans as nested `Text`. react-native-web's textarea cannot, so there
- * its text is transparent over a highlighted copy, as on the desktop.
+ * The composer's field on the web, with the desktop's highlighting. react-native-web's textarea cannot nest styled
+ * text, so its text is transparent over a highlighted copy, as on the desktop. Phones use `composer-input.native`.
  */
-export function ComposerInput({ ref, value, commands, known, style, onScroll, ...props }: ComposerInputProps) {
+export function ComposerInput({
+  ref,
+  value,
+  commands,
+  known,
+  selection,
+  placeholder,
+  style,
+  testID,
+  accessibilityLabel,
+  onChangeText,
+  onChangeSelection,
+  onFocus,
+  onBlur,
+}: ComposerInputProps) {
   const theme = useTheme()
+  const input = useRef<TextInputInstance>(null)
   const copyRef = useRef<TextInstance>(null)
-  const spans = composerSpans(value, commands, known).map((span, index) => (
-    <Text key={index} style={spanStyle(span.kind, theme)}>
-      {span.text}
-    </Text>
-  ))
-
-  if (Platform.OS !== "web")
-    return (
-      <TextInput ref={ref} style={style} {...props}>
-        {spans}
-      </TextInput>
-    )
-
+  useImperativeHandle(ref, () => ({ focus: () => input.current?.focus(), blur: () => input.current?.blur() }))
   return (
     <View>
       <Text aria-hidden ref={copyRef} style={[style, StyleSheet.absoluteFill, styles.copy]}>
-        {spans}
+        {composerSpans(value, commands, known).map((span, index) => (
+          <Text key={index} style={spanStyle(span.kind, theme)}>
+            {span.text}
+          </Text>
+        ))}
         {TRAILING_LINE}
       </Text>
       <TextInput
-        ref={ref}
+        ref={input}
+        testID={testID}
+        accessibilityLabel={accessibilityLabel}
         value={value}
+        selection={selection}
+        placeholder={placeholder}
+        placeholderTextColor={theme.textMuted}
+        multiline
         style={[style, { color: "transparent", caretColor: theme.text } as TextStyle]}
+        onChangeText={onChangeText}
+        onSelectionChange={(event) => onChangeSelection(event.nativeEvent.selection)}
+        onFocus={onFocus}
+        onBlur={onBlur}
         onScroll={(event) => {
           // react-native-web passes the DOM scroll event, whose target is the textarea.
           const { target } = event.nativeEvent as unknown as { target: HTMLElement }
           const copy = copyRef.current as unknown as HTMLElement | null
           if (copy) copy.scrollTop = target.scrollTop
-          onScroll?.(event)
         }}
-        {...props}
       />
     </View>
   )

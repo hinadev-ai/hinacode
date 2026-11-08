@@ -1,3 +1,4 @@
+import type { Decoration } from "@hinacode/composer-editor"
 import type { AgentCommand } from "@shared/agent.ts"
 import { highlight, type KnownTokens, leadingSkill, segmentText, type SyntaxKind } from "@shared/composerSyntax.ts"
 
@@ -36,4 +37,42 @@ export function keepSkillWhole(before: string, after: string, commands: readonly
   const end = start + before.length - after.length
   const isDeletion = before.slice(end) === after.slice(start)
   return isDeletion ? before.slice(Math.max(end, skill.token.length)) : after
+}
+
+/** A chip's icon, as the desktop's `chipIcon`: built-in commands show a slash, everything else the skill glyph. */
+export type ChipIconName = "skill" | "slash"
+
+/**
+ * `composerSpans` as ranges for the native editor: commands and skills become chips, mentions are tinted, code gets
+ * a background, and list markers and rules are muted.
+ */
+export function composerDecorations(
+  text: string,
+  commands: readonly AgentCommand[],
+  known: KnownTokens,
+): readonly Decoration[] {
+  const builtin = new Set(commands.filter((command) => command.builtin === true).map((c) => c.trigger + c.name))
+  const decorations: Decoration[] = []
+  let start = 0
+  for (const span of composerSpans(text, commands, known)) {
+    const end = start + span.text.length
+    switch (span.kind) {
+      case "skill":
+      case "command":
+        decorations.push({ kind: "chip", start, end, icon: builtin.has(span.text) ? "slash" : "skill" })
+        break
+      case "mention":
+        decorations.push({ kind: "token", start, end })
+        break
+      case "code":
+        decorations.push({ kind: "code", start, end })
+        break
+      case "bullet":
+      case "rule":
+        decorations.push({ kind: "muted", start, end })
+        break
+    }
+    start = end
+  }
+  return decorations
 }
