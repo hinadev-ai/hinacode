@@ -46,6 +46,10 @@ const DocumentView = lazy(() =>
   import("../documentEditor/DocumentView.tsx").then((module) => ({ default: module.DocumentView })),
 )
 
+const WhiteboardView = lazy(() =>
+  import("../whiteboard/WhiteboardView.tsx").then((module) => ({ default: module.WhiteboardView })),
+)
+
 const noArtifacts: ReadonlyArray<Artifact> = []
 
 function useSelectedArtifact(threadId: string) {
@@ -232,6 +236,11 @@ function ExportMenu({ artifact }: { artifact: Artifact }) {
 export function ArtifactsView({ thread }: { thread: Thread }) {
   const selected = useSelectedArtifact(thread.id)
   const theme = useArtifactTheme()
+  if (selected?.kind === "whiteboard") {
+    return (
+      <WhiteboardView key={`${selected.environmentId ?? ""}:${selected.id}`} threadId={thread.id} artifact={selected} />
+    )
+  }
   if (selected !== undefined && isDocument(selected)) {
     return (
       <DocumentView key={`${selected.environmentId ?? ""}:${selected.id}`} threadId={thread.id} artifact={selected} />

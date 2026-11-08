@@ -1,0 +1,192 @@
+import { Schema } from "effect"
+import { beforeEach, expect, test } from "vitest"
+import { cdp, page, userEvent } from "vitest/browser"
+import { render } from "vitest-browser-react"
+import type { Artifact, WhiteboardContent, WhiteboardElement } from "../../../shared/artifact.ts"
+import { type HinacodeBridge, type PushEvent, RpcMethods } from "../../../shared/contract.ts"
+import { defaultClientSettings, type Thread } from "../../../shared/domain.ts"
+import "../../index.css"
+import { useArtifacts } from "../../stores/artifacts.ts"
+import { ArtifactsView } from "../sidePanel/ArtifactsView.tsx"
+
+const AGENT_SCENE: ReadonlyArray<WhiteboardElement> = [
+  { id: "api", type: "rectangle", x: 0, y: 0, width: 180, height: 80, label: { text: "API" } },
+  { id: "db", type: "ellipse", x: 320, y: 0, width: 160, height: 80, label: { text: "Database" } },
+  { id: "api-db", type: "arrow", x: 180, y: 40, start: { id: "api" }, end: { id: "db" } },
+]
+
+type Saved = { baseRevision: number; scene: { elements: ReadonlyArray<WhiteboardElement> } }
+type Staged = { threadId: string; source: { dataUrl: string; name: string } }
+type Comment = { anchor: { kind: string; ids: ReadonlyArray<string> }; body: string; attachments: unknown[] }
+
+let boardId = "board-0"
+let stored: WhiteboardContent = { version: 1, revision: 1, scene: { elements: AGENT_SCENE } }
+let calls: Array<string> = []
+let saves: Array<Saved> = []
+let comments: Array<Comment> = []
+let staged: Array<Staged> = []
+const listeners = new Set<(event: typeof PushEvent.Encoded) => void>()
+
+const boardAt = (revision: number): Artifact => ({
+  id: boardId,
+  kind: "whiteboard",
+  title: "Checkout flow",
+  entry: "scene.excalidraw",
+  version: revision,
+  revision,
+  files: [{ path: "scene.excalidraw", type: "application/json", size: 10 }],
+  createdAt: "2026-11-08T00:00:00.000Z",
+  updatedAt: "2026-11-08T00:00:00.000Z",
+  threadId: "t-1",
+})
+
+const bridge: HinacodeBridge = {
+  rpc: async (method, payload) => {
+    calls.push(method)
+    if (method === "artifacts.list") return { result: [boardAt(stored.revision)] }
+    if (method === "artifacts.readWhiteboard") return { result: stored }
+    if (method === "artifacts.saveWhiteboard") {
+      const save = payload as Saved
+      saves.push(save)
+      stored = { version: 2, revision: stored.revision + 1, scene: save.scene }
+      return { result: { type: "saved", version: stored.version, revision: stored.revision } }
+    }
+    if (method === "attachments.stage") {
+      staged.push(payload as Staged)
+      return {
+        result: {
+          id: "a-1",
+          name: "Checkout flow.png",
+          path: "/tmp/selection.png",
+          mime: "image/png",
+          kind: "image",
+          bytes: 10,
+        },
+      }
+    }
+    if (method === "artifacts.comment") {
+      comments.push(payload as Comment)
+      return { result: { comments: [], verdicts: [] } }
+    }
+    if (method === "environments.list") return { result: { clouds: [] } }
+    if (method === "clientSettings.get")
+      return { result: Schema.encodeSync(RpcMethods["clientSettings.get"].response)(defaultClientSettings) }
+    return { error: { tag: "NotStubbed", message: method } }
+  },
+  onEvent: (listener) => {
+    listeners.add(listener)
+    return () => listeners.delete(listener)
+  },
+  pathForFile: () => "",
+  liquidGlass: false,
+  runtime: { kind: "desktop" },
+}
+Object.defineProperty(window, "hinacode", { value: bridge })
+
+const thread = { id: "t-1" } as Thread
+
+const push = (event: typeof PushEvent.Encoded) => {
+  for (const listener of listeners) listener(event)
+}
+
+type Scene = ReadonlyArray<{ id: string; type: string; containerId?: string | null; isDeleted?: boolean }>
+
+const sceneOnCanvas = () =>
+  ((window as unknown as { h?: { elements: Scene } }).h?.elements ?? []).filter((element) => !element.isDeleted)
+
+beforeEach(({ task }) => {
+  boardId = `board-${task.id}`
+  stored = { version: 1, revision: 1, scene: { elements: AGENT_SCENE } }
+  calls = []
+  saves = []
+  comments = []
+  staged = []
+  useArtifacts.getState().select(thread.id, boardId)
+  push({ type: "artifact.updated", artifact: boardAt(1) })
+})
+
+const openBoard = async () => {
+  await render(
+    <div style={{ width: 800, height: 600, display: "flex", flexDirection: "column" }}>
+      <ArtifactsView thread={thread} />
+    </div>,
+  )
+  await expect.poll(() => sceneOnCanvas().map((element) => element.id)).toEqual(expect.arrayContaining(["api", "db"]))
+}
+
+const selectAll = async () => {
+  const canvas = document.querySelector("canvas.interactive")!.getBoundingClientRect()
+  await userEvent.click(page.elementLocator(document.querySelector("canvas.interactive")!), {
+    position: { x: 30, y: canvas.height / 2 },
+  })
+  const mod = /Mac/.test(navigator.platform) ? 4 : 2
+  await cdp().send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "a", code: "KeyA", modifiers: mod })
+  await cdp().send("Input.dispatchKeyEvent", { type: "keyUp", key: "a", code: "KeyA", modifiers: mod })
+}
+
+test("completes an agent's skeleton scene on the canvas without saving it", async () => {
+  await openBoard()
+
+  const labels = sceneOnCanvas().filter((element) => element.type === "text")
+  expect(labels.map((label) => label.containerId).toSorted()).toEqual(["api", "db"])
+  await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 800)))
+  expect(saves).toEqual([])
+  expect(page.getByText("Saved")).toBeInTheDocument()
+})
+
+test("saves full elements with the revision it loaded after the developer moves them", async () => {
+  await openBoard()
+
+  await selectAll()
+  await userEvent.keyboard("{ArrowRight}")
+
+  await expect.poll(() => saves.length, { timeout: 3000 }).toBe(1)
+  const [save] = saves
+  expect(save?.baseRevision).toBe(1)
+  const api = save?.scene.elements.find((element) => element.id === "api")
+  expect(api).toMatchObject({ x: 1, version: expect.any(Number), seed: expect.any(Number) })
+  expect(save?.scene.elements.find((element) => element["containerId"] === "api")).toMatchObject({ text: "API" })
+  await expect.element(page.getByText("Saved")).toBeInTheDocument()
+})
+
+test("adds an agent's patch next to the developer's unsaved edit", async () => {
+  await openBoard()
+  await selectAll()
+  await userEvent.keyboard("{ArrowDown}")
+
+  stored = {
+    version: 2,
+    revision: 2,
+    scene: { elements: [...AGENT_SCENE, { id: "cache", type: "rectangle", x: 0, y: 200, width: 120, height: 60 }] },
+  }
+  push({ type: "artifact.updated", artifact: boardAt(2) })
+
+  await expect.poll(() => sceneOnCanvas().map((element) => element.id)).toContain("cache")
+  await expect.poll(() => saves.length, { timeout: 3000 }).toBe(1)
+  expect(saves[0]?.baseRevision).toBe(2)
+  const elements = saves[0]?.scene.elements ?? []
+  expect(elements.find((element) => element.id === "api")).toMatchObject({ y: 1 })
+  expect(elements.find((element) => element.id === "cache")).toMatchObject({ y: 200 })
+})
+
+test("asks about the selected shapes by their container ids with an image of them", async () => {
+  await openBoard()
+  await selectAll()
+
+  await page.getByRole("button", { name: "Ask" }).click()
+  await userEvent.keyboard("Should the cache sit here?{Enter}")
+
+  await expect.poll(() => comments.length, { timeout: 5000 }).toBe(1)
+  const [comment] = comments
+  expect(comment?.body).toBe("Should the cache sit here?")
+  expect(comment?.anchor).toEqual({ kind: "elements", ids: ["api", "db", "api-db"] })
+  expect(comment?.attachments).toEqual([expect.objectContaining({ path: "/tmp/selection.png" })])
+  expect(staged).toEqual([
+    {
+      threadId: "t-1",
+      source: { dataUrl: expect.stringMatching(/^data:image\/png;base64,/), name: "Checkout flow.png" },
+    },
+  ])
+  expect(calls.indexOf("attachments.stage")).toBeLessThan(calls.indexOf("artifacts.comment"))
+  await expect.element(page.getByRole("textbox", { name: "Ask about the selection" })).not.toBeInTheDocument()
+})
