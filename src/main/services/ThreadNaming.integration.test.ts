@@ -39,6 +39,10 @@ vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@anthropic-ai/claude-agent-sdk")>()),
   query: async function* ({ prompt }: { prompt: string }) {
     prompts.push(prompt)
+    if (prompt.startsWith("/")) {
+      yield { type: "result", subtype: "success", result: "Command completed", local_command: "code_review" }
+      return
+    }
     yield { type: "result", subtype: "success", structured_output: { title: "Review login", branch: "review-login" } }
   },
 }))
@@ -342,6 +346,13 @@ describe("regenerating a thread's title", () => {
       ])
       expect(result.prompts[0]?.startsWith("aaa")).toBe(true)
       expect(result.prompts[0]?.endsWith("Now review the pull request")).toBe(true)
+    }),
+  )
+
+  it.live("names a thread that starts with a slash command instead of running the command", () =>
+    Effect.gen(function* () {
+      const result = yield* regenerate([message("1", "user", "/code-review look at PR 640")])
+      expect(result.title).toBe("Review login")
     }),
   )
 
