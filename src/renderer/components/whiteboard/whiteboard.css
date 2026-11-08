@@ -1,0 +1,29 @@
+[data-whiteboard] .excalidraw.excalidraw {
+  --default-bg-color: var(--background);
+  --island-bg-color: var(--popover);
+  --popup-bg-color: var(--popover);
+  --popup-text-color: var(--popover-foreground);
+  --text-primary-color: var(--foreground);
+  --input-bg-color: var(--background);
+  --input-border-color: var(--input);
+  --input-hover-bg-color: var(--muted);
+  --button-hover-bg: var(--muted);
+  --button-bg: var(--popover);
+  --color-surface-low: var(--popover);
+  --color-surface-mid: var(--muted);
+  --color-surface-high: var(--muted);
+  --color-on-surface: var(--foreground);
+  --icon-fill-color: var(--foreground);
+  --default-border-color: var(--border);
+  --dialog-border-color: var(--border);
+  --sidebar-border-color: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-darker: var(--primary);
+  --color-primary-darkest: var(--primary);
+  --color-primary-light: color-mix(in oklab, var(--primary) 20%, transparent);
+  --color-primary-light-darker: color-mix(in oklab, var(--primary) 30%, transparent);
+  --color-surface-primary-container: color-mix(in oklab, var(--primary) 25%, transparent);
+  --color-primary-hover: color-mix(in oklab, var(--primary) 85%, var(--foreground));
+  --focus-highlight-color: var(--ring);
+  --ui-font: var(--font-sans, inherit);
+}

@@ -2,6 +2,7 @@ import "./excalidrawAssets.ts"
 import { CaptureUpdateAction, Excalidraw, exportToBlob, MainMenu } from "@excalidraw/excalidraw"
 import type { ExcalidrawImperativeAPI, UIOptions } from "@excalidraw/excalidraw/types"
 import "@excalidraw/excalidraw/index.css"
+import "./whiteboard.css"
 import { useAtomValue } from "@effect/atom-react"
 import { FeedbackIcon } from "@hinacode/icons"
 import { AsyncResult, Atom } from "effect/reactivity"
@@ -137,9 +138,13 @@ function WhiteboardCanvas({
           }}
           className={cn("relative min-h-0 min-w-0 flex-1", comments.open && "@max-2xl:hidden")}
         >
-          <div className="absolute inset-0">
+          <div data-whiteboard className="absolute inset-0 bg-background">
             <Excalidraw
-              initialData={{ elements: sync.initial.elements, files: sync.initial.files }}
+              initialData={{
+                elements: sync.initial.elements,
+                files: sync.initial.files,
+                appState: { viewBackgroundColor: "transparent" },
+              }}
               excalidrawAPI={(created) => {
                 sync.attach(created)
                 setApi(created)
@@ -170,7 +175,6 @@ function WhiteboardCanvas({
             >
               <MainMenu>
                 <MainMenu.DefaultItems.SearchMenu />
-                <MainMenu.DefaultItems.ChangeCanvasBackground />
                 <MainMenu.DefaultItems.Help />
               </MainMenu>
             </Excalidraw>
@@ -244,7 +248,13 @@ const askAboutSelection = async ({
   if ((await sync.save()) === null) throw new Error(m.documents_not_saved())
   const image = await exportToBlob({
     elements: elementsWithLabels(ids, elements),
-    appState: { ...api.getAppState(), exportBackground: true, exportEmbedScene: false },
+    appState: {
+      ...api.getAppState(),
+      exportBackground: true,
+      exportEmbedScene: false,
+      viewBackgroundColor: "#ffffff",
+      exportWithDarkMode: api.getAppState().theme === "dark",
+    },
     files: api.getFiles(),
     mimeType: "image/png",
     exportPadding: 16,
