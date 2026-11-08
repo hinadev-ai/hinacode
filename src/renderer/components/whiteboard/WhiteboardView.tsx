@@ -168,7 +168,7 @@ function WhiteboardCanvas({
         </div>
         {comments.open && (
           <CommentsPane
-            threadId={threadId}
+            threadId={artifact.threadId ?? threadId}
             feedback={feedback}
             actions={actions}
             detached={NO_DETACHED}

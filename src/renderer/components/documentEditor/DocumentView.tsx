@@ -216,7 +216,7 @@ function DocumentEditor({
           {draft === null && <SelectionMenu editor={editor} onComment={startComment} />}
           <CommentComposer
             editor={editor}
-            threadId={threadId}
+            threadId={artifact.threadId ?? threadId}
             draft={draft}
             onSend={sendComment}
             onClose={closeDraft}
@@ -237,7 +237,7 @@ function DocumentEditor({
         </div>
         {comments.open && (
           <CommentsPane
-            threadId={threadId}
+            threadId={artifact.threadId ?? threadId}
             feedback={feedback}
             actions={actions}
             detached={detached}

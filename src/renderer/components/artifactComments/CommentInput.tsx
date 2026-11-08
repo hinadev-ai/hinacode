@@ -23,8 +23,7 @@ function useMentionableThreads(threadId: string): ReadonlyArray<Thread> {
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), () => noProjects)
   const thread = byId[threadId]
   if (thread === undefined) return []
-  const { sameMachine, otherMachines } = mentionableThreads(thread, Object.values(byId), projects)
-  return [...sameMachine, ...otherMachines]
+  return mentionableThreads(thread, Object.values(byId), projects).sameMachine
 }
 
 const scrollIntoViewNearest = (option: HTMLElement | null) => option?.scrollIntoView({ block: "nearest" })

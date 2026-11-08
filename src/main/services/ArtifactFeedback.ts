@@ -93,6 +93,23 @@ const make = Effect.gen(function* () {
       Effect.catchCause((cause) => Effect.logWarning("artifact feedback did not reach a thread", threadId, cause)),
     )
 
+  const inProject = (projectId: string | undefined) => (threadId: string) =>
+    threads.get(threadId).pipe(
+      Effect.map((target) => projectId === undefined || target.projectId === projectId),
+      Effect.catch(() => Effect.succeed(false)),
+    )
+
+  const recipients = (body: string, ownerThreadId: string | undefined) =>
+    Effect.gen(function* () {
+      const owner =
+        ownerThreadId === undefined
+          ? undefined
+          : yield* threads.get(ownerThreadId).pipe(Effect.catch(() => Effect.succeed(undefined)))
+      const mentioned = yield* Effect.filter(feedbackTargets(body, undefined), inProject(owner?.projectId))
+      if (mentioned.length > 0) return mentioned
+      return owner === undefined ? [] : [owner.id]
+    })
+
   const feedback = (id: string) =>
     Effect.flatMap(
       Effect.promise(() => store.feedback(id)),
@@ -116,7 +133,7 @@ const make = Effect.gen(function* () {
           ? yield* Effect.promise(() => selectedElements(store, id, savedAnchor.ids))
           : undefined
       yield* Effect.forEach(
-        feedbackTargets(body, artifact.threadId),
+        yield* recipients(body, artifact.threadId),
         (threadId) =>
           deliver(
             threadId,

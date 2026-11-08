@@ -22,6 +22,13 @@ const newThread = Effect.suspend(() => seedThread({ rootPath: mkdtempSync(join(b
   Effect.map(({ threadId }) => threadId),
 )
 
+const ownerAndSibling = Effect.gen(function* () {
+  const rootPath = mkdtempSync(join(base, "project-"))
+  const { projectId, threadId: owner } = yield* seedThread({ rootPath })
+  const { threadId: sibling } = yield* seedThread({ rootPath, projectId })
+  return { owner, sibling }
+})
+
 const delivered = Effect.runSync(Queue.unbounded<{ readonly threadId: string; readonly text: string }>())
 const receive = (threadId: string, text: string) => Queue.offer(delivered, { threadId, text }).pipe(Effect.asVoid)
 
@@ -56,10 +63,10 @@ const quietEvents = Layer.mergeAll(
 layer(makeTestAppLayer(join(base, "hinacode.sqlite"), { providers, events: quietEvents }), {
   excludeTestServices: true,
 })("ArtifactFeedback", (it) => {
-  it.effect("saves a developer comment and steers the owner, or the threads it mentions", () =>
+  it.effect("saves a developer comment and steers the owner, or the threads it mentions in its project", () =>
     Effect.gen(function* () {
-      const owner = yield* newThread
-      const other = yield* newThread
+      const { owner, sibling } = yield* ownerAndSibling
+      const outsider = yield* newThread
       const { store } = yield* Artifacts
       const feedback = yield* ArtifactFeedback
       const document = yield* Effect.promise(() =>
@@ -91,12 +98,16 @@ layer(makeTestAppLayer(join(base, "hinacode.sqlite"), { providers, events: quiet
       const asked = yield* feedback.comment({
         id: document.id,
         comment: comment?.id ?? "",
-        body: `@thread:${other} and @thread:gone, what do you think?`,
+        body: `@thread:${sibling}, @thread:${outsider} and @thread:gone, what do you think?`,
       })
       expect(asked.comments[0]?.messages).toHaveLength(2)
       const mentioned = yield* Queue.take(delivered)
-      expect(mentioned.threadId).toBe(other)
+      expect(mentioned.threadId).toBe(sibling)
       expect(mentioned.text).toMatch(/^Reply on document "Release Plan"[\s\S]*You were mentioned\./)
+      expect(yield* Queue.size(delivered)).toBe(0)
+
+      yield* feedback.comment({ id: document.id, comment: comment?.id ?? "", body: `@thread:${outsider} thoughts?` })
+      expect((yield* Queue.take(delivered)).threadId).toBe(owner)
       expect(yield* Queue.size(delivered)).toBe(0)
 
       const refused = yield* Effect.flip(feedback.comment({ id: document.id, comment: "c_gone", body: "Hi" }))
