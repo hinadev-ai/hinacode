@@ -2,7 +2,7 @@ import type { Editor } from "@tiptap/core"
 import { CellSelection } from "@tiptap/pm/tables"
 import { useEditorState } from "@tiptap/react"
 import { BubbleMenu } from "@tiptap/react/menus"
-import { InfoIcon, TrashIcon } from "@hinacode/icons"
+import { FeedbackIcon, InfoIcon, TrashIcon } from "@hinacode/icons"
 import type { ComponentType } from "react"
 import {
   RiBold,
@@ -243,7 +243,7 @@ export function DocumentToolbar({ editor }: { editor: Editor }) {
 const floatingSurface =
   "origin-bottom rounded-lg border border-border bg-popover p-0.5 shadow-md transition-[opacity,scale] duration-150 ease-out starting:opacity-0 motion-safe:starting:scale-96"
 
-export function SelectionMenu({ editor }: { editor: Editor }) {
+export function SelectionMenu({ editor, onComment }: { editor: Editor; onComment: () => void }) {
   const { active } = useActiveTools(editor)
   return (
     <BubbleMenu
@@ -257,8 +257,17 @@ export function SelectionMenu({ editor }: { editor: Editor }) {
         editedLink(current) === null
       }
     >
-      <div role="toolbar" aria-label={m.documents_selection_toolbar()} className={floatingSurface}>
+      <div
+        role="toolbar"
+        aria-label={m.documents_selection_toolbar()}
+        className={`${floatingSurface} flex items-center gap-0.5`}
+      >
         <ToolGroup editor={editor} tools={[...marks, link]} active={active} />
+        <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />
+        <Button variant="ghost" size="xs" onMouseDown={(event) => event.preventDefault()} onClick={onComment}>
+          <FeedbackIcon aria-hidden />
+          {m.comments_add()}
+        </Button>
       </div>
     </BubbleMenu>
   )

@@ -12,7 +12,7 @@ import { Button } from "../ui/button.tsx"
 const OPEN_DELAY_MS = 500
 const CLOSE_DELAY_MS = 200
 
-const popupSurface =
+export const popupSurface =
   "origin-(--transform-origin) rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-hidden transition-[opacity,scale] duration-150 ease-out data-starting-style:opacity-0 motion-safe:data-starting-style:scale-97"
 
 const field =

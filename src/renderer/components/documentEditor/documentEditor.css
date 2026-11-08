@@ -141,3 +141,14 @@
 [data-callout-label][aria-expanded="true"] {
   background: color-mix(in oklab, var(--callout-tone) 12%, transparent);
 }
+
+.hina-document .hina-comment {
+  border-bottom: 2px solid color-mix(in oklab, var(--attention) 70%, transparent);
+  background: color-mix(in oklab, var(--attention) 18%, transparent);
+  cursor: pointer;
+}
+
+.hina-document .hina-comment-pending {
+  border-bottom-style: dashed;
+  cursor: auto;
+}

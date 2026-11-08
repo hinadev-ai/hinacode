@@ -3,7 +3,7 @@ import { beforeEach, expect, onTestFinished, test } from "vitest"
 import { page, userEvent } from "vitest/browser"
 import { toast } from "sonner"
 import { render } from "vitest-browser-react"
-import type { Artifact, DocumentSaveResult } from "../../../shared/artifact.ts"
+import type { Artifact, ArtifactComment, ArtifactFeedback, DocumentSaveResult } from "../../../shared/artifact.ts"
 import { type HinacodeBridge, type PushEvent, RpcMethods } from "../../../shared/contract.ts"
 import { defaultClientSettings, type Thread } from "../../../shared/domain.ts"
 import { artifactUrl } from "../../../shared/channels.ts"
@@ -54,7 +54,18 @@ let saves: Array<{ baseRevision: number; markdown: string }> = []
 let storedImages: Array<string> = []
 let fileReads: Array<{ id: string; path: string }> = []
 let imageStored: Promise<void> = Promise.resolve()
+let feedback: ArtifactFeedback = { comments: [], verdicts: [] }
+let commented: Array<unknown> = []
 const listeners = new Set<(event: typeof PushEvent.Encoded) => void>()
+
+const agentComment = (id: string, quote: string, prefix: string, body: string): ArtifactComment => ({
+  id,
+  anchor: { kind: "text", quote, prefix, suffix: "" },
+  resolved: false,
+  messages: [{ id: `m-${id}`, author: { kind: "agent" }, body, createdAt: "2026-11-08T00:00:00.000Z" }],
+  createdAt: "2026-11-08T00:00:00.000Z",
+  updatedAt: "2026-11-08T00:00:00.000Z",
+})
 
 const bridge: HinacodeBridge = {
   rpc: async (method, payload) => {
@@ -89,6 +100,29 @@ const bridge: HinacodeBridge = {
         result: { dataUrl: read.id === documentId ? (storedImages.at(-1) ?? "") : "data:image/png;base64,b3RoZXI=" },
       }
     }
+    if (method === "artifacts.feedback") return { result: feedback }
+    if (method === "artifacts.comment") {
+      const request = payload as { anchor: ArtifactComment["anchor"]; body: string }
+      commented.push(payload)
+      feedback = {
+        ...feedback,
+        comments: [
+          ...feedback.comments,
+          {
+            id: `c-${commented.length}`,
+            anchor: request.anchor,
+            resolved: false,
+            messages: [
+              { id: "m-1", author: { kind: "developer" }, body: request.body, createdAt: "2026-11-08T00:00:00.000Z" },
+            ],
+            createdAt: "2026-11-08T00:00:00.000Z",
+            updatedAt: "2026-11-08T00:00:00.000Z",
+          },
+        ],
+      }
+      return { result: feedback }
+    }
+    if (method === "projects.list") return { result: [] }
     if (method === "environments.list") return { result: { clouds: [] } }
     if (method === "clientSettings.get")
       return { result: Schema.encodeSync(RpcMethods["clientSettings.get"].response)(defaultClientSettings) }
@@ -120,6 +154,8 @@ beforeEach(({ task }) => {
   storedImages = []
   fileReads = []
   imageStored = Promise.resolve()
+  feedback = { comments: [], verdicts: [] }
+  commented = []
   useArtifacts.getState().select(thread.id, documentId)
   push({ type: "artifact.updated", artifact: documentAt(1) })
 })
@@ -324,6 +360,61 @@ test("offers to keep the developer's edits or take the agent's when a save confl
   await alert.getByRole("button", { name: "Use theirs" }).click()
   await expect.element(editor.getByText("The agent's version.")).toBeInTheDocument()
   await expect.element(alert).not.toBeInTheDocument()
+})
+
+test("comments on the selected text with its quote and context, then highlights it", async () => {
+  const editor = await openDocument()
+  await page.getByText(/^Ship the/).click()
+  await userEvent.keyboard("{End}{Shift>}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{/Shift}")
+
+  await page.getByRole("toolbar", { name: "Text formatting" }).getByRole("button", { name: "Comment" }).click()
+  const input = page.getByRole("combobox", { name: "New comment" })
+  await expect.element(input).toHaveFocus()
+  await userEvent.keyboard("Should this ship second?{Enter}")
+
+  await expect
+    .poll(() => commented)
+    .toEqual([
+      {
+        id: documentId,
+        body: "Should this ship second?",
+        anchor: {
+          kind: "text",
+          quote: "first.",
+          prefix: "Release plan\nShip the editor ",
+          suffix: expect.stringMatching(/^\nWrite the design\nBuild it/),
+        },
+      },
+    ])
+  await expect.element(input).not.toBeInTheDocument()
+  await expect.poll(() => editor.element().querySelector(".hina-comment")?.textContent).toBe("first.")
+  await expect.element(page.getByRole("button", { name: "Comments 1" })).toBeInTheDocument()
+  expect(saves).toEqual([])
+})
+
+test("highlights loaded comments without saving, and opens one from its highlight", async () => {
+  feedback = {
+    comments: [
+      agentComment("c-editor", "editor", "Ship the ", "Which editor?"),
+      agentComment("c-gone", "the toolbar", "", "Where did it go?"),
+    ],
+    verdicts: [],
+  }
+  const editor = await openDocument()
+
+  await expect.poll(() => editor.element().querySelector(".hina-comment")?.textContent).toBe("editor")
+  expect(saves).toEqual([])
+  expect(document.querySelector(".hina-document")?.innerHTML).not.toContain("Which editor?")
+
+  await editor.getByText("editor", { exact: true }).click()
+  const pane = page.getByRole("region", { name: "Comments" })
+  const focused = pane.getByRole("article", { name: "Comment: Which editor?" })
+  await expect.element(focused).toHaveAttribute("data-focused", "true")
+  await expect.element(focused.getByText("Waiting on you")).toBeVisible()
+  await expect
+    .element(pane.getByRole("article", { name: "Comment: Where did it go?" }).getByText("The quoted text is gone"))
+    .toBeVisible()
+  expect(saves).toEqual([])
 })
 
 test("asks the agent to read the edited document from the thread's draft", async () => {
