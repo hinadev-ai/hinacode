@@ -100,8 +100,8 @@ function WhiteboardCanvas({
               sync.attach(created)
               setApi(created)
             }}
-            onChange={(elements, appState) => {
-              sync.changed(elements)
+            onChange={(elements, appState, files) => {
+              sync.changed(elements, appState, files)
               const selected = Object.keys(appState.selectedElementIds)
               setSelection((current) => (sameIds(current, selected) ? current : selected))
             }}

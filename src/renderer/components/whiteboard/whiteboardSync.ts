@@ -48,7 +48,8 @@ export function createWhiteboardSync(options: {
   let base = restored?.revision ?? options.loaded.revision
   let latest = Math.max(base, options.loaded.revision)
   let api: ExcalidrawImperativeAPI | null = null
-  let closed: Canvas | null = null
+  let shown: Canvas | null = null
+  let closed = false
   let applying = false
   let seen = hashElementsVersion(initial.elements)
   let edits = restored === undefined ? 0 : 1
@@ -68,18 +69,12 @@ export function createWhiteboardSync(options: {
     })
   }
 
-  const canvas = (): Canvas | null =>
-    closed ??
-    (api === null
-      ? null
-      : { elements: api.getSceneElementsIncludingDeleted(), files: api.getFiles(), appState: api.getAppState() })
-
   const show = (elements: ReadonlyArray<OrderedExcalidrawElement>, files: BinaryFiles) => {
-    if (closed !== null) {
-      closed = { ...closed, elements, files: { ...closed.files, ...files } }
+    if (shown === null) return
+    if (closed || api === null) {
+      shown = { ...shown, elements, files: { ...shown.files, ...files } }
       return
     }
-    if (api === null) return
     applying = true
     try {
       api.updateScene({ elements, captureUpdate: CaptureUpdateAction.NEVER })
@@ -87,11 +82,12 @@ export function createWhiteboardSync(options: {
     } finally {
       applying = false
     }
-    seen = hashElementsVersion(api.getSceneElementsIncludingDeleted())
+    shown = { elements: api.getSceneElementsIncludingDeleted(), files: api.getFiles(), appState: api.getAppState() }
+    seen = hashElementsVersion(shown.elements)
   }
 
   const apply = (content: WhiteboardContent) => {
-    const current = canvas()
+    const current = shown
     if (current === null) return
     const merged = mergeScene(snapshot, content.scene.elements, current)
     snapshot = merged.snapshot
@@ -110,7 +106,7 @@ export function createWhiteboardSync(options: {
       clearTimeout(timer)
       timer = undefined
       for (let attempt = 0; attempt < MERGE_ATTEMPTS; attempt += 1) {
-        const current = canvas()
+        const current = shown
         if (current === null || edits === savedEdits) return base
         const edit = edits
         const elements = current.elements.filter((element) => !element.isDeleted)
@@ -143,7 +139,7 @@ export function createWhiteboardSync(options: {
 
   const catchUp = (always = false) =>
     enqueue(async () => {
-      if (canvas() === null || (!always && latest <= base)) return
+      if (shown === null || closed || (!always && latest <= base)) return
       const current = await callPromise("artifacts.readWhiteboard", { id }, { environment }).catch(() => null)
       if (current !== null && current.revision > base) apply(current)
     })
@@ -152,10 +148,13 @@ export function createWhiteboardSync(options: {
     initial,
     attach: (created: ExcalidrawImperativeAPI) => {
       api = created
+      shown = { ...initial, appState: created.getAppState() }
       if (edits !== savedEdits) void save()
       void catchUp(true)
     },
-    changed: (elements: ReadonlyArray<OrderedExcalidrawElement>) => {
+    changed: (elements: ReadonlyArray<OrderedExcalidrawElement>, appState: AppState, files: BinaryFiles) => {
+      if (closed) return
+      shown = { elements, appState, files }
       const version = hashElementsVersion(elements)
       if (applying || version === seen) return
       seen = version
@@ -172,10 +171,10 @@ export function createWhiteboardSync(options: {
     save,
     close: () => {
       clearTimeout(timer)
-      const current = canvas()
-      if (current === null || edits === savedEdits) return
-      closed = current
+      closed = true
       api = null
+      const current = shown
+      if (current === null || edits === savedEdits) return
       unsavedWhiteboards.set(key, { ...current, revision: base, snapshot, saved: save() })
     },
   }
