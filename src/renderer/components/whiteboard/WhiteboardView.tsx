@@ -1,12 +1,21 @@
 import "./excalidrawAssets.ts"
-import { Excalidraw, exportToBlob, MainMenu } from "@excalidraw/excalidraw"
+import { CaptureUpdateAction, Excalidraw, exportToBlob, MainMenu } from "@excalidraw/excalidraw"
 import type { ExcalidrawImperativeAPI, UIOptions } from "@excalidraw/excalidraw/types"
 import "@excalidraw/excalidraw/index.css"
 import { useAtomValue } from "@effect/atom-react"
+import { FeedbackIcon } from "@hinacode/icons"
 import { AsyncResult, Atom } from "effect/reactivity"
-import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useState, useTransition } from "react"
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  startTransition,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react"
 import { toast } from "sonner"
-import type { Artifact, WhiteboardContent } from "../../../shared/artifact.ts"
+import type { Artifact, ArtifactComment, WhiteboardContent } from "../../../shared/artifact.ts"
 import { useTheme } from "../../lib/appearance.ts"
 import { readAsDataUrl } from "../../lib/dataUrl.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
@@ -14,6 +23,9 @@ import { call, callPromise, type EnvironmentId, familyOf, onPushEvent } from "..
 import { useClientSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import { getLocale } from "../../paraglide/runtime.js"
+import { cn } from "../../lib/utils.ts"
+import { CommentsPane } from "../artifactComments/CommentsPane.tsx"
+import { loadedFeedback, useFeedback, useFeedbackActions } from "../artifactComments/feedback.ts"
 import { Button } from "../ui/button.tsx"
 import { Textarea } from "../ui/textarea.tsx"
 import { anchorIds, elementsWithLabels } from "./whiteboardScene.ts"
@@ -70,6 +82,11 @@ function WhiteboardCanvas({
   const [selection, setSelection] = useState<ReadonlyArray<string>>([])
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null)
   const [fitted, setFitted] = useState(false)
+  const [comments, setComments] = useState<{ open: boolean; focused: string | null }>({ open: false, focused: null })
+  const canvasColumn = useRef<HTMLDivElement>(null)
+  const feedback = useFeedback(artifact)
+  const actions = useFeedbackActions(artifact)
+  const openCount = loadedFeedback(feedback).comments.filter((comment) => !comment.resolved).length
   const { scheme } = useTheme(useClientSettings().appearance.theme)
   const [sync] = useState(() =>
     createWhiteboardSync({
@@ -91,44 +108,90 @@ function WhiteboardCanvas({
     }
   }, [artifact.id, sync])
 
+  const showElements = (comment: ArtifactComment) => {
+    if (api === null || comment.anchor.kind !== "elements") return
+    const ids = new Set(comment.anchor.ids)
+    const targets = api.getSceneElements().filter((element) => ids.has(element.id))
+    if (targets.length === 0) return
+    if (canvasColumn.current?.checkVisibility() !== true)
+      startTransition(() => setComments({ open: false, focused: null }))
+    api.updateScene({
+      appState: { selectedElementIds: Object.fromEntries(targets.map((element) => [element.id, true as const])) },
+      captureUpdate: CaptureUpdateAction.NEVER,
+    })
+    api.scrollToContent(targets, { fitToViewport: true, viewportZoomFactor: 0.6, maxZoom: 1, animate: true })
+  }
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div ref={keepHandledKeys} className="relative min-h-0 flex-1">
-        <div className="absolute inset-0">
-          <Excalidraw
-            initialData={{ elements: sync.initial.elements, files: sync.initial.files }}
-            excalidrawAPI={(created) => {
-              sync.attach(created)
-              setApi(created)
-            }}
-            onChange={(elements, appState, files) => {
-              if (!fitted && api !== null && appState.width > 0) {
-                api.scrollToContent(elements, {
-                  fitToViewport: true,
-                  viewportZoomFactor: 0.9,
-                  maxZoom: 1,
-                  animate: false,
-                })
-                setFitted(true)
-              }
-              sync.changed(elements, appState, files)
-              const selected = Object.keys(appState.selectedElementIds)
-              setSelection((current) => (sameIds(current, selected) ? current : selected))
-            }}
-            theme={scheme}
-            langCode={EXCALIDRAW_LANGUAGES[getLocale()] ?? "en"}
-            UIOptions={UI_OPTIONS}
-            aiEnabled={false}
-          >
-            <MainMenu>
-              <MainMenu.DefaultItems.SearchMenu />
-              <MainMenu.DefaultItems.ChangeCanvasBackground />
-              <MainMenu.DefaultItems.Help />
-            </MainMenu>
-          </Excalidraw>
+    <div className="@container flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1">
+        <div
+          ref={(element) => {
+            canvasColumn.current = element
+            return keepHandledKeys(element)
+          }}
+          className={cn("relative min-h-0 min-w-0 flex-1", comments.open && "@max-2xl:hidden")}
+        >
+          <div className="absolute inset-0">
+            <Excalidraw
+              initialData={{ elements: sync.initial.elements, files: sync.initial.files }}
+              excalidrawAPI={(created) => {
+                sync.attach(created)
+                setApi(created)
+              }}
+              onChange={(elements, appState, files) => {
+                if (!fitted && api !== null && appState.width > 0) {
+                  api.scrollToContent(elements, {
+                    fitToViewport: true,
+                    viewportZoomFactor: 0.9,
+                    maxZoom: 1,
+                    animate: false,
+                  })
+                  setFitted(true)
+                }
+                sync.changed(elements, appState, files)
+                const selected = Object.keys(appState.selectedElementIds)
+                setSelection((current) => (sameIds(current, selected) ? current : selected))
+              }}
+              theme={scheme}
+              langCode={EXCALIDRAW_LANGUAGES[getLocale()] ?? "en"}
+              UIOptions={UI_OPTIONS}
+              aiEnabled={false}
+            >
+              <MainMenu>
+                <MainMenu.DefaultItems.SearchMenu />
+                <MainMenu.DefaultItems.ChangeCanvasBackground />
+                <MainMenu.DefaultItems.Help />
+              </MainMenu>
+            </Excalidraw>
+          </div>
         </div>
+        {comments.open && (
+          <CommentsPane
+            threadId={threadId}
+            feedback={feedback}
+            actions={actions}
+            detached={NO_DETACHED}
+            focused={comments.focused}
+            onShowAnchor={showElements}
+            onClose={() => startTransition(() => setComments({ open: false, focused: null }))}
+          />
+        )}
       </div>
       <WhiteboardFooter
+        comments={
+          <Button
+            variant="ghost"
+            size="xs"
+            aria-pressed={comments.open}
+            className="aria-pressed:bg-muted"
+            action={() => setComments({ open: !comments.open, focused: null })}
+          >
+            <FeedbackIcon aria-hidden />
+            {m.comments_title()}
+            {openCount > 0 && <span className="text-muted-foreground tabular-nums">{openCount}</span>}
+          </Button>
+        }
         threadId={threadId}
         artifact={artifact}
         status={status}
@@ -192,18 +255,22 @@ const askAboutSelection = async ({
 
 const focusOnMount = (element: HTMLTextAreaElement | null) => element?.focus()
 
+const NO_DETACHED: ReadonlySet<string> = new Set()
+
 function WhiteboardFooter({
   threadId,
   artifact,
   status,
   sync,
   api,
+  comments,
 }: {
   threadId: string
   artifact: Artifact
   status: SaveStatus
   sync: WhiteboardSync
   api: ExcalidrawImperativeAPI | null
+  comments: ReactNode
 }) {
   const [asking, setAsking] = useState(false)
   const [body, setBody] = useState("")
@@ -276,6 +343,7 @@ function WhiteboardFooter({
             {m.sidebar_retry()}
           </Button>
         )}
+        {comments}
         <Button
           variant={asking ? "ghost" : "outline"}
           size="xs"

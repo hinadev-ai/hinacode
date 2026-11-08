@@ -31,12 +31,12 @@ import { DocumentPaste } from "./documentPaste.ts"
 import "./documentEditor.css"
 import { LinkEditor, LinkHoverCard } from "./DocumentLinks.tsx"
 import { liveDocumentKey, printableHtml, showLiveDocument } from "./liveDocuments.ts"
+import { CommentsPane } from "../artifactComments/CommentsPane.tsx"
 import { DocumentToolbar, SelectionMenu, TableMenu } from "./DocumentToolbar.tsx"
 import { loadedFeedback, useFeedback, useFeedbackActions } from "../artifactComments/feedback.ts"
 import {
   CommentComposer,
   type CommentDraft,
-  CommentsPane,
   discardDraft,
   draftAtSelection,
   highlightsOf,
