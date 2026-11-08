@@ -3,7 +3,6 @@ import tailwindcss from "@tailwindcss/vite"
 import { playwright } from "@vitest/browser-playwright"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vitest/config"
-import { excalidrawFonts } from "./vite.excalidraw.ts"
 import { lazyLocales, paraglide } from "./vite.paraglide.ts"
 
 export default defineConfig({
@@ -36,7 +35,7 @@ export default defineConfig({
       },
       {
         resolve: { alias: { "@": fileURLToPath(new URL("./src/renderer", import.meta.url)) } },
-        plugins: [react(), tailwindcss(), paraglide(), lazyLocales(), excalidrawFonts()],
+        plugins: [react(), tailwindcss(), paraglide(), lazyLocales()],
         // FIXME: Vite finds lazily imported dependencies only when a test loads them, then re-optimizes and reloads mid-run
         optimizeDeps: { include: ["pele/lazy", "shiki/core", "shiki/engine/javascript", "@excalidraw/excalidraw"] },
         test: {

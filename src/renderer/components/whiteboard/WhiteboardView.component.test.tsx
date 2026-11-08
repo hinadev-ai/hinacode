@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { FONT_FAMILY } from "@excalidraw/excalidraw"
 import { beforeEach, expect, test } from "vitest"
 import { cdp, page, userEvent } from "vitest/browser"
 import { render } from "vitest-browser-react"
@@ -99,7 +100,13 @@ const push = (event: typeof PushEvent.Encoded) => {
   for (const listener of listeners) listener(event)
 }
 
-type Scene = ReadonlyArray<{ id: string; type: string; containerId?: string | null; isDeleted?: boolean }>
+type Scene = ReadonlyArray<{
+  id: string
+  type: string
+  containerId?: string | null
+  isDeleted?: boolean
+  fontFamily?: number
+}>
 
 type ViewState = {
   selectedElementIds: Record<string, true>
@@ -159,6 +166,16 @@ test("completes an agent's skeleton scene on the canvas without saving it", asyn
   await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 800)))
   expect(saves).toEqual([])
   expect(page.getByText("Saved")).toBeInTheDocument()
+})
+
+test("draws text in a system font and keeps Excalidraw's fonts off the page", async () => {
+  await openBoard()
+
+  const labels = sceneOnCanvas().filter((element) => element.type === "text")
+  expect(labels.map((label) => label.fontFamily)).toEqual([FONT_FAMILY.Helvetica, FONT_FAMILY.Helvetica])
+  const families = [...document.fonts].map((face) => face.family.replaceAll('"', ""))
+  expect(families).not.toContain("Excalifont")
+  expect(families).not.toContain("Xiaolai")
 })
 
 test("saves full elements with the revision it loaded after the developer moves them", async () => {

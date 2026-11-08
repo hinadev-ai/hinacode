@@ -2,7 +2,6 @@ import { resolve } from "node:path"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig, type Plugin } from "vite"
-import { excalidrawFonts } from "../../vite.excalidraw.ts"
 import { lazyLocales, paraglide } from "../../vite.paraglide.ts"
 
 const repo = resolve(import.meta.dirname, "../..")
@@ -48,7 +47,6 @@ export default defineConfig({
     paraglide(),
     lazyLocales(),
     contentSecurityPolicy(),
-    excalidrawFonts(),
   ],
   build: { outDir: resolve(import.meta.dirname, "dist"), emptyOutDir: true, target: "es2024" },
   worker: { format: "es" },

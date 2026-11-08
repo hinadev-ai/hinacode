@@ -1,4 +1,4 @@
-import "./excalidrawAssets.ts"
+import { WHITEBOARD_FONT } from "./systemFonts.ts"
 import { CaptureUpdateAction, Excalidraw, exportToBlob } from "@excalidraw/excalidraw"
 import type { ExcalidrawImperativeAPI, UIOptions } from "@excalidraw/excalidraw/types"
 import "@excalidraw/excalidraw/index.css"
@@ -143,7 +143,7 @@ function WhiteboardCanvas({
               initialData={{
                 elements: sync.initial.elements,
                 files: sync.initial.files,
-                appState: { viewBackgroundColor: "transparent" },
+                appState: { viewBackgroundColor: "transparent", currentItemFontFamily: WHITEBOARD_FONT },
               }}
               excalidrawAPI={(created) => {
                 sync.attach(created)

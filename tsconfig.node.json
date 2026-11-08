@@ -9,7 +9,6 @@
     "electron.vite.config.ts",
     "vite.server.config.ts",
     "vite.paraglide.ts",
-    "vite.excalidraw.ts",
     "vitest.global-setup.ts",
     "src/main/**/*",
     "src/preload/**/*",
