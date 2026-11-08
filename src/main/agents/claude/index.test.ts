@@ -1308,7 +1308,7 @@ describe("magpie", () => {
       Effect.gen(function* () {
         yield* magpieTurn("openrouter/deepseek-v4")
         const first = latestCli()
-        expect(flagEnv(first)).not.toHaveProperty("CLAUDE_CODE_EXTRA_BODY")
+        expect(flagEnv(first)).toMatchObject({ CLAUDE_CODE_EXTRA_BODY: "{}" })
 
         yield* magpieTurn("openrouter/deepseek-v4", true)
         expect(first.close).toHaveBeenCalled()
