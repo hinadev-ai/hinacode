@@ -1,44 +1,58 @@
-import { Children, Fragment, isValidElement, type ReactNode } from "react"
+import type { ReactNode } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
+import { GroupedCard } from "@/components/grouped-card"
 import { Icon, type IconName } from "@/components/icon"
 import { Toggle } from "@/components/ui"
 import { HIT, mono, radius, subheading } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 
-/** An inset group of rows with a small header above it and an optional footnote under it. */
+const ROW_PADDING = 16
+const TILE = 30
+const ROW_GAP = 12
+/** Hairlines start after the icon tile, under the label. */
+const SEPARATOR_INSET = ROW_PADDING + TILE + ROW_GAP
+
+/** A card of rows with a small header above it and an optional footnote under it. */
 export function SettingsGroup({
   title,
   footnote,
   children,
 }: {
-  title: string
+  title?: string
   footnote?: ReactNode
   children: ReactNode
 }) {
-  const theme = useTheme()
-  // Children.toArray keys each row by its place among the children, which a hidden row does not shift.
-  const rows = Children.toArray(children).filter(isValidElement)
   return (
     <View style={styles.group}>
-      <Text accessibilityRole="header" {...subheading} style={[styles.groupTitle, { color: theme.textMuted }]}>
-        {title}
-      </Text>
-      <View style={[styles.rows, { backgroundColor: theme.surface }]}>
-        {rows.map((row, index) => (
-          <Fragment key={row.key}>
-            {index > 0 && <View style={[styles.separator, { backgroundColor: theme.border }]} />}
-            {row}
-          </Fragment>
-        ))}
-      </View>
+      {title !== undefined && <SettingsHeading title={title} />}
+      <GroupedCard inset={SEPARATOR_INSET}>{children}</GroupedCard>
       {footnote !== undefined && <Footnote text={footnote} />}
     </View>
+  )
+}
+
+export function SettingsHeading({ title }: { title: string }) {
+  const theme = useTheme()
+  return (
+    <Text accessibilityRole="header" {...subheading} style={[styles.groupTitle, { color: theme.textMuted }]}>
+      {title}
+    </Text>
   )
 }
 
 export function Footnote({ text }: { text: ReactNode }) {
   const theme = useTheme()
   return <Text style={[styles.footnote, { color: theme.textMuted }]}>{text}</Text>
+}
+
+/** A row's icon on a rounded tile, as in iOS Settings. */
+export function IconTile({ icon, color }: { icon: IconName; color?: string }) {
+  const theme = useTheme()
+  return (
+    <View style={[styles.tile, { backgroundColor: theme.surface }]}>
+      <Icon name={icon} size={17} color={color ?? theme.text} />
+    </View>
+  )
 }
 
 /** A row with a leading icon, a label and a trailing control or value. Pressable when `onPress` is given. */
@@ -66,7 +80,7 @@ export function SettingsRow({
   const theme = useTheme()
   const content = (
     <>
-      {icon !== undefined && <Icon name={icon} size={18} color={theme.textMuted} />}
+      {icon !== undefined && <IconTile icon={icon} color={disabled ? theme.textMuted : undefined} />}
       <Text numberOfLines={labelLines} style={[styles.label, { color: disabled ? theme.textMuted : theme.text }]}>
         {label}
       </Text>
@@ -88,9 +102,47 @@ export function SettingsRow({
       aria-disabled={disabled}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.surfaceStrong }]}
+      style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.surface }]}
     >
       {content}
+    </Pressable>
+  )
+}
+
+/** One choice of several, checked when selected. `hint` reaches screen readers only. */
+export function CheckRow({
+  icon,
+  label,
+  hint,
+  color,
+  selected,
+  disabled = false,
+  onPress,
+}: {
+  icon?: IconName
+  label: string
+  hint?: string
+  /** Tints the icon, such as a choice that lowers a safeguard. */
+  color?: string
+  selected: boolean
+  disabled?: boolean
+  onPress: () => void
+}) {
+  const theme = useTheme()
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityLabel={label}
+      accessibilityHint={hint}
+      aria-checked={selected}
+      aria-disabled={disabled}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.surface }]}
+    >
+      {icon !== undefined && <IconTile icon={icon} color={disabled ? theme.textMuted : color} />}
+      <Text style={[styles.label, { color: disabled ? theme.textMuted : theme.text }]}>{label}</Text>
+      {selected && <Icon name="Check" size={20} color={disabled ? theme.textMuted : theme.primary} />}
     </Pressable>
   )
 }
@@ -116,20 +168,25 @@ export function SwitchRow({
 }
 
 const styles = StyleSheet.create({
-  group: { gap: 6 },
-  groupTitle: { fontSize: 13, fontWeight: "600", paddingHorizontal: 16 },
-  rows: { borderRadius: radius.lg, overflow: "hidden" },
-  separator: { height: StyleSheet.hairlineWidth, marginLeft: 46 },
+  group: { gap: 8 },
+  groupTitle: { fontSize: 13, fontWeight: "600", paddingHorizontal: 8 },
+  tile: {
+    width: TILE,
+    height: TILE,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.sm + 2,
+  },
   row: {
-    minHeight: HIT,
+    minHeight: HIT + 8,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 16,
+    gap: ROW_GAP,
+    paddingHorizontal: ROW_PADDING,
     paddingVertical: 8,
   },
-  label: { flex: 1, fontSize: 15 },
+  label: { flex: 1, fontSize: 16 },
   value: { flexShrink: 1, maxWidth: "50%", fontSize: 15, textAlign: "right" },
   mono: { fontFamily: mono, fontSize: 14 },
-  footnote: { fontSize: 13, lineHeight: 18, paddingHorizontal: 16 },
+  footnote: { fontSize: 13, lineHeight: 18, paddingHorizontal: 8 },
 })
