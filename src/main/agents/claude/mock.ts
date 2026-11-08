@@ -325,7 +325,8 @@ export const usageLimitLayer = (defaultScenario: MockScenario = "usage-limit", r
         stop: Deferred.Deferred<void>,
       ): Stream.Stream<AgentEvent> => {
         if (isPlayed(scenario)) {
-          return play(playedSteps[scenario](), {
+          const bound: AgentEvent = { type: "session_bound", providerSessionId: `mock-played-${input.threadId}` }
+          const played = play(playedSteps[scenario](), {
             threadId: input.threadId,
             stopped: stop,
             sleep: (ms) => Effect.sleep(ms),
@@ -333,6 +334,7 @@ export const usageLimitLayer = (defaultScenario: MockScenario = "usage-limit", r
             answer: (request) => awaitReply(questionReplies, request.id),
             callTool: (name, args) => callMcpTool(input.mcpServer, name, args),
           })
+          return Stream.concat(Stream.make(bound), played)
         }
         switch (scenario) {
           case "usage-limit":
