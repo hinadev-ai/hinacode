@@ -270,7 +270,7 @@ function PinnedThreads({ query }: { query: Query }) {
       className="flex flex-col"
       render={<section aria-label={m.sidebar_pinned()} />}
     >
-      <CollapsibleTrigger className="group/heading mx-2 flex h-7 items-center gap-0.5 rounded-md px-2.5 text-xs font-medium text-sidebar-meta outline-none hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring">
+      <CollapsibleTrigger className="group/heading mx-2 flex h-7 items-center gap-0.5 rounded-md px-2.5 text-xs font-medium text-sidebar-meta outline-none hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-inset">
         <h2>{m.sidebar_pinned()}</h2>
         <ChevronDownIcon
           aria-hidden
@@ -487,7 +487,7 @@ function Shelf({
       className="flex flex-col-reverse"
       render={<section aria-label={title} />}
     >
-      <CollapsibleTrigger className="group/heading mx-2 flex h-7 items-center gap-0.5 rounded-md px-2.5 text-xs font-medium text-sidebar-meta outline-none hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring">
+      <CollapsibleTrigger className="group/heading mx-2 flex h-7 items-center gap-0.5 rounded-md px-2.5 text-xs font-medium text-sidebar-meta outline-none hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-inset">
         <h2>{title}</h2>
         <ChevronDownIcon
           aria-hidden
