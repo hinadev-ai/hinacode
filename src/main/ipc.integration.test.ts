@@ -881,6 +881,33 @@ describe("projects, threads and settings over rpc", () => {
     expect(pushed()).toContainEqual({ type: "thread.removed", id: thread.id })
   })
 
+  test("settling, reopening, archiving and unarchiving a thread tell every window", async () => {
+    const root = join(dir, "settled-elsewhere")
+    execFileSync("git", ["init", "-q", "-b", "main", root])
+    const project = result(await invoke("projects.create", { name: "settled", rootPath: root, setupScript: null }))
+    const thread = result(await invoke("threads.create", { projectId: project.id }))
+    const pushedThread = () =>
+      pushed().flatMap((event) =>
+        event.type === "thread.updated" && event.thread.id === thread.id ? [event.thread] : [],
+      )
+
+    electron.pushes.length = 0
+    const settled = result(await invoke("threads.settle", { threadId: thread.id }))
+    expect(pushedThread()).toStrictEqual([settled])
+
+    electron.pushes.length = 0
+    const reopened = result(await invoke("threads.unsettle", { threadId: thread.id }))
+    expect(pushedThread()).toStrictEqual([reopened])
+
+    electron.pushes.length = 0
+    const archived = result(await invoke("threads.archive", { threadId: thread.id }))
+    expect(pushedThread()).toStrictEqual([archived])
+
+    electron.pushes.length = 0
+    const unarchived = result(await invoke("threads.unarchive", { threadId: thread.id }))
+    expect(pushedThread()).toStrictEqual([unarchived])
+  })
+
   test("attaching a terminal refuses offsets that are not character counts", async () => {
     const project = result(await invoke("projects.list", undefined))[0]!
     const thread = result(await invoke("threads.create", { projectId: project.id }))
