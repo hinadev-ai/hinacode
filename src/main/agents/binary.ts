@@ -25,7 +25,7 @@ const expandHome = (path: string) => (path === "~" || path.startsWith("~/") ? jo
 
 const commandFor = (provider: ProviderId, name: string) =>
   Effect.gen(function* () {
-    if (name !== providerInfo[provider].binary) return name
+    if (name !== providerInfo[provider].binary) return expandHome(name)
     const configured = yield* (yield* AgentBinaries).configured
     return expandHome(configured[binaryOwner(provider)] ?? name)
   })
@@ -38,13 +38,15 @@ export const installedBinary = (provider: ProviderId, name: string) =>
     const key = `${command}\0${process.env["PATH"] ?? ""}`
     const path = found.get(key) ?? (yield* Effect.promise(() => findBinary(command)))
     if (path === undefined) {
-      const { name: label, installUrl } = providerInfo[provider]
+      const { name: label, installUrl, binary } = providerInfo[provider]
       return yield* new AgentError({
         provider,
         message:
-          command === name
+          command === binary
             ? `${label} is not installed. Install it from ${installUrl}, then try again`
-            : `${label} was not found at ${command}. Fix its CLI path in Settings > Providers`,
+            : name === binary
+              ? `${label} was not found at ${command}. Fix its CLI path in Settings > Providers`
+              : `${label} was not found at ${command}, the account's binary path`,
       })
     }
     found.set(key, path)
