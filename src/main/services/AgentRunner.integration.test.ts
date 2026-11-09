@@ -1254,7 +1254,8 @@ it("starts a turn with a steer that waited for the previous turn to finish", asy
     await late
 
     expect(steers).toStrictEqual([])
-    await vi.waitFor(() => expect(turns.map(({ input }) => input.prompt)).toStrictEqual(["waits for Stop", "late"]))
+    await vi.waitFor(() => expect(turns).toHaveLength(2))
+    expect(turns[1]?.input.prompt).toMatch(/\nlate$/)
   })
 })
 

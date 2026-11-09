@@ -717,6 +717,7 @@ const make = Effect.gen(function* () {
       when: Effect.Effect<boolean, PersistenceError>,
     ) =>
       Effect.gen(function* () {
+        if (finishing) return "finished" as const
         if (provider.steer === undefined || !(yield* when)) return false
         if (!waitsOnUser(thread.id)) {
           yield* steerTurn(text, attachments, "now")
@@ -1232,11 +1233,16 @@ const make = Effect.gen(function* () {
       ),
     )
 
-  const steerWhen: typeof AgentRunner.Service.steerWhen = ({ threadId, text, attachments, when }) =>
+  const steerWhen: typeof AgentRunner.Service.steerWhen = (input) =>
     Effect.suspend(() => {
+      const { threadId, text, attachments, when } = input
       const turn = activeTurns.get(threadId)
       if (turn === undefined) return sendWhen(threadId, text, attachments, {}, when)
-      if (turn.provider.steer !== undefined) return turn.steer(text, attachments, when)
+      if (turn.provider.steer !== undefined) {
+        return Effect.flatMap(turn.steer(text, attachments, when), (steered) =>
+          steered === "finished" ? steerWhen(input) : Effect.succeed(steered),
+        )
+      }
       return Effect.flatMap(when, (ready) =>
         ready ? Effect.as(queue(threadId, text, attachments), true) : Effect.succeed(false),
       )
