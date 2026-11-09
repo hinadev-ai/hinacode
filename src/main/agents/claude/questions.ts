@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import type { CanUseTool, PermissionResult } from "@anthropic-ai/claude-agent-sdk"
 import { Deferred, Effect, Option, Schema } from "effect"
-import type { AgentEvent, Question, QuestionAnswers } from "../../../shared/agent.ts"
+import type { AgentEvent, ProviderId, Question, QuestionAnswers } from "../../../shared/agent.ts"
 
 export const QUESTION_TOOL = "AskUserQuestion"
 
@@ -33,7 +33,10 @@ const toQuestion = (question: (typeof AskUserQuestionInput.Type)["questions"][nu
   secret: false,
 })
 
-export function makeQuestions<S extends QuestionSession>(emit: (session: S, event: AgentEvent) => void) {
+export function makeQuestions<S extends QuestionSession>(
+  provider: ProviderId,
+  emit: (session: S, event: AgentEvent) => void,
+) {
   const pending = new Map<string, Deferred.Deferred<QuestionAnswers>>()
 
   const ask = async (
@@ -56,7 +59,7 @@ export function makeQuestions<S extends QuestionSession>(emit: (session: S, even
       request: {
         id: requestId,
         threadId: session.threadId,
-        provider: "claude",
+        provider,
         questions: decoded.value.questions.map(toQuestion),
       },
     })
