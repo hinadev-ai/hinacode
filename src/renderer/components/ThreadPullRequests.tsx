@@ -16,6 +16,7 @@ import type {
 } from "../../shared/domain.ts"
 import {
   type CodeHost,
+  codeHostName,
   codeHostOfUrl,
   parseGitLabMergeRequestUrl,
   pullRequestNumberLabel,
@@ -576,7 +577,7 @@ function PullRequestHeader({
   const open = isOpen(pullRequest.status)
   const blocker =
     pullRequest.status === "draft"
-      ? m.pr_merge_blocked_draft()
+      ? m.pr_merge_blocked_draft({ host: codeHostName(host) })
       : pullRequest.mergeable === "conflicting"
         ? m.pr_merge_blocked_conflicts()
         : null
@@ -1011,8 +1012,12 @@ function ConfirmDialog({
           </AlertDialogTitle>
           <AlertDialogDescription>
             {shown?.type === "close"
-              ? m.pr_close_body()
-              : m.pr_merge_body({ head: pullRequest.headRef, base: pullRequest.baseRef })}
+              ? m.pr_close_body({ host: codeHostName(codeHostOfUrl(pullRequest.url)) })
+              : m.pr_merge_body({
+                  head: pullRequest.headRef,
+                  base: pullRequest.baseRef,
+                  host: codeHostName(codeHostOfUrl(pullRequest.url)),
+                })}
           </AlertDialogDescription>
         </AlertDialogHeader>
         {error && (
@@ -1219,8 +1224,8 @@ function CommentComposer({ url }: { url: string }) {
         onKeyDown={(event) => {
           if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !empty && !pending) post()
         }}
-        placeholder={m.pr_comment_placeholder()}
-        aria-label={m.pr_comment_placeholder()}
+        placeholder={m.pr_comment_placeholder({ host: codeHostName(codeHostOfUrl(url)) })}
+        aria-label={m.pr_comment_placeholder({ host: codeHostName(codeHostOfUrl(url)) })}
         disabled={!signedIn}
         className="max-h-48 text-xs"
       />

@@ -1,6 +1,11 @@
 import { useAtomValue } from "@effect/atom-react"
 import { startTransition, useState, useTransition } from "react"
-import { codeHostOfUrl, parseGitLabMergeRequestUrl, pullRequestNumberLabel } from "../../shared/codeHost.ts"
+import {
+  codeHostName,
+  codeHostOfUrl,
+  parseGitLabMergeRequestUrl,
+  pullRequestNumberLabel,
+} from "../../shared/codeHost.ts"
 import type { MergeMethod, PullRequest, PullRequestLink } from "../../shared/domain.ts"
 import { usePullRequestHref } from "../lib/environments.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -250,7 +255,12 @@ function MergeDialog({
           <AlertDialogDescription>
             {several
               ? m.sidebar_pr_merge_all_body()
-              : first && m.pr_merge_body({ head: first.headRefName, base: first.baseRefName })}
+              : first &&
+                m.pr_merge_body({
+                  head: first.headRefName,
+                  base: first.baseRefName,
+                  host: codeHostName(codeHostOfUrl(first.url)),
+                })}
           </AlertDialogDescription>
         </AlertDialogHeader>
         {several && (
