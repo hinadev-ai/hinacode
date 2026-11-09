@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, onTestFinished, test } from "vitest"
@@ -162,6 +162,30 @@ test("explains a sourcePath it cannot read and writes nothing", async () => {
   await expect(publish("/no/such/file.md")).rejects.toThrow(/Cannot read sourcePath "\/no\/such\/file\.md": .*ENOENT/)
   await expect(publish(tmpdir())).rejects.toThrow(/is not a file/)
   await expect(publish(oversized)).rejects.toThrow(/A version holds at most/)
+  expect(await store.list()).toEqual([])
+})
+
+test("refuses sourcePaths that together pass the size cap before reading any of them", async () => {
+  const store = openTemporaryStore()
+  const { publish_artifact } = artifactTools
+  const half = new Uint8Array(MAX_ARTIFACT_BYTES / 2 + 1)
+  const unreadable = temporaryFile("locked.html", "<p>")
+  chmodSync(unreadable, 0o000)
+
+  await expect(
+    publish_artifact.handle(
+      store,
+      publish_artifact.input.parse({
+        title: "Bundle",
+        files: [
+          { path: "index.html", sourcePath: unreadable },
+          { path: "a.bin", sourcePath: temporaryFile("a.bin", half) },
+          { path: "b.bin", sourcePath: temporaryFile("b.bin", half) },
+        ],
+      }),
+      {},
+    ),
+  ).rejects.toThrow(/A version holds at most/)
   expect(await store.list()).toEqual([])
 })
 
