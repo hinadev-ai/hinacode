@@ -720,3 +720,149 @@ test("prints a callout's label and a diagram, without their controls or source",
   expect(shown(print.querySelector("[data-diagram] pre"))).toBe(false)
   expect(shown(print.querySelector("[data-diagram] button"))).toBe(false)
 })
+
+const highlighted = (editor: Awaited<ReturnType<typeof openDocument>>) =>
+  Array.from(editor.element().querySelectorAll(".hina-comment"), (mark) => mark.textContent)
+
+const detachedNotice = (body: string) =>
+  page
+    .getByRole("region", { name: "Comments" })
+    .getByRole("article", { name: `Comment: ${body}` })
+    .getByText("The quoted text is gone")
+
+test("keeps a highlight while the developer edits around its quote, drops it while the quote is edited, and restores it on undo", async () => {
+  feedback = { comments: [agentComment("c-editor", "editor", "Ship the ", "Which editor?")] }
+  const editor = await openDocument()
+  await expect.poll(() => highlighted(editor)).toEqual(["editor"])
+
+  await typeAtEnd(" Then the panel.")
+  await expect.poll(() => highlighted(editor)).toEqual(["editor"])
+
+  await page.getByText(/^Ship the/).click()
+  await userEvent.keyboard(`{Home}${"{ArrowRight}".repeat("Ship the e".length)}X`)
+  await expect.poll(() => highlighted(editor)).toEqual([])
+
+  await userEvent.keyboard(`{${mod}>}z{/${mod}}`)
+  await expect.poll(() => highlighted(editor)).toEqual(["editor"])
+  await page.getByRole("button", { name: "Comments 1" }).click()
+  await expect
+    .element(page.getByRole("region", { name: "Comments" }).getByRole("article", { name: "Comment: Which editor?" }))
+    .toBeVisible()
+  await expect.element(detachedNotice("Which editor?")).not.toBeInTheDocument()
+})
+
+test("detaches a comment when the developer deletes the line it quotes", async () => {
+  feedback = { comments: [agentComment("c-editor", "editor", "Ship the ", "Which editor?")] }
+  const editor = await openDocument()
+  await expect.poll(() => highlighted(editor)).toEqual(["editor"])
+
+  await page.getByText(/^Ship the/).click()
+  await userEvent.keyboard("{End}{Shift>}{Home}{/Shift}{Backspace}")
+
+  await expect.poll(() => highlighted(editor)).toEqual([])
+  await expect.poll(() => saves.at(-1)?.markdown ?? "", { timeout: 3000 }).not.toContain("editor** first")
+  await page.getByRole("button", { name: "Comments 1" }).click()
+  await expect.element(detachedNotice("Which editor?")).toBeVisible()
+})
+
+test("follows a quote through the agent's republish, and detaches it when the agent drops the quote", async () => {
+  feedback = { comments: [agentComment("c-editor", "editor", "Ship the ", "Which editor?")] }
+  const editor = await openDocument()
+  await expect.poll(() => highlighted(editor)).toEqual(["editor"])
+
+  stored = { version: 2, revision: 2, markdown: "# Release plan\n\nA new intro.\n\nShip the editor first.\n" }
+  push({ type: "artifact.updated", artifact: documentAt(2) })
+  await expect.element(editor.getByText("A new intro.")).toBeInTheDocument()
+  await expect.poll(() => highlighted(editor)).toEqual(["editor"])
+
+  stored = { version: 3, revision: 3, markdown: "# Release plan\n\nShip the toolbar first.\n" }
+  push({ type: "artifact.updated", artifact: documentAt(3) })
+  await expect.element(editor.getByText("Ship the toolbar first.")).toBeInTheDocument()
+  await expect.poll(() => highlighted(editor)).toEqual([])
+  await page.getByRole("button", { name: "Comments 1" }).click()
+  await expect.element(detachedNotice("Which editor?")).toBeVisible()
+  expect(saves).toEqual([])
+})
+
+test("comments on text around emoji and right-to-left script and highlights the same text", async () => {
+  stored = {
+    ...stored,
+    markdown: "# Release plan\n\n👩🏽‍💻 ships 🚀🚀 the editor.\n\nהעורך נשלח קודם. المحرر أولاً.\n",
+  }
+  const editor = await openDocument()
+  await page.getByText(/ships/).click()
+  await userEvent.keyboard(
+    "{End}{Shift>}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{/Shift}",
+  )
+  await page.getByRole("toolbar", { name: "Text formatting" }).getByRole("button", { name: "Comment" }).click()
+  await expect.element(page.getByRole("combobox", { name: "New comment" })).toHaveFocus()
+  await userEvent.keyboard("Which one?{Enter}")
+
+  await expect.poll(() => commented.length).toBe(1)
+  expect(commented[0]).toMatchObject({ anchor: { quote: "editor." } })
+  await expect.poll(() => highlighted(editor)).toEqual(["editor."])
+
+  feedback = {
+    comments: [
+      ...feedback.comments,
+      agentComment("c-rtl", "נשלח קודם", "העורך ", "Is this first?"),
+      agentComment("c-emoji", "🚀🚀", "👩🏽‍💻 ships ", "Why twice?"),
+    ],
+  }
+  push({ type: "artifact.feedback", id: documentId })
+  await expect.poll(() => highlighted(editor).toSorted()).toEqual(["editor.", "נשלח קודם", "🚀🚀"].toSorted())
+})
+
+test("opens a long document and saves an edit at its end without losing a block", async () => {
+  const sections = Array.from(
+    { length: 400 },
+    (_, index) => `## Step ${index + 1}\n\nThe agent writes paragraph ${index + 1} with **bold**, \`code\` and 🚀.\n`,
+  )
+  stored = { ...stored, markdown: `# Release plan\n\n${sections.join("\n")}` }
+  const editor = await openDocument()
+  await expect.element(editor.getByRole("heading", { name: "Step 400" })).toBeInTheDocument()
+
+  await editor.getByText(/^The agent writes paragraph 400 with/).click()
+  await userEvent.keyboard("{End} Done.")
+
+  await expect.poll(() => saves.length, { timeout: 5000 }).toBe(1)
+  const saved = saves[0]?.markdown ?? ""
+  expect(saved.match(/^## Step \d+$/gm)).toHaveLength(400)
+  expect(saved).toContain("The agent writes paragraph 400 with **bold**, `code` and 🚀. Done.")
+})
+
+const CHART = `\`\`\`chart
+{
+  "type": "bar",
+  "title": "Saves peaked on Wednesday",
+  "x": "day",
+  "series": [{ "key": "saves", "label": "Saves" }],
+  "rows": [
+    { "day": "Mon", "saves": 3 },
+    { "day": "Wed", "saves": 9 }
+  ]
+}
+\`\`\``
+
+test("draws a chart block, shows its rows, and saves its fence unchanged", async () => {
+  const { editor, saved } = await savedAfterEdit(CHART)
+
+  await expect
+    .poll(() => editor.element().querySelector("[data-chart-title]")?.textContent)
+    .toBe("Saves peaked on Wednesday")
+  await expect.poll(() => editor.element().querySelector("[data-chart] svg"), { timeout: 10_000 }).not.toBeNull()
+  await editor.getByRole("button", { name: "Data" }).click()
+  await expect.element(editor.getByRole("cell", { name: "Wed" })).toBeVisible()
+  expect(saved).toContain(CHART)
+})
+
+test("shows the error and the source of a chart that cannot be drawn", async () => {
+  stored = { ...stored, markdown: '# Release plan\n\n```chart\n{ "type": "pie", "x": "day" }\n```\n' }
+  const editor = await openDocument()
+
+  await expect
+    .poll(() => editor.element().querySelector("[data-chart] [role=alert]")?.textContent ?? "", { timeout: 10_000 })
+    .not.toBe("")
+  await expect.element(editor.getByRole("code")).toBeVisible()
+  expect(saves).toEqual([])
+})
