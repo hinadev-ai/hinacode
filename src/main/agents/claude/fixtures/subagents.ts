@@ -10,6 +10,8 @@ interface Script {
   readonly id: string
   readonly label: string
   readonly provider?: Subagent["provider"]
+  readonly model?: string
+  readonly effort?: string
   readonly prompt: string
   readonly status: Subagent["status"]
   readonly startedSecondsAgo: number
@@ -47,6 +49,8 @@ const scripts: ReadonlyArray<Script> = [
     id: "mock-agent-flaky",
     label: "Reproduce the flaky macOS job",
     provider: "codex",
+    model: "gpt-6.1-sol",
+    effort: "medium",
     prompt: "Run the e2e suite for threads.feature five times and report which scenario fails.",
     status: "running",
     startedSecondsAgo: 128,
@@ -60,6 +64,46 @@ const scripts: ReadonlyArray<Script> = [
       grep("toBeInViewport", "e2e/steps/threads.steps.ts:75"),
       bash("pnpm test:e2e --grep threads", "11 passed, 1 failed (46s)"),
     ],
+  },
+  {
+    id: "mock-agent-magpie-claude",
+    label: "Trace the settle race",
+    provider: "magpie",
+    model: "claude/claude-opus-5-5",
+    effort: "high",
+    prompt: "Find where settle and auto-archive can run on the same thread at once.",
+    status: "running",
+    startedSecondsAgo: 64,
+    steps: [grep("autoArchive", "src/main/services/Threads.ts:412: autoArchive(thread)")],
+    upcoming: [
+      read("src/main/services/Threads.ts", "const settle = (threadId: string) =>"),
+      bash("pnpm test src/main/services/Threads.integration.test.ts", "21 passed"),
+    ],
+    report: "Settle holds the thread lock before it archives, so the two cannot interleave.",
+  },
+  {
+    id: "mock-agent-magpie-codex",
+    label: "Profile idle CPU",
+    provider: "magpie",
+    model: "codex/gpt-6.1-sol",
+    effort: "xhigh",
+    prompt: "Measure idle CPU with 50 threads open and name the busiest timer.",
+    status: "running",
+    startedSecondsAgo: 95,
+    steps: [bash("node scripts/perf/measure.ts idle", "renderer 3.1% main 0.4%")],
+    upcoming: [grep("setInterval", "src/renderer/components/ThreadAgents.tsx:61: setInterval(tick, 1000)")],
+  },
+  {
+    id: "mock-agent-magpie-kimi",
+    label: "Translate the new strings",
+    provider: "magpie",
+    model: "openrouter/moonshotai/kimi-k3",
+    prompt: "Add ja, zh-TW and zh-CN for the keys added on this branch.",
+    status: "completed",
+    startedSecondsAgo: 210,
+    ranSeconds: 40,
+    steps: [read("messages/en.json", '"agents_empty": "No agents yet"')],
+    report: "Added 4 keys to each catalog.",
   },
   {
     id: "mock-agent-migrations",
@@ -161,6 +205,8 @@ export function mockSubagents(now: number) {
       update({
         id: script.id,
         ...(script.provider && { provider: script.provider }),
+        ...(script.model && { model: script.model }),
+        ...(script.effort && { effort: script.effort }),
         label: script.label,
         callId: callIdOf(script),
         status: "running",
