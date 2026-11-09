@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { afterAll, describe, expect, layer } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
-import { Deferred, Effect, Fiber, Layer, Option } from "effect"
+import { Clock, Deferred, Effect, Fiber, Layer, Option } from "effect"
 import { TestClock } from "effect/testing"
 import { SqlClient } from "effect/sql"
 import type { PushEvent } from "../../shared/contract.ts"
@@ -172,7 +172,10 @@ const domain = threadsLayer.pipe(
   Layer.provide(AgentAccounts.layer),
   Layer.provideMerge(settingsLayer(mkdtempSync(join(tmpdir(), "kk-auto-settle-settings-")))),
 )
+const liveClock = Layer.effect(Clock.Clock, TestClock.withLive(Clock.clockWith(Effect.succeed)))
+
 const testLayer = settleLayer.pipe(
+  Layer.provide(liveClock),
   Layer.provideMerge(pullRequestsLayer),
   Layer.provideMerge(domain),
   Layer.provide(Layer.mergeAll(Git.layer, gitHub, agentRunner, recordingPorts)),
