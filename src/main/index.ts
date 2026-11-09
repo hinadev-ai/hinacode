@@ -49,6 +49,14 @@ import * as Updater from "./updater.ts"
 import devIcon from "../../assets/icon-dev.png?asset"
 import releaseIcon from "../../assets/icon.png?asset"
 
+const causes = (error: unknown): ReadonlyArray<string> =>
+  error instanceof Error ? [error.message, ...causes(error.cause)] : error === undefined ? [] : [String(error)]
+
+const cannotStart = (error: unknown) => {
+  console.error("HinaCode cannot start", error)
+  dialog.showErrorBox("HinaCode cannot start", [...new Set(causes(error))].join("\n\n"))
+}
+
 // FIXME: Electron names the Keychain item `kkcode Safe Storage` after the app
 app.setName("kkcode")
 // FIXME: Windows shows notifications only for the AUMID the installer sets on the Start Menu shortcut
@@ -61,7 +69,7 @@ if (!dataDirOverride) {
   try {
     moveLegacyProfile(join(app.getPath("appData"), app.isPackaged ? "kkcode" : "kkcode-dev"), dataDir)
   } catch (error) {
-    dialog.showErrorBox("HinaCode cannot start", error instanceof Error ? error.message : String(error))
+    cannotStart(error)
     process.exit(1)
   }
 }
@@ -360,7 +368,10 @@ app.whenReady().then(async () => {
   })
   createWindow(runtime)
   runtime.runFork(keepAppMenu)
-  await runtime.runPromise(Effect.void)
+  await runtime.context().catch((error: unknown) => {
+    cannotStart(error)
+    app.exit(1)
+  })
 })
 
 app.on("window-all-closed", () => {
