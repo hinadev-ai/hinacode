@@ -386,22 +386,23 @@ const windowReturnSignal = Atom.readable((get) => {
 
 const refreshInStepWhileVisible =
   (interval: Duration.Duration) =>
-  <A>(self: Atom.Atom<A>) => {
+  <A, E>(self: Atom.Atom<AsyncResult.AsyncResult<A, E>>) => {
     const millis = Duration.toMillis(interval)
     return Atom.transform(self, (get) => {
       let timer: ReturnType<typeof setTimeout>
+      const result = get(self)
       const scheduleNextRefresh = () => {
         timer = setTimeout(
           () => {
             scheduleNextRefresh()
-            if (!document.hidden) get.refresh(self)
+            if (!document.hidden && !AsyncResult.isWaiting(result)) get.refresh(self)
           },
           millis - (Date.now() % millis),
         )
       }
       scheduleNextRefresh()
       get.addFinalizer(() => clearTimeout(timer))
-      return get(self)
+      return result
     })
   }
 
