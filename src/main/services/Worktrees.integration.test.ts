@@ -1122,6 +1122,30 @@ describe("project root checkout", () => {
     ),
   )
 
+  it.live("refuses a switch that would overwrite uncommitted work in the root, and keeps the work", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        writeFileSync(join(root, "notes.txt"), "main\n")
+        git(root, "add", "notes.txt")
+        commit(root, "add notes")
+        git(root, "switch", "-q", "-c", "other")
+        writeFileSync(join(root, "notes.txt"), "other\n")
+        git(root, "add", "notes.txt")
+        commit(root, "other notes")
+        git(root, "switch", "-q", "main")
+        writeFileSync(join(root, "notes.txt"), "draft\n")
+        const thread = yield* createThread(projectId, "root")
+
+        const error = yield* Effect.flip(
+          Worktrees.use((worktrees) => worktrees.checkout(projectId, "other", thread.id)),
+        )
+        expect(error.message).toContain("notes.txt")
+        expect(git(root, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("main")
+        expect(readFileSync(join(root, "notes.txt"), "utf8")).toBe("draft\n")
+      }),
+    ),
+  )
+
   it.live("refuses to switch branches while another thread runs in the root", () =>
     withRepo(({ root, projectId }) =>
       Effect.gen(function* () {
