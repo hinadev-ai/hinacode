@@ -64,7 +64,7 @@ type ArtifactFeedback = { comments: ArtifactComment[] }
 
 - A comment cannot exist without a message, so an empty thread is unrepresentable.
 - "Waiting on you" is derived: open, and the last message is the agent's. Nothing stores it, so it cannot go stale.
-- A text anchor is a quote with up to 32 characters of context on each side. Documents are Markdown, and the agent rewrites the whole file on every publish, so position or block ids would not survive an agent's edit. The quote does whenever the sentence does. When the quote is no longer in the document, the comment is detached, not deleted.
+- A text anchor is a quote with up to 32 characters of context on each side. Documents are Markdown, and the agent rewrites the whole file on every publish, so position or block ids would not survive an agent's edit. The quote does whenever the sentence does. When the quote is no longer in the document, the comment is detached, not deleted. The editor matches against rendered text, but an agent quotes the Markdown it read, so a quote that is not found is tried again without its inline syntax (emphasis, strikethrough, code spans, links and escapes).
 - An elements anchor names Excalidraw element ids, which survive both sides' edits.
 - The agent cannot edit or delete a developer's message.
 
