@@ -3,7 +3,7 @@ import { isThreadBusy, type PullRequest, type PullRequestLink, type Thread } fro
 import { AgentRunner } from "./AgentRunner.ts"
 import { ThreadBusyError, type NotFoundError, type PersistenceError } from "./errors.ts"
 import { Events } from "./Events.ts"
-import { GitHub } from "./GitHub.ts"
+import { SourceControl } from "./SourceControl.ts"
 import { Ports } from "./Ports.ts"
 import { PullRequests } from "./PullRequests.ts"
 import { Settings } from "./Settings.ts"
@@ -54,7 +54,7 @@ const make = Effect.gen(function* () {
   const settings = yield* Settings
   const threads = yield* Threads
   const pullRequests = yield* PullRequests
-  const github = yield* GitHub
+  const sourceControl = yield* SourceControl
   const events = yield* Events
   const worktrees = yield* Worktrees
   const runner = yield* AgentRunner
@@ -100,7 +100,7 @@ const make = Effect.gen(function* () {
       const thread = yield* threads.get(threadId)
       if (!canAutoSettle(thread) || (yield* hasAgentWork(threadId))) return
       const branch = yield* ownBranch(thread.worktreeId)
-      const found = yield* Effect.forEach(links, (link) => github.pullRequest(link.url), { concurrency: 4 })
+      const found = yield* Effect.forEach(links, (link) => sourceControl.pullRequest(link.url), { concurrency: 4 })
       const isOwn = (pullRequest: PullRequest) =>
         branch === null || branch === pullRequest.headRefName || branch === forkPullRequestBranch(pullRequest.number)
       const allFinished = found.every(
@@ -121,7 +121,7 @@ const make = Effect.gen(function* () {
   const settleIfIdle = (thread: Thread, links: ReadonlyArray<PullRequestLink>, days: number, now: number) =>
     Effect.gen(function* () {
       if (!isIdleFor(thread, days, now) || (yield* hasAgentWork(thread.id))) return
-      const found = yield* Effect.forEach(links, (link) => github.pullRequest(link.url), { concurrency: 4 })
+      const found = yield* Effect.forEach(links, (link) => sourceControl.pullRequest(link.url), { concurrency: 4 })
       if (found.some(isOpen) || (yield* hasListeningPort(thread.id))) return
       const latest = yield* threads.get(thread.id)
       if (latest.updatedAt !== thread.updatedAt || !isIdleFor(latest, days, now)) return

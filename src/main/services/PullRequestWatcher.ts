@@ -3,7 +3,7 @@ import { Context, Effect, Layer, Schedule, Semaphore } from "effect"
 import type { PullRequestLink, PullRequestWatch } from "../../shared/domain.ts"
 import { AgentRunner } from "./AgentRunner.ts"
 import { nowIso } from "./clock.ts"
-import { GitHub } from "./GitHub.ts"
+import { SourceControl } from "./SourceControl.ts"
 import { snapshotFromDetail, watchEvents, watchMessage, watchStoppedMessage } from "./pullRequestWatch.ts"
 import { PullRequests } from "./PullRequests.ts"
 import { Threads } from "./Threads.ts"
@@ -18,7 +18,7 @@ export class PullRequestWatcher extends Context.Service<PullRequestWatcher, { re
 
 const make = Effect.gen(function* () {
   const pullRequests = yield* PullRequests
-  const github = yield* GitHub
+  const sourceControl = yield* SourceControl
   const threads = yield* Threads
   const runner = yield* AgentRunner
   const semaphore = Semaphore.makeUnsafe(1)
@@ -75,7 +75,7 @@ const make = Effect.gen(function* () {
       const watch = link.watch
       if (watch === null) return
       const now = yield* nowIso
-      const read = yield* Effect.result(github.pullRequestDetail(link.url))
+      const read = yield* Effect.result(sourceControl.pullRequestDetail(link.url))
 
       if (read._tag === "Failure") {
         const failures = watch.failures + 1
@@ -83,7 +83,7 @@ const make = Effect.gen(function* () {
           yield* stopWithWake(
             link,
             watch,
-            `GitHub could not be read ${MAX_FAILURES} times in a row (last error: ${read.failure.message}).`,
+            `The pull request could not be read ${MAX_FAILURES} times in a row (last error: ${read.failure.message}).`,
           )
         } else {
           yield* record(link, watch, { failures, lastPolledAt: now })

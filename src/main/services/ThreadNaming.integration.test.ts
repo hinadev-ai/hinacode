@@ -1,4 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process"
+import * as SourceControl from "./SourceControl.ts"
 import { mkdtempSync, realpathSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
@@ -135,7 +136,8 @@ const makeLayer = (dbPath: string, pushes: PubSub.PubSub<PushEvent>, named: Defe
     Layer.provideMerge(observedNaming(named).pipe(Layer.provide(domain))),
     Layer.provideMerge(PullRequests.layer.pipe(Layer.provide(domain))),
     Layer.provideMerge(domain),
-    Layer.provide(
+    Layer.provideMerge(SourceControl.layer),
+    Layer.provideMerge(
       Layer.mergeAll(
         Git.layer,
         github,

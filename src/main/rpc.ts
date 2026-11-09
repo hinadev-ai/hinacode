@@ -36,6 +36,8 @@ import { completeDirectory } from "./services/directoryCompletion.ts"
 import { Git } from "./services/Git.ts"
 import { Favicons } from "./services/Favicons.ts"
 import { GitHub, pullRequestFiles } from "./services/GitHub.ts"
+import { SourceControl } from "./services/SourceControl.ts"
+import { codeHostOfUrl } from "../shared/codeHost.ts"
 import { Automations } from "./services/automations/Automations.ts"
 import { Linear } from "./services/Linear.ts"
 import { McpCredentials } from "./mcp/index.ts"
@@ -90,6 +92,7 @@ export type AppServices =
   | Automations
   | Git
   | GitHub
+  | SourceControl
   | Linear
   | Files
   | Favicons
@@ -179,7 +182,8 @@ const knownRoot = (root: string) =>
 
 const closeTerminals = (threadId: string) => Terminals.use((terminals) => terminals.closeThread(threadId))
 
-const startGuideForHead = (detail: PullRequestDetail) => PullRequestGuides.use((guides) => guides.ensure(detail))
+const startGuideForHead = (detail: PullRequestDetail) =>
+  codeHostOfUrl(detail.url) === "github" ? PullRequestGuides.use((guides) => guides.ensure(detail)) : Effect.void
 
 const handlers: Handlers = {
   "browser.open": (input) => Browser.use((browser) => browser.open(input)),
@@ -485,16 +489,18 @@ const handlers: Handlers = {
   "pullRequests.unwatch": ({ threadId, url }) =>
     PullRequests.use((pullRequests) => pullRequests.unwatch(threadId, url)),
   "github.auth": () => GitHub.use((github) => github.auth),
-  "github.pullRequest": ({ url }) => GitHub.use((github) => github.pullRequest(url)),
+  "github.pullRequest": ({ url }) => SourceControl.use((sourceControl) => sourceControl.pullRequest(url)),
   "github.pullRequestDetail": ({ url, fresh }) =>
-    GitHub.use((github) => github.pullRequestDetail(url, { fresh })).pipe(Effect.tap(startGuideForHead)),
+    SourceControl.use((sourceControl) => sourceControl.pullRequestDetail(url, { fresh })).pipe(
+      Effect.tap(startGuideForHead),
+    ),
   "github.pullRequestFiles": ({ url }) =>
     GitHub.use((github) => github.pullRequestDiff(url)).pipe(Effect.flatMap(pullRequestFiles)),
   "pullRequestGuides.get": ({ url }) => PullRequestGuides.use((guides) => guides.get(url)),
   "pullRequestGuides.retry": ({ url }) => PullRequestGuides.use((guides) => guides.retry(url)),
-  "github.merge": ({ url, method }) => GitHub.use((github) => github.merge(url, method)),
-  "github.close": ({ url }) => GitHub.use((github) => github.close(url)),
-  "github.comment": ({ url, body }) => GitHub.use((github) => github.comment(url, body)),
+  "github.merge": ({ url, method }) => SourceControl.use((sourceControl) => sourceControl.merge(url, method)),
+  "github.close": ({ url }) => SourceControl.use((sourceControl) => sourceControl.close(url)),
+  "github.comment": ({ url, body }) => SourceControl.use((sourceControl) => sourceControl.comment(url, body)),
   "github.pullRequestCandidates": ({ url }) => GitHub.use((github) => github.pullRequestCandidates(url)),
   "github.editPullRequest": ({ url, edit }) => GitHub.use((github) => github.editPullRequest(url, edit)),
   "github.fileContent": ({ url, ref, path }) => GitHub.use((github) => github.fileContent(url, ref, path)),

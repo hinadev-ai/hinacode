@@ -1,4 +1,5 @@
 import { mkdtempSync } from "node:fs"
+import * as SourceControl from "./SourceControl.ts"
 import { tmpdir } from "node:os"
 import { describe, expect, layer } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
@@ -48,7 +49,8 @@ const testLayer = Conductor.layer.pipe(
   Layer.provideMerge(PullRequestLifecycle.layer),
   Layer.provideMerge(pullRequestsLayer),
   Layer.provideMerge(domain),
-  Layer.provide(Layer.mergeAll(Git.layer, gitHub, automations)),
+  Layer.provideMerge(SourceControl.layer),
+  Layer.provideMerge(Layer.mergeAll(Git.layer, gitHub, automations)),
   Layer.provide(Layer.succeed(Events, { publish: () => Effect.void })),
   Layer.provideMerge(Db.layer(":memory:")),
   Layer.provide(NodeServices.layer),

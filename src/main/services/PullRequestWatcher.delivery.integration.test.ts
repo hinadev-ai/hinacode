@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process"
+import * as SourceControl from "./SourceControl.ts"
 import { mkdtempSync, realpathSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -161,7 +162,8 @@ const agents = runnerLayer.pipe(
 )
 const testLayer = watcherLayer.pipe(
   Layer.provideMerge(observedPullRequests.pipe(Layer.provideMerge(agents))),
-  Layer.provide(
+  Layer.provideMerge(SourceControl.layer),
+  Layer.provideMerge(
     Layer.mergeAll(
       Git.layer,
       Layer.mock(GitHub, {

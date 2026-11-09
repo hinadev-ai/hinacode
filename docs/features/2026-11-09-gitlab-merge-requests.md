@@ -45,19 +45,23 @@ The rpc method names stay `github.pullRequest`, `github.merge` and so on. The mo
 
 ### Mapping a merge request onto `PullRequest`
 
-| `PullRequest` field | GitLab source |
-| --- | --- |
-| `number` | `iid` |
-| `status` | `merged` is merged, `closed` and `locked` are closed, `opened` with `draft` is draft, else open |
-| `checks` | `head_pipeline.status`: `success` passing; `failed` and `canceled` failing; `skipped`, `manual` and no pipeline null; the rest pending |
-| `review` | `detailed_merge_status` `requested_changes` is changesRequested; approvals `approved` with at least one approver is approved; `not_approved` is reviewRequired; else null |
-| `mergeable` | `has_conflicts` is conflicting; `detailed_merge_status` `checking`, `unchecked` or `preparing` is unknown; else mergeable |
-| `author` | `author.username` |
-| `headRefName`, `baseRefName` | `source_branch`, `target_branch` |
-| `additions`, `deletions` | `+` and `-` lines in the first 100 files of `/diffs` |
-| `mergedAt` | `merged_at` |
+| `PullRequest` field          | GitLab source                                                                                                                                                             |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `number`                     | `iid`                                                                                                                                                                     |
+| `status`                     | `merged` is merged, `closed` and `locked` are closed, `opened` with `draft` is draft, else open                                                                           |
+| `checks`                     | `head_pipeline.status`: `success` passing; `failed` and `canceled` failing; `skipped`, `manual` and no pipeline null; the rest pending                                    |
+| `review`                     | `detailed_merge_status` `requested_changes` is changesRequested; approvals `approved` with at least one approver is approved; `not_approved` is reviewRequired; else null |
+| `mergeable`                  | `has_conflicts` is conflicting; `detailed_merge_status` `checking`, `unchecked` or `preparing` is unknown; else mergeable                                                 |
+| `author`                     | `author.username`                                                                                                                                                         |
+| `headRefName`, `baseRefName` | `source_branch`, `target_branch`                                                                                                                                          |
+| `additions`, `deletions`     | `+` and `-` lines in the first 100 files of `/diffs`                                                                                                                      |
+| `mergedAt`                   | `merged_at`                                                                                                                                                               |
 
-`PullRequestDetail` adds `description` as `body`, `sha` as `head`, `/diffs`'s `X-Total` as `changedFiles`, one `CheckRun` per job of the head pipeline (a failed job with `allow_failure` counts as skipped), and the non-system notes as comments, with diff notes located by `position.new_path` and `new_line`. GitLab only serves notes to a signed-in user, so a signed-out read of a public project shows no comments instead of failing.
+`PullRequestDetail` adds `description` as `body`, `sha` as `head`, `/diffs`'s `X-Total` as `changedFiles`, one `CheckRun` per job of the head pipeline (a failed job with `allow_failure` counts as skipped), and the non-system notes as comments, with diff notes located by `position.new_path` and `new_line`, or `old_path` and `old_line` on the left side for a removed line. GitLab only serves notes to a signed-in user, so a signed-out read of a public project shows no comments instead of failing.
+
+A comment is "you" when its author matches `GET /user`, read once per host. That read never fails the detail: gitlab.com throttles anonymous `/user` calls for most of an hour after a few 401s, so any error means nobody is "you" until the app restarts.
+
+There is no read cache yet. A summary costs three calls (the merge request, approvals, diffs) and a detail adds notes and jobs, well inside gitlab.com's signed-in budget of 2,000 calls a minute.
 
 ### Renderer
 

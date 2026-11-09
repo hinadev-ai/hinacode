@@ -31,6 +31,7 @@ import * as Favicons from "./services/Favicons.ts"
 import * as Files from "./services/Files.ts"
 import * as Git from "./services/Git.ts"
 import * as GitHub from "./services/GitHub.ts"
+import * as SourceControl from "./services/SourceControl.ts"
 import * as Linear from "./services/Linear.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Ports from "./services/Ports.ts"
@@ -131,6 +132,7 @@ export const makeTestAppLayer = (
   const app = Layer.mergeAll(base, Mcp.serverLayer.pipe(Layer.provide(base)))
   return Layer.mergeAll(RemoteServer.layer, answerAsksLayer).pipe(
     Layer.provideMerge(app),
+    Layer.provideMerge(SourceControl.layer),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer)),
     Layer.provideMerge(events),
     Layer.provideMerge(Db.layer(dbPath)),

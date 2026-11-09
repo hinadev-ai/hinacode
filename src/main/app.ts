@@ -38,6 +38,7 @@ import * as Favicons from "./services/Favicons.ts"
 import * as Files from "./services/Files.ts"
 import * as Git from "./services/Git.ts"
 import * as GitHub from "./services/GitHub.ts"
+import * as SourceControl from "./services/SourceControl.ts"
 import * as Linear from "./services/Linear.ts"
 import * as Messages from "./services/Messages.ts"
 import * as Ports from "./services/Ports.ts"
@@ -220,6 +221,7 @@ export const makeAppLayer = ({
     Layer.provideMerge(Layer.effectDiscard(serve ? applyServeConfig(serve) : Effect.void)),
     Layer.provideMerge(services),
     Layer.provide(providers.layer.pipe(Layer.provide(Layer.mergeAll(settings, Secrets.layer)))),
+    Layer.provideMerge(SourceControl.layer),
     Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer, Favicons.layer, EventBus.layer)),
     Layer.provideMerge(makeEventsLayer(toWindows)),
     Layer.provide(Layer.mergeAll(Db.layer(join(userData, "hinacode.sqlite")), keyring)),
