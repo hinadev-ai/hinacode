@@ -8,15 +8,13 @@ import { fileURLToPath } from "node:url"
 
 const helper = fileURLToPath(new URL("./rpc.ts", import.meta.url))
 
-test("rpc exits after printing its response without waiting for CDP to close", async () => {
+const callRendererAt = async (rendererUrl: string) => {
   const sockets = new Set<Socket>()
   const server = createServer((_, response) => {
     const address = server.address() as AddressInfo
     response.setHeader("Content-Type", "application/json")
     response.end(
-      JSON.stringify([
-        { type: "page", url: "/renderer/index.html", webSocketDebuggerUrl: `ws://127.0.0.1:${address.port}/page` },
-      ]),
+      JSON.stringify([{ type: "page", url: rendererUrl, webSocketDebuggerUrl: `ws://127.0.0.1:${address.port}/page` }]),
     )
   })
   server.on("connection", (socket) => {
@@ -69,4 +67,9 @@ test("rpc exits after printing its response without waiting for CDP to close", a
     await exited
     await new Promise((resolve) => server.close(resolve))
   }
-})
+}
+
+test("rpc exits after printing its response without waiting for CDP to close", () =>
+  callRendererAt("file:///app/out/renderer/index.html"))
+
+test("rpc finds the renderer served by pnpm dev", () => callRendererAt("http://localhost:5173/"))
