@@ -40,6 +40,9 @@ export function DetailsView({ thread }: { thread: Thread }) {
   const environment = useThreadEnvironment(thread.id)
   const clouds = useClouds()
   const local = environment === null
+  const checkout = useCheckoutState(worktree, local)
+  const status = worktree && workspaceStatus(worktree.status, checkout)
+  const folderGone = status === "removed" || status === "missing"
 
   return (
     <ScrollArea className="min-h-0 flex-1">
@@ -51,8 +54,8 @@ export function DetailsView({ thread }: { thread: Thread }) {
               {m.environment_on({ environment: environmentName(environment, clouds) })}
             </p>
           )}
-          {worktree ? (
-            <WorktreeWorkspace worktree={worktree} canReveal={local} />
+          {worktree && status ? (
+            <WorktreeWorkspace worktree={worktree} status={status} canReveal={local} />
           ) : (
             <RootWorkspace thread={thread} canReveal={local} />
           )}
@@ -62,9 +65,11 @@ export function DetailsView({ thread }: { thread: Thread }) {
             <WorktreeSetupLog worktree={worktree} />
           </Section>
         )}
-        <Section title={m.ports_title()}>
-          <ThreadPorts threadId={thread.id} />
-        </Section>
+        {!folderGone && (
+          <Section title={m.ports_title()}>
+            <ThreadPorts threadId={thread.id} />
+          </Section>
+        )}
       </div>
     </ScrollArea>
   )
@@ -122,14 +127,21 @@ const statusVariant = {
 
 const unknownCheckout = Atom.make(AsyncResult.initial<CheckoutState, RpcError>())
 
-const useCheckoutState = (worktree: Worktree, local: boolean) =>
+const useCheckoutState = (worktree: Worktree | undefined, local: boolean) =>
   AsyncResult.getOrElse(
-    useAtomValue(local && worktree.status === "ready" ? worktreeCheckoutStateAtom(worktree.id) : unknownCheckout),
+    useAtomValue(local && worktree?.status === "ready" ? worktreeCheckoutStateAtom(worktree.id) : unknownCheckout),
     () => null,
   )
 
-function WorktreeWorkspace({ worktree, canReveal }: { worktree: Worktree; canReveal: boolean }) {
-  const status = workspaceStatus(worktree.status, useCheckoutState(worktree, canReveal))
+function WorktreeWorkspace({
+  worktree,
+  status,
+  canReveal,
+}: {
+  worktree: Worktree
+  status: WorkspaceStatus
+  canReveal: boolean
+}) {
   const removed = status === "removed"
   const gone = removed || status === "missing"
   const pullRequest = useBranchPullRequest(removed ? undefined : worktree.id)
