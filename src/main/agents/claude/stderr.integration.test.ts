@@ -33,19 +33,32 @@ const input = (home: AccountHome, prompt: string): RunTurnInput => ({
 })
 
 describe("Claude Code stderr", () => {
+  const harness = () =>
+    makeClaudeHarness({
+      id: "claude",
+      listModels: Effect.succeed([]),
+      launchEnv: () => Effect.succeed({}),
+    })
+
   it.live("ends a crashed turn with the exit code and the CLI's last stderr lines", () =>
     Effect.gen(function* () {
-      const provider = yield* makeClaudeHarness({
-        id: "claude",
-        listModels: Effect.succeed([]),
-        launchEnv: () => Effect.succeed({}),
-      })
+      const provider = yield* harness()
       const events = yield* Stream.runCollect(provider.runTurn(input(fakeHome(), "crash")))
       expect(Array.from(events).at(-1)).toStrictEqual({
         type: "turn_failed",
         message:
           "Claude Code stream failed: Claude Code process exited with code 3. stderr: FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory",
       })
+    }).pipe(Effect.scoped),
+  )
+
+  it.live("waits for stderr to drain before ending a crashed turn", () =>
+    Effect.gen(function* () {
+      const provider = yield* harness()
+      const events = yield* Stream.runCollect(provider.runTurn(input(fakeHome(), "crash with a late stderr line")))
+      const last = Array.from(events).at(-1)
+      if (last?.type !== "turn_failed") throw new Error(`expected a failed turn, got ${last?.type}`)
+      expect(last.message).toContain("late stderr line")
     }).pipe(Effect.scoped),
   )
 })
