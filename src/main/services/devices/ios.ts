@@ -546,7 +546,10 @@ export const makeIosDriver = (options: IosDriverOptions): DevicePlatformDriver =
     },
 
     shutdown: async (id) => {
-      await simctl(["shutdown", udidOf(id)])
+      const udid = udidOf(id)
+      const simslim = await findSimslim(options.simslimPath)
+      if (simslim) await run(simslim, ["shutdown", udid])
+      else await simctl(["shutdown", udid])
     },
 
     remove: async (id) => {
