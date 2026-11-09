@@ -1,8 +1,12 @@
-import { Effect, Layer, Option, Schema } from "effect"
+import { Option, Schema } from "effect"
 import { artifactUrl } from "../shared/channels.ts"
-import type { ArtifactTheme } from "../shared/artifactTheme.ts"
 import { withArtifactPage } from "./artifactPage.ts"
-import { type ArtifactInspection, ArtifactInspector, INSPECTION_VIEWPORT } from "./services/ArtifactInspector.ts"
+import {
+  type ArtifactInspection,
+  INSPECTION_VIEWPORT,
+  type InspectPage,
+  layerWith,
+} from "./services/ArtifactInspector.ts"
 
 const MAX_ERRORS = 10
 const MAX_ERROR_LENGTH = 300
@@ -79,7 +83,7 @@ const errorLine = (root: string, { message, url, lineNumber }: ReturnType<typeof
   return `${message.slice(0, MAX_ERROR_LENGTH)}${where}`
 }
 
-const inspectPage = async (id: string, entry: string, theme: ArtifactTheme | undefined) => {
+const inspectPage: InspectPage = async (id, entry, theme) => {
   const errors = new Set<string>()
   const root = artifactUrl(id)
   const query = theme === undefined ? "" : `?theme=${encodeURIComponent(JSON.stringify(theme))}`
@@ -105,16 +109,4 @@ const inspectPage = async (id: string, entry: string, theme: ArtifactTheme | und
   )
 }
 
-export const electronArtifactInspector = Layer.sync(ArtifactInspector, () => {
-  let theme: ArtifactTheme | undefined
-  return ArtifactInspector.of({
-    setTheme: (next) =>
-      Effect.sync(() => {
-        theme = next
-      }),
-    inspect: (id, entry) =>
-      Effect.tryPromise(() => inspectPage(id, entry, theme)).pipe(
-        Effect.catch((cause) => Effect.as(Effect.logWarning("could not inspect artifact", id, cause), null)),
-      ),
-  })
-})
+export const electronArtifactInspector = layerWith(inspectPage)

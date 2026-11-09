@@ -1,4 +1,4 @@
-import { Context, Effect, Layer } from "effect"
+import { Context, Effect, Layer, Semaphore } from "effect"
 import type { ArtifactTheme } from "../../shared/artifactTheme.ts"
 
 export const INSPECTION_VIEWPORT = { width: 400, height: 720 } as const
@@ -17,6 +17,28 @@ export class ArtifactInspector extends Context.Service<
     readonly inspect: (id: string, entry: string) => Effect.Effect<ArtifactInspection | null>
   }
 >()("hinacode/ArtifactInspector") {}
+
+export type InspectPage = (id: string, entry: string, theme: ArtifactTheme | undefined) => Promise<ArtifactInspection>
+
+export const MAX_PAGES_RENDERING = 2
+
+export const layerWith = (inspectPage: InspectPage) =>
+  Layer.sync(ArtifactInspector, () => {
+    let theme: ArtifactTheme | undefined
+    const rendering = Semaphore.makeUnsafe(MAX_PAGES_RENDERING)
+    return ArtifactInspector.of({
+      setTheme: (next) =>
+        Effect.sync(() => {
+          theme = next
+        }),
+      inspect: (id, entry) =>
+        Effect.tryPromise(() => inspectPage(id, entry, theme)).pipe(
+          Effect.uninterruptible,
+          rendering.withPermits(1),
+          Effect.catch((cause) => Effect.as(Effect.logWarning("could not inspect artifact", id, cause), null)),
+        ),
+    })
+  })
 
 export const unavailable = Layer.succeed(
   ArtifactInspector,

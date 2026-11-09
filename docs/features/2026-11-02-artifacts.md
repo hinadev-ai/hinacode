@@ -106,6 +106,8 @@ The screenshot shows the top of the page as the developer first sees it.
 
 followed by the screenshot as an MCP image. The PDF export shares the hidden-window code in `artifactPage.ts`. The check gives up after 15 seconds and answers with the plain result, and so does `hinacode serve`, which has no browser: its layer is `ArtifactInspector.unavailable`.
 
+At most two checks render at once, and the rest wait their turn. Each window is a renderer process, and a page that loops keeps a core busy until the timeout, so without the limit six threads publishing together took six cores. A check that waits still gets its full 15 seconds once it starts, so the agent's call can take longer than that when several spinning pages are ahead of it.
+
 ### Delete
 
 Right-clicking an artifact in the list offers Delete. `artifacts.delete` routes to the machine that owns the id and removes the artifact's directory. The service pushes `artifact.removed`, and so does its watcher when another harness deletes a directory, so every open list drops it. There is no undo.
