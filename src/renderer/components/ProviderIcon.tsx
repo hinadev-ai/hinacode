@@ -86,7 +86,7 @@ export function ThreadProviderIcon({
   if (brand === null) return <ProviderIcon provider={provider} muted={muted} className={className} />
   return (
     <span className="flex shrink-0 items-center">
-      <ProviderIcon provider={provider} muted={muted} className={className} />
+      <ProviderIcon provider={provider} muted={muted} className={cn("relative z-10", className)} />
       <Mark
         mark={modelMarks[brand]}
         muted={muted}
