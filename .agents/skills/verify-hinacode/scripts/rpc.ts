@@ -8,7 +8,8 @@ type Target = { type: string; url: string; webSocketDebuggerUrl: string }
 type Reply = { result?: { result?: { value?: { result?: unknown; error?: unknown } }; exceptionDetails?: unknown } }
 
 const targets = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()) as Target[]
-const page = targets.find((t) => t.type === "page" && t.url.includes("/renderer/index.html"))
+const isRenderer = (url: string) => url.includes("/renderer/index.html") || url.startsWith("http://")
+const page = targets.find((t) => t.type === "page" && isRenderer(t.url))
 if (!page) throw new Error(`no hinacode renderer page on CDP port ${port}`)
 const ws = new WebSocket(page.webSocketDebuggerUrl)
 await new Promise((resolve, reject) => {
