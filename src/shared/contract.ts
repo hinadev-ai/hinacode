@@ -151,6 +151,7 @@ export const RpcMethods = {
   ),
   "device.detach": rpc(Schema.Struct({ threadId: Schema.String, deviceId: Schema.NullOr(DeviceId) }), Schema.Void),
   "device.delete": rpc(Schema.Struct({ threadId: Schema.String, deviceId: DeviceId }), Schema.Void),
+  "device.shutdown": rpc(Schema.Struct({ threadId: Schema.String, deviceId: DeviceId }), Schema.Void),
   "device.frame": rpc(
     Schema.Struct({
       threadId: Schema.String,
@@ -722,6 +723,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "device.create": "mutation",
   "device.detach": "mutation",
   "device.delete": "mutation",
+  "device.shutdown": "mutation",
   "device.frame": "read",
   "device.command": "mutation",
   "device.control": "mutation",

@@ -30,7 +30,7 @@ import {
 import { SkeletonList } from "../../ui/skeleton.tsx"
 import { IconAction, useVmAction } from "../TinyVmView.tsx"
 import { DeleteDeviceDialog } from "./DeleteDeviceDialog.tsx"
-import { ChevronDownIcon, PlusIcon, RefreshIcon, TrashIcon } from "@hinacode/icons"
+import { ChevronDownIcon, PlusIcon, RefreshIcon, StopCircleIcon, TrashIcon } from "@hinacode/icons"
 
 const SIMSLIM_INSTALL = "brew install mobai-app/tap/simslim"
 
@@ -62,6 +62,11 @@ export function DeviceList({ thread }: { thread: Thread }) {
   const remove = (device: Device) =>
     run(async () => {
       await callPromise("device.delete", { threadId: thread.id, deviceId: device.id })
+      refresh()
+    })
+  const shutdown = (device: Device) =>
+    run(async () => {
+      await callPromise("device.shutdown", { threadId: thread.id, deviceId: device.id })
       refresh()
     })
   const create = (model: SimulatorModel) => {
@@ -102,6 +107,7 @@ export function DeviceList({ thread }: { thread: Thread }) {
               attached={attached}
               pending={pending}
               onAttach={attach}
+              onShutdown={shutdown}
               onDelete={setDeleting}
             />
             <PlatformSection
@@ -111,6 +117,7 @@ export function DeviceList({ thread }: { thread: Thread }) {
               attached={attached}
               pending={pending}
               onAttach={attach}
+              onShutdown={shutdown}
               onDelete={setDeleting}
             />
           </>
@@ -208,10 +215,20 @@ interface PlatformSectionProps {
   readonly attached: ReadonlySet<string>
   readonly pending: boolean
   readonly onAttach: (device: Device) => void
+  readonly onShutdown: (device: Device) => void
   readonly onDelete: (device: Device) => void
 }
 
-function PlatformSection({ platform, host, threadId, attached, pending, onAttach, onDelete }: PlatformSectionProps) {
+function PlatformSection({
+  platform,
+  host,
+  threadId,
+  attached,
+  pending,
+  onAttach,
+  onShutdown,
+  onDelete,
+}: PlatformSectionProps) {
   const support = host[platform]
   const unavailable = supportMessage(support)
   const devices = host.devices.filter((device) => device.platform === platform).toSorted(byState)
@@ -243,6 +260,7 @@ function PlatformSection({ platform, host, threadId, attached, pending, onAttach
                 attached={attached.has(device.id)}
                 pending={pending}
                 onAttach={() => onAttach(device)}
+                onShutdown={() => onShutdown(device)}
                 onDelete={() => onDelete(device)}
               />
             ))}
@@ -276,48 +294,15 @@ interface DeviceRowProps {
   readonly attached: boolean
   readonly pending: boolean
   readonly onAttach: () => void
+  readonly onShutdown: () => void
   readonly onDelete: () => void
 }
 
-function DeviceRow({ device, threadId, attached, pending, onAttach, onDelete }: DeviceRowProps) {
-  const { slim } = device
+function DeviceRow({ device, threadId, attached, pending, onAttach, onShutdown, onDelete }: DeviceRowProps) {
   const anotherThreads = device.ownerThreadId !== null && device.ownerThreadId !== threadId
-  const fullySlim = slim !== null && slim.total > 0 && slim.disabled === slim.total
   return (
     <li className="flex items-center gap-3 px-3 py-1.5">
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-sm" title={device.name}>
-            {device.name}
-          </span>
-          {fullySlim && (
-            <Badge variant="secondary" title={m.devices_slim_tooltip({ count: slim.disabled })}>
-              {m.devices_slim()}
-            </Badge>
-          )}
-          {device.ownerThreadId !== null && (
-            <Badge variant="outline">
-              {device.ownerThreadId === threadId ? m.devices_this_thread() : m.devices_another_thread()}
-            </Badge>
-          )}
-        </div>
-        <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-          <span className="truncate">{device.osVersion}</span>
-          <span className="flex shrink-0 items-center gap-1">
-            <span
-              aria-hidden
-              className={cn(
-                "size-1.5 rounded-full",
-                device.state === "booted" && "bg-success",
-                device.state === "booting" && "border border-success",
-                device.state === "shutdown" && "border border-muted-foreground",
-              )}
-            />
-            {stateLabel[device.state]()}
-          </span>
-          {device.memoryBytes !== null && <span className="shrink-0">{formatMemory(device.memoryBytes)}</span>}
-        </div>
-      </div>
+      <DeviceSummary device={device} threadId={threadId} />
       <Button
         variant="outline"
         size="xs"
@@ -330,6 +315,14 @@ function DeviceRow({ device, threadId, attached, pending, onAttach, onDelete }: 
       >
         {attached ? m.devices_show() : m.devices_attach()}
       </Button>
+      {device.state !== "shutdown" && (
+        <IconAction
+          icon={StopCircleIcon}
+          label={m.devices_shutdown_label({ name: device.name })}
+          onClick={onShutdown}
+          disabled={pending || anotherThreads}
+        />
+      )}
       <IconAction
         icon={TrashIcon}
         label={m.devices_delete_tab({ name: device.name })}
@@ -337,5 +330,45 @@ function DeviceRow({ device, threadId, attached, pending, onAttach, onDelete }: 
         disabled={pending || anotherThreads}
       />
     </li>
+  )
+}
+
+function DeviceSummary({ device, threadId }: { device: Device; threadId: string }) {
+  const { slim } = device
+  const fullySlim = slim !== null && slim.total > 0 && slim.disabled === slim.total
+  return (
+    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <span className="truncate text-sm" title={device.name}>
+          {device.name}
+        </span>
+        {fullySlim && (
+          <Badge variant="secondary" title={m.devices_slim_tooltip({ count: slim.disabled })}>
+            {m.devices_slim()}
+          </Badge>
+        )}
+        {device.ownerThreadId !== null && (
+          <Badge variant="outline">
+            {device.ownerThreadId === threadId ? m.devices_this_thread() : m.devices_another_thread()}
+          </Badge>
+        )}
+      </div>
+      <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+        <span className="truncate">{device.osVersion}</span>
+        <span className="flex shrink-0 items-center gap-1">
+          <span
+            aria-hidden
+            className={cn(
+              "size-1.5 rounded-full",
+              device.state === "booted" && "bg-success",
+              device.state === "booting" && "border border-success",
+              device.state === "shutdown" && "border border-muted-foreground",
+            )}
+          />
+          {stateLabel[device.state]()}
+        </span>
+        {device.memoryBytes !== null && <span className="shrink-0">{formatMemory(device.memoryBytes)}</span>}
+      </div>
+    </div>
   )
 }

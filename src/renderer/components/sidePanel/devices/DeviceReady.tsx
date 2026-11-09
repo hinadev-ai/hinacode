@@ -217,6 +217,7 @@ export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen 
       await callPromise("device.detach", { threadId, deviceId })
       onDetach()
     })
+  const shutdown = () => run(() => callPromise("device.shutdown", { threadId, deviceId }))
   const remove = () =>
     run(async () => {
       await callPromise(owned ? "device.detach" : "device.delete", { threadId, deviceId })
@@ -316,6 +317,7 @@ export function DeviceReady({ threadId, device: ready, onDetach, bootedOnScreen 
           </Tooltip>
           <DropdownMenuContent align="end" className="w-44">
             {!owned && <DropdownMenuItem onClick={detach}>{m.devices_detach()}</DropdownMenuItem>}
+            <DropdownMenuItem onClick={shutdown}>{m.devices_shutdown()}</DropdownMenuItem>
             <DropdownMenuItem variant="destructive" onClick={() => setConfirmingDelete(true)}>
               {deleteDeviceLabel(device.platform)}
             </DropdownMenuItem>

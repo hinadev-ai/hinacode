@@ -578,15 +578,19 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
     await shell(emulator, "am", "start", "-n", quoteForRemoteShell(component))
   }
 
-  const remove: DevicePlatformDriver["remove"] = async (id) => {
+  const shutdown: DevicePlatformDriver["shutdown"] = async (id) => {
     const name = avdNameOf(id)
     const emulator = (await running()).get(name)
-    if (emulator) {
-      await adb(emulator, ["emu", "kill"], 10_000).catch(() => undefined)
-      const deadline = Date.now() + STOP_TIMEOUT_MS
-      while ((await running()).has(name) && Date.now() < deadline) await sleep(500)
-      if ((await running()).has(name)) process.kill(emulator.pid, "SIGKILL")
-    }
+    if (!emulator) return
+    await adb(emulator, ["emu", "kill"], 10_000).catch(() => undefined)
+    const deadline = Date.now() + STOP_TIMEOUT_MS
+    while ((await running()).has(name) && Date.now() < deadline) await sleep(500)
+    if ((await running()).has(name)) process.kill(emulator.pid, "SIGKILL")
+  }
+
+  const remove: DevicePlatformDriver["remove"] = async (id) => {
+    const name = avdNameOf(id)
+    await shutdown(id)
     const dir = await avdDir(name)
     if (basename(dir) !== `${name}.avd`) throw new DeviceError(`The AVD ${name} points at ${dir}, so HinaCode left it.`)
     await rm(dir, { recursive: true, force: true })
@@ -599,6 +603,7 @@ export const makeAndroidDriver = (options: { sdkRoot?: string } = {}): DevicePla
     models: async () => [],
     boot,
     create: refuseCreate,
+    shutdown,
     remove,
     connect,
     screenshot,

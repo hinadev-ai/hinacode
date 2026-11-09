@@ -33,6 +33,7 @@ export interface DevicePlatformDriver {
     onStep: (step: PrepareStep) => void,
     onCreated: (id: DeviceId) => Promise<void>,
   ) => Promise<DeviceId>
+  readonly shutdown: (id: DeviceId) => Promise<void>
   readonly remove: (id: DeviceId) => Promise<void>
   readonly connect: (id: DeviceId, onFrame: (frame: Frame) => void) => Promise<DeviceLink>
   readonly screenshot: (id: DeviceId) => Promise<Buffer>
