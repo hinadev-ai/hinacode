@@ -189,7 +189,6 @@ const capabilities = (efforts: ReadonlyArray<string>) => [
 const ExtraBody = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown))
 
 const extraBody = (inherited: string | undefined, fast: boolean): Record<string, string> => {
-  if (inherited === undefined && !fast) return {}
   const { speed: _, ...fields }: Readonly<Record<string, unknown>> = Option.getOrElse(
     Schema.decodeUnknownOption(ExtraBody)(inherited),
     () => ({}),

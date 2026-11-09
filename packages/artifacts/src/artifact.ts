@@ -7,11 +7,13 @@ export const ArtifactFileSchema = z.object({
   size: z.number().int().nonnegative(),
 })
 
-export const ArtifactKindSchema = z.enum(["page", "document"])
+export const ArtifactKindSchema = z.enum(["page", "document", "whiteboard"])
 
 export const ArtifactAuthorSchema = z.enum(["agent", "developer"])
 
 export const DOCUMENT_ENTRY = "document.md"
+
+export const WHITEBOARD_ENTRY = "scene.excalidraw"
 
 export const ArtifactSchema = z.object({
   id: z.string(),
@@ -55,6 +57,7 @@ const textTypes: Record<string, string> = {
   ".js": "text/javascript",
   ".mjs": "text/javascript",
   ".json": "application/json",
+  ".excalidraw": "application/json",
   ".svg": "image/svg+xml",
   ".txt": "text/plain",
   ".md": "text/markdown",

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, onTestFinished, test } from "vitest"
 import { ArtifactSchema, normalizeArtifactPath } from "./artifact.ts"
+import { waitingOnDeveloper } from "./feedback.ts"
 import { ArtifactConflictError, ArtifactError, MAX_ARTIFACT_BYTES, openArtifactStore } from "./store.ts"
 
 const minutes = () => {
@@ -488,5 +489,234 @@ describe("addDocumentImage", () => {
       expect(await store.file(document.id, path), path).toBeNull()
     }
     expect(await store.file(page_.id, "images/a.png")).toBeNull()
+  })
+})
+
+describe("feedback", () => {
+  const developer = { kind: "developer" } as const
+  const agent = { kind: "agent", threadId: "thread-1" } as const
+
+  test("starts a comment on a quote, takes replies and derives who it waits on", async () => {
+    const store = openTemporaryStore()
+    const document = await store.publish({ kind: "document", title: "Plan", markdown: "The migration runs first." })
+    expect(await store.feedback(document.id)).toEqual({ comments: [] })
+
+    const anchor = { kind: "text", quote: "migration runs", prefix: "The ", suffix: " first." } as const
+    const started = await store.comment(document.id, { anchor, author: developer, body: " Should this be after? " })
+    expect(started.comment).toEqual({
+      id: expect.stringMatching(/^c_[a-z0-9]{6}$/),
+      anchor,
+      resolved: false,
+      messages: [
+        {
+          id: expect.stringMatching(/^m_[a-z0-9]{6}$/),
+          author: developer,
+          body: "Should this be after?",
+          createdAt: "2026-11-02T09:01:00.000Z",
+        },
+      ],
+      createdAt: "2026-11-02T09:01:00.000Z",
+      updatedAt: "2026-11-02T09:01:00.000Z",
+    })
+    expect(waitingOnDeveloper(started.comment)).toBe(false)
+
+    const replied = await store.comment(document.id, { comment: started.comment.id, author: agent, body: "Yes." })
+    expect(replied.comment.messages.map((message) => [message.author, message.body])).toEqual([
+      [developer, "Should this be after?"],
+      [agent, "Yes."],
+    ])
+    expect(replied.comment.updatedAt).toBe("2026-11-02T09:02:00.000Z")
+    expect(waitingOnDeveloper(replied.comment)).toBe(true)
+    expect(await store.feedback(document.id)).toEqual(replied.feedback)
+
+    const resolved = await store.resolveComment(document.id, started.comment.id, true)
+    expect(resolved.comments[0]?.resolved).toBe(true)
+    expect(waitingOnDeveloper(resolved.comments[0]!)).toBe(false)
+    const reopened = await store.comment(document.id, { comment: started.comment.id, author: developer, body: "Wait." })
+    expect(reopened.comment.resolved).toBe(false)
+    const closedByAgent = await store.comment(document.id, {
+      comment: started.comment.id,
+      author: agent,
+      body: "",
+      resolve: true,
+    })
+    expect(closedByAgent.comment).toMatchObject({ resolved: true, messages: { length: 3 } })
+  })
+
+  test("anchors a comment on the whole artifact by default and on elements only in a whiteboard", async () => {
+    const store = openTemporaryStore()
+    const board = await store.publish({ kind: "whiteboard", title: "Board", scene: { elements: [{ id: "api" }] } })
+    const page_ = await store.publish({ title: "Page", files: [page("")] })
+
+    const whole = await store.comment(page_.id, { author: developer, body: "Looks good" })
+    expect(whole.comment.anchor).toEqual({ kind: "artifact" })
+    const elements = await store.comment(board.id, {
+      anchor: { kind: "elements", ids: ["api"] },
+      author: agent,
+      body: "Is this the gateway?",
+    })
+    expect(elements.comment.anchor).toEqual({ kind: "elements", ids: ["api"] })
+
+    const quote = { kind: "text", quote: "x", prefix: "", suffix: "" } as const
+    await expect(store.comment(board.id, { anchor: quote, author: agent, body: "?" })).rejects.toThrow(
+      /Only a document's comments quote text/,
+    )
+    await expect(
+      store.comment(page_.id, { anchor: { kind: "elements", ids: ["a"] }, author: agent, body: "?" }),
+    ).rejects.toThrow(/Only a whiteboard's comments name elements/)
+  })
+
+  test("refuses an unknown comment or artifact, an empty body and a reply with an anchor", async () => {
+    const store = openTemporaryStore()
+    const document = await store.publish({ kind: "document", title: "Plan", markdown: "text" })
+    const { comment } = await store.comment(document.id, { author: developer, body: "Hi" })
+
+    const refusals = [
+      [() => store.comment(document.id, { comment: "c_gone", author: agent, body: "Hi" }), /has no comment "c_gone"/],
+      [() => store.resolveComment(document.id, "c_gone", true), /has no comment "c_gone"/],
+      [() => store.comment("gone", { author: developer, body: "Hi" }), /No artifact has the id "gone"/],
+      [() => store.comment("../up", { author: developer, body: "Hi" }), /No artifact has the id/],
+      [() => store.comment(document.id, { author: developer, body: "  " }), /needs a body/],
+      [() => store.comment(document.id, { comment: comment.id, author: agent, body: "" }), /needs a body/],
+      [
+        () =>
+          store.comment(document.id, { comment: comment.id, anchor: { kind: "artifact" }, author: agent, body: "x" }),
+        /keeps its comment's anchor/,
+      ],
+      [
+        () =>
+          store.comment(document.id, {
+            anchor: { kind: "text", quote: " ", prefix: "", suffix: "" },
+            author: agent,
+            body: "x",
+          }),
+        /needs a quote/,
+      ],
+    ] as const
+    for (const [refuse, message] of refusals) {
+      const refused = refuse()
+      await expect(refused).rejects.toBeInstanceOf(ArtifactError)
+      await expect(refused).rejects.toThrow(message)
+    }
+    expect((await store.feedback(document.id))?.comments).toEqual([comment])
+    expect(await store.feedback("gone")).toBeNull()
+  })
+
+  test("keeps feedback across new versions, rewrites only through the store, and removes it with the artifact", async () => {
+    const store = openTemporaryStore()
+    const document = await store.publish({ kind: "document", title: "Plan", markdown: "one" })
+    const { feedback } = await store.comment(document.id, { author: developer, body: "Hi" })
+
+    await store.publish({ kind: "document", id: document.id, markdown: "two" })
+    await store.publish({ kind: "document", id: document.id, markdown: "three" })
+    await store.publish({ kind: "document", id: document.id, markdown: "four", author: "developer" })
+
+    expect(await store.feedback(document.id)).toEqual(feedback)
+    expect(await store.file(document.id, "feedback.json")).toBeNull()
+    expect(await store.remove(document.id)).toBe(true)
+    expect(existsSync(join(store.root, document.id))).toBe(false)
+  })
+
+  test("keeps every writer's comments when they comment at once", async () => {
+    const store = openTemporaryStore()
+    const document = await store.publish({ kind: "document", title: "Plan", markdown: "one" })
+
+    await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        store.comment(document.id, { author: index % 2 === 0 ? developer : agent, body: `comment ${index}` }),
+      ),
+    )
+
+    const bodies = (await store.feedback(document.id))?.comments.map((comment) => comment.messages[0].body)
+    expect(bodies?.toSorted()).toEqual(Array.from({ length: 8 }, (_, index) => `comment ${index}`))
+  })
+})
+
+const scene = async (store: ReturnType<typeof openTemporaryStore>, id: string) =>
+  JSON.parse(new TextDecoder().decode((await store.file(id, "scene.excalidraw"))?.bytes))
+
+describe("whiteboard", () => {
+  test("writes an Excalidraw file and merges an agent's patch by element id", async () => {
+    const store = openTemporaryStore()
+    const board = await store.publish({
+      kind: "whiteboard",
+      title: "Architecture",
+      patch: { upsert: [{ id: "api", type: "rectangle" }], remove: ["never-there"] },
+    })
+    expect(board).toMatchObject({ kind: "whiteboard", entry: "scene.excalidraw", version: 1 })
+    expect(await scene(store, board.id)).toEqual({
+      type: "excalidraw",
+      version: 2,
+      source: "hinacode",
+      elements: [{ id: "api", type: "rectangle" }],
+      appState: {},
+      files: {},
+    })
+
+    await store.publish({
+      kind: "whiteboard",
+      id: board.id,
+      author: "developer",
+      scene: {
+        elements: [
+          { id: "api", type: "rectangle" },
+          { id: "db", type: "ellipse" },
+          { id: "note", type: "text" },
+        ],
+        files: { f1: { mimeType: "image/png" } },
+      },
+    })
+    const patched = await store.publish({
+      kind: "whiteboard",
+      id: board.id,
+      patch: {
+        upsert: [
+          { id: "db", type: "diamond" },
+          { id: "cache", type: "rectangle" },
+        ],
+        remove: ["note"],
+      },
+    })
+
+    expect(patched).toMatchObject({ version: 3, author: "agent" })
+    expect(await scene(store, board.id)).toMatchObject({
+      elements: [
+        { id: "api", type: "rectangle" },
+        { id: "db", type: "diamond" },
+        { id: "cache", type: "rectangle" },
+      ],
+      files: { f1: { mimeType: "image/png" } },
+    })
+  })
+
+  test("refuses an ambiguous patch or scene and a stale developer save", async () => {
+    const store = openTemporaryStore()
+    const board = await store.publish({ kind: "whiteboard", title: "Board", scene: { elements: [{ id: "a" }] } })
+    const save = (baseRevision: number, id: string) =>
+      store.publish({
+        kind: "whiteboard",
+        id: board.id,
+        author: "developer",
+        baseRevision,
+        scene: { elements: [{ id }] },
+      })
+
+    await expect(
+      store.publish({ kind: "whiteboard", id: board.id, patch: { upsert: [{ id: "a" }, { id: "a" }] } }),
+    ).rejects.toThrow(/"a" appears more than once/)
+    await expect(
+      store.publish({ kind: "whiteboard", id: board.id, patch: { upsert: [{ id: "a" }], remove: ["a"] } }),
+    ).rejects.toThrow(/both added and removed/)
+    await expect(
+      store.publish({ kind: "whiteboard", title: "Twice", scene: { elements: [{ id: "a" }, { id: "a" }] } }),
+    ).rejects.toThrow(/appears more than once/)
+    await expect(store.publish({ kind: "document", id: board.id, markdown: "" })).rejects.toThrow(
+      /is a whiteboard\. Update it with publish_whiteboard/,
+    )
+
+    expect(await save(1, "b")).toMatchObject({ version: 2, revision: 2 })
+    expect(await save(2, "c")).toMatchObject({ version: 2, revision: 3 })
+    await expect(save(2, "d")).rejects.toBeInstanceOf(ArtifactConflictError)
+    expect((await scene(store, board.id)).elements).toEqual([{ id: "c" }])
   })
 })

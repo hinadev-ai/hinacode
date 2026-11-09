@@ -136,6 +136,8 @@ onPushEvent((event) => {
     case "terminal.exited":
       terminalExited(event.id, event.exitCode)
       return useTerminals.getState().markExited(event.id, event.exitCode)
+    case "terminal.updated":
+      return useTerminals.getState().replaceSession(event.session)
     case "environment.status":
       if (event.status !== "connected") return
       registry.refresh(projectsAtom)

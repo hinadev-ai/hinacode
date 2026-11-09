@@ -126,6 +126,10 @@ export function createDocumentSync(options: {
       if (restored === undefined) void published()
       else edited()
     },
+    saveEdits: async () => {
+      await save()
+      return edits === savedEdits
+    },
     savedRevision: async () => {
       await save()
       return base

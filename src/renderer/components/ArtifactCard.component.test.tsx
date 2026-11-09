@@ -84,19 +84,40 @@ test("takes the title of an update from its first heading and lists sections wit
     .toHaveTextContent("Document·v2Startup auditFindings, Causes, Fixes +2")
 })
 
-test("falls back to an untitled page with a wireframe preview", async () => {
+test("falls back to an untitled page with a wireframe preview while it publishes", async () => {
   const call: ToolCall = {
     type: "tool_call",
     callId: "call-2",
     name: "mcp__hinacode__publish_artifact",
     input: { id: "page-1", files: [{ path: "index.html", content: "<h1>Hi</h1>" }] },
-    status: "done",
+    status: "running",
   }
-  await render(<ArtifactCard call={call} result='Published artifact page-1 version 5: "Hi".' onOpen={() => {}} />)
+  await render(<ArtifactCard call={call} result={null} onOpen={() => {}} />)
 
   await expect
     .element(page.getByRole("button", { name: "Open Untitled artifact" }))
-    .toHaveTextContent("Page·v5Untitled artifact")
+    .toHaveTextContent("Page·Publishing…Untitled artifact")
+})
+
+test("titles an update that leaves out its title with the name it was published under", async () => {
+  const call: ToolCall = {
+    type: "tool_call",
+    callId: "call-3",
+    name: "mcp__hinacode__publish_whiteboard",
+    input: { id: "board-1", elements: [{ id: "note", type: "rectangle", x: 0, y: 0 }] },
+    status: "done",
+  }
+  await render(
+    <ArtifactCard
+      call={call}
+      result='Published whiteboard board-1 version 3: "Feedback Loop". Pass id "board-1" to publish_whiteboard to add, change or remove elements.'
+      onOpen={() => {}}
+    />,
+  )
+
+  await expect
+    .element(page.getByRole("button", { name: "Open Feedback Loop" }))
+    .toHaveTextContent("Whiteboard·v3Feedback Loop")
 })
 
 test("highlights a search match in the title", async () => {

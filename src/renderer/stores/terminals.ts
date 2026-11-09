@@ -29,6 +29,7 @@ interface TerminalsState {
   readonly close: (threadId: string, id: string) => Promise<void>
   readonly attach: (id: string) => Promise<void>
   readonly markExited: (id: string, exitCode: number | null) => void
+  readonly replaceSession: (session: TerminalSession) => void
 }
 
 const HEIGHT_KEY = "hinacode.terminalHeight"
@@ -49,24 +50,27 @@ export const useTerminals = create<TerminalsState>()((set, get) => {
     update(threadId, () => ({ open: true }))
   }
 
-  const markExited = (id: string, exitCode: number | null) =>
+  const patchSession = (id: string, patch: (session: TerminalSession) => TerminalSession) =>
     set((state) => ({
       byThreadId: Object.fromEntries(
         Object.entries(state.byThreadId).map(([threadId, terminals]) => [
           threadId,
           {
             ...terminals,
-            sessions: terminals.sessions.map((session) =>
-              session.id === id ? { ...session, status: "exited" as const, exitCode } : session,
-            ),
+            sessions: terminals.sessions.map((session) => (session.id === id ? patch(session) : session)),
           },
         ]),
       ),
     }))
 
+  const markExited = (id: string, exitCode: number | null) =>
+    patchSession(id, (session) => ({ ...session, status: "exited", exitCode, command: null }))
+
+  const replaceSession = (next: TerminalSession) => patchSession(next.id, () => next)
+
   const attach = async (id: string) => {
     const session = await attachTerminalOutput(id)
-    if (session?.status === "exited") markExited(id, session.exitCode)
+    if (session) replaceSession(session)
   }
 
   const loads = new Map<string, Promise<void>>()
@@ -141,5 +145,6 @@ export const useTerminals = create<TerminalsState>()((set, get) => {
     },
     attach,
     markExited,
+    replaceSession,
   }
 })

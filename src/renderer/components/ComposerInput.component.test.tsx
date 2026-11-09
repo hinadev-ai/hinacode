@@ -39,6 +39,8 @@ const terminal = (id: string, title: string | null, status: TerminalSession["sta
   status,
   exitCode: status === "exited" ? 1 : null,
   title,
+  command: null,
+  lastExitCode: null,
 })
 
 const terminals = [

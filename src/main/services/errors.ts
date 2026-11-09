@@ -21,6 +21,7 @@ export class NotFoundError extends Schema.TaggedError<NotFoundError>()("NotFound
     "tool call",
     "artifact",
     "document",
+    "whiteboard",
   ]),
   id: Schema.String,
 }) {

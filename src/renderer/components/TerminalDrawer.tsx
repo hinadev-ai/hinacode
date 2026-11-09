@@ -1,4 +1,12 @@
-import { type KeyboardEvent, type PointerEvent, useEffect, useLayoutEffect, useRef, useState } from "react"
+import {
+  type KeyboardEvent,
+  type PointerEvent,
+  startTransition,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react"
 import type { TerminalSession } from "../../shared/domain.ts"
 import { terminalMention } from "../../shared/mentions.ts"
 import { TERMINAL_HEIGHT_BOUNDS } from "../lib/panelSize.ts"
@@ -8,6 +16,16 @@ import { m } from "../paraglide/messages.js"
 import { useDrafts } from "../stores/drafts.ts"
 import { useTerminals } from "../stores/terminals.ts"
 import { useUi } from "../stores/ui.ts"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./ui/alert-dialog.tsx"
 import { Button } from "./ui/button.tsx"
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "./ui/context-menu.tsx"
 import { DropdownMenuItem } from "./ui/dropdown-menu.tsx"
@@ -53,6 +71,7 @@ function OpenDrawer({ threadId, sessions, activeId }: OpenDrawerProps) {
   const height = useTerminals((state) => state.height)
   const error = useTerminals((state) => state.error)
   const sectionRef = useRef<HTMLElement>(null)
+  const [confirmClose, setConfirmClose] = useState<{ session: TerminalSession; name: string } | null>(null)
 
   useEffect(() => {
     const section = sectionRef.current!
@@ -92,7 +111,11 @@ function OpenDrawer({ threadId, sessions, activeId }: OpenDrawerProps) {
                 key={session.id}
                 session={session}
                 name={terminalLabel(session, index)}
-                onClose={() => void terminals().close(threadId, session.id)}
+                onClose={() => {
+                  const name = terminalLabel(session, index)
+                  if (session.command === null) void terminals().close(threadId, session.id)
+                  else startTransition(() => setConfirmClose({ session, name }))
+                }}
               />
             ))}
           </TabsList>
@@ -127,7 +150,43 @@ function OpenDrawer({ threadId, sessions, activeId }: OpenDrawerProps) {
           </TabsContent>
         ))}
       </Tabs>
+      <CloseRunningDialog
+        target={confirmClose}
+        onCancel={() => startTransition(() => setConfirmClose(null))}
+        onClose={(session) => {
+          startTransition(() => setConfirmClose(null))
+          void terminals().close(threadId, session.id)
+        }}
+      />
     </section>
+  )
+}
+
+interface CloseRunningDialogProps {
+  readonly target: { readonly session: TerminalSession; readonly name: string } | null
+  readonly onCancel: () => void
+  readonly onClose: (session: TerminalSession) => void
+}
+
+function CloseRunningDialog({ target, onCancel, onClose }: CloseRunningDialogProps) {
+  const command = target?.session.command
+  return (
+    <AlertDialog open={target !== null} onOpenChange={(open) => !open && onCancel()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{m.terminal_close_running_title({ name: target?.name ?? "" })}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {command ? m.terminal_close_running_body({ command }) : m.terminal_close_running_body_unknown()}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={() => target && onClose(target.session)}>
+            {m.terminal_close_running_confirm()}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
 
@@ -137,6 +196,11 @@ function SessionTab({ session, name, onClose }: { session: TerminalSession; name
     <div className="group/session flex items-center">
       <TabsTrigger value={session.id} className="h-6 flex-none gap-1.5 px-2 text-xs">
         {name}
+        {session.command && (
+          <span className="max-w-40 truncate font-mono text-muted-foreground" title={session.command}>
+            {session.command}
+          </span>
+        )}
         {exited && <span className="text-muted-foreground">{m.terminal_tab_exited()}</span>}
       </TabsTrigger>
       <Button

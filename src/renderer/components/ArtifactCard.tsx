@@ -1,4 +1,6 @@
-import { isPublishDocumentTool, publishedArtifact, toolArgument } from "../../shared/agent.ts"
+import { FlowIcon } from "@hinacode/icons"
+import { publishedArtifact, publishedKind, publishedTitle, toolArgument } from "../../shared/agent.ts"
+import type { ArtifactKind } from "../../shared/artifact.ts"
 import type { MessagePart } from "../../shared/domain.ts"
 import { documentOutline, type OutlineBlock, outlineSections } from "../../shared/documentOutline.ts"
 import {
@@ -75,7 +77,15 @@ function ThumbnailMarkView({ mark }: { mark: ThumbnailMark }) {
   }
 }
 
-function PagePreview({ blocks, publishing }: { blocks: ReadonlyArray<OutlineBlock> | null; publishing: boolean }) {
+function PagePreview({
+  kind,
+  blocks,
+  publishing,
+}: {
+  kind: ArtifactKind
+  blocks: ReadonlyArray<OutlineBlock> | null
+  publishing: boolean
+}) {
   return (
     <span
       className={cn(
@@ -83,11 +93,15 @@ function PagePreview({ blocks, publishing }: { blocks: ReadonlyArray<OutlineBloc
         publishing && "surface-shimmer",
       )}
     >
-      <svg aria-hidden viewBox={`0 0 ${THUMBNAIL_WIDTH} ${THUMBNAIL_HEIGHT}`} className="size-full">
-        {thumbnailMarks(blocks).map((mark, index) => (
-          <ThumbnailMarkView key={index} mark={mark} />
-        ))}
-      </svg>
+      {kind !== "whiteboard" ? (
+        <svg aria-hidden viewBox={`0 0 ${THUMBNAIL_WIDTH} ${THUMBNAIL_HEIGHT}`} className="size-full">
+          {thumbnailMarks(blocks).map((mark, index) => (
+            <ThumbnailMarkView key={index} mark={mark} />
+          ))}
+        </svg>
+      ) : (
+        <FlowIcon aria-hidden className="absolute inset-0 m-auto size-6 text-muted-foreground" />
+      )}
     </span>
   )
 }
@@ -109,32 +123,35 @@ const sectionsLine = (blocks: ReadonlyArray<OutlineBlock>) => {
   return more > 0 ? m.artifact_card_more_sections({ sections: listed, count: more }) : listed
 }
 
+const kindLabels = {
+  page: m.artifact_card_page,
+  document: m.artifact_card_document,
+  whiteboard: m.artifact_card_whiteboard,
+} satisfies Record<ArtifactKind, () => string>
+
 const cardContent = (call: ToolCall, result: string | null) => {
-  const isDocument = isPublishDocumentTool(call.name)
+  const kind = publishedKind(call.name) ?? "page"
+  const isDocument = kind === "document"
   const markdown = isDocument ? stringArgument(call.input, "markdown") : null
   const outline = markdown === null ? null : documentOutline(markdown)
   const untitled = isDocument ? m.documents_untitled() : m.artifact_untitled()
   return {
-    isDocument,
+    kind,
     blocks: isDocument ? (outline?.blocks ?? []) : null,
     published: result === null ? null : publishedArtifact(result),
-    title: stringArgument(call.input, "title") ?? outline?.title ?? untitled,
+    title:
+      stringArgument(call.input, "title") ??
+      outline?.title ??
+      (result === null ? null : publishedTitle(result)) ??
+      untitled,
     summary: outline === null ? null : (outline.lede ?? sectionsLine(outline.blocks)),
   }
 }
 
-function CardMeta({
-  isDocument,
-  publishing,
-  version,
-}: {
-  isDocument: boolean
-  publishing: boolean
-  version: number | null
-}) {
+function CardMeta({ kind, publishing, version }: { kind: ArtifactKind; publishing: boolean; version: number | null }) {
   return (
     <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-      <span>{isDocument ? m.artifact_card_document() : m.artifact_card_page()}</span>
+      <span>{kindLabels[kind]()}</span>
       {(publishing || version !== null) && <span aria-hidden>·</span>}
       {publishing ? (
         <span className="text-shimmer">{m.artifact_card_publishing()}</span>
@@ -154,7 +171,7 @@ export function ArtifactCard({
   result: string | null
   onOpen: (id: string | null) => void
 }) {
-  const { isDocument, blocks, published, title, summary } = cardContent(call, result)
+  const { kind, blocks, published, title, summary } = cardContent(call, result)
   const publishing = call.status === "running"
 
   return (
@@ -164,9 +181,9 @@ export function ArtifactCard({
       aria-label={m.artifact_open({ title })}
       className="group/card my-2 flex w-full max-w-md min-w-0 items-center gap-3.5 rounded-xl bg-muted/50 p-2.5 pe-4 text-start pressable outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <PagePreview blocks={blocks} publishing={publishing} />
+      <PagePreview kind={kind} blocks={blocks} publishing={publishing} />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <CardMeta isDocument={isDocument} publishing={publishing} version={published?.version ?? null} />
+        <CardMeta kind={kind} publishing={publishing} version={published?.version ?? null} />
         <span dir="auto" className="truncate text-sm font-medium text-artifact-title" title={title}>
           <Highlighted text={title} />
         </span>
