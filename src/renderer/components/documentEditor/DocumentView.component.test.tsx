@@ -875,3 +875,17 @@ test("lays out a right-to-left paragraph from the right", async () => {
   expect(direction(/^المحرر/)).toBe("rtl")
   expect(direction(/^Ship the/)).toBe("ltr")
 })
+test("highlights an agent's quote copied from the Markdown, with its formatting syntax", async () => {
+  feedback = { comments: [agentComment("c-ship", "Ship the **editor** first.", "", "Ship the panel first?")] }
+  const editor = await openDocument()
+
+  await expect
+    .poll(() => Array.from(editor.element().querySelectorAll(".hina-comment"), (mark) => mark.textContent).join(""))
+    .toBe("Ship the editor first.")
+  await page.getByRole("button", { name: "Comments 1" }).click()
+  const comment = page
+    .getByRole("region", { name: "Comments" })
+    .getByRole("article", { name: "Comment: Ship the panel first?" })
+  await expect.element(comment).toBeVisible()
+  await expect.element(comment.getByText("The quoted text is gone")).not.toBeInTheDocument()
+})
