@@ -88,7 +88,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/install
       - run: pnpm lint
       - run: pnpm format --check
       - if: needs.changes.outputs.app == 'true'
@@ -144,8 +144,7 @@ jobs:
             pnpm-lock.yaml
             apps/mobile/pnpm-lock.yaml
       # tsc resolves effect types for src/shared from the root, so the root install is needed too.
-      - run: pnpm install --frozen-lockfile
-        working-directory: .
+      - uses: ./.github/actions/install
       - run: pnpm install --frozen-lockfile
       - run: npx tsc --noEmit
       - run: npx expo lint
@@ -169,7 +168,7 @@ jobs:
           cache: pnpm
       # Without a window manager, minimizing a window does nothing. Search runs ripgrep.
       - run: sudo apt-get update && sudo apt-get install --yes xvfb openbox ripgrep
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/install
       - run: pnpm exec bddgen -c e2e/playwright.config.ts
       # A shard runs every test of the projects its tests depend on, so desktop runs as its own pass instead.
       - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm exec playwright test -c e2e/playwright.config.ts --project parallel --shard ${{ matrix.shard }}/4'
@@ -195,7 +194,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/install
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e:web
       - if: failure()
