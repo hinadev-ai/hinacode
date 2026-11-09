@@ -1,4 +1,4 @@
-import { RiGitClosePullRequestLine, RiGitPullRequestLine } from "react-icons/ri"
+import { RiGitClosePullRequestLine, RiGitlabFill, RiGitPullRequestLine } from "react-icons/ri"
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
@@ -14,6 +14,12 @@ import type {
   ReviewStatus,
   Thread,
 } from "../../shared/domain.ts"
+import {
+  type CodeHost,
+  codeHostOfUrl,
+  parseGitLabMergeRequestUrl,
+  pullRequestNumberLabel,
+} from "../../shared/codeHost.ts"
 import { addressReviewPrompt, fixChecksPrompt, resolveConflictsPrompt } from "../../shared/pullRequestPrompts.ts"
 import { checksIndicator as sharedChecksIndicator, isOpen, pullRequestIndicator } from "../../shared/threadStatus.ts"
 import { toIcon } from "../lib/indicators.ts"
@@ -119,6 +125,23 @@ export const mergeLabel = {
   rebase: m.pr_merge_rebase,
 } satisfies Record<MergeMethod, () => string>
 
+export const mergeMethodsFor = (host: CodeHost | undefined): ReadonlyArray<MergeMethod> =>
+  host === "gitlab" ? ["squash", "merge"] : ["squash", "merge", "rebase"]
+
+export const offeredMergeMethod = (chosen: MergeMethod, offered: ReadonlyArray<MergeMethod>) =>
+  offered.includes(chosen) ? chosen : (offered[0] ?? chosen)
+
+const useCanWrite = (url: string) => {
+  const environment = useOpenThreadEnvironment()
+  const gitHubSignedIn =
+    AsyncResult.getOrElse(useAtomValue(gitHubAuthAtom(environment)), () => null)?.type === "signedIn"
+  return codeHostOfUrl(url) === "gitlab" || gitHubSignedIn
+}
+
+function HostMark({ host }: { host: CodeHost | undefined }) {
+  return host === "gitlab" ? <RiGitlabFill aria-hidden className="size-3.5 shrink-0 text-muted-foreground" /> : null
+}
+
 export function StatusIcon({
   status,
   colored = false,
@@ -162,7 +185,7 @@ export function PullRequestsHeader({ thread }: { thread: Thread }) {
   const setOpen = useUi((state) => state.setLinkedPullRequestsOpen)
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2 ps-2">
-      <h2 className="truncate text-sm font-medium">{m.pr_links_title()}</h2>
+      <h2 className="truncate text-sm font-medium">{m.panel_tab_source_control()}</h2>
       {urls.length > 0 && (
         <Button
           variant={open ? "secondary" : "ghost"}
@@ -260,7 +283,8 @@ const LinkedListContext = createContext<LinkedList | null>(null)
 const flatten = (stacks: ReadonlyArray<StackNode>): ReadonlyArray<string> =>
   stacks.flatMap((stack) => [stack.url, ...flatten(stack.children)])
 
-const repositoryName = (url: string) => /github\.com\/([^/]+\/[^/]+)\/pull\//.exec(url)?.[1] ?? url
+const repositoryName = (url: string) =>
+  /github\.com\/([^/]+\/[^/]+)\/pull\//.exec(url)?.[1] ?? parseGitLabMergeRequestUrl(url)?.path ?? url
 
 const ENTRANCE_STAGGER_MS = 25
 
@@ -310,6 +334,7 @@ function LinkedPullRequestRow({ url, children }: { url: string; children: ReactN
   if (list === null) return null
   const pullRequest = AsyncResult.isSuccess(status) ? status.value : undefined
   const selected = list.selected === url
+  const host = codeHostOfUrl(url)
 
   return (
     <li
@@ -326,7 +351,10 @@ function LinkedPullRequestRow({ url, children }: { url: string; children: ReactN
           <ChangingStatusIcon status={pullRequest?.status} />
         </span>
         <span className="flex min-w-0 items-center gap-1.5">
-          <span className="shrink-0 font-mono text-muted-foreground">#{pullRequest?.number ?? "…"}</span>
+          <HostMark host={host} />
+          <span className="shrink-0 font-mono text-muted-foreground">
+            {pullRequest ? pullRequestNumberLabel(host, pullRequest.number) : "…"}
+          </span>
           <span className="min-w-0 truncate text-[0.8125rem] font-medium" title={pullRequest?.title}>
             {pullRequest?.title}
           </span>
@@ -348,7 +376,7 @@ function LinkedPullRequestRow({ url, children }: { url: string; children: ReactN
           <span className="col-start-2 overflow-hidden">
             <span className="flex min-w-0 items-center gap-2.5 pt-1 text-muted-foreground">
               <span className="flex shrink-0 items-center gap-1.5">
-                <Avatar login={pullRequest.author} />
+                <Avatar login={pullRequest.author} host={host} />
                 {pullRequest.author}
               </span>
               <span className="min-w-0 shrink-2 truncate font-mono" title={repositoryName(url)}>
@@ -423,7 +451,8 @@ function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }:
   const detail = useAtomValue(detailAtom)
   const guideEnabled = useSettings(environment).pullRequestGuide.enabled
   const chosenTab = useUi((state) => state.pullRequestTab)
-  const tab = chosenTab === "guide" && !guideEnabled ? "info" : chosenTab
+  const reviewableInApp = codeHostOfUrl(url) !== "gitlab"
+  const tab = !reviewableInApp || (chosenTab === "guide" && !guideEnabled) ? "info" : chosenTab
   const setTab = useUi((state) => state.setPullRequestTab)
 
   return AsyncResult.builder(detail)
@@ -436,22 +465,24 @@ function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }:
           linked={linked}
           onUnlinkFailed={onUnlinkFailed}
         />
-        <PullRequestMetadata pullRequest={pullRequest} />
-        <Tabs value={tab} changeAction={(value: PullRequestTab) => setTab(value)}>
-          <TabsList variant="line" aria-label={m.pr_view_label()} className="-ms-2 group-data-horizontal/tabs:h-7">
-            <TabsTrigger value="info" className="flex-none px-2 text-xs">
-              {m.pr_tab_info()}
-            </TabsTrigger>
-            <TabsTrigger value="files" className="flex-none px-2 text-xs">
-              {m.pr_tab_changes()}
-            </TabsTrigger>
-            {guideEnabled && (
-              <TabsTrigger value="guide" className="flex-none px-2 text-xs">
-                {m.pr_code_view_guide()}
+        {reviewableInApp && <PullRequestMetadata pullRequest={pullRequest} />}
+        {reviewableInApp && (
+          <Tabs value={tab} changeAction={(value: PullRequestTab) => setTab(value)}>
+            <TabsList variant="line" aria-label={m.pr_view_label()} className="-ms-2 group-data-horizontal/tabs:h-7">
+              <TabsTrigger value="info" className="flex-none px-2 text-xs">
+                {m.pr_tab_info()}
               </TabsTrigger>
-            )}
-          </TabsList>
-        </Tabs>
+              <TabsTrigger value="files" className="flex-none px-2 text-xs">
+                {m.pr_tab_changes()}
+              </TabsTrigger>
+              {guideEnabled && (
+                <TabsTrigger value="guide" className="flex-none px-2 text-xs">
+                  {m.pr_code_view_guide()}
+                </TabsTrigger>
+              )}
+            </TabsList>
+          </Tabs>
+        )}
         {tab === "info" ? (
           <>
             <Attention pullRequest={pullRequest} threadId={threadId} />
@@ -498,7 +529,7 @@ function PullRequestDetailFallback({
 }) {
   const environment = useOpenThreadEnvironment()
   const refresh = useAtomRefresh(pullRequestDetailAtom(environment, url))
-  const signedIn = AsyncResult.getOrElse(useAtomValue(gitHubAuthAtom(environment)), () => null)?.type === "signedIn"
+  const signedIn = useCanWrite(url)
   if (!AsyncResult.isFailure(detail)) {
     return <SkeletonList label={m.pr_detail_loading()} rows={3} rowClassName="h-4" />
   }
@@ -535,9 +566,11 @@ function PullRequestHeader({
   linked: boolean
   onUnlinkFailed: (message: string | null) => void
 }) {
-  const environment = useOpenThreadEnvironment()
-  const signedIn = AsyncResult.getOrElse(useAtomValue(gitHubAuthAtom(environment)), () => null)?.type === "signedIn"
-  const [method, setMethod] = useState<MergeMethod>("squash")
+  const signedIn = useCanWrite(pullRequest.url)
+  const host = codeHostOfUrl(pullRequest.url)
+  const mergeMethods = mergeMethodsFor(host)
+  const [chosenMethod, setMethod] = useState<MergeMethod>("squash")
+  const method = offeredMergeMethod(chosenMethod, mergeMethods)
   const [confirming, setConfirming] = useState<PendingAction | null>(null)
   const [, startTransition] = useTransition()
   const open = isOpen(pullRequest.status)
@@ -553,8 +586,9 @@ function PullRequestHeader({
     <header className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
         <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+          <HostMark host={host} />
           <PullRequestLink threadId={threadId} url={pullRequest.url} className="shrink-0 hover:text-foreground">
-            #{pullRequest.number}
+            {pullRequestNumberLabel(host, pullRequest.number)}
           </PullRequestLink>
           <span className="min-w-0 truncate font-mono" title={`${pullRequest.baseRef} ← ${pullRequest.headRef}`}>
             {m.pr_branches_into({ base: pullRequest.baseRef, head: pullRequest.headRef })}
@@ -580,7 +614,7 @@ function PullRequestHeader({
       </div>
       <div className="flex min-w-0 items-center gap-2">
         <span className="flex min-w-0 items-center gap-2 text-xs">
-          <Avatar login={pullRequest.author} />
+          <Avatar login={pullRequest.author} host={host} />
           <span className="truncate font-medium">{pullRequest.author}</span>
         </span>
         <span className="flex shrink-0 items-center gap-2 text-xs whitespace-nowrap tabular-nums">
@@ -604,6 +638,7 @@ function PullRequestHeader({
           <div className="ms-auto flex shrink-0 items-center gap-1">
             <MergeSplitButton
               method={method}
+              methods={mergeMethods}
               onMethodChange={(next) => startTransition(() => setMethod(next))}
               disabled={!signedIn || blocker !== null}
               cautioned={cautioned}
@@ -637,6 +672,7 @@ function MoreMenu({
   onClose: (() => void) | null
 }) {
   const href = usePullRequestHref(threadId, url)
+  const openLabel = codeHostOfUrl(url) === "gitlab" ? m.pr_open_on_gitlab() : m.pr_open_on_github()
   const [, startTransition] = useTransition()
 
   const unlink = () =>
@@ -657,11 +693,9 @@ function MoreMenu({
         <MoreIcon aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuItem
-          render={<a href={href} target="_blank" rel="noreferrer" aria-label={m.pr_open_on_github()} />}
-        >
+        <DropdownMenuItem render={<a href={href} target="_blank" rel="noreferrer" aria-label={openLabel} />}>
           <ExternalIcon aria-hidden />
-          {m.pr_open_on_github()}
+          {openLabel}
         </DropdownMenuItem>
         {linked && (
           <DropdownMenuItem onClick={unlink}>
@@ -831,12 +865,14 @@ const mergeSegment =
 
 function MergeSplitButton({
   method,
+  methods,
   onMethodChange,
   disabled,
   cautioned,
   onMerge,
 }: {
   method: MergeMethod
+  methods: ReadonlyArray<MergeMethod>
   onMethodChange: (method: MergeMethod) => void
   disabled: boolean
   cautioned: boolean
@@ -878,7 +914,7 @@ function MergeSplitButton({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44">
           <DropdownMenuRadioGroup value={method} onValueChange={(value: MergeMethod) => onMethodChange(value)}>
-            {(["squash", "merge", "rebase"] as const).map((option) => (
+            {methods.map((option) => (
               <DropdownMenuRadioItem key={option} value={option} closeOnClick>
                 {mergeLabel[option]()}
               </DropdownMenuRadioItem>
@@ -940,7 +976,7 @@ function ConfirmDialog({
   const environment = useOpenThreadEnvironment()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
-  const number = pullRequest.number
+  const number = pullRequestNumberLabel(codeHostOfUrl(pullRequest.url), pullRequest.number)
   const [shown, setShown] = useState(action)
   if (action !== null && action !== shown) setShown(action)
 
@@ -1158,7 +1194,7 @@ export function Comment({ comment, showLocation = true }: { comment: PullRequest
 
 function CommentComposer({ url }: { url: string }) {
   const environment = useOpenThreadEnvironment()
-  const signedIn = AsyncResult.getOrElse(useAtomValue(gitHubAuthAtom(environment)), () => null)?.type === "signedIn"
+  const signedIn = useCanWrite(url)
   const [body, setBody] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()

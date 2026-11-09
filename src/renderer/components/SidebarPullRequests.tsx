@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react"
 import { startTransition, useState, useTransition } from "react"
+import { codeHostOfUrl, parseGitLabMergeRequestUrl, pullRequestNumberLabel } from "../../shared/codeHost.ts"
 import type { MergeMethod, PullRequest, PullRequestLink } from "../../shared/domain.ts"
 import { usePullRequestHref } from "../lib/environments.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -8,7 +9,14 @@ import { callPromise, type EnvironmentId, pullRequestStatusesAtom } from "../lib
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { PullRequestCard } from "./PullRequestLink.tsx"
-import { ChecksIndicator, mergeLabel, StatusIcon, statusIndicator } from "./ThreadPullRequests.tsx"
+import {
+  ChecksIndicator,
+  mergeLabel,
+  mergeMethodsFor,
+  offeredMergeMethod,
+  StatusIcon,
+  statusIndicator,
+} from "./ThreadPullRequests.tsx"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,8 +32,12 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card.t
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
 import { StackIcon } from "@hinacode/icons"
 
-const mergeMethods = ["squash", "merge", "rebase"] as const
-const pullRequestNumber = (url: string) => /\/pull\/(\d+)/.exec(url)?.[1] ?? ""
+const numberLabelOfUrl = (url: string) => {
+  const mergeRequest = parseGitLabMergeRequestUrl(url)
+  return mergeRequest ? pullRequestNumberLabel("gitlab", mergeRequest.iid) : `#${/\/pull\/(\d+)/.exec(url)?.[1] ?? ""}`
+}
+const numberLabel = (pullRequest: PullRequest) =>
+  pullRequestNumberLabel(codeHostOfUrl(pullRequest.url), pullRequest.number)
 const canMerge = (pullRequest: PullRequest | undefined): pullRequest is PullRequest =>
   pullRequest?.status === "open" && pullRequest.mergeable !== "conflicting"
 
@@ -105,7 +117,7 @@ function SinglePullRequest({
   environment: EnvironmentId
   merge: (pullRequests: ReadonlyArray<PullRequest>) => void
 }) {
-  const number = pullRequestNumber(url)
+  const number = numberLabelOfUrl(url)
   const pullRequestRef = parsePullRequestUrl(url)
   const href = usePullRequestHref(threadId, url)
   const status = pullRequest?.status
@@ -122,11 +134,16 @@ function SinglePullRequest({
           status ? statusIndicator[status].className : "text-muted-foreground hover:text-foreground",
         )}
       >
-        <StatusIcon status={status} className="size-3" />#{number}
+        <StatusIcon status={status} className="size-3" />
+        {number}
       </HoverCardTrigger>
-      {pullRequestRef && (
+      {(pullRequestRef || pullRequest) && (
         <HoverCardContent align="start" className="flex w-80 flex-col gap-2">
-          <PullRequestCard pullRequest={pullRequestRef} href={href} environment={environment} />
+          {pullRequestRef ? (
+            <PullRequestCard pullRequest={pullRequestRef} href={href} environment={environment} />
+          ) : (
+            <p className="text-xs font-medium">{pullRequest?.title}</p>
+          )}
           {canMerge(pullRequest) && (
             <Button size="xs" className="self-end" action={() => merge([pullRequest])}>
               {m.sidebar_pr_merge()}
@@ -150,7 +167,7 @@ function StackRow({
   merge: (pullRequests: ReadonlyArray<PullRequest>) => void
 }) {
   const href = usePullRequestHref(threadId, url)
-  const number = pullRequestNumber(url)
+  const number = numberLabelOfUrl(url)
   return (
     <li className="flex min-w-0 items-center gap-2 text-xs">
       <StatusIcon status={pullRequest?.status} colored />
@@ -160,7 +177,7 @@ function StackRow({
         rel="noreferrer"
         className="shrink-0 rounded-sm font-mono text-muted-foreground underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
       >
-        #{number}
+        {number}
       </a>
       <span className="min-w-0 flex-1 truncate" title={pullRequest?.title}>
         {pullRequest?.title}
@@ -191,7 +208,11 @@ function MergeDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const [method, setMethod] = useState<MergeMethod>("squash")
+  const mergeMethods = mergeMethodsFor(
+    oldestFirst.some((pullRequest) => codeHostOfUrl(pullRequest.url) === "gitlab") ? "gitlab" : "github",
+  )
+  const [chosenMethod, setMethod] = useState<MergeMethod>("squash")
+  const method = offeredMergeMethod(chosenMethod, mergeMethods)
   const [pending, startMerge] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const first = oldestFirst[0]
@@ -204,7 +225,7 @@ function MergeDialog({
         try {
           await callPromise("github.merge", { url: pullRequest.url, method }, { environment })
         } catch (cause) {
-          setError(m.sidebar_pr_merge_failed({ number: pullRequest.number, message: errorMessage(cause) }))
+          setError(m.sidebar_pr_merge_failed({ number: numberLabel(pullRequest), message: errorMessage(cause) }))
           return
         }
       }
@@ -224,7 +245,7 @@ function MergeDialog({
           <AlertDialogTitle>
             {several
               ? m.sidebar_pr_merge_all_title({ count: oldestFirst.length })
-              : m.pr_merge_title({ number: first?.number ?? 0, method: mergeLabel[method]() })}
+              : m.pr_merge_title({ number: first ? numberLabel(first) : "", method: mergeLabel[method]() })}
           </AlertDialogTitle>
           <AlertDialogDescription>
             {several
@@ -237,7 +258,8 @@ function MergeDialog({
             {oldestFirst.map((pullRequest) => (
               <li key={pullRequest.url} className="flex min-w-0 flex-col">
                 <span className="truncate">
-                  <span className="font-mono text-muted-foreground">#{pullRequest.number}</span> {pullRequest.title}
+                  <span className="font-mono text-muted-foreground">{numberLabel(pullRequest)}</span>{" "}
+                  {pullRequest.title}
                 </span>
                 <span className="truncate font-mono text-xs text-muted-foreground">
                   {`${pullRequest.headRefName} → ${pullRequest.baseRefName}`}

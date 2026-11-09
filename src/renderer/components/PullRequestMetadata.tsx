@@ -1,4 +1,5 @@
 import { Combobox } from "@base-ui/react/combobox"
+import type { CodeHost } from "../../shared/codeHost.ts"
 import { useAtomValue } from "@effect/atom-react"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
@@ -249,9 +250,9 @@ function Label({ label, className }: { label: PullRequestLabel; className?: stri
   )
 }
 
-export function Avatar({ login }: { login: string }) {
+export function Avatar({ login, host = "github" }: { login: string; host?: CodeHost | undefined }) {
   const [failed, setFailed] = useState(false)
-  const external = externalImageUrl(`https://github.com/${login}.png?size=48`)
+  const external = host === "gitlab" ? null : externalImageUrl(`https://github.com/${login}.png?size=48`)
   const src = external === null ? null : resourceUrl(external)
   if (failed || src === null) {
     return (
