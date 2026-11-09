@@ -16,6 +16,7 @@ import {
   Cause,
   Clock,
   Context,
+  Deferred,
   Duration,
   Effect,
   Exit,
@@ -112,6 +113,23 @@ type TurnQueue = Queue.Queue<AgentEvent, AgentError | Cause.Done>
 
 const IDLE_SESSION_TTL = Duration.seconds(60)
 
+const STDERR_TAIL_CHARS = 2000
+
+const STDERR_DRAIN_GRACE = Duration.millis(200)
+
+const stderrGrace = Effect.promise(
+  () => new Promise<void>((resolve) => setTimeout(resolve, Duration.toMillis(STDERR_DRAIN_GRACE)).unref()),
+)
+
+interface StderrTail {
+  text: string
+}
+
+const withStderr = (message: string, stderr: StderrTail) => {
+  const tail = stderr.text.trim()
+  return tail === "" ? message : `${message}. stderr: ${tail}`
+}
+
 interface Session extends MapState, ApprovalSession {
   readonly threadId: string
   readonly cwd: string
@@ -119,6 +137,8 @@ interface Session extends MapState, ApprovalSession {
   readonly instructions: string
   readonly prompts: Queue.Queue<SDKUserMessage>
   readonly abort: AbortController
+  readonly stderr: StderrTail
+  readonly stderrDrained: Deferred.Deferred<void>
   readonly query: Query
   model: string
   effort: string | null
@@ -609,6 +629,18 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
       }
     }
 
+    const endTurn = (session: Session, message: string) =>
+      Effect.race(Deferred.await(session.stderrDrained), stderrGrace).pipe(
+        Effect.andThen(
+          Effect.sync(() =>
+            emit(session, {
+              type: "turn_failed",
+              message: withStderr(message, session.stderr),
+            }),
+          ),
+        ),
+      )
+
     const pump = (session: Session) =>
       Stream.fromAsyncIterable(
         // FIXME: the Query's return() closes the transport, the raw generator's does not
@@ -620,17 +652,11 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
             Effect.andThen(armExpiry(session)),
           ),
         ),
-        Effect.catchCause((cause) =>
-          Effect.sync(() => emit(session, { type: "turn_failed", message: errorMessage(Cause.squash(cause)) })),
-        ),
+        Effect.catchCause((cause) => endTurn(session, errorMessage(Cause.squash(cause)))),
         Effect.ensuring(
-          Effect.suspend(() => {
-            emit(session, {
-              type: "turn_failed",
-              message: "Claude Code session ended unexpectedly",
-            })
-            return closeSession(session)
-          }),
+          Effect.suspend(() =>
+            endTurn(session, "Claude Code session ended unexpectedly").pipe(Effect.andThen(closeSession(session))),
+          ),
         ),
       )
 
@@ -648,6 +674,9 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
       Effect.gen(function* () {
         const prompts = yield* Queue.unbounded<SDKUserMessage>()
         const abort = new AbortController()
+        const stderr: StderrTail = { text: "" }
+        const stderrDrained = yield* Deferred.make<void>()
+        const markStderrDrained = () => Effect.runSync(Deferred.succeed(stderrDrained, undefined))
         const previous = resumable.get(input.threadId)
         const resume = input.resumeSessionId ?? previous?.sessionId
         const keepsGrants = previous !== undefined && previous.sessionId === resume && sameContext(previous, input)
@@ -687,9 +716,15 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
                     : approvals.ask(session, toolName, toolInput, options),
                 mcpServers: { hinacode: hinacodeMcpServer(input.mcpServer) },
                 abortController: abort,
-                // FIXME: the SDK never reads stderr from a custom spawn, and an unread pipe would block the CLI
+                // FIXME: the SDK keeps a stderr tail only for a CLI it spawns itself
                 spawnClaudeCodeProcess: ({ command, args, cwd, env, signal }) => {
-                  const child = spawn(command, args, { cwd, env, signal, stdio: ["pipe", "pipe", "ignore"] })
+                  const child = spawn(command, args, { cwd, env, signal, stdio: ["pipe", "pipe", "pipe"] })
+                  child.stderr.setEncoding("utf8")
+                  child.stderr.on("data", (chunk: string) => {
+                    stderr.text = (stderr.text + chunk).slice(-STDERR_TAIL_CHARS)
+                  })
+                  child.stderr.once("close", markStderrDrained)
+                  child.once("exit", () => setTimeout(markStderrDrained, Duration.toMillis(STDERR_DRAIN_GRACE)).unref())
                   child.once(
                     "exit",
                     registerAgentPid(input.threadId, () => child.pid),
@@ -713,6 +748,8 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
           permissionMode: mode,
           prompts,
           abort,
+          stderr,
+          stderrDrained,
           query: handle,
           sessionGrants: keepsGrants ? previous.sessionGrants : new Set(),
           attachmentPaths: keepsGrants ? previous.attachmentPaths : new Set(),

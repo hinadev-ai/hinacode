@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { connect } from "node:net"
@@ -139,6 +140,10 @@ const prompt = (text) => {
   if (text === "exit") return process.exit(0)
   if (text === "crash") {
     textDelta("half an answer")
+    return die(3, "FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory")
+  }
+  if (text === "crash with a late stderr line") {
+    spawn("sh", ["-c", "sleep 0.05; echo 'late stderr line' >&2"], { stdio: ["ignore", "ignore", "inherit"] })
     return die(3, "FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory")
   }
   if (text === "noise") {
