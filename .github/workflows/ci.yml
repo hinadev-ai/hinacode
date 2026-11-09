@@ -89,6 +89,12 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/electron
+          key: electron-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      # FIXME: GitHub's release downloads time out with a 504 now and then, and the Electron binary comes from there
+      - run: for attempt in 1 2 3 4 5; do pnpm exec install-electron && exit 0; sleep $((attempt * 15)); done; exit 1
       - run: pnpm lint
       - run: pnpm format --check
       - if: needs.changes.outputs.app == 'true'
@@ -170,6 +176,12 @@ jobs:
       # Without a window manager, minimizing a window does nothing. Search runs ripgrep.
       - run: sudo apt-get update && sudo apt-get install --yes xvfb openbox ripgrep
       - run: pnpm install --frozen-lockfile
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/electron
+          key: electron-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      # FIXME: GitHub's release downloads time out with a 504 now and then, and the Electron binary comes from there
+      - run: for attempt in 1 2 3 4 5; do pnpm exec install-electron && exit 0; sleep $((attempt * 15)); done; exit 1
       - run: pnpm exec bddgen -c e2e/playwright.config.ts
       # A shard runs every test of the projects its tests depend on, so desktop runs as its own pass instead.
       - run: xvfb-run -a sh -c 'openbox 2>/dev/null & pnpm exec playwright test -c e2e/playwright.config.ts --project parallel --shard ${{ matrix.shard }}/4'
