@@ -40,6 +40,8 @@ const ownToolLabels = new Map<string, () => string>([
   ["linear_update_issue_state", m.tool_own_linear_update_issue_state],
   ["publish_artifact", m.tool_own_publish_artifact],
   ["publish_document", m.tool_own_publish_document],
+  ["publish_whiteboard", m.tool_own_publish_whiteboard],
+  ["comment_on_artifact", m.tool_own_comment_on_artifact],
   ["document_chart_guide", m.tool_own_document_chart_guide],
   ["list_artifacts", m.tool_own_list_artifacts],
   ["read_artifact", m.tool_own_read_artifact],

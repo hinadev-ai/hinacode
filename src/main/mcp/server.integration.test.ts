@@ -408,6 +408,41 @@ layer(testLayer)("artifact tools", (it) => {
     }),
   )
 
+  it.effect("comment_on_artifact records the calling thread, and auto_open opens a whiteboard", () =>
+    Effect.gen(function* () {
+      const mcp = yield* McpCredentials
+      const { a } = yield* Seeded
+      const connection = yield* mcp.connectionFor(a)
+      const { store } = yield* Artifacts.Artifacts
+      pushes.length = 0
+
+      const published = yield* callAs(connection, "publish_whiteboard", {
+        title: "Architecture",
+        elements: [{ id: "api", type: "rectangle", x: 0, y: 0, width: 180, height: 80 }],
+        auto_open: true,
+      })
+      const id = /^Published whiteboard ([a-z0-9-]+) version 1:/.exec(published.text)?.[1]
+      expect(pushes.filter((push) => push.type === "artifact.opened")).toEqual([
+        { type: "artifact.opened", threadId: a, id },
+      ])
+
+      const commented = yield* callAs(connection, "comment_on_artifact", {
+        id,
+        elements: ["api"],
+        body: "Is this the gateway?",
+      })
+      expect(commented).toMatchObject({
+        isError: false,
+        text: expect.stringMatching(/^Started comment c_\w+ on artifact /),
+      })
+      const feedback = yield* Effect.promise(() => store.feedback(id ?? ""))
+      expect(feedback?.comments[0]?.messages[0]?.author).toEqual({ kind: "agent", threadId: a })
+
+      const invalid = yield* callAs(connection, "comment_on_artifact", { id, quote: "x", elements: ["api"], body: "?" })
+      expect(invalid).toMatchObject({ isError: true, text: "quote: Pass quote or elements, not both." })
+    }),
+  )
+
   it.effect("a thread publishes a file from disk without sending its content", () =>
     Effect.gen(function* () {
       const mcp = yield* McpCredentials
@@ -789,7 +824,9 @@ layer(testLayer)("terminal tools", (it) => {
 
         const read = yield* callFrom(a, "read_terminal", { id: greeting.id })
         expect(read.isError).toBe(false)
-        expect(read.text).toMatch(new RegExp(`^greeting \\(running\\) in ${repoA}\n\n`))
+        expect(read.text).toMatch(
+          new RegExp(`^greeting \\((running|idle, the last command exited with code 0)\\) in ${repoA}\n\n`),
+        )
         expect(read.text).toMatch(/^hello terminal$/m)
         expect(read.text).not.toContain("\u001B")
 

@@ -3,6 +3,7 @@ import { resolve } from "node:path"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "electron-vite"
+import { withoutExcalidrawMermaid } from "./vite.excalidraw.ts"
 import { lazyLocales, paraglide } from "./vite.paraglide.ts"
 
 // FIXME: Electron 44 downloads its binary on the first require("electron"), which electron-vite 5 never calls
@@ -41,6 +42,7 @@ export default defineConfig({
       tailwindcss(),
       paraglide(),
       lazyLocales(),
+      withoutExcalidrawMermaid(),
     ],
   },
 })

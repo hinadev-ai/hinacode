@@ -12,7 +12,27 @@ import {
   DOCUMENT_ENTRY,
   isArtifactId,
   normalizeArtifactPath,
+  WHITEBOARD_ENTRY,
 } from "./artifact.ts"
+import {
+  type ArtifactComment,
+  type ArtifactFeedback,
+  ArtifactFeedbackSchema,
+  type CommentAnchor,
+  CommentAnchorSchema,
+  type CommentAuthor,
+  type CommentMessage,
+  emptyFeedback,
+} from "./feedback.ts"
+import {
+  duplicateId,
+  EMPTY_SCENE,
+  mergeScene,
+  parseScene,
+  sceneFile,
+  type WhiteboardPatch,
+  type WhiteboardScene,
+} from "./whiteboard.ts"
 
 export const MAX_ARTIFACT_BYTES = 16 * 1024 * 1024
 
@@ -39,14 +59,57 @@ type PublishCommon = {
   author?: ArtifactAuthor
 }
 
-export type PublishInput =
-  | (PublishCommon & { kind?: "page"; entry?: string; files: FileInput[] })
-  | (PublishCommon & { kind: "document"; markdown: string })
+type ContentInput =
+  | { kind?: "page"; entry?: string; files: FileInput[] }
+  | { kind: "document"; markdown: string }
+  | { kind: "whiteboard"; scene: WhiteboardScene }
 
-const contentOf = (input: PublishInput) =>
-  input.kind === "document"
-    ? { kind: "document" as const, entry: DOCUMENT_ENTRY, files: [{ path: DOCUMENT_ENTRY, content: input.markdown }] }
-    : { kind: "page" as const, entry: input.entry ?? "index.html", files: input.files }
+export type PublishInput =
+  | (PublishCommon & ContentInput)
+  | (PublishCommon & { kind: "whiteboard"; patch: WhiteboardPatch })
+
+const sceneOf = (scene: WhiteboardScene) => {
+  const duplicate = duplicateId(scene.elements.map((element) => element.id))
+  if (duplicate !== undefined) throw new ArtifactError(`The element id "${duplicate}" appears more than once.`)
+  return sceneFile(scene)
+}
+
+const contentOf = (input: ContentInput): { kind: ArtifactKind; entry: string; files: FileInput[] } => {
+  switch (input.kind) {
+    case "document":
+      return { kind: "document", entry: DOCUMENT_ENTRY, files: [{ path: DOCUMENT_ENTRY, content: input.markdown }] }
+    case "whiteboard":
+      return {
+        kind: "whiteboard",
+        entry: WHITEBOARD_ENTRY,
+        files: [{ path: WHITEBOARD_ENTRY, content: sceneOf(input.scene) }],
+      }
+    case "page":
+    case undefined:
+      return { kind: "page", entry: input.entry ?? "index.html", files: input.files }
+  }
+}
+
+const updateTool: Record<ArtifactKind, string> = {
+  page: "publish_artifact",
+  document: "publish_document",
+  whiteboard: "publish_whiteboard",
+}
+
+const checkPatch = ({ upsert, remove = [] }: WhiteboardPatch) => {
+  const duplicate = duplicateId(upsert.map((element) => element.id))
+  if (duplicate !== undefined) throw new ArtifactError(`The element id "${duplicate}" appears more than once.`)
+  const both = upsert.find((element) => remove.includes(element.id))
+  if (both !== undefined) throw new ArtifactError(`The element "${both.id}" is both added and removed. Pass it once.`)
+}
+
+export type CommentInput = {
+  comment?: string
+  anchor?: CommentAnchor
+  author: CommentAuthor
+  body: string
+  resolve?: boolean
+}
 
 export type ArtifactFileContent = {
   bytes: Uint8Array<ArrayBuffer>
@@ -65,11 +128,21 @@ export type ArtifactStore = {
   remove(id: string): Promise<boolean>
   rename(id: string, title: string): Promise<Artifact>
   addDocumentImage(id: string, image: { bytes: Uint8Array; type: string }): Promise<string>
+  feedback(id: string): Promise<ArtifactFeedback | null>
+  comment(id: string, input: CommentInput): Promise<{ feedback: ArtifactFeedback; comment: ArtifactComment }>
+  resolveComment(id: string, comment: string, resolved: boolean): Promise<ArtifactFeedback>
 }
 
 const ID_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz"
 
-const newId = () => Array.from(randomBytes(12), (byte) => ID_ALPHABET[byte % ID_ALPHABET.length]).join("")
+const randomText = (length: number) =>
+  Array.from(randomBytes(length), (byte) => ID_ALPHABET[byte % ID_ALPHABET.length]).join("")
+
+const newId = () => randomText(12)
+
+const shortId = (prefix: "c" | "m") => `${prefix}_${randomText(6)}`
+
+const FEEDBACK_FILE = "feedback.json"
 
 const decodeFiles = (files: FileInput[]) => {
   if (files.length === 0) throw new ArtifactError("An artifact needs at least one file, such as index.html.")
@@ -157,6 +230,41 @@ const imageName = ({ bytes, type }: { bytes: Uint8Array; type: string }) => {
 
 const missing = (id: string) => new ArtifactError(`No artifact has the id "${id}". Omit id to publish a new artifact.`)
 
+const unknown = (id: string) => new ArtifactError(`No artifact has the id "${id}". Call list_artifacts to see the ids.`)
+
+const isMissingFile = (error: unknown) =>
+  error instanceof Error && "code" in error && (error.code === "ENOENT" || error.code === "ENOTDIR")
+
+const anchorOn = (artifact: Artifact, anchor: CommentAnchor): CommentAnchor => {
+  const parsed = CommentAnchorSchema.safeParse(anchor)
+  if (!parsed.success) throw new ArtifactError(parsed.error.issues[0]?.message ?? "Invalid anchor.")
+  if (parsed.data.kind === "text" && artifact.kind !== "document") {
+    throw new ArtifactError(`Artifact ${artifact.id} is a ${artifact.kind}. Only a document's comments quote text.`)
+  }
+  if (parsed.data.kind === "elements" && artifact.kind !== "whiteboard") {
+    throw new ArtifactError(
+      `Artifact ${artifact.id} is a ${artifact.kind}. Only a whiteboard's comments name elements.`,
+    )
+  }
+  return parsed.data
+}
+
+const withComment = (current: ArtifactFeedback, comment: ArtifactComment) => {
+  const comments = current.comments.some((existing) => existing.id === comment.id)
+    ? current.comments.map((existing) => (existing.id === comment.id ? comment : existing))
+    : [...current.comments, comment]
+  const updated = { ...current, comments }
+  return { feedback: updated, result: { feedback: updated, comment } }
+}
+
+const findComment = (current: ArtifactFeedback, artifact: Artifact, id: string) => {
+  const found = current.comments.find((comment) => comment.id === id)
+  if (found === undefined) {
+    throw new ArtifactError(`Artifact ${artifact.id} has no comment "${id}". read_artifact lists its open comments.`)
+  }
+  return found
+}
+
 export const openArtifactStore = (root: string, options: { now?: () => Date } = {}): ArtifactStore => {
   const now = options.now ?? (() => new Date())
 
@@ -195,16 +303,26 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
     return artifacts.filter((artifact) => artifact !== null).toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   }
 
-  const writeManifest = async (artifact: Artifact, assertLocked: () => void) => {
-    const directory = join(root, artifact.id)
-    const temporary = join(directory, `artifact.json.${randomUUID()}.tmp`)
-    await writeFile(temporary, `${JSON.stringify(artifact, null, 2)}\n`)
+  const writeJson = async (id: string, name: string, value: unknown, assertLocked: () => void) => {
+    const directory = join(root, id)
+    const temporary = join(directory, `${name}.${randomUUID()}.tmp`)
+    await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`)
     assertLocked()
-    await rename(temporary, join(directory, "artifact.json"))
+    await rename(temporary, join(directory, name))
   }
 
-  const publish = async (input: PublishInput): Promise<Artifact> => {
-    if (input.id === undefined) titleOf(input.title)
+  const writeManifest = (artifact: Artifact, assertLocked: () => void) =>
+    writeJson(artifact.id, "artifact.json", artifact, assertLocked)
+
+  const currentScene = async (artifact: Artifact | null) => {
+    if (artifact === null) return EMPTY_SCENE
+    const text = await readFile(join(root, artifact.id, String(artifact.version), WHITEBOARD_ENTRY), "utf8")
+    const scene = parseScene(text)
+    if (scene === null) throw new ArtifactError(`Whiteboard ${artifact.id} holds a scene that cannot be read.`)
+    return scene
+  }
+
+  const prepare = (input: ContentInput) => {
     const content = contentOf(input)
     const files = decodeFiles(content.files)
     const entry = normalizeArtifactPath(content.entry)
@@ -213,22 +331,37 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
         `The entry "${content.entry}" is not one of the files. Include it, or set entry to a file you publish.`,
       )
     }
+    return { kind: content.kind, entry, files }
+  }
+
+  const publish = async (input: PublishInput): Promise<Artifact> => {
+    if (input.id === undefined) titleOf(input.title)
+    const patch = "patch" in input ? input.patch : undefined
+    if (patch !== undefined) checkPatch(patch)
+    const prepared = "patch" in input ? null : prepare(input)
     if (input.id !== undefined && !isArtifactId(input.id)) {
-      throw new ArtifactError(`Invalid artifact id "${input.id}". Pass an id that publish_artifact returned.`)
+      throw new ArtifactError(
+        `Invalid artifact id "${input.id}". Pass an id that ${updateTool[input.kind ?? "page"]} returned.`,
+      )
     }
     const id = input.id ?? newId()
     return withLock(id, async (assertLocked) => {
       const previous = input.id === undefined ? null : await get(id)
       if (input.id !== undefined && previous === null) throw missing(id)
       const title = titleOf(input.title ?? previous?.title)
-      if (previous !== null && previous.kind !== content.kind) {
-        throw new ArtifactError(
-          `Artifact ${id} is a ${previous.kind}. Update it with ${previous.kind === "document" ? "publish_document" : "publish_artifact"}.`,
-        )
+      const kind = input.kind ?? "page"
+      if (previous !== null && previous.kind !== kind) {
+        throw new ArtifactError(`Artifact ${id} is a ${previous.kind}. Update it with ${updateTool[previous.kind]}.`)
       }
       if (previous !== null && input.baseRevision !== undefined && previous.revision !== input.baseRevision) {
         throw new ArtifactConflictError(previous)
       }
+      const { entry, files } =
+        prepared ??
+        prepare({
+          kind: "whiteboard",
+          scene: mergeScene(await currentScene(previous), patch ?? { upsert: [] }),
+        })
 
       const author = input.author ?? "agent"
       const inPlace = previous !== null && author === "developer" && previous.author === "developer"
@@ -249,7 +382,7 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
       const threadId = previous?.threadId ?? input.threadId
       const artifact: Artifact = {
         id,
-        kind: content.kind,
+        kind,
         title,
         entry,
         version,
@@ -350,5 +483,91 @@ export const openArtifactStore = (root: string, options: { now?: () => Date } = 
     })
   }
 
-  return { root, publish, get, list, file, remove, rename: renameArtifact, addDocumentImage }
+  const readFeedback = async (id: string): Promise<ArtifactFeedback> => {
+    let text: string
+    try {
+      text = await readFile(join(root, id, FEEDBACK_FILE), "utf8")
+    } catch (error) {
+      if (isMissingFile(error)) return emptyFeedback()
+      throw error
+    }
+    const parsed = ArtifactFeedbackSchema.safeParse(JSON.parse(text))
+    if (!parsed.success) throw new ArtifactError(`The feedback of artifact ${id} cannot be read.`)
+    return parsed.data
+  }
+
+  const feedback = async (id: string) => ((await get(id)) === null ? null : readFeedback(id))
+
+  const updateFeedback = async <T>(
+    id: string,
+    change: (
+      current: ArtifactFeedback,
+      artifact: Artifact,
+      timestamp: string,
+    ) => { feedback: ArtifactFeedback; result: T },
+  ) => {
+    if (!isArtifactId(id)) throw unknown(id)
+    return withLock(id, async (assertLocked) => {
+      const artifact = await get(id)
+      if (artifact === null) throw unknown(id)
+      const next = change(await readFeedback(id), artifact, now().toISOString())
+      await writeJson(id, FEEDBACK_FILE, next.feedback, assertLocked)
+      return next.result
+    })
+  }
+
+  const comment = (id: string, input: CommentInput) =>
+    updateFeedback(id, (current, artifact, timestamp) => {
+      const body = input.body.trim()
+      const message: CommentMessage | null =
+        body === "" ? null : { id: shortId("m"), author: input.author, body, createdAt: timestamp }
+      if (input.comment === undefined) {
+        if (message === null) throw new ArtifactError("A comment needs a body.")
+        return withComment(current, {
+          id: shortId("c"),
+          anchor: anchorOn(artifact, input.anchor ?? { kind: "artifact" }),
+          resolved: input.resolve ?? false,
+          messages: [message],
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        })
+      }
+      if (input.anchor !== undefined) {
+        throw new ArtifactError("A reply keeps its comment's anchor. Pass either a comment to reply to or an anchor.")
+      }
+      const replied = findComment(current, artifact, input.comment)
+      if (message === null && input.resolve === undefined) {
+        throw new ArtifactError("A reply needs a body, unless it only resolves the comment.")
+      }
+      return withComment(current, {
+        ...replied,
+        resolved: input.resolve ?? (message === null ? replied.resolved : false),
+        messages: message === null ? replied.messages : [...replied.messages, message],
+        updatedAt: timestamp,
+      })
+    })
+
+  const resolveComment = (id: string, commentId: string, resolved: boolean) =>
+    updateFeedback(id, (current, artifact, timestamp) => {
+      const { feedback: updated } = withComment(current, {
+        ...findComment(current, artifact, commentId),
+        resolved,
+        updatedAt: timestamp,
+      })
+      return { feedback: updated, result: updated }
+    })
+
+  return {
+    root,
+    publish,
+    get,
+    list,
+    file,
+    remove,
+    rename: renameArtifact,
+    addDocumentImage,
+    feedback,
+    comment,
+    resolveComment,
+  }
 }

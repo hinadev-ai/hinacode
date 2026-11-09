@@ -16,7 +16,8 @@ import {
   usageLimitSessionId,
   orgSpendLimitMessage,
 } from "./fixtures/usageLimit.ts"
-import { artifactTurn, documentTurn, type MockDocument, publishArtifact } from "./fixtures/artifacts.ts"
+import { artifactTurn, callMcpTool, documentTurn, type MockDocument } from "./fixtures/artifacts.ts"
+import { commentSteps, feedbackScenario, whiteboardSteps } from "./fixtures/feedback.ts"
 import { mockModel } from "./fixtures/sdk.ts"
 import {
   approvals,
@@ -56,6 +57,8 @@ export const mockScenarioDescriptions = {
   subagents: "Run six sub-agents that report progress every two seconds.",
   artifacts: "Publish an artifact named after the prompt.",
   documents: "Publish a document named after the prompt. The next message updates it from the version it last saw.",
+  comments: "Publish a document and ask about a quote in it. Answer each comment on the document.",
+  whiteboard: "Draw a whiteboard. Answer a question about a selection with a note beside it.",
 } as const satisfies Record<string, string>
 export type MockScenario = keyof typeof mockScenarioDescriptions
 export const mockScenarios = Object.keys(mockScenarioDescriptions) as ReadonlyArray<MockScenario>
@@ -66,7 +69,8 @@ const MOCK_COMMAND = /^\/mock-([a-z-]+)\b/
 
 export const scenarioOf = (prompt: string, fallback: MockScenario): MockScenario => {
   const named = MOCK_COMMAND.exec(prompt.trim())?.[1]
-  return named !== undefined && isMockScenario(named) ? named : fallback
+  if (named !== undefined && isMockScenario(named)) return named
+  return feedbackScenario(prompt) ?? fallback
 }
 
 const commands: ReadonlyArray<AgentCommand> = [
@@ -234,7 +238,9 @@ const playedSteps = {
   error: failure,
   "signed-out": signedOut,
   stop: stoppable,
-} satisfies Partial<Record<MockScenario, () => ReadonlyArray<MockStep>>>
+  comments: (prompt: string) => [...commentSteps(prompt), finished()],
+  whiteboard: (prompt: string) => [...whiteboardSteps(prompt), finished()],
+} satisfies Partial<Record<MockScenario, (prompt: string) => ReadonlyArray<MockStep>>>
 
 const awaitReply = <A>(replies: Map<string, Deferred.Deferred<A>>, id: string) => {
   const pending = Deferred.makeUnsafe<A>()
@@ -325,14 +331,16 @@ export const usageLimitLayer = (defaultScenario: MockScenario = "usage-limit", r
         stop: Deferred.Deferred<void>,
       ): Stream.Stream<AgentEvent> => {
         if (isPlayed(scenario)) {
-          return play(playedSteps[scenario](), {
+          const bound: AgentEvent = { type: "session_bound", providerSessionId: `mock-played-${input.threadId}` }
+          const played = play(playedSteps[scenario](input.prompt), {
             threadId: input.threadId,
             stopped: stop,
             sleep: (ms) => Effect.sleep(ms),
             approve: (request) => awaitReply(approvalReplies, request.id),
             answer: (request) => awaitReply(questionReplies, request.id),
-            publishArtifact: (args) => publishArtifact(input.mcpServer, args),
+            callTool: (name, args) => callMcpTool(input.mcpServer, name, args),
           })
+          return Stream.concat(Stream.make(bound), played)
         }
         switch (scenario) {
           case "usage-limit":

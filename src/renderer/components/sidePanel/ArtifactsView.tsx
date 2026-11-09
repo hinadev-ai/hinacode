@@ -32,7 +32,7 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   FileTextIcon,
-  LayoutIcon,
+  FlowIcon,
   PlusIcon,
   TrashIcon,
   WarningIcon,
@@ -45,11 +45,16 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { SkeletonList } from "../ui/skeleton.tsx"
 import { liveDocument, liveDocumentKey } from "../documentEditor/liveDocuments.ts"
 import { Section, ViewBody } from "./Section.tsx"
+import { ArtifactKindIcon } from "./ArtifactKindIcon.tsx"
 import { resourceUrl, servedSandbox } from "../../lib/resourceUrl.ts"
 import { inBrowser } from "../../lib/runtime.ts"
 
 const DocumentView = lazy(() =>
   import("../documentEditor/DocumentView.tsx").then((module) => ({ default: module.DocumentView })),
+)
+
+const WhiteboardView = lazy(() =>
+  import("../whiteboard/WhiteboardView.tsx").then((module) => ({ default: module.WhiteboardView })),
 )
 
 const noArtifacts: ReadonlyArray<Artifact> = []
@@ -80,7 +85,7 @@ export function ArtifactsHeader({ thread }: { thread: Thread }) {
         {m.artifacts_version({ version: selected.version })}
       </span>
       <span className="flex-1" />
-      {!inBrowser() && <ExportMenu artifact={selected} />}
+      {!inBrowser() && exportable(selected) && <ExportMenu artifact={selected} />}
     </div>
   )
 }
@@ -185,6 +190,8 @@ function TitleInput({
   )
 }
 
+const exportable = (artifact: Artifact) => artifact.kind !== "whiteboard"
+
 const exportArtifact = (request: ArtifactExportRequest) =>
   callPromise("artifacts.export", request)
     .then((path) => {
@@ -235,6 +242,11 @@ function ExportMenu({ artifact }: { artifact: Artifact }) {
 export function ArtifactsView({ thread }: { thread: Thread }) {
   const selected = useSelectedArtifact(thread.id)
   const theme = useArtifactTheme()
+  if (selected?.kind === "whiteboard") {
+    return (
+      <WhiteboardView key={`${selected.environmentId ?? ""}:${selected.id}`} threadId={thread.id} artifact={selected} />
+    )
+  }
   if (selected !== undefined && isDocument(selected)) {
     return (
       <DocumentView key={`${selected.environmentId ?? ""}:${selected.id}`} threadId={thread.id} artifact={selected} />
@@ -355,7 +367,7 @@ function ArtifactList({ threadId }: { threadId: string }) {
       const others = list.filter((artifact) => artifact.threadId !== threadId)
       return (
         <>
-          <Section title={m.artifacts_this_thread()} action={<NewDocumentButton threadId={threadId} />}>
+          <Section title={m.artifacts_this_thread()} action={<NewArtifactMenu threadId={threadId} />}>
             {mine.length === 0 ? (
               <p className="text-xs text-muted-foreground">{m.artifacts_this_thread_empty()}</p>
             ) : (
@@ -374,23 +386,45 @@ function ArtifactList({ threadId }: { threadId: string }) {
     .orElse(() => failed(""))
 }
 
-function NewDocumentButton({ threadId }: { threadId: string }) {
+function NewArtifactMenu({ threadId }: { threadId: string }) {
   const registry = useContext(RegistryContext)
   const select = useArtifacts((state) => state.select)
-  const create = async () => {
+  const create = async (created: Promise<Artifact>, failed: (input: { message: string }) => string) => {
     try {
-      const document = await callPromise("artifacts.createDocument", { threadId, title: m.documents_untitled() })
+      const artifact = await created
       await refreshedArtifacts(registry)
-      select(threadId, document.id)
+      select(threadId, artifact.id)
     } catch (cause) {
-      toast.error(m.documents_create_failed({ message: errorMessage(cause) }))
+      toast.error(failed({ message: errorMessage(cause) }))
     }
   }
+  const createDocument = () =>
+    create(
+      callPromise("artifacts.createDocument", { threadId, title: m.documents_untitled() }),
+      m.documents_create_failed,
+    )
+  const createWhiteboard = () =>
+    create(
+      callPromise("artifacts.createWhiteboard", { threadId, title: m.whiteboard_untitled() }),
+      m.whiteboard_create_failed,
+    )
   return (
-    <Button variant="ghost" size="xs" action={create}>
-      <PlusIcon aria-hidden />
-      {m.documents_new()}
-    </Button>
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button variant="ghost" size="xs" />}>
+        <PlusIcon aria-hidden />
+        {m.artifacts_new()}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => void createDocument()}>
+          <FileTextIcon aria-hidden />
+          {m.artifacts_new_document()}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => void createWhiteboard()}>
+          <FlowIcon aria-hidden />
+          {m.artifacts_new_whiteboard()}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -427,11 +461,7 @@ function ArtifactRow({ threadId, artifact }: { threadId: string; artifact: Artif
           onClick={() => select(threadId, artifact.id)}
           className="flex w-full min-w-0 items-start gap-2 rounded-md px-2 py-1.5 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
         >
-          {isDocument(artifact) ? (
-            <FileTextIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          ) : (
-            <LayoutIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          )}
+          <ArtifactKindIcon artifact={artifact} className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="truncate text-sm text-artifact-title">{artifact.title}</span>
             <span className="truncate text-xs text-muted-foreground">

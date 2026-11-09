@@ -65,6 +65,7 @@ describe("claudeGatewayEnv", () => {
     ANTHROPIC_DEFAULT_FABLE_MODEL: "OpenRouter/X",
     ANTHROPIC_SMALL_FAST_MODEL: "OpenRouter/X",
     CLAUDE_CODE_SUBAGENT_MODEL: "OpenRouter/X",
+    CLAUDE_CODE_EXTRA_BODY: "{}",
   }
 
   test("points Claude Code at the gateway, blanks every way around it and pins every tier to the model", () => {

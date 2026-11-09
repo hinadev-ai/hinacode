@@ -5,18 +5,20 @@ import type { ProjectKind, WorktreeStatus } from "../../shared/domain.ts"
 
 export interface SeedThread {
   readonly rootPath: string
+  readonly projectId?: string
   readonly kind?: ProjectKind
   readonly worktree?: { readonly path: string; readonly baseRef: string; readonly status: WorktreeStatus }
 }
 
-export const seedThread = ({ rootPath, kind, worktree }: SeedThread) =>
+export const seedThread = ({ rootPath, projectId: existingProjectId, kind, worktree }: SeedThread) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient
     const now = new Date().toISOString()
-    const projectId = randomUUID()
+    const projectId = existingProjectId ?? randomUUID()
     const worktreeId = worktree ? randomUUID() : null
     const threadId = randomUUID()
-    yield* sql`INSERT INTO project ${sql.insert({ id: projectId, name: "demo", rootPath, ...(kind ? { kind } : {}), createdAt: now, updatedAt: now })}`
+    if (existingProjectId === undefined)
+      yield* sql`INSERT INTO project ${sql.insert({ id: projectId, name: "demo", rootPath, ...(kind ? { kind } : {}), createdAt: now, updatedAt: now })}`
     if (worktree) {
       yield* sql`INSERT INTO worktree ${sql.insert({
         id: worktreeId,

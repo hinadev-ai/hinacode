@@ -12,7 +12,7 @@ import {
   useTransition,
 } from "react"
 import { CLAUDE_EFFORT_LEVELS, type ModelInfo, ProviderId, unlistedModel } from "../../../shared/agent.ts"
-import { AccessMode, AUTO_COMPACT_RANGE } from "../../../shared/domain.ts"
+import { AccessMode, AUTO_COMPACT_RANGE, type Settings } from "../../../shared/domain.ts"
 import { providerInfo } from "../../../shared/providers.ts"
 import { modelsAtom, updateSettingsAtom } from "../../lib/rpc.ts"
 import { useSettings } from "../../lib/settings.ts"
@@ -107,7 +107,27 @@ function NewThreadsGroup() {
   )
 }
 
+type ProviderSwitches = Settings["providerEnabled"]
+
 function AgentList({ selected, onSelect }: { selected: ProviderId; onSelect: (provider: ProviderId) => void }) {
+  const environment = useSettingsEnvironment()
+  const { providerEnabled } = useSettings(environment)
+  const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
+  const pendingSave = useRef<Promise<ProviderSwitches | null>>(null)
+
+  const setEnabled = (provider: ProviderId, enabled: boolean) => {
+    const save = (pendingSave.current ?? Promise.resolve(null))
+      .then((saved) => updateSettings({ providerEnabled: { ...(saved ?? providerEnabled), [provider]: enabled } }))
+      .then(
+        (settings) => settings.providerEnabled,
+        () => null,
+      )
+    pendingSave.current = save
+    void save.finally(() => {
+      if (pendingSave.current === save) pendingSave.current = null
+    })
+  }
+
   return (
     <Panel title={m.settings_agents()}>
       <ul
@@ -120,6 +140,7 @@ function AgentList({ selected, onSelect }: { selected: ProviderId; onSelect: (pr
             provider={provider}
             selected={provider === selected}
             onSelect={() => onSelect(provider)}
+            onEnabledChange={(enabled) => setEnabled(provider, enabled)}
           />
         ))}
       </ul>
@@ -127,10 +148,15 @@ function AgentList({ selected, onSelect }: { selected: ProviderId; onSelect: (pr
   )
 }
 
-function AgentRow({ provider, selected, onSelect }: { provider: ProviderId; selected: boolean; onSelect: () => void }) {
-  const environment = useSettingsEnvironment()
-  const { providerEnabled, defaultModel } = useSettings(environment)
-  const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
+interface AgentRowProps {
+  readonly provider: ProviderId
+  readonly selected: boolean
+  readonly onSelect: () => void
+  readonly onEnabledChange: (enabled: boolean) => void
+}
+
+function AgentRow({ provider, selected, onSelect, onEnabledChange }: AgentRowProps) {
+  const { providerEnabled, defaultModel } = useSettings(useSettingsEnvironment())
   const enabled = providerEnabled[provider]
   const model = defaultModel[provider]
   const label = providerLabel[provider]()
@@ -160,7 +186,7 @@ function AgentRow({ provider, selected, onSelect }: { provider: ProviderId; sele
       <Switch
         aria-label={m.settings_provider_toggle({ provider: label })}
         checked={enabled}
-        onCheckedChange={(next) => void updateSettings({ providerEnabled: { ...providerEnabled, [provider]: next } })}
+        onCheckedChange={onEnabledChange}
       />
     </li>
   )

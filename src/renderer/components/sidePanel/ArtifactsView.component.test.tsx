@@ -1,9 +1,10 @@
+import { Schema } from "effect"
 import { expect, onTestFinished, test } from "vitest"
 import { page } from "vitest/browser"
 import { render } from "vitest-browser-react"
 import type { Artifact } from "../../../shared/artifact.ts"
-import type { HinacodeBridge, PushEvent } from "../../../shared/contract.ts"
-import type { Environments, Thread } from "../../../shared/domain.ts"
+import { type HinacodeBridge, type PushEvent, RpcMethods } from "../../../shared/contract.ts"
+import { defaultClientSettings, type Environments, type Thread } from "../../../shared/domain.ts"
 import "../../index.css"
 import { useArtifacts } from "../../stores/artifacts.ts"
 import { useDrafts } from "../../stores/drafts.ts"
@@ -43,6 +44,20 @@ const environments: Environments = {
 }
 
 const deleted: Array<{ payload: unknown; environment: string | undefined }> = []
+const createdWhiteboards: Array<unknown> = []
+
+const emptyWhiteboard: Artifact = {
+  id: "board",
+  kind: "whiteboard",
+  title: "Untitled whiteboard",
+  entry: "scene.excalidraw",
+  version: 1,
+  revision: 1,
+  files: [{ path: "scene.excalidraw", type: "application/json; charset=utf-8", size: 60 }],
+  createdAt: "2026-11-08T00:00:00.000Z",
+  updatedAt: "2026-11-08T00:00:00.000Z",
+  threadId: "t-1",
+}
 
 const bridge: HinacodeBridge = {
   rpc: async (method, payload, environment) => {
@@ -51,7 +66,16 @@ const bridge: HinacodeBridge = {
       deleted.push({ payload, environment })
       return { result: undefined }
     }
+    if (method === "artifacts.createWhiteboard") {
+      createdWhiteboards.push(payload)
+      artifacts = [emptyWhiteboard, ...artifacts]
+      return { result: emptyWhiteboard }
+    }
+    if (method === "artifacts.readWhiteboard") return { result: { version: 1, revision: 1, scene: { elements: [] } } }
+    if (method === "artifacts.feedback") return { result: { comments: [] } }
     if (method === "environments.list") return { result: environments }
+    if (method === "clientSettings.get")
+      return { result: Schema.encodeSync(RpcMethods["clientSettings.get"].response)(defaultClientSettings) }
     return { error: { tag: "NotStubbed", message: method } }
   },
   onEvent: (listener) => {
@@ -144,4 +168,15 @@ test("keeps a bounded list of the open frame's problems and ignores other frames
   const prompt = useDrafts.getState().byThreadId[thread.id]?.text ?? ""
   expect(prompt.match(/^- frame \d+$/gm)).toHaveLength(20)
   expect(prompt).not.toContain("from another frame")
+})
+
+test("creates an empty whiteboard from the New menu and opens it", async () => {
+  useArtifacts.getState().select(thread.id, null)
+  await render(<ArtifactsView thread={thread} />)
+
+  await page.getByRole("button", { name: "New" }).click()
+  await page.getByRole("menuitem", { name: "Whiteboard" }).click()
+
+  await expect.poll(() => useArtifacts.getState().selected[thread.id]).toBe("board")
+  expect(createdWhiteboards).toEqual([{ threadId: thread.id, title: "Untitled whiteboard" }])
 })
