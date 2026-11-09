@@ -1,5 +1,12 @@
 import { describe, expect, test } from "@effect/vitest"
-import { parseGitLabMergeRequestUrl, parsePullRequestUrl, parseRemote, pullRequestNumberLabel } from "./codeHost.ts"
+import {
+  mergeMethodsFor,
+  offeredMergeMethod,
+  parseGitLabMergeRequestUrl,
+  parsePullRequestUrl,
+  parseRemote,
+  pullRequestNumberLabel,
+} from "./codeHost.ts"
 
 describe("parsePullRequestUrl", () => {
   test("keeps GitHub pull requests on github.com", () => {
@@ -65,4 +72,11 @@ describe("parseRemote", () => {
 test("labels merge requests with ! and pull requests with #", () => {
   expect(pullRequestNumberLabel("gitlab", 42)).toBe("!42")
   expect(pullRequestNumberLabel("github", 42)).toBe("#42")
+})
+
+test("offers no rebase on GitLab and falls back to the first offered method", () => {
+  expect(mergeMethodsFor("gitlab")).toStrictEqual(["squash", "merge"])
+  expect(mergeMethodsFor("github")).toStrictEqual(["squash", "merge", "rebase"])
+  expect(offeredMergeMethod("rebase", mergeMethodsFor("gitlab"))).toBe("squash")
+  expect(offeredMergeMethod("merge", mergeMethodsFor("gitlab"))).toBe("merge")
 })

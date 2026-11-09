@@ -1,3 +1,4 @@
+import type { MergeMethod } from "./domain.ts"
 import { parseGitHubPullRequestUrl } from "./github.ts"
 
 export type CodeHost = "github" | "gitlab"
@@ -71,3 +72,9 @@ export const pullRequestNumberLabel = (host: CodeHost | undefined, number: numbe
   `${host === "gitlab" ? "!" : "#"}${number}`
 
 export const codeHostName = (host: CodeHost | undefined) => (host === "gitlab" ? "GitLab" : "GitHub")
+
+export const mergeMethodsFor = (host: CodeHost | undefined): ReadonlyArray<MergeMethod> =>
+  host === "gitlab" ? ["squash", "merge"] : ["squash", "merge", "rebase"]
+
+export const offeredMergeMethod = (chosen: MergeMethod, offered: ReadonlyArray<MergeMethod>) =>
+  offered.includes(chosen) ? chosen : (offered[0] ?? chosen)

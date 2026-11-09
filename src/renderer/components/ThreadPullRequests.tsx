@@ -18,6 +18,8 @@ import {
   type CodeHost,
   codeHostName,
   codeHostOfUrl,
+  mergeMethodsFor,
+  offeredMergeMethod,
   parseGitLabMergeRequestUrl,
   pullRequestNumberLabel,
 } from "../../shared/codeHost.ts"
@@ -125,12 +127,6 @@ export const mergeLabel = {
   merge: m.pr_merge_commit,
   rebase: m.pr_merge_rebase,
 } satisfies Record<MergeMethod, () => string>
-
-export const mergeMethodsFor = (host: CodeHost | undefined): ReadonlyArray<MergeMethod> =>
-  host === "gitlab" ? ["squash", "merge"] : ["squash", "merge", "rebase"]
-
-export const offeredMergeMethod = (chosen: MergeMethod, offered: ReadonlyArray<MergeMethod>) =>
-  offered.includes(chosen) ? chosen : (offered[0] ?? chosen)
 
 const useCanWrite = (url: string) => {
   const environment = useOpenThreadEnvironment()

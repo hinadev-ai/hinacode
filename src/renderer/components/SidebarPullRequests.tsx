@@ -3,6 +3,8 @@ import { startTransition, useState, useTransition } from "react"
 import {
   codeHostName,
   codeHostOfUrl,
+  mergeMethodsFor,
+  offeredMergeMethod,
   parseGitLabMergeRequestUrl,
   pullRequestNumberLabel,
 } from "../../shared/codeHost.ts"
@@ -14,14 +16,7 @@ import { callPromise, type EnvironmentId, pullRequestStatusesAtom } from "../lib
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { PullRequestCard } from "./PullRequestLink.tsx"
-import {
-  ChecksIndicator,
-  mergeLabel,
-  mergeMethodsFor,
-  offeredMergeMethod,
-  StatusIcon,
-  statusIndicator,
-} from "./ThreadPullRequests.tsx"
+import { ChecksIndicator, mergeLabel, StatusIcon, statusIndicator } from "./ThreadPullRequests.tsx"
 import {
   AlertDialog,
   AlertDialogAction,
