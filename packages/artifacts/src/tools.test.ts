@@ -234,6 +234,19 @@ test("refuses a line-wrapped base64 file whose decoded bytes pass the cap before
   expect(await store.list()).toEqual([])
 })
 
+test("refuses a binary sourcePath for a document and writes nothing", async () => {
+  const store = openTemporaryStore()
+  const { publish_document } = artifactTools
+  const publish = (sourcePath: string) =>
+    publish_document.handle(store, publish_document.input.parse({ title: "Doc", sourcePath }), {})
+  const png = temporaryFile("shot.png", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0x00]))
+  const nulls = temporaryFile("blank.md", new Uint8Array(16))
+
+  await expect(publish(png)).rejects.toThrow(`"${png}" is not UTF-8 text. A document's sourcePath must be Markdown.`)
+  await expect(publish(nulls)).rejects.toThrow(`"${nulls}" is not UTF-8 text.`)
+  expect(await store.list()).toEqual([])
+})
+
 const idIn = (result: string) => /^Published \w+ ([a-z0-9]+) version \d+:/.exec(result)?.[1] ?? ""
 
 test("comments on a document's quote as the calling thread, replies and resolves", async () => {
