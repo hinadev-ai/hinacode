@@ -1,5 +1,4 @@
 import type { OpenPullRequest, Thread } from "@shared/domain.ts"
-import { parsePullRequestSelector } from "@shared/github.ts"
 import { useEffect, useState } from "react"
 import { Pressable, StyleSheet, Text, TextInput } from "react-native"
 import { Icon } from "@/components/icon"
@@ -8,6 +7,7 @@ import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
+import { refIcon } from "@/lib/workspace-ref"
 import { errorText } from "@/lib/error-text"
 import { useDrafts, type Workspace } from "@/stores/drafts"
 
@@ -88,21 +88,23 @@ function filterRefs({ branches, pullRequests }: Refs, query: string) {
   }
 }
 
-/**
- * Where the first turn runs: the project root, switched to a branch or pull request on send, or a new
- * worktree forked from a branch or checked out from a pull request. Shown until the first message.
- */
-const refIcon = (ref: string) =>
-  ref === "" ? "Folder" : parsePullRequestSelector(ref) ? "RiGitPullRequestLine" : "Branch"
-
-export function WorkspaceChip({ thread, onError }: { thread: Thread; onError: (message: string) => void }) {
-  const theme = useTheme()
-  const [open, setOpen] = useState(false)
+/** Where the thread's first message will run: the picked workspace, else the branch checked out in the project root. */
+export function useWorkspace(thread: Thread) {
   const workspace = useDrafts((state) => state.workspaces[thread.id])
   const currentBranch = useCurrentBranch(thread.projectId)
   const mode = workspace?.mode ?? "local"
   const ref = workspace?.ref ?? currentBranch
-  const label = ref === "" ? copy("mobile_workspace_project_root") : ref
+  return { mode, ref, label: ref === "" ? copy("mobile_workspace_project_root") : ref }
+}
+
+/**
+ * Where the first turn runs: the project root, switched to a branch or pull request on send, or a new
+ * worktree forked from a branch or checked out from a pull request. Shown until the first message.
+ */
+export function WorkspaceChip({ thread, onError }: { thread: Thread; onError: (message: string) => void }) {
+  const theme = useTheme()
+  const [open, setOpen] = useState(false)
+  const { mode, ref, label } = useWorkspace(thread)
 
   return (
     <>
@@ -132,7 +134,7 @@ export function WorkspaceChip({ thread, onError }: { thread: Thread; onError: (m
   )
 }
 
-function WorkspaceSheet({
+export function WorkspaceSheet({
   thread,
   workspace,
   open,

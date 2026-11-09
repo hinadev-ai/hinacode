@@ -1,38 +1,29 @@
-import { isThreadBusy, type Thread } from "@shared/domain.ts"
-import { useState } from "react"
 import { Pressable, StyleSheet, View } from "react-native"
 import Animated, { useReducedMotion } from "react-native-reanimated"
 import { GlassFill, liquidGlass } from "@/components/glass"
 import { Icon } from "@/components/icon"
-import { PressableScale, Spinner } from "@/components/motion"
-import { Notice } from "@/components/ui"
 import { cssEase, duration } from "@/constants/motion"
 import { HIT, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
-import { call } from "@/lib/connection"
 import { copy } from "@/lib/copy"
-import { errorText } from "@/lib/error-text"
-import { type ThreadTab, threadTabs } from "@/lib/thread-tabs"
+import { barTabs, type ThreadTab } from "@/lib/thread-tabs"
 
-const BAR_PADDING = 6
+const BAR_PADDING = 3
+const TAB_WIDTH = 56
+const TAB_HEIGHT = 32
+const TAB_SLOP = { top: (HIT - TAB_HEIGHT) / 2, bottom: (HIT - TAB_HEIGHT) / 2 }
 
-/** The thread's views as icon tabs, then Stop while a turn runs. */
+/** The thread's views as icon tabs at the foot of the screen. */
 export function ThreadControlBar({
-  thread,
   tab,
   onSelect,
 }: {
-  thread: Thread
   tab: ThreadTab
   onSelect: (tab: ThreadTab) => void
 }) {
   const theme = useTheme()
   const reduced = useReducedMotion()
-  const [error, setError] = useState<string | null>(null)
-  const index = Math.max(
-    0,
-    threadTabs.findIndex((item) => item.value === tab),
-  )
+  const index = barTabs.findIndex((item) => item.value === tab)
   return (
     <View style={styles.wrap}>
       <View
@@ -50,14 +41,15 @@ export function ThreadControlBar({
               {
                 backgroundColor: theme.card,
                 borderColor: theme.border,
-                transform: [{ translateX: index * HIT }],
+                opacity: index === -1 ? 0 : 1,
+                transform: [{ translateX: Math.max(index, 0) * TAB_WIDTH }],
                 transitionProperty: "transform",
                 transitionDuration: reduced ? 0 : duration.base,
                 transitionTimingFunction: cssEase.out,
               },
             ]}
           />
-          {threadTabs.map((item) => {
+          {barTabs.map((item) => {
             const selected = item.value === tab
             return (
               <Pressable
@@ -66,74 +58,39 @@ export function ThreadControlBar({
                 accessibilityRole="tab"
                 accessibilityLabel={item.label}
                 aria-selected={selected}
+                hitSlop={TAB_SLOP}
                 onPress={() => onSelect(item.value)}
                 style={styles.tab}
               >
-                <Icon name={item.icon} size={20} color={selected ? theme.text : theme.textMuted} />
+                <Icon name={item.icon} size={18} color={selected ? theme.text : theme.textMuted} />
               </Pressable>
             )
           })}
         </View>
-        {isThreadBusy(thread.status) && <StopButton thread={thread} onError={setError} />}
       </View>
-      {error !== null && <Notice text={error} tone="danger" />}
     </View>
   )
 }
 
-function StopButton({ thread, onError }: { thread: Thread; onError: (message: string | null) => void }) {
-  const theme = useTheme()
-  const [stopping, setStopping] = useState(false)
-  const stop = async () => {
-    setStopping(true)
-    onError(null)
-    try {
-      await call("threads.interrupt", { threadId: thread.id })
-    } catch (cause) {
-      onError(errorText(cause))
-    }
-    setStopping(false)
-  }
-  return (
-    <PressableScale
-      testID="thread-stop"
-      accessibilityRole="button"
-      accessibilityLabel={copy("mobile_composer_stop")}
-      aria-busy={stopping}
-      disabled={stopping}
-      onPress={() => void stop()}
-      style={[styles.stop, { backgroundColor: theme.surface }]}
-    >
-      {stopping ? (
-        <Spinner size={16} color={theme.danger} />
-      ) : (
-        <Icon name="Stop" size={16} color={theme.danger} />
-      )}
-    </PressableScale>
-  )
-}
-
 const styles = StyleSheet.create({
-  wrap: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4, gap: 8 },
+  wrap: { paddingHorizontal: 12, paddingTop: 4, paddingBottom: 4, gap: 8, alignItems: "center" },
   bar: {
-    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 4,
     padding: BAR_PADDING,
     borderRadius: radius.full,
   },
   glass: { overflow: "hidden" },
   solid: { borderWidth: StyleSheet.hairlineWidth, boxShadow: "0 4px 16px rgba(0, 0, 0, 0.06)" },
   tabs: { flexDirection: "row" },
-  tab: { width: HIT, height: HIT, alignItems: "center", justifyContent: "center" },
+  tab: { width: TAB_WIDTH, height: TAB_HEIGHT, alignItems: "center", justifyContent: "center" },
   thumb: {
     position: "absolute",
-    width: HIT,
-    height: HIT,
+    width: TAB_WIDTH,
+    height: TAB_HEIGHT,
     borderRadius: radius.full,
     borderWidth: StyleSheet.hairlineWidth,
     boxShadow: "0 2px 6px rgba(0, 0, 0, 0.12)",
   },
-  stop: { width: HIT, height: HIT, borderRadius: radius.full, alignItems: "center", justifyContent: "center" },
 })

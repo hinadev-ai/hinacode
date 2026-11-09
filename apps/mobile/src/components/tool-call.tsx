@@ -12,9 +12,9 @@ import { toolOutputKey, useToolOutputs } from "@/stores/tool-outputs"
 
 type ToolCall = Extract<MessagePart, { type: "tool_call" }>
 
-const ROW_HEIGHT = 32
-const ROW_SLOP = { top: 6, bottom: 6 }
-const ICON_SIZE = 16
+const ROW_HEIGHT = 26
+const ROW_SLOP = { top: 9, bottom: 9 }
+const ICON_SIZE = 14
 
 const statusLabel = {
   running: "mobile_chat_tool_running",
@@ -160,9 +160,9 @@ export function FileChangeRow({ path }: { path: string }) {
 
 const styles = StyleSheet.create({
   row: { minHeight: ROW_HEIGHT, flexDirection: "row", alignItems: "center", gap: 8 },
-  label: { flex: 1, fontSize: 14 },
-  mono: { fontFamily: mono, fontSize: 13 },
-  details: { marginLeft: ICON_SIZE + 8, marginBottom: 6, gap: 4 },
+  label: { flex: 1, fontSize: 13 },
+  mono: { fontFamily: mono, fontSize: 12 },
+  details: { marginLeft: ICON_SIZE + 8, marginBottom: 4, gap: 4 },
   heading: { fontSize: 12, fontWeight: "500" },
   block: { borderRadius: radius.sm, padding: 8 },
   code: { fontFamily: mono, fontSize: 12, lineHeight: 17 },

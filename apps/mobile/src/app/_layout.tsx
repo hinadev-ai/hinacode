@@ -2,11 +2,13 @@ import { DarkTheme, DefaultTheme, enableLegacyHeaderAppearance, Stack, ThemeProv
 import { StatusBar } from "expo-status-bar"
 import { type ReactNode, useEffect } from "react"
 import { Appearance, Platform, StyleSheet, View } from "react-native"
-import { SafeAreaView } from "react-native-safe-area-context"
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { ConnectionProvider } from "@/components/connection-provider"
 import { largeTitle } from "@/components/glass"
 import { Notifier } from "@/components/notifier"
+import { SideRail } from "@/components/side-rail"
 import { ThreadSidebar } from "@/components/thread-sidebar"
+import { measureSideRail, SideRailContext } from "@/hooks/use-side-rail"
 import { useSplitLayout } from "@/hooks/use-split-layout"
 import { useScheme, useTheme } from "@/hooks/use-theme"
 import { useConnection } from "@/lib/connection"
@@ -57,34 +59,39 @@ export default function RootLayout() {
 function Routes() {
   const paired = useConnection((state) => state.paired)
   const split = useSplitLayout() && paired
+  const rail = measureSideRail(useSafeAreaInsets())
   // The Stack keeps its place in the tree whether the sidebar shows or not, so a resize keeps the navigation state.
   return (
-    <View style={styles.split}>
-      {split && <ThreadSidebar />}
-      <View style={styles.detail}>
-        <Stack screenOptions={{ headerShadowVisible: false }} screenLayout={SideSafeArea}>
-          <Stack.Protected guard={paired}>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            {/* Picking a thread in the sidebar swaps the detail, as Mail does, instead of sliding a page in. */}
-            <Stack.Screen name="thread/[id]/index" options={{ title: "", animation: split ? "none" : undefined }} />
-            <Stack.Screen name="thread/[id]/file" options={{ title: "" }} />
-            <Stack.Screen name="thread/[id]/pull-request" options={{ title: "" }} />
-            <Stack.Screen name="thread/[id]/subagent" options={{ title: "" }} />
-            <Stack.Screen name="thread/[id]/document" options={{ title: "" }} />
-            <Stack.Screen
-              name="project/new"
-              options={{ title: copy("mobile_project_new_title"), presentation: "modal" }}
-            />
-          </Stack.Protected>
-          <Stack.Protected guard={!paired}>
-            <Stack.Screen
-              name="connect"
-              options={{ title: copy("mobile_connect_title"), ...largeTitle }}
-            />
-          </Stack.Protected>
-        </Stack>
+    <SideRailContext value={rail}>
+      <View style={styles.split}>
+        {split && <ThreadSidebar />}
+        <View style={styles.detail}>
+          <Stack
+            screenOptions={{ headerShadowVisible: false, headerBackButtonDisplayMode: "minimal" }}
+            screenLayout={SideSafeArea}
+          >
+            <Stack.Protected guard={paired}>
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              {/* Picking a thread in the sidebar swaps the detail, as Mail does, instead of sliding a page in. */}
+              <Stack.Screen name="thread/[id]/index" options={{ title: "", animation: split ? "none" : undefined }} />
+              <Stack.Screen name="thread/[id]/file" options={{ title: "" }} />
+              <Stack.Screen name="thread/[id]/pull-request" options={{ title: "" }} />
+              <Stack.Screen name="thread/[id]/subagent" options={{ title: "" }} />
+              <Stack.Screen name="thread/[id]/document" options={{ title: "" }} />
+              <Stack.Screen name="find" options={{ title: copy("mobile_search_title") }} />
+              <Stack.Screen
+                name="project/new"
+                options={{ title: copy("mobile_project_new_title"), presentation: "modal" }}
+              />
+            </Stack.Protected>
+            <Stack.Protected guard={!paired}>
+              <Stack.Screen name="connect" options={{ title: copy("mobile_connect_title"), ...largeTitle }} />
+            </Stack.Protected>
+          </Stack>
+          {paired && <SideRail />}
+        </View>
       </View>
-    </View>
+    </SideRailContext>
   )
 }
 

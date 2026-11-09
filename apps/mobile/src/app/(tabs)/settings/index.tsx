@@ -17,11 +17,12 @@ import {
   SettingsRow,
   SwitchRow,
 } from "@/components/settings-rows"
+import { ServerSelect } from "@/components/server-select"
 import { OptionRow, Sheet } from "@/components/sheet"
 import { Button, ConnectionBadge, Notice, SegmentedControl, type Segment } from "@/components/ui"
 import { serverName } from "@/hooks/use-server"
-import { useTheme } from "@/hooks/use-theme"
-import { HIT, mono, type Palette, radius } from "@/constants/theme"
+import { useScheme, useTheme } from "@/hooks/use-theme"
+import { HIT, mono, type Palette, ProviderColors, radius } from "@/constants/theme"
 import { call, type ConnectionStatus, reconnectNow, type Server, useConnection } from "@/lib/connection"
 import { confirmDestructive } from "@/lib/confirm"
 import { copy } from "@/lib/copy"
@@ -256,11 +257,12 @@ function DesktopSettings() {
       {servers.length > 1 && server !== undefined && (
         <SettingsGroup title={copy("mobile_settings_server_settings")}>
           <View style={styles.serverPicker}>
-            <SegmentedControl
-              segments={servers.map((entry) => ({ value: entry.id, label: serverName(entry) }))}
-              value={server.id}
+            <ServerSelect
+              testID="settings-server"
+              label={copy("mobile_settings_server_settings")}
+              servers={servers}
+              value={server}
               onChange={setChosen}
-              accessibilityLabel={copy("mobile_settings_server_settings")}
             />
           </View>
         </SettingsGroup>
@@ -399,6 +401,7 @@ function DefaultModelRow({
   disabled: boolean
   onPress: () => void
 }) {
+  const scheme = useScheme()
   const models = useModels((state) => modelsOn(state, server, provider))
   const load = useModels((state) => state.load)
   // Only to turn a stored id into its label; the id stays readable if the agent cannot list its models.
@@ -408,6 +411,7 @@ function DefaultModelRow({
   return (
     <SettingsRow
       icon={icon}
+      iconColor={ProviderColors[scheme][provider]}
       label={label}
       value={modelLabel(models, model)}
       monospace={model !== null}

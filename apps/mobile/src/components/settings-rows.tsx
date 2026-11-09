@@ -58,6 +58,7 @@ export function IconTile({ icon, color }: { icon: IconName; color?: string }) {
 /** A row with a leading icon, a label and a trailing control or value. Pressable when `onPress` is given. */
 export function SettingsRow({
   icon,
+  iconColor,
   label,
   value,
   monospace = false,
@@ -67,6 +68,8 @@ export function SettingsRow({
   children,
 }: {
   icon?: IconName
+  /** Tints the icon, such as an agent's brand color. */
+  iconColor?: string
   label: string
   labelLines?: number
   /** Muted text at the trailing edge, such as the current choice. */
@@ -80,7 +83,7 @@ export function SettingsRow({
   const theme = useTheme()
   const content = (
     <>
-      {icon !== undefined && <IconTile icon={icon} color={disabled ? theme.textMuted : undefined} />}
+      {icon !== undefined && <IconTile icon={icon} color={disabled ? theme.textMuted : iconColor} />}
       <Text numberOfLines={labelLines} style={[styles.label, { color: disabled ? theme.textMuted : theme.text }]}>
         {label}
       </Text>

@@ -169,7 +169,8 @@ export function ThreadFilterPill() {
   )
 }
 
-function ThreadFilterSheet({ menu, open, onClose }: { menu: ThreadFilterMenu; open: boolean; onClose: () => void }) {
+/** The filter's choices as checkboxes. It stays open across picks, so several servers or projects can be picked. */
+export function ThreadFilterSheet({ menu, open, onClose }: { menu: ThreadFilterMenu; open: boolean; onClose: () => void }) {
   return (
     <Sheet fit title={copy("mobile_home_filter_title")} open={open} onClose={onClose}>
       {menu.servers.length > 0 && <ChoiceSection title={copy("mobile_home_filter_servers")} choices={menu.servers} />}

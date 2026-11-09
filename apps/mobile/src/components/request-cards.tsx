@@ -432,9 +432,10 @@ export function QuestionCard({
   )
 }
 
-const CARD_RADIUS = 20
+const CARD_RADIUS = 16
 const CARD_PADDING = 16
 const DECISION_HEIGHT = 52
+const CONTROL_RADIUS = radius.md
 
 const styles = StyleSheet.create({
   card: {
@@ -462,34 +463,33 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: CARD_RADIUS - CARD_PADDING + 8,
+    borderRadius: CONTROL_RADIUS,
   },
   commandText: { fontFamily: mono, fontSize: 14, lineHeight: 20 },
   decision: { flexDirection: "row", alignItems: "center", gap: 10 },
   deny: {
     width: DECISION_HEIGHT,
     height: DECISION_HEIGHT,
-    borderRadius: radius.full,
+    borderRadius: CONTROL_RADIUS,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-  approve: { flex: 1, minHeight: DECISION_HEIGHT, borderRadius: radius.full },
-  pillButton: { minHeight: DECISION_HEIGHT, borderRadius: radius.full },
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" },
+  approve: { flex: 1, minHeight: DECISION_HEIGHT, borderRadius: CONTROL_RADIUS },
+  pillButton: { minHeight: DECISION_HEIGHT, borderRadius: CONTROL_RADIUS },
+  actions: { gap: 8 },
   more: { minHeight: HIT, flexDirection: "row", alignItems: "center", alignSelf: "center", gap: 4, marginVertical: -8 },
   moreLabel: { fontSize: 13, fontWeight: "500" },
   moreOptions: { gap: 10 },
   question: { gap: 10 },
-  options: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  options: { gap: 8 },
   option: {
     minHeight: HIT,
-    maxWidth: "100%",
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     borderWidth: 1,
-    borderRadius: CARD_RADIUS,
+    borderRadius: CONTROL_RADIUS,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
@@ -498,7 +498,7 @@ const styles = StyleSheet.create({
   answer: {
     minHeight: HIT,
     borderWidth: 1,
-    borderRadius: radius.lg,
+    borderRadius: CONTROL_RADIUS,
     paddingHorizontal: 12,
     fontSize: Platform.OS === "web" ? 16 : 15,
   },

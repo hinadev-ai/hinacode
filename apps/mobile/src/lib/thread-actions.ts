@@ -4,7 +4,7 @@ import type { IconName } from "@/components/icon"
 import { call } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 
-type ServerThreadActionName = "pin" | "unpin" | "archive" | "unarchive"
+type ServerThreadActionName = "pin" | "unpin" | "settle" | "unsettle" | "archive" | "unarchive"
 export type ThreadActionName = ServerThreadActionName | "copy-id" | "rename" | "fork" | "reveal" | "delete"
 
 export interface ThreadAction {
@@ -30,7 +30,7 @@ const forksSessions = { claude: true, codex: true, muse: false, opencode: false,
 
 /**
  * What a thread offers on long press: an archived thread can only come back or go, an active one can change.
- * Deleting does not stop a turn, so a busy thread cannot be deleted, as on the desktop.
+ * As on the desktop, a busy thread can neither be settled nor deleted, and a settled one reopens instead.
  */
 export function threadActions(thread: Thread): readonly ThreadAction[] {
   if (thread.status === "archived")
@@ -49,6 +49,11 @@ export function threadActions(thread: Thread): readonly ThreadAction[] {
       : []),
     copyId,
     { name: "reveal", label: copy("mobile_thread_actions_reveal"), icon: "Computer", group: 1 },
+    ...(thread.settledAt !== null
+      ? [{ name: "unsettle", label: copy("mobile_thread_actions_reopen"), icon: "Unarchive", group: 2 } as const]
+      : isThreadBusy(thread.status)
+        ? []
+        : [{ name: "settle", label: copy("mobile_thread_actions_settle"), icon: "Check", group: 2 } as const]),
     { name: "archive", label: copy("mobile_thread_actions_archive"), icon: "Archive", group: 2 },
     ...(isThreadBusy(thread.status) ? [] : [remove]),
   ]
@@ -61,11 +66,13 @@ export const leavesThread = (name: ThreadActionName) => name === "archive" || na
 export const actionGroups = (actions: readonly ThreadAction[]) =>
   [0, 1, 2].map((group) => actions.filter((action) => action.group === group)).filter((group) => group.length > 0)
 
-export const isServerAction = (name: ThreadActionName): name is ServerThreadActionName =>
-  name === "pin" || name === "unpin" || name === "archive" || name === "unarchive"
+const serverActions: ReadonlySet<ThreadActionName> = new Set(["pin", "unpin", "settle", "unsettle", "archive", "unarchive"])
+
+export const isServerAction = (name: ThreadActionName): name is ServerThreadActionName => serverActions.has(name)
 
 export const requestThreadAction = (thread: Thread, name: ServerThreadActionName) => {
   if (name === "pin" || name === "unpin") return call("threads.update", { id: thread.id, pinned: name === "pin" })
+  if (name === "settle" || name === "unsettle") return call(`threads.${name}`, { threadId: thread.id })
   return call(name === "archive" ? "threads.archive" : "threads.unarchive", { threadId: thread.id })
 }
 
@@ -77,6 +84,8 @@ export const threadActionSymbols = {
   fork: "arrow.triangle.branch",
   "copy-id": "doc.on.doc",
   reveal: "desktopcomputer",
+  settle: "checkmark.circle",
+  unsettle: "arrow.uturn.backward.circle",
   archive: "archivebox",
   unarchive: "tray.and.arrow.up",
   delete: "trash",

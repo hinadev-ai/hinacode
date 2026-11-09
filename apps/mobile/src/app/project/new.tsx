@@ -3,11 +3,19 @@ import { parseGitHubRepository } from "@shared/github.ts"
 import { router, useLocalSearchParams } from "expo-router"
 import { useHeaderHeight } from "expo-router/react-navigation"
 import { useRef, useState } from "react"
-import { KeyboardAvoidingView, ScrollView, StyleSheet, Text, TextInput, type TextInputProps, View } from "react-native"
+import {
+  KeyboardAvoidingView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  type TextInputProps,
+  View,
+} from "react-native"
 import { Icon } from "@/components/icon"
-import { Button, Notice, SegmentedControl } from "@/components/ui"
+import { ServerSelect } from "@/components/server-select"
+import { Button, Notice } from "@/components/ui"
 import { mono, radius } from "@/constants/theme"
-import { serverName } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
@@ -87,15 +95,17 @@ export default function AddProjectScreen() {
         {servers.length > 1 && server !== undefined && (
           <View style={styles.field}>
             <Text style={[styles.label, { color: theme.text }]}>{copy("mobile_project_server")}</Text>
-            <SegmentedControl
-              segments={servers.map((entry) => ({ value: entry.id, label: serverName(entry) }))}
-              value={server.id}
+            <ServerSelect
+              testID="project-server"
+              label={copy("mobile_project_server")}
+              servers={servers}
+              onlyConnected
+              value={server}
               onChange={(id) => {
                 setChosen(id)
                 setCloneTo(null)
                 added.current = null
               }}
-              accessibilityLabel={copy("mobile_project_server")}
             />
           </View>
         )}
@@ -164,6 +174,7 @@ export default function AddProjectScreen() {
   )
 }
 
+/** The server the project is added on, as a field that opens the list of paired servers. */
 function Field({
   id,
   label,

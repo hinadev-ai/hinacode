@@ -6,5 +6,8 @@
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
-  "exports": "./src/index.ts"
+  "exports": "./src/index.ts",
+  "scripts": {
+    "test:ios": "./scripts/test-ios.sh"
+  }
 }

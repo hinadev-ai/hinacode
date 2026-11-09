@@ -118,7 +118,7 @@ it("keeps a worktree pushed while the worktrees are read", async () => {
 describe("lists", () => {
   const at = (minute: number) => `2026-10-16T00:${String(minute).padStart(2, "0")}:00.000Z`
   const row = (id: string, fields: Partial<Thread> = {}) =>
-    ({ id, projectId: "p", title: id, status: "idle", pinnedAt: null, updatedAt: at(0), ...fields }) as Thread
+    ({ id, projectId: "p", title: id, status: "idle", pinnedAt: null, settledAt: null, updatedAt: at(0), ...fields }) as Thread
   const ids = (threads: readonly Thread[]) => threads.map((existing) => existing.id)
 
   it("lists the inbox by latest activity, without pinned or archived threads", () => {

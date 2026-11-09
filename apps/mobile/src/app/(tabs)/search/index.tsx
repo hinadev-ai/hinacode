@@ -22,6 +22,7 @@ export default function SearchScreen() {
       {isIOS ? (
         <Stack.SearchBar
           placeholder={copy("mobile_search_placeholder")}
+          placement="integratedCentered"
           autoCapitalize="none"
           onChangeText={(event) => setQuery(event.nativeEvent.text)}
           onCancelButtonPress={() => setQuery("")}

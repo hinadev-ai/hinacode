@@ -1,10 +1,9 @@
-import { isThreadBusy, type Message, type Thread } from "@shared/domain.ts"
-import { type Todo, type TodoStatus, visibleTodos } from "@shared/todos.ts"
-import { useState } from "react"
+import type { Todo, TodoStatus } from "@shared/todos.ts"
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import { Icon, type IconName } from "@/components/icon"
 import { FadeIn, Rotate, Spinner } from "@/components/motion"
-import { HIT, radius } from "@/constants/theme"
+import { ActivityMeter, LINE_HEIGHT } from "@/components/activity-meter"
+import type { Palette } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 
@@ -25,6 +24,9 @@ const todoKeys = (todos: ReadonlyArray<Todo>): Array<[string, Todo]> => {
     return [count === 0 ? todo.text : `${todo.text}#${count}`, todo]
   })
 }
+
+const todoColor = (theme: Palette, status: TodoStatus) =>
+  status === "completed" ? theme.textMuted : status === "in_progress" ? theme.token : theme.border
 
 function TodoIcon({ status }: { status: TodoStatus }) {
   const theme = useTheme()
@@ -53,26 +55,35 @@ function TodoRow({ todo }: { todo: Todo }) {
   )
 }
 
-export function TodoTray({ thread, messages }: { thread: Thread; messages: readonly Message[] }) {
+/** The agent's task list as one line of the activity tray: progress and the current task, expanding to the full list. */
+export function TodoActivity({
+  todos,
+  expanded,
+  onToggle,
+}: {
+  todos: readonly Todo[]
+  expanded: boolean
+  onToggle: () => void
+}) {
   const theme = useTheme()
-  const [expanded, setExpanded] = useState(false)
-  const todos = visibleTodos(messages, isThreadBusy(thread.status))
   const done = todos.filter((todo) => todo.status === "completed").length
-  if (todos.length === 0) return null
   const current = todos.find((todo) => todo.status === "in_progress") ?? todos.find((todo) => todo.status === "pending")
   const progress = copy("mobile_chat_todos_progress", { done: String(done), total: String(todos.length) })
 
   return (
-    <View testID="todo-tray" style={[styles.tray, { borderColor: theme.border, backgroundColor: theme.background }]}>
+    <View testID="todo-activity">
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${copy("mobile_chat_todos_label")}, ${progress}`}
         aria-expanded={expanded}
-        onPress={() => setExpanded(!expanded)}
+        onPress={onToggle}
         style={styles.header}
       >
+        <ActivityMeter
+          segments={todoKeys(todos).map(([key, todo]) => ({ key, color: todoColor(theme, todo.status) }))}
+        />
         <Text style={[styles.progress, { color: theme.textMuted }]}>{progress}</Text>
-        {!expanded && current !== undefined && (
+        {current !== undefined && (
           <View style={styles.current}>
             <TodoIcon status={current.status} />
             <Text numberOfLines={1} style={[styles.currentText, { color: theme.text }]}>
@@ -104,8 +115,7 @@ export function TodoTray({ thread, messages }: { thread: Thread; messages: reado
 }
 
 const styles = StyleSheet.create({
-  tray: { marginHorizontal: 12, marginBottom: 8, borderWidth: StyleSheet.hairlineWidth, borderRadius: radius.lg, overflow: "hidden" },
-  header: { minHeight: HIT, flexDirection: "row", alignItems: "center", gap: 10, paddingLeft: 12, paddingRight: 8 },
+  header: { minHeight: LINE_HEIGHT, flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 12, paddingRight: 8 },
   progress: { fontSize: 13, fontVariant: ["tabular-nums"] },
   current: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 6 },
   currentText: { flexShrink: 1, fontSize: 13 },

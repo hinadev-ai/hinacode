@@ -12,11 +12,21 @@ import {
   View,
   type ViewStyle,
 } from "react-native"
-import Animated, { useReducedMotion } from "react-native-reanimated"
+import { GestureDetector, GestureHandlerRootView, usePanGesture } from "react-native-gesture-handler"
+import Animated, {
+  cancelAnimation,
+  interpolate,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated"
+import { scheduleOnRN } from "react-native-worklets"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon, type IconName } from "@/components/icon"
 import { IconButton } from "@/components/ui"
-import { cssEase, duration, sheetEntering } from "@/constants/motion"
+import { cssEase, duration, ease, sheetEntering } from "@/constants/motion"
 import { HIT, mono, radius, subheading } from "@/constants/theme"
 import { GroupedCard } from "@/components/grouped-card"
 import { useTheme } from "@/hooks/use-theme"
@@ -25,6 +35,20 @@ import { copy } from "@/lib/copy"
 const SHEET_PADDING = 12
 const SHEET_RADIUS = 28
 const SHEET_MAX_WIDTH = 640
+/** A release counts as a dismissal once the sheet would travel this share of its height, or flicks this fast. */
+const DISMISS_SHARE = 0.35
+const DISMISS_VELOCITY = 900
+/** How far ahead a release's velocity carries the sheet, in seconds, so a short flick still dismisses. */
+const PROJECTION = 0.2
+const SETTLE = { damping: 32, stiffness: 340, mass: 1 } as const
+/** How far the sheet rises past its resting place when dragged up. Its color extends this far below it, as a native sheet's does. */
+const MAX_LIFT = 24
+
+/** Dragged past its resting place the sheet resists, moving less the further it goes. */
+const rubberBand = (distance: number) => {
+  "worklet"
+  return -Math.sqrt(-distance) * 4
+}
 
 /**
  * A sheet with a grabber, a round close button and a centred title, full height by default or as tall as its content
@@ -51,10 +75,6 @@ export function Sheet({
   fit?: boolean
   children: ReactNode
 }) {
-  const theme = useTheme()
-  const insets = useSafeAreaInsets()
-  const { width } = useWindowDimensions()
-  const fullScreen = Platform.OS === "android" && !fit && width < SHEET_MAX_WIDTH
   return (
     <Modal
       transparent
@@ -64,57 +84,144 @@ export function Sheet({
       visible={open}
       onRequestClose={onClose}
     >
-      <SheetFrame>
+      {/* A Modal is its own native root, so gestures inside it need their own root view. */}
+      <GestureHandlerRootView style={styles.fill}>
+        <SheetFrame>
+          <SheetBody title={title} onClose={onClose} header={header} action={action} fit={fit}>
+            {children}
+          </SheetBody>
+        </SheetFrame>
+      </GestureHandlerRootView>
+    </Modal>
+  )
+}
+
+/**
+ * The scrim and the sheet. Mounted only while the Modal shows, so every opening starts at rest. The grabber and the
+ * header drag the sheet: it follows the finger, and a release far or fast enough closes it, otherwise it springs back.
+ */
+function SheetBody({
+  title,
+  onClose,
+  header,
+  action,
+  fit,
+  children,
+}: {
+  title: string
+  onClose: () => void
+  header?: ReactNode
+  action?: ReactNode
+  fit: boolean
+  children: ReactNode
+}) {
+  const theme = useTheme()
+  const insets = useSafeAreaInsets()
+  const { width } = useWindowDimensions()
+  const reduced = useReducedMotion()
+  const fullScreen = Platform.OS === "android" && !fit && width < SHEET_MAX_WIDTH
+  const offset = useSharedValue(0)
+  const start = useSharedValue(0)
+  const height = useSharedValue(1)
+
+  const drag = usePanGesture({
+    enabled: !fullScreen,
+    activeOffsetY: [-4, 4],
+    onActivate: () => {
+      "worklet"
+      cancelAnimation(offset)
+      start.set(offset.get())
+    },
+    onUpdate: (event) => {
+      "worklet"
+      const next = start.get() + event.translationY
+      offset.set(next < 0 ? rubberBand(next) : next)
+    },
+    onDeactivate: (event) => {
+      "worklet"
+      const projected = offset.get() + event.velocityY * PROJECTION
+      if (projected > height.get() * DISMISS_SHARE || event.velocityY > DISMISS_VELOCITY) {
+        if (reduced) {
+          scheduleOnRN(onClose)
+          return
+        }
+        const remaining = Math.max(0, height.get() - offset.get())
+        // Faster flicks leave faster, so the sheet keeps the speed the finger gave it.
+        const time = Math.min(duration.sheet, Math.max(120, (remaining / Math.max(event.velocityY, 1)) * 1000))
+        offset.set(withTiming(height.get(), { duration: time, easing: ease.out }, () => scheduleOnRN(onClose)))
+      } else {
+        offset.set(reduced ? 0 : withSpring(0, { ...SETTLE, velocity: event.velocityY }))
+      }
+    },
+  })
+
+  const sheetMotion = useAnimatedStyle(() => ({ transform: [{ translateY: Math.max(offset.get(), -MAX_LIFT) }] }))
+  const scrimMotion = useAnimatedStyle(() => ({
+    opacity: interpolate(offset.get(), [0, height.get()], [1, 0], "clamp"),
+  }))
+
+  return (
+    <>
+      <Animated.View pointerEvents="box-none" style={[StyleSheet.absoluteFill, scrimMotion]}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={copy("mobile_sheet_close")}
           onPress={onClose}
           style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim }]}
         />
-        {!fullScreen && <View pointerEvents="none" style={fit ? styles.fill : { height: insets.top + 12 }} />}
-        <Animated.View
-          entering={sheetEntering}
-          accessibilityViewIsModal
-          style={[
-            styles.sheet,
-            fit ? styles.fitSheet : styles.fill,
-            fullScreen && { ...styles.fullScreen, paddingTop: insets.top },
-            {
-              paddingBottom: SHEET_PADDING + insets.bottom,
-              backgroundColor: theme.sheet,
-              borderColor: theme.border,
-            },
-          ]}
-        >
-          {!fullScreen && <View style={[styles.grabber, { backgroundColor: theme.surfaceStrong }]} />}
-          <View style={styles.sheetHeader}>
-            <IconButton
-              icon="Close"
-              accessibilityLabel={copy("mobile_sheet_close")}
-              onPress={onClose}
-              style={[styles.round, { backgroundColor: theme.card, borderColor: theme.border }]}
-            />
-            <Text
-              accessibilityRole="header"
-              {...subheading}
-              numberOfLines={1}
-              style={[styles.sheetTitle, { color: theme.text }]}
-            >
-              {title}
-            </Text>
-            {action ?? <View style={styles.headerSlot} />}
+      </Animated.View>
+      {!fullScreen && <View pointerEvents="none" style={fit ? styles.fill : { height: insets.top + 12 }} />}
+      <Animated.View
+        entering={sheetEntering}
+        accessibilityViewIsModal
+        onLayout={(event) => {
+          height.set(event.nativeEvent.layout.height)
+        }}
+        style={[
+          styles.sheet,
+          fit ? styles.fitSheet : styles.fill,
+          fullScreen && { ...styles.fullScreen, paddingTop: insets.top },
+          {
+            paddingBottom: SHEET_PADDING + insets.bottom,
+            backgroundColor: theme.sheet,
+            borderColor: theme.border,
+          },
+          sheetMotion,
+        ]}
+      >
+        <View pointerEvents="none" style={[styles.underhang, { backgroundColor: theme.sheet }]} />
+        <GestureDetector gesture={drag}>
+          <View style={styles.handle}>
+            {!fullScreen && <View style={[styles.grabber, { backgroundColor: theme.surfaceStrong }]} />}
+            <View style={styles.sheetHeader}>
+              <IconButton
+                icon="Close"
+                accessibilityLabel={copy("mobile_sheet_close")}
+                onPress={onClose}
+                style={[styles.round, { backgroundColor: theme.card, borderColor: theme.border }]}
+              />
+              <Text
+                accessibilityRole="header"
+                {...subheading}
+                numberOfLines={1}
+                style={[styles.sheetTitle, { color: theme.text }]}
+              >
+                {title}
+              </Text>
+              {action ?? <View style={styles.headerSlot} />}
+            </View>
           </View>
-          {header}
-          <ScrollView
-            keyboardShouldPersistTaps="handled"
-            style={fit && styles.fitScroll}
-            contentContainerStyle={styles.sections}
-          >
-            {children}
-          </ScrollView>
-        </Animated.View>
-      </SheetFrame>
-    </Modal>
+        </GestureDetector>
+        {header}
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          style={fit && styles.fitScroll}
+          contentContainerStyle={styles.sections}
+        >
+          {children}
+        </ScrollView>
+      </Animated.View>
+    </>
   )
 }
 
@@ -182,6 +289,7 @@ export function OptionRow({
   label,
   hint,
   icon,
+  iconColor,
   color,
   monospace = false,
   selected,
@@ -193,6 +301,8 @@ export function OptionRow({
   label: string
   hint?: string
   icon?: IconName
+  /** Tints only the icon, such as an agent's brand color. */
+  iconColor?: string
   color?: string
   monospace?: boolean
   selected: boolean
@@ -215,7 +325,7 @@ export function OptionRow({
       onPress={onPress}
       style={({ pressed }) => [styles.option, style, pressed && { backgroundColor: theme.sheetRaised }]}
     >
-      {icon !== undefined && <Icon name={icon} size={18} color={foreground} />}
+      {icon !== undefined && <Icon name={icon} size={18} color={disabled ? foreground : (iconColor ?? foreground)} />}
       <View style={styles.optionText}>
         <Text
           numberOfLines={monospace ? 1 : undefined}
@@ -267,7 +377,9 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     gap: 8,
   },
+  underhang: { position: "absolute", left: 0, right: 0, top: "100%", height: MAX_LIFT },
   fullScreen: { borderTopLeftRadius: 0, borderTopRightRadius: 0, borderTopWidth: 0 },
+  handle: { gap: 8, paddingTop: 6, marginTop: -6 },
   grabber: { alignSelf: "center", width: 36, height: 5, borderRadius: radius.full },
   sheetHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
   headerSlot: { width: HIT },
