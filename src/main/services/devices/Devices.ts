@@ -38,6 +38,7 @@ export class Devices extends Context.Service<
     readonly create: (threadId: string, model?: SimulatorModelId) => Effect.Effect<ThreadDevice, DevicesError>
     readonly detach: (threadId: string, deviceId: DeviceId | null) => Effect.Effect<void, DevicesError>
     readonly delete: (threadId: string, deviceId: DeviceId) => Effect.Effect<void, DevicesError>
+    readonly shutdown: (deviceId: DeviceId) => Effect.Effect<void, DevicesError>
     readonly frame: (input: RpcRequest<"device.frame">) => Effect.Effect<{ frame: DeviceFrame | null }, DevicesError>
     readonly command: (input: RpcRequest<"device.command">) => Effect.Effect<void, DevicesError>
     readonly control: (
@@ -675,6 +676,14 @@ const make = (options: DevicesOptions) =>
           } finally {
             deleting.delete(deviceId)
           }
+        }),
+      shutdown: (deviceId) =>
+        attempt(async () => {
+          if (deleting.has(deviceId)) throw new DevicesError({ message: "This device is being deleted." })
+          const live = links.get(deviceId)
+          if (live) closeLive(live)
+          failThreadsOn(deviceId, "The device was shut down.")
+          await driverOf(deviceId).shutdown(deviceId)
         }),
       frame: (input) =>
         attempt(async () => {

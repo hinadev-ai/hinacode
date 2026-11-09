@@ -455,6 +455,7 @@ const handlers: Handlers = {
   "device.create": ({ threadId, model }) => Devices.use((devices) => devices.create(threadId, model)),
   "device.detach": ({ threadId, deviceId }) => Devices.use((devices) => devices.detach(threadId, deviceId)),
   "device.delete": ({ threadId, deviceId }) => Devices.use((devices) => devices.delete(threadId, deviceId)),
+  "device.shutdown": ({ deviceId }) => Devices.use((devices) => devices.shutdown(deviceId)),
   "device.frame": (input) => Devices.use((devices) => devices.frame(input)),
   "device.command": (input) => Devices.use((devices) => devices.command(input)),
   "device.control": ({ threadId, deviceId, control }) =>

@@ -10,6 +10,7 @@ export const unavailableDriver = (support: PlatformSupport): DevicePlatformDrive
     models: () => Promise.resolve([]),
     boot: refuse,
     create: refuse,
+    shutdown: refuse,
     remove: refuse,
     connect: refuse,
     screenshot: refuse,
