@@ -183,6 +183,10 @@ export class Threads extends Context.Service<
     >
     readonly unarchive: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError>
     readonly settle: (id: string) => Effect.Effect<Thread, PersistenceError | NotFoundError | ThreadBusyError>
+    readonly settleIf: (
+      id: string,
+      stillDue: (thread: Thread) => boolean,
+    ) => Effect.Effect<Option.Option<Thread>, PersistenceError | NotFoundError>
     readonly settleMerged: (
       id: string,
       stillDue: (thread: Thread, workStartedAt: string | null) => boolean,
@@ -823,6 +827,15 @@ const make = Effect.gen(function* () {
       return yield* write(thread, { id, settled: true })
     })
 
+  const settleIf = (id: string, stillDue: (thread: Thread) => boolean) =>
+    worktrees.exclusive(
+      Effect.gen(function* () {
+        const thread = yield* get(id)
+        if (!stillDue(thread)) return Option.none<Thread>()
+        return Option.some(yield* write(thread, { id, settled: true }))
+      }),
+    )
+
   const settleMerged = (id: string, stillDue: (thread: Thread, workStartedAt: string | null) => boolean) =>
     worktrees.exclusive(
       Effect.gen(function* () {
@@ -885,6 +898,7 @@ const make = Effect.gen(function* () {
     archiveIf,
     unarchive,
     settle,
+    settleIf,
     settleMerged,
     unsettle,
     workStartedAt,
