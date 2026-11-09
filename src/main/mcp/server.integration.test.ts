@@ -360,6 +360,79 @@ layer(testLayer)("mcp server credentials", (it) => {
   )
 })
 
+const postRaw = (connection: McpConnection, body: string, headers: Record<string, string>) =>
+  Effect.promise(async () => {
+    const response = await fetch(connection.url, {
+      method: "POST",
+      body,
+      headers: { "content-type": "application/json", accept: "application/json, text/event-stream", ...headers },
+    })
+    return { status: response.status, body: (await response.json()) as { error?: unknown } }
+  })
+
+layer(testLayer)("mcp server transport", (it) => {
+  it.effect("refuses a request without a credential before it reads the body", () =>
+    Effect.gen(function* () {
+      const { a } = yield* Seeded
+      const connection = yield* (yield* McpCredentials).connectionFor(a)
+      expect(yield* postRaw(connection, "{not json", {})).toStrictEqual({
+        status: 401,
+        body: { error: "invalid_token" },
+      })
+    }),
+  )
+
+  it.effect("answers a body that is not JSON with a parse error and keeps serving", () =>
+    Effect.gen(function* () {
+      const { a } = yield* Seeded
+      const connection = yield* (yield* McpCredentials).connectionFor(a)
+      const answer = yield* postRaw(connection, "{not json", connection.headers)
+      expect(answer.status).toBeLessThan(500)
+      expect(answer.body.error).toMatchObject({ code: -32700 })
+      expect((yield* callAs(connection, "list_thread_pull_requests")).isError).toBe(false)
+    }),
+  )
+
+  it.effect("refuses JSON that is not a JSON-RPC request", () =>
+    Effect.gen(function* () {
+      const { a } = yield* Seeded
+      const connection = yield* (yield* McpCredentials).connectionFor(a)
+      for (const body of ["[]", JSON.stringify({ hello: 1 })]) {
+        const answer = yield* postRaw(connection, body, connection.headers)
+        expect(answer.status).toBeLessThan(500)
+        expect(answer.body.error).toMatchObject({ code: -32600 })
+      }
+    }),
+  )
+
+  it.effect("tells a client that skips initialize to start a session", () =>
+    Effect.gen(function* () {
+      const { a } = yield* Seeded
+      const connection = yield* (yield* McpCredentials).connectionFor(a)
+      const call = { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "list_threads", arguments: {} } }
+      const answer = yield* postRaw(connection, JSON.stringify(call), connection.headers)
+      expect(answer.status).toBe(400)
+      expect(answer.body.error).toMatchObject({ code: -32600, message: expect.stringMatching(/initialize/) })
+    }),
+  )
+
+  it.effect("fails a call to a tool that does not exist and keeps the session usable", () =>
+    Effect.gen(function* () {
+      const { a } = yield* Seeded
+      const connection = yield* (yield* McpCredentials).connectionFor(a)
+      const { missing, listed } = yield* withClient(connection, async (client) => ({
+        missing: await client.callTool({ name: "no_such_tool", arguments: {} }).then(
+          () => null,
+          (error: Error) => error.message,
+        ),
+        listed: await client.callTool({ name: "list_thread_pull_requests", arguments: {} }),
+      }))
+      expect(missing).toMatch(/no_such_tool.*not found/)
+      expect(listed.isError).not.toBe(true)
+    }),
+  )
+})
+
 layer(testLayer)("artifact tools", (it) => {
   it.effect("a thread publishes an artifact, finds it in the list and reads it back", () =>
     Effect.gen(function* () {
