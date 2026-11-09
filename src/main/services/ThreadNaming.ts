@@ -66,6 +66,7 @@ export const suggest = (model: string, prompt: string) =>
         for await (const message of stream) {
           if (message.type !== "result") continue
           if (message.subtype !== "success") throw new Error(message.errors.join("\n") || message.subtype)
+          if (message.is_error) throw new Error(message.result || "Claude Code returned an error")
           return message.structured_output
         }
         throw new Error("Claude Code ended without a result")
