@@ -26,8 +26,12 @@ const sdk = vi.hoisted(() => {
     readonly supportedCommands = vi.fn(() => sdk.supportedCommands())
     readonly supportedModels = vi.fn(() => sdk.supportedModels())
     private readonly buffer: Array<Message> = []
-    private reader: ((result: IteratorResult<Message>) => void) | null = null
+    private reader: {
+      readonly resolve: (result: IteratorResult<Message>) => void
+      readonly reject: (error: Error) => void
+    } | null = null
     private ended = false
+    private failure: Error | null = null
 
     constructor(input: { readonly prompt: AsyncIterable<SDKUserMessage>; readonly options: Options }) {
       this.options = input.options
@@ -45,7 +49,7 @@ const sdk = vi.hoisted(() => {
       for (const message of messages) {
         if (this.reader === null) this.buffer.push(message)
         else {
-          this.reader({ done: false, value: message })
+          this.reader.resolve({ done: false, value: message })
           this.reader = null
         }
       }
@@ -64,8 +68,15 @@ const sdk = vi.hoisted(() => {
     next(): Promise<IteratorResult<Message>> {
       const message = this.buffer.shift()
       if (message !== undefined) return Promise.resolve({ done: false, value: message })
+      if (this.failure !== null) return Promise.reject(this.failure)
       if (this.ended) return Promise.resolve({ done: true, value: undefined })
-      return new Promise((resolve) => (this.reader = resolve))
+      return new Promise((resolve, reject) => (this.reader = { resolve, reject }))
+    }
+
+    crash(error: Error) {
+      this.failure = error
+      this.reader?.reject(error)
+      this.reader = null
     }
 
     return(): Promise<IteratorResult<Message>> {
@@ -75,7 +86,7 @@ const sdk = vi.hoisted(() => {
 
     private end() {
       this.ended = true
-      this.reader?.({ done: true, value: undefined })
+      this.reader?.resolve({ done: true, value: undefined })
       this.reader = null
     }
   }
@@ -796,6 +807,21 @@ const warm = (input: RunTurnInput = turnInput()) =>
     const provider = yield* ClaudeProvider
     yield* provider.warm!(input)
   })
+
+describe("Claude CLI exits", () => {
+  it.effect("fails the turn with the CLI's error and no stack trace", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        sdk.respond = (cli) => cli.crash(new Error("Claude Code process exited with code 3"))
+        const events = yield* runTurn()
+        expect(Array.from(events).at(-1)).toStrictEqual({
+          type: "turn_failed",
+          message: "Claude Code stream failed: Claude Code process exited with code 3",
+        })
+      }),
+    ),
+  )
+})
 
 describe("Claude warm sessions", () => {
   it.effect("sends the next prompt to the CLI a warm started", () =>
