@@ -41,7 +41,7 @@ import { inBrowser } from "../lib/runtime.ts"
 import { ProjectDialog } from "./ProjectDialog.tsx"
 import { groupProjects } from "../lib/projectGroups.ts"
 import { moveDraft } from "../lib/startThread.ts"
-import { useSettings } from "../lib/settings.ts"
+import { useInstalledProviders, useSettings } from "../lib/settings.ts"
 import { useAltHeld } from "../lib/useModifierHeld.ts"
 import { m } from "../paraglide/messages.js"
 import { type Draft, useDrafts } from "../stores/drafts.ts"
@@ -204,7 +204,7 @@ export const pickerProviders = (own: ProviderId, setUp: ReadonlyArray<ProviderId
 
 function useAgentTabs(thread: Thread, canSwitchAgent: boolean): ReadonlyArray<AgentTab> {
   const environment = useThreadEnvironment(thread.id)
-  const enabled = new Set(enabledProviders(useSettings(environment)))
+  const enabled = new Set(enabledProviders(useSettings(environment), useInstalledProviders(environment)))
   const setUpProviders = useAtomValue(setUpProvidersAtom(environment)).filter((provider) => enabled.has(provider))
   const accounts = useAccountOptions(thread).options
   const accountHint = useAccountHint()

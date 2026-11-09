@@ -3,7 +3,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect } from "effect"
 import { afterEach, describe, expect, it } from "vitest"
-import { installedBinary } from "./binary.ts"
+import { AgentBinaries, type AgentBinarySource, binaryStatuses, installedBinary } from "./binary.ts"
 
 const inherited = process.env["PATH"]
 
@@ -37,5 +37,50 @@ describe.skipIf(process.platform === "win32")("installedBinary", () => {
 
     process.env["PATH"] = bin
     expect(await Effect.runPromise(installedBinary("claude", "kk-fake-cli"))).toBe(join(bin, "kk-fake-cli"))
+  })
+
+  const withBinaries = <A, E>(effect: Effect.Effect<A, E>, source: Partial<AgentBinarySource>) =>
+    Effect.runPromise(
+      effect.pipe(
+        Effect.provideService(AgentBinaries, {
+          configured: Effect.succeed({}),
+          simulated: new Set(),
+          ...source,
+        }),
+      ),
+    )
+
+  it("runs the CLI at the path set in Settings, and magpie follows Claude Code's", async () => {
+    const root = mkdtempSync(join(tmpdir(), "kk-binary-"))
+    const custom = join(cliIn(root, "custom"), "kk-fake-cli")
+    process.env["PATH"] = mkdtempSync(join(tmpdir(), "kk-binary-path-"))
+
+    const statuses = await withBinaries(binaryStatuses, {
+      configured: Effect.succeed({ claude: custom, codex: join(root, "missing", "codex") }),
+    })
+
+    expect(statuses.claude).toStrictEqual({ installed: true, path: custom })
+    expect(statuses.magpie).toStrictEqual({ installed: true, path: custom })
+    expect(statuses.codex).toStrictEqual({ installed: false, path: null })
+    expect(statuses.muse).toStrictEqual({ installed: false, path: null })
+  })
+
+  it("names the configured path when nothing runs there", async () => {
+    const missing = join(mkdtempSync(join(tmpdir(), "kk-binary-")), "codex")
+
+    const error = await withBinaries(Effect.flip(installedBinary("codex", "codex")), {
+      configured: Effect.succeed({ codex: missing }),
+    })
+
+    expect(error.message).toContain(missing)
+  })
+
+  it("counts a simulated agent as installed without a CLI", async () => {
+    process.env["PATH"] = mkdtempSync(join(tmpdir(), "kk-binary-"))
+
+    const statuses = await withBinaries(binaryStatuses, { simulated: new Set(["claude"] as const) })
+
+    expect(statuses.claude).toStrictEqual({ installed: true, path: null })
+    expect(statuses.codex.installed).toBe(false)
   })
 })

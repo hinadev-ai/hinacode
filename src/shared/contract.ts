@@ -20,6 +20,7 @@ import {
   AgentProfile,
   AgentProfileName,
   AgentConfigDir,
+  AgentBinaryStatus,
   AgentUpdate,
   AgentBinary,
   ApprovalDecision,
@@ -387,6 +388,7 @@ export const RpcMethods = {
     AgentAccount,
   ),
   "agents.updates": rpc(Schema.Void, Schema.Array(AgentUpdate)),
+  "agents.binaries": rpc(Schema.Void, Schema.Record(ProviderId, AgentBinaryStatus)),
   "magpie.test": rpc(
     Schema.Struct({ endpoint: Schema.NullOr(Schema.String), key: Schema.NullOr(Schema.String) }),
     Schema.Struct({ version: Schema.NullOr(Schema.String), models: Schema.Number }),
@@ -796,6 +798,7 @@ export const methodKind: Record<RpcMethod, "read" | "mutation"> = {
   "models.list": "read",
   "agents.account": "read",
   "agents.updates": "read",
+  "agents.binaries": "read",
   "magpie.test": "read",
   "magpie.saveKey": "mutation",
   "agents.update": "mutation",
