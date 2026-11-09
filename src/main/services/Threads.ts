@@ -818,7 +818,16 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const thread = yield* get(id)
       yield* syncChatFolder(thread, true)
-      return yield* write(thread, { id, status: "idle" })
+      const now = yield* nowIso
+      yield* sql`
+        UPDATE thread
+        SET status = 'idle', usage_limit = NULL, snoozed_until = NULL, settled_at = NULL,
+            work_started_at = ${now}, updated_at = ${now}
+        WHERE id = ${id} AND status = 'archived'
+      `.pipe(Effect.mapError(persistence("threads.unarchive")))
+      const reopened = yield* get(id)
+      yield* PubSub.publish(written, reopened)
+      return reopened
     })
 
   const settle = (id: string) =>
