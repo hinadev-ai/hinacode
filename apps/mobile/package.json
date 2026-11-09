@@ -67,5 +67,12 @@
     "enableCodeHighlight": true,
     "enableMath": false,
     "enableVideo": false
+  },
+  "expo": {
+    "autolinking": {
+      "searchPaths": [
+        "../../packages"
+      ]
+    }
   }
 }

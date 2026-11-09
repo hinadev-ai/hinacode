@@ -13,5 +13,10 @@
     "apps/mobile/scripts/*.mts",
     "src/preload/index.d.ts"
   ],
-  "exclude": ["packages/icons/**", "scripts/ui-states/main.ts", "scripts/ui-states/webview.ts"]
+  "exclude": [
+    "packages/icons/**",
+    "packages/composer-editor/**",
+    "scripts/ui-states/main.ts",
+    "scripts/ui-states/webview.ts"
+  ]
 }
