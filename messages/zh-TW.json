@@ -1809,6 +1809,8 @@
   "devices_add": "新增裝置",
   "devices_close_tab": "中斷連接 {name}",
   "devices_delete_tab": "刪除 {name}",
+  "devices_shutdown": "關機",
+  "devices_shutdown_label": "將 {name} 關機",
   "devices_show": "顯示",
   "devices_show_label": "顯示 {name}",
   "devices_owned_elsewhere": "這台模擬器是另一個執行緒建立的，封存該執行緒時會刪除它。",

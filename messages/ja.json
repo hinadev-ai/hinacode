@@ -1791,6 +1791,8 @@
   "devices_add": "デバイスを追加",
   "devices_close_tab": "{name} の接続を解除",
   "devices_delete_tab": "{name} を削除",
+  "devices_shutdown": "シャットダウン",
+  "devices_shutdown_label": "{name} をシャットダウン",
   "devices_show": "表示",
   "devices_show_label": "{name} を表示",
   "devices_owned_elsewhere": "このシミュレータは別のスレッドが作成したもので、そのスレッドをアーカイブすると削除されます。",

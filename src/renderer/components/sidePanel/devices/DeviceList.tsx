@@ -33,6 +33,7 @@ import { DeleteDeviceDialog } from "./DeleteDeviceDialog.tsx"
 import { ChevronDownIcon } from "../../icons/ChevronDownIcon.tsx"
 import { PlusIcon } from "../../icons/PlusIcon.tsx"
 import { RefreshIcon } from "../../icons/RefreshIcon.tsx"
+import { StopCircleIcon } from "../../icons/StopCircleIcon.tsx"
 import { TrashIcon } from "../../icons/TrashIcon.tsx"
 
 const SIMSLIM_INSTALL = "brew install mobai-app/tap/simslim"
@@ -65,6 +66,11 @@ export function DeviceList({ thread }: { thread: Thread }) {
   const remove = (device: Device) =>
     run(async () => {
       await callPromise("device.delete", { threadId: thread.id, deviceId: device.id })
+      refresh()
+    })
+  const shutdown = (device: Device) =>
+    run(async () => {
+      await callPromise("device.shutdown", { threadId: thread.id, deviceId: device.id })
       refresh()
     })
   const create = (model: SimulatorModel) => {
@@ -105,6 +111,7 @@ export function DeviceList({ thread }: { thread: Thread }) {
               attached={attached}
               pending={pending}
               onAttach={attach}
+              onShutdown={shutdown}
               onDelete={setDeleting}
             />
             <PlatformSection
@@ -114,6 +121,7 @@ export function DeviceList({ thread }: { thread: Thread }) {
               attached={attached}
               pending={pending}
               onAttach={attach}
+              onShutdown={shutdown}
               onDelete={setDeleting}
             />
           </>
@@ -211,10 +219,20 @@ interface PlatformSectionProps {
   readonly attached: ReadonlySet<string>
   readonly pending: boolean
   readonly onAttach: (device: Device) => void
+  readonly onShutdown: (device: Device) => void
   readonly onDelete: (device: Device) => void
 }
 
-function PlatformSection({ platform, host, threadId, attached, pending, onAttach, onDelete }: PlatformSectionProps) {
+function PlatformSection({
+  platform,
+  host,
+  threadId,
+  attached,
+  pending,
+  onAttach,
+  onShutdown,
+  onDelete,
+}: PlatformSectionProps) {
   const support = host[platform]
   const unavailable = supportMessage(support)
   const devices = host.devices.filter((device) => device.platform === platform).toSorted(byState)
@@ -246,6 +264,7 @@ function PlatformSection({ platform, host, threadId, attached, pending, onAttach
                 attached={attached.has(device.id)}
                 pending={pending}
                 onAttach={() => onAttach(device)}
+                onShutdown={() => onShutdown(device)}
                 onDelete={() => onDelete(device)}
               />
             ))}
@@ -279,10 +298,11 @@ interface DeviceRowProps {
   readonly attached: boolean
   readonly pending: boolean
   readonly onAttach: () => void
+  readonly onShutdown: () => void
   readonly onDelete: () => void
 }
 
-function DeviceRow({ device, threadId, attached, pending, onAttach, onDelete }: DeviceRowProps) {
+function DeviceRow({ device, threadId, attached, pending, onAttach, onShutdown, onDelete }: DeviceRowProps) {
   const { slim } = device
   const anotherThreads = device.ownerThreadId !== null && device.ownerThreadId !== threadId
   const fullySlim = slim !== null && slim.total > 0 && slim.disabled === slim.total
@@ -333,6 +353,14 @@ function DeviceRow({ device, threadId, attached, pending, onAttach, onDelete }: 
       >
         {attached ? m.devices_show() : m.devices_attach()}
       </Button>
+      {device.state !== "shutdown" && (
+        <IconAction
+          icon={StopCircleIcon}
+          label={m.devices_shutdown_label({ name: device.name })}
+          onClick={onShutdown}
+          disabled={pending || anotherThreads}
+        />
+      )}
       <IconAction
         icon={TrashIcon}
         label={m.devices_delete_tab({ name: device.name })}

@@ -1837,6 +1837,8 @@
   "devices_add": "添加设备",
   "devices_close_tab": "断开 {name}",
   "devices_delete_tab": "删除 {name}",
+  "devices_shutdown": "关机",
+  "devices_shutdown_label": "将 {name} 关机",
   "devices_show": "显示",
   "devices_show_label": "显示 {name}",
   "devices_owned_elsewhere": "此模拟器由其他对话创建，归档该对话时会将它删除。",
