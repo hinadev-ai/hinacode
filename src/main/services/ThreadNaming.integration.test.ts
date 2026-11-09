@@ -44,6 +44,10 @@ vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => ({
       yield { type: "result", subtype: "success", result: "Command completed", local_command: "code_review" }
       return
     }
+    if (prompt.includes("rate limited")) {
+      yield { type: "result", subtype: "success", is_error: true, result: "API Error: Rate limit reached" }
+      return
+    }
     yield { type: "result", subtype: "success", structured_output: { title: "Review login", branch: "review-login" } }
   },
 }))
@@ -355,6 +359,13 @@ describe("regenerating a thread's title", () => {
     Effect.gen(function* () {
       const result = yield* regenerate([message("1", "user", "/code-review look at PR 640")])
       expect(result.title).toBe("Review login")
+    }),
+  )
+
+  it.live("reports why Claude Code failed instead of a schema error", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(regenerate([message("1", "user", "rate limited")]))
+      expect(error.message).toBe("Failed to name thread: API Error: Rate limit reached")
     }),
   )
 
