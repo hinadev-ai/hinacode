@@ -223,7 +223,9 @@ describe("Claude Code CLI failures", () => {
         const events = yield* runToEnd(provider, input(home, { resumeSessionId: "gone" }))
         expect(ended(events)).toStrictEqual({
           type: "turn_failed",
-          message: "No conversation found with session ID: gone",
+          message:
+            "No conversation found with session ID: gone\n\nYour next message starts a new Claude session that gets this thread's transcript, without tool output.",
+          sessionLost: true,
         })
       }).pipe(Effect.scoped),
     ),
