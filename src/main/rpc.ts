@@ -181,6 +181,8 @@ const knownRoot = (root: string) =>
     return root
   })
 
+const announceThread = (thread: Thread) => Events.use((events) => events.publish({ type: "thread.updated", thread }))
+
 const closeTerminals = (threadId: string) => Terminals.use((terminals) => terminals.closeThread(threadId))
 
 const startGuideForHead = (detail: PullRequestDetail) =>
@@ -295,20 +297,18 @@ const handlers: Handlers = {
   "worktrees.pullRequest": ({ id }) => Worktrees.use((worktrees) => worktrees.pullRequest(id)),
   "threads.changes": ({ threadId, scope }) => Threads.use((threads) => threads.changes(threadId, scope)),
   "threads.undoTurn": ({ threadId }) => Threads.use((threads) => threads.undoTurn(threadId)),
-  "threads.archive": ({ threadId }) => Threads.use((threads) => threads.archive(threadId)),
-  "threads.unarchive": ({ threadId }) => Threads.use((threads) => threads.unarchive(threadId)),
-  "threads.settle": ({ threadId }) => Settle.use((settle) => settle.settle(threadId)),
-  "threads.unsettle": ({ threadId }) => Threads.use((threads) => threads.unsettle(threadId)),
+  "threads.archive": ({ threadId }) =>
+    Threads.use((threads) => threads.archive(threadId)).pipe(Effect.tap(announceThread)),
+  "threads.unarchive": ({ threadId }) =>
+    Threads.use((threads) => threads.unarchive(threadId)).pipe(Effect.tap(announceThread)),
+  "threads.settle": ({ threadId }) => Settle.use((settle) => settle.settle(threadId)).pipe(Effect.tap(announceThread)),
+  "threads.unsettle": ({ threadId }) =>
+    Threads.use((threads) => threads.unsettle(threadId)).pipe(Effect.tap(announceThread)),
   "threads.regenerateTitle": ({ threadId }) => ThreadNaming.use((naming) => naming.regenerateTitle(threadId)),
   "threads.fork": ({ threadId, messageId }) =>
-    Threads.use((threads) => threads.fork(threadId, messageId)).pipe(
-      Effect.tap((thread) => Events.use((events) => events.publish({ type: "thread.updated", thread }))),
-    ),
+    Threads.use((threads) => threads.fork(threadId, messageId)).pipe(Effect.tap(announceThread)),
   "sessions.listExternal": ({ projectId }) => SessionImports.use((imports) => imports.list(projectId)),
-  "sessions.import": (input) =>
-    SessionImports.use((imports) => imports.import(input)).pipe(
-      Effect.tap((thread) => Events.use((events) => events.publish({ type: "thread.updated", thread }))),
-    ),
+  "sessions.import": (input) => SessionImports.use((imports) => imports.import(input)).pipe(Effect.tap(announceThread)),
   "threads.sidechat": ({ threadId }) => Threads.use((threads) => threads.sidechat(threadId)),
   "projects.currentBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.currentBranch(id)),
   "projects.defaultBranch": ({ id }) => Worktrees.use((worktrees) => worktrees.defaultBranch(id)),
