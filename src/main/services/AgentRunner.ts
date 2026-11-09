@@ -1037,7 +1037,8 @@ const make = Effect.gen(function* () {
       if (thread.providerSessionId !== null) return prompt
       if (thread.sideOf !== null) {
         const unseen = unseenSince(yield* liveMessages(thread.sideOf), thread.forkedFrom)
-        return sidechatPrompt({ unseen, prompt })
+        const history = yield* messages.list(thread.id)
+        return sidechatPrompt({ history, unseen, prompt })
       }
       if (thread.forkedFrom !== null) return prompt
       const history = yield* messages.list(thread.id)

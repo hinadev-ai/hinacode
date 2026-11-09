@@ -418,7 +418,10 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
     const emit = (session: Session, event: AgentEvent) => {
       if (session.turn === null) return
       if ((event.type === "turn_failed" || event.type === "turn_limited") && session.interrupted)
-        event = { type: "turn_failed", message: "Interrupted" }
+        event =
+          event.type === "turn_failed" && event.sessionLost
+            ? { type: "turn_failed", message: "Interrupted", sessionLost: true }
+            : { type: "turn_failed", message: "Interrupted" }
       if (event.type === "turn_completed" && session.sessionId !== null && session.lastAssistantUuid !== null)
         event = { ...event, forkPoint: { sessionId: session.sessionId, checkpoint: session.lastAssistantUuid } }
       Queue.offerUnsafe(session.turn, event)
@@ -597,6 +600,9 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
         if (event.type === "turn_failed" && event.sessionLost) {
           session.sessionId = null
           resumable.delete(session.threadId)
+          emit(session, event)
+          closeSessionUnsafe(session)
+          continue
         }
         if (isTerminal(event) && session.reportsState) session.heldEnd = event
         else emit(session, event)

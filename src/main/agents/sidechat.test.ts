@@ -43,7 +43,7 @@ test("counts only the messages after the fork point as unseen", () => {
 })
 
 test("puts the running turn ahead of the side question", () => {
-  expect(sidechatPrompt({ unseen: history.slice(2), prompt: "Why pnpm?" })).toBe(`<side_chat>
+  expect(sidechatPrompt({ history: [], unseen: history.slice(2), prompt: "Why pnpm?" })).toBe(`<side_chat>
 This is a side chat. The developer asks you something while the main agent keeps working on this conversation in the same workspace. Answer it, and do not edit files or run commands that change anything.
 The main conversation went on after your history ends. Here is the rest, oldest first. Tool output is left out, and the last message may still be in progress.
 
@@ -58,9 +58,28 @@ Why pnpm?`)
 })
 
 test("asks the side question alone when the fork saw everything", () => {
-  expect(sidechatPrompt({ unseen: [], prompt: "Why?" })).toBe(`<side_chat>
+  expect(sidechatPrompt({ history: [], unseen: [], prompt: "Why?" })).toBe(`<side_chat>
 This is a side chat. The developer asks you something while the main agent keeps working on this conversation in the same workspace. Answer it, and do not edit files or run commands that change anything.
 </side_chat>
 
 Why?`)
+})
+
+test("hands a recovered side chat its own conversation before the main one", () => {
+  const sideHistory = [
+    message("s1", "user", [{ type: "text", text: "Which cache should we use?" }]),
+    message("s2", "assistant", [{ type: "text", text: "Use the second option." }]),
+  ]
+  expect(sidechatPrompt({ history: sideHistory, unseen: [], prompt: "Use the second option." })).toBe(`<side_chat>
+This is a side chat. The developer asks you something while the main agent keeps working on this conversation in the same workspace. Answer it, and do not edit files or run commands that change anything.
+This side chat ran in an earlier session that you cannot resume. Here is what was said in it, oldest first. Tool output is left out.
+
+## user
+Which cache should we use?
+
+## assistant
+Use the second option.
+</side_chat>
+
+Use the second option.`)
 })
