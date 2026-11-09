@@ -11,7 +11,6 @@ export {
   GlobeIcon,
   GuideIcon,
   KeyIcon,
-  LayoutIcon,
   LockIcon,
   PhoneIcon,
   ServerIcon,

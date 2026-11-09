@@ -1,0 +1,43 @@
+---
+import { translator, type Locale } from "../i18n.ts"
+import Screen from "./Screen.astro"
+
+interface Props {
+  locale: Locale
+}
+
+const t = translator(Astro.props.locale)
+
+const examples = [
+  {
+    src: "/screens/artifact-document.webp",
+    alt: t("site_artifacts_document_alt"),
+    title: t("site_artifacts_document_title"),
+    body: t("site_artifacts_document_body"),
+  },
+  {
+    src: "/screens/artifact-whiteboard.webp",
+    alt: t("site_artifacts_whiteboard_alt"),
+    title: t("site_artifacts_whiteboard_title"),
+    body: t("site_artifacts_whiteboard_body"),
+  },
+]
+---
+
+<section id="artifacts" class="mx-auto max-w-[76rem] px-5 pt-28 sm:px-8 sm:pt-40">
+  <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_28rem] lg:items-end lg:gap-16">
+    <h2 class="display max-w-[18ch] display-2 leading-[1.06] font-semibold">{t("site_artifacts_title")}</h2>
+    <p class="text-[17px] leading-relaxed text-ink-soft">{t("site_artifacts_lede")}</p>
+  </div>
+  <div class="mt-14 grid gap-10 lg:grid-cols-2 lg:gap-8">
+    {
+      examples.map(({ src, alt, title, body }) => (
+        <article>
+          <Screen src={src} alt={alt} width={2504} height={2000} class="bg-night" />
+          <h3 class="mt-6 text-[1.375rem] font-semibold tracking-[-0.01em]">{title}</h3>
+          <p class="mt-2 text-base leading-relaxed text-ink-soft">{body}</p>
+        </article>
+      ))
+    }
+  </div>
+</section>
