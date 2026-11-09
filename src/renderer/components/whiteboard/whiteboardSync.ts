@@ -177,10 +177,12 @@ export function createWhiteboardSync(options: {
       void catchUp()
     },
     save,
+    open: () => {
+      closed = false
+    },
     close: () => {
       clearTimeout(timer)
       closed = true
-      api = null
       const current = shown
       if (current === null || edits === savedEdits) return
       handedOff = { ...current, revision: base, snapshot, saved: save() }
