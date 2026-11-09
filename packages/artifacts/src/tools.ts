@@ -57,21 +57,51 @@ const currentMarkdown = async (store: ArtifactStore, id: string) => {
 const describeSourcePath = (holds: string) =>
   `The absolute path of a file on this machine that holds ${holds}. It is copied when you publish, so publish again after you change it.`
 
-const readSource = async (sourcePath: string) => {
+const cannotRead = (sourcePath: string, error: unknown) =>
+  error instanceof ArtifactError ? error : new ArtifactError(`Cannot read sourcePath "${sourcePath}": ${String(error)}`)
+
+const sourceSize = async (sourcePath: string) => {
   if (!isAbsolute(sourcePath)) throw new ArtifactError(`sourcePath must be absolute, but got "${sourcePath}".`)
   try {
     const source = await stat(sourcePath)
     if (!source.isFile()) throw new ArtifactError(`sourcePath "${sourcePath}" is not a file.`)
-    if (source.size > MAX_ARTIFACT_BYTES) {
-      throw new ArtifactError(
-        `"${sourcePath}" is ${source.size} bytes. A version holds at most ${MAX_ARTIFACT_BYTES} bytes.`,
-      )
-    }
-    return await readFile(sourcePath)
+    return source.size
   } catch (error) {
-    if (error instanceof ArtifactError) throw error
-    throw new ArtifactError(`Cannot read sourcePath "${sourcePath}": ${String(error)}`)
+    throw cannotRead(sourcePath, error)
   }
+}
+
+const readSources = async (sourcePaths: ReadonlyArray<string>, inlineBytes = 0) => {
+  const sizes = await Promise.all(sourcePaths.map(sourceSize))
+  const total = sizes.reduce((sum, size) => sum + size, inlineBytes)
+  if (total > MAX_ARTIFACT_BYTES) {
+    throw new ArtifactError(`The files are ${total} bytes. A version holds at most ${MAX_ARTIFACT_BYTES} bytes.`)
+  }
+  return Promise.all(
+    sourcePaths.map((sourcePath) =>
+      readFile(sourcePath).catch((error: unknown) => Promise.reject(cannotRead(sourcePath, error))),
+    ),
+  )
+}
+
+const base64Codes = new Uint8Array(128)
+for (const character of "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/-_")
+  base64Codes[character.charCodeAt(0)] = 1
+const base64Padding = "=".charCodeAt(0)
+
+const decodedBase64Size = (content: string) => {
+  let codes = 0
+  for (let index = 0; index < content.length; index++) {
+    const code = content.charCodeAt(index)
+    if (code === base64Padding) break
+    if (code < base64Codes.length && base64Codes[code] === 1) codes += 1
+  }
+  return Math.floor((codes * 3) / 4)
+}
+
+const inlineSize = (file: { content?: string | undefined; encoding?: "utf8" | "base64" | undefined }) => {
+  if (file.content === undefined) return 0
+  return file.encoding === "base64" ? decodedBase64Size(file.content) : Buffer.byteLength(file.content, "utf8")
 }
 
 const newNeedsTitle = { message: "Give a new artifact a title.", path: ["title"] }
@@ -168,16 +198,16 @@ export const artifactTools = {
       })
       .refine((input) => input.id !== undefined || input.title !== undefined, newNeedsTitle),
     handle: async (store, { auto_open: _autoOpen, ...input }, { threadId }) => {
-      const files = await Promise.all(
-        input.files.map(async ({ sourcePath, ...file }) =>
-          sourcePath === undefined
-            ? { ...file, content: file.content ?? "" }
-            : {
-                path: file.path,
-                content: (await readSource(sourcePath)).toString("base64"),
-                encoding: "base64" as const,
-              },
-        ),
+      const sourced = input.files.flatMap(({ sourcePath }) => (sourcePath === undefined ? [] : [sourcePath]))
+      const contents = await readSources(
+        sourced,
+        input.files.reduce((sum, file) => sum + inlineSize(file), 0),
+      )
+      const read = new Map(sourced.map((sourcePath, index) => [sourcePath, contents[index]]))
+      const files = input.files.map(({ sourcePath, ...file }) =>
+        sourcePath === undefined
+          ? { ...file, content: file.content ?? "" }
+          : { path: file.path, content: read.get(sourcePath)?.toString("base64") ?? "", encoding: "base64" as const },
       )
       const artifact = await store.publish({ ...input, files, ...(threadId === undefined ? {} : { threadId }) })
       return `Published artifact ${artifact.id} version ${artifact.version}: "${artifact.title}". Pass id "${artifact.id}" to publish_artifact to update it.`
@@ -218,7 +248,8 @@ export const artifactTools = {
       })
       .refine((input) => input.id !== undefined || input.title !== undefined, newNeedsTitle),
     handle: async (store, { id, revision, title, markdown, sourcePath }, { threadId }) => {
-      const contents = sourcePath === undefined ? (markdown ?? "") : (await readSource(sourcePath)).toString("utf8")
+      const contents =
+        sourcePath === undefined ? (markdown ?? "") : ((await readSources([sourcePath]))[0]?.toString("utf8") ?? "")
       try {
         const document = await store.publish({
           kind: "document",
