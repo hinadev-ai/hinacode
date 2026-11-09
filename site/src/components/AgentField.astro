@@ -1,0 +1,79 @@
+---
+interface Props {
+  class?: string
+  seed?: number
+}
+
+type State = "idle" | "done" | "running" | "waiting"
+type Agent = { x: number; y: number; size: number; state: State; delay: number }
+
+const COLUMNS = 64
+const ROWS = 26
+const GAP = 22
+
+function seeded(seed: number) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0
+    let value = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+    value = (value + Math.imul(value ^ (value >>> 7), 61 | value)) ^ value
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+const random = seeded(Astro.props.seed ?? 7)
+const agents: Agent[] = []
+for (let row = 0; row < ROWS; row++) {
+  for (let column = 0; column < COLUMNS; column++) {
+    if (random() > 0.62) continue
+    const roll = random()
+    const state: State = roll < 0.03 ? "running" : roll < 0.042 ? "waiting" : roll < 0.09 ? "done" : "idle"
+    agents.push({
+      x: column * GAP + GAP / 2,
+      y: row * GAP + GAP / 2,
+      size: state === "idle" ? 2 + Math.round(random() * 2) : 5,
+      state,
+      delay: Math.round(random() * 2400),
+    })
+  }
+}
+
+const fills: Record<State, string> = {
+  idle: "fill-paper/14",
+  done: "fill-teal-bright/80",
+  running: "fill-coral agent-running",
+  waiting: "fill-amber",
+}
+---
+
+<svg
+  aria-hidden="true"
+  viewBox={`0 0 ${COLUMNS * GAP} ${ROWS * GAP}`}
+  preserveAspectRatio="xMidYMin slice"
+  class:list={["pointer-events-none select-none", Astro.props.class]}
+>
+  {
+    agents.map(({ x, y, size, state, delay }) => (
+      <>
+        {state === "waiting" && (
+          <rect
+            x={x - size / 2 - 4}
+            y={y - size / 2 - 4}
+            width={size + 8}
+            height={size + 8}
+            class="agent-ring fill-none stroke-amber"
+            stroke-width="1.25"
+            style={`animation-delay:${delay}ms`}
+          />
+        )}
+        <rect
+          x={x - size / 2}
+          y={y - size / 2}
+          width={size}
+          height={size}
+          class={fills[state]}
+          style={`animation-delay:${delay}ms`}
+        />
+      </>
+    ))
+  }
+</svg>

@@ -1,8 +1,10 @@
 ---
 import { translator, type Locale } from "../i18n.ts"
+import { REPO_URL } from "../links.ts"
+import AgentField from "./AgentField.astro"
 import Download from "./Download.astro"
 import GithubButton from "./GithubButton.astro"
-import Mark from "./Mark.astro"
+import Terminal from "./Terminal.astro"
 
 interface Props {
   locale: Locale
@@ -10,14 +12,30 @@ interface Props {
 
 const { locale } = Astro.props
 const t = translator(locale)
+const repo = REPO_URL.replace("https://github.com/", "")
 ---
 
-<section class="mx-auto max-w-[76rem] px-5 py-28 text-center sm:px-8 sm:py-40">
-  <Mark class="mx-auto size-14" />
-  <h2 class="display mt-7 display-2 leading-[1.05] font-semibold">{t("site_cta_title")}</h2>
-  <p class="mx-auto mt-4 max-w-[32rem] text-lg text-ink-soft">{t("site_cta_lede")}</p>
-  <div class="mt-9 flex flex-wrap justify-center gap-3">
-    <Download locale={locale} />
-    <GithubButton locale={locale} />
+<section class="relative isolate mt-28 overflow-hidden bg-ink text-paper sm:mt-40">
+  <AgentField seed={21} class="absolute inset-x-0 bottom-0 -z-10 h-2/3 w-full [mask-image:linear-gradient(to_top,black,transparent)]" />
+  <div class="mx-auto grid max-w-[76rem] items-center gap-12 px-5 py-24 sm:px-8 sm:py-32 lg:grid-cols-[minmax(0,1fr)_32rem] lg:gap-20">
+    <div>
+      <h2 class="display display-1 leading-[1.02] font-semibold">{t("site_cta_title")}</h2>
+      <p class="mt-5 max-w-[30rem] text-lg text-paper/75">{t("site_cta_lede")}</p>
+      <div class="mt-9 flex flex-wrap gap-3">
+        <Download locale={locale} />
+        <GithubButton locale={locale} />
+      </div>
+    </div>
+    <Terminal title="~/code" class="shadow-window">
+      <pre
+        aria-hidden="true"
+        class="overflow-x-auto p-5 font-mono text-[13px] leading-7 sm:p-6"><code><span class="text-coral select-none">$ </span>gh repo clone {repo}
+<span class="text-paper/60">Cloning into 'hinacode'...</span>
+<span class="text-coral select-none">$ </span>cd hinacode && pnpm install
+<span class="text-paper/60">Done in 4.2s</span>
+<span class="text-coral select-none">$ </span>pnpm dev
+<span class="text-teal-bright">➜</span> <span class="text-paper/60">HinaCode is running. Make it yours.</span>
+<span class="text-coral select-none">$ </span><span class="caret inline-block h-4 w-2 translate-y-0.5 bg-paper/70"></span></code></pre>
+    </Terminal>
   </div>
 </section>

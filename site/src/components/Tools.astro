@@ -1,17 +1,17 @@
 ---
 import { BellIcon, ChatsIcon, ComputerIcon, ForkIcon, KeyIcon, LayoutIcon, LinearIcon, PhoneIcon } from "../icons.ts"
 import { translator, type Locale } from "../i18n.ts"
+import { BOAT_URL } from "../links.ts"
+import Terminal from "./Terminal.astro"
 
 interface Props {
   locale: Locale
 }
 
 const t = translator(Astro.props.locale)
+const [vmBodyBefore, vmBodyAfter] = t("site_tools_vm_body").split("boat.dev")
 
-const highlights = [
-  { Icon: LayoutIcon, title: t("site_tools_artifacts_title"), body: t("site_tools_artifacts_body") },
-  { Icon: ComputerIcon, title: t("site_tools_vm_title"), body: t("site_tools_vm_body") },
-]
+const bars = [38, 52, 44, 68, 57, 74, 61, 88]
 
 const tools = [
   { Icon: KeyIcon, names: ["request_secret"], body: t("site_tools_secret") },
@@ -25,36 +25,90 @@ const tools = [
 
 <section id="tools" class="mt-28 bg-ink text-paper sm:mt-40">
   <div class="mx-auto max-w-[76rem] px-5 py-24 sm:px-8 sm:py-32">
-    <h2 class="display display-3 leading-[1.08] font-semibold">{t("site_tools_title")}</h2>
+    <h2 class="display display-2 leading-[1.06] font-semibold">{t("site_tools_title")}</h2>
 
-    <div class="mt-14 grid gap-12 border-t border-paper/15 pt-12 md:grid-cols-2 md:gap-16">
-      {
-        highlights.map(({ Icon, title, body }) => (
-          <div>
-            <Icon aria-hidden="true" className="size-6 [--sun:var(--color-coral)]" />
-            <h3 class="mt-5 text-[1.375rem] font-semibold tracking-[-0.01em]">{title}</h3>
-            <p class="mt-3 max-w-[32rem] text-base leading-relaxed text-paper/75">{body}</p>
+    <div class="mt-14 grid gap-5 md:grid-cols-2">
+      <article class="overflow-hidden rounded-2xl bg-night ring-1 ring-paper/10">
+        <div aria-hidden="true" class="border-b border-paper/10 p-5 sm:p-6">
+          <div class="flex items-center justify-between font-mono text-xs text-paper/70">
+            <span>publish_artifact</span>
+            <span class="rounded bg-paper/10 px-1.5 py-0.5 text-paper">v3</span>
           </div>
-        ))
-      }
+          <div class="mt-6 flex h-36 items-end gap-2">
+            {bars.map((height, index) => (
+              <span
+                class:list={["flex-1", index === bars.length - 1 ? "bg-coral" : "bg-teal-bright/70"]}
+                style={`height:${height}%`}
+              />
+            ))}
+          </div>
+        </div>
+        <div class="p-5 sm:p-6">
+          <h3 class="flex items-center gap-2.5 text-[1.375rem] font-semibold tracking-[-0.01em]">
+            <LayoutIcon aria-hidden="true" className="size-5 [--sun:var(--color-coral)]" />
+            {t("site_tools_artifacts_title")}
+          </h3>
+          <p class="mt-3 text-base leading-relaxed text-paper/75">{t("site_tools_artifacts_body")}</p>
+        </div>
+      </article>
+
+      <article class="overflow-hidden rounded-2xl bg-night ring-1 ring-paper/10">
+        <div aria-hidden="true" class="border-b border-paper/10 p-5 sm:p-6">
+          <div class="relative h-[11.75rem] overflow-hidden rounded-md bg-[#1b3a52] ring-1 ring-paper/10">
+            <span class="absolute top-6 right-10 size-6 bg-coral"></span>
+            <span class="vm-hills absolute inset-x-0 bottom-0 h-1/2"></span>
+            <span class="absolute top-[42%] left-[38%] h-4 w-3 bg-paper [clip-path:polygon(0_0,100%_70%,45%_65%,30%_100%)]"></span>
+            <div class="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 bg-night/90 px-3 py-2 text-xs">
+              <span class="flex items-center gap-2 text-paper/80">
+                <span class="agent-running size-1.5 bg-coral"></span>
+                {t("vm_control_agent")}
+              </span>
+              <span class="rounded bg-paper px-2 py-1 font-medium text-ink">{t("vm_take_control")}</span>
+            </div>
+          </div>
+        </div>
+        <div class="p-5 sm:p-6">
+          <h3 class="flex items-center gap-2.5 text-[1.375rem] font-semibold tracking-[-0.01em]">
+            <ComputerIcon aria-hidden="true" className="size-5 [--sun:var(--color-coral)]" />
+            {t("site_tools_vm_title")}
+            <span class="rounded-full bg-amber/15 px-2.5 py-0.5 font-mono text-xs font-medium tracking-normal text-amber ring-1 ring-amber/30">
+              {t("settings_experimental")}
+            </span>
+          </h3>
+          <p class="mt-3 text-base leading-relaxed text-paper/75">
+            {vmBodyBefore}<a
+              href={BOAT_URL}
+              target="_blank"
+              rel="noreferrer"
+              class="font-medium text-teal-bright underline decoration-teal-bright/40 underline-offset-4 hover:decoration-teal-bright focus-visible:outline-2 focus-visible:outline-offset-2"
+              >boat.dev</a
+            >{vmBodyAfter}
+          </p>
+        </div>
+      </article>
     </div>
 
-    <dl class="mt-16 border-b border-paper/15">
-      {
-        tools.map(({ Icon, names, body }) => (
-          <div class="grid gap-2 border-t border-paper/15 py-5 sm:grid-cols-[17rem_minmax(0,1fr)] sm:gap-8 lg:grid-cols-[25rem_minmax(0,1fr)] lg:gap-20">
-            <dt class="flex items-start gap-3 font-mono text-[13px] leading-6">
-              <Icon aria-hidden="true" className="mt-[3px] size-[1.125rem] shrink-0 [--sun:var(--color-coral)]" />
-              <span class="min-w-0 break-words">
-                {names.map((name) => (
-                  <span class="block">{name}</span>
-                ))}
-              </span>
-            </dt>
-            <dd class="text-[15px] leading-relaxed text-paper/75 sm:pt-px">{body}</dd>
-          </div>
-        ))
-      }
-    </dl>
+    <Terminal title="hinacode mcp · thread-281b5" class="mt-5 rounded-2xl">
+      <div class="p-5 font-mono text-[13px] leading-6 sm:p-6">
+        <p aria-hidden="true" class="text-paper/70"><span class="text-coral">$</span> tools/list<span class="caret ms-0.5 inline-block h-4 w-2 translate-y-0.5 bg-paper/70"></span></p>
+        <dl class="mt-4">
+          {
+            tools.map(({ Icon, names, body }) => (
+              <div class="grid gap-1 border-t border-paper/10 py-3.5 sm:grid-cols-[17rem_minmax(0,1fr)] sm:gap-8 lg:grid-cols-[22rem_minmax(0,1fr)]">
+                <dt class="flex items-start gap-3">
+                  <Icon aria-hidden="true" className="mt-[3px] size-[1.125rem] shrink-0 text-teal-bright" />
+                  <span class="min-w-0 break-words">
+                    {names.map((name) => (
+                      <span class="block">{name}</span>
+                    ))}
+                  </span>
+                </dt>
+                <dd class="font-sans text-[15px] leading-relaxed text-paper/70">{body}</dd>
+              </div>
+            ))
+          }
+        </dl>
+      </div>
+    </Terminal>
   </div>
 </section>

@@ -1,16 +1,31 @@
 ---
 import { CloudIcon, LockIcon, PhoneIcon, ServerIcon } from "../icons.ts"
 import { translator, type Locale } from "../i18n.ts"
+import { WEB_APP_URL } from "../links.ts"
+import Terminal from "./Terminal.astro"
 
 interface Props {
   locale: Locale
 }
 
 const t = translator(Astro.props.locale)
+const [relayBefore, relayAfter] = t("site_remote_relay_body").split("code.hinacode.app")
 
-const points = [
+type Point = {
+  Icon: typeof ServerIcon
+  title: string
+  body: string
+  link?: { href: string; label: string; tail: string }
+}
+
+const points: Point[] = [
   { Icon: ServerIcon, title: t("site_remote_machines_title"), body: t("site_remote_machines_body") },
-  { Icon: CloudIcon, title: t("site_remote_relay_title"), body: t("site_remote_relay_body") },
+  {
+    Icon: CloudIcon,
+    title: t("site_remote_relay_title"),
+    body: relayBefore,
+    link: { href: WEB_APP_URL, label: "code.hinacode.app", tail: relayAfter ?? "" },
+  },
   { Icon: PhoneIcon, title: t("site_remote_phone_title"), body: t("site_remote_phone_body") },
   { Icon: LockIcon, title: t("site_remote_private_title"), body: t("site_remote_private_body") },
 ]
@@ -22,12 +37,12 @@ const points = [
       <h2 class="display display-3 leading-[1.08] font-semibold">{t("site_remote_title")}</h2>
       <ul class="mt-10 space-y-6">
         {
-          points.map(({ Icon, title, body }) => (
+          points.map(({ Icon, title, body, link }) => (
             <li class="flex gap-4">
               <Icon aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-ink [--sun:var(--color-coral)]" />
               <div>
                 <h3 class="font-semibold">{title}</h3>
-                <p class="mt-1 text-[15px] leading-relaxed text-ink-soft">{body}</p>
+                <p class="mt-1 text-[15px] leading-relaxed text-ink-soft">{body}{link && <><a href={link.href} target="_blank" rel="noreferrer" class="font-medium text-coral-deep underline decoration-coral-deep/40 underline-offset-4 hover:decoration-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2">{link.label}</a>{link.tail}</>}</p>
               </div>
             </li>
           ))
@@ -47,23 +62,15 @@ const points = [
           class="block h-auto w-full rounded-[2.75rem]"
         />
       </figure>
-      <figure
-        aria-hidden="true"
-        class="absolute start-0 bottom-0 w-[min(92%,26rem)] overflow-hidden rounded-2xl bg-ink text-paper shadow-window"
-      >
-        <div class="flex h-9 items-center gap-1.5 border-b border-paper/10 px-4">
-          <span class="size-2.5 rounded-full bg-paper/20"></span>
-          <span class="size-2.5 rounded-full bg-paper/20"></span>
-          <span class="size-2.5 rounded-full bg-paper/20"></span>
-          <span class="ms-3 font-mono text-xs text-paper/75">you@mac-mini</span>
-        </div>
+      <Terminal title="you@mac-mini" class="absolute start-0 bottom-0 w-[min(92%,26rem)] shadow-window">
         <pre
+          aria-hidden="true"
           class="p-5 font-mono text-[12px] leading-6 break-words whitespace-pre-wrap"><code><span class="text-coral select-none">$ </span>npx hinacode serve --relay
-<span class="text-paper/75">HinaCode cloud 0.2.0
+<span class="text-paper/70">HinaCode cloud 0.2.0
 data: /Users/you/.hinacode-cloud
 
-Reachable from any network through 3f9c2a1b7d4e5f60.hinacode.app.</span></code></pre>
-      </figure>
+Reachable from any network through <span class="text-teal-bright">3f9c2a1b7d4e5f60.hinacode.app</span>.</span></code></pre>
+      </Terminal>
     </div>
   </div>
 </section>

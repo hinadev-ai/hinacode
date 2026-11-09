@@ -1,0 +1,33 @@
+---
+import { CopyIcon } from "../icons.ts"
+import { translator, type Locale } from "../i18n.ts"
+
+interface Props {
+  locale: Locale
+  command: string
+  class?: string
+}
+
+const { locale, command, class: className } = Astro.props
+const t = translator(locale)
+---
+
+<div
+  class:list={[
+    "inline-flex h-11 max-w-full items-center gap-3 rounded-lg bg-night ps-4 pe-1.5 font-mono text-[13px] text-paper ring-1 ring-paper/12",
+    className,
+  ]}
+>
+  <span aria-hidden="true" class="text-coral select-none">$</span>
+  <code class="truncate">{command}</code>
+  <button
+    type="button"
+    data-copy={command}
+    data-copied-label={t("common_copied")}
+    aria-label={t("context_menu_copy")}
+    class="pressable grid size-8 shrink-0 place-items-center rounded-md text-paper/70 hover:bg-paper/10 hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-2"
+  >
+    <CopyIcon aria-hidden="true" className="size-4" />
+  </button>
+  <span role="status" class="sr-only"></span>
+</div>

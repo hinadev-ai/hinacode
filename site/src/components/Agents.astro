@@ -1,13 +1,15 @@
 ---
-import { RiClaudeFill, RiMetaFill, RiOpenaiFill } from "react-icons/ri"
-import { FlowIcon, OpencodeLogoIcon } from "../icons.ts"
+import { RiClaudeFill, RiGithubFill, RiMetaFill, RiOpenaiFill } from "react-icons/ri"
+import { MagpieLogoIcon, OpencodeLogoIcon } from "../icons.ts"
 import { translator, type Locale } from "../i18n.ts"
+import { MAGPIE_URL, PROVIDER_GUIDE_URL } from "../links.ts"
 
 interface Props {
   locale: Locale
 }
 
 const t = translator(Astro.props.locale)
+const [magpieBefore, magpieAfter] = t("site_agents_magpie").split("magpie")
 
 const agents = [
   { Icon: RiClaudeFill, name: t("provider_claude"), cli: "claude", color: "text-provider-claude" },
@@ -35,8 +37,21 @@ const agents = [
       ))
     }
   </ul>
-  <p class="mt-6 flex max-w-[44rem] gap-3.5 text-[15px] leading-relaxed text-ink-soft">
-    <FlowIcon aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-ink [--sun:var(--color-coral)]" />
-    {t("site_agents_magpie")}
-  </p>
+  <div class="mt-6 flex max-w-[44rem] gap-3.5">
+    <MagpieLogoIcon aria-hidden="true" className="mt-1 size-5 shrink-0 text-ink" />
+    <div>
+      <p class="text-[17px] font-semibold text-ink">{t("site_agents_magpie_title")}</p>
+      <p class="mt-1 text-[15px] leading-relaxed text-ink-soft">{magpieBefore}<a href={MAGPIE_URL} target="_blank" rel="noreferrer" class="font-medium text-coral-deep underline decoration-coral-deep/40 underline-offset-4 hover:decoration-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2">magpie</a>{magpieAfter}</p>
+    </div>
+  </div>
+  <div class="mt-6 flex max-w-[44rem] gap-3.5">
+    <RiGithubFill aria-hidden="true" className="mt-1 size-5 shrink-0 text-ink" />
+    <div>
+      <p class="text-[17px] font-semibold text-ink">{t("site_agents_contribute_title")}</p>
+      <p class="mt-1 text-[15px] leading-relaxed text-ink-soft">
+        {t("site_agents_contribute_body")}
+        <a href={PROVIDER_GUIDE_URL} target="_blank" rel="noreferrer" class="font-medium text-coral-deep underline decoration-coral-deep/40 underline-offset-4 hover:decoration-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2">{t("site_agents_contribute_link")}</a>
+      </p>
+    </div>
+  </div>
 </section>
