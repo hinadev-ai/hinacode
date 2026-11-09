@@ -1073,6 +1073,34 @@ it("forks a side chat from the last finished turn and hands it the running one",
   )
 })
 
+it("hands a recovered side chat its own conversation", async () => {
+  await withPreparingThread(
+    async ({ runner, threads, thread, release, idle, turns, storedMessages }) => {
+      release()
+      await Effect.runPromise(runner.send(thread.id, "accepted input", []))
+      await idle
+      const side = await Effect.runPromise(threads.sidechat(thread.id))
+      await Effect.runPromise(runner.send(side.id, "first question accepted input", []))
+      await vi.waitFor(async () => {
+        const last = (await storedMessages(side.id)).filter((message) => message.role === "assistant").at(-1)
+        expect(last?.completedAt ?? null).not.toBeNull()
+      })
+
+      await Effect.runPromise(threads.update({ id: side.id, providerSessionId: null }))
+      await Effect.runPromise(runner.send(side.id, "second question accepted input", []))
+      await vi.waitFor(() => expect(turns).toHaveLength(3))
+
+      const prompt = turns[2]!.input.prompt
+      expect(prompt).toMatch(/^<side_chat>\n/)
+      expect(prompt).toContain("This side chat ran in an earlier session")
+      expect(prompt).toContain("## user\nfirst question accepted input")
+      expect(prompt).toContain("## user\naccepted input")
+      expect(prompt).toMatch(/<\/side_chat>\n\nsecond question accepted input$/)
+    },
+    { forkable: true },
+  )
+})
+
 it("numbers each thread's transcript pushes on its own", async () => {
   await withPreparingThread(
     async ({ runner, threads, thread, release, idle, transcript }) => {
@@ -1781,6 +1809,78 @@ it("starts a new Claude session when the CLI no longer has the thread's session"
       await vi.waitFor(() => Effect.runPromise(runner.send(thread.id, "hello again", [])))
       expect(assistantText(await settled())).toMatch(/^echo: <conversation_handoff>.*hello again$/s)
       expect((await Effect.runPromise(threads.get(thread.id))).providerSessionId).not.toBeNull()
+    },
+    { claude: fakeClaudeCli },
+  )
+}, 30_000)
+
+it("starts a fresh process when a lost session leaves its CLI running", async () => {
+  const home = fakeClaudeHome()
+  await withPreparingThread(
+    async ({ runner, threads, accounts, thread, release, storedMessages }) => {
+      release()
+      const account = await Effect.runPromise(
+        accounts.create({ provider: "claude", name: "Fake", configDir: home.dir, binary: home.binary }),
+      )
+      await Effect.runPromise(threads.update({ id: thread.id, accountId: account.id }))
+      const replyMatching = (pattern: RegExp) =>
+        vi.waitFor(
+          async () =>
+            expect(
+              assistantText((await storedMessages(thread.id)).findLast((message) => message.role === "assistant")),
+            ).toMatch(pattern),
+          { timeout: 15_000 },
+        )
+
+      await Effect.runPromise(runner.send(thread.id, "hello", []))
+      await replyMatching(/^echo: hello$/)
+      const sessionId = (await Effect.runPromise(threads.get(thread.id))).providerSessionId
+      rmSync(join(home.dir, "sessions", sessionId!), { force: true })
+      await Effect.runPromise(runner.send(thread.id, "exit", []))
+      await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("idle"))
+      writeFileSync(join(home.dir, "control.json"), JSON.stringify({ lingerAfterLostSession: true }))
+
+      await Effect.runPromise(runner.send(thread.id, "again", []))
+      await replyMatching(/starts a new Claude session/)
+      expect((await Effect.runPromise(threads.get(thread.id))).providerSessionId).toBeNull()
+
+      await vi.waitFor(() => Effect.runPromise(runner.send(thread.id, "fresh", [])))
+      await replyMatching(/^echo: <conversation_handoff>[\s\S]*fresh$/)
+      expect(existsSync(join(home.dir, "reused.txt"))).toBe(false)
+      expect((await Effect.runPromise(threads.get(thread.id))).providerSessionId).not.toBeNull()
+    },
+    { claude: fakeClaudeCli },
+  )
+}, 30_000)
+
+it("clears the stored session when Stop is followed by a lost session", async () => {
+  const home = fakeClaudeHome()
+  await withPreparingThread(
+    async ({ runner, threads, accounts, thread, release, storedMessages }) => {
+      release()
+      const account = await Effect.runPromise(
+        accounts.create({ provider: "claude", name: "Fake", configDir: home.dir, binary: home.binary }),
+      )
+      await Effect.runPromise(threads.update({ id: thread.id, accountId: account.id }))
+      const replyMatching = (pattern: RegExp) =>
+        vi.waitFor(
+          async () =>
+            expect(
+              assistantText((await storedMessages(thread.id)).findLast((message) => message.role === "assistant")),
+            ).toMatch(pattern),
+          { timeout: 15_000 },
+        )
+
+      await Effect.runPromise(runner.send(thread.id, "lose session on stop", []))
+      await vi.waitFor(async () =>
+        expect((await Effect.runPromise(runner.transcript(thread.id))).approvals).toHaveLength(1),
+      )
+      await Effect.runPromise(runner.interrupt(thread.id))
+      await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("idle"))
+      expect((await Effect.runPromise(threads.get(thread.id))).providerSessionId).toBeNull()
+
+      await vi.waitFor(() => Effect.runPromise(runner.send(thread.id, "after stop", [])))
+      await replyMatching(/^echo: <conversation_handoff>[\s\S]*after stop$/)
     },
     { claude: fakeClaudeCli },
   )
