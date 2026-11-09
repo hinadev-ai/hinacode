@@ -84,8 +84,25 @@ const readSources = async (sourcePaths: ReadonlyArray<string>, inlineBytes = 0) 
   )
 }
 
-const inlineSize = (file: { content?: string | undefined; encoding?: "utf8" | "base64" | undefined }) =>
-  file.content === undefined ? 0 : Buffer.byteLength(file.content, file.encoding === "base64" ? "base64" : "utf8")
+const base64Codes = new Uint8Array(128)
+for (const character of "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/-_")
+  base64Codes[character.charCodeAt(0)] = 1
+const base64Padding = "=".charCodeAt(0)
+
+const decodedBase64Size = (content: string) => {
+  let codes = 0
+  for (let index = 0; index < content.length; index++) {
+    const code = content.charCodeAt(index)
+    if (code === base64Padding) break
+    if (code < base64Codes.length && base64Codes[code] === 1) codes += 1
+  }
+  return Math.floor((codes * 3) / 4)
+}
+
+const inlineSize = (file: { content?: string | undefined; encoding?: "utf8" | "base64" | undefined }) => {
+  if (file.content === undefined) return 0
+  return file.encoding === "base64" ? decodedBase64Size(file.content) : Buffer.byteLength(file.content, "utf8")
+}
 
 const newNeedsTitle = { message: "Give a new artifact a title.", path: ["title"] }
 

@@ -95,6 +95,11 @@ const temporaryFile = (name: string, content: string | Uint8Array) => {
   return path
 }
 
+const lineWrappedBase64 = (size: number) =>
+  Buffer.alloc(size)
+    .toString("base64")
+    .replace(/(.{76})/g, "$1\n")
+
 test("publishes a page's text and binary files from paths on disk", async () => {
   const store = openTemporaryStore()
   const { publish_artifact } = artifactTools
@@ -181,6 +186,46 @@ test("refuses sourcePaths that together pass the size cap before reading any of 
           { path: "index.html", sourcePath: unreadable },
           { path: "a.bin", sourcePath: temporaryFile("a.bin", half) },
           { path: "b.bin", sourcePath: temporaryFile("b.bin", half) },
+        ],
+      }),
+      {},
+    ),
+  ).rejects.toThrow(/A version holds at most/)
+  expect(await store.list()).toEqual([])
+})
+
+test("publishes a line-wrapped base64 file whose decoded bytes fit under the cap", async () => {
+  const store = openTemporaryStore()
+  const { publish_artifact } = artifactTools
+  const size = MAX_ARTIFACT_BYTES - 1024
+
+  const published = await publish_artifact.handle(
+    store,
+    publish_artifact.input.parse({
+      title: "Wrapped",
+      files: [{ path: "index.html", content: lineWrappedBase64(size), encoding: "base64" }],
+    }),
+    {},
+  )
+  const id = /^Published artifact ([a-z0-9]+) version 1:/.exec(published)?.[1] ?? ""
+
+  expect((await store.file(id, "index.html"))?.bytes.byteLength).toBe(size)
+})
+
+test("refuses a line-wrapped base64 file whose decoded bytes pass the cap before reading source files", async () => {
+  const store = openTemporaryStore()
+  const { publish_artifact } = artifactTools
+  const unreadable = temporaryFile("locked.html", "<p>")
+  chmodSync(unreadable, 0o000)
+
+  await expect(
+    publish_artifact.handle(
+      store,
+      publish_artifact.input.parse({
+        title: "Bundle",
+        files: [
+          { path: "index.html", content: lineWrappedBase64(MAX_ARTIFACT_BYTES + 1024), encoding: "base64" },
+          { path: "extra.html", sourcePath: unreadable },
         ],
       }),
       {},
