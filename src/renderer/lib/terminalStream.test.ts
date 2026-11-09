@@ -11,6 +11,8 @@ const session: TerminalSession = {
   status: "running",
   exitCode: null,
   title: null,
+  command: null,
+  lastExitCode: null,
 }
 
 const setup = () => {

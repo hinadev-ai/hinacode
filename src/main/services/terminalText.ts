@@ -6,9 +6,13 @@ const ERASE_ROW = "\uE001"
 // oxlint-disable-next-line no-control-regex -- removes the C0 controls stripVTControlCharacters leaves, such as BEL
 const CONTROL = /[\u0000-\u0007\u000B\u000C\u000E-\u001F\u007F]/g
 
+// oxlint-disable-next-line no-control-regex -- stripVTControlCharacters leaves the text of an OSC with spaces in it
+const OSC = /\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)/g
+
 const printable = (raw: string) =>
   stripVTControlCharacters(
     raw
+      .replaceAll(OSC, "")
       .replaceAll(/[\uE000\uE001]/g, "")
       .replaceAll("\u001B[2K", ERASE_ROW)
       .replaceAll("\u001B[0K", ERASE_TO_END)

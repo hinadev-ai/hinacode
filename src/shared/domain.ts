@@ -950,6 +950,8 @@ export const TerminalSession = Schema.Struct({
   status: Schema.Literals(["running", "exited"]),
   exitCode: Schema.NullOr(Schema.Number),
   title: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  command: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  lastExitCode: Schema.NullOr(Schema.Number).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
 })
 export type TerminalSession = typeof TerminalSession.Type
 
