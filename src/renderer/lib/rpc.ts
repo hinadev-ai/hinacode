@@ -1,4 +1,4 @@
-import { Duration, Effect, Option, Schedule, Schema, Stream } from "effect"
+import { Duration, Effect, Option, Schedule, Schema } from "effect"
 import { AsyncResult, Atom } from "effect/reactivity"
 import { ProviderId } from "../../shared/agent.ts"
 import {
@@ -386,22 +386,23 @@ const windowReturnSignal = Atom.readable((get) => {
 
 const refreshInStepWhileVisible =
   (interval: Duration.Duration) =>
-  <A>(self: Atom.Atom<A>) => {
+  <A, E>(self: Atom.Atom<AsyncResult.AsyncResult<A, E>>) => {
     const millis = Duration.toMillis(interval)
     return Atom.transform(self, (get) => {
       let timer: ReturnType<typeof setTimeout>
+      const result = get(self)
       const scheduleNextRefresh = () => {
         timer = setTimeout(
           () => {
             scheduleNextRefresh()
-            if (!document.hidden) get.refresh(self)
+            if (!document.hidden && !AsyncResult.isWaiting(result)) get.refresh(self)
           },
           millis - (Date.now() % millis),
         )
       }
       scheduleNextRefresh()
       get.addFinalizer(() => clearTimeout(timer))
-      return get(self)
+      return result
     })
   }
 
@@ -516,13 +517,10 @@ export const secretStoredAtom = familyOf((environment: EnvironmentId, name: stri
 
 export const threadPortsAtom = Atom.family((threadId: string) =>
   Atom.make(
-    Stream.fromEffectSchedule(
-      call("ports.list", { threadId }).pipe(
-        Effect.retry({ while: (error) => error.tag === "EnvironmentOffline", schedule: Schedule.spaced("2 seconds") }),
-      ),
-      Schedule.spaced("2 seconds"),
+    call("ports.list", { threadId }).pipe(
+      Effect.retry({ while: (error) => error.tag === "EnvironmentOffline", schedule: Schedule.spaced("2 seconds") }),
     ),
-  ),
+  ).pipe(refreshInStepWhileVisible(Duration.seconds(2))),
 )
 
 const pushFirst =
