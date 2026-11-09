@@ -130,6 +130,7 @@ const make = Effect.gen(function* () {
   const sweep = Semaphore.withPermit(
     semaphore,
     Effect.gen(function* () {
+      if (!(yield* github.installed)) return
       const links = yield* pullRequests.watched
       yield* Effect.forEach(links, poll, { concurrency: 4, discard: true })
     }).pipe(Effect.catchCause((cause) => Effect.logWarning("pull request watch sweep failed", cause))),
