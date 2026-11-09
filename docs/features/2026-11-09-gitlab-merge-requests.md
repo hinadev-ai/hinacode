@@ -70,6 +70,7 @@ The tab's title becomes Source control. A row derives its host from the URL with
 ## Out of scope
 
 - Reviewing a merge request's diff inside HinaCode, line comments, and the AI code tour. They need `fileContent`, a unified diff and review comment endpoints, a second slice once merge requests are useful in the tab.
+- Labels, assignees and reviewers on a merge request. The editor for them calls GitHub-only rpcs, so the tab hides it on merge requests and the mapper returns empty lists.
 - GitLab triggers for automations, and GitLab issues. They are pollers with their own design.
 - Cloning, creating a repository, and searching merge requests from the composer.
 - Bitbucket, Gitea and GitHub Enterprise detection. The host table is two rows on purpose.
