@@ -299,44 +299,10 @@ interface DeviceRowProps {
 }
 
 function DeviceRow({ device, threadId, attached, pending, onAttach, onShutdown, onDelete }: DeviceRowProps) {
-  const { slim } = device
   const anotherThreads = device.ownerThreadId !== null && device.ownerThreadId !== threadId
-  const fullySlim = slim !== null && slim.total > 0 && slim.disabled === slim.total
   return (
     <li className="flex items-center gap-3 px-3 py-1.5">
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-sm" title={device.name}>
-            {device.name}
-          </span>
-          {fullySlim && (
-            <Badge variant="secondary" title={m.devices_slim_tooltip({ count: slim.disabled })}>
-              {m.devices_slim()}
-            </Badge>
-          )}
-          {device.ownerThreadId !== null && (
-            <Badge variant="outline">
-              {device.ownerThreadId === threadId ? m.devices_this_thread() : m.devices_another_thread()}
-            </Badge>
-          )}
-        </div>
-        <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-          <span className="truncate">{device.osVersion}</span>
-          <span className="flex shrink-0 items-center gap-1">
-            <span
-              aria-hidden
-              className={cn(
-                "size-1.5 rounded-full",
-                device.state === "booted" && "bg-success",
-                device.state === "booting" && "border border-success",
-                device.state === "shutdown" && "border border-muted-foreground",
-              )}
-            />
-            {stateLabel[device.state]()}
-          </span>
-          {device.memoryBytes !== null && <span className="shrink-0">{formatMemory(device.memoryBytes)}</span>}
-        </div>
-      </div>
+      <DeviceSummary device={device} threadId={threadId} />
       <Button
         variant="outline"
         size="xs"
@@ -364,5 +330,45 @@ function DeviceRow({ device, threadId, attached, pending, onAttach, onShutdown, 
         disabled={pending || anotherThreads}
       />
     </li>
+  )
+}
+
+function DeviceSummary({ device, threadId }: { device: Device; threadId: string }) {
+  const { slim } = device
+  const fullySlim = slim !== null && slim.total > 0 && slim.disabled === slim.total
+  return (
+    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <span className="truncate text-sm" title={device.name}>
+          {device.name}
+        </span>
+        {fullySlim && (
+          <Badge variant="secondary" title={m.devices_slim_tooltip({ count: slim.disabled })}>
+            {m.devices_slim()}
+          </Badge>
+        )}
+        {device.ownerThreadId !== null && (
+          <Badge variant="outline">
+            {device.ownerThreadId === threadId ? m.devices_this_thread() : m.devices_another_thread()}
+          </Badge>
+        )}
+      </div>
+      <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+        <span className="truncate">{device.osVersion}</span>
+        <span className="flex shrink-0 items-center gap-1">
+          <span
+            aria-hidden
+            className={cn(
+              "size-1.5 rounded-full",
+              device.state === "booted" && "bg-success",
+              device.state === "booting" && "border border-success",
+              device.state === "shutdown" && "border border-muted-foreground",
+            )}
+          />
+          {stateLabel[device.state]()}
+        </span>
+        {device.memoryBytes !== null && <span className="shrink-0">{formatMemory(device.memoryBytes)}</span>}
+      </div>
+    </div>
   )
 }
