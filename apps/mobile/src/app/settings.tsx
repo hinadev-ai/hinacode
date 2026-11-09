@@ -42,7 +42,7 @@ export default function SettingsScreen() {
       <RelayAccountSection />
       <SettingsGroup title={copy("mobile_settings_about")}>
         <SettingsRow
-          icon="RiSmartphoneLine"
+          icon="Phone"
           label={copy("mobile_settings_version", { version: Constants.expoConfig?.version ?? "" })}
         />
       </SettingsGroup>
@@ -52,16 +52,16 @@ export default function SettingsScreen() {
 
 const appearanceSegments: readonly Segment<Appearance>[] = [
   { value: "system", label: copy("mobile_settings_appearance_system"), icon: "RiContrast2Line" },
-  { value: "light", label: copy("mobile_settings_appearance_light"), icon: "RiSunLine" },
-  { value: "dark", label: copy("mobile_settings_appearance_dark"), icon: "RiMoonLine" },
+  { value: "light", label: copy("mobile_settings_appearance_light"), icon: "Sun" },
+  { value: "dark", label: copy("mobile_settings_appearance_dark"), icon: "Moon" },
 ]
 
 type NotificationKind = keyof Preferences["notifications"]
 
 const notificationKinds: readonly { kind: NotificationKind; label: string; icon: IconName }[] = [
-  { kind: "completed", label: copy("mobile_settings_notify_completed"), icon: "RiCheckboxCircleLine" },
-  { kind: "needsInput", label: copy("mobile_settings_notify_needs_input"), icon: "RiQuestionLine" },
-  { kind: "failed", label: copy("mobile_settings_notify_failed"), icon: "RiErrorWarningLine" },
+  { kind: "completed", label: copy("mobile_settings_notify_completed"), icon: "CheckCircle" },
+  { kind: "needsInput", label: copy("mobile_settings_notify_needs_input"), icon: "Question" },
+  { kind: "failed", label: copy("mobile_settings_notify_failed"), icon: "Warning" },
 ]
 
 function PhoneSettings() {
@@ -137,7 +137,7 @@ function NotificationPermissionRow({
       return (
         <View style={styles.permission}>
           <Button
-            icon="RiNotification3Line"
+            icon="Bell"
             label={copy("mobile_settings_notifications_allow")}
             variant="primary"
             busy={asking}
@@ -169,17 +169,17 @@ const accessModes: Record<AccessMode, { label: string; hint: string; icon: IconN
   supervised: {
     label: copy("mobile_settings_access_supervised"),
     hint: copy("mobile_settings_access_supervised_hint"),
-    icon: "RiShieldUserLine",
+    icon: "ShieldUser",
   },
   auto: {
     label: copy("mobile_settings_access_auto"),
     hint: copy("mobile_settings_access_auto_hint"),
-    icon: "RiShieldCheckLine",
+    icon: "Shield",
   },
   full: {
     label: copy("mobile_settings_access_full"),
     hint: copy("mobile_settings_access_full_hint"),
-    icon: "RiLockUnlockLine",
+    icon: "Unlock",
   },
 }
 
@@ -187,6 +187,8 @@ const agents: readonly { provider: ProviderId; label: string; icon: IconName }[]
   { provider: "claude", label: copy("mobile_settings_agent_claude"), icon: "RiClaudeFill" },
   { provider: "codex", label: copy("mobile_settings_agent_codex"), icon: "RiOpenaiFill" },
   { provider: "muse", label: copy("mobile_settings_agent_muse"), icon: "RiMetaFill" },
+  { provider: "opencode", label: copy("mobile_settings_agent_opencode"), icon: "OpencodeMark" },
+  { provider: "magpie", label: copy("mobile_settings_agent_magpie"), icon: "MagpieMark" },
 ]
 
 /**
@@ -338,7 +340,7 @@ function ServerPreferences({ server }: { server: Server | undefined }) {
           onChange={(whenMerged) => write(settings, { archive: { ...settings.archive, whenMerged } })}
         />
         <SwitchRow
-          icon="RiArchiveLine"
+          icon="Archive"
           label={copy("mobile_settings_archive_remove_worktree")}
           value={settings.archive.removeWorktree}
           disabled={offline}
@@ -362,7 +364,7 @@ function LoadFailed({ text, onRetry }: { text: string; onRetry: () => void }) {
   return (
     <View style={styles.permission}>
       <Notice tone="danger" text={text} />
-      <Button icon="RiRefreshLine" label={copy("mobile_settings_retry")} onPress={onRetry} />
+      <Button icon="Refresh" label={copy("mobile_settings_retry")} onPress={onRetry} />
     </View>
   )
 }
@@ -458,9 +460,14 @@ function ModelSheet({
   )
 }
 
-/** Every paired server with its status. Tap one to reconnect, pair it again or forget it. */
+/**
+ * Every paired server with its status. Tap one to reconnect, pair it again or forget it. With several, the lists
+ * can hide the offline ones.
+ */
 function ServerSettings() {
   const servers = useConnection((state) => state.servers)
+  const environmentFilter = usePreferences((state) => state.environmentFilter)
+  const set = usePreferences((state) => state.set)
   const [openId, setOpenId] = useState<string | null>(null)
   const open = servers.find((server) => server.id === openId)
   return (
@@ -469,7 +476,7 @@ function ServerSettings() {
         {servers.map((server) => (
           <SettingsRow
             key={server.id}
-            icon="RiComputerLine"
+            icon="Computer"
             label={serverName(server)}
             labelLines={1}
             onPress={() => setOpenId(server.id)}
@@ -478,10 +485,18 @@ function ServerSettings() {
           </SettingsRow>
         ))}
         <SettingsRow
-          icon="RiAddLine"
+          icon="Plus"
           label={copy("mobile_settings_add_server")}
           onPress={() => router.push("/server/new")}
         />
+        {servers.length > 1 && (
+          <SwitchRow
+            icon="CloudOff"
+            label={copy("mobile_settings_hide_offline_servers")}
+            value={environmentFilter.hideOffline}
+            onChange={(hideOffline) => set({ environmentFilter: { ...environmentFilter, hideOffline } })}
+          />
+        )}
       </SettingsGroup>
       {open !== undefined && <ServerSheet server={open} onClose={() => setOpenId(null)} />}
     </>
@@ -510,7 +525,7 @@ function ServerSheet({ server, onClose }: { server: Server; onClose: () => void 
         ))}
         {server.status === "offline" && (
           <Button
-            icon="RiRefreshLine"
+            icon="Refresh"
             label={copy("mobile_settings_server_reconnect")}
             onPress={() => reconnectNow(server.id)}
           />
@@ -530,7 +545,7 @@ function ServerSheet({ server, onClose }: { server: Server; onClose: () => void 
           <Footnote text={copy("mobile_relay_forget_hint")} />
         ) : (
           <Button
-            icon="RiLinkUnlinkM"
+            icon="Unlink"
             variant="danger"
             label={copy("mobile_settings_server_forget")}
             onPress={() => confirmForget(serverName(server), forget)}

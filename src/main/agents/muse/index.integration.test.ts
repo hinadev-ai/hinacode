@@ -38,11 +38,11 @@ const input = (accessMode: AccessMode, marker: string): RunTurnInput => {
     prompt: `Please help. ${marker}`,
     attachments: [],
     cwd,
+    tmpDirectory: cwd,
     model: FAKE_MODEL_ID,
     effort: null,
     fastMode: false,
     autoCompactTokens: null,
-    userSkills: true,
     accessMode,
     resumeSessionId: null,
     forkAt: null,
@@ -246,6 +246,24 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
               message: expect.stringContaining("429"),
               reset: { at: new Date(resetsAt * 1000).toISOString(), autoResume: false },
             },
+          })
+        }),
+      ),
+    TURN_TIMEOUT,
+  )
+
+  it.live(
+    "tells the developer to sign in when Muse rejects the credential",
+    () =>
+      withProvider(
+        Effect.gen(function* () {
+          const turn = yield* startTurn("supervised", (marker) => endpoint.unauthorized(marker))
+          yield* Fiber.join(turn.fiber)
+          expect(turn.events.at(-1)).toStrictEqual({
+            type: "turn_failed",
+            message: expect.any(String),
+            signedOut: true,
+            loginCommand: "muse login",
           })
         }),
       ),
@@ -804,11 +822,11 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
               instructions: AGENT_INSTRUCTIONS,
               attachments: [],
               cwd,
+              tmpDirectory: cwd,
               model: FAKE_MODEL_ID,
               effort: null,
               fastMode: false,
               autoCompactTokens: null,
-              userSkills: true,
               accessMode: "supervised",
               resumeSessionId: null,
               forkAt: null,
@@ -842,10 +860,13 @@ describe.skipIf(muse === undefined)("Muse Code against the real binary", () => {
           expect(commands.some((command) => command.name === "probe-echo")).toBe(true)
           const path = join(cwd, "attached.txt")
           writeFileSync(path, "hello")
-          yield* provider.steer(turn.threadId, "/probe-echo steering-fruit", [
-            { id: "steering-file", name: "attached.txt", path, mime: "text/plain", kind: "file", bytes: 5 },
-          ])
-          yield* provider.steer(turn.threadId, "ordinary follow-up", [])
+          yield* provider.steer!(
+            turn.threadId,
+            "/probe-echo steering-fruit",
+            [{ id: "steering-file", name: "attached.txt", path, mime: "text/plain", kind: "file", bytes: 5 }],
+            "now",
+          )
+          yield* provider.steer!(turn.threadId, "ordinary follow-up", [], "now")
           yield* provider.interrupt(turn.threadId)
           yield* Fiber.join(turn.fiber)
           expect(turn.events.at(-1)).toStrictEqual({ type: "turn_failed", message: "Turn interrupted" })

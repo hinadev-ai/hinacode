@@ -19,7 +19,7 @@ export interface SeedThread {
   readonly title: string
   readonly provider?: "claude" | "codex"
   readonly worktreeId?: string | null
-  readonly status?: "idle" | "running"
+  readonly status?: "idle" | "running" | "archived"
 }
 
 export class Seed {
@@ -57,9 +57,10 @@ export class Seed {
         .prepare(
           `INSERT INTO thread (id, project_id, worktree_id, title, provider, model, provider_session_id, status, sort_index, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, 'claude-sonnet-5-5', NULL, ?,
-                   (SELECT COALESCE(MAX(sort_index) + 1, 0) FROM thread WHERE project_id = ?), ?, ?)`,
+                   (SELECT COALESCE(MAX(sort_index) + 1, 0) FROM thread WHERE project_id = ?),
+                   strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`,
         )
-        .run(id, projectId, worktreeId, title, provider, status, projectId, SEEDED_AT, SEEDED_AT),
+        .run(id, projectId, worktreeId, title, provider, status, projectId),
     )
     return id
   }

@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it } from "@effect/vitest"
 import { Effect, Layer } from "effect"
 import { SqlClient } from "effect/sql"
 import * as Db from "./db/client.ts"
-import { traceLayer } from "./trace.ts"
+import { SpanLedger, traceLayer } from "./trace.ts"
 
 const dir = mkdtempSync(join(tmpdir(), "kk-trace-test-"))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
@@ -16,7 +16,7 @@ describe("traceLayer", () => {
     const traced = Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient
       yield* sql`SELECT 1 AS one`.pipe(Effect.withSpan("rpc threads.list"))
-    }).pipe(Effect.provide(Db.layer(":memory:").pipe(Layer.provideMerge(traceLayer(file)))))
+    }).pipe(Effect.provide(Db.layer(":memory:").pipe(Layer.provideMerge(traceLayer(file, new SpanLedger(200))))))
     return Effect.gen(function* () {
       yield* traced
       yield* Effect.sleep("50 millis")
@@ -29,9 +29,5 @@ describe("traceLayer", () => {
       expect(query.parent).toBe(rpc.id)
       expect(rpc.ms).toBeGreaterThanOrEqual(query.ms)
     })
-  })
-
-  it("is a no-op without a file", () => {
-    expect(traceLayer(undefined)).toBe(Layer.empty)
   })
 })

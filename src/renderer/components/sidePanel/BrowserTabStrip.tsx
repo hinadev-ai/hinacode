@@ -5,9 +5,7 @@ import type { Thread } from "../../../shared/domain.ts"
 import { m } from "../../paraglide/messages.js"
 import { type BrowserTab, selectBrowserTabs, useBrowserTabs } from "../../stores/browserTabs.ts"
 import { Button } from "../ui/button.tsx"
-import { CloseIcon } from "../icons/CloseIcon.tsx"
-import { GlobeIcon } from "../icons/GlobeIcon.tsx"
-import { PlusIcon } from "../icons/PlusIcon.tsx"
+import { CloseIcon, GlobeIcon, PlusIcon } from "@hinacode/icons"
 
 export const browserTabId = (threadId: string, tabId: string) => `browser-tab-${threadId}-${tabId}`
 export const browserPanelId = (threadId: string, tabId: string) => `browser-page-${threadId}-${tabId}`
@@ -94,6 +92,7 @@ function Tab({ threadId, tab, selected, closable }: TabProps) {
         role="tab"
         id={browserTabId(threadId, tab.id)}
         aria-selected={selected}
+        aria-keyshortcuts={closable ? "Delete" : undefined}
         aria-controls={browserPanelId(threadId, tab.id)}
         tabIndex={selected ? 0 : -1}
         title={label}
@@ -113,6 +112,7 @@ function Tab({ threadId, tab, selected, closable }: TabProps) {
         <button
           type="button"
           tabIndex={-1}
+          aria-hidden
           aria-label={m.browser_close_tab({ title: label })}
           title={m.browser_close_tab({ title: label })}
           onClick={close}

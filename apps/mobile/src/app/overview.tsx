@@ -80,6 +80,7 @@ export default function OverviewScreen() {
     { label: copy("mobile_overview_needs_you"), rows: overview.attention },
     { label: copy("mobile_overview_open"), rows: overview.open },
     { label: copy("mobile_overview_merged"), rows: overview.merged },
+    { label: copy("mobile_overview_unknown"), rows: overview.unknown },
   ].filter((group) => group.rows.length > 0)
 
   return (
@@ -156,7 +157,7 @@ function PullRequestRow({ row }: { row: OverviewPullRequest }) {
     pullRequest !== null
       ? statusGlyph(theme)[pullRequest.status]
       : row.error !== null
-        ? { name: "RiErrorWarningLine" as const, color: theme.danger }
+        ? { name: "Warning" as const, color: theme.danger }
         : { name: "RiGitPullRequestLine" as const, color: theme.textMuted }
   const checks = pullRequest !== null && pullRequest.status !== "merged" ? pullRequest.checks : null
 
@@ -205,7 +206,7 @@ function PullRequestRow({ row }: { row: OverviewPullRequest }) {
           )}
           {thread !== undefined && (
             <View style={styles.thread}>
-              <Icon name="RiChat1Line" size={13} color={theme.textMuted} />
+              <Icon name="Chat" size={13} color={theme.textMuted} />
               <Text numberOfLines={1} style={[styles.metaText, styles.threadTitle, { color: theme.textMuted }]}>
                 {thread.title}
               </Text>
@@ -250,7 +251,7 @@ function LinearIssues({ connected, onPick }: { connected: boolean; onPick: (issu
         {connected && (
           <Button
             label={copy("mobile_home_retry")}
-            icon="RiRefreshLine"
+            icon="Refresh"
             style={styles.retry}
             onPress={() => void useLinear.getState().load({ force: true })}
           />
@@ -276,8 +277,8 @@ function LinearIssues({ connected, onPick }: { connected: boolean; onPick: (issu
 
 const stateGlyph = (theme: Palette, type: string): { name: IconName; color: string } => {
   if (type === "started") return { name: "RiProgress4Line", color: theme.attention }
-  if (type === "unstarted") return { name: "RiCircleLine", color: theme.text }
-  return { name: "RiCircleLine", color: theme.textMuted }
+  if (type === "unstarted") return { name: "Circle", color: theme.text }
+  return { name: "Circle", color: theme.textMuted }
 }
 
 const priorityLabel = (priority: number) =>
@@ -324,7 +325,7 @@ function IssueHeader({ issue }: { issue: LinearIssue }) {
       <Button
         testID="open-in-linear"
         label={copy("mobile_overview_open_linear")}
-        icon="RiExternalLinkLine"
+        icon="External"
         style={styles.openLinear}
         onPress={() => openWebUrl(issue.url)}
       />

@@ -8,11 +8,18 @@ interface PreferencesState extends Preferences {
   readonly set: (patch: Partial<Preferences>) => void
 }
 
-const snapshot = ({ appearance, notifications, homeTab, sidebarHidden }: Preferences): Preferences => ({
+const snapshot = ({
   appearance,
   notifications,
   homeTab,
   sidebarHidden,
+  environmentFilter,
+}: Preferences): Preferences => ({
+  appearance,
+  notifications,
+  homeTab,
+  sidebarHidden,
+  environmentFilter,
 })
 
 export const usePreferences = create<PreferencesState>()((set, get) => ({

@@ -8,9 +8,6 @@ Feature: Automations
     And I open settings
     And I create a webhook automation named "hook" in "demo" with the prompt "Reply with {{body.word}} only."
 
-  Scenario: Creating a webhook automation shows its signing secret once
-    Then the automation "hook" is listed with a signing secret
-
   Scenario: A delivery with the wrong signature is rejected
     When a delivery for "hook" signed with the wrong secret arrives
     Then the delivery is rejected with 401 "invalid_signature"

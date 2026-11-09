@@ -92,6 +92,9 @@ function filterRefs({ branches, pullRequests }: Refs, query: string) {
  * Where the first turn runs: the project root, switched to a branch or pull request on send, or a new
  * worktree forked from a branch or checked out from a pull request. Shown until the first message.
  */
+const refIcon = (ref: string) =>
+  ref === "" ? "Folder" : parsePullRequestSelector(ref) ? "RiGitPullRequestLine" : "Branch"
+
 export function WorkspaceChip({ thread, onError }: { thread: Thread; onError: (message: string) => void }) {
   const theme = useTheme()
   const [open, setOpen] = useState(false)
@@ -112,12 +115,8 @@ export function WorkspaceChip({ thread, onError }: { thread: Thread; onError: (m
         hitSlop={{ top: (HIT - CHIP_HEIGHT) / 2, bottom: (HIT - CHIP_HEIGHT) / 2 }}
         style={({ pressed }) => [styles.chip, pressed && { backgroundColor: theme.surfaceStrong }]}
       >
-        <Icon
-          name={parsePullRequestSelector(ref) ? "RiGitPullRequestLine" : "RiGitBranchLine"}
-          size={14}
-          color={theme.textMuted}
-        />
-        <Text numberOfLines={1} style={[styles.chipLabel, { color: theme.text }]}>
+        <Icon name={refIcon(ref)} size={14} color={theme.textMuted} />
+        <Text numberOfLines={1} style={[styles.chipLabel, ref !== "" && styles.mono, { color: theme.text }]}>
           {label}
         </Text>
         {mode === "worktree" && <Text style={[styles.chipMode, { color: theme.textMuted }]}>{copy("mobile_workspace_worktree")}</Text>}
@@ -176,14 +175,14 @@ function WorkspaceSheet({
       <Section title={copy("mobile_workspace_run_in")}>
         <OptionRow
           label={copy("mobile_workspace_project_root")}
-          icon="RiFolderLine"
+          icon="Folder"
           hint={copy("mobile_workspace_project_root_hint")}
           selected={workspace.mode === "local"}
           onPress={() => workspace.mode !== "local" && setWorkspace(null)}
         />
         <OptionRow
           label={copy("mobile_workspace_new_worktree")}
-          icon="RiGitBranchLine"
+          icon="Branch"
           hint={copy("mobile_workspace_new_worktree_hint")}
           selected={workspace.mode === "worktree"}
           onPress={() =>
@@ -215,7 +214,7 @@ function WorkspaceSheet({
             <OptionRow
               key={branch}
               label={branch}
-              icon="RiGitBranchLine"
+              icon="Branch"
               monospace
               selected={workspace.ref.trim() === branch}
               onPress={() => pick(branch)}
@@ -237,7 +236,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: radius.full,
   },
-  chipLabel: { flexShrink: 1, fontFamily: mono, fontSize: 12 },
+  chipLabel: { flexShrink: 1, fontSize: 12 },
+  mono: { fontFamily: mono },
   chipMode: { fontSize: 12, fontWeight: "500" },
   refInput: {
     minHeight: HIT,

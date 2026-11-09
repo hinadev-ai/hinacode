@@ -2,39 +2,31 @@
 import { defaultKeymap, history, historyKeymap, insertNewline } from "@codemirror/commands"
 import { Compartment, EditorState, Prec } from "@codemirror/state"
 import { EditorView, keymap, type ViewUpdate } from "@codemirror/view"
-import {
-  type DragEvent as ReactDragEvent,
-  type Ref,
-  useEffect,
-  useEffectEvent,
-  useId,
-  useImperativeHandle,
-  useRef,
-  useState,
-} from "react"
+import { type Ref, useEffect, useEffectEvent, useId, useImperativeHandle, useRef, useState } from "react"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
-import type { MentionableThreads } from "../../shared/threadMention.ts"
+import type { MentionableThreads } from "../../shared/mentions.ts"
 import {
   completionAt,
   type CompletionQuery,
   continueList,
   endsWithClosedFence,
+  indentList,
   listBackspace,
+  type MentionableTerminal,
   type Suggestion,
   suggestionsFor,
 } from "../../shared/composerSyntax.ts"
 import { useTheme } from "../lib/appearance.ts"
+import { markdownOfClipboard } from "../lib/clipboardMarkdown.ts"
 import { atomicBefore, composerSyntax, setComposerConfig } from "../lib/composerEditor.ts"
 import { useClientSettings } from "../lib/settings.ts"
 import { usePullRequestSearch } from "../lib/usePullRequestSearch.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { ProviderIcon } from "./ProviderIcon.tsx"
-import { SkillIcon } from "./icons/SkillIcon.tsx"
+import { FileIcon, SkillIcon, SlashIcon, TerminalIcon } from "@hinacode/icons"
 import { StatusIcon } from "./ThreadPullRequests.tsx"
-import { FileIcon } from "./icons/FileIcon.tsx"
-import { SlashIcon } from "./icons/SlashIcon.tsx"
 
 const scrollIntoViewNearest = (option: HTMLElement | null) => option?.scrollIntoView({ block: "nearest" })
 
@@ -48,15 +40,15 @@ interface ComposerInputProps {
   readonly onValueChange: (value: string) => void
   readonly commands: ReadonlyArray<AgentCommand>
   readonly files: ReadonlyArray<string>
+  readonly onMentionStart: () => void
   readonly threads: MentionableThreads<Thread>
+  readonly terminals: ReadonlyArray<MentionableTerminal>
   readonly projectId: string
   readonly placeholder: string
   readonly "aria-label": string
   readonly onEnter: (event: KeyboardEvent) => void
   readonly onPaste?: (event: ClipboardEvent) => void
-  readonly onDrop?: (event: DragEvent) => void
   readonly focusOnMount?: boolean
-  readonly onDragOver?: (event: ReactDragEvent<HTMLDivElement>) => void
 }
 
 export function ComposerInput({
@@ -65,15 +57,15 @@ export function ComposerInput({
   onValueChange,
   commands,
   files,
+  onMentionStart,
   threads,
+  terminals,
   projectId,
   placeholder,
   "aria-label": label,
   onEnter,
   onPaste,
-  onDrop,
   focusOnMount,
-  onDragOver,
 }: ComposerInputProps) {
   const listId = useId()
   const parentRef = useRef<HTMLDivElement>(null)
@@ -87,7 +79,7 @@ export function ComposerInput({
   const completion = completionAt(value, caret)
   const active = completion && completion.start !== dismissedAt ? completion : null
   const pullRequests = usePullRequestSearch(projectId, active?.trigger === "#" ? active.query : null)
-  const suggestions = active ? suggestionsFor(active, commands, files, threads, pullRequests) : []
+  const suggestions = active ? suggestionsFor(active, commands, files, threads, terminals, pullRequests) : []
   const open = completion !== null && suggestions.length > 0
   const activeIndex = completion?.start === selected.start ? Math.min(selected.index, suggestions.length - 1) : 0
   const optionId = (index: number) => `${listId}-${index}`
@@ -134,7 +126,9 @@ export function ComposerInput({
         ? listBackspace(text, main.head)
         : event.key === "Enter" && event.shiftKey
           ? continueList(text, main.from, main.to)
-          : null
+          : event.key === "Tab" && !event.altKey && !event.ctrlKey && !event.metaKey
+            ? indentList(text, main.head, event.shiftKey ? -1 : 1)
+            : null
     if (listEdit !== null) {
       view.dispatch({ changes: listEdit, selection: { anchor: listEdit.anchor }, scrollIntoView: true })
       return true
@@ -161,10 +155,13 @@ export function ComposerInput({
   const changed = useEffectEvent((update: ViewUpdate) => {
     const text = update.state.doc.toString()
     if (update.docChanged && text !== value) onValueChange(text)
-    if (update.docChanged || update.selectionSet) setCaret(update.state.selection.main.head)
+    if (!update.docChanged && !update.selectionSet) return
+    const { head } = update.state.selection.main
+    setCaret(head)
+    const next = completionAt(text, head)
+    if (next?.trigger === "@" && next.start !== completion?.start) onMentionStart()
   })
   const pasted = useEffectEvent((event: ClipboardEvent) => onPaste?.(event))
-  const dropped = useEffectEvent((event: DragEvent) => onDrop?.(event))
   const initialText = useEffectEvent(() => value)
   const shouldFocusOnMount = useEffectEvent(() => focusOnMount === true)
 
@@ -189,13 +186,18 @@ export function ComposerInput({
                 event.preventDefault()
                 return true
               },
-              paste: (event) => {
+              paste: (event, editor) => {
                 pasted(event)
-                return event.defaultPrevented
-              },
-              drop: (event) => {
-                dropped(event)
-                return event.defaultPrevented
+                if (event.defaultPrevented) return true
+                const markdown = event.clipboardData === null ? null : markdownOfClipboard(event.clipboardData)
+                if (markdown === null) return false
+                event.preventDefault()
+                editor.dispatch({
+                  ...editor.state.replaceSelection(markdown),
+                  scrollIntoView: true,
+                  userEvent: "input.paste",
+                })
+                return true
               },
             }),
           ),
@@ -205,6 +207,8 @@ export function ComposerInput({
       }),
     })
     viewRef.current = view
+    // FIXME: CodeMirror always sets aria-multiline, which a combobox may not carry, and its attribute facet cannot unset it. It only rewrites changed values, so removing it once sticks.
+    view.contentDOM.removeAttribute("aria-multiline")
     if (shouldFocusOnMount()) view.focus()
     return () => {
       view.destroy()
@@ -225,7 +229,7 @@ export function ComposerInput({
   const contentAttributes: Record<string, string> = {
     role: "combobox",
     "aria-label": label,
-    "aria-placeholder": placeholder,
+    "aria-description": placeholder,
     "aria-autocomplete": "list",
     "aria-expanded": String(open),
     ...(open ? { "aria-controls": listId, "aria-activedescendant": optionId(activeIndex) } : {}),
@@ -238,6 +242,7 @@ export function ComposerInput({
       commands,
       files,
       threadIds: [...threads.sameMachine, ...threads.otherMachines].map((thread) => thread.id),
+      terminalIds: terminals.map((terminal) => terminal.session.id),
       placeholder,
       codeTheme,
       scheme,
@@ -251,7 +256,7 @@ export function ComposerInput({
 
   return (
     <>
-      <div ref={parentRef} onDragOver={onDragOver} className="flex min-h-0 flex-col text-sm" />
+      <div ref={parentRef} className="flex min-h-0 flex-col text-sm" />
       {open && (
         <div
           id={listId}
@@ -305,6 +310,19 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
         </span>
         <span className="min-w-0 truncate">{thread.title}</span>
         <span className="shrink-0 font-mono text-xs text-muted-foreground">{thread.model}</span>
+      </>
+    )
+  }
+  if (suggestion.type === "terminal") {
+    const { session } = suggestion
+    return (
+      <>
+        <TerminalIcon aria-hidden className="size-3.5 shrink-0 self-center text-muted-foreground" />
+        <span className="shrink-0">{suggestion.label}</span>
+        <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">{session.cwd}</span>
+        {session.status === "exited" && (
+          <span className="ms-auto shrink-0 ps-2 text-xs text-muted-foreground">{m.terminal_tab_exited()}</span>
+        )}
       </>
     )
   }

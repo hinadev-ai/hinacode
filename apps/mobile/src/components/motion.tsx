@@ -1,13 +1,43 @@
 import type { ReactNode } from "react"
-import { type PressableProps, type StyleProp, StyleSheet, View, type ViewStyle } from "react-native"
+import { type PressableProps, type StyleProp, StyleSheet, type TextStyle, View, type ViewStyle } from "react-native"
 import Animated, { useReducedMotion } from "react-native-reanimated"
 import { Icon } from "@/components/icon"
 import { cssEase, duration, ease, PRESSED_SCALE, pressSpring, rise } from "@/constants/motion"
+import { Colors } from "@/constants/theme"
+import { useScheme, useTheme } from "@/hooks/use-theme"
 import { motion } from "@/lib/motion"
 
 /** Shrinks a little while pressed, like the desktop's `pressable` utility. Reduce motion keeps it still. */
 export function PressableScale(props: Omit<PressableProps, "style"> & { style?: StyleProp<ViewStyle> }) {
   return <motion.Pressable {...props} whileTap={{ scale: PRESSED_SCALE }} transition={pressSpring} />
+}
+
+const pulse = {
+  light: { "50%": { color: Colors.light.text } },
+  dark: { "50%": { color: Colors.dark.text } },
+}
+
+/** The desktop's `animate-pulse` line, for something still in progress. Reduce motion holds it still. */
+export function Pulse({ text, style }: { text: string; style?: StyleProp<TextStyle> }) {
+  const theme = useTheme()
+  const scheme = useScheme()
+  const reduced = useReducedMotion()
+  return (
+    <Animated.Text
+      style={[
+        style,
+        { color: theme.textMuted },
+        !reduced && {
+          animationName: pulse[scheme],
+          animationDuration: 2000,
+          animationIterationCount: "infinite",
+          animationTimingFunction: cssEase.pulse,
+        },
+      ]}
+    >
+      {text}
+    </Animated.Text>
+  )
 }
 
 const spin = { from: { transform: [{ rotate: "0deg" }] }, to: { transform: [{ rotate: "360deg" }] } }
@@ -28,7 +58,7 @@ export function Spinner({ size = 16, color }: { size?: number; color: string }) 
             }
       }
     >
-      <Icon name="RiLoader4Line" size={size} color={color} />
+      <Icon name="Spinner" size={size} color={color} />
     </Animated.View>
   )
 }

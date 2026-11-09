@@ -6,12 +6,14 @@ import { SectionLabel, ThreadRow } from "@/components/thread-row"
 import { EmptyState, Notice, ProviderMark } from "@/components/ui"
 import { radius } from "@/constants/theme"
 import { useNow } from "@/hooks/use-now"
+import { useShownServers } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { call } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { openThread } from "@/lib/navigation"
 import { relativeTime } from "@/lib/relative-time"
+import { hitsWithinServers, withinServers } from "@/lib/server-filter"
 import { listedThreads, matchThreads, useThreads } from "@/stores/threads"
 
 const THREAD_LIMIT = 20
@@ -83,8 +85,12 @@ export function SearchResults({
   const theme = useTheme()
   const projects = useThreads((state) => state.projects)
   const byId = useThreads((state) => state.byId)
-  const threads = matchThreads(listedThreads(byId), projects, query).slice(0, THREAD_LIMIT)
-  const messages = useMessageSearch(query)
+  const servers = useShownServers()
+  const listed = withinServers(servers, projects, listedThreads(byId))
+  const threads = matchThreads(listed.threads, listed.projects, query).slice(0, THREAD_LIMIT)
+  const search = useMessageSearch(query)
+  const messages =
+    search.state === "done" ? { ...search, hits: hitsWithinServers(servers, projects, search.hits) } : search
   const items = searchItems(threads, messages)
 
   return (
@@ -128,7 +134,7 @@ function SearchFooter({ messages, empty }: { messages: MessageSearch; empty: boo
   if (messages.state === "error") return <Notice text={messages.error} tone="danger" />
   if (empty)
     return (
-      <EmptyState icon="RiSearchLine" title={copy("mobile_search_empty")} hint={copy("mobile_search_empty_hint")} />
+      <EmptyState icon="Search" title={copy("mobile_search_empty")} hint={copy("mobile_search_empty_hint")} />
     )
   return null
 }

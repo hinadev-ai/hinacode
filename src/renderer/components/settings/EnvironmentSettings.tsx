@@ -13,24 +13,22 @@ import {
   useTransition,
 } from "react"
 import type { Environment, RelayAccountStatus } from "../../../shared/domain.ts"
-import type { PendingLink, RelayHost } from "../../../shared/relayMachines.ts"
-import { errorMessage } from "../../lib/errorMessage.ts"
+import type { RelayHost } from "../../../shared/relayMachines.ts"
+import { errorMessage, toastError } from "../../lib/errorMessage.ts"
+import { RelaySignOutDialog } from "./RelaySignOutDialog.tsx"
 import { type Cloud, cloudAddress, incompatibleText, useClouds } from "../../lib/environments.ts"
 import { formatRelativeTime } from "../../lib/relativeTime.ts"
 import {
   addEnvironmentAtom,
-  approveRelayLinkAtom,
   callPromise,
   cloudUpdatesAtom,
   installUpdatesAtom,
-  pendingRelayLinkAtom,
   relayAccountAtom,
   relayMachinesAtom,
   removeEnvironmentAtom,
   removeRelayMachineAtom,
   setRelayMachineShownAtom,
   signInRelayAtom,
-  signOutRelayAtom,
   syncRelayAtom,
   updateStatusAtom,
 } from "../../lib/rpc.ts"
@@ -55,6 +53,8 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../
 import { Input } from "../ui/input.tsx"
 import { Switch } from "../ui/switch.tsx"
 import { SettingsPageAction, SettingsSection, settingsGroupClass, settingsSurfaceClass } from "./SettingsSection.tsx"
+import { inBrowser } from "../../lib/runtime.ts"
+import { ReloadPageButton } from "../ReloadPageButton.tsx"
 
 export function EnvironmentSettings() {
   const clouds = useClouds()
@@ -74,7 +74,7 @@ export function EnvironmentSettings() {
           ))}
         </ul>
       )}
-      <AddEnvironmentForm />
+      {!inBrowser() && <AddEnvironmentForm />}
     </SettingsSection>
   )
 }
@@ -87,53 +87,33 @@ function RelayAccountSection() {
 
 function RelaySignInForm() {
   const signIn = useAtomSet(signInRelayAtom, { mode: "promise" })
-  const [ownerToken, setOwnerToken] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [pending, startSignIn] = useTransition()
 
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    startSignIn(async () => {
-      setError(null)
-      try {
-        await signIn(ownerToken.trim())
-      } catch (cause) {
-        setError(errorMessage(cause))
-      }
-    })
-  }
-
   return (
-    <form
-      onSubmit={onSubmit}
-      aria-labelledby="environment-relay-title"
-      className={cn(settingsSurfaceClass, "flex flex-col gap-4 p-4")}
-    >
-      <h3 id="environment-relay-title" className="text-sm font-medium">
-        {m.environment_relay_title()}
-      </h3>
-      <Field>
-        <FieldLabel htmlFor="environment-relay-owner-token">{m.environment_relay_owner_token_label()}</FieldLabel>
-        <div className="flex flex-wrap gap-2">
-          <Input
-            id="environment-relay-owner-token"
-            type="password"
-            required
-            value={ownerToken}
-            onChange={(event) => setOwnerToken(event.target.value)}
-            spellCheck={false}
-            autoComplete="off"
-            aria-invalid={error !== null}
-            className="min-w-48 flex-1 font-mono"
-          />
-          <Button type="submit" className="shrink-0" disabled={pending || ownerToken.trim() === ""}>
-            {pending ? m.environment_relay_signing_in() : m.environment_relay_sign_in()}
-          </Button>
-        </div>
-        <FieldDescription>{m.environment_relay_description()}</FieldDescription>
-        {error && <FieldError>{error}</FieldError>}
-      </Field>
-    </form>
+    <section aria-labelledby="environment-relay-title" className={cn(settingsSurfaceClass, "flex flex-col gap-2 p-4")}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 id="environment-relay-title" className="text-sm font-medium">
+          {m.environment_relay_title()}
+        </h3>
+        <Button
+          disabled={pending}
+          onClick={() =>
+            startSignIn(async () => {
+              setError(null)
+              try {
+                await signIn()
+              } catch (cause) {
+                setError(errorMessage(cause))
+              }
+            })
+          }
+        >
+          {pending ? m.environment_relay_signing_in() : m.environment_relay_sign_in()}
+        </Button>
+      </div>
+      {error && <FieldError>{error}</FieldError>}
+    </section>
   )
 }
 
@@ -183,7 +163,6 @@ function RelaySignedIn({ status }: { status: Extract<RelayAccountStatus, { state
       </div>
       {status.error !== null && <FieldError>{status.error}</FieldError>}
       <RelayMachines selfId={status.environmentId} />
-      <ApproveRelayLinkForm />
     </section>
   )
 }
@@ -259,7 +238,7 @@ function RelayMachineRow({ host, self }: { host: RelayHost; self: boolean }) {
         </div>
       </div>
       {!host.published && <FieldDescription>{m.environment_relay_not_published()}</FieldDescription>}
-      {self && <FieldDescription>{m.environment_relay_this_machine_hint()}</FieldDescription>}
+      {self && !inBrowser() && <FieldDescription>{m.environment_relay_this_machine_hint()}</FieldDescription>}
       {error && <FieldError>{error}</FieldError>}
     </li>
   )
@@ -306,128 +285,14 @@ function RemoveRelayMachineButton({ host }: { host: RelayHost }) {
   )
 }
 
-function ApproveRelayLinkForm() {
-  const findLink = useAtomSet(pendingRelayLinkAtom, { mode: "promise" })
-  const approveLink = useAtomSet(approveRelayLinkAtom, { mode: "promise" })
-  const [userCode, setUserCode] = useState("")
-  const [pendingLink, setPendingLink] = useState<PendingLink | null>(null)
-  const [approved, setApproved] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [busy, startBusy] = useTransition()
-  const inputId = useId()
-
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    startBusy(async () => {
-      setError(null)
-      setApproved(null)
-      try {
-        if (pendingLink === null) {
-          setPendingLink(await findLink(userCode.trim()))
-          return
-        }
-        await approveLink(userCode.trim())
-        setApproved(pendingLink.name)
-        setPendingLink(null)
-        setUserCode("")
-      } catch (cause) {
-        setError(errorMessage(cause))
-      }
-    })
-  }
-
-  const cancel = () => {
-    setPendingLink(null)
-    setError(null)
-  }
-
-  return (
-    <form onSubmit={onSubmit} className="mt-3">
-      <Field>
-        <FieldLabel htmlFor={inputId}>{m.environment_relay_link_code_label()}</FieldLabel>
-        <div className="flex flex-wrap gap-2">
-          <Input
-            id={inputId}
-            required
-            value={userCode}
-            onChange={(event) => {
-              setUserCode(event.target.value)
-              setPendingLink(null)
-            }}
-            placeholder="ABCD-EFGH"
-            spellCheck={false}
-            autoComplete="off"
-            aria-invalid={error !== null}
-            className="min-w-48 flex-1 font-mono uppercase"
-          />
-          {pendingLink === null && (
-            <Button type="submit" variant="outline" className="shrink-0" disabled={busy || userCode.trim() === ""}>
-              {busy ? m.environment_relay_link_checking() : m.environment_relay_link_continue()}
-            </Button>
-          )}
-        </div>
-        {pendingLink === null && <FieldDescription>{m.environment_relay_link_code_hint()}</FieldDescription>}
-        {pendingLink !== null && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <p className="min-w-48 flex-1 text-sm">{m.environment_relay_link_confirm({ name: pendingLink.name })}</p>
-            <div className="flex shrink-0 gap-2">
-              <Button type="submit" disabled={busy}>
-                {busy ? m.environment_relay_approving() : m.environment_relay_approve()}
-              </Button>
-              <Button type="button" variant="ghost" onClick={cancel}>
-                {m.common_cancel()}
-              </Button>
-            </div>
-          </div>
-        )}
-        {approved !== null && (
-          <output className="text-sm text-muted-foreground">
-            {m.environment_relay_link_approved({ name: approved })}
-          </output>
-        )}
-        {error && <FieldError>{error}</FieldError>}
-      </Field>
-    </form>
-  )
-}
-
 function RelaySignOutButton() {
-  const signOut = useAtomSet(signOutRelayAtom, { mode: "promise" })
   const [open, setOpen] = useState(false)
-  const [error, run, isPending] = useActionState<string | null>(async () => {
-    try {
-      await signOut()
-    } catch (cause) {
-      return errorMessage(cause)
-    }
-    setOpen(false)
-    return null
-  }, null)
-
   return (
     <>
       <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
         {m.environment_relay_sign_out()}
       </Button>
-      <AlertDialog open={open} onOpenChange={setOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{m.environment_relay_sign_out_title()}</AlertDialogTitle>
-            <AlertDialogDescription>{m.environment_relay_sign_out_body()}</AlertDialogDescription>
-          </AlertDialogHeader>
-          {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          )}
-          <AlertDialogFooter>
-            <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" disabled={isPending} action={run}>
-              {m.environment_relay_sign_out()}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <RelaySignOutDialog open={open} onOpenChange={setOpen} />
     </>
   )
 }
@@ -474,7 +339,8 @@ function EnvironmentRow({ cloud }: { cloud: Cloud }) {
         </div>
         <div className="flex max-w-full flex-wrap items-center gap-2">
           {cloud.status === "connected" && <CloudUpdateButton cloud={cloud} />}
-          {unauthorized && (
+          {unauthorized && inBrowser() && <ReloadPageButton />}
+          {unauthorized && !inBrowser() && (
             <Button
               ref={pairAgainRef}
               variant="outline"
@@ -491,7 +357,11 @@ function EnvironmentRow({ cloud }: { cloud: Cloud }) {
         </div>
       </div>
       {fromRelay && <FieldDescription>{m.environment_relay_row_hint()}</FieldDescription>}
-      {unauthorized && <FieldDescription>{m.environment_unauthorized_hint()}</FieldDescription>}
+      {unauthorized && (
+        <FieldDescription>
+          {inBrowser() ? m.web_transport_token_refused() : m.environment_unauthorized_hint()}
+        </FieldDescription>
+      )}
       {cloud.status === "connected" && <CloudUpdateHint cloud={cloud} />}
       {unauthorized && pairing && (
         <PairAgainForm id={pairFormId} cloud={cloud} onCancel={cancelPairing} onPaired={() => setPairing(false)} />
@@ -614,7 +484,7 @@ function CloudUpdateButton({ cloud }: { cloud: Cloud }) {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => void callPromise("updates.check", undefined, { environment: cloud.id })}
+          action={() => callPromise("updates.check", undefined, { environment: cloud.id }).catch(toastError)}
         >
           {m.update_check()}
         </Button>

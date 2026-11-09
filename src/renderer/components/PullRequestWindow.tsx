@@ -1,50 +1,97 @@
-import { useAtomValue } from "@effect/atom-react"
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { detectPlatform } from "@tanstack/react-hotkeys"
 import { useParams, useSearch } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
-import { useState, useTransition } from "react"
+import { type ReactNode, useState, useTransition } from "react"
 import type { PullRequestDetail, PullRequestFile } from "../../shared/domain.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { type FileTreeFolder, fileTree } from "../lib/fileTree.ts"
 import { type EnvironmentId, pullRequestDetailAtom, pullRequestFilesAtom } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
+import { pullRequestName } from "../lib/pullRequestRefs.ts"
 import { m } from "../paraglide/messages.js"
+import { inBrowser } from "../lib/runtime.ts"
 import { DiffStyleContext, type DiffStyle } from "./FilePatch.tsx"
 import { PullRequestFileRow, useViewedFiles, useViewedPaths } from "./PullRequestCode.tsx"
 import { PullRequestReviewContext } from "./PullRequestReview.tsx"
 import { pullRequestStatusLabel, StatusIcon, statusIndicator } from "./ThreadPullRequests.tsx"
-import { CheckIcon } from "./icons/CheckIcon.tsx"
-import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
-import { FileIcon } from "./icons/FileIcon.tsx"
-import { FolderIcon } from "./icons/FolderIcon.tsx"
-import { SearchIcon } from "./icons/SearchIcon.tsx"
+import { CheckIcon, ChevronRightIcon, FileIcon, FolderIcon, SearchIcon } from "@hinacode/icons"
+import { Button, buttonVariants } from "./ui/button.tsx"
 import { Input } from "./ui/input.tsx"
 import { SkeletonList } from "./ui/skeleton.tsx"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
 
-const besideTrafficLights = detectPlatform() === "mac"
+const besideTrafficLights = () => detectPlatform() === "mac" && !inBrowser()
 
 export function PullRequestWindow() {
   const { threadId } = useParams({ strict: false })
   const { url = "" } = useSearch({ strict: false }) as { url?: string }
   const environment = useThreadEnvironment(threadId)
-  const detail = useAtomValue(pullRequestDetailAtom(environment, url))
+  const detailAtom = pullRequestDetailAtom(environment, url)
+  const detail = useAtomValue(detailAtom)
+  const retry = useAtomRefresh(detailAtom)
+  const pending = <h1 className="min-w-0 truncate font-medium">{pullRequestName(url)}</h1>
 
   return AsyncResult.builder(detail)
     .onSuccess((pullRequest) => (
       <FilesChanged threadId={threadId} pullRequest={pullRequest} environment={environment} />
     ))
     .onError((error) => (
-      <p role="alert" className="p-6 text-sm text-destructive">
-        {m.pr_detail_failed({ message: errorMessage(error) })}
-      </p>
+      <WindowFrame header={pending}>
+        <LoadFailure title={m.pr_detail_failed_title()} message={errorMessage(error)} href={url} onRetry={retry} />
+      </WindowFrame>
     ))
     .orElse(() => (
-      <div className="p-6">
-        <SkeletonList label={m.pr_detail_loading()} rows={5} rowClassName="h-5" />
-      </div>
+      <WindowFrame header={pending}>
+        <div className="p-6">
+          <SkeletonList label={m.pr_detail_loading()} rows={5} rowClassName="h-5" />
+        </div>
+      </WindowFrame>
     ))
+}
+
+function WindowFrame({ header, children }: { header: ReactNode; children: ReactNode }) {
+  return (
+    <div className="relative flex h-dvh flex-col overflow-clip bg-background text-foreground">
+      <header
+        className={cn(
+          "flex h-titlebar shrink-0 items-center gap-2.5 border-b pe-3 text-sm select-none window-drag",
+          besideTrafficLights() ? "ps-22" : "ps-4",
+        )}
+      >
+        {header}
+      </header>
+      <main className="flex min-h-0 flex-1 flex-col">{children}</main>
+    </div>
+  )
+}
+
+function LoadFailure({
+  title,
+  message,
+  href,
+  onRetry,
+}: {
+  title: string
+  message: string
+  href: string
+  onRetry: () => void
+}) {
+  return (
+    <div role="alert" className="mx-auto mt-16 flex w-full max-w-md flex-col gap-3 px-6">
+      <h2 className="text-base font-semibold">{title}</h2>
+      <p className="text-sm text-pretty wrap-anywhere text-muted-foreground">{message}</p>
+      <div className="flex gap-2">
+        <Button variant="outline" size="sm" action={onRetry}>
+          {m.common_retry()}
+        </Button>
+        <a href={href} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "ghost", size: "sm" })}>
+          {m.pr_open_on_github()}
+        </a>
+      </div>
+    </div>
+  )
 }
 
 const anchorOf = (index: number) => `changed-file-${index}`
@@ -58,40 +105,40 @@ function FilesChanged({
   pullRequest: PullRequestDetail
   environment: EnvironmentId
 }) {
-  const files = useAtomValue(pullRequestFilesAtom(environment, pullRequest.url, pullRequest.head))
+  const filesAtom = pullRequestFilesAtom(environment, pullRequest.url, pullRequest.head)
+  const files = useAtomValue(filesAtom)
+  const retry = useAtomRefresh(filesAtom)
   const [diffStyle, setDiffStyle] = useState<DiffStyle>("split")
 
   return (
-    <div className="flex h-dvh flex-col bg-background text-foreground">
-      <title>{`#${pullRequest.number} ${pullRequest.title}`}</title>
-      <header
-        className={cn(
-          "flex h-titlebar shrink-0 items-center gap-2.5 border-b pe-3 text-sm select-none window-drag",
-          besideTrafficLights ? "ps-22" : "ps-4",
-        )}
-      >
-        <span
-          title={pullRequestStatusLabel[pullRequest.status]()}
-          className={cn("flex shrink-0", statusIndicator[pullRequest.status].className)}
-        >
-          <StatusIcon status={pullRequest.status} />
-        </span>
-        <h1 className="min-w-0 truncate font-medium">{pullRequest.title}</h1>
-        <span className="shrink-0 font-mono text-xs text-muted-foreground">#{pullRequest.number}</span>
-        <span className="hidden min-w-0 truncate font-mono text-xs text-muted-foreground md:block">
-          {m.pr_branches_into({ base: pullRequest.baseRef, head: pullRequest.headRef })}
-        </span>
-        <Tabs value={diffStyle} changeAction={(value: DiffStyle) => setDiffStyle(value)} className="ms-auto">
-          <TabsList aria-label={m.diff_style_label()} className="group-data-horizontal/tabs:h-7">
-            <TabsTrigger value="unified" className="px-2 text-xs">
-              {m.diff_unified()}
-            </TabsTrigger>
-            <TabsTrigger value="split" className="px-2 text-xs">
-              {m.diff_split()}
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </header>
+    <WindowFrame
+      header={
+        <>
+          <title>{`#${pullRequest.number} ${pullRequest.title}`}</title>
+          <span
+            title={pullRequestStatusLabel[pullRequest.status]()}
+            className={cn("flex shrink-0", statusIndicator[pullRequest.status].className)}
+          >
+            <StatusIcon status={pullRequest.status} />
+          </span>
+          <h1 className="min-w-0 truncate font-medium">{pullRequest.title}</h1>
+          <span className="shrink-0 font-mono text-xs text-muted-foreground">#{pullRequest.number}</span>
+          <span className="hidden min-w-0 truncate font-mono text-xs text-muted-foreground md:block">
+            {m.pr_branches_into({ base: pullRequest.baseRef, head: pullRequest.headRef })}
+          </span>
+          <Tabs value={diffStyle} changeAction={(value: DiffStyle) => setDiffStyle(value)} className="ms-auto">
+            <TabsList aria-label={m.diff_style_label()} className="group-data-horizontal/tabs:h-7">
+              <TabsTrigger value="unified" className="px-2 text-xs">
+                {m.diff_unified()}
+              </TabsTrigger>
+              <TabsTrigger value="split" className="px-2 text-xs">
+                {m.diff_split()}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </>
+      }
+    >
       {AsyncResult.builder(files)
         .onSuccess((loaded) => (
           <DiffStyleContext value={diffStyle}>
@@ -110,16 +157,19 @@ function FilesChanged({
           </DiffStyleContext>
         ))
         .onError((error) => (
-          <p role="alert" className="p-6 text-sm text-destructive">
-            {m.diff_failed({ message: errorMessage(error) })}
-          </p>
+          <LoadFailure
+            title={m.diff_failed_title()}
+            message={errorMessage(error)}
+            href={`${pullRequest.url}/files`}
+            onRetry={retry}
+          />
         ))
         .orElse(() => (
           <div className="p-6">
             <SkeletonList label={m.diff_loading()} rows={5} rowClassName="h-5" />
           </div>
         ))}
-    </div>
+    </WindowFrame>
   )
 }
 
@@ -179,7 +229,7 @@ function ReviewWorkspace({
           <FileTreeFolderView folder={fileTree(shown)} viewed={viewed} onReveal={reveal} depth={0} />
         </nav>
       </aside>
-      <main className="min-h-0 overflow-auto p-4">
+      <div className="min-h-0 overflow-auto p-4">
         {shown.length === 0 ? (
           <p className="text-sm text-muted-foreground">{m.pr_files_none_match()}</p>
         ) : (
@@ -203,7 +253,7 @@ function ReviewWorkspace({
             ))}
           </ul>
         )}
-      </main>
+      </div>
     </div>
   )
 }

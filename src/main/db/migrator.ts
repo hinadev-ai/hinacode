@@ -31,7 +31,19 @@ import sideChat from "./migrations/0030_side_chat.ts"
 import projectActions from "./migrations/0032_project_actions.ts"
 import messageOpen from "./migrations/0031_message_open.ts"
 import threadDraft from "./migrations/0033_thread_draft.ts"
+import opencodeProvider from "./migrations/0035_opencode_provider.ts"
 import archiveSharedChats from "./migrations/0024_archive_shared_chats.ts"
+import ftsToolTitles from "./migrations/0034_fts_tool_titles.ts"
+import threadScheduled from "./migrations/0036_thread_scheduled.ts"
+import ftsCjkGrams from "./migrations/0037_fts_cjk_grams.ts"
+import messagePart from "./migrations/0038_message_part.ts"
+import threadParent from "./migrations/0039_thread_parent.ts"
+import remotePrivateNetworks from "./migrations/0040_remote_private_networks.ts"
+import threadWorkStarted from "./migrations/0041_thread_work_started.ts"
+import threadSettled from "./migrations/0042_thread_settled.ts"
+import pullRequestObservedStatus from "./migrations/0043_pull_request_observed_status.ts"
+import dropThreadUserSkills from "./migrations/0044_drop_thread_user_skills.ts"
+import magpieProvider from "./migrations/0045_magpie_provider.ts"
 
 const run = Migrator.make({})
 
@@ -69,6 +81,18 @@ export const runMigrations = run({
     "31_message_open": messageOpen,
     "32_project_actions": projectActions,
     "33_thread_draft": threadDraft,
+    "34_fts_tool_titles": ftsToolTitles,
+    "35_opencode_provider": opencodeProvider,
+    "36_thread_scheduled": threadScheduled,
+    "37_fts_cjk_grams": ftsCjkGrams,
+    "38_message_part": messagePart,
+    "39_thread_parent": threadParent,
+    "40_remote_private_networks": remotePrivateNetworks,
+    "41_thread_work_started": threadWorkStarted,
+    "42_thread_settled": threadSettled,
+    "43_pull_request_observed_status": pullRequestObservedStatus,
+    "44_drop_thread_user_skills": dropThreadUserSkills,
+    "45_magpie_provider": magpieProvider,
   }),
 }).pipe(
   Effect.tap((ran) =>

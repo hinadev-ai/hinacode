@@ -24,13 +24,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx"
-import { CloseIcon } from "./icons/CloseIcon.tsx"
-import { FolderMoveIcon } from "./icons/FolderMoveIcon.tsx"
-import { MoreIcon } from "./icons/MoreIcon.tsx"
-import { PencilIcon } from "./icons/PencilIcon.tsx"
-import { PlusIcon } from "./icons/PlusIcon.tsx"
-import { TrashIcon } from "./icons/TrashIcon.tsx"
-import { ImportIcon } from "./icons/ImportIcon.tsx"
+import { CloseIcon, FolderMoveIcon, ImportIcon, MoreIcon, PencilIcon, PlusIcon, TrashIcon } from "@hinacode/icons"
 
 type Action = "edit" | "newThread" | "importSession" | "delete"
 

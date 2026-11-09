@@ -3,17 +3,17 @@ import { Link } from "@tanstack/react-router"
 import type { RefObject } from "react"
 import { useKeymap } from "../keybindings/useKeybindings.ts"
 import { m } from "../paraglide/messages.js"
+import { inBrowser } from "../lib/runtime.ts"
 import { useUi } from "../stores/ui.ts"
 import { cn } from "../lib/utils.ts"
+import { AccountMenu } from "./AccountMenu.tsx"
 import { ChordKeys } from "./ChordKeys.tsx"
 import { MachineResourcesButton } from "./MachineResources.tsx"
-import { Button } from "./ui/button.tsx"
+import { Button, buttonVariants } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
-import { SettingsIcon } from "./icons/SettingsIcon.tsx"
-import { SidebarFillIcon } from "./icons/SidebarFillIcon.tsx"
-import { SidebarIcon } from "./icons/SidebarIcon.tsx"
+import { SettingsIcon, SidebarFillIcon, SidebarIcon } from "@hinacode/icons"
 
-const besideTrafficLights = detectPlatform() === "mac"
+const besideTrafficLights = () => detectPlatform() === "mac" && !inBrowser()
 
 export function TitleBar({
   compact,
@@ -32,8 +32,8 @@ export function TitleBar({
   return (
     <header
       className={cn(
-        "flex h-titlebar shrink-0 items-center gap-0.5 bg-sidebar pr-2 text-sidebar-foreground select-none window-drag glass:bg-sidebar/80",
-        besideTrafficLights ? "pl-22" : "pl-3",
+        "flex h-titlebar shrink-0 items-center gap-0.5 bg-sidebar pr-2 text-sidebar-foreground select-none window-drag glass:bg-sidebar/(--glass-chrome-alpha)",
+        besideTrafficLights() ? "pl-22" : "pl-4.5",
         className,
       )}
     >
@@ -57,16 +57,18 @@ export function TitleBar({
           {chord && <ChordKeys chord={chord} />}
         </TooltipContent>
       </Tooltip>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        render={<Link to="/settings" />}
+      <Link
+        to="/settings"
         aria-label={m.sidebar_settings()}
-        className="data-[status=active]:bg-sidebar-accent data-[status=active]:text-sidebar-accent-foreground"
+        className={cn(
+          buttonVariants({ variant: "ghost", size: "icon-sm" }),
+          "data-[status=active]:bg-sidebar-accent data-[status=active]:text-sidebar-accent-foreground",
+        )}
       >
         <SettingsIcon aria-hidden />
-      </Button>
+      </Link>
       <MachineResourcesButton />
+      <AccountMenu />
     </header>
   )
 }

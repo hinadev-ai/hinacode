@@ -35,7 +35,7 @@ const manifest = {
 }
 
 const bundleFiles = [
-  join(pkg, "out", "server", "daemon.js"),
+  join(pkg, "out", "server", "cli.js"),
   ...readdirSync(join(pkg, "out", "server", "chunks")).map((f) => join(pkg, "out", "server", "chunks", f)),
 ]
 for (const file of bundleFiles) {
@@ -55,9 +55,9 @@ assert.deepEqual(Object.keys(manifest.dependencies).toSorted(), ["node-pty", "pl
 
 const bin = join(pkg, "bin", "hinacode.mjs")
 const version = await run(process.execPath, [bin, "--version"])
-assert.equal(version.stdout.trim(), manifest.version, "--version output")
+assert.equal(version.stdout.trim(), `hinacode v${manifest.version}`, "--version output")
 const help = await run(process.execPath, [bin, "--help"])
-assert.ok(help.stdout.includes("Usage: hinacode"), "--help output")
+assert.ok(help.stdout.includes("hinacode <subcommand>"), "--help output")
 
 const freePort = await new Promise<number>((resolvePort, reject) => {
   const probe = createServer()

@@ -17,7 +17,7 @@ import { SubagentLinks } from "../MessagePart.tsx"
 import { providerLabel } from "../ProviderIcon.tsx"
 import { PendingRequests } from "../ThreadView.tsx"
 import { Button } from "../ui/button.tsx"
-import { ChatNewIcon } from "../icons/ChatNewIcon.tsx"
+import { ChatNewIcon } from "@hinacode/icons"
 
 export function SidechatView({ thread }: { thread: Thread }) {
   const sidechat = useThreads((state) => state.sidechats[thread.id])
@@ -59,9 +59,11 @@ function SidechatTranscript({ sidechat }: { sidechat: Thread }) {
           )}
         </ThreadFolder>
       </ThreadRepository>
-      <Composer thread={sidechat}>
-        <PendingRequests thread={sidechat} />
-      </Composer>
+      <div data-sidechat className="contents">
+        <Composer thread={sidechat}>
+          <PendingRequests thread={sidechat} />
+        </Composer>
+      </div>
     </div>
   )
 }

@@ -38,7 +38,7 @@ export function Button({
   ...props
 }: ButtonProps & { label: string; icon?: IconName; variant?: Variant; busy?: boolean }) {
   const theme = useTheme()
-  const colors = buttonColors(theme)[variant]
+  const colors = buttonColors(theme, variant, disabled === true)
   const inactive = disabled === true || busy
   return (
     <PressableScale
@@ -47,11 +47,7 @@ export function Button({
       aria-disabled={inactive}
       aria-busy={busy}
       disabled={inactive}
-      style={[
-        styles.button,
-        { backgroundColor: colors.bg, borderColor: colors.border, opacity: inactive ? 0.5 : 1 },
-        style,
-      ]}
+      style={[styles.button, { backgroundColor: colors.bg, borderColor: colors.border }, style]}
       {...props}
     >
       {busy ? (
@@ -80,7 +76,7 @@ export function IconButton({
   busy?: boolean
 }) {
   const theme = useTheme()
-  const colors = buttonColors(theme)[variant]
+  const colors = buttonColors(theme, variant, disabled === true)
   const inactive = disabled === true || busy
   return (
     <PressableScale
@@ -88,11 +84,7 @@ export function IconButton({
       aria-disabled={inactive}
       aria-busy={busy}
       disabled={inactive}
-      style={[
-        styles.iconButton,
-        { backgroundColor: colors.bg, borderColor: colors.border, opacity: disabled === true ? 0.5 : 1 },
-        style,
-      ]}
+      style={[styles.iconButton, { backgroundColor: colors.bg, borderColor: colors.border }, style]}
       {...props}
     >
       {busy ? <Spinner size={18} color={colors.fg} /> : <Icon name={icon} size={20} color={colors.fg} />}
@@ -114,13 +106,18 @@ export function Toggle(props: Omit<SwitchProps, "trackColor" | "thumbColor">) {
   )
 }
 
-const buttonColors = (theme: Palette) => ({
-  primary: { bg: theme.primary, fg: theme.onPrimary, border: theme.primary },
-  secondary: { bg: theme.surface, fg: theme.text, border: theme.border },
-  danger: { bg: theme.dangerBg, fg: theme.danger, border: theme.dangerBg },
-  ghost: { bg: "transparent", fg: theme.text, border: "transparent" },
-  dangerGhost: { bg: "transparent", fg: theme.danger, border: "transparent" },
-})
+const buttonColors = (theme: Palette, variant: Variant, disabled: boolean) => {
+  const transparent = variant === "ghost" || variant === "dangerGhost"
+  if (disabled && transparent) return { bg: "transparent", fg: theme.textMuted, border: "transparent" }
+  if (disabled) return { bg: theme.disabled, fg: theme.textMuted, border: theme.disabled }
+  return {
+    primary: { bg: theme.primary, fg: theme.onPrimary, border: theme.primary },
+    secondary: { bg: theme.surface, fg: theme.text, border: theme.border },
+    danger: { bg: theme.dangerBg, fg: theme.danger, border: theme.dangerBg },
+    ghost: { bg: "transparent", fg: theme.text, border: "transparent" },
+    dangerGhost: { bg: "transparent", fg: theme.danger, border: "transparent" },
+  }[variant]
+}
 
 export type Tone = "neutral" | "attention" | "running" | "danger"
 
@@ -129,7 +126,7 @@ export function Pill({ label, tone, icon }: { label: string; tone: Tone; icon?: 
   const [fg, bg] = toneColors(theme)[tone]
   return (
     <View style={[styles.pill, { backgroundColor: bg }]}>
-      {icon === "RiLoader4Line" ? (
+      {icon === "Spinner" ? (
         <Spinner size={12} color={fg} />
       ) : (
         icon !== undefined && <Icon name={icon} size={12} color={fg} />
@@ -153,10 +150,10 @@ export const ThreadStatusPill = ({ status }: { status: ThreadStatus }) =>
   status === "idle" ? null : <Pill {...threadStatus[status]} />
 
 const connectionLabel: Record<ConnectionStatus, Status> = {
-  connected: { label: copy("mobile_connection_connected"), tone: "running", icon: "RiWifiLine" },
-  connecting: { label: copy("mobile_connection_connecting"), tone: "neutral", icon: "RiLoader4Line" },
-  offline: { label: copy("mobile_connection_offline"), tone: "attention", icon: "RiWifiOffLine" },
-  unauthorized: { label: copy("mobile_connection_unauthorized"), tone: "danger", icon: "RiLinkUnlinkM" },
+  connected: { label: copy("mobile_connection_connected"), tone: "running", icon: "Cloud" },
+  connecting: { label: copy("mobile_connection_connecting"), tone: "neutral", icon: "Spinner" },
+  offline: { label: copy("mobile_connection_offline"), tone: "attention", icon: "CloudOff" },
+  unauthorized: { label: copy("mobile_connection_unauthorized"), tone: "danger", icon: "Unlink" },
 }
 
 const fadeIn = { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: duration.fast } }
@@ -178,12 +175,16 @@ const providerMark: Record<ProviderId, IconName> = {
   claude: "RiClaudeFill",
   codex: "RiOpenaiFill",
   muse: "RiMetaFill",
+  opencode: "OpencodeMark",
+  magpie: "MagpieMark",
 }
 
 const providerName: Record<ProviderId, string> = {
   claude: copy("mobile_provider_claude"),
   codex: copy("mobile_provider_codex"),
   muse: copy("mobile_provider_muse"),
+  opencode: copy("mobile_provider_opencode"),
+  magpie: copy("mobile_provider_magpie"),
 }
 
 /** The provider's logo and name, muted, for meta rows. */
@@ -198,9 +199,9 @@ export function ProviderLabel({ provider, size = 13 }: { provider: ProviderId; s
 }
 
 const noticeIcon: Partial<Record<Tone, IconName>> = {
-  danger: "RiErrorWarningLine",
-  attention: "RiErrorWarningLine",
-  running: "RiCheckboxCircleLine",
+  danger: "Warning",
+  attention: "Warning",
+  running: "CheckCircle",
 }
 
 export function Notice({ text, tone = "neutral" }: { text: string; tone?: Tone }) {

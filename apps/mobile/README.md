@@ -1,6 +1,6 @@
 # HinaCode mobile
 
-The phone app for HinaCode's remote mode: see which thread needs you, approve commands, answer questions, send or steer prompts with images from the photo library, and run a shell in a thread's worktree. It also adds projects, searches threads and messages, renders replies as native Markdown text with highlighted code and workspace images, browses and searches a thread's files, shows pull request checks and reviews, gathers the pull requests that need you and your open Linear tickets in an overview, raises a banner or a local notification when a thread needs you, and keeps its own settings next to the desktop's defaults. It talks to the desktop over one WebSocket using the same `RpcMethods` and `PushEvent` schemas as the desktop renderer (`src/shared`). Design: `docs/features/2026-10-12-remote-mode.md`.
+The phone app for HinaCode's remote mode: see which thread needs you, approve commands, answer questions, send or steer prompts with images from the photo library, and run a shell in a thread's worktree. It also adds projects, searches threads and messages, renders replies as native Markdown text with highlighted code and workspace images, browses and searches a thread's files, shows pull request checks and reviews, opens and stops a turn's sub-agents, previews and reads the documents an agent publishes, gathers the pull requests that need you and your open Linear tickets in an overview, raises a banner or a local notification when a thread needs you, and keeps its own settings next to the desktop's defaults. It talks to the desktop over one WebSocket using the same `RpcMethods` and `PushEvent` schemas as the desktop renderer (`src/shared`). Design: `docs/features/2026-10-12-remote-mode.md`.
 
 This is an Expo app with its own `node_modules` and lockfile. It is not part of the root pnpm workspace, so Metro and electron-vite never see each other's dependencies. Metro watches `../../src/shared` and resolves `effect` from this app, so the bundle carries one copy. The root still needs `pnpm install` for `tsc`, since it resolves `effect` types for `src/shared` from the root.
 
@@ -9,15 +9,17 @@ This is an Expo app with its own `node_modules` and lockfile. It is not part of 
 ```sh
 cd apps/mobile
 pnpm install
-npx expo run:android            # or run:ios; builds and installs the development build, then starts Metro
+pnpm android                    # or pnpm ios; builds and installs the development build, then starts Metro
 npx expo start --web --host lan # or open it in a browser
 ```
 
-Replies render through `react-native-enriched-markdown`, a native Fabric component, so the app needs a development build; Expo Go cannot run it. Build again after a change to native dependencies or to the `enriched-markdown` block in `package.json`, which picks the library's features (code highlighting on, math and video off). After that, `npx expo start` serves new JavaScript to the installed build.
+Replies render through `react-native-enriched-markdown`, a native Fabric component, so the app needs a development build; Expo Go cannot run it. Build again after a change to native dependencies or to the `enriched-markdown` block in `package.json`, which picks the library's features (code highlighting on, math and video off). After that, `pnpm start` serves new JavaScript to the installed build. Don't add `--localhost`. With it, Metro listens on `::1` only, so the Android emulator cannot load the bundle, because it reaches the Mac at `10.0.2.2`.
 
-`pnpm install` lets that library's postinstall run (`allowBuilds` in `pnpm-workspace.yaml`), because it downloads the tree-sitter grammars the native build compiles for code highlighting.
+Use the `pnpm` scripts rather than `npx expo run:*`, because they set the environment the native builds need. `pnpm ios` sets `LANG=en_US.UTF-8` for CocoaPods. `pnpm android` and `pnpm install:android` need the Android SDK and a JDK 17+. They run through `scripts/android-env.sh`, which sets `ANDROID_HOME` to `~/Library/Android/sdk` when it is unset, and `JAVA_HOME` to the JDK of Android Studio or of Homebrew's `openjdk@21` or `openjdk@17`.
 
-The phone must reach the desktop directly. Tailscale on both devices is the simplest way: open the dev server through the desktop's Tailscale name, and set Settings > Remote > Remote listener to the desktop's Tailscale address.
+`pnpm install` lets that library's postinstall run (`allowBuilds` in `pnpm-workspace.yaml`), because it downloads the tree-sitter grammars the native build compiles for code highlighting. If the download fails, `pnpm install` fails too (`patches/react-native-enriched-markdown@1.1.1.patch`). If the error says `fetch failed`, your Node has no CA bundle, which is common with a Nix Node. Run `NODE_EXTRA_CA_CERTS=/etc/ssl/cert.pem pnpm install`.
+
+The phone must reach the desktop directly. On the same Wi-Fi, the default **Local network and Tailscale** listener is enough. Away from home, use Tailscale on both devices and open the dev server through the desktop's Tailscale name.
 
 ### Run on an iOS simulator with Xcode 27
 
@@ -32,13 +34,13 @@ xcrun simctl boot "$IOS_UDID"
 open "devices://device/open?id=$IOS_UDID"
 ```
 
-From `apps/mobile`, build and install the native app with `pnpm exec expo run:ios --device "$IOS_UDID"`. After the first build, `pnpm exec expo start --localhost` serves JavaScript to the installed app. [Expo also documents the Device Hub workflow](https://docs.expo.dev/workflow/ios-simulator/).
+From `apps/mobile`, build and install the native app with `pnpm ios --device "$IOS_UDID"`. After the first build, `pnpm start` serves JavaScript to the installed app. [Expo also documents the Device Hub workflow](https://docs.expo.dev/workflow/ios-simulator/).
 
 To connect to an isolated local server, run this in another terminal from the repository root:
 
 ```sh
 pnpm build:server
-HINACODE_USER_DATA=/tmp/kk-ios-local node out/server/daemon.js serve --host 127.0.0.1 --port 48082
+HINACODE_USER_DATA=/tmp/kk-ios-local node bin/hinacode.mjs serve --host 127.0.0.1 --port 48082
 ```
 
 Paste the server's pairing URL into the app. The simulator can reach the Mac at `127.0.0.1`. Keep both the server and Metro running while you check the app.
@@ -71,7 +73,7 @@ With USB debugging on, `adb reverse` makes the desktop's ports reachable as `127
 ```sh
 adb reverse tcp:8081 tcp:8081      # Metro
 adb reverse tcp:48081 tcp:48081    # the remote listener
-npx expo run:android
+pnpm android
 ```
 
 Pair with a URL whose host is `127.0.0.1`.
@@ -84,15 +86,25 @@ To run the latest code without Metro, plug in the phone with USB debugging on an
 pnpm install:android        # or: pnpm install:android <adb serial>
 ```
 
-`scripts/install-android.sh` regenerates `android/` with `expo prebuild`, builds a Release APK, installs it as `com.hinadev.hinacode` over the previous build, and opens it. You need the Android SDK in `~/Library/Android/sdk` (or set `ANDROID_HOME`) and a JDK 17+ (Android Studio's bundled one, Homebrew's `openjdk@21`, or set `JAVA_HOME`).
+`scripts/install-android.sh` regenerates `android/` with `expo prebuild`, builds a Release APK, installs it as `com.hinadev.hinacode` over the previous build, and opens it.
 
 The phone reaches the desktop over plain `ws://`, which Android blocks in Release builds unless the manifest opts in. `expo-build-properties` in `app.json` sets `usesCleartextTraffic`, and the script refuses to install an APK without it, since that app would install fine and then stay on Reconnecting. The APK is signed with the debug key. If `adb install` reports a signature mismatch, uninstall the old app first, which also removes its pairing.
 
 The bundle runs on Hermes, which has none of the ES2023 array methods such as `toSorted`. `tsconfig.json` pins `lib` to ES2022 so `npx tsc --noEmit` catches them; `src/hermes.d.ts` adds back the two Hermes does have.
 
+### Install a standalone build on iOS
+
+Plug in a trusted iPhone or iPad with Developer Mode on and run:
+
+```sh
+pnpm install:ios            # or: pnpm install:ios <device UDID>
+```
+
+`scripts/install-ios.sh` regenerates `ios/` with `expo prebuild --clean`, builds a Release app with `xcodebuild`, installs it with `devicectl`, and opens it. Signing uses `appleTeamId` from `app.json`. Without the clean prebuild, an old `ios/` keeps stale icons and native settings even though the JavaScript is current.
+
 ## Pair
 
-1. On the desktop, open Settings, Remote, and turn on Allow remote control.
+1. On the desktop, open Settings, Connections, and turn on Allow remote control.
 2. In the app, tap Scan QR code and point it at the QR code, or paste the `hinacode://connect?host=...&port=...&token=...` URL (it repeats `host` for each address the app may try) into Pairing URL and tap Connect. Opening that URL on the phone also pairs, since the app registers the `hinacode` scheme.
 
 The phone retains the thread while reconnecting and queues actions for up to a minute offline. Supported desktops deduplicate retried mutations and let the terminal attach to its existing shell and retained output.

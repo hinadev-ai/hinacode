@@ -1,20 +1,31 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
 import { useNavigate } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
-import { type ComponentProps, type FormEvent, startTransition, useActionState, useState } from "react"
+import {
+  type ComponentProps,
+  type FormEvent,
+  startTransition,
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+} from "react"
 import { RiGithubFill } from "react-icons/ri"
-import type { Project } from "../../shared/domain.ts"
+import { separatorOf } from "../../shared/directoryPath.ts"
+import type { CloneProgress, Project } from "../../shared/domain.ts"
 import { type GitHubRepository, parseGitHubRepository, type RepositoryVisibility } from "../../shared/github.ts"
 import {
   callPromise,
   cloneProjectAtom,
   createProjectAtom,
   type EnvironmentId,
+  onPushEvent,
   projectsAtom,
   updateProjectAtom,
 } from "../lib/rpc.ts"
 import { environmentName, environmentOf, useClouds } from "../lib/environments.ts"
 import { m } from "../paraglide/messages.js"
+import { inBrowser } from "../lib/runtime.ts"
 import { Button } from "./ui/button.tsx"
 import {
   Dialog,
@@ -30,24 +41,37 @@ import { Input } from "./ui/input.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx"
 import { Switch } from "./ui/switch.tsx"
 import { Textarea } from "./ui/textarea.tsx"
-import { errorMessage } from "../lib/errorMessage.ts"
+import { errorMessage, toastError } from "../lib/errorMessage.ts"
 import { suggestProjectName } from "../lib/projectName.ts"
 import { startThread } from "../lib/startThread.ts"
-import { FolderOpenIcon } from "./icons/FolderOpenIcon.tsx"
+import { FolderOpenIcon } from "@hinacode/icons"
+import { PathInput } from "./PathInput.tsx"
 
 interface ProjectDialogProps {
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
   readonly project?: Project
   readonly environment?: EnvironmentId
+  readonly source?: { readonly rootPath: string; readonly name: string }
+  readonly onCreated?: (project: Project) => void
   readonly finalFocus?: ComponentProps<typeof DialogContent>["finalFocus"]
 }
 
-export function ProjectDialog({ open, onOpenChange, project, environment = null, finalFocus }: ProjectDialogProps) {
+export function ProjectDialog({
+  open,
+  onOpenChange,
+  project,
+  environment = null,
+  source,
+  onCreated,
+  finalFocus,
+}: ProjectDialogProps) {
   const navigate = useNavigate()
   const onSaved = (saved: Project) => {
     onOpenChange(false)
-    if (!project) void startThread(saved, navigate)
+    if (project) return
+    if (onCreated) onCreated(saved)
+    else void startThread(saved, navigate)
   }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -58,7 +82,7 @@ export function ProjectDialog({ open, onOpenChange, project, environment = null,
             {project ? m.project_edit_description({ project: project.name }) : m.project_dialog_description()}
           </DialogDescription>
         </DialogHeader>
-        <ProjectForm project={project} initialEnvironment={environment} onSaved={onSaved} />
+        <ProjectForm project={project} initialEnvironment={environment} source={source} onSaved={onSaved} />
       </DialogContent>
     </Dialog>
   )
@@ -77,25 +101,68 @@ function useDefaultCloneParent(environment: EnvironmentId) {
 interface ProjectFormProps {
   readonly project: Project | undefined
   readonly initialEnvironment: EnvironmentId
+  readonly source: ProjectDialogProps["source"]
   readonly onSaved: (project: Project) => void
 }
 
-function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps) {
+function ProjectForm({ project, initialEnvironment, source: initial, onSaved }: ProjectFormProps) {
   const createProject = useAtomSet(createProjectAtom, { mode: "promise" })
   const cloneProject = useAtomSet(cloneProjectAtom, { mode: "promise" })
   const updateProject = useAtomSet(updateProjectAtom, { mode: "promise" })
-  const [rootPath, setRootPath] = useState(project?.rootPath ?? "")
-  const [typedName, setTypedName] = useState<string | null>(project?.name ?? null)
+  const [rootPath, setRootPath] = useState(project?.rootPath ?? initial?.rootPath ?? "")
+  const [typedName, setTypedName] = useState<string | null>(project?.name ?? initial?.name ?? null)
   const name = typedName ?? suggestProjectName(rootPath)
   const [linearReview, setLinearReview] = useState(project?.linearReview ?? false)
   const repository = project ? null : parseGitHubRepository(rootPath)
   const [cloneTo, setCloneTo] = useState<string | null>(null)
   const [newRepository, setNewRepository] = useState<RepositoryVisibility | null>(null)
+  const clouds = useClouds()
   const [environment, setEnvironment] = useState<EnvironmentId>(() =>
-    project ? environmentOf(project) : initialEnvironment,
+    project ? environmentOf(project) : (initialEnvironment ?? (inBrowser() ? (clouds[0]?.id ?? null) : null)),
   )
-  const defaultCloneTo = `${useDefaultCloneParent(environment)}/${repository?.name ?? ""}`
-  const canBrowse = environment === null
+  const cloneParent = useDefaultCloneParent(environment)
+  const defaultCloneTo = `${cloneParent}${separatorOf(cloneParent)}${repository?.name ?? ""}`
+  const canBrowse = environment === null && !inBrowser()
+  const runningClone = useRef<{ readonly cloneId: string; readonly environment: EnvironmentId } | null>(null)
+  const [cloneProgress, setCloneProgress] = useState<CloneProgress | null>(null)
+
+  useEffect(
+    () =>
+      onPushEvent((event) => {
+        if (event.type === "project.cloneProgress" && event.cloneId === runningClone.current?.cloneId)
+          setCloneProgress(event.progress)
+      }),
+    [],
+  )
+
+  useEffect(
+    () => () => {
+      const running = runningClone.current
+      if (running)
+        callPromise("projects.cancelClone", { cloneId: running.cloneId }, { environment: running.environment }).catch(
+          toastError,
+        )
+    },
+    [],
+  )
+
+  const clone = async (source: GitHubRepository, setupScript: string | null) => {
+    const cloneId = crypto.randomUUID()
+    runningClone.current = { cloneId, environment }
+    setCloneProgress(null)
+    try {
+      return await cloneProject({
+        environment,
+        cloneId,
+        repository: source,
+        rootPath: (cloneTo ?? defaultCloneTo).trim(),
+        name: name.trim() || source.name,
+        setupScript,
+      })
+    } finally {
+      runningClone.current = null
+    }
+  }
 
   const [error, submit, isPending] = useActionState(async (_: string | null, form: FormData) => {
     const setupScript = String(form.get("setupScript") ?? "").trim() || null
@@ -108,14 +175,7 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
           setupScript,
           linearReview,
         })
-      if (repository)
-        return cloneProject({
-          environment,
-          repository,
-          rootPath: (cloneTo ?? defaultCloneTo).trim(),
-          name: name.trim() || repository.name,
-          setupScript,
-        })
+      if (repository) return clone(repository, setupScript)
       return createProject({
         environment,
         name: name.trim(),
@@ -148,20 +208,20 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
       <FieldGroup>
-        <WhereField editable={!project} value={environment} onChange={setEnvironment} />
+        <WhereField editable={!project} value={environment} canBrowse={canBrowse} onChange={setEnvironment} />
         <Field>
           <FieldLabel htmlFor="project-root">{project ? m.project_root_label() : m.project_source_label()}</FieldLabel>
           <div className="flex gap-2">
-            <Input
+            <PathInput
               id="project-root"
               required
               value={rootPath}
-              onChange={(event) => setRootPath(event.target.value)}
+              onChange={setRootPath}
+              environment={environment}
               placeholder={m.project_root_placeholder()}
-              spellCheck={false}
             />
             {canBrowse && (
-              <Button type="button" variant="outline" onClick={browse}>
+              <Button type="button" variant="outline" action={() => browse().catch(toastError)}>
                 <FolderOpenIcon aria-hidden />
                 {m.project_root_browse()}
               </Button>
@@ -174,6 +234,7 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
             repository={repository}
             value={cloneTo ?? defaultCloneTo}
             canBrowse={canBrowse}
+            environment={environment}
             onChange={setCloneTo}
           />
         )}
@@ -225,6 +286,7 @@ function ProjectForm({ project, initialEnvironment, onSaved }: ProjectFormProps)
           </Field>
         )}
       </FieldGroup>
+      {repository && isPending && <CloneProgressBar progress={cloneProgress} />}
       {error && <FieldError>{error}</FieldError>}
       <DialogFooter>
         <DialogClose render={<Button type="button" variant="outline" />}>{m.common_cancel()}</DialogClose>
@@ -288,6 +350,23 @@ function NewRepositoryField({
   )
 }
 
+function CloneProgressBar({ progress }: { progress: CloneProgress | null }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex justify-between text-xs text-muted-foreground tabular-nums">
+        <span className="truncate">{progress?.phase ?? m.project_clone_starting()}</span>
+        {progress && <span>{progress.percent}%</span>}
+      </div>
+      <progress
+        aria-label={m.project_clone_progress()}
+        max={100}
+        value={progress?.percent}
+        className="h-1.5 w-full appearance-none overflow-hidden rounded-full bg-muted [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:bg-primary [&::-webkit-progress-value]:transition-[width] [&::-webkit-progress-value]:duration-200"
+      />
+    </div>
+  )
+}
+
 function RepositoryNotice({ repository }: { repository: GitHubRepository }) {
   return (
     <FieldDescription className="flex items-center gap-1.5">
@@ -301,10 +380,11 @@ interface CloneTargetProps {
   readonly repository: GitHubRepository
   readonly value: string
   readonly canBrowse: boolean
+  readonly environment: EnvironmentId
   readonly onChange: (path: string) => void
 }
 
-function CloneTarget({ repository, value, canBrowse, onChange }: CloneTargetProps) {
+function CloneTarget({ repository, value, canBrowse, environment, onChange }: CloneTargetProps) {
   const browse = async () => {
     const parent = await callPromise("dialog.pickFolder", undefined)
     if (parent) onChange(`${parent}/${repository.name}`)
@@ -314,16 +394,16 @@ function CloneTarget({ repository, value, canBrowse, onChange }: CloneTargetProp
     <Field>
       <FieldLabel htmlFor="project-clone-to">{m.project_clone_to_label()}</FieldLabel>
       <div className="flex gap-2">
-        <Input
+        <PathInput
           id="project-clone-to"
           required
           value={value}
-          onChange={(event) => onChange(event.target.value)}
-          spellCheck={false}
+          onChange={onChange}
+          environment={environment}
           className="font-mono"
         />
         {canBrowse && (
-          <Button type="button" variant="outline" onClick={browse}>
+          <Button type="button" variant="outline" action={() => browse().catch(toastError)}>
             <FolderOpenIcon aria-hidden />
             {m.project_root_browse()}
           </Button>
@@ -338,10 +418,11 @@ const THIS_MACHINE = ""
 interface WhereFieldProps {
   readonly editable: boolean
   readonly value: EnvironmentId
+  readonly canBrowse: boolean
   readonly onChange: (environment: EnvironmentId) => void
 }
 
-function WhereField({ editable, value, onChange }: WhereFieldProps) {
+function WhereField({ editable, value, canBrowse, onChange }: WhereFieldProps) {
   const clouds = useClouds()
   if (clouds.length === 0 && value === null) return null
   if (!editable)
@@ -352,7 +433,7 @@ function WhereField({ editable, value, onChange }: WhereFieldProps) {
       </Field>
     )
   const items = [
-    { value: THIS_MACHINE, label: m.environment_this_machine() },
+    ...(inBrowser() ? [] : [{ value: THIS_MACHINE, label: m.environment_this_machine() }]),
     ...clouds.map((cloud) => ({ value: cloud.id, label: cloud.name })),
   ]
   return (
@@ -376,7 +457,7 @@ function WhereField({ editable, value, onChange }: WhereFieldProps) {
           </SelectContent>
         </Select>
       </div>
-      {value !== null && <FieldDescription>{m.project_where_cloud_hint()}</FieldDescription>}
+      {!canBrowse && <FieldDescription>{m.project_where_cloud_hint()}</FieldDescription>}
     </Field>
   )
 }

@@ -55,6 +55,7 @@ const run = (command: string, args: ReadonlyArray<string>, timeout = 60_000): Pr
     const child = spawn(command, args, {
       stdio: ["ignore", "pipe", "pipe"],
       timeout,
+      killSignal: "SIGKILL",
     })
     const stdout: Array<Buffer> = []
     let stderr = ""

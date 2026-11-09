@@ -17,7 +17,7 @@ import {
 import { toast } from "sonner"
 import { useTheme } from "../lib/appearance.ts"
 import { projectFileUrl } from "../../shared/channels.ts"
-import { errorMessage } from "../lib/errorMessage.ts"
+import { errorMessage, toastError } from "../lib/errorMessage.ts"
 import { type FilePreview, hasSource, previewOf } from "../lib/filePreview.ts"
 import { callPromise, fileContentAtom, onPushEvent, RpcError } from "../lib/rpc.ts"
 import { useClientSettings } from "../lib/settings.ts"
@@ -28,9 +28,9 @@ import { FilePath } from "./FilePatch.tsx"
 import { LineCommentCard, LineCommentForm } from "./LineComment.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { Button } from "./ui/button.tsx"
-import { CloseIcon } from "./icons/CloseIcon.tsx"
-import { CopyIcon } from "./icons/CopyIcon.tsx"
-import { FileDiffIcon } from "./icons/FileDiffIcon.tsx"
+import { CloseIcon, CopyIcon, FileDiffIcon } from "@hinacode/icons"
+import { resourceUrl, servedSandbox } from "../lib/resourceUrl.ts"
+import "../lib/codeThemes.ts"
 
 interface FileViewerProps {
   readonly threadId: string
@@ -142,7 +142,7 @@ function FilePreviewPane({ preview, root, path }: { preview: FilePreview; root: 
   )
 
   if (failed) return <Note text={m.viewer_preview_failed()} />
-  const src = `${projectFileUrl(root, path)}?v=${version}`
+  const src = resourceUrl(`${projectFileUrl(root, path)}?v=${version}`)
   const fail = () => setFailed(true)
 
   if (preview === "html") {
@@ -150,7 +150,7 @@ function FilePreviewPane({ preview, root, path }: { preview: FilePreview; root: 
       <iframe
         src={src}
         title={path}
-        sandbox="allow-scripts"
+        sandbox={servedSandbox()}
         referrerPolicy="no-referrer"
         className="min-h-0 flex-1 border-0 bg-white"
       />
@@ -229,7 +229,7 @@ function ViewerHeader({ path, onClose, onShowChanges, children }: ViewerHeaderPr
         size="icon-xs"
         aria-label={m.explorer_copy_path()}
         title={m.explorer_copy_path()}
-        onClick={() => void navigator.clipboard.writeText(path)}
+        action={() => navigator.clipboard.writeText(path).catch(toastError)}
       >
         <CopyIcon aria-hidden />
       </Button>
@@ -245,6 +245,8 @@ type CommentForm =
   | { readonly kind: "edit"; readonly commentId: string }
 
 type Annotation = { readonly kind: "comment"; readonly comment: LineComment } | Extract<CommentForm, { kind: "new" }>
+
+const MAX_HIGHLIGHT_CHARS = 256 * 1024
 
 // FIXME: the editor hides ANSI codes but still counts them, so the caret lands off and such a log stays read-only
 const isAnsiLog = (path: string, text: string) => path.endsWith(".log") && text.includes("\x1b[")
@@ -273,6 +275,7 @@ function FileContent({
   const [form, setForm] = useState<CommentForm | null>(null)
   const [saved, setSaved] = useState<{ over: string; text: string } | null>(null)
   const [isSaving, startSaving] = useTransition()
+  const [editingOver, setEditingOver] = useState<string | null>(null)
   const editorRef = useRef<Editor<"file", Annotation> | null>(null)
 
   useEffect(
@@ -309,9 +312,14 @@ function FileContent({
 
   const shown = base ?? (saved?.over === disk ? saved.text : disk)
   const ansi = isAnsiLog(path, shown)
+  const plain = shown.length > MAX_HIGHLIGHT_CHARS
   const editable = !truncated && !ansi
+  const editing = editable && (base !== undefined || editingOver === disk)
   const changedOnDisk = base !== undefined && base !== disk
-  const currentText = () => editorRef.current?.getText() ?? shown
+  const currentText = () => (editing ? editorRef.current?.getText() : undefined) ?? shown
+  const startEditing = () => {
+    if (editable && !editing) setEditingOver(disk)
+  }
 
   const save = (expected: string | null) => {
     const text = currentText()
@@ -427,6 +435,7 @@ function FileContent({
         )}
       </ViewerHeader>
       {truncated && <Note text={m.viewer_truncated()} />}
+      {plain && !truncated && <Note text={m.viewer_plain_text()} />}
       {changedOnDisk && (
         <div role="alert" className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-xs">
           <span className="min-w-0 flex-1">{m.viewer_changed_on_disk()}</span>
@@ -438,35 +447,37 @@ function FileContent({
           </Button>
         </div>
       )}
-      <Virtualizer className="min-h-0 flex-1 overflow-auto" contentClassName="text-xs">
-        <File
-          file={{ name: path, contents: shown, lang: ansi ? "ansi" : undefined }}
-          edit={editable}
-          editStateKey={JSON.stringify([root, path])}
-          editorOptions={{
-            onAttach: (editor) => {
-              editorRef.current = editor
-            },
-          }}
-          onEditChange={(event) => {
-            const edited = event.file.contents !== shown
-            if (edited !== (base !== undefined)) setUnsaved(root, path, edited ? shown : null)
-          }}
-          lineAnnotations={annotations}
-          selectedLines={form?.kind === "new" ? { start: form.startLine, end: form.endLine } : null}
-          renderAnnotation={renderAnnotation}
-          options={{
-            theme: theme.codeTheme,
-            themeType: theme.scheme,
-            overflow: "scroll",
-            disableFileHeader: true,
-            enableGutterUtility: true,
-            onGutterUtilityClick: ({ start, end }) => {
-              setForm({ kind: "new", startLine: Math.min(start, end), endLine: Math.max(start, end) })
-            },
-          }}
-        />
-      </Virtualizer>
+      <div onPointerEnter={startEditing} onFocus={startEditing} className="flex min-h-0 flex-1 flex-col">
+        <Virtualizer className="min-h-0 flex-1 overflow-auto" contentClassName="text-xs">
+          <File
+            file={{ name: path, contents: shown, lang: ansi ? "ansi" : plain ? "text" : undefined }}
+            edit={editing}
+            editStateKey={JSON.stringify([root, path])}
+            editorOptions={{
+              onAttach: (editor) => {
+                editorRef.current = editor
+              },
+            }}
+            onEditChange={(event) => {
+              const edited = event.file.contents !== shown
+              if (edited !== (base !== undefined)) setUnsaved(root, path, edited ? shown : null)
+            }}
+            lineAnnotations={annotations}
+            selectedLines={form?.kind === "new" ? { start: form.startLine, end: form.endLine } : null}
+            renderAnnotation={renderAnnotation}
+            options={{
+              theme: theme.codeTheme,
+              themeType: theme.scheme,
+              overflow: "scroll",
+              disableFileHeader: true,
+              enableGutterUtility: true,
+              onGutterUtilityClick: ({ start, end }) => {
+                setForm({ kind: "new", startLine: Math.min(start, end), endLine: Math.max(start, end) })
+              },
+            }}
+          />
+        </Virtualizer>
+      </div>
     </div>
   )
 }

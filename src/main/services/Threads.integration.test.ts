@@ -1,14 +1,16 @@
 import { randomUUID } from "node:crypto"
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
-import { describe, expect, it } from "@effect/vitest"
-import { Effect, Layer } from "effect"
+import { afterAll, describe, expect, it } from "@effect/vitest"
+import { Deferred, Effect, Fiber, type FileSystem, Layer } from "effect"
 import { SqlClient } from "effect/sql"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
 import * as AgentAccounts from "./AgentAccounts.ts"
+import type { PushEvent } from "../../shared/contract.ts"
+import type { Thread } from "../../shared/domain.ts"
 import { Events } from "./Events.ts"
 import * as Git from "./Git.ts"
 import * as GitHub from "./GitHub.ts"
@@ -21,23 +23,70 @@ import { makeActiveWorkspace } from "./workspace.ts"
 import * as Worktrees from "./Worktrees.ts"
 import * as Scratch from "./Scratch.ts"
 
-const threadsLayer = threadsLayerBase.pipe(
-  Layer.provideMerge(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")))),
-  Layer.provideMerge(Terminals.layer),
-  Layer.provideMerge(Worktrees.layer),
-  Layer.provideMerge(Projects.layer),
-  Layer.provideMerge(AgentAccounts.layer),
-  Layer.provideMerge(Settings.layer(mkdtempSync(join(tmpdir(), "kk-threads-settings-")))),
-  Layer.provide(
-    Layer.mergeAll(Git.layer, GitHub.layer).pipe(
-      Layer.provideMerge(Layer.succeed(Events, { publish: () => Effect.void })),
-    ),
-  ),
-  Layer.provideMerge(Db.layer(":memory:")),
-  Layer.provide(NodeServices.layer),
-)
+const makeThreadsLayer = (
+  scratch: Layer.Layer<Scratch.Scratch, never, FileSystem.FileSystem>,
+  publish: (typeof Events.Service)["publish"] = () => Effect.void,
+) =>
+  threadsLayerBase.pipe(
+    Layer.provideMerge(scratch),
+    Layer.provideMerge(Terminals.layer),
+    Layer.provideMerge(Worktrees.layer),
+    Layer.provideMerge(Projects.layer),
+    Layer.provideMerge(AgentAccounts.layer),
+    Layer.provideMerge(Settings.layer(mkdtempSync(join(tmpdir(), "kk-threads-settings-")))),
+    Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer).pipe(Layer.provideMerge(Layer.succeed(Events, { publish })))),
+    Layer.provideMerge(Db.layer(":memory:")),
+    Layer.provideMerge(NodeServices.layer),
+  )
+
+const tmpRoot = mkdtempSync(join(tmpdir(), "kk-tmp-root-"))
+afterAll(() => rmSync(tmpRoot, { recursive: true, force: true }))
+const threadsLayer = makeThreadsLayer(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")), { tmpRoot }))
+
+const sidechatRepos = mkdtempSync(join(tmpdir(), "kk-sidechat-"))
+afterAll(() => rmSync(sidechatRepos, { recursive: true, force: true }))
 
 describe("Threads", () => {
+  it.effect("settling keeps the workspace and clears the pin and the snooze", () =>
+    Effect.gen(function* () {
+      const { threadId } = yield* seedThread({ rootPath: "/settle-keeps" })
+      yield* Threads.use((threads) => threads.update({ id: threadId, pinned: true }))
+      const settled = yield* Threads.use((threads) => threads.settle(threadId))
+      expect(settled.status).toBe("idle")
+      expect(settled.settledAt).not.toBeNull()
+      expect(settled.pinnedAt).toBeNull()
+      expect(settled.snoozedUntil).toBeNull()
+    }).pipe(Effect.provide(threadsLayer)),
+  )
+
+  it.effect("refuses to settle a busy thread", () =>
+    Effect.gen(function* () {
+      const { threadId } = yield* seedThread({ rootPath: "/settle-busy" })
+      yield* Threads.use((threads) => threads.update({ id: threadId, status: "running" }))
+      const error = yield* Threads.use((threads) => threads.settle(threadId)).pipe(Effect.flip)
+      expect(error._tag).toBe("ThreadBusyError")
+    }).pipe(Effect.provide(threadsLayer)),
+  )
+
+  it.effect("a new turn and reopening both end the settled state", () =>
+    Effect.gen(function* () {
+      const { threadId } = yield* seedThread({ rootPath: "/settle-return" })
+      yield* Threads.use((threads) => threads.settle(threadId))
+      const running = yield* Threads.use((threads) => threads.update({ id: threadId, status: "running" }))
+      expect(running.settledAt).toBeNull()
+
+      yield* Threads.use((threads) => threads.update({ id: threadId, status: "idle" }))
+      const settled = yield* Threads.use((threads) => threads.settle(threadId))
+      const before = yield* Threads.use((threads) => threads.workStartedAt(threadId))
+      const reopened = yield* Threads.use((threads) => threads.unsettle(threadId))
+      expect(reopened.settledAt).toBeNull()
+      expect(Date.parse(reopened.updatedAt)).toBeGreaterThanOrEqual(Date.parse(settled.updatedAt))
+      expect(
+        Date.parse((yield* Threads.use((threads) => threads.workStartedAt(threadId))) ?? ""),
+      ).toBeGreaterThanOrEqual(Date.parse(before ?? ""))
+    }).pipe(Effect.provide(threadsLayer)),
+  )
+
   it.effect("forks a thread with the transcript up to the chosen turn", () =>
     Effect.gen(function* () {
       const threads = yield* Threads
@@ -73,6 +122,46 @@ describe("Threads", () => {
       expect(copied.some((copy) => turns.some((turn) => turn.id === copy.id))).toBe(false)
       expect((yield* messages.list(threadId)).length).toBe(4)
     }).pipe(Effect.provide(messagesLayer.pipe(Layer.provideMerge(threadsLayer)))),
+  )
+
+  it.effect("forks at this agent's latest turn when no message is chosen", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const messages = yield* Messages
+      const { threadId } = yield* seedThread({ rootPath: "/repo" })
+      const reply = (createdAt: string, checkpoint: string, owner?: { provider: "codex"; accountId: null }) => ({
+        id: randomUUID(),
+        threadId,
+        role: "assistant" as const,
+        parts: [{ type: "text" as const, text: checkpoint }],
+        createdAt,
+        completedAt: createdAt,
+        usage: null,
+        forkPoint: { sessionId: "session-1", checkpoint, ...(owner && { owner }) },
+      })
+      const turns = [
+        reply("2026-01-01T00:00:01.000Z", "turn-1"),
+        reply("2026-01-01T00:00:02.000Z", "turn-2"),
+        reply("2026-01-01T00:00:03.000Z", "codex-turn", { provider: "codex", accountId: null }),
+      ]
+      yield* Effect.forEach(turns, messages.insert, { discard: true })
+
+      const fork = yield* threads.fork(threadId)
+
+      expect(fork.forkedFrom).toStrictEqual({ sessionId: "session-1", checkpoint: "turn-2" })
+      expect((yield* messages.list(fork.id)).map((copy) => copy.parts)).toStrictEqual(
+        turns.slice(0, 2).map((turn) => turn.parts),
+      )
+    }).pipe(Effect.provide(messagesLayer.pipe(Layer.provideMerge(threadsLayer)))),
+  )
+
+  it.effect("refuses to fork a thread with no finished turn", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const { threadId } = yield* seedThread({ rootPath: "/repo" })
+      const error = yield* threads.fork(threadId).pipe(Effect.flip)
+      expect(error._tag).toBe("NotFoundError")
+    }).pipe(Effect.provide(threadsLayer)),
   )
 
   it.effect("refuses to fork at a message that ended no turn", () =>
@@ -118,9 +207,13 @@ describe("Threads", () => {
     Effect.gen(function* () {
       const threads = yield* Threads
       const activeWorkspace = yield* makeActiveWorkspace
+      const repo = join(sidechatRepos, "repo")
+      const feature = join(sidechatRepos, "repo-feature")
+      mkdirSync(repo)
+      mkdirSync(feature)
       const { threadId, worktreeId } = yield* seedThread({
-        rootPath: "/repo",
-        worktree: { path: "/repo-feature", baseRef: "main", status: "ready" },
+        rootPath: repo,
+        worktree: { path: feature, baseRef: "main", status: "ready" },
       })
 
       const [side, again] = yield* Effect.all([threads.sidechat(threadId), threads.sidechat(threadId)], {
@@ -129,7 +222,7 @@ describe("Threads", () => {
 
       expect(again.id).toBe(side.id)
       expect(side).toMatchObject({ sideOf: threadId, worktreeId, accessMode: "supervised", forkedFrom: null })
-      expect((yield* activeWorkspace(side.id)).cwd).toBe("/repo-feature")
+      expect((yield* activeWorkspace(side.id)).cwd).toBe(feature)
       expect((yield* threads.list).map((thread) => thread.id)).toStrictEqual([threadId])
 
       yield* threads.remove(threadId)
@@ -214,18 +307,36 @@ describe("Threads", () => {
     }).pipe(Effect.provide(threadsLayer)),
   )
 
-  it.effect("starts chats in conversation mode", () =>
+  it.effect("nests a thread one level deep under the thread that created it", () =>
     Effect.gen(function* () {
       const threads = yield* Threads
-      const chats = yield* Projects.Projects.use((projects) =>
-        projects.ensureChats(mkdtempSync(join(tmpdir(), "kk-chats-"))),
-      )
-      const { projectId } = yield* seedThread({ rootPath: "/repo" })
-      const create = (id: string) => threads.create({ projectId: id, title: "t", provider: "claude", model: "m" })
-      expect((yield* create(chats.id)).userSkills).toBe(false)
-      expect((yield* create(projectId)).userSkills).toBe(true)
+      const { projectId, threadId: parentId } = yield* seedThread({ rootPath: "/repo" })
+      const create = (parent?: string) =>
+        threads.create({ projectId, title: "t", provider: "claude", model: "m", parentId: parent })
+      const child = yield* create(parentId)
+      const grandchild = yield* create(child.id)
+      expect(child.parentId).toBe(parentId)
+      expect(grandchild.parentId).toBe(parentId)
+      expect((yield* create()).parentId).toBeNull()
     }).pipe(Effect.provide(threadsLayer)),
   )
+
+  it.effect("archiving a parent turns its children into top-level threads for good", () => {
+    const published: Array<PushEvent> = []
+    const recording = makeThreadsLayer(Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-"))), (event) =>
+      Effect.sync(() => void published.push(event)),
+    )
+    return Effect.gen(function* () {
+      const threads = yield* Threads
+      const { projectId, threadId: parentId } = yield* seedThread({ rootPath: "/repo" })
+      const child = yield* threads.create({ projectId, title: "t", provider: "claude", model: "m", parentId })
+      yield* threads.archive(parentId)
+      expect((yield* threads.get(child.id)).parentId).toBeNull()
+      expect(published).toContainEqual({ type: "thread.updated", thread: { ...child, parentId: null } })
+      yield* threads.unarchive(parentId)
+      expect((yield* threads.get(child.id)).parentId).toBeNull()
+    }).pipe(Effect.provide(recording))
+  })
 
   it.effect("gives each chat a folder of its own that lives until the chat is archived", () =>
     Effect.gen(function* () {
@@ -269,6 +380,99 @@ describe("Threads", () => {
       expect(existsSync(deletedFolder)).toBe(false)
       yield* threads.remove(archived.id)
     }).pipe(Effect.provide(threadsLayer)),
+  )
+
+  it.effect("archiveIf leaves a thread and its scratch folder alone once the thread no longer qualifies", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const scratch = yield* Scratch.Scratch
+      const thread = yield* threads.get((yield* seedThread({ rootPath: "/repo" })).threadId)
+      const folder = yield* scratch.ensure(thread)
+      yield* threads.update({ id: thread.id, pinned: true })
+
+      const archived = yield* threads.archiveIf(thread.id, (latest) => Effect.succeed(latest.pinnedAt === null))
+
+      expect(archived._tag).toBe("None")
+      expect((yield* threads.get(thread.id)).status).toBe("idle")
+      expect(existsSync(folder)).toBe(true)
+      yield* threads.remove(thread.id)
+    }).pipe(Effect.provide(threadsLayer)),
+  )
+
+  for (const [name, act] of [
+    ["pin", (threads: Threads["Service"], id: string) => threads.update({ id, pinned: true })],
+    ["reopen", (threads: Threads["Service"], id: string) => threads.unsettle(id)],
+  ] as const) {
+    it.effect(`a ${name} waits for an archiveIf that is still checking the thread`, () =>
+      Effect.gen(function* () {
+        const threads = yield* Threads
+        const { threadId } = yield* seedThread({ rootPath: "/repo" })
+        yield* threads.settle(threadId)
+        const checking = yield* Deferred.make<void>()
+        const checked = yield* Deferred.make<void>()
+        const stillSettled = (latest: Thread) =>
+          Deferred.succeed(checking, undefined).pipe(
+            Effect.andThen(Deferred.await(checked)),
+            Effect.as(latest.pinnedAt === null && latest.settledAt !== null),
+          )
+
+        const archival = yield* threads.archiveIf(threadId, stillSettled).pipe(Effect.forkChild)
+        yield* Deferred.await(checking)
+        const acted = yield* act(threads, threadId).pipe(Effect.forkChild({ startImmediately: true }))
+        yield* Deferred.succeed(checked, undefined)
+        yield* Fiber.join(archival)
+        const actedOn = yield* Fiber.join(acted)
+
+        expect(yield* threads.get(threadId)).toStrictEqual(actedOn)
+        yield* threads.remove(threadId)
+      }).pipe(Effect.provide(threadsLayer)),
+    )
+  }
+
+  it.effect("deletes a thread's tmp folder when it is archived or deleted, and tolerates a missing one", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const scratch = yield* Scratch.Scratch
+      const archived = (yield* seedThread({ rootPath: "/repo" })).threadId
+      const deleted = (yield* seedThread({ rootPath: "/other" })).threadId
+      const neverSpawned = (yield* seedThread({ rootPath: "/third" })).threadId
+      const [archivedTmp, deletedTmp] = [
+        String(yield* scratch.ensureTmp(archived)),
+        String(yield* scratch.ensureTmp(deleted)),
+      ]
+      writeFileSync(join(archivedTmp, "test.db"), "")
+
+      yield* threads.archive(archived)
+      expect(existsSync(archivedTmp)).toBe(false)
+      expect(existsSync(deletedTmp)).toBe(true)
+
+      yield* threads.remove(deleted)
+      expect(existsSync(deletedTmp)).toBe(false)
+      yield* threads.archive(neverSpawned)
+      yield* threads.remove(archived)
+      expect(yield* scratch.ensureTmp(archived)).toBe(archivedTmp)
+    }).pipe(Effect.provide(threadsLayer)),
+  )
+
+  it.live("archives a thread without waiting for its scratch folder's files to be deleted", () =>
+    Effect.gen(function* () {
+      const threads = yield* Threads
+      const scratch = yield* Scratch.Scratch
+      const thread = yield* threads.get((yield* seedThread({ rootPath: "/repo" })).threadId)
+      const folder = yield* scratch.ensure(thread)
+      writeFileSync(join(folder, "experiment.py"), "print(1)")
+
+      yield* threads.archive(thread.id).pipe(Effect.timeout("5 seconds"))
+
+      const fresh = yield* scratch.ensure(thread)
+      expect(existsSync(join(fresh, "experiment.py"))).toBe(false)
+    }).pipe(
+      Effect.provide(
+        makeThreadsLayer(
+          Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-")), { deleteFolder: () => Effect.never }),
+        ),
+      ),
+    ),
   )
 
   it.effect("a draft takes the next place in its project when it is sent", () =>

@@ -13,7 +13,7 @@ import { FieldError } from "../ui/field.tsx"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table.tsx"
 import { SettingsPageAction, SettingsSection, settingsSurfaceClass } from "./SettingsSection.tsx"
 import { errorMessage } from "../../lib/errorMessage.ts"
-import { WarningIcon } from "../icons/WarningIcon.tsx"
+import { WarningIcon } from "@hinacode/icons"
 
 const whenLabels: Record<When, () => string> = {
   terminalFocus: m.settings_keybindings_when_terminal,
@@ -77,7 +77,7 @@ export function KeybindingSettings() {
           variant="outline"
           size="sm"
           disabled={Object.keys(overrides).length === 0}
-          onClick={() => void saveOverrides({})}
+          action={() => saveOverrides({})}
         >
           {m.settings_keybindings_reset_all()}
         </Button>

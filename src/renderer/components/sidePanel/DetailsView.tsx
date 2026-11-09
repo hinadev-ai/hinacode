@@ -14,6 +14,8 @@ import {
   type Worktree,
 } from "../../../shared/domain.ts"
 import { environmentName, useClouds, usePullRequestHref, useThreadEnvironment } from "../../lib/environments.ts"
+import { toastError } from "../../lib/errorMessage.ts"
+import { inBrowser } from "../../lib/runtime.ts"
 import {
   branchPullRequestAtom,
   callPromise,
@@ -30,9 +32,7 @@ import { Badge } from "../ui/badge.tsx"
 import { Button } from "../ui/button.tsx"
 import { ScrollArea } from "../ui/scroll-area.tsx"
 import { Section } from "./Section.tsx"
-import { BranchIcon } from "../icons/BranchIcon.tsx"
-import { CloudIcon } from "../icons/CloudIcon.tsx"
-import { FolderOpenIcon } from "../icons/FolderOpenIcon.tsx"
+import { BranchIcon, CloudIcon, FolderOpenIcon } from "@hinacode/icons"
 
 export function DetailsView({ thread }: { thread: Thread }) {
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
@@ -71,13 +71,14 @@ export function DetailsView({ thread }: { thread: Thread }) {
 }
 
 function RevealButton({ path, disabled }: { path: string; disabled?: boolean }) {
+  if (inBrowser()) return null
   return (
     <Button
       variant="outline"
       size="xs"
       className="self-start"
       disabled={disabled}
-      onClick={() => void callPromise("shell.reveal", { path })}
+      action={() => callPromise("shell.reveal", { path }).catch(toastError)}
     >
       <FolderOpenIcon aria-hidden />
       {m.panel_reveal()}

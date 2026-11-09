@@ -1,5 +1,5 @@
 import { RiClaudeFill, RiMetaFill, RiOpenaiFill } from "react-icons/ri"
-import { CheckIcon, XCircleFillIcon } from "../icons.ts"
+import { CheckIcon, MagpieLogoIcon, OpencodeLogoIcon, XCircleFillIcon } from "../icons.ts"
 import type { ProviderId } from "../../../src/shared/agent.ts"
 import type { VignetteCopy } from "./Vignette.tsx"
 
@@ -9,6 +9,8 @@ const providers = {
   claude: { Icon: RiClaudeFill, color: "text-provider-claude", label: "provider_claude" },
   codex: { Icon: RiOpenaiFill, color: "text-ink", label: "provider_codex" },
   muse: { Icon: RiMetaFill, color: "text-provider-muse", label: "provider_muse" },
+  opencode: { Icon: OpencodeLogoIcon, color: "text-ink", label: "provider_opencode" },
+  magpie: { Icon: MagpieLogoIcon, color: "text-ink", label: "provider_magpie" },
 } as const
 
 export function providerName(copy: VignetteCopy, provider: ProviderId) {

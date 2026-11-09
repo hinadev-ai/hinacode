@@ -29,6 +29,7 @@ import {
   type WorktreeCheckout,
   type WorktreeStatus,
 } from "../../shared/domain.ts"
+import { scriptShell } from "../scriptShell.ts"
 import { nowIso } from "./clock.ts"
 import {
   NotFoundError,
@@ -39,7 +40,7 @@ import {
   WorktreeTakenError,
 } from "./errors.ts"
 import { Events } from "./Events.ts"
-import { type CommandError, Git } from "./Git.ts"
+import { type CommandError, Git, LONG_TIMEOUT } from "./Git.ts"
 import { GitHub, type GitHubError, type PullRequestHead } from "./GitHub.ts"
 import { Projects } from "./Projects.ts"
 import { Settings } from "./Settings.ts"
@@ -58,6 +59,8 @@ export type DeleteBranch = "keep" | "ifMerged" | "force"
 export const SETUP_TIMEOUT: Duration.Input = "60 seconds"
 export const FETCH_INTERVAL: Duration.Input = "5 minutes"
 const SETUP_OUTPUT_DRAIN_TIMEOUT: Duration.Input = "1 second"
+const GIT_BASH_MISSING =
+  "Setup scripts on Windows run in Git Bash, which comes with Git for Windows. Install it from https://git-scm.com, then try again."
 
 type Failure = PersistenceError | NotFoundError | CommandError
 
@@ -168,8 +171,13 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
   })
   const findUsers = SqlSchema.findAll({
     Request: Schema.String,
-    Result: Schema.Struct({ id: Schema.String, status: ThreadStatus, sideOf: Schema.NullOr(Schema.String) }),
-    execute: (worktreeId) => sql`SELECT id, status, side_of FROM thread WHERE worktree_id = ${worktreeId}`,
+    Result: Schema.Struct({
+      id: Schema.String,
+      status: ThreadStatus,
+      sideOf: Schema.NullOr(Schema.String),
+      settledAt: Schema.NullOr(Schema.String),
+    }),
+    execute: (worktreeId) => sql`SELECT id, status, side_of, settled_at FROM thread WHERE worktree_id = ${worktreeId}`,
   })
 
   yield* sql`
@@ -229,8 +237,13 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
 
   const runSetupScript = (worktree: Worktree, project: Project, script: string) =>
     Effect.gen(function* () {
+      const shell = yield* Effect.promise(scriptShell)
+      if (shell === undefined) {
+        yield* appendLog(worktree.id, `${GIT_BASH_MISSING}\n`)
+        return -1
+      }
       const handle = yield* spawner.spawn(
-        ChildProcess.make(process.env["SHELL"] || "/bin/sh", ["-lc", script], {
+        ChildProcess.make(shell, ["-lc", script], {
           cwd: worktree.path,
           env: {
             HINACODE_ROOT_PATH: project.rootPath,
@@ -310,14 +323,23 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
 
   const removals = new Map<string, Fiber.Fiber<void>>()
 
-  const findOrphan = (rootPath: string, checkouts: string, branch: string) =>
+  const findCheckout = (rootPath: string, checkouts: string, branch: string) =>
     Effect.gen(function* () {
-      const checkout = (yield* registeredCheckouts(rootPath)).find(
-        ({ path, ref }) => ref === `refs/heads/${branch}` && dirname(path) === checkouts,
-      )
-      if (!checkout) return Option.none()
+      const checkout = (yield* registeredCheckouts(rootPath)).find(({ ref }) => ref === `refs/heads/${branch}`)
+      if (!checkout) return { _tag: "free" } as const
+      const orphan = dirname(checkout.path) === checkouts
       const recorded = yield* findByPath(checkout.path).pipe(Effect.mapError(persistence("worktrees.create")))
-      return Option.isNone(recorded) ? Option.some(checkout.path) : Option.none()
+      return orphan && Option.isNone(recorded)
+        ? ({ _tag: "orphan", path: checkout.path } as const)
+        : ({ _tag: "taken" } as const)
+    })
+
+  const worktreeAddArgs = (rootPath: string, path: string, { branch, baseRef, startPoint }: CreateWorktree) =>
+    Effect.gen(function* () {
+      if (yield* branchExists(rootPath, branch)) return ["worktree", "add", path, branch]
+      if (startPoint !== undefined) return ["worktree", "add", "-b", branch, path, startPoint]
+      // FIXME: forking from `origin/main` makes it the upstream, and a plain `git push` then fails
+      return ["worktree", "add", "--no-track", "-b", branch, path, baseRef]
     })
 
   const create = (input: CreateWorktree) =>
@@ -337,18 +359,16 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
       const { worktreeRoot } = yield* settings.get
       const checkouts = checkoutsDir(rootPath, worktreeRoot === null ? null : yield* resolve(worktreeRoot))
       const id = randomUUID()
-      const orphan = yield* findOrphan(rootPath, checkouts, input.branch)
-      const path = Option.getOrElse(orphan, () => checkoutPath(checkouts, input.branch, id))
-      if (Option.isNone(orphan)) {
-        const args = (yield* branchExists(rootPath, input.branch))
-          ? ["worktree", "add", path, input.branch]
-          : input.startPoint === undefined
-            ? // FIXME: forking from `origin/main` makes it the upstream, and a plain `git push` then fails
-              ["worktree", "add", "--no-track", "-b", input.branch, path, input.baseRef]
-            : ["worktree", "add", "-b", input.branch, path, input.startPoint]
-        yield* git.run(rootPath, args)
+      const checkout = yield* findCheckout(rootPath, checkouts, input.branch)
+      const branch = checkout._tag === "taken" ? `${input.branch}-${id.slice(0, 5)}` : input.branch
+      const path = checkout._tag === "orphan" ? checkout.path : checkoutPath(checkouts, branch, id)
+      if (checkout._tag !== "orphan") {
+        const startPoint = checkout._tag === "taken" ? input.branch : input.startPoint
+        yield* git.run(rootPath, yield* worktreeAddArgs(rootPath, path, { ...input, branch, startPoint }), {
+          timeout: LONG_TIMEOUT,
+        })
         if (input.workingTree !== undefined) {
-          yield* git.run(path, ["read-tree", "-m", "-u", "HEAD", input.workingTree])
+          yield* git.run(path, ["read-tree", "-m", "-u", "HEAD", input.workingTree], { timeout: LONG_TIMEOUT })
           yield* git.run(path, ["reset", "--quiet"])
         }
       }
@@ -357,7 +377,7 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
         id,
         projectId: project.id,
         path: yield* resolve(path),
-        branch: input.branch,
+        branch,
         baseRef: input.baseRef,
         status: "preparing",
         setupLog: "",
@@ -391,7 +411,7 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
       if (users.some((thread) => thread.id !== owner && isThreadBusy(thread.status))) {
         return yield* new RootBusyError({ path: rootPath })
       }
-      yield* git.run(rootPath, ["switch", ...args])
+      yield* git.run(rootPath, ["switch", ...args], { timeout: LONG_TIMEOUT })
     }).pipe(exclusive)
 
   const checkout = (projectId: string, ref: string, owner: string) =>
@@ -431,7 +451,8 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
         return yield* new WorktreeBusyError({ path: worktree.path, reason: "turn" })
       }
       const othersOpen = users.some(
-        (thread) => thread.id !== owner && thread.sideOf !== owner && thread.status !== "archived",
+        (thread) =>
+          thread.id !== owner && thread.sideOf !== owner && thread.status !== "archived" && thread.settledAt === null,
       )
       if (owner !== undefined && othersOpen) {
         return yield* new WorktreeBusyError({ path: worktree.path, reason: "shared" })
@@ -476,7 +497,7 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
     Effect.gen(function* () {
       if ((yield* registeredCheckouts(rootPath)).some((registered) => registered.path === worktree.path)) {
         // FIXME: only a second `--force` removes a locked checkout
-        yield* git.run(rootPath, ["worktree", "remove", "--force", "--force", worktree.path])
+        yield* git.run(rootPath, ["worktree", "remove", "--force", "--force", worktree.path], { timeout: LONG_TIMEOUT })
       }
       yield* git.run(rootPath, ["worktree", "prune"])
 

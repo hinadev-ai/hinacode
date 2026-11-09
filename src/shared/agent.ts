@@ -1,8 +1,9 @@
 import { Predicate, Schema } from "effect"
+import type { ArtifactKind } from "./artifact.ts"
 import type { AccessMode, Attachment } from "./domain.ts"
 import { PlanLimits, UsageLimit } from "./limits.ts"
 
-export const ProviderId = Schema.Literals(["claude", "codex", "muse"])
+export const ProviderId = Schema.Literals(["claude", "codex", "muse", "opencode", "magpie"])
 export type ProviderId = typeof ProviderId.Type
 
 export const AccountProviderId = Schema.Literals(["claude", "codex"])
@@ -59,6 +60,36 @@ export interface AccountHome {
   readonly dir: string
   readonly binary: string
 }
+
+export const configDirVariable = { claude: "CLAUDE_CONFIG_DIR", codex: "CODEX_HOME" } satisfies Record<
+  AccountProviderId,
+  string
+>
+
+const loginArguments = { claude: ["auth", "login"], codex: ["login"] } satisfies Record<
+  AccountProviderId,
+  ReadonlyArray<string>
+>
+
+const shellQuote = (value: string) => (/^[\w./~-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`)
+
+export const loginCommand = (provider: AccountProviderId, home: AccountHome | null) =>
+  [
+    ...(home === null
+      ? [provider]
+      : [`${configDirVariable[provider]}=${shellQuote(home.dir)}`, shellQuote(home.binary)]),
+    ...loginArguments[provider],
+  ].join(" ")
+
+const ownModels = {
+  claude: /^(claude-|opus|sonnet|haiku|fable|default)/,
+  codex: /^(gpt-|o\d|codex-)/,
+} satisfies Record<AccountProviderId, RegExp>
+
+export const signedOutFailure = (provider: AccountProviderId, home: AccountHome | null, model: string) => ({
+  signedOut: true,
+  ...(ownModels[provider].test(model) && { loginCommand: loginCommand(provider, home) }),
+})
 
 export const CLAUDE_EFFORT_LEVELS: ReadonlyArray<string> = ["low", "medium", "high", "xhigh", "max"]
 
@@ -282,7 +313,13 @@ export const AgentEvent = Schema.Union([
     usage: Schema.optional(TokenUsage),
     forkPoint: Schema.optional(ForkPoint),
   }),
-  Schema.Struct({ type: Schema.Literal("turn_failed"), message: Schema.String }),
+  Schema.Struct({
+    type: Schema.Literal("turn_failed"),
+    message: Schema.String,
+    stopped: Schema.optional(Schema.Boolean),
+    signedOut: Schema.optional(Schema.Boolean),
+    loginCommand: Schema.optional(Schema.String),
+  }),
   Schema.Struct({ type: Schema.Literal("turn_limited"), limit: UsageLimit }),
 ])
 export type AgentEvent = typeof AgentEvent.Type
@@ -292,11 +329,11 @@ export interface RunTurnInput {
   readonly prompt: string
   readonly attachments: ReadonlyArray<Attachment>
   readonly cwd: string
+  readonly tmpDirectory: string | null
   readonly model: string
   readonly effort: string | null
   readonly fastMode: boolean
   readonly autoCompactTokens: number | null
-  readonly userSkills: boolean
   readonly accessMode: AccessMode
   readonly resumeSessionId: string | null
   readonly forkAt: string | null
@@ -312,7 +349,64 @@ export interface McpConnection {
 
 export const RUN_AGENT_TOOL = "run_agent"
 
+export const WAIT_AGENT_TOOL = "wait_agent"
+
 export const isRunAgentTool = (name: string) => name === RUN_AGENT_TOOL || name === `mcp__hinacode__${RUN_AGENT_TOOL}`
+
+export const PUBLISH_ARTIFACT_TOOL = "publish_artifact"
+
+export const PUBLISH_DOCUMENT_TOOL = "publish_document"
+
+export const PUBLISH_WHITEBOARD_TOOL = "publish_whiteboard"
+
+const kindOfPublishTool = new Map<string, ArtifactKind>(
+  (
+    [
+      [PUBLISH_ARTIFACT_TOOL, "page"],
+      [PUBLISH_DOCUMENT_TOOL, "document"],
+      [PUBLISH_WHITEBOARD_TOOL, "whiteboard"],
+    ] as const
+  ).flatMap(([name, kind]) => [
+    [name, kind],
+    [`mcp__hinacode__${name}`, kind],
+  ]),
+)
+
+export const publishedKind = (name: string) => kindOfPublishTool.get(name) ?? null
+
+export const isPublishArtifactTool = (name: string) => kindOfPublishTool.has(name)
+
+export const isPublishDocumentTool = (name: string) => publishedKind(name) === "document"
+
+export const publishedArtifact = (result: string): { id: string; version: number } | null => {
+  const [, id, version] =
+    /^Published (?:artifact|document|whiteboard) ([a-z0-9][a-z0-9-]*) version (\d+)/.exec(result) ?? []
+  return id === undefined ? null : { id, version: Number(version) }
+}
+
+export const publishedArtifactId = (result: string) => publishedArtifact(result)?.id ?? null
+
+export const publishedTitle = (result: string) =>
+  /^Published (?:artifact|document|whiteboard) [a-z0-9][a-z0-9-]* version \d+: "(.*)"\./.exec(result)?.[1] ?? null
+
+const textOfBlock = (block: unknown) =>
+  typeof block === "object" && block !== null && Reflect.get(block, "type") === "text"
+    ? String(Reflect.get(block, "text"))
+    : ""
+
+export const outputText = (output: unknown): string =>
+  typeof output === "string"
+    ? output
+    : Array.isArray(output)
+      ? output.map(textOfBlock).filter(Boolean).join("\n")
+      : JSON.stringify(output)
+
+export const CREATE_THREAD_TOOL = "create_thread"
+
+export const isCreateThreadTool = (name: string) =>
+  name === CREATE_THREAD_TOOL || name === `mcp__hinacode__${CREATE_THREAD_TOOL}`
+
+export const createdThreadId = (result: string) => /^Created thread ([\w-]+)/.exec(result)?.[1] ?? null
 
 export const toolArgument = (input: unknown, key: string): unknown => {
   if (!Predicate.isObject(input)) return undefined

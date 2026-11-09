@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, test } from "@effect/vitest"
@@ -66,6 +66,17 @@ describe("listClaudeSessions", () => {
     write(fixtureId, fixture)
     expect(await listClaudeSessions(home, "/work-fruit-shop")).toStrictEqual([])
     expect(await listClaudeSessions(home, "/work/other")).toStrictEqual([])
+  })
+
+  test("finds a session recorded at the real path of a folder opened through a symlink", async () => {
+    const folder = join(realpathSync(home), "fruit-shop")
+    const link = join(home, "linked-fruit-shop")
+    mkdirSync(folder)
+    symlinkSync(folder, link)
+    write(fixtureId, fixture.replaceAll(`"cwd":"${cwd}"`, `"cwd":"${folder}"`), folder.replace(/[^a-zA-Z0-9]/g, "-"))
+
+    expect((await listClaudeSessions(home, link)).map((session) => session.sessionId)).toStrictEqual([fixtureId])
+    expect((await readClaudeSession(home, link, fixtureId)).title).toBe("Stock.txt fruit list")
   })
 })
 

@@ -91,6 +91,9 @@ const detailFor = (url: string, overrides: Partial<PullRequestDetail> = {}): Pul
   head: "abc1234",
   mergeable: "mergeable",
   changedFiles: 1,
+  labels: [],
+  assignees: [],
+  reviewers: [],
   comments: [],
   checkRuns: [],
   ...overrides,
@@ -170,16 +173,28 @@ describe("PullRequestWatcher", () => {
       }),
     )
 
-    it.effect("reports a merge and ends the watch", () =>
+    it.effect("ends the watch on a merge without waking the thread", () =>
       Effect.gen(function* () {
         const { threadId, url } = yield* watchedThread("merged", (u) => detailFor(u))
         yield* sweep
         details.set(url, detailFor(url, { status: "merged", checks: "passing" }))
         yield* sweep
 
+        expect(wakesFor(threadId)).toStrictEqual([])
+        expect((yield* linkOf(threadId))?.watch).toBeNull()
+      }),
+    )
+
+    it.effect("reports a close and ends the watch", () =>
+      Effect.gen(function* () {
+        const { threadId, url } = yield* watchedThread("closed", (u) => detailFor(u))
+        yield* sweep
+        details.set(url, detailFor(url, { status: "closed" }))
+        yield* sweep
+
         const sent = wakesFor(threadId)
         expect(sent).toHaveLength(1)
-        expect(sent[0]?.text).toContain("merged")
+        expect(sent[0]?.text).toContain("closed")
         expect((yield* linkOf(threadId))?.watch).toBeNull()
       }),
     )

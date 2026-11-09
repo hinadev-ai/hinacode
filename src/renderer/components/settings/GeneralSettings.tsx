@@ -10,7 +10,8 @@ import { Field, FieldContent, FieldDescription, FieldError, FieldLabel, FieldTit
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { MachineSetup } from "./MachineSetup.tsx"
 import { SettingsGroup } from "./SettingsSection.tsx"
-import { errorMessage } from "../../lib/errorMessage.ts"
+import { errorMessage, toastError } from "../../lib/errorMessage.ts"
+import { inBrowser } from "../../lib/runtime.ts"
 
 const localeLabel = {
   en: m.locale_en,
@@ -59,7 +60,7 @@ export function GeneralSettings() {
             </SelectContent>
           </Select>
         </Field>
-        <VersionField />
+        {!inBrowser() && <VersionField />}
       </SettingsGroup>
     </div>
   )
@@ -101,7 +102,7 @@ function VersionField() {
         )}
       </FieldContent>
       {state.type === "ready" ? (
-        <Button size="sm" onClick={() => void callPromise("updates.install", undefined)}>
+        <Button size="sm" action={() => callPromise("updates.install", undefined).catch(toastError)}>
           {m.update_restart()}
         </Button>
       ) : (
@@ -109,7 +110,7 @@ function VersionField() {
           variant="outline"
           size="sm"
           disabled={busy}
-          onClick={() => void callPromise("updates.check", undefined)}
+          action={() => callPromise("updates.check", undefined).catch(toastError)}
         >
           {m.update_check()}
         </Button>

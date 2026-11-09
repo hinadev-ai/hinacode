@@ -9,8 +9,7 @@ import { callPromise, threadChangesAtom, turnChangesAtom, turnChangesKey } from 
 import { m } from "../paraglide/messages.js"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
-import { FileDiffIcon } from "./icons/FileDiffIcon.tsx"
-import { UndoIcon } from "./icons/UndoIcon.tsx"
+import { FileDiffIcon, UndoIcon } from "@hinacode/icons"
 import { Button } from "./ui/button.tsx"
 
 export function TurnChanges({ threadId, messageId }: { threadId: string; messageId: string }) {

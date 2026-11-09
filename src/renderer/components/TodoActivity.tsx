@@ -1,16 +1,18 @@
 import { useState } from "react"
 import type { Message, Thread } from "../../shared/domain.ts"
-import { latestTodos, type Todo, type TodoStatus } from "../../shared/todos.ts"
+import { type Todo, type TodoStatus, visibleTodos } from "../../shared/todos.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { useMessages } from "../stores/messages.ts"
 import { ActivityRow } from "./ActivityRow.tsx"
-import { CheckCircleIcon } from "./icons/CheckCircleIcon.tsx"
-import { ChevronDownIcon } from "./icons/ChevronDownIcon.tsx"
-import { CircleIcon } from "./icons/CircleIcon.tsx"
-import type { IconComponent } from "./icons/Icon.tsx"
-import { SpinnerIcon } from "./icons/SpinnerIcon.tsx"
-import { XCircleIcon } from "./icons/XCircleIcon.tsx"
+import {
+  CheckCircleIcon,
+  ChevronDownIcon,
+  CircleIcon,
+  type IconComponent,
+  SpinnerIcon,
+  XCircleIcon,
+} from "@hinacode/icons"
 
 const NO_MESSAGES: ReadonlyArray<Message> = []
 
@@ -26,7 +28,7 @@ function TodoIcon({ status, className }: { status: TodoStatus; className?: strin
   return <Icon aria-hidden className={cn("size-3.5 shrink-0", statusClassName, className)} />
 }
 
-function TodoRow({ todo }: { todo: Todo }) {
+export function TodoRow({ todo }: { todo: Todo }) {
   return (
     <li className="flex min-w-0 items-start gap-1.5">
       <TodoIcon status={todo.status} className="mt-px" />
@@ -48,13 +50,12 @@ export function TodoActivity({ thread }: { thread: Thread }) {
     const history = state.byThread[thread.id]
     return history?.status === "ready" ? history.messages : NO_MESSAGES
   })
-  const todos = latestTodos(messages)
+  const busy = thread.status === "running" || thread.status === "awaiting_approval"
+  const todos = visibleTodos(messages, busy)
   const [expanded, setExpanded] = useState(false)
 
   const done = todos.filter((todo) => todo.status === "completed").length
-  const settled = todos.every((todo) => todo.status === "completed" || todo.status === "cancelled")
-  const busy = thread.status === "running" || thread.status === "awaiting_approval"
-  if (todos.length === 0 || (settled && !busy)) return null
+  if (todos.length === 0) return null
 
   const current = todos.find((todo) => todo.status === "in_progress") ?? todos.find((todo) => todo.status === "pending")
 

@@ -1,16 +1,28 @@
 import { RiGitPullRequestLine } from "react-icons/ri"
 import { Autocomplete } from "@base-ui/react/autocomplete"
+import { Combobox } from "@base-ui/react/combobox"
 import { Toggle } from "@base-ui/react/toggle"
 import { ToggleGroup } from "@base-ui/react/toggle-group"
 import { useAtomValue } from "@effect/atom-react"
+import { formatForDisplay } from "@tanstack/react-hotkeys"
 import { useNavigate } from "@tanstack/react-router"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { toast } from "sonner"
-import { type KeyboardEvent, useEffect, useId, useRef, useState, useTransition } from "react"
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  startTransition,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useTransition,
+} from "react"
+import { flushSync } from "react-dom"
 import { type ModelInfo, presetModels, ProviderId, unlistedModel } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
-import { AccessMode, type OpenPullRequest, type Project, type Thread } from "../../shared/domain.ts"
+import { AccessMode, enabledProviders, type OpenPullRequest, type Project, type Thread } from "../../shared/domain.ts"
 import { parsePullRequestSelector } from "../../shared/github.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import {
@@ -22,11 +34,15 @@ import {
   modelsAtom,
   projectsAtom,
   pullRequestsAtom,
+  setUpProvidersAtom,
 } from "../lib/rpc.ts"
 import { environmentName, environmentOf, useClouds, useThreadEnvironment } from "../lib/environments.ts"
+import { inBrowser } from "../lib/runtime.ts"
+import { ProjectDialog } from "./ProjectDialog.tsx"
 import { groupProjects } from "../lib/projectGroups.ts"
 import { moveDraft } from "../lib/startThread.ts"
 import { useSettings } from "../lib/settings.ts"
+import { useAltHeld } from "../lib/useModifierHeld.ts"
 import { m } from "../paraglide/messages.js"
 import { type Draft, useDrafts } from "../stores/drafts.ts"
 import { useThreads } from "../stores/threads.ts"
@@ -39,8 +55,10 @@ import { Checkbox } from "./ui/checkbox.tsx"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx"
 import { Input } from "./ui/input.tsx"
@@ -49,14 +67,15 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover.tsx"
 import { Slider } from "./ui/slider.tsx"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
-import { BoltIcon } from "./icons/BoltIcon.tsx"
-import { BranchIcon } from "./icons/BranchIcon.tsx"
-import { ChatIcon } from "./icons/ChatIcon.tsx"
-import { CheckIcon } from "./icons/CheckIcon.tsx"
-import type { IconComponent } from "./icons/Icon.tsx"
-import { ShieldIcon } from "./icons/ShieldIcon.tsx"
-import { ShieldUserIcon } from "./icons/ShieldUserIcon.tsx"
-import { UnlockIcon } from "./icons/UnlockIcon.tsx"
+import {
+  BoltIcon,
+  BranchIcon,
+  CheckIcon,
+  type IconComponent,
+  ShieldIcon,
+  ShieldUserIcon,
+  UnlockIcon,
+} from "@hinacode/icons"
 
 interface ControlProps {
   readonly thread: Thread
@@ -103,6 +122,7 @@ function usePickerModels(environment: EnvironmentId, provider: ProviderId, keep:
 const CLI_LOGIN = "cli"
 
 const effortLabels: Record<string, () => string> = {
+  none: m.effort_none,
   minimal: m.effort_minimal,
   low: m.effort_low,
   medium: m.effort_medium,
@@ -146,6 +166,8 @@ const supervisedHint = {
   claude: m.access_supervised_hint_claude,
   codex: m.access_supervised_hint_codex,
   muse: m.access_supervised_hint_muse,
+  opencode: m.access_supervised_hint_opencode,
+  magpie: m.access_supervised_hint_claude,
 } satisfies Record<ProviderId, () => string>
 
 const autoHint = {
@@ -153,6 +175,8 @@ const autoHint = {
     model?.autoMode ? m.access_auto_hint_claude() : m.access_auto_hint_claude_edits(),
   codex: m.access_auto_hint_codex,
   muse: m.access_auto_hint_muse,
+  opencode: m.access_auto_hint_opencode,
+  magpie: m.access_auto_hint_claude_edits,
 } satisfies Record<ProviderId, (model: ModelInfo | undefined) => string>
 
 const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | undefined) => {
@@ -166,8 +190,6 @@ const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | u
   }
 }
 
-const hidesUserSkills = { claude: true, codex: true, muse: false } satisfies Record<ProviderId, boolean>
-
 interface AgentTab {
   readonly value: string
   readonly provider: ProviderId
@@ -177,7 +199,13 @@ interface AgentTab {
   readonly disabled: boolean
 }
 
+export const pickerProviders = (own: ProviderId, setUp: ReadonlyArray<ProviderId>) =>
+  ProviderId.literals.filter((provider) => provider === own || setUp.includes(provider))
+
 function useAgentTabs(thread: Thread, canSwitchAgent: boolean): ReadonlyArray<AgentTab> {
+  const environment = useThreadEnvironment(thread.id)
+  const enabled = new Set(enabledProviders(useSettings(environment)))
+  const setUpProviders = useAtomValue(setUpProvidersAtom(environment)).filter((provider) => enabled.has(provider))
   const accounts = useAccountOptions(thread).options
   const accountHint = useAccountHint()
   const turnRunning = thread.status === "running" || thread.status === "awaiting_approval"
@@ -199,14 +227,36 @@ function useAgentTabs(thread: Thread, canSwitchAgent: boolean): ReadonlyArray<Ag
           hint: accountHint(option),
           disabled: turnRunning && option.id !== thread.accountId,
         }))
-  const others = ProviderId.literals
-    .filter((provider) => provider !== thread.provider)
-    .map((provider) => ({ value: provider, provider, label: providerLabel[provider](), disabled: !canSwitchAgent }))
-  return [...own, ...others]
+  return pickerProviders(thread.provider, setUpProviders).flatMap((provider): ReadonlyArray<AgentTab> =>
+    provider === thread.provider
+      ? own
+      : [{ value: provider, provider, label: providerLabel[provider](), disabled: !canSwitchAgent }],
+  )
 }
+
+const modelMatches = (model: ModelInfo, query: string) => {
+  const text = `${model.label} ${model.id}`.toLowerCase()
+  return query
+    .toLowerCase()
+    .split(/\s+/)
+    .every((word) => text.includes(word))
+}
+
+const nearest = { block: "nearest", inline: "nearest" } as const
 
 const isThreadTab = (tab: AgentTab, thread: Thread) =>
   tab.provider === thread.provider && (tab.accountId === undefined || tab.accountId === thread.accountId)
+
+const ALT = formatForDisplay("Alt")
+
+function AltKey({ children, className }: { children: string; className?: string }) {
+  const held = useAltHeld()
+  return (
+    <Kbd aria-hidden className={cn(className, !held && "invisible")}>
+      {children}
+    </Kbd>
+  )
+}
 
 export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps & { canSwitchAgent: boolean }) {
   const environment = useThreadEnvironment(thread.id)
@@ -217,48 +267,58 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
   const [open, setOpen] = useState(false)
   const [tabValue, setTabValue] = useState(threadTab)
   const [focus, setFocus] = useState<ComposerPicker>("model")
+  const [query, setQuery] = useState("")
+  const [clearingHighlight, setClearingHighlight] = useState(false)
+  const [picking, startPicking] = useTransition()
   const openedByShortcut = useRef(false)
+  const tabMovedToByKey = useRef<string | null>(null)
   const closedWithEnter = useRef(false)
   const popupRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
   const tab = tabs.find((candidate) => candidate.value === tabValue) ?? tabs[0]!
   const models = usePickerModels(environment, tab.provider, tab.provider === thread.provider ? thread.model : null)
+  const ownModels = usePickerModels(environment, thread.provider, null)
   const set = (patch: Omit<RpcRequest<"threads.update">, "id">) => void update({ ...patch, id: thread.id }, onError)
 
   const show = (picker: ComposerPicker) => {
     closedWithEnter.current = false
     setFocus(picker)
     setTabValue(threadTab)
+    setQuery("")
     setOpen(true)
   }
 
   const isSidechat = thread.sideOf !== null
-  useEffect(() => {
-    if (isSidechat) return
-    return useUi.subscribe((state, previous) => {
-      const request = state.pickerRequest
-      if (request === previous.pickerRequest || request === null) return
-      openedByShortcut.current = true
-      closedWithEnter.current = false
-      setFocus(request.picker)
-      setTabValue(threadTab)
-      setOpen(true)
-    })
-  }, [threadTab, isSidechat])
+  useEffect(
+    () =>
+      useUi.subscribe((state, previous) => {
+        const request = state.pickerRequest
+        if (request === previous.pickerRequest || request === null || request.inSidechat !== isSidechat) return
+        openedByShortcut.current = true
+        closedWithEnter.current = false
+        setFocus(request.picker)
+        setTabValue(threadTab)
+        setQuery("")
+        setOpen(true)
+      }),
+    [threadTab, isSidechat],
+  )
 
-  const pick = async (next: ModelInfo) => {
-    if (tab.provider !== thread.provider) {
+  const pick = async (next: ModelInfo, target: AgentTab = tab) => {
+    if (target.provider !== thread.provider) {
       await update({ id: thread.id, provider: next.provider, model: next.id }, onError)
       return
     }
-    if (tab.accountId !== undefined && tab.accountId !== thread.accountId) {
+    const latest = useThreads.getState().byId[thread.id] ?? thread
+    if (target.accountId !== undefined && target.accountId !== latest.accountId) {
       try {
-        await switchAccount(thread.id, tab.accountId)
+        await switchAccount(thread.id, target.accountId)
       } catch (cause) {
         onError(errorMessage(cause))
         return
       }
     }
-    if (sameModel(next, selected)) return
+    if (next.id === latest.model) return
     await update(
       {
         id: thread.id,
@@ -270,16 +330,37 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
     )
   }
 
+  const accountSwitches = useRef(Promise.resolve())
+  const openTab = (value: string) => {
+    // FIXME: Base UI keeps an open inline combobox's highlight index when its items change and has no API to reset it. One commit with an empty list makes it drop the index without remounting the search box.
+    flushSync(() => {
+      setTabValue(value)
+      setClearingHighlight(true)
+    })
+    flushSync(() => setClearingHighlight(false))
+    const target = tabs.find((candidate) => candidate.value === value)
+    const firstOwnModel = ownModels[0]
+    if (target?.accountId === undefined || target.provider !== thread.provider || firstOwnModel === undefined) return
+    if (target.accountId === (useThreads.getState().byId[thread.id] ?? thread).accountId) return
+    startPicking(() => {
+      accountSwitches.current = accountSwitches.current.then(() => pick(firstOwnModel, target))
+      return accountSwitches.current
+    })
+  }
+
   const moveTab = (step: number) => {
     const enabled = tabs.filter((candidate) => !candidate.disabled)
     const next = enabled[(enabled.indexOf(tab) + step + enabled.length) % enabled.length]
     if (next === undefined) return
-    popupRef.current?.focus()
-    setTabValue(next.value)
-    popupRef.current
-      ?.querySelectorAll("[data-slot=tabs-trigger]")
-      [tabs.indexOf(next)]?.scrollIntoView({ block: "nearest", inline: "nearest" })
+    tabMovedToByKey.current = next.value
+    openTab(next.value)
   }
+  useEffect(() => {
+    if (tabMovedToByKey.current !== tab.value) return
+    tabMovedToByKey.current = null
+    popupRef.current?.querySelector("[role=tab][aria-selected=true]")?.scrollIntoView(nearest)
+  })
+
   const efforts = current === undefined || current.efforts.length === 0 ? [] : [DEFAULT_EFFORT, ...current.efforts]
   const stepThrough = <V,>(values: ReadonlyArray<V>, value: V, step: number) =>
     values[(values.indexOf(value) + step + values.length) % values.length]!
@@ -291,28 +372,28 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
           set({ effort: next === DEFAULT_EFFORT ? null : next })
         }
   const toggleFast = current?.fastMode ? () => set({ fastMode: !thread.fastMode }) : null
-  const toggleConversation = hidesUserSkills[thread.provider] ? () => set({ userSkills: !thread.userSkills }) : null
   const stepAccess = (step: number) => set({ accessMode: stepThrough(AccessMode.literals, thread.accessMode, step) })
-  const keys: Record<string, ((step: number) => void) | null> = {
-    h: () => moveTab(-1),
-    l: () => moveTab(1),
-    e: stepEffort,
-    f: toggleFast,
-    c: toggleConversation,
-    m: stepAccess,
-    enter: () => {
-      closedWithEnter.current = true
-      setOpen(false)
-    },
+  const altKeys: Record<string, ((step: number) => void) | null> = {
+    KeyH: () => moveTab(-1),
+    KeyL: () => moveTab(1),
+    KeyE: stepEffort,
+    KeyF: toggleFast,
+    KeyM: stepAccess,
   }
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.metaKey || event.ctrlKey || event.altKey) return
-    const digit = Number(event.key)
-    const model = !event.shiftKey && digit >= 1 && digit <= 9 && !tab.disabled ? models[digit - 1] : undefined
-    const action = model ? () => void pick(model) : keys[event.key.toLowerCase()]
-    if (!action) return
+  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return
+    if (event.altKey && !event.metaKey && !event.ctrlKey) {
+      const action = altKeys[event.code]
+      if (!action) return
+      event.preventDefault()
+      event.stopPropagation()
+      action(event.shiftKey ? -1 : 1)
+      return
+    }
+    if (event.key !== "Enter" || event.metaKey || event.ctrlKey || event.altKey) return
     event.preventDefault()
-    action(event.shiftKey ? -1 : 1)
+    closedWithEnter.current = true
+    setOpen(false)
   }
 
   const effort = thread.effort ?? current?.defaultEffort ?? null
@@ -341,7 +422,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
             variant="ghost"
             size="sm"
             aria-label={m.thread_option_value({ name: m.thread_model_picker(), value: summary.join(", ") })}
-            className={cn("min-w-0 [&_svg]:-translate-y-px", triggerClass)}
+            className={cn("max-w-full min-w-0 shrink [&_svg]:-translate-y-px", triggerClass)}
           />
         }
       >
@@ -353,14 +434,16 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
       </PopoverTrigger>
       <PopoverContent
         ref={popupRef}
+        aria-label={m.thread_model_picker()}
         side="top"
         align="start"
         sideOffset={6}
-        className="max-h-(--available-height) w-80 max-w-[calc(100vw-1rem)] gap-3 p-2"
+        collisionAvoidance={{ side: "none", fallbackAxisSide: "none" }}
+        className="h-[min(520px,var(--available-height))] w-90 max-w-[calc(100vw-1rem)] gap-3 p-2"
         initialFocus={() =>
           (focus === "effort"
             ? popupRef.current?.querySelector<HTMLElement>("[data-slot=slider-thumb] input")
-            : null) ??
+            : searchRef.current) ??
           popupRef.current ??
           true
         }
@@ -373,11 +456,11 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
       >
         <Tabs
           value={tab.value}
-          changeAction={(value) => setTabValue(String(value))}
+          changeAction={(value) => openTab(String(value))}
           className="-mx-2 gap-1 border-b border-border px-2 pb-2"
         >
           <div className="flex items-center gap-2">
-            <TabsList className="min-w-0 scrollbar-none justify-start overflow-x-auto bg-transparent p-0 motion-safe:scroll-smooth">
+            <TabsList className="-m-0.75 min-w-0 scrollbar-none justify-start overflow-x-auto bg-transparent p-0.75 motion-safe:scroll-smooth">
               {tabs.map((candidate) => (
                 <Tooltip key={candidate.value}>
                   <TooltipTrigger
@@ -386,7 +469,7 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
                     }
                   >
                     <ProviderIcon provider={candidate.provider} />
-                    <span className={candidate.accountId === undefined ? "sr-only" : "max-w-28 truncate"}>
+                    <span className={candidate.accountId === undefined ? "sr-only" : "max-w-40 truncate"}>
                       {candidate.label}
                     </span>
                   </TooltipTrigger>
@@ -395,37 +478,61 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
               ))}
             </TabsList>
             <KbdGroup aria-hidden className="ml-auto">
+              <Kbd>{ALT}</Kbd>
               <Kbd>H</Kbd>
               <Kbd>L</Kbd>
             </KbdGroup>
           </div>
           {tab.hint && <p className="px-1 text-xs text-muted-foreground tabular-nums">{tab.hint}</p>}
         </Tabs>
-        <ul
-          aria-label={m.thread_model_picker()}
-          className="flex max-h-72 min-h-0 scroll-fade-y flex-col gap-0.5 overflow-y-auto"
+        <Combobox.Root
+          inline
+          open
+          filteredItems={clearingHighlight ? [] : undefined}
+          autoHighlight
+          items={models}
+          filter={modelMatches}
+          itemToStringLabel={(model: ModelInfo) => model.label}
+          isItemEqualToValue={sameModel}
+          value={isThreadTab(tab, thread) ? selected : null}
+          onValueChange={(model) => {
+            if (model !== null && !picking) startPicking(() => pick(model))
+          }}
+          inputValue={query}
+          onInputValueChange={(next, details) => {
+            if (details.reason !== "item-press") setQuery(next)
+          }}
+          disabled={tab.disabled}
         >
-          {models.map((model, index) => {
-            const isSelected = isThreadTab(tab, thread) && sameModel(model, selected)
-            return (
-              <li key={model.id}>
-                <button
-                  type="button"
-                  disabled={tab.disabled}
-                  aria-pressed={isSelected}
-                  data-selected={isSelected}
-                  onClick={() => void pick(model)}
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent disabled:opacity-50 aria-pressed:font-medium"
-                >
-                  <span className="min-w-0 flex-1 truncate">{model.label}</span>
-                  {index < 9 && <Kbd aria-hidden>{index + 1}</Kbd>}
-                  <CheckIcon aria-hidden className={cn("size-4 shrink-0", !isSelected && "invisible")} />
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-        <div className="flex flex-col gap-3 border-t border-border px-1 pt-3">
+          <Combobox.Input
+            ref={searchRef}
+            aria-label={m.thread_model_search()}
+            placeholder={m.thread_model_search()}
+            spellCheck={false}
+            onKeyDown={onKeyDown}
+            render={<Input className="shrink-0" />}
+          />
+          <Combobox.List
+            aria-label={m.thread_model_picker()}
+            className="flex min-h-0 flex-1 scroll-fade-y scroll-py-1 flex-col gap-0.5 overflow-y-auto"
+          >
+            {(model: ModelInfo) => (
+              <Combobox.Item
+                key={model.id}
+                value={model}
+                aria-disabled={picking}
+                className="group flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none select-none aria-disabled:opacity-50 aria-selected:font-medium data-highlighted:bg-accent data-disabled:opacity-50"
+              >
+                <span className="min-w-0 flex-1 truncate">{model.label}</span>
+                <CheckIcon aria-hidden className="invisible size-4 shrink-0 group-aria-selected:visible" />
+              </Combobox.Item>
+            )}
+          </Combobox.List>
+          <Combobox.Empty className="px-2 py-1.5 text-sm text-muted-foreground empty:hidden">
+            {models.length > 0 && m.thread_model_no_match()}
+          </Combobox.Empty>
+        </Combobox.Root>
+        <div className="flex shrink-0 flex-col gap-3 border-t border-border px-1 pt-3">
           {current !== undefined && current.efforts.length > 0 && (
             <EffortSlider
               key={`${current.id}:${thread.effort ?? DEFAULT_EFFORT}`}
@@ -443,16 +550,6 @@ export function ThreadPicker({ thread, canSwitchAgent, onError }: ControlProps &
                 shortcut="F"
                 on={thread.fastMode}
                 toggle={toggleFast}
-              />
-            )}
-            {toggleConversation && (
-              <ModeToggle
-                icon={ChatIcon}
-                label={m.thread_conversation_mode()}
-                hint={m.thread_conversation_mode_hint()}
-                shortcut="C"
-                on={!thread.userSkills}
-                toggle={toggleConversation}
               />
             )}
           </div>
@@ -498,9 +595,7 @@ function EffortSlider({ model, value, onCommit }: EffortSliderProps) {
           value={effortShare(model, step.value === DEFAULT_EFFORT ? (model.defaultEffort ?? null) : step.value)}
           className="size-4 shrink-0"
         />
-        <Kbd aria-hidden className="h-4 min-w-4">
-          E
-        </Kbd>
+        <AltKey className="h-4 min-w-4">E</AltKey>
       </div>
       <Slider
         aria-labelledby={labelId}
@@ -541,9 +636,7 @@ function ModeToggle({ icon: Icon, label, hint, shortcut, on, toggle }: ModeToggl
           >
             <Icon aria-hidden />
             {label}
-            <Kbd aria-hidden className="-mr-1 h-4 min-w-4">
-              {shortcut}
-            </Kbd>
+            <AltKey className="-mr-1 h-4 min-w-4">{shortcut}</AltKey>
           </Button>
         }
       />
@@ -591,7 +684,7 @@ function AccessSwitch({
         <p className="flex-1 text-xs text-pretty text-muted-foreground">
           {accessHint(thread.accessMode, thread, model)}
         </p>
-        <Kbd aria-hidden>M</Kbd>
+        <AltKey>M</AltKey>
       </div>
     </div>
   )
@@ -737,14 +830,16 @@ function ContextSwitch({
   thread,
   label,
   options,
+  children,
 }: {
   thread: Thread
   label: string
   options: ReadonlyArray<ContextOption>
+  children?: ReactNode
 }) {
   const navigate = useNavigate()
   const [isMoving, startMoving] = useTransition()
-  if (options.length < 2) return <span className={contextWord}>{label}</span>
+  if (options.length < 2 && !children) return <span className={contextWord}>{label}</span>
   const move = (projectId: string) =>
     startMoving(async () => {
       try {
@@ -775,6 +870,7 @@ function ContextSwitch({
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>
+        {children}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -790,9 +886,12 @@ export function ThreadProjectSwitch({ thread }: { thread: Thread }) {
 }
 
 export function ThreadEnvironmentSwitch({ thread }: { thread: Thread }) {
+  const navigate = useNavigate()
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => [])
   const clouds = useClouds()
-  const environment = environmentOf(projects.find((project) => project.id === thread.projectId))
+  const [creatingOn, setCreatingOn] = useState<EnvironmentId | undefined>(undefined)
+  const current = projects.find((project) => project.id === thread.projectId)
+  const environment = environmentOf(current)
   const members =
     groupProjects(projects).find((group) => group.projects.some((project) => project.id === thread.projectId))
       ?.projects ?? []
@@ -800,8 +899,53 @@ export function ThreadEnvironmentSwitch({ thread }: { thread: Thread }) {
     projectId: project.id,
     label: environmentName(environmentOf(project), clouds),
   }))
-  const label = environment === null ? m.environment_this_machine_inline() : environmentName(environment, clouds)
-  return <ContextSwitch thread={thread} label={label} options={options} />
+  const cloneSource = clonableRepository(current)
+  const reachable: ReadonlyArray<EnvironmentId> = [
+    ...(inBrowser() ? [] : [null]),
+    ...clouds.filter((cloud) => cloud.status === "connected").map((cloud) => cloud.id),
+  ]
+  const missing =
+    cloneSource === null
+      ? []
+      : reachable.filter((candidate) => members.every((project) => environmentOf(project) !== candidate))
+  const inlineName = (id: EnvironmentId) =>
+    id === null ? m.environment_this_machine_inline() : environmentName(id, clouds)
+  return (
+    <>
+      <ContextSwitch thread={thread} label={inlineName(environment)} options={options}>
+        {missing.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            {missing.map((candidate) => (
+              <DropdownMenuItem
+                key={candidate ?? "local"}
+                onClick={() => startTransition(() => setCreatingOn(candidate))}
+              >
+                {m.thread_environment_create({ machine: inlineName(candidate) })}
+              </DropdownMenuItem>
+            ))}
+          </>
+        )}
+      </ContextSwitch>
+      {creatingOn !== undefined && cloneSource !== null && (
+        <ProjectDialog
+          open
+          onOpenChange={(open) => !open && setCreatingOn(undefined)}
+          environment={creatingOn}
+          source={cloneSource}
+          onCreated={(created) =>
+            moveDraft(thread, created.id, navigate).catch((cause: unknown) => toast.error(errorMessage(cause)))
+          }
+        />
+      )}
+    </>
+  )
+}
+
+function clonableRepository(project: Project | undefined) {
+  const [owner, name, ...folder] = project?.repository?.split("/") ?? []
+  if (project === undefined || owner === undefined || name === undefined || folder.length > 0) return null
+  return { rootPath: `https://github.com/${owner}/${name}`, name: project.name }
 }
 
 export function WorkspacePicker({ thread, workspace }: { thread: Thread; workspace: Draft["workspace"] }) {

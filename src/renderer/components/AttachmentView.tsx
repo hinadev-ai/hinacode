@@ -1,17 +1,19 @@
 import { cn } from "cn"
-import { useState } from "react"
+import { useState, useTransition } from "react"
 import { attachmentUrl } from "../../shared/channels.ts"
 import type { PickedDeviceElement } from "../../shared/device.ts"
 import type { Attachment, PickedElement } from "../../shared/domain.ts"
 import { deviceElementLabel, elementLabel } from "../lib/elementPicker.ts"
 import { useOpenThreadEnvironment } from "../lib/environments.ts"
+import { toastError } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
+import { inBrowser } from "../lib/runtime.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { Button } from "./ui/button.tsx"
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "./ui/dialog.tsx"
-import { CloseIcon } from "./icons/CloseIcon.tsx"
-import { FileIcon } from "./icons/FileIcon.tsx"
+import { CloseIcon, FileIcon } from "@hinacode/icons"
+import { resourceUrl } from "../lib/resourceUrl.ts"
 
 const format = (value: number, unit: string) =>
   new Intl.NumberFormat(getLocale(), { style: "unit", unit, maximumFractionDigits: 1 }).format(value)
@@ -25,10 +27,17 @@ export const formatBytes = (bytes: number) => {
 
 export function AttachmentView({ attachment }: { attachment: Attachment }) {
   if (attachment.kind === "image") return <ImageAttachment attachment={attachment} />
+  return <FileAttachment attachment={attachment} />
+}
+
+function FileAttachment({ attachment }: { attachment: Attachment }) {
+  const [revealing, startRevealing] = useTransition()
+  if (inBrowser()) return <FileChip attachment={attachment} />
   return (
     <button
       type="button"
-      onClick={() => void callPromise("shell.reveal", { path: attachment.path })}
+      disabled={revealing}
+      onClick={() => startRevealing(() => callPromise("shell.reveal", { path: attachment.path }).catch(toastError))}
       title={m.attachment_reveal({ name: attachment.name })}
       className="rounded-lg pressable outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
@@ -40,7 +49,8 @@ export function AttachmentView({ attachment }: { attachment: Attachment }) {
 const pickedLabel = ({ element, deviceElement }: Attachment) =>
   element ? elementLabel(element) : deviceElement ? deviceElementLabel(deviceElement.element) : null
 
-const useAttachmentSrc = (attachment: Attachment) => attachmentUrl(attachment.path, useOpenThreadEnvironment())
+const useAttachmentSrc = (attachment: Attachment) =>
+  resourceUrl(attachmentUrl(attachment.path, useOpenThreadEnvironment()))
 
 function ImageAttachment({ attachment }: { attachment: Attachment }) {
   const { element, deviceElement } = attachment

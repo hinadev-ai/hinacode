@@ -25,6 +25,8 @@ export function searchableText(part: MessagePart, skillLabels: SkillLabels): str
     case "text":
     case "questions":
       return part.text
+    case "signed_out":
+      return [part.message, part.loginCommand].filter((line) => line !== undefined).join("\n")
     case "tool_call": {
       const skills = skillsUsed(part)
       if (skills !== null) return skillUseText(skills, skillLabels)
@@ -55,7 +57,7 @@ export function commandFindText(call: ToolCall): CommandFindText {
 }
 
 export const commandSearchText = ({ distinctLabel, command }: CommandFindText) =>
-  distinctLabel === null ? command : `${command}\n${distinctLabel}`
+  distinctLabel === null ? command : `${distinctLabel}\n${command}`
 
 export function findMatches(
   messages: ReadonlyArray<Message>,

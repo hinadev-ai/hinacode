@@ -1,5 +1,5 @@
 import { expect } from "@playwright/test"
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { Given, Then, When } from "../support/fixtures.ts"
 
@@ -73,4 +73,67 @@ Then(
 
 When("I click {string} in the file viewer", async ({ app }, button: string) => {
   await app.page.getByRole("button", { name: button, exact: true }).click()
+})
+
+const treeRow = (page: import("@playwright/test").Page, name: string) =>
+  fileTree(page).getByRole("treeitem", { name, exact: true })
+
+const pressOn = async (page: import("@playwright/test").Page, source: string) => {
+  await treeRow(page, source).hover()
+  await page.mouse.down()
+}
+
+// FIXME: over CDP Chromium fires dragover only on a move within the element a previous move entered, and the row's name is a child element
+const dragOver = async (page: import("@playwright/test").Page, name: string) => {
+  const row = treeRow(page, name)
+  await expect(async () => {
+    for (const x of [40, 44, 46, 48]) await row.hover({ position: { x, y: 12 } })
+    await expect(row).toHaveAttribute("data-drop-target", "true", { timeout: 500 })
+  }).toPass()
+}
+
+When(
+  "I drag {string} onto {string} in the file tree and hold until it opens",
+  async ({ app }, source: string, folder: string) => {
+    await pressOn(app.page, source)
+    await dragOver(app.page, folder)
+    await expect(treeRow(app.page, folder)).toHaveAttribute("aria-expanded", "true")
+  },
+)
+
+When("I drop on {string} in the file tree", async ({ app }, folder: string) => {
+  await dragOver(app.page, folder)
+  await app.page.mouse.up()
+})
+
+When("I drag {string} onto {string} in the file tree", async ({ app }, source: string, folder: string) => {
+  await pressOn(app.page, source)
+  await dragOver(app.page, folder)
+  await app.page.mouse.up()
+})
+
+Then("the file {string} contains {string} on disk", async ({ repo }, path: string, text: string) => {
+  const file = join(repo, path)
+  await expect.poll(() => (existsSync(file) ? readFileSync(file, "utf8") : null)).toBe(`${text}\n`)
+})
+
+Then("I see the toast {string}", async ({ app }, text: string) => {
+  await expect(app.page.getByRole("region", { name: /Notifications/ })).toContainText(text)
+})
+
+When("I create the file {string} from the file tree", async ({ app }, name: string) => {
+  await app.page.getByRole("button", { name: "New file", exact: true }).click()
+  await app.page.getByRole("textbox", { name: "New file name", exact: true }).fill(name)
+  await app.page.keyboard.press("Enter")
+  await expect(treeRow(app.page, name)).toBeVisible()
+})
+
+const mentions = (page: import("@playwright/test").Page) => page.getByRole("listbox", { name: "Mentions", exact: true })
+
+Then("the mentions list is open", async ({ app }) => {
+  await expect(mentions(app.page)).toBeVisible()
+})
+
+Then("the mentions list offers {string}", async ({ app }, path: string) => {
+  await expect(mentions(app.page).getByRole("option").filter({ hasText: path })).toBeVisible()
 })

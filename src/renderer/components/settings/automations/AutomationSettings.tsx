@@ -3,7 +3,7 @@ import { cn } from "cn"
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { AsyncResult } from "effect/reactivity"
 import { type FormEvent, useState, useTransition } from "react"
-import type { Automation, Project } from "../../../../shared/domain.ts"
+import { type Automation, isPolledTrigger, type Project } from "../../../../shared/domain.ts"
 import { automationsAtom, callPromise, projectsAtom, updateSettingsAtom } from "../../../lib/rpc.ts"
 import { useSettings } from "../../../lib/settings.ts"
 import { environmentOf, useSettingsEnvironment } from "../../../lib/environments.ts"
@@ -31,10 +31,7 @@ import { AutomationDetails, WebhookUrlField } from "./AutomationDetails.tsx"
 import { AutomationDialog, type AutomationDialogState } from "./AutomationForm.tsx"
 import { CopyField, formatTime, RunStatusBadge, triggerLabel } from "./shared.tsx"
 import { SkeletonList } from "../../ui/skeleton.tsx"
-import { ChevronDownIcon } from "../../icons/ChevronDownIcon.tsx"
-import { PencilIcon } from "../../icons/PencilIcon.tsx"
-import { PlusIcon } from "../../icons/PlusIcon.tsx"
-import { TrashIcon } from "../../icons/TrashIcon.tsx"
+import { ChevronDownIcon, PencilIcon, PlusIcon, TrashIcon } from "@hinacode/icons"
 
 const errorText = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))
 
@@ -195,7 +192,7 @@ function AutomationItem({ automation, projectName, onEdit }: AutomationItemProps
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const detailsId = `automation-details-${automation.id}`
-  const polling = automation.trigger.type !== "webhook"
+  const polling = isPolledTrigger(automation.trigger)
 
   const run = (action: () => Promise<unknown>) =>
     startTransition(async () => {

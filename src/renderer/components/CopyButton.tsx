@@ -1,9 +1,9 @@
 import { cn } from "cn"
 import { useEffect, useState } from "react"
+import { toastError } from "../lib/errorMessage.ts"
 import { m } from "../paraglide/messages.js"
 import { Button } from "./ui/button.tsx"
-import { CheckIcon } from "./icons/CheckIcon.tsx"
-import { CopyIcon } from "./icons/CopyIcon.tsx"
+import { CheckIcon, CopyIcon } from "@hinacode/icons"
 
 const iconSwap = "absolute inset-0 transition-[opacity,scale,filter] duration-200 ease-swap"
 const iconShown = "opacity-100"
@@ -33,7 +33,7 @@ export function CopyButton({ value, label, variant = "ghost", className }: CopyB
       size="icon-sm"
       aria-label={title}
       title={title}
-      onClick={() => void navigator.clipboard.writeText(value).then(() => setCopied(true))}
+      action={() => navigator.clipboard.writeText(value).then(() => setCopied(true), toastError)}
       className={className}
     >
       <span aria-hidden className="relative size-4">

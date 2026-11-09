@@ -61,14 +61,14 @@ Three state rules carry the whole feature.
 
 `WatchEventKind` is the set a watch can care about. The default watch cares about all of them. The MCP tool accepts a subset.
 
-| Kind             | Fires when                                                      |
-| ---------------- | --------------------------------------------------------------- |
-| `checksFailed`   | A check name joins the failing set for the current head         |
-| `checksPassed`   | Checks reach passing for a head that was not already passing    |
-| `reviewChanged`  | The review decision becomes approved or changes requested       |
-| `conflicting`    | GitHub starts reporting the branch as conflicting with its base |
-| `mergedOrClosed` | The pull request leaves the open states                         |
-| `commented`      | A comment id appears that is not from the gh account itself     |
+| Kind             | Fires when                                                                  |
+| ---------------- | --------------------------------------------------------------------------- |
+| `checksFailed`   | A check name joins the failing set for the current head                     |
+| `checksPassed`   | Checks reach passing for a head that was not already passing                |
+| `reviewChanged`  | The review decision becomes approved or changes requested                   |
+| `conflicting`    | GitHub starts reporting the branch as conflicting with its base             |
+| `mergedOrClosed` | The pull request is closed without merging. A merge ends the watch silently |
+| `commented`      | A comment id appears that is not from the gh account itself                 |
 
 There is deliberately no event for "checks pending" or "review required". Those are the absence of news. The diff is one pure function in `src/main/services/pullRequestWatch.ts`, taking the stored snapshot, the fresh one, and the interest set, and returning the events to report. The same module renders the wake message from a pull request detail plus its events, so both halves are covered by plain unit tests.
 
@@ -78,7 +78,7 @@ Comment news is keyed on comment ids. The agent posts with the same gh account t
 
 ### Polling and waking
 
-`PullRequestWatcher` is one Effect service beside `AutoArchive`, following its shape. It schedules a sweep every minute, reads each watched link's detail through `GitHub.pullRequestDetail` with a concurrency cap, and runs sweeps under one semaphore so a slow sweep never overlaps the next. Watching needs the head commit, so the detail read gains `headRefOid` and `PullRequestDetail` gains a `head` field.
+`PullRequestWatcher` is one Effect service beside `AutoSettle`, following its shape. It schedules a sweep every minute, reads each watched link's detail through `GitHub.pullRequestDetail` with a concurrency cap, and runs sweeps under one semaphore so a slow sweep never overlaps the next. Watching needs the head commit, so the detail read gains `headRefOid` and `PullRequestDetail` gains a `head` field.
 
 A wake uses `AgentRunner.steerWhen` with the rendered message and a check of both thread eligibility and watch generation. Active steering checks inside the thread's existing delivery semaphore. An idle turn waits for worktree preparation outside that semaphore, then checks again inside `Worktrees.exclusive`. Its final check follows capture of the working tree and precedes recording that tree as the turn baseline or writing its first message. Rejected news preserves the last accepted turn's baseline and diff. Archiving uses that same worktree lock, so an archive that won the lock cannot be undone by queued news. News remains deferred if the thread has started waiting for an approval or reached a usage limit. Stopping or replacing a watch cancels news that has not passed its final check. Delivery is accepted at that check, so an accepted message can finish arriving after the watch stops. Stop never waits for a provider response. A running turn receives the news as steering input, and an idle thread starts a turn. An archived thread ends its watches without a wake. A thread awaiting approval or stopped at a usage limit keeps its snapshot, which defers the wake to a later sweep without any pending queue to store.
 

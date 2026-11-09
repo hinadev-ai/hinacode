@@ -1,11 +1,9 @@
 #!/usr/bin/env node
-import { type ChildProcess, spawn } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-import { createRequire } from "node:module"
 import { dirname, join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import { fileURLToPath } from "node:url"
-import { WebSocket } from "ws"
+import { connect, launch, median, openThread, round, sleep, stop } from "./app.ts"
 
 type Span = {
   id: string
@@ -39,26 +37,16 @@ type Report = {
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..", "..")
 const resultsDir = join(repo, ".context", "perf")
-const electron = createRequire(import.meta.url)("electron") as string
 const runs = Number(process.env["RUNS"] ?? 5)
 const idleSeconds = Number(process.env["IDLE_SECONDS"] ?? 120)
 const port = Number(process.env["PORT"] ?? 9290)
 const switchRounds = 3
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-const median = (values: ReadonlyArray<number>) => {
-  const sorted = values.toSorted((a, b) => a - b)
-  return sorted[Math.floor(sorted.length / 2)] ?? 0
+const readSpans = (file: string): Array<Span> => {
+  if (!existsSync(file)) return []
+  const finishedLines = readFileSync(file, "utf8").split("\n").slice(0, -1)
+  return finishedLines.filter(Boolean).map((line) => JSON.parse(line) as Span)
 }
-const round = (value: number) => Math.round(value * 10) / 10
-
-const readSpans = (file: string): Array<Span> =>
-  existsSync(file)
-    ? readFileSync(file, "utf8")
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => JSON.parse(line) as Span)
-    : []
 
 const underRpc = (spans: ReadonlyArray<Span>) => {
   const byId = new Map(spans.map((span) => [span.id, span]))
@@ -98,115 +86,6 @@ const workBetween = (spans: ReadonlyArray<Span>, from: number, to: number): Work
   }
 }
 
-const connect = async (deadline: number) => {
-  let page: { webSocketDebuggerUrl: string } | undefined
-  while (!page) {
-    if (Date.now() > deadline) throw new Error(`no renderer on CDP port ${port}`)
-    const targets = await fetch(`http://127.0.0.1:${port}/json`)
-      .then(
-        (response) => response.json() as Promise<Array<{ type: string; url: string; webSocketDebuggerUrl: string }>>,
-      )
-      .catch(() => [])
-    page = targets.find((target) => target.type === "page" && target.url.includes("/renderer/index.html"))
-    if (!page) await sleep(10)
-  }
-  const ws = new WebSocket(page.webSocketDebuggerUrl)
-  await new Promise((resolve, reject) => {
-    ws.addEventListener("open", resolve, { once: true })
-    ws.addEventListener("error", reject, { once: true })
-  })
-  let nextId = 1
-  const pending = new Map<number, (reply: { error?: unknown; result?: unknown }) => void>()
-  ws.addEventListener("message", (event) => {
-    const reply = JSON.parse(event.data.toString())
-    pending.get(reply.id)?.(reply)
-    pending.delete(reply.id)
-  })
-
-  const evaluate = <T>(expression: string) =>
-    new Promise<T>((resolve, reject) => {
-      const id = nextId++
-      pending.set(id, (reply) => {
-        const result = reply.result as { result?: { value: T }; exceptionDetails?: unknown } | undefined
-        if (reply.error || result?.exceptionDetails) reject(new Error(JSON.stringify(reply.error ?? result)))
-        else resolve(result!.result!.value)
-      })
-      ws.send(
-        JSON.stringify({
-          id,
-          method: "Runtime.evaluate",
-          params: { expression, awaitPromise: true, returnByValue: true },
-        }),
-      )
-    })
-
-  const waitFor = async (expression: string, until: number) => {
-    while (!(await evaluate<boolean>(expression).catch(() => false))) {
-      if (Date.now() > until) throw new Error(`timed out waiting for ${expression}`)
-      await sleep(10)
-    }
-  }
-
-  return { evaluate, waitFor, close: () => ws.close() }
-}
-
-const launch = (data: string, trace: string) =>
-  spawn(
-    electron,
-    ["--no-sandbox", "--disable-gpu", `--remote-debugging-port=${port}`, join(repo, "out", "main", "index.js")],
-    {
-      cwd: repo,
-      detached: true,
-      stdio: ["ignore", "ignore", "ignore"],
-      env: {
-        ...Object.fromEntries(
-          Object.entries(process.env).filter(
-            ([key]) => key !== "WAYLAND_DISPLAY" && key !== "ELECTRON_OZONE_PLATFORM_HINT",
-          ),
-        ),
-        XDG_SESSION_TYPE: "x11",
-        DISPLAY: process.env["DISPLAY_FOR_PERF"] ?? ":99",
-        HINACODE_USER_DATA: data,
-        HINACODE_TRACE: trace,
-        HINACODE_MOCK_AGENTS: "stream",
-      },
-    },
-  )
-
-const signalGroup = (pid: number, signal: NodeJS.Signals) => {
-  try {
-    process.kill(-pid, signal)
-  } catch {
-    return
-  }
-}
-
-const stop = async (child: ChildProcess) => {
-  if (child.pid === undefined || child.exitCode !== null) return
-  const exited = new Promise((resolve) => child.once("exit", resolve))
-  signalGroup(child.pid, "SIGTERM")
-  await Promise.race([exited, sleep(5000)])
-  signalGroup(child.pid, "SIGKILL")
-}
-
-const openThread = (id: string) => `(async () => {
-  const link = document.querySelector('a[href="/thread/${id}"]')
-  if (!link) throw new Error("no sidebar link for ${id}")
-  const frame = () => new Promise((resolve) => requestAnimationFrame(resolve))
-  const t0 = performance.now()
-  link.click()
-  let last = -1, stable = 0
-  while (stable < 2) {
-    await frame()
-    const articles = document.querySelectorAll("main article")
-    const shown = articles.length > 0 && articles[articles.length - 1].checkVisibility({ opacityProperty: true })
-    if (shown && articles.length === last) stable++; else stable = 0
-    last = articles.length
-    if (performance.now() - t0 > 30000) throw new Error("timed out opening ${id}")
-  }
-  return performance.now() - t0
-})()`
-
 const stopBackgroundDeliveries = (data: string) => {
   const db = new DatabaseSync(join(data, "hinacode.sqlite"))
   db.exec("UPDATE pull_request_link SET watch = NULL; UPDATE automation SET enabled = 0")
@@ -245,10 +124,10 @@ const measure = async (label: string, data: string, requested: ReadonlyArray<str
     const trace = join(data, `trace-${label}-${run}.jsonl`)
     rmSync(trace, { force: true })
     const startedAt = Date.now()
-    const child = launch(data, trace)
+    const child = launch(repo, data, port, { HINACODE_TRACE: trace })
     try {
       const deadline = startedAt + 60_000
-      const page = await connect(deadline)
+      const page = await connect(port, deadline)
       const rendererMs = Date.now() - startedAt
       await page.waitFor(`window.hinacode.rpc("settings.get").then(() => true)`, deadline)
       const rpcMs = Date.now() - startedAt

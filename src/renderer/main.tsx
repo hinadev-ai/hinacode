@@ -11,7 +11,7 @@ import { Toaster } from "./components/ui/sonner.tsx"
 import { TooltipProvider } from "./components/ui/tooltip.tsx"
 import { applyAppearance, themes, useTheme } from "./lib/appearance.ts"
 import { registry } from "./lib/registry.ts"
-import { callPromise, clientSettingsAtom, onPushEvent, projectsAtom, settingsAtom } from "./lib/rpc.ts"
+import { artifactsAtom, callPromise, clientSettingsAtom, onPushEvent, projectsAtom, settingsAtom } from "./lib/rpc.ts"
 import { terminalExited, writeTerminal } from "./lib/terminalScreens.ts"
 import { useClientSettings } from "./lib/settings.ts"
 import { windowEntry } from "./lib/windowEntry.ts"
@@ -19,7 +19,9 @@ import { notifyThreadEvent, recordUnseenOutcome } from "./lib/threadNotification
 import { m } from "./paraglide/messages.js"
 import { router } from "./router.tsx"
 import { pullRequestWindowRouter } from "./pullRequestWindowRouter.ts"
+import { openArtifact, useArtifacts } from "./stores/artifacts.ts"
 import { useBackgroundTasks } from "./stores/backgroundTasks.ts"
+import { useActivity } from "./stores/activity.ts"
 import { useDrafts } from "./stores/drafts.ts"
 import { useLocale } from "./stores/locale.ts"
 import { useMessages } from "./stores/messages.ts"
@@ -29,6 +31,7 @@ import { useSubagents } from "./stores/subagents.ts"
 import { useTerminals } from "./stores/terminals.ts"
 import { errorMessage } from "./lib/errorMessage.ts"
 import { openSidechat } from "./lib/sidechat.ts"
+import { useDeviceActivity } from "./stores/deviceActivity.ts"
 import { selectThread, useThreads } from "./stores/threads.ts"
 import { useUnseen } from "./stores/unseen.ts"
 import { useWorktrees } from "./stores/worktrees.ts"
@@ -41,7 +44,7 @@ function App() {
   const locale = useLocale((state) => state.locale)
   const { appearance } = useClientSettings()
   const theme = useTheme(appearance.theme)
-  useLayoutEffect(() => applyAppearance(appearance, theme.scheme), [appearance, theme.scheme])
+  useLayoutEffect(() => applyAppearance(appearance, theme.id), [appearance, theme.id])
   const nativeScheme = themes[appearance.theme].scheme
   useEffect(() => {
     void callPromise("app.setColorScheme", nativeScheme)
@@ -66,18 +69,37 @@ async function loadLists() {
   ])
 }
 
+async function revealArtifact(threadId: string, id: string) {
+  if (windowEntry !== null) return
+  registry.refresh(artifactsAtom)
+  await Effect.runPromise(Effect.ignore(AtomRegistry.getResult(registry, artifactsAtom, { suspendOnWaiting: true })))
+  const onScreen = router.matchRoute({ to: "/thread/$threadId", params: { threadId } }) !== false
+  if (onScreen) openArtifact(threadId, id)
+  else useArtifacts.getState().select(threadId, id)
+}
+
 onPushEvent((event) => {
   switch (event.type) {
     case "thread.updated":
       return useThreads.getState().upsert(event.thread)
-    case "thread.removed":
+    case "thread.removed": {
+      const sidechat = useThreads.getState().sidechats[event.id]
+      if (sidechat !== undefined) useDrafts.getState().discard(sidechat.id)
+      useDrafts.getState().discard(event.id)
+      useActivity.getState().forget(event.id)
       useUnseen.getState().clear(event.id)
       useMessages.getState().unload(event.id)
       return useThreads.getState().remove(event.id)
+    }
     case "message.created":
     case "message.updated":
       return useMessages.getState().receive(event)
+    case "transcript.lost":
+      return void useMessages.getState().reload(event.threadId)
+    case "device.agentAction":
+      return useDeviceActivity.getState().markUnseen(event.threadId)
     case "thread.event": {
+      useActivity.getState().receive(event.threadId, event.event)
       useMessages.getState().receive(event)
       recordUnseenOutcome(event.threadId, event.event)
       const settings = AsyncResult.getOrElse(registry.get(clientSettingsAtom), () => null)
@@ -95,6 +117,12 @@ onPushEvent((event) => {
       )
     case "thread.pullRequests":
       return usePullRequests.getState().replace(event.threadId, event.links)
+    case "thread.reveal":
+      if (windowEntry !== null) return
+      void router.navigate({ to: "/thread/$threadId", params: { threadId: event.threadId } })
+      return void callPromise("app.focus", undefined)
+    case "artifact.opened":
+      return void revealArtifact(event.threadId, event.id)
     case "thread.lineComment":
       return useDrafts.getState().addComment(event.threadId, event.comment)
     case "pullRequest.guide":
@@ -108,6 +136,8 @@ onPushEvent((event) => {
     case "terminal.exited":
       terminalExited(event.id, event.exitCode)
       return useTerminals.getState().markExited(event.id, event.exitCode)
+    case "terminal.updated":
+      return useTerminals.getState().replaceSession(event.session)
     case "environment.status":
       if (event.status !== "connected") return
       registry.refresh(projectsAtom)

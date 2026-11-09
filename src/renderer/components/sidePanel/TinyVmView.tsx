@@ -2,10 +2,11 @@ import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { lazy, type ReactNode, Suspense, useState, useTransition } from "react"
-import type { Thread, ThreadVm, VmControl, VmPasskey, VmTemplate } from "../../../shared/domain.ts"
+import type { Thread, ThreadVm, VmControl, VmTemplate } from "../../../shared/domain.ts"
 import { useThreadEnvironment } from "../../lib/environments.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
-import { callPromise, threadVmAtom, threadVmPasskeyAtom, vmHostAtom } from "../../lib/rpc.ts"
+import { callPromise, threadVmAtom, vmHostAtom } from "../../lib/rpc.ts"
+import { inBrowser } from "../../lib/runtime.ts"
 import { useSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
 import { useUi } from "../../stores/ui.ts"
@@ -14,16 +15,19 @@ import { HoldToConfirmButton } from "../HoldToConfirmButton.tsx"
 import { Button } from "../ui/button.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip.tsx"
-import { CameraIcon } from "../icons/CameraIcon.tsx"
-import { ComputerIcon } from "../icons/ComputerIcon.tsx"
-import { FingerprintIcon } from "../icons/FingerprintIcon.tsx"
-import { FullscreenIcon } from "../icons/FullscreenIcon.tsx"
-import type { IconComponent } from "../icons/Icon.tsx"
-import { PipExitIcon } from "../icons/PipExitIcon.tsx"
-import { PipIcon } from "../icons/PipIcon.tsx"
-import { SaveIcon } from "../icons/SaveIcon.tsx"
-import { SpinnerIcon } from "../icons/SpinnerIcon.tsx"
-import { WarningIcon } from "../icons/WarningIcon.tsx"
+import {
+  CameraIcon,
+  ComputerIcon,
+  FullscreenIcon,
+  type IconComponent,
+  PipExitIcon,
+  PipIcon,
+  SaveIcon,
+  SpinnerIcon,
+  WarningIcon,
+} from "@hinacode/icons"
+import { withCode } from "../withCode.tsx"
+import { Link } from "@tanstack/react-router"
 
 export const TinyVmScreen = lazy(() => import("./TinyVmScreen.tsx"))
 const BoatVmScreen = lazy(() => import("./BoatVmScreen.tsx"))
@@ -39,7 +43,16 @@ interface VmScreenProps {
   readonly dropping: boolean
 }
 
+function DesktopOnlyVmScreen() {
+  return (
+    <div className="flex aspect-video w-full items-center justify-center rounded-md bg-muted p-6 text-center">
+      <p className="max-w-80 text-sm text-muted-foreground">{m.web_vm_screen_desktop_only()}</p>
+    </div>
+  )
+}
+
 export function VmScreen({ vm, ...rest }: VmScreenProps) {
+  if (vm.provider !== "boat" && inBrowser()) return <DesktopOnlyVmScreen />
   return vm.provider === "boat" ? (
     <BoatVmScreen control={vm.control} sandboxId={vm.sandboxId} {...rest} />
   ) : (
@@ -110,14 +123,15 @@ interface VmTemplateSelectProps {
   readonly templates: ReadonlyArray<VmTemplate>
   readonly value: string
   readonly onChange: (name: string) => void
+  readonly className?: string
 }
 
-export function VmTemplateSelect({ id, templates, value, onChange }: VmTemplateSelectProps) {
+export function VmTemplateSelect({ id, templates, value, onChange, className }: VmTemplateSelectProps) {
   const listed = templates.map((template) => ({ value: template.name, label: templateLabel(template) }))
   const items = listed.some((item) => item.value === value) ? listed : [{ value, label: value }, ...listed]
   return (
     <Select items={items} value={value} onValueChange={(next) => typeof next === "string" && onChange(next)}>
-      <SelectTrigger id={id} className="w-full">
+      <SelectTrigger id={id} className={className}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -167,6 +181,16 @@ function NoVm({ threadId }: { threadId: string }) {
     host.value.provider === experimental.tinyVmProvider
       ? host.value.templates
       : []
+  const hostProblem =
+    AsyncResult.isSuccess(host) && host.value.provider === experimental.tinyVmProvider
+      ? host.value.status === "notConfigured"
+        ? host.value.provider === "boat"
+          ? withCode(m.settings_tiny_vm_boat_not_configured())
+          : withCode(m.settings_tiny_vm_not_configured())
+        : host.value.status === "unreachable"
+          ? m.settings_tiny_vm_unreachable({ url: host.value.url, message: host.value.message })
+          : null
+      : null
   const template =
     picked ?? (experimental.tinyVmProvider === "boat" ? experimental.tinyVmBoatSize : experimental.tinyVmTemplate)
   const start = () => run(() => callPromise("vm.start", { threadId, template }))
@@ -176,7 +200,13 @@ function NoVm({ threadId }: { threadId: string }) {
       <ComputerIcon aria-hidden className="size-6 text-muted-foreground" />
       <div className="flex flex-col gap-1">
         <h3 className="text-sm font-medium">{m.vm_empty_title()}</h3>
-        <p className="max-w-64 text-xs text-pretty text-muted-foreground">{m.vm_empty_body()}</p>
+        {hostProblem === null ? (
+          <p className="max-w-64 text-xs text-pretty text-muted-foreground">{m.vm_empty_body()}</p>
+        ) : (
+          <p role="alert" className="max-w-64 text-xs text-pretty wrap-anywhere text-attention">
+            {hostProblem}
+          </p>
+        )}
       </div>
       {templates.length > 1 && (
         <div className="flex w-56 flex-col gap-1.5 text-left">
@@ -188,12 +218,24 @@ function NoVm({ threadId }: { threadId: string }) {
             templates={templates}
             value={template}
             onChange={setPicked}
+            className="w-full"
           />
         </div>
       )}
-      <Button variant="outline" size="sm" disabled={pending} onClick={start}>
-        {m.vm_start()}
-      </Button>
+      {hostProblem === null ? (
+        <Button variant="outline" size="sm" disabled={pending} onClick={start}>
+          {m.vm_start()}
+        </Button>
+      ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          render={<Link to="/settings" search={{ page: "experimental" }} />}
+          nativeButton={false}
+        >
+          {m.vm_open_settings()}
+        </Button>
+      )}
       <ActionError error={error} />
     </Centered>
   )
@@ -202,7 +244,6 @@ function NoVm({ threadId }: { threadId: string }) {
 function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
   const { pending, error, run } = useVmAction()
   const { dropping, onDropFiles } = useVmDrop(threadId, run)
-  const { experimental } = useSettings(useThreadEnvironment(threadId))
   const floating = useUi((state) => state.vmPlacements[threadId] === "floating")
   const setPlacement = useUi((state) => state.setVmPlacement)
   const [attempt, setAttempt] = useState(0)
@@ -210,8 +251,7 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
 
   return (
     <>
-      <div className="flex min-h-10 shrink-0 items-center gap-2 border-b border-border px-3 py-1.5">
-        <ControlStatus vm={vm} />
+      <div className="flex min-h-10 shrink-0 items-center justify-end gap-2 border-b border-border px-3 py-1.5">
         {vm.profile === "owner" && (
           <IconAction
             icon={SaveIcon}
@@ -220,8 +260,6 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
           />
         )}
         <ScreenshotButton threadId={threadId} run={run} />
-        {experimental.tinyVmPasskeys && vm.provider === "sbx" && <PasskeyButton threadId={threadId} run={run} />}
-        {control}
         {!floating && (
           <>
             <IconAction icon={PipIcon} label={m.vm_float()} onClick={() => setPlacement(threadId, "floating")} />
@@ -243,7 +281,6 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
       {vm.provider === "boat" && (
         <p className="border-b border-border px-3 py-1.5 text-xs text-muted-foreground">{m.vm_boat_keeps_disk()}</p>
       )}
-      {experimental.tinyVmPasskeys && vm.provider === "sbx" && <PasskeyNotice threadId={threadId} run={run} />}
       {floating ? (
         <Centered>
           <PipIcon aria-hidden className="size-6 text-muted-foreground" />
@@ -269,6 +306,10 @@ function Running({ threadId, vm }: { threadId: string; vm: RunningVm }) {
           </Suspense>
         </div>
       )}
+      <div className="flex min-h-10 shrink-0 items-center gap-2 border-t border-border px-3 py-1.5">
+        <ControlStatus vm={vm} />
+        {control}
+      </div>
     </>
   )
 }
@@ -325,55 +366,13 @@ interface VmActionButtonProps {
 }
 
 export function ScreenshotButton({ threadId, run }: VmActionButtonProps) {
+  if (inBrowser()) return null
   const save = () =>
     run(async () => {
       const attachment = await callPromise("vm.screenshot.save", { threadId })
       await callPromise("shell.reveal", { path: attachment.path })
     })
   return <IconAction icon={CameraIcon} label={m.vm_screenshot_save()} onClick={save} />
-}
-
-export function PasskeyButton({ threadId, run }: VmActionButtonProps) {
-  const passkey = useAtomValue(threadVmPasskeyAtom(threadId))
-  if (!AsyncResult.isSuccess(passkey)) return null
-  const state: VmPasskey = passkey.value
-  const prepare = () => run(() => callPromise("vm.passkey.prepare", { threadId }))
-  switch (state.status) {
-    case "off":
-    case "failed":
-      return <IconAction icon={FingerprintIcon} label={m.vm_passkey_prepare()} onClick={prepare} />
-    case "ready":
-      return (
-        <IconAction icon={FingerprintIcon} label={m.vm_passkey_ready()} onClick={prepare} className="text-success" />
-      )
-    case "pending":
-      return <IconAction icon={FingerprintIcon} label={m.vm_passkey_pending({ origin: state.origin })} disabled />
-  }
-}
-
-export function PasskeyNotice({ threadId, run }: VmActionButtonProps) {
-  const passkey = useAtomValue(threadVmPasskeyAtom(threadId))
-  if (!AsyncResult.isSuccess(passkey)) return null
-  const state: VmPasskey = passkey.value
-  if (state.status === "failed") {
-    return (
-      <p role="alert" className="border-b border-border px-3 py-1.5 text-xs text-destructive">
-        {state.message}
-      </p>
-    )
-  }
-  if (state.status !== "pending") return null
-  return (
-    <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs">
-      <FingerprintIcon aria-hidden className="size-3.5 shrink-0" />
-      <p aria-live="polite" className="min-w-0 flex-1 truncate" title={m.vm_passkey_pending({ origin: state.origin })}>
-        {m.vm_passkey_pending({ origin: state.origin })}
-      </p>
-      <Button variant="outline" size="xs" onClick={() => run(() => callPromise("vm.passkey.cancel", { threadId }))}>
-        {m.vm_passkey_cancel()}
-      </Button>
-    </div>
-  )
 }
 
 interface IconActionProps {
@@ -391,7 +390,7 @@ export function IconAction({ icon: Icon, label, onClick, disabled = false, class
         render={
           <Button
             variant="ghost"
-            size="icon-xs"
+            size="icon-sm"
             aria-label={label}
             onClick={onClick}
             disabled={disabled}

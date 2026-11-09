@@ -80,6 +80,14 @@ Feature: Settings
   Scenario: Archive settings are saved
     When I open settings
     And I open the settings section "Worktrees"
-    And I turn on the setting "Archive when its pull request merges or closes"
+    And I turn on the setting "Settle when its pull request merges"
     And I turn on the setting "Remove the worktree when archiving"
-    Then the archive settings are saved as both on
+    And I enter 30 days for "Archive a settled thread after"
+    Then the archive settings are saved with both switches on and archiving after 30 days
+
+  Scenario: Scrolling past the end of a settings page leaves the window in place
+    Given the pull request guide is turned on
+    When I open settings
+    And I open the settings section "Providers"
+    And I scroll the settings page past its end
+    Then the window has not scrolled

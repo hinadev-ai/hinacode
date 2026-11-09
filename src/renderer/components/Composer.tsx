@@ -3,8 +3,10 @@ import { formatForDisplay } from "@tanstack/react-hotkeys"
 import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import {
+  type ChangeEvent,
   type DragEvent as ReactDragEvent,
   type FormEvent,
+  type ReactElement,
   type ReactNode,
   type RefObject,
   lazy,
@@ -20,9 +22,12 @@ import { cn } from "../lib/utils.ts"
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
 import { isThreadBusy, type Project, type Thread, toCheckoutTarget } from "../../shared/domain.ts"
-import { mentionableThreads } from "../../shared/threadMention.ts"
+import { providerInfo } from "../../shared/providers.ts"
+import { mentionableThreads } from "../../shared/mentions.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { promptWithComments } from "../lib/lineComments.ts"
+import { mentionableTerminals } from "../lib/terminalLabel.ts"
+import { inBrowser } from "../lib/runtime.ts"
 import {
   callPromise,
   commandsAtom,
@@ -31,13 +36,15 @@ import {
   filesAtom,
   noFilesAtom,
   projectsAtom,
-  threadCommands,
 } from "../lib/rpc.ts"
+import { artifactSkillCommands } from "../lib/artifactSkills.ts"
 import { askSidechat, sidechatCommand, sidechatQuestion } from "../lib/sidechat.ts"
 import { useIsChat } from "../lib/useIsChat.ts"
 import { m } from "../paraglide/messages.js"
-import { type Draft, emptyDraft, useDrafts } from "../stores/drafts.ts"
+import { type Draft, emptyDraft, hasContent, useDrafts } from "../stores/drafts.ts"
+import { trackSend } from "../stores/sending.ts"
 import { useMessages } from "../stores/messages.ts"
+import { useTerminals } from "../stores/terminals.ts"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
 import {
@@ -56,22 +63,17 @@ import { ContextRing } from "./ContextRing.tsx"
 import { PendingLineComment } from "./LineComment.tsx"
 import { ActivityIndicator } from "./ActivityIndicator.tsx"
 import { QueueBar } from "./QueueBar.tsx"
+import { ScheduleButton, ScheduledBar } from "./ScheduledMessages.tsx"
 import { FieldError } from "./ui/field.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 import { useModifierHeld } from "../lib/useModifierHeld.ts"
 import type { SendGlyphMode } from "./icons/SendGlyph.tsx"
+import { UploadIcon } from "@hinacode/icons"
+import { ChordKeys } from "./ChordKeys.tsx"
+import { useKeymap } from "../keybindings/useKeybindings.ts"
+import { readAsDataUrl } from "../lib/dataUrl.ts"
 
-const readAsDataUrl = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.addEventListener("load", () => resolve(String(reader.result)))
-    reader.addEventListener("error", () => reject(reader.error))
-    reader.readAsDataURL(file)
-  })
-
-const onDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
-  if (event.dataTransfer.types.includes("Files")) event.preventDefault()
-}
+const carriesFiles = (event: ReactDragEvent) => event.dataTransfer.types.includes("Files")
 
 type StageSource = RpcRequest<"attachments.stage">["source"]
 
@@ -101,7 +103,9 @@ const deliver = (
     unstarted && sent.workspace
       ? { mode: sent.workspace.mode, target: toCheckoutTarget(sent.workspace.ref) }
       : undefined
-  return callPromise("threads.send", { threadId, prompt, attachments: sent.attachments, workspace })
+  return trackSend(threadId, () =>
+    callPromise("threads.send", { threadId, prompt, attachments: sent.attachments, workspace }),
+  )
 }
 
 const sourceOf = async (file: File): Promise<StageSource> => {
@@ -111,7 +115,8 @@ const sourceOf = async (file: File): Promise<StageSource> => {
 }
 
 export function Composer({ thread, children }: { thread: Thread; children?: ReactNode }) {
-  const { text, attachments, workspace, comments } = useDrafts((state) => state.byThreadId[thread.id] ?? emptyDraft)
+  const draft = useDrafts((state) => state.byThreadId[thread.id] ?? emptyDraft)
+  const { text, attachments, workspace, comments } = draft
   const isSidechat = thread.sideOf !== null
   const unstarted = useMessages((state) => {
     const history = state.byThread[thread.id]
@@ -122,13 +127,11 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   const [isSending, startSending] = useTransition()
   const [isStaging, startStaging] = useTransition()
   const inputRef = useRef<ComposerInputHandle>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const key = completionKey(thread)
   const commandsResult = useAtomValue(commandsAtom(key))
-  const agentCommands = threadCommands(
-    AsyncResult.getOrElse(commandsResult, (): ReadonlyArray<AgentCommand> => []),
-    thread,
-  )
-  const commands = isSidechat ? agentCommands : [sidechatCommand(), ...agentCommands]
+  const agentCommands = AsyncResult.getOrElse(commandsResult, (): ReadonlyArray<AgentCommand> => [])
+  const commands = [...(isSidechat ? [] : [sidechatCommand()]), ...artifactSkillCommands(), ...agentCommands]
   const commandsError = AsyncResult.isFailure(commandsResult)
     ? m.composer_commands_failed({ message: errorMessage(Cause.squash(commandsResult.cause)) })
     : null
@@ -138,21 +141,26 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
   const threadsById = useThreads((state) => state.byId)
   const projects = AsyncResult.getOrElse(useAtomValue(projectsAtom), (): ReadonlyArray<Project> => [])
   const mentionable = mentionableThreads(thread, Object.values(threadsById), projects)
+  const terminalSessions = useTerminals((state) => state.byThreadId[thread.id]?.sessions)
+  const terminals = mentionableTerminals(terminalSessions ?? [])
   const refreshCommands = useAtomRefresh(commandsAtom(key))
   const refreshRootBranch = useAtomRefresh(currentBranchAtom(thread.projectId))
   const busy = isThreadBusy(thread.status)
-  const hasDraft = text.trim() !== "" || attachments.length > 0 || comments.length > 0
+  const hasDraft = hasContent(draft)
   const canSend = hasDraft && !isSending && !isStaging
+  const steers = providerInfo[thread.provider].steersRunningTurn
   const placeholder =
-    thread.status === "awaiting_approval"
-      ? m.thread_composer_approval_placeholder({ steer: formatForDisplay(STEER_CHORD) })
-      : busy
-        ? m.thread_composer_queue_placeholder({ steer: formatForDisplay(STEER_CHORD) })
-        : isSidechat
-          ? m.sidechat_placeholder()
-          : m.thread_composer_placeholder()
+    !steers && busy
+      ? m.thread_composer_queue_only_placeholder()
+      : thread.status === "awaiting_approval"
+        ? m.thread_composer_approval_placeholder({ steer: formatForDisplay(STEER_CHORD) })
+        : busy
+          ? m.thread_composer_queue_placeholder({ steer: formatForDisplay(STEER_CHORD) })
+          : isSidechat
+            ? m.sidechat_placeholder()
+            : m.thread_composer_placeholder()
   const modifierHeld = useModifierHeld()
-  const clickDelivery: Delivery = modifierHeld ? "steer" : "queue"
+  const clickDelivery: Delivery = modifierHeld && steers ? "steer" : "queue"
   const sendMode: SendGlyphMode = !(busy || isSending) ? "send" : hasDraft ? clickDelivery : "stop"
 
   const send = (delivery: Delivery) => {
@@ -197,6 +205,17 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
     }
   }
 
+  const attach = () => {
+    if (inBrowser()) fileInputRef.current?.click()
+    else startStaging(pickFiles)
+  }
+
+  const stagePicked = (event: ChangeEvent<HTMLInputElement>) => {
+    const picked = [...(event.target.files ?? [])]
+    event.target.value = ""
+    stage(picked.map(sourceOf))
+  }
+
   const onPaste = (event: ClipboardEvent) => {
     const images = [...(event.clipboardData?.files ?? [])].filter((file) => file.type.startsWith("image/"))
     if (images.length === 0) return
@@ -204,11 +223,30 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
     stage(images.map(sourceOf))
   }
 
-  const onDrop = (event: DragEvent) => {
-    const dropped = [...(event.dataTransfer?.files ?? [])]
-    if (dropped.length === 0) return
-    event.preventDefault()
-    stage(dropped.map(sourceOf))
+  const [dragging, setDragging] = useState(false)
+  const dropZone = {
+    onDragOver: (event: ReactDragEvent<HTMLDivElement>) => {
+      if (!carriesFiles(event)) return
+      event.preventDefault()
+      if (!dragging) setDragging(true)
+    },
+    onDragLeave: (event: ReactDragEvent<HTMLDivElement>) => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false)
+    },
+    onDropCapture: (event: ReactDragEvent<HTMLDivElement>) => {
+      setDragging(false)
+      const dropped = [...event.dataTransfer.files]
+      if (dropped.length === 0) return
+      event.preventDefault()
+      stage(dropped.map(sourceOf))
+    },
+  }
+
+  const canWarm = !busy && !isSidechat && !(unstarted && workspace !== null)
+  const changeText = (next: string) => {
+    if (text === "" && next !== "" && canWarm)
+      callPromise("threads.warm", { threadId: thread.id }).catch(() => undefined)
+    useDrafts.getState().setText(thread.id, next)
   }
 
   const stop = () => {
@@ -240,8 +278,14 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
         <ComposerRoot className="mx-auto flex min-h-0 max-w-3xl flex-col [--composer-edge:color-mix(in_oklab,var(--border)_60%,transparent)] has-[[data-slot=composer-bar]:focus-within]:[--composer-edge:var(--ring)]">
           <ActivityIndicator thread={thread}>
             <QueueBar thread={thread} onEdit={() => inputRef.current?.focus()} onError={setError} />
+            <ScheduledBar thread={thread} onEdit={() => inputRef.current?.focus()} onError={setError} />
           </ActivityIndicator>
-          <ComposerBar className="composer-edge min-h-0 has-[[role=listbox]]:z-20">
+          <ComposerBar
+            {...dropZone}
+            dragActive={dragging}
+            className="composer-edge min-h-0 has-[[role=listbox]]:z-20 data-drag-active:[--composer-edge:var(--ring)]"
+          >
+            {dragging && <DropHint />}
             {comments.length > 0 && (
               <ul
                 aria-label={m.comment_pending_label()}
@@ -278,24 +322,28 @@ export function Composer({ thread, children }: { thread: Thread; children?: Reac
                 aria-label={isSidechat ? m.panel_tab_sidechat() : m.thread_composer_label()}
                 placeholder={placeholder}
                 value={text}
-                onValueChange={(next) => useDrafts.getState().setText(thread.id, next)}
+                onValueChange={changeText}
                 commands={commands}
                 files={files}
+                onMentionStart={refreshFiles}
                 threads={mentionable}
+                terminals={terminals}
                 projectId={thread.projectId}
-                onEnter={(event) => send(deliveryOf(event))}
+                onEnter={(event) => send(steers ? deliveryOf(event) : "queue")}
                 onPaste={onPaste}
-                onDragOver={onDragOver}
-                onDrop={onDrop}
                 focusOnMount={focusWhenReady}
               />
             </Suspense>
             <ComposerToolbar className="relative shrink-0 gap-2">
               <ComposerActions className="min-w-0 flex-1">
-                <AttachButton onClick={pickFiles} disabled={isStaging} />
+                <AttachButton onClick={attach} disabled={isStaging} />
+                <input ref={fileInputRef} type="file" multiple hidden onChange={stagePicked} />
                 <ThreadPicker thread={thread} canSwitchAgent={!busy && !isSidechat} onError={setError} />
               </ComposerActions>
               <ContextRing threadId={thread.id} provider={thread.provider} />
+              {!isSidechat && (
+                <ScheduleButton thread={thread} unstarted={unstarted} disabled={!canSend} onError={setError} />
+              )}
               <SendButton mode={sendMode} canSend={canSend} onStop={stop} />
             </ComposerToolbar>
           </ComposerBar>
@@ -355,7 +403,7 @@ function DraftPreview({ text, placeholder }: { text: string; placeholder: string
     <p
       className={cn(
         "max-h-60 min-h-[calc(1lh+1rem)] overflow-hidden px-2.5 py-2 text-sm whitespace-pre-wrap",
-        text === "" && "text-muted-foreground",
+        text === "" && "truncate text-muted-foreground",
       )}
     >
       {text === "" ? placeholder : text}
@@ -381,27 +429,48 @@ function AttachButton({ onClick, disabled }: { onClick: () => void; disabled: bo
   )
 }
 
+function DropHint() {
+  return (
+    <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center gap-2 rounded-[inherit] bg-background/90 text-sm transition-opacity duration-150 ease-out motion-reduce:transition-none starting:opacity-0">
+      <UploadIcon aria-hidden className="size-4 text-muted-foreground" />
+      {m.attachment_drop_hint()}
+    </div>
+  )
+}
+
+function StopTooltip({ children }: { children: ReactElement }) {
+  const chord = useKeymap()["turn.interrupt"]
+  return (
+    <Tooltip>
+      <TooltipTrigger render={children} />
+      <TooltipContent>
+        {m.thread_composer_stop()}
+        {chord && <ChordKeys chord={chord} />}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 function SendButton({ mode, canSend, onStop }: { mode: SendGlyphMode; canSend: boolean; onStop: () => void }) {
+  const button = (label: string) => (
+    <ComposerSend
+      type={mode === "stop" ? "button" : "submit"}
+      onClick={mode === "stop" ? onStop : undefined}
+      mode={mode}
+      idle={!canSend}
+      disabled={mode !== "stop" && !canSend}
+      aria-label={label}
+    />
+  )
+  if (mode === "stop") return <StopTooltip>{button(m.thread_composer_stop())}</StopTooltip>
   const label = {
     send: m.thread_composer_send(),
     queue: m.thread_composer_queue(),
     steer: m.thread_composer_steer(),
-    stop: m.thread_composer_stop(),
   }[mode]
   return (
     <Tooltip>
-      <TooltipTrigger
-        render={
-          <ComposerSend
-            type={mode === "stop" ? "button" : "submit"}
-            onClick={mode === "stop" ? onStop : undefined}
-            mode={mode}
-            idle={!canSend}
-            disabled={mode !== "stop" && !canSend}
-            aria-label={label}
-          />
-        }
-      />
+      <TooltipTrigger render={button(label)} />
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
   )

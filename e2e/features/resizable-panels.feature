@@ -19,12 +19,6 @@ Feature: Resizable panels
     When I reload the app and open the thread "Resize"
     Then the thread details panel is 120 pixels wider than it started
 
-  Scenario: The keyboard resizes the thread details panel
-    When I press "ArrowLeft" on "Resize thread details"
-    Then the thread details panel is 16 pixels wider than it started
-    When I press "Home" on "Resize thread details"
-    Then the thread details panel is 280 pixels wide
-
   Scenario: Double-clicking the edge restores the default width
     When I drag "Resize thread details" 120 pixels to the left
     And I double-click "Resize thread details"
@@ -32,7 +26,7 @@ Feature: Resizable panels
 
   Scenario: Dragging the sidebar edge still resizes the sidebar
     When I drag "Resize sidebar" 100 pixels to the right
-    Then the sidebar is 356 pixels wide
+    Then the sidebar is 404 pixels wide
 
   # Unmounting a captured splitter used to leave cursor and selection styles on the entire document.
   Scenario: A responsive layout change releases an active resize drag

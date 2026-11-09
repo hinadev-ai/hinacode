@@ -8,13 +8,13 @@ import { useUi } from "../stores/ui.ts"
 import { MAX_ITEMS_PER_GROUP, type RankedGroup, type RankedItem } from "./rank.ts"
 import { openFile } from "./sources.tsx"
 import type { PaletteContext, PaletteGroup, PaletteItem, PaletteSource } from "./types.ts"
-import { ChatIcon } from "../components/icons/ChatIcon.tsx"
-import { FileTextIcon } from "../components/icons/FileTextIcon.tsx"
-import { WarningIcon } from "../components/icons/WarningIcon.tsx"
+import { ChatIcon, FileTextIcon, WarningIcon } from "@hinacode/icons"
 
 const iconClass = "size-3.5 shrink-0 text-muted-foreground"
 
-const FILES_DEBOUNCE_MS = 150
+const SEARCH_DEBOUNCE_MS = 150
+
+const afterTypingPause = () => new Promise((resolve) => setTimeout(resolve, SEARCH_DEBOUNCE_MS))
 
 const threadItem = (hit: ThreadSearchHit, query: string, ctx: PaletteContext): PaletteItem => {
   const provider = ctx.threads[hit.threadId]?.provider
@@ -56,12 +56,18 @@ const logFailure = (what: string) => (cause: unknown) => {
 let lastThreads: { query: string; items: Promise<ReadonlyArray<ThreadSearchHit>> } | null = null
 let lastFiles: { key: string; items: Promise<ReadonlyArray<PaletteItem>> } | null = null
 
+const searchThreads = async (query: string): Promise<ReadonlyArray<ThreadSearchHit>> => {
+  await afterTypingPause()
+  if (lastThreads?.query !== query) return []
+  return callPromise("search.threads", { query }).catch(logFailure("Search failed"))
+}
+
 export const threadSearchSource: PaletteSource = {
   group: "threads",
   items: (query, ctx) => {
     if (query === "") return []
     if (lastThreads?.query !== query) {
-      const request = { query, items: callPromise("search.threads", { query }).catch(logFailure("Search failed")) }
+      const request = { query, items: searchThreads(query) }
       lastThreads = request
       void request.items.then(() => {
         if (lastThreads === request) lastThreads = null
@@ -77,7 +83,7 @@ const searchFiles = async (
   query: string,
   key: string,
 ): Promise<ReadonlyArray<PaletteItem>> => {
-  await new Promise((resolve) => setTimeout(resolve, FILES_DEBOUNCE_MS))
+  await afterTypingPause()
   if (lastFiles?.key !== key) return []
   return callPromise("search.files", { threadId, query }).then(
     (hits) => hits.map((hit) => fileItem(hit, ctx)),

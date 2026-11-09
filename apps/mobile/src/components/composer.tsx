@@ -11,7 +11,8 @@ import { completionAt, type Suggestion, suggestionsFor } from "@shared/composerS
 import type { RpcRequest } from "@shared/contract.ts"
 import { AccessMode, isThreadBusy, type Settings, type Thread, toCheckoutTarget } from "@shared/domain.ts"
 import { type AccountOption, accountOptions, formatResetIn } from "@shared/planLimits.ts"
-import { mentionableThreads } from "@shared/threadMention.ts"
+import { providerInfo } from "@shared/providers.ts"
+import { mentionableThreads } from "@shared/mentions.ts"
 import { useEffect, useRef, useState } from "react"
 import {
   Image,
@@ -38,6 +39,7 @@ import { useNow } from "@/hooks/use-now"
 import { useThreadServer } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
+import { artifactSkillCommands } from "@/lib/artifact-skills"
 import { keepSkillWhole } from "@/lib/composer-text"
 import { copy, locale } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
@@ -89,8 +91,8 @@ function useUnstarted(thread: Thread) {
 }
 
 /**
- * What the composer completes: the agent's `/commands` and `$skills`, the workspace's files and the project's
- * other threads. Commands are listed again when the agent, account or worktree changes, and after a turn. The file
+ * What the composer completes: HinaCode's artifact skills, the agent's `/commands` and `$skills`, the workspace's files
+ * and the project's other threads. Commands are listed again when the agent, account or worktree changes, and after a turn. The file
  * list can run to megabytes in a large repository, so it is fetched only once an `@` asks for it, and again at the
  * next `@` after the workspace changed or a turn ran.
  */
@@ -125,7 +127,7 @@ function useCompletions(thread: Thread, busy: boolean, wantsFiles: boolean, onEr
     }
   }, [connected, wantsFiles, filesFresh, filesKey, thread.id, onError])
   const threads = mentionableThreads(thread, Object.values(byId), projects)
-  return { commands, files: files?.paths ?? [], threads }
+  return { commands: [...artifactSkillCommands, ...commands], files: files?.paths ?? [], threads }
 }
 
 export function Composer({ thread }: { thread: Thread }) {
@@ -144,6 +146,7 @@ export function Composer({ thread }: { thread: Thread }) {
   const unstarted = useUnstarted(thread)
   const server = useThreadServer(thread.id)?.id
   const busy = isThreadBusy(thread.status)
+  const steers = providerInfo[thread.provider].steersRunningTurn
   const wantsFiles = completionAt(text, Math.min(caret, text.length))?.trigger === "@"
   const completions = useCompletions(thread, busy, wantsFiles, setError)
   const { commands, files, threads } = completions
@@ -151,6 +154,7 @@ export function Composer({ thread }: { thread: Thread }) {
     commands: new Set(commands.map((command) => command.trigger + command.name)),
     files: new Set(files),
     threads: new Set([...threads.sameMachine, ...threads.otherMachines].map((other) => other.id)),
+    terminals: new Set<string>(),
   }
   const hasDraft = text.trim() !== "" || images.length > 0
 
@@ -175,7 +179,7 @@ export function Composer({ thread }: { thread: Thread }) {
     try {
       await useDrafts.getState().trackSending(thread.id, prompt || attachments.map(({ name }) => name).join(", "), () =>
         busy
-          ? call("threads.steer", { threadId: thread.id, text: prompt, attachments })
+          ? call(steers ? "threads.steer" : "threads.queue", { threadId: thread.id, text: prompt, attachments })
           : call("threads.send", {
               threadId: thread.id,
               prompt,
@@ -271,7 +275,11 @@ export function Composer({ thread }: { thread: Thread }) {
           }}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          placeholder={busy ? copy("mobile_composer_steer_placeholder") : copy("mobile_composer_placeholder")}
+          placeholder={
+            busy
+              ? copy(steers ? "mobile_composer_steer_placeholder" : "mobile_composer_queue_placeholder")
+              : copy("mobile_composer_placeholder")
+          }
           placeholderTextColor={theme.textMuted}
           multiline
           style={[styles.input, { color: theme.text }]}
@@ -282,11 +290,17 @@ export function Composer({ thread }: { thread: Thread }) {
             <SettingsChip thread={thread} onError={setError} />
             {unstarted && <WorkspaceChip thread={thread} onError={setError} />}
           </View>
-          <SendButton busy={busy} hasDraft={hasDraft && !staging} onSend={() => void send()} onStop={stop} />
+          <SendButton
+            busy={busy}
+            steers={steers}
+            hasDraft={hasDraft && !staging}
+            onSend={() => void send()}
+            onStop={stop}
+          />
         </View>
       </View>
       {error !== null && (
-        <Text accessibilityRole="alert" style={[styles.error, { color: theme.danger }]}>
+        <Text accessibilityRole="alert" numberOfLines={3} style={[styles.error, { color: theme.danger }]}>
           {error}
         </Text>
       )}
@@ -314,7 +328,7 @@ function AttachButton({ staging, onPress }: { staging: boolean; onPress: () => v
       {staging ? (
         <Spinner size={16} color={theme.textMuted} />
       ) : (
-        <Icon name="RiImageLine" size={16} color={theme.textMuted} />
+        <Icon name="Image" size={16} color={theme.textMuted} />
       )}
     </Pressable>
   )
@@ -338,7 +352,7 @@ function DraftImages({ images, onRemove }: { images: readonly DraftImage[]; onRe
             hitSlop={8}
             style={styles.removeImage}
           >
-            <Icon name="RiCloseCircleFill" size={20} color={theme.text} />
+            <Icon name="XCircleFill" size={20} color={theme.text} />
           </Pressable>
         </View>
       ))}
@@ -364,7 +378,7 @@ function Suggestions({
   // The selection can arrive before the text it belongs to.
   const completion = completionAt(text, Math.min(caret, text.length))
   if (completion === null) return null
-  const suggestions = suggestionsFor(completion, completions.commands, completions.files, completions.threads, [])
+  const suggestions = suggestionsFor(completion, completions.commands, completions.files, completions.threads, [], [])
   if (suggestions.length === 0) return null
 
   const pick = (suggestion: Suggestion) => {
@@ -440,7 +454,7 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
       const slash = suggestion.path.lastIndexOf("/")
       return (
         <View style={styles.suggestionLine}>
-          <Icon name="RiFileLine" size={14} color={theme.textMuted} />
+          <Icon name="File" size={14} color={theme.textMuted} />
           <Text numberOfLines={1} style={[styles.suggestionFile, { color: theme.text }]}>
             {suggestion.path.slice(slash + 1)}
           </Text>
@@ -453,25 +467,27 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
   }
 }
 
-/** While the agent runs, an empty composer offers Stop and a draft offers Steer. */
+/** While the agent runs, an empty composer offers Stop and a draft offers Steer, or Queue if the agent can't steer. */
 function SendButton({
   busy,
+  steers,
   hasDraft,
   onSend,
   onStop,
 }: {
   busy: boolean
+  steers: boolean
   hasDraft: boolean
   onSend: () => void
   onStop: () => void
 }) {
   const theme = useTheme()
   const stopping = busy && !hasDraft
-  const action = stopping ? "stop" : busy ? "steer" : "send"
+  const action = stopping ? "stop" : busy ? (steers ? "steer" : "queue") : "send"
   const label = copy(`mobile_composer_${action}`)
   const disabled = !stopping && !hasDraft
   const halo = action === "send" && hasDraft
-  const background = stopping ? theme.dangerBg : disabled ? theme.surfaceStrong : theme.primary
+  const background = stopping ? theme.dangerBg : disabled ? theme.disabled : theme.primary
 
   return (
     <motion.Pressable
@@ -490,8 +506,8 @@ function SendButton({
       {halo && <SendHalo />}
       <IconSwap
         showSecond={stopping}
-        first={<Icon name="RiArrowUpLine" size={18} color={halo ? theme.haloInk : disabled ? theme.textMuted : theme.onPrimary} />}
-        second={<Icon name="RiStopFill" size={14} color={theme.danger} />}
+        first={<Icon name="ArrowUp" size={18} color={halo ? theme.haloInk : disabled ? theme.textMuted : theme.onPrimary} />}
+        second={<Icon name="Stop" size={14} color={theme.danger} />}
       />
     </motion.Pressable>
   )
@@ -547,9 +563,12 @@ const providers: Record<ProviderId, { label: string; icon: IconName }> = {
   claude: { label: copy("mobile_provider_claude"), icon: "RiClaudeFill" },
   codex: { label: copy("mobile_provider_codex"), icon: "RiOpenaiFill" },
   muse: { label: copy("mobile_provider_muse"), icon: "RiMetaFill" },
+  opencode: { label: copy("mobile_provider_opencode"), icon: "OpencodeMark" },
+  magpie: { label: copy("mobile_provider_magpie"), icon: "MagpieMark" },
 }
 
 const effortLabels: Record<string, string> = {
+  none: copy("mobile_composer_effort_none"),
   minimal: copy("mobile_composer_effort_minimal"),
   low: copy("mobile_composer_effort_low"),
   medium: copy("mobile_composer_effort_medium"),
@@ -563,9 +582,9 @@ const effortLabel = (effort: string) => effortLabels[effort] ?? effort
 const DEFAULT_EFFORT = "default"
 
 const accessModes: Record<AccessMode, { label: string; icon: IconName }> = {
-  supervised: { label: copy("mobile_settings_access_supervised"), icon: "RiShieldUserLine" },
-  auto: { label: copy("mobile_settings_access_auto"), icon: "RiShieldCheckLine" },
-  full: { label: copy("mobile_settings_access_full"), icon: "RiLockUnlockLine" },
+  supervised: { label: copy("mobile_settings_access_supervised"), icon: "ShieldUser" },
+  auto: { label: copy("mobile_settings_access_auto"), icon: "Shield" },
+  full: { label: copy("mobile_settings_access_full"), icon: "Unlock" },
 }
 
 /** What each mode lets through, which differs by agent and, for Claude's auto mode, by model. */
@@ -573,6 +592,8 @@ const supervisedHints: Record<ProviderId, string> = {
   claude: copy("mobile_settings_access_supervised_hint"),
   codex: copy("mobile_composer_access_supervised_codex"),
   muse: copy("mobile_composer_access_supervised_muse"),
+  opencode: copy("mobile_composer_access_supervised_opencode"),
+  magpie: copy("mobile_settings_access_supervised_hint"),
 }
 
 const autoHints: Record<ProviderId, (model: ModelInfo | undefined) => string> = {
@@ -580,6 +601,8 @@ const autoHints: Record<ProviderId, (model: ModelInfo | undefined) => string> = 
     model?.autoMode ? copy("mobile_composer_access_auto_claude") : copy("mobile_composer_access_auto_claude_edits"),
   codex: () => copy("mobile_composer_access_auto_codex"),
   muse: () => copy("mobile_composer_access_auto_muse"),
+  opencode: () => copy("mobile_composer_access_auto_opencode"),
+  magpie: () => copy("mobile_composer_access_auto_claude_edits"),
 }
 
 const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | undefined) => {
@@ -592,9 +615,6 @@ const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | u
       return copy("mobile_settings_access_full_hint")
   }
 }
-
-/** Muse Code has no way to leave out the user's own skills. */
-const hidesUserSkills: Record<ProviderId, boolean> = { claude: true, codex: true, muse: false }
 
 interface ServerOptions {
   readonly profiles: readonly AgentProfile[]
@@ -671,7 +691,7 @@ function SettingsChip({ thread, onError }: { thread: Thread; onError: OnError })
         <Text numberOfLines={1} style={[styles.chipLabel, { color: theme.text }]}>
           {modelLabel}
         </Text>
-        <Icon name="RiArrowDownSLine" size={12} color={theme.textMuted} />
+        <Icon name="ChevronDown" size={12} color={theme.textMuted} />
       </Pressable>
       <SettingsSheet thread={thread} open={open} onClose={() => setOpen(false)} onError={onError} />
     </>
@@ -791,22 +811,11 @@ function SettingsSheet({
           {current?.fastMode && (
             <Section title={copy("mobile_composer_speed")} role="group">
               <ToggleRow
-                icon="RiFlashlightLine"
+                icon="Bolt"
                 label={copy("mobile_composer_fast_mode")}
                 hint={copy("mobile_composer_fast_mode_hint")}
                 value={thread.fastMode}
                 onValueChange={(fastMode) => void update({ id: thread.id, fastMode }, onError)}
-              />
-            </Section>
-          )}
-          {hidesUserSkills[thread.provider] && (
-            <Section title={copy("mobile_thread_conversation")} role="group">
-              <ToggleRow
-                icon="RiChat1Line"
-                label={copy("mobile_thread_conversation_mode")}
-                hint={copy("mobile_thread_conversation_mode_hint")}
-                value={!thread.userSkills}
-                onValueChange={(on) => void update({ id: thread.id, userSkills: !on }, onError)}
               />
             </Section>
           )}

@@ -11,7 +11,7 @@ import { m } from "../paraglide/messages.js"
 import { Button } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
 import { SkeletonList } from "./ui/skeleton.tsx"
-import { XCircleIcon } from "./icons/XCircleIcon.tsx"
+import { XCircleIcon } from "@hinacode/icons"
 
 export function ThreadPorts({ threadId }: { threadId: string }) {
   const environment = useThreadEnvironment(threadId)

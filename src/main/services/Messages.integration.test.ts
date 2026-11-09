@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest"
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Option } from "effect"
 import { SqlClient } from "effect/sql"
-import type { MessagePart, ThreadStatus } from "../../shared/domain.ts"
+import type { Message, MessagePart, ThreadStatus } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
 import * as Messages from "./Messages.ts"
@@ -70,6 +70,235 @@ describe("Messages.closeInterrupted", () => {
         const [steered, open] = yield* messages.list(finishing)
         expect(steered?.parts).toStrictEqual([{ ...runningCall, status: "error" }])
         expect(open?.completedAt).not.toBeNull()
+      }),
+    ),
+  )
+})
+
+const text = (value: string): MessagePart => ({ type: "text", text: value })
+
+const openTurn = (parts: ReadonlyArray<MessagePart>) =>
+  Effect.gen(function* () {
+    const { threadId } = yield* seedThread({ rootPath: `/repo/${crypto.randomUUID()}` })
+    const message: Message = {
+      id: `${threadId}-turn`,
+      threadId,
+      role: "assistant",
+      parts,
+      createdAt: "2026-11-03T00:00:00.000Z",
+      completedAt: null,
+      usage: null,
+      forkPoint: null,
+    }
+    yield* (yield* Messages.Messages).insert(message)
+    return message
+  })
+
+const partRows = (messageId: string) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    return yield* sql<{ idx: number; part: string }>`
+      SELECT idx, part FROM message_part WHERE message_id = ${messageId} ORDER BY idx
+    `
+  })
+
+describe("Messages.update", () => {
+  it.effect("saves only the parts of an open message that changed", () =>
+    withMessages(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient
+        const messages = yield* Messages.Messages
+        const previous = yield* openTurn([text("a"), runningCall, text("b")])
+        const next: Message = {
+          ...previous,
+          parts: [previous.parts[0]!, previous.parts[1]!, text("b, longer"), text("c")],
+        }
+        const tampered = JSON.stringify(text("untouched"))
+        yield* sql`UPDATE message_part SET part = ${tampered} WHERE message_id = ${previous.id} AND idx = 0`
+
+        yield* messages.update(next, previous)
+
+        expect(yield* partRows(previous.id)).toStrictEqual([
+          { idx: 0, part: tampered },
+          { idx: 1, part: JSON.stringify(runningCall) },
+          { idx: 2, part: JSON.stringify(text("b, longer")) },
+          { idx: 3, part: JSON.stringify(text("c")) },
+        ])
+        const [saved] = yield* messages.list(previous.threadId)
+        expect(saved?.parts).toStrictEqual([text("untouched"), ...next.parts.slice(1)])
+        expect(yield* sql`SELECT parts FROM message WHERE id = ${previous.id}`).toStrictEqual([{ parts: "[]" }])
+      }),
+    ),
+  )
+
+  it.effect("moves the parts of a message back into its row when it closes", () =>
+    withMessages(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient
+        const messages = yield* Messages.Messages
+        const previous = yield* openTurn([text("searchable words")])
+        const closed: Message = { ...previous, completedAt: "2026-11-03T00:00:01.000Z" }
+        yield* sql`DELETE FROM message_cjk_stale`
+
+        yield* messages.update(closed, previous)
+
+        expect(yield* partRows(previous.id)).toStrictEqual([])
+        const [row] = yield* sql<{ parts: string }>`SELECT parts FROM message WHERE id = ${previous.id}`
+        expect(JSON.parse(row?.parts ?? "null")).toStrictEqual(closed.parts)
+        expect(yield* messages.list(previous.threadId)).toStrictEqual([closed])
+        const [fts] = yield* sql<{ body: string }>`
+          SELECT body FROM message_fts WHERE rowid = (SELECT rowid FROM message WHERE id = ${previous.id})
+        `
+        expect(fts?.body).toContain("searchable words")
+        expect(
+          yield* sql`SELECT 1 AS stale FROM message_cjk_stale WHERE rowid = (SELECT rowid FROM message WHERE id = ${previous.id})`,
+        ).toStrictEqual([{ stale: 1 }])
+      }),
+    ),
+  )
+})
+
+describe("Messages.toolOutput", () => {
+  it.effect("finds the output of a tool call in an open message", () =>
+    withMessages(
+      Effect.gen(function* () {
+        const messages = yield* Messages.Messages
+        const message = yield* openTurn([{ ...runningCall, status: "done", output: "done" }])
+
+        expect(
+          yield* messages.toolOutput({ threadId: message.threadId, messageId: message.id, callId: "c1" }),
+        ).toStrictEqual(Option.some("done"))
+      }),
+    ),
+  )
+
+  it.effect("reads the output from the message that holds the call", () =>
+    withMessages(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient
+        const threadId = yield* threadWithTurn("idle", "2026-10-31T00:00:00.000Z")
+        const other = yield* threadWithTurn("idle", "2026-10-31T00:00:00.000Z")
+        const finishedCall: MessagePart = { ...runningCall, status: "done", output: "full output" }
+        yield* sql`INSERT INTO message ${sql.insert({
+          id: `${threadId}-later`,
+          threadId,
+          role: "assistant",
+          parts: JSON.stringify([{ type: "text", text: "done" }, finishedCall]),
+          createdAt: "2026-10-31T00:00:01.000Z",
+          completedAt: "2026-10-31T00:00:02.000Z",
+        })}`
+        const messages = yield* Messages.Messages
+        const toolOutput = (call: Partial<Messages.ToolCallRef>) =>
+          messages.toolOutput({ threadId, messageId: `${threadId}-later`, callId: "c1", ...call })
+
+        expect(yield* toolOutput({})).toStrictEqual(Option.some("full output"))
+        expect(yield* toolOutput({ messageId: `${threadId}-turn` })).toStrictEqual(Option.none())
+        expect(yield* toolOutput({ threadId: other })).toStrictEqual(Option.none())
+        expect(yield* toolOutput({ callId: "missing" })).toStrictEqual(Option.none())
+      }),
+    ),
+  )
+})
+
+describe("Messages.toolOutput with a repeated call id", () => {
+  const callWith = (output: string): MessagePart => ({ ...runningCall, status: "done", output })
+
+  it.effect("reads only the requested message, open or closed", () =>
+    withMessages(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient
+        const messages = yield* Messages.Messages
+        const first = yield* openTurn([callWith("first")])
+        const second: Message = { ...first, id: `${first.threadId}-second`, parts: [callWith("second")] }
+        yield* messages.insert(second)
+        const toolOutput = (messageId: string) =>
+          messages.toolOutput({ threadId: first.threadId, messageId, callId: "c1" })
+
+        expect(yield* toolOutput(first.id)).toStrictEqual(Option.some("first"))
+        expect(yield* toolOutput(second.id)).toStrictEqual(Option.some("second"))
+        expect(yield* toolOutput(`${first.threadId}-missing`)).toStrictEqual(Option.none())
+
+        yield* messages.update({ ...first, completedAt: "2026-11-03T00:00:01.000Z" }, first)
+        expect(yield* toolOutput(first.id)).toStrictEqual(Option.some("first"))
+        expect(yield* toolOutput(second.id)).toStrictEqual(Option.some("second"))
+        expect(yield* toolOutput(`${first.threadId}-missing`)).toStrictEqual(Option.none())
+        expect(yield* sql`SELECT 1 FROM message_part WHERE message_id = ${first.id}`).toStrictEqual([])
+      }),
+    ),
+  )
+
+  it.effect("never reads another thread's message", () =>
+    withMessages(
+      Effect.gen(function* () {
+        const messages = yield* Messages.Messages
+        const open = yield* openTurn([callWith("open")])
+        const closed = yield* threadWithTurn("idle", "2026-10-31T00:00:00.000Z")
+        const { threadId: other } = yield* seedThread({ rootPath: `/repo/${crypto.randomUUID()}` })
+
+        expect(yield* messages.toolOutput({ threadId: other, messageId: open.id, callId: "c1" })).toStrictEqual(
+          Option.none(),
+        )
+        expect(yield* messages.toolOutput({ threadId: other, callId: "c1" })).toStrictEqual(Option.none())
+        expect(
+          yield* messages.toolOutput({ threadId: closed, messageId: `${closed}-turn`, callId: "c1" }),
+        ).toStrictEqual(Option.none())
+      }),
+    ),
+  )
+
+  it.effect("searches the whole thread when a client sends no message id", () =>
+    withMessages(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient
+        const messages = yield* Messages.Messages
+        const open = yield* openTurn([callWith("open")])
+        yield* sql`INSERT INTO message ${sql.insert({
+          id: `${open.threadId}-closed`,
+          threadId: open.threadId,
+          role: "assistant",
+          parts: JSON.stringify([{ ...runningCall, callId: "c2", status: "done", output: "closed" }]),
+          createdAt: "2026-11-02T00:00:00.000Z",
+          completedAt: "2026-11-02T00:00:01.000Z",
+        })}`
+
+        expect(yield* messages.toolOutput({ threadId: open.threadId, callId: "c1" })).toStrictEqual(Option.some("open"))
+        expect(yield* messages.toolOutput({ threadId: open.threadId, callId: "c2" })).toStrictEqual(
+          Option.some("closed"),
+        )
+        expect(yield* messages.toolOutput({ threadId: open.threadId, callId: "c3" })).toStrictEqual(Option.none())
+      }),
+    ),
+  )
+})
+
+describe("message_part", () => {
+  it.effect("goes away with its thread", () =>
+    withMessages(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient
+        const message = yield* openTurn([text("a"), text("b")])
+
+        yield* sql`DELETE FROM thread WHERE id = ${message.threadId}`
+
+        expect(yield* partRows(message.id)).toStrictEqual([])
+      }),
+    ),
+  )
+})
+
+describe("Messages.closeInterrupted with open parts", () => {
+  it.effect("closes an open message whose parts live in message_part", () =>
+    withMessages(
+      Effect.gen(function* () {
+        const messages = yield* Messages.Messages
+        const message = yield* openTurn([text("a"), runningCall])
+
+        yield* messages.closeInterrupted
+
+        const [closed] = yield* messages.list(message.threadId)
+        expect(closed?.completedAt).not.toBeNull()
+        expect(closed?.parts).toStrictEqual([text("a"), { ...runningCall, status: "error" }])
+        expect(yield* partRows(message.id)).toStrictEqual([])
       }),
     ),
   )

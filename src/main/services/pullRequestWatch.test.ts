@@ -21,6 +21,9 @@ const detail = (overrides: Partial<PullRequestDetail> = {}): PullRequestDetail =
   head: "abc1234",
   mergeable: "mergeable",
   changedFiles: 1,
+  labels: [],
+  assignees: [],
+  reviewers: [],
   comments: [],
   checkRuns: [],
   ...overrides,
@@ -56,16 +59,6 @@ const comment = (id: string, overrides: Partial<PullRequestComment> = {}): PullR
 })
 
 const commented = (...comments: ReadonlyArray<PullRequestComment>) => detail({ comments: [...comments] })
-
-describe("snapshotFromDetail", () => {
-  test("collects the failing check names and the head", () => {
-    expect(snapshotFromDetail(failingDetail(["CI / test", "CI / lint"]))).toMatchObject({
-      checks: "failing",
-      head: "abc1234",
-      failingChecks: ["CI / test", "CI / lint"],
-    })
-  })
-})
 
 describe("watchEvents", () => {
   test("a fresh watch reports checks that already failed", () => {
@@ -124,9 +117,14 @@ describe("watchEvents", () => {
     expect(watchEvents(conflicted, conflicted, allWatchEventKinds)).toStrictEqual([])
   })
 
-  test("merging suppresses every other event of the same poll", () => {
+  test("a merge is not news and suppresses every other event of the same poll", () => {
     const merged = snapshot({ status: "merged", checks: "passing", review: "approved" })
-    expect(watchEvents(snapshot(), merged, allWatchEventKinds)).toStrictEqual(["mergedOrClosed"])
+    expect(watchEvents(snapshot(), merged, allWatchEventKinds)).toStrictEqual([])
+  })
+
+  test("closing suppresses every other event of the same poll", () => {
+    const closed = snapshot({ status: "closed", checks: "passing", review: "approved" })
+    expect(watchEvents(snapshot(), closed, allWatchEventKinds)).toStrictEqual(["mergedOrClosed"])
   })
 
   test("a new comment from a human or a bot is news, the same comments again are not", () => {
@@ -189,9 +187,9 @@ describe("watchMessage", () => {
     expect(message).not.toContain("Comment 1")
   })
 
-  test("a merged pull request says watching has ended", () => {
-    const message = watchMessage(detail({ status: "merged" }), snapshot(), ["mergedOrClosed"])
-    expect(message).toContain("merged")
+  test("a closed pull request says watching has ended", () => {
+    const message = watchMessage(detail({ status: "closed" }), snapshot(), ["mergedOrClosed"])
+    expect(message).toContain("closed")
     expect(message).toContain("watching has ended")
   })
 })

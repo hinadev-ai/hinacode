@@ -4,6 +4,7 @@ import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 
 import type { Thread } from "../../../shared/domain.ts"
 import { browserUrl } from "../../lib/browserUrl.ts"
 import { useThreadEnvironment } from "../../lib/environments.ts"
+import { inBrowser } from "../../lib/runtime.ts"
 import {
   attachPick,
   CANCEL_PICK_SCRIPT,
@@ -21,11 +22,7 @@ import { Input } from "../ui/input.tsx"
 import { BrowserStart, type Device, type Failure, LoadFailure, ViewportMenu } from "./BrowserChrome.tsx"
 import { browserPanelId, browserTabId } from "./BrowserTabStrip.tsx"
 import { RemoteBrowserPage } from "./RemoteBrowserPage.tsx"
-import { ArrowLeftIcon } from "../icons/ArrowLeftIcon.tsx"
-import { ArrowRightIcon } from "../icons/ArrowRightIcon.tsx"
-import { CloseIcon } from "../icons/CloseIcon.tsx"
-import { CursorIcon } from "../icons/CursorIcon.tsx"
-import { RefreshIcon } from "../icons/RefreshIcon.tsx"
+import { ArrowLeftIcon, ArrowRightIcon, CloseIcon, CursorIcon, RefreshIcon } from "@hinacode/icons"
 
 const ALLOW_POPUPS: Record<string, string> = { allowpopups: "" }
 
@@ -37,7 +34,7 @@ type FailLoadEvent = Event & { errorCode: number; errorDescription: string; vali
 
 export function BrowserView({ thread }: { thread: Thread }) {
   const { tabs, activeId } = useBrowserTabs(selectBrowserTabs(thread.id))
-  const remote = useThreadEnvironment(thread.id) !== null
+  const remote = useThreadEnvironment(thread.id) !== null || inBrowser()
   const Page = remote ? RemoteBrowserPage : BrowserPage
 
   return (

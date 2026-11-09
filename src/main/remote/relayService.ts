@@ -1,7 +1,9 @@
 import { Duration, Effect, Option, Predicate, Schema } from "effect"
-import { PendingLink, RelayHostList, RelayMachineList } from "../../shared/relayMachines.ts"
+import { RelayHostList, RelayMachineList } from "../../shared/relayMachines.ts"
 
-export const EXPIRED = "The sign-in link expired. Turn on the relay again."
+export const EXPIRED = "The sign-in link expired. Link this machine again."
+const SIGN_IN_USED = "The sign-in expired or was already used. Sign in again."
+export const DENIED = "The link was denied in the browser."
 
 const CALL_TIMEOUT = Duration.seconds(30)
 
@@ -22,15 +24,19 @@ export const Link = Schema.Struct({
   expiresAt: Schema.Number,
 })
 const Claimed = Schema.Struct({ credential: Schema.String })
+const Profile = Schema.Struct({
+  name: Schema.NullOr(Schema.String),
+  email: Schema.NullOr(Schema.String),
+  imageUrl: Schema.optionalKey(Schema.NullOr(Schema.String)),
+})
 const Tunnel = Schema.Struct({ hostname: Schema.String, connectorToken: Schema.String })
 const ServiceFailure = Schema.Struct({ error: Schema.String })
 
-const forgotten = () =>
-  new RelayError({ message: "The relay service no longer knows this machine. Remove the relay and turn it on again." })
+const forgotten = () => new RelayError({ message: "The relay service no longer knows this machine. Link it again." })
 
-const refusedOwnerToken = () =>
+const refusedDevice = () =>
   new RelayError({
-    message: "The relay refused the owner token. Copy the current one from the relay page and sign in again.",
+    message: "The relay no longer accepts this device. Log out and sign in again.",
   })
 
 const describe = (cause: unknown) =>
@@ -94,9 +100,9 @@ export const relayService = (fetch: Fetch, serviceUrl: string) => {
       }),
     )
 
-  const asOwner = (action: string, method: string, path: string, ownerToken: string, body?: unknown) =>
-    call(action, method, path, { credential: ownerToken, body }).pipe(
-      Effect.flatMap((answer) => (answer.status === 401 ? Effect.fail(refusedOwnerToken()) : Effect.succeed(answer))),
+  const asAccount = (action: string, method: string, path: string, credential: string, body?: unknown) =>
+    call(action, method, path, { credential: credential, body }).pipe(
+      Effect.flatMap((answer) => (answer.status === 401 ? Effect.fail(refusedDevice()) : Effect.succeed(answer))),
     )
 
   return {
@@ -104,11 +110,30 @@ export const relayService = (fetch: Fetch, serviceUrl: string) => {
       call("start linking", "POST", "/v1/links", { body: { environmentId, name } }).pipe(
         Effect.flatMap((answer) => decode("start linking", Link, answer)),
       ),
+    exchangeSignInCode: (code: string, codeVerifier: string) =>
+      call("finish signing in", "POST", "/v1/sign-in-codes/exchange", { body: { code, codeVerifier } }).pipe(
+        Effect.flatMap((answer) =>
+          answer.status === 410
+            ? Effect.fail(new RelayError({ message: SIGN_IN_USED }))
+            : decode("finish signing in", Claimed, answer),
+        ),
+        Effect.map(({ credential }) => credential),
+      ),
+    profile: (credential: string) =>
+      asAccount("read your account", "GET", "/v1/account", credential).pipe(
+        Effect.flatMap((answer) => decode("read your account", Profile, answer)),
+        Effect.map((profile) => ({ ...profile, imageUrl: profile.imageUrl ?? null })),
+      ),
+    signOutDevice: (credential: string) =>
+      call("sign out this device", "DELETE", "/v1/device", { credential }).pipe(
+        Effect.flatMap((answer) => (answer.status === 401 ? Effect.void : succeeded("sign out this device")(answer))),
+      ),
     claim: (deviceCode: string) =>
       call("finish linking", "POST", "/v1/links/claim", { body: { deviceCode } }).pipe(
         Effect.flatMap((answer) => {
           if (answer.status === 202) return Effect.succeedNone
           if (answer.status === 410) return Effect.fail(new RelayError({ message: EXPIRED }))
+          if (answer.status === 403) return Effect.fail(new RelayError({ message: DENIED }))
           return Effect.map(decode("finish linking", Claimed, answer), ({ credential }) => Option.some(credential))
         }),
       ),
@@ -126,29 +151,25 @@ export const relayService = (fetch: Fetch, serviceUrl: string) => {
           return Effect.void
         }),
       ),
-    machines: (ownerToken: string) =>
-      asOwner("list your machines", "GET", "/v1/machines", ownerToken).pipe(
+    machines: (credential: string) =>
+      asAccount("list your machines", "GET", "/v1/machines", credential).pipe(
         Effect.flatMap((answer) => decode("list your machines", RelayMachineList, answer)),
       ),
-    hosts: (ownerToken: string) =>
-      asOwner("list your machines", "GET", "/v1/hosts", ownerToken).pipe(
+    hosts: (credential: string) =>
+      asAccount("list your machines", "GET", "/v1/hosts", credential).pipe(
         Effect.flatMap((answer) => decode("list your machines", RelayHostList, answer)),
         Effect.map(({ hosts }) => hosts),
       ),
-    setShown: (ownerToken: string, id: string, enabled: boolean) =>
-      asOwner("change the machine", "PATCH", `/v1/hosts/${encodeURIComponent(id)}`, ownerToken, { enabled }).pipe(
+    setShown: (credential: string, id: string, enabled: boolean) =>
+      asAccount("change the machine", "PATCH", `/v1/hosts/${encodeURIComponent(id)}`, credential, { enabled }).pipe(
         Effect.flatMap(succeeded("change the machine")),
       ),
-    removeHost: (ownerToken: string, id: string) =>
-      asOwner("remove the machine", "DELETE", `/v1/hosts/${encodeURIComponent(id)}`, ownerToken).pipe(
+    removeHost: (credential: string, id: string) =>
+      asAccount("remove the machine", "DELETE", `/v1/hosts/${encodeURIComponent(id)}`, credential).pipe(
         Effect.flatMap(succeeded("remove the machine")),
       ),
-    pendingLink: (ownerToken: string, userCode: string) =>
-      asOwner("find that link code", "GET", linkPath(userCode), ownerToken).pipe(
-        Effect.flatMap((answer) => decode("find that link code", PendingLink, answer)),
-      ),
-    approveLink: (ownerToken: string, userCode: string) =>
-      asOwner("approve the link", "POST", linkPath(userCode), ownerToken).pipe(
+    approveLink: (credential: string, userCode: string) =>
+      asAccount("approve the link", "POST", linkPath(userCode), credential).pipe(
         Effect.flatMap(succeeded("approve the link")),
       ),
     deleteHost: (credential: string) =>

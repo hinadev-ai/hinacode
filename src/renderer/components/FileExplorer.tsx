@@ -3,51 +3,82 @@ import { LegendList, type LegendListRef } from "@legendapp/list/react"
 import { cn } from "cn"
 import {
   createElement,
+  type DragEvent,
+  type FocusEvent,
   type KeyboardEvent,
   type PointerEvent,
+  type ReactNode,
   type RefObject,
+  startTransition,
   useEffect,
   useId,
   useRef,
   useState,
+  useTransition,
 } from "react"
+import { toast } from "sonner"
 import { type FsEntry, isThreadBusy, type Thread } from "../../shared/domain.ts"
 import { extensionOf, type FilePreview, previewOf } from "../lib/filePreview.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
+import { toastError } from "../lib/errorMessage.ts"
 import { FILE_TREE_HEIGHT_BOUNDS } from "../lib/panelSize.ts"
 import { callPromise, onPushEvent } from "../lib/rpc.ts"
+import { inBrowser } from "../lib/runtime.ts"
 import { m } from "../paraglide/messages.js"
 import { useDrafts } from "../stores/drafts.ts"
-import { emptyTree, flattenTree, parentOf, type TreeRow, useExplorer } from "../stores/explorer.ts"
+import {
+  canMoveInto,
+  dropFolderOf,
+  emptyTree,
+  flattenTree,
+  isWithin,
+  nameOf,
+  type NewEntryKind,
+  parentOf,
+  type TreeRow,
+  useExplorer,
+} from "../stores/explorer.ts"
 import { useUi } from "../stores/ui.ts"
 import { fileStatusMark } from "./FilePatch.tsx"
 import { FileViewer } from "./FileViewer.tsx"
+import { HighlightWorkerPool } from "./HighlightWorkerPool.tsx"
 import { Button } from "./ui/button.tsx"
 import { OpenWithSubmenu } from "./OpenWith.tsx"
+import { DeleteEntryDialog } from "./DeleteEntryDialog.tsx"
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "./ui/context-menu.tsx"
-import { DropdownMenuItem } from "./ui/dropdown-menu.tsx"
-import { AtIcon } from "./icons/AtIcon.tsx"
-import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
-import { CollapseIcon } from "./icons/CollapseIcon.tsx"
-import { CopyIcon } from "./icons/CopyIcon.tsx"
-import { FileCodeIcon } from "./icons/FileCodeIcon.tsx"
-import { FileDiffIcon } from "./icons/FileDiffIcon.tsx"
-import { FileIcon } from "./icons/FileIcon.tsx"
-import { FileMusicIcon } from "./icons/FileMusicIcon.tsx"
-import { FileTextIcon } from "./icons/FileTextIcon.tsx"
-import { FileVideoIcon } from "./icons/FileVideoIcon.tsx"
-import { FolderIcon } from "./icons/FolderIcon.tsx"
-import { FolderOpenIcon } from "./icons/FolderOpenIcon.tsx"
-import type { IconComponent } from "./icons/Icon.tsx"
-import { ImageIcon } from "./icons/ImageIcon.tsx"
-import { LinkIcon } from "./icons/LinkIcon.tsx"
-import { MarkdownIcon } from "./icons/MarkdownIcon.tsx"
-import { RefreshIcon } from "./icons/RefreshIcon.tsx"
+import { DropdownMenuItem, DropdownMenuSeparator } from "./ui/dropdown-menu.tsx"
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
+import {
+  AtIcon,
+  ChevronRightIcon,
+  CollapseIcon,
+  CopyIcon,
+  FileAddIcon,
+  FileCodeIcon,
+  FileDiffIcon,
+  FileIcon,
+  FileMusicIcon,
+  FileTextIcon,
+  FileVideoIcon,
+  FolderAddIcon,
+  FolderIcon,
+  FolderOpenIcon,
+  type IconComponent,
+  ImageIcon,
+  LinkIcon,
+  MarkdownIcon,
+  PencilIcon,
+  RefreshIcon,
+  TrashIcon,
+} from "@hinacode/icons"
 
 const ROW_HEIGHT = 24
 const INDENT = 12
 const TYPEAHEAD_RESET_MS = 600
 const MIN_PANE_HEIGHT = FILE_TREE_HEIGHT_BOUNDS.min
+const SPRING_OPEN_MS = 600
+const ENTRY_DRAG_TYPE = "application/x-hinacode-entry"
+const ROOT_FOLDER = ""
 
 const iconsByPreview: Readonly<Record<FilePreview, IconComponent>> = {
   image: ImageIcon,
@@ -80,6 +111,16 @@ const fileIcon = (entry: FsEntry, expanded: boolean): IconComponent => {
 const foldersDownTo = (path: string) =>
   path === "" ? [""] : ["", ...path.split("/").map((_, index, parts) => parts.slice(0, index + 1).join("/"))]
 
+interface EntryDrag {
+  readonly source: string
+  readonly over: string | null
+}
+
+interface DropEdges {
+  readonly top: boolean
+  readonly bottom: boolean
+}
+
 interface FileExplorerProps {
   readonly thread: Thread
   readonly root: string
@@ -87,7 +128,8 @@ interface FileExplorerProps {
 }
 
 export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
-  const canReveal = useThreadEnvironment(thread.id) === null
+  const canReveal = useThreadEnvironment(thread.id) === null && !inBrowser()
+  const rootName = nameOf(root)
   const tree = useExplorer((state) => state.byRoot[root] ?? emptyTree)
   const load = useExplorer((state) => state.load)
   const refresh = useExplorer((state) => state.refresh)
@@ -96,9 +138,12 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
   const collapseAll = useExplorer((state) => state.collapseAll)
   const select = useExplorer((state) => state.select)
   const openFile = useExplorer((state) => state.open)
+  const startNaming = useExplorer((state) => state.startNaming)
   const rows = flattenTree(tree)
-  const selectedIndex = rows.findIndex((row) => row.entry.path === tree.selected)
+  const selectedIndex = rows.findIndex((row) => row.kind === "entry" && row.entry.path === tree.selected)
   const [announcement, setAnnouncement] = useState("")
+  const [deleting, setDeleting] = useState<FsEntry | null>(null)
+  const [drag, setDrag] = useState<EntryDrag | null>(null)
   const treeRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<LegendListRef>(null)
   const typeahead = useRef({ text: "", at: 0 })
@@ -153,7 +198,17 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
     if (selectedIndex >= 0) void listRef.current?.scrollIndexIntoView({ index: selectedIndex, animated: false })
   }, [selectedIndex])
 
-  const selectedEntry = rows[selectedIndex]?.entry
+  const dropFolder = drag?.over ?? null
+  const springFolder =
+    dropFolder !== null && dropFolder !== ROOT_FOLDER && !tree.expanded.has(dropFolder) ? dropFolder : null
+  useEffect(() => {
+    if (springFolder === null) return
+    const timer = setTimeout(() => expand(root, springFolder), SPRING_OPEN_MS)
+    return () => clearTimeout(timer)
+  }, [expand, root, springFolder])
+
+  const selectedRow = rows[selectedIndex]
+  const selectedEntry = selectedRow?.kind === "entry" ? selectedRow.entry : undefined
   const openedEntry =
     tree.opened === null ? undefined : tree.children[parentOf(tree.opened)]?.find((entry) => entry.path === tree.opened)
   const hasDiff = (entry: FsEntry) => worktreeId !== null && entry.kind === "file" && entry.gitStatus !== null
@@ -179,9 +234,68 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
     useUi.getState().showView(thread.id, "changes")
   }
 
+  const startCreate = (entryKind: NewEntryKind) => {
+    const parent =
+      selectedEntry === undefined
+        ? ""
+        : selectedEntry.kind === "dir"
+          ? selectedEntry.path
+          : parentOf(selectedEntry.path)
+    startNaming(root, { kind: "create", parent, entryKind })
+  }
+
+  const askToDelete = (entry: FsEntry | null) => startTransition(() => setDeleting(entry))
+
+  const confirmDelete = (entry: FsEntry) => {
+    askToDelete(null)
+    void useExplorer
+      .getState()
+      .remove(root, entry.path)
+      .catch(toastError)
+      .then(() => treeRef.current?.focus())
+  }
+
+  const moveEntry = (path: string, folder: string) => {
+    const origin = parentOf(path)
+    const { move } = useExplorer.getState()
+    move(root, path, folder)
+      .then((moved) => {
+        treeRef.current?.focus()
+        toast(m.explorer_moved({ name: nameOf(moved), folder: folder === ROOT_FOLDER ? rootName : folder }), {
+          position: "bottom-right",
+          action: { label: m.common_undo(), onClick: () => void move(root, moved, origin).catch(toastError) },
+        })
+      })
+      .catch(toastError)
+  }
+
+  const dragOverFolder = (event: DragEvent, folder: string) => {
+    if (drag === null) return
+    event.stopPropagation()
+    const over = canMoveInto(drag.source, folder) ? folder : null
+    if (over !== null) {
+      event.preventDefault()
+      event.dataTransfer.dropEffect = "move"
+    }
+    if (over !== drag.over) setDrag({ ...drag, over })
+  }
+
+  const dropInFolder = (event: DragEvent, folder: string) => {
+    if (drag === null) return
+    event.preventDefault()
+    event.stopPropagation()
+    setDrag(null)
+    moveEntry(drag.source, folder)
+  }
+
+  const dragLeaveTree = (event: DragEvent<HTMLDivElement>) => {
+    if (drag === null || event.currentTarget.contains(event.relatedTarget as Node | null)) return
+    setDrag({ ...drag, over: null })
+  }
+
   const moveTo = (index: number) => {
     const row = rows[Math.max(0, Math.min(index, rows.length - 1))]
-    if (row) select(root, row.entry.path)
+    if (row?.kind === "entry") select(root, row.entry.path)
   }
 
   const jump = (key: string) => {
@@ -192,14 +306,16 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
     const start = state.text.length === 1 ? selectedIndex + 1 : Math.max(selectedIndex, 0)
     for (let offset = 0; offset < rows.length; offset++) {
       const row = rows[(start + offset) % rows.length]
-      if (row?.entry.name.toLowerCase().startsWith(state.text)) return select(root, row.entry.path)
+      if (row?.kind === "entry" && row.entry.name.toLowerCase().startsWith(state.text)) {
+        return select(root, row.entry.path)
+      }
     }
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.nativeEvent.isComposing) return
     const current = rows[selectedIndex]
-    const entry = current?.entry
+    const entry = selectedEntry
     switch (event.key) {
       case "ArrowDown":
         moveTo(selectedIndex + 1)
@@ -230,6 +346,16 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
         openFile(root, null)
         event.stopPropagation()
         break
+      case "F2":
+        if (entry) startNaming(root, { kind: "rename", path: entry.path })
+        break
+      case "Delete":
+        if (entry) askToDelete(entry)
+        break
+      case "Backspace":
+        if (!event.metaKey || !entry) return
+        askToDelete(entry)
+        break
       default:
         if (event.key.length !== 1 || event.ctrlKey || event.metaKey || event.altKey) return
         jump(event.key)
@@ -238,7 +364,8 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
   }
 
   const onFocus = () => {
-    if (selectedIndex === -1 && rows[0]) select(root, rows[0].entry.path)
+    const [first] = rows
+    if (selectedIndex === -1 && first?.kind === "entry") select(root, first.entry.path)
   }
 
   const onRowClick = (entry: FsEntry) => {
@@ -247,20 +374,65 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
     open(entry)
   }
 
-  const renderItem = ({ item, index }: { item: TreeRow; index: number }) => (
-    <TreeItem
-      row={item}
-      id={`${rowId}${index}`}
-      selected={index === selectedIndex}
-      expanded={tree.expanded.has(item.entry.path)}
-      unsaved={item.entry.path in tree.unsaved}
-      onClick={onRowClick}
-      onContextMenu={(entry) => select(root, entry.path)}
-    />
-  )
+  const isInDropFolder = (row: TreeRow | undefined) =>
+    row?.kind === "entry" && dropFolder !== null && dropFolder !== ROOT_FOLDER && isWithin(row.entry.path, dropFolder)
+
+  const siblingNames = (parent: string) => (tree.children[parent] ?? []).map((sibling) => sibling.name)
+
+  const renderItem = ({ item, index }: { item: TreeRow; index: number }) => {
+    if (item.kind === "draft") {
+      return (
+        <DraftItem depth={item.depth} entryKind={item.entryKind}>
+          <NameInput
+            label={item.entryKind === "dir" ? m.explorer_new_folder_name() : m.explorer_new_file_name()}
+            initial=""
+            taken={siblingNames(item.parent)}
+            onSubmit={(name) => useExplorer.getState().create(root, item.parent, item.entryKind, name)}
+            onCancel={() => startNaming(root, null)}
+          />
+        </DraftItem>
+      )
+    }
+    const { entry } = item
+    const renaming = tree.naming?.kind === "rename" && tree.naming.path === entry.path
+    return (
+      <TreeItem
+        row={item}
+        id={`${rowId}${index}`}
+        selected={index === selectedIndex}
+        expanded={tree.expanded.has(entry.path)}
+        unsaved={entry.path in tree.unsaved}
+        draggable={!renaming}
+        dragged={drag !== null && isWithin(entry.path, drag.source)}
+        dropEdges={
+          isInDropFolder(item)
+            ? { top: !isInDropFolder(rows[index - 1]), bottom: !isInDropFolder(rows[index + 1]) }
+            : null
+        }
+        onClick={onRowClick}
+        onContextMenu={(clicked) => select(root, clicked.path)}
+        onDragStart={(event) => {
+          event.dataTransfer.effectAllowed = "move"
+          event.dataTransfer.setData(ENTRY_DRAG_TYPE, entry.path)
+          setDrag({ source: entry.path, over: null })
+        }}
+        onDragOver={(event) => dragOverFolder(event, dropFolderOf(entry))}
+        onDrop={(event) => dropInFolder(event, dropFolderOf(entry))}
+      >
+        {renaming ? (
+          <NameInput
+            label={m.explorer_rename_label({ name: entry.name })}
+            initial={entry.name}
+            taken={siblingNames(parentOf(entry.path))}
+            onSubmit={(name) => useExplorer.getState().rename(root, entry.path, name)}
+            onCancel={() => startNaming(root, null)}
+          />
+        ) : undefined}
+      </TreeItem>
+    )
+  }
 
   const listed = tree.children[""]
-  const rootName = root.slice(root.lastIndexOf("/") + 1)
 
   return (
     <div ref={containerRef} className="flex min-h-0 flex-1 flex-col">
@@ -268,15 +440,17 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground" title={root}>
           {rootName}
         </span>
-        <HeaderButton label={m.explorer_collapse_all()} onClick={() => collapseAll(root)} icon={CollapseIcon} />
+        <HeaderButton label={m.explorer_new_file()} action={() => startCreate("file")} icon={FileAddIcon} />
+        <HeaderButton label={m.explorer_new_folder()} action={() => startCreate("dir")} icon={FolderAddIcon} />
+        <HeaderButton label={m.explorer_collapse_all()} action={() => collapseAll(root)} icon={CollapseIcon} />
         {canReveal && (
           <HeaderButton
             label={m.panel_reveal()}
-            onClick={() => void callPromise("shell.reveal", { path: root })}
+            action={() => callPromise("shell.reveal", { path: root }).catch(toastError)}
             icon={FolderOpenIcon}
           />
         )}
-        <HeaderButton label={m.explorer_refresh()} onClick={() => void refresh(root)} icon={RefreshIcon} />
+        <HeaderButton label={m.explorer_refresh()} action={() => refresh(root)} icon={RefreshIcon} />
       </header>
       <div
         className={cn("flex min-h-0 flex-col", tree.opened === null ? "flex-1" : "shrink-0")}
@@ -288,7 +462,7 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
           </p>
         ) : listed === undefined ? (
           <p className="animate-reveal p-3 text-xs text-muted-foreground">{m.explorer_loading()}</p>
-        ) : listed.length === 0 ? (
+        ) : listed.length === 0 && tree.naming === null ? (
           <p className="p-3 text-xs text-muted-foreground">{m.explorer_empty()}</p>
         ) : (
           <ContextMenu>
@@ -302,16 +476,23 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
                   aria-activedescendant={selectedIndex >= 0 ? `${rowId}${selectedIndex}` : undefined}
                   onKeyDown={onKeyDown}
                   onFocus={onFocus}
-                  className="group/tree flex min-h-0 flex-1 flex-col py-1 outline-none"
+                  onDragOver={(event) => dragOverFolder(event, ROOT_FOLDER)}
+                  onDrop={(event) => dropInFolder(event, ROOT_FOLDER)}
+                  onDragLeave={dragLeaveTree}
+                  onDragEnd={() => setDrag(null)}
+                  className={cn(
+                    "group/tree flex min-h-0 flex-1 flex-col py-1 outline-none",
+                    dropFolder === ROOT_FOLDER && "bg-primary/10",
+                  )}
                 />
               }
             >
               <LegendList
                 ref={listRef}
                 data={rows}
-                keyExtractor={(row) => row.entry.path}
+                keyExtractor={(row) => (row.kind === "entry" ? row.entry.path : `\0draft:${row.parent}`)}
                 renderItem={renderItem}
-                extraData={tree}
+                extraData={[tree, drag]}
                 estimatedItemSize={ROW_HEIGHT}
                 getFixedItemSize={() => ROW_HEIGHT}
                 className="min-h-0 flex-1"
@@ -319,6 +500,15 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
             </ContextMenuTrigger>
             {selectedEntry && (
               <ContextMenuContent>
+                <DropdownMenuItem onClick={() => startCreate("file")}>
+                  <FileAddIcon aria-hidden />
+                  {m.explorer_new_file()}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => startCreate("dir")}>
+                  <FolderAddIcon aria-hidden />
+                  {m.explorer_new_folder()}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => mention(selectedEntry)}>
                   <AtIcon aria-hidden />
                   {m.explorer_mention()}
@@ -339,6 +529,15 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
                     target={selectedEntry.kind === "dir" ? "folder" : "file"}
                   />
                 )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => startNaming(root, { kind: "rename", path: selectedEntry.path })}>
+                  <PencilIcon aria-hidden />
+                  {m.explorer_rename()}
+                </DropdownMenuItem>
+                <DropdownMenuItem variant="destructive" onClick={() => askToDelete(selectedEntry)}>
+                  <TrashIcon aria-hidden />
+                  {m.explorer_delete()}
+                </DropdownMenuItem>
               </ContextMenuContent>
             )}
           </ContextMenu>
@@ -347,15 +546,18 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
       {tree.opened !== null && (
         <>
           <SplitHandle height={treeHeight} onResize={setTreeHeight} container={containerRef} />
-          <FileViewer
-            threadId={thread.id}
-            root={root}
-            path={tree.opened}
-            onClose={closeFile}
-            onShowChanges={openedEntry && hasDiff(openedEntry) ? () => showChanges(openedEntry) : undefined}
-          />
+          <HighlightWorkerPool>
+            <FileViewer
+              threadId={thread.id}
+              root={root}
+              path={tree.opened}
+              onClose={closeFile}
+              onShowChanges={openedEntry && hasDiff(openedEntry) ? () => showChanges(openedEntry) : undefined}
+            />
+          </HighlightWorkerPool>
         </>
       )}
+      <DeleteEntryDialog entry={deleting} onCancel={() => askToDelete(null)} onDelete={confirmDelete} />
       <p aria-live="polite" className="sr-only">
         {announcement}
       </p>
@@ -363,9 +565,17 @@ export function FileExplorer({ thread, root, worktreeId }: FileExplorerProps) {
   )
 }
 
-function HeaderButton({ label, icon: Icon, onClick }: { label: string; icon: IconComponent; onClick: () => void }) {
+function HeaderButton({
+  label,
+  icon: Icon,
+  action,
+}: {
+  label: string
+  icon: IconComponent
+  action: () => void | Promise<void>
+}) {
   return (
-    <Button variant="ghost" size="icon-xs" aria-label={label} title={label} onClick={onClick}>
+    <Button variant="ghost" size="icon-xs" aria-label={label} title={label} action={action}>
       <Icon aria-hidden />
     </Button>
   )
@@ -422,16 +632,38 @@ function SplitHandle({ height, onResize, container }: SplitHandleProps) {
 }
 
 interface TreeItemProps {
-  readonly row: TreeRow
+  readonly row: Extract<TreeRow, { kind: "entry" }>
   readonly id: string
   readonly selected: boolean
   readonly expanded: boolean
   readonly unsaved: boolean
+  readonly draggable: boolean
+  readonly dragged: boolean
+  readonly dropEdges: DropEdges | null
   readonly onClick: (entry: FsEntry) => void
   readonly onContextMenu: (entry: FsEntry) => void
+  readonly onDragStart: (event: DragEvent) => void
+  readonly onDragOver: (event: DragEvent) => void
+  readonly onDrop: (event: DragEvent) => void
+  readonly children?: ReactNode
 }
 
-function TreeItem({ row, id, selected, expanded, unsaved, onClick, onContextMenu }: TreeItemProps) {
+function TreeItem({
+  row,
+  id,
+  selected,
+  expanded,
+  unsaved,
+  draggable,
+  dragged,
+  dropEdges,
+  onClick,
+  onContextMenu,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  children,
+}: TreeItemProps) {
   const { entry, depth } = row
   const isDir = entry.kind === "dir"
   const mark = entry.gitStatus === null ? null : fileStatusMark[entry.gitStatus]
@@ -443,6 +675,7 @@ function TreeItem({ row, id, selected, expanded, unsaved, onClick, onContextMenu
     <div
       id={id}
       role="treeitem"
+      data-drop-target={dropEdges !== null}
       aria-level={depth + 1}
       aria-setsize={row.setSize}
       aria-posinset={row.posInSet}
@@ -451,17 +684,20 @@ function TreeItem({ row, id, selected, expanded, unsaved, onClick, onContextMenu
       aria-describedby={description ? `${id}-status` : undefined}
       onClick={() => onClick(entry)}
       onContextMenu={() => onContextMenu(entry)}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
       style={{ height: ROW_HEIGHT, paddingLeft: 8 + depth * INDENT }}
-      className="relative mx-1 flex cursor-default items-center gap-1 rounded-md pr-2 text-[0.8125rem] select-none hover:bg-muted/60 aria-selected:bg-muted group-focus/tree:aria-selected:ring-1 group-focus/tree:aria-selected:ring-ring group-focus/tree:aria-selected:ring-inset"
+      className={cn(
+        "relative mx-1 flex cursor-default items-center gap-1 rounded-md pr-2 text-[0.8125rem] select-none hover:bg-muted/60 aria-selected:bg-muted group-focus/tree:aria-selected:ring-1 group-focus/tree:aria-selected:ring-ring group-focus/tree:aria-selected:ring-inset",
+        dragged && "opacity-50",
+        dropEdges && "rounded-none bg-primary/10 hover:bg-primary/10 aria-selected:bg-primary/10",
+        dropEdges?.top && "rounded-t-md",
+        dropEdges?.bottom && "rounded-b-md",
+      )}
     >
-      {Array.from({ length: depth }, (_, level) => (
-        <span
-          key={level}
-          aria-hidden
-          className="absolute inset-y-0 w-px bg-border"
-          style={{ left: 8 + level * INDENT + 7 }}
-        />
-      ))}
+      <IndentGuides depth={depth} />
       <ChevronRightIcon
         aria-hidden
         className={cn(
@@ -474,16 +710,18 @@ function TreeItem({ row, id, selected, expanded, unsaved, onClick, onContextMenu
         "aria-hidden": true,
         className: "size-3.5 shrink-0 text-muted-foreground",
       })}
-      <span
-        className={cn(
-          "min-w-0 flex-1 truncate",
-          entry.ignored && "text-muted-foreground",
-          mark?.className,
-          entry.kind === "symlink" && "italic",
-        )}
-      >
-        {entry.name}
-      </span>
+      {children ?? (
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate",
+            entry.ignored && "text-ignored-foreground",
+            mark?.className,
+            entry.kind === "symlink" && "italic",
+          )}
+        >
+          {entry.name}
+        </span>
+      )}
       {description && (
         <span id={`${id}-status`} hidden>
           {description}
@@ -496,5 +734,129 @@ function TreeItem({ row, id, selected, expanded, unsaved, onClick, onContextMenu
         </span>
       )}
     </div>
+  )
+}
+
+function IndentGuides({ depth }: { depth: number }) {
+  return Array.from({ length: depth }, (_, level) => (
+    <span
+      key={level}
+      aria-hidden
+      className="absolute inset-y-0 w-px bg-border"
+      style={{ left: 8 + level * INDENT + 7 }}
+    />
+  ))
+}
+
+function DraftItem({ depth, entryKind, children }: { depth: number; entryKind: NewEntryKind; children: ReactNode }) {
+  const Icon = entryKind === "dir" ? FolderIcon : FileIcon
+  return (
+    <div
+      role="treeitem"
+      aria-level={depth + 1}
+      aria-selected={false}
+      style={{ height: ROW_HEIGHT, paddingLeft: 8 + depth * INDENT }}
+      className="relative mx-1 flex items-center gap-1 pr-2 text-[0.8125rem]"
+    >
+      <IndentGuides depth={depth} />
+      <ChevronRightIcon aria-hidden className="invisible size-3.5 shrink-0" />
+      <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+      {children}
+    </div>
+  )
+}
+
+const nameProblem = (name: string, initial: string, taken: ReadonlyArray<string>) => {
+  if (name.includes("/")) return m.explorer_name_slash()
+  if (name === "." || name === "..") return m.explorer_name_invalid({ name })
+  if (name !== initial && taken.includes(name)) return m.explorer_name_exists({ name })
+  return null
+}
+
+interface NameInputProps {
+  readonly label: string
+  readonly initial: string
+  readonly taken: ReadonlyArray<string>
+  readonly onSubmit: (name: string) => Promise<void>
+  readonly onCancel: () => void
+}
+
+function NameInput({ label, initial, taken, onSubmit, onCancel }: NameInputProps) {
+  const [name, setName] = useState(initial)
+  const [isPending, startSubmit] = useTransition()
+  const settled = useRef(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const errorId = useId()
+  const trimmed = name.trim()
+  const problem = nameProblem(trimmed, initial, taken)
+
+  useEffect(() => {
+    const dot = initial.lastIndexOf(".")
+    inputRef.current?.focus()
+    inputRef.current?.setSelectionRange(0, dot > 0 ? dot : initial.length)
+  }, [initial])
+
+  const finish = (input: HTMLInputElement, returnFocus: boolean) => {
+    const tree = returnFocus ? input.closest<HTMLElement>("[role=tree]") : null
+    settled.current = true
+    if (trimmed === "" || trimmed === initial) {
+      onCancel()
+      tree?.focus()
+      return
+    }
+    startSubmit(async () => {
+      try {
+        await onSubmit(trimmed)
+        tree?.focus()
+      } catch (cause) {
+        settled.current = false
+        toastError(cause)
+      }
+    })
+  }
+
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    event.stopPropagation()
+    if (event.nativeEvent.isComposing) return
+    if (event.key === "Escape") {
+      settled.current = true
+      onCancel()
+      event.currentTarget.closest<HTMLElement>("[role=tree]")?.focus()
+    } else if (event.key === "Enter" && problem === null && !isPending) {
+      finish(event.currentTarget, true)
+    }
+  }
+
+  const onBlur = (event: FocusEvent<HTMLInputElement>) => {
+    if (settled.current) return
+    if (problem === null) finish(event.currentTarget, false)
+    else onCancel()
+  }
+
+  return (
+    <Tooltip open={problem !== null}>
+      <TooltipTrigger
+        render={
+          <input
+            ref={inputRef}
+            aria-label={label}
+            aria-invalid={problem !== null}
+            aria-describedby={problem === null ? undefined : errorId}
+            value={name}
+            readOnly={isPending}
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={onKeyDown}
+            onBlur={onBlur}
+            onClick={(event) => event.stopPropagation()}
+            className="h-5 min-w-0 flex-1 rounded-sm border border-ring bg-background px-1 text-[0.8125rem] outline-none aria-invalid:border-destructive"
+          />
+        }
+      />
+      <TooltipContent id={errorId} role="alert" side="bottom" align="start">
+        {problem}
+      </TooltipContent>
+    </Tooltip>
   )
 }

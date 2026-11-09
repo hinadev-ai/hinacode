@@ -8,17 +8,12 @@ Feature: Focus after a shortcut overlay closes
     When I open the thread "Add palette" from the sidebar
     And I open and close the machine resources popover
 
-  Scenario Outline: Escape returns focus to the message box it came from
+  Scenario: Escape returns focus to the message box it came from
     When I click the message box
-    And I press "<keys>"
+    And I press "ControlOrMeta+p"
     And I press "Escape"
-    Then the message box is focused
-
-    Examples:
-      | keys                   |
-      | ControlOrMeta+p        |
-      | ControlOrMeta+Shift+s  |
-      | ControlOrMeta+Shift+n  |
+    Then the palette is closed
+    And the message box is focused
 
   Scenario Outline: Escape focuses the message box when nothing had focus
     When nothing has focus

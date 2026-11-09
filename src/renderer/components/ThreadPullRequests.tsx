@@ -14,7 +14,7 @@ import type {
   ReviewStatus,
   Thread,
 } from "../../shared/domain.ts"
-import { fixChecksPrompt, resolveConflictsPrompt } from "../../shared/pullRequestPrompts.ts"
+import { addressReviewPrompt, fixChecksPrompt, resolveConflictsPrompt } from "../../shared/pullRequestPrompts.ts"
 import { checksIndicator as sharedChecksIndicator, isOpen, pullRequestIndicator } from "../../shared/threadStatus.ts"
 import { toIcon } from "../lib/indicators.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
@@ -38,8 +38,8 @@ import { getLocale } from "../paraglide/runtime.js"
 import { loadPullRequestsAtom, usePullRequests } from "../stores/pullRequests.ts"
 import { type PullRequestSection, type PullRequestTab, useUi } from "../stores/ui.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
-import { externalImageUrl } from "../../shared/channels.ts"
 import { Markdown } from "./Markdown.tsx"
+import { Avatar, PullRequestMetadata } from "./PullRequestMetadata.tsx"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -64,16 +64,18 @@ import {
 } from "./ui/dropdown-menu.tsx"
 import { SkeletonList } from "./ui/skeleton.tsx"
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs.tsx"
-import { ChevronDownIcon } from "./icons/ChevronDownIcon.tsx"
-import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
-import { ExternalIcon } from "./icons/ExternalIcon.tsx"
-import { FileDiffIcon } from "./icons/FileDiffIcon.tsx"
-import { EyeFillIcon } from "./icons/EyeFillIcon.tsx"
-import { EyeIcon } from "./icons/EyeIcon.tsx"
-import type { IconComponent } from "./icons/Icon.tsx"
-import { MinusCircleIcon } from "./icons/MinusCircleIcon.tsx"
-import { MoreIcon } from "./icons/MoreIcon.tsx"
-import { UnlinkIcon } from "./icons/UnlinkIcon.tsx"
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  ExternalIcon,
+  EyeFillIcon,
+  EyeIcon,
+  FileDiffIcon,
+  type IconComponent,
+  MinusCircleIcon,
+  MoreIcon,
+  UnlinkIcon,
+} from "@hinacode/icons"
 import { Textarea } from "./ui/textarea.tsx"
 
 const PullRequestCode = lazy(() =>
@@ -434,6 +436,7 @@ function PullRequestDetailView({ threadId, url, watch, linked, onUnlinkFailed }:
           linked={linked}
           onUnlinkFailed={onUnlinkFailed}
         />
+        <PullRequestMetadata pullRequest={pullRequest} />
         <Tabs value={tab} changeAction={(value: PullRequestTab) => setTab(value)}>
           <TabsList variant="line" aria-label={m.pr_view_label()} className="-ms-2 group-data-horizontal/tabs:h-7">
             <TabsTrigger value="info" className="flex-none px-2 text-xs">
@@ -544,6 +547,7 @@ function PullRequestHeader({
       : pullRequest.mergeable === "conflicting"
         ? m.pr_merge_blocked_conflicts()
         : null
+  const cautioned = pullRequest.checks === "failing" || pullRequest.review === "changesRequested"
 
   return (
     <header className="flex flex-col gap-3">
@@ -602,6 +606,7 @@ function PullRequestHeader({
               method={method}
               onMethodChange={(next) => startTransition(() => setMethod(next))}
               disabled={!signedIn || blocker !== null}
+              cautioned={cautioned}
               onMerge={() => startTransition(() => setConfirming({ type: "merge", method }))}
             />
             <WatchButton threadId={threadId} url={pullRequest.url} watch={watch} />
@@ -615,29 +620,6 @@ function PullRequestHeader({
         onOpenChange={(next) => !next && setConfirming(null)}
       />
     </header>
-  )
-}
-
-function Avatar({ login }: { login: string }) {
-  const [failed, setFailed] = useState(false)
-  const src = externalImageUrl(`https://github.com/${login}.png?size=48`)
-  if (failed || src === null) {
-    return (
-      <span
-        aria-hidden
-        className="flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-[0.5625rem] font-medium uppercase"
-      >
-        {login.slice(0, 1)}
-      </span>
-    )
-  }
-  return (
-    <img
-      src={src}
-      alt=""
-      className="size-4 shrink-0 rounded-full bg-muted outline-1 -outline-offset-1 outline-white/10"
-      onError={() => setFailed(true)}
-    />
   )
 }
 
@@ -761,7 +743,8 @@ function Attention({ pullRequest, threadId }: { pullRequest: PullRequestDetail; 
   if (!isOpen(pullRequest.status)) return null
   const failing = pullRequest.checkRuns.filter((run) => run.status === "failing")
   const conflicting = pullRequest.mergeable === "conflicting"
-  if (failing.length === 0 && !conflicting) return null
+  const changesRequested = pullRequest.review === "changesRequested"
+  if (failing.length === 0 && !conflicting && !changesRequested) return null
 
   return (
     <div className="flex flex-col gap-2">
@@ -777,6 +760,11 @@ function Attention({ pullRequest, threadId }: { pullRequest: PullRequestDetail; 
       {failing.length > 0 && (
         <Callout tone="danger" message={m.pr_checks_failing_count({ count: failing.length })}>
           <AskAgentButton threadId={threadId} prompt={fixChecksPrompt(pullRequest)} label={m.pr_fix_checks()} />
+        </Callout>
+      )}
+      {changesRequested && (
+        <Callout tone="warning" message={m.pr_changes_requested()}>
+          <AskAgentButton threadId={threadId} prompt={addressReviewPrompt(pullRequest)} label={m.pr_address_review()} />
         </Callout>
       )}
     </div>
@@ -845,17 +833,20 @@ function MergeSplitButton({
   method,
   onMethodChange,
   disabled,
+  cautioned,
   onMerge,
 }: {
   method: MergeMethod
   onMethodChange: (method: MergeMethod) => void
   disabled: boolean
+  cautioned: boolean
   onMerge: () => void
 }) {
   const MergeIcon = statusIndicator.merged.Icon
   return (
     <fieldset
       aria-label={mergeLabel[method]()}
+      data-cautioned={cautioned}
       className="merge-pill m-0 flex h-7 min-w-0 rounded-full border-0 p-0 text-xs font-medium"
     >
       <button
@@ -867,7 +858,10 @@ function MergeSplitButton({
         <MergeIcon aria-hidden className="size-3.5" />
         {mergeLabel[method]()}
       </button>
-      <span aria-hidden className={cn("my-1.5 w-px", disabled ? "bg-border" : "bg-primary-foreground/25")} />
+      <span
+        aria-hidden
+        className={cn("my-1.5 w-px", disabled || cautioned ? "bg-border" : "bg-primary-foreground/25")}
+      />
       <DropdownMenu>
         <DropdownMenuTrigger
           render={

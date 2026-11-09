@@ -17,7 +17,10 @@ const server = (overrides: Partial<StoredServer> = {}): StoredServer => ({
 
 describe("parseStoredServers", () => {
   it("reads every server in order", () => {
-    const servers = [server(), server({ id: "b", name: null, environmentId: null, hosts: ["10.0.0.9"] })]
+    const servers = [
+      server(),
+      server({ id: "b", name: null, environmentId: null, hosts: ["10.0.0.9"], relay: "b.example.com", source: "relay" }),
+    ]
     expect(parseStoredServers(JSON.stringify(servers), null, newId)).toEqual(servers)
   })
 
@@ -29,16 +32,6 @@ describe("parseStoredServers", () => {
   it("reads an entry saved before the relay sync as paired by QR code", () => {
     const { source: _, ...older } = server()
     expect(parseStoredServers(JSON.stringify([older]), null, newId)).toEqual([server()])
-  })
-
-  it("keeps a server's source across a save", () => {
-    const servers = [server({ source: "relay" })]
-    expect(parseStoredServers(JSON.stringify(servers), null, newId)).toEqual(servers)
-  })
-
-  it("keeps a server's relay across a save", () => {
-    const servers = [server({ relay: "studio.example.com" })]
-    expect(parseStoredServers(JSON.stringify(servers), null, newId)).toEqual(servers)
   })
 
   it("drops a bad entry and keeps the rest", () => {

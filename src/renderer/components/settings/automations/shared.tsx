@@ -7,6 +7,7 @@ import { CopyButton } from "../../CopyButton.tsx"
 export const triggerLabel = {
   webhook: m.automations_trigger_webhook,
   "github.issue": m.automations_trigger_github,
+  "github.pullRequest": m.automations_trigger_pull_request,
   "linear.issue": m.automations_trigger_linear,
   "slack.mention": m.automations_trigger_slack,
 } satisfies Record<AutomationTriggerType, () => string>

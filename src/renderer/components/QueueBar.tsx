@@ -1,6 +1,7 @@
 import { useAutoAnimate } from "@formkit/auto-animate/react"
 import { listMotion } from "../lib/listMotion.ts"
 import type { QueuedMessage, Thread } from "../../shared/domain.ts"
+import { providerInfo } from "../../shared/providers.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
@@ -8,12 +9,7 @@ import { useDrafts } from "../stores/drafts.ts"
 import { ActivityRow } from "./ActivityRow.tsx"
 import { Button } from "./ui/button.tsx"
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx"
-import { ClockIcon } from "./icons/ClockIcon.tsx"
-import { ShieldIcon } from "./icons/ShieldIcon.tsx"
-import { CloseIcon } from "./icons/CloseIcon.tsx"
-import { SteerIcon } from "./icons/SteerIcon.tsx"
-import type { IconComponent } from "./icons/Icon.tsx"
-import { PencilIcon } from "./icons/PencilIcon.tsx"
+import { ClockIcon, CloseIcon, type IconComponent, PencilIcon, ShieldIcon, SteerIcon } from "@hinacode/icons"
 
 const summaryOf = (message: QueuedMessage) =>
   message.text.trim() || m.queue_attachments({ count: message.attachments.length })
@@ -64,7 +60,13 @@ export function QueueBar({
     }
   }
 
-  const remove = (id: string) => take(id).catch((cause: unknown) => onError(errorMessage(cause)))
+  const remove = async (id: string) => {
+    try {
+      await take(id)
+    } catch (cause) {
+      onError(errorMessage(cause))
+    }
+  }
 
   return (
     <ul ref={listRef} aria-label={m.queue_label()}>
@@ -73,9 +75,11 @@ export function QueueBar({
           <ActivityRow
             actions={
               <>
-                <QueueAction icon={SteerIcon} label={m.queue_steer_now()} onClick={() => steerNow(message.id)} />
-                <QueueAction icon={PencilIcon} label={m.queue_edit()} onClick={() => edit(message.id)} />
-                <QueueAction icon={CloseIcon} label={m.queue_remove()} onClick={() => remove(message.id)} />
+                {providerInfo[thread.provider].steersRunningTurn && (
+                  <QueueAction icon={SteerIcon} label={m.queue_steer_now()} action={() => steerNow(message.id)} />
+                )}
+                <QueueAction icon={PencilIcon} label={m.queue_edit()} action={() => edit(message.id)} />
+                <QueueAction icon={CloseIcon} label={m.queue_remove()} action={() => remove(message.id)} />
               </>
             }
           >
@@ -95,7 +99,15 @@ export function QueueBar({
   )
 }
 
-function QueueAction({ icon: Icon, label, onClick }: { icon: IconComponent; label: string; onClick: () => void }) {
+export function QueueAction({
+  icon: Icon,
+  label,
+  action,
+}: {
+  icon: IconComponent
+  label: string
+  action: () => Promise<void>
+}) {
   return (
     <Tooltip>
       <TooltipTrigger
@@ -105,7 +117,7 @@ function QueueAction({ icon: Icon, label, onClick }: { icon: IconComponent; labe
             variant="ghost"
             size="icon-xs"
             aria-label={label}
-            onClick={onClick}
+            action={action}
             className="text-muted-foreground"
           />
         }

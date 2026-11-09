@@ -6,7 +6,15 @@ import type {
   SDKTaskProgressMessage,
   SDKTaskStartedMessage,
 } from "@anthropic-ai/claude-agent-sdk"
-import type { AgentEvent, BackgroundTask, BackgroundTaskKind, Subagent, TokenUsage } from "../../../shared/agent.ts"
+import {
+  type AccountHome,
+  type AgentEvent,
+  type BackgroundTask,
+  type BackgroundTaskKind,
+  signedOutFailure,
+  type Subagent,
+  type TokenUsage,
+} from "../../../shared/agent.ts"
 
 const FILE_EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"])
 
@@ -14,8 +22,11 @@ export interface MapState {
   readonly pendingEdits: Map<string, string>
   readonly subagents: Map<string, Subagent>
   lastRequest: { readonly model: string; readonly usedTokens: number } | null
+  readonly home: AccountHome | null
+  readonly model: string
   limitMessage: string | null
   limitResetAt: string | null
+  signedOut: boolean
 }
 
 export const isTerminal = (event: AgentEvent) =>
@@ -24,6 +35,7 @@ export const isTerminal = (event: AgentEvent) =>
 export function resetTurnLimits(state: MapState): void {
   state.limitMessage = null
   state.limitResetAt = null
+  state.signedOut = false
 }
 
 export function mapMessage(message: SDKMessage, state: MapState, now: string): ReadonlyArray<AgentEvent> {
@@ -110,6 +122,7 @@ export function mapMessage(message: SDKMessage, state: MapState, now: string): R
           message.message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n") ||
           "Claude usage limit reached"
       }
+      if (message.parent_tool_use_id === null && message.error === "authentication_failed") state.signedOut = true
       const parentCallId = message.parent_tool_use_id
       return message.message.content.flatMap((block): Array<AgentEvent> => {
         if (block.type !== "tool_use") return []
@@ -147,10 +160,9 @@ export function mapMessage(message: SDKMessage, state: MapState, now: string): R
     }
 
     case "result": {
-      const limitMessage = state.limitMessage
-      const resetAt = state.limitResetAt
+      const event = mapResult(message, state)
       resetTurnLimits(state)
-      return [mapResult(message, limitMessage, resetAt, state)]
+      return [event]
     }
 
     default:
@@ -264,12 +276,8 @@ const limitErrorText =
   /^(?:error:\s*)?(?:you['’]ve hit your (?:(?:usage )?limit|org['’]s monthly spend limit)|usage limit reached|(?:claude(?: api)? )?rate limit reached|api error:\s*429\b)/i
 const orgSpendLimitText = /^(?:error:\s*)?you['’]ve hit your org['’]s monthly spend limit/i
 
-function mapResult(
-  result: SDKResultMessage,
-  limitMessage: string | null,
-  resetAt: string | null,
-  state: MapState,
-): AgentEvent {
+function mapResult(result: SDKResultMessage, state: MapState): AgentEvent {
+  const { limitMessage, limitResetAt: resetAt } = state
   if (result.subtype !== "success" || result.is_error) {
     const reason = result.subtype === "success" ? result.result : result.errors.join("\n")
     const limited =
@@ -287,7 +295,11 @@ function mapResult(
         limit: { kind, message, reset: resetAt === null ? null : { at: resetAt, autoResume: false } },
       }
     }
-    return { type: "turn_failed", message }
+    return {
+      type: "turn_failed",
+      message,
+      ...(state.signedOut && signedOutFailure("claude", state.home, state.model)),
+    }
   }
   return { type: "turn_completed", usage: toUsage(result, state) }
 }

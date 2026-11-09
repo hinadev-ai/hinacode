@@ -13,7 +13,7 @@ Changing the model or the reasoning effort also needed the pointer.
 
 - In the terminal, Ctrl+L clears the screen and Ctrl+B moves the cursor back, while Ctrl+P opens the palette, Ctrl+J closes the terminal and focus returns to the message box.
 - Settings > Keybindings shows "Not in the terminal" under the shortcuts the shell keeps.
-- `mod+alt+.` opens the model picker and `mod+alt+,` opens the effort picker. Arrow keys choose, Enter applies, and focus goes back to where it was, usually the message box.
+- `mod+alt+.` opens the model picker and `mod+alt+,` opens the effort picker. Typing searches the models, arrow keys choose, and Enter applies and returns focus to where it was, usually the message box. Picker commands use Alt, such as `Alt+L` for the next agent, so they never land in the search text.
 
 ## Design
 

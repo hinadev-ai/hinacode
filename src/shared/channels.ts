@@ -30,3 +30,26 @@ export const PROJECT_FILE_PROTOCOL = "hinacode-file"
 
 export const projectFileUrl = (root: string, path: string) =>
   `${PROJECT_FILE_PROTOCOL}://root/${encodeURIComponent(root)}/${path.split("/").map(encodeURIComponent).join("/")}`
+
+export const ARTIFACT_PROTOCOL = "hinacode-artifact"
+
+export const artifactUrl = (id: string, path = "") =>
+  `${ARTIFACT_PROTOCOL}://${id}/${path.split("/").map(encodeURIComponent).join("/")}`
+
+export const WEB_RESOURCE_PATH = "/_r/"
+
+const DESKTOP_RESOURCE = /^(hinacode-[a-z-]+):\/\/(.*)$/s
+
+export const webResourceUrl = (url: string): string => {
+  const [, scheme, rest] = DESKTOP_RESOURCE.exec(url) ?? []
+  if (scheme === undefined || rest === undefined) return url
+  if (scheme === EXTERNAL_IMAGE_PROTOCOL) return decodeURIComponent(rest.replace(/^image\//, ""))
+  if (scheme === GITHUB_ASSET_PROTOCOL)
+    return `https://github.com/user-attachments/assets/${rest.replace(/^asset\//, "")}`
+  return `${WEB_RESOURCE_PATH}${scheme}/${rest}`
+}
+
+export const desktopResourceUrl = (url: URL): string | null =>
+  url.pathname.startsWith(WEB_RESOURCE_PATH)
+    ? url.pathname.slice(WEB_RESOURCE_PATH.length).replace("/", "://") + url.search
+    : null

@@ -1,5 +1,4 @@
 import { LegendList, type LegendListRef } from "@legendapp/list/react"
-import { Link } from "@tanstack/react-router"
 import { cn } from "cn"
 import {
   createContext,
@@ -14,7 +13,6 @@ import {
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { Message, MessagePart } from "../../shared/domain.ts"
 import { fenceCode, highlight, isUnorderedBullet, type KnownTokens, type Segment } from "../../shared/composerSyntax.ts"
-import { THREAD_MENTION } from "../../shared/threadMention.ts"
 import {
   assistantPresentation,
   foldedParts,
@@ -26,18 +24,20 @@ import { faviconOrigins, linkify } from "../lib/linkify.ts"
 import { useThreadRepository } from "../lib/threadRepository.ts"
 import { skillLabelsOf } from "../lib/toolCall.ts"
 import { m } from "../paraglide/messages.js"
-import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
+import { ShimmerText } from "./ShimmerText.tsx"
 import { AttachmentView } from "./AttachmentView.tsx"
 import { CommandChip } from "./CommandChip.tsx"
 import { FindPartContext, Highlighted } from "./FindHighlight.tsx"
 import { HighlightedCode } from "./HighlightedCode.tsx"
 import { Markdown } from "./Markdown.tsx"
+import { WithMentions } from "./Mention.tsx"
+import { MentionThread } from "./MentionThread.ts"
 import { MessageActions } from "./MessageActions.tsx"
-import { MessagePartView, PartThread, SkillLabels, ToolGroup, useFindDisclosure } from "./MessagePart.tsx"
+import { MessagePartView, PartMessage, SkillLabels, ToolGroup, useFindDisclosure } from "./MessagePart.tsx"
 import { PostedQuestionsCard } from "./QuestionCard.tsx"
 import { TurnChanges } from "./TurnChanges.tsx"
-import { ArrowDownIcon } from "./icons/ArrowDownIcon.tsx"
+import { ArrowDownIcon } from "@hinacode/icons"
 import { Button } from "./ui/button.tsx"
 import { FaviconOrigins, WebLink } from "./WebLink.tsx"
 import { EarlierActivity, WorkedFor } from "./WorkedFor.tsx"
@@ -117,7 +117,7 @@ export function MessageList({
               inert={atEnd}
               action={jumpToLatest}
               className={cn(
-                "absolute bottom-[calc(var(--dock-height,0px)+0.75rem)] left-1/2 -translate-x-1/2 rounded-full bg-popover shadow-md dark:bg-popover dark:hover:bg-muted transition-[opacity,scale] duration-150 ease-out motion-reduce:transition-none",
+                "absolute bottom-[calc(var(--dock-height,0px)+0.75rem)] left-1/2 -translate-x-1/2 rounded-full bg-popover shadow-md transition-[opacity,scale] duration-150 ease-out motion-reduce:transition-none dark:bg-popover dark:hover:bg-muted",
                 atEnd && "pointer-events-none scale-90 opacity-0",
               )}
             >
@@ -133,34 +133,12 @@ export function MessageList({
 function MessageItem({ message }: { message: Message }) {
   const faviconSites = faviconOrigins(message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])))
   return (
-    <FaviconOrigins value={faviconSites}>
-      <MessageBody message={message} />
-    </FaviconOrigins>
+    <MentionThread value={message.threadId}>
+      <FaviconOrigins value={faviconSites}>
+        <MessageBody message={message} />
+      </FaviconOrigins>
+    </MentionThread>
   )
-}
-
-function WithThreadMentions({ text }: { text: string }) {
-  const threadsById = useThreads((state) => state.byId)
-  const nodes: Array<ReactElement> = []
-  let end = 0
-  for (const match of text.matchAll(THREAD_MENTION)) {
-    const thread = threadsById[match[1] ?? ""]
-    if (thread === undefined) continue
-    nodes.push(<Highlighted key={`text-${end}`} text={text.slice(end, match.index)} />)
-    nodes.push(
-      <Link
-        key={`thread-${match.index}`}
-        to="/thread/$threadId"
-        params={{ threadId: thread.id }}
-        className="text-syntax-token underline-offset-2 hover:underline"
-      >
-        <Highlighted text={`@${thread.title}`} />
-      </Link>,
-    )
-    end = match.index + match[0].length
-  }
-  nodes.push(<Highlighted key={`text-${end}`} text={text.slice(end)} />)
-  return nodes
 }
 
 const isBlock = (segment: Segment | undefined) => segment?.kind === "fence" || segment?.kind === "rule"
@@ -174,6 +152,7 @@ function SentText({ text, commands }: { text: string; commands: ReadonlyArray<Ag
     commands: new Set(byToken.keys()),
     files: new Set(),
     threads: new Set(),
+    terminals: new Set(),
   }
   const segments = highlight(text, known)
   return segments.map((segment, index) => {
@@ -220,7 +199,7 @@ function SentText({ text, commands }: { text: string; commands: ReadonlyArray<Ag
           <Highlighted text={link.text} />
         </WebLink>
       ) : (
-        <WithThreadMentions key={`${index}:${linkIndex}`} text={link.text} />
+        <WithMentions key={`${index}:${linkIndex}`} text={link.text} />
       ),
     )
   })
@@ -245,7 +224,7 @@ function MessageBody({ message }: { message: Message }) {
           </div>
         )}
         {text !== "" && (
-          <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm leading-(--leading-message) wrap-break-word whitespace-pre-wrap text-secondary-foreground">
+          <div className="max-w-[85%] rounded-2xl bg-secondary px-3.5 py-2 text-sm leading-(--leading-message) wrap-break-word whitespace-pre-wrap text-chat-foreground">
             <FindPartContext value={message.parts.findIndex((part) => part.type === "text")}>
               <SentText text={text} commands={commands} />
             </FindPartContext>
@@ -292,13 +271,14 @@ function AssistantBody({ message, showElapsedTime }: { message: Message; showEla
           <EarlierActivity count={foldedCount} expanded={activityShown} onExpandedChange={setActivityShown} />
         )
       )}
-      <PartThread value={message.threadId}>
+      <PartMessage value={message}>
         <AssistantParts message={message} parts={shownParts} writingIndex={writingIndex} />
-      </PartThread>
+      </PartMessage>
       {streaming && (parts.length === 0 || writingIndex !== undefined) && (
-        <p className="text-shimmer text-xs">
-          {writingIndex !== undefined ? m.message_writing() : m.message_thinking()}
-        </p>
+        <ShimmerText
+          className="text-xs"
+          text={writingIndex !== undefined ? m.message_writing() : m.message_thinking()}
+        />
       )}
       {!streaming && <LatestTurnChanges message={message} />}
       {!streaming && <MessageActions message={message} className="-ml-2" />}

@@ -3,7 +3,7 @@ import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate
 import type { AgentCommand } from "../../shared/agent.ts"
 import type { KnownTokens } from "../../shared/composerSyntax.ts"
 import { chipIconClass, chipIconShape, commandChipClass } from "../components/CommandChip.tsx"
-import { codeRuns, highlighterFor, type Loaded } from "../components/HighlightedCode.tsx"
+import { codeRuns, highlighterFor, type Loaded } from "./codeTokens.ts"
 import { composerMarks } from "./composerMarks.ts"
 import { iconDom } from "./iconDom.ts"
 
@@ -11,6 +11,7 @@ export interface ComposerConfig {
   readonly commands: ReadonlyArray<AgentCommand>
   readonly files: ReadonlyArray<string>
   readonly threadIds: ReadonlyArray<string>
+  readonly terminalIds: ReadonlyArray<string>
   readonly placeholder: string
   readonly codeTheme: string | undefined
   readonly scheme: "dark" | "light"
@@ -26,6 +27,7 @@ const withKnown = (config: ComposerConfig): Config => ({
     commands: new Set(config.commands.map((command) => command.trigger + command.name)),
     files: new Set(config.files),
     threads: new Set(config.threadIds),
+    terminals: new Set(config.terminalIds),
   },
 })
 
@@ -35,6 +37,7 @@ const sameConfig = (a: ComposerConfig, b: ComposerConfig) =>
   a.codeTheme === b.codeTheme &&
   a.scheme === b.scheme &&
   a.threadIds.join("\n") === b.threadIds.join("\n") &&
+  a.terminalIds.join("\n") === b.terminalIds.join("\n") &&
   JSON.stringify(a.commands) === JSON.stringify(b.commands)
 
 const setConfig = StateEffect.define<ComposerConfig>()
@@ -42,7 +45,15 @@ const redraw = StateEffect.define<null>()
 
 const configField = StateField.define<Config>({
   create: () =>
-    withKnown({ commands: [], files: [], threadIds: [], placeholder: "", codeTheme: undefined, scheme: "dark" }),
+    withKnown({
+      commands: [],
+      files: [],
+      threadIds: [],
+      terminalIds: [],
+      placeholder: "",
+      codeTheme: undefined,
+      scheme: "dark",
+    }),
   update: (config, transaction) =>
     transaction.effects.reduce((next, effect) => (effect.is(setConfig) ? withKnown(effect.value) : next), config),
 })
@@ -111,7 +122,7 @@ const markClass = {
 }
 
 const placeholderBefore =
-  "before:pointer-events-none before:float-left before:h-0 before:text-muted-foreground before:content-[attr(data-placeholder)]"
+  "before:pointer-events-none before:float-left before:-mb-[1lh] before:h-lh before:w-full before:truncate before:text-muted-foreground before:content-[attr(data-placeholder)]"
 const placeholderAfter = "after:pointer-events-none after:text-muted-foreground after:content-[attr(data-placeholder)]"
 
 const highlighters = new Map<string, Loaded | null>()
@@ -229,7 +240,12 @@ const layout = EditorView.theme({
   "&": { maxHeight: "15rem", minHeight: "calc(1lh + 1rem)" },
   "&.cm-focused": { outline: "none" },
   ".cm-scroller": { fontFamily: "inherit", lineHeight: "inherit", scrollbarGutter: "stable" },
-  ".cm-content": { padding: "0.5rem 0.625rem", minHeight: "calc(1lh + 1rem)", caretColor: "currentColor" },
+  ".cm-content": {
+    padding: "0.5rem 0.625rem",
+    minWidth: "0",
+    minHeight: "calc(1lh + 1rem)",
+    caretColor: "currentColor",
+  },
   ".cm-line": { padding: "0" },
   ".cm-line.cm-fence-line": { margin: "0 -0.25rem", padding: "0 0.25rem" },
   "&[data-composing] [data-placeholder]::before, &[data-composing] [data-placeholder]::after": { content: "none" },

@@ -1,5 +1,7 @@
+import { Schema } from "effect"
 import type { AgentCommand } from "../../shared/agent.ts"
-import { type MessagePart, spawnsSubagent } from "../../shared/domain.ts"
+import { Attachment, type MessagePart, createsThread, publishesArtifact, spawnsSubagent } from "../../shared/domain.ts"
+import { type Todo, todosInCall } from "../../shared/todos.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 
@@ -14,19 +16,118 @@ function summarizeInput(input: unknown): string {
   return JSON.stringify(input)
 }
 
-export function describeToolCall(part: Extract<MessagePart, { type: "tool_call" }>): {
+const ownToolLabels = new Map<string, () => string>([
+  ["create_thread", m.tool_own_create_thread],
+  ["list_machines", m.tool_own_list_machines],
+  ["list_threads", m.tool_own_list_threads],
+  ["search_threads", m.tool_own_search_threads],
+  ["read_thread", m.tool_own_read_thread],
+  ["send_to_thread", m.tool_own_send_to_thread],
+  ["stop_thread", m.tool_own_stop_thread],
+  ["list_terminals", m.tool_own_list_terminals],
+  ["read_terminal", m.tool_own_read_terminal],
+  ["link_pull_request", m.tool_own_link_pull_request],
+  ["list_thread_pull_requests", m.tool_own_list_thread_pull_requests],
+  ["unlink_pull_request", m.tool_own_unlink_pull_request],
+  ["watch_pull_request", m.tool_own_watch_pull_request],
+  ["unwatch_pull_request", m.tool_own_unwatch_pull_request],
+  ["review_changes", m.tool_own_review_changes],
+  ["request_secret", m.tool_own_request_secret],
+  ["linear_get_issue", m.tool_own_linear_get_issue],
+  ["linear_search_issues", m.tool_own_linear_search_issues],
+  ["linear_create_comment", m.tool_own_linear_create_comment],
+  ["linear_update_issue_state", m.tool_own_linear_update_issue_state],
+  ["publish_artifact", m.tool_own_publish_artifact],
+  ["publish_document", m.tool_own_publish_document],
+  ["publish_whiteboard", m.tool_own_publish_whiteboard],
+  ["comment_on_artifact", m.tool_own_comment_on_artifact],
+  ["document_chart_guide", m.tool_own_document_chart_guide],
+  ["list_artifacts", m.tool_own_list_artifacts],
+  ["read_artifact", m.tool_own_read_artifact],
+  ["run_agent", m.tool_own_run_agent],
+  ["wait_agent", m.tool_own_wait_agent],
+  ["vm_screenshot", m.tool_own_vm_screenshot],
+  ["vm_click", m.tool_own_vm_click],
+  ["vm_move", m.tool_own_vm_move],
+  ["vm_drag", m.tool_own_vm_drag],
+  ["vm_scroll", m.tool_own_vm_scroll],
+  ["vm_type", m.tool_own_vm_type],
+  ["vm_key", m.tool_own_vm_key],
+  ["vm_exec", m.tool_own_vm_exec],
+  ["vm_stop", m.tool_own_vm_stop],
+  ["vm_pull_file", m.tool_own_vm_pull_file],
+  ["device_screenshot", m.tool_own_device_screenshot],
+  ["device_tap", m.tool_own_device_tap],
+  ["device_swipe", m.tool_own_device_swipe],
+  ["device_type", m.tool_own_device_type],
+  ["device_button", m.tool_own_device_button],
+  ["device_launch", m.tool_own_device_launch],
+  ["device_open_url", m.tool_own_device_open_url],
+  ["device_describe_ui", m.tool_own_device_describe_ui],
+])
+
+const OWN_TOOL_PREFIX = /^(?:mcp__hinacode__|hinacode[_/])/
+
+export const ownToolName = (name: string) => name.replace(OWN_TOOL_PREFIX, "")
+
+const OWN_SUMMARY_KEYS = ["title", "url", "query"]
+
+function summarizeOwnInput(input: unknown): string {
+  if (typeof input !== "object" || input === null) return ""
+  for (const key of OWN_SUMMARY_KEYS) {
+    const value: unknown = Reflect.get(input, key)
+    if (typeof value === "string") return value
+  }
+  return Object.values(input).find((value): value is string => typeof value === "string") ?? ""
+}
+
+const todoLabels = new Map<string, () => string>([
+  ["TodoWrite", m.tool_todos_update],
+  ["write_todos", m.tool_todos_update],
+  ["update_plan", m.tool_todos_update],
+  ["TaskCreate", m.tool_task_add],
+  ["TaskUpdate", m.tool_task_update],
+])
+
+function summarizeTodos(todos: ReadonlyArray<Todo>): string {
+  if (todos.length === 1) return todos[0]?.text ?? ""
+  const done = todos.filter((todo) => todo.status === "completed").length
+  return m.composer_todos_progress({ done: String(done), total: String(todos.length) })
+}
+
+export function describeToolCall(part: { readonly name: string; readonly input: unknown }): {
   name: string
   summary: string
 } {
   const { input } = part
+  const todoLabel = todoLabels.get(part.name)
+  const todos = todoLabel === undefined ? null : todosInCall(part)
+  if (todoLabel !== undefined && todos !== null) return { name: todoLabel(), summary: summarizeTodos(todos) }
   if (typeof input === "object" && input !== null && Reflect.get(input, "type") === "mcpToolCall") {
-    return {
-      name: `${String(Reflect.get(input, "server"))}/${String(Reflect.get(input, "tool"))}`,
-      summary: summarizeInput(Reflect.get(input, "arguments")),
-    }
+    const server = String(Reflect.get(input, "server"))
+    const tool = String(Reflect.get(input, "tool"))
+    const args: unknown = Reflect.get(input, "arguments")
+    const label = server === "hinacode" ? ownToolLabels.get(tool) : undefined
+    return label === undefined
+      ? { name: `${server}/${tool}`, summary: summarizeInput(args) }
+      : { name: label(), summary: summarizeOwnInput(args) }
   }
+  const label = ownToolLabels.get(ownToolName(part.name))
+  if (label !== undefined) return { name: label(), summary: summarizeOwnInput(input) }
   const summary = summarizeInput(input)
   return { name: part.name, summary: part.name === "Bash" ? unwrapShell(summary) : summary }
+}
+
+const isAttachment = Schema.is(Attachment)
+
+export function toolOutputImages(output: unknown): Array<Attachment> {
+  const content =
+    typeof output === "object" && output !== null && !Array.isArray(output) ? Reflect.get(output, "content") : output
+  if (!Array.isArray(content)) return []
+  return content.flatMap((block: unknown) => {
+    const attachment: unknown = typeof block === "object" && block !== null ? Reflect.get(block, "attachment") : null
+    return isAttachment(attachment) ? [attachment] : []
+  })
 }
 
 // FIXME: Codex wraps every command in a login shell, such as /bin/zsh -lc '<command>'
@@ -46,7 +147,8 @@ export type TranscriptBlock =
   | { readonly type: "tools"; readonly parts: ReadonlyArray<ActivityPart>; readonly index: number }
 
 const isFoldable = (part: MessagePart): part is ActivityPart =>
-  part.type === "reasoning" || (part.type === "tool_call" && !spawnsSubagent(part))
+  part.type === "reasoning" ||
+  (part.type === "tool_call" && !spawnsSubagent(part) && !publishesArtifact(part) && !createsThread(part))
 
 export function groupToolCalls(parts: ReadonlyArray<MessagePart>, startIndex = 0): Array<TranscriptBlock> {
   const blocks: Array<TranscriptBlock> = []

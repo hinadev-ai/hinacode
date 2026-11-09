@@ -8,10 +8,13 @@ import { Deferred, Effect, Fiber, Layer, Stream } from "effect"
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
+import { OpencodeProvider } from "../agents/opencode/index.ts"
+import { MagpieProvider } from "../agents/magpie/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
 import * as McpCredentials from "../mcp/credentials.ts"
+import * as Attachments from "./Attachments.ts"
 import * as AgentAccounts from "./AgentAccounts.ts"
 import { AgentRunner, layer as runnerLayer } from "./AgentRunner.ts"
 import { Events } from "./Events.ts"
@@ -136,7 +139,12 @@ const domain = threadsLayer.pipe(
   Layer.provideMerge(AgentAccounts.layer),
   Layer.provideMerge(settingsLayer(mkdtempSync(join(tmpdir(), "kk-delivery-settings-")))),
 )
-const core = Layer.mergeAll(observedMessages, pullRequestsLayer.pipe(Layer.provideMerge(domain)), McpCredentials.layer)
+const core = Layer.mergeAll(
+  observedMessages,
+  Attachments.layer(join(base, "attachments")),
+  pullRequestsLayer.pipe(Layer.provideMerge(domain)),
+  McpCredentials.layer,
+)
 const agents = runnerLayer.pipe(
   Layer.provideMerge(core),
   Layer.provide(
@@ -144,8 +152,10 @@ const agents = runnerLayer.pipe(
       Layer.succeed(ClaudeProvider, provider("claude")),
       Layer.succeed(CodexProvider, provider("codex")),
       Layer.succeed(MuseProvider, provider("muse")),
+      Layer.succeed(OpencodeProvider, provider("opencode")),
+      Layer.succeed(MagpieProvider, provider("magpie")),
       Layer.mock(Secrets, {}),
-      Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void }),
+      Layer.succeed(ThreadNaming, { nameFromPrompt: () => Effect.void, regenerateTitle: () => Effect.die("unused") }),
     ),
   ),
 )
@@ -174,6 +184,9 @@ const testLayer = watcherLayer.pipe(
             head: "abc1234",
             mergeable: "mergeable",
             changedFiles: 1,
+            labels: [],
+            assignees: [],
+            reviewers: [],
             comments: [],
             checkRuns: [{ name: "CI / test", status: "failing", url: "https://ci.example/test" }],
           }),

@@ -31,12 +31,13 @@ export function SettingsSection({ title, description, action, children }: Settin
   )
 }
 
+export const SETTINGS_FILL_WIDTH = "max-w-6xl"
+
 export const settingsSurfaceClass = "rounded-xl bg-muted dark:bg-muted/50"
 
-export const settingsGroupClass = cn(
-  settingsSurfaceClass,
-  "flex flex-col px-4 *:py-3 [&>*+*]:border-t [&>*+*]:border-foreground/8",
-)
+export const settingsRowsClass = "flex flex-col px-4 *:py-3 [&>*+*]:border-t [&>*+*]:border-foreground/8"
+
+export const settingsGroupClass = cn(settingsSurfaceClass, settingsRowsClass)
 
 export function SettingsGroup({ className, ...props }: ComponentProps<"div">) {
   return <div className={cn(settingsGroupClass, className)} {...props} />
@@ -47,6 +48,27 @@ export function SettingsGroupTitle({ className, children, ...props }: ComponentP
     <h3 className={cn("-mb-2 px-1 text-sm font-medium", className)} {...props}>
       {children}
     </h3>
+  )
+}
+
+interface SettingsPanelSectionProps {
+  readonly title: string
+  readonly action?: ReactNode
+  readonly children: ReactNode
+}
+
+export function SettingsPanelSection({ title, action, children }: SettingsPanelSectionProps) {
+  const headingId = useId()
+  return (
+    <section aria-labelledby={headingId} className="flex flex-col gap-3 p-4">
+      <header className="flex min-h-7 items-center gap-3">
+        <h3 id={headingId} className="min-w-0 flex-1 text-sm font-medium">
+          {title}
+        </h3>
+        {action}
+      </header>
+      {children}
+    </section>
   )
 }
 

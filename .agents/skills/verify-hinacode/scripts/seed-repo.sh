@@ -13,5 +13,5 @@ printf '# kk verify\n' >README.md
 printf '.env\n' >.gitignore
 printf 'VERIFY_SECRET=from-root\n' >.env
 git add README.md .gitignore
-git -c user.name=kk-verify -c user.email=kk-verify@localhost commit -qm "chore: seed"
+git -c user.name=kk-verify -c user.email=kk-verify@localhost -c commit.gpgsign=false commit -qm "chore: seed"
 echo "$dir"

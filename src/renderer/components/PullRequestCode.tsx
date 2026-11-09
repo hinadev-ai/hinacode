@@ -27,12 +27,36 @@ import { callPromise, type EnvironmentId, pullRequestDetailAtom, pullRequestFile
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { loadPullRequestGuideAtom, usePullRequestGuides } from "../stores/pullRequestGuides.ts"
+import { ShimmerText } from "./ShimmerText.tsx"
 import { FileDiffRow, pullRequestFileMark } from "./FilePatch.tsx"
-import { FolderIcon } from "./icons/FolderIcon.tsx"
-import { PipIcon } from "./icons/PipIcon.tsx"
+import {
+  BookIcon,
+  CodeIcon,
+  CollapseIcon,
+  DatabaseIcon,
+  ExpandIcon,
+  EyeIcon,
+  FlaskIcon,
+  FolderIcon,
+  GuideIcon,
+  HammerIcon,
+  type IconComponent,
+  ImageIcon,
+  LayoutIcon,
+  MoreIcon,
+  PackageIcon,
+  PipIcon,
+  PlayIcon,
+  PlugIcon,
+  ShieldKeyholeIcon,
+  SlidersIcon,
+  TerminalIcon,
+  ToolsIcon,
+  TranslateIcon,
+  WarningIcon,
+} from "@hinacode/icons"
 import { Markdown } from "./Markdown.tsx"
 import { FilePreview, previewKind } from "./PullRequestFilePreview.tsx"
-import { EyeIcon } from "./icons/EyeIcon.tsx"
 import {
   annotationSide,
   commentsOnLines,
@@ -45,27 +69,6 @@ import {
 import { Button } from "./ui/button.tsx"
 import { Checkbox } from "./ui/checkbox.tsx"
 import { SkeletonList } from "./ui/skeleton.tsx"
-import { CollapseIcon } from "./icons/CollapseIcon.tsx"
-import { ExpandIcon } from "./icons/ExpandIcon.tsx"
-import { BookIcon } from "./icons/BookIcon.tsx"
-import { CodeIcon } from "./icons/CodeIcon.tsx"
-import { DatabaseIcon } from "./icons/DatabaseIcon.tsx"
-import { FlaskIcon } from "./icons/FlaskIcon.tsx"
-import { GuideIcon } from "./icons/GuideIcon.tsx"
-import { HammerIcon } from "./icons/HammerIcon.tsx"
-import type { IconComponent } from "./icons/Icon.tsx"
-import { ImageIcon } from "./icons/ImageIcon.tsx"
-import { LayoutIcon } from "./icons/LayoutIcon.tsx"
-import { MoreIcon } from "./icons/MoreIcon.tsx"
-import { PackageIcon } from "./icons/PackageIcon.tsx"
-import { PlayIcon } from "./icons/PlayIcon.tsx"
-import { PlugIcon } from "./icons/PlugIcon.tsx"
-import { ShieldKeyholeIcon } from "./icons/ShieldKeyholeIcon.tsx"
-import { SlidersIcon } from "./icons/SlidersIcon.tsx"
-import { TerminalIcon } from "./icons/TerminalIcon.tsx"
-import { ToolsIcon } from "./icons/ToolsIcon.tsx"
-import { TranslateIcon } from "./icons/TranslateIcon.tsx"
-import { WarningIcon } from "./icons/WarningIcon.tsx"
 import { LineCounts } from "./LineCounts.tsx"
 
 const categoryIcon = {
@@ -659,14 +662,14 @@ function GuideJobNotice({ environment, url, currentHead, status, state }: GuideJ
     return (
       <div className="flex flex-col gap-1 rounded-md border border-attention/30 bg-attention/10 p-2.5 text-xs">
         <p>{m.guide_outdated({ commit: shortCommit(state.guide.head) })}</p>
-        {job?.status === "running" && <p className="text-shimmer">{m.guide_outdated_writing()}</p>}
+        {job?.status === "running" && <ShimmerText text={m.guide_outdated_writing()} />}
       </div>
     )
   }
   if (job?.status === "running") {
     return (
       <div className="flex flex-col gap-2">
-        <p className="text-shimmer text-xs">{m.guide_writing({ commit: shortCommit(currentHead) })}</p>
+        <ShimmerText className="text-xs" text={m.guide_writing({ commit: shortCommit(currentHead) })} />
         <p className="text-xs text-muted-foreground">{m.guide_writing_hint()}</p>
       </div>
     )

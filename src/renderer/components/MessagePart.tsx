@@ -1,12 +1,30 @@
-import { useParams } from "@tanstack/react-router"
-import { createContext, type ReactNode, use, useState } from "react"
+import { todosInCall } from "../../shared/todos.ts"
+import { TodoRow } from "./TodoActivity.tsx"
+import { RiGitPullRequestLine, RiSendToBack } from "react-icons/ri"
+import { Link, useParams } from "@tanstack/react-router"
+import { createContext, type ReactNode, use, useId, useState } from "react"
 import { toast } from "sonner"
-import type { AccountProviderId, Compaction, ProviderId } from "../../shared/agent.ts"
-import { type MessagePart, spawnsSubagent, type ToolCallStatus } from "../../shared/domain.ts"
+import {
+  type AccountProviderId,
+  type Compaction,
+  createdThreadId,
+  type ProviderId,
+  toolArgument,
+} from "../../shared/agent.ts"
+import {
+  type Message,
+  type MessagePart,
+  createsThread,
+  publishesArtifact,
+  spawnsSubagent,
+  type Thread,
+  type ToolCallStatus,
+} from "../../shared/domain.ts"
 import { ansiSegments } from "../lib/ansi.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { commandFindText, type FindRevealRequest } from "../lib/find.ts"
-import { statusOfCall, useOpenSubagent } from "../lib/subagents.ts"
+import { statusOfCall } from "../../shared/subagents.ts"
+import { useOpenSubagent } from "../lib/subagents.ts"
 import { callPromise } from "../lib/rpc.ts"
 import {
   type ActivityPart,
@@ -14,6 +32,8 @@ import {
   countToolKinds,
   describeCommand,
   describeToolCall,
+  ownToolName,
+  toolOutputImages,
   type SkillLabels as SkillLabelMap,
   skillsUsed,
   skillUseText,
@@ -23,32 +43,42 @@ import { decodeUnicodeEscapes } from "../lib/unicodeEscapes.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
+import { openArtifact } from "../stores/artifacts.ts"
 import { useSubagentByCallId } from "../stores/subagents.ts"
+import { providerInfo } from "../../shared/providers.ts"
 import { useThreads } from "../stores/threads.ts"
 import { useUi } from "../stores/ui.ts"
+import { ArtifactCard } from "./ArtifactCard.tsx"
 import { AttachmentView, formatBytes } from "./AttachmentView.tsx"
+import { CopyButton } from "./CopyButton.tsx"
 import { FindPartContext, FindPatternContext, Highlighted } from "./FindHighlight.tsx"
 import { HighlightedCode } from "./HighlightedCode.tsx"
 import { Markdown } from "./Markdown.tsx"
 import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
+import { StatusIndicator, useThreadRowState } from "./SidebarThreadList.tsx"
 import { SubagentStatusIcon } from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
-import { BrainIcon } from "./icons/BrainIcon.tsx"
-import { CheckIcon } from "./icons/CheckIcon.tsx"
-import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
-import { CollapseIcon } from "./icons/CollapseIcon.tsx"
-import { FileDiffIcon } from "./icons/FileDiffIcon.tsx"
-import { FileTextIcon } from "./icons/FileTextIcon.tsx"
-import { GlobeIcon } from "./icons/GlobeIcon.tsx"
-import type { IconComponent } from "./icons/Icon.tsx"
-import { PencilIcon } from "./icons/PencilIcon.tsx"
-import { SearchIcon } from "./icons/SearchIcon.tsx"
-import { SkillIcon } from "./icons/SkillIcon.tsx"
-import { SpinnerIcon } from "./icons/SpinnerIcon.tsx"
-import { TerminalIcon } from "./icons/TerminalIcon.tsx"
-import { ToolsIcon } from "./icons/ToolsIcon.tsx"
-import { WarningIcon } from "./icons/WarningIcon.tsx"
+import {
+  BrainIcon,
+  ChatNewIcon,
+  CheckIcon,
+  CheckCircleIcon,
+  ChevronRightIcon,
+  CollapseIcon,
+  FileDiffIcon,
+  FileTextIcon,
+  LayoutIcon,
+  GlobeIcon,
+  type IconComponent,
+  PencilIcon,
+  SearchIcon,
+  SkillIcon,
+  SpinnerIcon,
+  TerminalIcon,
+  ToolsIcon,
+  WarningIcon,
+} from "@hinacode/icons"
 
 export function MessagePartView({ part }: { part: MessagePart }) {
   switch (part.type) {
@@ -69,11 +99,13 @@ export function MessagePartView({ part }: { part: MessagePart }) {
       return <AgentSwitchPart from={part.from} to={part.to} />
     case "session_import":
       return <SessionImportPart provider={part.provider} history={part.history} />
+    case "signed_out":
+      return <SignedOutPart message={part.message} loginCommand={part.loginCommand} />
   }
 }
 
 const disclosureTrigger =
-  "group/trigger flex w-fit max-w-full min-w-0 items-center gap-2 rounded-sm py-0.5 text-left text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-panel-open:text-foreground"
+  "group/trigger flex w-fit max-w-full min-w-0 items-center gap-2 rounded-sm py-0.5 text-left text-sm text-receding-foreground outline-none hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
 
 function Chevron() {
   return (
@@ -84,9 +116,9 @@ function Chevron() {
   )
 }
 
-function ReasoningPart({ text }: { text: string }) {
+function ReasoningPart({ text, className = "my-2" }: { text: string; className?: string }) {
   return (
-    <Collapsible className="my-2">
+    <Collapsible className={className}>
       <CollapsibleTrigger className={disclosureTrigger}>
         <BrainIcon aria-hidden className="size-4 shrink-0" />
         {m.message_thinking()}
@@ -110,6 +142,20 @@ const toolIcons: Record<string, IconComponent> = {
   Grep: SearchIcon,
   WebFetch: GlobeIcon,
   WebSearch: GlobeIcon,
+  TodoWrite: CheckCircleIcon,
+  write_todos: CheckCircleIcon,
+  update_plan: CheckCircleIcon,
+  TaskCreate: CheckCircleIcon,
+  TaskUpdate: CheckCircleIcon,
+  link_pull_request: RiGitPullRequestLine,
+  list_thread_pull_requests: RiGitPullRequestLine,
+  unlink_pull_request: RiGitPullRequestLine,
+  watch_pull_request: RiGitPullRequestLine,
+  unwatch_pull_request: RiGitPullRequestLine,
+  publish_artifact: LayoutIcon,
+  list_artifacts: LayoutIcon,
+  read_artifact: LayoutIcon,
+  publish_document: FileTextIcon,
 }
 
 const field = (value: unknown, key: string): unknown =>
@@ -145,13 +191,15 @@ const statusLabel = {
 
 export const SubagentLinks = createContext(true)
 
-export const PartThread = createContext("")
+export const PartMessage = createContext<Pick<Message, "id" | "threadId">>({ id: "", threadId: "" })
 
 export const SkillLabels = createContext<SkillLabelMap>(new Map())
 
 function ToolCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call" }> }) {
   const linksSubagents = use(SubagentLinks)
   if (linksSubagents && spawnsSubagent(part)) return <SubagentCallPart part={part} />
+  if (publishesArtifact(part)) return <ArtifactCallPart part={part} />
+  if (createsThread(part)) return <ThreadCallPart part={part} />
   return (
     <div className="my-2">
       <ToolRow call={part} reveal={null} />
@@ -169,6 +217,16 @@ function ToolCallDetails({
   inGroup?: boolean
 }) {
   const [call, showFullOutput] = useFullOutput(shipped)
+  const todos = todosInCall(call)
+  if (todos !== null) {
+    return (
+      <ul className="flex flex-col gap-1 pl-6">
+        {todos.map((todo, index) => (
+          <TodoRow key={`${index}-${todo.text}`} todo={todo} />
+        ))}
+      </ul>
+    )
+  }
   const fullOutputButton = call.fullOutputBytes !== undefined && (
     <Button variant="link" size="xs" action={showFullOutput} className="-ml-2 font-sans text-muted-foreground">
       {m.tool_output_show_full({ size: formatBytes(call.fullOutputBytes) })}
@@ -199,11 +257,15 @@ function ToolCallDetails({
 }
 
 function useFullOutput(shipped: ToolCall) {
-  const threadId = use(PartThread)
+  const message = use(PartMessage)
   const [full, setFull] = useState<ToolCall | null>(null)
   const showFullOutput = async () => {
     try {
-      const output = await callPromise("threads.toolOutput", { threadId, callId: shipped.callId })
+      const output = await callPromise("threads.toolOutput", {
+        threadId: message.threadId,
+        messageId: message.id,
+        callId: shipped.callId,
+      })
       const { fullOutputBytes: _fullOutputBytes, ...call } = shipped
       setFull({ ...call, output })
     } catch (cause) {
@@ -223,7 +285,11 @@ function SubagentCallPart({ part }: { part: Extract<MessagePart, { type: "tool_c
 
   return (
     <button type="button" onClick={() => open(part.callId)} className={`my-2 ${disclosureTrigger}`}>
-      {provider ? <ProviderIcon provider={provider} muted /> : <ToolsIcon aria-hidden className="size-4 shrink-0" />}
+      {provider ? (
+        <ProviderIcon provider={provider} muted className="text-current" />
+      ) : (
+        <ToolsIcon aria-hidden className="size-4 shrink-0" />
+      )}
       <span className="shrink-0">
         <Highlighted text={name} />
       </span>
@@ -237,6 +303,57 @@ function SubagentCallPart({ part }: { part: Extract<MessagePart, { type: "tool_c
 }
 
 type ToolCall = Extract<MessagePart, { type: "tool_call" }>
+
+function ArtifactCallPart({ part }: { part: ToolCall }) {
+  const { threadId } = use(PartMessage)
+  return (
+    <ArtifactCard
+      call={part}
+      result={part.output === undefined ? null : formatOutput(part.output)}
+      onOpen={(id) => openArtifact(threadId, id)}
+    />
+  )
+}
+
+const threadCard = "my-2 flex w-full max-w-sm min-w-0 items-center gap-3 rounded-lg border border-border px-3 py-2.5"
+
+function ThreadCallPart({ part }: { part: ToolCall }) {
+  const threadId = part.output === undefined ? null : createdThreadId(formatOutput(part.output))
+  const thread = useThreads((state) => (threadId === null ? undefined : state.byId[threadId]))
+  if (thread !== undefined) return <ThreadCard thread={thread} />
+  const title = toolArgument(part.input, "title")
+  return (
+    <div className={cn(threadCard, "text-muted-foreground")}>
+      <ChatNewIcon aria-hidden className="size-4 shrink-0" />
+      <span className="min-w-0 flex-1 truncate text-sm">
+        <Highlighted text={typeof title === "string" ? title : ""} />
+      </span>
+      {part.status === "running" && statusIcon.running}
+    </div>
+  )
+}
+
+function ThreadCard({ thread }: { thread: Thread }) {
+  const state = useThreadRowState(thread)
+  return (
+    <Link
+      to="/thread/$threadId"
+      params={{ threadId: thread.id }}
+      aria-label={m.thread_card_open({ title: thread.title })}
+      className={cn(
+        threadCard,
+        "bg-background/50 outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+    >
+      <ProviderIcon provider={thread.provider} muted />
+      <span className="min-w-0 flex-1 truncate text-sm">
+        <Highlighted text={thread.title} />
+      </span>
+      <StatusIndicator state={state} />
+      <ChevronRightIcon aria-hidden className="size-3.5 shrink-0" />
+    </Link>
+  )
+}
 
 export function useFindDisclosure(request: FindRevealRequest | null) {
   const id = request?.id ?? null
@@ -289,17 +406,23 @@ export function ToolGroup({
       : null
   const [open, setOpen] = useFindDisclosure(revealHere)
 
-  const [onlyCall] = calls
-  if (calls.length === 1 && onlyCall) {
-    return (
-      <FindPartContext value={index + parts.indexOf(onlyCall)}>
-        <div className="my-2">
-          <ToolRow call={onlyCall} reveal={revealHere} />
-        </div>
-      </FindPartContext>
-    )
-  }
-  const Icon = toolIcons[calls[0]?.name ?? ""] ?? ToolsIcon
+  const rows = (
+    <ul className="flex flex-col gap-1">
+      {parts.map((part, position) => (
+        <li key={part.type === "tool_call" ? part.callId : position}>
+          <FindPartContext value={index + position}>
+            {part.type === "tool_call" ? (
+              <ToolRow call={part} reveal={revealHere?.match.partIndex === index + position ? revealHere : null} />
+            ) : (
+              <ReasoningPart text={part.text} className="" />
+            )}
+          </FindPartContext>
+        </li>
+      ))}
+    </ul>
+  )
+  if (calls.length === 1) return <div className="my-2">{rows}</div>
+  const Icon = toolIcons[ownToolName(calls[0]?.name ?? "")] ?? ToolsIcon
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="my-2">
@@ -320,23 +443,7 @@ export function ToolGroup({
         {running && <span className="shrink-0">{statusIcon.running}</span>}
         <Chevron />
       </CollapsibleTrigger>
-      <CollapsibleContent>
-        <ul className="mt-1 flex flex-col gap-1">
-          {parts.map(
-            (part, position) =>
-              part.type === "tool_call" && (
-                <li key={part.callId}>
-                  <FindPartContext value={index + position}>
-                    <ToolRow
-                      call={part}
-                      reveal={revealHere?.match.partIndex === index + position ? revealHere : null}
-                    />
-                  </FindPartContext>
-                </li>
-              ),
-          )}
-        </ul>
-      </CollapsibleContent>
+      <CollapsibleContent className="mt-1">{rows}</CollapsibleContent>
     </Collapsible>
   )
 }
@@ -345,30 +452,70 @@ function ToolRow({ call, reveal }: { call: ToolCall; reveal: FindRevealRequest |
   const truncate = reveal === null ? "truncate" : "wrap-anywhere"
   const { summary } = describeToolCall(call)
   const skills = skillsUsed(call)
-  const Icon = skills === null ? (toolIcons[call.name] ?? ToolsIcon) : SkillIcon
+  const Icon = skills === null ? (toolIcons[ownToolName(call.name)] ?? ToolsIcon) : SkillIcon
+  const images = toolOutputImages(call.output)
   return (
     <Collapsible>
-      <CollapsibleTrigger className={disclosureTrigger}>
-        <Icon aria-hidden className="size-4 shrink-0" />
-        {skills !== null ? (
-          <SkillLabel skills={skills} truncate={truncate} />
-        ) : call.name === "Bash" ? (
-          <CommandLabel call={call} truncate={truncate} />
-        ) : (
-          <ToolLabel call={call} truncate={truncate} />
-        )}
-        {call.status !== "done" && (
-          <span className="shrink-0" title={statusLabel[call.status]()}>
-            {statusIcon[call.status]}
-            <span className="sr-only">{statusLabel[call.status]()}</span>
-          </span>
-        )}
-        <Chevron />
-      </CollapsibleTrigger>
+      <div className="@container flex items-center gap-1">
+        <CollapsibleTrigger className={cn(disclosureTrigger, "min-w-0 flex-1")}>
+          <Icon aria-hidden className="size-4 shrink-0" />
+          {skills !== null ? (
+            <SkillLabel skills={skills} truncate={truncate} />
+          ) : call.name === "Bash" ? (
+            <CommandLabel call={call} truncate={truncate} />
+          ) : (
+            <ToolLabel call={call} truncate={truncate} />
+          )}
+          {call.status !== "done" && (
+            <span className="shrink-0" title={statusLabel[call.status]()}>
+              {statusIcon[call.status]}
+              <span className="sr-only">{statusLabel[call.status]()}</span>
+            </span>
+          )}
+          <Chevron />
+        </CollapsibleTrigger>
+        {call.name === "Bash" && call.status === "running" && <MoveToBackgroundButton callId={call.callId} />}
+      </div>
+      {images.length > 0 && (
+        <ul className="mt-1 mb-2 flex flex-wrap gap-2 pl-6">
+          {images.map((image) => (
+            <li key={image.id}>
+              <AttachmentView attachment={image} />
+            </li>
+          ))}
+        </ul>
+      )}
       <CollapsibleContent className="mt-1 mb-2 text-xs">
         <ToolCallDetails call={call} summary={summary} inGroup />
       </CollapsibleContent>
     </Collapsible>
+  )
+}
+
+function MoveToBackgroundButton({ callId }: { callId: string }) {
+  const { threadId } = use(PartMessage)
+  const provider = useThreads((state) => state.byId[threadId]?.provider)
+  if (provider === undefined || !providerInfo[provider].movesCommandsToBackground) return null
+  const move = async () => {
+    try {
+      const moved = await callPromise("backgroundTasks.moveCommand", { threadId, callId })
+      if (!moved) toast(m.tool_command_already_finished())
+    } catch (cause) {
+      toast.error(m.tool_command_move_to_background_failed({ message: errorMessage(cause) }))
+    }
+  }
+  return (
+    <Button
+      variant="ghost"
+      size="xs"
+      action={move}
+      aria-label={m.tool_command_move_to_background()}
+      title={m.tool_command_move_to_background()}
+      className="shrink-0 reveal-when-slow rounded-full border-border font-normal text-muted-foreground"
+    >
+      <RiSendToBack aria-hidden />
+      <span className="@max-sm:hidden">{m.tool_command_move_to_background()}</span>
+    </Button>
   )
 }
 
@@ -385,14 +532,14 @@ function CommandLabel({ call, truncate }: { call: ToolCall; truncate: string }) 
   const { distinctLabel, command } = commandFindText(call)
   return (
     <>
-      <span className={cn("min-w-0", truncate)} title={command}>
-        <Highlighted text={command} />
-      </span>
       {distinctLabel !== null && (
-        <span className={cn("max-w-1/2 min-w-0 shrink-0", truncate)} title={distinctLabel}>
+        <span className={cn("max-w-3/4 min-w-0 shrink-0", truncate)} title={distinctLabel}>
           <Highlighted text={distinctLabel} />
         </span>
       )}
+      <span className={cn("min-w-0", truncate)} title={command}>
+        <Highlighted text={command} />
+      </span>
     </>
   )
 }
@@ -490,7 +637,8 @@ function FileChangePart({ path, diff }: { path: string; diff: string }) {
       </span>
     </>
   )
-  if (diff === "") return <div className="my-2 flex items-center gap-2 py-0.5 text-sm text-muted-foreground">{row}</div>
+  if (diff === "")
+    return <div className="my-2 flex items-center gap-2 py-0.5 text-sm text-receding-foreground">{row}</div>
   return (
     <Collapsible className="my-2">
       <CollapsibleTrigger className={disclosureTrigger}>
@@ -546,6 +694,33 @@ function AgentSwitchPart({ from, to }: { from: ProviderId; to: ProviderId }) {
       </span>
       <span aria-hidden className="h-px flex-1 bg-border" />
     </div>
+  )
+}
+
+function SignedOutPart({ message, loginCommand }: { message: string; loginCommand: string | undefined }) {
+  const titleId = useId()
+  return (
+    <section
+      aria-labelledby={titleId}
+      className="my-2 flex flex-col gap-2 rounded-lg border border-attention/30 bg-attention/10 p-3"
+    >
+      <h3 id={titleId} className="flex items-center gap-2 text-sm font-semibold text-attention">
+        <WarningIcon aria-hidden className="size-4 shrink-0" />
+        {m.message_signed_out_title()}
+      </h3>
+      <p className="text-sm wrap-break-word text-muted-foreground">{message}</p>
+      {loginCommand === undefined ? (
+        <p className="text-sm">{m.message_signed_out_docs_hint()}</p>
+      ) : (
+        <>
+          <p className="text-sm">{m.message_signed_out_hint()}</p>
+          <div className="flex min-w-0 items-center gap-1 rounded-md bg-muted py-1 ps-3 pe-1">
+            <code className="min-w-0 flex-1 font-mono text-xs break-all select-all">{loginCommand}</code>
+            <CopyButton value={loginCommand} label={m.message_copy_login_command()} />
+          </div>
+        </>
+      )}
+    </section>
   )
 }
 

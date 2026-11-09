@@ -1,40 +1,16 @@
 import { describe, expect, test } from "@effect/vitest"
-import { autoUpdate, parseCommand, restartCommand, serveConfig } from "./serve.ts"
+import { autoUpdate, browserCommand, linkInstructions, restartCommand, serveConfig } from "./serve.ts"
 
-describe("parseCommand", () => {
-  test("asks for help instead of starting a daemon", () => {
-    expect(parseCommand(["serve", "--help"])).toBe("help")
-    expect(parseCommand(["serve", "--port", "1", "-h"])).toBe("help")
-    expect(parseCommand(["--help"])).toBe("help")
-  })
-
-  test("reads serve and pair with their options", () => {
-    expect(parseCommand(["serve", "--port", "49000", "--host=100.64.0.2", "--rotate-token"])).toBe("serve")
-    expect(parseCommand(["pair"])).toBe("pair")
-    expect(parseCommand(["--version"])).toBe("version")
-  })
-
-  test("refuses an unknown option instead of ignoring it", () => {
-    expect(() => parseCommand(["serve", "--prot", "1"])).toThrow("unknown option --prot")
-    expect(() => parseCommand(["serve", "--prot=1"])).toThrow("unknown option --prot")
-    expect(() => parseCommand(["pair", "--port", "1"])).toThrow("unknown option --port")
-    expect(() => parseCommand(["serve", "extra"])).toThrow("unexpected argument extra")
-  })
-
-  test("refuses a missing or unknown command", () => {
-    expect(() => parseCommand([])).toThrow("missing command")
-    expect(() => parseCommand(["start"])).toThrow("unknown command start")
-  })
-})
+const none = { rotateToken: false }
 
 describe("serveConfig", () => {
   test("reads the serve command with no overrides", () => {
-    expect(serveConfig(["serve"], {})).toStrictEqual({ rotateToken: false })
+    expect(serveConfig(none, {})).toStrictEqual({ rotateToken: false })
   })
 
   test("reads host, port and rotation from the environment", () => {
     expect(
-      serveConfig(["serve"], {
+      serveConfig(none, {
         HINACODE_SERVE_HOST: "127.0.0.1",
         HINACODE_SERVE_PORT: "49000",
         HINACODE_SERVE_ROTATE_TOKEN: "true",
@@ -44,44 +20,42 @@ describe("serveConfig", () => {
 
   test("flags override the environment", () => {
     expect(
-      serveConfig(["serve", "--port=49100", "--host", "100.64.0.2", "--rotate-token"], {
-        HINACODE_SERVE_PORT: "49000",
-        HINACODE_SERVE_HOST: "127.0.0.1",
-      }),
+      serveConfig(
+        { port: 49100, host: "100.64.0.2", rotateToken: true },
+        { HINACODE_SERVE_PORT: "49000", HINACODE_SERVE_HOST: "127.0.0.1" },
+      ),
     ).toStrictEqual({ bindHost: "100.64.0.2", port: 49100, rotateToken: true })
   })
 
   test("refuses a host that would listen on every network", () => {
-    expect(() => serveConfig(["serve", "--host", "0.0.0.0"], {})).toThrow(/every network/)
-    expect(() => serveConfig(["serve"], { HINACODE_SERVE_HOST: "::" })).toThrow(/every network/)
+    expect(() => serveConfig({ ...none, host: "0.0.0.0" }, {})).toThrow(/every network/)
+    expect(() => serveConfig(none, { HINACODE_SERVE_HOST: "::" })).toThrow(/every network/)
   })
 
   test("refuses a port it cannot listen on", () => {
-    expect(() => serveConfig(["hinacode", "serve"], { HINACODE_SERVE_PORT: "abc" })).toThrow(/port/)
-    expect(() => serveConfig(["hinacode", "serve", "--port", "70000"], {})).toThrow(/port/)
-    expect(() => serveConfig(["hinacode", "serve", "--port", "0"], {})).toThrow(/port/)
+    expect(() => serveConfig(none, { HINACODE_SERVE_PORT: "abc" })).toThrow(/port/)
+    expect(() => serveConfig({ ...none, port: 70000 }, {})).toThrow(/port/)
+    expect(() => serveConfig({ ...none, port: 0 }, {})).toThrow(/port/)
   })
 
   test("reads the relay switch from the flag before the environment", () => {
-    expect(serveConfig(["serve", "--relay", "on"], { HINACODE_SERVE_RELAY: "off" })).toStrictEqual({
+    expect(serveConfig({ ...none, relay: "on" }, { HINACODE_SERVE_RELAY: "off" })).toStrictEqual({
       rotateToken: false,
       relay: "on",
     })
-    expect(serveConfig(["serve"], { HINACODE_SERVE_RELAY: "off" })).toStrictEqual({ rotateToken: false, relay: "off" })
-    expect(serveConfig(["serve", "--relay=off"], {})).toStrictEqual({ rotateToken: false, relay: "off" })
-    expect(parseCommand(["serve", "--relay", "on"])).toBe("serve")
+    expect(serveConfig(none, { HINACODE_SERVE_RELAY: "off" })).toStrictEqual({ rotateToken: false, relay: "off" })
+    expect(serveConfig({ ...none, relay: "off" }, { HINACODE_SERVE_RELAY: "1" })).toStrictEqual({
+      rotateToken: false,
+      relay: "off",
+    })
   })
 
   test("refuses a relay value other than on or off", () => {
-    expect(() => serveConfig(["serve", "--relay", "example.com"], {})).toThrow("--relay must be on or off")
-    expect(() => serveConfig(["serve"], { HINACODE_SERVE_RELAY: "1" })).toThrow(
-      "HINACODE_SERVE_RELAY must be on or off",
-    )
-    expect(() => serveConfig(["serve", "--relay"], {})).toThrow("--relay needs a value")
+    expect(() => serveConfig(none, { HINACODE_SERVE_RELAY: "1" })).toThrow("HINACODE_SERVE_RELAY must be on or off")
   })
 
   test("refuses an unknown HINACODE_SERVE_ROTATE_TOKEN value instead of guessing", () => {
-    expect(() => serveConfig(["serve"], { HINACODE_SERVE_ROTATE_TOKEN: "yes" })).toThrow(/HINACODE_SERVE_ROTATE_TOKEN/)
+    expect(() => serveConfig(none, { HINACODE_SERVE_ROTATE_TOKEN: "yes" })).toThrow(/HINACODE_SERVE_ROTATE_TOKEN/)
   })
 })
 
@@ -118,4 +92,40 @@ describe("restartCommand", () => {
     expect(args).not.toContain("--rotate-token")
     expect(env).toStrictEqual({ PATH: "/usr/bin", HINACODE_USER_DATA: "/srv/cloud" })
   })
+})
+
+describe("browserCommand", () => {
+  const url = "https://relay.test/link?code=abc"
+
+  test("opens the browser on a machine with a display", () => {
+    expect(browserCommand(url, "darwin", {})).toStrictEqual({ file: "open", args: [url] })
+    expect(browserCommand(url, "linux", { DISPLAY: ":0" })).toStrictEqual({ file: "xdg-open", args: [url] })
+    expect(browserCommand(url, "linux", { WAYLAND_DISPLAY: "wayland-0" })).toStrictEqual({
+      file: "xdg-open",
+      args: [url],
+    })
+    expect(browserCommand(url, "win32", {})?.file).toBe("rundll32")
+  })
+
+  test("leaves it to the person on a headless machine or over SSH", () => {
+    expect(browserCommand(url, "linux", {})).toBeNull()
+    expect(browserCommand(url, "linux", { DISPLAY: ":0", SSH_CONNECTION: "1 2 3 4" })).toBeNull()
+    expect(browserCommand(url, "darwin", { SSH_TTY: "/dev/ttys001" })).toBeNull()
+  })
+
+  test("opens nothing but a web page, whatever the relay answers", () => {
+    expect(browserCommand("file:///etc/passwd", "darwin", {})).toBeNull()
+    expect(browserCommand("not a url", "darwin", {})).toBeNull()
+  })
+
+  test("passes the normalized URL, so a stray byte cannot make spawning throw", () => {
+    const args = browserCommand("https://relay.test/link?code=a\0b", "darwin", {})?.args ?? []
+    expect(args).toStrictEqual(["https://relay.test/link?code=a%00b"])
+  })
+})
+
+test("linkInstructions puts the URL on its own line, so it can be clicked or copied", () => {
+  expect(linkInstructions("https://relay.test/link?code=abc").split("\n")).toContain(
+    "  https://relay.test/link?code=abc",
+  )
 })

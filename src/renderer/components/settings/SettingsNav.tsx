@@ -8,18 +8,20 @@ import { ResizeHandle } from "../ResizeHandle.tsx"
 import { Button } from "../ui/button.tsx"
 import { Input } from "../ui/input.tsx"
 import { ScrollArea } from "../ui/scroll-area.tsx"
-import { ArrowLeftIcon } from "../icons/ArrowLeftIcon.tsx"
-import { BellIcon } from "../icons/BellIcon.tsx"
-import { BoltIcon } from "../icons/BoltIcon.tsx"
-import { BranchIcon } from "../icons/BranchIcon.tsx"
-import { CpuIcon } from "../icons/CpuIcon.tsx"
-import { FlaskIcon } from "../icons/FlaskIcon.tsx"
-import type { IconComponent } from "../icons/Icon.tsx"
-import { KeyboardIcon } from "../icons/KeyboardIcon.tsx"
-import { PaletteIcon } from "../icons/PaletteIcon.tsx"
-import { PlugIcon } from "../icons/PlugIcon.tsx"
-import { ServerIcon } from "../icons/ServerIcon.tsx"
-import { SettingsIcon } from "../icons/SettingsIcon.tsx"
+import {
+  ArrowLeftIcon,
+  BellIcon,
+  BoltIcon,
+  BranchIcon,
+  CpuIcon,
+  FlaskIcon,
+  type IconComponent,
+  KeyboardIcon,
+  PaletteIcon,
+  PlugIcon,
+  ServerIcon,
+  SettingsIcon,
+} from "@hinacode/icons"
 
 export interface SettingsPage {
   readonly id: string
@@ -28,6 +30,7 @@ export interface SettingsPage {
   readonly description?: () => string
   readonly icon: IconComponent
   readonly keywords: ReadonlyArray<() => string>
+  readonly fill?: boolean
 }
 
 export const settingsPages: ReadonlyArray<SettingsPage> = [
@@ -72,13 +75,17 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
     label: m.settings_providers,
     description: m.settings_models_hint,
     icon: CpuIcon,
+    fill: true,
     keywords: [
+      m.settings_new_threads,
       m.settings_default_model,
       m.settings_default_account,
       m.settings_default_access,
-      m.settings_model_preset,
+      m.settings_model_shown,
       m.settings_auto_compact,
       m.settings_text_generation_model,
+      m.settings_guide_model,
+      m.settings_magpie_gateway,
     ],
   },
   {
@@ -91,6 +98,8 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
       m.settings_worktree_root,
       m.settings_archive,
       m.settings_archive_when_merged,
+      m.settings_archive_settle_idle,
+      m.settings_archive_after_settled,
       m.settings_archive_remove_worktree,
     ],
   },
@@ -115,12 +124,7 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
     label: m.settings_connections,
     description: m.environments_description,
     icon: ServerIcon,
-    keywords: [
-      m.environment_relay_owner_token_label,
-      m.environment_pairing_url_label,
-      m.settings_remote,
-      m.remote_enable_label,
-    ],
+    keywords: [m.environment_relay_title, m.environment_pairing_url_label, m.settings_remote, m.remote_enable_label],
   },
   {
     id: "experimental",
@@ -185,7 +189,7 @@ export function SettingsNav() {
       hidden={!compact && !sidebarOpen}
       data-compact={compact}
       style={compact ? undefined : { width: sidebarWidth }}
-      className="relative flex min-h-0 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground data-[compact=false]:flex-1 data-[compact=true]:w-52 glass:bg-sidebar/80"
+      className="relative flex min-h-0 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground data-[compact=false]:flex-1 data-[compact=true]:w-52 glass:bg-sidebar/(--glass-chrome-alpha)"
     >
       <div className="flex flex-col gap-1 px-2 pt-2 pb-1">
         <Button variant="ghost" size="sm" onClick={onLeave} className="justify-start text-muted-foreground">

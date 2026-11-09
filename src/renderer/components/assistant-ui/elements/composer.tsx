@@ -3,7 +3,7 @@
 import type { ComponentProps } from "react"
 import { cn } from "@/lib/utils"
 import { ghostButton, paper } from "./surfaces"
-import { PlusIcon } from "../../icons/PlusIcon.tsx"
+import { PlusIcon } from "@hinacode/icons"
 import { SendGlyph, type SendGlyphMode } from "../../icons/SendGlyph.tsx"
 
 export function Composer({ className, ...props }: ComponentProps<"div">) {

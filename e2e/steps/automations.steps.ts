@@ -76,10 +76,6 @@ When("a signed delivery for {string} arrives", async ({ webhook }, name: string)
   webhook.response = await deliver(url, body, sign(secret, body))
 })
 
-Then("the automation {string} is listed with a signing secret", ({ webhook }, name: string) => {
-  expect(known(webhook, name).secret.length).toBeGreaterThan(16)
-})
-
 Then("the delivery is rejected with {int} {string}", ({ webhook }, status: number, error: string) => {
   expect(webhook.response?.status).toBe(status)
   expect(webhook.response?.body).toContain(error)

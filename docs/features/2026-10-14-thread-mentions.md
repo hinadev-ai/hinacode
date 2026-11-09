@@ -16,7 +16,7 @@ A developer running several threads often wants one agent to build on another's 
 
 ## Design
 
-The token is `@thread:<id>`, defined once in `src/shared/threadMention.ts` and used by the composer, the message view and the agent instructions. A full id needs no lookup or disambiguation in main.
+The token is `@thread:<id>`, defined once in `src/shared/mentions.ts` and used by the composer, the message view and the agent instructions. A full id needs no lookup or disambiguation in main.
 
 Renderer:
 
@@ -31,7 +31,7 @@ Main:
 
 Persistence stays as it is. Messages, status, model and pull request links already live in SQLite (`message`, `thread`, `pull_request_link`), and `read_thread` reads them through `AgentRunner.transcript`. A turn is a user message and the assistant message after it, so there is no separate run id to store.
 
-Trust boundary: `read_thread` still refuses threads of another project, so a mention cannot reach further than `list_threads` already does. The mention is plain prompt text and needs no new validation.
+Trust boundary: `read_thread` reads threads of any project on this machine, the same reach `search_threads` has, so a mention adds nothing. The mention is plain prompt text and needs no new validation.
 
 ## Out of scope
 

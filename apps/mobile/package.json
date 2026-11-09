@@ -13,9 +13,11 @@
     "expo-camera": "~58.0.12",
     "expo-clipboard": "~58.0.4",
     "expo-constants": "~58.0.13",
+    "expo-crypto": "~58.0.7",
     "expo-file-system": "~58.0.11",
     "expo-font": "~58.0.10",
     "expo-glass-effect": "~58.0.5",
+    "expo-image-manipulator": "~58.0.16",
     "expo-image-picker": "~58.0.10",
     "expo-linking": "~58.0.14",
     "expo-localization": "~58.0.5",
@@ -25,6 +27,7 @@
     "expo-splash-screen": "~58.0.11",
     "expo-status-bar": "~58.0.4",
     "expo-system-ui": "~58.0.6",
+    "expo-web-browser": "~58.0.7",
     "gpu-lexer": "^0.0.3",
     "marked": "^18.1.1",
     "react": "19.3.0",
@@ -49,13 +52,14 @@
   },
   "scripts": {
     "start": "expo start",
-    "android": "expo run:android",
-    "ios": "expo run:ios",
+    "android": "./scripts/android-env.sh expo run:android",
+    "ios": "LANG=en_US.UTF-8 expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
     "build:terminal": "node ./scripts/build-terminal-html.mts",
     "build:icons": "./scripts/build-app-icons.sh",
-    "install:android": "./scripts/install-android.sh"
+    "install:android": "./scripts/android-env.sh ./scripts/install-android.sh",
+    "install:ios": "./scripts/install-ios.sh"
   },
   "private": true,
   "enriched-markdown": {

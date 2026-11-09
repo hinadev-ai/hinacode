@@ -7,7 +7,13 @@ const legacySettings = Object.fromEntries(
   Object.entries(defaultSettings).filter(([key]) => key !== "defaultAccountName"),
 )
 
-const legacyThread: Omit<Thread, "userSkills"> = {
+const withoutOpencode = (value: unknown) => {
+  if (typeof value !== "object" || value === null || !("claude" in value)) return value
+  const { opencode: _opencode, ...rest } = value as Record<string, unknown>
+  return rest
+}
+
+const legacyThread: Thread = {
   id: "older-cloud-thread",
   projectId: "project",
   worktreeId: null,
@@ -21,12 +27,15 @@ const legacyThread: Omit<Thread, "userSkills"> = {
   providerSessionId: null,
   forkedFrom: null,
   sideOf: null,
+  parentId: null,
   status: "idle",
   usageLimit: null,
   sortIndex: 0,
   pinnedAt: null,
+  settledAt: null,
   snoozedUntil: null,
   queue: [],
+  scheduled: [],
   createdBy: "user",
   createdAt: "2026-10-18T00:00:00.000Z",
   updatedAt: "2026-10-18T00:00:00.000Z",
@@ -38,16 +47,24 @@ describe("older cloud responses", () => {
       claude: null,
       codex: null,
       muse: null,
+      opencode: null,
+      magpie: null,
     })
+  })
+
+  it("gives opencode empty defaults in settings saved before it existed", () => {
+    const beforeOpencode = Object.fromEntries(
+      Object.entries(defaultSettings).map(([key, value]) => [key, withoutOpencode(value)]),
+    )
+    const settings = Schema.decodeUnknownSync(Settings)(beforeOpencode)
+    expect(settings.defaultModel.opencode).toBeNull()
+    expect(settings.modelPresets.opencode).toStrictEqual([])
+    expect(settings.defaultFastMode.opencode).toBe(false)
   })
 
   it("has no global actions when settings predate them", () => {
     const { actions: _actions, ...withoutActions } = defaultSettings
     expect(Schema.decodeUnknownSync(Settings)(withoutActions).actions).toStrictEqual([])
-  })
-
-  it("keeps user skills enabled for threads from before conversation mode", () => {
-    expect(Schema.decodeUnknownSync(Thread)(legacyThread).userSkills).toBe(true)
   })
 
   it("reads mergeability as unknown from a pull request summary that omits it", () => {
@@ -68,14 +85,12 @@ describe("older cloud responses", () => {
   })
 
   it("preserves explicit settings and rejects malformed values", () => {
-    expect(Schema.decodeUnknownSync(Thread)({ ...legacyThread, userSkills: false }).userSkills).toBe(false)
     expect(
       Schema.decodeUnknownSync(Settings)({
         ...legacySettings,
         defaultAccountName: { claude: "Work", codex: null, muse: null },
       }).defaultAccountName.claude,
     ).toBe("Work")
-    expect(() => Schema.decodeUnknownSync(Thread)({ ...legacyThread, userSkills: "false" })).toThrow()
     expect(() =>
       Schema.decodeUnknownSync(Settings)({
         ...legacySettings,
@@ -123,11 +138,8 @@ describe("listener settings", () => {
     }
   })
 
-  it("let remote control turn on only with a picked interface", () => {
-    expect(() => setSettings({ remote: { enabled: true, bindHost: null, port: 48081 } })).toThrow()
-    expect(setSettings({ remote: { enabled: false, bindHost: null, port: 48081 } })).toStrictEqual({
-      remote: { enabled: false, bindHost: null, port: 48081 },
-    })
+  it("always name where remote control listens", () => {
+    expect(() => setSettings({ remote: { enabled: false, bindHost: null, port: 48081 } })).toThrow()
     expect(setSettings({ remote: { enabled: true, bindHost: "100.64.0.2", port: 48081 } }).remote?.bindHost).toBe(
       "100.64.0.2",
     )

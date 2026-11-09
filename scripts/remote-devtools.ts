@@ -1,16 +1,35 @@
 import { spawn } from "node:child_process"
 import { createServer, request, type IncomingMessage, type ServerResponse } from "node:http"
-import { connect, type Socket } from "node:net"
+import { connect, createServer as createNetServer, type Socket } from "node:net"
 import { tailscaleAddress } from "../src/main/network.ts"
 
-const CDP_PORT = 9334
-const PUBLIC_PORT = 9333
+const FIRST_PUBLIC_PORT = 9333
+const PORT_PAIRS_TRIED = 20
 
 const host = process.env["HINACODE_DEVTOOLS_HOST"] ?? tailscaleAddress()
 if (!host) {
   console.error("No Tailscale address found. Set HINACODE_DEVTOOLS_HOST to the address your other device reaches.")
   process.exit(1)
 }
+
+const isFree = (port: number, address: string) =>
+  new Promise<boolean>((resolve) => {
+    const probe = createNetServer()
+    probe.once("error", () => resolve(false))
+    probe.listen(port, address, () => probe.close(() => resolve(true)))
+  })
+
+const freePortPair = async () => {
+  for (let pair = 0; pair < PORT_PAIRS_TRIED; pair++) {
+    const publicPort = FIRST_PUBLIC_PORT + pair * 2
+    const cdpPort = publicPort + 1
+    if ((await isFree(publicPort, host)) && (await isFree(cdpPort, "127.0.0.1"))) return { publicPort, cdpPort }
+  }
+  console.error(`No free DevTools ports between ${FIRST_PUBLIC_PORT} and ${FIRST_PUBLIC_PORT + PORT_PAIRS_TRIED * 2}.`)
+  process.exit(1)
+}
+
+const { publicPort: PUBLIC_PORT, cdpPort: CDP_PORT } = await freePortPair()
 const publicOrigin = `${host}:${PUBLIC_PORT}`
 
 type Target = { id: string; type: string; url: string }
@@ -48,7 +67,7 @@ const proxy = createServer((req, res) => {
       answer.pipe(res)
     },
   )
-  upstream.on("error", () => res.writeHead(502).end("HinaCode is not running."))
+  upstream.on("error", () => (res.headersSent ? res.destroy() : res.writeHead(502).end("HinaCode is not running.")))
   req.pipe(upstream)
 })
 

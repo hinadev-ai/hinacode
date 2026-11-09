@@ -68,7 +68,7 @@ export function foldEvent(message: Message, event: AgentEvent, now: string): Mes
     case "turn_failed":
       return {
         ...message,
-        parts: [...failRunningParts(message.parts), { type: "text", text: `**Error:** ${event.message}` }],
+        parts: [...failRunningParts(message.parts), ...failurePart(event)],
         completedAt: now,
       }
     case "turn_limited":
@@ -80,6 +80,19 @@ export function foldEvent(message: Message, event: AgentEvent, now: string): Mes
     default:
       return message
   }
+}
+
+const failurePart = (event: Extract<AgentEvent, { type: "turn_failed" }>): ReadonlyArray<MessagePart> => {
+  if (event.stopped) return []
+  if (event.signedOut)
+    return [
+      {
+        type: "signed_out",
+        message: event.message,
+        ...(event.loginCommand !== undefined && { loginCommand: event.loginCommand }),
+      },
+    ]
+  return [{ type: "text", text: `**Error:** ${event.message}` }]
 }
 
 export function foldTranscript(

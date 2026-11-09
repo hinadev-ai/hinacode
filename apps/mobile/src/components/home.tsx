@@ -1,24 +1,26 @@
 import type { Project, Thread } from "@shared/domain.ts"
 import { router, Stack } from "expo-router"
-import { type ReactNode, useState } from "react"
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
+import { type ReactNode, useEffect, useState } from "react"
+import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import Animated, { LayoutAnimationConfig } from "react-native-reanimated"
 import { liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
 import { Reveal, Rotate, Spinner } from "@/components/motion"
 import { SearchField } from "@/components/search-field"
+import { ServerFilter } from "@/components/server-filter"
 import { ServerMark } from "@/components/server-mark"
 import { SectionLabel, ThreadRow } from "@/components/thread-row"
 import { SearchResults } from "@/components/thread-search"
 import { Button, EmptyState, IconButton, Notice, type Tab, UnderlineTabs } from "@/components/ui"
 import { listEntering, listExiting, listLayout } from "@/constants/motion"
 import { radius } from "@/constants/theme"
-import { useProjectServer } from "@/hooks/use-server"
+import { useProjectServer, useShownServers } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { openThread } from "@/lib/navigation"
 import type { HomeTab } from "@/lib/preferences"
+import { withinServers } from "@/lib/server-filter"
 import { createThread } from "@/lib/start-thread"
 import { usePreferences } from "@/stores/preferences"
 import { archivedThreads, inboxThreads, listedThreads, pinnedThreads, sortThreads, useThreads } from "@/stores/threads"
@@ -29,19 +31,19 @@ export function HomeActions({ onNewThread }: { onNewThread: () => void }) {
     <View style={styles.actions}>
       <IconButton
         testID="overview-button"
-        icon="RiDashboardLine"
+        icon="Layout"
         accessibilityLabel={copy("mobile_home_overview")}
         onPress={() => router.push("/overview")}
       />
       <IconButton
         testID="new-thread-button"
-        icon="RiAddLine"
+        icon="Plus"
         accessibilityLabel={copy("mobile_home_new_thread")}
         onPress={onNewThread}
       />
       <IconButton
         testID="settings-button"
-        icon="RiSettings3Line"
+        icon="Settings"
         accessibilityLabel={copy("mobile_home_settings")}
         onPress={() => router.push("/settings")}
       />
@@ -55,6 +57,7 @@ export function HomeActions({ onNewThread }: { onNewThread: () => void }) {
  * iOS keeps every action in the header and the search under the title.
  */
 export function HomeToolbars({ onNewThread }: { onNewThread: () => void }) {
+  const theme = useTheme()
   const overview = (
     <Stack.Toolbar.Button
       icon="square.grid.2x2"
@@ -99,6 +102,7 @@ export function HomeToolbars({ onNewThread }: { onNewThread: () => void }) {
         <Stack.Toolbar.Button
           icon="square.and.pencil"
           variant="prominent"
+          tintColor={theme.primary}
           accessibilityLabel={copy("mobile_home_new_thread")}
           onPress={onNewThread}
         >
@@ -132,6 +136,16 @@ export function HomeContent({
   const query = search?.query ?? ownQuery
   const setQuery = search?.onChange ?? setOwnQuery
 
+  useEffect(() => {
+    if (query === "") return
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (router.canGoBack()) return false
+      setQuery("")
+      return true
+    })
+    return () => subscription.remove()
+  }, [query, setQuery])
+
   const loading = loadStatus === "loading" && !hasProjects
   const noProjects = loadStatus === "ready" && !hasProjects
   const status = loading ? (
@@ -141,14 +155,14 @@ export function HomeContent({
     </Reveal>
   ) : noProjects ? (
     <EmptyState
-      icon="RiFolderAddLine"
+      icon="FolderAdd"
       title={copy("mobile_home_no_projects")}
       hint={copy("mobile_home_no_projects_hint")}
       action={
         <Button
           testID="add-project-button"
           label={copy("mobile_home_add_project")}
-          icon="RiFolderAddLine"
+          icon="FolderAdd"
           variant="primary"
           onPress={() => router.push("/project/new")}
         />
@@ -160,7 +174,7 @@ export function HomeContent({
       <Notice text={loadError} tone="danger" />
       <Button
         label={copy("mobile_home_retry")}
-        icon="RiRefreshLine"
+        icon="Refresh"
         style={styles.retry}
         onPress={() => void useThreads.getState().load()}
       />
@@ -179,10 +193,16 @@ export function HomeContent({
         </ScrollView>
       )
 
+    const header = (
+      <>
+        {notice}
+        <ServerFilter />
+      </>
+    )
     return query.trim() === "" ? (
-      <HomeList selectedId={selectedId} nativeHeader header={notice} />
+      <HomeList selectedId={selectedId} nativeHeader header={header} />
     ) : (
-      <SearchResults query={query} nativeHeader header={notice} />
+      <SearchResults query={query} nativeHeader header={header} />
     )
   }
 
@@ -201,7 +221,11 @@ export function HomeContent({
               clearLabel={copy("mobile_search_clear")}
             />
           </View>
-          {query.trim() === "" ? <HomeList selectedId={selectedId} /> : <SearchResults query={query} />}
+          {query.trim() === "" ? (
+            <HomeList selectedId={selectedId} header={<ServerFilter />} />
+          ) : (
+            <SearchResults query={query} header={<ServerFilter />} />
+          )}
         </>
       )}
     </View>
@@ -259,11 +283,19 @@ function homeItems(
       items.push({
         kind: "empty",
         key: "empty:archived",
-        icon: "RiArchiveLine",
+        icon: "Archive",
         title: copy("mobile_home_archived_empty"),
       })
     items.push(...threadItems("thread", archived, true))
   } else {
+    if (projects.length === 0)
+      items.push({
+        kind: "empty",
+        key: "empty:filtered",
+        icon: "Computer",
+        title: copy("mobile_home_filter_empty"),
+        hint: copy("mobile_home_filter_empty_hint"),
+      })
     for (const project of projects) {
       const open = !collapsed.has(project.id)
       items.push({ kind: "project", key: `project:${project.id}`, project, open })
@@ -292,7 +324,9 @@ function HomeList({
   const projects = useThreads((state) => state.projects)
   const byId = useThreads((state) => state.byId)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())
-  const items = homeItems(tab, projects, listedThreads(byId), collapsed)
+  const servers = useShownServers()
+  const listed = withinServers(servers, projects, listedThreads(byId))
+  const items = homeItems(tab, listed.projects, listed.threads, collapsed)
   const [shown, setShown] = useState(() => ({ tab, threadIds: threadIds(items) }))
   if (shown.tab !== tab) setShown({ tab, threadIds: threadIds(items) })
 
@@ -418,9 +452,9 @@ function ProjectHeader({ project, open, onToggle }: { project: Project; open: bo
           style={({ pressed }) => [styles.projectToggle, pressed && { backgroundColor: theme.surface }]}
         >
           <Rotate turned={open}>
-            <Icon name="RiArrowRightSLine" size={16} color={theme.textMuted} />
+            <Icon name="ChevronRight" size={16} color={theme.textMuted} />
           </Rotate>
-          <Icon name="RiFolder3Line" size={16} color={theme.textMuted} />
+          <Icon name="Folder" size={16} color={theme.textMuted} />
           <Text numberOfLines={1} style={[styles.projectName, { color: theme.text }]}>
             {project.name}
           </Text>
@@ -428,7 +462,7 @@ function ProjectHeader({ project, open, onToggle }: { project: Project; open: bo
         </Pressable>
         <IconButton
           testID={`new-thread-in-${project.id}`}
-          icon="RiAddLine"
+          icon="Plus"
           accessibilityLabel={copy("mobile_home_new_in_project", { project: project.name })}
           busy={creating}
           onPress={() => void create()}

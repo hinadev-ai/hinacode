@@ -37,6 +37,10 @@ Given("the saved language is {string}", ({ seed }, locale: string) => {
   seed.setting("locale", locale)
 })
 
+Given("the pull request guide is turned on", ({ seed }) => {
+  seed.setting("pullRequestGuide", { enabled: true, model: "claude-sonnet-5-5", effort: "high" })
+})
+
 Given("the shortcut for {string} is saved as {string}", ({ seed }, command: string, chord: string) => {
   seed.setting("keybindings", { [commandId(command)]: chord })
 })
@@ -61,7 +65,8 @@ When("I choose the language {string}", async ({ app }, language: string) => {
 })
 
 When("I choose the last listed default model for {string}", async ({ app, chosenModel }, agent: string) => {
-  const picker = app.page.getByRole("group", { name: agent, exact: true }).getByLabel("Default model", { exact: true })
+  await app.page.getByRole("list", { name: "Agents", exact: true }).getByRole("button", { name: agent }).click()
+  const picker = app.page.getByRole("region", { name: agent, exact: true }).getByLabel("Default model", { exact: true })
   await expect(picker).toBeEnabled({ timeout: 30_000 })
   await picker.click()
   const option = app.page.getByRole("option").last()
@@ -154,12 +159,35 @@ Then("the secret {string} is not stored", async ({ app }, name: string) => {
 
 When("I turn on the setting {string}", async ({ app }, label: string) => {
   const toggle = app.page.getByRole("switch", { name: label, exact: true })
-  await toggle.click()
+  await toggle.setChecked(true)
   await expect(toggle).toBeChecked()
 })
 
-Then("the archive settings are saved as both on", async ({ app }) => {
-  await expect
-    .poll(async () => (await rpc(app.page, "settings.get", undefined)).archive)
-    .toStrictEqual({ whenMerged: true, removeWorktree: true })
+When("I enter {int} days for {string}", async ({ app }, days: number, label: string) => {
+  const input = app.page.getByRole("spinbutton", { name: label, exact: true })
+  await input.fill(String(days))
+  await input.press("Enter")
+})
+
+Then(
+  "the archive settings are saved with both switches on and archiving after {int} days",
+  async ({ app }, days: number) => {
+    await expect
+      .poll(async () => (await rpc(app.page, "settings.get", undefined)).archive)
+      .toStrictEqual({ whenMerged: true, removeWorktree: true, settleAfterIdleDays: 7, archiveAfterSettledDays: days })
+  },
+)
+
+When("I scroll the settings page past its end", async ({ app }) => {
+  await expect(app.page.getByRole("switch", { name: "Pull request guide", exact: true })).toBeChecked()
+  await app.page.getByRole("switch", { name: "Pull request guide", exact: true }).hover()
+  for (let tick = 0; tick < 20; tick++) await app.page.mouse.wheel(0, 400)
+})
+
+Then("the window has not scrolled", async ({ app }) => {
+  const scrolled = await app.page.evaluate(() => {
+    const root = document.scrollingElement!
+    return { top: root.scrollTop, overflow: root.scrollHeight - root.clientHeight }
+  })
+  expect(scrolled).toEqual({ top: 0, overflow: 0 })
 })

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "@effect/vitest"
-import { attachmentUrl, externalImageUrl, githubAssetUrl, projectFileUrl } from "../shared/channels.ts"
+import { artifactUrl, attachmentUrl, externalImageUrl, githubAssetUrl, projectFileUrl } from "../shared/channels.ts"
 import {
+  artifactRequest,
   attachmentRequest,
   BROWSER_PARTITION,
   externalImageRequest,
@@ -189,6 +190,41 @@ describe("projectFileRequest", () => {
   })
 })
 
+describe("artifactRequest", () => {
+  test("round-trips an id and a path with spaces and non-ASCII names, and an empty path for the entry", () => {
+    expect(artifactRequest(artifactUrl("report-1", "assets/報告 #1.png"))).toEqual({
+      id: "report-1",
+      path: "assets/報告 #1.png",
+    })
+    expect(artifactRequest(artifactUrl("report-1"))).toEqual({ id: "report-1", path: "" })
+  })
+
+  test("resolves a relative link from the entry to a sibling in the same artifact", () => {
+    expect(artifactRequest(new URL("app.js?v=2", artifactUrl("report-1", "pages/index.html")).href)).toEqual({
+      id: "report-1",
+      path: "pages/app.js",
+    })
+  })
+
+  test("never leaves the artifact through dot segments, encoded or not", () => {
+    expect(artifactRequest(new URL("../../etc/passwd", artifactUrl("report-1", "index.html")).href)).toEqual({
+      id: "report-1",
+      path: "etc/passwd",
+    })
+    expect(artifactRequest("hinacode-artifact://report-1/..%2F..%2Fetc%2Fpasswd")).toBe(null)
+    expect(artifactRequest("hinacode-artifact://report-1/a/%2E%2E%2F..%2Fsecret")).toBe(null)
+  })
+
+  test("refuses hosts that are not artifact ids, other schemes and malformed escapes", () => {
+    expect(artifactRequest("hinacode-artifact://Report/index.html")).toBe(null)
+    expect(artifactRequest("hinacode-artifact://-report/index.html")).toBe(null)
+    expect(artifactRequest("hinacode-artifact:///index.html")).toBe(null)
+    expect(artifactRequest("hinacode-file://report-1/index.html")).toBe(null)
+    expect(artifactRequest("hinacode-artifact://report-1/%E0%A4%A")).toBe(null)
+    expect(artifactRequest("hinacode-artifact://report-1/a//b")).toBe(null)
+  })
+})
+
 describe("attachmentRequest", () => {
   test("round-trips a path with spaces and non-ASCII names, on this machine or a cloud", () => {
     const path = "/Users/me/Library/Application Support/kkcode/attachments/t/画面 #1.png"
@@ -255,8 +291,10 @@ describe("isAllowedNavigation", () => {
     expect(isAllowedNavigation("https://example.com", true, packagedDocument)).toBe(false)
   })
 
-  test("lets a subframe load project files only", () => {
+  test("lets a subframe load project files and artifacts only", () => {
     expect(isAllowedNavigation(preview, false, packagedDocument)).toBe(true)
+    expect(isAllowedNavigation(artifactUrl("report-1"), false, packagedDocument)).toBe(true)
+    expect(isAllowedNavigation(artifactUrl("report-1"), true, packagedDocument)).toBe(false)
     expect(isAllowedNavigation(packagedDocument, false, packagedDocument)).toBe(false)
     expect(isAllowedNavigation("https://example.com", false, packagedDocument)).toBe(false)
     expect(isAllowedNavigation("file:///etc/passwd", false, packagedDocument)).toBe(false)

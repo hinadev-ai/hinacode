@@ -22,7 +22,8 @@ import { VmTemplateSelect } from "../sidePanel/TinyVmView.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.tsx"
 import { SecretField } from "./IntegrationSettings.tsx"
 import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
-import { CheckCircleFillIcon } from "../icons/CheckCircleFillIcon.tsx"
+import { CheckCircleFillIcon } from "@hinacode/icons"
+import { withCode } from "../withCode.tsx"
 
 const BOAT_SIZES: ReadonlyArray<BoatVmSize> = ["small", "default", "large", "xlarge"]
 const isBoatSize = (value: string): value is BoatVmSize => BOAT_SIZES.some((size) => size === value)
@@ -141,13 +142,6 @@ function SbxVmFields({
         checked={experimental.tinyVmProfile}
         onCheckedChange={(checked) => void setExperimental({ tinyVmProfile: checked })}
       />
-      <VmSwitchField
-        id="settings-experimental-tiny-vm-passkeys"
-        label={m.settings_tiny_vm_passkeys()}
-        hint={m.settings_tiny_vm_passkeys_hint()}
-        checked={experimental.tinyVmPasskeys}
-        onCheckedChange={(checked) => void setExperimental({ tinyVmPasskeys: checked })}
-      />
     </>
   )
 }
@@ -221,7 +215,7 @@ function VmProviderField({ value, onChange }: { value: VmProvider; onChange: (pr
         value={value}
         onValueChange={(next) => typeof next === "string" && isVmProvider(next) && onChange(next)}
       >
-        <SelectTrigger id="settings-experimental-tiny-vm-provider" className="w-full">
+        <SelectTrigger id="settings-experimental-tiny-vm-provider">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -360,18 +354,6 @@ function VmHost({ provider }: { provider: VmProvider }) {
     </div>
   )
 }
-
-const withCode = (text: string) =>
-  text.split("`").map((part, index) =>
-    index % 2 === 1 ? (
-      // oxlint-disable-next-line react/no-array-index-key -- the parts of one fixed sentence never reorder.
-      <code key={index} className="font-mono text-[0.85em] text-foreground">
-        {part}
-      </code>
-    ) : (
-      part
-    ),
-  )
 
 function HostStatus({ status }: { status: VmHostStatus }) {
   switch (status.status) {

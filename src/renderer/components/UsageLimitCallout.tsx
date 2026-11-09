@@ -11,7 +11,7 @@ import { useThreads } from "../stores/threads.ts"
 import { SwitchAccountButton, useAccountOptions } from "./AccountSwitch.tsx"
 import { Button } from "./ui/button.tsx"
 import { FieldError } from "./ui/field.tsx"
-import { WarningIcon } from "./icons/WarningIcon.tsx"
+import { WarningIcon } from "@hinacode/icons"
 
 export const resetCopy = (at: string, now: number): string | null => {
   const resetAt = Date.parse(at)

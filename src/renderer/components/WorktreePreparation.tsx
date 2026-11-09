@@ -2,9 +2,7 @@ import type { ReactNode } from "react"
 import type { Worktree } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
 import { WorktreeSetupLog } from "./WorktreeSetupLog.tsx"
-import { CheckIcon } from "./icons/CheckIcon.tsx"
-import { CircleIcon } from "./icons/CircleIcon.tsx"
-import { SpinnerIcon } from "./icons/SpinnerIcon.tsx"
+import { CheckIcon, CircleIcon, SpinnerIcon } from "@hinacode/icons"
 
 type StepState = "done" | "running" | "pending"
 

@@ -6,10 +6,10 @@ import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { afterAll, describe, expect, it } from "@effect/vitest"
 import { vi } from "vitest"
-import { Cause, Effect, Exit, Fiber, Layer, Option, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, Layer, Option, Schema, Stream } from "effect"
 import { SqlClient } from "effect/sql"
 import { TestClock } from "effect/testing"
-import type { RelayStatus } from "../../shared/domain.ts"
+import { RemoteStatus, type RelayStatus } from "../../shared/domain.ts"
 import * as Db from "../db/client.ts"
 import * as SecretsModule from "../services/Secrets.ts"
 import { Secrets } from "../services/Secrets.ts"
@@ -28,6 +28,10 @@ const PORT = 48123
 const ORIGIN = `http://127.0.0.1:${PORT}`
 const SERVICE_URL = "https://relay.test"
 const LINK_URL = "https://relay.test/link?code=WXYZ-2345"
+
+const RemoteStatusDecodedByReleasedDesktops = Schema.Struct({
+  relay: Schema.Struct({ state: Schema.Literal("linking"), url: Schema.String, userCode: Schema.String }),
+})
 
 const tunnel: RelayTunnel = { hostname: HOSTNAME, origin: ORIGIN }
 
@@ -85,6 +89,7 @@ interface ServiceCall {
 const fakeService = (
   options: {
     pendingClaims?: number
+    expiredClaims?: number
     expiresAt?: number
     claimStatus?: number
     deleteStatus?: number
@@ -93,6 +98,7 @@ const fakeService = (
 ) => {
   const calls: Array<ServiceCall> = []
   let pending = options.pendingClaims ?? 0
+  let expired = options.expiredClaims ?? 0
   const fetch: Fetch = async (url, init) => {
     const call = `${init.method} ${url.pathname}`
     const authorization = new Headers(init.headers).get("Authorization")
@@ -112,6 +118,7 @@ const fakeService = (
     }
     if (call === "POST /v1/links/claim") {
       if (options.claimStatus !== undefined) return json({ error: "The link code expired." }, options.claimStatus)
+      if (expired-- > 0) return json({ error: "The link code expired." }, 410)
       if (pending-- > 0) return json({ pending: true }, 202)
       return json({ credential: "credential-1" })
     }
@@ -316,6 +323,26 @@ describe("Relay", () => {
     }).pipe(Effect.provide(base)),
   )
 
+  it.effect("sends a linking status that released desktops can decode", () =>
+    Effect.gen(function* () {
+      yield* remoteOn
+      const service = fakeService({ pendingClaims: 2 })
+      yield* withRelay(
+        { serviceUrl: SERVICE_URL, fetch: service.fetch, cloudflared: connects().path },
+        Effect.gen(function* () {
+          const setup = yield* Relay.use((relay) => relay.setup({ onLink: noLink })).pipe(Effect.forkChild)
+          const relay = yield* until((status) => status.state === "linking")
+          const wire = Schema.encodeSync(RemoteStatus)({ listening: true, listenError: null, connected: 0, relay })
+
+          expect(Schema.decodeUnknownSync(RemoteStatusDecodedByReleasedDesktops)(wire)).toStrictEqual({
+            relay: { state: "linking", url: LINK_URL, userCode: "WXYZ-2345" },
+          })
+          yield* Fiber.interrupt(setup)
+        }),
+      )
+    }).pipe(Effect.provide(base)),
+  )
+
   it.effect("links through the browser, claiming until the owner approves, then connects", () =>
     Effect.gen(function* () {
       yield* remoteOn
@@ -371,7 +398,7 @@ describe("Relay", () => {
           yield* until((status) => status.state === "linking")
           yield* advanceUntil(() => service.claims() === 1)
           const failure = yield* Effect.flip(Fiber.join(setup))
-          expect(failure.message).toBe("The sign-in link expired. Turn on the relay again.")
+          expect(failure.message).toBe("The sign-in link expired. Link this machine again.")
           expect(yield* Relay.use((relay) => relay.status)).toStrictEqual({ state: "off" })
         }),
       )
@@ -389,7 +416,7 @@ describe("Relay", () => {
           yield* until((status) => status.state === "linking")
           yield* advanceUntil(() => setup.pollUnsafe() !== undefined)
           const failure = yield* Effect.flip(Fiber.join(setup))
-          expect(failure.message).toBe("The sign-in link expired. Turn on the relay again.")
+          expect(failure.message).toBe("The sign-in link expired. Link this machine again.")
           expect(service.claims()).toBe(0)
         }),
       )
@@ -553,6 +580,47 @@ describe("Relay", () => {
     }).pipe(Effect.provide(base)),
   )
 
+  it.effect("serve --relay prints a new link when the first expires, and keeps waiting", () =>
+    Effect.gen(function* () {
+      yield* remoteOn
+      const service = fakeService({ expiredClaims: 1 })
+      const links: Array<RelayLink> = []
+      yield* withRelay(
+        { serviceUrl: SERVICE_URL, fetch: service.fetch, cloudflared: connects().path },
+        Effect.gen(function* () {
+          const serving = yield* applyServeRelay("on", (link) => Effect.sync(() => void links.push(link))).pipe(
+            Effect.forkChild,
+          )
+          yield* advanceUntil(() => service.claims() === 2)
+          yield* Fiber.join(serving)
+          expect(links).toHaveLength(2)
+          yield* until((status) => status.state === "connected")
+        }),
+      )
+    }).pipe(Effect.provide(base)),
+  )
+
+  it.effect("serve --relay stops when the link is denied instead of printing another", () =>
+    Effect.gen(function* () {
+      yield* remoteOn
+      const service = fakeService({ claimStatus: 403 })
+      const links: Array<RelayLink> = []
+      yield* withRelay(
+        { serviceUrl: SERVICE_URL, fetch: service.fetch, cloudflared: connects().path },
+        Effect.gen(function* () {
+          const serving = yield* applyServeRelay("on", (link) => Effect.sync(() => void links.push(link))).pipe(
+            Effect.forkChild,
+          )
+          yield* advanceUntil(() => service.claims() === 1)
+          const failure = yield* Effect.flip(Fiber.join(serving))
+          expect(failure.message).toBe("The link was denied in the browser.")
+          expect(links).toHaveLength(1)
+          expect(yield* Relay.use((relay) => relay.status)).toStrictEqual({ state: "off" })
+        }),
+      )
+    }).pipe(Effect.provide(base)),
+  )
+
   it.live("serve --relay on keeps a relay that has a hostname without calling the service", () =>
     Effect.gen(function* () {
       yield* seed()
@@ -562,4 +630,10 @@ describe("Relay", () => {
       )
     }).pipe(Effect.provide(base)),
   )
+})
+
+describe("relayOrigin", () => {
+  it("reaches a private-networks listener over loopback, because `private` is not a hostname", () => {
+    expect(RelayModule.relayOrigin({ bindHost: "private", port: PORT })).toBe(ORIGIN)
+  })
 })

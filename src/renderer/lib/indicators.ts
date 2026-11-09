@@ -5,15 +5,17 @@ import {
   RiGitPrDraftLine,
   RiGitPullRequestLine,
 } from "react-icons/ri"
-import type { IconComponent } from "../components/icons/Icon.tsx"
-import { CheckCircleFillIcon } from "../components/icons/CheckCircleFillIcon.tsx"
-import { ClockIcon } from "../components/icons/ClockIcon.tsx"
-import { FeedbackFillIcon } from "../components/icons/FeedbackFillIcon.tsx"
-import { HourglassFillIcon } from "../components/icons/HourglassFillIcon.tsx"
-import { PulseIcon } from "../components/icons/PulseIcon.tsx"
-import { QuestionFillIcon } from "../components/icons/QuestionFillIcon.tsx"
-import { WarningFillIcon } from "../components/icons/WarningFillIcon.tsx"
-import { XCircleFillIcon } from "../components/icons/XCircleFillIcon.tsx"
+import {
+  CheckCircleFillIcon,
+  ClockIcon,
+  FeedbackFillIcon,
+  HourglassFillIcon,
+  type IconComponent,
+  PulseIcon,
+  QuestionFillIcon,
+  WarningFillIcon,
+  XCircleFillIcon,
+} from "@hinacode/icons"
 import type { IndicatorTone } from "../../shared/threadStatus.ts"
 
 const icons = {
@@ -33,6 +35,7 @@ const icons = {
 } satisfies Record<string, IconComponent>
 
 const toneClassName = {
+  foreground: "text-foreground",
   muted: "text-muted-foreground",
   attention: "text-attention",
   success: "text-success",

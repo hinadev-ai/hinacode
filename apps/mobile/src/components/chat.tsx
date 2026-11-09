@@ -9,27 +9,37 @@ import type {
 import { collapsedParts } from "@shared/activityFold.ts"
 import { toolSummary } from "@shared/compactTranscript.ts"
 import { formatWorkDuration } from "@shared/workDuration.ts"
-import type { Message, MessagePart, Thread, ToolCallStatus } from "@shared/domain.ts"
+import {
+  type Message,
+  type MessagePart,
+  publishesArtifact,
+  spawnsSubagent,
+  type Thread,
+  type ToolCallStatus,
+} from "@shared/domain.ts"
+import { isOwnPart } from "@shared/subagents.ts"
 import type { UsageLimit } from "@shared/limits.ts"
 import { useFocusEffect } from "expo-router"
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react"
 import { ActivityIndicator, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
-import Animated, { useReducedMotion } from "react-native-reanimated"
+import { ArtifactCard } from "@/components/artifact-card"
 import { Composer } from "@/components/composer"
 import { liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
 import { Markdown } from "@/components/markdown"
-import { FadeIn, Rotate, Spinner } from "@/components/motion"
+import { FadeIn, Pulse, Rotate, Spinner } from "@/components/motion"
+import { SubagentCall, SubagentTray } from "@/components/subagents"
 import { TodoTray } from "@/components/todo-tray"
 import { Button, Notice, Pill } from "@/components/ui"
-import { cssEase, duration, rise } from "@/constants/motion"
-import { Colors, HIT, mono, radius, subheading } from "@/constants/theme"
-import { useScheme, useTheme } from "@/hooks/use-theme"
+import { duration, rise } from "@/constants/motion"
+import { HIT, mono, radius, subheading } from "@/constants/theme"
+import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
 import { copy, locale } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { motion } from "@/lib/motion"
 import { useMessages } from "@/stores/messages"
+import { useSubagents } from "@/stores/subagents"
 import { useThreadRoot, useThreads } from "@/stores/threads"
 
 /** Cards hold insets with `radius.sm` corners, so the card's own corners stay concentric with them. */
@@ -55,6 +65,9 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
   useEffect(() => {
     if (connected && history === undefined) void useMessages.getState().load(thread.id)
   }, [connected, history, thread.id])
+  useEffect(() => {
+    if (connected) void useSubagents.getState().load(thread.id).catch(() => {})
+  }, [connected, thread.id])
 
   const messages = history?.status === "ready" ? history.messages : undefined
   const [openedNewest, setOpenedNewest] = useState<string | null>()
@@ -102,6 +115,7 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
           windowSize={9}
           contentContainerStyle={[styles.transcript, liquidGlass && { paddingTop: dockHeight + 16 }]}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           // Inverted, so the end is the top: scrolling up to the oldest message reads the page before it.
           onEndReached={() => void useMessages.getState().loadEarlier(thread.id)}
           onEndReachedThreshold={1}
@@ -124,7 +138,7 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
         onLayout={liquidGlass ? (event) => setDockHeight(event.nativeEvent.layout.height) : undefined}
       >
         {hasRequests && (
-          <ScrollView keyboardShouldPersistTaps="handled" style={styles.requests}>
+          <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" style={styles.requests}>
             {thread.usageLimit !== null && (
               <UsageLimitCallout key={thread.id} thread={thread} limit={thread.usageLimit} />
             )}
@@ -134,6 +148,7 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
               history.questions.map((request) => <QuestionCard key={request.id} request={request} />)}
           </ScrollView>
         )}
+        <SubagentTray thread={thread} />
         {messages !== undefined && <TodoTray thread={thread} messages={messages} />}
         <Composer thread={thread} />
       </View>
@@ -147,22 +162,27 @@ function MessageView({ message, root }: { message: Message; root: string | null 
   return (
     <View accessibilityLabel={copy("mobile_chat_you")} style={[styles.user, { backgroundColor: theme.surface }]}>
       {message.parts.map((part, index) => (
-        <PartView key={index} part={part} />
+        <PartView key={index} part={part} threadId={message.threadId} />
       ))}
     </View>
   )
 }
 
-/** A sub-agent's tool calls belong to its own transcript, which the phone does not show. */
-const isOwnPart = (part: MessagePart) => part.type !== "tool_call" || part.parentCallId === undefined
-
-function AssistantMessage({ message, root }: { message: Message; root: string | null }) {
+export function AssistantMessage({
+  message,
+  root,
+  foldsActivity = true,
+}: {
+  message: Message
+  root: string | null
+  foldsActivity?: boolean
+}) {
   const [activityShown, setActivityShown] = useState(false)
   const parts = message.parts.filter(isOwnPart)
   const { completedAt } = message
   const streaming = completedAt === null
   const durationMs = completedAt === null ? NaN : Date.parse(completedAt) - Date.parse(message.createdAt)
-  const folded = durationMs >= 0
+  const folded = foldsActivity && durationMs >= 0
   // A steer sent before the agent said anything closes an empty assistant message.
   if (!streaming && parts.length === 0) return null
   const writingIndex = streaming && parts.at(-1)?.type === "text" ? parts.length - 1 : undefined
@@ -187,13 +207,16 @@ function AssistantMessage({ message, root }: { message: Message; root: string | 
               threadId={message.threadId}
             />
           ) : (
-            <PartView key={index} part={part} />
+            <PartView key={index} part={part} threadId={message.threadId} />
           )
         if (!folded || collapsed.has(index)) return view
         return activityShown ? <FadeIn key={index}>{view}</FadeIn> : null
       })}
       {streaming && (parts.length === 0 || writingIndex !== undefined) && (
-        <Pulse text={copy(writingIndex !== undefined ? "mobile_chat_writing" : "mobile_chat_thinking")} />
+        <Pulse
+          text={copy(writingIndex !== undefined ? "mobile_chat_writing" : "mobile_chat_thinking")}
+          style={styles.pulse}
+        />
       )}
     </View>
   )
@@ -220,34 +243,6 @@ function ReplyText({
     <FadeIn enabled={finishedOnScreen}>
       <Markdown text={text} root={root} threadId={threadId} gutter={TRANSCRIPT_PADDING} />
     </FadeIn>
-  )
-}
-
-const pulse = {
-  light: { "50%": { color: Colors.light.text } },
-  dark: { "50%": { color: Colors.dark.text } },
-}
-
-/** The desktop's `animate-pulse` line under a streaming reply. Reduce motion holds it still. */
-function Pulse({ text }: { text: string }) {
-  const theme = useTheme()
-  const scheme = useScheme()
-  const reduced = useReducedMotion()
-  return (
-    <Animated.Text
-      style={[
-        styles.pulse,
-        { color: theme.textMuted },
-        !reduced && {
-          animationName: pulse[scheme],
-          animationDuration: 2000,
-          animationIterationCount: "infinite",
-          animationTimingFunction: cssEase.pulse,
-        },
-      ]}
-    >
-      {text}
-    </Animated.Text>
   )
 }
 
@@ -278,13 +273,13 @@ function WorkedFor({
     >
       {text}
       <Rotate turned={expanded}>
-        <Icon name="RiArrowRightSLine" size={14} color={theme.textMuted} />
+        <Icon name="ChevronRight" size={14} color={theme.textMuted} />
       </Rotate>
     </Pressable>
   )
 }
 
-function PartView({ part }: { part: MessagePart }) {
+function PartView({ part, threadId }: { part: MessagePart; threadId: string }) {
   const theme = useTheme()
   switch (part.type) {
     case "text":
@@ -296,10 +291,12 @@ function PartView({ part }: { part: MessagePart }) {
     case "reasoning":
       return <Reasoning text={part.text} />
     case "tool_call": {
+      if (spawnsSubagent(part)) return <SubagentCall part={part} threadId={threadId} />
+      if (publishesArtifact(part)) return <ArtifactCard part={part} threadId={threadId} />
       const summary = toolSummary(part.input)?.line
       return (
         <View style={[styles.tool, { borderColor: theme.border }]}>
-          <Icon name="RiToolsLine" size={14} color={theme.textMuted} />
+          <Icon name="Tools" size={14} color={theme.textMuted} />
           <Text style={[styles.toolName, { color: theme.text }]}>
             {part.name}
             {summary && <Text style={{ color: theme.textMuted }}> {summary}</Text>}
@@ -311,7 +308,7 @@ function PartView({ part }: { part: MessagePart }) {
     case "file_change":
       return (
         <View style={styles.fileChange}>
-          <Icon name="RiPencilLine" size={14} color={theme.textMuted} />
+          <Icon name="Pencil" size={14} color={theme.textMuted} />
           <Text style={[styles.toolName, { color: theme.textMuted }]}>
             {copy("mobile_chat_edited", { path: part.path })}
           </Text>
@@ -346,6 +343,22 @@ function PartView({ part }: { part: MessagePart }) {
           })}
         </Text>
       )
+    case "signed_out":
+      return (
+        <View style={[styles.card, { borderColor: theme.attention, backgroundColor: theme.attentionBg }]}>
+          <Text selectable style={[styles.cardBody, { color: theme.text }]}>
+            {part.message}
+          </Text>
+          <Text style={[styles.cardNote, { color: theme.textMuted }]}>
+            {copy(part.loginCommand === undefined ? "mobile_chat_signed_out_docs_hint" : "mobile_chat_signed_out_hint")}
+          </Text>
+          {part.loginCommand !== undefined && (
+            <Text selectable style={[styles.detail, { color: theme.text, backgroundColor: theme.surface }]}>
+              {part.loginCommand}
+            </Text>
+          )}
+        </View>
+      )
   }
 }
 
@@ -356,9 +369,9 @@ const compactionCopy = {
 } as const satisfies Record<Compaction["status"], CopyKey>
 
 const toolStatus = {
-  running: { label: "mobile_chat_tool_running", tone: "running", icon: "RiLoader4Line" },
-  error: { label: "mobile_chat_tool_failed", tone: "danger", icon: "RiErrorWarningLine" },
-  done: { label: "mobile_chat_tool_done", tone: "neutral", icon: "RiCheckLine" },
+  running: { label: "mobile_chat_tool_running", tone: "running", icon: "Spinner" },
+  error: { label: "mobile_chat_tool_failed", tone: "danger", icon: "Warning" },
+  done: { label: "mobile_chat_tool_done", tone: "neutral", icon: "Check" },
 } as const satisfies Record<ToolCallStatus, { label: CopyKey; tone: "running" | "danger" | "neutral"; icon: IconName }>
 
 function ToolStatus({ status }: { status: ToolCallStatus }) {
@@ -386,7 +399,7 @@ function Reasoning({ text }: { text: string }) {
         style={styles.disclosure}
       >
         <Rotate turned={open}>
-          <Icon name="RiArrowRightSLine" size={16} color={theme.textMuted} />
+          <Icon name="ChevronRight" size={16} color={theme.textMuted} />
         </Rotate>
         <Text style={{ color: theme.textMuted, fontSize: 13 }}>
           {copy(open ? "mobile_chat_hide_reasoning" : "mobile_chat_reasoning")}
@@ -515,7 +528,7 @@ function UsageLimitCallout({ thread, limit }: { thread: Thread; limit: UsageLimi
         style={[styles.card, { borderColor: theme.attention, backgroundColor: theme.attentionBg }]}
       >
         <View style={styles.cardHeading}>
-          <Icon name="RiErrorWarningLine" size={16} color={theme.attention} />
+          <Icon name="Warning" size={16} color={theme.attention} />
           <Text
             accessibilityRole="header"
             {...subheading}
@@ -562,6 +575,7 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
   const { busy, error, run } = useAction()
   const [picked, setPicked] = useState<Readonly<Record<string, readonly string[]>>>({})
   const [typed, setTyped] = useState<Readonly<Record<string, string>>>({})
+  const [step, setStep] = useState(0)
 
   const answers: QuestionAnswers = Object.fromEntries(
     request.questions
@@ -586,16 +600,37 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
       return { ...current, [question.id]: next }
     })
 
+  const total = request.questions.length
+  const single = total === 1
+  const last = step >= total - 1
+  const question = request.questions[step]
+
+  const pick = (question: Question, label: string) => {
+    toggle(question, label)
+    const typedNothing = (typed[question.id]?.trim() ?? "") === ""
+    if (!question.multiSelect && !last && typedNothing) setStep(step + 1)
+  }
+
   return (
     <ResolvableCard>
       <View
         testID="question-card"
         style={[styles.card, { borderColor: theme.attention, backgroundColor: theme.attentionBg }]}
       >
-        {request.questions.map((question) => (
-          <View key={question.id} style={styles.question}>
+        {question !== undefined && (
+          <FadeIn key={question.id} style={styles.question}>
+            {!single && (
+              <View style={styles.step}>
+                <Text style={[styles.cardNote, { color: theme.textMuted }]}>
+                  {copy("mobile_chat_question_step", { current: String(step + 1), total: String(total) })}
+                </Text>
+                {question.header !== "" && (
+                  <Text style={[styles.cardNote, styles.shrink, { color: theme.textMuted }]}>{question.header}</Text>
+                )}
+              </View>
+            )}
             <Text style={[styles.cardTitle, { color: theme.text }]}>
-              {question.header !== "" ? `${question.header}: ` : ""}
+              {single && question.header !== "" ? `${question.header}: ` : ""}
               {question.question}
             </Text>
             <View style={styles.options}>
@@ -608,7 +643,7 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
                     aria-checked={selected}
                     accessibilityLabel={option.label}
                     accessibilityHint={option.description}
-                    onPress={() => toggle(question, option.label)}
+                    onPress={() => pick(question, option.label)}
                     style={[
                       styles.option,
                       {
@@ -623,7 +658,7 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
                         <Text style={{ color: theme.textMuted, fontSize: 13 }}>{option.description}</Text>
                       )}
                     </View>
-                    {selected && <Icon name="RiCheckLine" size={18} color={theme.text} />}
+                    {selected && <Icon name="Check" size={18} color={theme.text} />}
                   </Pressable>
                 )
               })}
@@ -639,18 +674,38 @@ function QuestionCard({ request }: { request: QuestionRequest }) {
                 style={[styles.answer, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
               />
             )}
-          </View>
-        ))}
+          </FadeIn>
+        )}
         <View style={styles.actions}>
-          <Button
-            testID="question-submit"
-            label={copy("mobile_chat_submit")}
-            variant="primary"
-            busy={busy}
-            disabled={Object.keys(answers).length === 0}
-            onPress={() => respond(answers)}
-            style={styles.cardButton}
-          />
+          {step > 0 && (
+            <Button
+              testID="question-back"
+              label={copy("mobile_chat_back")}
+              disabled={busy}
+              onPress={() => setStep(step - 1)}
+              style={styles.cardButton}
+            />
+          )}
+          {last ? (
+            <Button
+              testID="question-submit"
+              label={copy("mobile_chat_submit")}
+              variant="primary"
+              busy={busy}
+              disabled={Object.keys(answers).length === 0}
+              onPress={() => respond(answers)}
+              style={styles.cardButton}
+            />
+          ) : (
+            <Button
+              testID="question-next"
+              label={copy("mobile_chat_next")}
+              variant="primary"
+              disabled={busy}
+              onPress={() => setStep(step + 1)}
+              style={styles.cardButton}
+            />
+          )}
           <Button
             testID="question-skip"
             label={copy("mobile_chat_skip")}
@@ -723,6 +778,7 @@ const styles = StyleSheet.create({
   detail: { fontFamily: mono, fontSize: 12, padding: 8, borderRadius: radius.sm },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" },
   question: { gap: 8 },
+  step: { flexDirection: "row", gap: 8 },
   options: { gap: 6 },
   option: {
     minHeight: HIT,

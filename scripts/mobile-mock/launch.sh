@@ -15,7 +15,7 @@ repo=$(git -C "$here" rev-parse --show-toplevel)
 serve() {
   HINACODE_USER_DATA="$data" HINACODE_SERVE_AUTO_UPDATE=0 HINACODE_MOCK_LINEAR=1 \
     HINACODE_MOCK_CLAUDE="${HINACODE_MOCK_CLAUDE:-approvals}" \
-    exec node "$repo/out/server/daemon.js" serve --host 127.0.0.1 --port "$port"
+    exec node "$repo/bin/hinacode.mjs" serve --host 127.0.0.1 --port "$port"
 }
 
 mkdir -p "$data"

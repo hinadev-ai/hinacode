@@ -3,16 +3,18 @@ import tailwindcss from "@tailwindcss/vite"
 import { playwright } from "@vitest/browser-playwright"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vitest/config"
+import { withoutExcalidrawMermaid } from "./vite.excalidraw.ts"
 import { lazyLocales, paraglide } from "./vite.paraglide.ts"
 
 export default defineConfig({
   test: {
+    globalSetup: "./vitest.global-setup.ts",
     projects: [
       {
         resolve: { alias: { "@": fileURLToPath(new URL("./src/renderer", import.meta.url)) } },
         test: {
           name: "unit",
-          include: ["src/**/*.test.ts", "packages/*/src/**/*.test.ts"],
+          include: ["src/**/*.test.ts", "packages/*/src/**/*.test.ts", "apps/web/src/**/*.test.ts"],
           exclude: ["src/**/*.integration.test.ts"],
         },
       },
@@ -34,7 +36,9 @@ export default defineConfig({
       },
       {
         resolve: { alias: { "@": fileURLToPath(new URL("./src/renderer", import.meta.url)) } },
-        plugins: [react(), tailwindcss(), paraglide(), lazyLocales()],
+        plugins: [react(), tailwindcss(), paraglide(), lazyLocales(), withoutExcalidrawMermaid()],
+        // FIXME: Vite finds lazily imported dependencies only when a test loads them, then re-optimizes and reloads mid-run
+        optimizeDeps: { include: ["pele/lazy", "shiki/core", "shiki/engine/javascript", "@excalidraw/excalidraw"] },
         test: {
           name: "component",
           include: ["src/renderer/**/*.component.test.tsx"],

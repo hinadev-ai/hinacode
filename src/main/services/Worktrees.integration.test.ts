@@ -140,9 +140,11 @@ const createThread = (projectId: string, title: string, branch?: string) =>
   )
 
 const archiveRemovingWorktree = (threadId: string) =>
-  Settings.use((settings) => settings.set({ archive: { whenMerged: false, removeWorktree: true } })).pipe(
-    Effect.andThen(Threads.use((threads) => threads.archive(threadId))),
-  )
+  Settings.use((settings) =>
+    settings.set({
+      archive: { whenMerged: false, removeWorktree: true, settleAfterIdleDays: null, archiveAfterSettledDays: null },
+    }),
+  ).pipe(Effect.andThen(Threads.use((threads) => threads.archive(threadId))))
 
 const forkThread = (threadId: string) =>
   Effect.gen(function* () {
@@ -459,7 +461,7 @@ describe("worktree ownership", () => {
     ),
   )
 
-  it.live("archiving does not remove a checkout another open thread still uses", () =>
+  it.live("archiving leaves a checkout another open thread still uses, and the last thread removes it", () =>
     withRepo(({ projectId }) =>
       Effect.gen(function* () {
         const first = yield* createThread(projectId, "first", "kk/legacy")
@@ -469,9 +471,11 @@ describe("worktree ownership", () => {
         const worktree = yield* worktreeOf(first.worktreeId)
         writeFileSync(join(worktree.path, "sentinel"), "work in progress")
 
-        const error = yield* Effect.flip(archiveRemovingWorktree(first.id))
-        expect(error._tag).toBe("WorktreeBusyError")
+        expect((yield* archiveRemovingWorktree(first.id)).status).toBe("archived")
         expect(existsSync(join(worktree.path, "sentinel"))).toBe(true)
+
+        yield* archiveRemovingWorktree(second.id)
+        yield* waitUntilDeleted(worktree.path)
       }),
     ),
   )
@@ -696,6 +700,23 @@ describe("worktree ownership", () => {
         const worktree = yield* worktreeOf(thread.worktreeId)
         expect(worktree.path).toBe(realpathSync(orphan))
         expect(existsSync(join(orphan, "sentinel"))).toBe(true)
+      }),
+    ),
+  )
+
+  it.live("forks a new branch when the project root has the requested branch checked out", () =>
+    withRepo(({ root, projectId }) =>
+      Effect.gen(function* () {
+        git(root, "switch", "-q", "-c", "feat/artifact")
+        git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "root work")
+
+        const worktree = yield* Worktrees.use((worktrees) =>
+          worktrees.create({ projectId, branch: "feat/artifact", baseRef: "main" }),
+        )
+        expect(worktree.branch).toMatch(/^feat\/artifact-[0-9a-f]{5}$/)
+        expect(git(worktree.path, "branch", "--show-current").trim()).toBe(worktree.branch)
+        expect(git(worktree.path, "rev-parse", "HEAD")).toBe(git(root, "rev-parse", "feat/artifact"))
+        expect(git(root, "branch", "--show-current").trim()).toBe("feat/artifact")
       }),
     ),
   )

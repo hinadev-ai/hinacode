@@ -1,16 +1,36 @@
-import { type KeyboardEvent, type PointerEvent, useEffect, useLayoutEffect, useRef } from "react"
+import {
+  type KeyboardEvent,
+  type PointerEvent,
+  startTransition,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react"
 import type { TerminalSession } from "../../shared/domain.ts"
+import { terminalMention } from "../../shared/mentions.ts"
 import { TERMINAL_HEIGHT_BOUNDS } from "../lib/panelSize.ts"
-import { attachTerminal, focusTerminal, showTerminal } from "../lib/terminalScreens.ts"
+import { terminalLabel } from "../lib/terminalLabel.ts"
+import { attachTerminal, focusTerminal, showTerminal, terminalSelection } from "../lib/terminalScreens.ts"
 import { m } from "../paraglide/messages.js"
+import { useDrafts } from "../stores/drafts.ts"
 import { useTerminals } from "../stores/terminals.ts"
 import { useUi } from "../stores/ui.ts"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./ui/alert-dialog.tsx"
 import { Button } from "./ui/button.tsx"
+import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "./ui/context-menu.tsx"
+import { DropdownMenuItem } from "./ui/dropdown-menu.tsx"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.tsx"
-import { ChevronDownIcon } from "./icons/ChevronDownIcon.tsx"
-import { CloseIcon } from "./icons/CloseIcon.tsx"
-import { PlusIcon } from "./icons/PlusIcon.tsx"
-import { TerminalIcon } from "./icons/TerminalIcon.tsx"
+import { AtIcon, ChatIcon, ChevronDownIcon, CloseIcon, CopyIcon, PlusIcon, TerminalIcon } from "@hinacode/icons"
 
 const MIN_HEIGHT = TERMINAL_HEIGHT_BOUNDS.min
 const RESERVED_HEIGHT = 200
@@ -28,7 +48,7 @@ export function TerminalToggle({ threadId }: { threadId: string }) {
       aria-label={label}
       title={label}
       aria-expanded={open}
-      onClick={() => void useTerminals.getState().toggle(threadId)}
+      action={() => useTerminals.getState().toggle(threadId)}
     >
       <TerminalIcon aria-hidden />
     </Button>
@@ -51,6 +71,7 @@ function OpenDrawer({ threadId, sessions, activeId }: OpenDrawerProps) {
   const height = useTerminals((state) => state.height)
   const error = useTerminals((state) => state.error)
   const sectionRef = useRef<HTMLElement>(null)
+  const [confirmClose, setConfirmClose] = useState<{ session: TerminalSession; name: string } | null>(null)
 
   useEffect(() => {
     const section = sectionRef.current!
@@ -89,8 +110,12 @@ function OpenDrawer({ threadId, sessions, activeId }: OpenDrawerProps) {
               <SessionTab
                 key={session.id}
                 session={session}
-                name={session.title ?? m.terminal_tab({ index: index + 1 })}
-                onClose={() => void terminals().close(threadId, session.id)}
+                name={terminalLabel(session, index)}
+                onClose={() => {
+                  const name = terminalLabel(session, index)
+                  if (session.command === null) void terminals().close(threadId, session.id)
+                  else startTransition(() => setConfirmClose({ session, name }))
+                }}
               />
             ))}
           </TabsList>
@@ -99,7 +124,7 @@ function OpenDrawer({ threadId, sessions, activeId }: OpenDrawerProps) {
             size="icon-xs"
             aria-label={m.terminal_new()}
             title={m.terminal_new()}
-            onClick={() => void terminals().openSession(threadId)}
+            action={() => terminals().openSession(threadId)}
           >
             <PlusIcon aria-hidden />
           </Button>
@@ -121,11 +146,47 @@ function OpenDrawer({ threadId, sessions, activeId }: OpenDrawerProps) {
         )}
         {sessions.map((session) => (
           <TabsContent key={session.id} value={session.id} keepMounted className="min-h-0 data-hidden:hidden">
-            <TerminalScreen id={session.id} active={session.id === activeId} />
+            <TerminalScreen threadId={threadId} id={session.id} active={session.id === activeId} />
           </TabsContent>
         ))}
       </Tabs>
+      <CloseRunningDialog
+        target={confirmClose}
+        onCancel={() => startTransition(() => setConfirmClose(null))}
+        onClose={(session) => {
+          startTransition(() => setConfirmClose(null))
+          void terminals().close(threadId, session.id)
+        }}
+      />
     </section>
+  )
+}
+
+interface CloseRunningDialogProps {
+  readonly target: { readonly session: TerminalSession; readonly name: string } | null
+  readonly onCancel: () => void
+  readonly onClose: (session: TerminalSession) => void
+}
+
+function CloseRunningDialog({ target, onCancel, onClose }: CloseRunningDialogProps) {
+  const command = target?.session.command
+  return (
+    <AlertDialog open={target !== null} onOpenChange={(open) => !open && onCancel()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{m.terminal_close_running_title({ name: target?.name ?? "" })}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {command ? m.terminal_close_running_body({ command }) : m.terminal_close_running_body_unknown()}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{m.common_cancel()}</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={() => target && onClose(target.session)}>
+            {m.terminal_close_running_confirm()}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
 
@@ -135,6 +196,11 @@ function SessionTab({ session, name, onClose }: { session: TerminalSession; name
     <div className="group/session flex items-center">
       <TabsTrigger value={session.id} className="h-6 flex-none gap-1.5 px-2 text-xs">
         {name}
+        {session.command && (
+          <span className="max-w-40 truncate font-mono text-muted-foreground" title={session.command}>
+            {session.command}
+          </span>
+        )}
         {exited && <span className="text-muted-foreground">{m.terminal_tab_exited()}</span>}
       </TabsTrigger>
       <Button
@@ -150,8 +216,16 @@ function SessionTab({ session, name, onClose }: { session: TerminalSession; name
   )
 }
 
-function TerminalScreen({ id, active }: { id: string; active: boolean }) {
+const fencedText = (text: string) => {
+  const longestRun = Math.max(2, ...Array.from(text.matchAll(/`+/g), (run) => run[0].length))
+  const fence = "`".repeat(longestRun + 1)
+  return `${fence}text\n${text.replace(/\n+$/, "")}\n${fence}`
+}
+
+function TerminalScreen({ threadId, id, active }: { threadId: string; id: string; active: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
+  const [selection, setSelection] = useState<string | null>(null)
+  const focusAfterClose = useRef<"terminal" | "composer">("terminal")
 
   useLayoutEffect(() => attachTerminal(id, ref.current!), [id])
 
@@ -160,11 +234,51 @@ function TerminalScreen({ id, active }: { id: string; active: boolean }) {
     if (active) focusTerminal(id)
   }, [id, active])
 
+  const toComposer = (append: (drafts: ReturnType<typeof useDrafts.getState>) => void) => {
+    append(useDrafts.getState())
+    focusAfterClose.current = "composer"
+  }
+
+  const restoreFocus = () => {
+    if (focusAfterClose.current === "composer") useUi.getState().requestComposerFocus()
+    else focusTerminal(id)
+    focusAfterClose.current = "terminal"
+  }
+
   return (
-    <div
-      ref={ref}
-      className="h-full focus-within:outline-1 focus-within:-outline-offset-1 focus-within:outline-ring/50"
-    />
+    <ContextMenu
+      onOpenChange={(open) => open && setSelection(terminalSelection(id))}
+      onOpenChangeComplete={(open) => !open && restoreFocus()}
+    >
+      <ContextMenuTrigger
+        render={
+          <div
+            ref={ref}
+            className="h-full focus-within:outline-1 focus-within:-outline-offset-1 focus-within:outline-ring/50"
+          />
+        }
+      />
+      <ContextMenuContent finalFocus={false}>
+        {selection !== null && (
+          <>
+            <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(selection)}>
+              <CopyIcon aria-hidden />
+              {m.context_menu_copy()}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => toComposer((drafts) => drafts.appendBlock(threadId, fencedText(selection)))}
+            >
+              <ChatIcon aria-hidden />
+              {m.terminal_send_selection()}
+            </DropdownMenuItem>
+          </>
+        )}
+        <DropdownMenuItem onClick={() => toComposer((drafts) => drafts.appendText(threadId, terminalMention(id)))}>
+          <AtIcon aria-hidden />
+          {m.terminal_mention()}
+        </DropdownMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 

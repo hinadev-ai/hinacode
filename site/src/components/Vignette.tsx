@@ -12,6 +12,8 @@ export const vignetteKeys = [
   "provider_claude",
   "provider_codex",
   "provider_muse",
+  "provider_opencode",
+  "provider_magpie",
   "approval_title",
   "approval_allow",
   "approval_allow_session",

@@ -1,7 +1,7 @@
 import { cn } from "cn"
 import { errorSummary } from "../lib/errorMessage.ts"
 import { m } from "../paraglide/messages.js"
-import { ChevronRightIcon } from "./icons/ChevronRightIcon.tsx"
+import { ChevronRightIcon } from "@hinacode/icons"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx"
 
 export function ErrorNotice({
@@ -27,7 +27,7 @@ export function ErrorNotice({
             {m.error_details()}
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <pre className="mt-1 font-mono text-2xs whitespace-pre-wrap text-muted-foreground select-text wrap-anywhere">
+            <pre className="mt-1 font-mono text-2xs wrap-anywhere whitespace-pre-wrap text-muted-foreground select-text">
               {detail}
             </pre>
           </CollapsibleContent>

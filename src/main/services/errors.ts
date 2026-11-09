@@ -19,6 +19,9 @@ export class NotFoundError extends Schema.TaggedError<NotFoundError>()("NotFound
     "account",
     "fork point",
     "tool call",
+    "artifact",
+    "document",
+    "whiteboard",
   ]),
   id: Schema.String,
 }) {
@@ -43,6 +46,14 @@ export class ProjectRootInvalidError extends Schema.TaggedError<ProjectRootInval
   }
 }
 
+export class ProjectInWslError extends Schema.TaggedError<ProjectInWslError>()("ProjectInWslError", {
+  rootPath: Schema.String,
+}) {
+  override get message(): string {
+    return `${this.rootPath} is inside WSL. Run hinacode serve in WSL and add the project on that machine`
+  }
+}
+
 export class ProjectOriginTakenError extends Schema.TaggedError<ProjectOriginTakenError>()("ProjectOriginTakenError", {
   rootPath: Schema.String,
 }) {
@@ -60,11 +71,28 @@ export class ProjectFolderNotEmptyError extends Schema.TaggedError<ProjectFolder
   }
 }
 
+export class ProjectCloneCancelledError extends Schema.TaggedError<ProjectCloneCancelledError>()(
+  "ProjectCloneCancelledError",
+  { rootPath: Schema.String },
+) {
+  override get message(): string {
+    return `Cancelled cloning into ${this.rootPath}`
+  }
+}
+
 export class UnknownRootError extends Schema.TaggedError<UnknownRootError>()("UnknownRootError", {
   root: Schema.String,
 }) {
   override get message(): string {
     return `${this.root} is not a project or worktree HinaCode knows`
+  }
+}
+
+export class FolderMissingError extends Schema.TaggedError<FolderMissingError>()("FolderMissingError", {
+  path: Schema.String,
+}) {
+  override get message(): string {
+    return `The folder ${this.path} is missing. It was moved or deleted.`
   }
 }
 
@@ -107,7 +135,7 @@ export class AccountInUseError extends Schema.TaggedError<AccountInUseError>()("
   threads: Schema.Number,
 }) {
   override get message(): string {
-    return `${this.threads} ${this.threads === 1 ? "thread uses" : "threads use"} this account. Delete them first.`
+    return `${this.threads} running ${this.threads === 1 ? "thread uses" : "threads use"} this account. Wait for them to finish.`
   }
 }
 

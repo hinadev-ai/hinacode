@@ -5,11 +5,6 @@ Feature: Threads
   Background:
     Given a project "demo" for my repository
 
-  Scenario: Starting a thread opens a draft, ready for the first message and kept out of the sidebar
-    When I start a new thread in "demo"
-    Then a new thread is open with the composer focused
-    And the sidebar does not list the open draft
-
   Scenario: Starting a thread again in a project brings back its draft as it was left
     Given the project "demo" has a thread "One"
     When I start a new thread in "demo"
@@ -18,6 +13,27 @@ Feature: Threads
     And I start a new thread in "demo"
     Then a new thread is open with the composer focused
     And the composer holds "half a thought"
+
+  Scenario: An empty draft stays out of the sidebar, and one with content is listed, after a restart too, until it is emptied
+    When I start a new thread in "demo"
+    Then the sidebar does not list the open draft
+    When I type "a second thought" into the composer
+    Then the sidebar lists the unsent thread "a second thought"
+    When the app restarts
+    Then the sidebar lists the unsent thread "a second thought"
+    When I discard the unsent thread "a second thought"
+    Then the sidebar does not list the open draft
+
+  Scenario: Writing in a thread marks it as unsent and leaves it in place
+    Given the project "demo" has a thread "One"
+    And the project "demo" has a thread "Two"
+    When I rename the thread "Two" to "Second"
+    And I open the sidebar tab "Inbox"
+    Then the open tab lists the threads "Second, One" in that order
+    When I open the thread "One" from the sidebar
+    And I type "half a thought" into the composer
+    Then the thread "One" is marked as unsent
+    And the open tab lists the threads "Second, One" in that order
 
   Scenario: Switching between threads replaces the open thread instead of stacking it
     Given the project "demo" has a thread "One"
@@ -42,29 +58,27 @@ Feature: Threads
     When the app restarts
     Then the sidebar lists the threads "Two, One" in that order
 
-  Scenario: A thread is renamed inline from its row menu
-    Given the project "demo" has a thread "Draft"
-    When I rename the thread "Draft" to "Final"
-    Then the sidebar lists the thread "Final"
-    And the sidebar does not list the thread "Draft"
-
-  Scenario: An archived thread moves to the Archived tab and can be brought back
+  Scenario: An archived thread moves under Archived and can be brought back
     Given the project "demo" has a thread "Done"
     When I archive the thread "Done" from its menu
     Then the sidebar does not list the thread "Done"
     And the thread "Done" is stored as "archived"
-    When I open the sidebar tab "Archived"
+    When I open the sidebar tab "Inbox"
+    And I expand the Archived threads
     Then the sidebar lists the thread "Done"
     When I unarchive the thread "Done"
-    Then the sidebar does not list the thread "Done"
-    When I open the sidebar tab "Threads"
+    And I open the sidebar tab "Threads"
     Then the sidebar lists the thread "Done"
     And the thread "Done" is stored as "idle"
 
-  Scenario: An archived thread comes back with Undo on the toast
+  Scenario: A settled thread stays idle, keeps its place under Settled, and comes back with Undo
     Given the project "demo" has a thread "Oops"
-    When I archive the thread "Oops" from its row
+    When I open the sidebar tab "Inbox"
+    And I settle the thread "Oops" from its row
     Then the sidebar does not list the thread "Oops"
+    And the thread "Oops" is stored as "idle"
+    When I expand the Settled threads
+    Then the sidebar lists the thread "Oops"
     When I undo from the toast
     Then the sidebar lists the thread "Oops"
     And the thread "Oops" is stored as "idle"
@@ -72,11 +86,34 @@ Feature: Threads
   Scenario: Archiving a thread far down the sidebar keeps the sidebar scrolled there
     Given the project "demo" has 40 threads named "Task"
     When I scroll the sidebar to the thread "Task 40"
-    And I archive the thread "Task 40" from its row
+    And I archive the thread "Task 40" from its menu
     Then the sidebar does not list the thread "Task 40"
     And the thread "Task 39" is in view in the sidebar
 
-  Scenario: The Inbox lists every project's threads, most recently updated first
+  Scenario: The Archived shelf opens one page of a long history and loads more while scrolling
+    Given the project "demo" has 120 archived threads named "Old"
+    When I show only the project "demo" in the sidebar
+    And I open the sidebar tab "Inbox"
+    And I expand the Archived threads
+    Then the sidebar lists 50 threads
+    And the sidebar lists the thread "Old 120"
+    And the sidebar does not list the thread "Old 40"
+    When I scroll to the end of the sidebar
+    Then the sidebar lists 100 threads
+    And the sidebar lists the thread "Old 40"
+    When I scroll to the end of the sidebar
+    Then the sidebar lists 120 threads
+
+  Scenario: Filtering the Archived shelf finds threads past the first page
+    Given the project "demo" has 120 archived threads named "Old"
+    When I show only the project "demo" in the sidebar
+    And I open the sidebar tab "Inbox"
+    And I filter the sidebar by "Old 120"
+    And I expand the Archived threads
+    Then the sidebar lists 1 thread
+    And the sidebar lists the thread "Old 120"
+
+  Scenario: Ready lists every project's read threads, most recently updated first
     Given the project "demo" has a thread "Fix login"
     And another project "tools" has a thread "Bump deps"
     When I rename the thread "Bump deps" to "Bump all deps"

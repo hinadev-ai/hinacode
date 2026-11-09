@@ -1,5 +1,5 @@
 import { isThreadBusy, type Message, type Thread } from "@shared/domain.ts"
-import { latestTodos, type Todo, type TodoStatus } from "@shared/todos.ts"
+import { type Todo, type TodoStatus, visibleTodos } from "@shared/todos.ts"
 import { useState } from "react"
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import { Icon, type IconName } from "@/components/icon"
@@ -12,9 +12,9 @@ const ROW_HEIGHT = 28
 const VISIBLE_ROWS = 5.5
 
 const statusIcon: Record<Exclude<TodoStatus, "in_progress">, IconName> = {
-  pending: "RiCircleLine",
-  completed: "RiCheckboxCircleLine",
-  cancelled: "RiCloseCircleLine",
+  pending: "Circle",
+  completed: "CheckCircle",
+  cancelled: "XCircle",
 }
 
 const todoKeys = (todos: ReadonlyArray<Todo>): Array<[string, Todo]> => {
@@ -56,10 +56,9 @@ function TodoRow({ todo }: { todo: Todo }) {
 export function TodoTray({ thread, messages }: { thread: Thread; messages: readonly Message[] }) {
   const theme = useTheme()
   const [expanded, setExpanded] = useState(false)
-  const todos = latestTodos(messages)
+  const todos = visibleTodos(messages, isThreadBusy(thread.status))
   const done = todos.filter((todo) => todo.status === "completed").length
-  const settled = todos.every((todo) => todo.status === "completed" || todo.status === "cancelled")
-  if (todos.length === 0 || (settled && !isThreadBusy(thread.status))) return null
+  if (todos.length === 0) return null
   const current = todos.find((todo) => todo.status === "in_progress") ?? todos.find((todo) => todo.status === "pending")
   const progress = copy("mobile_chat_todos_progress", { done: String(done), total: String(todos.length) })
 
@@ -83,7 +82,7 @@ export function TodoTray({ thread, messages }: { thread: Thread; messages: reado
         )}
         <View style={styles.chevron}>
           <Rotate turned={expanded}>
-            <Icon name="RiArrowRightSLine" size={16} color={theme.textMuted} />
+            <Icon name="ChevronRight" size={16} color={theme.textMuted} />
           </Rotate>
         </View>
       </Pressable>

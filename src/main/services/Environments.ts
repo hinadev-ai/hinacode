@@ -21,7 +21,14 @@ import {
 } from "../../shared/remote.ts"
 import type { RelayMachine } from "../../shared/relayMachines.ts"
 import { planRelaySync } from "../../shared/relaySync.ts"
-import { learnFromAnswer, learnFromPush, makeOwners, nameMachines, stampProjects } from "../../shared/owners.ts"
+import {
+  learnFromAnswer,
+  learnFromPush,
+  makeOwners,
+  nameMachines,
+  stampEnvironment,
+  stampPush,
+} from "../../shared/owners.ts"
 import type { Entity } from "../../shared/routes.ts"
 import { type DialTarget, unreachableMessage } from "../environments/unreachable.ts"
 import { CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED, RemoteAccess } from "../remote/access.ts"
@@ -505,7 +512,7 @@ const make = Effect.gen(function* () {
               }
               case "event":
                 learnFromPush(owners, id, frame.event)
-                return runFork(windows.send(frame.event))
+                return runFork(windows.send(stampPush(frame.event, id)))
               case "pong":
                 return
               case "ask":
@@ -818,7 +825,7 @@ const make = Effect.gen(function* () {
           learnFromAnswer(owners, environmentId, method, payload, envelope.result)
           const result = nameMachines(
             method,
-            stampProjects(method, envelope.result, environmentId),
+            stampEnvironment(method, envelope.result, environmentId),
             cloud.environment.name,
           )
           cloud.remembered.set(method, { payload: JSON.stringify(payload ?? null), result })

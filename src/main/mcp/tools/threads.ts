@@ -8,12 +8,15 @@ import { AgentRunner } from "../../services/AgentRunner.ts"
 import { Events } from "../../services/Events.ts"
 import { Projects } from "../../services/Projects.ts"
 import { PullRequests } from "../../services/PullRequests.ts"
+import { Search } from "../../services/Search.ts"
 import { Threads } from "../../services/Threads.ts"
 import { Worktrees } from "../../services/Worktrees.ts"
 import * as McpTool from "./tool.ts"
 
 const DEFAULT_READ_LIMIT = 20
 const MAX_READ_LIMIT = 100
+const DEFAULT_SEARCH_LIMIT = 20
+const MAX_SEARCH_LIMIT = 100
 
 const renderPart = (part: Message["parts"][number]): string | null => {
   switch (part.type) {
@@ -32,6 +35,10 @@ const renderPart = (part: Message["parts"][number]): string | null => {
       return `[context compaction: ${part.compaction.status}]`
     case "agent_switch":
       return `[agent switched: ${part.from} → ${part.to}]`
+    case "signed_out":
+      return part.loginCommand === undefined
+        ? `**Error:** ${part.message}. Sign in as the model provider's documentation describes.`
+        : `**Error:** ${part.message}. Sign in with \`${part.loginCommand}\``
     case "session_import":
       return part.history === "replayed"
         ? `[imported ${part.provider} session]`
@@ -60,7 +67,9 @@ const renderMetadata = (thread: Thread, pullRequestUrls: ReadonlyArray<string>) 
     "</metadata>",
   ].join("\n")
 
-type Place = { readonly here: true } | { readonly here: false; readonly machine: MachineRef | undefined }
+type Place =
+  | { readonly here: true; readonly project?: string }
+  | { readonly here: false; readonly machine: MachineRef | undefined }
 type MachineRef = Pick<Machine, "id" | "name">
 const HERE: Place = { here: true }
 
@@ -68,7 +77,9 @@ const renderEnvironment = (worktree: Worktree | null, place: Place) =>
   [
     "<environment>",
     ...(place.here
-      ? []
+      ? place.project === undefined
+        ? []
+        : [`project: ${place.project}`]
       : [
           place.machine === undefined
             ? "machine: another one, so its paths are not on this machine"
@@ -83,12 +94,15 @@ const renderEnvironment = (worktree: Worktree | null, place: Place) =>
 const TargetThreadId = Schema.String.annotate({
   description: "Id of a thread in this project, on this machine or on another of the user's machines.",
 })
+const AnyThreadId = Schema.String.annotate({
+  description: "Id of a thread in any project on this machine, or in this project on another of the user's machines.",
+})
 const Effort = Schema.String.annotate({ description: "Reasoning effort, such as low, medium or high." })
 
 export const ThreadTools = Toolkit.make(
   McpTool.make("create_thread", {
     description:
-      "Start another thread in this project and send it a first prompt. It appears in the user's sidebar at once and runs on its own; this call returns its id without waiting for it. Defaults to this thread's provider and model, and the model's default effort. Pass `worktree` to run it in a new git worktree, and `machine` to run it on another of the user's machines. Follow up with read_thread to check on it, send_to_thread to steer it, and stop_thread to interrupt it.",
+      "Start another thread in this project and send it a first prompt. It appears in the user's sidebar at once and runs on its own; this call returns its id without waiting for it. Defaults to this thread's provider and model, and the model's default effort. It shows nested under this thread in the sidebar unless `nested` is false. Pass `worktree` to run it in a new git worktree, and `machine` to run it on another of the user's machines. Follow up with read_thread to check on it, send_to_thread to steer it, and stop_thread to interrupt it.",
     parameters: Schema.Struct({
       title: Schema.String.annotate({ description: "Shown in the sidebar." }),
       prompt: Schema.String.annotate({ description: "The new thread's first user message." }),
@@ -107,6 +121,12 @@ export const ThreadTools = Toolkit.make(
             "Id of the machine to run it on, from list_machines. That machine needs a project for this GitHub repository. Defaults to this machine.",
         }),
       ),
+      nested: Schema.optionalKey(
+        Schema.Boolean.annotate({
+          description:
+            "Show the new thread under this one in the sidebar, for work this thread delegates. Pass false for unrelated work. Nesting is one level deep, so a thread created from a nested thread joins the same parent. Ignored on another machine. Defaults to true.",
+        }),
+      ),
     }),
   }),
   McpTool.make("list_machines", {
@@ -117,11 +137,23 @@ export const ThreadTools = Toolkit.make(
     description:
       "List the threads in this project that are not archived: id, title, status, provider, model, who created it, and its worktree branch. `self` marks this thread. Threads of the same GitHub repository on the user's other machines are included, with the `machine` they run on.",
   }),
+  McpTool.make("search_threads", {
+    description:
+      "Search the threads of every project on this machine, archived ones included, by title and message text. Returns JSON with each thread's id, title, status and project, a snippet of its latest matching message when one matches, and `self` on this thread. Title matches come first, then threads with the newest matching message. Pass an id to read_thread to read it.",
+    parameters: Schema.Struct({
+      query: Schema.String.annotate({ description: "Text to find." }),
+      limit: Schema.optionalKey(
+        Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: MAX_SEARCH_LIMIT })).annotate({
+          description: `Threads to return, 1-${MAX_SEARCH_LIMIT}. Defaults to ${DEFAULT_SEARCH_LIMIT}.`,
+        }),
+      ),
+    }),
+  }),
   McpTool.make("read_thread", {
     description:
-      "Read another thread of this project, on this machine or on another of the user's machines in the same GitHub repository: its status, agent and model, workspace, linked pull requests, whether it is waiting on the user, and its latest messages.",
+      "Read another thread, of any project on this machine or of this project on another of the user's machines: its status, agent and model, project and workspace, linked pull requests, whether it is waiting on the user, and its latest messages.",
     parameters: Schema.Struct({
-      threadId: TargetThreadId,
+      threadId: AnyThreadId,
       limit: Schema.optionalKey(
         Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: MAX_READ_LIMIT })).annotate({
           description: `Latest messages to return, 1-${MAX_READ_LIMIT}. Defaults to ${DEFAULT_READ_LIMIT}.`,
@@ -154,6 +186,7 @@ export const threadToolsLayer = ThreadTools.toLayer(
     const worktrees = yield* Worktrees
     const pullRequests = yield* PullRequests
     const projects = yield* Projects
+    const search = yield* Search
     const peers = yield* Peers
     const { identity } = yield* RemoteAccess
 
@@ -169,6 +202,20 @@ export const threadToolsLayer = ThreadTools.toLayer(
           return yield* Effect.fail({ message: `Thread ${targetId} is not in this project.` })
         }
         return target
+      })
+
+    const projectLabels = Effect.map(
+      projects.list,
+      (all) => new Map(all.map((project) => [project.id, `${project.name} (${project.rootPath})`])),
+    )
+
+    const anyLocalThread = (targetId: string) =>
+      Effect.gen(function* () {
+        const caller = yield* threads.get(yield* McpTool.CallingThread)
+        const target = yield* threads.get(targetId)
+        if (target.projectId === caller.projectId) return { thread: target, place: HERE }
+        const place: Place = { here: true, project: (yield* projectLabels).get(target.projectId) }
+        return { thread: target, place }
       })
 
     const repositoryOf = (projectId: string) =>
@@ -213,12 +260,16 @@ export const threadToolsLayer = ThreadTools.toLayer(
           }))
       })
 
-    const locate = (targetId: string) =>
+    const locate = (targetId: string, scope: "project" | "anyProject") =>
       Effect.gen(function* () {
         const here = yield* threads
           .get(targetId)
           .pipe(Effect.catchTag("NotFoundError", () => Effect.succeed(undefined)))
-        if (here !== undefined) return { thread: yield* projectThread(targetId), place: HERE }
+        if (here !== undefined) {
+          return scope === "anyProject"
+            ? yield* anyLocalThread(targetId)
+            : { thread: yield* projectThread(targetId), place: HERE }
+        }
         const caller = yield* threads.get(yield* McpTool.CallingThread)
         const repository = yield* repositoryOf(caller.projectId)
         const gone = { message: `Thread ${targetId} no longer exists.` }
@@ -237,11 +288,11 @@ export const threadToolsLayer = ThreadTools.toLayer(
       Effect.flatMap(McpTool.CallingThread, (callerId) =>
         targetId === callerId
           ? Effect.fail({ message: "That is this thread. Use your own turn instead." })
-          : locate(targetId),
+          : locate(targetId, "project"),
       )
 
     return ThreadTools.of({
-      create_thread: ({ title, prompt, provider, model, effort, worktree, machine }) =>
+      create_thread: ({ title, prompt, provider, model, effort, worktree, machine, nested = true }) =>
         Effect.gen(function* () {
           const threadId = yield* McpTool.CallingThread
           const caller = yield* threads.get(threadId)
@@ -289,7 +340,11 @@ export const threadToolsLayer = ThreadTools.toLayer(
             )
             return `Created thread ${thread.id} "${thread.title}" on ${target.name} and sent it the prompt.`
           }
-          const thread = yield* threads.create({ projectId: caller.projectId, ...options })
+          const thread = yield* threads.create({
+            projectId: caller.projectId,
+            ...options,
+            parentId: nested ? threadId : undefined,
+          })
           yield* events.publish({ type: "thread.updated", thread })
           yield* runner.send(thread.id, prompt, []).pipe(
             Effect.mapError((error) => ({
@@ -353,9 +408,39 @@ export const threadToolsLayer = ThreadTools.toLayer(
             }))
           return JSON.stringify(listed)
         }),
+      search_threads: ({ query, limit }) =>
+        Effect.gen(function* () {
+          const callerId = yield* McpTool.CallingThread
+          const trimmed = query.trim()
+          if (trimmed === "") return "[]"
+          const max = limit ?? DEFAULT_SEARCH_LIMIT
+          const [all, labels] = yield* Effect.all([threads.list, projectLabels])
+          const searchable = all.filter((thread) => thread.status !== "draft")
+          const titled = searchable
+            .filter((thread) => thread.title.toLowerCase().includes(trimmed.toLowerCase()))
+            .slice(0, max)
+          const [newest, ofTitled] = yield* Effect.all([
+            search.perThread(trimmed, { limit: max }),
+            search.perThread(trimmed, { limit: titled.length, threadIds: titled.map((thread) => thread.id) }),
+          ])
+          const byId = new Map(searchable.map((thread) => [thread.id, thread]))
+          const snippets = new Map([...ofTitled, ...newest].map((hit) => [hit.threadId, hit.snippet]))
+          const ids = new Set([...titled.map((thread) => thread.id), ...newest.map((hit) => hit.threadId)])
+          const found = [...ids].flatMap((id) => byId.get(id) ?? []).slice(0, max)
+          return JSON.stringify(
+            found.map((thread) => ({
+              id: thread.id,
+              title: thread.title,
+              status: thread.status,
+              project: labels.get(thread.projectId) ?? thread.projectId,
+              ...(snippets.has(thread.id) ? { snippet: snippets.get(thread.id) } : {}),
+              ...(thread.id === callerId ? { self: true } : {}),
+            })),
+          )
+        }).pipe(Effect.mapError((error) => ({ message: error.message }))),
       read_thread: ({ threadId: targetId, limit }) =>
         Effect.gen(function* () {
-          const { thread: target, place } = yield* locate(targetId)
+          const { thread: target, place } = yield* locate(targetId, "anyProject")
           const { worktreeId } = target
           const [transcript, worktree, links] = place.here
             ? yield* Effect.all([

@@ -19,11 +19,11 @@ import {
   SubscriptionRef,
 } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
-import type { RelayStatus, Settings as SettingsValue } from "../../shared/domain.ts"
+import { PRIVATE_NETWORKS, type RelayStatus, type Settings as SettingsValue } from "../../shared/domain.ts"
 import { type PersistenceError, persistence } from "../services/errors.ts"
 import { Secrets } from "../services/Secrets.ts"
 import { Settings } from "../services/Settings.ts"
-import { RemoteAccess } from "./access.ts"
+import { LOOPBACK, RemoteAccess } from "./access.ts"
 import { type CloudflaredAsset, installCloudflared, platformAsset } from "./cloudflared.ts"
 import { EXPIRED, type Fetch, type Link, RelayError, type RelayLink, relayService } from "./relayService.ts"
 
@@ -41,7 +41,7 @@ const PUBLISH_EVERY = Duration.minutes(10)
 const CLOUDFLARED_ARGS = ["tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:0", "run"]
 
 export const relayOrigin = ({ bindHost, port }: Pick<SettingsValue["remote"], "bindHost" | "port">) => {
-  const host = bindHost ?? "127.0.0.1"
+  const host = bindHost === PRIVATE_NETWORKS ? LOOPBACK : bindHost
   return `http://${host.includes(":") ? `[${host}]` : host}:${port}`
 }
 
@@ -159,7 +159,7 @@ const make = ({
         yield* putTunnel(
           yield* requireSecret(
             CREDENTIAL_SECRET,
-            "This machine's relay sign-in is gone, so the tunnel cannot follow the listener. Turn on the relay again.",
+            "This machine's relay sign-in is gone, so the tunnel cannot follow the listener. Link this machine again.",
           ),
         )
       })
@@ -172,7 +172,7 @@ const make = ({
       if (published === tunnel.published) return
       const credential = yield* requireSecret(
         CREDENTIAL_SECRET,
-        "This machine's relay sign-in is gone, so its pairing cannot be published. Turn on the relay again.",
+        "This machine's relay sign-in is gone, so its pairing cannot be published. Link this machine again.",
       )
       yield* service.publishPairing(credential, pairing)
       yield* save({ ...tunnel, published })
@@ -227,7 +227,7 @@ const make = ({
             yield* routed(tunnel ?? stored)
             const token = yield* requireSecret(
               CONNECTOR_TOKEN_SECRET,
-              "The tunnel's connector token is gone. Turn on the relay again.",
+              "The tunnel's connector token is gone. Link this machine again.",
             )
             const first = yield* runOnce(binary, hostname, token)
             if (first.type !== "missing" || binary !== cloudflared || cloudflaredDir === undefined) return first

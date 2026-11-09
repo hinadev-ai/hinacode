@@ -2,7 +2,12 @@ import { homedir } from "node:os"
 import { Cause, Effect, Option, Schema } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
 import { availableUpdates, installUpdate } from "./agents/updates.ts"
+import { bindKey, keyFor, probe } from "./agents/magpie/gateway.ts"
+import { MAGPIE_KEY_SECRET } from "../shared/providers.ts"
+import { AgentError } from "./agents/provider.ts"
 import { compactMessage, previewMessage, transcriptPage } from "../shared/compactTranscript.ts"
+import { compactSubagentWork } from "../shared/subagents.ts"
+import { startingProvider } from "../shared/domain.ts"
 import type {
   NotificationPermission,
   Opener,
@@ -13,9 +18,13 @@ import type {
   WorkspaceChoice,
 } from "../shared/domain.ts"
 import { type RpcEnvelope, type RpcMethod, RpcMethods, type RpcRequest, type RpcResponse } from "../shared/contract.ts"
+import type { ArtifactExportRequest } from "../shared/artifact.ts"
 import { AgentAccounts } from "./services/AgentAccounts.ts"
 import { AgentLogins } from "./services/AgentLogins.ts"
 import { AgentRunner } from "./services/AgentRunner.ts"
+import { ArtifactFeedback } from "./services/ArtifactFeedback.ts"
+import { ArtifactInspector } from "./services/ArtifactInspector.ts"
+import { Artifacts } from "./services/Artifacts.ts"
 import { Attachments } from "./services/Attachments.ts"
 import { Browser } from "./services/Browser.ts"
 import { UnknownRootError } from "./services/errors.ts"
@@ -23,6 +32,7 @@ import { ClientSettings } from "./services/ClientSettings.ts"
 import { Environments } from "./services/Environments.ts"
 import { Events } from "./services/Events.ts"
 import { Files } from "./services/Files.ts"
+import { completeDirectory } from "./services/directoryCompletion.ts"
 import { Git } from "./services/Git.ts"
 import { Favicons } from "./services/Favicons.ts"
 import { GitHub, pullRequestFiles } from "./services/GitHub.ts"
@@ -40,12 +50,13 @@ import { RelayAccount } from "./services/RelayAccount.ts"
 import { Search } from "./services/Search.ts"
 import { Secrets } from "./services/Secrets.ts"
 import { Settings } from "./services/Settings.ts"
+import { Settle } from "./services/Settle.ts"
 import { SystemResources } from "./services/SystemResources.ts"
 import { Terminals } from "./services/Terminals.ts"
 import { Updates } from "./services/Updates.ts"
 import { SessionImports } from "./services/SessionImports.ts"
 import { randomName, Threads } from "./services/Threads.ts"
-import { VmPasskeyRelay } from "./services/tinyVm/passkey/PasskeyRelay.ts"
+import { ThreadNaming } from "./services/ThreadNaming.ts"
 import { type ScreenOwner, TinyVm, VmError } from "./services/tinyVm/TinyVm.ts"
 import { Devices } from "./services/devices/Devices.ts"
 import { Worktrees } from "./services/Worktrees.ts"
@@ -56,12 +67,15 @@ export type AppServices =
   | SessionImports
   | Projects
   | Threads
+  | ThreadNaming
   | Worktrees
   | Settings
+  | Settle
   | SystemResources
   | ClientSettings
   | Environments
   | AgentRunner
+  | ArtifactFeedback
   | McpCredentials
   | PullRequests
   | PullRequestGuides
@@ -70,6 +84,8 @@ export type AppServices =
   | Ports
   | Terminals
   | Attachments
+  | Artifacts
+  | ArtifactInspector
   | Browser
   | Automations
   | Git
@@ -83,7 +99,6 @@ export type AppServices =
   | RelayAccount
   | Events
   | TinyVm
-  | VmPasskeyRelay
   | Devices
 
 export interface HandlerError {
@@ -103,6 +118,7 @@ export interface DesktopCalls {
   readonly openExternal: (url: string) => Effect.Effect<void>
   readonly pickFolder: Effect.Effect<string | null>
   readonly pickFiles: Effect.Effect<ReadonlyArray<string>>
+  readonly exportArtifact: (request: ArtifactExportRequest) => Effect.Effect<string | null, HandlerError>
   readonly notificationPermission: Effect.Effect<NotificationPermission>
   readonly askNotificationPermission: (title: string, body: string) => Effect.Effect<PermissionRequestOutcome>
   readonly screenOwner: ScreenOwner | null
@@ -181,6 +197,7 @@ const handlers: Handlers = {
   "projects.list": () => Projects.use((projects) => projects.listWithRepositories),
   "projects.create": (input) => Projects.use((projects) => projects.create(input)),
   "projects.clone": (input) => Projects.use((projects) => projects.clone(input)),
+  "projects.cancelClone": ({ cloneId }) => Projects.use((projects) => projects.cancelClone(cloneId)),
   "projects.update": (input) => Projects.use((projects) => projects.update(input)),
   "projects.delete": ({ id }) =>
     Effect.gen(function* () {
@@ -195,8 +212,8 @@ const handlers: Handlers = {
   "threads.list": () => Threads.use((threads) => threads.list),
   "threads.create": ({ projectId, title, provider: chosenProvider, model, effort, worktree, createdBy }) =>
     Effect.gen(function* () {
-      const { defaultProvider } = yield* Settings.use((service) => service.get)
-      const provider = chosenProvider ?? defaultProvider
+      const settings = yield* Settings.use((service) => service.get)
+      const provider = chosenProvider ?? startingProvider(settings)
       const defaults =
         model === undefined ? yield* newThreadOptions(provider) : { model, effort: undefined, fastMode: undefined }
       const thread = yield* Threads.use((threads) =>
@@ -215,7 +232,7 @@ const handlers: Handlers = {
     }),
   "threads.draft": ({ projectId }) =>
     Effect.gen(function* () {
-      const { defaultProvider: provider } = yield* Settings.use((service) => service.get)
+      const provider = startingProvider(yield* Settings.use((service) => service.get))
       const options = yield* newThreadOptions(provider)
       const thread = yield* Threads.use((threads) =>
         threads.draft({ projectId, title: randomName(), provider, ...options }),
@@ -275,6 +292,9 @@ const handlers: Handlers = {
   "threads.undoTurn": ({ threadId }) => Threads.use((threads) => threads.undoTurn(threadId)),
   "threads.archive": ({ threadId }) => Threads.use((threads) => threads.archive(threadId)),
   "threads.unarchive": ({ threadId }) => Threads.use((threads) => threads.unarchive(threadId)),
+  "threads.settle": ({ threadId }) => Settle.use((settle) => settle.settle(threadId)),
+  "threads.unsettle": ({ threadId }) => Threads.use((threads) => threads.unsettle(threadId)),
+  "threads.regenerateTitle": ({ threadId }) => ThreadNaming.use((naming) => naming.regenerateTitle(threadId)),
   "threads.fork": ({ threadId, messageId }) =>
     Threads.use((threads) => threads.fork(threadId, messageId)).pipe(
       Effect.tap((thread) => Events.use((events) => events.publish({ type: "thread.updated", thread }))),
@@ -327,14 +347,28 @@ const handlers: Handlers = {
   "environments.remove": ({ id }) => Environments.use((environments) => environments.remove(id)),
   "environments.reconnect": ({ id }) => Environments.use((environments) => environments.reconnect(id)),
   "relayAccount.status": () => RelayAccount.use((account) => account.status),
-  "relayAccount.signIn": ({ ownerToken }) => RelayAccount.use((account) => account.signIn(ownerToken)),
-  "relayAccount.signOut": () => RelayAccount.use((account) => account.signOut),
+  "relayAccount.signIn": (_, desktop) =>
+    Effect.gen(function* () {
+      const account = yield* RelayAccount
+      const relay = yield* Relay
+      const openInBrowser = (url: string) => desktop?.openExternal(url) ?? Effect.void
+      const status = yield* account.signIn({ openUrl: openInBrowser })
+      if (status.state === "signedIn") yield* desktop?.focus ?? Effect.void
+      if (status.state !== "signedIn" || (yield* relay.status).state !== "off") return status
+      yield* relay.setup({
+        onLink: (link) =>
+          account
+            .approveOwnLink(link.userCode)
+            .pipe(Effect.flatMap((approved) => (approved ? Effect.void : openInBrowser(link.url)))),
+      })
+      return yield* account.sync
+    }),
+  "relayAccount.signOut": () =>
+    Relay.use((relay) => relay.remove).pipe(Effect.andThen(RelayAccount.use((account) => account.signOut))),
   "relayAccount.sync": () => RelayAccount.use((account) => account.sync),
   "relayAccount.machines": () => RelayAccount.use((account) => account.machines),
   "relayAccount.setShown": (input) => RelayAccount.use((account) => account.setShown(input)),
   "relayAccount.removeMachine": (input) => RelayAccount.use((account) => account.removeMachine(input)),
-  "relayAccount.pendingLink": ({ userCode }) => RelayAccount.use((account) => account.pendingLink(userCode)),
-  "relayAccount.approveLink": ({ userCode }) => RelayAccount.use((account) => account.approveLink(userCode)),
   "notifications.permission": (_, desktop) => desktop?.notificationPermission ?? Effect.succeed("unknown" as const),
   "notifications.askPermission": ({ title, body }, desktop) =>
     desktop?.askNotificationPermission(title, body) ?? Effect.succeed("noAnswer" as const),
@@ -344,6 +378,19 @@ const handlers: Handlers = {
     AgentLogins.use((logins) => logins.account(provider, accountId, { refresh })),
   "agents.updates": () => (process.env["HINACODE_SKIP_AGENT_UPDATES"] ? Effect.succeed([]) : availableUpdates),
   "agents.update": ({ provider }) => installUpdate(provider),
+  "magpie.test": ({ endpoint, key }) =>
+    Effect.gen(function* () {
+      const saved = key === null ? yield* Secrets.use((secrets) => secrets.get(MAGPIE_KEY_SECRET)) : Option.none()
+      return yield* probe({ endpoint, key: key ?? keyFor(endpoint, Option.getOrNull(saved)) })
+    }).pipe(Effect.mapError((error) => new AgentError({ provider: "magpie", message: error.message }))),
+  "magpie.saveKey": ({ endpoint, key }) =>
+    Secrets.use((secrets) =>
+      Effect.gen(function* () {
+        if (endpoint !== null && key !== null) return yield* secrets.set(MAGPIE_KEY_SECRET, bindKey(endpoint, key))
+        const saved = Option.getOrNull(yield* secrets.get(MAGPIE_KEY_SECRET))
+        if (keyFor(endpoint, saved) === null) yield* secrets.clear(MAGPIE_KEY_SECRET)
+      }),
+    ),
   "limits.list": () => AgentRunner.use((runner) => runner.limits),
   "accounts.list": () => AgentAccounts.use((accounts) => accounts.list),
   "accounts.create": (input) => AgentAccounts.use((accounts) => accounts.create(input)),
@@ -352,7 +399,7 @@ const handlers: Handlers = {
       Effect.tap(() => AgentLogins.use((logins) => logins.forget(id))),
     ),
   "accounts.delete": ({ id }) =>
-    AgentAccounts.use((accounts) => accounts.remove(id)).pipe(
+    AgentRunner.use((runner) => runner.removeAccount(id)).pipe(
       Effect.tap(() => AgentLogins.use((logins) => logins.forget(id))),
     ),
   "commands.list": ({ threadId }) => AgentRunner.use((runner) => runner.listCommands(threadId)),
@@ -363,7 +410,11 @@ const handlers: Handlers = {
   "fs.read": ({ root, path }) => Files.use((files) => files.read(root, path)),
   "fs.preview": ({ root, path }) => Files.use((files) => files.preview(root, path)),
   "fs.write": ({ root, path, content, expected }) => Files.use((files) => files.write(root, path, content, expected)),
+  "fs.create": ({ root, path, kind }) => Files.use((files) => files.create(root, path, kind)),
+  "fs.rename": ({ root, from, to }) => Files.use((files) => files.rename(root, from, to)),
+  "fs.delete": ({ root, path }) => Files.use((files) => files.remove(root, path)),
   "fs.watch": ({ root, paths }) => Files.use((files) => files.watch(root, paths)),
+  "fs.completeDirectory": ({ path }) => completeDirectory(path),
   "dialog.pickFolder": (_, desktop) => desktop?.pickFolder ?? Effect.succeed(null),
 
   "updates.status": () => Updates.use((updates) => updates.status),
@@ -379,7 +430,7 @@ const handlers: Handlers = {
           : { ...transcript, ...transcriptPage(messages, page.before) }
       }),
     ),
-  "threads.toolOutput": ({ threadId, callId }) => AgentRunner.use((runner) => runner.toolOutput(threadId, callId)),
+  "threads.toolOutput": (input) => AgentRunner.use((runner) => runner.toolOutput(input)),
   "threads.send": ({ threadId, prompt, attachments = [], workspace }) =>
     Effect.gen(function* () {
       const remember = yield* rememberWorkspaceMode(threadId, workspace?.mode ?? "local")
@@ -395,7 +446,14 @@ const handlers: Handlers = {
   "threads.queue": ({ threadId, text, attachments = [] }) =>
     AgentRunner.use((runner) => runner.queue(threadId, text, attachments)),
   "threads.unqueue": ({ threadId, id }) => AgentRunner.use((runner) => runner.unqueue(threadId, id)),
+  "threads.schedule": ({ threadId, text, attachments = [], workspace, sendAt }) =>
+    AgentRunner.use((runner) => runner.schedule({ threadId, text, attachments, workspace, sendAt })),
+  "threads.reschedule": ({ threadId, id, sendAt }) =>
+    AgentRunner.use((runner) => runner.reschedule(threadId, id, sendAt)),
+  "threads.unschedule": ({ threadId, id }) => AgentRunner.use((runner) => runner.unschedule(threadId, id)),
   "threads.interrupt": ({ threadId }) => AgentRunner.use((runner) => runner.interrupt(threadId)),
+  "threads.warm": ({ threadId }) => AgentRunner.use((runner) => runner.warm(threadId)),
+  "threads.reveal": ({ threadId }) => Events.use((events) => events.publish({ type: "thread.reveal", threadId })),
   "approvals.respond": ({ requestId, decision, note }) =>
     AgentRunner.use((runner) => runner.respondApproval(requestId, decision, note)),
   "questions.respond": ({ requestId, answers }) =>
@@ -408,9 +466,15 @@ const handlers: Handlers = {
   "subagents.list": ({ threadId }) => AgentRunner.use((runner) => runner.subagents(threadId)),
   "subagents.stop": ({ threadId, subagentId }) =>
     AgentRunner.use((runner) => runner.stopSubagent(threadId, subagentId)),
+  "subagents.transcript": ({ threadId, callId }) =>
+    AgentRunner.use((runner) => runner.transcript(threadId)).pipe(
+      Effect.map(({ messages }) => compactSubagentWork(messages, callId)),
+    ),
   "backgroundTasks.list": ({ threadId }) => AgentRunner.use((runner) => runner.backgroundTasks(threadId)),
   "backgroundTasks.stop": ({ threadId, taskId }) =>
     AgentRunner.use((runner) => runner.stopBackgroundTask(threadId, taskId)),
+  "backgroundTasks.moveCommand": ({ threadId, callId }) =>
+    AgentRunner.use((runner) => runner.moveCommandToBackground(threadId, callId)),
   "threads.usage": ({ threadId }) => AgentRunner.use((runner) => runner.usage(threadId)),
   "threads.contextBreakdown": ({ threadId }) => AgentRunner.use((runner) => runner.contextBreakdown(threadId)),
   "pullRequests.list": ({ threadId }) => PullRequests.use((pullRequests) => pullRequests.list(threadId)),
@@ -431,6 +495,8 @@ const handlers: Handlers = {
   "github.merge": ({ url, method }) => GitHub.use((github) => github.merge(url, method)),
   "github.close": ({ url }) => GitHub.use((github) => github.close(url)),
   "github.comment": ({ url, body }) => GitHub.use((github) => github.comment(url, body)),
+  "github.pullRequestCandidates": ({ url }) => GitHub.use((github) => github.pullRequestCandidates(url)),
+  "github.editPullRequest": ({ url, edit }) => GitHub.use((github) => github.editPullRequest(url, edit)),
   "github.fileContent": ({ url, ref, path }) => GitHub.use((github) => github.fileContent(url, ref, path)),
   "github.reviewComment": ({ url, comment }) => GitHub.use((github) => github.reviewComment(url, comment)),
   "linear.issues": () => Linear.use((linear) => linear.assignedIssues),
@@ -461,6 +527,8 @@ const handlers: Handlers = {
   "device.control": ({ threadId, deviceId, control }) =>
     Devices.use((devices) => devices.control(threadId, deviceId, control)),
   "device.pick": (input) => Devices.use((devices) => devices.pick(input)),
+  "device.screenshot.save": ({ threadId, dataUrl, name }) =>
+    Attachments.use((attachments) => attachments.stage(threadId, { dataUrl, name })),
   "vm.get": ({ threadId }) => TinyVm.use((vm) => vm.get(threadId)),
   "vm.start": ({ threadId, template }) => TinyVm.use((vm) => vm.start(threadId, template)),
   "vm.stop": ({ threadId }) => TinyVm.use((vm) => vm.stop(threadId)),
@@ -487,15 +555,28 @@ const handlers: Handlers = {
         }),
       )
     }),
-  "vm.passkey.get": ({ threadId }) => VmPasskeyRelay.use((relay) => relay.get(threadId)),
-  "vm.passkey.prepare": ({ threadId }) => VmPasskeyRelay.use((relay) => relay.prepare(threadId)),
-  "vm.passkey.cancel": ({ threadId }) => VmPasskeyRelay.use((relay) => relay.cancel(threadId)),
 
   "attachments.stage": ({ threadId, source }) => Attachments.use((attachments) => attachments.stage(threadId, source)),
   "attachments.read": ({ path }) => Attachments.use((attachments) => attachments.read(path)),
   "dialog.pickFiles": (_, desktop) => desktop?.pickFiles ?? Effect.succeed([]),
 
   "automations.list": () => Automations.use((automations) => automations.list),
+  "artifacts.list": () => Artifacts.use((artifacts) => artifacts.list),
+  "artifacts.file": ({ id, path }) => Artifacts.use((artifacts) => artifacts.preview(id, path)),
+  "artifacts.delete": ({ id }) => Artifacts.use((artifacts) => artifacts.remove(id)),
+  "artifacts.readDocument": ({ id }) => Artifacts.use((artifacts) => artifacts.readDocument(id)),
+  "artifacts.saveDocument": (input) => Artifacts.use((artifacts) => artifacts.saveDocument(input)),
+  "artifacts.addDocumentImage": (input) => Artifacts.use((artifacts) => artifacts.addDocumentImage(input)),
+  "artifacts.createDocument": (input) => Artifacts.use((artifacts) => artifacts.createDocument(input)),
+  "artifacts.createWhiteboard": (input) => Artifacts.use((artifacts) => artifacts.createWhiteboard(input)),
+  "artifacts.readWhiteboard": ({ id }) => Artifacts.use((artifacts) => artifacts.readWhiteboard(id)),
+  "artifacts.saveWhiteboard": (input) => Artifacts.use((artifacts) => artifacts.saveWhiteboard(input)),
+  "artifacts.feedback": ({ id }) => ArtifactFeedback.use((feedback) => feedback.feedback(id)),
+  "artifacts.comment": (input) => ArtifactFeedback.use((feedback) => feedback.comment(input)),
+  "artifacts.resolveComment": (input) => ArtifactFeedback.use((feedback) => feedback.resolveComment(input)),
+  "artifacts.rename": ({ id, title }) => Artifacts.use((artifacts) => artifacts.rename(id, title)),
+  "artifacts.setTheme": (theme) => ArtifactInspector.use((inspector) => inspector.setTheme(theme)),
+  "artifacts.export": (request, desktop) => desktop?.exportArtifact(request) ?? Effect.succeed(null),
   "automations.create": (input) => Automations.use((automations) => automations.create(input)),
   "automations.update": (input) => Automations.use((automations) => automations.update(input)),
   "automations.delete": ({ id }) => Automations.use((automations) => automations.remove(id)),
@@ -520,21 +601,6 @@ const handlers: Handlers = {
   "remote.status": () => RemoteAccess.use((remote) => remote.status),
   "remote.pairing": () => RemoteAccess.use((remote) => remote.pairing),
   "remote.rotateToken": () => RemoteAccess.use((remote) => remote.rotateToken),
-  "remote.setupRelay": (_, desktop) =>
-    Effect.gen(function* () {
-      const account = yield* RelayAccount
-      const relay = yield* Relay
-      yield* relay.setup({
-        onLink: (link) =>
-          account
-            .approveOwnLink(link.userCode)
-            .pipe(
-              Effect.flatMap((approved) => (approved ? Effect.void : (desktop?.openExternal(link.url) ?? Effect.void))),
-            ),
-      })
-    }).pipe(Effect.andThen(RemoteAccess.use((remote) => remote.pairing))),
-  "remote.removeRelay": () =>
-    Relay.use((relay) => relay.remove).pipe(Effect.andThen(RemoteAccess.use((remote) => remote.pairing))),
 }
 
 export const RpcCall = Schema.Struct({

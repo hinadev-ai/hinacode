@@ -1,5 +1,7 @@
 import { useState } from "react"
-import { StyleSheet, Text, TextInput, View } from "react-native"
+import { getRandomBytes } from "expo-crypto"
+import { openAuthSessionAsync } from "expo-web-browser"
+import { Image, Platform, StyleSheet, Text, TextInput, View } from "react-native"
 import { Spinner } from "@/components/motion"
 import { SettingsGroup, SettingsRow } from "@/components/settings-rows"
 import { Button, Notice } from "@/components/ui"
@@ -12,7 +14,7 @@ import { DEFAULT_RELAY_URL } from "@/lib/relay-account"
 import { relativeTime } from "@/lib/relative-time"
 import { useRelayAccount } from "@/stores/relay-account"
 
-/** Signs in to the relay with the owner token, so every machine shown on the relay page appears here. */
+/** Signs in to the relay in the browser, so every machine shown on the account appears here. */
 export function RelayAccountSection() {
   const serviceUrl = useRelayAccount((state) => state.serviceUrl)
   const unauthorized = useRelayAccount((state) => state.unauthorized)
@@ -43,6 +45,8 @@ function RelayStatus({ serviceUrl }: { serviceUrl: string }) {
   const syncedAt = useRelayAccount((state) => state.syncedAt)
   const machines = useRelayAccount((state) => state.machines)
   const error = useRelayAccount((state) => state.error)
+  const name = useRelayAccount((state) => state.name)
+  const avatarUrl = useRelayAccount((state) => state.avatarUrl)
   const syncing = useRelayAccount((state) => state.syncing)
   const sync = useRelayAccount((state) => state.sync)
   const signOut = useRelayAccount((state) => state.signOut)
@@ -50,19 +54,24 @@ function RelayStatus({ serviceUrl }: { serviceUrl: string }) {
     <>
       {error !== null && <Notice tone="danger" text={error} />}
       <SettingsGroup title={copy("mobile_relay_title")} footnote={copy("mobile_relay_signed_in_footnote")}>
-        <SettingsRow icon="RiPlugLine" label={copy("mobile_relay_service")} value={hostOf(serviceUrl)} />
+        {name !== null && (
+          <SettingsRow label={name}>
+            {avatarUrl !== null && <Image source={{ uri: avatarUrl }} accessibilityIgnoresInvertColors style={styles.avatar} />}
+          </SettingsRow>
+        )}
+        <SettingsRow icon="Plug" label={copy("mobile_relay_service")} value={hostOf(serviceUrl)} />
         <SettingsRow
-          icon="RiComputerLine"
+          icon="Computer"
           label={copy("mobile_relay_machines")}
           value={machines === null ? undefined : String(machines)}
         />
         <SettingsRow
-          icon="RiTimeLine"
+          icon="Clock"
           label={copy("mobile_relay_last_sync")}
           value={syncedAt === null ? copy("mobile_relay_never") : relativeTime(syncedAt, now)}
         />
         <SettingsRow
-          icon="RiRefreshLine"
+          icon="Refresh"
           label={copy("mobile_relay_sync_now")}
           disabled={syncing}
           onPress={() => void sync()}
@@ -86,23 +95,29 @@ function RelayStatus({ serviceUrl }: { serviceUrl: string }) {
   )
 }
 
-/** Saves the account only once the relay accepts the owner token. */
+const deviceName = Platform.OS === "ios" ? "iPhone" : Platform.OS === "android" ? "Android" : "Phone"
+
+const authenticate = async (url: string, redirectUri: string) => {
+  const result = await openAuthSessionAsync(url, redirectUri)
+  return result.type === "success" ? result.url : null
+}
+
+/** Signs in on the relay's page in the system auth sheet, which hands the code back to this phone. */
 function RelaySignIn({ initialUrl }: { initialUrl: string }) {
   const theme = useTheme()
   const signIn = useRelayAccount((state) => state.signIn)
   const [serviceUrl, setServiceUrl] = useState(initialUrl)
-  const [ownerToken, setOwnerToken] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const submit = async () => {
-    if (serviceUrl.trim() === "" || ownerToken.trim() === "") {
-      setError(copy("mobile_relay_fields_required"))
+    if (serviceUrl.trim() === "") {
+      setError(copy("mobile_relay_service_required"))
       return
     }
     setBusy(true)
     setError(null)
     try {
-      setError(await signIn({ serviceUrl: serviceUrl.trim(), ownerToken: ownerToken.trim() }))
+      setError(await signIn({ serviceUrl: serviceUrl.trim(), deviceName, random: getRandomBytes(32), authenticate }))
     } finally {
       setBusy(false)
     }
@@ -120,19 +135,9 @@ function RelaySignIn({ initialUrl }: { initialUrl: string }) {
         keyboardType="url"
         style={inputStyle}
       />
-      <Text style={[styles.fieldLabel, { color: theme.text }]}>{copy("mobile_relay_owner_token")}</Text>
-      <TextInput
-        accessibilityLabel={copy("mobile_relay_owner_token")}
-        value={ownerToken}
-        onChangeText={setOwnerToken}
-        autoCapitalize="none"
-        autoCorrect={false}
-        secureTextEntry
-        style={inputStyle}
-      />
       {error !== null && <Notice tone="danger" text={error} />}
       <Button
-        icon="RiShieldKeyholeLine"
+        icon="ShieldKeyhole"
         variant="primary"
         label={copy("mobile_relay_sign_in")}
         busy={busy}
@@ -144,6 +149,7 @@ function RelaySignIn({ initialUrl }: { initialUrl: string }) {
 
 const styles = StyleSheet.create({
   permission: { gap: 8, padding: 12 },
+  avatar: { width: 28, height: 28, borderRadius: 14 },
   fieldLabel: { fontSize: 14, fontWeight: "600" },
   input: {
     minHeight: 44,

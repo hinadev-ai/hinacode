@@ -81,7 +81,17 @@ const project = (name: string): Project => {
   git("init", "-q", "-b", "main")
   writeFileSync(join(rootPath, "README.md"), `# ${name}\n`)
   git("add", "README.md")
-  git("-c", "user.name=break-ui", "-c", "user.email=break-ui@localhost", "commit", "-qm", "chore: seed")
+  git(
+    "-c",
+    "user.name=break-ui",
+    "-c",
+    "user.email=break-ui@localhost",
+    "-c",
+    "commit.gpgsign=false",
+    "commit",
+    "-qm",
+    "chore: seed",
+  )
   const row = { id: randomUUID(), name, root_path: rootPath, created_at: at(), updated_at: at() }
   insert("project", row)
   return row

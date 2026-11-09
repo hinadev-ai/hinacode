@@ -5,7 +5,7 @@ export type Outcome = "completed" | "failed"
 
 export function outcomeOf(event: AgentEvent): Outcome | undefined {
   if (event.type === "turn_completed") return "completed"
-  if (event.type === "turn_failed") return "failed"
+  if (event.type === "turn_failed" && !event.stopped) return "failed"
   return undefined
 }
 
@@ -65,18 +65,26 @@ export const rowEmphasis = {
 
 export const needsAttention = (state: RowState) => rowEmphasis[state] === "attention"
 
-export type IndicatorTone = "muted" | "attention" | "success" | "danger" | "prOpen" | "prMerged"
+export type InboxGroup = "ready" | "settled" | "archived"
+
+export const inboxGroup = (state: RowState, settledAt: string | null): InboxGroup => {
+  if (state === "archived") return state
+  if (rowEmphasis[state] === "working") return "ready"
+  return settledAt === null ? "ready" : "settled"
+}
+
+export type IndicatorTone = "foreground" | "muted" | "attention" | "success" | "danger" | "prOpen" | "prMerged"
 
 export const rowStatusIndicator = {
   running: { icon: "RiPulseLine", tone: "muted" },
   background: { icon: "RiTimeLine", tone: "muted" },
-  awaiting_approval: { icon: "RiQuestionFill", tone: "attention" },
+  awaiting_approval: { icon: "RiQuestionFill", tone: "foreground" },
   limited: { icon: "RiHourglassFill", tone: "attention" },
   unseen_completed: { icon: "RiCheckboxCircleFill", tone: "success" },
-  unseen_failed: { icon: "RiErrorWarningFill", tone: "danger" },
-  pr_conflicting: { icon: "RiGitMergeFill", tone: "attention" },
-  pr_checksFailing: { icon: "RiCloseCircleFill", tone: "danger" },
-  pr_changesRequested: { icon: "RiFeedbackFill", tone: "attention" },
+  unseen_failed: { icon: "RiErrorWarningFill", tone: "foreground" },
+  pr_conflicting: { icon: "RiGitMergeFill", tone: "foreground" },
+  pr_checksFailing: { icon: "RiCloseCircleFill", tone: "foreground" },
+  pr_changesRequested: { icon: "RiFeedbackFill", tone: "foreground" },
 } as const satisfies Partial<Record<RowState, { icon: string; tone: IndicatorTone }>>
 
 export const pullRequestIndicator = {

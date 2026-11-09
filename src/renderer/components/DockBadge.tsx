@@ -11,7 +11,7 @@ import { usePullRequests } from "../stores/pullRequests.ts"
 import { selectAwakeThreads, useThreads } from "../stores/threads.ts"
 import { useUnseen } from "../stores/unseen.ts"
 
-export function DockBadge() {
+export function useAttentionCount() {
   const threads = useThreads(useShallow(selectAwakeThreads(useNow())))
   const unseen = useUnseen((state) => state.byThreadId)
   const background = useBackgroundTasks((state) => state.byThreadId)
@@ -25,11 +25,17 @@ export function DockBadge() {
       ]),
     ),
   )
-  const count = threads.filter((thread, index) =>
-    needsAttention(
-      rowState(thread.status, (background[thread.id]?.length ?? 0) > 0, unseen[thread.id], pullRequests[index]),
-    ),
+  return threads.filter(
+    (thread, index) =>
+      thread.settledAt === null &&
+      needsAttention(
+        rowState(thread.status, (background[thread.id]?.length ?? 0) > 0, unseen[thread.id], pullRequests[index]),
+      ),
   ).length
+}
+
+export function DockBadge() {
+  const count = useAttentionCount()
 
   useEffect(() => {
     void callPromise("app.setBadgeCount", { count })

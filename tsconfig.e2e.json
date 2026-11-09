@@ -5,6 +5,6 @@
     "types": ["node"],
     "allowJs": true
   },
-  "include": ["e2e/**/*.ts", "src/shared/**/*", "src/preload/index.d.ts"],
+  "include": ["e2e/**/*.ts", "apps/web/e2e/**/*.ts", "src/shared/**/*", "src/preload/index.d.ts"],
   "exclude": ["e2e/.features-gen"]
 }

@@ -10,7 +10,9 @@ An automation starts a new thread from a prompt template when an event arrives: 
 
 - `create-webhook`, `webhook-rejects`, `toggle` (e2e).
 - `webhook-signed` a correctly signed POST starts a thread: HTTP 202 with `runId` and `threadId`.
+- `github-signature` a body signed in `X-Hub-Signature-256` is accepted the same way, so GitHub can sign deliveries natively.
 - `dedup` a repeated delivery id (`X-GitHub-Delivery`, else the body hash) records a `Skipped` run (HTTP 200, `skipped: true`) and starts nothing.
+- `created-by` a started thread is titled from the rendered first line and has `createdBy` `automation:<id>`.
 - `template` the thread's first prompt is the template rendered from `{ body, headers }`.
 - `run-now` `Run now` with a `Sample payload` starts a run immediately, bypassing dedup.
 - `worktree-run` with `Run in a new worktree`, each run gets a branch from `Branch template`.
@@ -28,15 +30,16 @@ An automation starts a new thread from a prompt template when an event arrives: 
 Preconditions:
 
 - Instance launched and doctor passes, which includes `webhook listener on <40000+PORT> is ours`.
-- Project `demo` on `$DATA/repo`; a webhook automation `hook check` with prompt `Reply with the word {{body.word}} only.` on `Sonnet 5.5`, created through the dialog with `Project` set to `demo` (it defaults to `Chats`). Read `SECRET` from the `hook check is ready` dialog and `URL` from `$S/rpc.ts $PORT automations.webhookUrl '{"id":"<id>"}'`.
-- `AB="agent-browser --session kkv-$PORT-automations"`, connected.
+- Project `demo` on `$DATA/repo`; a webhook automation `hook check` with prompt `Reply with the word {{body.word}} only.` on `Sonnet 5.5`, created through the dialog (`New automation`, `ab find label "Name" fill "hook check"`, `ab find label "Prompt template" fill '…'`, `Create automation`). `Project` defaults to the first project, usually `Chats`. Read `SECRET` and `URL` from the `hook check is ready` dialog (`ab eval 'document.querySelector("[role=dialog]").innerText'`), or `URL` from `$S/rpc.ts $PORT automations.webhookUrl '{"id":"<id>"}'`.
+- `ab() { agent-browser --session kkv-$PORT-automations --cdp $PORT "$@"; }`.
 
-- **Signed delivery.** `$S/webhook.sh "$URL" "$SECRET" '{"word":"ping"}' d1` prints 202 with a `threadId`. Without a reload the sidebar gains a thread in `demo` whose first message is `Reply with the word ping only.` and whose reply is `ping`. Screenshot `automations-01-thread-started.png`.
-- **Dedup.** Repeat the same command with `d1`: 200 with `"skipped":true` and no new thread. `Runs and details` shows a `Skipped` run with `Already handled event d1`. Screenshot `automations-02-dedup.png`. `$S/rpc.ts $PORT automations.runs '{"id":"<id>","limit":10}' > "$SHOTS/automations-03-runs.txt"`.
+- **Signed delivery.** `$S/webhook.sh "$URL" "$SECRET" '{"word":"ping"}' d1` prints 202 with a `threadId`. Without a reload the sidebar gains a thread titled `Reply with the word ping only.` whose reply is `ping`; `threads.list` shows `createdBy` `automation:<id>`. Screenshot `automations-01-thread-started.png`.
+- **Dedup.** Repeat the same command with `d1`: 200 with `"skipped":true` and no new thread. Then the GitHub header without a delivery id, twice: `B='{"word":"gh"}'; SIG=$(printf '%s' "$B" | openssl dgst -sha256 -hmac "$SECRET" -r | cut -d' ' -f1); curl -sS -X POST -H 'content-type: application/json' -H "x-hub-signature-256: sha256=$SIG" --data-binary "$B" -w ' %{http_code}\n' "$URL"`. The first answers 202 and starts a thread, the second 200 `skipped`. `Runs and details` shows `Already handled event d1` and `Already handled event <body sha256>`. Screenshot `automations-02-dedup.png`. `$S/rpc.ts $PORT automations.runs '{"id":"<id>","limit":10}' > "$SHOTS/automations-03-runs.txt"`.
 - **Run now.** Open `Runs and details`, set `Sample payload` to `{"body":{"word":"manual"}}`, click `Run now`. A `Started` run and a thread with `Reply with the word manual only.` appear; `Open thread` opens it (scope it to the newest run, since every started run has one). Screenshot `automations-04-run-now.png`.
 - **Worktree run.** Edit the automation: `Run in a new worktree` on, `Branch template` `kk/hook-{{body.word}}`. Deliver `{"word":"wt"}` with `d3`. The new thread's panel shows branch `kk/hook-wt` and `Ready`.
 - **Listener port conflict.** Set the listener `Port` to a port another process holds and click `Save`. `Runs and details` shows `The listener is not running: ...EADDRINUSE...`. Set it back to `40000 + $PORT`.
 - **Pollers.** Create a `GitHub issue` automation on a repo. To avoid a real repo, launch with a `gh` shim first on `PATH` that logs its arguments and answers `gh api repos/<repo>/issues?...` with one issue whose `created_at` is later than the automation's `cursor`. Within 10 to 70 seconds a run starts. Linear and Slack need real credentials; without them the first poll records one `Failed` run within about 15 seconds, and the next poll with the same error adds none.
+- **Pull request trigger.** A login shell's `PATH` wins over the launch `PATH`, so a `gh` shim needs a stub shell too: launch with `SHELL=<script running /bin/sh -c "$2">` and the shim first on `PATH`. The shim answers `gh api graphql ... --include` with an HTTP head and one `prN.pullRequest` per `numberN=` argument, with `createdAt` in the future and `state` read from a file. Create a `Pull request` automation ticking `Opens` and `Merges`, then link with `$S/rpc.ts $PORT pullRequests.watch` and `pullRequests.unwatch`. A `pullRequest.opened` run starts within seconds. Set the file to `MERGED`. A `pullRequest.merged` run starts within about three minutes. Repeat with the app stopped during the flip to prove a merge made while closed is still reported.
 - **Delete.** The row buttons are all named `Delete`, so scope to the row, then confirm in `Delete hook check?`. The row and its runs are gone, the webhook URL answers 404 `unknown_automation`, and threads it started stay.
 
 ## Gotchas

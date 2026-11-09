@@ -23,7 +23,7 @@ export const make = <const Name extends string, Parameters extends Schema.Constr
 
 type HinacodeTool = ReturnType<typeof make<string, Schema.Top>>
 
-const text = (value: string, isError = false) =>
+export const text = (value: string, isError = false) =>
   new McpSchema.CallToolResult({ content: [{ type: "text", text: value }], isError })
 
 const toolResult = (output: typeof Output.Type) =>
@@ -34,8 +34,10 @@ const errorMessage = (error: { readonly message: string }) =>
     ? error.reason.description
     : error.message
 
+export const invalidCredential = text("The MCP credential is not valid for any thread.", true)
+
 // FIXME: McpServer runs handlers in the request fiber without declaring it in their type
-const callingThreadId = (credentials: typeof McpCredentials.Service) =>
+export const callingThreadId = (credentials: typeof McpCredentials.Service) =>
   Effect.map(Effect.serviceOption(HttpServerRequest.HttpServerRequest), (request) =>
     Option.flatMap(request, (current) => credentials.authenticate(current.headers["authorization"])),
   )
@@ -63,12 +65,13 @@ export const register = Effect.fnUntraced(function* <Tools extends Record<string
         name: tool.name,
         description: tool.description,
         inputSchema: Schema.decodeUnknownSync(McpSchema.ToolJson)(Tool.getJsonSchema(tool)),
+        annotations: { readOnlyHint: Context.get(tool.annotations, Tool.Readonly) },
       }),
       annotations,
       handle: (payload) =>
         Effect.gen(function* () {
           const threadId = yield* callingThreadId(credentials)
-          if (Option.isNone(threadId)) return text("The MCP credential is not valid for any thread.", true)
+          if (Option.isNone(threadId)) return invalidCredential
           return yield* handle(tool.name, payload ?? {}).pipe(
             Stream.unwrap,
             Stream.runLast,

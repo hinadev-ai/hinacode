@@ -1,5 +1,6 @@
 import type { CheckRun, CheckRunStatus, MergeMethod, PullRequestDetail, PullRequestLink } from "@shared/domain.ts"
 import { linearReviewUrl } from "@shared/github.ts"
+import { providerInfo } from "@shared/providers.ts"
 import { fixChecksPrompt, resolveConflictsPrompt } from "@shared/pullRequestPrompts.ts"
 import { Stack, useLocalSearchParams } from "expo-router"
 import { type ReactNode, useEffect, useState } from "react"
@@ -86,7 +87,7 @@ export default function PullRequestScreen() {
         options={{
           title: number === null ? "" : `#${number}`,
           headerRight: () => (
-            <IconButton icon="RiExternalLinkLine" accessibilityLabel={web.label} onPress={() => openWebUrl(web.href)} />
+            <IconButton icon="External" accessibilityLabel={web.label} onPress={() => openWebUrl(web.href)} />
           ),
         }}
       />
@@ -100,8 +101,8 @@ export default function PullRequestScreen() {
           <View style={styles.section}>
             <Notice tone="danger" text={copy("mobile_pr_detail_failed", { message: remote.message })} />
             <View style={styles.actions}>
-              <Button label={copy("mobile_pr_retry")} icon="RiRefreshLine" onPress={() => void reload()} />
-              <Button label={web.label} icon="RiExternalLinkLine" onPress={() => openWebUrl(web.href)} />
+              <Button label={copy("mobile_pr_retry")} icon="Refresh" onPress={() => void reload()} />
+              <Button label={web.label} icon="External" onPress={() => openWebUrl(web.href)} />
             </View>
           </View>
         ) : (
@@ -169,10 +170,10 @@ function PullRequestView({
             <Pill label={reviewLabel(detail.review)} tone={reviewTone[detail.review]} />
           )}
           {isOpen(detail) && detail.mergeable === "mergeable" && (
-            <Pill label={copy("mobile_pr_mergeable")} tone="neutral" icon="RiCheckLine" />
+            <Pill label={copy("mobile_pr_mergeable")} tone="neutral" icon="Check" />
           )}
-          {conflicting && <Pill label={copy("mobile_pr_conflicting")} tone="attention" icon="RiErrorWarningLine" />}
-          {watching && <Pill label={copy("mobile_pr_watching")} tone="neutral" icon="RiEyeLine" />}
+          {conflicting && <Pill label={copy("mobile_pr_conflicting")} tone="attention" icon="Warning" />}
+          {watching && <Pill label={copy("mobile_pr_watching")} tone="neutral" icon="Eye" />}
         </View>
       </View>
       <UnderlineTabs<Tab>
@@ -243,9 +244,13 @@ function Block({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-/** Sends the prompt into the thread: steers the running turn, or starts one. */
+/** Sends the prompt into the thread: steers the running turn, queues it for agents that can't steer, or starts one. */
 function AskAgentButton({ threadId, prompt, label }: { threadId: string; prompt: string; label: string }) {
   const theme = useTheme()
+  const steers = useThreads((state) => {
+    const provider = state.byId[threadId]?.provider
+    return provider === undefined || providerInfo[provider].steersRunningTurn
+  })
   const [state, setState] = useState<
     { type: "idle" } | { type: "sending" } | { type: "sent" } | { type: "failed"; message: string }
   >({ type: "idle" })
@@ -253,7 +258,7 @@ function AskAgentButton({ threadId, prompt, label }: { threadId: string; prompt:
   const send = async () => {
     setState({ type: "sending" })
     try {
-      await call("threads.steer", { threadId, text: prompt })
+      await call(steers ? "threads.steer" : "threads.queue", { threadId, text: prompt })
       setState({ type: "sent" })
     } catch (cause) {
       setState({ type: "failed", message: errorText(cause) })
@@ -262,10 +267,10 @@ function AskAgentButton({ threadId, prompt, label }: { threadId: string; prompt:
 
   return (
     <View style={styles.ask}>
-      <Button label={label} icon="RiChat1Line" busy={state.type === "sending"} onPress={() => void send()} />
+      <Button label={label} icon="Chat" busy={state.type === "sending"} onPress={() => void send()} />
       {state.type === "sent" && (
         <View accessibilityRole="alert" style={styles.sent}>
-          <Icon name="RiCheckLine" size={16} color={theme.running} />
+          <Icon name="Check" size={16} color={theme.running} />
           <Text style={{ color: theme.textMuted, fontSize: 14 }}>{copy("mobile_pr_sent")}</Text>
         </View>
       )}
@@ -327,13 +332,13 @@ function SettledChecks({ runs }: { runs: readonly CheckRun[] }) {
         style={styles.run}
       >
         <Icon
-          name={passed > 0 ? "RiCheckboxCircleFill" : "RiIndeterminateCircleLine"}
+          name={passed > 0 ? "CheckCircleFill" : "MinusCircle"}
           size={16}
           color={theme.textMuted}
         />
         <Text style={[styles.runName, { color: theme.textMuted }]}>{summary}</Text>
         <Rotate turned={expanded}>
-          <Icon name="RiArrowRightSLine" size={18} color={theme.textMuted} />
+          <Icon name="ChevronRight" size={18} color={theme.textMuted} />
         </Rotate>
       </PressableScale>
       {expanded && (
@@ -352,9 +357,9 @@ const runLabel = (status: CheckRunStatus) => copy(`mobile_pr_check_${status}`)
 function CheckRow({ run }: { run: CheckRun }) {
   const theme = useTheme()
   const glyphs: Record<Exclude<CheckRunStatus, "pending">, { name: IconName; color: string }> = {
-    passing: { name: "RiCheckboxCircleFill", color: theme.textMuted },
-    failing: { name: "RiCloseCircleLine", color: theme.danger },
-    skipped: { name: "RiIndeterminateCircleLine", color: theme.textMuted },
+    passing: { name: "CheckCircleFill", color: theme.textMuted },
+    failing: { name: "XCircle", color: theme.danger },
+    skipped: { name: "MinusCircle", color: theme.textMuted },
   }
   const content = (
     <>
@@ -505,7 +510,7 @@ function WatchRow({ url, threadId, watching }: { url: string; threadId: string; 
   return (
     <View style={styles.section}>
       <View style={styles.watch}>
-        <Icon name="RiEyeLine" size={18} color={theme.text} />
+        <Icon name="Eye" size={18} color={theme.text} />
         <View style={styles.watchText}>
           <Text style={[styles.watchLabel, { color: theme.text }]}>{copy("mobile_pr_watch")}</Text>
           <Text style={[styles.hint, { color: theme.textMuted }]}>{copy("mobile_pr_watch_hint")}</Text>

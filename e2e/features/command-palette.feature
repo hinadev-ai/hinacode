@@ -44,8 +44,3 @@ Feature: Command palette
     When I press "ControlOrMeta+1"
     Then a new thread is open with the composer focused
     And the open thread belongs to the first project
-
-  Scenario: Escape closes the palette
-    When I press "ControlOrMeta+p"
-    And I press "Escape"
-    Then the palette is closed

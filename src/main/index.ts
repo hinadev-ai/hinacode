@@ -2,15 +2,18 @@ import { existsSync, mkdirSync, renameSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
+import { ARTIFACT_HEADERS } from "@hinacode/artifacts"
 import { app, BrowserWindow, dialog, net, powerMonitor, protocol, safeStorage, session, shell } from "electron"
 import { Effect, Layer, ManagedRuntime, Option, Schema } from "effect"
 import { makeAppLayer } from "./app.ts"
+import { electronArtifactInspector } from "./artifactInspector.ts"
 import { handleContextMenu } from "./contextMenu.ts"
 import { chromiumDir, moveLegacyProfile } from "./dataDir.ts"
 import { keepAppMenu } from "./appMenu.ts"
 import { bringToFront, registerIpc, sendToWindows } from "./ipc.ts"
 import { pullRequestWindows } from "./pullRequestWindows.ts"
 import {
+  artifactRequest,
   attachmentRequest,
   BROWSER_PARTITION,
   externalImageRequest,
@@ -23,20 +26,24 @@ import {
   projectFileRequest,
 } from "./security.ts"
 import {
+  ARTIFACT_PROTOCOL,
   ATTACHMENT_PROTOCOL,
   EXTERNAL_IMAGE_PROTOCOL,
   GITHUB_ASSET_PROTOCOL,
   LIQUID_GLASS_ARGUMENT,
   PROJECT_FILE_PROTOCOL,
 } from "../shared/channels.ts"
+import { injectProblemReporter } from "../shared/artifactProblems.ts"
+import { injectArtifactTheme, parseArtifactTheme } from "../shared/artifactTheme.ts"
 import { RpcMethods } from "../shared/contract.ts"
+import * as Artifacts from "./services/Artifacts.ts"
 import * as ClientSettings from "./services/ClientSettings.ts"
 import * as Environments from "./services/Environments.ts"
 import * as Files from "./services/Files.ts"
 import * as GitHub from "./services/GitHub.ts"
 import { Keyring } from "./services/Secrets.ts"
 import { startResourceMonitor } from "./resourceMonitor.ts"
-import { hydratePath } from "./shellPath.ts"
+import { dropAppImageArgv0, hydratePath } from "./shellPath.ts"
 import { liquidGlass } from "./liquidGlass.ts"
 import * as Updater from "./updater.ts"
 import devIcon from "../../assets/icon-dev.png?asset"
@@ -66,6 +73,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 if (!app.isPackaged) startResourceMonitor(dataDir)
 const icon = app.isPackaged ? releaseIcon : devIcon
+dropAppImageArgv0(process.env)
 const shellPath = hydratePath(process.env, join(dataDir, "shell-path"))
 protocol.registerSchemesAsPrivileged([
   { scheme: ATTACHMENT_PROTOCOL, privileges: { standard: true, secure: true } },
@@ -73,10 +81,11 @@ protocol.registerSchemesAsPrivileged([
   { scheme: GITHUB_ASSET_PROTOCOL, privileges: { standard: true, secure: true, stream: true } },
   { scheme: PROJECT_FILE_PROTOCOL, privileges: { standard: true, secure: true, stream: true } },
   { scheme: EXTERNAL_IMAGE_PROTOCOL, privileges: { standard: true, secure: true } },
+  { scheme: ARTIFACT_PROTOCOL, privileges: { standard: true, secure: true, corsEnabled: true, supportFetchAPI: true } },
 ])
 
 type AppRuntime = ManagedRuntime.ManagedRuntime<
-  GitHub.GitHub | Files.Files | Environments.Environments | ClientSettings.ClientSettings,
+  GitHub.GitHub | Files.Files | Environments.Environments | ClientSettings.ClientSettings | Artifacts.Artifacts,
   unknown
 >
 
@@ -90,10 +99,23 @@ const fetchFromCloud = async (runtime: AppRuntime, environment: string, call: En
   return file === undefined ? new Response(null, { status: 404 }) : fetch(file.dataUrl)
 }
 
-const sandboxed = (response: Response) => {
+const withHeaders = (response: Response, extra: Record<string, string>) => {
   const headers = new Headers(response.headers)
-  headers.set("content-security-policy", "sandbox allow-scripts")
+  for (const [name, value] of Object.entries(extra)) headers.set(name, value)
   return new Response(response.body, { status: response.status, headers })
+}
+
+const sandboxed = (response: Response) => withHeaders(response, { "content-security-policy": "sandbox allow-scripts" })
+
+const artifactResponse = (response: Response) => withHeaders(response, ARTIFACT_HEADERS)
+
+const themedArtifact = async (request: Request, response: Response) => {
+  const type = response.headers.get("content-type") ?? ""
+  if (!type.startsWith("text/html")) return artifactResponse(response)
+  const theme = parseArtifactTheme(new URL(request.url).searchParams.get("theme"))
+  if (theme === undefined) return artifactResponse(response)
+  const html = injectArtifactTheme(injectProblemReporter(await response.text()), theme)
+  return artifactResponse(new Response(html, { status: response.status, headers: { "content-type": type } }))
 }
 
 const serveAttachments = (runtime: AppRuntime, attachmentsRoot: string) =>
@@ -180,6 +202,25 @@ const serveProjectFiles = (runtime: AppRuntime) =>
       .catch(() => null)
     if (file === null) return new Response(null, { status: 403 })
     return sandboxed(await net.fetch(pathToFileURL(file).toString(), rangeOf(request)))
+  })
+
+const serveArtifacts = (runtime: AppRuntime) =>
+  protocol.handle(ARTIFACT_PROTOCOL, async (request) => {
+    const target = artifactRequest(request.url)
+    if (target === null) return artifactResponse(new Response(null, { status: 404 }))
+    const cloud = await runtime.runPromise(
+      Effect.map(Environments.Environments, (environments) => environments.owner("artifact", target.id)),
+    )
+    if (cloud !== undefined)
+      return themedArtifact(
+        request,
+        await fetchFromCloud(runtime, cloud, { method: "artifacts.file", payload: target }),
+      )
+    const file = await runtime.runPromise(
+      Artifacts.Artifacts.use((artifacts) => artifacts.file(target.id, target.path)),
+    )
+    if (file === null) return artifactResponse(new Response(null, { status: 404 }))
+    return themedArtifact(request, new Response(file.bytes, { headers: { "content-type": file.type } }))
   })
 
 const safeStorageKeyring = Layer.succeed(
@@ -286,6 +327,7 @@ app.whenReady().then(async () => {
       keyring: safeStorageKeyring,
       updates: Updater.layer,
       toWindows: sendToWindows,
+      artifactInspector: electronArtifactInspector,
     }).pipe(Layer.provide(Layer.effectDiscard(Effect.promise(() => shellPath.ready)))),
   )
   let disposed = false
@@ -305,6 +347,7 @@ app.whenReady().then(async () => {
   serveAttachments(runtime, join(dataDir, "attachments"))
   serveGitHubAssets(runtime)
   serveProjectFiles(runtime)
+  serveArtifacts(runtime)
   serveExternalImages()
   limitBrowserPermissions()
   app.on("activate", () => {

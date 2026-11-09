@@ -8,11 +8,13 @@ import type { Thread } from "../../shared/domain.ts"
 import { findPattern } from "../lib/find.ts"
 import { useDebouncedValue } from "../lib/useDebouncedValue.ts"
 import { useIsChat } from "../lib/useIsChat.ts"
-import { commandsAtom, completionKey, projectsAtom, repositoryAtom, threadCommands } from "../lib/rpc.ts"
+import { artifactSkillCommands } from "../lib/artifactSkills.ts"
+import { commandsAtom, completionKey, projectsAtom, repositoryAtom } from "../lib/rpc.ts"
 import { ThreadRepository } from "../lib/threadRepository.ts"
 import { ThreadFolder, useThreadRoot } from "../lib/threadRoot.ts"
 import { m } from "../paraglide/messages.js"
 import { useMessages } from "../stores/messages.ts"
+import { useTerminals } from "../stores/terminals.ts"
 import { useWorktrees } from "../stores/worktrees.ts"
 import { useUi } from "../stores/ui.ts"
 import { ApprovalCard } from "./ApprovalCard.tsx"
@@ -46,6 +48,12 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
   const regionRef = useRef<HTMLDivElement>(null)
   const dockRef = useRef<HTMLDivElement>(null)
   useDockHeight(regionRef, dockRef)
+  useEffect(() => {
+    useTerminals
+      .getState()
+      .load(thread.id)
+      .catch(() => undefined)
+  }, [thread.id])
   const findOpen = useUi((state) => state.findThreadId === thread.id)
   const loaded = useMessages((state) => state.byThread[thread.id]?.status === "ready")
   const centered = useMessages((state) => {
@@ -73,7 +81,7 @@ export function ThreadView({ thread, agent, actions, overlay }: ThreadViewProps)
         ref={regionRef}
         className={cn(
           "relative flex min-h-0 flex-1 flex-col overflow-x-clip",
-          agent === undefined ? "[container:thread/size]" : "[container-type:size]",
+          agent === undefined ? "[container:thread/size]" : "@container-size",
         )}
       >
         <div className="flex min-h-0 flex-1 flex-col overflow-auto">
@@ -131,7 +139,7 @@ function ThreadBreadcrumb({ thread, agent }: { thread: Thread; agent: string | u
         )}
         <li className="flex min-w-0 items-center gap-1.5">
           {project && <Separator />}
-          <h1 dir="auto" className="truncate font-semibold" title={thread.title}>
+          <h1 dir="auto" className="truncate text-base font-semibold" title={thread.title}>
             {thread.status === "draft" ? m.thread_draft_title() : thread.title}
           </h1>
         </li>
@@ -164,10 +172,10 @@ function Transcript({ thread, agent }: { thread: Thread; agent: string | undefin
   const worktree = useWorktrees((state) => (thread.worktreeId ? state.byId[thread.worktreeId] : undefined))
   const load = useMessages((state) => state.load)
   const label = providerLabel[thread.provider]()
-  const commands = threadCommands(
-    AsyncResult.getOrElse(useAtomValue(commandsAtom(completionKey(thread))), (): ReadonlyArray<AgentCommand> => []),
-    thread,
-  )
+  const commands = [
+    ...artifactSkillCommands(),
+    ...AsyncResult.getOrElse(useAtomValue(commandsAtom(completionKey(thread))), (): ReadonlyArray<AgentCommand> => []),
+  ]
   const isChat = useIsChat(thread.projectId)
   const findOpen = useUi((state) => state.findThreadId === thread.id)
   const findQuery = useDebouncedValue(

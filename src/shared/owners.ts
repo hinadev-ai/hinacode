@@ -58,6 +58,9 @@ export const learnFromAnswer = (
     case "threads.update":
     case "threads.archive":
     case "threads.unarchive":
+    case "threads.settle":
+    case "threads.unsettle":
+    case "threads.regenerateTitle":
     case "threads.sidechat":
       return each(result, learnId(teach, "thread"))
     case "worktrees.list":
@@ -70,6 +73,10 @@ export const learnFromAnswer = (
     case "automations.create":
     case "automations.update":
       return each(result, learnId(teach, "automation"))
+    case "artifacts.list":
+    case "artifacts.createDocument":
+    case "artifacts.createWhiteboard":
+      return each(result, learnId(teach, "artifact"))
     case "threads.transcript":
       for (const name of ["approvals", "questions", "secretRequests"])
         each(field(result, name), learnId(teach, "request"))
@@ -92,9 +99,15 @@ export const learnFromPush = (owners: Owners, environmentId: string, event: Push
     case "terminal.data":
     case "terminal.exited":
       return teach("terminal", event.id)
+    case "terminal.updated":
+      return teach("terminal", event.session.id)
     case "automation.run":
       teach("automation", event.run.automationId)
       return teach("thread", event.run.threadId)
+    case "artifact.updated":
+      return teach("artifact", event.artifact.id)
+    case "artifact.feedback":
+      return teach("artifact", event.id)
     case "thread.event":
       teach("thread", event.threadId)
       if (
@@ -107,11 +120,14 @@ export const learnFromPush = (owners: Owners, environmentId: string, event: Push
   }
 }
 
-const projectAnswers: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
+const stampedAnswers: ReadonlySet<RpcMethod> = new Set<RpcMethod>([
   "projects.list",
   "projects.create",
   "projects.clone",
   "projects.update",
+  "artifacts.list",
+  "artifacts.createDocument",
+  "artifacts.createWhiteboard",
 ])
 
 const stamp = (result: unknown, environmentId: string): unknown =>
@@ -124,5 +140,8 @@ const stamp = (result: unknown, environmentId: string): unknown =>
 export const nameMachines = (method: RpcMethod, result: unknown, name: string) =>
   method === "machines.list" && Array.isArray(result) ? result.map((machine) => ({ ...machine, name })) : result
 
-export const stampProjects = (method: RpcMethod, result: unknown, environmentId: string) =>
-  projectAnswers.has(method) ? stamp(result, environmentId) : result
+export const stampEnvironment = (method: RpcMethod, result: unknown, environmentId: string) =>
+  stampedAnswers.has(method) ? stamp(result, environmentId) : result
+
+export const stampPush = (event: PushEvent, environmentId: string): PushEvent =>
+  event.type === "artifact.updated" ? { ...event, artifact: { ...event.artifact, environmentId } } : event

@@ -5,6 +5,7 @@ import type { Opener, Thread } from "../../shared/domain.ts"
 import { useThreadEnvironment } from "../lib/environments.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import { callPromise, openersAtom, updateClientSettingsAtom } from "../lib/rpc.ts"
+import { inBrowser } from "../lib/runtime.ts"
 import { useClientSettings } from "../lib/settings.ts"
 import { useThreadRoot } from "../lib/threadRoot.ts"
 import { m } from "../paraglide/messages.js"
@@ -19,9 +20,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu.tsx"
-import { ChevronDownIcon } from "./icons/ChevronDownIcon.tsx"
-import { ExternalIcon } from "./icons/ExternalIcon.tsx"
-import { FolderOpenIcon } from "./icons/FolderOpenIcon.tsx"
+import { ChevronDownIcon, ExternalIcon, FolderOpenIcon } from "@hinacode/icons"
 
 type Target = "folder" | "file"
 
@@ -32,10 +31,14 @@ const useOpeners = (target: Target) => {
 
 const useOpenWith = () => {
   const save = useAtomSet(updateClientSettingsAtom, { mode: "promise" })
-  return (path: string, opener: Opener) =>
-    callPromise("shell.openWith", { path, opener: opener.id })
-      .then(() => save({ openWith: opener.id }))
-      .catch((cause: unknown) => toast.error(m.open_with_failed({ app: opener.name, message: errorMessage(cause) })))
+  return async (path: string, opener: Opener) => {
+    try {
+      await callPromise("shell.openWith", { path, opener: opener.id })
+      await save({ openWith: opener.id })
+    } catch (cause) {
+      toast.error(m.open_with_failed({ app: opener.name, message: errorMessage(cause) }))
+    }
+  }
 }
 
 function OpenerIcon({ opener }: { opener: Opener }) {
@@ -67,6 +70,7 @@ function OpenerItems({ path, target }: { path: string; target: Target }) {
 }
 
 export function OpenWithSubmenu({ path, target }: { path: string; target: Target }) {
+  if (inBrowser()) return null
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger>
@@ -82,7 +86,7 @@ export function OpenWithSubmenu({ path, target }: { path: string; target: Target
 
 export function ThreadOpenWith({ thread }: { thread: Thread }) {
   const root = useThreadRoot(thread)
-  const local = useThreadEnvironment(thread.id) === null
+  const local = useThreadEnvironment(thread.id) === null && !inBrowser()
   if (!local || root === undefined) return null
   return <OpenWithButton path={root.path} />
 }
@@ -101,7 +105,7 @@ function OpenWithButton({ path }: { path: string }) {
           size="icon-sm"
           aria-label={m.open_in({ app: preferred.name })}
           title={m.open_in({ app: preferred.name })}
-          onClick={() => void open(path, preferred)}
+          action={() => open(path, preferred)}
         >
           <OpenerIcon opener={preferred} />
         </Button>

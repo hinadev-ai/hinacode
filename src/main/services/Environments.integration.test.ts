@@ -36,11 +36,14 @@ import {
 import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
+import { OpencodeProvider } from "../agents/opencode/index.ts"
+import { MagpieProvider } from "../agents/magpie/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import { registerIpc } from "../ipc.ts"
 import { CLOSE_TOKEN_ROTATED, CLOSE_UNAUTHORIZED, RemoteAccess } from "../remote/access.ts"
 import { unusedLoopbackPort } from "../remote/testing.ts"
 import { makeTestAppLayer } from "../testing.ts"
+import { Artifacts } from "./Artifacts.ts"
 import { ClientSettings } from "./ClientSettings.ts"
 import { Environments, type ForwardedCall } from "./Environments.ts"
 import { Events, PushBroadcast, WindowPush } from "./Events.ts"
@@ -105,6 +108,8 @@ const providers = Layer.mergeAll(
   Layer.succeed(ClaudeProvider, provider("claude")),
   Layer.succeed(CodexProvider, provider("codex")),
   Layer.succeed(MuseProvider, provider("muse")),
+  Layer.succeed(OpencodeProvider, provider("opencode")),
+  Layer.succeed(MagpieProvider, provider("magpie")),
 )
 
 const makeCloudEvents = () => {
@@ -360,11 +365,56 @@ describe("desktop environments", () => {
     expect(failure(await invoke("attachments.read", { path: picked }, cloudId)).tag).toBe("AttachmentError")
   })
 
+  test("a device screenshot from a cloud thread is saved on the desktop for the local file manager", async () => {
+    const saved = await electron.handlers.get(RPC_CHANNEL)!(
+      { sender: {}, senderFrame: { url: appUrl, parent: null } },
+      {
+        method: "device.screenshot.save",
+        payload: {
+          threadId: cloudThread,
+          dataUrl: `data:image/png;base64,${Buffer.from("screen bytes").toString("base64")}`,
+          name: "Cloud phone.png",
+        },
+      },
+    )
+    expect(saved).toMatchObject({
+      result: {
+        path: expect.stringContaining(join(dir, "desktop", "attachments", cloudThread)),
+        name: "Cloud phone.png",
+        mime: "image/png",
+        bytes: 12,
+      },
+    })
+  })
+
   test("the file viewer previews a cloud's files from the cloud, inside the root only", async () => {
     writeFileSync(join(cloudRepo, "page.html"), "<h1>cloud</h1>")
     const { dataUrl } = result(await invoke("fs.preview", { root: cloudRepo, path: "page.html" }))
     expect(dataUrl).toBe(`data:text/html;base64,${Buffer.from("<h1>cloud</h1>").toString("base64")}`)
     expect(failure(await invoke("fs.preview", { root: cloudRepo, path: "../picked.png" })).tag).toBe("FsAccessError")
+  })
+
+  test("a cloud's artifacts list with its id, open from the cloud, and its pushes reach the window", async () => {
+    const page = "<h1>cloud artifact</h1>"
+    const published = await cloud.runPromise(
+      Artifacts.use((artifacts) =>
+        Effect.promise(() =>
+          artifacts.store.publish({ title: "Cloud report", files: [{ path: "index.html", content: page }] }),
+        ),
+      ),
+    )
+    await pushedEventually(
+      (event) =>
+        event.type === "artifact.updated" &&
+        event.artifact.id === published.id &&
+        event.artifact.environmentId === cloudId,
+    )
+
+    const listed = result(await invoke("artifacts.list", undefined))
+    expect(listed.map((artifact) => [artifact.id, artifact.environmentId])).toStrictEqual([[published.id, cloudId]])
+    const { dataUrl } = result(await invoke("artifacts.file", { id: published.id, path: "" }))
+    expect(dataUrl).toBe(`data:text/html;charset=utf-8;base64,${Buffer.from(page).toString("base64")}`)
+    expect(failure(await invoke("artifacts.file", { id: published.id, path: "gone.html" })).tag).toBe("NotFoundError")
   })
 
   test("the cloud's pushes reach the window and not the phones paired with this desktop", async () => {

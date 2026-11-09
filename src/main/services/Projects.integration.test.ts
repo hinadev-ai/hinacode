@@ -4,10 +4,11 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
-import { Effect, Layer } from "effect"
+import { Deferred, Effect, Fiber, Layer } from "effect"
 import * as Db from "../db/client.ts"
 import * as Git from "./Git.ts"
 import * as GitHub from "./GitHub.ts"
+import type { PushEvent } from "../../shared/contract.ts"
 import { Events } from "./Events.ts"
 import { Projects, layer } from "./Projects.ts"
 
@@ -28,7 +29,7 @@ const repoWith = (files: Record<string, string | Buffer>) => {
 }
 
 const projectsLayer = layer.pipe(
-  Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer.pipe(Layer.provide(noEvents)), Db.layer(":memory:"))),
+  Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer.pipe(Layer.provide(noEvents)), Db.layer(":memory:"), noEvents)),
   Layer.provide(NodeServices.layer),
 )
 
@@ -162,13 +163,27 @@ describe("Projects.create", () => {
       expect(error._tag).toBe("ProjectRootInvalidError")
     }),
   )
+
+  it.live("sends a folder inside WSL to a cloud running in WSL", () =>
+    Effect.gen(function* () {
+      for (const rootPath of ["\\\\wsl.localhost\\Ubuntu\\home\\me\\app", "\\\\WSL$\\Debian\\srv\\app"]) {
+        const error = yield* provided(
+          Projects.use((projects) => projects.create({ name: "app", rootPath, setupScript: null })),
+        ).pipe(Effect.flip)
+        expect(error._tag).toBe("ProjectInWslError")
+      }
+    }),
+  )
 })
 
-const withGitHub = (createRepository: GitHub.GitHub["Service"]["createRepository"]) =>
+const withGitHubMock = (github: Partial<GitHub.GitHub["Service"]>, events = noEvents) =>
   layer.pipe(
-    Layer.provide(Layer.mergeAll(Git.layer, Layer.mock(GitHub.GitHub, { createRepository }), Db.layer(":memory:"))),
+    Layer.provide(Layer.mergeAll(Git.layer, Layer.mock(GitHub.GitHub, github), Db.layer(":memory:"), events)),
     Layer.provide(NodeServices.layer),
   )
+
+const withGitHub = (createRepository: GitHub.GitHub["Service"]["createRepository"]) =>
+  withGitHubMock({ createRepository })
 
 describe("Projects.create with a new GitHub repository", () => {
   const identity = {
@@ -244,6 +259,7 @@ describe("Projects.clone", () => {
       const error = yield* provided(
         Projects.use((projects) =>
           projects.clone({
+            cloneId: "clone",
             repository: { owner: "octocat", name: "Hello-World" },
             rootPath,
             name: "x",
@@ -253,6 +269,89 @@ describe("Projects.clone", () => {
       ).pipe(Effect.flip)
       expect(error._tag).toBe("ProjectFolderNotEmptyError")
       expect(existsSync(join(rootPath, "README.md"))).toBe(true)
+    }),
+  )
+
+  it.live("publishes progress and stops a cancelled clone without adding the project", () =>
+    Effect.gen(function* () {
+      const rootPath = join(emptyDir(), "Hello-World")
+      const firstProgress = yield* Deferred.make<PushEvent>()
+      const events = Layer.succeed(Events, { publish: (event) => Deferred.succeed(firstProgress, event) })
+      const interrupted = yield* Deferred.make<void>()
+      const cloneForever: GitHub.GitHub["Service"]["clone"] = (_repository, _dest, onProgress) =>
+        onProgress({ phase: "Receiving objects", percent: 40 }).pipe(
+          Effect.andThen(Effect.never),
+          Effect.onInterrupt(() => Deferred.succeed(interrupted, undefined)),
+        )
+      const [error, listed] = yield* Projects.use((projects) =>
+        Effect.gen(function* () {
+          const clone = yield* Effect.forkChild(
+            projects.clone({
+              cloneId: "c1",
+              repository: { owner: "octocat", name: "Hello-World" },
+              rootPath,
+              name: "x",
+              setupScript: null,
+            }),
+          )
+          expect(yield* Deferred.await(firstProgress)).toStrictEqual({
+            type: "project.cloneProgress",
+            cloneId: "c1",
+            progress: { phase: "Receiving objects", percent: 40 },
+          })
+          yield* projects.cancelClone("c1")
+          return [yield* Effect.flip(Fiber.join(clone)), yield* projects.list] as const
+        }),
+      ).pipe(Effect.provide(withGitHubMock({ clone: cloneForever }, events)))
+      expect(error._tag).toBe("ProjectCloneCancelledError")
+      expect(yield* Deferred.isDone(interrupted)).toBe(true)
+      expect(listed).toStrictEqual([])
+    }),
+  )
+
+  it.live("honours a cancel that arrives while the folder is still being checked", () =>
+    Effect.gen(function* () {
+      const rootPath = join(emptyDir(), "Hello-World")
+      const checking = yield* Deferred.make<void>()
+      const resume = yield* Deferred.make<void>()
+      const pausedOriginCheck = Layer.mock(Git.Git, {
+        run: () =>
+          Deferred.succeed(checking, undefined).pipe(
+            Effect.andThen(Deferred.await(resume)),
+            Effect.andThen(Effect.fail(new Git.CommandError({ command: "git", args: [], exitCode: 2, stderr: "" }))),
+          ),
+      })
+      const cloned: Array<string> = []
+      const github = Layer.mock(GitHub.GitHub, {
+        clone: (_repository, dest) => Effect.sync(() => void cloned.push(dest)),
+      })
+      const [error, listed] = yield* Projects.use((projects) =>
+        Effect.gen(function* () {
+          const clone = yield* Effect.forkChild(
+            projects.clone({
+              cloneId: "c2",
+              repository: { owner: "octocat", name: "Hello-World" },
+              rootPath,
+              name: "x",
+              setupScript: null,
+            }),
+          )
+          yield* Deferred.await(checking)
+          yield* projects.cancelClone("c2")
+          yield* Deferred.succeed(resume, undefined)
+          return [yield* Effect.flip(Fiber.join(clone)), yield* projects.list] as const
+        }),
+      ).pipe(
+        Effect.provide(
+          layer.pipe(
+            Layer.provide(Layer.mergeAll(pausedOriginCheck, github, Db.layer(":memory:"), noEvents)),
+            Layer.provide(NodeServices.layer),
+          ),
+        ),
+      )
+      expect(error._tag).toBe("ProjectCloneCancelledError")
+      expect(cloned).toStrictEqual([])
+      expect(listed).toStrictEqual([])
     }),
   )
 })

@@ -1,8 +1,8 @@
-import { mkdtempSync, writeFileSync } from "node:fs"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { afterEach, describe, expect, it } from "@effect/vitest"
+import { afterAll, afterEach, describe, expect, it } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer, Random, Stream } from "effect"
 import { SqlClient } from "effect/sql"
@@ -10,9 +10,12 @@ import { TestClock } from "effect/testing"
 import { vi } from "vitest"
 import type { AgentEvent } from "../../../shared/agent.ts"
 import type { PushEvent } from "../../../shared/contract.ts"
+import type { PullRequest, PullRequestTopic } from "../../../shared/domain.ts"
 import { ClaudeProvider } from "../../agents/claude/index.ts"
 import { CodexProvider } from "../../agents/codex/index.ts"
 import { MuseProvider } from "../../agents/muse/index.ts"
+import { OpencodeProvider } from "../../agents/opencode/index.ts"
+import { MagpieProvider } from "../../agents/magpie/index.ts"
 import type { AgentProvider } from "../../agents/provider.ts"
 import * as Db from "../../db/client.ts"
 import { seedThread } from "../../db/testing.ts"
@@ -23,6 +26,7 @@ import * as AgentRunner from "../AgentRunner.ts"
 import { Events } from "../Events.ts"
 import * as Git from "../Git.ts"
 import * as GitHub from "../GitHub.ts"
+import * as Attachments from "../Attachments.ts"
 import * as Messages from "../Messages.ts"
 import * as Projects from "../Projects.ts"
 import * as PullRequests from "../PullRequests.ts"
@@ -92,6 +96,7 @@ const makeLayer = (pushes: Array<PushEvent>, port: number) => {
       Layer.provideMerge(Settings.layer(dataDir)),
     ),
     Messages.layer,
+    Attachments.layer(join(dataDir, "attachments")),
     secrets,
     Linear.layer.pipe(Layer.provide(secrets)),
     credentialsLayer,
@@ -110,6 +115,8 @@ const makeLayer = (pushes: Array<PushEvent>, port: number) => {
         Layer.succeed(ClaudeProvider, provider("claude")),
         Layer.succeed(CodexProvider, provider("codex")),
         Layer.succeed(MuseProvider, provider("muse")),
+        Layer.succeed(OpencodeProvider, provider("opencode")),
+        Layer.succeed(MagpieProvider, provider("magpie")),
       ).pipe(
         Layer.provideMerge(Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) })),
       ),
@@ -134,8 +141,11 @@ const addIssue = (createdAt = issueAt, number = 32) => {
   })
 }
 
+const repo = mkdtempSync(join(tmpdir(), "kk-automations-repo-"))
+afterAll(() => rmSync(repo, { recursive: true, force: true }))
+
 const initialize = Effect.gen(function* () {
-  const { projectId } = yield* seedThread({ rootPath: "/repo" })
+  const { projectId } = yield* seedThread({ rootPath: repo })
   yield* Secrets.Secrets.use((secrets) => secrets.set(Linear.LINEAR_API_KEY_SECRET, "test-api-key"))
   yield* McpCredentials.use((credentials) => credentials.listening("http://127.0.0.1:1/mcp"))
   return projectId
@@ -165,6 +175,117 @@ const advanceTo = (millisAfterSave: number) =>
 
 afterEach(() => vi.useRealTimers())
 
+const pullRequest = {
+  url: "https://github.com/o/r/pull/7",
+  number: 7,
+  title: "Add the bus",
+} as PullRequest
+
+const createPullRequestAutomation = (projectId: string, topics: ReadonlyArray<PullRequestTopic>, enabled = true) =>
+  Automations.use((automations) =>
+    automations.create({
+      projectId,
+      name: "On pull requests",
+      enabled,
+      trigger: { type: "github.pullRequest", topics },
+      promptTemplate: "{{topic}} {{pullRequest.number}}: {{pullRequest.title}}",
+      provider: "claude",
+      model: "test-model",
+      runInWorktree: false,
+      branchTemplate: null,
+    }),
+  ).pipe(Effect.map(({ automation }) => automation))
+
+const withApp = <A, E, R>(
+  test: (context: { readonly projectId: string; readonly threadId: string }) => Effect.Effect<A, E, R>,
+) =>
+  Effect.gen(function* () {
+    const port = yield* unusedPort
+    yield* Effect.gen(function* () {
+      const { projectId, threadId } = yield* seedThread({ rootPath: repo })
+      yield* McpCredentials.use((credentials) => credentials.listening("http://127.0.0.1:1/mcp"))
+      return yield* test({ projectId, threadId })
+    }).pipe(Effect.provide(makeLayer([], port)))
+  })
+
+const fire = (threadId: string, topic: PullRequestTopic) =>
+  Automations.use((automations) => automations.firePullRequest({ topic, threadId, pullRequest }))
+const runsOf = (id: string) => Automations.use((automations) => automations.runs(id, 10))
+
+describe("pull request automations", () => {
+  it.effect("starts a thread for a listed topic with the event as the template payload", () =>
+    withApp(({ projectId, threadId }) =>
+      Effect.gen(function* () {
+        const automation = yield* createPullRequestAutomation(projectId, ["pullRequest.merged"])
+        yield* fire(threadId, "pullRequest.merged")
+        const runs = yield* runsOf(automation.id)
+        expect(runs.map((run) => [run.status, run.eventKey])).toStrictEqual([
+          ["started", `pullRequest.merged:${pullRequest.url}`],
+        ])
+        const started = yield* Threads.Threads.use((threads) => threads.get(runs[0]?.threadId ?? ""))
+        expect(started.title).toBe("pullRequest.merged 7: Add the bus")
+      }),
+    ),
+  )
+
+  it.effect("ignores unlisted topics, disabled automations and other projects", () =>
+    withApp(({ projectId, threadId }) =>
+      Effect.gen(function* () {
+        const otherRoot = mkdtempSync(join(tmpdir(), "kk-automations-other-"))
+        const other = yield* seedThread({ rootPath: otherRoot })
+        const unlisted = yield* createPullRequestAutomation(projectId, ["pullRequest.opened"])
+        const disabled = yield* createPullRequestAutomation(projectId, ["pullRequest.merged"], false)
+        const elsewhere = yield* createPullRequestAutomation(other.projectId, ["pullRequest.merged"])
+        yield* fire(threadId, "pullRequest.merged")
+        expect(yield* runsOf(unlisted.id)).toHaveLength(0)
+        expect(yield* runsOf(disabled.id)).toHaveLength(0)
+        expect(yield* runsOf(elsewhere.id)).toHaveLength(0)
+      }),
+    ),
+  )
+
+  it.effect("never fires for a pull request from a thread an automation started", () =>
+    withApp(({ projectId, threadId }) =>
+      Effect.gen(function* () {
+        const automation = yield* createPullRequestAutomation(projectId, ["pullRequest.opened"])
+        yield* fire(threadId, "pullRequest.opened")
+        const [first] = yield* runsOf(automation.id)
+        yield* Automations.use((automations) =>
+          automations.firePullRequest({
+            topic: "pullRequest.opened",
+            threadId: first?.threadId ?? "",
+            pullRequest: { ...pullRequest, url: "https://github.com/o/r/pull/8" },
+          }),
+        )
+        expect(yield* runsOf(automation.id)).toHaveLength(1)
+      }),
+    ),
+  )
+
+  it.effect("records a second thread's copy of the same event as skipped", () =>
+    withApp(({ projectId, threadId }) =>
+      Effect.gen(function* () {
+        const automation = yield* createPullRequestAutomation(projectId, ["pullRequest.merged"])
+        yield* fire(threadId, "pullRequest.merged")
+        yield* fire(threadId, "pullRequest.merged")
+        const runs = yield* runsOf(automation.id)
+        expect(runs.map((run) => run.status).toSorted()).toStrictEqual(["skipped", "started"])
+      }),
+    ),
+  )
+
+  it.effect("rejects a trigger with no topics and never polls one", () =>
+    withApp(({ projectId }) =>
+      Effect.gen(function* () {
+        const failure = yield* Effect.flip(createPullRequestAutomation(projectId, []))
+        expect(failure.message).toBe("Pick at least one pull request event")
+        const automation = yield* createPullRequestAutomation(projectId, ["pullRequest.merged"])
+        expect(automation.cursor).toBeNull()
+      }),
+    ),
+  )
+})
+
 describe("automation polling lifecycle", () => {
   for (const legacyCursor of [false, true]) {
     it.effect(
@@ -188,7 +309,9 @@ describe("automation polling lifecycle", () => {
             yield* advanceTo(5_000)
             yield* advanceTo(65_000)
 
-            const runs = yield* automations.runs(automation.id, 10)
+            const runs = yield* automations
+              .runs(automation.id, 10)
+              .pipe(Effect.repeat({ until: (stored) => stored.length > 0 }))
             expect(runs).toHaveLength(1)
             expect(linear.filters[0]?.createdAt.gt.toISOString()).toBe(savedAt.toISOString())
             expect(runs[0]?.status).toBe("started")
@@ -200,7 +323,9 @@ describe("automation polling lifecycle", () => {
             const thread = yield* Threads.Threads.use((threads) => threads.get(threadId))
             expect(thread.createdBy).toBe(`automation:${automation.id}`)
             expect(thread.title).toBe("Investigate KAL-32: Just test issue")
-            const transcript = yield* AgentRunner.AgentRunner.use((runner) => runner.transcript(threadId))
+            const transcript = yield* AgentRunner.AgentRunner.use((runner) => runner.transcript(threadId)).pipe(
+              Effect.repeat({ until: (stored) => stored.messages.length > 0 }),
+            )
             expect(transcript.messages[0]?.parts).toStrictEqual([
               { type: "text", text: "Investigate KAL-32: Just test issue" },
             ])

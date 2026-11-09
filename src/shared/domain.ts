@@ -4,6 +4,8 @@ import {
   AgentProfileName,
   Compaction,
   ForkPoint,
+  isCreateThreadTool,
+  isPublishArtifactTool,
   isRunAgentTool,
   ProviderId,
   Question,
@@ -37,6 +39,9 @@ export const Project = Schema.Struct({
   actions: Schema.Array(ProjectAction).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 })
 export type Project = typeof Project.Type
+
+export const CloneProgress = Schema.Struct({ phase: Schema.String, percent: Schema.Number })
+export type CloneProgress = typeof CloneProgress.Type
 
 export const chatFolder = (chatsRoot: string, threadId: string) =>
   `${chatsRoot.replace(/[\\/]+$/, "")}${chatsRoot.includes("\\") ? "\\" : "/"}${threadId}`
@@ -96,6 +101,13 @@ export const FsEntry = Schema.Struct({
   gitStatus: Schema.NullOr(ChangedFileStatus),
 })
 export type FsEntry = typeof FsEntry.Type
+
+export const DirectorySuggestion = Schema.Struct({
+  path: Schema.String,
+  name: Schema.String,
+  repository: Schema.Boolean,
+})
+export type DirectorySuggestion = typeof DirectorySuggestion.Type
 
 export const FsFileContent = Schema.Struct({
   content: Schema.String,
@@ -175,6 +187,7 @@ export const PullRequest = Schema.Struct({
   baseRefName: Schema.String,
   additions: Schema.Number,
   deletions: Schema.Number,
+  mergedAt: Schema.optional(Schema.NullOr(Schema.String)),
 })
 export type PullRequest = typeof PullRequest.Type
 
@@ -227,6 +240,31 @@ export const LineComment = Schema.Struct({
 })
 export type LineComment = typeof LineComment.Type
 
+export const PullRequestLabel = Schema.Struct({ name: Schema.String, color: Schema.String })
+export type PullRequestLabel = typeof PullRequestLabel.Type
+
+export const ReviewerState = Schema.Literals(["requested", "approved", "changesRequested", "commented"])
+export type ReviewerState = typeof ReviewerState.Type
+
+export const PullRequestReviewer = Schema.Struct({ login: Schema.String, state: ReviewerState })
+export type PullRequestReviewer = typeof PullRequestReviewer.Type
+
+export const PullRequestEditField = Schema.Literals(["labels", "assignees", "reviewers"])
+export type PullRequestEditField = typeof PullRequestEditField.Type
+
+export const PullRequestEdit = Schema.Struct({
+  field: PullRequestEditField,
+  add: Schema.Array(Schema.String.check(Schema.isNonEmpty())),
+  remove: Schema.Array(Schema.String.check(Schema.isNonEmpty())),
+})
+export type PullRequestEdit = typeof PullRequestEdit.Type
+
+export const PullRequestCandidates = Schema.Struct({
+  labels: Schema.Array(PullRequestLabel),
+  users: Schema.Array(Schema.String),
+})
+export type PullRequestCandidates = typeof PullRequestCandidates.Type
+
 export const PullRequestDetail = Schema.Struct({
   ...PullRequest.fields,
   body: Schema.String,
@@ -236,6 +274,9 @@ export const PullRequestDetail = Schema.Struct({
   checkRuns: Schema.Array(CheckRun),
   changedFiles: Schema.Number.pipe(Schema.withDecodingDefaultKey(Effect.succeed(0))),
   comments: Schema.Array(PullRequestComment).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+  labels: Schema.Array(PullRequestLabel).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+  assignees: Schema.Array(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+  reviewers: Schema.Array(PullRequestReviewer).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 })
 export type PullRequestDetail = typeof PullRequestDetail.Type
 
@@ -404,6 +445,16 @@ export const QueuedMessage = Schema.Struct({
 })
 export type QueuedMessage = typeof QueuedMessage.Type
 
+export const ScheduledMessage = Schema.Struct({
+  id: Schema.String,
+  text: Schema.String,
+  attachments: Schema.Array(Attachment),
+  workspace: Schema.optionalKey(WorkspaceChoice),
+  sendAt: Timestamp,
+  failure: Schema.optionalKey(Schema.String),
+})
+export type ScheduledMessage = typeof ScheduledMessage.Type
+
 export const Thread = Schema.Struct({
   id: Schema.String,
   projectId: Schema.String,
@@ -413,18 +464,20 @@ export const Thread = Schema.Struct({
   model: Schema.String,
   effort: Schema.NullOr(Schema.String),
   fastMode: Schema.Boolean,
-  userSkills: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
   accessMode: AccessMode,
   accountId: Schema.NullOr(Schema.String),
   providerSessionId: Schema.NullOr(Schema.String),
   forkedFrom: Schema.NullOr(ForkPoint).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   sideOf: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  parentId: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   status: ThreadStatus,
   usageLimit: Schema.NullOr(UsageLimit),
   sortIndex: Schema.Number,
   pinnedAt: Schema.NullOr(Timestamp),
   snoozedUntil: Schema.NullOr(Timestamp).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  settledAt: Schema.NullOr(Timestamp).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
   queue: Schema.Array(QueuedMessage),
+  scheduled: Schema.Array(ScheduledMessage).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
   createdBy: Schema.String,
   createdAt: Timestamp,
   updatedAt: Timestamp,
@@ -450,6 +503,11 @@ export const MessagePart = Schema.Union([
   Schema.Struct({ type: Schema.Literal("compaction"), compaction: Compaction }),
   Schema.Struct({ type: Schema.Literal("agent_switch"), from: ProviderId, to: ProviderId }),
   Schema.Struct({
+    type: Schema.Literal("signed_out"),
+    message: Schema.String,
+    loginCommand: Schema.optional(Schema.String),
+  }),
+  Schema.Struct({
     type: Schema.Literal("session_import"),
     provider: AccountProviderId,
     history: Schema.Literals(["replayed", "unavailable"]),
@@ -460,6 +518,12 @@ export type MessagePart = typeof MessagePart.Type
 // FIXME: Claude Code named its sub-agent tool Task before it became Agent
 export const spawnsSubagent = (call: { readonly name: string }) =>
   call.name === "Agent" || call.name === "Task" || isRunAgentTool(call.name)
+
+export const publishesArtifact = (call: { readonly name: string; readonly status: ToolCallStatus }) =>
+  isPublishArtifactTool(call.name) && call.status !== "error"
+
+export const createsThread = (call: { readonly name: string; readonly status: ToolCallStatus }) =>
+  isCreateThreadTool(call.name) && call.status !== "error"
 
 export const MessageRole = Schema.Literals(["user", "assistant"])
 export type MessageRole = typeof MessageRole.Type
@@ -525,9 +589,14 @@ export type NotificationPermission = typeof NotificationPermission.Type
 export const PermissionRequestOutcome = Schema.Literals(["shown", "refused", "noAnswer"])
 export type PermissionRequestOutcome = typeof PermissionRequestOutcome.Type
 
+export const DAYS_RANGE = { minimum: 1, maximum: 365 } as const
+const Days = Schema.NullOr(Schema.Int.check(Schema.isBetween(DAYS_RANGE)))
+
 export const ArchiveSettings = Schema.Struct({
   whenMerged: Schema.Boolean,
   removeWorktree: Schema.Boolean,
+  settleAfterIdleDays: Days.pipe(Schema.withDecodingDefaultKey(Effect.succeed(7))),
+  archiveAfterSettledDays: Days.pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
 })
 export type ArchiveSettings = typeof ArchiveSettings.Type
 
@@ -543,7 +612,6 @@ export const ExperimentalSettings = Schema.Struct({
   tinyVmBoatSize: BoatVmSize.pipe(Schema.withDecodingDefaultKey(Effect.succeed("default" as const))),
   tinyVmTemplate: Schema.String,
   tinyVmProfile: Schema.Boolean,
-  tinyVmPasskeys: Schema.Boolean,
   tinyVmEnv: Schema.Record(Schema.String, Schema.String),
   tinyVmSetupScript: Schema.String,
   devices: Schema.Boolean,
@@ -604,49 +672,42 @@ export const defaultClientSettings: ClientSettings = {
 export const AUTO_COMPACT_RANGE = { minimum: 100_000, maximum: 1_000_000 } as const
 const AutoCompactTokens = Schema.Int.check(Schema.isBetween(AUTO_COMPACT_RANGE))
 
+export const PRIVATE_NETWORKS = "private"
+
 export const BindHost = Schema.String.check(Schema.isPattern(/^(?!(?:0\.0\.0\.0|::|::0|\[::\])$)\S+$/))
 
 const ListenPort = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 }))
 
+const perProvider = <S extends Schema.Top>(value: S, fallback: S["Encoded"]) => {
+  const field = value.pipe(Schema.withDecodingDefaultKey(Effect.succeed(fallback)))
+  return Schema.Struct({ claude: field, codex: field, muse: field, opencode: field, magpie: field })
+}
+
+const eachProvider = <A>(value: A): Record<ProviderId, A> => ({
+  claude: value,
+  codex: value,
+  muse: value,
+  opencode: value,
+  magpie: value,
+})
+
 export const Settings = Schema.Struct({
   defaultProvider: ProviderId,
-  defaultModel: Schema.Struct({
-    claude: Schema.NullOr(Schema.String),
-    codex: Schema.NullOr(Schema.String),
-    muse: Schema.NullOr(Schema.String),
-  }),
-  defaultEffort: Schema.Struct({
-    claude: Schema.NullOr(Schema.String),
-    codex: Schema.NullOr(Schema.String),
-    muse: Schema.NullOr(Schema.String),
-  }),
-  defaultFastMode: Schema.Struct({ claude: Schema.Boolean, codex: Schema.Boolean, muse: Schema.Boolean }),
+  providerEnabled: perProvider(Schema.Boolean, true),
+  defaultModel: perProvider(Schema.NullOr(Schema.String), null),
+  defaultEffort: perProvider(Schema.NullOr(Schema.String), null),
+  defaultFastMode: perProvider(Schema.Boolean, false),
   defaultWorkspaceMode: WorkspaceChoice.fields.mode,
-  modelPresets: Schema.Struct({
-    claude: Schema.Array(Schema.String),
-    codex: Schema.Array(Schema.String),
-    muse: Schema.Array(Schema.String),
-  }),
-  defaultAccount: Schema.Struct({
-    claude: Schema.NullOr(Schema.String),
-    codex: Schema.NullOr(Schema.String),
-    muse: Schema.NullOr(Schema.String),
-  }),
-  defaultAccountName: Schema.Struct({
-    claude: Schema.NullOr(AgentProfileName),
-    codex: Schema.NullOr(AgentProfileName),
-    muse: Schema.NullOr(AgentProfileName),
-  }).pipe(Schema.withDecodingDefaultKey(Effect.succeed({ claude: null, codex: null, muse: null }))),
-  autoCompactTokens: Schema.Struct({
-    claude: Schema.NullOr(AutoCompactTokens),
-    codex: Schema.NullOr(AutoCompactTokens),
-    muse: Schema.NullOr(AutoCompactTokens),
-  }).pipe(Schema.withDecodingDefaultKey(Effect.succeed({ claude: null, codex: null, muse: null }))),
+  modelPresets: perProvider(Schema.Array(Schema.String), []),
+  defaultAccount: perProvider(Schema.NullOr(Schema.String), null),
+  defaultAccountName: perProvider(Schema.NullOr(AgentProfileName), null).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(eachProvider(null))),
+  ),
+  autoCompactTokens: perProvider(Schema.NullOr(AutoCompactTokens), null).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(eachProvider(null))),
+  ),
   automations: Schema.Struct({ bindHost: BindHost, port: ListenPort }),
-  remote: Schema.Union([
-    Schema.Struct({ enabled: Schema.Literal(false), bindHost: Schema.NullOr(BindHost), port: ListenPort }),
-    Schema.Struct({ enabled: Schema.Literal(true), bindHost: BindHost, port: ListenPort }),
-  ]),
+  remote: Schema.Struct({ enabled: Schema.Boolean, bindHost: BindHost, port: ListenPort }),
   textGenerationModel: Schema.String,
   pullRequestGuide: Schema.Struct({
     enabled: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
@@ -658,38 +719,50 @@ export const Settings = Schema.Struct({
   experimental: ExperimentalSettings,
   worktreeRoot: Schema.NullOr(Schema.String.check(Schema.isPattern(/^\//))),
   actions: Schema.Array(ProjectAction).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+  magpieEndpoint: Schema.NullOr(Schema.String.check(Schema.isPattern(/^https?:\/\/\S+$/))).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(null)),
+  ),
 })
 export type Settings = typeof Settings.Type
 
+export const enabledProviders = (settings: Pick<Settings, "providerEnabled">) =>
+  ProviderId.literals.filter((provider) => settings.providerEnabled[provider])
+
+export const startingProvider = (settings: Pick<Settings, "defaultProvider" | "providerEnabled">) =>
+  settings.providerEnabled[settings.defaultProvider]
+    ? settings.defaultProvider
+    : (enabledProviders(settings)[0] ?? settings.defaultProvider)
+
 export const defaultSettings: Settings = {
   defaultProvider: "claude",
-  defaultModel: { claude: null, codex: null, muse: null },
-  defaultEffort: { claude: null, codex: null, muse: null },
-  defaultFastMode: { claude: false, codex: false, muse: false },
+  providerEnabled: eachProvider(true),
+  defaultModel: eachProvider(null),
+  defaultEffort: eachProvider(null),
+  defaultFastMode: eachProvider(false),
   defaultWorkspaceMode: "local",
-  modelPresets: { claude: [], codex: [], muse: [] },
-  defaultAccount: { claude: null, codex: null, muse: null },
-  defaultAccountName: { claude: null, codex: null, muse: null },
-  autoCompactTokens: { claude: null, codex: null, muse: null },
+  modelPresets: eachProvider([]),
+  defaultAccount: eachProvider(null),
+  defaultAccountName: eachProvider(null),
+  autoCompactTokens: eachProvider(null),
   automations: { bindHost: "127.0.0.1", port: 48080 },
-  remote: { enabled: false, bindHost: null, port: 48081 },
+  remote: { enabled: false, bindHost: PRIVATE_NETWORKS, port: 48081 },
   textGenerationModel: "claude-sonnet-5-5",
   pullRequestGuide: { enabled: false, model: "claude-sonnet-5-5", effort: "high" },
   defaultAccessMode: "full",
-  archive: { whenMerged: false, removeWorktree: false },
+  archive: { whenMerged: true, removeWorktree: false, settleAfterIdleDays: 7, archiveAfterSettledDays: null },
   experimental: {
     tinyVm: false,
     tinyVmProvider: "boat",
     tinyVmBoatSize: "default",
     tinyVmTemplate: "default",
     tinyVmProfile: false,
-    tinyVmPasskeys: false,
     devices: false,
     tinyVmEnv: {},
     tinyVmSetupScript: "",
   },
   worktreeRoot: null,
   actions: [],
+  magpieEndpoint: null,
 }
 
 export const Machine = Schema.Struct({
@@ -716,6 +789,9 @@ export const RelayAccountStatus = Schema.Union([
     state: Schema.Literal("signedIn"),
     serviceUrl: Schema.String,
     environmentId: Schema.String,
+    name: Schema.NullOr(Schema.String),
+    email: Schema.NullOr(Schema.String),
+    avatar: Schema.NullOr(Schema.String),
     machines: Schema.Int,
     syncedAt: Schema.NullOr(Timestamp),
     error: Schema.NullOr(Schema.String),
@@ -797,22 +873,6 @@ export type VmHostStatus = typeof VmHostStatus.Type
 export const VmDesktopUrl = Schema.Struct({ url: Schema.String })
 export type VmDesktopUrl = typeof VmDesktopUrl.Type
 
-export const VmPasskeyKind = Schema.Literals(["get", "create"])
-export type VmPasskeyKind = typeof VmPasskeyKind.Type
-
-export const VmPasskey = Schema.Union([
-  Schema.Struct({ status: Schema.Literal("off") }),
-  Schema.Struct({ status: Schema.Literal("ready") }),
-  Schema.Struct({
-    status: Schema.Literal("pending"),
-    kind: VmPasskeyKind,
-    origin: Schema.String,
-    rpId: Schema.String,
-  }),
-  Schema.Struct({ status: Schema.Literal("failed"), message: Schema.String }),
-])
-export type VmPasskey = typeof VmPasskey.Type
-
 export const WatchEventKind = Schema.Literals([
   "checksFailed",
   "checksPassed",
@@ -890,6 +950,8 @@ export const TerminalSession = Schema.Struct({
   status: Schema.Literals(["running", "exited"]),
   exitCode: Schema.NullOr(Schema.Number),
   title: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  command: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
+  lastExitCode: Schema.NullOr(Schema.Number).pipe(Schema.withDecodingDefaultKey(Effect.succeed(null))),
 })
 export type TerminalSession = typeof TerminalSession.Type
 
@@ -902,8 +964,12 @@ export const TerminalAttachment = Schema.Struct({
 })
 export type TerminalAttachment = typeof TerminalAttachment.Type
 
+export const PullRequestTopic = Schema.Literals(["pullRequest.opened", "pullRequest.merged", "pullRequest.closed"])
+export type PullRequestTopic = typeof PullRequestTopic.Type
+
 export const AutomationTrigger = Schema.Union([
   Schema.Struct({ type: Schema.Literal("webhook") }),
+  Schema.Struct({ type: Schema.Literal("github.pullRequest"), topics: Schema.Array(PullRequestTopic) }),
   Schema.Struct({
     type: Schema.Literal("github.issue"),
     repo: Schema.String,
@@ -923,6 +989,8 @@ export const AutomationTrigger = Schema.Union([
 ])
 export type AutomationTrigger = typeof AutomationTrigger.Type
 export type AutomationTriggerType = AutomationTrigger["type"]
+
+export const isPolledTrigger = ({ type }: AutomationTrigger) => type !== "webhook" && type !== "github.pullRequest"
 
 export const AutomationRunStatus = Schema.Literals(["started", "skipped", "failed"])
 export type AutomationRunStatus = typeof AutomationRunStatus.Type

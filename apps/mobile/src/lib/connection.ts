@@ -9,14 +9,21 @@ import {
   type RpcRequest,
   type RpcResponse,
 } from "@shared/contract.ts"
-import { learnFromAnswer, learnFromPush, makeOwners, type Owners, stampProjects } from "@shared/owners.ts"
-import { dialPlan } from "@shared/remote.ts"
+import { learnFromAnswer, learnFromPush, makeOwners, type Owners, stampEnvironment } from "@shared/owners.ts"
+import { dialPlan, pairingUrl, parsePairingUrl } from "@shared/remote.ts"
 import { type Entity, routes } from "@shared/routes.ts"
 import { copy } from "./copy"
 import type { StoredServer } from "./stored-target"
-import { CONNECT_TIMEOUT_MS, PROBE_TIMEOUT_MS, RpcError, Transport, type TransportStatus } from "./transport"
+import {
+  CONNECT_TIMEOUT_MS,
+  PROBE_TIMEOUT_MS,
+  RpcError,
+  Transport,
+  type TransportMessages,
+  type TransportStatus,
+} from "@shared/transport.ts"
 
-export { RpcError } from "./transport"
+export { RpcError } from "@shared/transport.ts"
 
 export type ConnectionStatus = TransportStatus
 
@@ -113,18 +120,33 @@ export function onRemembered(listener: (serverId: string, answers: RememberedAns
   }
 }
 
-const sameTarget = (a: StoredServer, b: StoredServer) =>
-  a.port === b.port && a.token === b.token && a.hosts.join(" ") === b.hosts.join(" ")
+const sameTarget = (a: StoredServer, b: StoredServer) => a.port === b.port && a.token === b.token
+
+const sameDials = (a: StoredServer, b: StoredServer) => a.relay === b.relay && a.hosts.join(" ") === b.hosts.join(" ")
+
+const transportMessages: TransportMessages = {
+  notSent: copy("mobile_transport_not_sent"),
+  mayHaveRun: copy("mobile_transport_may_have_run"),
+  lostReply: copy("mobile_transport_lost_reply"),
+  disconnected: copy("mobile_transport_disconnected"),
+  notConnected: copy("mobile_transport_not_connected"),
+  tokenRotated: copy("mobile_transport_token_rotated"),
+  tokenRefused: copy("mobile_transport_token_refused"),
+  protocolMismatch: (server, client) =>
+    copy("mobile_transport_protocol_mismatch", { desktop: String(server), app: String(client) }),
+}
 
 function open(server: StoredServer) {
   const transport = new Transport({
     dials: dialPlan(server),
     token: server.token,
+    messages: transportMessages,
+    compact: true,
     isMutation: (method) => mutations.has(method),
     onStatus: (status, error) => {
       if (transports.get(server.id) === transport) updateServer(server.id, { status, error })
     },
-    onReady: (features, environment, relay) => {
+    onReady: (features, environment, relay, reported) => {
       if (transports.get(server.id) !== transport) return
       updateServer(server.id, (current) => ({
         features,
@@ -137,12 +159,16 @@ function open(server: StoredServer) {
       const older = servers.find(
         (other) => other.id !== server.id && environment !== undefined && other.environmentId === environment.id,
       )
-      // A relay set up or removed since pairing.
-      if (older !== undefined || relay !== servers.find((other) => other.id === server.id)?.relay)
+      const self = servers.find((other) => other.id === server.id)
+      if (self === undefined) return
+      // The desktop's addresses now, such as the LAN address of the Wi-Fi it joined, and a relay set up or removed.
+      const hosts =
+        reported === undefined ? self.hosts : (parsePairingUrl(pairingUrl({ ...self, hosts: reported }))?.hosts ?? self.hosts)
+      if (older !== undefined || !sameDials(self, { ...self, relay, hosts }))
         setServers(
           servers
             .filter((other) => other !== older)
-            .map((other) => (other.id === server.id ? { ...other, relay } : other)),
+            .map((other) => (other === self ? { ...other, relay, hosts } : other)),
         )
     },
     onEvent: (event) => {
@@ -179,8 +205,8 @@ export const storedServers = () => useConnection.getState().servers.map(toStored
 
 /**
  * Keeps one socket open to each of `servers`: opens the new ones, closes the ones no longer listed, redials a
- * server whose addresses or token changed, and points one whose relay changed at the new dial plan without dropping
- * its socket. Callers persist the list from `useConnection` themselves.
+ * server whose port or token changed, and points one whose addresses or relay changed at the new dial plan without
+ * dropping its socket. Callers persist the list from `useConnection` themselves.
  */
 export function setServers(servers: readonly StoredServer[]) {
   const previous = new Map(useConnection.getState().servers.map((server) => [server.id, server]))
@@ -189,8 +215,8 @@ export function setServers(servers: readonly StoredServer[]) {
     const existing = previous.get(server.id)
     const stored = toStored(server)
     if (existing !== undefined && sameTarget(existing, server)) {
-      // Only the relay changed: the open socket and the calls waiting on it stay.
-      if (existing.relay !== server.relay) transports.get(server.id)?.setDials(dialPlan(server))
+      // Only the addresses changed: the open socket and the calls waiting on it stay.
+      if (!sameDials(existing, server)) transports.get(server.id)?.setDials(dialPlan(server))
       return { ...existing, ...stored }
     }
     if (existing !== undefined) close(server.id)
@@ -273,7 +299,7 @@ async function send(serverId: string, method: RpcMethod, payload: unknown): Prom
   if ("error" in envelope) return envelope
   learnFromAnswer(owners, serverId, method, payload, envelope.result)
   if (method === "threads.list") updateServer(serverId, { listed: true })
-  return { result: stampProjects(method, envelope.result, serverId) }
+  return { result: stampEnvironment(method, envelope.result, serverId) }
 }
 
 /**
@@ -309,7 +335,8 @@ async function dispatch(method: RpcMethod, payload: unknown, named: string | und
   if (route.to === "all") return gather(method, payload)
   if (route.to === "owner" && servers.length > 1) {
     const id = payloadId(payload, route.key)
-    const owner = id === undefined ? null : await findOwner(route.entity, id)
+    const known = id === undefined ? undefined : owners.owner(route.entity, id)
+    const owner = known ?? named ?? (id === undefined ? null : await findOwner(route.entity, id))
     if (owner === null) throw new RpcError("NotFoundError", copy("mobile_connection_server_gone"))
     return send(owner, method, payload)
   }
@@ -322,7 +349,8 @@ async function dispatch(method: RpcMethod, payload: unknown, named: string | und
 
 /**
  * Calls the server that owns the call's ids, every server for a list, or `options.server` for a call that names
- * one (Add project, settings); unnamed, that is the first connected server. While a server's link is down the
+ * one (Add project, settings); unnamed, that is the first connected server. A call on an id no server has claimed yet,
+ * such as a transcript card's artifact after a restart, goes to the server it names. While a server's link is down the
  * call waits and is sent after its next handshake, so it runs once. Rejects with `RpcError` carrying the
  * handler's error tag, or `Timeout` after a minute offline.
  */

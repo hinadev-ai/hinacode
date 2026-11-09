@@ -1,3 +1,4 @@
+import { cn } from "cn"
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react"
 import { useHotkey } from "@tanstack/react-hotkeys"
 import { useNavigate, useSearch } from "@tanstack/react-router"
@@ -14,7 +15,7 @@ import { ModelSettings } from "../components/settings/ModelSettings.tsx"
 import { NotificationSettings } from "../components/settings/NotificationSettings.tsx"
 import { RemoteSettings } from "../components/settings/RemoteSettings.tsx"
 import { SettingsNav, settingsPageOf, useLeaveSettings } from "../components/settings/SettingsNav.tsx"
-import { PageActionSlotProvider } from "../components/settings/SettingsSection.tsx"
+import { PageActionSlotProvider, SETTINGS_FILL_WIDTH } from "../components/settings/SettingsSection.tsx"
 import { WorktreeSettings } from "../components/settings/WorktreeSettings.tsx"
 import { Button } from "../components/ui/button.tsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select.tsx"
@@ -23,16 +24,18 @@ import { errorMessage } from "../lib/errorMessage.ts"
 import { usePanelLayout } from "../lib/panelLayout.ts"
 import { type EnvironmentId, settingsAtom } from "../lib/rpc.ts"
 import { m } from "../paraglide/messages.js"
-import { CloudIcon } from "../components/icons/CloudIcon.tsx"
-import { LaptopIcon } from "../components/icons/LaptopIcon.tsx"
+import { inBrowser } from "../lib/runtime.ts"
+import { CloudIcon, LaptopIcon } from "@hinacode/icons"
 
 function ConnectionSettings() {
   return (
     <div className="flex flex-col gap-12">
       <EnvironmentSettings />
-      <LoadedSettings environment={null}>
-        <RemoteSettings />
-      </LoadedSettings>
+      {!inBrowser() && (
+        <LoadedSettings environment={null}>
+          <RemoteSettings />
+        </LoadedSettings>
+      )}
     </div>
   )
 }
@@ -60,6 +63,18 @@ export function SettingsRoute() {
   const Page = components[page.id]!
   const compact = usePanelLayout() === "compact"
   const [actionSlot, setActionSlot] = useState<HTMLElement | null>(null)
+  const pageWidth = page.fill ? SETTINGS_FILL_WIDTH : "max-w-3xl"
+  const content = (
+    <PageActionSlotProvider value={actionSlot}>
+      {page.scope === "environment" ? (
+        <LoadedSettings key={environment ?? ""} environment={environment}>
+          <Page />
+        </LoadedSettings>
+      ) : (
+        <Page />
+      )}
+    </PageActionSlotProvider>
+  )
 
   useHotkey(
     "Escape",
@@ -75,7 +90,7 @@ export function SettingsRoute() {
       {compact && <SettingsNav />}
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="shrink-0 scrollbar-gutter-both overflow-hidden window-drag">
-          <div className="mx-auto flex w-full max-w-3xl items-start gap-3 px-8 pt-5 pb-6">
+          <div className={cn("mx-auto flex w-full items-start gap-3 px-8 pt-5 pb-6", pageWidth)}>
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <h1 className="text-lg font-semibold">{page.label()}</h1>
               {page.description && <p className="text-sm text-pretty text-muted-foreground">{page.description()}</p>}
@@ -96,19 +111,13 @@ export function SettingsRoute() {
             )}
           </div>
         </header>
-        <div className="min-h-0 flex-1 scrollbar-gutter-both overflow-y-auto">
-          <div className="mx-auto w-full max-w-3xl px-8 pb-12">
-            <PageActionSlotProvider value={actionSlot}>
-              {page.scope === "environment" ? (
-                <LoadedSettings key={environment ?? ""} environment={environment}>
-                  <Page />
-                </LoadedSettings>
-              ) : (
-                <Page />
-              )}
-            </PageActionSlotProvider>
+        {page.fill ? (
+          <div className="flex min-h-0 flex-1 flex-col">{content}</div>
+        ) : (
+          <div className="min-h-0 flex-1 scrollbar-gutter-both overflow-y-auto">
+            <div className="mx-auto w-full max-w-3xl px-8 pb-12">{content}</div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )
@@ -125,7 +134,7 @@ interface EnvironmentPickerProps {
 
 function EnvironmentPicker({ labelId, value, clouds, onChange }: EnvironmentPickerProps) {
   const items = [
-    { value: THIS_MACHINE, label: m.environment_this_machine() },
+    ...(inBrowser() ? [] : [{ value: THIS_MACHINE, label: m.environment_this_machine() }]),
     ...clouds.map((cloud) => ({ value: cloud.id, label: cloud.name })),
   ]
   return (

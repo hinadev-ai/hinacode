@@ -4,6 +4,7 @@ import {
   continueList,
   endsWithClosedFence,
   highlight,
+  indentList,
   leadingSkill,
   listBackspace,
   matchFiles,
@@ -11,17 +12,34 @@ import {
   matchThreads,
   segmentText,
   suggestionsFor,
+  type TextEdit,
 } from "./composerSyntax.ts"
+import type { TerminalSession } from "./domain.ts"
 
 const known = {
   commands: new Set(["/kalan-mode", "$verify-hinacode"]),
   files: new Set(["src/main/ipc.ts"]),
   threads: new Set(["t-1"]),
+  terminals: new Set(["term-1"]),
 }
 
 const typeShiftEnter = (text: string, caret = text.length) => {
   const edit = continueList(text, caret, caret)
   return edit && text.slice(0, edit.from) + edit.insert + text.slice(edit.to)
+}
+
+type ListKey = (text: string, caret: number) => TextEdit | null
+const shiftEnter: ListKey = (text, caret) => continueList(text, caret, caret)
+const tab: ListKey = (text, caret) => indentList(text, caret, 1)
+const shiftTab: ListKey = (text, caret) => indentList(text, caret, -1)
+
+const press = (withCaret: string, key: ListKey) => {
+  const caret = withCaret.indexOf("|")
+  const text = withCaret.replace("|", "")
+  const edit = key(text, caret)
+  if (edit === null) return null
+  const next = text.slice(0, edit.from) + edit.insert + text.slice(edit.to)
+  return `${next.slice(0, edit.anchor)}|${next.slice(edit.anchor)}`
 }
 
 describe("continueList", () => {
@@ -49,6 +67,59 @@ describe("continueList", () => {
     expect(continueList("- item", 1, 1)).toBeNull()
     expect(typeShiftEnter("```\n- in code")).toBeNull()
     expect(typeShiftEnter("```\n```\n- after code")).toBe("```\n```\n- after code\n- ")
+  })
+
+  test("renumbers the ordered items after the new one", () => {
+    expect(press("1. first|\n2. second", shiftEnter)).toBe("1. first\n2. |\n3. second")
+    expect(press("3. c|\n4. d\n- other", shiftEnter)).toBe("3. c\n4. |\n5. d\n- other")
+    expect(press("1. a\n   1. x|\n   2. y\n2. b", shiftEnter)).toBe("1. a\n   1. x\n   2. |\n   3. y\n2. b")
+  })
+
+  test("keeps nested items under a number that grows a digit", () => {
+    expect(press("8. a|\n9. b\n   - child", shiftEnter)).toBe("8. a\n9. |\n10. b\n    - child")
+  })
+
+  test("continues when the selection ends right before the item text", () => {
+    expect(continueList("- one two", 2, 5)).toStrictEqual({ from: 2, to: 5, insert: "\n- ", anchor: 5 })
+    expect(continueList("- one\n- two three", 2, 11)).toStrictEqual({ from: 2, to: 11, insert: "\n- ", anchor: 5 })
+  })
+
+  test("moves an empty nested item up a level", () => {
+    expect(press("1. a\n   - x\n   - |", shiftEnter)).toBe("1. a\n   - x\n2. |")
+    expect(press("1. a\n   1. |\n2. b", shiftEnter)).toBe("1. a\n2. |\n3. b")
+  })
+})
+
+describe("indentList", () => {
+  test("nests an item under the one above and renumbers both levels", () => {
+    expect(press("- a\n- |b", tab)).toBe("- a\n  - |b")
+    expect(press("1. a\n2. b|\n3. c", tab)).toBe("1. a\n   1. b|\n2. c")
+    expect(press("1. a\n   1. x\n2. |b", tab)).toBe("1. a\n   1. x\n   2. |b")
+  })
+
+  test("reuses the indent of the existing nested items, tabs included", () => {
+    expect(press("- parent\n\t- one\n- two|", tab)).toBe("- parent\n\t- one\n\t- two|")
+  })
+
+  test("keeps a caret that sits before the marker", () => {
+    expect(press("- a\n|- b", tab)).toBe("- a\n  |- b")
+  })
+
+  test("carries the nested items along", () => {
+    expect(press("- a\n- b|\n  - c", tab)).toBe("- a\n  - b|\n    - c")
+    expect(press("- a\n  - b|\n    - c", shiftTab)).toBe("- a\n- b|\n  - c")
+  })
+
+  test("lifts an item to its parent's list", () => {
+    expect(press("1. a\n   1. |b\n2. c", shiftTab)).toBe("1. a\n2. |b\n3. c")
+    expect(press("1. a\n   1. x\n   2. |y\n   3. z", shiftTab)).toBe("1. a\n   1. x\n2. |y\n   1. z")
+  })
+
+  test("keeps the item in place when it cannot move, and ignores text outside lists", () => {
+    expect(press("- |a", tab)).toBe("- |a")
+    expect(press("- |a", shiftTab)).toBe("- |a")
+    expect(press("plain|", tab)).toBeNull()
+    expect(press("```\n- in code|", tab)).toBeNull()
   })
 })
 
@@ -119,6 +190,14 @@ describe("highlight", () => {
     expect(
       highlight("ask @thread:t-1. and @thread:t-2", known).filter((segment) => segment.kind !== "text"),
     ).toStrictEqual([{ kind: "mention", text: "@thread:t-1" }])
+  })
+
+  test("marks mentions of known terminals only, and keeps the kinds apart", () => {
+    expect(
+      highlight("see @terminal:term-1, @terminal:gone and @thread:term-1", known).filter(
+        (segment) => segment.kind !== "text",
+      ),
+    ).toStrictEqual([{ kind: "mention", text: "@terminal:term-1" }])
   })
 
   test("leaves an unclosed backtick as text", () => {
@@ -222,15 +301,47 @@ describe("matchThreads", () => {
   })
 })
 
+const session = (id: string, title: string | null): TerminalSession => ({
+  id,
+  threadId: "t-1",
+  cwd: "/repo",
+  cols: 80,
+  rows: 24,
+  status: "running",
+  exitCode: null,
+  title,
+  command: null,
+  lastExitCode: null,
+})
+
 describe("suggestionsFor", () => {
   test("lists a command once when the agent reports it from several places", () => {
     const commands = [command("$", "animate"), command("$", "animation-vocabulary"), command("$", "animate")]
     const completion = { trigger: "$" as const, query: "anim", start: 0, end: 5 }
     expect(
-      suggestionsFor(completion, commands, [], { sameMachine: [], otherMachines: [] }, []).map(
+      suggestionsFor(completion, commands, [], { sameMachine: [], otherMachines: [] }, [], []).map(
         (suggestion) => suggestion.insert,
       ),
     ).toStrictEqual(["$animate", "$animation-vocabulary"])
+  })
+
+  test("lists the thread's terminals by label after threads and before files", () => {
+    const terminals = [
+      { session: session("term-1", null), label: "Terminal 1" },
+      { session: session("term-2", "pnpm dev"), label: "pnpm dev" },
+    ]
+    const suggest = (text: string) =>
+      suggestionsFor(
+        completionAt(text, text.length)!,
+        [],
+        ["src/terminal.ts"],
+        { sameMachine: [], otherMachines: [] },
+        terminals,
+        [],
+      ).map((suggestion) => suggestion.insert)
+    expect(suggest("@term")).toStrictEqual(["@terminal:term-1", "@src/terminal.ts"])
+    expect(suggest("@dev")).toStrictEqual(["@terminal:term-2"])
+    expect(suggest("@")).toStrictEqual(["@terminal:term-1", "@terminal:term-2", "@src/terminal.ts"])
   })
 })
 

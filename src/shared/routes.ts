@@ -1,6 +1,15 @@
 import type { RpcMethod } from "./contract.ts"
 
-export type Entity = "thread" | "project" | "worktree" | "terminal" | "automation" | "request" | "root" | "stream"
+export type Entity =
+  | "thread"
+  | "project"
+  | "worktree"
+  | "terminal"
+  | "automation"
+  | "request"
+  | "root"
+  | "stream"
+  | "artifact"
 
 export type Route =
   | { readonly to: "client" }
@@ -32,6 +41,7 @@ export const routes: Record<RpcMethod, Route> = {
   "device.command": thread,
   "device.control": thread,
   "device.pick": thread,
+  "device.screenshot.save": client,
   "app.ready": client,
   "app.focus": client,
   "windows.openPullRequest": client,
@@ -40,6 +50,20 @@ export const routes: Record<RpcMethod, Route> = {
   "app.setColorScheme": client,
   "dialog.pickFolder": client,
   "dialog.pickFiles": client,
+  "artifacts.export": client,
+  "artifacts.setTheme": client,
+  "artifacts.delete": owner("artifact", "id"),
+  "artifacts.readDocument": owner("artifact", "id"),
+  "artifacts.saveDocument": owner("artifact", "id"),
+  "artifacts.addDocumentImage": owner("artifact", "id"),
+  "artifacts.createDocument": thread,
+  "artifacts.createWhiteboard": thread,
+  "artifacts.readWhiteboard": owner("artifact", "id"),
+  "artifacts.saveWhiteboard": owner("artifact", "id"),
+  "artifacts.feedback": owner("artifact", "id"),
+  "artifacts.comment": owner("artifact", "id"),
+  "artifacts.resolveComment": owner("artifact", "id"),
+  "artifacts.rename": owner("artifact", "id"),
   "shell.reveal": client,
   "shell.openers": client,
   "shell.openWith": client,
@@ -59,8 +83,6 @@ export const routes: Record<RpcMethod, Route> = {
   "relayAccount.machines": client,
   "relayAccount.setShown": client,
   "relayAccount.removeMachine": client,
-  "relayAccount.pendingLink": client,
-  "relayAccount.approveLink": client,
   "updates.status": named,
   "updates.check": named,
   "updates.install": named,
@@ -76,6 +98,7 @@ export const routes: Record<RpcMethod, Route> = {
   "linear.issues": all,
   "limits.list": named,
   "search.threads": all,
+  "artifacts.list": all,
 
   "settings.get": named,
   "settings.set": named,
@@ -84,6 +107,8 @@ export const routes: Record<RpcMethod, Route> = {
   "accounts.rename": named,
   "accounts.delete": named,
   "agents.account": named,
+  "magpie.test": named,
+  "magpie.saveKey": named,
   "models.list": named,
   "secrets.has": named,
   "secrets.set": named,
@@ -97,6 +122,8 @@ export const routes: Record<RpcMethod, Route> = {
   "github.merge": named,
   "github.close": named,
   "github.comment": named,
+  "github.pullRequestCandidates": named,
+  "github.editPullRequest": named,
   "github.fileContent": named,
   "github.reviewComment": named,
   "vm.host": named,
@@ -105,10 +132,9 @@ export const routes: Record<RpcMethod, Route> = {
   "remote.status": named,
   "remote.pairing": named,
   "remote.rotateToken": named,
-  "remote.setupRelay": named,
-  "remote.removeRelay": named,
   "projects.create": named,
   "projects.clone": named,
+  "projects.cancelClone": named,
   "ports.kill": named,
   "automations.list": named,
 
@@ -139,13 +165,21 @@ export const routes: Record<RpcMethod, Route> = {
   "sessions.import": owner("project", "projectId"),
   "threads.archive": thread,
   "threads.unarchive": thread,
+  "threads.settle": thread,
+  "threads.unsettle": thread,
+  "threads.regenerateTitle": thread,
   "threads.transcript": thread,
   "threads.toolOutput": thread,
   "threads.send": thread,
   "threads.steer": thread,
   "threads.queue": thread,
   "threads.unqueue": thread,
+  "threads.schedule": thread,
+  "threads.reschedule": thread,
+  "threads.unschedule": thread,
   "threads.interrupt": thread,
+  "threads.warm": thread,
+  "threads.reveal": thread,
   "threads.usage": thread,
   "threads.contextBreakdown": thread,
   "commands.list": thread,
@@ -153,8 +187,10 @@ export const routes: Record<RpcMethod, Route> = {
   "search.files": thread,
   "subagents.list": thread,
   "subagents.stop": thread,
+  "subagents.transcript": thread,
   "backgroundTasks.list": thread,
   "backgroundTasks.stop": thread,
+  "backgroundTasks.moveCommand": thread,
   "pullRequests.list": thread,
   "pullRequests.unlink": thread,
   "pullRequests.create": thread,
@@ -173,9 +209,6 @@ export const routes: Record<RpcMethod, Route> = {
   "vm.files.drop": thread,
   "vm.profile.save": thread,
   "vm.screenshot.save": thread,
-  "vm.passkey.get": thread,
-  "vm.passkey.prepare": thread,
-  "vm.passkey.cancel": thread,
   "attachments.stage": thread,
   "attachments.read": named,
 
@@ -206,7 +239,13 @@ export const routes: Record<RpcMethod, Route> = {
   "fs.read": root,
   "fs.preview": root,
   "fs.write": root,
+  "fs.create": root,
+  "fs.rename": root,
+  "fs.delete": root,
   "fs.watch": root,
+  "fs.completeDirectory": named,
+
+  "artifacts.file": owner("artifact", "id"),
 
   "vm.screen.send": owner("stream", "streamId"),
   "vm.screen.close": owner("stream", "streamId"),

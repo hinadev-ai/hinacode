@@ -3,22 +3,19 @@ import { useNavigate } from "@tanstack/react-router"
 import { AsyncResult } from "effect/reactivity"
 import type { ReactNode } from "react"
 import { RiGithubFill, RiSlackFill } from "react-icons/ri"
-import type { AgentAccount, ProviderId } from "../../../shared/agent.ts"
+import { type AgentAccount, ProviderId } from "../../../shared/agent.ts"
 import type { EnvironmentStatus, GitHubAuth } from "../../../shared/domain.ts"
 import { type Cloud, statusLabel, useCloudStateText, useClouds } from "../../lib/environments.ts"
 import { accountAtom, type EnvironmentId, gitHubAuthAtom, secretStoredAtom } from "../../lib/rpc.ts"
 import { cn } from "../../lib/utils.ts"
 import { m } from "../../paraglide/messages.js"
+import { inBrowser } from "../../lib/runtime.ts"
 import { LinearIcon } from "../icons/LinearIcon.tsx"
 import { ProviderIcon, providerLabel } from "../ProviderIcon.tsx"
 import { Button } from "../ui/button.tsx"
 import { Skeleton } from "../ui/skeleton.tsx"
 import { SettingsSection, settingsSurfaceClass } from "./SettingsSection.tsx"
-import { CheckIcon } from "../icons/CheckIcon.tsx"
-import { CloudIcon } from "../icons/CloudIcon.tsx"
-import { LaptopIcon } from "../icons/LaptopIcon.tsx"
-import { MinusIcon } from "../icons/MinusIcon.tsx"
-import { WarningFillIcon } from "../icons/WarningFillIcon.tsx"
+import { CheckIcon, CloudIcon, LaptopIcon, MinusIcon, WarningFillIcon } from "@hinacode/icons"
 
 type Tone = "ready" | "attention" | "off" | "loading"
 
@@ -119,7 +116,7 @@ function SecretCell({ name, ...props }: CellProps & { name: string }) {
 }
 
 const rows: ReadonlyArray<Row> = [
-  ...(["claude", "codex", "muse"] as const).map((provider): Row => ({
+  ...ProviderId.literals.map((provider): Row => ({
     id: provider,
     label: providerLabel[provider],
     icon: <ProviderIcon provider={provider} className="size-4" />,
@@ -208,7 +205,7 @@ function UnreachableCell({ cloud, span, onOpen }: { cloud: Cloud; span: number; 
 export function MachineSetup() {
   const clouds = useClouds()
   const machines: ReadonlyArray<Machine> = [
-    { id: null, name: m.environment_this_machine(), cloud: null },
+    ...(inBrowser() ? [] : [{ id: null, name: m.environment_this_machine(), cloud: null }]),
     ...clouds.map((cloud) => ({ id: cloud.id, name: cloud.name, cloud })),
   ]
   const navigate = useNavigate()

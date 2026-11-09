@@ -1,10 +1,13 @@
 import type { ModelInfo, Options, PermissionResult, SDKUserMessage, SlashCommand } from "@anthropic-ai/claude-agent-sdk"
 import { describe, expect, it } from "@effect/vitest"
 import { vi } from "vitest"
-import { Effect, Fiber, Option, Stream } from "effect"
+import { Effect, Fiber, Layer, Option, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import type { AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
 import { usageLimitResult } from "./fixtures/usageLimit.ts"
+import type { GatewayModel, GatewayTarget } from "../magpie/gateway.ts"
+import { MagpieProvider } from "../magpie/index.ts"
+import { magpieDependencies } from "../magpie/testing.ts"
 import { ClaudeProvider, layer } from "./index.ts"
 
 const sdk = vi.hoisted(() => {
@@ -19,6 +22,7 @@ const sdk = vi.hoisted(() => {
     readonly setPermissionMode = vi.fn((_mode: string) => sdk.setPermissionMode())
     readonly interrupt = vi.fn(() => Promise.resolve())
     readonly stopTask = vi.fn((_taskId: string) => Promise.resolve())
+    readonly backgroundTasks = vi.fn((_toolUseId?: string) => Promise.resolve(true))
     readonly supportedCommands = vi.fn(() => sdk.supportedCommands())
     readonly supportedModels = vi.fn(() => sdk.supportedModels())
     private readonly buffer: Array<Message> = []
@@ -103,6 +107,24 @@ vi.mock("../binary.ts", async () => {
   return { installedBinary: (_provider: string, name: string) => succeed(name) }
 })
 
+const gateway = vi.hoisted(() => ({
+  origin: null as string | null,
+  models: new Array<GatewayModel>(),
+}))
+
+vi.mock("../magpie/gateway.ts", async (importOriginal) => {
+  const { fail, succeed, sync } = await import("effect/Effect")
+  const original = await importOriginal<typeof import("../magpie/gateway.ts")>()
+  return {
+    ...original,
+    connect: (target: GatewayTarget) =>
+      gateway.origin === null
+        ? fail(new original.GatewayError({ message: "magpie is not running" }))
+        : succeed({ origin: gateway.origin, key: target.key ?? original.MAGPIE_KEY, version: null }),
+    modelsOf: () => sync(() => gateway.models),
+  }
+})
+
 const TTL = "60 seconds"
 
 const init = (sessionId: string) => ({ type: "system", subtype: "init", session_id: sessionId })
@@ -145,11 +167,11 @@ const turnInput = (overrides: Partial<RunTurnInput> = {}): RunTurnInput => ({
   prompt: "Hello",
   attachments: [],
   cwd: "/repo",
+  tmpDirectory: "/tmp/hc-thread-1",
   model: "claude-sonnet-5-5",
   effort: null,
   fastMode: false,
   autoCompactTokens: null,
-  userSkills: true,
   accessMode: "supervised",
   resumeSessionId: null,
   forkAt: null,
@@ -237,22 +259,15 @@ describe("Claude idle sessions", () => {
     )
   }
 
-  it.effect("resumes in a new CLI without the user's skills when conversation mode turns on", () =>
+  it.effect("spawns the CLI with the thread's tmp folder as its temp directory", () =>
     lifecycle(
       Effect.gen(function* () {
-        sdk.supportedCommands = () =>
-          Promise.resolve([
-            { name: "kalan-mode", description: "Kalan's working mode. (user)", argumentHint: "" },
-            { name: "verify", description: "Drive the app. (project)", argumentHint: "" },
-          ])
         yield* runTurn()
-        const first = latestCli()
-        expect(first.options.settings).toStrictEqual({ fastMode: false })
-
-        yield* runTurn(turnInput({ userSkills: false }))
-        expect(first.close).toHaveBeenCalled()
-        expect(latestCli().options.resume).toBe("session-1")
-        expect(latestCli().options.settings).toStrictEqual({ fastMode: false, skillOverrides: { "kalan-mode": "off" } })
+        expect(latestCli().options.env).toMatchObject({
+          TMPDIR: "/tmp/hc-thread-1",
+          TMP: "/tmp/hc-thread-1",
+          TEMP: "/tmp/hc-thread-1",
+        })
       }),
     ),
   )
@@ -410,7 +425,7 @@ describe("Claude idle sessions", () => {
         }
         const turn = yield* startTurn()
         yield* until(() => sdk.clis.at(-1)?.prompts.length === 1)
-        yield* provider.steer("thread-1", "Use pnpm instead", [])
+        yield* provider.steer!("thread-1", "Use pnpm instead", [], "now")
         yield* until(() => latestCli().prompts.length === 2)
         const [prompt, steer] = latestCli().prompts.map((message) => message.uuid)
         latestCli().push({ ...succeeded, terminal_reason: "aborted_streaming", user_message_uuids: [prompt] })
@@ -425,6 +440,23 @@ describe("Claude idle sessions", () => {
     ),
   )
 
+  it.effect("lets a steer wait for the running tool call instead of aborting it", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        sdk.respond = (cli) => {
+          if (cli.prompts.length === 1) cli.push(init("session-1"))
+        }
+        yield* startTurn()
+        yield* until(() => sdk.clis.at(-1)?.prompts.length === 1)
+        yield* provider.steer!("thread-1", "Use pnpm instead", [], "now")
+        yield* provider.steer!("thread-1", "Then run lint", [], "next")
+        yield* until(() => latestCli().prompts.length === 3)
+        expect(latestCli().prompts.map((message) => message.priority)).toStrictEqual([undefined, "now", "next"])
+      }),
+    ),
+  )
+
   it.effect("answers a steer sent while Claude finishes within the same turn", () =>
     lifecycle(
       Effect.gen(function* () {
@@ -434,7 +466,7 @@ describe("Claude idle sessions", () => {
         }
         const turn = yield* startTurn()
         yield* until(() => sdk.clis.at(-1)?.prompts.length === 1)
-        yield* provider.steer("thread-1", "Use pnpm instead", [])
+        yield* provider.steer!("thread-1", "Use pnpm instead", [], "now")
         yield* until(() => latestCli().prompts.length === 2)
         const [prompt, steer] = latestCli().prompts.map((message) => message.uuid)
         latestCli().push({ ...succeeded, user_message_uuids: [prompt] }, textDelta("Switching to pnpm", steer), {
@@ -460,13 +492,13 @@ describe("Claude idle sessions", () => {
         }
         const abandoned = yield* startTurn()
         yield* until(() => sdk.clis.at(-1)?.prompts.length === 1)
-        yield* provider.steer("thread-1", "Use pnpm instead", [])
+        yield* provider.steer!("thread-1", "Use pnpm instead", [], "now")
         yield* until(() => latestCli().prompts.length === 2)
         yield* Fiber.interrupt(abandoned.fiber)
 
         const turn = yield* startTurn(turnInput({ prompt: "Run the tests" }))
         yield* until(() => latestCli().prompts.length === 3)
-        yield* provider.steer("thread-1", "Only the unit tests", [])
+        yield* provider.steer!("thread-1", "Only the unit tests", [], "now")
         yield* until(() => latestCli().prompts.length === 4)
         const [first, abandonedSteer, prompt, steer] = latestCli().prompts.map((message) => message.uuid)
         const mixed = [abandonedSteer, steer]
@@ -737,26 +769,6 @@ describe("Claude idle sessions", () => {
     ),
   )
 
-  it.effect("keeps user commands available for completions after a conversation turn", () =>
-    lifecycle(
-      Effect.gen(function* () {
-        const provider = yield* ClaudeProvider
-        sdk.supportedCommands = () =>
-          Promise.resolve([
-            { name: "personal", description: "User skill. (user)", argumentHint: "" },
-            { name: "project", description: "Project skill. (project)", argumentHint: "" },
-          ])
-        yield* runTurn(turnInput({ userSkills: false }))
-        const live = latestCli()
-        live.supportedCommands.mockResolvedValue([
-          { name: "project", description: "Project skill. (project)", argumentHint: "" },
-        ])
-        const commands = yield* provider.listCommands({ threadId: "thread-1", cwd: "/repo", home: null })
-        expect(commands.map((command) => command.name)).toStrictEqual(["personal", "project"])
-      }),
-    ),
-  )
-
   it.effect("stops a turn whose auto mode check is pending without starting or stranding a CLI", () =>
     lifecycle(
       Effect.gen(function* () {
@@ -779,23 +791,56 @@ describe("Claude idle sessions", () => {
   )
 })
 
-describe("Claude sub-agents", () => {
-  it.effect("stops one sub-agent through the CLI by its task id", () =>
+const warm = (input: RunTurnInput = turnInput()) =>
+  Effect.gen(function* () {
+    const provider = yield* ClaudeProvider
+    yield* provider.warm!(input)
+  })
+
+describe("Claude warm sessions", () => {
+  it.effect("sends the next prompt to the CLI a warm started", () =>
     lifecycle(
       Effect.gen(function* () {
-        const provider = yield* ClaudeProvider
-        sdk.respond = (cli) =>
-          cli.push(init("session-1"), taskStarted("agent-1", { task_type: "local_agent", tool_use_id: "toolu-1" }))
-        const turn = yield* startTurn()
-        yield* until(() => turn.events.some((event) => event.type === "subagent_updated"))
+        yield* warm()
+        expect(sdk.clis).toHaveLength(1)
+        expect(latestCli().prompts).toHaveLength(0)
 
-        yield* (provider.stopSubagent ?? (() => Effect.die("stopSubagent is missing")))("thread-1", "agent-1")
-        expect(latestCli().stopTask).toHaveBeenCalledWith("agent-1")
+        const events = yield* runTurn()
+        expect(sdk.clis).toHaveLength(1)
+        expect(latestCli().prompts).toHaveLength(1)
+        expect(events.at(-1)?.type).toBe("turn_completed")
+      }),
+    ),
+  )
+
+  it.effect("starts one CLI when a warm and a turn race on the same thread", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const input = turnInput()
+        const warming = yield* warm(input).pipe(Effect.forkChild)
+        const turn = yield* startTurn(input)
+        yield* until(() => sdk.clis.length === 1)
+        yield* settle
+
+        yield* Fiber.join(warming)
+        yield* Fiber.join(turn.fiber)
+        expect(sdk.clis.filter((cli) => cli.options.mcpServers !== undefined)).toHaveLength(1)
+        expect(turn.events.at(-1)?.type).toBe("turn_completed")
+      }),
+    ),
+  )
+
+  it.effect("closes a warmed CLI that no prompt reaches within 60 seconds", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        yield* warm()
+        yield* TestClock.adjust(TTL)
+        yield* settle
+        expect(latestCli().close).toHaveBeenCalledOnce()
       }),
     ),
   )
 })
-
 const scheduleWakeup = (input: Readonly<Record<string, unknown>>, result: Readonly<Record<string, unknown>>) => [
   {
     type: "assistant",
@@ -815,6 +860,23 @@ const scheduleWakeup = (input: Readonly<Record<string, unknown>>, result: Readon
 ]
 
 describe("Claude background tasks", () => {
+  it.effect("moves one running command to the background by its tool call id", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        const moveCommand = provider.backgroundTasks?.moveCommand
+        if (moveCommand === undefined) return yield* Effect.die("moveCommand is missing")
+        expect(yield* moveCommand("thread-1", "toolu-1")).toBe(false)
+
+        sdk.respond = (cli) => cli.push(init("session-1"), succeeded)
+        yield* runTurn()
+
+        expect(yield* moveCommand("thread-1", "toolu-1")).toBe(true)
+        expect(latestCli().backgroundTasks).toHaveBeenCalledWith("toolu-1")
+      }),
+    ),
+  )
+
   it.effect(
     "reports the shells it runs after the turn, stops one by its task id, and clears them when the CLI exits",
     () =>
@@ -914,6 +976,30 @@ describe("Claude background tasks", () => {
           expect(latestCli().options.resume).toBeUndefined()
         }),
       ),
+  )
+
+  it.effect("keeps a scheduled wakeup when a warm brings a different context", () =>
+    lifecycle(
+      Effect.gen(function* () {
+        const provider = yield* ClaudeProvider
+        sdk.respond = (cli) =>
+          cli.push(
+            init("session-1"),
+            ...scheduleWakeup({ delaySeconds: 600, reason: "Poll", prompt: "Poll" }, { scheduledFor: 600_000 }),
+            succeeded,
+          )
+        yield* runTurn()
+
+        yield* warm(turnInput({ instructions: "Work in hinacode on feat/renamed", cwd: "/repo-renamed" }))
+        expect(sdk.clis).toHaveLength(1)
+        expect(latestCli().close).not.toHaveBeenCalled()
+
+        yield* TestClock.adjust("10 minutes")
+        const wake = yield* Stream.runHead(provider.wakes ?? Stream.empty).pipe(Effect.forkChild)
+        latestCli().push(sessionState("running"))
+        expect(Option.isSome(yield* Fiber.join(wake))).toBe(true)
+      }),
+    ),
   )
 
   it.effect("closes an idle CLI 60 seconds after a wakeup that never fires", () =>
@@ -1017,7 +1103,7 @@ describe("Claude background sub-agents", () => {
         }
         const turn = yield* startTurn()
         yield* until(() => turn.events.some((event) => event.type === "subagent_updated"))
-        yield* provider.steer("thread-1", "How is it going?", [])
+        yield* provider.steer!("thread-1", "How is it going?", [], "now")
         yield* until(() => latestCli().prompts.length === 2)
         const steer = latestCli().prompts[1]?.uuid
         latestCli().push(taskNotification("agent-1"), sessionState("idle"))
@@ -1135,6 +1221,113 @@ describe("Claude models", () => {
         sdk.supportedModels = () =>
           Promise.resolve([{ value: "claude-next", displayName: "Claude Next", description: "" }])
         expect((yield* provider.listModels).map((model) => model.id)).toEqual(["claude-next"])
+      }),
+    ),
+  )
+})
+
+const onMagpie = <A, E>(effect: Effect.Effect<A, E, MagpieProvider>) =>
+  Effect.suspend(() => {
+    sdk.clis.length = 0
+    sdk.respond = completeWith(succeeded)
+    sdk.setModel = () => Promise.resolve()
+    gateway.origin = "http://127.0.0.1:3425"
+    gateway.models = [
+      {
+        id: "openrouter/deepseek-v4",
+        display_name: "DeepSeek V4",
+        reasoning_levels: ["low", "high", "max"],
+        service_tiers: [{ id: "priority" }],
+      },
+      { id: "moonshot/kimi-k3" },
+    ]
+    return effect
+  }).pipe(Effect.provide(MagpieProvider.layer.pipe(Layer.provide(magpieDependencies()))))
+
+const flagEnv = (cli: InstanceType<typeof sdk.FakeQuery>) =>
+  typeof cli.options.settings === "object" ? cli.options.settings.env : undefined
+
+const magpieTurn = (model: string, fastMode = false) =>
+  Effect.gen(function* () {
+    const provider = yield* MagpieProvider
+    yield* provider.runTurn(turnInput({ model, fastMode })).pipe(Stream.runCollect)
+    yield* settle
+  })
+
+describe("magpie", () => {
+  it.effect("lists the gateway's models and reports the gateway as its account", () =>
+    onMagpie(
+      Effect.gen(function* () {
+        const provider = yield* MagpieProvider
+        expect((yield* provider.listModels).map((model) => [model.id, model.label, model.efforts])).toStrictEqual([
+          ["openrouter/deepseek-v4", "DeepSeek V4", ["low", "high", "max"]],
+          ["moonshot/kimi-k3", "moonshot/kimi-k3", []],
+        ])
+        expect(yield* provider.account(null)).toStrictEqual({ type: "external", service: "magpie" })
+        gateway.origin = null
+        expect(yield* provider.account(null)).toStrictEqual({ type: "signedOut" })
+      }),
+    ),
+  )
+
+  it.effect("starts Claude Code with the gateway in its flag settings, over the user's settings.json", () =>
+    onMagpie(
+      Effect.gen(function* () {
+        yield* magpieTurn("openrouter/deepseek-v4")
+        const { options } = latestCli()
+        expect(options.model).toBe("openrouter/deepseek-v4")
+        expect(flagEnv(latestCli())).toMatchObject({
+          ANTHROPIC_BASE_URL: "http://127.0.0.1:3425",
+          ANTHROPIC_API_KEY: "",
+          ANTHROPIC_SMALL_FAST_MODEL: "openrouter/deepseek-v4",
+          CLAUDE_CODE_SUBAGENT_MODEL: "openrouter/deepseek-v4",
+          CLAUDE_CODE_MODEL_CAPABILITIES: "openrouter/deepseek-v4=effort,max_effort",
+        })
+      }),
+    ),
+  )
+
+  it.effect("resumes in a new CLI pinned to the next model when the thread changes model", () =>
+    onMagpie(
+      Effect.gen(function* () {
+        yield* magpieTurn("openrouter/deepseek-v4")
+        const first = latestCli()
+        yield* magpieTurn("moonshot/kimi-k3")
+        expect(first.close).toHaveBeenCalled()
+        expect(first.setModel).not.toHaveBeenCalled()
+        expect(latestCli().options.resume).toBe("session-1")
+        expect(flagEnv(latestCli())).toMatchObject({
+          CLAUDE_CODE_SUBAGENT_MODEL: "moonshot/kimi-k3",
+        })
+      }),
+    ),
+  )
+
+  it.effect("resumes in a new CLI that asks for the fast speed when the thread turns fast mode on", () =>
+    onMagpie(
+      Effect.gen(function* () {
+        yield* magpieTurn("openrouter/deepseek-v4")
+        const first = latestCli()
+        expect(flagEnv(first)).toMatchObject({ CLAUDE_CODE_EXTRA_BODY: "{}" })
+
+        yield* magpieTurn("openrouter/deepseek-v4", true)
+        expect(first.close).toHaveBeenCalled()
+        expect(latestCli().options.resume).toBe("session-1")
+        expect(flagEnv(latestCli())).toMatchObject({ CLAUDE_CODE_EXTRA_BODY: '{"speed":"fast"}' })
+      }),
+    ),
+  )
+
+  it.effect("fails the turn before starting Claude Code when magpie is not running", () =>
+    onMagpie(
+      Effect.gen(function* () {
+        gateway.origin = null
+        const provider = yield* MagpieProvider
+        const error = yield* provider
+          .runTurn(turnInput({ model: "moonshot/kimi-k3" }))
+          .pipe(Stream.runCollect, Effect.flip)
+        expect(error).toMatchObject({ provider: "magpie", message: expect.stringMatching(/magpie is not running/) })
+        expect(sdk.clis).toHaveLength(0)
       }),
     ),
   )

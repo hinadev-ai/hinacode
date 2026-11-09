@@ -1,83 +1,94 @@
+import type { CalloutTone } from "@shared/documentCallout.ts"
 import type { IndicatorTone } from "@shared/threadStatus.ts"
 import { Platform } from "react-native"
 import type { IconName } from "@/components/icon"
 
 export const Colors = {
   light: {
-    text: "#0a0a0a",
+    text: "#233737",
     /** A thread row at rest, a step below a row that needs the developer. */
-    textResting: "#3f3f46",
-    textMuted: "#5c5c66",
-    background: "#ffffff",
-    surface: "#f4f4f5",
-    surfaceStrong: "#e4e4e7",
+    textResting: "#3e5151",
+    textMuted: "#556767",
+    background: "#f7f7f2",
+    surface: "#e8e8e0",
+    surfaceStrong: "#d0d0c6",
     /** A switch's off track, 3:1 on `surface` and `background` so the control reads when it is off. */
-    controlOff: "#8a8a93",
+    controlOff: "#738484",
+    /** A filled control that cannot be pressed yet, under `textMuted`. A step above every surface it sits on. */
+    disabled: "#d0d0c6",
     /** A sheet over the scrim, and a selected or pressed row on it. Dark sheets sit a step above the page. */
-    sheet: "#ffffff",
-    sheetRaised: "#f4f4f5",
-    border: "#e4e4e7",
-    primary: "#7c3aed",
-    onPrimary: "#ffffff",
-    attention: "#b45309",
-    attentionBg: "#fef3c7",
-    running: "#047857",
-    runningBg: "#d1fae5",
-    danger: "#b91c1c",
-    dangerBg: "#fee2e2",
-    neutralBg: "#f4f4f5",
-    link: "#6d28d9",
+    sheet: "#f7f7f2",
+    sheetRaised: "#e8e8e0",
+    /** Dims the page under a sheet. The dark page is already near black, so it needs a heavier scrim to recede. */
+    scrim: "rgba(10, 10, 10, 0.5)",
+    border: "#e0e0d7",
+    primary: "#c0482c",
+    onPrimary: "#f7f7f2",
+    attention: "#8a5600",
+    attentionBg: "#f8eaca",
+    running: "#027271",
+    runningBg: "#d6f2ef",
+    danger: "#bd1f3d",
+    dangerBg: "#fde2e2",
+    neutralBg: "#e8e8e0",
+    link: "#a73920",
     /** GitHub's open and merged pull request colors, the desktop's `--pr-open` and `--pr-merged`. */
     prOpen: "#1a7f37",
     prMerged: "#8250df",
     /** Skills, commands and mentions in the composer, as the desktop's `--syntax-token`. */
-    token: "#7c3aed",
-    tokenBg: "rgba(124, 58, 237, 0.12)",
-    /** The send button's holographic pearl, the desktop's `send-halo` in the default themes. */
-    haloA: "#5ee7ff",
-    haloB: "#ff7ae0",
-    haloC: "#ffd84d",
-    haloD: "#8f7bff",
-    haloCore: "#e8ddff",
-    haloInk: "#14121c",
+    token: "#a73920",
+    tokenBg: "rgba(192, 72, 44, 0.12)",
+    /** A search match in a line of code, the desktop's `--color-find-match`. */
+    findMatch: "rgba(167, 57, 32, 0.22)",
+    /** The send button's halo, the desktop's `send-halo` in the Hina themes. */
+    haloA: "#c0482c",
+    haloB: "#c37b00",
+    haloC: "#921950",
+    haloD: "#c0482c",
+    haloCore: "#c0482c",
+    haloInk: "#f7f7f2",
   },
   dark: {
-    text: "#fafafa",
-    textResting: "#d4d4d8",
-    textMuted: "#a1a1aa",
-    background: "#0a0a0a",
-    surface: "#18181b",
-    surfaceStrong: "#27272a",
-    controlOff: "#71717a",
-    sheet: "#18181b",
-    sheetRaised: "#27272a",
-    border: "#27272a",
-    primary: "#7c3aed",
-    onPrimary: "#ffffff",
-    attention: "#fbbf24",
-    attentionBg: "#3a2a07",
-    running: "#34d399",
-    runningBg: "#06291f",
-    danger: "#f87171",
-    dangerBg: "#3b1111",
-    neutralBg: "#27272a",
-    link: "#a78bfa",
+    text: "#f7f7f2",
+    textResting: "#d8d8d1",
+    textMuted: "#b8b8ae",
+    background: "#1c2e2e",
+    surface: "#233737",
+    surfaceStrong: "#324949",
+    controlOff: "#758b8b",
+    disabled: "#425b5b",
+    sheet: "#233737",
+    sheetRaised: "#324949",
+    scrim: "rgba(0, 0, 0, 0.72)",
+    border: "#324949",
+    primary: "#e56b4f",
+    onPrimary: "#0e1e1e",
+    attention: "#f1c45e",
+    attentionBg: "#463518",
+    running: "#50b0ae",
+    runningBg: "#0e3e3a",
+    danger: "#f4839a",
+    dangerBg: "#4d292f",
+    neutralBg: "#324949",
+    link: "#f48f70",
     prOpen: "#3fb950",
     prMerged: "#a371f7",
-    token: "#a78bfa",
-    tokenBg: "rgba(167, 139, 250, 0.16)",
-    haloA: "#aef3ff",
-    haloB: "#ffc6f5",
-    haloC: "#fff3b0",
-    haloD: "#c4b5ff",
-    haloCore: "#f2eaff",
-    haloInk: "#14121c",
+    token: "#f48f70",
+    tokenBg: "rgba(229, 107, 79, 0.16)",
+    findMatch: "rgba(244, 143, 112, 0.3)",
+    haloA: "#e56b4f",
+    haloB: "#e79d00",
+    haloC: "#b6406f",
+    haloD: "#e56b4f",
+    haloCore: "#e56b4f",
+    haloInk: "#0e1e1e",
   },
 } as const
 
 export type Palette = { readonly [K in keyof typeof Colors.light]: string }
 
 const toneColor = (theme: Palette): Record<IndicatorTone, string> => ({
+  foreground: theme.text,
   muted: theme.textMuted,
   attention: theme.attention,
   // The desktop's `--success` is the phone's `running`.
@@ -93,10 +104,13 @@ export const indicatorGlyph = (theme: Palette, { icon, tone }: { icon: IconName;
   color: toneColor(theme)[tone],
 })
 
-/** Each agent's mark in its brand color, as in the desktop's `--provider-*` tokens. Codex takes the text color. */
+/**
+ * Each agent's mark in its brand color, as in the desktop's `--provider-*` tokens. Codex, opencode and magpie take the text
+ * color.
+ */
 export const ProviderColors = {
-  light: { claude: "#c15f3c", codex: Colors.light.text, muse: "#0064e0" },
-  dark: { claude: "#d97757", codex: Colors.dark.text, muse: "#0081fb" },
+  light: { claude: "#c15f3c", codex: Colors.light.text, muse: "#0064e0", opencode: Colors.light.text, magpie: Colors.light.text },
+  dark: { claude: "#d97757", codex: Colors.dark.text, muse: "#0081fb", opencode: Colors.dark.text, magpie: Colors.dark.text },
 } as const
 
 /**
@@ -110,14 +124,14 @@ export const SyntaxColors = {
     string: "#0a3069",
     number: "#0550ae",
     constant: "#0550ae",
-    keyword: "#cf222e",
-    operator: "#cf222e",
+    keyword: "#c11e2b",
+    operator: "#c11e2b",
     type: "#953800",
     function: "#6639ba",
   },
   dark: {
     plain: Colors.dark.text,
-    comment: "#8b949e",
+    comment: "#9ea7b3",
     string: "#a5d6ff",
     number: "#79c0ff",
     constant: "#79c0ff",
@@ -127,6 +141,28 @@ export const SyntaxColors = {
     function: "#d2a8ff",
   },
 } as const
+
+/**
+ * A document's callout tones: `ink` is the desktop's `--graph-lane-1`, `--graph-lane-2`, `--callout-important`,
+ * `--attention` and `--destructive` in the Hina themes. `tint` is the tone over `background`, at 8% in light and 16%
+ * in dark. `label` mixes the tone 28% toward `text`, as the desktop does, and reads at 4.5:1 or more on `tint`.
+ */
+export const CalloutColors = {
+  light: {
+    note: { ink: "#2a75ba", tint: "#e7edee", label: "#296393" },
+    tip: { ink: "#008971", tint: "#e7eee7", label: "#1b7160" },
+    important: { ink: "#794db6", tint: "#ece9ee", label: "#604991" },
+    warning: { ink: "#973c00", tint: "#f1e8df", label: "#783e1f" },
+    caution: { ink: "#bd1f3d", tint: "#f5e7e3", label: "#93333d" },
+  },
+  dark: {
+    note: { ink: "#61a3e6", tint: "#263f48", label: "#8cbbeb" },
+    tip: { ink: "#57b9a1", tint: "#25423f", label: "#89cbb7" },
+    important: { ink: "#b897f0", tint: "#333e49", label: "#c9b2f2" },
+    warning: { ink: "#ffb900", tint: "#3d4334", label: "#fecc6e" },
+    caution: { ink: "#f4839a", tint: "#3e3c3e", label: "#f8a5b2" },
+  },
+} as const satisfies Record<"light" | "dark", Record<CalloutTone, { ink: string; tint: string; label: string }>>
 
 export const mono = Platform.select({ ios: "Menlo", android: "monospace", default: "ui-monospace, Menlo, monospace" })
 

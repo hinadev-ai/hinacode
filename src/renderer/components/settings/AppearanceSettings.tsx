@@ -3,7 +3,7 @@ import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import { useId, useState } from "react"
 import { type Appearance, ThemeId } from "../../../shared/domain.ts"
-import { applyContrast, installedFontsAtom, themes, useTheme } from "../../lib/appearance.ts"
+import { applyContrast, installedFontsAtom, isNeutralTheme, themes, useTheme } from "../../lib/appearance.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { updateClientSettingsAtom } from "../../lib/rpc.ts"
 import { useClientSettings } from "../../lib/settings.ts"
@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { SkeletonList } from "../ui/skeleton.tsx"
 import { Slider } from "../ui/slider.tsx"
 import { SettingsGroup, SettingsSection } from "./SettingsSection.tsx"
+import { inBrowser } from "../../lib/runtime.ts"
 
 const fontSizes = [12, 13, 14, 15, 16, 17, 18, 20].map((size) => ({ value: size, label: `${size}px` }))
 
@@ -61,23 +62,27 @@ export function AppearanceSettings() {
             </SelectContent>
           </Select>
         </Field>
-        <FontField
-          id="settings-ui-font"
-          label={m.settings_ui_font()}
-          bundled="DM Sans"
-          kind="all"
-          current={appearance.uiFont}
-          onPick={(uiFont) => void save({ uiFont })}
-        />
-        <FontField
-          id="settings-mono-font"
-          label={m.settings_mono_font()}
-          description={m.settings_mono_font_hint()}
-          bundled="Geist Mono"
-          kind="monospace"
-          current={appearance.monoFont}
-          onPick={(monoFont) => void save({ monoFont })}
-        />
+        {!inBrowser() && (
+          <>
+            <FontField
+              id="settings-ui-font"
+              label={m.settings_ui_font()}
+              bundled="DM Sans"
+              kind="all"
+              current={appearance.uiFont}
+              onPick={(uiFont) => void save({ uiFont })}
+            />
+            <FontField
+              id="settings-mono-font"
+              label={m.settings_mono_font()}
+              description={m.settings_mono_font_hint()}
+              bundled="Geist Mono"
+              kind="monospace"
+              current={appearance.monoFont}
+              onPick={(monoFont) => void save({ monoFont })}
+            />
+          </>
+        )}
       </SettingsGroup>
       {error && <FieldError>{error}</FieldError>}
     </SettingsSection>
@@ -112,10 +117,9 @@ function ThemePicker({ current, onPick }: { current: ThemeId; onPick: (theme: Th
 
 function ThemePreview({ id }: { id: ThemeId }) {
   const theme = useTheme(id)
-  const neutral = id === "default" || id === "system" || id === "light"
   return (
     <div
-      data-theme={neutral ? (theme.scheme === "light" ? "light" : undefined) : id}
+      data-theme={isNeutralTheme(theme.id) ? (theme.scheme === "light" ? "light" : undefined) : theme.id}
       aria-hidden
       className={cn(
         theme.scheme === "dark" && "dark",

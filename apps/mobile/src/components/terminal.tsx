@@ -187,7 +187,7 @@ function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart:
           <View style={styles.exitedNotice}>
             <Notice text={ended} />
           </View>
-          <Button label={copy("mobile_terminal_restart")} icon="RiTerminalBoxLine" onPress={onRestart} />
+          <Button label={copy("mobile_terminal_restart")} icon="Terminal" onPress={onRestart} />
         </View>
       )}
       <View style={[styles.surface, { borderColor: theme.border }]}>

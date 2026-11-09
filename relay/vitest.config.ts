@@ -9,10 +9,12 @@ export default defineConfig({
         bindings: {
           TEST_MIGRATIONS: await readD1Migrations("./migrations"),
           CLOUDFLARE_API_TOKEN: "test-api-token",
-          OWNER_TOKEN: "test-owner-token",
+          CLERK_PUBLISHABLE_KEY: "pk_test_Y2xlcmsudGVzdCQ",
+          CLERK_SECRET_KEY: "sk_test_fake",
           CLOUDFLARE_ACCOUNT_ID: "account",
           TUNNEL_ZONE_ID: "zone",
           TUNNEL_ZONE_NAME: "tunnels.test",
+          WEB_ORIGINS: "https://code.test,http://localhost:5173",
         },
       },
     })),

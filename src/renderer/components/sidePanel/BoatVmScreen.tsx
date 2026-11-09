@@ -4,13 +4,13 @@ import { Cause } from "effect"
 import { AsyncResult } from "effect/reactivity"
 import { type DragEvent, type ReactNode, useEffect, useEffectEvent, useRef, useState } from "react"
 import type { VmControl } from "../../../shared/domain.ts"
-import { errorMessage } from "../../lib/errorMessage.ts"
+import { errorMessage, toastError } from "../../lib/errorMessage.ts"
 import { vmDesktopUrlAtom } from "../../lib/rpc.ts"
+import { inBrowser } from "../../lib/runtime.ts"
 import { m } from "../../paraglide/messages.js"
 import { Button } from "../ui/button.tsx"
 import { Spinner, vmScreenId } from "./TinyVmView.tsx"
-import { FullscreenExitIcon } from "../icons/FullscreenExitIcon.tsx"
-import { UploadIcon } from "../icons/UploadIcon.tsx"
+import { FullscreenExitIcon, UploadIcon } from "@hinacode/icons"
 
 const carriesFiles = (event: DragEvent<HTMLElement>) => event.dataTransfer.types.includes("Files")
 
@@ -104,12 +104,24 @@ export default function BoatVmScreen({
         !bare && control === "user" && "outline-2 outline-offset-2 outline-working",
       )}
     >
-      {url !== null && <webview src={url} title={m.vm_screen()} className="absolute inset-0 flex size-full" />}
+      {url !== null &&
+        (inBrowser() ? (
+          <iframe
+            src={url}
+            title={m.vm_screen()}
+            // oxlint-disable-next-line react/iframe-missing-sandbox -- the Boat desktop is another origin and keeps its session in storage, so it needs scripts and its own origin.
+            sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-downloads"
+            allow="clipboard-read; clipboard-write; fullscreen"
+            className="absolute inset-0 flex size-full border-0"
+          />
+        ) : (
+          <webview src={url} title={m.vm_screen()} className="absolute inset-0 flex size-full" />
+        ))}
       {url !== null && control !== "user" && <div aria-hidden className="absolute inset-0" />}
       {fullscreen && (
         <div className="absolute top-3 right-3 z-10 flex items-center gap-2 rounded-[12px] bg-background/90 p-1 shadow-md">
           {fullscreenControls}
-          <Button variant="ghost" size="xs" onClick={() => void document.exitFullscreen()}>
+          <Button variant="ghost" size="xs" action={() => document.exitFullscreen().catch(toastError)}>
             <FullscreenExitIcon aria-hidden />
             {m.vm_exit_fullscreen()}
           </Button>
