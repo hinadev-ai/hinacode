@@ -369,6 +369,7 @@ app.whenReady().then(async () => {
   createWindow(runtime)
   runtime.runFork(keepAppMenu)
   await runtime.context().catch((error: unknown) => {
+    if (disposed) return
     cannotStart(error)
     app.exit(1)
   })
