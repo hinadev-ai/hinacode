@@ -34,6 +34,7 @@ export function applyParentItem(subagents: Subagents, item: ThreadItem, now: str
       if (current !== undefined) return []
       const started: Subagent = {
         id,
+        ...(item.model && { model: item.model }),
         label: nameFromPath(item.agentPath),
         callId: id,
         status: "running",

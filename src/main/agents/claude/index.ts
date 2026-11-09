@@ -712,6 +712,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
           limitResetAt: null,
           signedOut: false,
           subagents: new Map(),
+          subagentRequests: new Map(),
           lastRequest: null,
           sessionId: resume ?? null,
           lastAssistantUuid: null,

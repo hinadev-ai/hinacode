@@ -8,8 +8,8 @@ import { useSubagentByCallId } from "../stores/subagents.ts"
 import { useUi } from "../stores/ui.ts"
 import { MessageList } from "./MessageList.tsx"
 import { formatOutput } from "./MessagePart.tsx"
-import { ProviderIcon } from "./ProviderIcon.tsx"
-import { StopSubagentButton, SubagentStatusIcon, subagentStats, useNow } from "./ThreadAgents.tsx"
+import { SubagentProviderIcon } from "./ProviderIcon.tsx"
+import { StopSubagentButton, SubagentStatusIcon, SubagentStats, useNow } from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
 import { ArrowLeftIcon } from "@hinacode/icons"
 
@@ -98,7 +98,7 @@ export function SubagentTranscript({
     <div className="mx-auto flex w-full max-w-3xl clear-overview flex-col gap-1.5 px-4 pt-4">
       <div className="flex min-w-0 items-center gap-2">
         {status && <SubagentStatusIcon status={status} />}
-        <ProviderIcon provider={subagent?.provider ?? thread.provider} />
+        <SubagentProviderIcon subagent={subagent} thread={thread} />
         <h2
           ref={headingRef}
           tabIndex={-1}
@@ -108,8 +108,8 @@ export function SubagentTranscript({
           {label}
         </h2>
         {subagent && (
-          <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">
-            {subagentStats(subagent, now)}
+          <span className="ml-auto min-w-0 truncate text-xs text-muted-foreground tabular-nums">
+            <SubagentStats thread={thread} subagent={subagent} now={now} />
           </span>
         )}
         {subagent?.status === "running" && <StopSubagentButton threadId={thread.id} subagent={subagent} />}

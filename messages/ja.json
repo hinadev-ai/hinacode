@@ -571,17 +571,6 @@
   "agents_status_failed": "失敗",
   "agents_status_stopped": "停止",
   "agents_last_tool": "直近のツール：{tool}",
-  "agents_tools": [
-    {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
-      "match": {
-        "countPlural=one": "{count} 個のツール",
-        "countPlural=other": "{count} 個のツール"
-      }
-    }
-  ],
-  "agents_tokens": "{tokens} トークン",
   "agents_untitled": "無題のサブエージェント",
   "agents_back": "{name} に戻る",
   "agents_missing": "このサブエージェントの履歴は見つかりませんでした。",

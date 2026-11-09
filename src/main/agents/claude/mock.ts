@@ -54,7 +54,7 @@ export const mockScenarioDescriptions = {
   stream: "Stream thinking, six reads and a long reply quickly.",
   activity: "Start background shells, a sub-agent and tasks, then wait for Stop.",
   "long-turn": "Replay 400 steps, then stream until Stop.",
-  subagents: "Run six sub-agents that report progress every two seconds.",
+  subagents: "Run nine sub-agents, three on magpie, that report progress every two seconds.",
   artifacts: "Publish an artifact named after the prompt.",
   documents: "Publish a document named after the prompt. The next message updates it from the version it last saw.",
   comments: "Publish a document and ask about a quote in it. Answer each comment on the document.",
@@ -292,6 +292,7 @@ export const usageLimitLayer = (defaultScenario: MockScenario = "usage-limit", r
         const state: MapState = {
           pendingEdits: new Map(),
           subagents: new Map(),
+          subagentRequests: new Map(),
           lastRequest: null,
           home: null,
           model: mockModel,

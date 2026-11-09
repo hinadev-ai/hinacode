@@ -236,6 +236,8 @@ export type SubagentStatus = typeof SubagentStatus.Type
 export const Subagent = Schema.Struct({
   id: Schema.String,
   provider: Schema.optionalKey(ProviderId),
+  model: Schema.optionalKey(Schema.String),
+  effort: Schema.optionalKey(Schema.String),
   label: Schema.String,
   callId: Schema.NullOr(Schema.String),
   status: SubagentStatus,
