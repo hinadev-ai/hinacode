@@ -37,13 +37,12 @@ export const reviewTone: Record<ReviewStatus, Tone> = {
 }
 
 /** "Pull request #123, Open, Checks failing" for screen readers. */
-export function pullRequestLabel(number: string, summary: PullRequestSummary | null, more = 0) {
+export function pullRequestLabel(number: string, summary: PullRequestSummary | null) {
   const checks = summary?.checks ?? null
   return [
     copy("mobile_pr_number", { number }),
     summary !== null && statusLabel(summary.status),
     checks !== null && checksLabel(checks),
-    more > 0 && copy("mobile_pr_more", { count: String(more) }),
   ]
     .filter((part) => typeof part === "string")
     .join(", ")

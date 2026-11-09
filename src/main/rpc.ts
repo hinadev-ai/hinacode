@@ -2,8 +2,12 @@ import { homedir } from "node:os"
 import { Cause, Effect, Option, Schema } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
 import { availableUpdates, installUpdate } from "./agents/updates.ts"
+import { bindKey, keyFor, probe } from "./agents/magpie/gateway.ts"
+import { MAGPIE_KEY_SECRET } from "../shared/providers.ts"
+import { AgentError } from "./agents/provider.ts"
 import { compactMessage, previewMessage, transcriptPage } from "../shared/compactTranscript.ts"
 import { compactSubagentWork } from "../shared/subagents.ts"
+import { startingProvider } from "../shared/domain.ts"
 import type {
   NotificationPermission,
   Opener,
@@ -206,8 +210,8 @@ const handlers: Handlers = {
   "threads.list": () => Threads.use((threads) => threads.list),
   "threads.create": ({ projectId, title, provider: chosenProvider, model, effort, worktree, createdBy }) =>
     Effect.gen(function* () {
-      const { defaultProvider } = yield* Settings.use((service) => service.get)
-      const provider = chosenProvider ?? defaultProvider
+      const settings = yield* Settings.use((service) => service.get)
+      const provider = chosenProvider ?? startingProvider(settings)
       const defaults =
         model === undefined ? yield* newThreadOptions(provider) : { model, effort: undefined, fastMode: undefined }
       const thread = yield* Threads.use((threads) =>
@@ -226,7 +230,7 @@ const handlers: Handlers = {
     }),
   "threads.draft": ({ projectId }) =>
     Effect.gen(function* () {
-      const { defaultProvider: provider } = yield* Settings.use((service) => service.get)
+      const provider = startingProvider(yield* Settings.use((service) => service.get))
       const options = yield* newThreadOptions(provider)
       const thread = yield* Threads.use((threads) =>
         threads.draft({ projectId, title: randomName(), provider, ...options }),
@@ -372,6 +376,19 @@ const handlers: Handlers = {
     AgentLogins.use((logins) => logins.account(provider, accountId, { refresh })),
   "agents.updates": () => (process.env["HINACODE_SKIP_AGENT_UPDATES"] ? Effect.succeed([]) : availableUpdates),
   "agents.update": ({ provider }) => installUpdate(provider),
+  "magpie.test": ({ endpoint, key }) =>
+    Effect.gen(function* () {
+      const saved = key === null ? yield* Secrets.use((secrets) => secrets.get(MAGPIE_KEY_SECRET)) : Option.none()
+      return yield* probe({ endpoint, key: key ?? keyFor(endpoint, Option.getOrNull(saved)) })
+    }).pipe(Effect.mapError((error) => new AgentError({ provider: "magpie", message: error.message }))),
+  "magpie.saveKey": ({ endpoint, key }) =>
+    Secrets.use((secrets) =>
+      Effect.gen(function* () {
+        if (endpoint !== null && key !== null) return yield* secrets.set(MAGPIE_KEY_SECRET, bindKey(endpoint, key))
+        const saved = Option.getOrNull(yield* secrets.get(MAGPIE_KEY_SECRET))
+        if (keyFor(endpoint, saved) === null) yield* secrets.clear(MAGPIE_KEY_SECRET)
+      }),
+    ),
   "limits.list": () => AgentRunner.use((runner) => runner.limits),
   "accounts.list": () => AgentAccounts.use((accounts) => accounts.list),
   "accounts.create": (input) => AgentAccounts.use((accounts) => accounts.create(input)),

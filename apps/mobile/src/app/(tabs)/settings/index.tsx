@@ -4,18 +4,25 @@ import { AccessMode, type Settings } from "@shared/domain.ts"
 import Constants from "expo-constants"
 import { useEffect, useState } from "react"
 import { router } from "expo-router"
-import { AppState, Linking, Platform, ScrollView, StyleSheet, Text, View } from "react-native"
+import { AppState, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import { forgetServer } from "@/components/connection-provider"
-import type { IconName } from "@/components/icon"
+import { Icon, type IconName } from "@/components/icon"
 import { Reveal, Spinner } from "@/components/motion"
 import { RelayAccountSection } from "@/components/relay-account"
-import { Footnote, SettingsGroup, SettingsRow, SwitchRow } from "@/components/settings-rows"
+import {
+  CheckRow,
+  Footnote,
+  SettingsGroup,
+  SettingsHeading,
+  SettingsRow,
+  SwitchRow,
+} from "@/components/settings-rows"
 import { OptionRow, Sheet } from "@/components/sheet"
 import { Button, ConnectionBadge, Notice, SegmentedControl, type Segment } from "@/components/ui"
 import { serverName } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
-import { mono } from "@/constants/theme"
-import { call, reconnectNow, type Server, useConnection } from "@/lib/connection"
+import { HIT, mono, type Palette, radius } from "@/constants/theme"
+import { call, type ConnectionStatus, reconnectNow, type Server, useConnection } from "@/lib/connection"
 import { confirmDestructive } from "@/lib/confirm"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
@@ -36,9 +43,10 @@ export default function SettingsScreen() {
       contentContainerStyle={styles.content}
       contentInsetAdjustmentBehavior="automatic"
     >
-      <PhoneSettings />
-      <DesktopSettings />
       <ServerSettings />
+      <AppearanceSetting />
+      <DesktopSettings />
+      <NotificationSettings />
       <RelayAccountSection />
       <SettingsGroup title={copy("mobile_settings_about")}>
         <SettingsRow
@@ -51,9 +59,9 @@ export default function SettingsScreen() {
 }
 
 const appearanceSegments: readonly Segment<Appearance>[] = [
-  { value: "system", label: copy("mobile_settings_appearance_system"), icon: "RiContrast2Line" },
-  { value: "light", label: copy("mobile_settings_appearance_light"), icon: "Sun" },
-  { value: "dark", label: copy("mobile_settings_appearance_dark"), icon: "Moon" },
+  { value: "system", label: copy("mobile_settings_appearance_system") },
+  { value: "light", label: copy("mobile_settings_appearance_light") },
+  { value: "dark", label: copy("mobile_settings_appearance_dark") },
 ]
 
 type NotificationKind = keyof Preferences["notifications"]
@@ -64,41 +72,44 @@ const notificationKinds: readonly { kind: NotificationKind; label: string; icon:
   { kind: "failed", label: copy("mobile_settings_notify_failed"), icon: "Warning" },
 ]
 
-function PhoneSettings() {
+function AppearanceSetting() {
   const appearance = usePreferences((state) => state.appearance)
+  const set = usePreferences((state) => state.set)
+  return (
+    <View style={styles.appearance}>
+      <SettingsHeading title={copy("mobile_settings_appearance")} />
+      <SegmentedControl
+        segments={appearanceSegments}
+        value={appearance}
+        onChange={(value) => set({ appearance: value })}
+        accessibilityLabel={copy("mobile_settings_appearance")}
+      />
+    </View>
+  )
+}
+
+function NotificationSettings() {
   const notifications = usePreferences((state) => state.notifications)
   const set = usePreferences((state) => state.set)
   const [permission, setPermission] = useNotificationPermission()
   return (
-    <>
-      <SettingsGroup title={copy("mobile_settings_phone")}>
-        <View style={styles.segmentRow}>
-          <SegmentedControl
-            segments={appearanceSegments}
-            value={appearance}
-            onChange={(value) => set({ appearance: value })}
-            accessibilityLabel={copy("mobile_settings_appearance")}
-          />
-        </View>
-      </SettingsGroup>
-      <SettingsGroup
-        title={copy("mobile_settings_notifications")}
-        footnote={copy("mobile_settings_notifications_footnote")}
-      >
-        {notificationKinds.map(({ kind, label, icon }) => (
-          <SwitchRow
-            key={kind}
-            icon={icon}
-            label={label}
-            value={notifications[kind]}
-            onChange={(value) => set({ notifications: { ...notifications, [kind]: value } })}
-          />
-        ))}
-        {permission !== null && permission !== "granted" && (
-          <NotificationPermissionRow permission={permission} onChange={setPermission} />
-        )}
-      </SettingsGroup>
-    </>
+    <SettingsGroup
+      title={copy("mobile_settings_notifications")}
+      footnote={copy("mobile_settings_notifications_footnote")}
+    >
+      {notificationKinds.map(({ kind, label, icon }) => (
+        <SwitchRow
+          key={kind}
+          icon={icon}
+          label={label}
+          value={notifications[kind]}
+          onChange={(value) => set({ notifications: { ...notifications, [kind]: value } })}
+        />
+      ))}
+      {permission !== null && permission !== "granted" && (
+        <NotificationPermissionRow permission={permission} onChange={setPermission} />
+      )}
+    </SettingsGroup>
   )
 }
 
@@ -188,6 +199,7 @@ const agents: readonly { provider: ProviderId; label: string; icon: IconName }[]
   { provider: "codex", label: copy("mobile_settings_agent_codex"), icon: "RiOpenaiFill" },
   { provider: "muse", label: copy("mobile_settings_agent_muse"), icon: "RiMetaFill" },
   { provider: "opencode", label: copy("mobile_settings_agent_opencode"), icon: "OpencodeMark" },
+  { provider: "magpie", label: copy("mobile_settings_agent_magpie"), icon: "MagpieMark" },
 ]
 
 /**
@@ -301,7 +313,7 @@ function ServerPreferences({ server }: { server: Server | undefined }) {
         })}
       >
         {AccessMode.literals.map((mode) => (
-          <OptionRow
+          <CheckRow
             key={mode}
             label={accessModes[mode].label}
             hint={accessModes[mode].hint}
@@ -309,7 +321,6 @@ function ServerPreferences({ server }: { server: Server | undefined }) {
             color={mode === "full" ? theme.danger : undefined}
             disabled={offline}
             selected={settings.defaultAccessMode === mode}
-            style={styles.groupOption}
             onPress={() => {
               if (settings.defaultAccessMode !== mode) write(settings, { defaultAccessMode: mode })
             }}
@@ -395,7 +406,14 @@ function DefaultModelRow({
     if (model !== null) load(server, provider).catch(() => undefined)
   }, [model, server, provider, load])
   return (
-    <SettingsRow icon={icon} label={label} value={modelLabel(models, model)} disabled={disabled} onPress={onPress} />
+    <SettingsRow
+      icon={icon}
+      label={label}
+      value={modelLabel(models, model)}
+      monospace={model !== null}
+      disabled={disabled}
+      onPress={onPress}
+    />
   )
 }
 
@@ -471,17 +489,9 @@ function ServerSettings() {
   const open = servers.find((server) => server.id === openId)
   return (
     <>
-      <SettingsGroup title={copy("mobile_settings_servers")} footnote={copy("mobile_settings_connection_footnote")}>
+      <SettingsGroup footnote={copy("mobile_settings_connection_footnote")}>
         {servers.map((server) => (
-          <SettingsRow
-            key={server.id}
-            icon="Computer"
-            label={serverName(server)}
-            labelLines={1}
-            onPress={() => setOpenId(server.id)}
-          >
-            <ConnectionBadge status={server.status} />
-          </SettingsRow>
+          <ServerRow key={server.id} server={server} onPress={() => setOpenId(server.id)} />
         ))}
         <SettingsRow
           icon="Plus"
@@ -502,6 +512,53 @@ function ServerSettings() {
   )
 }
 
+const connectionLabel: Record<ConnectionStatus, string> = {
+  connected: copy("mobile_connection_connected"),
+  connecting: copy("mobile_connection_connecting"),
+  offline: copy("mobile_connection_offline"),
+  unauthorized: copy("mobile_connection_unauthorized"),
+}
+
+const connectionColor = (theme: Palette): Record<ConnectionStatus, string> => ({
+  connected: theme.running,
+  connecting: theme.textMuted,
+  offline: theme.attention,
+  unauthorized: theme.danger,
+})
+
+/** A paired server: its name and how the phone reaches it. Tap to reconnect, pair again or forget it. */
+function ServerRow({ server, onPress }: { server: Server; onPress: () => void }) {
+  const theme = useTheme()
+  const name = serverName(server)
+  const status = connectionLabel[server.status]
+  const line = server.source === "relay" ? copy("mobile_settings_server_via_relay", { status }) : status
+  return (
+    <Pressable
+      testID={`server-row-${server.id}`}
+      accessibilityRole="button"
+      accessibilityLabel={`${name}, ${copy("mobile_connection_label", { status: line })}`}
+      onPress={onPress}
+      style={({ pressed }) => [styles.serverRow, pressed && { backgroundColor: theme.surface }]}
+    >
+      <View style={[styles.serverTile, { backgroundColor: theme.text }]}>
+        <Icon name="Computer" size={22} color={theme.background} />
+      </View>
+      <View style={styles.serverText}>
+        <Text numberOfLines={1} style={[styles.serverName, { color: theme.text }]}>
+          {name}
+        </Text>
+        <View testID="connection-status" style={styles.serverLine}>
+          <View style={[styles.dot, { backgroundColor: connectionColor(theme)[server.status] }]} />
+          <Text numberOfLines={1} style={[styles.serverStatus, { color: theme.textMuted }]}>
+            {line}
+          </Text>
+        </View>
+      </View>
+      <Icon name="ChevronRight" size={18} color={theme.textMuted} />
+    </Pressable>
+  )
+}
+
 function ServerSheet({ server, onClose }: { server: Server; onClose: () => void }) {
   const theme = useTheme()
   const forget = () => {
@@ -511,7 +568,7 @@ function ServerSheet({ server, onClose }: { server: Server; onClose: () => void 
   return (
     <Sheet title={serverName(server)} open onClose={onClose} fit>
       <View style={styles.permission}>
-        <View style={styles.serverStatus}>
+        <View style={styles.sheetStatus}>
           <ConnectionBadge status={server.status} />
           {server.source === "relay" && (
             <Text style={[styles.source, { color: theme.textMuted }]}>{copy("mobile_relay_from_relay")}</Text>
@@ -565,12 +622,18 @@ const confirmForget = (name: string, forget: () => void) =>
 
 const styles = StyleSheet.create({
   content: { gap: 24, padding: 16, paddingBottom: 40 },
-  segmentRow: { padding: 8 },
+  appearance: { gap: 8 },
   permission: { gap: 8, padding: 12 },
   loading: { flexDirection: "row", alignItems: "center", gap: 10, padding: 16 },
-  serverStatus: { flexDirection: "row", alignItems: "center", gap: 8 },
+  sheetStatus: { flexDirection: "row", alignItems: "center", gap: 8 },
+  serverRow: { minHeight: HIT, flexDirection: "row", alignItems: "center", gap: 12, padding: 16 },
+  serverTile: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.md },
+  serverText: { flex: 1, minWidth: 0, gap: 2 },
+  serverName: { fontSize: 17, fontWeight: "600" },
+  serverLine: { flexDirection: "row", alignItems: "center", gap: 6 },
+  dot: { width: 8, height: 8, borderRadius: radius.full },
+  serverStatus: { flexShrink: 1, fontSize: 14 },
   source: { fontSize: 13 },
   address: { fontFamily: mono, fontSize: 13 },
   serverPicker: { padding: 8 },
-  groupOption: { paddingHorizontal: 16, borderRadius: 0 },
 })

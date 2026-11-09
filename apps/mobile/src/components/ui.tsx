@@ -1,5 +1,4 @@
 import type { ProviderId } from "@shared/agent.ts"
-import type { ThreadStatus } from "@shared/domain.ts"
 import { type ReactNode, useState } from "react"
 import {
   ActivityIndicator,
@@ -18,7 +17,6 @@ import { Icon, type IconName } from "@/components/icon"
 import { PressableScale, Spinner } from "@/components/motion"
 import { cssEase, duration } from "@/constants/motion"
 import { HIT, type Palette, PILL_HEIGHT, ProviderColors, radius } from "@/constants/theme"
-import { threadStatus } from "@/constants/thread-status"
 import { useScheme, useTheme } from "@/hooks/use-theme"
 import type { ConnectionStatus } from "@/lib/connection"
 import { copy } from "@/lib/copy"
@@ -145,10 +143,6 @@ const toneColors = (theme: Palette): Record<Tone, [string, string]> => ({
 
 type Status = { label: string; tone: Tone; icon?: IconName }
 
-/** Nothing while the thread is idle, since a quiet thread needs nobody. */
-export const ThreadStatusPill = ({ status }: { status: ThreadStatus }) =>
-  status === "idle" ? null : <Pill {...threadStatus[status]} />
-
 const connectionLabel: Record<ConnectionStatus, Status> = {
   connected: { label: copy("mobile_connection_connected"), tone: "running", icon: "Cloud" },
   connecting: { label: copy("mobile_connection_connecting"), tone: "neutral", icon: "Spinner" },
@@ -176,6 +170,7 @@ const providerMark: Record<ProviderId, IconName> = {
   codex: "RiOpenaiFill",
   muse: "RiMetaFill",
   opencode: "OpencodeMark",
+  magpie: "MagpieMark",
 }
 
 const providerName: Record<ProviderId, string> = {
@@ -183,6 +178,7 @@ const providerName: Record<ProviderId, string> = {
   codex: copy("mobile_provider_codex"),
   muse: copy("mobile_provider_muse"),
   opencode: copy("mobile_provider_opencode"),
+  magpie: copy("mobile_provider_magpie"),
 }
 
 /** The provider's logo and name, muted, for meta rows. */

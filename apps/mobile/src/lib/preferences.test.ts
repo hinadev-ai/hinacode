@@ -13,6 +13,7 @@ describe("parsePreferences", () => {
       homeTab: "threads",
       sidebarHidden: true,
       environmentFilter: { environmentIds: ["server-a"], hideOffline: true },
+      projectIds: ["web", "api"],
     }
     expect(parsePreferences(JSON.stringify(stored))).toEqual(stored)
   })
@@ -22,6 +23,11 @@ describe("parsePreferences", () => {
       ...defaultPreferences,
       appearance: "light",
     })
+  })
+
+  it("shows every project for preferences stored before the project filter", () => {
+    const stored = { environmentFilter: { environmentIds: ["server-a"], hideOffline: false } }
+    expect(parsePreferences(JSON.stringify(stored)).projectIds).toEqual([])
   })
 
   it("falls back to the defaults for unreadable data", () => {

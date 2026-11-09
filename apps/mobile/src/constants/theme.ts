@@ -10,12 +10,16 @@ export const Colors = {
     textResting: "#3e5151",
     textMuted: "#556767",
     background: "#f7f7f2",
+    /** Raised cards and floating bars over the page: tickets, the composer, the thread control bar. */
+    card: "#ffffff",
     surface: "#e8e8e0",
     surfaceStrong: "#d0d0c6",
     /** A switch's off track, 3:1 on `surface` and `background` so the control reads when it is off. */
     controlOff: "#738484",
     /** A filled control that cannot be pressed yet, under `textMuted`. A step above every surface it sits on. */
     disabled: "#d0d0c6",
+    /** A ghost button's press and the idle send button, the desktop's `bg-foreground/6`. */
+    inkWash: "rgba(35, 55, 55, 0.06)",
     /** A sheet over the scrim, and a selected or pressed row on it. Dark sheets sit a step above the page. */
     sheet: "#f7f7f2",
     sheetRaised: "#e8e8e0",
@@ -53,10 +57,12 @@ export const Colors = {
     textResting: "#d8d8d1",
     textMuted: "#b8b8ae",
     background: "#1c2e2e",
+    card: "#213434",
     surface: "#233737",
     surfaceStrong: "#324949",
     controlOff: "#758b8b",
     disabled: "#425b5b",
+    inkWash: "rgba(247, 247, 242, 0.09)",
     sheet: "#233737",
     sheetRaised: "#324949",
     scrim: "rgba(0, 0, 0, 0.72)",
@@ -105,12 +111,12 @@ export const indicatorGlyph = (theme: Palette, { icon, tone }: { icon: IconName;
 })
 
 /**
- * Each agent's mark in its brand color, as in the desktop's `--provider-*` tokens. Codex and opencode take the text
+ * Each agent's mark in its brand color, as in the desktop's `--provider-*` tokens. Codex, opencode and magpie take the text
  * color.
  */
 export const ProviderColors = {
-  light: { claude: "#c15f3c", codex: Colors.light.text, muse: "#0064e0", opencode: Colors.light.text },
-  dark: { claude: "#d97757", codex: Colors.dark.text, muse: "#0081fb", opencode: Colors.dark.text },
+  light: { claude: "#c15f3c", codex: Colors.light.text, muse: "#0064e0", opencode: Colors.light.text, magpie: Colors.light.text },
+  dark: { claude: "#d97757", codex: Colors.dark.text, muse: "#0081fb", opencode: Colors.dark.text, magpie: Colors.dark.text },
 } as const
 
 /**

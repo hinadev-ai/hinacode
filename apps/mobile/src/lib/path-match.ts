@@ -96,3 +96,8 @@ export function lineSnippet(line: string, query: string, { lead = 24, room = 64 
   const start = at - cut + ellipsis.length
   return { text: ellipsis + text.slice(cut), match: { start, end: start + query.length } }
 }
+
+export const splitPath = (path: string) => {
+  const slash = path.lastIndexOf("/")
+  return slash === -1 ? { folder: "", name: path } : { folder: path.slice(0, slash + 1), name: path.slice(slash + 1) }
+}

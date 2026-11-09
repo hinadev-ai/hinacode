@@ -1,5 +1,7 @@
 import type { ProviderId } from "./agent.ts"
 
+export const MAGPIE_KEY_SECRET = "magpie.key"
+
 export interface ProviderInfo {
   readonly name: string
   readonly binary: string
@@ -45,6 +47,15 @@ export const providerInfo: Record<ProviderId, ProviderInfo> = {
     steersRunningTurn: false,
     autoCompacts: false,
     movesCommandsToBackground: false,
+    subagentModels: "picked",
+  },
+  magpie: {
+    name: "magpie",
+    binary: "claude",
+    installUrl: "https://usemagpie.ai",
+    steersRunningTurn: true,
+    autoCompacts: true,
+    movesCommandsToBackground: true,
     subagentModels: "picked",
   },
 }

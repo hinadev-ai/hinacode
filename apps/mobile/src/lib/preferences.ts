@@ -25,6 +25,8 @@ export interface Preferences {
   readonly sidebarHidden: boolean
   /** The servers the home list and search show, when several are paired. */
   readonly environmentFilter: EnvironmentFilter
+  /** The projects the home list and search narrow to, among those on the shown servers. Empty shows them all. */
+  readonly projectIds: readonly string[]
 }
 
 export const defaultPreferences: Preferences = {
@@ -33,6 +35,7 @@ export const defaultPreferences: Preferences = {
   homeTab: "inbox",
   sidebarHidden: false,
   environmentFilter: allEnvironments,
+  projectIds: [],
 }
 
 const withDefault = <S extends Schema.Top>(schema: S, value: S["Encoded"]) =>
@@ -45,6 +48,7 @@ const Stored = Schema.Struct({
   homeTab: withDefault(HomeTabSchema, defaultPreferences.homeTab),
   sidebarHidden: withDefault(Schema.Boolean, defaultPreferences.sidebarHidden),
   environmentFilter: withDefault(EnvironmentFilter, defaultPreferences.environmentFilter),
+  projectIds: withDefault(Schema.Array(Schema.String), defaultPreferences.projectIds),
 })
 
 const decode = Schema.decodeUnknownOption(Schema.fromJsonString(Stored))

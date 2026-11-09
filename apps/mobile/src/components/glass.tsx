@@ -5,6 +5,9 @@ import { useScheme } from "@/hooks/use-theme"
 /** The native iOS chrome (toolbar items, search bar, large titles) applies to iPhone and iPad only. */
 export const isIOS = Platform.OS === "ios"
 
+/** Header options for a top-level screen: the large title on iOS, the plain header elsewhere. */
+export const largeTitle = { headerLargeTitleEnabled: isIOS, headerTransparent: false }
+
 /** Liquid Glass exists only where the OS and the build SDK both provide it. Nowhere else changes. */
 export const liquidGlass = isIOS && isLiquidGlassAvailable()
 

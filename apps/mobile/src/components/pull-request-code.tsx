@@ -27,6 +27,7 @@ import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { type PatchLine, patchLines } from "@/lib/patch-lines"
 import { type CodeView, filesKey, usePullRequests } from "@/stores/pull-requests"
+import { splitPath } from "@/lib/path-match"
 
 /** Lines a diff shows before it asks, so opening a generated file does not stall the screen. */
 const FIRST_LINES = 300
@@ -138,7 +139,7 @@ function Loading({ label }: { label: string }) {
   )
 }
 
-function LineCounts({ added, removed }: { added: number; removed: number }) {
+export function LineCounts({ added, removed }: { added: number; removed: number }) {
   const theme = useTheme()
   return (
     <Text
@@ -165,9 +166,13 @@ function DiffSummary({ files }: { files: readonly PullRequestFile[] }) {
   )
 }
 
-const splitPath = (path: string) => {
-  const slash = path.lastIndexOf("/")
-  return slash === -1 ? { folder: "", name: path } : { folder: path.slice(0, slash + 1), name: path.slice(slash + 1) }
+/** A file's change as one outlined letter, such as M or A, in the change's color. */
+export function FileBadge({ letter, color }: { letter: string; color: string }) {
+  return (
+    <View style={[styles.badge, { borderColor: color }]}>
+      <Text style={[styles.mark, { color }]}>{letter}</Text>
+    </View>
+  )
 }
 
 function FileRow({ entry }: { entry: GuideFile }) {
@@ -195,7 +200,7 @@ function FileRow({ entry }: { entry: GuideFile }) {
         <Rotate turned={open}>
           <Icon name="ChevronRight" size={16} color={theme.textMuted} />
         </Rotate>
-        <Text style={[styles.mark, { color: mark.color }]}>{mark.letter}</Text>
+        <FileBadge letter={mark.letter} color={mark.color} />
         <View style={styles.fileName}>
           <Text numberOfLines={1} ellipsizeMode="middle" style={[styles.path, { color: theme.text }]}>
             {name}
@@ -241,7 +246,7 @@ const notesOn = (notes: readonly GuideLineNote[], line: PatchLine) =>
   notes.filter((note) => (note.side === "additions" ? line.newLine : line.oldLine) === note.line)
 
 /** A unified diff whose long lines wrap, since a phone has no width for a split one or for scrolling sideways. */
-function Patch({ patch, notes }: { patch: string; notes: readonly GuideLineNote[] }) {
+export function Patch({ patch, notes = [] }: { patch: string; notes?: readonly GuideLineNote[] }) {
   const theme = useTheme()
   const [showAll, setShowAll] = useState(false)
   const lines = patchLines(patch)
@@ -533,7 +538,15 @@ const styles = StyleSheet.create({
   counts: { flexShrink: 0, fontFamily: mono, fontSize: 12 },
   file: { borderBottomWidth: StyleSheet.hairlineWidth },
   fileHeader: { minHeight: HIT, flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8 },
-  mark: { width: 12, fontFamily: mono, fontSize: 12, fontWeight: "700", textAlign: "center" },
+  badge: {
+    width: 24,
+    height: 24,
+    borderRadius: radius.sm,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mark: { fontFamily: mono, fontSize: 12, fontWeight: "700" },
   fileName: { flex: 1, gap: 2 },
   path: { fontFamily: mono, fontSize: 13, fontWeight: "600", lineHeight: 18 },
   renamed: { fontFamily: mono, fontSize: 12 },

@@ -2,14 +2,12 @@ import {
   type AccountLimits,
   type AgentCommand,
   type AgentProfile,
-  type ModelInfo,
   presetModels,
   ProviderId,
   unlistedModel,
 } from "@shared/agent.ts"
 import { completionAt, type Suggestion, suggestionsFor } from "@shared/composerSyntax.ts"
-import type { RpcRequest } from "@shared/contract.ts"
-import { AccessMode, isThreadBusy, type Settings, type Thread, toCheckoutTarget } from "@shared/domain.ts"
+import { isThreadBusy, type Settings, type Thread, toCheckoutTarget } from "@shared/domain.ts"
 import { type AccountOption, accountOptions, formatResetIn } from "@shared/planLimits.ts"
 import { providerInfo } from "@shared/providers.ts"
 import { mentionableThreads } from "@shared/mentions.ts"
@@ -25,11 +23,12 @@ import {
   View,
 } from "react-native"
 import Animated, { useReducedMotion } from "react-native-reanimated"
+import { AccessModeSection, accessModes } from "@/components/access-mode"
 import { ComposerInput } from "@/components/composer-input"
 import type { ComposerInputHandle } from "@/components/composer-input.types"
 import { GlassFill, liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
-import { IconSwap, Spinner } from "@/components/motion"
+import { Spinner } from "@/components/motion"
 import { OptionRow, Section, Sheet, sheetStyles } from "@/components/sheet"
 import { Toggle } from "@/components/ui"
 import { WorkspaceChip } from "@/components/workspace-picker"
@@ -48,23 +47,16 @@ import { pickImages, stageImage } from "@/lib/stage-images"
 import { type DraftImage, useDrafts } from "@/stores/drafts"
 import { useMessages } from "@/stores/messages"
 import { modelsOn, useModels } from "@/stores/models"
-import { useThreads } from "@/stores/threads"
+import { updateThread, useThreads } from "@/stores/threads"
 
 type OnError = (message: string) => void
-
-const update = async (patch: RpcRequest<"threads.update">, onError: OnError) => {
-  try {
-    useThreads.getState().upsert(await call("threads.update", patch))
-  } catch (cause) {
-    onError(errorText(cause))
-  }
-}
 
 const LINE_HEIGHT = 20
 const INPUT_PADDING = 6
 const MAX_LINES = 5
-const CHIP_HEIGHT = 32
-const SEND_SIZE = 36
+const CHIP_HEIGHT = 36
+const SEND_SIZE = 40
+const COMPOSER_RADIUS = 28
 const IMAGE_SIZE = 56
 const SUGGESTION_HEIGHT = 48
 const VISIBLE_SUGGESTIONS = 4.5
@@ -206,16 +198,11 @@ export function Composer({ thread }: { thread: Thread }) {
     if (failed) setError(errorText(failed.reason))
   }
 
-  const stop = () => {
-    setError(null)
-    call("threads.interrupt", { threadId: thread.id }).catch((cause: unknown) => setError(errorText(cause)))
-  }
-
   return (
     <View
       style={[
         styles.composer,
-        liquidGlass ? styles.dock : { borderColor: theme.border, backgroundColor: theme.background },
+        liquidGlass && styles.dock,
       ]}
     >
       <GlassFill />
@@ -244,9 +231,10 @@ export function Composer({ thread }: { thread: Thread }) {
         style={[
           styles.bar,
           {
-            backgroundColor: liquidGlass ? "transparent" : theme.surface,
+            backgroundColor: liquidGlass ? "transparent" : theme.background,
             borderColor: focused ? theme.primary : liquidGlass ? "transparent" : theme.border,
           },
+          !liquidGlass && styles.raised,
           focused && { boxShadow: `0 0 0 2px ${theme.primary}` },
         ]}
       >
@@ -293,7 +281,6 @@ export function Composer({ thread }: { thread: Thread }) {
             steers={steers}
             hasDraft={hasDraft && !staging}
             onSend={() => void send()}
-            onStop={stop}
           />
         </View>
       </View>
@@ -319,15 +306,10 @@ function AttachButton({ staging, onPress }: { staging: boolean; onPress: () => v
       hitSlop={(HIT - CHIP_HEIGHT) / 2}
       style={({ pressed }) => [
         styles.attach,
-        pressed && { backgroundColor: theme.surfaceStrong },
-        pressed && styles.pressed,
+        pressed && [styles.pressed, { backgroundColor: theme.inkWash }],
       ]}
     >
-      {staging ? (
-        <Spinner size={16} color={theme.textMuted} />
-      ) : (
-        <Icon name="Image" size={16} color={theme.textMuted} />
-      )}
+      {staging ? <Spinner size={18} color={theme.textMuted} /> : <Icon name="Plus" size={20} color={theme.textMuted} />}
     </Pressable>
   )
 }
@@ -465,27 +447,24 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
   }
 }
 
-/** While the agent runs, an empty composer offers Stop and a draft offers Steer, or Queue if the agent can't steer. */
+/** While the agent runs, a draft steers the turn, or queues behind it if the agent can't steer. */
 function SendButton({
   busy,
   steers,
   hasDraft,
   onSend,
-  onStop,
 }: {
   busy: boolean
   steers: boolean
   hasDraft: boolean
   onSend: () => void
-  onStop: () => void
 }) {
   const theme = useTheme()
-  const stopping = busy && !hasDraft
-  const action = stopping ? "stop" : busy ? (steers ? "steer" : "queue") : "send"
+  const action = busy ? (steers ? "steer" : "queue") : "send"
   const label = copy(`mobile_composer_${action}`)
-  const disabled = !stopping && !hasDraft
+  const disabled = !hasDraft
   const halo = action === "send" && hasDraft
-  const background = stopping ? theme.dangerBg : disabled ? theme.disabled : theme.primary
+  const background = disabled ? theme.inkWash : theme.primary
 
   return (
     <motion.Pressable
@@ -494,19 +473,15 @@ function SendButton({
       accessibilityLabel={label}
       aria-disabled={disabled}
       disabled={disabled}
-      onPress={stopping ? onStop : onSend}
+      onPress={onSend}
       hitSlop={(HIT - SEND_SIZE) / 2}
       animate={{ backgroundColor: background }}
       whileTap={{ scale: PRESSED_SCALE }}
       transition={{ ...pressSpring, backgroundColor: { ease: ease.swap } }}
-      style={styles.send}
+      style={[styles.send, { borderColor: disabled ? theme.border : "transparent" }]}
     >
       {halo && <SendHalo />}
-      <IconSwap
-        showSecond={stopping}
-        first={<Icon name="ArrowUp" size={18} color={halo ? theme.haloInk : disabled ? theme.textMuted : theme.onPrimary} />}
-        second={<Icon name="Stop" size={14} color={theme.danger} />}
-      />
+      <Icon name="ArrowUp" size={20} color={halo ? theme.haloInk : disabled ? theme.textMuted : theme.onPrimary} />
     </motion.Pressable>
   )
 }
@@ -548,7 +523,7 @@ function SendHalo() {
 }
 
 /** The agent's listed models, plus the thread's own model when the agent no longer lists it. */
-function useThreadModels(thread: Thread) {
+export function useThreadModels(thread: Thread) {
   const server = useThreadServer(thread.id)?.id
   const listed = useModels((state) => modelsOn(state, server, thread.provider))
   const current = listed?.find((model) => model.id === thread.model)
@@ -562,6 +537,7 @@ const providers: Record<ProviderId, { label: string; icon: IconName }> = {
   codex: { label: copy("mobile_provider_codex"), icon: "RiOpenaiFill" },
   muse: { label: copy("mobile_provider_muse"), icon: "RiMetaFill" },
   opencode: { label: copy("mobile_provider_opencode"), icon: "OpencodeMark" },
+  magpie: { label: copy("mobile_provider_magpie"), icon: "MagpieMark" },
 }
 
 const effortLabels: Record<string, string> = {
@@ -577,39 +553,6 @@ const effortLabels: Record<string, string> = {
 const effortLabel = (effort: string) => effortLabels[effort] ?? effort
 
 const DEFAULT_EFFORT = "default"
-
-const accessModes: Record<AccessMode, { label: string; icon: IconName }> = {
-  supervised: { label: copy("mobile_settings_access_supervised"), icon: "ShieldUser" },
-  auto: { label: copy("mobile_settings_access_auto"), icon: "Shield" },
-  full: { label: copy("mobile_settings_access_full"), icon: "Unlock" },
-}
-
-/** What each mode lets through, which differs by agent and, for Claude's auto mode, by model. */
-const supervisedHints: Record<ProviderId, string> = {
-  claude: copy("mobile_settings_access_supervised_hint"),
-  codex: copy("mobile_composer_access_supervised_codex"),
-  muse: copy("mobile_composer_access_supervised_muse"),
-  opencode: copy("mobile_composer_access_supervised_opencode"),
-}
-
-const autoHints: Record<ProviderId, (model: ModelInfo | undefined) => string> = {
-  claude: (model) =>
-    model?.autoMode ? copy("mobile_composer_access_auto_claude") : copy("mobile_composer_access_auto_claude_edits"),
-  codex: () => copy("mobile_composer_access_auto_codex"),
-  muse: () => copy("mobile_composer_access_auto_muse"),
-  opencode: () => copy("mobile_composer_access_auto_opencode"),
-}
-
-const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | undefined) => {
-  switch (accessMode) {
-    case "supervised":
-      return supervisedHints[thread.provider]
-    case "auto":
-      return autoHints[thread.provider](model)
-    case "full":
-      return copy("mobile_settings_access_full_hint")
-  }
-}
 
 interface ServerOptions {
   readonly profiles: readonly AgentProfile[]
@@ -678,14 +621,14 @@ function SettingsChip({ thread, onError }: { thread: Thread; onError: OnError })
         hitSlop={{ top: (HIT - CHIP_HEIGHT) / 2, bottom: (HIT - CHIP_HEIGHT) / 2 }}
         style={({ pressed }) => [
           styles.chip,
-          pressed && { backgroundColor: theme.surfaceStrong },
-          pressed && styles.pressed,
+          pressed && [styles.pressed, { backgroundColor: theme.inkWash }],
         ]}
       >
         <Icon name={providers[thread.provider].icon} size={14} color={theme.textMuted} />
         <Text numberOfLines={1} style={[styles.chipLabel, { color: theme.text }]}>
           {modelLabel}
         </Text>
+        {thread.accessMode === "full" && <Icon name={accessModes.full.icon} size={14} color={theme.danger} />}
         <Icon name="ChevronDown" size={12} color={theme.textMuted} />
       </Pressable>
       <SettingsSheet thread={thread} open={open} onClose={() => setOpen(false)} onError={onError} />
@@ -704,7 +647,6 @@ function SettingsSheet({
   onClose: () => void
   onError: OnError
 }) {
-  const theme = useTheme()
   const now = useNow()
   const { models, current } = useThreadModels(thread)
   const unstarted = useUnstarted(thread)
@@ -724,7 +666,7 @@ function SettingsSheet({
   const changeModel = (id: string) => {
     const next = models.find((model) => model.id === id)
     if (next === undefined || next.id === thread.model) return
-    void update(
+    void updateThread(
       {
         id: thread.id,
         model: next.id,
@@ -749,7 +691,7 @@ function SettingsSheet({
                   label={providers[provider].label}
                   icon={providers[provider].icon}
                   selected={provider === thread.provider}
-                  onPress={() => provider !== thread.provider && void update({ id: thread.id, provider }, onError)}
+                  onPress={() => provider !== thread.provider && void updateThread({ id: thread.id, provider }, onError)}
                 />
               ))}
             </Section>
@@ -793,7 +735,7 @@ function SettingsSheet({
                     selected={selected}
                     onPress={() =>
                       !selected &&
-                      void update(
+                      void updateThread(
                         { id: thread.id, effort: option.value === DEFAULT_EFFORT ? null : option.value },
                         onError,
                       )
@@ -810,23 +752,11 @@ function SettingsSheet({
                 label={copy("mobile_composer_fast_mode")}
                 hint={copy("mobile_composer_fast_mode_hint")}
                 value={thread.fastMode}
-                onValueChange={(fastMode) => void update({ id: thread.id, fastMode }, onError)}
+                onValueChange={(fastMode) => void updateThread({ id: thread.id, fastMode }, onError)}
               />
             </Section>
           )}
-          <Section title={copy("mobile_composer_access")}>
-            {AccessMode.literals.map((mode) => (
-              <OptionRow
-                key={mode}
-                label={accessModes[mode].label}
-                icon={accessModes[mode].icon}
-                hint={accessHint(mode, thread, current)}
-                color={mode === "full" ? theme.danger : undefined}
-                selected={mode === thread.accessMode}
-                onPress={() => mode !== thread.accessMode && void update({ id: thread.id, accessMode: mode }, onError)}
-              />
-            ))}
-          </Section>
+          <AccessModeSection thread={thread} model={current} onError={onError} />
     </Sheet>
   )
 }
@@ -858,28 +788,23 @@ function ToggleRow({
 }
 
 const styles = StyleSheet.create({
-  composer: { borderTopWidth: StyleSheet.hairlineWidth, padding: 12, gap: 6 },
-  dock: {
-    borderTopWidth: 0,
-    borderRadius: radius.xl,
-    overflow: "hidden",
-    marginHorizontal: 12,
-    marginBottom: 12,
-  },
-  bar: { borderRadius: radius.xl, borderWidth: StyleSheet.hairlineWidth, padding: 10, gap: 6 },
+  composer: { paddingHorizontal: 12, paddingBottom: 12, paddingTop: 4, gap: 6 },
+  dock: { borderRadius: COMPOSER_RADIUS, overflow: "hidden", marginHorizontal: 12, marginBottom: 12, paddingTop: 12 },
+  bar: { borderRadius: COMPOSER_RADIUS, borderWidth: StyleSheet.hairlineWidth, padding: 10, paddingTop: 12, gap: 10 },
+  raised: { boxShadow: "0 4px 16px rgba(0, 0, 0, 0.06)" },
   input: {
     minHeight: LINE_HEIGHT + INPUT_PADDING * 2,
     maxHeight: LINE_HEIGHT * MAX_LINES + INPUT_PADDING * 2,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     paddingVertical: INPUT_PADDING,
-    fontSize: 16,
+    fontSize: 17,
     lineHeight: LINE_HEIGHT,
     textAlignVertical: "top",
     // react-native-web renders a fixed-height textarea; this lets the browser grow it with its text.
     ...Platform.select({ web: { fieldSizing: "content", outlineStyle: "none" } as object }),
   },
   toolbar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  chips: { flexShrink: 1, flexDirection: "row", alignItems: "center", gap: 2 },
+  chips: { flexShrink: 1, flexDirection: "row", alignItems: "center", gap: 8 },
   suggestions: { borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
   suggestion: { minHeight: SUGGESTION_HEIGHT, justifyContent: "center", gap: 2, paddingHorizontal: 12, paddingVertical: 6 },
   suggestionName: { fontFamily: mono, fontSize: 14 },
@@ -894,8 +819,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingLeft: 8,
-    paddingRight: 10,
+    paddingLeft: 12,
+    paddingRight: 12,
     borderRadius: radius.full,
   },
   attach: {
@@ -908,7 +833,7 @@ const styles = StyleSheet.create({
   images: { gap: 8, paddingHorizontal: 6, paddingTop: 6 },
   image: { width: IMAGE_SIZE, height: IMAGE_SIZE, borderRadius: radius.md },
   removeImage: { position: "absolute", top: -6, right: -6 },
-  chipLabel: { flexShrink: 1, fontSize: 13, fontWeight: "500" },
+  chipLabel: { flexShrink: 1, fontFamily: mono, fontSize: 13 },
   pressed: { transform: [{ scale: 0.96 }] },
   send: {
     width: SEND_SIZE,
@@ -916,6 +841,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth,
     overflow: "hidden",
   },
   // Wider than the button by √2, so its corners stay covered while it turns.

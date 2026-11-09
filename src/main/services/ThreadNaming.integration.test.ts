@@ -13,6 +13,7 @@ import { ClaudeProvider } from "../agents/claude/index.ts"
 import { CodexProvider } from "../agents/codex/index.ts"
 import { MuseProvider } from "../agents/muse/index.ts"
 import { OpencodeProvider } from "../agents/opencode/index.ts"
+import { MagpieProvider } from "../agents/magpie/index.ts"
 import type { AgentProvider } from "../agents/provider.ts"
 import * as Db from "../db/client.ts"
 import { McpCredentials, layer as credentialsLayer } from "../mcp/credentials.ts"
@@ -39,6 +40,10 @@ vi.mock("@anthropic-ai/claude-agent-sdk", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@anthropic-ai/claude-agent-sdk")>()),
   query: async function* ({ prompt }: { prompt: string }) {
     prompts.push(prompt)
+    if (prompt.startsWith("/")) {
+      yield { type: "result", subtype: "success", result: "Command completed", local_command: "code_review" }
+      return
+    }
     yield { type: "result", subtype: "success", structured_output: { title: "Review login", branch: "review-login" } }
   },
 }))
@@ -138,6 +143,7 @@ const makeLayer = (dbPath: string, pushes: PubSub.PubSub<PushEvent>, named: Defe
         Layer.succeed(CodexProvider, provider("codex")),
         Layer.succeed(MuseProvider, provider("muse")),
         Layer.succeed(OpencodeProvider, provider("opencode")),
+        Layer.succeed(MagpieProvider, provider("magpie")),
         Layer.succeed(Events, { publish: (event) => Effect.asVoid(PubSub.publish(pushes, event)) }),
       ),
     ),
@@ -329,7 +335,7 @@ describe("regenerating a thread's title", () => {
       ])
       expect(result).toStrictEqual({
         title: "Review login",
-        prompts: ["Fix the login form\n\n---\n\nNow review the pull request"],
+        prompts: ["<messages>\nFix the login form\n\n---\n\nNow review the pull request\n</messages>"],
       })
     }),
   )
@@ -340,8 +346,15 @@ describe("regenerating a thread's title", () => {
         message("1", "user", "a".repeat(5000)),
         message("2", "user", "Now review the pull request"),
       ])
-      expect(result.prompts[0]?.startsWith("aaa")).toBe(true)
-      expect(result.prompts[0]?.endsWith("Now review the pull request")).toBe(true)
+      expect(result.prompts[0]?.startsWith("<messages>\naaa")).toBe(true)
+      expect(result.prompts[0]?.endsWith("Now review the pull request\n</messages>")).toBe(true)
+    }),
+  )
+
+  it.live("names a thread that starts with a slash command instead of running the command", () =>
+    Effect.gen(function* () {
+      const result = yield* regenerate([message("1", "user", "/code-review look at PR 640")])
+      expect(result.title).toBe("Review login")
     }),
   )
 

@@ -22,7 +22,7 @@ import {
 import { flushSync } from "react-dom"
 import { type ModelInfo, presetModels, ProviderId, unlistedModel } from "../../shared/agent.ts"
 import type { RpcRequest } from "../../shared/contract.ts"
-import { AccessMode, type OpenPullRequest, type Project, type Thread } from "../../shared/domain.ts"
+import { AccessMode, enabledProviders, type OpenPullRequest, type Project, type Thread } from "../../shared/domain.ts"
 import { parsePullRequestSelector } from "../../shared/github.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
 import {
@@ -39,7 +39,7 @@ import {
 import { environmentName, environmentOf, useClouds, useThreadEnvironment } from "../lib/environments.ts"
 import { inBrowser } from "../lib/runtime.ts"
 import { ProjectDialog } from "./ProjectDialog.tsx"
-import { groupProjects } from "../lib/projectGroups.ts"
+import { groupProjects } from "../../shared/projectGroups.ts"
 import { moveDraft } from "../lib/startThread.ts"
 import { useSettings } from "../lib/settings.ts"
 import { useAltHeld } from "../lib/useModifierHeld.ts"
@@ -167,6 +167,7 @@ const supervisedHint = {
   codex: m.access_supervised_hint_codex,
   muse: m.access_supervised_hint_muse,
   opencode: m.access_supervised_hint_opencode,
+  magpie: m.access_supervised_hint_claude,
 } satisfies Record<ProviderId, () => string>
 
 const autoHint = {
@@ -175,6 +176,7 @@ const autoHint = {
   codex: m.access_auto_hint_codex,
   muse: m.access_auto_hint_muse,
   opencode: m.access_auto_hint_opencode,
+  magpie: m.access_auto_hint_claude_edits,
 } satisfies Record<ProviderId, (model: ModelInfo | undefined) => string>
 
 const accessHint = (accessMode: AccessMode, thread: Thread, model: ModelInfo | undefined) => {
@@ -201,7 +203,9 @@ export const pickerProviders = (own: ProviderId, setUp: ReadonlyArray<ProviderId
   ProviderId.literals.filter((provider) => provider === own || setUp.includes(provider))
 
 function useAgentTabs(thread: Thread, canSwitchAgent: boolean): ReadonlyArray<AgentTab> {
-  const setUpProviders = useAtomValue(setUpProvidersAtom(useThreadEnvironment(thread.id)))
+  const environment = useThreadEnvironment(thread.id)
+  const enabled = new Set(enabledProviders(useSettings(environment)))
+  const setUpProviders = useAtomValue(setUpProvidersAtom(environment)).filter((provider) => enabled.has(provider))
   const accounts = useAccountOptions(thread).options
   const accountHint = useAccountHint()
   const turnRunning = thread.status === "running" || thread.status === "awaiting_approval"

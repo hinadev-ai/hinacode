@@ -1,4 +1,5 @@
 import type { Project } from "../../shared/domain.ts"
+import { filterPickedProjects } from "../../shared/projectGroups.ts"
 import {
   type EnvironmentFilter,
   type FilterableEnvironment,
@@ -36,7 +37,8 @@ export function filterSidebarProjects(
   hidden: ReadonlySet<EnvironmentId>,
   projectIds: ReadonlyArray<string>,
 ): ReadonlyArray<Project> {
-  const reachable = projects.filter((project) => !hidden.has(environmentOf(project)))
-  const picked = reachable.filter((project) => projectIds.includes(project.id))
-  return picked.length === 0 ? reachable : picked
+  return filterPickedProjects(
+    projects.filter((project) => !hidden.has(environmentOf(project))),
+    projectIds,
+  )
 }

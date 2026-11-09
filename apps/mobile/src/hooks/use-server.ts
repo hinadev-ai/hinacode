@@ -1,5 +1,5 @@
 import { type Server, useConnection } from "@/lib/connection"
-import { shownServers } from "@/lib/server-filter"
+import { shownServers, type ThreadFilter } from "@/lib/thread-filter"
 import { usePreferences } from "@/stores/preferences"
 import { useThreads } from "@/stores/threads"
 
@@ -33,4 +33,11 @@ export function useShownServers(): ReadonlySet<string> | null {
   const servers = useConnection((state) => state.servers)
   const filter = usePreferences((state) => state.environmentFilter)
   return shownServers(filter, servers)
+}
+
+/** The servers and projects the home list and search narrow to. */
+export function useThreadFilter(): ThreadFilter {
+  const servers = useShownServers()
+  const projectIds = usePreferences((state) => state.projectIds)
+  return { servers, projectIds }
 }

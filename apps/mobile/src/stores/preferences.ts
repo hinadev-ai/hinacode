@@ -14,12 +14,14 @@ const snapshot = ({
   homeTab,
   sidebarHidden,
   environmentFilter,
+  projectIds,
 }: Preferences): Preferences => ({
   appearance,
   notifications,
   homeTab,
   sidebarHidden,
   environmentFilter,
+  projectIds,
 })
 
 export const usePreferences = create<PreferencesState>()((set, get) => ({

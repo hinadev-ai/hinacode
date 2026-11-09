@@ -43,6 +43,7 @@ import threadWorkStarted from "./migrations/0041_thread_work_started.ts"
 import threadSettled from "./migrations/0042_thread_settled.ts"
 import pullRequestObservedStatus from "./migrations/0043_pull_request_observed_status.ts"
 import dropThreadUserSkills from "./migrations/0044_drop_thread_user_skills.ts"
+import magpieProvider from "./migrations/0045_magpie_provider.ts"
 
 const run = Migrator.make({})
 
@@ -91,6 +92,7 @@ export const runMigrations = run({
     "42_thread_settled": threadSettled,
     "43_pull_request_observed_status": pullRequestObservedStatus,
     "44_drop_thread_user_skills": dropThreadUserSkills,
+    "45_magpie_provider": magpieProvider,
   }),
 }).pipe(
   Effect.tap((ran) =>

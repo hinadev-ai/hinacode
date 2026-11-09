@@ -30,6 +30,7 @@ export interface SettingsPage {
   readonly description?: () => string
   readonly icon: IconComponent
   readonly keywords: ReadonlyArray<() => string>
+  readonly fill?: boolean
 }
 
 export const settingsPages: ReadonlyArray<SettingsPage> = [
@@ -74,13 +75,17 @@ export const settingsPages: ReadonlyArray<SettingsPage> = [
     label: m.settings_providers,
     description: m.settings_models_hint,
     icon: CpuIcon,
+    fill: true,
     keywords: [
+      m.settings_new_threads,
       m.settings_default_model,
       m.settings_default_account,
       m.settings_default_access,
-      m.settings_model_preset,
+      m.settings_model_shown,
       m.settings_auto_compact,
       m.settings_text_generation_model,
+      m.settings_guide_model,
+      m.settings_magpie_gateway,
     ],
   },
   {

@@ -123,12 +123,13 @@ const modelLine = ({ id, label, efforts }: ModelInfo) =>
 
 const choiceLines = (choice: SubagentChoice) => {
   const { name } = providerInfo[choice.provider]
-  if (choice.kind === "unpicked") {
-    return [
-      `- \`${choice.provider}\` (${name}): the user has not picked any models for sub-agents. When they ask for one, tell them to pick models in Settings, Providers, ${name}, Models in the picker.`,
-    ]
-  }
-  return [`- \`${choice.provider}\` (${name}):`, ...choice.models.map(modelLine)]
+  return [
+    `- \`${choice.provider}\` (${name}):`,
+    ...choice.models.map(modelLine),
+    ...(choice.hidden > 0
+      ? [`  - and ${choice.hidden} more. Pass any other id ${name} serves, and \`run_agent\` checks its full list.`]
+      : []),
+  ]
 }
 
 const agentsInstructions = (choices: ReadonlyArray<SubagentChoice>) => `<agents>
