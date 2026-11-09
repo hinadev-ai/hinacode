@@ -78,6 +78,8 @@ Delivery runs on the machine that holds the artifact, so a mention reaches only 
 
 An artifact from another harness has no owning thread. Its comments are saved, and only mentions deliver.
 
+A comment to an archived thread unarchives it first, the way sending it a message does, because an archived thread refuses turns. A deleted owner gets nothing; the comment is still saved.
+
 ### What the agent receives
 
 `artifactFeedbackPrompt` in `src/shared/artifactFeedback.ts` writes the steer text, so it is one pure function with tests:
