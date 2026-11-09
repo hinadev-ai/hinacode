@@ -1,6 +1,6 @@
 # MCP tools and pull request links
 
-hinacode runs one MCP server on 127.0.0.1 and hands each agent run a bearer credential bound to its thread; the credential alone decides which thread a call acts as. Agents use it to review their changes (`review_changes`), register and watch the pull requests they open (`link_pull_request`, `list_thread_pull_requests`, `unlink_pull_request`, `watch_pull_request`, `unwatch_pull_request`), work with Linear (`linear_get_issue`, `linear_search_issues`, `linear_create_comment`, `linear_update_issue_state`), ask the user for a secret through a card in the thread (`request_secret`), start sibling threads (`create_thread`), run another agent (`run_agent`), list the user's machines (`list_machines`), and check on, steer or stop the threads of their project (`list_threads`, `read_thread`, `send_to_thread`, `stop_thread`). That is eighteen tools, plus `vm_*` when Tiny VM is on and `device_*` when Experimental > Devices is on. Linked pull requests appear in the side panel's `Pull requests` tab with their status from `gh`, where the user can open, watch, merge, close, comment on or unlink them, and open the changes in a separate review window. The desktop has no button to create a pull request; agents open them, and `pullRequests.create` remains as rpc for the phone app.
+hinacode runs one MCP server on 127.0.0.1 and hands each agent run a bearer credential bound to its thread; the credential alone decides which thread a call acts as. Agents use it to review their changes (`review_changes`), register and watch the pull requests they open (`link_pull_request`, `list_thread_pull_requests`, `unlink_pull_request`, `watch_pull_request`, `unwatch_pull_request`), work with Linear (`linear_get_issue`, `linear_search_issues`, `linear_create_comment`, `linear_update_issue_state`), ask the user for a secret through a card in the thread (`request_secret`), start sibling threads (`create_thread`), run another agent (`run_agent`), list the user's machines (`list_machines`), and check on, steer or stop the threads of their project (`list_threads`, `read_thread`, `send_to_thread`, `stop_thread`). That is eighteen tools, plus `vm_*` when Tiny VM is on and `device_*` when Experimental > Devices is on. Linked pull requests appear in the side panel's `Source control` tab with their status from `gh` or `glab`, where the user can open, watch, merge, close, comment on or unlink them, and open the changes in a separate review window. The desktop has no button to create a pull request; agents open them, and `pullRequests.create` remains as rpc for the phone app.
 
 ## Automated coverage
 
@@ -23,7 +23,7 @@ hinacode runs one MCP server on 127.0.0.1 and hands each agent run a bearer cred
 
 ## How to get to it (user POV)
 
-- Users do not call the tools; they ask an agent to, for example `Open a PR and link it`, and see the result in the side panel's `Pull requests` tab (`Mod+Shift+M`), the sidebar row (`#<n>` under the title) and the overview card's `Pull request actions` menu.
+- Users do not call the tools; they ask an agent to, for example `Open a PR and link it`, and see the result in the side panel's `Source control` tab (`Mod+Shift+M`), the sidebar row (`#<n>` under the title) and the overview card's `Pull request actions` menu.
 
 ## Driving it with agent-browser and mcp-call.ts
 
