@@ -1,9 +1,9 @@
 import type { PushEvent } from "@shared/contract.ts"
 import { useEffect, useEffectEvent, useRef, useState } from "react"
-import { Keyboard, Platform, Pressable, StyleSheet, Text, View } from "react-native"
+import { Pressable, StyleSheet, Text, View } from "react-native"
 import { Icon } from "@/components/icon"
 import { Button, Notice } from "@/components/ui"
-import { radius } from "@/constants/theme"
+import { HIT, mono, radius } from "@/constants/theme"
 import { useThreadServer } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { call, onEvent, RpcError, useConnection } from "@/lib/connection"
@@ -63,7 +63,6 @@ function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart:
     )
   const applicationCursor = useRef(false)
   const [ctrl, setCtrl] = useState(false)
-  const keyboardVisible = useKeyboardVisible()
 
   const write = (text: string | null) => {
     if (text === null || text === "") return
@@ -182,15 +181,7 @@ function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart:
   return (
     <View style={styles.container}>
       {error !== null && <Notice text={error} tone="danger" />}
-      {ended !== null && (
-        <View style={styles.exited}>
-          <View style={styles.exitedNotice}>
-            <Notice text={ended} />
-          </View>
-          <Button label={copy("mobile_terminal_restart")} icon="Terminal" onPress={onRestart} />
-        </View>
-      )}
-      <View style={[styles.surface, { borderColor: theme.border }]}>
+      <View style={styles.surface}>
         <TerminalView
           ref={view}
           theme={theme}
@@ -203,12 +194,24 @@ function TerminalSession({ threadId, onRestart }: { threadId: string; onRestart:
           }}
         />
       </View>
-      {keyboardVisible && ended === null && (
-        <KeyRow ctrl={ctrl} onCtrl={() => setCtrl((armed) => !armed)} onKey={onKey} />
-      )}
+      <View style={[styles.panel, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        {ended === null ? (
+          <KeyRow ctrl={ctrl} onCtrl={() => setCtrl((armed) => !armed)} onKey={onKey} />
+        ) : (
+          <View style={styles.exited}>
+            <View style={styles.exitedNotice}>
+              <Notice text={ended} />
+            </View>
+            <Button label={copy("mobile_terminal_restart")} icon="Terminal" onPress={onRestart} style={styles.restart} />
+          </View>
+        )}
+      </View>
     </View>
   )
 }
+
+const KEY_HEIGHT = 40
+const keySlop = { top: (HIT - KEY_HEIGHT) / 2, bottom: (HIT - KEY_HEIGHT) / 2 }
 
 /** The keys a phone keyboard lacks. Ctrl applies to the next character typed on the keyboard. */
 function KeyRow({ ctrl, onCtrl, onKey }: { ctrl: boolean; onCtrl: () => void; onKey: (key: TerminalKey) => void }) {
@@ -217,77 +220,64 @@ function KeyRow({ ctrl, onCtrl, onKey }: { ctrl: boolean; onCtrl: () => void; on
     (active: boolean) =>
     ({ pressed }: { pressed: boolean }) => [
       styles.key,
-      { backgroundColor: active ? theme.primary : theme.surface, borderColor: active ? theme.primary : theme.border },
+      { backgroundColor: active ? theme.primary : theme.surface },
       pressed && styles.pressed,
     ]
+  const keyButton = ({ key, label, icon }: (typeof terminalKeys)[number]) => (
+    <Pressable
+      key={key}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      hitSlop={keySlop}
+      onPress={() => onKey(key)}
+      style={keyStyle(false)}
+    >
+      {icon ? (
+        <Icon name={icon} size={18} color={theme.text} />
+      ) : (
+        <Text style={[styles.label, { color: theme.text }]}>{label}</Text>
+      )}
+    </Pressable>
+  )
   return (
     <View accessibilityRole="toolbar" accessibilityLabel={copy("mobile_terminal_keys")} style={styles.row}>
+      {terminalKeys.slice(0, 2).map(keyButton)}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={copy("mobile_terminal_control")}
         accessibilityHint={copy("mobile_terminal_control_hint")}
         accessibilityState={{ selected: ctrl }}
+        hitSlop={keySlop}
         onPress={onCtrl}
         style={keyStyle(ctrl)}
       >
-        <Text style={[styles.label, { color: ctrl ? theme.onPrimary : theme.text }]}>Ctrl</Text>
+        <Text style={[styles.label, { color: ctrl ? theme.onPrimary : theme.text }]}>ctrl</Text>
       </Pressable>
-      {terminalKeys.map(({ key, label, icon }) => (
-        <Pressable
-          key={key}
-          accessibilityRole="button"
-          accessibilityLabel={label}
-          onPress={() => onKey(key)}
-          style={keyStyle(false)}
-        >
-          {icon ? (
-            <Icon name={icon} size={20} color={theme.text} />
-          ) : (
-            <Text style={[styles.label, { color: theme.text }]}>{label}</Text>
-          )}
-        </Pressable>
-      ))}
+      {terminalKeys.slice(2).map(keyButton)}
     </View>
   )
 }
 
-function useKeyboardVisible() {
-  const [visible, setVisible] = useState(() => Keyboard.isVisible())
-  useEffect(() => {
-    // iOS announces the keyboard before it animates in; Android only reports it once it is up.
-    const shown = Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow", () =>
-      setVisible(true),
-    )
-    const hidden = Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide", () =>
-      setVisible(false),
-    )
-    return () => {
-      shown.remove()
-      hidden.remove()
-    }
-  }, [])
-  return visible
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1, gap: 8, paddingHorizontal: 12, paddingBottom: 12 },
+  surface: { flex: 1, overflow: "hidden" },
+  panel: {
+    padding: 8,
+    borderRadius: radius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    boxShadow: "0 4px 16px rgba(0, 0, 0, 0.06)",
+  },
   row: { flexDirection: "row", gap: 6 },
   exited: { flexDirection: "row", alignItems: "center", gap: 8 },
   exitedNotice: { flex: 1 },
+  restart: { borderRadius: radius.full },
   key: {
     flex: 1,
-    height: 40,
+    height: KEY_HEIGHT,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.md,
   },
   pressed: { opacity: 0.6 },
-  label: { fontSize: 14, fontWeight: "600" },
-  surface: {
-    flex: 1,
-    overflow: "hidden",
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
+  label: { fontFamily: mono, fontSize: 14, fontWeight: "500" },
 })

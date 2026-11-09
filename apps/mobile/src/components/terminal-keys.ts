@@ -3,14 +3,14 @@ import { copy } from "@/lib/copy"
 
 export type TerminalKey = "escape" | "tab" | "up" | "down" | "left" | "right"
 
-/** The keys a phone keyboard lacks, in the order the key row shows them. */
+/** The keys a phone keyboard lacks, in the order the key row shows them. Ctrl sits after Tab. */
 export const terminalKeys: readonly { key: TerminalKey; label: string; icon?: IconName }[] = [
-  { key: "escape", label: "Esc" },
-  { key: "tab", label: "Tab" },
-  { key: "left", label: copy("mobile_terminal_key_left"), icon: "ChevronLeft" },
-  { key: "up", label: copy("mobile_terminal_key_up"), icon: "ChevronUp" },
-  { key: "down", label: copy("mobile_terminal_key_down"), icon: "ChevronDown" },
-  { key: "right", label: copy("mobile_terminal_key_right"), icon: "ChevronRight" },
+  { key: "escape", label: "esc" },
+  { key: "tab", label: "tab" },
+  { key: "up", label: copy("mobile_terminal_key_up"), icon: "ArrowUp" },
+  { key: "down", label: copy("mobile_terminal_key_down"), icon: "ArrowDown" },
+  { key: "left", label: copy("mobile_terminal_key_left"), icon: "ArrowLeft" },
+  { key: "right", label: copy("mobile_terminal_key_right"), icon: "ArrowRight" },
 ]
 
 const arrowCodes = { up: "A", down: "B", right: "C", left: "D" } as const

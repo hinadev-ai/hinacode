@@ -13,6 +13,7 @@ import "./markdown.css"
 
 const HEADING_SIZES = [22, 20, 18, 16, 15, 15] as const
 const BLOCK_GAP = 10
+const CODE_BLOCK_RADIUS = 16
 
 /** A document is read rather than skimmed: larger text with more room, and space above each section. */
 const MEASURES = {
@@ -58,10 +59,8 @@ function markdownStyle(
       lineHeight: 19,
       color: syntax.plain,
       backgroundColor: theme.surface,
-      borderColor: theme.border,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderRadius: radius.md,
-      padding: 12,
+      borderRadius: CODE_BLOCK_RADIUS,
+      padding: 14,
       marginBottom: gap,
       syntaxColors: {
         keyword: syntax.keyword,

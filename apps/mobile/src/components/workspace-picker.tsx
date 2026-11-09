@@ -168,7 +168,7 @@ function WorkspaceSheet({
           autoCorrect={false}
           spellCheck={false}
           clearButtonMode="while-editing"
-          style={[styles.refInput, { color: theme.text, backgroundColor: theme.sheetRaised, borderColor: theme.border }]}
+          style={[styles.refInput, { color: theme.text, backgroundColor: theme.card, borderColor: theme.border }]}
         />
       }
     >
@@ -240,11 +240,9 @@ const styles = StyleSheet.create({
   mono: { fontFamily: mono },
   chipMode: { fontSize: 12, fontWeight: "500" },
   refInput: {
-    minHeight: HIT,
-    marginHorizontal: 4,
-    marginBottom: 8,
-    paddingHorizontal: 12,
-    borderRadius: radius.md,
+    minHeight: HIT + 4,
+    paddingHorizontal: 16,
+    borderRadius: radius.xl,
     borderWidth: StyleSheet.hairlineWidth,
     fontFamily: mono,
     fontSize: 14,

@@ -1,5 +1,5 @@
 import type { Project, Thread } from "@shared/domain.ts"
-import { router, Stack } from "expo-router"
+import { router } from "expo-router"
 import { type ReactNode, useEffect, useState } from "react"
 import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import Animated, { LayoutAnimationConfig } from "react-native-reanimated"
@@ -7,6 +7,7 @@ import { liquidGlass } from "@/components/glass"
 import { Icon, type IconName } from "@/components/icon"
 import { Reveal, Rotate, Spinner } from "@/components/motion"
 import { SearchField } from "@/components/search-field"
+import { HomeOverview } from "@/components/home-summary"
 import { ServerFilter } from "@/components/server-filter"
 import { ServerMark } from "@/components/server-mark"
 import { SectionLabel, ThreadRow } from "@/components/thread-row"
@@ -25,15 +26,18 @@ import { createThread } from "@/lib/start-thread"
 import { usePreferences } from "@/stores/preferences"
 import { archivedThreads, inboxThreads, listedThreads, pinnedThreads, sortThreads, useThreads } from "@/stores/threads"
 
-/** Overview, New thread and Settings, in the home screen's header or the sidebar's. */
+/**
+ * Pull requests, New thread and Settings, in the sidebar's header. A thread over the tabs hides the tab bar, so these
+ * go back down to the tab they name.
+ */
 export function HomeActions({ onNewThread }: { onNewThread: () => void }) {
   return (
     <View style={styles.actions}>
       <IconButton
-        testID="overview-button"
-        icon="Layout"
-        accessibilityLabel={copy("mobile_home_overview")}
-        onPress={() => router.push("/overview")}
+        testID="pull-requests-button"
+        icon="RiGitPullRequestLine"
+        accessibilityLabel={copy("mobile_overview_pull_requests")}
+        onPress={() => router.dismissTo("/pull-requests")}
       />
       <IconButton
         testID="new-thread-button"
@@ -44,87 +48,25 @@ export function HomeActions({ onNewThread }: { onNewThread: () => void }) {
       <IconButton
         testID="settings-button"
         icon="Settings"
-        accessibilityLabel={copy("mobile_home_settings")}
-        onPress={() => router.push("/settings")}
+        accessibilityLabel={copy("mobile_settings_title")}
+        onPress={() => router.dismissTo("/settings")}
       />
     </View>
   )
 }
 
 /**
- * The same three actions as native iOS toolbar items, so the system draws them and they take the Liquid Glass
- * capsules on iOS 26. There the bottom toolbar also hosts the search field, with New thread beside it. Older
- * iOS keeps every action in the header and the search under the title.
- */
-export function HomeToolbars({ onNewThread }: { onNewThread: () => void }) {
-  const theme = useTheme()
-  const overview = (
-    <Stack.Toolbar.Button
-      icon="square.grid.2x2"
-      accessibilityLabel={copy("mobile_home_overview")}
-      onPress={() => router.push("/overview")}
-    >
-      {copy("mobile_home_overview")}
-    </Stack.Toolbar.Button>
-  )
-  const settings = (
-    <Stack.Toolbar.Button
-      icon="gearshape"
-      accessibilityLabel={copy("mobile_home_settings")}
-      onPress={() => router.push("/settings")}
-    >
-      {copy("mobile_home_settings")}
-    </Stack.Toolbar.Button>
-  )
-  if (!liquidGlass)
-    return (
-      <Stack.Toolbar placement="right">
-        {overview}
-        <Stack.Toolbar.Button
-          icon="square.and.pencil"
-          accessibilityLabel={copy("mobile_home_new_thread")}
-          onPress={onNewThread}
-        >
-          {copy("mobile_home_new_thread")}
-        </Stack.Toolbar.Button>
-        {settings}
-      </Stack.Toolbar>
-    )
-  return (
-    <>
-      <Stack.Toolbar placement="right">
-        {overview}
-        {settings}
-      </Stack.Toolbar>
-      <Stack.Toolbar placement="bottom">
-        <Stack.Toolbar.SearchBarSlot separateBackground />
-        <Stack.Toolbar.Spacer />
-        <Stack.Toolbar.Button
-          icon="square.and.pencil"
-          variant="prominent"
-          tintColor={theme.primary}
-          accessibilityLabel={copy("mobile_home_new_thread")}
-          onPress={onNewThread}
-        >
-          {copy("mobile_home_new_thread")}
-        </Stack.Toolbar.Button>
-      </Stack.Toolbar>
-    </>
-  )
-}
-
-/**
- * The thread list with its search, loading and empty states: the whole home screen on a phone, the sidebar in a
- * wide window. `selectedId` marks the thread open next to it. With `search`, the platform's own search field owns
- * the query and the built-in one is not shown.
+ * The thread list with its loading and empty states: the Threads tab on a phone, the sidebar in a wide window.
+ * `selectedId` marks the thread open next to it.
  */
 export function HomeContent({
   selectedId,
-  search,
+  searchable = false,
   transparent = false,
 }: {
   selectedId?: string
-  search?: { readonly query: string; readonly onChange: (query: string) => void }
+  /** Shows a search field over the list, for the sidebar, which has no search tab beside it. */
+  searchable?: boolean
   /** Lets the surface behind show through, for the floating glass sidebar. */
   transparent?: boolean
 }) {
@@ -132,9 +74,7 @@ export function HomeContent({
   const loadStatus = useThreads((state) => state.status)
   const loadError = useThreads((state) => state.error)
   const hasProjects = useThreads((state) => state.projects.length > 0)
-  const [ownQuery, setOwnQuery] = useState("")
-  const query = search?.query ?? ownQuery
-  const setQuery = search?.onChange ?? setOwnQuery
+  const [query, setQuery] = useState("")
 
   useEffect(() => {
     if (query === "") return
@@ -144,7 +84,7 @@ export function HomeContent({
       return true
     })
     return () => subscription.remove()
-  }, [query, setQuery])
+  }, [query])
 
   const loading = loadStatus === "loading" && !hasProjects
   const noProjects = loadStatus === "ready" && !hasProjects
@@ -181,7 +121,7 @@ export function HomeContent({
     </View>
   )
 
-  if (search !== undefined) {
+  if (!searchable) {
     if (!hasProjects)
       return (
         <ScrollView
@@ -193,16 +133,17 @@ export function HomeContent({
         </ScrollView>
       )
 
-    const header = (
-      <>
-        {notice}
-        <ServerFilter />
-      </>
-    )
-    return query.trim() === "" ? (
-      <HomeList selectedId={selectedId} nativeHeader header={header} />
-    ) : (
-      <SearchResults query={query} nativeHeader header={header} />
+    return (
+      <HomeList
+        selectedId={selectedId}
+        nativeHeader
+        header={
+          <>
+            {notice}
+            <HomeOverview />
+          </>
+        }
+      />
     )
   }
 
@@ -349,7 +290,7 @@ function HomeList({
         itemLayoutAnimation={listLayout}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, nativeHeader && !liquidGlass && styles.belowAccessory]}
         ListHeaderComponent={<>{header}</>}
         renderItem={({ item }) => (
           <HomeRow
@@ -481,6 +422,7 @@ const styles = StyleSheet.create({
   loading: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 32 },
   search: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 4 },
   list: { paddingHorizontal: 8, paddingBottom: 32 },
+  belowAccessory: { paddingBottom: 96 },
   tabs: { marginTop: 4, marginBottom: 6 },
   selected: { borderRadius: radius.md },
   project: { gap: 6, paddingTop: 6 },

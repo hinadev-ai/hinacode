@@ -4,7 +4,7 @@ import { type ReactNode, useEffect } from "react"
 import { Appearance, Platform, StyleSheet, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { ConnectionProvider } from "@/components/connection-provider"
-import { isIOS } from "@/components/glass"
+import { largeTitle } from "@/components/glass"
 import { Notifier } from "@/components/notifier"
 import { ThreadSidebar } from "@/components/thread-sidebar"
 import { useSplitLayout } from "@/hooks/use-split-layout"
@@ -13,14 +13,12 @@ import { useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { usePreferences } from "@/stores/preferences"
 
-// A deep link or a notification opens a thread with the list under it, so back has somewhere to go.
-export const unstable_settings = { anchor: "index" }
+// A deep link or a notification opens a thread with the tabs under it, so back has somewhere to go.
+export const unstable_settings = { anchor: "(tabs)" }
 
 // Expo Router 58 lays iOS 26 screens under a translucent header. The thread, file and pull request screens put fixed
 // content at the top, which would slide under it, so keep the opaque header until they are designed for that.
 enableLegacyHeaderAppearance()
-
-const largeTitle = { headerLargeTitleEnabled: isIOS, headerTransparent: false }
 
 export default function RootLayout() {
   const scheme = useScheme()
@@ -66,24 +64,13 @@ function Routes() {
       <View style={styles.detail}>
         <Stack screenOptions={{ headerShadowVisible: false }} screenLayout={SideSafeArea}>
           <Stack.Protected guard={paired}>
-            <Stack.Screen
-              name="index"
-              options={{ title: copy("mobile_home_title"), ...largeTitle }}
-            />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             {/* Picking a thread in the sidebar swaps the detail, as Mail does, instead of sliding a page in. */}
             <Stack.Screen name="thread/[id]/index" options={{ title: "", animation: split ? "none" : undefined }} />
             <Stack.Screen name="thread/[id]/file" options={{ title: "" }} />
             <Stack.Screen name="thread/[id]/pull-request" options={{ title: "" }} />
             <Stack.Screen name="thread/[id]/subagent" options={{ title: "" }} />
             <Stack.Screen name="thread/[id]/document" options={{ title: "" }} />
-            <Stack.Screen
-              name="overview"
-              options={{ title: copy("mobile_overview_title"), ...largeTitle }}
-            />
-            <Stack.Screen
-              name="settings"
-              options={{ title: copy("mobile_settings_title"), ...largeTitle }}
-            />
             <Stack.Screen
               name="project/new"
               options={{ title: copy("mobile_project_new_title"), presentation: "modal" }}

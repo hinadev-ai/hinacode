@@ -2,13 +2,14 @@ import type { LinearIssue } from "@shared/domain.ts"
 import { router, useFocusEffect } from "expo-router"
 import { useCallback, useState } from "react"
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
+import { GroupedCard, SectionHeading } from "@/components/grouped-card"
 import { Icon, type IconName } from "@/components/icon"
 import { Reveal, Spinner } from "@/components/motion"
 import { NewThreadSheet } from "@/components/new-thread-sheet"
-import { SectionLabel } from "@/components/thread-row"
-import { Button, EmptyState, Notice, Pill, type Tone } from "@/components/ui"
-import { mono, type Palette, READABLE_WIDTH, radius } from "@/constants/theme"
-import { useTheme } from "@/hooks/use-theme"
+import { Button, EmptyState, Notice } from "@/components/ui"
+import { CalloutColors, HIT, mono, type Palette, READABLE_WIDTH } from "@/constants/theme"
+import { useNow } from "@/hooks/use-now"
+import { useScheme, useTheme } from "@/hooks/use-theme"
 import { useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { openWebUrl } from "@/lib/open-url"
@@ -16,10 +17,11 @@ import {
   issueDraft,
   type OverviewPullRequest,
   type PullRequestNeed,
+  type PullRequestProgress,
   pullRequestOverview,
   pullRequestReference,
 } from "@/lib/overview"
-import { checksIcon, checksLabel, reviewLabel, statusGlyph, statusLabel } from "@/lib/pull-request-labels"
+import { checksLabel, reviewLabel, statusGlyph, statusLabel } from "@/lib/pull-request-labels"
 import { useLinear } from "@/stores/linear"
 import { usePullRequests } from "@/stores/pull-requests"
 import { useThreads } from "@/stores/threads"
@@ -51,8 +53,9 @@ function useReadOnFocus(connected: boolean, urls: string) {
 }
 
 /** Which pull requests need the developer, and which Linear tickets are theirs, read through the desktop. */
-export default function OverviewScreen() {
+export default function PullRequestsScreen() {
   const theme = useTheme()
+  const now = useNow()
   const connected = useConnection((state) => state.status === "connected")
   const linksByThread = usePullRequests((state) => state.linksByThread)
   const pullRequests = usePullRequests((state) => state.pullRequests)
@@ -60,7 +63,7 @@ export default function OverviewScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const [issue, setIssue] = useState<LinearIssue | null>(null)
 
-  const overview = pullRequestOverview(Object.values(linksByThread).flat(), threads, pullRequests)
+  const overview = pullRequestOverview(Object.values(linksByThread).flat(), threads, pullRequests, now)
   useReadOnFocus(connected, overview.urls.join("\n"))
 
   const refresh = async () => {
@@ -79,6 +82,7 @@ export default function OverviewScreen() {
   const groups = [
     { label: copy("mobile_overview_needs_you"), rows: overview.attention },
     { label: copy("mobile_overview_open"), rows: overview.open },
+    { label: copy("mobile_overview_merged_today"), rows: overview.mergedToday },
     { label: copy("mobile_overview_merged"), rows: overview.merged },
     { label: copy("mobile_overview_unknown"), rows: overview.unknown },
   ].filter((group) => group.rows.length > 0)
@@ -100,26 +104,26 @@ export default function OverviewScreen() {
         }
       >
         <View style={styles.column}>
-        {!connected && <Notice text={copy("mobile_overview_offline")} />}
-        <Heading label={copy("mobile_overview_pull_requests")} />
-        {groups.length === 0 ? (
-          <EmptyState
-            icon="RiGitPullRequestLine"
-            title={copy("mobile_overview_pull_requests_empty")}
-            hint={copy("mobile_overview_pull_requests_empty_hint")}
-          />
-        ) : (
-          groups.map((group) => (
-            <View key={group.label}>
-              <SectionLabel label={group.label} />
-              {group.rows.map((row) => (
-                <PullRequestRow key={row.url} row={row} />
-              ))}
-            </View>
-          ))
-        )}
-        <Heading label={copy("mobile_overview_linear")} />
-        <LinearIssues connected={connected} onPick={setIssue} />
+          {!connected && <Notice text={copy("mobile_overview_offline")} />}
+          {groups.length === 0 ? (
+            <EmptyState
+              icon="RiGitPullRequestLine"
+              title={copy("mobile_overview_pull_requests_empty")}
+              hint={copy("mobile_overview_pull_requests_empty_hint")}
+            />
+          ) : (
+            groups.map((group) => (
+              <View key={group.label}>
+                <SectionHeading label={group.label} count={group.rows.length} />
+                <GroupedCard>
+                  {group.rows.map((row) => (
+                    <PullRequestRow key={row.url} row={row} />
+                  ))}
+                </GroupedCard>
+              </View>
+            ))
+          )}
+          <LinearIssues connected={connected} onPick={setIssue} />
         </View>
       </ScrollView>
       <NewThreadSheet
@@ -133,23 +137,27 @@ export default function OverviewScreen() {
   )
 }
 
-function Heading({ label }: { label: string }) {
-  const theme = useTheme()
-  return (
-    <Text accessibilityRole="header" style={[styles.heading, { color: theme.text }]}>
-      {label}
-    </Text>
-  )
-}
+type ProgressLine = { label: string; color: string; icon: IconName }
 
-const needs: Record<PullRequestNeed, { label: () => string; tone: Tone }> = {
-  checks: { label: () => checksLabel("failing"), tone: "danger" },
-  changes: { label: () => reviewLabel("changesRequested"), tone: "attention" },
-  conflicts: { label: () => copy("mobile_pr_conflicting"), tone: "danger" },
+const progressLine = (theme: Palette, pending: string): Record<PullRequestProgress, ProgressLine> => ({
+  conflicts: { label: copy("mobile_pr_conflicting"), color: theme.danger, icon: "Warning" },
+  checksFailing: { label: checksLabel("failing"), color: theme.danger, icon: "Warning" },
+  changesRequested: { label: reviewLabel("changesRequested"), color: theme.attention, icon: "Chat" },
+  checksRunning: { label: checksLabel("pending"), color: pending, icon: "Spinner" },
+  reviewRequired: { label: reviewLabel("reviewRequired"), color: theme.textMuted, icon: "Eye" },
+  readyToMerge: { label: copy("mobile_pr_ready_to_merge"), color: theme.running, icon: "Check" },
+})
+
+const needLabel: Record<PullRequestNeed, () => string> = {
+  checks: () => checksLabel("failing"),
+  changes: () => reviewLabel("changesRequested"),
+  conflicts: () => copy("mobile_pr_conflicting"),
 }
 
 function PullRequestRow({ row }: { row: OverviewPullRequest }) {
   const theme = useTheme()
+  // GitHub draws pending checks in blue, which the palette has only as the note callout's ink.
+  const pending = CalloutColors[useScheme()].note.ink
   const thread = useThreads((state) => state.byId[row.threadId])
   const { pullRequest } = row
   const reference = pullRequestReference(row.url)
@@ -159,14 +167,14 @@ function PullRequestRow({ row }: { row: OverviewPullRequest }) {
       : row.error !== null
         ? { name: "Warning" as const, color: theme.danger }
         : { name: "RiGitPullRequestLine" as const, color: theme.textMuted }
-  const checks = pullRequest !== null && pullRequest.status !== "merged" ? pullRequest.checks : null
+  const progress = row.progress === null ? null : progressLine(theme, pending)[row.progress]
 
   const label = [
     pullRequest?.title,
     reference,
     pullRequest !== null && statusLabel(pullRequest.status),
-    checks !== null && checksLabel(checks),
-    ...row.needs.filter((need) => need !== "checks").map((need) => needs[need].label()),
+    progress?.label,
+    ...row.needs.map((need) => needLabel[need]()).filter((need) => need !== progress?.label),
     row.error !== null && copy("mobile_pr_card_failed", { message: row.error }),
     thread?.title,
   ]
@@ -201,23 +209,28 @@ function PullRequestRow({ row }: { row: OverviewPullRequest }) {
               {reference}
             </Text>
           )}
-          {checks !== null && (
-            <Icon name={checksIcon[checks]} size={14} color={checks === "failing" ? theme.danger : theme.textMuted} />
+          {pullRequest !== null && thread !== undefined && (
+            <Text style={[styles.metaText, { color: theme.textMuted }]}>·</Text>
           )}
           {thread !== undefined && (
             <View style={styles.thread}>
               <Icon name="Chat" size={13} color={theme.textMuted} />
               <Text numberOfLines={1} style={[styles.metaText, styles.threadTitle, { color: theme.textMuted }]}>
-                {thread.title}
+                {thread.title || copy("mobile_home_untitled")}
               </Text>
             </View>
           )}
         </View>
-        {row.needs.length > 0 && (
-          <View style={styles.pills}>
-            {row.needs.map((need) => (
-              <Pill key={need} label={needs[need].label()} tone={needs[need].tone} />
-            ))}
+        {progress !== null && (
+          <View style={styles.progress}>
+            {progress.icon === "Spinner" ? (
+              <Spinner size={14} color={progress.color} />
+            ) : (
+              <Icon name={progress.icon} size={14} color={progress.color} />
+            )}
+            <Text numberOfLines={1} style={[styles.progressLabel, { color: progress.color }]}>
+              {progress.label}
+            </Text>
           </View>
         )}
         {row.error !== null && (
@@ -231,12 +244,23 @@ function PullRequestRow({ row }: { row: OverviewPullRequest }) {
 }
 
 function LinearIssues({ connected, onPick }: { connected: boolean; onPick: (issue: LinearIssue) => void }) {
+  const issues = useLinear((state) => state.issues)
+  const count = issues?.status === "ready" && issues.value.length > 0 ? issues.value.length : undefined
+  if (!connected && (issues === undefined || issues.status === "loading")) return null
+  return (
+    <View>
+      <SectionHeading label={copy("mobile_overview_linear")} count={count} />
+      <LinearIssueList connected={connected} onPick={onPick} />
+    </View>
+  )
+}
+
+function LinearIssueList({ connected, onPick }: { connected: boolean; onPick: (issue: LinearIssue) => void }) {
   const theme = useTheme()
   const issues = useLinear((state) => state.issues)
   const configured = useLinear((state) => state.configured)
 
   if (issues === undefined || issues.status === "loading") {
-    if (!connected) return null
     return (
       <Reveal style={styles.loading}>
         <Spinner color={theme.textMuted} />
@@ -272,7 +296,13 @@ function LinearIssues({ connected, onPick }: { connected: boolean; onPick: (issu
         hint={configured === null ? copy("mobile_overview_linear_connect_hint") : undefined}
       />
     )
-  return issues.value.map((issue) => <IssueRow key={issue.id} issue={issue} onPress={() => onPick(issue)} />)
+  return (
+    <GroupedCard>
+      {issues.value.map((issue) => (
+        <IssueRow key={issue.id} issue={issue} onPress={() => onPick(issue)} />
+      ))}
+    </GroupedCard>
+  )
 }
 
 const stateGlyph = (theme: Palette, type: string): { name: IconName; color: string } => {
@@ -335,23 +365,23 @@ function IssueHeader({ issue }: { issue: LinearIssue }) {
 }
 
 const styles = StyleSheet.create({
-  page: { paddingHorizontal: 8, paddingTop: 8, paddingBottom: 32 },
+  page: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 32 },
   column: { width: "100%", maxWidth: READABLE_WIDTH, alignSelf: "center", gap: 4 },
-  heading: { fontSize: 20, fontWeight: "700", paddingHorizontal: 10, paddingTop: 16, paddingBottom: 2 },
-  row: { flexDirection: "row", gap: 10, borderRadius: radius.md, paddingHorizontal: 10, paddingVertical: 10 },
+  row: { minHeight: HIT, flexDirection: "row", gap: 12, paddingHorizontal: 16, paddingVertical: 14 },
   rowIcon: { paddingTop: 2 },
   rowBody: { flex: 1, gap: 4, minWidth: 0 },
   titleLine: { flexDirection: "row", alignItems: "center", gap: 6 },
   title: { flexShrink: 1, fontSize: 16, lineHeight: 22, fontWeight: "500" },
   identifier: { fontFamily: mono, fontSize: 13, fontWeight: "400" },
-  meta: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 18 },
+  meta: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 18 },
   metaText: { fontSize: 13, lineHeight: 18 },
   reference: { flexShrink: 0, maxWidth: "60%", fontVariant: ["tabular-nums"] },
   thread: { flexDirection: "row", alignItems: "center", gap: 4, flexShrink: 1, minWidth: 0 },
   threadTitle: { flexShrink: 1 },
-  pills: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  progress: { flexDirection: "row", alignItems: "center", gap: 6, paddingTop: 2 },
+  progressLabel: { flexShrink: 1, fontSize: 14, fontWeight: "500" },
   loading: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 24 },
-  failed: { gap: 8, paddingHorizontal: 8 },
+  failed: { gap: 8 },
   retry: { alignSelf: "flex-start" },
   issueHeader: { gap: 10, paddingHorizontal: 12, paddingBottom: 8 },
   issueTitle: { fontSize: 16, lineHeight: 22 },

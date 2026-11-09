@@ -10,6 +10,8 @@ export const Colors = {
     textResting: "#3e5151",
     textMuted: "#556767",
     background: "#f7f7f2",
+    /** Raised cards and floating bars over the page: tickets, the composer, the thread control bar. */
+    card: "#ffffff",
     surface: "#e8e8e0",
     surfaceStrong: "#d0d0c6",
     /** A switch's off track, 3:1 on `surface` and `background` so the control reads when it is off. */
@@ -53,6 +55,7 @@ export const Colors = {
     textResting: "#d8d8d1",
     textMuted: "#b8b8ae",
     background: "#1c2e2e",
+    card: "#213434",
     surface: "#233737",
     surfaceStrong: "#324949",
     controlOff: "#758b8b",

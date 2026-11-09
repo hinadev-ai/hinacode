@@ -23,7 +23,7 @@ const titles = () =>
 
 beforeEach(() => {
   calls.length = 0
-  useThreads.setState({ projects: [], worktrees: {}, branches: {}, byId: {}, status: "loading", error: null })
+  useThreads.setState({ projects: [], worktrees: {}, branches: {}, byId: {}, runningSince: {}, status: "loading", error: null })
 })
 
 it("keeps a thread pushed during the load when it is newer than the listed copy", async () => {
@@ -205,4 +205,17 @@ it("reads a project root's branch again when one of its threads finishes a turn"
   calls.find((pending) => pending.method === "projects.currentBranch")!.resolve("kk/switched")
   await flush()
   expect(useThreads.getState().branches["p"]).toBe("kk/switched")
+})
+
+it("keeps when a turn began across later updates, and forgets it once the turn ends", async () => {
+  const { trackRunningSince } = await import("./threads")
+  const running = (updatedAt: string, status: Thread["status"] = "running") =>
+    ({ ...thread("t", updatedAt), status }) as Thread
+  const began = trackRunningSince({}, [running("2026-11-08T10:00:00Z")])
+  expect(began).toEqual({ t: "2026-11-08T10:00:00Z" })
+  const switchedModel = trackRunningSince(began, [running("2026-11-08T10:05:00Z")])
+  expect(switchedModel).toEqual({ t: "2026-11-08T10:00:00Z" })
+  const waiting = trackRunningSince(switchedModel, [running("2026-11-08T10:06:00Z", "awaiting_approval")])
+  expect(waiting).toEqual({ t: "2026-11-08T10:00:00Z" })
+  expect(trackRunningSince(waiting, [running("2026-11-08T10:09:00Z", "idle")])).toEqual({})
 })

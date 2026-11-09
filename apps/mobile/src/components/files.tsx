@@ -1,6 +1,6 @@
-import type { FileSearchHit, FsEntry, Thread } from "@shared/domain.ts"
+import { type Changes, type FileSearchHit, type FsEntry, isThreadBusy, type Thread } from "@shared/domain.ts"
 import { router } from "expo-router"
-import { useEffect, useRef, useState } from "react"
+import { type ReactNode, useEffect, useRef, useState } from "react"
 import {
   FlatList,
   Pressable,
@@ -14,17 +14,20 @@ import {
   View,
 } from "react-native"
 import { Icon } from "@/components/icon"
-import { FadeIn, Reveal, Spinner } from "@/components/motion"
+import { FadeIn, Reveal, Rotate, Spinner } from "@/components/motion"
+import { FileBadge, LineCounts, Patch } from "@/components/pull-request-code"
 import { SearchField } from "@/components/search-field"
 import { Button, EmptyState, Notice } from "@/components/ui"
-import { HIT, type Palette, mono } from "@/constants/theme"
+import { HIT, type Palette, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, RpcError } from "@/lib/connection"
 import { copy } from "@/lib/copy"
 import { errorText } from "@/lib/error-text"
 import { basename, dirname, entryIcon } from "@/lib/file-kinds"
-import { lineSnippet, matchPaths, type PathMatch } from "@/lib/path-match"
-import { useThreadRoot } from "@/stores/threads"
+import { confirmDestructive } from "@/lib/confirm"
+import { type FilePatch, filePatches } from "@/lib/file-patches"
+import { lineSnippet, matchPaths, type PathMatch, splitPath } from "@/lib/path-match"
+import { useThreadRoot, useThreads } from "@/stores/threads"
 
 type GitStatus = NonNullable<FsEntry["gitStatus"]>
 
@@ -61,7 +64,7 @@ const openFile = (threadId: string, path: string, line?: number) =>
 
 type Loaded<T> = { readonly value: T } | { readonly error: string; readonly tag?: string }
 
-/** The thread's workspace: a folder listing, a path filter and a content search. */
+/** The thread's workspace: what it changed, a folder listing, a path filter and a content search. */
 export function FilesPanel({ thread }: { thread: Thread }) {
   const root = useThreadRoot(thread)
   const [query, setQuery] = useState("")
@@ -104,7 +107,12 @@ export function FilesPanel({ thread }: { thread: Thread }) {
         />
       </View>
       <View style={[styles.flex, filtering && styles.hidden]}>
-        <FolderBrowser key={root} root={root} threadId={thread.id} />
+        <FolderBrowser
+          key={root}
+          root={root}
+          threadId={thread.id}
+          header={(revision) => <ChangesSection thread={thread} revision={revision} />}
+        />
       </View>
       {filtering && (
         <PathSearch
@@ -120,7 +128,16 @@ export function FilesPanel({ thread }: { thread: Thread }) {
   )
 }
 
-function FolderBrowser({ root, threadId }: { root: string; threadId: string }) {
+function FolderBrowser({
+  root,
+  threadId,
+  header,
+}: {
+  root: string
+  threadId: string
+  /** Shown above the root folder's listing, read again on each pull to refresh. */
+  header: (revision: number) => ReactNode
+}) {
   const theme = useTheme()
   const [stack, setStack] = useState<readonly string[]>([""])
   const folder = stack[stack.length - 1]
@@ -149,25 +166,38 @@ function FolderBrowser({ root, threadId }: { root: string; threadId: string }) {
     setRevision(revision + 1)
   }
 
+  const top = (
+    <>
+      {stack.length === 1 && header(revision)}
+      <Breadcrumbs root={root} stack={stack} onSelect={(depth) => setStack(stack.slice(0, depth + 1))} />
+    </>
+  )
+
   return (
     <View style={styles.flex}>
-      <Breadcrumbs root={root} stack={stack} onSelect={(depth) => setStack(stack.slice(0, depth + 1))} />
       {shown === null ? (
-        <Loading label={copy("mobile_files_loading")} />
+        <>
+          {top}
+          <Loading label={copy("mobile_files_loading")} />
+        </>
       ) : "error" in shown ? (
-        <Failure
-          message={shown.error}
-          onRetry={() => {
-            setListing(null)
-            setRevision(revision + 1)
-          }}
-        />
+        <>
+          {top}
+          <Failure
+            message={shown.error}
+            onRetry={() => {
+              setListing(null)
+              setRevision(revision + 1)
+            }}
+          />
+        </>
       ) : (
         <FadeIn key={folder} style={styles.flex}>
           <FlatList
             data={shown.value}
             keyExtractor={(entry) => entry.path}
             renderItem={({ item }) => <EntryRow entry={item} onPress={() => open(item)} />}
+            ListHeaderComponent={top}
             ListEmptyComponent={<EmptyState icon="FolderOpen" title={copy("mobile_files_empty_folder")} />}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={reload} tintColor={theme.textMuted} />}
             contentContainerStyle={styles.listContent}
@@ -176,6 +206,178 @@ function FolderBrowser({ root, threadId }: { root: string; threadId: string }) {
           />
         </FadeIn>
       )}
+    </View>
+  )
+}
+
+type ChangesRead = { readonly worktree: Changes | null; readonly turn: Changes | null }
+
+/**
+ * The worktree's changes against the branch it forked from, each file opening into its diff, and Undo for the files
+ * the last turn changed. Read again on pull to refresh and whenever a turn ends.
+ */
+function ChangesSection({ thread, revision }: { thread: Thread; revision: number }) {
+  const theme = useTheme()
+  const worktree = useThreads((state) => (thread.worktreeId === null ? undefined : state.worktrees[thread.worktreeId]))
+  const busy = isThreadBusy(thread.status)
+  const [read, setRead] = useState<Loaded<ChangesRead> | null>(null)
+  const [reads, setReads] = useState(0)
+
+  useEffect(() => {
+    if (busy) return
+    let current = true
+    Promise.all([
+      call("threads.changes", { threadId: thread.id, scope: "worktree" }),
+      call("threads.changes", { threadId: thread.id, scope: "turn" }),
+    ]).then(
+      ([worktreeChanges, turn]) => current && setRead({ value: { worktree: worktreeChanges, turn } }),
+      (cause) => current && setRead({ error: errorText(cause) }),
+    )
+    return () => {
+      current = false
+    }
+  }, [thread.id, busy, revision, reads])
+
+  if (read === null) return null
+  if ("error" in read) return <Failure message={read.error} onRetry={() => setReads(reads + 1)} />
+  const files = read.value.worktree?.files ?? []
+  const turnFiles = read.value.turn?.files.length ?? 0
+  if (files.length === 0 && turnFiles === 0) return null
+  const patches = filePatches(read.value.worktree?.patch ?? "")
+  const total = [...patches.values()].reduce(
+    (sum, file) => ({ added: sum.added + file.added, removed: sum.removed + file.removed }),
+    { added: 0, removed: 0 },
+  )
+
+  return (
+    <View style={styles.changes}>
+      {files.length > 0 && (
+        <>
+          <View style={styles.changesHeading}>
+            <Text accessibilityRole="header" style={[styles.changesTitle, { color: theme.text }]}>
+              {copy("mobile_files_changed", { count: String(files.length) })}
+            </Text>
+            <View style={styles.changesMeta}>
+              {worktree !== undefined && (
+                <Text numberOfLines={1} style={[styles.branches, { color: theme.textMuted }]}>
+                  {worktree.branch} → {worktree.baseRef}
+                </Text>
+              )}
+              <LineCounts added={total.added} removed={total.removed} />
+            </View>
+          </View>
+          <View style={[styles.changesCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            {files.map((file, index) => (
+              <ChangedFile
+                key={file.path}
+                path={file.path}
+                status={file.status}
+                patch={patches.get(file.path)}
+                first={index === 0}
+              />
+            ))}
+          </View>
+        </>
+      )}
+      {turnFiles > 0 && (
+        <UndoTurn threadId={thread.id} count={turnFiles} disabled={busy} onUndone={() => setReads(reads + 1)} />
+      )}
+    </View>
+  )
+}
+
+function ChangedFile({
+  path,
+  status,
+  patch,
+  first,
+}: {
+  path: string
+  status: GitStatus
+  patch: FilePatch | undefined
+  first: boolean
+}) {
+  const theme = useTheme()
+  const [open, setOpen] = useState(false)
+  const { folder, name } = splitPath(path)
+  return (
+    <View style={!first && [styles.changeDivider, { borderColor: theme.border }]}>
+      <Pressable
+        testID="changed-file"
+        accessibilityRole="button"
+        accessibilityLabel={`${path}, ${statusLabel(status)}`}
+        accessibilityState={{ expanded: open }}
+        onPress={() => setOpen(!open)}
+        style={({ pressed }) => [styles.changeRow, pressed && { backgroundColor: theme.surface }]}
+      >
+        <FileBadge letter={statusLetter[status]} color={statusColor(theme)[status]} />
+        <View style={styles.flex}>
+          <Text numberOfLines={1} ellipsizeMode="middle" style={[styles.changeName, { color: theme.text }]}>
+            {name}
+          </Text>
+          {folder !== "" && (
+            <Text numberOfLines={1} ellipsizeMode="head" style={[styles.rowDetail, { color: theme.textMuted }]}>
+              {folder}
+            </Text>
+          )}
+        </View>
+        {patch !== undefined && <LineCounts added={patch.added} removed={patch.removed} />}
+        <Rotate turned={open}>
+          <Icon name="ChevronRight" size={18} color={theme.textMuted} />
+        </Rotate>
+      </Pressable>
+      {open && (
+        <Reveal style={styles.changePatch}>
+          <Patch patch={patch?.patch ?? ""} />
+        </Reveal>
+      )}
+    </View>
+  )
+}
+
+function UndoTurn({
+  threadId,
+  count,
+  disabled,
+  onUndone,
+}: {
+  threadId: string
+  count: number
+  disabled: boolean
+  onUndone: () => void
+}) {
+  const [undoing, setUndoing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const undo = async () => {
+    setUndoing(true)
+    setError(null)
+    try {
+      await call("threads.undoTurn", { threadId })
+      onUndone()
+    } catch (cause) {
+      setError(errorText(cause))
+    }
+    setUndoing(false)
+  }
+  return (
+    <View style={styles.undo}>
+      {error !== null && <Notice text={error} tone="danger" />}
+      <Button
+        testID="undo-turn"
+        label={copy("mobile_files_undo_turn")}
+        icon="Undo"
+        busy={undoing}
+        disabled={disabled}
+        onPress={() =>
+          confirmDestructive(
+            copy("mobile_files_undo_turn_title"),
+            copy("mobile_files_undo_turn_body", { count: String(count) }),
+            copy("mobile_files_undo_turn"),
+            () => void undo(),
+          )
+        }
+        style={styles.undoButton}
+      />
     </View>
   )
 }
@@ -498,6 +700,18 @@ const styles = StyleSheet.create({
   crumb: { minHeight: HIT, justifyContent: "center", paddingHorizontal: 6 },
   crumbLabel: { fontSize: 14, maxWidth: 220 },
   listContent: { paddingBottom: 24 },
+  changes: { gap: 12, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8 },
+  changesHeading: { gap: 4, paddingHorizontal: 4 },
+  changesTitle: { fontSize: 26, lineHeight: 32, fontWeight: "700" },
+  changesMeta: { flexDirection: "row", alignItems: "center", gap: 12 },
+  branches: { flex: 1, fontFamily: mono, fontSize: 13 },
+  changesCard: { borderRadius: radius.xl, borderWidth: StyleSheet.hairlineWidth, overflow: "hidden" },
+  changeDivider: { borderTopWidth: StyleSheet.hairlineWidth },
+  changeRow: { minHeight: HIT + 12, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14 },
+  changeName: { fontSize: 16 },
+  changePatch: { paddingHorizontal: 10 },
+  undo: { gap: 8, alignItems: "flex-end" },
+  undoButton: { borderRadius: radius.full, paddingHorizontal: 18 },
   row: {
     flexDirection: "row",
     alignItems: "center",

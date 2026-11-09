@@ -1,24 +1,32 @@
-import type { CheckRun, CheckRunStatus, MergeMethod, PullRequestDetail, PullRequestLink } from "@shared/domain.ts"
+import type {
+  CheckRun,
+  CheckRunStatus,
+  MergeMethod,
+  PullRequestDetail,
+  PullRequestLink,
+  PullRequestStatus,
+} from "@shared/domain.ts"
 import { linearReviewUrl } from "@shared/github.ts"
 import { providerInfo } from "@shared/providers.ts"
 import { fixChecksPrompt, resolveConflictsPrompt } from "@shared/pullRequestPrompts.ts"
 import { Stack, useLocalSearchParams } from "expo-router"
 import { type ReactNode, useEffect, useState } from "react"
 import { Alert, Platform, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon, type IconName } from "@/components/icon"
 import { Markdown } from "@/components/markdown"
 import { FadeIn, PressableScale, Reveal, Rotate, Spinner } from "@/components/motion"
-import { PullRequestCode } from "@/components/pull-request-code"
-import { PullRequestState } from "@/components/pull-request-state"
-import { reviewLabel, reviewTone } from "@/lib/pull-request-labels"
+import { LineCounts, PullRequestCode } from "@/components/pull-request-code"
+import { GroupedCard } from "@/components/grouped-card"
 import { OptionRow, Sheet } from "@/components/sheet"
 import { Button, IconButton, Notice, Pill, Toggle, UnderlineTabs } from "@/components/ui"
-import { HIT, mono } from "@/constants/theme"
+import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
 import { copy } from "@/lib/copy"
-import { openWebUrl } from "@/lib/open-url"
 import { errorText } from "@/lib/error-text"
+import { openWebUrl } from "@/lib/open-url"
+import { reviewLabel, reviewTone, statusGlyph, statusLabel } from "@/lib/pull-request-labels"
 import { filesKey, pullRequestNumber, usePullRequests } from "@/stores/pull-requests"
 import { useThreads } from "@/stores/threads"
 
@@ -29,8 +37,10 @@ const tabs = [
   { value: "code", label: copy("mobile_pr_tab_code") },
 ] as const
 
+type WebLink = { readonly href: string; readonly label: string }
+
 /** Where the thread's pull request links open: GitHub, or linear.review when its project turned that on. */
-function useWebLink(threadId: string, url: string) {
+function useWebLink(threadId: string, url: string): WebLink {
   const linearReview = useThreads((state) => {
     const projectId = state.byId[threadId]?.projectId
     return state.projects.find((project) => project.id === projectId)?.linearReview ?? false
@@ -76,51 +86,55 @@ export default function PullRequestScreen() {
   const number = remote?.status === "ready" ? String(remote.value.number) : pullRequestNumber(url)
 
   return (
-    <ScrollView
-      style={{ backgroundColor: theme.background }}
-      contentContainerStyle={styles.page}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={theme.textMuted} />
-      }
-    >
-      <Stack.Screen
-        options={{
-          title: number === null ? "" : `#${number}`,
-          headerRight: () => (
-            <IconButton icon="External" accessibilityLabel={web.label} onPress={() => openWebUrl(web.href)} />
-          ),
-        }}
-      />
-      <View style={styles.column}>
-        {remote === undefined || remote.status === "loading" ? (
-          <Reveal style={styles.loading}>
-            <Spinner color={theme.textMuted} />
-            <Text style={{ color: theme.textMuted }}>{copy("mobile_pr_detail_loading")}</Text>
-          </Reveal>
-        ) : remote.status === "error" ? (
-          <View style={styles.section}>
-            <Notice tone="danger" text={copy("mobile_pr_detail_failed", { message: remote.message })} />
-            <View style={styles.actions}>
-              <Button label={copy("mobile_pr_retry")} icon="Refresh" onPress={() => void reload()} />
-              <Button label={web.label} icon="External" onPress={() => openWebUrl(web.href)} />
+    <View style={[styles.screen, { backgroundColor: theme.background }]}>
+      <Stack.Screen options={{ title: number === null ? "" : `#${number}` }} />
+      <ScrollView
+        contentContainerStyle={styles.page}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={theme.textMuted} />
+        }
+      >
+        <View style={styles.column}>
+          {remote === undefined || remote.status === "loading" ? (
+            <Reveal style={styles.loading}>
+              <Spinner color={theme.textMuted} />
+              <Text style={{ color: theme.textMuted }}>{copy("mobile_pr_detail_loading")}</Text>
+            </Reveal>
+          ) : remote.status === "error" ? (
+            <View style={styles.section}>
+              <Notice tone="danger" text={copy("mobile_pr_detail_failed", { message: remote.message })} />
+              <Button label={copy("mobile_pr_retry")} icon="Refresh" onPress={() => void reload()} style={styles.start} />
             </View>
-          </View>
-        ) : (
-          <PullRequestView
-            detail={remote.value}
-            threadId={id}
-            link={link}
-            tab={tab}
-            onTabChange={setTab}
-            onChanged={reload}
-          />
-        )}
-      </View>
-    </ScrollView>
+          ) : (
+            <PullRequestView
+              detail={remote.value}
+              threadId={id}
+              link={link}
+              tab={tab}
+              onTabChange={setTab}
+              onChanged={reload}
+            />
+          )}
+        </View>
+      </ScrollView>
+      <ActionBar web={web} detail={remote?.status === "ready" ? remote.value : null} onChanged={reload} />
+    </View>
   )
 }
 
 const isOpen = (detail: PullRequestDetail) => detail.status === "open" || detail.status === "draft"
+
+/** The pull request's state filled with its color, as GitHub heads a pull request. */
+function StatePill({ status }: { status: PullRequestStatus }) {
+  const theme = useTheme()
+  const glyph = statusGlyph(theme)[status]
+  return (
+    <View style={[styles.state, { backgroundColor: glyph.color }]}>
+      <Icon name={glyph.name} size={14} color={theme.card} />
+      <Text style={[styles.stateLabel, { color: theme.card }]}>{statusLabel(status)}</Text>
+    </View>
+  )
+}
 
 function PullRequestView({
   detail,
@@ -138,43 +152,27 @@ function PullRequestView({
   onChanged: () => Promise<void>
 }) {
   const theme = useTheme()
-  const conflicting = isOpen(detail) && detail.mergeable === "conflicting"
   const watching = (link?.watch ?? null) !== null
   return (
     <>
       <View style={styles.header}>
-        <Text accessibilityRole="header" selectable style={[styles.title, { color: theme.text }]}>
-          {detail.title}
-        </Text>
-        <View style={styles.meta}>
-          <Text style={[styles.metaText, { color: theme.textMuted }]}>
-            {copy("mobile_pr_author", { author: detail.author })}
-          </Text>
-          <Text numberOfLines={1} style={[styles.branches, { color: theme.textMuted }]}>
-            {detail.headRef} → {detail.baseRef}
-          </Text>
-          <Text
-            accessibilityLabel={copy("mobile_pr_size", {
-              additions: String(detail.additions),
-              deletions: String(detail.deletions),
-            })}
-            style={styles.branches}
-          >
-            <Text style={{ color: theme.running }}>+{detail.additions}</Text>{" "}
-            <Text style={{ color: theme.danger }}>−{detail.deletions}</Text>
-          </Text>
-        </View>
-        <View style={styles.pills}>
-          <PullRequestState status={detail.status} />
+        <View style={styles.headline}>
+          <StatePill status={detail.status} />
+          <Text style={[styles.number, { color: theme.textMuted }]}>#{detail.number}</Text>
+          <LineCounts added={detail.additions} removed={detail.deletions} />
           {isOpen(detail) && detail.review !== null && (
             <Pill label={reviewLabel(detail.review)} tone={reviewTone[detail.review]} />
           )}
-          {isOpen(detail) && detail.mergeable === "mergeable" && (
-            <Pill label={copy("mobile_pr_mergeable")} tone="neutral" icon="Check" />
-          )}
-          {conflicting && <Pill label={copy("mobile_pr_conflicting")} tone="attention" icon="Warning" />}
-          {watching && <Pill label={copy("mobile_pr_watching")} tone="neutral" icon="Eye" />}
         </View>
+        <Text accessibilityRole="header" selectable style={[styles.title, { color: theme.text }]}>
+          {detail.title}
+        </Text>
+        <Text numberOfLines={1} style={[styles.branches, { color: theme.textMuted }]}>
+          {detail.headRef} → {detail.baseRef}
+        </Text>
+        <Text style={[styles.author, { color: theme.textMuted }]}>
+          {copy("mobile_pr_author", { author: detail.author })}
+        </Text>
       </View>
       <UnderlineTabs<Tab>
         tabs={tabs}
@@ -205,21 +203,27 @@ function Info({
 }) {
   const theme = useTheme()
   const conflicting = isOpen(detail) && detail.mergeable === "conflicting"
+  const failing = detail.checkRuns.filter((run) => run.status === "failing").length
+  const [watchError, setWatchError] = useState<string | null>(null)
   return (
     <>
+      <GroupedCard inset={16}>
+        <Checks detail={detail} />
+        {isOpen(detail) && <MergeState detail={detail} />}
+        {isOpen(detail) && (
+          <WatchRow url={detail.url} threadId={threadId} watching={watching} onError={setWatchError} />
+        )}
+      </GroupedCard>
+      {watchError !== null && <Notice tone="danger" text={watchError} />}
       {conflicting && (
+        <AskAgentButton threadId={threadId} prompt={resolveConflictsPrompt(detail)} label={copy("mobile_pr_resolve")} />
+      )}
+      {failing > 0 && isOpen(detail) && (
         <View style={styles.section}>
-          <Notice tone="attention" text={copy("mobile_pr_conflicts", { base: detail.baseRef })} />
-          <AskAgentButton
-            threadId={threadId}
-            prompt={resolveConflictsPrompt(detail)}
-            label={copy("mobile_pr_resolve")}
-          />
+          <Notice tone="danger" text={copy("mobile_pr_failing_count", { count: String(failing) })} />
+          <AskAgentButton threadId={threadId} prompt={fixChecksPrompt(detail)} label={copy("mobile_pr_fix")} />
         </View>
       )}
-      <Merge detail={detail} onChanged={onChanged} />
-      {isOpen(detail) && <WatchRow url={detail.url} threadId={threadId} watching={watching} />}
-      <Checks detail={detail} threadId={threadId} />
       <Block title={copy("mobile_pr_description")}>
         {detail.body.trim() === "" ? (
           <Text style={{ color: theme.textMuted, fontSize: 14 }}>{copy("mobile_pr_no_description")}</Text>
@@ -240,6 +244,31 @@ function Block({ title, children }: { title: string; children: ReactNode }) {
         {title}
       </Text>
       {children}
+    </View>
+  )
+}
+
+/** A row of the status card: a round icon, a title over a detail, and whatever ends the row. */
+function StatusRow({
+  icon,
+  title,
+  detail,
+  trailing,
+}: {
+  icon: ReactNode
+  title: string
+  detail: string
+  trailing?: ReactNode
+}) {
+  const theme = useTheme()
+  return (
+    <View style={styles.statusRow}>
+      <View style={[styles.statusIcon, { backgroundColor: theme.surface }]}>{icon}</View>
+      <View style={styles.statusText}>
+        <Text style={[styles.statusTitle, { color: theme.text }]}>{title}</Text>
+        <Text style={[styles.statusDetail, { color: theme.textMuted }]}>{detail}</Text>
+      </View>
+      {trailing}
     </View>
   )
 }
@@ -267,7 +296,13 @@ function AskAgentButton({ threadId, prompt, label }: { threadId: string; prompt:
 
   return (
     <View style={styles.ask}>
-      <Button label={label} icon="Chat" busy={state.type === "sending"} onPress={() => void send()} />
+      <Button
+        label={label}
+        icon="Chat"
+        busy={state.type === "sending"}
+        onPress={() => void send()}
+        style={styles.roundedButton}
+      />
       {state.type === "sent" && (
         <View accessibilityRole="alert" style={styles.sent}>
           <Icon name="Check" size={16} color={theme.running} />
@@ -281,74 +316,72 @@ function AskAgentButton({ threadId, prompt, label }: { threadId: string; prompt:
 
 const runOrder: Record<CheckRunStatus, number> = { failing: 0, pending: 1, passing: 2, skipped: 3 }
 
-const needsAttention = (run: CheckRun) => run.status === "failing" || run.status === "pending"
+const countOf = (runs: readonly CheckRun[], status: CheckRunStatus) =>
+  runs.filter((run) => run.status === status).length
 
-/** Failing and running checks are always listed; the ones that passed or were skipped fold into one row. */
-function Checks({ detail, threadId }: { detail: PullRequestDetail; threadId: string }) {
+/** The checks folded into one row of counts. Failing or running checks open the row, so they are seen at once. */
+function Checks({ detail }: { detail: PullRequestDetail }) {
   const theme = useTheme()
   const runs = [...detail.checkRuns].sort((a, b) => runOrder[a.status] - runOrder[b.status])
-  const failing = runs.filter((run) => run.status === "failing").length
-  return (
-    <Block title={copy("mobile_pr_checks")}>
-      {runs.length === 0 ? (
-        <Text style={{ color: theme.textMuted, fontSize: 14 }}>{copy("mobile_pr_no_checks")}</Text>
-      ) : (
-        <View>
-          {runs.filter(needsAttention).map((run, index) => (
-            <CheckRow key={`${index}:${run.name}`} run={run} />
-          ))}
-          <SettledChecks runs={runs.filter((run) => !needsAttention(run))} />
-        </View>
-      )}
-      {failing > 0 && isOpen(detail) && (
-        <View style={styles.section}>
-          <Notice tone="danger" text={copy("mobile_pr_failing_count", { count: String(failing) })} />
-          <AskAgentButton threadId={threadId} prompt={fixChecksPrompt(detail)} label={copy("mobile_pr_fix")} />
-        </View>
-      )}
-    </Block>
+  const failing = countOf(runs, "failing")
+  const pending = countOf(runs, "pending")
+  const [expanded, setExpanded] = useState(failing > 0 || pending > 0)
+  const summary =
+    runs.length === 0
+      ? copy("mobile_pr_no_checks")
+      : [
+          failing > 0 && copy("mobile_pr_checks_failed_count", { count: String(failing) }),
+          pending > 0 && copy("mobile_pr_checks_running_count", { count: String(pending) }),
+          countOf(runs, "passing") > 0 &&
+            copy("mobile_pr_checks_passed", { count: String(countOf(runs, "passing")) }),
+          countOf(runs, "skipped") > 0 &&
+            copy("mobile_pr_checks_skipped", { count: String(countOf(runs, "skipped")) }),
+        ]
+          .filter((part) => typeof part === "string")
+          .join(", ")
+  const icon =
+    pending > 0 ? (
+      <Spinner size={18} color={theme.textMuted} />
+    ) : failing > 0 ? (
+      <Icon name="XCircle" size={18} color={theme.danger} />
+    ) : runs.length === 0 ? (
+      <Icon name="MinusCircle" size={18} color={theme.textMuted} />
+    ) : (
+      <Icon name="Check" size={18} color={theme.running} />
+    )
+  const row = (
+    <StatusRow
+      icon={icon}
+      title={copy("mobile_pr_checks")}
+      detail={summary}
+      trailing={
+        runs.length > 0 && (
+          <Rotate turned={expanded}>
+            <Icon name="ChevronRight" size={18} color={theme.textMuted} />
+          </Rotate>
+        )
+      }
+    />
   )
-}
-
-function SettledChecks({ runs }: { runs: readonly CheckRun[] }) {
-  const theme = useTheme()
-  const [expanded, setExpanded] = useState(false)
-  if (runs.length === 0) return null
-  const passed = runs.filter((run) => run.status === "passing").length
-  const skipped = runs.length - passed
-  const summary = [
-    passed > 0 && copy("mobile_pr_checks_passed", { count: String(passed) }),
-    skipped > 0 && copy("mobile_pr_checks_skipped", { count: String(skipped) }),
-  ]
-    .filter((part) => typeof part === "string")
-    .join(", ")
+  if (runs.length === 0) return row
   return (
-    <>
+    <View>
       <PressableScale
         accessibilityRole="button"
-        accessibilityLabel={summary}
+        accessibilityLabel={`${copy("mobile_pr_checks")}, ${summary}`}
         accessibilityState={{ expanded }}
-        onPress={() => setExpanded((value) => !value)}
-        style={styles.run}
+        onPress={() => setExpanded(!expanded)}
       >
-        <Icon
-          name={passed > 0 ? "CheckCircleFill" : "MinusCircle"}
-          size={16}
-          color={theme.textMuted}
-        />
-        <Text style={[styles.runName, { color: theme.textMuted }]}>{summary}</Text>
-        <Rotate turned={expanded}>
-          <Icon name="ChevronRight" size={18} color={theme.textMuted} />
-        </Rotate>
+        {row}
       </PressableScale>
       {expanded && (
-        <FadeIn>
+        <FadeIn style={styles.runs}>
           {runs.map((run, index) => (
             <CheckRow key={`${index}:${run.name}`} run={run} />
           ))}
         </FadeIn>
       )}
-    </>
+    </View>
   )
 }
 
@@ -398,6 +431,81 @@ function CheckRow({ run }: { run: CheckRun }) {
   )
 }
 
+/** Whether GitHub can merge it: no conflicts, conflicts with the base, or a draft that must be marked ready first. */
+function MergeState({ detail }: { detail: PullRequestDetail }) {
+  const theme = useTheme()
+  if (detail.status === "draft") {
+    return (
+      <StatusRow
+        icon={<Icon name="RiGitPrDraftLine" size={18} color={theme.textMuted} />}
+        title={copy("mobile_pr_state_draft")}
+        detail={copy("mobile_pr_merge_blocked_draft")}
+      />
+    )
+  }
+  if (detail.mergeable === "conflicting") {
+    return (
+      <StatusRow
+        icon={<Icon name="Warning" size={18} color={theme.attention} />}
+        title={copy("mobile_pr_conflicting")}
+        detail={copy("mobile_pr_conflicts", { base: detail.baseRef })}
+      />
+    )
+  }
+  if (detail.mergeable !== "mergeable") return null
+  return (
+    <StatusRow
+      icon={<Icon name="RiGitMergeLine" size={18} color={theme.running} />}
+      title={copy("mobile_pr_mergeable")}
+      detail={copy("mobile_pr_no_conflicts", { base: detail.baseRef })}
+    />
+  )
+}
+
+/** A setting more than an action, so it is a switch. It shows the new value at once while the server catches up. */
+function WatchRow({
+  url,
+  threadId,
+  watching,
+  onError,
+}: {
+  url: string
+  threadId: string
+  watching: boolean
+  onError: (message: string | null) => void
+}) {
+  const theme = useTheme()
+  const [pending, setPending] = useState<boolean | null>(null)
+
+  const change = async (watch: boolean) => {
+    setPending(watch)
+    onError(null)
+    try {
+      await (watch ? call("pullRequests.watch", { threadId, url }) : call("pullRequests.unwatch", { threadId, url }))
+    } catch (cause) {
+      onError(errorText(cause))
+    }
+    setPending(null)
+  }
+
+  return (
+    <StatusRow
+      icon={<Icon name="Bell" size={18} color={theme.prMerged} />}
+      title={copy("mobile_pr_watch")}
+      detail={copy("mobile_pr_watch_hint")}
+      trailing={
+        <Toggle
+          accessibilityLabel={copy("mobile_pr_watch")}
+          accessibilityHint={copy("mobile_pr_watch_hint")}
+          value={pending ?? watching}
+          disabled={pending !== null}
+          onValueChange={(watch) => void change(watch)}
+        />
+      }
+    />
+  )
+}
+
 /** Alert.alert has no buttons on react-native-web. */
 function confirm(title: string, message: string, action: string, destructive: boolean, onConfirm: () => void) {
   if (Platform.OS === "web") {
@@ -431,99 +539,90 @@ function useGitHubAction(url: string, onChanged: () => Promise<void>) {
   return { busy, error, run }
 }
 
-function Merge({ detail, onChanged }: { detail: PullRequestDetail; onChanged: () => Promise<void> }) {
+/**
+ * Under the page: open on the web, then, while GitHub can merge it, merge with the picked method and a round button
+ * that picks another. Merging asks first.
+ */
+function ActionBar({
+  web,
+  detail,
+  onChanged,
+}: {
+  web: WebLink
+  detail: PullRequestDetail | null
+  onChanged: () => Promise<void>
+}) {
   const theme = useTheme()
+  const insets = useSafeAreaInsets()
   const [picking, setPicking] = useState(false)
   const [method, setMethod] = useState<MergeMethod>("squash")
-  const { busy, error, run } = useGitHubAction(detail.url, onChanged)
-  const canMerge = detail.status === "open" && detail.mergeable !== "conflicting"
+  const { busy, error, run } = useGitHubAction(detail?.url ?? "", onChanged)
+  const canMerge = detail !== null && detail.status === "open" && detail.mergeable !== "conflicting"
 
-  const pickMethod = (picked: MergeMethod) => {
-    setMethod(picked)
+  const merge = (picked: MergeMethod) => {
+    if (detail === null) return
     confirm(
       copy("mobile_pr_merge_title", { method: mergeLabel(picked), number: String(detail.number) }),
       copy("mobile_pr_merge_body", { head: detail.headRef, base: detail.baseRef }),
       mergeLabel(picked),
       false,
-      () => {
-        setPicking(false)
-        void run(() => call("github.merge", { url: detail.url, method: picked }))
-      },
+      () => void run(() => call("github.merge", { url: detail.url, method: picked })),
     )
   }
 
-  if (!canMerge && detail.status !== "draft") return null
-  return (
-    <View style={styles.section}>
-      {error !== null && <Notice tone="danger" text={error} />}
-      {canMerge && (
-        <Button
-          testID="pull-request-merge"
-          label={copy("mobile_pr_merge")}
-          icon="RiGitMergeLine"
-          variant="primary"
-          busy={busy}
-          onPress={() => setPicking(true)}
-        />
-      )}
-      {detail.status === "draft" && (
-        <Text style={[styles.hint, { color: theme.textMuted }]}>{copy("mobile_pr_merge_blocked_draft")}</Text>
-      )}
-      <Sheet title={copy("mobile_pr_merge_method")} open={picking} onClose={() => setPicking(false)} fit>
-        <View
-          accessibilityRole="radiogroup"
-          accessibilityLabel={copy("mobile_pr_merge_method")}
-          style={styles.methods}
-        >
-          {mergeMethods.map((option) => (
-            <OptionRow
-              key={option}
-              label={mergeLabel(option)}
-              icon="RiGitMergeLine"
-              selected={option === method}
-              onPress={() => pickMethod(option)}
-            />
-          ))}
-        </View>
-      </Sheet>
-    </View>
-  )
-}
-
-/** A setting more than an action, so it is a switch. It shows the new value at once while the server catches up. */
-function WatchRow({ url, threadId, watching }: { url: string; threadId: string; watching: boolean }) {
-  const theme = useTheme()
-  const [pending, setPending] = useState<boolean | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  const change = async (watch: boolean) => {
-    setPending(watch)
-    setError(null)
-    try {
-      await (watch ? call("pullRequests.watch", { threadId, url }) : call("pullRequests.unwatch", { threadId, url }))
-    } catch (cause) {
-      setError(errorText(cause))
-    }
-    setPending(null)
+  const pickMethod = (picked: MergeMethod) => {
+    setMethod(picked)
+    setPicking(false)
   }
 
   return (
-    <View style={styles.section}>
-      <View style={styles.watch}>
-        <Icon name="Eye" size={18} color={theme.text} />
-        <View style={styles.watchText}>
-          <Text style={[styles.watchLabel, { color: theme.text }]}>{copy("mobile_pr_watch")}</Text>
-          <Text style={[styles.hint, { color: theme.textMuted }]}>{copy("mobile_pr_watch_hint")}</Text>
-        </View>
-        <Toggle
-          accessibilityLabel={copy("mobile_pr_watch")}
-          accessibilityHint={copy("mobile_pr_watch_hint")}
-          value={pending ?? watching}
-          disabled={pending !== null}
-          onValueChange={(watch) => void change(watch)}
-        />
-      </View>
+    <View style={[styles.bar, { paddingBottom: 8 + insets.bottom }]}>
       {error !== null && <Notice tone="danger" text={error} />}
+      <View style={styles.barRow}>
+        <IconButton
+          icon="External"
+          accessibilityLabel={web.label}
+          onPress={() => openWebUrl(web.href)}
+          style={[styles.round, { backgroundColor: theme.card, borderColor: theme.border }]}
+        />
+        {canMerge && (
+          <>
+            <Button
+              testID="pull-request-merge"
+              label={mergeLabel(method)}
+              icon="RiGitMergeLine"
+              variant="primary"
+              busy={busy}
+              onPress={() => merge(method)}
+              style={styles.merge}
+            />
+            <IconButton
+              testID="pull-request-merge-method"
+              icon="ChevronUp"
+              accessibilityLabel={copy("mobile_pr_merge_method")}
+              accessibilityValue={{ text: mergeLabel(method) }}
+              disabled={busy}
+              onPress={() => setPicking(true)}
+              style={[styles.round, { backgroundColor: theme.card, borderColor: theme.border }]}
+            />
+          </>
+        )}
+      </View>
+      <Sheet title={copy("mobile_pr_merge_method")} open={picking} onClose={() => setPicking(false)} fit>
+        <View accessibilityRole="radiogroup" accessibilityLabel={copy("mobile_pr_merge_method")}>
+          <GroupedCard inset={16}>
+            {mergeMethods.map((option) => (
+              <OptionRow
+                key={option}
+                label={mergeLabel(option)}
+                icon="RiGitMergeLine"
+                selected={option === method}
+                onPress={() => pickMethod(option)}
+              />
+            ))}
+          </GroupedCard>
+        </View>
+      </Sheet>
     </View>
   )
 }
@@ -555,28 +654,44 @@ function CloseButton({ detail, onChanged }: { detail: PullRequestDetail; onChang
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1 },
   page: { padding: 16, flexGrow: 1 },
   /** A readable measure when the screen is wide, as in an iPad pane. */
   column: { width: "100%", maxWidth: 760, alignSelf: "center", gap: 20 },
   tabs: { borderBottomWidth: StyleSheet.hairlineWidth, marginTop: -8 },
   loading: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 32 },
   header: { gap: 8 },
-  title: { fontSize: 18, fontWeight: "600", lineHeight: 24 },
-  meta: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 12, rowGap: 4 },
-  metaText: { fontSize: 13 },
-  branches: { flexShrink: 1, fontFamily: mono, fontSize: 12 },
-  pills: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  headline: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10 },
+  state: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: 30,
+    paddingHorizontal: 12,
+    borderRadius: radius.full,
+  },
+  stateLabel: { fontSize: 15, fontWeight: "600" },
+  number: { fontFamily: mono, fontSize: 14 },
+  title: { fontSize: 24, fontWeight: "700", lineHeight: 30 },
+  branches: { fontFamily: mono, fontSize: 13 },
+  author: { fontSize: 13 },
   section: { gap: 8 },
-  blockTitle: { fontSize: 13, fontWeight: "600" },
+  start: { alignSelf: "flex-start" },
+  blockTitle: { fontSize: 15, fontWeight: "600" },
   ask: { gap: 8, alignItems: "flex-start" },
+  roundedButton: { borderRadius: radius.full },
   sent: { flexDirection: "row", alignItems: "center", gap: 6 },
-  run: { minHeight: HIT, flexDirection: "row", alignItems: "center", gap: 10 },
+  statusRow: { minHeight: HIT + 20, flexDirection: "row", alignItems: "center", gap: 14, padding: 14 },
+  statusIcon: { width: 36, height: 36, borderRadius: radius.full, alignItems: "center", justifyContent: "center" },
+  statusText: { flex: 1, gap: 2 },
+  statusTitle: { fontSize: 16, fontWeight: "500" },
+  statusDetail: { fontSize: 14, lineHeight: 19 },
+  runs: { paddingHorizontal: 14, paddingBottom: 6 },
+  run: { minHeight: HIT, flexDirection: "row", alignItems: "center", gap: 10, paddingLeft: 10 },
   runName: { flex: 1, fontSize: 14, lineHeight: 19, paddingVertical: 6 },
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  hint: { fontSize: 13, lineHeight: 18 },
-  methods: { gap: 2 },
-  watch: { minHeight: HIT, flexDirection: "row", alignItems: "center", gap: 12 },
-  watchText: { flex: 1, gap: 2 },
-  watchLabel: { fontSize: 15, fontWeight: "500" },
+  bar: { gap: 8, paddingHorizontal: 16, paddingTop: 8, width: "100%", maxWidth: 792, alignSelf: "center" },
+  barRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  round: { width: HIT + 8, height: HIT + 8, borderRadius: radius.full, boxShadow: "0 2px 8px rgba(0, 0, 0, 0.08)" },
+  merge: { flex: 1, minHeight: HIT + 8, borderRadius: radius.full },
   close: { alignSelf: "flex-start", marginLeft: -12 },
 })

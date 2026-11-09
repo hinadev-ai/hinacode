@@ -1,6 +1,8 @@
+import type { RpcRequest } from "@shared/contract.ts"
 import { create } from "zustand"
 import { isThreadBusy, type Project, type Thread, type Worktree } from "@shared/domain.ts"
 import { call } from "@/lib/connection"
+import { errorText } from "@/lib/error-text"
 
 interface ThreadsState {
   readonly projects: readonly Project[]
@@ -8,6 +10,8 @@ interface ThreadsState {
   /** The branch checked out in each project's root, by project id, once read. */
   readonly branches: Readonly<Record<string, string>>
   readonly byId: Readonly<Record<string, Thread>>
+  /** When this phone saw each busy thread's turn begin, see `trackRunningSince`. */
+  readonly runningSince: Readonly<Record<string, string>>
   readonly status: "loading" | "ready" | "error"
   readonly error: string | null
   /**
@@ -38,6 +42,7 @@ export const useThreads = create<ThreadsState>()((set, get) => {
     worktrees: {},
     branches: {},
     byId: {},
+    runningSince: {},
     status: "loading",
     error: null,
     load: async () => {
@@ -64,6 +69,7 @@ export const useThreads = create<ThreadsState>()((set, get) => {
             ...Object.fromEntries(ownWorktrees),
           },
           byId,
+          runningSince: trackRunningSince(get().runningSince, Object.values(byId)),
           status: "ready",
           error: null,
         })
@@ -78,7 +84,10 @@ export const useThreads = create<ThreadsState>()((set, get) => {
     upsert: (thread) => {
       const previous = get().byId[thread.id]
       pushedDuringLoad?.set(thread.id, thread)
-      set((state) => ({ byId: { ...state.byId, [thread.id]: thread } }))
+      set((state) => {
+        const byId = { ...state.byId, [thread.id]: thread }
+        return { byId, runningSince: trackRunningSince(state.runningSince, Object.values(byId)) }
+      })
       // A turn in the project root may have switched its branch.
       const turnEnded = previous !== undefined && isThreadBusy(previous.status) && !isThreadBusy(thread.status)
       if (turnEnded && thread.worktreeId === null) void readBranch(thread.projectId)
@@ -102,6 +111,19 @@ export const useThreads = create<ThreadsState>()((set, get) => {
       set((state) => ({ projects: [...state.projects.filter((existing) => existing.id !== project.id), project] })),
   }
 })
+
+/**
+ * Keeps the time each busy thread's turn began. The thread records none, so a turn the phone sees begin takes the
+ * `updatedAt` of that change, and later updates during the turn, such as a model switch, leave it alone.
+ */
+export function trackRunningSince(
+  since: Readonly<Record<string, string>>,
+  threads: readonly Thread[],
+): Readonly<Record<string, string>> {
+  const next: Record<string, string> = {}
+  for (const thread of threads) if (isThreadBusy(thread.status)) next[thread.id] = since[thread.id] ?? thread.updatedAt
+  return next
+}
 
 /** A project's threads in the order the developer arranged them in the desktop sidebar. */
 /** Every thread but the drafts New thread opens, which the server lists only after their first message. */
@@ -171,3 +193,22 @@ export function threadBranch(
 
 export const useThreadRoot = (thread: Thread) =>
   useThreads((state) => threadRoot(thread, state.projects, state.worktrees))
+
+/** The name of the branch a thread works on, or undefined before it is known. */
+export const useThreadBranchName = (thread: Thread) =>
+  useThreads(
+    (state) =>
+      threadBranch(
+        thread.worktreeId === null ? undefined : state.worktrees[thread.worktreeId],
+        state.branches[thread.projectId],
+      )?.name,
+  )
+
+/** Saves a change to a thread and shows the desktop's answer, or hands the error to `onError`. */
+export const updateThread = async (patch: RpcRequest<"threads.update">, onError: (message: string) => void) => {
+  try {
+    useThreads.getState().upsert(await call("threads.update", patch))
+  } catch (cause) {
+    onError(errorText(cause))
+  }
+}
