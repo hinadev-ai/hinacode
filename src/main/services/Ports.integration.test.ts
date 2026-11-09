@@ -2,12 +2,21 @@ import { spawn } from "node:child_process"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { createInterface } from "node:readline"
 import { afterAll, beforeAll, describe, expect, it, layer } from "@effect/vitest"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer } from "effect"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
-import { belongsToWorkspace, parseNetstat, parseSs, Ports, layer as portsLayer } from "./Ports.ts"
+import {
+  belongsToWorkspace,
+  listeningSockets,
+  parseNetstat,
+  parseSs,
+  Ports,
+  layer as portsLayer,
+  socketsFingerprint,
+} from "./Ports.ts"
 
 const listenerPids: Array<number> = []
 
@@ -31,8 +40,55 @@ const listenIn = (cwd: string) =>
       }),
   )
 
-const portsOf = (threadId: string) =>
-  Ports.use((ports) => ports.listForThread(threadId)).pipe(
+const HANDOFF_LISTENER = `
+const { createServer } = require("node:net")
+const { spawn } = require("node:child_process")
+const server = createServer().listen(0, "127.0.0.1", () => {
+  console.log(process.pid, server.address().port)
+  process.on("SIGUSR2", () => {
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+      stdio: ["ignore", "ignore", "ignore", server._handle.fd],
+      detached: true,
+    })
+    child.unref()
+    console.log(child.pid)
+    setTimeout(() => process.exit(0), 50)
+  })
+})
+`
+
+const listenAndHandOff = (cwd: string) =>
+  Effect.promise(() => {
+    const parent = spawn("sh", ["-c", `"$0" -e "$1" &`, process.execPath, HANDOFF_LISTENER], {
+      cwd,
+      stdio: ["ignore", "pipe", "inherit"],
+    })
+    const lines = createInterface({ input: parent.stdout })[Symbol.asyncIterator]()
+    return lines.next().then((first) => {
+      const [pid = -1, port = -1] = String(first.value).split(" ").map(Number)
+      listenerPids.push(pid)
+      const handOff = Effect.promise(async () => {
+        process.kill(pid, "SIGUSR2")
+        const child = Number((await lines.next()).value)
+        listenerPids.push(child)
+        await new Promise((resolve) => parent.stdout.once("close", resolve))
+        return child
+      })
+      return { pid, port, handOff }
+    })
+  })
+
+const isAlive = (pid: number) => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+const portsOf = (threadId: string, options?: { readonly fresh?: boolean }) =>
+  Ports.use((ports) => ports.listForThread(threadId, options)).pipe(
     Effect.map((ports) => ports.map(({ port, pid }) => ({ port, pid }))),
   )
 
@@ -42,7 +98,7 @@ describe.skipIf(process.platform !== "linux" && process.platform !== "darwin")("
     base = await mkdtemp(join(tmpdir(), "kk-ports-"))
   })
   afterAll(async () => {
-    for (const pid of listenerPids) process.kill(pid)
+    for (const pid of listenerPids.filter(isAlive)) process.kill(pid)
     await rm(base, { recursive: true, force: true })
   })
 
@@ -72,6 +128,32 @@ describe.skipIf(process.platform !== "linux" && process.platform !== "darwin")("
         expect(yield* portsOf(threadId)).toStrictEqual([listener])
       }),
     )
+
+    shared.effect("lists a listener that started after the previous scan", () =>
+      Effect.gen(function* () {
+        const root = yield* Effect.promise(() => mkdtemp(join(base, "repo-")))
+        const first = yield* listenIn(root)
+        const { threadId } = yield* seedThread({ rootPath: root })
+        expect(yield* portsOf(threadId)).toStrictEqual([first])
+        const second = yield* listenIn(root)
+        expect(yield* portsOf(threadId)).toStrictEqual([first, second].toSorted((a, b) => a.port - b.port))
+      }),
+    )
+
+    shared.effect.skipIf(process.platform !== "linux")(
+      "sees a listener inherited by a child process on a fresh scan",
+      () =>
+        Effect.gen(function* () {
+          const root = yield* Effect.promise(() => mkdtemp(join(base, "repo-")))
+          const listener = yield* listenAndHandOff(root)
+          const { threadId } = yield* seedThread({ rootPath: root })
+          expect(yield* portsOf(threadId)).toStrictEqual([{ port: listener.port, pid: listener.pid }])
+
+          const inherited = yield* listener.handOff
+
+          expect(yield* portsOf(threadId, { fresh: true })).toStrictEqual([{ port: listener.port, pid: inherited }])
+        }),
+    )
   })
 })
 
@@ -89,6 +171,34 @@ describe("parseSs", () => {
       { pid: 22, command: "my (dev) srv", port: 8080 },
       { pid: 40, command: "python3", port: 4000 },
     ])
+  })
+})
+
+const PROC_NET_TCP = `  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
+   0: 0100007F:1435 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 5230216 1 0000000000000000 100 0 0 10 0
+   1: 0100007F:1435 0100007F:A2C4 01 00000000:00000000 00:00000000 00000000  1000        0 5230299 1 0000000000000000 20 4 30 10 -1
+   2: 00000000:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 39232875 1 0000000000000000 100 0 0 10 0
+`
+
+describe("listeningSockets", () => {
+  it("keys each listening socket by address and inode, skipping connections", () => {
+    expect(listeningSockets(PROC_NET_TCP)).toStrictEqual(["0100007F:1435/5230216", "00000000:1F90/39232875"])
+  })
+})
+
+describe("socketsFingerprint", () => {
+  const missing = Object.assign(new Error("no such file"), { code: "ENOENT" })
+  const denied = Object.assign(new Error("permission denied"), { code: "EACCES" })
+
+  it("is unavailable when a table could not be read for a reason other than ENOENT", () => {
+    expect(socketsFingerprint([{ text: PROC_NET_TCP }, { error: denied }])).toBeNull()
+  })
+
+  it("treats an absent table as empty and still fingerprints the rest", () => {
+    expect(socketsFingerprint([{ text: PROC_NET_TCP }, { error: missing }])).toBe(
+      "00000000:1F90/39232875 0100007F:1435/5230216",
+    )
+    expect(socketsFingerprint([{ error: missing }, { error: missing }])).toBe("")
   })
 })
 

@@ -72,7 +72,7 @@ const make = Effect.gen(function* () {
     })
 
   const hasListeningPort = (threadId: string) =>
-    ports.listForThread(threadId).pipe(
+    ports.listForThread(threadId, { fresh: true }).pipe(
       Effect.map((open) => open.length > 0),
       Effect.catchTag("FolderMissingError", () => Effect.succeed(false)),
     )
