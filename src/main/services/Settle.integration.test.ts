@@ -416,6 +416,27 @@ describe("Settle", () => {
       }),
     )
 
+    it.effect("keeps a pin that lands while the idle pass releases the thread", () =>
+      Effect.gen(function* () {
+        yield* Settings.use((settings) => settings.set({ archive: archiveSettings({ settleAfterIdleDays: 7 }) }))
+        const { threadId } = yield* seedThread({ rootPath: "/idle-pinned" })
+        yield* TestClock.setTime(Date.parse((yield* Threads.use((threads) => threads.get(threadId))).updatedAt))
+        yield* TestClock.adjust("7 days")
+        const hold = { asked: yield* Deferred.make<void>(), release: yield* Deferred.make<void>() }
+        heldReleases.set(threadId, hold)
+
+        const sweeping = yield* Settle.use((settle) => settle.sweep).pipe(Effect.forkChild)
+        yield* Deferred.await(hold.asked)
+        yield* Threads.use((threads) => threads.update({ id: threadId, pinned: true }))
+        yield* Deferred.succeed(hold.release, undefined)
+        yield* Fiber.join(sweeping)
+
+        const thread = yield* Threads.use((threads) => threads.get(threadId))
+        expect(thread.pinnedAt).not.toBeNull()
+        expect(thread.settledAt).toBeNull()
+      }),
+    )
+
     it.effect("archives a thread once it has been settled for the configured days", () =>
       Effect.gen(function* () {
         const { threadId } = yield* seedThread({ rootPath: "/archive-later" })
