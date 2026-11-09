@@ -100,10 +100,10 @@ const recordingPorts = Layer.effect(
     Effect.succeed(
       Ports.Ports.of({
         ...ports,
-        listForThread: (threadId) =>
+        listForThread: (threadId, options) =>
           failingScans.has(threadId)
             ? Effect.fail(new Ports.PortsError({ message: "ss is not installed" }))
-            : ports.listForThread(threadId),
+            : ports.listForThread(threadId, options),
         closeThread: (threadId) =>
           Effect.sync(() => void portsClosedFor.push(threadId)).pipe(Effect.andThen(ports.closeThread(threadId))),
       }),

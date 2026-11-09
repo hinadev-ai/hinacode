@@ -29,6 +29,7 @@ interface Listener {
 
 type ListeningScanner = (
   include: (process: ProcessInfo) => boolean,
+  fresh: boolean,
 ) => Effect.Effect<ReadonlyArray<ListeningProcess>, PortsError>
 
 const MAX_ANCESTORS = 64
@@ -166,22 +167,42 @@ export const listeningSockets = (procNetTcp: string) =>
       return state === TCP_LISTEN ? [`${local}/${inode}`] : []
     })
 
+type ProcTable = { readonly text: string } | { readonly error: NodeJS.ErrnoException }
+
+export const socketsFingerprint = (tables: ReadonlyArray<ProcTable>): string | null =>
+  tables.some((table) => "error" in table && table.error.code !== "ENOENT")
+    ? null
+    : tables
+        .flatMap((table) => ("text" in table ? listeningSockets(table.text) : []))
+        .toSorted()
+        .join(" ")
+
 const procListeningSockets = Effect.promise(() =>
-  Promise.all(["/proc/net/tcp", "/proc/net/tcp6"].map((table) => readFile(table, "utf8").catch(() => ""))),
-).pipe(Effect.map((tables) => tables.flatMap(listeningSockets).toSorted().join(" ")))
+  Promise.all(
+    ["/proc/net/tcp", "/proc/net/tcp6"].map((table) =>
+      readFile(table, "utf8").then(
+        (text): ProcTable => ({ text }),
+        (error: NodeJS.ErrnoException): ProcTable => ({ error }),
+      ),
+    ),
+  ),
+).pipe(Effect.map(socketsFingerprint))
 
 let ssForSockets: { readonly key: string; readonly listeners: ReadonlyArray<Listener> } | undefined
 
-const ssListeners = Effect.gen(function* () {
-  const key = yield* procListeningSockets
-  if (ssForSockets?.key === key) return ssForSockets.listeners
-  const listeners = parseSs(yield* exec("ss", ["-Hltnp"]))
-  ssForSockets = { key, listeners }
-  return listeners
-})
+const scanSs = exec("ss", ["-Hltnp"]).pipe(Effect.map(parseSs))
 
-const findListeningPortsWithSs: ListeningScanner = (include) =>
-  ssListeners.pipe(Effect.flatMap((listeners) => attribute(listeners, procParentPids, procCwds, include)))
+const ssListeners = (fresh: boolean) =>
+  Effect.gen(function* () {
+    const key = yield* procListeningSockets
+    if (!fresh && key !== null && ssForSockets?.key === key) return ssForSockets.listeners
+    const listeners = yield* scanSs
+    if (key !== null) ssForSockets = { key, listeners }
+    return listeners
+  })
+
+const findListeningPortsWithSs: ListeningScanner = (include, fresh) =>
+  ssListeners(fresh).pipe(Effect.flatMap((listeners) => attribute(listeners, procParentPids, procCwds, include)))
 
 const findListeningPortsWithLsof: ListeningScanner = (include) =>
   // FIXME: lsof cuts the command name to nine characters unless given +c 0
@@ -310,6 +331,7 @@ export class Ports extends Context.Service<
   {
     readonly listForThread: (
       threadId: string,
+      options?: { readonly fresh?: boolean },
     ) => Effect.Effect<ReadonlyArray<OpenPort>, PersistenceError | NotFoundError | FolderMissingError | PortsError>
     readonly kill: (pid: number) => Effect.Effect<void, PortsError>
     readonly closeThread: (threadId: string) => Effect.Effect<void>
@@ -327,8 +349,7 @@ const terminate = (pid: number) =>
 
 const kill = (pid: number) =>
   Effect.gen(function* () {
-    ssForSockets = undefined
-    const listening = yield* scanListening((proc) => proc.pid === pid)
+    const listening = yield* scanListening((proc) => proc.pid === pid, true)
     if (listening.length === 0) {
       return yield* new PortsError({ message: `Process ${pid} is not listening on a port` })
     }
@@ -338,7 +359,7 @@ const kill = (pid: number) =>
 const make = Effect.gen(function* () {
   const activeWorkspace = yield* makeActiveWorkspace
 
-  const listListening = (threadId: string, workspaceCwd: string | null) =>
+  const listListening = (threadId: string, workspaceCwd: string | null, fresh: boolean) =>
     Effect.gen(function* () {
       // FIXME: process cwds are resolved paths, and macOS's /tmp is a symlink
       const workspacePath =
@@ -349,16 +370,19 @@ const make = Effect.gen(function* () {
           agentPids: agentPidsOf(threadId),
           selfPid: process.pid,
         }),
+        fresh,
       )
       return listening.map(({ port, pid, command, cwd }): OpenPort => ({ port, pid, command, cwd }))
     })
 
-  const listForThread = (threadId: string) =>
-    activeWorkspace(threadId).pipe(Effect.flatMap((workspace) => listListening(threadId, workspace.cwd)))
+  const listForThread = (threadId: string, options?: { readonly fresh?: boolean }) =>
+    activeWorkspace(threadId).pipe(
+      Effect.flatMap((workspace) => listListening(threadId, workspace.cwd, options?.fresh === true)),
+    )
 
   const listOwnedByThread = (threadId: string) =>
     activeWorkspace(threadId).pipe(
-      Effect.flatMap((workspace) => listListening(threadId, workspace.worktreeRemoved ? null : workspace.cwd)),
+      Effect.flatMap((workspace) => listListening(threadId, workspace.worktreeRemoved ? null : workspace.cwd, true)),
     )
 
   const closeThread = (threadId: string) =>
