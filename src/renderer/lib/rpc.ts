@@ -1,4 +1,4 @@
-import { Duration, Effect, Option, Schedule, Schema, Stream } from "effect"
+import { Duration, Effect, Option, Schedule, Schema } from "effect"
 import { AsyncResult, Atom } from "effect/reactivity"
 import { ProviderId } from "../../shared/agent.ts"
 import {
@@ -516,13 +516,10 @@ export const secretStoredAtom = familyOf((environment: EnvironmentId, name: stri
 
 export const threadPortsAtom = Atom.family((threadId: string) =>
   Atom.make(
-    Stream.fromEffectSchedule(
-      call("ports.list", { threadId }).pipe(
-        Effect.retry({ while: (error) => error.tag === "EnvironmentOffline", schedule: Schedule.spaced("2 seconds") }),
-      ),
-      Schedule.spaced("2 seconds"),
+    call("ports.list", { threadId }).pipe(
+      Effect.retry({ while: (error) => error.tag === "EnvironmentOffline", schedule: Schedule.spaced("2 seconds") }),
     ),
-  ),
+  ).pipe(refreshInStepWhileVisible(Duration.seconds(2))),
 )
 
 const pushFirst =

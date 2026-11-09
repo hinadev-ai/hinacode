@@ -6,6 +6,7 @@ import {
   pullRequestDetailAtom,
   pullRequestStatusAtom,
   type RendererPushEvent,
+  threadPortsAtom,
 } from "./rpc.ts"
 
 let bridgeListeners: ReadonlyArray<(event: unknown) => void> = []
@@ -229,6 +230,40 @@ test("returning to the window asks main once for a fresh read of the pull reques
   app.dispatchEvent(new Event("focus"))
   await vi.waitFor(() => expect(payloads).toHaveLength(2))
   expect(payloads.at(-1)).toStrictEqual({ url: PULL_REQUEST.url, fresh: true })
+
+  unmount()
+  registry.dispose()
+})
+
+test("the ports card stops asking main for ports while the window is hidden", async () => {
+  vi.useFakeTimers({ now: 40_000 })
+  const page = Object.assign(new EventTarget(), { hidden: false, visibilityState: "visible" })
+  let polls = 0
+  vi.stubGlobal("document", page)
+  vi.stubGlobal(
+    "window",
+    Object.assign(new EventTarget(), {
+      hinacode: {
+        onEvent,
+        rpc: async () => {
+          polls++
+          return { result: [] }
+        },
+      },
+    }),
+  )
+  const registry = AtomRegistry.make()
+  const unmount = registry.mount(threadPortsAtom("thread-1"))
+  await vi.advanceTimersByTimeAsync(6_000)
+  expect(polls).toBe(4)
+
+  page.hidden = true
+  await vi.advanceTimersByTimeAsync(60_000)
+  expect(polls).toBe(4)
+
+  page.hidden = false
+  await vi.advanceTimersByTimeAsync(2_000)
+  expect(polls).toBe(5)
 
   unmount()
   registry.dispose()
