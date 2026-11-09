@@ -15,6 +15,7 @@ import { makeTestAppLayer } from "../testing.ts"
 import { ArtifactFeedback } from "./ArtifactFeedback.ts"
 import { Artifacts } from "./Artifacts.ts"
 import { Events, PushBroadcast, WindowPush } from "./Events.ts"
+import { Threads } from "./Threads.ts"
 
 const base = mkdtempSync(join(tmpdir(), "kk-artifact-feedback-"))
 afterAll(() => rmSync(base, { recursive: true, force: true }))
@@ -22,6 +23,11 @@ afterAll(() => rmSync(base, { recursive: true, force: true }))
 const newThread = Effect.suspend(() => seedThread({ rootPath: mkdtempSync(join(base, "project-")) })).pipe(
   Effect.map(({ threadId }) => threadId),
 )
+
+const documentOf = (threadId: string) =>
+  Artifacts.use(({ store }) =>
+    Effect.promise(() => store.publish({ kind: "document", title: "Plan", markdown: "Ship it.", threadId })),
+  )
 
 const ownerAndSibling = Effect.gen(function* () {
   const rootPath = mkdtempSync(join(base, "project-"))
@@ -144,6 +150,34 @@ layer(makeTestAppLayer(join(base, "hinacode.sqlite"), { providers, events: quiet
       expect((yield* Queue.take(delivered)).text).toContain(
         'About elements api:\napi rectangle "API" at 0,0 180x80\nWhere is the cache?',
       )
+    }),
+  )
+
+  it.effect("starts a turn on a settled owner", () =>
+    Effect.gen(function* () {
+      const owner = yield* newThread
+      const document = yield* documentOf(owner)
+      yield* Threads.use((threads) => threads.settle(owner))
+
+      yield* ArtifactFeedback.use((feedback) => feedback.comment({ id: document.id, body: "Still there?" }))
+
+      expect(yield* Queue.take(delivered)).toMatchObject({
+        threadId: owner,
+        text: expect.stringContaining("Still there?"),
+      })
+    }),
+  )
+
+  it.effect("keeps a comment on the document of a deleted thread without delivering it", () =>
+    Effect.gen(function* () {
+      const owner = yield* newThread
+      const document = yield* documentOf(owner)
+      yield* Threads.use((threads) => threads.remove(owner))
+
+      const saved = yield* ArtifactFeedback.use((feedback) => feedback.comment({ id: document.id, body: "Anyone?" }))
+
+      expect(saved.comments.map((comment) => comment.messages[0]?.body)).toEqual(["Anyone?"])
+      expect(yield* Queue.size(delivered)).toBe(0)
     }),
   )
 })
