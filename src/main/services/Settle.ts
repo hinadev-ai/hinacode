@@ -123,11 +123,13 @@ const make = Effect.gen(function* () {
       if (!isIdleFor(thread, days, now) || (yield* hasAgentWork(thread.id))) return
       const found = yield* Effect.forEach(links, (link) => github.pullRequest(link.url), { concurrency: 4 })
       if (found.some(isOpen) || (yield* hasListeningPort(thread.id))) return
-      const latest = yield* threads.get(thread.id)
-      if (latest.updatedAt !== thread.updatedAt || !isIdleFor(latest, days, now)) return
-      const settled = yield* runner.release(
-        thread.id,
-        stopProcesses(thread.id).pipe(Effect.andThen(threads.settle(thread.id))),
+      const isStillIdle = (latest: Thread) => latest.updatedAt === thread.updatedAt && isIdleFor(latest, days, now)
+      if (!isStillIdle(yield* threads.get(thread.id))) return
+      const settled = Option.flatten(
+        yield* runner.release(
+          thread.id,
+          stopProcesses(thread.id).pipe(Effect.andThen(threads.settleIf(thread.id, isStillIdle))),
+        ),
       )
       if (Option.isSome(settled)) yield* events.publish({ type: "thread.updated", thread: settled.value })
     }).pipe(Effect.catchCause((cause) => Effect.logWarning("idle settle skipped a thread", thread.id, cause)))
@@ -150,7 +152,7 @@ const make = Effect.gen(function* () {
       if (!(yield* isArchiveDue(thread, now))) return
       const archiveIfStillDue = threads.archiveIf(thread.id, (latest) =>
         Effect.gen(function* () {
-          if (yield* losesUncommittedWork(latest)) return false
+          if ((yield* losesUncommittedWork(latest)) || (yield* runner.isBusy(latest.id))) return false
           return yield* isArchiveDue(latest, now)
         }),
       )
