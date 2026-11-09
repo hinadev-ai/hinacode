@@ -44,6 +44,22 @@ test("takes the first occurrence of a quote without context", () => {
   })
 })
 
+test("finds a quote an agent copied from the Markdown, with its inline syntax", () => {
+  const text = "Ship the editor first. Read the guide, then run pnpm build and snake_case stays."
+  const quoted = (quote: string) => {
+    const found = resolveTextAnchor(text, { kind: "text", quote, prefix: "", suffix: "" })
+    return found === null ? null : text.slice(found.from, found.to)
+  }
+
+  expect(quoted("Ship the **editor** first.")).toBe("Ship the editor first.")
+  expect(quoted("Ship the _editor_ ~~first~~.")).toBe("Ship the editor first.")
+  expect(quoted("Read the [guide](https://example.com/guide), then run `pnpm build`")).toBe(
+    "Read the guide, then run pnpm build",
+  )
+  expect(quoted("snake_case stays.")).toBe("snake_case stays.")
+  expect(quoted("Ship the **toolbar** first.")).toBe(null)
+})
+
 test("is null when the quote is gone", () => {
   const anchor = textAnchorAt("Ship the editor first.", 9, 15)
 

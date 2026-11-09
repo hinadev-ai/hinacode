@@ -25,11 +25,19 @@ const sharedStart = (a: string, b: string) => {
   return length
 }
 
-export const resolveTextAnchor = (text: string, anchor: TextAnchor): TextRange | null => {
+const withoutInlineMarkdown = (quote: string) =>
+  quote
+    .replaceAll(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replaceAll(/(?<!\\)(\*\*|__|~~|`)/g, "")
+    .replaceAll(/(?<![\\\p{L}\p{N}])[*_]|(?<!\\)[*_](?![\p{L}\p{N}])/gu, "")
+    .replaceAll(/\\(\p{P})/gu, "$1")
+
+const bestOccurrence = (text: string, quote: string, anchor: TextAnchor): TextRange | null => {
+  if (quote === "") return null
   let best: TextRange | null = null
   let bestScore = -1
-  for (let from = text.indexOf(anchor.quote); from !== -1; from = text.indexOf(anchor.quote, from + 1)) {
-    const to = from + anchor.quote.length
+  for (let from = text.indexOf(quote); from !== -1; from = text.indexOf(quote, from + 1)) {
+    const to = from + quote.length
     const score =
       sharedEnd(text.slice(Math.max(0, from - anchor.prefix.length), from), anchor.prefix) +
       sharedStart(text.slice(to, to + anchor.suffix.length), anchor.suffix)
@@ -40,3 +48,6 @@ export const resolveTextAnchor = (text: string, anchor: TextAnchor): TextRange |
   }
   return best
 }
+
+export const resolveTextAnchor = (text: string, anchor: TextAnchor): TextRange | null =>
+  bestOccurrence(text, anchor.quote, anchor) ?? bestOccurrence(text, withoutInlineMarkdown(anchor.quote), anchor)
