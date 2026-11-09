@@ -2,9 +2,8 @@ import { isThreadBusy, type Thread } from "@shared/domain.ts"
 import { useState } from "react"
 import { Pressable, StyleSheet, View } from "react-native"
 import Animated, { useReducedMotion } from "react-native-reanimated"
-import { AccessModePicker } from "@/components/access-mode"
 import { GlassFill, liquidGlass } from "@/components/glass"
-import { Icon, type IconName } from "@/components/icon"
+import { Icon } from "@/components/icon"
 import { PressableScale, Spinner } from "@/components/motion"
 import { Notice } from "@/components/ui"
 import { cssEase, duration } from "@/constants/motion"
@@ -17,7 +16,7 @@ import { type ThreadTab, threadTabs } from "@/lib/thread-tabs"
 
 const BAR_PADDING = 6
 
-/** The thread's views as icon tabs, then Stop while a turn runs, then the access mode. */
+/** The thread's views as icon tabs, then Stop while a turn runs. */
 export function ThreadControlBar({
   thread,
   tab,
@@ -75,10 +74,7 @@ export function ThreadControlBar({
             )
           })}
         </View>
-        <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        <View style={styles.spacer} />
         {isThreadBusy(thread.status) && <StopButton thread={thread} onError={setError} />}
-        <AccessModePicker thread={thread} compact={isThreadBusy(thread.status)} />
       </View>
       {error !== null && <Notice text={error} tone="danger" />}
     </View>
@@ -120,6 +116,7 @@ function StopButton({ thread, onError }: { thread: Thread; onError: (message: st
 const styles = StyleSheet.create({
   wrap: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4, gap: 8 },
   bar: {
+    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -138,7 +135,5 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     boxShadow: "0 2px 6px rgba(0, 0, 0, 0.12)",
   },
-  divider: { width: StyleSheet.hairlineWidth * 2, height: 24, marginHorizontal: 4 },
-  spacer: { flex: 1 },
   stop: { width: HIT, height: HIT, borderRadius: radius.full, alignItems: "center", justifyContent: "center" },
 })

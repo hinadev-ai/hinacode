@@ -39,7 +39,7 @@ import {
 import { environmentName, environmentOf, useClouds, useThreadEnvironment } from "../lib/environments.ts"
 import { inBrowser } from "../lib/runtime.ts"
 import { ProjectDialog } from "./ProjectDialog.tsx"
-import { groupProjects } from "../lib/projectGroups.ts"
+import { groupProjects } from "../../shared/projectGroups.ts"
 import { moveDraft } from "../lib/startThread.ts"
 import { useInstalledProviders, useSettings } from "../lib/settings.ts"
 import { useAltHeld } from "../lib/useModifierHeld.ts"

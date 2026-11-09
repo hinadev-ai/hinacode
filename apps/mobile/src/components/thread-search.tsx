@@ -9,7 +9,7 @@ import { EmptyState, Notice } from "@/components/ui"
 import { HIT, type Palette, radius } from "@/constants/theme"
 import { threadStatusLabel } from "@/constants/thread-status"
 import { useNow } from "@/hooks/use-now"
-import { useShownServers } from "@/hooks/use-server"
+import { useThreadFilter } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
 import { call } from "@/lib/connection"
 import { copy } from "@/lib/copy"
@@ -17,7 +17,7 @@ import { errorText } from "@/lib/error-text"
 import { matchParts } from "@/lib/match-parts"
 import { openThread } from "@/lib/navigation"
 import { relativeTime } from "@/lib/relative-time"
-import { hitsWithinServers, withinServers } from "@/lib/server-filter"
+import { hitsWithinFilter, withinFilter } from "@/lib/thread-filter"
 import { listedThreads, matchThreads, useThreads } from "@/stores/threads"
 
 const THREAD_LIMIT = 20
@@ -113,13 +113,13 @@ export function SearchResults({
   const theme = useTheme()
   const projects = useThreads((state) => state.projects)
   const byId = useThreads((state) => state.byId)
-  const servers = useShownServers()
-  const listed = withinServers(servers, projects, listedThreads(byId))
+  const filter = useThreadFilter()
+  const listed = withinFilter(filter, projects, listedThreads(byId))
   const threads =
     scope === "messages" ? [] : matchThreads(listed.threads, listed.projects, query).slice(0, THREAD_LIMIT)
   const search = useMessageSearch(scope === "threads" ? "" : query)
   const messages =
-    search.state === "done" ? { ...search, hits: hitsWithinServers(servers, projects, search.hits) } : search
+    search.state === "done" ? { ...search, hits: hitsWithinFilter(filter, projects, search.hits) } : search
   const hits = messages.state === "done" ? messages.hits : []
   const empty = threads.length === 0 && hits.length === 0 && messages.state !== "loading"
 

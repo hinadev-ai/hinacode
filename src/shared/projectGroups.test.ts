@@ -1,6 +1,12 @@
 import { describe, expect, test } from "@effect/vitest"
-import type { Project } from "../../shared/domain.ts"
-import { groupProjects } from "./projectGroups.ts"
+import type { Project } from "./domain.ts"
+import {
+  filterPickedProjects,
+  groupProjects,
+  isGroupPicked,
+  pickProjectGroup,
+  type ProjectGroup,
+} from "./projectGroups.ts"
 
 const project = (id: string, extra: Partial<Project> = {}): Project => ({
   id,
@@ -64,5 +70,38 @@ describe("groupProjects", () => {
       project("cloud-chats", { kind: "chats", environmentId: "home" }),
     ]
     expect(keysAndIds(projects)).toStrictEqual([["chats", ["chats", "cloud-chats"]]])
+  })
+})
+
+const ids = (list: ReadonlyArray<Project>) => list.map((member) => member.id)
+
+describe("filterPickedProjects", () => {
+  const projects = [project("web"), project("api"), project("docs")]
+
+  test("keeps the picked projects", () => {
+    expect(ids(filterPickedProjects(projects, ["api", "docs"]))).toStrictEqual(["api", "docs"])
+  })
+
+  test("keeps every project when none of the picked ones is reachable", () => {
+    expect(ids(filterPickedProjects(projects, []))).toStrictEqual(["web", "api", "docs"])
+    expect(ids(filterPickedProjects(projects, ["gone"]))).toStrictEqual(["web", "api", "docs"])
+  })
+})
+
+describe("pickProjectGroup", () => {
+  const web: ProjectGroup = {
+    key: "acme/web",
+    projects: [project("mac-web"), project("cloud-web", { environmentId: "home" })],
+  }
+
+  test("picks every member of the group and drops them together", () => {
+    const picked = pickProjectGroup(["api"], web, true)
+    expect(picked).toStrictEqual(["api", "mac-web", "cloud-web"])
+    expect(isGroupPicked(web, picked)).toBe(true)
+    expect(pickProjectGroup(picked, web, false)).toStrictEqual(["api"])
+  })
+
+  test("a group is picked only when all its members are", () => {
+    expect(isGroupPicked(web, ["mac-web"])).toBe(false)
   })
 })

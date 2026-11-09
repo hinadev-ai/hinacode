@@ -3,7 +3,7 @@ import { useState } from "react"
 import { StyleSheet, View } from "react-native"
 import { isIOS } from "@/components/glass"
 import { SearchField } from "@/components/search-field"
-import { ServerFilter } from "@/components/server-filter"
+import { ThreadFilterPill } from "@/components/thread-filter"
 import { ScopeChips, SearchResults, type SearchScope } from "@/components/thread-search"
 import { useTheme } from "@/hooks/use-theme"
 import { copy } from "@/lib/copy"
@@ -44,7 +44,9 @@ export default function SearchScreen() {
         header={
           <>
             <ScopeChips value={scope} onChange={setScope} />
-            <ServerFilter />
+            <View style={styles.filter}>
+              <ThreadFilterPill />
+            </View>
           </>
         }
       />
@@ -55,4 +57,5 @@ export default function SearchScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   field: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 },
+  filter: { alignItems: "flex-start", paddingHorizontal: 8, paddingVertical: 6 },
 })

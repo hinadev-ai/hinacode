@@ -1,6 +1,5 @@
 import type { Compaction } from "@shared/agent.ts"
 import { collapsedParts } from "@shared/activityFold.ts"
-import { toolSummary } from "@shared/compactTranscript.ts"
 import { formatWorkDuration } from "@shared/workDuration.ts"
 import {
   type Message,
@@ -8,7 +7,6 @@ import {
   publishesArtifact,
   spawnsSubagent,
   type Thread,
-  type ToolCallStatus,
 } from "@shared/domain.ts"
 import { isOwnPart } from "@shared/subagents.ts"
 import { useFocusEffect } from "expo-router"
@@ -17,12 +15,13 @@ import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, V
 import { ArtifactCard } from "@/components/artifact-card"
 import { Composer } from "@/components/composer"
 import { liquidGlass } from "@/components/glass"
-import { Icon, type IconName } from "@/components/icon"
+import { Icon } from "@/components/icon"
 import { Markdown } from "@/components/markdown"
-import { FadeIn, Pulse, Rotate, Spinner } from "@/components/motion"
+import { FadeIn, Pulse, Rotate } from "@/components/motion"
 import { SubagentCall, SubagentTray } from "@/components/subagents"
 import { TodoTray } from "@/components/todo-tray"
-import { Button, Notice, Pill } from "@/components/ui"
+import { FileChangeRow, ToolCallRow } from "@/components/tool-call"
+import { Button, Notice } from "@/components/ui"
 import { rise } from "@/constants/motion"
 import { HIT, mono, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
@@ -301,27 +300,10 @@ function PartView({ part, threadId }: { part: MessagePart; threadId: string }) {
     case "tool_call": {
       if (spawnsSubagent(part)) return <SubagentCall part={part} threadId={threadId} />
       if (publishesArtifact(part)) return <ArtifactCard part={part} threadId={threadId} />
-      const summary = toolSummary(part.input)?.line
-      return (
-        <View style={[styles.tool, { borderColor: theme.border }]}>
-          <Icon name="Tools" size={14} color={theme.textMuted} />
-          <Text style={[styles.toolName, { color: theme.text }]}>
-            {part.name}
-            {summary && <Text style={{ color: theme.textMuted }}> {summary}</Text>}
-          </Text>
-          <ToolStatus status={part.status} />
-        </View>
-      )
+      return <ToolCallRow call={part} threadId={threadId} />
     }
     case "file_change":
-      return (
-        <View style={styles.fileChange}>
-          <Icon name="Pencil" size={14} color={theme.textMuted} />
-          <Text style={[styles.toolName, { color: theme.textMuted }]}>
-            {copy("mobile_chat_edited", { path: part.path })}
-          </Text>
-        </View>
-      )
+      return <FileChangeRow path={part.path} />
     case "attachment":
       return (
         <Text style={{ color: theme.textMuted }}>{copy("mobile_chat_attached", { name: part.attachment.name })}</Text>
@@ -375,24 +357,6 @@ const compactionCopy = {
   done: "mobile_chat_compacted",
   failed: "mobile_chat_compaction_failed",
 } as const satisfies Record<Compaction["status"], CopyKey>
-
-const toolStatus = {
-  running: { label: "mobile_chat_tool_running", tone: "running", icon: "Spinner" },
-  error: { label: "mobile_chat_tool_failed", tone: "danger", icon: "Warning" },
-  done: { label: "mobile_chat_tool_done", tone: "neutral", icon: "Check" },
-} as const satisfies Record<ToolCallStatus, { label: CopyKey; tone: "running" | "danger" | "neutral"; icon: IconName }>
-
-function ToolStatus({ status }: { status: ToolCallStatus }) {
-  const theme = useTheme()
-  const { label, tone, icon } = toolStatus[status]
-  const color = tone === "running" ? theme.running : tone === "danger" ? theme.danger : theme.textMuted
-  return (
-    <View accessible accessibilityLabel={copy(label)} style={styles.status}>
-      {status === "running" ? <Spinner size={14} color={color} /> : <Icon name={icon} size={14} color={color} />}
-      {status !== "done" && <Pill label={copy(label)} tone={tone} />}
-    </View>
-  )
-}
 
 function Reasoning({ text }: { text: string }) {
   const theme = useTheme()
@@ -452,18 +416,6 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   workedForText: { flexShrink: 1, fontSize: 14, fontVariant: ["tabular-nums"] },
-  tool: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.md,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  toolName: { flex: 1, fontFamily: mono, fontSize: 13 },
-  fileChange: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 8 },
-  status: { flexDirection: "row", alignItems: "center", gap: 4 },
   disclosure: { minHeight: HIT, flexDirection: "row", alignItems: "center", gap: 4 },
   card: {
     marginHorizontal: 12,

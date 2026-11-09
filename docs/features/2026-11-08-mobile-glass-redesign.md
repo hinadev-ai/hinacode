@@ -13,7 +13,7 @@ The design lives in `hinacode.pen`: `iOS / Threads` (RZIKM) and its sibling `iOS
 3. Running threads sit in a horizontal rail with their elapsed time. Everything else follows in the Inbox, Threads and Archived lists.
 4. **Start a new thread** floats above the tab bar. Tapping it opens the new thread sheet.
 5. The tab bar switches between Threads, Pull requests and Settings. Search is its own tab.
-6. A thread opens with a control bar under its title: Chat, Files, PR and Terminal as icons, then Stop while a turn runs, then the access mode.
+6. A thread opens with a control bar under its title: Chat, Files, PR and Terminal as icons, then Stop while a turn runs. The access mode stays in the composer's settings sheet, as the desktop keeps it in the model picker.
 
 ## Design
 
@@ -21,7 +21,7 @@ The design lives in `hinacode.pen`: `iOS / Threads` (RZIKM) and its sibling `iOS
 - iOS 26 gets the system pieces: the glass tab bar, the search tab and `NativeTabs.BottomAccessory` for Start a new thread. Header items stay `Stack.Toolbar` items, so the system draws their glass capsules. Android gets Material bottom navigation from the same `NativeTabs`, and Start a new thread renders inside the Threads tab, above the navigation bar.
 - Overview becomes the Pull requests tab. Its Linear tickets stay as the last section.
 - Home reads the waiting tickets from the same `threads.transcript` history the chat uses. A ticket watches its thread while it is on screen, so an approval that resolves on the desktop leaves the phone at once.
-- The thread screen drops the segmented control and the provider subheader. The header title carries a subtitle of the current tab, the status and the time since the last update. The control bar holds the tabs, Stop and the access mode picker.
+- The thread screen drops the segmented control and the provider subheader. The header title carries a subtitle of the current tab, the status and the time since the last update. The control bar holds the tabs and Stop.
 - Approval and question cards take the ticket shape in both places: an age bar on top, the request, then the actions.
 
 ## Out of scope

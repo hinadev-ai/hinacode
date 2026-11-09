@@ -2,6 +2,7 @@ import { Schema } from "effect"
 import type { AgentCommand } from "../../shared/agent.ts"
 import { Attachment, type MessagePart, createsThread, publishesArtifact, spawnsSubagent } from "../../shared/domain.ts"
 import { type Todo, todosInCall } from "../../shared/todos.ts"
+import { ownToolName, unwrapShell } from "../../shared/toolNames.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 
@@ -66,10 +67,6 @@ const ownToolLabels = new Map<string, () => string>([
   ["device_describe_ui", m.tool_own_device_describe_ui],
 ])
 
-const OWN_TOOL_PREFIX = /^(?:mcp__hinacode__|hinacode[_/])/
-
-export const ownToolName = (name: string) => name.replace(OWN_TOOL_PREFIX, "")
-
 const OWN_SUMMARY_KEYS = ["title", "url", "query"]
 
 function summarizeOwnInput(input: unknown): string {
@@ -128,14 +125,6 @@ export function toolOutputImages(output: unknown): Array<Attachment> {
     const attachment: unknown = typeof block === "object" && block !== null ? Reflect.get(block, "attachment") : null
     return isAttachment(attachment) ? [attachment] : []
   })
-}
-
-// FIXME: Codex wraps every command in a login shell, such as /bin/zsh -lc '<command>'
-const SHELL_WRAPPER = /^(?:\/\S*\/)?(?:ba|z)?sh -l?c '((?:[^']|'\\'')*)'$/s
-
-const unwrapShell = (command: string) => {
-  const inner = SHELL_WRAPPER.exec(command)?.[1]
-  return inner === undefined ? command : inner.replaceAll(`'\\''`, "'")
 }
 
 type ToolCall = Extract<MessagePart, { type: "tool_call" }>

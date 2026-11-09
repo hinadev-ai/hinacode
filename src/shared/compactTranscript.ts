@@ -101,7 +101,7 @@ const encoder = new TextEncoder()
 
 export const TOOL_OUTPUT_PREVIEW_CHARS = 4096
 
-function outputPreview(output: unknown) {
+export function outputPreview(output: unknown) {
   if (typeof output !== "string" || output.length <= TOOL_OUTPUT_PREVIEW_CHARS) return undefined
   const tail = output.slice(-TOOL_OUTPUT_PREVIEW_CHARS)
   const firstLineEnd = tail.indexOf("\n")
