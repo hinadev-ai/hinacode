@@ -29,7 +29,7 @@ class ComposerEditorModule : Module() {
       Prop("editable") { view: ComposerEditorView, editable: Boolean -> view.setEditable(editable) }
 
       AsyncFunction("focus") { view: ComposerEditorView -> view.focus() }
-      AsyncFunction("blur") { view: ComposerEditorView -> view.editor.clearFocus() }
+      AsyncFunction("blur") { view: ComposerEditorView -> view.blur() }
     }
   }
 }

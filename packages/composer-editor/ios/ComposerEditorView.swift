@@ -1,11 +1,6 @@
 import ExpoModulesCore
 import UIKit
 
-private extension NSAttributedString.Key {
-  static let composerChip = NSAttributedString.Key("composerChip")
-  static let composerChipIcon = NSAttributedString.Key("composerChipIcon")
-}
-
 private struct Theme {
   var text = UIColor.label
   var placeholder = UIColor.placeholderText
@@ -34,73 +29,6 @@ func parseCssColor(_ css: String) -> UIColor? {
   guard parts.count >= 3 else { return nil }
   return UIColor(
     red: parts[0] / 255, green: parts[1] / 255, blue: parts[2] / 255, alpha: parts.count > 3 ? parts[3] : 1)
-}
-
-/// Paints chip pills behind the text and each chip's icon over its transparent trigger character.
-final class ChipLayoutManager: NSLayoutManager {
-  var icons: [String: [(path: UIBezierPath, fill: Bool)]] = [:] {
-    didSet { images.removeAll() }
-  }
-  var iconColor = UIColor.systemBlue {
-    didSet { images.removeAll() }
-  }
-  /// The caret blink redraws the text twice a second, so each icon is stroked once per size and drawn as an image.
-  private var images: [String: UIImage] = [:]
-
-  private func image(_ name: String, size: CGFloat) -> UIImage? {
-    let key = "\(name)@\(size)"
-    if let image = images[key] { return image }
-    guard let shapes = icons[name] else { return nil }
-    let image = UIGraphicsImageRenderer(size: CGSize(width: size, height: size)).image { renderer in
-      renderer.cgContext.scaleBy(x: size / 24, y: size / 24)
-      iconColor.setFill()
-      iconColor.setStroke()
-      for shape in shapes {
-        shape.path.lineWidth = 2.4
-        shape.path.lineCapStyle = .round
-        shape.path.lineJoinStyle = .round
-        if shape.fill { shape.path.fill() }
-        shape.path.stroke()
-      }
-    }
-    images[key] = image
-    return image
-  }
-
-  override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
-    super.drawBackground(forGlyphRange: glyphsToShow, at: origin)
-    guard let storage = textStorage, let container = textContainers.first else { return }
-    let characters = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
-    storage.enumerateAttribute(.composerChip, in: characters) { value, range, _ in
-      guard let color = value as? UIColor else { return }
-      color.setFill()
-      let glyphs = glyphRange(forCharacterRange: range, actualCharacterRange: nil)
-      enumerateEnclosingRects(
-        forGlyphRange: glyphs, withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0), in: container
-      ) { rect, _ in
-        let pill = rect.offsetBy(dx: origin.x, dy: origin.y).insetBy(dx: -2, dy: 0)
-        UIBezierPath(roundedRect: pill, cornerRadius: 4).fill()
-      }
-    }
-  }
-
-  override func drawGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
-    super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
-    guard let storage = textStorage, let container = textContainers.first else { return }
-    let characters = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
-    storage.enumerateAttribute(.composerChipIcon, in: characters) { value, range, _ in
-      guard let name = value as? String,
-        let font = storage.attribute(.font, at: range.location, effectiveRange: nil) as? UIFont
-      else { return }
-      let glyphs = glyphRange(forCharacterRange: NSRange(location: range.location, length: 1), actualCharacterRange: nil)
-      let rect = boundingRect(forGlyphRange: glyphs, in: container).offsetBy(dx: origin.x, dy: origin.y)
-      let size = font.pointSize * 0.9
-      let line = lineFragmentRect(forGlyphAt: glyphs.location, effectiveRange: nil)
-      let baseline = origin.y + line.minY + location(forGlyphAt: glyphs.location).y
-      let centerY = baseline - (font.ascender + font.descender) / 2
-      image(name, size: size)?.draw(at: CGPoint(x: rect.minX, y: centerY - size / 2))
-    }
-  }
 }
 
 class ComposerEditorView: ExpoView, UITextViewDelegate {
@@ -359,13 +287,9 @@ class ComposerEditorView: ExpoView, UITextViewDelegate {
       storage.addAttributes(
         [.foregroundColor: theme.link, .underlineStyle: NSUnderlineStyle.single.rawValue], range: range)
     case "chip":
-      storage.addAttributes([.foregroundColor: theme.token, .composerChip: theme.tokenBackground], range: range)
-      guard let icon = decoration["icon"] as? String, layoutManager.icons[icon] != nil else { return }
-      let trigger = NSRange(location: start, length: 1)
-      let glyphWidth = storage.attributedSubstring(from: trigger).size().width
-      let advance = font.pointSize * 1.1
-      storage.addAttributes(
-        [.foregroundColor: UIColor.clear, .composerChipIcon: icon, .kern: advance - glyphWidth], range: trigger)
+      let icon = (decoration["icon"] as? String).flatMap { layoutManager.icons[$0] == nil ? nil : $0 }
+      ChipLayoutManager.styleChip(
+        range, icon: icon, in: storage, font: font, color: theme.token, background: theme.tokenBackground)
     default:
       break
     }

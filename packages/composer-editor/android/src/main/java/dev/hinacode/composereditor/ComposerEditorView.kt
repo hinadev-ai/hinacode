@@ -202,6 +202,12 @@ class ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(co
     keyboard.showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT)
   }
 
+  fun blur() {
+    val keyboard = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+    keyboard.hideSoftInputFromWindow(editor.windowToken, 0)
+    editor.clearFocus()
+  }
+
   fun select(start: Int, end: Int) {
     val length = editor.text?.length ?: 0
     withoutEvents { editor.setSelection(start.coerceIn(0, length), end.coerceIn(0, length)) }
@@ -252,6 +258,7 @@ class ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(co
       "chip" -> {
         editable.setSpan(ChipSpan(theme.tokenBackground), start, end, flags)
         editable.setSpan(TokenColorSpan(theme.token), start, end, flags)
+        editable.setSpan(FontStyleSpan.bold, start, end, flags)
         val icon = icons[decoration.optString("icon")]
         if (icon != null) editable.setSpan(ChipIconSpan(icon, theme.token), start, start + 1, flags)
       }
