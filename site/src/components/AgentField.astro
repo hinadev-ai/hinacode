@@ -1,13 +1,15 @@
 ---
 interface Props {
   class?: string
+  seed?: number
 }
 
-type Agent = { x: number; y: number; r: number; state: "idle" | "done" | "running" | "waiting"; delay: number }
+type State = "idle" | "done" | "running" | "waiting"
+type Agent = { x: number; y: number; size: number; state: State; delay: number }
 
-const COLUMNS = 28
-const ROWS = 19
-const GAP = 24
+const COLUMNS = 64
+const ROWS = 26
+const GAP = 22
 
 function seeded(seed: number) {
   return () => {
@@ -18,53 +20,59 @@ function seeded(seed: number) {
   }
 }
 
-const random = seeded(7)
+const random = seeded(Astro.props.seed ?? 7)
 const agents: Agent[] = []
 for (let row = 0; row < ROWS; row++) {
   for (let column = 0; column < COLUMNS; column++) {
-    const towardEdge = column / (COLUMNS - 1)
+    if (random() > 0.62) continue
     const roll = random()
-    if (roll > 0.15 + towardEdge * 0.75) continue
-    const pick = towardEdge < 0.55 ? 1 : random()
-    const state = pick < 0.035 ? "running" : pick < 0.05 ? "waiting" : pick < 0.1 ? "done" : "idle"
+    const state: State = roll < 0.03 ? "running" : roll < 0.042 ? "waiting" : roll < 0.09 ? "done" : "idle"
     agents.push({
       x: column * GAP + GAP / 2,
       y: row * GAP + GAP / 2,
-      r: state === "idle" ? 2 + Math.round(random() * 2) : 4,
+      size: state === "idle" ? 2 + Math.round(random() * 2) : 5,
       state,
       delay: Math.round(random() * 2400),
     })
   }
 }
 
-const fills = {
-  idle: "fill-line-strong",
-  done: "fill-teal/70",
+const fills: Record<State, string> = {
+  idle: "fill-paper/14",
+  done: "fill-teal-bright/80",
   running: "fill-coral agent-running",
-  waiting: "fill-attention",
+  waiting: "fill-amber",
 }
 ---
 
 <svg
   aria-hidden="true"
   viewBox={`0 0 ${COLUMNS * GAP} ${ROWS * GAP}`}
-  preserveAspectRatio="xMaxYMid slice"
+  preserveAspectRatio="xMidYMin slice"
   class:list={["pointer-events-none select-none", Astro.props.class]}
 >
   {
-    agents.map(({ x, y, r, state, delay }) => (
+    agents.map(({ x, y, size, state, delay }) => (
       <>
         {state === "waiting" && (
-          <circle
-            cx={x}
-            cy={y}
-            r={r + 4}
-            class="agent-ring fill-none stroke-attention"
-            stroke-width="1.5"
+          <rect
+            x={x - size / 2 - 4}
+            y={y - size / 2 - 4}
+            width={size + 8}
+            height={size + 8}
+            class="agent-ring fill-none stroke-amber"
+            stroke-width="1.25"
             style={`animation-delay:${delay}ms`}
           />
         )}
-        <circle cx={x} cy={y} r={r} class={fills[state]} style={`animation-delay:${delay}ms`} />
+        <rect
+          x={x - size / 2}
+          y={y - size / 2}
+          width={size}
+          height={size}
+          class={fills[state]}
+          style={`animation-delay:${delay}ms`}
+        />
       </>
     ))
   }

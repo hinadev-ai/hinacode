@@ -2,6 +2,7 @@
 import Layout from "../layouts/Layout.astro"
 import { translator, type Locale } from "../i18n.ts"
 import Agents from "./Agents.astro"
+import Artifacts from "./Artifacts.astro"
 import Cta from "./Cta.astro"
 import Faq from "./Faq.astro"
 import Features from "./Features.astro"
@@ -20,6 +21,7 @@ const t = translator(locale)
 <Layout locale={locale} page="home" title={t("site_meta_title")} description={t("site_meta_description")}>
   <Hero locale={locale} />
   <Features locale={locale} />
+  <Artifacts locale={locale} />
   <Tools locale={locale} />
   <Remote locale={locale} />
   <Agents locale={locale} />

@@ -3,13 +3,14 @@ import logo from "../../../assets/logo.svg?raw"
 
 interface Props {
   class?: string
+  tone?: "ink" | "paper"
 }
 
-const { class: className } = Astro.props
+const { class: className, tone = "ink" } = Astro.props
 ---
 
 <span
   aria-hidden="true"
-  class:list={["inline-block shrink-0 text-ink [--sun:var(--color-coral)] [&>svg]:size-full", className]}
+  class:list={["inline-block shrink-0 [--sun:var(--color-coral)] [&>svg]:size-full", tone === "ink" ? "text-ink" : "text-paper", className]}
   set:html={logo}
 />

@@ -20,12 +20,12 @@ pnpm --dir site build
 
 - `src/pages` holds the six routes. Each renders `components/Home.astro` or `components/Pricing.astro` with a locale.
 - `src/components` holds the sections. Icons come from the app's own set through `src/icons.ts`.
-- `app/` builds the real HinaCode renderer for the browser, replaying a recorded session. `pnpm --dir site app` builds it into `public/app/`, and `dev` and `build` run it first.
+- `public/screens/` holds the product screenshots, exported at 2x from the app screens in the HinaCode pen.dev file.
 - `src/styles/global.css` holds the Hina Light tokens, fonts and the few animations.
 
 ## Edit copy
 
-Copy lives under `site_` keys in the root `messages/en.json`, `messages/zh-TW.json` and `messages/ja.json`. Add each key to all three catalogs with the same placeholders; `src/renderer/messages.test.ts` checks this. The feature vignettes reuse app strings such as `approval_allow`, listed in `src/components/Vignette.tsx`.
+Copy lives under `site_` keys in the root `messages/*.json` catalogs. Add each key to every catalog with the same placeholders; `src/renderer/messages.test.ts` checks this.
 
 ## Preview and deploy
 

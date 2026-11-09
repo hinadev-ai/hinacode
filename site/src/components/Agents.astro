@@ -1,38 +1,57 @@
 ---
-import { RiClaudeFill, RiMetaFill, RiOpenaiFill } from "react-icons/ri"
+import { RiClaudeFill, RiGithubFill, RiMetaFill, RiOpenaiFill } from "react-icons/ri"
+import { MagpieLogoIcon, OpencodeLogoIcon } from "../icons.ts"
 import { translator, type Locale } from "../i18n.ts"
+import { MAGPIE_URL, PROVIDER_GUIDE_URL } from "../links.ts"
 
 interface Props {
   locale: Locale
 }
 
 const t = translator(Astro.props.locale)
+const [magpieBefore, magpieAfter] = t("site_agents_magpie").split("magpie")
 
 const agents = [
   { Icon: RiClaudeFill, name: t("provider_claude"), cli: "claude", color: "text-provider-claude" },
   { Icon: RiOpenaiFill, name: t("provider_codex"), cli: "codex", color: "text-ink" },
   { Icon: RiMetaFill, name: t("provider_muse"), cli: "muse", color: "text-provider-muse" },
+  { Icon: OpencodeLogoIcon, name: t("provider_opencode"), cli: "opencode", color: "text-ink" },
 ]
 ---
 
-<section class="mt-28 border-y border-line bg-surface sm:mt-40">
-  <div class="mx-auto grid max-w-[76rem] gap-10 px-5 py-24 sm:px-8 sm:py-28 lg:grid-cols-[minmax(0,5fr)_minmax(0,9fr)] lg:gap-16">
-    <h2 class="display display-3 leading-[1.08] font-semibold">{t("site_agents_title")}</h2>
+<section class="mx-auto max-w-[76rem] px-5 pt-28 sm:px-8 sm:pt-40">
+  <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_28rem] lg:items-end lg:gap-16">
+    <h2 class="display max-w-[20ch] display-3 leading-[1.08] font-semibold">{t("site_agents_title")}</h2>
+    <p class="text-[17px] leading-relaxed text-ink-soft">{t("site_agents_lede")}</p>
+  </div>
+  <ul class="mt-12 grid gap-x-8 gap-y-6 border-y border-line py-7 sm:grid-cols-2 lg:grid-cols-4">
+    {
+      agents.map(({ Icon, name, cli, color }) => (
+        <li class="flex items-center gap-3.5">
+          <Icon aria-hidden="true" className={`size-7 shrink-0 ${color}`} />
+          <div class="min-w-0">
+            <p class="truncate font-semibold">{name}</p>
+            <p class="font-mono text-xs text-ink-soft">{cli}</p>
+          </div>
+        </li>
+      ))
+    }
+  </ul>
+  <div class="mt-6 flex max-w-[44rem] gap-3.5">
+    <MagpieLogoIcon aria-hidden="true" className="mt-1 size-5 shrink-0 text-ink" />
     <div>
-      <p class="max-w-[40rem] text-[17px] leading-relaxed text-ink-soft">{t("site_agents_lede")}</p>
-      <ul class="mt-9 grid gap-3 sm:grid-cols-3">
-        {
-          agents.map(({ Icon, name, cli, color }) => (
-            <li class="flex items-center gap-3.5 rounded-2xl bg-paper p-4 shadow-raised">
-              <Icon aria-hidden="true" className={`size-7 shrink-0 ${color}`} />
-              <div class="min-w-0">
-                <p class="truncate font-semibold">{name}</p>
-                <p class="font-mono text-xs text-ink-soft">{cli}</p>
-              </div>
-            </li>
-          ))
-        }
-      </ul>
+      <p class="text-[17px] font-semibold text-ink">{t("site_agents_magpie_title")}</p>
+      <p class="mt-1 text-[15px] leading-relaxed text-ink-soft">{magpieBefore}<a href={MAGPIE_URL} target="_blank" rel="noreferrer" class="font-medium text-coral-deep underline decoration-coral-deep/40 underline-offset-4 hover:decoration-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2">magpie</a>{magpieAfter}</p>
+    </div>
+  </div>
+  <div class="mt-6 flex max-w-[44rem] gap-3.5">
+    <RiGithubFill aria-hidden="true" className="mt-1 size-5 shrink-0 text-ink" />
+    <div>
+      <p class="text-[17px] font-semibold text-ink">{t("site_agents_contribute_title")}</p>
+      <p class="mt-1 text-[15px] leading-relaxed text-ink-soft">
+        {t("site_agents_contribute_body")}
+        <a href={PROVIDER_GUIDE_URL} target="_blank" rel="noreferrer" class="font-medium text-coral-deep underline decoration-coral-deep/40 underline-offset-4 hover:decoration-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2">{t("site_agents_contribute_link")}</a>
+      </p>
     </div>
   </div>
 </section>

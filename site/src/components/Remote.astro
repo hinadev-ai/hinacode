@@ -1,57 +1,81 @@
 ---
-import { LockIcon, PhoneIcon, ServerIcon } from "../icons.ts"
+import { CloudIcon, LockIcon, PhoneIcon, ServerIcon } from "../icons.ts"
 import { translator, type Locale } from "../i18n.ts"
+import { WEB_APP_URL } from "../links.ts"
+import Screen from "./Screen.astro"
 
 interface Props {
   locale: Locale
 }
 
 const t = translator(Astro.props.locale)
+const [relayBefore, relayAfter] = t("site_remote_relay_body").split("code.hinacode.app")
 
-const points = [
-  { Icon: ServerIcon, title: t("site_remote_1_title"), body: t("site_remote_1_body") },
-  { Icon: PhoneIcon, title: t("site_remote_2_title"), body: t("site_remote_2_body") },
-  { Icon: LockIcon, title: t("site_remote_3_title"), body: t("site_remote_3_body") },
+type Point = {
+  Icon: typeof ServerIcon
+  title: string
+  body: string
+  link?: { href: string; label: string; tail: string }
+}
+
+const points: Point[] = [
+  { Icon: ServerIcon, title: t("site_remote_machines_title"), body: t("site_remote_machines_body") },
+  {
+    Icon: CloudIcon,
+    title: t("site_remote_relay_title"),
+    body: relayBefore,
+    link: { href: WEB_APP_URL, label: "code.hinacode.app", tail: relayAfter ?? "" },
+  },
+  { Icon: PhoneIcon, title: t("site_remote_phone_title"), body: t("site_remote_phone_body") },
+  { Icon: LockIcon, title: t("site_remote_private_title"), body: t("site_remote_private_body") },
 ]
-const pairing = "hinacode://connect?host=100.86.12.4&port=48081&token=••••••"
 ---
 
-<section class="mx-auto max-w-[76rem] px-5 pt-28 sm:px-8 sm:pt-40">
-  <div class="grid items-center gap-12 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-16">
-    <div>
-      <h2 class="display display-3 leading-[1.08] font-semibold">{t("site_remote_title")}</h2>
-      <p class="mt-4 text-[17px] leading-relaxed text-ink-soft">{t("site_remote_lede")}</p>
-      <ul class="mt-9 space-y-6">
-        {
-          points.map(({ Icon, title, body }) => (
-            <li class="flex gap-4">
-              <Icon aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-ink [--sun:var(--color-coral)]" />
-              <div>
-                <h3 class="font-semibold">{title}</h3>
-                <p class="mt-1 text-[15px] leading-relaxed text-ink-soft">{body}</p>
-              </div>
-            </li>
-          ))
-        }
-      </ul>
-    </div>
-    <figure class="min-w-0 overflow-hidden rounded-2xl bg-ink text-paper shadow-window">
-      <div class="flex h-10 items-center gap-1.5 border-b border-paper/10 px-4">
-        <span class="size-2.5 rounded-full bg-paper/20"></span>
-        <span class="size-2.5 rounded-full bg-paper/20"></span>
-        <span class="size-2.5 rounded-full bg-paper/20"></span>
-        <span class="ms-3 font-mono text-xs text-paper/75">you@mac-mini</span>
-      </div>
-      <pre
-        class="overflow-x-auto p-5 font-mono text-[12.5px] leading-6 sm:p-6"><code><span class="text-coral select-none">$ </span>npx hinacode serve
-<span class="text-paper/75">HinaCode cloud 0.2.0
-data: /Users/you/.hinacode-cloud
+<section id="remote" class="mx-auto max-w-[76rem] px-5 pt-28 sm:px-8 sm:pt-40">
+  <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_28rem] lg:items-end lg:gap-16">
+    <h2 class="display display-2 leading-[1.06] font-semibold">{t("site_remote_title")}</h2>
+    <p class="text-[17px] leading-relaxed text-ink-soft">{t("site_remote_lede")}</p>
+  </div>
 
-Pair a phone: scan this code in the HinaCode app, or paste the URL.</span>
-  {pairing}
-<span class="text-paper/75">Pair a desktop: Settings &gt; Environments &gt; Add environment, with one of:</span>
-  {pairing}
-<span class="text-paper/75">Keep the token in these URLs private. Run `hinacode pair` to print them again.</span></code></pre>
+  <div class="relative mt-14 pb-14 sm:pb-16">
+    <Screen src="/screens/remote.webp" alt={t("site_remote_shot_alt")} width={3112} height={2000} class="bg-night" />
+    <figure class="absolute end-3 bottom-0 w-[clamp(5.5rem,24%,15rem)] rounded-[1.25rem] bg-[#0e1e1e] p-1 sm:rounded-[2.5rem] sm:p-1.5 shadow-window sm:end-8">
+      <img
+        src="/screens/phone.webp"
+        alt={t("site_remote_phone_alt")}
+        width={804}
+        height={1748}
+        loading="lazy"
+        decoding="async"
+        class="block h-auto w-full rounded-[1rem] sm:rounded-[2.125rem]"
+      />
     </figure>
   </div>
+
+  <ul class="mt-12 grid gap-x-8 gap-y-8 sm:grid-cols-2 lg:grid-cols-4">
+    {
+      points.map(({ Icon, title, body, link }) => (
+        <li>
+          <Icon aria-hidden="true" className="size-5 text-ink [--sun:var(--color-coral)]" />
+          <h3 class="mt-3 font-semibold">{title}</h3>
+          <p class="mt-1 text-[15px] leading-relaxed text-ink-soft">
+            {body}
+            {link && (
+              <>
+                <a
+                  href={link.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  class="font-medium text-coral-deep underline decoration-coral-deep/40 underline-offset-4 hover:decoration-coral-deep focus-visible:outline-2 focus-visible:outline-offset-2"
+                >
+                  {link.label}
+                </a>
+                {link.tail}
+              </>
+            )}
+          </p>
+        </li>
+      ))
+    }
+  </ul>
 </section>

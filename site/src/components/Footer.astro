@@ -11,18 +11,24 @@ interface Props {
 const { locale, page } = Astro.props
 const t = translator(locale)
 const home = localizedPath(locale, "home")
-const link = "rounded text-ink-soft hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2"
+const link = "rounded text-paper/70 hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-2"
+const sections = [
+  { id: "features", label: t("site_nav_features") },
+  { id: "tools", label: t("site_nav_tools") },
+  { id: "remote", label: t("site_nav_remote") },
+  { id: "faq", label: t("site_nav_faq") },
+]
 ---
 
-<footer class="border-t border-line">
+<footer class="border-t border-paper/10 bg-ink text-paper">
   <div class="mx-auto grid max-w-[76rem] gap-10 px-5 py-14 sm:px-8 md:grid-cols-[minmax(0,1fr)_auto]">
     <div>
       <a href={home} class="inline-flex items-center gap-2 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4">
-        <Mark class="size-5" />
+        <Mark tone="paper" class="size-5" />
         <span class="text-sm font-semibold">HinaCode</span>
       </a>
-      <p class="mt-3 max-w-[22rem] text-sm text-ink-soft">{t("site_footer_tagline")}</p>
-      <p class="mt-1 text-sm text-ink-soft">{t("site_footer_license")}</p>
+      <p class="mt-3 max-w-[22rem] text-sm text-paper/70">{t("site_footer_tagline")}</p>
+      <p class="mt-1 text-sm text-paper/70">{t("site_footer_license")}</p>
     </div>
     <div class="flex flex-wrap gap-x-14 gap-y-8 text-sm">
       <ul class="space-y-2.5">
@@ -42,7 +48,7 @@ const link = "rounded text-ink-soft hover:text-ink focus-visible:outline-2 focus
                 hreflang={option}
                 lang={option}
                 aria-current={option === locale ? "page" : undefined}
-                class:list={[link, "aria-[current=page]:text-ink aria-[current=page]:font-medium"]}
+                class:list={[link, "aria-[current=page]:text-paper aria-[current=page]:font-medium"]}
               >
                 {languageNames[option]}
               </a>
@@ -52,4 +58,17 @@ const link = "rounded text-ink-soft hover:text-ink focus-visible:outline-2 focus
       </ul>
     </div>
   </div>
+  <nav aria-label={t("site_nav_sections")} class="border-t border-paper/10 bg-night font-mono text-xs">
+    <div class="mx-auto flex h-8 max-w-[76rem] items-center gap-4 overflow-x-auto px-5 whitespace-nowrap sm:px-8">
+      <span class="bg-coral px-1.5 text-night">hinacode</span>
+      {
+        sections.map(({ id, label }, index) => (
+          <a href={`${home}#${id}`} class={link}>
+            {index}:{label.toLowerCase()}
+          </a>
+        ))
+      }
+      <span class="ms-auto text-paper/70">main · MIT</span>
+    </div>
+  </nav>
 </footer>
