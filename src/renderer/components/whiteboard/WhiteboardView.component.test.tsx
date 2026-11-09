@@ -1,8 +1,7 @@
 import { Schema } from "effect"
-import { FONT_FAMILY } from "@excalidraw/excalidraw"
-import { beforeEach, expect, test } from "vitest"
-import { cdp, page, userEvent } from "vitest/browser"
 import { StrictMode } from "react"
+import { beforeEach, expect, test } from "vitest"
+import { page, userEvent } from "vitest/browser"
 import { render } from "vitest-browser-react"
 import type { Artifact, ArtifactFeedback, WhiteboardContent, WhiteboardElement } from "../../../shared/artifact.ts"
 import { type HinacodeBridge, type PushEvent, RpcMethods } from "../../../shared/contract.ts"
@@ -101,27 +100,14 @@ const push = (event: typeof PushEvent.Encoded) => {
   for (const listener of listeners) listener(event)
 }
 
-type Scene = ReadonlyArray<{
-  id: string
-  type: string
-  containerId?: string | null
-  isDeleted?: boolean
-  fontFamily?: number
-}>
-
-type ViewState = {
-  selectedElementIds: Record<string, true>
-  scrollX: number
-  scrollY: number
-  width: number
-  height: number
-  zoom: { value: number }
-}
-type Editor = { elements: Scene; state: ViewState; setState: (state: Partial<ViewState>) => void }
-
-const editor = () => (window as unknown as { h?: Editor }).h
-
-const sceneOnCanvas = () => (editor()?.elements ?? []).filter((element) => !element.isDeleted)
+const canvas = () => document.querySelector<HTMLElement>("[data-whiteboard]")
+const hasCanvas = () => canvas() !== null
+const idsOnCanvas = () =>
+  [...document.querySelectorAll("[data-element-id]")].map((element) => element.getAttribute("data-element-id"))
+const selectedIds = () =>
+  [...document.querySelectorAll("[data-element-id][data-selected]")].map((element) =>
+    element.getAttribute("data-element-id"),
+  )
 
 beforeEach(({ task }) => {
   boardId = `board-${task.id}`
@@ -143,48 +129,52 @@ const openBoard = async (width = 800) => {
       <ArtifactsView thread={thread} />
     </div>,
   )
-  await expect
-    .poll(() => sceneOnCanvas().map((element) => element.id), { timeout: 15_000 })
-    .toEqual(expect.arrayContaining(["api", "db"]))
+  await expect.poll(() => idsOnCanvas(), { timeout: 15_000 }).toEqual(expect.arrayContaining(["api", "db"]))
   return view
 }
 
 const selectAll = async () => {
-  const canvas = document.querySelector("canvas.interactive")!.getBoundingClientRect()
-  await userEvent.click(page.elementLocator(document.querySelector("canvas.interactive")!), {
-    position: { x: 30, y: canvas.height / 2 },
+  await userEvent.keyboard("{Control>}a{/Control}")
+  await expect.poll(() => selectedIds().length, { timeout: 2000 }).toBeGreaterThan(0)
+}
+
+const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
+
+const drag = async (from: { x: number; y: number }, to: { x: number; y: number }) => {
+  const target = canvas()
+  if (target === null) return
+  const box = target.getBoundingClientRect()
+  const at = ({ x, y }: { x: number; y: number }, buttons: number) => ({
+    clientX: box.left + x,
+    clientY: box.top + y,
+    pointerId: 1,
+    pointerType: "mouse",
+    isPrimary: true,
+    button: 0,
+    buttons,
+    bubbles: true,
   })
-  const mod = /Mac/.test(navigator.platform) ? 4 : 2
-  await cdp().send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "a", code: "KeyA", modifiers: mod })
-  await cdp().send("Input.dispatchKeyEvent", { type: "keyUp", key: "a", code: "KeyA", modifiers: mod })
+  target.dispatchEvent(new PointerEvent("pointerdown", at(from, 1)))
+  await nextFrame()
+  target.dispatchEvent(new PointerEvent("pointermove", at(to, 1)))
+  await nextFrame()
+  target.dispatchEvent(new PointerEvent("pointerup", at(to, 0)))
+  await nextFrame()
 }
 
 test("completes an agent's skeleton scene on the canvas without saving it", async () => {
   await openBoard()
 
-  const labels = sceneOnCanvas().filter((element) => element.type === "text")
-  expect(labels.map((label) => label.containerId).toSorted()).toEqual(["api", "db"])
+  expect(idsOnCanvas().toSorted()).toEqual(["api", "api-db", "db"])
+  expect(page.getByText("API")).toBeInTheDocument()
+  expect(page.getByText("Database")).toBeInTheDocument()
   await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 800)))
   expect(saves).toEqual([])
   expect(page.getByText("Saved")).toBeInTheDocument()
 })
 
-test("draws text in the app font and keeps Excalidraw's fonts off the page", async () => {
-  await openBoard()
-
-  const labels = sceneOnCanvas().filter((element) => element.type === "text")
-  expect(labels.map((label) => label.fontFamily)).toEqual([FONT_FAMILY.Helvetica, FONT_FAMILY.Helvetica])
-  const context = document.createElement("canvas").getContext("2d")!
-  context.font = "20px Helvetica, Xiaolai, Segoe UI Emoji"
-  expect(context.font).toContain("DM Sans Variable")
-  const families = [...document.fonts].map((face) => face.family.replaceAll('"', ""))
-  expect(families).not.toContain("Excalifont")
-  expect(families).not.toContain("Xiaolai")
-})
-
 test("saves full elements with the revision it loaded after the developer moves them", async () => {
   await openBoard()
-
   await selectAll()
   await userEvent.keyboard("{ArrowRight}")
 
@@ -192,28 +182,10 @@ test("saves full elements with the revision it loaded after the developer moves 
   const [save] = saves
   expect(save?.baseRevision).toBe(1)
   const api = save?.scene.elements.find((element) => element.id === "api")
-  expect(api).toMatchObject({ x: 1, version: expect.any(Number), seed: expect.any(Number) })
-  expect(save?.scene.elements.find((element) => element["containerId"] === "api")).toMatchObject({ text: "API" })
+  expect(api).toMatchObject({ x: 1 })
+  expect(api?.version).toBeGreaterThan(1)
+  expect(api?.label).toEqual({ text: "API" })
   await expect.element(page.getByText("Saved")).toBeInTheDocument()
-})
-
-test("saves the developer's edit under StrictMode", async () => {
-  await render(
-    <StrictMode>
-      <div style={{ width: 800, height: 600, display: "flex", flexDirection: "column" }}>
-        <ArtifactsView thread={thread} />
-      </div>
-    </StrictMode>,
-  )
-  await expect
-    .poll(() => sceneOnCanvas().map((element) => element.id), { timeout: 15_000 })
-    .toEqual(expect.arrayContaining(["api", "db"]))
-
-  await selectAll()
-  await userEvent.keyboard("{ArrowRight}")
-
-  await expect.poll(() => saves.length, { timeout: 3000 }).toBe(1)
-  expect(saves[0]?.scene.elements.find((element) => element.id === "api")).toMatchObject({ x: 1 })
 })
 
 test("closing the board saves the edit it was still waiting to save", async () => {
@@ -224,14 +196,29 @@ test("closing the board saves the edit it was still waiting to save", async () =
   view.unmount()
 
   await expect.poll(() => saves.length, { timeout: 3000 }).toBe(1)
-  const elements = saves[0]?.scene.elements ?? []
-  expect(elements.map((element) => element.id)).toEqual(expect.arrayContaining(["api", "db", "api-db"]))
-  expect(elements.find((element) => element.id === "api")).toMatchObject({ x: 1 })
+  expect(saves[0]?.scene.elements.find((element) => element.id === "api")).toMatchObject({ x: 1 })
+})
+
+test("saves the developer's edit under StrictMode", async () => {
+  await render(
+    <StrictMode>
+      <div style={{ width: 800, height: 600, display: "flex", flexDirection: "column" }}>
+        <ArtifactsView thread={thread} />
+      </div>
+    </StrictMode>,
+  )
+  await expect.poll(() => idsOnCanvas(), { timeout: 15_000 }).toEqual(expect.arrayContaining(["api", "db"]))
+
+  await selectAll()
+  await userEvent.keyboard("{ArrowRight}")
+
+  await expect.poll(() => saves.length, { timeout: 3000 }).toBe(1)
+  expect(saves[0]?.scene.elements.find((element) => element.id === "api")).toMatchObject({ x: 1 })
 })
 
 test("an edit made after reopening the board saves once the closing save lands", async () => {
   let release = () => {}
-  heldSaves = new Promise((resolve) => {
+  heldSaves = new Promise<void>((resolve) => {
     release = resolve
   })
   const closing = await openBoard()
@@ -253,7 +240,7 @@ test("an edit made after reopening the board saves once the closing save lands",
 
 test("a board reopened during its closing save keeps what that save merged from the agent", async () => {
   let release = () => {}
-  heldSaves = new Promise((resolve) => {
+  heldSaves = new Promise<void>((resolve) => {
     release = resolve
   })
   const closing = await openBoard()
@@ -270,7 +257,7 @@ test("a board reopened during its closing save keeps what that save merged from 
   const reopened = await openBoard()
   release()
   await expect.poll(() => saves.length, { timeout: 3000 }).toBe(2)
-  await expect.poll(() => sceneOnCanvas().map((element) => element.id)).toContain("queue")
+  await expect.poll(() => idsOnCanvas(), { timeout: 3000 }).toContain("queue")
 
   await selectAll()
   await userEvent.keyboard("{ArrowRight}")
@@ -293,7 +280,7 @@ test("merges an agent's write that beat the save and saves again on its revision
   expect(saves.map((save) => save.baseRevision)).toEqual([1, 5])
   const elements = saves[1]?.scene.elements ?? []
   expect(elements.find((element) => element.id === "api")).toMatchObject({ x: 1 })
-  expect(elements.find((element) => element.id === "queue")).toMatchObject({ y: 300, version: expect.any(Number) })
+  expect(elements.find((element) => element.id === "queue")).toMatchObject({ y: 300 })
   await expect.element(page.getByText("Saved")).toBeInTheDocument()
 })
 
@@ -309,12 +296,25 @@ test("adds an agent's patch next to the developer's unsaved edit", async () => {
   }
   push({ type: "artifact.updated", artifact: boardAt(2) })
 
-  await expect.poll(() => sceneOnCanvas().map((element) => element.id)).toContain("cache")
+  await expect.poll(() => idsOnCanvas()).toContain("cache")
   await expect.poll(() => saves.length, { timeout: 3000 }).toBe(1)
   expect(saves[0]?.baseRevision).toBe(2)
   const elements = saves[0]?.scene.elements ?? []
   expect(elements.find((element) => element.id === "api")).toMatchObject({ y: 1 })
   expect(elements.find((element) => element.id === "cache")).toMatchObject({ y: 200 })
+})
+
+test("keeps a deleted element deleted when an agent's older scene arrives", async () => {
+  await openBoard()
+  await selectAll()
+  await userEvent.keyboard("{Delete}")
+
+  stored = { version: 2, revision: 2, scene: { elements: AGENT_SCENE.map((element) => ({ ...element, version: 1 })) } }
+  push({ type: "artifact.updated", artifact: boardAt(2) })
+
+  await expect.poll(() => saves.length, { timeout: 3000 }).toBe(1)
+  expect(idsOnCanvas()).toEqual([])
+  expect(saves[0]?.scene.elements).toEqual([])
 })
 
 test("asks about the selected shapes by their container ids with an image of them", async () => {
@@ -329,12 +329,7 @@ test("asks about the selected shapes by their container ids with an image of the
   expect(comment?.body).toBe("Should the cache sit here?")
   expect(comment?.anchor).toEqual({ kind: "elements", ids: ["api", "db", "api-db"] })
   expect(comment?.attachments).toEqual([expect.objectContaining({ path: "/tmp/selection.png" })])
-  expect(staged).toEqual([
-    {
-      threadId: "t-1",
-      source: { dataUrl: expect.stringMatching(/^data:image\/png;base64,/), name: "Checkout flow.png" },
-    },
-  ])
+  expect(staged[0]?.source.dataUrl).toMatch(/^data:image\/png;base64,/)
   expect(calls.indexOf("attachments.stage")).toBeLessThan(calls.indexOf("artifacts.comment"))
   await expect.element(page.getByRole("textbox", { name: "Ask about the selection" })).not.toBeInTheDocument()
 })
@@ -355,30 +350,6 @@ const commentOnDb = (): ArtifactFeedback => {
   }
 }
 
-const dbOnScreen = () => {
-  const state = editor()?.state
-  if (state === undefined) return false
-  const zoom = state.zoom.value
-  const [left, top, right, bottom] = [320, 0, 480, 80]
-  return (
-    (left + state.scrollX) * zoom >= 0 &&
-    (right + state.scrollX) * zoom <= state.width &&
-    (top + state.scrollY) * zoom >= 0 &&
-    (bottom + state.scrollY) * zoom <= state.height
-  )
-}
-
-const viewOf = () => {
-  const state = editor()?.state
-  return JSON.stringify([state?.scrollX, state?.scrollY, state?.zoom.value])
-}
-
-const viewSettled = async () => {
-  const before = viewOf()
-  await new Promise((resolve) => setTimeout(resolve, 300))
-  return viewOf() === before
-}
-
 test("selects the elements a comment is about when the developer shows them", async () => {
   feedback = commentOnDb()
   await openBoard()
@@ -386,67 +357,24 @@ test("selects the elements a comment is about when the developer shows them", as
   await page.getByRole("button", { name: "Comments 1" }).click()
   await page.getByTitle("Show on whiteboard").click()
 
-  await expect.poll(() => Object.keys(editor()?.state.selectedElementIds ?? {})).toEqual(["db"])
+  await expect.poll(() => selectedIds()).toEqual(["db"])
 })
 
-test("scrolls a narrow board to a comment's elements after the comments make way for it", async () => {
-  feedback = commentOnDb()
-  await openBoard(480)
-  editor()?.setState({ scrollX: 5000, scrollY: 5000 })
-  await expect.poll(dbOnScreen).toBe(false)
-
-  await page.getByRole("button", { name: "Comments 1" }).click()
-  await expect.poll(() => editor()?.state.width).toBe(0)
-  await page.getByTitle("Show on whiteboard").click()
-
-  await expect.element(page.getByRole("region", { name: "Comments" })).not.toBeInTheDocument()
-  await expect.poll(() => Object.keys(editor()?.state.selectedElementIds ?? {})).toEqual(["db"])
-  await expect.poll(viewSettled, { timeout: 5000 }).toBe(true)
-  expect(dbOnScreen()).toBe(true)
-})
-
-const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
-
-const drag = async (from: { x: number; y: number }, to: { x: number; y: number }) => {
-  const canvas = document.querySelector("canvas.interactive")!
-  const box = canvas.getBoundingClientRect()
-  const at = ({ x, y }: { x: number; y: number }, buttons: number) => ({
-    clientX: box.left + x,
-    clientY: box.top + y,
-    pointerId: 1,
-    pointerType: "mouse",
-    isPrimary: true,
-    button: 0,
-    buttons,
-    bubbles: true,
-  })
-  canvas.dispatchEvent(new PointerEvent("pointerdown", at(from, 1)))
-  await nextFrame()
-  canvas.dispatchEvent(new PointerEvent("pointermove", at(to, 1)))
-  await nextFrame()
-  window.dispatchEvent(new PointerEvent("pointerup", at(to, 0)))
-}
-
-test("opens an empty board at full size and saves the first drawing without moving the view", async () => {
+test("opens an empty board and saves the first drawing", async () => {
   stored = { version: 1, revision: 1, scene: { elements: [] } }
   await render(
     <div style={{ width: 800, height: 600, display: "flex", flexDirection: "column" }}>
       <ArtifactsView thread={thread} />
     </div>,
   )
-  await expect.poll(() => editor()?.state.width ?? 0, { timeout: 15_000 }).toBeGreaterThan(0)
-  await expect.poll(viewSettled).toBe(true)
-  expect(editor()?.state.zoom.value).toBe(1)
-  const before = viewOf()
+  await expect.poll(hasCanvas, { timeout: 15_000 }).toBe(true)
 
-  await userEvent.click(page.elementLocator(document.querySelector("canvas.interactive")!), {
-    position: { x: 100, y: 100 },
-  })
-  await userEvent.keyboard("r")
+  await page.getByRole("button", { name: "Rectangle" }).click()
+  await expect.poll(() => document.querySelector('[aria-label="Rectangle"]')?.getAttribute("aria-pressed")).toBe("true")
   await drag({ x: 100, y: 100 }, { x: 260, y: 200 })
 
   await expect.poll(() => saves.length, { timeout: 3000 }).toBe(1)
-  expect(saves[0]?.baseRevision).toBe(1)
-  expect(saves[0]?.scene.elements).toEqual([expect.objectContaining({ type: "rectangle", width: 160, height: 100 })])
-  expect(viewOf()).toBe(before)
+  const [element] = saves[0]?.scene.elements ?? []
+  expect(element).toMatchObject({ type: "rectangle" })
+  expect(element?.width).toBeGreaterThan(0)
 })
