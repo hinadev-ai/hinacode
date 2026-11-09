@@ -877,6 +877,10 @@ const make = Effect.gen(function* () {
       const provider = providers[request.provider]
       const sameProvider = request.provider === thread.provider
       const model = yield* subagentModel(request, sameProvider ? thread.model : null)
+      const effort =
+        request.effort ??
+        (yield* provider.listModels.pipe(Effect.orElseSucceed(() => []))).find((listed) => listed.id === model)
+          ?.defaultEffort
       const workspace = yield* activeWorkspace(threadId)
       const [home, environment, mcpServer, { experimental, autoCompactTokens }, startedAt] = yield* Effect.all([
         accounts.home(sameProvider ? thread.accountId : null),
@@ -893,6 +897,8 @@ const make = Effect.gen(function* () {
       let subagent: Subagent = {
         id,
         provider: request.provider,
+        model,
+        ...(effort && { effort }),
         label: request.description,
         callId,
         status: "running",

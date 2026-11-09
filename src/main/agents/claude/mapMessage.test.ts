@@ -8,6 +8,7 @@ import { signedOut, signedOutMessage } from "./fixtures/transcript.ts"
 const newState = (): MapState => ({
   pendingEdits: new Map(),
   subagents: new Map(),
+  subagentRequests: new Map(),
   lastRequest: null,
   home: null,
   model: "claude-opus-5-5",
@@ -277,6 +278,7 @@ describe("mapMessage sub-agent tasks", () => {
 
     expect(subagentOf(mapMessage(started, state, "2026-10-12T10:00:00.000Z"))).toEqual({
       id: "abf6bab06dbff9ec1",
+      model: "claude-opus-5-5",
       label: "Count repo files",
       callId: "toolu_01DoGmNCXkV2M8SMNaE7E3XJ",
       status: "running",
@@ -304,6 +306,34 @@ describe("mapMessage sub-agent tasks", () => {
       tokens: 14310,
       startedAt: "2026-10-12T10:00:00.000Z",
       endedAt: "2026-10-12T10:00:03.000Z",
+    })
+  })
+
+  test("records the model and effort the Agent call asked for", () => {
+    const state = newState()
+    mapMessage(
+      {
+        type: "assistant",
+        parent_tool_use_id: null,
+        message: {
+          model: "claude-opus-5-5",
+          content: [
+            {
+              type: "tool_use",
+              id: started.tool_use_id,
+              name: "Agent",
+              input: { description: started.description, prompt: started.prompt, model: "sonnet", effort: "low" },
+            },
+          ],
+          usage: { input_tokens: 0, output_tokens: 0 },
+        },
+      } as unknown as SDKMessage,
+      state,
+      "2026-10-12T10:00:00.000Z",
+    )
+    expect(subagentOf(mapMessage(started, state, "2026-10-12T10:00:00.000Z"))).toMatchObject({
+      model: "sonnet",
+      effort: "low",
     })
   })
 

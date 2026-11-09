@@ -292,6 +292,7 @@ export const usageLimitLayer = (defaultScenario: MockScenario = "usage-limit", r
         const state: MapState = {
           pendingEdits: new Map(),
           subagents: new Map(),
+          subagentRequests: new Map(),
           lastRequest: null,
           home: null,
           model: mockModel,

@@ -44,6 +44,7 @@ describe("Codex sub-agents", () => {
     expect(applyParentItem(subagents, spawned, "2026-10-12T10:00:00.000Z")).toEqual([
       {
         id: child,
+        model: "gpt-6-sol",
         label: "count_files",
         callId: child,
         status: "running",

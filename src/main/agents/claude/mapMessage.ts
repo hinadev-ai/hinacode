@@ -21,6 +21,7 @@ const FILE_EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"])
 export interface MapState {
   readonly pendingEdits: Map<string, string>
   readonly subagents: Map<string, Subagent>
+  readonly subagentRequests: Map<string, Pick<Subagent, "model" | "effort">>
   lastRequest: { readonly model: string; readonly usedTokens: number } | null
   readonly home: AccountHome | null
   readonly model: string
@@ -131,6 +132,12 @@ export function mapMessage(message: SDKMessage, state: MapState, now: string): R
         if (FILE_EDIT_TOOLS.has(block.name) && typeof path === "string") {
           state.pendingEdits.set(block.id, path)
         }
+        if (block.name === "Agent" || block.name === "Task") {
+          state.subagentRequests.set(block.id, {
+            ...(typeof input?.model === "string" && { model: input.model }),
+            ...(typeof input?.effort === "string" && { effort: input.effort }),
+          })
+        }
         return [
           {
             type: "tool_call_started",
@@ -175,8 +182,11 @@ const isSubagent = (message: SDKTaskStartedMessage) =>
 
 function subagentStarted(message: SDKTaskStartedMessage, state: MapState, now: string): Array<AgentEvent> {
   if (!isSubagent(message)) return []
+  const requested = message.tool_use_id === undefined ? undefined : state.subagentRequests.get(message.tool_use_id)
   return updateSubagent(state, {
     id: message.task_id,
+    model: requested?.model ?? state.model,
+    ...(requested?.effort && { effort: requested.effort }),
     label: message.description,
     callId: message.tool_use_id ?? null,
     status: "running",

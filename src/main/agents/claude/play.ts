@@ -48,6 +48,7 @@ export function play(steps: ReadonlyArray<MockStep>, controls: PlayControls): St
   const state: MapState = {
     pendingEdits: new Map(),
     subagents: new Map(),
+    subagentRequests: new Map(),
     lastRequest: null,
     home: null,
     model: mockModel,
