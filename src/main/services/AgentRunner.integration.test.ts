@@ -77,6 +77,7 @@ interface Probe {
   readonly deliver: () => void
   readonly snapshot: () => void
   readonly pauseSnapshot: () => void
+  readonly pauseNextUpdate: () => { readonly reached: Promise<void>; readonly resume: () => void }
   readonly turnBase: () => Promise<string | null>
   readonly storedMessages: (threadId: string) => Promise<ReadonlyArray<Message>>
 }
@@ -144,6 +145,9 @@ const withPreparingThread = async (
   const snapshot = () => snapshotReady.resolve()
   let holdInsertion = options.pauseInsertion ?? false
   let holdSnapshot = options.pauseSnapshot ?? false
+  let updateHold:
+    | { readonly reached: PromiseWithResolvers<void>; readonly resumed: PromiseWithResolvers<void> }
+    | undefined
   const turns: Probe["turns"] = []
   let turnStarted = Promise.withResolvers<void>()
   const warms: Probe["warms"] = []
@@ -455,6 +459,16 @@ const withPreparingThread = async (
                   }
                   yield* messages.insert(message)
                 }),
+              update: (message, previous) =>
+                Effect.gen(function* () {
+                  const hold = updateHold
+                  updateHold = undefined
+                  if (hold !== undefined) {
+                    hold.reached.resolve()
+                    yield* Effect.promise(() => hold.resumed.promise)
+                  }
+                  return yield* messages.update(message, previous)
+                }),
             }),
             Layer.succeed(Worktrees.Worktrees, {
               ...worktrees,
@@ -514,6 +528,11 @@ const withPreparingThread = async (
         snapshot,
         pauseSnapshot: () => {
           holdSnapshot = true
+        },
+        pauseNextUpdate: () => {
+          const hold = { reached: Promise.withResolvers<void>(), resumed: Promise.withResolvers<void>() }
+          updateHold = hold
+          return { reached: hold.reached.promise, resume: () => hold.resumed.resolve() }
         },
         storedMessages: (threadId) => domainRuntime.runPromise(messages.list(threadId)),
         turnBase: () =>
@@ -1218,6 +1237,25 @@ it("closes the session after Stop when a wakeup is pending, so the wakeup never 
       { provider: "claude", call: "closeSession" },
     ])
     expect(stops).toStrictEqual([])
+  })
+})
+
+it("starts a turn with a steer that waited for the previous turn to finish", async () => {
+  await withPreparingThread(async ({ runner, threads, thread, release, steers, turns, pauseNextUpdate }) => {
+    release()
+    await Effect.runPromise(runner.send(thread.id, "waits for Stop", []))
+    await vi.waitFor(async () => expect((await Effect.runPromise(threads.get(thread.id))).status).toBe("running"))
+    const finishing = pauseNextUpdate()
+    await Effect.runPromise(runner.interrupt(thread.id))
+    await finishing.reached
+
+    const late = Effect.runPromise(runner.steer(thread.id, "late", []))
+    finishing.resume()
+    await late
+
+    expect(steers).toStrictEqual([])
+    await vi.waitFor(() => expect(turns).toHaveLength(2))
+    expect(turns[1]?.input.prompt).toMatch(/\nlate$/)
   })
 })
 

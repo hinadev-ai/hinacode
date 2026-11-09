@@ -3,15 +3,15 @@ import * as SourceControl from "./SourceControl.ts"
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { NodeServices } from "@effect/platform-node"
+import { NodeFileSystem, NodeServices } from "@effect/platform-node"
 import { afterAll, describe, expect, it } from "@effect/vitest"
-import { Deferred, Effect, Fiber, type FileSystem, Layer } from "effect"
+import { Context, Deferred, Effect, FileSystem, Fiber, Layer } from "effect"
 import { SqlClient } from "effect/sql"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
 import * as AgentAccounts from "./AgentAccounts.ts"
 import type { PushEvent } from "../../shared/contract.ts"
-import type { Thread } from "../../shared/domain.ts"
+import { chatFolder, type Thread } from "../../shared/domain.ts"
 import { Events } from "./Events.ts"
 import * as Git from "./Git.ts"
 import * as GitHub from "./GitHub.ts"
@@ -27,8 +27,9 @@ import * as Scratch from "./Scratch.ts"
 const makeThreadsLayer = (
   scratch: Layer.Layer<Scratch.Scratch, never, FileSystem.FileSystem>,
   publish: (typeof Events.Service)["publish"] = () => Effect.void,
-) =>
-  threadsLayerBase.pipe(
+  fileSystem?: Layer.Layer<FileSystem.FileSystem>,
+) => {
+  const base = threadsLayerBase.pipe(
     Layer.provideMerge(scratch),
     Layer.provideMerge(Terminals.layer),
     Layer.provideMerge(Worktrees.layer),
@@ -41,8 +42,11 @@ const makeThreadsLayer = (
         .pipe(Layer.provideMerge(Layer.succeed(Events, { publish }))),
     ),
     Layer.provideMerge(Db.layer(":memory:")),
+  )
+  return (fileSystem === undefined ? base : base.pipe(Layer.provideMerge(fileSystem))).pipe(
     Layer.provideMerge(NodeServices.layer),
   )
+}
 
 const tmpRoot = mkdtempSync(join(tmpdir(), "kk-tmp-root-"))
 afterAll(() => rmSync(tmpRoot, { recursive: true, force: true }))
@@ -367,6 +371,56 @@ describe("Threads", () => {
       expect(existsSync(other.cwd)).toBe(false)
     }).pipe(Effect.provide(threadsLayer)),
   )
+
+  it.effect("reopening an archived chat keeps what happened while its folder was created", () => {
+    const folderCreating = Deferred.makeUnsafe<void>()
+    const resumeFolder = Deferred.makeUnsafe<void>()
+    const paused = { path: "", armed: false }
+    const real = Context.get(Effect.runSync(Effect.scoped(Layer.build(NodeFileSystem.layer))), FileSystem.FileSystem)
+    const gatedFileSystem = Layer.succeed(
+      FileSystem.FileSystem,
+      FileSystem.FileSystem.of({
+        ...real,
+        makeDirectory: (path, options) =>
+          paused.armed && path === paused.path
+            ? Deferred.succeed(folderCreating, undefined).pipe(
+                Effect.andThen(Deferred.await(resumeFolder)),
+                Effect.andThen(real.makeDirectory(path, options)),
+              )
+            : real.makeDirectory(path, options),
+      }),
+    )
+    const gatedLayer = makeThreadsLayer(
+      Scratch.layer(mkdtempSync(join(tmpdir(), "kk-scratch-"))),
+      () => Effect.void,
+      gatedFileSystem,
+    )
+    return Effect.gen(function* () {
+      const threads = yield* Threads
+      const chats = yield* Projects.Projects.use((projects) =>
+        projects.ensureChats(mkdtempSync(join(tmpdir(), "kk-chats-"))),
+      )
+      const thread = yield* threads.create({ projectId: chats.id, title: "t", provider: "claude", model: "m" })
+      yield* threads.archive(thread.id)
+      paused.path = chatFolder(chats.rootPath, thread.id)
+      paused.armed = true
+      const reopening = yield* threads.unarchive(thread.id).pipe(Effect.forkChild)
+      yield* Deferred.await(folderCreating)
+      yield* threads.update({
+        id: thread.id,
+        status: "running",
+        providerSessionId: "live-session",
+        queue: [{ id: "queued", text: "from another comment", attachments: [] }],
+      })
+      yield* Deferred.succeed(resumeFolder, undefined)
+
+      const reopened = yield* Fiber.join(reopening)
+      expect(reopened.status).toBe("running")
+      expect(reopened.providerSessionId).toBe("live-session")
+      expect(reopened.queue.map((message) => message.id)).toEqual(["queued"])
+      expect((yield* threads.get(thread.id)).status).toBe("running")
+    }).pipe(Effect.provide(gatedLayer))
+  })
 
   it.effect("deletes a thread's scratch folder when it is archived or deleted", () =>
     Effect.gen(function* () {

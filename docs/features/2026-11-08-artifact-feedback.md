@@ -74,7 +74,7 @@ Artifact kinds grow to `"page" | "document" | "whiteboard"`.
 
 A comment body is Markdown and may hold `@thread:<id>` tokens, the composer's mention syntax, rendered the same way. Delivery goes to the mentioned threads when there are any, and to the owning thread otherwise. Mentioning a thread is how the developer asks a different agent about this artifact. That agent sees the artifact id, reads it with `read_artifact`, and replies as itself. A reply records its thread, so the comment shows who answered.
 
-Delivery runs on the machine that holds the artifact, so a mention reaches only threads on that machine in the owning thread's project, the rule `send_to_thread` follows for the project. The picker offers only those threads. Mentions that reach nobody fall back to the owner, so a comment is never saved without a reader.
+Delivery runs on the machine that holds the artifact, so a mention reaches only threads on that machine in the owning thread's project, the rule `send_to_thread` follows for the project. The picker offers only those threads. Mentions that reach nobody fall back to the owner, so a comment is never saved without a reader. A comment to an archived thread unarchives it first, as a message from the composer does.
 
 An artifact from another harness has no owning thread. Its comments are saved, and only mentions deliver.
 
