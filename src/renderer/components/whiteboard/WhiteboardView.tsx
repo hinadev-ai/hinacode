@@ -1,47 +1,27 @@
-import { WHITEBOARD_FONT } from "./whiteboardFonts.ts"
-import { CaptureUpdateAction, Excalidraw, exportToBlob } from "@excalidraw/excalidraw"
-import type { ExcalidrawImperativeAPI, UIOptions } from "@excalidraw/excalidraw/types"
-import "@excalidraw/excalidraw/index.css"
-import "./whiteboard.css"
 import { useAtomValue } from "@effect/atom-react"
 import { FeedbackIcon } from "@hinacode/icons"
 import { AsyncResult, Atom } from "effect/reactivity"
-import {
-  type KeyboardEvent as ReactKeyboardEvent,
-  type ReactNode,
-  startTransition,
-  useEffect,
-  useRef,
-  useState,
-  useTransition,
-} from "react"
+import { type ReactNode, startTransition, useEffect, useRef, useState, useTransition } from "react"
 import { toast } from "sonner"
 import type { Artifact, ArtifactComment, WhiteboardContent } from "../../../shared/artifact.ts"
-import { useTheme } from "../../lib/appearance.ts"
 import { readAsDataUrl } from "../../lib/dataUrl.ts"
 import { errorMessage } from "../../lib/errorMessage.ts"
 import { call, callPromise, type EnvironmentId, familyOf, onPushEvent } from "../../lib/rpc.ts"
-import { useClientSettings } from "../../lib/settings.ts"
 import { m } from "../../paraglide/messages.js"
-import { getLocale } from "../../paraglide/runtime.js"
 import { cn } from "../../lib/utils.ts"
 import { CommentsPane } from "../artifactComments/CommentsPane.tsx"
 import { loadedFeedback, useFeedback, useFeedbackActions } from "../artifactComments/feedback.ts"
 import { Button } from "../ui/button.tsx"
 import { Textarea } from "../ui/textarea.tsx"
-import { anchorIds, elementsWithLabels } from "./whiteboardScene.ts"
-import { createWhiteboardSync, type SaveStatus, type WhiteboardSync } from "./whiteboardSync.ts"
+import { OwnCanvas, type FocusRequest, type Tool } from "./OwnCanvas.tsx"
+import type { OwnElement } from "./own/elements.ts"
+import { exportElementsPng, type ExportTheme } from "./own/export.ts"
+import { createWhiteboardSync, initialElements, type SaveStatus, type WhiteboardSync } from "./own/sync.ts"
+import { anchorIds } from "./whiteboardScene.ts"
 
 const whiteboardAtom = familyOf((environment: EnvironmentId, id: string) =>
   Atom.make(call("artifacts.readWhiteboard", { id }, { environment })),
 )
-
-const UI_OPTIONS: Partial<UIOptions> = {
-  canvasActions: { loadScene: false, saveToActiveFile: false, export: false, saveAsImage: false, toggleTheme: null },
-  tools: { image: false },
-}
-
-const EXCALIDRAW_LANGUAGES: Record<string, string> = { ja: "ja-JP", "zh-TW": "zh-TW", "zh-CN": "zh-CN" }
 
 const loadFailed = (message: string) => (
   <p role="alert" className="p-4 text-xs wrap-anywhere text-destructive">
@@ -58,28 +38,49 @@ export function WhiteboardView({ threadId, artifact }: { threadId: string; artif
     .orElse(() => loadFailed(""))
 }
 
-const stopHandled = (event: KeyboardEvent) => {
-  if (event.defaultPrevented) event.stopPropagation()
+const exportTheme = (): ExportTheme => {
+  const style = getComputedStyle(document.documentElement)
+  const read = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback
+  return {
+    background: read("--background", "#ffffff"),
+    foreground: read("--foreground", "#111111"),
+    muted: read("--muted", "#eeeeee"),
+    mutedForeground: read("--muted-foreground", "#666666"),
+  }
 }
 
-const keepHandledKeys = (element: HTMLDivElement | null) => {
-  element?.addEventListener("keydown", stopHandled)
-  return () => element?.removeEventListener("keydown", stopHandled)
-}
-
-const selectAndScrollTo = (api: ExcalidrawImperativeAPI, ids: ReadonlyArray<string>) => {
-  const wanted = new Set(ids)
-  const targets = api.getSceneElements().filter((element) => wanted.has(element.id))
-  if (targets.length === 0) return
-  api.updateScene({
-    appState: { selectedElementIds: Object.fromEntries(targets.map((element) => [element.id, true as const])) },
-    captureUpdate: CaptureUpdateAction.NEVER,
+const askAboutSelection = async ({
+  threadId,
+  artifact,
+  sync,
+  elements,
+  selection,
+  body,
+}: {
+  threadId: string
+  artifact: Artifact
+  sync: WhiteboardSync
+  elements: ReadonlyArray<OwnElement>
+  selection: ReadonlyArray<string>
+  body: string
+}) => {
+  const ids = anchorIds([...selection], elements)
+  if (ids.length === 0) return
+  if ((await sync.save()) === null) throw new Error(m.documents_not_saved())
+  const image = await exportElementsPng(elements, ids, exportTheme())
+  const attachment = await callPromise("attachments.stage", {
+    threadId: artifact.threadId ?? threadId,
+    source: {
+      dataUrl: await readAsDataUrl(new File([image], "selection.png", { type: "image/png" })),
+      name: `${artifact.title}.png`,
+    },
   })
-  api.scrollToContent(targets, { fitToViewport: true, viewportZoomFactor: 0.6, maxZoom: 1, animate: true })
+  await callPromise(
+    "artifacts.comment",
+    { id: artifact.id, anchor: { kind: "elements", ids }, body, attachments: [attachment] },
+    { environment: artifact.environmentId },
+  )
 }
-
-const sameIds = (left: ReadonlyArray<string>, right: ReadonlyArray<string>) =>
-  left.length === right.length && left.every((id, index) => id === right[index])
 
 function WhiteboardCanvas({
   threadId,
@@ -91,24 +92,27 @@ function WhiteboardCanvas({
   loaded: WhiteboardContent
 }) {
   const [status, setStatus] = useState<SaveStatus>({ type: "saved" })
-  const [selection, setSelection] = useState<ReadonlyArray<string>>([])
-  const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null)
-  const [fitted, setFitted] = useState(false)
-  const [comments, setComments] = useState<{ open: boolean; focused: string | null }>({ open: false, focused: null })
-  const canvasColumn = useRef<HTMLDivElement>(null)
-  const elementsToShow = useRef<ReadonlyArray<string> | null>(null)
-  const feedback = useFeedback(artifact)
-  const actions = useFeedbackActions(artifact)
-  const openCount = loadedFeedback(feedback).comments.filter((comment) => !comment.resolved).length
-  const { scheme } = useTheme(useClientSettings().appearance.theme)
+  const [elements, setElements] = useState<OwnElement[]>(() =>
+    initialElements(artifact.environmentId ?? null, artifact.id, loaded),
+  )
   const [sync] = useState(() =>
     createWhiteboardSync({
       id: artifact.id,
       environment: artifact.environmentId ?? null,
       loaded,
       onStatus: setStatus,
+      onElements: setElements,
     }),
   )
+  const [selection, setSelection] = useState<string[]>([])
+  const [tool, setTool] = useState<Tool>("select")
+  const [focus, setFocus] = useState<FocusRequest | null>(null)
+  const [comments, setComments] = useState<{ open: boolean; focused: string | null }>({ open: false, focused: null })
+  const canvasColumn = useRef<HTMLDivElement>(null)
+  const focusNonce = useRef(0)
+  const feedback = useFeedback(artifact)
+  const actions = useFeedbackActions(artifact)
+  const openCount = loadedFeedback(feedback).comments.filter((comment) => !comment.resolved).length
 
   useEffect(() => {
     sync.open()
@@ -122,59 +126,32 @@ function WhiteboardCanvas({
     }
   }, [artifact.id, sync])
 
+  const change = (next: OwnElement[]) => {
+    setElements(next)
+    sync.changed(next)
+  }
+
   const showElements = (comment: ArtifactComment) => {
-    if (api === null || comment.anchor.kind !== "elements") return
-    if (canvasColumn.current?.checkVisibility() === true) return selectAndScrollTo(api, comment.anchor.ids)
-    elementsToShow.current = comment.anchor.ids
-    startTransition(() => setComments({ open: false, focused: null }))
+    if (comment.anchor.kind !== "elements") return
+    focusNonce.current += 1
+    setFocus({ ids: comment.anchor.ids, nonce: focusNonce.current })
+    if (canvasColumn.current?.checkVisibility() !== true)
+      startTransition(() => setComments({ open: false, focused: null }))
   }
 
   return (
     <div className="@container flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1">
-        <div
-          ref={(element) => {
-            canvasColumn.current = element
-            return keepHandledKeys(element)
-          }}
-          className={cn("relative min-h-0 min-w-0 flex-1", comments.open && "@max-2xl:hidden")}
-        >
-          <div data-whiteboard className="absolute inset-0 bg-background">
-            <Excalidraw
-              initialData={{
-                elements: sync.initial.elements,
-                files: sync.initial.files,
-                appState: { viewBackgroundColor: "transparent", currentItemFontFamily: WHITEBOARD_FONT },
-              }}
-              excalidrawAPI={(created) => {
-                sync.attach(created)
-                setApi(created)
-              }}
-              onChange={(elements, appState, files) => {
-                if (!fitted && api !== null && appState.width > 0) {
-                  api.scrollToContent(elements, {
-                    fitToViewport: true,
-                    viewportZoomFactor: 0.9,
-                    maxZoom: 1,
-                    animate: false,
-                  })
-                  setFitted(true)
-                }
-                const shown = elementsToShow.current
-                if (shown !== null && api !== null && appState.width > 0) {
-                  elementsToShow.current = null
-                  selectAndScrollTo(api, shown)
-                }
-                sync.changed(elements, appState, files)
-                const selected = Object.keys(appState.selectedElementIds)
-                setSelection((current) => (sameIds(current, selected) ? current : selected))
-              }}
-              theme={scheme}
-              langCode={EXCALIDRAW_LANGUAGES[getLocale()] ?? "en"}
-              UIOptions={UI_OPTIONS}
-              aiEnabled={false}
-            />
-          </div>
+        <div ref={canvasColumn} className={cn("relative min-h-0 min-w-0 flex-1", comments.open && "@max-2xl:hidden")}>
+          <OwnCanvas
+            elements={elements}
+            selection={selection}
+            tool={tool}
+            onToolChange={setTool}
+            onChange={change}
+            onSelectionChange={setSelection}
+            focus={focus}
+          />
         </div>
         {comments.open && (
           <CommentsPane
@@ -206,7 +183,8 @@ function WhiteboardCanvas({
         artifact={artifact}
         status={status}
         sync={sync}
-        api={selection.length === 0 ? null : api}
+        elements={elements}
+        selection={selection}
       />
     </div>
   )
@@ -225,50 +203,6 @@ const statusText = (status: SaveStatus) => {
   }
 }
 
-const askAboutSelection = async ({
-  threadId,
-  artifact,
-  sync,
-  api,
-  body,
-}: {
-  threadId: string
-  artifact: Artifact
-  sync: WhiteboardSync
-  api: ExcalidrawImperativeAPI
-  body: string
-}) => {
-  const elements = api.getSceneElementsIncludingDeleted()
-  const ids = anchorIds(Object.keys(api.getAppState().selectedElementIds), elements)
-  if (ids.length === 0) return
-  if ((await sync.save()) === null) throw new Error(m.documents_not_saved())
-  const image = await exportToBlob({
-    elements: elementsWithLabels(ids, elements),
-    appState: {
-      ...api.getAppState(),
-      exportBackground: true,
-      exportEmbedScene: false,
-      viewBackgroundColor: "#ffffff",
-      exportWithDarkMode: api.getAppState().theme === "dark",
-    },
-    files: api.getFiles(),
-    mimeType: "image/png",
-    exportPadding: 16,
-  })
-  const attachment = await callPromise("attachments.stage", {
-    threadId: artifact.threadId ?? threadId,
-    source: {
-      dataUrl: await readAsDataUrl(new File([image], "selection.png", { type: "image/png" })),
-      name: `${artifact.title}.png`,
-    },
-  })
-  await callPromise(
-    "artifacts.comment",
-    { id: artifact.id, anchor: { kind: "elements", ids }, body, attachments: [attachment] },
-    { environment: artifact.environmentId },
-  )
-}
-
 const focusOnMount = (element: HTMLTextAreaElement | null) => element?.focus()
 
 const NO_DETACHED: ReadonlySet<string> = new Set()
@@ -278,25 +212,28 @@ function WhiteboardFooter({
   artifact,
   status,
   sync,
-  api,
+  elements,
+  selection,
   comments,
 }: {
   threadId: string
   artifact: Artifact
   status: SaveStatus
   sync: WhiteboardSync
-  api: ExcalidrawImperativeAPI | null
+  elements: ReadonlyArray<OwnElement>
+  selection: ReadonlyArray<string>
   comments: ReactNode
 }) {
   const [asking, setAsking] = useState(false)
   const [body, setBody] = useState("")
   const [sending, startSending] = useTransition()
   const text = body.trim()
+  const canAsk = selection.length > 0
 
   const send = async () => {
-    if (text === "" || api === null) return
+    if (text === "") return
     try {
-      await askAboutSelection({ threadId, artifact, sync, api, body: text })
+      await askAboutSelection({ threadId, artifact, sync, elements, selection, body: text })
       setAsking(false)
       setBody("")
     } catch (cause) {
@@ -304,7 +241,7 @@ function WhiteboardFooter({
     }
   }
 
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+  const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) return
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault()
@@ -337,7 +274,7 @@ function WhiteboardFooter({
             placeholder={m.whiteboard_ask_label()}
             className="max-h-32 min-h-9 flex-1 resize-none text-xs"
           />
-          <Button type="submit" size="xs" disabled={text === "" || api === null || sending}>
+          <Button type="submit" size="xs" disabled={text === "" || !canAsk || sending}>
             {m.whiteboard_ask_send()}
           </Button>
         </form>
@@ -363,7 +300,7 @@ function WhiteboardFooter({
         <Button
           variant={asking ? "ghost" : "outline"}
           size="xs"
-          disabled={api === null && !asking}
+          disabled={!canAsk && !asking}
           action={() => setAsking((open) => !open)}
         >
           {asking ? m.common_cancel() : m.whiteboard_ask()}
