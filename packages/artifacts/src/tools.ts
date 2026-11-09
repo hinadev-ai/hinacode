@@ -104,6 +104,24 @@ const inlineSize = (file: { content?: string | undefined; encoding?: "utf8" | "b
   return file.encoding === "base64" ? decodedBase64Size(file.content) : Buffer.byteLength(file.content, "utf8")
 }
 
+const strictUtf8 = new TextDecoder("utf-8", { fatal: true })
+
+const utf8Text = (bytes: Uint8Array) => {
+  try {
+    return strictUtf8.decode(bytes)
+  } catch {
+    return null
+  }
+}
+
+const markdownIn = (sourcePath: string, bytes: Uint8Array) => {
+  const text = utf8Text(bytes)
+  if (text === null || text.includes("\0")) {
+    throw new ArtifactError(`"${sourcePath}" is not UTF-8 text. A document's sourcePath must be Markdown.`)
+  }
+  return text
+}
+
 const newNeedsTitle = { message: "Give a new artifact a title.", path: ["title"] }
 
 const describeTitle = (example: string) =>
@@ -248,8 +266,8 @@ export const artifactTools = {
       })
       .refine((input) => input.id !== undefined || input.title !== undefined, newNeedsTitle),
     handle: async (store, { id, revision, title, markdown, sourcePath }, { threadId }) => {
-      const contents =
-        sourcePath === undefined ? (markdown ?? "") : ((await readSources([sourcePath]))[0]?.toString("utf8") ?? "")
+      const [bytes = Buffer.alloc(0)] = sourcePath === undefined ? [] : await readSources([sourcePath])
+      const contents = sourcePath === undefined ? (markdown ?? "") : markdownIn(sourcePath, bytes)
       try {
         const document = await store.publish({
           kind: "document",
