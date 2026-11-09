@@ -380,16 +380,19 @@ const draftTitle = (draft: Draft) =>
     .map((line) => line.trim())
     .find((line) => line !== "") ?? m.thread_draft_title()
 
-const useDraftTitles = (): Readonly<Record<string, string>> =>
-  useDrafts(
+const useDraftTitles = (): Readonly<Record<string, string>> => {
+  const draftThreads = useThreads((state) => state.drafts)
+  return useDrafts(
     useShallow((state) =>
       Object.fromEntries(
-        Object.entries(state.byThreadId).flatMap(([threadId, draft]) =>
-          hasContent(draft) ? [[threadId, draftTitle(draft)]] : [],
-        ),
+        Object.keys(draftThreads).flatMap((threadId) => {
+          const draft = state.byThreadId[threadId]
+          return draft && hasContent(draft) ? [[threadId, draftTitle(draft)]] : []
+        }),
       ),
     ),
   )
+}
 
 const writtenDrafts = (
   threads: ThreadsState["drafts"],
