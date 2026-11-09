@@ -866,3 +866,12 @@ test("shows the error and the source of a chart that cannot be drawn", async () 
   await expect.element(editor.getByRole("code")).toBeVisible()
   expect(saves).toEqual([])
 })
+test("lays out a right-to-left paragraph from the right", async () => {
+  stored = { ...stored, markdown: "# Release plan\n\nהעורך נשלח קודם.\n\n- المحرر أولاً.\n\nShip the editor first.\n" }
+  const editor = await openDocument()
+  const direction = (text: RegExp) => getComputedStyle(editor.getByText(text).element()).direction
+
+  expect(direction(/^העורך/)).toBe("rtl")
+  expect(direction(/^المحرر/)).toBe("rtl")
+  expect(direction(/^Ship the/)).toBe("ltr")
+})

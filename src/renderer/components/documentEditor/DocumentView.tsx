@@ -143,6 +143,7 @@ function DocumentEditor({
     extensions: extensions(m.documents_placeholder(), initialTheme, target, openComment),
     content: sync.initial,
     contentType: "markdown",
+    textDirection: "auto",
     onCreate: ({ editor: created }) => sync.start(created),
     onUpdate: ({ transaction }) => {
       if (transaction.docChanged) sync.edited()
