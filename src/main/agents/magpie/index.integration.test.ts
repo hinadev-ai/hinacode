@@ -6,7 +6,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest"
 import { Effect, Layer, Stream } from "effect"
-import type { RunTurnInput } from "../../../shared/agent.ts"
+import type { QuestionRequest, RunTurnInput } from "../../../shared/agent.ts"
 import { Secrets } from "../../services/Secrets.ts"
 import { Settings } from "../../services/Settings.ts"
 import { MAGPIE_KEY_SECRET } from "../../../shared/providers.ts"
@@ -25,8 +25,50 @@ interface MessagesRequest {
 }
 
 const requests: Array<MessagesRequest> = []
+const toolResults: Array<string> = []
 
-const sse = (response: ServerResponse, model: string) => {
+const ASK_PROMPT = "Ask me which color I like"
+const COLOR_QUESTION = "Which color?"
+
+type ContentBlock =
+  | { readonly type: "text"; readonly text: string }
+  | { readonly type: "tool_use"; readonly id: string; readonly name: string; readonly input: object }
+
+const blockEvents = (block: ContentBlock) =>
+  block.type === "text"
+    ? [
+        { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+        { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: block.text } },
+      ]
+    : [
+        { type: "content_block_start", index: 0, content_block: { ...block, input: {} } },
+        {
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "input_json_delta", partial_json: JSON.stringify(block.input) },
+        },
+      ]
+
+const askColor: ContentBlock = {
+  type: "tool_use",
+  id: "toolu_ask",
+  name: "AskUserQuestion",
+  input: {
+    questions: [
+      {
+        question: COLOR_QUESTION,
+        header: "Color",
+        options: [
+          { label: "blue", description: "Cool" },
+          { label: "red", description: "Warm" },
+        ],
+        multiSelect: false,
+      },
+    ],
+  },
+}
+
+const sse = (response: ServerResponse, model: string, block: ContentBlock = { type: "text", text: "pong" }) => {
   const events = [
     {
       type: "message_start",
@@ -41,10 +83,13 @@ const sse = (response: ServerResponse, model: string) => {
         usage: { input_tokens: 1, output_tokens: 1 },
       },
     },
-    { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
-    { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "pong" } },
+    ...blockEvents(block),
     { type: "content_block_stop", index: 0 },
-    { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 1 } },
+    {
+      type: "message_delta",
+      delta: { stop_reason: block.type === "tool_use" ? "tool_use" : "end_turn", stop_sequence: null },
+      usage: { output_tokens: 1 },
+    },
     { type: "message_stop" },
   ]
   response.writeHead(200, { "content-type": "text/event-stream" })
@@ -53,14 +98,25 @@ const sse = (response: ServerResponse, model: string) => {
 }
 
 const answerMessages = (gateway: string, request: IncomingMessage, response: ServerResponse, text: string) => {
-  const body = JSON.parse(text) as { model: string; speed?: string; stream?: boolean }
+  const body = JSON.parse(text) as {
+    model: string
+    speed?: string
+    stream?: boolean
+    messages?: Array<{ content: string | Array<{ type: string; tool_use_id?: string; content?: unknown }> }>
+  }
+  const blocks = (body.messages ?? []).flatMap((message) =>
+    typeof message.content === "string" ? [] : message.content,
+  )
+  const answered = blocks.find((block) => block.type === "tool_result" && block.tool_use_id === askColor.id)
+  if (answered !== undefined) toolResults.push(JSON.stringify(answered.content))
   requests.push({
     gateway,
     model: body.model,
     speed: body.speed ?? null,
     key: request.headers.authorization?.replace(/^Bearer /, "") ?? request.headers["x-api-key"]?.toString(),
   })
-  if (body.stream) return sse(response, body.model)
+  if (body.stream)
+    return sse(response, body.model, answered === undefined && text.includes(ASK_PROMPT) ? askColor : undefined)
   response.writeHead(200, { "content-type": "application/json" }).end(
     JSON.stringify({
       id: "msg_1",
@@ -227,6 +283,31 @@ describe("magpie provider against a gateway", () => {
         expect(yield* speedsOf(turn({ threadId: "thread-3" }), { gateway: "remote", key: REMOTE_KEY })).toStrictEqual(
           new Set([null]),
         )
+      }).pipe(Effect.provide(onMagpie())),
+    90_000,
+  )
+
+  it.effect.skipIf(!claudeInstalled)(
+    "routes a question back to magpie and hands the answer to Claude Code",
+    () =>
+      Effect.gen(function* () {
+        toolResults.length = 0
+        const provider = yield* MagpieProvider
+        const asked: Array<QuestionRequest> = []
+        const events = yield* provider.runTurn(turn({ threadId: "thread-5", prompt: ASK_PROMPT })).pipe(
+          Stream.tap((event) => {
+            if (event.type !== "question_requested") return Effect.void
+            asked.push(event.request)
+            return provider.respondQuestion(event.request.id, { [COLOR_QUESTION]: ["blue"] })
+          }),
+          Stream.runCollect,
+        )
+        expect(events.at(-1)?.type).toBe("turn_completed")
+        expect(
+          asked.map((request) => [request.provider, request.questions.map((question) => question.id)]),
+        ).toStrictEqual([["magpie", [COLOR_QUESTION]]])
+        expect(toolResults).toHaveLength(1)
+        expect(toolResults[0]).toContain("blue")
       }).pipe(Effect.provide(onMagpie())),
     90_000,
   )
