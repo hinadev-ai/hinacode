@@ -18,6 +18,23 @@ export class ArtifactInspector extends Context.Service<
   }
 >()("hinacode/ArtifactInspector") {}
 
+export type InspectPage = (id: string, entry: string, theme: ArtifactTheme | undefined) => Promise<ArtifactInspection>
+
+export const layerWith = (inspectPage: InspectPage) =>
+  Layer.sync(ArtifactInspector, () => {
+    let theme: ArtifactTheme | undefined
+    return ArtifactInspector.of({
+      setTheme: (next) =>
+        Effect.sync(() => {
+          theme = next
+        }),
+      inspect: (id, entry) =>
+        Effect.tryPromise(() => inspectPage(id, entry, theme)).pipe(
+          Effect.catch((cause) => Effect.as(Effect.logWarning("could not inspect artifact", id, cause), null)),
+        ),
+    })
+  })
+
 export const unavailable = Layer.succeed(
   ArtifactInspector,
   ArtifactInspector.of({ setTheme: () => Effect.void, inspect: () => Effect.succeed(null) }),
