@@ -285,6 +285,7 @@ export function wakeupOf(message: SDKMessage, call: WakeupCall, now: string): Ba
 const limitErrorText =
   /^(?:error:\s*)?(?:you['’]ve hit your (?:(?:usage )?limit|org['’]s monthly spend limit)|usage limit reached|(?:claude(?: api)? )?rate limit reached|api error:\s*429\b)/i
 const orgSpendLimitText = /^(?:error:\s*)?you['’]ve hit your org['’]s monthly spend limit/i
+const lostSessionText = /^No conversation found with session ID: /m
 
 function mapResult(result: SDKResultMessage, state: MapState): AgentEvent {
   const { limitMessage, limitResetAt: resetAt } = state
@@ -303,6 +304,13 @@ function mapResult(result: SDKResultMessage, state: MapState): AgentEvent {
       return {
         type: "turn_limited",
         limit: { kind, message, reset: resetAt === null ? null : { at: resetAt, autoResume: false } },
+      }
+    }
+    if (lostSessionText.test(reason)) {
+      return {
+        type: "turn_failed",
+        message: `${reason}\n\nYour next message starts a new Claude session that gets this thread's transcript, without tool output.`,
+        sessionLost: true,
       }
     }
     return {

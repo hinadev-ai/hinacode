@@ -12,7 +12,7 @@ const control = () => {
     return {}
   }
 }
-const { lifeline, exitOnStart } = control()
+const { lifeline, exitOnStart, lingerAfterLostSession } = control()
 if (lifeline !== undefined) connect(lifeline).on("error", () => {})
 
 const send = (message) => process.stdout.write(`${JSON.stringify(message)}\n`)
@@ -64,7 +64,26 @@ if (resumed !== null && !existsSync(join(sessions, resumed))) {
     is_error: true,
     errors: [`No conversation found with session ID: ${resumed}`],
   })
-  die(1, `No conversation found with session ID: ${resumed}`)
+  if (!lingerAfterLostSession) die(1, `No conversation found with session ID: ${resumed}`)
+  // oxlint-disable-next-line hinacode/no-comments
+  // Stays alive until a second user prompt arrives, which means the harness reused this lost session.
+  let pendingPrompt = 1
+  createInterface({ input: process.stdin }).on("line", (line) => {
+    let message
+    try {
+      message = JSON.parse(line)
+    } catch {
+      return
+    }
+    if (message.type !== "user") return
+    if (pendingPrompt > 0) {
+      pendingPrompt--
+      return
+    }
+    writeFileSync(join(home, "reused.txt"), "reused\n")
+    process.exit(0)
+  })
+  await new Promise(() => {})
 }
 writeFileSync(join(sessions, sessionId), "")
 
@@ -117,6 +136,7 @@ let interrupted = null
 
 const prompt = (text) => {
   init()
+  if (text === "exit") return process.exit(0)
   if (text === "crash") {
     textDelta("half an answer")
     return die(3, "FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory")
@@ -125,6 +145,30 @@ const prompt = (text) => {
     process.stdout.write("Claude Code is starting\n")
     send({ type: "brand_new_message", session_id: sessionId, uuid: randomUUID() })
     send({ type: "system", subtype: "brand_new_subtype", session_id: sessionId, uuid: randomUUID() })
+  }
+  if (text === "lose session on stop") {
+    const requestId = randomUUID()
+    pendingTools.set(requestId, text)
+    interrupted = () => {
+      send({ type: "control_cancel_request", request_id: requestId })
+      pendingTools.delete(requestId)
+      result({
+        subtype: "error_during_execution",
+        is_error: true,
+        errors: [`No conversation found with session ID: ${sessionId}`],
+      })
+    }
+    send({
+      type: "control_request",
+      request_id: requestId,
+      request: {
+        subtype: "can_use_tool",
+        tool_name: "Bash",
+        input: { command: "ls" },
+        tool_use_id: `toolu_${requestId}`,
+      },
+    })
+    return
   }
   if (text === "approve" || text === "approve then crash") {
     const requestId = randomUUID()

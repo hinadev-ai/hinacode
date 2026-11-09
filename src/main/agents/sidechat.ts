@@ -15,11 +15,23 @@ export const unseenSince = (
   forkedFrom: Omit<ForkPoint, "owner"> | null,
 ): ReadonlyArray<Message> => (forkedFrom === null ? history : history.slice(history.findIndex(isAt(forkedFrom)) + 1))
 
-export function sidechatPrompt(input: { readonly unseen: ReadonlyArray<Message>; readonly prompt: string }): string {
+export function sidechatPrompt(input: {
+  readonly history: ReadonlyArray<Message>
+  readonly unseen: ReadonlyArray<Message>
+  readonly prompt: string
+}): string {
+  const earlier = renderTranscript(input.history)
   const transcript = renderTranscript(input.unseen)
   return [
     "<side_chat>",
     "This is a side chat. The developer asks you something while the main agent keeps working on this conversation in the same workspace. Answer it, and do not edit files or run commands that change anything.",
+    ...(earlier === ""
+      ? []
+      : [
+          "This side chat ran in an earlier session that you cannot resume. Here is what was said in it, oldest first. Tool output is left out.",
+          "",
+          earlier,
+        ]),
     ...(transcript === ""
       ? []
       : [
