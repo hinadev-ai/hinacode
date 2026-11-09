@@ -27,16 +27,17 @@ import { AccessModeSection, accessModes } from "@/components/access-mode"
 import { ComposerInput } from "@/components/composer-input"
 import type { ComposerInputHandle } from "@/components/composer-input.types"
 import { GlassFill, liquidGlass } from "@/components/glass"
+import { LocationChip } from "@/components/draft-location"
 import { Icon, type IconName } from "@/components/icon"
 import { Spinner } from "@/components/motion"
 import { OptionRow, Section, Sheet, sheetStyles } from "@/components/sheet"
-import { Toggle } from "@/components/ui"
+import { ProviderMark, Toggle } from "@/components/ui"
 import { WorkspaceChip } from "@/components/workspace-picker"
 import { cssEase, ease, PRESSED_SCALE, pressSpring } from "@/constants/motion"
-import { HIT, mono, radius } from "@/constants/theme"
+import { HIT, mono, ProviderColors, radius } from "@/constants/theme"
 import { useNow } from "@/hooks/use-now"
 import { useThreadServer } from "@/hooks/use-server"
-import { useTheme } from "@/hooks/use-theme"
+import { useScheme, useTheme } from "@/hooks/use-theme"
 import { call, useConnection } from "@/lib/connection"
 import { artifactSkillCommands } from "@/lib/artifact-skills"
 import { keepSkillWhole } from "@/lib/composer-text"
@@ -160,6 +161,15 @@ export function Composer({ thread }: { thread: Thread }) {
     return () => hidden.remove()
   }, [])
 
+  const stop = async () => {
+    setError(null)
+    try {
+      await call("threads.interrupt", { threadId: thread.id })
+    } catch (cause) {
+      setError(errorText(cause))
+    }
+  }
+
   const send = async () => {
     // A second tap can land before the re-render that empties the composer, so check the store, not `hasDraft`.
     const sent = useDrafts.getState().take(thread.id)
@@ -199,13 +209,7 @@ export function Composer({ thread }: { thread: Thread }) {
   }
 
   return (
-    <View
-      style={[
-        styles.composer,
-        liquidGlass && styles.dock,
-      ]}
-    >
-      <GlassFill />
+    <View style={styles.composer}>
       {sending?.map((prompt) => (
         <View key={prompt.id} testID="composer-sending" style={styles.sending}>
           <Text style={[styles.sendingLabel, { color: theme.textMuted }]}>
@@ -232,12 +236,13 @@ export function Composer({ thread }: { thread: Thread }) {
           styles.bar,
           {
             backgroundColor: liquidGlass ? "transparent" : theme.background,
-            borderColor: focused ? theme.primary : liquidGlass ? "transparent" : theme.border,
+            borderColor: focused ? theme.primary : theme.border,
           },
-          !liquidGlass && styles.raised,
+          styles.raised,
           focused && { boxShadow: `0 0 0 2px ${theme.primary}` },
         ]}
       >
+        <GlassFill style={styles.barGlass} />
         {images.length > 0 && (
           <DraftImages images={images} onRemove={(id) => useDrafts.getState().removeImage(thread.id, id)} />
         )}
@@ -270,18 +275,27 @@ export function Composer({ thread }: { thread: Thread }) {
           }
           style={styles.input}
         />
+        {unstarted && (
+          <View testID="composer-start-options" style={styles.chips}>
+            <LocationChip thread={thread} onError={setError} />
+            <WorkspaceChip thread={thread} onError={setError} />
+          </View>
+        )}
         <View style={styles.toolbar}>
           <View style={styles.chips}>
             <AttachButton staging={staging} onPress={() => void attachImages()} />
             <SettingsChip thread={thread} onError={setError} />
-            {unstarted && <WorkspaceChip thread={thread} onError={setError} />}
           </View>
-          <SendButton
-            busy={busy}
-            steers={steers}
-            hasDraft={hasDraft && !staging}
-            onSend={() => void send()}
-          />
+          <View style={styles.chips}>
+            {focused && <HideKeyboardButton onPress={() => inputRef.current?.blur()} />}
+            <SendButton
+              busy={busy}
+              steers={steers}
+              hasDraft={hasDraft && !staging}
+              onSend={() => void send()}
+              onStop={() => void stop()}
+            />
+          </View>
         </View>
       </View>
       {error !== null && (
@@ -290,6 +304,21 @@ export function Composer({ thread }: { thread: Thread }) {
         </Text>
       )}
     </View>
+  )
+}
+
+function HideKeyboardButton({ onPress }: { onPress: () => void }) {
+  const theme = useTheme()
+  return (
+    <Pressable
+      testID="composer-hide-keyboard"
+      accessibilityRole="button"
+      accessibilityLabel={copy("mobile_composer_hide_keyboard")}
+      onPress={onPress}
+      style={({ pressed }) => [styles.attach, pressed && [styles.pressed, { backgroundColor: theme.inkWash }]]}
+    >
+      <Icon name="ChevronDown" size={20} color={theme.textMuted} />
+    </Pressable>
   )
 }
 
@@ -376,8 +405,8 @@ function Suggestions({
         styles.suggestions,
         {
           maxHeight: SUGGESTION_HEIGHT * VISIBLE_SUGGESTIONS,
-          backgroundColor: liquidGlass ? "transparent" : theme.surface,
-          borderColor: liquidGlass ? "transparent" : theme.border,
+          backgroundColor: theme.surface,
+          borderColor: theme.border,
         },
       ]}
     >
@@ -420,7 +449,7 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
       const { thread } = suggestion
       return (
         <View style={styles.suggestionLine}>
-          <Icon name={providers[thread.provider].icon} size={14} color={theme.textMuted} />
+          <ProviderMark provider={thread.provider} size={14} />
           <Text numberOfLines={1} style={[styles.suggestionTitle, { color: theme.text }]}>
             {thread.title}
           </Text>
@@ -448,22 +477,27 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
 }
 
 /** While the agent runs, a draft steers the turn, or queues behind it if the agent can't steer. */
+/**
+ * Send, as the desktop's: a turn running with nothing typed turns it into Stop, and typing turns it back into Queue or
+ * Steer. The halo shows whenever it has something to do.
+ */
 function SendButton({
   busy,
   steers,
   hasDraft,
   onSend,
+  onStop,
 }: {
   busy: boolean
   steers: boolean
   hasDraft: boolean
   onSend: () => void
+  onStop: () => void
 }) {
   const theme = useTheme()
-  const action = busy ? (steers ? "steer" : "queue") : "send"
+  const action = !busy ? "send" : hasDraft ? (steers ? "steer" : "queue") : "stop"
   const label = copy(`mobile_composer_${action}`)
-  const disabled = !hasDraft
-  const halo = action === "send" && hasDraft
+  const disabled = action !== "stop" && !hasDraft
   const background = disabled ? theme.inkWash : theme.primary
 
   return (
@@ -473,15 +507,19 @@ function SendButton({
       accessibilityLabel={label}
       aria-disabled={disabled}
       disabled={disabled}
-      onPress={onSend}
+      onPress={action === "stop" ? onStop : onSend}
       hitSlop={(HIT - SEND_SIZE) / 2}
       animate={{ backgroundColor: background }}
       whileTap={{ scale: PRESSED_SCALE }}
       transition={{ ...pressSpring, backgroundColor: { ease: ease.swap } }}
       style={[styles.send, { borderColor: disabled ? theme.border : "transparent" }]}
     >
-      {halo && <SendHalo />}
-      <Icon name="ArrowUp" size={20} color={halo ? theme.haloInk : disabled ? theme.textMuted : theme.onPrimary} />
+      {!disabled && <SendHalo />}
+      <Icon
+        name={action === "stop" ? "Stop" : "ArrowUp"}
+        size={action === "stop" ? 16 : 20}
+        color={disabled ? theme.textMuted : theme.haloInk}
+      />
     </motion.Pressable>
   )
 }
@@ -601,6 +639,14 @@ const switchAccount = async (thread: Thread, accountId: string | null, onError: 
   }
 }
 
+/** The thread's agent, model and effort as words, for a chip or a row that opens `SettingsSheet`. */
+export function useSettingsSummary(thread: Thread) {
+  const { models, current } = useThreadModels(thread)
+  const modelLabel = models.find((model) => model.id === thread.model)?.label ?? thread.model
+  const effort = current?.efforts.length ? (thread.effort ?? current.defaultEffort) : null
+  return { providerLabel: providers[thread.provider].label, modelLabel, effortText: effort ? effortLabel(effort) : null }
+}
+
 /**
  * The one chip the narrow toolbar has room for: the agent's mark and the model name. It opens a
  * full-height sheet with every setting the desktop composer spreads across its toolbar.
@@ -608,15 +654,16 @@ const switchAccount = async (thread: Thread, accountId: string | null, onError: 
 function SettingsChip({ thread, onError }: { thread: Thread; onError: OnError }) {
   const theme = useTheme()
   const [open, setOpen] = useState(false)
-  const { models } = useThreadModels(thread)
-  const modelLabel = models.find((model) => model.id === thread.model)?.label ?? thread.model
+  const { providerLabel, modelLabel, effortText } = useSettingsSummary(thread)
   return (
     <>
       <Pressable
         testID="composer-settings"
         accessibilityRole="button"
         accessibilityLabel={copy("mobile_composer_settings")}
-        accessibilityValue={{ text: `${providers[thread.provider].label}, ${modelLabel}` }}
+        accessibilityValue={{
+          text: [providerLabel, modelLabel, effortText].filter(Boolean).join(", "),
+        }}
         onPress={() => setOpen(true)}
         hitSlop={{ top: (HIT - CHIP_HEIGHT) / 2, bottom: (HIT - CHIP_HEIGHT) / 2 }}
         style={({ pressed }) => [
@@ -624,9 +671,10 @@ function SettingsChip({ thread, onError }: { thread: Thread; onError: OnError })
           pressed && [styles.pressed, { backgroundColor: theme.inkWash }],
         ]}
       >
-        <Icon name={providers[thread.provider].icon} size={14} color={theme.textMuted} />
+        <ProviderMark provider={thread.provider} size={14} />
         <Text numberOfLines={1} style={[styles.chipLabel, { color: theme.text }]}>
           {modelLabel}
+          {effortText !== null && <Text style={{ color: theme.textMuted }}>{` · ${effortText}`}</Text>}
         </Text>
         {thread.accessMode === "full" && <Icon name={accessModes.full.icon} size={14} color={theme.danger} />}
         <Icon name="ChevronDown" size={12} color={theme.textMuted} />
@@ -636,20 +684,27 @@ function SettingsChip({ thread, onError }: { thread: Thread; onError: OnError })
   )
 }
 
-function SettingsSheet({
+/**
+ * Every setting the desktop composer spreads across its toolbar. The agent can change until the first message;
+ * `isNew` says so before the thread's history has loaded, as for a draft the new-thread sheet just opened.
+ */
+export function SettingsSheet({
   thread,
   open,
   onClose,
   onError,
+  isNew = false,
 }: {
   thread: Thread
   open: boolean
   onClose: () => void
   onError: OnError
+  isNew?: boolean
 }) {
   const now = useNow()
+  const scheme = useScheme()
   const { models, current } = useThreadModels(thread)
-  const unstarted = useUnstarted(thread)
+  const unstarted = useUnstarted(thread) || isNew
   const options = useServerOptions(useThreadServer(thread.id)?.id, open, onError)
   const shownModels = presetModels(models, options?.settings.modelPresets[thread.provider] ?? [], thread.model)
   const accounts =
@@ -690,6 +745,7 @@ function SettingsSheet({
                   key={provider}
                   label={providers[provider].label}
                   icon={providers[provider].icon}
+                  iconColor={ProviderColors[scheme][provider]}
                   selected={provider === thread.provider}
                   onPress={() => provider !== thread.provider && void updateThread({ id: thread.id, provider }, onError)}
                 />
@@ -789,9 +845,9 @@ function ToggleRow({
 
 const styles = StyleSheet.create({
   composer: { paddingHorizontal: 12, paddingBottom: 12, paddingTop: 4, gap: 6 },
-  dock: { borderRadius: COMPOSER_RADIUS, overflow: "hidden", marginHorizontal: 12, marginBottom: 12, paddingTop: 12 },
   bar: { borderRadius: COMPOSER_RADIUS, borderWidth: StyleSheet.hairlineWidth, padding: 10, paddingTop: 12, gap: 10 },
   raised: { boxShadow: "0 4px 16px rgba(0, 0, 0, 0.06)" },
+  barGlass: { borderRadius: COMPOSER_RADIUS, overflow: "hidden" },
   input: {
     minHeight: LINE_HEIGHT + INPUT_PADDING * 2,
     maxHeight: LINE_HEIGHT * MAX_LINES + INPUT_PADDING * 2,

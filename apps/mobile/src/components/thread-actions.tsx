@@ -248,11 +248,14 @@ export function ThreadActionsSheet({
   open,
   onClose,
   state,
+  onOpenTerminal,
 }: {
   thread: Thread
   open: boolean
   onClose: () => void
   state: ReturnType<typeof useThreadActions>
+  /** Shown on a thread's own screen, where the terminal opens from this sheet rather than the tab bar. */
+  onOpenTerminal?: () => void
 }) {
   const theme = useTheme()
   const title = thread.title || copy("mobile_home_untitled")
@@ -281,41 +284,64 @@ export function ThreadActionsSheet({
   return (
     <Sheet title={title} open={open} onClose={close} fit>
       {state.renaming ? (
-        <RenameForm thread={thread} busy={state.running === "rename"} onSave={(next) => void state.rename(next).then((done) => done && onClose())} />
+        <RenameForm
+          thread={thread}
+          busy={state.running === "rename"}
+          onSave={(next) => void state.rename(next).then((done) => done && onClose())}
+        />
       ) : (
-        actionGroups(state.actions).map((group) => (
-          <GroupedCard key={group[0]!.name} inset={16}>
-            {group.map((action) => {
-              const done = copied && action.name === "copy-id"
-              const label = done ? copy("mobile_thread_actions_copied") : action.label
-              const color = action.destructive === true ? theme.danger : theme.text
-              return (
-                <Pressable
-                  key={action.name}
-                  testID={`thread-action-${action.name}`}
-                  accessibilityRole="button"
-                  accessibilityLabel={label}
-                  aria-busy={state.running === action.name}
-                  aria-disabled={busy}
-                  disabled={busy}
-                  onPress={() => void run(action.name)}
-                  style={({ pressed }) => [sheetStyles.option, pressed && { backgroundColor: theme.sheetRaised }]}
-                >
-                  <Text style={[styles.actionLabel, { color }]}>{label}</Text>
-                  {state.running === action.name ? (
-                    <Spinner size={18} color={color} />
-                  ) : (
-                    <IconSwap
-                      showSecond={done}
-                      first={<Icon name={action.icon} size={20} color={color} />}
-                      second={<Icon name="Check" size={20} color={theme.running} />}
-                    />
-                  )}
-                </Pressable>
-              )
-            })}
-          </GroupedCard>
-        ))
+        <>
+          {onOpenTerminal !== undefined && (
+            <GroupedCard inset={16}>
+              <Pressable
+                testID="thread-action-terminal"
+                accessibilityRole="button"
+                accessibilityLabel={copy("mobile_thread_tab_terminal")}
+                onPress={() => {
+                  onClose()
+                  onOpenTerminal()
+                }}
+                style={({ pressed }) => [sheetStyles.option, pressed && { backgroundColor: theme.sheetRaised }]}
+              >
+                <Text style={[styles.actionLabel, { color: theme.text }]}>{copy("mobile_thread_tab_terminal")}</Text>
+                <Icon name="Terminal" size={20} color={theme.text} />
+              </Pressable>
+            </GroupedCard>
+          )}
+          {actionGroups(state.actions).map((group) => (
+            <GroupedCard key={group[0]!.name} inset={16}>
+              {group.map((action) => {
+                const done = copied && action.name === "copy-id"
+                const label = done ? copy("mobile_thread_actions_copied") : action.label
+                const color = action.destructive === true ? theme.danger : theme.text
+                return (
+                  <Pressable
+                    key={action.name}
+                    testID={`thread-action-${action.name}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={label}
+                    aria-busy={state.running === action.name}
+                    aria-disabled={busy}
+                    disabled={busy}
+                    onPress={() => void run(action.name)}
+                    style={({ pressed }) => [sheetStyles.option, pressed && { backgroundColor: theme.sheetRaised }]}
+                  >
+                    <Text style={[styles.actionLabel, { color }]}>{label}</Text>
+                    {state.running === action.name ? (
+                      <Spinner size={18} color={color} />
+                    ) : (
+                      <IconSwap
+                        showSecond={done}
+                        first={<Icon name={action.icon} size={20} color={color} />}
+                        second={<Icon name="Check" size={20} color={theme.running} />}
+                      />
+                    )}
+                  </Pressable>
+                )
+              })}
+            </GroupedCard>
+          ))}
+        </>
       )}
       {state.error !== null && <Notice text={state.error} tone="danger" />}
     </Sheet>

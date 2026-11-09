@@ -67,7 +67,8 @@
           }
         }
       ],
-      "expo-localization"
+      "expo-localization",
+      "./plugins/compact-tab-bar.js"
     ],
     "experiments": {
       "typedRoutes": true,

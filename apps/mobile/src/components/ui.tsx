@@ -165,7 +165,7 @@ export function ConnectionBadge({ status }: { status: ConnectionStatus }) {
   )
 }
 
-const providerMark: Record<ProviderId, IconName> = {
+export const providerMark: Record<ProviderId, IconName> = {
   claude: "RiClaudeFill",
   codex: "RiOpenaiFill",
   muse: "RiMetaFill",
@@ -186,7 +186,7 @@ export function ProviderLabel({ provider, size = 13 }: { provider: ProviderId; s
   const theme = useTheme()
   return (
     <View style={styles.provider}>
-      <Icon name={providerMark[provider]} size={14} color={theme.textMuted} />
+      <ProviderMark provider={provider} size={14} />
       <Text style={{ color: theme.textMuted, fontSize: size }}>{providerName[provider]}</Text>
     </View>
   )
@@ -380,8 +380,9 @@ export function UnderlineTabs<T extends string>({
             styles.underline,
             {
               backgroundColor: theme.text,
-              transform: [{ translateX: active.x }, { scaleX: active.width }],
-              transitionProperty: "transform",
+              width: active.width,
+              transform: [{ translateX: active.x }],
+              transitionProperty: ["transform", "width"],
               ...transition,
             },
           ]}
@@ -400,7 +401,7 @@ const styles = StyleSheet.create({
   lineTabs: { flexDirection: "row" },
   lineTab: { minHeight: HIT, justifyContent: "center", paddingHorizontal: 10 },
   lineTabLabel: { fontSize: 15, fontWeight: "500" },
-  underline: { position: "absolute", left: 0, bottom: 0, width: 1, height: 2, transformOrigin: "left" },
+  underline: { position: "absolute", left: 0, bottom: 0, height: 2 },
   segments: { flexDirection: "row", padding: SEGMENT_GAP, gap: SEGMENT_GAP, borderRadius: radius.md + SEGMENT_GAP },
   thumb: {
     position: "absolute",

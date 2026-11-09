@@ -1,8 +1,9 @@
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router"
 import { useHeaderHeight } from "expo-router/react-navigation"
-import { useCallback, useState } from "react"
+import { type ReactNode, useCallback, useState } from "react"
 import { AppState, KeyboardAvoidingView, StyleSheet, Text, useWindowDimensions, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
+import { ArtifactList } from "@/components/artifact-list"
 import { Chat } from "@/components/chat"
 import { FilesPanel } from "@/components/files"
 import { isIOS } from "@/components/glass"
@@ -29,7 +30,7 @@ import { useThreads } from "@/stores/threads"
 import { useUnseen } from "@/stores/unseen"
 
 /** Room the native header keeps for its back and menu items on each side of a custom title. */
-const HEADER_ITEMS_WIDTH = 120
+const HEADER_ITEMS_WIDTH = 72
 
 export default function ThreadScreen() {
   const theme = useTheme()
@@ -82,7 +83,7 @@ export default function ThreadScreen() {
             }}
           />
           {split && <SidebarToolbarButton />}
-          {thread !== undefined && <ThreadMenu thread={thread} />}
+          {thread !== undefined && <ThreadMenu thread={thread} onOpenTerminal={() => select("terminal")} />}
         </>
       ) : (
         <Stack.Screen options={{ headerShown: false }} />
@@ -102,18 +103,18 @@ export default function ThreadScreen() {
             />
           )}
           <ThreadTitle title={title} thread={thread} tab={tab} waiting={waiting} />
-          {thread === undefined ? <View style={styles.headerSlot} /> : <ThreadActionsButton thread={thread} />}
+          {thread === undefined ? (
+            <View style={styles.headerSlot} />
+          ) : (
+            <ThreadActionsButton thread={thread} onOpenTerminal={() => select("terminal")} />
+          )}
         </View>
       )}
-      {/* Lined up with the chat column below it. */}
-      <View style={styles.readable}>
-        {thread !== undefined && <ThreadControlBar thread={thread} tab={tab} onSelect={select} />}
-        {status !== "connected" && (
-          <View style={styles.banner}>
-            <Notice text={copy("mobile_reconnecting_banner")} tone="attention" />
-          </View>
-        )}
-      </View>
+      {status !== "connected" && (
+        <View style={[styles.readable, styles.banner]}>
+          <Notice text={copy("mobile_reconnecting_banner")} tone="attention" />
+        </View>
+      )}
       {thread === undefined ? (
         <View style={styles.missing}>
           <Text style={{ color: theme.textMuted, fontSize: 15 }}>
@@ -123,35 +124,66 @@ export default function ThreadScreen() {
       ) : (
         // Android draws edge to edge, so the window no longer shrinks for the keyboard and needs padding too.
         <KeyboardAvoidingView style={styles.flex} behavior="padding" keyboardVerticalOffset={headerHeight}>
-          <View style={[styles.flex, styles.readable, tab !== "chat" && styles.hidden]}>
-            <Chat thread={thread} active={tab === "chat"} />
+          <View style={styles.flex}>
+            <TabPanel shown={tab === "chat"} readable>
+              <Chat thread={thread} active={tab === "chat"} />
+            </TabPanel>
+            {opened.has("files") && (
+              <TabPanel shown={tab === "files"} readable>
+                <FilesPanel thread={thread} />
+              </TabPanel>
+            )}
+            {tab === "prs" && <PullRequests thread={thread} />}
+            {tab === "artifacts" && (
+              <TabPanel shown readable>
+                <ArtifactList threadId={thread.id} />
+              </TabPanel>
+            )}
+            {opened.has("terminal") && (
+              <TabPanel shown={tab === "terminal"}>
+                <TerminalPanel threadId={thread.id} />
+              </TabPanel>
+            )}
           </View>
-          {opened.has("files") && (
-            <View style={[styles.flex, styles.readable, tab !== "files" && styles.hidden]}>
-              <FilesPanel thread={thread} />
-            </View>
-          )}
-          {tab === "prs" && <PullRequests thread={thread} />}
-          {opened.has("terminal") && (
-            <View style={[styles.flex, tab !== "terminal" && styles.hidden]}>
-              <TerminalPanel threadId={thread.id} />
-            </View>
-          )}
         </KeyboardAvoidingView>
       )}
+      {/* Below the keyboard's reach, so typing covers the tabs instead of lifting them over the composer. */}
+      {thread !== undefined && <ThreadControlBar tab={tab} onSelect={select} />}
     </SafeAreaView>
+  )
+}
+
+/**
+ * A tab kept mounted behind the shown one at full size, invisible and out of reach. Hiding it with `display: none`
+ * would collapse its list to no height, and the list would lose its scroll position when it came back.
+ */
+function TabPanel({ shown, readable = false, children }: { shown: boolean; readable?: boolean; children: ReactNode }) {
+  return (
+    <View
+      pointerEvents={shown ? "auto" : "none"}
+      accessibilityElementsHidden={!shown}
+      importantForAccessibility={shown ? "auto" : "no-hide-descendants"}
+      style={[StyleSheet.absoluteFill, !shown && styles.offstage]}
+    >
+      <View style={[styles.flex, readable && styles.readable]}>{children}</View>
+    </View>
   )
 }
 
 /**
  * The thread's actions in the native iOS header menu, with the same behavior as the list's long-press sheet.
  */
-function ThreadMenu({ thread }: { thread: Thread }) {
+function ThreadMenu({ thread, onOpenTerminal }: { thread: Thread; onOpenTerminal: () => void }) {
   const state = useThreadActions(thread)
   return (
     <>
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Menu icon="ellipsis.circle" accessibilityLabel={copy("mobile_thread_actions")}>
+          <Stack.Toolbar.Menu inline>
+            <Stack.Toolbar.MenuAction icon="apple.terminal" onPress={onOpenTerminal}>
+              {copy("mobile_thread_tab_terminal")}
+            </Stack.Toolbar.MenuAction>
+          </Stack.Toolbar.Menu>
           {state.actions.map((action) => (
             <Stack.Toolbar.MenuAction
               key={action.name}
@@ -177,7 +209,7 @@ function ThreadMenu({ thread }: { thread: Thread }) {
 const leave = () => (router.canGoBack() ? router.back() : router.replace("/"))
 
 /** Android's header button for the actions iOS shows as a native menu, with the same sheet the list opens. */
-function ThreadActionsButton({ thread }: { thread: Thread }) {
+function ThreadActionsButton({ thread, onOpenTerminal }: { thread: Thread; onOpenTerminal: () => void }) {
   const theme = useTheme()
   const state = useThreadActions(thread)
   const [open, setOpen] = useState(false)
@@ -190,7 +222,13 @@ function ThreadActionsButton({ thread }: { thread: Thread }) {
         onPress={() => setOpen(true)}
         style={roundButton(theme)}
       />
-      <ThreadActionsSheet thread={thread} open={open} onClose={() => setOpen(false)} state={state} />
+      <ThreadActionsSheet
+        thread={thread}
+        open={open}
+        onClose={() => setOpen(false)}
+        state={state}
+        onOpenTerminal={onOpenTerminal}
+      />
     </>
   )
 }
@@ -253,7 +291,7 @@ const roundButton = (theme: Palette) => ({
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   flex: { flex: 1 },
-  hidden: { display: "none" },
+  offstage: { opacity: 0 },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -264,7 +302,7 @@ const styles = StyleSheet.create({
   headerSlot: { width: 44 },
   readable: { width: "100%", maxWidth: READABLE_WIDTH, alignSelf: "center" },
   titleBlock: { alignItems: "center", gap: 2 },
-  title: { fontSize: 17, lineHeight: 22, fontWeight: "600" },
+  title: { fontSize: 17, lineHeight: 22, fontWeight: "600", textAlign: "center" },
   subtitle: { flexDirection: "row", alignItems: "center", gap: 6, maxWidth: "100%" },
   dot: { width: 7, height: 7, borderRadius: radius.full },
   subtitleText: { flexShrink: 1, fontSize: 13, lineHeight: 17 },

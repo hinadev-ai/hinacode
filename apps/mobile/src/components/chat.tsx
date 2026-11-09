@@ -18,8 +18,8 @@ import { liquidGlass } from "@/components/glass"
 import { Icon } from "@/components/icon"
 import { Markdown } from "@/components/markdown"
 import { FadeIn, Pulse, Rotate } from "@/components/motion"
-import { SubagentCall, SubagentTray } from "@/components/subagents"
-import { TodoTray } from "@/components/todo-tray"
+import { ActivityTray } from "@/components/activity-tray"
+import { SubagentCall } from "@/components/subagents"
 import { FileChangeRow, ToolCallRow } from "@/components/tool-call"
 import { Button, Notice } from "@/components/ui"
 import { rise } from "@/constants/motion"
@@ -148,8 +148,7 @@ export function Chat({ thread, active }: { thread: Thread; active: boolean }) {
               ))}
           </ScrollView>
         )}
-        <SubagentTray thread={thread} />
-        {messages !== undefined && <TodoTray thread={thread} messages={messages} />}
+        <ActivityTray thread={thread} messages={messages} />
         <Composer thread={thread} />
       </View>
     </View>
@@ -275,6 +274,7 @@ function WorkedFor({
       accessibilityLabel={label}
       accessibilityHint={copy(expanded ? "mobile_chat_hide_activity" : "mobile_chat_show_activity")}
       aria-expanded={expanded}
+      hitSlop={WORKED_FOR_SLOP}
       onPress={onToggle}
       style={row}
     >
@@ -367,11 +367,12 @@ function Reasoning({ text }: { text: string }) {
         accessibilityRole="button"
         aria-expanded={open}
         accessibilityLabel={copy("mobile_chat_reasoning")}
+        hitSlop={WORKED_FOR_SLOP}
         onPress={() => setOpen(!open)}
         style={styles.disclosure}
       >
         <Rotate turned={open}>
-          <Icon name="ChevronRight" size={16} color={theme.textMuted} />
+          <Icon name="ChevronRight" size={14} color={theme.textMuted} />
         </Rotate>
         <Text style={{ color: theme.textMuted, fontSize: 13 }}>
           {copy(open ? "mobile_chat_hide_reasoning" : "mobile_chat_reasoning")}
@@ -379,7 +380,7 @@ function Reasoning({ text }: { text: string }) {
       </Pressable>
       {open && (
         <FadeIn>
-          <Text selectable style={[styles.text, { color: theme.textMuted }]}>
+          <Text selectable style={[styles.reasoning, { color: theme.textMuted }]}>
             {text}
           </Text>
         </FadeIn>
@@ -387,6 +388,9 @@ function Reasoning({ text }: { text: string }) {
     </View>
   )
 }
+
+const WORKED_FOR_HEIGHT = 28
+const WORKED_FOR_SLOP = { top: (HIT - WORKED_FOR_HEIGHT) / 2, bottom: (HIT - WORKED_FOR_HEIGHT) / 2 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
@@ -410,13 +414,14 @@ const styles = StyleSheet.create({
   text: { fontSize: 15, lineHeight: 22 },
   pulse: { fontSize: 12 },
   workedFor: {
-    minHeight: HIT,
+    minHeight: WORKED_FOR_HEIGHT,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
   },
-  workedForText: { flexShrink: 1, fontSize: 14, fontVariant: ["tabular-nums"] },
-  disclosure: { minHeight: HIT, flexDirection: "row", alignItems: "center", gap: 4 },
+  workedForText: { flexShrink: 1, fontSize: 13, fontVariant: ["tabular-nums"] },
+  disclosure: { minHeight: WORKED_FOR_HEIGHT, flexDirection: "row", alignItems: "center", gap: 8 },
+  reasoning: { fontSize: 13, lineHeight: 19 },
   card: {
     marginHorizontal: 12,
     marginBottom: 8,

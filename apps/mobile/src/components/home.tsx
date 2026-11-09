@@ -1,9 +1,8 @@
 import type { Project, Thread } from "@shared/domain.ts"
 import { router } from "expo-router"
-import { type ReactNode, useEffect, useState } from "react"
-import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
-import Animated, { LayoutAnimationConfig } from "react-native-reanimated"
-import { liquidGlass } from "@/components/glass"
+import { type ReactNode, useEffect, useRef, useState } from "react"
+import { BackHandler, type FlatList, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
+import Animated, { LayoutAnimationConfig, useReducedMotion } from "react-native-reanimated"
 import { Icon, type IconName } from "@/components/icon"
 import { Reveal, Rotate, Spinner } from "@/components/motion"
 import { SearchField } from "@/components/search-field"
@@ -13,7 +12,7 @@ import { SectionLabel, ThreadRow } from "@/components/thread-row"
 import { resetThreadFilter, ThreadFilterPill } from "@/components/thread-filter"
 import { SearchResults } from "@/components/thread-search"
 import { Button, EmptyState, IconButton, Notice, type Tab, UnderlineTabs } from "@/components/ui"
-import { listEntering, listExiting, listLayout } from "@/constants/motion"
+import { cssEase, duration, listEntering, listExiting, listLayout } from "@/constants/motion"
 import { radius } from "@/constants/theme"
 import { useProjectServer, useThreadFilter } from "@/hooks/use-server"
 import { useTheme } from "@/hooks/use-theme"
@@ -24,7 +23,15 @@ import type { HomeTab } from "@/lib/preferences"
 import { createThread } from "@/lib/start-thread"
 import { withinFilter } from "@/lib/thread-filter"
 import { usePreferences } from "@/stores/preferences"
-import { archivedThreads, inboxThreads, listedThreads, pinnedThreads, sortThreads, useThreads } from "@/stores/threads"
+import {
+  archivedThreads,
+  inboxThreads,
+  listedThreads,
+  pinnedThreads,
+  settledThreads,
+  sortThreads,
+  useThreads,
+} from "@/stores/threads"
 
 /**
  * Pull requests, New thread and Settings, in the sidebar's header. A thread over the tabs hides the tab bar, so these
@@ -75,6 +82,9 @@ export function HomeContent({
   const loadError = useThreads((state) => state.error)
   const hasProjects = useThreads((state) => state.projects.length > 0)
   const [query, setQuery] = useState("")
+  const [searchShown, setSearchShown] = useState(true)
+  const [searchHeight, setSearchHeight] = useState<number>()
+  const reduced = useReducedMotion()
 
   useEffect(() => {
     if (query === "") return
@@ -159,17 +169,30 @@ export function HomeContent({
       {status}
       {hasProjects && (
         <>
-          <View style={styles.search}>
-            <SearchField
-              testID="thread-search"
-              value={query}
-              onChange={setQuery}
-              placeholder={copy("mobile_search_placeholder")}
-              clearLabel={copy("mobile_search_clear")}
-            />
-          </View>
+          <Animated.View
+            style={[
+              styles.searchClip,
+              searchHeight !== undefined && {
+                height: searchShown ? searchHeight : 0,
+                opacity: searchShown ? 1 : 0,
+                transitionProperty: ["height", "opacity"],
+                transitionDuration: reduced ? 0 : duration.base,
+                transitionTimingFunction: cssEase.out,
+              },
+            ]}
+          >
+            <View style={styles.search} onLayout={(event) => setSearchHeight(event.nativeEvent.layout.height)}>
+              <SearchField
+                testID="thread-search"
+                value={query}
+                onChange={setQuery}
+                placeholder={copy("mobile_search_placeholder")}
+                clearLabel={copy("mobile_search_clear")}
+              />
+            </View>
+          </Animated.View>
           {query.trim() === "" ? (
-            <HomeList selectedId={selectedId} header={filterRow} />
+            <HomeList selectedId={selectedId} header={filterRow} onScrollDirection={(up) => setSearchShown(up)} />
           ) : (
             <SearchResults query={query} header={filterRow} />
           )}
@@ -225,6 +248,17 @@ function homeItems(
         hint: copy("mobile_home_inbox_empty_hint"),
       })
     items.push(...threadItems("thread", inbox, true))
+  } else if (tab === "settled") {
+    const settled = settledThreads(threads)
+    if (settled.length === 0)
+      items.push({
+        kind: "empty",
+        key: "empty:settled",
+        icon: "CheckCircle",
+        title: copy("mobile_home_settled_empty"),
+        hint: copy("mobile_home_settled_empty_hint"),
+      })
+    items.push(...threadItems("thread", settled, true))
   } else if (tab === "archived") {
     const archived = archivedThreads(threads)
     if (archived.length === 0)
@@ -258,14 +292,20 @@ function homeItems(
   return items
 }
 
+/** Points a scroll event must move before it counts as a direction, so a resting finger's jitter does not flicker. */
+const SCROLL_INTENT = 4
+
 function HomeList({
   selectedId,
   nativeHeader = false,
   header,
+  onScrollDirection,
 }: {
   selectedId?: string
   nativeHeader?: boolean
   header?: ReactNode
+  /** Called with `true` when the list scrolls up or reaches the top, `false` when it scrolls down. */
+  onScrollDirection?: (up: boolean) => void
 }) {
   const theme = useTheme()
   const tab = usePreferences((state) => state.homeTab)
@@ -275,7 +315,15 @@ function HomeList({
   const listed = withinFilter(useThreadFilter(), projects, listedThreads(byId))
   const items = homeItems(tab, listed.projects, listed.threads, collapsed)
   const [shown, setShown] = useState(() => ({ tab, threadIds: threadIds(items) }))
+  const list = useRef<FlatList<HomeItem>>(null)
+  const scrollY = useRef(0)
+  const restoreY = useRef<number | null>(null)
   if (shown.tab !== tab) setShown({ tab, threadIds: threadIds(items) })
+
+  const selectTab = (homeTab: HomeTab) => {
+    restoreY.current = scrollY.current
+    usePreferences.getState().set({ homeTab })
+  }
 
   const toggle = (projectId: string) => {
     const next = new Set(collapsed)
@@ -283,7 +331,8 @@ function HomeList({
     setCollapsed(next)
   }
 
-  // A tab swaps its rows at once, as on the desktop; only moves within a tab slide.
+  // A tab swaps its rows at once, as on the desktop; only moves within a tab slide. The new tab's list opens where the
+  // last one was scrolled, so the tab strip stays under the finger.
   return (
     <LayoutAnimationConfig key={tab} skipEntering>
       <Animated.FlatList
@@ -296,7 +345,23 @@ function HomeList({
         itemLayoutAnimation={listLayout}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        contentContainerStyle={[styles.list, nativeHeader && !liquidGlass && styles.belowAccessory]}
+        ref={list}
+        onContentSizeChange={() => {
+          if (restoreY.current === null) return
+          list.current?.scrollToOffset({ offset: restoreY.current, animated: false })
+          restoreY.current = null
+        }}
+        onScroll={(event) => {
+          const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
+          const y = contentOffset.y
+          const moved = y - scrollY.current
+          const pastEnd = y + layoutMeasurement.height > contentSize.height
+          scrollY.current = y
+          if (y <= 0) onScrollDirection?.(true)
+          else if (!pastEnd && Math.abs(moved) > SCROLL_INTENT) onScrollDirection?.(moved < 0)
+        }}
+        scrollEventThrottle={16}
+        contentContainerStyle={[styles.list, nativeHeader && styles.belowNewThread]}
         ListHeaderComponent={<>{header}</>}
         renderItem={({ item }) => (
           <HomeRow
@@ -305,6 +370,7 @@ function HomeList({
             selectedId={selectedId}
             arrived={item.kind === "thread" && !shown.threadIds.has(item.thread.id)}
             onToggleProject={toggle}
+            onSelectTab={selectTab}
           />
         )}
       />
@@ -318,12 +384,14 @@ function HomeRow({
   selectedId,
   arrived,
   onToggleProject,
+  onSelectTab,
 }: {
   item: HomeItem
   tab: HomeTab
   selectedId?: string
   arrived: boolean
   onToggleProject: (projectId: string) => void
+  onSelectTab: (tab: HomeTab) => void
 }) {
   const theme = useTheme()
   switch (item.kind) {
@@ -334,7 +402,7 @@ function HomeRow({
         <UnderlineTabs
           tabs={homeTabs}
           value={tab}
-          onChange={(homeTab) => usePreferences.getState().set({ homeTab })}
+          onChange={onSelectTab}
           accessibilityLabel={copy("mobile_home_tabs")}
           style={styles.tabs}
         />
@@ -381,6 +449,7 @@ function HomeRow({
 const homeTabs: readonly Tab<HomeTab>[] = [
   { value: "inbox", label: copy("mobile_home_tab_inbox") },
   { value: "threads", label: copy("mobile_home_tab_threads") },
+  { value: "settled", label: copy("mobile_home_tab_settled") },
   { value: "archived", label: copy("mobile_home_tab_archived") },
 ]
 
@@ -441,10 +510,11 @@ const styles = StyleSheet.create({
   notice: { gap: 8, paddingHorizontal: 16, paddingTop: 8 },
   retry: { alignSelf: "flex-start" },
   loading: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 32 },
+  searchClip: { overflow: "hidden" },
   search: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 4 },
   filter: { alignItems: "flex-start", paddingHorizontal: 8, paddingVertical: 6 },
   list: { paddingHorizontal: 8, paddingBottom: 32 },
-  belowAccessory: { paddingBottom: 96 },
+  belowNewThread: { paddingBottom: 96 },
   tabs: { marginTop: 4, marginBottom: 6 },
   selected: { borderRadius: radius.md },
   project: { gap: 6, paddingTop: 6 },

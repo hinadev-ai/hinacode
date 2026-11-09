@@ -1,4 +1,5 @@
 import type { RpcRequest } from "@shared/contract.ts"
+import { inboxGroup, rowState } from "@shared/threadStatus.ts"
 import { create } from "zustand"
 import { isThreadBusy, type Project, type Thread, type Worktree } from "@shared/domain.ts"
 import { call } from "@/lib/connection"
@@ -144,8 +145,14 @@ export const pinnedThreads = (threads: readonly Thread[]) =>
  * Every active thread that is not pinned, newest activity first, as on the desktop. A thread that starts waiting
  * for the developer is updated then, so it rises to the top on its own.
  */
+/** The desktop's inbox rule: a settled thread leaves the inbox, unless it is working again. */
+const inboxGroupOf = (thread: Thread) => inboxGroup(rowState(thread.status, false, undefined, undefined), thread.settledAt)
+
 export const inboxThreads = (threads: readonly Thread[]) =>
-  threads.filter((thread) => thread.pinnedAt === null && thread.status !== "archived").sort(newestFirst)
+  threads.filter((thread) => thread.pinnedAt === null && inboxGroupOf(thread) === "ready").sort(newestFirst)
+
+export const settledThreads = (threads: readonly Thread[]) =>
+  threads.filter((thread) => thread.pinnedAt === null && inboxGroupOf(thread) === "settled").sort(newestFirst)
 
 export const archivedThreads = (threads: readonly Thread[]) =>
   threads.filter((thread) => thread.status === "archived").sort(newestFirst)

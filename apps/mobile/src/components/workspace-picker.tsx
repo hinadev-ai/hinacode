@@ -92,17 +92,22 @@ function filterRefs({ branches, pullRequests }: Refs, query: string) {
  * Where the first turn runs: the project root, switched to a branch or pull request on send, or a new
  * worktree forked from a branch or checked out from a pull request. Shown until the first message.
  */
-const refIcon = (ref: string) =>
+export const refIcon = (ref: string) =>
   ref === "" ? "Folder" : parsePullRequestSelector(ref) ? "RiGitPullRequestLine" : "Branch"
 
-export function WorkspaceChip({ thread, onError }: { thread: Thread; onError: (message: string) => void }) {
-  const theme = useTheme()
-  const [open, setOpen] = useState(false)
+/** Where the thread's first message will run: the picked workspace, else the branch checked out in the project root. */
+export function useWorkspace(thread: Thread) {
   const workspace = useDrafts((state) => state.workspaces[thread.id])
   const currentBranch = useCurrentBranch(thread.projectId)
   const mode = workspace?.mode ?? "local"
   const ref = workspace?.ref ?? currentBranch
-  const label = ref === "" ? copy("mobile_workspace_project_root") : ref
+  return { mode, ref, label: ref === "" ? copy("mobile_workspace_project_root") : ref }
+}
+
+export function WorkspaceChip({ thread, onError }: { thread: Thread; onError: (message: string) => void }) {
+  const theme = useTheme()
+  const [open, setOpen] = useState(false)
+  const { mode, ref, label } = useWorkspace(thread)
 
   return (
     <>
@@ -132,7 +137,7 @@ export function WorkspaceChip({ thread, onError }: { thread: Thread; onError: (m
   )
 }
 
-function WorkspaceSheet({
+export function WorkspaceSheet({
   thread,
   workspace,
   open,

@@ -2,11 +2,12 @@ import { Stack } from "expo-router"
 import { useState } from "react"
 import { StyleSheet, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
-import { isIOS, liquidGlass } from "@/components/glass"
+import { isIOS } from "@/components/glass"
 import { HomeContent } from "@/components/home"
 import { HomeHeaderButtons, HomeToolbar } from "@/components/home-header"
-import { FloatingNewThreadAccessory } from "@/components/new-thread-accessory"
+import { NewThreadButton } from "@/components/new-thread-button"
 import { NewThreadSheet } from "@/components/new-thread-sheet"
+import { useSideRail } from "@/hooks/use-side-rail"
 import { SidebarButton, SidebarToolbarButton } from "@/components/thread-sidebar"
 import { Button, EmptyState } from "@/components/ui"
 import { useSidebar, useSplitLayout } from "@/hooks/use-split-layout"
@@ -18,6 +19,7 @@ export default function HomeScreen() {
   const split = useSplitLayout()
   const [newThreadOpen, setNewThreadOpen] = useState(false)
   const sidebar = useSidebar()
+  const railed = useSideRail() > 0
 
   // In a wide window the list is the sidebar, so this route is the detail side with nothing open yet.
   if (split)
@@ -61,12 +63,8 @@ export default function HomeScreen() {
       />
       {isIOS && <HomeToolbar />}
       <HomeContent />
-      {!liquidGlass && (
-        <>
-          <FloatingNewThreadAccessory onPress={() => setNewThreadOpen(true)} />
-          <NewThreadSheet open={newThreadOpen} onClose={() => setNewThreadOpen(false)} />
-        </>
-      )}
+      {!railed && <NewThreadButton onPress={() => setNewThreadOpen(true)} />}
+      <NewThreadSheet open={newThreadOpen} onClose={() => setNewThreadOpen(false)} />
     </>
   )
 }

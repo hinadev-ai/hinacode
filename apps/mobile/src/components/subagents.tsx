@@ -1,16 +1,17 @@
 import type { Subagent, SubagentStatus } from "@shared/agent.ts"
-import type { MessagePart, Thread } from "@shared/domain.ts"
-import { inFlight, inputField, statusOfCall } from "@shared/subagents.ts"
+import type { MessagePart } from "@shared/domain.ts"
+import { inputField, statusOfCall } from "@shared/subagents.ts"
 import { formatWorkDuration } from "@shared/workDuration.ts"
 import { router } from "expo-router"
 import { useEffect, useState } from "react"
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
+import { ActivityMeter, LINE_HEIGHT } from "@/components/activity-meter"
 import { Icon, type IconName } from "@/components/icon"
 import { FadeIn, Rotate } from "@/components/motion"
 import { HIT, mono, type Palette, radius } from "@/constants/theme"
 import { useTheme } from "@/hooks/use-theme"
 import { copy, locale } from "@/lib/copy"
-import { useSubagentByCallId, useThreadSubagents } from "@/stores/subagents"
+import { useSubagentByCallId } from "@/stores/subagents"
 
 type ToolCall = Extract<MessagePart, { type: "tool_call" }>
 
@@ -167,13 +168,23 @@ const segmentColor = (theme: Palette, status: SubagentStatus) =>
         ? theme.textMuted
         : theme.border
 
-export function SubagentTray({ thread }: { thread: Thread }) {
+/**
+ * The thread's sub-agents as one line of the activity tray: how many run, how many failed and the newest one, expanding
+ * to a row per sub-agent that opens its work.
+ */
+export function SubagentActivity({
+  threadId,
+  subagents,
+  expanded,
+  onToggle,
+}: {
+  threadId: string
+  subagents: readonly Subagent[]
+  expanded: boolean
+  onToggle: () => void
+}) {
   const theme = useTheme()
-  const [expanded, setExpanded] = useState(false)
-  const subagents = inFlight(useThreadSubagents(thread.id))
-  const now = useSecondClock(expanded && subagents.length > 0)
-  if (subagents.length === 0) return null
-
+  const now = useSecondClock(expanded)
   const running = subagents.filter((subagent) => subagent.status === "running")
   const failed = subagents.filter((subagent) => subagent.status === "failed").length
   const newest = running.at(-1)
@@ -181,34 +192,25 @@ export function SubagentTray({ thread }: { thread: Thread }) {
   const failedText = failed > 0 ? copy("mobile_subagent_batch_failed", { count: String(failed) }) : null
 
   return (
-    <View testID="subagent-tray" style={[styles.tray, { borderColor: theme.border, backgroundColor: theme.background }]}>
+    <View testID="subagent-activity">
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={[copy("mobile_subagent_list_label"), progress, failedText].filter(Boolean).join(", ")}
         aria-expanded={expanded}
-        onPress={() => setExpanded(!expanded)}
+        onPress={onToggle}
         style={styles.header}
       >
-        <View style={styles.meter}>
-          {subagents.map((subagent) => (
-            <View
-              key={subagent.id}
-              style={[styles.segment, { backgroundColor: segmentColor(theme, subagent.status) }]}
-            />
-          ))}
-        </View>
+        <ActivityMeter
+          segments={subagents.map((subagent) => ({ key: subagent.id, color: segmentColor(theme, subagent.status) }))}
+        />
         <Text style={[styles.progress, { color: theme.textMuted }]}>{progress}</Text>
         {failedText !== null && <Text style={[styles.progress, { color: theme.danger }]}>{failedText}</Text>}
-        {!expanded && newest !== undefined && (
-          <Text numberOfLines={1} style={[styles.newest, { color: theme.text }]}>
-            {newest.label}
-          </Text>
-        )}
-        <View style={styles.chevron}>
-          <Rotate turned={expanded}>
-            <Icon name="ChevronRight" size={16} color={theme.textMuted} />
-          </Rotate>
-        </View>
+        <Text numberOfLines={1} style={[styles.newest, { color: theme.text }]}>
+          {newest?.label}
+        </Text>
+        <Rotate turned={expanded}>
+          <Icon name="ChevronRight" size={16} color={theme.textMuted} />
+        </Rotate>
       </Pressable>
       {expanded && (
         <FadeIn>
@@ -218,7 +220,7 @@ export function SubagentTray({ thread }: { thread: Thread }) {
             contentContainerStyle={styles.list}
           >
             {[...subagents].reverse().map((subagent) => (
-              <SubagentRow key={subagent.id} threadId={thread.id} subagent={subagent} now={now} />
+              <SubagentRow key={subagent.id} threadId={threadId} subagent={subagent} now={now} />
             ))}
           </ScrollView>
         </FadeIn>
@@ -241,19 +243,9 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   callText: { flex: 1, fontFamily: mono, fontSize: 13 },
-  tray: {
-    marginHorizontal: 12,
-    marginBottom: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.lg,
-    overflow: "hidden",
-  },
-  header: { minHeight: HIT, flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 12, paddingRight: 8 },
-  meter: { width: 40, height: 6, flexDirection: "row", gap: 1, borderRadius: radius.full, overflow: "hidden" },
-  segment: { flex: 1 },
+  header: { minHeight: LINE_HEIGHT, flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 12, paddingRight: 8 },
   progress: { fontSize: 13, fontVariant: ["tabular-nums"] },
   newest: { flex: 1, minWidth: 0, fontSize: 13 },
-  chevron: { marginLeft: "auto" },
   list: { paddingHorizontal: 4, paddingBottom: 6 },
   row: {
     minHeight: ROW_HEIGHT,
