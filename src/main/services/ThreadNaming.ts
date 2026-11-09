@@ -40,7 +40,7 @@ export class ThreadNaming extends Context.Service<
   }
 >()("hinacode/ThreadNaming") {}
 
-const suggest = (model: string, prompt: string) =>
+export const suggest = (model: string, prompt: string) =>
   Effect.gen(function* () {
     const pathToClaudeCodeExecutable = yield* installedBinary("claude", "claude")
     const output = yield* Effect.tryPromise({
