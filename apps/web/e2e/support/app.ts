@@ -76,7 +76,7 @@ export const addProject = async (page: Page, path: string, name: string) => {
 export const startThread = async (page: Page, web: WebStack, project: string) => {
   await page.getByRole("button", { name: `New thread in ${project}`, exact: true }).click()
   await expect(
-    page.getByRole("heading", { name: `What do you want to work on ${project} in ${web.machine.name}?`, exact: true }),
+    page.getByRole("heading", { name: `What do you want to do in ${project} on ${web.machine.name}?`, exact: true }),
   ).toBeVisible()
 }
 
