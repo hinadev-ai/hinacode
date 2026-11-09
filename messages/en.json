@@ -571,17 +571,6 @@
   "agents_status_failed": "Failed",
   "agents_status_stopped": "Stopped",
   "agents_last_tool": "Last tool: {tool}",
-  "agents_tools": [
-    {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
-      "match": {
-        "countPlural=one": "{count} tool",
-        "countPlural=other": "{count} tools"
-      }
-    }
-  ],
-  "agents_tokens": "{tokens} tokens",
   "agents_untitled": "Sub-agent",
   "agents_back": "Back to {name}",
   "agents_missing": "Nothing is recorded for this sub-agent.",

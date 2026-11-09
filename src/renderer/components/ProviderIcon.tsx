@@ -1,6 +1,7 @@
 import { cn } from "cn"
 import { RiClaudeFill, RiMetaFill, RiOpenaiFill } from "react-icons/ri"
-import type { ProviderId } from "../../shared/agent.ts"
+import type { ProviderId, Subagent } from "../../shared/agent.ts"
+import type { Thread } from "../../shared/domain.ts"
 import { m } from "../paraglide/messages.js"
 import { MagpieLogoIcon } from "./icons/MagpieLogoIcon.tsx"
 import { OpencodeLogoIcon } from "./icons/OpencodeLogoIcon.tsx"
@@ -64,4 +65,20 @@ export function ThreadProviderIcon({
       />
     </span>
   )
+}
+
+export function SubagentProviderIcon({
+  subagent,
+  thread,
+  muted,
+  className,
+}: {
+  subagent: Pick<Subagent, "provider" | "model"> | undefined
+  thread: Pick<Thread, "provider" | "model">
+  muted?: boolean
+  className?: string
+}) {
+  const provider = subagent?.provider ?? thread.provider
+  const model = subagent?.model ?? (provider === thread.provider ? thread.model : "")
+  return <ThreadProviderIcon provider={provider} model={model} muted={muted} className={className} />
 }

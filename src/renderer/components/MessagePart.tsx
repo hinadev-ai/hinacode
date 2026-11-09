@@ -54,7 +54,7 @@ import { CopyButton } from "./CopyButton.tsx"
 import { FindPartContext, FindPatternContext, Highlighted } from "./FindHighlight.tsx"
 import { HighlightedCode } from "./HighlightedCode.tsx"
 import { Markdown } from "./Markdown.tsx"
-import { ProviderIcon, providerLabel } from "./ProviderIcon.tsx"
+import { ProviderIcon, providerLabel, SubagentProviderIcon } from "./ProviderIcon.tsx"
 import { StatusIndicator, useThreadRowState } from "./SidebarThreadList.tsx"
 import { SubagentStatusIcon } from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
@@ -277,16 +277,16 @@ function useFullOutput(shipped: ToolCall) {
 
 function SubagentCallPart({ part }: { part: Extract<MessagePart, { type: "tool_call" }> }) {
   const { threadId } = useParams({ from: "/thread/$threadId" })
-  const threadProvider = useThreads((state) => state.byId[threadId]?.provider)
+  const provider = useThreads((state) => state.byId[threadId]?.provider)
+  const model = useThreads((state) => state.byId[threadId]?.model ?? "")
   const subagent = useSubagentByCallId(threadId, part.callId)
-  const provider = subagent?.provider ?? threadProvider
   const open = useOpenSubagent(threadId)
   const { name, summary } = describeToolCall(part)
 
   return (
     <button type="button" onClick={() => open(part.callId)} className={`my-2 ${disclosureTrigger}`}>
       {provider ? (
-        <ProviderIcon provider={provider} muted className="text-current" />
+        <SubagentProviderIcon subagent={subagent} thread={{ provider, model }} muted className="text-current" />
       ) : (
         <ToolsIcon aria-hidden className="size-4 shrink-0" />
       )}

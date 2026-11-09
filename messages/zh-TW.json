@@ -571,17 +571,6 @@
   "agents_status_failed": "失敗",
   "agents_status_stopped": "已停止",
   "agents_last_tool": "最後使用的工具：{tool}",
-  "agents_tools": [
-    {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
-      "match": {
-        "countPlural=one": "{count} 個工具",
-        "countPlural=other": "{count} 個工具"
-      }
-    }
-  ],
-  "agents_tokens": "{tokens} tokens",
   "agents_untitled": "子代理",
   "agents_back": "返回 {name}",
   "agents_missing": "這個子代理沒有任何紀錄。",

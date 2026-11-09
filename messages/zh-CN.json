@@ -562,17 +562,6 @@
   "agents_status_failed": "失败",
   "agents_status_stopped": "已停止",
   "agents_last_tool": "最近使用的工具：{tool}",
-  "agents_tools": [
-    {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
-      "match": {
-        "countPlural=one": "{count} 个工具",
-        "countPlural=other": "{count} 个工具"
-      }
-    }
-  ],
-  "agents_tokens": "{tokens} tokens",
   "agents_untitled": "子智能体",
   "agents_back": "返回 {name}",
   "agents_missing": "这个子智能体没有任何记录。",

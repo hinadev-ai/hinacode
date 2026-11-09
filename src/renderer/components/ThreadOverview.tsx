@@ -40,7 +40,7 @@ import {
   RobotIcon,
   UnlinkIcon,
 } from "@hinacode/icons"
-import { ProviderIcon } from "./ProviderIcon.tsx"
+import { SubagentProviderIcon } from "./ProviderIcon.tsx"
 import {
   checksIndicator,
   pullRequestStatusLabel,
@@ -48,7 +48,7 @@ import {
   StatusIcon,
   statusIndicator,
 } from "./ThreadPullRequests.tsx"
-import { StopSubagentButton, SubagentStatusIcon, subagentStats, useNow, useThreadSubagents } from "./ThreadAgents.tsx"
+import { StopSubagentButton, SubagentStatusIcon, SubagentStats, useNow, useThreadSubagents } from "./ThreadAgents.tsx"
 import { Button } from "./ui/button.tsx"
 import {
   DropdownMenu,
@@ -609,13 +609,13 @@ function Subagents({ thread }: { thread: Thread }) {
                 onClick={() => callId !== null && open(callId)}
                 className={cn(rowClassName, "min-h-9 flex-1 py-0.5")}
               >
-                <ProviderIcon provider={subagent.provider ?? thread.provider} className="size-4" />
+                <SubagentProviderIcon subagent={subagent} thread={thread} className="size-4" />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate text-sm" title={subagent.label}>
                     {subagent.label}
                   </span>
                   <span className="truncate text-xs text-muted-foreground tabular-nums">
-                    {subagentStats(subagent, now)}
+                    <SubagentStats thread={thread} subagent={subagent} now={now} />
                   </span>
                 </span>
               </button>

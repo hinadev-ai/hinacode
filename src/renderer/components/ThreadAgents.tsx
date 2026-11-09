@@ -4,15 +4,17 @@ import { listMotion } from "../lib/listMotion.ts"
 import { AsyncResult } from "effect/reactivity"
 import { type ReactNode, useEffect, useState } from "react"
 import { toast } from "sonner"
-import type { Subagent, SubagentStatus } from "../../shared/agent.ts"
+import type { ModelInfo, Subagent, SubagentStatus } from "../../shared/agent.ts"
 import type { Thread } from "../../shared/domain.ts"
 import { errorMessage } from "../lib/errorMessage.ts"
-import { callPromise } from "../lib/rpc.ts"
+import { useThreadEnvironment } from "../lib/environments.ts"
+import { callPromise, modelsAtom } from "../lib/rpc.ts"
 import { cn } from "../lib/utils.ts"
 import { m } from "../paraglide/messages.js"
 import { getLocale } from "../paraglide/runtime.js"
 import { loadSubagentsAtom, useSubagents } from "../stores/subagents.ts"
-import { ProviderIcon } from "./ProviderIcon.tsx"
+import { effortLabel } from "./ComposerControls.tsx"
+import { SubagentProviderIcon } from "./ProviderIcon.tsx"
 import { useOpenSubagent } from "../lib/subagents.ts"
 import { Button } from "./ui/button.tsx"
 import { SkeletonList } from "./ui/skeleton.tsx"
@@ -78,9 +80,6 @@ export const formatElapsed = (ms: number) => {
     : formatUnit(seconds, "second")
 }
 
-export const formatTokens = (tokens: number) =>
-  new Intl.NumberFormat(getLocale(), { notation: "compact" }).format(tokens)
-
 const firstLine = (text: string) =>
   text
     .split("\n")
@@ -119,7 +118,7 @@ export function ThreadAgents({ thread }: { thread: Thread }) {
             key={subagent.id}
             threadId={thread.id}
             subagent={subagent}
-            provider={subagent.provider ?? thread.provider}
+            thread={thread}
             now={now}
             onOpen={callId === null ? undefined : () => open(callId)}
           />
@@ -129,10 +128,25 @@ export function ThreadAgents({ thread }: { thread: Thread }) {
   )
 }
 
-export const subagentStats = (subagent: Subagent, now: number) =>
+function useSubagentModel(thread: Thread, subagent: Subagent) {
+  const provider = subagent.provider ?? thread.provider
+  const listed = AsyncResult.getOrElse(
+    useAtomValue(modelsAtom(useThreadEnvironment(thread.id), provider)),
+    (): ReadonlyArray<ModelInfo> => [],
+  )
+  const model = subagent.model ?? (provider === thread.provider ? thread.model : null)
+  if (model === null) return null
+  const label = listed.find((candidate) => candidate.id === model)?.label ?? model
+  return subagent.effort ? `${label} · ${effortLabel(subagent.effort)}` : label
+}
+
+export function SubagentStats({ thread, subagent, now }: { thread: Thread; subagent: Subagent; now: number }) {
+  return subagentStats(subagent, now, useSubagentModel(thread, subagent))
+}
+
+const subagentStats = (subagent: Subagent, now: number, model: string | null) =>
   [
-    subagent.toolUses === null ? null : m.agents_tools({ count: subagent.toolUses }),
-    subagent.tokens ? m.agents_tokens({ tokens: formatTokens(subagent.tokens) }) : null,
+    model,
     formatElapsed((subagent.endedAt === null ? now : Date.parse(subagent.endedAt)) - Date.parse(subagent.startedAt)),
   ]
     .filter((stat) => stat !== null)
@@ -179,13 +193,13 @@ export function StopSubagentButton({
 function SubagentRow({
   threadId,
   subagent,
-  provider,
+  thread,
   now,
   onOpen,
 }: {
   threadId: string
   subagent: Subagent
-  provider: Thread["provider"]
+  thread: Thread
   now: number
   onOpen: (() => void) | undefined
 }) {
@@ -202,7 +216,7 @@ function SubagentRow({
             subagent.status === "running" && "text-muted-foreground",
           )}
         >
-          <ProviderIcon provider={provider} />
+          <SubagentProviderIcon subagent={subagent} thread={thread} />
           <span className="truncate" title={subagent.label}>
             {subagent.label}
           </span>
@@ -212,7 +226,9 @@ function SubagentRow({
             {detail}
           </span>
         )}
-        <span className="text-xs text-muted-foreground tabular-nums">{subagentStats(subagent, now)}</span>
+        <span className="text-xs text-muted-foreground tabular-nums">
+          <SubagentStats thread={thread} subagent={subagent} now={now} />
+        </span>
       </span>
     </>
   )
