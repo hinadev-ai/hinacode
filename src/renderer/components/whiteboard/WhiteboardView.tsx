@@ -111,6 +111,7 @@ function WhiteboardCanvas({
   )
 
   useEffect(() => {
+    sync.open()
     const stop = onPushEvent((event) => {
       if (event.type === "artifact.updated" && event.artifact.id === artifact.id)
         sync.published(event.artifact.revision)
