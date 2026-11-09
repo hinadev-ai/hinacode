@@ -1,8 +1,10 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, watch, writeFileSync } from "node:fs"
+import { createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
 import { Effect, Fiber, PubSub, Stream } from "effect"
+import { TestClock } from "effect/testing"
 import type { AgentEvent, RunTurnInput } from "../../../shared/agent.ts"
 import type { AccessMode } from "../../../shared/domain.ts"
 import { makeAcpProvider } from "./index.ts"
@@ -34,8 +36,52 @@ const setup = (env: Record<string, string> = {}) => {
       .split("\n")
       .filter(Boolean)
       .map((line) => JSON.parse(line))
-  return { provider, received }
+  return { provider, received, logPath }
 }
+
+const agentProcesses = Effect.acquireRelease(
+  Effect.callback<{ readonly path: string; readonly allExited: Effect.Effect<void>; readonly close: () => void }>(
+    (resume) => {
+      const path = join(mkdtempSync(join(tmpdir(), "kk-acp-lifeline-")), "agent.sock")
+      let started = 0
+      let open = 0
+      const waiters = new Set<() => void>()
+      const server = createServer((socket) => {
+        started++
+        open++
+        socket.resume()
+        socket.on("close", () => {
+          open--
+          for (const waiter of waiters) waiter()
+        })
+      })
+      const allExited = Effect.callback<void>((done) => {
+        const check = () => {
+          if (started === 0 || open > 0) return
+          waiters.delete(check)
+          done(Effect.void)
+        }
+        waiters.add(check)
+        check()
+        return Effect.sync(() => waiters.delete(check))
+      })
+      server.listen(path, () => resume(Effect.succeed({ path, allExited, close: () => server.close() })))
+    },
+  ),
+  ({ close }) => Effect.sync(close),
+)
+
+const loggedOnce = (logPath: string, method: string) =>
+  Effect.callback<void>((resume) => {
+    const check = () => {
+      if (!readFileSync(logPath, "utf8").includes(`"method":"${method}"`)) return
+      watcher.close()
+      resume(Effect.void)
+    }
+    const watcher = watch(logPath, check)
+    check()
+    return Effect.sync(() => watcher.close())
+  })
 
 const input = (fields: Partial<RunTurnInput> = {}): RunTurnInput => ({
   threadId: "t1",
@@ -354,6 +400,81 @@ describe("makeAcpProvider", () => {
         [{ headers: [{ name: "authorization", value: "Bearer test" }] }],
         [{ headers: [{ name: "authorization", value: "Bearer other" }] }],
       ])
+    }).pipe(Effect.scoped),
+  )
+})
+
+describe("an ACP agent that fails", () => {
+  it.live("fails the turn when the agent exits mid-turn, with its last words, and closes its open tool call", () =>
+    Effect.gen(function* () {
+      const agents = yield* agentProcesses
+      const { provider: make } = setup({ FAKE_ACP_LIFELINE: agents.path })
+      const provider = yield* make
+      const turn = yield* startTurn(provider, input({ prompt: "crash" }))
+      const error = yield* Fiber.join(turn.fiber).pipe(Effect.flip)
+      expect(error.message).toMatch(/exited \(code 3/)
+      expect(error.message).toContain("fatal: out of memory")
+      expect(turn.events.at(-1)).toStrictEqual({
+        type: "tool_call_finished",
+        callId: "call_build",
+        output: "Turn failed",
+        isError: true,
+      })
+      yield* agents.allExited
+
+      const next = yield* runToEnd(provider, input({ threadId: "t2" }))
+      expect(next.at(-1)?.type).toBe("turn_completed")
+    }).pipe(Effect.scoped),
+  )
+
+  it.live("skips stdout lines that are not JSON-RPC and notifications it cannot read", () =>
+    Effect.gen(function* () {
+      const { provider: make } = setup()
+      const provider = yield* make
+      const events = yield* runToEnd(provider, input({ prompt: "noise" }))
+      expect(events.filter((event) => event.type === "text_delta")).toStrictEqual([
+        { type: "text_delta", text: "echo: noise" },
+      ])
+      expect(events.at(-1)?.type).toBe("turn_completed")
+    }).pipe(Effect.scoped),
+  )
+
+  it.live("fails a turn whose prompt answer it cannot read, and stops the agent", () =>
+    Effect.gen(function* () {
+      const agents = yield* agentProcesses
+      const { provider: make } = setup({ FAKE_ACP_LIFELINE: agents.path })
+      const provider = yield* make
+      const error = yield* runToEnd(provider, input({ prompt: "malformed" })).pipe(Effect.flip)
+      expect(error.message).toBe("opencode sent an invalid session/prompt response")
+      yield* agents.allExited
+    }).pipe(Effect.scoped),
+  )
+
+  it.live("stops the agent process when the user stops the turn", () =>
+    Effect.gen(function* () {
+      const agents = yield* agentProcesses
+      const { provider: make } = setup({ FAKE_ACP_LIFELINE: agents.path })
+      const provider = yield* make
+      const held = yield* startTurn(provider, input({ prompt: "hold" }))
+      yield* held.until((event) => event.type === "tool_call_started")
+      yield* provider.interrupt("t1")
+      yield* Fiber.join(held.fiber)
+      yield* agents.allExited
+    }).pipe(Effect.scoped),
+  )
+
+  it.effect("gives up on an agent that never answers initialize, and stops it", () =>
+    Effect.gen(function* () {
+      const agents = yield* agentProcesses
+      const { provider: make, logPath } = setup({ FAKE_ACP_LIFELINE: agents.path, FAKE_ACP_SILENT_INITIALIZE: "1" })
+      const provider = yield* make
+      const turn = yield* startTurn(provider, input())
+      yield* loggedOnce(logPath, "initialize")
+      yield* TestClock.adjust("31 seconds")
+      const error = yield* Fiber.join(turn.fiber).pipe(Effect.flip)
+      expect(error.message).toMatch(/did not answer initialize/)
+      expect(turn.events).toStrictEqual([])
+      yield* agents.allExited
     }).pipe(Effect.scoped),
   )
 })

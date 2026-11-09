@@ -1,4 +1,5 @@
 import { appendFileSync, readFileSync } from "node:fs"
+import { connect } from "node:net"
 import { createInterface } from "node:readline"
 
 type Id = number | string
@@ -13,6 +14,9 @@ type Message = {
 const logPath = process.env["FAKE_ACP_LOG"]
 const legacyModels = process.env["FAKE_ACP_MODELS"] === "legacy"
 const authRequired = process.env["FAKE_ACP_AUTH"] === "required"
+const silentInitialize = process.env["FAKE_ACP_SILENT_INITIALIZE"] === "1"
+const lifeline = process.env["FAKE_ACP_LIFELINE"]
+if (lifeline !== undefined) connect(lifeline).on("error", () => {})
 
 const send = (message: object) => process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`)
 const update = (sessionId: string, body: object) =>
@@ -149,6 +153,23 @@ const prompt = async (message: Message) => {
     await new Promise<void>((resolve) => cancels.set(sessionId, resolve))
     return send({ id: message.id, result: { stopReason: "cancelled" } })
   }
+  if (text === "crash") {
+    update(sessionId, {
+      sessionUpdate: "tool_call",
+      toolCallId: "call_build",
+      title: "bash",
+      kind: "execute",
+      status: "in_progress",
+      rawInput: { command: "pnpm build" },
+    })
+    process.stderr.write("fatal: out of memory\n")
+    process.exit(3)
+  }
+  if (text === "noise") {
+    process.stdout.write("opencode v9 starting\n{not json\n")
+    send({ method: "session/update", params: { update: { sessionUpdate: "agent_message_chunk" } } })
+  }
+  if (text === "malformed") return send({ id: message.id, result: { stopReason: 42 } })
   if (text === "ask") {
     let cancelled = false
     cancels.set(sessionId, () => void (cancelled = true))
@@ -175,6 +196,7 @@ const handle = (message: Message) => {
   const params = message.params ?? {}
   switch (message.method) {
     case "initialize":
+      if (silentInitialize) return
       return send({
         id: message.id,
         result: {

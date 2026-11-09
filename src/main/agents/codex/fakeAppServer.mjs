@@ -9,7 +9,14 @@ const control = () => {
     return {}
   }
 }
-const send = (message) => process.stdout.write(`${JSON.stringify(message)}\n`)
+const send = (message) => {
+  if (control().noise) process.stdout.write('WARN codex_core: config.toml has an unknown key\n{"id": \n')
+  process.stdout.write(`${JSON.stringify(message)}\n`)
+}
+const crash = (code) => {
+  process.stderr.write("thread 'main' panicked at codex-rs/app-server/src/lib.rs: boom\n")
+  process.exit(code)
+}
 const completeTurn = (threadId, turnId, status) =>
   send({ method: "turn/completed", params: { threadId, turn: { id: turnId, status, error: null } } })
 
@@ -129,7 +136,14 @@ const reply = ({ id, method, params }) => {
     case "turn/start": {
       const turnId = `turn-${++turns}`
       send({ id, result: { turn: { id: turnId } } })
-      const { question, postedQuestions, unauthorized } = control()
+      const { question, postedQuestions, unauthorized, crashMidTurn } = control()
+      if (crashMidTurn) {
+        send({
+          method: "item/agentMessage/delta",
+          params: { threadId: params.threadId, turnId, itemId: "m", delta: "half" },
+        })
+        return crash(101)
+      }
       if (unauthorized) {
         const error = { message: "Your access token could not be refreshed", codexErrorInfo: "unauthorized" }
         send({ method: "error", params: { threadId: params.threadId, turnId, willRetry: false, error } })
@@ -241,7 +255,8 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   const message = JSON.parse(line)
   appendFileSync(process.env.FAKE_CODEX_LOG, `${line}\n`)
   if (message.id === undefined) return
-  const { stall, release } = control()
+  const { stall, release, crashOn } = control()
+  if (crashOn !== undefined && crashOn === message.method) return crash(1)
   if (stall?.includes(message.method) && !release) held.push(message)
   else reply(message)
 })

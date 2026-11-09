@@ -45,6 +45,9 @@ type Control = {
   backgroundTerminal?: boolean
   sessions?: { list: unknown; read: unknown; turnPages: ReadonlyArray<unknown> }
   skills?: import("./protocol.ts").SkillsListResponse["data"]
+  crashOn?: string
+  crashMidTurn?: boolean
+  noise?: boolean
 }
 type Received = {
   method?: string
@@ -400,6 +403,63 @@ describe("Codex Stop on a running turn", () => {
         yield* finishesSoon(running.fiber)
         expect(countOf("turn/interrupt")).toBe(1)
         expect(running.events.at(-1)).toStrictEqual({ type: "turn_failed", message: "Turn interrupted" })
+      }),
+    ),
+  )
+})
+
+describe("Codex app-server failures", () => {
+  it.live("fails a turn whose app-server crashes, with its last words, and starts a new one for the next turn", () =>
+    withProvider(
+      Effect.gen(function* () {
+        setControl({ crashMidTurn: true })
+        const crashed = yield* startTurn("thread-a")
+        const error = yield* finishesSoon(crashed.fiber).pipe(Effect.flip)
+        expect(error.message).toMatch(/exited \(code 101/)
+        expect(error.message).toContain("panicked")
+
+        setControl({})
+        const next = yield* startTurn("thread-a")
+        yield* finishesSoon(next.fiber)
+        expect(next.events.at(-1)?.type).toBe("turn_completed")
+        expect(countOf("initialize")).toBe(2)
+      }),
+    ),
+  )
+
+  it.live("says why the app-server would not start and how to see it", () =>
+    withProvider(
+      Effect.gen(function* () {
+        setControl({ crashOn: "initialize" })
+        const { fiber, events } = yield* startTurn("thread-a")
+        const error = yield* finishesSoon(fiber).pipe(Effect.flip)
+        expect(error.message).toMatch(/exited \(code 1/)
+        expect(error.message).toContain("panicked")
+        expect(error.message).toMatch(/Run `.*codex app-server` in a terminal/)
+        expect(events).toStrictEqual([])
+      }),
+    ),
+  )
+
+  it.live("skips lines on stdout that are not JSON-RPC messages", () =>
+    withProvider(
+      Effect.gen(function* () {
+        setControl({ noise: true })
+        const turn = yield* startTurn("thread-a")
+        yield* finishesSoon(turn.fiber)
+        expect(turn.events.at(-1)?.type).toBe("turn_completed")
+      }),
+    ),
+  )
+
+  it.live("fails the turn without starting an app-server when the account's CLI is missing", () =>
+    withProvider(
+      Effect.gen(function* () {
+        const provider = yield* CodexProvider
+        const missing: AccountHome = { dir: mkdtempSync(join(tmpdir(), "kk-codex-home-")), binary: "/nowhere/codex" }
+        const error = yield* provider.runTurn(input("thread-a", missing)).pipe(Stream.runCollect, Effect.flip)
+        expect(error).toMatchObject({ _tag: "AgentError", provider: "codex" })
+        expect(countOf("initialize")).toBe(0)
       }),
     ),
   )
