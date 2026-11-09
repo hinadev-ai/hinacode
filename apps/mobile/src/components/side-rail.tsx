@@ -22,7 +22,7 @@ const BUTTON_SIZE = 48
 export function SideRail() {
   const width = useSideRail()
   const insets = useSafeAreaInsets()
-  const segments = useSegments()
+  const segments: readonly string[] = useSegments()
   const [open, setOpen] = useState<"actions" | "new-thread" | null>(null)
   if (width === 0 || segments[0] !== "(tabs)") return null
   const onThreads = segments[1] === "(threads)"
