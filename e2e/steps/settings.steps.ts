@@ -1,3 +1,5 @@
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
 import { expect } from "@playwright/test"
 import { type ChosenModel, Given, Then, When } from "../support/fixtures.ts"
 import type { ProviderId } from "../../src/shared/agent.ts"
@@ -53,6 +55,17 @@ When("I open settings", async ({ app }) => {
 When("I go back to threads", async ({ app }) => {
   await app.page.getByRole("button", { name: "Back to threads", exact: true }).click()
   await expect(app.page.getByRole("navigation", { name: "Projects and threads" })).toBeVisible()
+})
+
+Given("the Claude Code CLI is installed", async ({ app }) => {
+  const bin = join(app.userData, "bin")
+  mkdirSync(bin, { recursive: true })
+  const claude = join(bin, "claude")
+  writeFileSync(claude, "#!/bin/sh\nexit 1\n")
+  chmodSync(claude, 0o755)
+  const { providerBinary } = await rpc(app.page, "settings.get", undefined)
+  await rpc(app.page, "settings.set", { providerBinary: { ...providerBinary, claude } })
+  await app.reload()
 })
 
 When("I open the settings section {string}", async ({ app }, section: string) => {

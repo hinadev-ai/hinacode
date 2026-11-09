@@ -19,6 +19,9 @@ export const AgentUpdate = Schema.Struct({
 })
 export type AgentUpdate = typeof AgentUpdate.Type
 
+export const AgentBinaryStatus = Schema.Struct({ installed: Schema.Boolean, path: Schema.NullOr(Schema.String) })
+export type AgentBinaryStatus = typeof AgentBinaryStatus.Type
+
 export const ModelInfo = Schema.Struct({
   id: Schema.String,
   label: Schema.String,
