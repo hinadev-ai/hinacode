@@ -117,6 +117,10 @@ const STDERR_TAIL_CHARS = 2000
 
 const STDERR_DRAIN_GRACE = Duration.millis(200)
 
+const stderrGrace = Effect.promise(
+  () => new Promise<void>((resolve) => setTimeout(resolve, Duration.toMillis(STDERR_DRAIN_GRACE)).unref()),
+)
+
 interface StderrTail {
   text: string
 }
@@ -616,9 +620,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
     }
 
     const endTurn = (session: Session, message: string) =>
-      Deferred.await(session.stderrDrained).pipe(
-        Effect.timeout(STDERR_DRAIN_GRACE),
-        Effect.ignore,
+      Effect.race(Deferred.await(session.stderrDrained), stderrGrace).pipe(
         Effect.andThen(
           Effect.sync(() =>
             emit(session, {
