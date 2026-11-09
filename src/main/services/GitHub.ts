@@ -51,6 +51,7 @@ import {
 } from "../../shared/github.ts"
 import { Events } from "./Events.ts"
 import { CommandError, LONG_TIMEOUT, makeExec, REMOTE_GIT_ARGS, REMOTE_GIT_ENV, type RunOptions } from "./Git.ts"
+import { findBinary } from "../agents/binary.ts"
 
 export class GitHubCliMissingError extends Schema.TaggedError<GitHubCliMissingError>()("GitHubCliMissingError", {}) {
   override get message(): string {
@@ -713,6 +714,7 @@ const decodePullRequestMatches = Schema.decodeUnknownEffect(
 export class GitHub extends Context.Service<
   GitHub,
   {
+    readonly installed: Effect.Effect<boolean>
     readonly auth: Effect.Effect<GitHubAuth, CommandError | GitHubRateLimitedError | Schema.SchemaError>
     readonly token: Effect.Effect<string, GitHubError>
     readonly run: (cwd: string, args: ReadonlyArray<string>) => Effect.Effect<string, GitHubError>
@@ -1113,6 +1115,7 @@ const make = Effect.gen(function* () {
     )
 
   return GitHub.of({
+    installed: Effect.promise(() => findBinary("gh")).pipe(Effect.map((path) => path !== undefined)),
     auth,
     token: ghUnpaused(homedir(), ["auth", "token", "--hostname", "github.com"]).pipe(
       Effect.map((stdout) => stdout.trim()),
