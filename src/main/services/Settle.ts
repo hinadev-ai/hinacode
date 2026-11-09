@@ -152,7 +152,7 @@ const make = Effect.gen(function* () {
       if (!(yield* isArchiveDue(thread, now))) return
       const archiveIfStillDue = threads.archiveIf(thread.id, (latest) =>
         Effect.gen(function* () {
-          if (yield* losesUncommittedWork(latest)) return false
+          if ((yield* losesUncommittedWork(latest)) || (yield* runner.isBusy(latest.id))) return false
           return yield* isArchiveDue(latest, now)
         }),
       )

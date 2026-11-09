@@ -198,6 +198,7 @@ export class AgentRunner extends Context.Service<
       readonly when: Effect.Effect<boolean, PersistenceError>
     }) => Effect.Effect<boolean, SendError>
     readonly interrupt: (threadId: string) => Effect.Effect<void>
+    readonly isBusy: (threadId: string) => Effect.Effect<boolean>
     readonly release: <A, E>(threadId: string, whileIdle: Effect.Effect<A, E>) => Effect.Effect<Option.Option<A>, E>
     readonly warm: (threadId: string) => Effect.Effect<void>
     readonly resumeAtReset: (
@@ -1744,6 +1745,7 @@ const make = Effect.gen(function* () {
           }),
         ),
       ),
+    isBusy: (threadId) => Effect.sync(() => isBusy(threadId)),
     release,
     warm,
     setAccessMode: (threadId, accessMode) =>

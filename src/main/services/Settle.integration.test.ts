@@ -80,8 +80,7 @@ const heldReleases = new Map<
 const agentRunner = Layer.mock(AgentRunner, {
   backgroundTasks: (threadId) => Effect.succeed(backgroundTasks.get(threadId) ?? []),
   subagents: (threadId) => Effect.succeed(subagents.get(threadId) ?? []),
-  // @ts-expect-error AgentRunner does not expose isBusy yet
-  isBusy: (threadId: string) => Effect.sync(() => claimedBySend.has(threadId)),
+  isBusy: (threadId) => Effect.sync(() => claimedBySend.has(threadId)),
   release: (threadId, whileIdle) =>
     Effect.gen(function* () {
       released.push(threadId)
