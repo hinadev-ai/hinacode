@@ -165,7 +165,7 @@ export function ConnectionBadge({ status }: { status: ConnectionStatus }) {
   )
 }
 
-export const providerMark: Record<ProviderId, IconName> = {
+const providerMark: Record<ProviderId, IconName> = {
   claude: "RiClaudeFill",
   codex: "RiOpenaiFill",
   muse: "RiMetaFill",
