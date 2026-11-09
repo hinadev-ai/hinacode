@@ -32,14 +32,14 @@ const input = (home: AccountHome, prompt: string): RunTurnInput => ({
   instructions: "You run inside HinaCode.",
 })
 
-describe("Claude Code stderr", () => {
-  const harness = () =>
-    makeClaudeHarness({
-      id: "claude",
-      listModels: Effect.succeed([]),
-      launchEnv: () => Effect.succeed({}),
-    })
+const harness = () =>
+  makeClaudeHarness({
+    id: "claude",
+    listModels: Effect.succeed([]),
+    launchEnv: () => Effect.succeed({}),
+  })
 
+describe("Claude Code stderr", () => {
   it.live("ends a crashed turn with the exit code and the CLI's last stderr lines", () =>
     Effect.gen(function* () {
       const provider = yield* harness()

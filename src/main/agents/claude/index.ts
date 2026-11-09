@@ -16,6 +16,7 @@ import {
   Cause,
   Clock,
   Context,
+  Deferred,
   Duration,
   Effect,
   Exit,
@@ -114,6 +115,8 @@ const IDLE_SESSION_TTL = Duration.seconds(60)
 
 const STDERR_TAIL_CHARS = 2000
 
+const STDERR_DRAIN_GRACE = Duration.millis(200)
+
 interface StderrTail {
   text: string
 }
@@ -131,6 +134,7 @@ interface Session extends MapState, ApprovalSession {
   readonly prompts: Queue.Queue<SDKUserMessage>
   readonly abort: AbortController
   readonly stderr: StderrTail
+  readonly stderrDrained: Deferred.Deferred<void>
   readonly query: Query
   model: string
   effort: string | null
@@ -611,6 +615,20 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
       }
     }
 
+    const endTurn = (session: Session, message: string) =>
+      Deferred.await(session.stderrDrained).pipe(
+        Effect.timeout(STDERR_DRAIN_GRACE),
+        Effect.ignore,
+        Effect.andThen(
+          Effect.sync(() =>
+            emit(session, {
+              type: "turn_failed",
+              message: withStderr(message, session.stderr),
+            }),
+          ),
+        ),
+      )
+
     const pump = (session: Session) =>
       Stream.fromAsyncIterable(
         // FIXME: the Query's return() closes the transport, the raw generator's does not
@@ -622,22 +640,11 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
             Effect.andThen(armExpiry(session)),
           ),
         ),
-        Effect.catchCause((cause) =>
-          Effect.sync(() =>
-            emit(session, {
-              type: "turn_failed",
-              message: withStderr(errorMessage(Cause.squash(cause)), session.stderr),
-            }),
-          ),
-        ),
+        Effect.catchCause((cause) => endTurn(session, errorMessage(Cause.squash(cause)))),
         Effect.ensuring(
-          Effect.suspend(() => {
-            emit(session, {
-              type: "turn_failed",
-              message: withStderr("Claude Code session ended unexpectedly", session.stderr),
-            })
-            return closeSession(session)
-          }),
+          Effect.suspend(() =>
+            endTurn(session, "Claude Code session ended unexpectedly").pipe(Effect.andThen(closeSession(session))),
+          ),
         ),
       )
 
@@ -656,6 +663,8 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
         const prompts = yield* Queue.unbounded<SDKUserMessage>()
         const abort = new AbortController()
         const stderr: StderrTail = { text: "" }
+        const stderrDrained = yield* Deferred.make<void>()
+        const markStderrDrained = () => Effect.runSync(Deferred.succeed(stderrDrained, undefined))
         const previous = resumable.get(input.threadId)
         const resume = input.resumeSessionId ?? previous?.sessionId
         const keepsGrants = previous !== undefined && previous.sessionId === resume && sameContext(previous, input)
@@ -702,6 +711,8 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
                   child.stderr.on("data", (chunk: string) => {
                     stderr.text = (stderr.text + chunk).slice(-STDERR_TAIL_CHARS)
                   })
+                  child.stderr.once("close", markStderrDrained)
+                  child.once("exit", () => setTimeout(markStderrDrained, Duration.toMillis(STDERR_DRAIN_GRACE)).unref())
                   child.once(
                     "exit",
                     registerAgentPid(input.threadId, () => child.pid),
@@ -726,6 +737,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
           prompts,
           abort,
           stderr,
+          stderrDrained,
           query: handle,
           sessionGrants: keepsGrants ? previous.sessionGrants : new Set(),
           attachmentPaths: keepsGrants ? previous.attachmentPaths : new Set(),
