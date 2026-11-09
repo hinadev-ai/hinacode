@@ -97,6 +97,7 @@ const detail = (url: string, head: string, status: PullRequestStatus = "open") =
 const diffsFetched: Array<string> = []
 
 const gitHub = Layer.mock(GitHub, {
+  installed: Effect.succeed(true),
   pullRequestDiff: (url) => Effect.sync(() => void diffsFetched.push(url)).pipe(Effect.as(DIFF)),
   pullRequestDetail: (url) => Effect.succeed(detail(url, heads.get(url) ?? "h1", statuses.get(url) ?? "open")),
 })

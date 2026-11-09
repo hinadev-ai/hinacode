@@ -28,6 +28,7 @@ let status: PullRequestStatus = "open"
 const fired = Effect.runSync(Queue.unbounded<PullRequestEvent>())
 
 const gitHub = Layer.mock(GitHub, {
+  installed: Effect.succeed(true),
   pullRequest: () => Effect.succeed({ url, status } as PullRequest),
   pullRequestOpenedAt: () => Effect.succeed("2999-01-01T00:00:00.000Z"),
 })

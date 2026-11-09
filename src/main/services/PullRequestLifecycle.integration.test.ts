@@ -29,9 +29,11 @@ const github = {
   statuses: new Map<string, PullRequestStatus>(),
   openedAt: new Map<string, string>(),
   reads: new Array<string>(),
+  installed: true,
 }
 
 const gitHub = Layer.mock(GitHub, {
+  installed: Effect.sync(() => github.installed),
   pullRequest: (url) => {
     github.reads.push(url)
     return Effect.succeed({ url, status: github.statuses.get(url) ?? "open" } as PullRequest)
@@ -94,6 +96,17 @@ const observedStatus = (linkId: string) =>
 
 describe("PullRequestLifecycle", () => {
   layer(testLayer)((it) => {
+    it.effect("reads no pull request while gh is not installed", () =>
+      Effect.gen(function* () {
+        const { url } = yield* linkPullRequest({ openedAt: longAgo })
+        github.installed = false
+        github.reads.length = 0
+        yield* sweep.pipe(Effect.ensuring(Effect.sync(() => (github.installed = true))))
+        expect(github.reads).not.toContain(url)
+        expect(github.reads).toEqual([])
+      }),
+    )
+
     it.effect("announces a pull request created after its thread", () =>
       Effect.gen(function* () {
         const { linked, subscription, threadId, url } = yield* linkPullRequest({ openedAt: farAhead })

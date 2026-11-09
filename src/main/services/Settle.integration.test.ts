@@ -43,6 +43,7 @@ const mergedAts = new Map<string, string>()
 const held = new Map<string, { readonly asked: Deferred.Deferred<void>; readonly release: Deferred.Deferred<void> }>()
 
 const gitHub = Layer.mock(GitHub, {
+  installed: Effect.succeed(true),
   pullRequest: (url) =>
     Effect.gen(function* () {
       const hold = held.get(url)
