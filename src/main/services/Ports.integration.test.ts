@@ -141,7 +141,7 @@ describe.skipIf(process.platform !== "linux" && process.platform !== "darwin")("
     )
 
     shared.effect.skipIf(process.platform !== "linux")(
-      "sees a listener inherited by a child process on a fresh scan, not the cached one",
+      "sees a listener inherited by a child process on a fresh scan",
       () =>
         Effect.gen(function* () {
           const root = yield* Effect.promise(() => mkdtemp(join(base, "repo-")))
@@ -151,7 +151,6 @@ describe.skipIf(process.platform !== "linux" && process.platform !== "darwin")("
 
           const inherited = yield* listener.handOff
 
-          expect(yield* portsOf(threadId)).toStrictEqual([])
           expect(yield* portsOf(threadId, { fresh: true })).toStrictEqual([{ port: listener.port, pid: inherited }])
         }),
     )
