@@ -324,6 +324,7 @@ export const AgentEvent = Schema.Union([
     stopped: Schema.optional(Schema.Boolean),
     signedOut: Schema.optional(Schema.Boolean),
     loginCommand: Schema.optional(Schema.String),
+    sessionLost: Schema.optional(Schema.Boolean),
   }),
   Schema.Struct({ type: Schema.Literal("turn_limited"), limit: UsageLimit }),
 ])

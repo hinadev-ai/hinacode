@@ -594,6 +594,10 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
         })
       }
       for (const event of mapMessage(message, session, new Date().toISOString())) {
+        if (event.type === "turn_failed" && event.sessionLost) {
+          session.sessionId = null
+          resumable.delete(session.threadId)
+        }
         if (isTerminal(event) && session.reportsState) session.heldEnd = event
         else emit(session, event)
       }

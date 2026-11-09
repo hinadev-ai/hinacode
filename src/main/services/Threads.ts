@@ -98,7 +98,7 @@ export interface UpdateThread {
   readonly pinned?: boolean | undefined
   readonly snoozedUntil?: string | null | undefined
   readonly settled?: boolean | undefined
-  readonly providerSessionId?: string | undefined
+  readonly providerSessionId?: string | null | undefined
   readonly queue?: ReadonlyArray<QueuedMessage> | undefined
   readonly scheduled?: ReadonlyArray<ScheduledMessage> | undefined
 }
@@ -611,7 +611,9 @@ const make = Effect.gen(function* () {
         providerSessionId:
           input.provider !== undefined && input.provider !== current.provider
             ? null
-            : (input.providerSessionId ?? current.providerSessionId),
+            : input.providerSessionId === undefined
+              ? current.providerSessionId
+              : input.providerSessionId,
         forkedFrom:
           input.providerSessionId !== undefined || (input.provider ?? current.provider) !== current.provider
             ? null
