@@ -209,6 +209,7 @@ const make = Effect.gen(function* () {
     Effect.flatMap(github.pullRequestDetail(url), (detail) => ensure(detail, { retry: true }))
 
   const sweep = Effect.gen(function* () {
+    if (!(yield* github.installed)) return
     const live = new Set(
       (yield* threads.list).filter((thread) => thread.status !== "archived").map((thread) => thread.id),
     )

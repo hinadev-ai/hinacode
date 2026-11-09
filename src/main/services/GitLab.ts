@@ -19,6 +19,7 @@ import {
   parseGitLabMergeRequestUrl,
   type RemoteProject,
 } from "../../shared/codeHost.ts"
+import { findBinary } from "../agents/binary.ts"
 import { Events } from "./Events.ts"
 import { CommandError, LONG_TIMEOUT, makeExec, type RunOptions } from "./Git.ts"
 import { parseApiResponse, PullRequestUrlInvalidError } from "./GitHub.ts"
@@ -54,6 +55,7 @@ export type GitLabError = GitLabCliMissingError | GitLabSignedOutError | GitLabA
 export class GitLab extends Context.Service<
   GitLab,
   {
+    readonly installed: Effect.Effect<boolean>
     readonly isGitLabHost: (hostname: string) => Effect.Effect<boolean>
     readonly pullRequest: (
       url: string,
@@ -410,6 +412,7 @@ const make = Effect.gen(function* () {
     })
 
   return GitLab.of({
+    installed: Effect.promise(() => findBinary("glab")).pipe(Effect.map((path) => path !== undefined)),
     isGitLabHost,
     pullRequest: (url) => Effect.flatMap(requireMergeRequest(url), pullRequestOf),
     pullRequestOpenedAt: (url) =>

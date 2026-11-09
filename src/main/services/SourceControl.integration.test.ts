@@ -48,6 +48,7 @@ const githubAnswer = (url: string): PullRequest => ({
 })
 
 const gitHub = Layer.mock(GitHub, {
+  installed: Effect.succeed(false),
   pullRequest: (url) => Effect.succeed(githubAnswer(url)),
   branchPullRequest: (cwd) => Effect.succeed(githubAnswer(`gh:${cwd}`)),
 })
@@ -64,6 +65,17 @@ describe("SourceControl", () => {
         const sourceControl = yield* SourceControl
         const read = yield* sourceControl.pullRequest("https://github.com/hinadev-ai/hinacode/pull/617")
         expect(read.title).toBe("from gh")
+      }),
+    )
+
+    it.effect("asks the CLI of the link's own host whether it is installed", () =>
+      Effect.gen(function* () {
+        const sourceControl = yield* SourceControl
+        expect(yield* sourceControl.installedFor("https://github.com/hinadev-ai/hinacode/pull/617")).toBe(false)
+        expect(yield* sourceControl.installedFor("https://example.com/a/b/issues/1")).toBe(false)
+        expect(yield* sourceControl.installedFor("https://gitlab.com/gitlab-org/cli/-/merge_requests/4335")).toBe(
+          hasGlab,
+        )
       }),
     )
 

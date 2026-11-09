@@ -61,7 +61,8 @@ const make = Effect.gen(function* () {
     }).pipe(Effect.catchCause((cause) => Effect.logWarning("could not announce a linked pull request", url, cause)))
 
   const sweep = Effect.gen(function* () {
-    const byUrl = Map.groupBy(yield* pullRequests.unsettled, (link) => link.url)
+    const readable = yield* Effect.filter(yield* pullRequests.unsettled, (link) => sourceControl.installedFor(link.url))
+    const byUrl = Map.groupBy(readable, (link) => link.url)
     yield* Effect.forEach(
       byUrl,
       ([url, links]) =>

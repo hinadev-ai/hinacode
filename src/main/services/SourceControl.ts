@@ -18,6 +18,7 @@ type Repository = { readonly host: "github" } | { readonly host: "gitlab"; reado
 export class SourceControl extends Context.Service<
   SourceControl,
   {
+    readonly installedFor: (url: string) => Effect.Effect<boolean>
     readonly pullRequest: (url: string) => Effect.Effect<PullRequest, SourceControlError | Schema.SchemaError>
     readonly pullRequestOpenedAt: (url: string) => Effect.Effect<string, SourceControlError | Schema.SchemaError>
     readonly pullRequestDetail: (
@@ -71,6 +72,11 @@ const make = Effect.gen(function* () {
     })
 
   return SourceControl.of({
+    installedFor: (url) => {
+      const host = parsePullRequestUrl(url)?.host
+      if (host === undefined) return Effect.succeed(false)
+      return host === "gitlab" ? gitlab.installed : github.installed
+    },
     pullRequest: (url) =>
       byUrl(
         url,

@@ -167,6 +167,7 @@ const testLayer = watcherLayer.pipe(
     Layer.mergeAll(
       Git.layer,
       Layer.mock(GitHub, {
+        installed: Effect.succeed(true),
         pullRequestDetail: (url) =>
           Effect.succeed({
             url,

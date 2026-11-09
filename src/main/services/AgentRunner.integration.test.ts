@@ -410,6 +410,7 @@ const withPreparingThread = async (
             SourceControl.layer.pipe(
               Layer.provideMerge(
                 Layer.mock(GitHub.GitHub, {
+                  installed: Effect.succeed(true),
                   pullRequestDetail: (url) =>
                     Effect.succeed({
                       url,

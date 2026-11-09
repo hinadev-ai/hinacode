@@ -165,7 +165,15 @@ const make = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis
     const byThread = Map.groupBy(yield* pullRequests.listAll, (link) => link.threadId)
     if (archive.whenMerged) {
-      yield* Effect.forEach(byThread, ([threadId, links]) => settleIfDone(threadId, links), { discard: true })
+      yield* Effect.forEach(
+        byThread,
+        ([threadId, links]) =>
+          Effect.flatMap(
+            Effect.forEach(links, (link) => sourceControl.installedFor(link.url)),
+            (installed) => (installed.every(Boolean) ? settleIfDone(threadId, links) : Effect.void),
+          ),
+        { discard: true },
+      )
     }
     const all = yield* threads.list
     const { settleAfterIdleDays } = archive

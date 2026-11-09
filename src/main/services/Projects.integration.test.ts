@@ -323,6 +323,7 @@ describe("Projects.clone", () => {
       })
       const cloned: Array<string> = []
       const github = Layer.mock(GitHub.GitHub, {
+        installed: Effect.succeed(true),
         clone: (_repository, dest) => Effect.sync(() => void cloned.push(dest)),
       })
       const [error, listed] = yield* Projects.use((projects) =>

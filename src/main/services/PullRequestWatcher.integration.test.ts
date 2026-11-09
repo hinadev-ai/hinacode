@@ -31,6 +31,7 @@ const unreadable = new Set<string>()
 const held = new Map<string, { readonly asked: Deferred.Deferred<void>; readonly release: Deferred.Deferred<void> }>()
 
 const gitHub = Layer.mock(GitHub, {
+  installed: Effect.succeed(true),
   pullRequestDetail: (url) =>
     Effect.gen(function* () {
       const hold = held.get(url)
