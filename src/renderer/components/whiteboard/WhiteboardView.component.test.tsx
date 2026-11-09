@@ -2,6 +2,7 @@ import { Schema } from "effect"
 import { FONT_FAMILY } from "@excalidraw/excalidraw"
 import { beforeEach, expect, test } from "vitest"
 import { cdp, page, userEvent } from "vitest/browser"
+import { StrictMode } from "react"
 import { render } from "vitest-browser-react"
 import type { Artifact, ArtifactFeedback, WhiteboardContent, WhiteboardElement } from "../../../shared/artifact.ts"
 import { type HinacodeBridge, type PushEvent, RpcMethods } from "../../../shared/contract.ts"
@@ -194,6 +195,25 @@ test("saves full elements with the revision it loaded after the developer moves 
   expect(api).toMatchObject({ x: 1, version: expect.any(Number), seed: expect.any(Number) })
   expect(save?.scene.elements.find((element) => element["containerId"] === "api")).toMatchObject({ text: "API" })
   await expect.element(page.getByText("Saved")).toBeInTheDocument()
+})
+
+test("saves the developer's edit under StrictMode", async () => {
+  await render(
+    <StrictMode>
+      <div style={{ width: 800, height: 600, display: "flex", flexDirection: "column" }}>
+        <ArtifactsView thread={thread} />
+      </div>
+    </StrictMode>,
+  )
+  await expect
+    .poll(() => sceneOnCanvas().map((element) => element.id), { timeout: 15_000 })
+    .toEqual(expect.arrayContaining(["api", "db"]))
+
+  await selectAll()
+  await userEvent.keyboard("{ArrowRight}")
+
+  await expect.poll(() => saves.length, { timeout: 3000 }).toBe(1)
+  expect(saves[0]?.scene.elements.find((element) => element.id === "api")).toMatchObject({ x: 1 })
 })
 
 test("closing the board saves the edit it was still waiting to save", async () => {
