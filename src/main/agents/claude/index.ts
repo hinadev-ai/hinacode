@@ -230,11 +230,10 @@ const sameContext = (a: SessionContext, b: SessionContext) =>
 const homeEnv = (home: AccountHome | null): NodeJS.ProcessEnv =>
   home === null ? { ...process.env } : { ...process.env, CLAUDE_CONFIG_DIR: home.dir }
 
+const errorMessage = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause))
+
 const agentError = (message: string) => (cause: unknown) =>
-  new AgentError({
-    provider: "claude",
-    message: `${message}: ${cause instanceof Error ? cause.message : String(cause)}`,
-  })
+  new AgentError({ provider: "claude", message: `${message}: ${errorMessage(cause)}` })
 
 const copySession = (sessionId: string, from: AccountHome | null, to: AccountHome | null) =>
   Effect.tryPromise({
@@ -612,7 +611,7 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
           ),
         ),
         Effect.catchCause((cause) =>
-          Effect.sync(() => emit(session, { type: "turn_failed", message: Cause.pretty(cause) })),
+          Effect.sync(() => emit(session, { type: "turn_failed", message: errorMessage(Cause.squash(cause)) })),
         ),
         Effect.ensuring(
           Effect.suspend(() => {
