@@ -20,6 +20,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
+  memo,
   startTransition,
   useActionState,
   useEffect,
@@ -300,6 +301,7 @@ export function TurnList({ sections, className }: { sections: ReadonlyArray<Turn
   const entriesOf = (section: TurnSection) =>
     section.flat ? section.threads.map((thread) => ({ thread, nested: false })) : nestChildren(section.threads)
   const firstThread = sections.flatMap((section) => entriesOf(section))[0]?.thread
+  const focusFirstRow = () => firstRowRef.current
   return (
     <DragDropProvider>
       <ul className={`flex flex-col gap-1 ${className}`}>
@@ -344,7 +346,7 @@ export function TurnList({ sections, className }: { sections: ReadonlyArray<Turn
                 showProject
                 showActivity={section.showActivity ?? false}
                 linkRef={thread === firstThread ? firstRowRef : undefined}
-                focusAfterRemoval={() => firstRowRef.current}
+                focusAfterRemoval={focusFirstRow}
               />
             )),
           ])}
@@ -466,7 +468,8 @@ interface ThreadRowProps {
   readonly focusAfterRemoval: () => HTMLElement | null
 }
 
-function ThreadRow({
+// oxlint-disable-next-line hinacode/no-manual-memo
+const ThreadRow = memo(function ThreadRow({
   thread,
   nested,
   index,
@@ -836,7 +839,7 @@ function ThreadRow({
       )}
     </SidebarRow>
   )
-}
+})
 
 const focusOnMount = (input: HTMLInputElement | null) => input?.focus()
 
