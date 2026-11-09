@@ -41,7 +41,8 @@ import {
 } from "./errors.ts"
 import { Events } from "./Events.ts"
 import { type CommandError, Git, LONG_TIMEOUT } from "./Git.ts"
-import { GitHub, type GitHubError, type PullRequestHead } from "./GitHub.ts"
+import type { PullRequestHead } from "./GitHub.ts"
+import { SourceControl, type SourceControlError } from "./SourceControl.ts"
 import { Projects } from "./Projects.ts"
 import { Settings } from "./Settings.ts"
 import { diffWorkingTree } from "./workingTree.ts"
@@ -97,7 +98,7 @@ export class Worktrees extends Context.Service<
     readonly changes: (id: string) => Effect.Effect<Changes | null, Failure | PlatformError.PlatformError>
     readonly pullRequest: (
       id: string,
-    ) => Effect.Effect<PullRequest | null, PersistenceError | NotFoundError | GitHubError | Schema.SchemaError>
+    ) => Effect.Effect<PullRequest | null, PersistenceError | NotFoundError | SourceControlError | Schema.SchemaError>
     readonly currentBranch: (projectId: string) => Effect.Effect<string, Failure>
     readonly branches: (projectId: string) => Effect.Effect<ReadonlyArray<string>, Failure>
     readonly defaultBranch: (projectId: string) => Effect.Effect<string, PersistenceError | NotFoundError>
@@ -131,7 +132,7 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
   const sql = yield* SqlClient.SqlClient
   const projects = yield* Projects
   const git = yield* Git
-  const github = yield* GitHub
+  const sourceControl = yield* SourceControl
   const events = yield* Events
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
   const fs = yield* FileSystem.FileSystem
@@ -459,11 +460,11 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
       }
     })
 
-  const mergedOnGitHub = (rootPath: string, branch: string) =>
+  const mergedOnHost = (rootPath: string, branch: string) =>
     Effect.gen(function* () {
-      const pullRequest = yield* github.branchPullRequest(rootPath, branch)
+      const pullRequest = yield* sourceControl.branchPullRequest(rootPath, branch)
       if (pullRequest?.status !== "merged") return false
-      const { head } = yield* github.pullRequestDetail(pullRequest.url)
+      const { head } = yield* sourceControl.pullRequestDetail(pullRequest.url)
       yield* git.run(rootPath, ["merge-base", "--is-ancestor", `refs/heads/${branch}`, head])
       return true
     }).pipe(Effect.orElseSucceed(() => false))
@@ -473,7 +474,7 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
       if (!(yield* branchExists(rootPath, worktree.branch))) return
       const merged =
         (yield* isMerged(rootPath, worktree.branch, worktree.baseRef)) ||
-        (yield* mergedOnGitHub(rootPath, worktree.branch))
+        (yield* mergedOnHost(rootPath, worktree.branch))
       // FIXME: `git branch -d` checks against the root checkout's HEAD, which may not be the base ref
       if (merged) yield* git.run(rootPath, ["branch", "-D", worktree.branch])
     })
@@ -574,7 +575,7 @@ const make = Effect.fnUntraced(function* (setupTimeout: Duration.Input) {
     Effect.gen(function* () {
       const worktree = yield* get(id)
       const { rootPath } = yield* projects.get(worktree.projectId)
-      return yield* github.branchPullRequest(rootPath, worktree.branch)
+      return yield* sourceControl.branchPullRequest(rootPath, worktree.branch)
     })
 
   const currentBranch = (projectId: string) =>

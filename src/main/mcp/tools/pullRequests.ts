@@ -5,13 +5,14 @@ import { PullRequests } from "../../services/PullRequests.ts"
 import * as McpTool from "./tool.ts"
 
 const PullRequestUrl = Schema.String.annotate({
-  description: "GitHub pull request URL, for example https://github.com/owner/repo/pull/123",
+  description:
+    "GitHub pull request or GitLab merge request URL, for example https://github.com/owner/repo/pull/123 or https://gitlab.com/group/project/-/merge_requests/45",
 })
 
 export const PullRequestTools = Toolkit.make(
   McpTool.make("link_pull_request", {
     description:
-      "Register a GitHub pull request you opened for this thread so the user sees it next to the thread. Call it right after creating the PR.",
+      "Register a GitHub pull request or GitLab merge request you opened for this thread so the user sees it next to the thread. Call it right after creating the PR.",
     parameters: Schema.Struct({ url: PullRequestUrl }),
   }),
   McpTool.make("list_thread_pull_requests", {

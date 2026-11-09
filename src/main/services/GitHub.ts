@@ -88,7 +88,7 @@ export class PullRequestUrlInvalidError extends Schema.TaggedError<PullRequestUr
   { url: Schema.String },
 ) {
   override get message(): string {
-    return `${this.url} is not a GitHub pull request URL (https://github.com/<owner>/<repo>/pull/<number>)`
+    return `${this.url} is not a GitHub pull request URL (https://github.com/<owner>/<repo>/pull/<number>) or a GitLab merge request URL (https://<host>/<project>/-/merge_requests/<iid>)`
   }
 }
 
@@ -113,7 +113,7 @@ export const parseCloneProgress = (chunk: string): CloneProgress | undefined => 
   return undefined
 }
 
-export const requirePullRequestUrl = (raw: string): Effect.Effect<string, PullRequestUrlInvalidError> => {
+export const requireGitHubPullRequestUrl = (raw: string): Effect.Effect<string, PullRequestUrlInvalidError> => {
   const url = parseGitHubPullRequestUrl(raw.trim())
   return url === undefined ? Effect.fail(new PullRequestUrlInvalidError({ url: raw })) : Effect.succeed(url)
 }
@@ -984,7 +984,7 @@ const make = Effect.gen(function* () {
 
   // FIXME: gh acts on a local checkout of the repository when run inside one
   const ghByUrl = (raw: string, args: (url: string) => ReadonlyArray<string>) =>
-    Effect.flatMap(requirePullRequestUrl(raw), (url) => gh(homedir(), args(url)))
+    Effect.flatMap(requireGitHubPullRequestUrl(raw), (url) => gh(homedir(), args(url)))
 
   const lastRead = new Map<string, PullRequestDetailFields>()
   const mergeableRechecks = new Map<string, number>()
@@ -1081,7 +1081,7 @@ const make = Effect.gen(function* () {
   })
 
   const read = (raw: string, fresh = false) =>
-    Effect.flatMap(requirePullRequestUrl(raw), (url) =>
+    Effect.flatMap(requireGitHubPullRequestUrl(raw), (url) =>
       fresh ? Effect.andThen(Cache.get(freshReads, url), Cache.get(reads, url)) : Cache.get(reads, url),
     )
 
@@ -1097,7 +1097,7 @@ const make = Effect.gen(function* () {
     args: (url: string) => ReadonlyArray<string>,
     affected: (url: string) => Effect.Effect<ReadonlyArray<string>> = (url) => Effect.succeed([url]),
   ) =>
-    Effect.flatMap(requirePullRequestUrl(raw), (url) =>
+    Effect.flatMap(requireGitHubPullRequestUrl(raw), (url) =>
       gh(homedir(), args(url)).pipe(
         Effect.onExit((exit) =>
           Effect.flatMap(Exit.isSuccess(exit) ? affected(url) : Effect.succeed([url]), (urls) =>
@@ -1141,7 +1141,7 @@ const make = Effect.gen(function* () {
     comment: (raw, body) => ghWrite(raw, (url) => ["pr", "comment", url, "--body", body]),
     pullRequestCandidates: (raw) =>
       Effect.gen(function* () {
-        const [, owner = "", name = ""] = new URL(yield* requirePullRequestUrl(raw)).pathname.split("/")
+        const [, owner = "", name = ""] = new URL(yield* requireGitHubPullRequestUrl(raw)).pathname.split("/")
         const { body } = yield* ghApi([
           "graphql",
           "-f",

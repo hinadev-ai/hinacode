@@ -2,7 +2,7 @@ import type { Locator, Page } from "@playwright/test"
 
 export const sidebar = (page: Page) => page.getByRole("navigation", { name: "Projects and threads" })
 
-export const threadView = async (page: Page, name: "Details" | "Changes" | "Pull requests" | "Browser") => {
+export const threadView = async (page: Page, name: "Details" | "Changes" | "Source control" | "Browser") => {
   const show = page.getByRole("button", { name: "Show thread details" })
   if (await show.isVisible()) await show.click()
   const panel = page.getByRole("complementary", { name: "Thread details" })

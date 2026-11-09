@@ -62,7 +62,7 @@ export const sidePanelViews: ReadonlyArray<SidePanelView> = [
   {
     id: "pullRequests",
     icon: RiGitPullRequestLine,
-    title: m.pr_links_title,
+    title: m.panel_tab_source_control,
     commandId: "view.pullRequests",
     component: PullRequestsView,
     header: PullRequestsHeader,

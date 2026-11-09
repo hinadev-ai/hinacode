@@ -1,7 +1,7 @@
 import { Context, Effect, Layer, PubSub, Schedule } from "effect"
 import type { PullRequest, PullRequestStatus, PullRequestTopic } from "../../shared/domain.ts"
 import { EventBus, type PullRequestLinkedEvent } from "./EventBus.ts"
-import { GitHub } from "./GitHub.ts"
+import { SourceControl } from "./SourceControl.ts"
 import { PullRequests } from "./PullRequests.ts"
 import { Threads } from "./Threads.ts"
 
@@ -29,7 +29,7 @@ const settledTopic = (status: PullRequestStatus): PullRequestTopic | null => {
 
 const make = Effect.gen(function* () {
   const bus = yield* EventBus
-  const github = yield* GitHub
+  const sourceControl = yield* SourceControl
   const pullRequests = yield* PullRequests
   const threads = yield* Threads
 
@@ -48,9 +48,12 @@ const make = Effect.gen(function* () {
 
   const announce = ({ threadId, linkId, url }: PullRequestLinkedEvent) =>
     Effect.gen(function* () {
-      const [pullRequest, openedAt] = yield* Effect.all([github.pullRequest(url), github.pullRequestOpenedAt(url)], {
-        concurrency: "unbounded",
-      }).pipe(Effect.retry({ times: 2, schedule: Schedule.spaced("5 seconds") }))
+      const [pullRequest, openedAt] = yield* Effect.all(
+        [sourceControl.pullRequest(url), sourceControl.pullRequestOpenedAt(url)],
+        {
+          concurrency: "unbounded",
+        },
+      ).pipe(Effect.retry({ times: 2, schedule: Schedule.spaced("5 seconds") }))
       const thread = yield* threads.get(threadId)
       const openedByThread = Date.parse(openedAt) >= Date.parse(thread.createdAt)
       if (openedByThread) yield* PubSub.publish(bus, { topic: "pullRequest.opened", threadId, pullRequest })
@@ -58,12 +61,12 @@ const make = Effect.gen(function* () {
     }).pipe(Effect.catchCause((cause) => Effect.logWarning("could not announce a linked pull request", url, cause)))
 
   const sweep = Effect.gen(function* () {
-    if (!(yield* github.installed)) return
-    const byUrl = Map.groupBy(yield* pullRequests.unsettled, (link) => link.url)
+    const readable = yield* Effect.filter(yield* pullRequests.unsettled, (link) => sourceControl.installedFor(link.url))
+    const byUrl = Map.groupBy(readable, (link) => link.url)
     yield* Effect.forEach(
       byUrl,
       ([url, links]) =>
-        github.pullRequest(url).pipe(
+        sourceControl.pullRequest(url).pipe(
           Effect.flatMap((pullRequest) =>
             Effect.forEach(links, (link) => settle(link, pullRequest, false), { discard: true }),
           ),

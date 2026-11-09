@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process"
+import * as SourceControl from "./SourceControl.ts"
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
@@ -173,7 +174,7 @@ const withPreparingThread = async (
     Attachments.layer(join(dir, "attachments")),
   ).pipe(
     Layer.provideMerge(
-      Layer.mergeAll(Git.layer, GitHub.layer).pipe(
+      SourceControl.layer.pipe(Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer))).pipe(
         Layer.provideMerge(
           Layer.succeed(Events, {
             publish: (event) =>
@@ -406,34 +407,38 @@ const withPreparingThread = async (
                   return yield* threads.captureTurnBase(cwd)
                 }),
             }),
-            Layer.mock(GitHub.GitHub, {
-              installed: Effect.succeed(true),
-              pullRequestDetail: (url) =>
-                Effect.succeed({
-                  url,
-                  number: 7,
-                  title: "Fix the thing",
-                  status: "open",
-                  checks: "failing",
-                  review: null,
-                  author: "octocat",
-                  headRefName: "fix/pending",
-                  baseRefName: "main",
-                  additions: 1,
-                  deletions: 0,
-                  body: "",
-                  baseRef: "main",
-                  headRef: "fix/pending",
-                  head: "abc1234",
-                  mergeable: "mergeable",
-                  changedFiles: 1,
-                  labels: [],
-                  assignees: [],
-                  reviewers: [],
-                  comments: [],
-                  checkRuns: [{ name: "CI / test", status: "failing", url: "https://ci.example/test" }],
+            SourceControl.layer.pipe(
+              Layer.provideMerge(
+                Layer.mock(GitHub.GitHub, {
+                  installed: Effect.succeed(true),
+                  pullRequestDetail: (url) =>
+                    Effect.succeed({
+                      url,
+                      number: 7,
+                      title: "Fix the thing",
+                      status: "open",
+                      checks: "failing",
+                      review: null,
+                      author: "octocat",
+                      headRefName: "fix/pending",
+                      baseRefName: "main",
+                      additions: 1,
+                      deletions: 0,
+                      body: "",
+                      baseRef: "main",
+                      headRef: "fix/pending",
+                      head: "abc1234",
+                      mergeable: "mergeable",
+                      changedFiles: 1,
+                      labels: [],
+                      assignees: [],
+                      reviewers: [],
+                      comments: [],
+                      checkRuns: [{ name: "CI / test", status: "failing", url: "https://ci.example/test" }],
+                    }),
                 }),
-            }),
+              ),
+            ),
             Layer.succeed(Messages.Messages, {
               ...messages,
               insert: (message) =>

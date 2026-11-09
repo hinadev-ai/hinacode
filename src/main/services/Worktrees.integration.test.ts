@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process"
+import * as SourceControl from "./SourceControl.ts"
 import { randomUUID } from "node:crypto"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, watch, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -45,7 +46,11 @@ const makeLayer = (
     Layer.provideMerge(ProjectsLayer.layer),
     Layer.provide(AgentAccounts.layer),
     Layer.provideMerge(SettingsLayer.layer(dirname(dbPath))),
-    Layer.provide(Layer.mergeAll(Git.layer, GitHub.layer).pipe(Layer.provideMerge(Layer.succeed(Events, events)))),
+    Layer.provide(
+      SourceControl.layer
+        .pipe(Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer)))
+        .pipe(Layer.provideMerge(Layer.succeed(Events, events))),
+    ),
     Layer.provideMerge(Db.layer(dbPath)),
     Layer.provideMerge(Layer.succeed(Pushes, pushes)),
     Layer.provide(NodeServices.layer),

@@ -76,8 +76,12 @@ describe("pullRequestName", () => {
     ).toBe("northwind-industries-holdings/customer-onboarding-platform-monorepo#1")
   })
 
+  test("names a GitLab merge request by its project path and iid", () => {
+    expect(pullRequestName("https://gitlab.com/group/sub/app/-/merge_requests/12")).toBe("group/sub/app!12")
+  })
+
   test("keeps anything else as it is", () => {
-    const url = "https://gitlab.com/a/b/-/merge_requests/1"
+    const url = "https://bitbucket.org/a/b/pull-requests/1"
     expect(pullRequestName(url)).toBe(url)
   })
 })

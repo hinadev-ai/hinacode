@@ -1,4 +1,5 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import * as SourceControl from "../SourceControl.ts"
 import { createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -108,7 +109,8 @@ const makeLayer = (pushes: Array<PushEvent>, port: number) => {
   )
   return automationsLayer.pipe(
     Layer.provideMerge(agents),
-    Layer.provide(
+    Layer.provideMerge(SourceControl.layer),
+    Layer.provideMerge(
       Layer.mergeAll(
         Git.layer,
         GitHub.layer,

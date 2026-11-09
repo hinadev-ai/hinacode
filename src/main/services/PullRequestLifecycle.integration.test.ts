@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs"
+import * as SourceControl from "./SourceControl.ts"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, describe, expect, layer } from "@effect/vitest"
@@ -55,7 +56,8 @@ const domain = threadsLayer.pipe(
 const testLayer = lifecycleLayer.pipe(
   Layer.provideMerge(pullRequestsLayer),
   Layer.provideMerge(domain),
-  Layer.provide(Layer.mergeAll(Git.layer, gitHub)),
+  Layer.provideMerge(SourceControl.layer),
+  Layer.provideMerge(Layer.mergeAll(Git.layer, gitHub)),
   Layer.provide(Layer.succeed(Events, { publish: () => Effect.void })),
   Layer.provideMerge(Db.layer(":memory:")),
   Layer.provide(NodeServices.layer),

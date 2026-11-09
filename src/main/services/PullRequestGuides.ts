@@ -22,7 +22,7 @@ import { ClientSettings } from "./ClientSettings.ts"
 import { nowIso } from "./clock.ts"
 import { type PersistenceError, persistence } from "./errors.ts"
 import { Events } from "./Events.ts"
-import { GitHub, type GitHubError, type PullRequestUrlInvalidError, requirePullRequestUrl } from "./GitHub.ts"
+import { GitHub, type GitHubError, type PullRequestUrlInvalidError, requireGitHubPullRequestUrl } from "./GitHub.ts"
 import { PullRequests } from "./PullRequests.ts"
 import { Settings } from "./Settings.ts"
 import { Threads } from "./Threads.ts"
@@ -232,7 +232,7 @@ const make = Effect.gen(function* () {
   yield* Effect.schedule(sweep, Schedule.spaced(SWEEP_INTERVAL)).pipe(Effect.forkScoped)
 
   return PullRequestGuides.of({
-    get: (raw) => Effect.flatMap(requirePullRequestUrl(raw), state),
+    get: (raw) => Effect.flatMap(requireGitHubPullRequestUrl(raw), state),
     ensure,
     retry,
     sweep,

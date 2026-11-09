@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events"
+import * as SourceControl from "../services/SourceControl.ts"
 import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { readFile, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -199,7 +200,8 @@ const domain = Layer.mergeAll(
 )
 const agents = runnerLayer.pipe(Layer.provideMerge(domain))
 const testLayer = Layer.mergeAll(serverLayer.pipe(Layer.provide(Layer.mergeAll(agents, stubs))), agents, seeded).pipe(
-  Layer.provide(Layer.mergeAll(stubs, Git.layer)),
+  Layer.provideMerge(SourceControl.layer),
+  Layer.provideMerge(Layer.mergeAll(stubs, Git.layer)),
   Layer.provideMerge(GitHub.layer.pipe(Layer.provide(stubs))),
   Layer.provideMerge(Db.layer(":memory:")),
   Layer.provide(NodeServices.layer),

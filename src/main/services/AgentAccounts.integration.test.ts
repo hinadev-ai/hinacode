@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, mkdtempSync } from "node:fs"
+import * as SourceControl from "./SourceControl.ts"
 import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "@effect/vitest"
@@ -24,9 +25,9 @@ const testLayer = threadsLayer.pipe(
   Layer.provideMerge(accountsLayer),
   Layer.provideMerge(Layer.suspend(() => settingsLayer(mkdtempSync(join(tmpdir(), "kk-accounts-settings-"))))),
   Layer.provide(
-    Layer.mergeAll(Git.layer, GitHub.layer).pipe(
-      Layer.provideMerge(Layer.succeed(Events, { publish: () => Effect.void })),
-    ),
+    SourceControl.layer
+      .pipe(Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer)))
+      .pipe(Layer.provideMerge(Layer.succeed(Events, { publish: () => Effect.void }))),
   ),
   Layer.provideMerge(Db.layer(":memory:")),
   Layer.provide(NodeServices.layer),

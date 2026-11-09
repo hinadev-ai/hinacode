@@ -1,4 +1,5 @@
 import { execFileSync, spawn } from "node:child_process"
+import * as SourceControl from "./SourceControl.ts"
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, unlinkSync, watch, writeFileSync } from "node:fs"
 import { connect } from "node:net"
 import { tmpdir } from "node:os"
@@ -180,7 +181,8 @@ const testLayer = settleLayer.pipe(
   Layer.provide(liveClock),
   Layer.provideMerge(pullRequestsLayer),
   Layer.provideMerge(domain),
-  Layer.provide(Layer.mergeAll(Git.layer, gitHub, agentRunner, recordingPorts)),
+  Layer.provideMerge(SourceControl.layer),
+  Layer.provideMerge(Layer.mergeAll(Git.layer, gitHub, agentRunner, recordingPorts)),
   Layer.provide(Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) })),
   Layer.provideMerge(Db.layer(":memory:")),
   Layer.provide(NodeServices.layer),

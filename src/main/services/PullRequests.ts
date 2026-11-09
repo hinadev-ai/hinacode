@@ -13,8 +13,9 @@ import { Events } from "./Events.ts"
 import { nowIso } from "./clock.ts"
 import { type NotFoundError, type PersistenceError, persistence } from "./errors.ts"
 import { type CommandError, Git, LONG_TIMEOUT } from "./Git.ts"
-import { GitHub, type GitHubError, type PullRequestUrlInvalidError, requirePullRequestUrl } from "./GitHub.ts"
-import { parseGitHubPullRequestUrl } from "../../shared/github.ts"
+import type { PullRequestUrlInvalidError } from "./GitHub.ts"
+import { parsePullRequestUrl } from "../../shared/codeHost.ts"
+import { requirePullRequestUrl, SourceControl, type SourceControlError } from "./SourceControl.ts"
 import { Threads } from "./Threads.ts"
 import { Worktrees } from "./Worktrees.ts"
 
@@ -63,10 +64,7 @@ export class PullRequests extends Context.Service<
     ) => Effect.Effect<boolean, PersistenceError>
     readonly create: (
       threadId: string,
-    ) => Effect.Effect<
-      string,
-      PersistenceError | NotFoundError | NoBranchError | CommandError | GitHubError | PullRequestUrlInvalidError
-    >
+    ) => Effect.Effect<string, PersistenceError | NotFoundError | NoBranchError | CommandError | SourceControlError>
   }
 >()("hinacode/PullRequests") {}
 
@@ -77,7 +75,7 @@ const make = Effect.gen(function* () {
   const threads = yield* Threads
   const worktrees = yield* Worktrees
   const git = yield* Git
-  const github = yield* GitHub
+  const sourceControl = yield* SourceControl
   const encodeRow = Schema.encodeEffect(LinkRow)
   const encodeWatch = Schema.encodeEffect(Schema.NullOr(Schema.fromJsonString(PullRequestWatch)))
 
@@ -157,7 +155,7 @@ const make = Effect.gen(function* () {
 
   const unlink = (threadId: string, raw: string) =>
     Effect.gen(function* () {
-      const url = parseGitHubPullRequestUrl(raw.trim()) ?? raw
+      const url = parsePullRequestUrl(raw)?.url ?? raw
       yield* sql`DELETE FROM pull_request_link WHERE thread_id = ${threadId} AND url = ${url}`.pipe(
         Effect.mapError(persistence("pullRequests.unlink")),
       )
@@ -199,7 +197,7 @@ const make = Effect.gen(function* () {
 
   const unwatch = (threadId: string, raw: string) =>
     Effect.gen(function* () {
-      const url = parseGitHubPullRequestUrl(raw.trim()) ?? raw
+      const url = parsePullRequestUrl(raw)?.url ?? raw
       const current = yield* byUrl(threadId, url)
       if (current === null || current.watch === null) return
       yield* setWatch(current, null)
@@ -226,7 +224,7 @@ const make = Effect.gen(function* () {
       const worktree = yield* worktrees.get(worktreeId)
       if (worktree.status !== "ready") return yield* new NoBranchError({ threadId })
       yield* git.run(worktree.path, ["push", "--set-upstream", "origin", worktree.branch], { timeout: LONG_TIMEOUT })
-      const url = yield* github.createPullRequest(worktree.path, {
+      const url = yield* sourceControl.createPullRequest(worktree.path, {
         head: worktree.branch,
         base: worktree.baseRef.replace(/^origin\//, ""),
       })

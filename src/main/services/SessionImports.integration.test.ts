@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, utimesSync, writeFileSync } from "node:fs"
+import * as SourceControl from "./SourceControl.ts"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { NodeServices } from "@effect/platform-node"
@@ -96,9 +97,9 @@ const setup = (options: { history?: SessionHistory } = {}) => {
     Layer.provide(Attachments.layer(mkdtempSync(join(tmpdir(), "kk-import-attachments-")))),
     Layer.provide(providers(cliHome, options)),
     Layer.provide(
-      Layer.mergeAll(Git.layer, GitHub.layer).pipe(
-        Layer.provideMerge(Layer.succeed(Events, { publish: () => Effect.void })),
-      ),
+      SourceControl.layer
+        .pipe(Layer.provideMerge(Layer.mergeAll(Git.layer, GitHub.layer)))
+        .pipe(Layer.provideMerge(Layer.succeed(Events, { publish: () => Effect.void }))),
     ),
     Layer.provideMerge(Db.layer(":memory:")),
     Layer.provide(NodeServices.layer),

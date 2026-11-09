@@ -1,4 +1,5 @@
 import { type GitHubRepository, parseGitHubRepository } from "../../shared/github.ts"
+import { parseGitLabMergeRequestUrl } from "../../shared/codeHost.ts"
 import type { Segment } from "./linkify.ts"
 
 export interface PullRequestRef extends GitHubRepository {
@@ -21,7 +22,9 @@ export const pullRequestLabel = (ref: PullRequestRef, repository: GitHubReposito
 
 export const pullRequestName = (url: string) => {
   const ref = parsePullRequestUrl(url)
-  return ref ? pullRequestLabel(ref, null) : url
+  if (ref) return pullRequestLabel(ref, null)
+  const mergeRequest = parseGitLabMergeRequestUrl(url)
+  return mergeRequest ? `${mergeRequest.path}!${mergeRequest.iid}` : url
 }
 
 const pullRequestUrl = ({ owner, name }: GitHubRepository, number: string) =>

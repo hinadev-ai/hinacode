@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs"
+import * as SourceControl from "./SourceControl.ts"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Options } from "@anthropic-ai/claude-agent-sdk"
@@ -116,7 +117,8 @@ const domain = threadsLayer.pipe(
 const testLayer = guidesLayer.pipe(
   Layer.provideMerge(pullRequestsLayer),
   Layer.provideMerge(Layer.mergeAll(domain, ClientSettings.layer(base))),
-  Layer.provide(Layer.mergeAll(Git.layer, gitHub)),
+  Layer.provideMerge(SourceControl.layer),
+  Layer.provideMerge(Layer.mergeAll(Git.layer, gitHub)),
   Layer.provide(Layer.succeed(Events, { publish: (event) => Effect.sync(() => void pushes.push(event)) })),
   Layer.provideMerge(Db.layer(":memory:")),
   Layer.provide(NodeServices.layer),
