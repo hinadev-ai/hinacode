@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process"
-import { readlink, realpath } from "node:fs/promises"
+import { readFile, readlink, realpath } from "node:fs/promises"
 import { sep } from "node:path"
 import { Context, Effect, Layer, Schema } from "effect"
 import type { OpenPort } from "../../shared/domain.ts"
@@ -85,7 +85,7 @@ const parseLsofFields = (text: string) => {
   return processes
 }
 
-const parentPids = exec("ps", ["-axo", "pid=,ppid="]).pipe(
+const psParentPids = exec("ps", ["-axo", "pid=,ppid="]).pipe(
   Effect.map(
     (text) =>
       new Map(
@@ -97,17 +97,38 @@ const parentPids = exec("ps", ["-axo", "pid=,ppid="]).pipe(
   ),
 )
 
+const procParentOf = (pid: number) =>
+  readFile(`/proc/${pid}/stat`, "utf8").then(
+    (stat) => Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1]),
+    () => undefined,
+  )
+
+const procParentPids = (pids: ReadonlyArray<number>) =>
+  Effect.promise(async () => {
+    const parents = new Map<number, number>()
+    await Promise.all(
+      pids.map(async (pid) => {
+        for (let child = pid; child > 1 && !parents.has(child);) {
+          const parent = await procParentOf(child)
+          if (parent === undefined || !Number.isInteger(parent)) return
+          parents.set(child, parent)
+          child = parent
+        }
+      }),
+    )
+    return parents
+  })
+
 const attribute = (
   listeners: ReadonlyArray<Listener>,
-  parentsOf: Effect.Effect<ReadonlyMap<number, number>, PortsError>,
+  parentsOf: (pids: ReadonlyArray<number>) => Effect.Effect<ReadonlyMap<number, number>, PortsError>,
   cwds: (pids: ReadonlyArray<number>) => Effect.Effect<ReadonlyMap<number, string | null>, PortsError>,
   include: (process: ProcessInfo) => boolean,
 ) =>
   Effect.gen(function* () {
     if (listeners.length === 0) return []
-    const [parents, cwdOf] = yield* Effect.all([parentsOf, cwds([...new Set(listeners.map(({ pid }) => pid))])], {
-      concurrency: 2,
-    })
+    const pids = [...new Set(listeners.map(({ pid }) => pid))]
+    const [parents, cwdOf] = yield* Effect.all([parentsOf(pids), cwds(pids)], { concurrency: 2 })
     const ancestorsOf = ancestorsIn(parents)
     return uniqueByPortAndPid(
       listeners.flatMap(({ pid, command, port }) => {
@@ -134,8 +155,33 @@ const lsofCwds = (pids: ReadonlyArray<number>) =>
     Effect.map((text) => new Map(parseLsofFields(text).map(({ pid, names }) => [pid, names[0] ?? null]))),
   )
 
+const TCP_LISTEN = "0A"
+
+export const listeningSockets = (procNetTcp: string) =>
+  procNetTcp
+    .split("\n")
+    .slice(1)
+    .flatMap((line) => {
+      const [, local, , state, , , , , , inode] = line.trim().split(/\s+/)
+      return state === TCP_LISTEN ? [`${local}/${inode}`] : []
+    })
+
+const procListeningSockets = Effect.promise(() =>
+  Promise.all(["/proc/net/tcp", "/proc/net/tcp6"].map((table) => readFile(table, "utf8").catch(() => ""))),
+).pipe(Effect.map((tables) => tables.flatMap(listeningSockets).toSorted().join(" ")))
+
+let ssForSockets: { readonly key: string; readonly listeners: ReadonlyArray<Listener> } | undefined
+
+const ssListeners = Effect.gen(function* () {
+  const key = yield* procListeningSockets
+  if (ssForSockets?.key === key) return ssForSockets.listeners
+  const listeners = parseSs(yield* exec("ss", ["-Hltnp"]))
+  ssForSockets = { key, listeners }
+  return listeners
+})
+
 const findListeningPortsWithSs: ListeningScanner = (include) =>
-  exec("ss", ["-Hltnp"]).pipe(Effect.flatMap((text) => attribute(parseSs(text), parentPids, procCwds, include)))
+  ssListeners.pipe(Effect.flatMap((listeners) => attribute(listeners, procParentPids, procCwds, include)))
 
 const findListeningPortsWithLsof: ListeningScanner = (include) =>
   // FIXME: lsof cuts the command name to nine characters unless given +c 0
@@ -148,7 +194,7 @@ const findListeningPortsWithLsof: ListeningScanner = (include) =>
           .map((port) => ({ pid, command, port })),
       ),
     ),
-    Effect.flatMap((listeners) => attribute(listeners, parentPids, lsofCwds, include)),
+    Effect.flatMap((listeners) => attribute(listeners, () => psParentPids, lsofCwds, include)),
   )
 
 const LISTENING_REMOTE = /^(0\.0\.0\.0|\[::\]):0$/
@@ -201,7 +247,7 @@ const findListeningPortsWithNetstat: ListeningScanner = (include) =>
     const table = yield* windowsProcessesFor(sockets.map(({ pid }) => pid))
     const listeners = sockets.map(({ pid, port }) => ({ pid, port, command: table.get(pid)?.command ?? "" }))
     const parents = new Map([...table].map(([pid, { parent }]) => [pid, parent]))
-    return yield* attribute(listeners, Effect.succeed(parents), noCwds, include)
+    return yield* attribute(listeners, () => Effect.succeed(parents), noCwds, include)
   })
 
 const isInside = (path: string, root: string) =>
@@ -281,6 +327,7 @@ const terminate = (pid: number) =>
 
 const kill = (pid: number) =>
   Effect.gen(function* () {
+    ssForSockets = undefined
     const listening = yield* scanListening((proc) => proc.pid === pid)
     if (listening.length === 0) {
       return yield* new PortsError({ message: `Process ${pid} is not listening on a port` })

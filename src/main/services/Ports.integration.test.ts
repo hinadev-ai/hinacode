@@ -7,7 +7,7 @@ import { NodeServices } from "@effect/platform-node"
 import { Effect, Layer } from "effect"
 import * as Db from "../db/client.ts"
 import { seedThread } from "../db/testing.ts"
-import { belongsToWorkspace, parseNetstat, parseSs, Ports, layer as portsLayer } from "./Ports.ts"
+import { belongsToWorkspace, listeningSockets, parseNetstat, parseSs, Ports, layer as portsLayer } from "./Ports.ts"
 
 const listenerPids: Array<number> = []
 
@@ -72,6 +72,17 @@ describe.skipIf(process.platform !== "linux" && process.platform !== "darwin")("
         expect(yield* portsOf(threadId)).toStrictEqual([listener])
       }),
     )
+
+    shared.effect("lists a listener that started after the previous scan", () =>
+      Effect.gen(function* () {
+        const root = yield* Effect.promise(() => mkdtemp(join(base, "repo-")))
+        const first = yield* listenIn(root)
+        const { threadId } = yield* seedThread({ rootPath: root })
+        expect(yield* portsOf(threadId)).toStrictEqual([first])
+        const second = yield* listenIn(root)
+        expect(yield* portsOf(threadId)).toStrictEqual([first, second].toSorted((a, b) => a.port - b.port))
+      }),
+    )
   })
 })
 
@@ -89,6 +100,18 @@ describe("parseSs", () => {
       { pid: 22, command: "my (dev) srv", port: 8080 },
       { pid: 40, command: "python3", port: 4000 },
     ])
+  })
+})
+
+const PROC_NET_TCP = `  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
+   0: 0100007F:1435 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 5230216 1 0000000000000000 100 0 0 10 0
+   1: 0100007F:1435 0100007F:A2C4 01 00000000:00000000 00:00000000 00000000  1000        0 5230299 1 0000000000000000 20 4 30 10 -1
+   2: 00000000:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 39232875 1 0000000000000000 100 0 0 10 0
+`
+
+describe("listeningSockets", () => {
+  it("keys each listening socket by address and inode, skipping connections", () => {
+    expect(listeningSockets(PROC_NET_TCP)).toStrictEqual(["0100007F:1435/5230216", "00000000:1F90/39232875"])
   })
 })
 
