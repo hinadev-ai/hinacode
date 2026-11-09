@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import type { CanUseTool, PermissionResult } from "@anthropic-ai/claude-agent-sdk"
 import { Deferred, Effect } from "effect"
-import type { AgentEvent, ApprovalDecision, ApprovalKind, SessionScope } from "../../../shared/agent.ts"
+import type { AgentEvent, ApprovalDecision, ApprovalKind, ProviderId, SessionScope } from "../../../shared/agent.ts"
 
 export interface ApprovalSession {
   readonly threadId: string
@@ -39,7 +39,10 @@ function sessionScope(tool: string, input: Record<string, unknown>): SessionScop
 
 const grantKey = (scope: SessionScope) => JSON.stringify([scope.tool, scope.kind, scope.value])
 
-export function makeApprovals<S extends ApprovalSession>(emit: (session: S, event: AgentEvent) => void) {
+export function makeApprovals<S extends ApprovalSession>(
+  provider: ProviderId,
+  emit: (session: S, event: AgentEvent) => void,
+) {
   const pending = new Map<string, PendingApproval>()
 
   const ask = async (
@@ -65,7 +68,7 @@ export function makeApprovals<S extends ApprovalSession>(emit: (session: S, even
       request: {
         id: requestId,
         threadId: session.threadId,
-        provider: "claude",
+        provider,
         kind: approvalKind(toolName),
         title: options.title ?? options.displayName ?? toolName,
         detail: options.description ?? approvalDetail(input),

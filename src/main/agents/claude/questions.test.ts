@@ -12,7 +12,7 @@ const input = {
 
 const setup = () => {
   const events: Array<AgentEvent> = []
-  const questions = makeQuestions((_session, event) => events.push(event))
+  const questions = makeQuestions("claude", (_session, event) => events.push(event))
   const session = { threadId: "thread", turn: {} }
   const abort = new AbortController()
   const options = { signal: abort.signal, toolUseID: "tool-use", requestId: "request" }

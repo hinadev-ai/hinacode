@@ -8,7 +8,7 @@ const callOptions = () => ({ signal: new AbortController().signal, toolUseID: "t
 function setup() {
   const requests: Array<ApprovalRequest> = []
   let raised: ((request: ApprovalRequest | null) => void) | null = null
-  const approvals = makeApprovals((_session, event: AgentEvent) => {
+  const approvals = makeApprovals("claude", (_session, event: AgentEvent) => {
     if (event.type !== "approval_requested") return
     requests.push(event.request)
     raised?.(event.request)

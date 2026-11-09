@@ -433,8 +433,8 @@ export const makeClaudeHarness = ({ id, listModels, launchEnv }: ClaudeHarness) 
       }
     }
 
-    const approvals = makeApprovals(emit)
-    const questions = makeQuestions(emit)
+    const approvals = makeApprovals(id, emit)
+    const questions = makeQuestions(id, emit)
 
     const cancelExpiry = (session: Session) => {
       session.expiry?.interruptUnsafe()
