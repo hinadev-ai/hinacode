@@ -209,6 +209,10 @@ export const modelsAtom = familyOf((environment: EnvironmentId, provider: Provid
   Atom.make(call("models.list", { provider }, { environment })).pipe(Atom.keepAlive),
 )
 
+export const binariesAtom = familyOf((environment: EnvironmentId) =>
+  Atom.make(call("agents.binaries", undefined, { environment })),
+)
+
 export const accountAtom = familyOf((environment: EnvironmentId, provider: ProviderId, accountId: string | null) =>
   Atom.make(call("agents.account", { provider, accountId }, { environment })),
 )

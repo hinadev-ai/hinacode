@@ -23,6 +23,7 @@ Feature: Settings
 
   Scenario: A default model preselects in the new thread composer
     Given a project "demo" for my repository
+    And the Claude Code CLI is installed
     When I open settings
     And I open the settings section "Providers"
     And I choose the last listed default model for "Claude Code"
