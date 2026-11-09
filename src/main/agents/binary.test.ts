@@ -75,6 +75,28 @@ describe.skipIf(process.platform === "win32")("installedBinary", () => {
     expect(error.message).toContain(missing)
   })
 
+  it("runs an account's CLI from a path under the home folder", async () => {
+    const home = mkdtempSync(join(tmpdir(), "kk-binary-home-"))
+    cliIn(home, "bin")
+    const previousHome = process.env["HOME"]
+    process.env["HOME"] = home
+    try {
+      expect(await Effect.runPromise(installedBinary("codex", "~/bin/kk-fake-cli"))).toBe(
+        join(home, "bin", "kk-fake-cli"),
+      )
+    } finally {
+      process.env["HOME"] = previousHome
+    }
+  })
+
+  it("names an account's CLI path when nothing runs there", async () => {
+    const missing = join(mkdtempSync(join(tmpdir(), "kk-binary-")), "codex-beta")
+
+    const error = await Effect.runPromise(Effect.flip(installedBinary("codex", missing)))
+
+    expect(error.message).toContain(missing)
+  })
+
   it("counts a simulated agent as installed without a CLI", async () => {
     process.env["PATH"] = mkdtempSync(join(tmpdir(), "kk-binary-"))
 
