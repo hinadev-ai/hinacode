@@ -14,9 +14,7 @@ const callRendererAt = async (rendererUrl: string) => {
     const address = server.address() as AddressInfo
     response.setHeader("Content-Type", "application/json")
     response.end(
-      JSON.stringify([
-        { type: "page", url: rendererUrl, webSocketDebuggerUrl: `ws://127.0.0.1:${address.port}/page` },
-      ]),
+      JSON.stringify([{ type: "page", url: rendererUrl, webSocketDebuggerUrl: `ws://127.0.0.1:${address.port}/page` }]),
     )
   })
   server.on("connection", (socket) => {
@@ -72,7 +70,6 @@ const callRendererAt = async (rendererUrl: string) => {
 }
 
 test("rpc exits after printing its response without waiting for CDP to close", () =>
-  callRendererAt("file:///app/out/renderer/index.html"),
-)
+  callRendererAt("file:///app/out/renderer/index.html"))
 
 test("rpc finds the renderer served by pnpm dev", () => callRendererAt("http://localhost:5173/"))
