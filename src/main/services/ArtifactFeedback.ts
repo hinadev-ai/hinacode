@@ -9,9 +9,10 @@ import {
 import { Context, Effect, Layer, Schema } from "effect"
 import type { ArtifactFeedback as Feedback, CommentAnchor } from "../../shared/artifact.ts"
 import { artifactFeedbackPrompt, feedbackTargets } from "../../shared/artifactFeedback.ts"
-import type { Attachment } from "../../shared/domain.ts"
+import type { Attachment, Thread } from "../../shared/domain.ts"
 import { AgentRunner } from "./AgentRunner.ts"
 import { Artifacts } from "./Artifacts.ts"
+import { Events } from "./Events.ts"
 import { NotFoundError } from "./errors.ts"
 import { Threads } from "./Threads.ts"
 
@@ -68,6 +69,7 @@ const make = Effect.gen(function* () {
   const { store } = yield* Artifacts
   const runner = yield* AgentRunner
   const threads = yield* Threads
+  const events = yield* Events
 
   const existing = (id: string) =>
     Effect.flatMap(
@@ -76,8 +78,16 @@ const make = Effect.gen(function* () {
         artifact === null ? Effect.fail(new NotFoundError({ entity: "artifact", id })) : Effect.succeed(artifact),
     )
 
+  const reopenArchived = (thread: Thread) =>
+    thread.status === "archived"
+      ? threads
+          .unarchive(thread.id)
+          .pipe(Effect.flatMap((reopened) => events.publish({ type: "thread.updated", thread: reopened })))
+      : Effect.void
+
   const deliver = (threadId: string, prompt: string, attachments: ReadonlyArray<Attachment>) =>
     threads.get(threadId).pipe(
+      Effect.flatMap(reopenArchived),
       Effect.andThen(
         runner
           .steer(threadId, prompt, attachments)
