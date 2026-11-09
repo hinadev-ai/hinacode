@@ -124,6 +124,7 @@ Each entry of `publish_artifact`'s `files` now takes `sourcePath`, and `publish_
 - The schema is flat, with two optional fields and a refinement, rather than a union. Harnesses convert MCP schemas in their own ways, and a flat object does not depend on how each one handles `anyOf`.
 - There is no restriction on which path. The agent already runs as this user, and the path is part of the tool call the harness shows and approves.
 - A file over the 16 MB cap is refused from its size before it is read.
+- `publish_document` refuses a file that is not UTF-8 text or holds a NUL byte, so an image passed by mistake fails instead of becoming a document of replacement characters.
 
 ### Documents
 
