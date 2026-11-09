@@ -180,4 +180,18 @@ layer(makeTestAppLayer(join(base, "hinacode.sqlite"), { providers, events: quiet
       expect(yield* Queue.size(delivered)).toBe(0)
     }),
   )
+
+  it.effect("reopens an archived thread to deliver a comment, like a message from the composer", () =>
+    Effect.gen(function* () {
+      const owner = yield* newThread
+      const threads = yield* Threads
+      const document = yield* documentOf(owner)
+      yield* threads.archive(owner)
+
+      yield* ArtifactFeedback.use((feedback) => feedback.comment({ id: document.id, body: "Not yet." }))
+
+      expect((yield* Queue.take(delivered)).threadId).toBe(owner)
+      expect((yield* threads.get(owner)).status).not.toBe("archived")
+    }),
+  )
 })
