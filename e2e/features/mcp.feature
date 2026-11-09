@@ -35,3 +35,7 @@ Feature: Built-in MCP server
       | tool             | arguments                                                 | reason                             |
       | linear_get_issue | {"key":"ENG-1"}                                           | No Linear API key is configured    |
       | request_secret   | {"name":"demo.token","description":"Verification token"} | No turn is running on this thread. |
+
+  Scenario: A published page that navigates away while it loads is still checked
+    When the agent calls "publish_artifact" with '{"title":"Leaving Page","files":[{"path":"index.html","content":"<h1>Leaving</h1><script>location.href = \'https://example.invalid/\'</script>"}]}'
+    Then the tool result contains "Rendered at 400px"

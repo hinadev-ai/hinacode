@@ -9,6 +9,14 @@ export interface ArtifactPageOptions {
   readonly onProblem?: (problem: unknown) => void
 }
 
+const isRefusedNavigation = (error: unknown, url: string) =>
+  error instanceof Error && "code" in error && error.code === "ERR_ABORTED" && "url" in error && error.url !== url
+
+const load = (page: BrowserWindow, url: string) =>
+  page.loadURL(url).catch((error: unknown) => {
+    if (!isRefusedNavigation(error, url)) throw error
+  })
+
 export const withArtifactPage = async <T>(
   { url, size, onProblem }: ArtifactPageOptions,
   use: (page: Electron.WebContents) => Promise<T>,
@@ -28,7 +36,7 @@ export const withArtifactPage = async <T>(
       devtools.on("message", (_event, method, params) => onProblem({ method, params }))
       await Promise.all([devtools.sendCommand("Runtime.enable"), devtools.sendCommand("Log.enable")])
     }
-    await page.loadURL(url)
+    await load(page, url)
     await page.webContents.executeJavaScript(
       `document.fonts.ready.then(() => new Promise((settle) => setTimeout(settle, ${SETTLE_MS})))`,
     )
