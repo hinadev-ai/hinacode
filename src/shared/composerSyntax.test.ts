@@ -310,6 +310,8 @@ const session = (id: string, title: string | null): TerminalSession => ({
   status: "running",
   exitCode: null,
   title,
+  command: null,
+  lastExitCode: null,
 })
 
 describe("suggestionsFor", () => {

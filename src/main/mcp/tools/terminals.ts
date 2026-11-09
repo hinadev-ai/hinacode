@@ -11,12 +11,12 @@ const MAX_READ_LINES = 2000
 
 const terminalLabel = (session: TerminalSession, index: number) => session.title ?? `Terminal ${index + 1}`
 
-const terminalStatus = (session: TerminalSession) =>
-  session.status === "running"
-    ? "running"
-    : session.exitCode === null
-      ? "exited"
-      : `exited with code ${session.exitCode}`
+const terminalStatus = (session: TerminalSession) => {
+  if (session.status === "exited") return session.exitCode === null ? "exited" : `exited with code ${session.exitCode}`
+  if (session.command !== null) return session.command === "" ? "running a command" : `running \`${session.command}\``
+  if (session.lastExitCode !== null) return `idle, the last command exited with code ${session.lastExitCode}`
+  return "running"
+}
 
 const describeTerminal = (session: TerminalSession, index: number) =>
   [
@@ -30,7 +30,7 @@ const describeTerminal = (session: TerminalSession, index: number) =>
 export const TerminalTools = Toolkit.make(
   McpTool.make("list_terminals", {
     description:
-      "List the terminals the user has open for this thread in HinaCode's terminal drawer, in the order of its tabs, with each one's id, cwd, status and the mention to write in your reply to point the user at it.",
+      "List the terminals the user has open for this thread in HinaCode's terminal drawer, in the order of its tabs, with each one's id, cwd, status and the mention to write in your reply to point the user at it. For zsh, bash and fish the status names the command running in the foreground, or the exit code of the last one.",
   }).annotate(Tool.Readonly, true),
   McpTool.make("read_terminal", {
     description:

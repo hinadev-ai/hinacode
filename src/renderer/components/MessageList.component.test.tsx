@@ -54,6 +54,8 @@ const session = (id: string, title: string | null): TerminalSession => ({
   status: "running",
   exitCode: null,
   title,
+  command: null,
+  lastExitCode: null,
 })
 
 test("a terminal mention opens that terminal, and a closed one shows no id", async () => {

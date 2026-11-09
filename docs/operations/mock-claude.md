@@ -34,12 +34,16 @@ Use the mock Claude to see any transcript state in the real app without spending
 | `/mock-subagents`       | Six sub-agents in every status, updating every two seconds.                                                                                                                                                                   |
 | `/mock-artifacts`       | Publishes an artifact named after the prompt through the real MCP server.                                                                                                                                                     |
 | `/mock-documents`       | Publishes a document named after the prompt through the real MCP server. The next message updates it from the revision it last saw, so an edit in between shows the conflict the agent gets.                                  |
+| `/mock-comments`        | Publishes a document named after the prompt and asks about a quote in it with `comment_on_artifact`. A comment on any document gets an answer on its comment.                                                                 |
+| `/mock-whiteboard`      | Draws a whiteboard named after the prompt. A question about a selection gets a note beside it and an answer on the comment.                                                                                                   |
+
+Comments and whiteboard questions reach the scenario that answers them whatever the launch scenario is.
 
 Stop ends every scenario as Interrupted, not only `/mock-stop`.
 
 ## Adding a scenario
 
-Add its name and description to `mockScenarioDescriptions` in `src/main/agents/claude/mock.ts`. The command list comes from that table. Write the turn as `MockStep`s in `src/main/agents/claude/fixtures/transcript.ts`, using the Agent SDK message builders in `fixtures/sdk.ts`, and register it in `playedSteps`. `play.ts` runs the steps through the real `mapMessage`, so a fixture renders the way a real turn would.
+Add its name and description to `mockScenarioDescriptions` in `src/main/agents/claude/mock.ts`. The command list comes from that table. Write the turn as `MockStep`s in `src/main/agents/claude/fixtures/transcript.ts`, using the Agent SDK message builders in `fixtures/sdk.ts`, and register it in `playedSteps`. `play.ts` runs the steps through the real `mapMessage`, so a fixture renders the way a real turn would. An `mcp` step calls a tool on the thread's real MCP server, and its `next` builds the following steps from the result.
 
 ## If it goes wrong
 

@@ -2,8 +2,10 @@ import { readFile, stat } from "node:fs/promises"
 import { isAbsolute } from "node:path"
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { z } from "zod"
-import { DOCUMENT_ENTRY, isTextType } from "./artifact.ts"
+import { type Artifact, DOCUMENT_ENTRY, isTextType, WHITEBOARD_ENTRY } from "./artifact.ts"
+import { type ArtifactComment, type CommentAuthor, waitingOnDeveloper } from "./feedback.ts"
 import { ArtifactConflictError, type ArtifactStore, ArtifactError, MAX_ARTIFACT_BYTES } from "./store.ts"
+import { describeScene, parseScene } from "./whiteboard.ts"
 
 export type ArtifactCaller = { threadId?: string }
 
@@ -33,6 +35,20 @@ Write GitHub-flavored Markdown: headings, paragraphs, emphasis, links, lists, ta
 
 To change a document, pass its id, the revision you last published or read, and the full new Markdown, or the sourcePath of a file that holds it. read_artifact without a path shows the current revision. The developer may have edited it in the meantime. Then the call fails with their current text and revision, so merge your change into that text and publish again with that revision.`
 
+const WHITEBOARD_GUIDE = `Draw on a whiteboard that the developer sees and draws on beside the thread: an architecture sketch, a flow, a state machine or a rough layout. Prefer it to publish_artifact when the picture is boxes and arrows the developer may want to move or extend.
+
+Elements use Excalidraw's skeleton form. Give every element a stable, readable id such as "api" or "api-db", and x and y; shapes also take width and height.
+- Shapes: {"id":"api","type":"rectangle","x":0,"y":0,"width":180,"height":80,"label":{"text":"API"}}. type is rectangle, ellipse or diamond.
+- Text: {"id":"title","type":"text","x":0,"y":-60,"text":"Checkout flow"}.
+- Arrows and lines: {"id":"api-db","type":"arrow","x":180,"y":40,"start":{"id":"api"},"end":{"id":"db"},"label":{"text":"reads"}}. type is arrow or line; start and end attach it to elements by id.
+Optional style: strokeColor, backgroundColor, fillStyle "solid", strokeStyle "dashed". Leave about 120px between shapes. Use a frame ({"id":"backend","type":"frame","name":"Backend","children":["api","db"]}) only to group a large region.
+
+The developer may draw too, so send only the elements you add or change; the rest stay. An element whose id exists is replaced whole, and remove deletes ids. read_artifact lists every element with its text and bounds. When you answer a question about some elements, place what you add next to them.`
+
+const COMMENT_GUIDE = `Reply to a comment on an artifact, or start one. The developer's comments arrive as messages that name the artifact and the comment id. Answer each with this tool rather than in your reply text, and change the artifact too when the comment asks for it.
+
+Start a comment to ask the developer about part of an artifact: pass quote with exact text from a document, elements with whiteboard element ids, or neither for the whole artifact. Set resolve when the comment is settled.`
+
 const currentMarkdown = async (store: ArtifactStore, id: string) => {
   const file = await store.file(id, DOCUMENT_ENTRY)
   return file === null ? "" : new TextDecoder().decode(file.bytes)
@@ -59,6 +75,45 @@ const readSource = async (sourcePath: string) => {
 }
 
 const newNeedsTitle = { message: "Give a new artifact a title.", path: ["title"] }
+
+const describeTitle = (example: string) =>
+  `The artifact's name, two to four words, such as "${example}". Required for a new one. Omit it when you update, to keep the name the developer may have changed.`
+
+const authorName = (author: CommentAuthor) =>
+  author.kind === "developer"
+    ? "developer"
+    : author.threadId === undefined
+      ? "agent"
+      : `agent (thread ${author.threadId})`
+
+const anchorName = ({ anchor }: ArtifactComment) => {
+  switch (anchor.kind) {
+    case "artifact":
+      return "on the whole artifact"
+    case "text":
+      return `on the quote ${JSON.stringify(anchor.quote)}`
+    case "elements":
+      return `on elements ${anchor.ids.join(", ")}`
+  }
+}
+
+const describeComment = (comment: ArtifactComment) =>
+  [
+    `- ${comment.id} ${anchorName(comment)}, ${waitingOnDeveloper(comment) ? "waiting on the developer" : "waiting on you"}`,
+    ...comment.messages.map((message) => `  ${authorName(message.author)}: ${message.body.replaceAll("\n", "\n    ")}`),
+  ].join("\n")
+
+const describeFeedback = async (store: ArtifactStore, artifact: Artifact) => {
+  const feedback = await store.feedback(artifact.id)
+  const open = feedback?.comments.filter((comment) => !comment.resolved) ?? []
+  const sections = open.length === 0 ? [] : [`Open comments:\n${open.map(describeComment).join("\n")}`]
+  if (artifact.kind === "whiteboard") {
+    const file = await store.file(artifact.id, WHITEBOARD_ENTRY)
+    const scene = file === null ? null : parseScene(new TextDecoder().decode(file.bytes))
+    sections.push(`Elements:\n${describeScene(scene?.elements ?? [])}`)
+  }
+  return sections
+}
 
 const autoOpen = z
   .boolean()
@@ -196,7 +251,7 @@ export const artifactTools = {
       return JSON.stringify(
         artifacts.map(({ id, kind, title, version, updatedAt, threadId: thread }) => ({
           id,
-          ...(kind === "document" ? { kind } : {}),
+          ...(kind === "page" ? {} : { kind }),
           title,
           version,
           updatedAt,
@@ -209,19 +264,104 @@ export const artifactTools = {
   }),
   read_artifact: tool({
     description:
-      "Read an artifact. Without a path, returns its manifest: kind, title, entry, version, revision and files. With a path, returns that text file's content. A document's Markdown is document.md.",
+      "Read an artifact. Without a path, returns its manifest: kind, title, entry, version, revision and files, then its open comments and a whiteboard's elements. With a path, returns that text file's content. A document's Markdown is document.md.",
     input: z.object({
       id: z.string().describe("The artifact id."),
       path: z.string().optional().describe("A text file in the artifact, such as index.html."),
     }),
     handle: async (store, { id, path }) => {
       const artifact = await existing(store, id)
-      if (path === undefined) return JSON.stringify(artifact, null, 2)
+      if (path === undefined) {
+        return [JSON.stringify(artifact, null, 2), ...(await describeFeedback(store, artifact))].join("\n\n")
+      }
       const file = await store.file(id, path)
       if (!file) throw new ArtifactError(`Artifact ${id} has no file "${path}". Read the manifest to see its files.`)
       if (!isTextType(file.type))
         throw new ArtifactError(`"${path}" is binary (${file.type}) and cannot be read as text.`)
       return new TextDecoder().decode(file.bytes)
+    },
+  }),
+  publish_whiteboard: tool({
+    description: WHITEBOARD_GUIDE,
+    input: z
+      .object({
+        id: z.string().optional().describe("The id of a whiteboard to change. Omit it to start a new whiteboard."),
+        title: z.string().min(1).optional().describe(describeTitle("Checkout Flow")),
+        elements: z
+          .array(
+            z.looseObject({
+              id: z.string().min(1).describe('A stable, readable id, such as "api".'),
+              type: z.string().describe("rectangle, ellipse, diamond, text, arrow, line or frame."),
+            }),
+          )
+          .describe("Elements to add, or to replace whole when their id exists. Only what you add or change."),
+        remove: z.array(z.string()).optional().describe("Ids of elements to delete."),
+        auto_open: autoOpen,
+      })
+      .refine((input) => input.id !== undefined || input.title !== undefined, newNeedsTitle),
+    handle: async (store, { id, title, elements, remove }, { threadId }) => {
+      const whiteboard = await store.publish({
+        kind: "whiteboard",
+        patch: { upsert: elements, ...(remove === undefined ? {} : { remove }) },
+        ...(id === undefined ? {} : { id }),
+        ...(title === undefined ? {} : { title }),
+        ...(threadId === undefined ? {} : { threadId }),
+      })
+      return `Published whiteboard ${whiteboard.id} version ${whiteboard.version}: "${whiteboard.title}". Pass id "${whiteboard.id}" to publish_whiteboard to add, change or remove elements.`
+    },
+  }),
+  comment_on_artifact: tool({
+    description: COMMENT_GUIDE,
+    input: z
+      .object({
+        id: z.string().describe("The artifact id."),
+        comment: z
+          .string()
+          .optional()
+          .describe("The id of the comment to reply to, such as c_4f2a9k. Omit it to start a comment."),
+        quote: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("Start a comment on this exact text from the document, as it reads without Markdown marks."),
+        elements: z
+          .array(z.string().min(1))
+          .min(1)
+          .optional()
+          .describe("Start a comment on these whiteboard element ids."),
+        body: z.string().optional().describe("Your message, in Markdown."),
+        resolve: z.boolean().optional().describe("true resolves the comment after your message, false reopens it."),
+      })
+      .refine((input) => input.quote === undefined || input.elements === undefined, {
+        message: "Pass quote or elements, not both.",
+        path: ["quote"],
+      })
+      .refine((input) => input.comment === undefined || (input.quote === undefined && input.elements === undefined), {
+        message: "A reply keeps its comment's anchor. Omit quote and elements when you pass comment.",
+        path: ["comment"],
+      })
+      .refine(
+        (input) => (input.body ?? "").trim() !== "" || (input.comment !== undefined && input.resolve !== undefined),
+        { message: "Pass a body, or comment and resolve to only resolve it.", path: ["body"] },
+      ),
+    handle: async (store, { id, comment, quote, elements, body, resolve }, { threadId }) => {
+      const anchor =
+        quote !== undefined
+          ? { kind: "text" as const, quote, prefix: "", suffix: "" }
+          : elements !== undefined
+            ? { kind: "elements" as const, ids: elements }
+            : undefined
+      const saved = await store.comment(id, {
+        author: threadId === undefined ? { kind: "agent" } : { kind: "agent", threadId },
+        body: body ?? "",
+        ...(comment === undefined ? {} : { comment }),
+        ...(anchor === undefined ? {} : { anchor }),
+        ...(resolve === undefined ? {} : { resolve }),
+      })
+      const state = saved.comment.resolved ? "It is resolved." : "The developer's answer arrives as a message."
+      return comment === undefined
+        ? `Started comment ${saved.comment.id} on artifact ${id}. ${state}`
+        : `Replied on comment ${saved.comment.id} of artifact ${id}. ${state}`
     },
   }),
 }

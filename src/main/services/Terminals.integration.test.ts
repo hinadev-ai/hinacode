@@ -86,7 +86,9 @@ describe("Terminals", () => {
           yield* size(
             terminals.resize(session.id, 120, 40).pipe(Effect.andThen(terminals.write(session.id, "stty size\n"))),
           )
-          expect(yield* terminals.list(threadId)).toStrictEqual([{ ...session, cols: 120, rows: 40 }])
+          expect(yield* terminals.list(threadId)).toMatchObject([
+            { id: session.id, cols: 120, rows: 40, status: "running" },
+          ])
 
           yield* terminals.close(session.id)
           expect(yield* terminals.list(threadId)).toStrictEqual([])
@@ -202,6 +204,42 @@ describe("Terminals", () => {
     )
 
     it.effect(
+      "follows the command running in a bash terminal and its exit code",
+      () =>
+        Effect.gen(function* () {
+          yield* Effect.acquireRelease(
+            Effect.sync(() => {
+              const shell = process.env["SHELL"]
+              process.env["SHELL"] = "bash"
+              return shell
+            }),
+            (shell) =>
+              Effect.sync(() => {
+                if (shell === undefined) delete process.env["SHELL"]
+                else process.env["SHELL"] = shell
+              }),
+          )
+          const { threadId } = yield* seedThread({ rootPath: gitRepo("integrated") })
+          const terminals = yield* Terminals
+          const session = yield* terminals.open({ threadId, cols: 100, rows: 30 })
+          const updates = yield* PubSub.subscribe(yield* Pushes)
+          yield* terminals.write(session.id, "sleep 0.2; cd /; (exit 4)\n")
+          const seen: Array<{ command: string | null; lastExitCode: number | null; cwd: string }> = []
+          const finished = () => seen.at(-1)?.lastExitCode === 4 && seen.at(-1)?.cwd === "/"
+          while (!finished()) {
+            const event = yield* PubSub.take(updates)
+            if (event.type !== "terminal.updated" || event.session.id !== session.id) continue
+            const { command, lastExitCode, cwd } = event.session
+            seen.push({ command, lastExitCode, cwd })
+          }
+          expect(seen).toContainEqual({ command: "sleep 0.2; cd /; (exit 4)", lastExitCode: null, cwd: session.cwd })
+          expect(yield* terminals.list(threadId)).toMatchObject([{ command: null, lastExitCode: 4, cwd: "/" }])
+          yield* terminals.close(session.id)
+        }).pipe(Effect.scoped),
+      30_000,
+    )
+
+    it.effect(
       "attaches since an offset, including output still waiting for its push",
       () =>
         Effect.gen(function* () {
@@ -215,7 +253,7 @@ describe("Terminals", () => {
           yield* terminals.write(session.id, "echo second-$((2 + 1))\n")
           const since = before.length
           const attached = yield* terminals.attach(session.id, since)
-          expect(attached.session).toStrictEqual(session)
+          expect(attached.session).toMatchObject({ id: session.id, status: "running" })
           expect(attached.offset).toBe(since)
 
           const pushed = yield* output(

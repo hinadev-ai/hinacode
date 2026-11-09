@@ -36,8 +36,8 @@ const callTool = async (connection: McpConnection, name: string, args: Record<st
   }
 }
 
-export const publishArtifact = (connection: McpConnection, input: Record<string, unknown>) =>
-  Effect.promise(() => callTool(connection, PUBLISH_ARTIFACT_TOOL, input))
+export const callMcpTool = (connection: McpConnection, name: string, input: Record<string, unknown>) =>
+  Effect.promise(() => callTool(connection, name, input))
 
 export const artifactTurn = (
   callId: string,
@@ -57,7 +57,7 @@ export const artifactTurn = (
     name: `mcp__hinacode__${PUBLISH_ARTIFACT_TOOL}`,
     input,
   }
-  const finished = publishArtifact(connection, input).pipe(
+  const finished = callMcpTool(connection, PUBLISH_ARTIFACT_TOOL, input).pipe(
     Effect.map(({ output, isError }): ReadonlyArray<AgentEvent> => {
       const id = publishedArtifactId(output)
       if (id !== null) published(id)
@@ -172,7 +172,7 @@ export const documentTurn = (
     name: `mcp__hinacode__${PUBLISH_DOCUMENT_TOOL}`,
     input,
   }
-  const finished = Effect.promise(() => callTool(connection, PUBLISH_DOCUMENT_TOOL, input)).pipe(
+  const finished = callMcpTool(connection, PUBLISH_DOCUMENT_TOOL, input).pipe(
     Effect.map(({ output, isError }): ReadonlyArray<AgentEvent> => {
       const id = publishedArtifactId(output)
       if (id !== null) published({ id, title: input.title, revision: publishedRevision(output), markdown })
