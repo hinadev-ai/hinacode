@@ -12,7 +12,7 @@ import {
   PullRequestTopic,
 } from "../../../../shared/domain.ts"
 import { automationsAtom, callPromise, modelsAtom } from "../../../lib/rpc.ts"
-import { useSettings } from "../../../lib/settings.ts"
+import { useInstalledProviders, useSettings } from "../../../lib/settings.ts"
 import { useSettingsEnvironment } from "../../../lib/environments.ts"
 import { m } from "../../../paraglide/messages.js"
 import { ProviderIcon, providerLabel } from "../../ProviderIcon.tsx"
@@ -203,6 +203,7 @@ interface AutomationFormProps {
 function AutomationForm({ state, projects, onDone, onCreated }: AutomationFormProps) {
   const environment = useSettingsEnvironment()
   const settings = useSettings(environment)
+  const installed = useInstalledProviders(environment)
   const { defaultModel } = settings
   const refreshList = useAtomRefresh(automationsAtom(environment))
   const editing = state.mode === "edit"
@@ -248,7 +249,7 @@ function AutomationForm({ state, projects, onDone, onCreated }: AutomationFormPr
 
   const projectItems = projects.map((project) => ({ value: project.id, label: project.name }))
   const triggerItems = triggerTypes.map((type) => ({ value: type, label: triggerLabel[type]() }))
-  const providerItems = enabledProviders(settings).map((id) => ({ value: id, label: providerLabel[id]() }))
+  const providerItems = enabledProviders(settings, installed).map((id) => ({ value: id, label: providerLabel[id]() }))
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">

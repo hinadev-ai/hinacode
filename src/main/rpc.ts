@@ -2,6 +2,7 @@ import { homedir } from "node:os"
 import { Cause, Effect, Option, Schema } from "effect"
 import type { ProviderId } from "../shared/agent.ts"
 import { availableUpdates, installUpdate } from "./agents/updates.ts"
+import { binaryStatuses, installedProviders } from "./agents/binary.ts"
 import { bindKey, keyFor, probe } from "./agents/magpie/gateway.ts"
 import { MAGPIE_KEY_SECRET } from "../shared/providers.ts"
 import { AgentError } from "./agents/provider.ts"
@@ -213,7 +214,7 @@ const handlers: Handlers = {
   "threads.create": ({ projectId, title, provider: chosenProvider, model, effort, worktree, createdBy }) =>
     Effect.gen(function* () {
       const settings = yield* Settings.use((service) => service.get)
-      const provider = chosenProvider ?? startingProvider(settings)
+      const provider = chosenProvider ?? startingProvider(settings, yield* installedProviders)
       const defaults =
         model === undefined ? yield* newThreadOptions(provider) : { model, effort: undefined, fastMode: undefined }
       const thread = yield* Threads.use((threads) =>
@@ -232,7 +233,7 @@ const handlers: Handlers = {
     }),
   "threads.draft": ({ projectId }) =>
     Effect.gen(function* () {
-      const provider = startingProvider(yield* Settings.use((service) => service.get))
+      const provider = startingProvider(yield* Settings.use((service) => service.get), yield* installedProviders)
       const options = yield* newThreadOptions(provider)
       const thread = yield* Threads.use((threads) =>
         threads.draft({ projectId, title: randomName(), provider, ...options }),
@@ -378,6 +379,7 @@ const handlers: Handlers = {
     AgentLogins.use((logins) => logins.account(provider, accountId, { refresh })),
   "agents.updates": () => (process.env["HINACODE_SKIP_AGENT_UPDATES"] ? Effect.succeed([]) : availableUpdates),
   "agents.update": ({ provider }) => installUpdate(provider),
+  "agents.binaries": () => binaryStatuses,
   "magpie.test": ({ endpoint, key }) =>
     Effect.gen(function* () {
       const saved = key === null ? yield* Secrets.use((secrets) => secrets.get(MAGPIE_KEY_SECRET)) : Option.none()

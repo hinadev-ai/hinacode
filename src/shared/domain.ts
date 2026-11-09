@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect"
 import {
   AccountProviderId,
+  AgentBinary,
   AgentProfileName,
   Compaction,
   ForkPoint,
@@ -706,6 +707,9 @@ export const Settings = Schema.Struct({
   autoCompactTokens: perProvider(Schema.NullOr(AutoCompactTokens), null).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed(eachProvider(null))),
   ),
+  providerBinary: perProvider(Schema.NullOr(AgentBinary), null).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(eachProvider(null))),
+  ),
   automations: Schema.Struct({ bindHost: BindHost, port: ListenPort }),
   remote: Schema.Struct({ enabled: Schema.Boolean, bindHost: BindHost, port: ListenPort }),
   textGenerationModel: Schema.String,
@@ -725,13 +729,20 @@ export const Settings = Schema.Struct({
 })
 export type Settings = typeof Settings.Type
 
-export const enabledProviders = (settings: Pick<Settings, "providerEnabled">) =>
-  ProviderId.literals.filter((provider) => settings.providerEnabled[provider])
+export type InstalledProviders = Readonly<Record<ProviderId, boolean>>
 
-export const startingProvider = (settings: Pick<Settings, "defaultProvider" | "providerEnabled">) =>
-  settings.providerEnabled[settings.defaultProvider]
+export const enabledProviders = (settings: Pick<Settings, "providerEnabled">, installed?: InstalledProviders) =>
+  ProviderId.literals.filter((provider) => settings.providerEnabled[provider] && installed?.[provider] !== false)
+
+export const startingProvider = (
+  settings: Pick<Settings, "defaultProvider" | "providerEnabled">,
+  installed?: InstalledProviders,
+) => {
+  const enabled = enabledProviders(settings, installed)
+  return enabled.includes(settings.defaultProvider)
     ? settings.defaultProvider
-    : (enabledProviders(settings)[0] ?? settings.defaultProvider)
+    : (enabled[0] ?? settings.defaultProvider)
+}
 
 export const defaultSettings: Settings = {
   defaultProvider: "claude",
@@ -744,6 +755,7 @@ export const defaultSettings: Settings = {
   defaultAccount: eachProvider(null),
   defaultAccountName: eachProvider(null),
   autoCompactTokens: eachProvider(null),
+  providerBinary: eachProvider(null),
   automations: { bindHost: "127.0.0.1", port: 48080 },
   remote: { enabled: false, bindHost: PRIVATE_NETWORKS, port: 48081 },
   textGenerationModel: "claude-sonnet-5-5",

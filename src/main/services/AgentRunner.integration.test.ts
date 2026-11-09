@@ -407,6 +407,7 @@ const withPreparingThread = async (
                 }),
             }),
             Layer.mock(GitHub.GitHub, {
+              installed: Effect.succeed(true),
               pullRequestDetail: (url) =>
                 Effect.succeed({
                   url,

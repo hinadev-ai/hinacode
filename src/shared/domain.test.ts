@@ -1,7 +1,16 @@
 import { Schema } from "effect"
 import { describe, expect, it } from "vitest"
 import { RpcMethods } from "./contract.ts"
-import { chatFolder, defaultSettings, PullRequest, Settings, Thread, workspaceStatus } from "./domain.ts"
+import {
+  chatFolder,
+  defaultSettings,
+  enabledProviders,
+  PullRequest,
+  Settings,
+  startingProvider,
+  Thread,
+  workspaceStatus,
+} from "./domain.ts"
 
 const legacySettings = Object.fromEntries(
   Object.entries(defaultSettings).filter(([key]) => key !== "defaultAccountName"),
@@ -143,5 +152,21 @@ describe("listener settings", () => {
     expect(setSettings({ remote: { enabled: true, bindHost: "100.64.0.2", port: 48081 } }).remote?.bindHost).toBe(
       "100.64.0.2",
     )
+  })
+})
+
+describe("enabledProviders", () => {
+  const installed = { claude: false, codex: true, muse: false, opencode: true, magpie: false }
+
+  it("leaves out an agent whose CLI is missing, whatever its switch says", () => {
+    expect(enabledProviders(defaultSettings, installed)).toStrictEqual(["codex", "opencode"])
+  })
+
+  it("keeps every switched-on agent while the machine has not answered yet", () => {
+    expect(enabledProviders(defaultSettings)).toStrictEqual(["claude", "codex", "muse", "opencode", "magpie"])
+  })
+
+  it("starts new threads on the first installed agent when the default one is missing", () => {
+    expect(startingProvider(defaultSettings, installed)).toBe("codex")
   })
 })

@@ -1,4 +1,4 @@
-import { useAtomSet, useAtomValue } from "@effect/atom-react"
+import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { cn } from "cn"
 import { AsyncResult } from "effect/reactivity"
 import {
@@ -14,14 +14,14 @@ import {
 import { CLAUDE_EFFORT_LEVELS, type ModelInfo, ProviderId, unlistedModel } from "../../../shared/agent.ts"
 import { AccessMode, AUTO_COMPACT_RANGE, type Settings } from "../../../shared/domain.ts"
 import { providerInfo } from "../../../shared/providers.ts"
-import { modelsAtom, updateSettingsAtom } from "../../lib/rpc.ts"
-import { useSettings } from "../../lib/settings.ts"
+import { binariesAtom, modelsAtom, updateSettingsAtom } from "../../lib/rpc.ts"
+import { useAgentBinaries, useSettings } from "../../lib/settings.ts"
 import { useSettingsEnvironment } from "../../lib/environments.ts"
 import { m } from "../../paraglide/messages.js"
 import { accessModes, effortLabel } from "../ComposerControls.tsx"
 import { ProviderIcon, providerLabel } from "../ProviderIcon.tsx"
 import { Badge } from "../ui/badge.tsx"
-import { Button } from "../ui/button.tsx"
+import { Button, buttonVariants } from "../ui/button.tsx"
 import { Checkbox } from "../ui/checkbox.tsx"
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "../ui/field.tsx"
 import { Switch } from "../ui/switch.tsx"
@@ -156,8 +156,10 @@ interface AgentRowProps {
 }
 
 function AgentRow({ provider, selected, onSelect, onEnabledChange }: AgentRowProps) {
-  const { providerEnabled, defaultModel } = useSettings(useSettingsEnvironment())
-  const enabled = providerEnabled[provider]
+  const environment = useSettingsEnvironment()
+  const { providerEnabled, defaultModel } = useSettings(environment)
+  const missing = useAgentBinaries(environment)?.[provider].installed === false
+  const enabled = providerEnabled[provider] && !missing
   const model = defaultModel[provider]
   const label = providerLabel[provider]()
   return (
@@ -179,22 +181,31 @@ function AgentRow({ provider, selected, onSelect, onEnabledChange }: AgentRowPro
         <span className={cn("max-w-full truncate text-sm font-medium", !enabled && "text-muted-foreground")}>
           {label}
         </span>
-        <span className={cn("max-w-full truncate text-xs text-muted-foreground", model !== null && "font-mono")}>
-          {model ?? m.settings_model_agent_default()}
+        <span
+          className={cn("max-w-full truncate text-xs text-muted-foreground", !missing && model !== null && "font-mono")}
+        >
+          {missing ? m.settings_provider_not_installed() : (model ?? m.settings_model_agent_default())}
         </span>
       </button>
       <Switch
         aria-label={m.settings_provider_toggle({ provider: label })}
         checked={enabled}
+        disabled={missing}
         onCheckedChange={onEnabledChange}
       />
     </li>
   )
 }
 
+const binaryOwner = (provider: ProviderId) =>
+  ProviderId.literals.find((candidate) => providerInfo[candidate].binary === providerInfo[provider].binary) ?? provider
+
 function AgentDetail({ provider, ref }: { provider: ProviderId; ref: Ref<HTMLElement> }) {
-  const { providerEnabled } = useSettings(useSettingsEnvironment())
+  const environment = useSettingsEnvironment()
+  const { providerEnabled } = useSettings(environment)
+  const binary = useAgentBinaries(environment)?.[provider]
   const label = providerLabel[provider]()
+  const owner = binaryOwner(provider)
   return (
     <Panel
       ref={ref}
@@ -202,8 +213,14 @@ function AgentDetail({ provider, ref }: { provider: ProviderId; ref: Ref<HTMLEle
       icon={<ProviderIcon provider={provider} className="size-4" />}
       className="self-start @4xl:max-h-full"
     >
-      {providerEnabled[provider] ? (
+      {binary?.installed === false ? (
         <div className="flex min-h-0 flex-col divide-y divide-foreground/8 @4xl:overflow-y-auto">
+          <MissingAgentNotice provider={provider} />
+          {owner === provider && <BinaryPathField provider={provider} />}
+        </div>
+      ) : providerEnabled[provider] ? (
+        <div className="flex min-h-0 flex-col divide-y divide-foreground/8 @4xl:overflow-y-auto">
+          {owner === provider && <BinaryPathField provider={provider} />}
           <AccountsSection provider={provider} />
           {provider === "magpie" && (
             <SettingsPanelSection title={m.settings_magpie_gateway()}>
@@ -217,6 +234,78 @@ function AgentDetail({ provider, ref }: { provider: ProviderId; ref: Ref<HTMLEle
         <p className="p-4 text-sm text-muted-foreground">{m.settings_provider_off({ provider: label })}</p>
       )}
     </Panel>
+  )
+}
+
+function MissingAgentNotice({ provider }: { provider: ProviderId }) {
+  const label = providerLabel[provider]()
+  return (
+    <div className="flex flex-col items-start gap-3 p-4">
+      <p className="text-sm text-muted-foreground">{m.settings_provider_missing({ provider: label })}</p>
+      <a
+        href={providerInfo[provider].installUrl}
+        target="_blank"
+        rel="noreferrer"
+        className={buttonVariants({ variant: "outline", size: "sm" })}
+      >
+        {m.settings_provider_install({ provider: label })}
+      </a>
+    </div>
+  )
+}
+
+function BinaryPathField({ provider }: { provider: ProviderId }) {
+  const environment = useSettingsEnvironment()
+  const { providerBinary } = useSettings(environment)
+  const binary = useAgentBinaries(environment)?.[provider]
+  const updateSettings = useAtomSet(updateSettingsAtom(environment), { mode: "promise" })
+  const refreshBinaries = useAtomRefresh(binariesAtom(environment))
+  const current = providerBinary[provider]
+  const [draft, setDraft] = useState(current ?? "")
+  const [error, setError] = useState<string | null>(null)
+  const [pending, startSaving] = useTransition()
+  const inputId = `cli-path-${provider}`
+  const next = draft.trim()
+
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    startSaving(async () => {
+      setError(null)
+      try {
+        await updateSettings({ providerBinary: { ...providerBinary, [provider]: next === "" ? null : next } })
+        refreshBinaries()
+      } catch (cause) {
+        setError(errorMessage(cause))
+      }
+    })
+  }
+
+  return (
+    <SettingsPanelSection title={m.settings_cli_path()}>
+      <Field data-invalid={(current !== null && binary?.installed === false) || undefined}>
+        <FieldLabel htmlFor={inputId} className="sr-only">
+          {m.settings_cli_path()}
+        </FieldLabel>
+        <form onSubmit={onSubmit} className="flex items-center gap-2">
+          <Input
+            id={inputId}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder={binary?.path ?? providerInfo[provider].binary}
+            spellCheck={false}
+            autoComplete="off"
+            className="min-w-0 flex-1 font-mono"
+          />
+          <Button type="submit" variant="outline" disabled={next === (current ?? "") || pending}>
+            {m.settings_save()}
+          </Button>
+        </form>
+        {current !== null && binary?.installed === false && (
+          <FieldError>{m.settings_cli_path_missing({ path: current })}</FieldError>
+        )}
+        {error && <FieldError>{error}</FieldError>}
+      </Field>
+    </SettingsPanelSection>
   )
 }
 
