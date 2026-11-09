@@ -15,6 +15,7 @@ import { makeTestAppLayer } from "../testing.ts"
 import { ArtifactFeedback } from "./ArtifactFeedback.ts"
 import { Artifacts } from "./Artifacts.ts"
 import { Events, PushBroadcast, WindowPush } from "./Events.ts"
+import { Threads } from "./Threads.ts"
 
 const base = mkdtempSync(join(tmpdir(), "kk-artifact-feedback-"))
 afterAll(() => rmSync(base, { recursive: true, force: true }))
@@ -144,6 +145,25 @@ layer(makeTestAppLayer(join(base, "hinacode.sqlite"), { providers, events: quiet
       expect((yield* Queue.take(delivered)).text).toContain(
         'About elements api:\napi rectangle "API" at 0,0 180x80\nWhere is the cache?',
       )
+    }),
+  )
+
+  it.effect("brings an archived owner back and starts a turn with the comment", () =>
+    Effect.gen(function* () {
+      const owner = yield* newThread
+      const { store } = yield* Artifacts
+      const document = yield* Effect.promise(() =>
+        store.publish({ kind: "document", title: "Plan", markdown: "Ship it.", threadId: owner }),
+      )
+      yield* Threads.use((threads) => threads.archive(owner))
+
+      yield* ArtifactFeedback.use((feedback) => feedback.comment({ id: document.id, body: "Reopen this?" }))
+
+      expect(yield* Queue.take(delivered)).toMatchObject({
+        threadId: owner,
+        text: expect.stringContaining("Reopen this?"),
+      })
+      expect((yield* Threads.use((threads) => threads.get(owner))).status).not.toBe("archived")
     }),
   )
 })
